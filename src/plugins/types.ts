@@ -124,12 +124,7 @@ export type PluginCapability =
 export interface PluginContributions {
   commands?: Array<{ id: string; palette?: boolean; title: string }>;
   menu?: Array<{ command: string; id: string; title: string; when?: string }>;
-  settings?: Array<{
-    default?: boolean | number | string;
-    key: string;
-    label: string;
-    type: "boolean" | "number" | "string";
-  }>;
+  settings?: PluginSettingField[];
   statusBar?: Array<{
     command?: string;
     id: string;
@@ -227,12 +222,32 @@ export interface PluginModule {
   deactivate?(): Promise<void> | void;
 }
 
+/**
+ * §260 Phase 4c — one declared settings field. The manifest asks the question; the user's
+ * answer is host-owned (see `plugin-settings.ts`), and a plugin only ever READS it.
+ *
+ * No range, pattern or enum in v1 — a `number` field is any finite number. A plugin that
+ * needs a bounded value validates it itself, which it must do anyway: the persisted record
+ * is a config file the user can edit.
+ */
+export interface PluginSettingField {
+  default?: PluginSettingValue;
+  key: string;
+  label: string;
+  type: PluginSettingType;
+}
+
 export interface PluginSettingsTabOptions {
   id: string;
   onMount(el: HTMLElement): void;
   onUnmount?(el: HTMLElement): void;
   title: string;
 }
+
+export type PluginSettingType = (typeof SETTING_TYPES)[number];
+
+/** What a resolved setting can be — one per `SETTING_TYPES` member. */
+export type PluginSettingValue = boolean | number | string;
 
 export interface PluginSidebarPanelOptions {
   icon?: string;
@@ -401,6 +416,18 @@ export const EDITOR_READ_CAPABILITIES: readonly PluginCapability[] = [
 export const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[] = [
   "editor",
 ];
+
+/**
+ * The types a settings field may declare (§260 Phase 4c).
+ *
+ * A `const` array rather than a bare union because three separate places need to branch on
+ * the SAME set: the validator (is this `type` legal?), the form (which control to render),
+ * and the resolver (`typeof value === type`). That last one is why the members are spelled
+ * exactly as `typeof` returns them — the resolver compares against `typeof` directly, so a
+ * friendlier name here ("text", "toggle") would need a mapping table whose two halves could
+ * drift.
+ */
+export const SETTING_TYPES = ["boolean", "number", "string"] as const;
 
 /** Human-readable descriptions for capabilities */
 export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {

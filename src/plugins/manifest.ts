@@ -1,5 +1,12 @@
 // §69 Plugin Manifest validation
-import type { PluginCapability, PluginManifest } from "./types";
+import type {
+  PluginCapability,
+  PluginManifest,
+  PluginSettingType,
+} from "./types";
+
+import { MAX_SETTING_FIELDS } from "./plugin-settings";
+import { SETTING_TYPES } from "./types";
 
 const VALID_CAPABILITIES: PluginCapability[] = [
   "editor",
@@ -286,15 +293,17 @@ function validateContributions(
   const rejectDuplicateIds = (
     section: string,
     list: Record<string, unknown>[],
+    /** Which field carries the identity — `settings` calls its own `key` (Phase 4c). */
+    field = "id",
   ) => {
     const seen = new Set<string>();
     list.forEach((entry, i) => {
-      const id = entry.id;
+      const id = entry[field];
       if (typeof id !== "string") return; // already reported by requireId
       if (seen.has(id)) {
         errors.push({
-          field: `contributions.${section}[${i}].id`,
-          message: `duplicate id "${id}"`,
+          field: `contributions.${section}[${i}].${field}`,
+          message: `duplicate ${field} "${id}"`,
         });
       }
       seen.add(id);
@@ -333,11 +342,54 @@ function validateContributions(
     }
   });
 
-  // `menu` and `settings` are declared in the Phase-1 schema but nothing consumes them
-  // yet (Phase 4b). Checked only as arrays of objects: asserting a shape the loader does
-  // not read would freeze a design that is not settled, while leaving them unchecked
-  // would repeat the mistake this function exists to fix the moment 4b reads one.
+  // §260 Phase 4c — `settings` is READ now (the plugin detail view renders it and both
+  // tiers resolve values against it), so this is the commit that owes it a shape. The
+  // carry-over rule from 4a, discharged.
+  const settings = entries("settings");
+  if (settings) rejectDuplicateIds("settings", settings, "key");
+  if (settings && settings.length > MAX_SETTING_FIELDS) {
+    errors.push({
+      field: "contributions.settings",
+      message: `at most ${MAX_SETTING_FIELDS} settings fields may be declared`,
+    });
+  }
+  settings?.forEach((field, i) => {
+    // `requireId`, not `requireString`: a key is namespaced per plugin in the persisted
+    // record and addressed by the resolver, so keep the separators the host builds with
+    // out of it — the same rule the status bar's ids follow.
+    requireId(field.key, `contributions.settings[${i}].key`);
+    requireString(field.label, `contributions.settings[${i}].label`);
+    const type = field.type;
+    if (
+      typeof type !== "string" ||
+      !SETTING_TYPES.includes(type as PluginSettingType)
+    ) {
+      errors.push({
+        field: `contributions.settings[${i}].type`,
+        message: `type must be one of ${SETTING_TYPES.map((t) => `"${t}"`).join(", ")}`,
+      });
+      return; // without a valid type there is nothing to check `default` against
+    }
+    // A `default` of the wrong type is rejected at install rather than silently ignored
+    // at read time: the resolver falls back to the type's zero when a default does not
+    // match, so a `"default": "10"` on a number field would leave the author's stated
+    // default nowhere in the running app and no error anywhere.
+    if (field.default !== undefined && typeof field.default !== type) {
+      errors.push({
+        field: `contributions.settings[${i}].default`,
+        message: `default must be a ${type} to match this field's type`,
+      });
+    }
+  });
+
+  // `menu` is declared in the Phase-1 schema and still nothing consumes it. Checked only
+  // as an array of objects: asserting a shape the loader does not read would freeze a
+  // design that is not settled, while leaving it unchecked would repeat the mistake this
+  // function exists to fix the moment something reads it.
+  //
+  // ‼️ CARRY-OVER (4a → 4b → 4c): whoever first reads `menu[].command` adds `requireId`
+  // for it in the SAME commit — the host builds `${pluginId}.${command}` from it, exactly
+  // as the status bar does, and `CONTRIBUTION_ID` is what keeps the separator unambiguous.
   entries("menu");
-  entries("settings");
   return errors;
 }
