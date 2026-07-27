@@ -1,5 +1,3 @@
-// §4.8 Block Handle — drag handle + menu on block hover
-// §11.2.3 BlockHandle AI submenu — contextual AI actions per block type
 import {
   Fragment,
   type ReactNode,
@@ -29,6 +27,9 @@ import {
   addBlockId,
   editBlockId,
 } from "../../extensions/plugins/block-id-decoration";
+// §4.8 Block Handle — drag handle + menu on block hover
+// §11.2.3 BlockHandle AI submenu — contextual AI actions per block type
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { useEditorStore } from "../../stores/editor/editor";
 import {
   dispatchAIAction,
@@ -428,7 +429,10 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           const node = editor.state.doc.nodeAt(handle.pos);
           if (node) {
             const endPos = handle.pos + node.nodeSize;
-            editor.chain().focus().insertContentAt(endPos, node.toJSON()).run();
+            chainWithVimExternalEdit(editor)
+              .focus()
+              .insertContentAt(endPos, node.toJSON())
+              .run();
           }
         }
       },
@@ -444,8 +448,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           const prevResolved = editor.state.doc.resolve(handle.pos);
           if (node && prevResolved.nodeBefore) {
             const prevPos = handle.pos - prevResolved.nodeBefore.nodeSize;
-            editor
-              .chain()
+            chainWithVimExternalEdit(editor)
               .focus()
               .deleteRange({ from: handle.pos, to: handle.pos + node.nodeSize })
               .insertContentAt(prevPos, node.toJSON())
@@ -465,8 +468,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
             const nextNode = editor.state.doc.nodeAt(endPos);
             if (nextNode) {
               const newPos = endPos + nextNode.nodeSize;
-              editor
-                .chain()
+              chainWithVimExternalEdit(editor)
                 .focus()
                 .deleteRange({ from: handle.pos, to: endPos })
                 .insertContentAt(newPos - node.nodeSize, node.toJSON())
@@ -483,8 +485,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         if (handle) {
           const node = editor.state.doc.nodeAt(handle.pos);
           if (node) {
-            editor
-              .chain()
+            chainWithVimExternalEdit(editor)
               .focus()
               .deleteRange({ from: handle.pos, to: handle.pos + node.nodeSize })
               .run();
@@ -542,8 +543,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
             const node = editor.state.doc.nodeAt(handle.pos);
             if (!node) return;
             const insertAt = handle.pos + node.nodeSize;
-            editor
-              .chain()
+            chainWithVimExternalEdit(editor)
               .focus()
               .insertContentAt(insertAt, { type: "paragraph" })
               .setTextSelection(insertAt + 1)

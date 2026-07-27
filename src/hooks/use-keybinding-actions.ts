@@ -1,4 +1,3 @@
-// §settings Keybinding actions hook — register command handlers + global keyboard shortcuts
 import { useEffect } from "react";
 
 import type { EditorTab } from "../stores/editor/editor";
@@ -10,6 +9,8 @@ import {
   dispatchUnfoldAll,
   toggleFoldAtCursor,
 } from "../extensions/plugins/fold";
+// §settings Keybinding actions hook — register command handlers + global keyboard shortcuts
+import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { readFile } from "../ipc/invoke";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
 import {
@@ -205,7 +206,7 @@ export function useGlobalKeyboard({
       // §5.5 Cmd+Enter — add row after in table (context-dependent)
       if (mod && e.key === "Enter" && editor && editor.isActive("table")) {
         e.preventDefault();
-        editor.chain().focus().addRowAfter().run();
+        chainWithVimExternalEdit(editor).focus().addRowAfter().run();
         return;
       }
 
@@ -372,8 +373,7 @@ export function useKeybindingActions({
           const live = task.isLive();
           task.finish();
           if (!result || !live) return;
-          editor
-            .chain()
+          chainWithVimExternalEdit(editor)
             .focus()
             .insertTable({
               rows: result.rows,
@@ -578,8 +578,7 @@ export function useKeybindingActions({
               const live = task.isLive();
               task.finish();
               if (!result || !live) return;
-              activeEditor
-                .chain()
+              chainWithVimExternalEdit(activeEditor)
                 .focus()
                 .deleteSelection()
                 .insertWikilink({ target: result.id })

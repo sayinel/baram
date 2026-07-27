@@ -163,9 +163,8 @@ export function useMenuEventHandler({
           break;
         }
         case "insert_frontmatter":
-          editor
-            ?.chain()
-            .focus()
+          chainWithVimExternalEdit(editor)
+            ?.focus()
             .insertContent({ type: "frontmatter", attrs: { yaml: "" } })
             .run();
           break;
@@ -269,9 +268,8 @@ export function useMenuEventHandler({
           chainWithVimExternalEdit(editor)?.focus().toggleSuperscript().run();
           break;
         case "insert_table":
-          editor
-            ?.chain()
-            .focus()
+          chainWithVimExternalEdit(editor)
+            ?.focus()
             .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
             .run();
           break;

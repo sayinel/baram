@@ -1,6 +1,7 @@
-// §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import type { Editor } from "@tiptap/core";
 
+// §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
+import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
 import { registerEditorMutationTask } from "./editor/mutation-tasks";
@@ -50,8 +51,7 @@ export async function executeAICommand(
 
   if (options?.insertAfterPos != null) {
     // Insert a new paragraph at the explicit position (after a specific block)
-    editor
-      .chain()
+    chainWithVimExternalEdit(editor)
       .focus()
       .insertContentAt(options.insertAfterPos, { type: "paragraph" })
       .run();
@@ -61,8 +61,7 @@ export async function executeAICommand(
     const { to } = editor.state.selection;
     const $to = editor.state.doc.resolve(to);
     const afterBlock = $to.after(1); // position after the top-level block
-    editor
-      .chain()
+    chainWithVimExternalEdit(editor)
       .focus()
       .insertContentAt(afterBlock, { type: "paragraph" })
       .run();
@@ -70,7 +69,10 @@ export async function executeAICommand(
   } else {
     // Original behavior: insert at cursor position
     const insertPos = editor.state.selection.to;
-    editor.chain().focus().insertContentAt(insertPos, "\n").run();
+    chainWithVimExternalEdit(editor)
+      .focus()
+      .insertContentAt(insertPos, "\n")
+      .run();
     currentPos = insertPos;
   }
 

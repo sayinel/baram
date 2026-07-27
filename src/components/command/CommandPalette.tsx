@@ -389,9 +389,8 @@ function buildCommands(
       label: "Table",
       category: "Insert",
       action: (editor) =>
-        editor
-          ?.chain()
-          .focus()
+        chainWithVimExternalEdit(editor)
+          ?.focus()
           .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
           .run(),
     },

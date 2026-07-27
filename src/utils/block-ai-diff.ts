@@ -6,6 +6,7 @@ import type { Editor } from "@tiptap/core";
 
 import diff from "fast-diff";
 
+import { withVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
 import { registerEditorMutationTask } from "./editor/mutation-tasks";
@@ -48,26 +49,32 @@ export function applyBlockAIResult(
       // Text content is in the document
       const from = targetPos + 1;
       const to = targetPos + node.nodeSize - 1;
-      editor.view.dispatch(editor.state.tr.insertText(cleaned, from, to));
+      editor.view.dispatch(
+        withVimExternalEdit(editor.state.tr.insertText(cleaned, from, to)),
+      );
       break;
     }
     case "image": {
       // Update alt text attribute
       editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(targetPos, undefined, {
-          ...node.attrs,
-          alt: cleaned,
-        }),
+        withVimExternalEdit(
+          editor.state.tr.setNodeMarkup(targetPos, undefined, {
+            ...node.attrs,
+            alt: cleaned,
+          }),
+        ),
       );
       break;
     }
     case "mathBlock": {
       // Formula stored in attribute
       editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(targetPos, undefined, {
-          ...node.attrs,
-          formula: cleaned,
-        }),
+        withVimExternalEdit(
+          editor.state.tr.setNodeMarkup(targetPos, undefined, {
+            ...node.attrs,
+            formula: cleaned,
+          }),
+        ),
       );
       break;
     }
@@ -75,10 +82,12 @@ export function applyBlockAIResult(
     case "svgBlock": {
       // Code/markup stored in attribute
       editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(targetPos, undefined, {
-          ...node.attrs,
-          code: cleaned,
-        }),
+        withVimExternalEdit(
+          editor.state.tr.setNodeMarkup(targetPos, undefined, {
+            ...node.attrs,
+            code: cleaned,
+          }),
+        ),
       );
       break;
     }
@@ -87,7 +96,9 @@ export function applyBlockAIResult(
       const from = targetPos + 1;
       const to = targetPos + node.nodeSize - 1;
       if (from < to) {
-        editor.view.dispatch(editor.state.tr.insertText(cleaned, from, to));
+        editor.view.dispatch(
+          withVimExternalEdit(editor.state.tr.insertText(cleaned, from, to)),
+        );
       }
     }
   }

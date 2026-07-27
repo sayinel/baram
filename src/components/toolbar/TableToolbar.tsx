@@ -1,4 +1,3 @@
-// §5.5 Table Toolbar — floating toolbar shown when cursor is in a table cell
 import {
   type ReactNode,
   useCallback,
@@ -13,6 +12,8 @@ import type { Editor } from "@tiptap/react";
 import { CellSelection } from "@tiptap/pm/tables";
 import { AlignCenter, AlignLeft, AlignRight, Sparkles } from "lucide-react";
 
+// §5.5 Table Toolbar — floating toolbar shown when cursor is in a table cell
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { buildTableOverflowItems } from "./context-menu-table";
@@ -259,7 +260,10 @@ export function TableToolbar({ editor }: TableToolbarProps) {
 
   const setAlign = useCallback(
     (align: null | string) => {
-      editor.chain().focus().setCellAttribute("alignment", align).run();
+      chainWithVimExternalEdit(editor)
+        .focus()
+        .setCellAttribute("alignment", align)
+        .run();
     },
     [editor],
   );
@@ -301,7 +305,9 @@ export function TableToolbar({ editor }: TableToolbarProps) {
             <button
               className="table-toolbar-btn"
               disabled={!editor.can().mergeCells()}
-              onClick={() => editor.chain().focus().mergeCells().run()}
+              onClick={() =>
+                chainWithVimExternalEdit(editor).focus().mergeCells().run()
+              }
               title="Merge Cells (⌘M)"
             >
               <MergeCellsIcon />
@@ -309,7 +315,9 @@ export function TableToolbar({ editor }: TableToolbarProps) {
             <button
               className="table-toolbar-btn"
               disabled={!editor.can().splitCell()}
-              onClick={() => editor.chain().focus().splitCell().run()}
+              onClick={() =>
+                chainWithVimExternalEdit(editor).focus().splitCell().run()
+              }
               title="Split Cell"
             >
               <SplitCellsIcon />
@@ -319,14 +327,18 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         <div className="table-toolbar-separator" />
         <button
           className="table-toolbar-btn table-toolbar-btn-danger"
-          onClick={() => editor.chain().focus().deleteRow().run()}
+          onClick={() =>
+            chainWithVimExternalEdit(editor).focus().deleteRow().run()
+          }
           title="Delete Row"
         >
           <DeleteRowIcon />
         </button>
         <button
           className="table-toolbar-btn table-toolbar-btn-danger"
-          onClick={() => editor.chain().focus().deleteColumn().run()}
+          onClick={() =>
+            chainWithVimExternalEdit(editor).focus().deleteColumn().run()
+          }
           title="Delete Column"
         >
           <DeleteColIcon />

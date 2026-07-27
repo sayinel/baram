@@ -1,8 +1,10 @@
-// §4.8 "Turn into" block-type conversion builder for the block handle menu.
 import type { Editor } from "@tiptap/core";
 import type { Node as PmNode } from "@tiptap/pm/model";
 
 import { Selection } from "@tiptap/pm/state";
+
+// §4.8 "Turn into" block-type conversion builder for the block handle menu.
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 
 export interface TurnIntoItem {
   isActive: boolean;
@@ -53,53 +55,59 @@ const SPECS: Spec[] = [
     isActive: (n) => n.type.name === "paragraph",
     // setNode (core command) instead of setParagraph: Baram's Paragraph
     // extension doesn't declare a setParagraph command on ChainedCommands.
-    run: (e) => e.chain().focus().setNode("paragraph").run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().setNode("paragraph").run(),
   },
   {
     label: "Heading 1",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 1,
-    run: (e) => e.chain().focus().toggleHeading({ level: 1 }).run(),
+    run: (e) =>
+      chainWithVimExternalEdit(e).focus().toggleHeading({ level: 1 }).run(),
   },
   {
     label: "Heading 2",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 2,
-    run: (e) => e.chain().focus().toggleHeading({ level: 2 }).run(),
+    run: (e) =>
+      chainWithVimExternalEdit(e).focus().toggleHeading({ level: 2 }).run(),
   },
   {
     label: "Heading 3",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 3,
-    run: (e) => e.chain().focus().toggleHeading({ level: 3 }).run(),
+    run: (e) =>
+      chainWithVimExternalEdit(e).focus().toggleHeading({ level: 3 }).run(),
   },
   {
     label: "Heading 4",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 4,
-    run: (e) => e.chain().focus().toggleHeading({ level: 4 }).run(),
+    run: (e) =>
+      chainWithVimExternalEdit(e).focus().toggleHeading({ level: 4 }).run(),
   },
   {
     label: "Heading 5",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 5,
-    run: (e) => e.chain().focus().toggleHeading({ level: 5 }).run(),
+    run: (e) =>
+      chainWithVimExternalEdit(e).focus().toggleHeading({ level: 5 }).run(),
   },
   {
     label: "Heading 6",
     isActive: (n) => n.type.name === "heading" && n.attrs.level === 6,
-    run: (e) => e.chain().focus().toggleHeading({ level: 6 }).run(),
+    run: (e) =>
+      chainWithVimExternalEdit(e).focus().toggleHeading({ level: 6 }).run(),
   },
   {
     label: "To-do List",
     separator: true,
     isActive: (n) => n.type.name === "taskList",
-    run: (e) => e.chain().focus().toggleTaskList().run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().toggleTaskList().run(),
   },
   {
     label: "Unordered List",
     isActive: (n) => n.type.name === "bulletList",
-    run: (e) => e.chain().focus().toggleBulletList().run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().toggleBulletList().run(),
   },
   {
     label: "Ordered List",
     isActive: (n) => n.type.name === "orderedList",
-    run: (e) => e.chain().focus().toggleOrderedList().run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().toggleOrderedList().run(),
   },
   {
     // §5.1 Toggle (collapsible). wrapIn keeps the block's content as the
@@ -108,24 +116,24 @@ const SPECS: Spec[] = [
     label: "Toggle",
     separator: true,
     isActive: (n) => n.type.name === "toggle",
-    run: (e) => e.chain().focus().wrapIn("toggle").run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().wrapIn("toggle").run(),
   },
   {
     label: "Quote",
     separator: true,
     isActive: (n) => n.type.name === "blockquote",
-    run: (e) => e.chain().focus().toggleBlockquote().run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().toggleBlockquote().run(),
   },
   {
     // §5.9 Callout. wrapIn keeps the block as the callout's body (like Toggle).
     label: "Callout",
     isActive: (n) => n.type.name === "callout",
-    run: (e) => e.chain().focus().wrapIn("callout").run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().wrapIn("callout").run(),
   },
   {
     label: "Code",
     isActive: (n) => n.type.name === "codeBlock",
-    run: (e) => e.chain().focus().toggleCodeBlock().run(),
+    run: (e) => chainWithVimExternalEdit(e).focus().toggleCodeBlock().run(),
   },
   {
     // §5.3 Math block (atom). Converts the block's text into the formula.
@@ -153,8 +161,7 @@ export function buildTurnIntoItems(
       if (UNWRAP_TYPES.has(sourceType)) {
         // toggle/callout/blockquote: replace the wrapper with its block content,
         // then aim the conversion at the former first child.
-        editor
-          .chain()
+        chainWithVimExternalEdit(editor)
           .command(({ dispatch, tr }) => {
             const n = tr.doc.nodeAt(pos);
             if (!n || !UNWRAP_TYPES.has(n.type.name)) return false;
@@ -180,8 +187,7 @@ export function buildTurnIntoItems(
         const to =
           Selection.findFrom(doc.resolve(pos + node.nodeSize), -1, true)
             ?.from ?? pos + node.nodeSize - 1;
-        editor
-          .chain()
+        chainWithVimExternalEdit(editor)
           .focus()
           .setTextSelection({ from, to })
           .liftListItem(itemType)

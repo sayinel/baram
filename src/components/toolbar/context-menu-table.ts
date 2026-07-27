@@ -2,6 +2,7 @@ import type { MenuItem } from "./context-menu-types";
 // §4.8 Context Menu — table menu builder
 import type { Editor } from "@tiptap/react";
 
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 
 /**
@@ -31,40 +32,56 @@ export function buildTableMenu(
     { label: "", action: () => {}, separator: true },
     {
       label: "Add Row Above",
-      action: () => editor.chain().focus().addRowBefore().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().addRowBefore().run(),
     },
     {
       label: "Add Row Below",
-      action: () => editor.chain().focus().addRowAfter().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().addRowAfter().run(),
     },
     {
       label: "Add Column Left",
-      action: () => editor.chain().focus().addColumnBefore().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().addColumnBefore().run(),
     },
     {
       label: "Add Column Right",
-      action: () => editor.chain().focus().addColumnAfter().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().addColumnAfter().run(),
     },
     { label: "", action: () => {}, separator: true },
     {
       label: `Align Left${currentAlign === "left" ? " \u2713" : ""}`,
       action: () =>
-        editor.chain().focus().setCellAttribute("alignment", "left").run(),
+        chainWithVimExternalEdit(editor)
+          .focus()
+          .setCellAttribute("alignment", "left")
+          .run(),
     },
     {
       label: `Align Center${currentAlign === "center" ? " \u2713" : ""}`,
       action: () =>
-        editor.chain().focus().setCellAttribute("alignment", "center").run(),
+        chainWithVimExternalEdit(editor)
+          .focus()
+          .setCellAttribute("alignment", "center")
+          .run(),
     },
     {
       label: `Align Right${currentAlign === "right" ? " \u2713" : ""}`,
       action: () =>
-        editor.chain().focus().setCellAttribute("alignment", "right").run(),
+        chainWithVimExternalEdit(editor)
+          .focus()
+          .setCellAttribute("alignment", "right")
+          .run(),
     },
     {
       label: `No Alignment${currentAlign === null ? " \u2713" : ""}`,
       action: () =>
-        editor.chain().focus().setCellAttribute("alignment", null).run(),
+        chainWithVimExternalEdit(editor)
+          .focus()
+          .setCellAttribute("alignment", null)
+          .run(),
     },
     ...(editor.can().mergeCells() || editor.can().splitCell()
       ? [{ label: "", action: () => {}, separator: true }]
@@ -73,7 +90,8 @@ export function buildTableMenu(
       ? [
           {
             label: "Merge Cells",
-            action: () => editor.chain().focus().mergeCells().run(),
+            action: () =>
+              chainWithVimExternalEdit(editor).focus().mergeCells().run(),
           },
         ]
       : []),
@@ -81,31 +99,36 @@ export function buildTableMenu(
       ? [
           {
             label: "Split Cell",
-            action: () => editor.chain().focus().splitCell().run(),
+            action: () =>
+              chainWithVimExternalEdit(editor).focus().splitCell().run(),
           },
         ]
       : []),
     { label: "", action: () => {}, separator: true },
     {
       label: "Delete Row",
-      action: () => editor.chain().focus().deleteRow().run(),
+      action: () => chainWithVimExternalEdit(editor).focus().deleteRow().run(),
     },
     {
       label: "Delete Column",
-      action: () => editor.chain().focus().deleteColumn().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().deleteColumn().run(),
     },
     {
       label: "Delete Table",
-      action: () => editor.chain().focus().deleteTable().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().deleteTable().run(),
     },
     { label: "", action: () => {}, separator: true },
     {
       label: "Toggle Header Row",
-      action: () => editor.chain().focus().toggleHeaderRow().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleHeaderRow().run(),
     },
     {
       label: "Toggle Header Column",
-      action: () => editor.chain().focus().toggleHeaderColumn().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleHeaderColumn().run(),
     },
     {
       label: "Copy as Markdown",
@@ -140,11 +163,13 @@ export function buildTableOverflowItems(editor: Editor): MenuItem[] {
   return [
     {
       label: "Toggle Header Row",
-      action: () => editor.chain().focus().toggleHeaderRow().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleHeaderRow().run(),
     },
     {
       label: "Toggle Header Column",
-      action: () => editor.chain().focus().toggleHeaderColumn().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleHeaderColumn().run(),
     },
     { label: "", action: () => {}, separator: true },
     {
@@ -170,7 +195,8 @@ export function buildTableOverflowItems(editor: Editor): MenuItem[] {
     { label: "", action: () => {}, separator: true },
     {
       label: "Delete Table",
-      action: () => editor.chain().focus().deleteTable().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().deleteTable().run(),
     },
   ];
 }
