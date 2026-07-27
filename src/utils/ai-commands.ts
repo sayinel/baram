@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
@@ -79,6 +80,22 @@ export async function executeAICommand(
   // §298 §12-9b (design §5c): the token stream is a background mutation —
   // if the task dies (state install / vim mode exit), late tokens must not
   // touch the editor, and the listeners are the cancelable source.
+  // PRE-EXISTING DEFECT (surfaced by review R10, present since before §298):
+  // currentPos is a raw offset that only advanced by its own token lengths.
+  // Any edit landing before it while the stream runs — the user typing above,
+  // a second AI command — shifts the document without shifting this number,
+  // so the next token lands inside an unrelated block. Mutation generation
+  // cannot catch this: it only advances on a whole-state install, not on
+  // ordinary edits. Map the position through every transaction instead.
+  // This also covers our OWN inserts, so the manual `+= token.length` goes
+  // away — a JS string length is not a ProseMirror offset anyway.
+  const trackPos = ({ transaction }: { transaction: Transaction }) => {
+    if (transaction.docChanged) {
+      currentPos = transaction.mapping.map(currentPos, 1);
+    }
+  };
+  editor.on("transaction", trackPos);
+
   const task = registerEditorMutationTask(editor.view);
   // The whole flow lives in the try so a createLLMStream rejection cannot
   // strand the task (its await used to sit outside any handler).
@@ -88,7 +105,7 @@ export async function executeAICommand(
       onToken: (token) => {
         if (!task.isLive()) return;
         editor.chain().focus().insertContentAt(currentPos, token).run();
-        currentPos += token.length;
+        // trackPos advances currentPos from the resulting transaction.
       },
       onError: (error) => logger.error("AI command error:", error),
     });
@@ -116,6 +133,7 @@ export async function executeAICommand(
   } catch {
     logger.error("LLM request failed");
   } finally {
+    editor.off("transaction", trackPos);
     cleanupStream?.();
     task.finish();
   }

@@ -78,6 +78,8 @@ import { act, renderHook } from "@testing-library/react";
 import { buildSlashItems } from "../../extensions/plugins/slash-command-items";
 import { llmCancel, llmComplete } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai/ai";
+import { dispatchCustomInstruction } from "../../utils/ai-action-dispatcher";
+import * as aiCommands from "../../utils/ai-commands";
 import { executeAICommand } from "../../utils/ai-commands";
 import { executeBlockAIWithDiff } from "../../utils/block-ai-diff";
 import { handleEditorDrop } from "../use-external-drop";
@@ -587,5 +589,131 @@ describe("R9 follow-ups — ownership and late invalidation (§12-9d)", () => {
     await running;
 
     expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
+  });
+});
+
+describe("R10 follow-ups — call sites and lifecycle safety (§12-9g)", () => {
+  /** Park the Nth `listen` call, optionally rejecting it. */
+  function gateListen(callIndex: number, mode: "park" | "reject" = "park") {
+    const gate = deferred<void>();
+    let n = 0;
+    vi.mocked(listen).mockImplementation(async () => {
+      if (n++ === callIndex) {
+        await gate.promise;
+        if (mode === "reject") throw new Error("listen failed");
+      }
+      return () => {};
+    });
+    return gate;
+  }
+
+  it("block AI survives a stream-setup rejection without stranding the overlay", async () => {
+    // Every dismissal affordance (buttons, Escape, backdrop) is wired inside
+    // waitForDecision, so a throw before it used to leave a full-screen
+    // overlay the user could not close.
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+    const editor = makeEditor("<p>target text</p>");
+    const gate = gateListen(1, "reject");
+
+    const running = executeBlockAIWithDiff(editor, 0, "target text", "p", "s");
+    await flush();
+    gate.resolve();
+    await running; // must settle, not throw
+
+    expect(document.querySelector(".block-ai-diff-overlay")).toBeNull();
+  });
+
+  it("a same-document edit before the stream anchor does not misplace later tokens", async () => {
+    // Mutation generation only advances on a whole-state install, so an
+    // ordinary edit above the insertion point leaves the task live — the
+    // position itself has to be mapped through the transaction.
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+    const editor = makeEditor("<p>hello</p>");
+    const handlers: Record<string, (e: unknown) => void> = {};
+    vi.mocked(listen).mockImplementation(async (event, handler) => {
+      handlers[event as string] = handler as (e: unknown) => void;
+      return () => {};
+    });
+    const pending = deferred<void>();
+    vi.mocked(llmComplete).mockReturnValueOnce(pending.promise);
+
+    const running = executeAICommand(editor, "p", "s");
+    await flush();
+
+    // The stream filters by requestId, so read the id the command generated.
+    const requestId = vi.mocked(llmComplete).mock.calls[0][2];
+    const send = (token: string) =>
+      handlers["llm:token"]?.({ payload: { requestId, token } });
+
+    send("AAA");
+    await flush();
+
+    // A concurrent edit ABOVE the anchor shifts every later position.
+    editor.view.dispatch(editor.state.tr.insertText("XX", 1));
+    await flush();
+
+    send("BBB");
+    await flush();
+
+    expect(editor.state.doc.textContent).toContain("AAABBB");
+
+    pending.resolve();
+    await running;
+  });
+
+  it("dispatchCustomInstruction abandons its prompt when the document is replaced", async () => {
+    // targetPos/blockText below are bound to THIS document — applying them
+    // after a state install would write at a stale position.
+    const editor = makeEditor("<p>block text</p>");
+    const gate = deferred<null | string>();
+    const promptSpy = vi
+      .spyOn(aiCommands, "showPrompt")
+      .mockReturnValue(gate.promise);
+
+    dispatchCustomInstruction(editor, 0);
+    await flush();
+    invalidateEditorMutationTasks(editor.view);
+    gate.resolve("make it shorter");
+    await flush();
+
+    expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
+    promptSpy.mockRestore();
+  });
+
+  it("CONTROL: dispatchCustomInstruction runs when nothing invalidates", async () => {
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+    const editor = makeEditor("<p>block text</p>");
+    const gate = deferred<null | string>();
+    const promptSpy = vi
+      .spyOn(aiCommands, "showPrompt")
+      .mockReturnValue(gate.promise);
+
+    dispatchCustomInstruction(editor, 0);
+    await flush();
+    gate.resolve("make it shorter");
+    await flush();
+
+    expect(vi.mocked(llmComplete)).toHaveBeenCalledTimes(1);
+    promptSpy.mockRestore();
+  });
+
+  it("the slash ai-write action abandons its prompt when the document is replaced", async () => {
+    const editor = makeEditor("<p>doc</p>");
+    const gate = deferred<null | string>();
+    const promptSpy = vi
+      .spyOn(aiCommands, "showPrompt")
+      .mockReturnValue(gate.promise);
+
+    const item = buildSlashItems(editor).find((i) => i.id === "ai-write");
+    expect(item).toBeDefined();
+    const running = item!.action();
+    await flush();
+    invalidateEditorMutationTasks(editor.view);
+    gate.resolve("a topic");
+    await running;
+    await flush();
+
+    expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
+    promptSpy.mockRestore();
   });
 });

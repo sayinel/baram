@@ -152,73 +152,87 @@ export async function executeBlockAIWithDiff(
   // task (state install / vim mode exit) must not touch the editor.
   const task = registerEditorMutationTask(editor.view);
 
-  const cleanupStream = await createLLMStream(requestId, {
-    onToken: (token) => {
-      aiText += token;
-      panel.updateDiff(originalText, aiText);
-    },
-    onDone: () => {
-      completed = true;
-      panel.updateDiff(originalText, aiText);
-      panel.showActions();
-    },
-    onError: (error) => {
-      logger.error("Block AI diff error:", error);
-      completed = true;
-      panel.setError(error);
-      panel.showActions();
-    },
-  });
-  task.addCleanup(() => {
-    cleanupStream(); // idempotent
-    llmCancel(requestId).catch(() => {});
-    // Invalidation can also land while we are parked on waitForDecision.
-    // Without this the overlay would sit on top of the replacing tab with
-    // its "Streaming…" header and the execute promise would never settle.
-    panel.abort();
-  });
+  // PRE-EXISTING DEFECT (review R10): the panel is on screen BEFORE the
+  // stream is set up, and every way to dismiss it — Accept/Reject clicks,
+  // Escape, backdrop mousedown — is only wired inside waitForDecision().
+  // If createLLMStream rejects (say the second listen() fails) the old code
+  // threw straight out, leaving a z-index 9999 overlay covering the whole
+  // app with no affordance to close it. Everything from here on is
+  // exception-safe: the finally always tears the panel and task down.
+  let cleanupStream: (() => void) | undefined;
+  try {
+    cleanupStream = await createLLMStream(requestId, {
+      onToken: (token) => {
+        aiText += token;
+        panel.updateDiff(originalText, aiText);
+      },
+      onDone: () => {
+        completed = true;
+        panel.updateDiff(originalText, aiText);
+        panel.showActions();
+      },
+      onError: (error) => {
+        logger.error("Block AI diff error:", error);
+        completed = true;
+        panel.setError(error);
+        panel.showActions();
+      },
+    });
+    const stopStream = cleanupStream;
+    task.addCleanup(() => {
+      stopStream(); // idempotent
+      llmCancel(requestId).catch(() => {});
+      // Invalidation can also land while we are parked on waitForDecision.
+      // Without this the overlay would sit on top of the replacing tab with
+      // its "Streaming…" header and the execute promise would never settle.
+      panel.abort();
+    });
 
-  // Final gate before the outbound request: if the task died while
-  // createLLMStream was awaited, its listeners are already gone (so the panel
-  // would hang on "Streaming…" over the replacing tab) and llmCancel cannot
-  // stop a request the backend has not registered yet.
-  if (!task.isLive()) {
+    // Final gate before the outbound request: if the task died while
+    // createLLMStream was awaited, its listeners are already gone (so the
+    // panel would hang on "Streaming…" over the replacing tab) and llmCancel
+    // cannot stop a request the backend has not registered yet.
+    if (!task.isLive()) return;
+
+    // Fire LLM request
+    llmComplete(
+      prompt,
+      inlineCfg.model,
+      requestId,
+      systemPrompt,
+      undefined,
+      inlineCfg.provider,
+      inlineCfg.baseUrl,
+      store.privacyMode,
+    ).catch(() => {
+      // An early IPC failure emits no llm:error event, so without this the
+      // panel would sit on "Streaming…" with no way out.
+      logger.error("LLM request failed");
+      completed = true;
+      panel.setError("LLM request failed");
+      panel.showActions();
+    });
+
+    // Wait for user decision
+    const decision = await panel.waitForDecision();
+
+    // Cancel if still streaming
+    if (!completed) {
+      llmCancel(requestId).catch(() => {});
+    }
+
+    // Apply if accepted — targetPos is only valid for the state the task
+    // was registered against (§5c: check right before touching the editor).
+    if (decision === "accept" && aiText.trim() && task.isLive()) {
+      applyBlockAIResult(editor, targetPos, aiText);
+    }
+  } catch (err) {
+    logger.error("Block AI diff aborted:", err);
+  } finally {
+    cleanupStream?.();
     task.finish();
     panel.remove();
-    return;
   }
-
-  // Fire LLM request
-  llmComplete(
-    prompt,
-    inlineCfg.model,
-    requestId,
-    systemPrompt,
-    undefined,
-    inlineCfg.provider,
-    inlineCfg.baseUrl,
-    store.privacyMode,
-  ).catch(() => logger.error("LLM request failed"));
-
-  // Wait for user decision
-  const decision = await panel.waitForDecision();
-
-  // Cleanup listeners
-  cleanupStream();
-
-  // Cancel if still streaming
-  if (!completed) {
-    llmCancel(requestId).catch(() => {});
-  }
-
-  // Apply if accepted — targetPos is only valid for the state the task
-  // was registered against (§5c: check right before touching the editor).
-  if (decision === "accept" && aiText.trim() && task.isLive()) {
-    applyBlockAIResult(editor, targetPos, aiText);
-  }
-
-  task.finish();
-  panel.remove();
 }
 
 // ── DOM panel factory ───────────────────────────────────────────────
