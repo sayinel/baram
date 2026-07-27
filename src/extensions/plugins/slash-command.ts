@@ -15,6 +15,7 @@ import {
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";
 import { buildSlashItems } from "./slash-command-items";
+import { slashCommandPluginKey } from "./suggestion-keys";
 
 export { buildSlashItems } from "./slash-command-items";
 
@@ -40,6 +41,9 @@ export const SlashCommands = Extension.create({
     return [
       Suggestion({
         editor,
+        // §12-1: named key (was the shared @tiptap/suggestion default) so the
+        // vim Esc arbiter can query popup state without renderer imports.
+        pluginKey: slashCommandPluginKey,
         char: "/",
         startOfLine: true,
         command: ({

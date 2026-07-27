@@ -1,7 +1,6 @@
 // §56m Tag autocomplete — Tiptap Extension using Suggestion API
 // Triggers on # and shows tag suggestions from vault-wide Rust index
 import { Extension } from "@tiptap/core";
-import { PluginKey } from "@tiptap/pm/state";
 import { Suggestion } from "@tiptap/suggestion";
 
 import {
@@ -12,6 +11,7 @@ import { getVaultTags } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file/file";
 import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
+import { tagSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 
 /**
@@ -70,7 +70,7 @@ export const TagSuggest = Extension.create({
       Suggestion({
         editor,
         char: "#",
-        pluginKey: new PluginKey("tagSuggest"),
+        pluginKey: tagSuggestPluginKey,
         // Only allow in paragraphs and list items, not in code blocks or headings
         allow: ({ state, range }) => {
           const $from = state.doc.resolve(range.from);
