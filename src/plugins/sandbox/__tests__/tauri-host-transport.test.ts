@@ -261,6 +261,72 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(1);
   });
 
+  it("gives insertText its own bound, not the one written for UI strings", async () => {
+    // §260 Phase 4b code review (I2) — `isRenderableText`'s 4096 is the limit for one-line
+    // toast and status-bar text; inserting a template, a generated paragraph or a table is
+    // ordinarily larger, and silently inheriting that bound made an ordinary call fail.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    const send = (text: string) =>
+      deliver({
+        pluginId: "alpha",
+        msg: {
+          type: "hostRequest",
+          requestId: "r",
+          request: { kind: "editor_insert_text", text },
+        },
+      });
+
+    send("x".repeat(4097)); // would have been refused
+    send("x".repeat(64 * 1024));
+    expect(seen).toHaveLength(2);
+
+    send("x".repeat(64 * 1024 + 1));
+    expect(seen).toHaveLength(2);
+  });
+
+  it("REFUSES a rejected hostRequest instead of leaving the plugin waiting", async () => {
+    // §260 Phase 4b code review (I2) — a dropped frame is right for protocol noise, but a
+    // `hostRequest` is awaited: with no answer the plugin's promise stays pending until
+    // its own ~150 s stall timer, so an over-cap call looks like the app hung.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    invoke.mockClear();
+
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-7",
+        request: { kind: "editor_set_markdown", markdown: "x".repeat(3e6) },
+      },
+    });
+
+    expect(seen).toEqual([]); // still not delivered to the host
+    const [command, args] = invoke.mock.calls[0] as [
+      string,
+      { msg: unknown; pluginId: string },
+    ];
+    expect(command).toBe("plugin_sandbox_send");
+    expect(args.pluginId).toBe("alpha");
+    expect(args.msg).toEqual({
+      error: expect.stringContaining("rejected"),
+      ok: false,
+      requestId: "req-7",
+      type: "hostResponse",
+    });
+
+    // Protocol noise with nobody waiting is still dropped silently — answering an
+    // uncorrelatable frame would just be more traffic.
+    invoke.mockClear();
+    deliver({ pluginId: "alpha", msg: { type: "ready", registered: null } });
+    deliver({ pluginId: "alpha", msg: { type: "hostRequest", requestId: 7 } });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("swallows a rejected send — the sandbox may not have connected yet", async () => {
     const transport = await createHostTransport("alpha");
     invoke.mockRejectedValueOnce(new Error("sandbox is not connected"));

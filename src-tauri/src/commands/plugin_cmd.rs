@@ -241,6 +241,35 @@ fn authorize_sandbox_caller(
     Ok(plugin_id)
 }
 
+/// The `StagedRead` answer — a free function so the property below is TESTABLE.
+///
+/// §260 Phase 4b code review (I1): the test for this phase's central property used to
+/// rebuild the expression itself, so changing the arm to wrap the document in an object —
+/// precisely the mistake the ‼️ warns about — left every Rust test green. `execute_op` is
+/// reachable only through `plugin_call`, which needs an `AppHandle`, so extracting is what
+/// lets a test execute the real code rather than a copy of it (the `admit_staging`
+/// pattern).
+///
+/// ‼️ The result MUST stay a bare JSON string. That is the entire reason this op exists
+/// rather than the host pushing the payload in a frame: tauri routes a channel payload
+/// (and, on the postMessage path, an invoke result) into the app-global
+/// `ChannelDataIpcQueue` once it reaches `CHANNEL_QUEUE_THRESHOLD` **and** its JSON starts
+/// with `{` or `[`, and that queue is reachable by any webview through the ACL-exempt
+/// `FETCH_CHANNEL_DATA_COMMAND` with a guessable sequential id. A scalar string never
+/// matches. Wrap this in an object and a document becomes readable by another sandboxed
+/// plugin.
+fn staged_read_result(
+    staged: &plugin::StagedPayloads,
+    label: &str,
+) -> Result<serde_json::Value, String> {
+    let payload = staged.take(label).ok_or_else(|| {
+        // Distinguishable from an empty document on purpose: "" is a legitimate
+        // document, and a plugin that pulls twice must not be handed one.
+        "nothing is staged for this plugin".to_string()
+    })?;
+    Ok(serde_json::json!(payload))
+}
+
 /// Host-only: revoke a sandbox's capabilities AND its inbound channel together, so
 /// a stopped plugin can neither act nor be messaged.
 fn deregister_sandbox(
@@ -571,20 +600,7 @@ async fn execute_op(
             read_own_source(app, label, authorizer).await?
         )),
         // §260 Phase 4b — collect what the host staged for this sandbox.
-        //
-        // ‼️ The result MUST stay a bare JSON string. That is the entire reason this op
-        // exists rather than the host pushing the payload in a frame: tauri routes a
-        // channel payload (and an invoke result travels as one) into the app-global
-        // `ChannelDataIpcQueue` once it reaches `CHANNEL_QUEUE_THRESHOLD` **and** its JSON
-        // starts with `{` or `[`, and that queue is reachable by any webview through the
-        // ACL-exempt `FETCH_CHANNEL_DATA_COMMAND` with a guessable sequential id. A scalar
-        // string never matches. Wrap this in an object and a document becomes readable by
-        // another sandboxed plugin.
-        StagedRead => Ok(serde_json::json!(staged.take(label).ok_or_else(|| {
-            // Distinguishable from an empty document on purpose: "" is a legitimate
-            // document, and a plugin that pulls twice must not be handed one.
-            "nothing is staged for this plugin".to_string()
-        })?)),
+        StagedRead => staged_read_result(staged, label),
         StorageRead { key } => Ok(serde_json::json!(
             plugin::storage_read(plugin_id.to_string(), key).await?
         )),
@@ -909,6 +925,9 @@ pub async fn plugin_call(
 /// custom-protocol handler returns the body as an HTTP response and never queues. The
 /// predicate below therefore OVER-reports on macOS, which is the harmless direction for a
 /// dev warning.
+///
+/// `cfg`-gated with its only users, for the reason recorded on `takes_the_shared_queue`.
+#[cfg(any(debug_assertions, test))]
 const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
 
 /// Would tauri route this value through the app-global channel-data queue?
@@ -923,6 +942,11 @@ const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
 /// admits a payload of exactly its cap, so passing the threshold itself implemented `>`
 /// where tauri means `>=` and under-reported a payload of exactly 8192 bytes (§260 Phase
 /// 4b security review, LOW-2).
+///
+/// `cfg(any(debug_assertions, test))` because its only production caller is the dev-only
+/// warning below: without it a release build warns `dead_code` (§260 Phase 4b code review,
+/// M3 — CI stayed green only because clippy runs in debug).
+#[cfg(any(debug_assertions, test))]
 fn takes_the_shared_queue(value: &serde_json::Value) -> bool {
     let json_object_or_array = matches!(
         value,
@@ -1208,8 +1232,9 @@ mod tests {
         assert!(document.len() > CHANNEL_QUEUE_THRESHOLD * 2);
         staged.stage("plugin-alpha".into(), document.clone());
 
-        // Exactly what the `StagedRead` arm produces.
-        let result = serde_json::json!(staged.take("plugin-alpha").unwrap());
+        // The REAL arm, not a copy of it (code review I1): rebuilding the expression here
+        // meant wrapping the document in an object left every Rust test green.
+        let result = staged_read_result(&staged, "plugin-alpha").unwrap();
 
         assert!(
             matches!(result, serde_json::Value::String(_)),
@@ -1229,6 +1254,11 @@ mod tests {
             takes_the_shared_queue(&wrapped),
             "an over-threshold object must be recognised as queue-bound"
         );
+
+        // Consumed by the real arm too, so a replayed pull cannot re-read the document.
+        let second = staged_read_result(&staged, "plugin-alpha")
+            .expect_err("a second pull must not be answered");
+        assert!(second.contains("nothing is staged"), "unexpected: {second}");
     }
 
     /// §260 Phase 4b security review (LOW-2) — the predicate must agree with tauri at the
@@ -1321,7 +1351,10 @@ mod tests {
             admit_staging("main", "alpha", 10, &authorizer).unwrap(),
             "plugin-alpha"
         );
-        // A file-mode window is a host realm too (§89).
+        // A file-mode window is a host realm too (§89) — consistent with register /
+        // deregister / send, which all admit one. Nothing exercises it today: file windows
+        // skip `initializePlugins` entirely (3c-3), so they build no editor bridge and
+        // never stage. Pinned as a boundary rule, not as a live path (code review N2).
         assert!(admit_staging("file-1", "alpha", 10, &authorizer).is_ok());
 
         // A sandbox may not stage — not for another plugin, and not for ITSELF: the

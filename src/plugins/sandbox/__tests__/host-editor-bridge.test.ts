@@ -53,7 +53,10 @@ function fakeEditor(markdown: string) {
     chain: () => ({}),
     commands: {},
     getHTML: () => "",
-    getText: () => state.doc.textBetween(0, state.doc.content.size, "\n"),
+    // Tiptap's own default block separator is "\n\n" — matched here so the "not a
+    // flat-string slice" test below contrasts against what production really did, rather
+    // than against a friendlier fake (§260 Phase 4b code review, N3).
+    getText: () => state.doc.textBetween(0, state.doc.content.size, "\n\n"),
     schema,
     get state() {
       return state;

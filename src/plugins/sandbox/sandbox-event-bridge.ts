@@ -34,15 +34,20 @@ import { logger } from "../../utils/logger";
  *
  * - `"path"` — `args[0]` is an absolute path; translate it or drop the event.
  * - `"none"` — no payload to translate; forwarded as-is.
+ *
+ * ‼️ Keep this comment ADJACENT to the record. `perfectionist/sort-modules` moves whatever
+ * sorts into the slot between them, which already orphaned it once (§260 Phase 4b code
+ * review, M2) — a doc block that describes the declaration below it silently comes to
+ * describe a different one.
  */
-/** What a just-activated plugin is told about the file already open. */
-const REPLAYED_EVENT: PluginEventName = "file:open";
-
 const EVENT_PAYLOADS: Record<PluginEventName, "none" | "path"> = {
   "editor:ready": "none",
   "file:open": "path",
   "file:save": "path",
 };
+
+/** What a just-activated plugin is told about the file already open. */
+const REPLAYED_EVENT: PluginEventName = "file:open";
 
 /**
  * Resolves an absolute file path to the context that contains it. Injected so tests

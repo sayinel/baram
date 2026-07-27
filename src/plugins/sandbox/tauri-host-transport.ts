@@ -35,6 +35,13 @@ export async function createHostTransport(
     if (typeof envelope !== "object" || envelope === null) return;
     if (envelope.pluginId !== pluginId) return; // another sandbox's report
     if (!isWellFormed(envelope.msg)) {
+      // §260 Phase 4b code review (I2) — a refused REQUEST is answered, not dropped.
+      // Dropping is right for protocol noise, but a `hostRequest` is something plugin
+      // code is awaiting: with no answer its promise stays pending until the sandbox's
+      // own stall timer fires ~150 s later, so an over-cap `setMarkdown` looks to the
+      // plugin like the app hung. The correlation id is already in hand and these caps
+      // are deliberate refusals rather than corruption, so they can be reported.
+      refuseIfAwaited(pluginId, envelope.msg);
       logger.debug(`[Sandbox] dropped malformed s2h frame from ${pluginId}`);
       return;
     }
@@ -114,7 +121,11 @@ const HOST_REQUEST_VALIDATORS: {
   ai_stream: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
   editor_get_markdown: () => true,
   editor_get_selection: () => true,
-  editor_insert_text: (r) => isRenderableText(r.text),
+  // Its own bound, NOT `isRenderableText` (§260 Phase 4b code review, I2): 4096 is the
+  // limit written for one-line toast and status-bar strings, and inserting text silently
+  // inherited it. A template, a generated paragraph or a table is ordinarily larger.
+  editor_insert_text: (r) =>
+    typeof r.text === "string" && r.text.length <= MAX_INSERT_TEXT_CHARS,
   // Not `isRenderableText`: a whole document legitimately exceeds the 4 KiB bound that
   // exists for one-line UI strings. Its own cap instead — see `MAX_SET_MARKDOWN_CHARS`.
   editor_set_markdown: (r) =>
@@ -160,6 +171,15 @@ const MAX_UI_TEXT_CHARS = 4096;
  */
 const MAX_SET_MARKDOWN_CHARS = 2 * 1024 * 1024;
 
+/**
+ * The largest single text insertion (§260 Phase 4b code review, I2).
+ *
+ * Sized for what plugins actually insert — a template, a generated paragraph, a table —
+ * rather than for a one-line UI string. A plugin installing something larger is replacing
+ * the document, which is `setMarkdown`'s job and has its own, larger, cap.
+ */
+const MAX_INSERT_TEXT_CHARS = 64 * 1024;
+
 /** `AICompleteOptions`, or nothing. Type-checked only — a plugin may legitimately
  *  ask for a large `maxTokens`; that is within its `ai` grant, and the in-flight
  *  bound plus the host's model policy are what constrain cost. */
@@ -191,4 +211,28 @@ function isWellFormed(msg: unknown): msg is SandboxToHost {
   const validate =
     typeof m.type === "string" ? FRAME_LOOKUP.get(m.type) : undefined;
   return validate ? validate(m) : false;
+}
+
+/**
+ * Answer a rejected `hostRequest` so the plugin's promise settles. See the call site.
+ *
+ * Deliberately vague about WHY: the validator record knows a request failed, not which
+ * field failed, and inventing a reason would be worse than saying it was rejected. The
+ * caps are documented in the plugin API types, which is where an author looks.
+ *
+ * Anything that is not a correlatable request is left dropped — there is no one waiting.
+ */
+function refuseIfAwaited(pluginId: string, msg: unknown): void {
+  if (typeof msg !== "object" || msg === null) return;
+  const m = msg as Fields;
+  if (m.type !== "hostRequest" || typeof m.requestId !== "string") return;
+  void pluginSandboxSend(pluginId, {
+    error:
+      "the host rejected this request: it is malformed or exceeds a size limit",
+    ok: false,
+    requestId: m.requestId,
+    type: "hostResponse",
+  }).catch((err: unknown) => {
+    logger.debug(`[Sandbox] refusal to ${pluginId} failed:`, err);
+  });
 }

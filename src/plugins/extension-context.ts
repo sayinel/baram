@@ -35,7 +35,11 @@ import { logger } from "../utils/logger";
 import { getConfigForTask } from "../utils/model-selection";
 import { isLLMAllowed } from "../utils/privacy-check";
 import { usePluginUIStore } from "./plugin-ui-store";
-import { UI_CAPABILITIES } from "./types";
+import {
+  EDITOR_READ_CAPABILITIES,
+  EDITOR_WRITE_CAPABILITIES,
+  UI_CAPABILITIES,
+} from "./types";
 
 // --- AI API ---
 // Exported (§260 3c-2c) so the SANDBOXED tier's host-mediated `ai` runs the very
@@ -301,9 +305,12 @@ export function createExtensionContext(
     ? createCommandsAPI(manifest.id, disposables)
     : (createDeniedProxy("commands", "commands") as CommandsAPI);
 
-  const editor: EditorAPI = hasCapability("editor")
+  // The shared lists, not a hand-written chain (§260 Phase 4b code review, M1): the
+  // sandboxed tier gates the same operations on the same grants, and 4a's own review
+  // already fixed this shape once for `ui`.
+  const editor: EditorAPI = EDITOR_WRITE_CAPABILITIES.some(hasCapability)
     ? createEditorAPI(false)
-    : hasCapability("editor:readonly")
+    : EDITOR_READ_CAPABILITIES.some(hasCapability)
       ? createEditorAPI(true)
       : (createDeniedProxy("editor", "editor") as EditorAPI);
 
@@ -393,8 +400,10 @@ export function getEditorInstance(): null | PluginEditorHandle {
  * cannot index a flat string. This used to be `getText().slice(from, to)`, which silently
  * returns the wrong text for any document with more than one block: the offsets diverge by
  * one per block boundary crossed. `doc.textBetween` is the app's own idiom for this
- * (`utils/ai-commands.ts`), and `"\n"` as the block separator is what makes a multi-block
- * selection read as the user sees it rather than as one run-on line.
+ * (`utils/ai-commands.ts`), though the `"\n"` separator is an IMPROVEMENT on that call
+ * site rather than a copy of it — `ai-commands` passes none, so a multi-block selection
+ * comes back as one run-on line. Stated because this changes the trusted tier's
+ * observable output too (§260 Phase 4b code review, N4).
  *
  * Shared by both tiers (§260 Phase 4b) so the fix cannot land in one and not the other.
  */

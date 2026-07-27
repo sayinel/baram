@@ -297,5 +297,15 @@ export interface UIAPI {
  * plugin speak to the screen?" cannot come to two different answers.
  */
 export declare const UI_CAPABILITIES: readonly PluginCapability[];
+/**
+ * Capabilities that admit reading the document, and those that admit writing it.
+ *
+ * Same rule and same reason as `UI_CAPABILITIES` (§260 Phase 4b code review, M1): the
+ * trusted tier hands out a read-only or read-write `EditorAPI` from these, and the
+ * sandboxed tier gates its `editor` requests on them, so "may this plugin read the
+ * document?" cannot come to two different answers in two files.
+ */
+export declare const EDITOR_READ_CAPABILITIES: readonly PluginCapability[];
+export declare const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[];
 /** Human-readable descriptions for capabilities */
 export declare const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string>;

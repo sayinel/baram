@@ -48,6 +48,13 @@ impl StagedPayloads {
     ///
     /// CONSUMED, not read: a document must not linger in memory after delivery, and a
     /// consumed slot cannot be replayed by a plugin that re-issues the pull.
+    ///
+    /// That claim is about AFTER delivery. A payload whose pull never comes — the sandbox
+    /// died between the response and the request, say — sits until the next `stage`
+    /// replaces it or `forget` drops it. Bounded, not zero: one slot per plugin at
+    /// `MAX_PLUGIN_FILE_BYTES`, and both `plugin_sandbox_register` and
+    /// `plugin_sandbox_deregister` clear it, so it cannot survive the session
+    /// (§260 Phase 4b code review, P1).
     #[must_use]
     pub fn take(&self, label: &str) -> Option<String> {
         self.slots.remove(label)

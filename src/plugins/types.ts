@@ -345,6 +345,23 @@ export const UI_CAPABILITIES: readonly PluginCapability[] = [
   "statusbar",
 ];
 
+/**
+ * Capabilities that admit reading the document, and those that admit writing it.
+ *
+ * Same rule and same reason as `UI_CAPABILITIES` (§260 Phase 4b code review, M1): the
+ * trusted tier hands out a read-only or read-write `EditorAPI` from these, and the
+ * sandboxed tier gates its `editor` requests on them, so "may this plugin read the
+ * document?" cannot come to two different answers in two files.
+ */
+export const EDITOR_READ_CAPABILITIES: readonly PluginCapability[] = [
+  "editor",
+  "editor:readonly",
+];
+
+export const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[] = [
+  "editor",
+];
+
 /** Human-readable descriptions for capabilities */
 export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   editor: "문서를 읽고 수정할 수 있습니다",

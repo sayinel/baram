@@ -240,8 +240,12 @@ export function startSandboxClient(
       }
       return payload;
     };
-    // `.then` on a settled-or-rejected chain: a failed read must not wedge the next one.
-    const next = stagedReads.then(run, run);
+    // The CHAIN is what must not stay poisoned, so it is the chain that swallows: `next`
+    // is handed to the caller with its rejection intact, while `stagedReads` continues
+    // from a promise that always fulfils. One mechanism, not two — an earlier version also
+    // passed `run` as the rejection handler, and mutation testing showed either alone was
+    // sufficient, i.e. the second one guarded nothing (§260 Phase 4b code review, N1).
+    const next = stagedReads.then(run);
     stagedReads = next.catch(() => undefined);
     return next;
   };

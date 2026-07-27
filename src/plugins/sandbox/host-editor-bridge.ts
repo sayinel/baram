@@ -22,13 +22,8 @@ import {
   type PluginEditorHandle,
   readSelection,
 } from "../extension-context";
-
-/** Reads are admitted by either grant; writes only by the read-write one. */
-const READ_CAPABILITIES: readonly PluginCapability[] = [
-  "editor",
-  "editor:readonly",
-];
-const WRITE_CAPABILITIES: readonly PluginCapability[] = ["editor"];
+import { EDITOR_READ_CAPABILITIES, EDITOR_WRITE_CAPABILITIES } from "../types";
+import { createCapabilityGate } from "./capability-gate";
 
 /**
  * §260 Phase 4b security review (MEDIUM-1/2) — a budget denominated in BYTES, per plugin.
@@ -57,6 +52,16 @@ const WRITE_CAPABILITIES: readonly PluginCapability[] = ["editor"];
 export const DOCUMENT_BUDGET_BURST_BYTES = 4 * 1024 * 1024;
 export const DOCUMENT_BUDGET_REFILL_BYTES_PER_SECOND = 512 * 1024;
 
+/**
+ * What one `insertText` transaction is charged even when its text is short.
+ *
+ * 32 KiB works out to ~16 inserts/second sustained and 128 back to back — well above
+ * typing speed and well below the rate at which whole-document re-renders make the app
+ * unresponsive. A plugin that wants to install a large block should use `setMarkdown`,
+ * which is charged and capped for exactly that.
+ */
+const INSERT_TRANSACTION_COST_BYTES = 32 * 1024;
+
 export interface EditorRequestHandlerOptions {
   /** Grants recorded at install, as the manifest declared them. */
   capabilities: readonly PluginCapability[];
@@ -84,19 +89,12 @@ export function createEditorRequestHandler(
     stage = pluginSandboxStage,
     surfaceBlocked = editorSurfaceBlocked,
   } = options;
-  const granted = new Set(capabilities);
   const budget = createDocumentBudget(now);
-
-  const requireCapability = (
-    accepted: readonly PluginCapability[],
-    method: string,
-  ) => {
-    if (accepted.some((c) => granted.has(c))) return;
-    throw new Error(
-      `Plugin ${pluginId} requires one of ${accepted.map((c) => `"${c}"`).join(", ")} ` +
-        `to call editor.${method}. Add it to the capabilities array in baram-plugin.json.`,
-    );
-  };
+  const requireCapability = createCapabilityGate(
+    pluginId,
+    capabilities,
+    "editor",
+  );
 
   /** The live editor, or a refusal the plugin can act on. */
   const live = (method: string): PluginEditorHandle => {
@@ -119,7 +117,7 @@ export function createEditorRequestHandler(
   return async (request: EditorRequest) => {
     switch (request.kind) {
       case "editor_get_markdown": {
-        requireCapability(READ_CAPABILITIES, "getMarkdown");
+        requireCapability(EDITOR_READ_CAPABILITIES, "getMarkdown");
         const instance = live("getMarkdown");
         // Charged BEFORE the walk, from the O(1) content size — metering after the fact
         // would count the cost this exists to refuse. `content.size` is the document's own
@@ -133,21 +131,31 @@ export function createEditorRequestHandler(
         return undefined;
       }
       case "editor_get_selection": {
-        requireCapability(READ_CAPABILITIES, "getSelection");
+        requireCapability(EDITOR_READ_CAPABILITIES, "getSelection");
         // Small by nature (a selection is what a user highlighted), so it answers inline
         // and is not metered. `readSelection` is shared with the trusted tier so the
         // position/offset rule cannot diverge between them.
         return readSelection(live("getSelection"));
       }
       case "editor_insert_text": {
-        requireCapability(WRITE_CAPABILITIES, "insertText");
+        requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");
         const instance = live("insertText");
         const { from, to } = instance.state.selection;
-        // Not metered against the document budget: this is a bounded (4 KiB, by the frame
-        // validator) LOCALIZED edit — the same transaction the user produces by typing —
-        // and charging it the document's size would make incremental writing, the main use
-        // of the `editor` grant, unusable. `RateClass::Transport` bounds the loop.
+        // Charged its own length, with a FLOOR (§260 Phase 4b code review, I2 follow-on):
+        // not the document's size, because that would make incremental writing — the main
+        // use of the `editor` grant — unusable, but not zero either, because a transaction
+        // on a large document costs in proportion to the mounted NodeView count, so 150
+        // tiny inserts per second is the same freeze by another route. The floor prices the
+        // TRANSACTION; the length prices the payload.
         //
+        // Honest residual: the floor is a flat estimate, so on a very large document the
+        // real per-transaction cost is still under-priced relative to a read. Pricing it
+        // properly would need the document's size, which is the thing that breaks
+        // streaming.
+        budget.spend(
+          Math.max(request.text.length, INSERT_TRANSACTION_COST_BYTES),
+          "insertText",
+        );
         // ONE transaction: ProseMirror's history groups by transaction, so this is a
         // single Cmd+Z for the user. `insertText` over the selection range is what makes
         // it behave like typing — replacing a selection rather than appending beside it.
@@ -157,13 +165,22 @@ export function createEditorRequestHandler(
         return undefined;
       }
       case "editor_set_markdown": {
-        requireCapability(WRITE_CAPABILITIES, "setMarkdown");
+        requireCapability(EDITOR_WRITE_CAPABILITIES, "setMarkdown");
         const instance = live("setMarkdown");
         budget.spend(request.markdown.length, "setMarkdown");
         // The ASYNC pipeline, which parses in the app's own Web Worker (security review
         // MEDIUM-2): the synchronous form put an attacker-sized remark parse on the thread
-        // this tier exists to protect. Node construction and the replace still run here —
-        // the frame validator's length cap is what bounds those.
+        // this tier exists to protect.
+        //
+        // Node construction and the replace still run HERE, in one transaction —
+        // deliberately not the progressive/windowed path the app uses to open a large file
+        // (`mdastBlocksToPmNodes` + `appendChunksProgressively`). That path exists because
+        // construction dominates the ~38 s load floor, so a large `setMarkdown` pays it
+        // (code review P4). It is not adopted because progressive fill has its own
+        // hazards — a mid-fill tab switch blessing a truncated document as the save
+        // baseline — which are the app's to own for a user action, not something to
+        // inherit for a plugin write. The frame validator's 2 MiB cap and the budget
+        // above are what bound it instead.
         //
         // Parsed with the LIVE schema, not a fresh one: a node built against a different
         // Schema instance fails ProseMirror's identity-based validation on insert (the
