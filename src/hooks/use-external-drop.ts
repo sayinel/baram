@@ -18,6 +18,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import type { Editor } from "@tiptap/core";
 
+import { isWysiwygVimModal } from "../extensions/plugins/vim/vim-keys";
 import { createDir, importFile, listDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
@@ -57,6 +58,10 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
       const zone = detectZone(e.clientX, e.clientY);
       clearAllHighlights();
       if (zone === "editor") {
+        // §298 §12-5: vim normal/visual rejects editor-zone file drops
+        // (design §5). FileTree drops stay allowed. Highlights are already
+        // cleared above, so returning here leaves no stale indicator.
+        if (isWysiwygVimModal(editor.state)) return;
         const target = resolveInsertTarget(editor, e.clientX, e.clientY);
         if (target) showDropIndicator(target);
       } else if (zone === "filetree") {
@@ -113,6 +118,8 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
                 ?.classList.add("file-tree-ext-drop-target");
             }
           } else if (zone === "editor" && editor) {
+            // §298 §12-5: same modal guard for the Tauri over-path.
+            if (isWysiwygVimModal(editor.state)) return;
             const target = resolveInsertTarget(editor, x, y);
             if (target) {
               showDropIndicator(target);
@@ -139,6 +146,9 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
             const el = document.elementFromPoint(x, y);
             handleFileTreeDrop(paths, el);
           } else if (zone === "editor" && editor) {
+            // §298 §12-5: the drop itself — DOM events cannot cancel the
+            // Tauri-native path, so the hook is the only guard point.
+            if (isWysiwygVimModal(editor.state)) return;
             const target = resolveInsertTarget(editor, x, y);
             if (target) {
               handleEditorDrop(paths, editor, target.pos);
