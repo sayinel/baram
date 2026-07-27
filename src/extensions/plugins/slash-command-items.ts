@@ -26,7 +26,10 @@ import {
   substituteInput,
   substituteVariables,
 } from "../../utils/custom-ai-commands";
-import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
+import {
+  awaitBoundToEditor,
+  registerEditorMutationTask,
+} from "../../utils/editor/mutation-tasks";
 import { showFieldDialog } from "../../utils/field-dialog";
 import {
   generatePhotoFilename,
@@ -363,7 +366,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Generate a draft from a topic",
       mdHint: "AI",
       action: async () => {
-        const topic = await showPrompt("Topic or instructions:");
+        // §12-9e (design §5c): dialog gap — bind to this document.
+        const topic = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Topic or instructions:"),
+        );
         if (!topic) return;
         executeAICommand(
           editor,
@@ -379,7 +386,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Generate a list of ideas",
       mdHint: "AI",
       action: async () => {
-        const topic = await showPrompt("Topic to brainstorm:");
+        // §12-9e (design §5c): dialog gap — bind to this document.
+        const topic = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Topic to brainstorm:"),
+        );
         if (!topic) return;
         executeAICommand(
           editor,
@@ -396,9 +407,13 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       mdHint: "AI",
       action: async () => {
         const text = getSelectionOrParagraph(editor);
-        const lang = await showPrompt("Target language:", "", {
-          presets: ["English", "Korean"],
-        });
+        // §12-9e: `text` above came from THIS document.
+        const lang = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Target language:", "", {
+            presets: ["English", "Korean"],
+          }),
+        );
         if (!lang) return;
         executeAICommand(
           editor,
@@ -604,8 +619,12 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         });
 
         if (hasInput) {
-          const userInput = await showPrompt(inputPrompt);
-          if (userInput === null) return; // Cancelled
+          // §12-9e: selection/document above are bound to this document.
+          const userInput = await awaitBoundToEditor(
+            editor.view,
+            showPrompt(inputPrompt),
+          );
+          if (userInput === null) return; // cancelled, or document replaced
           finalPrompt = substituteInput(finalPrompt, userInput);
         }
 
