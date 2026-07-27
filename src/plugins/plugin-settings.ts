@@ -7,7 +7,11 @@
 // created it — a plugin update can change a field's type, drop a field, or rename one —
 // so the manifest in front of us is the only trustworthy description of what its keys
 // mean. Everything below follows from that.
-import type { PluginSettingField, PluginSettingValue } from "./types";
+import type {
+  PluginManifest,
+  PluginSettingField,
+  PluginSettingValue,
+} from "./types";
 
 import { sanitizePluginText } from "./plugin-text";
 
@@ -21,6 +25,24 @@ import { sanitizePluginText } from "./plugin-text";
  */
 export const MAX_SETTING_FIELDS = 16;
 export const MAX_SETTING_VALUE_CHARS = 512;
+
+/**
+ * The fields this plugin actually has — the ONE answer, shared by the form and by both
+ * tiers' read paths.
+ *
+ * Empty without the `settings` capability, even when the manifest declares fields. Same
+ * rule as the status bar (§260 Phase 4a, security review MEDIUM-3): a manifest must not buy
+ * space in the app's chrome with a permission the install dialog never showed, and reading
+ * a value the user set requires the same grant as asking for it. Silent — an ignored
+ * decoration should not stop a plugin whose commands are fine — and one function rather
+ * than three checks, so the form cannot show a field the plugin will never be told about.
+ */
+export function declaredSettingsFor(
+  manifest: Pick<PluginManifest, "capabilities" | "contributions">,
+): PluginSettingField[] {
+  if (!manifest.capabilities.includes("settings")) return [];
+  return manifest.contributions?.settings ?? [];
+}
 
 /**
  * What a plugin is told its settings are: one entry per DECLARED field, in declaration
