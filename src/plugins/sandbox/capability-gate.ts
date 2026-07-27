@@ -5,10 +5,12 @@
 // it to learn which grant to declare. Two copies of it is how one ends up saying something
 // subtly different, or drifting when the manifest field is renamed.
 //
-// `host-ai-bridge` is deliberately NOT a caller (§260 Phase 4b code review): `ai` is a
-// single required capability, not a set, so it says `requires the "ai" capability` — a
-// better error than "requires one of \"ai\"". This gate is for the services whose grant is
-// a CHOICE (`editor` / `editor:readonly`, and the three that admit `ui`).
+// TWO gates, because the sentence differs: a service whose grant is a CHOICE
+// (`editor` / `editor:readonly`, and the three that admit `ui`) says "requires one of",
+// while one that needs a SINGLE capability (`ai`, `settings`) says `requires the "ai"
+// capability` — "requires one of \"ai\"" is a worse error. Both live here so the wording
+// and the manifest-field name it names have one home (§260 Phase 4c: `settings` became the
+// second single-capability service, and a second copy of that sentence is how they drift).
 import type { PluginCapability } from "../types";
 
 /**
@@ -28,6 +30,28 @@ export function createCapabilityGate(
     throw new Error(
       `Plugin ${pluginId} requires one of ${accepted.map((c) => `"${c}"`).join(", ")} ` +
         `to call ${service}.${method}. Add it to the capabilities array in baram-plugin.json.`,
+    );
+  };
+}
+
+/**
+ * Refuse unless the plugin holds `required` — for a service that needs exactly one grant.
+ *
+ * No method name in the message, because the whole service is either available or not: an
+ * `ai`-less plugin cannot call `complete` OR `stream`, so naming one of them would suggest
+ * the other might work.
+ */
+export function createRequiredCapabilityGate(
+  pluginId: string,
+  capabilities: readonly PluginCapability[],
+  required: PluginCapability,
+): () => void {
+  const granted = capabilities.includes(required);
+  return () => {
+    if (granted) return;
+    throw new Error(
+      `Plugin ${pluginId} requires the "${required}" capability. ` +
+        `Add "${required}" to the capabilities array in baram-plugin.json.`,
     );
   };
 }

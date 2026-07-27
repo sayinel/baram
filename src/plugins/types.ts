@@ -59,6 +59,8 @@ export interface ExtensionContext {
   network: NetworkAPI;
   pluginId: string;
   pluginPath: string;
+  /** §260 Phase 4c — the user's answers to `contributions.settings`. Read-only. */
+  settings: SettingsAPI;
   storage: StorageAPI;
   subscriptions: Disposable[];
   ui: UIAPI;
@@ -344,6 +346,26 @@ export interface SandboxFilesAPI {
  * be offered to code the app does not trust. Arbitrary-DOM panels and injected styles
  * remain trusted-tier only (see `UIAPI`).
  */
+/**
+ * §260 Phase 4c — the sandboxed tier's settings surface: read-only, and asynchronous
+ * because the values live in the main realm.
+ *
+ * There is no `set`. A setting is the user's answer to a question this plugin's manifest
+ * asked; a plugin that could write one could silently undo a choice the user made, with
+ * nothing in the UI showing that it moved. Use `storage` for state of your own.
+ */
+export interface SandboxSettingsAPI {
+  /**
+   * Every field declared in `contributions.settings`, with its current value — always of
+   * the declared type, and never a key the manifest does not declare. Requires the
+   * `settings` capability.
+   *
+   * Subscribe to `"settings:changed"` through `events.on` to learn when to call this again;
+   * that notification carries no values, so re-reading is how a plugin sees them.
+   */
+  getAll(): Promise<Record<string, PluginSettingValue>>;
+}
+
 export interface SandboxUIAPI {
   /**
    * Update one status-bar item this plugin DECLARED in `contributions.statusBar`. The
@@ -358,6 +380,19 @@ export interface SandboxUIAPI {
    * hold against the app's own messages.
    */
   showNotification(message: string, type?: "error" | "info" | "warning"): void;
+}
+
+/**
+ * §260 Phase 4c — the trusted tier's settings surface. Synchronous, because the store is
+ * in this realm; otherwise identical to `SandboxSettingsAPI`, resolved by the same
+ * function, so one plugin source can serve both tiers.
+ *
+ * Read-only for the same reason as the sandboxed tier: the value is the user's answer, not
+ * the plugin's state. A trusted plugin can of course reach the store itself — this is the
+ * portable spelling, not a boundary.
+ */
+export interface SettingsAPI {
+  getAll(): Record<string, PluginSettingValue>;
 }
 
 export interface StatusBarItem {

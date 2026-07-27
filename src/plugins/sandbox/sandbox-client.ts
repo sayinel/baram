@@ -7,8 +7,10 @@ import type {
   AIModel,
   NetworkAPI,
   PluginFileEvent,
+  PluginSettingValue,
   SandboxEditorAPI,
   SandboxFilesAPI,
+  SandboxSettingsAPI,
   SandboxUIAPI,
   StorageAPI,
 } from "../types";
@@ -80,6 +82,12 @@ export interface SandboxContext {
   };
   files: SandboxFilesAPI;
   network: NetworkAPI;
+  /**
+   * §260 Phase 4c — the values the user set for this plugin's declared fields. Read-only
+   * and host-mediated: the record is the app's, and `settings:changed` (delivered without a
+   * payload) is the signal to read it again.
+   */
+  settings: SandboxSettingsAPI;
   storage: StorageAPI;
   /**
    * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is
@@ -258,6 +266,16 @@ export function startSandboxClient(
     return next;
   };
 
+  // §260 Phase 4c — staged for the same reason a document is, and parsed here: the host
+  // stages ONE string, so the object arrives as JSON rather than as a frame that could enter
+  // tauri's shared channel-data queue.
+  const settings: SandboxSettingsAPI = {
+    getAll: async () => {
+      const { payload } = await readStaged({ kind: "settings_read" });
+      return JSON.parse(payload) as Record<string, PluginSettingValue>;
+    },
+  };
+
   const editor: SandboxEditorAPI = {
     getMarkdown: async () =>
       (await readStaged({ kind: "editor_get_markdown" })).payload,
@@ -310,6 +328,7 @@ export function startSandboxClient(
     editor,
     files,
     network,
+    settings,
     storage,
     ui,
   };

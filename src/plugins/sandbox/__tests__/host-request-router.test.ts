@@ -24,6 +24,7 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     const handler = createHostRequestHandler({
       aiFactory: () => ai,
       capabilities,
+      declaredSettings: [],
       declaredStatusBarIds: ["s"],
       pluginId: "p",
       pluginName: "P",
@@ -80,6 +81,7 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     const handler = createHostRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai", "statusbar"],
+      declaredSettings: [],
       declaredStatusBarIds: [],
       pluginId: "p",
       showToast,

@@ -49,6 +49,12 @@ type ServiceOf<K> = K extends `${infer S}_${string}` ? S : never;
 export const INFLIGHT_BUDGET: Record<HostService, number> = {
   ai: 4,
   editor: 4,
+  // §260 Phase 4c — the `Record` did its job: adding `settings_read` would not compile
+  // without a budget here. Same 4 as `editor` for the same reason (main-realm work, no
+  // external cost), though a settings read is far cheaper: it resolves at most
+  // `MAX_SETTING_FIELDS` values. The client serialises staged reads anyway, so this bound
+  // is a backstop against a plugin driving the transport directly, not a queue depth.
+  settings: 4,
   ui: 8,
 };
 

@@ -161,6 +161,9 @@ const HOST_REQUEST_VALIDATORS: {
   editor_set_markdown: (r) =>
     typeof r.markdown === "string" &&
     r.markdown.length <= MAX_SET_MARKDOWN_CHARS,
+  // §260 Phase 4c — carries nothing: WHICH fields exist is the host's answer, from the
+  // manifest, so there is no key or field list here for a plugin to widen.
+  settings_read: () => true,
   ui_notify: (r) =>
     isRenderableText(r.message) &&
     (r.type === undefined ||

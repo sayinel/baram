@@ -6,16 +6,19 @@
 
 import type { HostRequestHandlerOptions } from "./host-ai-bridge";
 import type { EditorRequestHandlerOptions } from "./host-editor-bridge";
+import type { SettingsRequestHandlerOptions } from "./host-settings-bridge";
 import type { UIRequestHandlerOptions } from "./host-ui-bridge";
 import type { SandboxHostRequest } from "./protocol";
 import type { HostRequestHandler } from "./sandbox-session";
 
 import { createAIRequestHandler } from "./host-ai-bridge";
 import { createEditorRequestHandler } from "./host-editor-bridge";
+import { createSettingsRequestHandler } from "./host-settings-bridge";
 import { createUIRequestHandler } from "./host-ui-bridge";
 
 export type HostServicesOptions = HostRequestHandlerOptions &
   Omit<EditorRequestHandlerOptions, "capabilities" | "pluginId"> &
+  Omit<SettingsRequestHandlerOptions, "capabilities" | "pluginId"> &
   Omit<UIRequestHandlerOptions, "capabilities" | "pluginId">;
 
 /**
@@ -32,6 +35,7 @@ export function createHostRequestHandler(
 ): HostRequestHandler {
   const ai = createAIRequestHandler(options);
   const editor = createEditorRequestHandler(options);
+  const settings = createSettingsRequestHandler(options);
   const ui = createUIRequestHandler(options);
   return async (request: SandboxHostRequest, onToken) => {
     switch (request.kind) {
@@ -44,6 +48,8 @@ export function createHostRequestHandler(
       case "editor_insert_text":
       case "editor_set_markdown":
         return editor(request);
+      case "settings_read":
+        return settings(request);
       case "ui_notify":
       case "ui_status_bar":
         return ui(request);

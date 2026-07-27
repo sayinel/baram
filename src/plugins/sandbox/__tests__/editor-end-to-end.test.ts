@@ -85,6 +85,7 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
       recordingHost,
       createHostRequestHandler({
         capabilities: capabilities as never,
+        declaredSettings: [],
         declaredStatusBarIds: [],
         editor: () => fakeEditorHandle(selection),
         pluginId: "p",

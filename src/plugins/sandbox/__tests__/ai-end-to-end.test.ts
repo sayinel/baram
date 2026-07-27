@@ -36,6 +36,7 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
       createHostRequestHandler({
         aiFactory: () => ai,
         capabilities,
+        declaredSettings: [],
         declaredStatusBarIds: [],
         pluginId: "p",
       }),
