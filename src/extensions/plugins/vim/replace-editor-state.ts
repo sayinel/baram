@@ -18,6 +18,11 @@
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView as PMView } from "@tiptap/pm/view";
 
+import {
+  abortEditorMutationTasks,
+  invalidateEditorMutationTasks,
+} from "../../../utils/editor/mutation-tasks";
+
 export type EditorStateInstallReason =
   "cached-restore" | "fresh-document" | "source-return";
 
@@ -28,5 +33,10 @@ export function replaceEditorStateWithVim(
 ): void {
   // Dormant until S1: reason only classifies the install (see header).
   void reason;
+  // §12-9 trigger (design §5c, R6 핀 1): a whole-state install re-targets
+  // this view — outstanding async mutations (AI tokens, image imports)
+  // must go dead BEFORE the swap, then get their sources cancelled.
+  invalidateEditorMutationTasks(view);
   view.updateState(state);
+  abortEditorMutationTasks(view);
 }
