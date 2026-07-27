@@ -44,6 +44,80 @@ export let isExternalFileDrag = false;
 
 type DropZone = "editor" | "filetree" | null;
 
+/** @internal — exported for the §12-9 race tests only */
+export async function handleEditorDrop(
+  paths: string[],
+  editor: Editor,
+  insertPos: number,
+) {
+  const imagePaths = paths.filter(isImageFile);
+  if (!imagePaths.length) return;
+
+  const { activeTabId, tabs } = useEditorStore.getState();
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  if (!activeTab?.filePath) return;
+
+  const fileDir = activeTab.filePath.substring(
+    0,
+    activeTab.filePath.lastIndexOf("/"),
+  );
+  const assetsDir = fileDir + "/assets";
+
+  // §298 §12-9b (design §5c): register BEFORE the first await. assetsDir and
+  // insertPos are bound to THIS tab; registering only after createDir/listDir
+  // would leave a state install during those IPC calls with nothing to
+  // invalidate, and the continuation would then register into the new
+  // generation — copying into tab A's assets dir and inserting an
+  // A-relative image at a stale position inside tab B.
+  const task = registerEditorMutationTask(editor.view);
+  try {
+    try {
+      await createDir(assetsDir);
+    } catch {
+      // May already exist
+    }
+    if (!task.isLive()) return;
+
+    let existingNames: Set<string>;
+    try {
+      const entries = await listDir(assetsDir);
+      existingNames = new Set(entries.map((e) => e.name));
+    } catch {
+      existingNames = new Set();
+    }
+    if (!task.isLive()) return;
+
+    let pos = insertPos;
+
+    for (const sourcePath of imagePaths) {
+      const originalName = sourcePath.split("/").pop() ?? "";
+      if (!originalName) continue;
+
+      const finalName = resolveNameConflict(originalName, existingNames);
+      const destPath = assetsDir + "/" + finalName;
+
+      try {
+        await importFile(sourcePath, destPath);
+        existingNames.add(finalName);
+        if (!task.isLive()) return;
+
+        const relativeSrc = "./assets/" + finalName;
+        const alt = finalName.replace(/\.[^.]+$/, "");
+
+        const imageNode = editor.state.schema.nodes.image.create({
+          src: relativeSrc,
+          alt,
+        });
+        pos = insertNodeAtPos(editor, pos, imageNode);
+      } catch (err) {
+        logger.error("[ExternalDrop] Image drop failed:", err);
+      }
+    }
+  } finally {
+    task.finish();
+  }
+}
+
 export function useExternalDrop({ editor }: UseExternalDropOptions) {
   useEffect(() => {
     // Guard flag: set to false on cleanup so stale async Tauri listeners
@@ -178,6 +252,8 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
   }, [editor]);
 }
 
+// --- Highlight helpers ---
+
 function clearAllHighlights() {
   document
     .querySelectorAll(".file-tree-ext-drop-target")
@@ -185,7 +261,7 @@ function clearAllHighlights() {
   hideDropIndicator();
 }
 
-// --- Highlight helpers ---
+// --- Hook ---
 
 function detectZone(x: number, y: number): DropZone {
   // §perf-large-file C3.4: scope to the ACTIVE editor's scroll container
@@ -197,75 +273,6 @@ function detectZone(x: number, y: number): DropZone {
   if (hitTestRect(document.querySelector(".file-tree"), x, y))
     return "filetree";
   return null;
-}
-
-// --- Hook ---
-
-async function handleEditorDrop(
-  paths: string[],
-  editor: Editor,
-  insertPos: number,
-) {
-  const imagePaths = paths.filter(isImageFile);
-  if (!imagePaths.length) return;
-
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  if (!activeTab?.filePath) return;
-
-  const fileDir = activeTab.filePath.substring(
-    0,
-    activeTab.filePath.lastIndexOf("/"),
-  );
-  const assetsDir = fileDir + "/assets";
-
-  try {
-    await createDir(assetsDir);
-  } catch {
-    // May already exist
-  }
-
-  let existingNames: Set<string>;
-  try {
-    const entries = await listDir(assetsDir);
-    existingNames = new Set(entries.map((e) => e.name));
-  } catch {
-    existingNames = new Set();
-  }
-
-  let pos = insertPos;
-
-  // §298 §12-9b (design §5c): each awaited importFile is an async gap — the
-  // copy may finish, but a dead task must not insert into the editor.
-  const task = registerEditorMutationTask(editor.view);
-  try {
-    for (const sourcePath of imagePaths) {
-      const originalName = sourcePath.split("/").pop() ?? "";
-      if (!originalName) continue;
-
-      const finalName = resolveNameConflict(originalName, existingNames);
-      const destPath = assetsDir + "/" + finalName;
-
-      try {
-        await importFile(sourcePath, destPath);
-        existingNames.add(finalName);
-        if (!task.isLive()) return;
-
-        const relativeSrc = "./assets/" + finalName;
-        const alt = finalName.replace(/\.[^.]+$/, "");
-
-        const imageNode = editor.state.schema.nodes.image.create({
-          src: relativeSrc,
-          alt,
-        });
-        pos = insertNodeAtPos(editor, pos, imageNode);
-      } catch (err) {
-        logger.error("[ExternalDrop] Image drop failed:", err);
-      }
-    }
-  } finally {
-    task.finish();
-  }
 }
 
 // --- Drop handlers ---

@@ -159,7 +159,19 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
       // A dead task (state install / vim mode exit) must stop touching the
       // editor; llmCancel + unlisten via cleanupListeners is the source abort.
       const task = registerEditorMutationTask(editor.view);
+      // Handles are appended as each listener lands, never assigned as a
+      // batch at the end: an invalidation mid-setup runs cleanupListeners
+      // while only some listeners exist, and a batch assignment would leave
+      // the earlier ones installed forever.
+      unlistenRefs.current = [];
       task.addCleanup(() => void cleanupListeners());
+
+      /** True (and tears down) when the task died during an await. */
+      const abandonIfDead = (): boolean => {
+        if (task.isLive()) return false;
+        void cleanupListeners();
+        return true;
+      };
 
       try {
         const tokenUn = await listen<LLMTokenPayload>("llm:token", (event) => {
@@ -172,36 +184,51 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
             // editor state may have changed
           }
         });
+        unlistenRefs.current.push(tokenUn);
+        if (abandonIfDead()) return;
 
         const doneUn = await listen<LLMDonePayload>("llm:done", (event) => {
           if (event.payload.requestId !== requestId) return;
-          if (task.isLive()) {
-            try {
-              dispatchAIDiffDone(editor.view);
-            } catch {
-              // ignore
-            }
+          // A dead task must not touch the doc OR the UI — leaving the phase
+          // on "completed" would surface stale inline-AI chrome in the tab
+          // that replaced this one.
+          if (!task.isLive()) {
+            task.finish();
+            return;
+          }
+          try {
+            dispatchAIDiffDone(editor.view);
+          } catch {
+            // ignore
           }
           task.finish();
           setPhase("completed");
         });
+        unlistenRefs.current.push(doneUn);
+        if (abandonIfDead()) return;
 
         const errorUn = await listen<LLMErrorPayload>("llm:error", (event) => {
           if (event.payload.requestId !== requestId) return;
-          if (task.isLive()) {
-            try {
-              dispatchAIDiffClear(editor.view);
-            } catch {
-              // ignore
-            }
+          if (!task.isLive()) {
+            task.finish();
+            return;
+          }
+          try {
+            dispatchAIDiffClear(editor.view);
+          } catch {
+            // ignore
           }
           task.finish();
           setPhase("input");
         });
-
-        unlistenRefs.current = [tokenUn, doneUn, errorUn];
+        unlistenRefs.current.push(errorUn);
+        if (abandonIfDead()) return;
 
         const inlineCfg = getConfigForTask("inline-edit");
+        // Last gate before the outbound request: llmCancel cannot stop a
+        // request the backend has not registered yet, so a task that died
+        // during listener setup must never reach llmComplete.
+        if (abandonIfDead()) return;
         await llmComplete(
           prompt,
           inlineCfg.model,
@@ -213,6 +240,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
           store.privacyMode,
         );
       } catch {
+        task.finish();
         setPhase("input");
         try {
           dispatchAIDiffClear(editor.view);

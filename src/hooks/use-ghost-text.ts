@@ -132,8 +132,19 @@ export function useGhostText(editor: Editor | null) {
 
       const currentStore = useAIStore.getState();
 
+      // §298 §12-9b (design §5c) — the task must bind HERE, not inside the
+      // timer: `from`/`textBefore` above belong to THIS document. Registering
+      // inside the callback would leave a state install during the debounce
+      // with nothing to invalidate, and the callback would then register into
+      // the NEW generation — painting the previous tab's suggestion into the
+      // new document (and Tab-accepting it there).
+      const task = registerEditorMutationTask(editor.view);
+      activeTaskRef.current = task;
+      task.addCleanup(() => void cleanup());
+
       // Debounce
       debounceRef.current = setTimeout(async () => {
+        if (!task.isLive()) return;
         const requestId = `ghost_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         activeRequestRef.current = requestId;
         accumulatedRef.current = "";
@@ -148,14 +159,10 @@ export function useGhostText(editor: Editor | null) {
             taskCfg.provider,
             getFilePrivacy(editor),
           )
-        )
+        ) {
+          task.finish();
           return;
-
-        // §298 §12-9b (design §5c): late tokens must not recreate the ghost
-        // after the task dies (state install now; Esc/mode exit in S1+).
-        const task = registerEditorMutationTask(editor.view);
-        activeTaskRef.current = task;
-        task.addCleanup(() => void cleanup());
+        }
 
         try {
           const tokenUn = await listen<LLMTokenPayload>(
@@ -233,6 +240,10 @@ export function useGhostText(editor: Editor | null) {
             ? `${ghostConfig.systemPrompt}\n\n${flowContext}`
             : ghostConfig.systemPrompt;
 
+          // Listener registration awaited above — recheck before spending a
+          // request on a document that is no longer installed.
+          if (!task.isLive()) return;
+
           await llmComplete(
             ghostConfig.contextText,
             taskCfg.model,
@@ -245,6 +256,7 @@ export function useGhostText(editor: Editor | null) {
           );
         } catch {
           // silently ignore — ghost text is non-critical
+          task.finish();
         }
       }, currentStore.ghostTextDebounceMs);
     };
