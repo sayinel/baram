@@ -28,6 +28,24 @@ export async function createHostTransport(
   pluginId: string,
 ): Promise<SandboxTransport<SandboxToHost, HostToSandbox>> {
   const handlers = new Set<(m: SandboxToHost) => void>();
+  /**
+   * Request ids this transport has forwarded, COUNTED, and not yet seen answered.
+   *
+   * §260 Phase 4b code review (M3) — `refuseIfAwaited` must not answer an id the SESSION
+   * is still working on. The session owns that bookkeeping (`inflightHost`, and it
+   * deliberately refuses a replayed id because answering one twice corrupts it), but the
+   * refusal happens before the session sees anything, so it cannot consult it. This
+   * transport sees both halves — the forwarded request and the outgoing `hostResponse` —
+   * so it can answer the question locally: a malformed frame reusing a live id is dropped
+   * as before, leaving the real answer to arrive.
+   *
+   * ‼️ A COUNT, not a set (code review N2). A response does not mean the request it names
+   * is finished: a sandbox can send the same id twice, and the session answers the second
+   * as a replay while the first is still running — which, with a set, deleted the id and
+   * reopened the guard for a third, malformed frame. Counting forwards against responses
+   * keeps an id live until as many answers have gone out as requests came in.
+   */
+  const liveRequests = new Map<string, number>();
   let closed = false;
   const unlisten = await listen<S2HEnvelope>("plugin:s2h", (event) => {
     if (closed) return;
@@ -35,14 +53,26 @@ export async function createHostTransport(
     if (typeof envelope !== "object" || envelope === null) return;
     if (envelope.pluginId !== pluginId) return; // another sandbox's report
     if (!isWellFormed(envelope.msg)) {
+      // §260 Phase 4b code review (I2) — a refused REQUEST is answered, not dropped.
+      // Dropping is right for protocol noise, but a `hostRequest` is something plugin
+      // code is awaiting: with no answer its promise stays pending until the sandbox's
+      // own stall timer fires ~150 s later, so an over-cap `setMarkdown` looks to the
+      // plugin like the app hung. The correlation id is already in hand and these caps
+      // are deliberate refusals rather than corruption, so they can be reported.
+      refuseIfAwaited(pluginId, envelope.msg, liveRequests);
       logger.debug(`[Sandbox] dropped malformed s2h frame from ${pluginId}`);
       return;
+    }
+    if (envelope.msg.type === "hostRequest") {
+      const id = envelope.msg.requestId;
+      liveRequests.set(id, (liveRequests.get(id) ?? 0) + 1);
     }
     handlers.forEach((h) => h(envelope.msg));
   });
   return {
     close: () => {
       closed = true;
+      liveRequests.clear();
       // `unlisten()` invokes `plugin:event|unlisten`, so it really can reject
       // during window/app teardown — but Tauri types `UnlistenFn` as `() => void`
       // while the implementation returns a promise, so wrap before catching or the
@@ -58,6 +88,13 @@ export async function createHostTransport(
     // `plugin_sandbox_connect`, which is the normal state during the session's
     // activate retry window. Log, never reject into the caller.
     send: (msg) => {
+      // The session answers every id it accepts — on success, on timeout and on dispose —
+      // so this is what keeps `liveRequests` from growing for the life of the sandbox.
+      if (msg.type === "hostResponse") {
+        const outstanding = (liveRequests.get(msg.requestId) ?? 0) - 1;
+        if (outstanding > 0) liveRequests.set(msg.requestId, outstanding);
+        else liveRequests.delete(msg.requestId);
+      }
       void pluginSandboxSend(pluginId, msg).catch((err: unknown) => {
         logger.debug(`[Sandbox] send to ${pluginId} failed:`, err);
       });
@@ -112,6 +149,18 @@ const HOST_REQUEST_VALIDATORS: {
   ai_complete: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
   ai_list_models: () => true,
   ai_stream: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
+  editor_get_markdown: () => true,
+  editor_get_selection: () => true,
+  // Its own bound, NOT `isRenderableText` (§260 Phase 4b code review, I2): 4096 is the
+  // limit written for one-line toast and status-bar strings, and inserting text silently
+  // inherited it. A template, a generated paragraph or a table is ordinarily larger.
+  editor_insert_text: (r) =>
+    typeof r.text === "string" && r.text.length <= MAX_INSERT_TEXT_CHARS,
+  // Not `isRenderableText`: a whole document legitimately exceeds the 4 KiB bound that
+  // exists for one-line UI strings. Its own cap instead — see `MAX_SET_MARKDOWN_CHARS`.
+  editor_set_markdown: (r) =>
+    typeof r.markdown === "string" &&
+    r.markdown.length <= MAX_SET_MARKDOWN_CHARS,
   ui_notify: (r) =>
     isRenderableText(r.message) &&
     (r.type === undefined ||
@@ -138,6 +187,28 @@ const HOST_REQUEST_LOOKUP = new Map(Object.entries(HOST_REQUEST_VALIDATORS));
  * any other malformed frame.
  */
 const MAX_UI_TEXT_CHARS = 4096;
+
+/**
+ * §260 Phase 4b security review (MEDIUM-2) — the largest document a plugin may install.
+ *
+ * `editor_set_markdown` is parsed and then replaces the whole document in one transaction,
+ * i.e. a full ProseMirror re-render with NodeView construction, which this project has
+ * measured in the tens of seconds for a large document. Deferring to Rust's 8 MiB report
+ * cap meant one frame could hang the app for a long time, 150 times a second. Two MiB is
+ * roughly seven times the project's own 10,000-line target (§8.4), so it bounds a
+ * pathological write without touching a real one, and it is refused HERE — before the
+ * parse, the budget and the transaction — like any other malformed frame.
+ */
+const MAX_SET_MARKDOWN_CHARS = 2 * 1024 * 1024;
+
+/**
+ * The largest single text insertion (§260 Phase 4b code review, I2).
+ *
+ * Sized for what plugins actually insert — a template, a generated paragraph, a table —
+ * rather than for a one-line UI string. A plugin installing something larger is replacing
+ * the document, which is `setMarkdown`'s job and has its own, larger, cap.
+ */
+const MAX_INSERT_TEXT_CHARS = 64 * 1024;
 
 /** `AICompleteOptions`, or nothing. Type-checked only — a plugin may legitimately
  *  ask for a large `maxTokens`; that is within its `ai` grant, and the in-flight
@@ -170,4 +241,37 @@ function isWellFormed(msg: unknown): msg is SandboxToHost {
   const validate =
     typeof m.type === "string" ? FRAME_LOOKUP.get(m.type) : undefined;
   return validate ? validate(m) : false;
+}
+
+/**
+ * Answer a rejected `hostRequest` so the plugin's promise settles. See the call site.
+ *
+ * Deliberately vague about WHY: the validator record knows a request failed, not which
+ * field failed, and inventing a reason would be worse than saying it was rejected. The
+ * caps are documented in the plugin API types, which is where an author looks.
+ *
+ * Anything that is not a correlatable request is left dropped — there is no one waiting.
+ */
+function refuseIfAwaited(
+  pluginId: string,
+  msg: unknown,
+  liveRequests: ReadonlyMap<string, number>,
+): void {
+  if (typeof msg !== "object" || msg === null) return;
+  const m = msg as Fields;
+  if (m.type !== "hostRequest" || typeof m.requestId !== "string") return;
+  // Not an id the session is already working on: answering that one early would breach its
+  // one-answer-per-id invariant, and its real answer would then be dropped by the client as
+  // unknown. Self-inflicted only — ids are per-sandbox — but the invariant is the session's
+  // to keep, so this path must not step on it (code review M3).
+  if (liveRequests.has(m.requestId)) return;
+  void pluginSandboxSend(pluginId, {
+    error:
+      "the host rejected this request: it is malformed or exceeds a size limit",
+    ok: false,
+    requestId: m.requestId,
+    type: "hostResponse",
+  }).catch((err: unknown) => {
+    logger.debug(`[Sandbox] refusal to ${pluginId} failed:`, err);
+  });
 }

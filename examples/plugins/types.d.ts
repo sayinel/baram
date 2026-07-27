@@ -198,6 +198,35 @@ export interface RegistryIndex {
     plugins: RegistryEntry[];
     updatedAt?: string;
 }
+/**
+ * §260 Phase 4b — the sandboxed tier's editor surface.
+ *
+ * Markdown, not "content": this is a markdown editor, and the trusted tier's
+ * `EditorAPI` reads flat text (`getText()`) while its `setContent` hands the string to
+ * Tiptap, which parses HTML — so what you read there is not what you can write back.
+ * These names say what crosses, and both directions go through the app's own round-trip
+ * pipeline, so `setMarkdown(await getMarkdown())` is a no-op on the document.
+ *
+ * Every method is async even where the trusted tier's is sync: the editor lives in the
+ * main realm, so each of these is a mediated round trip.
+ */
+export interface SandboxEditorAPI {
+    /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
+    getMarkdown(): Promise<string>;
+    /**
+     * The selection, as ProseMirror document positions plus the text they cover.
+     * Requires `editor` or `editor:readonly`.
+     */
+    getSelection(): Promise<{
+        from: number;
+        text: string;
+        to: number;
+    }>;
+    /** Insert plain text at the cursor, as one undoable step. Requires `editor`. */
+    insertText(text: string): Promise<void>;
+    /** Replace the whole document, as one undoable step. Requires `editor`. */
+    setMarkdown(markdown: string): Promise<void>;
+}
 export interface SandboxFileOptions {
     /** Registered context id to resolve `path` against. Default: the active context. */
     context?: string;
@@ -268,5 +297,15 @@ export interface UIAPI {
  * plugin speak to the screen?" cannot come to two different answers.
  */
 export declare const UI_CAPABILITIES: readonly PluginCapability[];
+/**
+ * Capabilities that admit reading the document, and those that admit writing it.
+ *
+ * Same rule and same reason as `UI_CAPABILITIES` (§260 Phase 4b code review, M1): the
+ * trusted tier hands out a read-only or read-write `EditorAPI` from these, and the
+ * sandboxed tier gates its `editor` requests on them, so "may this plugin read the
+ * document?" cannot come to two different answers in two files.
+ */
+export declare const EDITOR_READ_CAPABILITIES: readonly PluginCapability[];
+export declare const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[];
 /** Human-readable descriptions for capabilities */
 export declare const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string>;

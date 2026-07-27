@@ -241,6 +241,43 @@ fn authorize_sandbox_caller(
     Ok(plugin_id)
 }
 
+/// The `StagedRead` answer — a free function so the property below is TESTABLE.
+///
+/// §260 Phase 4b code review (I1): the test for this phase's central property used to
+/// rebuild the expression itself, so changing the arm to wrap the document in an object —
+/// precisely the mistake the ‼️ warns about — left every Rust test green. `execute_op` is
+/// reachable only through `plugin_call`, which needs an `AppHandle`, so extracting is what
+/// lets a test execute the real code rather than a copy of it (the `admit_staging`
+/// pattern).
+///
+/// ‼️ The result MUST stay a bare JSON string. That is the entire reason this op exists
+/// rather than the host pushing the payload in a frame: tauri routes a channel payload
+/// (and, on the postMessage path, an invoke result) into the app-global
+/// `ChannelDataIpcQueue` once it reaches `CHANNEL_QUEUE_THRESHOLD` **and** its JSON starts
+/// with `{` or `[`, and that queue is reachable by any webview through the ACL-exempt
+/// `FETCH_CHANNEL_DATA_COMMAND` with a guessable sequential id. A scalar string never
+/// matches. Wrap this in an object and a document becomes readable by another sandboxed
+/// plugin.
+fn staged_read_result(
+    staged: &plugin::StagedPayloads,
+    authorizer: &plugin::PluginAuthorizer,
+    label: &str,
+) -> Result<serde_json::Value, String> {
+    // The CURRENT registration's epoch: a slot staged for a previous life of this label is
+    // dropped rather than delivered (security review Q5). `authorize_op` already proved
+    // the label is registered, so `None` here means it was deregistered in between —
+    // fail closed.
+    let epoch = authorizer
+        .epoch(label)
+        .ok_or_else(|| "this sandbox is not registered".to_string())?;
+    let payload = staged.take(label, epoch).ok_or_else(|| {
+        // Distinguishable from an empty document on purpose: "" is a legitimate
+        // document, and a plugin that pulls twice must not be handed one.
+        "nothing is staged for this plugin".to_string()
+    })?;
+    Ok(serde_json::json!(payload))
+}
+
 /// Host-only: revoke a sandbox's capabilities AND its inbound channel together, so
 /// a stopped plugin can neither act nor be messaged.
 fn deregister_sandbox(
@@ -249,11 +286,14 @@ fn deregister_sandbox(
     authorizer: &plugin::PluginAuthorizer,
     channels: &plugin::SandboxChannels,
     limiter: &plugin::PluginRateLimiter,
+    staged: &plugin::StagedPayloads,
 ) -> Result<(), String> {
     host_window_guard(caller_label)?;
     let label = format!("plugin-{plugin_id}");
     authorizer.deregister(&label);
     channels.disconnect(&label);
+    // §260 Phase 4b — a stopped plugin must not leave a document parked in memory.
+    staged.forget(&label);
     // §260 3c-2c — drop the rate buckets too, so a stopped plugin leaves no state
     // and a reload does not inherit a drained budget from its previous life.
     limiter.forget(&label);
@@ -558,6 +598,7 @@ async fn execute_op(
     plugin_id: &str,
     op: plugin::PluginOp,
     authorizer: &plugin::PluginAuthorizer,
+    staged: &plugin::StagedPayloads,
 ) -> Result<serde_json::Value, String> {
     use plugin::PluginOp::*;
     match op {
@@ -566,6 +607,8 @@ async fn execute_op(
         SourceRead => Ok(serde_json::json!(
             read_own_source(app, label, authorizer).await?
         )),
+        // §260 Phase 4b — collect what the host staged for this sandbox.
+        StagedRead => staged_read_result(staged, authorizer, label),
         StorageRead { key } => Ok(serde_json::json!(
             plugin::storage_read(plugin_id.to_string(), key).await?
         )),
@@ -655,12 +698,49 @@ pub async fn plugin_sandbox_register(
     capabilities: Vec<String>,
     install_path: String,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<(), String> {
-    host_window_guard(window.label())?;
+    register_sandbox(
+        window.label(),
+        &plugin_id,
+        capabilities,
+        install_path,
+        &authorizer,
+        &staged,
+    )
+}
+
+/// Host-only: bind a sandbox's grants, and clear anything the PREVIOUS life of that
+/// label left parked.
+///
+/// §260 Phase 4b security review (LOW-1) — `deregister_sandbox` already forgets the
+/// staged slot, but deregister is not the only way a session ends: a killed webview
+/// leaves the slot behind, and the next instance of the same id would find it there.
+/// `StagedRead` needs no capability, so it would be readable even by a reloaded plugin
+/// whose manifest declares no editor grant at all.
+///
+/// ‼️ Clearing here is the MEMORY half only, and the earlier version of this comment
+/// overstated it (Q5 in the follow-up review): `forget` and `register` take separate
+/// locks, so a stage still in flight from the previous session can land after both and
+/// re-park a document under the new registration. What makes the invariant hold is the
+/// registration EPOCH — `StagedPayloads` records the epoch staging was admitted under and
+/// refuses to deliver across a mismatch. This call keeps a document from lingering; the
+/// epoch keeps it from being read.
+fn register_sandbox(
+    caller_label: &str,
+    plugin_id: &str,
+    capabilities: Vec<String>,
+    install_path: String,
+    authorizer: &plugin::PluginAuthorizer,
+    staged: &plugin::StagedPayloads,
+) -> Result<(), String> {
+    host_window_guard(caller_label)?;
+    let label = format!("plugin-{plugin_id}");
+    staged.forget(&label);
     // §260 3c-2b — the host binds the directory it resolved and validated together
     // with the grants, so `SourceRead` reads the code that matches THIS manifest (a
     // dev folder legitimately shadows an installed copy of the same id).
-    authorizer.register(format!("plugin-{plugin_id}"), capabilities, install_path);
+    authorizer.register(label, capabilities, install_path);
     Ok(())
 }
 
@@ -673,8 +753,16 @@ pub async fn plugin_sandbox_deregister(
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
     channels: tauri::State<'_, plugin::SandboxChannels>,
     limiter: tauri::State<'_, plugin::PluginRateLimiter>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<(), String> {
-    deregister_sandbox(window.label(), &plugin_id, &authorizer, &channels, &limiter)
+    deregister_sandbox(
+        window.label(),
+        &plugin_id,
+        &authorizer,
+        &channels,
+        &limiter,
+        &staged,
+    )
 }
 
 /// §260 Phase 3c-2a sandbox-only — hand the host an IPC channel for inbound
@@ -744,6 +832,68 @@ pub async fn plugin_sandbox_send(
     send_to_sandbox(window.label(), &plugin_id, msg, &channels)
 }
 
+/// §260 Phase 4b host-only — park a large payload for one sandbox to pull.
+///
+/// WHY a command instead of `plugin_sandbox_send`: that path is an `ipc::Channel`, and any
+/// frame at or above `CHANNEL_QUEUE_THRESHOLD` is staged in tauri's app-global
+/// channel-data queue, which `FETCH_CHANNEL_DATA_COMMAND` exposes to every webview with a
+/// guessable sequential id (`channels.rs`). A document read is the first payload that
+/// crosses that line routinely, so it goes the way 3c-2b established for the plugin bundle
+/// — the sandbox pulls it as an invoke RESULT (`PluginOp::StagedRead`).
+///
+/// Host-only (`host_window_guard`) so no sandbox can stage into any slot, its own included:
+/// the whole point is that the payload's provenance is the host, which has already checked
+/// the capability for the request that produced it.
+#[tauri::command]
+pub async fn plugin_sandbox_stage(
+    window: tauri::WebviewWindow,
+    plugin_id: String,
+    payload: String,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
+) -> Result<(), String> {
+    let (label, epoch) = admit_staging(
+        window.label(),
+        &plugin_id,
+        payload.len() as u64,
+        &authorizer,
+    )?;
+    staged.stage(label, epoch, payload);
+    Ok(())
+}
+
+/// Every check staging must pass, and the slot label it may then write.
+///
+/// A free function so the ORDER and the rules are unit-testable without an `AppHandle`
+/// (the 3c-2a M4 / `admit_op` pattern): the host-only guard first, because a sandbox must
+/// not learn whether an id is registered by probing this.
+fn admit_staging(
+    caller_label: &str,
+    plugin_id: &str,
+    payload_len: u64,
+    authorizer: &plugin::PluginAuthorizer,
+) -> Result<(String, u64), String> {
+    host_window_guard(caller_label)?;
+    let label = format!("plugin-{plugin_id}");
+    // Fail closed for a plugin nobody registered: staging for it would retain a document
+    // for a sandbox that cannot legally pull anything, and a host that stages for an
+    // unknown id has a bug worth surfacing rather than leaking memory over.
+    // The epoch IS the registration check — `None` means unregistered — and capturing it
+    // here is what ties the payload to the life of the plugin that earned it (Q5).
+    let epoch = authorizer
+        .epoch(&label)
+        .ok_or_else(|| format!("plugin \"{plugin_id}\" is not a registered sandbox"))?;
+    // Bounds what we RETAIN, not what we parsed — tauri deserialized `payload` before the
+    // command body ran, the same limitation `check_report_size` and the `files_write` cap
+    // record.
+    if payload_len > MAX_PLUGIN_FILE_BYTES {
+        return Err(format!(
+            "staged payload is {payload_len} bytes, over the {MAX_PLUGIN_FILE_BYTES}-byte limit"
+        ));
+    }
+    Ok((label, epoch))
+}
+
 /// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
 /// call is authorized by the Tauri-verified caller label + registered capability.
 ///
@@ -760,20 +910,61 @@ pub async fn plugin_call(
     app: tauri::AppHandle,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
     limiter: tauri::State<'_, plugin::PluginRateLimiter>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<serde_json::Value, String> {
     let plugin_id = admit_op(window.label(), &op, &authorizer, &limiter)?;
-    let result = execute_op(&app, window.label(), &plugin_id, op, &authorizer).await;
+    let result = execute_op(&app, window.label(), &plugin_id, op, &authorizer, &staged).await;
     if let Ok(value) = &result {
         warn_if_result_enters_the_shared_queue(value);
     }
     result
 }
 
-/// Tauri's direct-eval threshold: at or above this, an `ipc::Channel` payload — and
-/// an invoke RESULT travels as one — is staged in the app-global `ChannelDataIpcQueue`
-/// and fetched via the ACL-exempt `FETCH_CHANNEL_DATA_COMMAND` with a sequential id
-/// (see `capabilities/plugin-sandbox.json`).
+/// Tauri's direct-eval threshold: **at or above** this, an `ipc::Channel` payload is
+/// staged in the app-global `ChannelDataIpcQueue` and fetched via the ACL-exempt
+/// `FETCH_CHANNEL_DATA_COMMAND` with a sequential id (see
+/// `capabilities/plugin-sandbox.json`). Tauri's own condition is
+/// `json_string.len() >= MAX_JSON_DIRECT_EXECUTE_THRESHOLD` — its direct-eval arms guard
+/// on `<` — so the boundary value itself is queued.
+///
+/// §260 Phase 4b security review (LOW-2) — scope, because an earlier version of this
+/// comment overstated it. `Channel::send`, i.e. `plugin_sandbox_send`, has NO platform
+/// exclusion, so the host→sandbox push is queue-bound everywhere and that is what
+/// justifies staging on every platform. An invoke RESULT is narrower: only the
+/// postMessage IPC handler can queue one, and it is compiled out on macOS/iOS, while the
+/// custom-protocol handler returns the body as an HTTP response and never queues. The
+/// predicate below therefore OVER-reports on macOS, which is the harmless direction for a
+/// dev warning.
+///
+/// `cfg`-gated with its only users, for the reason recorded on `takes_the_shared_queue`.
+#[cfg(any(debug_assertions, test))]
 const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
+
+/// Would tauri route this value through the app-global channel-data queue?
+///
+/// Both halves of tauri's condition, in one place: the payload reaches
+/// `CHANNEL_QUEUE_THRESHOLD` **and** its JSON starts with `{` or `[`. Extracted from the
+/// dev warning below so the property can be ASSERTED rather than described — §260 Phase 4b
+/// depends on it (a staged document is delivered as a scalar string precisely so this
+/// returns false), and a comment claiming that is one refactor away from being wrong.
+///
+/// The cap passed to the counter is one BELOW the threshold: `serialized_len_capped`
+/// admits a payload of exactly its cap, so passing the threshold itself implemented `>`
+/// where tauri means `>=` and under-reported a payload of exactly 8192 bytes (§260 Phase
+/// 4b security review, LOW-2).
+///
+/// `cfg(any(debug_assertions, test))` because its only production caller is the dev-only
+/// warning below: without it a release build warns `dead_code` (§260 Phase 4b code review,
+/// M3 — CI stayed green only because clippy runs in debug).
+#[cfg(any(debug_assertions, test))]
+fn takes_the_shared_queue(value: &serde_json::Value) -> bool {
+    let json_object_or_array = matches!(
+        value,
+        serde_json::Value::Array(_) | serde_json::Value::Object(_)
+    );
+    json_object_or_array
+        && plugin::serialized_len_capped(value, CHANNEL_QUEUE_THRESHOLD - 1).is_none()
+}
 
 /// §260 3c-2c code review (MEDIUM-2) — warn in dev when a broker RESULT gets big
 /// enough to enter that shared queue.
@@ -791,11 +982,7 @@ const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
 /// counter so the check never allocates the payload twice.
 #[cfg(debug_assertions)]
 fn warn_if_result_enters_the_shared_queue(value: &serde_json::Value) {
-    let staged = matches!(
-        value,
-        serde_json::Value::Array(_) | serde_json::Value::Object(_)
-    );
-    if staged && plugin::serialized_len_capped(value, CHANNEL_QUEUE_THRESHOLD).is_none() {
+    if takes_the_shared_queue(value) {
         log::warn!(
             "[plugin] a plugin_call result exceeds tauri's {CHANNEL_QUEUE_THRESHOLD}-byte \
              direct-eval threshold and is a JSON array/object, so it is staged in the \
@@ -892,7 +1079,15 @@ mod tests {
             .is_ok()
         {}
 
-        deregister_sandbox("main", "alpha", &authorizer, &channels, &limiter).unwrap();
+        deregister_sandbox(
+            "main",
+            "alpha",
+            &authorizer,
+            &channels,
+            &limiter,
+            &plugin::StagedPayloads::new(),
+        )
+        .unwrap();
 
         // Mute in both directions: cannot be messaged, cannot report or broker.
         assert!(channels
@@ -918,9 +1113,15 @@ mod tests {
         authorizer.register("plugin-alpha".into(), vec![], "/p/alpha".into());
         channels.connect("plugin-alpha".into(), dummy_channel());
         // A sandbox must not be able to revoke, or message, another sandbox.
-        assert!(
-            deregister_sandbox("plugin-evil", "alpha", &authorizer, &channels, &limiter).is_err()
-        );
+        assert!(deregister_sandbox(
+            "plugin-evil",
+            "alpha",
+            &authorizer,
+            &channels,
+            &limiter,
+            &plugin::StagedPayloads::new()
+        )
+        .is_err());
         assert!(send_to_sandbox("plugin-evil", "alpha", serde_json::json!({}), &channels).is_err());
         // …and the host still can, proving the guard is what rejected above.
         assert!(send_to_sandbox("main", "alpha", serde_json::json!({}), &channels).is_ok());
@@ -1027,6 +1228,177 @@ mod tests {
         assert_eq!(file("").unwrap(), root);
         let e = file("sibling.md").expect_err("a file context has no directory");
         assert!(e.contains("single file"), "unexpected error: {e}");
+    }
+
+    /// §260 Phase 4b — the property the whole staging design exists for: a document
+    /// delivered as a `StagedRead` result must NOT be routed through tauri's app-global
+    /// channel-data queue, which `FETCH_CHANNEL_DATA_COMMAND` exposes to every webview
+    /// with a guessable sequential id.
+    #[test]
+    fn a_staged_document_is_delivered_outside_the_shared_queue() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let epoch =
+            authorizer.register("plugin-alpha".into(), vec!["editor".into()], "/p/a".into());
+        let staged = plugin::StagedPayloads::new();
+        // Far over the 8 KiB threshold — a real document, not a toy.
+        let document = "# note\n".repeat(4_000);
+        assert!(document.len() > CHANNEL_QUEUE_THRESHOLD * 2);
+        staged.stage("plugin-alpha".into(), epoch, document.clone());
+
+        // The REAL arm, not a copy of it (code review I1): rebuilding the expression here
+        // meant wrapping the document in an object left every Rust test green.
+        let result = staged_read_result(&staged, &authorizer, "plugin-alpha").unwrap();
+
+        assert!(
+            matches!(result, serde_json::Value::String(_)),
+            "the result must stay a SCALAR string; wrapping it in an object is what \
+             would put the document into the shared queue"
+        );
+        assert!(
+            !takes_the_shared_queue(&result),
+            "a staged document must not take the shared channel-data queue"
+        );
+
+        // The contrast, so this test fails if the predicate stops discriminating: the same
+        // bytes wrapped in an object DO take the queue. That wrapper is the mistake the
+        // arm's comment warns against.
+        let wrapped = serde_json::json!({ "markdown": document });
+        assert!(
+            takes_the_shared_queue(&wrapped),
+            "an over-threshold object must be recognised as queue-bound"
+        );
+
+        // Consumed by the real arm too, so a replayed pull cannot re-read the document.
+        let second = staged_read_result(&staged, &authorizer, "plugin-alpha")
+            .expect_err("a second pull must not be answered");
+        assert!(second.contains("nothing is staged"), "unexpected: {second}");
+    }
+
+    /// §260 Phase 4b security review (LOW-2) — the predicate must agree with tauri at the
+    /// BOUNDARY, not one byte past it: tauri queues on `len >= threshold`, and the earlier
+    /// form implemented `>` because `serialized_len_capped` admits exactly its cap.
+    #[test]
+    fn the_queue_predicate_matches_tauri_at_the_exact_threshold() {
+        // Build an array whose serialization is exactly CHANNEL_QUEUE_THRESHOLD bytes.
+        // `["<pad>"]` is 2 brackets + 2 quotes = 4 bytes of framing.
+        let exact = serde_json::json!([("x".repeat(CHANNEL_QUEUE_THRESHOLD - 4))]);
+        assert_eq!(
+            serde_json::to_string(&exact).unwrap().len(),
+            CHANNEL_QUEUE_THRESHOLD,
+            "the fixture must sit exactly on the boundary or this test proves nothing"
+        );
+        assert!(
+            takes_the_shared_queue(&exact),
+            "a payload of exactly the threshold IS queued by tauri"
+        );
+
+        // One byte under is direct-eval'd, so the predicate must say so — otherwise the
+        // fix above would have been "always true" rather than "off by one".
+        let under = serde_json::json!([("x".repeat(CHANNEL_QUEUE_THRESHOLD - 5))]);
+        assert_eq!(
+            serde_json::to_string(&under).unwrap().len(),
+            CHANNEL_QUEUE_THRESHOLD - 1
+        );
+        assert!(!takes_the_shared_queue(&under));
+    }
+
+    /// §260 Phase 4b security review (LOW-1) — a new registration for a label must not
+    /// inherit the previous one's staged document.
+    ///
+    /// The reachable path is a dev reload or a disable→enable: `StagedRead` requires no
+    /// capability, so without this the reloaded instance's first pull would return the
+    /// PREVIOUS session's document even if its manifest now declares no editor grant.
+    #[test]
+    fn re_registering_a_plugin_clears_a_document_its_previous_life_left_staged() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let staged = plugin::StagedPayloads::new();
+
+        register_sandbox(
+            "main",
+            "alpha",
+            vec!["editor".into()],
+            "/p/a".into(),
+            &authorizer,
+            &staged,
+        )
+        .unwrap();
+        let first_epoch = authorizer.epoch("plugin-alpha").expect("registered");
+        staged.stage(
+            "plugin-alpha".into(),
+            first_epoch,
+            "# the user's document".into(),
+        );
+
+        // The webview dies without a deregister — or a stage lands just after one.
+        register_sandbox(
+            "main",
+            "alpha",
+            vec!["statusbar".into()],
+            "/p/a".into(),
+            &authorizer,
+            &staged,
+        )
+        .unwrap();
+
+        let second_epoch = authorizer.epoch("plugin-alpha").expect("registered");
+        assert_ne!(first_epoch, second_epoch, "a reload is a new registration");
+        assert_eq!(
+            staged.take("plugin-alpha", second_epoch),
+            None,
+            "the reloaded instance must not inherit the previous session's document"
+        );
+        // Still host-only, and the grants really were replaced.
+        assert!(register_sandbox(
+            "plugin-alpha",
+            "alpha",
+            vec![],
+            "/p/a".into(),
+            &authorizer,
+            &staged
+        )
+        .is_err());
+    }
+
+    /// §260 Phase 4b — staging is host-only, fails closed for an unregistered plugin, and
+    /// is capped. Checked through `admit_staging` so the decision is covered rather than a
+    /// bare predicate (the 3c-3 M4 lesson).
+    #[test]
+    fn staging_is_host_only_registered_and_capped() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let epoch =
+            authorizer.register("plugin-alpha".into(), vec!["editor".into()], "/p/a".into());
+
+        assert_eq!(
+            admit_staging("main", "alpha", 10, &authorizer).unwrap(),
+            ("plugin-alpha".to_string(), epoch)
+        );
+        // A file-mode window is a host realm too (§89) — consistent with register /
+        // deregister / send, which all admit one. Nothing exercises it today: file windows
+        // skip `initializePlugins` entirely (3c-3), so they build no editor bridge and
+        // never stage. Pinned as a boundary rule, not as a live path (code review N2).
+        assert!(admit_staging("file-1", "alpha", 10, &authorizer).is_ok());
+
+        // A sandbox may not stage — not for another plugin, and not for ITSELF: the
+        // payload's provenance is the whole point, since the host stages only after
+        // checking the capability for the request that produced it.
+        let denied = admit_staging("plugin-alpha", "alpha", 10, &authorizer)
+            .expect_err("a sandbox window must not stage");
+        assert!(denied.contains("may not register"), "unexpected: {denied}");
+        assert!(admit_staging("plugin-evil", "alpha", 10, &authorizer).is_err());
+
+        // Unregistered id: fail closed rather than retain a document nobody can pull.
+        let unknown = admit_staging("main", "ghost", 10, &authorizer)
+            .expect_err("an unregistered plugin must be refused");
+        assert!(
+            unknown.contains("not a registered sandbox"),
+            "unexpected: {unknown}"
+        );
+
+        // Capped, at the boundary.
+        assert!(admit_staging("main", "alpha", MAX_PLUGIN_FILE_BYTES, &authorizer).is_ok());
+        let over = admit_staging("main", "alpha", MAX_PLUGIN_FILE_BYTES + 1, &authorizer)
+            .expect_err("over the cap must be refused");
+        assert!(over.contains("over the"), "unexpected: {over}");
     }
 
     /// §260 Phase 4a security review (MEDIUM-2) — an error must not carry an absolute

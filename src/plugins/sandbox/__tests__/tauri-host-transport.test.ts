@@ -232,6 +232,154 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(6);
   });
 
+  it("caps the document a plugin may install, at the frame", async () => {
+    // §260 Phase 4b security review (MEDIUM-2) — `editor_set_markdown` is parsed and then
+    // replaces the whole document in one transaction (a full re-render with NodeView
+    // construction, measured in tens of seconds for a large document). Deferring to Rust's
+    // 8 MiB report cap let one frame hang the app, 150 times a second. Refused HERE, before
+    // the parse and the transaction, like any other malformed frame.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    const send = (markdown: string) =>
+      deliver({
+        pluginId: "alpha",
+        msg: {
+          type: "hostRequest",
+          requestId: "r",
+          request: { kind: "editor_set_markdown", markdown },
+        },
+      });
+
+    // Comfortably larger than the project's own 10,000-line target, so a real document is
+    // never the thing this refuses.
+    send("x".repeat(2 * 1024 * 1024));
+    expect(seen).toHaveLength(1);
+
+    send("x".repeat(2 * 1024 * 1024 + 1));
+    expect(seen).toHaveLength(1);
+  });
+
+  it("gives insertText its own bound, not the one written for UI strings", async () => {
+    // §260 Phase 4b code review (I2) — `isRenderableText`'s 4096 is the limit for one-line
+    // toast and status-bar text; inserting a template, a generated paragraph or a table is
+    // ordinarily larger, and silently inheriting that bound made an ordinary call fail.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    const send = (text: string) =>
+      deliver({
+        pluginId: "alpha",
+        msg: {
+          type: "hostRequest",
+          requestId: "r",
+          request: { kind: "editor_insert_text", text },
+        },
+      });
+
+    send("x".repeat(4097)); // would have been refused
+    send("x".repeat(64 * 1024));
+    expect(seen).toHaveLength(2);
+
+    send("x".repeat(64 * 1024 + 1));
+    expect(seen).toHaveLength(2);
+  });
+
+  it("REFUSES a rejected hostRequest instead of leaving the plugin waiting", async () => {
+    // §260 Phase 4b code review (I2) — a dropped frame is right for protocol noise, but a
+    // `hostRequest` is awaited: with no answer the plugin's promise stays pending until
+    // its own ~150 s stall timer, so an over-cap call looks like the app hung.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    invoke.mockClear();
+
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-7",
+        request: { kind: "editor_set_markdown", markdown: "x".repeat(3e6) },
+      },
+    });
+
+    expect(seen).toEqual([]); // still not delivered to the host
+    const [command, args] = invoke.mock.calls[0] as [
+      string,
+      { msg: unknown; pluginId: string },
+    ];
+    expect(command).toBe("plugin_sandbox_send");
+    expect(args.pluginId).toBe("alpha");
+    expect(args.msg).toEqual({
+      error: expect.stringContaining("rejected"),
+      ok: false,
+      requestId: "req-7",
+      type: "hostResponse",
+    });
+
+    // Protocol noise with nobody waiting is still dropped silently — answering an
+    // uncorrelatable frame would just be more traffic.
+    invoke.mockClear();
+    deliver({ pluginId: "alpha", msg: { type: "ready", registered: null } });
+    deliver({ pluginId: "alpha", msg: { type: "hostRequest", requestId: 7 } });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("does not answer an id the session is still working on", async () => {
+    // §260 Phase 4b code review (M3) — the session refuses a replayed id because answering
+    // one twice corrupts its bookkeeping, but this refusal runs BEFORE the session sees
+    // anything and cannot consult it. The transport sees both halves, so it answers the
+    // question locally: a malformed frame reusing a live id is dropped, leaving the real
+    // answer to arrive.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    // A legitimate request, forwarded and still unanswered.
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-live",
+        request: { kind: "editor_get_markdown" },
+      },
+    });
+    expect(seen).toHaveLength(1);
+    invoke.mockClear();
+
+    // The same id, now in a frame the validator rejects.
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-live",
+        request: { kind: "editor_insert_text", text: 42 },
+      },
+    });
+    expect(invoke).not.toHaveBeenCalled();
+
+    // Once the real answer has gone out, the id is no longer live and a later malformed
+    // frame reusing it is refused normally rather than leaving the plugin waiting.
+    transport.send({
+      type: "hostResponse",
+      ok: true,
+      requestId: "req-live",
+      value: 1,
+    });
+    invoke.mockClear();
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-live",
+        request: { kind: "editor_insert_text", text: 42 },
+      },
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("swallows a rejected send — the sandbox may not have connected yet", async () => {
     const transport = await createHostTransport("alpha");
     invoke.mockRejectedValueOnce(new Error("sandbox is not connected"));

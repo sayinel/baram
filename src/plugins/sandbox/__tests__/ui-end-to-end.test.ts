@@ -86,8 +86,8 @@ describe("ui end-to-end: real client ↔ real session (§260 Phase 4a)", () => {
   });
 
   it("frees its in-flight slot, so ui calls do not exhaust the request budget", async () => {
-    // A `ui` request settles immediately, unlike `ai`. If the slot were held, the fifth
-    // toast of a session would be refused forever (MAX_INFLIGHT_HOST_REQUESTS = 4).
+    // A `ui` request settles immediately, unlike `ai`. If the slot were held, a session
+    // would run out of `ui` slots (INFLIGHT_BUDGET.ui) and refuse every later toast.
     const { ctx, toasts } = await pair(["statusbar"]);
     for (let i = 0; i < 10; i++) {
       ctx.ui.setStatusBarText("count", `${i}`);

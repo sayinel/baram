@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   HOST_REQUEST_TIMEOUT_MS,
-  MAX_INFLIGHT_HOST_REQUESTS,
+  INFLIGHT_BUDGET,
   SandboxSession,
 } from "../sandbox-session";
 import { createChannelPair } from "./channel-pair";
@@ -94,18 +94,69 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
     // which costs the user money) — so it must reject before the handler runs.
     const handler = vi.fn(async () => new Promise(() => {})); // never settles
     const { ask, seen } = harness(handler);
-    for (let i = 0; i < MAX_INFLIGHT_HOST_REQUESTS; i++) ask(`r${i}`);
+    for (let i = 0; i < INFLIGHT_BUDGET.ai; i++) ask(`r${i}`);
     await flush();
-    expect(handler).toHaveBeenCalledTimes(MAX_INFLIGHT_HOST_REQUESTS);
+    expect(handler).toHaveBeenCalledTimes(INFLIGHT_BUDGET.ai);
 
     ask("over");
     await flush();
-    expect(handler).toHaveBeenCalledTimes(MAX_INFLIGHT_HOST_REQUESTS);
+    expect(handler).toHaveBeenCalledTimes(INFLIGHT_BUDGET.ai);
     const refusal = seen.find(
       (m) => (m as { requestId?: string }).requestId === "over",
     );
     expect(refusal).toMatchObject({ ok: false, type: "hostResponse" });
     expect((refusal as { error: string }).error).toContain("too many");
+  });
+
+  it("does not let one service's backlog starve another", async () => {
+    // §260 Phase 4b — the budget used to be ONE pool of 4. An `ai` slot is held until the
+    // handler settles and a stream may legitimately run for two minutes, so four
+    // completions locked out every other service: the 4a review noted a plugin could not
+    // show the toast reporting its own AI failure, and once `editor` joined, it could not
+    // read the document either. The bound exists for what `ai` COSTS, which is not a
+    // property `ui` or `editor` share.
+    const handler = vi.fn(async () => new Promise(() => {})); // nothing ever settles
+    const { ask, seen } = harness(handler);
+
+    for (let i = 0; i < INFLIGHT_BUDGET.ai; i++) ask(`ai${i}`, "ai_complete");
+    await flush();
+    ask("ai-over", "ai_complete");
+    await flush();
+    expect(
+      (
+        seen.find(
+          (m) => (m as { requestId?: string }).requestId === "ai-over",
+        ) as { error: string }
+      ).error,
+    ).toContain('"ai"');
+
+    // …while the other services are untouched.
+    ask("show", "ui_notify");
+    ask("read", "editor_get_markdown");
+    await flush();
+    expect(handler).toHaveBeenCalledTimes(INFLIGHT_BUDGET.ai + 2);
+    for (const id of ["show", "read"]) {
+      expect(
+        seen.find((m) => (m as { requestId?: string }).requestId === id),
+      ).toBeUndefined(); // no refusal frame — they were admitted
+    }
+  });
+
+  it("fails closed on a request whose service it does not recognise", async () => {
+    // `budget[unknown]` is `undefined` and `size >= undefined` is false, so an
+    // unrecognised prefix would have been UNBOUNDED rather than merely unbudgeted.
+    const handler = vi.fn(async () => "ok");
+    const { ask, seen } = harness(handler);
+    ask("weird", "telemetry_send");
+    await flush();
+    expect(handler).not.toHaveBeenCalled();
+    expect(
+      (
+        seen.find(
+          (m) => (m as { requestId?: string }).requestId === "weird",
+        ) as { error: string }
+      ).error,
+    ).toContain("unknown host service");
   });
 
   it("refuses a replayed requestId rather than confusing its bookkeeping", async () => {
@@ -138,7 +189,7 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
         }),
     );
     const { ask, seen } = harness(handler);
-    for (let i = 0; i < MAX_INFLIGHT_HOST_REQUESTS; i++) ask(`r${i}`);
+    for (let i = 0; i < INFLIGHT_BUDGET.ai; i++) ask(`r${i}`);
     await vi.advanceTimersByTimeAsync(1);
     vi.advanceTimersByTime(HOST_REQUEST_TIMEOUT_MS);
     await vi.advanceTimersByTimeAsync(1);
@@ -152,7 +203,7 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
 
     ask("after-timeout");
     await vi.advanceTimersByTimeAsync(1);
-    expect(handler).toHaveBeenCalledTimes(MAX_INFLIGHT_HOST_REQUESTS);
+    expect(handler).toHaveBeenCalledTimes(INFLIGHT_BUDGET.ai);
     const refusal = seen.find(
       (m) => (m as { requestId?: string }).requestId === "after-timeout",
     );
@@ -163,7 +214,7 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
     await vi.advanceTimersByTimeAsync(1);
     ask("after-settle");
     await vi.advanceTimersByTimeAsync(1);
-    expect(handler).toHaveBeenCalledTimes(MAX_INFLIGHT_HOST_REQUESTS + 1);
+    expect(handler).toHaveBeenCalledTimes(INFLIGHT_BUDGET.ai + 1);
   });
 
   it("refuses a replayed id while its old handler is still alive", async () => {

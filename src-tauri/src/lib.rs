@@ -197,6 +197,7 @@ pub fn run() {
         .manage(plugin::PluginAuthorizer::new())
         .manage(plugin::SandboxChannels::new())
         .manage(plugin::PluginRateLimiter::new())
+        .manage(plugin::StagedPayloads::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::set_vault_root,
             fs_cmd::read_file,
@@ -291,6 +292,7 @@ pub fn run() {
             plugin_cmd::plugin_sandbox_connect,
             plugin_cmd::plugin_sandbox_report,
             plugin_cmd::plugin_sandbox_send,
+            plugin_cmd::plugin_sandbox_stage,
             embedding_cmd::embed_text,
             embedding_cmd::search_knowledge,
             embedding_cmd::index_vault,

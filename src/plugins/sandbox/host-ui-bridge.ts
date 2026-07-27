@@ -15,6 +15,7 @@ import type { SandboxHostRequest } from "./protocol";
 import { useUIStore } from "../../stores/ui/ui";
 import { usePluginUIStore } from "../plugin-ui-store";
 import { UI_CAPABILITIES } from "../types";
+import { createCapabilityGate } from "./capability-gate";
 
 /**
  * A toast replaces the previous one (`useUIStore.showToast` keeps a single slot), so an
@@ -91,20 +92,10 @@ export function createUIRequestHandler(
   const label =
     sanitizePluginText(pluginName ?? "", MAX_SOURCE_CHARS) ||
     sanitizePluginText(pluginId, MAX_SOURCE_CHARS);
-  const granted = new Set(capabilities);
   const declared = new Set(declaredStatusBarIds);
   let lastNotifyAt = -Infinity;
 
-  const requireCapability = (
-    accepted: readonly PluginCapability[],
-    method: string,
-  ) => {
-    if (accepted.some((c) => granted.has(c))) return;
-    throw new Error(
-      `Plugin ${pluginId} requires one of ${accepted.map((c) => `"${c}"`).join(", ")} ` +
-        `to call ui.${method}. Add it to the capabilities array in baram-plugin.json.`,
-    );
-  };
+  const requireCapability = createCapabilityGate(pluginId, capabilities, "ui");
 
   return async (request: UIRequest) => {
     switch (request.kind) {

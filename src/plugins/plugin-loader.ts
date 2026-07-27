@@ -19,6 +19,7 @@ import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import {
   createExtensionContext,
+  setEditorSurfaceBlocked as recordEditorSurfaceBlocked,
   registerHostCommandHandler,
   setEditorInstance,
   unregisterPluginUI,
@@ -167,6 +168,16 @@ export class PluginLoader {
   /** Update the editor instance for plugin editor API */
   setEditor(editor: unknown): void {
     setEditorInstance(editor);
+  }
+
+  /**
+   * Record why the Tiptap document is not the active tab's content (§260 Phase 4b
+   * security review, LOW-3), or `null` when it is. Routed through the loader so the app
+   * keeps ONE plugin-facing surface next to `setEditor`, rather than reaching into
+   * `extension-context` from a component.
+   */
+  setEditorSurfaceBlocked(reason: null | string): void {
+    recordEditorSurfaceBlocked(reason);
   }
 
   /** Unload all plugins (reverse order) */
@@ -515,9 +526,6 @@ export class PluginLoader {
    * all when `stop()` failed *because* the webview is still alive. `stop()` is
    * separately bounded so a wedged window-close cannot swallow the whole teardown
    * budget before revocation gets its turn.
-   */
-  /**
-   * Run a sandbox teardown with the two guarantees every caller needs, in one place.
    *
    * BOUNDED (3c-2a re-review N3): an unbounded await lets one wedged IPC hang the caller.
    * For `unloadPlugin` that meant stranding every later plugin in `unloadAll()`; for the
