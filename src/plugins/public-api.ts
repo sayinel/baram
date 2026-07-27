@@ -17,6 +17,8 @@ export type {
   PluginEventName,
   PluginFetchInit,
   PluginFetchResponse,
+  PluginFileViewerContext,
+  PluginFileViewerOptions,
   PluginManifest,
   PluginSettingsTabOptions,
   PluginSidebarPanelOptions,

@@ -44,7 +44,7 @@ import {
   type ProgressiveLoadHandle,
   REST_CHUNK_BLOCKS,
 } from "../utils/editor/progressive-load";
-import { isMarkdownFile, isPdfFile } from "../utils/file-type";
+import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 import {
@@ -190,7 +190,11 @@ export function useTabSwitching({
         // PDF tabs are read-only viewers with no editor — caching
         // sourceContentRef here would overwrite the "" sentinel with another
         // tab's text under the PDF's path.
-        if (prevTab?.filePath && !prevMidLoad && !isPdfFile(prevTab.filePath)) {
+        if (
+          prevTab?.filePath &&
+          !prevMidLoad &&
+          !isBinaryViewerFile(prevTab.filePath)
+        ) {
           try {
             const md =
               prevIsCode || isSourceMode

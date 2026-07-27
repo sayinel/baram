@@ -685,6 +685,7 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginError> {
         "ai",
         "network",
         "storage",
+        "viewer",
     ];
     for cap in &manifest.capabilities {
         if !valid_caps.contains(&cap.as_str()) {

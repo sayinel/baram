@@ -509,5 +509,25 @@ function createUIAPI(
       disposables.push(disposable);
       return disposable;
     },
+    registerFileViewer(opts) {
+      require("viewer", "registerFileViewer");
+      const viewerId = `${pluginId}:${opts.id}`;
+      usePluginUIStore.getState().registerFileViewer({
+        // Normalize once at the boundary so matching never re-parses
+        extensions: opts.extensions.map((e) =>
+          e.replace(/^\./, "").toLowerCase(),
+        ),
+        onMount: opts.onMount,
+        onUnmount: opts.onUnmount,
+        onUpdate: opts.onUpdate,
+        pluginId,
+        viewerId,
+      });
+      const disposable: Disposable = {
+        dispose: () => usePluginUIStore.getState().removeFileViewer(viewerId),
+      };
+      disposables.push(disposable);
+      return disposable;
+    },
   };
 }

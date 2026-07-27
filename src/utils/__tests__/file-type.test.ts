@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   getLanguageForFile,
+  isBinaryViewerFile,
   isHtmlFile,
+  isImageFile,
   isMarkdownFile,
   isPdfFile,
 } from "../file-type";
@@ -54,6 +56,31 @@ describe("isPdfFile", () => {
     expect(isPdfFile("/vault/pdf")).toBe(false);
     expect(isPdfFile(undefined)).toBe(false);
     expect(isPdfFile("")).toBe(false);
+  });
+});
+
+describe("isImageFile / isBinaryViewerFile", () => {
+  it("returns true for raster image extensions", () => {
+    expect(isImageFile("/vault/photo.png")).toBe(true);
+    expect(isImageFile("/vault/photo.jpg")).toBe(true);
+    expect(isImageFile("/vault/photo.JPEG")).toBe(true);
+    expect(isImageFile("/vault/photo.bmp")).toBe(true);
+    expect(isImageFile("/vault/photo.webp")).toBe(true);
+    expect(isImageFile("/vault/photo.gif")).toBe(true);
+  });
+
+  it("returns false for svg (text, plugin-previewed) and other files", () => {
+    expect(isImageFile("/vault/logo.svg")).toBe(false);
+    expect(isImageFile("/vault/note.md")).toBe(false);
+    expect(isImageFile(undefined)).toBe(false);
+  });
+
+  it("isBinaryViewerFile covers images and pdf, not text formats", () => {
+    expect(isBinaryViewerFile("/vault/photo.png")).toBe(true);
+    expect(isBinaryViewerFile("/vault/doc.pdf")).toBe(true);
+    expect(isBinaryViewerFile("/vault/logo.svg")).toBe(false);
+    expect(isBinaryViewerFile("/vault/page.html")).toBe(false);
+    expect(isBinaryViewerFile("/vault/note.md")).toBe(false);
   });
 });
 

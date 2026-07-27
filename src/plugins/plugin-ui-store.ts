@@ -1,6 +1,18 @@
 // §69 Plugin UI registry — plugin-registered status-bar items, sidebar
-// panels, settings tabs, and palette commands (runtime only)
+// panels, settings tabs, palette commands, and file viewers (runtime only)
+import type { PluginFileViewerContext } from "./types";
+
 import { create } from "zustand";
+
+export interface PluginFileViewer {
+  /** Normalized: lowercase, no leading dot. */
+  extensions: string[];
+  onMount: (el: HTMLElement, ctx: PluginFileViewerContext) => void;
+  onUnmount?: (el: HTMLElement) => void;
+  onUpdate?: (el: HTMLElement, ctx: PluginFileViewerContext) => void;
+  pluginId: string;
+  viewerId: string; // namespaced: `${pluginId}:${id}`
+}
 
 export interface PluginPaletteCommand {
   commandId: string; // fullId: `${pluginId}.${id}` (matches command registry)
@@ -49,12 +61,15 @@ export interface PluginStatusBarItem {
 
 interface PluginUIState {
   activePluginPanelId: null | string;
+  fileViewers: PluginFileViewer[];
   markPluginCommandsReady: (pluginId: string) => void;
   paletteCommands: PluginPaletteCommand[];
+  registerFileViewer: (viewer: PluginFileViewer) => void;
   registerPaletteCommand: (cmd: PluginPaletteCommand) => void;
   registerSettingsTab: (tab: PluginSettingsTab) => void;
   registerSidebarPanel: (panel: PluginSidebarPanel) => void;
   registerStatusBarItem: (item: PluginStatusBarItem) => void;
+  removeFileViewer: (viewerId: string) => void;
   removePaletteCommand: (commandId: string) => void;
   removeSettingsTab: (tabId: string) => void;
   removeSidebarPanel: (panelId: string) => void;
@@ -67,12 +82,36 @@ interface PluginUIState {
   updateStatusBarItem: (itemId: string, text: string) => void;
 }
 
+/**
+ * Pure extension match — first registered viewer wins. Kept out of the store
+ * so render code (reactive array) and imperative callbacks (getState()) share
+ * one matching rule.
+ */
+export function matchFileViewer(
+  viewers: PluginFileViewer[],
+  filePath: string | undefined,
+): null | PluginFileViewer {
+  if (!filePath) return null;
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  if (!ext) return null;
+  return viewers.find((v) => v.extensions.includes(ext)) ?? null;
+}
+
 export const usePluginUIStore = create<PluginUIState>()((set) => ({
   activePluginPanelId: null,
+  fileViewers: [],
   paletteCommands: [],
   settingsTabs: [],
   sidebarPanels: [],
   statusBarItems: [],
+
+  registerFileViewer: (viewer) =>
+    set((state) => ({ fileViewers: [...state.fileViewers, viewer] })),
+
+  removeFileViewer: (viewerId) =>
+    set((state) => ({
+      fileViewers: state.fileViewers.filter((v) => v.viewerId !== viewerId),
+    })),
 
   registerStatusBarItem: (item) =>
     set((state) => ({ statusBarItems: [...state.statusBarItems, item] })),
@@ -166,6 +205,7 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
         activePluginPanelId: activeBelongsToPlugin
           ? null
           : state.activePluginPanelId,
+        fileViewers: state.fileViewers.filter((v) => v.pluginId !== pluginId),
         paletteCommands: state.paletteCommands.filter(
           (c) => c.pluginId !== pluginId,
         ),

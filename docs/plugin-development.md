@@ -169,6 +169,7 @@ Accessing an API whose capability was not declared throws a clear error
 | `ai`              | Access AI/LLM features                  | **sensitive** |
 | `network`         | Make network requests                   | **sensitive** |
 | `storage`         | Use a plugin-private key/value store    | sensitive     |
+| `viewer`          | Register custom file-type viewers       |               |
 
 `ai` and `network` are the highest-sensitivity capabilities — see
 [Trust model & security](#trust-model--security) for exactly what they allow.
@@ -288,19 +289,28 @@ addSettingsTab(opts: PluginSettingsTabOptions): Disposable;
 //   onMount(el: HTMLElement): void; onUnmount?(el: HTMLElement): void }
 // PluginSettingsTabOptions  = { id: string; title: string;
 //   onMount(el: HTMLElement): void; onUnmount?(el: HTMLElement): void }
+
+registerFileViewer(opts: PluginFileViewerOptions): Disposable;
+// PluginFileViewerOptions = { id: string; extensions: string[];
+//   onMount(el: HTMLElement, ctx: PluginFileViewerContext): void;
+//   onUpdate?(el: HTMLElement, ctx: PluginFileViewerContext): void;
+//   onUnmount?(el: HTMLElement): void }
+// PluginFileViewerContext = { assetUrl: string; filePath: string;
+//   refreshKey: number; zoomLevel: number }
 ```
 
 `context.ui` itself is available whenever the manifest declares `sidebar`,
-`statusbar`, or `settings` (any one of the three unlocks the object), but
-each method has its own per-method gate:
+`statusbar`, `settings`, or `viewer` (any one unlocks the object), but each
+method has its own per-method gate:
 
-| Method              | Requires capability                         |
-| ------------------- | ------------------------------------------- |
-| `showStatusBarItem` | `statusbar`                                 |
-| `addSidebarPanel`   | `sidebar`                                   |
-| `addSettingsTab`    | `settings`                                  |
-| `showNotification`  | any of `sidebar` / `statusbar` / `settings` |
-| `addStyle`          | any of `sidebar` / `statusbar` / `settings` |
+| Method               | Requires capability                                    |
+| -------------------- | ------------------------------------------------------ |
+| `showStatusBarItem`  | `statusbar`                                            |
+| `addSidebarPanel`    | `sidebar`                                              |
+| `addSettingsTab`     | `settings`                                             |
+| `registerFileViewer` | `viewer`                                               |
+| `showNotification`   | any of `sidebar` / `statusbar` / `settings` / `viewer` |
+| `addStyle`           | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 
 Notes:
 
@@ -312,6 +322,19 @@ Notes:
   tab — see [Shadow-DOM UI isolation](#shadow-dom-ui-isolation).
 - `addSidebarPanel` / `addSettingsTab` both mount into an isolated Shadow-DOM
   subtree via `onMount(el)` — see the next section.
+- `registerFileViewer` makes the app open files with the listed extensions in
+  your viewer instead of the code editor. The host hands `onMount` a plain
+  (light-DOM) element plus a context: `assetUrl` is the file served over the
+  `asset:` protocol (already cache-busted with `refreshKey`), and `zoomLevel`
+  is the shared editor zoom (Cmd+= / Cmd+- / Cmd+0, Ctrl+wheel) — scaling
+  your content with it is your viewer's job. `onUpdate` fires when the
+  context changes while mounted (zoom, save, external reload). For **text**
+  extensions the app keeps its preview ↔ source toggle: your viewer renders
+  the preview side, CodeMirror the source side. **Binary** extensions are
+  viewer-only, and the app's binary guards (no UTF-8 reads, no text saves)
+  apply whether or not your plugin is enabled. The built-in `media-viewer`
+  plugin (`src/plugins/builtin/media-viewer.ts`) is the reference
+  implementation.
 
 ### `context.ai` (requires `ai`)
 
