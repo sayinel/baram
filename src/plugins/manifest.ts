@@ -247,6 +247,15 @@ function validateContributions(
         message: `${field} may contain only letters, digits, "_" and "-"`,
       });
     }
+    // §260 Phase 4c security review (LOW-3) — the charset admits `__proto__`, and an id is
+    // used as an object key downstream (the resolved settings record, the store's own
+    // per-plugin record). Assigning to it on a plain object hits the inherited setter, so
+    // the field silently did nothing rather than failing visibly. The resolver is
+    // null-prototype now, which fixes the behaviour; this tells the AUTHOR, at install,
+    // rather than leaving them a control that does not work.
+    if (value === "__proto__") {
+      errors.push({ field, message: `${field} may not be "__proto__"` });
+    }
   };
   /** Every declared section must be an array of objects before anything indexes it. */
   const entries = (key: string): null | Record<string, unknown>[] => {

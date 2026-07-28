@@ -44,10 +44,10 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     const { handler } = handlerFor(["ai"]);
     const tokens: string[] = [];
     // Routed, and answered through the stream path `complete` takes since 4c — the value
-    // it resolves with carries no text at all.
+    // it resolves with carries the LENGTH and no text (security review LOW-2).
     await expect(
       handler({ kind: "ai_complete", prompt: "x" }, (t) => tokens.push(t)),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ chars: 1 });
     expect(tokens).toEqual(["t"]);
   });
 

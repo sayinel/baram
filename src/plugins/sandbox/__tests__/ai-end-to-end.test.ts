@@ -33,10 +33,17 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
     };
     const { host, sandbox } = createChannelPair();
     const framesToSandbox: HostToSandbox[] = [];
+    // Drops token frames past a threshold, standing in for a failed `plugin_sandbox_send`
+    // (the transport logs and never rejects, so the host cannot tell).
+    let tokenBudget = Infinity;
     const recordingHost = {
       ...host,
       send: (m: HostToSandbox) => {
         framesToSandbox.push(m);
+        if (m.type === "hostStreamToken") {
+          if (tokenBudget <= 0) return;
+          tokenBudget -= 1;
+        }
         host.send(m);
       },
     };
@@ -65,7 +72,14 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
     );
     await session.activate("p", { commands: [] });
     if (!ctx) throw new Error("activate did not run");
-    return { ctx, framesToSandbox, session };
+    return {
+      ctx,
+      dropTokensAfter: (n: number) => {
+        tokenBudget = n;
+      },
+      framesToSandbox,
+      session,
+    };
   }
 
   const fakeAi = (): AIAPI => ({
@@ -92,6 +106,24 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
     expect(wire).not.toContain("INLINE:");
     // Each token rides its own frame; none of them is the whole answer.
     expect(wire).not.toContain("hello-1hello-2");
+  });
+
+  it("refuses a completion that arrived incomplete", async () => {
+    // §260 Phase 4c security review (LOW-2) — token frames are fire-and-forget, so a
+    // dropped one used to resolve `complete()` with a truncated string indistinguishable
+    // from the whole answer. The host now reports how much it sent.
+    const lossy: AIAPI = {
+      ...fakeAi(),
+      stream: async (prompt, _opts, onToken) => {
+        onToken(`${prompt}-1`);
+        // The second token never reaches the client — the host counted it, the wire lost it.
+        onToken(`${prompt}-2`);
+      },
+    };
+    const { ctx, dropTokensAfter } = await pair(["ai"], lossy);
+    dropTokensAfter(1);
+
+    await expect(ctx.ai.complete("hello")).rejects.toThrow(/incomplete/);
   });
 
   it("streams tokens across the real transport, then resolves", async () => {

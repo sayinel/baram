@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   declaredSettingsFor,
+  MAX_SETTING_FIELDS,
   MAX_SETTING_VALUE_CHARS,
   resolvePluginSettings,
   sanitizeSettingLabel,
@@ -106,6 +107,28 @@ describe("resolvePluginSettings", () => {
     );
   });
 
+  it("gives a `__proto__` field a real value instead of swallowing it", () => {
+    // §260 Phase 4c security review (LOW-3): `CONTRIBUTION_ID` admits `__proto__`, and
+    // `plain["__proto__"] = true` hits the inherited SETTER, which ignores a primitive — so
+    // the key vanished, the read came back as `Object.prototype`, and a boolean field
+    // rendered permanently unchecked while the user's toggle went nowhere.
+    const resolved = resolvePluginSettings(
+      [{ default: true, key: "__proto__", label: "P", type: "boolean" }],
+      undefined,
+    );
+    expect(resolved["__proto__"]).toBe(true);
+    expect(Object.keys(resolved)).toEqual(["__proto__"]);
+    // …and a persisted `__proto__`/`constructor` still cannot pollute anything: `coerce`
+    // only ever yields a primitive of the declared type.
+    expect(
+      resolvePluginSettings(declared, {
+        __proto__: { polluted: true },
+        constructor: "x",
+      }).depth,
+    ).toBe(3);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it("resolves nothing when nothing is declared", () => {
     expect(resolvePluginSettings(undefined, { stray: 1 })).toEqual({});
   });
@@ -137,6 +160,31 @@ describe("declaredSettingsFor", () => {
         { key: "weird", label: "Weird", type: "object" },
       ]),
     ).toEqual([{ key: "ok", label: "Ok", type: "string" }]);
+  });
+
+  it("survives every manifest shape that used to CRASH the app", () => {
+    // §260 Phase 4c security review (MEDIUM-1). The record is written on the INSTALL path
+    // (`addPlugin`) before `loadPlugin` validates anything, and a failed load is caught and
+    // turned into an error badge — the record stays. The app's only error boundary is the
+    // root one, so a throw while rendering a row replaced the WHOLE APP with the error UI,
+    // every time Settings → Plugins was opened, on the route that holds Uninstall.
+    expect(withFields("AAAA")).toEqual([]); // not an array at all
+    expect(withFields({ a: 1 })).toEqual([]);
+    expect(withFields(undefined)).toEqual([]);
+    // A missing or non-string label reached `sanitizeSettingLabel` → `raw.replace`.
+    expect(withFields([{ key: "k", type: "string" }])).toEqual([]);
+    expect(withFields([{ key: "k", label: 42, type: "string" }])).toEqual([]);
+  });
+
+  it("caps the field count where the untrusted record is READ", () => {
+    // The validator's cap only guards the load path; 5,000 declared fields rendered 5,000
+    // inputs.
+    const many = Array.from({ length: MAX_SETTING_FIELDS + 40 }, (_, i) => ({
+      key: `k${i}`,
+      label: "L",
+      type: "string",
+    }));
+    expect(withFields(many)).toHaveLength(MAX_SETTING_FIELDS);
   });
 
   it("keeps the FIRST of two fields sharing a key", () => {

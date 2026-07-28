@@ -72,7 +72,7 @@ export function createAIRequestHandler(
       );
     }
     switch (request.kind) {
-      case "ai_complete":
+      case "ai_complete": {
         // §260 Phase 4c — STREAMED, even though the plugin asked for one string.
         //
         // The gap 4b deferred: an inline answer over 8 KiB enters tauri's app-global
@@ -89,8 +89,20 @@ export function createAIRequestHandler(
         // small `hostStreamToken` frame; the client accumulates and returns the string, so
         // `ctx.ai.complete` is unchanged for the plugin. It also inherits the stall timer's
         // per-token restart, which an inline `complete` never had.
-        await aiApi().stream(request.prompt, request.opts ?? {}, onToken);
-        return undefined;
+        //
+        // The response carries the LENGTH the host sent (§260 Phase 4c security review,
+        // LOW-2). Frames are fire-and-forget — `tauri-host-transport` logs a failed send
+        // and never rejects — so a dropped token would otherwise resolve `complete()` with
+        // a silently truncated string the plugin cannot tell from the whole answer. The
+        // pre-4c inline form was all-or-nothing; this restores that property with one
+        // number on the wire instead of the text.
+        let chars = 0;
+        await aiApi().stream(request.prompt, request.opts ?? {}, (token) => {
+          chars += token.length;
+          onToken(token);
+        });
+        return { chars };
+      }
       case "ai_list_models": {
         // Staged, for the reason the response frame cannot carry it: a model list is a JSON
         // ARRAY, so it satisfies the queue's `[` condition the moment a user's Ollama

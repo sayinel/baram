@@ -73,8 +73,11 @@ describe("createAIRequestHandler (§260 3c-2c)", () => {
     );
 
     expect(tokens).toEqual(["a", "b"]);
-    // THE property: the text is not in the value the response frame carries.
-    expect(answer).toBeUndefined();
+    // THE property: the text is not in the value the response frame carries — only the
+    // LENGTH, so a dropped token frame is detectable rather than a silently shorter answer
+    // (security review LOW-2; token frames are fire-and-forget).
+    expect(answer).toEqual({ chars: 2 });
+    expect(JSON.stringify(answer)).not.toContain("ab");
     // …and it really took the stream path rather than `complete` plus a relay.
     expect(calls).toEqual(["stream:hi"]);
   });

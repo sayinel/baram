@@ -168,13 +168,35 @@ export function startSandboxClient(
     // The signature is unchanged: a plugin still awaits one string.
     complete: async (prompt, opts) => {
       let buffer = "";
-      await hostRequest({ kind: "ai_complete", opts, prompt }, (token) => {
-        buffer += token;
-      });
+      const answer = await hostRequest(
+        { kind: "ai_complete", opts, prompt },
+        (token) => {
+          buffer += token;
+        },
+      );
+      // ‼️ The host tells us how much it SENT, and a mismatch is an error rather than a
+      // shorter answer (§260 Phase 4c security review, LOW-2). Token frames are
+      // fire-and-forget on the host side, so a dropped one would otherwise look exactly
+      // like a complete response — and a plugin branching on the text would branch on a
+      // truncation it cannot see. Tolerates an older host that answers without the count.
+      const expected = (answer as undefined | { chars?: number })?.chars;
+      if (typeof expected === "number" && buffer.length !== expected) {
+        throw new Error(
+          `ai.complete: the answer arrived incomplete (${buffer.length} of ${expected} characters)`,
+        );
+      }
       return buffer;
     },
     // Staged like the document: a model list is a JSON array, so it meets the queue's `[`
     // condition as soon as it is large — which a user's Ollama install decides, not us.
+    //
+    // ‼️ COST, accepted (§260 Phase 4c security review, LOW-1): staging puts this on the
+    // serial `stagedReads` chain, and unlike the other members it is network-bound. Against
+    // an endpoint that never answers, this plugin's own `getMarkdown`/`getSelection`/
+    // `settings.getAll` queue behind it until the host's 120s stall timer fires. Self-
+    // inflicted only — the slot is label-keyed, so no other plugin is affected — and the
+    // alternative (a two-step "ready, come pull" protocol) is a state machine at the realm
+    // boundary for an op most plugins call once, at activate.
     listModels: async () => {
       const { payload } = await readStaged({ kind: "ai_list_models" });
       return JSON.parse(payload) as AIModel[];
@@ -404,12 +426,13 @@ export function startSandboxClient(
       // sandbox on non-macOS — so if that shape must change, chunk it or keep it out
       // of the channel path deliberately.
       //
-      // ‼️ The invariant holds for THIS op, not for the broker generally (§260 3c-2c
-      // code review, MEDIUM-2): `files_list`/`storage_list` return arrays and
-      // `http_fetch` an object, so they DO match the condition once they cross 8 KiB —
-      // `files_list` first, on a directory of a few hundred notes. Rust warns in dev
-      // when a result crosses it (`warn_if_result_enters_the_shared_queue`); chunking
-      // is owed with Phase 4's document transforms.
+      // ‼️ The invariant now holds for EVERY broker op, not just this one (§260 Phase 4c).
+      // It used to be this op alone: `files_list`/`storage_list` returned arrays and
+      // `http_fetch` an object, so they matched the condition once they crossed 8 KiB —
+      // `files_list` first, on a directory of a few hundred notes — and chunking was
+      // recorded as owed. `BrokerResult` closed that instead: `execute_op` cannot express a
+      // bare array or object, so every result is a string or null, and `brokerJson` parses
+      // the encoded ones back. Rust's dev warning stays as the backstop for a future arm.
       const source = await broker({ kind: "source_read" });
       if (typeof source !== "string") {
         throw new Error("broker returned a non-string plugin source");

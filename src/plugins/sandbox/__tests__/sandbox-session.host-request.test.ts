@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_REQUEST_TIMEOUT_MS,
   INFLIGHT_BUDGET,
+  MAX_FRAME_TEXT_CHARS,
   SandboxSession,
 } from "../sandbox-session";
 import { createChannelPair } from "./channel-pair";
@@ -41,6 +42,52 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
   }
 
   const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  // §260 Phase 4c security review — every frame is a JSON OBJECT, so length alone decides
+  // whether tauri parks it in the app-global channel-data queue that FETCH_CHANNEL_DATA_COMMAND
+  // exposes to every webview. These two are the only frames carrying variable-length text.
+  describe("no frame carries unbounded text (§260 Phase 4c)", () => {
+    it("truncates a provider error instead of putting it on the wire whole", async () => {
+      // MEDIUM-2: an `ai` rejection carries the PROVIDER's message, and `llm/claude.rs`
+      // builds it as `HTTP {status}: {body}` from the entire response body — a gateway's
+      // HTML error page clears 8 KiB easily, and a plugin can provoke one.
+      const huge = "E".repeat(MAX_FRAME_TEXT_CHARS * 3);
+      const { ask, seen } = harness(() => Promise.reject(new Error(huge)));
+
+      ask("r1");
+      await flush();
+
+      const answer = seen.find(
+        (m) => (m as { type?: string }).type === "hostResponse",
+      ) as { error: string };
+      expect(answer.error.length).toBeLessThan(MAX_FRAME_TEXT_CHARS + 100);
+      expect(answer.error).toContain("truncated");
+      expect(JSON.stringify(answer).length).toBeLessThan(8192);
+    });
+
+    it("splits an oversized stream token across frames", async () => {
+      // LOW-4: a provider's chunking is not ours to assume — Gemini emits one `part.text`
+      // per part, far coarser than an SSE delta.
+      const huge = "T".repeat(MAX_FRAME_TEXT_CHARS * 2 + 5);
+      const { ask, seen } = harness((_req, onToken) => {
+        onToken(huge);
+        return Promise.resolve(undefined);
+      });
+
+      ask("r1");
+      await flush();
+
+      const tokens = seen.filter(
+        (m) => (m as { type?: string }).type === "hostStreamToken",
+      ) as { token: string }[];
+      expect(tokens).toHaveLength(3);
+      // Split, not truncated: the plugin still receives every character.
+      expect(tokens.map((t) => t.token).join("")).toBe(huge);
+      for (const frame of tokens) {
+        expect(JSON.stringify(frame).length).toBeLessThan(8192);
+      }
+    });
+  });
 
   it("answers a resolved request with hostResponse ok", async () => {
     const { ask, seen } = harness(async () => "done");

@@ -38,25 +38,44 @@ export const MAX_SETTING_VALUE_CHARS = 512;
  * decoration should not stop a plugin whose commands are fine — and one function rather
  * than three checks, so the form cannot show a field the plugin will never be told about.
  *
- * ‼️ Malformed fields are SKIPPED rather than trusted, for the same reason the resolver
- * distrusts a persisted value: the manifest this reads comes from the STORE, which outlives
- * the validator that admitted it. `validateManifest` runs on every load path, but a plugin
- * installed before a field's rule existed keeps its record in `installedPlugins` even when
- * the load now fails — and the form reads that record. Without this, `"settings": [{}]`
- * from an older install rendered a row labelled `undefined` writing to the key `"undefined"`.
+ * ‼️ NOTHING about the manifest is trusted here, for the same reason the resolver distrusts
+ * a persisted value — and the gap is wider than it looks. `validateManifest` runs on the
+ * LOAD path (`plugin-loader.ts`), but the record this reads is written on the INSTALL path,
+ * BEFORE and independently of it: `PluginMarketplace` calls `addPlugin` and only then
+ * `loadPlugin`, whose failure is caught and turned into an error badge — the record stays.
+ * Rust does not cover the gap either: it types `contributions` as an opaque
+ * `serde_json::Value` and never inspects it.
+ *
+ * So a manifest reaching this function may be ANY shape, and the app's only error boundary
+ * is at the root (`App.tsx`): a throw while rendering a settings row replaces the entire
+ * app with the error UI, on a route that includes the plugin's own Uninstall button, every
+ * time Settings → Plugins is opened. A plugin that never executes a line of code could brick
+ * the app with a manifest alone (§260 Phase 4c security review, MEDIUM-1).
+ *
+ * Hence three guards, each closing one observed crash or unbounded render:
+ * `settings` not an array, a field whose `label` is missing or not a string, and a field
+ * count nothing on this path caps.
  */
 export function declaredSettingsFor(
   manifest: Pick<PluginManifest, "capabilities" | "contributions">,
 ): PluginSettingField[] {
   if (!manifest.capabilities.includes("settings")) return [];
+  const declared = manifest.contributions?.settings;
+  if (!Array.isArray(declared)) return [];
   const seen = new Set<string>();
-  return (manifest.contributions?.settings ?? []).filter((field) => {
-    if (!isUsableField(field) || seen.has(field.key)) return false;
-    // First occurrence wins. Two fields with one key would render two controls driving the
-    // same value, which is what the duplicate-key validation exists to prevent at install.
-    seen.add(field.key);
-    return true;
-  });
+  return (
+    declared
+      .filter((field) => {
+        if (!isUsableField(field) || seen.has(field.key)) return false;
+        // First occurrence wins. Two fields with one key would render two controls driving
+        // the same value, which is what the duplicate-key validation prevents at install.
+        seen.add(field.key);
+        return true;
+      })
+      // The same cap the validator applies, applied again where the untrusted record is
+      // READ. Without it a manifest declaring 5,000 fields rendered 5,000 inputs.
+      .slice(0, MAX_SETTING_FIELDS)
+  );
 }
 
 /**
@@ -91,7 +110,16 @@ export function resolvePluginSettings(
   declared: readonly PluginSettingField[] | undefined,
   persisted: Record<string, unknown> | undefined,
 ): Record<string, PluginSettingValue> {
-  const resolved: Record<string, PluginSettingValue> = {};
+  // ‼️ NULL-prototype, not `{}` (§260 Phase 4c security review, LOW-3). `CONTRIBUTION_ID`
+  // admits `__proto__`, and `plain["__proto__"] = true` invokes the inherited SETTER, which
+  // ignores a primitive — so the key vanished and the read came back as `Object.prototype`.
+  // A `{key: "__proto__", type: "boolean", default: true}` field rendered permanently
+  // UNCHECKED and never reached the plugin, which for a "send telemetry"-shaped toggle is a
+  // control misreporting its own state. Not prototype POLLUTION — `coerce` only ever yields
+  // a primitive, and a persisted `__proto__`/`constructor` is neutralised by its `typeof`
+  // check — but a field that silently does nothing is its own bug. The validator now refuses
+  // the key too; this keeps records written before it honest.
+  const resolved = Object.create(null) as Record<string, PluginSettingValue>;
   for (const field of declared ?? []) {
     resolved[field.key] = resolveOne(field, persisted?.[field.key]);
   }
@@ -127,15 +155,20 @@ function coerce(
 }
 
 /**
- * Enough of a field to render and to resolve: a non-empty string key and a type the
- * resolver knows. `label` is not required here — a missing one renders as an empty label,
- * which is ugly but honest, whereas dropping the field would hide a control the plugin
- * still reads.
+ * Enough of a field to render and to resolve: a non-empty string key, a type the resolver
+ * knows, and a string `label`.
+ *
+ * ‼️ `label` IS required, and an earlier version of this comment said the opposite — that a
+ * missing one "renders as an empty label, which is ugly but honest". It does not:
+ * `sanitizeSettingLabel(undefined)` reaches `raw.replace` and throws, which at the root
+ * error boundary is the whole app (§260 Phase 4c security review, MEDIUM-1). The rationale
+ * would only have held if the sanitiser tolerated a non-string, and it does not.
  */
 function isUsableField(field: PluginSettingField): boolean {
   return (
     typeof field?.key === "string" &&
     field.key.length > 0 &&
+    typeof field.label === "string" &&
     SETTING_TYPES.includes(field.type)
   );
 }
