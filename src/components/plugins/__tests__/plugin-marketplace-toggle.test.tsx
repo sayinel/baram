@@ -59,7 +59,6 @@ async function installedToggle() {
 
 describe("marketplace enable toggle (§260 3c-3)", () => {
   beforeEach(() => {
-    vi.stubEnv("VITE_ENABLE_PLUGINS", "1");
     loadPlugin.mockReset().mockResolvedValue(undefined);
     unloadPlugin.mockReset().mockResolvedValue(undefined);
     usePluginStore.setState({

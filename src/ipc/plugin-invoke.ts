@@ -44,13 +44,23 @@ export async function pluginHttpFetch(
   return invoke<PluginFetchResponse>("plugin_http_fetch", { url, init });
 }
 
+/**
+ * `expectedId` is the id the registry listing advertised. Rust refuses the install if the
+ * archive's manifest disagrees — BEFORE moving the extracted files into place (§260 Phase
+ * 5 re-review, R5). It has to be enforced there, not here: the move does
+ * `remove_dir_all` on a directory named by the id INSIDE the archive, so an archive
+ * claiming another installed plugin's id destroyed that plugin as a side effect of this
+ * download, and the frontend could only ever notice afterwards.
+ */
 export async function pluginInstall(
   url: string,
   checksum?: string,
+  expectedId?: string,
 ): Promise<RustInstalledPluginInfo> {
   return invoke<RustInstalledPluginInfo>("plugin_install", {
     url,
     checksum: checksum ?? null,
+    expectedId: expectedId ?? null,
   });
 }
 

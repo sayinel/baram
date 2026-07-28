@@ -1,8 +1,8 @@
 // §69 Built-in plugins — trusted plugin modules compiled INTO the app that
 // consume the same public ExtensionContext API as external plugins. They load
-// in every build (including release, where §259 gates external plugin code)
-// because they are app code: shipping in the bundle, reviewed like any other
-// core source. Keeping them behind the plugin API — instead of wiring them
+// in every build, and unconditionally — the plugin API is their integration surface, not
+// a trust boundary — because they are app code: shipping in the bundle, reviewed like any
+// other core source. Keeping them behind the plugin API — instead of wiring them
 // into core directly — keeps the extension points honest: if a built-in
 // can't do something through the API, neither can a third-party plugin.
 

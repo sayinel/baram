@@ -64,7 +64,6 @@ const devPlugin = {
 
 describe("dev plugin error lifecycle (§260 3c-3)", () => {
   beforeEach(() => {
-    vi.stubEnv("VITE_ENABLE_PLUGINS", "1");
     usePluginStore.setState({ installedPlugins: {}, pluginErrors: {} });
     mocks.loadPlugin.mockClear().mockResolvedValue(undefined);
     mocks.isLoaded.mockReturnValue(false);

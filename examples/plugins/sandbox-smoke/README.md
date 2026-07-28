@@ -15,10 +15,14 @@ most the file you already have open.
 
 ## Run it
 
-1. Start the app with plugins enabled:
+1. Start the app:
    ```sh
-   VITE_ENABLE_PLUGINS=1 npm run tauri dev
+   npm run tauri dev
    ```
+   (Plugins no longer need an opt-in env var — §260 Phase 5 removed the `#259` release
+   gate. **Add dev folder** in step 3 is still dev-only: side-loading a directory skips
+   the checksum, the registry listing and the install consent step, so it stays a
+   development affordance.)
 2. Open a vault folder (the brokered file ops are deny-by-default until a folder or file
    context is open — that is the §88 rule, not a plugin rule), then open a note in it.
 3. Settings → Plugins → **Add dev folder** → pick `examples/plugins/sandbox-smoke`.

@@ -149,6 +149,10 @@ describe("PluginDeveloperSection", () => {
       expect(pluginLoader.reloadPlugin).toHaveBeenCalledWith(
         "/dev/dev-x",
         baseManifest,
+        // §260 Phase 5 round 4 (G1) — asserted, not tolerated: without `isDev` the loader
+        // falls back to an installed plugin's consent, so a dev folder sharing an id
+        // silently loses capabilities or refuses to load outright.
+        { isDev: true },
       ),
     );
     await waitFor(() =>
@@ -183,6 +187,10 @@ describe("PluginDeveloperSection", () => {
       expect(pluginLoader.reloadPlugin).toHaveBeenCalledWith(
         "/dev/dev-x",
         manifestWithTiptap,
+        // §260 Phase 5 round 4 (G1) — asserted, not tolerated: without `isDev` the loader
+        // falls back to an installed plugin's consent, so a dev folder sharing an id
+        // silently loses capabilities or refuses to load outright.
+        { isDev: true },
       ),
     );
     await waitFor(() =>

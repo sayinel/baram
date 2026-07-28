@@ -342,3 +342,137 @@ describe("plugin store dev plugins", () => {
     ]);
   });
 });
+
+describe("consent migration (v2 -> v3, §260 Phase 5)", () => {
+  const stateWith = (manifest: Record<string, unknown>) => ({
+    installedPlugins: {
+      demo: {
+        checksum: "sha256:x",
+        enabled: true,
+        installedAt: 0,
+        installPath: "/p",
+        manifest,
+        updatedAt: 0,
+      } as Record<string, unknown>,
+    },
+  });
+
+  const consentOf = (migrated: unknown) =>
+    (
+      migrated as {
+        installedPlugins: Record<string, { consent?: unknown }>;
+      }
+    ).installedPlugins.demo.consent;
+
+  test("synthesises consent from the manifest already installed", () => {
+    // These records predate the consent step but went through the old capability
+    // confirm, and can only exist in a dev build (release had plugins gated off), so
+    // the manifest they already carry is the honest baseline to compare updates against.
+    const migrated = migratePluginPersistedState(
+      stateWith({
+        capabilities: ["editor", "network"],
+        id: "demo",
+        trust: "sandboxed",
+      }),
+      2,
+    );
+    expect(consentOf(migrated)).toEqual({
+      capabilities: ["editor", "network"],
+      trust: "sandboxed",
+    });
+  });
+
+  test("leaves a legacy manifest unconsented — there is no tier to record", () => {
+    // A trust-less manifest cannot load at all (validateManifest rejects it), so the
+    // honest record is "never consented", which makes the next update ask.
+    const migrated = migratePluginPersistedState(
+      stateWith({ capabilities: ["editor"], id: "demo" }),
+      2,
+    );
+    expect(consentOf(migrated)).toBeUndefined();
+  });
+
+  test("does not overwrite a consent that is already recorded", () => {
+    const state = stateWith({
+      capabilities: ["editor"],
+      id: "demo",
+      trust: "sandboxed",
+    });
+    state.installedPlugins.demo.consent = {
+      capabilities: [],
+      trust: "trusted",
+    };
+    expect(consentOf(migratePluginPersistedState(state, 2))).toEqual({
+      capabilities: [],
+      trust: "trusted",
+    });
+  });
+
+  test("copies the capability array rather than aliasing the manifest's", () => {
+    // Aliasing would make a later manifest update silently rewrite the consent that
+    // is supposed to be the fixed record of what the user agreed to.
+    const state = stateWith({
+      capabilities: ["editor"],
+      id: "demo",
+      trust: "sandboxed",
+    });
+    const migrated = migratePluginPersistedState(state, 2);
+    const manifest = state.installedPlugins.demo.manifest as {
+      capabilities: string[];
+    };
+    manifest.capabilities.push("network");
+    expect(consentOf(migrated)).toEqual({
+      capabilities: ["editor"],
+      trust: "sandboxed",
+    });
+  });
+
+  test("a v1 user gets BOTH migrations, not just the newer one", () => {
+    // §260 Phase 5 code review (L6). The two steps are independent `if`s, so this is
+    // correct today — but every other case enters at 1 or 2 and exercises one branch, so
+    // nothing pinned that a long-idle install picks up both.
+    const state = {
+      installedPlugins: {
+        demo: {
+          checksum: "sha256:x",
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p",
+          manifest: {
+            capabilities: ["editor"],
+            id: "demo",
+            trust: "sandboxed",
+          },
+          updatedAt: 0,
+        } as Record<string, unknown>,
+      },
+      registryUrl: OLD_DEFAULT_REGISTRY_URL,
+    };
+    const migrated = migratePluginPersistedState(state, 1) as {
+      installedPlugins: Record<string, { consent?: unknown }>;
+      registryUrl: string;
+    };
+    expect(migrated.registryUrl).toBe(DEFAULT_REGISTRY_URL);
+    expect(migrated.installedPlugins.demo.consent).toEqual({
+      capabilities: ["editor"],
+      trust: "sandboxed",
+    });
+  });
+
+  test("is a no-op at version 3", () => {
+    const migrated = migratePluginPersistedState(
+      stateWith({ capabilities: ["editor"], id: "demo", trust: "sandboxed" }),
+      3,
+    );
+    expect(consentOf(migrated)).toBeUndefined();
+  });
+
+  test("survives malformed installedPlugins instead of throwing", () => {
+    expect(migratePluginPersistedState({ installedPlugins: 7 }, 2)).toEqual({
+      installedPlugins: 7,
+    });
+    expect(
+      migratePluginPersistedState({ installedPlugins: { demo: null } }, 2),
+    ).toEqual({ installedPlugins: { demo: null } });
+  });
+});

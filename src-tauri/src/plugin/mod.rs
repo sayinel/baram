@@ -8,20 +8,24 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use thiserror::Error;
 
-/// §259 containment — plugins execute in the app's own JS realm with no
-/// isolation, so a plugin can bypass the ExtensionContext capability layer and
-/// call privileged commands directly. Until the execution model is redesigned
-/// (#260), installing / side-loading / networking on behalf of untrusted plugin
-/// code is gated off in shipped (release) builds. Dev builds keep it enabled to
-/// continue #260 work, mirroring the frontend `VITE_ENABLE_PLUGINS` opt-in.
-pub fn plugins_runtime_enabled() -> bool {
+/// §260 Phase 5 — dev-folder side-loading stays a dev-build affordance.
+///
+/// This was `plugins_runtime_enabled`, and it also gated install, asset scopes, the
+/// network proxy and storage writes. Phase 5 opened those: the sandboxed tier cannot
+/// function without them, and the boundary is now the Rust authorizer plus the install
+/// consent record rather than a build flag.
+///
+/// Side-loading is the one that did NOT open. Pointing the app at a directory skips the
+/// checksum, the registry listing and the consent step entirely, and it exists to serve
+/// plugin authors — who run dev builds. The name says what it actually gates, because
+/// the old one read as "plugins work at all" and would invite exactly the wrong edit.
+pub fn dev_plugin_loading_enabled() -> bool {
     cfg!(debug_assertions)
 }
 
-/// Error surfaced when a privileged plugin command is invoked in a build where
-/// plugins are gated off.
+/// Error surfaced when a dev-only plugin command is invoked in a release build.
 pub fn plugins_disabled_error() -> String {
-    "Plugins are disabled in this build for security (see #259/#260).".to_string()
+    "Loading plugins from a folder is only available in development builds.".to_string()
 }
 
 #[derive(Error, Debug)]
@@ -233,9 +237,20 @@ fn dirs_next() -> Option<PathBuf> {
 }
 
 /// Download a plugin ZIP from URL, verify checksum, extract to plugin dir.
+///
+/// `expected_id` is the id the caller was told to expect — the registry listing's. It is
+/// checked BEFORE the extracted files are moved into place (§260 Phase 5 re-review, R5),
+/// and that ordering is the whole point: step 6 does `remove_dir_all` on a directory named
+/// by the id inside the ARCHIVE, so an archive declaring some other installed plugin's id
+/// destroyed that plugin's files as a side effect of downloading this one. The frontend
+/// could only notice afterwards, by which time the only repair left was to delete the
+/// remains. Refusing here means the damage never happens.
+///
+/// `None` skips the check, for a caller that has no prior expectation.
 pub async fn install_plugin(
     url: &str,
     expected_checksum: Option<&str>,
+    expected_id: Option<&str>,
 ) -> Result<InstalledPluginInfo, PluginError> {
     // 1. Download ZIP to temp file
     let response = reqwest::get(url).await?;
@@ -269,6 +284,17 @@ pub async fn install_plugin(
     // 5. Validate manifest
     validate_manifest(&manifest)?;
 
+    // 5b. The archive must be the plugin the caller asked for — checked here, before the
+    // destructive move below, and never after it.
+    if let Some(expected) = expected_id {
+        if manifest.id != expected {
+            return Err(PluginError::InvalidManifest(format!(
+                "archive declares id \"{}\" but \"{}\" was requested",
+                manifest.id, expected
+            )));
+        }
+    }
+
     // 6. Move to final location
     let plugin_dir = get_plugin_dir()?;
     let target_dir = plugin_dir.join(&manifest.id);
@@ -288,9 +314,18 @@ pub async fn install_plugin(
 }
 
 /// Uninstall a plugin by removing its directory.
+///
+/// §260 Phase 5 code review — the id is `single_segment`-checked, matching
+/// [`plugin_data_dir`]. This function does `remove_dir_all`, so it is the one place where
+/// an id containing `..` or a separator would be worst, and it was the only one of the two
+/// without the guard. Not reachable today (Rust's own `validate_manifest` constrains the
+/// id before the files land), but the rollback path now passes an id read from a manifest
+/// that may have just FAILED validation — so the asymmetry stops being merely untidy.
 pub async fn uninstall_plugin(plugin_id: &str) -> Result<(), PluginError> {
+    let seg = single_segment(plugin_id)
+        .ok_or_else(|| PluginError::InvalidManifest(format!("invalid plugin id: {plugin_id}")))?;
     let plugin_dir = get_plugin_dir()?;
-    let target_dir = plugin_dir.join(plugin_id);
+    let target_dir = plugin_dir.join(seg);
     if !target_dir.exists() {
         return Err(PluginError::NotFound(plugin_id.to_string()));
     }
@@ -1043,6 +1078,53 @@ mod tests {
         assert!(validate_http_url("ftp://host/x").is_err());
         assert!(validate_http_url("not a url").is_err());
         assert!(validate_http_url("javascript:alert(1)").is_err());
+    }
+
+    /// §260 Phase 5 re-review (R5) — the id check must sit BEFORE the move, so an archive
+    /// declaring another installed plugin's id cannot destroy it on the way in.
+    ///
+    /// Asserted on source order rather than by running an install, because the failure mode
+    /// is purely positional: both the check and the `remove_dir_all` are trivially correct
+    /// in isolation, and a refactor moving either past the other would leave every
+    /// behavioural test green while restoring the data loss.
+    ///
+    /// ‼️ WINDOWED to `install_plugin`'s body, and the match COUNT is asserted (re-review,
+    /// F2). Searching the whole file found *a* match rather than *the* match: there are two
+    /// `remove_dir_all(&target_dir)` in this file, the second in `uninstall_plugin`, so
+    /// renaming or refactoring away `install_plugin`'s destructive move silently retargeted
+    /// the assertion at an unrelated function and stayed green. That is the same shape as
+    /// every hollow source-scan guard this phase produced.
+    #[test]
+    fn expected_id_is_checked_before_the_destructive_move() {
+        let src = include_str!("mod.rs");
+        let start = src
+            .find("pub async fn install_plugin")
+            .expect("install_plugin must exist");
+        // Body = up to the next top-level item, so nothing outside this function counts.
+        let end = src[start + 1..]
+            .find("\npub ")
+            .map(|i| i + start + 1)
+            .unwrap_or(src.len());
+        let body = &src[start..end];
+
+        assert_eq!(
+            body.matches("remove_dir_all(&target_dir)").count(),
+            1,
+            "install_plugin must contain exactly one destructive move — if it moved into a \
+             helper, this guard no longer sees it and must be rewritten, not deleted"
+        );
+        let refusal = body
+            .find("was requested")
+            .expect("the expected_id refusal must live inside install_plugin");
+        let remove = body
+            .find("remove_dir_all(&target_dir)")
+            .expect("the destructive move must exist");
+
+        assert!(
+            refusal < remove,
+            "the id refusal ({refusal}) must come before remove_dir_all ({remove}) — \
+             otherwise the archive has already clobbered the target directory"
+        );
     }
 
     #[test]

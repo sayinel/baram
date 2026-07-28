@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import type {
   PluginCapability,
   PluginStatus,
@@ -10,6 +8,15 @@ import type {
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
+
+/**
+ * §260 Phase 5 — a registry entry from before the trust model. `validateManifest`
+ * rejects a trust-less manifest, so offering Install here would only download first and
+ * fail second.
+ */
+const LEGACY_NOTE =
+  "This plugin predates Baram's plugin trust model and cannot be installed. " +
+  "Ask the author to publish a manifest that declares a trust tier.";
 
 interface PluginDetailProps {
   entry: RegistryEntry;
@@ -36,14 +43,10 @@ export function PluginDetail({
   readme,
   onBack,
 }: PluginDetailProps) {
-  const [showTrustWarning, setShowTrustWarning] = useState(false);
-  const handleInstallClick = () => {
-    if (entry.trust === "trusted" && !showTrustWarning) {
-      setShowTrustWarning(true);
-      return;
-    }
-    onInstall();
-  };
+  // The full-trust warning moved to `PluginConsentDialog` (§260 Phase 5), which is the
+  // step that actually records what the user agreed to. Keeping a second, weaker warning
+  // here would have let the two drift apart.
+  const legacy = !entry.trust;
 
   return (
     <div
@@ -226,23 +229,10 @@ export function PluginDetail({
           </>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {showTrustWarning && (
-              <div
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--color-status-error-bg)",
-                  color: "var(--color-status-danger)",
-                  fontSize: "13px",
-                  border: "1px solid var(--color-status-error-border)",
-                }}
-              >
-                This plugin runs with full app access and is not sandboxed.
-                Install it only if you trust the author and source.
-              </div>
-            )}
+            {legacy && <p className="plugin-legacy-note">{LEGACY_NOTE}</p>}
             <button
-              onClick={handleInstallClick}
+              disabled={legacy}
+              onClick={onInstall}
               style={{
                 alignSelf: "flex-start",
                 padding: "8px 20px",
@@ -252,10 +242,11 @@ export function PluginDetail({
                 backgroundColor: "var(--color-accent-default)",
                 color: "#fff",
                 border: "none",
-                cursor: "pointer",
+                cursor: legacy ? "not-allowed" : "pointer",
+                opacity: legacy ? 0.5 : 1,
               }}
             >
-              {showTrustWarning ? "Install anyway" : "Install"}
+              Install
             </button>
           </div>
         )}

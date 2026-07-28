@@ -22,7 +22,6 @@ import {
 } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
-import { arePluginsEnabled } from "./plugins-enabled";
 import {
   deliverSandboxEvent,
   setContextResolver,
@@ -37,11 +36,8 @@ interface ActiveBuiltin {
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
-  // §259 containment — plugins run in the app's own JS realm and can bypass the
-  // capability layer, so untrusted plugin code must not auto-execute in shipped
-  // builds. Skip the entire load path unless a build explicitly opts in.
   // §260 3c-3 — close sandbox webviews left over from a previous main-realm
-  // lifetime, BEFORE the enabled gate and before any load. A reload (HMR, refresh,
+  // lifetime, before any load. A reload (HMR, refresh,
   // remount) empties this realm's bookkeeping while the `plugin-*` webview keeps
   // running with its Rust capabilities intact, and the next load then fails on a
   // taken label. Found by the live smoke.
@@ -65,19 +61,11 @@ export async function initializePlugins(): Promise<void> {
   // directory out of the sandboxed tier.
   setContextResolver(locateInContext);
 
-  // Built-in plugins load BEFORE (and regardless of) the §259 gate: that gate
-  // contains UNTRUSTED external code from disk, while built-ins are app code
-  // compiled into this bundle — the plugin API is their integration surface,
-  // not a trust boundary. Without this exemption, release builds would lose
-  // every built-in viewer.
+  // Built-ins load FIRST, and unconditionally: they are app code compiled into this
+  // bundle, so the plugin API is their integration surface rather than a trust
+  // boundary. They loaded ahead of the §259 release gate for the same reason, and
+  // keeping the order after §260 Phase 5 removed that gate costs nothing.
   await loadBuiltinPlugins();
-
-  if (!arePluginsEnabled()) {
-    logger.info(
-      "[PluginLifecycle] Plugins disabled (see #259/#260) — skipping auto-load",
-    );
-    return;
-  }
 
   // Grant asset scope for ~/.baram/plugins before any load (see Global Constraints).
   await pluginPrepareScopes().catch((err) =>
@@ -138,9 +126,13 @@ export async function initializePlugins(): Promise<void> {
             logger.warn(
               `[PluginLifecycle] dev plugin ${p.manifest.id} overrides installed`,
             );
-            await pluginLoader.reloadPlugin(p.installPath, p.manifest);
+            await pluginLoader.reloadPlugin(p.installPath, p.manifest, {
+              isDev: true,
+            });
           } else {
-            await pluginLoader.loadPlugin(p.installPath, p.manifest);
+            await pluginLoader.loadPlugin(p.installPath, p.manifest, {
+              isDev: true,
+            });
           }
           // Clear any failure from a previous run: the store is persisted, so
           // without this a one-off startup error outlives the run that caused it.

@@ -101,7 +101,9 @@ import { logger } from "./utils/logger";
 import { getConfigForTask } from "./utils/model-selection";
 import { logAppReady } from "./utils/perf";
 import { buildTemplatePrompt } from "./utils/smart-templates";
-import "./styles/index.css";
+// Stylesheet moved to `main.tsx` (§260 Phase 5 re-review, R3): App is dynamically
+// imported, so a stylesheet imported here is bound to that chunk and never reaches
+// index.html's <head> — a blank window on cold start.
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
 const SourceCodeEditor = lazy(() =>

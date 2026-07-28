@@ -42,7 +42,12 @@ export function PluginDeveloperSection() {
     try {
       const info = await pluginAddDevFolder(picked);
       const plugin = toInstalledDevPlugin(info);
-      await pluginLoader.loadPlugin(plugin.installPath, plugin.manifest);
+      // `isDev` is DECLARED, not inferred (§260 Phase 5 re-review, G1): `addDevPlugin`
+      // runs on the next line, deliberately after the load so a failing load leaves no
+      // card — so the store cannot yet be asked whether this is a dev folder.
+      await pluginLoader.loadPlugin(plugin.installPath, plugin.manifest, {
+        isDev: true,
+      });
       addDevPlugin(plugin);
       // §260 3c-3 — a load that SUCCEEDS must clear the last failure. Nothing did,
       // so a transient error (e.g. one activate timeout at startup) stayed on the
@@ -58,7 +63,9 @@ export function PluginDeveloperSection() {
     try {
       const info = await pluginAddDevFolder(plugin.installPath); // re-read manifest
       const fresh = toInstalledDevPlugin(info);
-      await pluginLoader.reloadPlugin(fresh.installPath, fresh.manifest);
+      await pluginLoader.reloadPlugin(fresh.installPath, fresh.manifest, {
+        isDev: true,
+      });
       addDevPlugin(fresh);
       setError(fresh.manifest.id, null); // the reload worked — drop the stale failure
       if (fresh.manifest.tiptapExtensions?.length) {

@@ -5,6 +5,7 @@ import type { SandboxSession } from "./sandbox/sandbox-session";
 import type {
   Disposable,
   LoadedPlugin,
+  PluginConsent,
   PluginManifest,
   PluginModule,
 } from "./types";
@@ -26,10 +27,10 @@ import {
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
+import { grantableCapabilities } from "./plugin-consent";
 import { declaredSettingsFor } from "./plugin-settings";
 import { pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
-import { arePluginsEnabled, isSandboxRuntimeAllowed } from "./plugins-enabled";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import { watchPluginSettings } from "./sandbox/host-settings-bridge";
 import {
@@ -51,6 +52,16 @@ const SANDBOX_STOP_TIMEOUT = 1000;
 const TEARDOWN_TIMEOUT = 5000;
 
 type Importer = (url: string) => Promise<PluginModule>;
+
+/**
+ * What the CALLER knows about a load that the store cannot be asked for.
+ *
+ * `isDev` marks a dev-folder load. It is a parameter rather than a store lookup because
+ * the store is written *after* the load on the first-load path — see `resolveConsent`.
+ */
+interface LoadOptions {
+  isDev?: boolean;
+}
 
 export class PluginLoader {
   private readonly importer: Importer;
@@ -120,8 +131,7 @@ export class PluginLoader {
    * §260 3c-3 (security review, M2) — CONCURRENT calls for the same id join the
    * first instead of racing it. `this.loaded` is only populated when a load
    * *finishes*, so it cannot dedupe two loads in flight, and two are the normal case:
-   * `React.StrictMode` double-invokes mount effects, and dev is the only environment
-   * where the sandbox runs at all (`isSandboxRuntimeAllowed`). Racing loads fight
+   * `React.StrictMode` double-invokes mount effects. Racing loads fight
    * over one `plugin-<id>` webview label and one Rust grant — one of them ends up
    * revoking the other's capabilities or closing its window, leaving `loaded` and
    * `live` describing different plugins.
@@ -129,16 +139,8 @@ export class PluginLoader {
   async loadPlugin(
     installPath: string,
     manifest: PluginManifest,
+    opts: LoadOptions = {},
   ): Promise<void> {
-    // §259 — final choke point: never load/execute plugin code unless the build
-    // explicitly opts in. Guards every load path (startup, dev reload, install),
-    // regardless of how the caller was reached.
-    if (!arePluginsEnabled()) {
-      throw new Error(
-        "Plugins are disabled in this build for security (see #259/#260).",
-      );
-    }
-
     const inFlight = this.inFlightLoads.get(manifest.id);
     if (inFlight) {
       logger.warn(
@@ -146,15 +148,17 @@ export class PluginLoader {
       );
       return inFlight;
     }
-    const tracked: Promise<void> = this.runLoad(installPath, manifest).finally(
-      () => {
-        // Identity check for the same reason `pendingTeardowns` has one (3c-2b, M3):
-        // a later load must not have its entry deleted by an earlier one finishing.
-        if (this.inFlightLoads.get(manifest.id) === tracked) {
-          this.inFlightLoads.delete(manifest.id);
-        }
-      },
-    );
+    const tracked: Promise<void> = this.runLoad(
+      installPath,
+      manifest,
+      opts,
+    ).finally(() => {
+      // Identity check for the same reason `pendingTeardowns` has one (3c-2b, M3):
+      // a later load must not have its entry deleted by an earlier one finishing.
+      if (this.inFlightLoads.get(manifest.id) === tracked) {
+        this.inFlightLoads.delete(manifest.id);
+      }
+    });
     this.inFlightLoads.set(manifest.id, tracked);
     return tracked;
   }
@@ -163,9 +167,10 @@ export class PluginLoader {
   async reloadPlugin(
     installPath: string,
     manifest: PluginManifest,
+    opts: LoadOptions = {},
   ): Promise<void> {
     await this.unloadPlugin(manifest.id);
-    await this.loadPlugin(installPath, manifest);
+    await this.loadPlugin(installPath, manifest, opts);
   }
 
   /** Update the editor instance for plugin editor API */
@@ -270,13 +275,6 @@ export class PluginLoader {
     installPath: string,
     manifest: PluginManifest,
   ): Promise<void> {
-    // Belt-and-suspenders over arePluginsEnabled: never create a sandbox webview
-    // in a packaged build (release gate lifts in Phase 5).
-    if (!isSandboxRuntimeAllowed()) {
-      throw new Error(
-        `Plugin ${manifest.id}: sandbox runtime is gated off in this build (#260 Phase 5).`,
-      );
-    }
     // §260 3c-2b — a teardown from a previous load may still be in flight (its
     // `deregister` outlived `unloadPlugin`'s wait). Register only after it lands, or
     // it revokes the grant we are about to make and the new sandbox's connect fails
@@ -450,20 +448,33 @@ export class PluginLoader {
 
   private async runLoad(
     installPath: string,
-    manifest: PluginManifest,
+    rawManifest: PluginManifest,
+    opts: LoadOptions,
   ): Promise<void> {
-    if (this.loaded.has(manifest.id)) {
-      logger.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
+    if (this.loaded.has(rawManifest.id)) {
+      logger.warn(`[PluginLoader] Plugin ${rawManifest.id} is already loaded`);
       return;
     }
 
     // 1. Validate manifest
-    const validation = validateManifest(manifest);
+    const validation = validateManifest(rawManifest);
     if (!validation.valid) {
       throw new Error(
-        `Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+        `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
     }
+
+    // §260 Phase 5 code review (H3) — narrow ONCE, here, so every consumer downstream
+    // sees the same list: the Rust grant, the host-side capability gates, the declared
+    // status-bar check and the trusted tier's ExtensionContext. Six call sites each read
+    // `manifest.capabilities` independently, and patching them one by one is how a grant
+    // and the gate that is supposed to bound it come to disagree.
+    //
+    // Without this the consent record was install-time UX only: the cross-check proves
+    // manifest ⊆ consent when the ZIP lands, and after that the file on disk is sole
+    // authority. Anything editing `baram-plugin.json` later escalated on the next start,
+    // silently.
+    const manifest = narrowToConsent(rawManifest, opts);
 
     // §260 — route by trust tier. `validateManifest` above already rejects a
     // legacy (trust-less) manifest ("trust is required …"), which the install UI
@@ -670,6 +681,83 @@ export class PluginLoader {
 function activeFilePath(): null | string {
   const { activeTabId, tabs } = useEditorStore.getState();
   return tabs.find((t) => t.id === activeTabId)?.filePath ?? null;
+}
+
+/**
+ * The manifest bounded by what the user approved: capabilities narrowed, and a TIER
+ * escalation refused outright.
+ *
+ * Returns the SAME object when nothing changed, so the common path allocates nothing and
+ * an identity comparison in a test means what it looks like.
+ *
+ * Reads the consent from the store rather than taking it as an argument: `loadPlugin` has
+ * four callers (startup, install, enable-toggle, dev reload) and threading it through all
+ * of them is four chances for one to pass nothing and quietly restore the old behaviour.
+ *
+ * ‼️ The tier is REFUSED rather than narrowed (§260 Phase 5 re-review, R1), and that
+ * asymmetry is the point. A capability can be withheld and the plugin still runs with
+ * less; a tier decides WHICH REALM runs the code, and there is no "less" to fall back to.
+ * It also matters more: the capability half is what Rust brokers anyway, while
+ * `sandboxed` → `trusted` escapes the broker entirely and lands in a realm where the
+ * narrowed capability list is not a boundary at all (see `extension-context.ts`).
+ * `consentGaps` already calls that transition an escalation — this is `runLoad` asking.
+ */
+function narrowToConsent(
+  manifest: PluginManifest,
+  opts: LoadOptions,
+): PluginManifest {
+  const consent = resolveConsent(manifest.id, opts);
+  if (!consent) return manifest;
+
+  if (consent.trust !== "trusted" && pluginTrustOf(manifest) === "trusted") {
+    throw new Error(
+      `Plugin ${manifest.id} now declares trust "trusted", but it was approved as ` +
+        `"${consent.trust}". A trusted plugin runs inside Baram with no sandbox, so it ` +
+        `cannot be granted that without asking again — reinstall it to review the change.`,
+    );
+  }
+
+  const granted = grantableCapabilities(manifest, consent);
+  if (granted.length === manifest.capabilities.length) return manifest;
+
+  const dropped = manifest.capabilities.filter((c) => !granted.includes(c));
+  logger.warn(
+    `[PluginLoader] ${manifest.id}: withholding ${dropped.join(", ")} — the installed ` +
+      `manifest asks for more than was approved at install. Reinstall to re-approve.`,
+  );
+  return { ...manifest, capabilities: granted };
+}
+
+/**
+ * The consent recorded for an INSTALLED plugin, or `undefined` for a dev-folder load.
+ *
+ * §260 Phase 5 re-review — dev-ness is DECLARED by the caller, never inferred from the
+ * store, and that has now been the source of the same bug three times over:
+ *
+ * - R2: keying on the id alone narrowed an author's working copy to an installed
+ *   plugin's consent, because a dev folder and an installed plugin may share an id and
+ *   `plugin-lifecycle` deliberately lets the dev copy win.
+ * - F1: keying on "does a dev entry exist for this id" then WIDENED the installed
+ *   plugin, because `handleToggleEnabled` loads the installed record and a colliding dev
+ *   entry made it take the dev branch.
+ * - G1: keying on `devPlugins[id].installPath` still missed the FIRST load of a picked
+ *   folder, because `PluginDeveloperSection` calls `loadPlugin` BEFORE `addDevPlugin` —
+ *   deliberately, so a failing load leaves no card — so the entry does not exist yet.
+ *   With an installed plugin of the same id, a freshly picked folder either silently
+ *   lost capabilities or, for a `trusted` manifest, refused to load at all with a
+ *   message telling the author to reinstall a directory they had just selected.
+ *
+ * Every one of those was store state disagreeing with the load actually in progress.
+ * The caller always knows which registry it is loading from; nothing else reliably does.
+ * This also drops the `installPath` string comparison, which depended on Rust returning a
+ * byte-identical path for the same folder every time.
+ */
+function resolveConsent(
+  pluginId: string,
+  opts: LoadOptions,
+): PluginConsent | undefined {
+  if (opts.isDev) return undefined;
+  return usePluginStore.getState().installedPlugins[pluginId]?.consent;
 }
 
 /**

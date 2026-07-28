@@ -58,6 +58,13 @@ export interface FilesAPI {
 }
 export interface InstalledPlugin {
     checksum: string;
+    /**
+     * §260 Phase 5 — the (trust, capabilities) the user approved at install, kept so a
+     * later version can be compared against what was actually agreed to rather than
+     * against the manifest that shipped with it. Absent for dev-folder plugins (choosing
+     * a directory is its own deliberate act) and for records written before Phase 5.
+     */
+    consent?: PluginConsent;
     enabled: boolean;
     installedAt: number;
     installPath: string;
@@ -83,6 +90,15 @@ export interface NetworkAPI {
     fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 }
 export type PluginCapability = "ai" | "commands" | "editor" | "editor:readonly" | "events" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
+/**
+ * §260 Phase 5 — a snapshot of what the user approved, taken at the moment they
+ * approved it. Compared against a later version's request by `plugin-consent.ts`.
+ */
+export interface PluginConsent {
+    /** Exactly what was shown, so a later diff is against the displayed list. */
+    capabilities: PluginCapability[];
+    trust: PluginTrust;
+}
 /**
  * §260 declarative contribution surface for sandboxed plugins. Populated in
  * the manifest; consumed by the sandbox runtime in later phases. Every field

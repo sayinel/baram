@@ -3,8 +3,8 @@
 // Deliberately implemented AGAINST the public plugin API (ExtensionContext)
 // rather than as core components: it exercises the "viewer" extension point
 // end-to-end and doubles as the reference for third-party viewer plugins.
-// Compiled into the app as trusted code — it ships (and loads) in release
-// builds where EXTERNAL plugin loading stays gated by §259.
+// Compiled into the app as trusted code — it ships and loads in every build, because
+// it IS app code rather than something installed.
 //
 // Rendering: an <img> pointed at ctx.assetUrl. Raster images and SVG both
 // render vector/bitmap-correct, and SVG stays sharp at any zoom. Base width
