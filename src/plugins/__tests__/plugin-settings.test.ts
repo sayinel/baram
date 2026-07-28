@@ -5,6 +5,7 @@ import type { PluginSettingField } from "../types";
 import { describe, expect, it } from "vitest";
 
 import {
+  declaredSettingsFor,
   MAX_SETTING_VALUE_CHARS,
   resolvePluginSettings,
   sanitizeSettingLabel,
@@ -107,6 +108,46 @@ describe("resolvePluginSettings", () => {
 
   it("resolves nothing when nothing is declared", () => {
     expect(resolvePluginSettings(undefined, { stray: 1 })).toEqual({});
+  });
+});
+
+describe("declaredSettingsFor", () => {
+  const withFields = (settings: unknown, capabilities = ["settings"]) =>
+    declaredSettingsFor({
+      capabilities,
+      contributions: { settings },
+    } as never);
+
+  it("returns the declared fields when the capability is held", () => {
+    expect(withFields(declared)).toEqual(declared);
+    expect(withFields(declared, ["commands"])).toEqual([]);
+  });
+
+  it("skips a field the CURRENT validator would reject", () => {
+    // The manifest here comes from the STORE, which outlives the validator that admitted
+    // it: a plugin installed before a field's rule existed keeps its record in
+    // `installedPlugins` even when the load now fails, and the form reads that record.
+    // `"settings": [{}]` used to render a row labelled `undefined` writing to the key
+    // `"undefined"`.
+    expect(
+      withFields([
+        {},
+        { key: "", label: "empty", type: "string" },
+        { key: "ok", label: "Ok", type: "string" },
+        { key: "weird", label: "Weird", type: "object" },
+      ]),
+    ).toEqual([{ key: "ok", label: "Ok", type: "string" }]);
+  });
+
+  it("keeps the FIRST of two fields sharing a key", () => {
+    // Two controls driving one value is what the duplicate-key validation prevents at
+    // install; a record written before that rule can still hold one.
+    expect(
+      withFields([
+        { default: 1, key: "n", label: "First", type: "number" },
+        { default: 2, key: "n", label: "Second", type: "number" },
+      ]),
+    ).toEqual([{ default: 1, key: "n", label: "First", type: "number" }]);
   });
 });
 

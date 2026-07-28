@@ -14,6 +14,7 @@ import type {
 } from "./types";
 
 import { sanitizePluginText } from "./plugin-text";
+import { SETTING_TYPES } from "./types";
 
 /**
  * How many fields one plugin may declare, and how long a string value may be.
@@ -36,12 +37,26 @@ export const MAX_SETTING_VALUE_CHARS = 512;
  * a value the user set requires the same grant as asking for it. Silent — an ignored
  * decoration should not stop a plugin whose commands are fine — and one function rather
  * than three checks, so the form cannot show a field the plugin will never be told about.
+ *
+ * ‼️ Malformed fields are SKIPPED rather than trusted, for the same reason the resolver
+ * distrusts a persisted value: the manifest this reads comes from the STORE, which outlives
+ * the validator that admitted it. `validateManifest` runs on every load path, but a plugin
+ * installed before a field's rule existed keeps its record in `installedPlugins` even when
+ * the load now fails — and the form reads that record. Without this, `"settings": [{}]`
+ * from an older install rendered a row labelled `undefined` writing to the key `"undefined"`.
  */
 export function declaredSettingsFor(
   manifest: Pick<PluginManifest, "capabilities" | "contributions">,
 ): PluginSettingField[] {
   if (!manifest.capabilities.includes("settings")) return [];
-  return manifest.contributions?.settings ?? [];
+  const seen = new Set<string>();
+  return (manifest.contributions?.settings ?? []).filter((field) => {
+    if (!isUsableField(field) || seen.has(field.key)) return false;
+    // First occurrence wins. Two fields with one key would render two controls driving the
+    // same value, which is what the duplicate-key validation exists to prevent at install.
+    seen.add(field.key);
+    return true;
+  });
 }
 
 /**
@@ -109,6 +124,20 @@ function coerce(
     return (value as string).slice(0, MAX_SETTING_VALUE_CHARS);
   }
   return value as PluginSettingValue;
+}
+
+/**
+ * Enough of a field to render and to resolve: a non-empty string key and a type the
+ * resolver knows. `label` is not required here — a missing one renders as an empty label,
+ * which is ugly but honest, whereas dropping the field would hide a control the plugin
+ * still reads.
+ */
+function isUsableField(field: PluginSettingField): boolean {
+  return (
+    typeof field?.key === "string" &&
+    field.key.length > 0 &&
+    SETTING_TYPES.includes(field.type)
+  );
 }
 
 function resolveOne(
