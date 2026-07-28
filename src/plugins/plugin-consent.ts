@@ -17,6 +17,21 @@ interface CapabilityRequest {
 }
 
 /**
+ * Does this consent already cover one capability?
+ *
+ * Exported for the dialog's "NEW" marker, which must agree with `consentGaps` rather
+ * than re-deriving coverage: an update narrowing `files` to `files:readonly` raises no
+ * gap, so presenting it as newly requested would contradict the same screen's own
+ * decision not to block.
+ */
+export function consentCovers(
+  consented: PluginConsent,
+  capability: PluginCapability,
+): boolean {
+  return isCovered(capability, new Set(consented.capabilities));
+}
+
+/**
  * Every way `next` exceeds what was consented to, phrased for a user-facing error.
  * Empty means covered.
  */

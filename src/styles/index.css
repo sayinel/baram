@@ -40,5 +40,8 @@
 @import "./graph.css";
 @import "./panels.css";
 
-/* 12. Remaining components */
+/* 12. Plugins */
+@import "./plugins.css";
+
+/* 13. Remaining components */
 @import "./components.css";
