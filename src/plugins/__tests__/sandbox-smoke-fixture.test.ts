@@ -68,9 +68,31 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
       // it reports; without them the fixture is back to throwing to be heard.
       "events",
       "files:readonly",
+      // §260 Phase 4c — without it the declared fields render nowhere and `getAll`
+      // refuses, so the `set✓` check would be testing the refusal instead.
+      "settings",
       "statusbar",
       "storage",
     ]);
+  });
+
+  it("declares the settings fields its `set` check asserts", () => {
+    // §260 Phase 4c — the fixture asserts the exact key set and each value's type, so a
+    // manifest that drifts from the code turns a real check into a failing one for the
+    // wrong reason. Both halves are pinned here.
+    const fields = manifest.contributions?.settings ?? [];
+    expect(fields.map((f) => f.key).sort()).toEqual([
+      "compact",
+      "depth",
+      "prefix",
+    ]);
+    expect(fields.map((f) => f.type).sort()).toEqual([
+      "boolean",
+      "number",
+      "string",
+    ]);
+    const source = readFileSync(resolve(dir, manifest.main), "utf8");
+    expect(source).toContain('if (keys !== "compact,depth,prefix")');
   });
 
   it("declares the status-bar items it addresses at runtime", () => {

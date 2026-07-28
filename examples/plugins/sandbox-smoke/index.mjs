@@ -50,6 +50,36 @@ export async function activate(ctx) {
     events += 1;
   });
 
+  // §260 Phase 4c — settings. The notification carries NO values (they would otherwise
+  // ride a frame into tauri's shared channel-data queue), so the only way to see a change
+  // is to read again — which is exactly what the live smoke has to prove. The status item
+  // updates on every change, so editing a field in the plugin's detail view is visible
+  // without running a command.
+  let settingsChanges = 0;
+  const showSettings = async (why) => {
+    try {
+      const values = await ctx.settings.getAll();
+      ctx.ui.setStatusBarText(
+        "file",
+        `⚙ ${String(values.prefix)}${String(values.depth)}${values.compact ? "+" : "-"} ${why}`,
+      );
+    } catch (e) {
+      ctx.ui.setStatusBarText("file", `⚙ ✗${brief(e)}`);
+    }
+  };
+  ctx.events.on("settings:changed", (...args) => {
+    settingsChanges += 1;
+    // The frame must be payload-free: anything here would mean the values took the push
+    // direction after all.
+    if (args.length > 0) {
+      ctx.ui.showNotification(
+        `settings:changed carried a payload (${args.length})`,
+        "error",
+      );
+    }
+    void showSettings(`x${settingsChanges}`);
+  });
+
   /**
    * Report through the host: the full line as a transient toast, a SHORT summary in the
    * persistent status item.
@@ -190,7 +220,21 @@ export async function activate(ctx) {
       ),
     );
 
-    // 11. A status-bar item this plugin did NOT declare must be refused. The refusal is
+    // 11. settings — the DECLARED fields, with whatever the user set, pulled through the
+    //     staged slot. Three properties in one check: every declared key is present, each
+    //     value has its declared type, and nothing undeclared comes back.
+    out.push(
+      await expectOk("set", async () => {
+        const values = await ctx.settings.getAll();
+        const keys = Object.keys(values).sort().join(",");
+        if (keys !== "compact,depth,prefix") throw new Error(`keys=${keys}`);
+        const types = `${typeof values.compact}/${typeof values.depth}/${typeof values.prefix}`;
+        if (types !== "boolean/number/string") throw new Error(types);
+        return `(${String(values.prefix)}${values.depth}${values.compact ? "+" : "-"} x${settingsChanges})`;
+      }),
+    );
+
+    // 12. A status-bar item this plugin did NOT declare must be refused. The refusal is
     //    host-side and this API is void, so it shows up in the sandbox console — the
     //    check here is only that calling it does not break the command.
     ctx.ui.setStatusBarText("not-declared", "should not appear");

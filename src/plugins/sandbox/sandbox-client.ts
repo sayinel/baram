@@ -187,7 +187,7 @@ export function startSandboxClient(
   /**
    * §260 Phase 4c — a broker result that Rust encoded as a JSON STRING, parsed back.
    *
-   * Every op whose natural result is a list or an object goes through `scalar_result` on
+   * Every op whose natural result is a list or an object is built with `BrokerResult` on
    * the Rust side, because tauri routes a channel payload into its app-global queue only
    * when the payload is ≥8 KiB **and** its JSON starts with `{` or `[`. A JSON string can
    * never meet the second half, so the disclosure is closed by the SHAPE rather than by a

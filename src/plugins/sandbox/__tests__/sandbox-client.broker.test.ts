@@ -86,7 +86,7 @@ describe("startSandboxClient broker (§260 storage/network)", () => {
   });
 
   it("names the op when a broker result is not the encoded string", async () => {
-    // A future Rust arm that forgets `scalar_result` would otherwise surface as an
+    // A future Rust arm that answered with a raw array would otherwise surface as an
     // unreadable `JSON.parse` failure from inside the sandbox.
     const { host, sandbox } = createChannelPair();
     let error: unknown;

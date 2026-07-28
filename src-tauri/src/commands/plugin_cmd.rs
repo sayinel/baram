@@ -1019,7 +1019,7 @@ fn takes_the_shared_queue(value: &serde_json::Value) -> bool {
 /// enough to enter that shared queue.
 ///
 /// ‼️ As of Phase 4c nothing should ever trip this: every arm that returns a list or an
-/// object goes through `scalar_result`, and a JSON string cannot satisfy the `{`/`[` half
+/// object is built with `BrokerResult`, and a JSON string cannot satisfy the `{`/`[` half
 /// of tauri's condition. It is kept as the BACKSTOP for the next arm — a future op that
 /// returns `json!(something)` directly would be the disclosure all over again, and this is
 /// what says so at the moment it happens rather than at the next security review.
@@ -1039,7 +1039,7 @@ fn warn_if_result_enters_the_shared_queue(value: &serde_json::Value) {
             "[plugin] a plugin_call result exceeds tauri's {CHANNEL_QUEUE_THRESHOLD}-byte \
              direct-eval threshold and is a JSON array/object, so it is staged in the \
              app-global channel-data queue that FETCH_CHANNEL_DATA_COMMAND exposes to \
-             any webview. Return it through `scalar_result` (§260 Phase 4c) — a JSON \
+             any webview. Build it with `BrokerResult::encoded` (§260 Phase 4c) — a JSON \
              string cannot enter that queue."
         );
     }
@@ -1331,7 +1331,7 @@ mod tests {
 
     /// §260 Phase 4c — the list-shaped ops cannot enter the shared queue either.
     ///
-    /// Through `scalar_result`, the function the arms actually call (the I1 lesson: a test
+    /// Through `BrokerResult::encoded`, the constructor the arms call (the I1 lesson: a test
     /// that rebuilds the expression proves nothing about the arm). The fixtures are the two
     /// shapes that used to be queue-bound in ordinary use — a directory listing of a few
     /// hundred notes, and an HTTP response body.

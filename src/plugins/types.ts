@@ -341,12 +341,6 @@ export interface SandboxFilesAPI {
 }
 
 /**
- * §260 Phase 4a — the sandboxed tier's UI surface: no DOM, no CSS, no element handle.
- * Everything here is data the host renders on the plugin's behalf, which is why it can
- * be offered to code the app does not trust. Arbitrary-DOM panels and injected styles
- * remain trusted-tier only (see `UIAPI`).
- */
-/**
  * §260 Phase 4c — the sandboxed tier's settings surface: read-only, and asynchronous
  * because the values live in the main realm.
  *
@@ -366,6 +360,12 @@ export interface SandboxSettingsAPI {
   getAll(): Promise<Record<string, PluginSettingValue>>;
 }
 
+/**
+ * §260 Phase 4a — the sandboxed tier's UI surface: no DOM, no CSS, no element handle.
+ * Everything here is data the host renders on the plugin's behalf, which is why it can
+ * be offered to code the app does not trust. Arbitrary-DOM panels and injected styles
+ * remain trusted-tier only (see `UIAPI`).
+ */
 export interface SandboxUIAPI {
   /**
    * Update one status-bar item this plugin DECLARED in `contributions.statusBar`. The
