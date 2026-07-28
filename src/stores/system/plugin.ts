@@ -1,4 +1,9 @@
-import type { InstalledPlugin, RegistryIndex } from "../../plugins/types";
+import type {
+  InstalledPlugin,
+  PluginCapability,
+  PluginConsent,
+  RegistryIndex,
+} from "../../plugins/types";
 
 // §69 Plugin Marketplace — Plugin State Store
 import { create } from "zustand";
@@ -51,9 +56,14 @@ export const OLD_DEFAULT_REGISTRY_URL =
 /**
  * v1 -> v2: rewrite a persisted `registryUrl` that still points at the dead
  * baram-community registry to the live DEFAULT_REGISTRY_URL. Any other value
- * (including custom registry URLs) is preserved unchanged. Defensive against
- * malformed/missing persisted state — returns it untouched rather than
- * throwing, matching Zustand's expectation that migrate never throws.
+ * (including custom registry URLs) is preserved unchanged.
+ *
+ * v2 -> v3: §260 Phase 5 — give every installed plugin the consent record the
+ * install flow now writes.
+ *
+ * Defensive against malformed/missing persisted state at every step — returns it
+ * untouched rather than throwing, matching Zustand's expectation that migrate never
+ * throws.
  */
 export function migratePluginPersistedState(
   persisted: unknown,
@@ -69,7 +79,50 @@ export function migratePluginPersistedState(
     state.registryUrl = DEFAULT_REGISTRY_URL;
   }
 
+  if (version < 3) {
+    backfillConsent(state.installedPlugins);
+  }
+
   return state;
+}
+
+/**
+ * §260 Phase 5 — synthesise `consent` for records installed before the consent step.
+ *
+ * Using the installed manifest as the baseline is honest rather than merely convenient:
+ * these records went through the old capability confirm, and they can only exist in a
+ * dev build at all, because release had plugins gated off (#259). Inventing a wider
+ * consent would silence a real escalation; inventing a narrower one would prompt on
+ * every update.
+ *
+ * A legacy (trust-less) manifest is skipped deliberately. There is no tier to record,
+ * and `validateManifest` refuses to load it anyway, so "never consented" is both true
+ * and the safe default — the next update asks.
+ */
+function backfillConsent(installedPlugins: unknown): void {
+  if (installedPlugins === null || typeof installedPlugins !== "object") return;
+
+  for (const entry of Object.values(
+    installedPlugins as Record<string, unknown>,
+  )) {
+    if (entry === null || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    if (record.consent !== undefined) continue;
+
+    const manifest = record.manifest as
+      undefined | { capabilities?: unknown; trust?: unknown };
+    const trust = manifest?.trust;
+    if (trust !== "sandboxed" && trust !== "trusted") continue;
+
+    record.consent = {
+      // Copied, not aliased: the consent is the fixed record of what the user agreed
+      // to, so a later manifest rewrite must not reach through and edit it.
+      capabilities: Array.isArray(manifest?.capabilities)
+        ? [...(manifest.capabilities as PluginCapability[])]
+        : [],
+      trust,
+    } satisfies PluginConsent;
+  }
 }
 
 /** Remove a key from an object, returning a new object without it */
@@ -214,7 +267,7 @@ export const usePluginStore = create<PluginState>()(
         pluginSettings: state.pluginSettings,
         registryUrl: state.registryUrl,
       }),
-      version: 2,
+      version: 3,
       migrate: migratePluginPersistedState,
     },
   ),
