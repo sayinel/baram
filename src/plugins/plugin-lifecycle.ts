@@ -126,9 +126,13 @@ export async function initializePlugins(): Promise<void> {
             logger.warn(
               `[PluginLifecycle] dev plugin ${p.manifest.id} overrides installed`,
             );
-            await pluginLoader.reloadPlugin(p.installPath, p.manifest);
+            await pluginLoader.reloadPlugin(p.installPath, p.manifest, {
+              isDev: true,
+            });
           } else {
-            await pluginLoader.loadPlugin(p.installPath, p.manifest);
+            await pluginLoader.loadPlugin(p.installPath, p.manifest, {
+              isDev: true,
+            });
           }
           // Clear any failure from a previous run: the store is persisted, so
           // without this a one-off startup error outlives the run that caused it.

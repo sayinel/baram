@@ -198,23 +198,12 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     expect(importer).toHaveBeenCalledTimes(1);
   });
 
-  it("lets a DEV folder override an installed plugin's consent, id collision and all", async () => {
+  it("lets a DEV load override an installed plugin's consent, id collision and all", async () => {
     // §260 Phase 5 re-review (R2) — `plugin-lifecycle` deliberately lets a dev copy
-    // override an installed plugin of the same id, so keying the consent lookup on the id
-    // alone narrowed an author's working copy to the installed version's grant and told
-    // them to "reinstall to re-approve" a folder.
+    // override an installed plugin of the same id, so applying the installed version's
+    // consent to the author's working copy narrowed it and told them to "reinstall to
+    // re-approve" a folder.
     usePluginStore.setState({
-      devPlugins: {
-        demo: {
-          checksum: "",
-          enabled: true,
-          installedAt: 0,
-          installPath: "/dev/demo",
-          isDev: true,
-          manifest: BASE,
-          updatedAt: 0,
-        },
-      },
       installedPlugins: {
         demo: {
           checksum: "c",
@@ -229,16 +218,84 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     });
     const { loader } = loaderWithSpies();
 
-    await loader.loadPlugin("/dev/demo", {
-      ...BASE,
-      capabilities: ["editor", "network"],
-    });
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["editor", "network"] },
+      { isDev: true },
+    );
 
     expect(registerGrant).toHaveBeenCalledWith(
       "demo",
       ["editor", "network"],
       "/dev/demo",
     );
+  });
+
+  it("holds on the FIRST dev load, when the dev store has not been written yet", async () => {
+    // §260 Phase 5 re-review (G1) — the state the UI actually produces. `handleLoad` calls
+    // `loadPlugin` BEFORE `addDevPlugin` (deliberately: a failing load must leave no card),
+    // so `devPlugins` is EMPTY at load time. Inferring dev-ness from the store therefore
+    // fell through to the installed plugin's consent, and a freshly picked folder either
+    // silently lost capabilities or — for a `trusted` manifest — refused to load with a
+    // message telling the author to reinstall a directory they had just selected.
+    //
+    // Both earlier mirror tests seeded `devPlugins` first, which is exactly why they missed
+    // this. `isDev` is declared by the caller now, so the store is not consulted at all.
+    usePluginStore.setState({
+      devPlugins: {},
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["editor", "network"] },
+      { isDev: true },
+    );
+
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["editor", "network"],
+      "/dev/demo",
+    );
+  });
+
+  it("does not refuse a trusted dev manifest because an installed copy was sandboxed", async () => {
+    // The tier variant of G1, which is worse than the capability one: it made the dev
+    // folder fail to load outright.
+    usePluginStore.setState({
+      devPlugins: {},
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { importer, loader } = loaderWithSpies();
+
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, trust: "trusted" },
+      { isDev: true },
+    );
+
+    expect(importer).toHaveBeenCalledTimes(1);
   });
 
   it("still narrows the INSTALLED plugin when a dev folder shares its id", async () => {
@@ -324,10 +381,11 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     usePluginStore.setState({ installedPlugins: {} });
     const { loader } = loaderWithSpies();
 
-    await loader.loadPlugin("/dev/demo", {
-      ...BASE,
-      capabilities: ["editor", "network"],
-    });
+    await loader.loadPlugin(
+      "/dev/demo",
+      { ...BASE, capabilities: ["editor", "network"] },
+      { isDev: true },
+    );
 
     expect(registerGrant).toHaveBeenCalledWith(
       "demo",

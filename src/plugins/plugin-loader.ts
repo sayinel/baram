@@ -53,6 +53,16 @@ const TEARDOWN_TIMEOUT = 5000;
 
 type Importer = (url: string) => Promise<PluginModule>;
 
+/**
+ * What the CALLER knows about a load that the store cannot be asked for.
+ *
+ * `isDev` marks a dev-folder load. It is a parameter rather than a store lookup because
+ * the store is written *after* the load on the first-load path — see `resolveConsent`.
+ */
+interface LoadOptions {
+  isDev?: boolean;
+}
+
 export class PluginLoader {
   private readonly importer: Importer;
   /**
@@ -129,6 +139,7 @@ export class PluginLoader {
   async loadPlugin(
     installPath: string,
     manifest: PluginManifest,
+    opts: LoadOptions = {},
   ): Promise<void> {
     const inFlight = this.inFlightLoads.get(manifest.id);
     if (inFlight) {
@@ -137,15 +148,17 @@ export class PluginLoader {
       );
       return inFlight;
     }
-    const tracked: Promise<void> = this.runLoad(installPath, manifest).finally(
-      () => {
-        // Identity check for the same reason `pendingTeardowns` has one (3c-2b, M3):
-        // a later load must not have its entry deleted by an earlier one finishing.
-        if (this.inFlightLoads.get(manifest.id) === tracked) {
-          this.inFlightLoads.delete(manifest.id);
-        }
-      },
-    );
+    const tracked: Promise<void> = this.runLoad(
+      installPath,
+      manifest,
+      opts,
+    ).finally(() => {
+      // Identity check for the same reason `pendingTeardowns` has one (3c-2b, M3):
+      // a later load must not have its entry deleted by an earlier one finishing.
+      if (this.inFlightLoads.get(manifest.id) === tracked) {
+        this.inFlightLoads.delete(manifest.id);
+      }
+    });
     this.inFlightLoads.set(manifest.id, tracked);
     return tracked;
   }
@@ -154,9 +167,10 @@ export class PluginLoader {
   async reloadPlugin(
     installPath: string,
     manifest: PluginManifest,
+    opts: LoadOptions = {},
   ): Promise<void> {
     await this.unloadPlugin(manifest.id);
-    await this.loadPlugin(installPath, manifest);
+    await this.loadPlugin(installPath, manifest, opts);
   }
 
   /** Update the editor instance for plugin editor API */
@@ -435,6 +449,7 @@ export class PluginLoader {
   private async runLoad(
     installPath: string,
     rawManifest: PluginManifest,
+    opts: LoadOptions,
   ): Promise<void> {
     if (this.loaded.has(rawManifest.id)) {
       logger.warn(`[PluginLoader] Plugin ${rawManifest.id} is already loaded`);
@@ -459,7 +474,7 @@ export class PluginLoader {
     // manifest ⊆ consent when the ZIP lands, and after that the file on disk is sole
     // authority. Anything editing `baram-plugin.json` later escalated on the next start,
     // silently.
-    const manifest = narrowToConsent(rawManifest, installPath);
+    const manifest = narrowToConsent(rawManifest, opts);
 
     // §260 — route by trust tier. `validateManifest` above already rejects a
     // legacy (trust-less) manifest ("trust is required …"), which the install UI
@@ -689,9 +704,9 @@ function activeFilePath(): null | string {
  */
 function narrowToConsent(
   manifest: PluginManifest,
-  installPath: string,
+  opts: LoadOptions,
 ): PluginManifest {
-  const consent = resolveConsent(manifest.id, installPath);
+  const consent = resolveConsent(manifest.id, opts);
   if (!consent) return manifest;
 
   if (consent.trust !== "trusted" && pluginTrustOf(manifest) === "trusted") {
@@ -714,28 +729,35 @@ function narrowToConsent(
 }
 
 /**
- * The consent recorded for an INSTALLED plugin, or `undefined` for anything else.
+ * The consent recorded for an INSTALLED plugin, or `undefined` for a dev-folder load.
  *
- * §260 Phase 5 re-review (R2) — a dev folder and an installed plugin can share an id, and
- * `plugin-lifecycle` deliberately lets the dev copy override the installed one
- * ("dev plugin … overrides installed"). Keying on the id alone therefore narrowed an
- * author's working copy to the installed version's consent and told them to "reinstall to
- * re-approve" a folder. The dev registry wins here for the same reason it wins there.
+ * §260 Phase 5 re-review — dev-ness is DECLARED by the caller, never inferred from the
+ * store, and that has now been the source of the same bug three times over:
+ *
+ * - R2: keying on the id alone narrowed an author's working copy to an installed
+ *   plugin's consent, because a dev folder and an installed plugin may share an id and
+ *   `plugin-lifecycle` deliberately lets the dev copy win.
+ * - F1: keying on "does a dev entry exist for this id" then WIDENED the installed
+ *   plugin, because `handleToggleEnabled` loads the installed record and a colliding dev
+ *   entry made it take the dev branch.
+ * - G1: keying on `devPlugins[id].installPath` still missed the FIRST load of a picked
+ *   folder, because `PluginDeveloperSection` calls `loadPlugin` BEFORE `addDevPlugin` —
+ *   deliberately, so a failing load leaves no card — so the entry does not exist yet.
+ *   With an installed plugin of the same id, a freshly picked folder either silently
+ *   lost capabilities or, for a `trusted` manifest, refused to load at all with a
+ *   message telling the author to reinstall a directory they had just selected.
+ *
+ * Every one of those was store state disagreeing with the load actually in progress.
+ * The caller always knows which registry it is loading from; nothing else reliably does.
+ * This also drops the `installPath` string comparison, which depended on Rust returning a
+ * byte-identical path for the same folder every time.
  */
 function resolveConsent(
   pluginId: string,
-  installPath: string,
+  opts: LoadOptions,
 ): PluginConsent | undefined {
-  const { devPlugins, installedPlugins } = usePluginStore.getState();
-  // ‼️ Compare the PATH, not merely whether a dev entry exists (§260 Phase 5 re-review,
-  // F1). Presence keyed on the id alone was the same mistake R2 fixed, mirrored: with a
-  // dev folder declaring `demo`, toggling the INSTALLED `demo` on also took this branch —
-  // so the installed plugin was granted its whole manifest and the tier refusal was
-  // skipped with it. The Installed tab renders that toggle whether or not a dev entry
-  // collides, and `plugin_list_dev` is not dev-gated, so a config written on an author's
-  // machine populates `devPlugins` in a release build too.
-  if (devPlugins[pluginId]?.installPath === installPath) return undefined;
-  return installedPlugins[pluginId]?.consent;
+  if (opts.isDev) return undefined;
+  return usePluginStore.getState().installedPlugins[pluginId]?.consent;
 }
 
 /**

@@ -113,6 +113,67 @@ describe("main.tsx bootstrap (§260 Phase 5)", () => {
   });
 });
 
+// §260 Phase 5 round 4 (G1) — dev-ness is a DECLARED parameter now, which trades a wrong
+// inference for a thing four call sites must remember. This is the guard for that trade.
+//
+// Windowed and count-asserted per the rule the earlier hollow guards taught: every scan
+// bounds its region and checks how many matches it found, so it cannot pass by finding
+// none or by finding one somewhere else.
+describe("dev-folder loads declare isDev (§260 Phase 5)", () => {
+  const DEV_SECTION = "components/plugins/PluginDeveloperSection.tsx";
+  const LIFECYCLE = "plugins/plugin-lifecycle.ts";
+
+  it("every load in the developer section is marked as a dev load", () => {
+    // Every load from this component is by definition a dev-folder load — there is no
+    // other kind here — so the count of calls and the count carrying `isDev` must match.
+    const calls = loaderCalls(readFileSync(join(SRC, DEV_SECTION), "utf8"));
+
+    expect(
+      calls.length,
+      "the developer section must load plugins",
+    ).toBeGreaterThan(0);
+    expect(
+      calls.filter((c) => !c.includes("isDev")),
+      "a dev load without `isDev` gets the installed plugin's consent applied to it",
+    ).toEqual([]);
+  });
+
+  it("the lifecycle's dev loop marks its loads, and its installed loop does not", () => {
+    const src = readFileSync(join(SRC, LIFECYCLE), "utf8");
+    // Window to the dev loop: it starts at the only `pluginListDev()` call.
+    const devLoopStart = src.indexOf("pluginListDev()");
+    expect(occurrences(src, "pluginListDev()"), "one dev loop").toBe(1);
+
+    const devCalls = loaderCalls(src.slice(devLoopStart));
+    expect(devCalls.length, "the dev loop must load plugins").toBeGreaterThan(
+      0,
+    );
+    expect(
+      devCalls.filter((c) => !c.includes("isDev")),
+      "a dev load without `isDev` gets the installed plugin's consent applied to it",
+    ).toEqual([]);
+
+    // …and the installed auto-load, which runs BEFORE the dev loop, must NOT claim to be
+    // a dev load — that would widen it past its recorded consent.
+    const installedCalls = loaderCalls(src.slice(0, devLoopStart));
+    expect(
+      installedCalls.length,
+      "the installed loop must load plugins",
+    ).toBeGreaterThan(0);
+    expect(
+      installedCalls.filter((c) => c.includes("isDev")),
+      "an installed load marked isDev skips the consent narrowing entirely",
+    ).toEqual([]);
+  });
+});
+
+/** The text of each `pluginLoader.loadPlugin(...)` / `.reloadPlugin(...)` call in `src`. */
+function loaderCalls(src: string): string[] {
+  return [
+    ...src.matchAll(/pluginLoader\s*\n?\s*\.(?:re)?loadPlugin\(([\s\S]*?)\);/g),
+  ].map((m) => m[1]);
+}
+
 /** How many times `needle` appears in `haystack` — a literal count, not a regex. */
 function occurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;

@@ -119,6 +119,26 @@ describe("migrateFromLocalStorage (§260 Phase 5)", () => {
     expect(store.get("baram:journal-layout")).toBe('{"collapsed":{"a":true}}');
   });
 
+  it("unwraps the envelope only at the top level", async () => {
+    // §260 Phase 5 round 4 (G2) — a store whose own state contains a key named `state`
+    // must not have its siblings ignored. Unwrapping at any depth judged this degenerate,
+    // which would fall through and overwrite the real config value.
+    localStorage.setItem(
+      "baram:journal-layout",
+      '{"collapsed":{"stale":true}}',
+    );
+    store.set(
+      "baram:journal-layout",
+      '{"state":{"state":{},"realData":{"a":1}}}',
+    );
+
+    await migrateFromLocalStorage();
+
+    expect(store.get("baram:journal-layout")).toBe(
+      '{"state":{"state":{},"realData":{"a":1}}}',
+    );
+  });
+
   it("does not treat a POPULATED persist envelope as degenerate", async () => {
     // The other side: `version` must not make an envelope look empty, and real state
     // inside one must win.

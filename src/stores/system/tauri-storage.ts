@@ -106,17 +106,26 @@ export async function migrateFromLocalStorage(): Promise<void> {
  * degenerate — which is what `{state: {collapsed: {}}, version: 0}` reduces to.
  *
  * Depth-bounded rather than freely recursive: this reads a value off disk and runs before
- * the app has rendered anything.
+ * the app has rendered anything. ‼️ Past the bound it returns `false` — "not degenerate" —
+ * which is the direction that DELETES the localStorage copy, so the margin matters: real
+ * depth for the covered keys is 3 (envelope → state → collapsed → values).
  */
 function isDegenerate(value: unknown, depth = 0): boolean {
   if (value === null) return true;
   if (depth > 4 || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.length === 0;
 
+  // The persist envelope is a TOP-LEVEL concept, so the unwrap is gated on depth
+  // (§260 Phase 5 round 4, G2). Applied at any depth, a store whose own state happened to
+  // contain a key named `state` would have its siblings ignored:
+  // `{"state":{"state":{},"realData":{…}}}` would read as degenerate and the real config
+  // value would be overwritten. Not reachable with today's four keys, but the contract
+  // should match the comment rather than rely on that.
+  //
   // `version` is persist bookkeeping, never user data, so it must not make an otherwise
-  // empty envelope look populated.
+  // empty envelope look populated — which is why the envelope branch looks at `state` alone.
   const meaningful =
-    "state" in value
+    depth === 0 && "state" in value
       ? [(value as { state: unknown }).state]
       : Object.values(value as Record<string, unknown>);
   return meaningful.every((v) => isDegenerate(v, depth + 1));
