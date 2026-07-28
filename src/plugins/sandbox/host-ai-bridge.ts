@@ -15,6 +15,7 @@
 import type { AIAPI, PluginCapability } from "../types";
 import type { SandboxHostRequest } from "./protocol";
 
+import { pluginSandboxStage } from "../../ipc/plugin-invoke";
 import { createAIAPI } from "../extension-context";
 
 /**
@@ -30,6 +31,8 @@ export interface HostRequestHandlerOptions {
   /** The grants recorded at install, as the manifest declared them. */
   capabilities: readonly PluginCapability[];
   pluginId: string;
+  /** Injectable for tests; defaults to the host-only staging command (§260 Phase 4c). */
+  stage?: (pluginId: string, payload: string) => Promise<void>;
 }
 
 /** The `ai_*` members of `SandboxHostRequest` — what this bridge answers. */
@@ -49,7 +52,12 @@ type AIRequest = Extract<SandboxHostRequest, { kind: `ai_${string}` }>;
 export function createAIRequestHandler(
   options: HostRequestHandlerOptions,
 ): (request: AIRequest, onToken: (token: string) => void) => Promise<unknown> {
-  const { aiFactory = DEFAULT_AI_FACTORY, capabilities, pluginId } = options;
+  const {
+    aiFactory = DEFAULT_AI_FACTORY,
+    capabilities,
+    pluginId,
+    stage = pluginSandboxStage,
+  } = options;
   const granted = capabilities.includes("ai");
   // Built on first use, not up front: a plugin without the grant never gets a
   // privileged object constructed for it at all.
@@ -65,9 +73,33 @@ export function createAIRequestHandler(
     }
     switch (request.kind) {
       case "ai_complete":
-        return aiApi().complete(request.prompt, request.opts);
-      case "ai_list_models":
-        return aiApi().listModels();
+        // §260 Phase 4c — STREAMED, even though the plugin asked for one string.
+        //
+        // The gap 4b deferred: an inline answer over 8 KiB enters tauri's app-global
+        // channel-data queue, which is ACL-exempt and keyed by a guessable sequential id
+        // (see `editor_get_markdown`). A completion routinely exceeds that, and the natural
+        // use of `ai` in this tier is "read the document, summarise it" — so it can carry
+        // document-derived text into the queue that staging the document just closed.
+        //
+        // Streaming rather than staging, unlike the document, because `complete` is
+        // implemented as "stream and accumulate the buffer" ONE LAYER DOWN already
+        // (`createAIAPI`), so this changes no policy and adds no state — and because a
+        // staged answer would hold the sandbox's single staged slot for the whole length of
+        // an LLM call, serialising every document read behind it. Each token rides its own
+        // small `hostStreamToken` frame; the client accumulates and returns the string, so
+        // `ctx.ai.complete` is unchanged for the plugin. It also inherits the stall timer's
+        // per-token restart, which an inline `complete` never had.
+        await aiApi().stream(request.prompt, request.opts ?? {}, onToken);
+        return undefined;
+      case "ai_list_models": {
+        // Staged, for the reason the response frame cannot carry it: a model list is a JSON
+        // ARRAY, so it satisfies the queue's `[` condition the moment a user's Ollama
+        // install pushes it past 8 KiB. Cheap to serialise here and rarely called, so
+        // holding the staged slot for it costs nothing.
+        const models = await aiApi().listModels();
+        await stage(pluginId, JSON.stringify(models));
+        return undefined;
+      }
       case "ai_stream":
         // Resolves when the stream ends; tokens have already gone out as frames.
         await aiApi().stream(request.prompt, request.opts ?? {}, onToken);

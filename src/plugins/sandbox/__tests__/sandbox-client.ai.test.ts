@@ -18,11 +18,31 @@ describe("startSandboxClient ai (§260 3c-2c)", () => {
     vi.useRealTimers();
   });
 
-  const broker = async (op: PluginOp) =>
-    op.kind === "source_read" ? "// bundle" : undefined;
+  // §260 Phase 4c — `listModels` is STAGED, so the fake Rust here has to own a slot:
+  // one payload, consumed on read, exactly like `plugin/staging.rs`.
+  let slot: null | string = null;
+  const stage = (payload: string) => {
+    slot = payload;
+  };
+  const broker = async (op: PluginOp) => {
+    if (op.kind === "source_read") return "// bundle";
+    if (op.kind === "staged_read") {
+      if (slot === null) throw new Error("nothing is staged for this plugin");
+      const payload = slot;
+      slot = null;
+      return payload;
+    }
+    return undefined;
+  };
+
+  /** Enough microtask turns for the client's staged-read chain to send its request. */
+  const flush = async () => {
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+  };
 
   /** Boots a client whose `activate` hands the context back to the test. */
   function boot() {
+    slot = null;
     const { host, sandbox } = createChannelPair();
     const requests: SandboxToHost[] = [];
     let ctx: SandboxContext | undefined;
@@ -72,7 +92,12 @@ describe("startSandboxClient ai (§260 3c-2c)", () => {
       prompt: "hello",
       opts: { maxTokens: 10 },
     });
-    // A response for a DIFFERENT id must not settle this one.
+    // §260 Phase 4c — the answer arrives as TOKEN frames and the client accumulates it;
+    // the response itself carries no text (see `host-ai-bridge`). Tokens for a different
+    // id must not join this buffer, and a response for a different id must not settle it.
+    reply({ type: "hostStreamToken", requestId: sent.requestId, token: "ans" });
+    reply({ type: "hostStreamToken", requestId: "not-mine", token: "WRONG" });
+    reply({ type: "hostStreamToken", requestId: sent.requestId, token: "wer" });
     reply({
       type: "hostResponse",
       requestId: "not-mine",
@@ -83,7 +108,7 @@ describe("startSandboxClient ai (§260 3c-2c)", () => {
       type: "hostResponse",
       requestId: sent.requestId,
       ok: true,
-      value: "answer",
+      value: undefined,
     });
     await expect(promise).resolves.toBe("answer");
   });
@@ -117,17 +142,19 @@ describe("startSandboxClient ai (§260 3c-2c)", () => {
     expect(tokens).toEqual(["a", "b"]);
   });
 
-  it("returns the model list from ai_list_models", async () => {
+  it("pulls the model list from the staged slot, not from the response", async () => {
     const { getCtx, ready, reply, requests } = boot();
     await ready;
     const promise = getCtx().ai.listModels();
-    await Promise.resolve();
+    await flush();
     const models: AIModel[] = [{ id: "m", name: "M" }];
+    // What the HOST does before it answers: park the payload, then resolve with nothing.
+    stage(JSON.stringify(models));
     reply({
       type: "hostResponse",
       requestId: (requests[0] as { requestId: string }).requestId,
       ok: true,
-      value: models,
+      value: undefined,
     });
     await expect(promise).resolves.toEqual(models);
   });

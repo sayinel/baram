@@ -1,5 +1,6 @@
 import type { AIAPI } from "../../types";
 import type { PluginOp } from "../plugin-op";
+import type { HostToSandbox } from "../protocol";
 import type { SandboxContext } from "../sandbox-client";
 
 import { describe, expect, it } from "vitest";
@@ -15,12 +16,30 @@ import { createChannelPair } from "./channel-pair";
 // live smoke. This pairs the real `SandboxSession`, the real `startSandboxClient`, and
 // the real `createHostRequestHandler`, with only the LLM itself faked.
 describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
-  const broker = async (op: PluginOp) =>
-    op.kind === "source_read" ? "// bundle" : undefined;
-
   /** Boots both halves and returns the sandbox-side context. */
   async function pair(capabilities: ("ai" | "storage")[], ai: AIAPI) {
+    // §260 Phase 4c — a staged slot, because `listModels` now pulls (a model list is a
+    // JSON array, so it enters tauri's shared queue once it is large).
+    let slot: null | string = null;
+    const broker = async (op: PluginOp) => {
+      if (op.kind === "source_read") return "// bundle";
+      if (op.kind === "staged_read") {
+        if (slot === null) throw new Error("nothing is staged for this plugin");
+        const payload = slot;
+        slot = null;
+        return payload;
+      }
+      return undefined;
+    };
     const { host, sandbox } = createChannelPair();
+    const framesToSandbox: HostToSandbox[] = [];
+    const recordingHost = {
+      ...host,
+      send: (m: HostToSandbox) => {
+        framesToSandbox.push(m);
+        host.send(m);
+      },
+    };
     let ctx: SandboxContext | undefined;
     startSandboxClient(
       sandbox,
@@ -32,22 +51,28 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
       broker,
     );
     const session = new SandboxSession(
-      host,
+      recordingHost,
       createHostRequestHandler({
         aiFactory: () => ai,
         capabilities,
         declaredSettings: [],
         declaredStatusBarIds: [],
         pluginId: "p",
+        stage: async (_pluginId, payload) => {
+          slot = payload;
+        },
       }),
     );
     await session.activate("p", { commands: [] });
     if (!ctx) throw new Error("activate did not run");
-    return { ctx, session };
+    return { ctx, framesToSandbox, session };
   }
 
   const fakeAi = (): AIAPI => ({
-    complete: async (prompt) => `completed:${prompt}`,
+    // Never reached through the sandbox: `complete` takes the STREAM path (§260 Phase 4c).
+    // Left distinguishable so a regression to the inline answer is visible rather than
+    // merely different.
+    complete: async (prompt) => `INLINE:${prompt}`,
     listModels: async () => [{ id: "m", name: "M" }],
     stream: async (prompt, _opts, onToken) => {
       onToken(`${prompt}-1`);
@@ -55,9 +80,18 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
     },
   });
 
-  it("completes across the real transport", async () => {
-    const { ctx } = await pair(["ai"], fakeAi());
-    await expect(ctx.ai.complete("hello")).resolves.toBe("completed:hello");
+  it("completes across the real transport, with no completion in any frame", async () => {
+    // §260 Phase 4c — `complete` is assembled from token frames. The answer is the same
+    // string a plugin always got; what changed is that it never rides one frame, because
+    // a frame at or above 8 KiB enters tauri's app-global channel-data queue.
+    const { ctx, framesToSandbox } = await pair(["ai"], fakeAi());
+
+    await expect(ctx.ai.complete("hello")).resolves.toBe("hello-1hello-2");
+
+    const wire = JSON.stringify(framesToSandbox);
+    expect(wire).not.toContain("INLINE:");
+    // Each token rides its own frame; none of them is the whole answer.
+    expect(wire).not.toContain("hello-1hello-2");
   });
 
   it("streams tokens across the real transport, then resolves", async () => {
@@ -67,11 +101,15 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
     expect(tokens).toEqual(["hi-1", "hi-2"]);
   });
 
-  it("lists models across the real transport", async () => {
-    const { ctx } = await pair(["ai"], fakeAi());
+  it("lists models across the real transport, through the staged pull", async () => {
+    const { ctx, framesToSandbox } = await pair(["ai"], fakeAi());
+
     await expect(ctx.ai.listModels()).resolves.toEqual([
       { id: "m", name: "M" },
     ]);
+
+    // The array itself never rides a frame — it meets the queue's `[` condition.
+    expect(JSON.stringify(framesToSandbox)).not.toContain('"id":"m"');
   });
 
   it("surfaces the capability denial to plugin code", async () => {
@@ -86,7 +124,8 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
     // listening when the answer arrives — which is what this pairing proves.
     const stalled: AIAPI = {
       ...fakeAi(),
-      complete: () => new Promise(() => {}),
+      // The STREAM path, since that is what `complete` takes now.
+      stream: () => new Promise(() => {}),
     };
     const { ctx, session } = await pair(["ai"], stalled);
     const promise = ctx.ai.complete("hello");

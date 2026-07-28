@@ -162,10 +162,23 @@ export function startSandboxClient(
   }
 
   const ai: AIAPI = {
-    complete: (prompt, opts) =>
-      hostRequest({ kind: "ai_complete", opts, prompt }) as Promise<string>,
-    listModels: () =>
-      hostRequest({ kind: "ai_list_models" }) as Promise<AIModel[]>,
+    // §260 Phase 4c — accumulated from TOKEN FRAMES, not read from the response. The host
+    // streams a completion even when the plugin asked for one string, because an inline
+    // answer over 8 KiB enters tauri's shared channel-data queue (see `host-ai-bridge`).
+    // The signature is unchanged: a plugin still awaits one string.
+    complete: async (prompt, opts) => {
+      let buffer = "";
+      await hostRequest({ kind: "ai_complete", opts, prompt }, (token) => {
+        buffer += token;
+      });
+      return buffer;
+    },
+    // Staged like the document: a model list is a JSON array, so it meets the queue's `[`
+    // condition as soon as it is large — which a user's Ollama install decides, not us.
+    listModels: async () => {
+      const { payload } = await readStaged({ kind: "ai_list_models" });
+      return JSON.parse(payload) as AIModel[];
+    },
     stream: async (prompt, opts, onToken) => {
       await hostRequest({ kind: "ai_stream", opts, prompt }, onToken);
     },
