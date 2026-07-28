@@ -22,7 +22,6 @@ import {
 } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
-import { arePluginsEnabled } from "./plugins-enabled";
 import {
   deliverSandboxEvent,
   setContextResolver,
@@ -65,19 +64,11 @@ export async function initializePlugins(): Promise<void> {
   // directory out of the sandboxed tier.
   setContextResolver(locateInContext);
 
-  // Built-in plugins load BEFORE (and regardless of) the §259 gate: that gate
-  // contains UNTRUSTED external code from disk, while built-ins are app code
-  // compiled into this bundle — the plugin API is their integration surface,
-  // not a trust boundary. Without this exemption, release builds would lose
-  // every built-in viewer.
+  // Built-ins load FIRST, and unconditionally: they are app code compiled into this
+  // bundle, so the plugin API is their integration surface rather than a trust
+  // boundary. They loaded ahead of the §259 release gate for the same reason, and
+  // keeping the order after §260 Phase 5 removed that gate costs nothing.
   await loadBuiltinPlugins();
-
-  if (!arePluginsEnabled()) {
-    logger.info(
-      "[PluginLifecycle] Plugins disabled (see #259/#260) — skipping auto-load",
-    );
-    return;
-  }
 
   // Grant asset scope for ~/.baram/plugins before any load (see Global Constraints).
   await pluginPrepareScopes().catch((err) =>

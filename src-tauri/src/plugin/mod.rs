@@ -8,20 +8,24 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use thiserror::Error;
 
-/// §259 containment — plugins execute in the app's own JS realm with no
-/// isolation, so a plugin can bypass the ExtensionContext capability layer and
-/// call privileged commands directly. Until the execution model is redesigned
-/// (#260), installing / side-loading / networking on behalf of untrusted plugin
-/// code is gated off in shipped (release) builds. Dev builds keep it enabled to
-/// continue #260 work, mirroring the frontend `VITE_ENABLE_PLUGINS` opt-in.
-pub fn plugins_runtime_enabled() -> bool {
+/// §260 Phase 5 — dev-folder side-loading stays a dev-build affordance.
+///
+/// This was `plugins_runtime_enabled`, and it also gated install, asset scopes, the
+/// network proxy and storage writes. Phase 5 opened those: the sandboxed tier cannot
+/// function without them, and the boundary is now the Rust authorizer plus the install
+/// consent record rather than a build flag.
+///
+/// Side-loading is the one that did NOT open. Pointing the app at a directory skips the
+/// checksum, the registry listing and the consent step entirely, and it exists to serve
+/// plugin authors — who run dev builds. The name says what it actually gates, because
+/// the old one read as "plugins work at all" and would invite exactly the wrong edit.
+pub fn dev_plugin_loading_enabled() -> bool {
     cfg!(debug_assertions)
 }
 
-/// Error surfaced when a privileged plugin command is invoked in a build where
-/// plugins are gated off.
+/// Error surfaced when a dev-only plugin command is invoked in a release build.
 pub fn plugins_disabled_error() -> String {
-    "Plugins are disabled in this build for security (see #259/#260).".to_string()
+    "Loading plugins from a folder is only available in development builds.".to_string()
 }
 
 #[derive(Error, Debug)]

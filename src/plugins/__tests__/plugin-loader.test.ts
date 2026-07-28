@@ -6,9 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 // §259 — the loader refuses to load plugins unless the build opts in; this
 // suite exercises the loader mechanics, i.e. the enabled path.
-beforeEach(() => {
-  vi.stubEnv("VITE_ENABLE_PLUGINS", "1");
-});
+beforeEach(() => {});
 afterEach(() => {
   vi.unstubAllEnvs();
 });
@@ -101,16 +99,7 @@ describe("PluginLoader unload auto-cleanup (§69 Phase B)", () => {
   });
 });
 
-describe("PluginLoader containment (#259)", () => {
-  it("refuses to load and never imports plugin code when disabled", async () => {
-    vi.stubEnv("VITE_ENABLE_PLUGINS", "");
-    const importer = vi.fn(async () => ({ activate: () => {} }));
-    const loader = new PluginLoader(importer);
-
-    await expect(loader.loadPlugin("/dev/dev-x", manifest)).rejects.toThrow(
-      /disabled/i,
-    );
-    expect(importer).not.toHaveBeenCalled();
-    expect(loader.isLoaded("dev-x")).toBe(false);
-  });
-});
+// §260 Phase 5 removed the build gate this file used to assert ("refuses to load when
+// disabled"). The property that outlived it — untrusted code never reaches the main
+// realm — is pinned in `plugin-containment.test.ts`, against the trust routing rather
+// than against an env var.

@@ -132,7 +132,6 @@ function installedAt(consent: PluginConsent) {
 
 describe("install consent + registry cross-check (§260 Phase 5)", () => {
   beforeEach(() => {
-    vi.stubEnv("VITE_ENABLE_PLUGINS", "1");
     listed = [ENTRY];
     loadPlugin.mockReset().mockResolvedValue(undefined);
     unloadPlugin.mockReset().mockResolvedValue(undefined);

@@ -1,13 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// §260 3c-1 — the sandboxed load path. Gate module is mocked so the sandboxed
-// branch is reachable and the dev release gate is toggleable per test.
-const arePluginsEnabled = vi.fn(() => true);
-const isSandboxRuntimeAllowed = vi.fn(() => true);
-vi.mock("../plugins-enabled", () => ({
-  arePluginsEnabled: () => arePluginsEnabled(),
-  isSandboxRuntimeAllowed: () => isSandboxRuntimeAllowed(),
-}));
+// §260 3c-1 — the sandboxed load path. The gate module these tests used to mock was
+// deleted in Phase 5; the sandboxed branch is now reachable unconditionally.
 
 // register/deregister call Tauri invoke in production — stub them.
 const pluginSandboxRegister = vi.fn(async (..._a: unknown[]) => {});
@@ -89,8 +83,6 @@ function sandboxedManifest(
 }
 
 beforeEach(() => {
-  arePluginsEnabled.mockReturnValue(true);
-  isSandboxRuntimeAllowed.mockReturnValue(true);
   // mockReset, not mockClear: some tests install a mockImplementation (a hanging
   // deregister, a rejecting stop) that must not leak into the next test.
   pluginSandboxRegister.mockReset().mockImplementation(async () => {});
@@ -774,15 +766,8 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     ).toEqual(["demo.hello"]);
   });
 
-  it("refuses to create a sandbox webview when the dev release gate is off", async () => {
-    isSandboxRuntimeAllowed.mockReturnValue(false);
-    const f = fakeHost();
-    const loader = new PluginLoader(undefined, f.host);
-
-    await expect(
-      loader.loadPlugin("/p/demo", sandboxedManifest()),
-    ).rejects.toThrow(/gated off/i);
-    expect(f.start).not.toHaveBeenCalled();
-    expect(pluginSandboxRegister).not.toHaveBeenCalled();
-  });
+  // §260 Phase 5 deleted the "sandbox webview creation is dev-only" gate this last case
+  // asserted — creating one in a packaged build is now the point. What still must hold
+  // is that a sandboxed manifest goes to the sandbox and nowhere else, which
+  // `plugin-containment.test.ts` pins against the trust routing.
 });

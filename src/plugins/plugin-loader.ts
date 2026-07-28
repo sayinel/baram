@@ -29,7 +29,6 @@ import { validateManifest } from "./manifest";
 import { declaredSettingsFor } from "./plugin-settings";
 import { pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
-import { arePluginsEnabled, isSandboxRuntimeAllowed } from "./plugins-enabled";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import { watchPluginSettings } from "./sandbox/host-settings-bridge";
 import {
@@ -120,8 +119,7 @@ export class PluginLoader {
    * §260 3c-3 (security review, M2) — CONCURRENT calls for the same id join the
    * first instead of racing it. `this.loaded` is only populated when a load
    * *finishes*, so it cannot dedupe two loads in flight, and two are the normal case:
-   * `React.StrictMode` double-invokes mount effects, and dev is the only environment
-   * where the sandbox runs at all (`isSandboxRuntimeAllowed`). Racing loads fight
+   * `React.StrictMode` double-invokes mount effects. Racing loads fight
    * over one `plugin-<id>` webview label and one Rust grant — one of them ends up
    * revoking the other's capabilities or closing its window, leaving `loaded` and
    * `live` describing different plugins.
@@ -130,15 +128,6 @@ export class PluginLoader {
     installPath: string,
     manifest: PluginManifest,
   ): Promise<void> {
-    // §259 — final choke point: never load/execute plugin code unless the build
-    // explicitly opts in. Guards every load path (startup, dev reload, install),
-    // regardless of how the caller was reached.
-    if (!arePluginsEnabled()) {
-      throw new Error(
-        "Plugins are disabled in this build for security (see #259/#260).",
-      );
-    }
-
     const inFlight = this.inFlightLoads.get(manifest.id);
     if (inFlight) {
       logger.warn(
@@ -270,13 +259,6 @@ export class PluginLoader {
     installPath: string,
     manifest: PluginManifest,
   ): Promise<void> {
-    // Belt-and-suspenders over arePluginsEnabled: never create a sandbox webview
-    // in a packaged build (release gate lifts in Phase 5).
-    if (!isSandboxRuntimeAllowed()) {
-      throw new Error(
-        `Plugin ${manifest.id}: sandbox runtime is gated off in this build (#260 Phase 5).`,
-      );
-    }
     // §260 3c-2b — a teardown from a previous load may still be in flight (its
     // `deregister` outlived `unloadPlugin`'s wait). Register only after it lands, or
     // it revokes the grant we are about to make and the new sandbox's connect fails

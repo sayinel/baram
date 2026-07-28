@@ -8,10 +8,6 @@ pub async fn plugin_install(
     url: String,
     checksum: Option<String>,
 ) -> Result<plugin::InstalledPluginInfo, String> {
-    // §259 — installing untrusted plugin code is gated off in shipped builds.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
     plugin::install_plugin(&url, checksum.as_deref())
         .await
         .map_err(|e| e.to_string())
@@ -55,10 +51,6 @@ pub async fn plugin_get_dir() -> Result<String, String> {
 /// static $APPDATA scope, so this MUST run before any plugin loads.
 #[tauri::command]
 pub async fn plugin_prepare_scopes(app: tauri::AppHandle) -> Result<(), String> {
-    // §259 — don't widen the asset-protocol scope when plugins are gated off.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
     let dir = plugin::get_plugin_dir().map_err(|e| e.to_string())?;
     app.asset_protocol_scope()
         .allow_directory(&dir, true)
@@ -92,8 +84,10 @@ pub async fn plugin_add_dev_folder(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<plugin::InstalledPluginInfo, String> {
-    // §259 — side-loading untrusted plugin code is gated off in shipped builds.
-    if !plugin::plugins_runtime_enabled() {
+    // §260 Phase 5 — the ONE gate that did not lift. Side-loading a directory skips
+    // the checksum, the registry listing and the install consent record, so it stays a
+    // dev-build affordance for plugin authors.
+    if !plugin::dev_plugin_loading_enabled() {
         return Err(plugin::plugins_disabled_error());
     }
     let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
@@ -135,11 +129,6 @@ pub async fn plugin_http_fetch(
     url: String,
     init: Option<plugin::PluginFetchInit>,
 ) -> Result<plugin::PluginFetchResponse, String> {
-    // §259 — the CORS-free network proxy is a data-exfiltration primitive for
-    // untrusted plugin code; gate it off in shipped builds.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
     plugin::http_fetch(url, init).await
 }
 
@@ -157,11 +146,6 @@ pub async fn plugin_storage_write(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    // §259 — no plugin runs when disabled, so nothing should be writing plugin
-    // storage; reject to keep the surface inert.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
     plugin::storage_write(plugin_id, key, value).await
 }
 
@@ -944,12 +928,11 @@ fn admit_staging(
 /// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
 /// call is authorized by the Tauri-verified caller label + registered capability.
 ///
-/// §260 — unlike the §259-gated plugin_install/plugin_http_fetch, plugin_call is
-/// intentionally NOT behind `plugins_runtime_enabled()`: it is the sandboxed
-/// channel that #260 Phase 5's release-gate transition will *allow* in release
-/// builds. Its control is the authorizer (an unregistered/empty map denies every
-/// call) plus that future release-gate — never the §259 kill-switch, which Phase 5
-/// lifts for sandboxed plugins.
+/// §260 — this command was deliberately left outside the §259 build gate from the day
+/// it was written, because Phase 5 was always going to allow it in release builds; that
+/// happened, and the gate it stood apart from is gone. Its control is, and always was,
+/// the authorizer: an unregistered plugin has an empty capability map, which denies
+/// every op. A build flag was never what made this safe.
 #[tauri::command]
 pub async fn plugin_call(
     window: tauri::WebviewWindow,
