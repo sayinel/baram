@@ -8,14 +8,22 @@ a single ESM bundle (typically `dist/index.mjs`). The bundle exports an
 `activate` with a capability-gated `ExtensionContext` object that is the
 plugin's only way to touch the app.
 
-Plugins run **in the same JavaScript context as the editor** — there is no
-iframe or worker sandbox (Obsidian's model, not Logseq's). This was a
-deliberate design decision: contributing a `tiptapExtensions` node/mark/plugin
-requires direct access to the live ProseMirror `Schema`, which an
-iframe-sandboxed plugin cannot provide. The tradeoff is that the capability
-system is an **API gate**, not a hard security boundary — see
-[Trust model & security](#trust-model--security) below before installing or
-authoring anything sensitive.
+Every plugin declares one of two tiers in its manifest, and the tier decides what
+"capability" means:
+
+- **`"trust": "sandboxed"`** — the default, and what you should write. The plugin runs in
+  its own isolated webview with no access to the app's JavaScript, and every privileged
+  operation goes through a Rust broker that authorizes the call against the plugin's
+  granted capabilities. Here the capability list is a **real boundary**.
+- **`"trust": "trusted"`** — the same JavaScript context as the editor, Obsidian's model.
+  Necessary for `tiptapExtensions`, which need direct access to the live ProseMirror
+  `Schema` that an isolated plugin cannot be given. Here the capability system is only an
+  **API gate**: the plugin can reach around it, so the list describes intent rather than
+  limiting anything. Installing one requires an explicit acknowledgement of exactly that.
+
+Write sandboxed unless you are contributing a Tiptap extension or DOM-mounted UI. See
+[Trust model & security](#trust-model--security) before installing or authoring anything
+sensitive.
 
 ## Quick Start
 
@@ -678,6 +686,7 @@ interface RegistryEntry {
   downloadUrl: string; // URL of a hosted plugin ZIP
   checksum: string; // SHA-256 of that ZIP, hex-encoded
   capabilities: PluginCapability[];
+  trust: "sandboxed" | "trusted"; // required — see below
   engines: { baram: string };
   icon?: string;
   keywords?: string[];
@@ -693,6 +702,29 @@ containing the plugin (same contents as the packaging step below); `checksum`
 is that ZIP's SHA-256, hex-encoded. Registry installs verify `checksum`
 before extracting the ZIP — the host refuses to install a package whose hash
 doesn't match.
+
+#### `trust` and `capabilities` are a claim the install verifies
+
+`trust` is **required**. An entry without it is shown with a "Legacy" badge and its
+Install button is disabled: the manifest inside the ZIP must declare a tier, so
+offering the install would only download first and fail second.
+
+`trust` and `capabilities` here are what the user is asked to approve **before** the
+download — the consent dialog is built from the registry entry, because that is all the
+app knows at that point. After the ZIP is fetched, the manifest inside it is checked
+against what was approved, and the install is rolled back if it asks for more:
+
+- a manifest declaring `trust: "trusted"` where the entry said `"sandboxed"`
+- a manifest requesting a capability the entry did not list
+- a manifest whose `id` differs from the entry's
+
+Nothing is written to the plugin store until all three pass, so a registry that
+advertises one thing and ships another fails the install rather than escalating it.
+Listing _fewer_ capabilities in the manifest than in the entry is fine — the check is
+"does not exceed", not "matches exactly" — and `files` covers `files:readonly`, as does
+`editor` for `editor:readonly`.
+
+Keep the entry in step with the manifest you ship. A mismatch is not a warning.
 
 ### How Baram loads the registry
 
@@ -851,7 +883,26 @@ calling `listModels()` is privacy-safe just because privacy mode is on.
 verified against a SHA-256 checksum before install; **dev-folder loads
 (the Developer section) skip this entirely** — loading a local folder is an
 explicit, deliberate act of trusting that code, with no cryptographic check
-in between.
+in between. Dev-folder loading is also **development-builds only**: it bypasses
+the checksum, the registry listing and the consent record all at once, so a
+packaged build refuses it.
+
+**Installing records what you approved.** The install dialog lists the requested
+capabilities and, for `trust: "trusted"`, states plainly that the capability list does
+_not_ bound the plugin — a trusted plugin runs inside Baram itself and holds everything
+regardless of what it declared, so that one needs an explicit acknowledgement. The
+approved `(trust, capabilities)` is stored with the plugin, and an **update that exceeds
+it asks again**: a plugin installed as `sandboxed` cannot quietly become `trusted`, and
+a new capability is shown as new. An update that asks for _less_ installs without a
+prompt and narrows the record.
+
+**Sandboxes share an origin with the app and with each other.** Tauri v2 has no
+per-window origin, so a `plugin-*` webview cannot be given its own. The app therefore
+keeps nothing in `localStorage` (everything persists through Rust's config file), but
+two _installed_ plugins can still reach each other through `BroadcastChannel` or a
+`SharedWorker` — so a plugin without `network` could use a `network`-granted plugin as a
+proxy if both are malicious. Capability grants bound one plugin, not a pair that
+cooperate.
 
 **Bottom line: only install plugins you trust**, especially any declaring
 `ai`, `network`, `files`, or `storage`. New capabilities added in a plugin
