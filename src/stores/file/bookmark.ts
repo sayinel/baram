@@ -51,9 +51,33 @@ export function isDuplicate(
   );
 }
 
-/** Generate localStorage key scoped to vault root */
+/** Storage key scoped to vault root. Must keep matching `MIGRATION_PREFIXES`. */
 export function storageKey(rootPath: string): string {
   return `baram:bookmarks:${rootPath}`;
+}
+
+/**
+ * §260 Phase 5 — every read and write runs in submission order, one at a time.
+ *
+ * `BookmarkPanel` mounts a load effect and an autosave effect together, and the autosave
+ * fires on mount before the load has produced anything. While both were synchronous that
+ * was harmless — the load filled the store, and the save read the live value straight
+ * back out. Async, they overlapped: the save read an empty store and wrote `[]`, either
+ * clobbering the file the load had just read or landing first so the load read `[]`.
+ * Either way the user's bookmarks were gone on first mount.
+ *
+ * Serializing restores exactly the property the synchronous version had for free. It
+ * matters that `saveBookmarks` reads `get().bookmarks` INSIDE the queued step rather than
+ * at call time, so a save queued behind a load writes the loaded list, not the empty one
+ * that was current when the effect fired.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue(op: () => Promise<void>): Promise<void> {
+  // Both arms run `op`, so one step's failure never strands the ones behind it.
+  const next = queue.then(op, op);
+  queue = next.catch(() => undefined);
+  return next;
 }
 
 export const useBookmarkStore = create<BookmarkState>((set, get) => ({
@@ -83,19 +107,23 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
     });
   },
 
-  loadBookmarks: async (rootPath) => {
-    try {
-      const raw = await tauriStorage.getItem(storageKey(rootPath));
-      set({ bookmarks: raw ? (JSON.parse(raw) as BookmarkItem[]) : [] });
-    } catch {
-      set({ bookmarks: [] });
-    }
-  },
+  loadBookmarks: (rootPath) =>
+    enqueue(async () => {
+      try {
+        const raw = await tauriStorage.getItem(storageKey(rootPath));
+        set({ bookmarks: raw ? (JSON.parse(raw) as BookmarkItem[]) : [] });
+      } catch {
+        set({ bookmarks: [] });
+      }
+    }),
 
-  saveBookmarks: async (rootPath) => {
-    await tauriStorage.setItem(
-      storageKey(rootPath),
-      JSON.stringify(get().bookmarks),
-    );
-  },
+  saveBookmarks: (rootPath) =>
+    enqueue(async () => {
+      // Read INSIDE the queued step, not at call time: a save queued behind a load must
+      // write what the load produced.
+      await tauriStorage.setItem(
+        storageKey(rootPath),
+        JSON.stringify(get().bookmarks),
+      );
+    }),
 }));
