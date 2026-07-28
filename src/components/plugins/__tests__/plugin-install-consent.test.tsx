@@ -465,14 +465,31 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(pluginInstall).not.toHaveBeenCalled();
   });
 
-  it("refuses a legacy entry in the handler too, if a button ever gets through", async () => {
-    // Defence in depth: the disabled button is UI, the handler is the rule.
-    listed = [{ ...ENTRY, trust: undefined }];
-    render(<PluginMarketplace />);
-    await screen.findByRole("button", { name: /^Install$/ });
+  it("refuses a legacy entry in the handler too, not only at the button", async () => {
+    // §260 Phase 5 re-review (R7) — the first version clicked the Installed TAB and then
+    // asserted "no dialog, no download", trivially true of a click that attempts nothing:
+    // it passed with the handler's guard deleted.
+    //
+    // Driven through UPDATE instead, because that button is genuinely enabled for a
+    // trust-less entry — so this reaches the rule by a path a user can actually take,
+    // rather than by defeating the disabled attribute. Same guard, same message.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [{ ...ENTRY, trust: undefined, version: "2.0.0" }];
 
-    fireEvent.click(screen.getByRole("button", { name: /^Installed/ }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toContain(
+        "predates Baram's plugin trust model",
+      ),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(pluginInstall).not.toHaveBeenCalled();
+    // Nothing was removed either — a refusal must not be destructive.
+    expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
   });
 });

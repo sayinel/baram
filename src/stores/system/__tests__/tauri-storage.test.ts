@@ -1,10 +1,10 @@
-// §260 Phase 5 — the localStorage → Tauri-config migration, and specifically the part a
-// static key list cannot do.
+// §260 Phase 5 — the localStorage → Tauri-config migration.
 //
-// `baram:bookmarks:{vaultRoot}` is one key per vault the user has ever opened. Before
-// this phase bookmarks lived in localStorage, which every `plugin-*` sandbox webview
-// shares an origin with; moving them is only half the fix, because a user upgrading with
-// existing bookmarks would otherwise both LOSE them and leave the readable copy behind.
+// `baram:bookmarks:{vaultRoot}` is one key per vault the user has ever opened, so the
+// sweep cannot work off a static list. Before this phase bookmarks lived in localStorage,
+// which every `plugin-*` sandbox webview shares an origin with — so moving them is only
+// half the fix. The other half is that a user upgrading with existing bookmarks must not
+// LOSE them, and must not be left with the readable copy either.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store = new Map<string, string>();
@@ -24,6 +24,8 @@ vi.mock("../../../ipc/invoke", () => ({
 import { storageKey } from "../../file/bookmark";
 import { migrateFromLocalStorage } from "../tauri-storage";
 
+const VAULT_KEY = "baram:bookmarks:/vaults/one";
+
 describe("migrateFromLocalStorage (§260 Phase 5)", () => {
   beforeEach(() => {
     store.clear();
@@ -31,7 +33,7 @@ describe("migrateFromLocalStorage (§260 Phase 5)", () => {
   });
 
   it("sweeps every per-vault bookmark key, not just the ones someone listed", async () => {
-    // Keys built by the REAL `storageKey`, not a literal: the sweep's prefix and that
+    // Keys built by the REAL `storageKey`, not literals: the sweep's prefix and that
     // function have to agree, and nothing else in the codebase couples them. A rename
     // there would otherwise leave the migration quietly finding nothing.
     const one = storageKey("/vaults/one");
@@ -49,13 +51,13 @@ describe("migrateFromLocalStorage (§260 Phase 5)", () => {
   });
 
   it("moves the fixed keys too, including the journal layout added in Phase 5", async () => {
-    localStorage.setItem("baram:settings", "{}");
-    localStorage.setItem("baram:journal-layout", '{"collapsed":{}}');
+    localStorage.setItem("baram:settings", '{"theme":"dark"}');
+    localStorage.setItem("baram:journal-layout", '{"collapsed":{"a":true}}');
 
     await migrateFromLocalStorage();
 
-    expect(store.get("baram:settings")).toBe("{}");
-    expect(store.get("baram:journal-layout")).toBe('{"collapsed":{}}');
+    expect(store.get("baram:settings")).toBe('{"theme":"dark"}');
+    expect(store.get("baram:journal-layout")).toBe('{"collapsed":{"a":true}}');
     expect(localStorage.getItem("baram:journal-layout")).toBeNull();
   });
 
@@ -72,34 +74,57 @@ describe("migrateFromLocalStorage (§260 Phase 5)", () => {
     expect(store.size).toBe(0);
   });
 
-  it("does not clobber a value already migrated, and still deletes the copy", async () => {
-    store.set("baram:bookmarks:/vaults/one", '[{"id":"newer"}]');
-    localStorage.setItem("baram:bookmarks:/vaults/one", '[{"id":"stale"}]');
+  it("does not let a degenerate config value shadow the real data", async () => {
+    // §260 Phase 5 re-review (R6). The first version of this test asserted only that the
+    // copy was deleted — while the config still held `"[]"`. So it certified the shadowing
+    // its own title said could not happen, AND certified deleting the last surviving copy
+    // of the user's bookmarks: recoverable loss had become permanent loss, green.
+    //
+    // The scenario: something read before the sweep, found nothing, and correctly saved an
+    // empty list. `main.tsx` awaiting the sweep is what stops that write happening at all;
+    // this is the second lock, because the consequence of the first slipping is not
+    // recoverable.
+    localStorage.setItem(VAULT_KEY, '[{"id":"real"}]');
+    store.set(VAULT_KEY, "[]");
 
     await migrateFromLocalStorage();
 
-    expect(store.get("baram:bookmarks:/vaults/one")).toBe('[{"id":"newer"}]');
-    // §260 Phase 5 code review (H1) — skipping the COPY was the whole point of the
-    // sweep. Leaving it behind keeps the shared-origin surface that every sandboxed
-    // plugin can read, which is what this migration exists to remove.
-    expect(localStorage.getItem("baram:bookmarks:/vaults/one")).toBeNull();
+    // The DATA first — it is the property the title claims, and the one the old test
+    // omitted entirely.
+    expect(JSON.parse(store.get(VAULT_KEY) ?? "null")).toEqual([
+      { id: "real" },
+    ]);
+    expect(localStorage.getItem(VAULT_KEY)).toBeNull();
   });
 
-  it("runs before anything can write, so a legitimate empty save cannot shadow it", async () => {
-    // §260 Phase 5 code review (H1). The failure this guards: `BookmarkPanel` loads,
-    // finds nothing in config, and its autosave correctly writes "[]" — after which the
-    // sweep sees a TRUTHY "[]", concludes "already migrated", and skips. The user's
-    // bookmarks are gone AND the readable localStorage copy survives.
-    //
-    // The ordering itself is enforced in `main.tsx` (the migration is awaited before the
-    // app module graph is imported, so no store has been created and no effect has run).
-    // What is asserted here is the half that lives in this module: a truthy config value
-    // must not be the only thing standing between the copy and deletion.
-    localStorage.setItem("baram:bookmarks:/vaults/one", '[{"id":"real"}]');
-    store.set("baram:bookmarks:/vaults/one", "[]"); // the spurious empty save
+  it("treats an empty object and a whitespace-padded empty array as degenerate too", async () => {
+    localStorage.setItem("baram:journal-layout", '{"collapsed":{"a":true}}');
+    store.set("baram:journal-layout", " {} ");
 
     await migrateFromLocalStorage();
 
-    expect(localStorage.getItem("baram:bookmarks:/vaults/one")).toBeNull();
+    expect(store.get("baram:journal-layout")).toBe('{"collapsed":{"a":true}}');
+  });
+
+  it("leaves a POPULATED config value alone, and still drops the copy", async () => {
+    // The other side of the same rule, and the H1 half: a real migrated value wins, and
+    // the readable localStorage copy goes regardless of which value won.
+    store.set(VAULT_KEY, '[{"id":"newer"}]');
+    localStorage.setItem(VAULT_KEY, '[{"id":"stale"}]');
+
+    await migrateFromLocalStorage();
+
+    expect(store.get(VAULT_KEY)).toBe('[{"id":"newer"}]');
+    expect(localStorage.getItem(VAULT_KEY)).toBeNull();
+  });
+
+  it("does not treat an unparseable config value as degenerate", async () => {
+    // Anything we cannot read counts as real. Guessing otherwise would overwrite it.
+    store.set(VAULT_KEY, "not json at all");
+    localStorage.setItem(VAULT_KEY, '[{"id":"stale"}]');
+
+    await migrateFromLocalStorage();
+
+    expect(store.get(VAULT_KEY)).toBe("not json at all");
   });
 });

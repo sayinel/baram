@@ -7,8 +7,9 @@ use tauri::Manager;
 pub async fn plugin_install(
     url: String,
     checksum: Option<String>,
+    expected_id: Option<String>,
 ) -> Result<plugin::InstalledPluginInfo, String> {
-    plugin::install_plugin(&url, checksum.as_deref())
+    plugin::install_plugin(&url, checksum.as_deref(), expected_id.as_deref())
         .await
         .map_err(|e| e.to_string())
 }

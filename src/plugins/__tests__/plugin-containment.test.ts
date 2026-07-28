@@ -76,7 +76,7 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     });
     sandboxStop.mockReset().mockResolvedValue(undefined);
     registerGrant.mockReset().mockResolvedValue(undefined);
-    usePluginStore.setState({ installedPlugins: {} });
+    usePluginStore.setState({ devPlugins: {}, installedPlugins: {} });
   });
 
   it("never imports a sandboxed plugin into the main realm", async () => {
@@ -139,6 +139,106 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     });
 
     expect(registerGrant).toHaveBeenCalledWith("demo", ["editor"], "/p/demo");
+  });
+
+  it("REFUSES a tier escalation rather than narrowing it", async () => {
+    // §260 Phase 5 re-review (R1). `narrowToConsent` filtered capabilities and let `trust`
+    // through untouched, so `runLoad`'s routing still read the manifest's own tier — and
+    // sandboxed → trusted is the escalation that escapes the Rust broker entirely, landing
+    // in a realm where the narrowed capability list is not a boundary at all.
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { importer, loader } = loaderWithSpies();
+
+    await expect(
+      loader.loadPlugin("/p/demo", { ...BASE, trust: "trusted" }),
+    ).rejects.toThrow(/approved as "sandboxed"/);
+
+    // Neither realm ran it, and no grant was made.
+    expect(importer).not.toHaveBeenCalled();
+    expect(sandboxStart).not.toHaveBeenCalled();
+    expect(registerGrant).not.toHaveBeenCalled();
+  });
+
+  it("allows a plugin approved AS trusted to keep loading trusted", async () => {
+    // The refusal must key on the transition, not on the tier — otherwise every trusted
+    // plugin breaks on its second start.
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "trusted" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { importer, loader } = loaderWithSpies();
+
+    await loader.loadPlugin("/p/demo", {
+      ...BASE,
+      capabilities: ["editor"],
+      trust: "trusted",
+    });
+
+    expect(importer).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a DEV folder override an installed plugin's consent, id collision and all", async () => {
+    // §260 Phase 5 re-review (R2) — `plugin-lifecycle` deliberately lets a dev copy
+    // override an installed plugin of the same id, so keying the consent lookup on the id
+    // alone narrowed an author's working copy to the installed version's grant and told
+    // them to "reinstall to re-approve" a folder.
+    usePluginStore.setState({
+      devPlugins: {
+        demo: {
+          checksum: "",
+          enabled: true,
+          installedAt: 0,
+          installPath: "/dev/demo",
+          isDev: true,
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin("/dev/demo", {
+      ...BASE,
+      capabilities: ["editor", "network"],
+    });
+
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["editor", "network"],
+      "/dev/demo",
+    );
   });
 
   it("passes a dev plugin's manifest through — choosing the folder is the consent", async () => {

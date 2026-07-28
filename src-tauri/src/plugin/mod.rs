@@ -237,9 +237,20 @@ fn dirs_next() -> Option<PathBuf> {
 }
 
 /// Download a plugin ZIP from URL, verify checksum, extract to plugin dir.
+///
+/// `expected_id` is the id the caller was told to expect — the registry listing's. It is
+/// checked BEFORE the extracted files are moved into place (§260 Phase 5 re-review, R5),
+/// and that ordering is the whole point: step 6 does `remove_dir_all` on a directory named
+/// by the id inside the ARCHIVE, so an archive declaring some other installed plugin's id
+/// destroyed that plugin's files as a side effect of downloading this one. The frontend
+/// could only notice afterwards, by which time the only repair left was to delete the
+/// remains. Refusing here means the damage never happens.
+///
+/// `None` skips the check, for a caller that has no prior expectation.
 pub async fn install_plugin(
     url: &str,
     expected_checksum: Option<&str>,
+    expected_id: Option<&str>,
 ) -> Result<InstalledPluginInfo, PluginError> {
     // 1. Download ZIP to temp file
     let response = reqwest::get(url).await?;
@@ -272,6 +283,17 @@ pub async fn install_plugin(
 
     // 5. Validate manifest
     validate_manifest(&manifest)?;
+
+    // 5b. The archive must be the plugin the caller asked for — checked here, before the
+    // destructive move below, and never after it.
+    if let Some(expected) = expected_id {
+        if manifest.id != expected {
+            return Err(PluginError::InvalidManifest(format!(
+                "archive declares id \"{}\" but \"{}\" was requested",
+                manifest.id, expected
+            )));
+        }
+    }
 
     // 6. Move to final location
     let plugin_dir = get_plugin_dir()?;
@@ -1056,6 +1078,34 @@ mod tests {
         assert!(validate_http_url("ftp://host/x").is_err());
         assert!(validate_http_url("not a url").is_err());
         assert!(validate_http_url("javascript:alert(1)").is_err());
+    }
+
+    /// §260 Phase 5 re-review (R5) — the id check must sit BEFORE the move, so an archive
+    /// declaring another installed plugin's id cannot destroy it on the way in.
+    ///
+    /// Asserted on source order rather than by running an install, because the failure
+    /// mode is purely positional: both the check and the `remove_dir_all` are trivially
+    /// correct in isolation, and a refactor that moved either one past the other would
+    /// leave every behavioural test green while restoring the data loss.
+    #[test]
+    fn expected_id_is_checked_before_the_destructive_move() {
+        let src = include_str!("mod.rs");
+        let check = src
+            .find("was requested")
+            .expect("the expected_id refusal must exist");
+        let install = src
+            .find("pub async fn install_plugin")
+            .expect("install_plugin must exist");
+        let remove = src[install..]
+            .find("remove_dir_all(&target_dir)")
+            .map(|i| i + install)
+            .expect("the destructive move must exist");
+
+        assert!(
+            check < remove,
+            "the id refusal ({check}) must come before remove_dir_all ({remove}) — \
+             otherwise the archive has already clobbered the target directory"
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@ import type { SandboxSession } from "./sandbox/sandbox-session";
 import type {
   Disposable,
   LoadedPlugin,
+  PluginConsent,
   PluginManifest,
   PluginModule,
 } from "./types";
@@ -668,20 +669,36 @@ function activeFilePath(): null | string {
 }
 
 /**
- * The manifest with any capability the recorded consent does not cover removed.
+ * The manifest bounded by what the user approved: capabilities narrowed, and a TIER
+ * escalation refused outright.
  *
- * Returns the SAME object when nothing was dropped, so the common path allocates nothing
- * and an identity comparison in a test means what it looks like.
+ * Returns the SAME object when nothing changed, so the common path allocates nothing and
+ * an identity comparison in a test means what it looks like.
  *
  * Reads the consent from the store rather than taking it as an argument: `loadPlugin` has
  * four callers (startup, install, enable-toggle, dev reload) and threading it through all
  * of them is four chances for one to pass nothing and quietly restore the old behaviour.
- * A dev-folder plugin has no record and is returned unchanged — see
- * `grantableCapabilities`.
+ *
+ * ‼️ The tier is REFUSED rather than narrowed (§260 Phase 5 re-review, R1), and that
+ * asymmetry is the point. A capability can be withheld and the plugin still runs with
+ * less; a tier decides WHICH REALM runs the code, and there is no "less" to fall back to.
+ * It also matters more: the capability half is what Rust brokers anyway, while
+ * `sandboxed` → `trusted` escapes the broker entirely and lands in a realm where the
+ * narrowed capability list is not a boundary at all (see `extension-context.ts`).
+ * `consentGaps` already calls that transition an escalation — this is `runLoad` asking.
  */
 function narrowToConsent(manifest: PluginManifest): PluginManifest {
-  const { consent } =
-    usePluginStore.getState().installedPlugins[manifest.id] ?? {};
+  const consent = resolveConsent(manifest.id);
+  if (!consent) return manifest;
+
+  if (consent.trust !== "trusted" && pluginTrustOf(manifest) === "trusted") {
+    throw new Error(
+      `Plugin ${manifest.id} now declares trust "trusted", but it was approved as ` +
+        `"${consent.trust}". A trusted plugin runs inside Baram with no sandbox, so it ` +
+        `cannot be granted that without asking again — reinstall it to review the change.`,
+    );
+  }
+
   const granted = grantableCapabilities(manifest, consent);
   if (granted.length === manifest.capabilities.length) return manifest;
 
@@ -691,6 +708,21 @@ function narrowToConsent(manifest: PluginManifest): PluginManifest {
       `manifest asks for more than was approved at install. Reinstall to re-approve.`,
   );
   return { ...manifest, capabilities: granted };
+}
+
+/**
+ * The consent recorded for an INSTALLED plugin, or `undefined` for anything else.
+ *
+ * §260 Phase 5 re-review (R2) — a dev folder and an installed plugin can share an id, and
+ * `plugin-lifecycle` deliberately lets the dev copy override the installed one
+ * ("dev plugin … overrides installed"). Keying on the id alone therefore narrowed an
+ * author's working copy to the installed version's consent and told them to "reinstall to
+ * re-approve" a folder. The dev registry wins here for the same reason it wins there.
+ */
+function resolveConsent(pluginId: string): PluginConsent | undefined {
+  const { devPlugins, installedPlugins } = usePluginStore.getState();
+  if (devPlugins[pluginId]) return undefined;
+  return installedPlugins[pluginId]?.consent;
 }
 
 /**

@@ -71,11 +71,18 @@ export async function migrateFromLocalStorage(): Promise<void> {
   for (const key of keysToMigrate()) {
     try {
       const existing = await getConfig(key);
-      if (existing) {
-        // Already migrated — but delete the copy anyway (§260 Phase 5 code review, H1).
-        // Skipping it left the exact shared-origin surface this sweep exists to remove:
+      // ‼️ A truthy config value is not proof of a completed migration (§260 Phase 5
+      // re-review, R6). An EMPTY collection is what a store writes when it loaded nothing
+      // — which is exactly what happens if anything reads before this sweep runs — so
+      // treating `"[]"` as "already migrated" would skip, and (with the removal below)
+      // delete the only surviving copy of the user's data. `main.tsx` awaiting this before
+      // the app graph loads is what prevents that write; this is the second lock, because
+      // the consequence of the first one slipping is permanent rather than recoverable.
+      if (existing && !isEmptyCollection(existing)) {
+        // Genuinely migrated — delete the copy anyway (§260 Phase 5 code review, H1).
+        // Leaving it kept the exact shared-origin surface this sweep exists to remove:
         // every `plugin-*` webview shares this origin, so a zero-capability plugin could
-        // still read it. A truthy config value is not a reason to leave a readable copy.
+        // still read it.
         localStorage.removeItem(key);
         continue;
       }
@@ -90,6 +97,28 @@ export async function migrateFromLocalStorage(): Promise<void> {
       logger.warn(`[tauriStorage] Migration failed for "${key}":`, e);
     }
   }
+}
+
+/**
+ * Is this stored value an empty collection — i.e. indistinguishable from "the store had
+ * nothing to save"? Used to decide that a config value is NOT evidence of a migration.
+ *
+ * Deliberately narrow: only the degenerate serialisations. A populated value, or anything
+ * unparseable, counts as real and is left alone.
+ */
+function isEmptyCollection(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === "[]" || trimmed === "{}" || trimmed === "null") return true;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed.length === 0;
+    if (parsed !== null && typeof parsed === "object") {
+      return Object.keys(parsed).length === 0;
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 /**

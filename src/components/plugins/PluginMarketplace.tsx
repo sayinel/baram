@@ -405,7 +405,15 @@ export function PluginMarketplace() {
       // Non-null only while extracted files exist that nothing has vouched for yet.
       let rolledBackId: null | string = null;
       try {
-        const result = await pluginInstall(entry.downloadUrl, entry.checksum);
+        // The third argument is the guard, not a formality: Rust refuses the archive before
+        // moving it into place if its manifest declares a different id, so a hostile
+        // listing cannot destroy an unrelated installed plugin (re-review R5). The
+        // frontend check below is then defence in depth.
+        const result = await pluginInstall(
+          entry.downloadUrl,
+          entry.checksum,
+          entry.id,
+        );
         // Where the files actually landed, whatever the registry called the entry, so
         // the one rollback site in `catch` can remove them.
         rolledBackId = result.manifest.id;

@@ -78,10 +78,21 @@ export function consentRequired(
  * only where the recorded consent covers it.
  *
  * §260 Phase 5 code review (H3) — without this the consent record was an install-time UX
- * artifact. The cross-check proves manifest ⊆ consent at install, and then the manifest on
- * disk is sole authority forever: anything that edits `baram-plugin.json` afterwards —
- * a dev folder, a file-writing plugin reaching another plugin's directory, a hand edit —
- * escalates on the next start with nothing asked and nothing shown.
+ * artifact: the cross-check proves manifest ⊆ consent when the ZIP lands, and after that
+ * nothing consults the record again.
+ *
+ * ‼️ Honest scope (re-review, R9 — the original version of this comment overstated it, and
+ * so did the finding that prompted it). Editing `baram-plugin.json` after install is NOT
+ * currently a live escalation: an installed plugin's manifest is read only out of the
+ * persisted store record, and `pluginListInstalled` — the one IPC that would re-read the
+ * file — has no caller in `src/`. What this guards is the moment that changes. A "refresh
+ * installed plugins" feature calling that dead command reintroduces the path immediately,
+ * and this is much easier to get right now than to remember then.
+ *
+ * Against the reachable variant — editing the app's `config.json` directly — the narrowing
+ * is inert, because the consent it checks against lives in the same file. That bound is
+ * why the TIER half is refused in `narrowToConsent` rather than narrowed: a tier
+ * escalation is the one that escapes the Rust broker entirely.
  *
  * An ABSENT consent grants the manifest unchanged. That is not a loophole being left
  * open: dev-folder plugins never have a record (choosing the directory is the consent),

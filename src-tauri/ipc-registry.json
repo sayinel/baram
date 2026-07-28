@@ -777,7 +777,11 @@
     },
     {
       "name": "plugin_install",
-      "input": { "url": "string", "checksum": "string?" },
+      "input": {
+        "url": "string",
+        "checksum": "string?",
+        "expectedId": "string?"
+      },
       "output": "InstalledPluginInfo",
       "module": "plugin",
       "spec": "§69",

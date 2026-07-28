@@ -13,6 +13,9 @@
 // A source scan rather than a runtime assertion, because the defect is "someone adds a
 // convenient `localStorage.setItem` in a later feature" — there is no runtime moment to
 // catch that, and it would go unnoticed exactly as bookmarks did.
+//
+// The ORDERING half (the migration must finish before anything reads or writes) lives in
+// `bootstrap-order.test.ts`, next to the other `main.tsx` invariants.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -68,43 +71,6 @@ describe("localStorage is not a shared surface (§260 Phase 5)", () => {
       "a persisted store with no `storage:` writes to localStorage, which every " +
         "plugin sandbox can read — pass `createJSONStorage(() => tauriStorage)`",
     ).toEqual([]);
-  });
-
-  it("runs the migration before the app graph is imported", () => {
-    // §260 Phase 5 code review (H1). As a component effect this raced the stores it
-    // migrates — React runs CHILD effects first, so BookmarkPanel's autosave wrote "[]"
-    // before the sweep looked, and the sweep then read that as "already migrated".
-    // A STATIC `import App` would be just as wrong: it evaluates every store module in
-    // the graph, and one of them rehydrates at module-eval time.
-    const main = readFileSync(join(SRC, "main.tsx"), "utf8");
-    const awaited = main.indexOf("await migrateFromLocalStorage()");
-    const appImport = main.indexOf('import("./App")');
-
-    expect(awaited, "main.tsx must await the migration").toBeGreaterThan(-1);
-    expect(
-      appImport,
-      "App must be imported dynamically, after it",
-    ).toBeGreaterThan(-1);
-    expect(
-      awaited,
-      "the migration must be awaited BEFORE the app graph loads",
-    ).toBeLessThan(appImport);
-    expect(main, "a static App import defeats the ordering").not.toMatch(
-      /^import App from/m,
-    );
-
-    // …and nowhere else may call it, or the ordering above is one caller away from moot.
-    const callers = sources(SRC)
-      .filter((f) => !f.endsWith("main.tsx"))
-      .map((f) => f.slice(SRC.length + 1))
-      .filter(
-        (rel) =>
-          rel !== "stores/system/tauri-storage.ts" &&
-          readFileSync(join(SRC, rel), "utf8").includes(
-            "migrateFromLocalStorage",
-          ),
-      );
-    expect(callers, "the sweep has exactly one call site").toEqual([]);
   });
 
   it("scans a plausible number of files — a broken walker would pass vacuously", () => {
