@@ -184,8 +184,31 @@ export function startSandboxClient(
     },
   };
 
+  /**
+   * §260 Phase 4c — a broker result that Rust encoded as a JSON STRING, parsed back.
+   *
+   * Every op whose natural result is a list or an object goes through `scalar_result` on
+   * the Rust side, because tauri routes a channel payload into its app-global queue only
+   * when the payload is ≥8 KiB **and** its JSON starts with `{` or `[`. A JSON string can
+   * never meet the second half, so the disclosure is closed by the SHAPE rather than by a
+   * size check — `files_list` on a few hundred notes crosses 8 KiB in ordinary use.
+   *
+   * The non-string check is not defensive noise: if a future Rust arm forgets the encoding
+   * and answers with a raw array, `JSON.parse` would throw something unreadable from inside
+   * the sandbox. This says which op broke the contract.
+   */
+  const brokerJson = async <T>(op: PluginOp): Promise<T> => {
+    const raw = await broker(op);
+    if (typeof raw !== "string") {
+      throw new Error(
+        `the broker answered "${op.kind}" with a non-string result`,
+      );
+    }
+    return JSON.parse(raw) as T;
+  };
+
   const storage: StorageAPI = {
-    list: () => broker({ kind: "storage_list" }) as Promise<string[]>,
+    list: () => brokerJson<string[]>({ kind: "storage_list" }),
     read: (key) =>
       broker({ key, kind: "storage_read" }) as Promise<null | string>,
     remove: (key) => broker({ key, kind: "storage_remove" }) as Promise<void>,
@@ -194,9 +217,11 @@ export function startSandboxClient(
   };
   const network: NetworkAPI = {
     fetch: (url, init) =>
-      broker({ init, kind: "http_fetch", url }) as ReturnType<
-        NetworkAPI["fetch"]
-      >,
+      brokerJson<Awaited<ReturnType<NetworkAPI["fetch"]>>>({
+        init,
+        kind: "http_fetch",
+        url,
+      }),
   };
   // §260 3c-2c — the same three operations as the trusted tier's FilesAPI. Nothing is
   // interpreted here: a broker rejection (denied capability, path outside the vault,
@@ -208,12 +233,15 @@ export function startSandboxClient(
   // tries; passing the `context` from a delivered event is what keeps a call aimed at the
   // vault the event came from when the user has since switched.
   const files: SandboxFilesAPI = {
+    // Encoded as a JSON string by Rust (see `brokerJson`): a directory of a few hundred
+    // notes is the first broker result that crosses tauri's 8 KiB queue threshold in
+    // ordinary use, and a bare array is exactly the shape the queue takes.
     listDir: (path, opts) =>
-      broker({
+      brokerJson<string[]>({
         context: opts?.context,
         kind: "files_list",
         path,
-      }) as Promise<string[]>,
+      }),
     readFile: (path, opts) =>
       broker({
         context: opts?.context,
