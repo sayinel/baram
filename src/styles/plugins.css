@@ -9,7 +9,12 @@
 .plugin-consent-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+
+  /* Above `.settings-overlay` (1000), which is where the marketplace actually lives.
+     Nested inside it the z-index is scoped and any value would do — but this dialog is
+     the last thing between a user and running third-party code, so it must not depend
+     on staying a descendant of that stacking context to be visible. */
+  z-index: 1100;
   display: flex;
   justify-content: center;
   padding-top: 15vh;
