@@ -27,15 +27,35 @@
          ‼️ A meta CSP can only TIGHTEN, never widen: in a PACKAGED build Tauri also
          serves this document with the global `csp` from tauri.conf.json as a
          response header (manager/mod.rs set_csp → protocol/tauri.rs), and a resource
-         must pass BOTH policies. The global script-src does NOT list `blob:` today,
-         so blob import would be blocked there — sandboxed plugins only work because
-         creation is dev-gated, and in dev the webview loads the Vite devUrl directly
-         with no Tauri header. Phase 5 (lifting the release gate) MUST decide this:
-         adding `blob:` to the global script-src also lets the MAIN realm execute
-         constructed modules, which is a real (if modest) XSS amplification given
-         script-src has no 'unsafe-inline'/'unsafe-eval'. Per-window header CSP does
-         not exist in Tauri v2. A guardrail test couples the two so the gate cannot
-         be lifted without this decision — see plugins-enabled.csp.test.ts. -->
+         must pass BOTH policies. Per-window header CSP does not exist in Tauri v2.
+
+         DECIDED in §260 Phase 5: `blob:` is in the global script-src. Two facts
+         settled it, neither of which was written down when the question was raised.
+
+         1. The app ALREADY permits blob-sourced code execution in this origin — the
+            global CSP carries `worker-src 'self' blob:`, and a blob Worker runs
+            attacker-controlled code just as a blob module does. What `script-src
+            blob:` adds on top is DOM access, not the ability to run constructed code.
+            And minting a blob URL requires script execution in the first place, so
+            the path CSP is actually containing here — raw HTML inside a markdown
+            document, with no 'unsafe-inline'/'unsafe-eval' — does not reach it.
+         2. Only script-src had to move. This document also asks for
+            `connect-src ipc: http://ipc.localhost`, which the global policy omits,
+            and that is survivable: tauri's ipc-protocol.js tries the custom-protocol
+            fetch first and, on ANY failure including a CSP block, latches
+            `customProtocolIpcFailed = true` and falls back to
+            `window.ipc.postMessage` for good — which is how the whole app already
+            runs. A blocked module script has no such fallback.
+
+         The narrower alternative, if `blob:` ever proves too broad: serve the bundle
+         from a custom URI scheme whose Rust handler checks `webview_label()`, so the
+         global allowance is inert for the main realm. Rejected here as ~150 lines of
+         Rust to buy back a step `worker-src` had already taken.
+
+         The guardrail test now asserts the POSITIVE form — every source this file
+         needs must exist globally — so widening the sandbox CSP later forces the same
+         deliberation rather than working in dev and failing in release. See
+         plugins-enabled.csp.test.ts. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self' blob:; connect-src ipc: http://ipc.localhost"

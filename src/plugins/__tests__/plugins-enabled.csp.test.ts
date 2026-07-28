@@ -44,13 +44,6 @@ function readText(rel: string): string {
   return readFileSync(resolve(root, rel), "utf8");
 }
 
-/** Does sandbox-webview creation still require a dev build? */
-function sandboxIsDevGated(): boolean {
-  return /isSandboxRuntimeAllowed[\s\S]{0,200}?import\.meta\.env\.DEV/.test(
-    readText("src/plugins/plugins-enabled.ts"),
-  );
-}
-
 function sandboxMetaCsp(): string {
   const html = readText("sandbox.html");
   const match = /content="([^"]*)"/.exec(html);
@@ -59,25 +52,27 @@ function sandboxMetaCsp(): string {
 }
 
 describe("sandbox CSP vs the global CSP (§260 3c-2b, I1)", () => {
-  it("documents the packaged-build gap while the sandbox stays dev-gated", () => {
-    const sandboxScriptSrc = directive(sandboxMetaCsp(), "script-src");
-    const globalScriptSrc = directive(globalCsp(), "script-src");
-    const missing = sandboxScriptSrc.filter(
-      (src) => !globalScriptSrc.includes(src),
+  it("keeps every source the sandbox needs present in the global policy", () => {
+    // §260 Phase 5 — INVERTED. This used to read "if something is missing globally, the
+    // sandbox must be dev-gated", which was right while the gate existed but would have
+    // gone green by short-circuiting the moment the gap closed, asserting nothing. The
+    // positive form keeps working after the gate is gone: widening the sandbox's CSP
+    // later forces the same deliberation instead of working in dev and failing in
+    // release.
+    const missing = directive(sandboxMetaCsp(), "script-src").filter(
+      (src) => !directive(globalCsp(), "script-src").includes(src),
     );
 
-    if (missing.length === 0) return; // global covers everything — nothing to gate
-
-    // Something the sandbox needs is absent globally, so it can only work in dev.
     expect(
-      sandboxIsDevGated(),
-      `sandbox.html's script-src needs ${missing.join(", ")}, which the global CSP ` +
-        `in tauri.conf.json does not allow. A meta CSP cannot widen the served ` +
-        `policy, so in a packaged build the sandbox realm cannot load its plugin ` +
-        `bundle at all. Either add ${missing.join(", ")} to the global script-src ` +
-        `(note: that also lets the MAIN realm execute those sources) or keep ` +
-        `sandbox creation dev-gated. See the comment in sandbox.html.`,
-    ).toBe(true);
+      missing,
+      `sandbox.html's script-src needs these, and the global CSP in tauri.conf.json ` +
+        `does not list them. A <meta> CSP can only TIGHTEN the policy a document is ` +
+        `served with, and a packaged build serves sandbox.html with the global csp as ` +
+        `a response header — so the sandbox realm cannot load its plugin bundle at ` +
+        `all in release, while dev keeps working because the webview loads the Vite ` +
+        `devUrl with no Tauri header. Adding a source here also grants it to the MAIN ` +
+        `realm; see the decision recorded in sandbox.html.`,
+    ).toEqual([]);
   });
 
   it("keeps the sandbox realm free of asset: — the F1 fix must not regress", () => {
