@@ -1083,27 +1083,46 @@ mod tests {
     /// §260 Phase 5 re-review (R5) — the id check must sit BEFORE the move, so an archive
     /// declaring another installed plugin's id cannot destroy it on the way in.
     ///
-    /// Asserted on source order rather than by running an install, because the failure
-    /// mode is purely positional: both the check and the `remove_dir_all` are trivially
-    /// correct in isolation, and a refactor that moved either one past the other would
-    /// leave every behavioural test green while restoring the data loss.
+    /// Asserted on source order rather than by running an install, because the failure mode
+    /// is purely positional: both the check and the `remove_dir_all` are trivially correct
+    /// in isolation, and a refactor moving either past the other would leave every
+    /// behavioural test green while restoring the data loss.
+    ///
+    /// ‼️ WINDOWED to `install_plugin`'s body, and the match COUNT is asserted (re-review,
+    /// F2). Searching the whole file found *a* match rather than *the* match: there are two
+    /// `remove_dir_all(&target_dir)` in this file, the second in `uninstall_plugin`, so
+    /// renaming or refactoring away `install_plugin`'s destructive move silently retargeted
+    /// the assertion at an unrelated function and stayed green. That is the same shape as
+    /// every hollow source-scan guard this phase produced.
     #[test]
     fn expected_id_is_checked_before_the_destructive_move() {
         let src = include_str!("mod.rs");
-        let check = src
-            .find("was requested")
-            .expect("the expected_id refusal must exist");
-        let install = src
+        let start = src
             .find("pub async fn install_plugin")
             .expect("install_plugin must exist");
-        let remove = src[install..]
+        // Body = up to the next top-level item, so nothing outside this function counts.
+        let end = src[start + 1..]
+            .find("\npub ")
+            .map(|i| i + start + 1)
+            .unwrap_or(src.len());
+        let body = &src[start..end];
+
+        assert_eq!(
+            body.matches("remove_dir_all(&target_dir)").count(),
+            1,
+            "install_plugin must contain exactly one destructive move — if it moved into a \
+             helper, this guard no longer sees it and must be rewritten, not deleted"
+        );
+        let refusal = body
+            .find("was requested")
+            .expect("the expected_id refusal must live inside install_plugin");
+        let remove = body
             .find("remove_dir_all(&target_dir)")
-            .map(|i| i + install)
             .expect("the destructive move must exist");
 
         assert!(
-            check < remove,
-            "the id refusal ({check}) must come before remove_dir_all ({remove}) — \
+            refusal < remove,
+            "the id refusal ({refusal}) must come before remove_dir_all ({remove}) — \
              otherwise the archive has already clobbered the target directory"
         );
     }

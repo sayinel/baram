@@ -459,7 +459,7 @@ export class PluginLoader {
     // manifest ⊆ consent when the ZIP lands, and after that the file on disk is sole
     // authority. Anything editing `baram-plugin.json` later escalated on the next start,
     // silently.
-    const manifest = narrowToConsent(rawManifest);
+    const manifest = narrowToConsent(rawManifest, installPath);
 
     // §260 — route by trust tier. `validateManifest` above already rejects a
     // legacy (trust-less) manifest ("trust is required …"), which the install UI
@@ -687,8 +687,11 @@ function activeFilePath(): null | string {
  * narrowed capability list is not a boundary at all (see `extension-context.ts`).
  * `consentGaps` already calls that transition an escalation — this is `runLoad` asking.
  */
-function narrowToConsent(manifest: PluginManifest): PluginManifest {
-  const consent = resolveConsent(manifest.id);
+function narrowToConsent(
+  manifest: PluginManifest,
+  installPath: string,
+): PluginManifest {
+  const consent = resolveConsent(manifest.id, installPath);
   if (!consent) return manifest;
 
   if (consent.trust !== "trusted" && pluginTrustOf(manifest) === "trusted") {
@@ -719,9 +722,19 @@ function narrowToConsent(manifest: PluginManifest): PluginManifest {
  * author's working copy to the installed version's consent and told them to "reinstall to
  * re-approve" a folder. The dev registry wins here for the same reason it wins there.
  */
-function resolveConsent(pluginId: string): PluginConsent | undefined {
+function resolveConsent(
+  pluginId: string,
+  installPath: string,
+): PluginConsent | undefined {
   const { devPlugins, installedPlugins } = usePluginStore.getState();
-  if (devPlugins[pluginId]) return undefined;
+  // ‼️ Compare the PATH, not merely whether a dev entry exists (§260 Phase 5 re-review,
+  // F1). Presence keyed on the id alone was the same mistake R2 fixed, mirrored: with a
+  // dev folder declaring `demo`, toggling the INSTALLED `demo` on also took this branch —
+  // so the installed plugin was granted its whole manifest and the tier refusal was
+  // skipped with it. The Installed tab renders that toggle whether or not a dev entry
+  // collides, and `plugin_list_dev` is not dev-gated, so a config written on an author's
+  // machine populates `devPlugins` in a release build too.
+  if (devPlugins[pluginId]?.installPath === installPath) return undefined;
   return installedPlugins[pluginId]?.consent;
 }
 

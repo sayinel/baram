@@ -72,12 +72,14 @@ export async function migrateFromLocalStorage(): Promise<void> {
     try {
       const existing = await getConfig(key);
       // ‼️ A truthy config value is not proof of a completed migration (§260 Phase 5
-      // re-review, R6). An EMPTY collection is what a store writes when it loaded nothing
-      // — which is exactly what happens if anything reads before this sweep runs — so
-      // treating `"[]"` as "already migrated" would skip, and (with the removal below)
-      // delete the only surviving copy of the user's data. `main.tsx` awaiting this before
-      // the app graph loads is what prevents that write; this is the second lock, because
-      // the consequence of the first one slipping is permanent rather than recoverable.
+      // review, R6). An empty value is what a store writes when it loaded nothing — which
+      // is exactly what happens if anything reads before this sweep runs — so treating it
+      // as "already migrated" would skip, and (with the removal below) delete the only
+      // surviving copy of the user's data. `main.tsx` awaiting this before the app graph
+      // loads is what prevents that write; this is the second lock, because the consequence
+      // of the first one slipping is permanent rather than recoverable.
+      //
+      // That second lock is PARTIAL — `isEmptyCollection` records which keys it covers.
       if (existing && !isEmptyCollection(existing)) {
         // Genuinely migrated — delete the copy anyway (§260 Phase 5 code review, H1).
         // Leaving it kept the exact shared-origin surface this sweep exists to remove:
@@ -100,25 +102,51 @@ export async function migrateFromLocalStorage(): Promise<void> {
 }
 
 /**
- * Is this stored value an empty collection — i.e. indistinguishable from "the store had
- * nothing to save"? Used to decide that a config value is NOT evidence of a migration.
+ * Empty array, empty object, `null`, or an object every one of whose values is itself
+ * degenerate — which is what `{state: {collapsed: {}}, version: 0}` reduces to.
  *
- * Deliberately narrow: only the degenerate serialisations. A populated value, or anything
- * unparseable, counts as real and is left alone.
+ * Depth-bounded rather than freely recursive: this reads a value off disk and runs before
+ * the app has rendered anything.
+ */
+function isDegenerate(value: unknown, depth = 0): boolean {
+  if (value === null) return true;
+  if (depth > 4 || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.length === 0;
+
+  // `version` is persist bookkeeping, never user data, so it must not make an otherwise
+  // empty envelope look populated.
+  const meaningful =
+    "state" in value
+      ? [(value as { state: unknown }).state]
+      : Object.values(value as Record<string, unknown>);
+  return meaningful.every((v) => isDegenerate(v, depth + 1));
+}
+
+/**
+ * Is this stored value indistinguishable from "the store had nothing to save"? Used to
+ * decide that a config value is NOT evidence of a completed migration.
+ *
+ * Unwraps zustand's persist envelope (`{state, version}`) before judging, because that is
+ * the shape three of the four migrated key families actually have (§260 Phase 5 re-review,
+ * F3 — the first version recognised only a bare `"[]"`, which is `bookmark.ts` alone, while
+ * the comment claimed the rule generally).
+ *
+ * ‼️ HONEST BOUND: this can only ever catch a store whose INITIAL STATE IS EMPTY.
+ * `journal-layout` qualifies (`{collapsed:{}}`) and so does `bookmark`. `baram:settings`
+ * and `baram:ai-settings` do NOT — their initial state is a populated set of defaults,
+ * indistinguishable from choices the user made. For those keys the ordering in `main.tsx`
+ * is the only protection, and it has to be: no inspection of the value can tell a default
+ * apart from a deliberate setting.
+ *
+ * Anything unparseable counts as real and is left alone — guessing otherwise would
+ * overwrite data we simply could not read.
  */
 function isEmptyCollection(raw: string): boolean {
-  const trimmed = raw.trim();
-  if (trimmed === "[]" || trimmed === "{}" || trimmed === "null") return true;
   try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (Array.isArray(parsed)) return parsed.length === 0;
-    if (parsed !== null && typeof parsed === "object") {
-      return Object.keys(parsed).length === 0;
-    }
+    return isDegenerate(JSON.parse(raw.trim()));
   } catch {
     return false;
   }
-  return false;
 }
 
 /**

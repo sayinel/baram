@@ -241,6 +241,83 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     );
   });
 
+  it("still narrows the INSTALLED plugin when a dev folder shares its id", async () => {
+    // §260 Phase 5 re-review (F1) — the mirror of the case above, and the hole the R2 fix
+    // opened. `resolveConsent` decided on whether a dev entry EXISTED for the id, but
+    // `handleToggleEnabled` loads the installed record: with a colliding dev folder
+    // present, toggling the installed plugin on skipped both the narrowing and the tier
+    // refusal. Disambiguated on `installPath` now, so the same two registries give
+    // different answers depending on which manifest is actually being loaded.
+    usePluginStore.setState({
+      devPlugins: {
+        demo: {
+          checksum: "",
+          enabled: true,
+          installedAt: 0,
+          installPath: "/dev/demo",
+          isDev: true,
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+
+    // The INSTALLED path, not the dev one.
+    await loader.loadPlugin("/p/demo", {
+      ...BASE,
+      capabilities: ["editor", "network", "files"],
+    });
+
+    expect(registerGrant).toHaveBeenCalledWith("demo", ["editor"], "/p/demo");
+  });
+
+  it("refuses a tier escalation on the installed path even with a dev entry present", async () => {
+    // The tier half of F1: the refusal must not be skippable by the mere existence of a
+    // dev folder with the same id.
+    usePluginStore.setState({
+      devPlugins: {
+        demo: {
+          checksum: "",
+          enabled: true,
+          installedAt: 0,
+          installPath: "/dev/demo",
+          isDev: true,
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { importer, loader } = loaderWithSpies();
+
+    await expect(
+      loader.loadPlugin("/p/demo", { ...BASE, trust: "trusted" }),
+    ).rejects.toThrow(/approved as "sandboxed"/);
+    expect(importer).not.toHaveBeenCalled();
+  });
+
   it("passes a dev plugin's manifest through — choosing the folder is the consent", async () => {
     // No record exists for a dev folder, and narrowing to nothing there would break the
     // dev loop while protecting no user.

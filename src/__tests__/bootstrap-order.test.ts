@@ -27,6 +27,12 @@ const MAIN = readFileSync(join(SRC, "main.tsx"), "utf8");
 
 describe("main.tsx bootstrap (§260 Phase 5)", () => {
   it("awaits the localStorage migration before importing the app graph", () => {
+    // Counts asserted, not just positions (§260 Phase 5 re-review, F2). Every hollow guard
+    // this phase produced was a source scan that found *a* match rather than *the* match,
+    // so `indexOf` is only safe once the match is known to be unique.
+    expect(occurrences(MAIN, "await migrateFromLocalStorage()")).toBe(1);
+    expect(occurrences(MAIN, 'import("./App")')).toBe(1);
+
     const awaited = MAIN.indexOf("await migrateFromLocalStorage()");
     const appImport = MAIN.indexOf('import("./App")');
 
@@ -106,6 +112,11 @@ describe("main.tsx bootstrap (§260 Phase 5)", () => {
     expect(MAIN, "the failure must reach the DOM").toContain("showFatalError");
   });
 });
+
+/** How many times `needle` appears in `haystack` — a literal count, not a regex. */
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
 
 /** Every non-test `.ts`/`.tsx` file under `dir`, recursively. */
 function sources(dir: string, out: string[] = []): string[] {

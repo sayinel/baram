@@ -106,6 +106,39 @@ describe("migrateFromLocalStorage (§260 Phase 5)", () => {
     expect(store.get("baram:journal-layout")).toBe('{"collapsed":{"a":true}}');
   });
 
+  it("sees through zustand's persist envelope", async () => {
+    // §260 Phase 5 re-review (F3) — the shape three of the four migrated key families
+    // actually have. `{"state":{"collapsed":{}},"version":0}` is what `journal-layout`
+    // writes when it rehydrated nothing, and the first version of this check read it as
+    // genuine — so the skip branch ran and deleted the only surviving copy.
+    localStorage.setItem("baram:journal-layout", '{"collapsed":{"a":true}}');
+    store.set("baram:journal-layout", '{"state":{"collapsed":{}},"version":0}');
+
+    await migrateFromLocalStorage();
+
+    expect(store.get("baram:journal-layout")).toBe('{"collapsed":{"a":true}}');
+  });
+
+  it("does not treat a POPULATED persist envelope as degenerate", async () => {
+    // The other side: `version` must not make an envelope look empty, and real state
+    // inside one must win.
+    localStorage.setItem(
+      "baram:journal-layout",
+      '{"collapsed":{"stale":true}}',
+    );
+    store.set(
+      "baram:journal-layout",
+      '{"state":{"collapsed":{"real":true}},"version":0}',
+    );
+
+    await migrateFromLocalStorage();
+
+    expect(store.get("baram:journal-layout")).toBe(
+      '{"state":{"collapsed":{"real":true}},"version":0}',
+    );
+    expect(localStorage.getItem("baram:journal-layout")).toBeNull();
+  });
+
   it("leaves a POPULATED config value alone, and still drops the copy", async () => {
     // The other side of the same rule, and the H1 half: a real migrated value wins, and
     // the readable localStorage copy goes regardless of which value won.
