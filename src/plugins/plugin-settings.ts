@@ -141,6 +141,21 @@ export function sanitizeSettingLabel(raw: string): string {
 /** As long as a settings row can show without wrapping into the next field. */
 const MAX_SETTING_LABEL_CHARS = 80;
 
+/**
+ * Cut to the cap without splitting a character in half.
+ *
+ * `slice` counts UTF-16 code units, so a value ending on an astral character — an emoji, a
+ * rarer CJK ideograph — would hand the plugin a lone surrogate (§260 Phase 4c code review,
+ * N12). Dropping the orphan costs one character and keeps the string well-formed.
+ */
+function clampChars(value: string): string {
+  if (value.length <= MAX_SETTING_VALUE_CHARS) return value;
+  const cut = value.slice(0, MAX_SETTING_VALUE_CHARS);
+  const last = cut.charCodeAt(cut.length - 1);
+  const isLoneHighSurrogate = last >= 0xd800 && last <= 0xdbff;
+  return isLoneHighSurrogate ? cut.slice(0, -1) : cut;
+}
+
 /** `undefined` for anything that is not a usable value of `type`. */
 function coerce(
   value: unknown,
@@ -149,7 +164,7 @@ function coerce(
   if (typeof value !== type) return undefined;
   if (type === "number" && !Number.isFinite(value)) return undefined;
   if (type === "string") {
-    return (value as string).slice(0, MAX_SETTING_VALUE_CHARS);
+    return clampChars(value as string);
   }
   return value as PluginSettingValue;
 }
@@ -180,7 +195,14 @@ function resolveOne(
   return (
     coerce(persisted, field.type) ??
     coerce(field.default, field.type) ??
-    ZERO[field.type]
+    // `?? ""` because `ZERO[type]` is `undefined` for a type outside the set, and an
+    // `undefined` here is DROPPED by `JSON.stringify` on the way to the sandbox (§260
+    // Phase 4c code review, M5) — which would break the one promise this API makes, stated
+    // in `SandboxSettingsAPI` and in the plugin guide: one value per declared field. The
+    // callers all pass `declaredSettingsFor` output, which filters such a field out
+    // already; this makes the exported function safe on its own rather than by luck.
+    ZERO[field.type] ??
+    ""
   );
 }
 

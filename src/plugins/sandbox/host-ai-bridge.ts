@@ -16,6 +16,7 @@ import type { AIAPI, PluginCapability } from "../types";
 import type { SandboxHostRequest } from "./protocol";
 
 import { pluginSandboxStage } from "../../ipc/plugin-invoke";
+import { withTimeout } from "../../utils/with-timeout";
 import { createAIAPI } from "../extension-context";
 
 /**
@@ -24,6 +25,16 @@ import { createAIAPI } from "../extension-context";
  * point: one implementation of privacy mode and model selection for both tiers.
  */
 export const DEFAULT_AI_FACTORY = createAIAPI;
+
+/**
+ * How long a model list may take before the sandbox's read chain is given back.
+ *
+ * Far below `HOST_REQUEST_TIMEOUT_MS` (120 s) on purpose: that bound exists to catch a
+ * wedged provider mid-stream, where silence can be legitimate. Listing models is a single
+ * short request — a local Ollama answers in milliseconds — so waiting two minutes for one
+ * only ever punishes the plugin's own document reads, which are queued behind it.
+ */
+export const LIST_MODELS_TIMEOUT_MS = 15_000;
 
 export interface HostRequestHandlerOptions {
   /** Injectable for tests; defaults to `DEFAULT_AI_FACTORY`. */
@@ -106,9 +117,27 @@ export function createAIRequestHandler(
       case "ai_list_models": {
         // Staged, for the reason the response frame cannot carry it: a model list is a JSON
         // ARRAY, so it satisfies the queue's `[` condition the moment a user's Ollama
-        // install pushes it past 8 KiB. Cheap to serialise here and rarely called, so
-        // holding the staged slot for it costs nothing.
-        const models = await aiApi().listModels();
+        // install pushes it past 8 KiB.
+        //
+        // ‼️ BOUNDED, and this is the part an earlier version of this comment got wrong by
+        // saying it was "rarely called, so holding the staged slot costs nothing" (§260
+        // Phase 4c code review, H1). The slot is not the cost — the CLIENT CHAIN is.
+        // Staging puts this on `stagedReads`, which serialises every later
+        // `getMarkdown`/`getSelection`/`settings.getAll` behind it, and the provider call
+        // underneath has no timeout of its own (`llm/ollama.rs` builds a bare
+        // `reqwest::Client`). Against an endpoint that accepts the connection and never
+        // answers, this plugin's document reads were stuck for the full
+        // `HOST_REQUEST_TIMEOUT_MS` — and unlike a completion there are no tokens to
+        // restart the stall timer, so it was always the whole 120 s. Same shape as the 4b
+        // defect where a cap left the plugin hanging for 150 s.
+        //
+        // A short bound here rather than a two-step protocol: a model list either comes
+        // back quickly or is not coming.
+        const models = await withTimeout(
+          aiApi().listModels(),
+          LIST_MODELS_TIMEOUT_MS,
+          `ai.listModels: the provider did not answer within ${LIST_MODELS_TIMEOUT_MS}ms`,
+        );
         await stage(pluginId, JSON.stringify(models));
         return undefined;
       }

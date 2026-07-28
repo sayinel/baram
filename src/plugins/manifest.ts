@@ -44,6 +44,9 @@ const MAX_STATUS_BAR_ITEMS = 5;
  */
 const CONTRIBUTION_ID = /^[A-Za-z0-9_-]+$/;
 
+/** Long enough for any readable id, short enough that a manifest cannot inflate a payload. */
+const MAX_CONTRIBUTION_ID_CHARS = 64;
+
 export function validateManifest(
   data: unknown,
 ):
@@ -255,6 +258,17 @@ function validateContributions(
     // rather than leaving them a control that does not work.
     if (value === "__proto__") {
       errors.push({ field, message: `${field} may not be "__proto__"` });
+    }
+    // §260 Phase 4c code review (L8) — the charset rule never bounded LENGTH, so the
+    // "16 fields x 512 chars" argument that decides how settings values travel did not
+    // actually hold: sixteen 64 KiB keys are a 1 MiB payload. Harmless today because that
+    // payload is staged rather than framed, but a stated bound that is not a bound is how
+    // the next transport decision gets made on a false premise.
+    if (typeof value === "string" && value.length > MAX_CONTRIBUTION_ID_CHARS) {
+      errors.push({
+        field,
+        message: `${field} may be at most ${MAX_CONTRIBUTION_ID_CHARS} characters`,
+      });
     }
   };
   /** Every declared section must be an array of objects before anything indexes it. */

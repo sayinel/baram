@@ -17,6 +17,7 @@ import {
 import { useEditorStore } from "../stores/editor/editor";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import {
   createExtensionContext,
   setEditorSurfaceBlocked as recordEditorSurfaceBlocked,
@@ -684,26 +685,6 @@ function withRevocationFailure(original: unknown, failure: Error): Error {
       `This plugin may keep its granted capabilities until the app restarts.`,
     { cause: original },
   );
-}
-
-function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  message: string,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
-    promise.then(
-      (val) => {
-        clearTimeout(timer);
-        resolve(val);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
 }
 
 /** Singleton instance */

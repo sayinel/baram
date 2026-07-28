@@ -3,7 +3,11 @@ import type { AIAPI } from "../../types";
 import { describe, expect, it, vi } from "vitest";
 
 import { createAIAPI } from "../../extension-context";
-import { createAIRequestHandler, DEFAULT_AI_FACTORY } from "../host-ai-bridge";
+import {
+  createAIRequestHandler,
+  DEFAULT_AI_FACTORY,
+  LIST_MODELS_TIMEOUT_MS,
+} from "../host-ai-bridge";
 
 // §260 Phase 3c-2c — the host applies the policy for `ai`, so this is where the
 // capability check has to be enforcing. It IS enforcing because a `plugin-*` window
@@ -98,6 +102,31 @@ describe("createAIRequestHandler (§260 3c-2c)", () => {
 
     expect(answer).toBeUndefined();
     expect(staged).toEqual([JSON.stringify([{ id: "m", name: "M" }])]);
+  });
+
+  it("gives up on a provider that never answers a model list", async () => {
+    // §260 Phase 4c code review (H1) — staging puts this on the client's SERIAL read chain,
+    // and the provider call underneath has no timeout of its own, so an endpoint that
+    // accepts the connection and never answers stalled every later document read for the
+    // full 120s host bound. There are no tokens here to restart the stall timer.
+    vi.useFakeTimers();
+    try {
+      const handler = createAIRequestHandler({
+        aiFactory: () => ({
+          ...fakeAi().ai,
+          listModels: () => new Promise(() => {}),
+        }),
+        capabilities: ["ai"],
+        pluginId: "p",
+        stage: async () => {},
+      });
+      const answered = handler({ kind: "ai_list_models" }, noop);
+      const assertion = expect(answered).rejects.toThrow(/did not answer/);
+      await vi.advanceTimersByTimeAsync(LIST_MODELS_TIMEOUT_MS + 1);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("forwards stream tokens through onToken and resolves", async () => {

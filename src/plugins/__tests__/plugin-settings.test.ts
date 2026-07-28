@@ -129,6 +129,42 @@ describe("resolvePluginSettings", () => {
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
+  it("never omits a declared key, even for a type outside the set", () => {
+    // §260 Phase 4c code review (M5) — `ZERO[type]` is `undefined` for an unknown type, and
+    // `JSON.stringify` DROPS an undefined value, so the key would vanish from the staged
+    // payload. That breaks the one promise this API makes ("one value per declared field",
+    // stated in `SandboxSettingsAPI` and the plugin guide). The exported resolver has to
+    // hold that on its own: its callers only happen to pass filtered fields.
+    const resolved = resolvePluginSettings(
+      [{ key: "odd", label: "Odd", type: "object" as never }],
+      undefined,
+    );
+    expect(Object.keys(resolved)).toEqual(["odd"]);
+    expect(JSON.parse(JSON.stringify(resolved))).toEqual({ odd: "" });
+  });
+
+  it("clamps without splitting a character in half", () => {
+    // N12 — `slice` counts UTF-16 code units, so cutting on an astral character handed the
+    // plugin a lone surrogate.
+    //
+    // ‼️ The leading "a" is what makes this test able to fail: the cap is EVEN and an emoji
+    // is two code units, so an all-emoji string is cut exactly on a boundary and passes
+    // either way. Mutation testing caught that — the first version of this test was green
+    // against the unfixed slice. One odd character ahead of them moves every pair off the
+    // boundary.
+    const emoji = "🙂";
+    const value = `a${emoji.repeat(MAX_SETTING_VALUE_CHARS)}`;
+
+    const clamped = resolvePluginSettings(declared, { prefix: value })
+      .prefix as string;
+
+    // One short of the cap: the pair that straddled it was dropped whole.
+    expect(clamped).toHaveLength(MAX_SETTING_VALUE_CHARS - 1);
+    expect(clamped).toBe(`a${emoji.repeat((MAX_SETTING_VALUE_CHARS - 2) / 2)}`);
+    // The real property, stated directly: no unpaired surrogate survived the cut.
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(clamped)).toBe(false);
+  });
+
   it("resolves nothing when nothing is declared", () => {
     expect(resolvePluginSettings(undefined, { stray: 1 })).toEqual({});
   });

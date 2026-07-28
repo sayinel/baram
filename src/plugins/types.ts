@@ -473,7 +473,8 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   commands: "에디터 커맨드를 등록하고 실행할 수 있습니다",
   sidebar: "사이드바에 패널을 추가할 수 있습니다",
   statusbar: "상태바에 항목을 표시할 수 있습니다",
-  settings: "설정 화면에 옵션을 추가할 수 있습니다",
+  settings:
+    "설정 화면에 옵션을 추가하고, 사용자가 설정한 값을 읽을 수 있습니다",
   events: "에디터 이벤트를 수신할 수 있습니다",
   ai: "AI/LLM 기능을 사용할 수 있습니다",
   network: "네트워크 요청을 보낼 수 있습니다",

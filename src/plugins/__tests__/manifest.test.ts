@@ -515,6 +515,37 @@ describe("validateManifest — trust tier (§260)", () => {
       ).toContain("contributions.settings[1].key");
     });
 
+    it("caps how long a key may be, so the payload argument holds", () => {
+      // §260 Phase 4c code review (L8) — the charset rule never bounded length, so
+      // "16 fields x 512 chars" was not actually a bound: sixteen 64 KiB keys are a 1 MiB
+      // staged payload. Harmless while it is staged, but a stated bound that is not one is
+      // how the next transport decision gets made on a false premise.
+      expect(
+        fieldsOf(
+          sandboxed({
+            settings: [{ key: "k".repeat(65), label: "L", type: "string" }],
+          }),
+        ),
+      ).toContain("contributions.settings[0].key");
+      expect(
+        sandboxed({
+          settings: [{ key: "k".repeat(64), label: "L", type: "string" }],
+        }).valid,
+      ).toBe(true);
+    });
+
+    it("refuses `__proto__` as a key", () => {
+      // LOW-3 — legal under the charset rule, but it is used as an object key downstream,
+      // where assigning to it hits the inherited setter and the field silently vanishes.
+      expect(
+        fieldsOf(
+          sandboxed({
+            settings: [{ key: "__proto__", label: "L", type: "string" }],
+          }),
+        ),
+      ).toContain("contributions.settings[0].key");
+    });
+
     it("caps how many fields one plugin may declare", () => {
       // The cap is half of the payload argument: MAX_SETTING_FIELDS × the per-string cap
       // is what decides whether the values can ride a response frame (they cannot).

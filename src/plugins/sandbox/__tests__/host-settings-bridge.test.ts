@@ -4,6 +4,7 @@ import type { PluginCapability, PluginSettingField } from "../../types";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { usePluginStore } from "../../../stores/system/plugin";
 import {
   createSettingsRequestHandler,
   SETTINGS_CHANGED_EVENT,
@@ -97,6 +98,9 @@ describe("createSettingsRequestHandler", () => {
 });
 
 describe("watchPluginSettings", () => {
+  const wait = (ms: number) =>
+    new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -172,6 +176,36 @@ describe("watchPluginSettings", () => {
 
     expect(deliverEvent).not.toHaveBeenCalled();
     expect(store.stopped()).toBe(true);
+  });
+
+  it("wakes the right plugin, once, against the REAL store", async () => {
+    // §260 Phase 4c code review (L9) — every other test in this file injects `subscribe`,
+    // so the production half was unpinned: zustand's two-argument listener contract, the
+    // slice-identity predicate, and "one plugin's edit does not wake another sandbox". That
+    // is this project's own "a test double hides the defect" class, so this one drives the
+    // real store and lets the real `liveSubscribe` run.
+    vi.useRealTimers();
+    usePluginStore.setState({ pluginSettings: {} });
+    const mine = vi.fn();
+    const stop = watchPluginSettings({
+      capabilities: ["settings"],
+      pluginId: "p",
+      session: { deliverEvent: mine },
+    });
+
+    usePluginStore.getState().setPluginSetting("other", "k", 1);
+    await wait(SETTINGS_NOTIFY_DEBOUNCE_MS * 2);
+    expect(mine).not.toHaveBeenCalled(); // another plugin's slice is a different object
+
+    usePluginStore.getState().setPluginSetting("p", "k", 1);
+    await wait(SETTINGS_NOTIFY_DEBOUNCE_MS * 2);
+    expect(mine).toHaveBeenCalledTimes(1);
+    expect(mine).toHaveBeenCalledWith(SETTINGS_CHANGED_EVENT, []);
+
+    stop();
+    usePluginStore.getState().setPluginSetting("p", "k", 2);
+    await wait(SETTINGS_NOTIFY_DEBOUNCE_MS * 2);
+    expect(mine).toHaveBeenCalledTimes(1); // unsubscribed for real, not just debounced
   });
 
   it("survives a session that rejects the delivery", () => {
