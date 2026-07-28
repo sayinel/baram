@@ -43,15 +43,32 @@ export const tauriStorage: StateStorage = {
   },
 };
 
-/** localStorage keys used by Zustand persist stores */
-const MIGRATION_KEYS = ["baram:settings", "baram:ai-settings"];
+/**
+ * Fixed keys previously written to localStorage by Zustand persist stores.
+ *
+ * Bookmarks are deliberately NOT here — see `MIGRATION_PREFIXES`.
+ */
+const MIGRATION_KEYS = [
+  "baram:settings",
+  "baram:ai-settings",
+  // §260 Phase 5 — moved off the default (localStorage) persist backend.
+  "baram:journal-layout",
+];
+
+/**
+ * §260 Phase 5 — key families that cannot be enumerated in advance.
+ *
+ * `baram:bookmarks:{vaultRoot}` is one key per vault the user has ever opened, so a
+ * static list would silently strand every vault but the ones someone thought to name.
+ */
+const MIGRATION_PREFIXES = ["baram:bookmarks:"];
 
 /**
  * One-time migration: copy existing localStorage data to Tauri storage,
  * then remove from localStorage. Skips keys that already exist in Tauri storage.
  */
 export async function migrateFromLocalStorage(): Promise<void> {
-  for (const key of MIGRATION_KEYS) {
+  for (const key of keysToMigrate()) {
     try {
       const existing = await getConfig(key);
       if (existing) continue; // already migrated
@@ -66,4 +83,20 @@ export async function migrateFromLocalStorage(): Promise<void> {
       logger.warn(`[tauriStorage] Migration failed for "${key}":`, e);
     }
   }
+}
+
+/**
+ * The fixed keys plus every prefixed key actually present, snapshotted BEFORE the loop
+ * starts removing entries — iterating `localStorage` by index while deleting from it
+ * skips every other match.
+ */
+function keysToMigrate(): string[] {
+  const found = [...MIGRATION_KEYS];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && MIGRATION_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      found.push(key);
+    }
+  }
+  return found;
 }

@@ -1,6 +1,8 @@
 // §56 Journal sidebar layout — persisted collapse state for JournalSection panels
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { tauriStorage } from "../system/tauri-storage";
 
 interface JournalLayoutState {
   /** Explicit collapse state per section id; absence means "use the default". */
@@ -20,6 +22,11 @@ export const useJournalLayoutStore = create<JournalLayoutState>()(
           collapsed: { ...s.collapsed, [id]: !(s.collapsed[id] ?? fallback) },
         })),
     }),
-    { name: "baram:journal-layout" },
+    // §260 Phase 5 — an explicit storage, not the default: zustand's default is
+    // localStorage, which every plugin sandbox shares an origin with.
+    {
+      name: "baram:journal-layout",
+      storage: createJSONStorage(() => tauriStorage),
+    },
   ),
 );

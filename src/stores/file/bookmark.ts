@@ -1,5 +1,11 @@
-// §36 북마크 스토어 — 파일/헤딩 북마크 CRUD + localStorage 영속화
+// §36 북마크 스토어 — 파일/헤딩 북마크 CRUD + Tauri 설정 영속화
+//
+// §260 Phase 5: localStorage에서 tauriStorage로 이동. 모든 `plugin-*` 샌드박스 웹뷰는
+// 메인 윈도우와 동일 출처라 localStorage를 공유한다 — capability가 하나도 없는
+// 플러그인이 vault 루트 경로·파일 경로·헤딩 텍스트를 읽고 쓸 수 있었다.
 import { create } from "zustand";
+
+import { tauriStorage } from "../system/tauri-storage";
 
 export interface BookmarkItem {
   createdAt: number;
@@ -16,10 +22,11 @@ interface BookmarkState {
   addBookmark: (item: Omit<BookmarkItem, "createdAt" | "id">) => void;
 
   bookmarks: BookmarkItem[];
-  loadBookmarks: (rootPath: string) => void;
+  /** Async since §260 Phase 5 — the backing store is Rust config, not localStorage. */
+  loadBookmarks: (rootPath: string) => Promise<void>;
   moveToGroup: (id: string, group: string) => void;
   removeBookmark: (id: string) => void;
-  saveBookmarks: (rootPath: string) => void;
+  saveBookmarks: (rootPath: string) => Promise<void>;
 }
 
 /** Get unique groups from bookmarks list */
@@ -76,22 +83,19 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
     });
   },
 
-  loadBookmarks: (rootPath) => {
+  loadBookmarks: async (rootPath) => {
     try {
-      const raw = localStorage.getItem(storageKey(rootPath));
-      if (raw) {
-        const parsed = JSON.parse(raw) as BookmarkItem[];
-        set({ bookmarks: parsed });
-      } else {
-        set({ bookmarks: [] });
-      }
+      const raw = await tauriStorage.getItem(storageKey(rootPath));
+      set({ bookmarks: raw ? (JSON.parse(raw) as BookmarkItem[]) : [] });
     } catch {
       set({ bookmarks: [] });
     }
   },
 
-  saveBookmarks: (rootPath) => {
-    const { bookmarks } = get();
-    localStorage.setItem(storageKey(rootPath), JSON.stringify(bookmarks));
+  saveBookmarks: async (rootPath) => {
+    await tauriStorage.setItem(
+      storageKey(rootPath),
+      JSON.stringify(get().bookmarks),
+    );
   },
 }));
