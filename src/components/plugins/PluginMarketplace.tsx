@@ -168,17 +168,22 @@ const STYLES = {
   } as React.CSSProperties,
 };
 
+import type { ConsentReason } from "../../plugins/plugin-consent";
 import type {
   InstalledPlugin,
-  PluginCapability,
+  PluginConsent,
   PluginStatus,
   RegistryEntry,
   RegistryIndex,
 } from "../../plugins/types";
 
+import { useShallow } from "zustand/shallow";
+
 import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
 import { BUILTIN_PLUGINS } from "../../plugins/builtin";
+import { validateManifest } from "../../plugins/manifest";
+import { consentGaps, consentRequired } from "../../plugins/plugin-consent";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import { arePluginsEnabled } from "../../plugins/plugins-enabled";
 import {
@@ -186,15 +191,32 @@ import {
   fetchRegistryIndex,
   searchRegistry,
 } from "../../plugins/registry-client";
-import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
 import { PluginCard } from "./PluginCard";
+import { PluginConsentDialog } from "./PluginConsentDialog";
 import { PluginDetail } from "./PluginDetail";
 import { PluginDeveloperSection } from "./PluginDeveloperSection";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 
 type MarketplaceTab = "browse" | "installed" | "updates";
+
+/**
+ * §260 Phase 5 — the live registry still lists plugins written before the trust model
+ * (both entries, as of 2026-07-16). `validateManifest` refuses a trust-less manifest, so
+ * without this the user downloads first and meets a validation error second.
+ */
+const LEGACY_ENTRY_MESSAGE =
+  "This plugin predates Baram's plugin trust model and cannot be installed. " +
+  "Ask the author to publish a manifest that declares a trust tier.";
+
+/** What the consent dialog is currently asking about, if anything. */
+interface PendingConsent {
+  consent: PluginConsent;
+  name: string;
+  prior?: PluginConsent;
+  reason: ConsentReason;
+}
 
 export function PluginMarketplace() {
   const {
@@ -208,7 +230,20 @@ export function PluginMarketplace() {
     setError,
     setInstalling,
     clearUpdateAvailable,
-  } = usePluginStore();
+  } = usePluginStore(
+    useShallow((s) => ({
+      addPlugin: s.addPlugin,
+      clearUpdateAvailable: s.clearUpdateAvailable,
+      installedPlugins: s.installedPlugins,
+      installing: s.installing,
+      pluginErrors: s.pluginErrors,
+      removePlugin: s.removePlugin,
+      setEnabled: s.setEnabled,
+      setError: s.setError,
+      setInstalling: s.setInstalling,
+      updateAvailable: s.updateAvailable,
+    })),
+  );
 
   const [activeTab, setActiveTab] = useState<MarketplaceTab>("browse");
   /** Plugin ids whose enable/disable is in flight — see `handleToggleEnabled`. */
@@ -223,6 +258,34 @@ export function PluginMarketplace() {
   const [loading, setLoading] = useState(false);
   const [error, setFetchError] = useState<null | string>(null);
   const [readme, setReadme] = useState<null | string>(null);
+
+  // §260 Phase 5 — the install flow awaits a decision, so the dialog is modelled as a
+  // promise the user resolves. The resolver lives in a ref rather than in state because
+  // settling it must not depend on a re-render having happened first.
+  const [pendingConsent, setPendingConsent] = useState<null | PendingConsent>(
+    null,
+  );
+  const consentResolver = useRef<((v: null | PluginConsent) => void) | null>(
+    null,
+  );
+
+  const askConsent = useCallback(
+    (pending: PendingConsent) =>
+      new Promise<null | PluginConsent>((resolve) => {
+        // A second request while one is open would strand the first caller forever.
+        // Refuse the older one rather than leaking a never-settled promise.
+        consentResolver.current?.(null);
+        consentResolver.current = resolve;
+        setPendingConsent(pending);
+      }),
+    [],
+  );
+
+  const settleConsent = useCallback((value: null | PluginConsent) => {
+    setPendingConsent(null);
+    consentResolver.current?.(value);
+    consentResolver.current = null;
+  }, []);
 
   // Load README for selected installed plugin
   useEffect(() => {
@@ -289,33 +352,86 @@ export function PluginMarketplace() {
       .finally(() => setLoading(false));
   }, []);
 
-  // --- Install handler with capability review ---
+  /**
+   * \u00a7260 Phase 5 \u2014 consent, then download, then VERIFY the download against what was
+   * consented to.
+   *
+   * Consent is collected against the registry entry, which is a claim the registry
+   * makes. The manifest inside the ZIP is the truth. Checking that they agree is what
+   * makes the claim worth consenting to at all: otherwise a registry (or a swapped
+   * download URL that still matches its checksum entry) could advertise "sandboxed" and
+   * ship "trusted", and the user would have approved the wrong thing.
+   *
+   * Every check runs BEFORE `addPlugin`. That also closes a gap this flow has carried
+   * since \u00a769: the record used to be persisted first and validated only inside
+   * `loadPlugin`, whose rejection merely set an error string \u2014 so an invalid manifest
+   * stayed in the store, and a plugin declaring `tiptapExtensions` skipped `loadPlugin`
+   * entirely and was never validated at all.
+   *
+   * `preApproved` is for the update path, which has already asked.
+   */
   const handleInstall = useCallback(
-    async (entry: RegistryEntry) => {
-      // Show capability review
-      if (entry.capabilities.length > 0) {
-        const capDescriptions = entry.capabilities
-          .map(
-            (c) =>
-              `\u2022 ${CAPABILITY_DESCRIPTIONS[c as PluginCapability] ?? c}`,
-          )
-          .join("\n");
-        const confirmed = window.confirm(
-          `"${entry.name}" requests the following permissions:\n\n${capDescriptions}\n\nDo you want to install this plugin?`,
-        );
-        if (!confirmed) return;
+    async (entry: RegistryEntry, preApproved?: PluginConsent) => {
+      if (!entry.trust) {
+        setError(entry.id, LEGACY_ENTRY_MESSAGE);
+        return;
       }
+      const claimed: PluginConsent = {
+        capabilities: [...entry.capabilities].sort(),
+        trust: entry.trust,
+      };
+      const consent =
+        preApproved ??
+        (await askConsent({
+          consent: claimed,
+          name: entry.name,
+          reason: "first-install",
+        }));
+      if (!consent) return;
 
       setInstalling(entry.id, true);
       try {
         const result = await pluginInstall(entry.downloadUrl, entry.checksum);
+        // Roll back to the id the archive actually installed under \u2014 that is where the
+        // files landed, whatever the registry called the entry.
+        const reject = async (why: string): Promise<never> => {
+          await pluginUninstall(result.manifest.id).catch((err: unknown) =>
+            logger.error("[Marketplace] rollback failed:", err),
+          );
+          throw new Error(why);
+        };
+
+        const validation = validateManifest(result.manifest);
+        if (!validation.valid) {
+          await reject(
+            `the downloaded manifest is invalid \u2014 ${validation.errors
+              .map((e) => `${e.field}: ${e.message}`)
+              .join("; ")}`,
+          );
+        }
+        if (result.manifest.id !== entry.id) {
+          await reject(
+            `the download declares id "${result.manifest.id}" but the registry listed "${entry.id}"`,
+          );
+        }
+        const gaps = consentGaps(consent, {
+          capabilities: result.manifest.capabilities,
+          trust: result.manifest.trust,
+        });
+        if (gaps.length > 0) {
+          await reject(
+            `the download does not match the registry listing \u2014 ${gaps.join("; ")}`,
+          );
+        }
+
         const plugin: InstalledPlugin = {
-          manifest: result.manifest,
-          installPath: result.install_path,
+          checksum: result.checksum,
+          consent,
           enabled: true,
           installedAt: Date.now(),
+          installPath: result.install_path,
+          manifest: result.manifest,
           updatedAt: Date.now(),
-          checksum: result.checksum,
         };
         addPlugin(plugin);
         setError(entry.id, null);
@@ -330,7 +446,7 @@ export function PluginMarketplace() {
         setInstalling(entry.id, false);
       }
     },
-    [addPlugin, setError, setInstalling],
+    [addPlugin, askConsent, setError, setInstalling],
   );
 
   const handleUninstall = useCallback(
@@ -348,32 +464,45 @@ export function PluginMarketplace() {
 
   const handleUpdate = useCallback(
     async (entry: RegistryEntry) => {
-      // Check for new capabilities
-      const currentPlugin = installedPlugins[entry.id];
-      if (currentPlugin) {
-        const currentCaps = new Set(currentPlugin.manifest.capabilities);
-        const newCaps = entry.capabilities.filter(
-          (c) => !currentCaps.has(c as PluginCapability),
-        );
-        if (newCaps.length > 0) {
-          const capDescriptions = newCaps
-            .map(
-              (c) =>
-                `\u2022 ${CAPABILITY_DESCRIPTIONS[c as PluginCapability] ?? c}`,
-            )
-            .join("\n");
-          const confirmed = window.confirm(
-            `"${entry.name}" update requests new permissions:\n\n${capDescriptions}\n\nDo you want to update?`,
-          );
-          if (!confirmed) return;
-        }
+      if (!entry.trust) {
+        setError(entry.id, LEGACY_ENTRY_MESSAGE);
+        return;
       }
+      // \u00a7260 Phase 5 \u2014 read the recorded consent BEFORE uninstalling: `handleUninstall`
+      // calls `removePlugin`, which deletes the very record this compares against.
+      // Without that ordering an update would always look like a first install.
+      const prior = installedPlugins[entry.id]?.consent;
+      const claimed: PluginConsent = {
+        capabilities: [...entry.capabilities].sort(),
+        trust: entry.trust,
+      };
+      const reason = consentRequired(prior, claimed);
+      // When the recorded consent already covers this version, record the CLAIMED shape
+      // rather than carrying the old one forward \u2014 an update that drops a capability
+      // must narrow the record too, or the grant outlives the version that needed it.
+      const consent =
+        reason === null
+          ? claimed
+          : await askConsent({
+              consent: claimed,
+              name: entry.name,
+              prior,
+              reason,
+            });
+      if (!consent) return;
 
       await handleUninstall(entry.id);
-      await handleInstall(entry);
+      await handleInstall(entry, consent);
       clearUpdateAvailable(entry.id);
     },
-    [installedPlugins, handleInstall, handleUninstall, clearUpdateAvailable],
+    [
+      askConsent,
+      clearUpdateAvailable,
+      handleInstall,
+      handleUninstall,
+      installedPlugins,
+      setError,
+    ],
   );
 
   const handleToggleEnabled = useCallback(
@@ -466,6 +595,20 @@ export function PluginMarketplace() {
     );
   }
 
+  // Rendered by BOTH returns below: install can be started from the list or from the
+  // detail view, and the detail view is an early return — mounting the dialog in only
+  // one of them would leave the other's `askConsent` promise pending forever.
+  const consentDialog = pendingConsent && (
+    <PluginConsentDialog
+      consent={pendingConsent.consent}
+      name={pendingConsent.name}
+      onCancel={() => settleConsent(null)}
+      onConfirm={() => settleConsent(pendingConsent.consent)}
+      prior={pendingConsent.prior}
+      reason={pendingConsent.reason}
+    />
+  );
+
   // If detail view is showing
   if (selectedEntry) {
     const plugin = installedPlugins[selectedEntry.id];
@@ -475,23 +618,27 @@ export function PluginMarketplace() {
       plugin,
     );
     return (
-      <PluginDetail
-        entry={selectedEntry}
-        error={pluginErrors[selectedEntry.id]}
-        onBack={() => setSelectedEntry(null)}
-        onInstall={() => handleInstall(selectedEntry)}
-        onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
-        onUninstall={() => handleUninstall(selectedEntry.id)}
-        onUpdate={() => handleUpdate(selectedEntry)}
-        readme={readme}
-        status={detailStatus}
-        updateAvailable={updateAvailable[selectedEntry.id]}
-      />
+      <>
+        {consentDialog}
+        <PluginDetail
+          entry={selectedEntry}
+          error={pluginErrors[selectedEntry.id]}
+          onBack={() => setSelectedEntry(null)}
+          onInstall={() => handleInstall(selectedEntry)}
+          onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
+          onUninstall={() => handleUninstall(selectedEntry.id)}
+          onUpdate={() => handleUpdate(selectedEntry)}
+          readme={readme}
+          status={detailStatus}
+          updateAvailable={updateAvailable[selectedEntry.id]}
+        />
+      </>
     );
   }
 
   return (
     <div className="plugin-marketplace" style={STYLES.container}>
+      {consentDialog}
       {/* Header */}
       <div style={STYLES.header}>
         <h2 style={STYLES.title}>Plugins</h2>
