@@ -12,6 +12,7 @@ import type {
   NetworkAPI,
   PluginCapability,
   PluginManifest,
+  SettingsAPI,
   StatusBarItem,
   StorageAPI,
   UIAPI,
@@ -30,12 +31,14 @@ import {
 } from "../ipc/plugin-invoke";
 import { useAIStore } from "../stores/ai/ai";
 import { useEditorStore } from "../stores/editor/editor";
+import { usePluginStore } from "../stores/system/plugin";
 import { useUIStore } from "../stores/ui/ui";
 import { isTabLoading, loadedTabId } from "../utils/editor/programmatic-update";
 import { createLLMStream } from "../utils/llm-stream";
 import { logger } from "../utils/logger";
 import { getConfigForTask } from "../utils/model-selection";
 import { isLLMAllowed } from "../utils/privacy-check";
+import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { usePluginUIStore } from "./plugin-ui-store";
 import {
   EDITOR_READ_CAPABILITIES,
@@ -142,6 +145,31 @@ function createNetworkAPI(): NetworkAPI {
     fetch(url, init) {
       return pluginHttpFetch(url, init);
     },
+  };
+}
+
+// --- Settings API (§260 Phase 4c) ---
+/**
+ * The user's answers to this plugin's declared fields — read-only, like the sandboxed
+ * tier's, and through the SAME resolver so both tiers see the same values for the same
+ * manifest.
+ *
+ * Synchronous here because the store is in this realm. Read on every call rather than
+ * captured: the user can change a value while the plugin is loaded, and a trusted plugin
+ * has no `settings:changed` frame — it runs in the main realm and can subscribe to
+ * `usePluginStore` itself if it wants to be told.
+ *
+ * A trusted plugin could of course read the store directly. That is not what this is for:
+ * it is the tier-portable spelling, so the same plugin source works in both tiers, and it
+ * is what keeps "resolved against the current manifest" from being re-implemented by hand.
+ */
+function createSettingsAPI(manifest: PluginManifest): SettingsAPI {
+  return {
+    getAll: () =>
+      resolvePluginSettings(
+        declaredSettingsFor(manifest),
+        usePluginStore.getState().pluginSettings[manifest.id],
+      ),
   };
 }
 
@@ -337,6 +365,10 @@ export function createExtensionContext(
     ? createNetworkAPI()
     : (createDeniedProxy("network", "network") as NetworkAPI);
 
+  const settings: SettingsAPI = hasCapability("settings")
+    ? createSettingsAPI(manifest)
+    : (createDeniedProxy("settings", "settings") as SettingsAPI);
+
   const storage: StorageAPI = hasCapability("storage")
     ? createStorageAPI(manifest.id)
     : (createDeniedProxy("storage", "storage") as StorageAPI);
@@ -359,6 +391,7 @@ export function createExtensionContext(
     files,
     events,
     network,
+    settings,
     storage,
     ui,
   };

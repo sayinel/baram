@@ -198,14 +198,11 @@ export function createEditorRequestHandler(
         // staged, not only when large: one path has no threshold to get wrong, and the
         // extra round trip is invisible next to a user-driven call.
         //
-        // ‼️ SIBLING, deferred to 4c with the composition visible rather than just the
-        // severity: `ai_complete` also answers inline and an LLM completion routinely
-        // exceeds 8 KiB. Lower severity because it is the plugin's own output — but the
-        // natural use of `ai` in this tier is "read the document, summarise it", so a
-        // plugin holding `editor:readonly` + `ai` can route DOCUMENT-DERIVED text into the
-        // same queue, which is much of what staging this call just closed. `ai_stream` is
-        // already fine (tokens ride individual `hostStreamToken` frames, each far under the
-        // threshold), so the gap is exactly non-streaming `complete`.
+        // The SIBLING this note used to defer — `ai_complete` answering inline, which let a
+        // plugin holding `editor:readonly` + `ai` route document-derived text into the same
+        // queue — was closed in 4c by streaming it (`host-ai-bridge`). Kept as a pointer
+        // rather than deleted: the composition it describes is the reason both calls are
+        // shaped the way they are.
         budget.spend(to - from, "getSelection");
         // A bare caret is the common case and its text is `""`. Staging that would buy a
         // Rust slot write and a broker pull to deliver nothing, and would occupy the ONE

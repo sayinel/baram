@@ -2,6 +2,7 @@
 import { describe, expect, it, test } from "vitest";
 
 import { validateManifest } from "../manifest";
+import { MAX_SETTING_FIELDS } from "../plugin-settings";
 
 const validManifest = {
   id: "baram-word-count",
@@ -420,17 +421,143 @@ describe("validateManifest — trust tier (§260)", () => {
       );
     });
 
-    it("checks menu/settings as arrays of objects without freezing their shape", () => {
-      // Nothing consumes them yet (Phase 4b). Asserting a shape the loader does not
-      // read would freeze an unsettled design; leaving them unchecked would repeat the
-      // very mistake above the moment 4b reads one.
+    it("checks menu as an array of objects without freezing its shape", () => {
+      // Still nothing consumes `menu` (4c defers the mapping). Asserting a shape the
+      // loader does not read would freeze an unsettled design; leaving it unchecked would
+      // repeat the very mistake above the moment something reads it.
       expect(fieldsOf(sandboxed({ menu: "nope" }))).toContain(
         "contributions.menu",
       );
-      expect(fieldsOf(sandboxed({ settings: [1] }))).toContain(
-        "contributions.settings[0]",
-      );
       expect(sandboxed({ menu: [{ anything: true }] }).valid).toBe(true);
+    });
+  });
+
+  // §260 Phase 4c — `settings` is read now (the form renders it, the resolver keys off
+  // it), so this is where its shape is owed. The 4a carry-over, discharged.
+  describe("settings fields (§260 Phase 4c)", () => {
+    const sandboxed = (contributions: unknown) =>
+      validateManifest({ ...base, contributions, trust: "sandboxed" });
+    const fieldsOf = (r: ReturnType<typeof validateManifest>) =>
+      r.valid ? [] : r.errors.map((e) => e.field);
+
+    it("accepts one field of each type, with and without a default", () => {
+      const r = sandboxed({
+        settings: [
+          { default: true, key: "compact", label: "Compact", type: "boolean" },
+          { default: 3, key: "depth", label: "Depth", type: "number" },
+          { key: "prefix", label: "Prefix", type: "string" },
+        ],
+      });
+      expect(fieldsOf(r)).toEqual([]);
+      expect(r.valid).toBe(true);
+    });
+
+    it("requires key, label and a known type", () => {
+      expect(fieldsOf(sandboxed({ settings: [{}] }))).toContain(
+        "contributions.settings[0].key",
+      );
+      expect(
+        fieldsOf(sandboxed({ settings: [{ key: "a", type: "string" }] })),
+      ).toContain("contributions.settings[0].label");
+      for (const type of [undefined, "object", "int", 42]) {
+        expect(
+          fieldsOf(sandboxed({ settings: [{ key: "a", label: "A", type }] })),
+          `type ${JSON.stringify(type)} must be refused`,
+        ).toContain("contributions.settings[0].type");
+      }
+    });
+
+    it("keeps a key unambiguous, like every other namespaced id", () => {
+      for (const key of ["a.b", "a:b", "", "a b"]) {
+        expect(
+          fieldsOf(
+            sandboxed({ settings: [{ key, label: "A", type: "string" }] }),
+          ),
+          `key ${JSON.stringify(key)} must be refused`,
+        ).toContain("contributions.settings[0].key");
+      }
+    });
+
+    it("rejects a default whose type contradicts the field", () => {
+      // Not merely ignored at read time: the resolver falls back to the type's zero when
+      // a default does not match, so `"default": "10"` on a number field would leave the
+      // author's stated default nowhere in the running app and no error anywhere.
+      expect(
+        fieldsOf(
+          sandboxed({
+            settings: [
+              { default: "10", key: "depth", label: "Depth", type: "number" },
+            ],
+          }),
+        ),
+      ).toContain("contributions.settings[0].default");
+      expect(
+        fieldsOf(
+          sandboxed({
+            settings: [{ default: 1, key: "on", label: "On", type: "boolean" }],
+          }),
+        ),
+      ).toContain("contributions.settings[0].default");
+    });
+
+    it("rejects duplicate keys, reported as `key` rather than `id`", () => {
+      // One store slot per key: two fields with the same key would render two controls
+      // that drive the same value, and the second would silently win on save.
+      expect(
+        fieldsOf(
+          sandboxed({
+            settings: [
+              { key: "x", label: "A", type: "string" },
+              { key: "x", label: "B", type: "number" },
+            ],
+          }),
+        ),
+      ).toContain("contributions.settings[1].key");
+    });
+
+    it("caps how long a key may be, so the payload argument holds", () => {
+      // §260 Phase 4c code review (L8) — the charset rule never bounded length, so
+      // "16 fields x 512 chars" was not actually a bound: sixteen 64 KiB keys are a 1 MiB
+      // staged payload. Harmless while it is staged, but a stated bound that is not one is
+      // how the next transport decision gets made on a false premise.
+      expect(
+        fieldsOf(
+          sandboxed({
+            settings: [{ key: "k".repeat(65), label: "L", type: "string" }],
+          }),
+        ),
+      ).toContain("contributions.settings[0].key");
+      expect(
+        sandboxed({
+          settings: [{ key: "k".repeat(64), label: "L", type: "string" }],
+        }).valid,
+      ).toBe(true);
+    });
+
+    it("refuses `__proto__` as a key", () => {
+      // LOW-3 — legal under the charset rule, but it is used as an object key downstream,
+      // where assigning to it hits the inherited setter and the field silently vanishes.
+      expect(
+        fieldsOf(
+          sandboxed({
+            settings: [{ key: "__proto__", label: "L", type: "string" }],
+          }),
+        ),
+      ).toContain("contributions.settings[0].key");
+    });
+
+    it("caps how many fields one plugin may declare", () => {
+      // The cap is half of the payload argument: MAX_SETTING_FIELDS × the per-string cap
+      // is what decides whether the values can ride a response frame (they cannot).
+      const many = Array.from({ length: MAX_SETTING_FIELDS + 1 }, (_, i) => ({
+        key: `k${i}`,
+        label: "L",
+        type: "string",
+      }));
+      expect(fieldsOf(sandboxed({ settings: many }))).toContain(
+        "contributions.settings",
+      );
+      expect(sandboxed({ settings: many.slice(1) }).valid).toBe(true);
     });
   });
 });

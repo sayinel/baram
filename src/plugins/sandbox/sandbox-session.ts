@@ -49,6 +49,12 @@ type ServiceOf<K> = K extends `${infer S}_${string}` ? S : never;
 export const INFLIGHT_BUDGET: Record<HostService, number> = {
   ai: 4,
   editor: 4,
+  // §260 Phase 4c — the `Record` did its job: adding `settings_read` would not compile
+  // without a budget here. Same 4 as `editor` for the same reason (main-realm work, no
+  // external cost), though a settings read is far cheaper: it resolves at most
+  // `MAX_SETTING_FIELDS` values. The client serialises staged reads anyway, so this bound
+  // is a backstop against a plugin driving the transport directly, not a queue depth.
+  settings: 4,
   ui: 8,
 };
 
@@ -351,7 +357,19 @@ export class SandboxSession {
       if (entry.answered) return;
       if (entry.timer) clearTimeout(entry.timer);
       entry.timer = startTimer();
-      this.transport.send({ type: "hostStreamToken", requestId, token });
+      // ‼️ SPLIT, because a frame is only safe while it is small (§260 Phase 4c security
+      // review, LOW-4). A `hostStreamToken` is an object like every frame, so length alone
+      // decides whether tauri parks it in the app-global channel-data queue — and a
+      // provider's chunking is not ours to assume: Gemini emits one `part.text` per part,
+      // which is far coarser than an SSE delta. Splitting keeps the whole class closed
+      // instead of relying on every provider staying fine-grained.
+      for (const piece of splitForFrame(token)) {
+        this.transport.send({
+          type: "hostStreamToken",
+          requestId,
+          token: piece,
+        });
+      }
     };
     this.hostRequestHandler(request, onToken)
       .then(
@@ -367,7 +385,16 @@ export class SandboxSession {
             type: "hostResponse",
             requestId,
             ok: false,
-            error: err instanceof Error ? err.message : String(err),
+            // ‼️ TRUNCATED (§260 Phase 4c security review, MEDIUM-2). This was the last
+            // uncapped object-shaped frame: an `ai` rejection carries the PROVIDER's error
+            // text, and `llm/claude.rs` builds it as `HTTP {status}: {body}` from the whole
+            // response body — a gateway's HTML error page clears 8 KiB easily, and a plugin
+            // can provoke one. Over that threshold the frame enters the app-global
+            // channel-data queue, which is exactly the disclosure this phase closed
+            // everywhere else. A refusal only has to be legible.
+            error: truncateForFrame(
+              err instanceof Error ? err.message : String(err),
+            ),
           }),
       )
       // Settling — not answering — is what frees the slot, so the bound tracks live
@@ -397,4 +424,31 @@ export class SandboxSession {
         logger.warn(`[Sandbox] declared command "${id}" was not registered`);
     }
   }
+}
+
+/**
+ * How much of a frame's variable-length text may cross (§260 Phase 4c security review).
+ *
+ * Well under tauri's 8 KiB channel-data threshold rather than at it: a frame carries its
+ * envelope too (`type`, `requestId`), and a bound that has to be re-derived every time a
+ * field is added is a bound that will one day be wrong. What rides these is a refusal
+ * message or one streamed chunk, and neither needs more.
+ */
+export const MAX_FRAME_TEXT_CHARS = 4096;
+
+/** One chunk per frame, each safely under the threshold. Never empty — `""` still answers. */
+export function splitForFrame(text: string): string[] {
+  if (text.length <= MAX_FRAME_TEXT_CHARS) return [text];
+  const pieces: string[] = [];
+  for (let i = 0; i < text.length; i += MAX_FRAME_TEXT_CHARS) {
+    pieces.push(text.slice(i, i + MAX_FRAME_TEXT_CHARS));
+  }
+  return pieces;
+}
+
+/** A message clipped to one frame, marked so a reader knows it was cut. */
+export function truncateForFrame(text: string): string {
+  return text.length <= MAX_FRAME_TEXT_CHARS
+    ? text
+    : `${text.slice(0, MAX_FRAME_TEXT_CHARS)}… (truncated)`;
 }

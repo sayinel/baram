@@ -106,7 +106,14 @@ export const usePluginStore = create<PluginState>()(
         })),
 
       removeDevPlugin: (id) =>
-        set((state) => ({ devPlugins: omitKey(state.devPlugins, id) })),
+        set((state) => ({
+          devPlugins: omitKey(state.devPlugins, id),
+          // §260 Phase 4c code review (L10) — like `removePlugin`. `pluginSettings` is
+          // PERSISTED, so without this a dev-folder churn accumulates records forever.
+          // Invisible while it lasts (the resolver drops undeclared keys), which is exactly
+          // why nothing would ever have noticed.
+          pluginSettings: omitKey(state.pluginSettings, id),
+        })),
 
       addPlugin: (plugin) =>
         set((state) => ({

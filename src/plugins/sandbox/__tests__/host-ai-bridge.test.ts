@@ -3,7 +3,11 @@ import type { AIAPI } from "../../types";
 import { describe, expect, it, vi } from "vitest";
 
 import { createAIAPI } from "../../extension-context";
-import { createAIRequestHandler, DEFAULT_AI_FACTORY } from "../host-ai-bridge";
+import {
+  createAIRequestHandler,
+  DEFAULT_AI_FACTORY,
+  LIST_MODELS_TIMEOUT_MS,
+} from "../host-ai-bridge";
 
 // §260 Phase 3c-2c — the host applies the policy for `ai`, so this is where the
 // capability check has to be enforcing. It IS enforcing because a `plugin-*` window
@@ -54,29 +58,75 @@ describe("createAIRequestHandler (§260 3c-2c)", () => {
     expect(calls).toEqual([]);
   });
 
-  it("completes through the host's AI policy when granted", async () => {
+  it("completes by STREAMING, so no completion rides the response", async () => {
+    // §260 Phase 4c — the gap 4b deferred. An inline answer over 8 KiB enters tauri's
+    // app-global channel-data queue; a completion routinely exceeds that, and with
+    // `editor:readonly` it is document-derived text. So `complete` runs the stream path —
+    // the same one `createAIAPI.complete` uses internally — and the tokens ride their own
+    // small frames.
     const { ai, calls } = fakeAi();
     const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai"],
       pluginId: "p",
     });
-    await expect(
-      handler({ kind: "ai_complete", prompt: "hi" }, noop),
-    ).resolves.toBe("answer");
-    expect(calls).toEqual(["complete:hi"]);
+    const tokens: string[] = [];
+
+    const answer = await handler({ kind: "ai_complete", prompt: "hi" }, (t) =>
+      tokens.push(t),
+    );
+
+    expect(tokens).toEqual(["a", "b"]);
+    // THE property: the text is not in the value the response frame carries — only the
+    // LENGTH, so a dropped token frame is detectable rather than a silently shorter answer
+    // (security review LOW-2; token frames are fire-and-forget).
+    expect(answer).toEqual({ chars: 2 });
+    expect(JSON.stringify(answer)).not.toContain("ab");
+    // …and it really took the stream path rather than `complete` plus a relay.
+    expect(calls).toEqual(["stream:hi"]);
   });
 
-  it("lists models", async () => {
+  it("stages the model list instead of answering with the array", async () => {
+    // A JSON array meets the queue's `[` condition as soon as it is large, and how many
+    // models exist is the user's Ollama install's decision, not ours.
     const { ai } = fakeAi();
+    const staged: string[] = [];
     const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai"],
       pluginId: "p",
+      stage: async (_pluginId, payload) => void staged.push(payload),
     });
-    await expect(handler({ kind: "ai_list_models" }, noop)).resolves.toEqual([
-      { id: "m", name: "M" },
-    ]);
+
+    const answer = await handler({ kind: "ai_list_models" }, noop);
+
+    expect(answer).toBeUndefined();
+    expect(staged).toEqual([JSON.stringify([{ id: "m", name: "M" }])]);
+  });
+
+  it("gives up on a provider that never answers a model list", async () => {
+    // §260 Phase 4c code review (H1) — staging puts this on the client's SERIAL read chain,
+    // and the provider call underneath has no timeout of its own, so an endpoint that
+    // accepts the connection and never answers stalled every later document read for the
+    // full 120s host bound. There are no tokens here to restart the stall timer.
+    vi.useFakeTimers();
+    try {
+      const handler = createAIRequestHandler({
+        aiFactory: () => ({
+          ...fakeAi().ai,
+          listModels: () => new Promise(() => {}),
+        }),
+        capabilities: ["ai"],
+        pluginId: "p",
+        stage: async () => {},
+      });
+      const answered = handler({ kind: "ai_list_models" }, noop);
+      const assertion = expect(answered).rejects.toThrow(/did not answer/);
+      await vi.advanceTimersByTimeAsync(LIST_MODELS_TIMEOUT_MS + 1);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("forwards stream tokens through onToken and resolves", async () => {
@@ -93,11 +143,13 @@ describe("createAIRequestHandler (§260 3c-2c)", () => {
 
   it("surfaces a provider failure as a rejection", async () => {
     // e.g. privacy mode is active and the configured provider is not local — the
-    // refusal comes from the shared AI policy, and the plugin must see it.
+    // refusal comes from the shared AI policy, and the plugin must see it. Raised on
+    // `stream` because that is the path `complete` now takes; in the real `createAIAPI`
+    // both go through the same `start`, which is where the privacy check lives.
     const ai: AIAPI = {
-      complete: () => Promise.reject(new Error("Privacy mode is active")),
+      complete: () => Promise.reject(new Error("nope")),
       listModels: () => Promise.reject(new Error("nope")),
-      stream: () => Promise.reject(new Error("nope")),
+      stream: () => Promise.reject(new Error("Privacy mode is active")),
     };
     const handler = createAIRequestHandler({
       aiFactory: () => ai,

@@ -8,6 +8,7 @@ import type {
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
 
 interface PluginDetailProps {
@@ -318,6 +319,12 @@ export function PluginDetail({
           </pre>
         </div>
       )}
+
+      {/* §260 Phase 4c — declared settings, above Capabilities: it is the only section a
+          user ACTS on, and it renders itself away for a plugin that declares none. Driven
+          by the installed MANIFEST rather than by `entry`, because a registry entry carries
+          no contributions — the questions are asked by the code that is installed. */}
+      <PluginSettingsForm pluginId={entry.id} />
 
       {/* Capabilities */}
       <div style={{ marginBottom: "20px" }}>

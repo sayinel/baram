@@ -1,5 +1,12 @@
 // §69 Plugin Manifest validation
-import type { PluginCapability, PluginManifest } from "./types";
+import type {
+  PluginCapability,
+  PluginManifest,
+  PluginSettingType,
+} from "./types";
+
+import { MAX_SETTING_FIELDS } from "./plugin-settings";
+import { SETTING_TYPES } from "./types";
 
 const VALID_CAPABILITIES: PluginCapability[] = [
   "editor",
@@ -36,6 +43,9 @@ const MAX_STATUS_BAR_ITEMS = 5;
  * characters out of the ids that follow the separator.
  */
 const CONTRIBUTION_ID = /^[A-Za-z0-9_-]+$/;
+
+/** Long enough for any readable id, short enough that a manifest cannot inflate a payload. */
+const MAX_CONTRIBUTION_ID_CHARS = 64;
 
 export function validateManifest(
   data: unknown,
@@ -240,6 +250,26 @@ function validateContributions(
         message: `${field} may contain only letters, digits, "_" and "-"`,
       });
     }
+    // §260 Phase 4c security review (LOW-3) — the charset admits `__proto__`, and an id is
+    // used as an object key downstream (the resolved settings record, the store's own
+    // per-plugin record). Assigning to it on a plain object hits the inherited setter, so
+    // the field silently did nothing rather than failing visibly. The resolver is
+    // null-prototype now, which fixes the behaviour; this tells the AUTHOR, at install,
+    // rather than leaving them a control that does not work.
+    if (value === "__proto__") {
+      errors.push({ field, message: `${field} may not be "__proto__"` });
+    }
+    // §260 Phase 4c code review (L8) — the charset rule never bounded LENGTH, so the
+    // "16 fields x 512 chars" argument that decides how settings values travel did not
+    // actually hold: sixteen 64 KiB keys are a 1 MiB payload. Harmless today because that
+    // payload is staged rather than framed, but a stated bound that is not a bound is how
+    // the next transport decision gets made on a false premise.
+    if (typeof value === "string" && value.length > MAX_CONTRIBUTION_ID_CHARS) {
+      errors.push({
+        field,
+        message: `${field} may be at most ${MAX_CONTRIBUTION_ID_CHARS} characters`,
+      });
+    }
   };
   /** Every declared section must be an array of objects before anything indexes it. */
   const entries = (key: string): null | Record<string, unknown>[] => {
@@ -286,15 +316,17 @@ function validateContributions(
   const rejectDuplicateIds = (
     section: string,
     list: Record<string, unknown>[],
+    /** Which field carries the identity — `settings` calls its own `key` (Phase 4c). */
+    field = "id",
   ) => {
     const seen = new Set<string>();
     list.forEach((entry, i) => {
-      const id = entry.id;
+      const id = entry[field];
       if (typeof id !== "string") return; // already reported by requireId
       if (seen.has(id)) {
         errors.push({
-          field: `contributions.${section}[${i}].id`,
-          message: `duplicate id "${id}"`,
+          field: `contributions.${section}[${i}].${field}`,
+          message: `duplicate ${field} "${id}"`,
         });
       }
       seen.add(id);
@@ -333,11 +365,54 @@ function validateContributions(
     }
   });
 
-  // `menu` and `settings` are declared in the Phase-1 schema but nothing consumes them
-  // yet (Phase 4b). Checked only as arrays of objects: asserting a shape the loader does
-  // not read would freeze a design that is not settled, while leaving them unchecked
-  // would repeat the mistake this function exists to fix the moment 4b reads one.
+  // §260 Phase 4c — `settings` is READ now (the plugin detail view renders it and both
+  // tiers resolve values against it), so this is the commit that owes it a shape. The
+  // carry-over rule from 4a, discharged.
+  const settings = entries("settings");
+  if (settings) rejectDuplicateIds("settings", settings, "key");
+  if (settings && settings.length > MAX_SETTING_FIELDS) {
+    errors.push({
+      field: "contributions.settings",
+      message: `at most ${MAX_SETTING_FIELDS} settings fields may be declared`,
+    });
+  }
+  settings?.forEach((field, i) => {
+    // `requireId`, not `requireString`: a key is namespaced per plugin in the persisted
+    // record and addressed by the resolver, so keep the separators the host builds with
+    // out of it — the same rule the status bar's ids follow.
+    requireId(field.key, `contributions.settings[${i}].key`);
+    requireString(field.label, `contributions.settings[${i}].label`);
+    const type = field.type;
+    if (
+      typeof type !== "string" ||
+      !SETTING_TYPES.includes(type as PluginSettingType)
+    ) {
+      errors.push({
+        field: `contributions.settings[${i}].type`,
+        message: `type must be one of ${SETTING_TYPES.map((t) => `"${t}"`).join(", ")}`,
+      });
+      return; // without a valid type there is nothing to check `default` against
+    }
+    // A `default` of the wrong type is rejected at install rather than silently ignored
+    // at read time: the resolver falls back to the type's zero when a default does not
+    // match, so a `"default": "10"` on a number field would leave the author's stated
+    // default nowhere in the running app and no error anywhere.
+    if (field.default !== undefined && typeof field.default !== type) {
+      errors.push({
+        field: `contributions.settings[${i}].default`,
+        message: `default must be a ${type} to match this field's type`,
+      });
+    }
+  });
+
+  // `menu` is declared in the Phase-1 schema and still nothing consumes it. Checked only
+  // as an array of objects: asserting a shape the loader does not read would freeze a
+  // design that is not settled, while leaving it unchecked would repeat the mistake this
+  // function exists to fix the moment something reads it.
+  //
+  // ‼️ CARRY-OVER (4a → 4b → 4c): whoever first reads `menu[].command` adds `requireId`
+  // for it in the SAME commit — the host builds `${pluginId}.${command}` from it, exactly
+  // as the status bar does, and `CONTRIBUTION_ID` is what keeps the separator unambiguous.
   entries("menu");
-  entries("settings");
   return errors;
 }

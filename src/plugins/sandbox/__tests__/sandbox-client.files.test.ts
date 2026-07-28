@@ -22,7 +22,9 @@ describe("startSandboxClient files (§260 3c-2c)", () => {
       ops.push(op);
       if (op.kind === "source_read") return "// bundle";
       if (op.kind === "files_read") return "# note";
-      if (op.kind === "files_list") return ["a.md", "b.md"];
+      // §260 Phase 4c — a listing crosses as a JSON string (it is the broker result that
+      // crosses 8 KiB first, and a bare array is what tauri's queue takes).
+      if (op.kind === "files_list") return JSON.stringify(["a.md", "b.md"]);
       return null;
     });
     const { host, sandbox } = createChannelPair();

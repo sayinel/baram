@@ -192,6 +192,7 @@ import { logger } from "../../utils/logger";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
 import { PluginDeveloperSection } from "./PluginDeveloperSection";
+import { PluginSettingsForm } from "./PluginSettingsForm";
 
 type MarketplaceTab = "browse" | "installed" | "updates";
 
@@ -655,6 +656,13 @@ export function PluginMarketplace() {
                       </button>
                     </div>
                   </div>
+                  {/* §260 Phase 4c — configured HERE as well as in the detail view. This
+                      tab has no route to `PluginDetail` (only Browse and Updates open one,
+                      and both iterate the REGISTRY), so a plugin installed from a file, or
+                      one whose registry entry has gone, would otherwise have declared
+                      fields the user can never reach. Renders nothing when a plugin
+                      declares none, which is most of them. */}
+                  <PluginSettingsForm pluginId={plugin.manifest.id} />
                 </div>
               );
             })

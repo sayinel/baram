@@ -35,6 +35,7 @@ describe("ui end-to-end: real client ↔ real session (§260 Phase 4a)", () => {
       host,
       createHostRequestHandler({
         capabilities: capabilities as never,
+        declaredSettings: [],
         declaredStatusBarIds: ["count"],
         pluginId: "p",
         pluginName: "Plugin P",

@@ -83,11 +83,6 @@ export type SandboxHostRequest =
       text: string;
     }
   | {
-      // §260 Phase 4b — positions plus the text they cover. Small by nature, so unlike
-      // `editor_get_markdown` this one answers inline.
-      kind: "editor_get_selection";
-    }
-  | {
       // §260 Phase 4b — replace the whole document, one undoable step. Travels INBOUND
       // (sandbox→host), which needs no staging: that direction is a `plugin_sandbox_report`
       // capped at 8 MiB, and a sandbox holds no event permission to eavesdrop on it.
@@ -101,6 +96,20 @@ export type SandboxHostRequest =
       // every webview. The host stages it in Rust and the sandbox pulls it with
       // `PluginOp::StagedRead`, which arrives as an invoke result instead.
       kind: "editor_get_markdown";
+    }
+  | {
+      // §260 Phase 4b — the selection's POSITIONS answer inline; its text is staged, like
+      // the document's. It was assumed "small by nature" until Cmd+A, and this comment
+      // still said so after the code stopped agreeing (fixed in 4c) — a stale comment is
+      // how the next reader re-derives the bug.
+      kind: "editor_get_selection";
+    }
+  | {
+      // §260 Phase 4c — every DECLARED settings field and its current value. Staged like a
+      // document rather than answered inline: `MAX_SETTING_FIELDS` × `MAX_SETTING_VALUE_CHARS`
+      // is already over tauri's 8 KiB channel-data threshold, and a cap chosen to stay under
+      // it would put a behaviour change exactly on that boundary.
+      kind: "settings_read";
     }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }

@@ -75,6 +75,30 @@ narrower, data-only context. Two differences matter when writing one:
   "document budget is exhausted", you are polling something you should be getting from
   `ctx.events` instead.
 
+- **`settings` are the user's answers, and read-only.** Declare fields in
+  `contributions.settings` and they render in your plugin's page under **Settings →
+  Plugins**; read them with `await ctx.settings.getAll()`, which always returns one value
+  per declared field, of the declared type.
+
+  ```js
+  const { prefix } = await ctx.settings.getAll();
+  ctx.events.on("settings:changed", async () => {
+    const next = await ctx.settings.getAll(); // the event carries no values
+  });
+  ```
+
+  Things that follow from "the user's answers":
+  - **There is no setter.** A value the user chose must not move underneath them. Use
+    `ctx.storage` for state of your own.
+  - **`settings:changed` carries nothing** — re-read. (The values are kept out of pushed
+    frames on purpose.)
+  - **A value is resolved against your CURRENT manifest**, so if an update changes a
+    field's type or drops a key, the plugin sees the new default rather than the old
+    value. Renaming a key resets it; that is the trade for never handing you a `string`
+    where your manifest says `number`.
+  - At most 16 fields, and a string value is capped at 512 characters. Fields render only
+    if the manifest also declares the `settings` capability.
+
 - **`ui` is data, not DOM.** `ctx.ui.showNotification(message, type?)` (the host labels
   the toast with your plugin's name in its own badge, and rate-limits you to one every
   four seconds — the app has a single toast slot) and
@@ -90,9 +114,10 @@ When your plugin finishes activating, the host delivers a synthetic `file:open` 
 file that is already open, if any. That way a plugin loaded at startup does not have to
 wait for the user to switch tabs before it knows where it is.
 
-Contribution ids (`commands[].id`, `statusBar[].id`, and the `command` a status-bar item
-points at) must match `^[A-Za-z0-9_-]+$` and be unique within their section, and at most
-five status-bar items may be declared. The host namespaces them as
+Contribution ids (`commands[].id`, `statusBar[].id`, `settings[].key`, and the `command` a
+status-bar item points at) must match `^[A-Za-z0-9_-]+$` and be unique within their
+section; at most five status-bar items and sixteen settings fields may be declared, and a
+settings `default` must have the type its field declares. The host namespaces them as
 `<pluginId>.<command>` and `<pluginId>:sb:<item>`, so a `.` or `:` in the trailing part
 would make those ids ambiguous.
 
@@ -195,7 +220,7 @@ Accessing an API whose capability was not declared throws a clear error
 | `files:readonly`  | Read files in the vault (no writing)    |               |
 | `sidebar`         | Add panels to the sidebar               |               |
 | `statusbar`       | Display items in the status bar         |               |
-| `settings`        | Add options to the settings screen      |               |
+| `settings`        | Declare options in the settings screen  |               |
 | `ai`              | Access AI/LLM features                  | **sensitive** |
 | `network`         | Make network requests                   | **sensitive** |
 | `storage`         | Use a plugin-private key/value store    | sensitive     |
@@ -423,6 +448,26 @@ remove(key: string): Promise<void>;
 A simple string key/value store, one directory per plugin. See
 [Trust model & security](#trust-model--security) for where it lives and its
 guarantees (or lack thereof).
+
+### `context.settings` (requires `settings`)
+
+```typescript
+getAll(): Record<string, boolean | number | string>;
+```
+
+The user's answers to the fields your manifest declares in
+`contributions.settings`, rendered as a form in your plugin's page under
+**Settings → Plugins**. One entry per declared field, always of the declared
+type; keys your current manifest does not declare are not returned.
+
+Synchronous here and `Promise`-returning in the sandboxed tier — otherwise the
+same function, resolved the same way, so the same plugin source works in both.
+There is no setter in either tier: a value the user chose is not the plugin's to
+move. Use `context.storage` for state of your own.
+
+```javascript
+const { prefix = "»" } = context.settings.getAll();
+```
 
 ### `context.subscriptions`
 

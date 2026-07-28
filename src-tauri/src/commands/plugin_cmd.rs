@@ -262,7 +262,7 @@ fn staged_read_result(
     staged: &plugin::StagedPayloads,
     authorizer: &plugin::PluginAuthorizer,
     label: &str,
-) -> Result<serde_json::Value, String> {
+) -> Result<BrokerResult, String> {
     // The CURRENT registration's epoch: a slot staged for a previous life of this label is
     // dropped rather than delivered (security review Q5). `authorize_op` already proved
     // the label is registered, so `None` here means it was deregistered in between —
@@ -275,7 +275,10 @@ fn staged_read_result(
         // document, and a plugin that pulls twice must not be handed one.
         "nothing is staged for this plugin".to_string()
     })?;
-    Ok(serde_json::json!(payload))
+    // `text`, not `encoded`: a staged payload is ALREADY a scalar string (the host stages
+    // the document, or JSON it composed), so encoding it again would hand the plugin a
+    // quoted string it never asked for.
+    Ok(BrokerResult::text(Some(payload)))
 }
 
 /// Host-only: revoke a sandbox's capabilities AND its inbound channel together, so
@@ -590,6 +593,54 @@ fn authorized_path_str(path: &std::path::Path) -> Result<&str, String> {
         .ok_or_else(|| "path is not valid UTF-8".to_string())
 }
 
+/// §260 Phase 4c — a broker result that CANNOT enter tauri's shared channel-data queue.
+///
+/// The queue takes a payload only when it is at least `CHANNEL_QUEUE_THRESHOLD` **and** its
+/// JSON starts with `{` or `[`. A JSON string never satisfies the second half, so encoding
+/// a list or an object as one closes the disclosure structurally — no size threshold to get
+/// wrong, no reassembly state machine, no new command, and no ACL change. 3c-2c recorded
+/// this as "chunking, owed with Phase 4"; it turned out not to need chunking.
+///
+/// ‼️ A TYPE rather than a helper function, and that is the whole point. A helper would have
+/// been a convention: the next arm could still write `json!(entries)` and put a listing back
+/// into the queue, and no test would notice — a Rust test can exercise the encoder without
+/// exercising the ARM, which is exactly how §260 Phase 4b's central property came to be
+/// restated by its test instead of executed (I1). With `execute_op` returning this, an arm
+/// cannot express a bare array or object at all; the three constructors below are the only
+/// way to build one, and they are auditable in one screen.
+///
+/// The client parses `encoded` back (`sandbox-client.ts`), so the plugin-facing shape is
+/// unchanged.
+#[derive(Debug)]
+struct BrokerResult(serde_json::Value);
+
+impl BrokerResult {
+    /// A list or an object — the shapes tauri's queue takes — as a JSON string.
+    fn encoded<T: serde::Serialize>(value: &T) -> Result<Self, String> {
+        serde_json::to_string(value)
+            .map(|json| Self(serde_json::Value::String(json)))
+            .map_err(|e| format!("result could not be encoded: {e}"))
+    }
+
+    fn into_value(self) -> serde_json::Value {
+        self.0
+    }
+
+    /// Nothing to answer with — a write.
+    fn nothing() -> Self {
+        Self(serde_json::Value::Null)
+    }
+
+    /// Text that is already a scalar: a document, a file, the plugin's own bundle. `None`
+    /// crosses as JSON null, which `storage_read` uses for "no such key".
+    fn text(value: Option<String>) -> Self {
+        Self(match value {
+            None => serde_json::Value::Null,
+            Some(text) => serde_json::Value::String(text),
+        })
+    }
+}
+
 /// Execute an authorized op using the CALLER-derived plugin id (never a
 /// client-supplied id). Storage is namespaced per plugin id → isolation.
 async fn execute_op(
@@ -599,31 +650,30 @@ async fn execute_op(
     op: plugin::PluginOp,
     authorizer: &plugin::PluginAuthorizer,
     staged: &plugin::StagedPayloads,
-) -> Result<serde_json::Value, String> {
+) -> Result<BrokerResult, String> {
     use plugin::PluginOp::*;
     match op {
         // §260 3c-2b — the caller's OWN bundle, from the directory the host bound at
         // registration. No path argument exists, so a sandbox cannot name a file.
-        SourceRead => Ok(serde_json::json!(
-            read_own_source(app, label, authorizer).await?
-        )),
+        SourceRead => Ok(BrokerResult::text(Some(
+            read_own_source(app, label, authorizer).await?,
+        ))),
         // §260 Phase 4b — collect what the host staged for this sandbox.
         StagedRead => staged_read_result(staged, authorizer, label),
-        StorageRead { key } => Ok(serde_json::json!(
-            plugin::storage_read(plugin_id.to_string(), key).await?
+        // `None` (no such key) crosses as JSON null, which the client distinguishes.
+        StorageRead { key } => Ok(BrokerResult::text(
+            plugin::storage_read(plugin_id.to_string(), key).await?,
         )),
         StorageWrite { key, value } => {
             plugin::storage_write(plugin_id.to_string(), key, value).await?;
-            Ok(serde_json::Value::Null)
+            Ok(BrokerResult::nothing())
         }
-        StorageList => Ok(serde_json::json!(
-            plugin::storage_list(plugin_id.to_string()).await?
-        )),
+        StorageList => BrokerResult::encoded(&plugin::storage_list(plugin_id.to_string()).await?),
         StorageRemove { key } => {
             plugin::storage_remove(plugin_id.to_string(), key).await?;
-            Ok(serde_json::Value::Null)
+            Ok(BrokerResult::nothing())
         }
-        HttpFetch { url, init } => Ok(serde_json::json!(plugin::http_fetch(url, init).await?)),
+        HttpFetch { url, init } => BrokerResult::encoded(&plugin::http_fetch(url, init).await?),
         // §260 3c-2c — vault-bounded file ops. Authorization (files / files:readonly)
         // already happened in `plugin_call`; what is left is WHERE, which is the same
         // decision `read_file` makes, plus the `.baram` carve-out.
@@ -632,7 +682,7 @@ async fn execute_op(
             let text = plugin::read_text_capped(&resolved, MAX_PLUGIN_FILE_BYTES)
                 .await
                 .map_err(|e| format!("file \"{path}\" {e}"))?;
-            Ok(serde_json::json!(text))
+            Ok(BrokerResult::text(Some(text)))
         }
         FilesWrite {
             content,
@@ -662,7 +712,7 @@ async fn execute_op(
                 // arm already did, and echoing the canonical target would tell a plugin
                 // where an in-vault symlink actually points.
                 .map_err(|_| format!("file \"{path}\" could not be written"))?;
-            Ok(serde_json::Value::Null)
+            Ok(BrokerResult::nothing())
         }
         FilesList { context, path } => {
             let resolved = check_plugin_file_path(app, context.as_deref(), &path).await?;
@@ -681,10 +731,7 @@ async fn execute_op(
                 // (#252, #285), not a hypothetical. Keeps the sentinel the frontend parses
                 // and substitutes the caller's OWN relative path, like the write arm.
                 .map_err(|e| redact_fs_error(&e, &path))?;
-            Ok(serde_json::json!(entries
-                .into_iter()
-                .map(|e| e.name)
-                .collect::<Vec<_>>()))
+            BrokerResult::encoded(&entries.into_iter().map(|e| e.name).collect::<Vec<_>>())
         }
     }
 }
@@ -913,7 +960,9 @@ pub async fn plugin_call(
     staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<serde_json::Value, String> {
     let plugin_id = admit_op(window.label(), &op, &authorizer, &limiter)?;
-    let result = execute_op(&app, window.label(), &plugin_id, op, &authorizer, &staged).await;
+    let result = execute_op(&app, window.label(), &plugin_id, op, &authorizer, &staged)
+        .await
+        .map(BrokerResult::into_value);
     if let Ok(value) = &result {
         warn_if_result_enters_the_shared_queue(value);
     }
@@ -969,17 +1018,20 @@ fn takes_the_shared_queue(value: &serde_json::Value) -> bool {
 /// §260 3c-2c code review (MEDIUM-2) — warn in dev when a broker RESULT gets big
 /// enough to enter that shared queue.
 ///
-/// `sandbox-client.ts` records the invariant for `source_read` (a bare JSON string
-/// never matches tauri's `{`/`[` condition, so the bundle stays out of the queue), but
-/// `files_list` and `storage_list` return arrays and `http_fetch` an object — those DO
-/// match, and `files_list` is the first op likely to cross 8 KiB in ordinary use (a
-/// directory of a few hundred notes). On the postMessage IPC path a second sandbox can
-/// race the sequential id, so this is a real if narrow disclosure between plugins.
+/// ‼️ As of Phase 4c nothing should ever trip this: every arm that returns a list or an
+/// object is built with `BrokerResult`, and a JSON string cannot satisfy the `{`/`[` half
+/// of tauri's condition. It is kept as the BACKSTOP for the next arm — a future op that
+/// returns `json!(something)` directly would be the disclosure all over again, and this is
+/// what says so at the moment it happens rather than at the next security review.
+///
+/// (Until 4c this described a live gap: `files_list` and `storage_list` returned arrays and
+/// `http_fetch` an object, and `files_list` crosses 8 KiB on a directory of a few hundred
+/// notes. The fix was expected to be chunking; encoding the result as a scalar turned out
+/// to close it structurally instead.)
 ///
 /// Dev-only and advisory on purpose: refusing an over-threshold listing would break a
-/// legitimate op, and the real fix is chunking (owed with Phase 4's document
-/// transforms, which will exceed this routinely). Measured with the short-circuiting
-/// counter so the check never allocates the payload twice.
+/// legitimate op. Measured with the short-circuiting counter so the check never allocates
+/// the payload twice.
 #[cfg(debug_assertions)]
 fn warn_if_result_enters_the_shared_queue(value: &serde_json::Value) {
     if takes_the_shared_queue(value) {
@@ -987,7 +1039,8 @@ fn warn_if_result_enters_the_shared_queue(value: &serde_json::Value) {
             "[plugin] a plugin_call result exceeds tauri's {CHANNEL_QUEUE_THRESHOLD}-byte \
              direct-eval threshold and is a JSON array/object, so it is staged in the \
              app-global channel-data queue that FETCH_CHANNEL_DATA_COMMAND exposes to \
-             any webview. Chunk this op before Phase 4 ships larger payloads."
+             any webview. Build it with `BrokerResult::encoded` (§260 Phase 4c) — a JSON \
+             string cannot enter that queue."
         );
     }
 }
@@ -1247,7 +1300,9 @@ mod tests {
 
         // The REAL arm, not a copy of it (code review I1): rebuilding the expression here
         // meant wrapping the document in an object left every Rust test green.
-        let result = staged_read_result(&staged, &authorizer, "plugin-alpha").unwrap();
+        let result = staged_read_result(&staged, &authorizer, "plugin-alpha")
+            .unwrap()
+            .into_value();
 
         assert!(
             matches!(result, serde_json::Value::String(_)),
@@ -1272,6 +1327,42 @@ mod tests {
         let second = staged_read_result(&staged, &authorizer, "plugin-alpha")
             .expect_err("a second pull must not be answered");
         assert!(second.contains("nothing is staged"), "unexpected: {second}");
+    }
+
+    /// §260 Phase 4c — the list-shaped ops cannot enter the shared queue either.
+    ///
+    /// Through `BrokerResult::encoded`, the constructor the arms call (the I1 lesson: a test
+    /// that rebuilds the expression proves nothing about the arm). The fixtures are the two
+    /// shapes that used to be queue-bound in ordinary use — a directory listing of a few
+    /// hundred notes, and an HTTP response body.
+    #[test]
+    fn a_list_or_object_result_is_encoded_out_of_the_shared_queue() {
+        let listing: Vec<String> = (0..600).map(|i| format!("note-{i:04}.md")).collect();
+        let raw = serde_json::json!(listing);
+        assert!(
+            takes_the_shared_queue(&raw),
+            "the fixture must be queue-bound as a bare array or this test proves nothing"
+        );
+
+        let encoded = BrokerResult::encoded(&listing).unwrap().into_value();
+
+        assert!(
+            matches!(encoded, serde_json::Value::String(_)),
+            "a list result must cross as a JSON string"
+        );
+        assert!(!takes_the_shared_queue(&encoded));
+        // Round-trips: the client parses this back, so encoding must not lose the shape.
+        let parsed: Vec<String> =
+            serde_json::from_str(encoded.as_str().unwrap()).expect("must parse back");
+        assert_eq!(parsed, listing);
+
+        // …and the same for an object, which is what `http_fetch` returns.
+        let body =
+            serde_json::json!({ "body": "x".repeat(CHANNEL_QUEUE_THRESHOLD), "status": 200 });
+        assert!(takes_the_shared_queue(&body));
+        assert!(!takes_the_shared_queue(
+            &BrokerResult::encoded(&body).unwrap().into_value()
+        ));
     }
 
     /// §260 Phase 4b security review (LOW-2) — the predicate must agree with tauri at the

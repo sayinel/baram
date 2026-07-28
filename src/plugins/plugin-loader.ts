@@ -17,6 +17,7 @@ import {
 import { useEditorStore } from "../stores/editor/editor";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import {
   createExtensionContext,
   setEditorSurfaceBlocked as recordEditorSurfaceBlocked,
@@ -25,10 +26,12 @@ import {
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
+import { declaredSettingsFor } from "./plugin-settings";
 import { pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { arePluginsEnabled, isSandboxRuntimeAllowed } from "./plugins-enabled";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
+import { watchPluginSettings } from "./sandbox/host-settings-bridge";
 import {
   sanitizeStatusBarText,
   statusBarItemId,
@@ -333,6 +336,11 @@ export class PluginLoader {
           declaredStatusBarIds: (manifest.contributions?.statusBar ?? []).map(
             (i) => i.id,
           ),
+          // §260 Phase 4c — same rule for `settings`: WHICH fields exist is the host's
+          // answer, from the manifest, so the frame carries no key or field list. Resolved
+          // through `declaredSettingsFor`, which is also what the form uses, so a field the
+          // plugin can read and a field the user can edit are the same set.
+          declaredSettings: declaredSettingsFor(manifest),
           pluginId: manifest.id,
           pluginName: manifest.name,
         }),
@@ -638,6 +646,17 @@ export class PluginLoader {
       session,
     };
     disposables.push({ dispose: subscribeSandbox(subscriber) });
+    // §260 Phase 4c — and to its OWN settings changing. Not part of the event bridge: that
+    // one carries app events and gates them on `events`, while this is the settings feature
+    // notifying its owner, gated on `settings` inside the watcher. Payload-free, so the
+    // values still only ever travel as a staged pull.
+    disposables.push({
+      dispose: watchPluginSettings({
+        capabilities: manifest.capabilities,
+        pluginId: manifest.id,
+        session,
+      }),
+    });
     // …and tell it what is already open, so its first useful moment does not depend on
     // the user switching tabs (the normal case at startup).
     replayCurrentState(subscriber, activeFilePath());
@@ -666,26 +685,6 @@ function withRevocationFailure(original: unknown, failure: Error): Error {
       `This plugin may keep its granted capabilities until the app restarts.`,
     { cause: original },
   );
-}
-
-function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  message: string,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
-    promise.then(
-      (val) => {
-        clearTimeout(timer);
-        resolve(val);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
 }
 
 /** Singleton instance */

@@ -7,8 +7,10 @@ import type {
   AIModel,
   NetworkAPI,
   PluginFileEvent,
+  PluginSettingValue,
   SandboxEditorAPI,
   SandboxFilesAPI,
+  SandboxSettingsAPI,
   SandboxUIAPI,
   StorageAPI,
 } from "../types";
@@ -80,6 +82,12 @@ export interface SandboxContext {
   };
   files: SandboxFilesAPI;
   network: NetworkAPI;
+  /**
+   * §260 Phase 4c — the values the user set for this plugin's declared fields. Read-only
+   * and host-mediated: the record is the app's, and `settings:changed` (delivered without a
+   * payload) is the signal to read it again.
+   */
+  settings: SandboxSettingsAPI;
   storage: StorageAPI;
   /**
    * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is
@@ -154,17 +162,75 @@ export function startSandboxClient(
   }
 
   const ai: AIAPI = {
-    complete: (prompt, opts) =>
-      hostRequest({ kind: "ai_complete", opts, prompt }) as Promise<string>,
-    listModels: () =>
-      hostRequest({ kind: "ai_list_models" }) as Promise<AIModel[]>,
+    // §260 Phase 4c — accumulated from TOKEN FRAMES, not read from the response. The host
+    // streams a completion even when the plugin asked for one string, because an inline
+    // answer over 8 KiB enters tauri's shared channel-data queue (see `host-ai-bridge`).
+    // The signature is unchanged: a plugin still awaits one string.
+    complete: async (prompt, opts) => {
+      let buffer = "";
+      const answer = await hostRequest(
+        { kind: "ai_complete", opts, prompt },
+        (token) => {
+          buffer += token;
+        },
+      );
+      // ‼️ The host tells us how much it SENT, and a mismatch is an error rather than a
+      // shorter answer (§260 Phase 4c security review, LOW-2). Token frames are
+      // fire-and-forget on the host side, so a dropped one would otherwise look exactly
+      // like a complete response — and a plugin branching on the text would branch on a
+      // truncation it cannot see. Tolerates an older host that answers without the count.
+      const expected = (answer as undefined | { chars?: number })?.chars;
+      if (typeof expected === "number" && buffer.length !== expected) {
+        throw new Error(
+          `ai.complete: the answer arrived incomplete (${buffer.length} of ${expected} characters)`,
+        );
+      }
+      return buffer;
+    },
+    // Staged like the document: a model list is a JSON array, so it meets the queue's `[`
+    // condition as soon as it is large — which a user's Ollama install decides, not us.
+    //
+    // ‼️ COST, accepted (§260 Phase 4c security review, LOW-1): staging puts this on the
+    // serial `stagedReads` chain, and unlike the other members it is network-bound. Against
+    // an endpoint that never answers, this plugin's own `getMarkdown`/`getSelection`/
+    // `settings.getAll` queue behind it until the host's 120s stall timer fires. Self-
+    // inflicted only — the slot is label-keyed, so no other plugin is affected — and the
+    // alternative (a two-step "ready, come pull" protocol) is a state machine at the realm
+    // boundary for an op most plugins call once, at activate.
+    listModels: async () => {
+      const { payload } = await readStaged({ kind: "ai_list_models" });
+      return JSON.parse(payload) as AIModel[];
+    },
     stream: async (prompt, opts, onToken) => {
       await hostRequest({ kind: "ai_stream", opts, prompt }, onToken);
     },
   };
 
+  /**
+   * §260 Phase 4c — a broker result that Rust encoded as a JSON STRING, parsed back.
+   *
+   * Every op whose natural result is a list or an object is built with `BrokerResult` on
+   * the Rust side, because tauri routes a channel payload into its app-global queue only
+   * when the payload is ≥8 KiB **and** its JSON starts with `{` or `[`. A JSON string can
+   * never meet the second half, so the disclosure is closed by the SHAPE rather than by a
+   * size check — `files_list` on a few hundred notes crosses 8 KiB in ordinary use.
+   *
+   * The non-string check is not defensive noise: if a future Rust arm forgets the encoding
+   * and answers with a raw array, `JSON.parse` would throw something unreadable from inside
+   * the sandbox. This says which op broke the contract.
+   */
+  const brokerJson = async <T>(op: PluginOp): Promise<T> => {
+    const raw = await broker(op);
+    if (typeof raw !== "string") {
+      throw new Error(
+        `the broker answered "${op.kind}" with a non-string result`,
+      );
+    }
+    return JSON.parse(raw) as T;
+  };
+
   const storage: StorageAPI = {
-    list: () => broker({ kind: "storage_list" }) as Promise<string[]>,
+    list: () => brokerJson<string[]>({ kind: "storage_list" }),
     read: (key) =>
       broker({ key, kind: "storage_read" }) as Promise<null | string>,
     remove: (key) => broker({ key, kind: "storage_remove" }) as Promise<void>,
@@ -173,9 +239,11 @@ export function startSandboxClient(
   };
   const network: NetworkAPI = {
     fetch: (url, init) =>
-      broker({ init, kind: "http_fetch", url }) as ReturnType<
-        NetworkAPI["fetch"]
-      >,
+      brokerJson<Awaited<ReturnType<NetworkAPI["fetch"]>>>({
+        init,
+        kind: "http_fetch",
+        url,
+      }),
   };
   // §260 3c-2c — the same three operations as the trusted tier's FilesAPI. Nothing is
   // interpreted here: a broker rejection (denied capability, path outside the vault,
@@ -187,12 +255,15 @@ export function startSandboxClient(
   // tries; passing the `context` from a delivered event is what keeps a call aimed at the
   // vault the event came from when the user has since switched.
   const files: SandboxFilesAPI = {
+    // Encoded as a JSON string by Rust (see `brokerJson`): a directory of a few hundred
+    // notes is the first broker result that crosses tauri's 8 KiB queue threshold in
+    // ordinary use, and a bare array is exactly the shape the queue takes.
     listDir: (path, opts) =>
-      broker({
+      brokerJson<string[]>({
         context: opts?.context,
         kind: "files_list",
         path,
-      }) as Promise<string[]>,
+      }),
     readFile: (path, opts) =>
       broker({
         context: opts?.context,
@@ -258,6 +329,16 @@ export function startSandboxClient(
     return next;
   };
 
+  // §260 Phase 4c — staged for the same reason a document is, and parsed here: the host
+  // stages ONE string, so the object arrives as JSON rather than as a frame that could enter
+  // tauri's shared channel-data queue.
+  const settings: SandboxSettingsAPI = {
+    getAll: async () => {
+      const { payload } = await readStaged({ kind: "settings_read" });
+      return JSON.parse(payload) as Record<string, PluginSettingValue>;
+    },
+  };
+
   const editor: SandboxEditorAPI = {
     getMarkdown: async () =>
       (await readStaged({ kind: "editor_get_markdown" })).payload,
@@ -310,6 +391,7 @@ export function startSandboxClient(
     editor,
     files,
     network,
+    settings,
     storage,
     ui,
   };
@@ -344,12 +426,13 @@ export function startSandboxClient(
       // sandbox on non-macOS — so if that shape must change, chunk it or keep it out
       // of the channel path deliberately.
       //
-      // ‼️ The invariant holds for THIS op, not for the broker generally (§260 3c-2c
-      // code review, MEDIUM-2): `files_list`/`storage_list` return arrays and
-      // `http_fetch` an object, so they DO match the condition once they cross 8 KiB —
-      // `files_list` first, on a directory of a few hundred notes. Rust warns in dev
-      // when a result crosses it (`warn_if_result_enters_the_shared_queue`); chunking
-      // is owed with Phase 4's document transforms.
+      // ‼️ The invariant now holds for EVERY broker op, not just this one (§260 Phase 4c).
+      // It used to be this op alone: `files_list`/`storage_list` returned arrays and
+      // `http_fetch` an object, so they matched the condition once they crossed 8 KiB —
+      // `files_list` first, on a directory of a few hundred notes — and chunking was
+      // recorded as owed. `BrokerResult` closed that instead: `execute_op` cannot express a
+      // bare array or object, so every result is a string or null, and `brokerJson` parses
+      // the encoded ones back. Rust's dev warning stays as the backstop for a future arm.
       const source = await broker({ kind: "source_read" });
       if (typeof source !== "string") {
         throw new Error("broker returned a non-string plugin source");

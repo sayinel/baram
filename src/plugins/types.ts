@@ -59,6 +59,8 @@ export interface ExtensionContext {
   network: NetworkAPI;
   pluginId: string;
   pluginPath: string;
+  /** §260 Phase 4c — the user's answers to `contributions.settings`. Read-only. */
+  settings: SettingsAPI;
   storage: StorageAPI;
   subscriptions: Disposable[];
   ui: UIAPI;
@@ -124,12 +126,7 @@ export type PluginCapability =
 export interface PluginContributions {
   commands?: Array<{ id: string; palette?: boolean; title: string }>;
   menu?: Array<{ command: string; id: string; title: string; when?: string }>;
-  settings?: Array<{
-    default?: boolean | number | string;
-    key: string;
-    label: string;
-    type: "boolean" | "number" | "string";
-  }>;
+  settings?: PluginSettingField[];
   statusBar?: Array<{
     command?: string;
     id: string;
@@ -227,12 +224,32 @@ export interface PluginModule {
   deactivate?(): Promise<void> | void;
 }
 
+/**
+ * §260 Phase 4c — one declared settings field. The manifest asks the question; the user's
+ * answer is host-owned (see `plugin-settings.ts`), and a plugin only ever READS it.
+ *
+ * No range, pattern or enum in v1 — a `number` field is any finite number. A plugin that
+ * needs a bounded value validates it itself, which it must do anyway: the persisted record
+ * is a config file the user can edit.
+ */
+export interface PluginSettingField {
+  default?: PluginSettingValue;
+  key: string;
+  label: string;
+  type: PluginSettingType;
+}
+
 export interface PluginSettingsTabOptions {
   id: string;
   onMount(el: HTMLElement): void;
   onUnmount?(el: HTMLElement): void;
   title: string;
 }
+
+export type PluginSettingType = (typeof SETTING_TYPES)[number];
+
+/** What a resolved setting can be — one per `SETTING_TYPES` member. */
+export type PluginSettingValue = boolean | number | string;
 
 export interface PluginSidebarPanelOptions {
   icon?: string;
@@ -324,6 +341,26 @@ export interface SandboxFilesAPI {
 }
 
 /**
+ * §260 Phase 4c — the sandboxed tier's settings surface: read-only, and asynchronous
+ * because the values live in the main realm.
+ *
+ * There is no `set`. A setting is the user's answer to a question this plugin's manifest
+ * asked; a plugin that could write one could silently undo a choice the user made, with
+ * nothing in the UI showing that it moved. Use `storage` for state of your own.
+ */
+export interface SandboxSettingsAPI {
+  /**
+   * Every field declared in `contributions.settings`, with its current value — always of
+   * the declared type, and never a key the manifest does not declare. Requires the
+   * `settings` capability.
+   *
+   * Subscribe to `"settings:changed"` through `events.on` to learn when to call this again;
+   * that notification carries no values, so re-reading is how a plugin sees them.
+   */
+  getAll(): Promise<Record<string, PluginSettingValue>>;
+}
+
+/**
  * §260 Phase 4a — the sandboxed tier's UI surface: no DOM, no CSS, no element handle.
  * Everything here is data the host renders on the plugin's behalf, which is why it can
  * be offered to code the app does not trust. Arbitrary-DOM panels and injected styles
@@ -343,6 +380,19 @@ export interface SandboxUIAPI {
    * hold against the app's own messages.
    */
   showNotification(message: string, type?: "error" | "info" | "warning"): void;
+}
+
+/**
+ * §260 Phase 4c — the trusted tier's settings surface. Synchronous, because the store is
+ * in this realm; otherwise identical to `SandboxSettingsAPI`, resolved by the same
+ * function, so one plugin source can serve both tiers.
+ *
+ * Read-only for the same reason as the sandboxed tier: the value is the user's answer, not
+ * the plugin's state. A trusted plugin can of course reach the store itself — this is the
+ * portable spelling, not a boundary.
+ */
+export interface SettingsAPI {
+  getAll(): Record<string, PluginSettingValue>;
 }
 
 export interface StatusBarItem {
@@ -402,6 +452,18 @@ export const EDITOR_WRITE_CAPABILITIES: readonly PluginCapability[] = [
   "editor",
 ];
 
+/**
+ * The types a settings field may declare (§260 Phase 4c).
+ *
+ * A `const` array rather than a bare union because three separate places need to branch on
+ * the SAME set: the validator (is this `type` legal?), the form (which control to render),
+ * and the resolver (`typeof value === type`). That last one is why the members are spelled
+ * exactly as `typeof` returns them — the resolver compares against `typeof` directly, so a
+ * friendlier name here ("text", "toggle") would need a mapping table whose two halves could
+ * drift.
+ */
+export const SETTING_TYPES = ["boolean", "number", "string"] as const;
+
 /** Human-readable descriptions for capabilities */
 export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   editor: "문서를 읽고 수정할 수 있습니다",
@@ -411,7 +473,8 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   commands: "에디터 커맨드를 등록하고 실행할 수 있습니다",
   sidebar: "사이드바에 패널을 추가할 수 있습니다",
   statusbar: "상태바에 항목을 표시할 수 있습니다",
-  settings: "설정 화면에 옵션을 추가할 수 있습니다",
+  settings:
+    "설정 화면에 옵션을 추가하고, 사용자가 설정한 값을 읽을 수 있습니다",
   events: "에디터 이벤트를 수신할 수 있습니다",
   ai: "AI/LLM 기능을 사용할 수 있습니다",
   network: "네트워크 요청을 보낼 수 있습니다",

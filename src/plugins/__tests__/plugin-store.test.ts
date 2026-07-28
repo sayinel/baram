@@ -32,6 +32,20 @@ function makePlugin(id: string, version = "1.0.0"): InstalledPlugin {
   };
 }
 
+describe("removeDevPlugin (§260 Phase 4c)", () => {
+  it("clears the plugin's persisted settings, like removePlugin does", () => {
+    // The record is PERSISTED, so without this a dev-folder churn accumulates records
+    // forever — invisible, because the resolver drops undeclared keys.
+    usePluginStore.setState({ devPlugins: {}, pluginSettings: {} });
+    usePluginStore.getState().setPluginSetting("dev-x", "k", 1);
+    expect(usePluginStore.getState().pluginSettings["dev-x"]).toBeDefined();
+
+    usePluginStore.getState().removeDevPlugin("dev-x");
+
+    expect(usePluginStore.getState().pluginSettings["dev-x"]).toBeUndefined();
+  });
+});
+
 describe("usePluginStore", () => {
   beforeEach(() => {
     // Reset store state

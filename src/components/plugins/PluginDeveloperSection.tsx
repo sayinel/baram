@@ -17,6 +17,7 @@ import { pluginLoader } from "../../plugins/plugin-loader";
 import { usePluginStore } from "../../stores/system/plugin";
 import { useUIStore } from "../../stores/ui/ui";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginSettingsForm } from "./PluginSettingsForm";
 
 export function PluginDeveloperSection() {
   const { devPlugins, pluginErrors, addDevPlugin, removeDevPlugin, setError } =
@@ -182,6 +183,10 @@ function DevPluginDetail({
           </div>
         </div>
       )}
+      {/* §260 Phase 4c — a dev plugin is configured HERE, because it never appears in the
+          registry and so never opens `PluginDetail`. Without this the settings form would
+          be unreachable for exactly the plugins being developed against it. */}
+      <PluginSettingsForm pluginId={manifest.id} />
       <div className="plugin-dev-detail__actions">
         <button className="plugin-dev-btn" onClick={onReload} type="button">
           Reload

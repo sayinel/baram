@@ -24,6 +24,7 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     const handler = createHostRequestHandler({
       aiFactory: () => ai,
       capabilities,
+      declaredSettings: [],
       declaredStatusBarIds: ["s"],
       pluginId: "p",
       pluginName: "P",
@@ -41,9 +42,37 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
 
   it("answers an ai request for a plugin that holds no ui capability", async () => {
     const { handler } = handlerFor(["ai"]);
+    const tokens: string[] = [];
+    // Routed, and answered through the stream path `complete` takes since 4c — the value
+    // it resolves with carries the LENGTH and no text (security review LOW-2).
     await expect(
-      handler({ kind: "ai_complete", prompt: "x" }, noop),
-    ).resolves.toBe("answer");
+      handler({ kind: "ai_complete", prompt: "x" }, (t) => tokens.push(t)),
+    ).resolves.toEqual({ chars: 1 });
+    expect(tokens).toEqual(["t"]);
+  });
+
+  it("routes settings under its own gate", async () => {
+    // §260 Phase 4c — the fourth service. Same property as the others: its grant is not
+    // any other service's.
+    const staged: string[] = [];
+    const withSettings = createHostRequestHandler({
+      aiFactory: () => ai,
+      capabilities: ["settings"],
+      declaredSettings: [{ default: 2, key: "n", label: "N", type: "number" }],
+      declaredStatusBarIds: [],
+      persisted: () => ({ n: 5 }),
+      pluginId: "p",
+      stage: async (_pluginId, payload) => void staged.push(payload),
+    });
+    await expect(
+      withSettings({ kind: "settings_read" }, noop),
+    ).resolves.toBeUndefined();
+    expect(staged).toEqual(['{"n":5}']);
+
+    const { handler: aiOnly } = handlerFor(["ai"]);
+    await expect(aiOnly({ kind: "settings_read" }, noop)).rejects.toThrow(
+      /"settings" capability/,
+    );
   });
 
   it("keeps each service behind its OWN gate", async () => {
@@ -80,6 +109,7 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     const handler = createHostRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai", "statusbar"],
+      declaredSettings: [],
       declaredStatusBarIds: [],
       pluginId: "p",
       showToast,
