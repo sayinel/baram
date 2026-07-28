@@ -427,6 +427,38 @@ describe("consent migration (v2 -> v3, §260 Phase 5)", () => {
     });
   });
 
+  test("a v1 user gets BOTH migrations, not just the newer one", () => {
+    // §260 Phase 5 code review (L6). The two steps are independent `if`s, so this is
+    // correct today — but every other case enters at 1 or 2 and exercises one branch, so
+    // nothing pinned that a long-idle install picks up both.
+    const state = {
+      installedPlugins: {
+        demo: {
+          checksum: "sha256:x",
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p",
+          manifest: {
+            capabilities: ["editor"],
+            id: "demo",
+            trust: "sandboxed",
+          },
+          updatedAt: 0,
+        } as Record<string, unknown>,
+      },
+      registryUrl: OLD_DEFAULT_REGISTRY_URL,
+    };
+    const migrated = migratePluginPersistedState(state, 1) as {
+      installedPlugins: Record<string, { consent?: unknown }>;
+      registryUrl: string;
+    };
+    expect(migrated.registryUrl).toBe(DEFAULT_REGISTRY_URL);
+    expect(migrated.installedPlugins.demo.consent).toEqual({
+      capabilities: ["editor"],
+      trust: "sandboxed",
+    });
+  });
+
   test("is a no-op at version 3", () => {
     const migrated = migratePluginPersistedState(
       stateWith({ capabilities: ["editor"], id: "demo", trust: "sandboxed" }),

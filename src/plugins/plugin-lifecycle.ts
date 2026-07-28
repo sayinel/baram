@@ -36,11 +36,8 @@ interface ActiveBuiltin {
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
-  // §259 containment — plugins run in the app's own JS realm and can bypass the
-  // capability layer, so untrusted plugin code must not auto-execute in shipped
-  // builds. Skip the entire load path unless a build explicitly opts in.
   // §260 3c-3 — close sandbox webviews left over from a previous main-realm
-  // lifetime, BEFORE the enabled gate and before any load. A reload (HMR, refresh,
+  // lifetime, before any load. A reload (HMR, refresh,
   // remount) empties this realm's bookkeeping while the `plugin-*` webview keeps
   // running with its Rust capabilities intact, and the next load then fails on a
   // taken label. Found by the live smoke.

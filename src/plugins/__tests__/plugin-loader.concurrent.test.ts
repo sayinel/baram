@@ -7,13 +7,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // fight over one `plugin-<id>` webview label and one Rust grant — one ends up
 // revoking the other's capabilities or closing its window, leaving the loader's
 // bookkeeping and the live sandbox describing different plugins.
-const arePluginsEnabled = vi.fn(() => true);
-const isSandboxRuntimeAllowed = vi.fn(() => true);
-vi.mock("../plugins-enabled", () => ({
-  arePluginsEnabled: () => arePluginsEnabled(),
-  isSandboxRuntimeAllowed: () => isSandboxRuntimeAllowed(),
-}));
-
 const pluginSandboxRegister = vi.fn(async (..._a: unknown[]) => {});
 const pluginSandboxDeregister = vi.fn(async (..._a: unknown[]) => {});
 vi.mock("../../ipc/plugin-invoke", () => ({

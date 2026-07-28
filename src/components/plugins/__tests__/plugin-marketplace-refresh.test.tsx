@@ -37,8 +37,6 @@ const populatedIndex: RegistryIndex = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // §259 — the marketplace renders its browse UI only when plugins are enabled;
-  // this suite exercises that opt-in path.
   fetchRegistryIndex.mockResolvedValue(emptyIndex);
   checkForUpdates.mockResolvedValue({});
   usePluginStore.setState({

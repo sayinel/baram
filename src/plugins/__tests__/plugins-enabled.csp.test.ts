@@ -1,6 +1,5 @@
-// §260 3c-2b review (I1) — a guardrail for a coupling that is invisible at runtime
-// until it breaks in a packaged build, and which a deleted comment had previously
-// been the only record of.
+// §260 3c-2b review (I1), inverted in Phase 5 — a guardrail for a coupling that is
+// invisible at runtime until it breaks in a packaged build.
 //
 // A `<meta>` CSP can only TIGHTEN the policy a document is served with. In a packaged
 // build Tauri injects the global `csp` from tauri.conf.json as a response header for
@@ -8,16 +7,18 @@
 // resource must pass BOTH policies. So every source the sandbox realm needs must be
 // present in the GLOBAL policy too — the sandbox's own meta CSP cannot add it.
 //
-// Today `sandbox.html` needs `blob:` (it imports the plugin bundle from a blob URL)
-// while the global `script-src` does not list it. That is survivable ONLY because
-// sandbox-webview creation is dev-gated (`isSandboxRuntimeAllowed` requires
-// `import.meta.env.DEV`), and in dev the webview loads the Vite dev server directly,
-// so no Tauri header is attached. Lifting that gate in Phase 5 without adding `blob:`
-// globally would silently break every sandboxed plugin in release — and 3c-3's smoke
-// runs in dev, so it cannot catch it.
+// Until Phase 5 that gap was open: `sandbox.html` needed `blob:` to import the plugin
+// bundle and the global `script-src` did not list it, which was survivable only because
+// sandbox-webview creation was dev-gated — and dev loads the Vite dev server, so no Tauri
+// header is attached. This file used to assert exactly that ("if something is missing,
+// the sandbox must be dev-gated"), which would have short-circuited to green the moment
+// the gap closed. Phase 5 added `blob:` globally and deleted the gate, so the assertion
+// is now the POSITIVE one: everything the sandbox needs must exist globally. Widening the
+// sandbox CSP later therefore forces the same deliberation instead of working in dev and
+// failing in release.
 //
-// This test fails the moment the dev gate is removed while the global CSP still lacks
-// what the sandbox needs, forcing the Phase-5 decision instead of trusting memory.
+// The filename outlives the `plugins-enabled` module it was named after; the coupling it
+// guards is between sandbox.html and tauri.conf.json, which both still exist.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";

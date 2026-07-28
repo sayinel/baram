@@ -71,7 +71,14 @@ export async function migrateFromLocalStorage(): Promise<void> {
   for (const key of keysToMigrate()) {
     try {
       const existing = await getConfig(key);
-      if (existing) continue; // already migrated
+      if (existing) {
+        // Already migrated — but delete the copy anyway (§260 Phase 5 code review, H1).
+        // Skipping it left the exact shared-origin surface this sweep exists to remove:
+        // every `plugin-*` webview shares this origin, so a zero-capability plugin could
+        // still read it. A truthy config value is not a reason to leave a readable copy.
+        localStorage.removeItem(key);
+        continue;
+      }
 
       const localValue = localStorage.getItem(key);
       if (!localValue) continue; // nothing to migrate

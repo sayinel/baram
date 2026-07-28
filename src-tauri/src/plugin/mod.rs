@@ -292,9 +292,18 @@ pub async fn install_plugin(
 }
 
 /// Uninstall a plugin by removing its directory.
+///
+/// §260 Phase 5 code review — the id is `single_segment`-checked, matching
+/// [`plugin_data_dir`]. This function does `remove_dir_all`, so it is the one place where
+/// an id containing `..` or a separator would be worst, and it was the only one of the two
+/// without the guard. Not reachable today (Rust's own `validate_manifest` constrains the
+/// id before the files land), but the rollback path now passes an id read from a manifest
+/// that may have just FAILED validation — so the asymmetry stops being merely untidy.
 pub async fn uninstall_plugin(plugin_id: &str) -> Result<(), PluginError> {
+    let seg = single_segment(plugin_id)
+        .ok_or_else(|| PluginError::InvalidManifest(format!("invalid plugin id: {plugin_id}")))?;
     let plugin_dir = get_plugin_dir()?;
-    let target_dir = plugin_dir.join(plugin_id);
+    let target_dir = plugin_dir.join(seg);
     if !target_dir.exists() {
         return Err(PluginError::NotFound(plugin_id.to_string()));
     }

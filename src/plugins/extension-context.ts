@@ -322,9 +322,12 @@ let editorSurfaceBlockedReason: null | string =
 // Rust backend does not — and in the same realm cannot — verify which plugin a
 // call came from, so an ACL alone can never distinguish the app's own calls
 // from a plugin's. Real enforcement requires isolating plugin execution and
-// verifying caller identity + capabilities per call — tracked in #260. Until
-// then, untrusted plugin code is contained by NOT loading it in shipped builds
-// (see plugins-enabled.ts + the backend `plugins_runtime_enabled` gate).
+// verifying caller identity + capabilities per call. That is what the SANDBOXED tier
+// is (§260 Phases 2-4): a separate webview plus a Rust broker. This function builds the
+// TRUSTED tier's context, where the checks below are an API gate and not a boundary —
+// the plugin shares this realm and can reach around them. Installing one requires an
+// explicit full-trust acknowledgement (§260 Phase 5, `PluginConsentDialog`); the
+// build-time containment that used to stand in for it is gone.
 export function createExtensionContext(
   manifest: PluginManifest,
   pluginPath: string,

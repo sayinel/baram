@@ -72,12 +72,34 @@ describe("migrateFromLocalStorage (§260 Phase 5)", () => {
     expect(store.size).toBe(0);
   });
 
-  it("does not clobber a value already migrated", async () => {
+  it("does not clobber a value already migrated, and still deletes the copy", async () => {
     store.set("baram:bookmarks:/vaults/one", '[{"id":"newer"}]');
     localStorage.setItem("baram:bookmarks:/vaults/one", '[{"id":"stale"}]');
 
     await migrateFromLocalStorage();
 
     expect(store.get("baram:bookmarks:/vaults/one")).toBe('[{"id":"newer"}]');
+    // §260 Phase 5 code review (H1) — skipping the COPY was the whole point of the
+    // sweep. Leaving it behind keeps the shared-origin surface that every sandboxed
+    // plugin can read, which is what this migration exists to remove.
+    expect(localStorage.getItem("baram:bookmarks:/vaults/one")).toBeNull();
+  });
+
+  it("runs before anything can write, so a legitimate empty save cannot shadow it", async () => {
+    // §260 Phase 5 code review (H1). The failure this guards: `BookmarkPanel` loads,
+    // finds nothing in config, and its autosave correctly writes "[]" — after which the
+    // sweep sees a TRUTHY "[]", concludes "already migrated", and skips. The user's
+    // bookmarks are gone AND the readable localStorage copy survives.
+    //
+    // The ordering itself is enforced in `main.tsx` (the migration is awaited before the
+    // app module graph is imported, so no store has been created and no effect has run).
+    // What is asserted here is the half that lives in this module: a truthy config value
+    // must not be the only thing standing between the copy and deletion.
+    localStorage.setItem("baram:bookmarks:/vaults/one", '[{"id":"real"}]');
+    store.set("baram:bookmarks:/vaults/one", "[]"); // the spurious empty save
+
+    await migrateFromLocalStorage();
+
+    expect(localStorage.getItem("baram:bookmarks:/vaults/one")).toBeNull();
   });
 });

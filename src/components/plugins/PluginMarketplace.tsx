@@ -163,7 +163,6 @@ const STYLES = {
   } as React.CSSProperties,
 };
 
-import type { ConsentReason } from "../../plugins/plugin-consent";
 import type {
   InstalledPlugin,
   PluginConsent,
@@ -206,9 +205,10 @@ const LEGACY_ENTRY_MESSAGE =
 /** What the consent dialog is currently asking about, if anything. */
 interface PendingConsent {
   consent: PluginConsent;
+  /** Install vs update — the caller's knowledge, not derived from the reason (M2). */
+  intent: "install" | "update";
   name: string;
   prior?: PluginConsent;
-  reason: ConsentReason;
 }
 
 export function PluginMarketplace() {
@@ -280,6 +280,18 @@ export function PluginMarketplace() {
     consentResolver.current = null;
   }, []);
 
+  // §260 Phase 5 code review (L2) — a dialog that disappears with the component must
+  // resolve as a REFUSAL. Closing Settings or switching panel mid-prompt unmounts this,
+  // and the awaiting `handleInstall` would otherwise hang forever: nothing visibly
+  // stuck, but the user's click silently did nothing.
+  useEffect(
+    () => () => {
+      consentResolver.current?.(null);
+      consentResolver.current = null;
+    },
+    [],
+  );
+
   // Load README for selected installed plugin
   useEffect(() => {
     if (!selectedEntry) {
@@ -343,7 +355,7 @@ export function PluginMarketplace() {
   }, []);
 
   /**
-   * \u00a7260 Phase 5 \u2014 consent, then download, then VERIFY the download against what was
+   * §260 Phase 5 — consent, then download, then VERIFY the download against what was
    * consented to.
    *
    * Consent is collected against the registry entry, which is a claim the registry
@@ -353,8 +365,8 @@ export function PluginMarketplace() {
    * ship "trusted", and the user would have approved the wrong thing.
    *
    * Every check runs BEFORE `addPlugin`. That also closes a gap this flow has carried
-   * since \u00a769: the record used to be persisted first and validated only inside
-   * `loadPlugin`, whose rejection merely set an error string \u2014 so an invalid manifest
+   * since §69: the record used to be persisted first and validated only inside
+   * `loadPlugin`, whose rejection merely set an error string — so an invalid manifest
    * stayed in the store, and a plugin declaring `tiptapExtensions` skipped `loadPlugin`
    * entirely and was never validated at all.
    *
@@ -374,33 +386,40 @@ export function PluginMarketplace() {
         preApproved ??
         (await askConsent({
           consent: claimed,
+          intent: "install",
           name: entry.name,
-          reason: "first-install",
         }));
       if (!consent) return;
 
       setInstalling(entry.id, true);
+      // §260 Phase 5 code review (L3) — ONE rollback site, and plain `throw` statements.
+      //
+      // The checks below used to call an `await reject(...)` helper that rolled back and
+      // threw. Correct at runtime, but not compiler-checkable: `await` of a
+      // `Promise<never>` gives TypeScript no control-flow narrowing, so a fourth check
+      // appended after one would compile and run. ‼️The reviewer's suggested
+      // `return reject(...)` narrows but BREAKS the error path — a `return` inside `try`
+      // hands control out of the block, so `catch` never sees the rejection and no error
+      // badge appears (four tests caught this). A `throw` statement does both.
+      //
+      // Non-null only while extracted files exist that nothing has vouched for yet.
+      let rolledBackId: null | string = null;
       try {
         const result = await pluginInstall(entry.downloadUrl, entry.checksum);
-        // Roll back to the id the archive actually installed under \u2014 that is where the
-        // files landed, whatever the registry called the entry.
-        const reject = async (why: string): Promise<never> => {
-          await pluginUninstall(result.manifest.id).catch((err: unknown) =>
-            logger.error("[Marketplace] rollback failed:", err),
-          );
-          throw new Error(why);
-        };
+        // Where the files actually landed, whatever the registry called the entry, so
+        // the one rollback site in `catch` can remove them.
+        rolledBackId = result.manifest.id;
 
         const validation = validateManifest(result.manifest);
         if (!validation.valid) {
-          await reject(
+          throw new Error(
             `the downloaded manifest is invalid \u2014 ${validation.errors
               .map((e) => `${e.field}: ${e.message}`)
               .join("; ")}`,
           );
         }
         if (result.manifest.id !== entry.id) {
-          await reject(
+          throw new Error(
             `the download declares id "${result.manifest.id}" but the registry listed "${entry.id}"`,
           );
         }
@@ -409,10 +428,13 @@ export function PluginMarketplace() {
           trust: result.manifest.trust,
         });
         if (gaps.length > 0) {
-          await reject(
+          throw new Error(
             `the download does not match the registry listing \u2014 ${gaps.join("; ")}`,
           );
         }
+
+        // Past every check — nothing below may delete the installed files.
+        rolledBackId = null;
 
         const plugin: InstalledPlugin = {
           checksum: result.checksum,
@@ -431,6 +453,11 @@ export function PluginMarketplace() {
           await pluginLoader.loadPlugin(result.install_path, result.manifest);
         }
       } catch (err) {
+        if (rolledBackId !== null) {
+          await pluginUninstall(rolledBackId).catch((e: unknown) =>
+            logger.error("[Marketplace] rollback failed:", e),
+          );
+        }
         setError(entry.id, String(err));
       } finally {
         setInstalling(entry.id, false);
@@ -439,26 +466,54 @@ export function PluginMarketplace() {
     [addPlugin, askConsent, setError, setInstalling],
   );
 
+  /**
+   * Returns whether the plugin is actually gone (§260 Phase 5 code review).
+   *
+   * It swallows its own failure by design — a user clicking Uninstall wants an error
+   * badge, not a thrown promise — but `handleUpdate` needs the outcome: on a failure
+   * `removePlugin` never runs, so the OLD record survives, and a presence check after the
+   * failed reinstall then sees it and concludes the update worked.
+   */
   const handleUninstall = useCallback(
-    async (id: string) => {
+    async (id: string): Promise<boolean> => {
       try {
         await pluginLoader.unloadPlugin(id);
         await pluginUninstall(id);
         removePlugin(id);
+        return true;
       } catch (err) {
         setError(id, String(err));
+        return false;
       }
     },
     [removePlugin, setError],
   );
 
   const handleUpdate = useCallback(
-    async (entry: RegistryEntry) => {
+    async (candidate: RegistryEntry) => {
+      // §260 Phase 5 code review (H2) — resolve the LISTING; never update from the entry
+      // handed in. The Installed tab synthesises one out of the installed manifest with
+      // `downloadUrl: ""`, which broke this two ways: `handleUninstall` deletes the files
+      // and the record, then `pluginInstall("")` can never succeed — so an update from
+      // that tab destroyed the plugin every time. And `claimed` was built from the
+      // manifest ALREADY INSTALLED, so `consentRequired` returned null unconditionally and
+      // the escalation check this phase exists to add was structurally dead there.
+      //
+      // Fixed here rather than at the call site so a future tab cannot reintroduce it.
+      const entry = registryIndex?.plugins.find((p) => p.id === candidate.id);
+      if (!entry) {
+        setError(
+          candidate.id,
+          "This plugin is not in the registry, so there is nothing to update to. " +
+            "Refresh the plugin list and try again.",
+        );
+        return;
+      }
       if (!entry.trust) {
         setError(entry.id, LEGACY_ENTRY_MESSAGE);
         return;
       }
-      // \u00a7260 Phase 5 \u2014 read the recorded consent BEFORE uninstalling: `handleUninstall`
+      // §260 Phase 5 — read the recorded consent BEFORE uninstalling: `handleUninstall`
       // calls `removePlugin`, which deletes the very record this compares against.
       // Without that ordering an update would always look like a first install.
       const prior = installedPlugins[entry.id]?.consent;
@@ -468,16 +523,16 @@ export function PluginMarketplace() {
       };
       const reason = consentRequired(prior, claimed);
       // When the recorded consent already covers this version, record the CLAIMED shape
-      // rather than carrying the old one forward \u2014 an update that drops a capability
+      // rather than carrying the old one forward — an update that drops a capability
       // must narrow the record too, or the grant outlives the version that needed it.
       const consent =
         reason === null
           ? claimed
           : await askConsent({
               consent: claimed,
+              intent: "update",
               name: entry.name,
               prior,
-              reason,
             });
       if (!consent) return;
 
@@ -487,7 +542,11 @@ export function PluginMarketplace() {
       // to fail), so say it plainly instead of leaving a bare error and an empty slot.
       // The real fix is staging the download before removing anything, which needs a
       // Rust-side temp install; deliberately out of scope here.
-      await handleUninstall(entry.id);
+      // If the removal itself failed the old version is still installed and still
+      // running, so reinstalling on top of it would be the wrong repair — stop with the
+      // error `handleUninstall` already recorded.
+      if (!(await handleUninstall(entry.id))) return;
+
       await handleInstall(entry, consent);
       if (usePluginStore.getState().installedPlugins[entry.id] === undefined) {
         const why = usePluginStore.getState().pluginErrors[entry.id] ?? "";
@@ -506,6 +565,7 @@ export function PluginMarketplace() {
       handleInstall,
       handleUninstall,
       installedPlugins,
+      registryIndex,
       setError,
     ],
   );
@@ -563,11 +623,11 @@ export function PluginMarketplace() {
   const consentDialog = pendingConsent && (
     <PluginConsentDialog
       consent={pendingConsent.consent}
+      intent={pendingConsent.intent}
       name={pendingConsent.name}
       onCancel={() => settleConsent(null)}
       onConfirm={() => settleConsent(pendingConsent.consent)}
       prior={pendingConsent.prior}
-      reason={pendingConsent.reason}
     />
   );
 

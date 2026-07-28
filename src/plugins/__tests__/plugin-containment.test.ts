@@ -33,6 +33,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: () => Promise.resolve(null),
 }));
 
+import { usePluginStore } from "../../stores/system/plugin";
 import { PluginLoader } from "../plugin-loader";
 
 const BASE: PluginManifest = {
@@ -75,6 +76,7 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     });
     sandboxStop.mockReset().mockResolvedValue(undefined);
     registerGrant.mockReset().mockResolvedValue(undefined);
+    usePluginStore.setState({ installedPlugins: {} });
   });
 
   it("never imports a sandboxed plugin into the main realm", async () => {
@@ -109,6 +111,52 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
     expect(importer).not.toHaveBeenCalled();
     expect(sandboxStart).not.toHaveBeenCalled();
     expect(registerGrant).not.toHaveBeenCalled();
+  });
+
+  it("grants Rust only what the recorded consent covers, not what the file says", async () => {
+    // §260 Phase 5 code review (H3). Without the narrowing, the consent record was an
+    // install-time UX artifact: the cross-check proves manifest ⊆ consent when the ZIP
+    // lands, and after that `baram-plugin.json` on disk is sole authority — so editing it
+    // escalated on the next start with nothing asked and nothing shown.
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: ["editor"], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: BASE,
+          updatedAt: 0,
+        },
+      },
+    });
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin("/p/demo", {
+      ...BASE,
+      capabilities: ["editor", "network", "files"],
+    });
+
+    expect(registerGrant).toHaveBeenCalledWith("demo", ["editor"], "/p/demo");
+  });
+
+  it("passes a dev plugin's manifest through — choosing the folder is the consent", async () => {
+    // No record exists for a dev folder, and narrowing to nothing there would break the
+    // dev loop while protecting no user.
+    usePluginStore.setState({ installedPlugins: {} });
+    const { loader } = loaderWithSpies();
+
+    await loader.loadPlugin("/dev/demo", {
+      ...BASE,
+      capabilities: ["editor", "network"],
+    });
+
+    expect(registerGrant).toHaveBeenCalledWith(
+      "demo",
+      ["editor", "network"],
+      "/dev/demo",
+    );
   });
 
   it("refuses an unknown tier rather than defaulting to the main realm", async () => {

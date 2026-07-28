@@ -26,6 +26,7 @@ import {
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
+import { grantableCapabilities } from "./plugin-consent";
 import { declaredSettingsFor } from "./plugin-settings";
 import { pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
@@ -432,20 +433,32 @@ export class PluginLoader {
 
   private async runLoad(
     installPath: string,
-    manifest: PluginManifest,
+    rawManifest: PluginManifest,
   ): Promise<void> {
-    if (this.loaded.has(manifest.id)) {
-      logger.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
+    if (this.loaded.has(rawManifest.id)) {
+      logger.warn(`[PluginLoader] Plugin ${rawManifest.id} is already loaded`);
       return;
     }
 
     // 1. Validate manifest
-    const validation = validateManifest(manifest);
+    const validation = validateManifest(rawManifest);
     if (!validation.valid) {
       throw new Error(
-        `Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+        `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
     }
+
+    // §260 Phase 5 code review (H3) — narrow ONCE, here, so every consumer downstream
+    // sees the same list: the Rust grant, the host-side capability gates, the declared
+    // status-bar check and the trusted tier's ExtensionContext. Six call sites each read
+    // `manifest.capabilities` independently, and patching them one by one is how a grant
+    // and the gate that is supposed to bound it come to disagree.
+    //
+    // Without this the consent record was install-time UX only: the cross-check proves
+    // manifest ⊆ consent when the ZIP lands, and after that the file on disk is sole
+    // authority. Anything editing `baram-plugin.json` later escalated on the next start,
+    // silently.
+    const manifest = narrowToConsent(rawManifest);
 
     // §260 — route by trust tier. `validateManifest` above already rejects a
     // legacy (trust-less) manifest ("trust is required …"), which the install UI
@@ -652,6 +665,32 @@ export class PluginLoader {
 function activeFilePath(): null | string {
   const { activeTabId, tabs } = useEditorStore.getState();
   return tabs.find((t) => t.id === activeTabId)?.filePath ?? null;
+}
+
+/**
+ * The manifest with any capability the recorded consent does not cover removed.
+ *
+ * Returns the SAME object when nothing was dropped, so the common path allocates nothing
+ * and an identity comparison in a test means what it looks like.
+ *
+ * Reads the consent from the store rather than taking it as an argument: `loadPlugin` has
+ * four callers (startup, install, enable-toggle, dev reload) and threading it through all
+ * of them is four chances for one to pass nothing and quietly restore the old behaviour.
+ * A dev-folder plugin has no record and is returned unchanged — see
+ * `grantableCapabilities`.
+ */
+function narrowToConsent(manifest: PluginManifest): PluginManifest {
+  const { consent } =
+    usePluginStore.getState().installedPlugins[manifest.id] ?? {};
+  const granted = grantableCapabilities(manifest, consent);
+  if (granted.length === manifest.capabilities.length) return manifest;
+
+  const dropped = manifest.capabilities.filter((c) => !granted.includes(c));
+  logger.warn(
+    `[PluginLoader] ${manifest.id}: withholding ${dropped.join(", ")} — the installed ` +
+      `manifest asks for more than was approved at install. Reinstall to re-approve.`,
+  );
+  return { ...manifest, capabilities: granted };
 }
 
 /**

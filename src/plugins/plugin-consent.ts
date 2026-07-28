@@ -46,7 +46,12 @@ export function consentGaps(
     );
   }
   const held = new Set(consented.capabilities);
-  const extra = next.capabilities.filter((cap) => !isCovered(cap, held));
+  // De-duplicated: a manifest may legally list a capability twice, and
+  // "network, network" in a user-facing error reads like a bug in the app
+  // (§260 Phase 5 code review, L5).
+  const extra = [
+    ...new Set(next.capabilities.filter((cap) => !isCovered(cap, held))),
+  ];
   if (extra.length > 0) {
     gaps.push(
       `it requests capabilities that were not approved: ${extra.join(", ")}`,
@@ -66,6 +71,30 @@ export function consentRequired(
 ): ConsentReason | null {
   if (!consented) return "first-install";
   return consentGaps(consented, next).length > 0 ? "escalation" : null;
+}
+
+/**
+ * The capabilities a plugin may actually be GRANTED: what its manifest asks for, kept
+ * only where the recorded consent covers it.
+ *
+ * §260 Phase 5 code review (H3) — without this the consent record was an install-time UX
+ * artifact. The cross-check proves manifest ⊆ consent at install, and then the manifest on
+ * disk is sole authority forever: anything that edits `baram-plugin.json` afterwards —
+ * a dev folder, a file-writing plugin reaching another plugin's directory, a hand edit —
+ * escalates on the next start with nothing asked and nothing shown.
+ *
+ * An ABSENT consent grants the manifest unchanged. That is not a loophole being left
+ * open: dev-folder plugins never have a record (choosing the directory is the consent),
+ * and pre-Phase-5 records whose manifest declared no tier cannot load at all. Narrowing
+ * those to nothing would break the dev loop while protecting no user.
+ */
+export function grantableCapabilities(
+  manifest: { capabilities: readonly PluginCapability[] },
+  consented: PluginConsent | undefined,
+): PluginCapability[] {
+  if (!consented) return [...manifest.capabilities];
+  const held = new Set(consented.capabilities);
+  return manifest.capabilities.filter((cap) => isCovered(cap, held));
 }
 
 /**

@@ -220,7 +220,13 @@ export function PluginCard({
               Uninstall
             </button>
           ) : (
+            // §260 Phase 5 code review (M1) — a legacy entry (no `trust`) cannot be
+            // installed: `validateManifest` rejects a trust-less manifest, so an enabled
+            // button here only downloads and then fails. Both plugins in the live registry
+            // are trust-less today, so this is the FIRST thing a user meets in Browse —
+            // the detail view had the guard and the card did not.
             <button
+              disabled={!entry.trust}
               onClick={onInstall}
               style={{
                 padding: "6px 16px",
@@ -230,8 +236,14 @@ export function PluginCard({
                 backgroundColor: "var(--color-accent-default)",
                 color: "#fff",
                 border: "none",
-                cursor: "pointer",
+                cursor: entry.trust ? "pointer" : "not-allowed",
+                opacity: entry.trust ? 1 : 0.5,
               }}
+              title={
+                entry.trust
+                  ? undefined
+                  : "This plugin predates Baram's plugin trust model and cannot be installed."
+              }
             >
               Install
             </button>

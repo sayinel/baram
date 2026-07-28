@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 
-import type { ConsentReason } from "../../plugins/plugin-consent";
 import type { PluginConsent } from "../../plugins/types";
 
 import { consentCovers } from "../../plugins/plugin-consent";
@@ -9,12 +8,18 @@ import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 interface PluginConsentDialogProps {
   /** What is being asked for now — a registry claim, never a downloaded manifest. */
   consent: PluginConsent;
+  /**
+   * What the user is actually doing, which is NOT derivable from `reason` (§260 Phase 5
+   * code review, M2): `backfillConsent` deliberately leaves a legacy manifest without a
+   * record, so updating one yields `reason: "first-install"` — and the dialog titled
+   * itself "Install" over a button that updates. Only the caller knows.
+   */
+  intent: "install" | "update";
   name: string;
   onCancel: () => void;
   onConfirm: () => void;
   /** The recorded consent, when this is an update. Drives the "NEW" markers. */
   prior?: PluginConsent;
-  reason: ConsentReason;
 }
 
 /**
@@ -31,15 +36,15 @@ interface PluginConsentDialogProps {
  */
 export function PluginConsentDialog({
   consent,
+  intent,
   name,
   onCancel,
   onConfirm,
   prior,
-  reason,
 }: PluginConsentDialogProps) {
   const [acknowledged, setAcknowledged] = useState(false);
   const trusted = consent.trust === "trusted";
-  const installing = reason === "first-install";
+  const installing = intent === "install";
 
   // Escape cancels. A dialog that vanished without an answer must never resolve as
   // consent — the caller is awaiting a decision, and "dismissed" is a refusal.

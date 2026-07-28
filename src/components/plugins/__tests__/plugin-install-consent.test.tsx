@@ -332,18 +332,147 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
   });
 
-  it("refuses a legacy entry outright, without a dialog or a download", async () => {
-    listed = [{ ...ENTRY, trust: undefined }];
-    render(<PluginMarketplace />);
-    const install = await screen.findByRole("button", { name: /^Install$/ });
-    fireEvent.click(install);
+  it("keeps a plugin that installed but failed to start — files and record both", async () => {
+    // The rollback marker is cleared once every check has passed, and that line is
+    // load-bearing: without it a failing `loadPlugin` deletes the extracted files while
+    // `addPlugin` has already persisted the record, leaving an entry pointing at nothing.
+    // A plugin that installs and fails to activate is installed-but-broken, which the
+    // error badge says and the enable toggle can retry.
+    loadPlugin.mockRejectedValue(new Error("activate timed out"));
+    await clickInstall();
+    await confirmConsent();
 
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toContain(
-        "predates Baram's plugin trust model",
+        "activate timed out",
       ),
     );
+    expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
+    expect(pluginUninstall).not.toHaveBeenCalled();
+  });
+
+  it("calls an update an update, even when there is no consent record to compare", async () => {
+    // §260 Phase 5 code review (M2). `backfillConsent` deliberately leaves a legacy
+    // (trust-less) manifest without a record, so `consentRequired` returns
+    // "first-install" — and the dialog used to derive its wording from that, titling
+    // itself Install over a button that updates. Only the caller knows which it is.
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "sha256:abc",
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: MANIFEST, // no `consent` — the migration skipped it
+          updatedAt: 0,
+        },
+      },
+      updateAvailable: { demo: "2.0.0" },
+    });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading").textContent).toMatch(/update/i);
+    expect(within(dialog).getByRole("heading").textContent).not.toMatch(
+      /^Install/i,
+    );
+  });
+
+  it("will not update from an entry that is not in the registry listing", async () => {
+    // §260 Phase 5 code review (H2). The Installed tab synthesises a RegistryEntry out of
+    // the installed manifest with `downloadUrl: ""`, so an update from there uninstalled
+    // the plugin and then failed to reinstall it — destroying it every time. It also
+    // computed consent against the manifest ALREADY INSTALLED, so the escalation check
+    // was unconditionally silent on that path.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = []; // the registry has no such plugin
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toMatch(
+        /not in the registry/i,
+      ),
+    );
+    // The plugin is untouched — not uninstalled, not downloaded.
+    expect(unloadPlugin).not.toHaveBeenCalled();
+    expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
+  });
+
+  it("checks the listing's capabilities on an update, not the installed manifest's", async () => {
+    // The other half of H2: resolving the real entry is what makes the escalation check
+    // reachable from the Installed tab at all.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [
+      { ...ENTRY, capabilities: ["editor", "network"], version: "2.0.0" },
+    ];
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("NEW");
+  });
+
+  it("does not reinstall over a plugin whose removal failed", async () => {
+    // §260 Phase 5 code review. `handleUninstall` swallows its failure by design, so the
+    // old record survives — and a presence check after the failed reinstall would then
+    // see it and report success for an update that never happened.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+    unloadPlugin.mockRejectedValue(new Error("teardown wedged"));
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toContain(
+        "teardown wedged",
+      ),
+    );
+    expect(pluginInstall).not.toHaveBeenCalled();
+    // Still installed, and the badge still says an update is available.
+    expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
+    expect(usePluginStore.getState().updateAvailable.demo).toBe("2.0.0");
+  });
+
+  it("does not even offer Install for a legacy entry in the Browse list", async () => {
+    // §260 Phase 5 code review (M1) — this used to click an ENABLED button and assert the
+    // resulting error, which pinned the gap instead of catching it. Both live registry
+    // entries are trust-less, so Browse is where a user meets this first.
+    listed = [{ ...ENTRY, trust: undefined }];
+    render(<PluginMarketplace />);
+
+    const install = await screen.findByRole("button", { name: /^Install$/ });
+    expect(install.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(install);
+
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(pluginInstall).not.toHaveBeenCalled();
+  });
+
+  it("refuses a legacy entry in the handler too, if a button ever gets through", async () => {
+    // Defence in depth: the disabled button is UI, the handler is the rule.
+    listed = [{ ...ENTRY, trust: undefined }];
+    render(<PluginMarketplace />);
+    await screen.findByRole("button", { name: /^Install$/ });
+
+    fireEvent.click(screen.getByRole("button", { name: /^Installed/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(pluginInstall).not.toHaveBeenCalled();
   });
 });

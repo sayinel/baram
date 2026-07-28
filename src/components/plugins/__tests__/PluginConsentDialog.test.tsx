@@ -4,8 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { PluginConsentDialog } from "../PluginConsentDialog";
 
 const base = {
+  intent: "install" as const,
   name: "Demo",
-  reason: "first-install" as const,
 };
 
 describe("PluginConsentDialog (§260 Phase 5)", () => {
@@ -78,10 +78,10 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
       <PluginConsentDialog
         {...base}
         consent={{ capabilities: ["editor", "network"], trust: "sandboxed" }}
+        intent="update"
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
         prior={{ capabilities: ["editor"], trust: "sandboxed" }}
-        reason="escalation"
       />,
     );
     const rows = screen.getAllByRole("listitem");
@@ -111,16 +111,16 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
       <PluginConsentDialog
         {...base}
         consent={{ capabilities: ["files:readonly"], trust: "sandboxed" }}
+        intent="update"
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
         prior={{ capabilities: ["files"], trust: "sandboxed" }}
-        reason="escalation"
       />,
     );
     expect(screen.getByRole("listitem").textContent).not.toContain("NEW");
   });
 
-  it("says what it will do — install versus update", () => {
+  it("says what it will do — install versus update, from the CALLER's intent", () => {
     const { unmount } = render(
       <PluginConsentDialog
         {...base}
@@ -136,9 +136,9 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
       <PluginConsentDialog
         {...base}
         consent={{ capabilities: [], trust: "sandboxed" }}
+        intent="update"
         onCancel={vi.fn()}
         onConfirm={vi.fn()}
-        reason="escalation"
       />,
     );
     expect(screen.getByRole("heading").textContent).toMatch(/update/i);

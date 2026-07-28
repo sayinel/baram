@@ -2,7 +2,11 @@ import type { PluginCapability, PluginConsent } from "../types";
 
 import { describe, expect, it } from "vitest";
 
-import { consentGaps, consentRequired } from "../plugin-consent";
+import {
+  consentGaps,
+  consentRequired,
+  grantableCapabilities,
+} from "../plugin-consent";
 
 const sandboxed = (...capabilities: PluginCapability[]): PluginConsent => ({
   capabilities,
@@ -103,6 +107,18 @@ describe("consentGaps (§260 Phase 5)", () => {
     expect(gaps[1]).not.toContain("editor");
   });
 
+  it("does not repeat a duplicated capability in the message", () => {
+    // A manifest may legally list one twice; "network, network" in a user-facing error
+    // reads like a bug in the app (§260 Phase 5 code review, L5).
+    const gaps = consentGaps(sandboxed("editor"), {
+      capabilities: ["network", "network"],
+      trust: "sandboxed",
+    });
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toContain("network");
+    expect(gaps[0]).not.toContain("network, network");
+  });
+
   it("is empty when the consent covers the request", () => {
     expect(
       consentGaps(sandboxed("files"), {
@@ -119,5 +135,53 @@ describe("consentGaps (§260 Phase 5)", () => {
     });
     expect(gaps).toHaveLength(1);
     expect(gaps[0]).toContain("trusted");
+  });
+});
+
+describe("grantableCapabilities (§260 Phase 5 review, H3)", () => {
+  it("drops a capability the manifest gained after consent was given", () => {
+    // The escalation this closes: edit `baram-plugin.json` post-install and the next
+    // start used to hand the Rust broker whatever the file now says.
+    expect(
+      grantableCapabilities(
+        { capabilities: ["editor", "network"] },
+        sandboxed("editor"),
+      ),
+    ).toEqual(["editor"]);
+  });
+
+  it("keeps a readonly form the consent covers by implication", () => {
+    expect(
+      grantableCapabilities(
+        { capabilities: ["files:readonly"] },
+        sandboxed("files"),
+      ),
+    ).toEqual(["files:readonly"]);
+  });
+
+  it("does not widen when the manifest asks for less than was approved", () => {
+    expect(
+      grantableCapabilities(
+        { capabilities: ["editor"] },
+        sandboxed("editor", "network"),
+      ),
+    ).toEqual(["editor"]);
+  });
+
+  it("grants the manifest unchanged when there is no consent record", () => {
+    // Dev-folder plugins have none — choosing the directory IS the consent — so
+    // narrowing here would break the dev loop while protecting no user.
+    expect(
+      grantableCapabilities({ capabilities: ["editor", "network"] }, undefined),
+    ).toEqual(["editor", "network"]);
+  });
+
+  it("preserves manifest order, so the grant is stable across loads", () => {
+    expect(
+      grantableCapabilities(
+        { capabilities: ["storage", "editor", "events"] },
+        sandboxed("events", "editor", "storage"),
+      ),
+    ).toEqual(["storage", "editor", "events"]);
   });
 });

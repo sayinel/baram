@@ -1,15 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
 }));
-
-// §259 — the loader refuses to load plugins unless the build opts in; this
-// suite exercises the loader mechanics, i.e. the enabled path.
-beforeEach(() => {});
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
 
 import type { ExtensionContext, PluginManifest } from "../types";
 
