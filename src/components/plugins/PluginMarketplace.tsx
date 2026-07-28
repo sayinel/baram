@@ -481,8 +481,23 @@ export function PluginMarketplace() {
             });
       if (!consent) return;
 
+      // ‼️ An update is uninstall-then-install, so a REJECTED download leaves the user
+      // with nothing — the working version is already gone by the time the new one fails
+      // its checks. Phase 5 makes that outcome more reachable (there are three new ways
+      // to fail), so say it plainly instead of leaving a bare error and an empty slot.
+      // The real fix is staging the download before removing anything, which needs a
+      // Rust-side temp install; deliberately out of scope here.
       await handleUninstall(entry.id);
       await handleInstall(entry, consent);
+      if (usePluginStore.getState().installedPlugins[entry.id] === undefined) {
+        const why = usePluginStore.getState().pluginErrors[entry.id] ?? "";
+        setError(
+          entry.id,
+          `${why} The previous version was removed before this failed, so "${entry.name}" ` +
+            `is no longer installed — reinstall it from the registry.`,
+        );
+        return;
+      }
       clearUpdateAvailable(entry.id);
     },
     [

@@ -307,6 +307,31 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("tells the user the plugin is gone when an update fails its checks", async () => {
+    // An update is uninstall-then-install, so a rejected download leaves NOTHING
+    // installed — the working version was already removed. Phase 5 adds three new ways
+    // for the second half to fail, so this outcome has to be stated rather than left as
+    // a bare error next to an empty slot.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+    downloadReturns({ ...MANIFEST, trust: "trusted" }); // exceeds the recorded consent
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toMatch(
+        /no longer installed/i,
+      ),
+    );
+    // Both halves: the reason it failed AND the consequence.
+    expect(usePluginStore.getState().pluginErrors.demo).toContain("trusted");
+    expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
+  });
+
   it("refuses a legacy entry outright, without a dialog or a download", async () => {
     listed = [{ ...ENTRY, trust: undefined }];
     render(<PluginMarketplace />);

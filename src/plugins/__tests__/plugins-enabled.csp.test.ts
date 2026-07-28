@@ -75,6 +75,16 @@ describe("sandbox CSP vs the global CSP (§260 3c-2b, I1)", () => {
     ).toEqual([]);
   });
 
+  it("denies workers in the sandbox realm — the fallback would allow them", () => {
+    // §260 Phase 5 security review. With no `worker-src`, CSP falls back to `script-src`
+    // (`'self' blob:`), so the realm could spawn a SHARED worker — reachable by name from
+    // every other plugin webview, since they all share this origin. That is a
+    // plugin-to-plugin channel straight around the Rust broker. Asserted rather than
+    // commented because the directive looks redundant next to `default-src 'none'` and is
+    // exactly the kind of line someone tidies away.
+    expect(directive(sandboxMetaCsp(), "worker-src")).toEqual(["'none'"]);
+  });
+
   it("keeps the sandbox realm free of asset: — the F1 fix must not regress", () => {
     // Re-adding `asset:` here would restore an ungranted file-read capability: the
     // asset scope is app-global and covers the vault and every plugin directory.

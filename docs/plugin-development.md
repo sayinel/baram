@@ -897,12 +897,20 @@ a new capability is shown as new. An update that asks for _less_ installs withou
 prompt and narrows the record.
 
 **Sandboxes share an origin with the app and with each other.** Tauri v2 has no
-per-window origin, so a `plugin-*` webview cannot be given its own. The app therefore
-keeps nothing in `localStorage` (everything persists through Rust's config file), but
-two _installed_ plugins can still reach each other through `BroadcastChannel` or a
-`SharedWorker` — so a plugin without `network` could use a `network`-granted plugin as a
-proxy if both are malicious. Capability grants bound one plugin, not a pair that
-cooperate.
+per-window origin, so a `plugin-*` webview cannot be given its own. Three consequences,
+all of them bounds rather than bugs:
+
+- The app keeps nothing in `localStorage` — everything persists through Rust's config
+  file — precisely because a plugin could otherwise read it with no capabilities at all.
+- Two installed plugins can still reach each other through `BroadcastChannel`, so a
+  plugin without `network` could use a `network`-granted plugin as a proxy if both are
+  malicious. Capability grants bound one plugin, not a pair that cooperate.
+  `SharedWorker` was the same kind of channel and is blocked — the sandbox denies
+  `worker-src` outright, which also means **no `Worker` at all in a sandboxed plugin**.
+- `indexedDB` and the Cache API are reachable without the `storage` capability. They give
+  a plugin persistence that the capability system does not gate; they do not give it
+  anything of the app's, because the app stores nothing in either. Prefer `ctx.storage`:
+  it is the only plugin storage the user can see and that uninstalling actually removes.
 
 **Bottom line: only install plugins you trust**, especially any declaring
 `ai`, `network`, `files`, or `storage`. New capabilities added in a plugin

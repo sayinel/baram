@@ -56,9 +56,20 @@
          needs must exist globally — so widening the sandbox CSP later forces the same
          deliberation rather than working in dev and failing in release. See
          plugins-enabled.csp.test.ts. -->
+    <!-- `worker-src 'none'` is explicit because the fallback is wrong here: with no
+         worker-src, the browser falls back to script-src — `'self' blob:` — so this realm
+         could spawn workers, and a SHARED worker is reachable by name from any same-origin
+         context. Every plugin webview shares this origin (Tauri v2 has no per-window
+         origin), so that is a direct plugin-to-plugin channel around the broker: a plugin
+         with no `network` grant could pass data to one that has it. Dedicated workers go
+         with it — CSP cannot separate the two — and that is the intended trade while no
+         plugin depends on them. Relaxing this later behind a capability is easy;
+         retracting it after plugins rely on it is not. (§260 Phase 5 security review.)
+         IndexedDB and the Cache API remain reachable and CSP cannot bound them; they are
+         recorded as residuals in the ADR. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self' blob:; connect-src ipc: http://ipc.localhost"
+      content="default-src 'none'; script-src 'self' blob:; worker-src 'none'; connect-src ipc: http://ipc.localhost"
     />
     <title>Baram plugin sandbox</title>
   </head>
