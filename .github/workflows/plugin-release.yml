@@ -39,6 +39,15 @@ jobs:
           [[ "$TAG" =~ ^plugin-(.+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
             || fail "tag $TAG does not match plugin-<dir>-v<semver>"
           DIR="${BASH_REMATCH[1]}"; VERSION="${BASH_REMATCH[2]}"
+          # §260 Phase 6 — test fixtures must never reach the public registry. Both of these
+          # are adversarial or internal by design: `malicious-fixture` asks for everything it
+          # was not granted, and `sandbox-smoke` exercises boundaries for a maintainer. A
+          # mistyped tag is the only way either could be published, so the denylist is here,
+          # before anything is built. Pinned by src/plugins/__tests__/malicious-fixture.test.ts.
+          case "$DIR" in
+            malicious-fixture|sandbox-smoke)
+              fail "$DIR is a test fixture and must never be published" ;;
+          esac
           MANIFEST="examples/plugins/$DIR/baram-plugin.json"
           [[ -f "$MANIFEST" ]] || fail "no manifest at $MANIFEST"
           MANIFEST_VERSION="$(node -p "require('./$MANIFEST').version")"
