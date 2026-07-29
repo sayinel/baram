@@ -112,11 +112,17 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     // `toContain(floor)` plus a hardcoded `not.toContain(">=0.4.0")`, so a README naming two
     // different floors passed, and the hardcoded needle went stale on the next legitimate raise.
     // Extract every floor the README states and require it to be exactly this one.
+    // Anchored to `engines.baram` (round-4 LOW-4): an unanchored `>=X.Y.Z` scan also catches an
+    // unrelated floor — a Node version in build instructions being the obvious one — and would
+    // then fail with a claim that is itself false. `\s*` after `>=` because the workflow accepts
+    // `>= 0.5.0` with a space.
     const readmeFloors = [
       ...new Set(
-        [...read("word-count", "README.md").matchAll(/>=\d+\.\d+\.\d+/g)].map(
-          (m) => m[0],
-        ),
+        [
+          ...read("word-count", "README.md").matchAll(
+            /engines\.baram`?[\s\S]{0,60}?(>=\s*\d+\.\d+\.\d+)/g,
+          ),
+        ].map((m) => m[1].replace(/\s+/, "")),
       ),
     ];
     expect(
@@ -207,6 +213,10 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
       rebuildArgs,
       { cwd: dir, encoding: "utf8" },
     );
+    // If the binary itself is missing, `spawnSync` reports `error` with a null status and an
+    // undefined stderr — the message then read "must succeed:\nundefined" (round-4 LOW-3).
+    // Rethrow the real cause instead of diagnosing a build that never ran.
+    if (result.error) throw result.error;
     // Judged by EXIT STATUS, not by empty stderr: the esbuild CLI writes its success summary
     // ("dist/index.mjs 574b … Done in 7ms") to stderr, so an emptiness check fails on success.
     expect(

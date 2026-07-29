@@ -19,7 +19,7 @@ import type { PluginOp } from "../sandbox/plugin-op";
 import type { PluginManifest, SandboxContext } from "../types";
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -412,8 +412,169 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
       "only sandboxed plugins are published",
     );
     if (allowed.status !== 0) {
-      expect(allowed.output).toContain("engines.baram");
+      // §260 Phase 6 code review round 4 (MEDIUM-1) — this asserted `engines.baram` alone, which
+      // was calibrated to TODAY (app 0.4.1 vs floor >=0.5.0). Bump the app to 0.5.0 and the
+      // script gets one check further, to `git merge-base --is-ancestor … origin/main`, which
+      // fails on a feature branch and fails harder in PR CI, where the checkout has no
+      // `origin/main` ref at all. That is the same self-defeating shape the floor guard in
+      // `reference-plugins.test.ts` documents avoiding, one file over.
+      //
+      // Both later stopping points are legitimate here; what must NOT happen is stopping for one
+      // of the reasons excluded above. The order gate keeps its own executable coverage in the
+      // synthetic-cwd test below, independent of the repo's version.
+      expect(allowed.output).toMatch(
+        /engines\.baram|is not on main|Not a valid object name/,
+      );
     }
+  });
+
+  it("ties every publish step to the directory the meta step verified", () => {
+    // §260 Phase 6 code review round 4 (MEDIUM-2). The gates all live in the meta step, and the
+    // later steps consume `steps.meta.outputs.dir`. Nothing asserted that: hardcoding
+    // `working-directory: examples/plugins/ai-summary` in `Package ZIP`, or `DIR: ai-summary` in
+    // the push step, published the trusted manifest and its ZIP with the whole suite green — the
+    // verified directory and the built directory simply parted company.
+    const workflow = readFileSync(
+      resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
+      "utf8",
+    );
+    const build = workflow.indexOf("- name: Build plugin");
+    expect(build).toBeGreaterThan(0);
+    // Everything from the build step on must reach the plugin tree only through that output.
+    const references = [
+      ...workflow
+        .slice(build)
+        .matchAll(/examples\/plugins\/(\$\{\{[^}]*\}\}|\$\{?\w+\}?|[\w.-]+)/g),
+    ].map((m) => m[1]);
+    expect(references.length).toBeGreaterThan(0);
+    for (const ref of references) {
+      expect(
+        ref,
+        `a publish step names examples/plugins/${ref} directly; it must use the meta step's verified dir`,
+      ).toMatch(/^\$\{\{\s*steps\.meta\.outputs\.dir\s*\}\}|^\$DIR|^\$\{DIR\}/);
+    }
+  });
+
+  it("refuses a non-sandboxed manifest, a bad id, and a behind app — by RUNNING the step", () => {
+    // §260 Phase 6 code review round 4 (HIGH-1). The previous round's commit claimed the
+    // executing guard caught "widening the allowlist OR deleting the tier check". The second half
+    // was false, structurally: no tag in the harness above reaches the tier check, because
+    // `word-count` is the only allowlisted directory and it IS sandboxed. So the tier check's
+    // whole guard was a `toContain` on its own error MESSAGE, while any mutation lives in the
+    // CONDITION — weakening `[[ "$TRUST" == "sandboxed" ]]` to `[[ -n "$TRUST" ]]` left all 27
+    // tests green. The plugin-id regex and the release-order gate had no executable guard either.
+    //
+    // The step reads exactly two files, both relative to cwd: `package.json` and
+    // `examples/plugins/$DIR/baram-plugin.json`. So a SYNTHETIC cwd makes every one of these
+    // reachable without touching the repo — and without the guard being calibrated to the repo's
+    // current version, which is what made the `allowed` case above fragile (see MEDIUM-1 below).
+    const script = metaStepScript();
+
+    const runSynthetic = (opts: {
+      appVersion?: string;
+      manifest: Record<string, unknown>;
+      tag: string;
+    }) => {
+      const root = mkdtempSync(join(tmpdir(), "baram-meta-syn-"));
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({ version: opts.appVersion ?? "9.9.9" }),
+      );
+      // Always the allowlisted directory: this exercises the checks AFTER the allowlist.
+      const pluginDir = join(root, "examples", "plugins", "word-count");
+      mkdirSync(pluginDir, { recursive: true });
+      writeFileSync(
+        join(pluginDir, "baram-plugin.json"),
+        JSON.stringify(opts.manifest),
+      );
+      const result = spawnSync("bash", ["-e", "-c", script], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_OUTPUT: join(root, "output"),
+          GITHUB_REF_NAME: opts.tag,
+          GITHUB_SHA: "HEAD",
+        },
+      });
+      return { output: result.stderr + result.stdout, status: result.status };
+    };
+
+    const base = {
+      capabilities: ["events"],
+      engines: { baram: ">=0.5.0" },
+      id: "baram-word-count",
+      trust: "sandboxed",
+      version: "1.0.0",
+    };
+    const TAG = "plugin-word-count-v1.0.0";
+
+    // 1. The tier check, executed. This is the assertion that was missing.
+    const trusted = runSynthetic({
+      manifest: { ...base, trust: "trusted" },
+      tag: TAG,
+    });
+    expect(trusted.status).not.toBe(0);
+    expect(trusted.output).toContain("only sandboxed plugins are published");
+
+    // …and its control: the same manifest, sandboxed, must get PAST the tier check. (It stops
+    // later at `git merge-base`, since a temp dir is not a git repo — that is fine and expected.)
+    const sandboxed = runSynthetic({ manifest: base, tag: TAG });
+    expect(sandboxed.output).not.toContain(
+      "only sandboxed plugins are published",
+    );
+
+    // 2. The plugin-id regex, which had no guard at all.
+    const badId = runSynthetic({
+      manifest: { ...base, id: "../../evil" },
+      tag: TAG,
+    });
+    expect(badId.status).not.toBe(0);
+    expect(badId.output).toContain("must match");
+
+    // 3. The release-order gate, pinned independently of the repo's real version — so it keeps
+    //    its coverage after the app is bumped to 0.5.0 (round-4 MEDIUM-1).
+    const behind = runSynthetic({
+      appVersion: "0.4.1",
+      manifest: base,
+      tag: TAG,
+    });
+    expect(behind.status).not.toBe(0);
+    expect(behind.output).toContain("release the app first");
+
+    const atFloor = runSynthetic({
+      appVersion: "0.5.0",
+      manifest: base,
+      tag: TAG,
+    });
+    expect(atFloor.output).not.toContain("release the app first");
+
+    // …a prerelease app fails CLOSED: it is not the release that ships the floor.
+    const prerelease = runSynthetic({
+      appVersion: "0.5.0-beta.1",
+      manifest: base,
+      tag: TAG,
+    });
+    expect(prerelease.status).not.toBe(0);
+    expect(prerelease.output).toContain("not a plain release version");
+
+    // 4. Malformed inputs are reported AS malformed, not as "release the app first"
+    //    (round-4 LOW-2), and an absent `engines` produces a real annotation rather than a raw
+    //    Node stack with no `::error::` (LOW-1).
+    const caretRange = runSynthetic({
+      manifest: { ...base, engines: { baram: "^0.5.0" } },
+      tag: TAG,
+    });
+    expect(caretRange.status).not.toBe(0);
+    expect(caretRange.output).toContain("cannot compare versions");
+    expect(caretRange.output).not.toContain("release the app first");
+
+    const noEngines = runSynthetic({
+      manifest: { ...base, engines: {} },
+      tag: TAG,
+    });
+    expect(noEngines.status).not.toBe(0);
+    expect(noEngines.output).toContain("::error::");
   });
 
   it("names only the sandboxed tier as publishable", () => {

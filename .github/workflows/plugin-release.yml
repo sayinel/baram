@@ -96,18 +96,33 @@ jobs:
           # A prerelease app version fails closed: `0.5.0-beta.1` is not the release that ships
           # the floor, so it must not authorize publishing against it.
           APP_VERSION="$(node -p "require('./package.json').version")"
-          RANGE="$(node -p "require('./$MANIFEST').engines.baram || ''")"
+          # `(engines||{})` rather than `engines.baram` (round-4 LOW-1): a manifest with no
+          # `engines` made this assignment throw a raw Node stack, and `set -e` then aborted the
+          # job with NO `::error::` annotation at all — a real refusal that looked like a crash.
+          # Now it comes through as an empty range and is reported by the check below.
+          RANGE="$(node -p "((require('./$MANIFEST').engines)||{}).baram || ''")"
+          # Exit 2 means "the inputs are malformed", 1 means "the app is genuinely behind"
+          # (round-4 LOW-2). One status for both made a legal-but-unsupported range like `^0.5.0`
+          # produce the annotation "release the app first", which is not what happened.
+          set +e
           node -e '
             const [app, range] = process.argv.slice(1);
             const floor = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(range);
-            if (!floor) { console.error(`engines.baram "${range}" must be of the form ">=X.Y.Z"`); process.exit(1); }
+            if (!floor) { console.error(`engines.baram "${range}" must be of the form ">=X.Y.Z"`); process.exit(2); }
             const appParts = /^(\d+)\.(\d+)\.(\d+)$/.exec(app);
-            if (!appParts) { console.error(`app version "${app}" is not a plain release version`); process.exit(1); }
+            if (!appParts) { console.error(`app version "${app}" is not a plain release version`); process.exit(2); }
             const a = appParts.slice(1).map(Number), f = floor.slice(1).map(Number);
             const ok = a[0] !== f[0] ? a[0] > f[0] : a[1] !== f[1] ? a[1] > f[1] : a[2] >= f[2];
             process.exit(ok ? 0 : 1);
-          ' "$APP_VERSION" "$RANGE" \
-            || fail "app version $APP_VERSION does not satisfy this plugin's engines.baram ($RANGE) — release the app first"
+          ' "$APP_VERSION" "$RANGE"
+          VERSION_CHECK=$?
+          set -e
+          case "$VERSION_CHECK" in
+            0) ;;
+            1) fail "app version $APP_VERSION does not satisfy this plugin's engines.baram ($RANGE) — release the app first" ;;
+            2) fail "cannot compare versions: app '$APP_VERSION' / engines.baram '$RANGE' (see the message above)" ;;
+            *) fail "the version comparison itself failed (exit $VERSION_CHECK) — this is a bug in this workflow, not a refusal" ;;
+          esac
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || fail "tag commit $GITHUB_SHA is not on main"
           {
