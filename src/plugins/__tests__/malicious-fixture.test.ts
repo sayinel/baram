@@ -290,6 +290,10 @@ describe("the malicious fixture is refused everywhere (§260 Phase 6)", () => {
   });
 });
 
+function metaStepScript(): string {
+  return stepScript("Parse and verify tag");
+}
+
 /**
  * The shell script of `plugin-release.yml`'s "Parse and verify tag" step.
  *
@@ -298,12 +302,13 @@ describe("the malicious fixture is refused everywhere (§260 Phase 6)", () => {
  * hostage to an unrelated dependency bump. The callers assert the extraction found real anchors,
  * so a broken extraction fails loudly instead of running an empty script.
  */
-function metaStepScript(): string {
+function stepScript(stepName: string): string {
   const workflow = readFileSync(
     resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
     "utf8",
   );
-  const step = workflow.indexOf("- name: Parse and verify tag");
+  const step = workflow.indexOf(`- name: ${stepName}`);
+  if (step < 0) throw new Error(`no workflow step named "${stepName}"`);
   const runAt = workflow.indexOf("run: |", step);
   const lines = workflow.slice(runAt).split("\n").slice(1);
   const body: string[] = [];
@@ -428,6 +433,108 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     }
   });
 
+  it("re-verifies the packaged ARCHIVE, so a wandering later step cannot publish another plugin", () => {
+    // §260 Phase 6 code review round 5 (HIGH-1). Five rounds of guarding this workflow with text
+    // scans, and each round found the next way past: a hardcoded `working-directory`, then a
+    // rebound `DIR:` env (which fed the trusted example's manifest to the index script and
+    // published `trust: "trusted"` with the suite green), and `cd` / `defaults.run` were never
+    // covered at all. A scan cannot enumerate the ways a shell step can wander.
+    //
+    // So the workflow now re-checks the ARTIFACT: it unzips the manifest that is actually about to
+    // be published and requires it to be the plugin the gates verified. That holds however the
+    // bytes got there — and the index is built from the SAME extracted manifest, so the published
+    // entry and the published archive cannot disagree.
+    //
+    // Tested by EXECUTION against real archives, for the reason this whole file exists.
+    const script = stepScript(
+      "Verify the packaged artifact is the plugin that was verified",
+    );
+    expect(script).toContain("unzip -p");
+
+    const runFor = (manifest: null | Record<string, unknown>) => {
+      const tmp = mkdtempSync(join(tmpdir(), "baram-artifact-"));
+      const stage = join(tmp, "stage");
+      mkdirSync(stage, { recursive: true });
+      if (manifest !== null) {
+        writeFileSync(
+          join(stage, "baram-plugin.json"),
+          // A raw string passes through verbatim, so a malformed archive can be built.
+          typeof manifest.__raw === "string"
+            ? manifest.__raw
+            : JSON.stringify(manifest),
+        );
+      } else {
+        writeFileSync(join(stage, "other.txt"), "no manifest here");
+      }
+      const zipName = "baram-word-count-2.0.0.zip";
+      const zipped = spawnSync("zip", ["-r", join(tmp, zipName), "."], {
+        cwd: stage,
+        encoding: "utf8",
+      });
+      expect(
+        zipped.status,
+        `building the fixture archive: ${zipped.stderr}`,
+      ).toBe(0);
+
+      const result = spawnSync("bash", ["-e", "-c", script], {
+        cwd: resolve(__dirname, "../../.."),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_OUTPUT: join(tmp, "output"),
+          PLUGIN_ID: "baram-word-count",
+          RUNNER_TEMP: tmp,
+          VERSION: "2.0.0",
+          ZIP_NAME: zipName,
+        },
+      });
+      return { output: result.stderr + result.stdout, status: result.status };
+    };
+
+    const good = {
+      capabilities: ["events"],
+      engines: { baram: ">=0.5.0" },
+      id: "baram-word-count",
+      trust: "sandboxed",
+      version: "2.0.0",
+    };
+
+    // The control: the archive really is the verified plugin.
+    const ok = runFor(good);
+    expect(ok.status, ok.output).toBe(0);
+
+    // THE ROUND-5 VECTOR: the archive holds the trusted example instead. Whatever wandered —
+    // a rebound env, a `cd`, a job-level default — this refuses.
+    const trusted = runFor({
+      ...good,
+      id: "baram-ai-summary",
+      trust: "trusted",
+    });
+    expect(trusted.status).not.toBe(0);
+    // Refused on identity first, which is the more specific complaint.
+    expect(trusted.output).toContain("was verified");
+
+    // …and the tier is re-asserted on the bytes even when the id matches.
+    const wrongTier = runFor({ ...good, trust: "trusted" });
+    expect(wrongTier.status).not.toBe(0);
+    expect(wrongTier.output).toContain("only sandboxed plugins are published");
+
+    const wrongVersion = runFor({ ...good, version: "9.9.9" });
+    expect(wrongVersion.status).not.toBe(0);
+    expect(wrongVersion.output).toContain("was verified");
+
+    // An archive with no manifest at its root, and one whose manifest is unparseable, both fail
+    // with a real annotation rather than a raw Node stack (the round-5 LOW-2 class).
+    const noManifest = runFor(null);
+    expect(noManifest.status).not.toBe(0);
+    expect(noManifest.output).toContain("::error::");
+
+    const malformed = runFor({ __raw: '{"id": "baram-word-count",}' });
+    expect(malformed.status).not.toBe(0);
+    expect(malformed.output).toContain("::error::");
+    expect(malformed.output).not.toContain("node:internal");
+  });
+
   it("ties every publish step to the directory the meta step verified", () => {
     // §260 Phase 6 code review round 4 (MEDIUM-2). The gates all live in the meta step, and the
     // later steps consume `steps.meta.outputs.dir`. Nothing asserted that: hardcoding
@@ -451,7 +558,11 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
       expect(
         ref,
         `a publish step names examples/plugins/${ref} directly; it must use the meta step's verified dir`,
-      ).toMatch(/^\$\{\{\s*steps\.meta\.outputs\.dir\s*\}\}|^\$DIR|^\$\{DIR\}/);
+      ).toMatch(
+        // Anchored at BOTH ends (round-5 LOW-3): `^\$DIR` alone also admitted `$DIRECTORY`,
+        // bound to anything.
+        /^\$\{\{\s*steps\.meta\.outputs\.dir\s*\}\}$|^\$DIR$|^\$\{DIR\}$/,
+      );
     }
   });
 
@@ -569,12 +680,18 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     expect(caretRange.output).toContain("cannot compare versions");
     expect(caretRange.output).not.toContain("release the app first");
 
-    const noEngines = runSynthetic({
-      manifest: { ...base, engines: {} },
-      tag: TAG,
-    });
-    expect(noEngines.status).not.toBe(0);
-    expect(noEngines.output).toContain("::error::");
+    // §260 Phase 6 code review round 5 (MEDIUM-1) — `engines` ABSENT, not `engines: {}`. LOW-1
+    // was about an absent `engines`, and with `{}` the pre-fix `require(…).engines.baram` works
+    // fine — so this case could not fail if the fix were reverted, which the reviewer verified.
+    // And the assertion names the message: `toContain("::error::")` is satisfied by every `fail`
+    // path, so it proved only "some annotation printed".
+    const noEngines = { ...base };
+    delete (noEngines as { engines?: unknown }).engines;
+    const missing = runSynthetic({ manifest: noEngines, tag: TAG });
+    expect(missing.status).not.toBe(0);
+    expect(missing.output).toContain("cannot compare versions");
+    // …and it is a refusal, not a crash: no raw Node stack from the `-e` script.
+    expect(missing.output).not.toContain("[eval]");
   });
 
   it("names only the sandboxed tier as publishable", () => {

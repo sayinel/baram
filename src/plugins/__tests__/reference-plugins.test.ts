@@ -108,27 +108,31 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     expect(entry?.engines.baram, "the seed must agree").toBe(
       manifest.engines.baram,
     );
-    // §260 Phase 6 code review round 3 (LOW-2) — BOTH-sided. The previous pair was
-    // `toContain(floor)` plus a hardcoded `not.toContain(">=0.4.0")`, so a README naming two
-    // different floors passed, and the hardcoded needle went stale on the next legitimate raise.
-    // Extract every floor the README states and require it to be exactly this one.
-    // Anchored to `engines.baram` (round-4 LOW-4): an unanchored `>=X.Y.Z` scan also catches an
-    // unrelated floor — a Node version in build instructions being the obvious one — and would
-    // then fail with a claim that is itself false. `\s*` after `>=` because the workflow accepts
-    // `>= 0.5.0` with a space.
-    const readmeFloors = [
+    // §260 Phase 6 code review round 3 (LOW-2) and round 5 (MEDIUM-2). BOTH properties, because
+    // round 4's "fix" traded one for the other: anchoring the scan to `engines.baram` stopped it
+    // seeing a contradictory unanchored floor elsewhere in the README — re-opening the very defect
+    // round 3 created the guard for — and broke on a legitimate rewording that put the floor before
+    // the anchor. So:
+    //   (a) EVERY Baram floor the README states must be the manifest's, and
+    //   (b) at least one of them must sit next to `engines.baram`, so the claim is actually made.
+    // A future Node floor is excluded by name rather than by dropping (a).
+    const readme = read("word-count", "README.md");
+    const floorOf = (range: string) => range.replace(/^[^\d>]*/, "");
+    const allFloors = [
       ...new Set(
         [
-          ...read("word-count", "README.md").matchAll(
-            /engines\.baram`?[\s\S]{0,60}?(>=\s*\d+\.\d+\.\d+)/g,
-          ),
+          ...readme.matchAll(/(?<![Nn]ode[^\n]{0,20})(>=\s*\d+\.\d+\.\d+)/g),
         ].map((m) => m[1].replace(/\s+/, "")),
       ),
     ];
     expect(
-      readmeFloors,
-      "the README ships in the ZIP, so every floor it names must be the manifest's",
-    ).toEqual([manifest.engines.baram.replace(/^[^\d>]*/, "")]);
+      allFloors,
+      "the README ships in the ZIP, so every Baram floor it names must be the manifest's",
+    ).toEqual([floorOf(manifest.engines.baram)]);
+    expect(
+      readme,
+      "the README must actually state the engines.baram floor, not merely avoid contradicting it",
+    ).toMatch(/engines\.baram`?[\s\S]{0,60}?>=\s*\d+\.\d+\.\d+/);
   });
 
   it("addresses exactly the status-bar item it declares, through one constant", () => {

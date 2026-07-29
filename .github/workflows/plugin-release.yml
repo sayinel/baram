@@ -59,6 +59,8 @@ jobs:
           esac
           MANIFEST="examples/plugins/$DIR/baram-plugin.json"
           [[ -f "$MANIFEST" ]] || fail "no manifest at $MANIFEST"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$MANIFEST" \
+            || fail "the manifest at $MANIFEST is not valid JSON"
           MANIFEST_VERSION="$(node -p "require('./$MANIFEST').version")"
           [[ "$VERSION" == "$MANIFEST_VERSION" ]] \
             || fail "tag version $VERSION != manifest version $MANIFEST_VERSION"
@@ -113,13 +115,18 @@ jobs:
             if (!appParts) { console.error(`app version "${app}" is not a plain release version`); process.exit(2); }
             const a = appParts.slice(1).map(Number), f = floor.slice(1).map(Number);
             const ok = a[0] !== f[0] ? a[0] > f[0] : a[1] !== f[1] ? a[1] > f[1] : a[2] >= f[2];
-            process.exit(ok ? 0 : 1);
+            process.exit(ok ? 0 : 3);
           ' "$APP_VERSION" "$RANGE"
           VERSION_CHECK=$?
           set -e
+          # 3 = genuinely behind, 2 = malformed inputs, anything else = the comparator itself
+          # broke. Round-5 LOW-1: a JS throw in that `-e` script also exits 1, so while 1 was the
+          # refusal arm a ReferenceError was annotated "release the app first" — blaming the plugin
+          # author for a bug in this workflow, which is the misdiagnosis LOW-2 set out to remove
+          # surviving on the other path.
           case "$VERSION_CHECK" in
             0) ;;
-            1) fail "app version $APP_VERSION does not satisfy this plugin's engines.baram ($RANGE) — release the app first" ;;
+            3) fail "app version $APP_VERSION does not satisfy this plugin's engines.baram ($RANGE) — release the app first" ;;
             2) fail "cannot compare versions: app '$APP_VERSION' / engines.baram '$RANGE' (see the message above)" ;;
             *) fail "the version comparison itself failed (exit $VERSION_CHECK) — this is a bug in this workflow, not a refusal" ;;
           esac
@@ -148,6 +155,57 @@ jobs:
           zip -r "$RUNNER_TEMP/$ZIP_NAME" \
             baram-plugin.json dist README.md
 
+      # §260 Phase 6 code review round 5 — RE-VERIFY THE ARTIFACT, and index FROM it.
+      #
+      # Every gate above judges a path in the repo tree, and five review rounds showed that no
+      # in-repo test can prove the later steps stayed inside the directory those gates verified:
+      # each round's guard was a text scan of this file, and each round found the next way past it
+      # (a hardcoded `working-directory`, then a rebound `DIR:`, and `cd`/`defaults.run` were never
+      # covered at all). So stop trying to catch the ways a later step can wander, and re-check the
+      # thing that actually ships.
+      #
+      # The extracted manifest is also what the index is built from, two steps down. That makes the
+      # published ENTRY and the published ARTIFACT agree by construction rather than by review:
+      # they are now the same bytes, so a wandering step cannot make the registry advertise one
+      # plugin while shipping another.
+      - name: Verify the packaged artifact is the plugin that was verified
+        id: artifact
+        env:
+          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          MANIFEST="$RUNNER_TEMP/packaged-manifest.json"
+          unzip -p "$RUNNER_TEMP/$ZIP_NAME" baram-plugin.json > "$MANIFEST" \
+            || fail "the archive has no baram-plugin.json at its root"
+          # All three fields in ONE call, written to a FILE — deliberately not
+          # `X="$(node … || fail …)"`. `fail` echoes to stdout, so inside a command substitution
+          # its `::error::` annotation is captured into the variable instead of being printed, and
+          # the job then aborts with no annotation at all. That is the same
+          # refusal-that-looks-like-a-crash this phase's review filed twice; the first draft of
+          # this very step reproduced it, and the executing test below is what caught it.
+          node -e '
+            const fs = require("fs");
+            let m;
+            try { m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); }
+            catch { process.exit(1); }
+            process.stdout.write([m.id ?? "", m.version ?? "", m.trust ?? ""].join("\n"));
+          ' "$MANIFEST" > "$RUNNER_TEMP/packaged-fields.txt" \
+            || fail "the packaged baram-plugin.json is not valid JSON"
+          ZIP_ID="$(sed -n 1p "$RUNNER_TEMP/packaged-fields.txt")"
+          ZIP_VERSION="$(sed -n 2p "$RUNNER_TEMP/packaged-fields.txt")"
+          ZIP_TRUST="$(sed -n 3p "$RUNNER_TEMP/packaged-fields.txt")"
+          [[ "$ZIP_ID" == "$PLUGIN_ID" ]] \
+            || fail "the archive contains plugin '$ZIP_ID' but '$PLUGIN_ID' was verified"
+          [[ "$ZIP_VERSION" == "$VERSION" ]] \
+            || fail "the archive contains version '$ZIP_VERSION' but '$VERSION' was verified"
+          # The tier, asserted again on the artifact. The meta step's check judged a repo path; this
+          # one judges the bytes about to be published, so it holds however they got here.
+          [[ "$ZIP_TRUST" == "sandboxed" ]] \
+            || fail "the archive declares trust '$ZIP_TRUST'; only sandboxed plugins are published"
+          echo "manifest=$MANIFEST" >> "$GITHUB_OUTPUT"
+
       - name: Compute checksum
         id: sum
         env:
@@ -159,7 +217,14 @@ jobs:
       - name: Push ZIP + updated index to registry repo
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          DIR: ${{ steps.meta.outputs.dir }}
+          # §260 Phase 6 code review round 5 (HIGH-1) — the manifest comes from the VERIFIED
+          # ARCHIVE, not from a directory named here. This step used to bind
+          # `DIR: ${{ steps.meta.outputs.dir }}` and build the path itself, and nothing checked
+          # what `DIR` was bound to: rebinding that one token to `ai-summary` fed the trusted
+          # example's manifest to the index script, which copies `trust` verbatim — publishing an
+          # entry advertising `trust: "trusted"` past both gates Phase 6 rests on, with the whole
+          # test suite green. There is no directory binding here any more.
+          PACKAGED_MANIFEST: ${{ steps.artifact.outputs.manifest }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
           PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
           VERSION: ${{ steps.meta.outputs.version }}
@@ -175,7 +240,7 @@ jobs:
           cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
           node scripts/update-registry-index.mjs \
             --index "$RUNNER_TEMP/registry/index.json" \
-            --manifest "examples/plugins/$DIR/baram-plugin.json" \
+            --manifest "$PACKAGED_MANIFEST" \
             --zip-name "$ZIP_NAME" \
             --checksum "$CHECKSUM" \
             --base-url "$BASE_URL"
