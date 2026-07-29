@@ -724,6 +724,38 @@ mod tests {
         }
     }
 
+    /// The same table, from the other side — so the sweep above cannot pass by denying too
+    /// much (§260 Phase 6 security review, informational note 3).
+    ///
+    /// A one-sided deny sweep is satisfied by an authorizer that refuses everything, and by a
+    /// `capability_requirement()` mutated to demand a grant no manifest can declare: the
+    /// fixture would still be refused, the test would still be green, and every REAL plugin
+    /// would be broken. Running the identical op list against a plugin holding the grants those
+    /// ops name turns the table into a two-sided oracle — the ops must be refused for want of a
+    /// grant and admitted once it is held, or one of the two directions fails.
+    #[test]
+    fn a_fully_granted_plugin_is_admitted_every_op_in_the_same_table() {
+        let a = PluginAuthorizer::new();
+        // `files` rather than `files:readonly`, because the table includes a write. These three
+        // are the whole set the broker ops name — `ai` is deliberately not among them (it is
+        // host-mediated, never a `PluginOp`), which is why no op here should need it.
+        a.register(
+            "plugin-granted".into(),
+            vec!["storage".into(), "network".into(), "files".into()],
+            "/p/granted".into(),
+        );
+
+        for (op, _) in adversary_ops() {
+            let name = kind_name(&op);
+            assert_eq!(
+                a.authorize_op("plugin-granted", &op).as_deref().ok(),
+                Some("granted"),
+                "{name} must be ADMITTED for a plugin holding storage+network+files; a deny \
+                 here means the op demands a grant a real plugin cannot obtain"
+            );
+        }
+    }
+
     #[test]
     fn the_refusal_names_the_grant_the_plugin_would_need() {
         // The message is what a plugin author reads to learn which capability to declare, and
