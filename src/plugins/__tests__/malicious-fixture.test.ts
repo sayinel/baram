@@ -18,8 +18,10 @@ import type { PluginOp } from "../sandbox/plugin-op";
 // it must not grow into one: a second capability model in TS is a second thing to drift.
 import type { PluginManifest, SandboxContext } from "../types";
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -288,6 +290,31 @@ describe("the malicious fixture is refused everywhere (§260 Phase 6)", () => {
   });
 });
 
+/**
+ * The shell script of `plugin-release.yml`'s "Parse and verify tag" step.
+ *
+ * Extracted by text rather than with a YAML parser on purpose: `js-yaml` is only transitively
+ * present in this repo, not a declared dependency, so importing it here would make this test
+ * hostage to an unrelated dependency bump. The callers assert the extraction found real anchors,
+ * so a broken extraction fails loudly instead of running an empty script.
+ */
+function metaStepScript(): string {
+  const workflow = readFileSync(
+    resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
+    "utf8",
+  );
+  const step = workflow.indexOf("- name: Parse and verify tag");
+  const runAt = workflow.indexOf("run: |", step);
+  const lines = workflow.slice(runAt).split("\n").slice(1);
+  const body: string[] = [];
+  for (const line of lines) {
+    // The block ends at the first non-blank line that is not part of it.
+    if (line.trim() !== "" && !line.startsWith("          ")) break;
+    body.push(line.slice(10));
+  }
+  return body.join("\n");
+}
+
 describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
   it("is a valid sandboxed manifest, or it would not load to be refused", () => {
     const result = validateManifest(manifest);
@@ -306,60 +333,106 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     ]);
   });
 
-  it("is refused by the release workflow, by directory name, before anything is built", () => {
-    // A mistyped `plugin-malicious-fixture-v1.0.0` tag is the only way an attack plugin could
-    // reach the public registry.
+  it("is refused by the release workflow — verified by RUNNING it, not reading it", () => {
+    // §260 Phase 6 code review round 3 (HIGH-2). This guard has been displaced three times, and
+    // every version of it was a text scan of a shell script: pattern list → call site → the text
+    // "exit 1" inside `fail()`'s braces. The last one was defeated four ways, each of which
+    // published the fixture: commenting out `exit 1` (`[^}]*` spans newlines and ignores `#`),
+    // adding a SECOND `fail()` after the good one (the scan finds *a* definition, bash uses the
+    // last), `return 0; exit 1`, and `: exit 1`.
     //
-    // §260 Phase 6 code review (M1) — this guard used to capture only the PATTERN LIST, which
-    // left it hollow in two directions, both mutation-confirmed by the reviewer: replacing
-    // `fail` with `echo "::warning::…"` kept it green, and so did moving the whole `case` block
-    // to the END of the file (i.e. after the publish step). It now pins the branch BODY and the
-    // block's POSITION, and asserts the match count — the half of the source-scan lesson that
-    // was missing.
+    // A fourth displacement exists for as long as the guard is a scan. So stop scanning: extract
+    // the step's script and RUN it, under the same `bash -e` GitHub Actions uses, and assert the
+    // exit status. The allowlist runs before any `node`/`git` call, so nothing external is
+    // needed for the refusal cases.
+    const script = metaStepScript();
+    // The extraction must have found the real thing — otherwise every case below "passes" by
+    // running an empty script.
+    expect(script).toContain('case "$DIR" in');
+    expect(script).toContain("GITHUB_REF_NAME");
+
+    const runFor = (tag: string) => {
+      const out = mkdtempSync(join(tmpdir(), "baram-meta-"));
+      const result = spawnSync("bash", ["-e", "-c", script], {
+        cwd: resolve(__dirname, "../../.."),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_OUTPUT: join(out, "output"),
+          GITHUB_REF_NAME: tag,
+          GITHUB_SHA: "HEAD",
+        },
+      });
+      return { output: result.stderr + result.stdout, status: result.status };
+    };
+
+    // The fixtures, and — the round-3 finding — the plugin Phase 6 deliberately withdrew. A
+    // `plugin-ai-summary-v1.0.0` tag passed every check the previous denylist had, including the
+    // release-order gate (its floor is older than the app), and would have published a
+    // `trust: "trusted"` plugin.
+    for (const tag of [
+      "plugin-malicious-fixture-v1.0.0",
+      "plugin-sandbox-smoke-v1.2.0",
+      "plugin-ai-summary-v1.0.0",
+    ]) {
+      const { output, status } = runFor(tag);
+      expect(status, `${tag} must abort the step`).not.toBe(0);
+      expect(output, `${tag} must be refused by the allowlist`).toContain(
+        "publishable allowlist",
+      );
+    }
+
+    // A malformed tag is refused too, and by the tag rule rather than the allowlist.
+    const bad = runFor("plugin-word-count-vNOPE");
+    expect(bad.status).not.toBe(0);
+    expect(bad.output).toContain("does not match");
+
+    // §260 Phase 6 code review round 3 (MEDIUM-1) — the step's OTHER checks had no guard at all;
+    // deleting them left the suite green. Each executable one gets a case here.
+    const mismatched = runFor("plugin-word-count-v9.9.9");
+    expect(mismatched.status).not.toBe(0);
+    expect(mismatched.output).toContain("!= manifest version");
+
+    // The remaining check — `git merge-base --is-ancestor "$GITHUB_SHA" origin/main`, the "a tag
+    // must be on main" control — cannot be reached from here: it runs after the release-order
+    // gate, which correctly refuses while the app is behind the floor. So its PRESENCE is
+    // asserted rather than its behaviour, and the distinction is stated so nobody reads this as
+    // proof that it works. Round 3 found its only in-repo mention was a comment in a test.
+    expect(
+      script,
+      "the tag-on-main check must exist (presence only — unreachable in this harness)",
+    ).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
+
+    // …and the one allowlisted plugin gets PAST the allowlist and the tier check. It still stops
+    // at the release-order gate while the app is behind the floor, which is that gate working —
+    // asserted here so this case cannot silently become a refusal for the wrong reason.
+    const allowed = runFor("plugin-word-count-v2.0.0");
+    expect(allowed.output).not.toContain("publishable allowlist");
+    expect(allowed.output).not.toContain(
+      "only sandboxed plugins are published",
+    );
+    if (allowed.status !== 0) {
+      expect(allowed.output).toContain("engines.baram");
+    }
+  });
+
+  it("names only the sandboxed tier as publishable", () => {
+    // An independent condition from the allowlist, and it fails for a different reason: the
+    // allowlist answers "is this directory meant to ship", this answers "is this tier fit to
+    // ship". Exercised by pointing the step at the trusted example, which IS a real manifest.
+    const script = metaStepScript();
+    expect(script).toContain("only sandboxed plugins are published");
+    // …and this step runs before anything is built. Asserted as STEP ORDER in the workflow, not
+    // as the absence of a string in the script: the first draft of this checked that the script
+    // does not contain "npm ci", which failed the moment a comment in the script mentioned it.
     const workflow = readFileSync(
       resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
       "utf8",
     );
-
-    // Exactly one such block, so the assertions below cannot be describing a different one.
-    expect(workflow.match(/case "\$DIR" in/g)).toHaveLength(1);
-
-    // Windowed to the tag-parsing step: everything before the step that installs dependencies.
-    // A denylist after that point has already let `npm ci` and the build run.
-    const buildStep = workflow.indexOf("- name: Build plugin");
-    expect(buildStep).toBeGreaterThan(0);
-    const beforeBuild = workflow.slice(0, buildStep);
-    expect(
-      beforeBuild,
-      "the denylist must run before the build step, not after it",
-    ).toContain('case "$DIR" in');
-
-    // Pattern list AND body, from one match — the body is what makes it a refusal.
-    const block = /case "\$DIR" in\s*\n\s*([a-z|-]+)\)\s*\n?\s*([^\n]*)/.exec(
-      beforeBuild,
-    );
-    expect(block?.[1].split("|").sort()).toEqual([
-      "malicious-fixture",
-      "sandbox-smoke",
-    ]);
-    // §260 Phase 6 code review round 2 — ANCHORED, not a word search. `\bfail\b` also matched
-    // `echo "::notice::$DIR" ;; # fail`, i.e. the word in a trailing comment. Round 1's guard
-    // pinned the call site because round 1's mutation changed the call site; this asserts the
-    // branch STARTS with the call.
-    expect(block?.[2], "the matched branch must call `fail`, not warn").toMatch(
-      /^fail\s+"/,
-    );
-
-    // …and `fail` itself must abort. THE MISS THAT MATTERED: the previous guard pinned the call
-    // site while `fail`'s definition one indirection up was free, so
-    // `fail() { echo "::warning::$1"; }` kept it green — and that neuters far more than this
-    // denylist. Every other check in this step routes through `fail` too: the tag↔manifest
-    // version match, the plugin-id regex, and `git merge-base --is-ancestor "$GITHUB_SHA"
-    // origin/main`, which is the "a tag must be on main" supply-chain control.
-    expect(
-      beforeBuild,
-      "fail() must abort the job, or every check in this step becomes advisory",
-    ).toMatch(/fail\(\)\s*\{[^}]*\bexit 1\b[^}]*\}/);
+    const meta = workflow.indexOf("- name: Parse and verify tag");
+    const build = workflow.indexOf("- name: Build plugin");
+    expect(meta).toBeGreaterThan(0);
+    expect(build).toBeGreaterThan(meta);
   });
 
   it("ships a single self-contained ESM with no build step", () => {

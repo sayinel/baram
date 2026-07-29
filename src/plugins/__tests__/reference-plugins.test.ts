@@ -7,8 +7,9 @@
 import type { PluginManifest, RegistryIndex } from "../types";
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { validateManifest } from "../manifest";
@@ -107,14 +108,21 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     expect(entry?.engines.baram, "the seed must agree").toBe(
       manifest.engines.baram,
     );
+    // §260 Phase 6 code review round 3 (LOW-2) — BOTH-sided. The previous pair was
+    // `toContain(floor)` plus a hardcoded `not.toContain(">=0.4.0")`, so a README naming two
+    // different floors passed, and the hardcoded needle went stale on the next legitimate raise.
+    // Extract every floor the README states and require it to be exactly this one.
+    const readmeFloors = [
+      ...new Set(
+        [...read("word-count", "README.md").matchAll(/>=\d+\.\d+\.\d+/g)].map(
+          (m) => m[0],
+        ),
+      ),
+    ];
     expect(
-      read("word-count", "README.md"),
-      "the README ships in the ZIP, so it must not state a different floor",
-    ).toContain(manifest.engines.baram);
-    expect(
-      read("word-count", "README.md"),
-      "the README must not still name a superseded floor",
-    ).not.toContain(">=0.4.0");
+      readmeFloors,
+      "the README ships in the ZIP, so every floor it names must be the manifest's",
+    ).toEqual([manifest.engines.baram.replace(/^[^\d>]*/, "")]);
   });
 
   it("addresses exactly the status-bar item it declares, through one constant", () => {
@@ -168,14 +176,51 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     // reproduces the path comment esbuild embeds (`// src/index.ts`) — without it the output
     // differs by that line alone.
     const dir = resolve(EXAMPLES, "word-count");
-    // A version skew between the root esbuild and the one the example declares could change the
-    // output and fail this for a reason that has nothing to do with staleness. Say so instead.
-    const declared = (
-      JSON.parse(read("word-count", "package.json")) as {
-        devDependencies: { esbuild: string };
-      }
-    ).devDependencies.esbuild;
-    const rootVersion = (
+    const pkg = JSON.parse(read("word-count", "package.json")) as {
+      devDependencies: { esbuild: string };
+      scripts: { build: string };
+    };
+
+    // §260 Phase 6 code review round 3 (LOW-1) — the flags come FROM the build script, not from
+    // a copy of them here. Hardcoding `{bundle, format}` meant an honest `--charset=utf8` or
+    // `--banner:js=…` in the example produced a false "stale" — and `--charset=utf8` is exactly
+    // the remedy for the `\uNNNN` escaping round 2 ran into. Only the output path is redirected.
+    const args = pkg.scripts.build.trim().split(/\s+/);
+    expect(args[0], "the build script must invoke esbuild directly").toBe(
+      "esbuild",
+    );
+    const out = join(mkdtempSync(join(tmpdir(), "baram-wc-")), "index.mjs");
+    const rebuildArgs = args
+      .slice(1)
+      .map((a) => (a.startsWith("--outfile=") ? `--outfile=${out}` : a));
+    expect(
+      rebuildArgs.some((a) => a.startsWith("--outfile=")),
+      "the build script must name an --outfile for this test to redirect",
+    ).toBe(true);
+
+    // Run the real esbuild BINARY, in a child process with the example as cwd. Both details
+    // matter: esbuild's `buildSync` refuses to run under vitest's jsdom ("your JavaScript
+    // environment is broken"), and the cwd is what reproduces the path comment esbuild embeds
+    // (`// src/index.ts`) — from anywhere else the output differs by that line alone.
+    const result = spawnSync(
+      resolve(__dirname, "../../../node_modules/esbuild/bin/esbuild"),
+      rebuildArgs,
+      { cwd: dir, encoding: "utf8" },
+    );
+    // Judged by EXIT STATUS, not by empty stderr: the esbuild CLI writes its success summary
+    // ("dist/index.mjs 574b … Done in 7ms") to stderr, so an emptiness check fails on success.
+    expect(
+      result.status,
+      `the rebuild itself must succeed:\n${result.stderr}`,
+    ).toBe(0);
+    const fresh = readFileSync(out, "utf8");
+
+    // §260 Phase 6 code review round 3 (MEDIUM-3) — a mismatch has two possible causes, and the
+    // message must not assert the wrong one. The previous version hard-failed on an esbuild
+    // version skew with "align them", which a routine dependabot bump of the ROOT would trigger
+    // (dependabot does not watch `examples/plugins/*`). Both versions are named here so the
+    // reader can tell staleness from a compiler change.
+    const rootEsbuild = (
       JSON.parse(
         readFileSync(
           resolve(__dirname, "../../../node_modules/esbuild/package.json"),
@@ -184,32 +229,11 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
       ) as { version: string }
     ).version;
     expect(
-      rootVersion,
-      `the example declares esbuild ${declared} but the root has ${rootVersion}; ` +
-        "align them or this comparison is testing two different compilers",
-    ).toBe(declared.replace(/^[^\d]*/, ""));
-
-    // Built in a CHILD PROCESS, not in-process: esbuild's `buildSync` refuses to run under
-    // vitest's jsdom environment ("your JavaScript environment is broken" — it depends on
-    // synchronous child-process semantics jsdom does not provide). Same approach as
-    // `registry-index-script.test.ts`, which runs the release script the way CI does.
-    const result = spawnSync(
-      process.execPath,
-      [
-        "-e",
-        `const {buildSync}=require("esbuild");` +
-          `process.stdout.write(buildSync({absWorkingDir:process.argv[1],entryPoints:["src/index.ts"],` +
-          `bundle:true,format:"esm",write:false}).outputFiles[0].text)`,
-        dir,
-      ],
-      { encoding: "utf8" },
-    );
-    expect(result.stderr, "the rebuild itself must succeed").toBe("");
-    const fresh = result.stdout;
-
-    expect(
       fresh,
-      "dist/index.mjs is stale — run `npm run build` in examples/plugins/word-count and commit it",
+      `dist/index.mjs does not match a fresh build. Most likely it is stale — run ` +
+        `\`npm run build\` in examples/plugins/word-count and commit it. If you have not touched ` +
+        `the source, check for an esbuild change instead: this ran ${rootEsbuild} (repo root) ` +
+        `while the example declares ${pkg.devDependencies.esbuild}.`,
     ).toBe(built);
   });
 
@@ -262,17 +286,35 @@ describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () 
     resolve(__dirname, "../../../docs/plugin-development.md"),
     "utf8",
   );
-  const jsonBlocks = [...guide.matchAll(/```json\n([\s\S]*?)```/g)].map((m) =>
-    JSON.parse(m[1]),
-  ) as Record<string, unknown>[];
+  // §260 Phase 6 code review round 3 (MEDIUM-4) — collected as TEXT and parsed inside each
+  // `it`. Parsing at module scope threw at COLLECTION time on a malformed block, which vitest
+  // reports as "0 test" for the whole file — silently deleting all twelve word-count guards,
+  // including the dist-staleness guard this round exists to protect, behind a bare SyntaxError
+  // naming neither the document nor the block.
+  const rawBlocks = [...guide.matchAll(/```json\n([\s\S]*?)```/g)].map(
+    (m) => m[1],
+  );
+  const parsed = () =>
+    rawBlocks.map((text, i) => {
+      try {
+        return JSON.parse(text) as Record<string, unknown>;
+      } catch (err) {
+        // `cause` preserves the SyntaxError's position, which is the part that says WHERE.
+        throw new Error(
+          `docs/plugin-development.md json block #${i + 1} is not valid JSON`,
+          { cause: err },
+        );
+      }
+    });
 
   it("has manifest examples, and every one of them validates", () => {
     // A manifest example is one naming an entry point; a registry entry names a download.
-    const manifests = jsonBlocks.filter(
+    const manifests = parsed().filter(
       (b) => "main" in b && "id" in b,
     ) as unknown as PluginManifest[];
-    // Sanity: if the extraction found nothing, the loop below would pass vacuously.
-    expect(manifests.length).toBeGreaterThan(0);
+    // An exact count, not `> 0`: a guide that lost an example, or a regex that stopped
+    // matching one, would otherwise still pass by validating fewer.
+    expect(manifests).toHaveLength(1);
     for (const m of manifests) {
       expect(
         invalidFields(m),
@@ -282,8 +324,8 @@ describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () 
   });
 
   it("has registry-entry examples that declare a tier", () => {
-    const entries = jsonBlocks.filter((b) => "downloadUrl" in b);
-    expect(entries.length).toBeGreaterThan(0);
+    const entries = parsed().filter((b) => "downloadUrl" in b);
+    expect(entries).toHaveLength(1);
     for (const e of entries) {
       // An entry without one is exactly the legacy shape Install refuses, so an example of it
       // teaches an author to publish something nobody can install.

@@ -116,6 +116,23 @@ describe("fetchRegistryIndex normalizes the trust tier (§260 Phase 6)", () => {
     expect(cap.capabilities).toEqual(["events"]);
   });
 
+  it("refuses to let the REGISTRY set the demotion reason", async () => {
+    // §260 Phase 6 code review round 3 (MEDIUM-2). `demotedBecause` is ours — the type says
+    // "NOT a registry field" — but nothing enforced it, and the round-3 reviewer found the exact
+    // path: an entry with NO `trust` and only valid capabilities takes the untouched early
+    // return, so a registry-supplied reason survived verbatim and made the detail view tell the
+    // user to "Update Baram" for a plugin that genuinely predates the trust model.
+    //
+    // This test exists because the fix was invisible without it: deleting the strip left all 40
+    // tests green. The existing legacy-entry test builds its entry WITHOUT the field, so it
+    // structurally could not catch this.
+    const spoofed = entry({ id: "spoofer" });
+    delete spoofed.trust; // no tier → the early-return path
+    spoofed.demotedBecause = "unknown-capability";
+    const [normalized] = await load(spoofed);
+    expect(normalized.demotedBecause).toBeUndefined();
+  });
+
   it("leaves a genuinely legacy entry with no demotion reason", async () => {
     // It was never demoted — it arrived without a tier — and the original message is right
     // for it. A reason here would send the user to "update Baram" for a plugin that really

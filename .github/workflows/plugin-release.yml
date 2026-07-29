@@ -39,14 +39,23 @@ jobs:
           [[ "$TAG" =~ ^plugin-(.+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
             || fail "tag $TAG does not match plugin-<dir>-v<semver>"
           DIR="${BASH_REMATCH[1]}"; VERSION="${BASH_REMATCH[2]}"
-          # §260 Phase 6 — test fixtures must never reach the public registry. Both of these
-          # are adversarial or internal by design: `malicious-fixture` asks for everything it
-          # was not granted, and `sandbox-smoke` exercises boundaries for a maintainer. A
-          # mistyped tag is the only way either could be published, so the denylist is here,
-          # before anything is built. Pinned by src/plugins/__tests__/malicious-fixture.test.ts.
+          # §260 Phase 6 — WHAT MAY BE PUBLISHED, as an ALLOWLIST.
+          #
+          # This was a denylist naming the two test fixtures, and round 3 of the code review
+          # showed why that was the wrong shape: it enumerated 2 of the 4 directories under
+          # examples/plugins/, and the withheld one was already the counterexample. A tag
+          # `plugin-ai-summary-v1.0.0` passed every check — denylist, version match, id regex,
+          # the release-order gate (its floor is older than the app) — and would have published a
+          # `trust: "trusted"` plugin to the public registry, which is exactly the thing Phase 6
+          # decided not to ship. The withdrawal was enforced only by a unit test asserting the
+          # LOCAL seed, a file this workflow never reads.
+          #
+          # Deny by default. Adding an example must not make it publishable; publishing must be a
+          # deliberate edit here. Pinned by src/plugins/__tests__/malicious-fixture.test.ts, which
+          # EXECUTES this step rather than scanning it.
           case "$DIR" in
-            malicious-fixture|sandbox-smoke)
-              fail "$DIR is a test fixture and must never be published" ;;
+            word-count) ;;
+            *) fail "$DIR is not in this workflow's publishable allowlist — add it deliberately if that is the intent" ;;
           esac
           MANIFEST="examples/plugins/$DIR/baram-plugin.json"
           [[ -f "$MANIFEST" ]] || fail "no manifest at $MANIFEST"
@@ -56,6 +65,15 @@ jobs:
           PLUGIN_ID="$(node -p "require('./$MANIFEST').id")"
           [[ "$PLUGIN_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
             || fail "manifest id '$PLUGIN_ID' must match ^[a-z0-9][a-z0-9-]*$"
+          # §260 Phase 6 — only the SANDBOXED tier is published, independently of the allowlist
+          # above. Two conditions rather than one because they fail for different reasons: the
+          # allowlist is "is this directory meant to ship", this is "is this tier fit to ship".
+          # A published trusted plugin would train users to click through the full-trust
+          # acknowledgement for ordinary functionality, which is the opposite of what that
+          # acknowledgement exists for.
+          TRUST="$(node -p "require('./$MANIFEST').trust || ''")"
+          [[ "$TRUST" == "sandboxed" ]] \
+            || fail "manifest trust is '$TRUST'; only sandboxed plugins are published"
           # §260 Phase 6 code review (H1) — the app must not be BEHIND the floor the plugin
           # declares. `engines.baram` is validated nowhere at install time (the frontend only
           # checks that the field is a non-empty string), so publishing a plugin whose floor the
@@ -67,12 +85,29 @@ jobs:
           # bumped to at least the floor", not "that version is in users' hands". Strictly
           # better than nothing; the ordering itself is still a human step (see the phase 6
           # spec §7).
+          # Compared numerically in plain node — NOT with `sort -V`, and NOT with the `semver`
+          # package (round-3 LOW plus a defect in the first attempt at this fix):
+          #   • `sort -V` is a version-ish string sort, not a semver comparator; it ordered a
+          #     prerelease `0.5.0-beta.1` as satisfying a `0.5.0` floor.
+          #   • `require("semver")` would NOT RESOLVE here. This job never runs `npm ci` at the
+          #     repo root (only inside the plugin directory, two steps later), and semver is a
+          #     transitive package rather than a declared dependency. Reading a JSON file by
+          #     relative path needs no node_modules; requiring a package does.
+          # A prerelease app version fails closed: `0.5.0-beta.1` is not the release that ships
+          # the floor, so it must not authorize publishing against it.
           APP_VERSION="$(node -p "require('./package.json').version")"
-          FLOOR="$(node -p "(require('./$MANIFEST').engines.baram||'').replace(/^[^0-9]*/,'')")"
-          [[ -n "$FLOOR" ]] || fail "manifest engines.baram is missing or names no version"
-          LOWEST="$(printf '%s\n%s\n' "$APP_VERSION" "$FLOOR" | sort -V | head -n1)"
-          [[ "$LOWEST" == "$FLOOR" ]] \
-            || fail "app version $APP_VERSION is below this plugin's engines.baram floor $FLOOR — release the app first"
+          RANGE="$(node -p "require('./$MANIFEST').engines.baram || ''")"
+          node -e '
+            const [app, range] = process.argv.slice(1);
+            const floor = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(range);
+            if (!floor) { console.error(`engines.baram "${range}" must be of the form ">=X.Y.Z"`); process.exit(1); }
+            const appParts = /^(\d+)\.(\d+)\.(\d+)$/.exec(app);
+            if (!appParts) { console.error(`app version "${app}" is not a plain release version`); process.exit(1); }
+            const a = appParts.slice(1).map(Number), f = floor.slice(1).map(Number);
+            const ok = a[0] !== f[0] ? a[0] > f[0] : a[1] !== f[1] ? a[1] > f[1] : a[2] >= f[2];
+            process.exit(ok ? 0 : 1);
+          ' "$APP_VERSION" "$RANGE" \
+            || fail "app version $APP_VERSION does not satisfy this plugin's engines.baram ($RANGE) — release the app first"
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || fail "tag commit $GITHUB_SHA is not on main"
           {

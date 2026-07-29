@@ -97,7 +97,16 @@ export function searchRegistry(
 function normalizeIndex(index: RegistryIndex): RegistryIndex {
   return {
     ...index,
-    plugins: index.plugins.map((entry) => {
+    plugins: index.plugins.map((raw) => {
+      // §260 Phase 6 code review round 3 (MEDIUM-2) — `demotedBecause` is OURS, and the type
+      // says so ("NOT a registry field"), but nothing enforced it. A remote entry with no
+      // `trust` and only valid capabilities takes the early return below unchanged, so a
+      // registry-supplied `"demotedBecause": "unknown-capability"` survived verbatim and made
+      // the detail view tell the user to "Update Baram" for a plugin that genuinely predates
+      // the trust model. Stripped on INGEST, before any branch can preserve it.
+      const entry = { ...raw };
+      delete entry.demotedBecause;
+
       const unknownTier =
         entry.trust !== undefined && !TRUST_VALUES.includes(entry.trust);
       // §260 Phase 6 code review (M3) — the OTHER half of the consent tuple, by the same
