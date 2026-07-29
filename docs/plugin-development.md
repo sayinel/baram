@@ -833,7 +833,8 @@ when the fetch errored does the same thing. The cache lives in memory only,
 so restarting the app also forces a fresh fetch if needed.
 `registry/index.json` is the canonical
 example of a valid `RegistryIndex`: it lists `baram-word-count` with every
-required field — including `trust` — populated from its real manifest.
+required field — including `trust` — populated from its real manifest. Note that
+**installing** from it is not possible until 2.0.0 is published; see below.
 
 ### The committed seed
 
@@ -843,20 +844,30 @@ deserializes it on every test run and fails if its shape stops looking like the
 live registry — including a missing `trust`, since an entry without one
 describes a plugin the app refuses to install.
 
-Two things it is **not**:
+**Installing from the seed does not work right now, and not because of the
+seed.** §260's tier model requires every manifest to declare `trust`, and every
+ZIP published before it — `baram-word-count` 1.0.0/1.0.1, `baram-ai-summary`
+1.0.0 — has a manifest that predates the field, so `validateManifest` rejects
+the download whatever the index says about it. The seed therefore names the
+**next** release (`baram-word-count` 2.0.0) with a `checksum` of **64 zeros**,
+and an install attempt fails on the missing ZIP. Until that release ships, use
+the seed to exercise the marketplace **UI** — listing, capability and tier
+badges, the legacy state, refresh — and dev-load from source
+(**Settings → Plugins → Developer**) to exercise a plugin actually running.
+
+Two further things the seed is **not**:
 
 - It is not a byte-for-byte copy of the live index. It is Prettier-formatted
   (the live file is written by `update-registry-index.mjs`), and it holds only
-  the entries that are currently publishable — `baram-ai-summary` is absent
-  because it is not published.
-- Its `checksum` is a **placeholder of 64 zeros** whenever it names a version
-  that has not been released yet. A real install against the seed then fails
-  with a checksum mismatch, which is the correct answer for "this ZIP does not
-  exist"; the real value is filled in from the release workflow's output.
-
-`baram-word-count` is therefore installable two ways: from the live registry
-via the marketplace, or dev-loaded from source via **Settings → Plugins →
-Developer** (see [Local development loop](#local-development-loop)).
+  entries worth publishing — `baram-ai-summary` is absent because it is not
+  published.
+- The placeholder checksum is **not** filled in automatically. The release
+  workflow clones `sayinel/baram-plugins` and updates only _that_ repo's
+  `index.json`; nothing writes back here. After publishing a version, a
+  maintainer copies the workflow's `sha256sum` output into this file by hand.
+  No test can detect that this was forgotten — the guard checks that the
+  checksum is 64 hex characters, which zeros satisfy — so it is a step on the
+  release checklist, not something CI enforces.
 
 ### Publishing your own plugin
 

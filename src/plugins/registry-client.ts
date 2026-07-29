@@ -4,6 +4,7 @@ import { pluginFetchRegistry } from "../ipc/plugin-invoke";
 // §69 Plugin Registry Client — GitHub-based registry with 24h cache
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
+import { VALID_CAPABILITIES } from "./manifest";
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -17,7 +18,11 @@ export async function checkForUpdates(): Promise<Record<string, string>> {
 
   for (const [id, plugin] of Object.entries(store.installedPlugins)) {
     const registryEntry = index.plugins.find((p) => p.id === id);
-    if (registryEntry && registryEntry.version !== plugin.manifest.version) {
+    // §260 Phase 6 code review (L1) — skip an entry the install path will refuse. A legacy
+    // entry (no tier, or one normalized away above) can only produce an error, so offering an
+    // update badge and an enabled button for it promises an action that cannot succeed.
+    if (!registryEntry?.trust) continue;
+    if (registryEntry.version !== plugin.manifest.version) {
       updates[id] = registryEntry.version;
       store.setUpdateAvailable(id, registryEntry.version);
     }
@@ -93,14 +98,37 @@ function normalizeIndex(index: RegistryIndex): RegistryIndex {
   return {
     ...index,
     plugins: index.plugins.map((entry) => {
-      if (entry.trust === undefined || TRUST_VALUES.includes(entry.trust)) {
-        return entry;
-      }
-      logger.warn(
-        `[Registry] ${entry.id} declares an unknown trust tier ${JSON.stringify(
-          entry.trust,
-        )} — treating the entry as legacy (not installable)`,
+      const unknownTier =
+        entry.trust !== undefined && !TRUST_VALUES.includes(entry.trust);
+      // §260 Phase 6 code review (M3) — the OTHER half of the consent tuple, by the same
+      // argument. `capabilities` was passed through raw, and `PluginConsentDialog` renders
+      // `CAPABILITY_DESCRIPTIONS[cap] ?? cap` — so an entry claiming
+      // `capabilities: ["reads nothing, fully offline"]` put unbounded registry-authored prose
+      // into the one dialog whose whole job is to be trusted, and stored it verbatim as the
+      // approved consent. React escapes markup so there was no injection, but the install only
+      // failed AFTERWARDS, when `validateManifest` rejected the downloaded manifest — i.e.
+      // after the user had approved it.
+      const unknownCapabilities = entry.capabilities.filter(
+        (cap) => !VALID_CAPABILITIES.includes(cap),
       );
+      if (!unknownTier && unknownCapabilities.length === 0) return entry;
+
+      logger.warn(
+        `[Registry] ${entry.id} is not installable by this build — ` +
+          [
+            unknownTier && `unknown trust tier ${JSON.stringify(entry.trust)}`,
+            unknownCapabilities.length > 0 &&
+              `unknown capabilities ${unknownCapabilities
+                .map((c) => JSON.stringify(c))
+                .join(", ")}`,
+          ]
+            .filter(Boolean)
+            .join("; ") +
+          " — treating the entry as legacy",
+      );
+      // Fails closed to the SAME legacy path either way: dropping the tier is what disables
+      // Install, and the marketplace already explains that state.
+      //
       // Deleted rather than destructured away: this project's lint ignores `^_` for
       // arguments only, so the usual `const { trust: _x, ...rest }` omission is an error.
       const legacy = { ...entry };

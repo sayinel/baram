@@ -10,7 +10,7 @@ vi.mock("../../ipc/plugin-invoke", () => ({
 }));
 
 import { usePluginStore } from "../../stores/system/plugin";
-import { fetchRegistryIndex } from "../registry-client";
+import { checkForUpdates, fetchRegistryIndex } from "../registry-client";
 
 function entry(over: Partial<RegistryEntry> = {}): RegistryEntry {
   return {
@@ -76,11 +76,84 @@ describe("fetchRegistryIndex normalizes the trust tier (§260 Phase 6)", () => {
     expect(cached[0]).not.toHaveProperty("trust");
   });
 
+  it("strips the tier when a capability is one this build cannot enforce", async () => {
+    // §260 Phase 6 code review (M3) — the other half of the consent tuple. Unbounded
+    // registry-authored prose used to reach `PluginConsentDialog` (`CAPABILITY_DESCRIPTIONS[cap]
+    // ?? cap`) and be stored as the approved consent; the install only failed afterwards.
+    const plugins = await load(
+      entry({
+        capabilities: ["events", "reads nothing, fully offline" as never],
+        id: "liar",
+      }),
+    );
+    expect(plugins[0]).not.toHaveProperty("trust");
+  });
+
+  it("accepts an entry whose capabilities are all real", async () => {
+    // The complement — otherwise "strip everything" would pass the test above.
+    const plugins = await load(
+      entry({ capabilities: ["ai", "editor:readonly", "storage"], id: "ok" }),
+    );
+    expect(plugins[0].trust).toBe("sandboxed");
+  });
+
   it("keeps the index's other fields", async () => {
     fetchRegistry.mockResolvedValue({
       plugins: [entry()],
       updatedAt: "2026-07-29",
     });
     expect((await fetchRegistryIndex()).updatedAt).toBe("2026-07-29");
+  });
+});
+
+describe("checkForUpdates skips entries the install path refuses (§260 Phase 6)", () => {
+  const installed = (version: string) => ({
+    p: {
+      enabled: true,
+      installPath: "/plugins/p",
+      installedAt: 0,
+      manifest: {
+        capabilities: ["events"],
+        description: "d",
+        engines: { baram: ">=0.5.0" },
+        id: "p",
+        license: "Apache-2.0",
+        main: "index.mjs",
+        name: "P",
+        trust: "sandboxed",
+        version,
+      },
+    },
+  });
+
+  beforeEach(() => {
+    fetchRegistry.mockReset();
+    usePluginStore.setState({
+      installedPlugins: installed("1.0.0") as never,
+      registryCache: null,
+      registryCacheTime: 0,
+    });
+  });
+
+  it("offers an update from an entry that carries a tier", async () => {
+    fetchRegistry.mockResolvedValue({ plugins: [entry({ version: "2.0.0" })] });
+    expect(await checkForUpdates()).toEqual({ p: "2.0.0" });
+  });
+
+  it("offers nothing for a legacy entry, which could only ever error", async () => {
+    // §260 Phase 6 code review (L1) — `handleUpdate` refuses a `trust`-less entry, so a badge
+    // and an enabled button here promise an action that cannot succeed.
+    const legacy = entry({ version: "2.0.0" });
+    delete legacy.trust;
+    fetchRegistry.mockResolvedValue({ plugins: [legacy] });
+    expect(await checkForUpdates()).toEqual({});
+  });
+
+  it("offers nothing for an entry whose tier was normalized away", async () => {
+    // The two guards compose: an unknown tier becomes legacy, and legacy is then skipped.
+    fetchRegistry.mockResolvedValue({
+      plugins: [entry({ trust: "semi-trusted" as never, version: "2.0.0" })],
+    });
+    expect(await checkForUpdates()).toEqual({});
   });
 });

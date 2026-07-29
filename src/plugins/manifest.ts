@@ -8,7 +8,14 @@ import type {
 import { MAX_SETTING_FIELDS } from "./plugin-settings";
 import { SETTING_TYPES } from "./types";
 
-const VALID_CAPABILITIES: PluginCapability[] = [
+/**
+ * Every capability the app knows how to enforce.
+ *
+ * Exported since §260 Phase 6 (code review M3): `fetchRegistryIndex` needs it to fail closed on
+ * a registry entry naming a capability this build cannot enforce, which otherwise reached the
+ * consent dialog as unbounded registry-controlled prose.
+ */
+export const VALID_CAPABILITIES: PluginCapability[] = [
   "editor",
   "editor:readonly",
   "files",

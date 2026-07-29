@@ -6,7 +6,7 @@
   "author": "Baram",
   "license": "Apache-2.0",
   "main": "dist/index.mjs",
-  "engines": { "baram": ">=0.4.0" },
+  "engines": { "baram": ">=0.5.0" },
   "trust": "sandboxed",
   "capabilities": ["editor:readonly", "events", "statusbar"],
   "contributions": {

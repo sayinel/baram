@@ -1270,6 +1270,13 @@ mod tests {
                 "downloadUrl should point at the live registry: {}",
                 entry.download_url
             );
+            // ‼️ SHAPE ONLY — 64 zeros satisfy this, and that is deliberate: the seed names the
+            // NEXT release, whose ZIP does not exist yet, so it carries an all-zero placeholder
+            // (§260 Phase 6 code review, M4). What this cannot catch is the placeholder
+            // becoming PERMANENT: nothing here knows whether that version shipped, and the
+            // release workflow updates only the registry repo's index — a maintainer pastes the
+            // real checksum in by hand. That is a release-checklist step, not a CI guarantee,
+            // and `docs/plugin-development.md` says so rather than implying otherwise.
             assert_eq!(entry.checksum.len(), 64, "checksum must be sha256 hex");
             assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
             // §260 Phase 6 — an entry without a tier is one the app refuses to install

@@ -325,25 +325,49 @@ mod tests {
         ));
     }
 
+    /// The op→capability mapping, spelled out for EVERY variant.
+    ///
+    /// §260 Phase 6 code review (L4). This test used to name three ops, and the adversary sweeps
+    /// are both grant-set-wide — the fixture holds none of the broker grants and the admit-side
+    /// plugin holds all of them — so **cross-wiring was invisible**: making `StorageRemove`
+    /// require `"network"` left all 70 plugin tests green (verified by mutation). A plugin
+    /// holding `network` but not `storage` could then reach its own storage namespace.
+    ///
+    /// Exhaustive by construction: the list is driven off `adversary_ops()`, whose coverage of
+    /// every variant is itself asserted, and `kind_name` has no wildcard arm — so a new op
+    /// cannot arrive without an expected capability here.
     #[test]
-    fn required_capability_mapping() {
-        use CapabilityRequirement::AnyOf;
-        assert_eq!(
-            PluginOp::StorageList.capability_requirement(),
-            AnyOf(&["storage"])
-        );
-        assert_eq!(
-            PluginOp::StorageRead { key: "k".into() }.capability_requirement(),
-            AnyOf(&["storage"])
-        );
-        assert_eq!(
-            PluginOp::HttpFetch {
-                url: "http://x".into(),
-                init: None
+    fn required_capability_mapping_is_exhaustive_and_not_cross_wired() {
+        use CapabilityRequirement::{AnyOf, None};
+
+        // The hand-written expectation. Deliberately NOT derived from
+        // `capability_requirement()` — that is the thing under test.
+        let expected = |name: &str| -> CapabilityRequirement {
+            match name {
+                "files_list" | "files_read" => AnyOf(&["files", "files:readonly"]),
+                "files_write" => AnyOf(&["files"]),
+                "http_fetch" => AnyOf(&["network"]),
+                "source_read" | "staged_read" => None,
+                "storage_list" | "storage_read" | "storage_remove" | "storage_write" => {
+                    AnyOf(&["storage"])
+                }
+                other => panic!("no expected capability recorded for op \"{other}\""),
             }
-            .capability_requirement(),
-            AnyOf(&["network"])
-        );
+        };
+
+        let mut seen: Vec<&str> = Vec::new();
+        for (op, _) in adversary_ops() {
+            let name = kind_name(&op);
+            assert_eq!(
+                op.capability_requirement(),
+                expected(name),
+                "{name} is wired to the wrong capability"
+            );
+            seen.push(name);
+        }
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), 10, "every PluginOp variant must be mapped here");
     }
 
     /// The point of `AnyOf`: a read-only grant is a real grant for reads, and the

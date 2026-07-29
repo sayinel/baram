@@ -306,18 +306,45 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     ]);
   });
 
-  it("is refused by the release workflow, by directory name", () => {
+  it("is refused by the release workflow, by directory name, before anything is built", () => {
     // A mistyped `plugin-malicious-fixture-v1.0.0` tag is the only way an attack plugin could
-    // reach the public registry. The denylist is in the tag-parsing step, before any build.
+    // reach the public registry.
+    //
+    // §260 Phase 6 code review (M1) — this guard used to capture only the PATTERN LIST, which
+    // left it hollow in two directions, both mutation-confirmed by the reviewer: replacing
+    // `fail` with `echo "::warning::…"` kept it green, and so did moving the whole `case` block
+    // to the END of the file (i.e. after the publish step). It now pins the branch BODY and the
+    // block's POSITION, and asserts the match count — the half of the source-scan lesson that
+    // was missing.
     const workflow = readFileSync(
       resolve(__dirname, "../../../.github/workflows/plugin-release.yml"),
       "utf8",
     );
-    const denied = /case "\$DIR" in\s*\n\s*([a-z|-]+)\)/.exec(workflow)?.[1];
-    expect(denied?.split("|").sort()).toEqual([
+
+    // Exactly one such block, so the assertions below cannot be describing a different one.
+    expect(workflow.match(/case "\$DIR" in/g)).toHaveLength(1);
+
+    // Windowed to the tag-parsing step: everything before the step that installs dependencies.
+    // A denylist after that point has already let `npm ci` and the build run.
+    const buildStep = workflow.indexOf("- name: Build plugin");
+    expect(buildStep).toBeGreaterThan(0);
+    const beforeBuild = workflow.slice(0, buildStep);
+    expect(
+      beforeBuild,
+      "the denylist must run before the build step, not after it",
+    ).toContain('case "$DIR" in');
+
+    // Pattern list AND body, from one match — the body is what makes it a refusal.
+    const block = /case "\$DIR" in\s*\n\s*([a-z|-]+)\)\s*\n?\s*([^\n]*)/.exec(
+      beforeBuild,
+    );
+    expect(block?.[1].split("|").sort()).toEqual([
       "malicious-fixture",
       "sandbox-smoke",
     ]);
+    expect(block?.[2], "the matched branch must call `fail`, not warn").toMatch(
+      /\bfail\b/,
+    );
   });
 
   it("ships a single self-contained ESM with no build step", () => {
@@ -325,6 +352,9 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     expect(manifest.main).toBe("index.mjs");
     expect(source).not.toMatch(/^\s*import\s/m);
     expect(source).not.toMatch(/\brequire\s*\(/);
+    // §260 Phase 6 code review (L2) — `export { x } from "./sibling.mjs"` is a static bare
+    // import that both patterns above miss, and it fails the same way from a blob: URL.
+    expect(source).not.toMatch(/^\s*export\b[^;]*\bfrom\s/m);
     expect(source).toMatch(/export async function activate\s*\(/);
   });
 });

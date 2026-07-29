@@ -55,9 +55,28 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     ]);
   });
 
-  it("requires the version that first had a sandboxed runtime", () => {
-    // A user on 0.3.x installing this would load a plugin whose tier the app cannot run.
-    expect(manifest.engines.baram).toBe(">=0.4.0");
+  it("requires a version that will actually SHIP the sandboxed runtime", () => {
+    // §260 Phase 6 code review (H1) — this said `>=0.4.0`, which named two SHIPPED releases
+    // that cannot run this plugin: v0.4.1 has no `sandbox-host.ts`, no `trust` in
+    // `validateManifest`, and no legacy gate in the marketplace. There, Install is ENABLED and
+    // the bundle loads in the MAIN realm against a trusted `ExtensionContext` that has neither
+    // `ui.setStatusBarText` nor `editor.getMarkdown`, so `activate` throws — and for someone
+    // holding v1.0.0, the pre-fix `handleUpdate` destroys a working plugin to install that.
+    //
+    // ‼️ `engines` is NOT ENFORCED: `manifest.ts` only requires `engines.baram` to be a
+    // non-empty string, and nothing anywhere compares versions. So this field is a claim to a
+    // human, and the protection is the RELEASE ORDER — the app version carrying Phases 5-6
+    // must ship before the plugin tag is pushed. Asserting the floor here at least keeps the
+    // claim from silently naming a version that cannot run it.
+    // The floor is asserted as an exact value, NOT compared against `package.json`. An earlier
+    // version of this guard required the floor to be ahead of the app version, which would have
+    // broken the moment the app was bumped to 0.5.0 — a guard that fails on the very release it
+    // exists to wait for. The real invariant is a fixed historical fact: v0.4.1 was the last
+    // release shipped WITHOUT the sandboxed tier, so the floor must be above it.
+    expect(manifest.engines.baram).toBe(">=0.5.0");
+    // The seed describes the same plugin, so it must not claim a different floor.
+    const entry = seed().plugins.find((p) => p.id === manifest.id);
+    expect(entry?.engines.baram).toBe(manifest.engines.baram);
   });
 
   it("addresses exactly the status-bar item it declares, through one constant", () => {
@@ -94,12 +113,52 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     );
     expect(editorCalls).toEqual(["getMarkdown"]);
     expect(source).toMatch(/await ctx\.editor\.getMarkdown\(\)/);
-    // Asserted on the shipped bundle too — this is the cheap staleness check that a rebuilt
-    // `dist/` was committed alongside the source change.
-    expect(built).toMatch(/getMarkdown\(\)/);
-    for (const event of ["editor:ready", "file:open", "file:save"]) {
-      expect(built, `${event} must survive into the bundle`).toContain(event);
-    }
+  });
+
+  it("ships a dist/ that was rebuilt from the current source", () => {
+    // §260 Phase 6 code review (M2) — the previous version of this asserted `getMarkdown()` and
+    // the three event names on `built`, which are strictly WEAKER than the same assertions on
+    // `source` and therefore could not detect divergence at all. Confirmed by the reviewer:
+    // dropping the `file:save` subscription and changing the status-bar template in
+    // `src/index.ts` WITHOUT rebuilding kept the whole suite green, while the comment claimed
+    // it was a staleness check.
+    //
+    // The fix is symmetry: extract the same facts from both artifacts and compare them to each
+    // other, so any behavioural edit to the source that is not rebuilt fails here.
+    // esbuild escapes non-ASCII in string literals (`·` becomes `\xB7`), so the two artifacts
+    // differ by encoding alone. Decoded rather than stripped: a genuine change to the separator
+    // must still show up as a difference.
+    const decode = (text: string) =>
+      text.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex: string) =>
+        String.fromCharCode(parseInt(hex, 16)),
+      );
+    const extract = (raw: string) =>
+      ((text) => ({
+        // Every event it subscribes to, in order.
+        events: [...text.matchAll(/events\.on\(\s*"([^"]+)"/g)].map(
+          (m) => m[1],
+        ),
+        // The status-bar text it writes, as a template literal.
+        template: /setStatusBarText\([^,]+,\s*(`[^`]*`)/.exec(text)?.[1],
+        // The word/char counting rule.
+        split: /split\((\/[^/]+\/[a-z]*)\)/.exec(text)?.[1],
+      }))(decode(raw));
+
+    const fromSource = extract(source);
+    const fromBuilt = extract(built);
+    // Sanity: the extraction must actually find things, or comparing two empties would pass.
+    expect(fromSource.events).toEqual([
+      "editor:ready",
+      "file:open",
+      "file:save",
+    ]);
+    expect(fromSource.template).toBeDefined();
+    expect(fromSource.split).toBeDefined();
+
+    expect(
+      fromBuilt,
+      "dist/index.mjs is stale — run `npm run build` in examples/plugins/word-count and commit it",
+    ).toEqual(fromSource);
   });
 
   it("exports activate and NOT deactivate", () => {
@@ -113,12 +172,20 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     // A blob: module has no base URL, so any surviving bare import fails at activate.
     expect(built).not.toMatch(/^\s*import\s/m);
     expect(built).not.toMatch(/\brequire\s*\(/);
-    // The build must not mark anything external either — that is precisely how a bare
-    // `import` ends up in the output (v1 externalized @tiptap/*, which this tier cannot use).
+    // §260 Phase 6 code review (L2) — `export { x } from "./sibling.mjs"` is a static
+    // bare-specifier import that both patterns above miss, and it fails the same way.
+    expect(built).not.toMatch(/^\s*export\b[^;]*\bfrom\s/m);
     const pkg = JSON.parse(read("word-count", "package.json")) as {
       scripts: { build: string };
     };
+    // The build must not mark anything external either — that is precisely how a bare
+    // `import` ends up in the output (v1 externalized @tiptap/*, which this tier cannot use).
     expect(pkg.scripts.build).not.toContain("--external");
+    // §260 Phase 6 code review (L3) — nor minify. Minifying is legitimate for a plugin, but the
+    // guards above read identifiers and template literals out of the bundle, so it would turn
+    // them into false failures. If minifying ever becomes worth it, rewrite those to compare
+    // behaviour rather than text — do not just delete this line.
+    expect(pkg.scripts.build).not.toContain("--minify");
   });
 
   it("matches the committed registry seed", () => {
