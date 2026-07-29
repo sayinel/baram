@@ -6,23 +6,26 @@ import type {
 } from "./types";
 
 import { MAX_SETTING_FIELDS } from "./plugin-settings";
-import { SETTING_TYPES } from "./types";
+import { CAPABILITY_DESCRIPTIONS, SETTING_TYPES } from "./types";
 
-const VALID_CAPABILITIES: PluginCapability[] = [
-  "editor",
-  "editor:readonly",
-  "files",
-  "files:readonly",
-  "commands",
-  "sidebar",
-  "statusbar",
-  "settings",
-  "events",
-  "ai",
-  "network",
-  "storage",
-  "viewer",
-];
+/**
+ * Every capability the app knows how to enforce.
+ *
+ * Exported since §260 Phase 6 (code review M3): `fetchRegistryIndex` needs it to fail closed on
+ * a registry entry naming a capability this build cannot enforce, which otherwise reached the
+ * consent dialog as unbounded registry-controlled prose.
+ *
+ * DERIVED, not hand-written (§260 Phase 6 code review round 2). It used to be its own literal
+ * array, which happened to hold all 13 union members but was not checked against them. That was
+ * tolerable while the list only *rejected* manifests post-download; M3 promoted it to a gate on
+ * the registry LISTING, where forgetting a future member silently demotes a legitimate plugin to
+ * legacy and makes it uninstallable. `CAPABILITY_DESCRIPTIONS` is a
+ * `Record<PluginCapability, string>`, so the compiler already refuses to let it fall behind the
+ * union — deriving from it makes exhaustiveness structural instead of a thing to remember.
+ */
+export const VALID_CAPABILITIES = Object.keys(
+  CAPABILITY_DESCRIPTIONS,
+) as PluginCapability[];
 
 export interface ManifestValidationError {
   field: string;

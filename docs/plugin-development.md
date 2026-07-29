@@ -30,15 +30,23 @@ sensitive.
 The fastest way to start a new plugin is to copy one of the two reference
 examples in [`examples/plugins/`](../examples/plugins/):
 
-- [`examples/plugins/word-count/`](../examples/plugins/word-count/) — minimal:
-  a status-bar item with an `editor:readonly` + `events` + `statusbar` plugin.
-- [`examples/plugins/ai-summary/`](../examples/plugins/ai-summary/) —
-  advanced: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`
-  capabilities.
+- [`examples/plugins/word-count/`](../examples/plugins/word-count/) — **the sandboxed
+  reference, and the one to copy.** A declared status-bar item written by an
+  `editor:readonly` + `events` + `statusbar` plugin. It needs nothing from the main
+  realm, which is the point.
+- [`examples/plugins/ai-summary/`](../examples/plugins/ai-summary/) — the **trusted**
+  tier: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`. Copy it only if you
+  genuinely need arbitrary DOM; it is **not published to the registry**, because there
+  is no declarative `sidebar` contribution yet and a trusted plugin cannot be sandboxed.
 
-There is a third folder, `examples/plugins/sandbox-smoke/`, which is an internal test
-fixture for the §260 sandboxed tier — **not a template**. It ships as one hand-written
-file with no build step and exists to probe deny paths during a manual smoke run.
+Two further folders are internal **test fixtures — not templates**. Both are single
+hand-written files with no build step, and `plugin-release.yml` refuses to publish either:
+
+- `examples/plugins/sandbox-smoke/` probes the sandboxed tier's brokered surface during a
+  manual smoke run.
+- `examples/plugins/malicious-fixture/` is the adversary: it holds two capabilities and
+  asks for everything else, and CI asserts every call is refused. Useful to read as a
+  catalogue of what the tier does **not** allow.
 
 ### The sandboxed tier's API differs
 
@@ -167,7 +175,7 @@ my-plugin/
 
 ```json
 {
-  "id": "baram-word-count",
+  "id": "my-word-count",
   "name": "Word Count",
   "description": "Displays word and character count in the status bar",
   "version": "1.0.0",
@@ -175,11 +183,15 @@ my-plugin/
   "license": "MIT",
   "main": "dist/index.mjs",
   "engines": {
-    "baram": ">=0.3.0"
+    "baram": ">=0.5.0"
   },
+  "trust": "sandboxed",
   "capabilities": ["editor:readonly", "events", "statusbar"],
+  "contributions": {
+    "statusBar": [{ "id": "count", "text": "— words" }]
+  },
   "keywords": ["word", "count", "statistics"],
-  "repository": "https://github.com/user/baram-word-count",
+  "repository": "https://github.com/user/my-word-count",
   "homepage": "https://example.com"
 }
 ```
@@ -265,6 +277,11 @@ export function deactivate() {
   // hook for cleanup that isn't tracked as a Disposable (e.g. timers).
 }
 ```
+
+**`deactivate` is a trusted-tier hook only.** A sandboxed plugin is never called back:
+unloading it destroys its whole webview realm, so timers, listeners and declared items all
+go with it. Exporting one there is dead code that reads like a lifecycle hook — the
+`word-count` reference plugin deliberately has none.
 
 ## ExtensionContext API
 
@@ -633,6 +650,10 @@ Copy both files next to your plugin's source (both example plugins'
 approach works) and import types from there:
 
 ```typescript
+// sandboxed (the default tier)
+import type { SandboxContext } from "./plugin-api";
+
+// trusted
 import type { ExtensionContext, StatusBarItem } from "./plugin-api";
 ```
 
@@ -643,16 +664,40 @@ alone (`npm run typecheck` in either example directory, or `tsc --noEmit`).
 
 ## Bundling
 
-Use esbuild to produce a single ESM bundle, keeping `@tiptap/core` and
-`@tiptap/pm` external (the host provides these at runtime; bundling them in
-would duplicate — and likely desync — the app's own ProseMirror instance):
+Use esbuild to produce a single ESM bundle. **What you may leave external depends on your
+tier**, and getting it wrong fails at activate rather than at build time:
+
+**Sandboxed — bundle everything, no `--external` at all:**
+
+```bash
+npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs
+```
+
+A sandboxed plugin is imported from a `blob:` URL, and a blob module has **no base URL**, so
+any bare `import` left in the output cannot resolve. Mark something external and the plugin
+loads to a resolution error. (This tier also cannot use Tiptap at all — extensions are
+injected into the main realm's ProseMirror instance, which is exactly what it has no access
+to.)
+
+**Trusted — keep `@tiptap/core` and `@tiptap/pm` external**, since the host provides them at
+runtime and bundling them in would duplicate — and likely desync — the app's own ProseMirror
+instance:
 
 ```bash
 npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
   --external:@tiptap/core --external:@tiptap/pm
 ```
 
-`package.json` script (as used by both examples):
+`package.json` script — `word-count` (sandboxed) and `ai-summary` (trusted) differ exactly
+here, which is the difference worth copying carefully:
+
+```json
+{
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs"
+  }
+}
+```
 
 ```json
 {
@@ -753,6 +798,12 @@ which builds the plugin, packages the ZIP per the contract above, computes
 its SHA-256, and pushes the ZIP plus an updated `index.json` to the registry
 repo.
 
+Two refusals happen before anything is built: a manifest without a valid
+`trust` fails the release outright (an entry without a tier can only describe
+a plugin nobody can install), and the directories `malicious-fixture` and
+`sandbox-smoke` are denied by name, so a mistyped tag cannot publish a test
+fixture to the public registry.
+
 ### Local testing
 
 To exercise the marketplace UI without a live registry, point `registryUrl`
@@ -785,22 +836,42 @@ the app to pick up a new `registry/index.json`. The **Retry** button shown
 when the fetch errored does the same thing. The cache lives in memory only,
 so restarting the app also forces a fresh fetch if needed.
 `registry/index.json` is the canonical
-example of a valid `RegistryIndex`: it lists the two example plugins
-(`baram-word-count`, `baram-ai-summary`) with every required field populated
-from their real manifests.
+example of a valid `RegistryIndex`: it lists `baram-word-count` with every
+required field — including `trust` — populated from its real manifest. Note that
+**installing** from it is not possible until 2.0.0 is published; see below.
 
 ### The committed seed
 
-The committed seed is a verbatim snapshot of the live registry index: both
-example entries carry the real `downloadUrl` (under
-`https://sayinel.github.io/baram-plugins/plugins/`) and the real SHA-256
-checksum of the published ZIP. It exists so the repo has an offline,
-schema-correct `RegistryIndex` fixture — a Rust drift-guard test
-(`test_committed_registry_seed_deserializes`) deserializes it on every test
-run and fails if its shape or values stop looking like the live registry.
-The example plugins are therefore installable two ways: from the live
-registry via the marketplace, or dev-loaded from source via **Settings →
-Plugins → Developer** (see [Local development loop](#local-development-loop)).
+The seed exists so the repo has an offline, schema-correct `RegistryIndex`
+fixture. A Rust drift-guard test (`test_committed_registry_seed_deserializes`)
+deserializes it on every test run and fails if its shape stops looking like the
+live registry — including a missing `trust`, since an entry without one
+describes a plugin the app refuses to install.
+
+**Installing from the seed does not work right now, and not because of the
+seed.** §260's tier model requires every manifest to declare `trust`, and every
+ZIP published before it — `baram-word-count` 1.0.0/1.0.1, `baram-ai-summary`
+1.0.0 — has a manifest that predates the field, so `validateManifest` rejects
+the download whatever the index says about it. The seed therefore names the
+**next** release (`baram-word-count` 2.0.0) with a `checksum` of **64 zeros**,
+and an install attempt fails on the missing ZIP. Until that release ships, use
+the seed to exercise the marketplace **UI** — listing, capability and tier
+badges, the legacy state, refresh — and dev-load from source
+(**Settings → Plugins → Developer**) to exercise a plugin actually running.
+
+Two further things the seed is **not**:
+
+- It is not a byte-for-byte copy of the live index. It is Prettier-formatted
+  (the live file is written by `update-registry-index.mjs`), and it holds only
+  entries worth publishing — `baram-ai-summary` is absent because it is not
+  published.
+- The placeholder checksum is **not** filled in automatically. The release
+  workflow clones `sayinel/baram-plugins` and updates only _that_ repo's
+  `index.json`; nothing writes back here. After publishing a version, a
+  maintainer copies the workflow's `sha256sum` output into this file by hand.
+  No test can detect that this was forgotten — the guard checks that the
+  checksum is 64 hex characters, which zeros satisfy — so it is a step on the
+  release checklist, not something CI enforces.
 
 ### Publishing your own plugin
 
@@ -818,17 +889,18 @@ Plugins → Developer** (see [Local development loop](#local-development-loop)).
 
 ```json
 {
-  "id": "baram-word-count",
+  "id": "my-word-count",
   "name": "Word Count",
   "description": "Displays word and character count",
   "version": "1.0.0",
   "author": "Your Name",
   "license": "MIT",
-  "downloadUrl": "https://github.com/user/baram-word-count/releases/download/v1.0.0/baram-word-count-1.0.0.zip",
+  "downloadUrl": "https://github.com/user/my-word-count/releases/download/v1.0.0/my-word-count-1.0.0.zip",
   "checksum": "sha256-hash-of-zip",
   "capabilities": ["editor:readonly", "events", "statusbar"],
+  "trust": "sandboxed",
   "keywords": ["word", "count"],
-  "engines": { "baram": ">=0.3.0" }
+  "engines": { "baram": ">=0.5.0" }
 }
 ```
 

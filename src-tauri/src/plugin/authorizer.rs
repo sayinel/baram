@@ -325,25 +325,49 @@ mod tests {
         ));
     }
 
+    /// The op→capability mapping, spelled out for EVERY variant.
+    ///
+    /// §260 Phase 6 code review (L4). This test used to name three ops, and the adversary sweeps
+    /// are both grant-set-wide — the fixture holds none of the broker grants and the admit-side
+    /// plugin holds all of them — so **cross-wiring was invisible**: making `StorageRemove`
+    /// require `"network"` left all 70 plugin tests green (verified by mutation). A plugin
+    /// holding `network` but not `storage` could then reach its own storage namespace.
+    ///
+    /// Exhaustive by construction: the list is driven off `adversary_ops()`, whose coverage of
+    /// every variant is itself asserted, and `kind_name` has no wildcard arm — so a new op
+    /// cannot arrive without an expected capability here.
     #[test]
-    fn required_capability_mapping() {
-        use CapabilityRequirement::AnyOf;
-        assert_eq!(
-            PluginOp::StorageList.capability_requirement(),
-            AnyOf(&["storage"])
-        );
-        assert_eq!(
-            PluginOp::StorageRead { key: "k".into() }.capability_requirement(),
-            AnyOf(&["storage"])
-        );
-        assert_eq!(
-            PluginOp::HttpFetch {
-                url: "http://x".into(),
-                init: None
+    fn required_capability_mapping_is_exhaustive_and_not_cross_wired() {
+        use CapabilityRequirement::{AnyOf, None};
+
+        // The hand-written expectation. Deliberately NOT derived from
+        // `capability_requirement()` — that is the thing under test.
+        let expected = |name: &str| -> CapabilityRequirement {
+            match name {
+                "files_list" | "files_read" => AnyOf(&["files", "files:readonly"]),
+                "files_write" => AnyOf(&["files"]),
+                "http_fetch" => AnyOf(&["network"]),
+                "source_read" | "staged_read" => None,
+                "storage_list" | "storage_read" | "storage_remove" | "storage_write" => {
+                    AnyOf(&["storage"])
+                }
+                other => panic!("no expected capability recorded for op \"{other}\""),
             }
-            .capability_requirement(),
-            AnyOf(&["network"])
-        );
+        };
+
+        let mut seen: Vec<&str> = Vec::new();
+        for (op, _) in adversary_ops() {
+            let name = kind_name(&op);
+            assert_eq!(
+                op.capability_requirement(),
+                expected(name),
+                "{name} is wired to the wrong capability"
+            );
+            seen.push(name);
+        }
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), 10, "every PluginOp variant must be mapped here");
     }
 
     /// The point of `AnyOf`: a read-only grant is a real grant for reads, and the
@@ -527,5 +551,289 @@ mod tests {
         );
         assert_eq!(a.authorize_any("plugin-a", &["storage"]).unwrap(), "a");
         assert_eq!(a.authorize_any("plugin-b", &["storage"]).unwrap(), "b");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────
+    // §260 Phase 6 — the malicious-fixture adversary sweep.
+    //
+    // #260's last completion criterion is that a malicious plugin fixture verifies the deny
+    // paths in CI. `examples/plugins/malicious-fixture` is that plugin: it holds `commands`
+    // and `statusbar`, and asks for everything else. Its vitest half
+    // (`malicious-fixture.test.ts`) runs the real bundle through the real client and session
+    // and proves the host-mediated refusals plus reachability; the DECISION for every brokered
+    // op is made here, so it is asserted here.
+    //
+    // What is new relative to the tests above: they check one grant against one op each. This
+    // sweeps EVERY `PluginOp` variant against one minimal grant, which is the shape an actual
+    // adversary has.
+    // ─────────────────────────────────────────────────────────────────────────────────
+
+    /// What the adversary is supposed to get for an op.
+    #[derive(Debug, PartialEq)]
+    enum Expect {
+        /// Refused for want of a grant.
+        Denied,
+        /// Admitted for a REGISTERED caller with no grant at all — the op needs none.
+        NeedsNoGrant,
+    }
+
+    /// The op's discriminant name, via a match with **no wildcard arm**.
+    ///
+    /// This is the anti-drift device, and it is the whole reason this helper exists rather than
+    /// a `format!("{op:?}")`: adding a `PluginOp` variant fails to COMPILE here until someone
+    /// names it, and the expected-coverage list below then fails until the adversary table
+    /// gets an entry for it. A source scan or a `_ =>` arm would let a new op ship unattacked.
+    /// `malicious-fixture.test.ts` has the same device as an exhaustive `Record`.
+    fn kind_name(op: &PluginOp) -> &'static str {
+        match op {
+            PluginOp::FilesList { .. } => "files_list",
+            PluginOp::FilesRead { .. } => "files_read",
+            PluginOp::FilesWrite { .. } => "files_write",
+            PluginOp::HttpFetch { .. } => "http_fetch",
+            PluginOp::SourceRead => "source_read",
+            PluginOp::StagedRead => "staged_read",
+            PluginOp::StorageList => "storage_list",
+            PluginOp::StorageRead { .. } => "storage_read",
+            PluginOp::StorageRemove { .. } => "storage_remove",
+            PluginOp::StorageWrite { .. } => "storage_write",
+        }
+    }
+
+    /// Every op the fixture attempts, with what a `commands`+`statusbar` plugin must get.
+    ///
+    /// The hostile paths and the cross-plugin storage key are the fixture's verbatim
+    /// arguments: this layer refuses them for want of a grant BEFORE any path rule runs, which
+    /// is why `plugin_cmd`'s `plugin_target_path` / `reject_app_state_path` tests cover the
+    /// shapes separately — a `files`-granted plugin is the one those guards exist for.
+    fn adversary_ops() -> Vec<(PluginOp, Expect)> {
+        vec![
+            (
+                PluginOp::StorageWrite {
+                    key: "stolen".into(),
+                    value: "x".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::StorageRead {
+                    key: "stolen".into(),
+                },
+                Expect::Denied,
+            ),
+            (PluginOp::StorageList, Expect::Denied),
+            (
+                PluginOp::StorageRemove {
+                    key: "stolen".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::StorageRead {
+                    key: "../baram-word-count/config.json".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::HttpFetch {
+                    url: "https://example.test/exfiltrate".into(),
+                    init: None,
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::FilesList {
+                    context: None,
+                    path: String::new(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::FilesRead {
+                    context: None,
+                    path: "notes.md".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::FilesWrite {
+                    content: "pwned".into(),
+                    context: None,
+                    path: "owned.md".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::FilesRead {
+                    context: None,
+                    path: "/etc/passwd".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::FilesRead {
+                    context: None,
+                    path: "../../../etc/passwd".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::FilesRead {
+                    context: None,
+                    path: ".baram/config.json".into(),
+                },
+                Expect::Denied,
+            ),
+            // Reading one's own bundle is how the sandbox boots, and the op names no file.
+            (PluginOp::SourceRead, Expect::NeedsNoGrant),
+            // Collecting an answer the host already decided to give. A plugin that holds
+            // nothing has nothing staged, so this returns an error LATER, from an empty slot —
+            // not a capability refusal, which is exactly the distinction being pinned.
+            (PluginOp::StagedRead, Expect::NeedsNoGrant),
+        ]
+    }
+
+    /// The adversary's table must cover every variant — see `kind_name`.
+    #[test]
+    fn the_adversary_attacks_every_plugin_op_variant() {
+        let mut covered: Vec<&str> = adversary_ops()
+            .iter()
+            .map(|(op, _)| kind_name(op))
+            .collect();
+        covered.sort_unstable();
+        covered.dedup();
+        assert_eq!(
+            covered,
+            vec![
+                "files_list",
+                "files_read",
+                "files_write",
+                "http_fetch",
+                "source_read",
+                "staged_read",
+                "storage_list",
+                "storage_read",
+                "storage_remove",
+                "storage_write",
+            ],
+            "a PluginOp variant with no adversary entry would ship unattacked"
+        );
+    }
+
+    #[test]
+    fn a_minimally_granted_plugin_is_refused_every_op_that_needs_a_grant() {
+        let a = PluginAuthorizer::new();
+        // Exactly what the fixture's manifest declares. Neither capability names a broker op,
+        // so every grant-requiring op below must fail — and `commands`/`statusbar` being
+        // non-empty is what keeps this from passing merely because the grant list is empty.
+        a.register(
+            "plugin-baram-malicious-fixture".into(),
+            vec!["commands".into(), "statusbar".into()],
+            "/p/malicious".into(),
+        );
+
+        for (op, expected) in adversary_ops() {
+            let name = kind_name(&op);
+            let result = a.authorize_op("plugin-baram-malicious-fixture", &op);
+            match expected {
+                Expect::Denied => assert!(
+                    matches!(result, Err(AuthzError::Denied(_))),
+                    "{name} must be denied, got {result:?}"
+                ),
+                Expect::NeedsNoGrant => assert_eq!(
+                    result.as_deref().ok(),
+                    Some("baram-malicious-fixture"),
+                    "{name} needs no grant, so a registered caller must be admitted"
+                ),
+            }
+        }
+    }
+
+    /// The same table, from the other side — so the sweep above cannot pass by denying too
+    /// much (§260 Phase 6 security review, informational note 3).
+    ///
+    /// A one-sided deny sweep is satisfied by an authorizer that refuses everything, and by a
+    /// `capability_requirement()` mutated to demand a grant no manifest can declare: the
+    /// fixture would still be refused, the test would still be green, and every REAL plugin
+    /// would be broken. Running the identical op list against a plugin holding the grants those
+    /// ops name turns the table into a two-sided oracle — the ops must be refused for want of a
+    /// grant and admitted once it is held, or one of the two directions fails.
+    #[test]
+    fn a_fully_granted_plugin_is_admitted_every_op_in_the_same_table() {
+        let a = PluginAuthorizer::new();
+        // `files` rather than `files:readonly`, because the table includes a write. These three
+        // are the whole set the broker ops name — `ai` is deliberately not among them (it is
+        // host-mediated, never a `PluginOp`), which is why no op here should need it.
+        a.register(
+            "plugin-granted".into(),
+            vec!["storage".into(), "network".into(), "files".into()],
+            "/p/granted".into(),
+        );
+
+        for (op, _) in adversary_ops() {
+            let name = kind_name(&op);
+            assert_eq!(
+                a.authorize_op("plugin-granted", &op).as_deref().ok(),
+                Some("granted"),
+                "{name} must be ADMITTED for a plugin holding storage+network+files; a deny \
+                 here means the op demands a grant a real plugin cannot obtain"
+            );
+        }
+    }
+
+    #[test]
+    fn the_refusal_names_the_grant_the_plugin_would_need() {
+        // The message is what a plugin author reads to learn which capability to declare, and
+        // the sandbox surfaces it verbatim. An any-of op must name every acceptable grant, or
+        // an author adds `files` when `files:readonly` would have done.
+        let a = PluginAuthorizer::new();
+        a.register("plugin-x".into(), vec!["commands".into()], "/p/x".into());
+
+        let read = a.authorize_op(
+            "plugin-x",
+            &PluginOp::FilesRead {
+                context: None,
+                path: "notes.md".into(),
+            },
+        );
+        let message = read.unwrap_err().to_string();
+        assert!(message.contains("files"), "{message}");
+        assert!(message.contains("files:readonly"), "{message}");
+
+        // …and the write half must NOT offer the readonly grant as a way in.
+        let write = a.authorize_op(
+            "plugin-x",
+            &PluginOp::FilesWrite {
+                content: "x".into(),
+                context: None,
+                path: "owned.md".into(),
+            },
+        );
+        let message = write.unwrap_err().to_string();
+        assert!(message.contains("files"), "{message}");
+        assert!(!message.contains("files:readonly"), "{message}");
+    }
+
+    #[test]
+    fn an_unregistered_adversary_is_refused_even_the_ops_that_need_no_grant() {
+        // Identity is checked before capability, so a plugin the host never registered — a
+        // stale webview, or one that outlived its deregistration — reaches nothing at all.
+        // Without this, `SourceRead`/`StagedRead` needing no grant could be read as needing
+        // no caller either.
+        let a = PluginAuthorizer::new();
+        for (op, _) in adversary_ops() {
+            let name = kind_name(&op);
+            assert!(
+                matches!(
+                    a.authorize_op("plugin-ghost", &op),
+                    Err(AuthzError::Unregistered)
+                ),
+                "{name} must be refused for an unregistered caller"
+            );
+            // …and a HOST window is not a sandbox, whatever it claims to hold.
+            assert!(
+                matches!(a.authorize_op("main", &op), Err(AuthzError::NotASandbox)),
+                "{name} must be refused for a non-sandbox caller"
+            );
+        }
     }
 }

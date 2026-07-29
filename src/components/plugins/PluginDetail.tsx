@@ -5,18 +5,10 @@ import type {
 } from "../../plugins/types";
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
+import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
-
-/**
- * §260 Phase 5 — a registry entry from before the trust model. `validateManifest`
- * rejects a trust-less manifest, so offering Install here would only download first and
- * fail second.
- */
-const LEGACY_NOTE =
-  "This plugin predates Baram's plugin trust model and cannot be installed. " +
-  "Ask the author to publish a manifest that declares a trust tier.";
 
 interface PluginDetailProps {
   entry: RegistryEntry;
@@ -229,7 +221,9 @@ export function PluginDetail({
           </>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {legacy && <p className="plugin-legacy-note">{LEGACY_NOTE}</p>}
+            {legacy && (
+              <p className="plugin-legacy-note">{legacyEntryMessage(entry)}</p>
+            )}
             <button
               disabled={legacy}
               onClick={onInstall}

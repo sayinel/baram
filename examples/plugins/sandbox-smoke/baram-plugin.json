@@ -7,7 +7,7 @@
   "license": "Apache-2.0",
   "main": "index.mjs",
   "engines": {
-    "baram": ">=0.4.0"
+    "baram": ">=0.5.0"
   },
   "trust": "sandboxed",
   "capabilities": [

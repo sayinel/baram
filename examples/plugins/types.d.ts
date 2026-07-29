@@ -243,6 +243,16 @@ export interface RegistryEntry {
     author: string;
     capabilities: PluginCapability[];
     checksum: string;
+    /**
+     * §260 Phase 6 — why `fetchRegistryIndex` stripped this entry's tier, when it did.
+     *
+     * NOT a registry field: it is set locally by `normalizeIndex` and exists so the marketplace
+     * can explain the right remedy. An `unknown-tier` entry really may predate the trust model
+     * ("ask the author"); an `unknown-capability` entry usually means the registry is NEWER than
+     * this build, where the remedy is the opposite direction ("update Baram"). Absent for a
+     * genuinely legacy entry, which carried no tier to begin with.
+     */
+    demotedBecause?: "unknown-capability" | "unknown-tier";
     description: string;
     downloads?: number;
     downloadUrl: string;
@@ -262,6 +272,73 @@ export interface RegistryEntry {
 export interface RegistryIndex {
     plugins: RegistryEntry[];
     updatedAt?: string;
+}
+/**
+ * What a sandboxed plugin's `activate` receives — the sandboxed tier's counterpart to
+ * `ExtensionContext`.
+ *
+ * ‼️ Per-member notes go INSIDE the member's doc comment. `perfectionist` sorts these
+ * members on every lint run, and a bare `//` block between two of them stays put while the
+ * member it described moves away — which already happened once here, leaving the 3c-1
+ * broker note sitting above `editor`. The same rule is written at the top of `protocol.ts`
+ * for the same reason.
+ *
+ * §260 3c-1 — the BROKERED members (`files`, `network`, `storage`) are routed through
+ * `broker` (= `plugin_call` in production) and exposed unconditionally: the Rust
+ * authorizer, keyed on the Tauri-verified `window.label()`, is the real per-call capability
+ * gate, so an op for an unregistered capability fails closed there rather than here. The
+ * HOST-MEDIATED members (`ai`, `editor`, `ui`) are gated in the main realm instead, because
+ * their policy or their subject lives there.
+ *
+ * §260 Phase 6 — declared HERE rather than beside the client runtime, so plugin authors can
+ * name it: `public-api.ts` re-exports only from this module, and pulling it from
+ * `sandbox-client.ts` would drag the internal transport/protocol declarations into the
+ * published `examples/plugins` surface. Its siblings (`SandboxEditorAPI`, `SandboxUIAPI`,
+ * …) were always here.
+ */
+export interface SandboxContext {
+    /**
+     * §260 3c-2c — host-mediated, NOT brokered in Rust: the model, provider and
+     * privacy-mode decisions live in the main realm, and the request carries none of
+     * them. The `ai` capability is checked host-side, which is enforcing because a
+     * `plugin-*` window holds no `llm_*` ACL grant.
+     */
+    ai: AIAPI;
+    commands: {
+        register(id: string, handler: (...args: unknown[]) => unknown): void;
+    };
+    /**
+     * §260 Phase 4b — the document, mediated by the host (it lives in the main realm). A
+     * read arrives as a STAGED payload pulled through the broker rather than in the response
+     * frame; `getMarkdown` hides that round trip.
+     */
+    editor: SandboxEditorAPI;
+    events: {
+        emit(event: string, ...args: unknown[]): void;
+        /**
+         * §260 Phase 4a — overloaded so the file events' payload actually reaches plugin
+         * code as `PluginFileEvent` (code review nit): with only the `unknown[]` signature an
+         * author had to cast to learn the shape of the very thing this phase added.
+         */
+        on(event: "file:open" | "file:save", handler: (file: PluginFileEvent) => void): void;
+        on(event: string, handler: (...args: unknown[]) => void): void;
+    };
+    files: SandboxFilesAPI;
+    network: NetworkAPI;
+    /**
+     * §260 Phase 4c — the values the user set for this plugin's declared fields. Read-only
+     * and host-mediated: the record is the app's, and `settings:changed` (delivered without a
+     * payload) is the signal to read it again.
+     */
+    settings: SandboxSettingsAPI;
+    storage: StorageAPI;
+    /**
+     * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is
+     * no DOM or CSS here (that is the trusted tier's `UIAPI`). Host-mediated like `ai`,
+     * and gated there — attribution, sanitising and rate limiting cannot be enforced in
+     * this realm.
+     */
+    ui: SandboxUIAPI;
 }
 /**
  * §260 Phase 4b — the sandboxed tier's editor surface.

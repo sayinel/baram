@@ -185,6 +185,7 @@ import {
 } from "../../plugins/registry-client";
 import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
+import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCard } from "./PluginCard";
 import { PluginConsentDialog } from "./PluginConsentDialog";
 import { PluginDetail } from "./PluginDetail";
@@ -192,15 +193,6 @@ import { PluginDeveloperSection } from "./PluginDeveloperSection";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 
 type MarketplaceTab = "browse" | "installed" | "updates";
-
-/**
- * §260 Phase 5 — the live registry still lists plugins written before the trust model
- * (both entries, as of 2026-07-16). `validateManifest` refuses a trust-less manifest, so
- * without this the user downloads first and meets a validation error second.
- */
-const LEGACY_ENTRY_MESSAGE =
-  "This plugin predates Baram's plugin trust model and cannot be installed. " +
-  "Ask the author to publish a manifest that declares a trust tier.";
 
 /** What the consent dialog is currently asking about, if anything. */
 interface PendingConsent {
@@ -375,7 +367,7 @@ export function PluginMarketplace() {
   const handleInstall = useCallback(
     async (entry: RegistryEntry, preApproved?: PluginConsent) => {
       if (!entry.trust) {
-        setError(entry.id, LEGACY_ENTRY_MESSAGE);
+        setError(entry.id, legacyEntryMessage(entry));
         return;
       }
       const claimed: PluginConsent = {
@@ -518,7 +510,7 @@ export function PluginMarketplace() {
         return;
       }
       if (!entry.trust) {
-        setError(entry.id, LEGACY_ENTRY_MESSAGE);
+        setError(entry.id, legacyEntryMessage(entry));
         return;
       }
       // §260 Phase 5 — read the recorded consent BEFORE uninstalling: `handleUninstall`

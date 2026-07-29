@@ -1,7 +1,7 @@
 import type { AIModel } from "../../types";
+import type { SandboxContext } from "../../types";
 import type { PluginOp } from "../plugin-op";
 import type { HostToSandbox, SandboxToHost } from "../protocol";
-import type { SandboxContext } from "../sandbox-client";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 

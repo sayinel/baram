@@ -6,7 +6,8 @@
   "author": "Baram",
   "license": "Apache-2.0",
   "main": "dist/index.mjs",
-  "engines": { "baram": ">=0.3.0" },
+  "engines": { "baram": ">=0.5.0" },
+  "trust": "trusted",
   "capabilities": ["ai", "editor:readonly", "settings", "sidebar", "storage"],
   "icon": "✨",
   "keywords": ["ai", "summary", "llm"]

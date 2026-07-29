@@ -1,7 +1,7 @@
 import type { PluginSettingField } from "../../types";
+import type { SandboxContext } from "../../types";
 import type { PluginOp } from "../plugin-op";
 import type { HostToSandbox } from "../protocol";
-import type { SandboxContext } from "../sandbox-client";
 
 import { describe, expect, it } from "vitest";
 
