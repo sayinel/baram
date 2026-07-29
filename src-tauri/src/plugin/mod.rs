@@ -166,6 +166,21 @@ pub struct RegistryEntry {
     pub download_url: String,
     pub checksum: String,
     pub capabilities: Vec<String>,
+    /// §260 Phase 6 — the trust tier, carried THROUGH to the frontend.
+    ///
+    /// Rust decides nothing with it: consent is collected in the frontend against this
+    /// entry, and `plugin_call`'s authorizer is keyed on the window label, not on anything
+    /// the registry claims. But the field must exist here, because `fetch_registry`
+    /// deserializes the live index into this struct and Tauri re-serializes it on the way
+    /// back — so a tier that is not a field is a tier the frontend never sees. Publishing
+    /// `trust` in `index.json` without this makes every entry look legacy and disables
+    /// Install (§260 Phase 5), which is exactly the state Phase 6 found shipped.
+    ///
+    /// `Option<String>` rather than an enum: this layer is a pipe, and refusing an unknown
+    /// tier here would turn a future registry addition into a hard fetch failure for the
+    /// whole index. The frontend normalizes it (`fetchRegistryIndex`) and fails closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
     #[serde(default)]
@@ -1242,10 +1257,11 @@ mod tests {
     fn test_committed_registry_seed_deserializes() {
         const SEED: &str = include_str!("../../../registry/index.json");
         let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
-        assert_eq!(idx.plugins.len(), 2);
-        let mut ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        ids.sort_unstable();
-        assert_eq!(ids, vec!["baram-ai-summary", "baram-word-count"]);
+        // §260 Phase 6 — one entry: `baram-ai-summary` was withdrawn from the index because
+        // it needs a declarative `sidebar` contribution that does not exist yet, so it
+        // cannot be a sandboxed plugin and must not be published as a trusted one.
+        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["baram-word-count"]);
         for entry in &idx.plugins {
             assert!(
                 entry
@@ -1256,6 +1272,49 @@ mod tests {
             );
             assert_eq!(entry.checksum.len(), 64, "checksum must be sha256 hex");
             assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
+            // §260 Phase 6 — an entry without a tier is one the app refuses to install
+            // (Phase 5 reads it as legacy), so a seed missing it would model a dead registry.
+            assert_eq!(
+                entry.trust.as_deref(),
+                Some("sandboxed"),
+                "{} must declare its tier",
+                entry.id
+            );
         }
+    }
+
+    /// §260 Phase 6 — `trust` must survive the round trip through this struct.
+    ///
+    /// THE DEFECT THIS PINS: `fetch_registry` deserializes the live index into
+    /// `RegistryEntry` and Tauri re-serializes it to the frontend. `trust` was not a field,
+    /// so serde dropped it silently — every entry reached the marketplace as `trust:
+    /// undefined`, i.e. legacy, i.e. Install disabled. Publishing the field in `index.json`
+    /// fixed nothing on its own. Asserting deserialization alone would NOT have caught it
+    /// (unknown fields are ignored, so the old struct parsed the new JSON happily); it is
+    /// the re-serialize half that carries the bug.
+    #[test]
+    fn registry_entry_carries_trust_back_out() {
+        let json = r#"{"id":"p","name":"P","description":"d","version":"1.0.0",
+            "author":"a","license":"MIT","downloadUrl":"https://example.test/p.zip",
+            "checksum":"ab","capabilities":["events"],"trust":"sandboxed",
+            "engines":{"baram":">=0.4.0"}}"#;
+        let entry: RegistryEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.trust.as_deref(), Some("sandboxed"));
+
+        let back = serde_json::to_value(&entry).unwrap();
+        assert_eq!(back["trust"], "sandboxed", "the frontend must see the tier");
+
+        // A legacy entry stays legacy rather than acquiring a default tier: the key is
+        // absent, not `null`, so `!entry.trust` in the frontend is the whole test.
+        let legacy: RegistryEntry =
+            serde_json::from_str(&json.replace(r#""trust":"sandboxed","#, "")).unwrap();
+        assert_eq!(legacy.trust, None);
+        assert!(
+            serde_json::to_value(&legacy)
+                .unwrap()
+                .get("trust")
+                .is_none(),
+            "an absent tier must not be serialized as null"
+        );
     }
 }

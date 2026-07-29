@@ -28,7 +28,13 @@ function parseArgs(argv) {
     }
     args[key.slice(2)] = value;
   }
-  for (const required of ["index", "manifest", "zip-name", "checksum", "base-url"]) {
+  for (const required of [
+    "index",
+    "manifest",
+    "zip-name",
+    "checksum",
+    "base-url",
+  ]) {
     if (!args[required]) fail(`missing --${required}`);
   }
   return args;
@@ -42,8 +48,18 @@ const MANIFEST_REQUIRED = [
   "author",
   "license",
   "capabilities",
+  // §260 Phase 6 — REQUIRED, and a release fails without it. `trust` was missing from
+  // this list until Phase 6, so every published entry lacked it; Phase 5 reads a
+  // `trust`-less entry as legacy and disables Install, which made the whole live
+  // registry un-installable. A manifest without `trust` is already invalid for the
+  // loader (`validateManifest`), so an index entry without one can only describe a
+  // plugin nobody can install — failing here is the only outcome that tells anyone.
+  "trust",
   "engines",
 ];
+
+/** The two tiers of §260. Kept as a literal list so an unknown value cannot ship. */
+const TRUST_VALUES = ["sandboxed", "trusted"];
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.length > 0;
@@ -61,22 +77,42 @@ if (!/^[a-z0-9][a-z0-9.-]*\.zip$/.test(args["zip-name"])) {
 
 const manifest = JSON.parse(readFileSync(args.manifest, "utf8"));
 for (const field of MANIFEST_REQUIRED) {
-  if (manifest[field] === undefined) fail(`manifest missing required field: ${field}`);
+  if (manifest[field] === undefined)
+    fail(`manifest missing required field: ${field}`);
 }
 
-if (!isNonEmptyString(manifest.id) || !/^[a-z0-9][a-z0-9-]*$/.test(manifest.id)) {
-  fail("manifest field 'id' must be a non-empty string matching /^[a-z0-9][a-z0-9-]*$/");
+if (
+  !isNonEmptyString(manifest.id) ||
+  !/^[a-z0-9][a-z0-9-]*$/.test(manifest.id)
+) {
+  fail(
+    "manifest field 'id' must be a non-empty string matching /^[a-z0-9][a-z0-9-]*$/",
+  );
 }
 for (const field of ["name", "description", "author", "license"]) {
   if (!isNonEmptyString(manifest[field])) {
     fail(`manifest field '${field}' must be a non-empty string`);
   }
 }
-if (!isNonEmptyString(manifest.version) || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
-  fail("manifest field 'version' must be a string matching /^\\d+\\.\\d+\\.\\d+$/");
+if (
+  !isNonEmptyString(manifest.version) ||
+  !/^\d+\.\d+\.\d+$/.test(manifest.version)
+) {
+  fail(
+    "manifest field 'version' must be a string matching /^\\d+\\.\\d+\\.\\d+$/",
+  );
 }
-if (!Array.isArray(manifest.capabilities) || !manifest.capabilities.every(isNonEmptyString)) {
+if (
+  !Array.isArray(manifest.capabilities) ||
+  !manifest.capabilities.every(isNonEmptyString)
+) {
   fail("manifest field 'capabilities' must be an array of non-empty strings");
+}
+if (!TRUST_VALUES.includes(manifest.trust)) {
+  fail(
+    `manifest field 'trust' must be one of ${TRUST_VALUES.map((t) => `"${t}"`).join(", ")}` +
+      ` (got ${JSON.stringify(manifest.trust)})`,
+  );
 }
 if (
   typeof manifest.engines !== "object" ||
@@ -84,19 +120,26 @@ if (
   Array.isArray(manifest.engines) ||
   !Object.values(manifest.engines).every(isNonEmptyString)
 ) {
-  fail("manifest field 'engines' must be a plain object whose values are non-empty strings");
+  fail(
+    "manifest field 'engines' must be a plain object whose values are non-empty strings",
+  );
 }
 if (manifest.icon !== undefined && !isNonEmptyString(manifest.icon)) {
   fail("manifest field 'icon' must be a non-empty string when present");
 }
 if (
   manifest.keywords !== undefined &&
-  (!Array.isArray(manifest.keywords) || !manifest.keywords.every(isNonEmptyString))
+  (!Array.isArray(manifest.keywords) ||
+    !manifest.keywords.every(isNonEmptyString))
 ) {
-  fail("manifest field 'keywords' must be an array of non-empty strings when present");
+  fail(
+    "manifest field 'keywords' must be an array of non-empty strings when present",
+  );
 }
 
-const baseUrl = args["base-url"].endsWith("/") ? args["base-url"] : `${args["base-url"]}/`;
+const baseUrl = args["base-url"].endsWith("/")
+  ? args["base-url"]
+  : `${args["base-url"]}/`;
 
 const entry = {
   id: manifest.id,
@@ -108,6 +151,10 @@ const entry = {
   downloadUrl: `${baseUrl}plugins/${args["zip-name"]}`,
   checksum: args.checksum,
   capabilities: manifest.capabilities,
+  // §260 Phase 5 collects consent as (trust, capabilities) against the REGISTRY entry and
+  // then refuses to persist a download that exceeds it, so both halves must be here: an
+  // entry carrying capabilities but no trust is exactly the legacy shape Install refuses.
+  trust: manifest.trust,
   engines: manifest.engines,
 };
 if (manifest.icon !== undefined) entry.icon = manifest.icon;
