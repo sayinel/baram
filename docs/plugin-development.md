@@ -175,7 +175,7 @@ my-plugin/
 
 ```json
 {
-  "id": "baram-word-count",
+  "id": "my-word-count",
   "name": "Word Count",
   "description": "Displays word and character count in the status bar",
   "version": "1.0.0",
@@ -183,11 +183,15 @@ my-plugin/
   "license": "MIT",
   "main": "dist/index.mjs",
   "engines": {
-    "baram": ">=0.3.0"
+    "baram": ">=0.5.0"
   },
+  "trust": "sandboxed",
   "capabilities": ["editor:readonly", "events", "statusbar"],
+  "contributions": {
+    "statusBar": [{ "id": "count", "text": "— words" }]
+  },
   "keywords": ["word", "count", "statistics"],
-  "repository": "https://github.com/user/baram-word-count",
+  "repository": "https://github.com/user/my-word-count",
   "homepage": "https://example.com"
 }
 ```
@@ -885,17 +889,18 @@ Two further things the seed is **not**:
 
 ```json
 {
-  "id": "baram-word-count",
+  "id": "my-word-count",
   "name": "Word Count",
   "description": "Displays word and character count",
   "version": "1.0.0",
   "author": "Your Name",
   "license": "MIT",
-  "downloadUrl": "https://github.com/user/baram-word-count/releases/download/v1.0.0/baram-word-count-1.0.0.zip",
+  "downloadUrl": "https://github.com/user/my-word-count/releases/download/v1.0.0/my-word-count-1.0.0.zip",
   "checksum": "sha256-hash-of-zip",
   "capabilities": ["editor:readonly", "events", "statusbar"],
+  "trust": "sandboxed",
   "keywords": ["word", "count"],
-  "engines": { "baram": ">=0.3.0" }
+  "engines": { "baram": ">=0.5.0" }
 }
 ```
 

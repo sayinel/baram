@@ -133,6 +133,24 @@ function normalizeIndex(index: RegistryIndex): RegistryIndex {
       // arguments only, so the usual `const { trust: _x, ...rest }` omission is an error.
       const legacy = { ...entry };
       delete legacy.trust;
+      // §260 Phase 6 code review round 2 (two LOWs, one cause). WHY the entry was demoted, so
+      // the marketplace can say something true: the existing copy reads "predates Baram's
+      // plugin trust model… ask the author to declare a trust tier", which for an
+      // unknown-CAPABILITY entry tells the author to do what they already did, and points the
+      // user away from the likely remedy (this build is older than the registry — update
+      // Baram). Until now that distinction existed only in the `logger.warn` above.
+      legacy.demotedBecause = unknownTier
+        ? "unknown-tier"
+        : "unknown-capability";
+      // …and the unknown capability STRINGS go, because `PluginCard`/`PluginDetail` render each
+      // capability as a badge label. M3's principle — registry-authored prose must not reach a
+      // trusted surface — was only half applied while legacy entries stayed listed. The entry
+      // cannot be installed, so a badge for a capability this build cannot name buys nothing.
+      if (unknownCapabilities.length > 0) {
+        legacy.capabilities = entry.capabilities.filter((cap) =>
+          VALID_CAPABILITIES.includes(cap),
+        );
+      }
       return legacy;
     }),
   };

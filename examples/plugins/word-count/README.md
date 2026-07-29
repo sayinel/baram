@@ -35,7 +35,10 @@ declared, so the manifest and the code have to agree.
 
 A major version because the tier changed: an existing v1 install is a pre-`trust` record the
 app will not auto-run, so updating is a re-consent rather than a patch. `engines.baram` is
-`>=0.4.0` — the sandboxed runtime does not exist before it.
+`>=0.5.0` — the sandboxed runtime has never shipped in a release before that, so no earlier
+build can run this plugin. Note that Baram does not currently *enforce* `engines`: it validates
+the field's presence and never compares versions, so the floor is a statement to a human
+reading the manifest, not a gate.
 
 ### Known difference: the count is of the markdown source
 

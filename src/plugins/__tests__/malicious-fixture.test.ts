@@ -342,9 +342,24 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
       "malicious-fixture",
       "sandbox-smoke",
     ]);
+    // §260 Phase 6 code review round 2 — ANCHORED, not a word search. `\bfail\b` also matched
+    // `echo "::notice::$DIR" ;; # fail`, i.e. the word in a trailing comment. Round 1's guard
+    // pinned the call site because round 1's mutation changed the call site; this asserts the
+    // branch STARTS with the call.
     expect(block?.[2], "the matched branch must call `fail`, not warn").toMatch(
-      /\bfail\b/,
+      /^fail\s+"/,
     );
+
+    // …and `fail` itself must abort. THE MISS THAT MATTERED: the previous guard pinned the call
+    // site while `fail`'s definition one indirection up was free, so
+    // `fail() { echo "::warning::$1"; }` kept it green — and that neuters far more than this
+    // denylist. Every other check in this step routes through `fail` too: the tag↔manifest
+    // version match, the plugin-id regex, and `git merge-base --is-ancestor "$GITHUB_SHA"
+    // origin/main`, which is the "a tag must be on main" supply-chain control.
+    expect(
+      beforeBuild,
+      "fail() must abort the job, or every check in this step becomes advisory",
+    ).toMatch(/fail\(\)\s*\{[^}]*\bexit 1\b[^}]*\}/);
   });
 
   it("ships a single self-contained ESM with no build step", () => {

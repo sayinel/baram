@@ -6,6 +6,7 @@
 // decisions Phase 6 made about them.
 import type { PluginManifest, RegistryIndex } from "../types";
 
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -68,15 +69,52 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     // human, and the protection is the RELEASE ORDER — the app version carrying Phases 5-6
     // must ship before the plugin tag is pushed. Asserting the floor here at least keeps the
     // claim from silently naming a version that cannot run it.
-    // The floor is asserted as an exact value, NOT compared against `package.json`. An earlier
-    // version of this guard required the floor to be ahead of the app version, which would have
-    // broken the moment the app was bumped to 0.5.0 — a guard that fails on the very release it
-    // exists to wait for. The real invariant is a fixed historical fact: v0.4.1 was the last
-    // release shipped WITHOUT the sandboxed tier, so the floor must be above it.
-    expect(manifest.engines.baram).toBe(">=0.5.0");
-    // The seed describes the same plugin, so it must not claim a different floor.
+    // NOT compared against `package.json`: an earlier version of this guard required the floor
+    // to be ahead of the app version, which would have broken the moment the app was bumped to
+    // 0.5.0 — a guard that fails on the very release it exists to wait for.
+    //
+    // NOR pinned to an exact string (round-2 LOW): that demanded `>=0.5.0` forever, so
+    // legitimately raising the floor later — because the plugin starts using something added in
+    // 0.6.0 — would fail a test that would have to be "fixed" by reverting a correct change.
+    // The invariant is the fixed historical fact: v0.4.1 was the last release shipped WITHOUT the
+    // sandboxed tier, so the floor must be strictly above it.
+    const LAST_RELEASE_WITHOUT_THE_TIER = [0, 4, 1];
+    const parse = (range: string) =>
+      range
+        .replace(/^[^\d]*/, "")
+        .split(".")
+        .map(Number);
+    const floor = parse(manifest.engines.baram);
+    expect(
+      floor.length,
+      `engines.baram ${manifest.engines.baram} must name a full version`,
+    ).toBe(3);
+    // Plain lexicographic compare on [major, minor, patch] — no semver dependency, and simple
+    // enough to be obviously right.
+    const isAbove = (a: number[], b: number[]) =>
+      a[0] !== b[0] ? a[0] > b[0] : a[1] !== b[1] ? a[1] > b[1] : a[2] > b[2];
+    expect(
+      isAbove(floor, LAST_RELEASE_WITHOUT_THE_TIER),
+      `engines.baram ${manifest.engines.baram} must be above 0.4.1, the last release without ` +
+        "the sandboxed tier — any floor at or below it names a build that cannot run this plugin",
+    ).toBe(true);
+
+    // …and the SAME floor in all three places it is written. The README ships inside the release
+    // ZIP (`plugin-release.yml` packages `baram-plugin.json dist README.md`), so a stale copy
+    // there is a claim the user reads — round 2 found exactly that: the manifest said `>=0.5.0`
+    // while the README still told users `>=0.4.0`, and nothing compared them.
     const entry = seed().plugins.find((p) => p.id === manifest.id);
-    expect(entry?.engines.baram).toBe(manifest.engines.baram);
+    expect(entry?.engines.baram, "the seed must agree").toBe(
+      manifest.engines.baram,
+    );
+    expect(
+      read("word-count", "README.md"),
+      "the README ships in the ZIP, so it must not state a different floor",
+    ).toContain(manifest.engines.baram);
+    expect(
+      read("word-count", "README.md"),
+      "the README must not still name a superseded floor",
+    ).not.toContain(">=0.4.0");
   });
 
   it("addresses exactly the status-bar item it declares, through one constant", () => {
@@ -116,49 +154,63 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
   });
 
   it("ships a dist/ that was rebuilt from the current source", () => {
-    // §260 Phase 6 code review (M2) — the previous version of this asserted `getMarkdown()` and
-    // the three event names on `built`, which are strictly WEAKER than the same assertions on
-    // `source` and therefore could not detect divergence at all. Confirmed by the reviewer:
-    // dropping the `file:save` subscription and changing the status-bar template in
-    // `src/index.ts` WITHOUT rebuilding kept the whole suite green, while the comment claimed
-    // it was a staleness check.
+    // §260 Phase 6 code review round 2 (M2) — this test has now been wrong TWICE, in the same
+    // direction: it asserted a handful of extracted facts and called that "rebuilt". Round 1's
+    // version was strictly weaker than its source-side twin (edit + no rebuild stayed green);
+    // round 2's comparison of three facts still missed renaming `ITEM`, changing the word count
+    // to `length - 1`, and counting `trimmed.length` instead of `text.length` — all
+    // source-only edits that shipped a stale bundle. It also produced FALSE failures, because
+    // esbuild escapes above U+00FF as `\uNNNN` (not just `\xNN`), so localizing the separator
+    // and rebuilding correctly reported "stale".
     //
-    // The fix is symmetry: extract the same facts from both artifacts and compare them to each
-    // other, so any behavioural edit to the source that is not rebuilt fails here.
-    // esbuild escapes non-ASCII in string literals (`·` becomes `\xB7`), so the two artifacts
-    // differ by encoding alone. Decoded rather than stripped: a genuine change to the separator
-    // must still show up as a difference.
-    const decode = (text: string) =>
-      text.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex: string) =>
-        String.fromCharCode(parseInt(hex, 16)),
-      );
-    const extract = (raw: string) =>
-      ((text) => ({
-        // Every event it subscribes to, in order.
-        events: [...text.matchAll(/events\.on\(\s*"([^"]+)"/g)].map(
-          (m) => m[1],
+    // Comparing extracted facts cannot prove "rebuilt". So rebuild, and compare bytes. esbuild
+    // is a root devDependency, so no `npm ci` in the example is needed, and `absWorkingDir`
+    // reproduces the path comment esbuild embeds (`// src/index.ts`) — without it the output
+    // differs by that line alone.
+    const dir = resolve(EXAMPLES, "word-count");
+    // A version skew between the root esbuild and the one the example declares could change the
+    // output and fail this for a reason that has nothing to do with staleness. Say so instead.
+    const declared = (
+      JSON.parse(read("word-count", "package.json")) as {
+        devDependencies: { esbuild: string };
+      }
+    ).devDependencies.esbuild;
+    const rootVersion = (
+      JSON.parse(
+        readFileSync(
+          resolve(__dirname, "../../../node_modules/esbuild/package.json"),
+          "utf8",
         ),
-        // The status-bar text it writes, as a template literal.
-        template: /setStatusBarText\([^,]+,\s*(`[^`]*`)/.exec(text)?.[1],
-        // The word/char counting rule.
-        split: /split\((\/[^/]+\/[a-z]*)\)/.exec(text)?.[1],
-      }))(decode(raw));
+      ) as { version: string }
+    ).version;
+    expect(
+      rootVersion,
+      `the example declares esbuild ${declared} but the root has ${rootVersion}; ` +
+        "align them or this comparison is testing two different compilers",
+    ).toBe(declared.replace(/^[^\d]*/, ""));
 
-    const fromSource = extract(source);
-    const fromBuilt = extract(built);
-    // Sanity: the extraction must actually find things, or comparing two empties would pass.
-    expect(fromSource.events).toEqual([
-      "editor:ready",
-      "file:open",
-      "file:save",
-    ]);
-    expect(fromSource.template).toBeDefined();
-    expect(fromSource.split).toBeDefined();
+    // Built in a CHILD PROCESS, not in-process: esbuild's `buildSync` refuses to run under
+    // vitest's jsdom environment ("your JavaScript environment is broken" — it depends on
+    // synchronous child-process semantics jsdom does not provide). Same approach as
+    // `registry-index-script.test.ts`, which runs the release script the way CI does.
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `const {buildSync}=require("esbuild");` +
+          `process.stdout.write(buildSync({absWorkingDir:process.argv[1],entryPoints:["src/index.ts"],` +
+          `bundle:true,format:"esm",write:false}).outputFiles[0].text)`,
+        dir,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.stderr, "the rebuild itself must succeed").toBe("");
+    const fresh = result.stdout;
 
     expect(
-      fromBuilt,
+      fresh,
       "dist/index.mjs is stale — run `npm run build` in examples/plugins/word-count and commit it",
-    ).toEqual(fromSource);
+    ).toBe(built);
   });
 
   it("exports activate and NOT deactivate", () => {
@@ -197,6 +249,49 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     expect([...(entry?.capabilities ?? [])].sort()).toEqual(
       [...manifest.capabilities].sort(),
     );
+  });
+});
+
+describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () => {
+  // §260 Phase 6 code review round 2, pre-existing finding: the guide's headline
+  // `baram-plugin.json` example omitted `trust` — which the same document calls required — and
+  // both examples used `engines.baram: ">=0.3.0"`, the class of claim H1 ruled false. An author
+  // copying either got something `validateManifest` rejects. Nothing compared the prose to the
+  // validator, so this guards the examples themselves rather than the sentence about them.
+  const guide = readFileSync(
+    resolve(__dirname, "../../../docs/plugin-development.md"),
+    "utf8",
+  );
+  const jsonBlocks = [...guide.matchAll(/```json\n([\s\S]*?)```/g)].map((m) =>
+    JSON.parse(m[1]),
+  ) as Record<string, unknown>[];
+
+  it("has manifest examples, and every one of them validates", () => {
+    // A manifest example is one naming an entry point; a registry entry names a download.
+    const manifests = jsonBlocks.filter(
+      (b) => "main" in b && "id" in b,
+    ) as unknown as PluginManifest[];
+    // Sanity: if the extraction found nothing, the loop below would pass vacuously.
+    expect(manifests.length).toBeGreaterThan(0);
+    for (const m of manifests) {
+      expect(
+        invalidFields(m),
+        `the example for "${m.id}" must validate`,
+      ).toEqual([]);
+    }
+  });
+
+  it("has registry-entry examples that declare a tier", () => {
+    const entries = jsonBlocks.filter((b) => "downloadUrl" in b);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const e of entries) {
+      // An entry without one is exactly the legacy shape Install refuses, so an example of it
+      // teaches an author to publish something nobody can install.
+      expect(
+        e.trust,
+        `the entry example for "${String(e.id)}" needs a tier`,
+      ).toBe("sandboxed");
+    }
   });
 });
 

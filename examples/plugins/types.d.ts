@@ -243,6 +243,16 @@ export interface RegistryEntry {
     author: string;
     capabilities: PluginCapability[];
     checksum: string;
+    /**
+     * §260 Phase 6 — why `fetchRegistryIndex` stripped this entry's tier, when it did.
+     *
+     * NOT a registry field: it is set locally by `normalizeIndex` and exists so the marketplace
+     * can explain the right remedy. An `unknown-tier` entry really may predate the trust model
+     * ("ask the author"); an `unknown-capability` entry usually means the registry is NEWER than
+     * this build, where the remedy is the opposite direction ("update Baram"). Absent for a
+     * genuinely legacy entry, which carried no tier to begin with.
+     */
+    demotedBecause?: "unknown-capability" | "unknown-tier";
     description: string;
     downloads?: number;
     downloadUrl: string;

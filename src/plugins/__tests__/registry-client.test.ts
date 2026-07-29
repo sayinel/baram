@@ -89,6 +89,43 @@ describe("fetchRegistryIndex normalizes the trust tier (§260 Phase 6)", () => {
     expect(plugins[0]).not.toHaveProperty("trust");
   });
 
+  // §260 Phase 6 code review round 2 (two LOWs, one cause). The reason drives the user-facing
+  // remedy — an unknown capability usually means the registry is newer than the app, so "ask the
+  // author to declare a tier" points the wrong way. And the unknown strings must not survive into
+  // `entry.capabilities`, because the card and detail view render each capability as a badge
+  // label: registry-authored prose on screen is what M3 set out to stop.
+  //
+  // TWO tests, not one with two `load` calls: the second call would be served from the cache the
+  // first one wrote, so it would assert on the first entry. (The first draft did exactly that and
+  // failed — which is the cache guard working.)
+  it("records an unknown TIER as the demotion reason", async () => {
+    const [tier] = await load(
+      entry({ id: "weird-tier", trust: "semi-trusted" as never }),
+    );
+    expect(tier.demotedBecause).toBe("unknown-tier");
+  });
+
+  it("records an unknown CAPABILITY, and drops the unknown strings", async () => {
+    const [cap] = await load(
+      entry({
+        capabilities: ["events", "reads nothing, fully offline" as never],
+        id: "liar",
+      }),
+    );
+    expect(cap.demotedBecause).toBe("unknown-capability");
+    expect(cap.capabilities).toEqual(["events"]);
+  });
+
+  it("leaves a genuinely legacy entry with no demotion reason", async () => {
+    // It was never demoted — it arrived without a tier — and the original message is right
+    // for it. A reason here would send the user to "update Baram" for a plugin that really
+    // does predate the trust model.
+    const legacy = entry({ id: "old" });
+    delete legacy.trust;
+    const [normalized] = await load(legacy);
+    expect(normalized.demotedBecause).toBeUndefined();
+  });
+
   it("accepts an entry whose capabilities are all real", async () => {
     // The complement — otherwise "strip everything" would pass the test above.
     const plugins = await load(

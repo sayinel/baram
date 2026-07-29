@@ -56,6 +56,23 @@ jobs:
           PLUGIN_ID="$(node -p "require('./$MANIFEST').id")"
           [[ "$PLUGIN_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
             || fail "manifest id '$PLUGIN_ID' must match ^[a-z0-9][a-z0-9-]*$"
+          # §260 Phase 6 code review (H1) — the app must not be BEHIND the floor the plugin
+          # declares. `engines.baram` is validated nowhere at install time (the frontend only
+          # checks that the field is a non-empty string), so publishing a plugin whose floor the
+          # shipped app does not meet gives those users an enabled Install for something that
+          # throws on activate — and destroys a working older version on update.
+          #
+          # ‼️ CAVEAT: `package.json` is bumped when the release is PREPARED, and the GitHub
+          # release is published by hand afterwards. So this proves "the app version has been
+          # bumped to at least the floor", not "that version is in users' hands". Strictly
+          # better than nothing; the ordering itself is still a human step (see the phase 6
+          # spec §7).
+          APP_VERSION="$(node -p "require('./package.json').version")"
+          FLOOR="$(node -p "(require('./$MANIFEST').engines.baram||'').replace(/^[^0-9]*/,'')")"
+          [[ -n "$FLOOR" ]] || fail "manifest engines.baram is missing or names no version"
+          LOWEST="$(printf '%s\n%s\n' "$APP_VERSION" "$FLOOR" | sort -V | head -n1)"
+          [[ "$LOWEST" == "$FLOOR" ]] \
+            || fail "app version $APP_VERSION is below this plugin's engines.baram floor $FLOOR — release the app first"
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || fail "tag commit $GITHUB_SHA is not on main"
           {
