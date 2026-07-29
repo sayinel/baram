@@ -2,12 +2,22 @@
   "id": "baram-word-count",
   "name": "Word Count",
   "description": "Shows the current document's word and character count in the status bar.",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "author": "Baram",
   "license": "Apache-2.0",
   "main": "dist/index.mjs",
-  "engines": { "baram": ">=0.3.0" },
+  "engines": { "baram": ">=0.4.0" },
+  "trust": "sandboxed",
   "capabilities": ["editor:readonly", "events", "statusbar"],
+  "contributions": {
+    "statusBar": [
+      {
+        "id": "count",
+        "text": "— words",
+        "tooltip": "Words and characters in the current document (markdown source)"
+      }
+    ]
+  },
   "icon": "🔢",
   "keywords": ["word", "count", "statistics"]
 }

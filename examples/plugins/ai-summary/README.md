@@ -1,5 +1,21 @@
 # AI Summary
 
+> **Not published, and `trust: "trusted"` (§260 Phase 6).** This plugin renders a Shadow-DOM
+> sidebar panel and a settings tab — arbitrary DOM in the main realm — which only the trusted
+> tier can do. `PluginContributions` has no declarative `sidebar` member yet, and the
+> sandboxed tier has nowhere to display a summary (`showNotification` is transient,
+> `setStatusBarText` is capped at 64 characters), so it cannot be ported until that
+> contribution exists.
+>
+> It was therefore **withdrawn from the registry index**: shipping it as a *published trusted*
+> plugin would teach users to click through the full-trust warning for something as ordinary
+> as summarising a document, which is the opposite of what that warning is for. It stays here
+> as the trusted tier's reference and dev-loads normally. The published v1.0.0 ZIP remains
+> downloadable (the registry keeps versions immutable); it is simply no longer indexed.
+>
+> Declaring `trust` at all is what makes it loadable: `validateManifest` rejects a manifest
+> without it, so before this change the example could not even be dev-loaded.
+
 Advanced Baram plugin example. Adds a Shadow-DOM sidebar panel with a
 "Summarize" button that sends the current document to the app's configured
 AI provider and shows the result, plus a Shadow-DOM settings tab for
