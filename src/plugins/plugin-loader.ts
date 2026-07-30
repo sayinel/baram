@@ -469,9 +469,17 @@ export class PluginLoader {
       // records are on real users' disks and throw here on EVERY startup, with no update path
       // to fix them. Separated so the message can state the remedy; see
       // `legacyInstallMessage`.
+      //
+      // NOT for a dev-folder load (`!opts.isDev`), which is the re-review's MEDIUM-1. A dev
+      // load is the author's own working copy: it was never installed, is not on the Installed
+      // tab (dev plugins are a separate store, rendered by `PluginDeveloperSection`), and is
+      // not in the marketplace — so every clause of the remedy is false for it. And this throw
+      // is the author's ONLY feedback about a missing tier, because the dev-add path validates
+      // in Rust (`read_manifest_at` → `validate_manifest`), which does not check `trust`. The
+      // schema text is the actionable message there, so it is kept.
       throw new Error(
-        isLegacyManifest(rawManifest)
-          ? legacyInstallMessage()
+        !opts.isDev && isLegacyManifest(rawManifest)
+          ? legacyInstallMessage(rawManifest)
           : `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
     }

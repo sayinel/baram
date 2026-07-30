@@ -73,7 +73,9 @@ describe("Installed tab surfaces the load error text", () => {
 
   it("shows the whole sentence, not just an Error chip", () => {
     usePluginStore.setState({
-      pluginErrors: { "baram-ai-summary": legacyInstallMessage() },
+      pluginErrors: {
+        "baram-ai-summary": legacyInstallMessage(legacyInstall.manifest),
+      },
     });
     openInstalledTab();
 
@@ -90,11 +92,13 @@ describe("Installed tab surfaces the load error text", () => {
     // and PluginCard is never rendered on this tab — the button here is "Remove". Advice
     // naming an absent control sends the user looking for something that is not there.
     usePluginStore.setState({
-      pluginErrors: { "baram-ai-summary": legacyInstallMessage() },
+      pluginErrors: {
+        "baram-ai-summary": legacyInstallMessage(legacyInstall.manifest),
+      },
     });
     openInstalledTab();
 
-    const named = /Remove/.exec(legacyInstallMessage());
+    const named = /Remove/.exec(legacyInstallMessage(legacyInstall.manifest));
     expect(named, "the message must name a control").not.toBeNull();
     expect(screen.getByRole("button", { name: named![0] })).toBeInTheDocument();
   });

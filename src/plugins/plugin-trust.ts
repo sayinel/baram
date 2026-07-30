@@ -37,13 +37,25 @@ export function isLegacyManifest(
  * for a plugin whose entry has been withdrawn the sentence pointed at a button on a screen
  * the user could not reach, from text that was not displayed there either. Advice naming the
  * wrong control is worse than no advice: it makes the user look for something absent.
+ *
+ * It takes the MANIFEST rather than no argument, for the reason `legacyEntryMessage` takes the
+ * entry: an absent tier and an UNRECOGNISED one need opposite remedies, and `isLegacyManifest`
+ * cannot tell them apart — it is `pluginTrustOf(...) === null`, so a tier introduced by a later
+ * Baram is "legacy" too. Telling the user a manifest from the future "predates the trust model"
+ * points them at the author when the fix is to update the app. `demotedBecause` (`types.ts`)
+ * exists to remove exactly this conflation on the registry side; a no-argument function here
+ * would have reintroduced it on the installed side.
  */
-export function legacyInstallMessage(): string {
-  return (
-    "This plugin was installed before Baram's plugin trust model, so it can no longer be " +
-    "loaded. Use Remove on the Installed tab — then, if it is still available in the " +
-    "marketplace, install it again to review what it is allowed to do."
-  );
+export function legacyInstallMessage(
+  manifest: Pick<PluginManifest, "trust">,
+): string {
+  // Present but not a tier this build knows → the manifest is NEWER than the app.
+  return (manifest as { trust?: unknown }).trust !== undefined
+    ? "This plugin declares a trust tier this version of Baram does not recognize, so it " +
+        "cannot be loaded. Update Baram and try again."
+    : "This plugin was installed before Baram's plugin trust model, so it can no longer be " +
+        "loaded. Use Remove on the Installed tab — then, if it is still available in the " +
+        "marketplace, install it again to review what it is allowed to do.";
 }
 
 export function pluginTrustOf(

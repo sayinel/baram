@@ -101,11 +101,18 @@ export function migratePluginPersistedState(
  * build at all, because release had plugins gated off (#259)". The v0.5.0 release review
  * disproved it: the #259 gate merged 2026-07-23, two days AFTER v0.4.1 was tagged, so it
  * shipped in NO release — v0.4.0 and v0.4.1 both had the marketplace open against the live
- * registry. The narrower claim does hold for the records this function actually writes to:
- * every v0.4.x install is trust-less (v0.4.1's `manifest.ts` had no `trust` at all) and so
- * takes the skip below, leaving only §260-era dev installs to backfill. Behaviour was
- * already correct; only the reasoning was wrong, and a wrong reason is what lets the next
- * change be made on a false premise.
+ * registry.
+ *
+ * Every v0.4.x install is nonetheless trust-less, so all of them take the skip below and only
+ * §260-era dev installs are backfilled. The mechanism is NOT that v0.4.1's `manifest.ts` did
+ * not validate `trust` — a validator that ignores a field does not strip it, and the second
+ * re-review round rightly called that a non-sequitur. It is that v0.4.1's **Rust**
+ * `PluginManifest` struct had no `trust` member at all, so `serde_json` dropped the field
+ * during the install hop and `PluginMarketplace` persisted the stripped object. `trust` could
+ * not survive into a v0.4.x record whatever the ZIP declared. That is the same
+ * deserialize-then-re-serialize erasure §260 already hit twice on the registry index — the
+ * reason to name it here is that a reader who spots the bogus validator argument would
+ * conclude the behaviour is unproven and "fix" it.
  */
 function backfillConsent(installedPlugins: unknown): void {
   if (installedPlugins === null || typeof installedPlugins !== "object") return;
