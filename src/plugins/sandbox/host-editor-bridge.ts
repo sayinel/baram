@@ -17,8 +17,10 @@ import { pluginSandboxStage } from "../../ipc/plugin-invoke";
 import { markdownToProsemirrorAsync } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
+  editorRefusalMessage,
   editorSurfaceBlocked,
   getEditorInstance,
+  NO_EDITOR_OPEN,
   type PluginEditorHandle,
   readSelection,
 } from "../extension-context";
@@ -154,12 +156,13 @@ export function createEditorRequestHandler(
     // (security review LOW-3). Distinguishable from "no editor is open" for the same
     // reason that one is distinguishable from an empty document.
     const blocked = surfaceBlocked();
-    if (blocked) throw new Error(`editor.${method}: ${blocked}`);
+    if (blocked) throw new Error(editorRefusalMessage(method, blocked));
     const instance = editor();
     if (!instance) {
-      // An error, not an empty document: a plugin that cannot tell "no editor" from "empty
-      // file" would happily overwrite the latter with the former's assumptions.
-      throw new Error(`editor.${method}: no editor is open`);
+      // Wording shared with the trusted tier (#322), so the two cannot come to describe the same
+      // refusal differently. Only the wording — the decision stays here, because this tier
+      // injects `surfaceBlocked`/`editor` for its tests.
+      throw new Error(editorRefusalMessage(method, NO_EDITOR_OPEN));
     }
     return instance;
   };
