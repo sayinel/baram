@@ -308,7 +308,7 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     // the remedy instead of the schema (`legacyInstallMessage`). What matters here is still
     // that the load is refused BEFORE any sandbox is started, asserted below.
     await expect(loader.loadPlugin("/p/demo", legacy)).rejects.toThrow(
-      /Uninstall it here/i,
+      /Use Remove on the Installed tab/i,
     );
     expect(f.start).not.toHaveBeenCalled();
     expect(pluginSandboxRegister).not.toHaveBeenCalled();

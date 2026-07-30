@@ -30,12 +30,19 @@ export function isLegacyManifest(
  * It does not promise a reinstall. `baram-ai-summary` was withdrawn in §260 Phase 6, so for
  * that plugin no republished version will ever exist — hence "if it is still available"
  * rather than "install it again".
+ *
+ * It names **Remove**, and names the Installed tab, because that is the control that exists:
+ * the first draft said "Uninstall it here", which is the PluginCard label. That card is
+ * rendered only by Browse, Updates and the detail view — all three iterate the REGISTRY — so
+ * for a plugin whose entry has been withdrawn the sentence pointed at a button on a screen
+ * the user could not reach, from text that was not displayed there either. Advice naming the
+ * wrong control is worse than no advice: it makes the user look for something absent.
  */
 export function legacyInstallMessage(): string {
   return (
     "This plugin was installed before Baram's plugin trust model, so it can no longer be " +
-    "loaded. Uninstall it here — then, if it is still available in the marketplace, " +
-    "install it again to review what it is allowed to do."
+    "loaded. Use Remove on the Installed tab — then, if it is still available in the " +
+    "marketplace, install it again to review what it is allowed to do."
   );
 }
 

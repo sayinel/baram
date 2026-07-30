@@ -56,9 +56,11 @@ describe("a plugin installed by v0.4.x tells the user what to do", () => {
 
     const message = await loadError(legacy);
 
-    // Uninstall is the ONLY way out, so the message has to name it. Asserted by the word the
-    // user has to act on rather than the whole sentence, which would pin the copy.
-    expect(message).toContain("Uninstall");
+    // Removing it is the ONLY way out, so the message has to name that control — by the label
+    // that actually exists on the Installed tab ("Remove"), which is where such a plugin is
+    // listed. Asserted by the word the user acts on rather than the whole sentence, which
+    // would pin the copy. `installed-error-text.test.tsx` pins the pairing to the real button.
+    expect(message).toContain("Remove");
     // …and it must NOT be the schema text. This is the assertion that fails if the special
     // case is removed: `validateManifest`'s own message is what shipped before, and it
     // describes the field rather than the fix.
@@ -74,7 +76,7 @@ describe("a plugin installed by v0.4.x tells the user what to do", () => {
     const message = await loadError(broken);
 
     expect(message).toContain("Invalid manifest for legacy-x");
-    expect(message).not.toContain("Uninstall");
+    expect(message).not.toContain("Use Remove");
   });
 
   it("loads a well-formed manifest, so neither branch is a blanket refusal", async () => {
