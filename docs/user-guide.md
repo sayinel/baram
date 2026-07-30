@@ -634,8 +634,8 @@ Navigate between recently visited locations:
 
 | Action     | macOS          | Windows/Linux |
 | ---------- | -------------- | ------------- |
-| Go Back    | `Ctrl+-`       | `Alt+Left`    |
-| Go Forward | `Ctrl+Shift+-` | `Alt+Right`   |
+| Go Back    | `Cmd+[`        | `Ctrl+[`      |
+| Go Forward | `Cmd+]`        | `Ctrl+]`      |
 
 ### Bookmarks
 

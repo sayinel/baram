@@ -101,8 +101,8 @@ shared with the built-in image/SVG viewer.
 | Action                | macOS            | Windows / Linux  |
 | --------------------- | ---------------- | ---------------- |
 | Quick Switcher        | `Cmd+K`          | `Ctrl+K`         |
-| Navigate Back         | `Ctrl+-`         | `Alt+Left`       |
-| Navigate Forward      | `Ctrl+Shift+-`   | `Alt+Right`      |
+| Navigate Back         | `Cmd+[`          | `Ctrl+[`         |
+| Navigate Forward      | `Cmd+]`          | `Ctrl+]`         |
 | Tab Switcher (MRU)    | `Ctrl+Tab`       | `Ctrl+Tab`       |
 | Previous Tab (MRU)    | `Ctrl+Shift+Tab` | `Ctrl+Shift+Tab` |
 | Bookmark Current File | `Cmd+D`          | `Ctrl+D`         |

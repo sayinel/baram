@@ -5,6 +5,26 @@ use std::collections::HashMap;
 
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
+/// Accelerators for Go > Back / Forward.
+///
+/// Named constants so the properties below can be asserted. These were `Ctrl+-` and
+/// `Ctrl+Shift+-`, which had two problems:
+///
+/// 1. A **literal** `Ctrl` rather than `CmdOrCtrl`, so macOS got `Ctrl+-` — not the platform
+///    convention, which is `Cmd+[` / `Cmd+]` (Safari, Finder, Xcode).
+/// 2. `use-zoom.ts` handles `(metaKey || ctrlKey) + "-"` on a window listener, so `Ctrl+-`
+///    fired **Back and Zoom Out together**, on every platform.
+///
+/// `BracketLeft`/`BracketRight` are muda `Code` names (its parser maps `"BRACKETLEFT" | "["`),
+/// chosen over the literal `[` because they name the physical key rather than a character that
+/// moves between keyboard layouts. Nothing else in the app binds either bracket.
+///
+/// ‼️ Do not give a menu item an accelerator whose key is `-`, `=` or `0` with only Cmd/Ctrl:
+/// those three belong to editor zoom (`use-zoom.ts`), which listens in the CAPTURE phase and
+/// does not stop propagation, so the two fire together rather than one winning.
+const GO_BACK_ACCELERATOR: &str = "CmdOrCtrl+BracketLeft";
+const GO_FORWARD_ACCELERATOR: &str = "CmdOrCtrl+BracketRight";
+
 /// Stores references to custom menu items and submenus for locale updates.
 pub struct MenuState {
     pub items: HashMap<String, tauri::menu::MenuItem<tauri::Wry>>,
@@ -187,9 +207,17 @@ pub fn build_menu(
         .id("insert_h3")
         .accelerator("CmdOrCtrl+3")
         .build(app)?;
+    // No accelerator, deliberately. This was `CmdOrCtrl+0`, which editor zoom owns as Reset
+    // Zoom — and unlike Back/Forward this handler MUTATES THE DOCUMENT
+    // (`setNode("paragraph")`), so resetting zoom with the caret in a heading silently turned it
+    // into body text and autosave persisted that.
+    //
+    // Removed rather than reassigned: it was never documented, so no user knew it existed, and
+    // the action is already reachable two other ways — the block handle's Turn into → Paragraph
+    // (`utils/toolbar/block-turn-into.ts`) and `Cmd+1`..`Cmd+6`, which toggle, so pressing the
+    // current level again returns the block to a paragraph. Nothing is lost.
     let insert_paragraph = MenuItemBuilder::new("Paragraph")
         .id("insert_paragraph")
-        .accelerator("CmdOrCtrl+0")
         .build(app)?;
     let insert_bold = MenuItemBuilder::new("Bold")
         .id("insert_bold")
@@ -336,11 +364,11 @@ pub fn build_menu(
         .build(app)?;
     let go_back = MenuItemBuilder::new("Back")
         .id("go_back")
-        .accelerator("Ctrl+-")
+        .accelerator(GO_BACK_ACCELERATOR)
         .build(app)?;
     let go_forward = MenuItemBuilder::new("Forward")
         .id("go_forward")
-        .accelerator("Ctrl+Shift+-")
+        .accelerator(GO_FORWARD_ACCELERATOR)
         .build(app)?;
     let go_switch_doc = MenuItemBuilder::new("Switch Document")
         .id("go_switch_doc")
@@ -551,4 +579,99 @@ pub fn build_menu(
     };
 
     Ok((menu, state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The three keys editor zoom owns (`use-zoom.ts`), as bare Cmd/Ctrl combinations.
+    ///
+    /// That handler listens on `window` in the CAPTURE phase and calls only `preventDefault()`
+    /// — it never stops propagation — so a menu accelerator on the same key does not lose the
+    /// race, it fires TOO. `Ctrl+-` did exactly that: Back and Zoom Out on one keystroke.
+    const ZOOM_OWNED_KEYS: [&str; 3] = ["-", "=", "0"];
+
+    fn key_of(accelerator: &str) -> &str {
+        accelerator.rsplit('+').next().unwrap_or(accelerator)
+    }
+
+    #[test]
+    fn go_accelerators_use_the_platform_modifier() {
+        // `CmdOrCtrl`, never a literal `Ctrl`: on macOS a literal `Ctrl` is not the convention
+        // for navigation, and it was how these two ended up on a zoom key in the first place.
+        //
+        // NOT asserted for every accelerator in this file: `Ctrl+Tab` (Switch Document) is
+        // deliberately literal, because `Cmd+Tab` is the macOS application switcher and cannot
+        // be claimed by an app. A blanket rule here would be wrong.
+        for accelerator in [GO_BACK_ACCELERATOR, GO_FORWARD_ACCELERATOR] {
+            assert!(
+                accelerator.starts_with("CmdOrCtrl+"),
+                "{accelerator} must use CmdOrCtrl so macOS gets Cmd"
+            );
+        }
+    }
+
+    /// This file's own source, so the check below covers EVERY menu item rather than the two
+    /// constants. Only possible now that Paragraph's `CmdOrCtrl+0` is gone; while it was there,
+    /// a whole-file rule could not have been written without failing.
+    const MENU_SOURCE: &str = include_str!("menu.rs");
+
+    /// Every accelerator written as a literal, plus the two that use constants.
+    fn all_accelerators() -> Vec<&'static str> {
+        let mut found: Vec<&str> = MENU_SOURCE
+            .split(".accelerator(\"")
+            .skip(1) // text before the first match
+            .filter_map(|rest| rest.split('"').next())
+            .collect();
+        // `.accelerator(GO_BACK_ACCELERATOR)` has no quote, so the split above cannot see it.
+        found.push(GO_BACK_ACCELERATOR);
+        found.push(GO_FORWARD_ACCELERATOR);
+        found
+    }
+
+    #[test]
+    fn accelerator_extraction_actually_finds_them() {
+        // ‼️ Without this, a broken extractor makes the rule below pass over an EMPTY list —
+        // the failure mode where a guard reports success having checked nothing. The bound is
+        // loose so adding or removing a menu item does not fail here, but a regex-level break
+        // (which yields 0 or 1) does.
+        let found = all_accelerators();
+        assert!(
+            found.len() >= 35,
+            "expected the menu to define at least 35 accelerators, extracted {}: {found:?}",
+            found.len()
+        );
+        assert!(
+            found.contains(&GO_BACK_ACCELERATOR),
+            "the constant-based accelerators must be included"
+        );
+    }
+
+    #[test]
+    fn no_accelerator_lands_on_a_key_editor_zoom_owns() {
+        // Applies to EVERY accelerator, and ignores the other modifiers on purpose:
+        // `use-zoom.ts` guards only `if (!e.metaKey && !e.ctrlKey) return;` and then switches on
+        // `e.key`, so it does NOT require Shift and Alt to be absent. `Alt+CmdOrCtrl+0` would
+        // collide just as `CmdOrCtrl+0` did — which is why moving Paragraph to `Alt+Cmd+0` was
+        // rejected rather than chosen.
+        for accelerator in all_accelerators() {
+            let key = key_of(accelerator);
+            assert!(
+                !ZOOM_OWNED_KEYS.contains(&key),
+                "{accelerator} lands on '{key}', which editor zoom also handles — \
+                 both fire on one keystroke, because the zoom listener is in the capture \
+                 phase and does not stop propagation"
+            );
+        }
+    }
+
+    #[test]
+    fn key_of_reads_the_key_not_a_modifier() {
+        // Guards the helper the two assertions above depend on: if it returned a modifier the
+        // zoom check would pass vacuously for every accelerator.
+        assert_eq!(key_of("CmdOrCtrl+BracketLeft"), "BracketLeft");
+        assert_eq!(key_of("Ctrl+Shift+-"), "-");
+        assert_eq!(key_of("CmdOrCtrl+0"), "0");
+    }
 }

@@ -231,7 +231,7 @@ When you rename a file in the file tree (press `F2`), all wikilinks pointing to 
 
 ### How do I navigate between recently viewed files?
 
-Use `Ctrl+-` (macOS) or `Alt+Left` (Windows/Linux) to go back, and `Ctrl+Shift+-` or `Alt+Right` to go forward. This works like browser navigation history.
+Use `Cmd+[` (macOS) or `Ctrl+[` (Windows/Linux) to go back, and `Cmd+]` / `Ctrl+]` to go forward. This works like browser navigation history.
 
 ### How do I bookmark files?
 

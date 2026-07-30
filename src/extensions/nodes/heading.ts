@@ -114,8 +114,15 @@ export const Heading = Node.create<HeadingOptions>({
         },
         {} as Record<string, () => boolean>,
       ),
-      "Mod-=": () => this.editor.commands.increaseHeadingLevel(),
-      "Mod--": () => this.editor.commands.decreaseHeadingLevel(),
+      // `Mod-=` / `Mod--` were bound here and never worked. `use-zoom.ts` listens on `window`
+      // in the CAPTURE phase for `(metaKey || ctrlKey) + = / - / 0`, so it ran first and zoomed;
+      // it calls only `preventDefault()`, which does not stop propagation, but ProseMirror does
+      // not consult `defaultPrevented` either — so the observable result was zoom, and the
+      // keystroke never reached heading level. Two doc tables promised users otherwise.
+      //
+      // `increaseHeadingLevel` / `decreaseHeadingLevel` are KEPT: they are real commands with
+      // their own tests, and leaving them lets a future customizable binding pick a key that is
+      // actually free. Only the dead keymap entries are gone.
     };
   },
 
