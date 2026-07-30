@@ -207,9 +207,17 @@ pub fn build_menu(
         .id("insert_h3")
         .accelerator("CmdOrCtrl+3")
         .build(app)?;
+    // No accelerator, deliberately. This was `CmdOrCtrl+0`, which editor zoom owns as Reset
+    // Zoom — and unlike Back/Forward this handler MUTATES THE DOCUMENT
+    // (`setNode("paragraph")`), so resetting zoom with the caret in a heading silently turned it
+    // into body text and autosave persisted that.
+    //
+    // Removed rather than reassigned: it was never documented, so no user knew it existed, and
+    // the action is already reachable two other ways — the block handle's Turn into → Paragraph
+    // (`utils/toolbar/block-turn-into.ts`) and `Cmd+1`..`Cmd+6`, which toggle, so pressing the
+    // current level again returns the block to a paragraph. Nothing is lost.
     let insert_paragraph = MenuItemBuilder::new("Paragraph")
         .id("insert_paragraph")
-        .accelerator("CmdOrCtrl+0")
         .build(app)?;
     let insert_bold = MenuItemBuilder::new("Bold")
         .id("insert_bold")
@@ -604,14 +612,56 @@ mod tests {
         }
     }
 
+    /// This file's own source, so the check below covers EVERY menu item rather than the two
+    /// constants. Only possible now that Paragraph's `CmdOrCtrl+0` is gone; while it was there,
+    /// a whole-file rule could not have been written without failing.
+    const MENU_SOURCE: &str = include_str!("menu.rs");
+
+    /// Every accelerator written as a literal, plus the two that use constants.
+    fn all_accelerators() -> Vec<&'static str> {
+        let mut found: Vec<&str> = MENU_SOURCE
+            .split(".accelerator(\"")
+            .skip(1) // text before the first match
+            .filter_map(|rest| rest.split('"').next())
+            .collect();
+        // `.accelerator(GO_BACK_ACCELERATOR)` has no quote, so the split above cannot see it.
+        found.push(GO_BACK_ACCELERATOR);
+        found.push(GO_FORWARD_ACCELERATOR);
+        found
+    }
+
     #[test]
-    fn go_accelerators_avoid_the_keys_editor_zoom_owns() {
-        for accelerator in [GO_BACK_ACCELERATOR, GO_FORWARD_ACCELERATOR] {
+    fn accelerator_extraction_actually_finds_them() {
+        // ‼️ Without this, a broken extractor makes the rule below pass over an EMPTY list —
+        // the failure mode where a guard reports success having checked nothing. The bound is
+        // loose so adding or removing a menu item does not fail here, but a regex-level break
+        // (which yields 0 or 1) does.
+        let found = all_accelerators();
+        assert!(
+            found.len() >= 35,
+            "expected the menu to define at least 35 accelerators, extracted {}: {found:?}",
+            found.len()
+        );
+        assert!(
+            found.contains(&GO_BACK_ACCELERATOR),
+            "the constant-based accelerators must be included"
+        );
+    }
+
+    #[test]
+    fn no_accelerator_lands_on_a_key_editor_zoom_owns() {
+        // Applies to EVERY accelerator, and ignores the other modifiers on purpose:
+        // `use-zoom.ts` guards only `if (!e.metaKey && !e.ctrlKey) return;` and then switches on
+        // `e.key`, so it does NOT require Shift and Alt to be absent. `Alt+CmdOrCtrl+0` would
+        // collide just as `CmdOrCtrl+0` did — which is why moving Paragraph to `Alt+Cmd+0` was
+        // rejected rather than chosen.
+        for accelerator in all_accelerators() {
             let key = key_of(accelerator);
             assert!(
                 !ZOOM_OWNED_KEYS.contains(&key),
                 "{accelerator} lands on '{key}', which editor zoom also handles — \
-                 both would fire on one keystroke"
+                 both fire on one keystroke, because the zoom listener is in the capture \
+                 phase and does not stop propagation"
             );
         }
     }
