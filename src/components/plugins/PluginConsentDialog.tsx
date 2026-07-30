@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 
 import type { PluginConsent } from "../../plugins/types";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { consentCovers } from "../../plugins/plugin-consent";
-import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
+import { capabilityLabel } from "./capability-label";
 
 interface PluginConsentDialogProps {
   /** What is being asked for now — a registry claim, never a downloaded manifest. */
@@ -33,6 +34,11 @@ interface PluginConsentDialogProps {
  * merely a description — it runs in the app's own realm and holds everything regardless.
  * A user who reads only the list would draw exactly the wrong conclusion, so the danger
  * copy says so and the checkbox makes them pass through it.
+ *
+ * All copy comes from i18n. It used to be half-and-half — the title, buttons and danger
+ * text hardcoded in English while the capability lines came from `CAPABILITY_DESCRIPTIONS`,
+ * which is written in Korean — so the last screen before running third-party code showed
+ * two languages at once in either locale setting.
  */
 export function PluginConsentDialog({
   consent,
@@ -42,6 +48,7 @@ export function PluginConsentDialog({
   onConfirm,
   prior,
 }: PluginConsentDialogProps) {
+  const { t } = useTranslation();
   const [acknowledged, setAcknowledged] = useState(false);
   const trusted = consent.trust === "trusted";
   const installing = intent === "install";
@@ -59,37 +66,61 @@ export function PluginConsentDialog({
   return (
     <div className="plugin-consent-overlay">
       <div aria-modal="true" className="plugin-consent" role="dialog">
-        <h3 className="plugin-consent__title">
-          {installing ? "Install" : "Update"} “{name}”?
-        </h3>
+        {/*
+         * Only the BODY scrolls. When the whole dialog was the scroll container, the
+         * acknowledgement checkbox and both buttons sat inside it: seven capabilities pushed
+         * the buttons below the fold at 1280x800, thirteen hid 288px of the dialog, and
+         * macOS overlay scrollbars gave no hint that anything was there. A consent dialog
+         * whose Cancel button cannot be seen is the worst possible version of this screen.
+         * Same header/body/actions split as `.migration-dialog-body`.
+         */}
+        <div className="plugin-consent__body">
+          <h3 className="plugin-consent__title">
+            {t(
+              installing
+                ? "plugin.consent.title.install"
+                : "plugin.consent.title.update",
+              { name },
+            )}
+          </h3>
 
-        {trusted && (
-          <div className="plugin-consent__danger" role="alert">
-            <strong>This plugin asks for full trust.</strong> It runs inside
-            Baram itself with no sandbox: it can read and write any file your
-            account can reach, contact any network host, and use every
-            credential the app holds. The capability list below describes what
-            it intends to do — it does not limit it.
-          </div>
-        )}
+          {trusted && (
+            <div className="plugin-consent__danger" role="alert">
+              <strong className="plugin-consent__danger-title">
+                {t("plugin.consent.fullTrust.title")}
+              </strong>
+              {t("plugin.consent.fullTrust.body")}
+            </div>
+          )}
 
-        <p className="plugin-consent__lead">
-          {consent.capabilities.length > 0
-            ? "It requests:"
-            : "It requests no capabilities."}
-        </p>
+          <p className="plugin-consent__lead">
+            {t(
+              consent.capabilities.length > 0
+                ? "plugin.consent.requests"
+                : "plugin.consent.requestsNone",
+            )}
+          </p>
 
-        <ul className="plugin-consent__caps">
-          {consent.capabilities.map((cap) => (
-            <li key={cap}>
-              {CAPABILITY_DESCRIPTIONS[cap] ?? cap}
-              {prior && !consentCovers(prior, cap) && (
-                <span className="plugin-consent__new"> NEW</span>
-              )}
-            </li>
-          ))}
-        </ul>
+          {consent.capabilities.length > 0 && (
+            <ul className="plugin-consent__caps">
+              {consent.capabilities.map((cap) => (
+                <li className="plugin-consent__cap" key={cap}>
+                  <span className="plugin-consent__cap-text">
+                    {capabilityLabel(cap, t)}
+                  </span>
+                  {prior && !consentCovers(prior, cap) && (
+                    <span className="plugin-consent__new">
+                      {t("plugin.consent.new")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
+        {/* Outside the scroll container on purpose — the gate and the decision must always
+            be on screen, however many capabilities the list holds. */}
         {trusted && (
           <label className="plugin-consent__ack">
             <input
@@ -97,7 +128,7 @@ export function PluginConsentDialog({
               onChange={(e) => setAcknowledged(e.target.checked)}
               type="checkbox"
             />
-            I understand this plugin is not sandboxed.
+            <span>{t("plugin.consent.ack")}</span>
           </label>
         )}
 
@@ -107,7 +138,7 @@ export function PluginConsentDialog({
             onClick={onCancel}
             type="button"
           >
-            Cancel
+            {t("plugin.consent.cancel")}
           </button>
           <button
             className="plugin-consent__confirm"
@@ -115,7 +146,11 @@ export function PluginConsentDialog({
             onClick={onConfirm}
             type="button"
           >
-            {installing ? "Install" : "Update and install"}
+            {t(
+              installing
+                ? "plugin.consent.confirm.install"
+                : "plugin.consent.confirm.update",
+            )}
           </button>
         </div>
       </div>

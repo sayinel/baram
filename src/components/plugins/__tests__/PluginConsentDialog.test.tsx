@@ -18,8 +18,11 @@ describe("PluginConsentDialog (§260 Phase 5)", () => {
         onConfirm={vi.fn()}
       />,
     );
-    expect(screen.getByText(/문서를 읽고 수정할 수 있습니다/)).toBeTruthy();
-    expect(screen.getByText(/네트워크 요청을 보낼 수 있습니다/)).toBeTruthy();
+    // Asserted in the ACTIVE locale (the store defaults to `en`). This used to assert the
+    // Korean strings from `CAPABILITY_DESCRIPTIONS`, which is how the mixed-language dialog
+    // stayed green: the test encoded the bug. `capability-i18n.test.tsx` covers both locales.
+    expect(screen.getByText(/Read and edit the document/)).toBeTruthy();
+    expect(screen.getByText(/Send network requests/)).toBeTruthy();
   });
 
   it("gates a trusted install behind an explicit acknowledgement", () => {
