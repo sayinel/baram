@@ -5,6 +5,26 @@ use std::collections::HashMap;
 
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
+/// Accelerators for Go > Back / Forward.
+///
+/// Named constants so the properties below can be asserted. These were `Ctrl+-` and
+/// `Ctrl+Shift+-`, which had two problems:
+///
+/// 1. A **literal** `Ctrl` rather than `CmdOrCtrl`, so macOS got `Ctrl+-` — not the platform
+///    convention, which is `Cmd+[` / `Cmd+]` (Safari, Finder, Xcode).
+/// 2. `use-zoom.ts` handles `(metaKey || ctrlKey) + "-"` on a window listener, so `Ctrl+-`
+///    fired **Back and Zoom Out together**, on every platform.
+///
+/// `BracketLeft`/`BracketRight` are muda `Code` names (its parser maps `"BRACKETLEFT" | "["`),
+/// chosen over the literal `[` because they name the physical key rather than a character that
+/// moves between keyboard layouts. Nothing else in the app binds either bracket.
+///
+/// ‼️ Do not give a menu item an accelerator whose key is `-`, `=` or `0` with only Cmd/Ctrl:
+/// those three belong to editor zoom (`use-zoom.ts`), which listens in the CAPTURE phase and
+/// does not stop propagation, so the two fire together rather than one winning.
+const GO_BACK_ACCELERATOR: &str = "CmdOrCtrl+BracketLeft";
+const GO_FORWARD_ACCELERATOR: &str = "CmdOrCtrl+BracketRight";
+
 /// Stores references to custom menu items and submenus for locale updates.
 pub struct MenuState {
     pub items: HashMap<String, tauri::menu::MenuItem<tauri::Wry>>,
@@ -336,11 +356,11 @@ pub fn build_menu(
         .build(app)?;
     let go_back = MenuItemBuilder::new("Back")
         .id("go_back")
-        .accelerator("Ctrl+-")
+        .accelerator(GO_BACK_ACCELERATOR)
         .build(app)?;
     let go_forward = MenuItemBuilder::new("Forward")
         .id("go_forward")
-        .accelerator("Ctrl+Shift+-")
+        .accelerator(GO_FORWARD_ACCELERATOR)
         .build(app)?;
     let go_switch_doc = MenuItemBuilder::new("Switch Document")
         .id("go_switch_doc")
@@ -551,4 +571,57 @@ pub fn build_menu(
     };
 
     Ok((menu, state))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The three keys editor zoom owns (`use-zoom.ts`), as bare Cmd/Ctrl combinations.
+    ///
+    /// That handler listens on `window` in the CAPTURE phase and calls only `preventDefault()`
+    /// — it never stops propagation — so a menu accelerator on the same key does not lose the
+    /// race, it fires TOO. `Ctrl+-` did exactly that: Back and Zoom Out on one keystroke.
+    const ZOOM_OWNED_KEYS: [&str; 3] = ["-", "=", "0"];
+
+    fn key_of(accelerator: &str) -> &str {
+        accelerator.rsplit('+').next().unwrap_or(accelerator)
+    }
+
+    #[test]
+    fn go_accelerators_use_the_platform_modifier() {
+        // `CmdOrCtrl`, never a literal `Ctrl`: on macOS a literal `Ctrl` is not the convention
+        // for navigation, and it was how these two ended up on a zoom key in the first place.
+        //
+        // NOT asserted for every accelerator in this file: `Ctrl+Tab` (Switch Document) is
+        // deliberately literal, because `Cmd+Tab` is the macOS application switcher and cannot
+        // be claimed by an app. A blanket rule here would be wrong.
+        for accelerator in [GO_BACK_ACCELERATOR, GO_FORWARD_ACCELERATOR] {
+            assert!(
+                accelerator.starts_with("CmdOrCtrl+"),
+                "{accelerator} must use CmdOrCtrl so macOS gets Cmd"
+            );
+        }
+    }
+
+    #[test]
+    fn go_accelerators_avoid_the_keys_editor_zoom_owns() {
+        for accelerator in [GO_BACK_ACCELERATOR, GO_FORWARD_ACCELERATOR] {
+            let key = key_of(accelerator);
+            assert!(
+                !ZOOM_OWNED_KEYS.contains(&key),
+                "{accelerator} lands on '{key}', which editor zoom also handles — \
+                 both would fire on one keystroke"
+            );
+        }
+    }
+
+    #[test]
+    fn key_of_reads_the_key_not_a_modifier() {
+        // Guards the helper the two assertions above depend on: if it returned a modifier the
+        // zoom check would pass vacuously for every accelerator.
+        assert_eq!(key_of("CmdOrCtrl+BracketLeft"), "BracketLeft");
+        assert_eq!(key_of("Ctrl+Shift+-"), "-");
+        assert_eq!(key_of("CmdOrCtrl+0"), "0");
+    }
 }
