@@ -401,6 +401,26 @@ export function createExtensionContext(
 }
 
 /**
+ * The reason given when there is no editor at all — as opposed to an editor holding an empty file.
+ *
+ * An error rather than an empty document, in BOTH tiers: a plugin that cannot tell the two apart
+ * reads `""`, transforms it, writes it back, and has emptied the user's file.
+ */
+export const NO_EDITOR_OPEN = "no editor is open";
+
+/**
+ * How every `editor.*` refusal is worded, in both tiers (#322).
+ *
+ * One home for the sentence rather than two call sites composing the same template — the reason
+ * `legacyEntryMessage` has one too. It is a formatter and not a "should I refuse?" predicate
+ * because the sandboxed tier injects its own `surfaceBlocked` and `editor` getters for tests, so
+ * only the wording can be shared, not the decision.
+ */
+export function editorRefusalMessage(method: string, reason: string): string {
+  return `editor.${method}: ${reason}`;
+}
+
+/**
  * Why the plugin editor surface is unusable right now, or `null` when the Tiptap document
  * really is the tab's content. See `editorSurfaceBlockedReason`.
  */
@@ -520,33 +540,55 @@ export function setEditorSurfaceBlocked(reason: null | string): void {
 }
 
 function createEditorAPI(readonly: boolean): EditorAPI {
+  /**
+   * The live editor, or a refusal — the trusted tier's twin of `host-editor-bridge`'s `live()`
+   * (#322). Every method used to consult only `editorInstance`, so all five stale-surface states
+   * reached it: source mode, a non-markdown tab, a progressive load, the deferred window at the
+   * start of a tab switch, and no tabs at all. In each one a read was silently STALE and a write
+   * silently DISCARDED — by the next save, the next source-mode toggle, or the pending
+   * `updateState`. A plugin doing read-modify-write lost the user's edits and the API reported
+   * success.
+   *
+   * ‼️ Throwing where it used to return `""` / `{from:0,to:0,text:""}` / nothing is a deliberate
+   * behaviour change, and the benign-looking defaults were the dangerous part: a plugin that
+   * cannot tell "no editor" from "empty file" reads `""`, transforms it, writes it back, and has
+   * emptied the document. The sandboxed tier made the same call in Phase 4b. The blast radius is
+   * plugin authors only — `plugin-release.yml` refuses to publish a non-sandboxed plugin, so no
+   * trusted plugin is installable from the registry.
+   */
+  const live = (method: string): NonNullable<typeof editorInstance> => {
+    // Surface FIRST, exactly as the sandboxed tier orders it: an editor instance stays mounted in
+    // source mode and on a non-markdown tab but does not hold the tab's content there, so
+    // answering from it returns a stale document and accepts a write the next save discards.
+    const blocked = editorSurfaceBlocked();
+    if (blocked) throw new Error(editorRefusalMessage(method, blocked));
+    if (!editorInstance)
+      throw new Error(editorRefusalMessage(method, NO_EDITOR_OPEN));
+    return editorInstance;
+  };
+
   return {
     getContent(): string {
-      if (!editorInstance) return "";
-      return editorInstance.getText();
+      return live("getContent").getText();
     },
     setContent(content: string): void {
       if (readonly)
         throw new Error("editor:readonly — setContent is not allowed");
-      if (!editorInstance) return;
+      const instance = live("setContent");
       (
-        editorInstance.commands as Record<
-          string,
-          (c: { content: string }) => void
-        >
+        instance.commands as Record<string, (c: { content: string }) => void>
       ).setContent({ content });
     },
     getSelection(): { from: number; text: string; to: number } {
-      if (!editorInstance) return { from: 0, to: 0, text: "" };
-      return readSelection(editorInstance);
+      return readSelection(live("getSelection"));
     },
     insertText(text: string): void {
       if (readonly)
         throw new Error("editor:readonly — insertText is not allowed");
-      if (!editorInstance) return;
-      (
-        editorInstance.commands as Record<string, (t: string) => void>
-      ).insertContent(text);
+      const instance = live("insertText");
+      (instance.commands as Record<string, (t: string) => void>).insertContent(
+        text,
+      );
     },
   };
 }
