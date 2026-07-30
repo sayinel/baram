@@ -1,6 +1,8 @@
 // §35 Quick Switcher — file search utilities
 import type { FileEntry } from "../stores/file/file";
 
+import { relativeToRoot } from "./path-utils";
+
 export interface FlatFile {
   name: string;
   path: string;
@@ -62,7 +64,6 @@ export function flattenFileTree(
   rootPath: string,
 ): FlatFile[] {
   const result: FlatFile[] = [];
-  const prefix = rootPath.endsWith("/") ? rootPath : rootPath + "/";
 
   function walk(entries: FileEntry[]) {
     for (const entry of entries) {
@@ -72,9 +73,10 @@ export function flattenFileTree(
         }
         continue;
       }
-      const relativePath = entry.path.startsWith(prefix)
-        ? entry.path.slice(prefix.length)
-        : entry.name;
+      // #306: the prefix used to be built by appending "/", so on Windows nothing matched and
+      // EVERY result fell back to `entry.name` — losing the directory part of every relative
+      // path in file search and the Quick Switcher.
+      const relativePath = relativeToRoot(entry.path, rootPath) ?? entry.name;
       result.push({ name: entry.name, path: entry.path, relativePath });
     }
   }

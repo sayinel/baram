@@ -20,7 +20,11 @@ import {
 } from "../../utils/file-search";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
-import { extractNamespace } from "../../utils/path-utils";
+import {
+  extractNamespace,
+  isUnderRoot,
+  relativeToRoot,
+} from "../../utils/path-utils";
 
 /** §56l Journal prefix filter prefixes */
 export type JournalPrefix = "d" | "j" | "n" | null;
@@ -33,16 +37,20 @@ export function filterByJournalPrefix(
   resolvedDir: string,
 ): FlatFile[] {
   if (!prefix || !resolvedDir) return files;
-  const base = resolvedDir.endsWith("/") ? resolvedDir : resolvedDir + "/";
   if (prefix === "j") {
-    return files.filter((f) => f.path.startsWith(base));
+    return files.filter((f) => isUnderRoot(f.path, resolvedDir));
   }
-  if (prefix === "d") {
-    return files.filter((f) => f.path.startsWith(base + "daily/"));
-  }
-  if (prefix === "n") {
-    return files.filter((f) => f.path.startsWith(base + "notes/"));
-  }
+  // #306: these were `base + "daily/"` / `base + "notes/"`, broken TWICE on Windows — the
+  // appended base separator matched nothing, and even past that a literal `daily/` cannot match
+  // `daily\`. Comparing against the normalised relative path removes both. The `n` case is a
+  // FOURTH site of this defect, in the same function; the issue listed three.
+  const inSubdirectory = (files: FlatFile[], name: string) =>
+    files.filter((f) => {
+      const relative = relativeToRoot(f.path, resolvedDir);
+      return relative !== null && relative.startsWith(`${name}/`);
+    });
+  if (prefix === "d") return inSubdirectory(files, "daily");
+  if (prefix === "n") return inSubdirectory(files, "notes");
   return files;
 }
 
