@@ -1,5 +1,11 @@
-// §260 — plugin trust tier helpers. A manifest predating the tier model has no
-// `trust`; such plugins must not run until re-validated by the user.
+// §260 — plugin trust tier helpers. A manifest this build cannot place in a tier must not run
+// until re-validated by the user.
+//
+// `isLegacyManifest` is true for THREE different situations, and the header used to name only
+// the first: a manifest predating the tier model (no `trust`), one declaring a tier a LATER
+// Baram introduced, and one whose `trust` is simply not a tier name. They need different
+// remedies — ask the author, update the app, fix the manifest — which is what
+// `legacyInstallMessage` exists to sort out. "Legacy" is a slight misnomer kept for continuity.
 import type { PluginManifest, PluginTrust } from "./types";
 
 const TIERS: readonly PluginTrust[] = ["sandboxed", "trusted"];
@@ -48,14 +54,34 @@ export function isLegacyManifest(
  */
 export function legacyInstallMessage(
   manifest: Pick<PluginManifest, "trust">,
-): string {
-  // Present but not a tier this build knows → the manifest is NEWER than the app.
-  return (manifest as { trust?: unknown }).trust !== undefined
-    ? "This plugin declares a trust tier this version of Baram does not recognize, so it " +
-        "cannot be loaded. Update Baram and try again."
-    : "This plugin was installed before Baram's plugin trust model, so it can no longer be " +
-        "loaded. Use Remove on the Installed tab — then, if it is still available in the " +
-        "marketplace, install it again to review what it is allowed to do.";
+): null | string {
+  // Not this function's case at all: the tier is one this build enforces, so whatever else is
+  // wrong with the manifest is a schema problem. Gating here rather than at the call site keeps
+  // the whole discrimination in one readable place.
+  if (!isLegacyManifest(manifest)) return null;
+
+  const trust = (manifest as { trust?: unknown }).trust;
+  if (trust === undefined) {
+    return (
+      "This plugin was installed before Baram's plugin trust model, so it can no longer be " +
+      "loaded. Use Remove on the Installed tab — then, if it is still available in the " +
+      "marketplace, install it again to review what it is allowed to do."
+    );
+  }
+  // A non-empty STRING is a genuine declaration this build does not know — most likely a tier
+  // added by a later Baram, so updating is the remedy.
+  if (typeof trust === "string" && trust.length > 0) {
+    return (
+      "This plugin declares a trust tier this version of Baram does not recognize, so it " +
+      "cannot be loaded. Update Baram and try again."
+    );
+  }
+  // `null`, `""`, `0`, `false`, a number… present but not a declaration of anything. Found by
+  // probing after the fix for the unrecognized-tier case: EVERY one of these was being told to
+  // "Update Baram", which is a dead end — no version will ever accept `trust: null`. Returning
+  // null hands them the schema text ("trust is required and must be …"), which is the only
+  // actionable message. Same wrong-remedy class as the case above, in the other direction.
+  return null;
 }
 
 export function pluginTrustOf(

@@ -29,11 +29,7 @@ import {
 import { validateManifest } from "./manifest";
 import { grantableCapabilities } from "./plugin-consent";
 import { declaredSettingsFor } from "./plugin-settings";
-import {
-  isLegacyManifest,
-  legacyInstallMessage,
-  pluginTrustOf,
-} from "./plugin-trust";
+import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import { watchPluginSettings } from "./sandbox/host-settings-bridge";
@@ -477,10 +473,14 @@ export class PluginLoader {
       // is the author's ONLY feedback about a missing tier, because the dev-add path validates
       // in Rust (`read_manifest_at` → `validate_manifest`), which does not check `trust`. The
       // schema text is the actionable message there, so it is kept.
+      // `legacyInstallMessage` returns null when it has nothing better to say than the schema
+      // — a real tier, or a `trust` that is present but not a tier name at all (`null`, `""`,
+      // a number), where "update Baram" would be a dead end. The whole discrimination lives
+      // there; this call site only decides that a DEV load never gets it.
+      const remedy = opts.isDev ? null : legacyInstallMessage(rawManifest);
       throw new Error(
-        !opts.isDev && isLegacyManifest(rawManifest)
-          ? legacyInstallMessage(rawManifest)
-          : `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+        remedy ??
+          `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
     }
 

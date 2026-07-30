@@ -62,6 +62,20 @@ function openInstalledTab(): void {
   fireEvent.click(screen.getByRole("button", { name: /^Installed / }));
 }
 
+/**
+ * The remedy for this fixture, asserted non-null.
+ *
+ * `legacyInstallMessage` returns `null` when it has nothing better to say than the schema text
+ * (a real tier, or a `trust` present but meaningless). This fixture's tier is ABSENT, so a null
+ * here would mean the function stopped recognising the very case this file is about — worth
+ * failing on rather than rendering the string "null".
+ */
+function remedy(): string {
+  const message = legacyInstallMessage(legacyInstall.manifest);
+  expect(message, "an absent tier must produce the remedy").not.toBeNull();
+  return message!;
+}
+
 describe("Installed tab surfaces the load error text", () => {
   beforeEach(() => {
     usePluginStore.setState({
@@ -74,7 +88,7 @@ describe("Installed tab surfaces the load error text", () => {
   it("shows the whole sentence, not just an Error chip", () => {
     usePluginStore.setState({
       pluginErrors: {
-        "baram-ai-summary": legacyInstallMessage(legacyInstall.manifest),
+        "baram-ai-summary": remedy(),
       },
     });
     openInstalledTab();
@@ -93,12 +107,12 @@ describe("Installed tab surfaces the load error text", () => {
     // naming an absent control sends the user looking for something that is not there.
     usePluginStore.setState({
       pluginErrors: {
-        "baram-ai-summary": legacyInstallMessage(legacyInstall.manifest),
+        "baram-ai-summary": remedy(),
       },
     });
     openInstalledTab();
 
-    const named = /Remove/.exec(legacyInstallMessage(legacyInstall.manifest));
+    const named = /Remove/.exec(remedy());
     expect(named, "the message must name a control").not.toBeNull();
     expect(screen.getByRole("button", { name: named![0] })).toBeInTheDocument();
   });

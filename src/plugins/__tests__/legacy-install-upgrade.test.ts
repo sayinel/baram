@@ -104,6 +104,12 @@ describe("a plugin installed by v0.4.x tells the user what to do", () => {
     expect(message).toMatch(/if it is still available/i);
   });
 
+  it("returns null for a manifest whose tier is real, so it cannot mask a schema error", () => {
+    // The gate that keeps the complement case above working now that the discrimination lives
+    // inside this function rather than at the call site.
+    expect(legacyInstallMessage(VALID)).toBeNull();
+  });
+
   it("keeps the schema text for a DEV folder, whose author needs the field name", async () => {
     // Re-review MEDIUM-1. A dev load is the author's own working copy: never installed, not on
     // the Installed tab (dev plugins are a separate store), not in the marketplace — so every
@@ -121,6 +127,26 @@ describe("a plugin installed by v0.4.x tells the user what to do", () => {
 
     expect(message).toContain("Use Remove");
   });
+
+  it.each([
+    ["null", null],
+    ["an empty string", ""],
+    ["a number", 42],
+    ["false", false],
+  ])(
+    "gives the schema text when trust is %s — present, but not a declaration",
+    async (_label, trust) => {
+      // The sixth defect, found by probing the fix for the case below: all of these were told
+      // to "Update Baram", which is a dead end — no version will ever accept `trust: null`.
+      // Present-but-meaningless is a malformed manifest, and the schema text names the field
+      // and the two legal values, so it is the only actionable message.
+      const message = await loadError({ ...VALID, trust: trust as never });
+
+      expect(message).toContain("trust is required");
+      expect(message).not.toContain("Update Baram");
+      expect(message).not.toContain("Use Remove");
+    },
+  );
 
   it("tells an UNRECOGNIZED tier to update Baram, not that it is ancient", async () => {
     // Re-review MEDIUM-2, the fifth mutation. `isLegacyManifest` is
