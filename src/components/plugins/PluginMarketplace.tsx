@@ -92,6 +92,26 @@ const STYLES = {
     color: "var(--color-status-danger)",
     fontWeight: 500,
   } as React.CSSProperties,
+  /**
+   * The error TEXT, not just the badge. This tab used to show only an "Error" chip, and it is
+   * the one surface where a plugin with no registry entry appears at all — Browse, Updates and
+   * the detail view every one of them iterate the REGISTRY. So for a plugin whose entry has
+   * been withdrawn, this was the only place the user could see it and the only place that
+   * explained nothing.
+   */
+  installedPluginErrorText: {
+    margin: "6px 0 0",
+    padding: "6px 10px",
+    borderRadius: "6px",
+    backgroundColor: "var(--color-status-error-bg)",
+    border: "1px solid var(--color-status-error-border)",
+    color: "var(--color-status-danger)",
+    fontSize: "12px",
+    lineHeight: 1.5,
+    // A load failure can carry a checksum or a path — unbroken tokens that would
+    // otherwise push the row wider than the panel.
+    overflowWrap: "anywhere",
+  } as React.CSSProperties,
   installedPluginDescription: {
     margin: "2px 0 0",
     fontSize: "12px",
@@ -794,6 +814,11 @@ export function PluginMarketplace() {
                       <p style={STYLES.installedPluginDescription}>
                         {plugin.manifest.description}
                       </p>
+                      {pluginErrors[plugin.manifest.id] && (
+                        <p style={STYLES.installedPluginErrorText}>
+                          ⚠ {pluginErrors[plugin.manifest.id]}
+                        </p>
+                      )}
                     </div>
                     <div style={STYLES.installedRowActions}>
                       {updateAvailable[plugin.manifest.id] && (

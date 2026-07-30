@@ -29,7 +29,7 @@ import {
 import { validateManifest } from "./manifest";
 import { grantableCapabilities } from "./plugin-consent";
 import { declaredSettingsFor } from "./plugin-settings";
-import { pluginTrustOf } from "./plugin-trust";
+import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import { watchPluginSettings } from "./sandbox/host-settings-bridge";
@@ -459,8 +459,28 @@ export class PluginLoader {
     // 1. Validate manifest
     const validation = validateManifest(rawManifest);
     if (!validation.valid) {
+      // A trust-less manifest is not a malformed one — it is a plugin installed by v0.4.0 or
+      // v0.4.1, which shipped the marketplace open against the live registry with no `trust`
+      // requirement (the #259 gate merged after v0.4.1 was tagged, so it never shipped). Those
+      // records are on real users' disks and throw here on EVERY startup, with no update path
+      // to fix them. Separated so the message can state the remedy; see
+      // `legacyInstallMessage`.
+      //
+      // NOT for a dev-folder load (`!opts.isDev`), which is the re-review's MEDIUM-1. A dev
+      // load is the author's own working copy: it was never installed, is not on the Installed
+      // tab (dev plugins are a separate store, rendered by `PluginDeveloperSection`), and is
+      // not in the marketplace — so every clause of the remedy is false for it. And this throw
+      // is the author's ONLY feedback about a missing tier, because the dev-add path validates
+      // in Rust (`read_manifest_at` → `validate_manifest`), which does not check `trust`. The
+      // schema text is the actionable message there, so it is kept.
+      // `legacyInstallMessage` returns null when it has nothing better to say than the schema
+      // — a real tier, or a `trust` that is present but not a tier name at all (`null`, `""`,
+      // a number), where "update Baram" would be a dead end. The whole discrimination lives
+      // there; this call site only decides that a DEV load never gets it.
+      const remedy = opts.isDev ? null : legacyInstallMessage(rawManifest);
       throw new Error(
-        `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+        remedy ??
+          `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
     }
 

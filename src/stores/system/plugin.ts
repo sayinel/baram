@@ -90,14 +90,29 @@ export function migratePluginPersistedState(
  * §260 Phase 5 — synthesise `consent` for records installed before the consent step.
  *
  * Using the installed manifest as the baseline is honest rather than merely convenient:
- * these records went through the old capability confirm, and they can only exist in a
- * dev build at all, because release had plugins gated off (#259). Inventing a wider
- * consent would silence a real escalation; inventing a narrower one would prompt on
- * every update.
+ * these records went through the old capability confirm. Inventing a wider consent would
+ * silence a real escalation; inventing a narrower one would prompt on every update.
  *
  * A legacy (trust-less) manifest is skipped deliberately. There is no tier to record,
  * and `validateManifest` refuses to load it anyway, so "never consented" is both true
  * and the safe default — the next update asks.
+ *
+ * ‼️ This used to justify the baseline by claiming such records "can only exist in a dev
+ * build at all, because release had plugins gated off (#259)". The v0.5.0 release review
+ * disproved it: the #259 gate merged 2026-07-23, two days AFTER v0.4.1 was tagged, so it
+ * shipped in NO release — v0.4.0 and v0.4.1 both had the marketplace open against the live
+ * registry.
+ *
+ * Every v0.4.x install is nonetheless trust-less, so all of them take the skip below and only
+ * §260-era dev installs are backfilled. The mechanism is NOT that v0.4.1's `manifest.ts` did
+ * not validate `trust` — a validator that ignores a field does not strip it, and the second
+ * re-review round rightly called that a non-sequitur. It is that v0.4.1's **Rust**
+ * `PluginManifest` struct had no `trust` member at all, so `serde_json` dropped the field
+ * during the install hop and `PluginMarketplace` persisted the stripped object. `trust` could
+ * not survive into a v0.4.x record whatever the ZIP declared. That is the same
+ * deserialize-then-re-serialize erasure §260 already hit twice on the registry index — the
+ * reason to name it here is that a reader who spots the bogus validator argument would
+ * conclude the behaviour is unproven and "fix" it.
  */
 function backfillConsent(installedPlugins: unknown): void {
   if (installedPlugins === null || typeof installedPlugins !== "object") return;

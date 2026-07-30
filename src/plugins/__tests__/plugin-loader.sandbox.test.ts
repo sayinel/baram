@@ -22,6 +22,7 @@ import type { PluginManifest } from "../types";
 import { useEditorStore } from "../../stores/editor/editor";
 import { executePluginCommand } from "../extension-context";
 import { PluginLoader } from "../plugin-loader";
+import { legacyInstallMessage } from "../plugin-trust";
 import { usePluginUIStore } from "../plugin-ui-store";
 import {
   deliverSandboxEvent,
@@ -302,8 +303,19 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
 
     // validateManifest rejects a trust-less manifest before the tier branch; the
     // install UI surfaces such manifests for re-validation (§260 Phase 1).
+    //
+    // The MESSAGE changed for the v0.5.0 release, not the refusal this test is about: a
+    // trust-less record is a v0.4.x install rather than a malformed manifest, so it now names
+    // the remedy instead of the schema (`legacyInstallMessage`). What matters here is still
+    // that the load is refused BEFORE any sandbox is started, asserted below.
+    //
+    // Compared against the function's OWN output rather than a copied regex (re-review LOW-2).
+    // A literal here pins the wording from a second file — and it did: this line was rewritten
+    // twice in one session purely because the copy changed, which is exactly what
+    // `legacy-install-upgrade.test.ts` says it avoids. This still distinguishes THIS refusal
+    // from any other, because the string is specific; it just cannot drift.
     await expect(loader.loadPlugin("/p/demo", legacy)).rejects.toThrow(
-      /trust is required/i,
+      legacyInstallMessage(legacy),
     );
     expect(f.start).not.toHaveBeenCalled();
     expect(pluginSandboxRegister).not.toHaveBeenCalled();
