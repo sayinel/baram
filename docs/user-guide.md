@@ -227,8 +227,6 @@ Type `#` through `######` followed by a space to create headings H1–H6. You ca
 | Heading 2      | `Cmd+2`           | `Ctrl+2`            |
 | Heading 3      | `Cmd+3`           | `Ctrl+3`            |
 | Heading 4–6    | `Cmd+4` – `Cmd+6` | `Ctrl+4` – `Ctrl+6` |
-| Increase Level | `Cmd+=`           | `Ctrl+=`            |
-| Decrease Level | `Cmd+-`           | `Ctrl+-`            |
 
 #### Lists
 

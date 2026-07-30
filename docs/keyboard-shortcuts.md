@@ -67,8 +67,6 @@ Complete list of keyboard shortcuts available in Baram.
 | Heading 4              | `Cmd+4`       | `Ctrl+4`        |
 | Heading 5              | `Cmd+5`       | `Ctrl+5`        |
 | Heading 6              | `Cmd+6`       | `Ctrl+6`        |
-| Increase Heading Level | `Cmd+=`       | `Ctrl+=`        |
-| Decrease Heading Level | `Cmd+-`       | `Ctrl+-`        |
 | Code Block             | `Cmd+Alt+C`   | `Ctrl+Alt+C`    |
 | Math Block             | `Cmd+Shift+M` | `Ctrl+Shift+M`  |
 | Blockquote             | `Cmd+Shift+B` | `Ctrl+Shift+B`  |
@@ -89,6 +87,12 @@ Complete list of keyboard shortcuts available in Baram.
 | ------------------- | ------------- | --------------- |
 | Source Mode Toggle  | `Cmd+/`       | `Ctrl+/`        |
 | Toggle Left Sidebar | `Cmd+Shift+L` | `Ctrl+Shift+L`  |
+| Zoom In             | `Cmd+=`       | `Ctrl+=`        |
+| Zoom Out            | `Cmd+-`       | `Ctrl+-`        |
+| Reset Zoom          | `Cmd+0`       | `Ctrl+0`        |
+
+Zoom scales the editor content, not the whole window. Trackpad pinch works too, and the level is
+shared with the built-in image/SVG viewer.
 
 ## Navigation
 
