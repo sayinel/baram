@@ -29,7 +29,11 @@ import {
 import { validateManifest } from "./manifest";
 import { grantableCapabilities } from "./plugin-consent";
 import { declaredSettingsFor } from "./plugin-settings";
-import { pluginTrustOf } from "./plugin-trust";
+import {
+  isLegacyManifest,
+  legacyInstallMessage,
+  pluginTrustOf,
+} from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import { watchPluginSettings } from "./sandbox/host-settings-bridge";
@@ -459,8 +463,16 @@ export class PluginLoader {
     // 1. Validate manifest
     const validation = validateManifest(rawManifest);
     if (!validation.valid) {
+      // A trust-less manifest is not a malformed one — it is a plugin installed by v0.4.0 or
+      // v0.4.1, which shipped the marketplace open against the live registry with no `trust`
+      // requirement (the #259 gate merged after v0.4.1 was tagged, so it never shipped). Those
+      // records are on real users' disks and throw here on EVERY startup, with no update path
+      // to fix them. Separated so the message can state the remedy; see
+      // `legacyInstallMessage`.
       throw new Error(
-        `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+        isLegacyManifest(rawManifest)
+          ? legacyInstallMessage()
+          : `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
     }
 

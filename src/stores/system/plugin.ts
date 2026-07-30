@@ -90,14 +90,22 @@ export function migratePluginPersistedState(
  * §260 Phase 5 — synthesise `consent` for records installed before the consent step.
  *
  * Using the installed manifest as the baseline is honest rather than merely convenient:
- * these records went through the old capability confirm, and they can only exist in a
- * dev build at all, because release had plugins gated off (#259). Inventing a wider
- * consent would silence a real escalation; inventing a narrower one would prompt on
- * every update.
+ * these records went through the old capability confirm. Inventing a wider consent would
+ * silence a real escalation; inventing a narrower one would prompt on every update.
  *
  * A legacy (trust-less) manifest is skipped deliberately. There is no tier to record,
  * and `validateManifest` refuses to load it anyway, so "never consented" is both true
  * and the safe default — the next update asks.
+ *
+ * ‼️ This used to justify the baseline by claiming such records "can only exist in a dev
+ * build at all, because release had plugins gated off (#259)". The v0.5.0 release review
+ * disproved it: the #259 gate merged 2026-07-23, two days AFTER v0.4.1 was tagged, so it
+ * shipped in NO release — v0.4.0 and v0.4.1 both had the marketplace open against the live
+ * registry. The narrower claim does hold for the records this function actually writes to:
+ * every v0.4.x install is trust-less (v0.4.1's `manifest.ts` had no `trust` at all) and so
+ * takes the skip below, leaving only §260-era dev installs to backfill. Behaviour was
+ * already correct; only the reasoning was wrong, and a wrong reason is what lets the next
+ * change be made on a false premise.
  */
 function backfillConsent(installedPlugins: unknown): void {
   if (installedPlugins === null || typeof installedPlugins !== "object") return;

@@ -302,8 +302,13 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
 
     // validateManifest rejects a trust-less manifest before the tier branch; the
     // install UI surfaces such manifests for re-validation (§260 Phase 1).
+    //
+    // The MESSAGE changed for the v0.5.0 release, not the refusal this test is about: a
+    // trust-less record is a v0.4.x install rather than a malformed manifest, so it now names
+    // the remedy instead of the schema (`legacyInstallMessage`). What matters here is still
+    // that the load is refused BEFORE any sandbox is started, asserted below.
     await expect(loader.loadPlugin("/p/demo", legacy)).rejects.toThrow(
-      /trust is required/i,
+      /Uninstall it here/i,
     );
     expect(f.start).not.toHaveBeenCalled();
     expect(pluginSandboxRegister).not.toHaveBeenCalled();

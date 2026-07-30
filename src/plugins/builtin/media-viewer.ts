@@ -24,7 +24,10 @@ export const MEDIA_VIEWER_MANIFEST: PluginManifest = {
   author: "Baram",
   capabilities: ["viewer"],
   description: "이미지(PNG/JPEG/GIF/BMP/WebP)와 SVG 파일 뷰어 (내장)",
-  engines: { baram: ">=0.4.0" },
+  // v0.5.0 is the first release that contains this built-in at all (§69). `>=0.4.0` named
+  // two shipped releases that never had it — the same false-floor class §260 Phase 6 fixed
+  // for word-count, missed here because nothing validated a built-in's manifest.
+  engines: { baram: ">=0.5.0" },
   icon: "🖼️",
   id: "baram-media-viewer",
   license: "Apache-2.0",

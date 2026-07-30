@@ -2,12 +2,16 @@
 
 ## Supported Versions
 
-Security updates are provided for the latest released version of Baram.
+Security updates are provided for the **latest released version** of Baram, which
+is always the one on the
+[releases page](https://github.com/sayinel/baram/releases/latest). Fixes are not
+backported to earlier versions — please update before reporting, and confirm the
+issue still reproduces.
 
-| Version | Supported |
-| ------- | --------- |
-| 0.3.x   | ✅        |
-| < 0.3   | ❌        |
+This deliberately names no version number. The table that used to sit here was
+written once and never updated, so it still claimed 0.3.x while 0.4.x and 0.5.0
+were the current releases — telling reporters that supported versions were out of
+scope.
 
 ## Reporting a Vulnerability
 
