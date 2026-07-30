@@ -66,14 +66,35 @@
 
 .plugin-consent__body {
   display: flex;
-
-  /* `min-height: 0` is what lets a flex child actually shrink and scroll; without it the
-     body grows to its content and the overflow reappears on the dialog. */
   flex: 1;
   flex-direction: column;
   gap: 14px;
+
+  /* Belt-and-braces only. A re-review overrode this at runtime and measured no change:
+     flexbox's automatic minimum size applies solely to items whose `overflow` is `visible`,
+     and `overflow-y: auto` below already resolves `min-height: auto` to 0. Kept in case the
+     overflow ever changes; an earlier comment here wrongly called it load-bearing. */
   min-height: 0;
   overflow-y: auto;
+
+  /* Scroll shadows, so a truncated body never reads as "there is nothing more".
+     Without this the body simply ends: at the app's minimum window height a trusted
+     plugin's danger block fills it and `It requests:` is sliced at the edge with no rows
+     under it, which states the opposite of the truth about what is being agreed to. Even at
+     1280x800 a thirteen-capability list is cut mid-row with no affordance, and macOS overlay
+     scrollbars appear only while scrolling.
+     The two `local` layers scroll WITH the content and so mask the shadows at each end; the
+     two `scroll` layers stay put. Pure CSS — it needs no measurement and cannot desync from
+     the real scroll position the way a JS class toggle can. */
+  background:
+    linear-gradient(var(--color-bg-default) 30%, transparent) top / 100% 14px
+      no-repeat local,
+    linear-gradient(transparent, var(--color-bg-default) 70%) bottom / 100% 14px
+      no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 16%), transparent) top /
+      100% 6px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 16%), transparent)
+      bottom / 100% 6px no-repeat scroll;
 }
 
 .plugin-consent__title {

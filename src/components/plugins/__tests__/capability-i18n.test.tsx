@@ -39,15 +39,17 @@ const CAPS = Object.keys(CAPABILITY_DESCRIPTIONS) as PluginCapability[];
  * 12 of the 24 rendered strings evade it even in isolation ("Read and edit the document" has no
  * adjacent pair both ≥4 letters). Re-hardcoding both buttons in English left all 30 tests green.
  *
- * So: strip the known-Latin tokens, then require that NO Latin word of 3+ letters survives. That
- * catches Cancel, Install, Update and NEW.
+ * So: strip the known-Latin tokens, then require that NO Latin run of 2+ letters survives. That
+ * catches Cancel, Install, Update and NEW — and, at 2 rather than 3, also a Korean button
+ * mislabelled `OK` / `On` / `No`, which the re-review pointed out slipped through at 3+. The
+ * corpus passes at 2, so the tighter bound costs nothing.
  */
 function latinLeftovers(text: string): null | string[] {
   return text
     .replace(/Demo/g, "")
     .replace(/Baram/g, "")
     .replace(/AI|LLM/g, "")
-    .match(/[A-Za-z]{3,}/g);
+    .match(/[A-Za-z]{2,}/g);
 }
 
 /** Every shape the dialog can take, so no branch's copy goes unrendered. */
@@ -217,31 +219,53 @@ describe("the decision stays on screen", () => {
   );
 
   /**
-   * The DECLARATIONS inside one rule — windowed to the rule so a match elsewhere in the file
-   * cannot satisfy it, and stripped of comments so prose cannot either. The first version of
-   * this guard failed on the baseline because the rule's own comment explains that
-   * `overflow-y: auto` is deliberately absent, and the negative assertion matched the
-   * explanation. Same trap as asserting on a script that mentions the thing it does not do.
+   * The declarations of EVERY rule whose selector list contains `selector`, concatenated.
+   *
+   * Two traps had to be closed here, both the same shape — a naive search finds *a* match, not
+   * *the* match:
+   *   • The first version failed on the baseline, because it kept comments and a rule's own
+   *     comment explains that `overflow-y: auto` is deliberately absent. Comments are stripped.
+   *   • The second matched `.plugin-consent__cancel, .plugin-consent__confirm { … }` when asked
+   *     for `.plugin-consent__confirm`, since that shared rule's text also ends in
+   *     `.plugin-consent__confirm {` and comes first in the file. It reported the confirm button
+   *     had lost its background while the background was right there in its own rule.
+   *
+   * Collecting ALL matching rules is also the correct model: declarations for a selector cascade
+   * across rules, so "does this surface declare a background" is a question about the union.
    */
-  const block = (selector: string): string => {
-    const start = css.indexOf(`${selector} {`);
-    expect(start, `no rule for ${selector}`).toBeGreaterThan(-1);
-    return css
-      .slice(start, css.indexOf("}", start))
-      .replace(/\/\*[\s\S]*?\*\//g, "");
+  const declarationsFor = (selector: string): string => {
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const found: string[] = [];
+    for (const rule of bare.split("}")) {
+      const brace = rule.indexOf("{");
+      if (brace === -1) continue;
+      const selectors = rule
+        .slice(0, brace)
+        .split(",")
+        .map((s) => s.trim());
+      if (selectors.includes(selector)) found.push(rule.slice(brace + 1));
+    }
+    expect(found.length, `no rule for ${selector}`).toBeGreaterThan(0);
+    return found.join("\n");
   };
+  const block = declarationsFor;
 
   it("does not make the dialog itself scroll", () => {
     expect(block(".plugin-consent")).toContain("overflow: hidden");
     expect(block(".plugin-consent")).not.toContain("overflow-y: auto");
   });
 
-  it("makes the body the scroll container, and shrinkable", () => {
-    const body = block(".plugin-consent__body");
-    expect(body).toContain("overflow-y: auto");
-    // Without `min-height: 0` a flex child refuses to shrink, the body grows to its content,
-    // and the overflow reappears on the dialog — the same defect with the same symptom.
-    expect(body).toContain("min-height: 0");
+  it("makes the body the scroll container", () => {
+    // `overflow-y: auto` is the whole fix, and it is also what makes the body shrinkable:
+    // flexbox's automatic minimum size applies only to items whose `overflow` is `visible`, so
+    // a scroll container already resolves `min-height: auto` to 0.
+    //
+    // An earlier version of this test also asserted `min-height: 0` and called it load-bearing.
+    // The re-review overrode it at runtime and measured NO change — the assertion was inert and
+    // the comment overstated it. The declaration is kept in the CSS as belt-and-braces should
+    // the overflow ever change, but it is not asserted here, because a guard that cannot fail
+    // for the reason it claims is worse than no guard.
+    expect(block(".plugin-consent__body")).toContain("overflow-y: auto");
   });
 
   it("keeps the acknowledgement and the buttons outside the scrolled body", () => {
@@ -258,6 +282,41 @@ describe("the decision stays on screen", () => {
     expect(screen.getByRole("checkbox")).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toHaveLength(2);
   });
+
+  // The OTHER half of the original report — "it looked unstyled" — had no guard at all. The
+  // re-review demonstrated it: overriding `.plugin-consent__cancel, .plugin-consent__confirm`
+  // to `background: none; border: 0; padding: 0` turns both into bare text in the corner with
+  // zero button affordance, and all 3773 tests stay green. `audit:css-vars` cannot see it (it
+  // reports only UNDEFINED variables, and deleting a rule deletes its usages too) and stylelint
+  // checks syntax and order, not presence.
+  //
+  // These assert that the load-bearing declarations EXIST. That is a weaker claim than "it looks
+  // right" and is not a substitute for looking — but it is what stops the surfaces from being
+  // silently flattened again.
+  it.each([
+    [".plugin-consent__danger", ["background:", "border:"]],
+    [".plugin-consent__caps", ["background:", "border:"]],
+    [".plugin-consent__cap::before", ["background:"]],
+    [".plugin-consent__ack", ["background:", "border:"]],
+    [".plugin-consent__confirm", ["background:", "border:"]],
+    [".plugin-consent__cancel", ["border:"]],
+  ])("%s keeps the declarations that make it a surface", (selector, props) => {
+    const rule = block(selector);
+    for (const prop of props) {
+      expect(rule, `${selector} lost ${prop}`).toContain(prop);
+    }
+  });
+
+  it.each([".plugin-consent__cancel", ".plugin-consent__confirm"])(
+    "%s stays sized like a button",
+    (selector) => {
+      // `min-width` and `padding` are what stop them collapsing to their text. Both come from
+      // the shared rule, which `declarationsFor` now finds for either selector.
+      const rule = block(selector);
+      expect(rule).toContain("min-width:");
+      expect(rule).toContain("padding:");
+    },
+  );
 });
 
 describe("the capability badge renders in the app's language too", () => {

@@ -15,15 +15,29 @@ const EN = en as Record<string, string>;
 const KO = ko as Record<string, string>;
 
 /**
- * Keys whose value is legitimately identical in both locales: product and vendor names, a URL,
- * and a version arrow. Every entry here was already in the tree when this guard was written and
- * was reviewed one by one — none is an untranslated sentence. Enumerated rather than pattern-
- * matched so that adding one is a deliberate edit; a new copy-paste translation fails instead.
+ * Keys whose value is legitimately identical in both locales: product and vendor names,
+ * acronyms, a URL, and a version arrow. Enumerated rather than pattern-matched so that adding
+ * one is a deliberate edit; a new copy-paste translation fails instead.
+ *
+ * ‼️ This list is the ONLY exemption. It used to share that job with the `/[A-Za-z]{4,}/` filter
+ * in the check below, which silently exempted any en==ko value whose longest Latin word was
+ * three letters or fewer — five legitimate acronyms today, but it would have admitted On/Off/
+ * Cut/Tag tomorrow without appearing here. Those five are now listed explicitly and the filter
+ * is redundant rather than load-bearing.
+ *
+ * `settings.tab.vault` and `settings.tab.activitybar` were removed from this list rather than
+ * kept: allowlisting them cemented `Vault` and `Activity Bar` as untranslated while
+ * `recent.vaultBadge` said `볼트`, `home.newVault` said `vault`, and every sibling of the
+ * Activity Bar tab was translated. An allowlist must not become where untranslated labels go
+ * to die — they are translated now.
  */
 const SHARED_VALUES = new Set<string>([
   "about.copyright", // Copyright © 2026 Baram Team
+  "help.tab.faq", // FAQ
+  "keybindings.category.ai", // AI
   "keybindings.category.zettelkasten", // Zettel
   "menu.app", // Baram
+  "menu.help.faq", // FAQ
   "settings.activitybar.item.zettel", // Zettel
   "settings.ai.ollamaUrl", // Ollama URL
   "settings.ai.ollamaUrl.placeholder", // http://localhost:11434
@@ -31,8 +45,8 @@ const SHARED_VALUES = new Set<string>([
   "settings.ai.provider.gemini", // Google Gemini
   "settings.ai.provider.openai", // OpenAI
   "settings.general.zettelkasten", // Zettel
-  "settings.tab.activitybar", // Activity Bar
-  "settings.tab.vault", // Vault
+  "settings.panels.git", // Git
+  "settings.tab.ai", // AI
   "settings.workspace.preset.skills", // Skills
   "update.dialog.versionChange", // {current} → {available}
 ]);
@@ -63,10 +77,22 @@ describe("locale files are one-to-one", () => {
   it("has no ko value that is a verbatim copy of its en value", () => {
     // A copy-paste "translation" passes every existence check while the user still reads English.
     // Add a key to SHARED_VALUES only when the value is genuinely locale-independent.
+    //
+    // No length filter: every exemption is in SHARED_VALUES, so a two-letter one has to be
+    // listed like any other. `/[A-Za-z]/` still skips values with no Latin at all — a bare
+    // number or symbol is the same in both locales by definition.
     const copied = Object.keys(EN).filter(
-      (k) =>
-        !SHARED_VALUES.has(k) && EN[k] === KO[k] && /[A-Za-z]{4,}/.test(EN[k]),
+      (k) => !SHARED_VALUES.has(k) && EN[k] === KO[k] && /[A-Za-z]/.test(EN[k]),
     );
     expect(copied).toEqual([]);
+  });
+
+  it("has no stale SHARED_VALUES entry", () => {
+    // The other direction: an allowlisted key that has since been translated, or removed, stops
+    // documenting anything and quietly widens the exemption for whoever reuses the key name.
+    const stale = [...SHARED_VALUES].filter(
+      (k) => !(k in EN) || EN[k] !== KO[k],
+    );
+    expect(stale).toEqual([]);
   });
 });
