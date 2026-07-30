@@ -66,49 +66,61 @@ export function PluginConsentDialog({
   return (
     <div className="plugin-consent-overlay">
       <div aria-modal="true" className="plugin-consent" role="dialog">
-        <h3 className="plugin-consent__title">
-          {t(
-            installing
-              ? "plugin.consent.title.install"
-              : "plugin.consent.title.update",
-            { name },
+        {/*
+         * Only the BODY scrolls. When the whole dialog was the scroll container, the
+         * acknowledgement checkbox and both buttons sat inside it: seven capabilities pushed
+         * the buttons below the fold at 1280x800, thirteen hid 288px of the dialog, and
+         * macOS overlay scrollbars gave no hint that anything was there. A consent dialog
+         * whose Cancel button cannot be seen is the worst possible version of this screen.
+         * Same header/body/actions split as `.migration-dialog-body`.
+         */}
+        <div className="plugin-consent__body">
+          <h3 className="plugin-consent__title">
+            {t(
+              installing
+                ? "plugin.consent.title.install"
+                : "plugin.consent.title.update",
+              { name },
+            )}
+          </h3>
+
+          {trusted && (
+            <div className="plugin-consent__danger" role="alert">
+              <strong className="plugin-consent__danger-title">
+                {t("plugin.consent.fullTrust.title")}
+              </strong>
+              {t("plugin.consent.fullTrust.body")}
+            </div>
           )}
-        </h3>
 
-        {trusted && (
-          <div className="plugin-consent__danger" role="alert">
-            <strong className="plugin-consent__danger-title">
-              {t("plugin.consent.fullTrust.title")}
-            </strong>
-            {t("plugin.consent.fullTrust.body")}
-          </div>
-        )}
+          <p className="plugin-consent__lead">
+            {t(
+              consent.capabilities.length > 0
+                ? "plugin.consent.requests"
+                : "plugin.consent.requestsNone",
+            )}
+          </p>
 
-        <p className="plugin-consent__lead">
-          {t(
-            consent.capabilities.length > 0
-              ? "plugin.consent.requests"
-              : "plugin.consent.requestsNone",
-          )}
-        </p>
-
-        {consent.capabilities.length > 0 && (
-          <ul className="plugin-consent__caps">
-            {consent.capabilities.map((cap) => (
-              <li className="plugin-consent__cap" key={cap}>
-                <span className="plugin-consent__cap-text">
-                  {capabilityLabel(cap, t)}
-                </span>
-                {prior && !consentCovers(prior, cap) && (
-                  <span className="plugin-consent__new">
-                    {t("plugin.consent.new")}
+          {consent.capabilities.length > 0 && (
+            <ul className="plugin-consent__caps">
+              {consent.capabilities.map((cap) => (
+                <li className="plugin-consent__cap" key={cap}>
+                  <span className="plugin-consent__cap-text">
+                    {capabilityLabel(cap, t)}
                   </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                  {prior && !consentCovers(prior, cap) && (
+                    <span className="plugin-consent__new">
+                      {t("plugin.consent.new")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
+        {/* Outside the scroll container on purpose — the gate and the decision must always
+            be on screen, however many capabilities the list holds. */}
         {trusted && (
           <label className="plugin-consent__ack">
             <input

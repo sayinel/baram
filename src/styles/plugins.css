@@ -50,12 +50,30 @@
   max-width: calc(100vw - 32px);
   max-height: 76vh;
   padding: 22px 24px 18px;
-  overflow-y: auto;
+
+  /* NOT `overflow-y: auto`. The dialog itself must never be the scroll container — that put
+     the acknowledgement checkbox and both buttons inside the scrolled region, so a plugin
+     requesting seven capabilities pushed Cancel below the fold at 1280x800 and thirteen hid
+     288px, with macOS overlay scrollbars giving no hint. `.plugin-consent__body` scrolls
+     instead. */
+  overflow: hidden;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: 14px;
   box-shadow: var(--shadow-xl);
   animation: plugin-consent-rise 140ms ease-out;
+}
+
+.plugin-consent__body {
+  display: flex;
+
+  /* `min-height: 0` is what lets a flex child actually shrink and scroll; without it the
+     body grows to its content and the overflow reappears on the dialog. */
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .plugin-consent__title {
@@ -93,11 +111,17 @@
   align-items: baseline;
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-status-danger);
+
+  /* Deliberately NOT `--color-status-danger`. red-500 on the red-50/red-950 error surface
+     measures 3.44:1 in light and 4.16:1 in dark — under AA for 13px text, which made the
+     gravest sentence on the screen the least legible one. Primary text on the same surface
+     is 15.9:1 / 12.7:1; the ⚠ below carries the red instead. */
+  color: var(--color-text-primary);
 }
 
 .plugin-consent__danger-title::before {
   flex: none;
+  color: var(--color-status-danger);
   content: "⚠";
 }
 

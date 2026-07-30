@@ -13,29 +13,83 @@
 import type { PluginCapability } from "../../../plugins/types";
 
 import { render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import en from "../../../i18n/en.json";
 import ko from "../../../i18n/ko.json";
 import { CAPABILITY_DESCRIPTIONS } from "../../../plugins/types";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { PluginCapabilityBadge } from "../PluginCapabilityBadge";
 import { PluginConsentDialog } from "../PluginConsentDialog";
 
 /** Hangul syllables. Any match in the English UI is the bug this file is about. */
 const HANGUL = /[가-힣]/;
-/** A Latin letter run long enough to be prose rather than a capability id like `ai`. */
-const ENGLISH_PROSE = /[A-Za-z]{4,}\s+[A-Za-z]{4,}/;
 
 const CAPS = Object.keys(CAPABILITY_DESCRIPTIONS) as PluginCapability[];
 
-function renderDialog(): void {
+/**
+ * What is left after removing every string that is legitimately Latin in Korean copy: the plugin
+ * name, the product name, and the two acronyms the translations keep.
+ *
+ * The first version of this looked for `/[A-Za-z]{4,}\s+[A-Za-z]{4,}/` — two long adjacent words —
+ * and the review showed it was hollow. React emits no whitespace between sibling elements, so
+ * `textContent` is one unbroken run like `취소CancelInstall` with no space for `\s+` to match, and
+ * 12 of the 24 rendered strings evade it even in isolation ("Read and edit the document" has no
+ * adjacent pair both ≥4 letters). Re-hardcoding both buttons in English left all 30 tests green.
+ *
+ * So: strip the known-Latin tokens, then require that NO Latin word of 3+ letters survives. That
+ * catches Cancel, Install, Update and NEW.
+ */
+function latinLeftovers(text: string): null | string[] {
+  return text
+    .replace(/Demo/g, "")
+    .replace(/Baram/g, "")
+    .replace(/AI|LLM/g, "")
+    .match(/[A-Za-z]{3,}/g);
+}
+
+/** Every shape the dialog can take, so no branch's copy goes unrendered. */
+const SHAPES = [
+  {
+    intent: "install" as const,
+    label: "install / trusted",
+    trust: "trusted" as const,
+  },
+  {
+    intent: "install" as const,
+    label: "install / sandboxed",
+    trust: "sandboxed" as const,
+  },
+  {
+    intent: "update" as const,
+    label: "update / trusted",
+    trust: "trusted" as const,
+  },
+  {
+    intent: "update" as const,
+    label: "update / sandboxed",
+    trust: "sandboxed" as const,
+  },
+];
+
+function renderDialog(
+  shape: { intent: "install" | "update"; trust: "sandboxed" | "trusted" } = {
+    intent: "install",
+    trust: "trusted",
+  },
+  caps: PluginCapability[] = CAPS,
+  prior?: PluginCapability[],
+): void {
   render(
     <PluginConsentDialog
-      consent={{ capabilities: CAPS, trust: "trusted" }}
-      intent="install"
+      consent={{ capabilities: caps, trust: shape.trust }}
+      intent={shape.intent}
       name="Demo"
       onCancel={vi.fn()}
       onConfirm={vi.fn()}
+      prior={prior ? { capabilities: prior, trust: shape.trust } : undefined}
     />,
   );
 }
@@ -57,22 +111,14 @@ describe("every capability has translations in both locales", () => {
     expect(ko, `ko.json is missing ${key}`).toHaveProperty([key]);
   });
 
-  it("keeps en.json and ko.json at identical key sets", () => {
-    // No such guard existed, and the files were at exact parity by hand. Adding a key to one
-    // file only is the easiest way to reintroduce a mixed-language screen.
-    const enKeys = Object.keys(en).sort();
-    const koKeys = Object.keys(ko).sort();
-    expect(enKeys.filter((k) => !(k in ko))).toEqual([]);
-    expect(koKeys.filter((k) => !(k in en))).toEqual([]);
-  });
-
-  it("does not leave a ko value identical to its en value for the new keys", () => {
+  it("does not leave a ko value identical to its en value for the plugin keys", () => {
     // A copy-paste translation is worse than a missing one: the coverage guard above passes
-    // while the user still reads English. Applies to the prose keys, not to "NEW"/ids.
-    const prose = Object.keys(en).filter(
-      (k) => k.startsWith("plugin.capability.") || k === "plugin.consent.ack",
-    );
-    const untranslated = prose.filter(
+    // while the user still reads English. The app-wide version of this, plus the en/ko key-set
+    // parity check that used to live here, are in `src/i18n/__tests__/locale-parity.test.ts` —
+    // they are not plugin invariants and belong next to the files they constrain.
+    const pluginKeys = Object.keys(en).filter((k) => k.startsWith("plugin."));
+    expect(pluginKeys.length).toBeGreaterThan(20);
+    const untranslated = pluginKeys.filter(
       (k) =>
         (en as Record<string, string>)[k] === (ko as Record<string, string>)[k],
     );
@@ -81,32 +127,59 @@ describe("every capability has translations in both locales", () => {
 });
 
 describe("the dialog renders in the app's language", () => {
-  it("shows no Korean anywhere when the locale is English", () => {
-    useSettingsStore.setState({ locale: "en" });
-    renderDialog();
+  it.each(SHAPES)(
+    "shows no Korean in the English UI — $label",
+    ({ intent, trust }) => {
+      useSettingsStore.setState({ locale: "en" });
+      renderDialog({ intent, trust });
 
-    const dialog = screen.getByRole("dialog");
-    const text = dialog.textContent ?? "";
-    expect(text.length).toBeGreaterThan(100); // the dialog actually rendered
-    const offending = text.match(
-      new RegExp(`.{0,24}${HANGUL.source}.{0,24}`, "g"),
+      const text = screen.getByRole("dialog").textContent ?? "";
+      expect(text.length).toBeGreaterThan(60); // the dialog actually rendered
+      const offending = text.match(
+        new RegExp(`.{0,24}${HANGUL.source}.{0,24}`, "g"),
+      );
+      expect(offending, "Korean text in the English UI").toBeNull();
+    },
+  );
+
+  it.each(SHAPES)(
+    "shows no untranslated English in the Korean UI — $label",
+    ({ intent, trust }) => {
+      useSettingsStore.setState({ locale: "ko" });
+      renderDialog({ intent, trust });
+
+      const text = screen.getByRole("dialog").textContent ?? "";
+      expect(HANGUL.test(text)).toBe(true);
+      expect(
+        latinLeftovers(text),
+        "untranslated English in the Korean UI",
+      ).toBeNull();
+    },
+  );
+
+  it("translates the NEW marker, which only an update renders", () => {
+    // `prior` is what makes the marker appear, so no other case in this file reaches it — and
+    // `PluginConsentDialog.test.tsx` asserts the literal "NEW" under `en`, which would keep a
+    // hardcoded marker invisible twice over.
+    useSettingsStore.setState({ locale: "ko" });
+    renderDialog(
+      { intent: "update", trust: "sandboxed" },
+      ["editor", "ai"],
+      ["editor"],
     );
-    expect(offending, "Korean text in the English UI").toBeNull();
+
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[1].textContent).toContain("추가");
+    expect(latinLeftovers(rows[1].textContent ?? "")).toBeNull();
   });
 
-  it("shows no English prose when the locale is Korean", () => {
+  it("translates the no-capabilities line, which only an empty list renders", () => {
     useSettingsStore.setState({ locale: "ko" });
-    renderDialog();
+    renderDialog({ intent: "install", trust: "sandboxed" }, []);
 
     const text = screen.getByRole("dialog").textContent ?? "";
-    expect(HANGUL.test(text)).toBe(true);
-    // "Baram" and the capability ids are legitimately Latin, so this looks for PROSE — two
-    // long Latin words in a row — which is what an untranslated sentence looks like.
-    const leftovers = text
-      .replace(/Baram/g, "")
-      .replace(/AI|LLM/g, "")
-      .match(new RegExp(ENGLISH_PROSE.source, "g"));
-    expect(leftovers, "untranslated English prose in the Korean UI").toBeNull();
+    expect(text).toMatch(/요청하는 권한이 없습니다/);
+    expect(latinLeftovers(text)).toBeNull();
   });
 
   it("translates the title, including the plugin name, per locale", () => {
@@ -125,5 +198,87 @@ describe("the dialog renders in the app's language", () => {
     const alert = screen.getByRole("alert").textContent ?? "";
     expect(alert).toMatch(/제한하지는 않습니다/);
     expect(alert).not.toMatch(/does not limit it/);
+  });
+});
+
+describe("the decision stays on screen", () => {
+  // ‼️ LIMIT OF THIS GUARD, stated so nobody reads it as more than it is: jsdom has no layout, so
+  // no unit test here can detect that a button fell below the fold. The regression it exists for
+  // was measured in a browser — with the scroll on the dialog, seven capabilities pushed Cancel
+  // out of view at 1280x800 and thirteen hid 288px, with macOS overlay scrollbars giving no hint.
+  //
+  // So this asserts the STRUCTURE that fixes it: the dialog is not the scroll container, the body
+  // is, and the ack/actions are the dialog's own children rather than the body's. Moving the
+  // scroll back fails here; a subtler layout regression will not, and would need the Playwright
+  // suite.
+  const css = readFileSync(
+    resolve(__dirname, "../../../styles/plugins.css"),
+    "utf8",
+  );
+
+  /**
+   * The DECLARATIONS inside one rule — windowed to the rule so a match elsewhere in the file
+   * cannot satisfy it, and stripped of comments so prose cannot either. The first version of
+   * this guard failed on the baseline because the rule's own comment explains that
+   * `overflow-y: auto` is deliberately absent, and the negative assertion matched the
+   * explanation. Same trap as asserting on a script that mentions the thing it does not do.
+   */
+  const block = (selector: string): string => {
+    const start = css.indexOf(`${selector} {`);
+    expect(start, `no rule for ${selector}`).toBeGreaterThan(-1);
+    return css
+      .slice(start, css.indexOf("}", start))
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+  };
+
+  it("does not make the dialog itself scroll", () => {
+    expect(block(".plugin-consent")).toContain("overflow: hidden");
+    expect(block(".plugin-consent")).not.toContain("overflow-y: auto");
+  });
+
+  it("makes the body the scroll container, and shrinkable", () => {
+    const body = block(".plugin-consent__body");
+    expect(body).toContain("overflow-y: auto");
+    // Without `min-height: 0` a flex child refuses to shrink, the body grows to its content,
+    // and the overflow reappears on the dialog — the same defect with the same symptom.
+    expect(body).toContain("min-height: 0");
+  });
+
+  it("keeps the acknowledgement and the buttons outside the scrolled body", () => {
+    useSettingsStore.setState({ locale: "en" });
+    renderDialog({ intent: "install", trust: "trusted" });
+
+    const body = screen
+      .getByRole("dialog")
+      .querySelector(".plugin-consent__body");
+    expect(body).not.toBeNull();
+    expect(body?.querySelector(".plugin-consent__ack")).toBeNull();
+    expect(body?.querySelector(".plugin-consent__actions")).toBeNull();
+    // …and they exist at all, so the assertions above are not satisfied by absence.
+    expect(screen.getByRole("checkbox")).toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+  });
+});
+
+describe("the capability badge renders in the app's language too", () => {
+  // This had NO locale coverage: reverting `PluginCapabilityBadge`'s call site to
+  // `CAPABILITY_DESCRIPTIONS` left all 90 tests in the plugin component directory green. The
+  // badge shows these descriptions in the marketplace, so the defect was visible on a screen
+  // the user reaches before the dialog.
+  it("shows the English description, and no Korean, under en", () => {
+    useSettingsStore.setState({ locale: "en" });
+    render(<PluginCapabilityBadge capability="editor" showDescription />);
+
+    const badge = screen.getByTitle(/Read and edit the document/);
+    expect(HANGUL.test(badge.textContent ?? "")).toBe(false);
+  });
+
+  it("shows the Korean description under ko, in both the text and the tooltip", () => {
+    useSettingsStore.setState({ locale: "ko" });
+    render(<PluginCapabilityBadge capability="editor" showDescription />);
+
+    // The tooltip is the half a reader never sees in a screenshot, so it is asserted explicitly.
+    const badge = screen.getByTitle(/문서를 읽고 수정할 수 있습니다/);
+    expect(badge.textContent).toMatch(/문서를 읽고 수정할 수 있습니다/);
   });
 });
