@@ -66,6 +66,45 @@ export function isImageFile(path: string): boolean {
   return IMAGE_EXTENSIONS.has(ext);
 }
 
+/**
+ * Is `candidate` strictly inside the directory `root`?
+ *
+ * ‼️ Tests the BOUNDARY CHARACTER rather than building a prefix, which is the only shape that
+ * works on both platforms. Two others were tried and are wrong (§260 Phase 4a review I3, #306):
+ *
+ * - Appending `"/"` — on Windows both sides are backslash-delimited, so it matched NOTHING,
+ *   silently. Callers got "no files", not an error.
+ * - Inferring the separator from the path (`path.includes("\\") ? "\\" : "/"`) — fixes Windows
+ *   and breaks POSIX, where a backslash is a legal character in a directory name: a vault at
+ *   `/home/me/my\dir` infers `"\\"` and then never matches its own files.
+ *
+ * The boundary check is also what stops `/Users/me/work` matching `/Users/me/workspace/note.md`.
+ * "Strictly inside" — the root itself is not under itself; callers that accept equality test it.
+ */
+export function isUnderRoot(candidate: string, root: string): boolean {
+  const base = stripTrailingSeparators(root);
+  if (!base || !candidate.startsWith(base)) return false;
+  const boundary = candidate[base.length];
+  return boundary === "/" || boundary === "\\";
+}
+
+/**
+ * `candidate` expressed relative to `root`, or `null` when it is not inside.
+ *
+ * Separators in the result are normalised to `/` — deliberately, and not merely for tidiness:
+ * every consumer of a relative path in this app splits on `/` alone. `extractNamespace` is the
+ * clearest case, so on Windows a relative path of `sub\note.md` yielded no namespace at all.
+ * Returning `null` rather than a wrong string keeps a non-contained path from being silently
+ * sliced into nonsense.
+ */
+export function relativeToRoot(candidate: string, root: string): null | string {
+  if (!isUnderRoot(candidate, root)) return null;
+  return candidate
+    .slice(stripTrailingSeparators(root).length)
+    .replace(/^[/\\]+/, "")
+    .replace(/\\/g, "/");
+}
+
 /** Resolve name conflict by appending -1, -2, etc. */
 export function resolveNameConflict(
   fileName: string,
@@ -85,4 +124,16 @@ export function resolveNameConflict(
   } while (existingNames.has(candidate));
 
   return candidate;
+}
+
+/**
+ * Drop trailing path separators, so a root and a candidate can be compared at a boundary.
+ *
+ * The canonical implementation of that one rule: `contextRootOf` in `stores/context/context.ts`
+ * delegates here rather than keeping a second copy, because a stored root with two trailing
+ * slashes once made two comparisons disagree and ate the first character of a relative path
+ * (§260 Phase 4a security re-review LOW-4).
+ */
+export function stripTrailingSeparators(path: string): string {
+  return path.replace(/[/\\]+$/, "");
 }

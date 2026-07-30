@@ -13,6 +13,7 @@ import {
   updateContextLabel as ipcUpdateContextLabel,
 } from "../../ipc/context";
 import { logger } from "../../utils/logger";
+import { stripTrailingSeparators } from "../../utils/path-utils";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
@@ -106,7 +107,10 @@ interface ContextState {
  * security re-review, LOW-4). One rule, one place.
  */
 export function contextRootOf(path: string): string {
-  return path.replace(/[/\\]+$/, "");
+  // Delegates rather than repeating the regex: #306 needed the same rule in three more places,
+  // so it now lives in `path-utils` with the boundary helpers built on it. This name stays
+  // because callers read it as "the context's root".
+  return stripTrailingSeparators(path);
 }
 
 function generateId(): string {

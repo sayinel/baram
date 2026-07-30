@@ -1,6 +1,7 @@
 /**
  * §56 Journal / Daily Notes — utility functions
  */
+import { isUnderRoot, stripTrailingSeparators } from "../path-utils";
 
 /** Simple FileEntry-like type for migration functions */
 interface MigrationEntry {
@@ -320,8 +321,12 @@ export function isJournalPath(
   if (!filePath) return false;
   const dir = resolveJournalDir(rootPath, journalDir);
   if (!dir) return false;
-  const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-  return filePath === dir || filePath.startsWith(prefix);
+  // #306: the appended-separator prefix matched nothing on Windows, so this returned false for
+  // every journal note except an exact directory match — the calendar and Memories saw no
+  // entries at all. `journalDirectory` is a user-editable field, so the root may also carry
+  // trailing separators; comparing stripped forms covers that.
+  const root = stripTrailingSeparators(dir);
+  return filePath === root || isUnderRoot(filePath, root);
 }
 
 /** Resolve date aliases: "today" → "2026-02-27", "yesterday" → ... */
