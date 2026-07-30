@@ -513,5 +513,31 @@
   "htmlPreview.showSource": "Source",
   "htmlPreview.toggleTitle": "Toggle HTML preview / source",
 
-  "viewer.noPlugin": "No viewer plugin is enabled for this file type."
+  "viewer.noPlugin": "No viewer plugin is enabled for this file type.",
+
+  "plugin.consent.title.install": "Install \"{name}\"?",
+  "plugin.consent.title.update": "Update \"{name}\"?",
+  "plugin.consent.fullTrust.title": "This plugin asks for full trust.",
+  "plugin.consent.fullTrust.body": "It runs inside Baram itself with no sandbox: it can read and write any file your account can reach, contact any network host, and use every credential the app holds. The capability list below describes what it intends to do — it does not limit it.",
+  "plugin.consent.requests": "It requests:",
+  "plugin.consent.requestsNone": "It requests no capabilities.",
+  "plugin.consent.new": "NEW",
+  "plugin.consent.ack": "I understand this plugin is not sandboxed.",
+  "plugin.consent.cancel": "Cancel",
+  "plugin.consent.confirm.install": "Install",
+  "plugin.consent.confirm.update": "Update and install",
+
+  "plugin.capability.editor": "Read and edit the document",
+  "plugin.capability.editor:readonly": "Read the document's content (cannot edit)",
+  "plugin.capability.files": "Read and write files in the vault",
+  "plugin.capability.files:readonly": "Read files in the vault (cannot write)",
+  "plugin.capability.commands": "Register and run editor commands",
+  "plugin.capability.sidebar": "Add a panel to the sidebar",
+  "plugin.capability.statusbar": "Show an item in the status bar",
+  "plugin.capability.settings": "Add options to Settings and read the values you set",
+  "plugin.capability.events": "Receive editor events",
+  "plugin.capability.ai": "Use AI / LLM features",
+  "plugin.capability.network": "Send network requests",
+  "plugin.capability.storage": "Use plugin-private storage",
+  "plugin.capability.viewer": "Register a custom viewer for a file type"
 }

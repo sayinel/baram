@@ -17,72 +17,172 @@
   z-index: 1100;
   display: flex;
   justify-content: center;
-  padding-top: 15vh;
-  background: rgb(0 0 0 / 40%);
+  padding-top: 12vh;
+  background: rgb(0 0 0 / 45%);
+
+  /* Pushes the marketplace behind the decision rather than leaving it competing for
+     attention with it. */
+  backdrop-filter: blur(3px);
+  animation: plugin-consent-fade 120ms ease-out;
+}
+
+/* Both animations are covered by the app-wide `prefers-reduced-motion` reset in
+   components.css, so they are not re-guarded here. */
+@keyframes plugin-consent-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes plugin-consent-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 
 .plugin-consent {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   align-self: flex-start;
-  width: 460px;
+  width: 480px;
   max-width: calc(100vw - 32px);
-  max-height: 70vh;
-  padding: 16px 20px;
+  max-height: 76vh;
+  padding: 22px 24px 18px;
   overflow-y: auto;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 10px;
+  border-radius: 14px;
   box-shadow: var(--shadow-xl);
+  animation: plugin-consent-rise 140ms ease-out;
 }
 
 .plugin-consent__title {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
+  line-height: 1.4;
+
+  /* The plugin name is registry-authored and of unbounded length; without this a single
+     long token widens the dialog past its own max-width. */
+  overflow-wrap: anywhere;
 }
 
 .plugin-consent__danger {
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
   color: var(--color-text-primary);
 
-  /* No danger-background token exists; mixing keeps it correct in both themes
-     without inventing a colour the design system does not define. */
-  background: color-mix(in srgb, var(--color-status-danger) 12%, transparent);
-  border: 1px solid var(--color-status-danger);
-  border-radius: 6px;
+  /* Uses the error surface tokens. An earlier comment here claimed no danger-background
+     token existed and mixed one by hand — `--color-status-error-bg` and
+     `--color-status-error-border` do exist and are what every other error surface uses,
+     so this now matches them in both themes. */
+  background: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 8px;
+}
+
+.plugin-consent__danger-title {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-status-danger);
+}
+
+.plugin-consent__danger-title::before {
+  flex: none;
+  content: "⚠";
 }
 
 .plugin-consent__lead {
   margin: 0;
   font-size: 12px;
+  font-weight: 500;
   color: var(--color-text-secondary);
 }
 
+/* A bordered list rather than loose bullets: these lines are what the user is actually
+   agreeing to, so they read as one block with a boundary. */
 .plugin-consent__caps {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-left: 18px;
+  padding: 0;
   margin: 0;
+  list-style: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+}
+
+.plugin-consent__cap {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
   font-size: 13px;
+  line-height: 1.5;
+}
+
+.plugin-consent__cap + .plugin-consent__cap {
+  border-top: 1px solid var(--color-border-default);
+}
+
+.plugin-consent__cap::before {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-top: 7px;
+  content: "";
+  background: var(--color-accent-default);
+  border-radius: 50%;
+}
+
+.plugin-consent__cap-text {
+  flex: 1;
+  overflow-wrap: anywhere;
 }
 
 .plugin-consent__new {
-  font-size: 11px;
+  flex: none;
+  padding: 1px 7px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--color-accent-default);
+  letter-spacing: 0.04em;
+  background: var(--color-accent-subtle);
+  border-radius: 9999px;
 }
 
+/* Boxed, so the trusted-tier gate looks like a thing you must pass rather than a
+   footnote under the list. */
 .plugin-consent__ack {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  transition: border-color 120ms ease;
+}
+
+.plugin-consent__ack:hover {
+  border-color: var(--color-status-danger);
+}
+
+.plugin-consent__ack input {
+  flex: none;
+  margin-top: 1px;
+  accent-color: var(--color-status-danger);
   cursor: pointer;
 }
 
@@ -90,31 +190,48 @@
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.plugin-consent__cancel,
+.plugin-consent__confirm {
+  min-width: 88px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .plugin-consent__cancel {
-  padding: 6px 14px;
-  font-size: 13px;
   color: var(--color-text-secondary);
-  cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+}
+
+.plugin-consent__cancel:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
 }
 
 .plugin-consent__confirm {
-  padding: 6px 14px;
-  font-size: 13px;
   color: white;
-  cursor: pointer;
   background: var(--color-accent-default);
   border: 1px solid var(--color-accent-default);
-  border-radius: 6px;
+}
+
+.plugin-consent__confirm:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
 }
 
 .plugin-consent__confirm:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 /* §260 Phase 5 — a registry entry predating the trust model cannot be installed;

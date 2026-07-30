@@ -1,7 +1,8 @@
 // §69 Plugin Capability Badge
 import type { PluginCapability } from "../../plugins/types";
 
-import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
+import { useTranslation } from "../../i18n/useTranslation";
+import { capabilityLabel } from "./capability-label";
 
 const CAPABILITY_COLORS: Record<string, string> = {
   editor: "#3b82f6",
@@ -27,6 +28,11 @@ export function PluginCapabilityBadge({
   capability,
   showDescription,
 }: PluginCapabilityBadgeProps) {
+  // Same source as the consent dialog: the description used to come straight from
+  // `CAPABILITY_DESCRIPTIONS`, which is written in Korean, so this badge's tooltip and its
+  // inline text stayed Korean in the English UI.
+  const { t } = useTranslation();
+  const description = capabilityLabel(capability, t);
   const color = CAPABILITY_COLORS[capability] ?? "#6b7280";
   return (
     <span
@@ -44,13 +50,11 @@ export function PluginCapabilityBadge({
         border: `1px solid ${color}30`,
         lineHeight: "18px",
       }}
-      title={CAPABILITY_DESCRIPTIONS[capability]}
+      title={description}
     >
       {capability}
       {showDescription && (
-        <span style={{ opacity: 0.8, fontSize: "10px" }}>
-          — {CAPABILITY_DESCRIPTIONS[capability]}
-        </span>
+        <span style={{ opacity: 0.8, fontSize: "10px" }}>— {description}</span>
       )}
     </span>
   );
