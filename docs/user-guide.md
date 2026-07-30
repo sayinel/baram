@@ -123,6 +123,23 @@ Cross-vault links appear with a distinct style and open the target in its own va
 
 You can open any `.md` file from outside your current vault using **File > Open File** (`Cmd+O` / `Ctrl+O`). The file opens as a **File context** tab with a 📎 icon and no sidebar — just the editor. This is useful for quick edits to files outside your workspace.
 
+### Viewing Other File Types
+
+Baram is a markdown editor, but it opens several other file types in place rather than handing
+them to another application. Click one in the file tree, or use **File > Open File**.
+
+| Type | Extensions | What you get |
+| ---- | ---------- | ------------ |
+| **PDF** | `.pdf` | A read-only viewer. Page navigation and zoom come from the viewer; PDFs cannot be edited. |
+| **HTML** | `.html`, `.htm` | A rendered live preview by default, with a **Preview / Source** toggle in the corner. Switch to Source to edit the markup with syntax highlighting; saving works as it does for any file. The preview is sandboxed, so scripts in the file cannot reach your vault or the app. |
+| **Images** | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.avif` | A viewer that fits the image to the window without upscaling small ones. |
+| **SVG** | `.svg` | The same viewer, rendered as vector — it stays sharp at any zoom. Scripts inside an SVG do not execute. |
+
+Images and SVG are handled by **Media Viewer**, a plugin that ships with Baram. It is built on the
+same public `viewer` extension point third-party plugins use, so a plugin can add a viewer for a
+file type Baram does not handle itself — see the
+[Plugin Development Guide](plugin-development.md).
+
 ### Tab Tear-Off (Separate Window)
 
 Drag any editor tab outside the tab bar to detach it into a separate window. The window operates independently with its own editor state. Drag the tab back into the tab bar to re-dock it.
@@ -1206,7 +1223,14 @@ Baram can be extended with community plugins, managed from **Settings > Plugins*
 - **Installed** — See and configure the plugins you have installed
 - **Updates** — Check for and apply plugin updates
 
-Each plugin declares the **capabilities** (permissions) it needs — access to the editor, files, commands, UI, and so on. You review and approve these before installing. Plugins run in isolation, so a misbehaving plugin can't crash the editor, and downloads are checksum-verified.
+Each plugin declares the **capabilities** (permissions) it needs — access to the editor, files, commands, UI, and so on. You review and approve these before installing, and downloads are checksum-verified.
+
+Plugins come in two kinds, and the difference matters:
+
+- **Sandboxed** (the default, and the only kind in the marketplace) — the plugin's code runs isolated from the editor, and every privileged action is checked against the capabilities you approved. A misbehaving sandboxed plugin cannot crash the editor or reach anything it did not declare.
+- **Full trust** — the plugin runs inside Baram itself with no isolation. Its capability list describes what it intends to do but does **not** limit it: it can read and write any file your account can reach, contact any network host, and use every credential the app holds. Baram shows a red warning and requires a separate confirmation before installing one.
+
+> **Upgrading from v0.4.x?** Plugins installed before v0.5.0 predate this model and can no longer be loaded. Use **Remove** on the Installed tab, then install again from the marketplace if a current version is published.
 
 To build your own plugin, see the [Plugin Development Guide](plugin-development.md) for the manifest format, the `ExtensionContext` API, and bundling/publishing.
 

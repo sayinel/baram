@@ -100,7 +100,16 @@ Yes. Baram's core principle is **lossless roundtrip fidelity** — when you open
 
 ### What file formats does Baram support?
 
-Baram works with standard markdown files (`.md`, `.markdown`). It supports CommonMark, GitHub Flavored Markdown (GFM) extensions (tables, task lists, strikethrough), and additional syntax for math (`$`, `$$`), YAML frontmatter, callouts (`> [!type]`), and wikilinks (`[[page]]`).
+Baram **edits** standard markdown files (`.md`, `.markdown`). It supports CommonMark, GitHub Flavored Markdown (GFM) extensions (tables, task lists, strikethrough), and additional syntax for math (`$`, `$$`), YAML frontmatter, callouts (`> [!type]`), and wikilinks (`[[page]]`).
+
+It also **opens** several other types in place, so you do not have to leave the app to look at them:
+
+- **PDF** (`.pdf`) — read-only viewer.
+- **HTML** (`.html`, `.htm`) — rendered live preview with a Preview / Source toggle; the source is editable and saves normally.
+- **Images** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.avif`) **and SVG** (`.svg`) — read-only viewer with zoom.
+
+See [Viewing Other File Types](user-guide.md#viewing-other-file-types) in the User Guide. Plugins
+can add viewers for further file types.
 
 ### How do I insert a table?
 
@@ -527,7 +536,26 @@ Yes. Open **Settings > Plugins** to browse, install, update, and manage communit
 
 ### Are plugins safe?
 
-Plugins are capability-gated: each declares the permissions it needs (editor, files, commands, UI, etc.), and you review and approve them before installing. Plugins run in isolation with crash protection, and downloads are verified with a SHA-256 checksum.
+Plugins are capability-gated: each declares the permissions it needs (editor, files, commands, UI, etc.), and you review and approve them before installing. Downloads are verified with a SHA-256 checksum.
+
+How strongly that approval is enforced depends on the plugin's kind:
+
+- **Sandboxed** — the default, and the only kind published in the marketplace. The plugin's code is isolated from the editor and every privileged action is checked against the capabilities you approved, so the list you saw is a real boundary.
+- **Full trust** — runs inside Baram itself with no isolation. The capability list describes what such a plugin intends to do but does not limit it; it can reach any file your account can, any network host, and every credential the app holds. Baram shows a red warning and asks for a separate confirmation before installing one, so you cannot get there by accident.
+
+### I updated Baram and my plugin stopped working
+
+Plugins installed with **v0.4.x** cannot be loaded by v0.5.0 or later. Those versions installed
+plugins before Baram had a plugin trust model, so the installed copy does not record whether it
+runs sandboxed or with full trust — and Baram will not run a plugin whose kind it cannot
+determine. You will see an error on the plugin in **Settings > Plugins > Installed**.
+
+Checking for updates does not fix it, because the plugin has to be re-approved rather than
+upgraded. Use **Remove** on the Installed tab, then install it again from the marketplace if a
+current version is published there. Some plugins from that era have not been republished; for
+those, removing the old copy is all there is to do.
+
+This applies once, to plugins installed before v0.5.0. Anything installed since is unaffected.
 
 ### How do I build a plugin?
 

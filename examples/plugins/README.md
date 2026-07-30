@@ -19,19 +19,27 @@ This README is just the index + regen note for what lives in this folder.
 
 ```
 examples/plugins/
-  plugin-api.d.ts     # generated public type barrel (commit this)
-  types.d.ts          # generated sibling the barrel re-exports from (commit this)
-  word-count/         # minimal example plugin
-  ai-summary/          # advanced example plugin
-  sandbox-smoke/      # §260 internal test fixture — NOT a template (see below)
+  plugin-api.d.ts       # generated public type barrel (commit this)
+  types.d.ts            # generated sibling the barrel re-exports from (commit this)
+  word-count/           # ← START HERE. The canonical sandboxed plugin, published
+  ai-summary/           # full-trust example — NOT published (see below)
+  sandbox-smoke/        # internal test fixture — NOT a template (see below)
+  malicious-fixture/    # internal test fixture — NOT a template (see below)
 ```
 
-`sandbox-smoke/` is **not an example to copy**. It is the §260 Phase 3c-3 fixture for
-the human-run sandbox smoke, and it is written to be diagnostic rather than idiomatic:
-it reports by THROWING (a sandboxed plugin has no `ui` API yet), it is a hand-written
-single file with no build step, and it deliberately probes deny paths. Copy
-`word-count/` or `ai-summary/` instead — or, for the sandboxed tier, wait for the
-reference ports in Phase 6.
+**Copy `word-count/`.** It is the reference sandboxed plugin: `trust: "sandboxed"`, published
+to the registry as v2.0.0, and the shape a new plugin should start from.
+
+`ai-summary/` is kept as the example of what the **full-trust** tier can do (a Shadow-DOM sidebar
+panel, which the sandboxed tier has no surface for yet). It is deliberately **not published** —
+a published full-trust plugin would train users to click through the full-trust warning for
+ordinary functionality. Read it for the API; do not use it as the template for something you
+intend to publish.
+
+`sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
+fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING
+and is a hand-written single file with no build step, and `malicious-fixture/` exists to probe
+deny paths in CI — it asks for capabilities it must not receive, on purpose.
 
 ## The examples
 
@@ -41,7 +49,7 @@ sibling), with no access to Baram's internal source tree. Each ships a
 prebuilt, committed `dist/index.mjs` so you can dev-load it immediately
 without running `npm i && npm run build` first.
 
-### `word-count/` — minimal
+### `word-count/` — the sandboxed reference
 
 Shows the current document's word and character count in a right-aligned
 status-bar item, recomputed on `editor:ready`, `file:open`, and `file:save`.
@@ -54,7 +62,7 @@ status-bar item, recomputed on `editor:ready`, `file:open`, and `file:save`.
 
 See [`word-count/README.md`](word-count/README.md) for details.
 
-### `ai-summary/` — advanced
+### `ai-summary/` — full trust, not published
 
 A Shadow-DOM sidebar panel with a "Summarize" button that sends the current
 document to the app's configured AI provider and displays the result, plus a
