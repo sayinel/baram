@@ -290,3 +290,98 @@
   line-height: 1.5;
   color: var(--color-text-muted);
 }
+
+/* ── §69 capability badge (#330) ───────────────────────────────────────────
+ *
+ * The badge used to paint a capability's hue as BOTH its text and — at 9% alpha —
+ * its background. A 9% tint is 91% whatever is behind it, so the pairing collapsed
+ * to hue-vs-page and failed AA in 74 of 96 capability x built-in-theme combinations:
+ * every one of the twelve in all three light themes (worst `files:readonly` at
+ * 1.48:1 on Solarized Light), and seven of the twelve in EVERY theme, `network`
+ * among them. No palette can fix that, because light and dark pages need opposite
+ * lightness from the same hue.
+ *
+ * So the tint and the ink are both mixed to OPAQUE colours whose ratio is therefore
+ * determinate — it cannot be moved by a page colour, a custom theme, or a user's
+ * `--color-bg-*` edit. Only the recipe switches per base, via the same three scopes
+ * every generated token uses, so `system` follows the OS with no JS involved.
+ *
+ * `.plugin-consent__new` next door reached the opposite conclusion — filled, not
+ * tinted — and both are right: its fill is the user-chosen accent, where no tint
+ * percentage can be verified in advance. These thirteen hues are constants, so a
+ * tint CAN be verified, and `capability-badge-contrast.test.ts` verifies it against
+ * the values below rather than a copy of them.
+ *
+ * The two ink percentages are the loosest that leave real headroom, not the loosest
+ * that pass: 4.5 exactly is reachable at 57%/93%, but the worst pairing then sits
+ * 0.03 above the line, which is inside the rounding difference between an 8-bit
+ * model and the browser's float interpolation. At 52%/88% the minimum is 5.29 light
+ * and 5.00 dark, and stays at 5.17/4.89 under a worst-case +/-1 per channel on both
+ * colours — so the guarantee does not rest on how either side rounds.
+ */
+:root {
+  --capability-badge-fill-base: #fff;
+  --capability-badge-fill-hue: 10%;
+  --capability-badge-ink-base: #000;
+  --capability-badge-ink-hue: 52%;
+}
+
+[data-theme="dark"] {
+  --capability-badge-fill-base: #000;
+  --capability-badge-fill-hue: 14%;
+  --capability-badge-ink-base: #fff;
+  --capability-badge-ink-hue: 88%;
+}
+
+/* Byte-identical to the `[data-theme="dark"]` block above, and asserted so in
+ * capability-badge-contrast.test.ts. A media query cannot join a selector list, so
+ * the values have to be duplicated; the theme clear-list drifted to 16 of 25 keys
+ * exactly this way (#336), and a guard is cheaper than finding it in a screenshot. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"], [data-theme="dark"]) {
+    --capability-badge-fill-base: #000;
+    --capability-badge-fill-hue: 14%;
+    --capability-badge-ink-base: #fff;
+    --capability-badge-ink-hue: 88%;
+  }
+}
+
+.plugin-capability-badge {
+  /* Set inline per capability. The default is the `settings` grey, so a capability
+     with no entry renders readable instead of resolving to nothing. */
+  --capability-badge-hue: #6b7280;
+
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: color-mix(
+    in srgb,
+    var(--capability-badge-hue) var(--capability-badge-ink-hue),
+    var(--capability-badge-ink-base)
+  );
+  background-color: color-mix(
+    in srgb,
+    var(--capability-badge-hue) var(--capability-badge-fill-hue),
+    var(--capability-badge-fill-base)
+  );
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--capability-badge-hue) 30%,
+      var(--capability-badge-fill-base)
+    );
+  border-radius: 9999px;
+}
+
+/* No `opacity` here, and none permitted by the test. Element opacity composites the
+ * text against the fill it sits on, so the 0.8 this line used to carry would pull the
+ * derived pairing back under AA for 5 of 13 capabilities in light and 7 of 13 in dark
+ * (worst 3.54:1) — undoing the fix on the one view that shows the prose. The size
+ * step and the em dash carry the hierarchy instead. */
+.plugin-capability-badge__description {
+  font-size: 10px;
+}
