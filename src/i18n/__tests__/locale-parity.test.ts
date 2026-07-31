@@ -38,6 +38,7 @@ const SHARED_VALUES = new Set<string>([
   "keybindings.category.zettelkasten", // Zettel
   "menu.app", // Baram
   "menu.help.faq", // FAQ
+  "plugin.detail.readme", // README — the filename the section renders, not a word
   "settings.activitybar.item.zettel", // Zettel
   "settings.ai.ollamaUrl", // Ollama URL
   "settings.ai.ollamaUrl.placeholder", // http://localhost:11434

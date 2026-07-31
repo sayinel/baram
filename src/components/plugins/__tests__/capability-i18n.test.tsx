@@ -113,19 +113,12 @@ describe("every capability has translations in both locales", () => {
     expect(ko, `ko.json is missing ${key}`).toHaveProperty([key]);
   });
 
-  it("does not leave a ko value identical to its en value for the plugin keys", () => {
-    // A copy-paste translation is worse than a missing one: the coverage guard above passes
-    // while the user still reads English. The app-wide version of this, plus the en/ko key-set
-    // parity check that used to live here, are in `src/i18n/__tests__/locale-parity.test.ts` —
-    // they are not plugin invariants and belong next to the files they constrain.
-    const pluginKeys = Object.keys(en).filter((k) => k.startsWith("plugin."));
-    expect(pluginKeys.length).toBeGreaterThan(20);
-    const untranslated = pluginKeys.filter(
-      (k) =>
-        (en as Record<string, string>)[k] === (ko as Record<string, string>)[k],
-    );
-    expect(untranslated).toEqual([]);
-  });
+  // The verbatim-copy check that used to live here has been removed, not relaxed.
+  // `src/i18n/__tests__/locale-parity.test.ts` asserts the same property over EVERY key,
+  // plugin keys included, and it owns the one allowlist of genuinely locale-independent
+  // values. This copy had no allowlist, so `plugin.detail.readme` — a filename — could
+  // only be exempted by adding a second list. Two lists for one rule is how the theme
+  // clear-list drifted to 16 of 25 keys; the app-wide test is the single place now.
 });
 
 describe("the dialog renders in the app's language", () => {

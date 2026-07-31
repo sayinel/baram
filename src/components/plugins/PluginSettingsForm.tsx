@@ -7,6 +7,7 @@ import type {
 
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 // §260 Phase 4c — the user's side of `contributions.settings`. The manifest asks the
 // questions; this is where they get answered, and the answers are the app's to keep (see
 // `plugin-settings.ts` for why a plugin may only read them).
@@ -32,10 +33,11 @@ interface PluginSettingsFormProps {
  * `declaredSettingsFor` decides it here and in both tiers' read paths, so the form and the
  * plugin can never disagree about which fields exist.
  *
- * Text is hard-coded English like the rest of the plugin marketplace views, which are not
- * yet localised; the field labels themselves come from the manifest and are the author's.
+ * The section heading is localised (#329); the field labels themselves come from the
+ * manifest and are the author's, so they are rendered as authored.
  */
 export function PluginSettingsForm({ pluginId }: PluginSettingsFormProps) {
+  const { t } = useTranslation();
   const { persisted, plugin, setPluginSetting } = usePluginStore(
     useShallow((s) => ({
       persisted: s.pluginSettings[pluginId],
@@ -68,7 +70,7 @@ export function PluginSettingsForm({ pluginId }: PluginSettingsFormProps) {
           color: "var(--color-text-primary)",
         }}
       >
-        Settings
+        {t("plugin.settings.title")}
       </h3>
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
         {declared.map((field) => (
