@@ -93,7 +93,7 @@
 .file-tree-open-btn:hover {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid-hover);
-  border-color: var(--color-accent-default);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .file-tree-item {
@@ -518,7 +518,7 @@
 }
 
 .git-commit-btn:hover:not(:disabled) {
-  opacity: 0.9;
+  background: var(--color-accent-solid-hover);
 }
 
 .git-commit-btn:disabled {
@@ -774,7 +774,7 @@
 .file-tree-access-error-btn.primary {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-color: var(--color-accent-default);
+  border-color: var(--color-accent-solid);
 }
 
 .file-tree-access-error-btn:hover {

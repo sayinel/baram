@@ -269,12 +269,12 @@
 .plugin-consent__confirm {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border: 1px solid var(--color-accent-default);
+  border: 1px solid var(--color-accent-solid);
 }
 
 .plugin-consent__confirm:hover:not(:disabled) {
   background: var(--color-accent-solid-hover);
-  border-color: var(--color-accent-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .plugin-consent__confirm:disabled {

@@ -109,7 +109,7 @@
 .custom-ai-btn-primary {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-color: var(--color-accent-default);
+  border-color: var(--color-accent-solid);
 }
 
 .custom-ai-btn-primary:hover {
@@ -967,7 +967,7 @@
 .skill-gallery-tag--active {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-color: var(--color-accent-default);
+  border-color: var(--color-accent-solid);
 }
 
 .skill-gallery-list {

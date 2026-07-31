@@ -134,7 +134,7 @@
 }
 
 .smart-template-custom-btn:hover {
-  opacity: 0.9;
+  background: var(--color-accent-solid-hover);
 }
 
 .smart-template-custom-btn:disabled {

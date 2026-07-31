@@ -55,6 +55,15 @@ describe("contrastRatio", () => {
     expect(relativeLuminance("#fff")).toBeCloseTo(1, 5);
   });
 
+  it("reads 4- and 8-digit hex by discarding alpha", () => {
+    // `#rrggbbaa` is valid CSS and a common export format. Rejecting it would send
+    // a translucent accent down the unparseable path, where the foreground stays
+    // white — reintroducing #330 for anyone who imports such a theme.
+    expect(relativeLuminance("#b4d15680")).toBe(relativeLuminance("#b4d156"));
+    expect(relativeLuminance("#fff8")).toBe(relativeLuminance("#ffffff"));
+    expect(onSolidForeground("#b4d15680")).toBe(BLACK);
+  });
+
   it("returns null rather than a wrong number for formats it cannot read", () => {
     expect(contrastRatio("rgb(0, 0, 0)", WHITE)).toBeNull();
     expect(contrastRatio("blue", WHITE)).toBeNull();

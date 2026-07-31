@@ -236,7 +236,7 @@
 .chat-message-apply-btn:hover {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid-hover);
-  border-color: var(--color-accent-default);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .ai-chat-error {

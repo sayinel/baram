@@ -143,7 +143,7 @@
 .graph-scope__btn--active {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-color: var(--color-accent-default);
+  border-color: var(--color-accent-solid);
 }
 
 /* Graph header actions (gear + expand buttons) */

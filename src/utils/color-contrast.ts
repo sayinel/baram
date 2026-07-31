@@ -100,11 +100,23 @@ function clearsAA(fill: string): boolean {
   return ratio === null || ratio >= AA_TEXT_RATIO;
 }
 
-/** Parse `#rgb` or `#rrggbb` into 0..255 channels. Null for any other format. */
+/**
+ * Parse `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa` into 0..255 channels. Null for
+ * any other format.
+ *
+ * Alpha is read and discarded rather than rejected. `#rrggbbaa` is valid CSS and a
+ * common export format, and the theme importer only checks that a colour is a
+ * string — so rejecting it would send a translucent accent down the unparseable
+ * path, where the foreground silently stays white and reintroduces #330 for that
+ * user. Compositing it properly needs a backdrop this module does not have, so the
+ * opaque channels are the closest honest answer.
+ */
 function parseHexColor(color: string): [number, number, number] | null {
   const hex = color.trim().replace(/^#/, "");
-  const full = hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex;
+  const short = hex.length === 3 || hex.length === 4;
+  const full = (short ? hex.replace(/./g, (c) => c + c) : hex).slice(0, 6);
   if (!/^[0-9a-f]{6}$/i.test(full)) return null;
+  if (!short && hex.length !== 6 && hex.length !== 8) return null;
   return [
     parseInt(full.slice(0, 2), 16),
     parseInt(full.slice(2, 4), 16),

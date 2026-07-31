@@ -43,6 +43,56 @@ function cssRules(): Rule[] {
   return rules;
 }
 
+/**
+ * Brace-matched objects containing no nested object — where style properties live,
+ * whether the object sits in a JSX `style={{…}}` literal, a module-level constant,
+ * or anything else. Matching on syntax rather than on one calling convention is the
+ * point: the convention is what the previous version of this scan assumed.
+ */
+function innermostObjects(source: string): { body: string; start: number }[] {
+  const found: { body: string; start: number }[] = [];
+  const opens: number[] = [];
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === "{") opens.push(i);
+    else if (source[i] === "}") {
+      const start = opens.pop();
+      if (start === undefined) continue;
+      const body = source.slice(start + 1, i);
+      if (!body.includes("{")) found.push({ body, start });
+    }
+  }
+  return found;
+}
+
+/**
+ * One style property's value, split at commas outside parentheses so a
+ * `color-mix(in srgb, …)` value stays whole. Null when the property is absent.
+ */
+function objectProperty(body: string, key: RegExp): null | string {
+  let depth = 0;
+  let current = "";
+  const properties: string[] = [];
+  for (const char of body) {
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    if (char === "," && depth === 0) {
+      properties.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  properties.push(current);
+  for (const property of properties) {
+    const split = property.indexOf(":");
+    if (split === -1) continue;
+    if (key.test(property.slice(0, split).trim())) {
+      return property.slice(split + 1);
+    }
+  }
+  return null;
+}
+
 function walk(dir: string, ext: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = `${dir}/${entry.name}`;
@@ -81,47 +131,104 @@ describe("solid accent surfaces in CSS", () => {
   it("keeps accent-default for surfaces that carry no text", () => {
     // Dots, drop indicators and resize handles want the bright accent, not the
     // text-bearing fill — they have no foreground to contrast with.
-    const nonText = RULES.filter(
-      (rule) =>
+    //
+    // Named rather than counted. An earlier version asserted only `length > 0`,
+    // which would have stayed green with 15 of the 16 wrongly converted — it
+    // proved the category was non-empty, not that these surfaces survived.
+    const stillBright = new Set(
+      RULES.filter((rule) =>
         /background(?:-color)?\s*:\s*var\(\s*--color-accent-default\b/.test(
           rule.body,
-        ) && !/(?<!-)\bcolor\s*:/.test(rule.body),
+        ),
+      ).map((rule) => rule.selector),
     );
-    expect(nonText.length).toBeGreaterThan(0);
+    const expected = [
+      '.contribution-heatmap-cell[data-level="4"]',
+      ".activity-bar-btn-active::before",
+      ".calendar-dot-filled",
+      ".drop-indicator-bar",
+      ".drop-indicator-bar::before",
+      ".graph-settings-toggle.on",
+      ".media-resize-handle::before",
+      ".plugin-consent__cap::before",
+      ".settings-toggle-on",
+      ".splitter:hover",
+      ".status-git-dot",
+      ".tab-drop-indicator-end",
+      ".table-drop-indicator",
+      ".table-grid-cell-active",
+      ".tiptap .column-resize-handle",
+      ".update-dialog-progress-fill",
+    ];
+    expect(expected.filter((selector) => !stillBright.has(selector))).toEqual(
+      [],
+    );
   });
 });
 
 describe("solid accent surfaces in inline styles", () => {
-  // Walks all of `src`, not just `src/components`: Tiptap NodeViews under
-  // `src/extensions/nodes/` render their own chrome with inline styles, which is
-  // exactly where the next accent-filled surface is likely to appear.
-  const inline = walk(SRC, ".tsx")
+  // This scan was originally rooted at `src/components` and matched only JSX
+  // `style={{…}}` literals. Both narrowings hid a live defect: PluginMarketplace
+  // keeps its styles in a module-level `STYLES` constant and has zero JSX style
+  // literals, so an `accent-default` + `#fff` retry button sat in the sweep's own
+  // directory, unseen, while this file reported green. It now walks all of `src`
+  // and reads brace-matched objects, whatever syntax holds them.
+  const objects = walk(SRC, ".tsx")
+    .concat(walk(SRC, ".ts"))
     .filter((file) => !file.includes("__tests__"))
     .flatMap((file) => {
       const source = readFileSync(file, "utf8");
-      return [...source.matchAll(/style=\{\{(.*?)\}\}/gs)].map((match) => ({
-        body: match[1],
-        file,
-        line: source.slice(0, match.index).split("\n").length,
-      }));
-    })
-    // A ternary splits the value across lines, so `.` must cross newlines here.
-    .filter((entry) =>
-      /background(?:Color)?:\s*(?:[^,]|\n)*?--color-accent-(default|hover|solid)/.test(
-        entry.body,
-      ),
-    );
+      return innermostObjects(source)
+        .filter((object) =>
+          /(?<![-\w])(background(?:Color)?|color)\s*:/.test(object.body),
+        )
+        .map((object) => ({
+          body: object.body,
+          file,
+          line: source.slice(0, object.start).split("\n").length,
+        }));
+    });
 
-  it("found the inline accent buttons", () => {
-    expect(inline.length).toBeGreaterThanOrEqual(3);
+  // Bound to the one property, not to the object. Scanning the whole object body
+  // for an accent token flagged `backgroundColor: "transparent"` objects whose
+  // *border* used the accent, and accent `color-mix()` tints whose text is meant to
+  // be accent-coloured — neither is a filled surface.
+  const accentObjects = objects.filter((object) => {
+    const fill = objectProperty(object.body, /^background(Color)?$/);
+    return (
+      fill !== null &&
+      fill.includes("--color-accent-") &&
+      !fill.includes("color-mix")
+    );
+  });
+
+  it("parsed style objects across the tree", () => {
+    // A floor on the parse, not on the finding: if brace matching collapsed, every
+    // assertion below would pass over an empty list. Deliberately not pinned to the
+    // number of accent objects — that number is what a new defect would change.
+    expect(objects.length).toBeGreaterThan(50);
+    expect(accentObjects.length).toBeGreaterThan(0);
+  });
+
+  it("fills from accent-solid, never from accent-default or accent-hover", () => {
+    const offenders = accentObjects
+      .filter((object) =>
+        /--color-accent-(default|hover)\b/.test(
+          objectProperty(object.body, /^background(Color)?$/) ?? "",
+        ),
+      )
+      .map((object) => `${object.file}:${object.line}`);
+    expect(offenders).toEqual([]);
   });
 
   it("never hardcodes a light foreground in a style object", () => {
-    const offenders = inline
-      .filter((entry) =>
-        /\bcolor:\s*(?:[^,]|\n)*?"(#fff|#ffffff|white)"/i.test(entry.body),
+    const offenders = accentObjects
+      .filter((object) =>
+        /^\s*"(#fff|#ffffff|white)"\s*$/i.test(
+          objectProperty(object.body, /^color$/) ?? "",
+        ),
       )
-      .map((entry) => `${entry.file}:${entry.line}`);
+      .map((object) => `${object.file}:${object.line}`);
     expect(offenders).toEqual([]);
   });
 });

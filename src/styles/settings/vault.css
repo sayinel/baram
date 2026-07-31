@@ -250,7 +250,7 @@
 .vault-three-state-btn--active {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid, #2563eb);
-  border-color: var(--color-accent-default, #3b82f6);
+  border-color: var(--color-accent-solid, #2563eb);
 }
 
 .vault-settings-input {

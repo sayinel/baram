@@ -103,7 +103,6 @@
 
 .calendar-pick-btn-selected:hover {
   background: var(--color-accent-solid-hover);
-  opacity: 0.9;
 }
 
 .calendar-grid {

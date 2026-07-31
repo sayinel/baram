@@ -170,7 +170,6 @@
 
 .memories-mini-calendar-day-selected:hover {
   background: var(--color-accent-solid-hover);
-  opacity: 0.9;
 }
 
 .memories-mini-calendar-title-btn {
@@ -232,7 +231,6 @@
 
 .memories-mini-calendar-pick-btn-selected:hover {
   background: var(--color-accent-solid-hover);
-  opacity: 0.9;
 }
 
 .memories-header-date {
@@ -585,11 +583,11 @@
 .notes-tag-chip-active {
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
-  border-color: var(--color-accent-default);
+  border-color: var(--color-accent-solid);
 }
 
 .notes-tag-chip-active:hover {
-  opacity: 0.9;
+  background: var(--color-accent-solid-hover);
 }
 
 .notes-tag-chip-clear {
