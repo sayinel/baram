@@ -430,7 +430,7 @@
   padding: 0 6px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-bg-default);
+  color: var(--color-status-warning-on-solid);
   background: var(--color-status-warning);
   border-radius: 3px;
 }

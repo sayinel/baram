@@ -7,10 +7,10 @@ import { BUILT_IN_THEMES } from "../../types/theme";
 import {
   AA_TEXT_RATIO,
   accentSolidFill,
-  accentSolidHoverFill,
   contrastRatio,
   onSolidForeground,
   relativeLuminance,
+  solidHoverFill,
 } from "../color-contrast";
 
 const BLACK = "#000000";
@@ -131,12 +131,12 @@ describe("accentSolidFill", () => {
   });
 });
 
-describe("accentSolidHoverFill", () => {
+describe("solidHoverFill", () => {
   it("moves away from the foreground, so contrast can only rise", () => {
     for (const fill of srgbGrid(16)) {
       const fg = onSolidForeground(fill);
       const base = contrastRatio(fg, fill) ?? 0;
-      const hover = contrastRatio(fg, accentSolidHoverFill(fill)) ?? 0;
+      const hover = contrastRatio(fg, solidHoverFill(fill)) ?? 0;
       expect(hover, `fill ${fill} fg ${fg}`).toBeGreaterThanOrEqual(base);
       expect(hover).toBeGreaterThanOrEqual(AA_TEXT_RATIO);
     }
@@ -145,19 +145,19 @@ describe("accentSolidHoverFill", () => {
   it("darkens under white text and lightens under black", () => {
     const darkFill = "#2563eb";
     expect(onSolidForeground(darkFill)).toBe(WHITE);
-    expect(relativeLuminance(accentSolidHoverFill(darkFill))!).toBeLessThan(
+    expect(relativeLuminance(solidHoverFill(darkFill))!).toBeLessThan(
       relativeLuminance(darkFill)!,
     );
 
     const lightFill = "#60a5fa";
     expect(onSolidForeground(lightFill)).toBe(BLACK);
-    expect(relativeLuminance(accentSolidHoverFill(lightFill))!).toBeGreaterThan(
+    expect(relativeLuminance(solidHoverFill(lightFill))!).toBeGreaterThan(
       relativeLuminance(lightFill)!,
     );
   });
 
   it("returns the fill unchanged when it cannot be parsed", () => {
-    expect(accentSolidHoverFill("teal")).toBe("teal");
+    expect(solidHoverFill("teal")).toBe("teal");
   });
 });
 
@@ -170,9 +170,9 @@ describe("built-in themes", () => {
     );
     const fg = onSolidForeground(solid);
     expect(contrastRatio(fg, solid)!).toBeGreaterThanOrEqual(AA_TEXT_RATIO);
-    expect(
-      contrastRatio(fg, accentSolidHoverFill(solid))!,
-    ).toBeGreaterThanOrEqual(AA_TEXT_RATIO);
+    expect(contrastRatio(fg, solidHoverFill(solid))!).toBeGreaterThanOrEqual(
+      AA_TEXT_RATIO,
+    );
   });
 
   it.each(BUILT_IN_THEMES)(

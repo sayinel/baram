@@ -5,11 +5,8 @@ import type { ThemeColors } from "../../types/theme";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
-import {
-  applyThemeVars,
-  clearThemeVars,
-  DERIVED_ACCENT_KEYS,
-} from "../theme-vars";
+import { relativeLuminance } from "../color-contrast";
+import { applyThemeVars, clearThemeVars, DERIVED_KEYS } from "../theme-vars";
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
 const SOLARIZED_LIGHT = BUILT_IN_THEMES.find(
@@ -34,7 +31,7 @@ describe("THEME_COLOR_KEYS", () => {
 
   it("does not offer the derived keys as user-editable colours", () => {
     // Letting a user pick these would let them save a failing pairing.
-    for (const key of DERIVED_ACCENT_KEYS) {
+    for (const key of DERIVED_KEYS) {
       expect(THEME_COLOR_KEYS.map((e) => e.key)).not.toContain(key);
     }
   });
@@ -83,6 +80,75 @@ describe("applyThemeVars", () => {
   });
 });
 
+describe("derived status foregrounds", () => {
+  it("writes one per status family", () => {
+    const root = document.createElement("div");
+    applyThemeVars(root, NORD.colors, NORD.base);
+    // Nord keeps the default status palette: white on all three fails AA, so all
+    // three take dark text.
+    for (const family of ["danger", "success", "warning"]) {
+      expect(
+        root.style.getPropertyValue(`--color-status-${family}-on-solid`),
+      ).toBe("#000000");
+    }
+  });
+
+  it("moves a hover fill away from whichever foreground was derived", () => {
+    // The regression this pairs with: the stylesheet used to express this hover as
+    // `color-mix(danger 85%, white)`. Solarized's #dc322f clears AA with white by
+    // 0.13, so it takes a WHITE foreground — and lightening then moved the fill
+    // toward its own text, dropping it to 3.83:1. The direction must be derived.
+    const root = document.createElement("div");
+    const luminance = (hex: string): number => relativeLuminance(hex)!;
+
+    applyThemeVars(
+      root,
+      { ...NORD.colors, "--color-status-danger": "#dc322f" },
+      NORD.base,
+    );
+    expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
+      "#ffffff",
+    );
+    expect(
+      luminance(
+        root.style.getPropertyValue("--color-status-danger-solid-hover"),
+      ),
+    ).toBeLessThan(luminance("#dc322f"));
+
+    // …and the opposite case still goes the other way.
+    applyThemeVars(
+      root,
+      { ...NORD.colors, "--color-status-danger": "#ef4444" },
+      NORD.base,
+    );
+    expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
+      "#000000",
+    );
+    expect(
+      luminance(
+        root.style.getPropertyValue("--color-status-danger-solid-hover"),
+      ),
+    ).toBeGreaterThan(luminance("#ef4444"));
+  });
+
+  it("follows a user-edited status colour", () => {
+    // The point of deriving these: a user who picks a dark red danger should get
+    // white text on it, not the black the shipped palette needs.
+    const root = document.createElement("div");
+    applyThemeVars(
+      root,
+      { ...NORD.colors, "--color-status-danger": "#5c0f0f" },
+      NORD.base,
+    );
+    expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
+      "#ffffff",
+    );
+    expect(root.style.getPropertyValue("--color-status-success-on-solid")).toBe(
+      "#000000",
+    );
+  });
+});
+
 describe("clearThemeVars", () => {
   it("removes everything applyThemeVars can set", () => {
     const root = document.createElement("div");
@@ -99,7 +165,7 @@ describe("clearThemeVars", () => {
     const root = document.createElement("div");
     applyThemeVars(root, NORD.colors, NORD.base);
     clearThemeVars(root);
-    for (const key of DERIVED_ACCENT_KEYS) {
+    for (const key of DERIVED_KEYS) {
       expect(root.style.getPropertyValue(key)).toBe("");
     }
     expect(root.style.getPropertyValue("--color-accent-default")).toBe("");

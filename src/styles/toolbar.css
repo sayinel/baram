@@ -380,13 +380,17 @@
 }
 
 .confirm-dialog-btn-danger {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
   border-color: var(--color-status-danger);
 }
 
+/* Derived, not mixed. Darkening dropped the dark foreground to 4.21:1 while the
+   resting fill passed at 5.58:1; mixing toward white instead broke Solarized, whose
+   `#dc322f` takes a WHITE foreground, at 3.83:1. A constant direction cannot serve
+   both, so the direction comes from whichever foreground the fill took. */
 .confirm-dialog-btn-danger:hover {
-  background: color-mix(in srgb, var(--color-status-danger) 85%, black);
+  background: var(--color-status-danger-solid-hover);
 }
 
 .field-dialog-label {

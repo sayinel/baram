@@ -196,8 +196,8 @@ export function PluginDetail({
                   borderRadius: "6px",
                   fontSize: "13px",
                   fontWeight: 500,
-                  backgroundColor: "#f59e0b",
-                  color: "#fff",
+                  backgroundColor: "var(--color-status-warning)",
+                  color: "var(--color-status-warning-on-solid)",
                   border: "none",
                   cursor: "pointer",
                 }}

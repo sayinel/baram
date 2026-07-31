@@ -1,10 +1,11 @@
-// §54 / #330 — a solid accent surface may not name its own foreground.
+// §54 / #330 — a solid accent or status surface may not name its own foreground.
 //
-// The bug this prevents was written 80 times: `background: var(--color-accent-*)`
+// The bug this prevents was written 80 times for the accent and 13 more for the
+// status families: `background: var(--color-accent-*)` or `var(--color-status-*)`
 // beside `color: white`. Any single one of those is invisible in review, and
 // `npm run audit:css-vars` cannot see it — it only reports *undefined* variables.
 // So the rule is asserted over the whole stylesheet rather than site by site: the
-// next accent button inherits the fix instead of re-introducing the bug.
+// next filled button inherits the fix instead of re-introducing the bug.
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -166,6 +167,94 @@ describe("solid accent surfaces in CSS", () => {
   });
 });
 
+describe("solid status surfaces in CSS", () => {
+  // Same defect, different token family, and worse: white on `--color-status-warning`
+  // measures 2.15:1 and on `--color-status-success` 2.54:1 — under even the 3:1
+  // non-text floor, and unlike the accent these values do not vary by theme, so
+  // every user saw them.
+  const STATUS_FILL =
+    /background(?:-color)?\s*:\s*var\(\s*--color-status-(danger|warning|success)\b/;
+  const statusFilled = RULES.filter((rule) => STATUS_FILL.test(rule.body));
+
+  it("scanned the status-filled rules", () => {
+    expect(statusFilled.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("never hardcodes a light foreground", () => {
+    const offenders = statusFilled
+      .filter((rule) => HARDCODED_LIGHT_FG.test(rule.body))
+      .map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("names the matching on-solid token when it sets a foreground", () => {
+    // A filled danger surface must use the danger foreground, not the warning one:
+    // the families are user-editable independently, so a mismatched pair is a
+    // pairing nothing has checked.
+    const offenders = statusFilled
+      .filter((rule) => /(?<!-)\bcolor\s*:/.test(rule.body))
+      .filter((rule) => {
+        // Last declaration wins in CSS, so the effective fill is the last match.
+        const family = [
+          ...rule.body.matchAll(new RegExp(STATUS_FILL.source, "g")),
+        ].at(-1)?.[1];
+        return !new RegExp(
+          `(?<!-)\\bcolor\\s*:\\s*var\\(\\s*--color-status-${family}-on-solid\\s*(?:,[^)]*)?\\)`,
+        ).test(rule.body);
+      })
+      .map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("hardcoded light foregrounds anywhere in CSS", () => {
+  // Rule-scoped checks cannot see the shape that `.skill-lint-badge` had: `color:
+  // white` on a base class while the fills lived on its modifiers. That defect was
+  // found by reading components, not by a guard. Inverting the question closes it —
+  // a hardcoded light foreground is flagged wherever it appears, and the handful of
+  // legitimate ones are named.
+  const ALLOWED = new Set([
+    // White on the photo lightbox's own dark scrim (rgb(0 0 0 / 60-92%)), not on a
+    // theme colour, so no token applies.
+    ".photo-gallery-item-caption",
+    ".photo-lightbox-caption",
+    ".photo-lightbox-close",
+    ".photo-lightbox-nav",
+    ".photo-lightbox-open-journal",
+  ]);
+
+  it("has none outside the named exceptions", () => {
+    const offenders = RULES.filter(
+      (rule) =>
+        HARDCODED_LIGHT_FG.test(rule.body) && !ALLOWED.has(rule.selector),
+    ).map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("still finds the named exceptions, so the check is not vacuous", () => {
+    const found = RULES.filter(
+      (rule) =>
+        HARDCODED_LIGHT_FG.test(rule.body) && ALLOWED.has(rule.selector),
+    );
+    expect(found.length).toBe(ALLOWED.size);
+  });
+});
+
+describe("hover fills on a solid surface", () => {
+  it("are never a color-mix toward a hardcoded black or white", () => {
+    // The direction has to come from whichever foreground the fill took. Mixing
+    // toward black broke the themes whose danger takes dark text (4.21:1); mixing
+    // toward white then broke Solarized, whose #dc322f takes white (3.83:1). A
+    // constant cannot serve both, so a derived *-solid-hover token must be used.
+    const offenders = RULES.filter((rule) =>
+      /background(?:-color)?\s*:\s*color-mix\([^;]*var\(\s*--color-(?:accent|status)-[\w-]+\s*\)[^;]*,\s*(?:black|white|#000|#fff)/.test(
+        rule.body,
+      ),
+    ).map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("solid accent surfaces in inline styles", () => {
   // This scan was originally rooted at `src/components` and matched only JSX
   // `style={{…}}` literals. Both narrowings hid a live defect: PluginMarketplace
@@ -215,6 +304,28 @@ describe("solid accent surfaces in inline styles", () => {
       .filter((object) =>
         /--color-accent-(default|hover)\b/.test(
           objectProperty(object.body, /^background(Color)?$/) ?? "",
+        ),
+      )
+      .map((object) => `${object.file}:${object.line}`);
+    expect(offenders).toEqual([]);
+  });
+
+  const statusObjects = objects.filter((object) => {
+    const fill = objectProperty(object.body, /^background(Color)?$/);
+    return fill !== null && fill.includes("--color-status-");
+  });
+
+  it("found the inline status buttons", () => {
+    // Added because the accent-only version of this scan left the three TSX status
+    // buttons this commit converted entirely unguarded.
+    expect(statusObjects.length).toBeGreaterThan(0);
+  });
+
+  it("never hardcodes a light foreground on a status fill", () => {
+    const offenders = statusObjects
+      .filter((object) =>
+        /^\s*"(#fff|#ffffff|white)"\s*$/i.test(
+          objectProperty(object.body, /^color$/) ?? "",
         ),
       )
       .map((object) => `${object.file}:${object.line}`);

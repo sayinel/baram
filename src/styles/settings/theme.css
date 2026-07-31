@@ -75,7 +75,7 @@
 }
 
 .theme-card-delete:hover {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
 }
 
