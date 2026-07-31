@@ -57,6 +57,18 @@
     --color-blue-950
   ); /** Subtle accent background dark */
 
+  --color-accent-solid: var(
+    --color-blue-400
+  ); /** Fill for solid accent surfaces that carry text — equals accent-default here on purpose: darkening it would win the text ratio but drop the button below the 3:1 non-text floor against the dark page */
+
+  --color-accent-solid-hover: var(
+    --color-blue-300
+  ); /** Hover fill for solid accent surfaces — lighter than accent-solid, so contrast with the dark accent-on-solid rises rather than falls (11.65:1) */
+
+  --color-accent-on-solid: var(
+    --color-black
+  ); /** Text on accent-solid. Dark here because white on the bright dark-theme accent is 2.54:1 — below even the 3:1 non-text floor (#330) */
+
   --color-accent-ai: var(--color-violet-400); /** AI feature accent color */
   --color-editor-bg: var(
     --color-navy-800

@@ -76,6 +76,18 @@
         "$value": "{color.blue.950}",
         "$description": "Subtle accent background dark"
       },
+      "solid": {
+        "$value": "{color.blue.400}",
+        "$description": "Fill for solid accent surfaces that carry text — equals accent-default here on purpose: darkening it would win the text ratio but drop the button below the 3:1 non-text floor against the dark page"
+      },
+      "solidHover": {
+        "$value": "{color.blue.300}",
+        "$description": "Hover fill for solid accent surfaces — lighter than accent-solid, so contrast with the dark accent-on-solid rises rather than falls (11.65:1)"
+      },
+      "onSolid": {
+        "$value": "{color.black}",
+        "$description": "Text on accent-solid. Dark here because white on the bright dark-theme accent is 2.54:1 — below even the 3:1 non-text floor (#330)"
+      },
       "ai": {
         "$value": "{color.violet.400}",
         "$description": "AI feature accent color"

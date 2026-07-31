@@ -52,6 +52,18 @@
   ); /** Accent hover state (was --color-accent-hover: #2563eb) */
 
   --color-accent-subtle: var(--color-blue-50); /** Subtle accent background */
+  --color-accent-solid: var(
+    --color-blue-600
+  ); /** Fill for solid accent surfaces that carry text — a step darker than accent-default so white text clears WCAG AA (5.17:1; accent-default is 3.68:1) */
+
+  --color-accent-solid-hover: var(
+    --color-blue-700
+  ); /** Hover fill for solid accent surfaces — darker than accent-solid, so contrast with accent-on-solid rises rather than falls (6.70:1) */
+
+  --color-accent-on-solid: var(
+    --color-white
+  ); /** Text on accent-solid. Never hardcode white: this flips to black in themes whose accent is light (see src/utils/color-contrast.ts) */
+
   --color-accent-ai: var(--color-violet-500); /** AI feature accent color */
   --color-editor-bg: var(
     --color-white

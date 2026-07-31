@@ -1,7 +1,6 @@
 // §4.2 Settings effects hook — apply theme, font, spellcheck to DOM
 import { useEffect } from "react";
 
-import type { ThemeColors } from "../types/theme";
 import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
@@ -9,6 +8,7 @@ import { useShallow } from "zustand/shallow";
 import { useSettingsStore } from "../stores/settings/store";
 import { findThemeById } from "../types/theme";
 import { logger } from "../utils/logger";
+import { applyThemeVars, clearThemeVars } from "../utils/theme-vars";
 
 export function useSettingsEffects(editor: Editor | null) {
   const {
@@ -33,29 +33,9 @@ export function useSettingsEffects(editor: Editor | null) {
 
   useEffect(() => {
     const root = document.documentElement;
-    const cssKeys: (keyof ThemeColors)[] = [
-      "--color-bg-default",
-      "--color-bg-subtle",
-      "--color-bg-panel",
-      "--color-bg-elevated",
-      "--color-text-primary",
-      "--color-text-secondary",
-      "--color-text-disabled",
-      "--color-border-default",
-      "--color-border-subtle",
-      "--color-accent-default",
-      "--color-accent-hover",
-      "--color-editor-bg",
-      "--color-editor-text",
-      "--color-editor-selection",
-      "--color-editor-cursor",
-      "--color-editor-line-highlight",
-    ];
 
     // Clear previous CSS variable overrides
-    for (const key of cssKeys) {
-      root.style.removeProperty(key);
-    }
+    clearThemeVars(root);
 
     if (activeThemeId === "system") {
       root.removeAttribute("data-theme");
@@ -71,13 +51,13 @@ export function useSettingsEffects(editor: Editor | null) {
     // Set base mode (light/dark) for CSS + CodeMirror/Mermaid
     root.dataset.theme = themeDef.base;
 
-    // For non-default themes, apply CSS variable overrides
+    // For non-default themes, apply CSS variable overrides. The default themes
+    // need none: src/styles/generated/ already carries their values, including the
+    // accent pairing that applyThemeVars derives for everyone else (#330).
     const isDefault =
       activeThemeId === "default-light" || activeThemeId === "default-dark";
     if (!isDefault) {
-      for (const [key, value] of Object.entries(themeDef.colors)) {
-        root.style.setProperty(key, value);
-      }
+      applyThemeVars(root, themeDef.colors, themeDef.base);
     }
   }, [activeThemeId, customThemes]);
 
