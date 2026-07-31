@@ -213,7 +213,7 @@ function DevPluginDetail({
           onClick={onRemove}
           type="button"
         >
-          {t("plugin.action.remove")}
+          {t("plugin.dev.remove")}
         </button>
       </div>
       {error && <p className="plugin-dev-detail__error">{error}</p>}

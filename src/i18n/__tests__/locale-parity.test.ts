@@ -88,6 +88,20 @@ describe("locale files are one-to-one", () => {
     expect(copied).toEqual([]);
   });
 
+  it("uses no ko placeholder that en does not supply", () => {
+    // `t()` is `value.replace("{k}", v)` per SUPPLIED param and reports nothing, so a
+    // placeholder present only in ko renders literal braces to Korean users while the
+    // English string is fine. Deliberately one-directional: `{s}` appears in en only,
+    // as a pluralisation hack (`{count} file{s}`) that Korean does not need.
+    const params = (value: string) =>
+      [...value.matchAll(/\{([A-Za-z]+)\}/g)].map((m) => m[1]);
+    const extra = Object.keys(KO)
+      .filter((k) => k in EN)
+      .filter((k) => params(KO[k]).some((p) => !params(EN[k]).includes(p)))
+      .map((k) => `${k}: ko has ${params(KO[k])}, en has ${params(EN[k])}`);
+    expect(extra).toEqual([]);
+  });
+
   it("has no stale SHARED_VALUES entry", () => {
     // The other direction: an allowlisted key that has since been translated, or removed, stops
     // documenting anything and quietly widens the exemption for whoever reuses the key name.

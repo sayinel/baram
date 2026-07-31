@@ -435,14 +435,19 @@ export function PluginMarketplace() {
         const validation = validateManifest(result.manifest);
         if (!validation.valid) {
           throw new Error(
-            `the downloaded manifest is invalid \u2014 ${validation.errors
-              .map((e) => `${e.field}: ${e.message}`)
-              .join("; ")}`,
+            t("plugin.error.manifestInvalid", {
+              detail: validation.errors
+                .map((e) => `${e.field}: ${e.message}`)
+                .join("; "),
+            }),
           );
         }
         if (result.manifest.id !== entry.id) {
           throw new Error(
-            `the download declares id "${result.manifest.id}" but the registry listed "${entry.id}"`,
+            t("plugin.error.idMismatch", {
+              expected: entry.id,
+              got: result.manifest.id,
+            }),
           );
         }
         const gaps = consentGaps(consent, {
@@ -451,7 +456,7 @@ export function PluginMarketplace() {
         });
         if (gaps.length > 0) {
           throw new Error(
-            `the download does not match the registry listing \u2014 ${gaps.join("; ")}`,
+            t("plugin.error.consentGap", { detail: gaps.join("; ") }),
           );
         }
 
@@ -485,7 +490,7 @@ export function PluginMarketplace() {
         setInstalling(entry.id, false);
       }
     },
-    [addPlugin, askConsent, setError, setInstalling],
+    [addPlugin, askConsent, setError, setInstalling, t],
   );
 
   /**
@@ -524,11 +529,7 @@ export function PluginMarketplace() {
       // Fixed here rather than at the call site so a future tab cannot reintroduce it.
       const entry = registryIndex?.plugins.find((p) => p.id === candidate.id);
       if (!entry) {
-        setError(
-          candidate.id,
-          "This plugin is not in the registry, so there is nothing to update to. " +
-            "Refresh the plugin list and try again.",
-        );
+        setError(candidate.id, t("plugin.error.notInRegistry"));
         return;
       }
       if (!entry.trust) {
@@ -574,8 +575,7 @@ export function PluginMarketplace() {
         const why = usePluginStore.getState().pluginErrors[entry.id] ?? "";
         setError(
           entry.id,
-          `${why} The previous version was removed before this failed, so "${entry.name}" ` +
-            `is no longer installed — reinstall it from the registry.`,
+          t("plugin.error.updateLostPlugin", { name: entry.name, why }),
         );
         return;
       }
@@ -589,6 +589,7 @@ export function PluginMarketplace() {
       installedPlugins,
       registryIndex,
       setError,
+      t,
     ],
   );
 

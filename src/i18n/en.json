@@ -10,6 +10,7 @@
   "settings.search.placeholder": "Search settings...",
   "settings.search.empty": "No settings found for \"{query}\"",
   "settings.search.open": "Open...",
+
   "settings.tab.general": "General",
   "settings.tab.editor": "Editor",
   "settings.tab.appearance": "Appearance",
@@ -20,6 +21,7 @@
   "settings.tab.keybindings": "Keybindings",
   "settings.tab.plugins": "Plugins",
   "settings.tab.vault": "Vault",
+
   "settings.general.startup": "Startup",
   "settings.general.onLaunch": "On Launch",
   "settings.general.onLaunch.desc": "What to do when Baram starts",
@@ -124,6 +126,7 @@
   "space.zettel.disabled": "Enable Zettel in Settings › General to use the Zettel space.",
   "space.zettel.noDirectory": "Set the Zettel directory in Settings › General first.",
   "statusbar.perspective": "Perspective",
+
   "settings.editor.font": "Font",
   "settings.editor.fontFamily": "Font Family",
   "settings.editor.fontFamily.desc": "Typeface used in the editor",
@@ -149,6 +152,7 @@
   "settings.editor.fontPicker.placeholder": "Type or select a font...",
   "settings.editor.fontPicker.useCustom": "Use \"{font}\"",
   "settings.editor.fontPicker.systemDefault": "System Default",
+
   "settings.appearance.theme": "Theme",
   "settings.appearance.customize": "Customize...",
   "settings.appearance.import": "Import Theme...",
@@ -157,6 +161,7 @@
   "settings.appearance.saveCurrentLayout": "Save Current Layout...",
   "settings.appearance.customBadge": "Custom",
   "settings.appearance.deleteTheme": "Delete theme",
+
   "settings.workspace.presetName": "Perspective name...",
   "settings.workspace.deletePreset": "Delete perspective",
   "settings.workspace.builtIn": "Built-in",
@@ -167,6 +172,7 @@
   "settings.workspace.preset.journal.desc": "Open calendar, today's journal, and Memories view together.",
   "settings.workspace.preset.skills": "Skills",
   "settings.workspace.preset.skills.desc": "Layout optimized for editing LLM Skills files.",
+
   "settings.panels.files": "Files",
   "settings.panels.outline": "Outline",
   "settings.panels.search": "Search",
@@ -177,6 +183,7 @@
   "settings.panels.chat": "AI Chat",
   "settings.panels.help": "Help",
   "settings.panels.none": "None",
+
   "settings.markdown.extendedSyntax": "Extended Syntax",
   "settings.markdown.inlineMath": "Inline Math",
   "settings.markdown.inlineMath.desc": "Enable $...$ and $$...$$ math expressions",
@@ -187,6 +194,7 @@
   "settings.markdown.typography": "Typography",
   "settings.markdown.smartPunctuation": "Smart Punctuation",
   "settings.markdown.smartPunctuation.desc": "Convert straight quotes and dashes to typographic equivalents",
+
   "settings.ai.provider": "Provider",
   "settings.ai.aiProvider": "AI Provider",
   "settings.ai.aiProvider.desc": "Choose the AI service for completions",
@@ -240,6 +248,7 @@
   "settings.ai.customCommands.addNew": "+ Add Custom Command",
   "settings.ai.customCommands.edit": "Edit",
   "settings.ai.customCommands.del": "Del",
+
   "settings.activitybar.desc": "Show, hide, and reorder Activity Bar icons. Use arrows to change order.",
   "settings.activitybar.sidebarPanels": "Sidebar Panels",
   "settings.activitybar.rightPanels": "Right Panels",
@@ -260,14 +269,17 @@
   "settings.activitybar.item.photo-gallery": "Photo Gallery",
   "settings.activitybar.item.snapshots": "Version History",
   "settings.activitybar.item.help": "Help",
+
   "settings.language.title": "Language",
   "settings.language.interface": "Interface Language",
   "settings.language.interface.desc": "Language for menus and interface elements",
   "settings.language.reloadNotice": "Language changes will be applied immediately.",
+
   "settings.theme.namePlaceholder": "Theme name...",
   "settings.theme.light": "Light",
   "settings.theme.dark": "Dark",
   "settings.theme.export": "Export",
+
   "menu.app": "Baram",
   "menu.app.about": "About Baram",
   "menu.app.settings": "Settings...",
@@ -357,11 +369,14 @@
   "menu.help.shortcuts": "Keyboard Shortcuts",
   "menu.help.faq": "FAQ",
   "menu.help.report": "Report Issue...",
+
   "settings.search.navigateHint": "Click to navigate to setting",
+
   "followUp.ask": "Get follow-up questions",
   "followUp.insert": "Write answer",
   "followUp.dismiss": "Dismiss",
   "followUp.loading": "Thinking...",
+
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.close": "Close",
@@ -370,6 +385,7 @@
   "common.clear": "Clear",
   "common.delete": "Delete",
   "common.custom": "Custom",
+
   "keybindings.search.placeholder": "Filter keybindings...",
   "keybindings.search.empty": "No keybindings found for \"{query}\"",
   "keybindings.edit": "Edit",
@@ -381,6 +397,7 @@
   "keybindings.conflict": "Already used by \"{command}\"",
   "keybindings.conflict.swap": "Swap",
   "keybindings.readOnly": "Extension shortcut (read-only)",
+
   "keybindings.category.file": "File",
   "keybindings.category.edit": "Edit",
   "keybindings.category.view": "View",
@@ -391,6 +408,7 @@
   "keybindings.category.journal": "Journal",
   "keybindings.category.zettelkasten": "Zettel",
   "keybindings.category.formatting": "Formatting",
+
   "keybindings.file.new": "New File",
   "keybindings.file.open": "Open File",
   "keybindings.file.openFolder": "Open Folder",
@@ -443,11 +461,13 @@
   "keybindings.fmt.orderedList": "Ordered List",
   "keybindings.fmt.taskList": "Task List",
   "keybindings.fmt.mermaid": "Mermaid Diagram",
+
   "about.version": "Version {version}",
   "about.description": "Lightweight WYSIWYG Markdown Editor",
   "about.license": "License",
   "about.stack": "Stack",
   "about.copyright": "Copyright © 2026 Baram Team",
+
   "home.tagline": "A lightweight, beautiful, and connected Markdown editor",
   "home.openFolder": "Open Folder",
   "home.openFile": "Open File",
@@ -463,15 +483,19 @@
   "home.shortcut.newFile": "New file",
   "home.shortcut.commandPalette": "Command palette",
   "home.emptyWorkspace": "Select a file from the sidebar or press ⌘N to create a new file",
+
   "recent.folders": "Recent Folders",
   "recent.files": "Recent Files",
   "recent.clear": "Clear Recent",
   "recent.vaultBadge": "Vault",
   "recent.notFound": "Path not found — removed from recents: {name}",
+
   "command.closeFolder": "Close Folder",
+
   "help.tab.guide": "User Guide",
   "help.tab.shortcuts": "Shortcuts",
   "help.tab.faq": "FAQ",
+
   "fileTree.accessDenied.title": "Folder access denied",
   "fileTree.accessDenied.bodyMac": "macOS blocked Baram from reading this folder. Grant access in System Settings, then retry.",
   "fileTree.accessDenied.bodyGeneric": "Baram doesn't have permission to read this folder. Check the folder's permissions, then retry.",
@@ -484,10 +508,13 @@
   "fileTree.accessDenied.retry": "Retry",
   "fileTree.accessDenied.toast": "Folder access was denied by the system.",
   "fileTree.accessDenied.toastGeneric": "Couldn't read the folder.",
+
   "htmlPreview.showPreview": "Preview",
   "htmlPreview.showSource": "Source",
   "htmlPreview.toggleTitle": "Toggle HTML preview / source",
+
   "viewer.noPlugin": "No viewer plugin is enabled for this file type.",
+
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",
   "plugin.consent.fullTrust.title": "This plugin asks for full trust.",
@@ -499,6 +526,7 @@
   "plugin.consent.cancel": "Cancel",
   "plugin.consent.confirm.install": "Install",
   "plugin.consent.confirm.update": "Update and install",
+
   "plugin.capability.editor": "Read and edit the document",
   "plugin.capability.editor:readonly": "Read the document's content (cannot edit)",
   "plugin.capability.files": "Read and write files in the vault",
@@ -520,6 +548,7 @@
   "plugin.action.uninstall": "Uninstall",
   "plugin.action.update": "Update",
   "plugin.action.remove": "Remove",
+  "plugin.dev.remove": "Remove",
   "plugin.action.retry": "Retry",
   "plugin.action.reload": "Reload",
   "plugin.action.on": "On",
@@ -568,5 +597,10 @@
   "plugin.card.downloads": "{count} downloads",
   "plugin.card.moreCapabilities": "+{count} more",
   "plugin.action.enabled": "Enabled",
-  "plugin.action.disabled": "Disabled"
+  "plugin.action.disabled": "Disabled",
+  "plugin.error.notInRegistry": "This plugin is not in the registry, so there is nothing to update to. Refresh the plugin list and try again.",
+  "plugin.error.updateLostPlugin": "{why} The previous version was removed before this failed, so \"{name}\" is no longer installed — reinstall it from the registry.",
+  "plugin.error.manifestInvalid": "the downloaded manifest is invalid — {detail}",
+  "plugin.error.idMismatch": "the download declares id \"{got}\" but the registry listed \"{expected}\"",
+  "plugin.error.consentGap": "the download does not match the registry listing — {detail}"
 }

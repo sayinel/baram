@@ -9,6 +9,7 @@
   "settings.title": "설정",
   "settings.search.placeholder": "설정 검색...",
   "settings.search.empty": "\"{query}\"에 대한 설정을 찾을 수 없습니다",
+
   "settings.tab.general": "일반",
   "settings.tab.editor": "에디터",
   "settings.tab.appearance": "외관",
@@ -19,6 +20,7 @@
   "settings.tab.keybindings": "단축키",
   "settings.tab.plugins": "플러그인",
   "settings.tab.vault": "볼트",
+
   "settings.general.startup": "시작",
   "settings.general.onLaunch": "시작 시 동작",
   "settings.general.onLaunch.desc": "Baram 시작 시 수행할 동작",
@@ -148,6 +150,7 @@
   "settings.editor.fontPicker.placeholder": "글꼴을 입력하거나 선택하세요...",
   "settings.editor.fontPicker.useCustom": "\"{font}\" 사용",
   "settings.editor.fontPicker.systemDefault": "시스템 기본",
+
   "settings.appearance.theme": "테마",
   "settings.appearance.customize": "커스터마이즈...",
   "settings.appearance.import": "테마 가져오기...",
@@ -156,6 +159,7 @@
   "settings.appearance.saveCurrentLayout": "현재 레이아웃 저장...",
   "settings.appearance.customBadge": "커스텀",
   "settings.appearance.deleteTheme": "테마 삭제",
+
   "settings.workspace.presetName": "화면구성 이름...",
   "settings.workspace.deletePreset": "화면구성 삭제",
   "settings.workspace.builtIn": "기본 제공",
@@ -166,6 +170,7 @@
   "settings.workspace.preset.journal.desc": "캘린더와 오늘의 저널, Memories View를 함께 엽니다.",
   "settings.workspace.preset.skills": "Skills",
   "settings.workspace.preset.skills.desc": "LLM Skills 파일 편집에 최적화된 레이아웃입니다.",
+
   "settings.panels.files": "파일",
   "settings.panels.outline": "개요",
   "settings.panels.search": "검색",
@@ -176,6 +181,7 @@
   "settings.panels.chat": "AI 채팅",
   "settings.panels.help": "도움말",
   "settings.panels.none": "없음",
+
   "settings.markdown.extendedSyntax": "확장 구문",
   "settings.markdown.inlineMath": "인라인 수식",
   "settings.markdown.inlineMath.desc": "$...$ 및 $$...$$ 수식 활성화",
@@ -186,6 +192,7 @@
   "settings.markdown.typography": "타이포그래피",
   "settings.markdown.smartPunctuation": "스마트 구두점",
   "settings.markdown.smartPunctuation.desc": "직선형 따옴표와 대시를 타이포그래피 기호로 변환합니다",
+
   "settings.ai.provider": "프로바이더",
   "settings.ai.aiProvider": "AI 프로바이더",
   "settings.ai.aiProvider.desc": "AI 완성에 사용할 서비스를 선택하세요",
@@ -239,6 +246,7 @@
   "settings.ai.agentModel.desc": "자율 AI 작업용 모델",
   "settings.ai.useDefault": "기본",
   "settings.ai.selectModel": "모델 선택...",
+
   "settings.activitybar.desc": "활동 표시줄 아이콘의 표시/숨기기 및 순서를 설정합니다. 화살표로 순서를 변경하세요.",
   "settings.activitybar.sidebarPanels": "사이드바 패널",
   "settings.activitybar.rightPanels": "우측 패널",
@@ -259,11 +267,14 @@
   "settings.activitybar.item.photo-gallery": "사진 갤러리",
   "settings.activitybar.item.snapshots": "버전 히스토리",
   "settings.activitybar.item.help": "도움말",
+
   "settings.search.open": "열기...",
+
   "settings.language.title": "언어",
   "settings.language.interface": "인터페이스 언어",
   "settings.language.interface.desc": "메뉴 및 인터페이스 요소의 언어",
   "settings.language.reloadNotice": "언어 변경은 즉시 적용됩니다.",
+
   "menu.app": "Baram",
   "menu.app.about": "Baram에 대하여",
   "menu.app.settings": "설정...",
@@ -353,11 +364,14 @@
   "menu.help.shortcuts": "키보드 단축키",
   "menu.help.faq": "FAQ",
   "menu.help.report": "문제 신고...",
+
   "settings.search.navigateHint": "클릭하면 해당 설정으로 이동합니다",
+
   "followUp.ask": "심화 질문 받기",
   "followUp.insert": "답변 작성하기",
   "followUp.dismiss": "무시",
   "followUp.loading": "생각 중...",
+
   "common.save": "저장",
   "common.cancel": "취소",
   "common.close": "닫기",
@@ -366,6 +380,7 @@
   "common.clear": "지우기",
   "common.delete": "삭제",
   "common.custom": "커스텀",
+
   "keybindings.search.placeholder": "단축키 검색...",
   "keybindings.search.empty": "\"{query}\"에 대한 단축키를 찾을 수 없습니다",
   "keybindings.edit": "편집",
@@ -377,6 +392,7 @@
   "keybindings.conflict": "이미 \"{command}\"에서 사용 중",
   "keybindings.conflict.swap": "교체",
   "keybindings.readOnly": "확장 기능 단축키 (읽기 전용)",
+
   "keybindings.category.file": "파일",
   "keybindings.category.edit": "편집",
   "keybindings.category.view": "보기",
@@ -387,6 +403,7 @@
   "keybindings.category.journal": "저널",
   "keybindings.category.zettelkasten": "Zettel",
   "keybindings.category.formatting": "서식",
+
   "keybindings.file.new": "새 파일",
   "keybindings.file.open": "파일 열기",
   "keybindings.file.openFolder": "폴더 열기",
@@ -439,15 +456,18 @@
   "keybindings.fmt.orderedList": "번호 매기기 목록",
   "keybindings.fmt.taskList": "할 일 목록",
   "keybindings.fmt.mermaid": "Mermaid 다이어그램",
+
   "settings.theme.namePlaceholder": "테마 이름...",
   "settings.theme.light": "라이트",
   "settings.theme.dark": "다크",
   "settings.theme.export": "내보내기",
+
   "about.version": "버전 {version}",
   "about.description": "가볍고 아름다운 WYSIWYG 마크다운 에디터",
   "about.license": "라이선스",
   "about.stack": "기술 스택",
   "about.copyright": "Copyright © 2026 Baram Team",
+
   "home.tagline": "가볍고, 아름답고, 연결되는 마크다운 에디터",
   "home.openFolder": "폴더 열기",
   "home.openFile": "파일 열기",
@@ -463,15 +483,19 @@
   "home.shortcut.newFile": "새 파일",
   "home.shortcut.commandPalette": "커맨드 팔레트",
   "home.emptyWorkspace": "사이드바에서 파일을 선택하거나 ⌘N으로 새 파일을 생성하세요",
+
   "recent.folders": "최근 폴더",
   "recent.files": "최근 파일",
   "recent.clear": "최근 항목 지우기",
   "recent.vaultBadge": "볼트",
   "recent.notFound": "경로를 찾을 수 없어 목록에서 제거했습니다: {name}",
+
   "command.closeFolder": "폴더 닫기",
+
   "help.tab.guide": "사용 설명서",
   "help.tab.shortcuts": "단축키",
   "help.tab.faq": "FAQ",
+
   "fileTree.accessDenied.title": "폴더 접근이 거부되었습니다",
   "fileTree.accessDenied.bodyMac": "macOS가 이 폴더에 대한 Baram의 접근을 차단했습니다. 시스템 설정에서 권한을 부여한 뒤 다시 시도하세요.",
   "fileTree.accessDenied.bodyGeneric": "이 폴더를 읽을 권한이 없습니다. 폴더 권한을 확인한 뒤 다시 시도하세요.",
@@ -484,10 +508,13 @@
   "fileTree.accessDenied.retry": "다시 시도",
   "fileTree.accessDenied.toast": "시스템이 폴더 접근을 거부했습니다.",
   "fileTree.accessDenied.toastGeneric": "폴더를 읽을 수 없습니다.",
+
   "htmlPreview.showPreview": "미리보기",
   "htmlPreview.showSource": "소스",
   "htmlPreview.toggleTitle": "HTML 미리보기 / 소스 전환",
+
   "viewer.noPlugin": "이 파일 형식을 표시할 뷰어 플러그인이 활성화되어 있지 않습니다.",
+
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",
   "plugin.consent.title.update": "\"{name}\" 플러그인을 업데이트하시겠습니까?",
   "plugin.consent.fullTrust.title": "이 플러그인은 완전한 신뢰 권한을 요청합니다.",
@@ -499,6 +526,7 @@
   "plugin.consent.cancel": "취소",
   "plugin.consent.confirm.install": "설치",
   "plugin.consent.confirm.update": "업데이트하여 설치",
+
   "plugin.capability.editor": "문서를 읽고 수정할 수 있습니다",
   "plugin.capability.editor:readonly": "문서 내용을 읽을 수 있습니다 (수정 불가)",
   "plugin.capability.files": "볼트 내 파일을 읽고 쓸 수 있습니다",
@@ -520,6 +548,7 @@
   "plugin.action.uninstall": "제거",
   "plugin.action.update": "업데이트",
   "plugin.action.remove": "제거",
+  "plugin.dev.remove": "목록에서 제거",
   "plugin.action.retry": "다시 시도",
   "plugin.action.reload": "다시 불러오기",
   "plugin.action.on": "켜짐",
@@ -564,9 +593,14 @@
   "plugin.dev.toast.removeFailed": "제거하지 못했습니다: {error}",
   "plugin.settings.title": "설정",
   "plugin.dev.meta": "ID {id} · 버전 {version} · 제작자 {author}",
-  "plugin.action.updateTo": "v{version}으로 업데이트",
+  "plugin.action.updateTo": "v{version} 업데이트",
   "plugin.card.downloads": "다운로드 {count}회",
   "plugin.card.moreCapabilities": "+{count}개 더",
   "plugin.action.enabled": "사용 중",
-  "plugin.action.disabled": "사용 안 함"
+  "plugin.action.disabled": "사용 안 함",
+  "plugin.error.notInRegistry": "이 플러그인은 레지스트리에 없어 업데이트할 대상이 없습니다. 플러그인 목록을 새로고침한 뒤 다시 시도하세요.",
+  "plugin.error.updateLostPlugin": "{why} 이 작업이 실패하기 전에 이전 버전이 이미 제거되어 \"{name}\"이(가) 더 이상 설치되어 있지 않습니다. 레지스트리에서 다시 설치하세요.",
+  "plugin.error.manifestInvalid": "내려받은 매니페스트가 올바르지 않습니다 — {detail}",
+  "plugin.error.idMismatch": "내려받은 파일은 id를 \"{got}\"로 선언했지만 레지스트리에는 \"{expected}\"로 등록되어 있습니다",
+  "plugin.error.consentGap": "내려받은 파일이 레지스트리 등록 정보와 일치하지 않습니다 — {detail}"
 }
