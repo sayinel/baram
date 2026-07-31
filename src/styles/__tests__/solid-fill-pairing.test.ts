@@ -1,10 +1,11 @@
-// §54 / #330 — a solid accent surface may not name its own foreground.
+// §54 / #330 — a solid accent or status surface may not name its own foreground.
 //
-// The bug this prevents was written 80 times: `background: var(--color-accent-*)`
+// The bug this prevents was written 80 times for the accent and 13 more for the
+// status families: `background: var(--color-accent-*)` or `var(--color-status-*)`
 // beside `color: white`. Any single one of those is invisible in review, and
 // `npm run audit:css-vars` cannot see it — it only reports *undefined* variables.
 // So the rule is asserted over the whole stylesheet rather than site by site: the
-// next accent button inherits the fix instead of re-introducing the bug.
+// next filled button inherits the fix instead of re-introducing the bug.
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -163,6 +164,43 @@ describe("solid accent surfaces in CSS", () => {
     expect(expected.filter((selector) => !stillBright.has(selector))).toEqual(
       [],
     );
+  });
+});
+
+describe("solid status surfaces in CSS", () => {
+  // Same defect, different token family, and worse: white on `--color-status-warning`
+  // measures 2.15:1 and on `--color-status-success` 2.54:1 — under even the 3:1
+  // non-text floor, and unlike the accent these values do not vary by theme, so
+  // every user saw them.
+  const STATUS_FILL =
+    /background(?:-color)?\s*:\s*var\(\s*--color-status-(danger|warning|success)\b/;
+  const statusFilled = RULES.filter((rule) => STATUS_FILL.test(rule.body));
+
+  it("scanned the status-filled rules", () => {
+    expect(statusFilled.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("never hardcodes a light foreground", () => {
+    const offenders = statusFilled
+      .filter((rule) => HARDCODED_LIGHT_FG.test(rule.body))
+      .map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("names the matching on-solid token when it sets a foreground", () => {
+    // A filled danger surface must use the danger foreground, not the warning one:
+    // the families are user-editable independently, so a mismatched pair is a
+    // pairing nothing has checked.
+    const offenders = statusFilled
+      .filter((rule) => /(?<!-)\bcolor\s*:/.test(rule.body))
+      .filter((rule) => {
+        const family = STATUS_FILL.exec(rule.body)?.[1];
+        return !new RegExp(
+          `(?<!-)\\bcolor\\s*:\\s*var\\(\\s*--color-status-${family}-on-solid\\s*\\)`,
+        ).test(rule.body);
+      })
+      .map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
+    expect(offenders).toEqual([]);
   });
 });
 

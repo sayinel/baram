@@ -346,7 +346,7 @@
 }
 
 .ai-chat-stop-btn {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
 }
 
@@ -614,13 +614,13 @@
 }
 
 .ai-diff-action-btn-accept {
-  color: white;
+  color: var(--color-status-success-on-solid);
   background: var(--color-status-success);
   border-color: var(--color-status-success);
 }
 
 .ai-diff-action-btn-reject {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
   border-color: var(--color-status-danger);
 }

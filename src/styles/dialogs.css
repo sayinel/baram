@@ -1181,7 +1181,10 @@
 }
 
 .find-match-active {
-  color: white;
+  /* Dark text: white on this orange is 2.80:1. The [data-theme="dark"] rule below
+     keeps white on purpose — its 70% alpha composites to ~#b65817, where white is
+     4.78:1 and black would be 4.40:1. */
+  color: #1a1a1a;
   background-color: #f97316; /* TODO: tokenize --color-find-match-active */
   border-radius: 2px;
 }

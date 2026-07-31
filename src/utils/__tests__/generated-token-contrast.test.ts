@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { BUILT_IN_THEMES } from "../../types/theme";
 import { AA_TEXT_RATIO, contrastRatio } from "../color-contrast";
-import { derivedAccentVars } from "../theme-vars";
+import { derivedVars } from "../theme-vars";
 
 const GENERATED = "src/styles/generated";
 
@@ -93,11 +93,11 @@ describe.each([
 
   it("agrees with what the runtime would derive for the same theme", () => {
     // Two code paths decide this pairing: these static tokens for the default and
-    // `system` themes, and derivedAccentVars for every explicitly-chosen theme.
+    // `system` themes, and derivedVars for every explicitly-chosen theme.
     // If they disagreed, switching between a default and a custom theme would
     // change the button's colours for no reason the user can see.
     const theme = BUILT_IN_THEMES.find((t) => t.id === themeId)!;
-    const derived = derivedAccentVars(theme.colors, theme.base);
+    const derived = derivedVars(theme.colors, theme.base);
     const { onSolid, solid } = accentTrio(file);
     expect(solid).toBe(derived["--color-accent-solid"]);
     expect(onSolid).toBe(derived["--color-accent-on-solid"]);
@@ -105,6 +105,38 @@ describe.each([
     // palette (blue-700 / blue-300) while the runtime has no palette to step
     // through and shifts the fill numerically. Both satisfy the hover invariant
     // above, which is the property that matters.
+  });
+});
+
+describe.each([
+  ["semantic-light.css", "default-light"],
+  ["semantic-dark.css", "default-dark"],
+  ["system-dark.css", "default-dark"],
+])("%s status families", (file, themeId) => {
+  const FAMILIES = ["danger", "success", "warning"] as const;
+
+  it.each(FAMILIES)("pairs %s with a foreground above AA", (family) => {
+    const tokens = declarations(file);
+    const fill = tokens.get(`--color-status-${family}`);
+    const onSolid = tokens.get(`--color-status-${family}-on-solid`);
+    if (fill === undefined || onSolid === undefined) {
+      throw new Error(
+        `--color-status-${family}[-on-solid] missing from ${file}`,
+      );
+    }
+    expect(
+      contrastRatio(resolve(onSolid), resolve(fill))!,
+    ).toBeGreaterThanOrEqual(AA_TEXT_RATIO);
+  });
+
+  it("agrees with what the runtime would derive", () => {
+    const theme = BUILT_IN_THEMES.find((t) => t.id === themeId)!;
+    const derived = derivedVars(theme.colors, theme.base);
+    const tokens = declarations(file);
+    for (const family of FAMILIES) {
+      const key = `--color-status-${family}-on-solid`;
+      expect(resolve(tokens.get(key)!)).toBe(derived[key]);
+    }
   });
 });
 

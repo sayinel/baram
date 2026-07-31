@@ -82,8 +82,20 @@
   ); /** Editor cursor (alias of color.text.primary, was --color-editor-cursor: #1a1a1a) */
 
   --color-status-danger: var(--color-red-500); /** Danger/error status */
+  --color-status-danger-on-solid: var(
+    --color-black
+  ); /** Text on a filled danger surface. Black, because white on red-500 is 3.76:1 — under AA (#330). Derived at runtime for user-edited themes; this value covers the default and `system` themes. */
+
   --color-status-warning: var(--color-yellow-500); /** Warning status */
+  --color-status-warning-on-solid: var(
+    --color-black
+  ); /** Text on a filled warning surface. Black, because white on yellow-500 is 2.15:1 — under even the 3:1 non-text floor (#330). */
+
   --color-status-success: var(--color-emerald-500); /** Success status */
+  --color-status-success-on-solid: var(
+    --color-black
+  ); /** Text on a filled success surface. Black, because white on emerald-500 is 2.54:1 — under even the 3:1 non-text floor (#330). */
+
   --color-status-info: var(--color-blue-500); /** Informational status */
   --color-status-error-bg: var(
     --color-red-50

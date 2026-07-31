@@ -758,15 +758,16 @@
   padding: 0 5px;
   font-size: 11px;
   font-weight: 600;
-  color: white;
   border-radius: 9px;
 }
 
 .skill-lint-badge--error {
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
 }
 
 .skill-lint-badge--warning {
+  color: var(--color-status-warning-on-solid);
   background: var(--color-status-warning);
 }
 

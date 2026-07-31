@@ -28,8 +28,11 @@
     --color-editor-cursor: #e2e8f0;
     --color-editor-line-highlight: #16213e;
     --color-status-danger: #ef4444;
+    --color-status-danger-on-solid: #000;
     --color-status-warning: #f59e0b;
+    --color-status-warning-on-solid: #000;
     --color-status-success: #10b981;
+    --color-status-success-on-solid: #000;
     --color-status-info: #60a5fa;
     --color-status-error-bg: #4c0519;
     --color-status-error-border: #7f1d1d;

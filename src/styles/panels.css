@@ -566,7 +566,7 @@
 }
 
 .workspace-card-delete:hover {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
 }
 
@@ -962,7 +962,7 @@
 }
 
 .plugin-dev-btn--danger:hover {
-  color: #fff;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger, #ef4444);
   border-color: var(--color-status-danger, #ef4444);
 }

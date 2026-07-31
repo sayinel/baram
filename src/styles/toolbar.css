@@ -380,13 +380,13 @@
 }
 
 .confirm-dialog-btn-danger {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
   border-color: var(--color-status-danger);
 }
 
 .confirm-dialog-btn-danger:hover {
-  background: color-mix(in srgb, var(--color-status-danger) 85%, black);
+  background: color-mix(in srgb, var(--color-status-danger) 85%, white);
 }
 
 .field-dialog-label {
