@@ -385,6 +385,13 @@
   border-color: var(--color-status-danger);
 }
 
+/* Mixes toward WHITE, not black. This used to darken to #cb3a3a, where the derived
+   dark foreground is 4.21:1 — so hovering a button that passes at rest (5.58:1) broke
+   it. Lightening moves the fill away from its own foreground, the same invariant the
+   accent's hover follows, and takes the text to 6.58:1.
+   85% is the limit, not a round number: at 75% the state change reads better (1.35 vs
+   1.18 against the resting fill) but the button's own edge against a white page falls
+   to 2.80:1, under the 3:1 non-text floor. 85% keeps it at 3.19:1. */
 .confirm-dialog-btn-danger:hover {
   background: color-mix(in srgb, var(--color-status-danger) 85%, white);
 }
