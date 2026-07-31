@@ -193,6 +193,7 @@ import type {
 
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
 import { validateManifest } from "../../plugins/manifest";
@@ -224,6 +225,7 @@ interface PendingConsent {
 }
 
 export function PluginMarketplace() {
+  const { t } = useTranslation();
   const {
     installedPlugins,
     pluginErrors,
@@ -433,14 +435,19 @@ export function PluginMarketplace() {
         const validation = validateManifest(result.manifest);
         if (!validation.valid) {
           throw new Error(
-            `the downloaded manifest is invalid \u2014 ${validation.errors
-              .map((e) => `${e.field}: ${e.message}`)
-              .join("; ")}`,
+            t("plugin.error.manifestInvalid", {
+              detail: validation.errors
+                .map((e) => `${e.field}: ${e.message}`)
+                .join("; "),
+            }),
           );
         }
         if (result.manifest.id !== entry.id) {
           throw new Error(
-            `the download declares id "${result.manifest.id}" but the registry listed "${entry.id}"`,
+            t("plugin.error.idMismatch", {
+              expected: entry.id,
+              got: result.manifest.id,
+            }),
           );
         }
         const gaps = consentGaps(consent, {
@@ -449,7 +456,7 @@ export function PluginMarketplace() {
         });
         if (gaps.length > 0) {
           throw new Error(
-            `the download does not match the registry listing \u2014 ${gaps.join("; ")}`,
+            t("plugin.error.consentGap", { detail: gaps.join("; ") }),
           );
         }
 
@@ -483,7 +490,7 @@ export function PluginMarketplace() {
         setInstalling(entry.id, false);
       }
     },
-    [addPlugin, askConsent, setError, setInstalling],
+    [addPlugin, askConsent, setError, setInstalling, t],
   );
 
   /**
@@ -522,11 +529,7 @@ export function PluginMarketplace() {
       // Fixed here rather than at the call site so a future tab cannot reintroduce it.
       const entry = registryIndex?.plugins.find((p) => p.id === candidate.id);
       if (!entry) {
-        setError(
-          candidate.id,
-          "This plugin is not in the registry, so there is nothing to update to. " +
-            "Refresh the plugin list and try again.",
-        );
+        setError(candidate.id, t("plugin.error.notInRegistry"));
         return;
       }
       if (!entry.trust) {
@@ -572,8 +575,7 @@ export function PluginMarketplace() {
         const why = usePluginStore.getState().pluginErrors[entry.id] ?? "";
         setError(
           entry.id,
-          `${why} The previous version was removed before this failed, so "${entry.name}" ` +
-            `is no longer installed — reinstall it from the registry.`,
+          t("plugin.error.updateLostPlugin", { name: entry.name, why }),
         );
         return;
       }
@@ -587,6 +589,7 @@ export function PluginMarketplace() {
       installedPlugins,
       registryIndex,
       setError,
+      t,
     ],
   );
 
@@ -683,7 +686,7 @@ export function PluginMarketplace() {
       {consentDialog}
       {/* Header */}
       <div style={STYLES.header}>
-        <h2 style={STYLES.title}>Plugins</h2>
+        <h2 style={STYLES.title}>{t("plugin.marketplace.title")}</h2>
 
         {/* Tabs */}
         <div style={STYLES.tabBar}>
@@ -699,10 +702,14 @@ export function PluginMarketplace() {
                 }
               >
                 {tab === "browse"
-                  ? "Browse"
+                  ? t("plugin.marketplace.tab.browse")
                   : tab === "installed"
-                    ? `Installed (${installedList.length})`
-                    : `Updates (${updatesCount})`}
+                    ? t("plugin.marketplace.tab.installed", {
+                        count: String(installedList.length),
+                      })
+                    : t("plugin.marketplace.tab.updates", {
+                        count: String(updatesCount),
+                      })}
               </button>
             ),
           )}
@@ -713,7 +720,9 @@ export function PluginMarketplace() {
               onClick={handleRefresh}
               style={STYLES.refreshButton}
             >
-              {loading ? "↻ Refreshing…" : "↻ Refresh"}
+              {loading
+                ? t("plugin.marketplace.refreshing")
+                : t("plugin.marketplace.refresh")}
             </button>
           )}
         </div>
@@ -722,7 +731,7 @@ export function PluginMarketplace() {
         {activeTab === "browse" && (
           <input
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search plugins..."
+            placeholder={t("plugin.marketplace.search")}
             style={STYLES.searchInput}
             type="text"
             value={searchQuery}
@@ -735,21 +744,23 @@ export function PluginMarketplace() {
         {/* Error state */}
         {error && activeTab === "browse" && (
           <div style={STYLES.errorMessage}>
-            <p>Failed to load registry</p>
+            <p>{t("plugin.marketplace.registryFailed")}</p>
             <p style={STYLES.errorSubtext}>{error}</p>
             <button
               disabled={loading}
               onClick={handleRefresh}
               style={STYLES.retryButton}
             >
-              Retry
+              {t("plugin.action.retry")}
             </button>
           </div>
         )}
 
         {/* Loading state */}
         {loading && activeTab === "browse" && (
-          <div style={STYLES.loadingMessage}>Loading plugins...</div>
+          <div style={STYLES.loadingMessage}>
+            {t("plugin.marketplace.loading")}
+          </div>
         )}
 
         {/* Browse tab */}
@@ -758,7 +769,9 @@ export function PluginMarketplace() {
           !error &&
           (filteredPlugins.length === 0 ? (
             <div style={STYLES.centeredMessage}>
-              {searchQuery ? "No plugins found" : "No plugins available"}
+              {searchQuery
+                ? t("plugin.marketplace.emptySearch")
+                : t("plugin.marketplace.emptyRegistry")}
             </div>
           ) : (
             filteredPlugins.map((entry) => {
@@ -787,7 +800,9 @@ export function PluginMarketplace() {
         {/* Installed tab */}
         {activeTab === "installed" &&
           (installedList.length === 0 ? (
-            <div style={STYLES.centeredMessage}>No plugins installed</div>
+            <div style={STYLES.centeredMessage}>
+              {t("plugin.marketplace.emptyInstalled")}
+            </div>
           ) : (
             installedList.map((plugin) => {
               const entry: RegistryEntry = {
@@ -808,7 +823,9 @@ export function PluginMarketplace() {
                           v{plugin.manifest.version}
                         </span>
                         {pluginErrors[plugin.manifest.id] && (
-                          <span style={STYLES.installedPluginError}>Error</span>
+                          <span style={STYLES.installedPluginError}>
+                            {t("plugin.marketplace.error")}
+                          </span>
                         )}
                       </div>
                       <p style={STYLES.installedPluginDescription}>
@@ -826,7 +843,7 @@ export function PluginMarketplace() {
                           onClick={() => handleUpdate(entry)}
                           style={STYLES.updateButton}
                         >
-                          Update
+                          {t("plugin.action.update")}
                         </button>
                       )}
                       <label style={STYLES.toggleLabel}>
@@ -839,14 +856,16 @@ export function PluginMarketplace() {
                           type="checkbox"
                         />
                         <span style={STYLES.toggleText}>
-                          {plugin.enabled ? "On" : "Off"}
+                          {plugin.enabled
+                            ? t("plugin.action.on")
+                            : t("plugin.action.off")}
                         </span>
                       </label>
                       <button
                         onClick={() => handleUninstall(plugin.manifest.id)}
                         style={STYLES.removeButton}
                       >
-                        Remove
+                        {t("plugin.action.remove")}
                       </button>
                     </div>
                   </div>
@@ -865,7 +884,9 @@ export function PluginMarketplace() {
         {/* Updates tab */}
         {activeTab === "updates" &&
           (updatesCount === 0 ? (
-            <div style={STYLES.centeredMessage}>All plugins are up to date</div>
+            <div style={STYLES.centeredMessage}>
+              {t("plugin.marketplace.emptyUpdates")}
+            </div>
           ) : (
             Object.entries(updateAvailable).map(([id, version]) => {
               const plugin = installedPlugins[id];

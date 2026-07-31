@@ -5,6 +5,7 @@ import type {
 } from "../../plugins/types";
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
+import { useTranslation } from "../../i18n/useTranslation";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 import { PluginSettingsForm } from "./PluginSettingsForm";
@@ -35,6 +36,7 @@ export function PluginDetail({
   readme,
   onBack,
 }: PluginDetailProps) {
+  const { t } = useTranslation();
   // The full-trust warning moved to `PluginConsentDialog` (§260 Phase 5), which is the
   // step that actually records what the user agreed to. Keeping a second, weaker warning
   // here would have let the two drift apart.
@@ -62,7 +64,7 @@ export function PluginDetail({
           cursor: "pointer",
         }}
       >
-        &larr; Back
+        {t("plugin.action.back")}
       </button>
 
       {/* Header */}
@@ -160,7 +162,7 @@ export function PluginDetail({
               border: "1px solid var(--color-border-default)",
             }}
           >
-            Installing…
+            {t("plugin.action.installing")}
           </button>
         ) : status === "enabled" || status === "disabled" ? (
           <>
@@ -186,7 +188,9 @@ export function PluginDetail({
                 cursor: "pointer",
               }}
             >
-              {status === "enabled" ? "Enabled" : "Disabled"}
+              {status === "enabled"
+                ? t("plugin.action.enabled")
+                : t("plugin.action.disabled")}
             </button>
             {updateAvailable && (
               <button
@@ -202,7 +206,7 @@ export function PluginDetail({
                   cursor: "pointer",
                 }}
               >
-                Update to v{updateAvailable}
+                {t("plugin.action.updateTo", { version: updateAvailable })}
               </button>
             )}
             <button
@@ -218,7 +222,7 @@ export function PluginDetail({
                 cursor: "pointer",
               }}
             >
-              Uninstall
+              {t("plugin.action.uninstall")}
             </button>
           </>
         ) : (
@@ -242,7 +246,7 @@ export function PluginDetail({
                 opacity: legacy ? 0.5 : 1,
               }}
             >
-              Install
+              {t("plugin.action.install")}
             </button>
           </div>
         )}
@@ -258,7 +262,7 @@ export function PluginDetail({
             color: "var(--color-text-primary)",
           }}
         >
-          Description
+          {t("plugin.detail.description")}
         </h3>
         <p
           style={{
@@ -283,7 +287,7 @@ export function PluginDetail({
               color: "var(--color-text-primary)",
             }}
           >
-            README
+            {t("plugin.detail.readme")}
           </h3>
           <pre
             style={{
@@ -323,7 +327,7 @@ export function PluginDetail({
             color: "var(--color-text-primary)",
           }}
         >
-          Capabilities
+          {t("plugin.detail.capabilities")}
         </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {entry.capabilities.map((cap) => (
@@ -340,7 +344,7 @@ export function PluginDetail({
                 color: "var(--color-text-muted)",
               }}
             >
-              No special permissions required
+              {t("plugin.detail.capabilitiesNone")}
             </span>
           )}
         </div>
@@ -356,7 +360,7 @@ export function PluginDetail({
             color: "var(--color-text-primary)",
           }}
         >
-          Links
+          {t("plugin.detail.links")}
         </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           {entry.repository && (
@@ -369,7 +373,7 @@ export function PluginDetail({
               }}
               target="_blank"
             >
-              Repository
+              {t("plugin.detail.repository")}
             </a>
           )}
           {entry.homepage && (
@@ -382,7 +386,7 @@ export function PluginDetail({
               }}
               target="_blank"
             >
-              Homepage
+              {t("plugin.detail.homepage")}
             </a>
           )}
           {!entry.repository && !entry.homepage && (
@@ -392,7 +396,7 @@ export function PluginDetail({
                 color: "var(--color-text-muted)",
               }}
             >
-              No links available
+              {t("plugin.detail.linksNone")}
             </span>
           )}
         </div>
@@ -409,7 +413,7 @@ export function PluginDetail({
               color: "var(--color-text-primary)",
             }}
           >
-            Keywords
+            {t("plugin.detail.keywords")}
           </h3>
           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
             {entry.keywords.map((kw) => (

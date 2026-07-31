@@ -5,6 +5,7 @@ import type {
 } from "../../plugins/types";
 
 // §69 Plugin Card — Compact card for marketplace listing
+import { useTranslation } from "../../i18n/useTranslation";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 
 interface PluginCardProps {
@@ -28,6 +29,7 @@ export function PluginCard({
   onUpdate,
   onSelect,
 }: PluginCardProps) {
+  const { t } = useTranslation();
   return (
     <div
       className="plugin-card"
@@ -137,7 +139,9 @@ export function PluginCard({
                   color: "var(--color-text-muted)",
                 }}
               >
-                {entry.downloads.toLocaleString()} downloads
+                {t("plugin.card.downloads", {
+                  count: entry.downloads.toLocaleString(),
+                })}
               </span>
             )}
           </div>
@@ -164,7 +168,9 @@ export function PluginCard({
                     alignSelf: "center",
                   }}
                 >
-                  +{entry.capabilities.length - 3} more
+                  {t("plugin.card.moreCapabilities", {
+                    count: String(entry.capabilities.length - 3),
+                  })}
                 </span>
               )}
             </div>
@@ -185,7 +191,7 @@ export function PluginCard({
                 cursor: "not-allowed",
               }}
             >
-              Installing…
+              {t("plugin.action.installing")}
             </button>
           ) : updateAvailable ? (
             <button
@@ -201,7 +207,7 @@ export function PluginCard({
                 cursor: "pointer",
               }}
             >
-              Update to v{updateAvailable}
+              {t("plugin.action.updateTo", { version: updateAvailable })}
             </button>
           ) : status === "enabled" || status === "disabled" ? (
             <button
@@ -217,7 +223,7 @@ export function PluginCard({
                 cursor: "pointer",
               }}
             >
-              Uninstall
+              {t("plugin.action.uninstall")}
             </button>
           ) : (
             // §260 Phase 5 code review (M1) — a legacy entry (no `trust`) cannot be
@@ -239,13 +245,9 @@ export function PluginCard({
                 cursor: entry.trust ? "pointer" : "not-allowed",
                 opacity: entry.trust ? 1 : 0.5,
               }}
-              title={
-                entry.trust
-                  ? undefined
-                  : "This plugin predates Baram's plugin trust model and cannot be installed."
-              }
+              title={entry.trust ? undefined : t("plugin.card.legacyBlocked")}
             >
-              Install
+              {t("plugin.action.install")}
             </button>
           )}
         </div>
