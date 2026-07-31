@@ -962,7 +962,7 @@
 }
 
 .plugin-dev-btn--danger:hover {
-  color: var(--color-status-danger-on-solid);
+  color: var(--color-status-danger-on-solid, #000);
   background: var(--color-status-danger, #ef4444);
   border-color: var(--color-status-danger, #ef4444);
 }

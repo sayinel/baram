@@ -12,8 +12,8 @@ import type { ThemeColors } from "../types/theme";
 import { THEME_COLOR_KEYS } from "../types/theme";
 import {
   accentSolidFill,
-  accentSolidHoverFill,
   onSolidForeground,
+  solidHoverFill,
 } from "./color-contrast";
 
 /** Status families that are used as a filled surface with text on them. */
@@ -31,7 +31,15 @@ export const DERIVED_KEYS = [
   "--color-accent-on-solid",
   "--color-accent-solid",
   "--color-accent-solid-hover",
-  ...STATUS_FAMILIES.map((family) => `--color-status-${family}-on-solid`),
+  // Spelled out rather than generated from STATUS_FAMILIES: spreading a mapped
+  // array widens those elements to `string`, so a typo in the template would
+  // compile clean and only surface as a variable nothing reads.
+  "--color-status-danger-on-solid",
+  "--color-status-danger-solid-hover",
+  "--color-status-success-on-solid",
+  "--color-status-success-solid-hover",
+  "--color-status-warning-on-solid",
+  "--color-status-warning-solid-hover",
 ] as const;
 
 /** Write a theme's colours and every foreground derived from them to `root`. */
@@ -78,12 +86,16 @@ export function derivedVars(
   const derived: Record<string, string> = {
     "--color-accent-on-solid": onSolidForeground(solid),
     "--color-accent-solid": solid,
-    "--color-accent-solid-hover": accentSolidHoverFill(solid),
+    "--color-accent-solid-hover": solidHoverFill(solid),
   };
   for (const family of STATUS_FAMILIES) {
-    derived[`--color-status-${family}-on-solid`] = onSolidForeground(
-      colors[`--color-status-${family}`],
-    );
+    const fill = colors[`--color-status-${family}`];
+    derived[`--color-status-${family}-on-solid`] = onSolidForeground(fill);
+    // Derived rather than expressed as a `color-mix` in the stylesheet, because the
+    // direction depends on which foreground the fill took: Solarized's `#dc322f`
+    // takes white, every other theme's danger takes black, and a constant direction
+    // breaks whichever group it moves toward.
+    derived[`--color-status-${family}-solid-hover`] = solidHoverFill(fill);
   }
   return derived;
 }

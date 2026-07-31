@@ -613,6 +613,19 @@
   opacity: 0.5;
 }
 
+.ai-diff-action-btn-accept:hover {
+  /* Overrides the shared `opacity: 0.9` hover: element opacity composites the label
+     and the fill against the page together, which lowered danger to 4.09:1 on
+     Solarized Light while the resting state passed. */
+  background: var(--color-status-success-solid-hover);
+  opacity: 1;
+}
+
+.ai-diff-action-btn-reject:hover {
+  background: var(--color-status-danger-solid-hover);
+  opacity: 1;
+}
+
 .ai-diff-action-btn-accept {
   color: var(--color-status-success-on-solid);
   background: var(--color-status-success);

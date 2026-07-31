@@ -124,6 +124,10 @@
         "$value": "{color.black}",
         "$description": "Text on a filled danger surface. Black, because white on red-500 is 3.76:1 — under AA (#330). Derived at runtime for user-edited themes; this value covers the default and `system` themes."
       },
+      "dangerSolidHover": {
+        "$value": "{color.red.400}",
+        "$description": "Hover fill for a solid danger surface — a step LIGHTER, so contrast with the dark danger foreground rises (5.58:1 → 7.59:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+      },
       "warning": {
         "$value": "{color.yellow.500}",
         "$description": "Warning status"
@@ -132,6 +136,10 @@
         "$value": "{color.black}",
         "$description": "Text on a filled warning surface. Black, because white on yellow-500 is 2.15:1 — under even the 3:1 non-text floor (#330)."
       },
+      "warningSolidHover": {
+        "$value": "{color.yellow.400}",
+        "$description": "Hover fill for a solid warning surface — a step LIGHTER, so contrast with the dark warning foreground rises (9.78:1 → 12.58:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+      },
       "success": {
         "$value": "{color.emerald.500}",
         "$description": "Success status"
@@ -139,6 +147,10 @@
       "successOnSolid": {
         "$value": "{color.black}",
         "$description": "Text on a filled success surface. Black, because white on emerald-500 is 2.54:1 — under even the 3:1 non-text floor (#330)."
+      },
+      "successSolidHover": {
+        "$value": "{color.emerald.400}",
+        "$description": "Hover fill for a solid success surface — a step LIGHTER, so contrast with the dark success foreground rises (8.28:1 → 10.92:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
       },
       "info": {
         "$value": "{color.blue.500}",

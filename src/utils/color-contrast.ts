@@ -40,19 +40,6 @@ export function accentSolidFill(
   return clearsAA(accentHover) ? accentHover : accent;
 }
 
-/**
- * Hover fill for a solid accent surface.
- *
- * Moves the fill *away* from its own foreground — darker under white text, lighter
- * under black — so the derived pairing's contrast can only rise on hover. That is
- * what lets one foreground token serve both states instead of needing a second one
- * that every `:hover` rule would have to set.
- */
-export function accentSolidHoverFill(solid: string): string {
-  const target = onSolidForeground(solid) === WHITE ? 0 : 255;
-  return shiftToward(solid, target, HOVER_SHIFT) ?? solid;
-}
-
 /** WCAG 2.x contrast ratio, or null if either colour is not parseable hex. */
 export function contrastRatio(a: string, b: string): null | number {
   const la = relativeLuminance(a);
@@ -82,6 +69,25 @@ export function relativeLuminance(color: string): null | number {
   if (rgb === null) return null;
   const [r, g, b] = rgb.map((channel) => channelToLinear(channel / 255));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * Hover fill for any solid surface — accent or status.
+ *
+ * Moves the fill *away* from its own foreground — darker under white text, lighter
+ * under black — so the derived pairing's contrast can only rise on hover. That is
+ * what lets one foreground token serve both states instead of needing a second one
+ * that every `:hover` rule would have to set.
+ *
+ * The direction MUST come from the foreground, never from a constant. A hardcoded
+ * `color-mix(danger 85%, white)` broke Solarized, whose `#dc322f` clears AA with
+ * white by 0.13 and so takes a white foreground: lightening then moved the fill
+ * toward its own text and dropped it to 3.83:1. Hardcoding `black` instead breaks
+ * the other six themes symmetrically.
+ */
+export function solidHoverFill(solid: string): string {
+  const target = onSolidForeground(solid) === WHITE ? 0 : 255;
+  return shiftToward(solid, target, HOVER_SHIFT) ?? solid;
 }
 
 /** sRGB channel in 0..1 → linear-light value (WCAG 2.x transfer function). */

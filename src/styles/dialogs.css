@@ -1181,17 +1181,16 @@
 }
 
 .find-match-active {
-  /* Dark text: white on this orange is 2.80:1. The [data-theme="dark"] rule below
-     keeps white on purpose — its 70% alpha composites to ~#b65817, where white is
-     4.78:1 and black would be 4.40:1. */
+  /* Dark text: white on this orange is 2.80:1.
+     Opaque in dark mode too — the [data-theme="dark"] override that used
+     `rgb(249 115 22 / 70%)` was removed. Its contrast depended on whatever painted
+     behind it, and `--color-bg-default` is user-editable: over #1a1a2e white read
+     4.77:1, but over Nord's #2e3440 it fell to 4.34:1 while black rose to 4.84:1.
+     No single foreground could serve both, so the alpha is gone and this pairing is
+     now determinate at 6.21:1 in every theme. */
   color: #1a1a1a;
   background-color: #f97316; /* TODO: tokenize --color-find-match-active */
   border-radius: 2px;
-}
-
-[data-theme="dark"] .find-match-active {
-  color: white;
-  background-color: rgb(249 115 22 / 70%);
 }
 
 /* ============================================

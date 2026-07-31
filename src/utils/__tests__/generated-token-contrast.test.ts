@@ -129,6 +129,20 @@ describe.each([
     ).toBeGreaterThanOrEqual(AA_TEXT_RATIO);
   });
 
+  it.each(FAMILIES)("keeps %s above AA on hover", (family) => {
+    const tokens = declarations(file);
+    const fill = tokens.get(`--color-status-${family}`);
+    const hover = tokens.get(`--color-status-${family}-solid-hover`);
+    const onSolid = tokens.get(`--color-status-${family}-on-solid`);
+    if (!fill || !hover || !onSolid) {
+      throw new Error(`--color-status-${family}-* missing from ${file}`);
+    }
+    const rest = contrastRatio(resolve(onSolid), resolve(fill))!;
+    const hovered = contrastRatio(resolve(onSolid), resolve(hover))!;
+    expect(hovered).toBeGreaterThanOrEqual(rest);
+    expect(hovered).toBeGreaterThanOrEqual(AA_TEXT_RATIO);
+  });
+
   it("agrees with what the runtime would derive", () => {
     const theme = BUILT_IN_THEMES.find((t) => t.id === themeId)!;
     const derived = derivedVars(theme.colors, theme.base);

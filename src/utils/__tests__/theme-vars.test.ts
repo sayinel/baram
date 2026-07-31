@@ -5,6 +5,7 @@ import type { ThemeColors } from "../../types/theme";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
+import { relativeLuminance } from "../color-contrast";
 import { applyThemeVars, clearThemeVars, DERIVED_KEYS } from "../theme-vars";
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
@@ -90,6 +91,44 @@ describe("derived status foregrounds", () => {
         root.style.getPropertyValue(`--color-status-${family}-on-solid`),
       ).toBe("#000000");
     }
+  });
+
+  it("moves a hover fill away from whichever foreground was derived", () => {
+    // The regression this pairs with: the stylesheet used to express this hover as
+    // `color-mix(danger 85%, white)`. Solarized's #dc322f clears AA with white by
+    // 0.13, so it takes a WHITE foreground — and lightening then moved the fill
+    // toward its own text, dropping it to 3.83:1. The direction must be derived.
+    const root = document.createElement("div");
+    const luminance = (hex: string): number => relativeLuminance(hex)!;
+
+    applyThemeVars(
+      root,
+      { ...NORD.colors, "--color-status-danger": "#dc322f" },
+      NORD.base,
+    );
+    expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
+      "#ffffff",
+    );
+    expect(
+      luminance(
+        root.style.getPropertyValue("--color-status-danger-solid-hover"),
+      ),
+    ).toBeLessThan(luminance("#dc322f"));
+
+    // …and the opposite case still goes the other way.
+    applyThemeVars(
+      root,
+      { ...NORD.colors, "--color-status-danger": "#ef4444" },
+      NORD.base,
+    );
+    expect(root.style.getPropertyValue("--color-status-danger-on-solid")).toBe(
+      "#000000",
+    );
+    expect(
+      luminance(
+        root.style.getPropertyValue("--color-status-danger-solid-hover"),
+      ),
+    ).toBeGreaterThan(luminance("#ef4444"));
   });
 
   it("follows a user-edited status colour", () => {

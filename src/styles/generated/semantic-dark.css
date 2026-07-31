@@ -95,15 +95,27 @@
     --color-black
   ); /** Text on a filled danger surface. Black, because white on red-500 is 3.76:1 — under AA (#330). Derived at runtime for user-edited themes; this value covers the default and `system` themes. */
 
+  --color-status-danger-solid-hover: var(
+    --color-red-400
+  ); /** Hover fill for a solid danger surface — a step LIGHTER, so contrast with the dark danger foreground rises (5.58:1 → 7.59:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330). */
+
   --color-status-warning: var(--color-yellow-500); /** Warning status dark */
   --color-status-warning-on-solid: var(
     --color-black
   ); /** Text on a filled warning surface. Black, because white on yellow-500 is 2.15:1 — under even the 3:1 non-text floor (#330). */
 
+  --color-status-warning-solid-hover: var(
+    --color-yellow-400
+  ); /** Hover fill for a solid warning surface — a step LIGHTER, so contrast with the dark warning foreground rises (9.78:1 → 12.58:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330). */
+
   --color-status-success: var(--color-emerald-500); /** Success status dark */
   --color-status-success-on-solid: var(
     --color-black
   ); /** Text on a filled success surface. Black, because white on emerald-500 is 2.54:1 — under even the 3:1 non-text floor (#330). */
+
+  --color-status-success-solid-hover: var(
+    --color-emerald-400
+  ); /** Hover fill for a solid success surface — a step LIGHTER, so contrast with the dark success foreground rises (8.28:1 → 10.92:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330). */
 
   --color-status-info: var(--color-blue-400); /** Informational status dark */
   --color-status-error-bg: var(
