@@ -121,8 +121,8 @@
 }
 
 .vault-tab-item__convert:hover {
-  color: #fff;
-  background: var(--color-accent-default, #3b82f6);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover, #2563eb);
 }
 
 .vault-tab-item__remove {
@@ -248,8 +248,8 @@
 }
 
 .vault-three-state-btn--active {
-  color: #fff;
-  background: var(--color-accent-default, #3b82f6);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid, #2563eb);
   border-color: var(--color-accent-default, #3b82f6);
 }
 

@@ -61,8 +61,8 @@
 }
 
 .global-search-toggle-active {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-color: var(--color-accent-default);
 }
 
@@ -247,8 +247,8 @@
 }
 
 .global-search-scope__btn--active {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-color: var(--color-accent-default);
 }
 
@@ -443,8 +443,8 @@
 }
 
 .frontmatter-editor-bool.on {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-color: var(--color-accent-default);
 }
 
@@ -459,8 +459,8 @@
 .frontmatter-editor-tag-chip {
   padding: 2px 8px;
   font-size: 11px;
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 10px;
 }
 
@@ -609,13 +609,13 @@
 }
 
 .table-toolbar-btn-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .table-toolbar-btn-active:hover {
-  color: white;
-  background-color: var(--color-accent-hover);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid-hover);
 }
 
 .table-toolbar-btn-danger:hover {
@@ -711,8 +711,8 @@
 }
 
 .table-insert-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
   opacity: 1;
   transform: scale(1.15);
 }
@@ -725,9 +725,9 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 4px;
   box-shadow: 0 1px 4px rgb(0 0 0 / 15%);
@@ -738,7 +738,7 @@
 }
 
 .table-select-handle:hover {
-  background: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
   opacity: 1;
 }
 
@@ -914,8 +914,8 @@ body.table-dragging {
 .tiptap .qb-run {
   align-self: flex-start;
   font-weight: 500;
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border: none;
 }
 
@@ -1122,9 +1122,9 @@ body.table-dragging {
   padding: 0.3em 0.6em;
   font-family: var(--font-family-mono);
   font-size: 0.8rem;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 4px;
 }
@@ -1490,9 +1490,9 @@ body.table-dragging {
   padding: 0.35em;
   font-family: var(--font-family-mono);
   font-size: 0.8rem;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 4px;
 }

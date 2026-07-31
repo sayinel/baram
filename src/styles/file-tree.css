@@ -91,8 +91,8 @@
 }
 
 .file-tree-open-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
   border-color: var(--color-accent-default);
 }
 
@@ -510,9 +510,9 @@
   margin-top: 0.4em;
   font-family: var(--font-family-mono);
   font-size: 0.8rem;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 4px;
 }
@@ -772,8 +772,8 @@
 }
 
 .file-tree-access-error-btn.primary {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-color: var(--color-accent-default);
 }
 

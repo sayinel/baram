@@ -173,10 +173,12 @@ export function PluginDetail({
                 fontWeight: 500,
                 backgroundColor:
                   status === "enabled"
-                    ? "var(--color-accent-default)"
+                    ? "var(--color-accent-solid)"
                     : "var(--color-bg-subtle)",
                 color:
-                  status === "enabled" ? "#fff" : "var(--color-text-primary)",
+                  status === "enabled"
+                    ? "var(--color-accent-on-solid)"
+                    : "var(--color-text-primary)",
                 border:
                   status === "enabled"
                     ? "none"
@@ -233,8 +235,8 @@ export function PluginDetail({
                 borderRadius: "6px",
                 fontSize: "13px",
                 fontWeight: 500,
-                backgroundColor: "var(--color-accent-default)",
-                color: "#fff",
+                backgroundColor: "var(--color-accent-solid)",
+                color: "var(--color-accent-on-solid)",
                 border: "none",
                 cursor: legacy ? "not-allowed" : "pointer",
                 opacity: legacy ? 0.5 : 1,

@@ -69,8 +69,8 @@
   font-size: 0.6rem;
   font-weight: 500;
   line-height: 1.4;
-  color: var(--color-bg-default);
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 3px;
 }
 
@@ -164,12 +164,12 @@
 
 .memories-mini-calendar-day-selected {
   font-weight: 600;
-  color: #fff;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
 }
 
 .memories-mini-calendar-day-selected:hover {
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid-hover);
   opacity: 0.9;
 }
 
@@ -226,12 +226,12 @@
 
 .memories-mini-calendar-pick-btn-selected {
   font-weight: 600;
-  color: #fff;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
 }
 
 .memories-mini-calendar-pick-btn-selected:hover {
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid-hover);
   opacity: 0.9;
 }
 
@@ -541,10 +541,10 @@
 .notes-create-confirm {
   padding: 4px 8px;
   font-size: 0.7rem;
-  color: #fff;
+  color: var(--color-accent-on-solid);
   white-space: nowrap;
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 6px;
 }
@@ -583,8 +583,8 @@
 }
 
 .notes-tag-chip-active {
-  color: #fff;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-color: var(--color-accent-default);
 }
 
@@ -646,8 +646,8 @@
   font-size: 0.6rem;
   font-weight: 700;
   line-height: 1;
-  color: #fff;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 9px;
 }
 
@@ -889,8 +889,8 @@
 .journal-search-result-snippet mark {
   padding: 0 1px;
   font-style: normal;
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 2px;
 }
 

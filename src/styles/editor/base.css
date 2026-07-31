@@ -71,8 +71,8 @@
 }
 
 .mode-toggle-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
   border-color: var(--color-accent-default);
 }
 

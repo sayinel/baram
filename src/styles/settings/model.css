@@ -164,11 +164,11 @@
 }
 
 .settings-font-option-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .settings-font-option-active:hover {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid-hover);
 }

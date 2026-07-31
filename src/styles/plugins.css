@@ -192,14 +192,17 @@
   overflow-wrap: anywhere;
 }
 
+/* Filled rather than tinted: accent text on accent-subtle measured 3.38:1 in light
+   at 10px/600, and a tint pairing cannot be guaranteed for a user-chosen accent the
+   way the solid pairing can (#330). Matches the app's other accent badges. */
 .plugin-consent__new {
   flex: none;
   padding: 1px 7px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
   letter-spacing: 0.04em;
-  background: var(--color-accent-subtle);
+  background: var(--color-accent-solid);
   border-radius: 9999px;
 }
 
@@ -264,13 +267,13 @@
 }
 
 .plugin-consent__confirm {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border: 1px solid var(--color-accent-default);
 }
 
 .plugin-consent__confirm:hover:not(:disabled) {
-  background: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
   border-color: var(--color-accent-hover);
 }
 

@@ -141,8 +141,8 @@
 }
 
 .graph-scope__btn--active {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-color: var(--color-accent-default);
 }
 
