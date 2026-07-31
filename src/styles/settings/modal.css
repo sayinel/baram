@@ -365,11 +365,11 @@
 }
 
 .settings-scheme-btn-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .settings-scheme-btn-active:hover {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid-hover);
 }

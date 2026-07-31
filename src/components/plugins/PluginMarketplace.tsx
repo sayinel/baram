@@ -53,8 +53,8 @@ const STYLES = {
     borderRadius: "6px",
     fontSize: "12px",
     cursor: "pointer",
-    backgroundColor: "var(--color-accent-default)",
-    color: "#fff",
+    backgroundColor: "var(--color-accent-solid)",
+    color: "var(--color-accent-on-solid)",
     border: "none",
   } as React.CSSProperties,
   loadingMessage: {

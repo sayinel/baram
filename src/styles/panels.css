@@ -49,14 +49,14 @@
 }
 
 .home-btn-primary {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .home-btn-primary:hover {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .home-btn-secondary {
@@ -212,8 +212,8 @@
 }
 
 .tab-switcher-item--selected {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .tab-switcher-title {
@@ -697,16 +697,16 @@
   padding: 5px 12px;
   font-family: var(--font-family-sans);
   font-size: 0.8rem;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 5px;
   transition: opacity 0.15s;
 }
 
 .workspace-save-confirm:hover {
-  opacity: 0.85;
+  background: var(--color-accent-solid-hover);
 }
 
 .workspace-save-confirm:disabled {

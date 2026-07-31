@@ -215,13 +215,13 @@
 }
 
 .floating-toolbar-btn-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .floating-toolbar-btn-active:hover {
-  color: white;
-  background-color: var(--color-accent-hover);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid-hover);
 }
 
 .floating-toolbar-separator {
@@ -323,9 +323,9 @@
 }
 
 .ai-prompt-preset-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .ai-prompt-input {
@@ -370,13 +370,13 @@
 }
 
 .ai-prompt-btn-ok {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .ai-prompt-btn-ok:hover {
-  background: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
 }
 
 .confirm-dialog-btn-danger {
@@ -771,13 +771,13 @@ body.block-dragging * {
 }
 
 .block-ai-diff-btn-accept {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .block-ai-diff-btn-accept:hover {
-  opacity: 0.9;
+  background: var(--color-accent-solid-hover);
 }
 
 /* Callout AI button */

@@ -46,8 +46,8 @@
 .theme-card-badge {
   padding: 1px 6px;
   font-size: 0.65rem;
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 4px;
 }
 
@@ -289,12 +289,12 @@
 }
 
 .theme-editor-base-btn-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .theme-editor-base-btn-active:hover {
-  background-color: var(--color-accent-default);
+  background-color: var(--color-accent-solid-hover);
 }
 
 .theme-editor-category {

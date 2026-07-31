@@ -102,9 +102,9 @@
 }
 
 .zettel-title-dialog-actions button:last-child {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .quick-capture-header h3 {
@@ -178,9 +178,9 @@
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 6px;
 }
@@ -191,7 +191,7 @@
 }
 
 .quick-capture-save:not(:disabled):hover {
-  filter: brightness(1.1);
+  background: var(--color-accent-solid-hover);
 }
 
 /* ============================================
@@ -352,13 +352,13 @@
 }
 
 .migration-dialog-btn-primary {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border: none;
 }
 
 .migration-dialog-btn-primary:not(:disabled):hover {
-  filter: brightness(1.1);
+  background: var(--color-accent-solid-hover);
 }
 
 /* ============================================
@@ -633,12 +633,12 @@
 }
 
 .export-paper-tab-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .export-paper-tab-active:hover {
-  background-color: var(--color-accent-hover);
+  background-color: var(--color-accent-solid-hover);
 }
 
 .export-scale-value {
@@ -700,14 +700,14 @@
 }
 
 .export-dialog-btn-primary {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .export-dialog-btn-primary:hover {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .export-dialog-btn-primary:disabled {
@@ -773,8 +773,8 @@
 }
 
 .mention-date:hover {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
 }
 
 .mention-icon {
@@ -953,9 +953,9 @@
 .new-skill-create {
   padding: 6px 16px;
   font-size: 13px;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 4px;
 }
@@ -1160,9 +1160,9 @@
 }
 
 .find-replace-action-btn:hover:not(:disabled) {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .find-replace-action-btn:disabled {
@@ -1399,14 +1399,14 @@
 }
 
 .unsaved-modal-btn-primary {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .unsaved-modal-btn-primary:not(:disabled):hover {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 /* §3.6 3-way merge resolution overlay */
@@ -1469,9 +1469,9 @@
 }
 
 .merge-btn-apply {
-  color: #fff;
-  background-color: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .merge-btn-apply:disabled {
@@ -1516,9 +1516,9 @@
 }
 
 .merge-choice-active {
-  color: #fff;
-  background-color: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .merge-candidates {

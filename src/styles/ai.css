@@ -234,9 +234,9 @@
 }
 
 .chat-message-apply-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .ai-chat-error {
@@ -336,8 +336,8 @@
 }
 
 .ai-chat-send-btn {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
 }
 
 .ai-chat-send-btn:disabled {
@@ -446,9 +446,9 @@
   min-width: 16px;
   padding: 0 6px;
   font-size: 10px;
-  color: white;
+  color: var(--color-accent-on-solid);
   text-align: center;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border-radius: 8px;
 }
 

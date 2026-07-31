@@ -86,9 +86,9 @@
   padding: 2px 8px;
   font-family: var(--font-family-mono);
   font-size: 11px;
-  color: white;
+  color: var(--color-accent-on-solid);
   pointer-events: none;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border-radius: 10px;
   transform: translateX(-50%);
 }
@@ -142,9 +142,9 @@
 }
 
 .media-toolbar-btn:active {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
   transform: scale(0.85);
   transition:
     transform 0.08s ease,
@@ -153,9 +153,9 @@
 }
 
 .media-toolbar-btn-active {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 /* Caption shown below a media block (centered, muted), click-to-edit. */

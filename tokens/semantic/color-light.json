@@ -76,6 +76,18 @@
         "$value": "{color.blue.50}",
         "$description": "Subtle accent background"
       },
+      "solid": {
+        "$value": "{color.blue.600}",
+        "$description": "Fill for solid accent surfaces that carry text — a step darker than accent-default so white text clears WCAG AA (5.17:1; accent-default is 3.68:1)"
+      },
+      "solidHover": {
+        "$value": "{color.blue.700}",
+        "$description": "Hover fill for solid accent surfaces — darker than accent-solid, so contrast with accent-on-solid rises rather than falls (6.70:1)"
+      },
+      "onSolid": {
+        "$value": "{color.white}",
+        "$description": "Text on accent-solid. Never hardcode white: this flips to black in themes whose accent is light (see src/utils/color-contrast.ts)"
+      },
       "ai": {
         "$value": "{color.violet.500}",
         "$description": "AI feature accent color"

@@ -18,6 +18,9 @@
     --color-accent-default: #60a5fa;
     --color-accent-hover: #3b82f6;
     --color-accent-subtle: #172554;
+    --color-accent-solid: #60a5fa;
+    --color-accent-solid-hover: #93c5fd;
+    --color-accent-on-solid: #000;
     --color-accent-ai: #a78bfa;
     --color-editor-bg: #1a1a2e;
     --color-editor-text: #e2e8f0;

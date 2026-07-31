@@ -91,9 +91,9 @@
 }
 
 .file-tree-open-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .file-tree-item {
@@ -510,15 +510,15 @@
   margin-top: 0.4em;
   font-family: var(--font-family-mono);
   font-size: 0.8rem;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 4px;
 }
 
 .git-commit-btn:hover:not(:disabled) {
-  opacity: 0.9;
+  background: var(--color-accent-solid-hover);
 }
 
 .git-commit-btn:disabled {
@@ -772,9 +772,9 @@
 }
 
 .file-tree-access-error-btn.primary {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .file-tree-access-error-btn:hover {

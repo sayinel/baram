@@ -98,8 +98,8 @@
   padding: 2px 6px;
   font-family: var(--font-family-mono, monospace);
   font-size: 12px;
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 3px;
 }
 
