@@ -9,7 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const STYLES = "src/styles";
-const COMPONENTS = "src/components";
+const SRC = "src";
 
 /** Solid accent fill — `color-mix(...)` tints are excluded on purpose. */
 const SOLID_ACCENT_BG =
@@ -92,7 +92,10 @@ describe("solid accent surfaces in CSS", () => {
 });
 
 describe("solid accent surfaces in inline styles", () => {
-  const inline = walk(COMPONENTS, ".tsx")
+  // Walks all of `src`, not just `src/components`: Tiptap NodeViews under
+  // `src/extensions/nodes/` render their own chrome with inline styles, which is
+  // exactly where the next accent-filled surface is likely to appear.
+  const inline = walk(SRC, ".tsx")
     .filter((file) => !file.includes("__tests__"))
     .flatMap((file) => {
       const source = readFileSync(file, "utf8");
