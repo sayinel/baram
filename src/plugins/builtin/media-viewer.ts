@@ -25,7 +25,6 @@ export const MEDIA_VIEWER_MANIFEST: PluginManifest = {
   capabilities: ["viewer"],
   description: "이미지(PNG/JPEG/GIF/BMP/WebP)와 SVG 파일 뷰어 (내장)",
   engines: { baram: ">=0.4.0" },
-  icon: "🖼️",
   id: "baram-media-viewer",
   license: "Apache-2.0",
   main: "(builtin)",

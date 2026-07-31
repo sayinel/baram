@@ -97,6 +97,11 @@ const STYLES = {
     color: "var(--color-accent-default)",
     fontWeight: 500,
   } as React.CSSProperties,
+  builtinIcon: {
+    display: "flex",
+    alignItems: "center",
+    color: "var(--color-text-secondary)",
+  } as React.CSSProperties,
   installedPluginDescription: {
     margin: "2px 0 0",
     fontSize: "12px",
@@ -179,6 +184,7 @@ import type {
 import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
 import { BUILTIN_PLUGINS } from "../../plugins/builtin";
+import { setBuiltinPluginEnabled } from "../../plugins/plugin-lifecycle";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import { arePluginsEnabled } from "../../plugins/plugins-enabled";
 import {
@@ -189,15 +195,42 @@ import {
 import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
+import { ToggleSwitch } from "../settings/settings-shared";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
 import { PluginDeveloperSection } from "./PluginDeveloperSection";
 
 type MarketplaceTab = "browse" | "installed" | "updates";
 
+// Mono line icon (Lucide "image", 24x24 viewBox) — matches the file-tree
+// icon set instead of an emoji, per the app's icon tone.
+function BuiltinMediaIcon() {
+  return (
+    <svg
+      fill="none"
+      height={16}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      viewBox="0 0 24 24"
+      width={16}
+    >
+      <rect height="18" rx="2" width="18" x="3" y="3" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+    </svg>
+  );
+}
+
+const BUILTIN_ICONS: Record<string, () => React.JSX.Element> = {
+  "baram-media-viewer": BuiltinMediaIcon,
+};
+
 export function PluginMarketplace() {
   const {
     installedPlugins,
+    disabledBuiltins,
     pluginErrors,
     updateAvailable,
     installing,
@@ -436,30 +469,46 @@ export function PluginMarketplace() {
           Third-party plugins are temporarily disabled while the plugin security
           model is hardened (see issues #259 / #260). Installing and running
           third-party plugins is turned off in this build. Built-in plugins ship
-          with the app and remain active:
+          with the app and can be toggled below:
         </div>
         <div>
-          {BUILTIN_PLUGINS.map(({ manifest }) => (
-            <div key={manifest.id} style={STYLES.installedRow}>
-              <div style={STYLES.installedRowInner}>
-                <div style={STYLES.installedRowInfo}>
-                  <div style={STYLES.installedRowNameRow}>
-                    <span style={STYLES.installedPluginName}>
-                      {manifest.icon ? `${manifest.icon} ` : ""}
-                      {manifest.name}
-                    </span>
-                    <span style={STYLES.installedPluginVersion}>
-                      v{manifest.version}
-                    </span>
-                    <span style={STYLES.builtinBadge}>Built-in · On</span>
+          {BUILTIN_PLUGINS.map(({ manifest }) => {
+            const Icon = BUILTIN_ICONS[manifest.id];
+            const enabled = !disabledBuiltins.includes(manifest.id);
+            return (
+              <div key={manifest.id} style={STYLES.installedRow}>
+                <div style={STYLES.installedRowInner}>
+                  <div style={STYLES.installedRowInfo}>
+                    <div style={STYLES.installedRowNameRow}>
+                      {Icon && (
+                        <span style={STYLES.builtinIcon}>
+                          <Icon />
+                        </span>
+                      )}
+                      <span style={STYLES.installedPluginName}>
+                        {manifest.name}
+                      </span>
+                      <span style={STYLES.installedPluginVersion}>
+                        v{manifest.version}
+                      </span>
+                      <span style={STYLES.builtinBadge}>Built-in</span>
+                    </div>
+                    <p style={STYLES.installedPluginDescription}>
+                      {manifest.description}
+                    </p>
                   </div>
-                  <p style={STYLES.installedPluginDescription}>
-                    {manifest.description}
-                  </p>
+                  <div style={STYLES.installedRowActions}>
+                    <ToggleSwitch
+                      checked={enabled}
+                      onChange={(value) =>
+                        void setBuiltinPluginEnabled(manifest.id, value)
+                      }
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );

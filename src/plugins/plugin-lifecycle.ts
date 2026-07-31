@@ -14,7 +14,7 @@ import {
 import { contextRootOf, useContextStore } from "../stores/context/context";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
-import { BUILTIN_PLUGINS } from "./builtin";
+import { BUILTIN_PLUGINS, type BuiltinPlugin } from "./builtin";
 import {
   createExtensionContext,
   emitPluginEvent,
@@ -206,30 +206,83 @@ export function notifyFileSave(filePath: string): void {
 
 const activeBuiltins: ActiveBuiltin[] = [];
 
+/**
+ * §69 Toggle a built-in plugin at runtime and persist the choice. Turning one
+ * OFF deactivates it live — its viewers unregister and open tabs fall back to
+ * the no-viewer placeholder / source editor. Turning it ON re-activates it
+ * through the standard path.
+ */
+export async function setBuiltinPluginEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<void> {
+  usePluginStore.getState().setBuiltinDisabled(id, !enabled);
+  const activeIndex = activeBuiltins.findIndex((b) => b.id === id);
+  if (enabled) {
+    if (activeIndex !== -1) return; // already running
+    const builtin = BUILTIN_PLUGINS.find((b) => b.manifest.id === id);
+    if (builtin) await activateBuiltin(builtin);
+  } else {
+    if (activeIndex === -1) return; // already off
+    const [active] = activeBuiltins.splice(activeIndex, 1);
+    await deactivateBuiltin(active);
+  }
+}
+
 /** Cleanup all plugins on app shutdown */
 export async function shutdownPlugins(): Promise<void> {
   await shutdownBuiltinPlugins();
   await pluginLoader.unloadAll();
 }
 
-/**
- * Activate the compiled-in plugins through the same ExtensionContext external
- * plugins get. Idempotent: React.StrictMode double-invokes the mounting
- * effect in dev, and a second activation would register every viewer twice.
- */
-async function loadBuiltinPlugins(): Promise<void> {
-  if (activeBuiltins.length > 0) return;
-  for (const { manifest, module } of BUILTIN_PLUGINS) {
+async function activateBuiltin(builtin: BuiltinPlugin): Promise<void> {
+  const { manifest, module } = builtin;
+  try {
+    const context = createExtensionContext(manifest, "");
+    await module.activate?.(context);
+    activeBuiltins.push({ context, id: manifest.id, module });
+  } catch (err) {
+    logger.error(
+      `[PluginLifecycle] builtin ${manifest.id} activate failed:`,
+      err,
+    );
+  }
+}
+
+async function deactivateBuiltin(builtin: ActiveBuiltin): Promise<void> {
+  try {
+    await builtin.module.deactivate?.();
+  } catch (err) {
+    logger.error(
+      `[PluginLifecycle] builtin ${builtin.id} deactivate failed:`,
+      err,
+    );
+  }
+  for (const disposable of builtin.context.subscriptions) {
     try {
-      const context = createExtensionContext(manifest, "");
-      await module.activate?.(context);
-      activeBuiltins.push({ context, id: manifest.id, module });
+      disposable.dispose();
     } catch (err) {
       logger.error(
-        `[PluginLifecycle] builtin ${manifest.id} activate failed:`,
+        `[PluginLifecycle] builtin ${builtin.id} dispose failed:`,
         err,
       );
     }
+  }
+  unregisterPluginUI(builtin.id);
+}
+
+/**
+ * Activate the compiled-in plugins through the same ExtensionContext external
+ * plugins get, honoring the user's persisted off-switches. Idempotent:
+ * React.StrictMode double-invokes the mounting effect in dev, and a second
+ * activation would register every viewer twice.
+ */
+async function loadBuiltinPlugins(): Promise<void> {
+  if (activeBuiltins.length > 0) return;
+  const disabled = new Set(usePluginStore.getState().disabledBuiltins);
+  for (const builtin of BUILTIN_PLUGINS) {
+    if (disabled.has(builtin.manifest.id)) continue;
+    await activateBuiltin(builtin);
   }
 }
 
@@ -249,25 +302,7 @@ function notifyPlugins(event: PluginEventName, ...args: unknown[]): void {
 
 async function shutdownBuiltinPlugins(): Promise<void> {
   for (const builtin of activeBuiltins.splice(0)) {
-    try {
-      await builtin.module.deactivate?.();
-    } catch (err) {
-      logger.error(
-        `[PluginLifecycle] builtin ${builtin.id} deactivate failed:`,
-        err,
-      );
-    }
-    for (const disposable of builtin.context.subscriptions) {
-      try {
-        disposable.dispose();
-      } catch (err) {
-        logger.error(
-          `[PluginLifecycle] builtin ${builtin.id} dispose failed:`,
-          err,
-        );
-      }
-    }
-    unregisterPluginUI(builtin.id);
+    await deactivateBuiltin(builtin);
   }
 }
 

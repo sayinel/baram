@@ -13,6 +13,12 @@ interface PluginState {
   clearUpdateAvailable: (id: string) => void;
   // Runtime state (not persisted; Rust config is the source of truth)
   devPlugins: Record<string, InstalledPlugin>;
+  /**
+   * Built-in plugin ids the user turned OFF (persisted). Inverted on purpose:
+   * built-ins are enabled by default, so a fresh (or pre-existing) profile
+   * with no persisted entry means "all on" without any migration.
+   */
+  disabledBuiltins: string[];
   getPluginSettings: (pluginId: string) => Record<string, unknown>;
 
   // Persisted state
@@ -27,6 +33,7 @@ interface PluginState {
   registryUrl: string;
   removeDevPlugin: (id: string) => void;
   removePlugin: (id: string) => void;
+  setBuiltinDisabled: (id: string, disabled: boolean) => void;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
@@ -83,6 +90,7 @@ export const usePluginStore = create<PluginState>()(
   persist(
     (set, get) => ({
       // Persisted
+      disabledBuiltins: [],
       installedPlugins: {},
       pluginSettings: {},
       registryUrl: DEFAULT_REGISTRY_URL,
@@ -197,12 +205,20 @@ export const usePluginStore = create<PluginState>()(
 
       getPluginSettings: (pluginId) => get().pluginSettings[pluginId] ?? {},
 
+      setBuiltinDisabled: (id, disabled) =>
+        set((state) => ({
+          disabledBuiltins: disabled
+            ? [...new Set([...state.disabledBuiltins, id])]
+            : state.disabledBuiltins.filter((b) => b !== id),
+        })),
+
       setRegistryUrl: (registryUrl) => set({ registryUrl }),
     }),
     {
       name: "baram:plugins",
       storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({
+        disabledBuiltins: state.disabledBuiltins,
         installedPlugins: state.installedPlugins,
         pluginSettings: state.pluginSettings,
         registryUrl: state.registryUrl,
