@@ -93,11 +93,15 @@ export function deleteLine(
     if (unit.kind === "listItem" && unit.nestedListPositions.length > 0) {
       // The lift puts the children where the item was — they ARE the next
       // lines, and no mapping of the old successor can find them.
-      cursor = clampIntoContent(working, step.landing + 1);
+      const lifted = descendToLineStart(working, step.landing);
+      if (lifted === null) break;
+      cursor = lifted;
       continue;
     }
     if (succ === null) break;
-    cursor = clampIntoContent(working, step.tr.mapping.map(succ));
+    const next = descendToLineStart(working, step.tr.mapping.map(succ));
+    if (next === null) break;
+    cursor = next;
   }
 
   if (yanked.length === 0) return { reason, tr: null };
@@ -147,7 +151,9 @@ export function yankLine(
     yanked.push(yankUnit(state, unit));
     const succ = successorCursor(state, unit);
     if (succ === null) break; // clamp at EOF, like vim — never re-yank
-    cursor = clampIntoContent(state, succ);
+    const next = descendToLineStart(state, succ);
+    if (next === null) break;
+    cursor = next;
   }
 
   return {
@@ -271,21 +277,6 @@ function buildListItemDelete(
   };
 }
 
-/** Clamp a landing position into the document and off node boundaries, so
- *  the next resolveLineUnit sees the block under it. */
-function clampIntoContent(state: EditorState, pos: number): number {
-  const max = Math.max(0, state.doc.content.size - 1);
-  let clamped = Math.min(Math.max(pos, 0), max);
-  // Descend until a textblock: one +1 per structure level. A single step
-  // stops at a list boundary and resolveLineUnit then reads the WHOLE list
-  // as one structural unit — a chained dd would eat every sibling item
-  // (impl review R4).
-  while (clamped < max && !state.doc.resolve(clamped).parent.isTextblock) {
-    clamped++;
-  }
-  return clamped;
-}
-
 /** Deleting everything must leave one empty paragraph — vim's dd on the only
  *  line clears it, it does not produce an (unschematic) empty doc. */
 function deleteOrEmpty(
@@ -384,6 +375,32 @@ function deleteUnitOnce(
   };
 }
 
+/** Clamp a landing position into the document and off node boundaries, so
+ *  the next resolveLineUnit sees the block under it. */
+/**
+ * Walk a position to the START of the line unit under it: containers are
+ * entered level by level (impl review R4 — stopping at a list boundary made
+ * resolveLineUnit eat the whole list), but an atom/leaf BLOCK is a line of
+ * its own and the walk stops at its boundary (impl review R5 — descending
+ * past it deleted the wrong line). Returns null past the last line.
+ */
+function descendToLineStart(state: EditorState, pos: number): null | number {
+  const size = state.doc.content.size;
+  let p = Math.min(Math.max(pos, 0), size);
+  while (p < size) {
+    const $p = state.doc.resolve(p);
+    if ($p.parent.isTextblock) return p;
+    const after = $p.nodeAfter;
+    if (after) {
+      if (after.isAtom || after.isLeaf) return p; // its own line (§9)
+      p++; // enter the container/textblock
+      continue;
+    }
+    p++; // climb out of a closing boundary
+  }
+  return null;
+}
+
 // ── shared helpers ─────────────────────────────────────────────────────────
 
 function rowIsHeader(row: PMNode): boolean {
@@ -402,7 +419,12 @@ function rowIsHeader(row: PMNode): boolean {
  * inside the following block (clampIntoContent finishes the descent).
  */
 function successorCursor(state: EditorState, unit: LineUnit): null | number {
-  const succ = unitEnd(state, unit) + 1;
+  // Segments advance INSIDE their textblock (past the break); block units
+  // hand back their end boundary and descendToLineStart decides whether it
+  // is an atom line or a container to enter (impl review R5 — a blanket +1
+  // stepped straight over interior-less atom blocks).
+  const end = unitEnd(state, unit);
+  const succ = unit.kind === "hardBreakSegment" ? end + 1 : end;
   return succ >= state.doc.content.size ? null : succ;
 }
 

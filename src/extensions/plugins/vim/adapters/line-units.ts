@@ -170,6 +170,28 @@ function resolveSegment($pos: ResolvedPos): LineUnit | null {
 }
 
 function resolveStructural($pos: ResolvedPos): LineUnit {
+  // Boundary position (an atom/leaf block line — §9: math blocks, rules and
+  // friends are lines of their own; a cursor can only ever SIT at their
+  // boundary because they have no textblock interior).
+  if (!$pos.parent.isTextblock && $pos.nodeAfter) {
+    const block = $pos.nodeAfter;
+    const parent = $pos.depth > 0 ? $pos.parent : null;
+    const parentName = parent?.type.name ?? "";
+    return {
+      blockPos: $pos.pos,
+      containerPos:
+        parent &&
+        SOLE_CHILD_CONTAINERS.has(parentName) &&
+        parent.childCount === 1
+          ? $pos.before($pos.depth)
+          : null,
+      kind: "structural",
+      nodeSize: block.nodeSize,
+      protectedFirstChild:
+        POSITIONAL_FIRST_CHILD.has(parentName) && parent?.firstChild === block,
+    };
+  }
+
   // The block the cursor is in, and the node that holds it.
   const depth = $pos.depth === 0 ? 0 : $pos.depth;
   const blockPos = depth === 0 ? $pos.pos : $pos.before(depth);

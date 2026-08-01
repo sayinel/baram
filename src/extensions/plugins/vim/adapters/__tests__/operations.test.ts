@@ -791,6 +791,59 @@ describe("impl review R4 pins", () => {
   });
 });
 
+describe("impl review R5 pins — atom blocks are lines (§9)", () => {
+  const math = { attrs: { latex: "x" }, type: "mathBlock" };
+  const para = (text: string) => ({
+    content: [{ text, type: "text" }],
+    type: "paragraph",
+  });
+
+  it("2dd from a paragraph deletes the following ATOM block, not beyond", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [para("a"), math, para("b")],
+      type: "doc",
+    });
+    const out = deleteLine(editor.state, posOfText(editor, "a"), 2);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("b");
+    expect(doc.childCount).toBe(1);
+    const reg = (out.register as { content: unknown[] }).content;
+    expect(reg).toHaveLength(2);
+    expect((reg[1] as { type: string }).type).toBe("mathBlock");
+  });
+
+  it("an atom inside a blockquote is the second line of a 2dd", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [
+        para("a"),
+        { content: [math, para("q")], type: "blockquote" },
+        para("b"),
+      ],
+      type: "doc",
+    });
+    const out = deleteLine(editor.state, posOfText(editor, "a"), 2);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("qb"); // q SURVIVES, the math went
+    let hasMath = false;
+    doc.descendants((n) => {
+      if (n.type.name === "mathBlock") hasMath = true;
+      return true;
+    });
+    expect(hasMath).toBe(false);
+  });
+
+  it("a TERMINAL atom is still reachable by count", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({ content: [para("a"), math], type: "doc" });
+    const out = deleteLine(editor.state, posOfText(editor, "a"), 2);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("");
+    expect(doc.childCount).toBe(1); // the empty-paragraph floor
+  });
+});
+
 describe("register store (§6 — one global register, vim semantics)", () => {
   it("holds one register across editors: yank here, paste there", () => {
     resetVimRegister();
