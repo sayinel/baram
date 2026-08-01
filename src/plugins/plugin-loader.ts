@@ -820,6 +820,16 @@ function resolveConsent(
  * locale changed mid-session must not leave the previous language in a message a user is
  * about to read. Same shape as `currentLocale()` in `services/app-update.ts` — a non-React
  * module whose output a person reads.
+ *
+ * ‼️ NOT localized unconditionally. The settings store persists through `tauriStorage`,
+ * which rehydrates ASYNCHRONOUSLY, and `initializePlugins` runs from an App effect — so a
+ * startup load that beats rehydration reads the initial `locale: "en"` and produces an
+ * English refusal for a Korean reader. That is a graceful fallback rather than a bug worth
+ * reordering startup for, and it is bounded to the startup path: every marketplace-driven
+ * load happens long after hydration. The surface next to it stays correct either way —
+ * `PluginRevokedNotice` is a component on `useTranslation`, so it re-renders into the right
+ * language when hydration lands, which is the argument for making the notice the only
+ * withdrawal surface eventually (see `dev/backlog.md`).
  */
 function tr(key: string, params?: Record<string, string>): string {
   return t(key, useSettingsStore.getState().locale as Locale, params);
