@@ -293,14 +293,23 @@ pub async fn install_plugin(
     // can only run once the download has ENDED. So an unbounded or never-ending download
     // is not caught later by anything; it simply never reaches the checks.
     //
-    // `read_timeout` rather than a total `timeout`: a legitimate multi-megabyte archive on
-    // a slow link must be allowed to finish, while a connection that stops delivering
-    // bytes must not hold the install open forever. A flat total deadline would trade one
-    // of those for the other.
+    // `read_timeout` rather than only a total `timeout`: a legitimate multi-megabyte
+    // archive on a slow link must be allowed to finish, while a connection that stops
+    // delivering bytes must not hold the install open. A flat 15s total, as the two
+    // metadata fetches use, would trade the first away for the second.
+    //
+    // But per-read alone is not enough (§69 code review): a host delivering one byte every
+    // 29s resets the read deadline forever, and `setInstalling` is only cleared in the
+    // `finally` of the caller — so that plugin's Install button stays disabled, with no
+    // cancel, until the app restarts. Hence a generous TOTAL deadline as well. Ten minutes
+    // bounds the drip while staying far outside any real download: the archives this
+    // registry serves are tens of kilobytes, and even the 32 MiB ceiling only needs about
+    // 55 KiB/s sustained.
     let parsed = validate_http_url(url).map_err(PluginError::Refused)?;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(600))
         .build()?;
     let mut response = client.get(parsed).send().await?;
     let status = response.status();
@@ -475,8 +484,11 @@ pub async fn fetch_registry(url: &str) -> Result<RegistryIndex, PluginError> {
     let mut response = client.get(parsed).send().await?;
     let status = response.status();
     if !status.is_success() {
-        return Err(PluginError::InvalidManifest(format!(
-            "Registry returned HTTP {status}"
+        // `Refused`, not `InvalidManifest`. A 404 reached the user as "Invalid manifest:
+        // Registry returned HTTP 404" — blaming a document that had not been downloaded,
+        // which is the exact miscue `Refused` was added to remove (§69 code review).
+        return Err(PluginError::Refused(format!(
+            "registry returned HTTP {status}"
         )));
     }
     let mut buf: Vec<u8> = Vec::new();

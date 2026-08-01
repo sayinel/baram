@@ -185,6 +185,7 @@ const STYLES = {
 
 import { getVersion } from "@tauri-apps/api/app";
 
+import type { Translate } from "../../i18n/useTranslation";
 import type {
   InstalledPlugin,
   PluginConsent,
@@ -198,7 +199,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
-import { unmetBaramFloor } from "../../plugins/engines";
+import { parseBaramFloor, unmetBaramFloor } from "../../plugins/engines";
 import { validateManifest } from "../../plugins/manifest";
 import { consentGaps, consentRequired } from "../../plugins/plugin-consent";
 import { pluginLoader } from "../../plugins/plugin-loader";
@@ -463,24 +464,11 @@ export function PluginMarketplace() {
       }
       // §69 — the floor the manifest declares, compared to the running app at last.
       // Refusing here rather than letting activation throw is what keeps the update path
-      // safe: `handleUpdate` also checks this, above its uninstall.
-      //
-      // The outer null check is for the MESSAGE, not the decision — `unmetBaramFloor`
-      // already treats an unreadable app version as "no opinion", but the refusal text
-      // names the version the user is on, and TypeScript cannot narrow that from `floor`.
-      const appVersion = await currentAppVersion();
-      if (appVersion !== null) {
-        const floor = unmetBaramFloor(appVersion, entry.engines);
-        if (floor !== null) {
-          setError(
-            entry.id,
-            t("plugin.error.appTooOld", {
-              current: appVersion,
-              required: floor,
-            }),
-          );
-          return;
-        }
+      // safe: `handleUpdate` checks the same thing above its uninstall.
+      const tooOld = await floorRefusal(entry.engines, t);
+      if (tooOld !== null) {
+        setError(entry.id, tooOld);
+        return;
       }
       const claimed: PluginConsent = {
         capabilities: [...entry.capabilities].sort(),
@@ -548,6 +536,19 @@ export function PluginMarketplace() {
           throw new Error(
             t("plugin.error.consentGap", { detail: gaps.join("; ") }),
           );
+        }
+        // §69 code review — the floor, re-checked against the DOWNLOADED manifest.
+        //
+        // The gate above judged `entry.engines`, and this function's own doctrine is that
+        // the entry is a claim while the archive is the truth: id, tier and capabilities
+        // are re-verified here for exactly that reason, and `engines` was the one checked
+        // field still taking the registry's word. A stale index, or any registry that
+        // under-declares a floor, would otherwise install a plugin this app cannot run —
+        // the outcome the gate exists to prevent. Above `rolledBackId = null`, so the
+        // rollback still removes the extracted files.
+        const downloadTooOld = await floorRefusal(result.manifest.engines, t);
+        if (downloadTooOld !== null) {
+          throw new Error(downloadTooOld);
         }
 
         // Past every check — nothing below may delete the installed files.
@@ -642,19 +643,12 @@ export function PluginMarketplace() {
       // update target declares a floor this app does not meet, the uninstall below runs
       // anyway, and the reinstall then fails on activate. `handleInstall` repeats the
       // check, but reaching it here would already be too late.
-      const appVersionForUpdate = await currentAppVersion();
-      if (appVersionForUpdate !== null) {
-        const floor = unmetBaramFloor(appVersionForUpdate, entry.engines);
-        if (floor !== null) {
-          setError(
-            entry.id,
-            t("plugin.error.appTooOld", {
-              current: appVersionForUpdate,
-              required: floor,
-            }),
-          );
-          return;
-        }
+      // `entry` is the resolved LISTING, so this reads the TARGET's floor and not the
+      // installed manifest's — pinned by the fixture in `plugin-engines-gate.test.tsx`.
+      const targetTooOld = await floorRefusal(entry.engines, t);
+      if (targetTooOld !== null) {
+        setError(entry.id, targetTooOld);
+        return;
       }
       // §260 Phase 5 — read the recorded consent BEFORE uninstalling: `handleUninstall`
       // calls `removePlugin`, which deletes the very record this compares against.
@@ -1082,13 +1076,7 @@ export function PluginMarketplace() {
   );
 }
 
-/**
- * The running app version, or null when it cannot be read.
- *
- * Read per click rather than once on mount. A `null` window during the first frames would
- * silently skip the floor check for precisely the impatient click this gate exists to
- * stop, and one extra IPC per Install press costs nothing next to a ZIP download.
- */
+/** The running app version, or null when it cannot be read. */
 async function currentAppVersion(): Promise<null | string> {
   try {
     return (await getVersion()) ?? null;
@@ -1098,6 +1086,33 @@ async function currentAppVersion(): Promise<null | string> {
     logger.warn("[Marketplace] could not read the app version:", err);
     return null;
   }
+}
+
+/**
+ * The refusal to show when the running app is below `engines`' floor, else null.
+ *
+ * One helper rather than the same block at three sites: pre-download, post-download and
+ * update must reach the SAME verdict, and copies are how they stop doing that.
+ *
+ * The app version is read only once a floor has actually been parsed — most manifests
+ * state either no floor this can evaluate or one that is met, and there is no reason to
+ * ask the backend for our own version to answer a question with no floor in it.
+ *
+ * Read per call rather than once on mount: a `null` window during the first frames would
+ * silently skip the check for precisely the impatient click the gate exists to stop.
+ */
+async function floorRefusal(
+  engines: undefined | { baram: string },
+  t: Translate,
+): Promise<null | string> {
+  if (parseBaramFloor(engines?.baram) === null) return null;
+  const appVersion = await currentAppVersion();
+  // `unmetBaramFloor` treats an unreadable version as "no opinion" too; narrowing it here
+  // is what lets the refusal name the version the reader is actually on.
+  if (appVersion === null) return null;
+  const floor = unmetBaramFloor(appVersion, engines);
+  if (floor === null) return null;
+  return t("plugin.error.appTooOld", { current: appVersion, required: floor });
 }
 
 function getPluginStatus(
