@@ -42,6 +42,7 @@ const NOT_PROSE: RegExp[] = [
   /^\d+px (solid|dashed)\b/, // border shorthand, colour appended separately
   /^[a-z-]+ [\d.]+m?s$/, // transition shorthand
   /^(var|rgb|rgba|color-mix|linear-gradient|radial-gradient)\(/,
+  /^--[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, // CSS custom property NAME, e.g. the badge hue
   /^_(blank|self|parent|top)$/, // link target
   /^[a-z][a-zA-Z0-9]*$/, // identifier or CSS keyword
   /^[a-z][a-z0-9]*(?:[-_]+[a-z0-9]+)*(?:\s+[a-z][a-z0-9]*(?:[-_]+[a-z0-9]+)*)*$/, // class list
@@ -172,6 +173,11 @@ describe("no plugin component hardcodes user-facing English", () => {
     ["a CSS shorthand", 'padding: "6px 16px"'],
     ["a module path", 'import x from "../../plugins/types";'],
     ["a logger prefix", 'logger.warn("[Marketplace] refresh failed:", err);'],
+    // The badge sets its hue through a custom property, so the property NAME appears
+    // as a literal. Dismissed by a rule rather than added to ALLOWED: a leading `--`
+    // plus a CSS identifier is provably not user-facing text, so the next component
+    // that styles itself this way needs no edit here.
+    ["a CSS custom property name", 'style={{ "--capability-badge-hue": c }}'],
   ])("does not flag %s", (_label, source) => {
     expect({
       children: proseChildren(source),

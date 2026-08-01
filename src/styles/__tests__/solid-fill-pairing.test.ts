@@ -6,10 +6,11 @@
 // `npm run audit:css-vars` cannot see it — it only reports *undefined* variables.
 // So the rule is asserted over the whole stylesheet rather than site by site: the
 // next filled button inherits the fix instead of re-introducing the bug.
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const STYLES = "src/styles";
+import { cssRules, innermostObjects, objectProperty, walk } from "./css-rules";
+
 const SRC = "src";
 
 /** Solid accent fill — `color-mix(...)` tints are excluded on purpose. */
@@ -18,89 +19,6 @@ const SOLID_ACCENT_BG =
 const HARDCODED_LIGHT_FG =
   /(?<!-)\bcolor\s*:\s*(white|#fff|#ffffff)\s*(?:;|$)/i;
 const ON_SOLID_FG = /(?<!-)\bcolor\s*:\s*var\(\s*--color-accent-on-solid\s*\)/;
-
-interface Rule {
-  body: string;
-  file: string;
-  line: number;
-  selector: string;
-}
-
-/** Every CSS rule outside `generated/`, which Style Dictionary owns. */
-function cssRules(): Rule[] {
-  const rules: Rule[] = [];
-  for (const file of walk(STYLES, ".css")) {
-    if (file.includes("/generated/")) continue;
-    const css = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      rules.push({
-        body: match[2],
-        file,
-        line: css.slice(0, match.index).split("\n").length,
-        selector: match[1].trim().replace(/\s+/g, " "),
-      });
-    }
-  }
-  return rules;
-}
-
-/**
- * Brace-matched objects containing no nested object — where style properties live,
- * whether the object sits in a JSX `style={{…}}` literal, a module-level constant,
- * or anything else. Matching on syntax rather than on one calling convention is the
- * point: the convention is what the previous version of this scan assumed.
- */
-function innermostObjects(source: string): { body: string; start: number }[] {
-  const found: { body: string; start: number }[] = [];
-  const opens: number[] = [];
-  for (let i = 0; i < source.length; i++) {
-    if (source[i] === "{") opens.push(i);
-    else if (source[i] === "}") {
-      const start = opens.pop();
-      if (start === undefined) continue;
-      const body = source.slice(start + 1, i);
-      if (!body.includes("{")) found.push({ body, start });
-    }
-  }
-  return found;
-}
-
-/**
- * One style property's value, split at commas outside parentheses so a
- * `color-mix(in srgb, …)` value stays whole. Null when the property is absent.
- */
-function objectProperty(body: string, key: RegExp): null | string {
-  let depth = 0;
-  let current = "";
-  const properties: string[] = [];
-  for (const char of body) {
-    if (char === "(" || char === "[") depth++;
-    else if (char === ")" || char === "]") depth--;
-    if (char === "," && depth === 0) {
-      properties.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  properties.push(current);
-  for (const property of properties) {
-    const split = property.indexOf(":");
-    if (split === -1) continue;
-    if (key.test(property.slice(0, split).trim())) {
-      return property.slice(split + 1);
-    }
-  }
-  return null;
-}
-
-function walk(dir: string, ext: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) return walk(path, ext);
-    return entry.name.endsWith(ext) ? [path] : [];
-  });
-}
 
 const RULES = cssRules();
 const ACCENT_FILLED = RULES.filter((rule) => SOLID_ACCENT_BG.test(rule.body));
