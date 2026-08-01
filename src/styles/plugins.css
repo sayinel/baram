@@ -423,3 +423,84 @@
 .plugin-capability-badge__description {
   font-size: 10px;
 }
+
+/* ── §69 revocation notice ────────────────────────────────────────────────
+ *
+ * Reuses the error-surface tokens the consent dialog's danger block uses, rather
+ * than a filled status colour: this is prose to be read, not a control, and a tinted
+ * surface with primary text is the pairing that already measures well in both bases.
+ *
+ * The `--warn` variant is a `color-mix` tint for the same reason `.plugin-consent__new`
+ * is NOT — a tint is right where the surface only has to be noticed, and there is no
+ * `--color-status-warning-bg` token to reach for.
+ */
+.plugin-revoked {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  background: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 8px;
+}
+
+.plugin-revoked--warn {
+  background: color-mix(in srgb, var(--color-status-warning) 12%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--color-status-warning) 40%,
+    transparent
+  );
+}
+
+.plugin-revoked__title {
+  font-weight: 600;
+}
+
+/* The one part a user might quote in a bug report, so it stays selectable prose
+   rather than being folded into the title line. */
+.plugin-revoked__reason {
+  overflow-wrap: anywhere;
+}
+
+/* States that nothing was deleted. Secondary because it is reassurance, not the
+   message — but present, because "not running" otherwise reads as "gone". */
+.plugin-revoked__note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.plugin-revoked__remove {
+  align-self: flex-start;
+  padding: 5px 14px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-status-danger-on-solid);
+  cursor: pointer;
+  background: var(--color-status-danger);
+  border: none;
+  border-radius: 6px;
+}
+
+.plugin-revoked__remove:hover {
+  background: var(--color-status-danger-solid-hover);
+}
+
+/* §69 — the withdrawal marker in the plugin LIST. Filled rather than tinted: it has
+   to survive being scanned past at 11px among other metadata, and the derived
+   `-on-solid` pairing is what makes a filled danger chip safe in every theme (#341). */
+.plugin-revoked-badge {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-status-danger-on-solid);
+  letter-spacing: 0.04em;
+  background: var(--color-status-danger);
+  border-radius: 9999px;
+}

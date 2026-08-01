@@ -40,6 +40,13 @@ pub async fn plugin_fetch_registry(url: String) -> Result<plugin::RegistryIndex,
         .map_err(|e| e.to_string())
 }
 
+/// §69 — raw JSON text of the revocation list. Parsed and validated on the TS side,
+/// which owns the drop-bad-entries rule; see `plugin::fetch_revocations`.
+#[tauri::command]
+pub async fn plugin_fetch_revocations(url: String) -> Result<String, String> {
+    plugin::fetch_revocations(&url).await
+}
+
 #[tauri::command]
 pub async fn plugin_get_dir() -> Result<String, String> {
     plugin::get_plugin_dir()

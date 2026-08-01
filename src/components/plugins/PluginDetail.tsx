@@ -1,3 +1,4 @@
+import type { RevocationEntry } from "../../plugins/revocation";
 import type {
   PluginCapability,
   PluginStatus,
@@ -8,6 +9,7 @@ import type {
 import { useTranslation } from "../../i18n/useTranslation";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginRevokedNotice } from "./PluginRevokedNotice";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
 
@@ -20,6 +22,7 @@ interface PluginDetailProps {
   onUninstall: () => void;
   onUpdate: () => void;
   readme?: null | string;
+  revocation?: null | RevocationEntry;
   status: PluginStatus;
   updateAvailable?: string;
 }
@@ -35,6 +38,7 @@ export function PluginDetail({
   onToggleEnabled,
   readme,
   onBack,
+  revocation,
 }: PluginDetailProps) {
   const { t } = useTranslation();
   // The full-trust warning moved to `PluginConsentDialog` (§260 Phase 5), which is the
@@ -66,6 +70,15 @@ export function PluginDetail({
       >
         {t("plugin.action.back")}
       </button>
+
+      {/* §69 — genuinely first in the body now. The earlier version carried a comment
+          saying so while rendering after the description, the error banner and the
+          action buttons; review caught the comment describing an intent the code did
+          not implement. */}
+      <PluginRevokedNotice
+        onRemove={onUninstall}
+        revocation={revocation ?? null}
+      />
 
       {/* Header */}
       <div

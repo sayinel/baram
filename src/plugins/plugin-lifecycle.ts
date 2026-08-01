@@ -23,6 +23,10 @@ import {
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
 import {
+  refreshRevocations,
+  REVOCATION_REFRESH_BUDGET_MS,
+} from "./revocation-client";
+import {
   deliverSandboxEvent,
   setContextResolver,
 } from "./sandbox/sandbox-event-bridge";
@@ -71,6 +75,25 @@ export async function initializePlugins(): Promise<void> {
   await pluginPrepareScopes().catch((err) =>
     logger.error("[PluginLifecycle] prepare scopes failed:", err),
   );
+
+  // §69 — refresh the withdrawal list BEFORE any installed plugin loads, bounded.
+  //
+  // This was fire-and-forget at the top of the function, which lost the race as a
+  // rule: a local `asset://` import beats a Pages round trip essentially always. A
+  // `trusted` plugin that wins it once runs in the main realm, where it can patch
+  // `window.__TAURI_INTERNALS__.invoke` — the transport this very refresh uses — and
+  // answer with a well-formed empty list. That list is accepted by design (a
+  // withdrawal has to be revocable) and PERSISTED, so one won race disarmed
+  // revocation permanently, on every later launch, while the entry stayed correctly
+  // published. Security review of this branch found it.
+  //
+  // Bounded, because the offline guarantee still stands: the stored list already
+  // governs the gate, so a timeout costs freshness and never protection. The cost of
+  // being offline is one wait of REVOCATION_REFRESH_BUDGET_MS per launch.
+  await Promise.race([
+    refreshRevocations(),
+    new Promise((resolve) => setTimeout(resolve, REVOCATION_REFRESH_BUDGET_MS)),
+  ]);
 
   const { installedPlugins } = usePluginStore.getState();
   const enabledPlugins = Object.values(installedPlugins).filter(

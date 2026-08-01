@@ -71,6 +71,7 @@
     "allow-merge-texts",
     "allow-plugin-add-dev-folder",
     "allow-plugin-fetch-registry",
+    "allow-plugin-fetch-revocations",
     "allow-plugin-get-dir",
     "allow-plugin-http-fetch",
     "allow-plugin-install",

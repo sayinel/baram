@@ -1,3 +1,4 @@
+import type { RevocationList } from "../../plugins/revocation";
 import type {
   InstalledPlugin,
   PluginCapability,
@@ -32,6 +33,9 @@ interface PluginState {
   registryUrl: string;
   removeDevPlugin: (id: string) => void;
   removePlugin: (id: string) => void;
+  /** §69 Persisted: revocation must survive offline, so it is not a fetch cache. */
+  revocations: null | RevocationList;
+  revocationsFetchedAt: number;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
@@ -39,6 +43,7 @@ interface PluginState {
   setPluginSetting: (pluginId: string, key: string, value: unknown) => void;
   setRegistryCache: (index: RegistryIndex) => void;
   setRegistryUrl: (url: string) => void;
+  setRevocations: (list: RevocationList) => void;
   setUpdateAvailable: (id: string, version: string) => void;
   updateAvailable: Record<string, string>; // pluginId -> latest version
   updatePluginVersion: (id: string, version: string, checksum: string) => void;
@@ -159,6 +164,8 @@ export const usePluginStore = create<PluginState>()(
       pluginErrors: {},
       registryCache: null,
       registryCacheTime: 0,
+      revocations: null,
+      revocationsFetchedAt: 0,
       updateAvailable: {},
       installing: {},
       devPlugins: {},
@@ -272,7 +279,15 @@ export const usePluginStore = create<PluginState>()(
 
       getPluginSettings: (pluginId) => get().pluginSettings[pluginId] ?? {},
 
-      setRegistryUrl: (registryUrl) => set({ registryUrl }),
+      // §69 — the stored withdrawal list belongs to the registry it came from. Keeping
+      // it across a switch means our list keeps governing someone else's plugins, and a
+      // self-hosted registry will normally 404 on `revoked.json`, so "until the next
+      // successful fetch" would in practice be "forever".
+      setRegistryUrl: (registryUrl) =>
+        set({ registryUrl, revocations: null, revocationsFetchedAt: 0 }),
+
+      setRevocations: (revocations) =>
+        set({ revocations, revocationsFetchedAt: Date.now() }),
     }),
     {
       name: "baram:plugins",
@@ -281,6 +296,12 @@ export const usePluginStore = create<PluginState>()(
         installedPlugins: state.installedPlugins,
         pluginSettings: state.pluginSettings,
         registryUrl: state.registryUrl,
+        // §69 Persisted deliberately, unlike `registryCache`. A revocation the user
+        // has already received must keep applying with the network gone, or blocking
+        // network access would be enough to undo it. No migration step: an absent key
+        // falls back to the initial `null`, which is the correct pre-first-fetch state.
+        revocations: state.revocations,
+        revocationsFetchedAt: state.revocationsFetchedAt,
       }),
       version: 3,
       migrate: migratePluginPersistedState,

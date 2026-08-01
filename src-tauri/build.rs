@@ -75,6 +75,7 @@ fn main() {
         "plugin_add_dev_folder",
         "plugin_call",
         "plugin_fetch_registry",
+        "plugin_fetch_revocations",
         "plugin_get_dir",
         "plugin_http_fetch",
         "plugin_install",

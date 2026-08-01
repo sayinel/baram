@@ -15,6 +15,7 @@ interface PluginCardProps {
   onSelect: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
+  revoked?: boolean;
   status: PluginStatus;
   updateAvailable?: string;
 }
@@ -28,6 +29,7 @@ export function PluginCard({
   onUninstall,
   onUpdate,
   onSelect,
+  revoked,
 }: PluginCardProps) {
   const { t } = useTranslation();
   return (
@@ -84,6 +86,14 @@ export function PluginCard({
             >
               v{entry.version}
             </span>
+            {/* §69 — visible in the LIST, not only after opening the detail. A user
+                scanning installed plugins should not have to click each one to find
+                out which has been withdrawn. */}
+            {revoked && (
+              <span className="plugin-revoked-badge">
+                {t("plugin.revoked.badge")}
+              </span>
+            )}
           </div>
           <p
             style={{

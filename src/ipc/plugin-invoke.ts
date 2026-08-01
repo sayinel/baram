@@ -33,6 +33,17 @@ export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
   return invoke<RegistryIndex>("plugin_fetch_registry", { url });
 }
 
+/**
+ * §69 — the revocation list as raw JSON text.
+ *
+ * Text rather than a parsed object because `normalizeRevocationList` is the single
+ * validator, and it drops malformed entries rather than failing the whole list. A
+ * typed deserialize on the Rust side would reject the document on one bad entry.
+ */
+export async function pluginFetchRevocations(url: string): Promise<string> {
+  return invoke<string>("plugin_fetch_revocations", { url });
+}
+
 export async function pluginGetDir(): Promise<string> {
   return invoke<string>("plugin_get_dir");
 }
