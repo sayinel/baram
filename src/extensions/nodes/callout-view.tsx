@@ -22,8 +22,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
-import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
+import {
+  canUseEditorChrome,
+  updateNodeAttributesWithVim,
+} from "../plugins/vim/vim-keys";
 
 /** Callout type definition with Lucide icon and display label */
 interface CalloutTypeDef {
@@ -70,27 +74,37 @@ export function CalloutView({
     updateNodeAttributesWithVim(editor, getPos, { collapsed: !collapsed });
   }, [collapsed, editor, getPos]);
 
+  // §12-⑩: NOT editor.isEditable — that locks chrome and the title island
+  // during vim normal (view.editable=false). Reactive: a bare render read
+  // would go stale, since ReactNodeView skips re-render on unchanged nodes.
+  const canEdit = useEditorChrome(editor);
+
   const handleTitleDoubleClick = useCallback(() => {
-    if (!editor.isEditable) return;
+    if (!canEdit) return;
     setIsEditingTitle(true);
-  }, [editor.isEditable]);
+  }, [canEdit]);
 
   const commitTitle = useCallback(
     (value: string) => {
-      updateAttributes({ title: value });
+      // §12-⑩ event-time guard: the input may be stale-rendered — capability
+      // can have been revoked after it mounted.
+      if (canUseEditorChrome(editor)) updateAttributes({ title: value });
       setIsEditingTitle(false);
     },
-    [updateAttributes],
+    [editor, updateAttributes],
   );
 
   const handleIconClick = useCallback(() => {
-    if (!editor.isEditable) return;
+    if (!canEdit) return;
     setIsPickerOpen((prev) => !prev);
-  }, [editor.isEditable]);
+  }, [canEdit]);
 
   const handleTypeSelect = useCallback(
     (newType: string) => {
-      updateNodeAttributesWithVim(editor, getPos, { type: newType });
+      // §12-⑩ event-time guard — see commitTitle.
+      if (canUseEditorChrome(editor)) {
+        updateNodeAttributesWithVim(editor, getPos, { type: newType });
+      }
       setIsPickerOpen(false);
     },
     [editor, getPos],

@@ -5,9 +5,18 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 
+import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { useSettingsStore } from "../../stores/settings/store";
+import {
+  canUseEditorChrome,
+  withVimExternalEdit,
+} from "../plugins/vim/vim-keys";
 
 // --- YAML tag parsing helpers ---
+
+/** §12-⑩/§5b provenance: the remove pill is NodeView chrome (tagged); the
+ *  input is a focus-local island under data-vim-suspend (untagged). */
+type TagMutationOrigin = "chrome" | "island";
 
 type TagsFormat = "block" | "inline" | "none";
 
@@ -17,10 +26,16 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const tagColors = useSettingsStore((s) => s.tagColors);
 
   const tags = parseFrontmatterTags(node.textContent);
-  const isEditable = editor.isEditable;
+  // §12-⑩: NOT editor.isEditable — that hides the tag UI during vim normal,
+  // and a bare render read goes stale (ReactNodeView skips re-render on
+  // unchanged nodes).
+  const canEdit = useEditorChrome(editor);
 
   const applyTags = useCallback(
-    (newTags: string[]) => {
+    (newTags: string[], origin: TagMutationOrigin) => {
+      // §12-⑩ event-time guard: this callback can fire from stale-rendered
+      // UI after capability was revoked — the render gate is not enough.
+      if (!canUseEditorChrome(editor)) return;
       const pos = getPos();
       if (typeof pos !== "number") return;
       const newYaml = updateFrontmatterTags(node.textContent, newTags);
@@ -36,14 +51,18 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       } else {
         tr.delete(nodeStart, nodeEnd);
       }
+      if (origin === "chrome") withVimExternalEdit(tr);
       editor.view.dispatch(tr);
     },
     [editor, getPos, node],
   );
 
   const removeTag = useCallback(
-    (tag: string) => {
-      applyTags(tags.filter((t) => t !== tag));
+    (tag: string, origin: TagMutationOrigin) => {
+      applyTags(
+        tags.filter((t) => t !== tag),
+        origin,
+      );
     },
     [applyTags, tags],
   );
@@ -52,7 +71,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
     (raw: string) => {
       const tag = raw.trim().replace(/^#+/, "");
       if (!tag || tags.includes(tag)) return;
-      applyTags([...tags, tag]);
+      applyTags([...tags, tag], "island");
       setInputValue("");
     },
     [applyTags, tags],
@@ -71,7 +90,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
         inputValue === "" &&
         tags.length > 0
       ) {
-        removeTag(tags[tags.length - 1]);
+        removeTag(tags[tags.length - 1], "island");
       }
     },
     [addTag, inputValue, removeTag, tags],
@@ -84,7 +103,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   }, []);
 
   // Hide tag bar in read-only mode with no tags
-  const showTagBar = isEditable || tags.length > 0;
+  const showTagBar = canEdit || tags.length > 0;
 
   return (
     <NodeViewWrapper
@@ -111,13 +130,13 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
                 title={`Search for #${tag}`}
               >
                 #{tag}
-                {isEditable && (
+                {canEdit && (
                   <button
                     aria-label={`Remove tag ${tag}`}
                     className="fm-tag-pill-remove"
                     onClick={(e) => {
                       e.stopPropagation();
-                      removeTag(tag);
+                      removeTag(tag, "chrome");
                     }}
                     title="Remove tag"
                   >
@@ -127,7 +146,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
               </span>
             );
           })}
-          {isEditable && (
+          {canEdit && (
             <input
               aria-label="Add tag"
               className="fm-tag-input"

@@ -21,6 +21,27 @@ export interface VimStateSnapshot {
 export const vimPluginKey = new PluginKey<VimStateSnapshot>("wysiwygVim");
 
 /**
+ * §12-⑩ — may NodeView chrome mutate the document right now?
+ *
+ * True write capability (`options.editable`) ANDed with "the only thing
+ * making the view non-editable is vim's modal state". A plain
+ * `editor.isEditable` gate would lock chrome and input islands during vim
+ * normal; a plain OR would let modal state bypass a real read-only editor.
+ * Attributing non-editability to vim is only safe because §12-⑪ pins that
+ * nothing else in the repo contributes an `editable` prop (invariant test).
+ *
+ * Render-time use is not enough — mutation callbacks must re-check this at
+ * event time (a stale-rendered button outlives any render condition).
+ */
+export function canUseEditorChrome(editor: Editor): boolean {
+  if (editor.isDestroyed) return false;
+  return (
+    editor.options.editable &&
+    (editor.view.editable || isWysiwygVimModal(editor.state))
+  );
+}
+
+/**
  * True while vim owns the editor surface (normal/visual — design §5).
  * Suspension does not matter here: the PM body stays non-editable while an
  * input island holds focus, so body-directed mutations remain blocked.
