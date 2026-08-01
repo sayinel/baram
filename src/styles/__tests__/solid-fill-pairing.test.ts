@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { cssRules, walk } from "./css-rules";
+import { cssRules, innermostObjects, objectProperty, walk } from "./css-rules";
 
 const SRC = "src";
 
@@ -19,56 +19,6 @@ const SOLID_ACCENT_BG =
 const HARDCODED_LIGHT_FG =
   /(?<!-)\bcolor\s*:\s*(white|#fff|#ffffff)\s*(?:;|$)/i;
 const ON_SOLID_FG = /(?<!-)\bcolor\s*:\s*var\(\s*--color-accent-on-solid\s*\)/;
-
-/**
- * Brace-matched objects containing no nested object — where style properties live,
- * whether the object sits in a JSX `style={{…}}` literal, a module-level constant,
- * or anything else. Matching on syntax rather than on one calling convention is the
- * point: the convention is what the previous version of this scan assumed.
- */
-function innermostObjects(source: string): { body: string; start: number }[] {
-  const found: { body: string; start: number }[] = [];
-  const opens: number[] = [];
-  for (let i = 0; i < source.length; i++) {
-    if (source[i] === "{") opens.push(i);
-    else if (source[i] === "}") {
-      const start = opens.pop();
-      if (start === undefined) continue;
-      const body = source.slice(start + 1, i);
-      if (!body.includes("{")) found.push({ body, start });
-    }
-  }
-  return found;
-}
-
-/**
- * One style property's value, split at commas outside parentheses so a
- * `color-mix(in srgb, …)` value stays whole. Null when the property is absent.
- */
-function objectProperty(body: string, key: RegExp): null | string {
-  let depth = 0;
-  let current = "";
-  const properties: string[] = [];
-  for (const char of body) {
-    if (char === "(" || char === "[") depth++;
-    else if (char === ")" || char === "]") depth--;
-    if (char === "," && depth === 0) {
-      properties.push(current);
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-  properties.push(current);
-  for (const property of properties) {
-    const split = property.indexOf(":");
-    if (split === -1) continue;
-    if (key.test(property.slice(0, split).trim())) {
-      return property.slice(split + 1);
-    }
-  }
-  return null;
-}
 
 const RULES = cssRules();
 const ACCENT_FILLED = RULES.filter((rule) => SOLID_ACCENT_BG.test(rule.body));

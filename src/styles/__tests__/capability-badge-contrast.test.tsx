@@ -30,7 +30,12 @@ import {
   contrastRatio,
   relativeLuminance,
 } from "../../utils/color-contrast";
-import { cssRules, mediaConditionFor } from "./css-rules";
+import {
+  cssRules,
+  innermostObjects,
+  mediaConditionFor,
+  objectProperty,
+} from "./css-rules";
 
 /** The class the stylesheet defines and the component must therefore carry. */
 const BADGE = "plugin-capability-badge";
@@ -207,14 +212,32 @@ describe("capability badge contrast (#330)", () => {
     expect(recipeFor(SCOPES.system)).toEqual(recipeFor(SCOPES.dark));
   });
 
-  it("keeps the system scope inside a prefers-color-scheme: dark query", () => {
-    // Equality with the dark recipe says nothing about REACHABILITY. Lift this rule out
-    // of its media query and it applies unconditionally: every `system` user on an
-    // OS-LIGHT desktop gets a near-black pill with light text on a white page. Flip the
-    // query to `light` and both halves of that population get the wrong recipe. A
-    // selector lookup finds the rule either way, so the condition needs saying.
-    expect(mediaConditionFor(ruleFor(SCOPES.system).file, SCOPES.system)).toBe(
+  it("puts each scope behind the right media condition, and only that one", () => {
+    // Equality with the dark recipe says nothing about REACHABILITY. Lift the system
+    // rule out of its media query and it applies unconditionally: every `system` user
+    // on an OS-LIGHT desktop gets a near-black pill with light text on a white page.
+    // Flip the query to `light` and both halves of that population get it wrong.
+    //
+    // The same argument runs in reverse for the other two, which is why `null` is
+    // asserted rather than left implied. Wrap `:root` in a light query and an explicit
+    // LIGHT theme on an OS-DARK machine loses all four variables — both `color-mix()`
+    // declarations go invalid at computed-value time, text inherits the page and the
+    // fill goes transparent. Wrap `[data-theme="dark"]` in a dark query and an explicit
+    // DARK theme on an OS-LIGHT machine falls through to the light recipe.
+    expect(mediaConditionFor(scopeRule(SCOPES.system))).toBe(
       "(prefers-color-scheme: dark)",
+    );
+    expect(mediaConditionFor(scopeRule(SCOPES.light))).toBeNull();
+    expect(mediaConditionFor(scopeRule(SCOPES.dark))).toBeNull();
+  });
+
+  it("declares the dark scope after the light one, which is what decides the winner", () => {
+    // `:root` and `[data-theme="dark"]` are both specificity (0,1,0), so neither wins
+    // on specificity — source order alone decides. Moving the dark block above `:root`
+    // leaves every value in this file untouched, every ratio at 5.29:1 and every other
+    // assertion green, while every dark theme renders a near-white pill on a dark page.
+    expect(scopeRule(SCOPES.dark).line).toBeGreaterThan(
+      scopeRule(SCOPES.light).line,
     );
   });
 });
@@ -265,6 +288,22 @@ describe("nothing may reintroduce an indeterminate pairing", () => {
       .filter((rule) => /\bopacity\s*:/u.test(rule.body))
       .map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
     expect(offenders).toEqual([]);
+    // Not vacuous: the scan must reach both classes, including the BEM child that a
+    // `(?![\w-])` lookahead silently excluded because `_` is a word character.
+    expect(badgeRules().map((rule) => rule.selector)).toEqual(
+      expect.arrayContaining([`.${BADGE}`, `.${BADGE}__description`]),
+    );
+  });
+
+  it("sets no opacity in the component's own style objects either", () => {
+    // Every other assertion here reasons about stylesheets. The defect was ORIGINALLY
+    // written as an inline object — `{ opacity: 0.8, fontSize: "10px" }` — so putting
+    // that object back was invisible to all of them. Matching on object syntax rather
+    // than on a call shape is the same reasoning `solid-fill-pairing` uses next door.
+    const offenders = innermostObjects(TSX)
+      .filter((object) => objectProperty(object.body, /^opacity$/u) !== null)
+      .map((object) => TSX.slice(0, object.start).split("\n").length);
+    expect(offenders).toEqual([]);
   });
 
   it("mixes ink and fill from exactly the hue and their own recipe bases", () => {
@@ -275,20 +314,32 @@ describe("nothing may reintroduce an indeterminate pairing", () => {
     // page-dependent again. Asserting the exact SET catches a typo and a page colour
     // with one rule.
     const body = ruleFor(`.${BADGE}`).body;
-    for (const side of ["fill", "ink"] as const) {
-      const property = side === "fill" ? "background-color" : "color";
+    const expected: Record<string, string[]> = {
+      "background-color": [
+        "--capability-badge-fill-base",
+        "--capability-badge-fill-hue",
+        "--capability-badge-hue",
+      ],
+      // The border is the one side that mixes toward the PAGE, on purpose — it has to
+      // separate the pill from the page rather than hold a determinate ratio. It is
+      // included here anyway because the same one-character typo kills it harder:
+      // an unresolvable var invalidates the whole `border` shorthand, `border-style`
+      // resets to `none`, and with the fill sitting near 1.0:1 against most pages the
+      // pill disappears into bare text.
+      border: ["--capability-badge-hue", "--color-bg-default"],
+      color: [
+        "--capability-badge-hue",
+        "--capability-badge-ink-base",
+        "--capability-badge-ink-hue",
+      ],
+    };
+    for (const [property, vars] of Object.entries(expected)) {
       const value = declarationIn(body, property);
       expect(value, property).not.toBeNull();
       const referenced = [...(value ?? "").matchAll(/var\((--[\w-]+)\)/gu)]
         .map((match) => match[1])
         .sort();
-      expect(referenced, property).toEqual(
-        [
-          "--capability-badge-hue",
-          `--capability-badge-${side}-base`,
-          `--capability-badge-${side}-hue`,
-        ].sort(),
-      );
+      expect(referenced, property).toEqual([...vars].sort());
     }
   });
 
@@ -316,6 +367,11 @@ describe("nothing may reintroduce an indeterminate pairing", () => {
     expect(
       declarationIn(ruleFor(`.${BADGE}__description`).body, "font-size"),
     ).not.toBeNull();
+    // Presence is the weaker claim these assertions settle for, matching the pattern
+    // already used for the consent dialog. `display` is the exception worth pinning by
+    // value: `block` keeps the declaration and still breaks the card's capability row,
+    // which wraps its badges inline.
+    expect(declarationIn(body, "display")).toBe("inline-flex");
   });
 
   it("defaults the hue to the settings grey it claims to", () => {
@@ -337,11 +393,19 @@ describe("nothing may reintroduce an indeterminate pairing", () => {
   });
 });
 
-/** Rules anywhere in `src/styles` whose selector list touches the badge class. */
+/**
+ * Rules anywhere in `src/styles` whose selector list touches the badge class.
+ *
+ * A plain prefix match, deliberately. The first version ended in `(?![\w-])` to avoid
+ * matching a longer class — and `_` is a word character, so the BEM child
+ * `.plugin-capability-badge__description` was the ONE selector that escaped the scan.
+ * Re-adding `opacity: 0.8` there, the exact declaration this change removed from the
+ * exact element it removed it from, passed. Nothing else in the repo starts with this
+ * prefix, so the narrowing bought nothing and cost the case that mattered most.
+ */
 function badgeRules() {
-  const target = new RegExp(`\\.${BADGE}(?![\\w-])`, "u");
   return RULES.filter((rule) =>
-    rule.selector.split(",").some((one) => target.test(one)),
+    rule.selector.split(",").some((one) => one.includes(`.${BADGE}`)),
   );
 }
 

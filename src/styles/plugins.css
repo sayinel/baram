@@ -406,9 +406,13 @@
   border-radius: 9999px;
 }
 
-/* No `opacity` on the badge or its description, and the guard rejects it on any rule
- * in src/styles whose selector list targets this class — states and descendants
- * included, since `:hover { opacity }` composites exactly the same way.
+/* No `opacity` on the badge or its description. The guard rejects it on any rule in
+ * src/styles whose selector list mentions this class — the `__description` child, a
+ * `:hover` state, a descendant, either position in a comma list — and, separately, in
+ * any style object in the component, because the original defect was written inline.
+ * A `(?![\w-])` lookahead once excluded exactly one selector, `__description`, since
+ * `_` is a word character; that is the element the opacity was removed from.
+ *
  *
  * Element opacity composites the text against the fill it sits on, so the 0.8 this
  * line used to carry would pull the derived pairing back under AA for 5 of 13

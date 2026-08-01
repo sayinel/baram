@@ -17,6 +17,8 @@ import { readdirSync, readFileSync } from "node:fs";
 export interface Rule {
   body: string;
   file: string;
+  /** Character offset of the rule's selector, so a caller never re-finds it by text. */
+  index: number;
   line: number;
   selector: string;
 }
@@ -38,12 +40,37 @@ export function cssRules(): Rule[] {
       rules.push({
         body: match[2],
         file,
+        index: match.index,
         line: css.slice(0, match.index).split("\n").length,
         selector: match[1].trim().replaceAll(/\s+/gu, " "),
       });
     }
   }
   return rules;
+}
+
+/**
+ * Brace-matched objects containing no nested object — where style properties live,
+ * whether the object sits in a JSX `style={{…}}` literal, a module-level constant, or
+ * anything else. Matching on syntax rather than on one calling convention is the point:
+ * the CSS guards here reason about stylesheets, and the defect they guard against was
+ * originally written as an inline style object.
+ */
+export function innermostObjects(
+  source: string,
+): { body: string; start: number }[] {
+  const found: { body: string; start: number }[] = [];
+  const opens: number[] = [];
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === "{") opens.push(i);
+    else if (source[i] === "}") {
+      const start = opens.pop();
+      if (start === undefined) continue;
+      const body = source.slice(start + 1, i);
+      if (!body.includes("{")) found.push({ body, start });
+    }
+  }
+  return found;
 }
 
 /**
@@ -54,17 +81,15 @@ export function cssRules(): Rule[] {
  * `prefers-color-scheme` wrapper would still be found by selector and would then apply
  * unconditionally, which is the opposite of what it is for.
  */
-export function mediaConditionFor(
-  file: string,
-  selector: string,
-): null | string {
-  const css = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//gu, "");
-  const at = css.indexOf(selector);
-  if (at === -1) return null;
+export function mediaConditionFor(rule: Rule): null | string {
+  const css = readFileSync(rule.file, "utf8").replace(/\/\*[\s\S]*?\*\//gu, "");
+  // `rule.index`, not `indexOf(rule.selector)`: re-finding a rule by its text lands on
+  // the FIRST occurrence in the file, which is a different rule the moment a selector
+  // repeats — and then the condition reported belongs to something else.
   // Walk back counting braces: an unmatched `{` means an enclosing block, and the
   // text before it is its at-rule prelude.
   let depth = 0;
-  for (let i = at - 1; i >= 0; i--) {
+  for (let i = rule.index - 1; i >= 0; i--) {
     if (css[i] === "}") depth++;
     else if (css[i] === "{") {
       if (depth === 0) {
@@ -72,6 +97,35 @@ export function mediaConditionFor(
         return prelude === null ? null : prelude[1].trim();
       }
       depth--;
+    }
+  }
+  return null;
+}
+
+/**
+ * One style property's value, split at commas outside parentheses so a
+ * `color-mix(in srgb, …)` value stays whole. Null when the property is absent.
+ */
+export function objectProperty(body: string, key: RegExp): null | string {
+  let depth = 0;
+  let current = "";
+  const properties: string[] = [];
+  for (const char of body) {
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    if (char === "," && depth === 0) {
+      properties.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  properties.push(current);
+  for (const property of properties) {
+    const split = property.indexOf(":");
+    if (split === -1) continue;
+    if (key.test(property.slice(0, split).trim())) {
+      return property.slice(split + 1);
     }
   }
   return null;
