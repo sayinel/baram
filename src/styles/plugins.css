@@ -296,7 +296,8 @@
  * The badge used to paint a capability's hue as BOTH its text and — at 9% alpha —
  * its background. A 9% tint is 91% whatever is behind it, so the pairing collapsed
  * to hue-vs-page and failed AA in 74 of 96 capability x built-in-theme combinations:
- * every one of the twelve in all three light themes (worst `files:readonly` at
+ * every one of the twelve there were then, in all three light themes (worst
+ * `files:readonly` at
  * 1.48:1 on Solarized Light), and seven of the twelve in EVERY theme, `network`
  * among them. No palette can fix that, because light and dark pages need opposite
  * lightness from the same hue.
@@ -306,11 +307,30 @@
  * `--color-bg-*` edit. Only the recipe switches per base, via the same three scopes
  * every generated token uses, so `system` follows the OS with no JS involved.
  *
+ * Note the `var()` in the PERCENTAGE slot. Nothing else in this repo does that — the
+ * other 60-odd `color-mix()` calls all use a literal — and if an engine rejected it
+ * the whole declaration would be invalid at computed-value time: text would inherit,
+ * fill would go transparent, and every badge would lose its colour while staying
+ * readable, so no contrast test would notice. Checked directly in WKWebView, the
+ * engine Tauri ships on macOS: all three configurations (light, `data-theme="dark"`,
+ * and no attribute under OS dark) resolve, and the computed ratios come out 5.292 and
+ * 4.995 — the model's numbers to three decimals. The `system` case comes out colour
+ * for colour identical to the explicit dark theme, which is the part the string
+ * equality assertion below can only approximate.
+ *
  * `.plugin-consent__new` next door reached the opposite conclusion — filled, not
  * tinted — and both are right: its fill is the user-chosen accent, where no tint
  * percentage can be verified in advance. These thirteen hues are constants, so a
  * tint CAN be verified, and `capability-badge-contrast.test.ts` verifies it against
  * the values below rather than a copy of them.
+ *
+ * The percentages stay here rather than in `tokens/`, and not because the pipeline
+ * cannot carry a number — it already emits `--radius-*` and `--font-size-*`, and it
+ * already holds per-view colour families. They stay because 52% and 88% are not a
+ * design preference: they are the values at which every one of the thirteen hues
+ * clears AA with headroom. Surfacing them in Tokens Studio would invite a designer to
+ * nudge them, and a nudge silently breaks the guarantee. The two BASES are a fair
+ * candidate for the pipeline; that migration is in dev/backlog.md.
  *
  * The two ink percentages are the loosest that leave real headroom, not the loosest
  * that pass: 4.5 exactly is reachable at 57%/93%, but the worst pairing then sits
@@ -333,10 +353,13 @@
   --capability-badge-ink-hue: 88%;
 }
 
-/* Byte-identical to the `[data-theme="dark"]` block above, and asserted so in
- * capability-badge-contrast.test.ts. A media query cannot join a selector list, so
- * the values have to be duplicated; the theme clear-list drifted to 16 of 25 keys
- * exactly this way (#336), and a guard is cheaper than finding it in a screenshot. */
+/* Declares the same four values as the `[data-theme="dark"]` block above — parsed
+ * key-to-value equality is asserted in capability-badge-contrast.test.ts, along with
+ * the fact that this rule really is inside a `prefers-color-scheme: dark` query.
+ * (Not "byte-identical": the assertion compares parsed pairs, so it survives
+ * reformatting rather than breaking on it.) A media query cannot join a selector
+ * list, so the values have to be duplicated; the theme clear-list drifted to 16 of 25
+ * keys exactly this way (#336), and a guard is cheaper than a screenshot. */
 @media (prefers-color-scheme: dark) {
   html:not([data-theme="light"], [data-theme="dark"]) {
     --capability-badge-fill-base: #000;
@@ -368,20 +391,31 @@
     var(--capability-badge-hue) var(--capability-badge-fill-hue),
     var(--capability-badge-fill-base)
   );
+
+  /* The one part deliberately NOT on the recipe, and the percentage is deliberately a
+     literal. The fill and the ink form a pairing that must be determinate, so they mix
+     toward #fff/#000 and ignore the page. The border's whole job is the opposite — to
+     separate the pill FROM the page — so it mixes toward the page and is allowed to
+     move with it. Mixing it toward the recipe base instead measurably cost visibility:
+     across 8 themes x 2 card surfaces x 13 hues, the combinations where neither fill
+     nor border reached 1.15:1 against the surface behind them went 15 -> 27. At 30% of
+     the hue over the page it is a wider step than the 18.8% alpha it replaces. It
+     carries no text, so it needs visibility, not a guaranteed ratio. */
   border: 1px solid
-    color-mix(
-      in srgb,
-      var(--capability-badge-hue) 30%,
-      var(--capability-badge-fill-base)
-    );
+    color-mix(in srgb, var(--capability-badge-hue) 30%, var(--color-bg-default));
   border-radius: 9999px;
 }
 
-/* No `opacity` here, and none permitted by the test. Element opacity composites the
- * text against the fill it sits on, so the 0.8 this line used to carry would pull the
- * derived pairing back under AA for 5 of 13 capabilities in light and 7 of 13 in dark
- * (worst 3.54:1) — undoing the fix on the one view that shows the prose. The size
- * step and the em dash carry the hierarchy instead. */
+/* No `opacity` on the badge or its description, and the guard rejects it on any rule
+ * in src/styles whose selector list targets this class — states and descendants
+ * included, since `:hover { opacity }` composites exactly the same way.
+ *
+ * Element opacity composites the text against the fill it sits on, so the 0.8 this
+ * line used to carry would pull the derived pairing back under AA for 5 of 13
+ * capabilities in light (worst 3.54:1) and 7 of 13 in dark (worst 3.61:1) — undoing
+ * the fix on the one view that shows the prose. Those two figures are computed from
+ * WKWebView's own reported colours, not from a model. The size step and the em dash
+ * carry the hierarchy instead. */
 .plugin-capability-badge__description {
   font-size: 10px;
 }

@@ -6,10 +6,11 @@
 // `npm run audit:css-vars` cannot see it — it only reports *undefined* variables.
 // So the rule is asserted over the whole stylesheet rather than site by site: the
 // next filled button inherits the fix instead of re-introducing the bug.
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const STYLES = "src/styles";
+import { cssRules, walk } from "./css-rules";
+
 const SRC = "src";
 
 /** Solid accent fill — `color-mix(...)` tints are excluded on purpose. */
@@ -18,31 +19,6 @@ const SOLID_ACCENT_BG =
 const HARDCODED_LIGHT_FG =
   /(?<!-)\bcolor\s*:\s*(white|#fff|#ffffff)\s*(?:;|$)/i;
 const ON_SOLID_FG = /(?<!-)\bcolor\s*:\s*var\(\s*--color-accent-on-solid\s*\)/;
-
-interface Rule {
-  body: string;
-  file: string;
-  line: number;
-  selector: string;
-}
-
-/** Every CSS rule outside `generated/`, which Style Dictionary owns. */
-function cssRules(): Rule[] {
-  const rules: Rule[] = [];
-  for (const file of walk(STYLES, ".css")) {
-    if (file.includes("/generated/")) continue;
-    const css = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    for (const match of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      rules.push({
-        body: match[2],
-        file,
-        line: css.slice(0, match.index).split("\n").length,
-        selector: match[1].trim().replace(/\s+/g, " "),
-      });
-    }
-  }
-  return rules;
-}
 
 /**
  * Brace-matched objects containing no nested object — where style properties live,
@@ -92,14 +68,6 @@ function objectProperty(body: string, key: RegExp): null | string {
     }
   }
   return null;
-}
-
-function walk(dir: string, ext: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) return walk(path, ext);
-    return entry.name.endsWith(ext) ? [path] : [];
-  });
 }
 
 const RULES = cssRules();

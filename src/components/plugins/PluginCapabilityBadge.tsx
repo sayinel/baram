@@ -16,17 +16,21 @@ import { capabilityLabel } from "./capability-label";
  * indistinguishable. The compiler now refuses the next addition instead.
  */
 const CAPABILITY_COLORS: Record<PluginCapability, string> = {
-  ai: "#ec4899",
-  commands: "#8b5cf6",
+  // Same order as `CAPABILITY_DESCRIPTIONS`, deliberately: reading the two Records
+  // side by side is how the missing `viewer` was found, and two different orders make
+  // exactly that comparison harder. (`perfectionist/sort-objects` is off, so nothing
+  // will re-alphabetise this.)
   editor: "#3b82f6",
   "editor:readonly": "#60a5fa",
-  events: "#10b981",
   files: "#f59e0b",
   "files:readonly": "#fbbf24",
-  network: "#ef4444",
-  settings: "#6b7280",
+  commands: "#8b5cf6",
   sidebar: "#6366f1",
   statusbar: "#6366f1",
+  settings: "#6b7280",
+  events: "#10b981",
+  ai: "#ec4899",
+  network: "#ef4444",
   storage: "#14b8a6",
   viewer: "#0ea5e9",
 };
@@ -48,11 +52,16 @@ export function PluginCapabilityBadge({
   // The one value that varies per badge. Everything derived from it — text, fill,
   // border — is computed in CSS, where the light/dark recipe already switches with
   // the theme and needs no base plumbed through React.
-  const hue = { "--capability-badge-hue": CAPABILITY_COLORS[capability] };
+  const hueStyle = { "--capability-badge-hue": CAPABILITY_COLORS[capability] };
   return (
     <span
+      // Bound to `.plugin-capability-badge` in plugins.css by an assertion in
+      // capability-badge-contrast.test.tsx. Renaming this string alone leaves the
+      // badge completely unstyled — no pill, no fill, no derived ink — with every
+      // contrast assertion still green, because they check the stylesheet, not the
+      // element. The guard renders this component and compares the two.
       className="plugin-capability-badge"
-      style={hue as CSSProperties}
+      style={hueStyle as CSSProperties}
       title={description}
     >
       {capability}
