@@ -44,6 +44,12 @@ pub enum PluginError {
     InvalidManifest(String),
     #[error("Plugin not found: {0}")]
     NotFound(String),
+    /// A request this layer declined to make or to finish — a blocked URL scheme, a
+    /// response past its size cap. Its own variant because the alternative was
+    /// `InvalidManifest`, whose Display prefix would tell the user their manifest was
+    /// broken when nothing had been downloaded yet.
+    #[error("{0}")]
+    Refused(String),
 }
 
 /// Serialized byte length of `value`, or `None` once it would exceed `cap` — the
@@ -399,17 +405,47 @@ pub async fn read_manifest(plugin_id: &str) -> Result<PluginManifest, PluginErro
     Ok(manifest)
 }
 
+/// Largest registry index we will read.
+///
+/// Four times the revocation cap, because this file grows with the registry itself:
+/// Obsidian's community index is roughly 2,000 entries and about 1 MB, and an index that
+/// outgrew its own cap would take the marketplace down for every user at once. Still a
+/// bound — without one, a misconfigured or hostile host streams unbounded bytes into
+/// memory.
+const MAX_REGISTRY_BYTES: usize = 4 * 1024 * 1024;
+
 /// Fetch registry index.json from a URL. Caching is handled at the frontend level.
+///
+/// Guarded the way `fetch_revocations` is: scheme, timeout, streamed size cap. It had
+/// none of the three — `reqwest::get` honours whatever scheme the URL names, waits with
+/// no deadline, and `text()` buffers a body of any length before anything can inspect it.
+///
+/// No UI sets the registry URL today; it is persisted store state with a default. That is
+/// not the same as trusted input — it is read back from disk on every start, and a
+/// trusted-tier plugin shares the realm that writes it. The guards therefore do not
+/// depend on where the string came from.
 pub async fn fetch_registry(url: &str) -> Result<RegistryIndex, PluginError> {
-    let response = reqwest::get(url).await?;
+    let parsed = validate_http_url(url).map_err(PluginError::Refused)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
+    let mut response = client.get(parsed).send().await?;
     let status = response.status();
     if !status.is_success() {
         return Err(PluginError::InvalidManifest(format!(
             "Registry returned HTTP {status}"
         )));
     }
-    let text = response.text().await?;
-    let index: RegistryIndex = serde_json::from_str(&text)?;
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if buf.len() + chunk.len() > MAX_REGISTRY_BYTES {
+            return Err(PluginError::Refused(format!(
+                "registry index too large: exceeds {MAX_REGISTRY_BYTES} byte limit"
+            )));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    let index: RegistryIndex = serde_json::from_slice(&buf)?;
     Ok(index)
 }
 
@@ -427,10 +463,10 @@ const MAX_REVOCATION_BYTES: usize = 1024 * 1024;
 /// failure that validator was written to avoid. One validator, not two that can
 /// disagree.
 ///
-/// Unlike `fetch_registry` above, this enforces the scheme guard, a timeout and a size
-/// cap. It runs on a background path during startup, so a hanging host must not be
-/// able to hold that open. (`fetch_registry` predates those guards and still lacks
-/// them; tracked separately.)
+/// Enforces the scheme guard, a timeout and a size cap. It runs on a background path
+/// during startup, so a hanging host must not be able to hold that open. `fetch_registry`
+/// above lacked all three until it was brought to the same shape; the two now differ only
+/// in their size cap and in returning text rather than a struct.
 pub async fn fetch_revocations(url: &str) -> Result<String, String> {
     let parsed = validate_http_url(url)?;
     let client = reqwest::Client::builder()
@@ -1136,6 +1172,24 @@ mod tests {
         assert!(validate_http_url("ftp://host/x").is_err());
         assert!(validate_http_url("not a url").is_err());
         assert!(validate_http_url("javascript:alert(1)").is_err());
+    }
+
+    /// §69 — the scheme guard is WIRED INTO `fetch_registry`, not merely available.
+    ///
+    /// Asserting `is_err()` here would prove nothing: reqwest rejects a `file:` URL on its
+    /// own, so a `fetch_registry` with the guard deleted still fails this input — with a
+    /// builder error, after constructing a client. The assertion is therefore on the
+    /// guard's OWN words, which is what breaks when the call goes away. Nothing here
+    /// touches the network: both paths refuse before any request is sent.
+    #[tokio::test]
+    async fn test_fetch_registry_refuses_non_http_schemes() {
+        let err = fetch_registry("file:///etc/passwd")
+            .await
+            .expect_err("a file:// registry URL must be refused");
+        assert!(
+            err.to_string().contains("blocked URL scheme 'file'"),
+            "expected the scheme guard's refusal, got: {err}"
+        );
     }
 
     /// §260 Phase 5 re-review (R5) — the id check must sit BEFORE the move, so an archive

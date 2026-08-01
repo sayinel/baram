@@ -11,11 +11,13 @@ import type {
 } from "./types";
 import type { Extensions } from "@tiptap/core";
 
+import { type Locale, t } from "../i18n";
 import {
   pluginSandboxDeregister,
   pluginSandboxRegister,
 } from "../ipc/plugin-invoke";
 import { useEditorStore } from "../stores/editor/editor";
+import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
@@ -31,7 +33,7 @@ import { grantableCapabilities } from "./plugin-consent";
 import { declaredSettingsFor } from "./plugin-settings";
 import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
-import { blocksLoad, revocationFor } from "./revocation";
+import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import { watchPluginSettings } from "./sandbox/host-settings-bridge";
 import {
@@ -502,9 +504,15 @@ export class PluginLoader {
         rawManifest.version,
         usePluginStore.getState().revocations,
       );
-      if (blocksLoad(revocation)) {
+      // Translated, unlike the other refusals in this file. This one is READ BY A USER in
+      // the ordinary case: the Installed row renders `pluginErrors[id]` right above the
+      // withdrawal notice, so an English sentence here sat directly under a Korean one
+      // stating the same thing. The remaining English throws below are reached only by a
+      // manifest that no shipped registry can produce (§329 in `dev/backlog.md` covers
+      // them; they need the key-vs-store decision this does not).
+      if (revocation !== null && blocksLoad(revocation)) {
         throw new Error(
-          `${rawManifest.id} has been revoked and will not be loaded: ${revocation?.reason ?? ""}`.trim(),
+          `${tr("plugin.revoked.blockedLoad")} ${revocationReason(revocation, tr)}`.trim(),
         );
       }
     }
@@ -803,6 +811,18 @@ function resolveConsent(
 ): PluginConsent | undefined {
   if (opts.isDev) return undefined;
   return usePluginStore.getState().installedPlugins[pluginId]?.consent;
+}
+
+/**
+ * `t` bound to the locale in effect right now.
+ *
+ * Read per call rather than captured once: these strings are built at throw time, and a
+ * locale changed mid-session must not leave the previous language in a message a user is
+ * about to read. Same shape as `currentLocale()` in `services/app-update.ts` — a non-React
+ * module whose output a person reads.
+ */
+function tr(key: string, params?: Record<string, string>): string {
+  return t(key, useSettingsStore.getState().locale as Locale, params);
 }
 
 /**
