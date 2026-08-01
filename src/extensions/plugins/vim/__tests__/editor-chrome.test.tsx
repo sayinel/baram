@@ -286,6 +286,18 @@ describe("CalloutView type picker (§12-⑩ wiring)", () => {
     expect(view.queryByTitle("Warning")).toBeNull();
   });
 
+  it("a reactive lock CLOSES an already-open picker (impl review R1)", async () => {
+    const { editor, view } = setupCallout();
+    await flush();
+
+    fireEvent.click(view.getByTitle("Change callout type"));
+    expect(view.getByTitle("Warning")).toBeTruthy();
+
+    act(() => setEditorEditable(editor, false));
+    await flush();
+    expect(view.queryByTitle("Warning")).toBeNull();
+  });
+
   it("v7.5 ⓑ: the guard blocks a stale open picker by itself", async () => {
     const { editor, view } = setupCallout();
     await flush();

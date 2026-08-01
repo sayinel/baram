@@ -18,11 +18,12 @@
 
 import type { OperationOutcome } from "./operations";
 import type { VimRegister } from "./register";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { NodeType, Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { Fragment, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
+import { TableMap } from "@tiptap/pm/tables";
 
 import { nextUnitBoundary } from "./graphemes";
 import { resolveLineUnit } from "./line-units";
@@ -46,24 +47,29 @@ export function pasteRegister(
 
 // ── line ───────────────────────────────────────────────────────────────────
 
-/** Register blocks reshaped for where they land (§9 호환표): items stay
- *  items inside a list and demote to their child blocks outside; plain
- *  blocks wrap into items when the anchor is a list item. */
+/** Register blocks reshaped for where they land (§9 호환표): items become
+ *  the ANCHOR's item type inside a list — a taskList only admits taskItem,
+ *  so wrapping with a generic listItem would make the fitter split the list
+ *  (impl review R1) — and demote to their child blocks outside one. */
 function adaptToAnchor(
-  state: EditorState,
   nodes: PMNode[],
-  intoList: boolean,
+  anchorItemType: NodeType | null,
 ): PMNode[] {
   return nodes.flatMap((node) => {
     const isItem =
       node.type.name === "listItem" || node.type.name === "taskItem";
-    if (isItem && !intoList) {
+    if (isItem && !anchorItemType) {
       const children: PMNode[] = [];
       node.forEach((child) => children.push(child));
       return children;
     }
-    if (!isItem && intoList) {
-      return [state.schema.nodes.listItem.create(null, Fragment.from(node))];
+    if (anchorItemType) {
+      if (isItem) {
+        return node.type === anchorItemType
+          ? [node]
+          : [anchorItemType.create(null, node.content)];
+      }
+      return [anchorItemType.create(null, Fragment.from(node))];
     }
     return [node];
   });
@@ -83,9 +89,11 @@ function anchorBounds(
     return [unit.itemPos, unit.itemPos + unit.nodeSize];
   }
   if (unit.kind === "structural") {
-    const from = unit.containerPos ?? unit.blockPos;
-    const node = state.doc.nodeAt(from);
-    return [from, from + (node?.nodeSize ?? 1)];
+    // ALWAYS blockPos: containerPos is dd's escalation target only. Pasting
+    // relative to the container would escape it — §9 wants siblings INSIDE
+    // (impl review R1).
+    const node = state.doc.nodeAt(unit.blockPos);
+    return [unit.blockPos, unit.blockPos + (node?.nodeSize ?? 1)];
   }
   // hardBreakSegment with block content: sibling AFTER the paragraph (§9).
   if (unit.kind === "hardBreakSegment") {
@@ -135,7 +143,10 @@ function pasteLine(
 
   if (unit.kind === "hardBreakSegment" && allInlineOnly(nodes)) {
     // §9: inline-only line content joins the paragraph as new segments.
-    const insertAt = after ? unit.deleteRange.to : unit.from;
+    // After-paste inserts AT unit.to — before any following break — so the
+    // existing separator keeps belonging to the next line (impl review R1:
+    // deleteRange.to landed past the break and merged lines).
+    const insertAt = after ? unit.to : unit.from;
     const breakNode = state.schema.nodes.hardBreak.create();
     const pieces: PMNode[] = [];
     for (let i = 0; i < count; i++) {
@@ -150,7 +161,11 @@ function pasteLine(
   }
 
   // Block-level anchor: the unit's own bounds decide before/after.
-  const blocks = adaptToAnchor(state, nodes, unit.kind === "listItem");
+  const anchorItemType =
+    unit.kind === "listItem"
+      ? (state.doc.nodeAt(unit.itemPos)?.type ?? null)
+      : null;
+  const blocks = adaptToAnchor(nodes, anchorItemType);
   if (blocks.length === 0) return { reason: "register is empty", tr: null };
   const repeated: PMNode[] = [];
   for (let i = 0; i < count; i++) repeated.push(...blocks);
@@ -169,16 +184,31 @@ function pasteRows(
   const anchorRow = state.doc.nodeAt(rowPos);
   if (!anchorRow) return { reason: "no row under cursor", tr: null };
 
-  const targetWidth = spanWidth(anchorRow);
+  // Width comes from the TABLE grid, not the anchor row — a rowspan-shadowed
+  // row's own cells undercount (impl review R1). Merged rows are refused
+  // outright: a raw row insert inside a rowspan region breaks the grid.
+  const table = state.doc.resolve(rowPos).parent;
+  if (tableHasRowspan(table)) {
+    return { reason: "tables with merged rows are not supported", tr: null };
+  }
+  const targetWidth = TableMap.get(table).width;
+
+  // Markdown holds ONE header row on top: header-sourced rows never paste,
+  // and nothing pastes ABOVE the header (impl review R1).
+  if (rowHasHeaderCells(anchorRow) && !after) {
+    return { reason: "cannot paste above the header row", tr: null };
+  }
   for (const row of rows) {
     if (row.type.name !== "tableRow") {
       return { reason: "register does not hold table rows", tr: null };
+    }
+    if (rowHasRowspan(row)) {
+      return { reason: "merged rows are not supported", tr: null };
     }
     if (spanWidth(row) !== targetWidth) {
       return { reason: "row width does not match this table", tr: null };
     }
     if (rowHasHeaderCells(row)) {
-      // Header kind must match; body-side pastes never take header cells.
       return { reason: "header rows cannot be pasted here", tr: null };
     }
   }
@@ -197,7 +227,13 @@ function rowHasHeaderCells(row: PMNode): boolean {
   return header;
 }
 
-// ── shared ─────────────────────────────────────────────────────────────────
+function rowHasRowspan(row: PMNode): boolean {
+  let merged = false;
+  row.forEach((cell) => {
+    if (((cell.attrs.rowspan as number) || 1) > 1) merged = true;
+  });
+  return merged;
+}
 
 /** Column count with colspans resolved (§9 "span 해소 후 열 수"). */
 function spanWidth(row: PMNode): number {
@@ -206,4 +242,14 @@ function spanWidth(row: PMNode): number {
     width += (cell.attrs.colspan as number) || 1;
   });
   return width;
+}
+
+// ── shared ─────────────────────────────────────────────────────────────────
+
+function tableHasRowspan(table: PMNode): boolean {
+  let merged = false;
+  table.forEach((row) => {
+    if (rowHasRowspan(row)) merged = true;
+  });
+  return merged;
 }

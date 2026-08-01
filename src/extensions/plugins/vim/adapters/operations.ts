@@ -78,6 +78,9 @@ export function deleteLine(
 
   for (let i = 0; i < count; i++) {
     const unit = resolveLineUnit(working, cursor);
+    // Successor BEFORE deleting — clamping afterwards would wrap backwards
+    // at EOF and eat lines above the count (impl review R1).
+    const succ = successorCursor(working, unit);
     const step = deleteUnitOnce(working, unit);
     if (!step.tr) {
       reason = step.reason;
@@ -87,7 +90,14 @@ export function deleteLine(
     for (const s of step.tr.steps) master.step(s);
     working = working.apply(step.tr);
     if (unit.kind === "tableRow") break; // Phase 1: counts stop at a table row
-    cursor = clampIntoContent(working, step.landing);
+    if (unit.kind === "listItem" && unit.nestedListPositions.length > 0) {
+      // The lift puts the children where the item was — they ARE the next
+      // lines, and no mapping of the old successor can find them.
+      cursor = clampIntoContent(working, step.landing + 1);
+      continue;
+    }
+    if (succ === null) break;
+    cursor = clampIntoContent(working, step.tr.mapping.map(succ));
   }
 
   if (yanked.length === 0) return { reason, tr: null };
@@ -135,9 +145,9 @@ export function yankLine(
   for (let i = 0; i < count; i++) {
     const unit = resolveLineUnit(state, cursor);
     yanked.push(yankUnit(state, unit));
-    const end = unitEnd(state, unit);
-    if (end >= state.doc.content.size) break; // clamp at EOF, like vim
-    cursor = clampIntoContent(state, end + 1);
+    const succ = successorCursor(state, unit);
+    if (succ === null) break; // clamp at EOF, like vim — never re-yank
+    cursor = clampIntoContent(state, succ);
   }
 
   return {
@@ -270,8 +280,6 @@ function deleteTableRow(
   };
 }
 
-// ── shared helpers ─────────────────────────────────────────────────────────
-
 function deleteUnitOnce(
   state: EditorState,
   unit: LineUnit,
@@ -309,12 +317,26 @@ function deleteUnitOnce(
   };
 }
 
+// ── shared helpers ─────────────────────────────────────────────────────────
+
 function rowIsHeader(row: PMNode): boolean {
   let header = false;
   row.forEach((cell) => {
     if (cell.type.name === "tableHeader") header = true;
   });
   return header;
+}
+
+/**
+ * The cursor position of the NEXT line unit, or null when this unit is the
+ * last line of the document. Computed on the un-mutated document; deleteLine
+ * maps it through its own steps. `unitEnd` of a non-final segment is its
+ * break position, so +1 lands on the next segment; for blocks, +1 steps
+ * inside the following block (clampIntoContent finishes the descent).
+ */
+function successorCursor(state: EditorState, unit: LineUnit): null | number {
+  const succ = unitEnd(state, unit) + 1;
+  return succ >= state.doc.content.size ? null : succ;
 }
 
 function unitEnd(state: EditorState, unit: LineUnit): number {

@@ -153,8 +153,15 @@ describe("ⓑ suppressor-absence invariant (§12-⑪)", () => {
 
 const SRC_DIR = join(import.meta.dirname, "..", "..", "..", "..");
 
-/** editor.registerPlugin / editor.unregisterPlugin — silent reconfigure path. */
-const REGISTER_RE = /editor\.(un)?registerPlugin\s*\(/;
+// Regex-level enforcement, biased to over-block; receiver-agnostic where a
+// rename could dodge it (impl review R1). An AST/ESLint rule is the §12b
+// follow-up — these scans back the BEHAVIORAL pins above, they do not stand
+// alone.
+
+/** Any .registerPlugin/.unregisterPlugin — silent reconfigure path. */
+const REGISTER_RE = /\.(un)?registerPlugin\s*\(/;
+/** Baram's plugin-UI store shares the method name; not Tiptap's editor. */
+const REGISTER_ALLOW = [join("plugins", "extension-context.ts")];
 /** Direct view.setProps — bypasses every signal. */
 const SET_PROPS_RE = /\.setProps\s*\(/;
 /** Direct setEditable — silent with emitUpdate=false; the wrapper notifies. */
@@ -193,13 +200,28 @@ describe("ⓒ editable third-path ban (§12-⑪ 규약)", () => {
   it("no runtime registerPlugin/unregisterPlugin, no view.setProps", () => {
     const offending: string[] = [];
     for (const file of files) {
+      const skipRegister = REGISTER_ALLOW.some((a) => file.endsWith(a));
       const lines = readFileSync(file, "utf8").split("\n");
       lines.forEach((line, i) => {
-        if (matchesCode(line, REGISTER_RE) || matchesCode(line, SET_PROPS_RE)) {
+        if (
+          (!skipRegister && matchesCode(line, REGISTER_RE)) ||
+          matchesCode(line, SET_PROPS_RE)
+        ) {
           offending.push(`${file}:${i + 1}`);
         }
       });
     }
+    expect(offending).toEqual([]);
+  });
+
+  it("no setOptions call in a file that also says `editable`", () => {
+    // Coarse on purpose: setOptions({ editable }) usually spans lines, so a
+    // per-line regex cannot see it. Needing both words in one file is the
+    // moment to revisit §12-⑪ consciously.
+    const offending = files.filter((file) => {
+      const source = readFileSync(file, "utf8");
+      return source.includes(".setOptions(") && /\beditable\b/.test(source);
+    });
     expect(offending).toEqual([]);
   });
 
@@ -235,7 +257,7 @@ describe("ⓒ editable third-path ban (§12-⑪ 규약)", () => {
     // useEditor argument window — `new Editor({ extensions: ... })` outside
     // useEditor (keep-alive pool) is not on the option-sync path.
     const inlineInUseEditor =
-      /useEditor\s*\(\s*\{[\s\S]{0,200}?extensions:\s*createBaramExtensions\s*\(/;
+      /useEditor\s*\(\s*\{[\s\S]{0,600}?extensions:\s*createBaramExtensions\s*\(/;
     const offending = files.filter((file) =>
       inlineInUseEditor.test(readFileSync(file, "utf8")),
     );

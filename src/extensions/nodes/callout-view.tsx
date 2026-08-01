@@ -110,6 +110,17 @@ export function CalloutView({
     [editor, getPos],
   );
 
+  // §12-⑩: a capability revocation must CLOSE already-open chrome — the
+  // event-time guard keeps the doc safe, but an open picker/title input
+  // would otherwise stay visible and silently discard the user's typing
+  // (impl review R1).
+  useEffect(() => {
+    if (!canEdit) {
+      setIsPickerOpen(false);
+      setIsEditingTitle(false);
+    }
+  }, [canEdit]);
+
   useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {
       titleInputRef.current.focus();
@@ -161,7 +172,7 @@ export function CalloutView({
             <CalloutIcon type={type} />
           </button>
 
-          {isPickerOpen && (
+          {canEdit && isPickerOpen && (
             <div className="callout-type-picker">
               {CALLOUT_TYPE_KEYS.map((key) => {
                 const def = CALLOUT_TYPES[key];
@@ -184,7 +195,7 @@ export function CalloutView({
           )}
         </div>
 
-        {isEditingTitle ? (
+        {canEdit && isEditingTitle ? (
           <input
             className="callout-title-input"
             defaultValue={title}

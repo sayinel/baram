@@ -427,6 +427,125 @@ describe("paste matrix (§9)", () => {
   });
 });
 
+describe("count never runs backwards at EOF (impl review R1)", () => {
+  it("2dd on the LAST paragraph deletes only that paragraph", () => {
+    const editor = makeEditor("<p>one</p><p>two</p>");
+    const out = deleteLine(editor.state, posOfText(editor, "two"), 2);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("one");
+    expect((out.register as { content: unknown[] }).content).toHaveLength(1);
+  });
+
+  it("3yy on the LAST segment yanks it once, not three times", () => {
+    const editor = makeEditor("<p>a<br>b</p>");
+    const out = yankLine(editor.state, posOfText(editor, "b"), 3);
+    expect((out.register as { content: unknown[] }).content).toHaveLength(1);
+  });
+
+  it("2dd across a lift lands on the lifted child, not past it", () => {
+    const editor = makeEditor(
+      "<ul><li><p>parent</p><ul><li><p>child</p></li></ul></li><li><p>sib</p></li></ul>",
+    );
+    const out = deleteLine(editor.state, posOfText(editor, "parent"), 2);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("sib"); // parent AND child gone, sib alive
+  });
+});
+
+describe("paste structure pins (impl review R1)", () => {
+  it("p after a NON-final segment keeps every line intact", () => {
+    const reg = (() => {
+      const src = makeEditor("<p>mid</p>");
+      return yankLine(src.state, posOfText(src, "mid"), 1).register!;
+    })();
+    const editor = makeEditor("<p>a<br>b</p>");
+    const out = pasteRegister(
+      editor.state,
+      posOfText(editor, "a"),
+      reg,
+      true,
+      1,
+    );
+    const para = applied(editor, out.tr).firstChild!;
+    const kinds = [] as string[];
+    para.forEach((n) => kinds.push(n.isText ? n.text! : "BR"));
+    expect(kinds).toEqual(["a", "BR", "mid", "BR", "b"]);
+  });
+
+  it("p inside a sole-child blockquote stays INSIDE the quote (§9)", () => {
+    const reg = (() => {
+      const src = makeEditor("<p>new</p>");
+      return yankLine(src.state, posOfText(src, "new"), 1).register!;
+    })();
+    const editor = makeEditor("<blockquote><p>only</p></blockquote>");
+    const out = pasteRegister(
+      editor.state,
+      posOfText(editor, "only"),
+      reg,
+      true,
+      1,
+    );
+    const doc = applied(editor, out.tr);
+    expect(doc.childCount).toBe(1);
+    expect(doc.firstChild?.type.name).toBe("blockquote");
+    expect(doc.firstChild?.childCount).toBe(2);
+  });
+
+  it("a plain line pasted into a TASK list becomes a task item — one list", () => {
+    const reg = (() => {
+      const src = makeEditor("<p>plain</p>");
+      return yankLine(src.state, posOfText(src, "plain"), 1).register!;
+    })();
+    const editor = makeEditor("<p>seed</p>");
+    const item = (text: string) => ({
+      attrs: { checked: false },
+      content: [{ content: [{ text, type: "text" }], type: "paragraph" }],
+      type: "taskItem",
+    });
+    editor.commands.setContent({
+      content: [{ content: [item("a"), item("b")], type: "taskList" }],
+      type: "doc",
+    });
+    expect(editor.state.doc.firstChild?.type.name).toBe("taskList");
+    const out = pasteRegister(
+      editor.state,
+      posOfText(editor, "a"),
+      reg,
+      true,
+      1,
+    );
+    const doc = applied(editor, out.tr);
+    expect(doc.childCount).toBe(1); // the list did NOT split
+    expect(doc.firstChild?.type.name).toBe("taskList");
+    expect(doc.firstChild?.childCount).toBe(3);
+    expect(doc.firstChild?.child(1).type.name).toBe("taskItem");
+  });
+
+  it("P before the header row refuses — markdown has one header on top", () => {
+    const editor = makeEditor(
+      "<table><tr><th><p>h</p></th></tr><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></table>",
+    );
+    const rowReg = yankLine(editor.state, posOfText(editor, "a"), 1).register!;
+    const before = pasteRegister(
+      editor.state,
+      posOfText(editor, "h"),
+      rowReg,
+      false,
+      1,
+    );
+    expect(before.tr).toBeNull();
+
+    const after = pasteRegister(
+      editor.state,
+      posOfText(editor, "h"),
+      rowReg,
+      true,
+      1,
+    );
+    expect(after.tr).not.toBeNull();
+  });
+});
+
 describe("register store (§6 — one global register, vim semantics)", () => {
   it("holds one register across editors: yank here, paste there", () => {
     resetVimRegister();
