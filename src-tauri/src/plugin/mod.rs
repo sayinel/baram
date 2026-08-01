@@ -210,6 +210,18 @@ pub struct RegistryIndex {
 /// Response body cap for `http_fetch` (§69 Phase D network API).
 const MAX_FETCH_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
 
+/// Largest plugin archive we will download.
+///
+/// This is a MEMORY bound, not a policy about plugin size: `extract_zip_bytes` reads the
+/// archive from a slice, so whatever arrives is held whole regardless. Without a cap a
+/// hostile or compromised registry can name a `downloadUrl` that allocates until the
+/// process dies — and it is reached before the checksum can say anything, because there is
+/// nothing to hash until the download ends.
+///
+/// 32 MiB is far above anything legitimate. A sandboxed plugin is an ESM bundle and cannot
+/// ship native code at all; the entire Baram binary targets under 15 MiB.
+const MAX_PLUGIN_ARCHIVE_BYTES: usize = 32 * 1024 * 1024;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PluginFetchInit {
     #[serde(default)]
@@ -273,9 +285,40 @@ pub async fn install_plugin(
     expected_checksum: Option<&str>,
     expected_id: Option<&str>,
 ) -> Result<InstalledPluginInfo, PluginError> {
-    // 1. Download ZIP to temp file
-    let response = reqwest::get(url).await?;
-    let bytes = response.bytes().await?;
+    // 1. Download the ZIP.
+    //
+    // Guarded like `fetch_registry` and `fetch_revocations`, and this is the path where it
+    // matters most: what arrives is third-party code, its URL comes from the registry
+    // index rather than from us, and every check downstream — checksum, manifest, tier —
+    // can only run once the download has ENDED. So an unbounded or never-ending download
+    // is not caught later by anything; it simply never reaches the checks.
+    //
+    // `read_timeout` rather than a total `timeout`: a legitimate multi-megabyte archive on
+    // a slow link must be allowed to finish, while a connection that stops delivering
+    // bytes must not hold the install open forever. A flat total deadline would trade one
+    // of those for the other.
+    let parsed = validate_http_url(url).map_err(PluginError::Refused)?;
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(30))
+        .build()?;
+    let mut response = client.get(parsed).send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(PluginError::Refused(format!(
+            "plugin download returned HTTP {status}"
+        )));
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if buf.len() + chunk.len() > MAX_PLUGIN_ARCHIVE_BYTES {
+            return Err(PluginError::Refused(format!(
+                "plugin archive too large: exceeds {MAX_PLUGIN_ARCHIVE_BYTES} byte limit"
+            )));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    let bytes = buf;
 
     // 2. Verify checksum if provided
     let actual_checksum = hex_sha256(&bytes);
@@ -1181,6 +1224,22 @@ mod tests {
     /// builder error, after constructing a client. The assertion is therefore on the
     /// guard's OWN words, which is what breaks when the call goes away. Nothing here
     /// touches the network: both paths refuse before any request is sent.
+    /// §69 — the same guard on the path that downloads third-party CODE.
+    ///
+    /// Asserted on the guard's own words for the reason given below: reqwest refuses a
+    /// `file:` URL by itself, so `is_err()` holds with or without the guard. Nothing here
+    /// reaches the network.
+    #[tokio::test]
+    async fn test_install_plugin_refuses_non_http_schemes() {
+        let err = install_plugin("file:///etc/passwd", None, None)
+            .await
+            .expect_err("a file:// download URL must be refused");
+        assert!(
+            err.to_string().contains("blocked URL scheme 'file'"),
+            "expected the scheme guard's refusal, got: {err}"
+        );
+    }
+
     #[tokio::test]
     async fn test_fetch_registry_refuses_non_http_schemes() {
         let err = fetch_registry("file:///etc/passwd")
