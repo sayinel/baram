@@ -31,6 +31,7 @@ import { grantableCapabilities } from "./plugin-consent";
 import { declaredSettingsFor } from "./plugin-settings";
 import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
+import { blocksLoad, revocationFor } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import { watchPluginSettings } from "./sandbox/host-settings-bridge";
 import {
@@ -482,6 +483,30 @@ export class PluginLoader {
         remedy ??
           `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
+    }
+
+    // §69 — revocation, BEFORE the tier split below. A revoked plugin must not run in
+    // either tier: `sandboxed` bounds what a plugin can reach, and the reason we revoke
+    // is that what it can legitimately reach is being abused.
+    //
+    // Only `malicious` stops a load. `vulnerable` and `unlisted` are surfaced in the UI
+    // and change nothing here — most of a real revocation list is bookkeeping, and
+    // refusing to run a plugin because its author stopped answering issues would take a
+    // working feature away for no user-facing reason.
+    //
+    // Dev loads are exempt: a local folder is the author's own code, never installed
+    // from the registry, and the same exemption `legacyInstallMessage` gets above.
+    if (!opts.isDev) {
+      const revocation = revocationFor(
+        rawManifest.id,
+        rawManifest.version,
+        usePluginStore.getState().revocations,
+      );
+      if (blocksLoad(revocation)) {
+        throw new Error(
+          `${rawManifest.id} has been revoked and will not be loaded: ${revocation?.reason ?? ""}`.trim(),
+        );
+      }
     }
 
     // §260 Phase 5 code review (H3) — narrow ONCE, here, so every consumer downstream

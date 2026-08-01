@@ -22,6 +22,7 @@ import {
 } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
+import { refreshRevocations } from "./revocation-client";
 import {
   deliverSandboxEvent,
   setContextResolver,
@@ -36,6 +37,15 @@ interface ActiveBuiltin {
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
+  // §69 — kick the revocation refresh, deliberately WITHOUT awaiting it.
+  //
+  // The stored list is what the load gate reads, and it is already on disk; this call
+  // only makes it fresher. Awaiting would put every plugin's startup behind a network
+  // round trip and, worse, behind a network TIMEOUT when offline — turning a lost
+  // connection into a plugin outage, which is the failure the whole persist-the-list
+  // design exists to avoid.
+  void refreshRevocations();
+
   // §260 3c-3 — close sandbox webviews left over from a previous main-realm
   // lifetime, before any load. A reload (HMR, refresh,
   // remount) empties this realm's bookkeeping while the `plugin-*` webview keeps

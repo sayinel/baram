@@ -204,6 +204,8 @@ import {
   fetchRegistryIndex,
   searchRegistry,
 } from "../../plugins/registry-client";
+import { revocationFor, revocationReason } from "../../plugins/revocation";
+import { revocationsAreStale } from "../../plugins/revocation-client";
 import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
 import { legacyEntryMessage } from "./legacy-entry-message";
@@ -233,6 +235,8 @@ export function PluginMarketplace() {
     installing,
     addPlugin,
     removePlugin,
+    revocations,
+    revocationsFetchedAt,
     setEnabled,
     setError,
     setInstalling,
@@ -245,6 +249,8 @@ export function PluginMarketplace() {
       installing: s.installing,
       pluginErrors: s.pluginErrors,
       removePlugin: s.removePlugin,
+      revocations: s.revocations,
+      revocationsFetchedAt: s.revocationsFetchedAt,
       setEnabled: s.setEnabled,
       setError: s.setError,
       setInstalling: s.setInstalling,
@@ -252,6 +258,14 @@ export function PluginMarketplace() {
     })),
   );
 
+  /**
+   * One timestamp, captured at mount, for the staleness notice below.
+   *
+   * `Date.now()` in the render body is impure and the compiler rejects it. A live
+   * clock buys nothing here anyway: the list is measured in days, and nobody keeps
+   * the marketplace open long enough for the answer to change.
+   */
+  const [mountedAt] = useState(() => Date.now());
   const [activeTab, setActiveTab] = useState<MarketplaceTab>("browse");
   /** Plugin ids whose enable/disable is in flight — see `handleToggleEnabled`. */
   const togglingRef = useRef<Set<string>>(new Set());
@@ -392,6 +406,19 @@ export function PluginMarketplace() {
         setError(entry.id, legacyEntryMessage(entry));
         return;
       }
+      // §69 — installing is refused for ANY severity, where loading is refused only
+      // for `malicious`. The asymmetry is deliberate: a revocation always means "do not
+      // newly acquire this", while only `malicious` is worth taking a working plugin
+      // away from someone who already has it. Newly installing a version already known
+      // to be vulnerable, or withdrawn, has no upside to weigh against.
+      const blocked = revocationFor(entry.id, entry.version, revocations);
+      if (blocked !== null) {
+        setError(
+          entry.id,
+          `${t("plugin.revoked.blockedInstall")} ${revocationReason(blocked, t)}`,
+        );
+        return;
+      }
       const claimed: PluginConsent = {
         capabilities: [...entry.capabilities].sort(),
         trust: entry.trust,
@@ -490,7 +517,7 @@ export function PluginMarketplace() {
         setInstalling(entry.id, false);
       }
     },
-    [addPlugin, askConsent, setError, setInstalling, t],
+    [addPlugin, askConsent, revocations, setError, setInstalling, t],
   );
 
   /**
@@ -534,6 +561,17 @@ export function PluginMarketplace() {
       }
       if (!entry.trust) {
         setError(entry.id, legacyEntryMessage(entry));
+        return;
+      }
+      // §69 — checked HERE, before the uninstall below, not only in `handleInstall`.
+      // An update is uninstall-then-install, so a target caught only at the install
+      // step would leave the user with their working plugin already deleted.
+      const blockedUpdate = revocationFor(entry.id, entry.version, revocations);
+      if (blockedUpdate !== null) {
+        setError(
+          entry.id,
+          `${t("plugin.revoked.blockedInstall")} ${revocationReason(blockedUpdate, t)}`,
+        );
         return;
       }
       // §260 Phase 5 — read the recorded consent BEFORE uninstalling: `handleUninstall`
@@ -588,6 +626,7 @@ export function PluginMarketplace() {
       handleUninstall,
       installedPlugins,
       registryIndex,
+      revocations,
       setError,
       t,
     ],
@@ -674,6 +713,11 @@ export function PluginMarketplace() {
           onUninstall={() => handleUninstall(selectedEntry.id)}
           onUpdate={() => handleUpdate(selectedEntry)}
           readme={readme}
+          revocation={revocationFor(
+            selectedEntry.id,
+            selectedEntry.version,
+            revocations,
+          )}
           status={detailStatus}
           updateAvailable={updateAvailable[selectedEntry.id]}
         />
@@ -741,6 +785,21 @@ export function PluginMarketplace() {
 
       {/* Content */}
       <div style={STYLES.content}>
+        {/* §69 — the withdrawal list is applied from disk whether or not it can be
+            refreshed, so going offline never costs protection. It does cost freshness,
+            and that is worth saying rather than hiding: this informs, it gates
+            nothing. */}
+        {revocationsAreStale(revocationsFetchedAt, mountedAt) && (
+          <p className="plugin-revoked__note">
+            {t("plugin.revoked.stale", {
+              days: String(
+                Math.floor(
+                  (mountedAt - revocationsFetchedAt) / (24 * 60 * 60 * 1000),
+                ),
+              ),
+            })}
+          </p>
+        )}
         {/* Error state */}
         {error && activeTab === "browse" && (
           <div style={STYLES.errorMessage}>
@@ -790,6 +849,9 @@ export function PluginMarketplace() {
                   onSelect={() => setSelectedEntry(entry)}
                   onUninstall={() => handleUninstall(entry.id)}
                   onUpdate={() => handleUpdate(entry)}
+                  revoked={
+                    revocationFor(entry.id, entry.version, revocations) !== null
+                  }
                   status={cardStatus}
                   updateAvailable={updateAvailable[entry.id]}
                 />
@@ -907,6 +969,9 @@ export function PluginMarketplace() {
                   onSelect={() => setSelectedEntry(entry)}
                   onUninstall={() => handleUninstall(id)}
                   onUpdate={() => handleUpdate(entry)}
+                  revoked={
+                    revocationFor(entry.id, entry.version, revocations) !== null
+                  }
                   status={updateCardStatus}
                   updateAvailable={version}
                 />

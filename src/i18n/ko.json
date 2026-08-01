@@ -602,5 +602,13 @@
   "plugin.error.updateLostPlugin": "{why} 이 작업이 실패하기 전에 이전 버전이 이미 제거되어 \"{name}\"이(가) 더 이상 설치되어 있지 않습니다. 레지스트리에서 다시 설치하세요.",
   "plugin.error.manifestInvalid": "내려받은 매니페스트가 올바르지 않습니다 — {detail}",
   "plugin.error.idMismatch": "내려받은 파일은 id를 \"{got}\"로 선언했지만 레지스트리에는 \"{expected}\"로 등록되어 있습니다",
+  "plugin.revoked.badge": "회수됨",
+  "plugin.revoked.blockedInstall": "이 버전은 회수되어 설치할 수 없습니다.",
+  "plugin.revoked.blockedLoad": "이 플러그인은 회수되어 실행되지 않습니다.",
+  "plugin.revoked.keepFiles": "파일은 그대로 두었습니다 — 삭제된 것은 없습니다.",
+  "plugin.revoked.reason": "사유",
+  "plugin.revoked.remove": "제거하기",
+  "plugin.revoked.stale": "회수 목록을 마지막으로 받은 지 {days}일 지났습니다.",
+  "plugin.revoked.vulnerable": "이 버전에서 보안 문제가 보고되었습니다. 새 버전이 나오면 업데이트해 주세요.",
   "plugin.error.consentGap": "내려받은 파일이 레지스트리 등록 정보와 일치하지 않습니다 — {detail}"
 }

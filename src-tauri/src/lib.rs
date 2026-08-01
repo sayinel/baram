@@ -276,6 +276,7 @@ pub fn run() {
             plugin_cmd::plugin_list_installed,
             plugin_cmd::plugin_read_manifest,
             plugin_cmd::plugin_fetch_registry,
+            plugin_cmd::plugin_fetch_revocations,
             plugin_cmd::plugin_get_dir,
             plugin_cmd::plugin_prepare_scopes,
             plugin_cmd::plugin_add_dev_folder,

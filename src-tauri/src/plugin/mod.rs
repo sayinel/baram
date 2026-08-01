@@ -413,6 +413,49 @@ pub async fn fetch_registry(url: &str) -> Result<RegistryIndex, PluginError> {
     Ok(index)
 }
 
+/// Largest revocation list we will read. Obsidian's comparable removal list is 369
+/// entries and well under 100 KiB, so this is generous by an order of magnitude while
+/// still bounding a hostile or misconfigured host.
+const MAX_REVOCATION_BYTES: usize = 1024 * 1024;
+
+/// Fetch the plugin revocation list as raw JSON text (§69).
+///
+/// Text, not a typed struct, on purpose. The TypeScript side already owns the
+/// validator (`normalizeRevocationList`), and its rule is to drop malformed ENTRIES
+/// while keeping the rest of the list. A serde struct here would reject the whole
+/// document on one bad entry — silently disabling revocation, which is the exact
+/// failure that validator was written to avoid. One validator, not two that can
+/// disagree.
+///
+/// Unlike `fetch_registry` above, this enforces the scheme guard, a timeout and a size
+/// cap. It runs on a background path during startup, so a hanging host must not be
+/// able to hold that open. (`fetch_registry` predates those guards and still lacks
+/// them; tracked separately.)
+pub async fn fetch_revocations(url: &str) -> Result<String, String> {
+    let parsed = validate_http_url(url)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut resp = client.get(parsed).send().await.map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(format!("Revocation list returned HTTP {status}"));
+    }
+    // Streamed for the same reason as `http_fetch`: reqwest imposes no response-size
+    // limit, and reading the body whole would buffer it before any check could run.
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+        if buf.len() + chunk.len() > MAX_REVOCATION_BYTES {
+            return Err(format!(
+                "revocation list too large: exceeds {MAX_REVOCATION_BYTES} byte limit"
+            ));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    String::from_utf8(buf).map_err(|e| format!("revocation list is not UTF-8: {e}"))
+}
+
 /// USER DECISION: allow only http/https; do NOT block loopback/private IPs
 /// (local LLMs / dev servers are legitimate plugin fetch targets).
 pub fn validate_http_url(url: &str) -> Result<reqwest::Url, String> {

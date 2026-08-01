@@ -1,3 +1,4 @@
+import type { RevocationEntry } from "../../plugins/revocation";
 import type {
   PluginCapability,
   PluginStatus,
@@ -6,6 +7,7 @@ import type {
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
+import { revocationReason } from "../../plugins/revocation";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 import { PluginSettingsForm } from "./PluginSettingsForm";
@@ -20,6 +22,7 @@ interface PluginDetailProps {
   onUninstall: () => void;
   onUpdate: () => void;
   readme?: null | string;
+  revocation?: null | RevocationEntry;
   status: PluginStatus;
   updateAvailable?: string;
 }
@@ -35,6 +38,7 @@ export function PluginDetail({
   onToggleEnabled,
   readme,
   onBack,
+  revocation,
 }: PluginDetailProps) {
   const { t } = useTranslation();
   // The full-trust warning moved to `PluginConsentDialog` (§260 Phase 5), which is the
@@ -275,6 +279,38 @@ export function PluginDetail({
           {entry.description}
         </p>
       </div>
+
+      {/* §69 — first thing in the body, above everything the plugin says about
+          itself. A withdrawal notice placed under the author's own description
+          would be read second, if at all. */}
+      {revocation && revocation.severity !== "unlisted" && (
+        <div
+          className={
+            revocation.severity === "malicious"
+              ? "plugin-revoked"
+              : "plugin-revoked plugin-revoked--warn"
+          }
+        >
+          <span className="plugin-revoked__title">
+            {revocation.severity === "malicious"
+              ? t("plugin.revoked.blockedLoad")
+              : t("plugin.revoked.vulnerable")}
+          </span>
+          <span className="plugin-revoked__reason">
+            {t("plugin.revoked.reason")}: {revocationReason(revocation, t)}
+          </span>
+          {revocation.severity === "malicious" && (
+            <>
+              <span className="plugin-revoked__note">
+                {t("plugin.revoked.keepFiles")}
+              </span>
+              <button className="plugin-revoked__remove" onClick={onUninstall}>
+                {t("plugin.revoked.remove")}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* README */}
       {readme && (
