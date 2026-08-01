@@ -204,21 +204,22 @@ function pasteRows(
   }
   const targetWidth = TableMap.get(table).width;
 
-  // Markdown holds ONE header row on top: header-sourced rows never paste,
-  // nothing pastes ABOVE the header (impl review R1), and a table whose
-  // header layout is already non-canonical (multiple header rows, header
-  // below body) refuses outright — inserting between headers would change
-  // structure on the serialize/reload roundtrip (impl review R2).
-  const headerRows: number[] = [];
+  // Markdown holds ONE header row on top, and the md pipeline normalizes
+  // every table to that shape on reload. Only CANONICAL tables take rows —
+  // first row all tableHeader, every later cell tableCell — otherwise the
+  // paste would lock in a structure the roundtrip rewrites (impl reviews
+  // R2·R3: multi-header, headerless, mixed first row). Nothing pastes
+  // ABOVE the header either (impl review R1).
+  let canonical = true;
   let rowIndex = 0;
   table.forEach((row) => {
-    if (rowHasHeaderCells(row)) headerRows.push(rowIndex);
+    const headerRow = rowIndex === 0;
+    row.forEach((cell) => {
+      if ((cell.type.name === "tableHeader") !== headerRow) canonical = false;
+    });
     rowIndex++;
   });
-  if (
-    headerRows.length > 1 ||
-    (headerRows.length === 1 && headerRows[0] !== 0)
-  ) {
+  if (!canonical) {
     return { reason: "table header layout is not supported", tr: null };
   }
   if (rowHasHeaderCells(anchorRow) && !after) {

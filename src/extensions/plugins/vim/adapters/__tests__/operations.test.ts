@@ -384,7 +384,7 @@ describe("paste matrix (§9)", () => {
     expect(doc.firstChild?.childCount).toBe(4);
 
     const wide = makeEditor(
-      "<table><tr><td><p>x</p></td><td><p>y</p></td></tr><tr><td><p>z</p></td><td><p>w</p></td></tr></table>",
+      "<table><tr><th><p>hx</p></th><th><p>hy</p></th></tr><tr><td><p>x</p></td><td><p>y</p></td></tr><tr><td><p>z</p></td><td><p>w</p></td></tr></table>",
     );
     const refused = pasteRegister(
       wide.state,
@@ -643,6 +643,89 @@ describe("impl review R2 pins", () => {
       1,
     );
     expect(out.tr).toBeNull();
+  });
+});
+
+describe("impl review R3 pins", () => {
+  it("reverse heterogeneous lift keeps the surviving child CHECKED", () => {
+    // dd deletes the parent LINE; the checked task child survives and must
+    // keep its data — the R2 'attrs reset' rationale only covers the
+    // deleted line, never survivors.
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            {
+              content: [
+                {
+                  content: [{ text: "parent", type: "text" }],
+                  type: "paragraph",
+                },
+                {
+                  content: [
+                    {
+                      attrs: { checked: true },
+                      content: [
+                        {
+                          content: [{ text: "child", type: "text" }],
+                          type: "paragraph",
+                        },
+                      ],
+                      type: "taskItem",
+                    },
+                  ],
+                  type: "taskList",
+                },
+              ],
+              type: "listItem",
+            },
+            {
+              content: [
+                { content: [{ text: "sib", type: "text" }], type: "paragraph" },
+              ],
+              type: "listItem",
+            },
+          ],
+          type: "bulletList",
+        },
+      ],
+      type: "doc",
+    });
+    const out = deleteLine(editor.state, posOfText(editor, "parent"), 1);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("childsib");
+    let checkedSurvived = false;
+    doc.descendants((node) => {
+      if (node.type.name === "taskItem" && node.attrs.checked === true) {
+        checkedSurvived = true;
+      }
+      return true;
+    });
+    expect(checkedSurvived).toBe(true);
+  });
+
+  it("refuses paste into a HEADERLESS or mixed-first-row table", () => {
+    const headerless = makeEditor(
+      "<table><tr><td><p>a</p></td></tr><tr><td><p>b</p></td></tr></table>",
+    );
+    const reg = yankLine(
+      headerless.state,
+      posOfText(headerless, "a"),
+      1,
+    ).register!;
+    expect(
+      pasteRegister(headerless.state, posOfText(headerless, "b"), reg, true, 1)
+        .tr,
+    ).toBeNull();
+
+    const mixed = makeEditor(
+      "<table><tr><th><p>h</p></th><td><p>m</p></td></tr><tr><td><p>a</p></td><td><p>b</p></td></tr><tr><td><p>c</p></td><td><p>d</p></td></tr></table>",
+    );
+    const mixedReg = yankLine(mixed.state, posOfText(mixed, "a"), 1).register!;
+    expect(
+      pasteRegister(mixed.state, posOfText(mixed, "c"), mixedReg, true, 1).tr,
+    ).toBeNull();
   });
 });
 

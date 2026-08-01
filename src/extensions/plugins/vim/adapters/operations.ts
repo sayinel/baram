@@ -174,9 +174,15 @@ export function yankVisual(
 // ── single-unit building blocks (private) ─────────────────────────────────
 
 /** §9 nested-list pin (spike #7): one replaceWith lifts the children. When
- *  the item is its list's only child, the LIST goes with it — nested lists
- *  surface as blocks; without them the empty list simply disappears. */
-function buildListItemDelete(state: EditorState, unit: LineUnit): Transaction {
+ *  the item is its list's only child, the LIST goes with it. Heterogeneous
+ *  nested lists (a taskList under a bulletList item, or vice versa) SPLIT
+ *  the parent list instead of converting the survivors — converting would
+ *  silently mutate data on lines the user never asked to touch, e.g. a
+ *  checked task losing its state (impl reviews R2·R3). */
+function buildListItemDelete(
+  state: EditorState,
+  unit: LineUnit,
+): { landing: number; tr: Transaction } {
   if (unit.kind !== "listItem") throw new Error("not a list item");
   const nested = unit.nestedListPositions
     .map((p) => state.doc.nodeAt(p))
@@ -184,41 +190,77 @@ function buildListItemDelete(state: EditorState, unit: LineUnit): Transaction {
 
   const $item = state.doc.resolve(unit.itemPos);
   const list = $item.parent;
+  const listPos = $item.before($item.depth);
+
   if (list.childCount === 1) {
-    const listPos = $item.before($item.depth);
-    return nested.length > 0
-      ? state.tr.replaceWith(
-          listPos,
-          listPos + list.nodeSize,
-          Fragment.from(nested),
-        )
-      : deleteOrEmpty(state, listPos, listPos + list.nodeSize);
+    return {
+      landing: listPos,
+      tr:
+        nested.length > 0
+          ? state.tr.replaceWith(
+              listPos,
+              listPos + list.nodeSize,
+              Fragment.from(nested),
+            )
+          : deleteOrEmpty(state, listPos, listPos + list.nodeSize),
+    };
   }
 
-  // Lifted items must match the PARENT list's item type — a listItem lifted
-  // into a taskList makes the fitter mint an empty wrapper item, and the
-  // count landing then deletes the wrapper instead of the child (impl
-  // review R2). Cross-kind lift is best-effort on attrs: dd is destructive
-  // by request, so content survives and `checked` resets.
+  if (nested.length === 0) {
+    return {
+      landing: unit.itemPos,
+      tr: state.tr.delete(unit.itemPos, unit.itemPos + unit.nodeSize),
+    };
+  }
+
   const parentItemType = state.doc.nodeAt(unit.itemPos)?.type;
-  const items = nested.flatMap((n) => {
-    const children: PMNode[] = [];
-    n.forEach((child) =>
-      children.push(
-        parentItemType && child.type !== parentItemType
-          ? parentItemType.create(null, child.content)
-          : child,
-      ),
-    );
-    return children;
-  });
-  return items.length > 0
-    ? state.tr.replaceWith(
+  const heterogeneous = nested.some(
+    (n) => n.childCount > 0 && n.child(0).type !== parentItemType,
+  );
+
+  if (!heterogeneous) {
+    const items = nested.flatMap((n) => {
+      const children: PMNode[] = [];
+      n.forEach((child) => children.push(child));
+      return children;
+    });
+    return {
+      landing: unit.itemPos,
+      tr: state.tr.replaceWith(
         unit.itemPos,
         unit.itemPos + unit.nodeSize,
         Fragment.from(items),
-      )
-    : state.tr.delete(unit.itemPos, unit.itemPos + unit.nodeSize);
+      ),
+    };
+  }
+
+  // Split: [items before] + the nested lists INTACT + [items after].
+  const before: PMNode[] = [];
+  const after: PMNode[] = [];
+  let offsetCursor = listPos + 1;
+  list.forEach((child) => {
+    if (offsetCursor !== unit.itemPos) {
+      (offsetCursor < unit.itemPos ? before : after).push(child);
+    }
+    offsetCursor += child.nodeSize;
+  });
+  const pieces: PMNode[] = [];
+  let landing = listPos;
+  if (before.length > 0) {
+    const beforeList = list.copy(Fragment.from(before));
+    pieces.push(beforeList);
+    landing += beforeList.nodeSize;
+  }
+  pieces.push(...nested);
+  if (after.length > 0) pieces.push(list.copy(Fragment.from(after)));
+  return {
+    landing,
+    tr: state.tr.replaceWith(
+      listPos,
+      listPos + list.nodeSize,
+      Fragment.from(pieces),
+    ),
+  };
 }
 
 /** Clamp a landing position into the document and off node boundaries, so
@@ -308,9 +350,10 @@ function deleteUnitOnce(
   }
 
   if (unit.kind === "listItem") {
+    const built = buildListItemDelete(state, unit);
     return {
-      landing: unit.itemPos,
-      tr: buildListItemDelete(state, unit),
+      landing: built.landing,
+      tr: built.tr,
       yanked: yankUnit(state, unit),
     };
   }
