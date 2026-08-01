@@ -14,6 +14,7 @@
 
 import type { VersionRange } from "./version-range";
 
+import { logger } from "../utils/logger";
 import { matchesRange } from "./version-range";
 
 export interface RevocationEntry {
@@ -78,9 +79,21 @@ export function blocksLoad(entry: null | RevocationEntry): boolean {
  */
 export function normalizeRevocationList(raw: unknown): null | RevocationList {
   if (raw === null || typeof raw !== "object") return null;
-  const source = (raw as { revoked?: unknown }).revoked;
-  if (!Array.isArray(source)) return null;
-  const revoked = source.filter(isRevocationEntry);
+  const doc = raw as { revoked?: unknown; version?: unknown };
+  // An unknown document version is unreadable, not "readable under v1 rules". A future
+  // v2 that changed what a severity MEANS would otherwise be applied with v1 semantics
+  // by every old client — the precise outcome a version field exists to prevent. Keeping
+  // the stored list is the safe answer, and the same one an unreadable document gets.
+  if (doc.version !== undefined && doc.version !== 1) return null;
+  if (!Array.isArray(doc.revoked)) return null;
+  const revoked = doc.revoked.filter((entry) => {
+    if (isRevocationEntry(entry)) return true;
+    // Dropping silently is what made a mis-authored entry undetectable: the document
+    // parses, the deploy looks fine, and the plugin keeps running everywhere. This
+    // cannot reach the operator, but it does reach a user's log and a bug report.
+    logger.warn("[Revocation] dropped an unreadable entry:", entry);
+    return false;
+  });
   return { revoked, version: 1 };
 }
 

@@ -64,6 +64,18 @@ describe("compareVersions", () => {
     }
   });
 
+  it("treats a digit-leading identifier as alphanumeric, not numeric", () => {
+    // A review mutation loosening `/^\d+$/u` to `/^\d/u` survived: `2x` would then be
+    // read as the number 2. Per spec a numeric identifier is digits ONLY, and a numeric
+    // one always ranks BELOW an alphanumeric one — so this pair inverts if that slips.
+    expect(compareVersions("1.0.0-2", "1.0.0-2x")).toBeLessThan(0);
+    expect(compareVersions("1.0.0-0alpha", "1.0.0-1")).toBeGreaterThan(0);
+  });
+
+  it("tolerates surrounding whitespace", () => {
+    expect(compareVersions(" 1.2.3 ", "1.2.3")).toBe(0);
+  });
+
   it("ignores build metadata, as the spec requires", () => {
     expect(compareVersions("1.2.3+build.1", "1.2.3+build.2")).toBe(0);
     expect(compareVersions("1.2.3+build", "1.2.3")).toBe(0);

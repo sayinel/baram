@@ -279,7 +279,12 @@ export const usePluginStore = create<PluginState>()(
 
       getPluginSettings: (pluginId) => get().pluginSettings[pluginId] ?? {},
 
-      setRegistryUrl: (registryUrl) => set({ registryUrl }),
+      // §69 — the stored withdrawal list belongs to the registry it came from. Keeping
+      // it across a switch means our list keeps governing someone else's plugins, and a
+      // self-hosted registry will normally 404 on `revoked.json`, so "until the next
+      // successful fetch" would in practice be "forever".
+      setRegistryUrl: (registryUrl) =>
+        set({ registryUrl, revocations: null, revocationsFetchedAt: 0 }),
 
       setRevocations: (revocations) =>
         set({ revocations, revocationsFetchedAt: Date.now() }),

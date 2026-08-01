@@ -22,7 +22,10 @@ import {
 } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
-import { refreshRevocations } from "./revocation-client";
+import {
+  refreshRevocations,
+  REVOCATION_REFRESH_BUDGET_MS,
+} from "./revocation-client";
 import {
   deliverSandboxEvent,
   setContextResolver,
@@ -37,15 +40,6 @@ interface ActiveBuiltin {
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
-  // §69 — kick the revocation refresh, deliberately WITHOUT awaiting it.
-  //
-  // The stored list is what the load gate reads, and it is already on disk; this call
-  // only makes it fresher. Awaiting would put every plugin's startup behind a network
-  // round trip and, worse, behind a network TIMEOUT when offline — turning a lost
-  // connection into a plugin outage, which is the failure the whole persist-the-list
-  // design exists to avoid.
-  void refreshRevocations();
-
   // §260 3c-3 — close sandbox webviews left over from a previous main-realm
   // lifetime, before any load. A reload (HMR, refresh,
   // remount) empties this realm's bookkeeping while the `plugin-*` webview keeps
@@ -81,6 +75,25 @@ export async function initializePlugins(): Promise<void> {
   await pluginPrepareScopes().catch((err) =>
     logger.error("[PluginLifecycle] prepare scopes failed:", err),
   );
+
+  // §69 — refresh the withdrawal list BEFORE any installed plugin loads, bounded.
+  //
+  // This was fire-and-forget at the top of the function, which lost the race as a
+  // rule: a local `asset://` import beats a Pages round trip essentially always. A
+  // `trusted` plugin that wins it once runs in the main realm, where it can patch
+  // `window.__TAURI_INTERNALS__.invoke` — the transport this very refresh uses — and
+  // answer with a well-formed empty list. That list is accepted by design (a
+  // withdrawal has to be revocable) and PERSISTED, so one won race disarmed
+  // revocation permanently, on every later launch, while the entry stayed correctly
+  // published. Security review of this branch found it.
+  //
+  // Bounded, because the offline guarantee still stands: the stored list already
+  // governs the gate, so a timeout costs freshness and never protection. The cost of
+  // being offline is one wait of REVOCATION_REFRESH_BUDGET_MS per launch.
+  await Promise.race([
+    refreshRevocations(),
+    new Promise((resolve) => setTimeout(resolve, REVOCATION_REFRESH_BUDGET_MS)),
+  ]);
 
   const { installedPlugins } = usePluginStore.getState();
   const enabledPlugins = Object.values(installedPlugins).filter(

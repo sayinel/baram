@@ -13,6 +13,17 @@ import { logger } from "../utils/logger";
 import { normalizeRevocationList } from "./revocation";
 
 /**
+ * How long startup will wait for a fresher list before loading installed plugins.
+ *
+ * Not zero, because a fire-and-forget refresh loses the race to a local `asset://`
+ * import essentially always, and one won race is enough for a `trusted` plugin to
+ * disarm revocation permanently. Not unbounded, because the stored list already
+ * governs the gate — waiting longer buys freshness, never protection, and an offline
+ * user would pay a full network timeout on every launch.
+ */
+export const REVOCATION_REFRESH_BUDGET_MS = 1500;
+
+/**
  * How old a stored list may get before the UI says so.
  *
  * It does NOT gate anything. A user offline for a month keeps the protection they
@@ -48,8 +59,19 @@ export async function refreshRevocations(): Promise<void> {
     }
     store.setRevocations(parsed);
   } catch (err) {
-    // Expected offline. The stored list is unaffected.
-    logger.warn("[Revocation] refresh failed, keeping the stored list:", err);
+    // Offline is expected and unremarkable. An ACL denial or an HTTP error is not — it
+    // means the feature is structurally broken, and logging both at the same level is
+    // how the missing `plugin_fetch_revocations` ACL grant hid for a whole review
+    // cycle: every client failed every refresh and it read exactly like a plane.
+    const message = String(err);
+    if (/not allowed|forbidden|denied|HTTP \d/iu.test(message)) {
+      logger.error(
+        "[Revocation] refresh is FAILING STRUCTURALLY, not merely offline:",
+        err,
+      );
+    } else {
+      logger.warn("[Revocation] refresh failed, keeping the stored list:", err);
+    }
   }
 }
 

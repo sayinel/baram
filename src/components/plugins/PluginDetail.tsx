@@ -7,9 +7,9 @@ import type {
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
-import { revocationReason } from "../../plugins/revocation";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginRevokedNotice } from "./PluginRevokedNotice";
 import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
 
@@ -70,6 +70,15 @@ export function PluginDetail({
       >
         {t("plugin.action.back")}
       </button>
+
+      {/* §69 — genuinely first in the body now. The earlier version carried a comment
+          saying so while rendering after the description, the error banner and the
+          action buttons; review caught the comment describing an intent the code did
+          not implement. */}
+      <PluginRevokedNotice
+        onRemove={onUninstall}
+        revocation={revocation ?? null}
+      />
 
       {/* Header */}
       <div
@@ -279,38 +288,6 @@ export function PluginDetail({
           {entry.description}
         </p>
       </div>
-
-      {/* §69 — first thing in the body, above everything the plugin says about
-          itself. A withdrawal notice placed under the author's own description
-          would be read second, if at all. */}
-      {revocation && revocation.severity !== "unlisted" && (
-        <div
-          className={
-            revocation.severity === "malicious"
-              ? "plugin-revoked"
-              : "plugin-revoked plugin-revoked--warn"
-          }
-        >
-          <span className="plugin-revoked__title">
-            {revocation.severity === "malicious"
-              ? t("plugin.revoked.blockedLoad")
-              : t("plugin.revoked.vulnerable")}
-          </span>
-          <span className="plugin-revoked__reason">
-            {t("plugin.revoked.reason")}: {revocationReason(revocation, t)}
-          </span>
-          {revocation.severity === "malicious" && (
-            <>
-              <span className="plugin-revoked__note">
-                {t("plugin.revoked.keepFiles")}
-              </span>
-              <button className="plugin-revoked__remove" onClick={onUninstall}>
-                {t("plugin.revoked.remove")}
-              </button>
-            </>
-          )}
-        </div>
-      )}
 
       {/* README */}
       {readme && (

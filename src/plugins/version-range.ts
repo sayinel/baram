@@ -53,7 +53,8 @@ export function compareVersions(a: string, b: string): null | number {
 /**
  * Whether `version` falls in `range`.
  *
- * An unparseable range or version matches NOTHING. The direction matters: one typo in
+ * An unparseable version or bound fails every explicit bound, so such a range matches
+ * nothing; `"*"` matches without parsing anything at all. The direction matters: one typo in
  * the revocation list blocking every plugin is far worse than one bad entry being
  * ignored. An attacker who controls the list could simply delete entries anyway, so
  * ignoring costs nothing against them. Validating the file's shape is the registry

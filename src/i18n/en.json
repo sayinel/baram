@@ -606,6 +606,7 @@
   "plugin.revoked.blockedInstall": "This version has been withdrawn and cannot be installed.",
   "plugin.revoked.blockedLoad": "This plugin has been withdrawn and is not running.",
   "plugin.revoked.keepFiles": "Its files are left in place — nothing has been deleted.",
+  "plugin.revoked.never": "The withdrawal list has never been received, so withdrawn plugins cannot be recognised yet.",
   "plugin.revoked.reason": "Reason",
   "plugin.revoked.remove": "Remove it",
   "plugin.revoked.stale": "The withdrawal list was last updated {days} days ago.",

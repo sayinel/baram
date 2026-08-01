@@ -606,6 +606,7 @@
   "plugin.revoked.blockedInstall": "이 버전은 회수되어 설치할 수 없습니다.",
   "plugin.revoked.blockedLoad": "이 플러그인은 회수되어 실행되지 않습니다.",
   "plugin.revoked.keepFiles": "파일은 그대로 두었습니다 — 삭제된 것은 없습니다.",
+  "plugin.revoked.never": "회수 목록을 아직 한 번도 받지 못해, 회수된 플러그인을 알아볼 수 없습니다.",
   "plugin.revoked.reason": "사유",
   "plugin.revoked.remove": "제거하기",
   "plugin.revoked.stale": "회수 목록을 마지막으로 받은 지 {days}일 지났습니다.",
