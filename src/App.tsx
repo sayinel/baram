@@ -4,6 +4,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -303,16 +304,29 @@ function App() {
   const [skillPreviewOpen, setSkillPreviewOpen] = useState(false);
   const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
+  // §298 vim §12-⑪: extensions MUST be referentially stable across renders.
+  // useEditor re-compares options every render (element-wise on extensions);
+  // a mismatch triggers setOptions({ ..., editable: editor.isEditable }),
+  // which would copy a vim-modal view.editable=false into options.editable
+  // permanently (no event fires — the editor bricks to read-only).
+  // The navigate refs are declared below (useNavigation) — safe: the arrows
+  // only dereference .current when invoked, same as createKeepaliveEditor.
+  const extensions = useMemo(
+    () =>
+      createBaramExtensions({
+        onNavigate: (target, heading, vaultAlias) =>
+          navigateRef.current(target, heading, vaultAlias),
+        onNavigateBlockRef: (target, blockId) =>
+          blockRefNavigateRef.current(target, blockId),
+        onNavigateLocal: (href) => localLinkNavigateRef.current(href),
+        onMentionNavigate: (type, value) =>
+          mentionNavigateRef.current(type, value),
+      }),
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const editor = useEditor({
-    extensions: createBaramExtensions({
-      onNavigate: (target, heading, vaultAlias) =>
-        navigateRef.current(target, heading, vaultAlias),
-      onNavigateBlockRef: (target, blockId) =>
-        blockRefNavigateRef.current(target, blockId),
-      onNavigateLocal: (href) => localLinkNavigateRef.current(href),
-      onMentionNavigate: (type, value) =>
-        mentionNavigateRef.current(type, value),
-    }),
+    extensions,
     autofocus: true,
     immediatelyRender: false,
     onCreate: () => {
