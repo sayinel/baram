@@ -835,6 +835,17 @@
       "description": "플러그인 레지스트리 인덱스 조회"
     },
     {
+      "name": "plugin_fetch_revocations",
+      "input": { "url": "string" },
+      "output": "string",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "회수(revocation) 목록 원본 JSON 조회 — 파싱·검증은 TS의 normalizeRevocationList가 단독으로 담당"
+    },
+    {
       "name": "plugin_get_dir",
       "input": {},
       "output": "string",
