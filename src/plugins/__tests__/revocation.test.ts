@@ -86,7 +86,11 @@ describe("revocationFor", () => {
 });
 
 describe("normalizeRevocationList", () => {
-  it("keeps well-formed entries", () => {
+  it("keeps every well-formed shape the format allows", () => {
+    // Deliberately covers all three severities and both range forms. The seed guard
+    // below runs over the REAL file, which is empty and must stay empty — nothing is
+    // revoked — so it can prove the document parses but not that entry validation
+    // still works. This is where that is proven.
     const raw = {
       revoked: [
         { id: "a", reason: "r", severity: "malicious", versions: "*" },
@@ -96,9 +100,30 @@ describe("normalizeRevocationList", () => {
           severity: "vulnerable",
           versions: { gte: "1.0.0" },
         },
+        {
+          id: "c",
+          reason: "r",
+          reasonKey: "plugin.revoked.reason",
+          severity: "unlisted",
+          since: "2026-08-01",
+          versions: { eq: "1.2.3" },
+        },
+        {
+          id: "d",
+          reason: "r",
+          severity: "malicious",
+          versions: { gt: "1.0.0", lte: "2.0.0" },
+        },
       ],
     };
-    expect(normalizeRevocationList(raw)?.revoked).toHaveLength(2);
+    const kept = normalizeRevocationList(raw)?.revoked ?? [];
+    expect(kept.map((e) => e.id)).toEqual(["a", "b", "c", "d"]);
+    expect(kept.map((e) => e.severity).sort()).toEqual([
+      "malicious",
+      "malicious",
+      "unlisted",
+      "vulnerable",
+    ]);
   });
 
   it("drops a malformed entry without taking the list down with it", () => {
@@ -182,6 +207,11 @@ describe("the committed revocation seed", () => {
     // The document parsing and every entry surviving are different claims. An entry
     // dropped for a bad `severity` or range would leave a plugin unrevoked while the
     // file on disk says otherwise, and nothing else would report it.
+    //
+    // ‼️ Vacuous while the seed is empty, which it should be — nothing is revoked. The
+    // entry validator is exercised by "keeps every well-formed shape" above, and by
+    // `scripts/validate-revocations.ts`, which the publish workflow runs and which
+    // FAILS on a dropped entry rather than shrugging the way the app does.
     const declared = (raw as { revoked: unknown[] }).revoked.length;
     expect(normalizeRevocationList(raw)?.revoked).toHaveLength(declared);
   });

@@ -8,10 +8,11 @@ on:
   push:
     tags: ['plugin-*']
 
-# Serialize releases: two plugin tags at once must not race on the
-# registry-repo push.
+# Serialize registry writes. Two plugin tags at once must not race on the registry-repo
+# push, and neither must a plugin release and a revocation sync — both clone shallow and
+# push, and revocation-publish.yml shares this group for that reason.
 concurrency:
-  group: plugin-release
+  group: registry-push
   cancel-in-progress: false
 
 permissions:

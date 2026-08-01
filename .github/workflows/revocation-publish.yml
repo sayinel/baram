@@ -1,0 +1,89 @@
+name: Publish Revocation List
+
+# §69 — syncs registry/revoked.json to the sayinel/baram-plugins registry.
+#
+# Deliberately NOT part of plugin-release.yml. That workflow runs when a plugin is
+# published, and a revocation has nothing to do with anyone publishing a plugin —
+# bolting it on would mean a withdrawal only reached users the next time someone
+# happened to release something.
+#
+# The list lives in THIS repo rather than being hand-edited on the registry, for two
+# reasons. The schema and the validator are here, so one validator governs both what CI
+# accepts and what the app reads. And issuing a revocation takes a working plugin away
+# from users, which deserves a reviewed PR rather than a direct push to a Pages repo.
+on:
+  push:
+    branches: [main]
+    paths: ['registry/revoked.json']
+  # Bootstrap and manual re-sync. The registry has no revoked.json until this runs once,
+  # and until it does every client 404s and keeps an empty list.
+  workflow_dispatch:
+
+# Shared with plugin-release.yml: both push to the same registry repo, and a shallow
+# clone plus a push cannot survive the other landing in between.
+concurrency:
+  group: registry-push
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TZ: Asia/Seoul
+  REGISTRY_REPO: sayinel/baram-plugins
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+
+      # Before anything is pushed. The app drops a malformed entry silently and treats
+      # an unparseable range as matching nothing — both correct at runtime, and both a
+      # way for a mis-authored revocation to deploy cleanly and protect nobody.
+      - name: Validate the list with the shipping validator
+        run: npx tsx scripts/validate-revocations.ts registry/revoked.json
+
+      - name: Sync to the registry
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          chmod 600 ~/.ssh/plugins_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
+          git clone --depth 1 "git@github.com:${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          cp registry/revoked.json "$RUNNER_TEMP/registry/revoked.json"
+          cd "$RUNNER_TEMP/registry"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add revoked.json
+          if git diff --cached --quiet; then
+            echo "::notice::Registry already has this exact list — nothing to publish."
+            exit 0
+          fi
+          git commit -m "revocation: sync revoked.json from baram@${GITHUB_SHA}"
+          git push origin main
+
+      # A push that succeeded is not a file that is being served. Pages takes a moment
+      # to rebuild, so this retries rather than asserting immediately — and it fails
+      # loudly if the list never appears, because a silent no-op here is exactly the
+      # state the feature spent a whole review round in.
+      - name: Verify the live list is served and readable
+        run: |
+          URL="https://sayinel.github.io/baram-plugins/revoked.json"
+          for attempt in $(seq 1 20); do
+            CODE="$(curl -fsS -o "$RUNNER_TEMP/live.json" -w '%{http_code}' "$URL" || true)"
+            if [ "$CODE" = "200" ]; then
+              npx tsx scripts/validate-revocations.ts "$RUNNER_TEMP/live.json"
+              echo "::notice::Live revocation list verified after ${attempt} attempt(s)."
+              exit 0
+            fi
+            echo "attempt ${attempt}: HTTP ${CODE:-none}, waiting for Pages…"
+            sleep 15
+          done
+          echo "::error::$URL never returned 200 — clients cannot receive revocations."
+          exit 1
