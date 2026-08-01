@@ -54,25 +54,34 @@ export function pasteRegister(
 function adaptToAnchor(
   nodes: PMNode[],
   anchorItemType: NodeType | null,
-): PMNode[] {
-  return nodes.flatMap((node) => {
+): { blocks: PMNode[] } | { reason: string } {
+  const blocks: PMNode[] = [];
+  for (const node of nodes) {
     const isItem =
       node.type.name === "listItem" || node.type.name === "taskItem";
     if (isItem && !anchorItemType) {
-      const children: PMNode[] = [];
-      node.forEach((child) => children.push(child));
-      return children;
+      node.forEach((child) => blocks.push(child));
+      continue;
     }
     if (anchorItemType) {
       if (isItem) {
-        return node.type === anchorItemType
-          ? [node]
-          : [anchorItemType.create(null, node.content)];
+        if (node.type === anchorItemType) {
+          blocks.push(node);
+        } else if (node.attrs.checked === true) {
+          // Converting would silently drop the completion state (impl
+          // review R2) — refuse instead of lying about the data.
+          return { reason: "a checked task line cannot convert here" };
+        } else {
+          blocks.push(anchorItemType.create(null, node.content));
+        }
+        continue;
       }
-      return [anchorItemType.create(null, Fragment.from(node))];
+      blocks.push(anchorItemType.create(null, Fragment.from(node)));
+      continue;
     }
-    return [node];
-  });
+    blocks.push(node);
+  }
+  return { blocks };
 }
 
 /** True when every node is a textblock of inline content only. */
@@ -165,7 +174,9 @@ function pasteLine(
     unit.kind === "listItem"
       ? (state.doc.nodeAt(unit.itemPos)?.type ?? null)
       : null;
-  const blocks = adaptToAnchor(nodes, anchorItemType);
+  const adapted = adaptToAnchor(nodes, anchorItemType);
+  if ("reason" in adapted) return { reason: adapted.reason, tr: null };
+  const { blocks } = adapted;
   if (blocks.length === 0) return { reason: "register is empty", tr: null };
   const repeated: PMNode[] = [];
   for (let i = 0; i < count; i++) repeated.push(...blocks);
@@ -194,7 +205,22 @@ function pasteRows(
   const targetWidth = TableMap.get(table).width;
 
   // Markdown holds ONE header row on top: header-sourced rows never paste,
-  // and nothing pastes ABOVE the header (impl review R1).
+  // nothing pastes ABOVE the header (impl review R1), and a table whose
+  // header layout is already non-canonical (multiple header rows, header
+  // below body) refuses outright — inserting between headers would change
+  // structure on the serialize/reload roundtrip (impl review R2).
+  const headerRows: number[] = [];
+  let rowIndex = 0;
+  table.forEach((row) => {
+    if (rowHasHeaderCells(row)) headerRows.push(rowIndex);
+    rowIndex++;
+  });
+  if (
+    headerRows.length > 1 ||
+    (headerRows.length === 1 && headerRows[0] !== 0)
+  ) {
+    return { reason: "table header layout is not supported", tr: null };
+  }
   if (rowHasHeaderCells(anchorRow) && !after) {
     return { reason: "cannot paste above the header row", tr: null };
   }

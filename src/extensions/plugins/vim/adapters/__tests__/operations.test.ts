@@ -9,7 +9,7 @@ import type { VimRegister } from "../register";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Transaction } from "@tiptap/pm/state";
 
-import { Editor } from "@tiptap/core";
+import { Editor, type JSONContent } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
@@ -543,6 +543,106 @@ describe("paste structure pins (impl review R1)", () => {
       1,
     );
     expect(after.tr).not.toBeNull();
+  });
+});
+
+describe("impl review R2 pins", () => {
+  function taskItemJSON(
+    text: string,
+    checked = false,
+    extra: JSONContent[] = [],
+  ): JSONContent {
+    return {
+      attrs: { checked },
+      content: [
+        { content: [{ text, type: "text" }], type: "paragraph" },
+        ...extra,
+      ],
+      type: "taskItem",
+    };
+  }
+
+  function makeTaskListEditor(items: JSONContent[]): Editor {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [{ content: items, type: "taskList" }],
+      type: "doc",
+    });
+    expect(editor.state.doc.firstChild?.type.name).toBe("taskList");
+    return editor;
+  }
+
+  it("2dd across a HETEROGENEOUS lift deletes the lifted child", () => {
+    // taskItem parent holding a bulletList: the lift crosses list kinds, so
+    // the fitter may wrap — landing must find the real child, not a wrapper.
+    const editor = makeTaskListEditor([
+      taskItemJSON("parent", false, [
+        {
+          content: [
+            {
+              content: [
+                {
+                  content: [{ text: "child", type: "text" }],
+                  type: "paragraph",
+                },
+              ],
+              type: "listItem",
+            },
+          ],
+          type: "bulletList",
+        },
+      ]),
+      taskItemJSON("sib"),
+    ]);
+    const out = deleteLine(editor.state, posOfText(editor, "parent"), 2);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("sib");
+  });
+
+  it("a checked task line refuses a lossy conversion into a bullet list", () => {
+    const src = makeTaskListEditor([taskItemJSON("done", true)]);
+    const reg = yankLine(src.state, posOfText(src, "done"), 1).register!;
+    const editor = makeEditor("<ul><li><p>a</p></li></ul>");
+    const out = pasteRegister(
+      editor.state,
+      posOfText(editor, "a"),
+      reg,
+      true,
+      1,
+    );
+    expect(out.tr).toBeNull();
+    expect(out.reason).toMatch(/checked/);
+  });
+
+  it("an unchecked task line converts losslessly into a bullet item", () => {
+    const src = makeTaskListEditor([taskItemJSON("todo", false)]);
+    const reg = yankLine(src.state, posOfText(src, "todo"), 1).register!;
+    const editor = makeEditor("<ul><li><p>a</p></li></ul>");
+    const out = pasteRegister(
+      editor.state,
+      posOfText(editor, "a"),
+      reg,
+      true,
+      1,
+    );
+    const doc = applied(editor, out.tr);
+    expect(doc.firstChild?.childCount).toBe(2);
+    expect(doc.firstChild?.child(1).type.name).toBe("listItem");
+  });
+
+  it("refuses to paste a data row into a MULTI-header table", () => {
+    const editor = makeEditor(
+      "<table><tr><th><p>h1</p></th></tr><tr><th><p>h2</p></th></tr><tr><td><p>d</p></td></tr></table>",
+    );
+    const reg = yankLine(editor.state, posOfText(editor, "d"), 1).register!;
+    const out = pasteRegister(
+      editor.state,
+      posOfText(editor, "h1"),
+      reg,
+      true,
+      1,
+    );
+    expect(out.tr).toBeNull();
   });
 });
 

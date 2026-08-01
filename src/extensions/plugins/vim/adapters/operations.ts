@@ -195,9 +195,21 @@ function buildListItemDelete(state: EditorState, unit: LineUnit): Transaction {
       : deleteOrEmpty(state, listPos, listPos + list.nodeSize);
   }
 
+  // Lifted items must match the PARENT list's item type — a listItem lifted
+  // into a taskList makes the fitter mint an empty wrapper item, and the
+  // count landing then deletes the wrapper instead of the child (impl
+  // review R2). Cross-kind lift is best-effort on attrs: dd is destructive
+  // by request, so content survives and `checked` resets.
+  const parentItemType = state.doc.nodeAt(unit.itemPos)?.type;
   const items = nested.flatMap((n) => {
     const children: PMNode[] = [];
-    n.forEach((child) => children.push(child));
+    n.forEach((child) =>
+      children.push(
+        parentItemType && child.type !== parentItemType
+          ? parentItemType.create(null, child.content)
+          : child,
+      ),
+    );
     return children;
   });
   return items.length > 0
