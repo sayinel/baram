@@ -1,8 +1,8 @@
 // §298 vim §12-⑩ — chrome capability (design v7.2~v7.5 pins).
 //
-// The vim plugin does not exist yet (S2), so a stub registers under the REAL
-// vimPluginKey with the exact shape the plugin will use — these tests bind
-// the contract the plugin must satisfy, not a lookalike.
+// Written against a stub before S2; since the real plugin ships in
+// createBaramExtensions these tests drive IT via the setEnabled meta — the
+// contract and the implementation are now the same thing.
 //
 // Pins covered:
 // - v7.2 negative: real read-only + modal state → chrome stays locked.
@@ -31,46 +31,26 @@ import { createBaramExtensions } from "../../../index";
 import {
   canUseEditorChrome,
   isVimExternalEdit,
-  isWysiwygVimModal,
   vimPluginKey,
-  type VimStateSnapshot,
 } from "../vim-keys";
 
-// ── vim plugin stub: the real key, the real editable mechanism ─────────────
+// ── driving the REAL plugin (installed by createBaramExtensions) ───────────
 
-const VimStub = Extension.create({
-  name: "wysiwygVimStub",
-  addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        key: vimPluginKey,
-        props: {
-          editable: (state) => !isWysiwygVimModal(state),
-        },
-        state: {
-          apply: (tr, value: VimStateSnapshot) =>
-            (tr.getMeta(vimPluginKey) as undefined | VimStateSnapshot) ?? value,
-          init: (): VimStateSnapshot => ({ enabled: false, mode: "insert" }),
-        },
-      }),
-    ];
-  },
-});
-
-function setVimState(editor: Editor, snapshot: VimStateSnapshot): void {
+function enableVimNormal(editor: Editor): void {
   act(() => {
-    editor.view.dispatch(editor.state.tr.setMeta(vimPluginKey, snapshot));
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        enabled: true,
+        type: "setEnabled",
+      }),
+    );
   });
 }
 
 const editors: Editor[] = [];
 
-function makeEditor(withStub: boolean): Editor {
-  const editor = new TiptapEditor({
-    extensions: withStub
-      ? [...createBaramExtensions(), VimStub]
-      : createBaramExtensions(),
-  });
+function makeEditor(): Editor {
+  const editor = new TiptapEditor({ extensions: createBaramExtensions() });
   editors.push(editor);
   return editor;
 }
@@ -90,19 +70,19 @@ async function flush(): Promise<void> {
 
 describe("canUseEditorChrome (§12-⑩ predicate)", () => {
   it("is true for a plain editable editor", () => {
-    expect(canUseEditorChrome(makeEditor(false))).toBe(true);
+    expect(canUseEditorChrome(makeEditor())).toBe(true);
   });
 
   it("stays true during vim modal — the view is locked, chrome is not", () => {
-    const editor = makeEditor(true);
-    setVimState(editor, { enabled: true, mode: "normal" });
+    const editor = makeEditor();
+    enableVimNormal(editor);
     expect(editor.view.editable).toBe(false);
     expect(canUseEditorChrome(editor)).toBe(true);
   });
 
   it("v7.2 negative pin: real read-only wins over modal state", () => {
-    const editor = makeEditor(true);
-    setVimState(editor, { enabled: true, mode: "normal" });
+    const editor = makeEditor();
+    enableVimNormal(editor);
     act(() => setEditorEditable(editor, false));
     expect(canUseEditorChrome(editor)).toBe(false);
   });
@@ -135,7 +115,7 @@ describe("canUseEditorChrome (§12-⑩ predicate)", () => {
 
 describe("useEditorChrome (§12-⑩ reactive axes)", () => {
   it("v7.5 ⓐ: reacts to the wrapper signal with no transaction", () => {
-    const editor = makeEditor(false);
+    const editor = makeEditor();
     const { result } = renderHook(() => useEditorChrome(editor));
     expect(result.current).toBe(true);
 
@@ -147,10 +127,10 @@ describe("useEditorChrome (§12-⑩ reactive axes)", () => {
   });
 
   it("rides transactions across modal flips", () => {
-    const editor = makeEditor(true);
+    const editor = makeEditor();
     const { result } = renderHook(() => useEditorChrome(editor));
 
-    setVimState(editor, { enabled: true, mode: "normal" });
+    enableVimNormal(editor);
     expect(editor.view.editable).toBe(false);
     expect(result.current).toBe(true); // modal ≠ locked chrome
 
@@ -161,7 +141,7 @@ describe("useEditorChrome (§12-⑩ reactive axes)", () => {
 
 describe("FrontmatterView tag bar (§12-⑩ wiring)", () => {
   function setupFrontmatter() {
-    const editor = makeEditor(false);
+    const editor = makeEditor();
     const view = render(<EditorContent editor={editor} />);
     act(() => {
       editor.commands.setContent({
@@ -238,7 +218,7 @@ describe("FrontmatterView tag bar (§12-⑩ wiring)", () => {
 
 describe("CalloutView type picker (§12-⑩ wiring)", () => {
   function setupCallout() {
-    const editor = makeEditor(false);
+    const editor = makeEditor();
     const view = render(<EditorContent editor={editor} />);
     act(() => {
       editor.commands.setContent({

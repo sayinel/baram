@@ -1,7 +1,7 @@
 // §298 Phase 1 (§12-5): isWysiwygVimModal query semantics.
-// The vim plugin does not exist yet — these tests pin the contract that
-// guards (useExternalDrop 등) rely on: absent plugin → never modal;
-// registered plugin → modal iff enabled && mode !== "insert".
+// Originally pinned against a stub; the real plugin now ships in
+// createBaramExtensions, so these drive IT: disabled → never modal;
+// enabled → modal iff mode !== "insert".
 import type { VimStateSnapshot } from "../plugins/vim/vim-keys";
 
 import { Editor } from "@tiptap/core";
@@ -24,11 +24,17 @@ function makeEditor(snapshot?: VimStateSnapshot) {
     content: "<p>x</p>",
     extensions: createBaramExtensions(),
   });
-  if (snapshot) {
-    editor.registerPlugin(
-      new Plugin<VimStateSnapshot>({
-        key: vimPluginKey,
-        state: { apply: (_tr, v) => v, init: () => snapshot },
+  if (snapshot?.enabled) {
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        enabled: true,
+        type: "setEnabled",
+      }),
+    );
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: snapshot.mode,
+        type: "setMode",
       }),
     );
   }
@@ -41,7 +47,7 @@ afterEach(() => {
 });
 
 describe("isWysiwygVimModal (§12-5)", () => {
-  it("is false when no vim plugin is registered (dormant guard)", () => {
+  it("is false while the always-installed plugin stays disabled", () => {
     expect(isWysiwygVimModal(makeEditor().state)).toBe(false);
   });
 
