@@ -729,6 +729,68 @@ describe("impl review R3 pins", () => {
   });
 });
 
+describe("impl review R4 pins", () => {
+  const nestedTask = {
+    content: [
+      {
+        attrs: { checked: false },
+        content: [
+          { content: [{ text: "child", type: "text" }], type: "paragraph" },
+        ],
+        type: "taskItem",
+      },
+    ],
+    type: "taskList",
+  };
+  const li = (text: string, extra: object[] = []) => ({
+    content: [
+      { content: [{ text, type: "text" }], type: "paragraph" },
+      ...extra,
+    ],
+    type: "listItem",
+  });
+
+  it("3dd after a heterogeneous split deletes exactly three lines", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [li("target", [nestedTask]), li("b"), li("c")],
+          type: "bulletList",
+        },
+      ],
+      type: "doc",
+    });
+    const out = deleteLine(editor.state, posOfText(editor, "target"), 3);
+    const doc = applied(editor, out.tr);
+    expect(doc.textContent).toBe("c");
+    const reg = (out.register as { content: unknown[] }).content;
+    expect(reg).toHaveLength(3);
+  });
+
+  it("the orderedList after-piece continues the numbering", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          attrs: { start: 5 },
+          content: [li("a"), li("target", [nestedTask]), li("c")],
+          type: "orderedList",
+        },
+      ],
+      type: "doc",
+    });
+    const out = deleteLine(editor.state, posOfText(editor, "target"), 1);
+    const doc = applied(editor, out.tr);
+    const lists: { start?: number; type: string }[] = [];
+    doc.forEach((n) =>
+      lists.push({ start: n.attrs.start as number, type: n.type.name }),
+    );
+    expect(lists[0]).toMatchObject({ start: 5, type: "orderedList" });
+    expect(lists.at(-1)).toMatchObject({ start: 6, type: "orderedList" });
+  });
+});
+
 describe("register store (§6 — one global register, vim semantics)", () => {
   it("holds one register across editors: yank here, paste there", () => {
     resetVimRegister();

@@ -252,7 +252,15 @@ function buildListItemDelete(
     landing += beforeList.nodeSize;
   }
   pieces.push(...nested);
-  if (after.length > 0) pieces.push(list.copy(Fragment.from(after)));
+  if (after.length > 0) {
+    // An orderedList continuation must keep counting — copying the start
+    // attr verbatim would rewind the survivors' numbering (impl review R4).
+    const attrs =
+      typeof list.attrs.start === "number"
+        ? { ...list.attrs, start: (list.attrs.start as number) + before.length }
+        : list.attrs;
+    pieces.push(list.type.create(attrs, Fragment.from(after)));
+  }
   return {
     landing,
     tr: state.tr.replaceWith(
@@ -267,11 +275,15 @@ function buildListItemDelete(
  *  the next resolveLineUnit sees the block under it. */
 function clampIntoContent(state: EditorState, pos: number): number {
   const max = Math.max(0, state.doc.content.size - 1);
-  const clamped = Math.min(Math.max(pos, 0), max);
-  const $pos = state.doc.resolve(clamped);
-  if ($pos.parent.isTextblock) return clamped;
-  // Sitting between blocks — step inside the next one when possible.
-  return Math.min(clamped + 1, max);
+  let clamped = Math.min(Math.max(pos, 0), max);
+  // Descend until a textblock: one +1 per structure level. A single step
+  // stops at a list boundary and resolveLineUnit then reads the WHOLE list
+  // as one structural unit — a chained dd would eat every sibling item
+  // (impl review R4).
+  while (clamped < max && !state.doc.resolve(clamped).parent.isTextblock) {
+    clamped++;
+  }
+  return clamped;
 }
 
 /** Deleting everything must leave one empty paragraph — vim's dd on the only
