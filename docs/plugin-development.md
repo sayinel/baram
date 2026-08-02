@@ -775,10 +775,10 @@ can expand to an enormous one:
 | --- | --- |
 | Archive size on the wire | 32 MiB |
 | Files in the archive | 2,000 |
-| Directory depth of any path | 16 |
+| Path components in any entry | 16 (`dist/chunks/x.mjs` is 3) |
 | Any single file, expanded | 64 MiB |
 | All files together, expanded | 256 MiB |
-| Expanded ÷ compressed ratio | 100:1, with at least 1 MiB always allowed |
+| Expanded ÷ compressed ratio | 100:1, or 1 MiB, whichever is larger |
 
 These are set far above anything a real plugin needs — the published reference
 plugin expands to tens of kilobytes, and `dist/chunks/index.mjs` is depth 3 —

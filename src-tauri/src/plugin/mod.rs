@@ -369,8 +369,13 @@ const MAX_COMPRESSION_RATIO: u64 = 100;
 /// to create and ~104 s to clean up, with `copy_dir_recursive` paying it a third time after
 /// the destructive `remove_dir_all`. Every byte ceiling saw zero.
 ///
-/// A plugin bundle is `dist/chunks/x.mjs`: depth 3. Sixteen is far past anything real and
-/// takes the worst case to 2,000 × 16, which is seconds rather than minutes.
+/// Counted in PATH COMPONENTS including the filename, so `dist/chunks/x.mjs` is 3. Sixteen
+/// is far past anything real and takes the worst case to 2,000 × 16, which is seconds rather
+/// than minutes.
+///
+/// Forward note: `install_plugin` requires `baram-plugin.json` at the temp-dir ROOT, so a
+/// GitHub-style wrapper folder (`repo-v1.0.0/…`) already fails for an unrelated reason. If
+/// #261's second half ever tolerates a wrapper, the budget here silently becomes 15.
 const MAX_PATH_DEPTH: usize = 16;
 
 /// Below this much output the ratio is not evidence of anything.
@@ -1076,10 +1081,13 @@ fn extract_zip_bounded(
         // ‼️ Checked BEFORE any `create_dir_all`, because directories are the one thing the
         // byte ceilings below cannot see: parents cost no expanded bytes, so depth is free
         // to the attacker and expensive to us (review M2).
+        // COMPONENTS, including the filename — `a/b/c.txt` is 3. The limit and its doc count
+        // the same way, so the arithmetic was never wrong, but the message used to say
+        // "directories deep" and there are only two of those here (review round 2).
         let depth = enclosed_name.components().count();
         if depth > bounds.max_path_depth {
             return Err(PluginError::Refused(format!(
-                "plugin archive entry {} is {depth} directories deep, over the {} limit",
+                "plugin archive entry {} has {depth} path components, over the {} limit",
                 enclosed_name.display(),
                 bounds.max_path_depth
             )));
@@ -1111,10 +1119,10 @@ fn extract_zip_bounded(
         // least this much before the ratio can say anything, so a small archive of ordinary
         // compressible text is not refused over a statistic computed on too little data.
         // Same intent as the old post-hoc floor, moved to where it can actually act.
-        let by_ratio = compressed_len
+        let ratio_allowance = compressed_len
             .saturating_mul(bounds.max_ratio)
-            .max(bounds.ratio_floor_bytes)
-            .saturating_sub(total_written);
+            .max(bounds.ratio_floor_bytes);
+        let by_ratio = ratio_allowance.saturating_sub(total_written);
         let cap = by_entry.min(by_total).min(by_ratio);
 
         let mut out = std::fs::File::create(&out_path)?;
@@ -1127,9 +1135,18 @@ fn extract_zip_bounded(
             // Ratio first: where it ties with another it is the more useful answer, because
             // it is the one that says "this is shaped like a bomb".
             return Err(PluginError::Refused(if cap == by_ratio {
+                // ‼️ Names the COMPUTED allowance, not `max_ratio`. The allowance is
+                // `max(wire × ratio, floor)`, so whenever the floor is the binding term the
+                // ratio is not the number being enforced — for a 2 KiB archive the real
+                // limit is 476:1, and a message saying "100:1" sends the operator to compute
+                // 220 KB when 1 MiB was allowed. That is the COMMON case, not the exotic
+                // one: every archive under `floor / ratio` on the wire is floor-bound, which
+                // is most real plugins (review round 2). This module's rule is that a
+                // refusal names the limit to raise.
                 format!(
-                    "plugin archive expands more than {}:1 from its {compressed_len} bytes",
-                    bounds.max_ratio
+                    "plugin archive expands past the {ratio_allowance} bytes allowed for its \
+                     {compressed_len} bytes on the wire ({}:1, minimum {})",
+                    bounds.max_ratio, bounds.ratio_floor_bytes
                 )
             } else if cap == by_total {
                 format!(
@@ -2219,7 +2236,10 @@ mod tests {
 
         let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
 
-        assert!(err.to_string().contains("expands more than 3:1"), "{err}");
+        // Names the computed ALLOWANCE, not the bare ratio: `max(wire × ratio, floor)`
+        // means the ratio is often not the binding number, and a message that says otherwise
+        // sends the operator to the wrong arithmetic (review round 2).
+        assert!(err.to_string().contains("bytes allowed for its"), "{err}");
     }
 
     /// Total bytes sitting under `dir` after a refusal.
@@ -2256,7 +2276,19 @@ mod tests {
         let wire = data.len() as u64;
 
         let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
-        assert!(err.to_string().contains("expands more than 100:1"), "{err}");
+        // The mirror of the test above: this fixture is RATIO-bound (64 KiB × 100 clears
+        // the floor), so here the ratio genuinely is the enforced number.
+        let allowance = (wire * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
+        assert_eq!(
+            allowance,
+            wire * MAX_COMPRESSION_RATIO,
+            "fixture must be ratio-bound"
+        );
+        assert!(
+            err.to_string()
+                .contains(&format!("{allowance} bytes allowed")),
+            "{err}"
+        );
 
         // The allowance is `max(wire × 100, 1 MiB)`, and one byte over it is what triggers
         // the refusal — so anything materially past that means the cap is not in the read.
@@ -2287,7 +2319,20 @@ mod tests {
 
         let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
 
-        assert!(err.to_string().contains("expands more than 100:1"), "{err}");
+        // ‼️ This fixture is FLOOR-bound, not ratio-bound: 2 KiB on the wire × 100 is well
+        // under 1 MiB, so the allowance is the floor and the ratio actually enforced is
+        // ~476:1. The message must say 1048576, not "100:1" — this assertion is the one that
+        // would have caught it claiming the latter.
+        let allowance = (data.len() as u64 * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
+        assert_eq!(
+            allowance, RATIO_FLOOR_BYTES,
+            "fixture must be floor-bound to be the point"
+        );
+        assert!(
+            err.to_string()
+                .contains(&format!("{allowance} bytes allowed")),
+            "{err}"
+        );
     }
 
     // ── At the boundary ──────────────────────────────────────────────────────────────
@@ -2386,7 +2431,7 @@ mod tests {
 
         let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
 
-        assert!(err.to_string().contains("directories deep"), "{err}");
+        assert!(err.to_string().contains("path components"), "{err}");
         assert!(
             !dir.path().join("a").exists(),
             "the depth check must run BEFORE create_dir_all, or it charges nothing"
