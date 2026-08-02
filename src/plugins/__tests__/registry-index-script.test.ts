@@ -184,6 +184,8 @@ describe("update-registry-index carries the trust tier (§260 Phase 6)", () => {
     };
     const { indexText, status } = run(VALID_MANIFEST, before);
     expect(status).toBe(1);
-    expect(JSON.parse(indexText) as unknown).toEqual(before);
+    // The RAW bytes, not a reparse (review LOW-7): comparing parsed objects would pass over
+    // a rewrite that only changed formatting, which is still a write the workflow pushes.
+    expect(indexText).toBe(JSON.stringify(before));
   });
 });

@@ -22,6 +22,7 @@ import { readFileSync } from "node:fs";
 
 import { normalizeRevocationList } from "../src/plugins/revocation";
 import { matchesRange } from "../src/plugins/version-range";
+import { label } from "./gha-label";
 
 const path = process.argv[2] ?? "registry/revoked.json";
 
@@ -82,7 +83,12 @@ if (inert.length > 0) {
     `⚠ ${path}: ${inert.length} entry/entries matched none of the probe versions — check the bounds:`,
   );
   for (const entry of inert) {
-    console.warn(`    ${entry.id}: ${JSON.stringify(entry.versions)}`);
+    // ‼️ `label`, not the raw id (security review, HIGH-2). This line predates the
+    // registry's CI and only ever read a first-party file; the new `validate.yml` points
+    // it at a PR-controlled `revoked.json`. A newline plus `::error title=…::` in an id
+    // wrote a forged annotation on a job that EXITS 0, and `::stop-commands::` silenced
+    // every genuine one after it.
+    console.warn(`    ${label(entry.id)}: ${JSON.stringify(entry.versions)}`);
   }
 }
 

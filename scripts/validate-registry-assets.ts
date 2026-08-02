@@ -16,30 +16,69 @@
  * gate. The second is the worse one: an operator who pasted a stale checksum sees a healthy
  * index and a stream of users reporting that a plugin "won't install".
  *
+ * ‼️ THE HARD PART IS RESOLVING THE URL THE WAY THE SERVER WILL. A gate that hashes a
+ * different file than the one users download is worse than no gate, because it reports
+ * success. See `resolveInRegistry` — the first version of this script was bypassable, and
+ * the bypass was verified against production GitHub Pages.
+ *
  * Run: npx tsx scripts/validate-registry-assets.ts <registry-root> [--base-url URL]
  *
  * `<registry-root>` is a checkout of the registry repo — the directory holding `index.json`
  * and `plugins/`.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, normalize, resolve, sep } from "node:path";
 
 import { label } from "./gha-label";
 
 /** Where the registry serves from. An entry pointing elsewhere is refused; see below. */
 const DEFAULT_BASE_URL = "https://sayinel.github.io/baram-plugins/";
 
-const args = process.argv.slice(2);
-const baseFlag = args.indexOf("--base-url");
-const baseUrl = (
-  baseFlag >= 0 ? (args[baseFlag + 1] ?? DEFAULT_BASE_URL) : DEFAULT_BASE_URL
-).replace(/\/*$/, "/");
-const root = resolve(args.find((a) => !a.startsWith("--")) ?? ".");
+/**
+ * ‼️ A REAL FLAG LOOP, not `args.find((a) => !a.startsWith("--"))` (review LOW-2).
+ *
+ * That predicate matched the FLAG'S VALUE when the flag came first, so
+ * `--base-url https://x/ ./registry` took the URL as the registry root and failed with a
+ * nonsense ENOENT. It fails closed, and `plugin-release.yml` happens to pass the positional
+ * first — but `npm run validate:registry-assets` takes its arguments from whoever calls it,
+ * and nothing said the order was load-bearing.
+ */
+function parseArgs(argv: string[]): { baseUrl: string; root: string } {
+  let baseUrl = DEFAULT_BASE_URL;
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--base-url") {
+      const value = argv[i + 1];
+      if (value === undefined) {
+        // Falling back to the default silently would mean a caller who asked for a
+        // different registry got this one, checked, and was told it was fine.
+        console.error("✗ --base-url given with no value");
+        process.exit(1);
+      }
+      baseUrl = value;
+      i += 1;
+    } else if (arg.startsWith("--")) {
+      console.error(`✗ unknown flag ${label(arg)}`);
+      process.exit(1);
+    } else {
+      positional.push(arg);
+    }
+  }
+  return {
+    baseUrl: baseUrl.replace(/\/*$/u, "/"),
+    root: resolve(positional[0] ?? "."),
+  };
+}
+
+const { baseUrl, root } = parseArgs(process.argv.slice(2));
 const indexPath = join(root, "index.json");
 
 const errors: string[] = [];
 const warnings: string[] = [];
+/** Entries this script could not judge, so the summary cannot imply that it did. */
+let unchecked = 0;
 
 function fail(message: string): never {
   console.error(`✗ ${indexPath}: ${message}`);
@@ -48,9 +87,15 @@ function fail(message: string): never {
 
 let raw: unknown;
 try {
-  raw = JSON.parse(readFileSync(indexPath, "utf8"));
+  raw = JSON.parse(readFileSync(indexPath, "utf8")) as unknown;
 } catch (err) {
-  fail(`not valid JSON — ${String(err)}`);
+  // Labelled: Node embeds a snippet of the offending input in `SyntaxError.message`
+  // (review LOW-10), and this runs inside GitHub Actions.
+  fail(`not valid JSON — ${label(String(err))}`);
+}
+
+if (typeof raw !== "object" || raw === null) {
+  fail("not a JSON object — the app cannot read this as an index at all");
 }
 
 const plugins = (raw as { plugins?: unknown }).plugins;
@@ -58,7 +103,102 @@ if (!Array.isArray(plugins)) {
   fail("no `plugins` array — the app cannot read this as an index at all");
 }
 
-/** Archives an entry claimed, so orphans can be reported afterwards. */
+/**
+ * The registry-relative path this URL will actually be served from, or a refusal.
+ *
+ * ‼️ PERCENT-DECODING IS THE WHOLE POINT (security review, HIGH-3). GitHub Pages decodes
+ * before it resolves, and the first version of this script sliced the RAW url and handed it
+ * to `join()`. Verified against production:
+ *
+ * ```text
+ * GET /plugins/baram-word-count-2%2e0%2e0.zip  → 200   (%2e decoded to ".")
+ * GET /plugins/%2e%2e/index.json               → 200   (traversal resolved)
+ * ```
+ *
+ * So an entry could name `x-1.0.0%2ezip` — a benign file this script hashed — while every
+ * user downloaded `x-1.0.0.zip`, a different file entirely. Reproduced at exit 0 against
+ * the shipped script before this fix; the literal-`..` check missed it too.
+ *
+ * A URL not already in canonical form is REFUSED rather than normalised: if two spellings
+ * reach the same file, this script and the server can disagree about which file that is,
+ * and a gate cannot be built on that.
+ */
+function resolveInRegistry(
+  url: string,
+): { error: string } | { relative: string } {
+  let parsed: URL;
+  let base: URL;
+  try {
+    parsed = new URL(url);
+    base = new URL(baseUrl);
+  } catch {
+    return { error: `downloadUrl ${label(JSON.stringify(url))} is not a URL` };
+  }
+  if (
+    parsed.origin !== base.origin ||
+    !parsed.pathname.startsWith(base.pathname)
+  ) {
+    // ‼️ AN ERROR, not a warning, and the reasoning is about what a gate can promise. An
+    // archive hosted elsewhere cannot be hashed here, so admitting one would mean this
+    // script reports success over an entry it never checked — the silent-pass shape every
+    // other gate in this repo is written against.
+    //
+    // It is also a policy statement worth making explicit: `plugin-release.yml` publishes
+    // every archive into the registry's own Pages, so an off-registry URL today means a
+    // hand-edited entry. ‼️And it is enforced ONLY here — the app's `validate_http_url`
+    // checks the SCHEME and accepts any host — so this refusal is currently the only thing
+    // anywhere that says where a plugin may come from.
+    return {
+      error:
+        `downloadUrl ${label(JSON.stringify(url))} is not under ${baseUrl} — ` +
+        "the archive cannot be verified here, so publishing it would mean shipping an " +
+        "entry no gate has ever checked",
+    };
+  }
+  if (parsed.search !== "" || parsed.hash !== "") {
+    return {
+      error:
+        `downloadUrl ${label(JSON.stringify(url))} carries a query or fragment, so the ` +
+        "path actually served is ambiguous",
+    };
+  }
+  const encoded = parsed.pathname.slice(base.pathname.length);
+  let relative: string;
+  try {
+    relative = decodeURIComponent(encoded);
+  } catch {
+    return {
+      error: `downloadUrl ${label(JSON.stringify(url))} has invalid percent-encoding`,
+    };
+  }
+  // Canonical form only. `%2e` decodes to `.` and `encodeURI(".")` is `.`, so a URL that
+  // spelled it the encoded way fails here — which is exactly the bypass above.
+  if (encodeURI(relative) !== encoded) {
+    return {
+      error:
+        `downloadUrl ${label(JSON.stringify(url))} is percent-encoded in a form the server ` +
+        "decodes differently — write the path literally so this can check the file users get",
+    };
+  }
+  if (
+    relative === "" ||
+    relative !== normalize(relative) ||
+    relative.startsWith("/")
+  ) {
+    return {
+      error: `downloadUrl ${label(JSON.stringify(url))} does not name a file inside the registry`,
+    };
+  }
+  const file = resolve(root, relative);
+  if (!file.startsWith(resolve(root) + sep)) {
+    return {
+      error: `downloadUrl ${label(JSON.stringify(url))} resolves outside the registry`,
+    };
+  }
+  return { relative };
+}
+
+/** Archives an entry claimed, canonical, so orphans can be reported afterwards. */
 const referenced = new Set<string>();
 
 plugins.forEach((value, position) => {
@@ -69,43 +209,48 @@ plugins.forEach((value, position) => {
   const url = entry.downloadUrl;
   const checksum = entry.checksum;
   if (typeof url !== "string" || typeof checksum !== "string") {
-    // `validate-index.ts` owns the type table and says this far better. Skipping rather
-    // than repeating it keeps one message per defect: the two scripts run together.
+    // `validate-index.ts` owns the type table and says this far better, so the complaint is
+    // left to it — but the entry is COUNTED, because "✓ 0 archive(s) present and matching"
+    // over an index of nothing but unreadable entries reads as a verdict (review MEDIUM-1).
+    // The two run together; this one must not imply it checked what it skipped.
+    unchecked += 1;
     return;
   }
 
-  if (!url.startsWith(baseUrl)) {
-    // ‼️ AN ERROR, not a warning, and the reasoning is about what a gate can promise. An
-    // archive hosted elsewhere cannot be hashed here, so admitting one would mean this
-    // script reports success over an entry it never checked — the silent-pass shape every
-    // other gate in this repo is written to avoid.
-    //
-    // It is also a policy statement worth making explicit: `plugin-release.yml` publishes
-    // every archive into the registry's own Pages, so an off-registry URL today means a
-    // hand-edited entry. If self-hosted plugins ever become a supported model, this is the
-    // line that has to change, and it should change deliberately.
-    errors.push(
-      `${where}: downloadUrl ${label(JSON.stringify(url))} is not under ${baseUrl} — ` +
-        "the archive cannot be verified here, so publishing it would mean shipping an " +
-        "entry no gate has ever checked",
-    );
+  const resolved = resolveInRegistry(url);
+  if ("error" in resolved) {
+    errors.push(`${where}: ${resolved.error}`);
     return;
   }
-
-  const relative = url.slice(baseUrl.length);
-  if (relative === "" || relative.includes("..")) {
-    errors.push(
-      `${where}: downloadUrl ${label(JSON.stringify(url))} does not name a file inside the registry`,
-    );
-    return;
-  }
+  const { relative } = resolved;
+  // ‼️ EVERY message below prints `shown`, never `relative` (review HIGH-1). `relative`
+  // comes straight out of `downloadUrl`, so it is exactly as attacker-controlled as the id
+  // — and it was the one field this file printed raw, in the very script whose need for a
+  // sanitizer is why `gha-label.ts` was extracted. A newline plus `::error title=…::` in a
+  // downloadUrl wrote a forged annotation, and `::stop-commands::` silenced the real ones.
+  const shown = label(relative);
   referenced.add(relative);
 
   const file = join(root, relative);
-  if (!existsSync(file) || !statSync(file).isFile()) {
+  // `lstat`, not `stat` (review MEDIUM-3): a symlink is FOLLOWED by both `stat` and
+  // `readFileSync`, so the script would hash the target while Pages serves — or 404s on —
+  // the link itself. Hashing a different file than users get is the failure this script
+  // exists to prevent, so a link is refused rather than resolved. Also rejects a directory.
+  if (!lstatSync(file, { throwIfNoEntry: false })?.isFile()) {
     errors.push(
-      `${where}: ${relative} is not in the registry — the app would 404 on every install ` +
-        "of this entry, after the marketplace has already offered it",
+      `${where}: ${shown} is not a regular file in the registry — the app would 404 on ` +
+        "every install of this entry, after the marketplace has already offered it",
+    );
+    return;
+  }
+  // Case, checked explicitly: macOS and Windows resolve `W.ZIP` to `w.zip` and GitHub Pages
+  // does not, so a maintainer running this locally would get a green over a URL that 404s
+  // in production (review LOW-10). CI is Linux, but the npm script is for people.
+  const basename = relative.slice(relative.lastIndexOf("/") + 1);
+  if (!readdirSync(dirname(file)).includes(basename)) {
+    errors.push(
+      `${where}: ${shown} differs from the file on disk only by case — the registry is ` +
+        "served case-sensitively, so this entry would 404 for every user",
     );
     return;
   }
@@ -113,7 +258,7 @@ plugins.forEach((value, position) => {
   const actual = createHash("sha256").update(readFileSync(file)).digest("hex");
   if (actual !== checksum) {
     errors.push(
-      `${where}: ${relative} hashes to ${actual} but the entry declares ${label(checksum)} — ` +
+      `${where}: ${shown} hashes to ${actual} but the entry declares ${label(checksum)} — ` +
         "the app verifies this before extracting, so every install fails and the user is " +
         "told the download was corrupted",
     );
@@ -128,25 +273,29 @@ plugins.forEach((value, position) => {
  * forever and the real case drowns in a decade of `-1.0.0.zip`. A superseded archive is
  * normal: the id is still listed, at a newer version.
  *
- * What is worth saying is that a plugin removed from the index — the withdrawal path, the
- * one used for `baram-ai-summary` — keeps serving its archive by direct URL. Nothing in the
- * app can reach it (the index is the only way in), but a trusted-tier plugin pulled for
- * cause is still one `curl` away, and an operator should decide that on purpose.
+ * What is worth saying is that a plugin removed from the index keeps serving its archive by
+ * direct URL. Nothing in the app can reach it — the index is the only way in — but a
+ * trusted-tier plugin pulled for cause is still one `curl` away.
  *
- * Matched by longest id prefix rather than by parsing `<id>-<version>.zip`: ids may contain
- * hyphens, so splitting on the last one guesses wrong for `baram-word-count`.
+ * ‼️ The remainder must look like a VERSION (review MEDIUM-4). Matching a bare `${id}-`
+ * prefix meant any listed id silenced every withdrawn archive whose name it prefixed —
+ * `baram-word-count` hiding a withdrawn `baram-word-count-pro-1.0.0.zip`, i.e. hiding
+ * exactly the case this exists for. An earlier `.sort()` by descending id length was dead
+ * code: `.some()` short-circuits, so its result never depended on order.
  */
 const indexedIds = plugins
-  .map((p) => (p as { id?: unknown }).id)
-  .filter((id): id is string => typeof id === "string" && id !== "")
-  .sort((a, b) => b.length - a.length);
+  .map((p) => (p as null | { id?: unknown })?.id)
+  .filter((id): id is string => typeof id === "string" && id !== "");
 
 const pluginsDir = join(root, "plugins");
 if (existsSync(pluginsDir)) {
   for (const name of readdirSync(pluginsDir).sort()) {
     const relative = `plugins/${name}`;
     if (referenced.has(relative) || !name.endsWith(".zip")) continue;
-    const superseded = indexedIds.some((id) => name.startsWith(`${id}-`));
+    const superseded = indexedIds.some(
+      (id) =>
+        name.startsWith(`${id}-`) && /^\d/u.test(name.slice(id.length + 1)),
+    );
     if (!superseded) {
       warnings.push(
         `${label(relative)} belongs to no listed plugin — a withdrawn plugin's archive ` +
@@ -154,6 +303,10 @@ if (existsSync(pluginsDir)) {
       );
     }
   }
+} else {
+  warnings.push(
+    "no plugins/ directory — nothing scanned for withdrawn archives",
+  );
 }
 
 for (const warning of warnings) console.warn(`⚠ ${indexPath}: ${warning}`);
@@ -166,5 +319,8 @@ if (errors.length > 0) {
 
 console.log(
   `✓ ${indexPath}: ${referenced.size} archive(s) present and matching` +
+    (unchecked > 0
+      ? ` (${unchecked} entry/entries not checkable here — see validate-index.ts)`
+      : "") +
     (warnings.length > 0 ? ` (${warnings.length} warning(s))` : ""),
 );
