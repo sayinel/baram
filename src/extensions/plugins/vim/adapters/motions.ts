@@ -28,6 +28,9 @@ interface CursorLine {
   start: number;
 }
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
 /** Carried table-walk state: one findCell at entry, local rect expansion
@@ -143,6 +146,18 @@ function collectLines(state: EditorState): CursorLine[] {
   return lines;
 }
 
+/** Index of the unit whose start is the greatest one <= pos. */
+function columnOf(starts: number[], pos: number): number {
+  let column = 0;
+  for (let i = 0; i < starts.length; i++) {
+    if (starts[i] <= pos) column = i;
+    else break;
+  }
+  return column;
+}
+
+// ── the line sequence ──────────────────────────────────────────────────────
+
 /** Content start of the first textblock inside the node at `pos`. */
 function firstTextblockIn(state: EditorState, pos: number): null | number {
   const node = state.doc.nodeAt(pos);
@@ -155,8 +170,6 @@ function firstTextblockIn(state: EditorState, pos: number): null | number {
   });
   return entry;
 }
-
-// ── the line sequence ──────────────────────────────────────────────────────
 
 function initTableWalk(state: EditorState, pos: number): null | TableWalk {
   const $pos = state.doc.resolve(pos);
@@ -198,20 +211,19 @@ function lineSpanAt(state: EditorState, pos: number): CursorLine {
   return span ? { end: span.to, start: span.from } : { end: pos, start: pos };
 }
 
-/** The start of the `column`-th unit in a line, clamped to the LAST unit
- *  start — never the end boundary, never inside a cluster (review S3-R1). */
-function posAtUnitColumn(
-  state: EditorState,
-  line: CursorLine,
-  column: number,
-): number {
-  let p = line.start;
-  for (let i = 0; i < column; i++) {
-    const next = nextUnitBoundary(state, p);
-    if (next === p || next >= line.end) break;
-    p = next;
+/** Absolute start positions of every cursor unit in a line, from one
+ *  segmentation pass. Inline leaves render as a 1-char placeholder, which
+ *  counts as one unit of length 1 — exactly their nodeSize. */
+function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
+  if (line.end <= line.start) return [];
+  const text = state.doc.textBetween(line.start, line.end, undefined, "\uFFFC");
+  const starts: number[] = [];
+  let offset = 0;
+  for (const seg of graphemeSegmenter.segment(text)) {
+    starts.push(line.start + offset);
+    offset += seg.segment.length;
   }
-  return p;
+  return starts;
 }
 
 /** The landed cell's rect, expanded from a known slot — O(span), where
@@ -256,28 +268,17 @@ function segmentSpanAt(
   );
 }
 
-/** How many units sit between `start` and `pos` (both unit starts). */
-function unitColumn(state: EditorState, start: number, pos: number): number {
-  let column = 0;
-  let p = start;
-  while (p < pos) {
-    const next = nextUnitBoundary(state, p);
-    if (next === p) break;
-    p = next;
-    column++;
-  }
-  return column;
-}
-
 /**
- * Vertical motion. Each of the |delta| steps applies the CURRENT line's
- * unit column and feeds the clamped landing into the next step — by
- * construction `3j` is exactly `j;j;j`, intermediate clamps included
- * (review S3-R4; a persistent goal column à la vim's curswant is a
- * documented Phase 2 refinement). Walk state is carried: the generic walk
- * keeps its line index, the table walk keeps its map/rect and expands the
- * landed cell's rect locally instead of re-running findCell (review S3-R4:
- * both re-scans made 9999j quadratic).
+ * Vertical motion. Each of the |delta| steps lands on the target line's
+ * unit at the CARRIED column, and the clamped landing column feeds the next
+ * step — semantically identical to re-deriving the column from the landed
+ * position (the landing IS that unit's start), so `3j` stays exactly
+ * `j;j;j`, but without re-walking units through doc.resolve: unit starts
+ * come from ONE line-local segmentation pass per visited line (review
+ * S3-R5: per-step unitColumn walks made 3999j from column 99 take ~10s).
+ * A persistent goal column (vim's curswant) remains a Phase 2 refinement.
+ * Walk state is carried too: line index outside tables, map/rect inside
+ * (review S3-R4).
  */
 function verticalTarget(
   state: EditorState,
@@ -288,19 +289,15 @@ function verticalTarget(
   if (lines.length === 0) return pos;
   const direction: -1 | 1 = delta > 0 ? 1 : -1;
 
+  const originStarts = lineUnitStarts(state, lineSpanAt(state, pos));
+  let column = columnOf(originStarts, pos);
+
   let p = pos;
   let lineIndex: null | number = null;
   let walk: null | TableWalk = null;
   let walkResolved = false;
 
   for (let i = 0; i < Math.abs(delta); i++) {
-    const span = lineSpanAt(state, p);
-    const column = unitColumn(
-      state,
-      span.start,
-      Math.min(Math.max(p, span.start), span.end),
-    );
-
     if (!walkResolved) {
       walk = initTableWalk(state, p);
       walkResolved = true;
@@ -329,7 +326,15 @@ function verticalTarget(
       walkResolved = false; // the landing may have entered a table
     }
 
-    p = posAtUnitColumn(state, lineSpanAt(state, landed), column);
+    const starts = lineUnitStarts(state, lineSpanAt(state, landed));
+    if (starts.length === 0) {
+      p = landed;
+      column = 0;
+    } else {
+      const clamped = Math.min(column, starts.length - 1);
+      p = starts[clamped];
+      column = clamped;
+    }
   }
   return p;
 }

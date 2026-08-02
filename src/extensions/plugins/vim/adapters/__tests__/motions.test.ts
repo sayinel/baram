@@ -346,3 +346,25 @@ describe("impl review S3-R4 pins", () => {
     },
   );
 });
+
+describe("impl review S3-R5 pin — non-zero column vertical cost", () => {
+  it(
+    "3999j from column 99 stays within the latency budget",
+    { timeout: 30_000 }, // fixture parse under worker load; walk has its own budget
+    () => {
+      const row = "x".repeat(120);
+      const paras = Array.from({ length: 4000 }, () => `<p>${row}</p>`).join(
+        "",
+      );
+      const editor = makeEditor(paras);
+      const first = editor.state.doc.resolve(1);
+      const from = first.start() + 99; // column 99
+      const t0 = performance.now();
+      const target = resolveMotion(editor.state, from, "lineDown", 3999);
+      expect(performance.now() - t0).toBeLessThan(250);
+      // Same column at the destination — carry must not drift.
+      const $t = editor.state.doc.resolve(target);
+      expect($t.parentOffset).toBe(99);
+    },
+  );
+});
