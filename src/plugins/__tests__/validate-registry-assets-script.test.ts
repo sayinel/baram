@@ -53,6 +53,7 @@ function assertNoWorkflowCommand(output: string): void {
 function build(
   entries: unknown,
   archives: string[] = ["baram-word-count-1.0.0.zip"],
+  revoked?: string | unknown[],
 ): string {
   const dir = mkdtempSync(join(tmpdir(), "baram-registry-"));
   mkdirSync(join(dir, "plugins"));
@@ -61,6 +62,16 @@ function build(
     join(dir, "index.json"),
     JSON.stringify({ plugins: entries, updatedAt: "2026-08-02" }),
   );
+  // Absent by default, which is what every pre-existing case wants: no acknowledgements,
+  // so an orphan still warns. A raw string writes the file verbatim, for the unreadable case.
+  if (typeof revoked === "string") {
+    writeFileSync(join(dir, "revoked.json"), revoked);
+  } else if (revoked !== undefined) {
+    writeFileSync(
+      join(dir, "revoked.json"),
+      JSON.stringify({ revoked, version: 1 }),
+    );
+  }
   return dir;
 }
 
@@ -69,6 +80,17 @@ function exec(args: string[]): { output: string; status: null | number } {
   return {
     output: `${result.stdout}${result.stderr}`,
     status: result.status,
+  };
+}
+
+/** A well-formed `unlisted` withdrawal, so each case can vary one field. */
+function revocation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "baram-ai-summary",
+    reason: "withdrawn",
+    severity: "unlisted",
+    versions: { lt: "2.0.0" },
+    ...overrides,
   };
 }
 
@@ -172,6 +194,92 @@ describe("validate-registry-assets", () => {
     expect(status).toBe(0);
     expect(output).toContain("baram-word-count-pro-2.0.0.zip");
     expect(output).toContain("belongs to no listed plugin");
+  });
+
+  it("drops the warning to a notice once revoked.json records the withdrawal", () => {
+    // ‼️ The warning exists to force a DECISION about an archive nobody has decided about.
+    // Once the decision is written down one file over, repeating it every run is the alert
+    // fatigue this scan's own superseded rule was built to avoid.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0.zip"],
+        [revocation()],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("baram-ai-summary-1.0.0.zip");
+    expect(output).toContain("recorded in");
+    expect(output).toContain("1 acknowledged withdrawal(s)");
+    // Still SAID, just not as a warning: the archive is reachable and that stays visible.
+    expect(output).not.toContain("warning(s)");
+    expect(output).not.toContain("no revoked.json entry");
+  });
+
+  it("keeps warning when the revocation does not cover the archive's version", () => {
+    // ‼️ "The id appears somewhere in the list" is not acknowledgement. An entry bounded
+    // `lt: 2.0.0` says nothing about a 3.0.0 archive sitting in the directory, and the
+    // whole point of the sandboxed-port bound is that later majors are NOT withdrawn.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-3.0.0.zip"],
+        [revocation()],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("baram-ai-summary-3.0.0.zip");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("does not let a revoked id silence a DIFFERENT plugin's withdrawn archive", () => {
+    // The prefix-hiding defect (review MEDIUM-4) now has a second door: acknowledgement.
+    // `baram-word` being revoked must not vouch for `baram-word-count-pro-*`, so both the
+    // superseded check and this one go through the same `archiveBelongsTo`.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-word-count-pro-2.0.0.zip"],
+        [revocation({ id: "baram-word", versions: "*" })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("baram-word-count-pro-2.0.0.zip");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("treats an archive two revoked ids both claim as acknowledged by neither", () => {
+    // ‼️ `a` and `a-1` both satisfy the prefix rule for `a-1-2.0.0.zip`, and nothing in the
+    // name says which plugin it is. Picking one would let whichever sorts first vouch for
+    // an archive that may not be its own; an ambiguous key must resolve to nothing.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "a-1-2.0.0.zip"],
+        [
+          revocation({ id: "a", versions: "*" }),
+          revocation({ id: "a-1", versions: "*" }),
+        ],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("a-1-2.0.0.zip");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("falls back to warning, loudly, when revoked.json cannot be read", () => {
+    // An unreadable list must never read as "everything is accounted for" — that turns one
+    // corrupt file into blanket silence over precisely the archives this scan is for.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0.zip"],
+        "{ not json",
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("revoked.json is present but unreadable");
+    expect(output).toContain("no revoked.json entry");
   });
 
   it("leaves type complaints to validate-index rather than repeating them", () => {

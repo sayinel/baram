@@ -30,6 +30,10 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 
+import {
+  normalizeRevocationList,
+  revocationFor,
+} from "../src/plugins/revocation";
 import { label } from "./gha-label";
 
 /** Where the registry serves from. An entry pointing elsewhere is refused; see below. */
@@ -77,6 +81,8 @@ const indexPath = join(root, "index.json");
 
 const errors: string[] = [];
 const warnings: string[] = [];
+/** Withdrawals `revoked.json` already accounts for — said once, not warned about forever. */
+const notices: string[] = [];
 /** Entries this script could not judge, so the summary cannot imply that it did. */
 let unchecked = 0;
 
@@ -282,26 +288,87 @@ plugins.forEach((value, position) => {
  * `baram-word-count` hiding a withdrawn `baram-word-count-pro-1.0.0.zip`, i.e. hiding
  * exactly the case this exists for. An earlier `.sort()` by descending id length was dead
  * code: `.some()` short-circuits, so its result never depended on order.
+ *
+ * ‼️ And the warning defers to `revoked.json`. It exists to force a DECISION about an
+ * archive nobody has decided about — so once the decision is written down one file over, a
+ * warning that keeps firing every run for that same archive is the thing this file's own
+ * design argument warns against: an alert shown for the settled cases is worth ignoring by
+ * the time an unsettled one appears.
  */
+const archiveBelongsTo = (name: string, id: string) =>
+  name.startsWith(`${id}-`) && /^\d/u.test(name.slice(id.length + 1));
+
 const indexedIds = plugins
   .map((p) => (p as null | { id?: unknown })?.id)
   .filter((id): id is string => typeof id === "string" && id !== "");
+
+/**
+ * The withdrawal list, read with the SHIPPING parser so this agrees with the app about
+ * which entries exist and which versions each one covers.
+ *
+ * Null means "no acknowledgements", which makes every orphan warn — the loud direction.
+ * An unreadable list must never read as "everything is accounted for": that would turn one
+ * corrupt file into blanket silence over exactly the archives this scan is for.
+ */
+const revokedPath = join(root, "revoked.json");
+const revocations = ((): null | ReturnType<typeof normalizeRevocationList> => {
+  if (!existsSync(revokedPath)) return null;
+  try {
+    return normalizeRevocationList(
+      JSON.parse(readFileSync(revokedPath, "utf8")),
+    );
+  } catch {
+    return null;
+  }
+})();
+if (existsSync(revokedPath) && revocations === null) {
+  warnings.push(
+    "revoked.json is present but unreadable, so no withdrawal below counts as acknowledged",
+  );
+}
+
+/**
+ * The id whose revocation accounts for this archive, or null.
+ *
+ * Two refusals, both deliberate:
+ *
+ * - the entry must cover the archive's VERSION, via the same `revocationFor` the app uses.
+ *   An entry bounded `lt: 2.0.0` says nothing about a `-3.0.0.zip` sitting in the directory,
+ *   and treating "the id appears somewhere in the list" as acknowledgement would silence it.
+ * - an ambiguous name resolves to NOTHING. Ids `a` and `a-1` both claim `a-1-2.0.0.zip`
+ *   under the prefix rule, and there is no way to tell which plugin the file is. Picking one
+ *   would let whichever sorts first speak for an archive that is not its own.
+ */
+function acknowledgedBy(name: string): null | string {
+  if (revocations === null) return null;
+  const claimants = [...new Set(revocations.revoked.map((e) => e.id))].filter(
+    (id) => archiveBelongsTo(name, id),
+  );
+  if (claimants.length !== 1) return null;
+  const id = claimants[0];
+  const version = name.slice(id.length + 1, name.length - ".zip".length);
+  return revocationFor(id, version, revocations) === null ? null : id;
+}
 
 const pluginsDir = join(root, "plugins");
 if (existsSync(pluginsDir)) {
   for (const name of readdirSync(pluginsDir).sort()) {
     const relative = `plugins/${name}`;
     if (referenced.has(relative) || !name.endsWith(".zip")) continue;
-    const superseded = indexedIds.some(
-      (id) =>
-        name.startsWith(`${id}-`) && /^\d/u.test(name.slice(id.length + 1)),
-    );
-    if (!superseded) {
-      warnings.push(
-        `${label(relative)} belongs to no listed plugin — a withdrawn plugin's archive ` +
-          "stays downloadable by direct URL",
+    if (indexedIds.some((id) => archiveBelongsTo(name, id))) continue;
+    const acknowledged = acknowledgedBy(name);
+    if (acknowledged !== null) {
+      notices.push(
+        `${label(relative)} belongs to ${label(acknowledged)}, withdrawn and recorded in ` +
+          "revoked.json — the archive stays downloadable by direct URL, as decided",
       );
+      continue;
     }
+    warnings.push(
+      `${label(relative)} belongs to no listed plugin and no revoked.json entry — a ` +
+        "withdrawn plugin's archive stays downloadable by direct URL, and nothing here " +
+        "records that anyone decided that",
+    );
   }
 } else {
   warnings.push(
@@ -309,6 +376,7 @@ if (existsSync(pluginsDir)) {
   );
 }
 
+for (const notice of notices) console.log(`· ${indexPath}: ${notice}`);
 for (const warning of warnings) console.warn(`⚠ ${indexPath}: ${warning}`);
 
 if (errors.length > 0) {
@@ -321,6 +389,9 @@ console.log(
   `✓ ${indexPath}: ${referenced.size} archive(s) present and matching` +
     (unchecked > 0
       ? ` (${unchecked} entry/entries not checkable here — see validate-index.ts)`
+      : "") +
+    (notices.length > 0
+      ? ` (${notices.length} acknowledged withdrawal(s))`
       : "") +
     (warnings.length > 0 ? ` (${warnings.length} warning(s))` : ""),
 );
