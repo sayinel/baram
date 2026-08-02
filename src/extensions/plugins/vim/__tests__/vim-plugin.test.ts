@@ -352,3 +352,33 @@ describe("S3 — motions and visual selection through the plugin", () => {
     expect(vim(editor).core.visual).not.toBeNull();
   });
 });
+
+describe("impl review S3-R2 — atom visual rendering", () => {
+  it("v on a block atom renders a NodeSelection, and d deletes the atom", () => {
+    const editor = makeEditor();
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "up", type: "text" }], type: "paragraph" },
+        { attrs: { latex: "x" }, type: "mathBlock" },
+        { content: [{ text: "dn", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "j"); // NodeSelection on the math block
+    key(editor, "v");
+    const sel = editor.state.selection;
+    expect(sel.constructor.name).toBe("NodeSelection");
+    expect(sel.from).toBe(
+      sel.to - 1 - editor.state.doc.nodeAt(sel.from)!.content.size,
+    );
+    key(editor, "d");
+    let hasMath = false;
+    editor.state.doc.descendants((n) => {
+      if (n.type.name === "mathBlock") hasMath = true;
+      return true;
+    });
+    expect(hasMath).toBe(false);
+  });
+});

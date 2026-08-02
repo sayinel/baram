@@ -364,11 +364,24 @@ function vimCursor(state: EditorState): number {
   return sel instanceof NodeSelection ? sel.from : sel.head;
 }
 
-/** Visual rendering: TextSelection.between snaps atom-boundary endpoints to
- *  valid inline positions; d/y precision comes from visualBounds, not from
- *  the rendered selection. */
+/** Visual rendering. A range that is exactly one selectable block atom
+ *  becomes a NodeSelection — TextSelection.between would snap both
+ *  non-inline endpoints to the SAME caret and hide what d/y is about to
+ *  destroy (review S3-R2). Mixed text+atom ranges keep the between() snap;
+ *  exact atom-inclusive rendering is the S5 decoration work. d/y precision
+ *  always comes from visualBounds, never from the rendered selection. */
 function visualSelection(state: EditorState, visual: VisualState): Selection {
   const { from, to } = visualBounds(state, visual);
+  const $from = state.doc.resolve(from);
+  const atom = $from.parent.isTextblock ? null : $from.nodeAfter;
+  if (
+    atom &&
+    (atom.isAtom || atom.isLeaf) &&
+    from + atom.nodeSize === to &&
+    NodeSelection.isSelectable(atom)
+  ) {
+    return NodeSelection.create(state.doc, from);
+  }
   return TextSelection.between(state.doc.resolve(from), state.doc.resolve(to));
 }
 

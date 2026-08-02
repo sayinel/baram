@@ -224,3 +224,25 @@ describe("impl review S3-R1 pins", () => {
     expect(performance.now() - t0).toBeLessThan(250);
   });
 });
+
+describe("impl review S3-R2 pins", () => {
+  it("j from a rowspan cell lands below the SPAN, not back on itself", () => {
+    const editor = makeEditor(
+      '<table><tr><td rowspan="2"><p>aa</p></td><td><p>bb</p></td></tr><tr><td><p>cc</p></td></tr><tr><td><p>dd</p></td><td><p>ee</p></td></tr></table>',
+    );
+    const a = posOfText(editor, "aa");
+    const target = resolveMotion(editor.state, a, "lineDown", 1);
+    expect(editor.state.doc.resolve(target).parent.textContent).toBe("dd");
+  });
+
+  it("counted b near EOF carries the line index — no per-step rescan", () => {
+    const paras = Array.from({ length: 6000 }, (_, i) => `<p>w${i} x</p>`).join(
+      "",
+    );
+    const editor = makeEditor(paras);
+    const nearEnd = posOfText(editor, "w5999");
+    const t0 = performance.now();
+    resolveMotion(editor.state, nearEnd, "wordBack", 999);
+    expect(performance.now() - t0).toBeLessThan(300);
+  });
+});

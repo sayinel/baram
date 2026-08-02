@@ -86,26 +86,10 @@ export function resolveMotion(
     }
     case "lineUp":
       return verticalTarget(state, pos, -count);
-    case "wordBack": {
-      const lines = collectLines(state);
-      let p = pos;
-      for (let i = 0; i < count; i++) {
-        const prev = wordBackOnce(state, lines, p);
-        if (prev === p) break;
-        p = prev;
-      }
-      return p;
-    }
-    case "wordForward": {
-      const lines = collectLines(state);
-      let p = pos;
-      for (let i = 0; i < count; i++) {
-        const next = wordForwardOnce(state, lines, p);
-        if (next === p) break;
-        p = next;
-      }
-      return p;
-    }
+    case "wordBack":
+      return wordWalk(state, pos, count, -1);
+    case "wordForward":
+      return wordWalk(state, pos, count, 1);
   }
 }
 
@@ -217,7 +201,10 @@ function tableVertical(
   const map = TableMap.get(table);
   const cellPos = $pos.before(tableDepth + 2);
   const rect = map.findCell(cellPos - tableStart);
-  const targetRow = rect.top + delta;
+  // Span-aware stepping (review S3-R2): a rowspan cell OWNS every row it
+  // covers, so downward motion starts below the span (rect.bottom is
+  // exclusive) — reading rect.top + delta would land back on the same cell.
+  const targetRow = delta > 0 ? rect.bottom - 1 + delta : rect.top + delta;
   if (targetRow < 0 || targetRow >= map.height) return null; // exits the table
 
   const targetCellPos = tableStart + map.map[targetRow * map.width + rect.left];
@@ -276,43 +263,6 @@ function verticalTarget(
 
 // ── words ──────────────────────────────────────────────────────────────────
 
-function wordBackOnce(
-  state: EditorState,
-  lines: CursorLine[],
-  pos: number,
-): number {
-  let index = lineIndexAround(lines, pos);
-  let boundary = pos;
-  while (index >= 0) {
-    const line = lines[index];
-    const starts = wordStartsIn(state, line).filter(
-      (start) => line.start + start < boundary,
-    );
-    if (starts.length > 0) return line.start + starts[starts.length - 1];
-    index--;
-    if (index >= 0) boundary = lines[index].end + 1; // whole previous line
-  }
-  return pos;
-}
-
-function wordForwardOnce(
-  state: EditorState,
-  lines: CursorLine[],
-  pos: number,
-): number {
-  const index = lineIndexAround(lines, pos);
-  const line = lines[index];
-  if (line) {
-    const next = wordStartsIn(state, line).find(
-      (start) => line.start + start > pos,
-    );
-    if (next !== undefined) return line.start + next;
-  }
-  // No further word on this line — the start of the next line (vim w).
-  return index + 1 < lines.length ? lines[index + 1].start : pos;
-}
-
-/** Start offsets (line-relative) of word-like segments in a line. */
 function wordStartsIn(state: EditorState, line: CursorLine): number[] {
   // Leaf placeholder keeps offsets aligned: inline atoms are nodeSize 1.
   const text = state.doc.textBetween(line.start, line.end, undefined, " ");
@@ -321,4 +271,63 @@ function wordStartsIn(state: EditorState, line: CursorLine): number[] {
     if (seg.isWordLike) starts.push(seg.index);
   }
   return starts;
+}
+
+function wordWalk(
+  state: EditorState,
+  pos: number,
+  count: number,
+  direction: -1 | 1,
+): number {
+  // The line index is CARRIED across repetitions and word starts are cached
+  // per line — restarting lineIndexAround every step made counted motions
+  // O(count × lines) (review S3-R2).
+  const lines = collectLines(state);
+  if (lines.length === 0) return pos;
+  const startsCache = new Map<number, number[]>();
+  const startsAt = (index: number): number[] => {
+    let starts = startsCache.get(index);
+    if (!starts) {
+      starts = wordStartsIn(state, lines[index]);
+      startsCache.set(index, starts);
+    }
+    return starts;
+  };
+
+  let index = lineIndexAround(lines, pos);
+  let p = pos;
+
+  for (let i = 0; i < count; i++) {
+    if (direction === 1) {
+      const line = lines[index];
+      const next = startsAt(index).find((start) => line.start + start > p);
+      if (next !== undefined) {
+        p = line.start + next;
+        continue;
+      }
+      if (index + 1 >= lines.length) break;
+      index++;
+      p = lines[index].start; // next line start — vim w
+      continue;
+    }
+
+    // backward: last word start strictly before p, walking lines up.
+    let found = false;
+    let boundary = p;
+    let scan = index;
+    while (scan >= 0) {
+      const line = lines[scan];
+      const starts = startsAt(scan).filter((s) => line.start + s < boundary);
+      if (starts.length > 0) {
+        p = line.start + starts[starts.length - 1];
+        index = scan;
+        found = true;
+        break;
+      }
+      scan--;
+      if (scan >= 0) boundary = lines[scan].end + 1; // whole previous line
+    }
+    if (!found) break;
+  }
+  return p;
 }
