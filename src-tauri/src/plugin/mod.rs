@@ -2184,6 +2184,32 @@ mod tests {
         }
     }
 
+    /// Rewrites the compression-method field of every header in `data`.
+    ///
+    /// The method lives at offset 8 of a local file header (`PK\x03\x04`) and offset 10 of a
+    /// central-directory header (`PK\x01\x02`); both must agree or the reader disagrees with
+    /// itself. Lets a test produce an archive claiming a codec this build does not compile,
+    /// which is exactly what the allowlist has to refuse.
+    fn with_compression_method(mut data: Vec<u8>, method: u16) -> Vec<u8> {
+        let bytes = method.to_le_bytes();
+        let mut patched = 0;
+        for i in 0..data.len().saturating_sub(4) {
+            let offset = match &data[i..i + 4] {
+                b"PK\x03\x04" => 8,
+                b"PK\x01\x02" => 10,
+                _ => continue,
+            };
+            if i + offset + 2 <= data.len() {
+                data[i + offset..i + offset + 2].copy_from_slice(&bytes);
+                patched += 1;
+            }
+        }
+        // One local header + one central-directory header for a single-entry archive. Without
+        // this the test could pass while patching nothing, which is the hollow-guard shape.
+        assert_eq!(patched, 2, "expected to patch both headers");
+        data
+    }
+
     /// Bytes deflate cannot shrink, so the ratio limit stays out of the way.
     ///
     /// The total- and per-file-limit tests need this: zeros compress so well that the RATIO
@@ -2437,23 +2463,21 @@ mod tests {
     /// `alloc_zeroed` aborts rather than unwinding, so `spawn_blocking` cannot even report
     /// it. Every byte bound in this module is downstream of that.
     ///
-    /// Bzip2 stands in for the family here because the crate's WRITER can produce it; the
-    /// mechanism being tested is the allowlist, not any one decoder.
+    /// ‼️ Built by BYTE-PATCHING a Deflated archive to method 14, not by asking the writer.
+    ///
+    /// `CompressionMethod`'s variants are feature-gated, so once `lzma` is not compiled the
+    /// name does not exist to write with — and the earlier version of this test, which used
+    /// `Bzip2`, stopped compiling the moment the decoders were removed. Patching the header
+    /// is also the better test: it produces the shape an attacker actually sends, and it
+    /// keeps working whichever codecs are enabled. The refusal must come from
+    /// `ALLOWED_COMPRESSION`, not from the crate happening to lack a decoder.
     #[test]
     fn refuses_a_compression_method_outside_the_allowlist() {
-        use std::io::Write;
-        let mut buf = std::io::Cursor::new(Vec::<u8>::new());
-        {
-            let mut writer = zip::write::ZipWriter::new(&mut buf);
-            let opts = zip::write::SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Bzip2);
-            writer.start_file("payload.bin", opts).unwrap();
-            writer.write_all(b"harmless content").unwrap();
-            writer.finish().unwrap();
-        }
+        const LZMA: u16 = 14;
+        let data = with_compression_method(zip_of(&[("payload.bin", b"harmless content")]), LZMA);
         let dir = tempfile::tempdir().unwrap();
 
-        let err = extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds()).unwrap_err();
+        let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
 
         assert!(err.to_string().contains("compression method"), "{err}");
         // ‼️ Refused before the entry was touched. If the check ran after the first read the

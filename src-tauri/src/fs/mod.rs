@@ -461,6 +461,61 @@ mod tests {
         res.unwrap();
         assert!(!sub.exists());
     }
+    /// §53 must DEGRADE, not crash, now that only deflate is compiled.
+    ///
+    /// Dropping `zip`'s default features removed the LZMA, PPMd, zstd, xz, bzip2 and AES
+    /// decoders from the binary (#261 — the LZMA one allocates from a number in the archive
+    /// before any byte is produced, and a failed alloc aborts the process). This importer is
+    /// the user-facing consequence: a Notion export is Deflated, but somebody will eventually
+    /// hand it an archive that is not, and the outcome has to be a readable error rather than
+    /// a panic or a hang.
+    #[tokio::test]
+    async fn extract_zip_reports_a_codec_it_no_longer_compiles() {
+        // Deflated on the wire, then the method field rewritten to 14 (LZMA) in both the
+        // local and central headers — a codec this build has no decoder for.
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+        {
+            let mut writer = zip::write::ZipWriter::new(&mut buf);
+            writer
+                .start_file("note.md", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(b"# hello").unwrap();
+            writer.finish().unwrap();
+        }
+        let mut data = buf.into_inner();
+        let mut patched = 0;
+        for i in 0..data.len().saturating_sub(4) {
+            let offset = match &data[i..i + 4] {
+                b"PK\x03\x04" => 8,
+                b"PK\x01\x02" => 10,
+                _ => continue,
+            };
+            data[i + offset..i + offset + 2].copy_from_slice(&14u16.to_le_bytes());
+            patched += 1;
+        }
+        assert_eq!(
+            patched, 2,
+            "both headers must be patched, or this proves nothing"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("export.zip");
+        std::fs::write(&archive, &data).unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let err = extract_zip(archive.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("a codec we do not compile must not silently succeed");
+
+        // An error the user can read, and nothing half-written left behind.
+        assert!(!err.to_string().is_empty());
+        assert!(
+            std::fs::read_dir(&out).unwrap().next().is_none(),
+            "nothing should have been extracted"
+        );
+    }
 }
 
 #[cfg(all(test, unix))]
