@@ -16,7 +16,9 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const pluginInstall = vi.fn();
+const pluginInstallStage = vi.fn();
+const pluginInstallCommit = vi.fn();
+const pluginInstallDiscard = vi.fn();
 const pluginUninstall = vi.fn();
 const getVersion = vi.fn();
 
@@ -28,7 +30,9 @@ vi.mock("../../../plugins/plugin-loader", () => ({
 }));
 vi.mock("../../../ipc/plugin-invoke", () => ({
   pluginFetchRevocations: () => Promise.reject(new Error("offline")),
-  pluginInstall: (...a: unknown[]) => pluginInstall(...a),
+  pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),
+  pluginInstallDiscard: (...a: unknown[]) => pluginInstallDiscard(...a),
+  pluginInstallStage: (...a: unknown[]) => pluginInstallStage(...a),
   pluginUninstall: (...a: unknown[]) => pluginUninstall(...a),
 }));
 vi.mock("../../../ipc/invoke", () => ({
@@ -68,7 +72,9 @@ const ENTRY: RegistryEntry = {
 
 describe("the marketplace version-floor gate (§69)", () => {
   beforeEach(() => {
-    pluginInstall.mockReset();
+    pluginInstallStage.mockReset();
+    pluginInstallCommit.mockReset();
+    pluginInstallDiscard.mockReset().mockResolvedValue(undefined);
     pluginUninstall.mockReset();
     getVersion.mockReset();
     listing = ENTRY;
@@ -91,7 +97,7 @@ describe("the marketplace version-floor gate (§69)", () => {
     // update TO, and without their own version they cannot tell whether they already did.
     expect(usePluginStore.getState().pluginErrors.demo).toContain("9.0.0");
     expect(usePluginStore.getState().pluginErrors.demo).toContain("0.5.1");
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 
   it("refuses before asking for consent", async () => {
@@ -117,24 +123,21 @@ describe("the marketplace version-floor gate (§69)", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
-  it("refuses a DOWNLOAD whose floor the listing under-declared, and rolls back", async () => {
+  it("refuses a DOWNLOAD whose floor the listing under-declared, and discards it", async () => {
     // The entry is a claim; the archive is the truth. id, tier and capabilities are all
     // re-verified against the downloaded manifest, and the floor has to be too — a stale
     // index (or any registry that under-declares) would otherwise install a plugin this
     // app cannot run, which is the outcome the gate exists to prevent.
     getVersion.mockResolvedValue("0.5.1");
-    // This is the only test here that reaches the rollback, so it is the only one that
-    // needs `pluginUninstall` to be awaitable — `handleInstall` calls `.catch()` on it.
-    pluginUninstall.mockResolvedValue(undefined);
-    pluginInstall.mockResolvedValue({
+    pluginInstallStage.mockResolvedValue({
       checksum: "sha256:abc",
-      install_path: "/p/demo",
       manifest: {
         ...ENTRY,
         // What the ZIP actually declares, and the listing said `>=0.5.0`.
         engines: { baram: ">=9.0.0" },
         main: "index.mjs",
       },
+      stage_id: "stage-1",
     });
     // The listing under-declares, so it passes the pre-download gate.
     listing = { ...ENTRY, engines: { baram: ">=0.5.0" } };
@@ -150,9 +153,11 @@ describe("the marketplace version-floor gate (§69)", () => {
     );
     const why = usePluginStore.getState().pluginErrors.demo;
     expect(why).toContain("9.0.0");
-    // The record must NOT exist, and the extracted files must have been removed.
+    // The record must NOT exist, and the staged files must have been discarded — nothing
+    // was ever installed, so there is nothing to uninstall (#261).
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
-    expect(pluginUninstall).toHaveBeenCalledWith("demo");
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
   });
 
   it("proceeds when the app version cannot be read at all", async () => {
@@ -168,7 +173,9 @@ describe("the marketplace version-floor gate (§69)", () => {
 
 describe("the marketplace update floor gate (§69)", () => {
   beforeEach(() => {
-    pluginInstall.mockReset();
+    pluginInstallStage.mockReset();
+    pluginInstallCommit.mockReset();
+    pluginInstallDiscard.mockReset().mockResolvedValue(undefined);
     pluginUninstall.mockReset();
     getVersion.mockReset();
     listing = ENTRY;
@@ -220,22 +227,113 @@ describe("the marketplace update floor gate (§69)", () => {
     expect(why).toContain("9.0.0");
     expect(why).toContain("0.5.1");
     expect(pluginUninstall).not.toHaveBeenCalled();
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 
-  /// THE DEFECT THIS PINS (code review MEDIUM-1): making `engines` optional on
-  /// `RegistryEntry` punched a hole in the gate above.
+  /// #261 — THIS REPLACES THE GUARD THAT USED TO LIVE HERE, and covers strictly more.
   ///
-  /// An absent floor means "no opinion" to `floorRefusal`, which is right on the INSTALL
-  /// path — the post-download re-check against the ZIP's manifest catches a bad floor and
-  /// rolls the files back, so nothing is lost. On the UPDATE path the uninstall sits
-  /// BETWEEN those two checks: the listing passes, the working copy is deleted, the
-  /// download is then refused, and the user has nothing. Before `engines` went optional
-  /// this was unreachable — an entry without it failed the whole index parse.
-  it("never uninstalls the working copy when the listing declares no floor at all", async () => {
+  /// The old test asserted that an update was REFUSED OUTRIGHT when the listing declared
+  /// no floor: an update was uninstall-then-install, so an unverifiable target was not
+  /// worth risking the working copy for. That guard could only ever see the listing,
+  /// which left three neighbours it could not close — a listing that declares a floor
+  /// this app meets while the ZIP declares a higher one, `"*"`, and unparseable ranges.
+  ///
+  /// Staging closes all four at once, so the refusal is gone and the outcome is better:
+  /// the download happens, the ZIP's own floor is judged while the installed version is
+  /// still installed, and a bad floor costs a discard. The case below is the one no
+  /// pre-download check could ever have caught.
+  it("keeps the working copy when only the DOWNLOAD reveals an unmet floor", async () => {
     getVersion.mockResolvedValue("0.5.1");
     // Deleted from a copy rather than destructured away: this project's lint ignores `^_`
     // for arguments only, so `const { engines: _x, ...rest }` is an error here.
+    const withoutEngines = { ...ENTRY };
+    delete (withoutEngines as { engines?: unknown }).engines;
+    listing = withoutEngines;
+    // The listing says nothing; the archive demands an app version this one is below.
+    pluginInstallStage.mockResolvedValue({
+      checksum: "sha256:new",
+      manifest: { ...ENTRY, engines: { baram: ">=9.0.0" }, main: "index.mjs" },
+      stage_id: "stage-1",
+    });
+    render(<PluginMarketplace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
+    );
+    // Names THIS refusal — the floor from the ZIP and the running app's own version —
+    // rather than merely "some error".
+    const why = usePluginStore.getState().pluginErrors.demo;
+    expect(why).toContain("9.0.0");
+    expect(why).toContain("0.5.1");
+    // The whole point: the working copy survives, and it survives a failure that happens
+    // AFTER the download rather than before it.
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(
+      usePluginStore.getState().installedPlugins.demo?.manifest.version,
+    ).toBe("0.9.0");
+  });
+
+  /// ‼️ #261 code review (HIGH-1) — the case NEITHER floor check can evaluate.
+  ///
+  /// `parseBaramFloor` understands `>=X.Y.Z` and nothing else, on purpose: it shares its
+  /// grammar with the publish gate. So `"*"`, `^0.6.0` and an absent field all mean "no
+  /// opinion" to the pre-download check AND to the post-download one — staging did not
+  /// change that, though an earlier draft of this PR claimed it had.
+  ///
+  /// On an update that has to refuse, because the commit is a one-way door: the previous
+  /// version is replaced atomically and its backup released, so a plugin that then fails to
+  /// activate leaves the user with no way back. The refusal costs a discard.
+  it("refuses an update when neither side states a floor it can evaluate", async () => {
+    getVersion.mockResolvedValue("0.5.1");
+    const manifest = { ...ENTRY, engines: { baram: "*" }, main: "index.mjs" };
+    pluginInstallStage.mockResolvedValue({
+      checksum: "sha256:new",
+      manifest,
+      manifest_sha256: "deadbeef",
+      stage_id: "stage-1",
+    });
+    listing = { ...ENTRY, engines: { baram: "^0.6.0" } };
+    render(<PluginMarketplace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toContain(
+        "does not say which Baram version it needs",
+      ),
+    );
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(
+      usePluginStore.getState().installedPlugins.demo?.manifest.version,
+    ).toBe("0.9.0");
+  });
+
+  /// …and the same unevaluable listing updates fine once the ARCHIVE states a real floor.
+  /// This is what the guard it replaced could not do: that one read only the listing, so an
+  /// entry omitting `engines` was refused however good its ZIP was.
+  it("updates when only the DOWNLOAD states an evaluable floor", async () => {
+    getVersion.mockResolvedValue("0.5.1");
+    const manifest = {
+      ...ENTRY,
+      engines: { baram: ">=0.5.0" },
+      main: "index.mjs",
+    };
+    pluginInstallStage.mockResolvedValue({
+      checksum: "sha256:new",
+      manifest,
+      manifest_sha256: "deadbeef",
+      stage_id: "stage-1",
+    });
+    pluginInstallCommit.mockResolvedValue({
+      install_path: "/p/demo",
+      manifest,
+    });
     const withoutEngines = { ...ENTRY };
     delete (withoutEngines as { engines?: unknown }).engines;
     listing = withoutEngines;
@@ -244,40 +342,14 @@ describe("the marketplace update floor gate (§69)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
 
     await waitFor(() =>
-      expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
+      expect(pluginInstallCommit).toHaveBeenCalledWith(
+        "stage-1",
+        "demo",
+        "deadbeef",
+      ),
     );
-    // Names THIS refusal, not merely "some error" — the neighbouring gate's message
-    // carries version numbers, so a mutation that let this fall through to it would
-    // otherwise pass.
-    const why = usePluginStore.getState().pluginErrors.demo;
-    expect(why).toContain("does not declare which Baram version it needs");
-    expect(why).toContain(ENTRY.name);
-    // The whole point: the working copy survives.
-    expect(pluginUninstall).not.toHaveBeenCalled();
-    expect(pluginInstall).not.toHaveBeenCalled();
-    expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
-  });
-
-  it("still updates an entry whose floor it cannot parse, which predates this change", async () => {
-    // ‼️ Pins the SCOPE of the guard above, not an endorsement of the outcome. `"*"` gives
-    // no more assurance about the ZIP than an absent field does, and a listing that
-    // under-declares a parseable floor is worse still — but all of those reached this path
-    // before `engines` became optional, and silently changing them here would turn a
-    // regression fix into a behaviour change nobody asked for. Issue #261 (stage the
-    // download before removing anything) is what actually closes them.
-    getVersion.mockResolvedValue("0.5.1");
-    pluginUninstall.mockResolvedValue(undefined);
-    pluginInstall.mockResolvedValue({
-      checksum: "sha256:new",
-      install_path: "/p/demo",
-      manifest: { ...ENTRY, engines: { baram: "*" }, main: "index.mjs" },
-    });
-    listing = { ...ENTRY, engines: { baram: "*" } };
-    render(<PluginMarketplace />);
-    fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
-
-    await waitFor(() => expect(pluginUninstall).toHaveBeenCalledWith("demo"));
     expect(usePluginStore.getState().pluginErrors.demo).toBeFalsy();
+    expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(pluginInstallDiscard).not.toHaveBeenCalled();
   });
 });

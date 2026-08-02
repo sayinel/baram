@@ -186,6 +186,7 @@ const STYLES = {
 import { getVersion } from "@tauri-apps/api/app";
 
 import type { Translate } from "../../i18n/useTranslation";
+import type { RustCommittedPluginInfo } from "../../ipc/plugin-invoke";
 import type {
   InstalledPlugin,
   PluginConsent,
@@ -198,7 +199,12 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
-import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
+import {
+  pluginInstallCommit,
+  pluginInstallDiscard,
+  pluginInstallStage,
+  pluginUninstall,
+} from "../../ipc/plugin-invoke";
 import { parseBaramFloor, unmetBaramFloor } from "../../plugins/engines";
 import { validateManifest } from "../../plugins/manifest";
 import { consentGaps, consentRequired } from "../../plugins/plugin-consent";
@@ -297,6 +303,8 @@ export function PluginMarketplace() {
   const consentResolver = useRef<((v: null | PluginConsent) => void) | null>(
     null,
   );
+  /** Plugin ids with an install in flight — see the guard at the top of `handleInstall`. */
+  const inFlight = useRef<Set<string>>(new Set());
 
   const askConsent = useCallback(
     (pending: PendingConsent) =>
@@ -441,144 +449,282 @@ export function PluginMarketplace() {
    * stayed in the store, and a plugin declaring `tiptapExtensions` skipped `loadPlugin`
    * entirely and was never validated at all.
    *
+   * ‼️ #261 — AND EVERY ONE OF THEM RUNS BEFORE ANYTHING INSTALLED IS TOUCHED.
+   *
+   * `pluginInstallStage` downloads and extracts to a staging directory; only
+   * `pluginInstallCommit` swaps. So a refusal below is a `pluginInstallDiscard` of files
+   * nobody has yet, rather than what it used to be — the previously installed version
+   * already deleted and unrecoverable. This is what lets `handleUpdate` stop composing
+   * uninstall with install.
+   *
+   * Returns whether the plugin ended up installed, which `handleUpdate` needs and no
+   * other caller uses.
+   *
    * `preApproved` is for the update path, which has already asked.
    */
   const handleInstall = useCallback(
-    async (entry: RegistryEntry, preApproved?: PluginConsent) => {
-      if (!entry.trust) {
-        setError(entry.id, legacyEntryMessage(entry));
-        return;
-      }
-      // §69 — installing is refused for ANY severity, where loading is refused only
-      // for `malicious`. The asymmetry is deliberate: a revocation always means "do not
-      // newly acquire this", while only `malicious` is worth taking a working plugin
-      // away from someone who already has it. Newly installing a version already known
-      // to be vulnerable, or withdrawn, has no upside to weigh against.
-      const blocked = revocationFor(entry.id, entry.version, revocations);
-      if (blocked !== null) {
-        setError(
-          entry.id,
-          `${t("plugin.revoked.blockedInstall")} ${revocationReason(blocked, t)}`,
-        );
-        return;
-      }
-      // §69 — the floor the manifest declares, compared to the running app at last.
-      // Refusing here rather than letting activation throw is what keeps the update path
-      // safe: `handleUpdate` checks the same thing above its uninstall.
-      const tooOld = await floorRefusal(entry.engines, t);
-      if (tooOld !== null) {
-        setError(entry.id, tooOld);
-        return;
-      }
-      const claimed: PluginConsent = {
-        capabilities: [...entry.capabilities].sort(),
-        trust: entry.trust,
-      };
-      const consent =
-        preApproved ??
-        (await askConsent({
-          consent: claimed,
-          intent: "install",
-          name: entry.name,
-        }));
-      if (!consent) return;
-
-      setInstalling(entry.id, true);
-      // §260 Phase 5 code review (L3) — ONE rollback site, and plain `throw` statements.
-      //
-      // The checks below used to call an `await reject(...)` helper that rolled back and
-      // threw. Correct at runtime, but not compiler-checkable: `await` of a
-      // `Promise<never>` gives TypeScript no control-flow narrowing, so a fourth check
-      // appended after one would compile and run. ‼️The reviewer's suggested
-      // `return reject(...)` narrows but BREAKS the error path — a `return` inside `try`
-      // hands control out of the block, so `catch` never sees the rejection and no error
-      // badge appears (four tests caught this). A `throw` statement does both.
-      //
-      // Non-null only while extracted files exist that nothing has vouched for yet.
-      let rolledBackId: null | string = null;
+    async (
+      entry: RegistryEntry,
+      preApproved?: PluginConsent,
+    ): Promise<boolean> => {
+      // ‼️ BEFORE THE FIRST AWAIT (#261 security review, area 3). `setInstalling` is a
+      // store write that sits below two `getVersion` IPCs and, on the common update path,
+      // below no dialog at all — so nothing stopped a double-click from running two installs
+      // of the same plugin concurrently. Two commits interleave badly: the first renames the
+      // target aside, the second sees no target and takes the fast path, and the first's
+      // rename AND its restore then both fail `ENOTEMPTY` — reporting "your previous version
+      // is stranded at …" for a plugin that is perfectly fine, and leaking an absolute home
+      // path while it does. A ref rather than state, because this has to be true immediately
+      // rather than after a render.
+      if (inFlight.current.has(entry.id)) return false;
+      inFlight.current.add(entry.id);
       try {
-        // The third argument is the guard, not a formality: Rust refuses the archive before
-        // moving it into place if its manifest declares a different id, so a hostile
-        // listing cannot destroy an unrelated installed plugin (re-review R5). The
-        // frontend check below is then defence in depth.
-        const result = await pluginInstall(
-          entry.downloadUrl,
-          entry.checksum,
-          entry.id,
-        );
-        // Where the files actually landed, whatever the registry called the entry, so
-        // the one rollback site in `catch` can remove them.
-        rolledBackId = result.manifest.id;
-
-        const validation = validateManifest(result.manifest);
-        if (!validation.valid) {
-          throw new Error(
-            t("plugin.error.manifestInvalid", {
-              detail: validation.errors
-                .map((e) => `${e.field}: ${e.message}`)
-                .join("; "),
-            }),
+        if (!entry.trust) {
+          setError(entry.id, legacyEntryMessage(entry));
+          return false;
+        }
+        // §69 — installing is refused for ANY severity, where loading is refused only
+        // for `malicious`. The asymmetry is deliberate: a revocation always means "do not
+        // newly acquire this", while only `malicious` is worth taking a working plugin
+        // away from someone who already has it. Newly installing a version already known
+        // to be vulnerable, or withdrawn, has no upside to weigh against.
+        const blocked = revocationFor(entry.id, entry.version, revocations);
+        if (blocked !== null) {
+          setError(
+            entry.id,
+            `${t("plugin.revoked.blockedInstall")} ${revocationReason(blocked, t)}`,
           );
+          return false;
         }
-        if (result.manifest.id !== entry.id) {
-          throw new Error(
-            t("plugin.error.idMismatch", {
-              expected: entry.id,
-              got: result.manifest.id,
-            }),
-          );
+        // §69 — the floor the manifest declares, compared to the running app at last.
+        // Refusing here rather than letting activation throw keeps a pointless download off
+        // the wire; the authoritative check is the one below, against what was downloaded.
+        const tooOld = await floorRefusal(entry.engines, t);
+        if (tooOld !== null) {
+          setError(entry.id, tooOld);
+          return false;
         }
-        const gaps = consentGaps(consent, {
-          capabilities: result.manifest.capabilities,
-          trust: result.manifest.trust,
-        });
-        if (gaps.length > 0) {
-          throw new Error(
-            t("plugin.error.consentGap", { detail: gaps.join("; ") }),
-          );
-        }
-        // §69 code review — the floor, re-checked against the DOWNLOADED manifest.
-        //
-        // The gate above judged `entry.engines`, and this function's own doctrine is that
-        // the entry is a claim while the archive is the truth: id, tier and capabilities
-        // are re-verified here for exactly that reason, and `engines` was the one checked
-        // field still taking the registry's word. A stale index, or any registry that
-        // under-declares a floor, would otherwise install a plugin this app cannot run —
-        // the outcome the gate exists to prevent. Above `rolledBackId = null`, so the
-        // rollback still removes the extracted files.
-        const downloadTooOld = await floorRefusal(result.manifest.engines, t);
-        if (downloadTooOld !== null) {
-          throw new Error(downloadTooOld);
-        }
-
-        // Past every check — nothing below may delete the installed files.
-        rolledBackId = null;
-
-        const plugin: InstalledPlugin = {
-          checksum: result.checksum,
-          consent,
-          enabled: true,
-          installedAt: Date.now(),
-          installPath: result.install_path,
-          manifest: result.manifest,
-          updatedAt: Date.now(),
+        const claimed: PluginConsent = {
+          capabilities: [...entry.capabilities].sort(),
+          trust: entry.trust,
         };
-        addPlugin(plugin);
-        setError(entry.id, null);
+        const consent =
+          preApproved ??
+          (await askConsent({
+            consent: claimed,
+            intent: "install",
+            name: entry.name,
+          }));
+        if (!consent) return false;
 
-        // Load the plugin if it doesn't have tiptap extensions (those need restart)
-        if (!result.manifest.tiptapExtensions?.length) {
-          await pluginLoader.loadPlugin(result.install_path, result.manifest);
+        setInstalling(entry.id, true);
+        try {
+          // §260 Phase 5 code review (L3) — ONE cleanup site, and plain `throw` statements.
+          //
+          // The checks below used to call an `await reject(...)` helper that rolled back and
+          // threw. Correct at runtime, but not compiler-checkable: `await` of a
+          // `Promise<never>` gives TypeScript no control-flow narrowing, so a fourth check
+          // appended after one would compile and run. ‼The reviewer's suggested
+          // `return reject(...)` narrows but BREAKS the error path — a `return` inside `try`
+          // hands control out of the block, so `catch` never sees the rejection and no error
+          // badge appears (four tests caught this). A `throw` statement does both.
+          //
+          // Non-null only while a staged copy exists that nothing has committed yet.
+          let pendingStage: null | string = null;
+          // The record of the version this is replacing, once its runtime has been torn
+          // down — non-null only while a restart is owed.
+          let unloaded: InstalledPlugin | null = null;
+          let checksum: string;
+          let committed: RustCommittedPluginInfo;
+          try {
+            // The third argument is the guard, not a formality: Rust refuses the archive if
+            // its manifest declares a different id, so a hostile listing cannot aim this
+            // download at an unrelated installed plugin's directory (re-review R5). The
+            // frontend check below is then defence in depth.
+            const staged = await pluginInstallStage(
+              entry.downloadUrl,
+              entry.checksum,
+              entry.id,
+            );
+            pendingStage = staged.stage_id;
+            checksum = staged.checksum;
+            const manifest = staged.manifest;
+
+            const validation = validateManifest(manifest);
+            if (!validation.valid) {
+              throw new Error(
+                t("plugin.error.manifestInvalid", {
+                  detail: validation.errors
+                    .map((e) => `${e.field}: ${e.message}`)
+                    .join("; "),
+                }),
+              );
+            }
+            if (manifest.id !== entry.id) {
+              throw new Error(
+                t("plugin.error.idMismatch", {
+                  expected: entry.id,
+                  got: manifest.id,
+                }),
+              );
+            }
+            const gaps = consentGaps(consent, {
+              capabilities: manifest.capabilities,
+              trust: manifest.trust,
+            });
+            if (gaps.length > 0) {
+              throw new Error(
+                t("plugin.error.consentGap", { detail: gaps.join("; ") }),
+              );
+            }
+            // §69 code review — the floor, re-checked against the DOWNLOADED manifest.
+            //
+            // The gate above judged `entry.engines`, and this function's own doctrine is
+            // that the entry is a claim while the archive is the truth: id, tier and
+            // capabilities are re-verified here for exactly that reason, and `engines` was
+            // the one checked field still taking the registry's word. A stale index, or any
+            // registry that under-declares a floor, would otherwise install a plugin this
+            // app cannot run — the outcome the gate exists to prevent.
+            const downloadTooOld = await floorRefusal(manifest.engines, t);
+            if (downloadTooOld !== null) {
+              throw new Error(downloadTooOld);
+            }
+            // ‼️ AND THE CASE NEITHER FLOOR CHECK CAN EVALUATE (#261 code review, HIGH-1).
+            //
+            // `parseBaramFloor` understands `>=X.Y.Z` and nothing else, deliberately: it
+            // shares its grammar with the publish gate so the two cannot disagree about the
+            // same manifest. So an absent `engines`, `"*"`, `^0.6.0` and `~0.5` all mean "no
+            // opinion" to BOTH checks — the one against the listing and the one against the
+            // archive. Staging did not change that, and an earlier draft of this comment
+            // claimed otherwise.
+            //
+            // On an INSTALL that is right: no opinion means proceed, and a plugin that then
+            // fails to activate costs the user nothing they had. On an UPDATE it is not,
+            // because the commit below is a one-way door — the previous version is replaced
+            // atomically and its backup released, so an activation failure leaves the user
+            // with a dead plugin and no way back to the working one. Refusing here costs a
+            // discard; the alternative costs a plugin.
+            //
+            // ‼️ STRICTLY NARROWER THAN THE GUARD IT REPLACES, which lived above the download
+            // and could only read the listing: this refuses only when the ARCHIVE also
+            // declines to say, so an entry that omits `engines` while its ZIP declares
+            // `>=0.5.0` now updates where it used to be refused. Deleting it entirely is the
+            // follow-up (roll the swap back when activation fails), which makes the whole
+            // question moot.
+            const isUpdate =
+              usePluginStore.getState().installedPlugins[entry.id] !==
+              undefined;
+            if (
+              isUpdate &&
+              parseBaramFloor(entry.engines?.baram) === null &&
+              parseBaramFloor(manifest.engines.baram) === null
+            ) {
+              throw new Error(
+                t("plugin.error.updateUnverifiableFloor", { name: entry.name }),
+              );
+            }
+
+            // Past every check. THESE TWO LINES are the first that touch an installed
+            // plugin, and a failure in either leaves the previous version in place — Rust
+            // restores it — so the staged copy is discarded below like any other failure.
+            //
+            // The old version's runtime is unloaded first: the module and its sandbox
+            // window are about to be replaced underneath it, and `unloadPlugin` is what
+            // tears down that window, its commands and its UI contributions. A no-op when
+            // nothing is loaded. A teardown that FAILS aborts the update, because swapping
+            // the files under a plugin that is still running is worse than not updating.
+            // Read fresh rather than from the render's closure: this is the record the
+            // restart below needs, and it must be the one that is true right now.
+            unloaded =
+              usePluginStore.getState().installedPlugins[manifest.id] ?? null;
+            await pluginLoader.unloadPlugin(manifest.id);
+            // The digest pins the manifest to the one every check above judged. A stage
+            // sits on disk across this whole block — an app-version IPC and the entire
+            // `unloadPlugin` teardown — during which a trusted-tier plugin is still running
+            // in the main realm. Without it, the manifest that gets recorded, granted and
+            // loaded need not be the one that was consented to (#261 security review).
+            committed = await pluginInstallCommit(
+              pendingStage,
+              entry.id,
+              staged.manifest_sha256,
+            );
+          } catch (err) {
+            if (pendingStage !== null) {
+              await pluginInstallDiscard(pendingStage).catch((e: unknown) =>
+                logger.error(
+                  "[Marketplace] discarding the staged install failed:",
+                  e,
+                ),
+              );
+            }
+            // ‼️ PUT THE OLD RUNTIME BACK (#261 review, MEDIUM-1 / security area 2). The
+            // unload above is the one step before the commit that is not undone by keeping
+            // the files: if the commit then fails, Rust restores the BYTES but the plugin is
+            // no longer running — its sandbox window is closed, its commands, ribbon icon
+            // and statusbar item are gone — while the store still says `enabled: true`.
+            // Nothing reconciles enabled-vs-loaded except `initializePlugins` at startup, so
+            // the user would see an enabled plugin that had silently vanished until restart.
+            if (unloaded !== null) {
+              await pluginLoader
+                .loadPlugin(unloaded.installPath, unloaded.manifest)
+                .catch((e: unknown) =>
+                  logger.error(
+                    "[Marketplace] could not restart the previous version:",
+                    e,
+                  ),
+                );
+            }
+            setError(entry.id, String(err));
+            return false;
+          }
+
+          // ‼ PAST THE COMMIT, AND OUTSIDE THE BLOCK THAT DISCARDS. Structural rather
+          // than a flag: an earlier draft cleared a `pendingStage` variable here instead,
+          // which no test could falsify — nothing below throws past the `catch` — so the
+          // line read as a guard while guarding nothing. Scope says it now, and the
+          // compiler enforces it.
+          const plugin: InstalledPlugin = {
+            checksum,
+            consent,
+            enabled: true,
+            installedAt: Date.now(),
+            installPath: committed.install_path,
+            manifest: committed.manifest,
+            updatedAt: Date.now(),
+          };
+          addPlugin(plugin);
+          setError(entry.id, null);
+
+          // Load the plugin if it doesn't have tiptap extensions (those need restart)
+          //
+          // ‼ ACTIVATION FAILURE IS NOT ROLLED BACK (#261, the policy the issue asks be
+          // stated). The files are installed and stay installed: they passed the checksum,
+          // the manifest, the consent comparison and the version floor, so the fault is in
+          // running the plugin, not in the copy of it on disk. Silently reverting to an
+          // older version the user did not ask for would be its own surprise, and the older
+          // version is gone by now in any case — the swap is atomic, not undoable later.
+          // What the user gets is the plugin installed with the activation error against
+          // it, and Disable or Uninstall to hand.
+          //
+          // Caught HERE rather than left to propagate, so this still reports success: the
+          // new version is on disk and recorded, and returning false would leave the
+          // "update available" badge up and invite the user to install it again.
+          if (!committed.manifest.tiptapExtensions?.length) {
+            try {
+              await pluginLoader.loadPlugin(
+                committed.install_path,
+                committed.manifest,
+              );
+            } catch (activationError) {
+              setError(entry.id, String(activationError));
+            }
+          }
+          return true;
+        } finally {
+          setInstalling(entry.id, false);
         }
-      } catch (err) {
-        if (rolledBackId !== null) {
-          await pluginUninstall(rolledBackId).catch((e: unknown) =>
-            logger.error("[Marketplace] rollback failed:", e),
-          );
-        }
-        setError(entry.id, String(err));
       } finally {
-        setInstalling(entry.id, false);
+        inFlight.current.delete(entry.id);
       }
     },
     [addPlugin, askConsent, revocations, setError, setInstalling, t],
@@ -612,7 +758,7 @@ export function PluginMarketplace() {
       // §260 Phase 5 code review (H2) — resolve the LISTING; never update from the entry
       // handed in. The Installed tab synthesises one out of the installed manifest with
       // `downloadUrl: ""`, which broke this two ways: `handleUninstall` deletes the files
-      // and the record, then `pluginInstall("")` can never succeed — so an update from
+      // and the record, then a download of `""` can never succeed — so an update from
       // that tab destroyed the plugin every time. And `claimed` was built from the
       // manifest ALREADY INSTALLED, so `consentRequired` returned null unconditionally and
       // the escalation check this phase exists to add was structurally dead there.
@@ -627,9 +773,8 @@ export function PluginMarketplace() {
         setError(entry.id, legacyEntryMessage(entry));
         return;
       }
-      // §69 — checked HERE, before the uninstall below, not only in `handleInstall`.
-      // An update is uninstall-then-install, so a target caught only at the install
-      // step would leave the user with their working plugin already deleted.
+      // §69 — checked here as well as in `handleInstall`, so a revoked target is refused
+      // without a pointless download. Since #261 nothing is destroyed either way.
       const blockedUpdate = revocationFor(entry.id, entry.version, revocations);
       if (blockedUpdate !== null) {
         setError(
@@ -638,11 +783,7 @@ export function PluginMarketplace() {
         );
         return;
       }
-      // §69 — and the version floor, for the same reason and in the same place. This is
-      // the case `plugin-release.yml` describes as destroying a working version: the
-      // update target declares a floor this app does not meet, the uninstall below runs
-      // anyway, and the reinstall then fails on activate. `handleInstall` repeats the
-      // check, but reaching it here would already be too late.
+      // §69 — and the version floor, for the same reason and in the same place.
       // `entry` is the resolved LISTING, so this reads the TARGET's floor and not the
       // installed manifest's — pinned by the fixture in `plugin-engines-gate.test.tsx`.
       const targetTooOld = await floorRefusal(entry.engines, t);
@@ -650,35 +791,6 @@ export function PluginMarketplace() {
         setError(entry.id, targetTooOld);
         return;
       }
-      // ‼️ …and refuse when the listing declares NO floor at all. `handleInstall` is right
-      // to shrug at that (absent means "no opinion", and a failed install costs nothing),
-      // but the uninstall below is destructive and the doubt runs the other way.
-      //
-      // SCOPE, precisely. This closes the entry point THIS change opened and no more:
-      // `engines` became optional on `RegistryEntry` so one omission cannot delete an entry
-      // from the index, and an entry without it now reaches this path where it previously
-      // could not exist (the whole document failed to parse). On the INSTALL path the
-      // post-download re-check against `result.manifest.engines` catches a bad floor and
-      // rolls the files back; here the uninstall sits BETWEEN the two checks, so the working
-      // copy is already gone when the download is refused.
-      //
-      // ‼️ WHAT THIS DOES NOT FIX. A listing that declares a floor this app MEETS while its
-      // ZIP declares a higher one destroys the working copy in exactly the same way, and no
-      // pre-download check can see it — the listing is a claim, the archive is the truth.
-      // `"*"` and unparseable ranges like `^0.6.0` are the same story and both predate this
-      // change, so they are deliberately left alone rather than half-guarded here. The only
-      // real fix is staging the download before removing anything (issue #261); until then
-      // `updateLostPlugin` below is what the user gets.
-      if (entry.engines?.baram === undefined) {
-        setError(
-          entry.id,
-          t("plugin.error.updateUnverifiableFloor", { name: entry.name }),
-        );
-        return;
-      }
-      // §260 Phase 5 — read the recorded consent BEFORE uninstalling: `handleUninstall`
-      // calls `removePlugin`, which deletes the very record this compares against.
-      // Without that ordering an update would always look like a first install.
       const prior = installedPlugins[entry.id]?.consent;
       const claimed: PluginConsent = {
         capabilities: [...entry.capabilities].sort(),
@@ -699,33 +811,26 @@ export function PluginMarketplace() {
             });
       if (!consent) return;
 
-      // ‼️ An update is uninstall-then-install, so a REJECTED download leaves the user
-      // with nothing — the working version is already gone by the time the new one fails
-      // its checks. Phase 5 makes that outcome more reachable (there are three new ways
-      // to fail), so say it plainly instead of leaving a bare error and an empty slot.
-      // The real fix is staging the download before removing anything, which needs a
-      // Rust-side temp install; deliberately out of scope here.
-      // If the removal itself failed the old version is still installed and still
-      // running, so reinstalling on top of it would be the wrong repair — stop with the
-      // error `handleUninstall` already recorded.
-      if (!(await handleUninstall(entry.id))) return;
-
-      await handleInstall(entry, consent);
-      if (usePluginStore.getState().installedPlugins[entry.id] === undefined) {
-        const why = usePluginStore.getState().pluginErrors[entry.id] ?? "";
-        setError(
-          entry.id,
-          t("plugin.error.updateLostPlugin", { name: entry.name, why }),
-        );
-        return;
+      // ‼️ #261 — AN UPDATE IS NOW ONE OPERATION.
+      //
+      // This used to be `handleUninstall(...)` followed by `handleInstall(...)`: the
+      // working version was deleted first, so a download that failed, or an archive that
+      // failed any of the post-download checks, left the user with nothing and an error
+      // telling them to reinstall from the registry. `handleInstall` stages, validates and
+      // only then swaps atomically, which makes every one of those outcomes a discard.
+      //
+      // Nothing here removes the old record either — `handleInstall` overwrites it on
+      // success, so a failure leaves the installed version recorded exactly as it is on
+      // disk. That is why the badge is cleared on the return value rather than by probing
+      // the store for the entry's presence: presence no longer distinguishes the two.
+      if (await handleInstall(entry, consent)) {
+        clearUpdateAvailable(entry.id);
       }
-      clearUpdateAvailable(entry.id);
     },
     [
       askConsent,
       clearUpdateAvailable,
       handleInstall,
-      handleUninstall,
       installedPlugins,
       registryIndex,
       revocations,

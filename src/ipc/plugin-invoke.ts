@@ -11,11 +11,26 @@ import type {
   RegistryIndex,
 } from "../plugins/types";
 
+/** What `pluginInstallCommit` put in place, read back after the swap. */
+export interface RustCommittedPluginInfo {
+  install_path: string;
+  manifest: PluginManifest;
+}
+
 export interface RustInstalledPluginInfo {
   checksum: string;
   install_path: string;
   is_dev?: boolean;
   manifest: PluginManifest;
+}
+
+/** A downloaded, extracted, validated plugin that is not installed yet (#261). */
+export interface RustStagedPluginInfo {
+  checksum: string;
+  manifest: PluginManifest;
+  /** SHA-256 of the staged `baram-plugin.json`; hand it back to `pluginInstallCommit`. */
+  manifest_sha256: string;
+  stage_id: string;
 }
 
 export async function pluginAddDevFolder(
@@ -56,19 +71,56 @@ export async function pluginHttpFetch(
 }
 
 /**
- * `expectedId` is the id the registry listing advertised. Rust refuses the install if the
- * archive's manifest disagrees — BEFORE moving the extracted files into place (§260 Phase
- * 5 re-review, R5). It has to be enforced there, not here: the move does
- * `remove_dir_all` on a directory named by the id INSIDE the archive, so an archive
- * claiming another installed plugin's id destroyed that plugin as a side effect of this
- * download, and the frontend could only ever notice afterwards.
+ * Install a staged plugin, atomically replacing any version already installed.
+ *
+ * The only destructive half, and the only thing it can destroy is the staged copy: Rust
+ * renames the old version aside, renames the new one in, and puts the old one back if
+ * anything fails.
+ *
+ * `manifestSha256` is the digest `pluginInstallStage` returned. Rust re-reads the manifest
+ * from disk here and refuses if it no longer matches — the caller's checks (tier,
+ * capabilities, version floor) all ran against the staged file, and a stage sits on disk
+ * across several awaits during which other code is still running.
  */
-export async function pluginInstall(
+export async function pluginInstallCommit(
+  stageId: string,
+  expectedId: string,
+  manifestSha256: string,
+): Promise<RustCommittedPluginInfo> {
+  return invoke<RustCommittedPluginInfo>("plugin_install_commit", {
+    expectedId,
+    manifestSha256,
+    stageId,
+  });
+}
+
+/** Throw away a staged plugin. Nothing installed is touched. */
+export async function pluginInstallDiscard(stageId: string): Promise<void> {
+  return invoke<void>("plugin_install_discard", { stageId });
+}
+
+/**
+ * #261 — installing is TWO calls, and this first one installs nothing.
+ *
+ * It downloads, extracts and validates into a staging directory, then hands back a
+ * `stage_id`. Whatever version the user already has stays installed and running until
+ * `pluginInstallCommit` swaps it — so every check the caller makes on the returned manifest
+ * costs a `pluginInstallDiscard` when it refuses, and never a working plugin. The old
+ * single-call `plugin_install` could not offer that: it removed the target directory before
+ * copying, so the frontend's post-download checks ran on rubble.
+ *
+ * `expectedId` is the id the registry listing advertised. Rust refuses the archive if its
+ * manifest disagrees, and enforces it again at commit — the install directory is named by
+ * the id INSIDE the archive, so an archive claiming another installed plugin's id is how
+ * that plugin used to get destroyed as a side effect of this download (§260 Phase 5
+ * re-review, R5).
+ */
+export async function pluginInstallStage(
   url: string,
   checksum?: string,
   expectedId?: string,
-): Promise<RustInstalledPluginInfo> {
-  return invoke<RustInstalledPluginInfo>("plugin_install", {
+): Promise<RustStagedPluginInfo> {
+  return invoke<RustStagedPluginInfo>("plugin_install_stage", {
     url,
     checksum: checksum ?? null,
     expectedId: expectedId ?? null,

@@ -3,13 +3,40 @@ use crate::config;
 use crate::plugin;
 use tauri::Manager;
 
+/// #261 — install is two commands, and this one installs nothing.
+///
+/// It downloads and extracts to a staging directory and hands back a `stage_id`. Whatever
+/// version the user already has stays installed and running until `plugin_install_commit`
+/// runs, so every check the frontend makes on the downloaded manifest — consent, version
+/// floor, capabilities — costs a `plugin_install_discard` when it refuses, not a working
+/// plugin.
 #[tauri::command]
-pub async fn plugin_install(
+pub async fn plugin_install_stage(
     url: String,
     checksum: Option<String>,
     expected_id: Option<String>,
-) -> Result<plugin::InstalledPluginInfo, String> {
-    plugin::install_plugin(&url, checksum.as_deref(), expected_id.as_deref())
+) -> Result<plugin::StagedPluginInfo, String> {
+    plugin::stage_plugin(&url, checksum.as_deref(), expected_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Install a staged plugin, atomically replacing any version already installed.
+#[tauri::command]
+pub async fn plugin_install_commit(
+    stage_id: String,
+    expected_id: String,
+    manifest_sha256: String,
+) -> Result<plugin::CommittedPluginInfo, String> {
+    plugin::commit_staged_plugin(&stage_id, &expected_id, &manifest_sha256)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Throw away a staged plugin. Nothing installed is touched.
+#[tauri::command]
+pub async fn plugin_install_discard(stage_id: String) -> Result<(), String> {
+    plugin::discard_staged_plugin(&stage_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -57,11 +84,23 @@ pub async fn plugin_get_dir() -> Result<String, String> {
 /// Grant the asset protocol runtime scope for the plugin install dir so
 /// convertFileSrc(index.mjs) can load. ~/.baram/plugins is NOT covered by the
 /// static $APPDATA scope, so this MUST run before any plugin loads.
+///
+/// ‼️ THE STAGING DIRECTORY IS CARVED BACK OUT (#261 code review, MEDIUM-4). The grant is
+/// RECURSIVE, and #261 moved extraction from the OS temp directory — outside every scope —
+/// into `~/.baram/plugins/.staging/`, which this would otherwise have made asset-reachable.
+/// A staged archive is un-consented, possibly about-to-be-refused third-party content, and
+/// under §260 3c-1 `asset:` is permitted in `script-src` so an already-loaded trusted plugin
+/// could fetch it. It has no business being reachable before it is installed, and after it
+/// is installed it is reachable under its own directory.
 #[tauri::command]
 pub async fn plugin_prepare_scopes(app: tauri::AppHandle) -> Result<(), String> {
     let dir = plugin::get_plugin_dir().map_err(|e| e.to_string())?;
-    app.asset_protocol_scope()
+    let scope = app.asset_protocol_scope();
+    scope
         .allow_directory(&dir, true)
+        .map_err(|e| e.to_string())?;
+    scope
+        .forbid_directory(plugin::staging_dir_of(&dir), true)
         .map_err(|e| e.to_string())?;
     Ok(())
 }
