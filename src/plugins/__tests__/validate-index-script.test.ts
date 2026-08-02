@@ -174,6 +174,11 @@ describe("validate-index", () => {
     ["downloads", "many"],
     ["keywords", "word"],
     ["repository", 5],
+    // `downloads` is `u64` in Rust and JS has one numeric type, so "a number" was still
+    // too loose — review round 3 caught these three surviving the presence-vs-type fix.
+    ["downloads", 1.5],
+    ["downloads", -1],
+    ["downloads", 1e20],
   ])(
     "rejects a wrong-typed %s, which serde drops the entry over",
     (field, bad) => {

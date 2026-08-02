@@ -33,7 +33,24 @@ const path = process.argv[2] ?? "registry/index.json";
 const isString = (v: unknown) => typeof v === "string";
 const isStringArray = (v: unknown) =>
   Array.isArray(v) && v.every((x) => typeof x === "string");
-const isNumber = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+/**
+ * `u64`, not "a number" — the residual instance of the type hole (review round 3).
+ *
+ * JS has one numeric type and Rust's field is `pub downloads: u64`, so `typeof v ===
+ * "number"` was still too loose after the presence-vs-type fix: `1.5`, `-1` and `1e20` all
+ * passed here and all make serde drop the entry. `downloads` is the one field a stats
+ * pipeline computes rather than an author typing, which is exactly where a rate lands as a
+ * float and "unknown" lands as `-1`.
+ *
+ * The `MAX_SAFE_INTEGER` bound is stricter than `u64` on purpose: past 2^53 a JSON number
+ * cannot round-trip through JS at all, so this script could not judge it honestly. Stricter
+ * than the app costs a publish, never a user.
+ */
+const isU64 = (v: unknown) =>
+  typeof v === "number" &&
+  Number.isInteger(v) &&
+  v >= 0 &&
+  v <= Number.MAX_SAFE_INTEGER;
 
 /**
  * Every field of Rust's `RegistryEntry`, with the TYPE serde demands.
@@ -65,7 +82,11 @@ const FIELDS: Record<
   },
   checksum: { check: isString, required: true, type: "a string" },
   description: { check: isString, required: true, type: "a string" },
-  downloads: { check: isNumber, required: false, type: "a number" },
+  downloads: {
+    check: isU64,
+    required: false,
+    type: "a non-negative integer (Rust reads it as u64)",
+  },
   downloadUrl: { check: isString, required: true, type: "a string" },
   homepage: { check: isString, required: false, type: "a string" },
   icon: { check: isString, required: false, type: "a string" },

@@ -1814,6 +1814,14 @@ mod tests {
             ("keywords", serde_json::json!("word")),
             ("repository", serde_json::json!(5)),
             ("icon", serde_json::json!(true)),
+            // ‼️ `downloads` is `u64`, and JS has ONE numeric type — so "is it a number?"
+            // is not the same question on the two sides. Review round 3 found these three
+            // still passing the publish gate after the presence-vs-type fix. It is also the
+            // likeliest field to hold a computed value rather than a typed one: a rate
+            // arrives as a float, "unknown" arrives as -1.
+            ("downloads", serde_json::json!(1.5)),
+            ("downloads", serde_json::json!(-1)),
+            ("downloads", serde_json::json!(1e20)),
         ] {
             let mut json = entry_json("x");
             json.as_object_mut().unwrap().insert(field.into(), bad);
