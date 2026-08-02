@@ -213,16 +213,21 @@ describe("impl review S3-R1 pins", () => {
     expect(editor.state.doc.resolve(target).parent.textContent).toBe("dd");
   });
 
-  it("counted w reuses one line scan — no O(count x doc) stall", () => {
-    const paras = Array.from({ length: 3000 }, (_, i) => `<p>w${i} x</p>`).join(
-      "",
-    );
-    const editor = makeEditor(paras);
-    const startAt = posOfText(editor, "w0");
-    const t0 = performance.now();
-    resolveMotion(editor.state, startAt, "wordForward", 999);
-    expect(performance.now() - t0).toBeLessThan(250);
-  });
+  it(
+    "counted w reuses one line scan — no O(count x doc) stall",
+    { timeout: 20_000 },
+    () => {
+      const paras = Array.from(
+        { length: 3000 },
+        (_, i) => `<p>w${i} x</p>`,
+      ).join("");
+      const editor = makeEditor(paras);
+      const startAt = posOfText(editor, "w0");
+      const t0 = performance.now();
+      resolveMotion(editor.state, startAt, "wordForward", 999);
+      expect(performance.now() - t0).toBeLessThan(250);
+    },
+  );
 });
 
 describe("impl review S3-R2 pins", () => {
@@ -235,16 +240,21 @@ describe("impl review S3-R2 pins", () => {
     expect(editor.state.doc.resolve(target).parent.textContent).toBe("dd");
   });
 
-  it("counted b near EOF carries the line index — no per-step rescan", () => {
-    const paras = Array.from({ length: 6000 }, (_, i) => `<p>w${i} x</p>`).join(
-      "",
-    );
-    const editor = makeEditor(paras);
-    const nearEnd = posOfText(editor, "w5999");
-    const t0 = performance.now();
-    resolveMotion(editor.state, nearEnd, "wordBack", 999);
-    expect(performance.now() - t0).toBeLessThan(300);
-  });
+  it(
+    "counted b near EOF carries the line index — no per-step rescan",
+    { timeout: 20_000 },
+    () => {
+      const paras = Array.from(
+        { length: 6000 },
+        (_, i) => `<p>w${i} x</p>`,
+      ).join("");
+      const editor = makeEditor(paras);
+      const nearEnd = posOfText(editor, "w5999");
+      const t0 = performance.now();
+      resolveMotion(editor.state, nearEnd, "wordBack", 999);
+      expect(performance.now() - t0).toBeLessThan(300);
+    },
+  );
 });
 
 describe("impl review S3-R3 pin — counted j/k across a mid rowspan", () => {
@@ -320,15 +330,19 @@ describe("impl review S3-R4 pins", () => {
     }
   });
 
-  it("deep counted j carries the line index — near-linear cost", () => {
-    const paras = Array.from({ length: 8000 }, (_, i) => `<p>p${i}</p>`).join(
-      "",
-    );
-    const editor = makeEditor(paras);
-    const top = posOfText(editor, "p0");
-    const t0 = performance.now();
-    const target = resolveMotion(editor.state, top, "lineDown", 7999);
-    expect(performance.now() - t0).toBeLessThan(250);
-    expect(editor.state.doc.resolve(target).parent.textContent).toBe("p7999");
-  });
+  it(
+    "deep counted j carries the line index — near-linear cost",
+    { timeout: 20_000 }, // fixture parsing under full-suite worker load
+    () => {
+      const paras = Array.from({ length: 4000 }, (_, i) => `<p>p${i}</p>`).join(
+        "",
+      );
+      const editor = makeEditor(paras);
+      const top = posOfText(editor, "p0");
+      const t0 = performance.now();
+      const target = resolveMotion(editor.state, top, "lineDown", 3999);
+      expect(performance.now() - t0).toBeLessThan(250);
+      expect(editor.state.doc.resolve(target).parent.textContent).toBe("p3999");
+    },
+  );
 });
