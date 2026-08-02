@@ -278,22 +278,12 @@ export interface RecentMenuEntry {
   label?: string; // present for kind:"item"
 }
 
-export interface RegistryEntry {
-  author: string;
-  capabilities: string[];
-  checksum: string;
-  description: string;
-  downloadUrl: string;
-  id: string;
-  license: string;
-  name: string;
-  version: string;
-}
-
-export interface RegistryIndex {
-  plugins: RegistryEntry[];
-  updatedAt?: string;
-}
+// `RegistryEntry` / `RegistryIndex` were declared here and imported by nobody —
+// `plugin-invoke.ts` has always taken them from `src/plugins/types.ts`. Removed rather
+// than updated alongside the optional `engines`, because a second copy that is one field
+// behind is worse than no copy: the next person to relax a registry field would have had
+// two plausible declarations to choose from and no way to tell which one runs.
+// `knip.json` ignores `src/ipc/**`, so nothing was ever going to report this.
 
 // §33 Rename result
 export interface RenameResult {

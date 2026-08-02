@@ -298,7 +298,18 @@ export interface RegistryEntry {
   description: string;
   downloads?: number;
   downloadUrl: string;
-  engines: { baram: string };
+  /**
+   * The minimum app version this entry declares — optional to READ, required to PUBLISH.
+   *
+   * Authors must still declare it (`docs/plugin-development.md`), and
+   * `scripts/validate-index.ts` refuses to publish an index without it. Optional here
+   * because the alternative is worse in both directions: Rust's `RegistryEntry` drops an
+   * entry it cannot deserialize, so a required field would make an omission delete the
+   * plugin from the marketplace rather than report it — and `unmetBaramFloor` already
+   * treats an absent floor as "no opinion" and installs, so nothing downstream wants the
+   * strictness anyway. Be liberal in what you accept; be strict at the publish gate.
+   */
+  engines?: { baram: string };
   homepage?: string;
   icon?: string;
   id: string;

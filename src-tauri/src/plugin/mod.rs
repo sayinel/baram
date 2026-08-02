@@ -197,11 +197,67 @@ pub struct RegistryEntry {
     pub homepage: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
-    pub engines: EngineRequirement,
+    /// The declared minimum app version — ABSENT is a legal state here, meaning "no floor".
+    ///
+    /// Authors are still required to declare it (`docs/plugin-development.md`, and
+    /// `scripts/validate-index.ts` fails the publish without it). This is the reader being
+    /// liberal, not the spec going soft: `unmetBaramFloor` already treats an unparseable or
+    /// missing floor as "no opinion" and installs anyway, so an entry without `engines` is
+    /// one the app is perfectly willing to serve. Refusing to *deserialize* it would have
+    /// been the only place that disagreed — and, before the tolerant `plugins` below, it
+    /// took the whole index down with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engines: Option<EngineRequirement>,
+}
+
+/// Entries this build cannot read are DROPPED; the rest of the index stands.
+///
+/// `fetch_revocations`, thirty lines below `fetch_registry`, already carries this argument
+/// in its docstring — it returns raw text precisely so that "a serde struct here would
+/// reject the whole document on one bad entry". That reasoning was never applied to the
+/// index, which is the list where the blast radius is larger: the revocation list failing
+/// open costs one protection, but the index failing to parse empties the marketplace for
+/// every user at once. A single community entry missing `license` did that.
+///
+/// Not the text-and-validate-in-TS shape of its sibling, deliberately. `RegistryEntry` is a
+/// typed IPC contract the frontend consumes field-by-field, and moving parsing across the
+/// boundary would mean writing a second full validator in TS to replace the one serde gives
+/// us here. Per-entry tolerance buys the same property — one bad entry costs one entry —
+/// without that.
+///
+/// The drop is deliberately quiet to the user: nothing actionable is on this side of the
+/// wire, since only the registry operator can fix the document. They get the loud version
+/// from `scripts/validate-index.ts`, which refuses to publish an index this would silently
+/// prune. Same division of labour as revocations: forgiving at runtime, strict at publish.
+fn tolerant_entries<'de, D>(deserializer: D) -> Result<Vec<RegistryEntry>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    let mut kept = Vec::with_capacity(raw.len());
+    for value in raw {
+        // Captured before the move, so the warning can name the offender. An index is a
+        // handful of entries under a 4 MiB cap, so one small allocation per entry is free.
+        let label = value
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        match serde_json::from_value::<RegistryEntry>(value) {
+            Ok(entry) => kept.push(entry),
+            Err(err) => log::warn!(
+                "[registry] dropping unreadable index entry {}: {err}",
+                label.as_deref().unwrap_or("<no id>")
+            ),
+        }
+    }
+    Ok(kept)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryIndex {
+    /// No `#[serde(default)]`: a document with no `plugins` array is not a partly-broken
+    /// index, it is not an index. That stays a hard error.
+    #[serde(deserialize_with = "tolerant_entries")]
     pub plugins: Vec<RegistryEntry>,
     #[serde(default, rename = "updatedAt")]
     pub updated_at: Option<String>,
@@ -1438,13 +1494,17 @@ mod tests {
                 "downloadUrl should point at the live registry: {}",
                 entry.download_url
             );
-            // ‼️ SHAPE ONLY — 64 zeros satisfy this, and that is deliberate: the seed names the
-            // NEXT release, whose ZIP does not exist yet, so it carries an all-zero placeholder
-            // (§260 Phase 6 code review, M4). What this cannot catch is the placeholder
-            // becoming PERMANENT: nothing here knows whether that version shipped, and the
-            // release workflow updates only the registry repo's index — a maintainer pastes the
-            // real checksum in by hand. That is a release-checklist step, not a CI guarantee,
-            // and `docs/plugin-development.md` says so rather than implying otherwise.
+            // ‼️ SHAPE ONLY — 64 zeros satisfy this, deliberately, because a seed may name a
+            // release whose ZIP does not exist yet (§260 Phase 6 code review, M4).
+            //
+            // The hazard this comment used to describe as uncatchable — the placeholder
+            // becoming PERMANENT — is now caught, and it had in fact happened: word-count
+            // 2.0.0 shipped on 2026-07-30 and this file still carried all zeros three days
+            // later, because the release workflow writes only the registry repo's index and a
+            // maintainer pastes the real checksum here by hand. `scripts/validate-index.ts`
+            // WARNS on an all-zero checksum every time it runs, which is now every
+            // `npm run lint` — it found this on its first run. Still a warning rather than an
+            // error, so seeding an unreleased entry stays possible.
             assert_eq!(entry.checksum.len(), 64, "checksum must be sha256 hex");
             assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
             // §260 Phase 6 — an entry without a tier is one the app refuses to install
@@ -1491,5 +1551,149 @@ mod tests {
                 .is_none(),
             "an absent tier must not be serialized as null"
         );
+    }
+
+    /// A `RegistryEntry` template with every field this struct requires.
+    ///
+    /// Built as a `Value` so a test can REMOVE a field, which is the mutation that matters
+    /// here — a literal with one field edited proves nothing about the missing-field path.
+    fn entry_json(id: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": id,
+            "name": "P",
+            "description": "d",
+            "version": "1.0.0",
+            "author": "a",
+            "license": "MIT",
+            "downloadUrl": "https://example.test/p.zip",
+            "checksum": "ab",
+            "capabilities": ["events"],
+            "trust": "sandboxed",
+            "engines": { "baram": ">=0.4.0" }
+        })
+    }
+
+    /// THE DEFECT THIS PINS: one unreadable entry emptied the marketplace for everyone.
+    ///
+    /// `plugins` was a plain `Vec<RegistryEntry>`, so serde failed the WHOLE document on the
+    /// first entry missing a required field — `fetch_registry` returned `Err`, and every
+    /// user's Browse tab went blank until the registry operator noticed. The index is shared,
+    /// so the cost of one contributor's typo was borne by all of them.
+    #[test]
+    fn registry_index_drops_only_the_unreadable_entry() {
+        let mut broken = entry_json("broken");
+        broken.as_object_mut().unwrap().remove("license");
+        let doc = serde_json::json!({
+            "plugins": [entry_json("first"), broken, entry_json("last")],
+        });
+
+        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+
+        // By ID, not by count. A comparator that dropped everything, or kept the broken entry
+        // and dropped a good one, would satisfy `len() == 2`.
+        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["first", "last"]);
+    }
+
+    /// An absent `engines` costs the entry nothing, because it costs the app nothing.
+    ///
+    /// The frontend's floor gate reads a missing or unparseable range as "no opinion" and
+    /// installs (`src/plugins/engines.ts`), so refusing to deserialize the entry would have
+    /// been the one layer with a stronger view than the layer that decides. Absence must also
+    /// survive re-serialization as ABSENCE — same argument as `trust` above: the frontend
+    /// tests `engines?.baram`, and a `null` would reach it as a present-but-broken field.
+    #[test]
+    fn registry_entry_without_engines_keeps_the_entry() {
+        let mut json = entry_json("no-floor");
+        json.as_object_mut().unwrap().remove("engines");
+
+        // Deliberately NOT `assert!(entry.engines.is_none())`. That reads on the field's
+        // type, so reverting the field to a required `EngineRequirement` breaks this test at
+        // COMPILE time — and a module that will not compile cannot demonstrate what its
+        // assertions catch. Without that line the mutation runs, and what it produces is the
+        // failure worth pinning: `from_value` returns Err, so at index level `tolerant_entries`
+        // PRUNES the entry instead of raising anything. Absence is proved by the serialized
+        // form below, which is the half the frontend actually reads.
+        let entry: RegistryEntry = serde_json::from_value(json).unwrap();
+        assert!(
+            serde_json::to_value(&entry)
+                .unwrap()
+                .get("engines")
+                .is_none(),
+            "an absent floor must not be serialized as null"
+        );
+
+        // And the floor still round-trips when it IS declared — the tolerance must not have
+        // been bought by dropping the field on the way back out (the `trust` defect, again).
+        let declared: RegistryEntry = serde_json::from_value(entry_json("has-floor")).unwrap();
+        assert_eq!(
+            serde_json::to_value(&declared).unwrap()["engines"]["baram"],
+            ">=0.4.0"
+        );
+    }
+
+    /// The two changes MEET here, and the meeting point is where the silent loss would be.
+    ///
+    /// Per-entry tolerance is what makes a required `engines` dangerous rather than loud: if
+    /// the field goes back to mandatory, nothing errors and nothing fails to compile — the
+    /// entry is simply pruned on the way in, and a perfectly installable plugin disappears
+    /// from every user's marketplace with a line in a log nobody reads. Asserted at INDEX
+    /// level for exactly that reason; the entry-level test cannot see a pruning decision.
+    #[test]
+    fn registry_index_keeps_an_entry_that_declares_no_floor() {
+        let mut no_floor = entry_json("no-floor");
+        no_floor.as_object_mut().unwrap().remove("engines");
+        let doc = serde_json::json!({ "plugins": [entry_json("has-floor"), no_floor] });
+
+        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+
+        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["has-floor", "no-floor"],
+            "an entry that declares no floor is still installable, so it must still be listed"
+        );
+    }
+
+    /// Keeps `scripts/validate-index.ts` honest about what this struct actually requires.
+    ///
+    /// That script's `REQUIRED_FIELDS` is a hand-copy of the fields below that carry no
+    /// `#[serde(default)]`, and it is the list the publish gate refuses on. The dangerous
+    /// drift is this struct growing a required field the script does not know about: the
+    /// gate would pass an entry that `tolerant_entries` then silently prunes, which is
+    /// precisely the invisible-plugin failure both were written to prevent. This entry holds
+    /// EXACTLY the script's list, so that addition fails here.
+    ///
+    /// The reverse drift is deliberately not caught — a script asking for more than the
+    /// struct needs costs a publish, not a user.
+    #[test]
+    fn registry_entry_minimal_required_fields_deserializes() {
+        let minimal = serde_json::json!({
+            "id": "m",
+            "name": "M",
+            "description": "d",
+            "version": "1.0.0",
+            "author": "a",
+            "license": "MIT",
+            "downloadUrl": "https://example.test/m.zip",
+            "checksum": "ab",
+            "capabilities": []
+        });
+        let entry = serde_json::from_value::<RegistryEntry>(minimal);
+        assert!(
+            entry.is_ok(),
+            "a field became required without being added to REQUIRED_FIELDS in \
+             scripts/validate-index.ts — entries missing it would be pruned, not reported: {:?}",
+            entry.err()
+        );
+    }
+
+    /// Tolerance is per-ENTRY, not per-document. A payload with no `plugins` array is not a
+    /// partly-broken index, and answering it with an empty marketplace would hide a registry
+    /// that is serving the wrong file entirely.
+    #[test]
+    fn registry_index_without_plugins_array_is_an_error() {
+        let err = serde_json::from_str::<RegistryIndex>(r#"{"updatedAt":"2026-01-01"}"#);
+        assert!(err.is_err());
     }
 }

@@ -731,8 +731,7 @@ here, which is the difference worth copying carefully:
 ### The registry JSON shape
 
 The marketplace fetches a single JSON document — a `RegistryIndex` — and
-deserializes it on the Rust side (`fetch_registry`,
-`serde_json::from_str::<RegistryIndex>`):
+deserializes it on the Rust side (`fetch_registry`), entry by entry:
 
 ```typescript
 interface RegistryIndex {
@@ -766,6 +765,28 @@ containing the plugin (same contents as the packaging step below); `checksum`
 is that ZIP's SHA-256, hex-encoded. Registry installs verify `checksum`
 before extracting the ZIP — the host refuses to install a package whose hash
 doesn't match.
+
+#### A malformed entry costs only itself
+
+Every field above without a `?` is required **of you**, but Baram does not fail
+the whole document when one is missing. An entry it cannot read is dropped and
+the rest of the index is served, so one contributor's typo cannot empty the
+marketplace for everyone. `engines` is looser still: it may be absent on the
+wire, because a missing floor already means "no opinion" to the version gate,
+and deleting an installable plugin over it would be the worse answer.
+
+That tolerance is the reader being liberal, not the requirements going soft —
+and it is silent, which is the trade. A dropped entry looks exactly like an
+entry nobody published. The signal lives at publish time instead:
+`scripts/validate-index.ts` reads the index with the app's own parsers and
+refuses anything the app would quietly prune, demote, or stop protecting. It
+runs in `npm run lint:frontend` and again in `plugin-release.yml`, against the
+entire index rather than only the entry being added. Run it yourself before
+proposing a registry change:
+
+```bash
+npx tsx scripts/validate-index.ts path/to/index.json
+```
 
 #### `trust` and `capabilities` are a claim the install verifies
 
@@ -888,9 +909,10 @@ Two further things the seed is **not**:
   workflow clones `sayinel/baram-plugins` and updates only _that_ repo's
   `index.json`; nothing writes back here. After publishing a version, a
   maintainer copies the workflow's `sha256sum` output into this file by hand.
-  No test can detect that this was forgotten — the guard checks that the
-  checksum is 64 hex characters, which zeros satisfy — so it is a step on the
-  release checklist, not something CI enforces.
+  Forgetting is now **reported but not blocked**: `validate-index.ts` warns on
+  an all-zero checksum on every `npm run lint`, while still allowing a seed to
+  name a release whose ZIP does not exist yet. The 64-hex shape check on its
+  own could never see it, since zeros satisfy it.
 
 ### Publishing your own plugin
 

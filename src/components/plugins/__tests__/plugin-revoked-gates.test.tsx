@@ -143,7 +143,9 @@ describe("the marketplace update gate (§69)", () => {
             author: ENTRY.author,
             capabilities: ENTRY.capabilities,
             description: ENTRY.description,
-            engines: ENTRY.engines,
+            // A literal, not `ENTRY.engines`: a manifest's floor is required and an entry's
+            // is not, so the entry can no longer stand in for it.
+            engines: { baram: "*" },
             id: ENTRY.id,
             license: ENTRY.license,
             main: "index.mjs",

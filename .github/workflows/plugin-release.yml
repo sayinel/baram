@@ -92,10 +92,13 @@ jobs:
           # package (round-3 LOW plus a defect in the first attempt at this fix):
           #   • `sort -V` is a version-ish string sort, not a semver comparator; it ordered a
           #     prerelease `0.5.0-beta.1` as satisfying a `0.5.0` floor.
-          #   • `require("semver")` would NOT RESOLVE here. This job never runs `npm ci` at the
-          #     repo root (only inside the plugin directory, two steps later), and semver is a
-          #     transitive package rather than a declared dependency. Reading a JSON file by
-          #     relative path needs no node_modules; requiring a package does.
+          #   • `require("semver")` would NOT RESOLVE here. No root `npm ci` has run at this
+          #     point in the job — the plugin build installs into the plugin directory, and the
+          #     root install happens later, just before the index is validated — and semver is a
+          #     transitive package rather than a declared dependency in any case. Reading a JSON
+          #     file by relative path needs no node_modules; requiring a package does. ‼️ Do not
+          #     "simplify" this to `require("semver")` on the strength of that later install:
+          #     this step runs first, and the failure would be a raw MODULE_NOT_FOUND.
           # A prerelease app version fails closed: `0.5.0-beta.1` is not the release that ships
           # the floor, so it must not authorize publishing against it.
           APP_VERSION="$(node -p "require('./package.json').version")"
@@ -215,6 +218,13 @@ jobs:
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
+      # For `validate-index.ts` in the next step, which imports the app's own
+      # `parseBaramFloor` and `VALID_CAPABILITIES` rather than restating their rules. Placed
+      # here rather than at the top of the job on purpose: every gate above is deliberately
+      # dependency-free (see the semver note in the meta step), and moving this earlier would
+      # invite those checks to start requiring packages.
+      - uses: ./.github/actions/setup-node
+
       - name: Push ZIP + updated index to registry repo
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
@@ -245,6 +255,15 @@ jobs:
             --zip-name "$ZIP_NAME" \
             --checksum "$CHECKSUM" \
             --base-url "$BASE_URL"
+          # The WHOLE index, not just the entry written above. `update-registry-index.mjs`
+          # validates its own manifest input, but nothing has ever read the entries already in
+          # the registry — and those are where a hand-added or community entry lands. The app
+          # now DROPS an entry it cannot deserialize (§69 `tolerant_entries`) instead of failing
+          # the whole fetch, which fixed the outage and removed the last signal that anything
+          # was wrong; this is where that signal comes back. Refusing to publish INTO a broken
+          # index is deliberate: the entries already there are invisible or un-installable to
+          # users right now, and adding one more does not improve that.
+          npx tsx scripts/validate-index.ts "$RUNNER_TEMP/registry/index.json"
           cd "$RUNNER_TEMP/registry"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
