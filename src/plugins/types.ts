@@ -321,7 +321,15 @@ export interface RegistryEntry {
   version: string;
 }
 
+/**
+ * How many entries Rust discarded because it could not deserialize them.
+ *
+ * Produced by the app, never read off the wire (`RawRegistryIndex` has no such field), so a
+ * registry cannot assert one. It exists because nothing else can report a partial drop:
+ * `src-tauri` installs no `log` implementation, so the Rust-side `log::warn!` is a no-op.
+ */
 export interface RegistryIndex {
+  droppedCount?: number;
   plugins: RegistryEntry[];
   updatedAt?: string;
 }

@@ -30,28 +30,57 @@ import { VALID_CAPABILITIES } from "../src/plugins/manifest";
 
 const path = process.argv[2] ?? "registry/index.json";
 
+const isString = (v: unknown) => typeof v === "string";
+const isStringArray = (v: unknown) =>
+  Array.isArray(v) && v.every((x) => typeof x === "string");
+const isNumber = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+
 /**
- * The fields `RegistryEntry` has no `#[serde(default)]` for — i.e. the ones whose absence
- * costs the whole entry.
+ * Every field of Rust's `RegistryEntry`, with the TYPE serde demands.
  *
- * Duplicated from Rust, and pinned from the Rust side rather than here: the test
- * `registry_entry_minimal_required_fields_deserializes` builds an entry from exactly this
- * list and fails if the struct grows a field it does not cover. That catches the dangerous
- * direction — the struct getting stricter while this list stays behind, which would let a
- * silently-pruned entry through this gate. The opposite drift only makes this script
- * stricter than the app, which costs a publish, not a user.
+ * ‼️ TYPE, not merely presence. The first version of this script tested
+ * `entry[field] === undefined`, which let `"license": null`, `"version": 123` and
+ * `"keywords": "word"` through with exit 0 — and serde drops an entry on a wrong type
+ * exactly as hard as on a missing key, so those published and vanished from every
+ * marketplace. A gate calibrated on absence cannot see the larger half of what it guards.
+ *
+ * OPTIONAL fields are here too, for the same reason: they carry `#[serde(default)]`, so
+ * omitting them is fine, but giving one the wrong type still kills the entry.
+ *
+ * Duplicated from Rust, and pinned from the Rust side: the test
+ * `registry_entry_minimal_required_fields_deserializes` builds an entry from exactly the
+ * required names below and fails if the struct grows a field they do not cover. That
+ * catches the dangerous drift (struct stricter than this list). It does NOT check types —
+ * the table below is the only thing that does.
  */
-const REQUIRED_FIELDS = [
-  "id",
-  "name",
-  "description",
-  "version",
-  "author",
-  "license",
-  "downloadUrl",
-  "checksum",
-  "capabilities",
-] as const;
+const FIELDS: Record<
+  string,
+  { check: (v: unknown) => boolean; required: boolean; type: string }
+> = {
+  author: { check: isString, required: true, type: "a string" },
+  capabilities: {
+    check: isStringArray,
+    required: true,
+    type: "an array of strings",
+  },
+  checksum: { check: isString, required: true, type: "a string" },
+  description: { check: isString, required: true, type: "a string" },
+  downloads: { check: isNumber, required: false, type: "a number" },
+  downloadUrl: { check: isString, required: true, type: "a string" },
+  homepage: { check: isString, required: false, type: "a string" },
+  icon: { check: isString, required: false, type: "a string" },
+  id: { check: isString, required: true, type: "a string" },
+  keywords: {
+    check: isStringArray,
+    required: false,
+    type: "an array of strings",
+  },
+  license: { check: isString, required: true, type: "a string" },
+  name: { check: isString, required: true, type: "a string" },
+  repository: { check: isString, required: false, type: "a string" },
+  trust: { check: isString, required: false, type: "a string" },
+  version: { check: isString, required: true, type: "a string" },
+};
 
 /** The two tiers of §260, as a literal list so an unknown value cannot ship. */
 const TRUST_VALUES = ["sandboxed", "trusted"];
@@ -87,16 +116,8 @@ plugins.forEach((value, position) => {
   const id = typeof entry.id === "string" && entry.id !== "" ? entry.id : null;
   const where = id ?? `entry #${position + 1}`;
 
-  const missing = REQUIRED_FIELDS.filter((field) => entry[field] === undefined);
-  if (missing.length > 0) {
-    errors.push(
-      `${where}: missing ${missing.join(", ")} — the app DROPS an entry it cannot ` +
-        "deserialize, so this plugin would be invisible in the marketplace, not broken in it",
-    );
-    // Everything below reads fields this entry may not have; one report is enough.
-    return;
-  }
-
+  // Registered BEFORE the early return below, so a duplicate of an entry that is itself
+  // broken is still reported. Otherwise fixing the first error would reveal a second.
   if (id !== null) {
     const first = seenIds.get(id);
     if (first !== undefined) {
@@ -107,6 +128,21 @@ plugins.forEach((value, position) => {
     } else {
       seenIds.set(id, position);
     }
+  }
+
+  const unreadable = Object.entries(FIELDS).flatMap(([field, spec]) => {
+    const value = entry[field];
+    if (value === undefined)
+      return spec.required ? [`${field} is missing`] : [];
+    return spec.check(value) ? [] : [`${field} must be ${spec.type}`];
+  });
+  if (unreadable.length > 0) {
+    errors.push(
+      `${where}: ${unreadable.join("; ")} — the app DROPS an entry it cannot deserialize, ` +
+        "so this plugin would be invisible in the marketplace, not broken in it",
+    );
+    // Everything below reads fields this entry may not have in a usable shape.
+    return;
   }
 
   const engines = entry.engines as undefined | { baram?: unknown };
@@ -131,10 +167,8 @@ plugins.forEach((value, position) => {
       `${where}: no trust tier — Phase 5 reads a tier-less entry as legacy and DISABLES ` +
         "Install, so this entry can only be looked at",
     );
-  } else if (
-    typeof entry.trust !== "string" ||
-    !TRUST_VALUES.includes(entry.trust)
-  ) {
+  } else if (!TRUST_VALUES.includes(entry.trust as string)) {
+    // Its type is already guaranteed by FIELDS above; only the VALUE is open here.
     errors.push(
       `${where}: unknown trust tier ${JSON.stringify(entry.trust)} — must be one of ` +
         `${TRUST_VALUES.join(", ")}; anything else is demoted to legacy and cannot be installed`,
@@ -157,30 +191,37 @@ plugins.forEach((value, position) => {
     );
   }
 
-  const capabilities = entry.capabilities;
-  if (!Array.isArray(capabilities)) {
-    errors.push(`${where}: capabilities must be an array`);
-  } else {
-    const unknown = capabilities.filter(
-      (cap) => !VALID_CAPABILITIES.includes(cap as never),
+  // An ERROR, not a warning. The tempting argument for a warning is "the index may be newer
+  // than the app checking it" — but that describes neither place this runs. In
+  // `plugin-release.yml` the checkout IS the tag being released, i.e. the newest capability
+  // list in existence, so a name unknown there is unknown to every shipped app and the entry
+  // is demoted for everyone. In `lint:frontend` the seed and the list come from the same
+  // tree. `demotedBecause: "unknown-capability"` describes what an OLD app should do at
+  // runtime, which is a different question from what may be published.
+  const unknownCaps = (entry.capabilities as string[]).filter(
+    (cap) => !VALID_CAPABILITIES.includes(cap as never),
+  );
+  if (unknownCaps.length > 0) {
+    errors.push(
+      `${where}: capabilities unknown to this build (${unknownCaps
+        .map((cap) => JSON.stringify(cap))
+        .join(
+          ", ",
+        )}) — the entry is demoted to legacy and these badges are stripped`,
     );
-    if (unknown.length > 0) {
-      // A warning rather than an error, and the direction of doubt is the reason: an index
-      // may legitimately be NEWER than the app checking it, which is the state
-      // `demotedBecause: "unknown-capability"` exists to describe. Failing the publish would
-      // make this repo's build the ceiling on what the registry may advertise.
-      warnings.push(
-        `${where}: capabilities unknown to this build (${unknown
-          .map((cap) => JSON.stringify(cap))
-          .join(
-            ", ",
-          )}) — older apps demote the entry to legacy and strip these badges`,
-      );
-    }
   }
 
-  const url = entry.downloadUrl;
-  if (typeof url !== "string" || !/^https:\/\//.test(url)) {
+  const url = entry.downloadUrl as string;
+  if (!/^https?:\/\//.test(url)) {
+    // A hard refusal, not an interception risk: `validate_http_url` allows only http and
+    // https, so `ftp://` or a typo'd scheme is rejected before a request is even made. That
+    // is the "listed but un-installable" class this script exists to catch, and conflating
+    // it with the http-vs-https warning below hid it.
+    errors.push(
+      `${where}: downloadUrl scheme is not http(s) (${JSON.stringify(url)}) — the app ` +
+        "refuses the request outright, so this entry can never be installed",
+    );
+  } else if (!/^https:\/\//.test(url)) {
     warnings.push(
       `${where}: downloadUrl is not https (${JSON.stringify(url)}) — the checksum still ` +
         "guards integrity, but the download itself is interceptable",

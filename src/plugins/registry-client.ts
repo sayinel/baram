@@ -51,6 +51,16 @@ export async function fetchRegistryIndex(
     // Normalized BEFORE caching, so every later reader (install, update check, search) sees
     // one shape and the guard cannot be bypassed by reading the cache instead.
     const index = normalizeIndex(await pluginFetchRegistry(store.registryUrl));
+    // The only place a partial drop becomes visible. Rust discards entries it cannot
+    // deserialize so one bad entry cannot empty the marketplace, but `src-tauri` installs no
+    // `log` implementation, so its `log::warn!` reaches nobody. A TOTAL drop is a hard error
+    // upstream and never arrives here — this is strictly the survivable case.
+    if (index.droppedCount) {
+      logger.warn(
+        `[Registry] ${index.droppedCount} entry/entries could not be read and were skipped — ` +
+          "run `npx tsx scripts/validate-index.ts <index>` against the registry to see why",
+      );
+    }
     store.setRegistryCache(index);
     return index;
   } catch (err) {

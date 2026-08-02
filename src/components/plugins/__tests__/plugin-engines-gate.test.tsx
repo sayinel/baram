@@ -222,4 +222,62 @@ describe("the marketplace update floor gate (§69)", () => {
     expect(pluginUninstall).not.toHaveBeenCalled();
     expect(pluginInstall).not.toHaveBeenCalled();
   });
+
+  /// THE DEFECT THIS PINS (code review MEDIUM-1): making `engines` optional on
+  /// `RegistryEntry` punched a hole in the gate above.
+  ///
+  /// An absent floor means "no opinion" to `floorRefusal`, which is right on the INSTALL
+  /// path — the post-download re-check against the ZIP's manifest catches a bad floor and
+  /// rolls the files back, so nothing is lost. On the UPDATE path the uninstall sits
+  /// BETWEEN those two checks: the listing passes, the working copy is deleted, the
+  /// download is then refused, and the user has nothing. Before `engines` went optional
+  /// this was unreachable — an entry without it failed the whole index parse.
+  it("never uninstalls the working copy when the listing declares no floor at all", async () => {
+    getVersion.mockResolvedValue("0.5.1");
+    // Deleted from a copy rather than destructured away: this project's lint ignores `^_`
+    // for arguments only, so `const { engines: _x, ...rest }` is an error here.
+    const withoutEngines = { ...ENTRY };
+    delete (withoutEngines as { engines?: unknown }).engines;
+    listing = withoutEngines;
+    render(<PluginMarketplace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
+    );
+    // Names THIS refusal, not merely "some error" — the neighbouring gate's message
+    // carries version numbers, so a mutation that let this fall through to it would
+    // otherwise pass.
+    const why = usePluginStore.getState().pluginErrors.demo;
+    expect(why).toContain("does not declare which Baram version it needs");
+    expect(why).toContain(ENTRY.name);
+    // The whole point: the working copy survives.
+    expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
+  });
+
+  it("still updates an entry whose floor it cannot parse, which predates this change", async () => {
+    // ‼️ Pins the SCOPE of the guard above, not an endorsement of the outcome. `"*"` gives
+    // no more assurance about the ZIP than an absent field does, and a listing that
+    // under-declares a parseable floor is worse still — but all of those reached this path
+    // before `engines` became optional, and silently changing them here would turn a
+    // regression fix into a behaviour change nobody asked for. Issue #261 (stage the
+    // download before removing anything) is what actually closes them.
+    getVersion.mockResolvedValue("0.5.1");
+    pluginUninstall.mockResolvedValue(undefined);
+    pluginInstall.mockResolvedValue({
+      checksum: "sha256:new",
+      install_path: "/p/demo",
+      manifest: { ...ENTRY, engines: { baram: "*" }, main: "index.mjs" },
+    });
+    listing = { ...ENTRY, engines: { baram: "*" } };
+    render(<PluginMarketplace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    await waitFor(() => expect(pluginUninstall).toHaveBeenCalledWith("demo"));
+    expect(usePluginStore.getState().pluginErrors.demo).toBeFalsy();
+  });
 });

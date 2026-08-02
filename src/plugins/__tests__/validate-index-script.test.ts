@@ -68,7 +68,7 @@ describe("validate-index", () => {
     const entry = validEntry();
     delete (entry as { license?: unknown }).license;
     const { output, status } = run({ plugins: [entry] });
-    expect(output).toContain("missing license");
+    expect(output).toContain("license is missing");
     // The point of the message: a missing field makes the plugin INVISIBLE, which is not
     // what an operator would guess from "invalid entry".
     expect(output).toContain("invisible in the marketplace");
@@ -145,15 +145,94 @@ describe("validate-index", () => {
     expect(status).toBe(0);
   });
 
-  it("WARNS about a capability this build does not know, without failing", () => {
-    // An index may legitimately be newer than the app validating it. Failing here would make
-    // this repo's build a ceiling on what the registry is allowed to advertise.
+  it("rejects a capability this build does not know", () => {
+    // Was a warning on the theory that "the index may be newer than the app". Neither place
+    // this runs fits that: in `plugin-release.yml` the checkout IS the tag being released,
+    // so its capability list is the newest in existence and a name unknown there is unknown
+    // to every shipped app; in `lint:frontend` the seed and the list come from one tree.
     const { output, status } = run({
       plugins: [validEntry({ capabilities: ["statusbar", "telepathy"] })],
     });
     expect(output).toContain("unknown to this build");
     expect(output).toContain("telepathy");
+    expect(status).toBe(1);
+  });
+
+  // ‼️ THE HOLE THIS CLOSES (code review HIGH-2): the first version of the script tested
+  // `entry[field] === undefined`, so a field present with the WRONG TYPE sailed through —
+  // while serde drops such an entry exactly as hard as a missing one. `"license": null`
+  // passed `npm run validate:index`, published, and vanished from every marketplace.
+  // `a_wrong_typed_field_drops_the_entry_even_when_optional` (Rust) pins the other half:
+  // that these really do drop, including the `#[serde(default)]` ones.
+  it.each([
+    ["license", null],
+    ["version", 123],
+    ["name", ["N"]],
+    ["id", 7],
+    ["capabilities", [1, 2]],
+    // `#[serde(default)]` fields — `default` covers an ABSENT key, never a wrong-typed one.
+    ["downloads", "many"],
+    ["keywords", "word"],
+    ["repository", 5],
+  ])(
+    "rejects a wrong-typed %s, which serde drops the entry over",
+    (field, bad) => {
+      const { output, status } = run({
+        plugins: [validEntry({ [field]: bad })],
+      });
+      expect(output).toContain(`${field} must be`);
+      expect(output).toContain("invisible in the marketplace");
+      expect(status).toBe(1);
+    },
+  );
+
+  it("still accepts an entry that OMITS the optional fields", () => {
+    // The contrast that keeps the check above honest: absence is fine, wrong type is not.
+    const entry = validEntry();
+    for (const field of [
+      "downloads",
+      "keywords",
+      "repository",
+      "icon",
+      "homepage",
+    ]) {
+      delete (entry as Record<string, unknown>)[field];
+    }
+    const { status } = run({ plugins: [entry] });
     expect(status).toBe(0);
+  });
+
+  it("rejects a downloadUrl scheme the app refuses outright", () => {
+    // `validate_http_url` allows only http and https, so this is un-installable — a
+    // different failure from the http-vs-https warning it used to be lumped in with.
+    const { output, status } = run({
+      plugins: [validEntry({ downloadUrl: "ftp://example.test/p.zip" })],
+    });
+    expect(output).toContain("scheme is not http(s)");
+    expect(output).toContain("can never be installed");
+    expect(status).toBe(1);
+  });
+
+  it("only WARNS about plain http, which installs and is checksum-guarded", () => {
+    const { output, status } = run({
+      plugins: [validEntry({ downloadUrl: "http://example.test/p.zip" })],
+    });
+    expect(output).toContain("not https");
+    expect(status).toBe(0);
+  });
+
+  it("reports a duplicate of an entry that is itself broken", () => {
+    // The first entry takes the early return for its missing field. If the id were recorded
+    // only after that, fixing the first error would reveal a second one — two publish
+    // failures for one review.
+    const broken = validEntry({ id: "dup" });
+    delete (broken as { license?: unknown }).license;
+    const { output, status } = run({
+      plugins: [broken, validEntry({ id: "dup" })],
+    });
+    expect(output).toContain("license is missing");
+    expect(output).toContain("duplicate id");
+    expect(status).toBe(1);
   });
 
   it("reports every broken entry in one run, not just the first", () => {

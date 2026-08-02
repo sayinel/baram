@@ -225,42 +225,84 @@ pub struct RegistryEntry {
 /// us here. Per-entry tolerance buys the same property — one bad entry costs one entry —
 /// without that.
 ///
-/// The drop is deliberately quiet to the user: nothing actionable is on this side of the
-/// wire, since only the registry operator can fix the document. They get the loud version
-/// from `scripts/validate-index.ts`, which refuses to publish an index this would silently
-/// prune. Same division of labour as revocations: forgiving at runtime, strict at publish.
-fn tolerant_entries<'de, D>(deserializer: D) -> Result<Vec<RegistryEntry>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
-    let mut kept = Vec::with_capacity(raw.len());
-    for value in raw {
-        // Captured before the move, so the warning can name the offender. An index is a
-        // handful of entries under a 4 MiB cap, so one small allocation per entry is free.
-        let label = value
-            .get("id")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-        match serde_json::from_value::<RegistryEntry>(value) {
-            Ok(entry) => kept.push(entry),
-            Err(err) => log::warn!(
-                "[registry] dropping unreadable index entry {}: {err}",
-                label.as_deref().unwrap_or("<no id>")
-            ),
-        }
-    }
-    Ok(kept)
+/// ‼️ TOLERANCE IS FOR PARTIAL DAMAGE ONLY. A non-empty array from which NOTHING survives
+/// is still a hard error, and that distinction is the whole safety of this design.
+///
+/// Turning a parse failure into `Ok` with fewer entries turns it into `Ok` with ZERO entries
+/// when the cause is systemic rather than per-entry — a renamed field, a script emitting
+/// `version` as a number, a schema change on either side. `fetchRegistryIndex` would then
+/// cache that empty index for 24 hours, and its stale-cache fallback only runs on a throw,
+/// so the user's previously-working listing would be replaced by a silent empty Browse tab.
+/// That trades an observable outage for an unobservable one — worse than the bug this
+/// tolerance fixes. Erroring on total loss keeps the old behaviour for exactly the case the
+/// old behaviour was right about.
+///
+/// How many were dropped reaches the frontend in `dropped_count`, because nothing on this
+/// side can report it: `src-tauri` installs no `log` implementation, so the `log::warn!` in
+/// the impl below is a no-op in every build today. It is kept for the day one is installed;
+/// the field is what actually carries the signal now.
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistryIndex {
+    pub plugins: Vec<RegistryEntry>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
+    /// How many entries the deserializer discarded, for the frontend to report.
+    ///
+    /// Never read off the wire — see the `Deserialize` impl. Same argument `normalizeIndex`
+    /// makes for stripping a registry-supplied `demotedBecause`: a remote document must not
+    /// be able to claim a diagnostic the app produces.
+    #[serde(rename = "droppedCount")]
+    pub dropped_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RegistryIndex {
+/// The shape actually on the wire. `plugins` lands as raw `Value`s so each can be tried
+/// independently; `dropped_count` has no counterpart here, which is what makes it un-forgeable.
+#[derive(Deserialize)]
+struct RawRegistryIndex {
     /// No `#[serde(default)]`: a document with no `plugins` array is not a partly-broken
     /// index, it is not an index. That stays a hard error.
-    #[serde(deserialize_with = "tolerant_entries")]
-    pub plugins: Vec<RegistryEntry>,
+    plugins: Vec<serde_json::Value>,
     #[serde(default, rename = "updatedAt")]
-    pub updated_at: Option<String>,
+    updated_at: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for RegistryIndex {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = RawRegistryIndex::deserialize(deserializer)?;
+        let total = raw.plugins.len();
+        // NOT `with_capacity(total)`: `RegistryEntry` is ~368 bytes, so a 4 MiB document of
+        // millions of junk elements would reserve hundreds of MiB for entries that will
+        // never be kept. Growing on demand costs a few reallocations for a real index.
+        let mut kept: Vec<RegistryEntry> = Vec::new();
+        for value in raw.plugins {
+            // Captured before the move, so the warning can name the offender.
+            let label = value
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned);
+            match serde_json::from_value::<RegistryEntry>(value) {
+                Ok(entry) => kept.push(entry),
+                Err(err) => log::warn!(
+                    "[registry] dropping unreadable index entry {}: {err}",
+                    label.as_deref().unwrap_or("<no id>")
+                ),
+            }
+        }
+        if total > 0 && kept.is_empty() {
+            return Err(serde::de::Error::custom(format!(
+                "every one of the {total} entries in this index was unreadable — treating \
+                 it as a broken document rather than an empty registry"
+            )));
+        }
+        Ok(RegistryIndex {
+            dropped_count: total - kept.len(),
+            plugins: kept,
+            updated_at: raw.updated_at,
+        })
+    }
 }
 
 /// Response body cap for `http_fetch` (§69 Phase D network API).
@@ -1686,6 +1728,100 @@ mod tests {
              scripts/validate-index.ts — entries missing it would be pruned, not reported: {:?}",
             entry.err()
         );
+    }
+
+    /// THE DEFECT THIS PINS (code review HIGH-1): tolerance that swallows TOTAL loss.
+    ///
+    /// Dropping bad entries makes "the whole document is unreadable" indistinguishable from
+    /// "the registry is empty" — and the empty answer is the more dangerous one, because
+    /// `fetchRegistryIndex` caches a successful result for 24 hours and only falls back to
+    /// the stale cache on a throw. A schema mismatch would therefore replace every user's
+    /// working listing with a silent empty Browse tab, for a day, with no error anywhere.
+    #[test]
+    fn registry_index_errors_when_no_entry_survives() {
+        let doc = serde_json::json!({ "plugins": [{ "id": "a" }, { "id": "b" }] });
+        let err = serde_json::from_value::<RegistryIndex>(doc).unwrap_err();
+        // Names the count, so the message distinguishes this from a genuinely empty registry.
+        assert!(
+            err.to_string().contains("every one of the 2 entries"),
+            "unexpected message: {err}"
+        );
+
+        // An index that is genuinely empty is NOT an error — nothing was lost.
+        let empty: RegistryIndex =
+            serde_json::from_value(serde_json::json!({ "plugins": [] })).unwrap();
+        assert!(empty.plugins.is_empty());
+        assert_eq!(empty.dropped_count, 0);
+    }
+
+    /// Partial loss is survivable but must not be silent. `log::warn!` cannot carry it —
+    /// this crate installs no `log` implementation — so the count goes over the wire.
+    #[test]
+    fn registry_index_reports_how_many_entries_it_dropped() {
+        let mut broken = entry_json("broken");
+        broken.as_object_mut().unwrap().remove("license");
+        let doc = serde_json::json!({ "plugins": [entry_json("kept"), broken] });
+
+        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+
+        assert_eq!(idx.dropped_count, 1);
+        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["kept"]);
+        assert_eq!(
+            serde_json::to_value(&idx).unwrap()["droppedCount"],
+            1,
+            "the frontend is the only layer that can report this"
+        );
+    }
+
+    /// `droppedCount` is a diagnostic this app produces, so the registry must not be able to
+    /// assert one — the same rule `normalizeIndex` enforces for `demotedBecause`.
+    #[test]
+    fn registry_index_ignores_a_registry_supplied_dropped_count() {
+        let doc = serde_json::json!({
+            "plugins": [entry_json("fine")],
+            "droppedCount": 99
+        });
+        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+        assert_eq!(idx.dropped_count, 0);
+    }
+
+    /// Backs the claim `scripts/validate-index.ts` makes in its own error text.
+    ///
+    /// That script tells the operator a wrong-typed field means the app "DROPS an entry it
+    /// cannot deserialize". Worth pinning, because the intuition for the `#[serde(default)]`
+    /// fields runs the other way — `default` looks like it should absorb anything. It does
+    /// not: it applies only when the key is ABSENT. A key that is present with the wrong type
+    /// is a hard deserialization error, so an optional field is every bit as fatal as a
+    /// required one once someone actually writes it.
+    #[test]
+    fn a_wrong_typed_field_drops_the_entry_even_when_optional() {
+        for (field, bad) in [
+            ("license", serde_json::Value::Null),
+            ("version", serde_json::json!(123)),
+            ("name", serde_json::json!(["N"])),
+            ("capabilities", serde_json::json!([1, 2])),
+            // …and the `#[serde(default)]` ones, which is the counter-intuitive half.
+            ("downloads", serde_json::json!("many")),
+            ("keywords", serde_json::json!("word")),
+            ("repository", serde_json::json!(5)),
+            ("icon", serde_json::json!(true)),
+        ] {
+            let mut json = entry_json("x");
+            json.as_object_mut().unwrap().insert(field.into(), bad);
+            assert!(
+                serde_json::from_value::<RegistryEntry>(json).is_err(),
+                "a wrong-typed `{field}` must fail to deserialize — validate-index.ts tells \
+                 operators it does"
+            );
+        }
+
+        // The contrast that makes the point: OMITTING the same optional fields is fine.
+        let mut json = entry_json("x");
+        for field in ["downloads", "keywords", "repository", "icon"] {
+            json.as_object_mut().unwrap().remove(field);
+        }
+        assert!(serde_json::from_value::<RegistryEntry>(json).is_ok());
     }
 
     /// Tolerance is per-ENTRY, not per-document. A payload with no `plugins` array is not a
