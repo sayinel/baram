@@ -24,7 +24,12 @@ import type {
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { Plugin, TextSelection } from "@tiptap/pm/state";
+import {
+  NodeSelection,
+  Plugin,
+  Selection,
+  TextSelection,
+} from "@tiptap/pm/state";
 
 import { executeCoreCommand } from "./adapters/execute-command";
 import { resolveMotion } from "./adapters/motions";
@@ -114,7 +119,7 @@ export function createVimPlugin(): Plugin<VimPluginState> {
 
           const token = toKeyToken(event, isMacPlatform());
           const result = step(vim.core, token, {
-            cursor: view.state.selection.head,
+            cursor: vimCursor(view.state),
           });
           if (!result.handled) return false; // Mod chords, unknowns — §5
 
@@ -227,6 +232,24 @@ function consumeClipboard(view: EditorView, event: Event): boolean {
   return true;
 }
 
+/** A normal-mode cursor at `target`: NodeSelection on a block atom line
+ *  (TextSelection endpoints must be inline — review S3-R1), a caret
+ *  otherwise. */
+function cursorSelection(state: EditorState, target: number): Selection {
+  const $target = state.doc.resolve(target);
+  if (!$target.parent.isTextblock) {
+    const after = $target.nodeAfter;
+    if (
+      after &&
+      (after.isAtom || after.isLeaf) &&
+      NodeSelection.isSelectable(after)
+    ) {
+      return NodeSelection.create(state.doc, target);
+    }
+  }
+  return Selection.near($target, 1);
+}
+
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
   view.dispatch(view.state.tr.setMeta(vimPluginKey, meta));
 }
@@ -290,7 +313,7 @@ function runSelectionCommand(
     const base =
       result.state.mode === "visual" && preVisual
         ? preVisual.headCursor
-        : view.state.selection.head;
+        : vimCursor(view.state);
     const target = resolveMotion(
       view.state,
       base,
@@ -302,10 +325,9 @@ function runSelectionCommand(
     if (result.state.mode === "visual" && preVisual) {
       const visual = moveVisualHead(preVisual, target);
       core = { ...result.state, visual };
-      const { from, to } = visualBounds(view.state, visual);
-      tr.setSelection(TextSelection.create(tr.doc, from, to));
+      tr.setSelection(visualSelection(view.state, visual));
     } else {
-      tr.setSelection(TextSelection.create(tr.doc, target));
+      tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
     view.dispatch(tr);
@@ -313,9 +335,8 @@ function runSelectionCommand(
   }
 
   if (command.type === "enterVisual" && result.state.visual) {
-    const { from, to } = visualBounds(view.state, result.state.visual);
     const tr = view.state.tr.setSelection(
-      TextSelection.create(view.state.doc, from, to),
+      visualSelection(view.state, result.state.visual),
     );
     tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
     view.dispatch(tr);
@@ -325,7 +346,7 @@ function runSelectionCommand(
   if (command.type === "leaveVisual" && preVisual) {
     // Esc collapses to the vim head — not PM's selection head (§6).
     const tr = view.state.tr.setSelection(
-      TextSelection.create(view.state.doc, collapseTarget(preVisual)),
+      cursorSelection(view.state, collapseTarget(preVisual)),
     );
     tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
     view.dispatch(tr);
@@ -333,6 +354,22 @@ function runSelectionCommand(
   }
 
   return false;
+}
+
+/** The vim cursor: a NodeSelection's own position (a block atom line), or
+ *  the collapsed head. PM's `head` on a NodeSelection points PAST the node —
+ *  resolving lines from there lands on the wrong one (review S3-R1). */
+function vimCursor(state: EditorState): number {
+  const sel = state.selection;
+  return sel instanceof NodeSelection ? sel.from : sel.head;
+}
+
+/** Visual rendering: TextSelection.between snaps atom-boundary endpoints to
+ *  valid inline positions; d/y precision comes from visualBounds, not from
+ *  the rendered selection. */
+function visualSelection(state: EditorState, visual: VisualState): Selection {
+  const { from, to } = visualBounds(state, visual);
+  return TextSelection.between(state.doc.resolve(from), state.doc.resolve(to));
 }
 
 function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {

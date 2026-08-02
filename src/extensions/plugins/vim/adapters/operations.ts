@@ -128,12 +128,21 @@ export function deleteVisual(
 }
 
 /** Inclusive realization of the visual selection (§6): the unit under the
- *  trailing cursor is part of the range. */
+ *  trailing cursor is part of the range — a BLOCK atom line counts as one
+ *  whole unit too (review S3-R1: nextUnitBoundary is textblock-only and
+ *  would exclude it). */
 export function visualBounds(
   state: EditorState,
   visual: VisualState,
 ): { from: number; to: number } {
   const max = Math.max(visual.anchorCursor, visual.headCursor);
+  const $max = state.doc.resolve(max);
+  if (!$max.parent.isTextblock) {
+    const after = $max.nodeAfter;
+    if (after && (after.isAtom || after.isLeaf)) {
+      return visualRange(visual, max + after.nodeSize);
+    }
+  }
   return visualRange(visual, nextUnitBoundary(state, max));
 }
 

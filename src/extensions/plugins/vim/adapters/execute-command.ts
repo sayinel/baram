@@ -9,7 +9,7 @@ import type { CoreCommand, VisualState } from "../core/types";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { redo, undo } from "@tiptap/pm/history";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import {
   deleteCharForward,
@@ -33,7 +33,12 @@ export function executeCoreCommand(
   visual: null | VisualState,
 ): ExecutionResult {
   const state = view.state;
-  const head = state.selection.head;
+  // A NodeSelection (block atom line) reads as its own position — PM's head
+  // points past the node and would resolve the NEXT line (review S3-R1).
+  const head =
+    state.selection instanceof NodeSelection
+      ? state.selection.from
+      : state.selection.head;
 
   switch (command.type) {
     case "deleteCharForward":

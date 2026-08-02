@@ -34,12 +34,13 @@ function posOfText(editor: Editor, text: string): number {
 }
 
 describe("h/l — grapheme units", () => {
-  it("l advances one grapheme, 3l three, clamped at line end", () => {
+  it("l advances one grapheme; counts clamp at the LAST unit start", () => {
     const editor = makeEditor("<p>abc</p>");
     const a = posOfText(editor, "a");
     expect(resolveMotion(editor.state, a, "charRight", 1)).toBe(a + 1);
-    expect(resolveMotion(editor.state, a, "charRight", 3)).toBe(a + 3);
-    expect(resolveMotion(editor.state, a, "charRight", 99)).toBe(a + 3);
+    // The boundary past "c" is not a cursor position (S3-R1).
+    expect(resolveMotion(editor.state, a, "charRight", 3)).toBe(a + 2);
+    expect(resolveMotion(editor.state, a, "charRight", 99)).toBe(a + 2);
   });
 
   it("h treats an NFD hangul cluster as ONE unit", () => {
@@ -74,7 +75,7 @@ describe("0/$ — line bounds", () => {
     const editor = makeEditor("<p>ab<br>cde</p>");
     const c = posOfText(editor, "c");
     expect(resolveMotion(editor.state, c + 1, "lineStart", 1)).toBe(c);
-    expect(resolveMotion(editor.state, c + 1, "lineEnd", 1)).toBe(c + 3);
+    expect(resolveMotion(editor.state, c + 1, "lineEnd", 1)).toBe(c + 2); // ON "e"
   });
 });
 
@@ -91,9 +92,9 @@ describe("j/k — logical lines with column preservation", () => {
     const editor = makeEditor("<p>longline</p><p>ab</p>");
     const from = posOfText(editor, "e"); // deep column
     const down = resolveMotion(editor.state, from, "lineDown", 1);
-    expect(down).toBe(posOfText(editor, "a") + 2); // clamped to end of "ab"
+    expect(down).toBe(posOfText(editor, "a") + 1); // ON "b" — last unit start
     const up = resolveMotion(editor.state, down, "lineUp", 1);
-    expect(up).toBe(posOfText(editor, "l") + 2); // column 2, not remembered
+    expect(up).toBe(posOfText(editor, "longline") + 1); // column 1, not remembered
   });
 
   it("segments of one paragraph are separate j-lines", () => {
@@ -171,5 +172,55 @@ describe("gg/G", () => {
     expect(resolveMotion(editor.state, mid, "docEnd", 1)).toBe(
       posOfText(editor, "tri"),
     );
+  });
+});
+
+describe("impl review S3-R1 pins", () => {
+  it("l on the last character stays; $ lands ON it (cursor = unit start)", () => {
+    const editor = makeEditor("<p>abc</p>");
+    const c = posOfText(editor, "c");
+    expect(resolveMotion(editor.state, c, "charRight", 1)).toBe(c);
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "a"), "lineEnd", 1),
+    ).toBe(c);
+  });
+
+  it("j never lands inside an NFD grapheme cluster", () => {
+    const editor = makeEditor(`<p>ab</p><p>${"\u1100\u1161"}x</p>`);
+    const b = posOfText(editor, "b");
+    const target = resolveMotion(editor.state, b, "lineDown", 1);
+    const line2 = editor.state.doc.child(1);
+    const start = editor.state.doc.content.size - line2.nodeSize + 1;
+    // column 1 unit = ON "x" (after the 2-codepoint cluster), never start+1
+    expect(target).toBe(start + 2);
+  });
+
+  it("j in a table moves to the NEXT ROW, not the neighbouring cell", () => {
+    const editor = makeEditor(
+      "<table><tr><td><p>aa</p></td><td><p>bb</p></td></tr><tr><td><p>cc</p></td><td><p>dd</p></td></tr></table>",
+    );
+    const a = posOfText(editor, "aa");
+    const target = resolveMotion(editor.state, a, "lineDown", 1);
+    expect(editor.state.doc.resolve(target).parent.textContent).toBe("cc");
+  });
+
+  it("j from the SECOND column stays in that column", () => {
+    const editor = makeEditor(
+      "<table><tr><td><p>aa</p></td><td><p>bb</p></td></tr><tr><td><p>cc</p></td><td><p>dd</p></td></tr></table>",
+    );
+    const b = posOfText(editor, "bb");
+    const target = resolveMotion(editor.state, b, "lineDown", 1);
+    expect(editor.state.doc.resolve(target).parent.textContent).toBe("dd");
+  });
+
+  it("counted w reuses one line scan — no O(count x doc) stall", () => {
+    const paras = Array.from({ length: 3000 }, (_, i) => `<p>w${i} x</p>`).join(
+      "",
+    );
+    const editor = makeEditor(paras);
+    const startAt = posOfText(editor, "w0");
+    const t0 = performance.now();
+    resolveMotion(editor.state, startAt, "wordForward", 999);
+    expect(performance.now() - t0).toBeLessThan(250);
   });
 });
