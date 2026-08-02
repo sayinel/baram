@@ -59,9 +59,16 @@ export function step(
   return normalOrVisualStep(state, token, ctx);
 }
 
+/** Counts are capped like vim's own sanity limit — an unbounded count would
+ *  drive adapters into arbitrarily long synchronous loops (review S2-R2). */
+const MAX_COUNT = 9999;
+
 function applyDigit(state: VimCoreState, key: string): VimCoreState {
   const digit = Number(key);
-  return { ...state, count: (state.count ?? 0) * 10 + digit };
+  return {
+    ...state,
+    count: Math.min((state.count ?? 0) * 10 + digit, MAX_COUNT),
+  };
 }
 
 function emit(state: VimCoreState, command: CoreCommand): StepResult {

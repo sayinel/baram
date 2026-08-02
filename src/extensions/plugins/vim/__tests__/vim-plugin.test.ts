@@ -9,6 +9,7 @@ import { undoDepth } from "@tiptap/pm/history";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
+import { executeCoreCommand } from "../adapters/execute-command";
 import { readVimRegister, resetVimRegister } from "../adapters/register";
 import { vimPluginKey, withVimExternalEdit } from "../vim-keys";
 import { type VimPluginState } from "../vim-plugin";
@@ -265,5 +266,36 @@ describe("impl review S2-R1 pins", () => {
     key(editor, "u");
     expect(editor.state.doc.textContent).toBe("onetwo");
     expect(undoDepth(editor.state)).toBe(0);
+  });
+});
+
+describe("impl review S2-R2 pins", () => {
+  it("a dispatch that drops history transactions terminates the count loop", () => {
+    // PM's undo() returns "history exists", NOT "the dispatch landed" — a
+    // filterTransaction-style drop keeps returning true forever. The
+    // progress guard must break after the first no-progress iteration.
+    const editor = makeEditor("<p>one</p>");
+    editor.view.dispatch(editor.state.tr.insertText("A", 1));
+    enable(editor);
+
+    let dispatched = 0;
+    const stuckView = {
+      get state() {
+        return editor.view.state;
+      },
+      dispatch: () => {
+        dispatched++;
+      },
+    } as unknown as Parameters<typeof executeCoreCommand>[0];
+
+    executeCoreCommand(stuckView, { count: 5, type: "undo" }, null);
+    expect(dispatched).toBe(1); // tried once, saw no progress, stopped
+  });
+
+  it("digit accumulation is capped — no unbounded synchronous loops", () => {
+    const editor = makeEditor();
+    enable(editor);
+    for (let i = 0; i < 12; i++) key(editor, "9");
+    expect(vim(editor).core.count).toBeLessThanOrEqual(9999);
   });
 });

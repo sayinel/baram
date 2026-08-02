@@ -83,19 +83,12 @@ export function executeCoreCommand(
           command.count,
         ),
       );
-    case "redo": {
-      // Counted history: re-read view.state per step, stop when exhausted.
-      for (let i = 0; i < command.count; i++) {
-        if (!redo(view.state, view.dispatch)) break;
-      }
+    case "redo":
+      runHistory(view, redo, command.count);
       return {};
-    }
-    case "undo": {
-      for (let i = 0; i < command.count; i++) {
-        if (!undo(view.state, view.dispatch)) break;
-      }
+    case "undo":
+      runHistory(view, undo, command.count);
       return {};
-    }
     case "yankLine":
       return dispatchOutcome(view, yankLine(state, head, command.count));
     case "yankVisual":
@@ -112,4 +105,22 @@ function dispatchOutcome(
   if (outcome.register) writeVimRegister(outcome.register);
   if (outcome.tr) view.dispatch(outcome.tr);
   return outcome.reason ? { reason: outcome.reason } : {};
+}
+
+/**
+ * Counted history with a PROGRESS guard. PM's undo/redo return "history
+ * exists", not "the dispatch landed" — a filterTransaction-style drop keeps
+ * returning true while view.state never changes, and a bare count loop
+ * would spin to the full count (or forever) doing nothing (review S2-R2).
+ */
+function runHistory(
+  view: EditorView,
+  command: typeof undo,
+  count: number,
+): void {
+  for (let i = 0; i < count; i++) {
+    const before = view.state;
+    if (!command(view.state, view.dispatch)) break;
+    if (view.state === before) break; // dispatch was dropped — no progress
+  }
 }
