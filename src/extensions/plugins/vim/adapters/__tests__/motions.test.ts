@@ -274,3 +274,61 @@ describe("impl review S3-R3 pin — counted j/k across a mid rowspan", () => {
     expect(resolveMotion(editor.state, a3, "lineUp", 2)).toBe(twice);
   });
 });
+
+describe("impl review S3-R4 pins", () => {
+  function repeated(
+    editor: Editor,
+    pos: number,
+    motion: "lineDown" | "lineUp",
+    n: number,
+  ): number {
+    let p = pos;
+    for (let i = 0; i < n; i++) p = resolveMotion(editor.state, p, motion, 1);
+    return p;
+  }
+
+  it("counted j equals repeated j through an intermediate CLAMP", () => {
+    const editor = makeEditor("<p>abcdef</p><p>x</p><p>uvwxyz</p>");
+    const deep = posOfText(editor, "f"); // column 5
+    expect(resolveMotion(editor.state, deep, "lineDown", 2)).toBe(
+      repeated(editor, deep, "lineDown", 2),
+    );
+  });
+
+  it("counted j/k equal repeated steps through the rowspan grid", () => {
+    const editor = makeEditor(
+      "<p>abcdef</p>" +
+        "<table>" +
+        "<tr><td><p>a0</p></td><td><p>b0</p></td></tr>" +
+        '<tr><td rowspan="2"><p>sp</p></td><td><p>b1</p></td></tr>' +
+        "<tr><td><p>b2</p></td></tr>" +
+        "<tr><td><p>a3</p></td><td><p>b3</p></td></tr>" +
+        "</table>" +
+        "<p>tail</p>",
+    );
+    const deep = posOfText(editor, "f");
+    for (const n of [2, 3, 4, 5]) {
+      expect(resolveMotion(editor.state, deep, "lineDown", n)).toBe(
+        repeated(editor, deep, "lineDown", n),
+      );
+    }
+    const tail = posOfText(editor, "tail") + 3;
+    for (const n of [2, 3, 4, 5]) {
+      expect(resolveMotion(editor.state, tail, "lineUp", n)).toBe(
+        repeated(editor, tail, "lineUp", n),
+      );
+    }
+  });
+
+  it("deep counted j carries the line index — near-linear cost", () => {
+    const paras = Array.from({ length: 8000 }, (_, i) => `<p>p${i}</p>`).join(
+      "",
+    );
+    const editor = makeEditor(paras);
+    const top = posOfText(editor, "p0");
+    const t0 = performance.now();
+    const target = resolveMotion(editor.state, top, "lineDown", 7999);
+    expect(performance.now() - t0).toBeLessThan(250);
+    expect(editor.state.doc.resolve(target).parent.textContent).toBe("p7999");
+  });
+});

@@ -30,6 +30,16 @@ interface CursorLine {
 
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
+/** Carried table-walk state: one findCell at entry, local rect expansion
+ *  per step afterwards. */
+interface TableWalk {
+  map: TableMap;
+  rect: { bottom: number; left: number; top: number };
+  tableStart: number;
+}
+
+// ── unit columns ───────────────────────────────────────────────────────────
+
 /**
  * Resolve a motion to its target position. `count` repeats the unit motion;
  * targets clamp at document edges (vim: excess counts stop at the edge).
@@ -93,8 +103,6 @@ export function resolveMotion(
   }
 }
 
-// ── unit columns ───────────────────────────────────────────────────────────
-
 /**
  * Every cursor line in document order: hard-break segments, atom blocks,
  * and one ENTRY line per table row (first cell's first textblock — the
@@ -135,6 +143,44 @@ function collectLines(state: EditorState): CursorLine[] {
   return lines;
 }
 
+/** Content start of the first textblock inside the node at `pos`. */
+function firstTextblockIn(state: EditorState, pos: number): null | number {
+  const node = state.doc.nodeAt(pos);
+  if (!node) return null;
+  let entry: null | number = null;
+  node.forEach((child, childOffset) => {
+    if (entry === null && child.isTextblock) {
+      entry = pos + 1 + childOffset + 1;
+    }
+  });
+  return entry;
+}
+
+// ── the line sequence ──────────────────────────────────────────────────────
+
+function initTableWalk(state: EditorState, pos: number): null | TableWalk {
+  const $pos = state.doc.resolve(pos);
+  let tableDepth = -1;
+  for (let d = $pos.depth; d > 0; d--) {
+    if ($pos.node(d).type.spec.tableRole === "table") {
+      tableDepth = d;
+      break;
+    }
+  }
+  if (tableDepth < 0 || $pos.depth < tableDepth + 3) return null;
+
+  const table = $pos.node(tableDepth);
+  const tableStart = $pos.start(tableDepth);
+  const map = TableMap.get(table);
+  const cellPos = $pos.before(tableDepth + 2);
+  const rect = map.findCell(cellPos - tableStart);
+  return {
+    map,
+    rect: { bottom: rect.bottom, left: rect.left, top: rect.top },
+    tableStart,
+  };
+}
+
 /** The line whose span holds `pos`; boundary positions bind to the earliest
  *  line whose end reaches them (cursor-on-break stays on the line before). */
 function lineIndexAround(lines: CursorLine[], pos: number): number {
@@ -152,8 +198,6 @@ function lineSpanAt(state: EditorState, pos: number): CursorLine {
   return span ? { end: span.to, start: span.from } : { end: pos, start: pos };
 }
 
-// ── the line sequence ──────────────────────────────────────────────────────
-
 /** The start of the `column`-th unit in a line, clamped to the LAST unit
  *  start — never the end boundary, never inside a cluster (review S3-R1). */
 function posAtUnitColumn(
@@ -168,6 +212,32 @@ function posAtUnitColumn(
     p = next;
   }
   return p;
+}
+
+/** The landed cell's rect, expanded from a known slot — O(span), where
+ *  findCell would re-scan the whole map. */
+function rectAround(
+  map: TableMap,
+  slotRow: number,
+  slotCol: number,
+  cellRel: number,
+): { bottom: number; left: number; top: number } {
+  let top = slotRow;
+  while (top > 0 && map.map[(top - 1) * map.width + slotCol] === cellRel) {
+    top--;
+  }
+  let bottom = slotRow + 1;
+  while (
+    bottom < map.height &&
+    map.map[bottom * map.width + slotCol] === cellRel
+  ) {
+    bottom++;
+  }
+  let left = slotCol;
+  while (left > 0 && map.map[slotRow * map.width + left - 1] === cellRel) {
+    left--;
+  }
+  return { bottom, left, top };
 }
 
 /** The hard-break segment (or whole-textblock span) holding `pos`; null on
@@ -186,46 +256,6 @@ function segmentSpanAt(
   );
 }
 
-/** Row-wise vertical motion inside a table; null when `pos` is not in a
- *  table or the walk leaves it (the generic line walk takes over). */
-function tableVerticalStep(
-  state: EditorState,
-  pos: number,
-  direction: -1 | 1,
-): null | number {
-  const $pos = state.doc.resolve(pos);
-  let tableDepth = -1;
-  for (let d = $pos.depth; d > 0; d--) {
-    if ($pos.node(d).type.spec.tableRole === "table") {
-      tableDepth = d;
-      break;
-    }
-  }
-  if (tableDepth < 0 || $pos.depth < tableDepth + 3) return null;
-
-  const table = $pos.node(tableDepth);
-  const tableStart = $pos.start(tableDepth);
-  const map = TableMap.get(table);
-  const cellPos = $pos.before(tableDepth + 2);
-  const rect = map.findCell(cellPos - tableStart);
-  // One row past the CELL's own extent — a rowspan cell owns every row it
-  // covers (reviews S3-R2·R3).
-  const nextRow = direction > 0 ? rect.bottom : rect.top - 1;
-  if (nextRow < 0 || nextRow >= map.height) return null; // exits the table
-
-  const targetCellPos = tableStart + map.map[nextRow * map.width + rect.left];
-  const targetCell = state.doc.nodeAt(targetCellPos);
-  if (!targetCell) return null;
-
-  let entry: null | number = null;
-  targetCell.forEach((child, childOffset) => {
-    if (entry === null && child.isTextblock) {
-      entry = targetCellPos + 1 + childOffset + 1;
-    }
-  });
-  return entry ?? targetCellPos;
-}
-
 /** How many units sit between `start` and `pos` (both unit starts). */
 function unitColumn(state: EditorState, start: number, pos: number): number {
   let column = 0;
@@ -239,22 +269,16 @@ function unitColumn(state: EditorState, start: number, pos: number): number {
   return column;
 }
 
-/** One line down/up: span-aware inside tables, line-list walk outside
- *  (row-entry lines make table entry/exit seamless). Null at doc edges. */
-function verticalStep(
-  state: EditorState,
-  lines: CursorLine[],
-  pos: number,
-  direction: -1 | 1,
-): null | number {
-  const tabular = tableVerticalStep(state, pos, direction);
-  if (tabular !== null) return tabular;
-  const index = lineIndexAround(lines, pos);
-  const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= lines.length) return null;
-  return lines[nextIndex].start;
-}
-
+/**
+ * Vertical motion. Each of the |delta| steps applies the CURRENT line's
+ * unit column and feeds the clamped landing into the next step — by
+ * construction `3j` is exactly `j;j;j`, intermediate clamps included
+ * (review S3-R4; a persistent goal column à la vim's curswant is a
+ * documented Phase 2 refinement). Walk state is carried: the generic walk
+ * keeps its line index, the table walk keeps its map/rect and expands the
+ * landed cell's rect locally instead of re-running findCell (review S3-R4:
+ * both re-scans made 9999j quadratic).
+ */
 function verticalTarget(
   state: EditorState,
   pos: number,
@@ -264,25 +288,50 @@ function verticalTarget(
   if (lines.length === 0) return pos;
   const direction: -1 | 1 = delta > 0 ? 1 : -1;
 
-  // The origin column (in units) survives the whole walk, vim-style.
-  const originSpan = lineSpanAt(state, pos);
-  const column = unitColumn(
-    state,
-    originSpan.start,
-    Math.min(Math.max(pos, originSpan.start), originSpan.end),
-  );
-
-  // SINGLE steps, re-resolved each time: a rowspan cell owns several rows,
-  // so applying the whole delta to the origin cell's rect under- or
-  // over-shoots (review S3-R3: 2j through a span must equal j;j).
   let p = pos;
+  let lineIndex: null | number = null;
+  let walk: null | TableWalk = null;
+  let walkResolved = false;
+
   for (let i = 0; i < Math.abs(delta); i++) {
-    const next = verticalStep(state, lines, p, direction);
-    if (next === null) break; // clamped at a document edge
-    p = next;
+    const span = lineSpanAt(state, p);
+    const column = unitColumn(
+      state,
+      span.start,
+      Math.min(Math.max(p, span.start), span.end),
+    );
+
+    if (!walkResolved) {
+      walk = initTableWalk(state, p);
+      walkResolved = true;
+    }
+
+    let landed: null | number = null;
+    if (walk) {
+      const nextRow = direction > 0 ? walk.rect.bottom : walk.rect.top - 1;
+      if (nextRow < 0 || nextRow >= walk.map.height) {
+        walk = null; // exiting the table — the generic walk takes over
+      } else {
+        const cellRel = walk.map.map[nextRow * walk.map.width + walk.rect.left];
+        walk.rect = rectAround(walk.map, nextRow, walk.rect.left, cellRel);
+        const cellAbs = walk.tableStart + cellRel;
+        landed = firstTextblockIn(state, cellAbs) ?? cellAbs;
+        lineIndex = null;
+      }
+    }
+
+    if (landed === null) {
+      if (lineIndex === null) lineIndex = lineIndexAround(lines, p);
+      const nextIndex: number = lineIndex + direction;
+      if (nextIndex < 0 || nextIndex >= lines.length) break; // doc edge
+      landed = lines[nextIndex].start;
+      lineIndex = nextIndex;
+      walkResolved = false; // the landing may have entered a table
+    }
+
+    p = posAtUnitColumn(state, lineSpanAt(state, landed), column);
   }
-  if (p === pos) return pos;
-  return posAtUnitColumn(state, lineSpanAt(state, p), column);
+  return p;
 }
 
 // ── words ──────────────────────────────────────────────────────────────────
