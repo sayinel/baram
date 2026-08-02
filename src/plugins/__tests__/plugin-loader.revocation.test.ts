@@ -13,8 +13,16 @@ vi.mock("@tauri-apps/api/core", () => ({
 import type { RevocationEntry } from "../revocation";
 import type { PluginManifest } from "../types";
 
+import en from "../../i18n/en.json";
+import ko from "../../i18n/ko.json";
+import { useSettingsStore } from "../../stores/settings/store";
 import { usePluginStore } from "../../stores/system/plugin";
 import { PluginLoader } from "../plugin-loader";
+
+// Read from the shipped catalogue rather than pasted here, so a copy edit does not need a
+// test edit. What these pin is the SHAPE of the refusal; the assertions that carry weight
+// are the ones about the importer.
+const BLOCKED_EN = en["plugin.revoked.blockedLoad"];
 
 const manifest: PluginManifest = {
   author: "test",
@@ -46,6 +54,8 @@ function revoke(...entries: RevocationEntry[]): void {
 describe("PluginLoader revocation gate (§69)", () => {
   beforeEach(() => {
     usePluginStore.setState({ revocations: null });
+    // The refusal is translated, so the locale is part of this suite's fixture.
+    useSettingsStore.setState({ locale: "en" });
   });
 
   it("never imports the module of a maliciously revoked plugin", async () => {
@@ -54,7 +64,22 @@ describe("PluginLoader revocation gate (§69)", () => {
 
     await expect(
       new PluginLoader(importer).loadPlugin("/p/revoked-x", manifest),
-    ).rejects.toThrow(/revoked/i);
+    ).rejects.toThrow(BLOCKED_EN);
+    expect(importer).not.toHaveBeenCalled();
+  });
+
+  it("states the refusal in the reader's language", async () => {
+    // The Installed row renders this string directly above the withdrawal notice, which
+    // has been translated since it was written — so an untranslated refusal put two
+    // languages side by side stating one fact. This pins that the LOCALE IS READ; a
+    // hardcoded "en" passes every other test in this file.
+    useSettingsStore.setState({ locale: "ko" });
+    revoke(entry());
+    const importer = vi.fn(async () => ({ activate: () => undefined }));
+
+    await expect(
+      new PluginLoader(importer).loadPlugin("/p/revoked-x", manifest),
+    ).rejects.toThrow(ko["plugin.revoked.blockedLoad"]);
     expect(importer).not.toHaveBeenCalled();
   });
 
@@ -96,7 +121,7 @@ describe("PluginLoader revocation gate (§69)", () => {
     const importer = vi.fn(async () => ({ activate: () => undefined }));
     await expect(
       new PluginLoader(importer).loadPlugin("/p/revoked-x", manifest),
-    ).rejects.toThrow(/revoked/i);
+    ).rejects.toThrow(BLOCKED_EN);
     expect(importer).not.toHaveBeenCalled();
   });
 
@@ -127,7 +152,7 @@ describe("PluginLoader revocation gate (§69)", () => {
         ...manifest,
         trust: "sandboxed",
       }),
-    ).rejects.toThrow(/revoked/i);
+    ).rejects.toThrow(BLOCKED_EN);
     expect(importer).not.toHaveBeenCalled();
   });
 });

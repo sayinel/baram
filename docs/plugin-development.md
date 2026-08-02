@@ -207,7 +207,7 @@ my-plugin/
 | `author`        | string    | Author name                                                                |
 | `license`       | string    | SPDX license identifier                                                    |
 | `main`          | string    | Entry point file, relative to the plugin directory (e.g. `dist/index.mjs`) |
-| `engines.baram` | string    | Minimum Baram version (semver range)                                       |
+| `engines.baram` | string    | Minimum Baram version, written `>=X.Y.Z` — see [Version floor](#version-floor)  |
 | `capabilities`  | string\[] | Required permissions — see [Capabilities](#capabilities)                   |
 
 ### Optional Fields
@@ -220,6 +220,25 @@ my-plugin/
 | `homepage`         | string    | Documentation URL                                                                                     |
 | `icon`             | string    | Emoji icon for the marketplace/dev-list                                                               |
 | `keywords`         | string\[] | Search keywords                                                                                       |
+
+### Version floor
+
+`engines.baram` is the oldest Baram your plugin runs on, and it is **enforced**: Baram
+refuses to install or update to a version whose floor it does not meet, and says which
+version is needed. Getting it wrong is not cosmetic — declaring a floor higher than
+necessary makes your plugin uninstallable for users who could have run it.
+
+Write it as `>=X.Y.Z`, with all three numbers:
+
+```json
+{ "engines": { "baram": ">=0.5.0" } }
+```
+
+That is the only form both Baram and the publish workflow read. Anything else — `^0.5.0`,
+`~0.5`, `0.5.0`, a two-bound range — is treated by the app as *no floor stated*, so it
+silently stops protecting your users; the publish workflow rejects it outright, so a
+first-party release never ships that way. A prerelease build (`0.6.0-beta.1`) does not
+satisfy `>=0.6.0`, per semver.
 
 ## Capabilities
 

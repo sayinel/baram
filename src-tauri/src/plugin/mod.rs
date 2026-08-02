@@ -44,6 +44,12 @@ pub enum PluginError {
     InvalidManifest(String),
     #[error("Plugin not found: {0}")]
     NotFound(String),
+    /// A request this layer declined to make or to finish — a blocked URL scheme, a
+    /// response past its size cap. Its own variant because the alternative was
+    /// `InvalidManifest`, whose Display prefix would tell the user their manifest was
+    /// broken when nothing had been downloaded yet.
+    #[error("{0}")]
+    Refused(String),
 }
 
 /// Serialized byte length of `value`, or `None` once it would exceed `cap` — the
@@ -204,6 +210,18 @@ pub struct RegistryIndex {
 /// Response body cap for `http_fetch` (§69 Phase D network API).
 const MAX_FETCH_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
 
+/// Largest plugin archive we will download.
+///
+/// This is a MEMORY bound, not a policy about plugin size: `extract_zip_bytes` reads the
+/// archive from a slice, so whatever arrives is held whole regardless. Without a cap a
+/// hostile or compromised registry can name a `downloadUrl` that allocates until the
+/// process dies — and it is reached before the checksum can say anything, because there is
+/// nothing to hash until the download ends.
+///
+/// 32 MiB is far above anything legitimate. A sandboxed plugin is an ESM bundle and cannot
+/// ship native code at all; the entire Baram binary targets under 15 MiB.
+const MAX_PLUGIN_ARCHIVE_BYTES: usize = 32 * 1024 * 1024;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PluginFetchInit {
     #[serde(default)]
@@ -267,9 +285,49 @@ pub async fn install_plugin(
     expected_checksum: Option<&str>,
     expected_id: Option<&str>,
 ) -> Result<InstalledPluginInfo, PluginError> {
-    // 1. Download ZIP to temp file
-    let response = reqwest::get(url).await?;
-    let bytes = response.bytes().await?;
+    // 1. Download the ZIP.
+    //
+    // Guarded like `fetch_registry` and `fetch_revocations`, and this is the path where it
+    // matters most: what arrives is third-party code, its URL comes from the registry
+    // index rather than from us, and every check downstream — checksum, manifest, tier —
+    // can only run once the download has ENDED. So an unbounded or never-ending download
+    // is not caught later by anything; it simply never reaches the checks.
+    //
+    // `read_timeout` rather than only a total `timeout`: a legitimate multi-megabyte
+    // archive on a slow link must be allowed to finish, while a connection that stops
+    // delivering bytes must not hold the install open. A flat 15s total, as the two
+    // metadata fetches use, would trade the first away for the second.
+    //
+    // But per-read alone is not enough (§69 code review): a host delivering one byte every
+    // 29s resets the read deadline forever, and `setInstalling` is only cleared in the
+    // `finally` of the caller — so that plugin's Install button stays disabled, with no
+    // cancel, until the app restarts. Hence a generous TOTAL deadline as well. Ten minutes
+    // bounds the drip while staying far outside any real download: the archives this
+    // registry serves are tens of kilobytes, and even the 32 MiB ceiling only needs about
+    // 55 KiB/s sustained.
+    let parsed = validate_http_url(url).map_err(PluginError::Refused)?;
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(600))
+        .build()?;
+    let mut response = client.get(parsed).send().await?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(PluginError::Refused(format!(
+            "plugin download returned HTTP {status}"
+        )));
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if buf.len() + chunk.len() > MAX_PLUGIN_ARCHIVE_BYTES {
+            return Err(PluginError::Refused(format!(
+                "plugin archive too large: exceeds {MAX_PLUGIN_ARCHIVE_BYTES} byte limit"
+            )));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    let bytes = buf;
 
     // 2. Verify checksum if provided
     let actual_checksum = hex_sha256(&bytes);
@@ -399,17 +457,50 @@ pub async fn read_manifest(plugin_id: &str) -> Result<PluginManifest, PluginErro
     Ok(manifest)
 }
 
+/// Largest registry index we will read.
+///
+/// Four times the revocation cap, because this file grows with the registry itself:
+/// Obsidian's community index is roughly 2,000 entries and about 1 MB, and an index that
+/// outgrew its own cap would take the marketplace down for every user at once. Still a
+/// bound — without one, a misconfigured or hostile host streams unbounded bytes into
+/// memory.
+const MAX_REGISTRY_BYTES: usize = 4 * 1024 * 1024;
+
 /// Fetch registry index.json from a URL. Caching is handled at the frontend level.
+///
+/// Guarded the way `fetch_revocations` is: scheme, timeout, streamed size cap. It had
+/// none of the three — `reqwest::get` honours whatever scheme the URL names, waits with
+/// no deadline, and `text()` buffers a body of any length before anything can inspect it.
+///
+/// No UI sets the registry URL today; it is persisted store state with a default. That is
+/// not the same as trusted input — it is read back from disk on every start, and a
+/// trusted-tier plugin shares the realm that writes it. The guards therefore do not
+/// depend on where the string came from.
 pub async fn fetch_registry(url: &str) -> Result<RegistryIndex, PluginError> {
-    let response = reqwest::get(url).await?;
+    let parsed = validate_http_url(url).map_err(PluginError::Refused)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()?;
+    let mut response = client.get(parsed).send().await?;
     let status = response.status();
     if !status.is_success() {
-        return Err(PluginError::InvalidManifest(format!(
-            "Registry returned HTTP {status}"
+        // `Refused`, not `InvalidManifest`. A 404 reached the user as "Invalid manifest:
+        // Registry returned HTTP 404" — blaming a document that had not been downloaded,
+        // which is the exact miscue `Refused` was added to remove (§69 code review).
+        return Err(PluginError::Refused(format!(
+            "registry returned HTTP {status}"
         )));
     }
-    let text = response.text().await?;
-    let index: RegistryIndex = serde_json::from_str(&text)?;
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if buf.len() + chunk.len() > MAX_REGISTRY_BYTES {
+            return Err(PluginError::Refused(format!(
+                "registry index too large: exceeds {MAX_REGISTRY_BYTES} byte limit"
+            )));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    let index: RegistryIndex = serde_json::from_slice(&buf)?;
     Ok(index)
 }
 
@@ -427,10 +518,10 @@ const MAX_REVOCATION_BYTES: usize = 1024 * 1024;
 /// failure that validator was written to avoid. One validator, not two that can
 /// disagree.
 ///
-/// Unlike `fetch_registry` above, this enforces the scheme guard, a timeout and a size
-/// cap. It runs on a background path during startup, so a hanging host must not be
-/// able to hold that open. (`fetch_registry` predates those guards and still lacks
-/// them; tracked separately.)
+/// Enforces the scheme guard, a timeout and a size cap. It runs on a background path
+/// during startup, so a hanging host must not be able to hold that open. `fetch_registry`
+/// above lacked all three until it was brought to the same shape; the two now differ only
+/// in their size cap and in returning text rather than a struct.
 pub async fn fetch_revocations(url: &str) -> Result<String, String> {
     let parsed = validate_http_url(url)?;
     let client = reqwest::Client::builder()
@@ -1136,6 +1227,40 @@ mod tests {
         assert!(validate_http_url("ftp://host/x").is_err());
         assert!(validate_http_url("not a url").is_err());
         assert!(validate_http_url("javascript:alert(1)").is_err());
+    }
+
+    /// §69 — the scheme guard is WIRED INTO `fetch_registry`, not merely available.
+    ///
+    /// Asserting `is_err()` here would prove nothing: reqwest rejects a `file:` URL on its
+    /// own, so a `fetch_registry` with the guard deleted still fails this input — with a
+    /// builder error, after constructing a client. The assertion is therefore on the
+    /// guard's OWN words, which is what breaks when the call goes away. Nothing here
+    /// touches the network: both paths refuse before any request is sent.
+    /// §69 — the same guard on the path that downloads third-party CODE.
+    ///
+    /// Asserted on the guard's own words for the reason given below: reqwest refuses a
+    /// `file:` URL by itself, so `is_err()` holds with or without the guard. Nothing here
+    /// reaches the network.
+    #[tokio::test]
+    async fn test_install_plugin_refuses_non_http_schemes() {
+        let err = install_plugin("file:///etc/passwd", None, None)
+            .await
+            .expect_err("a file:// download URL must be refused");
+        assert!(
+            err.to_string().contains("blocked URL scheme 'file'"),
+            "expected the scheme guard's refusal, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fetch_registry_refuses_non_http_schemes() {
+        let err = fetch_registry("file:///etc/passwd")
+            .await
+            .expect_err("a file:// registry URL must be refused");
+        assert!(
+            err.to_string().contains("blocked URL scheme 'file'"),
+            "expected the scheme guard's refusal, got: {err}"
+        );
     }
 
     /// §260 Phase 5 re-review (R5) — the id check must sit BEFORE the move, so an archive
