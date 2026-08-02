@@ -361,6 +361,18 @@ const MAX_TOTAL_EXPANDED_BYTES: u64 = 256 * 1024 * 1024;
 /// zip bomb needs hundreds or thousands to one to be worth building.
 const MAX_COMPRESSION_RATIO: u64 = 100;
 
+/// Deepest path any entry may carry.
+///
+/// ‼️ Directories cost nothing the BYTE bounds can see (review M2). An entry contributes no
+/// expanded bytes for its parents, so 2,000 entries each ~400 components deep fit in a
+/// 3.2 MiB download and buy 800,000 `mkdir` calls — measured at ~57 s of blocking-pool time
+/// to create and ~104 s to clean up, with `copy_dir_recursive` paying it a third time after
+/// the destructive `remove_dir_all`. Every byte ceiling saw zero.
+///
+/// A plugin bundle is `dist/chunks/x.mjs`: depth 3. Sixteen is far past anything real and
+/// takes the worst case to 2,000 × 16, which is seconds rather than minutes.
+const MAX_PATH_DEPTH: usize = 16;
+
 /// Below this much output the ratio is not evidence of anything.
 ///
 /// Without a floor a 2 KiB archive of highly compressible text trips 100:1 at 200 KiB —
@@ -549,7 +561,11 @@ pub async fn install_plugin(
             Ok((manifest, target_dir))
         })
         .await
-        .map_err(|err| PluginError::Refused(format!("the install task did not finish: {err}")))??;
+        // Deliberately does NOT interpolate `err`. A `JoinError` here means the closure
+        // panicked, i.e. a bug in this code rather than anything about the archive, and its
+        // payload can carry absolute paths straight to the frontend (review L1). Nothing in
+        // it is actionable for the user; the shape of the failure is.
+        .map_err(|_| PluginError::Refused("the plugin install task did not finish".into()))??;
 
     Ok(InstalledPluginInfo {
         install_path: target_dir.to_string_lossy().to_string(),
@@ -972,7 +988,8 @@ fn resolve_key_path(dir: &Path, key: &str) -> Result<PathBuf, String> {
 /// ‼️ Every limit is checked against bytes THIS FUNCTION READ, never against `file.size()`
 /// or `file.compressed_size()`. Those come out of the archive's own headers, so trusting
 /// them to police the archive is asking the input whether it is allowed. A header may claim
-/// 4 KiB and stream gigabytes; the `take` below is what makes that claim irrelevant.
+/// 4 KiB and stream gigabytes; the `take` in `extract_zip_bounded` is what makes that claim
+/// irrelevant.
 ///
 /// Streams entry-by-entry into the output file rather than `read_to_end` into a `Vec`, so
 /// the previous behaviour — an oversized entry exhausting memory before anything could
@@ -992,6 +1009,7 @@ fn extract_zip_bytes(data: &[u8], output_dir: &Path) -> Result<(), PluginError> 
 struct ExtractBounds {
     max_entries: usize,
     max_entry_bytes: u64,
+    max_path_depth: usize,
     max_ratio: u64,
     max_total_bytes: u64,
     ratio_floor_bytes: u64,
@@ -1001,6 +1019,7 @@ impl ExtractBounds {
     const DEFAULT: Self = Self {
         max_entries: MAX_ARCHIVE_ENTRIES,
         max_entry_bytes: MAX_ENTRY_BYTES,
+        max_path_depth: MAX_PATH_DEPTH,
         max_ratio: MAX_COMPRESSION_RATIO,
         max_total_bytes: MAX_TOTAL_EXPANDED_BYTES,
         ratio_floor_bytes: RATIO_FLOOR_BYTES,
@@ -1015,8 +1034,16 @@ fn extract_zip_bounded(
     let cursor = std::io::Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor)?;
 
-    // Cheap and first: this one IS safe to read from the directory, because an archive
-    // claiming fewer entries than it holds simply gets fewer extracted.
+    // First of OUR checks, and safe to read from the central directory: an archive claiming
+    // fewer entries than it holds simply gets fewer extracted.
+    //
+    // ‼️ Not cheap in absolute terms, and nothing here can make it so (review M3):
+    // `ZipArchive::new` above has already parsed every central-directory record into memory
+    // before `archive.len()` exists, at roughly 251 resident bytes per 46-byte record — so a
+    // 32 MiB download can hold ~175 MiB of parsed records before this line runs. Bounded by
+    // the download cap and transient, but it is upstream of every limit below. Backlogged;
+    // the only real fix is a streaming central-directory reader the `zip` crate does not
+    // expose.
     if archive.len() > bounds.max_entries {
         return Err(PluginError::Refused(format!(
             "plugin archive declares {} entries, over the {} limit",
@@ -1033,6 +1060,18 @@ fn extract_zip_bounded(
         let Some(enclosed_name) = file.enclosed_name() else {
             continue; // skip invalid paths (path traversal protection)
         };
+
+        // ‼️ Checked BEFORE any `create_dir_all`, because directories are the one thing the
+        // byte ceilings below cannot see: parents cost no expanded bytes, so depth is free
+        // to the attacker and expensive to us (review M2).
+        let depth = enclosed_name.components().count();
+        if depth > bounds.max_path_depth {
+            return Err(PluginError::Refused(format!(
+                "plugin archive entry {} is {depth} directories deep, over the {} limit",
+                enclosed_name.display(),
+                bounds.max_path_depth
+            )));
+        }
         let out_path = output_dir.join(enclosed_name);
 
         if file.is_dir() {
@@ -1043,9 +1082,29 @@ fn extract_zip_bounded(
             std::fs::create_dir_all(parent)?;
         }
 
-        // The tighter of the two ceilings, so neither can be overshot even by one entry.
-        let remaining = bounds.max_total_bytes.saturating_sub(total_written);
-        let cap = bounds.max_entry_bytes.min(remaining);
+        // ‼️ ALL THREE ceilings fold into the read, so none can be overshot even by one
+        // entry.
+        //
+        // The ratio used to be checked AFTER writing, which made it a limit on what
+        // survived rather than on what the archive could make us do. Measured (review M1):
+        // a 64 KiB archive holding one 64 MiB entry cleared the per-file and total
+        // ceilings, wrote all 64 MiB to disk, and only then hit the "100:1" refusal — 1027:1
+        // of transient amplification against a documented 100:1. The comment here used to
+        // say the refusal came "while unpacking rather than after"; for a single-entry
+        // archive, the canonical bomb shape and the one this module's own bomb test uses,
+        // it was entirely after.
+        let by_entry = bounds.max_entry_bytes;
+        let by_total = bounds.max_total_bytes.saturating_sub(total_written);
+        // `max(floor)` is what the ratio floor means now: an archive may always produce at
+        // least this much before the ratio can say anything, so a small archive of ordinary
+        // compressible text is not refused over a statistic computed on too little data.
+        // Same intent as the old post-hoc floor, moved to where it can actually act.
+        let by_ratio = compressed_len
+            .saturating_mul(bounds.max_ratio)
+            .max(bounds.ratio_floor_bytes)
+            .saturating_sub(total_written);
+        let cap = by_entry.min(by_total).min(by_ratio);
+
         let mut out = std::fs::File::create(&out_path)?;
         // `cap + 1`: reading exactly `cap` is legal, so the extra byte is what distinguishes
         // "filled the budget" from "would have gone past it".
@@ -1053,33 +1112,27 @@ fn extract_zip_bounded(
         let written = std::io::copy(&mut limited, &mut out)?;
         if written > cap {
             // Which ceiling bound this entry, so the message names the limit to raise.
-            return Err(PluginError::Refused(
-                if remaining <= bounds.max_entry_bytes {
-                    format!(
-                        "plugin archive expands past the {} byte total limit",
-                        bounds.max_total_bytes
-                    )
-                } else {
-                    format!(
-                        "plugin archive entry {} exceeds the {} byte per-file limit",
-                        out_path.display(),
-                        bounds.max_entry_bytes
-                    )
-                },
-            ));
+            // Ratio first: where it ties with another it is the more useful answer, because
+            // it is the one that says "this is shaped like a bomb".
+            return Err(PluginError::Refused(if cap == by_ratio {
+                format!(
+                    "plugin archive expands more than {}:1 from its {compressed_len} bytes",
+                    bounds.max_ratio
+                )
+            } else if cap == by_total {
+                format!(
+                    "plugin archive expands past the {} byte total limit",
+                    bounds.max_total_bytes
+                )
+            } else {
+                format!(
+                    "plugin archive entry {} exceeds the {} byte per-file limit",
+                    out_path.display(),
+                    bounds.max_entry_bytes
+                )
+            }));
         }
         total_written += written;
-
-        // Checked inside the loop so a bomb is refused while unpacking rather than after.
-        if total_written > bounds.ratio_floor_bytes
-            && total_written > compressed_len.saturating_mul(bounds.max_ratio)
-        {
-            return Err(PluginError::Refused(format!(
-                "plugin archive expands {total_written} bytes from {compressed_len}, past the \
-                 {}:1 ratio limit",
-                bounds.max_ratio
-            )));
-        }
     }
     Ok(())
 }
@@ -2045,6 +2098,7 @@ mod tests {
         ExtractBounds {
             max_entries: 4,
             max_entry_bytes: 4096,
+            max_path_depth: 3,
             max_ratio: 3,
             max_total_bytes: 8192,
             ratio_floor_bytes: 2000,
@@ -2153,7 +2207,54 @@ mod tests {
 
         let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
 
-        assert!(err.to_string().contains("ratio limit"), "{err}");
+        assert!(err.to_string().contains("expands more than 3:1"), "{err}");
+    }
+
+    /// Total bytes sitting under `dir` after a refusal.
+    fn bytes_on_disk(dir: &Path) -> u64 {
+        fn walk(dir: &Path, total: &mut u64) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, total);
+                } else if let Ok(meta) = entry.metadata() {
+                    *total += meta.len();
+                }
+            }
+        }
+        let mut total = 0;
+        walk(dir, &mut total);
+        total
+    }
+
+    /// THE DEFECT THIS PINS (review M1): the ratio limit bounded what SURVIVED, not what the
+    /// archive could make us write.
+    ///
+    /// Measured before the fix: a 64 KiB archive holding one 64 MiB entry cleared the
+    /// per-file and total ceilings, put all 64 MiB on disk, and only then hit the "100:1"
+    /// refusal — 1027:1 of transient amplification against a documented 100:1. Asserting the
+    /// message alone could not see it; the refusal fired either way. This asserts the BYTES.
+    #[test]
+    fn a_bomb_is_refused_before_it_can_fill_the_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = zip_of(&[("bomb.bin", &vec![0u8; 64 * 1024 * 1024])]);
+        let wire = data.len() as u64;
+
+        let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
+        assert!(err.to_string().contains("expands more than 100:1"), "{err}");
+
+        // The allowance is `max(wire × 100, 1 MiB)`, and one byte over it is what triggers
+        // the refusal — so anything materially past that means the cap is not in the read.
+        let written = bytes_on_disk(dir.path());
+        let allowance = (wire * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
+        assert!(
+            written <= allowance + 1,
+            "{written} bytes reached disk from a {wire} byte archive; the {MAX_COMPRESSION_RATIO}:1 \
+             ratio allows {allowance}"
+        );
     }
 
     /// The shipped constants, end to end — the others drive injected limits.
@@ -2174,16 +2275,91 @@ mod tests {
 
         let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
 
-        assert!(err.to_string().contains("100:1 ratio limit"), "{err}");
+        assert!(err.to_string().contains("expands more than 100:1"), "{err}");
+    }
+
+    // ── At the boundary ──────────────────────────────────────────────────────────────
+    //
+    // ‼️ Every fixture above sits comfortably on one side of its limit, so `>` → `>=` on any
+    // of these comparisons is invisible: a mutation that spuriously refuses an entry of
+    // EXACTLY the ceiling passes the whole suite. Ten mutations were run on the first draft
+    // and every one was a removal — the same blind spot as [[mutation-removal-vs-substitution]],
+    // recurring in the phase that recorded it. These three fixtures land on the value.
+
+    #[test]
+    fn admits_an_entry_of_exactly_the_per_file_limit() {
+        let bounds = tiny_bounds();
+        let dir = tempfile::tempdir().unwrap();
+        let data = zip_of(&[(
+            "exact.bin",
+            &incompressible(bounds.max_entry_bytes as usize),
+        )]);
+
+        extract_zip_bounded(&data, dir.path(), bounds).expect("exactly the limit is legal");
+    }
+
+    #[test]
+    fn admits_an_archive_of_exactly_the_total_limit() {
+        let bounds = tiny_bounds();
+        let half = (bounds.max_total_bytes / 2) as usize;
+        let dir = tempfile::tempdir().unwrap();
+        let data = zip_of(&[("a", &incompressible(half)), ("b", &incompressible(half))]);
+
+        extract_zip_bounded(&data, dir.path(), bounds).expect("exactly the limit is legal");
+    }
+
+    #[test]
+    fn admits_exactly_the_entry_count_limit() {
+        let bounds = tiny_bounds();
+        let names: Vec<String> = (0..bounds.max_entries).map(|i| format!("f{i}")).collect();
+        let entries: Vec<(&str, &[u8])> =
+            names.iter().map(|n| (n.as_str(), b"x" as &[u8])).collect();
+        let dir = tempfile::tempdir().unwrap();
+
+        extract_zip_bounded(&zip_of(&entries), dir.path(), bounds)
+            .expect("exactly the limit is legal");
+    }
+
+    #[test]
+    fn refuses_a_path_deeper_than_the_limit() {
+        // Directories are free to the byte ceilings — an entry's parents contribute no
+        // expanded bytes — so depth is the one dimension they cannot bound (review M2).
+        let dir = tempfile::tempdir().unwrap();
+        let deep = "a/b/c/d/e/f.txt";
+        let data = zip_of(&[(deep, b"x")]);
+
+        let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
+
+        assert!(err.to_string().contains("directories deep"), "{err}");
+        assert!(
+            !dir.path().join("a").exists(),
+            "the depth check must run BEFORE create_dir_all, or it charges nothing"
+        );
+    }
+
+    #[test]
+    fn admits_a_path_at_the_depth_limit() {
+        // `dist/chunks/x.mjs` is depth 3 and must keep working; the production limit is 16.
+        let dir = tempfile::tempdir().unwrap();
+        let data = zip_of(&[("a/b/c.txt", b"x")]);
+
+        extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a/b/c.txt")).unwrap(),
+            "x"
+        );
     }
 
     // ── Network caps, over a real socket ─────────────────────────────────────────────
     //
     // Four streaming caps and three timeouts shipped with no test of any kind, because the
     // scheme guard refuses before a request is made and everything past it needs a real
-    // response. One loopback server covers the caps. The TIMEOUTS remain untested and are
-    // recorded in the backlog: the shortest is 30s, and a suite nobody will wait for is
-    // worse than an honest gap.
+    // response. One loopback server covers THREE of the four caps — `MAX_FETCH_BYTES` is on
+    // the plugin `http_fetch` path, reached through `ExtensionContext` rather than a bare
+    // function, so it needs its own wiring. The SIX timeouts in this module remain untested
+    // and are recorded in the backlog: the shortest is 30s, and a suite nobody will wait for
+    // is worse than an honest gap.
 
     /// A one-shot HTTP server on loopback that will send more than it should.
     ///
@@ -2306,6 +2482,14 @@ mod tests {
         let end = body.find("\n}\n").expect("the function must end");
         let body = &body[..end];
 
+        // ‼️ A positive anchor FIRST. The window ends at the next column-0 `}`, so a future
+        // edit that shortens the function — or a rename — leaves an absence assertion that
+        // passes over nothing at all (review L4). This line fails loudly instead.
+        assert!(
+            body.contains("take(cap + 1)"),
+            "the window no longer contains the bounded read, so the absence checks below \
+             would be vacuous"
+        );
         for header_field in [".size()", ".compressed_size()"] {
             assert!(
                 !body.contains(header_field),
@@ -2313,5 +2497,28 @@ mod tests {
                  bounds must be enforced on bytes actually read"
             );
         }
+    }
+
+    /// M5 — something has to execute the `spawn_blocking` closure.
+    ///
+    /// Both install tests above refuse during the DOWNLOAD, so nothing reached the relocated
+    /// steps 3–6 at all: not the extraction, not the manifest checks, not the `JoinError`
+    /// mapping. This serves a real, well-formed ZIP that simply has no `baram-plugin.json`,
+    /// which gets past the download and the checksum and stops inside the closure — before
+    /// anything writes to the user's real plugin directory, which a fully successful install
+    /// would do.
+    #[tokio::test]
+    async fn install_plugin_reaches_the_blocking_stage_and_reports_from_inside_it() {
+        let archive = zip_of(&[("not-a-manifest.txt", b"hello")]);
+        let url = serve_once("200 OK", archive);
+
+        let err = install_plugin(&url, None, None)
+            .await
+            .expect_err("an archive with no manifest cannot install");
+
+        assert!(
+            err.to_string().contains("baram-plugin.json not found"),
+            "expected the refusal raised inside the blocking closure, got: {err}"
+        );
     }
 }

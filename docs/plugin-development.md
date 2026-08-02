@@ -775,15 +775,21 @@ can expand to an enormous one:
 | --- | --- |
 | Archive size on the wire | 32 MiB |
 | Files in the archive | 2,000 |
+| Directory depth of any path | 16 |
 | Any single file, expanded | 64 MiB |
 | All files together, expanded | 256 MiB |
-| Expanded ÷ compressed ratio | 100:1, applied once output passes 1 MiB |
+| Expanded ÷ compressed ratio | 100:1, with at least 1 MiB always allowed |
 
 These are set far above anything a real plugin needs — the published reference
-plugin expands to tens of kilobytes — and exist to stop a hostile archive from
-exhausting memory or disk. If you have a legitimate reason to exceed one (a
-bundled dictionary, a font, a WASM module), open an issue; the ratio limit in
-particular is deliberately loose enough for ordinary compressible assets.
+plugin expands to tens of kilobytes, and `dist/chunks/index.mjs` is depth 3 —
+and exist to stop a hostile archive from exhausting memory or disk. If you have
+a legitimate reason to exceed one (a bundled dictionary, a font, a WASM module),
+open an issue; the ratio limit in particular is deliberately loose enough for
+ordinary compressible assets, and the 1 MiB allowance means small archives are
+never judged on a ratio computed from too little output.
+
+Extraction stops at the first limit reached, **while unpacking** rather than
+afterwards, so an archive that would exceed one never gets to write the excess.
 
 Every limit is enforced on bytes actually read, not on the sizes the archive
 declares in its own headers, so a mis-stated size will not get you past them.
