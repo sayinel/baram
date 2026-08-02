@@ -246,3 +246,31 @@ describe("impl review S3-R2 pins", () => {
     expect(performance.now() - t0).toBeLessThan(300);
   });
 });
+
+describe("impl review S3-R3 pin — counted j/k across a mid rowspan", () => {
+  const grid =
+    "<table>" +
+    "<tr><td><p>a0</p></td><td><p>b0</p></td></tr>" +
+    '<tr><td rowspan="2"><p>sp</p></td><td><p>b1</p></td></tr>' +
+    "<tr><td><p>b2</p></td></tr>" +
+    "<tr><td><p>a3</p></td><td><p>b3</p></td></tr>" +
+    "</table>";
+
+  it("2j equals j;j through the span", () => {
+    const editor = makeEditor(grid);
+    const a0 = posOfText(editor, "a0");
+    const once = resolveMotion(editor.state, a0, "lineDown", 1);
+    const twice = resolveMotion(editor.state, once, "lineDown", 1);
+    expect(editor.state.doc.resolve(twice).parent.textContent).toBe("a3");
+    expect(resolveMotion(editor.state, a0, "lineDown", 2)).toBe(twice);
+  });
+
+  it("2k equals k;k through the span", () => {
+    const editor = makeEditor(grid);
+    const a3 = posOfText(editor, "a3");
+    const once = resolveMotion(editor.state, a3, "lineUp", 1);
+    const twice = resolveMotion(editor.state, once, "lineUp", 1);
+    expect(editor.state.doc.resolve(twice).parent.textContent).toBe("a0");
+    expect(resolveMotion(editor.state, a3, "lineUp", 2)).toBe(twice);
+  });
+});
