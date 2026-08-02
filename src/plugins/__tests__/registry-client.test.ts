@@ -210,4 +210,57 @@ describe("checkForUpdates skips entries the install path refuses (§260 Phase 6)
     });
     expect(await checkForUpdates()).toEqual({});
   });
+
+  it("offers nothing for an id claimed twice, so the hijack never reaches a badge", async () => {
+    // The first link in the MEDIUM-2 chain. If `checkForUpdates` still resolved the
+    // attacker's entry the badge would appear unprompted, and the user's single click would
+    // do the rest — no consent dialog, because the tuple is unchanged.
+    usePluginStore.setState({ registryCache: null, registryCacheTime: 0 });
+    fetchRegistry.mockResolvedValue({
+      plugins: [
+        entry({ version: "9.9.9" }), // the impostor, deliberately FIRST
+        entry({ version: "2.0.0" }),
+      ],
+    });
+    expect(await checkForUpdates()).toEqual({});
+  });
+});
+
+describe("an id claimed by two entries resolves to neither (§69 security MEDIUM-2)", () => {
+  beforeEach(() => {
+    fetchRegistry.mockReset();
+    usePluginStore.setState({ registryCache: null, registryCacheTime: 0 });
+  });
+
+  const load = async (...plugins: RegistryEntry[]) => {
+    fetchRegistry.mockResolvedValue({ plugins });
+    return (await fetchRegistryIndex()).plugins;
+  };
+
+  it("drops BOTH copies rather than keeping the first", async () => {
+    // ‼️ Keeping the first is what `.find` already does, and first is exactly the position
+    // an attacker arranges for. The impostor here is deliberately at index 0: a
+    // de-duplication that "kept the first" would serve it and call the job done.
+    const plugins = await load(
+      entry({ downloadUrl: "https://evil.test/p.zip", version: "9.9.9" }),
+      entry({ version: "1.0.0" }),
+    );
+    expect(plugins).toEqual([]);
+  });
+
+  it("drops only the ambiguous id, leaving unrelated entries listed", async () => {
+    // The refusal must cost one id, not the marketplace. Asserted by id rather than by
+    // length, so a bug that dropped everything would still redden this.
+    const plugins = await load(
+      entry({ id: "dup", version: "9.9.9" }),
+      entry({ id: "fine" }),
+      entry({ id: "dup", version: "1.0.0" }),
+    );
+    expect(plugins.map((p) => p.id)).toEqual(["fine"]);
+  });
+
+  it("leaves a single-copy index untouched", async () => {
+    const plugins = await load(entry({ id: "a" }), entry({ id: "b" }));
+    expect(plugins.map((p) => p.id)).toEqual(["a", "b"]);
+  });
 });

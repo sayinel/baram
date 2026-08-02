@@ -85,6 +85,27 @@ const FIELDS: Record<
 /** The two tiers of §260, as a literal list so an unknown value cannot ship. */
 const TRUST_VALUES = ["sandboxed", "trusted"];
 
+/**
+ * An entry id, made safe to print from a GitHub Actions step.
+ *
+ * §69 security review (LOW-1) — this script echoes the id it is complaining about, and it
+ * runs inside `plugin-release.yml`. Actions parses workflow commands out of step OUTPUT, so
+ * an id containing a newline followed by `::error title=…::` writes a forged annotation on
+ * the release job, and `::stop-commands::` silences every real one after it. Reproduced
+ * against the shipped script before this fix.
+ *
+ * Nothing worse than log spoofing is reachable — `::set-env::` and `::set-output::` are
+ * disabled and `::add-mask::` cannot unmask a secret — but a gate whose whole purpose is to
+ * TELL THE OPERATOR something must not let the document being judged write the verdict.
+ */
+function label(raw: string): string {
+  const flattened = raw
+    .replaceAll(/[\n\r]/gu, "⏎")
+    // The command prefix itself, so no reassembly survives the newline strip.
+    .replaceAll("::", "∷");
+  return flattened.length > 80 ? `${flattened.slice(0, 80)}…` : flattened;
+}
+
 const errors: string[] = [];
 const warnings: string[] = [];
 
@@ -114,7 +135,7 @@ plugins.forEach((value, position) => {
   // Entries are identified by id where possible and by position otherwise, because an entry
   // whose id is the missing field is exactly the case that needs locating.
   const id = typeof entry.id === "string" && entry.id !== "" ? entry.id : null;
-  const where = id ?? `entry #${position + 1}`;
+  const where = label(id ?? `entry #${position + 1}`);
 
   // Registered BEFORE the early return below, so a duplicate of an entry that is itself
   // broken is still reported. Otherwise fixing the first error would reveal a second.
@@ -122,8 +143,9 @@ plugins.forEach((value, position) => {
     const first = seenIds.get(id);
     if (first !== undefined) {
       errors.push(
-        `${id}: duplicate id (entries #${first + 1} and #${position + 1}) — lookups take ` +
-          "the first match, so the later entry is dead weight that can never be installed",
+        `${where}: duplicate id (entries #${first + 1} and #${position + 1}) — the app now ` +
+          "serves NEITHER, because inserting a copy above a real entry hijacks every " +
+          "`find` lookup, including the update path (security review MEDIUM-2)",
       );
     } else {
       seenIds.set(id, position);

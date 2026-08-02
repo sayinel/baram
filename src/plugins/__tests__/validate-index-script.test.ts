@@ -221,6 +221,28 @@ describe("validate-index", () => {
     expect(status).toBe(0);
   });
 
+  it("neutralises an id that tries to write GitHub Actions commands", () => {
+    // §69 security review (LOW-1), reproduced against the shipped script before the fix:
+    // this runs inside `plugin-release.yml`, Actions parses workflow commands out of step
+    // output, and the id is echoed back. A newline plus `::error title=…::` forged an
+    // annotation on the release job, and `::stop-commands::` silenced every real one after
+    // it. The document being judged must not get to write the verdict.
+    const { output, status } = run({
+      plugins: [
+        validEntry({
+          id: "inject\n::error title=SPOOFED::forged\n::stop-commands::deadbeef\nx",
+          trust: "nonsense",
+        }),
+      ],
+    });
+    // No line may BEGIN with a workflow command — that is the only form Actions parses.
+    for (const line of output.split("\n")) {
+      expect(line.trimStart()).not.toMatch(/^::/u);
+    }
+    expect(output).toContain("∷error"); // defanged, still legible to a human
+    expect(status).toBe(1);
+  });
+
   it("reports a duplicate of an entry that is itself broken", () => {
     // The first entry takes the early return for its missing field. If the id were recorded
     // only after that, fixing the first error would reveal a second one — two publish

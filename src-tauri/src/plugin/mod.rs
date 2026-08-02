@@ -206,6 +206,14 @@ pub struct RegistryEntry {
     /// one the app is perfectly willing to serve. Refusing to *deserialize* it would have
     /// been the only place that disagreed — and, before the tolerant `plugins` below, it
     /// took the whole index down with it.
+    ///
+    /// ‼️ WHY THIS IS NOT A FAIL-OPEN (§69 security review, question (a)). Omitting the
+    /// field DEFERS the floor check, it does not remove it: `handleInstall` re-checks
+    /// against `result.manifest.engines` after the download, and `PluginManifest.engines` is
+    /// still REQUIRED here and in `validateManifest`. So the cost of an omission is a wasted
+    /// download and a rollback, not an unprotected install. The listing's floor was never a
+    /// security control anyway — it is self-declared by the party being gated, and
+    /// `"baram": "*"` already bypassed it at zero cost before this change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engines: Option<EngineRequirement>,
 }

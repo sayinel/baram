@@ -266,6 +266,11 @@ export interface RegistryEntry {
      * plugin from the marketplace rather than report it — and `unmetBaramFloor` already
      * treats an absent floor as "no opinion" and installs, so nothing downstream wants the
      * strictness anyway. Be liberal in what you accept; be strict at the publish gate.
+     *
+     * ‼️ Not a fail-open: an omission DEFERS the floor check to `handleInstall`'s
+     * post-download re-check against `result.manifest.engines`, where `PluginManifest.engines`
+     * is still required. It costs a wasted download, not an unprotected install. (The update
+     * path is the exception, and `handleUpdate` refuses an absent floor for that reason.)
      */
     engines?: {
         baram: string;
