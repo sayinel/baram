@@ -234,7 +234,10 @@ function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
       }
       return false;
     }
-    if (node.isLeaf) {
+    if (node.isInline) {
+      // ANY non-text inline child is one unit — nextUnitBoundary skips it
+      // whole, leaf or not; descending into an inline atom's content made
+      // j landings that h/l could not leave (review S3-R7).
       if (pos >= line.start && pos < line.end) starts.push(pos);
       return false;
     }

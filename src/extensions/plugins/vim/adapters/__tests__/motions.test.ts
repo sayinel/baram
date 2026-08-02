@@ -3,7 +3,7 @@
 // The vertical model: every hard-break segment and every atom block is one
 // line. j/k preserve the column, clamped into the target line.
 
-import { Editor } from "@tiptap/core";
+import { Editor, Node } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
@@ -402,5 +402,51 @@ describe("impl review S3-R6 pins — column semantics of the unit index", () => 
     const xPos = $first.start() + 2;
     const target = resolveMotion(editor.state, xPos, "lineDown", 1);
     expect(editor.state.doc.resolve(target).parentOffset).toBe(2); // ON "c"
+  });
+});
+
+describe("impl review S3-R7 pin — inline NON-LEAF atoms are one unit", () => {
+  // A legal plugin-style node: inline atom WITH text content. h/l/x treat
+  // it as one unit (nextUnitBoundary skips any non-text inline child), so
+  // the vertical index must too — descending into it created j landings
+  // that h/l could not leave.
+  const InlineBox = Node.create({
+    atom: true,
+    content: "text*",
+    group: "inline",
+    inline: true,
+    name: "inlineBox",
+    parseHTML: () => [{ tag: "span[data-inline-box]" }],
+    renderHTML: () => ["span", { "data-inline-box": "" }, 0],
+  });
+
+  it("k lands ON the atom, and h/l can leave it", () => {
+    const editor = new Editor({
+      content: "<p>seed</p>",
+      extensions: [...createBaramExtensions(), InlineBox],
+    });
+    editors.push(editor);
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            { text: "ab", type: "text" },
+            { content: [{ text: "XYZ", type: "text" }], type: "inlineBox" },
+            { text: "cd", type: "text" },
+          ],
+          type: "paragraph",
+        },
+        { content: [{ text: "abcdef", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const $second = editor.state.doc.resolve(editor.state.doc.content.size - 2);
+    const from = $second.start() + 2; // column 2 of "abcdef"
+    const target = resolveMotion(editor.state, from, "lineUp", 1);
+    expect(editor.state.doc.nodeAt(target)?.type.name).toBe("inlineBox");
+    expect(resolveMotion(editor.state, target, "charRight", 1)).not.toBe(
+      target,
+    );
+    expect(resolveMotion(editor.state, target, "charLeft", 1)).not.toBe(target);
   });
 });
