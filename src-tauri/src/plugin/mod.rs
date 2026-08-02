@@ -361,6 +361,34 @@ const MAX_TOTAL_EXPANDED_BYTES: u64 = 256 * 1024 * 1024;
 /// zip bomb needs hundreds or thousands to one to be worth building.
 const MAX_COMPRESSION_RATIO: u64 = 100;
 
+/// The only compression methods a plugin archive may use.
+///
+/// ‼️ THIS IS A MEMORY BOUND, NOT A FORMAT PREFERENCE, and it closes the one hole every
+/// other limit in this module is blind to (§69 security review, HIGH).
+///
+/// `zip = "8"` takes default features, so the crate compiles LZMA, PPMd, zstd, xz and bzip2
+/// decoders. The LZMA decoder is built lazily on the FIRST READ of an entry — after
+/// `by_index`, inside the very `read` that `take` wraps — and it sizes its dictionary from a
+/// `dict_size` field in the entry payload, clamped only to ~4 GiB. The allocation therefore
+/// happens BEFORE the first output byte exists, which is the only thing the four byte
+/// ceilings can see. Measured: a 114-byte archive drove a single 512 MiB allocation straight
+/// through `take(64 MiB + 1)` — 4.7M:1 against a documented 100:1 — and a failed
+/// `alloc_zeroed` aborts the process rather than unwinding, so `spawn_blocking` cannot even
+/// turn it into an error.
+///
+/// An ALLOWLIST rather than a denylist of the exotic methods, per this project's own rule:
+/// a denylist admits the next decoder the crate gains by default. Plugin archives are built
+/// by `zip -r` in `plugin-release.yml`, which emits Deflated, and `Stored` covers entries
+/// too small to gain from compression. Nothing legitimate needs more.
+///
+/// Refusing the METHOD, not the declared size, is deliberate: the size is the attacker's
+/// number, while the method is what decides whether a decoder that allocates from attacker
+/// numbers is constructed at all.
+const ALLOWED_COMPRESSION: [zip::CompressionMethod; 2] = [
+    zip::CompressionMethod::Stored,
+    zip::CompressionMethod::Deflated,
+];
+
 /// Deepest path any entry may carry.
 ///
 /// ‼️ Directories cost nothing the BYTE bounds can see (review M2). An entry contributes no
@@ -1000,13 +1028,19 @@ fn resolve_key_path(dir: &Path, key: &str) -> Result<PathBuf, String> {
 /// the previous behaviour — an oversized entry exhausting memory before anything could
 /// notice — is gone even for the bytes that are under the limit.
 ///
-/// ‼️ THAT GUARANTEE DEPENDS ON WHICH `zip` APIS WE USE, so it was checked against the
-/// crate source rather than assumed. In zip 8.6.0 exactly two read-path sites allocate from
-/// a header-declared size — `read.rs:417` and `read/stream.rs:72`, both
-/// `Vec::with_capacity(file.size() as usize)` — and neither is reachable from here: the
-/// first is inside `ZipArchive::extract`, the crate's own bulk-extract convenience, and the
-/// second is the streaming reader. This function drives `by_index` and its own loop, which
-/// allocate nothing from declared sizes.
+/// ‼️ THAT GUARANTEE COVERS OUR OWN READS AND NOTHING ELSE. Twice now it has been claimed
+/// more broadly than it holds, so state it precisely:
+///
+/// - `Vec::with_capacity(file.size())` appears twice in zip 8.6.0's read path (`read.rs:417`,
+///   `read/stream.rs:72`) and neither is reachable here — the first is inside
+///   `ZipArchive::extract`, the second is the streaming reader. This function drives
+///   `by_index` and its own loop.
+/// - ‼️ But the DECOMPRESSOR is handed attacker numbers regardless. LZMA and PPMd build
+///   themselves on the first `read` of an entry — inside the call `take` wraps — and size
+///   their buffers from the payload, before any output byte exists for the ceilings to
+///   count. No read cap can bound an allocation that precedes the first byte read. That is
+///   why `ALLOWED_COMPRESSION` exists, and why it gates on the METHOD rather than on any
+///   size: it stops such a decoder from being constructed at all.
 ///
 /// So: do not "simplify" this to `archive.extract(dir)`. That call reintroduces the
 /// declared-size allocation AND materialises symlink entries (`make_symlink`, `read.rs:419`)
@@ -1081,6 +1115,22 @@ fn extract_zip_bounded(
         // ‼️ Checked BEFORE any `create_dir_all`, because directories are the one thing the
         // byte ceilings below cannot see: parents cost no expanded bytes, so depth is free
         // to the attacker and expensive to us (review M2).
+        // ‼️ BEFORE the first read of this entry, which is where a decoder gets built and
+        // where LZMA would allocate from a number in the payload. `compression()` reads
+        // metadata only, so asking costs nothing. See `ALLOWED_COMPRESSION`.
+        let method = file.compression();
+        if !ALLOWED_COMPRESSION.contains(&method) {
+            return Err(PluginError::Refused(format!(
+                "plugin archive entry {} uses compression method {method}; only {} are allowed",
+                file.name(),
+                ALLOWED_COMPRESSION
+                    .iter()
+                    .map(|m| m.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" and ")
+            )));
+        }
+
         // COMPONENTS, including the filename — `a/b/c.txt` is 3. The limit and its doc count
         // the same way, so the arithmetic was never wrong, but the message used to say
         // "directories deep" and there are only two of those here (review round 2).
@@ -2375,6 +2425,69 @@ mod tests {
 
         extract_zip_bounded(&zip_of(&entries), dir.path(), bounds)
             .expect("exactly the limit is legal");
+    }
+
+    /// THE DEFECT THIS PINS (§69 security review, HIGH): a decoder that allocates from a
+    /// number in the archive, before any byte the ceilings can count.
+    ///
+    /// `zip = "8"` compiles LZMA, PPMd, zstd, xz and bzip2 by default. LZMA builds its
+    /// decoder on the FIRST READ — inside the very `read` that `take` wraps — and sizes its
+    /// dictionary from the payload, clamped only to ~4 GiB. Measured: a 114-byte archive
+    /// drove a single 512 MiB allocation through `take(64 MiB + 1)`, and a failed
+    /// `alloc_zeroed` aborts rather than unwinding, so `spawn_blocking` cannot even report
+    /// it. Every byte bound in this module is downstream of that.
+    ///
+    /// Bzip2 stands in for the family here because the crate's WRITER can produce it; the
+    /// mechanism being tested is the allowlist, not any one decoder.
+    #[test]
+    fn refuses_a_compression_method_outside_the_allowlist() {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+        {
+            let mut writer = zip::write::ZipWriter::new(&mut buf);
+            let opts = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Bzip2);
+            writer.start_file("payload.bin", opts).unwrap();
+            writer.write_all(b"harmless content").unwrap();
+            writer.finish().unwrap();
+        }
+        let dir = tempfile::tempdir().unwrap();
+
+        let err = extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds()).unwrap_err();
+
+        assert!(err.to_string().contains("compression method"), "{err}");
+        // ‼️ Refused before the entry was touched. If the check ran after the first read the
+        // decoder would already have been constructed, which is the whole exposure.
+        assert!(
+            !dir.path().join("payload.bin").exists(),
+            "the entry must be refused before anything is created for it"
+        );
+    }
+
+    #[test]
+    fn admits_both_allowed_compression_methods() {
+        // The allowlist must not break what the release pipeline actually produces: `zip -r`
+        // emits Deflated, and Stored covers entries too small to gain from compression.
+        use std::io::Write;
+        for method in ALLOWED_COMPRESSION {
+            let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+            {
+                let mut writer = zip::write::ZipWriter::new(&mut buf);
+                let opts = zip::write::SimpleFileOptions::default().compression_method(method);
+                writer.start_file("a.txt", opts).unwrap();
+                writer.write_all(b"content").unwrap();
+                writer.finish().unwrap();
+            }
+            let dir = tempfile::tempdir().unwrap();
+
+            extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds())
+                .unwrap_or_else(|e| panic!("{method} must be accepted: {e}"));
+
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+                "content"
+            );
+        }
     }
 
     /// ‼️ A symlink entry must not become a symlink.

@@ -773,6 +773,7 @@ can expand to an enormous one:
 
 | Limit | Value |
 | --- | --- |
+| Compression method | `Stored` or `Deflated` only |
 | Archive size on the wire | 32 MiB |
 | Files in the archive | 2,000 |
 | Path components in any entry | 16 (`dist/chunks/x.mjs` is 3) |
@@ -791,8 +792,12 @@ never judged on a ratio computed from too little output.
 Extraction stops at the first limit reached, **while unpacking** rather than
 afterwards, so an archive that would exceed one never gets to write the excess.
 
-Every limit is enforced on bytes actually read, not on the sizes the archive
-declares in its own headers, so a mis-stated size will not get you past them.
+Every byte limit is enforced on bytes actually read, not on the sizes the
+archive declares in its own headers, so a mis-stated size will not get you past
+them. The compression allowlist is separate and stricter for a reason: LZMA and
+PPMd size their internal buffers from the archive *before* producing a single
+byte, so no read limit can bound them — `zip -r`, which is what the release
+pipeline runs, produces `Deflated`.
 
 #### A malformed entry costs only itself
 
