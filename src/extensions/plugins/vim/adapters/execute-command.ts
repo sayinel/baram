@@ -83,12 +83,19 @@ export function executeCoreCommand(
           command.count,
         ),
       );
-    case "redo":
-      redo(state, view.dispatch);
+    case "redo": {
+      // Counted history: re-read view.state per step, stop when exhausted.
+      for (let i = 0; i < command.count; i++) {
+        if (!redo(view.state, view.dispatch)) break;
+      }
       return {};
-    case "undo":
-      undo(state, view.dispatch);
+    }
+    case "undo": {
+      for (let i = 0; i < command.count; i++) {
+        if (!undo(view.state, view.dispatch)) break;
+      }
       return {};
+    }
     case "yankLine":
       return dispatchOutcome(view, yankLine(state, head, command.count));
     case "yankVisual":

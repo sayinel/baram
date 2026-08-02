@@ -5,10 +5,11 @@
 // gate, so these keystrokes exercise exactly the production path.
 
 import { Editor } from "@tiptap/core";
+import { undoDepth } from "@tiptap/pm/history";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
-import { resetVimRegister } from "../adapters/register";
+import { readVimRegister, resetVimRegister } from "../adapters/register";
 import { vimPluginKey, withVimExternalEdit } from "../vim-keys";
 import { type VimPluginState } from "../vim-plugin";
 
@@ -195,5 +196,74 @@ describe("apply precedence (§5b)", () => {
     );
     const event = key(editor, "j");
     expect(event.defaultPrevented).toBe(false);
+  });
+});
+
+describe("impl review S2-R1 pins", () => {
+  it("v then d deletes the unit under the cursor — the range survives step", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "v");
+    key(editor, "d");
+    expect(editor.state.doc.textContent).toBe("bc");
+    expect(vim(editor).mode).toBe("normal");
+  });
+
+  it("v then y fills the char register", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "v");
+    key(editor, "y");
+    expect(readVimRegister()).toMatchObject({ kind: "char" });
+  });
+
+  it("Alt+Escape in insert passes through — Esc rides the shared core", () => {
+    const editor = makeEditor();
+    enable(editor);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "insert",
+        type: "setMode",
+      }),
+    );
+    const event = new KeyboardEvent("keydown", {
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+      key: "Escape",
+    });
+    editor.view.dom.dispatchEvent(event);
+    expect(vim(editor).mode).toBe("insert");
+  });
+
+  it("a consumed vim key never reaches document listeners", () => {
+    const editor = makeEditor();
+    document.body.appendChild(editor.view.dom);
+    enable(editor);
+    let leaked = 0;
+    const listener = () => {
+      leaked++;
+    };
+    document.addEventListener("keydown", listener);
+    key(editor, "j");
+    document.removeEventListener("keydown", listener);
+    editor.view.dom.remove();
+    expect(leaked).toBe(0);
+  });
+
+  it("2u undoes two history events, not one", () => {
+    const editor = makeEditor("<p>one</p><p>two</p>");
+    editor.view.dispatch(editor.state.tr.insertText("A", 1));
+    editor.view.dispatch(
+      editor.state.tr.insertText("B", editor.state.doc.content.size - 2),
+    );
+    expect(undoDepth(editor.state)).toBe(2); // fixture guard
+    enable(editor);
+    key(editor, "2");
+    key(editor, "u");
+    expect(editor.state.doc.textContent).toBe("onetwo");
+    expect(undoDepth(editor.state)).toBe(0);
   });
 });

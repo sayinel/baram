@@ -109,10 +109,15 @@ export function createVimPlugin(): Plugin<VimPluginState> {
           });
           if (!result.handled) return false; // Mod chords, unknowns — §5
 
+          // Single consumer (§4): the key must not also reach document-level
+          // keybinding listeners.
           event.preventDefault();
+          event.stopPropagation();
           dispatchMeta(view, { core: result.state, type: "core" });
           if (result.command) {
-            executeCoreCommand(view, result.command, result.state.visual);
+            // PRE-step visual: step() clears it on the visual→normal
+            // transition, which is exactly when d/y need the range.
+            executeCoreCommand(view, result.command, vim.core.visual);
           }
           return true;
         },
@@ -121,14 +126,24 @@ export function createVimPlugin(): Plugin<VimPluginState> {
         paste: (view, event) => consumeClipboard(view, event),
       },
 
-      /** Insert-mode Esc — through PM preprocessing (P3). The transient
-       *  stack arbitration (§5c/§6 pins) joins in S6; until then Esc goes
-       *  straight to normal. */
+      /** Insert-mode Esc — through PM preprocessing (P3), and through the
+       *  SAME core.step as the modal path: the core owns the modifier
+       *  guards (Alt/Ctrl/Mod+Escape pass). The transient stack arbitration
+       *  (§5c/§6 pins) joins in S6. */
       handleKeyDown: (view, event) => {
         const vim = read(view.state);
         if (!vim.enabled || vim.suspended || isModal(vim)) return false;
-        if (event.key !== "Escape") return false;
-        dispatchMeta(view, { mode: "normal", type: "setMode" });
+        const token = toKeyToken(event, isMacPlatform());
+        const result = step(vim.core, token, {
+          cursor: view.state.selection.head,
+        });
+        if (!result.handled) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        dispatchMeta(view, { core: result.state, type: "core" });
+        if (result.command) {
+          executeCoreCommand(view, result.command, vim.core.visual);
+        }
         return true;
       },
 
