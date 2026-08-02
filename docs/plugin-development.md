@@ -766,6 +766,28 @@ is that ZIP's SHA-256, hex-encoded. Registry installs verify `checksum`
 before extracting the ZIP — the host refuses to install a package whose hash
 doesn't match.
 
+#### Archive limits
+
+The download and the extraction are bounded separately, because a small archive
+can expand to an enormous one:
+
+| Limit | Value |
+| --- | --- |
+| Archive size on the wire | 32 MiB |
+| Files in the archive | 2,000 |
+| Any single file, expanded | 64 MiB |
+| All files together, expanded | 256 MiB |
+| Expanded ÷ compressed ratio | 100:1, applied once output passes 1 MiB |
+
+These are set far above anything a real plugin needs — the published reference
+plugin expands to tens of kilobytes — and exist to stop a hostile archive from
+exhausting memory or disk. If you have a legitimate reason to exceed one (a
+bundled dictionary, a font, a WASM module), open an issue; the ratio limit in
+particular is deliberately loose enough for ordinary compressible assets.
+
+Every limit is enforced on bytes actually read, not on the sizes the archive
+declares in its own headers, so a mis-stated size will not get you past them.
+
 #### A malformed entry costs only itself
 
 Every field above without a `?` is required **of you**, but Baram does not fail
