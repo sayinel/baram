@@ -28,6 +28,8 @@ export interface RustInstalledPluginInfo {
 export interface RustStagedPluginInfo {
   checksum: string;
   manifest: PluginManifest;
+  /** SHA-256 of the staged `baram-plugin.json`; hand it back to `pluginInstallCommit`. */
+  manifest_sha256: string;
   stage_id: string;
 }
 
@@ -74,13 +76,20 @@ export async function pluginHttpFetch(
  * The only destructive half, and the only thing it can destroy is the staged copy: Rust
  * renames the old version aside, renames the new one in, and puts the old one back if
  * anything fails.
+ *
+ * `manifestSha256` is the digest `pluginInstallStage` returned. Rust re-reads the manifest
+ * from disk here and refuses if it no longer matches — the caller's checks (tier,
+ * capabilities, version floor) all ran against the staged file, and a stage sits on disk
+ * across several awaits during which other code is still running.
  */
 export async function pluginInstallCommit(
   stageId: string,
   expectedId: string,
+  manifestSha256: string,
 ): Promise<RustCommittedPluginInfo> {
   return invoke<RustCommittedPluginInfo>("plugin_install_commit", {
     expectedId,
+    manifestSha256,
     stageId,
   });
 }

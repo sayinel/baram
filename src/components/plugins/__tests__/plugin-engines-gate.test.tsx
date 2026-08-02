@@ -277,29 +277,76 @@ describe("the marketplace update floor gate (§69)", () => {
     ).toBe("0.9.0");
   });
 
-  it("updates an entry whose floor it cannot parse, without ever uninstalling", async () => {
-    // `"*"` gives no assurance about the ZIP, and it used to be tolerated here only
-    // because refusing it would have been a behaviour change. It needs no special
-    // treatment now: the archive's own floor is what decides, after the download and
-    // before the swap.
+  /// ‼️ #261 code review (HIGH-1) — the case NEITHER floor check can evaluate.
+  ///
+  /// `parseBaramFloor` understands `>=X.Y.Z` and nothing else, on purpose: it shares its
+  /// grammar with the publish gate. So `"*"`, `^0.6.0` and an absent field all mean "no
+  /// opinion" to the pre-download check AND to the post-download one — staging did not
+  /// change that, though an earlier draft of this PR claimed it had.
+  ///
+  /// On an update that has to refuse, because the commit is a one-way door: the previous
+  /// version is replaced atomically and its backup released, so a plugin that then fails to
+  /// activate leaves the user with no way back. The refusal costs a discard.
+  it("refuses an update when neither side states a floor it can evaluate", async () => {
     getVersion.mockResolvedValue("0.5.1");
     const manifest = { ...ENTRY, engines: { baram: "*" }, main: "index.mjs" };
     pluginInstallStage.mockResolvedValue({
       checksum: "sha256:new",
       manifest,
+      manifest_sha256: "deadbeef",
+      stage_id: "stage-1",
+    });
+    listing = { ...ENTRY, engines: { baram: "^0.6.0" } };
+    render(<PluginMarketplace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toContain(
+        "does not say which Baram version it needs",
+      ),
+    );
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(
+      usePluginStore.getState().installedPlugins.demo?.manifest.version,
+    ).toBe("0.9.0");
+  });
+
+  /// …and the same unevaluable listing updates fine once the ARCHIVE states a real floor.
+  /// This is what the guard it replaced could not do: that one read only the listing, so an
+  /// entry omitting `engines` was refused however good its ZIP was.
+  it("updates when only the DOWNLOAD states an evaluable floor", async () => {
+    getVersion.mockResolvedValue("0.5.1");
+    const manifest = {
+      ...ENTRY,
+      engines: { baram: ">=0.5.0" },
+      main: "index.mjs",
+    };
+    pluginInstallStage.mockResolvedValue({
+      checksum: "sha256:new",
+      manifest,
+      manifest_sha256: "deadbeef",
       stage_id: "stage-1",
     });
     pluginInstallCommit.mockResolvedValue({
       install_path: "/p/demo",
       manifest,
     });
-    listing = { ...ENTRY, engines: { baram: "*" } };
+    const withoutEngines = { ...ENTRY };
+    delete (withoutEngines as { engines?: unknown }).engines;
+    listing = withoutEngines;
     render(<PluginMarketplace />);
     fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
     fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
 
     await waitFor(() =>
-      expect(pluginInstallCommit).toHaveBeenCalledWith("stage-1", "demo"),
+      expect(pluginInstallCommit).toHaveBeenCalledWith(
+        "stage-1",
+        "demo",
+        "deadbeef",
+      ),
     );
     expect(usePluginStore.getState().pluginErrors.demo).toBeFalsy();
     expect(pluginUninstall).not.toHaveBeenCalled();

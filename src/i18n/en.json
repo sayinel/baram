@@ -600,6 +600,7 @@
   "plugin.action.disabled": "Disabled",
   "plugin.error.appTooOld": "This plugin needs Baram {required} or newer. You are on {current} — update Baram first.",
   "plugin.error.notInRegistry": "This plugin is not in the registry, so there is nothing to update to. Refresh the plugin list and try again.",
+  "plugin.error.updateUnverifiableFloor": "\"{name}\" does not say which Baram version it needs — neither its registry listing nor the downloaded package states a `>=x.y.z` floor. Updating replaces the working copy in one step, so this refuses rather than risk leaving you with a version that will not start. Uninstall and install it yourself if you want to proceed.",
   "plugin.error.manifestInvalid": "the downloaded manifest is invalid — {detail}",
   "plugin.error.idMismatch": "the download declares id \"{got}\" but the registry listed \"{expected}\"",
   "plugin.revoked.badge": "Withdrawn",

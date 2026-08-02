@@ -10,7 +10,9 @@ import type { RegistryEntry, RegistryIndex } from "../../../plugins/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const pluginInstall = vi.fn();
+const pluginInstallStage = vi.fn();
+const pluginInstallCommit = vi.fn();
+const pluginInstallDiscard = vi.fn();
 const pluginUninstall = vi.fn();
 
 vi.mock("../../../plugins/plugin-loader", () => ({
@@ -18,7 +20,9 @@ vi.mock("../../../plugins/plugin-loader", () => ({
 }));
 vi.mock("../../../ipc/plugin-invoke", () => ({
   pluginFetchRevocations: () => Promise.reject(new Error("offline")),
-  pluginInstall: (...a: unknown[]) => pluginInstall(...a),
+  pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),
+  pluginInstallDiscard: (...a: unknown[]) => pluginInstallDiscard(...a),
+  pluginInstallStage: (...a: unknown[]) => pluginInstallStage(...a),
   pluginUninstall: (...a: unknown[]) => pluginUninstall(...a),
 }));
 vi.mock("../../../ipc/invoke", () => ({
@@ -27,11 +31,14 @@ vi.mock("../../../ipc/invoke", () => ({
   removeConfig: () => Promise.resolve(),
   setConfig: () => Promise.resolve(),
 }));
+// The LISTING, mutable so one test can escalate its capabilities. Reset in `beforeEach`.
+let listing: RegistryEntry = null as unknown as RegistryEntry;
+
 vi.mock("../../../plugins/registry-client", () => ({
   checkForUpdates: () => Promise.resolve({ demo: "1.0.0" }),
   fetchRegistryIndex: () =>
-    Promise.resolve({ plugins: [ENTRY] } satisfies RegistryIndex),
-  searchRegistry: () => [ENTRY],
+    Promise.resolve({ plugins: [listing] } satisfies RegistryIndex),
+  searchRegistry: () => [listing],
 }));
 
 import type { RevocationSeverity } from "../../../plugins/revocation";
@@ -66,7 +73,10 @@ function revoke(severity: RevocationSeverity): void {
 
 describe("the marketplace install gate (§69)", () => {
   beforeEach(() => {
-    pluginInstall.mockReset();
+    listing = ENTRY;
+    pluginInstallStage.mockReset();
+    pluginInstallCommit.mockReset();
+    pluginInstallDiscard.mockReset().mockResolvedValue(undefined);
     pluginUninstall.mockReset();
     usePluginStore.setState({
       installedPlugins: {},
@@ -88,7 +98,7 @@ describe("the marketplace install gate (§69)", () => {
       await waitFor(() =>
         expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
       );
-      expect(pluginInstall).not.toHaveBeenCalled();
+      expect(pluginInstallStage).not.toHaveBeenCalled();
     },
   );
 
@@ -112,8 +122,13 @@ describe("the marketplace install gate (§69)", () => {
   it("downloads normally when nothing is revoked", async () => {
     // Without this the assertions above would also pass for a marketplace whose
     // Install button does nothing at all.
-    pluginInstall.mockResolvedValue({
+    pluginInstallStage.mockResolvedValue({
       checksum: "sha256:abc",
+      manifest: { ...ENTRY, main: "index.mjs" },
+      manifest_sha256: "digest-1",
+      stage_id: "stage-1",
+    });
+    pluginInstallCommit.mockResolvedValue({
       install_path: "/p/demo",
       manifest: { ...ENTRY, main: "index.mjs" },
     });
@@ -128,7 +143,10 @@ describe("the marketplace install gate (§69)", () => {
 
 describe("the marketplace update gate (§69)", () => {
   beforeEach(() => {
-    pluginInstall.mockReset();
+    listing = ENTRY;
+    pluginInstallStage.mockReset();
+    pluginInstallCommit.mockReset();
+    pluginInstallDiscard.mockReset().mockResolvedValue(undefined);
     pluginUninstall.mockReset();
     usePluginStore.setState({
       installedPlugins: {
@@ -162,9 +180,9 @@ describe("the marketplace update gate (§69)", () => {
   });
 
   it("never uninstalls the working copy when the update target is revoked", async () => {
-    // The ordering this pins: an update is uninstall-then-install, so a target caught
-    // only at the install step would leave the user with their plugin already deleted
-    // and the replacement refused. The gate sits above the uninstall for that reason.
+    // The download never happens. Since #261 there is no uninstall between the two
+    // halves, so `handleInstall`'s own revocation refusal would also stop this — what the
+    // UPDATE gate uniquely prevents is the consent prompt, pinned by the next test.
     revoke("malicious");
     render(<PluginMarketplace />);
     // Driven from the INSTALLED tab, which is where a revoked plugin is actually
@@ -178,6 +196,44 @@ describe("the marketplace update gate (§69)", () => {
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
     );
     expect(pluginUninstall).not.toHaveBeenCalled();
-    expect(pluginInstall).not.toHaveBeenCalled();
+    // ‼️ #261 review (HIGH-2) — `expect(pluginInstallStage)` alone became a TAUTOLOGY
+    // when install split in two: the mock factory still exported `pluginInstall`, which
+    // the component no longer imports, so the assertion held no matter what the gate
+    // did. Worse, an un-exported name makes vitest throw INSIDE `handleInstall`, whose
+    // catch sets an error string — so `pluginErrors.demo` was truthy and the test stayed
+    // green while the revoked archive was downloaded, staged and committed.
+    //
+    // The commit assertion is the one that cannot be satisfied by accident: it is the
+    // only call that touches an installed plugin.
+    expect(pluginInstallStage).not.toHaveBeenCalled();
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+  });
+
+  /// ‼️ WHAT THE UPDATE GATE STILL DOES THAT THE INSTALL GATE CANNOT.
+  ///
+  /// The test above cannot distinguish the two: `handleInstall` has its own revocation
+  /// refusal, so deleting `handleUpdate`'s left every assertion green — verified by
+  /// mutation. Since #261 removed the destructive uninstall the update gate no longer
+  /// protects any FILES, and the honest remaining reason for it is this one: it refuses
+  /// before `askConsent`, so a revoked target never opens a capability prompt.
+  ///
+  /// Reaching that requires an escalation, or `consentRequired` returns null and no dialog
+  /// would appear either way. `plugin-engines-gate.test.tsx` states the same doctrine for
+  /// the floor gate: a consent dialog for a plugin that will then be refused trains the
+  /// user to click through capability grants for nothing.
+  it("does not prompt for capabilities it is about to refuse", async () => {
+    revoke("malicious");
+    // The listing wants a capability the recorded consent does not cover, so without the
+    // gate above it `consentRequired` is non-null and the dialog opens.
+    listing = { ...ENTRY, capabilities: ["editor", "network"] };
+    render(<PluginMarketplace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 });

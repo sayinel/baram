@@ -71,7 +71,7 @@ const ENTRY: RegistryEntry = {
   checksum: "sha256:abc",
   description: "a demo plugin",
   downloadUrl: "https://example.com/demo.zip",
-  engines: { baram: "*" },
+  engines: { baram: ">=0.1.0" },
   id: "demo",
   license: "MIT",
   name: "Demo",
@@ -83,7 +83,7 @@ const MANIFEST: PluginManifest = {
   author: "Baram",
   capabilities: ["editor"],
   description: "a demo plugin",
-  engines: { baram: "*" },
+  engines: { baram: ">=0.1.0" },
   id: "demo",
   license: "MIT",
   main: "index.mjs",
@@ -117,6 +117,7 @@ function downloadReturns(manifest: PluginManifest) {
   pluginInstallStage.mockResolvedValue({
     checksum: "sha256:abc",
     manifest,
+    manifest_sha256: "digest-1",
     stage_id: "stage-1",
   });
   pluginInstallCommit.mockResolvedValue({
@@ -388,7 +389,50 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       usePluginStore.getState().installedPlugins.demo?.manifest.version,
     ).toBe("1.0.0");
     expect(usePluginStore.getState().updateAvailable.demo).toBe("2.0.0");
-    expect(loadPlugin).not.toHaveBeenCalled();
+    // ‼️ AND IT IS RUNNING AGAIN (#261 review, MEDIUM-1 / security area 2). The bytes
+    // surviving is only half of it: the update unloaded the old version — closing its
+    // sandbox window and sweeping its commands and UI contributions — before attempting the
+    // swap. With the swap refused, nothing else in the app reconciles "enabled" against
+    // "loaded" until the next startup, so without this the row would read Enabled while the
+    // plugin had silently disappeared.
+    expect(loadPlugin).toHaveBeenCalledWith("/p/demo", {
+      ...MANIFEST,
+      capabilities: ["editor"],
+    });
+  });
+
+  it("runs one install per plugin however fast the button is clicked", async () => {
+    // ‼️ #261 security review (area 3). `setInstalling` is a store write that sits below two
+    // `getVersion` IPCs and, when the consent record already covers the update, below no
+    // dialog at all — so nothing serialised a double-click. Two commits interleave badly:
+    // the first renames the target aside, the second sees no target and takes the fast
+    // path, and the first's rename AND its restore then both fail `ENOTEMPTY`. The user is
+    // told their previous version is stranded in a hidden directory, for a plugin that is
+    // perfectly fine.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    const button = await screen.findByRole("button", {
+      name: /^Update to v/,
+    });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().installedPlugins.demo?.checksum).toBe(
+        "sha256:abc",
+      ),
+    );
+    expect(pluginInstallStage).toHaveBeenCalledTimes(1);
+    expect(pluginInstallCommit).toHaveBeenCalledTimes(1);
+    // The digest the stage returned must be the one the commit is pinned to.
+    expect(pluginInstallCommit).toHaveBeenCalledWith(
+      "stage-1",
+      "demo",
+      "digest-1",
+    );
   });
 
   it("unloads the old version before swapping the files, and not before staging", async () => {
@@ -409,6 +453,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       return Promise.resolve({
         checksum: "sha256:abc",
         manifest: MANIFEST,
+        manifest_sha256: "digest-1",
         stage_id: "stage-1",
       });
     });
@@ -432,9 +477,10 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     // the version floor, so the fault is in running the plugin rather than in the copy on
     // disk. It stays installed with the error against it, and the enable toggle can retry.
     //
-    // `pendingStage` is cleared the moment the commit succeeds, and that line is
-    // load-bearing: without it a failing `loadPlugin` would discard a stage that no
-    // longer exists while `addPlugin` has already persisted the record.
+    // The post-commit work lives OUTSIDE the block that discards, so "nothing may discard
+    // after the commit" is enforced by scope. An earlier draft cleared a `pendingStage`
+    // flag there instead — mutation testing showed no test could falsify that line,
+    // because nothing after a successful commit throws.
     loadPlugin.mockRejectedValue(new Error("activate timed out"));
     await clickInstall();
     await confirmConsent();

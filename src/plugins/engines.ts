@@ -5,8 +5,11 @@
 // publish workflow DOES compare it (`plugin-release.yml`, "app version does not satisfy
 // this plugin's engines.baram"), so the floor was enforced for first-party releases and
 // ignored on every user's machine. The workflow's own comment names the consequence:
-// an enabled Install for something that throws on activate — and on the UPDATE path the
-// working older copy is deleted first, because an update is uninstall-then-install.
+// an enabled Install for something that throws on activate. On the UPDATE path that used
+// to mean the working older copy was deleted first (an update was uninstall-then-install);
+// since #261 the swap is atomic, but it is still ONE-WAY — a version that fails to activate
+// cannot be traded back for the one it replaced, which is why `handleUpdate` refuses a
+// target whose floor NEITHER the listing nor the archive states in the grammar below.
 //
 // GRAMMAR: `>=X.Y.Z`, and only that. Identical to the regex the publish gate uses, on
 // purpose. Two gates understanding different grammars would disagree about the same
