@@ -298,7 +298,23 @@ export interface RegistryEntry {
   description: string;
   downloads?: number;
   downloadUrl: string;
-  engines: { baram: string };
+  /**
+   * The minimum app version this entry declares — optional to READ, required to PUBLISH.
+   *
+   * Authors must still declare it (`docs/plugin-development.md`), and
+   * `scripts/validate-index.ts` refuses to publish an index without it. Optional here
+   * because the alternative is worse in both directions: Rust's `RegistryEntry` drops an
+   * entry it cannot deserialize, so a required field would make an omission delete the
+   * plugin from the marketplace rather than report it — and `unmetBaramFloor` already
+   * treats an absent floor as "no opinion" and installs, so nothing downstream wants the
+   * strictness anyway. Be liberal in what you accept; be strict at the publish gate.
+   *
+   * ‼️ Not a fail-open: an omission DEFERS the floor check to `handleInstall`'s
+   * post-download re-check against `result.manifest.engines`, where `PluginManifest.engines`
+   * is still required. It costs a wasted download, not an unprotected install. (The update
+   * path is the exception, and `handleUpdate` refuses an absent floor for that reason.)
+   */
+  engines?: { baram: string };
   homepage?: string;
   icon?: string;
   id: string;
@@ -310,7 +326,15 @@ export interface RegistryEntry {
   version: string;
 }
 
+/**
+ * How many entries Rust discarded because it could not deserialize them.
+ *
+ * Produced by the app, never read off the wire (`RawRegistryIndex` has no such field), so a
+ * registry cannot assert one. It exists because nothing else can report a partial drop:
+ * `src-tauri` installs no `log` implementation, so the Rust-side `log::warn!` is a no-op.
+ */
 export interface RegistryIndex {
+  droppedCount?: number;
   plugins: RegistryEntry[];
   updatedAt?: string;
 }

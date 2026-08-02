@@ -105,7 +105,11 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     // there is a claim the user reads — round 2 found exactly that: the manifest said `>=0.5.0`
     // while the README still told users `>=0.4.0`, and nothing compared them.
     const entry = seed().plugins.find((p) => p.id === manifest.id);
-    expect(entry?.engines.baram, "the seed must agree").toBe(
+    // `engines?` is optional on `RegistryEntry` so that a foreign entry omitting it costs
+    // only its own floor check rather than the whole index — but this seed is FIRST-PARTY,
+    // and an absent floor here must still fail: `undefined` cannot equal the manifest's
+    // range string, so the optional chain reports the omission rather than skipping the test.
+    expect(entry?.engines?.baram, "the seed must agree").toBe(
       manifest.engines.baram,
     );
     // §260 Phase 6 code review round 3 (LOW-2) and round 5 (MEDIUM-2). BOTH properties, because

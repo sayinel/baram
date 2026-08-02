@@ -650,6 +650,32 @@ export function PluginMarketplace() {
         setError(entry.id, targetTooOld);
         return;
       }
+      // ‼️ …and refuse when the listing declares NO floor at all. `handleInstall` is right
+      // to shrug at that (absent means "no opinion", and a failed install costs nothing),
+      // but the uninstall below is destructive and the doubt runs the other way.
+      //
+      // SCOPE, precisely. This closes the entry point THIS change opened and no more:
+      // `engines` became optional on `RegistryEntry` so one omission cannot delete an entry
+      // from the index, and an entry without it now reaches this path where it previously
+      // could not exist (the whole document failed to parse). On the INSTALL path the
+      // post-download re-check against `result.manifest.engines` catches a bad floor and
+      // rolls the files back; here the uninstall sits BETWEEN the two checks, so the working
+      // copy is already gone when the download is refused.
+      //
+      // ‼️ WHAT THIS DOES NOT FIX. A listing that declares a floor this app MEETS while its
+      // ZIP declares a higher one destroys the working copy in exactly the same way, and no
+      // pre-download check can see it — the listing is a claim, the archive is the truth.
+      // `"*"` and unparseable ranges like `^0.6.0` are the same story and both predate this
+      // change, so they are deliberately left alone rather than half-guarded here. The only
+      // real fix is staging the download before removing anything (issue #261); until then
+      // `updateLostPlugin` below is what the user gets.
+      if (entry.engines?.baram === undefined) {
+        setError(
+          entry.id,
+          t("plugin.error.updateUnverifiableFloor", { name: entry.name }),
+        );
+        return;
+      }
       // §260 Phase 5 — read the recorded consent BEFORE uninstalling: `handleUninstall`
       // calls `removePlugin`, which deletes the very record this compares against.
       // Without that ordering an update would always look like a first install.

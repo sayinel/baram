@@ -51,6 +51,16 @@ export async function fetchRegistryIndex(
     // Normalized BEFORE caching, so every later reader (install, update check, search) sees
     // one shape and the guard cannot be bypassed by reading the cache instead.
     const index = normalizeIndex(await pluginFetchRegistry(store.registryUrl));
+    // The only place a partial drop becomes visible. Rust discards entries it cannot
+    // deserialize so one bad entry cannot empty the marketplace, but `src-tauri` installs no
+    // `log` implementation, so its `log::warn!` reaches nobody. A TOTAL drop is a hard error
+    // upstream and never arrives here — this is strictly the survivable case.
+    if (index.droppedCount) {
+      logger.warn(
+        `[Registry] ${index.droppedCount} entry/entries could not be read and were skipped — ` +
+          "run `npx tsx scripts/validate-index.ts <index>` against the registry to see why",
+      );
+    }
     store.setRegistryCache(index);
     return index;
   } catch (err) {
@@ -82,6 +92,42 @@ export function searchRegistry(
 }
 
 /**
+ * §69 security review (MEDIUM-2) — an id claimed twice resolves to NEITHER entry.
+ *
+ * THE ATTACK: every lookup in this codebase is `plugins.find((p) => p.id === id)`, so an
+ * entry inserted ABOVE a legitimate one with the same id wins all three of them. Give it the
+ * same `capabilities` and `trust` as the installed plugin and a higher `version`, and:
+ * `checkForUpdates` raises an update badge on its own; `handleUpdate` resolves the attacker's
+ * entry; `consentRequired` returns null because nothing about the consent tuple changed, so
+ * NO dialog is shown; the working copy is uninstalled and the attacker's ZIP is installed.
+ * Its checksum comes from the same index, so integrity verification passes. One click,
+ * silent replacement of an installed plugin.
+ *
+ * ‼️ De-duplicating by KEEPING THE FIRST does not fix this — first is precisely what the
+ * attacker arranged to be, and it is what `.find` already does. The only answer that does
+ * not require trusting document order is to serve neither: an id that resolves ambiguously
+ * cannot be resolved safely, and the legitimate plugin going missing from Browse is a far
+ * smaller harm than the wrong plugin being installed over it. Already-installed copies are
+ * untouched, and the operator gets the loud version from `scripts/validate-index.ts`.
+ */
+function dropAmbiguousIds(plugins: RegistryEntry[]): RegistryEntry[] {
+  const seen = new Map<string, number>();
+  for (const entry of plugins) {
+    seen.set(entry.id, (seen.get(entry.id) ?? 0) + 1);
+  }
+  const duplicated = [...seen.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id]) => id);
+  if (duplicated.length === 0) return plugins;
+
+  logger.warn(
+    `[Registry] ${duplicated.length} id(s) claimed by more than one entry — serving none ` +
+      `of them, because the resolution order is the attacker's choice: ${duplicated.join(", ")}`,
+  );
+  return plugins.filter((entry) => !duplicated.includes(entry.id));
+}
+
+/**
  * §260 Phase 6 — drop a `trust` this app does not recognise.
  *
  * `RegistryEntry.trust` is typed `PluginTrust`, but nothing checks that at runtime: the
@@ -97,7 +143,7 @@ export function searchRegistry(
 function normalizeIndex(index: RegistryIndex): RegistryIndex {
   return {
     ...index,
-    plugins: index.plugins.map((raw) => {
+    plugins: dropAmbiguousIds(index.plugins).map((raw) => {
       // §260 Phase 6 code review round 3 (MEDIUM-2) — `demotedBecause` is OURS, and the type
       // says so ("NOT a registry field"), but nothing enforced it. A remote entry with no
       // `trust` and only valid capabilities takes the early return below unchanged, so a

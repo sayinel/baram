@@ -92,10 +92,13 @@ jobs:
           # package (round-3 LOW plus a defect in the first attempt at this fix):
           #   • `sort -V` is a version-ish string sort, not a semver comparator; it ordered a
           #     prerelease `0.5.0-beta.1` as satisfying a `0.5.0` floor.
-          #   • `require("semver")` would NOT RESOLVE here. This job never runs `npm ci` at the
-          #     repo root (only inside the plugin directory, two steps later), and semver is a
-          #     transitive package rather than a declared dependency. Reading a JSON file by
-          #     relative path needs no node_modules; requiring a package does.
+          #   • `require("semver")` would NOT RESOLVE here. No root `npm ci` has run at this
+          #     point in the job — the plugin build installs into the plugin directory, and the
+          #     root install happens later, just before the index is validated — and semver is a
+          #     transitive package rather than a declared dependency in any case. Reading a JSON
+          #     file by relative path needs no node_modules; requiring a package does. ‼️ Do not
+          #     "simplify" this to `require("semver")` on the strength of that later install:
+          #     this step runs first, and the failure would be a raw MODULE_NOT_FOUND.
           # A prerelease app version fails closed: `0.5.0-beta.1` is not the release that ships
           # the floor, so it must not authorize publishing against it.
           APP_VERSION="$(node -p "require('./package.json').version")"
@@ -215,11 +218,29 @@ jobs:
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
-      - name: Push ZIP + updated index to registry repo
+      # For `validate-index.ts` in the next step, which imports the app's own
+      # `parseBaramFloor` and `VALID_CAPABILITIES` rather than restating their rules. Placed
+      # here rather than at the top of the job on purpose: every gate above is deliberately
+      # dependency-free (see the semver note in the meta step), and moving this earlier would
+      # invite those checks to start requiring packages.
+      - uses: ./.github/actions/setup-node
+
+      # ‼️ NO SECRET IS IN REACH OF THIS STEP, and that is the point of splitting it out.
+      #
+      # Security review (MEDIUM-3): the index update and its validation used to live inside
+      # the push step, i.e. AFTER the deploy key was written to `~/.ssh/plugins_deploy` and
+      # `GIT_SSH_COMMAND` pointed at it. So `npx tsx` — and esbuild, and their whole
+      # transitive graph, freshly widened from one plugin's build deps to the entire Baram
+      # frontend dev tree by the `setup-node` above — executed with a key granting write
+      # access to the registry every user's marketplace reads, readable on disk.
+      #
+      # The registry is a public GitHub Pages repo, so READING it needs no credential at
+      # all. Cloning over HTTPS here means every line of third-party code in this job runs
+      # before the key exists; the step below writes it, pushes, and runs no dependency.
+      - name: Update and validate the registry index
         env:
-          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
           # §260 Phase 6 code review round 5 (HIGH-1) — the manifest comes from the VERIFIED
-          # ARCHIVE, not from a directory named here. This step used to bind
+          # ARCHIVE, not from a directory named here. This used to bind
           # `DIR: ${{ steps.meta.outputs.dir }}` and build the path itself, and nothing checked
           # what `DIR` was bound to: rebinding that one token to `ai-summary` fed the trusted
           # example's manifest to the index script, which copies `trust` verbatim — publishing an
@@ -227,16 +248,9 @@ jobs:
           # test suite green. There is no directory binding here any more.
           PACKAGED_MANIFEST: ${{ steps.artifact.outputs.manifest }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
-          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
-          VERSION: ${{ steps.meta.outputs.version }}
           CHECKSUM: ${{ steps.sum.outputs.checksum }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
-          git clone --depth 1 "git@github.com:${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
           mkdir -p "$RUNNER_TEMP/registry/plugins"
           cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
           node scripts/update-registry-index.mjs \
@@ -245,7 +259,32 @@ jobs:
             --zip-name "$ZIP_NAME" \
             --checksum "$CHECKSUM" \
             --base-url "$BASE_URL"
+          # The WHOLE index, not just the entry written above. `update-registry-index.mjs`
+          # validates its own manifest input, but nothing has ever read the entries already in
+          # the registry — and those are where a hand-added or community entry lands. The app
+          # now DROPS an entry it cannot deserialize (§69 `tolerant_entries`) instead of failing
+          # the whole fetch, which fixed the outage and removed the last signal that anything
+          # was wrong; this is where that signal comes back. Refusing to publish INTO a broken
+          # index is deliberate: the entries already there are invisible or un-installable to
+          # users right now, and adding one more does not improve that.
+          npx tsx scripts/validate-index.ts "$RUNNER_TEMP/registry/index.json"
+
+      # Everything third-party has already run. This step writes the key, rewrites the
+      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
+      - name: Push ZIP + updated index to registry repo
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          chmod 600 ~/.ssh/plugins_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
           cd "$RUNNER_TEMP/registry"
+          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "plugins/$ZIP_NAME" index.json

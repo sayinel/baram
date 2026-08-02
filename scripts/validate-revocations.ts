@@ -87,7 +87,10 @@ if (inert.length > 0) {
 }
 
 const bySeverity = parsed.revoked.reduce<Record<string, number>>(
-  (acc, entry) => ({ ...acc, [entry.severity]: (acc[entry.severity] ?? 0) + 1 }),
+  (acc, entry) => ({
+    ...acc,
+    [entry.severity]: (acc[entry.severity] ?? 0) + 1,
+  }),
   {},
 );
 console.log(
