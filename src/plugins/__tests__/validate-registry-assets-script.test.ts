@@ -342,6 +342,72 @@ describe("validate-registry-assets", () => {
     assertNoWorkflowCommand(output);
   });
 
+  it("cannot be made to forge one through a MALICIOUS withdrawal's warning", () => {
+    // ‼️ The forgery test above only reaches the NOTICE path. All nine of the first round's
+    // mutations landed there too, so `label()` on the two WARNING branches was unpinned —
+    // removing it produced four `::` lines at column 0 with every test still green (code
+    // review MEDIUM-2). This is the loud-but-recorded branch.
+    const id = "x\n::error title=forged::pwned\n::stop-commands::deadbeef";
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", `${id}-1.0.0.zip`],
+        [revocation({ id, severity: "malicious", versions: "*" })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("revoked as malicious");
+    assertNoWorkflowCommand(output);
+  });
+
+  it("cannot be made to forge one through the unrecorded-orphan warning", () => {
+    // ‼️ And this is the DEFAULT outcome for any orphan — the most-travelled line in the
+    // section, and the last one still unpinned. The filename alone carries the payload; no
+    // revoked.json is involved.
+    const { output, status } = run(
+      [validEntry()],
+      [
+        "baram-word-count-1.0.0.zip",
+        "x\n::error title=forged::pwned\n::stop-commands::deadbeef-1.0.0.zip",
+      ],
+    );
+    expect(status).toBe(0);
+    expect(output).toContain("no revoked.json entry");
+    assertNoWorkflowCommand(output);
+  });
+
+  it("keeps warning about an archive whose version only TRIMS to a recorded one", () => {
+    // ‼️ `parseVersion` trims and coerces, so `1.0.0 ` parses as 1.0.0 — but
+    // `plugins/a-1.0.0 .zip` is a DIFFERENT file at a different URL from `a-1.0.0.zip`, and
+    // the entry recorded the latter. Acknowledging it would assert coverage nobody wrote.
+    // The leniency is right for the app, which reads a version from a manifest; here it is
+    // inferred from a filename (code review LOW-3).
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0 .zip"],
+        [revocation({ versions: { eq: "1.0.0" } })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("no revoked.json entry");
+    expect(output).not.toContain("acknowledged withdrawal");
+  });
+
+  it("reports the index's real problems even when revoked.json is the document null", () => {
+    // ‼️ `null` is a valid one-word JSON document. Reading `.revoked` off it threw an
+    // uncaught TypeError BEFORE the errors were printed, so a genuine checksum mismatch came
+    // back as a stack trace (code review MEDIUM-1). The verdict must survive the bad file.
+    const dir = build([validEntry({ checksum: "b".repeat(64) })]);
+    writeFileSync(join(dir, "revoked.json"), "null");
+    const { output, status } = exec([dir]);
+    expect(status).toBe(1);
+    expect(output).toContain("could not read it");
+    // The point of the test: the ACTUAL defect still gets reported.
+    expect(output).toContain("hashes to");
+    expect(output).not.toContain("TypeError");
+  });
+
   it("says so when revoked.json is not a regular file", () => {
     // Absent is quiet — every orphan warns anyway. Present-but-a-link is not: something is
     // there and this script is declining to read it, which the operator has to be told.

@@ -38,7 +38,11 @@ try {
   fail(`not valid JSON — ${String(err)}`);
 }
 
-const declared = (raw as { revoked?: unknown }).revoked;
+// ‼️ `?.`: the JSON document `null` is a valid one-word file, and reading `.revoked` off it
+// threw an uncaught TypeError instead of the refusal below — a stack trace where the
+// operator needed a sentence. This script is pointed at a PR-controlled file by the
+// registry's `validate.yml`, and `validate-registry-assets.ts` copied the same line.
+const declared = (raw as null | { revoked?: unknown })?.revoked;
 if (!Array.isArray(declared)) {
   fail("no `revoked` array — the app would ignore this file entirely");
 }

@@ -290,6 +290,13 @@ plugins.forEach((value, position) => {
  * ‼️ It answers "could this name be this id's", NOT "is this id's". `baram-word` matches
  * `baram-word-2-1.0.0.zip`, which belongs to `baram-word-2`. That is why the caller also
  * requires the remainder to PARSE as a version — see `withdrawalFor`.
+ *
+ * ‼️ And that pair of rules is airtight only because plugin ids are DOTLESS: they match
+ * `/^[a-z0-9-]+$/` (`manifest.ts`, `update-registry-index.mjs`). A hijack would need the
+ * victim id to be `<claimant>-<rest>` with `<rest>` starting with a digit AND
+ * `<rest>-<version>` parsing as a version — and with `<rest>` dotless the first `.` can only
+ * come from the version, so the boundary never lines up. That cross-file invariant is not
+ * restated here; if ids ever admit `.`, this reasoning has to be redone.
  */
 const archiveBelongsTo = (name: string, id: string) =>
   name.startsWith(`${id}-`) && /^\d/u.test(name.slice(id.length + 1));
@@ -305,10 +312,18 @@ const archiveBelongsTo = (name: string, id: string) =>
  * remainder fails to parse — luck, not a check, so the parse is now demanded outright.
  *
  * `compareVersions(v, v)` rather than a regex: a second hand-written notion of "a version"
- * is the same mistake as a second `archiveBelongsTo`. It is null exactly when `v` does not
- * parse, and trivially total otherwise.
+ * is the same mistake as a second `archiveBelongsTo`.
+ *
+ * ‼️ It means "TRIMS to a version", not "is a version" — `parseVersion` calls `raw.trim()`
+ * and coerces components with `Number`, so ` 1.0.0`, `1.0.0 ` and `1.0.01` all parse. That
+ * leniency is right for the app, which reads a version out of a manifest; here the version
+ * is inferred from a FILENAME, and two different files must not both claim one recorded
+ * withdrawal. Whitespace is therefore refused outright — a published archive's name has
+ * none, so this rejects a typo rather than redefining semver. Leading zeros and `+build`
+ * are left to the parser: they are spellings the app would also treat as the same version,
+ * and inventing a stricter grammar here is the mistake this comment opens by naming.
  */
-const isSemver = (v: string) => compareVersions(v, v) !== null;
+const isSemver = (v: string) => !/\s/u.test(v) && compareVersions(v, v) !== null;
 
 const indexedIds = plugins
   .map((p) => (p as null | { id?: unknown })?.id)
@@ -355,7 +370,12 @@ const { declaredIds, list } = ((): {
     );
     return { declaredIds: [], list: null };
   }
-  const declared = (raw as { revoked?: unknown }).revoked;
+  // ‼️ `?.`, because the JSON document `null` is a valid one-word file and parses to `null`
+  // (code review MEDIUM-1). Reading `.revoked` off it threw an uncaught TypeError, and the
+  // throw landed BEFORE the errors above were printed — a real checksum mismatch came back
+  // as a stack trace instead of the verdict. `normalizeRevocationList` guards this itself;
+  // the lstat restructure moved `raw` out of the try and past that guard.
+  const declared = (raw as null | { revoked?: unknown })?.revoked;
   const list = normalizeRevocationList(raw);
   if (list === null) {
     warnings.push(
