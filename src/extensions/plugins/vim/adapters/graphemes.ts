@@ -33,3 +33,31 @@ export function nextUnitBoundary(state: EditorState, pos: number): number {
   const first = segmenter.segment(text.slice(inNode))[Symbol.iterator]().next();
   return first.done ? pos : pos + first.value.segment.length;
 }
+
+/**
+ * The position one cursor unit to the LEFT of `pos`, or `pos` itself at the
+ * start of the textblock. Mirror of nextUnitBoundary: one grapheme cluster,
+ * or one inline atom.
+ */
+export function prevUnitBoundary(state: EditorState, pos: number): number {
+  const $pos = state.doc.resolve(pos);
+  if (!$pos.parent.isTextblock) return pos;
+
+  const offset = $pos.parentOffset;
+  if (offset === 0) return pos;
+
+  const child = $pos.parent.childBefore(offset);
+  if (!child.node) return pos;
+
+  if (!child.node.isText) {
+    return pos - child.node.nodeSize; // inline atom — one unit (§6)
+  }
+
+  const text = child.node.text ?? "";
+  const inNode = offset - child.offset;
+  let last = 0;
+  for (const seg of segmenter.segment(text.slice(0, inNode))) {
+    last = seg.segment.length;
+  }
+  return last === 0 ? pos : pos - last;
+}

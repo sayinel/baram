@@ -14,17 +14,26 @@
 // extension drops its own while non-editable, and a manual setAttribute
 // would be clobbered by PM's outer-deco patch (design §3b).
 
-import type { VimCoreState, VimMode } from "./core/types";
+import type {
+  CoreCommand,
+  StepResult,
+  VimCoreState,
+  VimMode,
+  VisualState,
+} from "./core/types";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { Plugin } from "@tiptap/pm/state";
+import { Plugin, TextSelection } from "@tiptap/pm/state";
 
 import { executeCoreCommand } from "./adapters/execute-command";
+import { resolveMotion } from "./adapters/motions";
+import { visualBounds } from "./adapters/operations";
 import { isSuspendTarget, shouldSuspendFor } from "./adapters/suspension";
 import { isMacPlatform, toKeyToken } from "./core/keys";
 import { step } from "./core/state-machine";
 import { initialCoreState } from "./core/types";
+import { collapseTarget, moveVisualHead } from "./core/visual-state";
 import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
 
 export interface VimPluginState {
@@ -113,6 +122,7 @@ export function createVimPlugin(): Plugin<VimPluginState> {
           // keybinding listeners.
           event.preventDefault();
           event.stopPropagation();
+          if (runSelectionCommand(view, result, vim.core.visual)) return true;
           dispatchMeta(view, { core: result.state, type: "core" });
           if (result.command) {
             // PRE-step visual: step() clears it on the visual→normal
@@ -258,6 +268,71 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         suspended: meta.suspended,
       };
   }
+}
+
+/**
+ * Motions and visual transitions change the SELECTION together with the vim
+ * state, in one transaction — meta first, so apply()'s priority 1 handles
+ * it and the foreign-selectionSet rule (priority 4) never misfires on
+ * vim's own cursor moves. Returns false for commands it does not own.
+ */
+function runSelectionCommand(
+  view: EditorView,
+  result: StepResult,
+  preVisual: null | VisualState,
+): boolean {
+  const command: CoreCommand | null = result.command;
+  if (!command) return false;
+
+  if (command.type === "move") {
+    // In visual mode the motion moves the VIM head, not PM's selection head
+    // (they diverge after an inversion — §6).
+    const base =
+      result.state.mode === "visual" && preVisual
+        ? preVisual.headCursor
+        : view.state.selection.head;
+    const target = resolveMotion(
+      view.state,
+      base,
+      command.motion,
+      command.count,
+    );
+    let core = result.state;
+    const tr = view.state.tr;
+    if (result.state.mode === "visual" && preVisual) {
+      const visual = moveVisualHead(preVisual, target);
+      core = { ...result.state, visual };
+      const { from, to } = visualBounds(view.state, visual);
+      tr.setSelection(TextSelection.create(tr.doc, from, to));
+    } else {
+      tr.setSelection(TextSelection.create(tr.doc, target));
+    }
+    tr.setMeta(vimPluginKey, { core, type: "core" });
+    view.dispatch(tr);
+    return true;
+  }
+
+  if (command.type === "enterVisual" && result.state.visual) {
+    const { from, to } = visualBounds(view.state, result.state.visual);
+    const tr = view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, from, to),
+    );
+    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+    view.dispatch(tr);
+    return true;
+  }
+
+  if (command.type === "leaveVisual" && preVisual) {
+    // Esc collapses to the vim head — not PM's selection head (§6).
+    const tr = view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, collapseTarget(preVisual)),
+    );
+    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+    view.dispatch(tr);
+    return true;
+  }
+
+  return false;
 }
 
 function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {

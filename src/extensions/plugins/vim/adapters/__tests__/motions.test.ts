@@ -1,0 +1,175 @@
+// §298 Vim Phase 1 — motions against the REAL Baram schema (S3, design P1).
+//
+// The vertical model: every hard-break segment and every atom block is one
+// line. j/k preserve the column, clamped into the target line.
+
+import { Editor } from "@tiptap/core";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createBaramExtensions } from "../../../../index";
+import { resolveMotion } from "../motions";
+
+const editors: Editor[] = [];
+
+function makeEditor(content: string): Editor {
+  const editor = new Editor({ content, extensions: createBaramExtensions() });
+  editors.push(editor);
+  return editor;
+}
+
+afterEach(() => {
+  for (const e of editors.splice(0)) e.destroy();
+});
+
+function posOfText(editor: Editor, text: string): number {
+  let found: null | number = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found === null && node.isText && node.text?.includes(text)) {
+      found = pos + (node.text?.indexOf(text) ?? 0);
+    }
+    return found === null;
+  });
+  if (found === null) throw new Error(`text not found: ${text}`);
+  return found;
+}
+
+describe("h/l — grapheme units", () => {
+  it("l advances one grapheme, 3l three, clamped at line end", () => {
+    const editor = makeEditor("<p>abc</p>");
+    const a = posOfText(editor, "a");
+    expect(resolveMotion(editor.state, a, "charRight", 1)).toBe(a + 1);
+    expect(resolveMotion(editor.state, a, "charRight", 3)).toBe(a + 3);
+    expect(resolveMotion(editor.state, a, "charRight", 99)).toBe(a + 3);
+  });
+
+  it("h treats an NFD hangul cluster as ONE unit", () => {
+    const editor = makeEditor(`<p>a${"가"}</p>`);
+    const end = editor.state.doc.content.size - 1;
+    expect(resolveMotion(editor.state, end, "charLeft", 1)).toBe(end - 2);
+  });
+
+  it("h/l cross an inline atom as one unit", () => {
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            { text: "a", type: "text" },
+            { attrs: { target: "n" }, type: "wikilink" },
+            { text: "b", type: "text" },
+          ],
+          type: "paragraph",
+        },
+      ],
+      type: "doc",
+    });
+    const a = posOfText(editor, "a");
+    expect(resolveMotion(editor.state, a + 1, "charRight", 1)).toBe(a + 2);
+    expect(resolveMotion(editor.state, a + 2, "charLeft", 1)).toBe(a + 1);
+  });
+});
+
+describe("0/$ — line bounds", () => {
+  it("uses the SEGMENT as the line inside a<br>bcd", () => {
+    const editor = makeEditor("<p>ab<br>cde</p>");
+    const c = posOfText(editor, "c");
+    expect(resolveMotion(editor.state, c + 1, "lineStart", 1)).toBe(c);
+    expect(resolveMotion(editor.state, c + 1, "lineEnd", 1)).toBe(c + 3);
+  });
+});
+
+describe("j/k — logical lines with column preservation", () => {
+  it("j lands on the same column of the next paragraph", () => {
+    const editor = makeEditor("<p>alpha</p><p>bravo</p>");
+    const from = posOfText(editor, "pha"); // column 2 of alpha
+    expect(resolveMotion(editor.state, from, "lineDown", 1)).toBe(
+      posOfText(editor, "bravo") + 2,
+    );
+  });
+
+  it("column clamps into a shorter line and k returns", () => {
+    const editor = makeEditor("<p>longline</p><p>ab</p>");
+    const from = posOfText(editor, "e"); // deep column
+    const down = resolveMotion(editor.state, from, "lineDown", 1);
+    expect(down).toBe(posOfText(editor, "a") + 2); // clamped to end of "ab"
+    const up = resolveMotion(editor.state, down, "lineUp", 1);
+    expect(up).toBe(posOfText(editor, "l") + 2); // column 2, not remembered
+  });
+
+  it("segments of one paragraph are separate j-lines", () => {
+    const editor = makeEditor("<p>aa<br>bb</p>");
+    const a = posOfText(editor, "aa");
+    expect(resolveMotion(editor.state, a, "lineDown", 1)).toBe(
+      posOfText(editor, "bb"),
+    );
+  });
+
+  it("an atom block is a j/k stop", () => {
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "up", type: "text" }], type: "paragraph" },
+        { attrs: { latex: "x" }, type: "mathBlock" },
+        { content: [{ text: "dn", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const up = posOfText(editor, "up");
+    const onAtom = resolveMotion(editor.state, up, "lineDown", 1);
+    expect(editor.state.doc.nodeAt(onAtom)?.type.name).toBe("mathBlock");
+    expect(resolveMotion(editor.state, onAtom, "lineDown", 1)).toBe(
+      posOfText(editor, "dn"),
+    );
+    expect(resolveMotion(editor.state, onAtom, "lineUp", 1)).toBe(up);
+  });
+
+  it("2j skips a line; excess count clamps at the last line", () => {
+    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
+    const one = posOfText(editor, "one");
+    expect(resolveMotion(editor.state, one, "lineDown", 2)).toBe(
+      posOfText(editor, "tri"),
+    );
+    expect(resolveMotion(editor.state, one, "lineDown", 99)).toBe(
+      posOfText(editor, "tri"),
+    );
+  });
+});
+
+describe("w/b — word starts", () => {
+  it("w hops word starts and crosses to the next line", () => {
+    const editor = makeEditor("<p>foo bar</p><p>baz</p>");
+    const foo = posOfText(editor, "foo");
+    const bar = resolveMotion(editor.state, foo, "wordForward", 1);
+    expect(bar).toBe(posOfText(editor, "bar"));
+    expect(resolveMotion(editor.state, bar, "wordForward", 1)).toBe(
+      posOfText(editor, "baz"),
+    );
+    expect(resolveMotion(editor.state, foo, "wordForward", 2)).toBe(
+      posOfText(editor, "baz"),
+    );
+  });
+
+  it("b hops back across lines", () => {
+    const editor = makeEditor("<p>foo bar</p><p>baz</p>");
+    const baz = posOfText(editor, "baz");
+    expect(resolveMotion(editor.state, baz, "wordBack", 1)).toBe(
+      posOfText(editor, "bar"),
+    );
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "foo"), "wordBack", 1),
+    ).toBe(posOfText(editor, "foo"));
+  });
+});
+
+describe("gg/G", () => {
+  it("gg goes to the first line, G to the LAST line start", () => {
+    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
+    const mid = posOfText(editor, "two");
+    expect(resolveMotion(editor.state, mid, "docStart", 1)).toBe(
+      posOfText(editor, "one"),
+    );
+    expect(resolveMotion(editor.state, mid, "docEnd", 1)).toBe(
+      posOfText(editor, "tri"),
+    );
+  });
+});

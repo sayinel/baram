@@ -299,3 +299,56 @@ describe("impl review S2-R2 pins", () => {
     expect(vim(editor).core.count).toBeLessThanOrEqual(9999);
   });
 });
+
+describe("S3 — motions and visual selection through the plugin", () => {
+  it("l moves the cursor; 2j walks lines", () => {
+    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "l");
+    expect(editor.state.selection.head).toBe(2);
+    key(editor, "2");
+    key(editor, "j");
+    // column 1 of "tri" (third paragraph starts at 11)
+    expect(
+      editor.state.doc.resolve(editor.state.selection.head).parent.textContent,
+    ).toBe("tri");
+  });
+
+  it("v then l extends an INCLUSIVE selection; Esc collapses to the head", () => {
+    const editor = makeEditor("<p>abcdef</p>");
+    editor.commands.setTextSelection(2); // on "b"
+    enable(editor);
+    key(editor, "v");
+    expect(editor.state.selection.from).toBe(2);
+    expect(editor.state.selection.to).toBe(3); // one unit, never empty (§6)
+    key(editor, "l");
+    key(editor, "l");
+    expect(editor.state.selection.from).toBe(2);
+    expect(editor.state.selection.to).toBe(5); // b..d inclusive
+    key(editor, "Escape");
+    expect(vim(editor).mode).toBe("normal");
+    expect(editor.state.selection.head).toBe(4); // vim head, not PM head
+    expect(editor.state.selection.empty).toBe(true);
+  });
+
+  it("v l d deletes the inclusive range", () => {
+    const editor = makeEditor("<p>abcdef</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "v");
+    key(editor, "l");
+    key(editor, "d");
+    expect(editor.state.doc.textContent).toBe("adef");
+  });
+
+  it("vim's own selection moves never collapse visual (priority order)", () => {
+    const editor = makeEditor("<p>abcdef</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "v");
+    key(editor, "l");
+    expect(vim(editor).mode).toBe("visual");
+    expect(vim(editor).core.visual).not.toBeNull();
+  });
+});
