@@ -146,11 +146,14 @@ function collectLines(state: EditorState): CursorLine[] {
   return lines;
 }
 
-/** Index of the unit whose start is the greatest one <= pos. */
+/** Units strictly BELOW pos — matching the old walking count: a cursor ON
+ *  a unit start is at that unit's index, and the terminal boundary (insert
+ *  Esc keeps the head there) counts the FULL line, not the last index
+ *  (review S3-R6). */
 function columnOf(starts: number[], pos: number): number {
   let column = 0;
-  for (let i = 0; i < starts.length; i++) {
-    if (starts[i] <= pos) column = i;
+  for (const start of starts) {
+    if (start < pos) column++;
     else break;
   }
   return column;
@@ -211,21 +214,34 @@ function lineSpanAt(state: EditorState, pos: number): CursorLine {
   return span ? { end: span.to, start: span.from } : { end: pos, start: pos };
 }
 
-/** Absolute start positions of every cursor unit in a line, from one
- *  segmentation pass. Inline leaves render as a 1-char placeholder, which
- *  counts as one unit of length 1 — exactly their nodeSize. */
+/** Absolute start positions of every cursor unit in a line, one line-local
+ *  pass. Each TEXT NODE is segmented independently and every non-text
+ *  inline leaf contributes exactly one start — whole-line segmentation
+ *  JOINed clusters across mark boundaries and after atom placeholders,
+ *  diverging from the node-local §6 units (review S3-R6). */
 function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
   if (line.end <= line.start) return [];
-  const text = state.doc.textBetween(line.start, line.end, undefined, "\uFFFC");
   const starts: number[] = [];
-  let offset = 0;
-  for (const seg of graphemeSegmenter.segment(text)) {
-    starts.push(line.start + offset);
-    offset += seg.segment.length;
-  }
+  state.doc.nodesBetween(line.start, line.end, (node, pos) => {
+    if (node.isText) {
+      const from = Math.max(line.start, pos);
+      const to = Math.min(line.end, pos + node.nodeSize);
+      const text = (node.text ?? "").slice(from - pos, to - pos);
+      let offset = 0;
+      for (const seg of graphemeSegmenter.segment(text)) {
+        starts.push(from + offset);
+        offset += seg.segment.length;
+      }
+      return false;
+    }
+    if (node.isLeaf) {
+      if (pos >= line.start && pos < line.end) starts.push(pos);
+      return false;
+    }
+    return true; // the textblock container — descend
+  });
   return starts;
 }
-
 /** The landed cell's rect, expanded from a known slot — O(span), where
  *  findCell would re-scan the whole map. */
 function rectAround(

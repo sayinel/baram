@@ -368,3 +368,36 @@ describe("impl review S3-R5 pin — non-zero column vertical cost", () => {
     },
   );
 });
+
+describe("impl review S3-R6 pins — column semantics of the unit index", () => {
+  it("j from the EOL boundary keeps the FULL column (insert-Esc path)", () => {
+    const editor = makeEditor("<p>ab</p><p>cde</p>");
+    const $first = editor.state.doc.resolve(1);
+    const eol = $first.start() + 2; // boundary past "b" — head after insert-Esc
+    const target = resolveMotion(editor.state, eol, "lineDown", 1);
+    expect(editor.state.doc.resolve(target).parentOffset).toBe(2); // ON "e"
+  });
+
+  it("a marked combining char stays its own unit across the line index", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            { text: "a", type: "text" },
+            { marks: [{ type: "bold" }], text: "\u0301", type: "text" },
+            { text: "x", type: "text" },
+          ],
+          type: "paragraph",
+        },
+        { content: [{ text: "abc", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    // node-local units: [a][\u0301][x] — "x" sits at column 2.
+    const $first = editor.state.doc.resolve(1);
+    const xPos = $first.start() + 2;
+    const target = resolveMotion(editor.state, xPos, "lineDown", 1);
+    expect(editor.state.doc.resolve(target).parentOffset).toBe(2); // ON "c"
+  });
+});
