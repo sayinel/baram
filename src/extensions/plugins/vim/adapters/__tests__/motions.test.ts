@@ -361,7 +361,10 @@ describe("impl review S3-R5 pin — non-zero column vertical cost", () => {
       const from = first.start() + 99; // column 99
       const t0 = performance.now();
       const target = resolveMotion(editor.state, from, "lineDown", 3999);
-      expect(performance.now() - t0).toBeLessThan(250);
+      // The regression this pins was ~10s (quadratic per-unit resolves);
+      // the budget only needs to sit far below that while tolerating
+      // full-suite worker contention (275ms observed on a healthy run).
+      expect(performance.now() - t0).toBeLessThan(600);
       // Same column at the destination — carry must not drift.
       const $t = editor.state.doc.resolve(target);
       expect($t.parentOffset).toBe(99);
