@@ -813,12 +813,23 @@ and it is silent, which is the trade. A dropped entry looks exactly like an
 entry nobody published. The signal lives at publish time instead:
 `scripts/validate-index.ts` reads the index with the app's own parsers and
 refuses anything the app would quietly prune, demote, or stop protecting. It
-runs in `npm run lint:frontend` and again in `plugin-release.yml`, against the
-entire index rather than only the entry being added. Run it yourself before
-proposing a registry change:
+runs in `npm run lint:frontend`, in `plugin-release.yml`, and on every pull
+request to `sayinel/baram-plugins` itself, against the entire index rather than
+only the entry being added.
+
+It judges the *document*, though — it has never opened an archive, because in
+this repository there are none. `scripts/validate-registry-assets.ts` is the
+other half: given a checkout of the registry, it resolves each entry's
+`downloadUrl` the way GitHub Pages will, requires a regular file to be there,
+and hashes it against the declared checksum. An entry naming a missing file, or
+carrying a stale checksum, otherwise deploys cleanly and 404s or fails
+integrity for every user.
+
+Run both before proposing a registry change:
 
 ```bash
 npx tsx scripts/validate-index.ts path/to/index.json
+npx tsx scripts/validate-registry-assets.ts path/to/registry-checkout
 ```
 
 #### `trust` and `capabilities` are a claim the install verifies

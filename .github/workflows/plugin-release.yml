@@ -268,6 +268,13 @@ jobs:
           # index is deliberate: the entries already there are invisible or un-installable to
           # users right now, and adding one more does not improve that.
           npx tsx scripts/validate-index.ts "$RUNNER_TEMP/registry/index.json"
+          # And the half the line above structurally cannot judge: that every entry's
+          # `downloadUrl` names an archive that is actually in the registry and hashes to
+          # the checksum the entry declares. The clone plus the `cp` above make this the
+          # exact tree about to be pushed, so a stale checksum or a ZIP that never landed
+          # is caught here rather than by users failing to install.
+          npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
+            --base-url "$BASE_URL"
 
       # Everything third-party has already run. This step writes the key, rewrites the
       # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.

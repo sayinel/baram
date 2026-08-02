@@ -163,6 +163,25 @@ if (manifest.keywords !== undefined) entry.keywords = manifest.keywords;
 const index = JSON.parse(readFileSync(args.index, "utf8"));
 if (!Array.isArray(index.plugins)) fail("index.json has no plugins array");
 
+// ‼️ REFUSE AN AMBIGUOUS ID RATHER THAN UPDATING THE FIRST ONE.
+//
+// `findIndex` is first-match-wins, so an index already holding two entries for this id
+// would have this release written into whichever copy sits higher — and an attacker who
+// can only APPEND cannot control that, but one who can insert can. The genuine entry would
+// then be left behind at its old version, and the app's `dropAmbiguousIds` serves NEITHER,
+// so the plugin silently disappears from every marketplace.
+//
+// `validate-index.ts` runs after this and rejects duplicates, so the push was already
+// blocked — but only because of step ORDER, which is exactly the kind of guarantee that
+// evaporates in a refactor. Stating it here makes the upsert itself unambiguous.
+const matches = index.plugins.filter((p) => p.id === entry.id).length;
+if (matches > 1) {
+  fail(
+    `index.json already holds ${matches} entries for ${entry.id} — refusing to guess ` +
+      "which one this release replaces (the app serves neither, see dropAmbiguousIds)",
+  );
+}
+
 const at = index.plugins.findIndex((p) => p.id === entry.id);
 if (at >= 0) index.plugins[at] = entry;
 else index.plugins.push(entry);

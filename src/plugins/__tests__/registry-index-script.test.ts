@@ -37,7 +37,12 @@ const VALID_MANIFEST = {
 function run(
   manifest: Record<string, unknown>,
   index: { plugins: unknown[] } = { plugins: [] },
-): { entry?: RegistryEntry; status: null | number; stderr: string } {
+): {
+  entry?: RegistryEntry;
+  indexText: string;
+  status: null | number;
+  stderr: string;
+} {
   const dir = mkdtempSync(join(tmpdir(), "baram-registry-"));
   const manifestPath = join(dir, "baram-plugin.json");
   const indexPath = join(dir, "index.json");
@@ -72,6 +77,8 @@ function run(
       : undefined;
   return {
     entry: written?.plugins.find((p) => p.id === manifest.id),
+    // Raw, so a refusal can be asserted to have written nothing at all.
+    indexText: readFileSync(indexPath, "utf8"),
     status: result.status,
     stderr: result.stderr,
   };
@@ -137,5 +144,48 @@ describe("update-registry-index carries the trust tier (§260 Phase 6)", () => {
     expect(status).toBe(0);
     expect(entry?.trust).toBe("sandboxed");
     expect(entry?.version).toBe("2.0.0");
+  });
+
+  it("refuses to upsert into an index that already holds the id twice", () => {
+    // ‼️ `findIndex` is first-match-wins, so with two copies present this release lands in
+    // whichever sits higher and the genuine entry is left at its old version. The app's
+    // `dropAmbiguousIds` then serves NEITHER, so the plugin silently vanishes from every
+    // marketplace — an availability attack costing an attacker one inserted line.
+    //
+    // `validate-index.ts` runs after this in the workflow and rejects duplicates, so the
+    // push was already blocked; this pins the invariant at the step that would otherwise
+    // guess, rather than relying on the order of two steps.
+    const decoy = {
+      id: "baram-word-count",
+      trust: "trusted",
+      version: "9.9.9",
+    };
+    const real = {
+      id: "baram-word-count",
+      trust: "sandboxed",
+      version: "1.0.1",
+    };
+    const { status, stderr } = run(VALID_MANIFEST, {
+      plugins: [decoy, real],
+    });
+    expect(status).toBe(1);
+    expect(stderr).toContain("already holds 2 entries for baram-word-count");
+    expect(stderr).toContain("refusing to guess");
+  });
+
+  it("leaves the index byte-for-byte untouched when it refuses", () => {
+    // The refusal above must not be a partial write: the workflow pushes whatever is on
+    // disk, and a half-updated index is worse than a duplicated one.
+    const before = {
+      plugins: [
+        { id: "baram-word-count", version: "9.9.9" },
+        { id: "baram-word-count", version: "1.0.1" },
+      ],
+    };
+    const { indexText, status } = run(VALID_MANIFEST, before);
+    expect(status).toBe(1);
+    // The RAW bytes, not a reparse (review LOW-7): comparing parsed objects would pass over
+    // a rewrite that only changed formatting, which is still a write the workflow pushes.
+    expect(indexText).toBe(JSON.stringify(before));
   });
 });

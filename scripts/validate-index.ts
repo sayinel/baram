@@ -27,6 +27,7 @@ import { readFileSync } from "node:fs";
 
 import { parseBaramFloor } from "../src/plugins/engines";
 import { VALID_CAPABILITIES } from "../src/plugins/manifest";
+import { label } from "./gha-label";
 
 const path = process.argv[2] ?? "registry/index.json";
 
@@ -105,27 +106,6 @@ const FIELDS: Record<
 
 /** The two tiers of §260, as a literal list so an unknown value cannot ship. */
 const TRUST_VALUES = ["sandboxed", "trusted"];
-
-/**
- * An entry id, made safe to print from a GitHub Actions step.
- *
- * §69 security review (LOW-1) — this script echoes the id it is complaining about, and it
- * runs inside `plugin-release.yml`. Actions parses workflow commands out of step OUTPUT, so
- * an id containing a newline followed by `::error title=…::` writes a forged annotation on
- * the release job, and `::stop-commands::` silences every real one after it. Reproduced
- * against the shipped script before this fix.
- *
- * Nothing worse than log spoofing is reachable — `::set-env::` and `::set-output::` are
- * disabled and `::add-mask::` cannot unmask a secret — but a gate whose whole purpose is to
- * TELL THE OPERATOR something must not let the document being judged write the verdict.
- */
-function label(raw: string): string {
-  const flattened = raw
-    .replaceAll(/[\n\r]/gu, "⏎")
-    // The command prefix itself, so no reassembly survives the newline strip.
-    .replaceAll("::", "∷");
-  return flattened.length > 80 ? `${flattened.slice(0, 80)}…` : flattened;
-}
 
 const errors: string[] = [];
 const warnings: string[] = [];
