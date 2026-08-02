@@ -994,6 +994,18 @@ fn resolve_key_path(dir: &Path, key: &str) -> Result<PathBuf, String> {
 /// Streams entry-by-entry into the output file rather than `read_to_end` into a `Vec`, so
 /// the previous behaviour — an oversized entry exhausting memory before anything could
 /// notice — is gone even for the bytes that are under the limit.
+///
+/// ‼️ THAT GUARANTEE DEPENDS ON WHICH `zip` APIS WE USE, so it was checked against the
+/// crate source rather than assumed. In zip 8.6.0 exactly two read-path sites allocate from
+/// a header-declared size — `read.rs:417` and `read/stream.rs:72`, both
+/// `Vec::with_capacity(file.size() as usize)` — and neither is reachable from here: the
+/// first is inside `ZipArchive::extract`, the crate's own bulk-extract convenience, and the
+/// second is the streaming reader. This function drives `by_index` and its own loop, which
+/// allocate nothing from declared sizes.
+///
+/// So: do not "simplify" this to `archive.extract(dir)`. That call reintroduces the
+/// declared-size allocation AND materialises symlink entries (`make_symlink`, `read.rs:419`)
+/// — see `a_symlink_entry_becomes_a_regular_file` for why the second one matters.
 fn extract_zip_bytes(data: &[u8], output_dir: &Path) -> Result<(), PluginError> {
     extract_zip_bounded(data, output_dir, ExtractBounds::DEFAULT)
 }
@@ -2318,6 +2330,50 @@ mod tests {
 
         extract_zip_bounded(&zip_of(&entries), dir.path(), bounds)
             .expect("exactly the limit is legal");
+    }
+
+    /// ‼️ A symlink entry must not become a symlink.
+    ///
+    /// ZIP can carry them, and the `zip` crate's own `ZipArchive::extract` materialises them
+    /// (`make_symlink`, zip-8.6.0 `read.rs:419`). This loop never consults `is_symlink()`, so
+    /// such an entry takes the ordinary file path and its CONTENT — the target string — is
+    /// written as text. Nothing links anywhere, so `copy_dir_recursive` afterwards has
+    /// nothing to follow out of the temp directory and into the user's filesystem.
+    ///
+    /// That safety is currently a consequence of what this loop does NOT do, which is
+    /// exactly the kind of property a refactor toward the crate's `extract()` would delete
+    /// silently. `enclosed_name` would not save us there: it constrains the entry's own path,
+    /// not where a link it creates may point.
+    #[test]
+    fn a_symlink_entry_becomes_a_regular_file() {
+        let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+        {
+            let mut writer = zip::write::ZipWriter::new(&mut buf);
+            writer
+                .add_symlink(
+                    "escape",
+                    "../../../../etc/passwd",
+                    zip::write::SimpleFileOptions::default(),
+                )
+                .unwrap();
+            writer.finish().unwrap();
+        }
+        let dir = tempfile::tempdir().unwrap();
+
+        extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds()).unwrap();
+
+        let made = dir.path().join("escape");
+        // `symlink_metadata` does not follow, so this sees what was actually created.
+        let kind = std::fs::symlink_metadata(&made).unwrap().file_type();
+        assert!(
+            !kind.is_symlink(),
+            "a symlink entry was materialised as a link; copy_dir_recursive would follow it"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&made).unwrap(),
+            "../../../../etc/passwd",
+            "the target should have landed as inert text"
+        );
     }
 
     #[test]
