@@ -207,12 +207,41 @@ describe("the committed revocation seed", () => {
     // The document parsing and every entry surviving are different claims. An entry
     // dropped for a bad `severity` or range would leave a plugin unrevoked while the
     // file on disk says otherwise, and nothing else would report it.
-    //
-    // ‼️ Vacuous while the seed is empty, which it should be — nothing is revoked. The
-    // entry validator is exercised by "keeps every well-formed shape" above, and by
-    // `scripts/validate-revocations.ts`, which the publish workflow runs and which
-    // FAILS on a dropped entry rather than shrugging the way the app does.
     const declared = (raw as { revoked: unknown[] }).revoked.length;
+    expect(declared).toBeGreaterThan(0);
     expect(normalizeRevocationList(raw)?.revoked).toHaveLength(declared);
+  });
+
+  it("covers the baram-ai-summary version that was actually published", () => {
+    // A range matching nothing is how a revocation deploys cleanly and covers no one.
+    // `scripts/validate-revocations.ts` only WARNS about that, so the seed's own bounds
+    // are pinned here. 1.0.0 is the only version that ever reached the registry.
+    expect(
+      revocationFor("baram-ai-summary", "1.0.0", normalizeRevocationList(raw))
+        ?.severity,
+    ).toBe("unlisted");
+  });
+
+  it("covers a republished 1.x of baram-ai-summary, not just the exact version", () => {
+    // ‼️ The reason the bound is `lt: 2.0.0` rather than `lte: 1.0.0`, which was the
+    // first version of this entry. The withdrawal is a decision about the TRUSTED tier,
+    // and the cheapest way to undo it by accident is a 1.0.1 that adds the `trust` field
+    // the published manifest lacks — a version-level bound at 1.0.0 waves that straight
+    // through, which is the opposite of what the entry says it means.
+    expect(
+      revocationFor("baram-ai-summary", "1.0.1", normalizeRevocationList(raw))
+        ?.severity,
+    ).toBe("unlisted");
+  });
+
+  it("leaves a future sandboxed port of baram-ai-summary unrevoked", () => {
+    // The other half: porting to the sandboxed tier is the intended way out, and the
+    // port is a major bump because the tier changed (the same rule baram-word-count
+    // 2.0.0 followed). A `"*"` here would mean the port is born revoked — `unlisted`
+    // blocks INSTALL for any severity, so it would reach the index and then refuse to
+    // install, citing a withdrawal that no longer applies.
+    expect(
+      revocationFor("baram-ai-summary", "2.0.0", normalizeRevocationList(raw)),
+    ).toBeNull();
   });
 });

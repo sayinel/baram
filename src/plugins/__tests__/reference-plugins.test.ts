@@ -14,15 +14,19 @@ import { describe, expect, it } from "vitest";
 
 import { validateManifest } from "../manifest";
 import { pluginTrustOf } from "../plugin-trust";
+import { normalizeRevocationList, revocationFor } from "../revocation";
 
 const EXAMPLES = resolve(__dirname, "../../../examples/plugins");
 const SEED = resolve(__dirname, "../../../registry/index.json");
+const REVOKED = resolve(__dirname, "../../../registry/revoked.json");
 
 const read = (dir: string, file: string) =>
   readFileSync(resolve(EXAMPLES, dir, file), "utf8");
 const manifestOf = (dir: string) =>
   JSON.parse(read(dir, "baram-plugin.json")) as PluginManifest;
 const seed = () => JSON.parse(readFileSync(SEED, "utf8")) as RegistryIndex;
+const revocationSeed = () =>
+  normalizeRevocationList(JSON.parse(readFileSync(REVOKED, "utf8")));
 
 /** Report WHY, not a bare `false` — otherwise the next reader guesses which rule broke. */
 const invalidFields = (manifest: PluginManifest) => {
@@ -371,5 +375,16 @@ describe("baram-ai-summary — the trusted example, withdrawn from the registry"
     // plugin would teach users to click through the full-trust warning for something as
     // ordinary as summarising a document. So it ships as a repo example only.
     expect(seed().plugins.map((p) => p.id)).not.toContain(manifest.id);
+  });
+
+  it("is recorded in the revocation list, against the version it ships", () => {
+    // Absence from the index is not the whole withdrawal — nothing machine-readable
+    // says WHY the id is gone, and the install gate has no entry to refuse if the id is
+    // ever re-added. `revoked.json` carries that, and it is asserted from the MANIFEST
+    // rather than from string literals: the two files are edited months apart, and a
+    // typo repeated in both places would read as agreement.
+    expect(
+      revocationFor(manifest.id, manifest.version, revocationSeed())?.severity,
+    ).toBe("unlisted");
   });
 });

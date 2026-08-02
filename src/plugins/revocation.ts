@@ -24,7 +24,11 @@ export interface RevocationEntry {
   /** Optional i18n key. Reasons are written by hand, so most will not have one. */
   reasonKey?: string;
   severity: RevocationSeverity;
-  /** ISO date, display only. */
+  /**
+   * ISO date the withdrawal took effect. Nothing renders it — the spec calls it
+   * "display only", but no surface reads it, so today it is a record for whoever opens
+   * the list. Said plainly here so the next author does not assume a user will see it.
+   */
   since?: string;
   versions: VersionRange;
 }
