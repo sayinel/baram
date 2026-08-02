@@ -776,19 +776,41 @@
       "description": "파일별 스냅샷 히스토리 조회"
     },
     {
-      "name": "plugin_install",
+      "name": "plugin_install_stage",
       "input": {
         "url": "string",
         "checksum": "string?",
         "expectedId": "string?"
       },
-      "output": "InstalledPluginInfo",
+      "output": "StagedPluginInfo",
       "module": "plugin",
       "spec": "§69",
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "플러그인 설치 (URL에서 ZIP 다운로드 + 검증)"
+      "description": "플러그인 스테이징 — ZIP 다운로드·해제·검증만 하고 설치하지 않음 (#261)"
+    },
+    {
+      "name": "plugin_install_commit",
+      "input": { "stageId": "string", "expectedId": "string" },
+      "output": "CommittedPluginInfo",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "스테이징된 플러그인 설치 — 원자적 교체, 실패 시 이전 버전 복구 (#261)"
+    },
+    {
+      "name": "plugin_install_discard",
+      "input": { "stageId": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "스테이징된 플러그인 폐기 — 설치된 것은 건드리지 않음 (#261)"
     },
     {
       "name": "plugin_uninstall",

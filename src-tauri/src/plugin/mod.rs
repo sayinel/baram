@@ -394,16 +394,15 @@ const ALLOWED_COMPRESSION: [zip::CompressionMethod; 2] = [
 /// ‼️ Directories cost nothing the BYTE bounds can see (review M2). An entry contributes no
 /// expanded bytes for its parents, so 2,000 entries each ~400 components deep fit in a
 /// 3.2 MiB download and buy 800,000 `mkdir` calls — measured at ~57 s of blocking-pool time
-/// to create and ~104 s to clean up, with `copy_dir_recursive` paying it a third time after
-/// the destructive `remove_dir_all`. Every byte ceiling saw zero.
+/// to create and ~104 s to clean up. Every byte ceiling saw zero.
 ///
 /// Counted in PATH COMPONENTS including the filename, so `dist/chunks/x.mjs` is 3. Sixteen
 /// is far past anything real and takes the worst case to 2,000 × 16, which is seconds rather
 /// than minutes.
 ///
-/// Forward note: `install_plugin` requires `baram-plugin.json` at the temp-dir ROOT, so a
+/// Forward note: `stage_plugin` requires `baram-plugin.json` at the staged ROOT, so a
 /// GitHub-style wrapper folder (`repo-v1.0.0/…`) already fails for an unrelated reason. If
-/// #261's second half ever tolerates a wrapper, the budget here silently becomes 15.
+/// a wrapper is ever tolerated, the budget here silently becomes 15.
 const MAX_PATH_DEPTH: usize = 16;
 
 /// Below this much output the ratio is not evidence of anything.
@@ -461,22 +460,211 @@ fn dirs_next() -> Option<PathBuf> {
     }
 }
 
-/// Download a plugin ZIP from URL, verify checksum, extract to plugin dir.
+/// Where an in-flight install lives until something commits it: `~/.baram/plugins/.staging/`.
+///
+/// Inside the plugin directory rather than the OS temp directory, and that is the whole
+/// mechanism (#261): `std::fs::rename` is atomic only WITHIN a filesystem, and on Linux
+/// `/tmp` is routinely a tmpfs while `~` is not, so a staged tree in `tempfile::tempdir()`
+/// could only ever be COPIED into place — which is the destructive-first install this
+/// replaces. Same directory, therefore same filesystem, therefore a real swap.
+///
+/// The leading dot cannot collide with a plugin id: `validate_manifest` admits only
+/// `[a-z0-9-]`, so no manifest can name this directory. And `list_installed` skips it for
+/// free, because it only reports children holding a `baram-plugin.json` at their root.
+const STAGING_DIR: &str = ".staging";
+
+/// Names of directories under [`STAGING_DIR`] that hold a downloaded-but-uncommitted tree.
+const STAGE_PREFIX: &str = "stage-";
+
+/// How long an abandoned staging directory is left alone before a later install reclaims it.
+///
+/// Only a hard kill between staging and committing can leave one behind — every in-process
+/// failure path removes its own. A day is far longer than any real gap between the two
+/// calls (the consent dialog sits in between), so the sweep cannot plausibly delete a stage
+/// someone still intends to commit. If it ever did, the commit fails closed with "no such
+/// staged install" and nothing installed is touched.
+const STALE_STAGE_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// A downloaded, extracted, validated plugin that is NOT yet installed.
+///
+/// The point of naming this state (#261) is that everything expensive and everything
+/// attacker-controlled happens before anything installed is touched. The caller inspects
+/// the manifest, asks the user, checks it against what was consented to — and only then
+/// commits. A refusal at any of those points costs a `discard_staged_plugin`, never a
+/// working plugin.
+#[derive(Debug, Clone, Serialize)]
+pub struct StagedPluginInfo {
+    /// Opaque handle for [`commit_staged_plugin`] / [`discard_staged_plugin`]. A directory
+    /// name under [`STAGING_DIR`], never a path — the caller cannot name anything else.
+    pub stage_id: String,
+    pub checksum: String,
+    pub manifest: PluginManifest,
+}
+
+/// What a committed install turned out to be, read back AFTER the swap.
+#[derive(Debug, Clone, Serialize)]
+pub struct CommittedPluginInfo {
+    pub install_path: String,
+    pub manifest: PluginManifest,
+}
+
+/// `<plugin_root>/.staging/`, created if absent.
+///
+/// Takes the plugin root rather than calling [`get_plugin_dir`] so the whole staging
+/// lifecycle is unit-testable against a temporary directory — the same reason
+/// [`read_bundle_in`] takes one. Every function below follows that shape: a `*_in` core that
+/// knows only paths, and a thin async wrapper that supplies the real root.
+fn staging_root_in(plugin_root: &Path) -> Result<PathBuf, PluginError> {
+    let root = plugin_root.join(STAGING_DIR);
+    if !root.exists() {
+        std::fs::create_dir_all(&root)?;
+    }
+    Ok(root)
+}
+
+/// A name no concurrent operation in this process will pick.
+///
+/// Process id plus a counter, not randomness: two installs racing inside one process are
+/// separated by the counter, and two processes by the pid. Across a RESTART both repeat, so
+/// every caller pre-clears the name it is about to use — see `swap_into_place`.
+fn unique_suffix() -> String {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!(
+        "{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    )
+}
+
+/// Delete staging entries older than `older_than`. Best-effort throughout.
+///
+/// Age-based rather than "clear the directory", because a second install may be staged at
+/// this moment and clearing would delete its tree out from under it.
+///
+/// Every failure is ignored on purpose: this is housekeeping for a directory the user never
+/// sees, and failing an install because a week-old orphan could not be removed would be the
+/// worse outcome.
+///
+/// The cutoff is a parameter so a test can drive both directions without having to backdate
+/// an mtime; production always passes [`STALE_STAGE_AFTER`].
+fn sweep_stale_stages(root: &Path, older_than: Duration) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let stale = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .and_then(|modified| {
+                std::time::SystemTime::now()
+                    .duration_since(modified)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            })
+            .map(|age| age > older_than)
+            .unwrap_or(false);
+        if stale {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+/// Turn a caller-supplied stage id into a directory, or refuse.
+///
+/// ‼️ The id crosses the IPC boundary, so it is treated as hostile input even though only
+/// our own frontend sends one. `single_segment` rejects anything with a separator or a
+/// `..`, and the prefix check rejects every OTHER child of the staging directory — so the
+/// worst a malformed id can name is a staging tree, never an installed plugin and never
+/// anything outside `~/.baram/plugins/.staging/`.
+fn resolve_stage_in(plugin_root: &Path, stage_id: &str) -> Result<PathBuf, PluginError> {
+    let seg = single_segment(stage_id)
+        .filter(|_| stage_id.starts_with(STAGE_PREFIX))
+        .ok_or_else(|| PluginError::Refused(format!("invalid stage id: {stage_id}")))?;
+    let dir = staging_root_in(plugin_root)?.join(seg);
+    if !dir.is_dir() {
+        return Err(PluginError::NotFound(format!(
+            "no staged install {stage_id}"
+        )));
+    }
+    Ok(dir)
+}
+
+/// Replace `target` with `staged`, keeping whatever was at `target` if anything fails.
+///
+/// ‼️ THE POINT OF #261. What this replaces was:
+///
+/// ```text
+/// remove_dir_all(&target)?;              // the working version, gone
+/// copy_dir_recursive(staged, &target)?;  // ...and now anything may fail
+/// ```
+///
+/// so a failure anywhere in the copy — disk full, a permission change, the process being
+/// killed — left the user with neither the old version nor the new one, and the only repair
+/// the frontend could offer was "reinstall it from the registry".
+///
+/// The sequence here has no such window. Each step is a `rename` within one directory, which
+/// the OS performs atomically, and after every one of them SOME complete version is reachable:
+///
+/// 1. `target` → `backup` — if this fails, `target` is untouched. Old version, still installed.
+/// 2. `staged` → `target` — if this fails, step 1 is undone and we return the original error.
+///    Old version, still installed.
+/// 3. remove `backup` — best-effort. A failure here leaves a stale directory in the staging
+///    area that the next install's sweep reclaims; the new version is already in place, so
+///    turning this into an error would report a successful install as a failed one.
+///
+/// `backup` is a path the caller has chosen and this function creates; it must be on the
+/// same filesystem as `target`. It is pre-cleared because `unique_suffix` repeats across a
+/// restart and `rename` onto a non-empty directory fails with `ENOTEMPTY` rather than
+/// overwriting it.
+///
+/// Windows note: `MoveFileEx` refuses an existing destination outright, which is why step 2
+/// renames into a name that step 1 has just vacated rather than over the live directory.
+fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), PluginError> {
+    if !target.exists() {
+        std::fs::rename(staged, target)?;
+        return Ok(());
+    }
+
+    let _ = std::fs::remove_dir_all(backup);
+    std::fs::rename(target, backup)?;
+
+    match std::fs::rename(staged, target) {
+        Ok(()) => {
+            let _ = std::fs::remove_dir_all(backup);
+            Ok(())
+        }
+        Err(err) => match std::fs::rename(backup, target) {
+            Ok(()) => Err(PluginError::Io(err)),
+            // Both renames failed, which takes a filesystem in real trouble. The previous
+            // version still EXISTS and is intact — it is just not where the app looks — so
+            // the message names the directory instead of pretending the data is gone.
+            Err(restore) => Err(PluginError::Refused(format!(
+                "installing the new version failed ({err}), and restoring the previous one \
+                 failed too ({restore}); it is intact at {}",
+                backup.display()
+            ))),
+        },
+    }
+}
+
+/// Download a plugin ZIP, verify its checksum, and extract it to a staging directory.
+///
+/// Installs NOTHING. The returned [`StagedPluginInfo::stage_id`] is the handle for the
+/// second half — [`commit_staged_plugin`] or [`discard_staged_plugin`] — and until one of
+/// those runs, whatever version of this plugin the user already had is still installed and
+/// still running.
 ///
 /// `expected_id` is the id the caller was told to expect — the registry listing's. It is
-/// checked BEFORE the extracted files are moved into place (§260 Phase 5 re-review, R5),
-/// and that ordering is the whole point: step 6 does `remove_dir_all` on a directory named
-/// by the id inside the ARCHIVE, so an archive declaring some other installed plugin's id
-/// destroyed that plugin's files as a side effect of downloading this one. The frontend
-/// could only notice afterwards, by which time the only repair left was to delete the
-/// remains. Refusing here means the damage never happens.
+/// checked here, before staging even returns (§260 Phase 5 re-review, R5): the install
+/// directory is named by the id inside the ARCHIVE, so an archive declaring some other
+/// installed plugin's id used to destroy that plugin's files as a side effect of
+/// downloading this one. Refusing here means the damage never happens.
 ///
 /// `None` skips the check, for a caller that has no prior expectation.
-pub async fn install_plugin(
+pub async fn stage_plugin(
     url: &str,
     expected_checksum: Option<&str>,
     expected_id: Option<&str>,
-) -> Result<InstalledPluginInfo, PluginError> {
+) -> Result<StagedPluginInfo, PluginError> {
     // 1. Download the ZIP.
     //
     // Guarded like `fetch_registry` and `fetch_revocations`, and this is the path where it
@@ -532,66 +720,20 @@ pub async fn install_plugin(
         }
     }
 
-    // 3–6, moved OFF the async runtime (#261).
+    // 3–5, moved OFF the async runtime (#261).
     //
-    // Inflating a ZIP and copying a directory tree are CPU- and syscall-bound, and they were
-    // running inline in an `async fn` — so one large archive parked a Tokio worker for the
-    // entire install and delayed every other task sharing it. `spawn_blocking` is where work
-    // that blocks belongs; the caps in `extract_zip_bytes` bound how long it can hold the
-    // thread it is handed.
+    // Inflating a ZIP is CPU- and syscall-bound, and it was running inline in an `async fn`
+    // — so one large archive parked a Tokio worker for the entire install and delayed every
+    // other task sharing it. `spawn_blocking` is where work that blocks belongs; the caps in
+    // `extract_zip_bytes` bound how long it can hold the thread it is handed.
     //
-    // Steps 4–6 move with it rather than staying behind: they are all synchronous
-    // filesystem work on the same temp directory, and splitting them would mean either
-    // keeping the `TempDir` alive across an await or two round trips to the blocking pool
-    // for no gain.
+    // Steps 4–5 move with it rather than staying behind: they are synchronous filesystem
+    // work on the same directory, and splitting them would mean two round trips to the
+    // blocking pool for no gain.
     let expected_id = expected_id.map(str::to_owned);
-    let (manifest, target_dir) =
-        tokio::task::spawn_blocking(move || -> Result<(PluginManifest, PathBuf), PluginError> {
-            // 3. Extract to temp dir first to read manifest
-            let temp_dir = tempfile::tempdir()?;
-            extract_zip_bytes(&bytes, temp_dir.path())?;
-
-            // 4. Read manifest
-            let manifest_path = temp_dir.path().join("baram-plugin.json");
-            if !manifest_path.exists() {
-                return Err(PluginError::InvalidManifest(
-                    "baram-plugin.json not found in archive".to_string(),
-                ));
-            }
-            let manifest_str = std::fs::read_to_string(&manifest_path)?;
-            let manifest: PluginManifest = serde_json::from_str(&manifest_str)?;
-
-            // 5. Validate manifest
-            validate_manifest(&manifest)?;
-
-            // 5b. The archive must be the plugin the caller asked for — checked here, before
-            // the destructive move below, and never after it.
-            if let Some(expected) = expected_id.as_deref() {
-                if manifest.id != expected {
-                    return Err(PluginError::InvalidManifest(format!(
-                        "archive declares id \"{}\" but \"{}\" was requested",
-                        manifest.id, expected
-                    )));
-                }
-            }
-
-            // 6. Move to final location
-            //
-            // ‼️ STILL DESTRUCTIVE-FIRST, deliberately unchanged here. A failure between the
-            // remove and the end of the copy leaves the user with neither version. Replacing
-            // this with a staged rename plus rollback is the second half of #261 and changes
-            // the install/update contract; this change is bounds and threading only, so the
-            // two land as separate reviewable pieces.
-            let plugin_dir = get_plugin_dir()?;
-            let target_dir = plugin_dir.join(&manifest.id);
-            if target_dir.exists() {
-                std::fs::remove_dir_all(&target_dir)?;
-            }
-
-            // Copy temp dir contents to target
-            copy_dir_recursive(temp_dir.path(), &target_dir)?;
-
-            Ok((manifest, target_dir))
+    let (stage_id, manifest) =
+        tokio::task::spawn_blocking(move || -> Result<(String, PluginManifest), PluginError> {
+            stage_archive_in(&get_plugin_dir()?, &bytes, expected_id.as_deref())
         })
         .await
         // Deliberately does NOT interpolate `err`. A `JoinError` here means the closure
@@ -600,12 +742,137 @@ pub async fn install_plugin(
         // it is actionable for the user; the shape of the failure is.
         .map_err(|_| PluginError::Refused("the plugin install task did not finish".into()))??;
 
-    Ok(InstalledPluginInfo {
-        install_path: target_dir.to_string_lossy().to_string(),
+    Ok(StagedPluginInfo {
+        stage_id,
         checksum: actual_checksum,
         manifest,
-        is_dev: false,
     })
+}
+
+/// Steps 3–5 of a stage: extract, read the manifest, check the id. Touches nothing installed.
+fn stage_archive_in(
+    plugin_root: &Path,
+    bytes: &[u8],
+    expected_id: Option<&str>,
+) -> Result<(String, PluginManifest), PluginError> {
+    let root = staging_root_in(plugin_root)?;
+    sweep_stale_stages(&root, STALE_STAGE_AFTER);
+
+    // 3. Extract into a staging directory to read the manifest.
+    //
+    // A `TempDir` for the whole of this function, so every refusal below removes the
+    // extracted tree on the way out — including a panic. Only the last line, once the
+    // archive has passed everything, defuses it into a directory we keep.
+    let staged = tempfile::Builder::new()
+        .prefix(STAGE_PREFIX)
+        .tempdir_in(&root)?;
+    extract_zip_bytes(bytes, staged.path())?;
+
+    // 4. Read and validate the manifest.
+    let manifest = read_staged_manifest(staged.path())?;
+
+    // 5. The archive must be the plugin the caller asked for.
+    if let Some(expected) = expected_id {
+        if manifest.id != expected {
+            return Err(PluginError::InvalidManifest(format!(
+                "archive declares id \"{}\" but \"{expected}\" was requested",
+                manifest.id
+            )));
+        }
+    }
+
+    let stage_id = staged
+        .path()
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| PluginError::Refused("staging directory has no usable name".into()))?
+        .to_owned();
+    // Past every check: stop auto-deleting it, the caller owns it now.
+    let _ = staged.keep();
+    Ok((stage_id, manifest))
+}
+
+/// Read and validate the manifest at the root of a staged tree.
+fn read_staged_manifest(dir: &Path) -> Result<PluginManifest, PluginError> {
+    let manifest_path = dir.join("baram-plugin.json");
+    if !manifest_path.exists() {
+        return Err(PluginError::InvalidManifest(
+            "baram-plugin.json not found in archive".to_string(),
+        ));
+    }
+    let manifest_str = std::fs::read_to_string(&manifest_path)?;
+    let manifest: PluginManifest = serde_json::from_str(&manifest_str)?;
+    validate_manifest(&manifest)?;
+    Ok(manifest)
+}
+
+/// Install a staged plugin, atomically replacing any version already installed.
+///
+/// This is the only destructive half of an install, and the only thing it can destroy is the
+/// staged tree: see [`swap_into_place`] for why the previously installed version survives
+/// every failure here.
+///
+/// ‼️ The manifest is RE-READ and RE-VALIDATED from disk rather than trusted from the
+/// [`stage_plugin`] result. The caller chooses which stage id to commit, so treating the
+/// earlier return value as authoritative would let a caller stage two plugins and commit one
+/// under the other's name — and the id is what names the install directory.
+pub async fn commit_staged_plugin(
+    stage_id: &str,
+    expected_id: &str,
+) -> Result<CommittedPluginInfo, PluginError> {
+    let stage_id = stage_id.to_owned();
+    let expected_id = expected_id.to_owned();
+    tokio::task::spawn_blocking(move || {
+        commit_staged_in(&get_plugin_dir()?, &stage_id, &expected_id)
+    })
+    .await
+    .map_err(|_| PluginError::Refused("the plugin install task did not finish".into()))?
+}
+
+fn commit_staged_in(
+    plugin_root: &Path,
+    stage_id: &str,
+    expected_id: &str,
+) -> Result<CommittedPluginInfo, PluginError> {
+    let staged = resolve_stage_in(plugin_root, stage_id)?;
+    let manifest = read_staged_manifest(&staged)?;
+    if manifest.id != expected_id {
+        return Err(PluginError::InvalidManifest(format!(
+            "staged plugin declares id \"{}\" but \"{expected_id}\" was requested",
+            manifest.id
+        )));
+    }
+    // Safe to join: `validate_manifest` admits only `[a-z0-9-]`, so the id is a single
+    // segment that cannot escape the plugin directory.
+    let target_dir = plugin_root.join(&manifest.id);
+    let backup =
+        staging_root_in(plugin_root)?.join(format!("backup-{}-{}", manifest.id, unique_suffix()));
+    swap_into_place(&staged, &target_dir, &backup)?;
+    Ok(CommittedPluginInfo {
+        install_path: target_dir.to_string_lossy().to_string(),
+        manifest,
+    })
+}
+
+/// Throw away a staged plugin without installing it.
+///
+/// The counterpart to every refusal a caller can only make after seeing the manifest —
+/// consent escalation, a version floor the listing under-declared, a capability the user
+/// did not approve. Discarding is not a repair: nothing installed was ever touched.
+///
+/// An unknown id is an error rather than a silent success, so a caller cannot mistake
+/// "already swept" for "cleaned up". Callers that discard on an error path should log and
+/// swallow it — the failure they are handling is the one worth reporting.
+pub async fn discard_staged_plugin(stage_id: &str) -> Result<(), PluginError> {
+    let stage_id = stage_id.to_owned();
+    tokio::task::spawn_blocking(move || discard_staged_in(&get_plugin_dir()?, &stage_id))
+        .await
+        .map_err(|_| PluginError::Refused("the plugin discard task did not finish".into()))?
+}
+
+fn discard_staged_in(plugin_root: &Path, stage_id: &str) -> Result<(), PluginError> {
+    std::fs::remove_dir_all(resolve_stage_in(plugin_root, stage_id)?)?;
+    Ok(())
 }
 
 /// Uninstall a plugin by removing its directory.
@@ -613,9 +880,13 @@ pub async fn install_plugin(
 /// §260 Phase 5 code review — the id is `single_segment`-checked, matching
 /// [`plugin_data_dir`]. This function does `remove_dir_all`, so it is the one place where
 /// an id containing `..` or a separator would be worst, and it was the only one of the two
-/// without the guard. Not reachable today (Rust's own `validate_manifest` constrains the
-/// id before the files land), but the rollback path now passes an id read from a manifest
-/// that may have just FAILED validation — so the asymmetry stops being merely untidy.
+/// without the guard. Not reachable today (Rust's own `validate_manifest` constrains the id
+/// before the files land) — but this is the function an id crossing the IPC boundary can
+/// aim at a directory, so it is checked rather than assumed.
+///
+/// ‼️ Not the install rollback path (#261). An install that fails its post-download checks
+/// calls [`discard_staged_plugin`], which can only ever remove a staging directory. Nothing
+/// reaches this function except a user asking to uninstall.
 pub async fn uninstall_plugin(plugin_id: &str) -> Result<(), PluginError> {
     let seg = single_segment(plugin_id)
         .ok_or_else(|| PluginError::InvalidManifest(format!("invalid plugin id: {plugin_id}")))?;
@@ -1216,21 +1487,6 @@ fn extract_zip_bounded(
     Ok(())
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), PluginError> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else {
-            std::fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
-}
-
 fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginError> {
     if manifest.id.is_empty() {
         return Err(PluginError::InvalidManifest("id is required".to_string()));
@@ -1640,8 +1896,8 @@ mod tests {
     /// `file:` URL by itself, so `is_err()` holds with or without the guard. Nothing here
     /// reaches the network.
     #[tokio::test]
-    async fn test_install_plugin_refuses_non_http_schemes() {
-        let err = install_plugin("file:///etc/passwd", None, None)
+    async fn test_stage_plugin_refuses_non_http_schemes() {
+        let err = stage_plugin("file:///etc/passwd", None, None)
             .await
             .expect_err("a file:// download URL must be refused");
         assert!(
@@ -1658,53 +1914,6 @@ mod tests {
         assert!(
             err.to_string().contains("blocked URL scheme 'file'"),
             "expected the scheme guard's refusal, got: {err}"
-        );
-    }
-
-    /// §260 Phase 5 re-review (R5) — the id check must sit BEFORE the move, so an archive
-    /// declaring another installed plugin's id cannot destroy it on the way in.
-    ///
-    /// Asserted on source order rather than by running an install, because the failure mode
-    /// is purely positional: both the check and the `remove_dir_all` are trivially correct
-    /// in isolation, and a refactor moving either past the other would leave every
-    /// behavioural test green while restoring the data loss.
-    ///
-    /// ‼️ WINDOWED to `install_plugin`'s body, and the match COUNT is asserted (re-review,
-    /// F2). Searching the whole file found *a* match rather than *the* match: there are two
-    /// `remove_dir_all(&target_dir)` in this file, the second in `uninstall_plugin`, so
-    /// renaming or refactoring away `install_plugin`'s destructive move silently retargeted
-    /// the assertion at an unrelated function and stayed green. That is the same shape as
-    /// every hollow source-scan guard this phase produced.
-    #[test]
-    fn expected_id_is_checked_before_the_destructive_move() {
-        let src = include_str!("mod.rs");
-        let start = src
-            .find("pub async fn install_plugin")
-            .expect("install_plugin must exist");
-        // Body = up to the next top-level item, so nothing outside this function counts.
-        let end = src[start + 1..]
-            .find("\npub ")
-            .map(|i| i + start + 1)
-            .unwrap_or(src.len());
-        let body = &src[start..end];
-
-        assert_eq!(
-            body.matches("remove_dir_all(&target_dir)").count(),
-            1,
-            "install_plugin must contain exactly one destructive move — if it moved into a \
-             helper, this guard no longer sees it and must be rewritten, not deleted"
-        );
-        let refusal = body
-            .find("was requested")
-            .expect("the expected_id refusal must live inside install_plugin");
-        let remove = body
-            .find("remove_dir_all(&target_dir)")
-            .expect("the destructive move must exist");
-
-        assert!(
-            refusal < remove,
-            "the id refusal ({refusal}) must come before remove_dir_all ({remove}) — \
-             otherwise the archive has already clobbered the target directory"
         );
     }
 
@@ -2673,12 +2882,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn install_plugin_refuses_an_archive_over_its_cap() {
+    async fn stage_plugin_refuses_an_archive_over_its_cap() {
         // 32 MiB over loopback, which is the whole point: this cap is reached before the
         // checksum, the manifest or the tier can say anything, so nothing downstream would
         // ever catch an unbounded download.
         let url = serve_once("200 OK", vec![0u8; MAX_PLUGIN_ARCHIVE_BYTES + 1]);
-        let err = install_plugin(&url, None, None)
+        let err = stage_plugin(&url, None, None)
             .await
             .expect_err("over the cap");
         assert!(
@@ -2688,9 +2897,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn install_plugin_refuses_a_non_success_status() {
+    async fn stage_plugin_refuses_a_non_success_status() {
         let url = serve_once("503 Service Unavailable", b"down".to_vec());
-        let err = install_plugin(&url, None, None)
+        let err = stage_plugin(&url, None, None)
             .await
             .expect_err("503 is not an archive");
         assert!(
@@ -2746,17 +2955,355 @@ mod tests {
     /// anything writes to the user's real plugin directory, which a fully successful install
     /// would do.
     #[tokio::test]
-    async fn install_plugin_reaches_the_blocking_stage_and_reports_from_inside_it() {
+    async fn stage_plugin_reaches_the_blocking_stage_and_reports_from_inside_it() {
         let archive = zip_of(&[("not-a-manifest.txt", b"hello")]);
         let url = serve_once("200 OK", archive);
 
-        let err = install_plugin(&url, None, None)
+        let err = stage_plugin(&url, None, None)
             .await
             .expect_err("an archive with no manifest cannot install");
 
         assert!(
             err.to_string().contains("baram-plugin.json not found"),
             "expected the refusal raised inside the blocking closure, got: {err}"
+        );
+    }
+
+    // --- #261: staging, atomic commit, rollback -------------------------------------
+    //
+    // Every test below drives the `*_in` cores against a temporary plugin root, so none of
+    // them reads `$HOME` or touches a real installation. That is the reason those cores
+    // exist: the property under test is "what is on disk after a failure", which a mocked
+    // filesystem cannot answer.
+
+    /// A manifest that passes `validate_manifest`, plus one payload file to move around.
+    fn plugin_zip(id: &str, version: &str, payload: &str) -> Vec<u8> {
+        let manifest = format!(
+            r#"{{"id":"{id}","name":"N","description":"d","version":"{version}",
+                 "author":"a","license":"MIT","main":"main.js",
+                 "engines":{{"baram":">=0.1.0"}},"capabilities":[]}}"#
+        );
+        zip_of(&[
+            ("baram-plugin.json", manifest.as_bytes()),
+            ("main.js", payload.as_bytes()),
+        ])
+    }
+
+    /// An already-installed plugin, written the way a previous install would have left it.
+    fn install_by_hand(plugin_root: &Path, id: &str, payload: &str) -> PathBuf {
+        let dir = plugin_root.join(id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.js"), payload).unwrap();
+        std::fs::write(dir.join("baram-plugin.json"), format!(r#"{{"id":"{id}"}}"#)).unwrap();
+        dir
+    }
+
+    fn stage_dirs(plugin_root: &Path) -> Vec<String> {
+        let root = plugin_root.join(STAGING_DIR);
+        let Ok(entries) = std::fs::read_dir(root) else {
+            return Vec::new();
+        };
+        let mut names: Vec<String> = entries
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// ‼️ THE POINT OF #261, stated as one assertion: staging writes nothing into the
+    /// installed tree.
+    ///
+    /// This is what the old install could not do. It ran `remove_dir_all(&target_dir)`
+    /// before the copy, so by the time any post-download check could refuse the archive the
+    /// working version was already gone.
+    #[test]
+    fn staging_leaves_the_installed_version_untouched() {
+        let root = tempfile::tempdir().unwrap();
+        let installed = install_by_hand(root.path(), "demo", "v1");
+
+        let (stage_id, manifest) = stage_archive_in(
+            root.path(),
+            &plugin_zip("demo", "2.0.0", "v2"),
+            Some("demo"),
+        )
+        .unwrap();
+
+        assert_eq!(manifest.version, "2.0.0");
+        assert_eq!(
+            std::fs::read_to_string(installed.join("main.js")).unwrap(),
+            "v1",
+            "staging must not touch the installed version"
+        );
+        assert!(stage_id.starts_with(STAGE_PREFIX));
+        assert!(root.path().join(STAGING_DIR).join(&stage_id).is_dir());
+    }
+
+    /// The other half: commit swaps, and leaves no backup behind.
+    #[test]
+    fn commit_replaces_the_installed_version_and_cleans_up() {
+        let root = tempfile::tempdir().unwrap();
+        let installed = install_by_hand(root.path(), "demo", "v1");
+
+        let (stage_id, _) = stage_archive_in(
+            root.path(),
+            &plugin_zip("demo", "2.0.0", "v2"),
+            Some("demo"),
+        )
+        .unwrap();
+        let committed = commit_staged_in(root.path(), &stage_id, "demo").unwrap();
+
+        assert_eq!(committed.install_path, installed.to_string_lossy());
+        assert_eq!(
+            std::fs::read_to_string(installed.join("main.js")).unwrap(),
+            "v2"
+        );
+        assert_eq!(
+            stage_dirs(root.path()),
+            Vec::<String>::new(),
+            "the staged tree and its backup must both be gone after a successful commit"
+        );
+    }
+
+    /// A first install: nothing to back up, nothing to restore.
+    #[test]
+    fn commit_installs_when_no_previous_version_exists() {
+        let root = tempfile::tempdir().unwrap();
+
+        let (stage_id, _) =
+            stage_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
+        commit_staged_in(root.path(), &stage_id, "demo").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
+            "v1"
+        );
+    }
+
+    /// ‼️ THE ROLLBACK. The second rename fails, and the previous version comes back.
+    ///
+    /// Injected by handing `swap_into_place` a `staged` path that does not exist, so
+    /// `rename(staged, target)` fails with `ENOENT` after `target` has already been moved
+    /// aside — precisely the window the old code could not survive.
+    ///
+    /// The both-renames-failed branch below it is not exercised: restoring renames into a
+    /// name this function has just vacated, so nothing short of a filesystem fault can make
+    /// it fail, and faking one portably would test the fake. It is a message-only path.
+    #[test]
+    fn a_failed_swap_restores_the_previous_version() {
+        let root = tempfile::tempdir().unwrap();
+        let installed = install_by_hand(root.path(), "demo", "v1");
+        let backup = root.path().join(STAGING_DIR).join("backup-demo-test");
+        std::fs::create_dir_all(root.path().join(STAGING_DIR)).unwrap();
+
+        let err = swap_into_place(&root.path().join("nonexistent"), &installed, &backup)
+            .expect_err("renaming a nonexistent staged tree must fail");
+
+        assert!(
+            matches!(err, PluginError::Io(_)),
+            "the caller must see the rename's own error, got: {err}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(installed.join("main.js")).unwrap(),
+            "v1",
+            "the previous version must be back where the app looks for it"
+        );
+        assert!(!backup.exists(), "the backup must not be left behind");
+    }
+
+    /// A stale backup from a previous run must not wedge the next install.
+    ///
+    /// `unique_suffix` repeats across a restart (pid + a counter that resets), and `rename`
+    /// onto a NON-EMPTY directory fails with `ENOTEMPTY` instead of overwriting — so without
+    /// the pre-clear a crashed install could make every later one fail.
+    #[test]
+    fn a_leftover_backup_name_does_not_block_the_swap() {
+        let root = tempfile::tempdir().unwrap();
+        let installed = install_by_hand(root.path(), "demo", "v1");
+        let backup = root.path().join(STAGING_DIR).join("backup-demo-test");
+        std::fs::create_dir_all(&backup).unwrap();
+        std::fs::write(backup.join("junk.txt"), "from a crashed run").unwrap();
+
+        let staged = root.path().join(STAGING_DIR).join("stage-x");
+        std::fs::create_dir_all(&staged).unwrap();
+        std::fs::write(staged.join("main.js"), "v2").unwrap();
+
+        swap_into_place(&staged, &installed, &backup).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(installed.join("main.js")).unwrap(),
+            "v2"
+        );
+    }
+
+    /// The install directory is named by the id, so committing under the wrong one would
+    /// overwrite an unrelated plugin. Refused — and refused BEFORE the swap.
+    #[test]
+    fn commit_refuses_a_stage_whose_manifest_names_another_plugin() {
+        let root = tempfile::tempdir().unwrap();
+        let victim = install_by_hand(root.path(), "victim", "untouched");
+
+        let (stage_id, _) =
+            stage_archive_in(root.path(), &plugin_zip("attacker", "1.0.0", "evil"), None).unwrap();
+        let err = commit_staged_in(root.path(), &stage_id, "victim")
+            .expect_err("a stage declaring another id must not install as that id");
+
+        assert!(err.to_string().contains("was requested"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(victim.join("main.js")).unwrap(),
+            "untouched"
+        );
+        assert!(
+            !root.path().join("attacker").exists(),
+            "a refused commit must not install under the archive's own id either"
+        );
+    }
+
+    /// The same check one step earlier: staging already refuses the mismatch, so the
+    /// frontend never sees a stage id it could commit by accident.
+    #[test]
+    fn staging_refuses_an_archive_declaring_another_plugins_id() {
+        let root = tempfile::tempdir().unwrap();
+
+        let err = stage_archive_in(
+            root.path(),
+            &plugin_zip("attacker", "1.0.0", "evil"),
+            Some("victim"),
+        )
+        .expect_err("the archive is not the plugin that was asked for");
+
+        assert!(err.to_string().contains("was requested"), "{err}");
+        assert_eq!(
+            stage_dirs(root.path()),
+            Vec::<String>::new(),
+            "a refused stage must remove its own extracted tree"
+        );
+    }
+
+    #[test]
+    fn discard_removes_the_stage_and_leaves_installs_alone() {
+        let root = tempfile::tempdir().unwrap();
+        let installed = install_by_hand(root.path(), "demo", "v1");
+        let (stage_id, _) = stage_archive_in(
+            root.path(),
+            &plugin_zip("demo", "2.0.0", "v2"),
+            Some("demo"),
+        )
+        .unwrap();
+
+        discard_staged_in(root.path(), &stage_id).unwrap();
+
+        assert_eq!(stage_dirs(root.path()), Vec::<String>::new());
+        assert_eq!(
+            std::fs::read_to_string(installed.join("main.js")).unwrap(),
+            "v1"
+        );
+        assert!(
+            discard_staged_in(root.path(), &stage_id).is_err(),
+            "discarding twice must report the second one as unknown, not succeed silently"
+        );
+    }
+
+    /// ‼️ A stage id crosses the IPC boundary, so it is checked, not trusted.
+    ///
+    /// Each of these names something a caller might want to delete or overwrite; all of them
+    /// must fail to RESOLVE, which is what keeps `commit`/`discard` pointed inside the
+    /// staging directory.
+    ///
+    /// `backup-demo-1` is the case the `stage-` prefix check exists for, and the only one it
+    /// alone catches: it is a real directory in the staging root, so `single_segment` and
+    /// the `is_dir` check both pass. Committing or discarding a backup mid-swap is the
+    /// damage. The traversal cases are `single_segment`'s, and the installed-plugin id fails
+    /// for a third reason — the join is relative to the staging directory, not to the
+    /// plugin root — which is worth pinning precisely because it is easy to lose.
+    #[test]
+    fn a_stage_id_cannot_name_anything_outside_the_staging_directory() {
+        let root = tempfile::tempdir().unwrap();
+        install_by_hand(root.path(), "demo", "v1");
+        // A real staged tree, so the failures below are about the ID and not about an
+        // empty staging directory.
+        stage_archive_in(
+            root.path(),
+            &plugin_zip("demo", "2.0.0", "v2"),
+            Some("demo"),
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.path().join(STAGING_DIR).join("backup-demo-1")).unwrap();
+
+        for hostile in [
+            "../demo",
+            "../../.baram",
+            "stage-../demo",
+            "backup-demo-1",
+            "demo",
+            ".",
+            "..",
+            "",
+            "stage-a/b",
+        ] {
+            assert!(
+                resolve_stage_in(root.path(), hostile).is_err(),
+                "stage id {hostile:?} must not resolve"
+            );
+        }
+        assert!(
+            std::fs::read_to_string(root.path().join("demo").join("main.js")).is_ok(),
+            "nothing above may have deleted the installed plugin"
+        );
+    }
+
+    /// The sweep must reclaim orphans without touching an install that is staging right now.
+    #[test]
+    fn the_sweep_reclaims_by_age_only() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = staging_root_in(root.path()).unwrap();
+        let orphan = staging.join("stage-orphan");
+        std::fs::create_dir_all(&orphan).unwrap();
+
+        // The real cutoff: a directory created a moment ago is not stale.
+        sweep_stale_stages(&staging, STALE_STAGE_AFTER);
+        assert!(
+            orphan.exists(),
+            "a fresh stage must survive the real cutoff"
+        );
+
+        // Everything is older than nothing.
+        sweep_stale_stages(&staging, Duration::ZERO);
+        assert!(!orphan.exists(), "an aged-out stage must be reclaimed");
+    }
+
+    /// …and the production path calls it, without eating a concurrent stage.
+    #[test]
+    fn staging_does_not_sweep_another_install_in_flight() {
+        let root = tempfile::tempdir().unwrap();
+        let (first, _) =
+            stage_archive_in(root.path(), &plugin_zip("one", "1.0.0", "a"), Some("one")).unwrap();
+        let (second, _) =
+            stage_archive_in(root.path(), &plugin_zip("two", "1.0.0", "b"), Some("two")).unwrap();
+
+        assert_ne!(first, second);
+        assert_eq!(stage_dirs(root.path()), {
+            let mut both = vec![first, second];
+            both.sort();
+            both
+        });
+    }
+
+    /// `.staging` must not look like an installed plugin.
+    ///
+    /// `list_installed` reports every child of the plugin directory holding a manifest at
+    /// its root. A stage holds one — one level deeper — so the staging directory itself is
+    /// skipped, and no id can ever collide with the name because `validate_manifest` admits
+    /// only `[a-z0-9-]`.
+    #[test]
+    fn the_staging_directory_can_never_be_mistaken_for_a_plugin() {
+        let root = tempfile::tempdir().unwrap();
+        let err = stage_archive_in(root.path(), &plugin_zip(STAGING_DIR, "1.0.0", "x"), None)
+            .expect_err("a plugin claiming the staging directory's name must be refused");
+
+        assert!(
+            err.to_string().contains("lowercase letters"),
+            "expected the id-charset refusal, got: {err}"
         );
     }
 }

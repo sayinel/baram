@@ -3,13 +3,39 @@ use crate::config;
 use crate::plugin;
 use tauri::Manager;
 
+/// #261 — install is two commands, and this one installs nothing.
+///
+/// It downloads and extracts to a staging directory and hands back a `stage_id`. Whatever
+/// version the user already has stays installed and running until `plugin_install_commit`
+/// runs, so every check the frontend makes on the downloaded manifest — consent, version
+/// floor, capabilities — costs a `plugin_install_discard` when it refuses, not a working
+/// plugin.
 #[tauri::command]
-pub async fn plugin_install(
+pub async fn plugin_install_stage(
     url: String,
     checksum: Option<String>,
     expected_id: Option<String>,
-) -> Result<plugin::InstalledPluginInfo, String> {
-    plugin::install_plugin(&url, checksum.as_deref(), expected_id.as_deref())
+) -> Result<plugin::StagedPluginInfo, String> {
+    plugin::stage_plugin(&url, checksum.as_deref(), expected_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Install a staged plugin, atomically replacing any version already installed.
+#[tauri::command]
+pub async fn plugin_install_commit(
+    stage_id: String,
+    expected_id: String,
+) -> Result<plugin::CommittedPluginInfo, String> {
+    plugin::commit_staged_plugin(&stage_id, &expected_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Throw away a staged plugin. Nothing installed is touched.
+#[tauri::command]
+pub async fn plugin_install_discard(stage_id: String) -> Result<(), String> {
+    plugin::discard_staged_plugin(&stage_id)
         .await
         .map_err(|e| e.to_string())
 }

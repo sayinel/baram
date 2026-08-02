@@ -10,7 +10,6 @@
 // They also pin the persistence ordering: nothing reaches the store until every check
 // has passed. Before Phase 5 the record was written first and validated only inside
 // `loadPlugin`, whose rejection merely set an error string.
-import type { RustInstalledPluginInfo } from "../../../ipc/plugin-invoke";
 import type {
   PluginConsent,
   PluginManifest,
@@ -29,7 +28,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadPlugin = vi.fn();
 const unloadPlugin = vi.fn();
-const pluginInstall = vi.fn();
+const pluginInstallStage = vi.fn();
+const pluginInstallCommit = vi.fn();
+const pluginInstallDiscard = vi.fn();
 const pluginUninstall = vi.fn();
 
 vi.mock("../../../plugins/plugin-loader", () => ({
@@ -39,7 +40,9 @@ vi.mock("../../../plugins/plugin-loader", () => ({
   },
 }));
 vi.mock("../../../ipc/plugin-invoke", () => ({
-  pluginInstall: (...a: unknown[]) => pluginInstall(...a),
+  pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),
+  pluginInstallDiscard: (...a: unknown[]) => pluginInstallDiscard(...a),
+  pluginInstallStage: (...a: unknown[]) => pluginInstallStage(...a),
   pluginUninstall: (...a: unknown[]) => pluginUninstall(...a),
 }));
 // `tauriStorage` (the plugin store's persist backend) reaches for these; without them
@@ -104,12 +107,22 @@ async function confirmConsent() {
   fireEvent.click(within(dialog).getByRole("button", { name: /^Install$/ }));
 }
 
+/**
+ * #261 — installing is stage-then-commit, so the download mock feeds the STAGE and the
+ * commit is what puts the files in place. Every check the component makes runs against
+ * the staged manifest, between the two calls, which is the whole point: a refusal there
+ * discards a staged copy instead of destroying whatever was already installed.
+ */
 function downloadReturns(manifest: PluginManifest) {
-  pluginInstall.mockResolvedValue({
+  pluginInstallStage.mockResolvedValue({
     checksum: "sha256:abc",
+    manifest,
+    stage_id: "stage-1",
+  });
+  pluginInstallCommit.mockResolvedValue({
     install_path: "/p/demo",
     manifest,
-  } as unknown as RustInstalledPluginInfo);
+  });
 }
 
 /** Seed an already-installed plugin carrying `consent`, with an update available. */
@@ -135,7 +148,9 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     listed = [ENTRY];
     loadPlugin.mockReset().mockResolvedValue(undefined);
     unloadPlugin.mockReset().mockResolvedValue(undefined);
-    pluginInstall.mockReset();
+    pluginInstallStage.mockReset();
+    pluginInstallCommit.mockReset();
+    pluginInstallDiscard.mockReset().mockResolvedValue(undefined);
     pluginUninstall.mockReset().mockResolvedValue(undefined);
     downloadReturns(MANIFEST);
     usePluginStore.setState({
@@ -152,14 +167,14 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
   it("asks before downloading anything", async () => {
     await clickInstall();
     expect(await screen.findByRole("dialog")).toBeTruthy();
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 
   it("downloads nothing when the dialog is cancelled", async () => {
     await clickInstall();
     fireEvent.click(await screen.findByRole("button", { name: /cancel/i }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
   });
 
@@ -185,7 +200,11 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       expect(usePluginStore.getState().pluginErrors.demo).toContain("trusted"),
     );
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
-    expect(pluginUninstall).toHaveBeenCalledWith("demo");
+    // #261 — the staged copy is thrown away and NOTHING was installed. There is nothing
+    // to uninstall because the swap never ran.
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(pluginUninstall).not.toHaveBeenCalled();
     expect(loadPlugin).not.toHaveBeenCalled();
   });
 
@@ -198,7 +217,8 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       expect(usePluginStore.getState().pluginErrors.demo).toContain("network"),
     );
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
-    expect(pluginUninstall).toHaveBeenCalledWith("demo");
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
   });
 
   it("persists nothing when the downloaded manifest fails validation", async () => {
@@ -212,7 +232,8 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       expect(usePluginStore.getState().pluginErrors.demo).toContain("invalid"),
     );
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
-    expect(pluginUninstall).toHaveBeenCalled();
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
   });
 
   it("persists nothing when the archive installs under a different id", async () => {
@@ -225,8 +246,11 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     );
     expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
     expect(usePluginStore.getState().installedPlugins.other).toBeUndefined();
-    // Rolled back under the id the files actually landed under, not the listing's.
-    expect(pluginUninstall).toHaveBeenCalledWith("other");
+    // #261 — the files landed nowhere, so there is no "id they landed under" to roll
+    // back. The stage is discarded by its own handle and no directory named `other` was
+    // ever created.
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
   });
 
   it("does not check a tiptapExtensions plugin any more loosely", async () => {
@@ -307,11 +331,15 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("tells the user the plugin is gone when an update fails its checks", async () => {
-    // An update is uninstall-then-install, so a rejected download leaves NOTHING
-    // installed — the working version was already removed. Phase 5 adds three new ways
-    // for the second half to fail, so this outcome has to be stated rather than left as
-    // a bare error next to an empty slot.
+  it("keeps the working version when an update fails its checks", async () => {
+    // ‼️ THIS TEST USED TO ASSERT THE OPPOSITE, and that is the point of #261.
+    //
+    // An update was uninstall-then-install, so a rejected download left NOTHING installed
+    // — the working version had already been removed, and the best the app could do was
+    // say so ("no longer installed — reinstall it from the registry"). Staging removes
+    // the outcome instead of describing it: the escalation is caught between the stage
+    // and the commit, so the installed version was never touched and the update badge is
+    // still there to try again.
     installedAt({ capabilities: ["editor"], trust: "sandboxed" });
     listed = [{ ...ENTRY, version: "2.0.0" }];
     downloadReturns({ ...MANIFEST, trust: "trusted" }); // exceeds the recorded consent
@@ -323,21 +351,90 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     );
 
     await waitFor(() =>
-      expect(usePluginStore.getState().pluginErrors.demo).toMatch(
-        /no longer installed/i,
+      expect(usePluginStore.getState().pluginErrors.demo).toContain("trusted"),
+    );
+    expect(
+      usePluginStore.getState().installedPlugins.demo?.manifest.version,
+    ).toBe("1.0.0");
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(usePluginStore.getState().updateAvailable.demo).toBe("2.0.0");
+  });
+
+  it("keeps the old version when the SWAP itself fails", async () => {
+    // The last failure the staging design has to cover, and the only one that reaches
+    // Rust's rollback: everything passed, the commit was attempted, and the rename failed
+    // anyway (disk full, a permission change). Rust puts the previous version back and
+    // reports the error; the frontend must not record the new version, must discard the
+    // stage, and must leave the old record exactly as it was.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+    pluginInstallCommit.mockRejectedValue(new Error("No space left on device"));
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toContain(
+        "No space left on device",
       ),
     );
-    // Both halves: the reason it failed AND the consequence.
-    expect(usePluginStore.getState().pluginErrors.demo).toContain("trusted");
-    expect(usePluginStore.getState().installedPlugins.demo).toBeUndefined();
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
+    expect(
+      usePluginStore.getState().installedPlugins.demo?.manifest.version,
+    ).toBe("1.0.0");
+    expect(usePluginStore.getState().updateAvailable.demo).toBe("2.0.0");
+    expect(loadPlugin).not.toHaveBeenCalled();
+  });
+
+  it("unloads the old version before swapping the files, and not before staging", async () => {
+    // Ordering, and both halves matter. Unloading BEFORE the commit is required — the
+    // module and its sandbox window are about to be replaced underneath a running
+    // plugin. Unloading before the STAGE would be the old destructive shape wearing a
+    // different name: the download could still be refused with the plugin already torn
+    // down.
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+    const order: string[] = [];
+    unloadPlugin.mockImplementation(() => {
+      order.push("unload");
+      return Promise.resolve();
+    });
+    pluginInstallStage.mockImplementation(() => {
+      order.push("stage");
+      return Promise.resolve({
+        checksum: "sha256:abc",
+        manifest: MANIFEST,
+        stage_id: "stage-1",
+      });
+    });
+    pluginInstallCommit.mockImplementation(() => {
+      order.push("commit");
+      return Promise.resolve({ install_path: "/p/demo", manifest: MANIFEST });
+    });
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+
+    await waitFor(() => expect(order).toEqual(["stage", "unload", "commit"]));
   });
 
   it("keeps a plugin that installed but failed to start — files and record both", async () => {
-    // The rollback marker is cleared once every check has passed, and that line is
-    // load-bearing: without it a failing `loadPlugin` deletes the extracted files while
-    // `addPlugin` has already persisted the record, leaving an entry pointing at nothing.
-    // A plugin that installs and fails to activate is installed-but-broken, which the
-    // error badge says and the enable toggle can retry.
+    // #261 states this as the activation-failure POLICY, not just an implementation
+    // detail: the archive passed the checksum, the manifest, the consent comparison and
+    // the version floor, so the fault is in running the plugin rather than in the copy on
+    // disk. It stays installed with the error against it, and the enable toggle can retry.
+    //
+    // `pendingStage` is cleared the moment the commit succeeds, and that line is
+    // load-bearing: without it a failing `loadPlugin` would discard a stage that no
+    // longer exists while `addPlugin` has already persisted the record.
     loadPlugin.mockRejectedValue(new Error("activate timed out"));
     await clickInstall();
     await confirmConsent();
@@ -349,6 +446,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     );
     expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
     expect(pluginUninstall).not.toHaveBeenCalled();
+    expect(pluginInstallDiscard).not.toHaveBeenCalled();
   });
 
   it("calls an update an update, even when there is no consent record to compare", async () => {
@@ -402,10 +500,10 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
         /not in the registry/i,
       ),
     );
-    // The plugin is untouched — not uninstalled, not downloaded.
+    // The plugin is untouched — not unloaded, not downloaded.
     expect(unloadPlugin).not.toHaveBeenCalled();
     expect(pluginUninstall).not.toHaveBeenCalled();
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
     expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
   });
 
@@ -425,10 +523,11 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(dialog.textContent).toContain("NEW");
   });
 
-  it("does not reinstall over a plugin whose removal failed", async () => {
-    // §260 Phase 5 code review. `handleUninstall` swallows its failure by design, so the
-    // old record survives — and a presence check after the failed reinstall would then
-    // see it and report success for an update that never happened.
+  it("does not swap the files when the old version will not shut down", async () => {
+    // A wedged teardown must abort the update, not proceed: replacing the files under a
+    // plugin whose module, sandbox window and command registrations are all still live
+    // is worse than not updating at all. The stage is discarded and the old version keeps
+    // running, badge and all.
     installedAt({ capabilities: ["editor"], trust: "sandboxed" });
     listed = [{ ...ENTRY, version: "2.0.0" }];
     unloadPlugin.mockRejectedValue(new Error("teardown wedged"));
@@ -444,7 +543,8 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
         "teardown wedged",
       ),
     );
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
     // Still installed, and the badge still says an update is available.
     expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
     expect(usePluginStore.getState().updateAvailable.demo).toBe("2.0.0");
@@ -462,7 +562,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     fireEvent.click(install);
 
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
   });
 
   it("refuses a legacy entry in the handler too, not only at the button", async () => {
@@ -488,7 +588,7 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
       ),
     );
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(pluginInstall).not.toHaveBeenCalled();
+    expect(pluginInstallStage).not.toHaveBeenCalled();
     // Nothing was removed either — a refusal must not be destructive.
     expect(usePluginStore.getState().installedPlugins.demo).toBeDefined();
   });
