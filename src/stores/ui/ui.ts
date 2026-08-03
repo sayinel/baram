@@ -46,6 +46,12 @@ export interface ToastState {
 export type UnsavedModalRequest =
   { intent: "closeTab"; tabId: string } | { intent: "quit" };
 
+/** §298 vim §8 — one atomic status: which SURFACE owns the indicator. */
+export interface VimStatus {
+  mode: VimStatusMode;
+  surface: "source" | "wysiwyg";
+}
+
 /** §298 vim S3 — current vim mode shown in the StatusBar (null = vim off or
  *  not in source mode). Mirrors vim-ime-guard's VimModeName; defined here
  *  because ui.ts is the canonical home for UI-facing unions. */
@@ -103,7 +109,7 @@ interface UIState {
   setSidebarWidth: (width: number) => void;
   settingsOpen: boolean;
   /** §298 vim S3 — fed by SourceCodeEditor's vim controller */
-  setVimStatusMode: (mode: null | VimStatusMode) => void;
+  setVimStatus: (status: null | VimStatus) => void;
   /** Show a transient toast (auto-dismisses after a few seconds) */
   showToast: (message: string, type?: "error" | "info" | "warning") => void;
   sidebarOpen: boolean;
@@ -127,7 +133,7 @@ interface UIState {
   triggerContentReload: (cursorEnd?: boolean) => void;
   /** §close-guard: Shared unsaved-changes modal request (null = closed) */
   unsavedModal: null | UnsavedModalRequest;
-  vimStatusMode: null | VimStatusMode;
+  vimStatus: null | VimStatus;
   /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
   zettelTitleDialog: {
     /** Confirm-button label (e.g. "Create" | "Promote") */
@@ -163,7 +169,7 @@ export const useUIStore = create<UIState>((set) => ({
   pendingApplyContent: null,
   quickCaptureOpen: false,
   unsavedModal: null,
-  vimStatusMode: null,
+  vimStatus: null,
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
@@ -194,7 +200,7 @@ export const useUIStore = create<UIState>((set) => ({
   setSidebarPanel: (panel) => set({ sidebarPanel: panel }),
 
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
-  setVimStatusMode: (mode) => set({ vimStatusMode: mode }),
+  setVimStatus: (status) => set({ vimStatus: status }),
 
   toggleRightPanel: () =>
     set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),

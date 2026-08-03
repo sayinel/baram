@@ -61,9 +61,12 @@ interface StatusBarProps {
 export function StatusBar({ editor, mode }: StatusBarProps) {
   // §298 vim S3 — repo rule: store subscriptions use the useShallow selector
   // form without exception (AGENTS.md), even for a single scalar.
-  const { vimStatusMode } = useUIStore(
-    useShallow((s) => ({ vimStatusMode: s.vimStatusMode })),
+  const { vimStatus } = useUIStore(
+    useShallow((s) => ({ vimStatus: s.vimStatus })),
   );
+  // §298 vim §8 — the indicator renders only when the ACTIVE surface owns
+  // the status: a stale value from the other surface stays invisible.
+  const vimSurface = mode === "source" ? "source" : "wysiwyg";
   // §4.8 Live word count + cursor position. The Tiptap Editor instance is a
   // stable reference whose `.state` mutates in place, so a `useMemo([editor])`
   // never recomputes on typing or cursor moves — it stayed frozen at the empty
@@ -246,9 +249,9 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
         {/* §298 vim S3 — only in source mode AND with a live vim session:
             the store is reset on toggle-off/unmount, and the mode gate
             defends against any stale value (Codex plan review). */}
-        {mode === "source" && vimStatusMode && (
+        {vimStatus && vimStatus.surface === vimSurface && (
           <span className="status-mode status-vim-mode">
-            -- {vimStatusMode.toUpperCase()} --
+            -- {vimStatus.mode.toUpperCase()} --
           </span>
         )}
         {isRepo && branch && (

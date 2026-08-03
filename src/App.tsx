@@ -33,6 +33,7 @@ import { TableSelectionHandles } from "./components/toolbar/TableSelectionHandle
 import { TableToolbar } from "./components/toolbar/TableToolbar";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
+import { setWysiwygVimStatusOwner } from "./extensions/plugins/vim/vim-status";
 import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useAutoSnapshot } from "./hooks/use-auto-snapshot";
@@ -475,6 +476,13 @@ function App() {
     toggleSourceMode,
     handleSourceChange,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
+
+  // §298 vim §8 — appoint the wysiwyg vim status owner. The source surface
+  // has its own feeder, so the wysiwyg owner is vacated while it is active;
+  // switching owners replays the new snapshot at once (잔상 제거).
+  useEffect(() => {
+    setWysiwygVimStatusOwner(isSourceMode ? null : activeEditor);
+  }, [activeEditor, isSourceMode]);
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(

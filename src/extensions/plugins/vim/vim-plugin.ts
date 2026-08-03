@@ -40,6 +40,10 @@ import { step } from "./core/state-machine";
 import { initialCoreState } from "./core/types";
 import { collapseTarget, moveVisualHead } from "./core/visual-state";
 import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
+import {
+  clearWysiwygVimStatusFor,
+  publishWysiwygVimStatus,
+} from "./vim-status";
 
 export interface VimPluginState {
   core: VimCoreState;
@@ -164,6 +168,15 @@ export function createVimPlugin(): Plugin<VimPluginState> {
 
       /** §3 second line of defence: no text lands while modal. */
       handleTextInput: (view) => isModal(read(view.state)),
+    },
+
+    /** §8 status feed — owner-gated inside vim-status. */
+    view: (editorView) => {
+      publishWysiwygVimStatus(editorView);
+      return {
+        destroy: () => clearWysiwygVimStatusFor(editorView),
+        update: (view) => publishWysiwygVimStatus(view),
+      };
     },
 
     state: {

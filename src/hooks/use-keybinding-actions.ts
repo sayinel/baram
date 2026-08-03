@@ -245,7 +245,7 @@ export function useGlobalKeyboard({
         e.defaultPrevented &&
         e.target instanceof Element &&
         e.target.closest(".source-code-editor") !== null &&
-        useUIStore.getState().vimStatusMode !== null;
+        useUIStore.getState().vimStatus?.surface === "source";
       if (isVimSourceEvent) return;
 
       if (command) {
