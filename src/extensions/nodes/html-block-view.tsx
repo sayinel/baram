@@ -5,6 +5,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import DOMPurify from "dompurify";
 
 import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -61,8 +62,12 @@ export function HtmlBlockView({
   updateAttributesRef.current = updateAttributes;
 
   // Sync local content and focus textarea when entering edit mode
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+
   useEffect(() => {
-    if (selected) {
+    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalContent(contentRef.current);
       setTimeout(() => {
         const ta = textareaRef.current;

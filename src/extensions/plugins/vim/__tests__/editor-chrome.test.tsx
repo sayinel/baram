@@ -21,7 +21,7 @@ import type { Transaction } from "@tiptap/pm/state";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { fireEvent } from "@testing-library/react";
 import { Extension, Editor as TiptapEditor } from "@tiptap/core";
-import { Plugin } from "@tiptap/pm/state";
+import { NodeSelection, Plugin } from "@tiptap/pm/state";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -289,5 +289,48 @@ describe("CalloutView type picker (§12-⑩ wiring)", () => {
 
     fireEvent.click(view.getByTitle("Warning"));
     expect(calloutType(editor)).toBe("tip");
+  });
+});
+
+describe("block-atom cursor does not enter NodeView editing (S5-b review)", () => {
+  it("selecting a math block while modal keeps vim unsuspended", async () => {
+    const editor = makeEditor();
+    render(<EditorContent editor={editor} />);
+    act(() => {
+      editor.commands.setContent({
+        content: [
+          { content: [{ text: "up", type: "text" }], type: "paragraph" },
+          { attrs: { latex: "x" }, type: "mathBlock" },
+        ],
+        type: "doc",
+      });
+      // setContent normalizes the selection to the end, which lands a
+      // NodeSelection on the trailing atom and legitimately enters edit
+      // mode while vim is still OFF — park the caret first.
+      editor.commands.setTextSelection(1);
+    });
+    await flush();
+
+    enableVimNormal(editor);
+    let mathPos = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === "mathBlock") mathPos = pos;
+      return mathPos < 0;
+    });
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          NodeSelection.create(editor.state.doc, mathPos),
+        ),
+      );
+    });
+    await flush();
+
+    const vim = vimPluginKey.getState(editor.state) as unknown as {
+      suspended: boolean;
+    };
+    expect(vim.suspended).toBe(false);
+    expect(document.activeElement instanceof HTMLTextAreaElement).toBe(false);
+    expect(editor.view.dom.classList.contains("vim-modal")).toBe(true);
   });
 });

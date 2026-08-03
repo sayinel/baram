@@ -10,6 +10,7 @@ import { Sparkles } from "lucide-react";
 import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { mathBlockEntryKey } from "./math-block";
 import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
@@ -38,6 +39,10 @@ export function MathBlockView({
   // the block nears the viewport, mirroring mermaid/code. A selected block
   // (edit-entry) bypasses the gate so find/nav into an unrendered block works.
   const [isVisible, setIsVisible] = useState(false);
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -72,7 +77,7 @@ export function MathBlockView({
 
   // Sync local formula and focus textarea when entering edit mode
   useEffect(() => {
-    if (selected) {
+    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
       const entryState = mathBlockEntryKey.getState(editorRef.current.state);

@@ -17,3 +17,12 @@
   vertical-align: text-bottom;
   border-left: 2px solid var(--color-accent-default);
 }
+
+/* Block-atom cursor line (NodeSelection): neither the repo nor Tiptap's
+   core CSS styles .ProseMirror-selectednode, so a bare atom (horizontal
+   rule 등) would carry an invisible cursor. Scoped to vim modal. */
+.vim-modal .ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 1px;
+  border-radius: 2px;
+}

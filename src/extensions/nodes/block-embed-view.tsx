@@ -7,6 +7,7 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 
 import { useEmbedSync } from "../../hooks/use-embed-sync";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -35,8 +36,18 @@ export function BlockEmbedView({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Enter editing when selected + content ready; exit when deselected
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+
   useEffect(() => {
-    if (selected && status === "ready" && content !== null && !isEditing) {
+    if (
+      selected &&
+      !isWysiwygVimModal(vimGateEditorRef.current.state) &&
+      status === "ready" &&
+      content !== null &&
+      !isEditing
+    ) {
       startEditing();
       setLocalText(content);
       setTimeout(() => {

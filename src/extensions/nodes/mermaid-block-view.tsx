@@ -17,6 +17,7 @@ import {
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
@@ -55,6 +56,10 @@ export function MermaidBlockView({
 
   // Defer rendering until the block is near the viewport (§perf-large-file)
   const [isVisible, setIsVisible] = useState(false);
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -111,7 +116,7 @@ export function MermaidBlockView({
 
   // Sync local code and focus textarea when entering edit mode
   useEffect(() => {
-    if (selected) {
+    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalCode(codeRef.current);
       const entryState = mermaidBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";

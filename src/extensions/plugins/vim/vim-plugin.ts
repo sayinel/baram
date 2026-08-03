@@ -71,7 +71,7 @@ export function createVimPlugin(): Plugin<VimPluginState> {
        *  computeDocDeco, and this plugin sorts before the core Tabindex
        *  extension (priority 10000). */
       attributes: (state): Record<string, string> =>
-        isModal(read(state)) ? { tabindex: "0" } : {},
+        isModal(read(state)) ? { class: "vim-modal", tabindex: "0" } : {},
 
       /** §10 block cursor — the native caret does not render on a
        *  non-editable view, so normal mode paints the unit under the vim

@@ -28,6 +28,7 @@ import {
   setSvgRootWidth,
 } from "../../utils/markdown/svg-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { svgBlockEntryKey } from "./svg-block";
 import { BlockCaption } from "./views/BlockCaption";
@@ -81,8 +82,12 @@ export function SvgBlockView({
   );
 
   // Sync local code + focus textarea when entering edit mode; save on deselect.
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+
   useEffect(() => {
-    if (selected) {
+    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalCode(codeRef.current);
       const entryState = svgBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
