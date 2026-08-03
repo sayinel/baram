@@ -77,7 +77,12 @@ export function MathBlockView({
 
   // Sync local formula and focus textarea when entering edit mode
   useEffect(() => {
-    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
+    if (!selected) {
+      // Save on deselect
+      if (localFormulaRef.current !== formulaRef.current) {
+        updateAttributesRef.current({ formula: localFormulaRef.current });
+      }
+    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
       const entryState = mathBlockEntryKey.getState(editorRef.current.state);
@@ -93,11 +98,6 @@ export function MathBlockView({
           ta.setSelectionRange(0, 0);
         }
       }, 0);
-    } else {
-      // Save on deselect
-      if (localFormulaRef.current !== formulaRef.current) {
-        updateAttributesRef.current({ formula: localFormulaRef.current });
-      }
     }
   }, [selected]);
 

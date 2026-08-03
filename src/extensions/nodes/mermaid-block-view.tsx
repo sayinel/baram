@@ -116,7 +116,13 @@ export function MermaidBlockView({
 
   // Sync local code and focus textarea when entering edit mode
   useEffect(() => {
-    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
+    if (!selected) {
+      // Save on deselect
+      if (localCodeRef.current !== codeRef.current) {
+        updateAttributesRef.current({ code: localCodeRef.current });
+      }
+      setShowTemplates(false);
+    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalCode(codeRef.current);
       const entryState = mermaidBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
@@ -131,12 +137,6 @@ export function MermaidBlockView({
           ta.setSelectionRange(0, 0);
         }
       }, 0);
-    } else {
-      // Save on deselect
-      if (localCodeRef.current !== codeRef.current) {
-        updateAttributesRef.current({ code: localCodeRef.current });
-      }
-      setShowTemplates(false);
     }
   }, [selected]);
 

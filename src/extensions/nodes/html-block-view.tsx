@@ -67,7 +67,12 @@ export function HtmlBlockView({
   vimGateEditorRef.current = editor;
 
   useEffect(() => {
-    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
+    if (!selected) {
+      // Save on deselect
+      if (localContentRef.current !== contentRef.current) {
+        updateAttributesRef.current({ content: localContentRef.current });
+      }
+    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalContent(contentRef.current);
       setTimeout(() => {
         const ta = textareaRef.current;
@@ -75,11 +80,6 @@ export function HtmlBlockView({
         ta.focus();
         ta.setSelectionRange(0, 0);
       }, 0);
-    } else {
-      // Save on deselect
-      if (localContentRef.current !== contentRef.current) {
-        updateAttributesRef.current({ content: localContentRef.current });
-      }
     }
   }, [selected]);
 

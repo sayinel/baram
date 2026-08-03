@@ -87,7 +87,14 @@ export function SvgBlockView({
   vimGateEditorRef.current = editor;
 
   useEffect(() => {
-    if (selected && !isWysiwygVimModal(vimGateEditorRef.current.state)) {
+    if (!selected) {
+      // Save on DESELECT only — a modal (vim-cursor) selection must neither
+      // enter editing nor run this branch, which would restore a stale
+      // local value over fresh attrs (S5/S6 review).
+      if (localCodeRef.current !== codeRef.current) {
+        updateAttributesRef.current({ code: localCodeRef.current });
+      }
+    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
       setLocalCode(codeRef.current);
       const entryState = svgBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
@@ -101,8 +108,6 @@ export function SvgBlockView({
           enteredFromBelow ? end : 0,
         );
       }, 0);
-    } else if (localCodeRef.current !== codeRef.current) {
-      updateAttributesRef.current({ code: localCodeRef.current });
     }
   }, [selected]);
 

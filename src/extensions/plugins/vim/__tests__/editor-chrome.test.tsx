@@ -333,4 +333,45 @@ describe("block-atom cursor does not enter NodeView editing (S5-b review)", () =
     expect(document.activeElement instanceof HTMLTextAreaElement).toBe(false);
     expect(editor.view.dom.classList.contains("vim-modal")).toBe(true);
   });
+
+  it("a modal selection never restores stale local content (S5/S6 review)", async () => {
+    const editor = makeEditor();
+    render(<EditorContent editor={editor} />);
+    act(() => {
+      editor.commands.setContent({
+        content: [
+          { content: [{ text: "up", type: "text" }], type: "paragraph" },
+          { attrs: { formula: "old" }, type: "mathBlock" },
+        ],
+        type: "doc",
+      });
+      editor.commands.setTextSelection(1);
+    });
+    await flush();
+
+    // External update while UNSELECTED (an AI apply, a merge, …).
+    let mathPos = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === "mathBlock") mathPos = pos;
+      return mathPos < 0;
+    });
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(mathPos, undefined, { formula: "fresh" }),
+      );
+    });
+    await flush();
+
+    enableVimNormal(editor);
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          NodeSelection.create(editor.state.doc, mathPos),
+        ),
+      );
+    });
+    await flush();
+
+    expect(editor.state.doc.nodeAt(mathPos)?.attrs.formula).toBe("fresh");
+  });
 });
