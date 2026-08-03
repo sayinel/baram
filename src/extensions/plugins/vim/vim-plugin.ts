@@ -266,6 +266,7 @@ export function createVimPlugin(
         if (tr.docChanged) {
           const visual = prev.core.visual
             ? {
+                ...prev.core.visual,
                 anchorCursor: tr.mapping.map(prev.core.visual.anchorCursor),
                 headCursor: tr.mapping.map(prev.core.visual.headCursor),
               }

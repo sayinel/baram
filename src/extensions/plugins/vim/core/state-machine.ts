@@ -156,6 +156,11 @@ function normalKey(
       return emit(next, { after: true, count, type: "paste" });
     case "u":
       return emit(next, { count, type: "undo" });
+    case "V":
+      return emit(
+        { ...next, mode: "visual", visual: startVisual(ctx.cursor, "line") },
+        { type: "enterVisual" },
+      );
     case "v":
       return emit(
         { ...next, mode: "visual", visual: startVisual(ctx.cursor) },
@@ -247,7 +252,30 @@ function visualKey(state: VimCoreState, token: KeyToken): StepResult {
     case "d":
     case "x":
       return emit(cleared, { type: "deleteVisual" });
+    case "V":
+      // vim: V in charwise switches the kind; V in linewise exits.
+      if (state.visual?.kind === "line") {
+        return emit(cleared, { type: "leaveVisual" });
+      }
+      return emit(
+        {
+          ...state,
+          count: null,
+          visual: state.visual ? { ...state.visual, kind: "line" } : null,
+        },
+        { type: "enterVisual" },
+      );
     case "v":
+      if (state.visual?.kind === "line") {
+        return emit(
+          {
+            ...state,
+            count: null,
+            visual: { ...state.visual, kind: "char" },
+          },
+          { type: "enterVisual" },
+        );
+      }
       return emit(cleared, { type: "leaveVisual" });
     case "y":
       return emit(cleared, { type: "yankVisual" });

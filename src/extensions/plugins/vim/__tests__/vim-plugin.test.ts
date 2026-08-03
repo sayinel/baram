@@ -501,3 +501,51 @@ describe("Korean input source (device report)", () => {
     ).toBe("two");
   });
 });
+
+describe("V — linewise visual through the plugin", () => {
+  it("V from mid-line, d deletes the WHOLE line", () => {
+    const editor = makeEditor("<p>alpha</p><p>beta</p>");
+    editor.commands.setTextSelection(3); // middle of alpha
+    enable(editor);
+    key(editor, "V");
+    // rendered selection covers the full line, not from the cursor
+    expect(editor.state.selection.from).toBeLessThanOrEqual(1);
+    key(editor, "d");
+    expect(editor.state.doc.textContent).toBe("beta");
+  });
+
+  it("V j d deletes two lines and fills a LINE register that p pastes", () => {
+    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "V");
+    key(editor, "j");
+    key(editor, "d");
+    expect(editor.state.doc.textContent).toBe("tri");
+    expect(readVimRegister()).toMatchObject({ kind: "line" });
+    key(editor, "p");
+    expect(editor.state.doc.textContent).toBe("trionetwo");
+  });
+
+  it("V y yanks lines without touching the document", () => {
+    const editor = makeEditor("<p>one</p><p>two</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "V");
+    key(editor, "y");
+    expect(editor.state.doc.textContent).toBe("onetwo");
+    expect(readVimRegister()).toMatchObject({ kind: "line" });
+    expect(vim(editor).mode).toBe("normal");
+  });
+
+  it("Esc leaves linewise visual collapsing to the vim head", () => {
+    const editor = makeEditor("<p>one</p><p>two</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "V");
+    key(editor, "j");
+    key(editor, "Escape");
+    expect(vim(editor).mode).toBe("normal");
+    expect(editor.state.selection.empty).toBe(true);
+  });
+});

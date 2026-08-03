@@ -127,6 +127,30 @@ export function deleteVisual(
   };
 }
 
+/**
+ * Linewise visual as "dd/yy with a count": the first covered line's cursor
+ * plus how many line units the range spans — the operators then reuse the
+ * fully reviewed deleteLine/yankLine walks (registers, tables, containers).
+ */
+export function linewiseSpan(
+  state: EditorState,
+  visual: VisualState,
+): { count: number; start: number } {
+  const lo = Math.min(visual.anchorCursor, visual.headCursor);
+  const hi = Math.max(visual.anchorCursor, visual.headCursor);
+  let count = 1;
+  let cursor = lo;
+  for (;;) {
+    const succ = successorCursor(state, resolveLineUnit(state, cursor));
+    if (succ === null || succ > hi) break;
+    const next = descendToLineStart(state, succ);
+    if (next === null || next > hi) break;
+    cursor = next;
+    count++;
+  }
+  return { count, start: lo };
+}
+
 /** Inclusive realization of the visual selection (§6): the unit under the
  *  trailing cursor is part of the range — a BLOCK atom line counts as one
  *  whole unit too (review S3-R1: nextUnitBoundary is textblock-only and
@@ -135,6 +159,22 @@ export function visualBounds(
   state: EditorState,
   visual: VisualState,
 ): { from: number; to: number } {
+  if (visual.kind === "line") {
+    const span = linewiseSpan(state, visual);
+    const firstUnit = resolveLineUnit(state, span.start);
+    let last = span.start;
+    for (let i = 1; i < span.count; i++) {
+      const succ = successorCursor(state, resolveLineUnit(state, last));
+      if (succ === null) break;
+      const next = descendToLineStart(state, succ);
+      if (next === null) break;
+      last = next;
+    }
+    return {
+      from: lineUnitStart(firstUnit),
+      to: unitEnd(state, resolveLineUnit(state, last)),
+    };
+  }
   const max = Math.max(visual.anchorCursor, visual.headCursor);
   const $max = state.doc.resolve(max);
   if (!$max.parent.isTextblock) {
@@ -185,8 +225,6 @@ export function yankVisual(
     tr: null,
   };
 }
-
-// ── single-unit building blocks (private) ─────────────────────────────────
 
 /** §9 nested-list pin (spike #7): one replaceWith lifts the children. When
  *  the item is its list's only child, the LIST goes with it. Heterogeneous
@@ -285,6 +323,8 @@ function buildListItemDelete(
     ),
   };
 }
+
+// ── single-unit building blocks (private) ─────────────────────────────────
 
 /** Deleting everything must leave one empty paragraph — vim's dd on the only
  *  line clears it, it does not produce an (unschematic) empty doc. */
@@ -408,6 +448,14 @@ function descendToLineStart(state: EditorState, pos: number): null | number {
     p++; // climb out of a closing boundary
   }
   return null;
+}
+
+/** Content-side start of a line unit, for rendering the linewise range. */
+function lineUnitStart(unit: LineUnit): number {
+  if (unit.kind === "hardBreakSegment") return unit.from;
+  if (unit.kind === "listItem") return unit.itemPos + 1;
+  if (unit.kind === "tableRow") return unit.rowPos + 1;
+  return (unit.containerPos ?? unit.blockPos) + 1;
 }
 
 // ── shared helpers ─────────────────────────────────────────────────────────

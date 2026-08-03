@@ -12,7 +12,11 @@ import {
 
 describe("anchor behaviour", () => {
   it("starts collapsed on the cursor", () => {
-    expect(startVisual(7)).toEqual({ anchorCursor: 7, headCursor: 7 });
+    expect(startVisual(7)).toEqual({
+      anchorCursor: 7,
+      headCursor: 7,
+      kind: "char",
+    });
   });
 
   it("keeps the anchor fixed through a direction inversion", () => {

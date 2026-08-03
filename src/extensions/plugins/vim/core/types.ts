@@ -90,6 +90,8 @@ export type VimMode = "insert" | "normal" | "visual";
 export interface VisualState {
   anchorCursor: number;
   headCursor: number;
+  /** v = charwise, V = linewise (§6). */
+  kind: "char" | "line";
 }
 
 export function initialCoreState(mode: VimMode = "normal"): VimCoreState {

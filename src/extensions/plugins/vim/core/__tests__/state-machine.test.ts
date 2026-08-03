@@ -55,7 +55,11 @@ describe("mode entry and exit", () => {
   it("v anchors visual at the supplied cursor; Escape collapses it", () => {
     const entered = step(initialCoreState(), key("v"), { cursor: 42 });
     expect(entered.command).toEqual({ type: "enterVisual" });
-    expect(entered.state.visual).toEqual({ anchorCursor: 42, headCursor: 42 });
+    expect(entered.state.visual).toEqual({
+      anchorCursor: 42,
+      headCursor: 42,
+      kind: "char",
+    });
 
     const left = step(entered.state, key("Escape"), { cursor: 42 });
     expect(left.command).toEqual({ type: "leaveVisual" });
@@ -126,7 +130,7 @@ describe("visual mode keys", () => {
     count: null,
     mode: "visual",
     pending: null,
-    visual: { anchorCursor: 5, headCursor: 9 },
+    visual: { anchorCursor: 5, headCursor: 9, kind: "char" },
   });
 
   it("d and x both delete the selection and return to normal", () => {
@@ -245,5 +249,57 @@ describe("arrow keys are motions (device report)", () => {
       type: "move",
     });
     expect(result.state.mode).toBe("visual");
+  });
+});
+
+describe("V — linewise visual", () => {
+  it("V in normal enters LINEWISE visual anchored at the cursor", () => {
+    const r = step(initialCoreState("normal"), key("V", { shift: true }), {
+      cursor: 7,
+    });
+    expect(r.command).toEqual({ type: "enterVisual" });
+    expect(r.state.mode).toBe("visual");
+    expect(r.state.visual).toEqual({
+      anchorCursor: 7,
+      headCursor: 7,
+      kind: "line",
+    });
+  });
+
+  it("V inside charwise visual switches the KIND, keeping the range", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("v"), { cursor: 3 }).state;
+    const r = step(state, key("V", { shift: true }), { cursor: 3 });
+    expect(r.state.visual).toEqual({
+      anchorCursor: 3,
+      headCursor: 3,
+      kind: "line",
+    });
+    expect(r.command).toEqual({ type: "enterVisual" }); // re-render
+  });
+
+  it("V inside linewise visual exits to normal", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("V", { shift: true }), { cursor: 3 }).state;
+    const r = step(state, key("V", { shift: true }), { cursor: 3 });
+    expect(r.state.mode).toBe("normal");
+    expect(r.command).toEqual({ type: "leaveVisual" });
+  });
+
+  it("v inside linewise visual switches back to charwise", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("V", { shift: true }), { cursor: 3 }).state;
+    const r = step(state, key("v"), { cursor: 3 });
+    expect(r.state.visual?.kind).toBe("char");
+    expect(r.state.mode).toBe("visual");
+  });
+
+  it("v still starts CHARWISE visual", () => {
+    const r = step(initialCoreState("normal"), key("v"), { cursor: 5 });
+    expect(r.state.visual).toEqual({
+      anchorCursor: 5,
+      headCursor: 5,
+      kind: "char",
+    });
   });
 });

@@ -15,6 +15,7 @@ import {
   deleteCharForward,
   deleteLine,
   deleteVisual,
+  linewiseSpan,
   type OperationOutcome,
   yankLine,
   yankVisual,
@@ -48,9 +49,14 @@ export function executeCoreCommand(
       );
     case "deleteLine":
       return dispatchOutcome(view, deleteLine(state, head, command.count));
-    case "deleteVisual":
+    case "deleteVisual": {
       if (!visual) return {};
+      if (visual.kind === "line") {
+        const span = linewiseSpan(state, visual);
+        return dispatchOutcome(view, deleteLine(state, span.start, span.count));
+      }
       return dispatchOutcome(view, deleteVisual(state, visual));
+    }
     case "enterInsert": {
       // Cursor placement for i/a/I/A refines in S3 (grapheme-aware a, line
       // ends). i keeps the head; the others approximate to it until then.
@@ -96,9 +102,14 @@ export function executeCoreCommand(
       return {};
     case "yankLine":
       return dispatchOutcome(view, yankLine(state, head, command.count));
-    case "yankVisual":
+    case "yankVisual": {
       if (!visual) return {};
+      if (visual.kind === "line") {
+        const span = linewiseSpan(state, visual);
+        return dispatchOutcome(view, yankLine(state, span.start, span.count));
+      }
       return dispatchOutcome(view, yankVisual(state, visual));
+    }
   }
 }
 

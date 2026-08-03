@@ -30,11 +30,14 @@ export function moveVisualHead(
   visual: VisualState,
   headCursor: number,
 ): VisualState {
-  return { anchorCursor: visual.anchorCursor, headCursor };
+  return { ...visual, headCursor };
 }
 
-export function startVisual(cursor: number): VisualState {
-  return { anchorCursor: cursor, headCursor: cursor };
+export function startVisual(
+  cursor: number,
+  kind: "char" | "line" = "char",
+): VisualState {
+  return { anchorCursor: cursor, headCursor: cursor, kind };
 }
 
 /**

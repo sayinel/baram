@@ -254,6 +254,7 @@ describe("visual d/y (§6 inclusive)", () => {
     const visual = {
       anchorCursor: posOfText(editor, "b"),
       headCursor: posOfText(editor, "d"),
+      kind: "char" as const,
     };
     const out = deleteVisual(editor.state, visual);
     expect(applied(editor, out.tr).textContent).toBe("aef");
@@ -264,6 +265,7 @@ describe("visual d/y (§6 inclusive)", () => {
     const visual = {
       anchorCursor: posOfText(editor, "d"),
       headCursor: posOfText(editor, "b"),
+      kind: "char" as const,
     };
     const out = yankVisual(editor.state, visual);
     const paste = pasteRegister(
@@ -281,6 +283,7 @@ describe("visual d/y (§6 inclusive)", () => {
     const visual = {
       anchorCursor: posOfText(editor, "b"),
       headCursor: posOfText(editor, "c"),
+      kind: "char" as const,
     };
     const out = yankVisual(editor.state, visual);
     const target = makeEditor("<p>xy</p>");
