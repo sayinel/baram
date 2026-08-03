@@ -22,7 +22,11 @@ import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
-import { StatusBar } from "./components/layout/StatusBar";
+import {
+  type EditorMode,
+  StatusBar,
+  vimSurfaceForMode,
+} from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
 import { BlockHandle } from "./components/toolbar/BlockHandle";
@@ -477,12 +481,23 @@ function App() {
     handleSourceChange,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
-  // §298 vim §8 — appoint the wysiwyg vim status owner. The source surface
-  // has its own feeder, so the wysiwyg owner is vacated while it is active;
-  // switching owners replays the new snapshot at once (잔상 제거).
+  // §298 vim §8 — ONE surface computation feeds both the StatusBar and the
+  // wysiwyg status owner. Only the wysiwyg surface appoints an owner: the
+  // source surface (markdown source mode AND non-markdown code tabs) has
+  // its own feeder, and graph/preview own no vim surface — a hidden Tiptap
+  // view update must never overwrite them (S5-a review).
+  const statusBarMode: EditorMode = isGraphTabActive
+    ? "graph"
+    : isPdfTab || (isHtmlTab && !isHtmlSourceView)
+      ? "preview"
+      : isCodeFile || isSourceMode
+        ? "source"
+        : "wysiwyg";
   useEffect(() => {
-    setWysiwygVimStatusOwner(isSourceMode ? null : activeEditor);
-  }, [activeEditor, isSourceMode]);
+    setWysiwygVimStatusOwner(
+      vimSurfaceForMode(statusBarMode) === "wysiwyg" ? activeEditor : null,
+    );
+  }, [activeEditor, statusBarMode]);
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
@@ -750,18 +765,7 @@ function App() {
       <AppLayout
         statusBar={
           rootPath ? (
-            <StatusBar
-              editor={activeEditor}
-              mode={
-                isGraphTabActive
-                  ? "graph"
-                  : isPdfTab || (isHtmlTab && !isHtmlSourceView)
-                    ? "preview"
-                    : isCodeFile || isSourceMode
-                      ? "source"
-                      : "wysiwyg"
-              }
-            />
+            <StatusBar editor={activeEditor} mode={statusBarMode} />
           ) : undefined
         }
       >

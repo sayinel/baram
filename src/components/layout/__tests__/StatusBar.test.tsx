@@ -257,3 +257,30 @@ describe("StatusBar — vim mode indicator (§298 S3)", () => {
     expect(screen.getByText("-- REPLACE --")).toBeInTheDocument();
   });
 });
+
+describe("vim surface arbitration (§8, S5-a review)", () => {
+  it("graph and preview render NO vim indicator, either surface", () => {
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "wysiwyg" });
+    for (const mode of ["graph", "preview"] as const) {
+      const { unmount } = render(<StatusBar editor={null} mode={mode} />);
+      expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+      unmount();
+    }
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" });
+    const { unmount } = render(<StatusBar editor={null} mode="graph" />);
+    expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+    unmount();
+    useUIStore.getState().setVimStatus(null);
+  });
+
+  it("a wysiwyg status shows on the wysiwyg surface only", () => {
+    useUIStore.getState().setVimStatus({ mode: "visual", surface: "wysiwyg" });
+    const wys = render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.queryByText(/-- VISUAL --/)).not.toBeNull();
+    wys.unmount();
+    const src = render(<StatusBar editor={null} mode="source" />);
+    expect(screen.queryByText(/-- VISUAL --/)).toBeNull();
+    src.unmount();
+    useUIStore.getState().setVimStatus(null);
+  });
+});

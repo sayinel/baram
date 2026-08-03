@@ -341,7 +341,9 @@ describe("impl review S3-R4 pins", () => {
       const top = posOfText(editor, "p0");
       const t0 = performance.now();
       const target = resolveMotion(editor.state, top, "lineDown", 3999);
-      expect(performance.now() - t0).toBeLessThan(250);
+      // Signal is the ~seconds-scale quadratic blowup; headroom for
+      // full-suite worker contention (277ms observed on a healthy run).
+      expect(performance.now() - t0).toBeLessThan(600);
       expect(editor.state.doc.resolve(target).parent.textContent).toBe("p3999");
     },
   );

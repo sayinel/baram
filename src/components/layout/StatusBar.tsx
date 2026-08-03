@@ -39,6 +39,19 @@ import { PluginStatusBarItems } from "./PluginStatusBarItems";
 
 export type EditorMode = "graph" | "preview" | "source" | "wysiwyg";
 
+/** §298 vim §8 — which vim surface a StatusBar mode belongs to. The SAME
+ *  mapping appoints the wysiwyg status owner (App) and arbitrates the
+ *  indicator here; graph/preview map to null so neither surface renders
+ *  and no owner is appointed. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function vimSurfaceForMode(
+  mode: EditorMode,
+): "source" | "wysiwyg" | null {
+  if (mode === "source") return "source";
+  if (mode === "wysiwyg") return "wysiwyg";
+  return null;
+}
+
 const MODE_LABELS: Record<EditorMode, string> = {
   graph: "Graph",
   preview: "Preview",
@@ -65,8 +78,9 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     useShallow((s) => ({ vimStatus: s.vimStatus })),
   );
   // §298 vim §8 — the indicator renders only when the ACTIVE surface owns
-  // the status: a stale value from the other surface stays invisible.
-  const vimSurface = mode === "source" ? "source" : "wysiwyg";
+  // the status: a stale value from the other surface stays invisible, and
+  // graph/preview own no surface at all.
+  const vimSurface = vimSurfaceForMode(mode);
   // §4.8 Live word count + cursor position. The Tiptap Editor instance is a
   // stable reference whose `.state` mutates in place, so a `useMemo([editor])`
   // never recomputes on typing or cursor moves — it stayed frozen at the empty
