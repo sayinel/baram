@@ -385,4 +385,72 @@ describe("block-atom cursor does not enter NodeView editing (S5-b review)", () =
     await flush();
     expect(editor.state.doc.nodeAt(mathPos)?.attrs.formula).toBe("fresh");
   });
+
+  it("a PRIOR dirty session cannot re-open the stale overwrite (R3)", async () => {
+    const editor = makeEditor();
+    const view = render(<EditorContent editor={editor} />);
+    act(() => {
+      editor.commands.setContent({
+        content: [
+          { content: [{ text: "up", type: "text" }], type: "paragraph" },
+          { attrs: { formula: "old" }, type: "mathBlock" },
+        ],
+        type: "doc",
+      });
+      editor.commands.setTextSelection(1);
+    });
+    await flush();
+
+    let mathPos = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (n.type.name === "mathBlock") mathPos = pos;
+      return mathPos < 0;
+    });
+
+    // A REAL edit session while vim is off: select, type, deselect-save.
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          NodeSelection.create(editor.state.doc, mathPos),
+        ),
+      );
+    });
+    await flush();
+    fireEvent.change(view.container.querySelector("textarea")!, {
+      target: { value: "typed" },
+    });
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)),
+      );
+    });
+    await flush();
+    expect(editor.state.doc.nodeAt(mathPos)?.attrs.formula).toBe("typed");
+
+    // External update while unselected, then a modal visit and deselect.
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(mathPos, undefined, {
+          formula: "fresh",
+        }),
+      );
+    });
+    await flush();
+    enableVimNormal(editor);
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(
+          NodeSelection.create(editor.state.doc, mathPos),
+        ),
+      );
+    });
+    await flush();
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)),
+      );
+    });
+    await flush();
+    expect(editor.state.doc.nodeAt(mathPos)?.attrs.formula).toBe("fresh");
+  });
 });

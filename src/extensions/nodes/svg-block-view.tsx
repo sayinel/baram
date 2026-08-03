@@ -95,7 +95,11 @@ export function SvgBlockView({
       // Save on DESELECT only — a modal (vim-cursor) selection must neither
       // enter editing nor run this branch, which would restore a stale
       // local value over fresh attrs (S5/S6 review).
-      if (editDirtyRef.current && localCodeRef.current !== codeRef.current) {
+      // CONSUME dirty at every deselect — a completed session's flag must
+      // not survive into the next one (S5/S6 review R3).
+      const wasDirty = editDirtyRef.current;
+      editDirtyRef.current = false;
+      if (wasDirty && localCodeRef.current !== codeRef.current) {
         updateAttributesRef.current({ code: localCodeRef.current });
       }
     } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {

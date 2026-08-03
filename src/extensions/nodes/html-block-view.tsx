@@ -73,10 +73,11 @@ export function HtmlBlockView({
   useEffect(() => {
     if (!selected) {
       // Save on deselect
-      if (
-        editDirtyRef.current &&
-        localContentRef.current !== contentRef.current
-      ) {
+      // CONSUME dirty at every deselect — a completed session's flag must
+      // not survive into the next one (S5/S6 review R3).
+      const wasDirty = editDirtyRef.current;
+      editDirtyRef.current = false;
+      if (wasDirty && localContentRef.current !== contentRef.current) {
         updateAttributesRef.current({ content: localContentRef.current });
       }
     } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {

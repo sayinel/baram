@@ -122,7 +122,11 @@ export function MermaidBlockView({
   useEffect(() => {
     if (!selected) {
       // Save on deselect
-      if (editDirtyRef.current && localCodeRef.current !== codeRef.current) {
+      // CONSUME dirty at every deselect — a completed session's flag must
+      // not survive into the next one (S5/S6 review R3).
+      const wasDirty = editDirtyRef.current;
+      editDirtyRef.current = false;
+      if (wasDirty && localCodeRef.current !== codeRef.current) {
         updateAttributesRef.current({ code: localCodeRef.current });
       }
       setShowTemplates(false);
@@ -270,6 +274,8 @@ export function MermaidBlockView({
   );
 
   const applyTemplate = useCallback((key: string) => {
+    // Template application IS an edit — it must survive deselect (R3).
+    editDirtyRef.current = true;
     const template = MERMAID_TEMPLATES[key];
     if (!template) return;
     setLocalCode(template.code);
