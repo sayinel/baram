@@ -114,10 +114,12 @@ describe("code block CM readOnly registry (§12-4)", () => {
       calls.push(e),
     );
     broadcastCodeBlockEditable(editor.view, false);
-    expect(calls).toEqual([false]);
+    // [true, false]: registration REPLAYS the vim PluginView's mount seed
+    // (cached per view — S5/S6-R5), then the explicit broadcast lands.
+    expect(calls).toEqual([true, false]);
     unregister();
     broadcastCodeBlockEditable(editor.view, true);
-    expect(calls).toEqual([false]);
+    expect(calls).toEqual([true, false]); // unchanged — unregistered
     editor.destroy();
     // View no longer registered anywhere — must not throw.
     expect(() => broadcastCodeBlockEditable(editor.view, true)).not.toThrow();

@@ -43,6 +43,7 @@ export class CodeBlockNodeView implements NodeView {
   private getPos: () => number | undefined;
   private initGeneration = 0;
   private langSelect: HTMLSelectElement;
+  private latestEffectiveEditable: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
   private pendingSelection: null | { anchor: number; head: number } = null;
@@ -152,12 +153,15 @@ export class CodeBlockNodeView implements NodeView {
     cmContainer.appendChild(placeholder);
     this.lazyDispose = onFirstVisible(wrapper, () => this.ensureCM());
 
-    // §298 §12-4: registry membership for editable broadcasts. If CM is not
-    // created yet the callback is a no-op — deferred initCM reads the live
-    // view.editable at creation time, so it can never observe a stale value.
+    // §298 §12-4: registry membership for editable broadcasts. Registration
+    // replays the cached EFFECTIVE state (suspension-aware — raw
+    // view.editable stays false through a vim suspension), the callback
+    // remembers it, and the deferred initCM consumes the memo so a lazy CM
+    // can never observe a stale value (vim review S5/S6-R5).
     this.unregisterEditableSync = registerCodeBlockEditableSync(
       view,
       (editable) => {
+        this.latestEffectiveEditable = editable;
         if (!this.cmView) return;
         this.cmView.dispatch({
           effects: this.readOnlyCompartment.reconfigure(
@@ -474,7 +478,11 @@ export class CodeBlockNodeView implements NodeView {
       CMView.lineWrapping,
       CMState.tabSize.of(tabSize),
       indentUnit.of(" ".repeat(tabSize)),
-      this.readOnlyCompartment.of(CMState.readOnly.of(!this.view.editable)),
+      this.readOnlyCompartment.of(
+        CMState.readOnly.of(
+          !(this.latestEffectiveEditable ?? this.view.editable),
+        ),
+      ),
       // Sync CodeMirror → ProseMirror
       CMView.updateListener.of((update: ViewUpdate) => {
         if (!update.docChanged || this.updating) return;

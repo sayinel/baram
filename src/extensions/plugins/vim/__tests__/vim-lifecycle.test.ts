@@ -8,6 +8,7 @@ import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { useSettingsStore } from "../../../../stores/settings/store";
+import { setEditorEditable } from "../../../../utils/editor/editor-editable";
 import { createBaramExtensions } from "../../../index";
 import { registerCodeBlockEditableSync } from "../../../nodes/views/code-block-cm-registry";
 import { vimPluginKey } from "../vim-keys";
@@ -117,6 +118,37 @@ describe("CM readOnly sync (§4-CM, S6)", () => {
       }),
     );
     expect(seen.at(-1)).toBe(false);
+    unregister();
+  });
+
+  it("real read-only wins over suspension (R5)", () => {
+    const editor = makeEditor();
+    const seen: boolean[] = [];
+    const unregister = registerCodeBlockEditableSync(editor.view, (e) =>
+      seen.push(e),
+    );
+    useSettingsStore.getState().setVimMode(true);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: true,
+        type: "setSuspended",
+      }),
+    );
+    expect(seen.at(-1)).toBe(true);
+
+    setEditorEditable(editor, false); // base capability revoked
+    expect(seen.at(-1)).toBe(false);
+    unregister();
+  });
+
+  it("a block registering AFTER a broadcast replays the cached state (R5)", () => {
+    const editor = makeEditor();
+    useSettingsStore.getState().setVimMode(true); // broadcast happened
+    const seen: boolean[] = [];
+    const unregister = registerCodeBlockEditableSync(editor.view, (e) =>
+      seen.push(e),
+    );
+    expect(seen).toEqual([false]); // immediate replay — lazy CM must not miss it
     unregister();
   });
 });

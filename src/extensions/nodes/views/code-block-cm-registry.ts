@@ -13,12 +13,16 @@ import type { EditorView as PMView } from "@tiptap/pm/view";
 type EditableSync = (editable: boolean) => void;
 
 const registries = new WeakMap<PMView, Set<EditableSync>>();
+/** Last broadcast value per view — replayed to late registrants so a lazy
+ *  CM created after a mode flip does not miss it (vim review S5/S6-R5). */
+const lastBroadcast = new WeakMap<PMView, boolean>();
 
 /** Push the PM view's editable state to every live code block it hosts. */
 export function broadcastCodeBlockEditable(
   view: PMView,
   editable: boolean,
 ): void {
+  lastBroadcast.set(view, editable);
   const set = registries.get(view);
   if (!set) return;
   for (const sync of set) sync(editable);
@@ -38,6 +42,8 @@ export function registerCodeBlockEditableSync(
     registries.set(view, set);
   }
   set.add(sync);
+  const cached = lastBroadcast.get(view);
+  if (cached !== undefined) sync(cached);
   return () => {
     set.delete(sync);
   };

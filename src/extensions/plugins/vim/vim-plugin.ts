@@ -21,6 +21,7 @@ import type {
   VimMode,
   VisualState,
 } from "./core/types";
+import type { Editor as TiptapEditor } from "@tiptap/core";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -64,7 +65,9 @@ type VimMeta =
   | { mode: VimMode; type: "setMode" }
   | { suspended: boolean; type: "setSuspended" };
 
-export function createVimPlugin(): Plugin<VimPluginState> {
+export function createVimPlugin(
+  tiptapEditor: TiptapEditor,
+): Plugin<VimPluginState> {
   return new Plugin<VimPluginState>({
     key: vimPluginKey as never,
 
@@ -218,7 +221,8 @@ export function createVimPlugin(): Plugin<VimPluginState> {
       // accept the keys vim is passing through — readOnly there would
       // reject the user's own typing (review S5/S6-R4).
       const effective = (view: EditorView): boolean =>
-        view.editable || read(view.state).suspended;
+        tiptapEditor.options.editable &&
+        (view.editable || read(view.state).suspended);
       let prevEffective = effective(editorView);
       broadcastCodeBlockEditable(editorView, prevEffective);
       return {

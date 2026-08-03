@@ -15,6 +15,6 @@ export const WysiwygVim = Extension.create({
   priority: 10000,
 
   addProseMirrorPlugins() {
-    return [createVimPlugin()];
+    return [createVimPlugin(this.editor)];
   },
 });
