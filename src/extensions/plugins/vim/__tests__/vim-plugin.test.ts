@@ -6,6 +6,7 @@
 
 import { Editor } from "@tiptap/core";
 import { undoDepth } from "@tiptap/pm/history";
+import { DecorationSet } from "@tiptap/pm/view";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
@@ -380,5 +381,61 @@ describe("impl review S3-R2 — atom visual rendering", () => {
       return true;
     });
     expect(hasMath).toBe(false);
+  });
+});
+
+describe("S5 — block cursor decorations (§10)", () => {
+  function decosAt(editor: Editor) {
+    const plugin = vimPluginKey.get(editor.state)!;
+    const decos = plugin.props.decorations?.call(plugin, editor.state);
+    // The prop is typed as the wider DecorationSource; the plugin always
+    // builds a concrete DecorationSet.
+    return decos instanceof DecorationSet ? decos.find() : [];
+  }
+
+  it("normal mode paints exactly the unit under the cursor", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(2); // on "b"
+    enable(editor);
+    const decos = decosAt(editor);
+    expect(decos).toHaveLength(1);
+    expect(decos[0].from).toBe(2);
+    expect(decos[0].to).toBe(3);
+  });
+
+  it("insert mode and suspension paint nothing", () => {
+    const editor = makeEditor("<p>abc</p>");
+    enable(editor);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "insert",
+        type: "setMode",
+      }),
+    );
+    expect(decosAt(editor)).toHaveLength(0);
+
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "normal",
+        type: "setMode",
+      }),
+    );
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: true,
+        type: "setSuspended",
+      }),
+    );
+    expect(decosAt(editor)).toHaveLength(0);
+  });
+
+  it("an empty line gets the zero-width widget caret", () => {
+    const editor = makeEditor("<p></p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    const decos = decosAt(editor);
+    expect(decos).toHaveLength(1);
+    expect(decos[0].from).toBe(1);
+    expect(decos[0].to).toBe(1); // widget — zero width
   });
 });

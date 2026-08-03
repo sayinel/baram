@@ -30,8 +30,10 @@ import {
   Selection,
   TextSelection,
 } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { executeCoreCommand } from "./adapters/execute-command";
+import { nextUnitBoundary } from "./adapters/graphemes";
 import { resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { isSuspendTarget, shouldSuspendFor } from "./adapters/suspension";
@@ -69,6 +71,32 @@ export function createVimPlugin(): Plugin<VimPluginState> {
        *  extension (priority 10000). */
       attributes: (state): Record<string, string> =>
         isModal(read(state)) ? { tabindex: "0" } : {},
+
+      /** §10 block cursor — the native caret does not render on a
+       *  non-editable view, so normal mode paints the unit under the vim
+       *  cursor (simple recalculation, pos-existence guarded). Visual mode
+       *  keeps the native selection; a NodeSelection atom line keeps PM's
+       *  selectednode chrome. */
+      decorations: (state) => {
+        const vim = read(state);
+        if (!vim.enabled || vim.suspended || vim.mode !== "normal") {
+          return null;
+        }
+        const head = vimCursor(state);
+        if (head < 0 || head > state.doc.content.size) return null;
+        const $head = state.doc.resolve(head);
+        if (!$head.parent.isTextblock) return null; // atom line — NodeSelection
+        const end = nextUnitBoundary(state, head);
+        if (end > head) {
+          return DecorationSet.create(state.doc, [
+            Decoration.inline(head, end, { class: "vim-cursor" }),
+          ]);
+        }
+        // Empty line or terminal boundary — a zero-width widget caret.
+        return DecorationSet.create(state.doc, [
+          Decoration.widget(head, eolCursorWidget, { side: 1 }),
+        ]);
+      },
 
       /** §3 IME block: no editing host in normal/visual. */
       editable: (state) => !isModal(read(state)),
@@ -265,6 +293,12 @@ function cursorSelection(state: EditorState, target: number): Selection {
 
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
   view.dispatch(view.state.tr.setMeta(vimPluginKey, meta));
+}
+
+function eolCursorWidget(): HTMLElement {
+  const el = document.createElement("span");
+  el.className = "vim-cursor-eol";
+  return el;
 }
 
 function isModal(vim: VimPluginState): boolean {
