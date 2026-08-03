@@ -90,4 +90,33 @@ describe("CM readOnly sync (§4-CM, S6)", () => {
     expect(seen.at(-1)).toBe(true); // insert → CM editable again
     unregister();
   });
+
+  it("suspension unlocks CM islands; resume relocks (§4, R4)", () => {
+    const editor = makeEditor();
+    const seen: boolean[] = [];
+    const unregister = registerCodeBlockEditableSync(editor.view, (e) =>
+      seen.push(e),
+    );
+    useSettingsStore.getState().setVimMode(true);
+    expect(seen.at(-1)).toBe(false);
+
+    // Focus entered a data-vim-suspend island: vim passes keys through —
+    // the island's own CM must accept them.
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: true,
+        type: "setSuspended",
+      }),
+    );
+    expect(seen.at(-1)).toBe(true);
+
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: false,
+        type: "setSuspended",
+      }),
+    );
+    expect(seen.at(-1)).toBe(false);
+    unregister();
+  });
 });

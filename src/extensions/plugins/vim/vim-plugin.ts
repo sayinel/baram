@@ -207,8 +207,14 @@ export function createVimPlugin(): Plugin<VimPluginState> {
     view: (editorView) => {
       publishWysiwygVimStatus(editorView);
       const unregister = registerVimLifecycle(editorView);
-      let prevEditable = editorView.editable;
-      broadcastCodeBlockEditable(editorView, prevEditable);
+      // EFFECTIVE editability for CM islands: modal keeps view.editable
+      // false through suspension by design (§4), but a focused island must
+      // accept the keys vim is passing through — readOnly there would
+      // reject the user's own typing (review S5/S6-R4).
+      const effective = (view: EditorView): boolean =>
+        view.editable || read(view.state).suspended;
+      let prevEffective = effective(editorView);
+      broadcastCodeBlockEditable(editorView, prevEffective);
       return {
         destroy: () => {
           unregister();
@@ -216,9 +222,10 @@ export function createVimPlugin(): Plugin<VimPluginState> {
         },
         update: (view) => {
           publishWysiwygVimStatus(view);
-          if (view.editable !== prevEditable) {
-            prevEditable = view.editable;
-            broadcastCodeBlockEditable(view, view.editable);
+          const next = effective(view);
+          if (next !== prevEffective) {
+            prevEffective = next;
+            broadcastCodeBlockEditable(view, next);
           }
         },
       };

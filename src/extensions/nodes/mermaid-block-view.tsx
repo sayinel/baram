@@ -288,6 +288,10 @@ export function MermaidBlockView({
     setLocalCode(fullscreenCode);
     // §12-6: fullscreen Close button commit — tagged chrome (design §5b)
     updateNodeAttributesWithVim(editor, getPos, { code: fullscreenCode });
+    // The direct commit ENDS the textarea session — a leftover dirty flag
+    // would make the next deselect re-save this (by then possibly stale)
+    // local value over an Undo or external update (review S5/S6-R4).
+    editDirtyRef.current = false;
     setFullscreen(false);
   }, [fullscreenCode, editor, getPos]);
 
