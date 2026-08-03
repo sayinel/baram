@@ -59,6 +59,10 @@ export function MermaidBlockView({
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
   vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -118,11 +122,12 @@ export function MermaidBlockView({
   useEffect(() => {
     if (!selected) {
       // Save on deselect
-      if (localCodeRef.current !== codeRef.current) {
+      if (editDirtyRef.current && localCodeRef.current !== codeRef.current) {
         updateAttributesRef.current({ code: localCodeRef.current });
       }
       setShowTemplates(false);
     } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      editDirtyRef.current = false;
       setLocalCode(codeRef.current);
       const entryState = mermaidBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
@@ -684,7 +689,10 @@ export function MermaidBlockView({
         className="mermaid-block-textarea"
         data-gramm="false"
         data-vim-suspend=""
-        onChange={(e) => setLocalCode(e.target.value)}
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalCode(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="flowchart LR&#10;  A --> B"
         ref={textareaRef}

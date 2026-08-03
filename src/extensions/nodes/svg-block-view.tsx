@@ -85,16 +85,21 @@ export function SvgBlockView({
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
   vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
 
   useEffect(() => {
     if (!selected) {
       // Save on DESELECT only — a modal (vim-cursor) selection must neither
       // enter editing nor run this branch, which would restore a stale
       // local value over fresh attrs (S5/S6 review).
-      if (localCodeRef.current !== codeRef.current) {
+      if (editDirtyRef.current && localCodeRef.current !== codeRef.current) {
         updateAttributesRef.current({ code: localCodeRef.current });
       }
     } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      editDirtyRef.current = false;
       setLocalCode(codeRef.current);
       const entryState = svgBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
@@ -538,7 +543,10 @@ export function SvgBlockView({
         className="svg-block-textarea"
         data-gramm="false"
         data-vim-suspend=""
-        onChange={(e) => setLocalCode(e.target.value)}
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalCode(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder='<svg viewBox="0 0 100 100">...</svg>'
         ref={textareaRef}

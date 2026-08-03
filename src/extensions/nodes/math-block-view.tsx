@@ -42,6 +42,10 @@ export function MathBlockView({
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
   vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -79,10 +83,14 @@ export function MathBlockView({
   useEffect(() => {
     if (!selected) {
       // Save on deselect
-      if (localFormulaRef.current !== formulaRef.current) {
+      if (
+        editDirtyRef.current &&
+        localFormulaRef.current !== formulaRef.current
+      ) {
         updateAttributesRef.current({ formula: localFormulaRef.current });
       }
     } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      editDirtyRef.current = false;
       setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
       const entryState = mathBlockEntryKey.getState(editorRef.current.state);
@@ -236,7 +244,10 @@ export function MathBlockView({
         className="math-block-textarea"
         data-gramm="false"
         data-vim-suspend=""
-        onChange={(e) => setLocalFormula(e.target.value)}
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalFormula(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="LaTeX formula..."
         ref={textareaRef}

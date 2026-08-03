@@ -21,7 +21,7 @@ import type { Transaction } from "@tiptap/pm/state";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { fireEvent } from "@testing-library/react";
 import { Extension, Editor as TiptapEditor } from "@tiptap/core";
-import { NodeSelection, Plugin } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, TextSelection } from "@tiptap/pm/state";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -372,6 +372,17 @@ describe("block-atom cursor does not enter NodeView editing (S5-b review)", () =
     });
     await flush();
 
+    expect(editor.state.doc.nodeAt(mathPos)?.attrs.formula).toBe("fresh");
+
+    // …and DESELECTING afterwards must not restore it either — the modal
+    // no-op branch leaves the local baseline stale, and an
+    // attrs-vs-local comparison alone would write it back (R2).
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)),
+      );
+    });
+    await flush();
     expect(editor.state.doc.nodeAt(mathPos)?.attrs.formula).toBe("fresh");
   });
 });

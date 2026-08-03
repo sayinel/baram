@@ -65,14 +65,22 @@ export function HtmlBlockView({
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
   vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
 
   useEffect(() => {
     if (!selected) {
       // Save on deselect
-      if (localContentRef.current !== contentRef.current) {
+      if (
+        editDirtyRef.current &&
+        localContentRef.current !== contentRef.current
+      ) {
         updateAttributesRef.current({ content: localContentRef.current });
       }
     } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      editDirtyRef.current = false;
       setLocalContent(contentRef.current);
       setTimeout(() => {
         const ta = textareaRef.current;
@@ -151,7 +159,10 @@ export function HtmlBlockView({
         className="html-block-textarea"
         data-gramm="false"
         data-vim-suspend=""
-        onChange={(e) => setLocalContent(e.target.value)}
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalContent(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="<div>...</div>"
         ref={textareaRef}
