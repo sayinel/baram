@@ -10,6 +10,7 @@ import { DecorationSet } from "@tiptap/pm/view";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../index";
+import { syntaxRevealKey } from "../../syntax-reveal-state";
 import { executeCoreCommand } from "../adapters/execute-command";
 import { readVimRegister, resetVimRegister } from "../adapters/register";
 import { vimPluginKey, withVimExternalEdit } from "../vim-keys";
@@ -437,5 +438,34 @@ describe("S5 — block cursor decorations (§10)", () => {
     expect(decos).toHaveLength(1);
     expect(decos[0].from).toBe(1);
     expect(decos[0].to).toBe(1); // widget — zero width
+  });
+});
+
+describe("insert-Esc arbitration (§4, S6)", () => {
+  it("an active transient owns the first Esc; vim takes the second", () => {
+    const editor = makeEditor("<p>[text](url)</p>");
+    enable(editor);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "insert",
+        type: "setMode",
+      }),
+    );
+
+    // Simulate an expanded syntax reveal through its real meta.
+    editor.view.dispatch(
+      editor.state.tr.setMeta(syntaxRevealKey, {
+        expanded: { from: 1, kind: "link", openCheck: "[", to: 5 },
+      }),
+    );
+
+    key(editor, "Escape");
+    expect(vim(editor).mode).toBe("insert"); // yielded to the transient
+
+    editor.view.dispatch(
+      editor.state.tr.setMeta(syntaxRevealKey, { expanded: null }),
+    );
+    key(editor, "Escape");
+    expect(vim(editor).mode).toBe("normal"); // now vim's
   });
 });

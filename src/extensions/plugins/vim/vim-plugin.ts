@@ -33,6 +33,7 @@ import {
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { broadcastCodeBlockEditable } from "../../nodes/views/code-block-cm-registry";
+import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary } from "./adapters/graphemes";
 import { resolveMotion } from "./adapters/motions";
@@ -182,6 +183,11 @@ export function createVimPlugin(): Plugin<VimPluginState> {
       handleKeyDown: (view, event) => {
         const vim = read(view.state);
         if (!vim.enabled || vim.suspended || isModal(vim)) return false;
+        // §4 arbitration: an active transient (popup/ghost/diff/…) owns the
+        // first Esc — its handler runs after vim in the prop chain.
+        if (event.key === "Escape" && hasAnyEditorTransient(view.state)) {
+          return false;
+        }
         const token = toKeyToken(event, isMacPlatform());
         const result = step(vim.core, token, {
           cursor: view.state.selection.head,
