@@ -49,6 +49,7 @@ export type Motion =
   | "docStart"
   | "lineDown"
   | "lineEnd"
+  | "lineFirstNonBlank"
   | "lineStart"
   | "lineUp"
   | "wordBack"

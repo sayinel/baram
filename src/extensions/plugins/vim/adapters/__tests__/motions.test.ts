@@ -452,3 +452,43 @@ describe("impl review S3-R7 pin — inline NON-LEAF atoms are one unit", () => {
     expect(resolveMotion(editor.state, target, "charLeft", 1)).not.toBe(target);
   });
 });
+
+describe("^ — first non-blank (device report)", () => {
+  it("skips indentation; 0 does not", () => {
+    const editor = makeEditor("<p>seed</p>");
+    // JSON content — HTML parsing collapses leading whitespace.
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "   abc", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const $p = editor.state.doc.resolve(1);
+    const from = $p.start() + 5; // on "b"
+    expect(resolveMotion(editor.state, from, "lineFirstNonBlank", 1)).toBe(
+      $p.start() + 3, // ON "a"
+    );
+    expect(resolveMotion(editor.state, from, "lineStart", 1)).toBe($p.start());
+  });
+
+  it("an all-blank line falls back to the line start", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "   ", type: "text" }], type: "paragraph" },
+        { content: [{ text: "x", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const $p = editor.state.doc.resolve(1);
+    expect(
+      resolveMotion(editor.state, $p.start() + 2, "lineFirstNonBlank", 1),
+    ).toBe($p.start());
+  });
+
+  it("works per SEGMENT inside a<br>  b", () => {
+    const editor = makeEditor("<p>a<br>  bc</p>");
+    const b = posOfText(editor, "bc");
+    expect(resolveMotion(editor.state, b + 1, "lineFirstNonBlank", 1)).toBe(b);
+  });
+});

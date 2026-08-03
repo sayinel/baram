@@ -31,6 +31,7 @@ export interface StepContext {
 const MOTIONS: Record<string, Motion> = {
   $: "lineEnd",
   0: "lineStart",
+  "^": "lineFirstNonBlank",
   ArrowDown: "lineDown",
   ArrowLeft: "charLeft",
   ArrowRight: "charRight",

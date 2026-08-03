@@ -217,6 +217,7 @@ describe("arrow keys are motions (device report)", () => {
     ["ArrowDown", "lineDown"],
     ["Home", "lineStart"],
     ["End", "lineEnd"],
+    ["^", "lineFirstNonBlank"],
   ] as const)("%s → %s in normal mode", (k, motion) => {
     const result = step(initialCoreState("normal"), key(k), { cursor: 0 });
     expect(result.handled).toBe(true);

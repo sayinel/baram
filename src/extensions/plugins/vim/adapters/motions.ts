@@ -93,6 +93,15 @@ export function resolveMotion(
         ? span.from
         : prevUnitBoundary(state, span.to);
     }
+    case "lineFirstNonBlank": {
+      // First non-blank unit of the segment; an all-blank line falls back
+      // to the line start (vim lands near the end there — Phase 2 nicety).
+      const span = segmentSpanAt(state, pos);
+      if (!span) return pos;
+      const text = state.doc.textBetween(span.from, span.to, undefined, " ");
+      const index = text.search(/\S/);
+      return index >= 0 ? span.from + index : span.from;
+    }
     case "lineStart": {
       const span = segmentSpanAt(state, pos);
       return span ? span.from : pos;
