@@ -55,6 +55,12 @@ git2 = { version = "0.20", features = ["vendored-openssl"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 similar = "3"
 sha2 = "0.10"
+# §69 revocation-list signing. Both were already in the tree via tauri-plugin-updater, so
+# the `deny` job has been vetting them all along — this promotes them to direct deps rather
+# than adding supply-chain surface. Same scheme and same file format as the updater, so the
+# verification path here is the one tauri already exercises in production.
+minisign-verify = "0.2"
+base64 = "0.22"
 shlex = "2.0"
 log = "0.4"
 diffy = "0.5.0"

@@ -10,7 +10,11 @@
 import { pluginFetchRevocations } from "../ipc/plugin-invoke";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
-import { normalizeRevocationList } from "./revocation";
+import {
+  MINIMUM_REVOCATION_SEQUENCE,
+  normalizeRevocationList,
+  supersedesStoredList,
+} from "./revocation";
 
 /**
  * How long startup will wait for a fresher list before loading installed plugins.
@@ -55,6 +59,21 @@ export async function refreshRevocations(): Promise<void> {
       // client silently. An empty-but-well-formed list IS accepted — withdrawing a
       // revocation has to work.
       logger.warn("[Revocation] unreadable list, keeping the stored one");
+      return;
+    }
+    // ‼️ A list may not move the publish counter BACKWARDS. The empty list was live for 31
+    // hours before the first revocation was recorded, so once the list is signed that empty
+    // document carries a permanently valid signature — replaying it is how every revocation
+    // gets cleared without forging anything. Refusing a lower counter is the half of this
+    // that a signature structurally cannot do.
+    if (!supersedesStoredList(parsed, store.revocations)) {
+      logger.error(
+        "[Revocation] REFUSED a list older than the one already stored — sequence",
+        parsed.sequence,
+        "<",
+        store.revocations?.sequence ?? MINIMUM_REVOCATION_SEQUENCE,
+        "— this is a rollback, not a stale cache",
+      );
       return;
     }
     store.setRevocations(parsed);

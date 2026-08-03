@@ -46,9 +46,36 @@ jobs:
       - name: Validate the list with the shipping validator
         run: npx tsx scripts/validate-revocations.ts registry/revoked.json
 
+      # ‼️ The counter must go UP, and this is the only place that can say so. A list published
+      # with a counter at or below the live one is refused by every client (`supersedesStoredList`),
+      # so the failure would show up as "the revocation did nothing" on user machines rather
+      # than here. Compared against what is actually LIVE, not against git history, because
+      # live is what clients hold.
+      - name: The publish counter must be higher than the live one
+        run: |
+          # An unreachable live list falls back to 0, i.e. permissive. Deliberate: a Pages
+          # outage must not block an urgent revocation, and this gate is a convenience that
+          # catches a forgotten bump at the point it is fixable — the actual protection is the
+          # client refusing a rollback, which does not depend on this step running at all.
+          LIVE="$(curl -fsS "https://sayinel.github.io/baram-plugins/revoked.json" || echo '{}')"
+          OLD="$(printf '%s' "$LIVE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("sequence") or 0)')"
+          NEW="$(python3 -c 'import json; print(json.load(open("registry/revoked.json")).get("sequence") or 0)')"
+          echo "live sequence=$OLD, publishing=$NEW"
+          if [ "$NEW" -le "$OLD" ]; then
+            echo "::error::sequence must increase: live is $OLD, this publish is $NEW. Every client would refuse this list as a rollback."
+            exit 1
+          fi
+
       - name: Sync to the registry
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          # ‼️ These are tauri's OWN variable names, read by `tauri signer sign` — but the value
+          # is the REVOCATION key, not the updater's. The two are deliberately separate: this
+          # workflow runs on any main push touching `registry/revoked.json`, a far lower bar
+          # than cutting a release, and giving that the installer-signing key would trade a
+          # forged revocation list for arbitrary code on every user's machine.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY_PASSWORD }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
@@ -60,12 +87,21 @@ jobs:
           cd "$RUNNER_TEMP/registry"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # ‼️ THE CHANGE CHECK LOOKS AT revoked.json ALONE, AND BEFORE SIGNING. minisign puts a
+          # timestamp in the trusted comment, so re-signing identical bytes yields a DIFFERENT
+          # signature — staging it first would make every scheduled or unrelated run look like a
+          # change, pushing a commit and rebuilding Pages for a list nobody edited.
           git add revoked.json
           if git diff --cached --quiet; then
             echo "::notice::Registry already has this exact list — nothing to publish."
             exit 0
           fi
-          git commit -m "revocation: sync revoked.json from baram@${GITHUB_SHA}"
+          # Signed over the exact bytes being published, from the app checkout where the tauri
+          # CLI lives. The key never appears on a command line: `signer sign` reads it from the
+          # environment above.
+          (cd "$GITHUB_WORKSPACE" && npx tauri signer sign "$RUNNER_TEMP/registry/revoked.json")
+          git add revoked.json revoked.json.sig
+          git commit -m "revocation: sync signed revoked.json from baram@${GITHUB_SHA}"
           git push origin main
 
       # A push that succeeded is not a file that is being served. Pages takes a moment
@@ -79,7 +115,21 @@ jobs:
             CODE="$(curl -fsS -o "$RUNNER_TEMP/live.json" -w '%{http_code}' "$URL" || true)"
             if [ "$CODE" = "200" ]; then
               npx tsx scripts/validate-revocations.ts "$RUNNER_TEMP/live.json"
-              echo "::notice::Live revocation list verified after ${attempt} attempt(s)."
+              # ‼️ The signature must be SERVED, or every armed client refuses the list. What
+              # this proves is presence and binding, NOT cryptography: verifying properly needs
+              # the app's own `verify_revocation_signature`, i.e. a Rust build, which is minutes
+              # this workflow does not have. The cryptographic check is the one every client
+              # performs on every fetch — this catches the failures that would otherwise reach
+              # them silently: a signing step that was skipped, or one that signed another file.
+              if ! curl -fsS -o "$RUNNER_TEMP/live.sig" "${URL}.sig"; then
+                echo "::error::${URL}.sig is not served — an armed client would refuse this list."
+                exit 1
+              fi
+              if ! base64 -d < "$RUNNER_TEMP/live.sig" | grep -q "file:revoked.json"; then
+                echo "::error::the live signature's trusted comment does not name revoked.json."
+                exit 1
+              fi
+              echo "::notice::Live revocation list and signature verified after ${attempt} attempt(s)."
               exit 0
             fi
             echo "attempt ${attempt}: HTTP ${CODE:-none}, waiting for Pages…"

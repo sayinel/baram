@@ -10,6 +10,7 @@ import {
   EMPTY_REVOCATIONS,
   normalizeRevocationList,
   revocationFor,
+  supersedesStoredList,
 } from "../revocation";
 
 function entry(over: Partial<RevocationEntry> = {}): RevocationEntry {
@@ -23,7 +24,7 @@ function entry(over: Partial<RevocationEntry> = {}): RevocationEntry {
 }
 
 function list(...revoked: RevocationEntry[]): RevocationList {
-  return { revoked, version: 1 };
+  return { revoked, sequence: 1, version: 1 };
 }
 
 describe("revocationFor", () => {
@@ -82,6 +83,43 @@ describe("revocationFor", () => {
     expect(blocksLoad(entry({ severity: "vulnerable" }))).toBe(false);
     expect(blocksLoad(entry({ severity: "unlisted" }))).toBe(false);
     expect(blocksLoad(null)).toBe(false);
+  });
+});
+
+describe("supersedesStoredList", () => {
+  const at = (sequence: number): RevocationList => ({
+    revoked: [],
+    sequence,
+    version: 1,
+  });
+
+  it("accepts a newer publish and refuses an older one", () => {
+    expect(supersedesStoredList(at(2), at(1))).toBe(true);
+    expect(supersedesStoredList(at(1), at(2))).toBe(false);
+  });
+
+  it("accepts an EQUAL counter, because that is every ordinary refresh", () => {
+    // ‼️ Refusing equal would break the common case — the list usually has not changed
+    // between refreshes — and it buys nothing: with a signature in force the same counter
+    // cannot carry different content.
+    expect(supersedesStoredList(at(3), at(3))).toBe(true);
+  });
+
+  it("accepts anything at or above the floor when nothing is stored", () => {
+    expect(supersedesStoredList(at(0), null)).toBe(true);
+    expect(supersedesStoredList(at(5), null)).toBe(true);
+  });
+
+  it("refuses a list below the compiled floor even with nothing stored", () => {
+    // ‼️ THE FRESH-INSTALL HOLE. Monotonicity needs something to compare against, and a
+    // first run has nothing — which is exactly when the user has no other protection. The
+    // floor is that starting point. Passed explicitly here because the shipped value is 0
+    // today, so the guard is invisible until the first signed list is published.
+    expect(supersedesStoredList(at(4), null, 5)).toBe(false);
+    expect(supersedesStoredList(at(5), null, 5)).toBe(true);
+    // The floor outranks a stored list too: a client that somehow stored something older
+    // than its own build knows about must not stay there.
+    expect(supersedesStoredList(at(4), at(1), 5)).toBe(false);
   });
 });
 
@@ -174,8 +212,36 @@ describe("normalizeRevocationList", () => {
     // could never be undone on machines that already stored it.
     expect(normalizeRevocationList({ revoked: [] })).toEqual({
       revoked: [],
+      sequence: 0,
       version: 1,
     });
+  });
+
+  it("reads an absent or malformed sequence as 0, the weakest value there is", () => {
+    // ‼️ Absent must stay READABLE, because the list live right now has no `sequence`:
+    // rejecting it would make every client keep its stored copy and give a fresh install
+    // nothing at all. And malformed must land on 0 rather than being coerced — `Number("999")`
+    // would hand an attacker the highest counter they can type, when what they should get is
+    // the one value that can never win a comparison.
+    for (const bad of ["999", -1, 1.5, Number.NaN, Infinity, null, {}, true]) {
+      expect(
+        normalizeRevocationList({ revoked: [], sequence: bad })?.sequence,
+        `sequence: ${JSON.stringify(bad)}`,
+      ).toBe(0);
+    }
+    expect(
+      normalizeRevocationList({ revoked: [], sequence: 7 })?.sequence,
+    ).toBe(7);
+  });
+
+  it("does not let a dropped entry become a match — sequence edition", () => {
+    // A dropped ENTRY must not take the counter with it: the rest of the list still stands,
+    // so it still has to be able to supersede.
+    const raw = {
+      revoked: [{ id: "x", reason: "r", severity: "spicy", versions: "*" }],
+      sequence: 9,
+    };
+    expect(normalizeRevocationList(raw)?.sequence).toBe(9);
   });
 
   it("does not let a dropped entry become a match", () => {

@@ -35,6 +35,21 @@ export interface RevocationEntry {
 
 export interface RevocationList {
   revoked: RevocationEntry[];
+  /**
+   * Monotonic publish counter. Absent means 0.
+   *
+   * ‼️ THIS IS WHAT MAKES A SIGNATURE WORTH ANYTHING, and the registry's own history is the
+   * proof. `{"version":1,"revoked":[]}` was the live document for 31 hours (`395b914` →
+   * `aa4a218`). Sign the list and that empty document acquires a VALID signature — one that
+   * stays valid forever. An attacker who can serve the origin then replays yesterday's signed
+   * empty list and every revocation silently disappears, signature and all. Signing alone
+   * closes forgery and not this.
+   *
+   * So a fetched list must never move the counter BACKWARDS. Equal is fine — re-fetching the
+   * current list is the common case, and with a signature in force the same counter cannot
+   * carry different content.
+   */
+  sequence: number;
   version: number;
 }
 
@@ -60,7 +75,24 @@ const SEVERITY_RANK: Record<RevocationSeverity, number> = {
 const SEVERITIES = Object.keys(SEVERITY_RANK) as RevocationSeverity[];
 
 /** An empty list. The shape callers get before the first fetch ever succeeds. */
-export const EMPTY_REVOCATIONS: RevocationList = { revoked: [], version: 1 };
+export const EMPTY_REVOCATIONS: RevocationList = {
+  revoked: [],
+  sequence: 0,
+  version: 1,
+};
+
+/**
+ * The oldest publish this build will accept, for a client that has stored nothing yet.
+ *
+ * ‼️ Monotonicity alone cannot protect a FRESH INSTALL: with no stored list there is no
+ * counter to compare against, so a replayed old-but-validly-signed list is accepted on first
+ * run — which is exactly when the user has no other protection either. A floor compiled into
+ * the binary gives that client a starting point, the same way the updater pins a version.
+ *
+ * Bump this at release time to the sequence then live. It can only ever be raised: setting it
+ * above the live sequence makes every client refuse the real list.
+ */
+export const MINIMUM_REVOCATION_SEQUENCE = 0;
 
 /** Whether this revocation stops the plugin from running at all. */
 export function blocksLoad(entry: null | RevocationEntry): boolean {
@@ -83,7 +115,11 @@ export function blocksLoad(entry: null | RevocationEntry): boolean {
  */
 export function normalizeRevocationList(raw: unknown): null | RevocationList {
   if (raw === null || typeof raw !== "object") return null;
-  const doc = raw as { revoked?: unknown; version?: unknown };
+  const doc = raw as {
+    revoked?: unknown;
+    sequence?: unknown;
+    version?: unknown;
+  };
   // An unknown document version is unreadable, not "readable under v1 rules". A future
   // v2 that changed what a severity MEANS would otherwise be applied with v1 semantics
   // by every old client — the precise outcome a version field exists to prevent. Keeping
@@ -98,7 +134,7 @@ export function normalizeRevocationList(raw: unknown): null | RevocationList {
     logger.warn("[Revocation] dropped an unreadable entry:", entry);
     return false;
   });
-  return { revoked, version: 1 };
+  return { revoked, sequence: readSequence(doc.sequence), version: 1 };
 }
 
 /**
@@ -147,6 +183,21 @@ export function revocationReason(
   return translated === entry.reasonKey ? entry.reason : translated;
 }
 
+/**
+ * Whether a freshly fetched list may replace what is stored.
+ *
+ * Refusing a lower counter is the half of this that signing cannot do — see `sequence` on
+ * `RevocationList` for why a valid signature on an old empty list is the actual attack.
+ */
+export function supersedesStoredList(
+  fetched: RevocationList,
+  stored: null | RevocationList,
+  floor: number = MINIMUM_REVOCATION_SEQUENCE,
+): boolean {
+  if (fetched.sequence < floor) return false;
+  return stored === null || fetched.sequence >= stored.sequence;
+}
+
 function isRevocationEntry(value: unknown): value is RevocationEntry {
   if (value === null || typeof value !== "object") return false;
   const entry = value as Record<string, unknown>;
@@ -166,4 +217,23 @@ function isVersionRange(value: unknown): value is VersionRange {
       ["eq", "gt", "gte", "lt", "lte"].includes(key) &&
       typeof bound === "string",
   );
+}
+
+/**
+ * The publish counter, or 0 for anything that is not a plain non-negative integer.
+ *
+ * ‼️ Absent and MALFORMED both read as 0, deliberately, and 0 is the weakest value there is:
+ * it can never beat a stored counter and it fails the floor on a fresh install. So a document
+ * that omits the field, or carries `"999"` as a string, `1e9`, `-1` or a float, loses the
+ * comparison instead of winning it. Coercing a string here — `Number("999")` — would hand an
+ * attacker the highest counter they can type.
+ *
+ * Absent must stay READABLE rather than rejected, because the list that is live right now
+ * has no `sequence` at all: rejecting the document would make every client keep its stored
+ * copy, and a fresh install would get no revocations whatsoever.
+ */
+function readSequence(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw < 0)
+    return 0;
+  return raw;
 }

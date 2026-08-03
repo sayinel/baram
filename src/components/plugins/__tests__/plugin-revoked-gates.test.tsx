@@ -66,6 +66,7 @@ function revoke(severity: RevocationSeverity): void {
       revoked: [
         { id: "demo", reason: "steals things", severity, versions: "*" },
       ],
+      sequence: 1,
       version: 1,
     },
   });

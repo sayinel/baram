@@ -31,6 +31,7 @@ const LIST: RevocationList = {
       versions: "*",
     },
   ],
+  sequence: 1,
   version: 1,
 };
 
@@ -92,13 +93,34 @@ describe("refreshRevocations", () => {
 
   it("REPLACES the stored list with a well-formed empty one", async () => {
     // The other direction, and it has to work: withdrawing a false positive is the
-    // remedy for a revocation that should not have been published.
+    // remedy for a revocation that should not have been published. A withdrawal is a NEWER
+    // publish, so it carries a higher counter — that is what separates it from the replay
+    // below, which is byte-identical apart from the counter.
+    usePluginStore.setState({ revocations: LIST });
+    fetchRevocations.mockResolvedValue(
+      '{"version":1,"sequence":2,"revoked":[]}',
+    );
+    await refreshRevocations();
+    expect(
+      revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
+    ).toBeNull();
+  });
+
+  it("REFUSES an empty list that moves the counter backwards", async () => {
+    // ‼️ THE ATTACK A SIGNATURE CANNOT STOP. `{"version":1,"revoked":[]}` was the live
+    // document for 31 hours before the first revocation was recorded (registry `395b914` →
+    // `aa4a218`), so once the list is signed that empty document holds a VALID signature
+    // forever. Replaying it clears every revocation without forging anything.
+    //
+    // Byte-for-byte the same payload as the withdrawal above; only the counter differs, and
+    // that is the entire difference between "the operator took it back" and "someone served
+    // you yesterday".
     usePluginStore.setState({ revocations: LIST });
     fetchRevocations.mockResolvedValue('{"version":1,"revoked":[]}');
     await refreshRevocations();
     expect(
       revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 });
 
