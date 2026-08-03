@@ -779,6 +779,7 @@
       "name": "plugin_install_stage",
       "input": {
         "url": "string",
+        "registryUrl": "string",
         "checksum": "string?",
         "expectedId": "string?"
       },
@@ -788,7 +789,7 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "플러그인 스테이징 — ZIP 다운로드·해제·검증만 하고 설치하지 않음 (#261)"
+      "description": "플러그인 스테이징 — ZIP 다운로드·해제·검증만 하고 설치하지 않음 (#261). registryUrl은 필수 — 아카이브가 그 인덱스 디렉터리 아래에서 서빙되지 않으면 거부 (origin+경로 접두, 리다이렉트 홉마다 재검사)"
     },
     {
       "name": "plugin_install_commit",

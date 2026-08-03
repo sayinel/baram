@@ -13,12 +13,18 @@ use tauri::Manager;
 #[tauri::command]
 pub async fn plugin_install_stage(
     url: String,
+    registry_url: String,
     checksum: Option<String>,
     expected_id: Option<String>,
 ) -> Result<plugin::StagedPluginInfo, String> {
-    plugin::stage_plugin(&url, checksum.as_deref(), expected_id.as_deref())
-        .await
-        .map_err(|e| e.to_string())
+    plugin::stage_plugin(
+        &url,
+        &registry_url,
+        checksum.as_deref(),
+        expected_id.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Install a staged plugin, atomically replacing any version already installed.
