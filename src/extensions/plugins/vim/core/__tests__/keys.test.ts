@@ -78,3 +78,38 @@ describe("toKeyToken (§5 modifier pin)", () => {
     });
   });
 });
+
+describe("Korean IME layout — physical-key fallback (device report)", () => {
+  it("a jamo from the Korean layout resolves to the physical letter", () => {
+    // Korean input source: pressing J produces key "ㅓ", code "KeyJ".
+    const token = toKeyToken({ ...base, code: "KeyJ", key: "\u3153" }, true);
+    expect(token.key).toBe("j");
+  });
+
+  it("shift gives the uppercase letter (G motion on Korean layout)", () => {
+    const token = toKeyToken(
+      { ...base, code: "KeyG", key: "\u3141", shiftKey: true },
+      true,
+    );
+    expect(token.key).toBe("G");
+  });
+
+  it("hangul SYLLABLES from composition-adjacent events map too", () => {
+    const token = toKeyToken({ ...base, code: "KeyA", key: "\uC544" }, true);
+    expect(token.key).toBe("a");
+  });
+
+  it("symbols and controls pass through untouched", () => {
+    expect(
+      toKeyToken({ ...base, code: "Digit4", key: "$", shiftKey: true }, true)
+        .key,
+    ).toBe("$");
+    expect(
+      toKeyToken({ ...base, code: "Escape", key: "Escape" }, true).key,
+    ).toBe("Escape");
+  });
+
+  it("latin keys never remap even when code differs (dvorak safety)", () => {
+    expect(toKeyToken({ ...base, code: "KeyQ", key: "x" }, true).key).toBe("x");
+  });
+});

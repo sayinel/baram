@@ -469,3 +469,35 @@ describe("insert-Esc arbitration (§4, S6)", () => {
     expect(vim(editor).mode).toBe("normal"); // now vim's
   });
 });
+
+describe("Korean input source (device report)", () => {
+  function koreanKey(editor: Editor, key: string, code: string): void {
+    editor.view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        code,
+        key,
+      }),
+    );
+  }
+
+  it("dd works as ㅇㅇ — physical keys drive normal mode", () => {
+    const editor = makeEditor("<p>alpha</p><p>beta</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    koreanKey(editor, "\u3147", "KeyD"); // ㅇ = physical D
+    koreanKey(editor, "\u3147", "KeyD");
+    expect(editor.state.doc.textContent).toBe("beta");
+  });
+
+  it("ㅓ (physical J) moves down", () => {
+    const editor = makeEditor("<p>one</p><p>two</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    koreanKey(editor, "\u3153", "KeyJ");
+    expect(
+      editor.state.doc.resolve(editor.state.selection.head).parent.textContent,
+    ).toBe("two");
+  });
+});
