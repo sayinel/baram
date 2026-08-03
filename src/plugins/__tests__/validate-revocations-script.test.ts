@@ -32,6 +32,17 @@ describe("validate-revocations", () => {
     expect(status).toBe(0);
   });
 
+  it("refuses the document `null` with a sentence, not a stack trace", () => {
+    // ‼️ `null` is a valid one-word JSON document, and reading `.revoked` off it threw an
+    // uncaught TypeError instead of the refusal below. This script is pointed at a
+    // PR-controlled file by the registry's `validate.yml`, and the sibling
+    // `validate-registry-assets.ts` had copied the same line.
+    const { output, status } = run(null);
+    expect(status).toBe(1);
+    expect(output).toContain("no `revoked` array");
+    expect(output).not.toContain("TypeError");
+  });
+
   it("cannot be made to forge a workflow annotation through an entry id", () => {
     // ‼️ The warning path at the heart of this: an entry whose range matches no probe
     // version is REPORTED AND ACCEPTED, so the forged annotation would ride along with a

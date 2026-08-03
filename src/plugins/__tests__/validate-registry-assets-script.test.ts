@@ -53,6 +53,7 @@ function assertNoWorkflowCommand(output: string): void {
 function build(
   entries: unknown,
   archives: string[] = ["baram-word-count-1.0.0.zip"],
+  revoked?: string | unknown[],
 ): string {
   const dir = mkdtempSync(join(tmpdir(), "baram-registry-"));
   mkdirSync(join(dir, "plugins"));
@@ -61,6 +62,16 @@ function build(
     join(dir, "index.json"),
     JSON.stringify({ plugins: entries, updatedAt: "2026-08-02" }),
   );
+  // Absent by default, which is what every pre-existing case wants: no acknowledgements,
+  // so an orphan still warns. A raw string writes the file verbatim, for the unreadable case.
+  if (typeof revoked === "string") {
+    writeFileSync(join(dir, "revoked.json"), revoked);
+  } else if (revoked !== undefined) {
+    writeFileSync(
+      join(dir, "revoked.json"),
+      JSON.stringify({ revoked, version: 1 }),
+    );
+  }
   return dir;
 }
 
@@ -69,6 +80,17 @@ function exec(args: string[]): { output: string; status: null | number } {
   return {
     output: `${result.stdout}${result.stderr}`,
     status: result.status,
+  };
+}
+
+/** A well-formed `unlisted` withdrawal, so each case can vary one field. */
+function revocation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "baram-ai-summary",
+    reason: "withdrawn",
+    severity: "unlisted",
+    versions: { lt: "2.0.0" },
+    ...overrides,
   };
 }
 
@@ -172,6 +194,266 @@ describe("validate-registry-assets", () => {
     expect(status).toBe(0);
     expect(output).toContain("baram-word-count-pro-2.0.0.zip");
     expect(output).toContain("belongs to no listed plugin");
+  });
+
+  it("drops the warning to a notice once revoked.json records the withdrawal", () => {
+    // ‼️ The warning exists to force a DECISION about an archive nobody has decided about.
+    // Once the decision is written down one file over, repeating it every run is the alert
+    // fatigue this scan's own superseded rule was built to avoid.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0.zip"],
+        [revocation()],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("baram-ai-summary-1.0.0.zip");
+    expect(output).toContain("recorded in");
+    expect(output).toContain("1 acknowledged withdrawal(s)");
+    // Still SAID, just not as a warning: the archive is reachable and that stays visible.
+    expect(output).not.toContain("warning(s)");
+    expect(output).not.toContain("no revoked.json entry");
+  });
+
+  it("keeps warning when the revocation does not cover the archive's version", () => {
+    // ‼️ "The id appears somewhere in the list" is not acknowledgement. An entry bounded
+    // `lt: 2.0.0` says nothing about a 3.0.0 archive sitting in the directory, and the
+    // whole point of the sandboxed-port bound is that later majors are NOT withdrawn.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-3.0.0.zip"],
+        [revocation()],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("baram-ai-summary-3.0.0.zip");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("does not let a revoked id silence a DIFFERENT plugin's withdrawn archive", () => {
+    // ‼️ THE HOLLOW VERSION OF THIS TEST USED `baram-word-count-pro-2.0.0.zip`, whose
+    // remainder starts with a LETTER — `archiveBelongsTo` rejects it before any of the
+    // acknowledgement code runs, so it asserted the OLD predicate and passed while the new
+    // path was wide open (code review HIGH-1).
+    //
+    // `baram-word-2-1.0.0.zip` belongs to `baram-word-2`, and its remainder starts with a
+    // digit, so it DOES reach the acknowledgement check. What refuses it is that `2-1.0.0`
+    // is not a version — the refusal `versions: "*"` would otherwise skip entirely, because
+    // `matchesRange(v, "*")` never parses `v`.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-word-2-1.0.0.zip"],
+        [revocation({ id: "baram-word", versions: "*" })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("baram-word-2-1.0.0.zip");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("keeps warning about a MALICIOUS withdrawal however well recorded it is", () => {
+    // ‼️ Deference is for `unlisted` — the one severity the model defines as no danger.
+    // "A trusted-tier plugin pulled for cause is still one `curl` away" is this scan's
+    // reason to exist, and the first version handed exactly that case the quietest channel
+    // (code review MEDIUM-4). Allowlist, not `!== "malicious"`: a denylist would hand the
+    // same silence to whatever severity is added next.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-stealer-1.0.0.zip"],
+        [
+          revocation({
+            id: "baram-stealer",
+            severity: "malicious",
+            versions: "*",
+          }),
+        ],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("revoked as malicious");
+    expect(output).toContain("STILL downloadable");
+    expect(output).toContain("1 warning(s)");
+    expect(output).not.toContain("acknowledged withdrawal");
+  });
+
+  it("acknowledges an id the list mentions TWICE rather than calling it ambiguous", () => {
+    // `revocationFor`'s own docstring calls double-listing legitimate — `unlisted` because
+    // the author went quiet, and later something sharper for one bad range. De-duplicating
+    // the claimants is what keeps that from reading as two rival plugins; without it the
+    // archive falsely warns, and no test caught the missing `Set` (code review LOW-6).
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0.zip"],
+        [revocation(), revocation({ versions: { eq: "0.9.0" } })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("1 acknowledged withdrawal(s)");
+  });
+
+  it("counts a DROPPED entry as a rival claimant, not as an absent one", () => {
+    // ‼️ The ambiguity check reads the ids the FILE DECLARES, not the ids that survived
+    // parsing (code review MEDIUM-2). A rival with a typo'd severity is dropped by
+    // `normalizeRevocationList` — and `logger.warn` is a no-op outside Vite, so nothing
+    // says so — which would leave one claimant standing where the file names two.
+    //
+    // ‼️ `a` is the DROPPED one and `a-1` the survivor, deliberately. The first version of
+    // this test had it the other way round and was hollow: the survivor `a` extracts
+    // `1-2.0.0` from this filename, which `isSemver` rejects on its own, so the test passed
+    // even with the ambiguity set computed from the parsed list. Here the survivor extracts
+    // a clean `2.0.0`, so nothing but the declared-ids set stands between it and a notice.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "a-1-2.0.0.zip"],
+        [
+          revocation({ id: "a", severity: "unlist", versions: "*" }),
+          revocation({ id: "a-1", versions: "*" }),
+        ],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("a-1-2.0.0.zip");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("cannot be made to forge a workflow annotation through a revoked id", () => {
+    // ‼️ `revoked.json` is PR-controlled in the registry's `pull_request_target` workflow,
+    // and the notice path echoes the matched id. `label()` was applied but nothing tested
+    // it: removing either call forged two `::` lines at column 0 — `::stop-commands::`
+    // included — with all tests still green (code review MEDIUM-3).
+    //
+    // The id must prefix a real filename to be echoed at all, so the payload rides in both.
+    const id = "x\n::error title=forged::pwned\n::stop-commands::deadbeef";
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", `${id}-1.0.0.zip`],
+        [revocation({ id, versions: "*" })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("acknowledged withdrawal");
+    assertNoWorkflowCommand(output);
+  });
+
+  it("cannot be made to forge one through a MALICIOUS withdrawal's warning", () => {
+    // ‼️ The forgery test above only reaches the NOTICE path. All nine of the first round's
+    // mutations landed there too, so `label()` on the two WARNING branches was unpinned —
+    // removing it produced four `::` lines at column 0 with every test still green (code
+    // review MEDIUM-2). This is the loud-but-recorded branch.
+    const id = "x\n::error title=forged::pwned\n::stop-commands::deadbeef";
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", `${id}-1.0.0.zip`],
+        [revocation({ id, severity: "malicious", versions: "*" })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("revoked as malicious");
+    assertNoWorkflowCommand(output);
+  });
+
+  it("cannot be made to forge one through the unrecorded-orphan warning", () => {
+    // ‼️ And this is the DEFAULT outcome for any orphan — the most-travelled line in the
+    // section, and the last one still unpinned. The filename alone carries the payload; no
+    // revoked.json is involved.
+    const { output, status } = run(
+      [validEntry()],
+      [
+        "baram-word-count-1.0.0.zip",
+        "x\n::error title=forged::pwned\n::stop-commands::deadbeef-1.0.0.zip",
+      ],
+    );
+    expect(status).toBe(0);
+    expect(output).toContain("no revoked.json entry");
+    assertNoWorkflowCommand(output);
+  });
+
+  it("keeps warning about an archive whose version only TRIMS to a recorded one", () => {
+    // ‼️ `parseVersion` trims and coerces, so `1.0.0 ` parses as 1.0.0 — but
+    // `plugins/a-1.0.0 .zip` is a DIFFERENT file at a different URL from `a-1.0.0.zip`, and
+    // the entry recorded the latter. Acknowledging it would assert coverage nobody wrote.
+    // The leniency is right for the app, which reads a version from a manifest; here it is
+    // inferred from a filename (code review LOW-3).
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0 .zip"],
+        [revocation({ versions: { eq: "1.0.0" } })],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("no revoked.json entry");
+    expect(output).not.toContain("acknowledged withdrawal");
+  });
+
+  it("reports the index's real problems even when revoked.json is the document null", () => {
+    // ‼️ `null` is a valid one-word JSON document. Reading `.revoked` off it threw an
+    // uncaught TypeError BEFORE the errors were printed, so a genuine checksum mismatch came
+    // back as a stack trace (code review MEDIUM-1). The verdict must survive the bad file.
+    const dir = build([validEntry({ checksum: "b".repeat(64) })]);
+    writeFileSync(join(dir, "revoked.json"), "null");
+    const { output, status } = exec([dir]);
+    expect(status).toBe(1);
+    expect(output).toContain("could not read it");
+    // The point of the test: the ACTUAL defect still gets reported.
+    expect(output).toContain("hashes to");
+    expect(output).not.toContain("TypeError");
+  });
+
+  it("says so when revoked.json is not a regular file", () => {
+    // Absent is quiet — every orphan warns anyway. Present-but-a-link is not: something is
+    // there and this script is declining to read it, which the operator has to be told.
+    const dir = build(
+      [validEntry()],
+      ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0.zip"],
+    );
+    mkdirSync(join(dir, "revoked.json"));
+    const { output, status } = exec([dir]);
+    expect(status).toBe(0);
+    expect(output).toContain("revoked.json is not a regular file");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("treats an archive two revoked ids both claim as acknowledged by neither", () => {
+    // ‼️ `a` and `a-1` both satisfy the prefix rule for `a-1-2.0.0.zip`, and nothing in the
+    // name says which plugin it is. Picking one would let whichever sorts first vouch for
+    // an archive that may not be its own; an ambiguous key must resolve to nothing.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "a-1-2.0.0.zip"],
+        [
+          revocation({ id: "a", versions: "*" }),
+          revocation({ id: "a-1", versions: "*" }),
+        ],
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("a-1-2.0.0.zip");
+    expect(output).toContain("no revoked.json entry");
+  });
+
+  it("falls back to warning, loudly, when revoked.json cannot be read", () => {
+    // An unreadable list must never read as "everything is accounted for" — that turns one
+    // corrupt file into blanket silence over precisely the archives this scan is for.
+    const { output, status } = exec([
+      build(
+        [validEntry()],
+        ["baram-word-count-1.0.0.zip", "baram-ai-summary-1.0.0.zip"],
+        "{ not json",
+      ),
+    ]);
+    expect(status).toBe(0);
+    expect(output).toContain("revoked.json is present but unreadable");
+    expect(output).toContain("no revoked.json entry");
   });
 
   it("leaves type complaints to validate-index rather than repeating them", () => {

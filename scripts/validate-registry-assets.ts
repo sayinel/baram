@@ -30,6 +30,16 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 
+import type {
+  RevocationEntry,
+  RevocationList,
+} from "../src/plugins/revocation";
+
+import {
+  normalizeRevocationList,
+  revocationFor,
+} from "../src/plugins/revocation";
+import { compareVersions } from "../src/plugins/version-range";
 import { label } from "./gha-label";
 
 /** Where the registry serves from. An entry pointing elsewhere is refused; see below. */
@@ -77,6 +87,8 @@ const indexPath = join(root, "index.json");
 
 const errors: string[] = [];
 const warnings: string[] = [];
+/** Withdrawals `revoked.json` already accounts for — said once, not warned about forever. */
+const notices: string[] = [];
 /** Entries this script could not judge, so the summary cannot imply that it did. */
 let unchecked = 0;
 
@@ -266,42 +278,203 @@ plugins.forEach((value, position) => {
 });
 
 /**
- * Archives belonging to a plugin the index has WITHDRAWN — not merely superseded.
+ * Whether an archive filename is `<id>-<something starting with a digit>`.
  *
- * ‼️ The distinction is what keeps this warning worth reading. Every update leaves the
- * previous version's ZIP behind, so "no entry points at this file" fires once per release
- * forever and the real case drowns in a decade of `-1.0.0.zip`. A superseded archive is
- * normal: the id is still listed, at a newer version.
+ * ‼️ ONE COPY, used by both the superseded check and the acknowledgement check. Matching a
+ * bare `${id}-` prefix meant `baram-word-count` hid a withdrawn `baram-word-count-pro-1.0.0`
+ * — the case the warning exists for (review MEDIUM-4). A second hand-written copy of this
+ * rule would have drifted the first time either caller changed. (An earlier `.sort()` by
+ * descending id length supposedly prevented it and was dead code: `.some()` short-circuits,
+ * so the result never depended on order.)
  *
- * What is worth saying is that a plugin removed from the index keeps serving its archive by
- * direct URL. Nothing in the app can reach it — the index is the only way in — but a
- * trusted-tier plugin pulled for cause is still one `curl` away.
+ * ‼️ It answers "could this name be this id's", NOT "is this id's". `baram-word` matches
+ * `baram-word-2-1.0.0.zip`, which belongs to `baram-word-2`. That is why the caller also
+ * requires the remainder to PARSE as a version — see `withdrawalFor`.
  *
- * ‼️ The remainder must look like a VERSION (review MEDIUM-4). Matching a bare `${id}-`
- * prefix meant any listed id silenced every withdrawn archive whose name it prefixed —
- * `baram-word-count` hiding a withdrawn `baram-word-count-pro-1.0.0.zip`, i.e. hiding
- * exactly the case this exists for. An earlier `.sort()` by descending id length was dead
- * code: `.some()` short-circuits, so its result never depended on order.
+ * ‼️ And that pair of rules is airtight only because plugin ids are DOTLESS: they match
+ * `/^[a-z0-9-]+$/` (`manifest.ts`, `update-registry-index.mjs`). A hijack would need the
+ * victim id to be `<claimant>-<rest>` with `<rest>` starting with a digit AND
+ * `<rest>-<version>` parsing as a version — and with `<rest>` dotless the first `.` can only
+ * come from the version, so the boundary never lines up. That cross-file invariant is not
+ * restated here; if ids ever admit `.`, this reasoning has to be redone.
  */
+const archiveBelongsTo = (name: string, id: string) =>
+  name.startsWith(`${id}-`) && /^\d/u.test(name.slice(id.length + 1));
+
+/**
+ * Does this parse as semver, per the shipping parser?
+ *
+ * ‼️ THE HOLE THIS CLOSES (code review HIGH-1). `matchesRange(v, "*")` returns true WITHOUT
+ * parsing `v`, so for a `"*"` entry the version check below was a no-op and acknowledgement
+ * collapsed back to the bare-prefix rule: a revoked `baram-word` vouched for
+ * `baram-word-2-1.0.0.zip`, a different plugin's withdrawn archive. Reproduced at the notice
+ * level before this guard. Bounded ranges happened to be safe only because the hijacked
+ * remainder fails to parse — luck, not a check, so the parse is now demanded outright.
+ *
+ * `compareVersions(v, v)` rather than a regex: a second hand-written notion of "a version"
+ * is the same mistake as a second `archiveBelongsTo`.
+ *
+ * ‼️ It means "TRIMS to a version", not "is a version" — `parseVersion` calls `raw.trim()`
+ * and coerces components with `Number`, so ` 1.0.0`, `1.0.0 ` and `1.0.01` all parse. That
+ * leniency is right for the app, which reads a version out of a manifest; here the version
+ * is inferred from a FILENAME, and two different files must not both claim one recorded
+ * withdrawal. Whitespace is therefore refused outright — a published archive's name has
+ * none, so this rejects a typo rather than redefining semver. Leading zeros and `+build`
+ * are left to the parser: they are spellings the app would also treat as the same version,
+ * and inventing a stricter grammar here is the mistake this comment opens by naming.
+ */
+const isSemver = (v: string) => !/\s/u.test(v) && compareVersions(v, v) !== null;
+
 const indexedIds = plugins
   .map((p) => (p as null | { id?: unknown })?.id)
   .filter((id): id is string => typeof id === "string" && id !== "");
 
+/**
+ * The withdrawal list: what the app would read, and what the file merely CLAIMS.
+ *
+ * Both, because they answer different questions. `list` decides whether a withdrawal is
+ * real — via the shipping parser, so this script and the app agree about which entries
+ * exist and which versions each covers. `declaredIds` is every id the file mentions, even
+ * in an entry the parser DROPS, and it exists only to make the ambiguity check honest
+ * (review MEDIUM-2): a malformed rival is still a rival, and letting it vanish would leave
+ * one claimant standing where the file names two.
+ *
+ * A null `list` means no acknowledgements at all — every orphan warns, the loud direction.
+ * An unreadable list must never read as "everything is accounted for": that turns one
+ * corrupt file into blanket silence over exactly the archives this scan is for.
+ */
+const revokedPath = join(root, "revoked.json");
+const { declaredIds, list } = ((): {
+  declaredIds: string[];
+  list: null | RevocationList;
+} => {
+  // `lstat`, matching the archive check above: this file is PR-controlled in the registry's
+  // `validate.yml`, and a link is not the file the app fetches (review LOW-8).
+  const stat = lstatSync(revokedPath, { throwIfNoEntry: false });
+  // Absent is quiet — the sibling `validate-revocations.ts` owns "there should be one", and
+  // every orphan below warns anyway. Present-but-not-a-file is NOT quiet: something is there
+  // and this script is declining to read it, which the operator has to be told.
+  if (stat !== undefined && !stat.isFile()) {
+    warnings.push(
+      "revoked.json is not a regular file — a link or directory is not what the app " +
+        "fetches, so no withdrawal below counts as acknowledged",
+    );
+  }
+  if (!stat?.isFile()) return { declaredIds: [], list: null };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(revokedPath, "utf8"));
+  } catch {
+    warnings.push(
+      "revoked.json is present but unreadable, so no withdrawal below counts as acknowledged",
+    );
+    return { declaredIds: [], list: null };
+  }
+  // ‼️ `?.`, because the JSON document `null` is a valid one-word file and parses to `null`
+  // (code review MEDIUM-1). Reading `.revoked` off it threw an uncaught TypeError, and the
+  // throw landed BEFORE the errors above were printed — a real checksum mismatch came back
+  // as a stack trace instead of the verdict. `normalizeRevocationList` guards this itself;
+  // the lstat restructure moved `raw` out of the try and past that guard.
+  const declared = (raw as null | { revoked?: unknown })?.revoked;
+  const list = normalizeRevocationList(raw);
+  if (list === null) {
+    warnings.push(
+      "revoked.json is present but the app could not read it, so no withdrawal below " +
+        "counts as acknowledged",
+    );
+  }
+  return {
+    declaredIds: (Array.isArray(declared) ? declared : [])
+      .map((e) => (e as null | { id?: unknown })?.id)
+      .filter((id): id is string => typeof id === "string" && id !== ""),
+    list,
+  };
+})();
+
+/**
+ * The withdrawal that accounts for this archive, with the id it was matched under.
+ *
+ * Three refusals, all deliberate:
+ *
+ * - the remainder must PARSE as a version, whatever the range says. See `isSemver`: without
+ *   this, a `"*"` entry skipped the version question entirely (review HIGH-1).
+ * - the entry must then COVER that version, via the same `revocationFor` the app uses. An
+ *   entry bounded `lt: 2.0.0` says nothing about a `-3.0.0.zip` sitting in the directory,
+ *   and the point of that bound is that later majors are not withdrawn.
+ * - an ambiguous name resolves to NOTHING. Ids `a` and `a-1` both claim `a-1-2.0.0.zip`
+ *   under the prefix rule and nothing in the name says which; picking one lets whichever
+ *   sorts first speak for an archive that may not be its own. Claimants come from
+ *   `declaredIds`, so an entry the parser dropped still counts as a rival.
+ */
+function withdrawalFor(
+  name: string,
+): null | { entry: RevocationEntry; id: string } {
+  if (list === null) return null;
+  const claimants = [...new Set(declaredIds)].filter((id) =>
+    archiveBelongsTo(name, id),
+  );
+  if (claimants.length !== 1) return null;
+  const id = claimants[0];
+  const version = name.slice(id.length + 1, name.length - ".zip".length);
+  if (!isSemver(version)) return null;
+  const entry = revocationFor(id, version, list);
+  return entry === null ? null : { entry, id };
+}
+
+/**
+ * Archives belonging to a plugin the index has WITHDRAWN — not merely superseded, and not
+ * already accounted for in `revoked.json`.
+ *
+ * ‼️ Those two exclusions are what keep this warning worth reading, and they are the same
+ * argument twice. Every update leaves the previous version's ZIP behind, so a bare "nothing
+ * points at this file" fires once per release forever and the real case drowns in a decade
+ * of `-1.0.0.zip`. A recorded withdrawal is the same shape: the decision exists, one file
+ * over, and repeating it every run buys nothing. What is worth saying is that a plugin
+ * removed from the index KEEPS SERVING its archive by direct URL — nothing in the app can
+ * reach it, the index is the only way in, but a trusted-tier plugin pulled for cause is
+ * still one `curl` away.
+ *
+ * ‼️ Which is also why deference stops at `unlisted`. "Pulled for cause" is precisely the
+ * severity that must not go quiet; see the allowlist below.
+ *
+ * ‼️ And none of this is a security control. In the registry repo the same PR can author
+ * both the archive and the `revoked.json` entry that excuses it (code review MEDIUM-5), and
+ * every branch here exits 0 — this output is advisory, and PR review is the real gate. The
+ * refusals exist so the advice stays true, not so it can be enforced.
+ */
 const pluginsDir = join(root, "plugins");
 if (existsSync(pluginsDir)) {
   for (const name of readdirSync(pluginsDir).sort()) {
     const relative = `plugins/${name}`;
     if (referenced.has(relative) || !name.endsWith(".zip")) continue;
-    const superseded = indexedIds.some(
-      (id) =>
-        name.startsWith(`${id}-`) && /^\d/u.test(name.slice(id.length + 1)),
-    );
-    if (!superseded) {
-      warnings.push(
-        `${label(relative)} belongs to no listed plugin — a withdrawn plugin's archive ` +
-          "stays downloadable by direct URL",
+    if (indexedIds.some((id) => archiveBelongsTo(name, id))) continue;
+    const withdrawal = withdrawalFor(name);
+    // ‼️ ONLY `unlisted` goes quiet, and it is an allowlist rather than "not malicious"
+    // (review MEDIUM-4). `unlisted` is the one severity the model DEFINES as no danger —
+    // hygiene, the author went quiet, merged elsewhere. Everything else is a plugin pulled
+    // for cause, and "a trusted-tier plugin pulled for cause is still one `curl` away" is
+    // this scan's whole reason to exist: giving that case the quietest channel inverted it.
+    // A denylist would also hand the same silence to whatever severity is added next.
+    if (withdrawal?.entry.severity === "unlisted") {
+      notices.push(
+        `${label(relative)} belongs to ${label(withdrawal.id)}, withdrawn and recorded in ` +
+          "revoked.json — the archive stays downloadable by direct URL, as decided",
       );
+      continue;
     }
+    if (withdrawal !== null) {
+      warnings.push(
+        `${label(relative)} belongs to ${label(withdrawal.id)}, revoked as ` +
+          `${label(withdrawal.entry.severity)} — the archive is STILL downloadable by ` +
+          "direct URL, which for this severity is worth saying every time",
+      );
+      continue;
+    }
+    warnings.push(
+      `${label(relative)} belongs to no listed plugin and no revoked.json entry — a ` +
+        "withdrawn plugin's archive stays downloadable by direct URL, and nothing here " +
+        "records that anyone decided that",
+    );
   }
 } else {
   warnings.push(
@@ -309,6 +482,7 @@ if (existsSync(pluginsDir)) {
   );
 }
 
+for (const notice of notices) console.log(`· ${indexPath}: ${notice}`);
 for (const warning of warnings) console.warn(`⚠ ${indexPath}: ${warning}`);
 
 if (errors.length > 0) {
@@ -321,6 +495,9 @@ console.log(
   `✓ ${indexPath}: ${referenced.size} archive(s) present and matching` +
     (unchecked > 0
       ? ` (${unchecked} entry/entries not checkable here — see validate-index.ts)`
+      : "") +
+    (notices.length > 0
+      ? ` (${notices.length} acknowledged withdrawal(s))`
       : "") +
     (warnings.length > 0 ? ` (${warnings.length} warning(s))` : ""),
 );
