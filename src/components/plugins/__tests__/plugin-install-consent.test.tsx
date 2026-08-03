@@ -401,6 +401,35 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     });
   });
 
+  it("hands Rust the registry URL the listing actually came from", async () => {
+    // ‼️ §69 runtime origin pinning is enforced by a PAIR: Rust refuses an archive not served
+    // under the registry index that listed it, but only against the URL this call passes.
+    // Nothing else pins the frontend half — a hardcoded constant, or the entry's own
+    // `downloadUrl`, would typecheck and satisfy every other test in this file.
+    //
+    // The store URL is deliberately NOT the default, so this also fails for a hardcoded
+    // constant rather than only for an omitted argument (which typecheck already refuses).
+    installedAt({ capabilities: ["editor"], trust: "sandboxed" });
+    listed = [{ ...ENTRY, version: "2.0.0" }];
+    usePluginStore.setState({
+      registryUrl: "https://registry.test/custom/index.json",
+    });
+
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+
+    await waitFor(() => expect(pluginInstallStage).toHaveBeenCalledTimes(1));
+    expect(pluginInstallStage).toHaveBeenCalledWith(
+      ENTRY.downloadUrl,
+      "https://registry.test/custom/index.json",
+      ENTRY.checksum,
+      ENTRY.id,
+    );
+  });
+
   it("runs one install per plugin however fast the button is clicked", async () => {
     // ‼️ #261 security review (area 3). `setInstalling` is a store write that sits below two
     // `getVersion` IPCs and, when the consent record already covers the update, below no

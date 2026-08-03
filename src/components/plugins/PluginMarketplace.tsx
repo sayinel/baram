@@ -537,12 +537,18 @@ export function PluginMarketplace() {
           let checksum: string;
           let committed: RustCommittedPluginInfo;
           try {
-            // The third argument is the guard, not a formality: Rust refuses the archive if
-            // its manifest declares a different id, so a hostile listing cannot aim this
-            // download at an unrelated installed plugin's directory (re-review R5). The
-            // frontend check below is then defence in depth.
+            // Two of these arguments are guards, not formalities. `entry.id` makes Rust
+            // refuse an archive whose manifest declares a different id, so a hostile listing
+            // cannot aim this download at an unrelated installed plugin's directory
+            // (re-review R5); the frontend check below is then defence in depth.
+            //
+            // `registryUrl` makes Rust refuse an archive that is not served under the index
+            // that named it. Read from the store here rather than closed over, so it is the
+            // URL in force at install time — and it is the same string `registry-client.ts`
+            // fetched the listing with.
             const staged = await pluginInstallStage(
               entry.downloadUrl,
+              usePluginStore.getState().registryUrl,
               entry.checksum,
               entry.id,
             );

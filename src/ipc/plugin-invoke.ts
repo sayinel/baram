@@ -114,16 +114,26 @@ export async function pluginInstallDiscard(stageId: string): Promise<void> {
  * the id INSIDE the archive, so an archive claiming another installed plugin's id is how
  * that plugin used to get destroyed as a side effect of this download (§260 Phase 5
  * re-review, R5).
+ *
+ * `registryUrl` is the index this listing came from, and it is REQUIRED — Rust refuses an
+ * archive that is not served under it. Not optional, because an omitted origin would mean
+ * "download from anywhere", i.e. the protection turned off by forgetting an argument. It sits
+ * second, next to the URL it constrains, rather than last where it reads as a detail.
+ *
+ * Pass the same string that fetched the index (`store.registryUrl`), not a hand-built origin:
+ * Rust derives the base itself, so there is nothing here to get subtly wrong.
  */
 export async function pluginInstallStage(
   url: string,
+  registryUrl: string,
   checksum?: string,
   expectedId?: string,
 ): Promise<RustStagedPluginInfo> {
   return invoke<RustStagedPluginInfo>("plugin_install_stage", {
-    url,
     checksum: checksum ?? null,
     expectedId: expectedId ?? null,
+    registryUrl,
+    url,
   });
 }
 

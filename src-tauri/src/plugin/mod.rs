@@ -776,8 +776,12 @@ fn swap_into_place(staged: &Path, target: &Path, backup: &Path) -> Result<(), Pl
 /// downloading this one. Refusing here means the damage never happens.
 ///
 /// `None` skips the check, for a caller that has no prior expectation.
+/// `registry_url` is the index this listing came from. The archive must live under it —
+/// see `registry_base`. Required, not `Option`: a caller that omits it would otherwise
+/// download from anywhere, which is the protection being opt-out by forgetfulness.
 pub async fn stage_plugin(
     url: &str,
+    registry_url: &str,
     expected_checksum: Option<&str>,
     expected_id: Option<&str>,
 ) -> Result<StagedPluginInfo, PluginError> {
@@ -801,13 +805,46 @@ pub async fn stage_plugin(
     // bounds the drip while staying far outside any real download: the archives this
     // registry serves are tens of kilobytes, and even the 32 MiB ceiling only needs about
     // 55 KiB/s sustained.
+    //
+    // ‼️ AND THE ARCHIVE MUST COME FROM THE REGISTRY THAT LISTED IT. Until this, the only
+    // guard on `url` was the scheme: any host was accepted, and the checksum beside it
+    // offers nothing here because it comes from the SAME index — it attests bytes, not
+    // provenance, so an entry saying "download from evil.example, hash X" is internally
+    // consistent. The one thing anywhere that said where a plugin may come from was
+    // `scripts/validate-registry-assets.ts`, which (a) runs only over registries whose CI we
+    // own and (b) is a layer a review already proved bypassable. This is the runtime rule.
+    let base = registry_base(registry_url).map_err(PluginError::Refused)?;
     let parsed = validate_http_url(url).map_err(PluginError::Refused)?;
+    if !is_within_registry(&parsed, &base) {
+        return Err(PluginError::Refused(format!(
+            "plugin download {} is not under the registry that listed it ({}) — an index may \
+             not send the download elsewhere, because its checksum attests the bytes rather \
+             than where they came from",
+            shown(&parsed),
+            shown(&base)
+        )));
+    }
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(600))
+        // ‼️ Without this the check above is decorative: reqwest follows up to 10 redirects
+        // by default, so a compliant URL could hand the download to any host on the first
+        // hop. Every hop is re-checked against the same base.
+        .redirect(redirect_within_registry(base.clone()))
         .build()?;
-    let mut response = client.get(parsed).send().await?;
+    // ‼️ THE REDIRECT REFUSAL'S REASON DOES NOT SURVIVE `?` (code review MEDIUM-1). reqwest
+    // WRAPS a custom-policy error, and `to_string()` does not walk `source()`, so the message
+    // the policy took care to write arrived as "Network error: error following redirect for url
+    // (…)" — no reason, the ORIGINAL url rather than the hop, and it reads like connectivity.
+    // Choosing `error()` over `stop()` bought nothing until this walked the chain.
+    let mut response = match client.get(parsed).send().await {
+        Ok(response) => response,
+        Err(err) if err.is_redirect() => {
+            return Err(PluginError::Refused(error_chain(&err)));
+        }
+        Err(err) => return Err(err.into()),
+    };
     let status = response.status();
     if !status.is_success() {
         return Err(PluginError::Refused(format!(
@@ -1215,8 +1252,151 @@ pub fn validate_http_url(url: &str) -> Result<reqwest::Url, String> {
     }
 }
 
+/// The prefix a registry's own files sit under: its origin plus the DIRECTORY of its index.
+///
+/// ‼️ ORIGIN ALONE IS NOT ENOUGH, and the hosting we ship is the counterexample. GitHub
+/// Pages serves every repository of an account from one origin, so
+/// `sayinel.github.io/baram-plugins/index.json` and `sayinel.github.io/anything/evil.zip`
+/// are same-origin. A rule phrased as "same host" would therefore be close to vacuous for
+/// our own registry, and worse, it would look like a control while being one.
+///
+/// So the rule is the one `scripts/validate-registry-assets.ts` already applies at publish
+/// time — same origin AND under the index's directory. The same sentence at both ends is
+/// deliberate: a URL the publish gate accepts is one the runtime accepts.
+///
+/// Traversal in its RAW form needs no separate check: `Url` resolves `..` while parsing, so
+/// `…/baram-plugins/../evil/x.zip` arrives already normalised to `/evil/x.zip` and fails the
+/// prefix test. ‼️ The ENCODED form does need one and originally had none — see
+/// `is_within_registry`. "Traversal needs no separate check" was false as first written, and a
+/// review reproduced it against production Pages.
+///
+/// ‼️ AN `http://` REGISTRY IS STILL ALLOWED, and pinning does not make it trustworthy
+/// (security review LOW-1): plaintext offers no integrity, so an attacker on the wire rewrites
+/// the index and the archives together and the pin holds against an origin they now control.
+/// Restricting `http` to loopback was considered and NOT done here — it would break a
+/// self-hosted LAN registry, which is a product decision rather than part of pinning the
+/// download, and there is no UI that sets this URL at all (default https, store state only).
+/// Recorded in `dev/backlog.md`. What pinning DOES guarantee either way is that the archive
+/// shares the index's scheme, so an https registry can never be talked down to http.
+pub fn registry_base(index_url: &str) -> Result<reqwest::Url, String> {
+    let mut base = validate_http_url(index_url)?;
+    // ‼️ THE ONE-SEGMENT CASE FAILS OPEN IF TAKEN LITERALLY (code review MEDIUM-3).
+    // `https://h/baram-plugins` — the form a browser address bar leaves you with — pops to an
+    // EMPTY path, so the base collapses to the origin root and the path half of the rule
+    // silently disappears, leaving exactly the origin-only rule this function opens by calling
+    // close to vacuous. Every repository on that account becomes installable.
+    //
+    // The two cases are structurally identical (`/index.json` pops to empty too), so the only
+    // signal is whether the popped segment names a DOCUMENT. `fetch_registry` parses this URL's
+    // body as the index, so a registry URL always names one; a bare directory name does not, and
+    // would already fail the index fetch. Refusing is therefore free, and it fails CLOSED.
+    // `next_back`, not `last`: the segments iterator is double-ended, so `last` would walk the
+    // whole path to reach the end (clippy::double_ended_iterator_last, denied at pre-push).
+    let popped = base
+        .path_segments()
+        .and_then(|mut s| s.next_back())
+        .unwrap_or("")
+        .to_string();
+    // `index.json` is a file, not a directory: drop the last segment so the prefix is the
+    // directory holding it. `pop` then `push("")` leaves the trailing slash, which matters —
+    // without it `/baram-plugins` would also prefix `/baram-plugins-evil/`.
+    base.path_segments_mut()
+        // Unreachable for http/https — a special scheme always has a path — but an `expect`
+        // here would be a panic reachable from store state if that ever stopped being true.
+        .map_err(|_| "registry URL cannot be a base".to_string())?
+        .pop()
+        .push("");
+    if base.path() == "/" && !popped.contains('.') {
+        return Err(format!(
+            "registry URL {} names a directory rather than an index document, so the archives \
+             it may serve cannot be bounded — give the full URL of the index (…/index.json)",
+            shown(&base)
+        ));
+    }
+    base.set_query(None);
+    base.set_fragment(None);
+    Ok(base)
+}
+
+/// A URL as it should appear in a message: origin plus path, nothing else.
+///
+/// ‼️ `Display` on a `Url` serialises USERINFO, password included (code review LOW-3), and
+/// these strings reach a toast. It also drops the query, which the archive rule ignores anyway
+/// and which is attacker-controlled text from the index (LOW-4) — the sibling publish gate
+/// treats printing that field raw as a defect, and this is the Rust-side equivalent.
+fn shown(url: &reqwest::Url) -> String {
+    format!("{}{}", url.origin().ascii_serialization(), url.path())
+}
+
+/// Whether `candidate` is served by the registry `base` describes.
+///
+/// ‼️ AN ENCODED PATH SEPARATOR IS REFUSED, NOT INTERPRETED (security review LOW-2). `Url`
+/// keeps `%2f` as a literal inside a segment, so `…/baram-plugins/%2f..%2f..%2fevil/x.zip`
+/// still starts with the base path and would pass — while a server that decodes `%2f` to `/`
+/// before normalising `..` resolves it outside the registry entirely. That is the same defect
+/// class as the publish-time bypass this week, where GitHub Pages decoded `%2e` to `.` and the
+/// validator hashed a different file than users downloaded: whenever this code and the server
+/// can disagree about which path a URL names, the check is worse than no check because it
+/// reports success.
+///
+/// Refusing the spelling rather than guessing the server is the same resolution
+/// `validate-registry-assets.ts` reached. `%2f` and `%5c` are the whole structural set — every
+/// other escape that could matter is already normalised by the parser (`%2e%2e` is resolved to
+/// `..` and collapsed while parsing), and a legitimately encoded byte like `%20` is untouched
+/// by this, so it is not a ban on percent-encoding.
+fn is_within_registry(candidate: &reqwest::Url, base: &reqwest::Url) -> bool {
+    let path = candidate.path();
+    let lowered = path.to_ascii_lowercase();
+    if lowered.contains("%2f") || lowered.contains("%5c") {
+        return false;
+    }
+    candidate.origin() == base.origin() && path.starts_with(base.path())
+}
+
+/// Everything a `reqwest::Error` knows, including the sources `to_string()` leaves out.
+///
+/// Needed because a custom redirect policy's refusal is a SOURCE of the error reqwest returns,
+/// not its message, so `?` alone discards the reason (code review MEDIUM-1).
+fn error_chain(err: &reqwest::Error) -> String {
+    let mut parts = vec![err.to_string()];
+    let mut source = std::error::Error::source(err);
+    while let Some(inner) = source {
+        parts.push(inner.to_string());
+        source = inner.source();
+    }
+    parts.join(": ")
+}
+
+/// A redirect policy that cannot leave the registry.
+///
+/// `stop()` is deliberately not used: it yields the 3xx itself, which downstream reports as
+/// "plugin download returned HTTP 302" — a message that describes the symptom and hides the
+/// refusal. An error carries the reason.
+fn redirect_within_registry(base: reqwest::Url) -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() > 5 {
+            attempt.error("plugin download redirected too many times")
+        } else if is_within_registry(attempt.url(), &base) {
+            attempt.follow()
+        } else {
+            // Formatted before the move: `error` takes `attempt` by value, so the borrow from
+            // `url()` cannot still be alive inside the argument.
+            let target = shown(attempt.url());
+            let base = shown(&base);
+            attempt.error(format!(
+                "plugin download redirected to {target}, outside the registry that listed it ({base})"
+            ))
+        }
+    })
+}
+
 /// Plugin network proxy — bypasses browser CORS via a Rust-side reqwest call.
 /// Enforces the http/https scheme guard, a 30s timeout, and a 10 MiB response cap.
+///
+/// ‼️ NOT origin-pinned, and that is correct: this is the capability-gated proxy a plugin
+/// uses for its OWN network calls, where an arbitrary host is the entire point. Pinning it
+/// would break every plugin that talks to an API. The pinning belongs on `stage_plugin`,
+/// which fetches CODE named by an index.
 pub async fn http_fetch(
     url: String,
     init: Option<PluginFetchInit>,
@@ -2046,6 +2226,192 @@ mod tests {
         assert!(validate_http_url("javascript:alert(1)").is_err());
     }
 
+    const LIVE_INDEX: &str = "https://sayinel.github.io/baram-plugins/index.json";
+
+    fn within(archive: &str) -> bool {
+        is_within_registry(
+            &validate_http_url(archive).unwrap(),
+            &registry_base(LIVE_INDEX).unwrap(),
+        )
+    }
+
+    #[test]
+    fn the_registry_base_is_the_index_s_directory_not_the_index() {
+        assert_eq!(
+            registry_base(LIVE_INDEX).unwrap().as_str(),
+            "https://sayinel.github.io/baram-plugins/"
+        );
+        // Idempotent for a URL already naming a directory, and for one at the root.
+        assert_eq!(
+            registry_base("https://h/dir/").unwrap().as_str(),
+            "https://h/dir/"
+        );
+        assert_eq!(
+            registry_base("https://h/index.json").unwrap().as_str(),
+            "https://h/"
+        );
+        // A query or fragment on the index must not end up in the prefix.
+        assert_eq!(
+            registry_base("https://h/r/index.json?v=2#x")
+                .unwrap()
+                .as_str(),
+            "https://h/r/"
+        );
+    }
+
+    #[test]
+    fn an_archive_served_by_the_registry_is_accepted() {
+        assert!(within(
+            "https://sayinel.github.io/baram-plugins/plugins/baram-word-count-2.0.0.zip"
+        ));
+    }
+
+    #[test]
+    fn a_sibling_pages_site_on_the_same_origin_is_refused() {
+        // ‼️ THE CASE THAT MAKES THIS RULE NON-VACUOUS, and the reason an origin check would
+        // not have been one. GitHub Pages serves every repo of an account from one origin, so
+        // this URL is SAME-ORIGIN with the live index — and it is a repository anyone can
+        // create under their own account.
+        assert!(!within(
+            "https://sayinel.github.io/evil/plugins/x-1.0.0.zip"
+        ));
+        // The trailing slash in the base is what stops a prefix-sibling too.
+        assert!(!within(
+            "https://sayinel.github.io/baram-plugins-evil/x-1.0.0.zip"
+        ));
+        // ‼️ The base must appear at the START of the path, not anywhere in it (code review
+        // HIGH-3). Every other input in this module is refused by `starts_with` AND by
+        // `contains`, so mutating the predicate to `contains` survived all ten of them — while
+        // admitting exactly this: someone else's repo with our registry's name buried inside.
+        assert!(!within(
+            "https://sayinel.github.io/evil/baram-plugins/x-1.0.0.zip"
+        ));
+    }
+
+    #[test]
+    fn another_host_is_refused_however_plausible() {
+        assert!(!within("https://evil.example/plugins/x-1.0.0.zip"));
+        // Same path, different host: the path is not what is being trusted.
+        assert!(!within(
+            "https://evil.example/baram-plugins/plugins/x-1.0.0.zip"
+        ));
+        // A host that merely ENDS with ours — the classic suffix mistake.
+        assert!(!within(
+            "https://sayinel.github.io.evil.example/baram-plugins/x.zip"
+        ));
+    }
+
+    #[test]
+    fn traversal_is_refused_because_the_url_parser_normalises_it_first() {
+        // No `..` check anywhere: `Url` resolves it while parsing, so this arrives as
+        // `/evil/x-1.0.0.zip` and fails the prefix test. Same property the TypeScript
+        // validator leans on.
+        assert!(!within(
+            "https://sayinel.github.io/baram-plugins/../evil/x-1.0.0.zip"
+        ));
+    }
+
+    #[test]
+    fn an_encoded_path_separator_is_refused_rather_than_interpreted() {
+        // ‼️ `Url` keeps `%2f` literal inside a segment, so this DOES start with the base path
+        // and would pass a plain prefix test — while a server that decodes it before resolving
+        // `..` lands outside the registry. Same class as the publish-time `%2e` bypass: refuse
+        // the spelling instead of predicting the server.
+        assert!(!within(
+            "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip"
+        ));
+        assert!(!within(
+            "https://sayinel.github.io/baram-plugins/%2F..%2Fevil/x-1.0.0.zip"
+        ));
+        // Backslash too — WHATWG treats a raw `\` as `/`, so its encoded form is the same trick.
+        assert!(!within(
+            "https://sayinel.github.io/baram-plugins/%5c..%5cevil/x-1.0.0.zip"
+        ));
+        // ‼️ And NOT a ban on percent-encoding: an encoded byte that cannot change the path
+        // structure is still fine, or a registry could not serve a file with a space in it.
+        assert!(within(
+            "https://sayinel.github.io/baram-plugins/plugins/my%20plugin-1.0.0.zip"
+        ));
+    }
+
+    #[test]
+    fn a_scheme_downgrade_is_refused_even_on_the_same_host() {
+        // `origin()` includes the scheme, so http is not https. Worth pinning: the archive is
+        // executable code, and the checksum comes from the same index an attacker on the wire
+        // would be rewriting.
+        assert!(!within(
+            "http://sayinel.github.io/baram-plugins/plugins/x-1.0.0.zip"
+        ));
+    }
+
+    #[test]
+    fn a_registry_url_the_scheme_guard_rejects_never_yields_a_base() {
+        // ‼️ Renamed: this does NOT reach the cannot-be-a-base arm (code review LOW-1). Both
+        // inputs die in `validate_http_url`, and for http/https `path_segments_mut()` never
+        // returns Err at all — a special scheme always has a path — so that arm is unreachable
+        // today and kept only so a future scheme cannot turn it into a panic. What IS worth
+        // pinning is that a rejected URL produces an Err rather than a base matching everything.
+        assert!(registry_base("data:text/plain,hi").is_err());
+        assert!(registry_base("not a url").is_err());
+    }
+
+    #[test]
+    fn a_registry_url_naming_a_directory_is_refused_rather_than_collapsing_to_the_origin() {
+        // ‼️ FAILS OPEN IF ACCEPTED (code review MEDIUM-3). `https://h/baram-plugins` — what a
+        // browser address bar leaves you — pops to an empty path, so the base becomes the ORIGIN
+        // ROOT and the path half of the rule silently disappears. On Pages that makes every
+        // repository of the account installable, which is the whole thing this rule exists to
+        // stop.
+        let err = registry_base("https://sayinel.github.io/baram-plugins")
+            .expect_err("a directory-shaped registry URL must be refused");
+        assert!(err.contains("names a directory"), "{err}");
+        assert!(registry_base("https://sayinel.github.io").is_err());
+
+        // ...but an index genuinely AT the root is legitimate: then the whole origin is the
+        // registry, and `/` is the correct base rather than a collapse.
+        assert_eq!(
+            registry_base("https://registry.example/index.json")
+                .unwrap()
+                .as_str(),
+            "https://registry.example/"
+        );
+        // And a subdirectory URL is untouched by any of this.
+        assert_eq!(
+            registry_base("https://h/r/index.json").unwrap().as_str(),
+            "https://h/r/"
+        );
+    }
+
+    #[test]
+    fn a_message_never_carries_the_registry_url_s_credentials() {
+        // `Display` on a `Url` serialises userinfo, password included (code review LOW-3), and
+        // these strings reach a toast.
+        let err = registry_base("https://user:hunter2@h/notadoc")
+            .expect_err("directory-shaped, so it refuses and formats the base");
+        assert!(!err.contains("hunter2"), "credentials leaked: {err}");
+        assert!(!err.contains("user:"), "credentials leaked: {err}");
+    }
+
+    #[tokio::test]
+    async fn stage_plugin_refuses_an_encoded_separator_before_it_downloads_anything() {
+        // ‼️ WIRING for the `%2f` guard: its other test drives the predicate directly, which
+        // says nothing about whether the download path consults it. Nothing here reaches the
+        // network — the refusal precedes the request.
+        let err = stage_plugin(
+            "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip",
+            LIVE_INDEX,
+            None,
+            None,
+        )
+        .await
+        .expect_err("an encoded separator must be refused");
+        assert!(
+            err.to_string()
+                .contains("is not under the registry that listed it"),
+            "{err}"
+        );
+    }
+
     /// §69 — the scheme guard is WIRED INTO `fetch_registry`, not merely available.
     ///
     /// Asserting `is_err()` here would prove nothing: reqwest rejects a `file:` URL on its
@@ -2060,7 +2426,7 @@ mod tests {
     /// reaches the network.
     #[tokio::test]
     async fn test_stage_plugin_refuses_non_http_schemes() {
-        let err = stage_plugin("file:///etc/passwd", None, None)
+        let err = stage_plugin("file:///etc/passwd", LIVE_INDEX, None, None)
             .await
             .expect_err("a file:// download URL must be refused");
         assert!(
@@ -3008,6 +3374,184 @@ mod tests {
         format!("http://{addr}/doc.json")
     }
 
+    /// A one-shot 302 to `location`, for the redirect policy.
+    ///
+    /// Its own helper because `serve_once` sends no headers beyond `Content-Length`, and a
+    /// redirect is exactly a header. Without this the origin check would be untestable at the
+    /// hop that matters: reqwest follows up to 10 redirects by default, so a compliant URL
+    /// could hand the download to any host and the check would look enforced while not being.
+    fn serve_redirect(location: &str) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let header =
+            format!("HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        std::thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            use std::io::{Read, Write};
+            let mut scratch = [0u8; 2048];
+            let _ = stream.read(&mut scratch);
+            let _ = stream.write_all(header.as_bytes());
+            let _ = stream.flush();
+        });
+        format!("http://{addr}/doc.json")
+    }
+
+    #[tokio::test]
+    async fn stage_plugin_refuses_an_archive_outside_the_registry_that_listed_it() {
+        // ‼️ WIRED IN, not merely available. `is_within_registry` having the right answer is
+        // worth nothing if the download path never asks it — the same reason the scheme guard
+        // has its own wiring test next door. Nothing here reaches the network: the refusal
+        // happens before the request.
+        let err = stage_plugin(
+            "https://evil.example/plugins/x-1.0.0.zip",
+            LIVE_INDEX,
+            None,
+            None,
+        )
+        .await
+        .expect_err("an off-registry archive must be refused");
+        assert!(
+            err.to_string()
+                .contains("is not under the registry that listed it"),
+            "expected the containment refusal, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_plugin_refuses_a_redirect_that_leaves_the_registry() {
+        // The first hop is in-registry and compliant; the redirect is where it leaves. Served
+        // over loopback so the policy really runs, rather than being reasoned about.
+        let url = serve_redirect("https://evil.example/x-1.0.0.zip");
+        let err = stage_plugin(&url, &url, None, None)
+            .await
+            .expect_err("a redirect off the registry must be refused");
+        let msg = err.to_string();
+        // ‼️ No `|| contains("redirect")` (code review MEDIUM-2). That disjunct matched
+        // reqwest's own wrapper text for ANY custom-policy error, so the test pinned "reqwest
+        // raised a redirect error" rather than "the policy refused this hop" — and it was the
+        // reason the follow-half mutant above could survive. The policy's own words, or nothing.
+        assert!(
+            msg.contains("outside the registry that listed it"),
+            "expected the policy's own refusal, got: {msg}"
+        );
+        // The hop it refused, not the URL we started from — `to_string()` on the reqwest error
+        // names the original, which reads like connectivity.
+        assert!(
+            msg.contains("evil.example"),
+            "the refusal must name the hop it refused: {msg}"
+        );
+        // ‼️ And NOT the symptom message: `Policy::stop()` would have yielded the 302 itself,
+        // reported downstream as "plugin download returned HTTP 302", which describes what
+        // happened and hides why it was refused.
+        assert!(
+            !msg.contains("returned HTTP 302"),
+            "the refusal must carry its reason, not surface as a bare 302: {msg}"
+        );
+    }
+
+    /// One server, two connections: a 302 to another PATH on itself, then a real body.
+    ///
+    /// ‼️ Needed because two `serve_once` servers get different loopback PORTS, so a redirect
+    /// between them is never same-origin — a test built that way could only ever show the
+    /// refusal, never the follow. Self-redirect is the only shape that exercises the
+    /// permissive half on one origin.
+    fn serve_self_redirect(body: Vec<u8>) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let responses = [
+                format!("HTTP/1.1 302 Found\r\nLocation: http://{addr}/plugins/real.zip\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").into_bytes(),
+                {
+                    let mut r = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .into_bytes();
+                    r.extend_from_slice(&body);
+                    r
+                },
+            ];
+            for response in responses {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                let mut scratch = [0u8; 2048];
+                let _ = stream.read(&mut scratch);
+                let _ = stream.write_all(&response);
+                let _ = stream.flush();
+            }
+        });
+        format!("http://{addr}/plugins/start.zip")
+    }
+
+    /// A server that answers every connection with a 302 to a path on itself.
+    ///
+    /// For the hop cap: `Policy::custom` REPLACES reqwest's default `limited(10)`, so the
+    /// `> 5` bound is the only thing standing between an in-registry redirect loop and the
+    /// 600-second total timeout (code review LOW-2).
+    fn serve_redirect_loop() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let response = format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://{addr}/plugins/again.zip\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            while let Ok((mut stream, _)) = listener.accept() {
+                let mut scratch = [0u8; 2048];
+                let _ = stream.read(&mut scratch);
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.flush();
+            }
+        });
+        format!("http://{addr}/plugins/start.zip")
+    }
+
+    #[tokio::test]
+    async fn stage_plugin_gives_up_on_an_in_registry_redirect_loop() {
+        // Every hop is same-origin and under the base, so containment never refuses it — the hop
+        // COUNT is the only bound, and without it this spins until the total timeout.
+        let url = serve_redirect_loop();
+        let err = stage_plugin(&url, &url, None, None)
+            .await
+            .expect_err("a redirect loop must be given up on");
+        assert!(
+            err.to_string().contains("redirected too many times"),
+            "expected the hop cap, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stage_plugin_follows_a_redirect_that_stays_inside_the_registry() {
+        // The permissive half: pinning must not break a registry that redirects internally,
+        // or the rule stops being "same registry" and becomes "no redirects", which would
+        // refuse legitimate hosting without saying so.
+        //
+        // The proof that the hop was FOLLOWED is which error comes back: the second response
+        // is not a ZIP, so it fails in extraction. A refused redirect could not reach that.
+        let url = serve_self_redirect(b"not a zip".to_vec());
+        let err = stage_plugin(&url, &url, None, None)
+            .await
+            .expect_err("a non-zip body cannot install");
+        let msg = err.to_string();
+        // ‼️ A POSITIVE assertion (code review HIGH-2). The three `!contains` checks this
+        // replaces were all satisfied by "error following redirect", so mutating
+        // `attempt.follow()` into a refusal — deleting the permissive half of the policy
+        // outright — left every test in this module passing. Naming the error that can ONLY be
+        // reached by taking the hop is what makes the test about following.
+        assert!(
+            msg.contains("ZIP extraction"),
+            "the second response must have been reached, i.e. the hop taken: {msg}"
+        );
+        assert!(
+            !msg.contains("outside the registry") && !msg.contains("returned HTTP 302"),
+            "an in-registry redirect must be followed, not refused: {msg}"
+        );
+    }
+
     #[tokio::test]
     async fn fetch_registry_refuses_a_body_over_its_cap() {
         let url = serve_once("200 OK", vec![b' '; MAX_REGISTRY_BYTES + 1]);
@@ -3056,7 +3600,7 @@ mod tests {
         // checksum, the manifest or the tier can say anything, so nothing downstream would
         // ever catch an unbounded download.
         let url = serve_once("200 OK", vec![0u8; MAX_PLUGIN_ARCHIVE_BYTES + 1]);
-        let err = stage_plugin(&url, None, None)
+        let err = stage_plugin(&url, &url, None, None)
             .await
             .expect_err("over the cap");
         assert!(
@@ -3068,7 +3612,7 @@ mod tests {
     #[tokio::test]
     async fn stage_plugin_refuses_a_non_success_status() {
         let url = serve_once("503 Service Unavailable", b"down".to_vec());
-        let err = stage_plugin(&url, None, None)
+        let err = stage_plugin(&url, &url, None, None)
             .await
             .expect_err("503 is not an archive");
         assert!(
@@ -3128,7 +3672,7 @@ mod tests {
         let archive = zip_of(&[("not-a-manifest.txt", b"hello")]);
         let url = serve_once("200 OK", archive);
 
-        let err = stage_plugin(&url, None, None)
+        let err = stage_plugin(&url, &url, None, None)
             .await
             .expect_err("an archive with no manifest cannot install");
 
