@@ -208,3 +208,41 @@ describe("normal-mode edits", () => {
     expect(run(["O"]).commands).toEqual([{ below: false, type: "openLine" }]);
   });
 });
+
+describe("arrow keys are motions (device report)", () => {
+  it.each([
+    ["ArrowLeft", "charLeft"],
+    ["ArrowRight", "charRight"],
+    ["ArrowUp", "lineUp"],
+    ["ArrowDown", "lineDown"],
+    ["Home", "lineStart"],
+    ["End", "lineEnd"],
+  ] as const)("%s → %s in normal mode", (k, motion) => {
+    const result = step(initialCoreState("normal"), key(k), { cursor: 0 });
+    expect(result.handled).toBe(true);
+    expect(result.command).toEqual({ count: 1, motion, type: "move" });
+  });
+
+  it("counts apply: 3 ArrowDown moves three lines", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("3"), { cursor: 0 }).state;
+    const result = step(state, key("ArrowDown"), { cursor: 0 });
+    expect(result.command).toEqual({
+      count: 3,
+      motion: "lineDown",
+      type: "move",
+    });
+  });
+
+  it("arrows in visual mode move the head too", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("v"), { cursor: 0 }).state;
+    const result = step(state, key("ArrowRight"), { cursor: 0 });
+    expect(result.command).toEqual({
+      count: 1,
+      motion: "charRight",
+      type: "move",
+    });
+    expect(result.state.mode).toBe("visual");
+  });
+});

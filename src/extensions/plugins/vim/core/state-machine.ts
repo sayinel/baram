@@ -24,13 +24,22 @@ export interface StepContext {
   cursor: number;
 }
 
-/** Bare keys that are motions in both normal and visual mode. */
+/** Bare keys that are motions in both normal and visual mode. Arrow keys
+ *  are first-class vim motions too — and on a non-editable view nothing
+ *  else can move the caret, since PM's own arrow handling sits behind the
+ *  editable gate (device finding). */
 const MOTIONS: Record<string, Motion> = {
   $: "lineEnd",
   0: "lineStart",
+  ArrowDown: "lineDown",
+  ArrowLeft: "charLeft",
+  ArrowRight: "charRight",
+  ArrowUp: "lineUp",
   b: "wordBack",
+  End: "lineEnd",
   G: "docEnd",
   h: "charLeft",
+  Home: "lineStart",
   j: "lineDown",
   k: "lineUp",
   l: "charRight",
