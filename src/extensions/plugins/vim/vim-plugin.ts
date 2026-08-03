@@ -32,6 +32,7 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { broadcastCodeBlockEditable } from "../../nodes/views/code-block-cm-registry";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary } from "./adapters/graphemes";
 import { resolveMotion } from "./adapters/motions";
@@ -200,16 +201,26 @@ export function createVimPlugin(): Plugin<VimPluginState> {
     },
 
     /** §7 settings lifecycle + §8 status feed (owner-gated inside
-     *  vim-status). Registration replays the current vimMode setting. */
+     *  vim-status) + §4-CM readOnly sync: PM never calls NodeView.update()
+     *  on an editable flip, so live CodeMirror blocks are reconfigured by
+     *  broadcast whenever this PluginView sees the prop change. */
     view: (editorView) => {
       publishWysiwygVimStatus(editorView);
       const unregister = registerVimLifecycle(editorView);
+      let prevEditable = editorView.editable;
+      broadcastCodeBlockEditable(editorView, prevEditable);
       return {
         destroy: () => {
           unregister();
           clearWysiwygVimStatusFor(editorView);
         },
-        update: (view) => publishWysiwygVimStatus(view),
+        update: (view) => {
+          publishWysiwygVimStatus(view);
+          if (view.editable !== prevEditable) {
+            prevEditable = view.editable;
+            broadcastCodeBlockEditable(view, view.editable);
+          }
+        },
       };
     },
 

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { createBaramExtensions } from "../../../index";
+import { registerCodeBlockEditableSync } from "../../../nodes/views/code-block-cm-registry";
 import { vimPluginKey } from "../vim-keys";
 import { type VimPluginState } from "../vim-plugin";
 
@@ -62,5 +63,31 @@ describe("vim settings lifecycle (§7)", () => {
     a.destroy();
     useSettingsStore.getState().setVimMode(true);
     expect(vim(b).enabled).toBe(true);
+  });
+});
+
+describe("CM readOnly sync (§4-CM, S6)", () => {
+  it("an editable flip reaches registered code blocks; steady state does not", () => {
+    const editor = makeEditor();
+    const seen: boolean[] = [];
+    const unregister = registerCodeBlockEditableSync(editor.view, (e) =>
+      seen.push(e),
+    );
+
+    useSettingsStore.getState().setVimMode(true);
+    expect(seen.at(-1)).toBe(false); // modal → CM read-only
+
+    const flips = seen.length;
+    editor.view.dispatch(editor.state.tr.insertText("x", 1)); // no flip
+    expect(seen.length).toBe(flips);
+
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "insert",
+        type: "setMode",
+      }),
+    );
+    expect(seen.at(-1)).toBe(true); // insert → CM editable again
+    unregister();
   });
 });
