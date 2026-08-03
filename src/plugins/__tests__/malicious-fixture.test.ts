@@ -692,7 +692,13 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     expect(missing.output).toContain("cannot compare versions");
     // …and it is a refusal, not a crash: no raw Node stack from the `-e` script.
     expect(missing.output).not.toContain("[eval]");
-  });
+    // ‼️ An EXPLICIT budget, because this test spawns bash and node several times over and
+    // vitest's 5 s default left it 1.9× headroom (2.66 s alone on a 10-core machine). Adding a
+    // second process-spawning file to the suite — `revocation-publish-gate.test.ts`, which runs
+    // the revocation gate's real shell — was enough to push it to 5.3 s and fail. Nothing here
+    // got slower; the budget was never sized for what this test does, and a CI runner has
+    // fewer cores than the machine that number came from.
+  }, 30_000);
 
   it("names only the sandboxed tier as publishable", () => {
     // An independent condition from the allowlist, and it fails for a different reason: the

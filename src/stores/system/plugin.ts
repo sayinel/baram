@@ -35,6 +35,20 @@ interface PluginState {
   removePlugin: (id: string) => void;
   /** §69 Persisted: revocation must survive offline, so it is not a fetch cache. */
   revocations: null | RevocationList;
+  /**
+   * Highest revocation `sequence` ever accepted, per registry URL.
+   *
+   * ‼️ SEPARATE FROM `revocations` BECAUSE `setRegistryUrl` CLEARS THAT (security review
+   * MEDIUM-1). Clearing the list on a switch is right — ours must not govern someone else's
+   * plugins — but it also erased the high-water mark, so switching to another registry and
+   * back left `supersedesStoredList(…, null)` accepting anything at or above the floor. An
+   * attacker serving the origin could then replay an old signed list on the return trip,
+   * which is the exact rollback the counter exists to refuse.
+   *
+   * Keyed by registry URL so each registry keeps its own mark, and never cleared: the point
+   * is to remember a number a registry has already reached.
+   */
+  revocationSequenceSeen: Record<string, number>;
   revocationsFetchedAt: number;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
@@ -43,7 +57,14 @@ interface PluginState {
   setPluginSetting: (pluginId: string, key: string, value: unknown) => void;
   setRegistryCache: (index: RegistryIndex) => void;
   setRegistryUrl: (url: string) => void;
-  setRevocations: (list: RevocationList) => void;
+  /**
+   * Store a fetched list. `verified` says whether its signature was checked.
+   *
+   * ‼️ REQUIRED, NOT OPTIONAL, and it gates the high-water mark. An unverified counter must
+   * never raise the floor — see `revocationSequenceSeen`. A default of `true` would make the
+   * dangerous case the one you get by forgetting the argument.
+   */
+  setRevocations: (list: RevocationList, verified: boolean) => void;
   setUpdateAvailable: (id: string, version: string) => void;
   updateAvailable: Record<string, string>; // pluginId -> latest version
   updatePluginVersion: (id: string, version: string, checksum: string) => void;
@@ -166,6 +187,7 @@ export const usePluginStore = create<PluginState>()(
       registryCacheTime: 0,
       revocations: null,
       revocationsFetchedAt: 0,
+      revocationSequenceSeen: {},
       updateAvailable: {},
       installing: {},
       devPlugins: {},
@@ -286,8 +308,28 @@ export const usePluginStore = create<PluginState>()(
       setRegistryUrl: (registryUrl) =>
         set({ registryUrl, revocations: null, revocationsFetchedAt: 0 }),
 
-      setRevocations: (revocations) =>
-        set({ revocations, revocationsFetchedAt: Date.now() }),
+      // ‼️ The high-water mark is raised HERE and never lowered, and it deliberately outlives
+      // `setRegistryUrl` above. `Math.max` rather than assignment: accepting an equal counter
+      // is normal (every refresh), and a caller must not be able to walk the mark down by
+      // storing an older list.
+      setRevocations: (revocations, verified) =>
+        set((state) => ({
+          revocations,
+          // ‼️ RAISED ONLY BY A VERIFIED LIST (code review CRITICAL-1). This value is
+          // persisted and never lowered, so letting an unverified counter in made a single
+          // fabricated answer a permanent, restart-proof ceiling — every genuine list refused
+          // from then on. A plugin that patches `invoke` can produce exactly that answer.
+          revocationSequenceSeen: verified
+            ? {
+                ...state.revocationSequenceSeen,
+                [state.registryUrl]: Math.max(
+                  state.revocationSequenceSeen[state.registryUrl] ?? 0,
+                  revocations.sequence,
+                ),
+              }
+            : state.revocationSequenceSeen,
+          revocationsFetchedAt: Date.now(),
+        })),
     }),
     {
       name: "baram:plugins",
@@ -302,6 +344,10 @@ export const usePluginStore = create<PluginState>()(
         // falls back to the initial `null`, which is the correct pre-first-fetch state.
         revocations: state.revocations,
         revocationsFetchedAt: state.revocationsFetchedAt,
+        // Persisted for the same reason as `revocations`, and more strongly: forgetting the
+        // mark across a restart would re-open the rollback it exists to refuse. Absent falls
+        // back to the initial `{}`, so no migration step is needed.
+        revocationSequenceSeen: state.revocationSequenceSeen,
       }),
       version: 3,
       migrate: migratePluginPersistedState,

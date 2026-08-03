@@ -11,6 +11,23 @@ import type {
   RegistryIndex,
 } from "../plugins/types";
 
+/**
+ * §69 — the revocation list as raw JSON text, with whether its signature was checked.
+ *
+ * Text rather than a parsed object because `normalizeRevocationList` is the single
+ * validator, and it drops malformed entries rather than failing the whole list. A
+ * typed deserialize on the Rust side would reject the document on one bad entry.
+ *
+ * ‼️ `verified` is not decoration. The caller must not believe the list's `sequence` unless
+ * this says the bytes were checked — a plugin that patches `invoke` bypasses the Rust verifier
+ * and can otherwise hand over any counter it likes, which was a permanent-disarm primitive.
+ * See `FetchedRevocations` in `src-tauri/src/plugin/mod.rs`.
+ */
+export interface FetchedRevocations {
+  body: string;
+  verified: boolean;
+}
+
 /** What `pluginInstallCommit` put in place, read back after the swap. */
 export interface RustCommittedPluginInfo {
   install_path: string;
@@ -48,15 +65,10 @@ export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
   return invoke<RegistryIndex>("plugin_fetch_registry", { url });
 }
 
-/**
- * §69 — the revocation list as raw JSON text.
- *
- * Text rather than a parsed object because `normalizeRevocationList` is the single
- * validator, and it drops malformed entries rather than failing the whole list. A
- * typed deserialize on the Rust side would reject the document on one bad entry.
- */
-export async function pluginFetchRevocations(url: string): Promise<string> {
-  return invoke<string>("plugin_fetch_revocations", { url });
+export async function pluginFetchRevocations(
+  url: string,
+): Promise<FetchedRevocations> {
+  return invoke<FetchedRevocations>("plugin_fetch_revocations", { url });
 }
 
 export async function pluginGetDir(): Promise<string> {

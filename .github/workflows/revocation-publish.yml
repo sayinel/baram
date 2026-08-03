@@ -46,20 +46,38 @@ jobs:
       - name: Validate the list with the shipping validator
         run: npx tsx scripts/validate-revocations.ts registry/revoked.json
 
-      # ‼️ The counter must go UP, and this is the only place that can say so. A list published
-      # with a counter at or below the live one is refused by every client (`supersedesStoredList`),
-      # so the failure would show up as "the revocation did nothing" on user machines rather
-      # than here. Compared against what is actually LIVE, not against git history, because
-      # live is what clients hold.
-      - name: The publish counter must be higher than the live one
+      # ‼️ A CHANGED list must carry a HIGHER counter, and this is the only place that can say
+      # so. A list published at or below the live counter is refused by every armed client
+      # (`meetsRevocationFloor`), so the failure would surface as "the revocation did nothing"
+      # on user machines rather than here. Compared against what is actually LIVE, not against
+      # git history, because live is what clients hold.
+      - name: A changed list must carry a higher counter than the live one
         run: |
-          # An unreachable live list falls back to 0, i.e. permissive. Deliberate: a Pages
+          # An unreachable live list skips the gate entirely, permissively. Deliberate: a Pages
           # outage must not block an urgent revocation, and this gate is a convenience that
           # catches a forgotten bump at the point it is fixable — the actual protection is the
           # client refusing a rollback, which does not depend on this step running at all.
-          LIVE="$(curl -fsS "https://sayinel.github.io/baram-plugins/revoked.json" || echo '{}')"
-          OLD="$(printf '%s' "$LIVE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("sequence") or 0)')"
-          NEW="$(python3 -c 'import json; print(json.load(open("registry/revoked.json")).get("sequence") or 0)')"
+          if ! curl -fsS -o "$RUNNER_TEMP/live-before.json" "https://sayinel.github.io/baram-plugins/revoked.json"; then
+            echo "::notice::The live list is unreachable — skipping the counter gate."
+            exit 0
+          fi
+          # ‼️ AN UNCHANGED LIST IS NOT A ROLLBACK (code review HIGH-3). In steady state the
+          # repo, the registry and the live file are the same bytes, so an equal counter is the
+          # NORMAL state — and erroring on it made the "nothing to publish" exit in the next
+          # step unreachable, and hard-failed the manual `workflow_dispatch` re-sync this
+          # workflow documents at the top as its own bootstrap path. Byte-identical means there
+          # is nothing to publish; only a DIFFERENT list whose counter fails to advance is a
+          # rollback, and that is what the comparison below is for.
+          if cmp -s "$RUNNER_TEMP/live-before.json" registry/revoked.json; then
+            echo "::notice::The live list is byte-identical to this one — nothing to publish."
+            exit 0
+          fi
+          # Both counters are read by the SHIPPING reader, so the number compared here is the
+          # number a client computes. The python this replaced (`d.get("sequence") or 0`)
+          # accepted a JSON string, so `sequence: "2"` cleared the gate and then read as 0 on
+          # every machine (code review HIGH-2).
+          OLD="$(npx tsx scripts/revocation-sequence.ts "$RUNNER_TEMP/live-before.json")"
+          NEW="$(npx tsx scripts/revocation-sequence.ts registry/revoked.json)"
           echo "live sequence=$OLD, publishing=$NEW"
           if [ "$NEW" -le "$OLD" ]; then
             echo "::error::sequence must increase: live is $OLD, this publish is $NEW. Every client would refuse this list as a rollback."

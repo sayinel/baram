@@ -6,14 +6,22 @@
 // revocation is ever STORED was not guarded at all.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const fetchRevocations = vi.fn<(url: string) => Promise<string>>();
+const fetchRevocations =
+  vi.fn<(url: string) => Promise<{ body: string; verified: boolean }>>();
 vi.mock("../../ipc/plugin-invoke", () => ({
   pluginFetchRevocations: (url: string) => fetchRevocations(url),
 }));
 
 import type { RevocationList } from "../revocation";
 
-import { usePluginStore } from "../../stores/system/plugin";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import {
+  DEFAULT_REGISTRY_URL,
+  usePluginStore,
+} from "../../stores/system/plugin";
+import { logger } from "../../utils/logger";
 import { revocationFor } from "../revocation";
 import {
   refreshRevocations,
@@ -50,16 +58,50 @@ describe("revocationUrlFor", () => {
   it("returns null rather than throwing on a URL it cannot parse", () => {
     expect(revocationUrlFor("not a url")).toBeNull();
   });
+
+  it("lands under the prefix Rust demands a signature for", () => {
+    // ‼️ THIS DRIFT FAILS OPEN, which is the whole reason it needs a test. Rust decides whether
+    // to demand a signature by prefix-matching the URL it was handed against
+    // `FIRST_PARTY_REVOCATION_PREFIX`. Move the registry — a hostname change, a path move, a
+    // Pages project rename — and the match simply misses: the fetch takes the "third-party
+    // registry, list is not signature-verified" branch, returns `verified: false`, and every
+    // client stops checking signatures AND stops trusting the counter. No error, no failed
+    // build, nothing a user could notice.
+    const rust = readFileSync(
+      resolve(__dirname, "../../../src-tauri/src/plugin/mod.rs"),
+      "utf8",
+    );
+    // Matched on the DECLARATION, and the count is asserted: the identifier also appears in
+    // comments and in Rust's own tests, so "a match exists" would not mean this is the value
+    // that ships.
+    const declarations = [
+      ...rust.matchAll(/FIRST_PARTY_REVOCATION_PREFIX: &str = "([^"]+)"/gu),
+    ];
+    expect(declarations).toHaveLength(1);
+    const prefix = declarations[0][1];
+    // The URL Rust actually receives is the revocation list's, not the index's.
+    expect(revocationUrlFor(DEFAULT_REGISTRY_URL)?.startsWith(prefix)).toBe(
+      true,
+    );
+    expect(DEFAULT_REGISTRY_URL.startsWith(prefix)).toBe(true);
+  });
 });
 
 describe("refreshRevocations", () => {
   beforeEach(() => {
     fetchRevocations.mockReset();
-    usePluginStore.setState({ revocations: null, revocationsFetchedAt: 0 });
+    usePluginStore.setState({
+      revocations: null,
+      revocationSequenceSeen: {},
+      revocationsFetchedAt: 0,
+    });
   });
 
   it("stores a list it can read", async () => {
-    fetchRevocations.mockResolvedValue(JSON.stringify(LIST));
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify(LIST),
+      verified: true,
+    });
     await refreshRevocations();
     expect(
       revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
@@ -73,7 +115,7 @@ describe("refreshRevocations", () => {
     // A botched deploy would otherwise disarm every client that could reach it.
     usePluginStore.setState({ revocations: LIST });
     for (const payload of ["not json at all", "42", '{"revoked":"nope"}']) {
-      fetchRevocations.mockResolvedValue(payload);
+      fetchRevocations.mockResolvedValue({ body: payload, verified: true });
       await refreshRevocations();
       expect(
         revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
@@ -97,12 +139,48 @@ describe("refreshRevocations", () => {
     // publish, so it carries a higher counter — that is what separates it from the replay
     // below, which is byte-identical apart from the counter.
     usePluginStore.setState({ revocations: LIST });
-    fetchRevocations.mockResolvedValue(
-      '{"version":1,"sequence":2,"revoked":[]}',
-    );
+    fetchRevocations.mockResolvedValue({
+      body: '{"version":1,"sequence":2,"revoked":[]}',
+      verified: true,
+    });
     await refreshRevocations();
     expect(
       revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
+    ).toBeNull();
+  });
+
+  it("REFUSES a replay after the user switches registries and comes back", async () => {
+    // ‼️ THE ROUND TRIP (security review MEDIUM-1). `setRegistryUrl` clears `revocations` —
+    // correctly, ours must not govern someone else's plugins — and that also erased the
+    // high-water mark, so on the way back `supersedesStoredList(…, null)` accepted anything at
+    // or above a floor that is 0 today. An attacker serving the origin could replay an old
+    // signed list on the return trip, which is the exact rollback the counter exists to refuse.
+    const first = usePluginStore.getState().registryUrl;
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify({ ...LIST, sequence: 5 }),
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(usePluginStore.getState().revocations?.sequence).toBe(5);
+
+    // Away…
+    usePluginStore
+      .getState()
+      .setRegistryUrl("https://elsewhere.test/index.json");
+    expect(usePluginStore.getState().revocations).toBeNull();
+    // …and back.
+    usePluginStore.getState().setRegistryUrl(first);
+    expect(usePluginStore.getState().revocations).toBeNull();
+
+    // The replay: an old list, no stored list to compare against.
+    fetchRevocations.mockResolvedValue({
+      body: '{"version":1,"sequence":1,"revoked":[]}',
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(
+      usePluginStore.getState().revocations,
+      "a counter this registry already passed must not be accepted again",
     ).toBeNull();
   });
 
@@ -115,12 +193,151 @@ describe("refreshRevocations", () => {
     // Byte-for-byte the same payload as the withdrawal above; only the counter differs, and
     // that is the entire difference between "the operator took it back" and "someone served
     // you yesterday".
-    usePluginStore.setState({ revocations: LIST });
-    fetchRevocations.mockResolvedValue('{"version":1,"revoked":[]}');
+    //
+    // ‼️ The floor comes from a VERIFIED fetch, not from `setState`. The stored list's own
+    // counter is no longer consulted — it is persisted and therefore poisonable, which was
+    // CRITICAL-1 — so the mark has to be established the way a real client establishes it.
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify(LIST),
+      verified: true,
+    });
+    await refreshRevocations();
+
+    // ‼️ WHICH refusal fired is asserted, not just that the list survived (code review MEDIUM).
+    // "the stored list is still there" is satisfied by the unreadable-document branch too — and
+    // this payload is a perfectly readable document, so if the rollback check were deleted and
+    // anything else happened to refuse it, the old assertion alone would still be green.
+    const refusals = vi.spyOn(logger, "error").mockImplementation(() => {});
+    fetchRevocations.mockResolvedValue({
+      body: '{"version":1,"revoked":[]}',
+      verified: true,
+    });
     await refreshRevocations();
     expect(
       revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
     ).not.toBeNull();
+    expect(refusals.mock.calls.flat().join(" ")).toContain(
+      "this is a rollback, not a stale cache",
+    );
+    refusals.mockRestore();
+  });
+
+  it("does NOT let an unverified list poison the floor", async () => {
+    // ‼️ CRITICAL-1, the defect this rework exists for. A `trusted` plugin can patch
+    // `window.__TAURI_INTERNALS__.invoke` — the transport this refresh uses, an attacker
+    // `plugin-lifecycle.ts` already models — and answer with any counter. Honouring it
+    // unconditionally turned ONE won race into a permanent disarm: `MAX_SAFE_INTEGER` raised
+    // the floor above every counter the registry will ever publish, the value was persisted,
+    // and genuine lists at 2, 3, 99 and 1000000 were all refused from then on.
+    //
+    // Reproduced before the fix; the assertion that matters is the second one — a genuine
+    // list must still be able to land afterwards.
+    //
+    // ‼️ The poison sits just UNDER `MAXIMUM_REVOCATION_SEQUENCE`, not at `MAX_SAFE_INTEGER`.
+    // The first version of this test used the latter and was hollow: the upper bound reads it
+    // as 0, so the mark stayed 0 no matter what the `verified` gate did, and removing that gate
+    // left the test green. Two guards, and the test must exercise the one it names.
+    fetchRevocations.mockResolvedValue({
+      body: '{"version":1,"sequence":999999,"revoked":[]}',
+      verified: false,
+    });
+    await refreshRevocations();
+    const url = usePluginStore.getState().registryUrl;
+    expect(
+      usePluginStore.getState().revocationSequenceSeen[url] ?? 0,
+      "an unverified counter must never raise the mark",
+    ).toBe(0);
+
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify({ ...LIST, sequence: 2 }),
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(
+      revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
+      "a genuine list must still land after a poisoning attempt",
+    ).not.toBeNull();
+  });
+
+  it("re-reads the store after the fetch, so a slow refresh cannot use a stale floor", async () => {
+    // ‼️ HIGH-1. The snapshot is taken before the await and was still being compared against
+    // after it. `plugin-lifecycle.ts` races this refresh against a 1500 ms budget and the
+    // abandoned promise keeps running, so a slow network followed by the marketplace mounting
+    // gave two refreshes in flight — the slow one carrying a pre-await view of the floor. A
+    // sequence-1 rollback overwrote a stored sequence 2 that way.
+    let release: (v: { body: string; verified: boolean }) => void = () => {};
+    const slow = new Promise<{ body: string; verified: boolean }>((resolve) => {
+      release = resolve;
+    });
+    fetchRevocations.mockReturnValueOnce(slow);
+    const inflight = refreshRevocations(); // snapshot taken here: mark is 0
+
+    // A second refresh lands first and raises the mark.
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify({ ...LIST, sequence: 5 }),
+      verified: true,
+    });
+    await refreshRevocations();
+    const url = usePluginStore.getState().registryUrl;
+    expect(usePluginStore.getState().revocationSequenceSeen[url]).toBe(5);
+
+    // Now the abandoned one answers with an OLDER list. It must lose.
+    release({
+      body: JSON.stringify({ ...LIST, sequence: 1 }),
+      verified: true,
+    });
+    await inflight;
+    expect(
+      usePluginStore.getState().revocations?.sequence,
+      "the slow refresh must not roll the list back using its stale snapshot",
+    ).toBe(5);
+  });
+
+  it("stores an unverified list but does not trust its counter", async () => {
+    // The unarmed state, which is where this ships: the list is still stored (that is today's
+    // behaviour and the offline guarantee depends on it) while its counter buys nothing.
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify({ ...LIST, sequence: 7 }),
+      verified: false,
+    });
+    await refreshRevocations();
+    const state = usePluginStore.getState();
+    expect(revocationFor("bad", "1.0.0", state.revocations)).not.toBeNull();
+    expect(state.revocationSequenceSeen[state.registryUrl] ?? 0).toBe(0);
+  });
+});
+
+describe("the sequence high-water mark", () => {
+  it("cannot be walked back down by storing an older list", () => {
+    // ‼️ `Math.max` in `setRevocations` was unpinned: the only caller reaches it AFTER
+    // `supersedesStoredList` has already refused anything lower, so a mutation to plain
+    // assignment survived every other test. But `setRevocations` is public store API — a
+    // future caller that skips the check would silently lower the mark and re-open the
+    // rollback. Exercised directly rather than through the fetch path, which is the only way
+    // to reach it.
+    const url = usePluginStore.getState().registryUrl;
+    usePluginStore.setState({ revocationSequenceSeen: {}, revocations: null });
+    usePluginStore.getState().setRevocations({ ...LIST, sequence: 9 }, true);
+    expect(usePluginStore.getState().revocationSequenceSeen[url]).toBe(9);
+
+    usePluginStore.getState().setRevocations({ ...LIST, sequence: 2 }, true);
+    expect(
+      usePluginStore.getState().revocationSequenceSeen[url],
+      "the mark must never go down",
+    ).toBe(9);
+  });
+
+  it("is kept per registry, so one registry cannot raise another's floor", () => {
+    // Keyed by URL for a reason: a custom registry legitimately sits at its own counter, and
+    // inheriting ours would refuse its list outright.
+    usePluginStore.setState({ revocationSequenceSeen: {}, revocations: null });
+    usePluginStore.getState().setRegistryUrl("https://a.test/index.json");
+    usePluginStore.getState().setRevocations({ ...LIST, sequence: 7 }, true);
+    usePluginStore.getState().setRegistryUrl("https://b.test/index.json");
+    usePluginStore.getState().setRevocations({ ...LIST, sequence: 1 }, true);
+    const seen = usePluginStore.getState().revocationSequenceSeen;
+    expect(seen["https://a.test/index.json"]).toBe(7);
+    expect(seen["https://b.test/index.json"]).toBe(1);
   });
 });
 

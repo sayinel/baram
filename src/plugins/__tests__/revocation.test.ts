@@ -8,9 +8,10 @@ import { describe, expect, it } from "vitest";
 import {
   blocksLoad,
   EMPTY_REVOCATIONS,
+  meetsRevocationFloor,
+  MINIMUM_REVOCATION_SEQUENCE,
   normalizeRevocationList,
   revocationFor,
-  supersedesStoredList,
 } from "../revocation";
 
 function entry(over: Partial<RevocationEntry> = {}): RevocationEntry {
@@ -86,7 +87,7 @@ describe("revocationFor", () => {
   });
 });
 
-describe("supersedesStoredList", () => {
+describe("meetsRevocationFloor", () => {
   const at = (sequence: number): RevocationList => ({
     revoked: [],
     sequence,
@@ -94,20 +95,20 @@ describe("supersedesStoredList", () => {
   });
 
   it("accepts a newer publish and refuses an older one", () => {
-    expect(supersedesStoredList(at(2), at(1))).toBe(true);
-    expect(supersedesStoredList(at(1), at(2))).toBe(false);
+    expect(meetsRevocationFloor(at(2), 1)).toBe(true);
+    expect(meetsRevocationFloor(at(1), 2)).toBe(false);
   });
 
   it("accepts an EQUAL counter, because that is every ordinary refresh", () => {
     // ‼️ Refusing equal would break the common case — the list usually has not changed
     // between refreshes — and it buys nothing: with a signature in force the same counter
     // cannot carry different content.
-    expect(supersedesStoredList(at(3), at(3))).toBe(true);
+    expect(meetsRevocationFloor(at(3), 3)).toBe(true);
   });
 
   it("accepts anything at or above the floor when nothing is stored", () => {
-    expect(supersedesStoredList(at(0), null)).toBe(true);
-    expect(supersedesStoredList(at(5), null)).toBe(true);
+    expect(meetsRevocationFloor(at(0))).toBe(true);
+    expect(meetsRevocationFloor(at(5))).toBe(true);
   });
 
   it("refuses a list below the compiled floor even with nothing stored", () => {
@@ -115,11 +116,11 @@ describe("supersedesStoredList", () => {
     // first run has nothing — which is exactly when the user has no other protection. The
     // floor is that starting point. Passed explicitly here because the shipped value is 0
     // today, so the guard is invisible until the first signed list is published.
-    expect(supersedesStoredList(at(4), null, 5)).toBe(false);
-    expect(supersedesStoredList(at(5), null, 5)).toBe(true);
+    expect(meetsRevocationFloor(at(4), 5)).toBe(false);
+    expect(meetsRevocationFloor(at(5), 5)).toBe(true);
     // The floor outranks a stored list too: a client that somehow stored something older
     // than its own build knows about must not stay there.
-    expect(supersedesStoredList(at(4), at(1), 5)).toBe(false);
+    expect(meetsRevocationFloor(at(4), 5)).toBe(false);
   });
 });
 
@@ -223,7 +224,23 @@ describe("normalizeRevocationList", () => {
     // nothing at all. And malformed must land on 0 rather than being coerced — `Number("999")`
     // would hand an attacker the highest counter they can type, when what they should get is
     // the one value that can never win a comparison.
-    for (const bad of ["999", -1, 1.5, Number.NaN, Infinity, null, {}, true]) {
+    // ‼️ 1e7 and MAX_SAFE_INTEGER are the UPPER bound (code review CRITICAL-1 / MEDIUM-2).
+    // The original loop had no unsafe integer in it, so `isSafeInteger` was unpinned — and
+    // `Number.isInteger(1e308)` is true, which is exactly the half that bounds the poison.
+    for (const bad of [
+      "999",
+      -1,
+      1.5,
+      Number.NaN,
+      Infinity,
+      null,
+      {},
+      true,
+      1e7,
+      1e21,
+      Number.MAX_SAFE_INTEGER,
+      Number.MAX_VALUE,
+    ]) {
       expect(
         normalizeRevocationList({ revoked: [], sequence: bad })?.sequence,
         `sequence: ${JSON.stringify(bad)}`,
@@ -298,6 +315,27 @@ describe("the committed revocation seed", () => {
       revocationFor("baram-ai-summary", "1.0.1", normalizeRevocationList(raw))
         ?.severity,
     ).toBe("unlisted");
+  });
+
+  it("carries a counter the app can actually read", () => {
+    // ‼️ Asserted against the RAW value, because a parsed-to-parsed comparison can never
+    // fail: `readSequence` turns anything malformed into 0, so a `"1"` written here would be
+    // indistinguishable from no counter at all — in the app, and in the publish gate that
+    // now reads the file through the same reader. The seed's counter is the single number
+    // this list's rollback defence rests on.
+    const rawSequence = (raw as { sequence?: unknown }).sequence;
+    expect(rawSequence).toBe(normalizeRevocationList(raw)?.sequence);
+    expect(rawSequence).toBeGreaterThan(0);
+  });
+
+  it("is at or above the floor this build refuses to go below", () => {
+    // ‼️ Raising MINIMUM_REVOCATION_SEQUENCE above the counter that is actually live makes
+    // every client refuse the REAL list — the arming step's one irreversible mistake, and it
+    // presents as the feature working. The seed is what goes live, so the constant and this
+    // file have to move together, and this is what says so.
+    expect(normalizeRevocationList(raw)?.sequence).toBeGreaterThanOrEqual(
+      MINIMUM_REVOCATION_SEQUENCE,
+    );
   });
 
   it("leaves a future sandboxed port of baram-ai-summary unrevoked", () => {

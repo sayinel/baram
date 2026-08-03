@@ -94,9 +94,46 @@ export const EMPTY_REVOCATIONS: RevocationList = {
  */
 export const MINIMUM_REVOCATION_SEQUENCE = 0;
 
+/**
+ * The largest counter that can ever be believed.
+ *
+ * ‼️ WITHOUT AN UPPER BOUND THE COUNTER IS A PERMANENT-DISARM PRIMITIVE (code review
+ * CRITICAL-1). `Number.isSafeInteger(9007199254740991)` is true, so one answer carrying
+ * `MAX_SAFE_INTEGER` raised the floor above every counter the registry will ever publish and
+ * refused every genuine list from then on — reproduced at sequence 2, 3, 99 and 1000000.
+ * The attacker is the one `plugin-lifecycle.ts` already models: a trusted plugin that patches
+ * `window.__TAURI_INTERNALS__.invoke` and answers the refresh itself.
+ *
+ * A million is not a guess about registries; it is a number no honest publish count reaches
+ * (one revocation a day for 2,700 years) while leaving the poison far below anything that can
+ * brick the comparison. A value above this is refused outright rather than clamped: clamping
+ * would silently accept a document that is lying about its position.
+ */
+export const MAXIMUM_REVOCATION_SEQUENCE = 1_000_000;
+
 /** Whether this revocation stops the plugin from running at all. */
 export function blocksLoad(entry: null | RevocationEntry): boolean {
   return entry?.severity === "malicious";
+}
+
+/**
+ * Whether a fetched list is at or above the counter this registry has already reached.
+ *
+ * Refusing a lower counter is the half signing cannot do — see `sequence` on `RevocationList`
+ * for why a valid signature on an old empty list is the actual attack.
+ *
+ * ‼️ IT COMPARES AGAINST THE FLOOR, NOT AGAINST THE STORED LIST (code review CRITICAL-1). The
+ * stored list's own counter looked like the obvious thing to compare with, and it is itself
+ * poisonable: `revocations` is persisted, so an unverified answer carrying a huge counter
+ * became a permanent ceiling that survived restarts. The floor passed in is raised only by a
+ * VERIFIED fetch, which is what keeps a fabricated counter out of it. Equality is accepted —
+ * re-fetching the current list is every ordinary refresh.
+ */
+export function meetsRevocationFloor(
+  fetched: RevocationList,
+  floor: number = MINIMUM_REVOCATION_SEQUENCE,
+): boolean {
+  return fetched.sequence >= floor;
 }
 
 /**
@@ -183,21 +220,6 @@ export function revocationReason(
   return translated === entry.reasonKey ? entry.reason : translated;
 }
 
-/**
- * Whether a freshly fetched list may replace what is stored.
- *
- * Refusing a lower counter is the half of this that signing cannot do — see `sequence` on
- * `RevocationList` for why a valid signature on an old empty list is the actual attack.
- */
-export function supersedesStoredList(
-  fetched: RevocationList,
-  stored: null | RevocationList,
-  floor: number = MINIMUM_REVOCATION_SEQUENCE,
-): boolean {
-  if (fetched.sequence < floor) return false;
-  return stored === null || fetched.sequence >= stored.sequence;
-}
-
 function isRevocationEntry(value: unknown): value is RevocationEntry {
   if (value === null || typeof value !== "object") return false;
   const entry = value as Record<string, unknown>;
@@ -233,7 +255,13 @@ function isVersionRange(value: unknown): value is VersionRange {
  * copy, and a fresh install would get no revocations whatsoever.
  */
 function readSequence(raw: unknown): number {
-  if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw < 0)
+  if (
+    typeof raw !== "number" ||
+    !Number.isSafeInteger(raw) ||
+    raw < 0 ||
+    raw > MAXIMUM_REVOCATION_SEQUENCE
+  ) {
     return 0;
+  }
   return raw;
 }
