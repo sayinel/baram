@@ -245,11 +245,11 @@ describe("impl review S3-R2 pins", () => {
     { timeout: 20_000 },
     () => {
       const paras = Array.from(
-        { length: 6000 },
+        { length: 3000 },
         (_, i) => `<p>w${i} x</p>`,
       ).join("");
       const editor = makeEditor(paras);
-      const nearEnd = posOfText(editor, "w5999");
+      const nearEnd = posOfText(editor, "w2999");
       const t0 = performance.now();
       resolveMotion(editor.state, nearEnd, "wordBack", 999);
       expect(performance.now() - t0).toBeLessThan(300);

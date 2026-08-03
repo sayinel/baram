@@ -42,6 +42,7 @@ import { step } from "./core/state-machine";
 import { initialCoreState } from "./core/types";
 import { collapseTarget, moveVisualHead } from "./core/visual-state";
 import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
+import { registerVimLifecycle } from "./vim-lifecycle";
 import {
   clearWysiwygVimStatusFor,
   publishWysiwygVimStatus,
@@ -198,11 +199,16 @@ export function createVimPlugin(): Plugin<VimPluginState> {
       handleTextInput: (view) => isModal(read(view.state)),
     },
 
-    /** §8 status feed — owner-gated inside vim-status. */
+    /** §7 settings lifecycle + §8 status feed (owner-gated inside
+     *  vim-status). Registration replays the current vimMode setting. */
     view: (editorView) => {
       publishWysiwygVimStatus(editorView);
+      const unregister = registerVimLifecycle(editorView);
       return {
-        destroy: () => clearWysiwygVimStatusFor(editorView),
+        destroy: () => {
+          unregister();
+          clearWysiwygVimStatusFor(editorView);
+        },
         update: (view) => publishWysiwygVimStatus(view),
       };
     },
