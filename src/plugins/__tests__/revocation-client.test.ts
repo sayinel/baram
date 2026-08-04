@@ -4,7 +4,7 @@
 // exact disarm two separate comments in the source argue must never happen. The
 // arithmetic of revocation was well guarded; the plumbing that decides whether a
 // revocation is ever STORED was not guarded at all.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchRevocations =
   vi.fn<(url: string) => Promise<{ body: string; verified: boolean }>>();
@@ -113,6 +113,14 @@ async function rehydrateWith(state: Record<string, unknown>): Promise<void> {
 }
 
 describe("refreshRevocations", () => {
+  // ‼️ Spies are restored UNCONDITIONALLY. Every `mockRestore()` in this file sits after the
+  // assertions, so a failing assertion skipped it and leaked the stub into the next test — under
+  // a mutation that made later cases fail for the leak rather than for the mutation, which
+  // inflates a kill count and is exactly the kind of false evidence this feature keeps producing.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     fetchRevocations.mockReset();
     usePluginStore.setState({
@@ -379,6 +387,26 @@ describe("refreshRevocations", () => {
     );
   });
 
+  it.each([[false], [true]])(
+    "RESTORES revocationsVerified=%s across a launch rather than assuming it",
+    async (verified) => {
+      // ‼️ THE READ SIDE OF THE NEW FLAG HAD NO TEST (code review HIGH-1), which is #365's
+      // three-round CRITICAL arriving on a fresh field: forcing `revocationsVerified: true` in
+      // `merge` — every launch presenting an unverified stored list as VERIFIED, literally the
+      // defect the flag exists to prevent — left 955/955 green, because the only assertions were
+      // `partialize` output and in-memory `setState`. Nothing drove rehydration.
+      //
+      // Both directions, so neither a forced `true` nor a forced `false` survives: the store's
+      // docstring claims the flag travels with the list, and this is what makes that a property.
+      await rehydrateWith({
+        revocations: LIST,
+        revocationsFetchedAt: 1_700_000_000_000,
+        revocationsVerified: verified,
+      });
+      expect(usePluginStore.getState().revocationsVerified).toBe(verified);
+    },
+  );
+
   it("lets a genuine list land after a restart, even when the session's mark was poisoned", async () => {
     // ‼️ THE SECOND ATTEMPT AT CRITICAL-1, and the first one was wrong in a way worth stating.
     // I had Rust report `verified` and this module decide. That is not a boundary: a `trusted`
@@ -469,6 +497,93 @@ describe("refreshRevocations", () => {
     const state = usePluginStore.getState();
     expect(revocationFor("bad", "1.0.0", state.revocations)).not.toBeNull();
     expect(state.revocationSequenceSeen[state.registryUrl] ?? 0).toBe(0);
+    // ‼️ And it RECORDS that the bytes were not checked (security review MEDIUM-4). Storing an
+    // unverified list is correct — it is still better than nothing — but presenting it as
+    // verified is what made a redirected refresh undetectable, so the flag has to travel with
+    // the list. Persisted, unlike the mark: it describes the list on disk.
+    expect(state.revocationsVerified).toBe(false);
+  });
+
+  it("WRITES revocationsVerified, so the flag travels with the list", () => {
+    // ‼️ Its own test (code review LOW). It was appended to the end of the case above, behind two
+    // other assertions — so either of those breaking would have silently stopped it running,
+    // which is the pattern that has bitten this feature repeatedly.
+    const persisted = usePluginStore.persist
+      .getOptions()
+      .partialize?.(usePluginStore.getState()) as Record<string, unknown>;
+    expect(Object.keys(persisted)).toContain("revocationsVerified");
+  });
+
+  // ‼️ THE LOUD/QUIET SPLIT HAD NO TEST, and once armed it is the only early signal a broken
+  // deployment gives. A mangled `REVOCATION_PUBLIC_KEY` — truncated paste, private half, stray
+  // newline — makes EVERY fetch fail forever, and before the regex was widened that failure read
+  // as "offline": logged at `warn`, indistinguishable from a plane, with the marketplace's
+  // staleness banner 30 days later as the only user-visible hint. Both directions are asserted,
+  // because a regex that matched everything would destroy the distinction just as effectively.
+  it.each([
+    ["a mangled armed key", "revocation public key is not base64: bad char"],
+    [
+      "a signature that does not verify",
+      "revocation list signature does not verify: x",
+    ],
+    [
+      "an unreachable signature",
+      "revocation list is unsigned or its signature is unreachable",
+    ],
+    ["a denied ACL grant", "plugin_fetch_revocations not allowed"],
+    ["an HTTP failure", "revocation list returned HTTP 503"],
+    // ‼️ Padding the body is a REFUSAL an attacker can cause at will (security review LOW-2), so
+    // it belongs with the other structural failures rather than reading as a bad connection.
+    [
+      "a body over the size cap",
+      "revocation list too large: exceeds 1048576 byte limit",
+    ],
+    [
+      "a body that is not UTF-8",
+      "revocation list is not UTF-8: invalid sequence",
+    ],
+  ])(
+    "logs %s as STRUCTURALLY broken, not as offline",
+    async (_label, message) => {
+      const loud = vi.spyOn(logger, "error").mockImplementation(() => {});
+      const quiet = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      fetchRevocations.mockRejectedValue(new Error(message));
+      await refreshRevocations();
+      expect(loud.mock.calls.flat().join(" ")).toContain(
+        "FAILING STRUCTURALLY",
+      );
+      expect(quiet.mock.calls.flat().join(" ")).not.toContain(
+        "keeping the stored list",
+      );
+      loud.mockRestore();
+      quiet.mockRestore();
+    },
+  );
+
+  it("still logs a genuine network failure QUIETLY", async () => {
+    // The other direction. Offline is expected and unremarkable; shouting about it is how a real
+    // signal gets tuned out, which is the argument `revocation.ts` makes about severity too.
+    const loud = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const quiet = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    fetchRevocations.mockRejectedValue(
+      new Error("error sending request for url"),
+    );
+    await refreshRevocations();
+    expect(quiet.mock.calls.flat().join(" ")).toContain(
+      "keeping the stored list",
+    );
+    expect(loud).not.toHaveBeenCalled();
+    loud.mockRestore();
+    quiet.mockRestore();
+  });
+
+  it("records that a verified list WAS verified", async () => {
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify(LIST),
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(usePluginStore.getState().revocationsVerified).toBe(true);
   });
 });
 

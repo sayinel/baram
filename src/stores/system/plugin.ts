@@ -56,6 +56,19 @@ interface PluginState {
    */
   revocationSequenceSeen: Record<string, number>;
   revocationsFetchedAt: number;
+  /**
+   * Whether the STORED list's signature was checked (§69, security review MEDIUM-4).
+   *
+   * ‼️ It exists so a disarmed state is DISTINGUISHABLE from a healthy one. Until this, a list
+   * that failed verification — or came from a registry we hold no key for — looked identical in
+   * the UI to a freshly verified one: `revocationsFetchedAt` is stamped either way, so the
+   * staleness warning stayed quiet and nothing surfaced `verified` at all. That is the property
+   * that made a redirected refresh undetectable.
+   *
+   * Persisted, unlike the high-water mark: this describes the list on disk, so it has to travel
+   * with it or the next launch would present an unverified stored list as verified.
+   */
+  revocationsVerified: boolean;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
@@ -193,6 +206,7 @@ export const usePluginStore = create<PluginState>()(
       registryCacheTime: 0,
       revocations: null,
       revocationsFetchedAt: 0,
+      revocationsVerified: false,
       revocationSequenceSeen: {},
       updateAvailable: {},
       installing: {},
@@ -312,7 +326,12 @@ export const usePluginStore = create<PluginState>()(
       // self-hosted registry will normally 404 on `revoked.json`, so "until the next
       // successful fetch" would in practice be "forever".
       setRegistryUrl: (registryUrl) =>
-        set({ registryUrl, revocations: null, revocationsFetchedAt: 0 }),
+        set({
+          registryUrl,
+          revocations: null,
+          revocationsFetchedAt: 0,
+          revocationsVerified: false,
+        }),
 
       // ‼️ The high-water mark is raised HERE and never lowered, and it deliberately outlives
       // `setRegistryUrl` above. `Math.max` rather than assignment: accepting an equal counter
@@ -338,6 +357,7 @@ export const usePluginStore = create<PluginState>()(
               }
             : state.revocationSequenceSeen,
           revocationsFetchedAt: Date.now(),
+          revocationsVerified: verified,
         })),
     }),
     {
@@ -369,6 +389,7 @@ export const usePluginStore = create<PluginState>()(
         // falls back to the initial `null`, which is the correct pre-first-fetch state.
         revocations: state.revocations,
         revocationsFetchedAt: state.revocationsFetchedAt,
+        revocationsVerified: state.revocationsVerified,
         // ‼️ `revocationSequenceSeen` IS DELIBERATELY ABSENT — it stays in memory only.
         //
         // It was persisted for one round, and that was a defect of mine (code review

@@ -100,7 +100,7 @@ export const EMPTY_REVOCATIONS: RevocationList = {
  * sequence makes every client refuse the real list — pinned by `is at or above the floor this
  * build refuses to go below` in `__tests__/revocation.test.ts`.
  */
-export const MINIMUM_REVOCATION_SEQUENCE = 0;
+export const MINIMUM_REVOCATION_SEQUENCE = 1;
 
 /**
  * The largest counter that can ever be believed.
@@ -287,9 +287,17 @@ function isVersionRange(value: unknown): value is VersionRange {
  * comparison instead of winning it. Coercing a string here — `Number("999")` — would hand an
  * attacker the highest counter they can type.
  *
- * Absent must stay READABLE rather than rejected, because the list that is live right now
- * has no `sequence` at all: rejecting the document would make every client keep its stored
- * copy, and a fresh install would get no revocations whatsoever.
+ * ‼️ SINCE ARMING, AN ABSENT COUNTER IS REFUSED — by the FLOOR, not here. The previous version of
+ * this paragraph argued absent must stay readable "because the list that is live right now has no
+ * `sequence` at all", and both halves of that are now false: the live list carries 1 and
+ * `MINIMUM_REVOCATION_SEQUENCE` is 1, so a document reading as 0 loses the comparison. That is the
+ * point rather than a regression — 0 is what every pre-signature list reads as, and those are
+ * exactly the documents a replay would use.
+ *
+ * Readable-but-losing is still the right shape HERE: this function's job is to hand the weakest
+ * possible value to anything it cannot trust, and the floor decides what that costs. Rejecting the
+ * document outright would instead make a client keep its stored copy, which is a different and
+ * worse answer for a list that is merely old.
  */
 function readSequence(raw: unknown): number {
   if (

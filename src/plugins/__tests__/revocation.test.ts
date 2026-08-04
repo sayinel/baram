@@ -107,16 +107,22 @@ describe("meetsRevocationFloor", () => {
     expect(meetsRevocationFloor(at(3), 3)).toBe(true);
   });
 
-  it("accepts anything at or above the floor when nothing is stored", () => {
-    expect(meetsRevocationFloor(at(0))).toBe(true);
+  it("REFUSES a counter-less list now that the floor is armed", () => {
+    // ‼️ THE BEHAVIOUR CHANGE ARMING BUYS, and this assertion was the opposite until the floor
+    // was raised: with `MINIMUM_REVOCATION_SEQUENCE` at 0, a list reading as sequence 0 was
+    // accepted on a fresh install. 0 is what every PRE-SIGNATURE list reads as (they have no
+    // `sequence` field at all), so accepting it meant a replay of the unsigned era landed on
+    // exactly the client with no other protection. At 1 — the counter actually live — it cannot.
+    expect(meetsRevocationFloor(at(0))).toBe(false);
+    expect(meetsRevocationFloor(at(MINIMUM_REVOCATION_SEQUENCE))).toBe(true);
     expect(meetsRevocationFloor(at(5))).toBe(true);
   });
 
   it("refuses a list below the compiled floor even with nothing stored", () => {
     // ‼️ THE FRESH-INSTALL HOLE. Monotonicity needs something to compare against, and a
     // first run has nothing — which is exactly when the user has no other protection. The
-    // floor is that starting point. Passed explicitly here because the shipped value is 0
-    // today, so the guard is invisible until the first signed list is published.
+    // floor is that starting point. Still passed explicitly here, so this stays a test of the
+    // comparison itself and does not move when the shipped constant is next raised.
     expect(meetsRevocationFloor(at(4), 5)).toBe(false);
     expect(meetsRevocationFloor(at(5), 5)).toBe(true);
     // ‼️ A third assertion used to sit here, identical to the first, with a comment claiming it

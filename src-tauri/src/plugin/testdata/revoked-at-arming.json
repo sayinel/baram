@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "sequence": 1,
+  "revoked": [
+    {
+      "id": "baram-ai-summary",
+      "versions": { "lt": "2.0.0" },
+      "severity": "unlisted",
+      "reason": "Withdrawn from the registry in v0.5.0. The sandboxed tier has no sidebar surface this plugin could use, and publishing it as a trusted plugin would ask users to accept full trust for ordinary functionality. Its published 1.0.0 manifest also predates the trust model, so Baram v0.5.0 refuses to load an installed copy and Remove on the Installed tab is the way out. Only the 1.x line is withdrawn: a sandboxed port would be 2.0.0, outside this range.",
+      "since": "2026-07-30"
+    }
+  ]
+}

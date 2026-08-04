@@ -251,6 +251,7 @@ export function PluginMarketplace() {
     removePlugin,
     revocations,
     revocationsFetchedAt,
+    revocationsVerified,
     setEnabled,
     setError,
     setInstalling,
@@ -265,6 +266,7 @@ export function PluginMarketplace() {
       removePlugin: s.removePlugin,
       revocations: s.revocations,
       revocationsFetchedAt: s.revocationsFetchedAt,
+      revocationsVerified: s.revocationsVerified,
       setEnabled: s.setEnabled,
       setError: s.setError,
       setInstalling: s.setInstalling,
@@ -1005,6 +1007,17 @@ export function PluginMarketplace() {
             marketplace for a whole review cycle. */}
         {revocationsFetchedAt === 0 && (
           <p className="plugin-revoked__note">{t("plugin.revoked.never")}</p>
+        )}
+        {/* ‼️ Says the list was never CHECKED, which is distinct from stale and from absent
+            (security review MEDIUM-4). Without it a list that failed verification — or one from
+            a registry we hold no key for — looked exactly like a freshly verified one:
+            `revocationsFetchedAt` is stamped either way, so staleness stayed quiet. That is what
+            made a redirected refresh undetectable. Gated on a list actually being stored, so it
+            does not double up with the "never received" note above. */}
+        {revocationsFetchedAt > 0 && !revocationsVerified && (
+          <p className="plugin-revoked__note">
+            {t("plugin.revoked.unverified")}
+          </p>
         )}
         {revocationsAreStale(revocationsFetchedAt, mountedAt) && (
           <p className="plugin-revoked__note">

@@ -28,6 +28,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { MINIMUM_REVOCATION_SEQUENCE } from "../revocation";
+
 const ROOT = resolve(__dirname, "../../..");
 const WORKFLOW = resolve(ROOT, ".github/workflows/revocation-publish.yml");
 const STEP = "A changed list must carry a higher counter than the live one";
@@ -108,6 +110,85 @@ function gate(
   return { output: `${result.stdout}${result.stderr}`, status: result.status };
 }
 
+// ‼️ The floor step is extracted the same way and run the same way, because it has the same
+// property that made the counter gate dangerous: it is shell, so nothing but a push to main ever
+// executes it. It takes no arguments — the floor comes from the SHIPPED constant via
+// `revocation-floor.ts` — so these cases vary the published counter and read the real floor.
+const FLOOR_STEP = "The app's floor must track the list just verified live";
+const FLOOR_SCRIPT = stepScript(readFileSync(WORKFLOW, "utf8"), FLOOR_STEP);
+expect(FLOOR_SCRIPT).toContain("revocation-floor.ts");
+
+// ‼️ FIXTURES ARE DERIVED, NOT HARD-CODED (security review MEDIUM-3). The first version pinned
+// them to floor 1 and lag 5, so the NEXT release — the one that does the single thing this whole
+// mechanism asks for, raising the floor — would arrive to two red tests of its own making, and
+// the path of least resistance would be to edit the assertions instead of the constant. Both
+// numbers now come from the things under test: the shipped constant, and the step's own MAX_LAG.
+const FLOOR = MINIMUM_REVOCATION_SEQUENCE;
+const MAX_LAG = Number(/MAX_LAG=(\d+)/u.exec(FLOOR_SCRIPT)?.[1]);
+expect(
+  Number.isSafeInteger(MAX_LAG),
+  "MAX_LAG must be readable from the step",
+).toBe(true);
+// The "floor above live" case needs a counter BELOW the floor to exist, which needs a floor above
+// zero. True since arming; asserted so the case cannot quietly become vacuous if that changes.
+expect(FLOOR, "these cases assume an armed floor").toBeGreaterThan(0);
+
+/** Runs the floor step with `published` as the repo's list. */
+function floorStep(published: Doc): { output: string; status: null | number } {
+  const dir = mkdtempSync(join(tmpdir(), "baram-floor-"));
+  mkdirSync(join(dir, "registry"));
+  writeFileSync(
+    join(dir, "registry/revoked.json"),
+    `${JSON.stringify(published, null, 2)}\n`,
+  );
+  for (const name of ["scripts", "src", "node_modules"]) {
+    symlinkSync(join(ROOT, name), join(dir, name));
+  }
+  const result = spawnSync("bash", ["-e", "-c", FLOOR_SCRIPT], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, RUNNER_TEMP: dir },
+  });
+  return { output: `${result.stdout}${result.stderr}`, status: result.status };
+}
+
+/**
+ * A named step's line index and its single `if:` condition.
+ *
+ * ‼️ WINDOWED, AND THE MATCH COUNT IS ASSERTED. A bare search for `if: success()` would find *a*
+ * condition rather than *the* one — the mistake `source-scan-guards-find-a-match` is about, and one
+ * this feature has already made four times.
+ */
+function stepMeta(
+  workflow: string,
+  stepName: string,
+): { condition: null | string; index: number } {
+  const lines = workflow.split("\n");
+  const index = lines.findIndex(
+    (line) => line.includes(stepName) && line.trimStart().startsWith("- name:"),
+  );
+  expect(index, `step not found: ${stepName}`).toBeGreaterThan(-1);
+  const indent = lines[index].length - lines[index].trimStart().length;
+  const next = lines.findIndex(
+    (line, i) =>
+      i > index &&
+      line.length - line.trimStart().length === indent &&
+      /^- (name|uses):/u.test(line.trimStart()),
+  );
+  const block = lines.slice(index, next === -1 ? undefined : next);
+  const conditions = block.filter((line) => /^if:/u.test(line.trim()));
+  // Zero is legitimate — most steps have no condition — but MORE than one means the window caught
+  // a neighbouring step, and then "the condition" is whichever one happened to come first.
+  expect(
+    conditions.length,
+    `ambiguous window: ${conditions.length} \`if:\` lines in "${stepName}"`,
+  ).toBeLessThan(2);
+  return {
+    condition: conditions[0]?.trim().slice(3).trim() ?? null,
+    index,
+  };
+}
+
 const EMPTY: Doc = { revoked: [], sequence: 1, version: 1 };
 const CHANGED: Doc = {
   revoked: [{ id: "x", reason: "r", severity: "unlisted", versions: "*" }],
@@ -166,6 +247,58 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     const { output, status } = gate({ ...CHANGED, sequence: "2" }, EMPTY);
     expect(status).toBe(1);
     expect(output).toContain("publishing=0");
+  });
+
+  it("runs AFTER the step that proves the repo copy is what Pages serves", () => {
+    // ‼️ THIS ORDERING IS LOAD-BEARING AND NOTHING ELSE CAN SEE IT. The step reads the counter from
+    // `registry/revoked.json`, which is only the PUBLISHED counter because the verify step above it
+    // has already `cmp`d that file against what Pages serves — and only when `success()` means that
+    // comparison held. Move this step above verify, or restore `always()`, and its name becomes a
+    // claim it no longer measures, silently. The cases below extract the step by name and run it in
+    // isolation, so they structurally cannot notice either change.
+    const workflow = readFileSync(WORKFLOW, "utf8");
+    const verify = stepMeta(
+      workflow,
+      "Verify the live list is served and readable",
+    );
+    const floor = stepMeta(workflow, FLOOR_STEP);
+    expect(floor.index).toBeGreaterThan(verify.index);
+    expect(floor.condition).toBe("success()");
+  });
+
+  it("passes when the floor equals what was published", () => {
+    // Steady state right after a release that raised the floor.
+    const { output, status } = floorStep({ ...EMPTY, sequence: FLOOR });
+    expect(status).toBe(0);
+    expect(output).toContain(`app floor=${FLOOR}`);
+  });
+
+  it("REFUSES a floor above the published counter, which bricks every client", () => {
+    // ‼️ The direction with no tolerance. A floor above the live counter makes every client
+    // refuse the REAL list, and it presents as the feature working. Reached here by publishing a
+    // counter BELOW the shipped floor, which is the same inequality.
+    const { output, status } = floorStep({ ...EMPTY, sequence: FLOOR - 1 });
+    expect(status).toBe(1);
+    expect(output).toContain("is ABOVE the published counter");
+  });
+
+  it("REFUSES a floor that has fallen too far behind", () => {
+    // The silent direction, and the reason this step exists: revocations keep being published
+    // while no release carries the floor forward, so every restart accepts a replayed older
+    // signed list and nothing anywhere says so.
+    const { output, status } = floorStep({
+      ...EMPTY,
+      sequence: FLOOR + MAX_LAG + 1,
+    });
+    expect(status).toBe(1);
+    expect(output).toContain("lags the published counter");
+  });
+
+  it("tolerates a gap exactly at the limit, because the floor moves only at release time", () => {
+    // A gate that demanded equality would fail every publish between releases, so the boundary
+    // itself has to pass — and it is the boundary that a `>` / `>=` slip moves.
+    const { status } = floorStep({ ...EMPTY, sequence: FLOOR + MAX_LAG });
+    expect(status).toBe(0);
   });
 
   it("counts a malformed LIVE counter as 0, the value clients hold", () => {
