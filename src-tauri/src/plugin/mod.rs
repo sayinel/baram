@@ -2517,6 +2517,27 @@ mod tests {
     /// the app ships `69226B6FEED27B3`. Harmless for that test — any other real key proves the
     /// point — but fatal for the paste guard below, which has to compare against the key a
     /// mistaken paste would actually reach for.
+    /// The raw bytes inside a base64-wrapped minisign public key: 2 alg + 8 key id + 32 key.
+    ///
+    /// ‼️ THE GUARDS BELOW USED TO COMPARE THE WRAPPER (security review MEDIUM-4). Two base64
+    /// strings that differ only in whitespace — a trailing newline inside the wrapped text, say —
+    /// decode to the SAME key, so `assert_ne!` on the wrapper passed for a re-encoding of a
+    /// known-bad key. Reviewer demonstrated it: the updater key re-wrapped with an extra newline
+    /// slipped both guards, 106/106 green. Comparing what minisign would actually load removes
+    /// the whole class rather than the one encoding.
+    fn key_material(wrapped: &str) -> Vec<u8> {
+        use base64::Engine as _;
+        let text = decode_b64_text(wrapped, "public key").expect("wrapped key must be base64");
+        let line = text
+            .trim()
+            .lines()
+            .nth(1)
+            .expect("a minisign public key has a comment line and a key line");
+        base64::engine::general_purpose::STANDARD
+            .decode(line.trim())
+            .expect("the key line must be base64")
+    }
+
     fn updater_public_key() -> String {
         const CONF: &str = include_str!("../../tauri.conf.json");
         serde_json::from_str::<serde_json::Value>(CONF).expect("tauri.conf.json must parse")
@@ -2533,7 +2554,8 @@ mod tests {
         // would mean anyone holding it can sign a revocation list for every user. Cheap guard
         // against the one mistake that turns this whole feature inside out.
         assert_ne!(
-            REVOCATION_PUBLIC_KEY, TEST_PUBLIC_KEY,
+            key_material(REVOCATION_PUBLIC_KEY),
+            key_material(TEST_PUBLIC_KEY),
             "the test key must never be the shipped key"
         );
         // ‼️ And never the UPDATER's key either. Two base64 minisign keys of identical shape
@@ -2543,8 +2565,8 @@ mod tests {
         // symmetric with the other paste: the updater key signs installers, so trading it for a
         // forged revocation list would buy arbitrary code on every user's machine.
         assert_ne!(
-            REVOCATION_PUBLIC_KEY,
-            updater_public_key(),
+            key_material(REVOCATION_PUBLIC_KEY),
+            key_material(&updater_public_key()),
             "the revocation key must never be the updater key"
         );
     }
@@ -2589,14 +2611,47 @@ mod tests {
         // once armed — every client stops receiving revocations, permanently — so this catches
         // it in CI at the moment the constant is filled in rather than on user machines.
         //
-        // Vacuous while the constant is empty, and deliberately so: an empty key means "not
-        // armed", which is the state this PR ships.
-        if !REVOCATION_PUBLIC_KEY.is_empty() {
-            let text = decode_b64_text(REVOCATION_PUBLIC_KEY, "public key")
-                .expect("the armed key must be base64");
-            minisign_verify::PublicKey::decode(text.trim())
-                .expect("the armed key must be a minisign PUBLIC key");
-        }
+        // ‼️ NO LONGER CONDITIONAL (security review LOW-1). While the constant was empty this
+        // test was vacuous by design, and the comment here said so — but that comment outlived
+        // its truth the moment this build shipped ARMED. Wrapped in `is_empty()`, a revert or a
+        // bad merge that emptied the constant was caught by nothing: the fetch path just logs
+        // "NOT ARMED" and accepts whatever it is handed. Users would eventually see the
+        // unverified notice; CI should not need them as its detector.
+        assert!(
+            !REVOCATION_PUBLIC_KEY.is_empty(),
+            "this build must stay ARMED — an empty key silently accepts any list"
+        );
+        let text = decode_b64_text(REVOCATION_PUBLIC_KEY, "public key")
+            .expect("the armed key must be base64");
+        minisign_verify::PublicKey::decode(text.trim())
+            .expect("the armed key must be a minisign PUBLIC key");
+    }
+
+    #[test]
+    fn the_shipped_key_verifies_what_our_signing_secret_actually_produced() {
+        // ‼️ THE PROPERTY ARMING RESTS ON, AND UNTIL NOW ITS ONLY CHECK WAS A HUMAN (security and
+        // code review MEDIUM-4). Every other guard asks whether the constant PARSES or whether it
+        // differs from a known-bad key. None can catch a well-formed but WRONG key — another valid
+        // minisign key, or the right key after a rotation whose private half is not the CI secret.
+        // That paste compiles, passes everything, and makes every client fail verification on
+        // every fetch, forever, recoverable only by another release.
+        //
+        // The fixtures are the pair published at arming time, FROZEN. Deliberately not
+        // `registry/revoked.json`: pointing at the live file would make every future revocation
+        // publish break this test until someone regenerated the signature, and the property worth
+        // pinning is not "the current list verifies" but "the compiled public half matches the
+        // private half our workflow signs with".
+        const BODY: &[u8] = include_bytes!("testdata/revoked-at-arming.json");
+        const SIG: &str = include_str!("testdata/revoked-at-arming.json.sig");
+        verify_revocation_signature(BODY, SIG, REVOCATION_PUBLIC_KEY)
+            .expect("the shipped key must verify the list our signing secret produced");
+        // And prove the check is not vacuous — the same discipline the live verification used.
+        let mut tampered = BODY.to_vec();
+        tampered.push(b' ');
+        assert!(
+            verify_revocation_signature(&tampered, SIG, REVOCATION_PUBLIC_KEY).is_err(),
+            "a tampered body must not verify, or the assertion above proves nothing"
+        );
     }
 
     #[test]

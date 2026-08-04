@@ -133,7 +133,7 @@ export async function refreshRevocations(): Promise<void> {
     // forever, with the only user-visible signal the marketplace staleness banner 30 days
     // later. The arming step is a one-line paste, so this is the failure to make audible.
     if (
-      /not allowed|forbidden|denied|HTTP \d|signature|public key|unsigned/iu.test(
+      /not allowed|forbidden|denied|HTTP \d|signature|public key|unsigned|too large|not UTF-8/iu.test(
         message,
       )
     ) {

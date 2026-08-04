@@ -28,6 +28,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { MINIMUM_REVOCATION_SEQUENCE } from "../revocation";
+
 const ROOT = resolve(__dirname, "../../..");
 const WORKFLOW = resolve(ROOT, ".github/workflows/revocation-publish.yml");
 const STEP = "A changed list must carry a higher counter than the live one";
@@ -116,6 +118,21 @@ const FLOOR_STEP = "The app's floor must track what has been published";
 const FLOOR_SCRIPT = stepScript(readFileSync(WORKFLOW, "utf8"), FLOOR_STEP);
 expect(FLOOR_SCRIPT).toContain("revocation-floor.ts");
 
+// ‼️ FIXTURES ARE DERIVED, NOT HARD-CODED (security review MEDIUM-3). The first version pinned
+// them to floor 1 and lag 5, so the NEXT release — the one that does the single thing this whole
+// mechanism asks for, raising the floor — would arrive to two red tests of its own making, and
+// the path of least resistance would be to edit the assertions instead of the constant. Both
+// numbers now come from the things under test: the shipped constant, and the step's own MAX_LAG.
+const FLOOR = MINIMUM_REVOCATION_SEQUENCE;
+const MAX_LAG = Number(/MAX_LAG=(\d+)/u.exec(FLOOR_SCRIPT)?.[1]);
+expect(
+  Number.isSafeInteger(MAX_LAG),
+  "MAX_LAG must be readable from the step",
+).toBe(true);
+// The "floor above live" case needs a counter BELOW the floor to exist, which needs a floor above
+// zero. True since arming; asserted so the case cannot quietly become vacuous if that changes.
+expect(FLOOR, "these cases assume an armed floor").toBeGreaterThan(0);
+
 /** Runs the floor step with `published` as the repo's list. */
 function floorStep(published: Doc): { output: string; status: null | number } {
   const dir = mkdtempSync(join(tmpdir(), "baram-floor-"));
@@ -197,16 +214,16 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
 
   it("passes when the floor equals what was published", () => {
     // Steady state right after a release that raised the floor.
-    const { output, status } = floorStep({ ...EMPTY, sequence: 1 });
+    const { output, status } = floorStep({ ...EMPTY, sequence: FLOOR });
     expect(status).toBe(0);
-    expect(output).toContain("app floor=1");
+    expect(output).toContain(`app floor=${FLOOR}`);
   });
 
   it("REFUSES a floor above the published counter, which bricks every client", () => {
     // ‼️ The direction with no tolerance. A floor above the live counter makes every client
     // refuse the REAL list, and it presents as the feature working. Reached here by publishing a
     // counter BELOW the shipped floor, which is the same inequality.
-    const { output, status } = floorStep({ ...EMPTY, sequence: 0 });
+    const { output, status } = floorStep({ ...EMPTY, sequence: FLOOR - 1 });
     expect(status).toBe(1);
     expect(output).toContain("is ABOVE the published counter");
   });
@@ -215,15 +232,18 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     // The silent direction, and the reason this step exists: revocations keep being published
     // while no release carries the floor forward, so every restart accepts a replayed older
     // signed list and nothing anywhere says so.
-    const { output, status } = floorStep({ ...EMPTY, sequence: 7 });
+    const { output, status } = floorStep({
+      ...EMPTY,
+      sequence: FLOOR + MAX_LAG + 1,
+    });
     expect(status).toBe(1);
     expect(output).toContain("lags the published counter");
   });
 
-  it("tolerates a gap, because the floor can only move at release time", () => {
-    // Exactly at the limit: publishing 6 against a floor of 1 is a gap of 5, which must pass —
-    // a gate that demanded equality would fail every publish between releases.
-    const { status } = floorStep({ ...EMPTY, sequence: 6 });
+  it("tolerates a gap exactly at the limit, because the floor moves only at release time", () => {
+    // A gate that demanded equality would fail every publish between releases, so the boundary
+    // itself has to pass — and it is the boundary that a `>` / `>=` slip moves.
+    const { status } = floorStep({ ...EMPTY, sequence: FLOOR + MAX_LAG });
     expect(status).toBe(0);
   });
 
