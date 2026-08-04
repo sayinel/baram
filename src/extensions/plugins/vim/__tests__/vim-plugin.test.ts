@@ -6,6 +6,7 @@
 
 import { Editor } from "@tiptap/core";
 import { undoDepth } from "@tiptap/pm/history";
+import { Plugin } from "@tiptap/pm/state";
 import { DecorationSet } from "@tiptap/pm/view";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -946,5 +947,29 @@ describe("ops-R3 pins", () => {
     key(e2, "f");
     key(e2, "x");
     expect(e2.state.doc.textContent).toBe("c");
+  });
+
+  it("a change dropped by filterTransaction rolls back to normal", () => {
+    // applied must mean the document ACTUALLY changed — a coexisting
+    // plugin's filterTransaction can drop the dispatch wholesale, and a
+    // tr-was-built flag would leave insert open on an untouched document
+    // (review ops-R4; same drop scenario runHistory guards against).
+    const editor = makeEditor(
+      "<p>alpha</p><table><tr><td><p>bb</p></td></tr></table>",
+    );
+    // BEFORE enabling: Tiptap's registerPlugin reconfigures editor state,
+    // which would reset the vim plugin state installed after it.
+    editor.registerPlugin(
+      new Plugin({ filterTransaction: (tr) => !tr.docChanged }),
+    );
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    expect(vim(editor).enabled).toBe(true);
+    key(editor, "2");
+    key(editor, "c");
+    key(editor, "c");
+    expect(editor.state.doc.textContent).toBe("alphabb"); // nothing landed
+    expect(vim(editor).mode).toBe("normal");
+    expect(editor.view.editable).toBe(false);
   });
 });

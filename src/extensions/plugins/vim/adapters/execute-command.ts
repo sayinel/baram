@@ -6,6 +6,7 @@
 // unbound motion never leaks a keystroke into the document.
 
 import type { CoreCommand, Motion, VisualState } from "../core/types";
+import type { Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { redo, undo } from "@tiptap/pm/history";
@@ -93,8 +94,7 @@ export function executeCoreCommand(
       const paragraph = state.schema.nodes.paragraph.create();
       const tr = state.tr.insert(at, paragraph);
       tr.setSelection(TextSelection.create(tr.doc, at + 1));
-      view.dispatch(tr);
-      return { applied: true };
+      return { applied: dispatchLanded(view, tr) };
     }
     case "operatorFind": {
       const match = resolveFindChar(
@@ -127,8 +127,7 @@ export function executeCoreCommand(
       if (command.op !== "y") {
         const tr = state.tr.delete(lo, hi);
         tr.setSelection(TextSelection.create(tr.doc, lo));
-        view.dispatch(tr);
-        return { applied: true };
+        return { applied: dispatchLanded(view, tr) };
       }
       return {};
     }
@@ -173,14 +172,27 @@ const LINEWISE_MOTIONS = new Set<Motion>([
   "lineUp",
 ]);
 
+/**
+ * Dispatches and reports whether the document ACTUALLY changed. A coexisting
+ * plugin's filterTransaction can drop the dispatch wholesale — `applied`
+ * must not lie about a transaction that never landed (review ops-R4; the
+ * same drop scenario runHistory's progress guard covers).
+ */
+function dispatchLanded(view: EditorView, tr: Transaction): boolean {
+  const before = view.state.doc;
+  view.dispatch(tr);
+  return !view.state.doc.eq(before);
+}
+
 /** Registers first, then dispatches — a yank has no tr and that is fine. */
 function dispatchOutcome(
   view: EditorView,
   outcome: OperationOutcome,
 ): ExecutionResult {
   if (outcome.register) writeVimRegister(outcome.register);
-  if (outcome.tr) view.dispatch(outcome.tr);
-  const result: ExecutionResult = { applied: outcome.tr !== null };
+  const result: ExecutionResult = {
+    applied: outcome.tr !== null && dispatchLanded(view, outcome.tr),
+  };
   if (outcome.reason) result.reason = outcome.reason;
   return result;
 }
@@ -263,8 +275,7 @@ function runOperatorMotion(
   if (op !== "y") {
     const tr = state.tr.delete(lo, hi);
     tr.setSelection(TextSelection.create(tr.doc, lo));
-    view.dispatch(tr);
-    return { applied: true };
+    return { applied: dispatchLanded(view, tr) };
   }
   return {};
 }

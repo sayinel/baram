@@ -10,10 +10,10 @@
 import type { VisualState } from "../core/types";
 import type { LineContext, VimRegister } from "./register";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import type { EditorState, Transaction } from "@tiptap/pm/state";
+import type { Transaction } from "@tiptap/pm/state";
 
 import { Fragment } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { CellSelection, deleteRow } from "@tiptap/pm/tables";
 
 import { visualRange } from "../core/visual-state";
@@ -126,7 +126,12 @@ export function deleteLine(
   count: number,
 ): OperationOutcome {
   const master = state.tr;
-  let working = state;
+  // The walk advances through INTERNAL micro-states that are never
+  // dispatched. A bare state keeps coexisting plugins' filterTransaction /
+  // appendTransaction hooks out of them — a filter dropping document
+  // changes would pin `working` in place while `master` accumulates steps,
+  // desyncing every later step's coordinates (review ops-R4).
+  let working = EditorState.create({ doc: state.doc });
   let cursor = pos;
   const yanked: YankedUnit[] = [];
   let reason: string | undefined;
