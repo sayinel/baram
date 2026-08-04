@@ -860,13 +860,13 @@
     {
       "name": "plugin_fetch_revocations",
       "input": { "url": "string" },
-      "output": "string",
+      "output": "{ body: string, verified: boolean }",
       "module": "plugin",
       "spec": "§69",
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "회수(revocation) 목록 원본 JSON 조회 — 파싱·검증은 TS의 normalizeRevocationList가 단독으로 담당"
+      "description": "회수(revocation) 목록 원본 JSON + 서명 검증 여부 조회 — 문서 파싱은 TS의 normalizeRevocationList 담당, 서명(minisign) 검증은 Rust만 수행. TS는 verified=true일 때만 sequence(롤백 방지 카운터)를 신뢰한다"
     },
     {
       "name": "plugin_get_dir",

@@ -20,7 +20,10 @@
  */
 import { readFileSync } from "node:fs";
 
-import { normalizeRevocationList } from "../src/plugins/revocation";
+import {
+  MAXIMUM_REVOCATION_SEQUENCE,
+  normalizeRevocationList,
+} from "../src/plugins/revocation";
 import { matchesRange } from "../src/plugins/version-range";
 import { label } from "./gha-label";
 
@@ -51,6 +54,33 @@ const parsed = normalizeRevocationList(raw);
 if (parsed === null) {
   fail(
     "the app cannot read this document, so it would keep whatever list it already had",
+  );
+}
+
+// ‼️ THE COUNTER IS CHECKED AGAINST THE RAW DOCUMENT, NOT AGAINST `parsed` (code review
+// HIGH-2). `readSequence` reads anything malformed as 0 on purpose — 0 is the weakest value
+// there is, so a garbled field LOSES the rollback comparison instead of winning it. The cost
+// of that safe default is that by the time a value reaches `parsed.sequence`, an authoring
+// mistake is indistinguishable from an honest 0. `sequence: "2"` validated, published, and
+// then read as 0 on every machine: the counter meant to refuse a replayed list never left the
+// floor, and no signal reached anyone. Comparing raw against parsed is the whole test — they
+// differ if and only if the app had to discard what was written.
+const rawSequence = (raw as { sequence?: unknown }).sequence;
+if (rawSequence === undefined) {
+  console.warn(
+    `⚠ ${path}: no \`sequence\` — clients read 0, so this list cannot refuse a replayed ` +
+      "older one. Add a counter and raise it on every publish.",
+  );
+} else if (rawSequence !== parsed.sequence) {
+  // ‼️ `label()`, like every other untrusted value this script prints (security review LOW-1).
+  // `JSON.stringify` happens to escape `\n` and `\r`, so today no line break reaches the log —
+  // but that is an accident of the formatter, not a control this repo declared, and it reopens
+  // the moment someone writes `String(rawSequence)`. The registry repo's `validate.yml` points
+  // this script at a PR-controlled file.
+  fail(
+    "`sequence` must be a plain integer from 0 to " +
+      `${MAXIMUM_REVOCATION_SEQUENCE}, not ${label(JSON.stringify(rawSequence))} — the app ` +
+      "reads anything else as 0, and a list at 0 cannot refuse a rollback.",
   );
 }
 

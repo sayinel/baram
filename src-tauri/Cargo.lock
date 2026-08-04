@@ -286,6 +286,7 @@ dependencies = [
 name = "baram"
 version = "0.5.1"
 dependencies = [
+ "base64 0.22.1",
  "chromiumoxide",
  "chromiumoxide_cdp",
  "diffy",
@@ -293,6 +294,7 @@ dependencies = [
  "git2",
  "keyring",
  "log",
+ "minisign-verify",
  "notify",
  "regex",
  "reqwest",

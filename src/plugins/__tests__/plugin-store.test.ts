@@ -239,7 +239,14 @@ describe("usePluginStore", () => {
     });
   });
 
-  describe("registry URL migration (v1 -> v2)", () => {
+  // ‼️ THIS MIGRATION NO LONGER REACHES THE STORE (2026-08-04). `registryUrl` was removed from
+  // `partialize` and is force-reset in `merge`, so whatever this function writes to that field
+  // is discarded during hydration — the rewrite is subsumed by the field simply not being
+  // restored, which achieves the same end more strongly. Kept, and kept tested, because it is
+  // the correct behaviour IF the field is ever persisted again; a reader should not mistake
+  // these for coverage of live behaviour. The live guarantee is
+  // `does not RESTORE a registry URL planted in storage` in `revocation-client.test.ts`.
+  describe("registry URL migration (v1 -> v2, no longer reaching the store)", () => {
     test("migrates the old dead default to the live registry default", () => {
       const persisted = {
         installedPlugins: {},

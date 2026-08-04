@@ -10,7 +10,11 @@
 import { pluginFetchRevocations } from "../ipc/plugin-invoke";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
-import { normalizeRevocationList } from "./revocation";
+import {
+  meetsRevocationFloor,
+  normalizeRevocationList,
+  revocationFloorFor,
+} from "./revocation";
 
 /**
  * How long startup will wait for a fresher list before loading installed plugins.
@@ -47,8 +51,8 @@ export async function refreshRevocations(): Promise<void> {
     return;
   }
   try {
-    const text = await pluginFetchRevocations(url);
-    const parsed = normalizeRevocationList(safeParse(text));
+    const fetched = await pluginFetchRevocations(url);
+    const parsed = normalizeRevocationList(safeParse(fetched.body));
     if (parsed === null) {
       // A reachable host serving an unreadable document must not clear protection.
       // A botched deploy is the likely cause and it would otherwise disarm every
@@ -57,14 +61,82 @@ export async function refreshRevocations(): Promise<void> {
       logger.warn("[Revocation] unreadable list, keeping the stored one");
       return;
     }
-    store.setRevocations(parsed);
+    // ‼️ EVERY READ OF THE STORE IS RE-READ HERE, AFTER THE AWAIT (code review HIGH-1). The
+    // snapshot taken before the fetch is stale by the time it lands: `plugin-lifecycle.ts`
+    // races this against a 1500 ms budget and the abandoned promise keeps running, so a slow
+    // network followed by the marketplace mounting had two refreshes comparing against
+    // pre-await state. A sequence-1 rollback overwrote a stored sequence 2 that way, and on a
+    // fresh install the abandoned snapshot still said `revocations: null`.
+    const current = usePluginStore.getState();
+    // ‼️ THE COUNTER IS ONLY BELIEVED WHEN RUST SAYS IT CHECKED THE BYTES — and be precise
+    // about which attacker that stops, because the first version of this comment claimed one it
+    // does not.
+    //
+    // It stops a NETWORK attacker: someone serving the origin cannot move the mark while
+    // enforcement is unarmed, and once armed cannot move it without a real signature. That is
+    // worth having, and it is the whole of what this flag buys.
+    //
+    // It does NOT stop the in-realm attacker `plugin-lifecycle.ts` models. A `trusted` plugin
+    // patching `window.__TAURI_INTERNALS__.invoke` writes the WHOLE answer, `verified`
+    // included — so treating the flag as authentication was a mistake: it is one more field
+    // that attacker controls. Nothing crossing this boundary can authenticate the answer, and
+    // moving the decision into Rust would not help either, because `capabilities/default.json`
+    // grants the `main` realm `allow-set-config` and `allow-export-binary-file`. The trusted
+    // tier is full trust by §260's design; the containment is the install-time consent gate,
+    // not this function.
+    //
+    // What IS refused is a DURABLE poison: the mark is no longer persisted, so an in-realm
+    // attacker's counter dies with the session instead of refusing every genuine list forever.
+    // See the `partialize` block in `stores/system/plugin.ts`.
+    //
+    // While signing is unarmed there is therefore no counter protection against the network
+    // either. That is the honest shape — signature and counter are a pair, and a pair arms
+    // together.
+    if (!fetched.verified) {
+      logger.warn(
+        "[Revocation] list was NOT signature-verified — storing it, but its sequence is",
+        "not trusted and will not raise the floor",
+      );
+      current.setRevocations(parsed, false);
+      return;
+    }
+    // A verified list may still not move the counter BACKWARDS. The empty list was live for 31
+    // hours before the first revocation was recorded, so that empty document carries a
+    // permanently valid signature — replaying it is how every revocation gets cleared without
+    // forging anything. Refusing a lower counter is the half a signature cannot do.
+    const floor = revocationFloorFor(
+      current.revocationSequenceSeen,
+      current.registryUrl,
+    );
+    if (!meetsRevocationFloor(parsed, floor)) {
+      logger.error(
+        "[Revocation] REFUSED a list older than this registry has already reached — sequence",
+        parsed.sequence,
+        "<",
+        floor,
+        "— this is a rollback, not a stale cache",
+      );
+      return;
+    }
+    current.setRevocations(parsed, true);
   } catch (err) {
     // Offline is expected and unremarkable. An ACL denial or an HTTP error is not — it
     // means the feature is structurally broken, and logging both at the same level is
     // how the missing `plugin_fetch_revocations` ACL grant hid for a whole review
     // cycle: every client failed every refresh and it read exactly like a plane.
     const message = String(err);
-    if (/not allowed|forbidden|denied|HTTP \d/iu.test(message)) {
+    // ‼️ SIGNATURE AND KEY FAILURES BELONG IN THE LOUD BRANCH (code review HIGH-2). Once
+    // enforcement is armed, a mangled `REVOCATION_PUBLIC_KEY` — a truncated paste, the private
+    // half, a stray newline — makes every fetch fail with "revocation public key is not
+    // base64", which the pattern below does not match. It was therefore logged as "refresh
+    // failed, keeping the stored list": indistinguishable from being offline, on every client,
+    // forever, with the only user-visible signal the marketplace staleness banner 30 days
+    // later. The arming step is a one-line paste, so this is the failure to make audible.
+    if (
+      /not allowed|forbidden|denied|HTTP \d|signature|public key|unsigned/iu.test(
+        message,
+      )
+    ) {
       logger.error(
         "[Revocation] refresh is FAILING STRUCTURALLY, not merely offline:",
         err,
@@ -102,9 +174,10 @@ function safeParse(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
-    // Caller treats null as "unreadable" and keeps the stored list. What no
-    // client-side check can tell apart is a host deliberately serving a VALID empty
-    // list; signing the list is what closes that, and it is the next step in the spec.
+    // Caller treats null as "unreadable" and keeps the stored list. What no client-side check
+    // can tell apart is a host deliberately serving a VALID empty list — that is closed by the
+    // signature (Rust reports `verified`) plus the counter above, and only once
+    // `REVOCATION_PUBLIC_KEY` is filled in. Until then neither half applies.
     logger.warn("[Revocation] list is not JSON");
     return null;
   }

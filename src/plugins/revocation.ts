@@ -35,6 +35,21 @@ export interface RevocationEntry {
 
 export interface RevocationList {
   revoked: RevocationEntry[];
+  /**
+   * Monotonic publish counter. Absent means 0.
+   *
+   * ‼️ THIS IS WHAT MAKES A SIGNATURE WORTH ANYTHING, and the registry's own history is the
+   * proof. `{"version":1,"revoked":[]}` was the live document for 31 hours (`395b914` →
+   * `aa4a218`). Sign the list and that empty document acquires a VALID signature — one that
+   * stays valid forever. An attacker who can serve the origin then replays yesterday's signed
+   * empty list and every revocation silently disappears, signature and all. Signing alone
+   * closes forgery and not this.
+   *
+   * So a fetched list must never move the counter BACKWARDS. Equal is fine — re-fetching the
+   * current list is the common case, and with a signature in force the same counter cannot
+   * carry different content.
+   */
+  sequence: number;
   version: number;
 }
 
@@ -60,11 +75,79 @@ const SEVERITY_RANK: Record<RevocationSeverity, number> = {
 const SEVERITIES = Object.keys(SEVERITY_RANK) as RevocationSeverity[];
 
 /** An empty list. The shape callers get before the first fetch ever succeeds. */
-export const EMPTY_REVOCATIONS: RevocationList = { revoked: [], version: 1 };
+export const EMPTY_REVOCATIONS: RevocationList = {
+  revoked: [],
+  sequence: 0,
+  version: 1,
+};
+
+/**
+ * The oldest publish this build will accept, for a client that has stored nothing yet.
+ *
+ * ‼️ Monotonicity alone cannot protect a FRESH INSTALL: with no stored list there is no
+ * counter to compare against, so a replayed old-but-validly-signed list is accepted on first
+ * run — which is exactly when the user has no other protection either. A floor compiled into
+ * the binary gives that client a starting point, the same way the updater pins a version.
+ *
+ * ‼️ AND IT IS NOW THE ONLY CROSS-RESTART DEFENCE, which raises what a forgotten bump costs.
+ * The high-water mark is deliberately not persisted (see `partialize` in
+ * `stores/system/plugin.ts`: persisting it handed an in-realm attacker a durable primitive and
+ * blocked the repair that makes a poisoned stored list survivable). So every launch starts from
+ * this number, and a replay of a genuinely-published list newer than it is accepted after a
+ * restart. Bumping it at release time is what keeps that window one release long.
+ *
+ * Bump it to the sequence then live. It can only ever be raised: setting it above the live
+ * sequence makes every client refuse the real list — pinned by `is at or above the floor this
+ * build refuses to go below` in `__tests__/revocation.test.ts`.
+ */
+export const MINIMUM_REVOCATION_SEQUENCE = 0;
+
+/**
+ * The largest counter that can ever be believed.
+ *
+ * ‼️ WITHOUT AN UPPER BOUND ONE ANSWER CAN PARK THE FLOOR OUT OF REACH (code review
+ * CRITICAL-1). `Number.isSafeInteger(9007199254740991)` is true, so an answer carrying
+ * `MAX_SAFE_INTEGER` raised the mark above every counter the registry will ever publish and
+ * refused every genuine list after it — reproduced at sequence 2, 3, 99 and 1000000. The
+ * attacker is the one `plugin-lifecycle.ts` already models: a trusted plugin that patches
+ * `window.__TAURI_INTERNALS__.invoke` and answers the refresh itself.
+ *
+ * ‼️ It bounds the damage; it does not prevent it, and the first version of this comment said
+ * "permanent-disarm primitive" as though the bound closed that. It did not — a poison at
+ * 1,000,000 refuses everything real just as effectively as one at `MAX_SAFE_INTEGER`. What
+ * removed the PERMANENCE is that the mark is no longer persisted (see `partialize` in
+ * `stores/system/plugin.ts`); this constant only keeps a claimed counter inside a range the
+ * registry could conceivably reach, so the in-session damage is bounded too.
+ *
+ * A million is not a guess about registries; it is a number no honest publish count reaches
+ * (one revocation a day for 2,700 years). A value above it is refused outright rather than
+ * clamped: clamping would silently accept a document that is lying about its position.
+ */
+export const MAXIMUM_REVOCATION_SEQUENCE = 1_000_000;
 
 /** Whether this revocation stops the plugin from running at all. */
 export function blocksLoad(entry: null | RevocationEntry): boolean {
   return entry?.severity === "malicious";
+}
+
+/**
+ * Whether a fetched list is at or above the counter this registry has already reached.
+ *
+ * Refusing a lower counter is the half signing cannot do — see `sequence` on `RevocationList`
+ * for why a valid signature on an old empty list is the actual attack.
+ *
+ * ‼️ IT COMPARES AGAINST THE FLOOR, NOT AGAINST THE STORED LIST (code review CRITICAL-1). The
+ * stored list's own counter looked like the obvious thing to compare with, and it is itself
+ * poisonable: `revocations` is persisted, so an unverified answer carrying a huge counter
+ * became a permanent ceiling that survived restarts. The floor passed in is raised only by a
+ * VERIFIED fetch, which is what keeps a fabricated counter out of it. Equality is accepted —
+ * re-fetching the current list is every ordinary refresh.
+ */
+export function meetsRevocationFloor(
+  fetched: RevocationList,
+  floor: number = MINIMUM_REVOCATION_SEQUENCE,
+): boolean {
+  return fetched.sequence >= floor;
 }
 
 /**
@@ -83,7 +166,11 @@ export function blocksLoad(entry: null | RevocationEntry): boolean {
  */
 export function normalizeRevocationList(raw: unknown): null | RevocationList {
   if (raw === null || typeof raw !== "object") return null;
-  const doc = raw as { revoked?: unknown; version?: unknown };
+  const doc = raw as {
+    revoked?: unknown;
+    sequence?: unknown;
+    version?: unknown;
+  };
   // An unknown document version is unreadable, not "readable under v1 rules". A future
   // v2 that changed what a severity MEANS would otherwise be applied with v1 semantics
   // by every old client — the precise outcome a version field exists to prevent. Keeping
@@ -98,7 +185,30 @@ export function normalizeRevocationList(raw: unknown): null | RevocationList {
     logger.warn("[Revocation] dropped an unreadable entry:", entry);
     return false;
   });
-  return { revoked, version: 1 };
+  return { revoked, sequence: readSequence(doc.sequence), version: 1 };
+}
+
+/**
+ * The counter a fetched list must reach: the higher of this build's floor and what this
+ * registry has already been seen to publish.
+ *
+ * ‼️ EXTRACTED BECAUSE THE COMPILED FLOOR HAD NO TEST AT ALL (code review HIGH-1). Deleting
+ * `MINIMUM_REVOCATION_SEQUENCE` from the expression left 54/54 green — the constant this
+ * feature calls its only cross-restart defence was pinned by nothing, while the direction that
+ * BRICKS clients (a floor above the live counter) was pinned twice.
+ *
+ * `minimum` is a parameter so the arithmetic can be exercised at a floor that is not 0.
+ * Honest bound: with the shipped value at 0, a test can pin this function's arithmetic but
+ * cannot distinguish "the default is `MINIMUM_REVOCATION_SEQUENCE`" from "the default is 0".
+ * That half becomes real the moment the constant is raised, which is the same commit that arms
+ * verification.
+ */
+export function revocationFloorFor(
+  seen: Record<string, number>,
+  registryUrl: string,
+  minimum: number = MINIMUM_REVOCATION_SEQUENCE,
+): number {
+  return Math.max(minimum, seen[registryUrl] ?? 0);
 }
 
 /**
@@ -166,4 +276,29 @@ function isVersionRange(value: unknown): value is VersionRange {
       ["eq", "gt", "gte", "lt", "lte"].includes(key) &&
       typeof bound === "string",
   );
+}
+
+/**
+ * The publish counter, or 0 for anything that is not a plain non-negative integer.
+ *
+ * ‼️ Absent and MALFORMED both read as 0, deliberately, and 0 is the weakest value there is:
+ * it can never beat a stored counter and it fails the floor on a fresh install. So a document
+ * that omits the field, or carries `"999"` as a string, `1e9`, `-1` or a float, loses the
+ * comparison instead of winning it. Coercing a string here — `Number("999")` — would hand an
+ * attacker the highest counter they can type.
+ *
+ * Absent must stay READABLE rather than rejected, because the list that is live right now
+ * has no `sequence` at all: rejecting the document would make every client keep its stored
+ * copy, and a fresh install would get no revocations whatsoever.
+ */
+function readSequence(raw: unknown): number {
+  if (
+    typeof raw !== "number" ||
+    !Number.isSafeInteger(raw) ||
+    raw < 0 ||
+    raw > MAXIMUM_REVOCATION_SEQUENCE
+  ) {
+    return 0;
+  }
+  return raw;
 }

@@ -46,9 +46,66 @@ jobs:
       - name: Validate the list with the shipping validator
         run: npx tsx scripts/validate-revocations.ts registry/revoked.json
 
+      # ‼️ A CHANGED list must carry a HIGHER counter, and this is the only place that can say
+      # so. A list published at or below the live counter is refused by every armed client
+      # (`meetsRevocationFloor`), so the failure would surface as "the revocation did nothing"
+      # on user machines rather than here. Compared against what is actually LIVE, not against
+      # git history, because live is what clients hold.
+      - name: A changed list must carry a higher counter than the live one
+        run: |
+          # An unreachable live list skips the gate entirely, permissively. Deliberate: a Pages
+          # outage must not block an urgent revocation, and this gate is a convenience that
+          # catches a forgotten bump at the point it is fixable — the actual protection is the
+          # client refusing a rollback, which does not depend on this step running at all.
+          if ! curl -fsS -o "$RUNNER_TEMP/live-before.json" "https://sayinel.github.io/baram-plugins/revoked.json"; then
+            echo "::notice::The live list is unreachable — skipping the counter gate."
+            exit 0
+          fi
+          # ‼️ AN UNCHANGED LIST IS NOT A ROLLBACK (code review HIGH-3). In steady state the
+          # repo, the registry and the live file are the same bytes, so an equal counter is the
+          # NORMAL state — and erroring on it made the "nothing to publish" exit in the next
+          # step unreachable, and hard-failed the manual `workflow_dispatch` re-sync this
+          # workflow documents at the top as its own bootstrap path. Byte-identical means there
+          # is nothing to publish; only a DIFFERENT list whose counter fails to advance is a
+          # rollback, and that is what the comparison below is for.
+          if cmp -s "$RUNNER_TEMP/live-before.json" registry/revoked.json; then
+            echo "::notice::The live list is byte-identical to this one — nothing to publish."
+            exit 0
+          fi
+          # Both counters are read by the SHIPPING reader, so the number compared here is the
+          # number a client computes. The python this replaced (`d.get("sequence") or 0`)
+          # accepted a JSON string, so `sequence: "2"` cleared the gate and then read as 0 on
+          # every machine (code review HIGH-2).
+          OLD="$(npx tsx scripts/revocation-sequence.ts "$RUNNER_TEMP/live-before.json")"
+          NEW="$(npx tsx scripts/revocation-sequence.ts registry/revoked.json)"
+          # ‼️ VALIDATED BEFORE COMPARING, because `[ x -le 1 ]` FAILS OPEN (code review LOW-3).
+          # A non-numeric operand makes `[` exit 2, `if` reads that as false, and `bash -e`
+          # exempts `if` conditions — so the gate printed an "integer expression expected" error
+          # and then passed. `set -e` catches a script that exits non-zero, but not one that
+          # prints something unexpected on stdout alongside the number.
+          for value in "$OLD" "$NEW"; do
+            case "$value" in
+              ''|*[!0-9]*)
+                echo "::error::counter is not a plain integer: '$value' — refusing to compare."
+                exit 1 ;;
+            esac
+          done
+          echo "live sequence=$OLD, publishing=$NEW"
+          if [ "$NEW" -le "$OLD" ]; then
+            echo "::error::sequence must increase: live is $OLD, this publish is $NEW. Every client would refuse this list as a rollback."
+            exit 1
+          fi
+
       - name: Sync to the registry
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          # ‼️ These are tauri's OWN variable names, read by `tauri signer sign` — but the value
+          # is the REVOCATION key, not the updater's. The two are deliberately separate: this
+          # workflow runs on any main push touching `registry/revoked.json`, a far lower bar
+          # than cutting a release, and giving that the installer-signing key would trade a
+          # forged revocation list for arbitrary code on every user's machine.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY_PASSWORD }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
@@ -60,12 +117,27 @@ jobs:
           cd "$RUNNER_TEMP/registry"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # ‼️ THE CHANGE CHECK LOOKS AT revoked.json ALONE, AND BEFORE SIGNING. minisign puts a
+          # timestamp in the trusted comment, so re-signing identical bytes yields a DIFFERENT
+          # signature — staging it first would make every scheduled or unrelated run look like a
+          # change, pushing a commit and rebuilding Pages for a list nobody edited.
+          # ‼️ `test -f` as well as the diff (security review MEDIUM-2). Excluding the signature
+          # from the change check is right, but it also made a MISSING or corrupt `.sig`
+          # permanently unrecoverable: identical bytes meant this step exited 0 without signing,
+          # the verify step then failed on every re-run, and the documented `workflow_dispatch`
+          # re-sync could not repair it — the only escape was to change the file and bump the
+          # counter. Re-signing an unchanged list is cheap; being unable to is not.
           git add revoked.json
-          if git diff --cached --quiet; then
-            echo "::notice::Registry already has this exact list — nothing to publish."
+          if git diff --cached --quiet && test -f revoked.json.sig; then
+            echo "::notice::Registry already has this exact list and a signature — nothing to publish."
             exit 0
           fi
-          git commit -m "revocation: sync revoked.json from baram@${GITHUB_SHA}"
+          # Signed over the exact bytes being published, from the app checkout where the tauri
+          # CLI lives. The key never appears on a command line: `signer sign` reads it from the
+          # environment above.
+          (cd "$GITHUB_WORKSPACE" && npx tauri signer sign "$RUNNER_TEMP/registry/revoked.json")
+          git add revoked.json revoked.json.sig
+          git commit -m "revocation: sync signed revoked.json from baram@${GITHUB_SHA}"
           git push origin main
 
       # A push that succeeded is not a file that is being served. Pages takes a moment
@@ -75,15 +147,38 @@ jobs:
       - name: Verify the live list is served and readable
         run: |
           URL="https://sayinel.github.io/baram-plugins/revoked.json"
+          # ‼️ EVERY CHECK IS A RETRY CONDITION, NOT AN IMMEDIATE FAILURE. Pages lags the push —
+          # that is the entire reason this loop exists — so a stale-but-200 answer must be waited
+          # out rather than treated as a defect. An earlier version of this hunk compared the
+          # signature and exited 1 on mismatch, which would have failed the common case on the
+          # first attempt.
           for attempt in $(seq 1 20); do
             CODE="$(curl -fsS -o "$RUNNER_TEMP/live.json" -w '%{http_code}' "$URL" || true)"
-            if [ "$CODE" = "200" ]; then
+            if [ "$CODE" = "200" ] &&
+               curl -fsS -o "$RUNNER_TEMP/live.sig" "${URL}.sig" &&
+               # ‼️ COMPARED AGAINST THE SIGNATURE THIS RUN PUBLISHED, not merely inspected
+               # (security review MEDIUM-1). The trusted comment carries a filename and a
+               # timestamp and nothing that binds it to the BYTES, so `grep file:revoked.json`
+               # passes for a signature over any file of that name — including the PREVIOUS one.
+               # After the first publish that made a skipped or failed signing step invisible
+               # here, while every armed client refused the new list. Byte-comparing against
+               # what the sync step committed is exact and needs no Rust build.
+               cmp -s "$RUNNER_TEMP/live.sig" "$RUNNER_TEMP/registry/revoked.json.sig" &&
+               cmp -s "$RUNNER_TEMP/live.json" "$RUNNER_TEMP/registry/revoked.json"; then
+              # Only once the served bytes ARE this run's bytes is it worth validating them.
               npx tsx scripts/validate-revocations.ts "$RUNNER_TEMP/live.json"
-              echo "::notice::Live revocation list verified after ${attempt} attempt(s)."
+              if ! base64 -d < "$RUNNER_TEMP/live.sig" | grep -q "file:revoked.json"; then
+                echo "::error::the live signature's trusted comment does not name revoked.json."
+                exit 1
+              fi
+              echo "::notice::Live revocation list and signature verified after ${attempt} attempt(s)."
               exit 0
             fi
-            echo "attempt ${attempt}: HTTP ${CODE:-none}, waiting for Pages…"
+            echo "attempt ${attempt}: HTTP ${CODE:-none}, list/signature not yet this run's — waiting for Pages…"
             sleep 15
           done
-          echo "::error::$URL never returned 200 — clients cannot receive revocations."
+          # Reached only if the served bytes never became this run's. Says both possibilities,
+          # because the operator cannot tell them apart from here: Pages never caught up, or the
+          # signature the clients need was never published.
+          echo "::error::$URL never served this run's list and signature — clients cannot receive revocations."
           exit 1

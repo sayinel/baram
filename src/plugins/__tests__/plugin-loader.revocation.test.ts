@@ -48,7 +48,9 @@ function entry(over: Partial<RevocationEntry> = {}): RevocationEntry {
 }
 
 function revoke(...entries: RevocationEntry[]): void {
-  usePluginStore.setState({ revocations: { revoked: entries, version: 1 } });
+  usePluginStore.setState({
+    revocations: { revoked: entries, sequence: 1, version: 1 },
+  });
 }
 
 describe("PluginLoader revocation gate (§69)", () => {

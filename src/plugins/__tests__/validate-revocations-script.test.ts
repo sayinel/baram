@@ -16,14 +16,32 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(__dirname, "../../..");
 const SCRIPT = resolve(ROOT, "scripts/validate-revocations.ts");
+const SEQUENCE_SCRIPT = resolve(ROOT, "scripts/revocation-sequence.ts");
 const TSX = resolve(ROOT, "node_modules/.bin/tsx");
 
 function run(document: unknown): { output: string; status: null | number } {
+  const result = spawnSync(TSX, [SCRIPT, write(document)], {
+    encoding: "utf8",
+  });
+  return { output: `${result.stdout}${result.stderr}`, status: result.status };
+}
+
+/** What the publish gate reads — stdout ALONE, exactly as `$(...)` would capture it. */
+function sequenceOf(document: unknown): {
+  status: null | number;
+  stdout: string;
+} {
+  const result = spawnSync(TSX, [SEQUENCE_SCRIPT, write(document)], {
+    encoding: "utf8",
+  });
+  return { status: result.status, stdout: result.stdout.trim() };
+}
+
+function write(document: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), "baram-revoked-"));
   const path = join(dir, "revoked.json");
   writeFileSync(path, JSON.stringify(document));
-  const result = spawnSync(TSX, [SCRIPT, path], { encoding: "utf8" });
-  return { output: `${result.stdout}${result.stderr}`, status: result.status };
+  return path;
 }
 
 describe("validate-revocations", () => {
@@ -65,5 +83,85 @@ describe("validate-revocations", () => {
     for (const line of output.split("\n")) {
       expect(line.trimStart()).not.toMatch(/^::/u);
     }
+  });
+
+  // ‼️ The counter is the ONE field the app reads forgivingly and the publisher must write
+  // exactly (code review HIGH-2). `readSequence` turns anything malformed into 0 so a garbled
+  // value loses the rollback comparison rather than winning it — which also means a mistake
+  // arrives as an honest-looking 0, publishes green, and leaves every client unable to refuse
+  // a replayed list. This script is the only place that sees what was actually written.
+  it.each([
+    ["a JSON string, the value that published while reading as 0", "2"],
+    ["a float", 2.5],
+    ["a negative counter", -1],
+    [
+      "a counter past the ceiling that guards against a poisoned floor",
+      1_000_001,
+    ],
+    ["a boolean", true],
+    ["an explicit null", null],
+  ])("refuses %s", (_label, sequence) => {
+    const { output, status } = run({ revoked: [], sequence, version: 1 });
+    expect(status).toBe(1);
+    expect(output).toContain("`sequence` must be a plain integer");
+    expect(output).toContain(JSON.stringify(sequence));
+  });
+
+  it("accepts a plain integer counter", () => {
+    const { status } = run({ revoked: [], sequence: 7, version: 1 });
+    expect(status).toBe(0);
+  });
+
+  it("accepts a list with no counter, but says it cannot refuse a rollback", () => {
+    // Absent has to stay publishable: the document that was live before this feature has no
+    // `sequence` at all, and the verify step re-validates whatever Pages is still serving.
+    // The counter gate catches an absent one on the way out, because 0 cannot beat live.
+    const { output, status } = run({ revoked: [], version: 1 });
+    expect(status).toBe(0);
+    expect(output).toContain("cannot refuse a replayed");
+  });
+});
+
+// The other half of the same publish gate: the number it compares. Kept in this file because
+// a disagreement between these two scripts is the defect — one refuses what the other would
+// silently read as 0.
+describe("revocation-sequence", () => {
+  it("prints the counter the app reads", () => {
+    expect(sequenceOf({ revoked: [], sequence: 7, version: 1 })).toEqual({
+      status: 0,
+      stdout: "7",
+    });
+  });
+
+  it("prints 0 for a counter the app would discard, not the value as written", () => {
+    // ‼️ THE WHOLE REASON THIS SCRIPT EXISTS (code review HIGH-2). The python it replaced —
+    // `d.get("sequence") or 0` — read this as 2, so the gate compared 2, published, and every
+    // client read 0. The gate must lose exactly what a client loses.
+    expect(sequenceOf({ revoked: [], sequence: "2", version: 1 }).stdout).toBe(
+      "0",
+    );
+  });
+
+  it("prints 0 for an unreadable document instead of failing the publish", () => {
+    // An unknown document version is unreadable to the app. Permissive here on purpose: a
+    // garbled LIVE file must not block an urgent revocation, and the document being published
+    // is the one `validate-revocations.ts` refuses outright.
+    expect(sequenceOf({ revoked: [], version: 2 })).toEqual({
+      status: 0,
+      stdout: "0",
+    });
+  });
+
+  it("prints the number ALONE, even when the list has an entry to complain about", () => {
+    // `$(...)` captures stdout, and `normalizeRevocationList` logs every dropped entry. A
+    // warning landing on stdout would make the gate compare a string like "…dropped… 3" —
+    // shell numeric comparison then errors out on a list that is perfectly fine.
+    expect(
+      sequenceOf({
+        revoked: [{ id: "", reason: "r", severity: "nope", versions: "*" }],
+        sequence: 3,
+        version: 1,
+      }).stdout,
+    ).toBe("3");
   });
 });

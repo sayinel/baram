@@ -73,10 +73,13 @@ pub async fn plugin_fetch_registry(url: String) -> Result<plugin::RegistryIndex,
         .map_err(|e| e.to_string())
 }
 
-/// §69 — raw JSON text of the revocation list. Parsed and validated on the TS side,
-/// which owns the drop-bad-entries rule; see `plugin::fetch_revocations`.
+/// §69 — the revocation list's raw JSON text, plus whether its signature was checked.
+///
+/// Parsing and the drop-bad-entries rule stay on the TS side; see `plugin::fetch_revocations`.
+/// ‼️ `verified` travels with the body because the counter must only be believed when the
+/// bytes were checked — see `plugin::FetchedRevocations` for the attack that made it necessary.
 #[tauri::command]
-pub async fn plugin_fetch_revocations(url: String) -> Result<String, String> {
+pub async fn plugin_fetch_revocations(url: String) -> Result<plugin::FetchedRevocations, String> {
     plugin::fetch_revocations(&url).await
 }
 

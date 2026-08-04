@@ -1215,7 +1215,91 @@ const MAX_REVOCATION_BYTES: usize = 1024 * 1024;
 /// during startup, so a hanging host must not be able to hold that open. `fetch_registry`
 /// above lacked all three until it was brought to the same shape; the two now differ only
 /// in their size cap and in returning text rather than a struct.
-pub async fn fetch_revocations(url: &str) -> Result<String, String> {
+pub async fn fetch_revocations(url: &str) -> Result<FetchedRevocations, String> {
+    let body = fetch_capped_text(url, MAX_REVOCATION_BYTES, "revocation list").await?;
+
+    // ‼️ Verification applies where we hold the key, which is the first-party registry and
+    // nowhere else — see `FIRST_PARTY_REVOCATION_PREFIX`. And it is ARMED only once the key
+    // constant is filled in, because demanding a signature before one is published rejects
+    // the live list on every client. Both skips are logged: an unverified list must never be
+    // mistaken for a verified one just because nothing was said.
+    if !url.starts_with(FIRST_PARTY_REVOCATION_PREFIX) {
+        log::info!("[Revocation] third-party registry — list is not signature-verified");
+        return Ok(FetchedRevocations::unverified(body));
+    }
+    if REVOCATION_PUBLIC_KEY.is_empty() {
+        log::warn!(
+            "[Revocation] signature enforcement is NOT ARMED — no public key is compiled in"
+        );
+        return Ok(FetchedRevocations::unverified(body));
+    }
+
+    let signature = fetch_capped_text(
+        &format!("{url}.sig"),
+        MAX_REVOCATION_SIGNATURE_BYTES,
+        "revocation signature",
+    )
+    .await
+    .map_err(|e| format!("revocation list is unsigned or its signature is unreachable: {e}"))?;
+    verified_revocations(body, &signature, REVOCATION_PUBLIC_KEY)
+}
+
+/// Check a body against its signature and label it `verified`, or refuse it.
+///
+/// ‼️ Split out of `fetch_revocations` because that function is unreachable from a test — two
+/// network calls guard it — and the one line that turns a checked body into `verified: true` had
+/// no coverage at all. Deleting the verification call was a mutation nothing caught, and what it
+/// produces is a build where every body is labelled verified: the counter is then believed
+/// unconditionally, which is the disarm the `verified` flag exists to prevent.
+fn verified_revocations(
+    body: String,
+    signature_b64: &str,
+    public_key_b64: &str,
+) -> Result<FetchedRevocations, String> {
+    verify_revocation_signature(body.as_bytes(), signature_b64, public_key_b64)?;
+    Ok(FetchedRevocations {
+        body,
+        verified: true,
+    })
+}
+
+/// A revocation list, and whether its signature was checked.
+///
+/// ‼️ `verified` EXISTS BECAUSE THE TWO HALVES LIVE IN DIFFERENT PROCESSES AND NOTHING BOUND
+/// THEM (code review CRITICAL-1). Rust verifies the body; TypeScript compares the counter. A
+/// `trusted` plugin that patches `window.__TAURI_INTERNALS__.invoke` — the transport this very
+/// refresh uses, an attacker `plugin-lifecycle.ts` already models — bypasses this function
+/// entirely and hands TypeScript a counter of its choosing. TypeScript had no way to tell a
+/// verified body from a fabricated one, so it honoured the counter either way: one answer
+/// carrying `MAX_SAFE_INTEGER` raised the floor above every counter the registry will ever
+/// publish and refused every genuine list from then on.
+///
+/// So the counter is only believed when this says the body was checked. That is what makes
+/// signature and counter a PAIR rather than two independent halves — and it means the
+/// protection arms with the key, together, which is the honest behaviour.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FetchedRevocations {
+    pub body: String,
+    pub verified: bool,
+}
+
+impl FetchedRevocations {
+    fn unverified(body: String) -> Self {
+        Self {
+            body,
+            verified: false,
+        }
+    }
+}
+
+/// A minisign block is a few hundred bytes; this is slack, not a budget.
+const MAX_REVOCATION_SIGNATURE_BYTES: usize = 8 * 1024;
+
+/// Fetch text with the scheme guard, a timeout and a streamed size cap.
+///
+/// Extracted when the signature became a second fetch needing all three: a hand-copied
+/// second loop is how one of them ends up missing the cap.
+async fn fetch_capped_text(url: &str, cap: usize, what: &str) -> Result<String, String> {
     let parsed = validate_http_url(url)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -1224,20 +1308,18 @@ pub async fn fetch_revocations(url: &str) -> Result<String, String> {
     let mut resp = client.get(parsed).send().await.map_err(|e| e.to_string())?;
     let status = resp.status();
     if !status.is_success() {
-        return Err(format!("Revocation list returned HTTP {status}"));
+        return Err(format!("{what} returned HTTP {status}"));
     }
     // Streamed for the same reason as `http_fetch`: reqwest imposes no response-size
     // limit, and reading the body whole would buffer it before any check could run.
     let mut buf: Vec<u8> = Vec::new();
     while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
-        if buf.len() + chunk.len() > MAX_REVOCATION_BYTES {
-            return Err(format!(
-                "revocation list too large: exceeds {MAX_REVOCATION_BYTES} byte limit"
-            ));
+        if buf.len() + chunk.len() > cap {
+            return Err(format!("{what} too large: exceeds {cap} byte limit"));
         }
         buf.extend_from_slice(&chunk);
     }
-    String::from_utf8(buf).map_err(|e| format!("revocation list is not UTF-8: {e}"))
+    String::from_utf8(buf).map_err(|e| format!("{what} is not UTF-8: {e}"))
 }
 
 /// USER DECISION: allow only http/https; do NOT block loopback/private IPs
@@ -1250,6 +1332,81 @@ pub fn validate_http_url(url: &str) -> Result<reqwest::Url, String> {
             "blocked URL scheme '{other}': only http/https are allowed"
         )),
     }
+}
+
+/// The registry whose revocation list this build verifies.
+///
+/// Verification can only apply where we hold the key, and we hold one key. A user pointing at
+/// their own registry keeps today's behaviour — their list is theirs, and there is no
+/// mechanism for distributing a key per registry. ‼️ That asymmetry is logged rather than
+/// silent: "unverified" must never look like "verified".
+pub const FIRST_PARTY_REVOCATION_PREFIX: &str = "https://sayinel.github.io/baram-plugins/";
+
+/// The key the first-party revocation list is signed with.
+///
+/// ‼️ EMPTY MEANS ENFORCEMENT IS NOT ARMED YET, and that is a deliberate transition state, not
+/// an oversight. The rollout order is forced: a signed list must be PUBLISHED before clients
+/// demand one, because a client that demands a signature before one exists rejects the live
+/// list, keeps whatever it has, and gives a fresh install no revocations at all — including
+/// the `baram-ai-summary` entry that is live today.
+///
+/// So while this is empty the fetch path logs loudly and accepts, exactly as before. Filling
+/// it in is the switch that arms verification, and it must not be filled until the signed list
+/// is live.
+pub const REVOCATION_PUBLIC_KEY: &str = "";
+
+/// Verify a detached minisign signature over the revocation list.
+///
+/// ‼️ WHY THIS EXISTS AT ALL, stated precisely because the obvious answer is incomplete.
+/// `revoked.json` has no integrity beyond TLS, and a well-formed EMPTY list is accepted and
+/// replaces the stored one — that is required (a false-positive revocation must be
+/// withdrawable) and it means one empty file silently disarms every client. No client-side
+/// check can tell "genuinely empty" from "emptied".
+///
+/// ‼️ AND A SIGNATURE ALONE DOES NOT CLOSE IT. `{"version":1,"revoked":[]}` was the live
+/// document for 31 hours (registry `395b914` → `aa4a218`), so signing gives that empty
+/// document a valid signature that stays valid forever — replaying it clears every revocation
+/// without forging anything. The counter in `RevocationList.sequence` is the other half, and
+/// neither half is worth anything without the other.
+///
+/// Same scheme, format and crate as the updater (§206), so this is the verification path
+/// tauri already exercises in production; the recipe is lifted from its `verify_signature`.
+/// Both the key and the signature arrive base64-wrapped around a minisign block, which is
+/// what `tauri signer` emits.
+pub fn verify_revocation_signature(
+    body: &[u8],
+    signature_b64: &str,
+    public_key_b64: &str,
+) -> Result<(), String> {
+    let key_text = decode_b64_text(public_key_b64, "public key")?;
+    let public_key = minisign_verify::PublicKey::decode(key_text.trim())
+        .map_err(|e| format!("revocation public key is unusable: {e}"))?;
+    let signature_text = decode_b64_text(signature_b64, "signature")?;
+    let signature = minisign_verify::Signature::decode(&signature_text)
+        .map_err(|e| format!("revocation signature is unreadable: {e}"))?;
+    // ‼️ `allow_legacy: false`, unlike the updater's `true`, and the first version of this
+    // comment got the reason backwards. The flag is consulted ONLY for a signature that is
+    // not prehashed (`minisign-verify` hashes with BLAKE2b first and falls back to raw
+    // Ed25519 otherwise). `tauri signer` emits the PREHASHED form, so for our signatures the
+    // flag is never read at all — which a mutation proved by flipping it with every test
+    // still green. `false` therefore costs nothing and refuses the older raw form outright.
+    // The updater needs `true` for signatures made by older tooling; a key issued today has
+    // no such history.
+    //
+    // Not pinned by a test: producing a legacy signature needs the `minisign` CLI, which is
+    // not available here. Said plainly rather than left as a comment claiming a guard nothing
+    // checks.
+    public_key
+        .verify(body, &signature, false)
+        .map_err(|e| format!("revocation list signature does not verify: {e}"))
+}
+
+fn decode_b64_text(value: &str, what: &str) -> Result<String, String> {
+    use base64::Engine as _;
+    let raw = base64::engine::general_purpose::STANDARD
+        .decode(value.trim())
+        .map_err(|e| format!("revocation {what} is not base64: {e}"))?;
+    String::from_utf8(raw).map_err(|e| format!("revocation {what} is not UTF-8: {e}"))
 }
 
 /// The prefix a registry's own files sit under: its origin plus the DIRECTORY of its index.
@@ -2342,6 +2499,181 @@ mod tests {
         assert!(!within(
             "http://sayinel.github.io/baram-plugins/plugins/x-1.0.0.zip"
         ));
+    }
+
+    /// A throwaway key pair, generated with `tauri signer generate` exactly as the real one
+    /// was, and a signature it produced over `SIGNED_BODY`. Static fixtures rather than
+    /// signing at test time: `minisign-verify` only verifies, which is the whole point —
+    /// nothing in the app can mint a signature, so nothing in the tests should either.
+    const TEST_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5MkMwMTZFMUZDQkEwNTEKUldSUm9Nc2ZiZ0VzbVRBMUFCSWpaeUZhNW45amZTMk93d0VNZkMwUVVlWCtIdDBKRnF4eEUyV24K";
+    const TEST_SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUm9Nc2ZiZ0VzbVZsTlRWaTNzQ09CaEdZOW8zZXVwV21laDlWcGg3V1lZNW9OT3RMT1JUZ3UrdWwvckFaaVJKMmovaVdNeE5seVJlYlcwaU1LdUZ6dEN2OEo3ODdJR0F3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzMyODI3CWZpbGU6cmV2b2tlZC5qc29uCmxldG9xTmFJSmJ5cDh4NklhdkpSOU00ZEE2MWZDcUtSdHVpK0JsT0hubFBEOExyL0Mxem9ENm9ab0xEL01VK0dFRFlJT0w2dmUwcWdMQ0F0bndkMUJ3PT0K";
+    const SIGNED_BODY: &[u8] = br#"{"version":1,"sequence":1,"revoked":[]}"#;
+
+    /// The updater's public key, READ FROM THE CONFIG WE SHIP rather than pasted here.
+    ///
+    /// ‼️ The literal that used to sit in `a_signature_from_another_key_does_not_verify` was
+    /// commented "the updater's own public key" and was not: it is key `692264F724C7676D` while
+    /// the app ships `69226B6FEED27B3`. Harmless for that test — any other real key proves the
+    /// point — but fatal for the paste guard below, which has to compare against the key a
+    /// mistaken paste would actually reach for.
+    fn updater_public_key() -> String {
+        const CONF: &str = include_str!("../../tauri.conf.json");
+        serde_json::from_str::<serde_json::Value>(CONF).expect("tauri.conf.json must parse")
+            ["plugins"]["updater"]["pubkey"]
+            .as_str()
+            .expect("the updater pubkey must be a string")
+            .to_string()
+    }
+
+    #[test]
+    fn the_shipped_key_is_never_another_key_this_repo_already_holds() {
+        // ‼️ The failure this exists for is a paste, not an algorithm. The test private key
+        // sits in a scratch directory and in this file's git history; shipping its public half
+        // would mean anyone holding it can sign a revocation list for every user. Cheap guard
+        // against the one mistake that turns this whole feature inside out.
+        assert_ne!(
+            REVOCATION_PUBLIC_KEY, TEST_PUBLIC_KEY,
+            "the test key must never be the shipped key"
+        );
+        // ‼️ And never the UPDATER's key either. Two base64 minisign keys of identical shape
+        // live in this repo, the workflow that signs revocations reads tauri's own
+        // `TAURI_SIGNING_PRIVATE_KEY` variable names, and the arming step is a one-line paste
+        // into the constant below — every condition for grabbing the wrong one. The cost is not
+        // symmetric with the other paste: the updater key signs installers, so trading it for a
+        // forged revocation list would buy arbitrary code on every user's machine.
+        assert_ne!(
+            REVOCATION_PUBLIC_KEY,
+            updater_public_key(),
+            "the revocation key must never be the updater key"
+        );
+    }
+
+    #[test]
+    fn the_first_party_prefix_is_a_directory_under_the_registry_we_ship() {
+        // A prefix without the trailing slash would match `…/baram-plugins-evil/` too — the
+        // same defect the archive rule was fixed for, and worth pinning separately because
+        // this constant decides WHICH registry gets verified at all.
+        assert!(FIRST_PARTY_REVOCATION_PREFIX.ends_with('/'));
+        assert!(registry_base(LIVE_INDEX)
+            .unwrap()
+            .as_str()
+            .starts_with(FIRST_PARTY_REVOCATION_PREFIX));
+    }
+
+    #[test]
+    fn the_signature_our_own_tooling_produces_verifies() {
+        // ‼️ The point of using a REAL signature from `tauri signer` rather than a hand-built
+        // fixture: it pins the format and the `allow_legacy` flag against the tool that will
+        // actually sign the published list. A hand-rolled vector would pin my assumptions.
+        verify_revocation_signature(SIGNED_BODY, TEST_SIGNATURE, TEST_PUBLIC_KEY)
+            .expect("a signature from `tauri signer` must verify");
+    }
+
+    #[test]
+    fn a_tampered_body_does_not_verify() {
+        // One byte. This is the whole feature: the empty list and a list with entries differ
+        // by bytes, and the signature is what makes them distinguishable.
+        let tampered = br#"{"version":1,"sequence":9,"revoked":[]}"#;
+        assert!(
+            verify_revocation_signature(tampered, TEST_SIGNATURE, TEST_PUBLIC_KEY).is_err(),
+            "a modified body must not verify"
+        );
+    }
+
+    #[test]
+    fn an_armed_key_must_actually_be_a_minisign_public_key() {
+        // ‼️ THE PASTE FAILURES THE `assert_ne!` GUARDS DO NOT COVER (code review HIGH-2).
+        // Arming is one line, and the likely slips are not "the wrong key" but a truncated
+        // paste, the PRIVATE half, or newline mangling. Any of those makes every fetch fail
+        // once armed — every client stops receiving revocations, permanently — so this catches
+        // it in CI at the moment the constant is filled in rather than on user machines.
+        //
+        // Vacuous while the constant is empty, and deliberately so: an empty key means "not
+        // armed", which is the state this PR ships.
+        if !REVOCATION_PUBLIC_KEY.is_empty() {
+            let text = decode_b64_text(REVOCATION_PUBLIC_KEY, "public key")
+                .expect("the armed key must be base64");
+            minisign_verify::PublicKey::decode(text.trim())
+                .expect("the armed key must be a minisign PUBLIC key");
+        }
+    }
+
+    #[test]
+    fn a_signature_from_another_key_does_not_verify() {
+        // The updater's own public key — a real, valid minisign key that simply is not ours.
+        // Verifying against it must fail, or "signed" would mean "signed by anyone". Read from
+        // the config, so this is the key the app actually ships rather than a stale paste.
+        assert!(
+            verify_revocation_signature(SIGNED_BODY, TEST_SIGNATURE, &updater_public_key())
+                .is_err(),
+            "a signature must not verify under a different key"
+        );
+    }
+
+    #[test]
+    fn a_body_is_labelled_verified_only_after_its_signature_checks_out() {
+        // ‼️ THE CALL SITE HAD NO TEST. `verify_revocation_signature` was well covered, but the
+        // one place that turns a checked body into `verified: true` sat inside `fetch_revocations`
+        // behind two network calls — so deleting the verification line was a mutation nothing
+        // caught, and it would have shipped a build that labelled ANY body verified. Extracting
+        // the decision is what makes it reachable from a test.
+        let ok = verified_revocations(
+            String::from_utf8(SIGNED_BODY.to_vec()).unwrap(),
+            TEST_SIGNATURE,
+            TEST_PUBLIC_KEY,
+        )
+        .expect("a signature from `tauri signer` must verify");
+        assert!(ok.verified, "a checked body must be labelled verified");
+        assert_eq!(
+            ok.body.as_bytes(),
+            SIGNED_BODY,
+            "the body must be handed on unaltered"
+        );
+        // The half that kills the mutation: without the verification call this returns Ok.
+        assert!(
+            verified_revocations(
+                r#"{"version":1,"sequence":9,"revoked":[]}"#.to_string(),
+                TEST_SIGNATURE,
+                TEST_PUBLIC_KEY,
+            )
+            .is_err(),
+            "a body the signature does not cover must never be labelled verified"
+        );
+        // And the skip paths must label the opposite. `verified` is a bool the TypeScript side
+        // trusts a counter on, so a constructor that got it backwards would be a silent disarm.
+        assert!(!FetchedRevocations::unverified("anything".to_string()).verified);
+    }
+
+    #[test]
+    fn a_malformed_signature_or_key_is_an_error_rather_than_a_pass() {
+        // Every failure path must be an Err. A verifier that returns Ok on garbage is worse
+        // than no verifier, because everything downstream then reports success.
+        for (sig, key, what) in [
+            ("not base64!!", TEST_PUBLIC_KEY, "signature not base64"),
+            (TEST_SIGNATURE, "not base64!!", "key not base64"),
+            ("", TEST_PUBLIC_KEY, "empty signature"),
+            (TEST_SIGNATURE, "", "empty key"),
+            // Valid base64, but of something that is not a minisign block.
+            (
+                "aGVsbG8gd29ybGQK",
+                TEST_PUBLIC_KEY,
+                "signature is not minisign",
+            ),
+            (TEST_SIGNATURE, "aGVsbG8gd29ybGQK", "key is not minisign"),
+        ] {
+            assert!(
+                verify_revocation_signature(SIGNED_BODY, sig, key).is_err(),
+                "{what} must be refused"
+            );
+        }
+        // ‼️ And the refusal has to SAY which layer rejected it. Dropping the base64 error
+        // and defaulting to an empty string still ends in Err — the minisign decoder refuses
+        // it one step later — so the accept/reject behaviour cannot tell the two apart, and a
+        // mutation that swallowed it survived. What it destroys is the operator's ability to
+        // tell "the file is not base64" from "the file is not a signature".
+        let err = verify_revocation_signature(SIGNED_BODY, "not base64!!", TEST_PUBLIC_KEY)
+            .expect_err("must refuse");
+        assert!(err.contains("not base64"), "unhelpful refusal: {err}");
     }
 
     #[test]
