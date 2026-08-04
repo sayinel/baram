@@ -14,7 +14,7 @@ name: Publish Revocation List
 on:
   push:
     branches: [main]
-    paths: ['registry/revoked.json']
+    paths: ["registry/revoked.json"]
   # Bootstrap and manual re-sync. The registry has no revoked.json until this runs once,
   # and until it does every client 404s and keeps an empty list.
   workflow_dispatch:
@@ -182,3 +182,41 @@ jobs:
           # signature the clients need was never published.
           echo "::error::$URL never served this run's list and signature — clients cannot receive revocations."
           exit 1
+
+      # ‼️ DELIBERATELY AFTER THE PUBLISH, AND IT IS ABOUT THE APP, NOT THE LIST. With the
+      # high-water mark session-scoped, `MINIMUM_REVOCATION_SEQUENCE` is the only cross-restart
+      # replay defence — every launch starts from it. So a release that forgets to raise it gives
+      # that defence up silently, and NOTHING failed when that happened: the existing test only
+      # catches a floor set too HIGH (which bricks clients), never one left too low.
+      #
+      # It runs last on purpose. An urgent revocation must reach users even when the app's floor
+      # is stale, so this complains AFTER the list is out rather than blocking it.
+      - name: The app's floor must track what has been published
+        if: always()
+        run: |
+          LIVE="$(npx tsx scripts/revocation-sequence.ts registry/revoked.json)"
+          FLOOR="$(npx tsx scripts/revocation-floor.ts)"
+          for value in "$LIVE" "$FLOOR"; do
+            case "$value" in
+              ''|*[!0-9]*)
+                echo "::error::not a plain integer: '$value' — refusing to compare."
+                exit 1 ;;
+            esac
+          done
+          echo "published sequence=$LIVE, app floor=$FLOOR"
+          # The dangerous direction, and it has no tolerance: a floor above the live counter makes
+          # every client refuse the REAL list, which presents as the feature working.
+          if [ "$FLOOR" -gt "$LIVE" ]; then
+            echo "::error::MINIMUM_REVOCATION_SEQUENCE ($FLOOR) is ABOVE the published counter ($LIVE). Every client would refuse the live list. Lower it to at most $LIVE."
+            exit 1
+          fi
+          # The lagging direction. A gap is NORMAL — the floor can only move at release time, so
+          # right after publishing N it is legitimately N-1. What is not normal is a gap that keeps
+          # growing, which means revocations are being published and no release is carrying the
+          # floor forward. Five is generous: the registry has published one revocation in total.
+          MAX_LAG=5
+          if [ "$((LIVE - FLOOR))" -gt "$MAX_LAG" ]; then
+            echo "::error::MINIMUM_REVOCATION_SEQUENCE ($FLOOR) lags the published counter ($LIVE) by more than $MAX_LAG. Ship a release that raises it — until then a replayed older signed list is accepted after any restart."
+            exit 1
+          fi
+          echo "::notice::Floor $FLOOR is within $MAX_LAG of the published counter $LIVE."

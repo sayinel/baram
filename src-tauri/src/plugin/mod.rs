@@ -1353,7 +1353,8 @@ pub const FIRST_PARTY_REVOCATION_PREFIX: &str = "https://sayinel.github.io/baram
 /// So while this is empty the fetch path logs loudly and accepts, exactly as before. Filling
 /// it in is the switch that arms verification, and it must not be filled until the signed list
 /// is live.
-pub const REVOCATION_PUBLIC_KEY: &str = "";
+pub const REVOCATION_PUBLIC_KEY: &str =
+    "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE2RTZCRUIwQTc4QTNCQjQKUldTME80cW5zTDdtRnVSMTI0WGpadUR0QjVUdmlINWFub1h1RjBNaXFEWUhGNVBwN3Rxa0hJK2gK";
 
 /// Verify a detached minisign signature over the revocation list.
 ///

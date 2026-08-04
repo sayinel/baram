@@ -100,7 +100,7 @@ export const EMPTY_REVOCATIONS: RevocationList = {
  * sequence makes every client refuse the real list — pinned by `is at or above the floor this
  * build refuses to go below` in `__tests__/revocation.test.ts`.
  */
-export const MINIMUM_REVOCATION_SEQUENCE = 0;
+export const MINIMUM_REVOCATION_SEQUENCE = 1;
 
 /**
  * The largest counter that can ever be believed.

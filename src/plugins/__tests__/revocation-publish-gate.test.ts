@@ -108,6 +108,33 @@ function gate(
   return { output: `${result.stdout}${result.stderr}`, status: result.status };
 }
 
+// ‼️ The floor step is extracted the same way and run the same way, because it has the same
+// property that made the counter gate dangerous: it is shell, so nothing but a push to main ever
+// executes it. It takes no arguments — the floor comes from the SHIPPED constant via
+// `revocation-floor.ts` — so these cases vary the published counter and read the real floor.
+const FLOOR_STEP = "The app's floor must track what has been published";
+const FLOOR_SCRIPT = stepScript(readFileSync(WORKFLOW, "utf8"), FLOOR_STEP);
+expect(FLOOR_SCRIPT).toContain("revocation-floor.ts");
+
+/** Runs the floor step with `published` as the repo's list. */
+function floorStep(published: Doc): { output: string; status: null | number } {
+  const dir = mkdtempSync(join(tmpdir(), "baram-floor-"));
+  mkdirSync(join(dir, "registry"));
+  writeFileSync(
+    join(dir, "registry/revoked.json"),
+    `${JSON.stringify(published, null, 2)}\n`,
+  );
+  for (const name of ["scripts", "src", "node_modules"]) {
+    symlinkSync(join(ROOT, name), join(dir, name));
+  }
+  const result = spawnSync("bash", ["-e", "-c", FLOOR_SCRIPT], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, RUNNER_TEMP: dir },
+  });
+  return { output: `${result.stdout}${result.stderr}`, status: result.status };
+}
+
 const EMPTY: Doc = { revoked: [], sequence: 1, version: 1 };
 const CHANGED: Doc = {
   revoked: [{ id: "x", reason: "r", severity: "unlisted", versions: "*" }],
@@ -166,6 +193,38 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     const { output, status } = gate({ ...CHANGED, sequence: "2" }, EMPTY);
     expect(status).toBe(1);
     expect(output).toContain("publishing=0");
+  });
+
+  it("passes when the floor equals what was published", () => {
+    // Steady state right after a release that raised the floor.
+    const { output, status } = floorStep({ ...EMPTY, sequence: 1 });
+    expect(status).toBe(0);
+    expect(output).toContain("app floor=1");
+  });
+
+  it("REFUSES a floor above the published counter, which bricks every client", () => {
+    // ‼️ The direction with no tolerance. A floor above the live counter makes every client
+    // refuse the REAL list, and it presents as the feature working. Reached here by publishing a
+    // counter BELOW the shipped floor, which is the same inequality.
+    const { output, status } = floorStep({ ...EMPTY, sequence: 0 });
+    expect(status).toBe(1);
+    expect(output).toContain("is ABOVE the published counter");
+  });
+
+  it("REFUSES a floor that has fallen too far behind", () => {
+    // The silent direction, and the reason this step exists: revocations keep being published
+    // while no release carries the floor forward, so every restart accepts a replayed older
+    // signed list and nothing anywhere says so.
+    const { output, status } = floorStep({ ...EMPTY, sequence: 7 });
+    expect(status).toBe(1);
+    expect(output).toContain("lags the published counter");
+  });
+
+  it("tolerates a gap, because the floor can only move at release time", () => {
+    // Exactly at the limit: publishing 6 against a floor of 1 is a gap of 5, which must pass —
+    // a gate that demanded equality would fail every publish between releases.
+    const { status } = floorStep({ ...EMPTY, sequence: 6 });
+    expect(status).toBe(0);
   });
 
   it("counts a malformed LIVE counter as 0, the value clients hold", () => {

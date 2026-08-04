@@ -611,6 +611,7 @@
   "plugin.revoked.reason": "사유",
   "plugin.revoked.remove": "제거하기",
   "plugin.revoked.stale": "회수 목록을 마지막으로 받은 지 {days}일 지났습니다.",
+  "plugin.revoked.unverified": "이 기기의 회수 목록은 서명이 검증되지 않았습니다. 목록이 완전하다고 신뢰할 수 없습니다.",
   "plugin.revoked.vulnerable": "이 버전에서 보안 문제가 보고되었습니다. 새 버전이 나오면 업데이트해 주세요.",
   "plugin.error.consentGap": "내려받은 파일이 레지스트리 등록 정보와 일치하지 않습니다 — {detail}"
 }

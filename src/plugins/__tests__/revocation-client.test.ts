@@ -469,6 +469,24 @@ describe("refreshRevocations", () => {
     const state = usePluginStore.getState();
     expect(revocationFor("bad", "1.0.0", state.revocations)).not.toBeNull();
     expect(state.revocationSequenceSeen[state.registryUrl] ?? 0).toBe(0);
+    // ‼️ And it RECORDS that the bytes were not checked (security review MEDIUM-4). Storing an
+    // unverified list is correct — it is still better than nothing — but presenting it as
+    // verified is what made a redirected refresh undetectable, so the flag has to travel with
+    // the list. Persisted, unlike the mark: it describes the list on disk.
+    expect(state.revocationsVerified).toBe(false);
+    const persisted = usePluginStore.persist
+      .getOptions()
+      .partialize?.(state) as Record<string, unknown>;
+    expect(Object.keys(persisted)).toContain("revocationsVerified");
+  });
+
+  it("records that a verified list WAS verified", async () => {
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify(LIST),
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(usePluginStore.getState().revocationsVerified).toBe(true);
   });
 });
 
