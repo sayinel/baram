@@ -39,7 +39,7 @@ import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary } from "./adapters/graphemes";
 import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
-import { scrollCursorToCenter } from "./adapters/scroll";
+import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
 import { isSuspendTarget, shouldSuspendFor } from "./adapters/suspension";
 import { isMacPlatform, toKeyToken } from "./core/keys";
 import { step } from "./core/state-machine";
@@ -193,6 +193,21 @@ export function createVimPlugin(
 
         /** §5: browser-default paste is actively consumed while modal. */
         paste: (view, event) => consumeClipboard(view, event),
+      },
+
+      /** Vim owns cursor-follow scrolling while enabled: PM's default
+       *  measures hidden (windowed) blocks, adds VISUAL deltas to a
+       *  content-space scrollTop (src/utils/zoom-coords.ts), and follows
+       *  the normalized PM head — the wrong, anchored end of an inverted
+       *  visual selection (review ops-R8). The vim head decides. */
+      handleScrollToSelection: (view) => {
+        const vim = read(view.state);
+        if (!vim.enabled || vim.suspended) return false;
+        scrollCursorIntoView(
+          view,
+          vim.core.visual?.headCursor ?? vimCursor(view.state),
+        );
+        return true;
       },
 
       /** Insert-mode Esc — through PM preprocessing (P3), and through the
@@ -445,6 +460,9 @@ function runSelectionCommand(
     tr.setMeta(vimPluginKey, { core, type: "core" });
     tr.scrollIntoView(); // vim keeps the cursor visible (device R7)
     view.dispatch(tr);
+    // DIRECTLY — PM's scrollToSelection bails when the DOM selection sits
+    // outside a non-editable view, which is exactly vim modal (ops-R8).
+    scrollCursorIntoView(view, target);
     return true;
   }
 
@@ -473,6 +491,7 @@ function runSelectionCommand(
     tr.setMeta(vimPluginKey, { core, type: "core" });
     tr.scrollIntoView(); // vim keeps the cursor visible (device R7)
     view.dispatch(tr);
+    scrollCursorIntoView(view, target); // ops-R8 — see the move path
     return true;
   }
 

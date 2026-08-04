@@ -3,7 +3,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { revealBlockInActiveEditor } from "../../../viewport-virtualize";
-import { scrollCursorToCenter, scrollParentOf } from "../scroll";
+import {
+  scrollCursorIntoView,
+  scrollCursorToCenter,
+  scrollParentOf,
+} from "../scroll";
 
 vi.mock("../../../viewport-virtualize", () => ({
   revealBlockInActiveEditor: vi.fn(),
@@ -18,7 +22,15 @@ function scrollableContainer(): HTMLElement {
   container.style.overflowY = "auto";
   Object.defineProperty(container, "scrollHeight", { value: 2000 });
   Object.defineProperty(container, "clientHeight", { value: 400 });
-  container.getBoundingClientRect = () => ({ height: 400, top: 50 }) as DOMRect;
+  container.getBoundingClientRect = () =>
+    ({
+      bottom: 450,
+      height: 400,
+      left: 0,
+      right: 800,
+      top: 50,
+      width: 800,
+    }) as DOMRect;
   document.body.appendChild(container);
   return container;
 }
@@ -111,5 +123,46 @@ describe("scrollCursorToCenter", () => {
       dom,
     };
     expect(() => scrollCursorToCenter(measurable, 1)).not.toThrow();
+  });
+});
+
+describe("scrollCursorIntoView — nearest-edge follow (ops-R8)", () => {
+  function follower(top: number, bottom: number) {
+    const container = scrollableContainer(); // rect top 50, height 400
+    const dom = document.createElement("div");
+    container.appendChild(dom);
+    container.scrollTop = 100;
+    const view = {
+      coordsAtPos: () => ({ bottom, left: 60, right: 70, top }),
+      dom,
+    };
+    return { container, view };
+  }
+
+  it("scrolls DOWN just enough when the cursor is below the fold", () => {
+    const { container, view } = follower(600, 620);
+    scrollCursorIntoView(view, 1);
+    // bottom 620 vs edge 450-5 → +175 content px at zoom 1
+    expect(container.scrollTop).toBe(275);
+  });
+
+  it("divides by the zoom on follow too", () => {
+    const { container, view } = follower(600, 620);
+    scrollCursorIntoView(view, 1, 2);
+    // visual delta 620-(450-10) = 180 → 90 content px
+    expect(container.scrollTop).toBe(190);
+  });
+
+  it("no-ops when the cursor is already visible", () => {
+    const { container, view } = follower(200, 220);
+    scrollCursorIntoView(view, 1);
+    expect(container.scrollTop).toBe(100);
+  });
+
+  it("rejects a hidden zero rect and reveals before measuring", () => {
+    const { container, view } = follower(0, 0);
+    scrollCursorIntoView(view, 42);
+    expect(container.scrollTop).toBe(100); // unchanged
+    expect(revealBlockInActiveEditor).toHaveBeenCalledWith(42);
   });
 });

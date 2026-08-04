@@ -27,6 +27,7 @@ import {
 } from "./operations";
 import { pasteRegister } from "./paste";
 import { readVimRegister, writeVimRegister } from "./register";
+import { scrollCursorIntoView } from "./scroll";
 
 export interface ExecutionResult {
   /** True when a transaction landed. A PARTIALLY applied change returns a
@@ -188,10 +189,15 @@ const LINEWISE_MOTIONS = new Set<Motion>([
  */
 function dispatchLanded(view: EditorView, tr: Transaction): boolean {
   const before = view.state;
-  // Every edit leaves a landing selection — vim keeps it visible, exactly
-  // like PM's own commands do (device R7: dd below the fold).
   view.dispatch(tr.scrollIntoView());
-  return view.state !== before;
+  // Every edit leaves a landing selection — vim keeps it visible. The
+  // DIRECT call matters: PM's own scroll pipeline bails when the DOM
+  // selection sits outside a non-editable view, i.e. vim modal (ops-R8).
+  if (view.state !== before) {
+    scrollCursorIntoView(view, vimHeadOf(view.state));
+    return true;
+  }
+  return false;
 }
 
 /** Registers first, then dispatches — a yank has no tr and that is fine. */
@@ -223,6 +229,9 @@ function runHistory(
     if (!command(view.state, view.dispatch)) break;
     if (view.state === before) break; // dispatch was dropped — no progress
   }
+  // prosemirror-history flags its transactions, but PM's scroll pipeline
+  // is dead on a non-editable view — follow the restored cursor directly.
+  scrollCursorIntoView(view, vimHeadOf(view.state));
 }
 
 function runOperatorMotion(
@@ -288,4 +297,11 @@ function runOperatorMotion(
     return { applied: dispatchLanded(view, tr) };
   }
   return {};
+}
+
+/** The vim head of a landing selection — a NodeSelection reads as its own
+ *  position, like vimCursor in the plugin (review S3-R1). */
+function vimHeadOf(state: EditorView["state"]): number {
+  const sel = state.selection;
+  return sel instanceof NodeSelection ? sel.from : sel.head;
 }
