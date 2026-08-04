@@ -631,3 +631,42 @@ describe("operator + motion end to end", () => {
     expect(readVimRegister()).toMatchObject({ kind: "char" });
   });
 });
+
+describe("f/t end to end", () => {
+  it("fc jumps to the char, ; repeats, , reverses", () => {
+    const editor = makeEditor("<p>abcabc</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "f");
+    key(editor, "c");
+    expect(editor.state.selection.head).toBe(3);
+    key(editor, ";");
+    expect(editor.state.selection.head).toBe(6);
+    key(editor, ",");
+    expect(editor.state.selection.head).toBe(3);
+  });
+
+  it("visual + f extends the selection through the target", () => {
+    const editor = makeEditor("<p>abcabc</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "v");
+    key(editor, "f");
+    key(editor, "c");
+    expect(editor.state.selection.from).toBe(1);
+    expect(editor.state.selection.to).toBe(4); // inclusive of "c"
+    key(editor, "d");
+    expect(editor.state.doc.textContent).toBe("abc");
+  });
+
+  it("a missed find keeps the cursor and consumes the keys", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "f");
+    const ev = key(editor, "z");
+    expect(ev.defaultPrevented).toBe(true);
+    expect(editor.state.selection.head).toBe(1);
+    expect(editor.state.doc.textContent).toBe("abc");
+  });
+});

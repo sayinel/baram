@@ -37,7 +37,7 @@ import { broadcastCodeBlockEditable } from "../../nodes/views/code-block-cm-regi
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary } from "./adapters/graphemes";
-import { resolveMotion } from "./adapters/motions";
+import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { isSuspendTarget, shouldSuspendFor } from "./adapters/suspension";
 import { isMacPlatform, toKeyToken } from "./core/keys";
@@ -409,6 +409,32 @@ function runSelectionCommand(
       core = { ...result.state, visual };
       tr.setSelection(visualSelection(view.state, visual));
     } else {
+      tr.setSelection(cursorSelection(view.state, target));
+    }
+    tr.setMeta(vimPluginKey, { core, type: "core" });
+    view.dispatch(tr);
+    return true;
+  }
+
+  if (command.type === "findChar") {
+    const base =
+      result.state.mode === "visual" && preVisual
+        ? preVisual.headCursor
+        : vimCursor(view.state);
+    const target = resolveFindChar(
+      view.state,
+      base,
+      command.char,
+      command.kind,
+      command.count,
+    );
+    let core = result.state;
+    const tr = view.state.tr;
+    if (result.state.mode === "visual" && result.state.visual) {
+      const visual = moveVisualHead(result.state.visual, target);
+      core = { ...result.state, visual };
+      tr.setSelection(visualSelection(view.state, visual));
+    } else if (target !== base) {
       tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });

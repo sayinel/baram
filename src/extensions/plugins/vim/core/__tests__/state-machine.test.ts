@@ -128,6 +128,7 @@ describe("operator sequences", () => {
 describe("visual mode keys", () => {
   const inVisual = (): VimCoreState => ({
     count: null,
+    lastFind: null,
     mode: "visual",
     pending: null,
     visual: { anchorCursor: 5, headCursor: 9, kind: "char" },
@@ -379,5 +380,68 @@ describe("operator + motion (d/y/c + w b h l 0 ^ \u0024 j k gg G)", () => {
     expect(r.handled).toBe(true);
     expect(r.command).toBeNull();
     expect(r.state.pending).toBeNull();
+  });
+});
+
+describe("f/t char find", () => {
+  it("f holds a pending char; the next key emits findChar", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    expect(state.pending).toBe("f");
+    const r = step(state, key("x"), { cursor: 0 });
+    expect(r.command).toEqual({
+      char: "x",
+      count: 1,
+      kind: "f",
+      type: "findChar",
+    });
+    expect(r.state.lastFind).toEqual({ char: "x", kind: "f" });
+  });
+
+  it("the find ARGUMENT uses the raw key — hangul stays hangul", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, { ...key("j"), raw: "\u3153" }, { cursor: 0 });
+    expect(r.command).toMatchObject({ char: "\u3153", kind: "f" });
+  });
+
+  it("2fx carries the count; T works too", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("2"), { cursor: 0 }).state;
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, key("x"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 2 });
+
+    let s2 = initialCoreState("normal");
+    s2 = step(s2, key("T", { shift: true }), { cursor: 0 }).state;
+    expect(s2.pending).toBe("T");
+  });
+
+  it("; repeats the last find and , reverses it", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    state = step(state, key("x"), { cursor: 0 }).state;
+
+    const rep = step(state, key(";"), { cursor: 0 });
+    expect(rep.command).toEqual({
+      char: "x",
+      count: 1,
+      kind: "f",
+      type: "findChar",
+    });
+    const rev = step(state, key(","), { cursor: 0 });
+    expect(rev.command).toMatchObject({ char: "x", kind: "F" });
+  });
+
+  it("Escape aborts a pending find; ; with no history is a no-op", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, key("Escape"), { cursor: 0 });
+    expect(r.command).toBeNull();
+    expect(r.state.pending).toBeNull();
+
+    const none = step(initialCoreState("normal"), key(";"), { cursor: 0 });
+    expect(none.command).toBeNull();
+    expect(none.handled).toBe(true);
   });
 });

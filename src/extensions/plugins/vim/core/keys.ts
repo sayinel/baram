@@ -30,11 +30,13 @@ export function isMacPlatform(): boolean {
  * resolves that by matching vim's chords first and passing the rest through.
  */
 export function toKeyToken(event: KeyLike, isMac: boolean): KeyToken {
+  const key = layoutKey(event);
   return {
     alt: event.altKey,
     ctrl: event.ctrlKey,
-    key: layoutKey(event),
+    key,
     mod: isMac ? event.metaKey : event.ctrlKey,
+    ...(key === event.key ? {} : { raw: event.key }),
     shift: event.shiftKey,
   };
 }

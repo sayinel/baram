@@ -5,14 +5,11 @@
 // boundary is what makes the whole modal layer unit-testable without a DOM,
 // and it is why VisualState carries opaque numbers the adapters supply.
 
-/**
- * What the core asks the adapters to do. One keystroke yields at most one
- * command; multi-key sequences (`dd`, `gg`) emit only on completion.
- */
 export type CoreCommand =
   | { after: boolean; count: number; type: "paste" }
   | { at: InsertAnchor; type: "enterInsert" }
   | { below: boolean; type: "openLine" }
+  | { char: string; count: number; kind: FindKind; type: "findChar" }
   | { count: number; motion: Motion; op: OperatorKey; type: "operatorMotion" }
   | { count: number; motion: Motion; type: "move" }
   | { count: number; type: "changeLine" }
@@ -25,6 +22,13 @@ export type CoreCommand =
   | { type: "enterVisual" }
   | { type: "leaveVisual" }
   | { type: "yankVisual" };
+
+/**
+ * What the core asks the adapters to do. One keystroke yields at most one
+ * command; multi-key sequences (`dd`, `gg`) emit only on completion.
+ */
+/** f/F = to the char, t/T = till just before it; capitals go backward. */
+export type FindKind = "f" | "F" | "t" | "T";
 
 /** Where `i a I A` place the cursor before entering insert. */
 export type InsertAnchor = "afterCursor" | "atCursor" | "lineEnd" | "lineStart";
@@ -40,6 +44,9 @@ export interface KeyToken {
   key: string;
   /** The platform command modifier: metaKey on macOS, ctrlKey elsewhere. */
   mod: boolean;
+  /** Pre-layout-remap event.key — find arguments must stay literal (a
+   *  hangul target searches hangul), so f/F/t/T read this when present. */
+  raw?: string;
   shift: boolean;
 }
 
@@ -62,7 +69,7 @@ export type OperatorKey = "c" | "d" | "y";
 
 /** Operators and prefixes waiting for their next key. `cg`/`dg`/`yg` are an
  *  operator holding a g-prefix (dgg). */
-export type PendingKey = "g" | `${OperatorKey}g` | OperatorKey;
+export type PendingKey = "g" | `${OperatorKey}g` | FindKind | OperatorKey;
 
 /**
  * The result of feeding one key to the core.
@@ -80,6 +87,8 @@ export interface StepResult {
 export interface VimCoreState {
   /** Accumulated count prefix, or null when none is being typed. */
   count: null | number;
+  /** Last f/F/t/T target, for ; and , repeats. */
+  lastFind: null | { char: string; kind: FindKind };
   mode: VimMode;
   pending: null | PendingKey;
   visual: null | VisualState;
@@ -101,5 +110,5 @@ export interface VisualState {
 }
 
 export function initialCoreState(mode: VimMode = "normal"): VimCoreState {
-  return { count: null, mode, pending: null, visual: null };
+  return { count: null, lastFind: null, mode, pending: null, visual: null };
 }

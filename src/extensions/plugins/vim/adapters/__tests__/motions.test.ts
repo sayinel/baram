@@ -7,7 +7,7 @@ import { Editor, Node } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
-import { resolveMotion } from "../motions";
+import { resolveFindChar, resolveMotion } from "../motions";
 
 const editors: Editor[] = [];
 
@@ -515,5 +515,44 @@ describe("^ — first non-blank (device report)", () => {
     const editor = makeEditor("<p>a<br>  bc</p>");
     const b = posOfText(editor, "bc");
     expect(resolveMotion(editor.state, b + 1, "lineFirstNonBlank", 1)).toBe(b);
+  });
+});
+
+describe("f/t — find char in the line", () => {
+  it("fx lands ON the char; 2fx takes the second; tx stops BEFORE", () => {
+    const editor = makeEditor("<p>axbxc</p>");
+    const a = posOfText(editor, "a");
+    expect(resolveFindChar(editor.state, a, "x", "f", 1)).toBe(a + 1);
+    expect(resolveFindChar(editor.state, a, "x", "f", 2)).toBe(a + 3);
+    expect(resolveFindChar(editor.state, a, "x", "t", 2)).toBe(a + 2);
+  });
+
+  it("F/T search backward; a miss stays put", () => {
+    const editor = makeEditor("<p>axbxc</p>");
+    const c = posOfText(editor, "c");
+    expect(resolveFindChar(editor.state, c, "x", "F", 1)).toBe(c - 1);
+    expect(resolveFindChar(editor.state, c, "x", "T", 1)).toBe(c);
+    expect(resolveFindChar(editor.state, c, "z", "F", 1)).toBe(c);
+    expect(
+      resolveFindChar(editor.state, posOfText(editor, "a"), "z", "f", 1),
+    ).toBe(posOfText(editor, "a"));
+  });
+
+  it("search is SEGMENT-local — never crosses a hard break", () => {
+    const editor = makeEditor("<p>ab<br>xc</p>");
+    const a = posOfText(editor, "ab");
+    expect(resolveFindChar(editor.state, a, "x", "f", 1)).toBe(a);
+  });
+
+  it("a hangul target matches its grapheme unit", () => {
+    const editor = makeEditor("<p>seed</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: "a가b", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const start = editor.state.doc.resolve(1).start();
+    expect(resolveFindChar(editor.state, start, "가", "f", 1)).toBe(start + 1);
   });
 });

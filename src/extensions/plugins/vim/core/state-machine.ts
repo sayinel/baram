@@ -10,6 +10,7 @@
 
 import type {
   CoreCommand,
+  FindKind,
   KeyToken,
   Motion,
   OperatorKey,
@@ -211,6 +212,17 @@ function normalOrVisualStep(
   if (isCountDigit(state, token.key))
     return swallow(applyDigit(state, token.key));
 
+  if (isFindKind(token.key)) {
+    return swallow({ ...state, pending: token.key });
+  }
+  if (token.key === ";" || token.key === ",") {
+    const { count, next } = takeCount(state);
+    const last = state.lastFind;
+    if (!last) return swallow(next);
+    const kind = token.key === ";" ? last.kind : REVERSED_FIND[last.kind];
+    return emit(next, { char: last.char, count, kind, type: "findChar" });
+  }
+
   const motion = MOTIONS[token.key];
   if (motion) {
     const { count, next } = takeCount(state);
@@ -226,8 +238,33 @@ function pass(state: VimCoreState): StepResult {
 }
 
 /** Next key of a `c`/`d`/`y`/`g` sequence. */
+const REVERSED_FIND: Record<FindKind, FindKind> = {
+  f: "F",
+  F: "f",
+  t: "T",
+  T: "t",
+};
+
+function isFindKind(key: string): key is FindKind {
+  return key === "f" || key === "F" || key === "t" || key === "T";
+}
+
 function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
   const pending = state.pending;
+
+  if (pending !== null && isFindKind(pending)) {
+    // The next key is a LITERAL target — raw beats the layout remap, so a
+    // hangul search target stays hangul. Non-character keys abort.
+    const char = token.raw ?? token.key;
+    if (char.length !== 1 || token.mod || token.ctrl || token.alt) {
+      return swallow({ ...state, count: null, pending: null });
+    }
+    const { count, next } = takeCount(state);
+    return emit(
+      { ...next, lastFind: { char, kind: pending } },
+      { char, count, kind: pending, type: "findChar" },
+    );
+  }
 
   // Digits between operator and motion (d2w) extend the count.
   if (isCountDigit(state, token.key)) {

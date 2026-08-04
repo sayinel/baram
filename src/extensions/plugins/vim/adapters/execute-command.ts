@@ -82,6 +82,7 @@ export function executeCoreCommand(
       return {};
     }
     case "enterVisual":
+    case "findChar": // the plugin's selection path owns finds — like move
     case "leaveVisual":
       // Selection rendering for visual mode lands with S5 decorations.
       return {};
