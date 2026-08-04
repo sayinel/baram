@@ -544,6 +544,39 @@ describe("f/t — find char in the line", () => {
     expect(resolveFindChar(editor.state, a, "x", "f", 1)).toBe(a);
   });
 
+  it("a bare jamo finds the syllable by its 초성 (fㄱ lands on 강)", () => {
+    // A keydown can only produce a bare jamo while Korean text is composed
+    // syllables — a literal comparison never matches (device finding R7).
+    const editor = makeEditor("<p>abc 강물</p>");
+    const a = posOfText(editor, "a");
+    const kang = posOfText(editor, "강");
+    expect(resolveFindChar(editor.state, a, "ㄱ", "f", 1)).toBe(kang);
+    // Backward too, and the double consonant table row.
+    const mul = posOfText(editor, "물");
+    expect(resolveFindChar(editor.state, mul, "ㄱ", "F", 1)).toBe(kang);
+    const ssal = makeEditor("<p>a 쌀</p>");
+    expect(
+      resolveFindChar(ssal.state, posOfText(ssal, "a"), "ㅆ", "f", 1),
+    ).toBe(posOfText(ssal, "쌀"));
+  });
+
+  it("a full syllable target stays EXACT — f강 must not land on 김", () => {
+    const editor = makeEditor("<p>a 김 강</p>");
+    const a = posOfText(editor, "a");
+    expect(resolveFindChar(editor.state, a, "강", "f", 1)).toBe(
+      posOfText(editor, "강"),
+    );
+  });
+
+  it("\ucd08\uc131 matches an NFD syllable; NFC target matches NFD text", () => {
+    // \u1100\u1161\u11BC = NFD \uac15 "gang" (conjoining jamo, macOS-style).
+    const editor = makeEditor(`<p>ab \u1100\u1161\u11BCc</p>`);
+    const a = posOfText(editor, "ab");
+    const nfd = posOfText(editor, "\u1100");
+    expect(resolveFindChar(editor.state, a, "\u3131", "f", 1)).toBe(nfd);
+    expect(resolveFindChar(editor.state, a, "\uac15", "f", 1)).toBe(nfd);
+  });
+
   it("a hangul target matches its grapheme unit", () => {
     const editor = makeEditor("<p>seed</p>");
     editor.commands.setContent({

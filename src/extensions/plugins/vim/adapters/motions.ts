@@ -19,6 +19,7 @@ import type { EditorState } from "@tiptap/pm/state";
 
 import { TableMap } from "@tiptap/pm/tables";
 
+import { findTargetMatches } from "../core/hangul";
 import { nextUnitBoundary, prevUnitBoundary } from "./graphemes";
 import { splitSegments } from "./line-units";
 
@@ -77,7 +78,7 @@ export function resolveFindChar(
   if (forward) {
     for (let i = 0; i < starts.length; i++) {
       if (starts[i] <= pos) continue;
-      if (!unitText(i).startsWith(char)) continue;
+      if (!findTargetMatches(unitText(i), char)) continue;
       // A repeated t must not re-match the target it already sits before —
       // its landing would be the current position (review ops-R2).
       if (till && repeat && (starts[i - 1] ?? -1) <= pos) continue;
@@ -93,7 +94,7 @@ export function resolveFindChar(
 
   for (let i = starts.length - 1; i >= 0; i--) {
     if (starts[i] >= pos) continue;
-    if (!unitText(i).startsWith(char)) continue;
+    if (!findTargetMatches(unitText(i), char)) continue;
     if (till && repeat && (starts[i + 1] ?? line.end + 1) >= pos) continue;
     if (--remaining === 0) {
       matchIndex = i;
