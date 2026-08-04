@@ -170,7 +170,16 @@ export function createVimPlugin(
           if (result.command) {
             // PRE-step visual: step() clears it on the visual→normal
             // transition, which is exactly when d/y need the range.
-            executeCoreCommand(view, result.command, vim.core.visual);
+            const exec = executeCoreCommand(
+              view,
+              result.command,
+              vim.core.visual,
+            );
+            // A refused CHANGE must not leave the editor in insert — the
+            // core flips the mode before the adapter can veto (ops-R2).
+            if (exec.reason && isChangeCommand(result.command)) {
+              dispatchMeta(view, { mode: "normal", type: "setMode" });
+            }
           }
           return true;
         },
@@ -258,6 +267,7 @@ export function createVimPlugin(
             count: null,
             mode: prev.core.mode === "visual" ? "normal" : prev.core.mode,
             pending: null,
+            pendingCount: null,
             visual: null,
           });
         }
@@ -336,6 +346,14 @@ function eolCursorWidget(): HTMLElement {
   return el;
 }
 
+function isChangeCommand(command: CoreCommand): boolean {
+  return (
+    command.type === "changeLine" ||
+    (command.type === "operatorMotion" && command.op === "c") ||
+    (command.type === "operatorFind" && command.op === "c")
+  );
+}
+
 function isModal(vim: VimPluginState): boolean {
   return vim.enabled && vim.mode !== "insert";
 }
@@ -363,13 +381,19 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         count: null,
         mode: meta.mode,
         pending: null,
+        pendingCount: null,
         visual: meta.mode === "visual" ? prev.core.visual : null,
       });
     case "setSuspended":
       // §5b focusLocal: entering an island clears count/pending — an
       // operator must not survive a trip through an input island.
       return {
-        ...withCore(prev, { ...prev.core, count: null, pending: null }),
+        ...withCore(prev, {
+          ...prev.core,
+          count: null,
+          pending: null,
+          pendingCount: null,
+        }),
         suspended: meta.suspended,
       };
   }
@@ -427,6 +451,7 @@ function runSelectionCommand(
       command.char,
       command.kind,
       command.count,
+      command.repeat ?? false,
     );
     let core = result.state;
     const tr = view.state.tr;

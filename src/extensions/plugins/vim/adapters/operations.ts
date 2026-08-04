@@ -21,6 +21,10 @@ import { nextUnitBoundary } from "./graphemes";
 import { type LineUnit, resolveLineUnit } from "./line-units";
 
 export interface OperationOutcome {
+  /** Where the FIRST deleted line's replacement belongs, mapped through
+   *  every later step — the split path's landing is not derivable from
+   *  the original positions (review ops-R2). deleteLine only. */
+  landing?: number;
   /** Set on refusal — surfaced by the status line (S5). */
   reason?: string;
   register?: VimRegister;
@@ -64,8 +68,10 @@ export function changeLines(
   if (!del.tr) return del;
 
   const tr = del.tr;
+  // The delete walk hands back the REAL landing (split paths compute one
+  // no original-position mapping can reach — review ops-R2).
   const landing = Math.min(
-    Math.max(tr.mapping.map(lineUnitStart(first), -1), 0),
+    Math.max(del.landing ?? tr.mapping.map(lineUnitStart(first), -1), 0),
     tr.doc.content.size,
   );
   const $landing = tr.doc.resolve(landing);
@@ -124,6 +130,7 @@ export function deleteLine(
   let cursor = pos;
   const yanked: YankedUnit[] = [];
   let reason: string | undefined;
+  let landingOut: number | undefined;
 
   for (let i = 0; i < count; i++) {
     const unit = resolveLineUnit(working, cursor);
@@ -138,6 +145,12 @@ export function deleteLine(
     yanked.push(step.yanked);
     for (const s of step.tr.steps) master.step(s);
     working = working.apply(step.tr);
+    landingOut =
+      i === 0
+        ? step.landing
+        : landingOut === undefined
+          ? undefined
+          : step.tr.mapping.map(landingOut, -1);
     if (unit.kind === "tableRow") break; // Phase 1: counts stop at a table row
     if (unit.kind === "listItem" && unit.nestedListPositions.length > 0) {
       // The lift puts the children where the item was — they ARE the next
@@ -155,6 +168,7 @@ export function deleteLine(
 
   if (yanked.length === 0) return { reason, tr: null };
   return {
+    landing: landingOut,
     register: {
       content: yanked.map((y) => y.content),
       context: yanked[0].context,

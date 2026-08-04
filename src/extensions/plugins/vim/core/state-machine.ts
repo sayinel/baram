@@ -64,7 +64,13 @@ export function step(
 ): StepResult {
   if (state.mode === "insert") {
     if (token.key === "Escape" && !token.mod && !token.ctrl && !token.alt) {
-      return swallow({ ...state, count: null, mode: "normal", pending: null });
+      return swallow({
+        ...state,
+        count: null,
+        mode: "normal",
+        pending: null,
+        pendingCount: null,
+      });
     }
     return pass(state);
   }
@@ -230,7 +236,13 @@ function normalOrVisualStep(
     const last = state.lastFind;
     if (!last) return swallow(next);
     const kind = token.key === ";" ? last.kind : REVERSED_FIND[last.kind];
-    return emit(next, { char: last.char, count, kind, type: "findChar" });
+    return emit(next, {
+      char: last.char,
+      count,
+      kind,
+      repeat: true,
+      type: "findChar",
+    });
   }
 
   const motion = MOTIONS[token.key];
@@ -261,6 +273,34 @@ function isFindKind(key: string): key is FindKind {
 
 function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
   const pending = state.pending;
+
+  if (
+    pending !== null &&
+    pending.length === 2 &&
+    isFindKind(pending[1]) &&
+    (pending[0] === "c" || pending[0] === "d" || pending[0] === "y")
+  ) {
+    const char = token.raw ?? token.key;
+    if (char.length !== 1 || token.mod || token.ctrl || token.alt) {
+      return swallow({
+        ...state,
+        count: null,
+        pending: null,
+        pendingCount: null,
+      });
+    }
+    const { count, next } = takeCount(state);
+    const op = pending[0] as OperatorKey;
+    const kind = pending[1] as FindKind;
+    return emit(
+      {
+        ...next,
+        lastFind: { char, kind },
+        ...(op === "c" ? { mode: "insert" as const } : {}),
+      },
+      { char, count, kind, op, type: "operatorFind" },
+    );
+  }
 
   if (pending !== null && isFindKind(pending)) {
     // The next key is a LITERAL target — raw beats the layout remap, so a
@@ -307,6 +347,10 @@ function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
     if (token.key === "g") {
       // dgg and friends — hold the count, wait for the second g.
       return swallow({ ...state, pending: `${pending}g` });
+    }
+    if (isFindKind(token.key)) {
+      // dfx / ctx — hold the operator, wait for the literal target.
+      return swallow({ ...state, pending: `${pending}${token.key}` });
     }
     const motion = MOTIONS[token.key];
     if (motion) return emitOperator(next, pending, count, motion);

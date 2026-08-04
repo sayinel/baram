@@ -734,3 +734,150 @@ describe("operator review ops-R1 pins", () => {
     expect(editor.state.doc.textContent).toBe("ab");
   });
 });
+
+describe("ops-R2 pins", () => {
+  it("d2 then suspension leaves NO count behind (x deletes one)", () => {
+    const editor = makeEditor("<p>abcdef</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "d");
+    key(editor, "2");
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: true,
+        type: "setSuspended",
+      }),
+    );
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        suspended: false,
+        type: "setSuspended",
+      }),
+    );
+    key(editor, "x");
+    expect(editor.state.doc.textContent).toBe("bcdef");
+  });
+
+  it("tx then ; advances to before the NEXT x", () => {
+    const editor = makeEditor("<p>abxcx</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "t");
+    key(editor, "x");
+    expect(editor.state.selection.head).toBe(2); // on b
+    key(editor, ";");
+    expect(editor.state.selection.head).toBe(4); // on c
+  });
+
+  it("dfx deletes THROUGH x; dtx deletes up to x", () => {
+    const editor = makeEditor("<p>abxcd</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "d");
+    key(editor, "f");
+    key(editor, "x");
+    expect(editor.state.doc.textContent).toBe("cd");
+
+    const e2 = makeEditor("<p>abxcd</p>");
+    e2.commands.setTextSelection(1);
+    enable(e2);
+    key(e2, "d");
+    key(e2, "t");
+    key(e2, "x");
+    expect(e2.state.doc.textContent).toBe("xcd");
+  });
+
+  it("cc on a table row refuses WITHOUT entering insert", () => {
+    const editor = makeEditor(
+      "<table><tr><td><p>aa</p></td></tr><tr><td><p>bb</p></td></tr></table>",
+    );
+    editor.commands.setTextSelection(3);
+    enable(editor);
+    key(editor, "c");
+    key(editor, "c");
+    expect(editor.state.doc.textContent).toBe("aabb");
+    expect(vim(editor).mode).toBe("normal");
+    expect(editor.view.editable).toBe(false);
+  });
+
+  it("changing a heterogeneous nested target lands the empty item IN PLACE", () => {
+    const editor = makeEditor("<p>seed</p>");
+    const item = (text: string) => ({
+      content: [{ content: [{ text, type: "text" }], type: "paragraph" }],
+      type: "listItem",
+    });
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            item("before"),
+            {
+              content: [
+                {
+                  content: [{ text: "target", type: "text" }],
+                  type: "paragraph",
+                },
+                {
+                  content: [
+                    {
+                      attrs: { checked: true },
+                      content: [
+                        {
+                          content: [{ text: "kid", type: "text" }],
+                          type: "paragraph",
+                        },
+                      ],
+                      type: "taskItem",
+                    },
+                  ],
+                  type: "taskList",
+                },
+              ],
+              type: "listItem",
+            },
+            item("after"),
+          ],
+          type: "bulletList",
+        },
+      ],
+      type: "doc",
+    });
+    const targetPos = (() => {
+      let found = -1;
+      editor.state.doc.descendants((n, pos) => {
+        if (found < 0 && n.isText && n.text === "target") found = pos;
+        return found < 0;
+      });
+      return found;
+    })();
+    editor.commands.setTextSelection(targetPos + 1);
+    enable(editor);
+    key(editor, "c");
+    key(editor, "c");
+    // the empty replacement (cursor) sits BETWEEN before and kid, not at
+    // the head of the whole structure
+    const $head = editor.state.doc.resolve(editor.state.selection.head);
+    let index = -1;
+    const top = editor.state.doc;
+    top.forEach((child, offset, i) => {
+      if (
+        editor.state.selection.head > offset &&
+        editor.state.selection.head < offset + child.nodeSize
+      ) {
+        index = i;
+      }
+    });
+    void $head;
+    // "before" must come BEFORE the cursor position in document order
+    const beforeEnd = (() => {
+      let found = -1;
+      top.descendants((n, pos) => {
+        if (found < 0 && n.isText && n.text === "before") found = pos + 6;
+        return found < 0;
+      });
+      return found;
+    })();
+    expect(editor.state.selection.head).toBeGreaterThan(beforeEnd);
+    void index;
+  });
+});

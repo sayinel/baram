@@ -55,6 +55,7 @@ export function resolveFindChar(
   char: string,
   kind: FindKind,
   count: number,
+  repeat = false,
 ): number {
   const span = segmentSpanAt(state, pos);
   if (!span) return pos;
@@ -76,7 +77,11 @@ export function resolveFindChar(
   if (forward) {
     for (let i = 0; i < starts.length; i++) {
       if (starts[i] <= pos) continue;
-      if (unitText(i).startsWith(char) && --remaining === 0) {
+      if (!unitText(i).startsWith(char)) continue;
+      // A repeated t must not re-match the target it already sits before —
+      // its landing would be the current position (review ops-R2).
+      if (till && repeat && (starts[i - 1] ?? -1) <= pos) continue;
+      if (--remaining === 0) {
         matchIndex = i;
         break;
       }
@@ -88,7 +93,9 @@ export function resolveFindChar(
 
   for (let i = starts.length - 1; i >= 0; i--) {
     if (starts[i] >= pos) continue;
-    if (unitText(i).startsWith(char) && --remaining === 0) {
+    if (!unitText(i).startsWith(char)) continue;
+    if (till && repeat && (starts[i + 1] ?? line.end + 1) >= pos) continue;
+    if (--remaining === 0) {
       matchIndex = i;
       break;
     }

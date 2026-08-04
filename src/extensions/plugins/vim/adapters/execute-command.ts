@@ -12,7 +12,7 @@ import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { nextUnitBoundary } from "./graphemes";
-import { wordEndAt } from "./motions";
+import { resolveFindChar, wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
 import {
   changeLines,
@@ -90,6 +90,38 @@ export function executeCoreCommand(
       const tr = state.tr.insert(at, paragraph);
       tr.setSelection(TextSelection.create(tr.doc, at + 1));
       view.dispatch(tr);
+      return {};
+    }
+    case "operatorFind": {
+      const match = resolveFindChar(
+        state,
+        head,
+        command.char,
+        command.kind === "f" || command.kind === "t" ? "f" : "F",
+        command.count,
+      );
+      if (match === head) return { reason: "char not found" };
+      const forward = command.kind === "f" || command.kind === "t";
+      const lo = forward
+        ? head
+        : command.kind === "T"
+          ? nextUnitBoundary(state, match)
+          : match;
+      const hi = forward
+        ? command.kind === "f"
+          ? nextUnitBoundary(state, match)
+          : match
+        : head;
+      if (hi <= lo) return { reason: "char not found" };
+      writeVimRegister({
+        kind: "char",
+        slice: state.doc.slice(lo, hi).toJSON(),
+      });
+      if (command.op !== "y") {
+        const tr = state.tr.delete(lo, hi);
+        tr.setSelection(TextSelection.create(tr.doc, lo));
+        view.dispatch(tr);
+      }
       return {};
     }
     case "operatorMotion":

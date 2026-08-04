@@ -428,6 +428,7 @@ describe("f/t char find", () => {
       char: "x",
       count: 1,
       kind: "f",
+      repeat: true,
       type: "findChar",
     });
     const rev = step(state, key(","), { cursor: 0 });

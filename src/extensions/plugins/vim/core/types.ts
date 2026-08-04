@@ -9,7 +9,20 @@ export type CoreCommand =
   | { after: boolean; count: number; type: "paste" }
   | { at: InsertAnchor; type: "enterInsert" }
   | { below: boolean; type: "openLine" }
-  | { char: string; count: number; kind: FindKind; type: "findChar" }
+  | {
+      char: string;
+      count: number;
+      kind: FindKind;
+      op: OperatorKey;
+      type: "operatorFind";
+    }
+  | {
+      char: string;
+      count: number;
+      kind: FindKind;
+      repeat?: boolean;
+      type: "findChar";
+    }
   | { count: number; motion: Motion; op: OperatorKey; type: "operatorMotion" }
   | { count: number; motion: Motion; type: "move" }
   | { count: number; type: "changeLine" }
@@ -69,7 +82,12 @@ export type OperatorKey = "c" | "d" | "y";
 
 /** Operators and prefixes waiting for their next key. `cg`/`dg`/`yg` are an
  *  operator holding a g-prefix (dgg). */
-export type PendingKey = "g" | `${OperatorKey}g` | FindKind | OperatorKey;
+export type PendingKey =
+  | "g"
+  | `${OperatorKey}${FindKind}`
+  | `${OperatorKey}g`
+  | FindKind
+  | OperatorKey;
 
 /**
  * The result of feeding one key to the core.
