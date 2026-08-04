@@ -31,6 +31,7 @@ export type CoreCommand =
   | { count: number; type: "redo" }
   | { count: number; type: "undo" }
   | { count: number; type: "yankLine" }
+  | { firstNonBlank: boolean; type: "scrollCursor" }
   | { type: "deleteVisual" }
   | { type: "enterVisual" }
   | { type: "leaveVisual" }
@@ -81,9 +82,10 @@ export type Motion =
 export type OperatorKey = "c" | "d" | "y";
 
 /** Operators and prefixes waiting for their next key. `cg`/`dg`/`yg` are an
- *  operator holding a g-prefix (dgg). */
+ *  operator holding a g-prefix (dgg); `z` awaits its scroll variant. */
 export type PendingKey =
   | "g"
+  | "z"
   | `${OperatorKey}${FindKind}`
   | `${OperatorKey}g`
   | FindKind

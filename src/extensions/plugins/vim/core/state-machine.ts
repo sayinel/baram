@@ -157,6 +157,7 @@ function normalKey(
     case "d":
     case "g":
     case "y":
+    case "z":
       // Operator/prefix: keep the count, wait for the second key.
       return swallow({ ...state, pending: token.key });
     case "I":
@@ -358,6 +359,16 @@ function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
 
   if (pending === "g" && token.key === "g") {
     return emit(next, { count, motion: "docStart", type: "move" });
+  }
+  if (pending === "z") {
+    // z. re-centers and homes to the first non-blank; zz keeps the column.
+    // The count is spent — vim's [count]z. line targeting is out of scope.
+    if (token.key === ".") {
+      return emit(next, { firstNonBlank: true, type: "scrollCursor" });
+    }
+    if (token.key === "z") {
+      return emit(next, { firstNonBlank: false, type: "scrollCursor" });
+    }
   }
   if (
     (pending === "cg" || pending === "dg" || pending === "yg") &&

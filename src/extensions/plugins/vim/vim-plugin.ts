@@ -39,6 +39,7 @@ import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary } from "./adapters/graphemes";
 import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
+import { scrollCursorToCenter } from "./adapters/scroll";
 import { isSuspendTarget, shouldSuspendFor } from "./adapters/suspension";
 import { isMacPlatform, toKeyToken } from "./core/keys";
 import { step } from "./core/state-machine";
@@ -470,6 +471,22 @@ function runSelectionCommand(
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
     view.dispatch(tr);
+    return true;
+  }
+
+  if (command.type === "scrollCursor") {
+    // z. homes to the first non-blank before centering; zz keeps the column.
+    const tr = view.state.tr;
+    if (command.firstNonBlank) {
+      const base = vimCursor(view.state);
+      const target = resolveMotion(view.state, base, "lineFirstNonBlank", 1);
+      if (target !== base) {
+        tr.setSelection(cursorSelection(view.state, target));
+      }
+    }
+    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+    view.dispatch(tr);
+    scrollCursorToCenter(view, vimCursor(view.state));
     return true;
   }
 

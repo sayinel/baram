@@ -147,6 +147,10 @@ export function executeCoreCommand(
     case "redo":
       runHistory(view, redo, command.count);
       return {};
+    case "scrollCursor":
+      // Owned by the plugin's selection path (z. moves the cursor, both
+      // variants scroll the view) — never reaches the executor.
+      return {};
     case "undo":
       runHistory(view, undo, command.count);
       return {};

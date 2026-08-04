@@ -116,6 +116,32 @@ describe("operator sequences", () => {
     expect(state.count).toBeNull();
   });
 
+  it("z. centers on the first non-blank; zz keeps the column", () => {
+    expect(run(["z", "."]).commands).toEqual([
+      { firstNonBlank: true, type: "scrollCursor" },
+    ]);
+    expect(run(["z", "z"]).commands).toEqual([
+      { firstNonBlank: false, type: "scrollCursor" },
+    ]);
+  });
+
+  it("an aborted z consumes the key; a count is spent, never leaked", () => {
+    const aborted = run(["z", "q"]);
+    expect(aborted.commands).toEqual([]);
+    expect(aborted.state.pending).toBeNull();
+    const counted = run(["3", "z", "z", "x"]);
+    expect(counted.commands).toEqual([
+      { firstNonBlank: false, type: "scrollCursor" },
+      { count: 1, type: "deleteCharForward" },
+    ]);
+  });
+
+  it("dz aborts the operator without scrolling or deleting", () => {
+    const { commands, state } = run(["d", "z"]);
+    expect(commands).toEqual([]);
+    expect(state.pending).toBeNull();
+  });
+
   it("Escape cancels a pending operator without leaving normal mode", () => {
     const { commands, state } = run(["2", "d", "Escape"]);
     expect(commands).toEqual([]);

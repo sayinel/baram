@@ -991,3 +991,60 @@ describe("ops-R3 pins", () => {
     expect(vim(editor).mode).toBe("insert");
   });
 });
+
+describe("device R7 pins", () => {
+  it("f + hangul jamo jumps by 초성; ; repeats it", () => {
+    const editor = makeEditor("<p>ab 강 김</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "f");
+    key(editor, "ㄱ");
+    expect(editor.state.selection.head).toBe(4); // on 강
+    key(editor, ";");
+    expect(editor.state.selection.head).toBe(6); // on 김
+  });
+
+  it("df + hangul jamo deletes THROUGH the matched syllable", () => {
+    const editor = makeEditor("<p>ab강cd</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "d");
+    key(editor, "f");
+    key(editor, "ㄱ");
+    expect(editor.state.doc.textContent).toBe("cd");
+  });
+
+  it("z. homes to the first non-blank; zz keeps the column", () => {
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [{ text: "   hello", type: "text" }],
+          type: "paragraph",
+        },
+      ],
+      type: "doc",
+    });
+    editor.commands.setTextSelection(8); // on "l"
+    enable(editor);
+    key(editor, "z");
+    key(editor, ".");
+    expect(editor.state.selection.head).toBe(4); // first non-blank "h"
+    expect(vim(editor).core.pending).toBeNull();
+    key(editor, "z");
+    key(editor, "z");
+    expect(editor.state.selection.head).toBe(4); // zz does not move
+    expect(vim(editor).mode).toBe("normal");
+  });
+
+  it("dz aborts cleanly — the next x deletes exactly one char", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "d");
+    key(editor, "z");
+    expect(editor.state.doc.textContent).toBe("abc");
+    key(editor, "x");
+    expect(editor.state.doc.textContent).toBe("bc");
+  });
+});
