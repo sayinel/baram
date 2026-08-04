@@ -12,6 +12,7 @@ import type {
   CoreCommand,
   KeyToken,
   Motion,
+  OperatorKey,
   StepResult,
   VimCoreState,
 } from "./types";
@@ -85,6 +86,21 @@ function emit(state: VimCoreState, command: CoreCommand): StepResult {
   return { command, handled: true, state };
 }
 
+/** Emit an operator command; `c` lands in insert like vim. */
+function emitOperator(
+  next: VimCoreState,
+  op: OperatorKey,
+  count: number,
+  motion: Motion,
+): StepResult {
+  return emit(op === "c" ? { ...next, mode: "insert" } : next, {
+    count,
+    motion,
+    op,
+    type: "operatorMotion",
+  });
+}
+
 /** Escape: drop any half-typed operator or count before changing mode. */
 function handleEscape(state: VimCoreState): StepResult {
   if (state.pending !== null || state.count !== null) {
@@ -125,6 +141,7 @@ function normalKey(
         { ...next, mode: "insert" },
         { at: "afterCursor", type: "enterInsert" },
       );
+    case "c":
     case "d":
     case "g":
     case "y":
@@ -208,20 +225,42 @@ function pass(state: VimCoreState): StepResult {
   return { command: null, handled: false, state };
 }
 
-/** Second key of a `d`/`y`/`g` sequence. */
+/** Next key of a `c`/`d`/`y`/`g` sequence. */
 function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
-  const { count, next } = takeCount(state);
   const pending = state.pending;
 
-  if (pending === "d" && token.key === "d") {
-    return emit(next, { count, type: "deleteLine" });
+  // Digits between operator and motion (d2w) extend the count.
+  if (isCountDigit(state, token.key)) {
+    return swallow(applyDigit(state, token.key));
   }
-  if (pending === "y" && token.key === "y") {
-    return emit(next, { count, type: "yankLine" });
+
+  const { count, next } = takeCount(state);
+
+  if (pending === "c" || pending === "d" || pending === "y") {
+    if (token.key === pending) {
+      // Doubled operator: whole-line form.
+      if (pending === "d") return emit(next, { count, type: "deleteLine" });
+      if (pending === "y") return emit(next, { count, type: "yankLine" });
+      return emit({ ...next, mode: "insert" }, { count, type: "changeLine" });
+    }
+    if (token.key === "g") {
+      // dgg and friends — hold the count, wait for the second g.
+      return swallow({ ...state, pending: `${pending}g` });
+    }
+    const motion = MOTIONS[token.key];
+    if (motion) return emitOperator(next, pending, count, motion);
   }
+
   if (pending === "g" && token.key === "g") {
     return emit(next, { count, motion: "docStart", type: "move" });
   }
+  if (
+    (pending === "cg" || pending === "dg" || pending === "yg") &&
+    token.key === "g"
+  ) {
+    return emitOperator(next, pending[0] as OperatorKey, count, "docStart");
+  }
+
   // Anything else aborts the sequence, exactly like vim. The key is consumed:
   // letting `dx` fall through to `x` would delete a character the user never
   // asked to delete.

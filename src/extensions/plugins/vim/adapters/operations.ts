@@ -127,6 +127,14 @@ export function deleteVisual(
   };
 }
 
+/** Content-side start of a line unit, for rendering the linewise range. */
+export function lineUnitStart(unit: LineUnit): number {
+  if (unit.kind === "hardBreakSegment") return unit.from;
+  if (unit.kind === "listItem") return unit.itemPos + 1;
+  if (unit.kind === "tableRow") return unit.rowPos + 1;
+  return (unit.containerPos ?? unit.blockPos) + 1;
+}
+
 /**
  * Linewise visual as "dd/yy with a count": the first covered line's cursor
  * plus how many line units the range spans — the operators then reuse the
@@ -226,6 +234,8 @@ export function yankVisual(
   };
 }
 
+// ── single-unit building blocks (private) ─────────────────────────────────
+
 /** §9 nested-list pin (spike #7): one replaceWith lifts the children. When
  *  the item is its list's only child, the LIST goes with it. Heterogeneous
  *  nested lists (a taskList under a bulletList item, or vice versa) SPLIT
@@ -323,8 +333,6 @@ function buildListItemDelete(
     ),
   };
 }
-
-// ── single-unit building blocks (private) ─────────────────────────────────
 
 /** Deleting everything must leave one empty paragraph — vim's dd on the only
  *  line clears it, it does not produce an (unschematic) empty doc. */
@@ -448,14 +456,6 @@ function descendToLineStart(state: EditorState, pos: number): null | number {
     p++; // climb out of a closing boundary
   }
   return null;
-}
-
-/** Content-side start of a line unit, for rendering the linewise range. */
-function lineUnitStart(unit: LineUnit): number {
-  if (unit.kind === "hardBreakSegment") return unit.from;
-  if (unit.kind === "listItem") return unit.itemPos + 1;
-  if (unit.kind === "tableRow") return unit.rowPos + 1;
-  return (unit.containerPos ?? unit.blockPos) + 1;
 }
 
 // ── shared helpers ─────────────────────────────────────────────────────────

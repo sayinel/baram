@@ -115,6 +115,41 @@ export function resolveMotion(
   }
 }
 
+export function segmentSpanAt(
+  state: EditorState,
+  pos: number,
+): null | { from: number; to: number } {
+  const $pos = state.doc.resolve(pos);
+  if (!$pos.parent.isTextblock) return null;
+  const textblockPos = $pos.before($pos.depth);
+  const segments = splitSegments($pos.parent, textblockPos);
+  return (
+    segments.find((s) => pos >= s.from && pos <= s.to) ??
+    segments[segments.length - 1]
+  );
+}
+
+/** The hard-break segment (or whole-textblock span) holding `pos`; null on
+ *  an atom boundary. */
+/**
+ * End position (exclusive) of the word-like segment containing `pos`, or
+ * null when the cursor is not on a word character — vim's cw-acts-as-ce
+ * rule needs exactly this (change the word, keep the following space).
+ */
+export function wordEndAt(state: EditorState, pos: number): null | number {
+  const span = segmentSpanAt(state, pos);
+  if (!span) return null;
+  const text = state.doc.textBetween(span.from, span.to, undefined, " ");
+  for (const seg of wordSegmenter.segment(text)) {
+    const from = span.from + seg.index;
+    const to = from + seg.segment.length;
+    if (pos >= from && pos < to) return seg.isWordLike ? to : null;
+  }
+  return null;
+}
+
+// ── the line sequence ──────────────────────────────────────────────────────
+
 /**
  * Every cursor line in document order: hard-break segments, atom blocks,
  * and one ENTRY line per table row (first cell's first textblock — the
@@ -168,8 +203,6 @@ function columnOf(starts: number[], pos: number): number {
   return column;
 }
 
-// ── the line sequence ──────────────────────────────────────────────────────
-
 /** Content start of the first textblock inside the node at `pos`. */
 function firstTextblockIn(state: EditorState, pos: number): null | number {
   const node = state.doc.nodeAt(pos);
@@ -215,7 +248,6 @@ function lineIndexAround(lines: CursorLine[], pos: number): number {
   }
   return lines.length - 1;
 }
-
 /** The current line's span for column math: a hard-break segment (works
  *  inside table cells too) or an atom boundary. */
 function lineSpanAt(state: EditorState, pos: number): CursorLine {
@@ -254,6 +286,7 @@ function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
   });
   return starts;
 }
+
 /** The landed cell's rect, expanded from a known slot — O(span), where
  *  findCell would re-scan the whole map. */
 function rectAround(
@@ -278,22 +311,6 @@ function rectAround(
     left--;
   }
   return { bottom, left, top };
-}
-
-/** The hard-break segment (or whole-textblock span) holding `pos`; null on
- *  an atom boundary. */
-function segmentSpanAt(
-  state: EditorState,
-  pos: number,
-): null | { from: number; to: number } {
-  const $pos = state.doc.resolve(pos);
-  if (!$pos.parent.isTextblock) return null;
-  const textblockPos = $pos.before($pos.depth);
-  const segments = splitSegments($pos.parent, textblockPos);
-  return (
-    segments.find((s) => pos >= s.from && pos <= s.to) ??
-    segments[segments.length - 1]
-  );
 }
 
 /**

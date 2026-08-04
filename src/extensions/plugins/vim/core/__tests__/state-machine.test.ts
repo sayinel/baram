@@ -303,3 +303,81 @@ describe("V — linewise visual", () => {
     });
   });
 });
+
+describe("operator + motion (d/y/c + w b h l 0 ^ \u0024 j k gg G)", () => {
+  it("dw emits a delete over wordForward", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toEqual({
+      count: 1,
+      motion: "wordForward",
+      op: "d",
+      type: "operatorMotion",
+    });
+    expect(r.state.mode).toBe("normal");
+  });
+
+  it("2dw carries the count typed before the operator", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("2"), { cursor: 0 }).state;
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 2, motion: "wordForward" });
+  });
+
+  it("d2w accepts digits BETWEEN operator and motion", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    state = step(state, key("2"), { cursor: 0 }).state;
+    expect(state.pending).toBe("d"); // digit keeps the operator pending
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 2, motion: "wordForward" });
+  });
+
+  it("cw enters insert and emits a change operator", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("c"), { cursor: 0 }).state;
+    expect(state.pending).toBe("c");
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toEqual({
+      count: 1,
+      motion: "wordForward",
+      op: "c",
+      type: "operatorMotion",
+    });
+    expect(r.state.mode).toBe("insert");
+  });
+
+  it("cc changes the whole line: deleteLine-like plus insert", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("c"), { cursor: 0 }).state;
+    const r = step(state, key("c"), { cursor: 0 });
+    expect(r.command).toEqual({ count: 1, type: "changeLine" });
+    expect(r.state.mode).toBe("insert");
+  });
+
+  it("dG emits the operator over docEnd", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("G", { shift: true }), { cursor: 0 });
+    expect(r.command).toMatchObject({ motion: "docEnd", op: "d" });
+  });
+
+  it("dgg resolves the g-prefix inside a pending operator", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    state = step(state, key("g"), { cursor: 0 }).state;
+    const r = step(state, key("g"), { cursor: 0 });
+    expect(r.command).toMatchObject({ motion: "docStart", op: "d" });
+  });
+
+  it("an unknown motion still aborts the sequence and is consumed", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("z"), { cursor: 0 });
+    expect(r.handled).toBe(true);
+    expect(r.command).toBeNull();
+    expect(r.state.pending).toBeNull();
+  });
+});

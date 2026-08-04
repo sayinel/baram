@@ -13,7 +13,9 @@ export type CoreCommand =
   | { after: boolean; count: number; type: "paste" }
   | { at: InsertAnchor; type: "enterInsert" }
   | { below: boolean; type: "openLine" }
+  | { count: number; motion: Motion; op: OperatorKey; type: "operatorMotion" }
   | { count: number; motion: Motion; type: "move" }
+  | { count: number; type: "changeLine" }
   | { count: number; type: "deleteCharForward" }
   | { count: number; type: "deleteLine" }
   | { count: number; type: "redo" }
@@ -55,8 +57,12 @@ export type Motion =
   | "wordBack"
   | "wordForward";
 
-/** Operators and prefixes waiting for their second key. */
-export type PendingKey = "d" | "g" | "y";
+/** Change/delete/yank — the charwise-capable operators. */
+export type OperatorKey = "c" | "d" | "y";
+
+/** Operators and prefixes waiting for their next key. `cg`/`dg`/`yg` are an
+ *  operator holding a g-prefix (dgg). */
+export type PendingKey = "g" | `${OperatorKey}g` | OperatorKey;
 
 /**
  * The result of feeding one key to the core.

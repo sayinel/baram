@@ -5,16 +5,21 @@
 // line); motions land in S3 and are consumed as no-ops until then, so an
 // unbound motion never leaks a keystroke into the document.
 
-import type { CoreCommand, VisualState } from "../core/types";
+import type { CoreCommand, Motion, VisualState } from "../core/types";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
+import { nextUnitBoundary } from "./graphemes";
+import { resolveLineUnit } from "./line-units";
+import { segmentSpanAt, wordEndAt } from "./motions";
+import { resolveMotion } from "./motions";
 import {
   deleteCharForward,
   deleteLine,
   deleteVisual,
+  lineUnitStart,
   linewiseSpan,
   type OperationOutcome,
   yankLine,
@@ -42,6 +47,20 @@ export function executeCoreCommand(
       : state.selection.head;
 
   switch (command.type) {
+    case "changeLine": {
+      // cc — clear the current line's CONTENT, keep the line, land in
+      // insert (the core already flipped the mode). the line register
+      // receives the old content, like vim.
+      const yank = yankLine(state, head, command.count);
+      if (yank.register) writeVimRegister(yank.register);
+      const span = segmentSpanAt(state, head);
+      if (span && span.to > span.from) {
+        const tr = state.tr.delete(span.from, span.to);
+        tr.setSelection(TextSelection.create(tr.doc, span.from));
+        view.dispatch(tr);
+      }
+      return {};
+    }
     case "deleteCharForward":
       return dispatchOutcome(
         view,
@@ -83,6 +102,8 @@ export function executeCoreCommand(
       view.dispatch(tr);
       return {};
     }
+    case "operatorMotion":
+      return runOperatorMotion(view, command, head);
     case "paste":
       return dispatchOutcome(
         view,
@@ -113,6 +134,15 @@ export function executeCoreCommand(
   }
 }
 
+/** Motions that make an operator act LINEWISE, like vim (dj deletes two
+ *  whole lines, dG to the end of the document). */
+const LINEWISE_MOTIONS = new Set<Motion>([
+  "docEnd",
+  "docStart",
+  "lineDown",
+  "lineUp",
+]);
+
 /** Registers first, then dispatches — a yank has no tr and that is fine. */
 function dispatchOutcome(
   view: EditorView,
@@ -139,4 +169,60 @@ function runHistory(
     if (!command(view.state, view.dispatch)) break;
     if (view.state === before) break; // dispatch was dropped — no progress
   }
+}
+
+function runOperatorMotion(
+  view: EditorView,
+  command: Extract<CoreCommand, { type: "operatorMotion" }>,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  const { count, motion, op } = command;
+
+  if (LINEWISE_MOTIONS.has(motion)) {
+    const target = resolveMotion(state, head, motion, count);
+    const span = linewiseSpan(state, {
+      anchorCursor: head,
+      headCursor: target,
+      kind: "line",
+    });
+    if (op === "y") {
+      return dispatchOutcome(view, yankLine(state, span.start, span.count));
+    }
+    const insertAt = lineUnitStart(resolveLineUnit(state, span.start)) - 1;
+    const outcome = deleteLine(state, span.start, span.count);
+    const result = dispatchOutcome(view, outcome);
+    if (op === "c" && outcome.tr) {
+      // change: the deleted lines leave ONE empty line to type into.
+      const post = view.state;
+      const at = Math.min(
+        Math.max(outcome.tr.mapping.map(insertAt, -1), 0),
+        post.doc.content.size,
+      );
+      const tr = post.tr.insert(at, post.schema.nodes.paragraph.create());
+      tr.setSelection(TextSelection.create(tr.doc, at + 1));
+      view.dispatch(tr);
+    }
+    return result;
+  }
+
+  // Charwise. Exclusive by default; \u0024 runs through the line end, and
+  // cw acts as ce (change the word only — vim's famous special case).
+  let target = resolveMotion(state, head, motion, count);
+  if (op === "c" && motion === "wordForward") {
+    const wordEnd = wordEndAt(state, head);
+    if (wordEnd !== null) target = wordEnd;
+  }
+  const lo = Math.min(head, target);
+  let hi = Math.max(head, target);
+  if (motion === "lineEnd") hi = nextUnitBoundary(state, hi);
+  if (hi <= lo) return {};
+
+  writeVimRegister({ kind: "char", slice: state.doc.slice(lo, hi).toJSON() });
+  if (op !== "y") {
+    const tr = state.tr.delete(lo, hi);
+    tr.setSelection(TextSelection.create(tr.doc, lo));
+    view.dispatch(tr);
+  }
+  return {};
 }

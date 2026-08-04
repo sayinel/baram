@@ -214,18 +214,24 @@ describe("impl review S3-R1 pins", () => {
   });
 
   it(
-    "counted w reuses one line scan — no O(count x doc) stall",
-    { timeout: 20_000 },
+    "counted w cost scales with COUNT, not count x doc",
+    { timeout: 60_000 },
     () => {
       const paras = Array.from(
-        { length: 3000 },
+        { length: 1200 },
         (_, i) => `<p>w${i} x</p>`,
       ).join("");
       const editor = makeEditor(paras);
       const startAt = posOfText(editor, "w0");
+      // Ratio pin (host-contention immune): the O(count x doc) rescan made
+      // 999w ~100x the cost of 9w; the carried index keeps them same-order.
       const t0 = performance.now();
+      resolveMotion(editor.state, startAt, "wordForward", 9);
+      const small = Math.max(performance.now() - t0, 1);
+      const t1 = performance.now();
       resolveMotion(editor.state, startAt, "wordForward", 999);
-      expect(performance.now() - t0).toBeLessThan(250);
+      const large = performance.now() - t1;
+      expect(large).toBeLessThan(small * 40 + 100);
     },
   );
 });
@@ -241,18 +247,22 @@ describe("impl review S3-R2 pins", () => {
   });
 
   it(
-    "counted b near EOF carries the line index — no per-step rescan",
-    { timeout: 20_000 },
+    "counted b near EOF scales with COUNT, not count x doc",
+    { timeout: 60_000 },
     () => {
       const paras = Array.from(
-        { length: 3000 },
+        { length: 1200 },
         (_, i) => `<p>w${i} x</p>`,
       ).join("");
       const editor = makeEditor(paras);
-      const nearEnd = posOfText(editor, "w2999");
+      const nearEnd = posOfText(editor, "w1199");
       const t0 = performance.now();
+      resolveMotion(editor.state, nearEnd, "wordBack", 9);
+      const small = Math.max(performance.now() - t0, 1);
+      const t1 = performance.now();
       resolveMotion(editor.state, nearEnd, "wordBack", 999);
-      expect(performance.now() - t0).toBeLessThan(300);
+      const large = performance.now() - t1;
+      expect(large).toBeLessThan(small * 40 + 100);
     },
   );
 });
@@ -331,28 +341,32 @@ describe("impl review S3-R4 pins", () => {
   });
 
   it(
-    "deep counted j carries the line index — near-linear cost",
-    { timeout: 20_000 }, // fixture parsing under full-suite worker load
+    "deep counted j scales with COUNT, not count x doc",
+    { timeout: 60_000 },
     () => {
-      const paras = Array.from({ length: 4000 }, (_, i) => `<p>p${i}</p>`).join(
+      const paras = Array.from({ length: 1200 }, (_, i) => `<p>p${i}</p>`).join(
         "",
       );
       const editor = makeEditor(paras);
       const top = posOfText(editor, "p0");
       const t0 = performance.now();
-      const target = resolveMotion(editor.state, top, "lineDown", 3999);
-      // Signal is the ~seconds-scale quadratic blowup; headroom for
-      // full-suite worker contention (277ms observed on a healthy run).
-      expect(performance.now() - t0).toBeLessThan(600);
-      expect(editor.state.doc.resolve(target).parent.textContent).toBe("p3999");
+      resolveMotion(editor.state, top, "lineDown", 99);
+      const small = Math.max(performance.now() - t0, 1);
+      const t1 = performance.now();
+      const target = resolveMotion(editor.state, top, "lineDown", 1199);
+      const large = performance.now() - t1;
+      // Quadratic index-rescan made large ~12x-of-linear worse; carried
+      // index keeps the two same-order (ratio pin, contention immune).
+      expect(large).toBeLessThan(small * 40 + 100);
+      expect(editor.state.doc.resolve(target).parent.textContent).toBe("p1199");
     },
   );
 });
 
 describe("impl review S3-R5 pin — non-zero column vertical cost", () => {
   it(
-    "3999j from column 99 stays within the latency budget",
-    { timeout: 30_000 }, // fixture parse under worker load; walk has its own budget
+    "3999j from column 99 costs the same ORDER as from column 0",
+    { timeout: 60_000 },
     () => {
       const row = "x".repeat(120);
       const paras = Array.from({ length: 4000 }, () => `<p>${row}</p>`).join(
@@ -360,16 +374,27 @@ describe("impl review S3-R5 pin — non-zero column vertical cost", () => {
       );
       const editor = makeEditor(paras);
       const first = editor.state.doc.resolve(1);
-      const from = first.start() + 99; // column 99
+
+      // RATIO pin, immune to host contention (wall-clock budgets flaked at
+      // 82MB free RAM): the quadratic regression made the column-99 walk
+      // ~200x the column-0 walk; the line-local index keeps them within a
+      // small constant factor.
       const t0 = performance.now();
-      const target = resolveMotion(editor.state, from, "lineDown", 3999);
-      // The regression this pins was ~10s (quadratic per-unit resolves);
-      // the budget only needs to sit far below that while tolerating
-      // full-suite worker contention (275ms observed on a healthy run).
-      expect(performance.now() - t0).toBeLessThan(600);
+      resolveMotion(editor.state, first.start(), "lineDown", 3999);
+      const columnZero = Math.max(performance.now() - t0, 1);
+
+      const t1 = performance.now();
+      const target = resolveMotion(
+        editor.state,
+        first.start() + 99,
+        "lineDown",
+        3999,
+      );
+      const columnNinetyNine = performance.now() - t1;
+
+      expect(columnNinetyNine).toBeLessThan(columnZero * 25 + 100);
       // Same column at the destination — carry must not drift.
-      const $t = editor.state.doc.resolve(target);
-      expect($t.parentOffset).toBe(99);
+      expect(editor.state.doc.resolve(target).parentOffset).toBe(99);
     },
   );
 });

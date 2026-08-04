@@ -549,3 +549,85 @@ describe("V — linewise visual through the plugin", () => {
     expect(editor.state.selection.empty).toBe(true);
   });
 });
+
+describe("operator + motion end to end", () => {
+  it("dw deletes to the next word start; the register pastes it back", () => {
+    const editor = makeEditor("<p>foo bar baz</p>");
+    editor.commands.setTextSelection(1); // on f
+    enable(editor);
+    key(editor, "d");
+    key(editor, "w");
+    expect(editor.state.doc.textContent).toBe("bar baz");
+    expect(readVimRegister()).toMatchObject({ kind: "char" });
+    key(editor, "P");
+    expect(editor.state.doc.textContent).toBe("foo bar baz");
+  });
+
+  it("d\u0024 deletes through the LAST character of the line", () => {
+    const editor = makeEditor("<p>foo bar</p>");
+    editor.commands.setTextSelection(5); // on "b"
+    enable(editor);
+    key(editor, "d");
+    key(editor, "$");
+    expect(editor.state.doc.textContent).toBe("foo ");
+  });
+
+  it("db deletes backwards to the word start", () => {
+    const editor = makeEditor("<p>foo bar</p>");
+    editor.commands.setTextSelection(5); // on "b"
+    enable(editor);
+    key(editor, "d");
+    key(editor, "b");
+    expect(editor.state.doc.textContent).toBe("bar");
+  });
+
+  it("dj deletes the current AND next line, linewise register", () => {
+    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "d");
+    key(editor, "j");
+    expect(editor.state.doc.textContent).toBe("tri");
+    expect(readVimRegister()).toMatchObject({ kind: "line" });
+  });
+
+  it("dG deletes to the end of the document", () => {
+    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
+    editor.commands.setTextSelection(6); // in "two"
+    enable(editor);
+    key(editor, "d");
+    key(editor, "G");
+    expect(editor.state.doc.textContent).toBe("one");
+  });
+
+  it("cw changes only the word under the cursor (vim ce rule)", () => {
+    const editor = makeEditor("<p>foo bar</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "c");
+    key(editor, "w");
+    expect(editor.state.doc.textContent).toBe(" bar"); // space kept
+    expect(vim(editor).mode).toBe("insert");
+  });
+
+  it("cc clears the line content and lands in insert", () => {
+    const editor = makeEditor("<p>alpha</p><p>beta</p>");
+    editor.commands.setTextSelection(3);
+    enable(editor);
+    key(editor, "c");
+    key(editor, "c");
+    expect(editor.state.doc.textContent).toBe("beta");
+    expect(editor.state.doc.childCount).toBe(2); // the line SURVIVES empty
+    expect(vim(editor).mode).toBe("insert");
+  });
+
+  it("yw yanks without touching the document", () => {
+    const editor = makeEditor("<p>foo bar</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "y");
+    key(editor, "w");
+    expect(editor.state.doc.textContent).toBe("foo bar");
+    expect(readVimRegister()).toMatchObject({ kind: "char" });
+  });
+});
