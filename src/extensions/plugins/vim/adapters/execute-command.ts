@@ -173,15 +173,19 @@ const LINEWISE_MOTIONS = new Set<Motion>([
 ]);
 
 /**
- * Dispatches and reports whether the document ACTUALLY changed. A coexisting
+ * Dispatches and reports whether the transaction was ACCEPTED. A coexisting
  * plugin's filterTransaction can drop the dispatch wholesale — `applied`
- * must not lie about a transaction that never landed (review ops-R4; the
- * same drop scenario runHistory's progress guard covers).
+ * must not lie about a transaction that never landed (review ops-R4).
+ * Acceptance is STATE identity, exactly runHistory's progress guard: a
+ * dropped transaction keeps the same state object, while an accepted one
+ * always makes a new one — even when the resulting document happens to
+ * equal the original, as in 2cc on an empty line whose second line refuses
+ * (document equality misread that as a drop, review ops-R5).
  */
 function dispatchLanded(view: EditorView, tr: Transaction): boolean {
-  const before = view.state.doc;
+  const before = view.state;
   view.dispatch(tr);
-  return !view.state.doc.eq(before);
+  return view.state !== before;
 }
 
 /** Registers first, then dispatches — a yank has no tr and that is fine. */

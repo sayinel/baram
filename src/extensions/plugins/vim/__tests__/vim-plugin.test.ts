@@ -972,4 +972,22 @@ describe("ops-R3 pins", () => {
     expect(vim(editor).mode).toBe("normal");
     expect(editor.view.editable).toBe(false);
   });
+
+  it("2cc on an EMPTY line before an undeletable row stays in insert", () => {
+    // The accepted partial change deletes the empty paragraph and recreates
+    // it — the final document EQUALS the original, but the transaction
+    // landed. Document-equality detection would misread it as a drop and
+    // roll back to normal (review ops-R5); acceptance is state identity.
+    const editor = makeEditor(
+      "<p></p><table><tr><td><p>bb</p></td></tr></table>",
+    );
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "2");
+    key(editor, "c");
+    key(editor, "c");
+    expect(editor.state.doc.textContent).toBe("bb");
+    expect(editor.state.doc.firstChild?.type.name).toBe("paragraph");
+    expect(vim(editor).mode).toBe("insert");
+  });
 });
