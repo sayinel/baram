@@ -64,22 +64,44 @@ export function createVimController(
     guardDispose = null;
   };
 
+  /** Latest requested editing-host state, applied on the next microtask. */
+  let pendingEditable: boolean | null = null;
+  let flushScheduled = false;
+
   /** 3v: remove/restore the editing host. No editing host = the composition
    *  path cannot start, so the non-cancelable insertCompositionText problem
    *  never arises. `readOnly` stays false — vim's programmatic edits (x/dd)
-   *  keep working (measured, probe step 4). */
+   *  keep working (measured, probe step 4).
+   *
+   *  DEFERRED, and that is load-bearing: `vim-mode-change` can fire from
+   *  INSIDE CodeMirror's update cycle — a mouse selection reaches
+   *  handleExternalSelection via onBeforeEndOperation. Dispatching there
+   *  throws ("not allowed while an update is in progress"), CodeMirror logs
+   *  once and DEACTIVATES the plugin, and the abandoned cursor layer is what
+   *  the user sees as a second caret. A microtask lands after the update
+   *  unwinds but still before the next key event, so "no editing host before
+   *  the next keystroke" — the entire point of 3v — still holds. */
   const setEditingHost = (editable: boolean) => {
     const comp = deps.editableCompartment;
     if (!comp) return;
-    view.dispatch({
-      effects: comp.reconfigure(editable ? [] : EditorView.editable.of(false)),
+    pendingEditable = editable;
+    if (flushScheduled) return;
+    flushScheduled = true;
+    queueMicrotask(() => {
+      flushScheduled = false;
+      const next = pendingEditable;
+      pendingEditable = null;
+      if (disposed || next === null) return;
+      view.dispatch({
+        effects: comp.reconfigure(next ? [] : EditorView.editable.of(false)),
+      });
+      if (!next && document.activeElement !== view.contentDOM) {
+        // Keys must keep landing on contentDOM (tabindex makes it focusable —
+        // measured, probe step 3v). view.focus() over raw contentDOM.focus():
+        // it re-syncs the DOM selection and prevents scroll jumps (Codex).
+        view.focus();
+      }
     });
-    if (!editable && document.activeElement !== view.contentDOM) {
-      // Keys must keep landing on contentDOM (tabindex makes it focusable —
-      // measured, probe step 3v). view.focus() over raw contentDOM.focus():
-      // it re-syncs the DOM selection and prevents scroll jumps (Codex).
-      view.focus();
-    }
   };
 
   /** Single funnel for every mode transition: flips the editing host, then

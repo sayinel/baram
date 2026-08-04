@@ -1,8 +1,11 @@
-// §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import type { Editor } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 
-import { llmComplete } from "../ipc/invoke";
+// §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
+import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
+import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { registerEditorMutationTask } from "./editor/mutation-tasks";
 import { createLLMStream } from "./llm-stream";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
@@ -49,8 +52,7 @@ export async function executeAICommand(
 
   if (options?.insertAfterPos != null) {
     // Insert a new paragraph at the explicit position (after a specific block)
-    editor
-      .chain()
+    chainWithVimExternalEdit(editor)
       .focus()
       .insertContentAt(options.insertAfterPos, { type: "paragraph" })
       .run();
@@ -60,8 +62,7 @@ export async function executeAICommand(
     const { to } = editor.state.selection;
     const $to = editor.state.doc.resolve(to);
     const afterBlock = $to.after(1); // position after the top-level block
-    editor
-      .chain()
+    chainWithVimExternalEdit(editor)
       .focus()
       .insertContentAt(afterBlock, { type: "paragraph" })
       .run();
@@ -69,20 +70,68 @@ export async function executeAICommand(
   } else {
     // Original behavior: insert at cursor position
     const insertPos = editor.state.selection.to;
-    editor.chain().focus().insertContentAt(insertPos, "\n").run();
+    chainWithVimExternalEdit(editor)
+      .focus()
+      .insertContentAt(insertPos, "\n")
+      .run();
     currentPos = insertPos;
   }
 
-  const cleanupStream = await createLLMStream(requestId, {
-    onToken: (token) => {
-      editor.chain().focus().insertContentAt(currentPos, token).run();
-      currentPos += token.length;
-    },
-    onError: (error) => logger.error("AI command error:", error),
-  });
+  // §298 §12-9b (design §5c): the token stream is a background mutation —
+  // if the task dies (state install / vim mode exit), late tokens must not
+  // touch the editor, and the listeners are the cancelable source.
+  // PRE-EXISTING DEFECT (surfaced by review R10, present since before §298):
+  // currentPos is a raw offset that only advanced by its own token lengths.
+  // Any edit landing before it while the stream runs — the user typing above,
+  // a second AI command — shifts the document without shifting this number,
+  // so the next token lands inside an unrelated block. Mutation generation
+  // cannot catch this: it only advances on a whole-state install, not on
+  // ordinary edits. Map the position through every transaction instead.
+  // This also covers our OWN inserts, so the manual `+= token.length` goes
+  // away — a JS string length is not a ProseMirror offset anyway.
+  const trackPos = ({ transaction }: { transaction: Transaction }) => {
+    if (transaction.docChanged) {
+      currentPos = transaction.mapping.map(currentPos, 1);
+    }
+  };
+  editor.on("transaction", trackPos);
+  let detached = false;
+  const detachTrackPos = () => {
+    if (detached) return;
+    detached = true;
+    editor.off("transaction", trackPos);
+  };
 
-  // Fire LLM request; cleanup listeners always to prevent leaks
+  const task = registerEditorMutationTask(editor.view);
+  // Detaching only in the finally is not enough: if a state install happens
+  // while createLLMStream or llmComplete is pending and that promise never
+  // settles, the finally never runs and this handler keeps mapping a stale
+  // position across every transaction of the NEW document — on the shared
+  // editor, forever. Hang it on the task so invalidation always detaches.
+  task.addCleanup(detachTrackPos);
+  // The whole flow lives in the try so a createLLMStream rejection cannot
+  // strand the task (its await used to sit outside any handler).
+  let cleanupStream: (() => void) | undefined;
   try {
+    cleanupStream = await createLLMStream(requestId, {
+      onToken: (token) => {
+        if (!task.isLive()) return;
+        editor.chain().focus().insertContentAt(currentPos, token).run();
+        // trackPos advances currentPos from the resulting transaction.
+      },
+      onError: (error) => logger.error("AI command error:", error),
+    });
+    const stopStream = cleanupStream;
+    task.addCleanup(() => {
+      llmCancel(requestId).catch(() => {}); // stop the Rust-side stream
+      stopStream(); // idempotent (llm-stream drains its list)
+    });
+
+    // Setup was awaited: if the document was replaced meanwhile the cleanup
+    // above already removed the listeners, so firing the request would bill
+    // an answer nothing can receive.
+    if (!task.isLive()) return;
+
     await llmComplete(
       prompt,
       inlineCfg.model,
@@ -96,7 +145,9 @@ export async function executeAICommand(
   } catch {
     logger.error("LLM request failed");
   } finally {
-    cleanupStream();
+    detachTrackPos();
+    cleanupStream?.();
+    task.finish();
   }
 }
 

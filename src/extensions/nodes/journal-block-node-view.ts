@@ -92,6 +92,7 @@ export class JournalBlockNodeView implements NodeView {
       // Render a plain textarea for source editing
       const ta = document.createElement("textarea");
       ta.className = "journal-block-source-edit";
+      ta.setAttribute("data-vim-suspend", ""); // §298 §12-3 input island (§4)
       ta.value = content;
       ta.rows = content.split("\n").length + 1;
       ta.addEventListener("input", () => {

@@ -17,6 +17,8 @@ import {
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { onFirstVisible } from "./views/lazy-visible";
@@ -54,6 +56,14 @@ export function MermaidBlockView({
 
   // Defer rendering until the block is near the viewport (§perf-large-file)
   const [isVisible, setIsVisible] = useState(false);
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -110,7 +120,18 @@ export function MermaidBlockView({
 
   // Sync local code and focus textarea when entering edit mode
   useEffect(() => {
-    if (selected) {
+    if (!selected) {
+      // Save on deselect
+      // CONSUME dirty at every deselect — a completed session's flag must
+      // not survive into the next one (S5/S6 review R3).
+      const wasDirty = editDirtyRef.current;
+      editDirtyRef.current = false;
+      if (wasDirty && localCodeRef.current !== codeRef.current) {
+        updateAttributesRef.current({ code: localCodeRef.current });
+      }
+      setShowTemplates(false);
+    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      editDirtyRef.current = false;
       setLocalCode(codeRef.current);
       const entryState = mermaidBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
@@ -125,12 +146,6 @@ export function MermaidBlockView({
           ta.setSelectionRange(0, 0);
         }
       }, 0);
-    } else {
-      // Save on deselect
-      if (localCodeRef.current !== codeRef.current) {
-        updateAttributesRef.current({ code: localCodeRef.current });
-      }
-      setShowTemplates(false);
     }
   }, [selected]);
 
@@ -247,7 +262,8 @@ export function MermaidBlockView({
   const widthPercent = (node.attrs.width as null | number) ?? null;
   const caption = (node.attrs.caption as null | string) ?? null;
   const { dragPct, startResize } = useMediaResize(renderRef, (pct) => {
-    updateAttributesRef.current({ width: pct });
+    // §12-6: resize drag commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { width: pct });
   });
   const effectivePct = dragPct ?? widthPercent;
   const commitCaption = useCallback(
@@ -258,6 +274,8 @@ export function MermaidBlockView({
   );
 
   const applyTemplate = useCallback((key: string) => {
+    // Template application IS an edit — it must survive deselect (R3).
+    editDirtyRef.current = true;
     const template = MERMAID_TEMPLATES[key];
     if (!template) return;
     setLocalCode(template.code);
@@ -268,9 +286,14 @@ export function MermaidBlockView({
   const closeFullscreen = useCallback(() => {
     // Save fullscreen changes back
     setLocalCode(fullscreenCode);
-    updateAttributes({ code: fullscreenCode });
+    // §12-6: fullscreen Close button commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { code: fullscreenCode });
+    // The direct commit ENDS the textarea session — a leftover dirty flag
+    // would make the next deselect re-save this (by then possibly stale)
+    // local value over an Undo or external update (review S5/S6-R4).
+    editDirtyRef.current = false;
     setFullscreen(false);
-  }, [fullscreenCode, updateAttributes]);
+  }, [fullscreenCode, editor, getPos]);
 
   const detectedType = detectMermaidType(localCode);
 
@@ -370,6 +393,7 @@ export function MermaidBlockView({
                   autoFocus
                   className="mermaid-block-textarea"
                   data-gramm="false"
+                  data-vim-suspend=""
                   onChange={(e) => setFullscreenCode(e.target.value)}
                   ref={fullscreenTextareaRef}
                   spellCheck={false}
@@ -674,7 +698,11 @@ export function MermaidBlockView({
         autoCorrect="off"
         className="mermaid-block-textarea"
         data-gramm="false"
-        onChange={(e) => setLocalCode(e.target.value)}
+        data-vim-suspend=""
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalCode(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="flowchart LR&#10;  A --> B"
         ref={textareaRef}

@@ -1,5 +1,7 @@
 import type { Editor } from "@tiptap/core";
 
+import { withVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+
 /**
  * §4.8 Move the top-level block at `sourcePos` to `targetPos` (a boundary
  * position produced by resolveInsertTarget) in a single transaction.
@@ -23,6 +25,6 @@ export function moveBlock(
   // Map the target across the delete (positions after the cut shift left).
   const insertAt = tr.mapping.map(targetPos);
   tr.insert(insertAt, node);
-  editor.view.dispatch(tr);
+  editor.view.dispatch(withVimExternalEdit(tr));
   return true;
 }

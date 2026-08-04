@@ -217,15 +217,17 @@ describe("StatusBar — live word count", () => {
 
 describe("StatusBar — vim mode indicator (§298 S3)", () => {
   beforeEach(() => {
-    useUIStore.getState().setVimStatusMode(null);
+    useUIStore.getState().setVimStatus(null);
   });
 
   afterEach(() => {
-    act(() => useUIStore.getState().setVimStatusMode(null));
+    act(() => useUIStore.getState().setVimStatus(null));
   });
 
   it("shows the vim mode only in source mode with a live session", () => {
-    act(() => useUIStore.getState().setVimStatusMode("normal"));
+    act(() =>
+      useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" }),
+    );
     render(<StatusBar editor={null} mode="source" />);
     expect(screen.getByText("-- NORMAL --")).toBeInTheDocument();
   });
@@ -233,7 +235,9 @@ describe("StatusBar — vim mode indicator (§298 S3)", () => {
   it("stays hidden outside source mode even if a stale value lingers", () => {
     // The store is reset by the controller on toggle-off/unmount, but the
     // mode gate must hold even if a stale value survives (Codex plan review).
-    act(() => useUIStore.getState().setVimStatusMode("insert"));
+    act(() =>
+      useUIStore.getState().setVimStatus({ mode: "insert", surface: "source" }),
+    );
     render(<StatusBar editor={null} mode="wysiwyg" />);
     expect(screen.queryByText("-- INSERT --")).toBeNull();
   });
@@ -244,8 +248,39 @@ describe("StatusBar — vim mode indicator (§298 S3)", () => {
   });
 
   it("renders REPLACE for R mode (was missing from the original plan)", () => {
-    act(() => useUIStore.getState().setVimStatusMode("replace"));
+    act(() =>
+      useUIStore
+        .getState()
+        .setVimStatus({ mode: "replace", surface: "source" }),
+    );
     render(<StatusBar editor={null} mode="source" />);
     expect(screen.getByText("-- REPLACE --")).toBeInTheDocument();
+  });
+});
+
+describe("vim surface arbitration (§8, S5-a review)", () => {
+  it("graph and preview render NO vim indicator, either surface", () => {
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "wysiwyg" });
+    for (const mode of ["graph", "preview"] as const) {
+      const { unmount } = render(<StatusBar editor={null} mode={mode} />);
+      expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+      unmount();
+    }
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" });
+    const { unmount } = render(<StatusBar editor={null} mode="graph" />);
+    expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+    unmount();
+    useUIStore.getState().setVimStatus(null);
+  });
+
+  it("a wysiwyg status shows on the wysiwyg surface only", () => {
+    useUIStore.getState().setVimStatus({ mode: "visual", surface: "wysiwyg" });
+    const wys = render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.queryByText(/-- VISUAL --/)).not.toBeNull();
+    wys.unmount();
+    const src = render(<StatusBar editor={null} mode="source" />);
+    expect(screen.queryByText(/-- VISUAL --/)).toBeNull();
+    src.unmount();
+    useUIStore.getState().setVimStatus(null);
   });
 });

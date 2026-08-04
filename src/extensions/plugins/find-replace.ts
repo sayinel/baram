@@ -9,6 +9,8 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { withVimExternalEdit } from "./vim/vim-keys";
+
 // ── Plugin key ────────────────────────────────────────────────────────
 
 export const findReplacePluginKey = new PluginKey("findReplace");
@@ -459,7 +461,7 @@ export function dispatchReplaceAll(view: {
   for (const match of sorted) {
     tr = tr.insertText(pluginState.replaceWith, match.from, match.to);
   }
-  view.dispatch(tr);
+  view.dispatch(withVimExternalEdit(tr));
 }
 
 /** Replace the current active match and advance to the next */
@@ -486,7 +488,7 @@ export function dispatchReplaceCurrent(view: {
     match.to,
   );
   // The doc change will trigger recomputation in the plugin apply
-  view.dispatch(tr);
+  view.dispatch(withVimExternalEdit(tr));
 }
 
 export function dispatchSetReplaceWith(

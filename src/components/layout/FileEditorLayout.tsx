@@ -7,6 +7,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -53,13 +54,22 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const contentRef = useRef<string>("");
   const fileName = filePath.split("/").pop() ?? "Untitled";
 
+  // §298 vim §12-⑪: referentially stable extensions — see App.tsx. A fresh
+  // array per render makes useEditor's option sync copy view.editable into
+  // options.editable, bricking the editor to read-only during vim normal.
+  const extensions = useMemo(
+    () =>
+      createBaramExtensions({
+        onNavigate: () => {},
+        onNavigateBlockRef: () => {},
+        onNavigateLocal: () => {},
+        onMentionNavigate: () => {},
+      }),
+    [],
+  );
+
   const editor = useEditor({
-    extensions: createBaramExtensions({
-      onNavigate: () => {},
-      onNavigateBlockRef: () => {},
-      onNavigateLocal: () => {},
-      onMentionNavigate: () => {},
-    }),
+    extensions,
     autofocus: true,
     immediatelyRender: false,
   });

@@ -2,6 +2,7 @@ import type { MenuItem } from "./context-menu-types";
 // §4.8 Context Menu — math node menu builders
 import type { Editor } from "@tiptap/react";
 
+import { withVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { copyMathToPNG } from "../../utils/katex/katex-to-png";
 
 /** Build context menu items for a mathBlock node at `pos`. */
@@ -42,7 +43,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
           ...mathNode.attrs,
           mathSize: "small",
         });
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     {
@@ -53,7 +54,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
           ...mathNode.attrs,
           mathSize: "normal",
         });
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     {
@@ -64,7 +65,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
           ...mathNode.attrs,
           mathSize: "large",
         });
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     { label: "", action: () => {}, separator: true },
@@ -76,7 +77,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
         if (!mathInlineType) return;
         const inlineNode = mathInlineType.create({ formula });
         tr.replaceWith(mathPos, mathPos + mathNode.nodeSize, inlineNode);
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     {
@@ -84,7 +85,7 @@ export function buildMathBlockMenu(editor: Editor, pos: number): MenuItem[] {
       action: () => {
         const tr = editor.state.tr;
         tr.delete(mathPos, mathPos + mathNode.nodeSize);
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
   ];
@@ -132,7 +133,7 @@ export function buildMathInlineMenu(
           ...mathNode.attrs,
           mathSize: "small",
         });
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     {
@@ -143,7 +144,7 @@ export function buildMathInlineMenu(
           ...mathNode.attrs,
           mathSize: "normal",
         });
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     {
@@ -154,7 +155,7 @@ export function buildMathInlineMenu(
           ...mathNode.attrs,
           mathSize: "large",
         });
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     { label: "", action: () => {}, separator: true },
@@ -167,7 +168,7 @@ export function buildMathInlineMenu(
         // atom:true — formula in attrs, no text children
         const blockNode = mathBlockType.create({ formula });
         tr.replaceWith(nodePos, nodePos + mathNode.nodeSize, blockNode);
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
     {
@@ -175,7 +176,7 @@ export function buildMathInlineMenu(
       action: () => {
         const tr = editor.state.tr;
         tr.delete(nodePos, nodePos + mathNode.nodeSize);
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
   ];

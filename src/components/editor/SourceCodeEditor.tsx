@@ -194,7 +194,10 @@ export function SourceCodeEditor({
       onError: (err) => logger.error("[vim] Failed to load vim:", err),
       // §298 S3 — StatusBar mode indicator. The controller emits null on
       // toggle-off and on dispose, so unmount resets the store too.
-      onModeChange: (mode) => useUIStore.getState().setVimStatusMode(mode),
+      onModeChange: (mode) =>
+        useUIStore
+          .getState()
+          .setVimStatus(mode ? { mode, surface: "source" } : null),
     });
     vimController.apply(useSettingsStore.getState().vimMode);
     // Apply setting changes while the editor is open (mount-time read alone

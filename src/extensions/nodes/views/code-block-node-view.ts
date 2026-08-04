@@ -12,7 +12,7 @@ import {
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { EditorState as CMState } from "@codemirror/state";
+import { EditorState as CMState, Compartment } from "@codemirror/state";
 import {
   EditorView as CMView,
   drawSelection,
@@ -25,11 +25,13 @@ import { TextSelection } from "@tiptap/pm/state";
 
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
+import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
 import { getHighlightStyle } from "../code-block-highlight";
 import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
+import { registerCodeBlockEditableSync } from "./code-block-cm-registry";
 import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
@@ -41,11 +43,16 @@ export class CodeBlockNodeView implements NodeView {
   private getPos: () => number | undefined;
   private initGeneration = 0;
   private langSelect: HTMLSelectElement;
+  private latestEffectiveEditable: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
   private pendingSelection: null | { anchor: number; head: number } = null;
+  // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
+  // PM editable without triggering NodeView.update(), and broadcasts instead.
+  private readOnlyCompartment = new Compartment();
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
+  private unregisterEditableSync: (() => void) | null = null;
   private updating = false;
   private view: PMView;
 
@@ -63,6 +70,10 @@ export class CodeBlockNodeView implements NodeView {
     // Build DOM
     const wrapper = document.createElement("div");
     wrapper.classList.add("code-block-wrapper");
+    // §298 §12-3: wrapper marker covers the CM island AND the header
+    // language select / AI button (design §4 — no contentDOM here, so no
+    // [data-node-view-content] can shadow it).
+    wrapper.setAttribute("data-vim-suspend", "");
     const lang = (node.attrs.language as string) || "";
     wrapper.dataset.language = lang;
     wrapper.dataset.style = useSettingsStore.getState().codeBlockStyle;
@@ -99,7 +110,7 @@ export class CodeBlockNodeView implements NodeView {
         ...this.node.attrs,
         language: select.value || null,
       });
-      this.view.dispatch(tr);
+      this.view.dispatch(withVimExternalEdit(tr));
     });
 
     header.appendChild(select);
@@ -142,6 +153,24 @@ export class CodeBlockNodeView implements NodeView {
     cmContainer.appendChild(placeholder);
     this.lazyDispose = onFirstVisible(wrapper, () => this.ensureCM());
 
+    // §298 §12-4: registry membership for editable broadcasts. Registration
+    // replays the cached EFFECTIVE state (suspension-aware — raw
+    // view.editable stays false through a vim suspension), the callback
+    // remembers it, and the deferred initCM consumes the memo so a lazy CM
+    // can never observe a stale value (vim review S5/S6-R5).
+    this.unregisterEditableSync = registerCodeBlockEditableSync(
+      view,
+      (editable) => {
+        this.latestEffectiveEditable = editable;
+        if (!this.cmView) return;
+        this.cmView.dispatch({
+          effects: this.readOnlyCompartment.reconfigure(
+            CMState.readOnly.of(!editable),
+          ),
+        });
+      },
+    );
+
     // Subscribe to settings changes for live updates
     this.settingsUnsub = useSettingsStore.subscribe((state, prev) => {
       if (
@@ -172,6 +201,10 @@ export class CodeBlockNodeView implements NodeView {
 
   destroy() {
     this.destroyed = true;
+    if (this.unregisterEditableSync) {
+      this.unregisterEditableSync();
+      this.unregisterEditableSync = null;
+    }
     if (this.lazyDispose) {
       this.lazyDispose();
       this.lazyDispose = null;
@@ -445,7 +478,11 @@ export class CodeBlockNodeView implements NodeView {
       CMView.lineWrapping,
       CMState.tabSize.of(tabSize),
       indentUnit.of(" ".repeat(tabSize)),
-      CMState.readOnly.of(!this.view.editable),
+      this.readOnlyCompartment.of(
+        CMState.readOnly.of(
+          !(this.latestEffectiveEditable ?? this.view.editable),
+        ),
+      ),
       // Sync CodeMirror → ProseMirror
       CMView.updateListener.of((update: ViewUpdate) => {
         if (!update.docChanged || this.updating) return;

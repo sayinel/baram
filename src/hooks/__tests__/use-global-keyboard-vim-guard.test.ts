@@ -70,7 +70,7 @@ describe("useGlobalKeyboard — scoped vim guard + escape hatch (§298 S3)", () 
     registerAction("view.bookmark", bookmark); // Mod+D
     registerAction("search.backlinks", backlinks); // Mod+Shift+B
     registerAction("view.sourceMode", sourceToggle); // Mod+/
-    useUIStore.getState().setVimStatusMode(null);
+    useUIStore.getState().setVimStatus(null);
 
     sourceEditorEl = document.createElement("div");
     sourceEditorEl.className = "source-code-editor";
@@ -83,7 +83,7 @@ describe("useGlobalKeyboard — scoped vim guard + escape hatch (§298 S3)", () 
 
   afterEach(() => {
     clearActions();
-    useUIStore.getState().setVimStatusMode(null);
+    useUIStore.getState().setVimStatus(null);
     sourceEditorEl.remove();
     outside.remove();
   });
@@ -98,7 +98,7 @@ describe("useGlobalKeyboard — scoped vim guard + escape hatch (§298 S3)", () 
   });
 
   it("drops a prevented key from a LIVE vim source session (no double-fire)", () => {
-    useUIStore.getState().setVimStatusMode("normal");
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" });
     const { unmount } = renderDispatcher(true);
     fireKeyFrom(insideSource, "KeyD", { prevented: true });
     expect(bookmark).not.toHaveBeenCalled();
@@ -113,7 +113,7 @@ describe("useGlobalKeyboard — scoped vim guard + escape hatch (§298 S3)", () 
   });
 
   it("does NOT drop prevented events from outside the source editor during a vim session", () => {
-    useUIStore.getState().setVimStatusMode("normal");
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" });
     const { unmount } = renderDispatcher(true);
     fireKeyFrom(outside, "KeyD", { prevented: true });
     expect(bookmark).toHaveBeenCalledTimes(1);
@@ -123,7 +123,7 @@ describe("useGlobalKeyboard — scoped vim guard + escape hatch (§298 S3)", () 
   it("ESCAPE HATCH: a prevented Mod-/ from a live vim source session still exits source mode", () => {
     // The source editor's swallow keymap preventDefaults Mod-/ (vim binds no
     // <M-/>), so without the hatch the scoped guard would trap the user.
-    useUIStore.getState().setVimStatusMode("normal");
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" });
     const { unmount } = renderDispatcher(true);
     fireKeyFrom(insideSource, "Slash", { prevented: true });
     expect(sourceToggle).toHaveBeenCalledTimes(1);
@@ -131,7 +131,7 @@ describe("useGlobalKeyboard — scoped vim guard + escape hatch (§298 S3)", () 
   });
 
   it("still fires registry commands for unprevented keys inside a vim session", () => {
-    useUIStore.getState().setVimStatusMode("normal");
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" });
     const { unmount } = renderDispatcher(true);
     fireKeyFrom(insideSource, "KeyD");
     expect(bookmark).toHaveBeenCalledTimes(1);

@@ -1,10 +1,11 @@
-// §5.5 Table Insert Buttons — hover ⊕ buttons for row/column insertion
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
 import { TextSelection } from "@tiptap/pm/state";
 
+// §5.5 Table Insert Buttons — hover ⊕ buttons for row/column insertion
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import {
   computeInsertButtonStyle,
@@ -366,15 +367,15 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
     if (button.type === "col") {
       if (button.before) {
-        editor.chain().focus().addColumnBefore().run();
+        chainWithVimExternalEdit(editor).focus().addColumnBefore().run();
       } else {
-        editor.chain().focus().addColumnAfter().run();
+        chainWithVimExternalEdit(editor).focus().addColumnAfter().run();
       }
     } else {
       if (button.before) {
-        editor.chain().focus().addRowBefore().run();
+        chainWithVimExternalEdit(editor).focus().addRowBefore().run();
       } else {
-        editor.chain().focus().addRowAfter().run();
+        chainWithVimExternalEdit(editor).focus().addRowAfter().run();
       }
     }
 

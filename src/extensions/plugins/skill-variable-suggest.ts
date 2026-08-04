@@ -1,7 +1,6 @@
 // §72c Skill variable autocomplete — Tiptap Extension using Suggestion API
 // Triggers on {{ and shows variable suggestions for skill files
 import { Extension } from "@tiptap/core";
-import { PluginKey } from "@tiptap/pm/state";
 import { Suggestion } from "@tiptap/suggestion";
 
 import {
@@ -9,6 +8,7 @@ import {
   SkillVariableList,
 } from "../../components/editor/SkillVariableList";
 import { useSkillStore } from "../../stores/ai/skill";
+import { skillVariableSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 
 /** Default skill template variables */
@@ -29,7 +29,7 @@ export const SkillVariableSuggest = Extension.create({
       Suggestion({
         editor,
         char: "{{",
-        pluginKey: new PluginKey("skillVariableSuggest"),
+        pluginKey: skillVariableSuggestPluginKey,
         // Only allow in paragraphs and text-bearing blocks, not in code blocks
         allow: ({ state, range }) => {
           // Only show in skill files
