@@ -2581,6 +2581,24 @@ mod tests {
     }
 
     #[test]
+    fn an_armed_key_must_actually_be_a_minisign_public_key() {
+        // ‼️ THE PASTE FAILURES THE `assert_ne!` GUARDS DO NOT COVER (code review HIGH-2).
+        // Arming is one line, and the likely slips are not "the wrong key" but a truncated
+        // paste, the PRIVATE half, or newline mangling. Any of those makes every fetch fail
+        // once armed — every client stops receiving revocations, permanently — so this catches
+        // it in CI at the moment the constant is filled in rather than on user machines.
+        //
+        // Vacuous while the constant is empty, and deliberately so: an empty key means "not
+        // armed", which is the state this PR ships.
+        if !REVOCATION_PUBLIC_KEY.is_empty() {
+            let text = decode_b64_text(REVOCATION_PUBLIC_KEY, "public key")
+                .expect("the armed key must be base64");
+            minisign_verify::PublicKey::decode(text.trim())
+                .expect("the armed key must be a minisign PUBLIC key");
+        }
+    }
+
+    #[test]
     fn a_signature_from_another_key_does_not_verify() {
         // The updater's own public key — a real, valid minisign key that simply is not ours.
         // Verifying against it must fail, or "signed" would mean "signed by anyone". Read from

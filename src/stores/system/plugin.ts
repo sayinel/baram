@@ -321,10 +321,13 @@ export const usePluginStore = create<PluginState>()(
       setRevocations: (revocations, verified) =>
         set((state) => ({
           revocations,
-          // ‼️ RAISED ONLY BY A VERIFIED LIST (code review CRITICAL-1). This value is
-          // persisted and never lowered, so letting an unverified counter in made a single
-          // fabricated answer a permanent, restart-proof ceiling — every genuine list refused
-          // from then on. A plugin that patches `invoke` can produce exactly that answer.
+          // ‼️ RAISED ONLY BY A VERIFIED LIST (code review CRITICAL-1). Corrected from an
+          // earlier version of this comment that said "this value is persisted": it is NOT —
+          // see `partialize` and `merge` below, and that mistaken belief is what produced the
+          // defect in the first place. Within a session the mark is still a ceiling, so an
+          // unverified counter must not raise it: a `trusted` plugin answering the refresh can
+          // otherwise refuse every genuine list until the app restarts. `verified` does not
+          // stop that plugin (it writes the flag too) — it stops the NETWORK attacker.
           revocationSequenceSeen: verified
             ? {
                 ...state.revocationSequenceSeen,
@@ -355,26 +358,49 @@ export const usePluginStore = create<PluginState>()(
         // It was persisted for one round, and that was a defect of mine (code review
         // CRITICAL-1, second attempt): a PERSISTED MARK BLOCKS THE VERY REPAIR THAT MAKES A
         // POISONED LIST SURVIVABLE. The attack `plugin-lifecycle.ts` documents — a `trusted`
-        // plugin patching `window.__TAURI_INTERNALS__.invoke` and answering with an empty list
-        // that then gets stored — heals at the next genuine fetch, because a real list simply
-        // replaces the stored one. A mark of 1,000,000 stops that: every genuine list is below
-        // it, so it is refused, and the poisoned empty list stays forever. Persisting the mark
-        // turned a self-healing session attack into a permanent one, which is strictly worse
-        // than the state before the counter existed.
+        // plugin answering the refresh with an empty list that then gets stored — heals at the
+        // next genuine fetch, because a real list simply replaces the stored one. A mark of
+        // 1,000,000 stops that: every genuine list is below it, so it is refused, and the
+        // poisoned empty list stays forever. Persisting the mark turned a self-healing session
+        // attack into a permanent one, which is strictly worse than not having the counter.
         //
         // Moving the mark into Rust would NOT have fixed it: a trusted plugin runs in the
         // `main` realm and `capabilities/default.json` grants that realm `allow-set-config`
         // and `allow-export-binary-file`, so the same attacker writes any file we could put it
         // in. There is no containing the trusted tier from inside it — §260 defines that tier
         // as full trust behind an install-time consent gate. What CAN be refused is a durable
-        // primitive, and forgetting the mark at exit is what refuses it.
+        // primitive.
+        //
+        // ‼️ AND OMITTING IT HERE IS NOT ENOUGH, which is what the next round found (code
+        // review CRITICAL-1, third attempt). See `merge` below: this list governs what the app
+        // WRITES, and rehydration restores whatever storage HOLDS.
         //
         // What is lost: across a restart, replay protection falls back to
         // `MINIMUM_REVOCATION_SEQUENCE`, the floor compiled into the build. So a replay of a
         // genuinely-published list that is newer than the floor but older than what this
-        // session saw would be accepted after a restart. Bounded by the release cadence, since
-        // the floor is raised at release time — and a replay still requires a list that was
-        // really signed, so an attacker cannot invent one.
+        // session saw would be accepted after a restart — and note that nothing yet FAILS when
+        // a release forgets to raise the floor, so treat that bound as an intention.
+      }),
+      // ‼️ THE READ SIDE, AND IT IS A SEPARATE DECISION FROM `partialize` (code review
+      // CRITICAL-1, third attempt). zustand's default merge is
+      // `{...currentState, ...persistedState}`, so ANY key present in storage is restored into
+      // memory whether `partialize` would have written it or not. Omitting the mark above
+      // therefore removed only this app's PARTICIPATION in persisting it, not its durability.
+      //
+      // The attacker does not need to go through this app at all: `tauriStorage` is
+      // `get_config`/`set_config`, and `capabilities/default.json` grants the `main` realm
+      // `allow-set-config`. So a consented trusted plugin reads `baram:plugins`, splices in
+      // `revocationSequenceSeen: {<registry>: 1000000}`, writes it back and uninstalls itself.
+      // No race and no patched `invoke`. Reproduced: the mark returned on rehydrate and the
+      // genuine list at sequence 2 was refused, on every launch, for every plugin.
+      //
+      // Forcing it here makes "in memory only" true of the READ path, which is the only place
+      // it can be made true. No `version` bump or migrate step: a key left in storage is now
+      // inert, and `partialize` drops it on the next write.
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as object),
+        revocationSequenceSeen: {},
       }),
       version: 3,
       migrate: migratePluginPersistedState,

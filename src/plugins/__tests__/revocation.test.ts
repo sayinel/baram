@@ -11,6 +11,7 @@ import {
   meetsRevocationFloor,
   MINIMUM_REVOCATION_SEQUENCE,
   normalizeRevocationList,
+  revocationFloorFor,
   revocationFor,
 } from "../revocation";
 
@@ -118,9 +119,47 @@ describe("meetsRevocationFloor", () => {
     // today, so the guard is invisible until the first signed list is published.
     expect(meetsRevocationFloor(at(4), 5)).toBe(false);
     expect(meetsRevocationFloor(at(5), 5)).toBe(true);
-    // The floor outranks a stored list too: a client that somehow stored something older
-    // than its own build knows about must not stay there.
-    expect(meetsRevocationFloor(at(4), 5)).toBe(false);
+    // ‼️ A third assertion used to sit here, identical to the first, with a comment claiming it
+    // tested something else ("the floor outranks a stored list too") — code review LOW-4. That
+    // claim is about `revocationFloorFor`, which now has its own tests; a duplicate here read
+    // as coverage that did not exist.
+  });
+});
+
+describe("revocationFloorFor", () => {
+  const URL = "https://sayinel.github.io/baram-plugins/index.json";
+
+  it("applies the build's floor when this registry has no mark yet", () => {
+    // ‼️ Exercised at a floor of 5, not the shipped 0 (code review HIGH-1). Deleting
+    // `MINIMUM_REVOCATION_SEQUENCE` from this expression left 54/54 green, because every
+    // existing test either passed the floor explicitly or ran at 0, where "uses the constant"
+    // and "uses nothing" are the same number. A fresh install is exactly the client with no
+    // mark and no other protection.
+    expect(revocationFloorFor({}, URL, 5)).toBe(5);
+  });
+
+  it("keeps the build's floor when the mark is BELOW it", () => {
+    // The direction that loses protection: a client that somehow saw an older counter than its
+    // own build knows about must not be pulled back down to it.
+    expect(revocationFloorFor({ [URL]: 3 }, URL, 5)).toBe(5);
+  });
+
+  it("lets the mark win when it is above the floor", () => {
+    expect(revocationFloorFor({ [URL]: 7 }, URL, 5)).toBe(7);
+  });
+
+  it("is per registry, so another registry's mark does not apply", () => {
+    expect(
+      revocationFloorFor({ "https://other.test/index.json": 9 }, URL, 5),
+    ).toBe(5);
+  });
+
+  it("defaults to the floor this build compiled in", () => {
+    // ‼️ VACUOUS TODAY and kept deliberately: `MINIMUM_REVOCATION_SEQUENCE` is 0, so this
+    // cannot tell the default apart from a hardcoded 0. It becomes a real assertion in the
+    // commit that raises the constant — which is the same commit that arms verification, and
+    // the one with the most reason to believe the floor is applied.
+    expect(revocationFloorFor({}, URL)).toBe(MINIMUM_REVOCATION_SEQUENCE);
   });
 });
 

@@ -72,10 +72,15 @@ if (rawSequence === undefined) {
       "older one. Add a counter and raise it on every publish.",
   );
 } else if (rawSequence !== parsed.sequence) {
+  // ‼️ `label()`, like every other untrusted value this script prints (security review LOW-1).
+  // `JSON.stringify` happens to escape `\n` and `\r`, so today no line break reaches the log —
+  // but that is an accident of the formatter, not a control this repo declared, and it reopens
+  // the moment someone writes `String(rawSequence)`. The registry repo's `validate.yml` points
+  // this script at a PR-controlled file.
   fail(
     "`sequence` must be a plain integer from 0 to " +
-      `${MAXIMUM_REVOCATION_SEQUENCE}, not ${JSON.stringify(rawSequence)} — the app reads ` +
-      "anything else as 0, and a list at 0 cannot refuse a rollback.",
+      `${MAXIMUM_REVOCATION_SEQUENCE}, not ${label(JSON.stringify(rawSequence))} — the app ` +
+      "reads anything else as 0, and a list at 0 cannot refuse a rollback.",
   );
 }
 

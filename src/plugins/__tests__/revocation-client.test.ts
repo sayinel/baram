@@ -16,6 +16,7 @@ import type { RevocationList } from "../revocation";
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createJSONStorage } from "zustand/middleware";
 
 import {
   DEFAULT_REGISTRY_URL,
@@ -174,6 +175,10 @@ describe("refreshRevocations", () => {
     expect(usePluginStore.getState().revocations).toBeNull();
 
     // The replay: an old list, no stored list to compare against.
+    // ‼️ WHICH refusal fired is asserted, not just that nothing was stored (code review LOW-5).
+    // `toBeNull()` is also the DEFAULT state here — `setRegistryUrl` just cleared it — so on its
+    // own it is satisfied by any refusal path, or by no fetch happening at all.
+    const refusals = vi.spyOn(logger, "error").mockImplementation(() => {});
     fetchRevocations.mockResolvedValue({
       body: '{"version":1,"sequence":1,"revoked":[]}',
       verified: true,
@@ -183,6 +188,10 @@ describe("refreshRevocations", () => {
       usePluginStore.getState().revocations,
       "a counter this registry already passed must not be accepted again",
     ).toBeNull();
+    expect(refusals.mock.calls.flat().join(" ")).toContain(
+      "this is a rollback, not a stale cache",
+    );
+    refusals.mockRestore();
   });
 
   it("REFUSES an empty list that moves the counter backwards", async () => {
@@ -260,17 +269,65 @@ describe("refreshRevocations", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the mark out of what a restart restores", () => {
-    // The shape half, asserted through the store's OWN partialize rather than a hand-listed
-    // set of keys, so adding the mark back to it fails here. Split from the behavioural test
-    // below on purpose: when both lived in one test this assertion threw first and the
-    // behavioural one never ran, which would have let a half-fix look pinned.
+  it("keeps the mark out of what this app WRITES to storage", () => {
+    // ‼️ Named for what it measures, which is `partialize` — the WRITE side. It was called
+    // "what a restart restores" and that was wrong in a way that hid a CRITICAL: zustand's
+    // default `merge` is `{...currentState, ...persistedState}`, so the read side restores
+    // ANY key present in storage whether `partialize` would have written it or not. The
+    // rehydration test below is the one that covers restores.
     const persisted = usePluginStore.persist
       .getOptions()
       .partialize?.(usePluginStore.getState());
     expect(Object.keys(persisted ?? {})).not.toContain(
       "revocationSequenceSeen",
     );
+  });
+
+  it("does not RESTORE a mark that was written into storage behind partialize's back", async () => {
+    // ‼️ CRITICAL-1, third round, and the defect my second and third fixes both missed.
+    // `partialize` filters what this app writes; it does not filter what rehydration reads.
+    // And the attacker does not need to go through this app to write it: `tauriStorage` is
+    // `get_config`/`set_config` (`stores/system/tauri-storage.ts`), and
+    // `capabilities/default.json` grants the `main` realm `allow-set-config`. So a consented
+    // trusted plugin reads `baram:plugins`, splices in a huge mark, writes it back, and
+    // uninstalls itself — no race, no patched `invoke`, and the denial then survives every
+    // restart and refuses every future revocation of every OTHER plugin too.
+    //
+    // Dormant only because enforcement is unarmed today, and it arms with the one-line paste
+    // in the follow-up PR. That is why it has to be fixed here.
+    const url = usePluginStore.getState().registryUrl;
+    const original = usePluginStore.persist.getOptions().storage;
+    const blob = JSON.stringify({
+      state: { revocationSequenceSeen: { [url]: 1_000_000 } },
+      version: 3,
+    });
+    usePluginStore.persist.setOptions({
+      storage: createJSONStorage(() => ({
+        getItem: () => blob,
+        removeItem: () => undefined,
+        setItem: () => undefined,
+      })),
+    });
+    try {
+      await usePluginStore.persist.rehydrate();
+      expect(
+        usePluginStore.getState().revocationSequenceSeen,
+        "a mark planted in storage must not come back into memory",
+      ).toEqual({});
+
+      // And the consequence, so this is not merely a shape assertion: the genuine list lands.
+      fetchRevocations.mockResolvedValue({
+        body: JSON.stringify({ ...LIST, sequence: 2 }),
+        verified: true,
+      });
+      await refreshRevocations();
+      expect(
+        revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
+        "a planted mark must not refuse a genuine list after a restart",
+      ).not.toBeNull();
+    } finally {
+      usePluginStore.persist.setOptions({ storage: original });
+    }
   });
 
   it("lets a genuine list land after a restart, even when the session's mark was poisoned", async () => {

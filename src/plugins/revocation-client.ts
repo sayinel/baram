@@ -12,8 +12,8 @@ import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import {
   meetsRevocationFloor,
-  MINIMUM_REVOCATION_SEQUENCE,
   normalizeRevocationList,
+  revocationFloorFor,
 } from "./revocation";
 
 /**
@@ -104,9 +104,9 @@ export async function refreshRevocations(): Promise<void> {
     // hours before the first revocation was recorded, so that empty document carries a
     // permanently valid signature — replaying it is how every revocation gets cleared without
     // forging anything. Refusing a lower counter is the half a signature cannot do.
-    const floor = Math.max(
-      MINIMUM_REVOCATION_SEQUENCE,
-      current.revocationSequenceSeen[current.registryUrl] ?? 0,
+    const floor = revocationFloorFor(
+      current.revocationSequenceSeen,
+      current.registryUrl,
     );
     if (!meetsRevocationFloor(parsed, floor)) {
       logger.error(
@@ -125,7 +125,18 @@ export async function refreshRevocations(): Promise<void> {
     // how the missing `plugin_fetch_revocations` ACL grant hid for a whole review
     // cycle: every client failed every refresh and it read exactly like a plane.
     const message = String(err);
-    if (/not allowed|forbidden|denied|HTTP \d/iu.test(message)) {
+    // ‼️ SIGNATURE AND KEY FAILURES BELONG IN THE LOUD BRANCH (code review HIGH-2). Once
+    // enforcement is armed, a mangled `REVOCATION_PUBLIC_KEY` — a truncated paste, the private
+    // half, a stray newline — makes every fetch fail with "revocation public key is not
+    // base64", which the pattern below does not match. It was therefore logged as "refresh
+    // failed, keeping the stored list": indistinguishable from being offline, on every client,
+    // forever, with the only user-visible signal the marketplace staleness banner 30 days
+    // later. The arming step is a one-line paste, so this is the failure to make audible.
+    if (
+      /not allowed|forbidden|denied|HTTP \d|signature|public key|unsigned/iu.test(
+        message,
+      )
+    ) {
       logger.error(
         "[Revocation] refresh is FAILING STRUCTURALLY, not merely offline:",
         err,

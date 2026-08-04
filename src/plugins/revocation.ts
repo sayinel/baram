@@ -189,6 +189,29 @@ export function normalizeRevocationList(raw: unknown): null | RevocationList {
 }
 
 /**
+ * The counter a fetched list must reach: the higher of this build's floor and what this
+ * registry has already been seen to publish.
+ *
+ * ‼️ EXTRACTED BECAUSE THE COMPILED FLOOR HAD NO TEST AT ALL (code review HIGH-1). Deleting
+ * `MINIMUM_REVOCATION_SEQUENCE` from the expression left 54/54 green — the constant this
+ * feature calls its only cross-restart defence was pinned by nothing, while the direction that
+ * BRICKS clients (a floor above the live counter) was pinned twice.
+ *
+ * `minimum` is a parameter so the arithmetic can be exercised at a floor that is not 0.
+ * Honest bound: with the shipped value at 0, a test can pin this function's arithmetic but
+ * cannot distinguish "the default is `MINIMUM_REVOCATION_SEQUENCE`" from "the default is 0".
+ * That half becomes real the moment the constant is raised, which is the same commit that arms
+ * verification.
+ */
+export function revocationFloorFor(
+  seen: Record<string, number>,
+  registryUrl: string,
+  minimum: number = MINIMUM_REVOCATION_SEQUENCE,
+): number {
+  return Math.max(minimum, seen[registryUrl] ?? 0);
+}
+
+/**
  * The revocation governing `id` at `version`, or null.
  *
  * When several entries match, the most severe wins. A plugin can legitimately be listed
