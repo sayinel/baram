@@ -37,6 +37,16 @@ describe("findTargetMatches", () => {
     expect(findTargetMatches("g", "ㄱ")).toBe(false);
   });
 
+  it("widens a CONJOINING choseong too — the key router accepts U+1100", () => {
+    // device-R7 review: an input source emitting lone U+1100 was accepted
+    // by the router but never widened, leaving find dead on NFC text.
+    expect(findTargetMatches("\uac15", "\u1100")).toBe(true);
+    expect(findTargetMatches("\ub098", "\u1100")).toBe(false);
+    expect(findTargetMatches("\ud788", "\u1112")).toBe(true);
+    // Two code points (a conjoining LV pair) is not a bare jamo — exact only.
+    expect(findTargetMatches("\uae40", "\u1100\u1161")).toBe(false);
+  });
+
   it("keeps a full syllable EXACT — f강 must not land on 김", () => {
     expect(findTargetMatches("강", "강")).toBe(true);
     expect(findTargetMatches("김", "강")).toBe(false);

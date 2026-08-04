@@ -35,5 +35,16 @@ export function choseongOf(text: string): null | string {
 export function findTargetMatches(unit: string, char: string): boolean {
   if (unit.startsWith(char)) return true;
   if (unit.normalize("NFC").startsWith(char.normalize("NFC"))) return true;
-  return CHOSEONG_COMPAT.includes(char) && choseongOf(unit) === char;
+  const bare = bareChoseong(char);
+  return bare !== null && choseongOf(unit) === bare;
+}
+
+/** A SINGLE consonant jamo — compatibility (keyboard) or conjoining
+ *  (U+1100 block, accepted by the key router) — as its compatibility form.
+ *  Anything longer, syllables included, is null (device-R7 review). */
+function bareChoseong(char: string): null | string {
+  const cp = char.codePointAt(0);
+  if (cp === undefined || String.fromCodePoint(cp) !== char) return null;
+  if (cp >= 0x1100 && cp <= 0x1112) return CHOSEONG_COMPAT[cp - 0x1100];
+  return CHOSEONG_COMPAT.includes(char) ? char : null;
 }
