@@ -191,13 +191,24 @@ jobs:
       #
       # It runs last on purpose. An urgent revocation must reach users even when the app's floor
       # is stale, so this complains AFTER the list is out rather than blocking it.
-      - name: The app's floor must track what has been published
-        # ‼️ `success()`, NOT `always()` (code review MEDIUM-1). It reads the counter from the
-        # REPO copy, so on a run where publishing failed it would compare against a number that
-        # was never published — and then print "MINIMUM_REVOCATION_SEQUENCE (8) is ABOVE the
-        # published counter (3) … lower it", advice that lowers the only cross-restart replay
-        # defence. The step is already LAST, so `success()` keeps the whole "complain, do not
-        # block" intent: the publish has happened by the time this runs.
+      # ‼️ THE NAME DEPENDS ON THIS STEP STAYING BELOW THE VERIFY STEP, and on `success()`. It reads
+      # the counter from the REPO copy, which is sound only because the step above proved that copy
+      # byte-identical to what Pages serves (`cmp -s live.json registry/revoked.json`) — so under
+      # `success()` the repo copy IS the published list, not a stand-in for it. Reorder this above
+      # verify, or restore `always()`, and the name becomes a claim the step no longer measures.
+      # Pinned by `runs AFTER the step that proves the repo copy is what Pages serves`.
+      #
+      # Not curled, deliberately. A network read here would need its own permissive skip, and a
+      # skip costs far more on this step than on the counter gate: the counter has a client-side
+      # backstop (every client refuses a rollback itself) and the FLOOR HAS NONE — nothing else
+      # anywhere notices a floor left too low, which is the entire reason this step exists. It
+      # would also cost the hermetic test, which runs the real shell with no network at all.
+      - name: The app's floor must track the list just verified live
+        # ‼️ `success()`, NOT `always()` (code review MEDIUM-1). On a run where publishing failed,
+        # the repo copy is a number that was never published — and the step would then print
+        # "MINIMUM_REVOCATION_SEQUENCE (8) is ABOVE the published counter (3) … lower it", advice
+        # that lowers the only cross-restart replay defence. The step is already LAST, so this
+        # keeps the whole "complain, do not block" intent.
         if: success()
         run: |
           LIVE="$(npx tsx scripts/revocation-sequence.ts registry/revoked.json)"

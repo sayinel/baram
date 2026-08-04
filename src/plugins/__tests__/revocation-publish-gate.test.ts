@@ -114,7 +114,7 @@ function gate(
 // property that made the counter gate dangerous: it is shell, so nothing but a push to main ever
 // executes it. It takes no arguments — the floor comes from the SHIPPED constant via
 // `revocation-floor.ts` — so these cases vary the published counter and read the real floor.
-const FLOOR_STEP = "The app's floor must track what has been published";
+const FLOOR_STEP = "The app's floor must track the list just verified live";
 const FLOOR_SCRIPT = stepScript(readFileSync(WORKFLOW, "utf8"), FLOOR_STEP);
 expect(FLOOR_SCRIPT).toContain("revocation-floor.ts");
 
@@ -150,6 +150,43 @@ function floorStep(published: Doc): { output: string; status: null | number } {
     env: { ...process.env, RUNNER_TEMP: dir },
   });
   return { output: `${result.stdout}${result.stderr}`, status: result.status };
+}
+
+/**
+ * A named step's line index and its single `if:` condition.
+ *
+ * ‼️ WINDOWED, AND THE MATCH COUNT IS ASSERTED. A bare search for `if: success()` would find *a*
+ * condition rather than *the* one — the mistake `source-scan-guards-find-a-match` is about, and one
+ * this feature has already made four times.
+ */
+function stepMeta(
+  workflow: string,
+  stepName: string,
+): { condition: null | string; index: number } {
+  const lines = workflow.split("\n");
+  const index = lines.findIndex(
+    (line) => line.includes(stepName) && line.trimStart().startsWith("- name:"),
+  );
+  expect(index, `step not found: ${stepName}`).toBeGreaterThan(-1);
+  const indent = lines[index].length - lines[index].trimStart().length;
+  const next = lines.findIndex(
+    (line, i) =>
+      i > index &&
+      line.length - line.trimStart().length === indent &&
+      /^- (name|uses):/u.test(line.trimStart()),
+  );
+  const block = lines.slice(index, next === -1 ? undefined : next);
+  const conditions = block.filter((line) => /^if:/u.test(line.trim()));
+  // Zero is legitimate — most steps have no condition — but MORE than one means the window caught
+  // a neighbouring step, and then "the condition" is whichever one happened to come first.
+  expect(
+    conditions.length,
+    `ambiguous window: ${conditions.length} \`if:\` lines in "${stepName}"`,
+  ).toBeLessThan(2);
+  return {
+    condition: conditions[0]?.trim().slice(3).trim() ?? null,
+    index,
+  };
 }
 
 const EMPTY: Doc = { revoked: [], sequence: 1, version: 1 };
@@ -210,6 +247,23 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     const { output, status } = gate({ ...CHANGED, sequence: "2" }, EMPTY);
     expect(status).toBe(1);
     expect(output).toContain("publishing=0");
+  });
+
+  it("runs AFTER the step that proves the repo copy is what Pages serves", () => {
+    // ‼️ THIS ORDERING IS LOAD-BEARING AND NOTHING ELSE CAN SEE IT. The step reads the counter from
+    // `registry/revoked.json`, which is only the PUBLISHED counter because the verify step above it
+    // has already `cmp`d that file against what Pages serves — and only when `success()` means that
+    // comparison held. Move this step above verify, or restore `always()`, and its name becomes a
+    // claim it no longer measures, silently. The cases below extract the step by name and run it in
+    // isolation, so they structurally cannot notice either change.
+    const workflow = readFileSync(WORKFLOW, "utf8");
+    const verify = stepMeta(
+      workflow,
+      "Verify the live list is served and readable",
+    );
+    const floor = stepMeta(workflow, FLOOR_STEP);
+    expect(floor.index).toBeGreaterThan(verify.index);
+    expect(floor.condition).toBe("success()");
   });
 
   it("passes when the floor equals what was published", () => {
