@@ -91,6 +91,9 @@ export interface VimCoreState {
   lastFind: null | { char: string; kind: FindKind };
   mode: VimMode;
   pending: null | PendingKey;
+  /** Digits typed AFTER an operator (d2w) — multiplied with `count` at
+   *  resolution, per vim (2d3w = 6). */
+  pendingCount: null | number;
   visual: null | VisualState;
 }
 
@@ -110,5 +113,12 @@ export interface VisualState {
 }
 
 export function initialCoreState(mode: VimMode = "normal"): VimCoreState {
-  return { count: null, lastFind: null, mode, pending: null, visual: null };
+  return {
+    count: null,
+    lastFind: null,
+    mode,
+    pending: null,
+    pendingCount: null,
+    visual: null,
+  };
 }

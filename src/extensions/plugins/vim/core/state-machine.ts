@@ -105,7 +105,12 @@ function emitOperator(
 /** Escape: drop any half-typed operator or count before changing mode. */
 function handleEscape(state: VimCoreState): StepResult {
   if (state.pending !== null || state.count !== null) {
-    return swallow({ ...state, count: null, pending: null });
+    return swallow({
+      ...state,
+      count: null,
+      pending: null,
+      pendingCount: null,
+    });
   }
   if (state.mode === "visual") {
     return emit(
@@ -188,7 +193,12 @@ function normalKey(
       return emit(next, { count, type: "deleteCharForward" });
     default:
       // Unmapped bare key. Consume it: normal mode must never type.
-      return swallow({ ...state, count: null, pending: null });
+      return swallow({
+        ...state,
+        count: null,
+        pending: null,
+        pendingCount: null,
+      });
   }
 }
 
@@ -257,7 +267,12 @@ function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
     // hangul search target stays hangul. Non-character keys abort.
     const char = token.raw ?? token.key;
     if (char.length !== 1 || token.mod || token.ctrl || token.alt) {
-      return swallow({ ...state, count: null, pending: null });
+      return swallow({
+        ...state,
+        count: null,
+        pending: null,
+        pendingCount: null,
+      });
     }
     const { count, next } = takeCount(state);
     return emit(
@@ -266,9 +281,18 @@ function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
     );
   }
 
-  // Digits between operator and motion (d2w) extend the count.
-  if (isCountDigit(state, token.key)) {
-    return swallow(applyDigit(state, token.key));
+  // Digits between operator and motion accumulate their OWN count, which
+  // multiplies with the operator count at resolution (2d3w = 6 — review
+  // ops-R1: decimal concatenation deleted 23 words).
+  if (
+    /^[0-9]$/.test(token.key) &&
+    (token.key !== "0" || state.pendingCount !== null)
+  ) {
+    const digit = Number(token.key);
+    return swallow({
+      ...state,
+      pendingCount: Math.min((state.pendingCount ?? 0) * 10 + digit, MAX_COUNT),
+    });
   }
 
   const { count, next } = takeCount(state);
@@ -301,7 +325,7 @@ function resolvePending(state: VimCoreState, token: KeyToken): StepResult {
   // Anything else aborts the sequence, exactly like vim. The key is consumed:
   // letting `dx` fall through to `x` would delete a character the user never
   // asked to delete.
-  return swallow({ ...state, count: null, pending: null });
+  return swallow({ ...state, count: null, pending: null, pendingCount: null });
 }
 
 function swallow(state: VimCoreState): StepResult {
@@ -311,8 +335,8 @@ function swallow(state: VimCoreState): StepResult {
 /** Consume the pending count, defaulting to 1, and clear the prefix state. */
 function takeCount(state: VimCoreState): { count: number; next: VimCoreState } {
   return {
-    count: state.count ?? 1,
-    next: { ...state, count: null, pending: null },
+    count: Math.min((state.count ?? 1) * (state.pendingCount ?? 1), MAX_COUNT),
+    next: { ...state, count: null, pending: null, pendingCount: null },
   };
 }
 

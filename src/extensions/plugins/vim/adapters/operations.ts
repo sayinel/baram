@@ -13,6 +13,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 
 import { Fragment } from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import { CellSelection, deleteRow } from "@tiptap/pm/tables";
 
 import { visualRange } from "../core/visual-state";
@@ -40,6 +41,54 @@ interface YankedUnit {
 }
 
 // ── operations (alphabetical — sort-modules) ───────────────────────────────
+
+/**
+ * cc / c+linewise — delete `count` line units and leave exactly ONE empty,
+ * context-matching line to type into, all in one transaction. Reuses the
+ * reviewed deleteLine walk (register, lifts, guards); the replacement unit
+ * follows the LANDING context: an empty item inside a surviving list, an
+ * empty paragraph elsewhere, and nothing at all when the landing already
+ * sits inside a textblock (segments join; typing recreates the line).
+ * Table rows refuse — vim-style change is ambiguous there (Phase 2).
+ */
+export function changeLines(
+  state: EditorState,
+  pos: number,
+  count: number,
+): OperationOutcome {
+  const first = resolveLineUnit(state, pos);
+  if (first.kind === "tableRow") {
+    return { reason: "change is not supported on table rows", tr: null };
+  }
+  const del = deleteLine(state, pos, count);
+  if (!del.tr) return del;
+
+  const tr = del.tr;
+  const landing = Math.min(
+    Math.max(tr.mapping.map(lineUnitStart(first), -1), 0),
+    tr.doc.content.size,
+  );
+  const $landing = tr.doc.resolve(landing);
+
+  if ($landing.parent.isTextblock) {
+    tr.setSelection(TextSelection.create(tr.doc, landing));
+    return { ...del, tr };
+  }
+
+  const parent = $landing.parent;
+  let replacement: PMNode;
+  if (parent.type.name.endsWith("List")) {
+    const itemType = parent.firstChild?.type ?? state.schema.nodes.listItem;
+    replacement = itemType.create(null, state.schema.nodes.paragraph.create());
+  } else {
+    replacement = state.schema.nodes.paragraph.create();
+  }
+  tr.insert(landing, replacement);
+  tr.setSelection(
+    TextSelection.create(tr.doc, landing + depthOffset(replacement)),
+  );
+  return { ...del, tr };
+}
 
 /** Delete `count` cursor units (graphemes / inline atoms) forward — x. */
 export function deleteCharForward(
@@ -234,8 +283,6 @@ export function yankVisual(
   };
 }
 
-// ── single-unit building blocks (private) ─────────────────────────────────
-
 /** §9 nested-list pin (spike #7): one replaceWith lifts the children. When
  *  the item is its list's only child, the LIST goes with it. Heterogeneous
  *  nested lists (a taskList under a bulletList item, or vice versa) SPLIT
@@ -334,6 +381,8 @@ function buildListItemDelete(
   };
 }
 
+// ── single-unit building blocks (private) ─────────────────────────────────
+
 /** Deleting everything must leave one empty paragraph — vim's dd on the only
  *  line clears it, it does not produce an (unschematic) empty doc. */
 function deleteOrEmpty(
@@ -430,6 +479,11 @@ function deleteUnitOnce(
     tr: deleteOrEmpty(state, from, from + node.nodeSize),
     yanked: yankUnit(state, unit),
   };
+}
+
+/** Cursor offset into a freshly created empty unit. */
+function depthOffset(node: PMNode): number {
+  return node.isTextblock ? 1 : 2; // item(paragraph) needs one more descent
 }
 
 /** Clamp a landing position into the document and off node boundaries, so

@@ -670,3 +670,67 @@ describe("f/t end to end", () => {
     expect(editor.state.doc.textContent).toBe("abc");
   });
 });
+
+describe("operator review ops-R1 pins", () => {
+  it("cj on the FIRST list item leaves one empty item INSIDE the list", () => {
+    const editor = makeEditor(
+      "<ul><li><p>one</p></li><li><p>two</p></li><li><p>tri</p></li></ul>",
+    );
+    editor.commands.setTextSelection(3);
+    enable(editor);
+    key(editor, "c");
+    key(editor, "j");
+    const doc = editor.state.doc;
+    expect(doc.childCount).toBe(1); // the list did NOT split
+    expect(doc.firstChild?.type.name).toBe("bulletList");
+    expect(doc.firstChild?.childCount).toBe(2); // empty item + tri
+    expect(doc.firstChild?.child(0).textContent).toBe("");
+    expect(doc.firstChild?.child(1).textContent).toBe("tri");
+    expect(vim(editor).mode).toBe("insert");
+  });
+
+  it("cj over a whole two-line blockquote leaves ONE empty line", () => {
+    const editor = makeEditor(
+      "<p>keep</p><blockquote><p>one</p><p>two</p></blockquote>",
+    );
+    editor.commands.setTextSelection(8); // inside "one"
+    enable(editor);
+    key(editor, "c");
+    key(editor, "j");
+    const doc = editor.state.doc;
+    expect(doc.textContent).toBe("keep");
+    expect(doc.childCount).toBe(2); // keep + exactly one empty line
+  });
+
+  it("2cc removes exactly what the register holds", () => {
+    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "2");
+    key(editor, "c");
+    key(editor, "c");
+    expect(editor.state.doc.textContent).toBe("tri");
+    const reg = readVimRegister();
+    expect(reg).toMatchObject({ kind: "line" });
+    expect((reg as { content: unknown[] }).content).toHaveLength(2);
+  });
+
+  it("c2w changes TWO words (counted ce)", () => {
+    const editor = makeEditor("<p>foo bar baz</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "c");
+    key(editor, "2");
+    key(editor, "w");
+    expect(editor.state.doc.textContent).toBe(" baz");
+  });
+
+  it("dl on the LAST character deletes it (half-open endpoint)", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(3); // on "c"
+    enable(editor);
+    key(editor, "d");
+    key(editor, "l");
+    expect(editor.state.doc.textContent).toBe("ab");
+  });
+});

@@ -130,6 +130,7 @@ describe("visual mode keys", () => {
     count: null,
     lastFind: null,
     mode: "visual",
+    pendingCount: null,
     pending: null,
     visual: { anchorCursor: 5, headCursor: 9, kind: "char" },
   });
@@ -443,5 +444,23 @@ describe("f/t char find", () => {
     const none = step(initialCoreState("normal"), key(";"), { cursor: 0 });
     expect(none.command).toBeNull();
     expect(none.handled).toBe(true);
+  });
+});
+
+describe("operator counts MULTIPLY (review ops-R1)", () => {
+  it("2d3w is six words, not twenty-three", () => {
+    let state = initialCoreState("normal");
+    for (const k of ["2", "d", "3"])
+      state = step(state, key(k), { cursor: 0 }).state;
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 6, motion: "wordForward" });
+  });
+
+  it("2d2j multiplies too", () => {
+    let state = initialCoreState("normal");
+    for (const k of ["2", "d", "2"])
+      state = step(state, key(k), { cursor: 0 }).state;
+    const r = step(state, key("j"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 4 });
   });
 });

@@ -12,14 +12,13 @@ import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { nextUnitBoundary } from "./graphemes";
-import { resolveLineUnit } from "./line-units";
-import { segmentSpanAt, wordEndAt } from "./motions";
+import { wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
 import {
+  changeLines,
   deleteCharForward,
   deleteLine,
   deleteVisual,
-  lineUnitStart,
   linewiseSpan,
   type OperationOutcome,
   yankLine,
@@ -47,20 +46,10 @@ export function executeCoreCommand(
       : state.selection.head;
 
   switch (command.type) {
-    case "changeLine": {
-      // cc — clear the current line's CONTENT, keep the line, land in
-      // insert (the core already flipped the mode). the line register
-      // receives the old content, like vim.
-      const yank = yankLine(state, head, command.count);
-      if (yank.register) writeVimRegister(yank.register);
-      const span = segmentSpanAt(state, head);
-      if (span && span.to > span.from) {
-        const tr = state.tr.delete(span.from, span.to);
-        tr.setSelection(TextSelection.create(tr.doc, span.from));
-        view.dispatch(tr);
-      }
-      return {};
-    }
+    case "changeLine":
+      // cc — the register holds exactly what the change removes (review
+      // ops-R1: a counted yank next to a single-segment delete lied).
+      return dispatchOutcome(view, changeLines(state, head, command.count));
     case "deleteCharForward":
       return dispatchOutcome(
         view,
@@ -190,29 +179,38 @@ function runOperatorMotion(
     if (op === "y") {
       return dispatchOutcome(view, yankLine(state, span.start, span.count));
     }
-    const insertAt = lineUnitStart(resolveLineUnit(state, span.start)) - 1;
-    const outcome = deleteLine(state, span.start, span.count);
-    const result = dispatchOutcome(view, outcome);
-    if (op === "c" && outcome.tr) {
-      // change: the deleted lines leave ONE empty line to type into.
-      const post = view.state;
-      const at = Math.min(
-        Math.max(outcome.tr.mapping.map(insertAt, -1), 0),
-        post.doc.content.size,
-      );
-      const tr = post.tr.insert(at, post.schema.nodes.paragraph.create());
-      tr.setSelection(TextSelection.create(tr.doc, at + 1));
-      view.dispatch(tr);
+    if (op === "c") {
+      // change: context-aware replacement in ONE transaction (review
+      // ops-R1: a post-inserted top-level paragraph split lists).
+      return dispatchOutcome(view, changeLines(state, span.start, span.count));
     }
-    return result;
+    return dispatchOutcome(view, deleteLine(state, span.start, span.count));
   }
 
   // Charwise. Exclusive by default; \u0024 runs through the line end, and
   // cw acts as ce (change the word only — vim's famous special case).
   let target = resolveMotion(state, head, motion, count);
-  if (op === "c" && motion === "wordForward") {
-    const wordEnd = wordEndAt(state, head);
-    if (wordEnd !== null) target = wordEnd;
+  if (
+    op === "c" &&
+    motion === "wordForward" &&
+    wordEndAt(state, head) !== null
+  ) {
+    // vim's cw-as-ce, counted: c2w ends at the SECOND word's end (review
+    // ops-R1: overwriting with the current word's end dropped the count).
+    const nthStart =
+      count > 1 ? resolveMotion(state, head, "wordForward", count - 1) : head;
+    target = wordEndAt(state, nthStart) ?? target;
+  }
+  if (motion === "charRight") {
+    // Operators need the half-open endpoint — the cursor motion clamps to
+    // the last unit START, making dl/cl a no-op there (review ops-R1).
+    let boundary = head;
+    for (let i = 0; i < count; i++) {
+      const next = nextUnitBoundary(state, boundary);
+      if (next === boundary) break;
+      boundary = next;
+    }
+    target = boundary;
   }
   const lo = Math.min(head, target);
   let hi = Math.max(head, target);
