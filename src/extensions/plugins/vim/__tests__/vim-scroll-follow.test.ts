@@ -80,6 +80,28 @@ describe("vim cursor-follow scrolling (ops-R8)", () => {
     expect(editor.state.selection.head).not.toBe(head);
   });
 
+  it("u with NO history to undo does not move the viewport", () => {
+    // ops-R9: at undo-depth zero the selection cannot change — snapping
+    // the wheel-scrolled viewport back to the cursor is a surprise.
+    const editor = makeEditor("<p>one</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    vi.mocked(scrollCursorIntoView).mockClear();
+    key(editor, "u");
+    expect(scrollCursorIntoView).not.toHaveBeenCalled();
+  });
+
+  it("u WITH history follows the restored cursor", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "x"); // creates an undoable step
+    vi.mocked(scrollCursorIntoView).mockClear();
+    key(editor, "u");
+    expect(editor.state.doc.textContent).toBe("abc");
+    expect(scrollCursorIntoView).toHaveBeenCalled();
+  });
+
   it("an edit landing scrolls through the vim adapter too", () => {
     const editor = makeEditor("<p>one</p><p>two</p>");
     editor.commands.setTextSelection(1);

@@ -224,6 +224,7 @@ function runHistory(
   command: typeof undo,
   count: number,
 ): void {
+  const start = view.state;
   for (let i = 0; i < count; i++) {
     const before = view.state;
     if (!command(view.state, view.dispatch)) break;
@@ -231,7 +232,11 @@ function runHistory(
   }
   // prosemirror-history flags its transactions, but PM's scroll pipeline
   // is dead on a non-editable view — follow the restored cursor directly.
-  scrollCursorIntoView(view, vimHeadOf(view.state));
+  // Only on PROGRESS: u at history's start must not snap a wheel-scrolled
+  // viewport back to an unchanged cursor (review ops-R9).
+  if (view.state !== start) {
+    scrollCursorIntoView(view, vimHeadOf(view.state));
+  }
 }
 
 function runOperatorMotion(
