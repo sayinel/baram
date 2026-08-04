@@ -346,7 +346,23 @@ export const usePluginStore = create<PluginState>()(
       partialize: (state) => ({
         installedPlugins: state.installedPlugins,
         pluginSettings: state.pluginSettings,
-        registryUrl: state.registryUrl,
+        // ‼️ `registryUrl` IS DELIBERATELY ABSENT — see `merge`, which is what makes that true.
+        //
+        // It was persisted, and a security review showed it was a STRONGER durable primitive
+        // than the revocation mark ever was. `setRegistryUrl` has no callers anywhere in the
+        // app and no UI field, so nothing but an in-realm attacker (or a hand-edited config)
+        // ever changed it — and one call was permanent: the same call clears `revocations`
+        // (immediate fail-open), the value survived the restart, and the startup refresh then
+        // fetched the ATTACKER's origin. Rust sees a non-first-party prefix there, so it does
+        // not even ask for a signature and reports `verified: false`, and the attacker's empty
+        // list is stored and governs the gate. Unlike the mark it did not self-heal, because
+        // the fetch that would heal it was the one aimed at the attacker, and unlike the mark
+        // arming verification did not touch it.
+        //
+        // Not persisting it makes that session-scoped: the next launch resolves the first-party
+        // registry, the genuine list lands, and the poisoned stored list is replaced. USER
+        // DECISION (2026-08-04): the cost — a custom registry would not survive a restart — is
+        // accepted, since there is no UI to set one and therefore no user who has one.
         // §69 Persisted deliberately, unlike `registryCache`. A revocation the user
         // has already received must keep applying with the network gone, or blocking
         // network access would be enough to undo it. No migration step: an absent key
@@ -397,9 +413,15 @@ export const usePluginStore = create<PluginState>()(
       // Forcing it here makes "in memory only" true of the READ path, which is the only place
       // it can be made true. No `version` bump or migrate step: a key left in storage is now
       // inert, and `partialize` drops it on the next write.
+      // ‼️ BOTH RESETS LIVE HERE, because this is the only side that can make them true.
+      // Omitting a key from `partialize` above stops this app from WRITING it and does nothing
+      // about a value already in storage — which is the mistake this feature made twice.
+      // `current` is the initial state, so naming it is how each field says "keep the default,
+      // whatever the default becomes".
       merge: (persisted, current) => ({
         ...current,
         ...(persisted as object),
+        registryUrl: current.registryUrl,
         revocationSequenceSeen: {},
       }),
       version: 3,

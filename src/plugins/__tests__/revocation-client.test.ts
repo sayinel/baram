@@ -88,6 +88,30 @@ describe("revocationUrlFor", () => {
   });
 });
 
+/**
+ * Simulate a launch whose storage ALREADY HOLDS `state` — i.e. what rehydration restores,
+ * which is a different set from what `partialize` writes.
+ *
+ * Drives the store's real `persist.rehydrate()` rather than reading `partialize` output,
+ * because that difference is precisely what hid a CRITICAL for two review rounds.
+ */
+async function rehydrateWith(state: Record<string, unknown>): Promise<void> {
+  const original = usePluginStore.persist.getOptions().storage;
+  const blob = JSON.stringify({ state, version: 3 });
+  usePluginStore.persist.setOptions({
+    storage: createJSONStorage(() => ({
+      getItem: () => blob,
+      removeItem: () => undefined,
+      setItem: () => undefined,
+    })),
+  });
+  try {
+    await usePluginStore.persist.rehydrate();
+  } finally {
+    usePluginStore.persist.setOptions({ storage: original });
+  }
+}
+
 describe("refreshRevocations", () => {
   beforeEach(() => {
     fetchRevocations.mockReset();
@@ -283,6 +307,19 @@ describe("refreshRevocations", () => {
     );
   });
 
+  it("keeps the registry URL out of what this app WRITES", () => {
+    // ‼️ DEFENCE IN DEPTH, AND NOT THE CONTROL — stated because a mutation proved it. Putting
+    // `registryUrl` back into `partialize` leaves every test green, because `merge` forces the
+    // reset on the read side regardless. So this pins something weaker than it looks: that we
+    // do not keep WRITING a value we no longer restore. Worth pinning anyway — a stale URL
+    // sitting in `config.json` reads as authoritative to whoever opens it, and it would silently
+    // become live again if the `merge` reset were ever dropped.
+    const persisted = usePluginStore.persist
+      .getOptions()
+      .partialize?.(usePluginStore.getState());
+    expect(Object.keys(persisted ?? {})).not.toContain("registryUrl");
+  });
+
   it("does not RESTORE a mark that was written into storage behind partialize's back", async () => {
     // ‼️ CRITICAL-1, third round, and the defect my second and third fixes both missed.
     // `partialize` filters what this app writes; it does not filter what rehydration reads.
@@ -296,38 +333,50 @@ describe("refreshRevocations", () => {
     // Dormant only because enforcement is unarmed today, and it arms with the one-line paste
     // in the follow-up PR. That is why it has to be fixed here.
     const url = usePluginStore.getState().registryUrl;
-    const original = usePluginStore.persist.getOptions().storage;
-    const blob = JSON.stringify({
-      state: { revocationSequenceSeen: { [url]: 1_000_000 } },
-      version: 3,
-    });
-    usePluginStore.persist.setOptions({
-      storage: createJSONStorage(() => ({
-        getItem: () => blob,
-        removeItem: () => undefined,
-        setItem: () => undefined,
-      })),
-    });
-    try {
-      await usePluginStore.persist.rehydrate();
-      expect(
-        usePluginStore.getState().revocationSequenceSeen,
-        "a mark planted in storage must not come back into memory",
-      ).toEqual({});
+    await rehydrateWith({ revocationSequenceSeen: { [url]: 1_000_000 } });
+    expect(
+      usePluginStore.getState().revocationSequenceSeen,
+      "a mark planted in storage must not come back into memory",
+    ).toEqual({});
 
-      // And the consequence, so this is not merely a shape assertion: the genuine list lands.
-      fetchRevocations.mockResolvedValue({
-        body: JSON.stringify({ ...LIST, sequence: 2 }),
-        verified: true,
-      });
-      await refreshRevocations();
-      expect(
-        revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
-        "a planted mark must not refuse a genuine list after a restart",
-      ).not.toBeNull();
-    } finally {
-      usePluginStore.persist.setOptions({ storage: original });
-    }
+    // And the consequence, so this is not merely a shape assertion: the genuine list lands.
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify({ ...LIST, sequence: 2 }),
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(
+      revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
+      "a planted mark must not refuse a genuine list after a restart",
+    ).not.toBeNull();
+  });
+
+  it("does not RESTORE a registry URL planted in storage, so the refresh cannot be redirected", async () => {
+    // ‼️ THE STRONGER PRIMITIVE THE MARK FIX DID NOT TOUCH (security review HIGH-1). USER
+    // DECISION 2026-08-04: stop persisting `registryUrl`.
+    //
+    // `setRegistryUrl` has no callers anywhere in the app and no UI field, so only an in-realm
+    // attacker ever changed it — and one call was PERMANENT, worse than anything the counter
+    // could do: the same call clears `revocations` (immediate fail-open), the value survived the
+    // restart, and the startup refresh — awaited BEFORE installed plugins load — then fetched
+    // the attacker's origin. Rust sees a non-first-party prefix there, so it does not even ask
+    // for a signature, reports `verified: false`, and the attacker's empty list is stored and
+    // governs. It did NOT self-heal, because the fetch that would heal it was the one aimed at
+    // the attacker; and arming verification would not have touched it either.
+    await rehydrateWith({ registryUrl: "https://evil.test/r/index.json" });
+    expect(usePluginStore.getState().registryUrl).toBe(DEFAULT_REGISTRY_URL);
+
+    // ‼️ THE LOAD-BEARING ASSERTION IS THE FETCH TARGET, not the field. Redirecting that fetch
+    // is the whole attack, and a shape assertion alone would not notice if some other code path
+    // resolved the URL from the persisted blob instead.
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify(LIST),
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(fetchRevocations).toHaveBeenCalledWith(
+      "https://sayinel.github.io/baram-plugins/revoked.json",
+    );
   });
 
   it("lets a genuine list land after a restart, even when the session's mark was poisoned", async () => {
