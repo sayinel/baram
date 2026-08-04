@@ -443,6 +443,7 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
+    tr.scrollIntoView(); // vim keeps the cursor visible (device R7)
     view.dispatch(tr);
     return true;
   }
@@ -470,6 +471,7 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
+    tr.scrollIntoView(); // vim keeps the cursor visible (device R7)
     view.dispatch(tr);
     return true;
   }

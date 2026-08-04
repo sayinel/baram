@@ -188,7 +188,9 @@ const LINEWISE_MOTIONS = new Set<Motion>([
  */
 function dispatchLanded(view: EditorView, tr: Transaction): boolean {
   const before = view.state;
-  view.dispatch(tr);
+  // Every edit leaves a landing selection — vim keeps it visible, exactly
+  // like PM's own commands do (device R7: dd below the fold).
+  view.dispatch(tr.scrollIntoView());
   return view.state !== before;
 }
 
