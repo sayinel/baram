@@ -445,6 +445,19 @@ describe("f/t char find", () => {
     expect(none.command).toBeNull();
     expect(none.handled).toBe(true);
   });
+
+  it("f2 searches the literal character 2 — digits never leak into counts", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, key("2"), { cursor: 0 });
+    expect(r.command).toEqual({
+      char: "2",
+      count: 1,
+      kind: "f",
+      type: "findChar",
+    });
+    expect(r.state.pendingCount).toBeNull();
+  });
 });
 
 describe("operator counts MULTIPLY (review ops-R1)", () => {
