@@ -142,6 +142,23 @@ describe("operator sequences", () => {
     expect(state.pending).toBeNull();
   });
 
+  it("zz in visual keeps the selection and still asks for a center", () => {
+    const entered = step(initialCoreState(), key("v"), { cursor: 5 }).state;
+    const { commands, state } = run(["z", "z"], entered, 5);
+    expect(commands).toEqual([{ firstNonBlank: false, type: "scrollCursor" }]);
+    expect(state.mode).toBe("visual");
+    expect(state.visual).toEqual(entered.visual);
+  });
+
+  it("an aborted z in visual keeps the selection too", () => {
+    const entered = step(initialCoreState(), key("v"), { cursor: 5 }).state;
+    const { commands, state } = run(["z", "q"], entered, 5);
+    expect(commands).toEqual([]);
+    expect(state.pending).toBeNull();
+    expect(state.mode).toBe("visual");
+    expect(state.visual).toEqual(entered.visual);
+  });
+
   it("Escape cancels a pending operator without leaving normal mode", () => {
     const { commands, state } = run(["2", "d", "Escape"]);
     expect(commands).toEqual([]);

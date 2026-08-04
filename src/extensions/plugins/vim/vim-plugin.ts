@@ -478,17 +478,26 @@ function runSelectionCommand(
 
   if (command.type === "scrollCursor") {
     // z. homes to the first non-blank before centering; zz keeps the column.
+    // In visual mode the selection survives and the VIM head is the center
+    // target — PM's selection head diverges after an inversion (§6).
+    const visual = result.state.mode === "visual" ? result.state.visual : null;
+    let core = result.state;
     const tr = view.state.tr;
+    let center = visual ? visual.headCursor : vimCursor(view.state);
     if (command.firstNonBlank) {
-      const base = vimCursor(view.state);
-      const target = resolveMotion(view.state, base, "lineFirstNonBlank", 1);
-      if (target !== base) {
+      const target = resolveMotion(view.state, center, "lineFirstNonBlank", 1);
+      if (visual) {
+        const moved = moveVisualHead(visual, target);
+        core = { ...result.state, visual: moved };
+        tr.setSelection(visualSelection(view.state, moved));
+      } else if (target !== center) {
         tr.setSelection(cursorSelection(view.state, target));
       }
+      center = target;
     }
-    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+    tr.setMeta(vimPluginKey, { core, type: "core" });
     view.dispatch(tr);
-    scrollCursorToCenter(view, vimCursor(view.state));
+    scrollCursorToCenter(view, center);
     return true;
   }
 

@@ -434,6 +434,10 @@ function visualKey(state: VimCoreState, token: KeyToken): StepResult {
       return emit(cleared, { type: "leaveVisual" });
     case "y":
       return emit(cleared, { type: "yankVisual" });
+    case "z":
+      // Scroll commands work in visual too, selection retained (vim) —
+      // resolvePending's z branch preserves mode and visual via takeCount.
+      return swallow({ ...state, pending: "z" });
     default:
       // Unknown key in visual mode: consume it so it cannot reach the
       // document, but leave the selection intact.

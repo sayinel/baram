@@ -1048,6 +1048,24 @@ describe("device R7 pins", () => {
     expect(editor.state.doc.textContent).toBe("bc");
   });
 
+  it("zz in visual keeps the selection; z. moves the visual head", () => {
+    const editor = makeEditor("<p>alpha</p><p>bravo</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "v");
+    key(editor, "j"); // extend into bravo
+    const before = editor.state.selection;
+    key(editor, "z");
+    key(editor, "z");
+    expect(vim(editor).mode).toBe("visual");
+    expect(editor.state.selection.from).toBe(before.from);
+    expect(editor.state.selection.to).toBe(before.to);
+    key(editor, "z");
+    key(editor, "."); // homes the HEAD to bravo's first non-blank
+    expect(vim(editor).mode).toBe("visual");
+    expect(vim(editor).core.visual?.headCursor).toBe(8); // on "b" of bravo
+  });
+
   it("motions and edits request scrollIntoView — the view follows hjkl", () => {
     // Vim keeps the cursor visible after every command; without the
     // request, j below the fold moves the selection off-screen.
