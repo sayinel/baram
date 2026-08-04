@@ -68,16 +68,30 @@ export async function refreshRevocations(): Promise<void> {
     // pre-await state. A sequence-1 rollback overwrote a stored sequence 2 that way, and on a
     // fresh install the abandoned snapshot still said `revocations: null`.
     const current = usePluginStore.getState();
-    // ‼️ THE COUNTER IS ONLY BELIEVED WHEN THE BYTES WERE CHECKED (code review CRITICAL-1).
-    // The two halves live in different processes: Rust verifies, this compares. A trusted
-    // plugin that patches `window.__TAURI_INTERNALS__.invoke` — the transport this very call
-    // uses, an attacker `plugin-lifecycle.ts` already models — bypasses the verifier and can
-    // answer with any counter. Honouring it unconditionally turned one won race into a
-    // PERMANENT disarm: `MAX_SAFE_INTEGER` raised the floor above every counter the registry
-    // will ever publish, and the poisoned value then defended itself.
+    // ‼️ THE COUNTER IS ONLY BELIEVED WHEN RUST SAYS IT CHECKED THE BYTES — and be precise
+    // about which attacker that stops, because the first version of this comment claimed one it
+    // does not.
     //
-    // So while signing is unarmed there is no counter protection at all. That is the honest
-    // shape — signature and counter are a pair, and a pair arms together.
+    // It stops a NETWORK attacker: someone serving the origin cannot move the mark while
+    // enforcement is unarmed, and once armed cannot move it without a real signature. That is
+    // worth having, and it is the whole of what this flag buys.
+    //
+    // It does NOT stop the in-realm attacker `plugin-lifecycle.ts` models. A `trusted` plugin
+    // patching `window.__TAURI_INTERNALS__.invoke` writes the WHOLE answer, `verified`
+    // included — so treating the flag as authentication was a mistake: it is one more field
+    // that attacker controls. Nothing crossing this boundary can authenticate the answer, and
+    // moving the decision into Rust would not help either, because `capabilities/default.json`
+    // grants the `main` realm `allow-set-config` and `allow-export-binary-file`. The trusted
+    // tier is full trust by §260's design; the containment is the install-time consent gate,
+    // not this function.
+    //
+    // What IS refused is a DURABLE poison: the mark is no longer persisted, so an in-realm
+    // attacker's counter dies with the session instead of refusing every genuine list forever.
+    // See the `partialize` block in `stores/system/plugin.ts`.
+    //
+    // While signing is unarmed there is therefore no counter protection against the network
+    // either. That is the honest shape — signature and counter are a pair, and a pair arms
+    // together.
     if (!fetched.verified) {
       logger.warn(
         "[Revocation] list was NOT signature-verified — storing it, but its sequence is",

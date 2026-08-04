@@ -89,25 +89,39 @@ export const EMPTY_REVOCATIONS: RevocationList = {
  * run — which is exactly when the user has no other protection either. A floor compiled into
  * the binary gives that client a starting point, the same way the updater pins a version.
  *
- * Bump this at release time to the sequence then live. It can only ever be raised: setting it
- * above the live sequence makes every client refuse the real list.
+ * ‼️ AND IT IS NOW THE ONLY CROSS-RESTART DEFENCE, which raises what a forgotten bump costs.
+ * The high-water mark is deliberately not persisted (see `partialize` in
+ * `stores/system/plugin.ts`: persisting it handed an in-realm attacker a durable primitive and
+ * blocked the repair that makes a poisoned stored list survivable). So every launch starts from
+ * this number, and a replay of a genuinely-published list newer than it is accepted after a
+ * restart. Bumping it at release time is what keeps that window one release long.
+ *
+ * Bump it to the sequence then live. It can only ever be raised: setting it above the live
+ * sequence makes every client refuse the real list — pinned by `is at or above the floor this
+ * build refuses to go below` in `__tests__/revocation.test.ts`.
  */
 export const MINIMUM_REVOCATION_SEQUENCE = 0;
 
 /**
  * The largest counter that can ever be believed.
  *
- * ‼️ WITHOUT AN UPPER BOUND THE COUNTER IS A PERMANENT-DISARM PRIMITIVE (code review
- * CRITICAL-1). `Number.isSafeInteger(9007199254740991)` is true, so one answer carrying
- * `MAX_SAFE_INTEGER` raised the floor above every counter the registry will ever publish and
- * refused every genuine list from then on — reproduced at sequence 2, 3, 99 and 1000000.
- * The attacker is the one `plugin-lifecycle.ts` already models: a trusted plugin that patches
+ * ‼️ WITHOUT AN UPPER BOUND ONE ANSWER CAN PARK THE FLOOR OUT OF REACH (code review
+ * CRITICAL-1). `Number.isSafeInteger(9007199254740991)` is true, so an answer carrying
+ * `MAX_SAFE_INTEGER` raised the mark above every counter the registry will ever publish and
+ * refused every genuine list after it — reproduced at sequence 2, 3, 99 and 1000000. The
+ * attacker is the one `plugin-lifecycle.ts` already models: a trusted plugin that patches
  * `window.__TAURI_INTERNALS__.invoke` and answers the refresh itself.
  *
+ * ‼️ It bounds the damage; it does not prevent it, and the first version of this comment said
+ * "permanent-disarm primitive" as though the bound closed that. It did not — a poison at
+ * 1,000,000 refuses everything real just as effectively as one at `MAX_SAFE_INTEGER`. What
+ * removed the PERMANENCE is that the mark is no longer persisted (see `partialize` in
+ * `stores/system/plugin.ts`); this constant only keeps a claimed counter inside a range the
+ * registry could conceivably reach, so the in-session damage is bounded too.
+ *
  * A million is not a guess about registries; it is a number no honest publish count reaches
- * (one revocation a day for 2,700 years) while leaving the poison far below anything that can
- * brick the comparison. A value above this is refused outright rather than clamped: clamping
- * would silently accept a document that is lying about its position.
+ * (one revocation a day for 2,700 years). A value above it is refused outright rather than
+ * clamped: clamping would silently accept a document that is lying about its position.
  */
 export const MAXIMUM_REVOCATION_SEQUENCE = 1_000_000;
 

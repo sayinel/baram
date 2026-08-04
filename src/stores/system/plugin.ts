@@ -36,17 +36,23 @@ interface PluginState {
   /** §69 Persisted: revocation must survive offline, so it is not a fetch cache. */
   revocations: null | RevocationList;
   /**
-   * Highest revocation `sequence` ever accepted, per registry URL.
+   * Highest revocation `sequence` accepted THIS SESSION, per registry URL.
+   *
+   * ‼️ IN MEMORY ONLY — see the `partialize` block for why persisting it was a defect, and
+   * for what that costs. In short: a persisted mark is a durable primitive an in-realm
+   * attacker can set once to refuse every genuine list forever, and it blocks the repair that
+   * makes a poisoned stored list survivable.
    *
    * ‼️ SEPARATE FROM `revocations` BECAUSE `setRegistryUrl` CLEARS THAT (security review
    * MEDIUM-1). Clearing the list on a switch is right — ours must not govern someone else's
    * plugins — but it also erased the high-water mark, so switching to another registry and
-   * back left `supersedesStoredList(…, null)` accepting anything at or above the floor. An
-   * attacker serving the origin could then replay an old signed list on the return trip,
-   * which is the exact rollback the counter exists to refuse.
+   * back accepted anything at or above the floor. An attacker serving the origin could then
+   * replay an old signed list on the return trip, which is the exact rollback the counter
+   * exists to refuse. Within a session that hole is still closed; across a restart the
+   * compiled `MINIMUM_REVOCATION_SEQUENCE` is what stands.
    *
-   * Keyed by registry URL so each registry keeps its own mark, and never cleared: the point
-   * is to remember a number a registry has already reached.
+   * Keyed by registry URL so each registry keeps its own mark, and not cleared by
+   * `setRegistryUrl`: the point is to remember a number a registry has already reached.
    */
   revocationSequenceSeen: Record<string, number>;
   revocationsFetchedAt: number;
@@ -344,10 +350,31 @@ export const usePluginStore = create<PluginState>()(
         // falls back to the initial `null`, which is the correct pre-first-fetch state.
         revocations: state.revocations,
         revocationsFetchedAt: state.revocationsFetchedAt,
-        // Persisted for the same reason as `revocations`, and more strongly: forgetting the
-        // mark across a restart would re-open the rollback it exists to refuse. Absent falls
-        // back to the initial `{}`, so no migration step is needed.
-        revocationSequenceSeen: state.revocationSequenceSeen,
+        // ‼️ `revocationSequenceSeen` IS DELIBERATELY ABSENT — it stays in memory only.
+        //
+        // It was persisted for one round, and that was a defect of mine (code review
+        // CRITICAL-1, second attempt): a PERSISTED MARK BLOCKS THE VERY REPAIR THAT MAKES A
+        // POISONED LIST SURVIVABLE. The attack `plugin-lifecycle.ts` documents — a `trusted`
+        // plugin patching `window.__TAURI_INTERNALS__.invoke` and answering with an empty list
+        // that then gets stored — heals at the next genuine fetch, because a real list simply
+        // replaces the stored one. A mark of 1,000,000 stops that: every genuine list is below
+        // it, so it is refused, and the poisoned empty list stays forever. Persisting the mark
+        // turned a self-healing session attack into a permanent one, which is strictly worse
+        // than the state before the counter existed.
+        //
+        // Moving the mark into Rust would NOT have fixed it: a trusted plugin runs in the
+        // `main` realm and `capabilities/default.json` grants that realm `allow-set-config`
+        // and `allow-export-binary-file`, so the same attacker writes any file we could put it
+        // in. There is no containing the trusted tier from inside it — §260 defines that tier
+        // as full trust behind an install-time consent gate. What CAN be refused is a durable
+        // primitive, and forgetting the mark at exit is what refuses it.
+        //
+        // What is lost: across a restart, replay protection falls back to
+        // `MINIMUM_REVOCATION_SEQUENCE`, the floor compiled into the build. So a replay of a
+        // genuinely-published list that is newer than the floor but older than what this
+        // session saw would be accepted after a restart. Bounded by the release cadence, since
+        // the floor is raised at release time — and a replay still requires a list that was
+        // really signed, so an attacker cannot invent one.
       }),
       version: 3,
       migrate: migratePluginPersistedState,

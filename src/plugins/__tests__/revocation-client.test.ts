@@ -152,9 +152,10 @@ describe("refreshRevocations", () => {
   it("REFUSES a replay after the user switches registries and comes back", async () => {
     // ‼️ THE ROUND TRIP (security review MEDIUM-1). `setRegistryUrl` clears `revocations` —
     // correctly, ours must not govern someone else's plugins — and that also erased the
-    // high-water mark, so on the way back `supersedesStoredList(…, null)` accepted anything at
-    // or above a floor that is 0 today. An attacker serving the origin could replay an old
-    // signed list on the return trip, which is the exact rollback the counter exists to refuse.
+    // high-water mark, so on the way back the comparison had nothing to make and accepted
+    // anything at or above a floor that is 0 today. An attacker serving the origin could replay
+    // an old signed list on the return trip, which is the exact rollback the counter exists to
+    // refuse. Within a session; across a restart `MINIMUM_REVOCATION_SEQUENCE` is what stands.
     const first = usePluginStore.getState().registryUrl;
     fetchRevocations.mockResolvedValue({
       body: JSON.stringify({ ...LIST, sequence: 5 }),
@@ -259,6 +260,64 @@ describe("refreshRevocations", () => {
     ).not.toBeNull();
   });
 
+  it("keeps the mark out of what a restart restores", () => {
+    // The shape half, asserted through the store's OWN partialize rather than a hand-listed
+    // set of keys, so adding the mark back to it fails here. Split from the behavioural test
+    // below on purpose: when both lived in one test this assertion threw first and the
+    // behavioural one never ran, which would have let a half-fix look pinned.
+    const persisted = usePluginStore.persist
+      .getOptions()
+      .partialize?.(usePluginStore.getState());
+    expect(Object.keys(persisted ?? {})).not.toContain(
+      "revocationSequenceSeen",
+    );
+  });
+
+  it("lets a genuine list land after a restart, even when the session's mark was poisoned", async () => {
+    // ‼️ THE SECOND ATTEMPT AT CRITICAL-1, and the first one was wrong in a way worth stating.
+    // I had Rust report `verified` and this module decide. That is not a boundary: a `trusted`
+    // plugin patching `window.__TAURI_INTERNALS__.invoke` writes the WHOLE answer, `verified`
+    // included, so it simply claims true. Confirmed by reproduction — one answer at sequence
+    // 1000000 set the mark to 1000000 and genuine lists at 2, 3, 99, 1000 and 999999 were then
+    // all refused, and the mark was PERSISTED, so that was forever.
+    //
+    // The trusted tier cannot be contained from inside it (`capabilities/default.json` gives
+    // the `main` realm `allow-set-config` and `allow-export-binary-file`, so a Rust-side mark
+    // is writable by the same attacker). What can be refused is the DURABILITY, and that is
+    // what this pins: the mark must not outlive the session, so the next launch starts from the
+    // compiled floor and a genuine list lands again.
+    fetchRevocations.mockResolvedValue({
+      body: '{"version":1,"sequence":999999,"revoked":[]}',
+      verified: true, // the attacker writes this field too
+    });
+    await refreshRevocations();
+    const url = usePluginStore.getState().registryUrl;
+    expect(
+      usePluginStore.getState().revocationSequenceSeen[url],
+      "in-session, the claimed counter does raise the mark — that half is unavoidable",
+    ).toBe(999_999);
+
+    // The restart, driven by the store's OWN partialize: in-memory state is dropped and only
+    // what would have been written to disk comes back. If the mark is in that set, the poison
+    // returns and the assertion below fails — which is the behaviour, not the shape.
+    const persisted = usePluginStore.persist
+      .getOptions()
+      .partialize?.(usePluginStore.getState());
+    usePluginStore.setState({
+      revocationSequenceSeen: {},
+      ...(persisted as object),
+    });
+    fetchRevocations.mockResolvedValue({
+      body: JSON.stringify({ ...LIST, sequence: 2 }),
+      verified: true,
+    });
+    await refreshRevocations();
+    expect(
+      revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
+      "after a restart a genuine list must land, or the poison was permanent",
+    ).not.toBeNull();
+  });
+
   it("re-reads the store after the fetch, so a slow refresh cannot use a stale floor", async () => {
     // ‼️ HIGH-1. The snapshot is taken before the await and was still being compared against
     // after it. `plugin-lifecycle.ts` races this refresh against a 1500 ms budget and the
@@ -310,7 +369,7 @@ describe("refreshRevocations", () => {
 describe("the sequence high-water mark", () => {
   it("cannot be walked back down by storing an older list", () => {
     // ‼️ `Math.max` in `setRevocations` was unpinned: the only caller reaches it AFTER
-    // `supersedesStoredList` has already refused anything lower, so a mutation to plain
+    // `meetsRevocationFloor` has already refused anything lower, so a mutation to plain
     // assignment survived every other test. But `setRevocations` is public store API — a
     // future caller that skips the check would silently lower the mark and re-open the
     // rollback. Exercised directly rather than through the fetch path, which is the only way
