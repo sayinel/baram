@@ -177,7 +177,13 @@ export function createVimPlugin(
             );
             // A refused CHANGE must not leave the editor in insert — the
             // core flips the mode before the adapter can veto (ops-R2).
-            if (exec.reason && isChangeCommand(result.command)) {
+            // A PARTIALLY applied change is not a refusal: the document
+            // already changed and the empty line awaits input (ops-R3).
+            if (
+              exec.reason &&
+              !exec.applied &&
+              isChangeCommand(result.command)
+            ) {
               dispatchMeta(view, { mode: "normal", type: "setMode" });
             }
           }

@@ -28,6 +28,10 @@ import { pasteRegister } from "./paste";
 import { readVimRegister, writeVimRegister } from "./register";
 
 export interface ExecutionResult {
+  /** True when a transaction landed. A PARTIALLY applied change returns a
+   *  reason AND applied — rolling such a change back to normal would lie
+   *  about a document that already changed (review ops-R3). */
+  applied?: boolean;
   /** Refusal message for the status line, when the operation said no. */
   reason?: string;
 }
@@ -90,7 +94,7 @@ export function executeCoreCommand(
       const tr = state.tr.insert(at, paragraph);
       tr.setSelection(TextSelection.create(tr.doc, at + 1));
       view.dispatch(tr);
-      return {};
+      return { applied: true };
     }
     case "operatorFind": {
       const match = resolveFindChar(
@@ -112,7 +116,10 @@ export function executeCoreCommand(
           ? nextUnitBoundary(state, match)
           : match
         : head;
-      if (hi <= lo) return { reason: "char not found" };
+      // FOUND but an empty range (T with the match right next door): vim
+      // enters insert for c and quietly does nothing for d/y — the register
+      // survives either way (vim-verified, review ops-R3).
+      if (hi <= lo) return {};
       writeVimRegister({
         kind: "char",
         slice: state.doc.slice(lo, hi).toJSON(),
@@ -121,6 +128,7 @@ export function executeCoreCommand(
         const tr = state.tr.delete(lo, hi);
         tr.setSelection(TextSelection.create(tr.doc, lo));
         view.dispatch(tr);
+        return { applied: true };
       }
       return {};
     }
@@ -172,7 +180,9 @@ function dispatchOutcome(
 ): ExecutionResult {
   if (outcome.register) writeVimRegister(outcome.register);
   if (outcome.tr) view.dispatch(outcome.tr);
-  return outcome.reason ? { reason: outcome.reason } : {};
+  const result: ExecutionResult = { applied: outcome.tr !== null };
+  if (outcome.reason) result.reason = outcome.reason;
+  return result;
 }
 
 /**
@@ -254,6 +264,7 @@ function runOperatorMotion(
     const tr = state.tr.delete(lo, hi);
     tr.setSelection(TextSelection.create(tr.doc, lo));
     view.dispatch(tr);
+    return { applied: true };
   }
   return {};
 }

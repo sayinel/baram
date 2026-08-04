@@ -881,3 +881,70 @@ describe("ops-R2 pins", () => {
     void index;
   });
 });
+
+describe("ops-R3 pins", () => {
+  it("a partially applied counted change stays in insert", () => {
+    // 2cc where the SECOND line refuses (the only table row): the first
+    // paragraph is already replaced by the empty change line, so the truth
+    // is insert — rolling back to normal lies about a landed change.
+    const editor = makeEditor(
+      "<p>alpha</p><table><tr><td><p>bb</p></td></tr></table>",
+    );
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "2");
+    key(editor, "c");
+    key(editor, "c");
+    expect(editor.state.doc.textContent).toBe("bb"); // alpha is gone
+    expect(editor.state.doc.firstChild?.type.name).toBe("paragraph");
+    expect(editor.state.doc.firstChild?.textContent).toBe("");
+    expect(vim(editor).mode).toBe("insert");
+  });
+
+  it("cT with an adjacent match enters insert without deleting", () => {
+    // vim-verified: `cTx` on "xa" with the cursor on "a" types before "a".
+    const editor = makeEditor("<p>xa</p>");
+    editor.commands.setTextSelection(2); // on "a", right after "x"
+    enable(editor);
+    key(editor, "c");
+    key(editor, "T");
+    key(editor, "x");
+    expect(editor.state.doc.textContent).toBe("xa");
+    expect(vim(editor).mode).toBe("insert");
+  });
+
+  it("dT with an adjacent match is a silent no-op keeping the register", () => {
+    // vim-verified: the register survives an empty valid range (control).
+    const editor = makeEditor("<p>xa</p><p>seed</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "y");
+    key(editor, "y"); // seed the register with a line yank
+    key(editor, "d");
+    key(editor, "T");
+    key(editor, "x");
+    expect(editor.state.doc.textContent).toBe("xaseed");
+    expect(vim(editor).mode).toBe("normal");
+    expect(readVimRegister()).toMatchObject({ kind: "line" });
+  });
+
+  it("cfx changes THROUGH x; d2fx honors the count (coverage)", () => {
+    const editor = makeEditor("<p>abxcd</p>");
+    editor.commands.setTextSelection(1);
+    enable(editor);
+    key(editor, "c");
+    key(editor, "f");
+    key(editor, "x");
+    expect(editor.state.doc.textContent).toBe("cd");
+    expect(vim(editor).mode).toBe("insert");
+
+    const e2 = makeEditor("<p>axbxc</p>");
+    e2.commands.setTextSelection(1);
+    enable(e2);
+    key(e2, "d");
+    key(e2, "2");
+    key(e2, "f");
+    key(e2, "x");
+    expect(e2.state.doc.textContent).toBe("c");
+  });
+});
