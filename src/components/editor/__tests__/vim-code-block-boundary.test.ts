@@ -196,6 +196,18 @@ describe("vim code block boundary (S3)", () => {
     expect(h3.calls).toEqual([]);
   });
 
+  it("hangul layout: physical KeyJ/KeyU drive the boundary (device)", () => {
+    // Korean input source delivers key="\u3153" for the j key — the
+    // device log showed exactly this starving every letter command.
+    const view = makeView(3);
+    const h = hooks();
+    attachVimBoundary(view, fakeCM(idle()), h.hooks);
+    press(view, "\u3153", { code: "KeyJ" }); // j key under hangul
+    expect(h.calls).toEqual(["escape1"]);
+    press(view, "\u3155", { code: "KeyU" }); // u key under hangul
+    expect(h.calls).toEqual(["escape1", "undo"]);
+  });
+
   it("detaching stops all interception", () => {
     const view = makeView(3);
     const h = hooks();

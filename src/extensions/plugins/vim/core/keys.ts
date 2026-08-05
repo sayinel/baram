@@ -54,7 +54,7 @@ const LETTER_CODE = /^Key([A-Z])$/;
  * event.key, so dvorak-style remappings and shift-symbols stay untouched.
  * Insert mode never sees this: its keys go through PM as real typing.
  */
-function layoutKey(event: KeyLike): string {
+export function layoutKey(event: KeyLike): string {
   if (!HANGUL_CHAR.test(event.key)) return event.key;
   const letter = LETTER_CODE.exec(event.code ?? "");
   if (!letter) return event.key;

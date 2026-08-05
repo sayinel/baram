@@ -14,6 +14,8 @@
 import type { EditorView } from "@codemirror/view";
 import type { CodeMirror } from "@replit/codemirror-vim";
 
+import { layoutKey } from "../../extensions/plugins/vim/core/keys";
+
 export interface BoundaryHooks {
   /** Leave the block toward the PM neighbour (dir -1 = up, 1 = down). */
   escape(dir: -1 | 1): void;
@@ -47,26 +49,31 @@ export function attachVimBoundary(
     if (event.metaKey || event.altKey || event.shiftKey) return;
     if (!isIdleNormal(cm)) return;
 
+    // Korean input source: the j key arrives as key="\u3153" — resolve
+    // commands through the PHYSICAL key exactly like the PM vim core
+    // (device finding: boundary j/k/u were dead under the hangul layout).
+    const key = layoutKey(event);
+
     const consume = () => {
       event.preventDefault();
       event.stopPropagation();
     };
 
     if (event.ctrlKey) {
-      if (event.key === "r") {
+      if (key === "r") {
         consume();
         hooks.redo();
       }
       return;
     }
 
-    if (event.key === "u") {
+    if (key === "u") {
       consume();
       hooks.undo();
       return;
     }
 
-    if (event.key === "Escape") {
+    if (key === "Escape") {
       // The Esc stair's second step: vim consumes even a normal-mode Esc
       // on the real surface, so the boundary owns it — idle normal Esc
       // leaves the block (matches the plain-arrow customKeys contract).
@@ -78,14 +85,14 @@ export function attachVimBoundary(
     const { head } = view.state.selection.main;
     const line = view.state.doc.lineAt(head);
     if (
-      (event.key === "j" || event.key === "ArrowDown") &&
+      (key === "j" || key === "ArrowDown") &&
       line.number === view.state.doc.lines
     ) {
       consume();
       hooks.escape(1);
       return;
     }
-    if ((event.key === "k" || event.key === "ArrowUp") && line.number === 1) {
+    if ((key === "k" || key === "ArrowUp") && line.number === 1) {
       consume();
       hooks.escape(-1);
     }
