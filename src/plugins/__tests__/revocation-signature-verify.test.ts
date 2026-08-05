@@ -204,6 +204,131 @@ describe(
       ).toThrow(/global signature does not verify/u);
     });
 
+    it("REFUSES a signature block with a leading blank line, as Rust does", () => {
+      // ‼️ THE DEFECT BOTH RE-REVIEWS FOUND, each proving it end-to-end. `parseSignature` trimmed
+      // the decoded block; `mod.rs` hands `Signature::decode` the text UNTOUCHED, and the crate
+      // consumes line 1 as the untrusted comment — so one leading newline shifts every line and it
+      // tries to base64-decode "untrusted comment: …". The reviewer walked the accepted-here /
+      // refused-there pair through the real gate step: `publish=false`, both new verification steps
+      // green, no re-sign, every armed client refusing every list.
+      const block = Buffer.from(FROZEN_SIG.trim(), "base64").toString("utf8");
+      expect(() =>
+        verifyRevocationSignature(FROZEN_BODY, wrap(`\n${block}`), SHIPPED_KEY),
+      ).toThrow();
+    });
+
+    it("REFUSES trailing whitespace on any base64 line, as Rust does", () => {
+      // ‼️ THE SAME DEFECT, ITS OTHER HALF. `minisign-verify`'s decoder stops at the first
+      // non-alphabet byte and then demands the remainder be padding, so ONE TRAILING SPACE is
+      // `InvalidInput` — on the signature payload line, on the global-signature line, and on the key
+      // line inside an otherwise-trimmed key text. A per-line trim accepted all three.
+      const block = Buffer.from(FROZEN_SIG.trim(), "base64").toString("utf8");
+      for (const index of [1, 3]) {
+        const lines = block.split("\n");
+        lines[index] = `${lines[index]} `;
+        expect(() =>
+          verifyRevocationSignature(
+            FROZEN_BODY,
+            wrap(lines.join("\n")),
+            SHIPPED_KEY,
+          ),
+        ).toThrow(/not base64/u);
+      }
+      // ‼️ The key line must not be LAST here: `PublicKey::decode(key_text.trim())` trims the whole
+      // text, so a trailing space at the very end is trimmed on both sides and proves nothing. A
+      // third line puts the space where only a per-line trim could eat it.
+      const keyLines = Buffer.from(SHIPPED_KEY, "base64")
+        .toString("utf8")
+        .trim()
+        .split("\n");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          wrap(`${keyLines[0]}\n${keyLines[1]} \ntrailing line\n`),
+        ),
+      ).toThrow(/not base64/u);
+    });
+
+    it("uses the key on line 2 even when more lines follow", () => {
+      // ‼️ "LINE 2, UNCONDITIONALLY" WAS NOT PINNED (code review MEDIUM-1): reading the LAST line
+      // instead survived the whole suite, which is the very mistake the docstring says it deleted
+      // from the gate script. Reached by a rotation that APPENDS a key line instead of replacing it
+      // — Rust reads line 2, so CI would verify against the appended key and every client against
+      // line 2.
+      const keyLines = Buffer.from(SHIPPED_KEY, "base64")
+        .toString("utf8")
+        .trim()
+        .split("\n");
+      const forged = forge(FROZEN_BODY);
+      const appended = Buffer.from(forged.publicKeyB64, "base64")
+        .toString("utf8")
+        .trim()
+        .split("\n")[1];
+      // The real key on line 2, a valid-but-different key appended below it.
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          wrap(`${keyLines[0]}\n${keyLines[1]}\n${appended}\n`),
+        ),
+      ).not.toThrow();
+      // And the mirror: the appended line first means the pair must be refused.
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          wrap(`${keyLines[0]}\n${appended}\n${keyLines[1]}\n`),
+        ),
+      ).toThrow(/different key/u);
+    });
+
+    it("REFUSES a signature whose third line is not a trusted comment", () => {
+      // Rust checks the prefix (`lib.rs:244`). Without it, `slice(17)` silently shifts the comment
+      // and the failure surfaces as "the global signature does not verify" — a true verdict with a
+      // misleading reason (code review LOW-2).
+      const lines = Buffer.from(FROZEN_SIG.trim(), "base64")
+        .toString("utf8")
+        .split("\n");
+      lines[2] = "not a trusted comment";
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          wrap(lines.join("\n")),
+          SHIPPED_KEY,
+        ),
+      ).toThrow(/no trusted comment/u);
+    });
+
+    it("REFUSES a signature whose algorithm marker is neither ED nor Ed", () => {
+      // The signature-side twin of the public-key case below, and it was unpinned (code review
+      // LOW-3). Rust rejects an unknown marker at `Signature::decode` with `UnsupportedAlgorithm`.
+      const { publicKeyB64, signatureB64 } = forge(FROZEN_BODY, {
+        algorithm: "XX",
+      });
+      expect(() =>
+        verifyRevocationSignature(FROZEN_BODY, signatureB64, publicKeyB64),
+      ).toThrow(/is neither ED nor Ed/u);
+    });
+
+    it("accepts a public key marked ED as well as Ed, as Rust does", () => {
+      // `from_base64` accepts both markers, and the shipped key is `Ed`, so the `ED` branch is
+      // unreachable with our own key — which is exactly why it needed a case (code review LOW-6).
+      const keyLines = Buffer.from(SHIPPED_KEY, "base64")
+        .toString("utf8")
+        .trim()
+        .split("\n");
+      const raw = Buffer.from(keyLines[1], "base64");
+      raw.write("ED", 0, "latin1");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          wrap(`${keyLines[0]}\n${raw.toString("base64")}\n`),
+        ),
+      ).not.toThrow();
+    });
+
     it("REFUSES a bare key line, which the Rust crate refuses too", () => {
       // ‼️ FOUND BY BOTH REVIEWS INDEPENDENTLY, each with a probe against the vendored crate. This
       // used to be ACCEPTED, with a comment claiming `PublicKey::decode` accepts it as well — it
@@ -430,6 +555,12 @@ describe(
       expect(() => shippedRevocationPublicKey(`${rust}\n${rust}`)).toThrow(
         /found 2 declarations/u,
       );
+      // ‼️ NOT A TRUST ANCHOR (security re-review). A minisign key id is 8 arbitrary bytes stored in
+      // the `.pub` and repeated in the `.sig`; it is not derived from the key material, so an
+      // attacker who replaces the keypair writes the same 8 bytes and this literal never needs
+      // editing. It documents which key ships and it kills a hardcoded-return mutation — it binds
+      // nothing. The binding is the frozen-pair anchor above, plus its twin in `mod.rs`.
+      //
       // ‼️ The key id comes from the VERIFIER, not from a parse written here (code review LOW-8).
       // A third hand-rolled copy of this extraction is the same "scans *a* value" shape the scan
       // above exists to avoid — and the id it produced could differ from the key that verified,
@@ -468,6 +599,11 @@ describe(
       expect(() => revocationByteCap("nothing here")).toThrow(
         /found 0 declarations/u,
       );
+      // ‼️ UNEQUAL FACTORS (code review LOW-7). The real literal is `1024 * 1024`, so a fold that
+      // returned `parts[0] * parts[0]`, or reversed the order, would satisfy an assertion about it.
+      expect(
+        revocationByteCap("const MAX_REVOCATION_BYTES: usize = 2 * 3 * 7;"),
+      ).toBe(42);
       // A product is the only accepted form: anything else must throw rather than read as a
       // smaller number.
       expect(() =>

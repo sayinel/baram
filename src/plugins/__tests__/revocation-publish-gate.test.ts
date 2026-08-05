@@ -24,6 +24,7 @@
 // green; three of the findings this file exists for were exactly that.
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -158,6 +159,7 @@ function gateRaw(
   ours: Buffer,
   previous: Buffer | null,
   sig: Buffer | null,
+  { unreadableSig = false }: { unreadableSig?: boolean } = {},
 ): GateRun {
   const dir = mkdtempSync(join(tmpdir(), "baram-gate-"));
   const workspace = join(dir, "workspace");
@@ -168,7 +170,10 @@ function gateRaw(
   if (previous !== null) {
     writeFileSync(join(temp, "registry/revoked.json"), previous);
     if (sig !== null) {
-      writeFileSync(join(temp, "registry/revoked.json.sig"), sig);
+      const path = join(temp, "registry/revoked.json.sig");
+      writeFileSync(path, sig);
+      // Present to `[ -f ]`, unreadable to the verifier — which is how exit 2 is reached.
+      if (unreadableSig) chmodSync(path, 0o000);
     }
   }
   // `registry/revoked.json` is a relative path in the workflow, so the gate runs from the
@@ -326,8 +331,29 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
       Buffer.from("this is not a signature\n"),
     );
     expect(status).toBe(0);
-    expect(output).toContain("does not verify");
+    // ‼️ The two branches say different things now, so this is only satisfied by the invalid-signature
+    // path (code review LOW-8). The old shared notice — "no signature or one that does not verify" —
+    // made this assertion weaker than it read.
+    expect(output).toContain("signature does not verify");
     expect(publish).toBe("true");
+    // ‼️ NO ANNOTATION ON A GREEN STEP (code review MEDIUM-3). `::error::` is a workflow command, so
+    // GitHub renders it whatever the exit status — and this is the SELF-REPAIR path, the one the
+    // verification was added to enable. An operator reading an error annotation on a green run
+    // learns the wrong thing, and once they are normal a real one carries nothing.
+    expect(output).not.toContain("::error::");
+  });
+
+  it("FAILS rather than deciding when the verifier itself cannot run", () => {
+    // ‼️ EXIT 2 IS NOT "THE SIGNATURE IS BAD" (security review L-2). Folding it into the re-sign
+    // branch blamed the registry for a broken verifier of our own AND loaded the signing key into a
+    // runner for a run that had nothing to publish. An unreadable signature file is the reachable
+    // case: `[ -f ]` passes, `readFileSync` does not.
+    const run = gateRaw(FROZEN_BODY, FROZEN_BODY, FROZEN_SIG, {
+      unreadableSig: true,
+    });
+    expect(run.status).toBe(1);
+    expect(run.output).toContain("the verifier could not run");
+    expect(run.publish).toBeNull();
   });
 
   it("publishes without a comparison when the registry has no list yet", () => {
@@ -469,43 +495,48 @@ describe("the revocation publish workflow's shape", () => {
     throw new Error(`line ${line} is not inside a named step`);
   }
 
-  it("puts the signing SECRET in exactly one step, and that step only signs", () => {
-    // ‼️ THE BLAST RADIUS IS THE PROPERTY (security review LOW). Any merge touching
-    // `registry/revoked.json` runs this workflow with the revocation signing key available, and
-    // the same merge can land arbitrary repository TypeScript. Job-level env, or one more step
-    // inside the block that holds it, silently hands the key to `npx tsx`.
+  it("references no secret this file does not list, and signs in exactly one step", () => {
+    // ‼️ WHAT THIS PROTECTS, STATED HONESTLY (security re-review M-3). It is a DRIFT GUARD for this
+    // workflow: it catches an accidental widening, which is what it was written for. It is NOT an
+    // anti-attacker control — capability to land a commit also covers adding a whole new workflow
+    // file this test never reads. The only control for that is a protected `environment:` with a
+    // required reviewer, recorded in `dev/backlog.md`. The first version of this comment invited the
+    // attacker reading; the guard does not support it.
     //
-    // ‼️ IT SCANS THE SECRET REFERENCE, NOT THE VARIABLE NAME (security review MEDIUM-3, which
-    // proved this test green against the injection it claims to catch). The first version counted
-    // lines matching `TAURI_SIGNING_PRIVATE_KEY:` — tauri's env var name — so
-    // `EXFIL: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY }}` in any other step passed. The thing
-    // that leaks is the SECRET, under whatever name, and my own mutation was aimed at the token
-    // the test measured rather than at the property, which is how it survived review and not this.
+    // ‼️ AN ALLOWLIST OVER EVERY `secrets` REFERENCE, not a search for the one spelling I thought of.
+    // Matching `secrets.BARAM_REVOCATION_SIGNING_KEY` left three evasions green — bracket indexing
+    // (`secrets['NAME']`), a case variant (Actions property lookups are case-insensitive), and
+    // `toJSON(secrets)`, which dumps EVERY secret including the registry deploy key. Enumerating the
+    // dangerous spellings is `enumerated-denylist-over-open-set`; enumerate the permitted lines and
+    // let anything new fail instead.
     const lines = workflow.split("\n");
-    const secretLines = lines
+    const refs = lines
       .map((line, index) => ({ index, line }))
       .filter(({ line }) =>
-        line.includes("secrets.BARAM_REVOCATION_SIGNING_KEY"),
+        /secrets\s*[.[]|toJSON\s*\(\s*secrets/iu.test(line),
       );
-    // Two: the key and its password. Both belong to the same step, and asserting the count keeps
-    // "exactly one step" from being satisfied by a step that happens to hold only one of them.
-    expect(secretLines).toHaveLength(2);
-    for (const { index } of secretLines) {
-      expect(stepContaining(index)).toBe("Sign the list");
-    }
-    // ‼️ AN ALLOWLIST, NOT A DENYLIST (code review LOW-9 / `enumerated-denylist-over-open-set`).
-    // The first version forbade `npx tsx` and `git push` by name, which admits the next command
-    // added to this step by DEFAULT — and the step's own comment claims it runs nothing but `cp`
-    // and the signer. Every command line in the body must be one of those two.
+    expect(refs.map(({ line }) => line.trim())).toEqual([
+      "DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}",
+      "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY }}",
+      "TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY_PASSWORD }}",
+      "DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}",
+    ]);
+    expect(refs.map(({ index }) => stepContaining(index))).toEqual([
+      "Clone the registry",
+      "Sign the list",
+      "Sign the list",
+      "Commit and push",
+    ]);
+    // ‼️ FIRST TOKENS, NOT WHOLE LINES (code review LOW-4). Whole-line equality fired on a cosmetic
+    // reformat — a line continuation, `${RUNNER_TEMP}`, an added `set -euo pipefail` — and reported
+    // three shell strings instead of "a command was added to the step holding the signing key".
     const body = stepScript(workflow, "Sign the list");
     const commands = body
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line !== "" && !line.startsWith("#"));
-    expect(commands).toEqual([
-      'cp registry/revoked.json "$RUNNER_TEMP/registry/revoked.json"',
-      'npx tauri signer sign "$RUNNER_TEMP/registry/revoked.json"',
-    ]);
+    expect(commands.map((line) => line.split(" ")[0])).toEqual(["cp", "npx"]);
+    expect(body).toContain("tauri signer sign");
   });
 
   it("removes the deploy key it wrote, even when a step before it failed", () => {
@@ -521,16 +552,38 @@ describe("the revocation publish workflow's shape", () => {
     // other path — the step would still be present, still `always()`, still after the push, and
     // the key would still be on disk. The path is taken from the clone step so the two cannot
     // drift apart silently.
-    const written = /> (~\/\.ssh\/[A-Za-z0-9_-]+)$/mu.exec(
-      stepScript(workflow, "Clone the registry"),
+    // ‼️ THE KEY IS WRITTEN TWICE NOW (security re-review M-4): the clone drops it immediately and
+    // the push restores it, so its on-disk life no longer spans the gate, the signing step and the
+    // pre-push verify — three steps that run `npx`, where a compromised dependency would have walked
+    // off with push access to the registry without any merged commit. Both write sites are derived,
+    // and the clone is asserted to remove it again.
+    const writePattern = /> (~\/\.ssh\/[A-Za-z0-9_-]+)$/gmu;
+    const clone = stepScript(workflow, "Clone the registry");
+    const writes = [
+      ...clone.matchAll(writePattern),
+      ...stepScript(workflow, "Commit and push").matchAll(writePattern),
+    ].map((match) => match[1]);
+    expect(writes.length, "both registry steps must write the deploy key").toBe(
+      2,
     );
-    expect(
-      written,
-      "the clone step must write the deploy key to a file",
-    ).not.toBeNull();
+    expect(new Set(writes).size, "both must write the same path").toBe(1);
     expect(
       stepScript(workflow, "Remove the deploy key from the runner"),
-    ).toContain(`rm -f ${written?.[1]}`);
+    ).toContain(`rm -f ${writes[0]}`);
+    expect(
+      clone,
+      "the clone must not leave the key for the steps between",
+    ).toContain(`rm -f ${writes[0]}`);
+  });
+
+  it("refuses to read a step that has no `run: |` block of its own", () => {
+    // ‼️ THE HARDENING HAD NO TEST, and the workflow was reshaped in the same commit so nothing could
+    // reach it (code review LOW-5). "Validate the list with the shipping validator" is still written
+    // in the one-line `run:` form, so it is the caller that would have slid into the NEXT step's body
+    // and then asserted against text from somewhere else entirely.
+    expect(() =>
+      stepScript(workflow, "Validate the list with the shipping validator"),
+    ).toThrow(/no `run: \|` block of its own/u);
   });
 
   it("verifies the signature BEFORE pushing and again on what Pages serves", () => {

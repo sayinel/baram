@@ -17,6 +17,20 @@
  *
  * They THROW rather than exiting, so the caller decides what a failure means: the validator turns
  * it into its own `✗` refusal, the gate script into an `::error::` and exit 2.
+ *
+ * ‼️ THE COUNT IS NOT THE WHOLE DEFENCE, AND THE TWO SCRAPES ARE NOT EQUALLY PROTECTED — the first
+ * version of this header implied they were (security review NEW-2). Counting stops a declaration
+ * being ADDED; it cannot stop the real one being respelled past the pattern while a decoy comment
+ * keeps the count at 1. What closes that is a CROSS-LANGUAGE ANCHOR — an assertion on the compiled
+ * value that goes red when the scraped value drifts from it:
+ *
+ * - the key has one: vitest binds the scraped key to the frozen at-arming pair and
+ *   `mod.rs`'s own test binds the compiled key to the same two files, so a divergence is
+ *   self-contradictory in both directions.
+ * - the cap now has one too: `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `mod.rs`.
+ *   Without it, `const MAX_REVOCATION_BYTES: usize = ONE_MIB;` plus a decoy comment in the matched
+ *   form left this returning 1 MiB while clients capped at whatever `ONE_MIB` said — and an
+ *   oversized list then publishes green and no client can read it.
  */
 
 /**

@@ -15,9 +15,19 @@
  * `dev/backlog.md` records the class. Exactly one DECLARATION must match, or this refuses to
  * proceed instead of guessing.
  *
- * Exits 0 when an armed client would accept the list, 1 when it would not, 2 on misuse.
+ * Exits 0 when an armed client would accept the list, 1 when it would not, 2 on misuse or when
+ * this script cannot establish which key ships. ‼️ THE THREE ARE DISTINCT AND CALLERS MUST TREAT
+ * THEM SO (security review L-2): the publish gate used to fold 2 into "the signature does not
+ * verify", which then blamed the registry for a broken verifier of our own and loaded the signing
+ * key for a run that had nothing to publish.
  *
- * Run: npx tsx scripts/verify-revocation-signature.ts <revoked.json> <revoked.json.sig>
+ * `--quiet` drops the `::error::` prefixes. A caller that is asking a QUESTION rather than
+ * reporting a verdict needs that: `::error::` is a workflow command, so GitHub annotates the run
+ * whatever the exit status, and the gate's probe was putting "would be REFUSED by every armed
+ * client" on green runs — on the self-repair path this PR added, no less (code review MEDIUM-3).
+ * Once error annotations are normal on green runs, a real one carries no information.
+ *
+ * Run: npx tsx scripts/verify-revocation-signature.ts [--quiet] <revoked.json> <revoked.json.sig>
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -33,18 +43,31 @@ const RUST_SOURCE = resolve(
 /**
  * The pair frozen when the key was armed. Committed, and read by the Rust test too.
  *
- * ‼️ IT IS THE ANSWER TO "THE SCRAPE FOUND *A* KEY" (security review HIGH-2). Counting
- * declarations stops one being ADDED; it cannot stop the real one being respelled so the pattern
- * misses it while a planted comment matches. Checking the scraped key against a signature this
- * repository froze closes that: a key that did not sign this pair cannot verify it, so an evasion
- * has to replace the fixture as well — and that is a diff nobody reads past.
+ * ‼️ DEFENCE IN DEPTH, NOT THE CLOSURE — the first version of this comment claimed otherwise and
+ * the security re-review corrected it. What actually makes a scrape/ship divergence impossible to
+ * land is a PAIR of assertions that contradict each other under attack: the vitest anchor binds
+ * the SCRAPED key to this frozen pair, and `mod.rs`'s own test binds the COMPILED key to the same
+ * two files. A signature verifies under one public key, so either the two keys are equal or one of
+ * those tests is red — in both directions. This check re-asserts the same relation at publish time,
+ * against a `mod.rs` that CI has already validated. Keep it; do not credit it with the closure.
+ *
+ * It is also what makes a fixture problem a total publishing outage (security review Q3), and a
+ * legitimate key rotation must re-freeze this pair in the same commit — as `mod.rs`'s test already
+ * requires. The message below names that cause explicitly.
  */
 const FROZEN_PAIR = resolve(
   import.meta.dirname,
   "../src-tauri/src/plugin/testdata/revoked-at-arming.json",
 );
 
-const [bodyPath, signaturePath] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const quiet = args.includes("--quiet");
+const [bodyPath, signaturePath] = args.filter((arg) => arg !== "--quiet");
+
+/** `::error::` when reporting a verdict, a plain line when answering a question. */
+function report(message: string): void {
+  console.error(quiet ? message : `::error::${message}`);
+}
 if (bodyPath === undefined || signaturePath === undefined) {
   console.error(
     "usage: verify-revocation-signature.ts <revoked.json> <revoked.json.sig>",
@@ -56,8 +79,8 @@ let publicKey: string;
 try {
   publicKey = shippedRevocationPublicKey(readFileSync(RUST_SOURCE, "utf8"));
 } catch (error) {
-  console.error(
-    `::error::cannot read the shipped key from ${RUST_SOURCE}: ${error instanceof Error ? error.message : String(error)}`,
+  report(
+    `cannot read the shipped key from ${RUST_SOURCE}: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(2);
 }
@@ -66,8 +89,8 @@ if (publicKey === "") {
   // Not a permissive skip. An unarmed build ignores signatures, so nothing user-visible breaks
   // today — but publishing a pair nobody has ever verified is how a broken signing step stays
   // invisible until the arming release makes it everyone's problem at once.
-  console.error(
-    "::error::REVOCATION_PUBLIC_KEY is empty — signature enforcement is not armed, so there is no key to verify what clients will accept.",
+  report(
+    "REVOCATION_PUBLIC_KEY is empty — signature enforcement is not armed, so there is no key to verify what clients will accept.",
   );
   process.exit(1);
 }
@@ -81,8 +104,8 @@ try {
     publicKey,
   );
 } catch (error) {
-  console.error(
-    `::error::the key scraped from ${RUST_SOURCE} does not verify this repository's frozen at-arming pair — the scrape found the wrong value, or the key was rotated without re-freezing the fixture: ${error instanceof Error ? error.message : String(error)}`,
+  report(
+    `the key scraped from ${RUST_SOURCE} does not verify this repository's frozen at-arming pair — the scrape found the wrong value, or the key was rotated without re-freezing the fixture: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(2);
 }
@@ -96,8 +119,8 @@ try {
   body = readFileSync(bodyPath);
   signature = readFileSync(signaturePath, "utf8");
 } catch (error) {
-  console.error(
-    `::error::cannot read the pair to verify: ${error instanceof Error ? error.message : String(error)}`,
+  report(
+    `cannot read the pair to verify: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(2);
 }
@@ -108,12 +131,14 @@ try {
     signature,
     publicKey,
   );
-  console.log(
-    `signature verifies with the key this build ships (${keyId}) — trusted comment: ${trustedComment}`,
-  );
+  if (!quiet) {
+    console.log(
+      `signature verifies with the key this build ships (${keyId}) — trusted comment: ${trustedComment}`,
+    );
+  }
 } catch (error) {
-  console.error(
-    `::error::${bodyPath} would be REFUSED by every armed client: ${error instanceof Error ? error.message : String(error)}`,
+  report(
+    `${bodyPath} would be REFUSED by every armed client: ${error instanceof Error ? error.message : String(error)}`,
   );
   process.exit(1);
 }

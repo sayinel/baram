@@ -56,19 +56,31 @@ jobs:
         run: npx tsx scripts/validate-revocations.ts registry/revoked.json
 
       # Separate from signing so the signing key is in the environment of exactly one step,
-      # and that step runs nothing but `cp` and the tauri CLI (security review LOW). The
-      # deploy key persists in the clone's own config, so the push step needs no secret.
+      # and that step runs nothing but `cp` and the tauri CLI (security review LOW).
+      #
+      # ‼️ THE KEY FILE IS REMOVED AT THE END OF THIS STEP, and written again by the push
+      # (security review M-4). It used to live on disk from here until the cleanup step, readable
+      # by the four steps in between — three of which run `npx`, one of them added by this very
+      # change. That is a supply-chain reach that needs NO merged commit: a malicious transitive
+      # dependency walks off with push access to the registry, which is the capability the whole
+      # revocation mechanism assumes an attacker does not have. The signing key was deliberately
+      # scoped to one step's env for exactly this reason, and `dev/backlog.md` had recorded the two
+      # residuals as equivalent, which they were not.
+      #
+      # The clone keeps the key PATH in its own config, so the push step only has to restore the
+      # file. The `always()` cleanup below stays as the backstop for a failure in between.
       - name: Clone the registry
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
           chmod 600 ~/.ssh/plugins_deploy
           ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
           git clone --depth 1 \
             --config core.sshCommand="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes" \
             "git@github.com:${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          rm -f ~/.ssh/plugins_deploy
 
       # ‼️ A CHANGED list must carry a HIGHER counter, and this is the only place that can say
       # so. A list published at or below the counter clients already hold is refused by every
@@ -106,15 +118,34 @@ jobs:
             # step, with the only escapes being the two this review chain rejected (a hand-push to
             # the Pages repo, or editing the list to force a counter bump nobody needs). Deciding
             # re-sign vs nothing-to-do on whether the signature VERIFIES makes that self-repairing.
-            if [ -f "$RUNNER_TEMP/registry/revoked.json.sig" ] &&
-               npx tsx scripts/verify-revocation-signature.ts \
-                 "$PREVIOUS" "$RUNNER_TEMP/registry/revoked.json.sig"; then
-              echo "::notice::The registry already has this exact list and a signature that verifies — nothing to publish."
-              echo "publish=false" >> "$GITHUB_OUTPUT"
+            if [ ! -f "$RUNNER_TEMP/registry/revoked.json.sig" ]; then
+              echo "::notice::Same list, no signature in the registry — re-signing without a counter bump."
+              echo "publish=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::notice::Same list, but the registry has no signature or one that does not verify — re-signing without a counter bump."
-            echo "publish=true" >> "$GITHUB_OUTPUT"
+            # ‼️ `--quiet`, AND THE THREE EXIT CODES ARE KEPT APART (code review MEDIUM-3, security
+            # review L-2). This call asks a question; it does not report a verdict. Without
+            # `--quiet` the script's `::error::` annotated the run — and `::error::` is a workflow
+            # command, so GitHub shows it whatever the exit status: the self-repair path added in
+            # this change produced a GREEN run carrying "would be REFUSED by every armed client".
+            # And folding exit 2 into "does not verify" blamed the registry for a broken verifier of
+            # our own, then loaded the signing key for a run with nothing to publish.
+            set +e
+            npx tsx scripts/verify-revocation-signature.ts --quiet \
+              "$PREVIOUS" "$RUNNER_TEMP/registry/revoked.json.sig"
+            PROBE=$?
+            set -e
+            case "$PROBE" in
+              0)
+                echo "::notice::The registry already has this exact list and a signature that verifies — nothing to publish."
+                echo "publish=false" >> "$GITHUB_OUTPUT" ;;
+              1)
+                echo "::notice::Same list, but the registry's signature does not verify — re-signing without a counter bump."
+                echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+              *)
+                echo "::error::the verifier could not run (exit $PROBE) — this is our tooling, not the registry's signature. Refusing to decide."
+                exit 1 ;;
+            esac
             exit 0
           fi
           # Both counters are read by the SHIPPING reader, so the number compared here is the
@@ -180,7 +211,11 @@ jobs:
 
       - name: Commit and push
         if: steps.gate.outputs.publish == 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
         run: |
+          printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          chmod 600 ~/.ssh/plugins_deploy
           cd "$RUNNER_TEMP/registry"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

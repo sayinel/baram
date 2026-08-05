@@ -96,10 +96,10 @@ export function verifyRevocationSignature(
   publicKeyB64: string,
 ): { keyId: string; trustedComment: string } {
   const { key, keyId } = parsePublicKey(
-    decodeStrictBase64(publicKeyB64, "public key").toString("utf8"),
+    decodeStrictBase64(asciiTrim(publicKeyB64), "public key").toString("utf8"),
   );
   const parsed = parseSignature(
-    decodeStrictBase64(signatureB64, "signature").toString("utf8"),
+    decodeStrictBase64(asciiTrim(signatureB64), "signature").toString("utf8"),
   );
   if (parsed.keyId !== keyId) {
     throw new Error(
@@ -139,6 +139,21 @@ export function verifyRevocationSignature(
 }
 
 /**
+ * `str::trim()`, restricted to ASCII whitespace.
+ *
+ * ‼️ JS `trim()` strips U+FEFF and Rust's White_Space property does not, so a BOM-prefixed wrapper
+ * was accepted here and refused there (code review LOW-1). The remaining difference runs the other
+ * way — Rust also trims U+00A0 and friends, which nothing emits — so it can only refuse a publish.
+ *
+ * Applied at exactly the two places Rust applies it: the base64 wrapper (`decode_b64_text` trims)
+ * and the whole public-key text (`PublicKey::decode(key_text.trim())`). NOT to the signature text,
+ * and NOT to individual lines.
+ */
+function asciiTrim(value: string): string {
+  return value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "");
+}
+
+/**
  * base64-decode the way Rust does, or throw. THREE independent rules, each with its own case.
  *
  * ‼️ THE CANONICALITY RULE IS THE REACHABLE ONE, and the first version of this file disclosed it
@@ -160,7 +175,15 @@ export function verifyRevocationSignature(
  * (Rust also trims U+00A0 and friends, which nothing emits), so it can only refuse a publish.
  */
 function decodeStrictBase64(value: string, what: string): Buffer {
-  const trimmed = value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "");
+  // ‼️ NO TRIM HERE (code review + security review HIGH, found independently and each proved
+  // end-to-end). The character SET was never the divergence — WHERE a trim happens is. The crate
+  // decodes each line with no trim at all, and its base64 decoder stops at the first non-alphabet
+  // byte and then demands the rest be padding, so ONE TRAILING SPACE on the signature payload line
+  // is `InvalidInput` in Rust. Trimming per line accepted exactly that, and the reviewer walked it
+  // through the real gate step: `publish=false`, both new verification steps green, every armed
+  // client refusing every list — with no re-sign, because the gate had declared the pair healthy.
+  // Rust's two trims are reproduced at their own call sites, and nowhere else.
+  const trimmed = value;
   if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(trimmed)) {
     throw new Error(`revocation ${what} is not base64`);
   }
@@ -191,7 +214,7 @@ function decodeStrictBase64(value: string, what: string): Buffer {
  * this file exists to prevent.
  */
 function parsePublicKey(text: string): ParsedPublicKey {
-  const lines = text.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "").split(/\r?\n/u);
+  const lines = rustLines(asciiTrim(text));
   if (lines.length < 2) {
     throw new Error(
       "revocation public key has no key line — a minisign public key is a comment line followed by the key",
@@ -237,7 +260,11 @@ function parseSignature(text: string): ParsedSignature {
   // left the `\r` inside the trusted comment, which then went into the global-signature message —
   // so a CRLF `.sig` that Rust accepts was refused here with "the global signature does not
   // verify", i.e. an operator repairing a signature on Windows was told it was forged.
-  const lines = text.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "").split(/\r?\n/u);
+  // ‼️ NOT TRIMMED, because `mod.rs` hands `Signature::decode` the text untouched — see
+  // `decodeStrictBase64`. One leading newline shifts every line by one and the crate then tries to
+  // base64-decode "untrusted comment: …", so a block with a blank first line is refused there and
+  // must be refused here.
+  const lines = rustLines(text);
   if (lines.length < 4) {
     throw new Error(
       `revocation signature has ${lines.length} lines, not 4 — the trusted comment or its global signature is missing`,
@@ -268,4 +295,17 @@ function parseSignature(text: string): ParsedSignature {
     signature: raw.subarray(ALGORITHM_BYTES + KEY_ID_BYTES),
     trustedComment: lines[2].slice(trustedCommentPrefix.length),
   };
+}
+
+/**
+ * Split like Rust's `str::lines()`: on "\n", dropping one trailing "\r" per line, and without a
+ * trailing empty line when the text ends in a newline.
+ *
+ * That last part is why `lines()` tolerates a final newline while refusing a LEADING one, and it
+ * is the behaviour both the 4-line count and the line indices depend on.
+ */
+function rustLines(text: string): string[] {
+  const lines = text.split("\n").map((line) => line.replace(/\r$/u, ""));
+  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  return lines;
 }

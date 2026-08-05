@@ -49,7 +49,17 @@ try {
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
-const size = statSync(path).size;
+// ‼️ INSIDE A `try` (code review MEDIUM-4). `statSync` sits ABOVE the JSON read, so a missing path
+// — a typo in the workflow, or a `live.json` the curl never wrote — produced the node stack trace
+// this file explicitly forbids fourteen lines below, undoing a property it had already paid for.
+let size: number;
+try {
+  size = statSync(path).size;
+} catch (error) {
+  fail(
+    `cannot be read — ${error instanceof Error ? error.message : String(error)}`,
+  );
+}
 if (size > cap) {
   fail(
     `${size} bytes exceeds the ${cap} the app will fetch — every client would fail to read this list, so no revocation in it would ever apply`,
