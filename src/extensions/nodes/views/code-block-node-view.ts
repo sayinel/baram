@@ -539,6 +539,18 @@ export class CodeBlockNodeView implements NodeView {
     // §298 Phase 0b — per-island vim controller (claimFocus false: a lazy
     // load must never steal focus from PM). Consume the broadcast memo.
     this.vimController = createVimController(this.cmView, this.vimCompartment, {
+      // §3 boundary contract: edge j/k/arrows leave the block through the
+      // SAME escape path as plain arrows; u/C-r go to PM — the island has
+      // no CM history, PM owns the document's undo (design v3).
+      boundaryHooks: {
+        escape: (dir) => maybeEscape(dir),
+        redo: () => {
+          redo(this.view.state, this.view.dispatch);
+        },
+        undo: () => {
+          undo(this.view.state, this.view.dispatch);
+        },
+      },
       claimFocus: false,
       editableCompartment: this.vimEditableCompartment,
       onError: () => {

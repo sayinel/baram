@@ -11,6 +11,10 @@ import { Prec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import {
+  attachVimBoundary,
+  type BoundaryHooks,
+} from "./vim-code-block-boundary";
+import {
   attachVimImeGuard,
   shouldBlockImeInput,
   type VimModeName,
@@ -27,6 +31,9 @@ export interface VimController {
 export interface VimControllerDeps {
   /** Test seam — defaults to the real IME guard. */
   attachGuard?: typeof attachVimImeGuard;
+  /** Phase 0b: island boundary hooks (edge j/k/arrows escape, u/C-r →
+   *  PM undo). Attached with the IME guard, detached with it too. */
+  boundaryHooks?: BoundaryHooks;
   /** Whether removing the editing host may PULL focus onto contentDOM.
    *  Source mode owns its surface (default true); a code-block island must
    *  never steal focus from PM on a lazy load (Phase 0b). */
@@ -62,10 +69,13 @@ export function createVimController(
   let disposed = false;
   let revision = 0;
   let guardDispose: (() => void) | null = null;
+  let boundaryDispose: (() => void) | null = null;
 
   const detachGuard = () => {
     guardDispose?.();
     guardDispose = null;
+    boundaryDispose?.();
+    boundaryDispose = null;
   };
 
   /** Latest requested editing-host state, applied on the next microtask. */
@@ -148,7 +158,12 @@ export function createVimController(
           // above, so getCM is non-null unless plugin creation itself failed —
           // in that unlikely case we simply run without the IME guard.
           const cm = mod.getCM(view);
-          if (cm) guardDispose = attach(view, cm, handleMode);
+          if (cm) {
+            guardDispose = attach(view, cm, handleMode);
+            if (deps.boundaryHooks) {
+              boundaryDispose = attachVimBoundary(view, cm, deps.boundaryHooks);
+            }
+          }
         })
         .catch((err: unknown) => {
           // token check: a STALE load's rejection is not this apply's error —
