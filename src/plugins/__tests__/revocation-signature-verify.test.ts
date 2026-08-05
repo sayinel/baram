@@ -23,11 +23,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { verifyRevocationSignature } from "../../../scripts/minisign-verify";
 import {
-  keyIdLabel,
+  revocationByteCap,
   shippedRevocationPublicKey,
-  verifyRevocationSignature,
-} from "../../../scripts/minisign-verify";
+} from "../../../scripts/rust-constants";
 
 const ROOT = resolve(__dirname, "../../..");
 const RUST_SOURCE = resolve(ROOT, "src-tauri/src/plugin/mod.rs");
@@ -47,6 +47,8 @@ const FROZEN_BODY = readFileSync(FIXTURE);
 const FROZEN_SIG = readFileSync(`${FIXTURE}.sig`, "utf8");
 
 interface Forged {
+  /** Raw little-endian key id bytes, as they sit on the wire. */
+  keyIdHex: string;
   publicKeyB64: string;
   signatureB64: string;
 }
@@ -106,9 +108,32 @@ function forge(
     "",
   ].join("\n");
   return {
+    keyIdHex: keyId.toString("hex"),
     publicKeyB64: Buffer.from(pubFile).toString("base64"),
     signatureB64: Buffer.from(sigFile).toString("base64"),
   };
+}
+
+const BASE64_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/**
+ * Bump the last DATA character of a base64 line, setting spare bits without changing the bytes.
+ *
+ * The payloads minisign uses never fill their last base64 group: 74 bytes leaves 2 spare bits and
+ * 64 leaves 4, so a decoder that ignores them reads exactly the same signature while Rust refuses
+ * the input outright.
+ */
+function nonCanonical(line: string): string {
+  const padding = /=*$/u.exec(line)?.[0] ?? "";
+  const data = line.slice(0, line.length - padding.length);
+  const last = BASE64_ALPHABET.indexOf(data[data.length - 1]);
+  return `${data.slice(0, -1)}${BASE64_ALPHABET[last + 1]}${padding}`;
+}
+
+/** Re-wrap a minisign block's text the way the app fetches it. */
+function wrap(text: string): string {
+  return Buffer.from(text, "utf8").toString("base64");
 }
 
 // An explicit budget, for the same reason the publish-gate suite carries one: two cases spawn
@@ -179,12 +204,74 @@ describe(
       ).toThrow(/global signature does not verify/u);
     });
 
+    it("REFUSES a bare key line, which the Rust crate refuses too", () => {
+      // ‼️ FOUND BY BOTH REVIEWS INDEPENDENTLY, each with a probe against the vendored crate. This
+      // used to be ACCEPTED, with a comment claiming `PublicKey::decode` accepts it as well — it
+      // does not: it takes `lines.next()` twice and errors on the second. The edit that reaches this
+      // is a key ROTATION pasting the key line alone, which would have gone green here and refused
+      // every list on every armed client.
+      const twoLine = Buffer.from(SHIPPED_KEY, "base64").toString("utf8");
+      const bare = Buffer.from(
+        `${twoLine.trim().split("\n")[1]}\n`,
+        "utf8",
+      ).toString("base64");
+      expect(() =>
+        verifyRevocationSignature(FROZEN_BODY, FROZEN_SIG, bare),
+      ).toThrow(/no key line/u);
+    });
+
+    it("REFUSES non-canonical base64 in the signature's inner lines", () => {
+      // ‼️ THE REACHABLE HALF OF THE CANONICALITY GAP (both reviews, MEDIUM-1). Every minisign
+      // signature has spare bits — the signature line decodes to 74 bytes and the global-signature
+      // line to 64 — so bumping the final data character of either leaves the decoded bytes
+      // IDENTICAL. Rust refuses it at decode; a verifier without this rule publishes a pair every
+      // client rejects. Asserted, not described: the bytes are shown to be unchanged first.
+      const text = Buffer.from(FROZEN_SIG.trim(), "base64").toString("utf8");
+      const lines = text.split("\n");
+      for (const index of [1, 3]) {
+        const mangled = [...lines];
+        mangled[index] = nonCanonical(lines[index]);
+        expect(mangled[index]).not.toBe(lines[index]);
+        expect(
+          Buffer.from(mangled[index], "base64").equals(
+            Buffer.from(lines[index], "base64"),
+          ),
+          "the mutation must not change the decoded bytes, or it proves something else",
+        ).toBe(true);
+        expect(() =>
+          verifyRevocationSignature(
+            FROZEN_BODY,
+            Buffer.from(mangled.join("\n")).toString("base64"),
+            SHIPPED_KEY,
+          ),
+        ).toThrow(/not canonical base64/u);
+      }
+    });
+
+    it("REFUSES a key whose base64 length is not a multiple of 4, alphabet clean", () => {
+      // ‼️ ONE RULE AT A TIME (code review HIGH-2). The single case that used to cover base64
+      // strictness tripped BOTH the alphabet check and the length check at once — the reviewer ran
+      // each mutation separately and both SURVIVED. Neither rule was pinned by a passing suite.
+      const shortened = SHIPPED_KEY.slice(0, -1);
+      expect(shortened.length % 4).not.toBe(0);
+      expect(/^[A-Za-z0-9+/]*={0,2}$/u.test(shortened)).toBe(true);
+      expect(() =>
+        verifyRevocationSignature(FROZEN_BODY, FROZEN_SIG, shortened),
+      ).toThrow(/not a multiple of 4/u);
+    });
+
     it("REFUSES a key mangled by whitespace that Node would decode anyway", () => {
       // ‼️ THE DIVERGENCE THIS GUARDS IS SILENT. `Buffer.from(value, "base64")` skips characters
       // outside the alphabet, so a key broken by a stray newline decodes to the SAME bytes here
       // and fails outright in Rust — CI green, every client refusing every list. Asserted rather
       // than described: the lenient decode is shown to succeed first.
-      const mangled = `${SHIPPED_KEY.slice(0, 20)}\n${SHIPPED_KEY.slice(20)}`;
+      //
+      // ‼️ FOUR NEWLINES, NOT ONE (code review HIGH-2). One made the length 153, which trips the
+      // multiple-of-4 rule as well, so this case passed no matter which of the two rules survived
+      // a mutation — and the reviewer showed both surviving. Four keeps the length a multiple of 4
+      // so the alphabet rule is the only thing that can refuse it.
+      const mangled = `${SHIPPED_KEY.slice(0, 20)}\n\n\n\n${SHIPPED_KEY.slice(20)}`;
+      expect(mangled.length % 4).toBe(0);
       expect(
         Buffer.from(mangled, "base64").equals(
           Buffer.from(SHIPPED_KEY, "base64"),
@@ -193,6 +280,94 @@ describe(
       expect(() =>
         verifyRevocationSignature(FROZEN_BODY, FROZEN_SIG, mangled),
       ).toThrow(/not base64/u);
+    });
+
+    it("REFUSES a BOM-prefixed wrapper, which Rust also refuses", () => {
+      // ‼️ JS `trim()` strips U+FEFF and Rust's does not (code review LOW-1), so a BOM left by an
+      // editor made a wrapper CI-green and client-refused. The trim here is an explicit ASCII set
+      // for exactly this reason.
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          `\uFEFF${SHIPPED_KEY}`,
+        ),
+      ).toThrow(/not base64/u);
+    });
+
+    it("ACCEPTS a CRLF signature, as Rust's str::lines() does", () => {
+      // The other direction: stricter than Rust blocks a publish rather than admitting a bad pair,
+      // but it told an operator repairing a `.sig` on Windows that the signature did not verify
+      // (code review LOW-2). `\r` is stripped where the crate strips it.
+      const text = Buffer.from(FROZEN_SIG.trim(), "base64").toString("utf8");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          wrap(text.replaceAll("\n", "\r\n")),
+          SHIPPED_KEY,
+        ),
+      ).not.toThrow();
+    });
+
+    it("REFUSES payloads of the wrong length, each with its own message", () => {
+      // Three length rules, none of which had a case: a 42-byte public key, a 74-byte signature
+      // payload and a 64-byte global signature. Each is a plausible one-line permissive edit, and
+      // dropping any of them lets a truncated file reach `crypto.verify` as a shape it cannot
+      // report on usefully.
+      const keyText = Buffer.from(SHIPPED_KEY, "base64").toString("utf8");
+      const keyLines = keyText.trim().split("\n");
+      const shortKey = Buffer.from(keyLines[1], "base64").subarray(0, 38);
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          wrap(`${keyLines[0]}\n${shortKey.toString("base64")}\n`),
+        ),
+      ).toThrow(/public key is 38 bytes/u);
+
+      const sigLines = Buffer.from(FROZEN_SIG.trim(), "base64")
+        .toString("utf8")
+        .split("\n");
+      const shortSignature = [...sigLines];
+      shortSignature[1] = Buffer.from(sigLines[1], "base64")
+        .subarray(0, 70)
+        .toString("base64");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          wrap(shortSignature.join("\n")),
+          SHIPPED_KEY,
+        ),
+      ).toThrow(/signature payload is 70 bytes/u);
+
+      const shortGlobal = [...sigLines];
+      shortGlobal[3] = Buffer.from(sigLines[3], "base64")
+        .subarray(0, 60)
+        .toString("base64");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          wrap(shortGlobal.join("\n")),
+          SHIPPED_KEY,
+        ),
+      ).toThrow(/global signature is 60 bytes/u);
+    });
+
+    it("REFUSES a public key whose algorithm marker is neither Ed nor ED", () => {
+      // Unreachable with real tooling, and the only rule in `parsePublicKey` that had no case.
+      const keyLines = Buffer.from(SHIPPED_KEY, "base64")
+        .toString("utf8")
+        .trim()
+        .split("\n");
+      const raw = Buffer.from(keyLines[1], "base64");
+      raw.write("XX", 0, "latin1");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          wrap(`${keyLines[0]}\n${raw.toString("base64")}\n`),
+        ),
+      ).toThrow(/algorithm is "XX"/u);
     });
 
     it("REFUSES a signature missing its global signature line", () => {
@@ -255,21 +430,64 @@ describe(
       expect(() => shippedRevocationPublicKey(`${rust}\n${rust}`)).toThrow(
         /found 2 declarations/u,
       );
-      // The key that ships is the one the anchor above verified with, stated as an identity so a
-      // scan that started matching a comment instead would fail here.
+      // ‼️ The key id comes from the VERIFIER, not from a parse written here (code review LOW-8).
+      // A third hand-rolled copy of this extraction is the same "scans *a* value" shape the scan
+      // above exists to avoid — and the id it produced could differ from the key that verified,
+      // which is precisely what the gate script printed as its proof.
       expect(
-        keyIdLabel(
-          Buffer.from(
-            Buffer.from(SHIPPED_KEY, "base64")
-              .toString("utf8")
-              .trim()
-              .split("\n")[1],
-            "base64",
-          )
-            .subarray(2, 10)
-            .toString("hex"),
-        ),
+        verifyRevocationSignature(FROZEN_BODY, FROZEN_SIG, SHIPPED_KEY).keyId,
       ).toBe("16E6BEB0A78A3BB4");
+    });
+
+    it("returns the key id it actually verified with, not a fixed one", () => {
+      // ‼️ THE CASE THAT KILLS A HARDCODED RETURN (round-2 mutation R9 survived without it).
+      // Asserting the shipped id alone cannot tell a computed value from the literal
+      // "16E6BEB0A78A3BB4", and that id is what the gate prints as its proof. A forged key has a
+      // random id, so only a computed value can match it.
+      const { keyIdHex, publicKeyB64, signatureB64 } = forge(FROZEN_BODY);
+      const expected = Buffer.from(Buffer.from(keyIdHex, "hex"))
+        .reverse()
+        .toString("hex")
+        .toUpperCase();
+      expect(
+        verifyRevocationSignature(FROZEN_BODY, signatureB64, publicKeyB64)
+          .keyId,
+      ).toBe(expected);
+      expect(expected).not.toBe("16E6BEB0A78A3BB4");
+    });
+
+    it("reads the byte cap clients apply, and refuses an ambiguous source", () => {
+      // ‼️ TESTABLE ONLY BECAUSE THE SCRAPE TAKES TEXT (round-2 mutation R13 survived while it read
+      // the file itself: with no way to feed it two declarations, loosening `!== 1` to `< 1`
+      // changed nothing any test could see).
+      const rust = readFileSync(RUST_SOURCE, "utf8");
+      expect(revocationByteCap(rust)).toBe(1024 * 1024);
+      expect(() => revocationByteCap(`${rust}\n${rust}`)).toThrow(
+        /found 2 declarations/u,
+      );
+      expect(() => revocationByteCap("nothing here")).toThrow(
+        /found 0 declarations/u,
+      );
+      // A product is the only accepted form: anything else must throw rather than read as a
+      // smaller number.
+      expect(() =>
+        revocationByteCap("const MAX_REVOCATION_BYTES: usize = 0;"),
+      ).toThrow(/cannot read/u);
+    });
+
+    it("tolerates the &'static str spelling of the declaration", () => {
+      // ‼️ Counting stops a declaration being ADDED; it cannot stop the real one being respelled so
+      // the pattern misses it while a planted comment matches (security review HIGH-2). The
+      // spellings a formatter or a reviewer might produce stay counted; the rest is closed in the
+      // gate script, which checks the scraped key against the frozen pair.
+      expect(
+        shippedRevocationPublicKey(
+          'pub const REVOCATION_PUBLIC_KEY: &\'static str =\n    "abc";',
+        ),
+      ).toBe("abc");
+      expect(
+        shippedRevocationPublicKey('REVOCATION_PUBLIC_KEY : &str = "abc";'),
+      ).toBe("abc");
     });
   },
 );

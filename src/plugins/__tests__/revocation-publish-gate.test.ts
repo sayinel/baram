@@ -40,16 +40,38 @@ const ROOT = resolve(__dirname, "../../..");
 const WORKFLOW = resolve(ROOT, ".github/workflows/revocation-publish.yml");
 const STEP = "A changed list must carry a higher counter than the registry's";
 
-/** The `run: |` body of a named step: every line indented deeper than the `run:` key. */
+/**
+ * The `run: |` body of a named step: every line indented deeper than the `run:` key.
+ *
+ * ‼️ THE `run:` MUST BELONG TO THE NAMED STEP (code review, then reproduced). This used to take
+ * the first `run: |` at or after the step's name with no upper bound, so a step written in the
+ * one-line `run: rm -f …` form made the window slide silently into the NEXT step that used the
+ * block form — and the assertion then ran against a body from somewhere else entirely. Every
+ * existing call site happened to survive it because each checks the content it expects; the case
+ * that exposed it was a new assertion about a one-line step, which is not a shape a caller should
+ * have to know about.
+ */
 function stepScript(workflow: string, stepName: string): string {
   const lines = workflow.split("\n");
   const start = lines.findIndex(
     (line) => line.includes(stepName) && line.trimStart().startsWith("- name:"),
   );
   expect(start, `step not found: ${stepName}`).toBeGreaterThan(-1);
-  const runAt = lines.findIndex(
-    (line, i) => i >= start && line.trim() === "run: |",
+  const stepIndent = lines[start].length - lines[start].trimStart().length;
+  const end = lines.findIndex(
+    (line, i) =>
+      i > start &&
+      line.length - line.trimStart().length === stepIndent &&
+      /^- (name|uses):/u.test(line.trimStart()),
   );
+  const runAt = lines.findIndex(
+    (line, i) =>
+      i >= start && (end === -1 || i < end) && line.trim() === "run: |",
+  );
+  expect(
+    runAt,
+    `step "${stepName}" has no \`run: |\` block of its own`,
+  ).toBeGreaterThan(-1);
   const indent = lines[runAt].length - lines[runAt].trimStart().length + 2;
   const body: string[] = [];
   for (const line of lines.slice(runAt + 1)) {
@@ -87,6 +109,41 @@ interface GateRun {
 }
 
 /**
+ * The real pair frozen when the key was armed — the only bytes in the repo whose signature
+ * actually verifies.
+ *
+ * ‼️ NEEDED BECAUSE THE GATE NOW VERIFIES THE REGISTRY'S SIGNATURE (code review MEDIUM-2). While
+ * the step only ran `test -f`, a fixture of `"not checked here"` was enough, and that is exactly
+ * why no case could tell a present signature from a valid one. Deciding `publish` on validity
+ * means the "nothing to publish" case has to be a pair that genuinely verifies, and synthetic
+ * documents cannot be signed here — there is no key.
+ */
+const FROZEN = resolve(
+  ROOT,
+  "src-tauri/src/plugin/testdata/revoked-at-arming.json",
+);
+const FROZEN_BODY = readFileSync(FROZEN);
+const FROZEN_SIG = readFileSync(`${FROZEN}.sig`);
+
+/**
+ * The counter cases, which vary documents rather than bytes.
+ *
+ * Formatted the way prettier writes the real file, so `cmp` compares realistic bytes — the
+ * trailing newline is part of what "byte-identical" has to mean in practice. The signature is the
+ * frozen one: these cases all differ from `previous`, so the gate never reaches the branch that
+ * reads it, and handing it a valid signature keeps that true if the branch order ever changes.
+ */
+function gate(ours: Doc, previous: Doc | null): GateRun {
+  const serialise = (doc: Doc): Buffer =>
+    Buffer.from(`${JSON.stringify(doc, null, 2)}\n`);
+  return gateRaw(
+    serialise(ours),
+    previous === null ? null : serialise(previous),
+    FROZEN_SIG,
+  );
+}
+
+/**
  * Runs the gate with `ours` in the workspace and `previous` in the registry clone.
  *
  * ‼️ TWO DIRECTORIES, because the step reads `registry/revoked.json` relative to the workspace
@@ -94,35 +151,24 @@ interface GateRun {
  * which the previous harness could get away with — makes them the same file, and every case
  * would then compare a document with itself.
  *
- * `previous: null` is the bootstrap state: the registry has no list yet. `signed: false` is the
- * state before the first signing publish — list present, signature missing.
+ * `previous: null` is the bootstrap state: the registry has no list yet. `sig: null` is the state
+ * before the first signing publish — list present, signature missing.
  */
-function gate(
-  ours: Doc,
-  previous: Doc | null,
-  { signed = true }: { signed?: boolean } = {},
+function gateRaw(
+  ours: Buffer,
+  previous: Buffer | null,
+  sig: Buffer | null,
 ): GateRun {
   const dir = mkdtempSync(join(tmpdir(), "baram-gate-"));
   const workspace = join(dir, "workspace");
   const temp = join(dir, "temp");
   mkdirSync(join(workspace, "registry"), { recursive: true });
   mkdirSync(join(temp, "registry"), { recursive: true });
-  // Formatted the way prettier writes the real file, so `cmp` compares realistic bytes —
-  // the trailing newline is part of what "byte-identical" has to mean in practice.
-  writeFileSync(
-    join(workspace, "registry/revoked.json"),
-    `${JSON.stringify(ours, null, 2)}\n`,
-  );
+  writeFileSync(join(workspace, "registry/revoked.json"), ours);
   if (previous !== null) {
-    writeFileSync(
-      join(temp, "registry/revoked.json"),
-      `${JSON.stringify(previous, null, 2)}\n`,
-    );
-    if (signed) {
-      writeFileSync(
-        join(temp, "registry/revoked.json.sig"),
-        "not checked here",
-      );
+    writeFileSync(join(temp, "registry/revoked.json"), previous);
+    if (sig !== null) {
+      writeFileSync(join(temp, "registry/revoked.json.sig"), sig);
     }
   }
   // `registry/revoked.json` is a relative path in the workflow, so the gate runs from the
@@ -244,9 +290,15 @@ const CHANGED: Doc = {
 // suite, and this file is what pushed `malicious-fixture.test.ts` — the other test that runs a
 // workflow step for real — past its own default. A ceiling, not a delay.
 describe("the revocation publish gate", { timeout: 30_000 }, () => {
-  it("treats a byte-identical signed list as nothing to publish, not as a rollback", () => {
-    // ‼️ HIGH-3. This is the STEADY STATE, and the manual re-sync hits it every time.
-    const { output, publish, status } = gate(EMPTY, EMPTY);
+  it("treats a byte-identical list with a VERIFYING signature as nothing to publish", () => {
+    // ‼️ HIGH-3. This is the STEADY STATE, and the manual re-sync hits it every time. The pair is
+    // the frozen one, so "nothing to publish" is reached through a signature that really verifies
+    // rather than through a file that merely exists.
+    const { output, publish, status } = gateRaw(
+      FROZEN_BODY,
+      FROZEN_BODY,
+      FROZEN_SIG,
+    );
     expect(status).toBe(0);
     expect(output).toContain("nothing to publish");
     // The flag is the whole consequence: it is what keeps the signing key out of the run.
@@ -257,9 +309,24 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     // ‼️ Security review MEDIUM-2, now visible to a test. Identical bytes with no `.sig` was
     // permanently unrecoverable: the change check said "nothing to publish", verification then
     // failed on every re-run, and the documented re-sync could not repair it.
-    const { output, publish, status } = gate(EMPTY, EMPTY, { signed: false });
+    const { output, publish, status } = gateRaw(FROZEN_BODY, FROZEN_BODY, null);
     expect(status).toBe(0);
     expect(output).toContain("re-signing");
+    expect(publish).toBe("true");
+  });
+
+  it("re-signs an unchanged list whose signature does NOT verify", () => {
+    // ‼️ THE CASE `test -f` COULD NOT SEE (code review MEDIUM-2). A corrupt-but-present signature
+    // used to mean "nothing to publish", so nothing re-signed — and the post-publish check added
+    // in this same change then failed on every re-run, with no path back that this review chain
+    // accepts. Detection without repair is worse than neither.
+    const { output, publish, status } = gateRaw(
+      FROZEN_BODY,
+      FROZEN_BODY,
+      Buffer.from("this is not a signature\n"),
+    );
+    expect(status).toBe(0);
+    expect(output).toContain("does not verify");
     expect(publish).toBe("true");
   });
 
@@ -363,10 +430,16 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     expect(status).toBe(0);
   });
 
-  it("counts a malformed PREVIOUS counter as 0, the value clients hold", () => {
-    // The mirror of the case above: if the published document's counter is unreadable then
-    // every client is sitting at 0, so publishing 2 is a genuine advance and must not be
-    // refused.
+  it("counts a malformed PREVIOUS counter as 0, so a real advance is not refused", () => {
+    // The mirror of the case above: a document whose counter no client can read is one no client
+    // has advanced past, so publishing 2 is a genuine advance and must not be refused as a
+    // rollback.
+    //
+    // ‼️ The earlier version of this comment said "every client is sitting at 0", which is FALSE
+    // post-arming (security review LOW-3, code review LOW-4): a client starts every session at
+    // `max(MINIMUM_REVOCATION_SEQUENCE, high-water)` — 1 today — so a published 2 is above the
+    // floor for a different reason than this test's rationale claimed. The gate's behaviour is
+    // right; the sentence justifying it was not.
     const { output, status } = gate(
       { ...CHANGED, sequence: 2 },
       {
@@ -396,31 +469,46 @@ describe("the revocation publish workflow's shape", () => {
     throw new Error(`line ${line} is not inside a named step`);
   }
 
-  it("puts the signing key in exactly one step, and that step only signs", () => {
+  it("puts the signing SECRET in exactly one step, and that step only signs", () => {
     // ‼️ THE BLAST RADIUS IS THE PROPERTY (security review LOW). Any merge touching
     // `registry/revoked.json` runs this workflow with the revocation signing key available, and
     // the same merge can land arbitrary repository TypeScript. Job-level env, or one more step
-    // inside the block that holds it, silently hands the key to `npx tsx` — so the count is
-    // asserted rather than the placement being left to review.
+    // inside the block that holds it, silently hands the key to `npx tsx`.
+    //
+    // ‼️ IT SCANS THE SECRET REFERENCE, NOT THE VARIABLE NAME (security review MEDIUM-3, which
+    // proved this test green against the injection it claims to catch). The first version counted
+    // lines matching `TAURI_SIGNING_PRIVATE_KEY:` — tauri's env var name — so
+    // `EXFIL: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY }}` in any other step passed. The thing
+    // that leaks is the SECRET, under whatever name, and my own mutation was aimed at the token
+    // the test measured rather than at the property, which is how it survived review and not this.
     const lines = workflow.split("\n");
-    // ‼️ Anchored at the line start and ending at the colon: `TAURI_SIGNING_PRIVATE_KEY` is a
-    // PREFIX of `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, so a substring search finds two lines and
-    // "exactly one" would be unsatisfiable for a correct workflow.
-    const keyLines = lines
+    const secretLines = lines
       .map((line, index) => ({ index, line }))
-      .filter(({ line }) => /^TAURI_SIGNING_PRIVATE_KEY:/u.test(line.trim()));
-    expect(keyLines).toHaveLength(1);
-    const owner = stepContaining(keyLines[0].index);
-    expect(owner).toBe("Sign the list");
-    const body = stepScript(workflow, owner);
-    expect(body).toContain("tauri signer sign");
-    // The two things that must NOT share the environment: this repository's scripts, and the
-    // push. Both were in this step before it was split.
-    expect(body).not.toContain("npx tsx");
-    expect(body).not.toContain("git push");
+      .filter(({ line }) =>
+        line.includes("secrets.BARAM_REVOCATION_SIGNING_KEY"),
+      );
+    // Two: the key and its password. Both belong to the same step, and asserting the count keeps
+    // "exactly one step" from being satisfied by a step that happens to hold only one of them.
+    expect(secretLines).toHaveLength(2);
+    for (const { index } of secretLines) {
+      expect(stepContaining(index)).toBe("Sign the list");
+    }
+    // ‼️ AN ALLOWLIST, NOT A DENYLIST (code review LOW-9 / `enumerated-denylist-over-open-set`).
+    // The first version forbade `npx tsx` and `git push` by name, which admits the next command
+    // added to this step by DEFAULT — and the step's own comment claims it runs nothing but `cp`
+    // and the signer. Every command line in the body must be one of those two.
+    const body = stepScript(workflow, "Sign the list");
+    const commands = body
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    expect(commands).toEqual([
+      'cp registry/revoked.json "$RUNNER_TEMP/registry/revoked.json"',
+      'npx tauri signer sign "$RUNNER_TEMP/registry/revoked.json"',
+    ]);
   });
 
-  it("removes the deploy key even when a step before it failed", () => {
+  it("removes the deploy key it wrote, even when a step before it failed", () => {
     // A failed gate or a failed signature must not leave a key with push access to the registry
     // on a runner that goes on to execute repository TypeScript. Without `always()` the cleanup
     // is skipped on exactly the runs where it matters most.
@@ -428,13 +516,31 @@ describe("the revocation publish workflow's shape", () => {
     const push = stepMeta(workflow, "Commit and push");
     expect(cleanup.condition).toBe("always()");
     expect(cleanup.index).toBeGreaterThan(push.index);
+    // ‼️ THE BODY IS READ, AND THE PATH IS DERIVED FROM THE STEP THAT WROTE IT (security review
+    // MEDIUM-4). Asserting only `always()` and the position left the cleanup free to remove some
+    // other path — the step would still be present, still `always()`, still after the push, and
+    // the key would still be on disk. The path is taken from the clone step so the two cannot
+    // drift apart silently.
+    const written = /> (~\/\.ssh\/[A-Za-z0-9_-]+)$/mu.exec(
+      stepScript(workflow, "Clone the registry"),
+    );
+    expect(
+      written,
+      "the clone step must write the deploy key to a file",
+    ).not.toBeNull();
+    expect(
+      stepScript(workflow, "Remove the deploy key from the runner"),
+    ).toContain(`rm -f ${written?.[1]}`);
   });
 
   it("verifies the signature BEFORE pushing and again on what Pages serves", () => {
-    // ‼️ TWO CHECKS, TWO WINDOWS, AND NEITHER SUBSUMES THE OTHER. The pre-push one keeps an
-    // unverifiable pair off Pages; the post-publish one is the ONLY check that covers a run
-    // which publishes nothing, which is the steady state and the state every pair published
-    // before this gate existed is in. Collapse them into one and one of those goes uncovered.
+    // ‼️ TWO CHECKS, TWO WINDOWS. The post-publish one is the ONLY check that covers a run which
+    // publishes nothing — the steady state, and the state every pair published before this gate
+    // existed is in. The pre-push one earns its place on TIMING (an unverifiable pair never
+    // reaches Pages) plus exactly one coverage row: when Pages lags past the retry loop the
+    // post-publish step is skipped and the pre-push check is the only verification that ran. The
+    // first version of this comment claimed neither subsumes the other, which overstates it — on
+    // every publishing path the post-publish check is a coverage superset (code review).
     const beforePush = stepMeta(
       workflow,
       "An armed client must accept the signed list",

@@ -50,6 +50,31 @@ describe("validate-revocations", () => {
     expect(status).toBe(0);
   });
 
+  it("REFUSES a list larger than the app will ever fetch", () => {
+    // ‼️ THE ONLY FAIL-OPEN LEFT IN THE PUBLISH PATH (security review MEDIUM-2). Rust caps the
+    // fetch at `MAX_REVOCATION_BYTES`, and nothing here measured size — so a padded `reason` would
+    // validate, sign, verify and publish green, and then every client's fetch would error. No new
+    // revocation would ever land and a fresh install would receive none at all. One merged PR is
+    // the whole capability, and since it is not a Rust change the rust job need not even run.
+    const { output, status } = run({
+      revoked: [
+        {
+          id: "x",
+          reason: "y".repeat(1024 * 1024),
+          severity: "unlisted",
+          versions: "*",
+        },
+      ],
+      sequence: 1,
+      version: 1,
+    });
+    expect(status).toBe(1);
+    // The number is the cross-language contract: the script reads it out of the Rust that enforces
+    // it, so seeing 1048576 here is what says the scrape found the constant rather than a factor
+    // of it.
+    expect(output).toContain("exceeds the 1048576");
+  });
+
   it("refuses the document `null` with a sentence, not a stack trace", () => {
     // ‼️ `null` is a valid one-word JSON document, and reading `.revoked` off it threw an
     // uncaught TypeError instead of the refusal below. This script is pointed at a

@@ -94,19 +94,26 @@ jobs:
           # erroring on it hard-failed every ordinary re-run, including the `workflow_dispatch`
           # re-sync. Only a DIFFERENT list whose counter fails to advance is a rollback.
           if cmp -s "$PREVIOUS" registry/revoked.json; then
-            # ‼️ `test -f` on the signature as well as the byte comparison (security review
-            # MEDIUM-2). Excluding the signature from the change check is right — minisign puts a
-            # timestamp in the trusted comment, so re-signing identical bytes yields a different
-            # signature and every unrelated run would look like a change. But it also made a
-            # MISSING or corrupt `.sig` permanently unrecoverable: identical bytes meant no
-            # signing, verification then failed on every re-run, and the documented re-sync could
-            # not repair it. Re-signing an unchanged list is cheap; being unable to is not.
-            if [ -f "$RUNNER_TEMP/registry/revoked.json.sig" ]; then
-              echo "::notice::The registry already has this exact list and a signature — nothing to publish."
+            # ‼️ The signature is excluded from the byte comparison on purpose (security review
+            # MEDIUM-2): minisign puts a timestamp in the trusted comment, so re-signing identical
+            # bytes yields a DIFFERENT signature, and staging it would make every unrelated run
+            # look like a change and rebuild Pages for a list nobody edited.
+            #
+            # ‼️ AND THE EXISTING SIGNATURE IS VERIFIED, NOT MERELY COUNTED (code review MEDIUM-2).
+            # `test -f` answers "missing", never "corrupt" — and the post-publish check added in
+            # this same change newly turns a corrupt one into a PERMANENTLY red workflow: identical
+            # bytes meant `publish=false`, so nothing re-signed, so every re-run failed at the same
+            # step, with the only escapes being the two this review chain rejected (a hand-push to
+            # the Pages repo, or editing the list to force a counter bump nobody needs). Deciding
+            # re-sign vs nothing-to-do on whether the signature VERIFIES makes that self-repairing.
+            if [ -f "$RUNNER_TEMP/registry/revoked.json.sig" ] &&
+               npx tsx scripts/verify-revocation-signature.ts \
+                 "$PREVIOUS" "$RUNNER_TEMP/registry/revoked.json.sig"; then
+              echo "::notice::The registry already has this exact list and a signature that verifies — nothing to publish."
               echo "publish=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::notice::Same list, no signature in the registry — re-signing without a counter bump."
+            echo "::notice::Same list, but the registry has no signature or one that does not verify — re-signing without a counter bump."
             echo "publish=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -188,7 +195,8 @@ jobs:
       # so removing the file after the push costs nothing.
       - name: Remove the deploy key from the runner
         if: always()
-        run: rm -f ~/.ssh/plugins_deploy
+        run: |
+          rm -f ~/.ssh/plugins_deploy
 
       # A push that succeeded is not a file that is being served. Pages takes a moment
       # to rebuild, so this retries rather than asserting immediately — and it fails
@@ -236,6 +244,12 @@ jobs:
       # that position, including the one live today. Verifying what Pages serves on every run is
       # what makes "the list users hold is acceptable to an armed client" a property of the
       # repository rather than a fact about one historical run.
+      #
+      # ‼️ THE CONVERSE IS NARROWER THAN IT FIRST READS (code review correction). On every
+      # PUBLISHING path this step's coverage is a superset of the pre-push one, so the pre-push
+      # check earns its place on timing — keeping a bad pair off Pages — plus exactly one coverage
+      # row: when Pages lags past the retry loop, THIS step is skipped and the pre-push check is
+      # the only verification that ran.
       #
       # It reads the files the step above left behind, which under a `success()` chain are the
       # bytes Pages served AND are byte-identical to the registry copy.

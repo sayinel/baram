@@ -1,3 +1,5 @@
+import type { KeyObject } from "node:crypto";
+
 /**
  * Verify a detached minisign signature over the revocation list, in Node (§69).
  *
@@ -37,8 +39,6 @@
 import { Buffer } from "node:buffer";
 import { createHash, createPublicKey, verify } from "node:crypto";
 
-import type { KeyObject } from "node:crypto";
-
 /** DER prelude for a raw Ed25519 public key, so `createPublicKey` will take 32 bytes. */
 const SPKI_ED25519_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
@@ -66,103 +66,35 @@ interface ParsedSignature {
   trustedComment: string;
 }
 
-/**
- * base64-decode the way Rust's `decode_b64_text` does, or throw.
- *
- * Leading and trailing whitespace is trimmed (Rust trims too); anything else outside the
- * alphabet is a refusal rather than a silent skip.
- */
-function decodeStrictBase64(value: string, what: string): Buffer {
-  const trimmed = value.trim();
-  if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(trimmed) || trimmed.length % 4 !== 0) {
-    throw new Error(`revocation ${what} is not base64`);
-  }
-  return Buffer.from(trimmed, "base64");
-}
-
-/** Parse a minisign `.pub` file's text: a comment line, then the key line. */
-function parsePublicKey(text: string): ParsedPublicKey {
-  // A bare key line is accepted as well as the two-line file, because `PublicKey::decode` is.
-  const lines = text.trim().split("\n");
-  const keyLine = lines.length > 1 ? lines[1] : lines[0];
-  const raw = decodeStrictBase64(keyLine, "public key");
-  if (raw.length !== ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_PUBLIC_KEY_BYTES) {
-    throw new Error(
-      `revocation public key is ${raw.length} bytes, not ${
-        ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_PUBLIC_KEY_BYTES
-      } — truncated, or not a minisign public key`,
-    );
-  }
-  const algorithm = raw.subarray(0, ALGORITHM_BYTES).toString("latin1");
-  if (algorithm !== LEGACY_ALGORITHM) {
-    throw new Error(
-      `revocation public key algorithm is "${algorithm}", not Ed25519`,
-    );
-  }
-  return {
-    key: createPublicKey({
-      format: "der",
-      key: Buffer.concat([
-        SPKI_ED25519_PREFIX,
-        raw.subarray(ALGORITHM_BYTES + KEY_ID_BYTES),
-      ]),
-      type: "spki",
-    }),
-    keyId: raw.subarray(ALGORITHM_BYTES, ALGORITHM_BYTES + KEY_ID_BYTES).toString("hex"),
-  };
+/** minisign prints key ids big-endian; the bytes on the wire are little-endian. */
+export function keyIdLabel(keyIdHex: string): string {
+  return (
+    (keyIdHex.match(/../gu) ?? [])
+      .reverse()
+      .join("")
+      .toUpperCase() || "unknown"
+  );
 }
 
 /**
- * Parse a minisign `.sig` file's text: untrusted comment, signature, trusted comment, global
- * signature. All four lines are required, as `Signature::decode` requires them.
- */
-function parseSignature(text: string): ParsedSignature {
-  const lines = text.trim().split("\n");
-  if (lines.length < 4) {
-    throw new Error(
-      `revocation signature has ${lines.length} lines, not 4 — the trusted comment or its global signature is missing`,
-    );
-  }
-  const trustedCommentPrefix = "trusted comment: ";
-  if (!lines[2].startsWith(trustedCommentPrefix)) {
-    throw new Error("revocation signature has no trusted comment line");
-  }
-  const raw = decodeStrictBase64(lines[1], "signature");
-  if (raw.length !== ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_SIGNATURE_BYTES) {
-    throw new Error(
-      `revocation signature payload is ${raw.length} bytes, not ${
-        ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_SIGNATURE_BYTES
-      } — truncated`,
-    );
-  }
-  const globalSignature = decodeStrictBase64(lines[3], "global signature");
-  if (globalSignature.length !== ED25519_SIGNATURE_BYTES) {
-    throw new Error(
-      `revocation global signature is ${globalSignature.length} bytes, not ${ED25519_SIGNATURE_BYTES}`,
-    );
-  }
-  return {
-    algorithm: raw.subarray(0, ALGORITHM_BYTES).toString("latin1"),
-    globalSignature,
-    keyId: raw.subarray(ALGORITHM_BYTES, ALGORITHM_BYTES + KEY_ID_BYTES).toString("hex"),
-    signature: raw.subarray(ALGORITHM_BYTES + KEY_ID_BYTES),
-    trustedComment: lines[2].slice(trustedCommentPrefix.length),
-  };
-}
-
-/**
- * Throw unless `body` is signed by `publicKeyB64`, and return the trusted comment.
+ * Throw unless `body` is signed by `publicKeyB64`; return the trusted comment and the key id.
  *
  * Same argument shape as the Rust `verify_revocation_signature(body, signature_b64,
  * public_key_b64)` on purpose: both the key and the signature arrive base64-WRAPPED around a
  * minisign block, which is what `tauri signer` emits and what the app stores and fetches. One
  * fewer difference between the two implementations to reason about.
+ *
+ * ‼️ IT RETURNS THE KEY ID SO NOBODY RE-DERIVES IT (code review LOW-8, security review LOW-5).
+ * The gate script printed an id from its own second parse — lenient base64, and the LAST line
+ * rather than line 2 — so the id offered as proof could come from a different line than the key
+ * that actually verified. Three unshared scans of one value is the same shape as the mistake this
+ * feature has made four times; one return value deletes two of them.
  */
 export function verifyRevocationSignature(
   body: Uint8Array,
   signatureB64: string,
   publicKeyB64: string,
-): { trustedComment: string } {
+): { keyId: string; trustedComment: string } {
   const { key, keyId } = parsePublicKey(
     decodeStrictBase64(publicKeyB64, "public key").toString("utf8"),
   );
@@ -203,39 +135,137 @@ export function verifyRevocationSignature(
   ) {
     throw new Error("revocation trusted comment's global signature does not verify");
   }
-  return { trustedComment: parsed.trustedComment };
+  return { keyId: keyIdLabel(keyId), trustedComment: parsed.trustedComment };
 }
 
 /**
- * The revocation key a build of the app verifies with, read out of its Rust source.
+ * base64-decode the way Rust does, or throw. THREE independent rules, each with its own case.
  *
- * ‼️ COUNT-ASSERTED, AND SHARED WITH THE TEST FOR THAT REASON. `REVOCATION_PUBLIC_KEY` also
- * appears in comments, at call sites and in Rust's own tests, so a scan that took the first
- * match could read a value that is not the one that ships — `dev/backlog.md` records four
- * separate times this feature made exactly that mistake. Exactly one DECLARATION must match.
+ * ‼️ THE CANONICALITY RULE IS THE REACHABLE ONE, and the first version of this file disclosed it
+ * as if it were not (code review MEDIUM-1). Both Rust decoders refuse a final character whose
+ * spare bits are non-zero — `base64`'s `decode_allow_trailing_bits: false` and
+ * `minisign-verify/src/base64.rs`'s `(acc & mask) != 0`. Every minisign signature HAS spare bits:
+ * the signature line decodes to 74 bytes (2 spare) and the global-signature line to 64 (4
+ * spare), so bumping the last character of either leaves the decoded bytes identical, and a
+ * verifier without this rule accepts a `.sig` every armed client refuses at decode. The original
+ * docstring called the gap "not chased" and attributed it to the outer wrapper, which is the
+ * half with no padding at all — a disclosure that pointed away from the live case.
  *
- * It is a function over source TEXT rather than a file reader so the gate script and its test
- * call the same code. Two copies of a scan is two scans that can disagree, and the one in the
- * test would be the one that stays green.
+ * Re-encoding is the whole rule: Node emits canonical base64, so a round trip that does not
+ * reproduce the input had non-zero spare bits or non-canonical padding.
+ *
+ * ‼️ TRIMMED WITH AN ASCII SET, NOT `String.prototype.trim()` (code review LOW-1). JS trims
+ * U+FEFF; Rust's `str::trim()` uses the White_Space property, which does not — so a BOM-prefixed
+ * key was accepted here and refused there. The remaining difference is the other way round
+ * (Rust also trims U+00A0 and friends, which nothing emits), so it can only refuse a publish.
  */
-export function shippedRevocationPublicKey(rustSource: string): string {
-  const declarations = [
-    ...rustSource.matchAll(/REVOCATION_PUBLIC_KEY: &str =\s*"([^"]*)"/gu),
-  ];
-  if (declarations.length !== 1) {
+function decodeStrictBase64(value: string, what: string): Buffer {
+  const trimmed = value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "");
+  if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(trimmed)) {
+    throw new Error(`revocation ${what} is not base64`);
+  }
+  if (trimmed.length % 4 !== 0) {
     throw new Error(
-      `found ${declarations.length} declarations of REVOCATION_PUBLIC_KEY — refusing to guess which one ships`,
+      `revocation ${what} is ${trimmed.length} base64 characters, not a multiple of 4`,
     );
   }
-  return declarations[0][1];
+  const decoded = Buffer.from(trimmed, "base64");
+  if (decoded.toString("base64") !== trimmed) {
+    throw new Error(`revocation ${what} is not canonical base64`);
+  }
+  return decoded;
 }
 
-/** minisign prints key ids big-endian; the bytes on the wire are little-endian. */
-export function keyIdLabel(keyIdHex: string): string {
-  return (
-    (keyIdHex.match(/../gu) ?? [])
-      .reverse()
-      .join("")
-      .toUpperCase() || "unknown"
-  );
+/**
+ * Parse a minisign `.pub` file's text: a comment line, then the key line.
+ *
+ * ‼️ THE KEY LINE IS LINE 2, UNCONDITIONALLY (code review + security review HIGH-1, found
+ * independently). This used to fall back to line 1 for a single-line input, with a comment
+ * claiming `PublicKey::decode` does the same. It does not: `minisign-verify-0.2.5/src/lib.rs`
+ * `decode` calls `lines.next()` twice and `ok_or(InvalidEncoding)?` on the second, so a bare key
+ * line is refused. `from_base64` is the method that accepts one, and `mod.rs` calls `decode`.
+ *
+ * The edit that would have hit it is a key ROTATION pasting the key line alone — natural, since
+ * the constant is an opaque blob. Both gate steps would have gone green and every armed client
+ * would have refused every list with "public key is unusable", which is verbatim the outcome
+ * this file exists to prevent.
+ */
+function parsePublicKey(text: string): ParsedPublicKey {
+  const lines = text.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "").split(/\r?\n/u);
+  if (lines.length < 2) {
+    throw new Error(
+      "revocation public key has no key line — a minisign public key is a comment line followed by the key",
+    );
+  }
+  const raw = decodeStrictBase64(lines[1], "public key");
+  if (raw.length !== ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_PUBLIC_KEY_BYTES) {
+    throw new Error(
+      `revocation public key is ${raw.length} bytes, not ${
+        ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_PUBLIC_KEY_BYTES
+      } — truncated, or not a minisign public key`,
+    );
+  }
+  // ‼️ BOTH CASINGS, because `from_base64` accepts `Ed` and `ED` for a public key (code review
+  // LOW-3). Requiring one was stricter than Rust — it can only block a publish, never admit a bad
+  // pair, but a refusal whose message reads "not Ed25519" for a key Rust loads fine would send
+  // whoever hits it looking in the wrong place.
+  const algorithm = raw.subarray(0, ALGORITHM_BYTES).toString("latin1");
+  if (algorithm !== LEGACY_ALGORITHM && algorithm !== PREHASHED_ALGORITHM) {
+    throw new Error(
+      `revocation public key algorithm is "${algorithm}", not Ed25519`,
+    );
+  }
+  return {
+    key: createPublicKey({
+      format: "der",
+      key: Buffer.concat([
+        SPKI_ED25519_PREFIX,
+        raw.subarray(ALGORITHM_BYTES + KEY_ID_BYTES),
+      ]),
+      type: "spki",
+    }),
+    keyId: raw.subarray(ALGORITHM_BYTES, ALGORITHM_BYTES + KEY_ID_BYTES).toString("hex"),
+  };
+}
+
+/**
+ * Parse a minisign `.sig` file's text: untrusted comment, signature, trusted comment, global
+ * signature. All four lines are required, as `Signature::decode` requires them.
+ */
+function parseSignature(text: string): ParsedSignature {
+  // ‼️ CRLF IS STRIPPED, as `str::lines()` strips it (code review LOW-2). Splitting on "\n" alone
+  // left the `\r` inside the trusted comment, which then went into the global-signature message —
+  // so a CRLF `.sig` that Rust accepts was refused here with "the global signature does not
+  // verify", i.e. an operator repairing a signature on Windows was told it was forged.
+  const lines = text.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "").split(/\r?\n/u);
+  if (lines.length < 4) {
+    throw new Error(
+      `revocation signature has ${lines.length} lines, not 4 — the trusted comment or its global signature is missing`,
+    );
+  }
+  const trustedCommentPrefix = "trusted comment: ";
+  if (!lines[2].startsWith(trustedCommentPrefix)) {
+    throw new Error("revocation signature has no trusted comment line");
+  }
+  const raw = decodeStrictBase64(lines[1], "signature");
+  if (raw.length !== ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_SIGNATURE_BYTES) {
+    throw new Error(
+      `revocation signature payload is ${raw.length} bytes, not ${
+        ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_SIGNATURE_BYTES
+      } — truncated`,
+    );
+  }
+  const globalSignature = decodeStrictBase64(lines[3], "global signature");
+  if (globalSignature.length !== ED25519_SIGNATURE_BYTES) {
+    throw new Error(
+      `revocation global signature is ${globalSignature.length} bytes, not ${ED25519_SIGNATURE_BYTES}`,
+    );
+  }
+  return {
+    algorithm: raw.subarray(0, ALGORITHM_BYTES).toString("latin1"),
+    globalSignature,
+    keyId: raw.subarray(ALGORITHM_BYTES, ALGORITHM_BYTES + KEY_ID_BYTES).toString("hex"),
+    signature: raw.subarray(ALGORITHM_BYTES + KEY_ID_BYTES),
+    trustedComment: lines[2].slice(trustedCommentPrefix.length),
+  };
 }

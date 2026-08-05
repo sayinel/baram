@@ -22,15 +22,26 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import {
-  keyIdLabel,
-  shippedRevocationPublicKey,
-  verifyRevocationSignature,
-} from "./minisign-verify";
+import { verifyRevocationSignature } from "./minisign-verify";
+import { shippedRevocationPublicKey } from "./rust-constants";
 
 const RUST_SOURCE = resolve(
   import.meta.dirname,
   "../src-tauri/src/plugin/mod.rs",
+);
+
+/**
+ * The pair frozen when the key was armed. Committed, and read by the Rust test too.
+ *
+ * ‼️ IT IS THE ANSWER TO "THE SCRAPE FOUND *A* KEY" (security review HIGH-2). Counting
+ * declarations stops one being ADDED; it cannot stop the real one being respelled so the pattern
+ * misses it while a planted comment matches. Checking the scraped key against a signature this
+ * repository froze closes that: a key that did not sign this pair cannot verify it, so an evasion
+ * has to replace the fixture as well — and that is a diff nobody reads past.
+ */
+const FROZEN_PAIR = resolve(
+  import.meta.dirname,
+  "../src-tauri/src/plugin/testdata/revoked-at-arming.json",
 );
 
 const [bodyPath, signaturePath] = process.argv.slice(2);
@@ -61,17 +72,41 @@ if (publicKey === "") {
   process.exit(1);
 }
 
+// The scraped key must be the one that signed the frozen pair, or the scrape found the wrong
+// thing and every answer below is about a key clients do not have.
 try {
-  const { trustedComment } = verifyRevocationSignature(
-    readFileSync(bodyPath),
-    readFileSync(signaturePath, "utf8"),
+  verifyRevocationSignature(
+    readFileSync(FROZEN_PAIR),
+    readFileSync(`${FROZEN_PAIR}.sig`, "utf8"),
     publicKey,
   );
-  const keyText = Buffer.from(publicKey, "base64").toString("utf8");
-  const keyId = keyIdLabel(
-    Buffer.from(keyText.trim().split("\n").at(-1) ?? "", "base64")
-      .subarray(2, 10)
-      .toString("hex"),
+} catch (error) {
+  console.error(
+    `::error::the key scraped from ${RUST_SOURCE} does not verify this repository's frozen at-arming pair — the scrape found the wrong value, or the key was rotated without re-freezing the fixture: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  process.exit(2);
+}
+
+// ‼️ READ OUTSIDE THE `try` (code review LOW-7). Inside it, a missing file printed "would be
+// REFUSED by every armed client: ENOENT", so a path typo or a step that never downloaded the file
+// read in the Actions log as "the published list is forged".
+let body: Buffer;
+let signature: string;
+try {
+  body = readFileSync(bodyPath);
+  signature = readFileSync(signaturePath, "utf8");
+} catch (error) {
+  console.error(
+    `::error::cannot read the pair to verify: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  process.exit(2);
+}
+
+try {
+  const { keyId, trustedComment } = verifyRevocationSignature(
+    body,
+    signature,
+    publicKey,
   );
   console.log(
     `signature verifies with the key this build ships (${keyId}) — trusted comment: ${trustedComment}`,

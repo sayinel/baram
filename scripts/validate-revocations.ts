@@ -18,7 +18,8 @@
  *
  * Run: npx tsx scripts/validate-revocations.ts [path]
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   MAXIMUM_REVOCATION_SEQUENCE,
@@ -26,12 +27,33 @@ import {
 } from "../src/plugins/revocation";
 import { matchesRange } from "../src/plugins/version-range";
 import { label } from "./gha-label";
+import { revocationByteCap } from "./rust-constants";
 
 const path = process.argv[2] ?? "registry/revoked.json";
 
 function fail(message: string): never {
   console.error(`✗ ${path}: ${message}`);
   process.exit(1);
+}
+
+// ‼️ The cap is the CLIENT's, read from the Rust that enforces it — see `rust-constants.ts` for
+// why it is scraped rather than copied, and why the scrape is a function over text.
+let cap: number;
+try {
+  cap = revocationByteCap(
+    readFileSync(
+      resolve(import.meta.dirname, "../src-tauri/src/plugin/mod.rs"),
+      "utf8",
+    ),
+  );
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+const size = statSync(path).size;
+if (size > cap) {
+  fail(
+    `${size} bytes exceeds the ${cap} the app will fetch — every client would fail to read this list, so no revocation in it would ever apply`,
+  );
 }
 
 let raw: unknown;
