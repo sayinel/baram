@@ -1,6 +1,7 @@
 // §298 Phase 0b S2 — vim controller wiring in the code block island:
 // loading barrier, broadcast memo replay, teardown on CM replacement,
 // and no focus steal from a lazy load.
+import { EditorView as CMEditorView } from "@codemirror/view";
 import { Editor } from "@tiptap/core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -237,6 +238,91 @@ describe("code block vim wiring (S2)", () => {
         suspended?: boolean;
       };
       expect(vim?.suspended).toBe(true);
+    });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
+  it("the loading window is READ-ONLY — no plain CM edit before vim", async () => {
+    // The editable facet does not gate key-BOUND edits (installed cm-view
+    // :8818, Enter/Backspace mutate whenever readOnly is false), and the
+    // suspension broadcast releases the island's readOnly on focus — so
+    // the barrier itself must pin readOnly through the load (R5 C7).
+    const editor = createEditor("```ts\nab\n```\n");
+    const content = await revealCM(editor);
+    const cmv = CMEditorView.findFromDOM(content)!;
+    setVim(editor, true);
+    // The hole opens on FOCUS: suspension releases the broadcast readOnly
+    // while the vim chunk is still loading.
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await Promise.resolve(); // suspension microtask
+    expect(cmv.state.readOnly).toBe(true); // the barrier must still hold
+    content.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Enter",
+      }),
+    );
+    expect(editor.state.doc.textContent).toBe("ab"); // nothing landed
+    // vim ready → the barrier hands over (readOnly lifts, vim owns keys)
+    const press = (key: string) =>
+      content.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }),
+      );
+    await vi.waitFor(() => {
+      press("i");
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    expect(cmv.state.readOnly).toBe(false);
+    editor.destroy();
+  });
+
+  it("a STALE pending selection never steals focus back (cold entry)", async () => {
+    const editor = createEditor("```ts\nab\n```\n\npara\n");
+    document.body.appendChild(editor.view.dom);
+    setVim(editor, true);
+    // Selection enters the COLD block (no CM yet) → pendingSelection memo,
+    // then the user moves on before the CM ever materializes.
+    let pos = -1;
+    editor.state.doc.descendants((n, p) => {
+      if (pos < 0 && n.type.name === "codeBlock") pos = p;
+      return pos < 0;
+    });
+    editor.commands.setTextSelection(pos + 1);
+    editor.commands.setTextSelection(editor.state.doc.content.size - 2);
+    const content = await revealCM(editor);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(document.activeElement).not.toBe(content); // no focus theft
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
+  it("a language change RESTORES focus into the recreated island", async () => {
+    const editor = createEditor("```ts\nconst x = 1;\n```\n");
+    document.body.appendChild(editor.view.dom);
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    content.setAttribute("tabindex", "0");
+    content.focus();
+    expect(document.activeElement).toBe(content);
+    let pos = -1;
+    editor.state.doc.descendants((n, p) => {
+      if (pos < 0 && n.type.name === "codeBlock") pos = p;
+      return pos < 0;
+    });
+    editor.view.dispatch(
+      editor.state.tr.setNodeMarkup(pos, undefined, { language: "python" }),
+    );
+    const dom = editor.view.dom as HTMLElement;
+    await vi.waitFor(() => {
+      const fresh = dom.querySelector(".cm-content") as HTMLElement;
+      expect(fresh).not.toBeNull();
+      expect(fresh).not.toBe(content); // recreated
+      // focus followed into the replacement (R5 C10: CM destroy blurs the
+      // old contentDOM and nothing restored it — keys fell into the void)
+      expect(document.activeElement).toBe(fresh);
     });
     editor.destroy();
     document.body.innerHTML = "";

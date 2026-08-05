@@ -12,7 +12,7 @@ import {
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { EditorState as CMState, Compartment } from "@codemirror/state";
+import { EditorState as CMState, Compartment, Prec } from "@codemirror/state";
 import {
   EditorView as CMView,
   drawSelection,
@@ -61,6 +61,7 @@ export class CodeBlockNodeView implements NodeView {
   private latestVimEnabled: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
+  private pendingFocusRestore: null | { head: number } = null;
   private pendingSelection: null | { anchor: number; head: number } = null;
   // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
   // PM editable without triggering NodeView.update(), and broadcasts instead.
@@ -212,6 +213,7 @@ export class CodeBlockNodeView implements NodeView {
         // Only recreate CodeMirror if already initialized; otherwise the
         // deferred initCM will read current settings when it eventually runs.
         if (this.cmInitialized) {
+          this.snapshotFocusForRecreate();
           this.teardownCM();
           const currentLang = (this.node.attrs.language as string) || "";
           void this.initCM(currentLang);
@@ -307,6 +309,7 @@ export class CodeBlockNodeView implements NodeView {
 
     // Language changed → destroy and recreate CM with new language.
     if (oldLang !== lang) {
+      this.snapshotFocusForRecreate();
       this.teardownCM();
       void this.initCM(lang);
       return true;
@@ -344,10 +347,18 @@ export class CodeBlockNodeView implements NodeView {
       // contentDOM is unfocusable — an explicit PM entry (j/k into a cold
       // block, empty-block autofocus) would silently lose focus.
       this.cmView.contentDOM.setAttribute("tabindex", "-1");
+      // The editable facet does NOT gate key-bound API edits (installed
+      // cm-view :8818) and the suspension broadcast releases the island's
+      // readOnly on focus — so the loading barrier pins readOnly too.
+      // Prec.highest: the readOnly facet takes its highest-precedence
+      // value, and the broadcast compartment sits earlier in the config.
+      // The controller's first mode flip replaces this compartment, so
+      // the pin lifts exactly when vim takes over.
       this.cmView.dispatch({
-        effects: this.vimEditableCompartment.reconfigure(
+        effects: this.vimEditableCompartment.reconfigure([
           CMView.editable.of(false),
-        ),
+          Prec.highest(CMState.readOnly.of(true)),
+        ]),
       });
     }
     this.vimController.apply(enabled);
@@ -621,13 +632,47 @@ export class CodeBlockNodeView implements NodeView {
       });
     }
 
-    if (this.pendingSelection && this.cmView) {
+    // A CM replacement (language/settings change) blurred the old view —
+    // installed CM destroy calls contentDOM.blur() — so a focused island
+    // must reclaim focus on its replacement (R5 C10).
+    if (this.pendingFocusRestore && this.cmView) {
+      const head = Math.min(
+        this.pendingFocusRestore.head,
+        this.cmView.state.doc.length,
+      );
       this.cmView.focus();
       this.updating = true;
-      this.cmView.dispatch({ selection: this.pendingSelection });
+      this.cmView.dispatch({ selection: { anchor: head } });
       this.updating = false;
+      this.pendingFocusRestore = null;
+    }
+
+    if (this.pendingSelection && this.cmView) {
+      // Only when the PM selection STILL belongs to this block — a stale
+      // memo from a visit the user already left must not steal focus back
+      // (R5 C7).
+      const pos = this.getPos();
+      const { from } = this.view.state.selection;
+      const stillHere =
+        typeof pos === "number" &&
+        from > pos &&
+        from < pos + this.node.nodeSize;
+      if (stillHere) {
+        this.cmView.focus();
+        this.updating = true;
+        this.cmView.dispatch({ selection: this.pendingSelection });
+        this.updating = false;
+      }
       this.pendingSelection = null;
     }
+  }
+
+  /** Focus ownership survives a CM replacement: remember it (with the
+   *  cursor) so the recreated view can reclaim what destroy() blurs. */
+  private snapshotFocusForRecreate(): void {
+    this.pendingFocusRestore = this.cmView?.hasFocus
+      ? { head: this.cmView.state.selection.main.head }
+      : null;
   }
 
   /** ONE teardown path for every CM replacement — settings change, language
