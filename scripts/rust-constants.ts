@@ -27,10 +27,19 @@
  * - the key has one: vitest binds the scraped key to the frozen at-arming pair and
  *   `mod.rs`'s own test binds the compiled key to the same two files, so a divergence is
  *   self-contradictory in both directions.
- * - the cap now has one too: `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `mod.rs`.
+ * - the cap has a WEAKER one: `the_fetch_cap_is_the_number_the_publish_gate_scrapes` in `mod.rs`.
  *   Without it, `const MAX_REVOCATION_BYTES: usize = ONE_MIB;` plus a decoy comment in the matched
  *   form left this returning 1 MiB while clients capped at whatever `ONE_MIB` said — and an
  *   oversized list then publishes green and no client can read it.
+ *
+ * ‼️ THE TWO ANCHORS ARE NOT THE SAME STRENGTH, and calling them "the same discipline" flattened a
+ * real difference (third-round security review Q4/L-1). The key's anchor is a SIGNATURE: unforgeable
+ * without the private half, and red in both directions. The cap's is a NUMBER asserted against a
+ * hand-written literal on each side — neither assertion compares scraped against compiled, both
+ * compare against a constant a commit can edit. A reviewer measured the cost of defeating it: the
+ * decoy, the indirection, and ONE literal edit in the Rust test. So it is a DRIFT GUARD, and its
+ * value is that the diff is unmissable — a new `const ONE_MIB` beside a re-pointed constant and a
+ * changed assertion literal is not something a reviewer reads past.
  */
 
 /**

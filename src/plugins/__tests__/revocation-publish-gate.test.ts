@@ -159,7 +159,15 @@ function gateRaw(
   ours: Buffer,
   previous: Buffer | null,
   sig: Buffer | null,
-  { unreadableSig = false }: { unreadableSig?: boolean } = {},
+  {
+    baseline = "file",
+    unreadableOurs = false,
+    unreadableSig = false,
+  }: {
+    baseline?: "dangling" | "directory" | "file" | "unreadable";
+    unreadableOurs?: boolean;
+    unreadableSig?: boolean;
+  } = {},
 ): GateRun {
   const dir = mkdtempSync(join(tmpdir(), "baram-gate-"));
   const workspace = join(dir, "workspace");
@@ -167,8 +175,21 @@ function gateRaw(
   mkdirSync(join(workspace, "registry"), { recursive: true });
   mkdirSync(join(temp, "registry"), { recursive: true });
   writeFileSync(join(workspace, "registry/revoked.json"), ours);
+  if (unreadableOurs)
+    chmodSync(join(workspace, "registry/revoked.json"), 0o000);
   if (previous !== null) {
-    writeFileSync(join(temp, "registry/revoked.json"), previous);
+    const baselinePath = join(temp, "registry/revoked.json");
+    // ‼️ The states that used to read as permissive decisions (security review M-2): a dangling
+    // symlink and a directory both satisfy `[ ! -f ]`, and an unreadable file makes `cmp` exit 2,
+    // which `if` cannot tell from "differ".
+    if (baseline === "dangling") {
+      symlinkSync(join(temp, "registry/nothing-here.json"), baselinePath);
+    } else if (baseline === "directory") {
+      mkdirSync(baselinePath);
+    } else {
+      writeFileSync(baselinePath, previous);
+      if (baseline === "unreadable") chmodSync(baselinePath, 0o000);
+    }
     if (sig !== null) {
       const path = join(temp, "registry/revoked.json.sig");
       writeFileSync(path, sig);
@@ -226,6 +247,16 @@ expect(
 // The "floor above live" case needs a counter BELOW the floor to exist, which needs a floor above
 // zero. True since arming; asserted so the case cannot quietly become vacuous if that changes.
 expect(FLOOR, "these cases assume an armed floor").toBeGreaterThan(0);
+// ‼️ THE VALUE, NOT ONLY THE BOUNDARY (third-round code review MEDIUM-2). Deriving MAX_LAG from the
+// step is right — a release that raises the floor must not arrive to red tests of the harness's own
+// making — but it also means every fixture moves with the constant, so `MAX_LAG=5` survived. A prior
+// round argued that number down from 5 to 1 over eight lines of reasoning ("the silent failure this
+// step exists for would stay silent for years"), and reverting it was a one-character edit nothing
+// noticed. The lag is counted in PUBLISHED REVOCATIONS and this registry has published one, ever.
+expect(
+  MAX_LAG,
+  "a larger tolerance is the same as not having the step — see the step's own comment",
+).toBeLessThanOrEqual(1);
 
 /** Runs the floor step with `published` as the repo's list. */
 function floorStep(published: Doc): { output: string; status: null | number } {
@@ -341,6 +372,43 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     // verification was added to enable. An operator reading an error annotation on a green run
     // learns the wrong thing, and once they are normal a real one carries nothing.
     expect(output).not.toContain("::error::");
+  });
+
+  it.each([
+    ["a dangling symlink", "dangling", "is a symlink"],
+    ["a directory", "directory", "not a readable regular file"],
+    ["an unreadable file", "unreadable", "not a readable regular file"],
+  ] as const)(
+    "FAILS rather than treating %s as a baseline",
+    (_label, baseline, expected) => {
+      // ‼️ ALL THREE USED TO PUBLISH (third-round security review M-2, each reproduced). The first two
+      // satisfied `[ ! -f ]` and took the BOOTSTRAP branch, which performs no counter comparison at
+      // all; the third made `cmp` exit 2, indistinguishable from "differ", so the counter reader
+      // reported 0 for the baseline and any counter won. Our list carries a LOWER counter than the
+      // registry's here, so a pass means a rollback published green.
+      const run = gateRaw(
+        Buffer.from(`${JSON.stringify({ ...EMPTY, sequence: 1 }, null, 2)}\n`),
+        Buffer.from(`${JSON.stringify({ ...EMPTY, sequence: 9 }, null, 2)}\n`),
+        FROZEN_SIG,
+        { baseline },
+      );
+      expect(run.status).toBe(1);
+      expect(run.output).toContain(expected);
+      expect(run.publish).toBeNull();
+    },
+  );
+
+  it("FAILS rather than deciding when the two lists cannot be compared", () => {
+    // ‼️ `cmp` EXITS 2 ON AN I/O ERROR and `if` cannot tell that from exit 1 "differ" (security review
+    // M-2). The unreadable-BASELINE case above never reaches it — the `-r` guard refuses first — so
+    // this makes OUR copy unreadable instead, which is the only way left into `cmp`'s error exit.
+    // Round-4 mutation T12 survived until this case existed.
+    const run = gateRaw(FROZEN_BODY, FROZEN_BODY, FROZEN_SIG, {
+      unreadableOurs: true,
+    });
+    expect(run.status).toBe(1);
+    expect(run.output).toContain("could not compare the two lists");
+    expect(run.publish).toBeNull();
   });
 
   it("FAILS rather than deciding when the verifier itself cannot run", () => {
@@ -574,6 +642,60 @@ describe("the revocation publish workflow's shape", () => {
       clone,
       "the clone must not leave the key for the steps between",
     ).toContain(`rm -f ${writes[0]}`);
+    // ‼️ THE GUARD IS ABOUT ORDER, AND ASSERTING ITS PRESENCE WAS NOT ENOUGH (round-4 mutation
+    // T8/T9 survived). Deleting `rm -f` + `install -m 600` from BEFORE a write left the clone's
+    // trailing `rm -f` in place, so a `toContain` still passed while the write once again followed
+    // whatever symlink was at the path — the disclosure path that publishes the deploy key to a
+    // public repo. Each write must be preceded, within its own step, by both guard lines.
+    for (const step of ["Clone the registry", "Commit and push"]) {
+      // ‼️ COMMENTS ARE DROPPED FIRST. The step's own comment quotes the write it warns about, so an
+      // `indexOf` over the raw body found the string inside the prose and windowed everything away —
+      // the assertion then passed or failed for reasons unrelated to the shell.
+      const commands = stepScript(workflow, step)
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "" && !line.startsWith("#"));
+      const writeAt = commands.findIndex((line) =>
+        line.includes(`> ${writes[0]}`),
+      );
+      expect(writeAt, `${step} must write the key`).toBeGreaterThan(-1);
+      const before = commands.slice(0, writeAt);
+      expect(before, `${step} must remove the path before writing`).toContain(
+        `rm -f ${writes[0]}`,
+      );
+      expect(
+        before,
+        `${step} must create the file with mode 600 before writing`,
+      ).toContain(`install -m 600 /dev/null ${writes[0]}`);
+    }
+  });
+
+  it("keeps the token read-only and the registry push serialised", () => {
+    // ‼️ NEITHER WAS ASSERTED (third-round code review MEDIUM-5), and the point of this block is that
+    // a widening must be red. `contents: write` would let this job push to THIS repository, and the
+    // concurrency group is what the header calls load-bearing — renaming it silently removes the
+    // mutual exclusion with `plugin-release.yml`, which pushes to the same registry, and a shallow
+    // clone plus a push cannot survive the other landing in between.
+    expect(workflow).toContain("permissions:\n  contents: read\n");
+    expect(workflow).toContain("group: registry-push\n");
+  });
+
+  it("fails the run when Pages never serves this run's bytes", () => {
+    // ‼️ A TEXTUAL GUARD, AND ITS LIMITS ARE THE POINT (third-round code review MEDIUM-4). The retry
+    // loop has network IO and a 300 s budget, so unlike the gate and floor steps it is not executed
+    // here — and `exit 1` → `exit 0` therefore survived every test, turning "Pages never served this
+    // run's list" into a GREEN run that then verifies the STALE pair happily. That is the silent
+    // no-op the feature spent a review round on. This catches the deletion, not the logic: it asserts
+    // the step's last statement is a non-zero exit, windowed to that step so it cannot match another.
+    const body = stepScript(
+      workflow,
+      "Verify the live list is served and readable",
+    );
+    const statements = body
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    expect(statements[statements.length - 1]).toBe("exit 1");
   });
 
   it("refuses to read a step that has no `run: |` block of its own", () => {

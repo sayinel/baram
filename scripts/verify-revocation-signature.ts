@@ -64,6 +64,21 @@ const args = process.argv.slice(2);
 const quiet = args.includes("--quiet");
 const [bodyPath, signaturePath] = args.filter((arg) => arg !== "--quiet");
 
+/**
+ * Every "this script cannot answer" case exits through here.
+ *
+ * ‼️ ONE STATEMENT, BECAUSE ONLY ONE OF THEM WAS PINNED (third-round code review MEDIUM-3). There
+ * were three separate `process.exit(2)` calls and a test reached exactly one, so changing another to
+ * `exit(1)` survived — and the gate reads 1 as "the registry's signature does not verify, re-sign",
+ * which would make it SIGN AND PUBLISH on a key rotation that forgot to re-freeze the fixture. The
+ * exit code these paths share is now a single line that one case covers for all of them. The usage
+ * branch below keeps its own exit — it fires before any work and cannot be confused with a verdict.
+ */
+function cannotAnswer(message: string): never {
+  report(message);
+  process.exit(2);
+}
+
 /** `::error::` when reporting a verdict, a plain line when answering a question. */
 function report(message: string): void {
   console.error(quiet ? message : `::error::${message}`);
@@ -79,10 +94,9 @@ let publicKey: string;
 try {
   publicKey = shippedRevocationPublicKey(readFileSync(RUST_SOURCE, "utf8"));
 } catch (error) {
-  report(
+  cannotAnswer(
     `cannot read the shipped key from ${RUST_SOURCE}: ${error instanceof Error ? error.message : String(error)}`,
   );
-  process.exit(2);
 }
 
 if (publicKey === "") {
@@ -104,10 +118,9 @@ try {
     publicKey,
   );
 } catch (error) {
-  report(
+  cannotAnswer(
     `the key scraped from ${RUST_SOURCE} does not verify this repository's frozen at-arming pair — the scrape found the wrong value, or the key was rotated without re-freezing the fixture: ${error instanceof Error ? error.message : String(error)}`,
   );
-  process.exit(2);
 }
 
 // ‼️ READ OUTSIDE THE `try` (code review LOW-7). Inside it, a missing file printed "would be
@@ -119,10 +132,9 @@ try {
   body = readFileSync(bodyPath);
   signature = readFileSync(signaturePath, "utf8");
 } catch (error) {
-  report(
+  cannotAnswer(
     `cannot read the pair to verify: ${error instanceof Error ? error.message : String(error)}`,
   );
-  process.exit(2);
 }
 
 try {

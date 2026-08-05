@@ -74,8 +74,18 @@ jobs:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
         run: |
           mkdir -p ~/.ssh
+          # ‼️ NEVER WRITE THROUGH WHAT IS ALREADY AT THE PATH (third-round security review M-1,
+          # reproduced locally). `printf > ~/.ssh/plugins_deploy` FOLLOWS a symlink, and so does
+          # `chmod 600` — which then hardens the attacker's target so nothing looks wrong. Any earlier
+          # step's code execution can plant that symlink, `npm ci` lifecycle scripts included, so NO
+          # MERGED COMMIT IS NEEDED: point it at `$RUNNER_TEMP/registry/revoked.json.sig` and the push
+          # step commits the private key to a PUBLIC repository, destroying the signature at the same
+          # time. `rm -f` of the link afterwards leaves the leaked copy. `install -m 600 /dev/null`
+          # creates a fresh regular file with the right mode before any content exists, which closes
+          # the permissions window as well.
+          rm -f ~/.ssh/plugins_deploy
+          install -m 600 /dev/null ~/.ssh/plugins_deploy
           printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
           ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
           git clone --depth 1 \
             --config core.sshCommand="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes" \
@@ -94,9 +104,22 @@ jobs:
         id: gate
         run: |
           PREVIOUS="$RUNNER_TEMP/registry/revoked.json"
+          # ‼️ THREE FAILURE STATES USED TO READ AS PERMISSIVE DECISIONS (third-round security review
+          # M-2, reproduced locally). `[ ! -f ]` is TRUE for a dangling symlink and for a directory,
+          # so both took the bootstrap branch — which deliberately performs NO counter comparison at
+          # all. A symlink is refused outright rather than followed: the registry could commit one,
+          # and following it would compare against a file outside the clone.
+          if [ -L "$PREVIOUS" ]; then
+            echo "::error::$PREVIOUS is a symlink — refusing to compare against whatever it points at."
+            exit 1
+          fi
+          if [ -e "$PREVIOUS" ] && { [ ! -f "$PREVIOUS" ] || [ ! -r "$PREVIOUS" ]; }; then
+            echo "::error::$PREVIOUS exists but is not a readable regular file — refusing to guess whether this publish is a rollback."
+            exit 1
+          fi
           # The bootstrap path this workflow documents at the top: nothing to compare against,
-          # and nothing to roll back over.
-          if [ ! -f "$PREVIOUS" ]; then
+          # and nothing to roll back over. Reached only when the path genuinely does not exist.
+          if [ ! -e "$PREVIOUS" ]; then
             echo "::notice::The registry has no revoked.json yet — bootstrap publish."
             echo "publish=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -105,7 +128,18 @@ jobs:
           # and the registry are the same bytes, so an equal counter is the NORMAL state — and
           # erroring on it hard-failed every ordinary re-run, including the `workflow_dispatch`
           # re-sync. Only a DIFFERENT list whose counter fails to advance is a rollback.
-          if cmp -s "$PREVIOUS" registry/revoked.json; then
+          # ‼️ `cmp` EXITS 2 ON AN I/O ERROR and `if` cannot tell that from its exit 1 "differ" — so an
+          # unreadable baseline fell into the changed-list path, where the counter reader reports 0 and
+          # any counter at all wins (third-round security review M-2). The code is captured instead.
+          set +e
+          cmp -s "$PREVIOUS" registry/revoked.json
+          SAME=$?
+          set -e
+          if [ "$SAME" -gt 1 ]; then
+            echo "::error::could not compare the two lists (cmp exit $SAME) — refusing to decide."
+            exit 1
+          fi
+          if [ "$SAME" -eq 0 ]; then
             # ‼️ The signature is excluded from the byte comparison on purpose (security review
             # MEDIUM-2): minisign puts a timestamp in the trusted comment, so re-signing identical
             # bytes yields a DIFFERENT signature, and staging it would make every unrelated run
@@ -214,8 +248,10 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
         run: |
+          # Same guard as the clone step, and for the same reason — see there.
+          rm -f ~/.ssh/plugins_deploy
+          install -m 600 /dev/null ~/.ssh/plugins_deploy
           printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
-          chmod 600 ~/.ssh/plugins_deploy
           cd "$RUNNER_TEMP/registry"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

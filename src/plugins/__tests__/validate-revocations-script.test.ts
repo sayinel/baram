@@ -113,6 +113,37 @@ describe("validate-revocations", () => {
     expect(result.status).toBe(0);
   });
 
+  it("REFUSES a list one byte over the cap", () => {
+    // ‼️ `size > cap` loosened to `size > cap + 1` survived (third-round code review LOW-3): the
+    // exactly-at-cap case pins one side of the boundary and nothing pinned the other. Rust errors
+    // when `buf.len() + chunk.len() > cap`, so cap+1 is refused by every client and would have
+    // published green.
+    const cap = 1024 * 1024;
+    const path = write({
+      revoked: [
+        {
+          id: "x",
+          reason: "y".repeat(cap),
+          severity: "unlisted",
+          versions: "*",
+        },
+      ],
+      sequence: 1,
+      version: 1,
+    });
+    const document = JSON.parse(readFileSync(path, "utf8")) as {
+      revoked: { reason: string }[];
+    };
+    document.revoked[0].reason = "y".repeat(
+      cap - statSync(path).size + cap + 1,
+    );
+    writeFileSync(path, JSON.stringify(document));
+    expect(statSync(path).size).toBe(cap + 1);
+    const result = spawnSync(TSX, [SCRIPT, path], { encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}${result.stderr}`).toContain("exceeds the 1048576");
+  });
+
   it("refuses the document `null` with a sentence, not a stack trace", () => {
     // ‼️ `null` is a valid one-word JSON document, and reading `.revoked` off it threw an
     // uncaught TypeError instead of the refusal below. This script is pointed at a

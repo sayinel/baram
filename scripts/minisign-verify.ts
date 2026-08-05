@@ -96,10 +96,10 @@ export function verifyRevocationSignature(
   publicKeyB64: string,
 ): { keyId: string; trustedComment: string } {
   const { key, keyId } = parsePublicKey(
-    decodeStrictBase64(asciiTrim(publicKeyB64), "public key").toString("utf8"),
+    decodeWrapper(publicKeyB64, "public key"),
   );
   const parsed = parseSignature(
-    decodeStrictBase64(asciiTrim(signatureB64), "signature").toString("utf8"),
+    decodeWrapper(signatureB64, "signature"),
   );
   if (parsed.keyId !== keyId) {
     throw new Error(
@@ -142,19 +142,33 @@ export function verifyRevocationSignature(
  * `str::trim()`, restricted to ASCII whitespace.
  *
  * ‼️ JS `trim()` strips U+FEFF and Rust's White_Space property does not, so a BOM-prefixed wrapper
- * was accepted here and refused there (code review LOW-1). The remaining difference runs the other
- * way — Rust also trims U+00A0 and friends, which nothing emits — so it can only refuse a publish.
+ * was accepted here and refused there (round-1 code review LOW-1). The set here is ASCII whitespace
+ * PLUS U+000B — vertical tab is ASCII but `is_ascii_whitespace()` excludes it while `str::trim()`
+ * trims it, and including it removes eight divergences a probe found (third-round LOW-7). One of
+ * them was non-obvious: bumping the shipped key wrapper's last base64 character turns the block's
+ * trailing 0x0A into 0x0B, which Rust trims.
+ *
+ * The remaining difference runs the other way — Rust also trims U+0085, U+00A0, U+2028 and friends,
+ * which nothing emits — so it can only refuse a publish, never admit a bad pair.
  *
  * Applied at exactly the two places Rust applies it: the base64 wrapper (`decode_b64_text` trims)
  * and the whole public-key text (`PublicKey::decode(key_text.trim())`). NOT to the signature text,
  * and NOT to individual lines.
  */
 function asciiTrim(value: string): string {
-  return value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "");
+  return value.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/gu, "");
 }
 
 /**
- * base64-decode the way Rust does, or throw. THREE independent rules, each with its own case.
+ * base64-decode the way Rust does, or throw.
+ *
+ * ‼️ THE THREE RULES ARE NOT INDEPENDENT, and an earlier version of this line said they were
+ * (third-round code review LOW-1). Canonicality subsumes the other two: a re-encoded string is
+ * always canonical and always a multiple of 4, so it can never equal an input that breaks either.
+ * Removing the alphabet check or the length check produces ZERO new divergences from Rust — they
+ * survive as message-quality guards, not as behaviour. Keeping them is deliberate (an operator gets
+ * "is not base64" instead of "is not canonical base64" for a mangled paste), but the tests below
+ * pin their MESSAGES, not a behaviour only they provide.
  *
  * ‼️ THE CANONICALITY RULE IS THE REACHABLE ONE, and the first version of this file disclosed it
  * as if it were not (code review MEDIUM-1). Both Rust decoders refuse a final character whose
@@ -200,6 +214,26 @@ function decodeStrictBase64(value: string, what: string): Buffer {
 }
 
 /**
+ * Decode a wrapper the way `decode_b64_text` does — base64 AND `String::from_utf8`.
+ *
+ * ‼️ THE UTF-8 HALF WAS NEVER PORTED (third-round code review HIGH-2). `decode_b64_text` is two
+ * steps and only the first was reproduced: `Buffer.toString("utf8")` substitutes U+FFFD and never
+ * throws, while `String::from_utf8` is a hard error. So one invalid byte anywhere the parser does
+ * not read — the untrusted comment, or trailing garbage after the block — was silently repaired
+ * here and refused on every client. Worse for the signature side than the key side: the frozen-pair
+ * Rust test catches a non-UTF-8 KEY, and nothing anywhere catches a non-UTF-8 `.sig`, so this
+ * script was the only thing between one and Pages.
+ */
+function decodeWrapper(value: string, what: string): string {
+  const raw = decodeStrictBase64(asciiTrim(value), `${what} wrapper`);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(raw);
+  } catch {
+    throw new Error(`revocation ${what} is not UTF-8`);
+  }
+}
+
+/**
  * Parse a minisign `.pub` file's text: a comment line, then the key line.
  *
  * ‼️ THE KEY LINE IS LINE 2, UNCONDITIONALLY (code review + security review HIGH-1, found
@@ -220,7 +254,7 @@ function parsePublicKey(text: string): ParsedPublicKey {
       "revocation public key has no key line — a minisign public key is a comment line followed by the key",
     );
   }
-  const raw = decodeStrictBase64(lines[1], "public key");
+  const raw = decodeStrictBase64(lines[1], "public key line");
   if (raw.length !== ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_PUBLIC_KEY_BYTES) {
     throw new Error(
       `revocation public key is ${raw.length} bytes, not ${
@@ -274,7 +308,7 @@ function parseSignature(text: string): ParsedSignature {
   if (!lines[2].startsWith(trustedCommentPrefix)) {
     throw new Error("revocation signature has no trusted comment line");
   }
-  const raw = decodeStrictBase64(lines[1], "signature");
+  const raw = decodeStrictBase64(lines[1], "signature payload");
   if (raw.length !== ALGORITHM_BYTES + KEY_ID_BYTES + ED25519_SIGNATURE_BYTES) {
     throw new Error(
       `revocation signature payload is ${raw.length} bytes, not ${
@@ -305,7 +339,20 @@ function parseSignature(text: string): ParsedSignature {
  * is the behaviour both the 4-line count and the line indices depend on.
  */
 function rustLines(text: string): string[] {
-  const lines = text.split("\n").map((line) => line.replace(/\r$/u, ""));
-  if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  // ‼️ `\r` COMES OFF ONLY A `\n`-TERMINATED SEGMENT (third-round code review HIGH-1, proven against
+  // a rustc probe over all 1,092 strings of `{a,\n,\r}` up to length 6 — 364 diverged). `LinesMap`
+  // is `strip_suffix('\n')?` and only then `strip_suffix('\r')`, so a text NOT ending in a newline
+  // keeps its trailing `\r`. Stripping unconditionally accepted a block ending in a bare `\r` — what
+  // a `$(cat …)` round trip of a CRLF `.sig` produces, since it drops trailing newlines and not the
+  // `\r` — while the crate refuses it at base64 decode. Dangerous direction, and the CRLF case that
+  // already existed could not see it: it built `\r\n` endings, which both sides accept.
+  if (text === "") return [];
+  const segments = text.split("\n");
+  const lines = segments.map((line, index) =>
+    index < segments.length - 1 ? line.replace(/\r$/u, "") : line,
+  );
+  // `"a\n".lines()` yields one line, not two. The last segment is dropped only when it is the empty
+  // remainder after a final newline.
+  if (lines[lines.length - 1] === "") lines.pop();
   return lines;
 }

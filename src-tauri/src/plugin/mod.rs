@@ -2673,7 +2673,11 @@ mod tests {
         // The gate would then keep publishing lists up to 1 MiB while every client refused anything
         // over 4 KiB at fetch — no revocation ever landing again, and nothing red. The key scrape
         // was already anchored this way (the frozen at-arming pair binds the compiled key and the
-        // scraped one to the same signature); this is the same discipline for the cap. The literal is
+        // scraped one to the same signature). ‼️ THIS ANCHOR IS WEAKER THAN THAT ONE, and saying
+        // otherwise flattens the difference: a signature cannot be forged, whereas this is a number,
+        // and defeating it costs the decoy plus ONE literal edit right here. What it buys is a diff
+        // no reviewer reads past, which is enough for a drift guard and is the honest claim. The
+        // literal is
         // duplicated in `revocation-signature-verify.test.ts` deliberately: two assertions on the
         // same number in two languages is what makes a respelling contradictory rather than silent.
         assert_eq!(

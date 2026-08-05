@@ -329,6 +329,122 @@ describe(
       ).not.toThrow();
     });
 
+    it("REFUSES a signature block ending in a bare CR, as Rust does", () => {
+      // ‼️ THIRD-ROUND HIGH-1, and the third time a trim-shaped defect got through. `str::lines()`
+      // strips `\r` only from a segment that WAS `\n`-terminated, so a text not ending in a newline
+      // keeps it — and the crate then fails base64. My `rustLines` stripped unconditionally. The
+      // producer is ordinary: `$(cat file)` on a CRLF `.sig` drops the trailing newline and keeps the
+      // `\r`, which is the same Windows hand-repair path the CRLF case above was written for. That
+      // case could not see this one, because it built `\r\n` endings, which both sides accept.
+      const block = Buffer.from(FROZEN_SIG.trim(), "base64").toString("utf8");
+      const lines = block.replace(/\n+$/u, "").split("\n");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          wrap(`${lines.join("\r\n")}\r`),
+          SHIPPED_KEY,
+        ),
+      ).toThrow(/not base64/u);
+      // A doubled CR at the end, and a LEADING CR on each base64 line: both are `\r` the crate keeps
+      // and a looser rule (`/\r+$/`, or stripping at both ends) would eat.
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          wrap(`${lines.join("\n")}\r\r`),
+          SHIPPED_KEY,
+        ),
+      ).toThrow(/not base64/u);
+      for (const index of [1, 3]) {
+        const mangled = [...lines];
+        mangled[index] = `\r${mangled[index]}`;
+        expect(() =>
+          verifyRevocationSignature(
+            FROZEN_BODY,
+            wrap(`${mangled.join("\n")}\n`),
+            SHIPPED_KEY,
+          ),
+        ).toThrow(/not base64/u);
+      }
+      // ‼️ A RUN OF `\r` ON A TERMINATED SEGMENT (round-4 mutation T2 survived without this). Rust
+      // strips exactly ONE, so `payload\r\r\n` leaves `payload\r` and fails base64 — while `/\r+$/`
+      // would eat both and verify. The doubled-CR case above puts them at the very END of the text,
+      // which is an UNterminated segment, so it cannot distinguish the two rules.
+      for (const index of [1, 3]) {
+        const mangled = [...lines];
+        mangled[index] = `${mangled[index]}\r\r`;
+        expect(() =>
+          verifyRevocationSignature(
+            FROZEN_BODY,
+            wrap(`${mangled.join("\n")}\n`),
+            SHIPPED_KEY,
+          ),
+        ).toThrow(/not base64/u);
+      }
+    });
+
+    it("REFUSES a wrapper that is not valid UTF-8, as Rust does", () => {
+      // ‼️ THIRD-ROUND HIGH-2. `decode_b64_text` is base64 AND `String::from_utf8`; only the first
+      // half had been ported, and `Buffer.toString("utf8")` substitutes U+FFFD rather than failing.
+      // One bad byte in the untrusted comment or after the block was repaired here and refused on
+      // every client — and for the SIGNATURE side nothing else in the repo would have caught it, since
+      // no Rust test ever sees a published `.sig`.
+      const block = Buffer.from(FROZEN_SIG.trim(), "base64").toString("utf8");
+      const lines = block.split("\n");
+      const badComment = Buffer.concat([
+        Buffer.from("untrusted comment: caf"),
+        Buffer.from([0xe9]),
+        Buffer.from(`\n${lines.slice(1).join("\n")}`),
+      ]);
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          badComment.toString("base64"),
+          SHIPPED_KEY,
+        ),
+      ).toThrow(/not UTF-8/u);
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          Buffer.concat([Buffer.from(block), Buffer.from([0x80])]).toString(
+            "base64",
+          ),
+          SHIPPED_KEY,
+        ),
+      ).toThrow(/not UTF-8/u);
+      // The key side too, where the frozen-pair Rust test is the only other guard.
+      const keyText = Buffer.from(SHIPPED_KEY, "base64").toString("utf8");
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          Buffer.concat([Buffer.from(keyText), Buffer.from([0x80])]).toString(
+            "base64",
+          ),
+        ),
+      ).toThrow(/not UTF-8/u);
+    });
+
+    it("REFUSES an OVERLONG key blob whose first bytes are the real key", () => {
+      // ‼️ `raw.length !== 42` loosened to `< 42` survived every test (third-round MEDIUM-1): an
+      // overlong blob verifies here and is `InvalidEncoding` in Rust. The shape is exactly what the
+      // arming runbook's "paste the `.pub` contents" step invites.
+      const keyLines = Buffer.from(SHIPPED_KEY, "base64")
+        .toString("utf8")
+        .trim()
+        .split("\n");
+      const overlong = Buffer.concat([
+        Buffer.from(keyLines[1], "base64"),
+        Buffer.from([0x00]),
+      ]);
+      expect(() =>
+        verifyRevocationSignature(
+          FROZEN_BODY,
+          FROZEN_SIG,
+          wrap(`${keyLines[0]}\n${overlong.toString("base64")}\n`),
+        ),
+      ).toThrow(/public key is 43 bytes/u);
+    });
+
     it("REFUSES a bare key line, which the Rust crate refuses too", () => {
       // ‼️ FOUND BY BOTH REVIEWS INDEPENDENTLY, each with a probe against the vendored crate. This
       // used to be ACCEPTED, with a comment claiming `PublicKey::decode` accepts it as well — it
