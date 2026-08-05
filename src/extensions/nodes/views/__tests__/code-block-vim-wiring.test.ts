@@ -157,6 +157,32 @@ describe("code block vim wiring (S2)", () => {
     editor.destroy();
   });
 
+  it("Backspace in an EMPTY block still converts to a paragraph (insert)", async () => {
+    const editor = createEditor("```ts\n\n```\n");
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    const press = (key: string) =>
+      content.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }),
+      );
+    await vi.waitFor(() => {
+      press("i"); // vim ready + insert mode restores the host
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    press("Backspace"); // insert-mode Backspace reaches customKeys
+    await vi.waitFor(() => {
+      let hasCodeBlock = false;
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "codeBlock") hasCodeBlock = true;
+        return !hasCodeBlock;
+      });
+      expect(hasCodeBlock).toBe(false); // converted to a paragraph
+    });
+    editor.destroy();
+  });
+
   it("a language change tears down and re-arms vim on the new CM", async () => {
     const editor = createEditor("```ts\nconst x = 1;\n```\n");
     await revealCM(editor);
