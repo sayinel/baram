@@ -1,10 +1,11 @@
 // §298 Phase 0b S3 — code-block boundary handler (design v3 §3).
 //
-// Vim's key handling runs through CodeMirror's BUBBLE listener on
-// contentDOM, and no keymap can sit above it — so boundary crossing
-// listens in the CAPTURE phase on contentDOM itself (not the CM root:
-// vim's `:`/`/` panels mount under view.dom and own their input; a root
-// capture would misroute `u` typed into `:quit` to PM undo).
+// Vim's key handling runs through CodeMirror's listener on contentDOM,
+// and no keymap can sit above it — so boundary crossing listens in the
+// CAPTURE phase on the CM ROOT (an ancestor: at the target itself even
+// capture listeners run in registration order, and CodeMirror registered
+// first). Panel input (`:`/`/` mounts outside contentDOM) is filtered by
+// composedPath, so `u` typed into `:quit` never reaches PM undo.
 //
 // Consumption is preventDefault + stopPropagation, never
 // stopImmediatePropagation — CodeMirror's same-target bookkeeping
@@ -65,6 +66,15 @@ export function attachVimBoundary(
       return;
     }
 
+    if (event.key === "Escape") {
+      // The Esc stair's second step: vim consumes even a normal-mode Esc
+      // on the real surface, so the boundary owns it — idle normal Esc
+      // leaves the block (matches the plain-arrow customKeys contract).
+      consume();
+      hooks.escape(-1);
+      return;
+    }
+
     const { head } = view.state.selection.main;
     const line = view.state.doc.lineAt(head);
     if (
@@ -81,9 +91,15 @@ export function attachVimBoundary(
     }
   };
 
-  view.contentDOM.addEventListener("keydown", onKeydown, true);
+  // The ROOT, not contentDOM: in normal mode the key TARGET is contentDOM
+  // itself, and at the target even capture listeners run in REGISTRATION
+  // order — CodeMirror (and vim) registered earlier and stop propagation,
+  // so a same-target listener never fires on the real surface. Capture on
+  // an ANCESTOR always precedes target listeners; panel input isolation is
+  // preserved by the composedPath filter above.
+  view.dom.addEventListener("keydown", onKeydown, true);
   return () => {
-    view.contentDOM.removeEventListener("keydown", onKeydown, true);
+    view.dom.removeEventListener("keydown", onKeydown, true);
   };
 }
 

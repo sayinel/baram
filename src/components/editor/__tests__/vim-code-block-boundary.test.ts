@@ -161,6 +161,41 @@ describe("vim code block boundary (S3)", () => {
     expect(h.calls).toEqual([]);
   });
 
+  it("survives a consuming at-target listener — the DEVICE failure", () => {
+    // On the real surface CodeMirror registered on contentDOM first and
+    // stops propagation for handled keys; a same-target listener starves.
+    // The boundary must fire from ancestor capture BEFORE that.
+    const view = makeView(3);
+    view.contentDOM.addEventListener("keydown", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    });
+    const h = hooks();
+    attachVimBoundary(view, fakeCM(idle()), h.hooks);
+    press(view, "j");
+    expect(h.calls).toEqual(["escape1"]);
+  });
+
+  it("idle-normal Escape leaves the block; pending/visual Esc stays vim's", () => {
+    const view = makeView(3);
+    const h = hooks();
+    const off = attachVimBoundary(view, fakeCM(idle()), h.hooks);
+    const e = press(view, "Escape");
+    expect(h.calls).toEqual(["escape-1"]);
+    expect(e.defaultPrevented).toBe(true);
+    off();
+    const pending = idle();
+    pending.inputState.keyBuffer = ["d"];
+    const h2 = hooks();
+    attachVimBoundary(view, fakeCM(pending), h2.hooks);
+    press(view, "Escape"); // vim owns the abort
+    const h3 = hooks();
+    attachVimBoundary(view, fakeCM({ ...idle(), visualMode: true }), h3.hooks);
+    press(view, "Escape"); // vim collapses visual first
+    expect(h2.calls).toEqual([]);
+    expect(h3.calls).toEqual([]);
+  });
+
   it("detaching stops all interception", () => {
     const view = makeView(3);
     const h = hooks();
