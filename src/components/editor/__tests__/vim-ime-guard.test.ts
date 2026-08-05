@@ -380,3 +380,28 @@ describe("replace-mode IME overwrite dedupe", () => {
     expect(cm.overWriteSelection).toBe(orig);
   });
 });
+
+describe("transactional attach (R3)", () => {
+  it("a throwing initial publish unwinds EVERY installed resource", () => {
+    const view = makeView();
+    const cm = makeCm({});
+    const orig = cm.overWriteSelection;
+    const offCalls: unknown[][] = [];
+    const origOff = cm.off;
+    cm.off = (...args: unknown[]) => {
+      offCalls.push(args);
+      return (origOff as (...a: unknown[]) => unknown)?.apply(cm, args);
+    };
+    expect(() =>
+      attachVimImeGuard(asView(view), asCm(cm), () => {
+        throw new Error("status feed exploded");
+      }),
+    ).toThrow("status feed exploded");
+    // beforeinput listener gone — normal-mode text is NOT blocked anymore
+    const e = fireBeforeInput(view.contentDOM, "insertText");
+    expect(e.defaultPrevented).toBe(false);
+    // overwrite wrapper restored, mode listener detached
+    expect(cm.overWriteSelection).toBe(orig);
+    expect(offCalls).toHaveLength(1);
+  });
+});

@@ -128,13 +128,25 @@ export function attachVimImeGuard(
     onModeChange?.(mode);
   };
   cm.on("vim-mode-change", onVimModeChange);
-  onModeChange?.(mode);
 
-  return () => {
+  const dispose = () => {
     cm.off("vim-mode-change", onVimModeChange);
     view.contentDOM.removeEventListener("beforeinput", onBeforeInput, true);
     cm.overWriteSelection = origOverWrite;
   };
+
+  // The initial publish runs ARBITRARY caller code (status feeds). If it
+  // throws, every resource installed above must unwind BEFORE the error
+  // propagates: the caller never received a disposer, so a leaked
+  // beforeinput blocker would keep eating input after any rollback.
+  try {
+    onModeChange?.(mode);
+  } catch (err) {
+    dispose();
+    throw err;
+  }
+
+  return dispose;
 }
 
 /**
