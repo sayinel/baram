@@ -15,7 +15,13 @@
 //
 // The step's script is EXTRACTED from the workflow rather than retyped here. A copy would
 // verify a file nobody ships, and drift between the two would be invisible in exactly the way
-// this whole file exists to prevent. Only the network call is substituted.
+// this whole file exists to prevent. Nothing is substituted any more: the gate's baseline is the
+// registry clone rather than a Pages URL, so the step has no IO left to stub.
+//
+// The second block of cases asserts the workflow's SHAPE — step order, conditions, and which
+// step holds the signing key. Each case above extracts one step and runs it alone, so a step
+// moved or a condition changed alters what the workflow means while every one of them stays
+// green; three of the findings this file exists for were exactly that.
 import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
@@ -32,7 +38,7 @@ import { MINIMUM_REVOCATION_SEQUENCE } from "../revocation";
 
 const ROOT = resolve(__dirname, "../../..");
 const WORKFLOW = resolve(ROOT, ".github/workflows/revocation-publish.yml");
-const STEP = "A changed list must carry a higher counter than the live one";
+const STEP = "A changed list must carry a higher counter than the registry's";
 
 /** The `run: |` body of a named step: every line indented deeper than the `run:` key. */
 function stepScript(workflow: string, stepName: string): string {
@@ -57,19 +63,16 @@ function stepScript(workflow: string, stepName: string): string {
   return body.join("\n");
 }
 
-const RAW = stepScript(readFileSync(WORKFLOW, "utf8"), STEP);
+// ‼️ RUN VERBATIM, WITH NOTHING SUBSTITUTED (code review MEDIUM-1 follow-on). The gate used to
+// curl Pages for its baseline, so the harness had to rewrite that one line — a test of the step
+// with its only IO replaced. Comparing against the registry CLONE instead made the step
+// hermetic: two files and the shipping counter reader, no network, so what runs below is the
+// text that runs on main.
+const SCRIPT = stepScript(readFileSync(WORKFLOW, "utf8"), STEP);
 // Proof the block extracted — deliberately NOT a check on what it contains. Asserting on
 // `cmp -s` here made an earlier harness REFUSE a mutant that deleted it, which reads as a kill
 // and is not one.
-expect(RAW).toContain("revocation-sequence.ts");
-
-// The gate's one network call, replaced by a copy from a fixture. Everything else — the
-// byte comparison, both counter reads, the shell's numeric test — runs as written.
-const SCRIPT = RAW.replace(
-  /if ! curl -fsS -o "\$RUNNER_TEMP\/live-before\.json" "[^"]+"; then/u,
-  'if ! cp "$FAKE_LIVE" "$RUNNER_TEMP/live-before.json" 2>/dev/null; then',
-);
-expect(SCRIPT).toContain("FAKE_LIVE");
+expect(SCRIPT).toContain("revocation-sequence.ts");
 
 interface Doc {
   revoked: unknown[];
@@ -77,37 +80,77 @@ interface Doc {
   version: number;
 }
 
-/** Runs the gate with `ours` in the repo and `live` served, or nothing served for null. */
+interface GateRun {
+  output: string;
+  publish: null | string;
+  status: null | number;
+}
+
+/**
+ * Runs the gate with `ours` in the workspace and `previous` in the registry clone.
+ *
+ * ‼️ TWO DIRECTORIES, because the step reads `registry/revoked.json` relative to the workspace
+ * AND `$RUNNER_TEMP/registry/revoked.json` from the clone. Pointing both at one directory —
+ * which the previous harness could get away with — makes them the same file, and every case
+ * would then compare a document with itself.
+ *
+ * `previous: null` is the bootstrap state: the registry has no list yet. `signed: false` is the
+ * state before the first signing publish — list present, signature missing.
+ */
 function gate(
   ours: Doc,
-  live: Doc | null,
-): { output: string; status: null | number } {
+  previous: Doc | null,
+  { signed = true }: { signed?: boolean } = {},
+): GateRun {
   const dir = mkdtempSync(join(tmpdir(), "baram-gate-"));
-  mkdirSync(join(dir, "registry"));
+  const workspace = join(dir, "workspace");
+  const temp = join(dir, "temp");
+  mkdirSync(join(workspace, "registry"), { recursive: true });
+  mkdirSync(join(temp, "registry"), { recursive: true });
   // Formatted the way prettier writes the real file, so `cmp` compares realistic bytes —
   // the trailing newline is part of what "byte-identical" has to mean in practice.
   writeFileSync(
-    join(dir, "registry/revoked.json"),
+    join(workspace, "registry/revoked.json"),
     `${JSON.stringify(ours, null, 2)}\n`,
   );
-  let fakeLive = "/nonexistent/live.json";
-  if (live !== null) {
-    fakeLive = join(dir, "live.json");
-    writeFileSync(fakeLive, `${JSON.stringify(live, null, 2)}\n`);
+  if (previous !== null) {
+    writeFileSync(
+      join(temp, "registry/revoked.json"),
+      `${JSON.stringify(previous, null, 2)}\n`,
+    );
+    if (signed) {
+      writeFileSync(
+        join(temp, "registry/revoked.json.sig"),
+        "not checked here",
+      );
+    }
   }
   // `registry/revoked.json` is a relative path in the workflow, so the gate runs from the
-  // fixture root with the real scripts reachable from it.
+  // workspace with the real scripts reachable from it.
   for (const name of ["scripts", "src", "node_modules"]) {
-    symlinkSync(join(ROOT, name), join(dir, name));
+    symlinkSync(join(ROOT, name), join(workspace, name));
   }
+  // The step decides whether signing happens by writing to `$GITHUB_OUTPUT`, so the file is
+  // real and its contents are part of what these cases assert.
+  const outputFile = join(dir, "step-output");
+  writeFileSync(outputFile, "");
   // `bash -e` is what Actions uses for a `run:` block on ubuntu — the failure semantics are
   // part of the behaviour under test.
   const result = spawnSync("bash", ["-e", "-c", SCRIPT], {
-    cwd: dir,
+    cwd: workspace,
     encoding: "utf8",
-    env: { ...process.env, FAKE_LIVE: fakeLive, RUNNER_TEMP: dir },
+    env: {
+      ...process.env,
+      GITHUB_OUTPUT: outputFile,
+      RUNNER_TEMP: temp,
+    },
   });
-  return { output: `${result.stdout}${result.stderr}`, status: result.status };
+  return {
+    output: `${result.stdout}${result.stderr}`,
+    publish:
+      /publish=(\w+)/u.exec(readFileSync(outputFile, "utf8"))?.[1] ?? null,
+    status: result.status,
+  };
 }
 
 // ‼️ The floor step is extracted the same way and run the same way, because it has the same
@@ -201,25 +244,52 @@ const CHANGED: Doc = {
 // suite, and this file is what pushed `malicious-fixture.test.ts` — the other test that runs a
 // workflow step for real — past its own default. A ceiling, not a delay.
 describe("the revocation publish gate", { timeout: 30_000 }, () => {
-  it("treats a byte-identical list as nothing to publish, not as a rollback", () => {
+  it("treats a byte-identical signed list as nothing to publish, not as a rollback", () => {
     // ‼️ HIGH-3. This is the STEADY STATE, and the manual re-sync hits it every time.
-    const { output, status } = gate(EMPTY, EMPTY);
+    const { output, publish, status } = gate(EMPTY, EMPTY);
     expect(status).toBe(0);
-    expect(output).toContain("byte-identical");
+    expect(output).toContain("nothing to publish");
+    // The flag is the whole consequence: it is what keeps the signing key out of the run.
+    expect(publish).toBe("false");
+  });
+
+  it("re-signs an unchanged list whose signature is missing from the registry", () => {
+    // ‼️ Security review MEDIUM-2, now visible to a test. Identical bytes with no `.sig` was
+    // permanently unrecoverable: the change check said "nothing to publish", verification then
+    // failed on every re-run, and the documented re-sync could not repair it.
+    const { output, publish, status } = gate(EMPTY, EMPTY, { signed: false });
+    expect(status).toBe(0);
+    expect(output).toContain("re-signing");
+    expect(publish).toBe("true");
+  });
+
+  it("publishes without a comparison when the registry has no list yet", () => {
+    // The bootstrap path the workflow header documents. Nothing to roll back over.
+    const { output, publish, status } = gate(EMPTY, null);
+    expect(status).toBe(0);
+    expect(output).toContain("bootstrap");
+    expect(publish).toBe("true");
   });
 
   it("passes a changed list whose counter advances", () => {
-    const { output, status } = gate({ ...CHANGED, sequence: 2 }, EMPTY);
+    const { output, publish, status } = gate(
+      { ...CHANGED, sequence: 2 },
+      EMPTY,
+    );
     expect(status).toBe(0);
-    expect(output).toContain("live sequence=1, publishing=2");
+    expect(output).toContain("registry sequence=1, publishing=2");
+    expect(publish).toBe("true");
   });
 
-  it("REFUSES a changed list that reuses the live counter", () => {
+  it("REFUSES a changed list that reuses the registry's counter", () => {
     // The gate's actual job: the content moved and the counter did not, so every armed
     // client would refuse the list as a rollback and the revocation would do nothing.
-    const { output, status } = gate(CHANGED, EMPTY);
+    const { output, publish, status } = gate(CHANGED, EMPTY);
     expect(status).toBe(1);
     expect(output).toContain("sequence must increase");
+    // ‼️ Asserted, not assumed: a refusal that still wrote `publish=true` would sign and push
+    // the list the step just called a rollback, since the flag and the exit code are separate.
+    expect(publish).toBeNull();
   });
 
   it("REFUSES a changed list whose counter goes backwards", () => {
@@ -231,14 +301,6 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
       },
     );
     expect(status).toBe(1);
-  });
-
-  it("skips the gate when the live list is unreachable", () => {
-    // Permissive on purpose: a Pages outage must not block an urgent revocation. The real
-    // protection is the client refusing a rollback, which does not need this step at all.
-    const { output, status } = gate(EMPTY, null);
-    expect(status).toBe(0);
-    expect(output).toContain("unreachable");
   });
 
   it("REFUSES a counter written as a JSON string, which clients read as 0", () => {
@@ -301,9 +363,10 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
     expect(status).toBe(0);
   });
 
-  it("counts a malformed LIVE counter as 0, the value clients hold", () => {
-    // The mirror of the case above: if the live document's counter is unreadable then every
-    // client is sitting at 0, so publishing 2 is a genuine advance and must not be refused.
+  it("counts a malformed PREVIOUS counter as 0, the value clients hold", () => {
+    // The mirror of the case above: if the published document's counter is unreadable then
+    // every client is sitting at 0, so publishing 2 is a genuine advance and must not be
+    // refused.
     const { output, status } = gate(
       { ...CHANGED, sequence: 2 },
       {
@@ -312,6 +375,99 @@ describe("the revocation publish gate", { timeout: 30_000 }, () => {
       },
     );
     expect(status).toBe(0);
-    expect(output).toContain("live sequence=0, publishing=2");
+    expect(output).toContain("registry sequence=0, publishing=2");
+  });
+});
+
+// ‼️ THESE ASSERT THE WORKFLOW'S SHAPE, WHICH NO CASE ABOVE CAN SEE. Each step is extracted and
+// run in isolation, so a step moved, deleted, or given the wrong condition changes what the
+// workflow means while every behavioural case stays green — and three of the findings this file
+// exists for were exactly that: a claim in a step's name that its position no longer supported.
+describe("the revocation publish workflow's shape", () => {
+  const workflow = readFileSync(WORKFLOW, "utf8");
+
+  /** The `- name:` of the step a given line falls inside. */
+  function stepContaining(line: number): string {
+    const lines = workflow.split("\n");
+    for (let i = line; i >= 0; i--) {
+      const match = /^- name: (.+)$/u.exec(lines[i].trim());
+      if (match) return match[1];
+    }
+    throw new Error(`line ${line} is not inside a named step`);
+  }
+
+  it("puts the signing key in exactly one step, and that step only signs", () => {
+    // ‼️ THE BLAST RADIUS IS THE PROPERTY (security review LOW). Any merge touching
+    // `registry/revoked.json` runs this workflow with the revocation signing key available, and
+    // the same merge can land arbitrary repository TypeScript. Job-level env, or one more step
+    // inside the block that holds it, silently hands the key to `npx tsx` — so the count is
+    // asserted rather than the placement being left to review.
+    const lines = workflow.split("\n");
+    // ‼️ Anchored at the line start and ending at the colon: `TAURI_SIGNING_PRIVATE_KEY` is a
+    // PREFIX of `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, so a substring search finds two lines and
+    // "exactly one" would be unsatisfiable for a correct workflow.
+    const keyLines = lines
+      .map((line, index) => ({ index, line }))
+      .filter(({ line }) => /^TAURI_SIGNING_PRIVATE_KEY:/u.test(line.trim()));
+    expect(keyLines).toHaveLength(1);
+    const owner = stepContaining(keyLines[0].index);
+    expect(owner).toBe("Sign the list");
+    const body = stepScript(workflow, owner);
+    expect(body).toContain("tauri signer sign");
+    // The two things that must NOT share the environment: this repository's scripts, and the
+    // push. Both were in this step before it was split.
+    expect(body).not.toContain("npx tsx");
+    expect(body).not.toContain("git push");
+  });
+
+  it("removes the deploy key even when a step before it failed", () => {
+    // A failed gate or a failed signature must not leave a key with push access to the registry
+    // on a runner that goes on to execute repository TypeScript. Without `always()` the cleanup
+    // is skipped on exactly the runs where it matters most.
+    const cleanup = stepMeta(workflow, "Remove the deploy key from the runner");
+    const push = stepMeta(workflow, "Commit and push");
+    expect(cleanup.condition).toBe("always()");
+    expect(cleanup.index).toBeGreaterThan(push.index);
+  });
+
+  it("verifies the signature BEFORE pushing and again on what Pages serves", () => {
+    // ‼️ TWO CHECKS, TWO WINDOWS, AND NEITHER SUBSUMES THE OTHER. The pre-push one keeps an
+    // unverifiable pair off Pages; the post-publish one is the ONLY check that covers a run
+    // which publishes nothing, which is the steady state and the state every pair published
+    // before this gate existed is in. Collapse them into one and one of those goes uncovered.
+    const beforePush = stepMeta(
+      workflow,
+      "An armed client must accept the signed list",
+    );
+    const push = stepMeta(workflow, "Commit and push");
+    const served = stepMeta(
+      workflow,
+      "An armed client must accept what Pages serves",
+    );
+    const verify = stepMeta(
+      workflow,
+      "Verify the live list is served and readable",
+    );
+    expect(beforePush.index).toBeLessThan(push.index);
+    // Gated on there being something to publish — it reads the freshly signed file, which only
+    // the signing step creates.
+    expect(beforePush.condition).toBe("steps.gate.outputs.publish == 'true'");
+    // Reads `$RUNNER_TEMP/live.*`, which only the verify step above it downloads.
+    expect(served.index).toBeGreaterThan(verify.index);
+    expect(served.condition).toBeNull();
+  });
+
+  it("signs and pushes only when the gate says there is something to publish", () => {
+    // The flag is what keeps an ordinary re-run from re-signing and re-pushing an unchanged
+    // list — and, since minisign stamps a timestamp, from rebuilding Pages on every run.
+    for (const step of [
+      "Sign the list",
+      "An armed client must accept the signed list",
+      "Commit and push",
+    ]) {
+      expect(stepMeta(workflow, step).condition).toBe(
+        "steps.gate.outputs.publish == 'true'",
+      );
+    }
   });
 });
