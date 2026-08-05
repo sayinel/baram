@@ -1408,9 +1408,10 @@ fn revocation_http_client() -> Result<reqwest::Client, String> {
 /// | release | 10.5 ms   | 0.14 ms    | <1 ms  |
 ///
 /// So it is a one-time process-global initialisation (certificate store parsing, unoptimised),
-/// not a per-client cost — and it is a **test** problem, not a product one. It is why the
-/// concurrency test below needs a warm-up: test binaries are debug builds, and that 1.08 s landed
-/// inside a wall-clock assertion. Shipping builds are release, where 10.5 ms against
+/// not a per-client cost — and it is a **test** problem, not a product one. Test binaries are
+/// debug builds, and that 1.08 s landed inside a wall-clock assertion in the concurrency test,
+/// which is why that assertion is gone: it measured process start-up and could not catch what it
+/// claimed to. Shipping builds are release, where 10.5 ms against
 /// `REVOCATION_REFRESH_BUDGET_MS = 1500` is noise. The retracted claim was that this cost eats
 /// the startup budget; it does not, and no eager-warm-up work is needed.
 ///
@@ -4179,20 +4180,25 @@ mod tests {
             ("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec(), delay),
             ("200 OK", b"not a real signature".to_vec(), delay),
         );
-        // ‼️ WARM THE PROCESS BEFORE THE CLOCK STARTS. The first HTTP client built in a process
-        // costs ~1.08 s in a DEBUG build (10.5 ms in release — see `fetch_capped_text_with`), and
-        // test binaries are debug builds, so the elapsed assertion at the end of this test was
-        // measuring process start-up. Evidence: run alone with `--exact`, it failed 3/3 ("the pair took
-        // 1.96s–2.14s"); with any one other network test ahead of it in the same process it
-        // passes, and the two together take 2.07 s — so the cost is paid ONCE per process, not
-        // per client. Without this warm-up the test is green only because sibling tests happen
-        // to run first: `cargo test --exact <this>` is red, and so is any runner that gives each
-        // test its own process (nextest).
-        let warm = serve_once("200 OK", b"{}".to_vec());
-        fetch_capped_text(&warm, 64, "warm-up")
-            .await
-            .expect("the warm-up fetch must succeed, or it warmed nothing");
-        let started = Instant::now();
+        // ‼️ NO STOPWATCH. There was a second assertion here — `elapsed < delay * 2` — introduced as
+        // a guard against "a future change that starts both requests and then serialises the
+        // bodies". It cannot catch that, measured rather than argued: with `fetch_signed_pair`
+        // mutated to `join!` the two `send()`s and then await the two bodies one after the other,
+        // this test PASSED. `serve_pair_slow` sleeps per connection on its own thread and before
+        // writing anything, so both stalls overlap no matter when the client reads, and the payload
+        // is already buffered by the time a serial reader gets to it. Total elapsed is ~one stall
+        // either way. Catching serialised reads would need a server that withholds the body until
+        // the client reads it — this fixture cannot, so do not re-add a wall-clock assertion
+        // believing that it covers the case.
+        //
+        // What it did catch was a fully sequential implementation, which the accept gap below
+        // already kills ("602.218ms apart", verified). And it cost real breakage: in a DEBUG build
+        // the first HTTP client in a process takes ~1.08 s (10.5 ms in release — see
+        // `fetch_capped_text_with`), test binaries are debug, and that landed inside the timing
+        // window. The test therefore failed 3/3 when run alone and passed only when a sibling
+        // network test warmed the process first — red under `cargo test --exact` and under any
+        // runner that gives each test its own process (nextest). The accept gap is immune to that
+        // by construction: both accepts happen after the client exists.
         let (body, signature) = fetch_signed_pair(&url).await.expect("both fetches succeed");
         assert!(body.contains("revoked"), "{body}");
         assert_eq!(signature, "not a real signature");
@@ -4203,13 +4209,6 @@ mod tests {
             gap < delay,
             "the two requests were {gap:?} apart with a {delay:?} stall each — that is serial, \
              not concurrent"
-        );
-        // And the wall clock is one stall, not two. The accept gap above is the precise assertion;
-        // this guards a future change that starts both requests and then serialises the bodies.
-        assert!(
-            started.elapsed() < delay * 2,
-            "the pair took {:?} with a {delay:?} stall each",
-            started.elapsed()
         );
     }
 
