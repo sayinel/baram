@@ -61,6 +61,44 @@ describe("cursor units are grapheme clusters", () => {
   });
 });
 
+describe("a single rightward step stays lazy", () => {
+  it("iterates ONE cluster, never the whole node (cursor decoration path)", () => {
+    // nextUnitBoundary runs on every normal-mode cursor decoration, so a
+    // long single-line document must not pay a full segmentation there
+    // (measured: ~81ms and ~11MB retained for 1M characters).
+    const editor = makeEditor(`<p>${"a".repeat(5000)}</p>`);
+    const proto = Intl.Segmenter.prototype as unknown as {
+      segment: (text: string) => Iterable<{ segment: string }>;
+    };
+    const original = proto.segment;
+    let yields = 0;
+    proto.segment = function (this: Intl.Segmenter, text: string) {
+      const inner = original.call(this, text);
+      return {
+        [Symbol.iterator]() {
+          const it = inner[Symbol.iterator]();
+          return {
+            [Symbol.iterator]() {
+              return this;
+            },
+            next() {
+              const r = it.next();
+              if (!r.done) yields++;
+              return r;
+            },
+          };
+        },
+      };
+    };
+    try {
+      nextUnitBoundary(editor.state, 1);
+    } finally {
+      proto.segment = original;
+    }
+    expect(yields).toBe(1); // indexing the node would iterate 5000
+  });
+});
+
 describe("counted motion segments each text node once", () => {
   it("a 500-step walk makes ONE segmentation pass, not one per step", () => {
     // Slicing and re-segmenting the prefix per step made counted motion

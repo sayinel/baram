@@ -163,11 +163,6 @@ function pasteLine(
 ): OperationOutcome {
   const unit = resolveLineUnit(state, pos);
   const nodes = register.content.map((json) => state.schema.nodeFromJSON(json));
-  const over = budgetRefusal(
-    nodes.reduce((sum, node) => sum + node.nodeSize, 0),
-    count,
-  );
-  if (over) return over;
 
   if (register.context === "tableRow") {
     if (unit.kind !== "tableRow") {
@@ -187,6 +182,11 @@ function pasteLine(
     // deleteRange.to landed past the break and merged lines).
     const insertAt = after ? unit.to : unit.from;
     const breakNode = state.schema.nodes.hardBreak.create();
+    const inlineOver = budgetRefusal(
+      nodes.reduce((sum, node) => sum + node.content.size + 1, 0),
+      count,
+    );
+    if (inlineOver) return inlineOver;
     const pieces: PMNode[] = [];
     for (let i = 0; i < count; i++) {
       for (const node of nodes) {
@@ -208,6 +208,14 @@ function pasteLine(
   if ("reason" in adapted) return { reason: adapted.reason, tr: null };
   const { blocks } = adapted;
   if (blocks.length === 0) return { reason: "register is empty", tr: null };
+  // AFTER adaptation: wrapping top-level blocks as list items grows the
+  // inserted shape (an empty paragraph becomes a 4-position item), so
+  // budgeting the raw register would let twice the cap through.
+  const blockOver = budgetRefusal(
+    blocks.reduce((sum, node) => sum + node.nodeSize, 0),
+    count,
+  );
+  if (blockOver) return blockOver;
   const repeated: PMNode[] = [];
   for (let i = 0; i < count; i++) repeated.push(...blocks);
 
@@ -271,6 +279,11 @@ function pasteRows(
   }
 
   const insertAt = after ? rowPos + anchorRow.nodeSize : rowPos;
+  const rowsOver = budgetRefusal(
+    rows.reduce((sum, row) => sum + row.nodeSize, 0),
+    count,
+  );
+  if (rowsOver) return rowsOver;
   const repeated: PMNode[] = [];
   for (let i = 0; i < count; i++) repeated.push(...rows);
   return { tr: state.tr.insert(insertAt, Fragment.from(repeated)) };

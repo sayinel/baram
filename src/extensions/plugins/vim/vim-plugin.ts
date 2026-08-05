@@ -39,7 +39,7 @@ import {
 } from "../../nodes/views/code-block-cm-registry";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
-import { nextUnitBoundary } from "./adapters/graphemes";
+import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
 import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
@@ -52,6 +52,7 @@ import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
 import { registerVimLifecycle } from "./vim-lifecycle";
 import {
   clearWysiwygVimStatusFor,
+  publishVimRefusal,
   publishWysiwygVimStatus,
 } from "./vim-status";
 
@@ -190,6 +191,7 @@ export function createVimPlugin(
             ) {
               dispatchMeta(view, { mode: "normal", type: "setMode" });
             }
+            if (exec.reason) publishVimRefusal(exec.reason);
           }
           return true;
         },
@@ -267,6 +269,9 @@ export function createVimPlugin(
         destroy: () => {
           unregister();
           clearWysiwygVimStatusFor(editorView);
+          // The boundary index holds the last segmented line — a closed
+          // editor must not retain its longest one (security review).
+          releaseGraphemeIndex();
         },
         update: (view) => {
           publishWysiwygVimStatus(view);

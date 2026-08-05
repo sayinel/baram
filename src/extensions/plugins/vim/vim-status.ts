@@ -81,6 +81,16 @@ export function islandVimMode(
   }
 }
 
+/**
+ * A refused vim operation must SAY so: the key is consumed and the document
+ * left alone, and without this the user sees an unexplained no-op (dedicated
+ * security review found the new paste budget silent this way — the same gap
+ * applied to every existing refusal, e.g. a protected table row).
+ */
+export function publishVimRefusal(reason: string): void {
+  useUIStore.getState().showToast(reason, "warning");
+}
+
 /** PluginView update: publishes only from the appointed owner. */
 export function publishWysiwygVimStatus(view: EditorView): void {
   // A focused island owns the indicator — but only over ITS OWN hosting

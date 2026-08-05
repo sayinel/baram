@@ -11,11 +11,13 @@
 import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { useUIStore } from "../../../../stores/ui/ui";
 import { sanitizeHtmlBlock } from "../../../../utils/markdown/html-sanitize";
 import { sanitizeSvg } from "../../../../utils/markdown/svg-utils";
 import { createBaramExtensions } from "../../../index";
 import { budgetRefusal, pasteRegister } from "../adapters/paste";
 import { resetVimRegister, writeVimRegister } from "../adapters/register";
+import { vimPluginKey } from "../vim-keys";
 
 const MARKERS = ["data-vim-suspend", "data-node-view-content"];
 
@@ -98,6 +100,57 @@ describe("counted paste is budgeted", () => {
     );
     expect(outcome.reason).toBeUndefined();
     expect(outcome.tr).not.toBeNull();
+  });
+
+  it("budgets the ADAPTED shape — list wrapping cannot double the cap", () => {
+    // Wrapping top-level blocks as list items grows each one (an empty
+    // paragraph becomes a 4-position item), so budgeting the raw register
+    // let ~2x through: 100 paragraphs x 9999 measured under the cap but
+    // inserted ~4M positions and a million list items.
+    const editor = makeEditor("<ul><li><p>anchor</p></li></ul>");
+    const paragraph = editor.state.schema.nodes.paragraph.create();
+    const register = {
+      content: Array.from({ length: 100 }, () => paragraph.toJSON()),
+      context: "top" as const,
+      kind: "line" as const,
+    };
+    let itemPos = -1;
+    editor.state.doc.descendants((n, p) => {
+      if (itemPos < 0 && n.type.name === "paragraph") itemPos = p;
+      return itemPos < 0;
+    });
+    const outcome = pasteRegister(
+      editor.state,
+      itemPos + 1,
+      register,
+      true,
+      9999,
+    );
+    expect(outcome.tr).toBeNull();
+    expect(outcome.reason).toBeTruthy();
+  });
+
+  it("a refused operation TELLS the user (toast, not a silent no-op)", () => {
+    const editor = makeEditor(`<p>${"x".repeat(4000)}</p>`);
+    editor.commands.setTextSelection(1);
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        enabled: true,
+        type: "setEnabled",
+      }),
+    );
+    writeVimRegister({
+      kind: "char",
+      slice: editor.state.doc.slice(1, 4000).toJSON(),
+    });
+    useUIStore.getState().dismissToast();
+    for (const key of ["9", "9", "9", "9", "p"]) {
+      editor.view.dom.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }),
+      );
+    }
+    expect(editor.state.doc.textContent).toHaveLength(4000); // untouched
+    expect(useUIStore.getState().toast?.message).toContain("too large");
   });
 
   it("still allows ordinary counted pastes", () => {
