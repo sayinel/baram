@@ -39,7 +39,7 @@ export function pasteRegister(
   after: boolean,
   count: number,
 ): OperationOutcome {
-  if (!register) return { reason: "register is empty", tr: null };
+  if (!register) return { reason: "register is empty", silent: true, tr: null };
   return register.kind === "char"
     ? pasteChar(state, pos, register.slice, after, count)
     : pasteLine(state, pos, register, after, count);
@@ -122,17 +122,55 @@ function anchorBounds(
  */
 const PASTE_BUDGET = 2_000_000;
 
+/** …and a ceiling on NODES created, so a full count of atoms cannot each
+ *  mount a NodeView (an image or html block renders on mount). Generous
+ *  for real use — duplicating a 10-line block 100 times is 1,000 nodes. */
+const PASTE_NODE_BUDGET = 5_000;
+
 /** Exported as a test seam — the budget contract is the security boundary. */
 export function budgetRefusal(
   unitSize: number,
   count: number,
+  nodeCount = 1,
 ): null | OperationOutcome {
   // count 1 is NOT amplification: it inserts exactly what the user just
   // yanked, already bounded by the open document. Refusing it would break
   // legitimate "cut a huge block, paste it elsewhere" moves, so only a
   // MULTIPLIED paste is budgeted.
-  if (count <= 1 || unitSize * count <= PASTE_BUDGET) return null;
+  if (count <= 1) return null;
+  if (
+    unitSize * count <= PASTE_BUDGET &&
+    nodeCount * count <= PASTE_NODE_BUDGET
+  ) {
+    return null;
+  }
   return { reason: "paste is too large for one command", tr: null };
+}
+
+function attrsBytes(node: PMNode): number {
+  let total = 0;
+  for (const value of Object.values(node.attrs)) {
+    if (typeof value === "string") total += value.length;
+  }
+  return total;
+}
+
+/**
+ * Cost of inserting `node` once. Positions alone lie: an atom's nodeSize is
+ * 1 no matter what it carries, and htmlBlock/svgBlock/image keep their raw
+ * payload in ATTRS (a 200KB html block is one position). Attribute bytes
+ * and node count are the parts that actually cost sanitizing, rendering
+ * and memory (final review).
+ */
+function nodeCost(node: PMNode): { nodes: number; weight: number } {
+  let nodes = 1;
+  let weight = node.nodeSize + attrsBytes(node);
+  node.descendants((child) => {
+    nodes += 1;
+    weight += attrsBytes(child);
+    return true;
+  });
+  return { nodes, weight };
 }
 
 function pasteChar(
@@ -142,17 +180,18 @@ function pasteChar(
   after: boolean,
   count: number,
 ): OperationOutcome {
-  if (sliceJSON === null) return { reason: "register is empty", tr: null };
+  if (sliceJSON === null)
+    return { reason: "register is empty", silent: true, tr: null };
   const slice = Slice.fromJSON(state.schema, sliceJSON);
-  const over = budgetRefusal(slice.content.size, count);
+  const sliceNodes: PMNode[] = [];
+  slice.content.forEach((node) => sliceNodes.push(node));
+  const over = projectedCost(sliceNodes, count);
   if (over) return over;
   const insertAt = after ? nextUnitBoundary(state, pos) : pos;
   const tr = state.tr.setSelection(TextSelection.create(state.doc, insertAt));
   for (let i = 0; i < count; i++) tr.replaceSelection(slice);
   return { tr };
 }
-
-// ── table rows ─────────────────────────────────────────────────────────────
 
 function pasteLine(
   state: EditorState,
@@ -182,10 +221,7 @@ function pasteLine(
     // deleteRange.to landed past the break and merged lines).
     const insertAt = after ? unit.to : unit.from;
     const breakNode = state.schema.nodes.hardBreak.create();
-    const inlineOver = budgetRefusal(
-      nodes.reduce((sum, node) => sum + node.content.size + 1, 0),
-      count,
-    );
+    const inlineOver = projectedCost(nodes, count);
     if (inlineOver) return inlineOver;
     const pieces: PMNode[] = [];
     for (let i = 0; i < count; i++) {
@@ -207,14 +243,12 @@ function pasteLine(
   const adapted = adaptToAnchor(nodes, anchorItemType);
   if ("reason" in adapted) return { reason: adapted.reason, tr: null };
   const { blocks } = adapted;
-  if (blocks.length === 0) return { reason: "register is empty", tr: null };
+  if (blocks.length === 0)
+    return { reason: "register is empty", silent: true, tr: null };
   // AFTER adaptation: wrapping top-level blocks as list items grows the
   // inserted shape (an empty paragraph becomes a 4-position item), so
   // budgeting the raw register would let twice the cap through.
-  const blockOver = budgetRefusal(
-    blocks.reduce((sum, node) => sum + node.nodeSize, 0),
-    count,
-  );
+  const blockOver = projectedCost(blocks, count);
   if (blockOver) return blockOver;
   const repeated: PMNode[] = [];
   for (let i = 0; i < count; i++) repeated.push(...blocks);
@@ -222,6 +256,8 @@ function pasteLine(
   const [from, to] = anchorBounds(state, unit, pos);
   return { tr: state.tr.insert(after ? to : from, Fragment.from(repeated)) };
 }
+
+// ── table rows ─────────────────────────────────────────────────────────────
 
 function pasteRows(
   state: EditorState,
@@ -231,7 +267,9 @@ function pasteRows(
   count: number,
 ): OperationOutcome {
   const anchorRow = state.doc.nodeAt(rowPos);
-  if (!anchorRow) return { reason: "no row under cursor", tr: null };
+  if (!anchorRow) {
+    return { reason: "no row under cursor", silent: true, tr: null };
+  }
 
   // Width comes from the TABLE grid, not the anchor row — a rowspan-shadowed
   // row's own cells undercount (impl review R1). Merged rows are refused
@@ -279,14 +317,26 @@ function pasteRows(
   }
 
   const insertAt = after ? rowPos + anchorRow.nodeSize : rowPos;
-  const rowsOver = budgetRefusal(
-    rows.reduce((sum, row) => sum + row.nodeSize, 0),
-    count,
-  );
+  const rowsOver = projectedCost(rows, count);
   if (rowsOver) return rowsOver;
   const repeated: PMNode[] = [];
   for (let i = 0; i < count; i++) repeated.push(...rows);
   return { tr: state.tr.insert(insertAt, Fragment.from(repeated)) };
+}
+
+/** Projected cost of `nodes` repeated `count` times. */
+function projectedCost(
+  nodes: PMNode[],
+  count: number,
+): null | OperationOutcome {
+  let weight = 0;
+  let nodeCount = 0;
+  for (const node of nodes) {
+    const cost = nodeCost(node);
+    weight += cost.weight;
+    nodeCount += cost.nodes;
+  }
+  return budgetRefusal(weight, count, nodeCount);
 }
 
 function rowHasHeaderCells(row: PMNode): boolean {

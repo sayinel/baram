@@ -992,6 +992,50 @@ describe("ops-R3 pins", () => {
   });
 });
 
+describe("insert anchors (a / I / A)", () => {
+  it("a advances one unit; A goes to line end; I to the first non-blank", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(2); // on "b"
+    enable(editor);
+    key(editor, "a");
+    expect(editor.state.selection.head).toBe(3); // after "b"
+    key(editor, "Escape");
+
+    key(editor, "A");
+    expect(editor.state.selection.head).toBe(4); // past "c" — insert may
+    key(editor, "Escape");
+
+    const e2 = makeEditor("<p>x</p>");
+    e2.commands.setContent({
+      content: [
+        { content: [{ text: "   hi", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    e2.commands.setTextSelection(5);
+    enable(e2);
+    key(e2, "I");
+    expect(e2.state.selection.head).toBe(4); // on "h", not column 0
+  });
+
+  it("a at the LAST character reaches the position past it", () => {
+    const editor = makeEditor("<p>ab</p>");
+    editor.commands.setTextSelection(2); // on "b", the last unit start
+    enable(editor);
+    key(editor, "a");
+    expect(editor.state.selection.head).toBe(3); // end of the segment
+    expect(vim(editor).mode).toBe("insert");
+  });
+
+  it("i keeps the caret where it is", () => {
+    const editor = makeEditor("<p>abc</p>");
+    editor.commands.setTextSelection(2);
+    enable(editor);
+    key(editor, "i");
+    expect(editor.state.selection.head).toBe(2);
+  });
+});
+
 describe("device R7 pins", () => {
   it("f + hangul jamo jumps by 초성; ; repeats it", () => {
     const editor = makeEditor("<p>ab 강 김</p>");

@@ -28,6 +28,12 @@ export interface OperationOutcome {
   /** Set on refusal — surfaced by the status line (S5). */
   reason?: string;
   register?: VimRegister;
+  /** A ROUTINE vim no-op (empty register, nothing under the cursor). The
+   *  key is consumed and nothing happens, exactly like vim; the app must
+   *  not spend its single toast slot on it — that slot also carries save
+   *  and plugin errors (final review). Structural and resource refusals
+   *  stay loud by default. */
+  silent?: boolean;
   tr: null | Transaction;
 }
 
@@ -108,7 +114,8 @@ export function deleteCharForward(
     if (next === end) break;
     end = next;
   }
-  if (end === pos) return { reason: "nothing to delete", tr: null };
+  if (end === pos)
+    return { reason: "nothing to delete", silent: true, tr: null };
   return {
     register: { kind: "char", slice: state.doc.slice(pos, end).toJSON() },
     tr: state.tr.delete(pos, end),
@@ -422,10 +429,17 @@ function deleteOrEmpty(
 function deleteTableRow(
   state: EditorState,
   unit: LineUnit,
-): UnitDeletion | { reason?: string; tr: null; yanked?: undefined } {
+):
+  | UnitDeletion
+  | {
+      reason?: string;
+      silent?: boolean;
+      tr: null;
+      yanked?: undefined;
+    } {
   if (unit.kind !== "tableRow") throw new Error("not a table row");
   const row = state.doc.nodeAt(unit.rowPos);
-  if (!row) return { reason: "no row under cursor", tr: null };
+  if (!row) return { reason: "no row under cursor", silent: true, tr: null };
 
   // v2 pins: the header row and the only data row are untouchable.
   if (rowIsHeader(row)) {
@@ -465,7 +479,14 @@ function deleteTableRow(
 function deleteUnitOnce(
   state: EditorState,
   unit: LineUnit,
-): UnitDeletion | { reason?: string; tr: null; yanked?: undefined } {
+):
+  | UnitDeletion
+  | {
+      reason?: string;
+      silent?: boolean;
+      tr: null;
+      yanked?: undefined;
+    } {
   if (unit.kind === "tableRow") return deleteTableRow(state, unit);
 
   if (unit.kind === "hardBreakSegment") {
@@ -492,7 +513,7 @@ function deleteUnitOnce(
   }
   const from = unit.containerPos ?? unit.blockPos;
   const node = state.doc.nodeAt(from);
-  if (!node) return { reason: "no block under cursor", tr: null };
+  if (!node) return { reason: "no block under cursor", silent: true, tr: null };
   return {
     landing: from,
     tr: deleteOrEmpty(state, from, from + node.nodeSize),

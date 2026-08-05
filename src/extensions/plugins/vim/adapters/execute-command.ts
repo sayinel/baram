@@ -5,7 +5,12 @@
 // line); motions land in S3 and are consumed as no-ops until then, so an
 // unbound motion never leaks a keystroke into the document.
 
-import type { CoreCommand, Motion, VisualState } from "../core/types";
+import type {
+  CoreCommand,
+  InsertAnchor,
+  Motion,
+  VisualState,
+} from "../core/types";
 import type { Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -13,7 +18,7 @@ import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { nextUnitBoundary } from "./graphemes";
-import { resolveFindChar, wordEndAt } from "./motions";
+import { resolveFindChar, segmentSpanAt, wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
 import {
   changeLines,
@@ -36,6 +41,8 @@ export interface ExecutionResult {
   applied?: boolean;
   /** Refusal message for the status line, when the operation said no. */
   reason?: string;
+  /** Routine no-op — consumed like vim, but never worth a toast. */
+  silent?: boolean;
 }
 
 export function executeCoreCommand(
@@ -71,11 +78,8 @@ export function executeCoreCommand(
       }
       return dispatchOutcome(view, deleteVisual(state, visual));
     }
-    case "enterInsert": {
-      // Cursor placement for i/a/I/A refines in S3 (grapheme-aware a, line
-      // ends). i keeps the head; the others approximate to it until then.
-      return {};
-    }
+    case "enterInsert":
+      return enterInsert(view, command.at, head);
     case "enterVisual":
     case "findChar": // the plugin's selection path owns finds — like move
     case "leaveVisual":
@@ -105,7 +109,7 @@ export function executeCoreCommand(
         command.kind === "f" || command.kind === "t" ? "f" : "F",
         command.count,
       );
-      if (match === head) return { reason: "char not found" };
+      if (match === head) return { reason: "char not found", silent: true };
       const forward = command.kind === "f" || command.kind === "t";
       const lo = forward
         ? head
@@ -168,6 +172,31 @@ export function executeCoreCommand(
   }
 }
 
+/**
+ * i / a / I / A place the caret BEFORE insert mode takes over. Insert mode
+ * may sit one unit past the last character (normal mode clamps to unit
+ * starts), so `a` at the end of a line and `A` land on the segment end.
+ */
+function enterInsert(
+  view: EditorView,
+  at: InsertAnchor,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  if (at === "atCursor") return {};
+  const span = segmentSpanAt(state, head);
+  if (!span) return {}; // atom line — nothing to place
+  const target =
+    at === "lineStart"
+      ? resolveMotion(state, head, "lineFirstNonBlank", 1)
+      : at === "lineEnd"
+        ? span.to
+        : Math.min(nextUnitBoundary(state, head), span.to);
+  if (target === head) return {};
+  const tr = state.tr.setSelection(TextSelection.create(state.doc, target));
+  return { applied: dispatchLanded(view, tr.scrollIntoView()) };
+}
+
 /** Motions that make an operator act LINEWISE, like vim (dj deletes two
  *  whole lines, dG to the end of the document). */
 const LINEWISE_MOTIONS = new Set<Motion>([
@@ -210,6 +239,7 @@ function dispatchOutcome(
     applied: outcome.tr !== null && dispatchLanded(view, outcome.tr),
   };
   if (outcome.reason) result.reason = outcome.reason;
+  if (outcome.silent) result.silent = true;
   return result;
 }
 

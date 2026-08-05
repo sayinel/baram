@@ -191,7 +191,9 @@ export function createVimPlugin(
             ) {
               dispatchMeta(view, { mode: "normal", type: "setMode" });
             }
-            if (exec.reason) publishVimRefusal(exec.reason);
+            // Routine no-ops stay quiet: the app has ONE toast slot and
+            // it also carries save and plugin errors (final review).
+            if (exec.reason && !exec.silent) publishVimRefusal(exec.reason);
           }
           return true;
         },
