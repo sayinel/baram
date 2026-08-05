@@ -203,6 +203,11 @@ export class CodeBlockNodeView implements NodeView {
     // deferred initCM, exactly like the editable memo above.
     this.unregisterVimSync = registerCodeBlockVimSync(view, (enabled) => {
       this.latestVimEnabled = enabled;
+      // An EXPLICIT off is a boundary: an unconfirmed restore memo from a
+      // recreate must not resurrect insert on a later re-enable (R8).
+      // Internal recreates never pass here, so the back-to-back
+      // preservation contract stays intact.
+      if (!enabled) this.pendingVimModeRestore = null;
       this.applyVim(enabled);
     });
 

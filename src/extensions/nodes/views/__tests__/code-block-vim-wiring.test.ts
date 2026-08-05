@@ -423,6 +423,52 @@ describe("code block vim wiring (S2)", () => {
     document.body.innerHTML = "";
   });
 
+  it("explicit vim OFF discards the restore memo — re-enable is NORMAL", async () => {
+    // A settings recreate in INSERT stores a restore memo; turning vim
+    // OFF before the memo is confirmed must discard it — a later ON must
+    // start in normal, not resurrect insert (R8).
+    const editor = createEditor("```ts\nconst x = 1;\n```\n");
+    document.body.appendChild(editor.view.dom);
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    const dom = editor.view.dom as HTMLElement;
+    const press = (key: string) =>
+      dom.querySelector(".cm-content")!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key,
+        }),
+      );
+    await vi.waitFor(() => {
+      press("i");
+      expect(
+        dom.querySelector(".cm-content")!.getAttribute("contenteditable"),
+      ).toBe("true");
+    });
+    const base = useSettingsStore.getState().codeBlockLineNumbers;
+    useSettingsStore.setState({ codeBlockLineNumbers: !base }); // recreate
+    setVim(editor, false); // OFF while the memo is unconfirmed
+    setVim(editor, true); // later ON
+    await vi.waitFor(() => {
+      const fresh = dom.querySelector(".cm-content") as HTMLElement;
+      expect(fresh).not.toBeNull();
+      // vim armed again — and in NORMAL (host barrier), never insert
+      expect(fresh.getAttribute("contenteditable")).toBe("false");
+    });
+    await new Promise((r) => setTimeout(r, 80)); // any stray restore
+    expect(
+      (dom.querySelector(".cm-content") as HTMLElement).getAttribute(
+        "contenteditable",
+      ),
+    ).toBe("false");
+    useSettingsStore.setState({ codeBlockLineNumbers: base });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
   it("empty-block Backspace conversion moves FOCUS to PM too", async () => {
     const editor = createEditor("```ts\n\n```\n");
     document.body.appendChild(editor.view.dom);
