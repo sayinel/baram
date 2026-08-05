@@ -2,26 +2,13 @@
 // Uses a plain ProseMirror NodeView (not React) to properly handle
 // setSelection(), which is critical for CM ↔ PM focus coordination.
 
+import type { ViewUpdate } from "@codemirror/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
 
-import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import {
-  bracketMatching,
-  indentUnit,
-  syntaxHighlighting,
-} from "@codemirror/language";
 import { EditorState as CMState, Compartment, Prec } from "@codemirror/state";
-import {
-  EditorView as CMView,
-  drawSelection,
-  keymap,
-  lineNumbers,
-  ViewUpdate,
-} from "@codemirror/view";
+import { EditorView as CMView } from "@codemirror/view";
 import { redo, undo } from "@tiptap/pm/history";
-import { TextSelection } from "@tiptap/pm/state";
 
 import {
   createVimController,
@@ -36,7 +23,6 @@ import {
   islandVimFocus,
   islandVimMode,
 } from "../../plugins/vim/vim-status";
-import { getHighlightStyle } from "../code-block-highlight";
 import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
@@ -45,6 +31,9 @@ import {
   registerCodeBlockEditableSync,
   registerCodeBlockVimSync,
 } from "./code-block-cm-registry";
+import { createCodeBlockEscape } from "./code-block-escape";
+import { buildCodeBlockExtensions } from "./code-block-extensions";
+import { buildCodeBlockKeymap } from "./code-block-keymap";
 import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
@@ -437,151 +426,36 @@ export class CodeBlockNodeView implements NodeView {
     // vim modal IS non-editable, so an escape would move the selection
     // while focus stayed in the island, keys still feeding CodeMirror.
     // The vim-modal attributes supply tabindex="0"; focus the DOM directly.
-    const focusPM = () => {
-      this.view.focus();
-      if (!this.view.hasFocus()) this.view.dom.focus();
-    };
-
-    // Helper to exit CodeMirror → ProseMirror with proper direction bias.
-    // dir: -1 = up/backward, 1 = down/forward
-    const maybeEscape = (dir: -1 | 1) => {
-      const pos = this.getPos();
-      if (typeof pos !== "number") return;
-      const targetPos = pos + (dir < 0 ? 0 : this.node.nodeSize);
-      const selection = TextSelection.near(
-        this.view.state.doc.resolve(targetPos),
-        dir,
-      );
-      // Check if selection resolved back inside this code block
-      const selInside =
-        selection.from > pos && selection.from < pos + this.node.nodeSize;
-      if (selInside) {
-        // No valid position in escape direction — insert a new paragraph
-        const insertPos = dir < 0 ? pos : pos + this.node.nodeSize;
-        const paragraph = this.view.state.schema.nodes.paragraph.create();
-        const tr = this.view.state.tr.insert(insertPos, paragraph);
-        // After insert, positions shift — set selection into the new paragraph
-        const newCursorPos = dir < 0 ? insertPos + 1 : insertPos + 1;
-        tr.setSelection(TextSelection.near(tr.doc.resolve(newCursorPos), dir));
-        this.view.dispatch(tr.scrollIntoView());
-        focusPM();
-        return;
-      }
-      const tr = this.view.state.tr.setSelection(selection).scrollIntoView();
-      this.view.dispatch(tr);
-      focusPM();
-    };
+    const { focusPM, maybeEscape } = createCodeBlockEscape(
+      this.view,
+      this.getPos,
+      () => this.node,
+    );
 
     // Custom keymaps for PM ↔ CM navigation
-    const customKeys = keymap.of([
-      {
-        key: "ArrowUp",
-        run: (cmv) => {
-          const { head } = cmv.state.selection.main;
-          const line = cmv.state.doc.lineAt(head);
-          if (line.number === 1) {
-            maybeEscape(-1);
-            return true;
-          }
-          return false;
-        },
-      },
-      {
-        key: "ArrowDown",
-        run: (cmv) => {
-          const { head } = cmv.state.selection.main;
-          const line = cmv.state.doc.lineAt(head);
-          if (line.number === cmv.state.doc.lines) {
-            maybeEscape(1);
-            return true;
-          }
-          return false;
-        },
-      },
-      {
-        key: "Escape",
-        run: () => {
-          maybeEscape(-1);
-          return true;
-        },
-      },
-      {
-        key: "Backspace",
-        run: (cmv) => {
-          const { head } = cmv.state.selection.main;
-          if (head === 0 && cmv.state.doc.length === 0) {
-            // Empty code block → convert to paragraph
-            const pos = this.getPos();
-            if (typeof pos !== "number") return false;
-            const pmNode = this.view.state.doc.nodeAt(pos);
-            if (!pmNode) return false;
-            const paragraph = this.view.state.schema.nodes.paragraph.create();
-            const tr = this.view.state.tr.replaceWith(
-              pos,
-              pos + pmNode.nodeSize,
-              paragraph,
-            );
-            tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
-            this.view.dispatch(tr);
-            focusPM(); // view.focus() alone is editable-gated (vim modal)
-            return true;
-          }
-          return false;
-        },
-      },
-      {
-        key: "Mod-z",
-        run: () => {
-          undo(this.view.state, this.view.dispatch);
-          return true;
-        },
-      },
-      {
-        key: "Mod-Shift-z",
-        run: () => {
-          redo(this.view.state, this.view.dispatch);
-          return true;
-        },
-      },
-      {
-        key: "Mod-y",
-        run: () => {
-          redo(this.view.state, this.view.dispatch);
-          return true;
-        },
-      },
-    ]);
+    const customKeys = buildCodeBlockKeymap({
+      escape: maybeEscape,
+      focusPM,
+      getPos: this.getPos,
+      view: this.view,
+    });
 
-    const extensions = [
-      customKeys,
-      keymap.of([
-        ...defaultKeymap,
-        ...(autoPairBrackets ? closeBracketsKeymap : []),
-        indentWithTab,
-      ]),
-      ...(codeBlockLineNumbers ? [lineNumbers()] : []),
-      drawSelection(),
-      bracketMatching(),
-      ...(autoPairBrackets ? [closeBrackets()] : []),
-      syntaxHighlighting(getHighlightStyle()),
-      CMView.lineWrapping,
-      CMState.tabSize.of(tabSize),
-      indentUnit.of(" ".repeat(tabSize)),
-      this.readOnlyCompartment.of(
-        CMState.readOnly.of(
-          !(this.latestEffectiveEditable ?? this.view.editable),
-        ),
-      ),
-      // §298 Phase 0b — vim slots: filled by the controller when enabled.
-      this.vimCompartment.of([]),
-      this.vimEditableCompartment.of([]),
-      // Sync CodeMirror → ProseMirror
-      CMView.updateListener.of((update: ViewUpdate) => {
-        if (!update.docChanged || this.updating) return;
+    const extensions = buildCodeBlockExtensions({
+      autoPairBrackets,
+      keymapExtension: customKeys,
+      langExt,
+      languageCompartment: this.languageCompartment,
+      lineNumbers: codeBlockLineNumbers,
+      onDocChanged: (update) => {
+        if (this.updating) return;
         this.forwardUpdate(update);
-      }),
-      this.languageCompartment.of(langExt ? [langExt] : []),
-    ];
+      },
+      readOnly: !(this.latestEffectiveEditable ?? this.view.editable),
+      readOnlyCompartment: this.readOnlyCompartment,
+      tabSize,
+      vimCompartment: this.vimCompartment,
+      vimEditableCompartment: this.vimEditableCompartment,
+    });
 
     const state = CMState.create({
       doc: this.node.textContent,
