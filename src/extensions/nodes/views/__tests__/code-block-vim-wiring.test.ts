@@ -59,6 +59,10 @@ describe("code block vim wiring (S2)", () => {
     // The barrier lands in the same tick — beforeinput fires before
     // keydown, so an async gate would leak IME text while vim loads.
     expect(content.getAttribute("contenteditable")).toBe("false");
+    // And the island stays FOCUSABLE through the load: tabindex must come
+    // with the barrier, not after the async module resolves — an explicit
+    // PM entry into a cold block would otherwise lose focus.
+    expect(content.getAttribute("tabindex")).toBe("-1");
     editor.destroy();
   });
 
@@ -181,6 +185,29 @@ describe("code block vim wiring (S2)", () => {
       expect(hasCodeBlock).toBe(false); // converted to a paragraph
     });
     editor.destroy();
+  });
+
+  it("enabling vim while focus is INSIDE the island re-suspends PM", async () => {
+    const editor = createEditor("```ts\nconst x = 1;\n```\n");
+    const content = await revealCM(editor);
+    // jsdom only focuses elements ATTACHED to the document, and does not
+    // treat contenteditable as focusable — attach and add a tabindex so
+    // document.activeElement really lands inside the island marker.
+    document.body.appendChild(editor.view.dom);
+    content.setAttribute("tabindex", "0");
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    // vim OFF at focus time — no suspension was recorded. Enabling now
+    // fires no new focusin; the transition must re-evaluate on its own.
+    setVim(editor, true);
+    await vi.waitFor(() => {
+      const vim = vimPluginKey.getState(editor.state) as {
+        suspended?: boolean;
+      };
+      expect(vim?.suspended).toBe(true);
+    });
+    editor.destroy();
+    document.body.innerHTML = "";
   });
 
   it("a language change tears down and re-arms vim on the new CM", async () => {

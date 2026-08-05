@@ -143,6 +143,14 @@ describe("vim code block boundary (S3)", () => {
     attachVimBoundary(view, fakeCM(idle()), h.hooks);
     press(view, "j", { metaKey: true });
     press(view, "j", { altKey: true });
+    // Shift+Arrow is a selection gesture, not a boundary motion.
+    const shifted = press(view, "ArrowDown", { shiftKey: true });
+    expect(shifted.defaultPrevented).toBe(false);
+    const up = makeView(1);
+    const h3 = hooks();
+    attachVimBoundary(up, fakeCM(idle()), h3.hooks);
+    press(up, "ArrowUp", { shiftKey: true });
+    expect(h3.calls).toEqual([]);
     const composing = new KeyboardEvent("keydown", {
       bubbles: true,
       cancelable: true,

@@ -169,17 +169,26 @@ describe("createVimController", () => {
     expect(onError).toHaveBeenCalledTimes(1); // unchanged
   });
 
-  it("getCM null (plugin creation failed): runs without a guard, no crash", async () => {
+  it("getCM null (plugin creation failed): rolls back to plain editing", async () => {
+    // CodeMirror DEACTIVATES a throwing ViewPlugin instead of propagating,
+    // so getCM null IS the init-failure path. A pre-raised editing-host
+    // barrier (code block islands) must not survive it — the slot empties,
+    // the host returns, and the failure is reported.
     const f = makeFakes();
     const mod = { getCM: vi.fn(() => null), vim: vi.fn(() => []) };
+    const onError = vi.fn();
     const controller = createVimController(asView(f.view), f.compartment, {
       attachGuard: f.attachGuard,
       loadModule: () => Promise.resolve(asModule(mod)),
+      onError,
     });
     controller.apply(true);
     await flush();
-    expect(f.view.dispatch).toHaveBeenCalledTimes(1);
     expect(f.attachGuard).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(1);
+    // vim slot installed, then emptied again on the failure rollback
+    expect(f.view.dispatch).toHaveBeenCalledTimes(2);
+    expect(f.view.contentDOM.getAttribute("tabindex")).toBeNull();
   });
 
   it("3v mechanism: removes the editing host per mode and restores it on off", async () => {

@@ -279,6 +279,19 @@ export function createVimPlugin(
           if (nextVim !== prevVimEnabled) {
             prevVimEnabled = nextVim;
             broadcastCodeBlockVim(view, nextVim);
+            if (nextVim) {
+              // Enabling while focus already sits INSIDE an input island:
+              // no new focusin will ever fire, so without this the island
+              // stays readOnly until a blur/refocus. Same microtask
+              // re-evaluation as the focusout path (§4).
+              queueMicrotask(() => {
+                if (view.isDestroyed) return;
+                const active = view.root.activeElement;
+                if (shouldSuspendFor(active) && !read(view.state).suspended) {
+                  dispatchMeta(view, { suspended: true, type: "setSuspended" });
+                }
+              });
+            }
           }
         },
       };

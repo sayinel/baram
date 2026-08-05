@@ -155,14 +155,22 @@ export function createVimController(
           // Focusable BEFORE the first editable flip, so focus never drops.
           view.contentDOM.setAttribute("tabindex", "-1");
           // The vim ViewPlugin is created synchronously during the dispatch
-          // above, so getCM is non-null unless plugin creation itself failed —
-          // in that unlikely case we simply run without the IME guard.
+          // above, so getCM is non-null unless plugin creation itself
+          // failed. CodeMirror DEACTIVATES a throwing ViewPlugin instead of
+          // propagating, so a null here IS the initialization-failure path:
+          // running on silently would leave the pre-raised editing-host
+          // barrier in place forever — a locked, key-eating island. Roll
+          // everything back to plain editing and report.
           const cm = mod.getCM(view);
-          if (cm) {
-            guardDispose = attach(view, cm, handleMode);
-            if (deps.boundaryHooks) {
-              boundaryDispose = attachVimBoundary(view, cm, deps.boundaryHooks);
-            }
+          if (!cm) {
+            view.dispatch({ effects: compartment.reconfigure([]) });
+            handleMode(null);
+            deps.onError?.(new Error("vim plugin failed to initialize"));
+            return;
+          }
+          guardDispose = attach(view, cm, handleMode);
+          if (deps.boundaryHooks) {
+            boundaryDispose = attachVimBoundary(view, cm, deps.boundaryHooks);
           }
         })
         .catch((err: unknown) => {

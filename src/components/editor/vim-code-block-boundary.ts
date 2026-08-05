@@ -43,7 +43,7 @@ export function attachVimBoundary(
     if (event.isComposing || event.keyCode === 229) return;
     // Panel inputs (`:`/`/`) never pass through contentDOM.
     if (!event.composedPath().includes(view.contentDOM)) return;
-    if (event.metaKey || event.altKey) return;
+    if (event.metaKey || event.altKey || event.shiftKey) return;
     if (!isIdleNormal(cm)) return;
 
     const consume = () => {

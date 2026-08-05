@@ -339,6 +339,11 @@ export class CodeBlockNodeView implements NodeView {
   private applyVim(enabled: boolean): void {
     if (!this.cmView || !this.vimController) return;
     if (enabled) {
+      // tabindex must land WITH the barrier: the controller only adds it
+      // after the async module load, and a host-less, tabindex-less
+      // contentDOM is unfocusable — an explicit PM entry (j/k into a cold
+      // block, empty-block autofocus) would silently lose focus.
+      this.cmView.contentDOM.setAttribute("tabindex", "-1");
       this.cmView.dispatch({
         effects: this.vimEditableCompartment.reconfigure(
           CMView.editable.of(false),
@@ -567,7 +572,7 @@ export class CodeBlockNodeView implements NodeView {
         });
       },
       onModeChange: (mode) => {
-        islandVimMode(island, mode);
+        islandVimMode(island, mode, this.view);
         // Cold-load race: the first mode arrives AFTER focus already sits
         // in the island — claim the indicator now, not on the next focus.
         if (mode !== null && island.hasFocus) islandVimFocus(island);

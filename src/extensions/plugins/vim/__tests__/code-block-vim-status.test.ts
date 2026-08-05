@@ -56,7 +56,7 @@ describe("code block vim status arbiter (S4)", () => {
   it("a focused island owns the indicator; PM publish is suppressed", () => {
     const editor = ownerEditor();
     const island = {};
-    islandVimMode(island, "normal");
+    islandVimMode(island, "normal", editor.view);
     islandVimFocus(island);
     expect(status()).toEqual({ mode: "normal", surface: "codeblock" });
     // A CM edit dispatches a PM transaction → PluginView publishes — the
@@ -84,6 +84,21 @@ describe("code block vim status arbiter (S4)", () => {
     expect(status()).toEqual({ mode: "visual", surface: "codeblock" });
     islandVimDispose(b);
     expect(status()).toEqual({ mode: "normal", surface: "wysiwyg" });
+  });
+
+  it("an owner switch invalidates a STALE island claim (keep-alive)", () => {
+    const a = ownerEditor();
+    const islandA = {};
+    islandVimMode(islandA, "insert", a.view);
+    islandVimFocus(islandA);
+    expect(status()).toEqual({ mode: "insert", surface: "codeblock" });
+    // owner moves to editor B while A's island blur is late/never
+    const b = ownerEditor();
+    expect(status()).toEqual({ mode: "normal", surface: "wysiwyg" });
+    // and B's later publications are NOT swallowed
+    publishWysiwygVimStatus(b.view);
+    expect(status()).toEqual({ mode: "normal", surface: "wysiwyg" });
+    islandVimDispose(islandA);
   });
 
   it("block→block focus moves hand over cleanly", () => {
