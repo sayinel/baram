@@ -191,6 +191,50 @@ describe("createVimController", () => {
     expect(f.view.contentDOM.getAttribute("tabindex")).toBeNull();
   });
 
+  it("a throwing attach rolls the half-enabled plugin back to plain", async () => {
+    // compartment + tabindex are already installed when the guard attaches;
+    // reporting alone would leave vim active WITHOUT its IME guard.
+    const f = makeFakes();
+    const mod = { getCM: vi.fn(() => ({})), vim: vi.fn(() => []) };
+    const onError = vi.fn();
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: vi.fn(() => {
+        throw new Error("guard exploded");
+      }),
+      loadModule: () => Promise.resolve(asModule(mod)),
+      onError,
+    });
+    controller.apply(true);
+    await flush();
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(f.view.dispatch).toHaveBeenCalledTimes(2); // install + rollback
+    expect(f.view.contentDOM.getAttribute("tabindex")).toBeNull();
+  });
+
+  it("a stale host-restore never reopens a re-raised barrier", async () => {
+    // enable → disable → enable while the module load is still pending:
+    // disable queues a host restore; the queued flip must not fire into
+    // the second enable's barrier window.
+    const f = makeFakes();
+    const editableCompartment = new Compartment();
+    let resolveLoad: ((m: unknown) => void) | null = null;
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: f.attachGuard,
+      editableCompartment,
+      loadModule: () =>
+        new Promise((r) => {
+          resolveLoad = r as (m: unknown) => void;
+        }),
+    });
+    controller.apply(true);
+    controller.apply(false); // queues pendingEditable=true (host restore)
+    controller.apply(true); // re-enable — load still unresolved
+    const dispatches = f.view.dispatch.mock.calls.length;
+    await flush(); // the queued restore microtask runs here
+    expect(f.view.dispatch.mock.calls.length).toBe(dispatches); // no restore
+    expect(resolveLoad).not.toBeNull();
+  });
+
   it("3v mechanism: removes the editing host per mode and restores it on off", async () => {
     // Real-surface smoke finding: WebKit uses the composition path
     // (insertCompositionText — non-cancelable) in the production editor, so

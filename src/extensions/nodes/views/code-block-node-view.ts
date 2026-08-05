@@ -581,13 +581,22 @@ export class CodeBlockNodeView implements NodeView {
     // §3-4 nested StatusBar ownership — the island claims the indicator on
     // focus (snapshot replay) and releases it on blur/teardown.
     const island = this.cmView;
+    // Ownership listens on the CM ROOT: vim mounts its `:`/`/` panels
+    // outside contentDOM, and moving focus into a panel is still the same
+    // island. focusout defers one microtask and releases only when focus
+    // truly left the whole root.
     const onIslandFocus = () => islandVimFocus(island);
-    const onIslandBlur = () => islandVimBlur(island);
-    island.contentDOM.addEventListener("focusin", onIslandFocus);
-    island.contentDOM.addEventListener("focusout", onIslandBlur);
+    const onIslandBlur = () => {
+      queueMicrotask(() => {
+        const active = island.dom.ownerDocument.activeElement;
+        if (!island.dom.contains(active)) islandVimBlur(island);
+      });
+    };
+    island.dom.addEventListener("focusin", onIslandFocus);
+    island.dom.addEventListener("focusout", onIslandBlur);
     this.islandStatusDispose = () => {
-      island.contentDOM.removeEventListener("focusin", onIslandFocus);
-      island.contentDOM.removeEventListener("focusout", onIslandBlur);
+      island.dom.removeEventListener("focusin", onIslandFocus);
+      island.dom.removeEventListener("focusout", onIslandBlur);
       islandVimDispose(island);
     };
     if (this.latestVimEnabled) this.applyVim(true);

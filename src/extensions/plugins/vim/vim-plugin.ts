@@ -286,8 +286,18 @@ export function createVimPlugin(
               // re-evaluation as the focusout path (§4).
               queueMicrotask(() => {
                 if (view.isDestroyed) return;
+                // Re-read state AND require containment: the lifecycle
+                // broadcasts enable to every live editor, and the document-
+                // global activeElement must not suspend a foreign or
+                // meanwhile-disabled keep-alive view.
+                const vim = read(view.state);
+                if (!vim.enabled || vim.suspended) return;
                 const active = view.root.activeElement;
-                if (shouldSuspendFor(active) && !read(view.state).suspended) {
+                if (
+                  active instanceof Element &&
+                  view.dom.contains(active) &&
+                  shouldSuspendFor(active)
+                ) {
                   dispatchMeta(view, { suspended: true, type: "setSuspended" });
                 }
               });

@@ -138,6 +138,10 @@ export function createVimController(
     apply(enabled: boolean): void {
       if (disposed) return;
       const token = ++revision;
+      // A queued host flip from the PREVIOUS generation must never fire
+      // into this one — enable→disable→enable would otherwise let the
+      // stale restore reopen the editing host mid-load.
+      pendingEditable = null;
       // Every (re)apply starts guard-free — a leftover guard would keep
       // cancelling IME input with vim off.
       detachGuard();
@@ -161,22 +165,38 @@ export function createVimController(
           // running on silently would leave the pre-raised editing-host
           // barrier in place forever — a locked, key-eating island. Roll
           // everything back to plain editing and report.
-          const cm = mod.getCM(view);
-          if (!cm) {
+          // Anything failing from here on leaves a HALF-ENABLED plugin
+          // (slot + tabindex already installed) — one rollback path
+          // detaches partial hooks and restores plain editing.
+          const rollbackInstall = (err: unknown) => {
+            detachGuard();
             view.dispatch({ effects: compartment.reconfigure([]) });
             handleMode(null);
-            deps.onError?.(new Error("vim plugin failed to initialize"));
+            deps.onError?.(err);
+          };
+          const cm = mod.getCM(view);
+          if (!cm) {
+            rollbackInstall(new Error("vim plugin failed to initialize"));
             return;
           }
-          guardDispose = attach(view, cm, handleMode);
-          if (deps.boundaryHooks) {
-            boundaryDispose = attachVimBoundary(view, cm, deps.boundaryHooks);
+          try {
+            guardDispose = attach(view, cm, handleMode);
+            if (deps.boundaryHooks) {
+              boundaryDispose = attachVimBoundary(view, cm, deps.boundaryHooks);
+            }
+          } catch (err) {
+            rollbackInstall(err);
           }
         })
         .catch((err: unknown) => {
           // token check: a STALE load's rejection is not this apply's error —
           // without it a dropped generation would still ring onError (Codex).
-          if (!disposed && token === revision) deps.onError?.(err);
+          // handleMode(null) also removes the caller-added tabindex and
+          // reopens the host, so a failed load never leaves a dead island.
+          if (!disposed && token === revision) {
+            handleMode(null);
+            deps.onError?.(err);
+          }
         });
     },
     dispose(): void {
