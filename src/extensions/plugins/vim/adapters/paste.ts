@@ -112,6 +112,29 @@ function anchorBounds(
   return [pos, pos];
 }
 
+/**
+ * Counted paste is BUDGETED. A vim count reaches MAX_COUNT (9999) entirely
+ * independently of what the register holds, so `9999p` after yanking a long
+ * line asks for gigabytes of synchronous insertion on the UI thread — a
+ * frozen or dead WebView with unsaved work, not an edit (measured: a 4k-unit
+ * slice at full count killed the test worker outright). Every paste shape
+ * projects count × unit size through this gate first.
+ */
+const PASTE_BUDGET = 2_000_000;
+
+/** Exported as a test seam — the budget contract is the security boundary. */
+export function budgetRefusal(
+  unitSize: number,
+  count: number,
+): null | OperationOutcome {
+  // count 1 is NOT amplification: it inserts exactly what the user just
+  // yanked, already bounded by the open document. Refusing it would break
+  // legitimate "cut a huge block, paste it elsewhere" moves, so only a
+  // MULTIPLIED paste is budgeted.
+  if (count <= 1 || unitSize * count <= PASTE_BUDGET) return null;
+  return { reason: "paste is too large for one command", tr: null };
+}
+
 function pasteChar(
   state: EditorState,
   pos: number,
@@ -121,6 +144,8 @@ function pasteChar(
 ): OperationOutcome {
   if (sliceJSON === null) return { reason: "register is empty", tr: null };
   const slice = Slice.fromJSON(state.schema, sliceJSON);
+  const over = budgetRefusal(slice.content.size, count);
+  if (over) return over;
   const insertAt = after ? nextUnitBoundary(state, pos) : pos;
   const tr = state.tr.setSelection(TextSelection.create(state.doc, insertAt));
   for (let i = 0; i < count; i++) tr.replaceSelection(slice);
@@ -138,6 +163,11 @@ function pasteLine(
 ): OperationOutcome {
   const unit = resolveLineUnit(state, pos);
   const nodes = register.content.map((json) => state.schema.nodeFromJSON(json));
+  const over = budgetRefusal(
+    nodes.reduce((sum, node) => sum + node.nodeSize, 0),
+    count,
+  );
+  if (over) return over;
 
   if (register.context === "tableRow") {
     if (unit.kind !== "tableRow") {

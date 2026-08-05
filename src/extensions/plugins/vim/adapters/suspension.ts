@@ -17,6 +17,17 @@ const SUSPEND_MARKER = "data-vim-suspend";
 const BODY_MARKER = "data-node-view-content";
 
 /**
+ * Island membership is an APP capability, never document content: these
+ * attributes decide who owns the modal keyboard. DOMPurify keeps `data-*`
+ * and `tabindex` by default, so sanitized HTML/SVG from a shared file could
+ * otherwise grant itself suspension — or deny it inside a real island and
+ * leave vim reading the user's keystrokes as commands. Sanitizers strip
+ * them (dedicated security review); this module stays the single source of
+ * the marker names.
+ */
+export const VIM_ISLAND_MARKERS = [SUSPEND_MARKER, BODY_MARKER];
+
+/**
  * True when the event target sits inside an input island. Walks the
  * composed path from the target OUTWARD; the first marker wins, so an
  * island nested inside NodeView content still suspends, and body content

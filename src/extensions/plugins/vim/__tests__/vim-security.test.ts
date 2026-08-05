@@ -1,0 +1,116 @@
+// §298 vim — security pins (dedicated security review).
+//
+// Two trust/resource boundaries the functional pins do not cover:
+//  1. island markers are an app CAPABILITY, not document content — a shared
+//     markdown file must not be able to grant itself vim suspension (or,
+//     worse, deny it inside a real island and let vim read the user's
+//     keystrokes as commands);
+//  2. counted operations are user-typed but their COST is document-driven —
+//     a big register times a big count must be refused, not attempted.
+
+import { Editor } from "@tiptap/core";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { sanitizeHtmlBlock } from "../../../../utils/markdown/html-sanitize";
+import { sanitizeSvg } from "../../../../utils/markdown/svg-utils";
+import { createBaramExtensions } from "../../../index";
+import { budgetRefusal, pasteRegister } from "../adapters/paste";
+import { resetVimRegister, writeVimRegister } from "../adapters/register";
+
+const MARKERS = ["data-vim-suspend", "data-node-view-content"];
+
+const editors: Editor[] = [];
+
+function makeEditor(content: string): Editor {
+  const editor = new Editor({ content, extensions: createBaramExtensions() });
+  editors.push(editor);
+  return editor;
+}
+
+afterEach(() => {
+  resetVimRegister();
+  for (const e of editors.splice(0)) e.destroy();
+});
+
+describe("island markers are not document-grantable", () => {
+  it("sanitized HTML cannot carry vim island markers", () => {
+    for (const marker of MARKERS) {
+      const out = sanitizeHtmlBlock(
+        `<div ${marker} tabindex="0"><input ${marker}></div>`,
+      );
+      expect(out).not.toContain(marker);
+    }
+    // DOMPurify keeps data-* and tabindex by default, so the markers must be
+    // forbidden explicitly — the rest of the element may survive.
+    expect(sanitizeHtmlBlock('<div data-other="1">x</div>')).toContain(
+      "data-other",
+    );
+  });
+
+  it("sanitized SVG cannot carry vim island markers", () => {
+    for (const marker of MARKERS) {
+      const out = sanitizeSvg(
+        `<svg xmlns="http://www.w3.org/2000/svg"><rect ${marker} /></svg>`,
+      );
+      expect(out).not.toContain(marker);
+    }
+  });
+});
+
+describe("counted paste is budgeted", () => {
+  it("refuses a projected insertion beyond the work budget", () => {
+    const editor = makeEditor(`<p>${"x".repeat(4000)}</p>`);
+    const slice = editor.state.doc.slice(1, 4000);
+    writeVimRegister({ kind: "char", slice: slice.toJSON() });
+    const before = editor.state.doc.content.size;
+    const outcome = pasteRegister(
+      editor.state,
+      1,
+      { kind: "char", slice: slice.toJSON() },
+      false,
+      9999,
+    );
+    expect(outcome.tr).toBeNull();
+    expect(outcome.reason).toBeTruthy();
+    expect(editor.state.doc.content.size).toBe(before); // nothing attempted
+  });
+
+  it("exempts count 1 at ANY size — amplification is the vulnerability", () => {
+    // A register over the budget still pastes once: it holds what the user
+    // just yanked from the open document, so there is nothing to amplify.
+    expect(budgetRefusal(5_000_000, 1)).toBeNull();
+    expect(budgetRefusal(5_000_000, 2)).not.toBeNull();
+    expect(budgetRefusal(1000, 9999)).not.toBeNull();
+    expect(budgetRefusal(100, 9999)).toBeNull();
+  });
+
+  it("never refuses an UNAMPLIFIED paste — count 1 is what the user yanked", () => {
+    // The vulnerability is count AMPLIFICATION, not size: moving 3000 lines
+    // with dd then p must keep working however big the register is.
+    const editor = makeEditor(`<p>${"x".repeat(4000)}</p>`);
+    const slice = editor.state.doc.slice(1, 4000);
+    const outcome = pasteRegister(
+      editor.state,
+      1,
+      { kind: "char", slice: slice.toJSON() },
+      false,
+      1,
+    );
+    expect(outcome.reason).toBeUndefined();
+    expect(outcome.tr).not.toBeNull();
+  });
+
+  it("still allows ordinary counted pastes", () => {
+    const editor = makeEditor("<p>abcdef</p>");
+    const slice = editor.state.doc.slice(1, 4);
+    const outcome = pasteRegister(
+      editor.state,
+      1,
+      { kind: "char", slice: slice.toJSON() },
+      false,
+      50,
+    );
+    expect(outcome.reason).toBeUndefined();
+    expect(outcome.tr).not.toBeNull();
+  });
+});

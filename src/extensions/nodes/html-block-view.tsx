@@ -2,45 +2,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import DOMPurify from "dompurify";
 
-import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
+import { sanitizeHtmlBlock } from "../../utils/markdown/html-sanitize";
 import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
-
-const SANITIZE_CONFIG = {
-  USE_PROFILES: { html: true },
-  ADD_TAGS: [
-    "img",
-    "br",
-    "hr",
-    "a",
-    "table",
-    "tr",
-    "td",
-    "th",
-    "thead",
-    "tbody",
-    "div",
-    "span",
-    "p",
-    "strong",
-    "em",
-  ],
-  ADD_ATTR: [
-    "align",
-    "src",
-    "alt",
-    "width",
-    "height",
-    "href",
-    "class",
-    "colspan",
-    "rowspan",
-  ],
-  FORBID_ATTR: ["style", "onerror", "onload", "onclick"],
-};
 
 export function HtmlBlockView({
   node,
@@ -181,16 +147,4 @@ export function HtmlBlockView({
       )}
     </NodeViewWrapper>
   );
-}
-
-/**
- * Raw `<svg>` markup goes through the shared {@link sanitizeSvg} (svg profile +
- * inline `style`/presentation attrs/filters) so it renders with full fidelity;
- * everything else keeps the stricter HTML config. `<script>`, event handlers and
- * `javascript:` URLs stay forbidden on both paths.
- */
-function sanitizeHtmlBlock(html: string): string {
-  return isSvgContent(html)
-    ? sanitizeSvg(html)
-    : DOMPurify.sanitize(html, SANITIZE_CONFIG);
 }
