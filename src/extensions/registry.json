@@ -780,8 +780,8 @@
       "spec": "issue 298 / design .omc/research/vim-phase1-design.md",
       "phase": 3,
       "milestone": "vim-phase1",
-      "status": "in-progress",
-      "_note": "Always installed, dormant until enabled (S2). Modal engine: core state machine + S4 adapters; entry points per design P3."
+      "status": "implemented",
+      "_note": "Always installed, dormant until enabled. Modal engine: pure core state machine + PM adapters; entry points per design P3. The same setting also drives source mode and per-code-block CodeMirror vim."
     }
   ]
 }

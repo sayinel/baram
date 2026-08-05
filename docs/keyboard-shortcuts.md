@@ -225,18 +225,52 @@ shared with the built-in image/SVG viewer.
 
 ---
 
-## Vim Mode (Source Mode)
+## Vim Mode
 
-Enable **Settings > Editor > Vim Keybindings** (off by default), then enter Source Mode with `Cmd+/` / `Ctrl+/`. The full vim engine runs in Source Mode: modal editing (normal/insert/visual/replace), motions, operators, counts, registers, marks, macros, and search. The current mode is shown in the status bar (`-- NORMAL --`).
+Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turns vim on across **three editing surfaces**, and the status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`).
+
+| Surface | How you get there | What is available |
+| ------- | ----------------- | ----------------- |
+| **Source Mode** | `Cmd+/` / `Ctrl+/`, and code-file tabs (JSON, Python, …) | Full vim: modal editing, motions, operators, counts, text objects (`ciw`, `di"`), `.` repeat, search (`/`, `n`), marks, macros, registers |
+| **WYSIWYG** | The normal rich-text editor | Modal editing on the rendered document — see the command list below |
+| **Code blocks** | Click into (or move into) a code block in a WYSIWYG document | Full vim, as in Source Mode, plus boundary crossing back to the document |
+
+### WYSIWYG commands
+
+| Group | Keys |
+| ----- | ---- |
+| Modes | `i` `a` `I` `A` · `o` `O` · `v` (charwise) `V` (linewise) · `Esc` |
+| Motions | `h` `j` `k` `l` and the arrow keys · `0` `$` `^` (Home/End) · `w` `b` · `gg` `G` |
+| Find in line | `f` `F` `t` `T` + a character · `;` `,` to repeat |
+| Operators | `d` `c` `y` with a motion (`dw`, `cw`, `dj`, `d$`, `dfx`) · doubled for whole lines (`dd` `yy` `cc`) |
+| Counts | Any motion or operator (`3j`, `2d3w` = six words) |
+| Edit | `x` · `p` `P` · `u` `Ctrl+r` |
+| View | `zz` `z.` center the cursor line (also in visual mode) |
+
+Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; `dd` on a table row deletes the row (the header row and the last data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
+
+WYSIWYG does not yet have text objects (`ciw`), `.` repeat, or `/` search — those live in Source Mode and code blocks today.
+
+### Code block boundaries
+
+| Keys | Action |
+| ---- | ------ |
+| `Esc` (in normal mode) | Leave the block and return to document-level vim |
+| `j` / `k` (or arrows) on the last / first line | Leave the block downward / upward |
+| `u` / `Ctrl+r` | Undo/redo the **document** history, so edits inside and outside the block share one stack |
+
+`:` and `/` open vim's own prompt inside the block; keys typed there stay in the prompt.
+
+### Ex commands
 
 | Command | Action |
 | ------- | ------------------------ |
 | `:w`    | Save the current file    |
 | `:q`    | Close the current tab (unsaved-changes guard applies) |
 
-**Korean IME**: vim commands work with the Korean input source active — in normal/visual mode keys are resolved by physical position (pressing the `j` key moves down even when it would type `ㅓ`), and stray jamo insertion is blocked. Insert mode types Korean normally. This behavior is verified on macOS; Windows/Linux are not yet validated.
+**Korean IME**: vim commands work with the Korean input source active on every surface — in normal/visual mode keys are resolved by physical position (pressing the `j` key moves down even when it would type `ㅓ`), and stray jamo insertion is blocked. Insert mode types Korean normally. In WYSIWYG, `f` followed by a consonant jamo jumps by 초성 (`f` `ㄱ` finds 강, 김, 그). This behavior is verified on macOS; Windows/Linux are not yet validated.
 
-Vim mode applies wherever the source editor is used: markdown Source Mode (`Cmd+/`) and code-file tabs (JSON, Python, …). It does not apply to the WYSIWYG editor or to code blocks embedded in WYSIWYG documents. Vim key sequences are not remappable via Settings > Keybindings.
+The vim register is shared app-wide (like the clipboard) and is not written to disk. Vim key sequences are not remappable via Settings > Keybindings.
 
 ---
 
