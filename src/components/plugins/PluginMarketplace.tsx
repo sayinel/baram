@@ -151,6 +151,16 @@ const STYLES = {
     border: "1px solid var(--color-status-danger)",
     cursor: "pointer",
   } as React.CSSProperties,
+  /** Same geometry as `removeButton`, neutral ink: this action destroys nothing. */
+  detailsButton: {
+    padding: "4px 8px",
+    borderRadius: "4px",
+    fontSize: "12px",
+    backgroundColor: "transparent",
+    color: "var(--color-text-primary)",
+    border: "1px solid var(--color-border-default)",
+    cursor: "pointer",
+  } as React.CSSProperties,
   tabButtonActive: {
     padding: "6px 12px",
     fontSize: "13px",
@@ -1143,6 +1153,28 @@ export function PluginMarketplace() {
                       />
                     </div>
                     <div style={STYLES.installedRowActions}>
+                      {/* §69 — the route this tab did not have. Browse and Updates
+                          both iterate the REGISTRY, so a plugin installed from a file,
+                          or one whose listing has been withdrawn, had no way to reach
+                          its own detail view: description, capabilities, links and
+                          README were unreachable for exactly the plugins whose
+                          provenance the user is most likely to want to check.
+                          `entry` above is synthesised from the installed manifest and
+                          carries every field the detail view reads; the actions it
+                          offers are gated on `status`, so no Install button appears,
+                          and `handleUpdate` re-resolves the listing rather than
+                          trusting this entry's empty `downloadUrl`.
+                          The accessible name carries the plugin name because a row
+                          per plugin otherwise gives every button the same one. */}
+                      <button
+                        aria-label={t("plugin.marketplace.viewDetails", {
+                          name: plugin.manifest.name,
+                        })}
+                        onClick={() => setSelectedEntry(entry)}
+                        style={STYLES.detailsButton}
+                      >
+                        {t("plugin.action.details")}
+                      </button>
                       {updateAvailable[plugin.manifest.id] && (
                         <button
                           onClick={() => handleUpdate(entry)}
@@ -1174,12 +1206,13 @@ export function PluginMarketplace() {
                       </button>
                     </div>
                   </div>
-                  {/* §260 Phase 4c — configured HERE as well as in the detail view. This
-                      tab has no route to `PluginDetail` (only Browse and Updates open one,
-                      and both iterate the REGISTRY), so a plugin installed from a file, or
-                      one whose registry entry has gone, would otherwise have declared
-                      fields the user can never reach. Renders nothing when a plugin
-                      declares none, which is most of them. */}
+                  {/* §260 Phase 4c — configured HERE as well as in the detail view.
+                      The original reason was that this tab had no route to
+                      `PluginDetail` at all, which is no longer true: the Details button
+                      above opens one from the installed manifest. It stays because the
+                      form is the thing a user comes to this tab to change, and making
+                      them open a second screen for it would be a regression. Renders
+                      nothing when a plugin declares no fields, which is most of them. */}
                   <PluginSettingsForm pluginId={plugin.manifest.id} />
                 </div>
               );
