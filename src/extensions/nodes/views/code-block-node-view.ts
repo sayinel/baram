@@ -52,17 +52,23 @@ export class CodeBlockNodeView implements NodeView {
   private cmContainer: HTMLElement;
   private cmInitialized = false;
   private cmView: CMView | null = null;
+  private currentVimMode: null | string = null;
   private destroyed = false;
   private getPos: () => number | undefined;
   private initGeneration = 0;
   private islandStatusDispose: (() => void) | null = null;
+  private langGeneration = 0;
   private langSelect: HTMLSelectElement;
+  // §298 Phase 0b R6: language switches reconfigure IN PLACE — recreation
+  // resets vim to normal mid-typing (a language undo while in insert).
+  private languageCompartment = new Compartment();
   private latestEffectiveEditable: boolean | null = null;
   private latestVimEnabled: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
   private pendingFocusRestore: null | { head: number } = null;
   private pendingSelection: null | { anchor: number; head: number } = null;
+  private pendingVimModeRestore: "insert" | "replace" | null = null;
   // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
   // PM editable without triggering NodeView.update(), and broadcasts instead.
   private readOnlyCompartment = new Compartment();
@@ -309,9 +315,9 @@ export class CodeBlockNodeView implements NodeView {
 
     // Language changed → destroy and recreate CM with new language.
     if (oldLang !== lang) {
-      this.snapshotFocusForRecreate();
-      this.teardownCM();
-      void this.initCM(lang);
+      // In place: focus, cursor, vim mode and CM history all survive. A
+      // cold block needs nothing — the deferred initCM reads fresh attrs.
+      if (this.cmView) void this.reconfigureLanguage(lang);
       return true;
     }
 
@@ -556,7 +562,7 @@ export class CodeBlockNodeView implements NodeView {
         if (!update.docChanged || this.updating) return;
         this.forwardUpdate(update);
       }),
-      ...(langExt ? [langExt] : []),
+      this.languageCompartment.of(langExt ? [langExt] : []),
     ];
 
     const state = CMState.create({
@@ -585,6 +591,11 @@ export class CodeBlockNodeView implements NodeView {
         },
       },
       claimFocus: false,
+      restoreMode: () => {
+        const mode = this.pendingVimModeRestore;
+        this.pendingVimModeRestore = null;
+        return mode;
+      },
       editableCompartment: this.vimEditableCompartment,
       onError: () => {
         // failed → deterministic plain editing (v3 contract 1).
@@ -593,6 +604,7 @@ export class CodeBlockNodeView implements NodeView {
         });
       },
       onModeChange: (mode) => {
+        this.currentVimMode = mode;
         islandVimMode(island, mode, this.view);
         // Cold-load race: the first mode arrives AFTER focus already sits
         // in the island — claim the indicator now, not on the next focus.
@@ -646,6 +658,7 @@ export class CodeBlockNodeView implements NodeView {
         !this.dom.contains(active)
       ) {
         this.pendingFocusRestore = null;
+        this.pendingVimModeRestore = null;
       }
     }
     if (this.pendingFocusRestore && this.cmView) {
@@ -665,11 +678,12 @@ export class CodeBlockNodeView implements NodeView {
       // memo from a visit the user already left must not steal focus back
       // (R5 C7).
       const pos = this.getPos();
-      const { from } = this.view.state.selection;
+      const { from, to } = this.view.state.selection;
+      // The WHOLE selection must live inside this block — a selection
+      // spanning from the block into the next paragraph passes a from-only
+      // check and would still steal focus (R6).
       const stillHere =
-        typeof pos === "number" &&
-        from > pos &&
-        from < pos + this.node.nodeSize;
+        typeof pos === "number" && from > pos && to < pos + this.node.nodeSize;
       if (stillHere) {
         this.cmView.focus();
         this.updating = true;
@@ -680,12 +694,36 @@ export class CodeBlockNodeView implements NodeView {
     }
   }
 
+  private async reconfigureLanguage(language: string): Promise<void> {
+    const gen = ++this.langGeneration;
+    const ext = await getLanguageExtension(language);
+    if (this.destroyed || gen !== this.langGeneration) return;
+    this.cmView?.dispatch({
+      effects: this.languageCompartment.reconfigure(ext ?? []),
+    });
+  }
+
   /** Focus ownership survives a CM replacement: remember it (with the
    *  cursor) so the recreated view can reclaim what destroy() blurs. */
   private snapshotFocusForRecreate(): void {
-    this.pendingFocusRestore = this.cmView?.hasFocus
-      ? { head: this.cmView.state.selection.main.head }
-      : null;
+    // Containment, not cmView.hasFocus — the getter also requires
+    // document.hasFocus(), which drops out under context menus (Safari)
+    // and headless runs. Focus anywhere in the island (panels too) counts.
+    const active = this.dom.ownerDocument.activeElement;
+    const focused = !!this.cmView && this.cmView.dom.contains(active);
+    this.pendingFocusRestore =
+      focused && this.cmView
+        ? { head: this.cmView.state.selection.main.head }
+        : null;
+    // Re-enter insert/replace after the rebuild — a recreation mid-typing
+    // (theme shortcut while inside a block) must not silently flip the
+    // user's keystrokes into normal-mode commands (R6). Visual dies with
+    // its old view and restores as normal.
+    this.pendingVimModeRestore =
+      focused &&
+      (this.currentVimMode === "insert" || this.currentVimMode === "replace")
+        ? this.currentVimMode
+        : null;
   }
 
   /** ONE teardown path for every CM replacement — settings change, language

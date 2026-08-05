@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../..";
 import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
+import { useSettingsStore } from "../../../../stores/settings/store";
 import { vimPluginKey } from "../../../plugins/vim/vim-keys";
 
 if (typeof window.matchMedia !== "function") {
@@ -299,12 +300,13 @@ describe("code block vim wiring (S2)", () => {
     document.body.innerHTML = "";
   });
 
-  it("a language change RESTORES focus into the recreated island", async () => {
+  it("a language change reconfigures IN PLACE — same CM, focus intact", async () => {
+    // Recreation reset vim to normal mid-typing (a language undo while in
+    // insert) and blurred the island (R6). In place, nothing is lost.
     const editor = createEditor("```ts\nconst x = 1;\n```\n");
     document.body.appendChild(editor.view.dom);
     setVim(editor, true);
     const content = await revealCM(editor);
-    content.setAttribute("tabindex", "0");
     content.focus();
     expect(document.activeElement).toBe(content);
     let pos = -1;
@@ -315,39 +317,73 @@ describe("code block vim wiring (S2)", () => {
     editor.view.dispatch(
       editor.state.tr.setNodeMarkup(pos, undefined, { language: "python" }),
     );
+    await new Promise((r) => setTimeout(r, 80)); // async lang extension
     const dom = editor.view.dom as HTMLElement;
-    await vi.waitFor(() => {
-      const fresh = dom.querySelector(".cm-content") as HTMLElement;
-      expect(fresh).not.toBeNull();
-      expect(fresh).not.toBe(content); // recreated
-      // focus followed into the replacement (R5 C10: CM destroy blurs the
-      // old contentDOM and nothing restored it — keys fell into the void)
-      expect(document.activeElement).toBe(fresh);
-    });
+    const after = dom.querySelector(".cm-content") as HTMLElement;
+    expect(after).toBe(content); // SAME view — never torn down
+    expect(document.activeElement).toBe(content); // focus never moved
+    expect(content.getAttribute("contenteditable")).toBe("false"); // vim armed
     editor.destroy();
     document.body.innerHTML = "";
   });
 
-  it("a language change tears down and re-arms vim on the new CM", async () => {
+  it("a settings recreate re-enters INSERT and restores focus", async () => {
+    // The one remaining recreation path. A theme/settings flip while the
+    // user types inside a block must not turn their keystrokes into
+    // normal-mode commands (R6).
     const editor = createEditor("```ts\nconst x = 1;\n```\n");
-    await revealCM(editor);
+    document.body.appendChild(editor.view.dom);
     setVim(editor, true);
-    // Change the language attr → NodeView replaces its CM instance.
+    const content = await revealCM(editor);
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    const press = (key: string) =>
+      dom.querySelector(".cm-content")!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key,
+        }),
+      );
+    const dom = editor.view.dom as HTMLElement;
+    await vi.waitFor(() => {
+      press("i");
+      expect(content.getAttribute("contenteditable")).toBe("true"); // insert
+    });
+    const flipped = !useSettingsStore.getState().codeBlockLineNumbers;
+    useSettingsStore.setState({ codeBlockLineNumbers: flipped });
+    await vi.waitFor(() => {
+      const fresh = dom.querySelector(".cm-content") as HTMLElement;
+      expect(fresh).not.toBeNull();
+      expect(fresh).not.toBe(content); // recreated
+      expect(document.activeElement).toBe(fresh); // focus restored
+      expect(fresh.getAttribute("contenteditable")).toBe("true"); // INSERT
+    });
+    useSettingsStore.setState({ codeBlockLineNumbers: !flipped });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
+  it("a selection SPANNING past the block never re-claims focus", async () => {
+    // stillHere checked only selection.from — a selection reaching from
+    // inside the block into the next paragraph passed it (R6).
+    const editor = createEditor("```ts\nab\n```\n\npara\n");
+    document.body.appendChild(editor.view.dom);
+    setVim(editor, true);
     let pos = -1;
     editor.state.doc.descendants((n, p) => {
       if (pos < 0 && n.type.name === "codeBlock") pos = p;
       return pos < 0;
     });
-    editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(pos, undefined, { language: "python" }),
-    );
-    const dom = editor.view.dom as HTMLElement;
-    await vi.waitFor(() => {
-      const content = dom.querySelector(".cm-content") as HTMLElement;
-      expect(content).not.toBeNull();
-      // The recreated CM consumed the memo — barrier present again.
-      expect(content.getAttribute("contenteditable")).toBe("false");
+    editor.commands.setTextSelection(pos + 1); // memo lands (cold block)
+    editor.commands.setTextSelection({
+      from: pos + 1,
+      to: editor.state.doc.content.size - 2, // …into the paragraph
     });
+    const content = await revealCM(editor);
+    await new Promise((r) => setTimeout(r, 80));
+    expect(document.activeElement).not.toBe(content);
     editor.destroy();
+    document.body.innerHTML = "";
   });
 });

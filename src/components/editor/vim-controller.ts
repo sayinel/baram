@@ -54,6 +54,10 @@ export interface VimControllerDeps {
   onError?: (err: unknown) => void;
   /** S3: StatusBar mode feed. Receives null whenever vim turns off. */
   onModeChange?: (mode: null | VimModeName) => void;
+  /** Phase 0b: a CM recreation (settings change) resets vim to normal —
+   *  consumed ONCE after attach to re-enter the mode the user was in.
+   *  Visual is not restorable (its range died with the old view). */
+  restoreMode?: () => "insert" | "replace" | null;
 }
 
 type VimModule = Awaited<ReturnType<typeof loadVimModule>>;
@@ -183,6 +187,21 @@ export function createVimController(
             guardDispose = attach(view, cm, handleMode);
             if (deps.boundaryHooks) {
               boundaryDispose = attachVimBoundary(view, cm, deps.boundaryHooks);
+            }
+            const restored = deps.restoreMode?.();
+            if (restored) {
+              // Deferred one microtask: the adapter REFUSES insert entry
+              // while readOnly (installed dist :3048), and the loading
+              // barrier's readOnly pin only lifts with the initial mode
+              // publish's deferred editing-host flush queued just above.
+              queueMicrotask(() => {
+                if (disposed || token !== revision) return;
+                mod.Vim.handleKey(
+                  cm,
+                  restored === "insert" ? "i" : "R",
+                  "user",
+                );
+              });
             }
           } catch (err) {
             rollbackInstall(err);
