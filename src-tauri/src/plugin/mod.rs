@@ -1399,14 +1399,20 @@ fn revocation_http_client() -> Result<reqwest::Client, String> {
 /// other caller of `refreshRevocations` is the marketplace panel opening, minutes later, past any
 /// idle keep-alive.
 ///
-/// ‼️ THE COST THAT DOES MATTER IS NOT THE POOL. Measured in this crate: the FIRST
-/// `reqwest::Client` build in a process takes ~1.08 s (debug) while the second takes ~0.53 ms and
-/// a loopback request ~1-5 ms — a one-time process-global initialisation, not a per-client cost.
-/// `refreshRevocations` is the app's first HTTP client (the app-update check waits 15 s; every
-/// other client site is on demand), so that ~1.08 s lands inside its
-/// `REVOCATION_REFRESH_BUDGET_MS = 1500` window, which is a bigger share of the budget than the
-/// round trip this pair saves. Recorded in `dev/backlog.md`; the fix is to build the client
-/// once, eagerly, off the startup path.
+/// ‼️ THE FIRST CLIENT BUILD IN A PROCESS IS EXPENSIVE IN DEBUG ONLY — and the version of this
+/// note that claimed otherwise was wrong for a third time in a row. Measured in this crate:
+///
+/// | build | 1st client | 2nd client | loopback request |
+/// |-------|-----------|------------|------------------|
+/// | debug   | 1.079 s   | 0.53 ms    | 1-5 ms |
+/// | release | 10.5 ms   | 0.14 ms    | <1 ms  |
+///
+/// So it is a one-time process-global initialisation (certificate store parsing, unoptimised),
+/// not a per-client cost — and it is a **test** problem, not a product one. It is why the
+/// concurrency test below needs a warm-up: test binaries are debug builds, and that 1.08 s landed
+/// inside a wall-clock assertion. Shipping builds are release, where 10.5 ms against
+/// `REVOCATION_REFRESH_BUDGET_MS = 1500` is noise. The retracted claim was that this cost eats
+/// the startup budget; it does not, and no eager-warm-up work is needed.
 ///
 /// ‼️ The pool sharing has NO test: reverting to a client per request leaves all four tests green,
 /// because the concurrency they measure comes from `join!`. Pinning it needs an h2 test fixture
@@ -4173,9 +4179,10 @@ mod tests {
             ("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec(), delay),
             ("200 OK", b"not a real signature".to_vec(), delay),
         );
-        // ‼️ WARM THE PROCESS BEFORE THE CLOCK STARTS. The first HTTP fetch in a process pays a
-        // one-time ~1.4 s of initialisation, and the elapsed assertion at the end of this test
-        // measured it. Evidence: run alone with `--exact`, this test failed 3/3 ("the pair took
+        // ‼️ WARM THE PROCESS BEFORE THE CLOCK STARTS. The first HTTP client built in a process
+        // costs ~1.08 s in a DEBUG build (10.5 ms in release — see `fetch_capped_text_with`), and
+        // test binaries are debug builds, so the elapsed assertion at the end of this test was
+        // measuring process start-up. Evidence: run alone with `--exact`, it failed 3/3 ("the pair took
         // 1.96s–2.14s"); with any one other network test ahead of it in the same process it
         // passes, and the two together take 2.07 s — so the cost is paid ONCE per process, not
         // per client. Without this warm-up the test is green only because sibling tests happen
