@@ -27,6 +27,10 @@ export interface VimController {
 export interface VimControllerDeps {
   /** Test seam — defaults to the real IME guard. */
   attachGuard?: typeof attachVimImeGuard;
+  /** Whether removing the editing host may PULL focus onto contentDOM.
+   *  Source mode owns its surface (default true); a code-block island must
+   *  never steal focus from PM on a lazy load (Phase 0b). */
+  claimFocus?: boolean;
   /**
    * Mechanism 3v (measured fallback, promoted after the real-surface smoke):
    * in normal/visual mode `contenteditable` is removed entirely so WebKit has
@@ -95,7 +99,11 @@ export function createVimController(
       view.dispatch({
         effects: comp.reconfigure(next ? [] : EditorView.editable.of(false)),
       });
-      if (!next && document.activeElement !== view.contentDOM) {
+      if (
+        !next &&
+        (deps.claimFocus ?? true) &&
+        document.activeElement !== view.contentDOM
+      ) {
         // Keys must keep landing on contentDOM (tabindex makes it focusable —
         // measured, probe step 3v). view.focus() over raw contentDOM.focus():
         // it re-syncs the DOM selection and prevents scroll jumps (Codex).

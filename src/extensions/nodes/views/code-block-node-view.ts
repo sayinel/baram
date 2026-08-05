@@ -23,6 +23,10 @@ import {
 import { redo, undo } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 
+import {
+  createVimController,
+  type VimController,
+} from "../../../components/editor/vim-controller";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
@@ -31,7 +35,10 @@ import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
-import { registerCodeBlockEditableSync } from "./code-block-cm-registry";
+import {
+  registerCodeBlockEditableSync,
+  registerCodeBlockVimSync,
+} from "./code-block-cm-registry";
 import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
@@ -44,6 +51,7 @@ export class CodeBlockNodeView implements NodeView {
   private initGeneration = 0;
   private langSelect: HTMLSelectElement;
   private latestEffectiveEditable: boolean | null = null;
+  private latestVimEnabled: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
   private pendingSelection: null | { anchor: number; head: number } = null;
@@ -53,8 +61,14 @@ export class CodeBlockNodeView implements NodeView {
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
   private unregisterEditableSync: (() => void) | null = null;
+  private unregisterVimSync: (() => void) | null = null;
   private updating = false;
   private view: PMView;
+  // §298 Phase 0b — per-island vim. Compartments outlive CM recreations;
+  // the controller is created per CM instance inside initCM.
+  private vimCompartment = new Compartment();
+  private vimController: null | VimController = null;
+  private vimEditableCompartment = new Compartment();
 
   constructor(
     node: PMNode,
@@ -171,6 +185,13 @@ export class CodeBlockNodeView implements NodeView {
       },
     );
 
+    // §298 Phase 0b: vim on/off broadcast — the memo is consumed by the
+    // deferred initCM, exactly like the editable memo above.
+    this.unregisterVimSync = registerCodeBlockVimSync(view, (enabled) => {
+      this.latestVimEnabled = enabled;
+      this.applyVim(enabled);
+    });
+
     // Subscribe to settings changes for live updates
     this.settingsUnsub = useSettingsStore.subscribe((state, prev) => {
       if (
@@ -184,10 +205,7 @@ export class CodeBlockNodeView implements NodeView {
         // Only recreate CodeMirror if already initialized; otherwise the
         // deferred initCM will read current settings when it eventually runs.
         if (this.cmInitialized) {
-          if (this.cmView) {
-            this.cmView.destroy();
-            this.cmView = null;
-          }
+          this.teardownCM();
           const currentLang = (this.node.attrs.language as string) || "";
           void this.initCM(currentLang);
         }
@@ -213,10 +231,11 @@ export class CodeBlockNodeView implements NodeView {
       this.settingsUnsub();
       this.settingsUnsub = null;
     }
-    if (this.cmView) {
-      this.cmView.destroy();
-      this.cmView = null;
+    if (this.unregisterVimSync) {
+      this.unregisterVimSync();
+      this.unregisterVimSync = null;
     }
+    this.teardownCM();
   }
 
   /** Prevent PM from reacting to CM DOM mutations */
@@ -281,10 +300,7 @@ export class CodeBlockNodeView implements NodeView {
 
     // Language changed → destroy and recreate CM with new language.
     if (oldLang !== lang) {
-      if (this.cmView) {
-        this.cmView.destroy();
-        this.cmView = null;
-      }
+      this.teardownCM();
       void this.initCM(lang);
       return true;
     }
@@ -307,6 +323,22 @@ export class CodeBlockNodeView implements NodeView {
     }
 
     return true;
+  }
+
+  /** §298 Phase 0b — vim enable/disable for THIS island (v3 contract 1).
+   *  Enabling raises a SYNCHRONOUS editing-host barrier before the async
+   *  module load: beforeinput fires ahead of keydown, so a suppressed-key
+   *  gate alone would still let IME text through while vim loads. */
+  private applyVim(enabled: boolean): void {
+    if (!this.cmView || !this.vimController) return;
+    if (enabled) {
+      this.cmView.dispatch({
+        effects: this.vimEditableCompartment.reconfigure(
+          CMView.editable.of(false),
+        ),
+      });
+    }
+    this.vimController.apply(enabled);
   }
 
   /** Create CodeMirror if not already created (idempotent). */
@@ -483,6 +515,9 @@ export class CodeBlockNodeView implements NodeView {
           !(this.latestEffectiveEditable ?? this.view.editable),
         ),
       ),
+      // §298 Phase 0b — vim slots: filled by the controller when enabled.
+      this.vimCompartment.of([]),
+      this.vimEditableCompartment.of([]),
       // Sync CodeMirror → ProseMirror
       CMView.updateListener.of((update: ViewUpdate) => {
         if (!update.docChanged || this.updating) return;
@@ -501,6 +536,20 @@ export class CodeBlockNodeView implements NodeView {
       parent: this.cmContainer,
     });
 
+    // §298 Phase 0b — per-island vim controller (claimFocus false: a lazy
+    // load must never steal focus from PM). Consume the broadcast memo.
+    this.vimController = createVimController(this.cmView, this.vimCompartment, {
+      claimFocus: false,
+      editableCompartment: this.vimEditableCompartment,
+      onError: () => {
+        // failed → deterministic plain editing (v3 contract 1).
+        this.cmView?.dispatch({
+          effects: this.vimEditableCompartment.reconfigure([]),
+        });
+      },
+    });
+    if (this.latestVimEnabled) this.applyVim(true);
+
     // Auto-focus newly created (empty) code blocks and scroll into view
     if (!this.node.textContent) {
       requestAnimationFrame(() => {
@@ -517,6 +566,20 @@ export class CodeBlockNodeView implements NodeView {
       this.cmView.dispatch({ selection: this.pendingSelection });
       this.updating = false;
       this.pendingSelection = null;
+    }
+  }
+
+  /** ONE teardown path for every CM replacement — settings change, language
+   *  change and NodeView.destroy. Dispose BEFORE destroy: the controller's
+   *  deferred work checks its disposed flag before dispatching. */
+  private teardownCM(): void {
+    if (this.vimController) {
+      this.vimController.dispose();
+      this.vimController = null;
+    }
+    if (this.cmView) {
+      this.cmView.destroy();
+      this.cmView = null;
     }
   }
 }
