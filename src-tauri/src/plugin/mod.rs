@@ -1264,15 +1264,30 @@ pub async fn fetch_revocations(url: &str) -> Result<FetchedRevocations, String> 
 /// not "one handshake".
 ///
 /// ‼️ `join!`, NOT `try_join!`, AND THE DIFFERENCE IS A DETECTION CONTROL (security re-review
-/// MEDIUM-1, which also explains a CI failure this test suite could reproduce 19 times in 30 under
-/// load). `try_join!` returns whichever future fails FIRST, and the signature's error is mapped to
-/// a sentence `revocation-client.ts` matches to log a refresh failure LOUDLY as structural. When
-/// BOTH fail — plain offline, DNS failure, origin down — the winner is a timing race, so an
-/// ordinary offline launch started reporting a structural break. In a release build `logger.warn`
-/// is compiled out and `logger.error` is not, which makes the loud channel the ONLY visible one:
-/// the channel built so that a mangled `REVOCATION_PUBLIC_KEY` would be audible now carried
-/// routine noise. The sequential code got this right by construction — the body was fetched first,
-/// so its error always won — and that precedence is restored explicitly below.
+/// MEDIUM-1, which also explains a CI failure this suite reproduced 19 times in 30 under load).
+/// `try_join!` returns whichever future fails FIRST, and the signature's error is mapped to a
+/// sentence the classifier in `revocation-client.ts` treats as structural. So when BOTH fail the
+/// log level was decided by a timing race. The sequential code got this right by construction —
+/// the body was fetched first, so its error always won — and that precedence is restored below.
+///
+/// ‼️ WHICH FAILURES THIS ACTUALLY RECLASSIFIES, because the first version of this comment claimed
+/// three and delivers one (third-round code review MEDIUM). The classifier is nine alternatives,
+/// not two — `not allowed|forbidden|denied|HTTP \d|signature|public key|unsigned|too large|not
+/// UTF-8` — so precedence changes the level only where the BODY's own error matches none of them:
+///
+/// - transport failure (offline, DNS, connection refused, request timeout) → the body error is
+///   "error sending request …", which matches nothing → QUIET. This is the case the fix buys.
+/// - origin down (5xx) → "revocation list returned HTTP 500" matches `HTTP \d` → LOUD before and
+///   after. The earlier comment listed this as rescued; it is not.
+/// - body over the cap, or not UTF-8 → matches `too large` / `not UTF-8` → LOUD, unchanged.
+///
+/// It still matters: offline is the common case, `logger.warn` is suppressed outside dev while
+/// `logger.error` is not, and that loud channel exists so a mangled `REVOCATION_PUBLIC_KEY` is
+/// audible. Filling it with routine offline noise is a detection loss.
+///
+/// ‼️ Residual, symmetric and inherent: body-ok + signature-transport-failure still lands routine
+/// network trouble in the loud channel, because "the signature is unreachable" and "the signature
+/// is missing" are the same observation from here. Recorded in `dev/backlog.md` rather than fixed.
 ///
 /// The cost of `join!` is that a failed body no longer cancels an in-flight signature fetch, so a
 /// hanging `.sig` is waited out to the 15 s per-request timeout instead of returning early. That is
@@ -1369,7 +1384,16 @@ fn revocation_http_client() -> Result<reqwest::Client, String> {
 /// The body of the fetch, over a client the caller owns.
 ///
 /// Split from `fetch_capped_text` so `fetch_signed_pair` can hand both of its requests the SAME
-/// client. Building one per request gave each its own pool, which is what made the pair serial.
+/// client.
+///
+/// ‼️ THE SHARED CLIENT IS NOT WHAT MAKES THEM CONCURRENT, and saying it was is a false causal
+/// claim the earlier version of this line made (third-round code review MEDIUM). What made the
+/// pair serial was awaiting the second fetch after the first; two separate clients under `join!`
+/// overlap exactly as one shared client does. What the shared client buys is a shared pool — an
+/// h2 origin serves both over one connection, and the next refresh can reuse it instead of paying
+/// another handshake. ‼️ And that half has NO test: reverting to a client per request leaves all
+/// four tests green, because the concurrency they measure comes from `join!`. Pinning it needs an
+/// h2 test fixture this suite does not have.
 async fn fetch_capped_text_with(
     client: &reqwest::Client,
     url: &str,
@@ -4132,6 +4156,18 @@ mod tests {
             ("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec(), delay),
             ("200 OK", b"not a real signature".to_vec(), delay),
         );
+        // ‼️ WARM THE PROCESS BEFORE THE CLOCK STARTS. The first HTTP fetch in a process pays a
+        // one-time ~1.4 s of initialisation, and the elapsed assertion at the end of this test
+        // measured it. Evidence: run alone with `--exact`, this test failed 3/3 ("the pair took
+        // 1.96s–2.14s"); with any one other network test ahead of it in the same process it
+        // passes, and the two together take 2.07 s — so the cost is paid ONCE per process, not
+        // per client. Without this warm-up the test is green only because sibling tests happen
+        // to run first: `cargo test --exact <this>` is red, and so is any runner that gives each
+        // test its own process (nextest).
+        let warm = serve_once("200 OK", b"{}".to_vec());
+        fetch_capped_text(&warm, 64, "warm-up")
+            .await
+            .expect("the warm-up fetch must succeed, or it warmed nothing");
         let started = Instant::now();
         let (body, signature) = fetch_signed_pair(&url).await.expect("both fetches succeed");
         assert!(body.contains("revoked"), "{body}");
@@ -4210,12 +4246,15 @@ mod tests {
 
     #[tokio::test]
     async fn when_both_fetches_fail_the_body_error_wins() {
-        // ‼️ THE CASE THAT WAS MISSING, AND THE ONE THAT MATTERS MOST (security re-review MEDIUM-1).
-        // Offline IS this state, and under `try_join!` the winner was a timing race — so an ordinary
-        // offline launch intermittently reported a STRUCTURAL failure. `logger.warn` is compiled out
-        // of release builds and `logger.error` is not, which makes the loud channel the only visible
-        // one, and it exists so that a mangled public key is audible. Routine noise in it is a
-        // detection loss, not a cosmetic one.
+        // ‼️ PRECEDENCE, AND ONLY PRECEDENCE — see the sibling case below for the classification
+        // itself (third-round code review MEDIUM). Both candidate messages here contain "HTTP 500",
+        // which the classifier matches either way, so this case cannot fail if the offline
+        // classification breaks. It pins that the BODY's error is the one returned, which is what
+        // kills the implementation that shipped in `053b75d1`.
+        //
+        // `logger.warn` is suppressed outside dev by a runtime `if (isDev)` in `utils/logger.ts` —
+        // not compiled out, as an earlier version of this comment said; the user-visible effect is
+        // the same and the mechanism was misstated.
         //
         // ‼️ THE SIGNATURE FAILS FIRST, ON PURPOSE. Pointing both at a closed port makes both fail
         // "at once" and leaves the winner to the executor — which is how the FIRST version of this
@@ -4240,6 +4279,56 @@ mod tests {
             "the body's failure must win, or offline reads as a structural signature break: {err}"
         );
         assert!(err.contains("revocation list returned HTTP 500"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn offline_stays_quiet_across_the_ipc_boundary() {
+        // ‼️ THE PROPERTY THE PRECEDENCE EXISTS FOR, ASSERTED AGAINST THE REAL CONSUMER (third-round
+        // code review MEDIUM). The sibling case above pins that the BODY's error is returned, but it
+        // uses HTTP 500 on both sides — and BOTH candidate messages contain "HTTP 500", which the
+        // classifier matches either way. So it cannot fail if the classification breaks. This one
+        // makes both fetches fail at the TRANSPORT level, which is what offline is, and then checks
+        // the message against the pattern that actually decides the log level.
+        //
+        // ‼️ THE PATTERN IS READ OUT OF THE TYPESCRIPT, not paraphrased. The classifier is nine
+        // alternatives and the earlier comments in this file described two of them; a copy here would
+        // drift the same way. Asserting the literal appears exactly once in the consumer makes a
+        // change over there fail HERE, which is the only way a cross-boundary property stays true.
+        const CLIENT_TS: &str = include_str!("../../../src/plugins/revocation-client.ts");
+        const LOUD: &str = "not allowed|forbidden|denied|HTTP \\d|signature|public key|unsigned|too large|not UTF-8";
+        assert_eq!(
+            CLIENT_TS.matches(LOUD).count(),
+            1,
+            "the structural-failure classifier moved or changed — update this test with it"
+        );
+
+        // Bind, take the address, drop the listener: both requests are refused at connect, which is
+        // deterministic under `join!` because it waits for both and returns the body's error.
+        let addr = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap()
+        };
+        let err = fetch_signed_pair(&format!("http://{addr}/doc.json"))
+            .await
+            .expect_err("nothing is listening");
+
+        let lowered = err.to_lowercase();
+        for alternative in LOUD.split('|') {
+            if alternative == "HTTP \\d" {
+                assert!(
+                    !lowered
+                        .split("http ")
+                        .skip(1)
+                        .any(|rest| rest.starts_with(|c: char| c.is_ascii_digit())),
+                    "offline must not look like an HTTP status failure: {err}"
+                );
+            } else {
+                assert!(
+                    !lowered.contains(&alternative.to_lowercase()),
+                    "offline must not match the structural alternative `{alternative}`: {err}"
+                );
+            }
+        }
     }
 
     #[tokio::test]
