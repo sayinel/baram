@@ -1,6 +1,6 @@
 [package]
 name = "baram"
-version = "0.4.1"
+version = "0.5.1"
 description = "Lightweight WYSIWYG Markdown Editor"
 authors = ["Baram Team"]
 license = "Apache-2.0"
@@ -37,9 +37,30 @@ keyring = { version = "3", features = ["apple-native"] }
 # git2's https/ssh transports (see git/remote.rs: fetch/pull/push) pull
 # openssl-sys via libgit2-sys + libssh2-sys.
 git2 = { version = "0.20", features = ["vendored-openssl"] }
-zip = "8"
+# ‼️ default-features = false is a SECURITY setting, not tidiness (§69 review, #261).
+#
+# The default feature set compiles LZMA, PPMd, zstd, xz, bzip2 and AES decoders. The
+# LZMA decoder builds itself on the first read of an entry and sizes its dictionary
+# from a number in the archive, clamped only to ~4 GiB — so a 114-byte archive drove a
+# 512 MiB allocation, ahead of every byte limit `extract_zip_bounded` enforces, and a
+# failed alloc aborts the process rather than unwinding. The plugin path also refuses
+# unknown methods at runtime (`ALLOWED_COMPRESSION`); this removes the decoders from
+# the binary so `fs::extract_zip` (§53), which has no such gate, cannot reach them
+# either — and so a future caller cannot.
+#
+# `deflate` pulls the flate2 reader and the zopfli writer, which is everything both
+# call sites need: `plugin-release.yml` packs with `zip -r` (Deflated) and Notion
+# exports are Deflated. Adding a codec back here re-arms the above — do it only with
+# the allocation behaviour of that decoder in hand.
+zip = { version = "8", default-features = false, features = ["deflate"] }
 similar = "3"
 sha2 = "0.10"
+# §69 revocation-list signing. Both were already in the tree via tauri-plugin-updater, so
+# the `deny` job has been vetting them all along — this promotes them to direct deps rather
+# than adding supply-chain surface. Same scheme and same file format as the updater, so the
+# verification path here is the one tauri already exercises in production.
+minisign-verify = "0.2"
+base64 = "0.22"
 shlex = "2.0"
 log = "0.4"
 diffy = "0.5.0"

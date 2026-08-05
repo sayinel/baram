@@ -1,5 +1,4 @@
-import { useState } from "react";
-
+import type { RevocationEntry } from "../../plugins/revocation";
 import type {
   PluginCapability,
   PluginStatus,
@@ -7,7 +6,11 @@ import type {
 } from "../../plugins/types";
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
+import { useTranslation } from "../../i18n/useTranslation";
+import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginRevokedNotice } from "./PluginRevokedNotice";
+import { PluginSettingsForm } from "./PluginSettingsForm";
 import { PluginTrustBadge } from "./PluginTrustBadge";
 
 interface PluginDetailProps {
@@ -19,6 +22,7 @@ interface PluginDetailProps {
   onUninstall: () => void;
   onUpdate: () => void;
   readme?: null | string;
+  revocation?: null | RevocationEntry;
   status: PluginStatus;
   updateAvailable?: string;
 }
@@ -34,15 +38,13 @@ export function PluginDetail({
   onToggleEnabled,
   readme,
   onBack,
+  revocation,
 }: PluginDetailProps) {
-  const [showTrustWarning, setShowTrustWarning] = useState(false);
-  const handleInstallClick = () => {
-    if (entry.trust === "trusted" && !showTrustWarning) {
-      setShowTrustWarning(true);
-      return;
-    }
-    onInstall();
-  };
+  const { t } = useTranslation();
+  // The full-trust warning moved to `PluginConsentDialog` (§260 Phase 5), which is the
+  // step that actually records what the user agreed to. Keeping a second, weaker warning
+  // here would have let the two drift apart.
+  const legacy = !entry.trust;
 
   return (
     <div
@@ -66,8 +68,17 @@ export function PluginDetail({
           cursor: "pointer",
         }}
       >
-        &larr; Back
+        {t("plugin.action.back")}
       </button>
+
+      {/* §69 — genuinely first in the body now. The earlier version carried a comment
+          saying so while rendering after the description, the error banner and the
+          action buttons; review caught the comment describing an intent the code did
+          not implement. */}
+      <PluginRevokedNotice
+        onRemove={onUninstall}
+        revocation={revocation ?? null}
+      />
 
       {/* Header */}
       <div
@@ -164,7 +175,7 @@ export function PluginDetail({
               border: "1px solid var(--color-border-default)",
             }}
           >
-            Installing…
+            {t("plugin.action.installing")}
           </button>
         ) : status === "enabled" || status === "disabled" ? (
           <>
@@ -177,10 +188,12 @@ export function PluginDetail({
                 fontWeight: 500,
                 backgroundColor:
                   status === "enabled"
-                    ? "var(--color-accent-default)"
+                    ? "var(--color-accent-solid)"
                     : "var(--color-bg-subtle)",
                 color:
-                  status === "enabled" ? "#fff" : "var(--color-text-primary)",
+                  status === "enabled"
+                    ? "var(--color-accent-on-solid)"
+                    : "var(--color-text-primary)",
                 border:
                   status === "enabled"
                     ? "none"
@@ -188,7 +201,9 @@ export function PluginDetail({
                 cursor: "pointer",
               }}
             >
-              {status === "enabled" ? "Enabled" : "Disabled"}
+              {status === "enabled"
+                ? t("plugin.action.enabled")
+                : t("plugin.action.disabled")}
             </button>
             {updateAvailable && (
               <button
@@ -198,13 +213,13 @@ export function PluginDetail({
                   borderRadius: "6px",
                   fontSize: "13px",
                   fontWeight: 500,
-                  backgroundColor: "#f59e0b",
-                  color: "#fff",
+                  backgroundColor: "var(--color-status-warning)",
+                  color: "var(--color-status-warning-on-solid)",
                   border: "none",
                   cursor: "pointer",
                 }}
               >
-                Update to v{updateAvailable}
+                {t("plugin.action.updateTo", { version: updateAvailable })}
               </button>
             )}
             <button
@@ -220,41 +235,31 @@ export function PluginDetail({
                 cursor: "pointer",
               }}
             >
-              Uninstall
+              {t("plugin.action.uninstall")}
             </button>
           </>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {showTrustWarning && (
-              <div
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  backgroundColor: "var(--color-status-error-bg)",
-                  color: "var(--color-status-danger)",
-                  fontSize: "13px",
-                  border: "1px solid var(--color-status-error-border)",
-                }}
-              >
-                This plugin runs with full app access and is not sandboxed.
-                Install it only if you trust the author and source.
-              </div>
+            {legacy && (
+              <p className="plugin-legacy-note">{legacyEntryMessage(entry)}</p>
             )}
             <button
-              onClick={handleInstallClick}
+              disabled={legacy}
+              onClick={onInstall}
               style={{
                 alignSelf: "flex-start",
                 padding: "8px 20px",
                 borderRadius: "6px",
                 fontSize: "13px",
                 fontWeight: 500,
-                backgroundColor: "var(--color-accent-default)",
-                color: "#fff",
+                backgroundColor: "var(--color-accent-solid)",
+                color: "var(--color-accent-on-solid)",
                 border: "none",
-                cursor: "pointer",
+                cursor: legacy ? "not-allowed" : "pointer",
+                opacity: legacy ? 0.5 : 1,
               }}
             >
-              {showTrustWarning ? "Install anyway" : "Install"}
+              {t("plugin.action.install")}
             </button>
           </div>
         )}
@@ -270,7 +275,7 @@ export function PluginDetail({
             color: "var(--color-text-primary)",
           }}
         >
-          Description
+          {t("plugin.detail.description")}
         </h3>
         <p
           style={{
@@ -295,7 +300,7 @@ export function PluginDetail({
               color: "var(--color-text-primary)",
             }}
           >
-            README
+            {t("plugin.detail.readme")}
           </h3>
           <pre
             style={{
@@ -319,6 +324,12 @@ export function PluginDetail({
         </div>
       )}
 
+      {/* §260 Phase 4c — declared settings, above Capabilities: it is the only section a
+          user ACTS on, and it renders itself away for a plugin that declares none. Driven
+          by the installed MANIFEST rather than by `entry`, because a registry entry carries
+          no contributions — the questions are asked by the code that is installed. */}
+      <PluginSettingsForm pluginId={entry.id} />
+
       {/* Capabilities */}
       <div style={{ marginBottom: "20px" }}>
         <h3
@@ -329,7 +340,7 @@ export function PluginDetail({
             color: "var(--color-text-primary)",
           }}
         >
-          Capabilities
+          {t("plugin.detail.capabilities")}
         </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {entry.capabilities.map((cap) => (
@@ -346,7 +357,7 @@ export function PluginDetail({
                 color: "var(--color-text-muted)",
               }}
             >
-              No special permissions required
+              {t("plugin.detail.capabilitiesNone")}
             </span>
           )}
         </div>
@@ -362,7 +373,7 @@ export function PluginDetail({
             color: "var(--color-text-primary)",
           }}
         >
-          Links
+          {t("plugin.detail.links")}
         </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           {entry.repository && (
@@ -375,7 +386,7 @@ export function PluginDetail({
               }}
               target="_blank"
             >
-              Repository
+              {t("plugin.detail.repository")}
             </a>
           )}
           {entry.homepage && (
@@ -388,7 +399,7 @@ export function PluginDetail({
               }}
               target="_blank"
             >
-              Homepage
+              {t("plugin.detail.homepage")}
             </a>
           )}
           {!entry.repository && !entry.homepage && (
@@ -398,7 +409,7 @@ export function PluginDetail({
                 color: "var(--color-text-muted)",
               }}
             >
-              No links available
+              {t("plugin.detail.linksNone")}
             </span>
           )}
         </div>
@@ -415,7 +426,7 @@ export function PluginDetail({
               color: "var(--color-text-primary)",
             }}
           >
-            Keywords
+            {t("plugin.detail.keywords")}
           </h3>
           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
             {entry.keywords.map((kw) => (

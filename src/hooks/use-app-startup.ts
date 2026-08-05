@@ -12,7 +12,6 @@ import { getSpace } from "../spaces";
 import { useContextStore } from "../stores/context/context";
 import { openFolder } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
-import { migrateFromLocalStorage } from "../stores/system/tauri-storage";
 import { logger } from "../utils/logger";
 
 interface UseAppStartupParams {
@@ -27,10 +26,9 @@ export function useAppStartup({
   handleOpenFilePath,
   handleNewFile,
 }: UseAppStartupParams): void {
-  // §3.2 One-time migration: localStorage → Tauri app_data_dir
-  useEffect(() => {
-    migrateFromLocalStorage().catch(() => {});
-  }, []);
+  // §3.2 The localStorage → Tauri-config migration used to run here. It moved to
+  // `main.tsx` (§260 Phase 5 code review, H1): as a child effect it raced the very
+  // stores it migrates, and by effect time a module-eval rehydration had already read.
 
   // onLaunch — restore folder/file on startup
   const onLaunchDone = useRef(false);

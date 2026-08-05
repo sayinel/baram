@@ -92,6 +92,32 @@ describe("PluginDeveloperSection", () => {
     );
   });
 
+  it("renders the settings form for a dev plugin's declared fields", async () => {
+    // §260 Phase 4c — REACHABILITY, which the form's own test structurally cannot cover:
+    // it renders the component directly. A dev plugin never appears in the registry, so it
+    // never opens `PluginDetail` — where the form was first placed — and the fields would
+    // have been unreachable for exactly the plugins developed against them. This is the
+    // live-smoke path, so it is the one worth pinning.
+    usePluginStore.getState().setDevPlugins([
+      makeDevPlugin({
+        ...baseManifest,
+        capabilities: ["settings"],
+        contributions: {
+          settings: [
+            { default: 3, key: "depth", label: "Depth", type: "number" },
+          ],
+        },
+      }),
+    ]);
+
+    render(<PluginDeveloperSection />);
+    fireEvent.click(screen.getByText("Dev X"));
+
+    expect((screen.getByLabelText("Depth") as HTMLInputElement).value).toBe(
+      "3",
+    );
+  });
+
   it("shows a failure toast when loading a dev plugin folder fails", async () => {
     addDevFolder.mockRejectedValue(new Error("boom"));
     const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
@@ -123,6 +149,10 @@ describe("PluginDeveloperSection", () => {
       expect(pluginLoader.reloadPlugin).toHaveBeenCalledWith(
         "/dev/dev-x",
         baseManifest,
+        // §260 Phase 5 round 4 (G1) — asserted, not tolerated: without `isDev` the loader
+        // falls back to an installed plugin's consent, so a dev folder sharing an id
+        // silently loses capabilities or refuses to load outright.
+        { isDev: true },
       ),
     );
     await waitFor(() =>
@@ -157,6 +187,10 @@ describe("PluginDeveloperSection", () => {
       expect(pluginLoader.reloadPlugin).toHaveBeenCalledWith(
         "/dev/dev-x",
         manifestWithTiptap,
+        // §260 Phase 5 round 4 (G1) — asserted, not tolerated: without `isDev` the loader
+        // falls back to an installed plugin's consent, so a dev folder sharing an id
+        // silently loses capabilities or refuses to load outright.
+        { isDev: true },
       ),
     );
     await waitFor(() =>

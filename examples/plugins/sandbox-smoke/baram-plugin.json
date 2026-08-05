@@ -1,0 +1,76 @@
+{
+  "id": "baram-sandbox-smoke",
+  "name": "Sandbox Smoke",
+  "description": "§260 Phase 3c-3/4a/4b/4c — exercises the sandboxed tier's brokered surface (storage, relative-path files allow+deny, delivered events, staged document reads, declared settings, ai) from inside a real plugin webview and reports through ctx.ui.",
+  "version": "1.2.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "index.mjs",
+  "engines": {
+    "baram": ">=0.5.0"
+  },
+  "trust": "sandboxed",
+  "capabilities": [
+    "ai",
+    "commands",
+    "editor:readonly",
+    "events",
+    "files:readonly",
+    "settings",
+    "statusbar",
+    "storage"
+  ],
+  "contributions": {
+    "commands": [
+      {
+        "id": "run",
+        "title": "Sandbox Smoke: boundary checks",
+        "palette": true
+      },
+      {
+        "id": "ai",
+        "title": "Sandbox Smoke: AI checks (slow)",
+        "palette": true
+      }
+    ],
+    "statusBar": [
+      {
+        "command": "run",
+        "id": "smoke",
+        "text": "🧪 smoke",
+        "tooltip": "Click to run the sandbox boundary checks"
+      },
+      {
+        "id": "file",
+        "text": "📄 —",
+        "tooltip": "File the sandbox was told about"
+      }
+    ],
+    "settings": [
+      {
+        "default": true,
+        "key": "compact",
+        "label": "Compact report",
+        "type": "boolean"
+      },
+      {
+        "default": 3,
+        "key": "depth",
+        "label": "Depth",
+        "type": "number"
+      },
+      {
+        "default": "»",
+        "key": "prefix",
+        "label": "Prefix",
+        "type": "string"
+      }
+    ]
+  },
+  "icon": "🧪",
+  "keywords": [
+    "internal",
+    "smoke",
+    "sandbox"
+  ]
+}

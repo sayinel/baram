@@ -1,0 +1,506 @@
+/* §260 Phase 5 — plugin install consent.
+ *
+ * A new file rather than an addition to dialogs.css, which is already past the
+ * ~1500-line ceiling this project keeps. The rest of the plugin UI styles itself
+ * inline; a modal is the one part that needs an overlay and a dark-mode-aware
+ * surface, so it belongs in a stylesheet.
+ */
+
+.plugin-consent-overlay {
+  position: fixed;
+  inset: 0;
+
+  /* Above `.settings-overlay` (1000), which is where the marketplace actually lives.
+     Nested inside it the z-index is scoped and any value would do — but this dialog is
+     the last thing between a user and running third-party code, so it must not depend
+     on staying a descendant of that stacking context to be visible. */
+  z-index: 1100;
+  display: flex;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgb(0 0 0 / 45%);
+
+  /* Pushes the marketplace behind the decision rather than leaving it competing for
+     attention with it. */
+  backdrop-filter: blur(3px);
+  animation: plugin-consent-fade 120ms ease-out;
+}
+
+/* Both animations are covered by the app-wide `prefers-reduced-motion` reset in
+   components.css, so they are not re-guarded here. */
+@keyframes plugin-consent-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes plugin-consent-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.plugin-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-self: flex-start;
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  max-height: 76vh;
+  padding: 22px 24px 18px;
+
+  /* NOT `overflow-y: auto`. The dialog itself must never be the scroll container — that put
+     the acknowledgement checkbox and both buttons inside the scrolled region, so a plugin
+     requesting seven capabilities pushed Cancel below the fold at 1280x800 and thirteen hid
+     288px, with macOS overlay scrollbars giving no hint. `.plugin-consent__body` scrolls
+     instead. */
+  overflow: hidden;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 14px;
+  box-shadow: var(--shadow-xl);
+  animation: plugin-consent-rise 140ms ease-out;
+}
+
+.plugin-consent__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+
+  /* Belt-and-braces only. A re-review overrode this at runtime and measured no change:
+     flexbox's automatic minimum size applies solely to items whose `overflow` is `visible`,
+     and `overflow-y: auto` below already resolves `min-height: auto` to 0. Kept in case the
+     overflow ever changes; an earlier comment here wrongly called it load-bearing. */
+  min-height: 0;
+  overflow-y: auto;
+
+  /* Scroll shadows, so a truncated body never reads as "there is nothing more".
+     Without this the body simply ends: at the app's minimum window height a trusted
+     plugin's danger block fills it and `It requests:` is sliced at the edge with no rows
+     under it, which states the opposite of the truth about what is being agreed to. Even at
+     1280x800 a thirteen-capability list is cut mid-row with no affordance, and macOS overlay
+     scrollbars appear only while scrolling.
+     The two `local` layers scroll WITH the content and so mask the shadows at each end; the
+     two `scroll` layers stay put. Pure CSS — it needs no measurement and cannot desync from
+     the real scroll position the way a JS class toggle can. */
+  background:
+    linear-gradient(var(--color-bg-default) 30%, transparent) top / 100% 14px
+      no-repeat local,
+    linear-gradient(transparent, var(--color-bg-default) 70%) bottom / 100% 14px
+      no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgb(0 0 0 / 16%), transparent) top /
+      100% 6px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgb(0 0 0 / 16%), transparent)
+      bottom / 100% 6px no-repeat scroll;
+}
+
+.plugin-consent__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+
+  /* The plugin name is registry-authored and of unbounded length; without this a single
+     long token widens the dialog past its own max-width. */
+  overflow-wrap: anywhere;
+}
+
+.plugin-consent__danger {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+
+  /* Uses the error surface tokens. An earlier comment here claimed no danger-background
+     token existed and mixed one by hand — `--color-status-error-bg` and
+     `--color-status-error-border` do exist and are what every other error surface uses,
+     so this now matches them in both themes. */
+  background: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 8px;
+}
+
+.plugin-consent__danger-title {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 13px;
+  font-weight: 600;
+
+  /* Deliberately NOT `--color-status-danger`. red-500 on the red-50/red-950 error surface
+     measures 3.44:1 in light and 4.16:1 in dark — under AA for 13px text, which made the
+     gravest sentence on the screen the least legible one. Primary text on the same surface
+     is 15.9:1 / 12.7:1; the ⚠ below carries the red instead. */
+  color: var(--color-text-primary);
+}
+
+.plugin-consent__danger-title::before {
+  flex: none;
+  color: var(--color-status-danger);
+  content: "⚠";
+}
+
+.plugin-consent__lead {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+/* A bordered list rather than loose bullets: these lines are what the user is actually
+   agreeing to, so they read as one block with a boundary. */
+.plugin-consent__caps {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+}
+
+.plugin-consent__cap {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.plugin-consent__cap + .plugin-consent__cap {
+  border-top: 1px solid var(--color-border-default);
+}
+
+.plugin-consent__cap::before {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-top: 7px;
+  content: "";
+  background: var(--color-accent-default);
+  border-radius: 50%;
+}
+
+.plugin-consent__cap-text {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+/* Filled rather than tinted: accent text on accent-subtle measured 3.38:1 in light
+   at 10px/600, and a tint pairing cannot be guaranteed for a user-chosen accent the
+   way the solid pairing can (#330). Matches the app's other accent badges. */
+.plugin-consent__new {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-accent-on-solid);
+  letter-spacing: 0.04em;
+  background: var(--color-accent-solid);
+  border-radius: 9999px;
+}
+
+/* Boxed, so the trusted-tier gate looks like a thing you must pass rather than a
+   footnote under the list. */
+.plugin-consent__ack {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  transition: border-color 120ms ease;
+}
+
+.plugin-consent__ack:hover {
+  border-color: var(--color-status-danger);
+}
+
+.plugin-consent__ack input {
+  flex: none;
+  margin-top: 1px;
+  accent-color: var(--color-status-danger);
+  cursor: pointer;
+}
+
+.plugin-consent__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.plugin-consent__cancel,
+.plugin-consent__confirm {
+  min-width: 88px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.plugin-consent__cancel {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+}
+
+.plugin-consent__cancel:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+.plugin-consent__confirm {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border: 1px solid var(--color-accent-solid);
+}
+
+.plugin-consent__confirm:hover:not(:disabled) {
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
+}
+
+.plugin-consent__confirm:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* §260 Phase 5 — a registry entry predating the trust model cannot be installed;
+ * the marketplace explains why rather than letting the click fail after a download. */
+.plugin-legacy-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* ── §69 capability badge (#330) ───────────────────────────────────────────
+ *
+ * The badge used to paint a capability's hue as BOTH its text and — at 9% alpha —
+ * its background. A 9% tint is 91% whatever is behind it, so the pairing collapsed
+ * to hue-vs-page and failed AA in 74 of 96 capability x built-in-theme combinations:
+ * every one of the twelve there were then, in all three light themes (worst
+ * `files:readonly` at
+ * 1.48:1 on Solarized Light), and seven of the twelve in EVERY theme, `network`
+ * among them. No palette can fix that, because light and dark pages need opposite
+ * lightness from the same hue.
+ *
+ * So the tint and the ink are both mixed to OPAQUE colours whose ratio is therefore
+ * determinate — it cannot be moved by a page colour, a custom theme, or a user's
+ * `--color-bg-*` edit. Only the recipe switches per base, via the same three scopes
+ * every generated token uses, so `system` follows the OS with no JS involved.
+ *
+ * Note the `var()` in the PERCENTAGE slot. Nothing else in this repo does that — the
+ * other 60-odd `color-mix()` calls all use a literal — and if an engine rejected it
+ * the whole declaration would be invalid at computed-value time: text would inherit,
+ * fill would go transparent, and every badge would lose its colour while staying
+ * readable, so no contrast test would notice. Checked directly in WKWebView, the
+ * engine Tauri ships on macOS: all three configurations (light, `data-theme="dark"`,
+ * and no attribute under OS dark) resolve, and the computed ratios come out 5.292 and
+ * 4.995 — the model's numbers to three decimals. The `system` case comes out colour
+ * for colour identical to the explicit dark theme, which is the part the string
+ * equality assertion below can only approximate.
+ *
+ * `.plugin-consent__new` next door reached the opposite conclusion — filled, not
+ * tinted — and both are right: its fill is the user-chosen accent, where no tint
+ * percentage can be verified in advance. These thirteen hues are constants, so a
+ * tint CAN be verified, and `capability-badge-contrast.test.ts` verifies it against
+ * the values below rather than a copy of them.
+ *
+ * The percentages stay here rather than in `tokens/`, and not because the pipeline
+ * cannot carry a number — it already emits `--radius-*` and `--font-size-*`, and it
+ * already holds per-view colour families. They stay because 52% and 88% are not a
+ * design preference: they are the values at which every one of the thirteen hues
+ * clears AA with headroom. Surfacing them in Tokens Studio would invite a designer to
+ * nudge them, and a nudge silently breaks the guarantee. The two BASES are a fair
+ * candidate for the pipeline; that migration is in dev/backlog.md.
+ *
+ * The two ink percentages are the loosest that leave real headroom, not the loosest
+ * that pass: 4.5 exactly is reachable at 57%/93%, but the worst pairing then sits
+ * 0.03 above the line, which is inside the rounding difference between an 8-bit
+ * model and the browser's float interpolation. At 52%/88% the minimum is 5.29 light
+ * and 5.00 dark, and stays at 5.17/4.89 under a worst-case +/-1 per channel on both
+ * colours — so the guarantee does not rest on how either side rounds.
+ */
+:root {
+  --capability-badge-fill-base: #fff;
+  --capability-badge-fill-hue: 10%;
+  --capability-badge-ink-base: #000;
+  --capability-badge-ink-hue: 52%;
+}
+
+[data-theme="dark"] {
+  --capability-badge-fill-base: #000;
+  --capability-badge-fill-hue: 14%;
+  --capability-badge-ink-base: #fff;
+  --capability-badge-ink-hue: 88%;
+}
+
+/* Declares the same four values as the `[data-theme="dark"]` block above — parsed
+ * key-to-value equality is asserted in capability-badge-contrast.test.ts, along with
+ * the fact that this rule really is inside a `prefers-color-scheme: dark` query.
+ * (Not "byte-identical": the assertion compares parsed pairs, so it survives
+ * reformatting rather than breaking on it.) A media query cannot join a selector
+ * list, so the values have to be duplicated; the theme clear-list drifted to 16 of 25
+ * keys exactly this way (#336), and a guard is cheaper than a screenshot. */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"], [data-theme="dark"]) {
+    --capability-badge-fill-base: #000;
+    --capability-badge-fill-hue: 14%;
+    --capability-badge-ink-base: #fff;
+    --capability-badge-ink-hue: 88%;
+  }
+}
+
+.plugin-capability-badge {
+  /* Set inline per capability. The default is the `settings` grey, so a capability
+     with no entry renders readable instead of resolving to nothing. */
+  --capability-badge-hue: #6b7280;
+
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: color-mix(
+    in srgb,
+    var(--capability-badge-hue) var(--capability-badge-ink-hue),
+    var(--capability-badge-ink-base)
+  );
+  background-color: color-mix(
+    in srgb,
+    var(--capability-badge-hue) var(--capability-badge-fill-hue),
+    var(--capability-badge-fill-base)
+  );
+
+  /* The one part deliberately NOT on the recipe, and the percentage is deliberately a
+     literal. The fill and the ink form a pairing that must be determinate, so they mix
+     toward #fff/#000 and ignore the page. The border's whole job is the opposite — to
+     separate the pill FROM the page — so it mixes toward the page and is allowed to
+     move with it. Mixing it toward the recipe base instead measurably cost visibility:
+     across 8 themes x 2 card surfaces x 13 hues, the combinations where neither fill
+     nor border reached 1.15:1 against the surface behind them went 15 -> 27. At 30% of
+     the hue over the page it is a wider step than the 18.8% alpha it replaces. It
+     carries no text, so it needs visibility, not a guaranteed ratio. */
+  border: 1px solid
+    color-mix(in srgb, var(--capability-badge-hue) 30%, var(--color-bg-default));
+  border-radius: 9999px;
+}
+
+/* No `opacity` on the badge or its description. The guard rejects it on any rule in
+ * src/styles whose selector list mentions this class — the `__description` child, a
+ * `:hover` state, a descendant, either position in a comma list — and, separately, in
+ * any style object in the component, because the original defect was written inline.
+ * A `(?![\w-])` lookahead once excluded exactly one selector, `__description`, since
+ * `_` is a word character; that is the element the opacity was removed from.
+ *
+ *
+ * Element opacity composites the text against the fill it sits on, so the 0.8 this
+ * line used to carry would pull the derived pairing back under AA for 5 of 13
+ * capabilities in light (worst 3.54:1) and 7 of 13 in dark (worst 3.61:1) — undoing
+ * the fix on the one view that shows the prose. Those two figures are computed from
+ * WKWebView's own reported colours, not from a model. The size step and the em dash
+ * carry the hierarchy instead. */
+.plugin-capability-badge__description {
+  font-size: 10px;
+}
+
+/* ── §69 revocation notice ────────────────────────────────────────────────
+ *
+ * Reuses the error-surface tokens the consent dialog's danger block uses, rather
+ * than a filled status colour: this is prose to be read, not a control, and a tinted
+ * surface with primary text is the pairing that already measures well in both bases.
+ *
+ * The `--warn` variant is a `color-mix` tint for the same reason `.plugin-consent__new`
+ * is NOT — a tint is right where the surface only has to be noticed, and there is no
+ * `--color-status-warning-bg` token to reach for.
+ */
+.plugin-revoked {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  background: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 8px;
+}
+
+.plugin-revoked--warn {
+  background: color-mix(in srgb, var(--color-status-warning) 12%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--color-status-warning) 40%,
+    transparent
+  );
+}
+
+.plugin-revoked__title {
+  font-weight: 600;
+}
+
+/* The one part a user might quote in a bug report, so it stays selectable prose
+   rather than being folded into the title line. */
+.plugin-revoked__reason {
+  overflow-wrap: anywhere;
+}
+
+/* States that nothing was deleted. Secondary because it is reassurance, not the
+   message — but present, because "not running" otherwise reads as "gone". */
+.plugin-revoked__note {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.plugin-revoked__remove {
+  align-self: flex-start;
+  padding: 5px 14px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-status-danger-on-solid);
+  cursor: pointer;
+  background: var(--color-status-danger);
+  border: none;
+  border-radius: 6px;
+}
+
+.plugin-revoked__remove:hover {
+  background: var(--color-status-danger-solid-hover);
+}
+
+/* §69 — the withdrawal marker in the plugin LIST. Filled rather than tinted: it has
+   to survive being scanned past at 11px among other metadata, and the derived
+   `-on-solid` pairing is what makes a filled danger chip safe in every theme (#341). */
+.plugin-revoked-badge {
+  flex: none;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-status-danger-on-solid);
+  letter-spacing: 0.04em;
+  background: var(--color-status-danger);
+  border-radius: 9999px;
+}

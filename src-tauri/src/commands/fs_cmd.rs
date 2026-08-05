@@ -63,6 +63,21 @@ fn vault_fallback_decision(root: Option<&std::path::Path>, path: &str) -> Result
     }
 }
 
+/// §260 Phase 3c-2c — the vault decision, reachable from another command module.
+///
+/// Sandboxed plugins' brokered file ops (`plugin_cmd::execute_op`) must obey the
+/// SAME rule as `read_file`/`write_file`, not a copy of it: the canonicalizing,
+/// multi-context, deny-when-nothing-is-open logic above is the only place that
+/// rule should exist. Pulls the two states off the `AppHandle` so a caller that
+/// only has one does not have to thread `State` params through.
+pub(crate) async fn ensure_path_in_vault(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
+    use tauri::Manager;
+    check(path)?;
+    let state = app.state::<crate::VaultRootState>();
+    let ctx_mgr = app.state::<crate::context::ContextManager>();
+    check_vault(path, &state, &ctx_mgr).await
+}
+
 /// Register (or update) the open vault root.
 /// Called by the frontend whenever a vault folder is opened.
 #[tauri::command]

@@ -77,3 +77,24 @@
   right: 16px;
   z-index: 10;
 }
+
+/* §69 Plugin file-viewer host — the plugin scales its own content with
+   ctx.zoomLevel, so neutralize the container's CSS zoom (no double zoom)
+   and allow horizontal scroll when zoomed content overflows. */
+.editor-area-scroll.plugin-viewer-scroll {
+  overflow: auto;
+  zoom: 1;
+}
+
+.plugin-viewer-host {
+  width: 100%;
+  height: 100%;
+}
+
+/* Binary file with no matching viewer plugin enabled */
+.viewer-missing {
+  padding: 2em;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}

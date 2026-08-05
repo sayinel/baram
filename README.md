@@ -90,7 +90,7 @@ The built application will be in `src-tauri/target/release/bundle/`.
 
 ## Features
 
-Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-native editing**, and **bidirectional links** — in a lightweight desktop app (~10MB per architecture; the universal macOS bundle ships both and is ~19MB).
+Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-native editing**, and **bidirectional links** — in a lightweight desktop app. The v0.5.0 downloads are ~8MB (Windows `.exe`), ~13MB (Linux `.deb`/`.rpm`), and ~23MB for the universal macOS `.dmg`, which ships Apple Silicon and Intel in one bundle.
 
 ### Editing
 
@@ -100,6 +100,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Rich blocks** — Headings, lists, tables (with cell merge & virtual scroll), task lists, Obsidian-compatible callouts, toggles, footnotes, definition lists, and YAML frontmatter — created by typing markdown, `/` slash commands, or shortcuts.
 - **Math, code & diagrams** — Inline/block LaTeX (KaTeX), syntax highlighting for 14+ languages (CodeMirror 6), and Mermaid diagrams — all with live preview.
 - **Images** — Drag-and-drop, paste from clipboard, resize, and edit alt text inline.
+- **Other file types** — Open PDFs read-only, HTML with a sandboxed live preview and a source-edit toggle, and images/SVG in a built-in viewer — all in place, without leaving the app. Plugins can add viewers for more types.
 
 ### Knowledge & Navigation
 
@@ -121,7 +122,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 
 - **Export** — HTML, PDF, and — via Pandoc — Word, LaTeX, EPUB, and RST, plus Notion-compatible markdown.
 - **Themes** — 6 built-in editor themes (plus 6 journal themes), system auto light/dark, and a full color editor with import/export.
-- **Plugins** — Install community plugins from a built-in, capability-gated marketplace.
+- **Plugins** — Install community plugins from a built-in marketplace. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
 
 > 📖 See the **[User Guide](docs/user-guide.md)** for detailed usage of every feature.

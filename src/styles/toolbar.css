@@ -215,13 +215,13 @@
 }
 
 .floating-toolbar-btn-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .floating-toolbar-btn-active:hover {
-  color: white;
-  background-color: var(--color-accent-hover);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid-hover);
 }
 
 .floating-toolbar-separator {
@@ -323,9 +323,9 @@
 }
 
 .ai-prompt-preset-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .ai-prompt-input {
@@ -370,23 +370,27 @@
 }
 
 .ai-prompt-btn-ok {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .ai-prompt-btn-ok:hover {
-  background: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
 }
 
 .confirm-dialog-btn-danger {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
   border-color: var(--color-status-danger);
 }
 
+/* Derived, not mixed. Darkening dropped the dark foreground to 4.21:1 while the
+   resting fill passed at 5.58:1; mixing toward white instead broke Solarized, whose
+   `#dc322f` takes a WHITE foreground, at 3.83:1. A constant direction cannot serve
+   both, so the direction comes from whichever foreground the fill took. */
 .confirm-dialog-btn-danger:hover {
-  background: color-mix(in srgb, var(--color-status-danger) 85%, black);
+  background: var(--color-status-danger-solid-hover);
 }
 
 .field-dialog-label {
@@ -771,13 +775,13 @@ body.block-dragging * {
 }
 
 .block-ai-diff-btn-accept {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .block-ai-diff-btn-accept:hover {
-  opacity: 0.9;
+  background: var(--color-accent-solid-hover);
 }
 
 /* Callout AI button */

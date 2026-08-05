@@ -28,17 +28,18 @@ export function BookmarkPanel() {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
 
-  // Load bookmarks when vault opens
+  // Load bookmarks when vault opens. Fire-and-forget since §260 Phase 5 made the
+  // backing store async; both paths already fall back to an empty list on failure.
   useEffect(() => {
     if (rootPath) {
-      loadBookmarks(rootPath);
+      void loadBookmarks(rootPath);
     }
   }, [rootPath, loadBookmarks]);
 
   // Auto-save whenever bookmarks change
   useEffect(() => {
     if (rootPath) {
-      saveBookmarks(rootPath);
+      void saveBookmarks(rootPath);
     }
   }, [bookmarks, rootPath, saveBookmarks]);
 

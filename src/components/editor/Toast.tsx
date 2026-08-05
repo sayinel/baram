@@ -29,6 +29,13 @@ export function ToastHost() {
         className={`toast${toast.type ? ` toast-${toast.type}` : ""}`}
         role="status"
       >
+        {/* §260 Phase 4a — attribution is a separate element on purpose: a sandboxed
+            plugin controls `message`, so a name folded into that string would be a
+            name the plugin could forge (it can still write "Baram:" INSIDE its own
+            message, but not outside this badge). */}
+        {toast.source ? (
+          <span className="toast-source">{toast.source}</span>
+        ) : null}
         {toast.message}
       </div>
     </div>

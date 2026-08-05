@@ -185,6 +185,8 @@ baram/
 - **Phase 1 (MVP, M1~M6)** · **Phase 2 (확장, M7~M9)** — ✅ 완료
 - **Phase 3 (고급 기능)** — 진행 중
   - ✅ 완료: 테이블 고급(셀 병합·가상 스크롤), 쿼리 블록(§5.13), Git 고급(§67), 파일 스냅샷/버전 히스토리(§71), 네임스페이스(§61, P2 보류), Skills 모드(§72), Settings UI 리디자인, 키보드 단축키 커스터마이징, Heading/List Folding, 코드 리팩토링 + CSS 디자인 토큰 시스템, Vault System(§80~§90), macOS Universal Binary 릴리스(PR #200)
+  - ✅ 완료(v0.5.0, 2026-07-30 발행): **플러그인 실행 모델 §260 6개 페이즈** — trusted/sandboxed 두 티어, per-plugin WebviewWindow + Rust `plugin_call` 브로커, 설치 동의(consent) 게이트, 앱 커맨드 ACL 락다운. 플러그인이 기본 활성(§259의 `VITE_ENABLE_PLUGINS` 게이트 제거). 라이브 레지스트리에 `baram-word-count` 2.0.0 발행
+  - ✅ 완료(v0.5.0): 파일 뷰어 — PDF(읽기 전용), HTML(샌드박스 프리뷰 + 소스 토글), 이미지·SVG(내장 media-viewer 플러그인 + 공개 `viewer` 확장점, §69)
   - 🚧 미착수: Canvas, Agent Mode(§11.6), Knowledge Q&A(§11.4), 실시간 협업
 
 > 완료 항목의 상세 이력은 git 히스토리 · `dev/next-steps.md` · `dev/progress.json` 참조.

@@ -13,6 +13,7 @@ import {
   findThemeById,
   THEME_COLOR_KEYS,
 } from "../../types/theme";
+import { applyThemeVars } from "../../utils/theme-vars";
 
 interface ThemeEditorProps {
   onClose: () => void;
@@ -43,6 +44,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // Keep a ref to the original colors so we can restore on cancel/unmount
   const originalColorsRef = useRef<ThemeColors>({ ...sourceTheme.colors });
 
+  // The base the original colors belong to — the derived accent pairing depends on
+  // it, so restoring colours without it would restore the wrong foreground (#330).
+  const originalBaseRef = useRef<"dark" | "light">(sourceTheme.base);
+
   // Group color keys by category
   const categories = useMemo(() => {
     const map = new Map<string, typeof THEME_COLOR_KEYS>();
@@ -56,20 +61,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // Apply editing colors to CSS variables in real-time
   useEffect(() => {
-    const root = document.documentElement;
-    for (const [key, value] of Object.entries(colors)) {
-      root.style.setProperty(key, value);
-    }
-  }, [colors]);
+    applyThemeVars(document.documentElement, colors, base);
+  }, [colors, base]);
 
   // Restore original colors on unmount (cancel / navigate away)
   useEffect(() => {
     const orig = originalColorsRef.current;
+    const origBase = originalBaseRef.current;
     return () => {
-      const root = document.documentElement;
-      for (const [key, value] of Object.entries(orig)) {
-        root.style.setProperty(key, value);
-      }
+      applyThemeVars(document.documentElement, orig, origBase);
     };
   }, []);
 
@@ -107,10 +107,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   const handleCancel = useCallback(() => {
     // Restore original colors before closing
-    const root = document.documentElement;
-    for (const [key, value] of Object.entries(originalColorsRef.current)) {
-      root.style.setProperty(key, value);
-    }
+    applyThemeVars(
+      document.documentElement,
+      originalColorsRef.current,
+      originalBaseRef.current,
+    );
     onClose();
   }, [onClose]);
 

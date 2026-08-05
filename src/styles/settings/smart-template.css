@@ -126,15 +126,15 @@
   padding: 6px 14px;
   font-size: 0.8rem;
   font-weight: 500;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background-color: var(--color-accent-default);
+  background-color: var(--color-accent-solid);
   border: none;
   border-radius: 6px;
 }
 
 .smart-template-custom-btn:hover {
-  opacity: 0.9;
+  background: var(--color-accent-solid-hover);
 }
 
 .smart-template-custom-btn:disabled {

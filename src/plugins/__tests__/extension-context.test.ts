@@ -76,19 +76,27 @@ describe("createExtensionContext", () => {
   });
 
   describe("editor capability", () => {
-    test("editor API available with 'editor' capability", () => {
-      const ctx = createExtensionContext(makeManifest(["editor"]), "/test");
-      // getContent should return empty string when no editor is set
-      expect(ctx.editor.getContent()).toBe("");
-    });
+    // ‼️ #322 — these two asserted `getContent()` returns `""` when no editor is set, with a
+    // comment saying so. That WAS the defect: a plugin cannot tell "no editor" from "empty file",
+    // so it reads "", transforms it, writes it back, and has emptied the user's document. The
+    // tests encoded the bug, which is why it survived. What they were really about — the API
+    // being reachable for each capability — is asserted without the false claim.
+    test.each([["editor"], ["editor:readonly"]] as const)(
+      "editor API is reachable with the '%s' capability",
+      (capability) => {
+        const ctx = createExtensionContext(makeManifest([capability]), "/test");
+        expect(typeof ctx.editor.getContent).toBe("function");
+        expect(typeof ctx.editor.getSelection).toBe("function");
+      },
+    );
 
-    test("editor API available with 'editor:readonly' capability", () => {
-      const ctx = createExtensionContext(
-        makeManifest(["editor:readonly"]),
-        "/test",
-      );
-      expect(ctx.editor.getContent()).toBe("");
-    });
+    test.each([["editor"], ["editor:readonly"]] as const)(
+      "'%s' refuses a read rather than answering with an empty document",
+      (capability) => {
+        const ctx = createExtensionContext(makeManifest([capability]), "/test");
+        expect(() => ctx.editor.getContent()).toThrow(/^editor\.getContent: /);
+      },
+    );
 
     test("editor:readonly prevents setContent", () => {
       const ctx = createExtensionContext(

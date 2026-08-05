@@ -2,20 +2,37 @@
 // only outward channel is the transport. Guards re-activation and serializes
 // outbound payloads defensively (real Tauri events are serde-JSON, not
 // structured clone — functions/BigInt/etc. would corrupt silently).
-import type { HostToSandbox, SandboxToHost } from "./protocol";
+import type {
+  AIAPI,
+  AIModel,
+  NetworkAPI,
+  PluginSettingValue,
+  SandboxContext,
+  SandboxEditorAPI,
+  SandboxFilesAPI,
+  SandboxSettingsAPI,
+  SandboxUIAPI,
+  StorageAPI,
+} from "../types";
+import type { PluginOp } from "./plugin-op";
+import type {
+  HostToSandbox,
+  SandboxHostRequest,
+  SandboxToHost,
+} from "./protocol";
 import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 
-export interface SandboxContext {
-  commands: {
-    register(id: string, handler: (...args: unknown[]) => unknown): void;
-  };
-  events: {
-    emit(event: string, ...args: unknown[]): void;
-    on(event: string, handler: (...args: unknown[]) => void): void;
-  };
-}
+/**
+ * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
+ * host's own bound (`HOST_REQUEST_TIMEOUT_MS`), so in the normal case the HOST's
+ * timeout fires first and the plugin gets a real error; this one only covers a lost
+ * or never-delivered frame, whose pending entry would otherwise leak forever.
+ * Restarted by each streamed token for the same reason the host's is (code review
+ * MEDIUM-4): a token proves the request is alive.
+ */
+export const HOST_REQUEST_CLIENT_TIMEOUT_MS = 150_000;
 
 interface PluginModule {
   activate?: (ctx: SandboxContext) => Promise<unknown> | unknown;
@@ -23,13 +40,269 @@ interface PluginModule {
 
 export function startSandboxClient(
   transport: SandboxTransport<HostToSandbox, SandboxToHost>,
-  importer: (url: string) => Promise<PluginModule>,
+  // §260 3c-2b — takes the plugin's SOURCE, not a URL: production wraps it in a
+  // blob URL (see sandbox-entry.ts), tests pass a module directly. Injectable so no
+  // test needs `URL.createObjectURL`.
+  importer: (source: string) => Promise<PluginModule>,
+  broker: (op: PluginOp) => Promise<unknown>,
 ): void {
   const commands = new Map<string, (...args: unknown[]) => unknown>();
   const eventHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
   let activateState: "activating" | "done" | "idle" = "idle";
 
+  // §260 3c-2c — host-mediated requests awaiting an answer, by our own correlation
+  // id. Bounded by a timer so a frame the host never answers cannot leak an entry
+  // (and the plugin's promise) for the life of the sandbox.
+  const hostPending = new Map<
+    string,
+    {
+      onToken?: (token: string) => void;
+      reject: (e: Error) => void;
+      resolve: (v: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+      /** Restart the stall timer — called on each streamed token. */
+      touch: () => void;
+    }
+  >();
+  let hostSeq = 0;
+
+  function hostRequest(
+    request: SandboxHostRequest,
+    onToken?: (token: string) => void,
+  ): Promise<unknown> {
+    const requestId = `host-${++hostSeq}`;
+    return new Promise<unknown>((resolve, reject) => {
+      const startTimer = () =>
+        setTimeout(() => {
+          hostPending.delete(requestId);
+          reject(
+            new Error(
+              `Host request "${request.kind}" produced nothing for ${HOST_REQUEST_CLIENT_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, HOST_REQUEST_CLIENT_TIMEOUT_MS);
+      hostPending.set(requestId, {
+        onToken,
+        reject,
+        resolve,
+        timer: startTimer(),
+        touch: () => {
+          const p = hostPending.get(requestId);
+          if (!p) return;
+          clearTimeout(p.timer);
+          p.timer = startTimer();
+        },
+      });
+      transport.send({ type: "hostRequest", requestId, request });
+    });
+  }
+
+  const ai: AIAPI = {
+    // §260 Phase 4c — accumulated from TOKEN FRAMES, not read from the response. The host
+    // streams a completion even when the plugin asked for one string, because an inline
+    // answer over 8 KiB enters tauri's shared channel-data queue (see `host-ai-bridge`).
+    // The signature is unchanged: a plugin still awaits one string.
+    complete: async (prompt, opts) => {
+      let buffer = "";
+      const answer = await hostRequest(
+        { kind: "ai_complete", opts, prompt },
+        (token) => {
+          buffer += token;
+        },
+      );
+      // ‼️ The host tells us how much it SENT, and a mismatch is an error rather than a
+      // shorter answer (§260 Phase 4c security review, LOW-2). Token frames are
+      // fire-and-forget on the host side, so a dropped one would otherwise look exactly
+      // like a complete response — and a plugin branching on the text would branch on a
+      // truncation it cannot see. Tolerates an older host that answers without the count.
+      const expected = (answer as undefined | { chars?: number })?.chars;
+      if (typeof expected === "number" && buffer.length !== expected) {
+        throw new Error(
+          `ai.complete: the answer arrived incomplete (${buffer.length} of ${expected} characters)`,
+        );
+      }
+      return buffer;
+    },
+    // Staged like the document: a model list is a JSON array, so it meets the queue's `[`
+    // condition as soon as it is large — which a user's Ollama install decides, not us.
+    //
+    // ‼️ COST, accepted (§260 Phase 4c security review, LOW-1): staging puts this on the
+    // serial `stagedReads` chain, and unlike the other members it is network-bound. Against
+    // an endpoint that never answers, this plugin's own `getMarkdown`/`getSelection`/
+    // `settings.getAll` queue behind it until the host's 120s stall timer fires. Self-
+    // inflicted only — the slot is label-keyed, so no other plugin is affected — and the
+    // alternative (a two-step "ready, come pull" protocol) is a state machine at the realm
+    // boundary for an op most plugins call once, at activate.
+    listModels: async () => {
+      const { payload } = await readStaged({ kind: "ai_list_models" });
+      return JSON.parse(payload) as AIModel[];
+    },
+    stream: async (prompt, opts, onToken) => {
+      await hostRequest({ kind: "ai_stream", opts, prompt }, onToken);
+    },
+  };
+
+  /**
+   * §260 Phase 4c — a broker result that Rust encoded as a JSON STRING, parsed back.
+   *
+   * Every op whose natural result is a list or an object is built with `BrokerResult` on
+   * the Rust side, because tauri routes a channel payload into its app-global queue only
+   * when the payload is ≥8 KiB **and** its JSON starts with `{` or `[`. A JSON string can
+   * never meet the second half, so the disclosure is closed by the SHAPE rather than by a
+   * size check — `files_list` on a few hundred notes crosses 8 KiB in ordinary use.
+   *
+   * The non-string check is not defensive noise: if a future Rust arm forgets the encoding
+   * and answers with a raw array, `JSON.parse` would throw something unreadable from inside
+   * the sandbox. This says which op broke the contract.
+   */
+  const brokerJson = async <T>(op: PluginOp): Promise<T> => {
+    const raw = await broker(op);
+    if (typeof raw !== "string") {
+      throw new Error(
+        `the broker answered "${op.kind}" with a non-string result`,
+      );
+    }
+    return JSON.parse(raw) as T;
+  };
+
+  const storage: StorageAPI = {
+    list: () => brokerJson<string[]>({ kind: "storage_list" }),
+    read: (key) =>
+      broker({ key, kind: "storage_read" }) as Promise<null | string>,
+    remove: (key) => broker({ key, kind: "storage_remove" }) as Promise<void>,
+    write: (key, value) =>
+      broker({ key, kind: "storage_write", value }) as Promise<void>,
+  };
+  const network: NetworkAPI = {
+    fetch: (url, init) =>
+      brokerJson<Awaited<ReturnType<NetworkAPI["fetch"]>>>({
+        init,
+        kind: "http_fetch",
+        url,
+      }),
+  };
+  // §260 3c-2c — the same three operations as the trusted tier's FilesAPI. Nothing is
+  // interpreted here: a broker rejection (denied capability, path outside the vault,
+  // `.baram`, over the cap) propagates to the plugin, because a sandbox that softened a
+  // deny into `undefined` would let the plugin proceed as though the write had landed.
+  //
+  // §260 Phase 4a — `path` is CONTEXT-RELATIVE and `opts.context` names the anchor. This
+  // realm is told no root, so it cannot form an absolute path, and Rust refuses one if it
+  // tries; passing the `context` from a delivered event is what keeps a call aimed at the
+  // vault the event came from when the user has since switched.
+  const files: SandboxFilesAPI = {
+    // Encoded as a JSON string by Rust (see `brokerJson`): a directory of a few hundred
+    // notes is the first broker result that crosses tauri's 8 KiB queue threshold in
+    // ordinary use, and a bare array is exactly the shape the queue takes.
+    listDir: (path, opts) =>
+      brokerJson<string[]>({
+        context: opts?.context,
+        kind: "files_list",
+        path,
+      }),
+    readFile: (path, opts) =>
+      broker({
+        context: opts?.context,
+        kind: "files_read",
+        path,
+      }) as Promise<string>,
+    writeFile: (path, content, opts) =>
+      broker({
+        content,
+        context: opts?.context,
+        kind: "files_write",
+        path,
+      }) as Promise<void>,
+  };
+  // §260 Phase 4a — void-returning like the trusted tier's `UIAPI`, so a plugin is not
+  // forced to await a toast. The underlying request still has an answer: log a refusal
+  // (denied capability, undeclared item, throttled) rather than leaving an unhandled
+  // rejection, which in this realm would be invisible.
+  const fireUI = (request: SandboxHostRequest): void => {
+    void hostRequest(request).catch((err: unknown) => {
+      logger.warn(
+        `[Sandbox] ${request.kind} refused: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  };
+  const ui: SandboxUIAPI = {
+    setStatusBarText: (id, text) => fireUI({ id, kind: "ui_status_bar", text }),
+    showNotification: (message, type) =>
+      fireUI({ kind: "ui_notify", message, type }),
+  };
+
+  // §260 Phase 4b — Rust holds ONE staged slot per plugin, so two reads in flight would
+  // race: the first pull would take the second document and the second would find the slot
+  // empty. Serialised here rather than given a per-request handle, because the slot's
+  // single-ness is what keeps a document from lingering in memory after delivery. A plugin
+  // that bypasses this and calls the broker directly can only confuse its OWN reads — the
+  // slot is keyed by window label, so no other plugin is reachable either way.
+  let stagedReads: Promise<unknown> = Promise.resolve();
+  const readStaged = async (
+    request: SandboxHostRequest,
+    /** Whether the host staged anything for this answer. Default: it always does. */
+    didStage: (value: unknown) => boolean = () => true,
+  ): Promise<{ payload: string; value: unknown }> => {
+    const run = async () => {
+      // The response VALUE is kept, not discarded: `getSelection` answers with its
+      // positions inline (two numbers) and stages only the text, so the caller needs both
+      // halves. `getMarkdown` has no inline half and ignores it.
+      const value = await hostRequest(request);
+      if (!didStage(value)) return { payload: "", value };
+      const payload = await broker({ kind: "staged_read" });
+      if (typeof payload !== "string") {
+        throw new Error("the host staged a non-string payload");
+      }
+      return { payload, value };
+    };
+    // The CHAIN is what must not stay poisoned, so it is the chain that swallows: `next`
+    // is handed to the caller with its rejection intact, while `stagedReads` continues
+    // from a promise that always fulfils. One mechanism, not two — an earlier version also
+    // passed `run` as the rejection handler, and mutation testing showed either alone was
+    // sufficient, i.e. the second one guarded nothing (§260 Phase 4b code review, N1).
+    const next = stagedReads.then(run);
+    stagedReads = next.catch(() => undefined);
+    return next;
+  };
+
+  // §260 Phase 4c — staged for the same reason a document is, and parsed here: the host
+  // stages ONE string, so the object arrives as JSON rather than as a frame that could enter
+  // tauri's shared channel-data queue.
+  const settings: SandboxSettingsAPI = {
+    getAll: async () => {
+      const { payload } = await readStaged({ kind: "settings_read" });
+      return JSON.parse(payload) as Record<string, PluginSettingValue>;
+    },
+  };
+
+  const editor: SandboxEditorAPI = {
+    getMarkdown: async () =>
+      (await readStaged({ kind: "editor_get_markdown" })).payload,
+    // Staged like `getMarkdown`, because Cmd+A makes this a whole-document read too and an
+    // inline answer over 8 KiB enters tauri's shared channel-data queue (code review I1).
+    // Positions come back in the response; only the text takes the staged path.
+    getSelection: async () => {
+      const { payload, value } = await readStaged(
+        { kind: "editor_get_selection" },
+        // The host tells us whether it staged anything; a bare caret answers inline with
+        // no text at all, so pulling would find an empty slot (code review N1). An
+        // explicit flag rather than re-deriving `from === to` here, so the rule lives in
+        // ONE place — the side that decided.
+        (v) => (v as undefined | { staged?: boolean })?.staged === true,
+      );
+      const { from, to } = value as { from: number; to: number };
+      return { from, text: payload, to };
+    },
+    insertText: async (text) => {
+      await hostRequest({ kind: "editor_insert_text", text });
+    },
+    setMarkdown: async (markdown) => {
+      await hostRequest({ kind: "editor_set_markdown", markdown });
+    },
+  };
+
   const ctx: SandboxContext = {
+    ai,
     commands: { register: (id, handler) => void commands.set(id, handler) },
     events: {
       emit(event, ...args) {
@@ -42,21 +315,65 @@ export function startSandboxClient(
           );
         }
       },
-      on(event, handler) {
+      on(event: string, handler: (...args: never[]) => void) {
         const list = eventHandlers.get(event) ?? [];
-        list.push(handler);
+        // The overloads on `SandboxContext.events.on` are what give plugin authors a
+        // typed `PluginFileEvent`; the registry itself holds the erased form, because
+        // one list carries handlers for every event name.
+        list.push(handler as (...args: unknown[]) => void);
         eventHandlers.set(event, list);
       },
     },
+    editor,
+    files,
+    network,
+    settings,
+    storage,
+    ui,
   };
 
-  async function onActivate(pluginUrl: string): Promise<void> {
+  async function onActivate(): Promise<void> {
     if (activateState !== "idle") return; // M4: ignore repeated activate
     activateState = "activating";
     commands.clear(); // each attempt starts clean — no stale regs from a failed retry
     eventHandlers.clear();
+    // …including host requests the previous attempt left outstanding (3c-2c code
+    // review, LOW-4). Their promises belong to plugin code that is about to be
+    // replaced, and each still holds a stall timer; rejecting them is both the honest
+    // answer and what keeps a retry loop from accumulating timers.
+    for (const [requestId, p] of hostPending) {
+      clearTimeout(p.timer);
+      hostPending.delete(requestId);
+      p.reject(new Error("Sandbox re-activated before this request completed"));
+    }
     try {
-      const mod = await importer(pluginUrl);
+      // Our own bundle, resolved in Rust from this window's label.
+      //
+      // ‼️ INVARIANT (§260 3c-2b review, M1): the result must stay a SCALAR JSON
+      // string. An invoke result is not automatically safe from tauri's shared
+      // channel-data queue — `ipc/protocol.rs` sends results through a `Channel`, and
+      // `ipc/channel.rs` routes any payload ≥8 KiB whose JSON starts with `{` or `[`
+      // through the app-global `ChannelDataIpcQueue`, fetched via the ACL-exempt
+      // `FETCH_CHANNEL_DATA_COMMAND` with a guessable sequential id (3c-2a review
+      // I3). Today this is safe on two counts: desktop uses the custom-protocol IPC
+      // path (result returns as an HTTP body), and even on the postMessage fallback a
+      // bare JSON string never matches the `{`/`[` condition. Wrap this in an object
+      // (e.g. `{source, hash}`) and a 4 MiB bundle becomes stealable by another
+      // sandbox on non-macOS — so if that shape must change, chunk it or keep it out
+      // of the channel path deliberately.
+      //
+      // ‼️ The invariant now holds for EVERY broker op, not just this one (§260 Phase 4c).
+      // It used to be this op alone: `files_list`/`storage_list` returned arrays and
+      // `http_fetch` an object, so they matched the condition once they crossed 8 KiB —
+      // `files_list` first, on a directory of a few hundred notes — and chunking was
+      // recorded as owed. `BrokerResult` closed that instead: `execute_op` cannot express a
+      // bare array or object, so every result is a string or null, and `brokerJson` parses
+      // the encoded ones back. Rust's dev warning stays as the backstop for a future arm.
+      const source = await broker({ kind: "source_read" });
+      if (typeof source !== "string") {
+        throw new Error("broker returned a non-string plugin source");
+      }
+      const mod = await importer(source);
       if (typeof mod.activate === "function") await mod.activate(ctx);
       activateState = "done";
       transport.send({
@@ -107,7 +424,7 @@ export function startSandboxClient(
   transport.onMessage((m) => {
     switch (m.type) {
       case "activate":
-        void onActivate(m.pluginUrl);
+        void onActivate();
         break;
       case "deactivate":
         transport.close();
@@ -115,6 +432,24 @@ export function startSandboxClient(
       case "deliverEvent":
         (eventHandlers.get(m.event) ?? []).forEach((h) => h(...m.args));
         break;
+      case "hostResponse": {
+        // An unknown id is ignored, not thrown on: it means our own timeout already
+        // rejected (or a host bug), and the plugin's promise is settled either way.
+        const p = hostPending.get(m.requestId);
+        if (!p) break;
+        clearTimeout(p.timer);
+        hostPending.delete(m.requestId);
+        if (m.ok) p.resolve(m.value);
+        else p.reject(new Error(m.error));
+        break;
+      }
+      case "hostStreamToken": {
+        const p = hostPending.get(m.requestId);
+        if (!p) break;
+        p.touch(); // a token proves the request is alive (code review MEDIUM-4)
+        p.onToken?.(m.token);
+        break;
+      }
       case "invokeCommand":
         void onInvoke(m.callId, m.commandId, m.args);
         break;

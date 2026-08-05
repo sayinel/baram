@@ -55,11 +55,6 @@ export interface DiffStats {
   unchanged: number;
 }
 
-// §69 Plugin Marketplace types
-export interface EngineRequirement {
-  baram: string;
-}
-
 // §3.2 Export types
 export type ExportFormat = "html" | "pdf";
 
@@ -255,21 +250,6 @@ export interface PdfOptions {
   scale?: number;
 }
 
-export interface PluginManifest {
-  author: string;
-  capabilities: string[];
-  dependencies: string[];
-  description: string;
-  engines: EngineRequirement;
-  id: string;
-  license: string;
-  main: string;
-  name: string;
-  repository?: string;
-  tiptapExtensions: TiptapExtensionDef[];
-  version: string;
-}
-
 // §82 Native "Open Recent" submenu payload (frontend → update_recent_menu)
 export interface RecentMenuEntry {
   enabled?: boolean; // default true; false for non-clickable group headers
@@ -278,22 +258,17 @@ export interface RecentMenuEntry {
   label?: string; // present for kind:"item"
 }
 
-export interface RegistryEntry {
-  author: string;
-  capabilities: string[];
-  checksum: string;
-  description: string;
-  downloadUrl: string;
-  id: string;
-  license: string;
-  name: string;
-  version: string;
-}
-
-export interface RegistryIndex {
-  plugins: RegistryEntry[];
-  updatedAt?: string;
-}
+// §69 — this file used to declare its own `RegistryEntry`, `RegistryIndex`,
+// `PluginManifest`, `EngineRequirement` and `TiptapExtensionDef`, all imported by nobody:
+// `plugin-invoke.ts` and the plugin code have always taken them from
+// `src/plugins/types.ts`. Removed rather than updated alongside the optional `engines`,
+// because a second copy left behind is worse than no copy — the next person to relax a
+// registry field would have had two plausible declarations and no way to tell which one
+// runs. They had ALREADY drifted: this `PluginManifest` never gained `trust`, the field
+// §260's whole tier model turns on.
+//
+// `knip.json` ignores `src/ipc/**`, so nothing was ever going to report any of it. That
+// ignore rule is the reason five dead types accumulated here; it deserves its own pass.
 
 // §33 Rename result
 export interface RenameResult {
@@ -361,12 +336,6 @@ export interface SnapshotFileEntry {
 export interface TagEntry {
   count: number;
   tag: string;
-}
-
-export interface TiptapExtensionDef {
-  exportName: string;
-  name: string;
-  type: string; // "node" | "mark" | "plugin"
 }
 
 // §34 Unlinked Mentions

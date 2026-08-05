@@ -114,10 +114,25 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     // permission added to plugin-sandbox.json — e.g. `core:webview:allow-create-
     // webview-window`, `core:default`, or a plugin scope like `fs:allow-read` —
     // would be a boundary leak, exactly the class this lockdown exists to prevent,
-    // yet a bare-`allow-*` check would miss it. A plugin-* window may hold ONLY
-    // the event channel the sandbox client needs plus the single broker command.
-    // `norm()` maps `-`->`_` on both sides, so `allow-plugin-call` (kebab, as
-    // tauri-build generates) and `core:event:allow-emit` compare stably.
+    // yet a bare-`allow-*` check would miss it.
+    //
+    // §260 Phase 3c-2a — `core:event:*` is now WITHHELD and must never come back.
+    // Tauri delivers a broadcast event to any JS listener registered with the
+    // default `EventTarget::Any`, and `emit_to`/`emit_filter` cannot withhold it
+    // (`match_any_or_filter`, tauri/src/event/listener.rs). So `allow-listen` on a
+    // plugin-* window = a sandboxed plugin with ZERO capabilities can eavesdrop on
+    // `llm:token`, `file:changed`, etc. The sandbox transport therefore uses
+    // per-webview IPC instead: `plugin_sandbox_connect` (inbound ipc::Channel) +
+    // `plugin_sandbox_report` (outbound, caller-identified), plus the broker
+    // `plugin_call`.
+    //
+    // This asserts the GRANTED set, which is not identical to the REACHABLE set:
+    // tauri hardcodes an ACL bypass for `FETCH_CHANNEL_DATA_COMMAND`
+    // (`plugin:__TAURI_CHANNEL__|fetch`, `webview/mod.rs`, marked `TODO: Remove
+    // this special check in v3`), so every webview can invoke that one regardless
+    // of its capability. It is how a >8 KiB `ipc::Channel` frame is delivered; see
+    // `SandboxChannels::send`, which warns in dev if our frames ever get that big.
+    // `norm()` maps `-`->`_`, so kebab permission ids compare stably.
     let json: serde_json::Value = serde_json::from_str(&read("capabilities/plugin-sandbox.json"))
         .expect("parse capability json");
     let perms: BTreeSet<String> = json["permissions"]
@@ -127,13 +142,12 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
         .filter_map(|p| p.as_str())
         .map(norm)
         .collect();
-    // Expected set, normalized (norm collapses `-`->`_`):
-    //   core:event:allow-emit / -listen / -unlisten  + the broker  allow-plugin-call
+    // Expected set, normalized (norm collapses `-`->`_`): the two transport
+    // commands + the broker. NO core:event:* — see the note above.
     let expected: BTreeSet<String> = [
-        "core:event:allow_emit",
-        "core:event:allow_listen",
-        "core:event:allow_unlisten",
         "allow_plugin_call",
+        "allow_plugin_sandbox_connect",
+        "allow_plugin_sandbox_report",
     ]
     .into_iter()
     .map(str::to_string)
@@ -141,23 +155,109 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     assert_eq!(
         perms,
         expected,
-        "plugin-sandbox capability must grant EXACTLY the event channel + plugin_call.\n\
+        "plugin-sandbox capability must grant EXACTLY connect + report + plugin_call.\n\
          unexpected (possible boundary leak): {:?}\nmissing: {:?}",
         perms.difference(&expected).collect::<Vec<_>>(),
         expected.difference(&perms).collect::<Vec<_>>(),
     );
 }
 
+/// §260 Phase 3c-3 — the host realm must be able to CLOSE a sandbox webview.
+///
+/// Found by the live smoke: `WebviewWindow.close()` was denied
+/// (`core:window:allow-close` missing), so from 3c-1 onward the app could create a
+/// per-plugin webview but never destroy one. Every teardown logged a swallowed
+/// "Sandbox stop failed" and left the plugin RUNNING with its Rust capabilities —
+/// the next load then died on the taken label. Unit tests could not see it: they
+/// inject a fake window whose `close()` always resolves.
+///
+/// Pinned here, next to the grant it belongs to, because the symptom (a label
+/// collision) points nowhere near the cause (a missing permission).
 #[test]
-fn main_tier_gets_everything_except_plugin_call() {
+fn host_tier_can_close_the_webviews_it_creates() {
+    let json: serde_json::Value =
+        serde_json::from_str(&read("capabilities/default.json")).expect("parse capability json");
+    let perms: BTreeSet<String> = json["permissions"]
+        .as_array()
+        .expect("permissions array")
+        .iter()
+        .filter_map(|p| p.as_str())
+        .map(norm)
+        .collect();
+    for required in [
+        "core:window:allow_create",
+        "core:window:allow_close",
+        "core:webview:allow_create_webview_window",
+    ] {
+        assert!(
+            perms.contains(required),
+            "host windows need {required}: creating a sandbox webview without being able \
+             to close it leaves a running plugin that keeps its capabilities"
+        );
+    }
+    // …and the sandbox tier must never get it — a plugin-* window holding
+    // `allow-close` could close the MAIN window. `sandbox_tier_grants_exactly_its_
+    // allowlist` enforces that exhaustively; this states the specific hazard.
+    let sandbox: serde_json::Value =
+        serde_json::from_str(&read("capabilities/plugin-sandbox.json"))
+            .expect("parse capability json");
+    let sandbox_perms = serde_json::to_string(&sandbox["permissions"]).unwrap_or_default();
+    assert!(
+        !sandbox_perms.contains("window"),
+        "the sandbox tier must hold no window permission at all: {sandbox_perms}"
+    );
+}
+
+/// §260 Phase 3c-3 (security review, M6) — the tiers are only separated if the
+/// capability `windows` globs stay separated, and nothing pinned them.
+///
+/// Everything else in this file guards WHICH permissions each capability lists; a
+/// capability is only meaningful together with WHICH windows it applies to. Adding
+/// `plugin-*` (or `*`) to the host capability would hand sandbox webviews the entire
+/// host command set — and, since 3c-3, the ability to close the main window.
+#[test]
+fn the_two_tiers_apply_to_disjoint_window_sets() {
+    let windows_of = |rel: &str| -> Vec<String> {
+        let json: serde_json::Value =
+            serde_json::from_str(&read(rel)).expect("parse capability json");
+        json["windows"]
+            .as_array()
+            .expect("capability must declare `windows`")
+            .iter()
+            .filter_map(|w| w.as_str())
+            .map(str::to_string)
+            .collect()
+    };
+    assert_eq!(
+        windows_of("capabilities/default.json"),
+        vec!["main".to_string(), "file-*".to_string()],
+        "the host capability must apply to host windows only"
+    );
+    assert_eq!(
+        windows_of("capabilities/plugin-sandbox.json"),
+        vec!["plugin-*".to_string()],
+        "the sandbox capability must apply to sandbox windows only"
+    );
+}
+
+#[test]
+fn main_tier_gets_everything_except_sandbox_only_commands() {
     let registered = generate_handler_commands();
     let main = capability_allowed_commands("capabilities/default.json");
     let mut expected = registered;
-    expected.remove(&norm("plugin_call"));
+    // The sandbox-only surface: the broker plus the two transport commands whose
+    // caller must be a `plugin-*` window (they'd be rejected from main anyway).
+    for sandbox_only in [
+        "plugin_call",
+        "plugin_sandbox_connect",
+        "plugin_sandbox_report",
+    ] {
+        expected.remove(&norm(sandbox_only));
+    }
     assert_eq!(
         main,
         expected,
-        "main/file-* capability must grant every command except plugin_call.\n\
+        "main/file-* capability must grant every command except the sandbox-only ones.\n\
          missing: {:?}\nextra: {:?}",
         expected.difference(&main).collect::<Vec<_>>(),
         main.difference(&expected).collect::<Vec<_>>(),

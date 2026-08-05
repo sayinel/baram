@@ -32,6 +32,20 @@ function makePlugin(id: string, version = "1.0.0"): InstalledPlugin {
   };
 }
 
+describe("removeDevPlugin (§260 Phase 4c)", () => {
+  it("clears the plugin's persisted settings, like removePlugin does", () => {
+    // The record is PERSISTED, so without this a dev-folder churn accumulates records
+    // forever — invisible, because the resolver drops undeclared keys.
+    usePluginStore.setState({ devPlugins: {}, pluginSettings: {} });
+    usePluginStore.getState().setPluginSetting("dev-x", "k", 1);
+    expect(usePluginStore.getState().pluginSettings["dev-x"]).toBeDefined();
+
+    usePluginStore.getState().removeDevPlugin("dev-x");
+
+    expect(usePluginStore.getState().pluginSettings["dev-x"]).toBeUndefined();
+  });
+});
+
 describe("usePluginStore", () => {
   beforeEach(() => {
     // Reset store state
@@ -225,7 +239,14 @@ describe("usePluginStore", () => {
     });
   });
 
-  describe("registry URL migration (v1 -> v2)", () => {
+  // ‼️ THIS MIGRATION NO LONGER REACHES THE STORE (2026-08-04). `registryUrl` was removed from
+  // `partialize` and is force-reset in `merge`, so whatever this function writes to that field
+  // is discarded during hydration — the rewrite is subsumed by the field simply not being
+  // restored, which achieves the same end more strongly. Kept, and kept tested, because it is
+  // the correct behaviour IF the field is ever persisted again; a reader should not mistake
+  // these for coverage of live behaviour. The live guarantee is
+  // `does not RESTORE a registry URL planted in storage` in `revocation-client.test.ts`.
+  describe("registry URL migration (v1 -> v2, no longer reaching the store)", () => {
     test("migrates the old dead default to the live registry default", () => {
       const persisted = {
         installedPlugins: {},
@@ -326,5 +347,139 @@ describe("plugin store dev plugins", () => {
       "b",
       "c",
     ]);
+  });
+});
+
+describe("consent migration (v2 -> v3, §260 Phase 5)", () => {
+  const stateWith = (manifest: Record<string, unknown>) => ({
+    installedPlugins: {
+      demo: {
+        checksum: "sha256:x",
+        enabled: true,
+        installedAt: 0,
+        installPath: "/p",
+        manifest,
+        updatedAt: 0,
+      } as Record<string, unknown>,
+    },
+  });
+
+  const consentOf = (migrated: unknown) =>
+    (
+      migrated as {
+        installedPlugins: Record<string, { consent?: unknown }>;
+      }
+    ).installedPlugins.demo.consent;
+
+  test("synthesises consent from the manifest already installed", () => {
+    // These records predate the consent step but went through the old capability
+    // confirm, and can only exist in a dev build (release had plugins gated off), so
+    // the manifest they already carry is the honest baseline to compare updates against.
+    const migrated = migratePluginPersistedState(
+      stateWith({
+        capabilities: ["editor", "network"],
+        id: "demo",
+        trust: "sandboxed",
+      }),
+      2,
+    );
+    expect(consentOf(migrated)).toEqual({
+      capabilities: ["editor", "network"],
+      trust: "sandboxed",
+    });
+  });
+
+  test("leaves a legacy manifest unconsented — there is no tier to record", () => {
+    // A trust-less manifest cannot load at all (validateManifest rejects it), so the
+    // honest record is "never consented", which makes the next update ask.
+    const migrated = migratePluginPersistedState(
+      stateWith({ capabilities: ["editor"], id: "demo" }),
+      2,
+    );
+    expect(consentOf(migrated)).toBeUndefined();
+  });
+
+  test("does not overwrite a consent that is already recorded", () => {
+    const state = stateWith({
+      capabilities: ["editor"],
+      id: "demo",
+      trust: "sandboxed",
+    });
+    state.installedPlugins.demo.consent = {
+      capabilities: [],
+      trust: "trusted",
+    };
+    expect(consentOf(migratePluginPersistedState(state, 2))).toEqual({
+      capabilities: [],
+      trust: "trusted",
+    });
+  });
+
+  test("copies the capability array rather than aliasing the manifest's", () => {
+    // Aliasing would make a later manifest update silently rewrite the consent that
+    // is supposed to be the fixed record of what the user agreed to.
+    const state = stateWith({
+      capabilities: ["editor"],
+      id: "demo",
+      trust: "sandboxed",
+    });
+    const migrated = migratePluginPersistedState(state, 2);
+    const manifest = state.installedPlugins.demo.manifest as {
+      capabilities: string[];
+    };
+    manifest.capabilities.push("network");
+    expect(consentOf(migrated)).toEqual({
+      capabilities: ["editor"],
+      trust: "sandboxed",
+    });
+  });
+
+  test("a v1 user gets BOTH migrations, not just the newer one", () => {
+    // §260 Phase 5 code review (L6). The two steps are independent `if`s, so this is
+    // correct today — but every other case enters at 1 or 2 and exercises one branch, so
+    // nothing pinned that a long-idle install picks up both.
+    const state = {
+      installedPlugins: {
+        demo: {
+          checksum: "sha256:x",
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p",
+          manifest: {
+            capabilities: ["editor"],
+            id: "demo",
+            trust: "sandboxed",
+          },
+          updatedAt: 0,
+        } as Record<string, unknown>,
+      },
+      registryUrl: OLD_DEFAULT_REGISTRY_URL,
+    };
+    const migrated = migratePluginPersistedState(state, 1) as {
+      installedPlugins: Record<string, { consent?: unknown }>;
+      registryUrl: string;
+    };
+    expect(migrated.registryUrl).toBe(DEFAULT_REGISTRY_URL);
+    expect(migrated.installedPlugins.demo.consent).toEqual({
+      capabilities: ["editor"],
+      trust: "sandboxed",
+    });
+  });
+
+  test("is a no-op at version 3", () => {
+    const migrated = migratePluginPersistedState(
+      stateWith({ capabilities: ["editor"], id: "demo", trust: "sandboxed" }),
+      3,
+    );
+    expect(consentOf(migrated)).toBeUndefined();
+  });
+
+  test("survives malformed installedPlugins instead of throwing", () => {
+    expect(migratePluginPersistedState({ installedPlugins: 7 }, 2)).toEqual({
+      installedPlugins: 7,
+    });
+    expect(
+      migratePluginPersistedState({ installedPlugins: { demo: null } }, 2),
+    ).toEqual({ installedPlugins: { demo: null } });
   });
 });

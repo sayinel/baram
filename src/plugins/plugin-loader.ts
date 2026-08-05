@@ -1,31 +1,93 @@
 // §69 Plugin Loader — Dynamic ESM import with lifecycle management
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import type { LoadedPlugin, PluginManifest, PluginModule } from "./types";
+import type { SandboxSession } from "./sandbox/sandbox-session";
+import type {
+  Disposable,
+  LoadedPlugin,
+  PluginConsent,
+  PluginManifest,
+  PluginModule,
+} from "./types";
 import type { Extensions } from "@tiptap/core";
 
+import { type Locale, t } from "../i18n";
+import {
+  pluginSandboxDeregister,
+  pluginSandboxRegister,
+} from "../ipc/plugin-invoke";
+import { useEditorStore } from "../stores/editor/editor";
+import { useSettingsStore } from "../stores/settings/store";
+import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
+import { withTimeout } from "../utils/with-timeout";
 import {
   createExtensionContext,
+  setEditorSurfaceBlocked as recordEditorSurfaceBlocked,
+  registerHostCommandHandler,
   setEditorInstance,
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
-import { arePluginsEnabled } from "./plugins-enabled";
+import { grantableCapabilities } from "./plugin-consent";
+import { declaredSettingsFor } from "./plugin-settings";
+import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
+import { usePluginUIStore } from "./plugin-ui-store";
+import { blocksLoad, revocationFor, revocationReason } from "./revocation";
+import { createHostRequestHandler } from "./sandbox/host-request-router";
+import { watchPluginSettings } from "./sandbox/host-settings-bridge";
+import {
+  sanitizeStatusBarText,
+  statusBarItemId,
+} from "./sandbox/host-ui-bridge";
+import {
+  replayCurrentState,
+  subscribeSandbox,
+} from "./sandbox/sandbox-event-bridge";
+import { SandboxHost } from "./sandbox/sandbox-host";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
+/** §260 3c-2a — bound on closing a sandbox webview, so a wedged close cannot eat
+ *  the teardown budget before capability revocation runs. */
+const SANDBOX_STOP_TIMEOUT = 1000;
+/** Backstop on the whole sandbox teardown, so one hung IPC cannot wedge
+ *  `unloadAll()` → `shutdownPlugins()` and leave later plugins loaded. */
+const TEARDOWN_TIMEOUT = 5000;
 
 type Importer = (url: string) => Promise<PluginModule>;
 
+/**
+ * What the CALLER knows about a load that the store cannot be asked for.
+ *
+ * `isDev` marks a dev-folder load. It is a parameter rather than a store lookup because
+ * the store is written *after* the load on the first-load path — see `resolveConsent`.
+ */
+interface LoadOptions {
+  isDev?: boolean;
+}
+
 export class PluginLoader {
   private readonly importer: Importer;
+  /**
+   * §260 3c-3 — loads currently running, by plugin id. `loaded` cannot serve this
+   * purpose: it is populated only when a load completes. See `loadPlugin`.
+   */
+  private readonly inFlightLoads = new Map<string, Promise<void>>();
   private loaded = new Map<string, LoadedPlugin>();
+  /**
+   * §260 3c-2b — sandbox teardowns still running after `unloadPlugin` gave up
+   * waiting. A load for the same id awaits the entry first, so a late
+   * `plugin_sandbox_deregister` can never revoke the grant the new load just made.
+   */
+  private readonly pendingTeardowns = new Map<string, Promise<void>>();
   private reloadCounter = 0;
+  private readonly sandboxHost: SandboxHost;
 
-  constructor(importer?: Importer) {
+  constructor(importer?: Importer, sandboxHost?: SandboxHost) {
     this.importer =
       importer ??
       ((url) => import(/* @vite-ignore */ url) as Promise<PluginModule>);
+    this.sandboxHost = sandboxHost ?? new SandboxHost();
   }
 
   /** Get all loaded plugins */
@@ -57,31 +119,428 @@ export class PluginLoader {
     return this.loaded.has(id);
   }
 
-  /** Load and activate a single plugin */
+  /**
+   * §260 3c-3 — plugin ids whose sandbox THIS realm owns (running or starting), for
+   * the orphan sweep to leave alone. Exposed here because the sweep runs from
+   * `plugin-lifecycle`, which has the loader but not the host.
+   */
+  liveSandboxIds(): string[] {
+    return this.sandboxHost.ownedIds();
+  }
+
+  /**
+   * Load and activate a single plugin.
+   *
+   * §260 3c-3 (security review, M2) — CONCURRENT calls for the same id join the
+   * first instead of racing it. `this.loaded` is only populated when a load
+   * *finishes*, so it cannot dedupe two loads in flight, and two are the normal case:
+   * `React.StrictMode` double-invokes mount effects. Racing loads fight
+   * over one `plugin-<id>` webview label and one Rust grant — one of them ends up
+   * revoking the other's capabilities or closing its window, leaving `loaded` and
+   * `live` describing different plugins.
+   */
   async loadPlugin(
     installPath: string,
     manifest: PluginManifest,
+    opts: LoadOptions = {},
   ): Promise<void> {
-    // §259 — final choke point: never load/execute plugin code unless the build
-    // explicitly opts in. Guards every load path (startup, dev reload, install),
-    // regardless of how the caller was reached.
-    if (!arePluginsEnabled()) {
-      throw new Error(
-        "Plugins are disabled in this build for security (see #259/#260).",
+    const inFlight = this.inFlightLoads.get(manifest.id);
+    if (inFlight) {
+      logger.warn(
+        `[PluginLoader] Plugin ${manifest.id} is already loading — joining that load`,
       );
+      return inFlight;
+    }
+    const tracked: Promise<void> = this.runLoad(
+      installPath,
+      manifest,
+      opts,
+    ).finally(() => {
+      // Identity check for the same reason `pendingTeardowns` has one (3c-2b, M3):
+      // a later load must not have its entry deleted by an earlier one finishing.
+      if (this.inFlightLoads.get(manifest.id) === tracked) {
+        this.inFlightLoads.delete(manifest.id);
+      }
+    });
+    this.inFlightLoads.set(manifest.id, tracked);
+    return tracked;
+  }
+
+  /** Reload a plugin: clean unload (disposes subscriptions) then fresh load. */
+  async reloadPlugin(
+    installPath: string,
+    manifest: PluginManifest,
+    opts: LoadOptions = {},
+  ): Promise<void> {
+    await this.unloadPlugin(manifest.id);
+    await this.loadPlugin(installPath, manifest, opts);
+  }
+
+  /** Update the editor instance for plugin editor API */
+  setEditor(editor: unknown): void {
+    setEditorInstance(editor);
+  }
+
+  /**
+   * Record why the Tiptap document is not the active tab's content (§260 Phase 4b
+   * security review, LOW-3), or `null` when it is. Routed through the loader so the app
+   * keeps ONE plugin-facing surface next to `setEditor`, rather than reaching into
+   * `extension-context` from a component.
+   */
+  setEditorSurfaceBlocked(reason: null | string): void {
+    recordEditorSurfaceBlocked(reason);
+  }
+
+  /** Unload all plugins (reverse order) */
+  async unloadAll(): Promise<void> {
+    const ids = [...this.loaded.keys()].reverse();
+    for (const id of ids) {
+      await this.unloadPlugin(id);
+    }
+  }
+
+  /** Unload and deactivate a plugin */
+  async unloadPlugin(id: string): Promise<void> {
+    const plugin = this.loaded.get(id);
+    if (!plugin) return;
+
+    // Call deactivate
+    if (typeof plugin.module.deactivate === "function") {
+      try {
+        await withTimeout(
+          Promise.resolve(plugin.module.deactivate()),
+          1000,
+          `Plugin ${id} deactivation timed out`,
+        );
+      } catch (err) {
+        logger.error(`[PluginLoader] Error deactivating ${id}:`, err);
+      }
     }
 
-    if (this.loaded.has(manifest.id)) {
-      logger.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
+    // Dispose all disposables
+    for (const disposable of plugin.disposables) {
+      try {
+        disposable.dispose();
+      } catch (e) {
+        logger.error(`[PluginLoader] Dispose error:`, e);
+      }
+    }
+
+    // §260 3c-2a review (I2) — sandbox teardown must be AWAITED, not fired off a
+    // `Disposable` (whose `dispose(): void` cannot express async). A `deregister`
+    // still in flight when the next `loadPlugin` runs — `reloadPlugin`, or a quick
+    // disable/enable — would revoke the NEW registration, so the freshly booted
+    // sandbox's `plugin_sandbox_connect` fails closed and activate times out; the
+    // not-yet-closed webview would also collide on the `plugin-<id>` label.
+    //
+    // Bounded (3c-2a re-review N3): awaiting is the fix, but an unbounded await
+    // would let one wedged IPC hang `unloadPlugin` → the sequential `unloadAll()`
+    // → `shutdownPlugins()` on unmount, leaving every later plugin loaded. The old
+    // fire-and-forget could not do that. On timeout the inner teardown keeps
+    // running, so revocation still lands — just late enough that a reload inside
+    // the window could race it, hence the loud log.
+    if (plugin.teardown) {
+      const failure = await this.runTrackedTeardown(id, plugin.teardown);
+      if (failure) {
+        // Make it VISIBLE (§260 3c-3 security review, M3). This is exactly where the
+        // dangerous case lands: `plugin_sandbox_deregister` rejecting inside the
+        // teardown's `finally` leaves the Rust grant REGISTERED while the lines below
+        // forget the plugin entirely. Logging alone meant the user saw a clean disable
+        // while an unsupervised sandbox kept its capabilities — the one path where that
+        // can still happen. Rethrowing is not an option: `unloadAll()` is sequential, so
+        // it would strand every later plugin (the bound that 3c-2a's N3 added exists for
+        // that reason).
+        usePluginStore
+          .getState()
+          .setError(
+            id,
+            `Teardown failed — this plugin may still hold its capabilities until ` +
+              `restart: ${failure instanceof Error ? failure.message : String(failure)}`,
+          );
+      }
+    }
+
+    // Belt-and-suspenders: sweep any UI state the plugin left behind
+    unregisterPluginUI(id);
+
+    this.loaded.delete(id);
+    logger.info(`[PluginLoader] Unloaded plugin: ${id}`);
+  }
+
+  /**
+   * §260 — start a sandboxed plugin in a hidden `plugin-*` WebviewWindow and map
+   * its declared commands onto the host command palette (each routed back to the
+   * sandbox via `session.invokeCommand`). The plugin's own code never runs in the
+   * main realm; storage/network reach the Rust broker (`plugin_call`) from inside
+   * the sandbox, authorized by window label + capability.
+   */
+  private async loadSandboxedPlugin(
+    installPath: string,
+    manifest: PluginManifest,
+  ): Promise<void> {
+    // §260 3c-2b — a teardown from a previous load may still be in flight (its
+    // `deregister` outlived `unloadPlugin`'s wait). Register only after it lands, or
+    // it revokes the grant we are about to make and the new sandbox's connect fails
+    // closed. Bounded: a permanently hung teardown degrades to the old racy
+    // behaviour rather than blocking loads forever.
+    const pending = this.pendingTeardowns.get(manifest.id);
+    if (pending) {
+      try {
+        await withTimeout(
+          pending,
+          TEARDOWN_TIMEOUT,
+          `Plugin ${manifest.id}: previous sandbox teardown is still in flight after ` +
+            `${TEARDOWN_TIMEOUT}ms — loading anyway, which may race its revocation`,
+        );
+      } catch (e) {
+        logger.error(`[PluginLoader] ${manifest.id}: teardown wait failed`, e);
+      }
+    }
+    // §260 Phase 4a security review (HIGH-2) — this whole block is ONE unit of work,
+    // because a throw partway used to leave the WORST possible state: the sandbox
+    // running with its Rust grants, the webview holding its label, and NOTHING in
+    // `this.loaded` — so `unloadPlugin` early-returned and the user disabling the plugin
+    // was a no-op. A malformed `contributions.statusBar` entry was enough to reach it.
+    // `disposables` is declared out here so the rollback can undo whatever landed;
+    // `pluginSandboxRegister` is inside so the rollback's `deregister` covers it too
+    // (that call is idempotent in Rust, so covering a grant that was never made is free).
+    const disposables: Disposable[] = [];
+    try {
+      // Declared status-bar items go up FIRST, before any grant or webview exists
+      // (code review M1). Four comments claimed the tier's items "appear before the
+      // plugin's code runs" while the registration in fact sat after `start()`, which
+      // awaits `activate` — up to 15s on a cold dev start, and never at all if activate
+      // fails. Registering here makes the documented behaviour the real one, and the
+      // rollback below removes them if the load does not complete.
+      this.registerDeclaredStatusBar(manifest, disposables);
+      // installPath goes to RUST, never to the sandbox: it binds which directory
+      // `source_read` may read, so the executed bundle matches this manifest.
+      await pluginSandboxRegister(
+        manifest.id,
+        manifest.capabilities,
+        installPath,
+      );
+      // §260 3c-2b — no path is handed over: the sandbox pulls its own bundle
+      // through the broker, resolved in Rust from its window label.
+      const session = await this.sandboxHost.start(
+        manifest.id,
+        manifest.contributions ?? {},
+        // §260 3c-2c — `ai` is mediated by the host, not brokered in Rust, because
+        // its policy (privacy mode, model/provider for the task) is main-realm
+        // state. The capability check lives in the handler and is enforcing: a
+        // `plugin-*` window holds no `llm_*` ACL grant, so this is the only route
+        // from the sandbox to a model.
+        createHostRequestHandler({
+          capabilities: manifest.capabilities,
+          // §260 Phase 4a — `ui` rides the same mediated channel. The declared item ids
+          // travel with it because the host, not the plugin, decides which items exist.
+          declaredStatusBarIds: (manifest.contributions?.statusBar ?? []).map(
+            (i) => i.id,
+          ),
+          // §260 Phase 4c — same rule for `settings`: WHICH fields exist is the host's
+          // answer, from the manifest, so the frame carries no key or field list. Resolved
+          // through `declaredSettingsFor`, which is also what the form uses, so a field the
+          // plugin can read and a field the user can edit are the same set.
+          declaredSettings: declaredSettingsFor(manifest),
+          pluginId: manifest.id,
+          pluginName: manifest.name,
+        }),
+      );
+      this.wireSandboxContributions(manifest, session, disposables);
+      this.loaded.set(manifest.id, {
+        id: manifest.id,
+        manifest,
+        module: {},
+        disposables,
+        teardown: this.sandboxTeardown(manifest.id),
+      });
+    } catch (err) {
+      // Roll back everything that landed, in the reverse order it landed, and revoke the
+      // grant UNCONDITIONALLY (3c-2a re-review N2: revocation must not depend on the
+      // teardown half succeeding — the worst case is a stop that failed *because* the
+      // sandbox is alive). Never let a rollback failure mask the original error.
+      // §260 Phase 4a code review (R1) — a FAILED revocation has to reach the user, and
+      // `setError` cannot carry it: `initializePlugins` and `PluginMarketplace` both call
+      // `setError(id, String(err))` immediately after this rejects, overwriting anything
+      // written here. So it rides the thrown error instead. This is the one remaining path
+      // where a live sandbox could keep its capabilities unreported — the exact state
+      // HIGH-2 set out to eliminate.
+      const revocation = await this.rollbackSandboxLoad(
+        manifest.id,
+        disposables,
+      );
+      if (revocation) throw withRevocationFailure(err, revocation);
+      throw err;
+    }
+  }
+
+  /**
+   * §260 Phase 4a — declarative status bar, straight from the MANIFEST: no plugin code
+   * has run when this happens, which is what lets an item show up while the sandbox is
+   * still booting. Text is sanitised on the way in — it is author-controlled and reaches
+   * the bar directly — and `command` becomes the full id the handler registry knows.
+   *
+   * Gated on `statusbar` (security review MEDIUM-3): updating an item already required
+   * it, so creating one must too, or `capabilities: []` still buys space in the app
+   * chrome — and declining the capability at Phase 5 would not take it away. Skipped with
+   * a warning rather than failing the load: an ignored decoration should not stop a
+   * plugin whose commands are fine.
+   */
+  private registerDeclaredStatusBar(
+    manifest: PluginManifest,
+    disposables: Disposable[],
+  ): void {
+    const declaredItems = manifest.contributions?.statusBar ?? [];
+    if (declaredItems.length === 0) return;
+    if (!manifest.capabilities.includes("statusbar")) {
+      logger.warn(
+        `[PluginLoader] ${manifest.id} declares statusBar items without the ` +
+          `"statusbar" capability — ignoring them`,
+      );
+      return;
+    }
+    for (const item of declaredItems) {
+      const itemId = statusBarItemId(manifest.id, item.id);
+      usePluginUIStore.getState().registerStatusBarItem({
+        align: "right",
+        command: item.command ? `${manifest.id}.${item.command}` : undefined,
+        itemId,
+        // Not clickable until its handler exists (re-review LOW-5).
+        pending: true,
+        pluginId: manifest.id,
+        text: sanitizeStatusBarText(item.text),
+        tooltip: item.tooltip && sanitizeStatusBarText(item.tooltip),
+      });
+      disposables.push({
+        dispose: () => usePluginUIStore.getState().removeStatusBarItem(itemId),
+      });
+    }
+  }
+
+  /**
+   * Undo a partial sandboxed load: drop the UI it registered, stop the session, then
+   * revoke its capabilities whatever happened.
+   */
+  private async rollbackSandboxLoad(
+    id: string,
+    disposables: Disposable[],
+  ): Promise<Error | null> {
+    for (const disposable of disposables.reverse()) {
+      try {
+        disposable.dispose();
+      } catch (e) {
+        logger.error(`[PluginLoader] rollback dispose error for ${id}:`, e);
+      }
+    }
+    // Belt-and-suspenders for anything a disposable missed, matching `unloadPlugin`.
+    // Guarded (re-review LOW-1): it was the one bare statement on this path, and it sits
+    // BEFORE revocation — so a throw here would have skipped the revoke and replaced the
+    // original error with its own.
+    try {
+      unregisterPluginUI(id);
+    } catch (e) {
+      logger.error(`[PluginLoader] rollback UI sweep failed for ${id}:`, e);
+    }
+    // The same bounded, tracked teardown `unloadPlugin` runs — not a second
+    // stop-then-deregister written out by hand, which is how this path came to lack the
+    // timeout the other one documents (re-review MEDIUM). Safe even when no session was
+    // ever created: `SandboxHost.stop` returns early for an unknown id, and Rust's
+    // `deregister` is a map removal, so revoking a grant that was never made is free.
+    return this.runTrackedTeardown(id, this.sandboxTeardown(id));
+  }
+
+  private async runLoad(
+    installPath: string,
+    rawManifest: PluginManifest,
+    opts: LoadOptions,
+  ): Promise<void> {
+    if (this.loaded.has(rawManifest.id)) {
+      logger.warn(`[PluginLoader] Plugin ${rawManifest.id} is already loaded`);
       return;
     }
 
     // 1. Validate manifest
-    const validation = validateManifest(manifest);
+    const validation = validateManifest(rawManifest);
     if (!validation.valid) {
+      // A trust-less manifest is not a malformed one — it is a plugin installed by v0.4.0 or
+      // v0.4.1, which shipped the marketplace open against the live registry with no `trust`
+      // requirement (the #259 gate merged after v0.4.1 was tagged, so it never shipped). Those
+      // records are on real users' disks and throw here on EVERY startup, with no update path
+      // to fix them. Separated so the message can state the remedy; see
+      // `legacyInstallMessage`.
+      //
+      // NOT for a dev-folder load (`!opts.isDev`), which is the re-review's MEDIUM-1. A dev
+      // load is the author's own working copy: it was never installed, is not on the Installed
+      // tab (dev plugins are a separate store, rendered by `PluginDeveloperSection`), and is
+      // not in the marketplace — so every clause of the remedy is false for it. And this throw
+      // is the author's ONLY feedback about a missing tier, because the dev-add path validates
+      // in Rust (`read_manifest_at` → `validate_manifest`), which does not check `trust`. The
+      // schema text is the actionable message there, so it is kept.
+      // `legacyInstallMessage` returns null when it has nothing better to say than the schema
+      // — a real tier, or a `trust` that is present but not a tier name at all (`null`, `""`,
+      // a number), where "update Baram" would be a dead end. The whole discrimination lives
+      // there; this call site only decides that a DEV load never gets it.
+      const remedy = opts.isDev ? null : legacyInstallMessage(rawManifest);
       throw new Error(
-        `Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+        remedy ??
+          `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
+    }
+
+    // §69 — revocation, BEFORE the tier split below. A revoked plugin must not run in
+    // either tier: `sandboxed` bounds what a plugin can reach, and the reason we revoke
+    // is that what it can legitimately reach is being abused.
+    //
+    // Only `malicious` stops a load. `vulnerable` and `unlisted` are surfaced in the UI
+    // and change nothing here — most of a real revocation list is bookkeeping, and
+    // refusing to run a plugin because its author stopped answering issues would take a
+    // working feature away for no user-facing reason.
+    //
+    // Dev loads are exempt: a local folder is the author's own code, never installed
+    // from the registry, and the same exemption `legacyInstallMessage` gets above.
+    if (!opts.isDev) {
+      const revocation = revocationFor(
+        rawManifest.id,
+        rawManifest.version,
+        usePluginStore.getState().revocations,
+      );
+      // Translated, unlike the other refusals in this file. This one is READ BY A USER in
+      // the ordinary case: the Installed row renders `pluginErrors[id]` right above the
+      // withdrawal notice, so an English sentence here sat directly under a Korean one
+      // stating the same thing. The remaining English throws below are reached only by a
+      // manifest that no shipped registry can produce (§329 in `dev/backlog.md` covers
+      // them; they need the key-vs-store decision this does not).
+      if (revocation !== null && blocksLoad(revocation)) {
+        throw new Error(
+          `${tr("plugin.revoked.blockedLoad")} ${revocationReason(revocation, tr)}`.trim(),
+        );
+      }
+    }
+
+    // §260 Phase 5 code review (H3) — narrow ONCE, here, so every consumer downstream
+    // sees the same list: the Rust grant, the host-side capability gates, the declared
+    // status-bar check and the trusted tier's ExtensionContext. Six call sites each read
+    // `manifest.capabilities` independently, and patching them one by one is how a grant
+    // and the gate that is supposed to bound it come to disagree.
+    //
+    // Without this the consent record was install-time UX only: the cross-check proves
+    // manifest ⊆ consent when the ZIP lands, and after that the file on disk is sole
+    // authority. Anything editing `baram-plugin.json` later escalated on the next start,
+    // silently.
+    const manifest = narrowToConsent(rawManifest, opts);
+
+    // §260 — route by trust tier. `validateManifest` above already rejects a
+    // legacy (trust-less) manifest ("trust is required …"), which the install UI
+    // surfaces for re-validation, so here trust is guaranteed "trusted" |
+    // "sandboxed". `sandboxed` runs in an isolated webview via SandboxHost
+    // (declarative contributions + brokered ops); `trusted` keeps the same-realm
+    // path below.
+    if (pluginTrustOf(manifest) === "sandboxed") {
+      await this.loadSandboxedPlugin(installPath, manifest);
+      logger.info(
+        `[PluginLoader] Loaded sandboxed plugin: ${manifest.id} v${manifest.version}`,
+      );
+      return;
     }
 
     // 2. Construct asset URL for the main entry (cache-busted for reload)
@@ -124,81 +583,271 @@ export class PluginLoader {
     );
   }
 
-  /** Reload a plugin: clean unload (disposes subscriptions) then fresh load. */
-  async reloadPlugin(
-    installPath: string,
-    manifest: PluginManifest,
-  ): Promise<void> {
-    await this.unloadPlugin(manifest.id);
-    await this.loadPlugin(installPath, manifest);
-  }
-
-  /** Update the editor instance for plugin editor API */
-  setEditor(editor: unknown): void {
-    setEditorInstance(editor);
-  }
-
-  /** Unload all plugins (reverse order) */
-  async unloadAll(): Promise<void> {
-    const ids = [...this.loaded.keys()].reverse();
-    for (const id of ids) {
-      await this.unloadPlugin(id);
+  /**
+   * The teardown `unloadPlugin` awaits for a sandboxed plugin.
+   *
+   * Ordered: stop the session (closing the webview, which frees the `plugin-<id>`
+   * label) BEFORE dropping the grant, so a subsequent load cannot race either.
+   * Awaiting the deregister is what keeps it from landing after the next
+   * `plugin_sandbox_register`.
+   *
+   * `finally` is load-bearing (3c-2a re-review N2): revocation is the
+   * security-relevant half and must not be conditional on the teardown half
+   * succeeding. A rejected `stop()` used to skip `deregister` entirely, leaving Rust
+   * authorizing `plugin_call` for a plugin the loader had already forgotten — worst of
+   * all when `stop()` failed *because* the webview is still alive. `stop()` is
+   * separately bounded so a wedged window-close cannot swallow the whole teardown
+   * budget before revocation gets its turn.
+   *
+   * BOUNDED (3c-2a re-review N3): an unbounded await lets one wedged IPC hang the caller.
+   * For `unloadPlugin` that meant stranding every later plugin in `unloadAll()`; for the
+   * load rollback it was worse (§260 Phase 4a security re-review, MEDIUM) — a hang is not
+   * a rejection, so the `finally` that revokes the grant never ran, the rollback never
+   * settled, and with it `inFlightLoads` never cleared and `initializePlugins` never
+   * returned. `finally` buys unconditional-on-rejection, not unconditional-on-hang; only
+   * a timeout buys that.
+   *
+   * TRACKED: on timeout the inner teardown keeps running, so its `deregister` can still
+   * land AFTER the next load's `register` and revoke the fresh grant. `pendingTeardowns`
+   * is what the next load waits on. The identity check before deleting is 3c-2b M3: two
+   * concurrent teardowns for one id must not delete each other's entry.
+   *
+   * Returns the failure (for the caller to report as it sees fit) or `null`.
+   */
+  private async runTrackedTeardown(
+    id: string,
+    teardown: () => Promise<void>,
+  ): Promise<Error | null> {
+    const running = teardown();
+    // `.catch` keeps the tracked copy from becoming an unhandled rejection — the real
+    // error is returned to the caller.
+    const tracked: Promise<void> = running
+      .catch(() => {})
+      .finally(() => {
+        if (this.pendingTeardowns.get(id) === tracked) {
+          this.pendingTeardowns.delete(id);
+        }
+      });
+    this.pendingTeardowns.set(id, tracked);
+    try {
+      await withTimeout(
+        running,
+        TEARDOWN_TIMEOUT,
+        `Plugin ${id} sandbox teardown timed out after ${TEARDOWN_TIMEOUT}ms — ` +
+          `capability revocation is still in flight; the next load will wait for it`,
+      );
+      return null;
+    } catch (e) {
+      logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
+      // Normalised to an Error (code review R4): `Promise<null | unknown>` collapses to
+      // `Promise<unknown>`, so the "null means success" discriminant this function
+      // advertises would not have existed — and a falsy thrown value (`throw ""`) would
+      // have read as success at every call site.
+      return e instanceof Error ? e : new Error(String(e));
     }
   }
 
-  /** Unload and deactivate a plugin */
-  async unloadPlugin(id: string): Promise<void> {
-    const plugin = this.loaded.get(id);
-    if (!plugin) return;
-
-    // Call deactivate
-    if (typeof plugin.module.deactivate === "function") {
+  private sandboxTeardown(id: string): () => Promise<void> {
+    return async () => {
       try {
         await withTimeout(
-          Promise.resolve(plugin.module.deactivate()),
-          1000,
-          `Plugin ${id} deactivation timed out`,
+          this.sandboxHost.stop(id),
+          SANDBOX_STOP_TIMEOUT,
+          `Sandbox stop for ${id} timed out after ${SANDBOX_STOP_TIMEOUT}ms`,
         );
-      } catch (err) {
-        logger.error(`[PluginLoader] Error deactivating ${id}:`, err);
-      }
-    }
-
-    // Dispose all disposables
-    for (const disposable of plugin.disposables) {
-      try {
-        disposable.dispose();
       } catch (e) {
-        logger.error(`[PluginLoader] Dispose error:`, e);
+        // Logged HERE, not left to propagate: an exception from `finally` replaces the
+        // one in flight, so if both halves fail only the deregister error would
+        // surface — and a failed stop is the more alarming of the two, because it means
+        // a live, still-capable sandbox.
+        logger.error(`[PluginLoader] Sandbox stop failed for ${id}:`, e);
+      } finally {
+        await pluginSandboxDeregister(id);
+      }
+    };
+  }
+
+  /**
+   * Map a started sandbox's declared commands onto the host and subscribe it to app
+   * events. Everything it registers is pushed onto `disposables`, which is both the
+   * unload path and the rollback path. (The status bar is registered earlier, before the
+   * sandbox starts — see `registerDeclaredStatusBar`.)
+   */
+  private wireSandboxContributions(
+    manifest: PluginManifest,
+    session: SandboxSession,
+    disposables: Disposable[],
+  ): void {
+    for (const cmd of session.contributions?.commands ?? []) {
+      const fullId = `${manifest.id}.${cmd.id}`;
+      // Always register the handler so a command can be invoked via menu or
+      // programmatically; only surface it in the palette unless the manifest
+      // opted out (palette: false) — mirrors the trusted path's visibility rule.
+      disposables.push(
+        registerHostCommandHandler(fullId, () => session.invokeCommand(cmd.id)),
+      );
+      if (cmd.palette !== false) {
+        usePluginUIStore.getState().registerPaletteCommand({
+          commandId: fullId,
+          pluginId: manifest.id,
+          title: cmd.title,
+        });
+        disposables.push({
+          dispose: () =>
+            usePluginUIStore.getState().removePaletteCommand(fullId),
+        });
       }
     }
-
-    // Belt-and-suspenders: sweep any UI state the plugin left behind
-    unregisterPluginUI(id);
-
-    this.loaded.delete(id);
-    logger.info(`[PluginLoader] Unloaded plugin: ${id}`);
+    // Handlers are registered: the declared items may be clicked (re-review LOW-5).
+    usePluginUIStore.getState().markPluginCommandsReady(manifest.id);
+    // §260 Phase 4a — from here the sandbox hears app events (`events`-gated inside the
+    // bridge, which also strips absolute paths). Subscribing AFTER activate resolved is
+    // deliberate: a frame delivered mid-activate would arrive before the plugin's
+    // `events.on` had run and be dropped by its client.
+    const subscriber = {
+      capabilities: manifest.capabilities,
+      pluginId: manifest.id,
+      session,
+    };
+    disposables.push({ dispose: subscribeSandbox(subscriber) });
+    // §260 Phase 4c — and to its OWN settings changing. Not part of the event bridge: that
+    // one carries app events and gates them on `events`, while this is the settings feature
+    // notifying its owner, gated on `settings` inside the watcher. Payload-free, so the
+    // values still only ever travel as a staged pull.
+    disposables.push({
+      dispose: watchPluginSettings({
+        capabilities: manifest.capabilities,
+        pluginId: manifest.id,
+        session,
+      }),
+    });
+    // …and tell it what is already open, so its first useful moment does not depend on
+    // the user switching tabs (the normal case at startup).
+    replayCurrentState(subscriber, activeFilePath());
   }
 }
 
-function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  message: string,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
-    promise.then(
-      (val) => {
-        clearTimeout(timer);
-        resolve(val);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
+/**
+ * The file the user is looking at, or `null`. Read at load time only — live updates come
+ * from `notifyFileOpen`, not from here.
+ */
+function activeFilePath(): null | string {
+  const { activeTabId, tabs } = useEditorStore.getState();
+  return tabs.find((t) => t.id === activeTabId)?.filePath ?? null;
+}
+
+/**
+ * The manifest bounded by what the user approved: capabilities narrowed, and a TIER
+ * escalation refused outright.
+ *
+ * Returns the SAME object when nothing changed, so the common path allocates nothing and
+ * an identity comparison in a test means what it looks like.
+ *
+ * Reads the consent from the store rather than taking it as an argument: `loadPlugin` has
+ * four callers (startup, install, enable-toggle, dev reload) and threading it through all
+ * of them is four chances for one to pass nothing and quietly restore the old behaviour.
+ *
+ * ‼️ The tier is REFUSED rather than narrowed (§260 Phase 5 re-review, R1), and that
+ * asymmetry is the point. A capability can be withheld and the plugin still runs with
+ * less; a tier decides WHICH REALM runs the code, and there is no "less" to fall back to.
+ * It also matters more: the capability half is what Rust brokers anyway, while
+ * `sandboxed` → `trusted` escapes the broker entirely and lands in a realm where the
+ * narrowed capability list is not a boundary at all (see `extension-context.ts`).
+ * `consentGaps` already calls that transition an escalation — this is `runLoad` asking.
+ */
+function narrowToConsent(
+  manifest: PluginManifest,
+  opts: LoadOptions,
+): PluginManifest {
+  const consent = resolveConsent(manifest.id, opts);
+  if (!consent) return manifest;
+
+  if (consent.trust !== "trusted" && pluginTrustOf(manifest) === "trusted") {
+    throw new Error(
+      `Plugin ${manifest.id} now declares trust "trusted", but it was approved as ` +
+        `"${consent.trust}". A trusted plugin runs inside Baram with no sandbox, so it ` +
+        `cannot be granted that without asking again — reinstall it to review the change.`,
     );
-  });
+  }
+
+  const granted = grantableCapabilities(manifest, consent);
+  if (granted.length === manifest.capabilities.length) return manifest;
+
+  const dropped = manifest.capabilities.filter((c) => !granted.includes(c));
+  logger.warn(
+    `[PluginLoader] ${manifest.id}: withholding ${dropped.join(", ")} — the installed ` +
+      `manifest asks for more than was approved at install. Reinstall to re-approve.`,
+  );
+  return { ...manifest, capabilities: granted };
+}
+
+/**
+ * The consent recorded for an INSTALLED plugin, or `undefined` for a dev-folder load.
+ *
+ * §260 Phase 5 re-review — dev-ness is DECLARED by the caller, never inferred from the
+ * store, and that has now been the source of the same bug three times over:
+ *
+ * - R2: keying on the id alone narrowed an author's working copy to an installed
+ *   plugin's consent, because a dev folder and an installed plugin may share an id and
+ *   `plugin-lifecycle` deliberately lets the dev copy win.
+ * - F1: keying on "does a dev entry exist for this id" then WIDENED the installed
+ *   plugin, because `handleToggleEnabled` loads the installed record and a colliding dev
+ *   entry made it take the dev branch.
+ * - G1: keying on `devPlugins[id].installPath` still missed the FIRST load of a picked
+ *   folder, because `PluginDeveloperSection` calls `loadPlugin` BEFORE `addDevPlugin` —
+ *   deliberately, so a failing load leaves no card — so the entry does not exist yet.
+ *   With an installed plugin of the same id, a freshly picked folder either silently
+ *   lost capabilities or, for a `trusted` manifest, refused to load at all with a
+ *   message telling the author to reinstall a directory they had just selected.
+ *
+ * Every one of those was store state disagreeing with the load actually in progress.
+ * The caller always knows which registry it is loading from; nothing else reliably does.
+ * This also drops the `installPath` string comparison, which depended on Rust returning a
+ * byte-identical path for the same folder every time.
+ */
+function resolveConsent(
+  pluginId: string,
+  opts: LoadOptions,
+): PluginConsent | undefined {
+  if (opts.isDev) return undefined;
+  return usePluginStore.getState().installedPlugins[pluginId]?.consent;
+}
+
+/**
+ * `t` bound to the locale in effect right now.
+ *
+ * Read per call rather than captured once: these strings are built at throw time, and a
+ * locale changed mid-session must not leave the previous language in a message a user is
+ * about to read. Same shape as `currentLocale()` in `services/app-update.ts` — a non-React
+ * module whose output a person reads.
+ *
+ * ‼️ NOT localized unconditionally. The settings store persists through `tauriStorage`,
+ * which rehydrates ASYNCHRONOUSLY, and `initializePlugins` runs from an App effect — so a
+ * startup load that beats rehydration reads the initial `locale: "en"` and produces an
+ * English refusal for a Korean reader. That is a graceful fallback rather than a bug worth
+ * reordering startup for, and it is bounded to the startup path: every marketplace-driven
+ * load happens long after hydration. The surface next to it stays correct either way —
+ * `PluginRevokedNotice` is a component on `useTranslation`, so it re-renders into the right
+ * language when hydration lands, which is the argument for making the notice the only
+ * withdrawal surface eventually (see `dev/backlog.md`).
+ */
+function tr(key: string, params?: Record<string, string>): string {
+  return t(key, useSettingsStore.getState().locale as Locale, params);
+}
+
+/**
+ * The load error, with a failed capability revocation appended.
+ *
+ * Keeps the original message as a PREFIX: it is what the user needs first, and callers
+ * (and tests) match on it.
+ */
+function withRevocationFailure(original: unknown, failure: Error): Error {
+  const base = original instanceof Error ? original.message : String(original);
+  return new Error(
+    `${base} — and revoking its capabilities did not complete: ${failure.message}. ` +
+      `This plugin may keep its granted capabilities until the app restarts.`,
+    { cause: original },
+  );
 }
 
 /** Singleton instance */

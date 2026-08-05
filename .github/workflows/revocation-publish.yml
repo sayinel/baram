@@ -1,0 +1,394 @@
+name: Publish Revocation List
+
+# §69 — syncs registry/revoked.json to the sayinel/baram-plugins registry.
+#
+# Deliberately NOT part of plugin-release.yml. That workflow runs when a plugin is
+# published, and a revocation has nothing to do with anyone publishing a plugin —
+# bolting it on would mean a withdrawal only reached users the next time someone
+# happened to release something.
+#
+# The list lives in THIS repo rather than being hand-edited on the registry, for two
+# reasons. The schema and the validator are here, so one validator governs both what CI
+# accepts and what the app reads. And issuing a revocation takes a working plugin away
+# from users, which deserves a reviewed PR rather than a direct push to a Pages repo.
+#
+# ‼️ ONE BASELINE, AND IT IS THE REGISTRY REPOSITORY (code review MEDIUM-1). The counter gate
+# used to read the LIVE file from Pages while the change check compared against the registry
+# clone — two baselines for one decision, and Pages is the one that lags. A run whose push
+# succeeded but whose verify loop timed out left Pages stale, so the next run read the stale
+# counter and would pass a CHANGED list carrying a counter every client refuses. The authority
+# is the registry repository: it is what the next step clones, it cannot lag itself, and using
+# it removes the permissive "live is unreachable, skip the gate" branch entirely along with a
+# hardcoded copy of the registry URL that no test could see.
+on:
+  push:
+    branches: [main]
+    paths: ["registry/revoked.json"]
+  # Bootstrap and manual re-sync. The registry has no revoked.json until this runs once,
+  # and until it does every client 404s and keeps an empty list.
+  workflow_dispatch:
+
+# Shared with plugin-release.yml: both push to the same registry repo, and a shallow
+# clone plus a push cannot survive the other landing in between.
+concurrency:
+  group: registry-push
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TZ: Asia/Seoul
+  REGISTRY_REPO: sayinel/baram-plugins
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+
+      # Before anything is pushed. The app drops a malformed entry silently and treats
+      # an unparseable range as matching nothing — both correct at runtime, and both a
+      # way for a mis-authored revocation to deploy cleanly and protect nobody.
+      - name: Validate the list with the shipping validator
+        run: npx tsx scripts/validate-revocations.ts registry/revoked.json
+
+      # Separate from signing so the signing key is in the environment of exactly one step,
+      # and that step runs nothing but `cp` and the tauri CLI (security review LOW).
+      #
+      # ‼️ THE KEY FILE IS REMOVED AT THE END OF THIS STEP, and written again by the push
+      # (security review M-4). It used to live on disk from here until the cleanup step, readable
+      # by the four steps in between — three of which run `npx`, one of them added by this very
+      # change. That is a supply-chain reach that needs NO merged commit: a malicious transitive
+      # dependency walks off with push access to the registry, which is the capability the whole
+      # revocation mechanism assumes an attacker does not have. The signing key was deliberately
+      # scoped to one step's env for exactly this reason, and `dev/backlog.md` had recorded the two
+      # residuals as equivalent, which they were not.
+      #
+      # The clone keeps the key PATH in its own config, so the push step only has to restore the
+      # file. The `always()` cleanup below stays as the backstop for a failure in between.
+      - name: Clone the registry
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          # ‼️ NEVER WRITE THROUGH WHAT IS ALREADY AT THE PATH (third-round security review M-1,
+          # reproduced locally). `printf > ~/.ssh/plugins_deploy` FOLLOWS a symlink, and so does
+          # `chmod 600` — which then hardens the attacker's target so nothing looks wrong. Any earlier
+          # step's code execution can plant that symlink, `npm ci` lifecycle scripts included, so NO
+          # MERGED COMMIT IS NEEDED: point it at `$RUNNER_TEMP/registry/revoked.json.sig` and the push
+          # step commits the private key to a PUBLIC repository, destroying the signature at the same
+          # time. `rm -f` of the link afterwards leaves the leaked copy. `install -m 600 /dev/null`
+          # creates a fresh regular file with the right mode before any content exists, which closes
+          # the permissions window as well.
+          rm -f ~/.ssh/plugins_deploy
+          install -m 600 /dev/null ~/.ssh/plugins_deploy
+          printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          git clone --depth 1 \
+            --config core.sshCommand="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes" \
+            "git@github.com:${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          rm -f ~/.ssh/plugins_deploy
+
+      # ‼️ A CHANGED list must carry a HIGHER counter, and this is the only place that can say
+      # so. A list published at or below the counter clients already hold is refused by every
+      # armed client (`meetsRevocationFloor`), so the failure would surface as "the revocation
+      # did nothing" on user machines rather than here.
+      #
+      # Hermetic: it reads two files and shells out to the shipping counter reader, with no
+      # network call to stub. The version that curled Pages had to have its one network line
+      # rewritten by the test that runs it; this one runs verbatim.
+      - name: A changed list must carry a higher counter than the registry's
+        id: gate
+        run: |
+          PREVIOUS="$RUNNER_TEMP/registry/revoked.json"
+          # ‼️ THREE FAILURE STATES USED TO READ AS PERMISSIVE DECISIONS (third-round security review
+          # M-2, reproduced locally). `[ ! -f ]` is TRUE for a dangling symlink and for a directory,
+          # so both took the bootstrap branch — which deliberately performs NO counter comparison at
+          # all. A symlink is refused outright rather than followed: the registry could commit one,
+          # and following it would compare against a file outside the clone.
+          if [ -L "$PREVIOUS" ]; then
+            echo "::error::$PREVIOUS is a symlink — refusing to compare against whatever it points at."
+            exit 1
+          fi
+          if [ -e "$PREVIOUS" ] && { [ ! -f "$PREVIOUS" ] || [ ! -r "$PREVIOUS" ]; }; then
+            echo "::error::$PREVIOUS exists but is not a readable regular file — refusing to guess whether this publish is a rollback."
+            exit 1
+          fi
+          # The bootstrap path this workflow documents at the top: nothing to compare against,
+          # and nothing to roll back over. Reached only when the path genuinely does not exist.
+          if [ ! -e "$PREVIOUS" ]; then
+            echo "::notice::The registry has no revoked.json yet — bootstrap publish."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ‼️ AN UNCHANGED LIST IS NOT A ROLLBACK (code review HIGH-3). In steady state the repo
+          # and the registry are the same bytes, so an equal counter is the NORMAL state — and
+          # erroring on it hard-failed every ordinary re-run, including the `workflow_dispatch`
+          # re-sync. Only a DIFFERENT list whose counter fails to advance is a rollback.
+          # ‼️ `cmp` EXITS 2 ON AN I/O ERROR and `if` cannot tell that from its exit 1 "differ" — so an
+          # unreadable baseline fell into the changed-list path, where the counter reader reports 0 and
+          # any counter at all wins (third-round security review M-2). The code is captured instead.
+          set +e
+          cmp -s "$PREVIOUS" registry/revoked.json
+          SAME=$?
+          set -e
+          if [ "$SAME" -gt 1 ]; then
+            echo "::error::could not compare the two lists (cmp exit $SAME) — refusing to decide."
+            exit 1
+          fi
+          if [ "$SAME" -eq 0 ]; then
+            # ‼️ The signature is excluded from the byte comparison on purpose (security review
+            # MEDIUM-2): minisign puts a timestamp in the trusted comment, so re-signing identical
+            # bytes yields a DIFFERENT signature, and staging it would make every unrelated run
+            # look like a change and rebuild Pages for a list nobody edited.
+            #
+            # ‼️ AND THE EXISTING SIGNATURE IS VERIFIED, NOT MERELY COUNTED (code review MEDIUM-2).
+            # `test -f` answers "missing", never "corrupt" — and the post-publish check added in
+            # this same change newly turns a corrupt one into a PERMANENTLY red workflow: identical
+            # bytes meant `publish=false`, so nothing re-signed, so every re-run failed at the same
+            # step, with the only escapes being the two this review chain rejected (a hand-push to
+            # the Pages repo, or editing the list to force a counter bump nobody needs). Deciding
+            # re-sign vs nothing-to-do on whether the signature VERIFIES makes that self-repairing.
+            if [ ! -f "$RUNNER_TEMP/registry/revoked.json.sig" ]; then
+              echo "::notice::Same list, no signature in the registry — re-signing without a counter bump."
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # ‼️ `--quiet`, AND THE THREE EXIT CODES ARE KEPT APART (code review MEDIUM-3, security
+            # review L-2). This call asks a question; it does not report a verdict. Without
+            # `--quiet` the script's `::error::` annotated the run — and `::error::` is a workflow
+            # command, so GitHub shows it whatever the exit status: the self-repair path added in
+            # this change produced a GREEN run carrying "would be REFUSED by every armed client".
+            # And folding exit 2 into "does not verify" blamed the registry for a broken verifier of
+            # our own, then loaded the signing key for a run with nothing to publish.
+            set +e
+            npx tsx scripts/verify-revocation-signature.ts --quiet \
+              "$PREVIOUS" "$RUNNER_TEMP/registry/revoked.json.sig"
+            PROBE=$?
+            set -e
+            case "$PROBE" in
+              0)
+                echo "::notice::The registry already has this exact list and a signature that verifies — nothing to publish."
+                echo "publish=false" >> "$GITHUB_OUTPUT" ;;
+              1)
+                echo "::notice::Same list, but the registry's signature does not verify — re-signing without a counter bump."
+                echo "publish=true" >> "$GITHUB_OUTPUT" ;;
+              *)
+                echo "::error::the verifier could not run (exit $PROBE) — this is our tooling, not the registry's signature. Refusing to decide."
+                exit 1 ;;
+            esac
+            exit 0
+          fi
+          # Both counters are read by the SHIPPING reader, so the number compared here is the
+          # number a client computes. The python this replaced (`d.get("sequence") or 0`)
+          # accepted a JSON string, so `sequence: "2"` cleared the gate and then read as 0 on
+          # every machine (code review HIGH-2).
+          OLD="$(npx tsx scripts/revocation-sequence.ts "$PREVIOUS")"
+          NEW="$(npx tsx scripts/revocation-sequence.ts registry/revoked.json)"
+          # ‼️ VALIDATED BEFORE COMPARING, because `[ x -le 1 ]` FAILS OPEN (code review LOW-3).
+          # A non-numeric operand makes `[` exit 2, `if` reads that as false, and `bash -e`
+          # exempts `if` conditions — so the gate printed an "integer expression expected" error
+          # and then passed. `set -e` catches a script that exits non-zero, but not one that
+          # prints something unexpected on stdout alongside the number.
+          for value in "$OLD" "$NEW"; do
+            case "$value" in
+              ''|*[!0-9]*)
+                echo "::error::counter is not a plain integer: '$value' — refusing to compare."
+                exit 1 ;;
+            esac
+          done
+          echo "registry sequence=$OLD, publishing=$NEW"
+          if [ "$NEW" -le "$OLD" ]; then
+            echo "::error::sequence must increase: the registry holds $OLD, this publish is $NEW. Every client would refuse this list as a rollback."
+            exit 1
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      # Signed over the exact bytes being published, from the app checkout where the tauri CLI
+      # lives. The key never appears on a command line: `signer sign` reads it from the
+      # environment. ‼️ RESIDUAL, stated rather than implied: `npx tauri` resolves through this
+      # repository's `package-lock.json`, so a main commit that lands a malicious dependency
+      # alongside a revocation still runs with the key in scope. Narrowing this step to `cp` and
+      # the signer removes every OTHER step from that blast radius, which is what it buys — the
+      # remaining answer is a protected `environment:` with a required reviewer, a repository
+      # settings change recorded in `dev/backlog.md`.
+      - name: Sign the list
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          # ‼️ These are tauri's OWN variable names, read by `tauri signer sign` — but the value
+          # is the REVOCATION key, not the updater's. The two are deliberately separate: this
+          # workflow runs on any main push touching `registry/revoked.json`, a far lower bar
+          # than cutting a release, and giving that the installer-signing key would trade a
+          # forged revocation list for arbitrary code on every user's machine.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.BARAM_REVOCATION_SIGNING_KEY_PASSWORD }}
+        run: |
+          cp registry/revoked.json "$RUNNER_TEMP/registry/revoked.json"
+          npx tauri signer sign "$RUNNER_TEMP/registry/revoked.json"
+
+      # ‼️ BEFORE THE PUSH, because a signature nobody can verify is far cheaper to fix while it
+      # is still on the runner. Nothing before this point could tell a good pair from a bad one:
+      # the workflow byte-compared the served `.sig` against the one it had just committed and
+      # grepped its trusted comment for a filename, both of which pass for a signature made over
+      # a different body or with a key that is not the one clients ship. The check verifies
+      # against `REVOCATION_PUBLIC_KEY` read out of the Rust source, which is the only thing
+      # that decides whether an armed client accepts the bytes.
+      - name: An armed client must accept the signed list
+        if: steps.gate.outputs.publish == 'true'
+        run: |
+          npx tsx scripts/verify-revocation-signature.ts \
+            "$RUNNER_TEMP/registry/revoked.json" \
+            "$RUNNER_TEMP/registry/revoked.json.sig"
+
+      - name: Commit and push
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+        run: |
+          # Same guard as the clone step, and for the same reason — see there.
+          rm -f ~/.ssh/plugins_deploy
+          install -m 600 /dev/null ~/.ssh/plugins_deploy
+          printf '%s' "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          cd "$RUNNER_TEMP/registry"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add revoked.json revoked.json.sig
+          git commit -m "revocation: sync signed revoked.json from baram@${GITHUB_SHA}"
+          git push origin main
+
+      # ‼️ `always()`, because a failed gate or a failed signature must not leave a key with push
+      # access to the registry sitting on the runner for the steps that follow — those run this
+      # repository's TypeScript, and a main commit that lands a revocation can land a script
+      # alongside it (security review hygiene). The clone already holds its own `core.sshCommand`,
+      # so removing the file after the push costs nothing.
+      - name: Remove the deploy key from the runner
+        if: always()
+        run: |
+          rm -f ~/.ssh/plugins_deploy
+
+      # A push that succeeded is not a file that is being served. Pages takes a moment
+      # to rebuild, so this retries rather than asserting immediately — and it fails
+      # loudly if the list never appears, because a silent no-op here is exactly the
+      # state the feature spent a whole review round in.
+      - name: Verify the live list is served and readable
+        run: |
+          URL="https://sayinel.github.io/baram-plugins/revoked.json"
+          # ‼️ EVERY CHECK IS A RETRY CONDITION, NOT AN IMMEDIATE FAILURE. Pages lags the push —
+          # that is the entire reason this loop exists — so a stale-but-200 answer must be waited
+          # out rather than treated as a defect. An earlier version of this hunk compared the
+          # signature and exited 1 on mismatch, which would have failed the common case on the
+          # first attempt.
+          for attempt in $(seq 1 20); do
+            CODE="$(curl -fsS -o "$RUNNER_TEMP/live.json" -w '%{http_code}' "$URL" || true)"
+            if [ "$CODE" = "200" ] &&
+               curl -fsS -o "$RUNNER_TEMP/live.sig" "${URL}.sig" &&
+               # ‼️ COMPARED AGAINST THE SIGNATURE THIS RUN PUBLISHED, not merely inspected
+               # (security review MEDIUM-1). The trusted comment carries a filename and a
+               # timestamp and nothing that binds it to the BYTES, so `grep file:revoked.json`
+               # passes for a signature over any file of that name — including the PREVIOUS one.
+               # After the first publish that made a skipped or failed signing step invisible
+               # here, while every armed client refused the new list. Byte-comparing against
+               # what the sync step committed is exact and needs no Rust build.
+               cmp -s "$RUNNER_TEMP/live.sig" "$RUNNER_TEMP/registry/revoked.json.sig" &&
+               cmp -s "$RUNNER_TEMP/live.json" "$RUNNER_TEMP/registry/revoked.json"; then
+              # Only once the served bytes ARE this run's bytes is it worth validating them.
+              npx tsx scripts/validate-revocations.ts "$RUNNER_TEMP/live.json"
+              echo "::notice::Live revocation list and signature are this run's after ${attempt} attempt(s)."
+              exit 0
+            fi
+            echo "attempt ${attempt}: HTTP ${CODE:-none}, list/signature not yet this run's — waiting for Pages…"
+            sleep 15
+          done
+          # Reached only if the served bytes never became this run's. Says both possibilities,
+          # because the operator cannot tell them apart from here: Pages never caught up, or the
+          # signature the clients need was never published.
+          echo "::error::$URL never served this run's list and signature — clients cannot receive revocations."
+          exit 1
+
+      # ‼️ NOT REDUNDANT WITH THE PRE-PUSH CHECK, and the reason is the run that publishes
+      # NOTHING. On that path — the steady state, and every manual re-sync — the signing and
+      # pre-push steps are skipped, so the only thing that has ever verified the live pair is
+      # whichever run published it. Every pair published before this gate existed is in exactly
+      # that position, including the one live today. Verifying what Pages serves on every run is
+      # what makes "the list users hold is acceptable to an armed client" a property of the
+      # repository rather than a fact about one historical run.
+      #
+      # ‼️ THE CONVERSE IS NARROWER THAN IT FIRST READS (code review correction). On every
+      # PUBLISHING path this step's coverage is a superset of the pre-push one, so the pre-push
+      # check earns its place on timing — keeping a bad pair off Pages — plus exactly one coverage
+      # row: when Pages lags past the retry loop, THIS step is skipped and the pre-push check is
+      # the only verification that ran.
+      #
+      # It reads the files the step above left behind, which under a `success()` chain are the
+      # bytes Pages served AND are byte-identical to the registry copy.
+      - name: An armed client must accept what Pages serves
+        run: |
+          npx tsx scripts/verify-revocation-signature.ts \
+            "$RUNNER_TEMP/live.json" \
+            "$RUNNER_TEMP/live.sig"
+
+      # ‼️ DELIBERATELY AFTER THE PUBLISH, AND IT IS ABOUT THE APP, NOT THE LIST. With the
+      # high-water mark session-scoped, `MINIMUM_REVOCATION_SEQUENCE` is the only cross-restart
+      # replay defence — every launch starts from it. So a release that forgets to raise it gives
+      # that defence up silently, and NOTHING failed when that happened: the existing test only
+      # catches a floor set too HIGH (which bricks clients), never one left too low.
+      #
+      # It runs last on purpose. An urgent revocation must reach users even when the app's floor
+      # is stale, so this complains AFTER the list is out rather than blocking it.
+      # ‼️ THE NAME DEPENDS ON THIS STEP STAYING BELOW THE VERIFY STEP, and on `success()`. It reads
+      # the counter from the REPO copy, which is sound only because the step above proved that copy
+      # byte-identical to what Pages serves (`cmp -s live.json registry/revoked.json`) — so under
+      # `success()` the repo copy IS the published list, not a stand-in for it. Reorder this above
+      # verify, or restore `always()`, and the name becomes a claim the step no longer measures.
+      # Pinned by `runs AFTER the step that proves the repo copy is what Pages serves`.
+      #
+      # Not curled, deliberately. A network read here would need its own permissive skip, and a
+      # skip costs far more on this step than on the counter gate: the counter has a client-side
+      # backstop (every client refuses a rollback itself) and the FLOOR HAS NONE — nothing else
+      # anywhere notices a floor left too low, which is the entire reason this step exists. It
+      # would also cost the hermetic test, which runs the real shell with no network at all.
+      - name: The app's floor must track the list just verified live
+        # ‼️ `success()`, NOT `always()` (code review MEDIUM-1). On a run where publishing failed,
+        # the repo copy is a number that was never published — and the step would then print
+        # "MINIMUM_REVOCATION_SEQUENCE (8) is ABOVE the published counter (3) … lower it", advice
+        # that lowers the only cross-restart replay defence. The step is already LAST, so this
+        # keeps the whole "complain, do not block" intent.
+        if: success()
+        run: |
+          LIVE="$(npx tsx scripts/revocation-sequence.ts registry/revoked.json)"
+          FLOOR="$(npx tsx scripts/revocation-floor.ts)"
+          for value in "$LIVE" "$FLOOR"; do
+            case "$value" in
+              ''|*[!0-9]*)
+                echo "::error::not a plain integer: '$value' — refusing to compare."
+                exit 1 ;;
+            esac
+          done
+          echo "published sequence=$LIVE, app floor=$FLOOR"
+          # The dangerous direction, and it has no tolerance: a floor above the live counter makes
+          # every client refuse the REAL list, which presents as the feature working.
+          if [ "$FLOOR" -gt "$LIVE" ]; then
+            echo "::error::MINIMUM_REVOCATION_SEQUENCE ($FLOOR) is ABOVE the published counter ($LIVE). Every client would refuse the live list. Lower it to at most $LIVE."
+            exit 1
+          fi
+          # The lagging direction. A gap is NORMAL — the floor can only move at release time, so
+          # right after publishing N it is legitimately N-1. What is not normal is a gap that keeps
+          # growing, which means revocations are being published and no release is carrying the
+          # floor forward.
+          # ‼️ ONE, not five (code review MEDIUM-2). The lag is counted in PUBLISHED REVOCATIONS
+          # and this registry has published one, ever — so a tolerance of 5 meant the silent
+          # failure this step exists for would stay silent for years, which is the same as not
+          # having the step. One is the tightest value consistent with the rationale above:
+          # publishing N against a floor of N-1 is the steady state and passes; a SECOND publish
+          # without a release fails the run, after the list is out, which is the loud reminder
+          # intended. What a lag of N buys an attacker is replaying the newest list below the
+          # floor — erasing up to N revocations, `malicious` ones included.
+          MAX_LAG=1
+          if [ "$((LIVE - FLOOR))" -gt "$MAX_LAG" ]; then
+            echo "::error::MINIMUM_REVOCATION_SEQUENCE ($FLOOR) lags the published counter ($LIVE) by more than $MAX_LAG. Ship a release that raises it — until then a replayed older signed list is accepted after any restart."
+            exit 1
+          fi
+          echo "::notice::Floor $FLOOR is within $MAX_LAG of the published counter $LIVE."

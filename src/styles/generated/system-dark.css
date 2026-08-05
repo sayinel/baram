@@ -18,6 +18,9 @@
     --color-accent-default: #60a5fa;
     --color-accent-hover: #3b82f6;
     --color-accent-subtle: #172554;
+    --color-accent-solid: #60a5fa;
+    --color-accent-solid-hover: #93c5fd;
+    --color-accent-on-solid: #000;
     --color-accent-ai: #a78bfa;
     --color-editor-bg: #1a1a2e;
     --color-editor-text: #e2e8f0;
@@ -25,8 +28,14 @@
     --color-editor-cursor: #e2e8f0;
     --color-editor-line-highlight: #16213e;
     --color-status-danger: #ef4444;
+    --color-status-danger-on-solid: #000;
+    --color-status-danger-solid-hover: #f87171;
     --color-status-warning: #f59e0b;
+    --color-status-warning-on-solid: #000;
+    --color-status-warning-solid-hover: #fbbf24;
     --color-status-success: #10b981;
+    --color-status-success-on-solid: #000;
+    --color-status-success-solid-hover: #34d399;
     --color-status-info: #60a5fa;
     --color-status-error-bg: #4c0519;
     --color-status-error-border: #7f1d1d;

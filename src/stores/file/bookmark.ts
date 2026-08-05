@@ -1,5 +1,11 @@
-// §36 북마크 스토어 — 파일/헤딩 북마크 CRUD + localStorage 영속화
+// §36 북마크 스토어 — 파일/헤딩 북마크 CRUD + Tauri 설정 영속화
+//
+// §260 Phase 5: localStorage에서 tauriStorage로 이동. 모든 `plugin-*` 샌드박스 웹뷰는
+// 메인 윈도우와 동일 출처라 localStorage를 공유한다 — capability가 하나도 없는
+// 플러그인이 vault 루트 경로·파일 경로·헤딩 텍스트를 읽고 쓸 수 있었다.
 import { create } from "zustand";
+
+import { tauriStorage } from "../system/tauri-storage";
 
 export interface BookmarkItem {
   createdAt: number;
@@ -16,10 +22,11 @@ interface BookmarkState {
   addBookmark: (item: Omit<BookmarkItem, "createdAt" | "id">) => void;
 
   bookmarks: BookmarkItem[];
-  loadBookmarks: (rootPath: string) => void;
+  /** Async since §260 Phase 5 — the backing store is Rust config, not localStorage. */
+  loadBookmarks: (rootPath: string) => Promise<void>;
   moveToGroup: (id: string, group: string) => void;
   removeBookmark: (id: string) => void;
-  saveBookmarks: (rootPath: string) => void;
+  saveBookmarks: (rootPath: string) => Promise<void>;
 }
 
 /** Get unique groups from bookmarks list */
@@ -44,9 +51,33 @@ export function isDuplicate(
   );
 }
 
-/** Generate localStorage key scoped to vault root */
+/** Storage key scoped to vault root. Must keep matching `MIGRATION_PREFIXES`. */
 export function storageKey(rootPath: string): string {
   return `baram:bookmarks:${rootPath}`;
+}
+
+/**
+ * §260 Phase 5 — every read and write runs in submission order, one at a time.
+ *
+ * `BookmarkPanel` mounts a load effect and an autosave effect together, and the autosave
+ * fires on mount before the load has produced anything. While both were synchronous that
+ * was harmless — the load filled the store, and the save read the live value straight
+ * back out. Async, they overlapped: the save read an empty store and wrote `[]`, either
+ * clobbering the file the load had just read or landing first so the load read `[]`.
+ * Either way the user's bookmarks were gone on first mount.
+ *
+ * Serializing restores exactly the property the synchronous version had for free. It
+ * matters that `saveBookmarks` reads `get().bookmarks` INSIDE the queued step rather than
+ * at call time, so a save queued behind a load writes the loaded list, not the empty one
+ * that was current when the effect fired.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+function enqueue(op: () => Promise<void>): Promise<void> {
+  // Both arms run `op`, so one step's failure never strands the ones behind it.
+  const next = queue.then(op, op);
+  queue = next.catch(() => undefined);
+  return next;
 }
 
 export const useBookmarkStore = create<BookmarkState>((set, get) => ({
@@ -76,22 +107,23 @@ export const useBookmarkStore = create<BookmarkState>((set, get) => ({
     });
   },
 
-  loadBookmarks: (rootPath) => {
-    try {
-      const raw = localStorage.getItem(storageKey(rootPath));
-      if (raw) {
-        const parsed = JSON.parse(raw) as BookmarkItem[];
-        set({ bookmarks: parsed });
-      } else {
+  loadBookmarks: (rootPath) =>
+    enqueue(async () => {
+      try {
+        const raw = await tauriStorage.getItem(storageKey(rootPath));
+        set({ bookmarks: raw ? (JSON.parse(raw) as BookmarkItem[]) : [] });
+      } catch {
         set({ bookmarks: [] });
       }
-    } catch {
-      set({ bookmarks: [] });
-    }
-  },
+    }),
 
-  saveBookmarks: (rootPath) => {
-    const { bookmarks } = get();
-    localStorage.setItem(storageKey(rootPath), JSON.stringify(bookmarks));
-  },
+  saveBookmarks: (rootPath) =>
+    enqueue(async () => {
+      // Read INSIDE the queued step, not at call time: a save queued behind a load must
+      // write what the load produced.
+      await tauriStorage.setItem(
+        storageKey(rootPath),
+        JSON.stringify(get().bookmarks),
+      );
+    }),
 }));

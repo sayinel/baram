@@ -8,25 +8,134 @@ a single ESM bundle (typically `dist/index.mjs`). The bundle exports an
 `activate` with a capability-gated `ExtensionContext` object that is the
 plugin's only way to touch the app.
 
-Plugins run **in the same JavaScript context as the editor** — there is no
-iframe or worker sandbox (Obsidian's model, not Logseq's). This was a
-deliberate design decision: contributing a `tiptapExtensions` node/mark/plugin
-requires direct access to the live ProseMirror `Schema`, which an
-iframe-sandboxed plugin cannot provide. The tradeoff is that the capability
-system is an **API gate**, not a hard security boundary — see
-[Trust model & security](#trust-model--security) below before installing or
-authoring anything sensitive.
+Every plugin declares one of two tiers in its manifest, and the tier decides what
+"capability" means:
+
+- **`"trust": "sandboxed"`** — the default, and what you should write. The plugin runs in
+  its own isolated webview with no access to the app's JavaScript, and every privileged
+  operation goes through a Rust broker that authorizes the call against the plugin's
+  granted capabilities. Here the capability list is a **real boundary**.
+- **`"trust": "trusted"`** — the same JavaScript context as the editor, Obsidian's model.
+  Necessary for `tiptapExtensions`, which need direct access to the live ProseMirror
+  `Schema` that an isolated plugin cannot be given. Here the capability system is only an
+  **API gate**: the plugin can reach around it, so the list describes intent rather than
+  limiting anything. Installing one requires an explicit acknowledgement of exactly that.
+
+Write sandboxed unless you are contributing a Tiptap extension or DOM-mounted UI. See
+[Trust model & security](#trust-model--security) before installing or authoring anything
+sensitive.
 
 ## Quick Start
 
 The fastest way to start a new plugin is to copy one of the two reference
 examples in [`examples/plugins/`](../examples/plugins/):
 
-- [`examples/plugins/word-count/`](../examples/plugins/word-count/) — minimal:
-  a status-bar item with an `editor:readonly` + `events` + `statusbar` plugin.
-- [`examples/plugins/ai-summary/`](../examples/plugins/ai-summary/) —
-  advanced: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`
-  capabilities.
+- [`examples/plugins/word-count/`](../examples/plugins/word-count/) — **the sandboxed
+  reference, and the one to copy.** A declared status-bar item written by an
+  `editor:readonly` + `events` + `statusbar` plugin. It needs nothing from the main
+  realm, which is the point.
+- [`examples/plugins/ai-summary/`](../examples/plugins/ai-summary/) — the **trusted**
+  tier: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`. Copy it only if you
+  genuinely need arbitrary DOM; it is **not published to the registry**, because there
+  is no declarative `sidebar` contribution yet and a trusted plugin cannot be sandboxed.
+
+Two further folders are internal **test fixtures — not templates**. Both are single
+hand-written files with no build step, and `plugin-release.yml` refuses to publish either:
+
+- `examples/plugins/sandbox-smoke/` probes the sandboxed tier's brokered surface during a
+  manual smoke run.
+- `examples/plugins/malicious-fixture/` is the adversary: it holds two capabilities and
+  asks for everything else, and CI asserts every call is refused. Useful to read as a
+  catalogue of what the tier does **not** allow.
+
+### The sandboxed tier's API differs
+
+A plugin with `"trust": "sandboxed"` runs in its own isolated webview and gets a
+narrower, data-only context. Two differences matter when writing one:
+
+- **`files` paths are relative to a vault root you are never told.** `readFile("a.md")`,
+  `listDir("")` for the vault root; an absolute path or a `..` is refused. Pass
+  `{ context }` from a file event to keep a call aimed at the vault the event came from:
+  ```js
+  ctx.events.on("file:open", async ({ context, path }) => {
+    const text = await ctx.files.readFile(path, { context });
+  });
+  ```
+- **`editor` is markdown, and async.** `getMarkdown()` / `setMarkdown()` go through the
+  app's own round-trip pipeline, so what you read is exactly what you can write back;
+  `getSelection()` gives ProseMirror positions plus the text they cover, and
+  `insertText()` types at the cursor. Every write is one undo step. Reads need `editor` or
+  `editor:readonly`; writes need `editor`.
+
+  ```js
+  const before = await ctx.editor.getMarkdown();
+  await ctx.editor.setMarkdown(`${before}\n\n---\n`);
+  ```
+
+  A document read does not travel in the response — the host parks it and the sandbox
+  collects it — but that is invisible to you; `getMarkdown()` is just a promise.
+
+  Two things worth designing around:
+  - **`setMarkdown()` can refuse, and you should retry.** It parses off the main thread,
+    and if the document changes while that runs — a tab switch, or the user typing a
+    single character — it rejects with "the document changed" rather than overwriting the
+    change. On a large document with an active typist this can fail repeatedly; that is
+    deliberate, since the alternative is silently discarding what the user just wrote.
+  - **Batch your inserts.** `insertText()` is one transaction, and ProseMirror groups undo
+    by transaction, so inserting an AI stream token by token gives the user a thousand
+    Cmd+Z presses — and each transaction costs the whole document to re-render, so the
+    host throttles them on large files. Buffer and insert in chunks.
+
+  Editor calls are metered by the work they cost, not by how often you call them: reading
+  a scratch note is nearly free, reading a 10,000-line file repeatedly is not. If you see
+  "document budget is exhausted", you are polling something you should be getting from
+  `ctx.events` instead.
+
+- **`settings` are the user's answers, and read-only.** Declare fields in
+  `contributions.settings` and they render in your plugin's page under **Settings →
+  Plugins**; read them with `await ctx.settings.getAll()`, which always returns one value
+  per declared field, of the declared type.
+
+  ```js
+  const { prefix } = await ctx.settings.getAll();
+  ctx.events.on("settings:changed", async () => {
+    const next = await ctx.settings.getAll(); // the event carries no values
+  });
+  ```
+
+  Things that follow from "the user's answers":
+  - **There is no setter.** A value the user chose must not move underneath them. Use
+    `ctx.storage` for state of your own.
+  - **`settings:changed` carries nothing** — re-read. (The values are kept out of pushed
+    frames on purpose.)
+  - **A value is resolved against your CURRENT manifest**, so if an update changes a
+    field's type or drops a key, the plugin sees the new default rather than the old
+    value. Renaming a key resets it; that is the trade for never handing you a `string`
+    where your manifest says `number`.
+  - At most 16 fields, and a string value is capped at 512 characters. Fields render only
+    if the manifest also declares the `settings` capability.
+
+- **`ui` is data, not DOM.** `ctx.ui.showNotification(message, type?)` (the host labels
+  the toast with your plugin's name in its own badge, and rate-limits you to one every
+  four seconds — the app has a single toast slot) and
+  `ctx.ui.setStatusBarText(id, text)` for an item your manifest declared in
+  `contributions.statusBar`. No `addStyle`, no panel `onMount(el)` — those need
+  `"trust": "trusted"`.
+
+Declared status-bar items are registered from the manifest before your plugin's code
+runs — so they show up while the sandbox is still booting — and one with a `command` is
+clickable. They are removed again if the load fails.
+
+When your plugin finishes activating, the host delivers a synthetic `file:open` for the
+file that is already open, if any. That way a plugin loaded at startup does not have to
+wait for the user to switch tabs before it knows where it is.
+
+Contribution ids (`commands[].id`, `statusBar[].id`, `settings[].key`, and the `command` a
+status-bar item points at) must match `^[A-Za-z0-9_-]+$` and be unique within their
+section; at most five status-bar items and sixteen settings fields may be declared, and a
+settings `default` must have the type its field declares. The host namespaces them as
+`<pluginId>.<command>` and `<pluginId>:sb:<item>`, so a `.` or `:` in the trailing part
+would make those ids ambiguous.
 
 A plugin project looks like this:
 
@@ -66,7 +175,7 @@ my-plugin/
 
 ```json
 {
-  "id": "baram-word-count",
+  "id": "my-word-count",
   "name": "Word Count",
   "description": "Displays word and character count in the status bar",
   "version": "1.0.0",
@@ -74,11 +183,15 @@ my-plugin/
   "license": "MIT",
   "main": "dist/index.mjs",
   "engines": {
-    "baram": ">=0.3.0"
+    "baram": ">=0.5.0"
   },
+  "trust": "sandboxed",
   "capabilities": ["editor:readonly", "events", "statusbar"],
+  "contributions": {
+    "statusBar": [{ "id": "count", "text": "— words" }]
+  },
   "keywords": ["word", "count", "statistics"],
-  "repository": "https://github.com/user/baram-word-count",
+  "repository": "https://github.com/user/my-word-count",
   "homepage": "https://example.com"
 }
 ```
@@ -94,7 +207,7 @@ my-plugin/
 | `author`        | string    | Author name                                                                |
 | `license`       | string    | SPDX license identifier                                                    |
 | `main`          | string    | Entry point file, relative to the plugin directory (e.g. `dist/index.mjs`) |
-| `engines.baram` | string    | Minimum Baram version (semver range)                                       |
+| `engines.baram` | string    | Minimum Baram version, written `>=X.Y.Z` — see [Version floor](#version-floor)  |
 | `capabilities`  | string\[] | Required permissions — see [Capabilities](#capabilities)                   |
 
 ### Optional Fields
@@ -107,6 +220,25 @@ my-plugin/
 | `homepage`         | string    | Documentation URL                                                                                     |
 | `icon`             | string    | Emoji icon for the marketplace/dev-list                                                               |
 | `keywords`         | string\[] | Search keywords                                                                                       |
+
+### Version floor
+
+`engines.baram` is the oldest Baram your plugin runs on, and it is **enforced**: Baram
+refuses to install or update to a version whose floor it does not meet, and says which
+version is needed. Getting it wrong is not cosmetic — declaring a floor higher than
+necessary makes your plugin uninstallable for users who could have run it.
+
+Write it as `>=X.Y.Z`, with all three numbers:
+
+```json
+{ "engines": { "baram": ">=0.5.0" } }
+```
+
+That is the only form both Baram and the publish workflow read. Anything else — `^0.5.0`,
+`~0.5`, `0.5.0`, a two-bound range — is treated by the app as *no floor stated*, so it
+silently stops protecting your users; the publish workflow rejects it outright, so a
+first-party release never ships that way. A prerelease build (`0.6.0-beta.1`) does not
+satisfy `>=0.6.0`, per semver.
 
 ## Capabilities
 
@@ -127,10 +259,11 @@ Accessing an API whose capability was not declared throws a clear error
 | `files:readonly`  | Read files in the vault (no writing)    |               |
 | `sidebar`         | Add panels to the sidebar               |               |
 | `statusbar`       | Display items in the status bar         |               |
-| `settings`        | Add options to the settings screen      |               |
+| `settings`        | Declare options in the settings screen  |               |
 | `ai`              | Access AI/LLM features                  | **sensitive** |
 | `network`         | Make network requests                   | **sensitive** |
 | `storage`         | Use a plugin-private key/value store    | sensitive     |
+| `viewer`          | Register custom file-type viewers       |               |
 
 `ai` and `network` are the highest-sensitivity capabilities — see
 [Trust model & security](#trust-model--security) for exactly what they allow.
@@ -163,6 +296,11 @@ export function deactivate() {
   // hook for cleanup that isn't tracked as a Disposable (e.g. timers).
 }
 ```
+
+**`deactivate` is a trusted-tier hook only.** A sandboxed plugin is never called back:
+unloading it destroys its whole webview realm, so timers, listeners and declared items all
+go with it. Exporting one there is dead code that reads like a lifecycle hook — the
+`word-count` reference plugin deliberately has none.
 
 ## ExtensionContext API
 
@@ -250,19 +388,28 @@ addSettingsTab(opts: PluginSettingsTabOptions): Disposable;
 //   onMount(el: HTMLElement): void; onUnmount?(el: HTMLElement): void }
 // PluginSettingsTabOptions  = { id: string; title: string;
 //   onMount(el: HTMLElement): void; onUnmount?(el: HTMLElement): void }
+
+registerFileViewer(opts: PluginFileViewerOptions): Disposable;
+// PluginFileViewerOptions = { id: string; extensions: string[];
+//   onMount(el: HTMLElement, ctx: PluginFileViewerContext): void;
+//   onUpdate?(el: HTMLElement, ctx: PluginFileViewerContext): void;
+//   onUnmount?(el: HTMLElement): void }
+// PluginFileViewerContext = { assetUrl: string; filePath: string;
+//   refreshKey: number; zoomLevel: number }
 ```
 
 `context.ui` itself is available whenever the manifest declares `sidebar`,
-`statusbar`, or `settings` (any one of the three unlocks the object), but
-each method has its own per-method gate:
+`statusbar`, `settings`, or `viewer` (any one unlocks the object), but each
+method has its own per-method gate:
 
-| Method              | Requires capability                         |
-| ------------------- | ------------------------------------------- |
-| `showStatusBarItem` | `statusbar`                                 |
-| `addSidebarPanel`   | `sidebar`                                   |
-| `addSettingsTab`    | `settings`                                  |
-| `showNotification`  | any of `sidebar` / `statusbar` / `settings` |
-| `addStyle`          | any of `sidebar` / `statusbar` / `settings` |
+| Method               | Requires capability                                    |
+| -------------------- | ------------------------------------------------------ |
+| `showStatusBarItem`  | `statusbar`                                            |
+| `addSidebarPanel`    | `sidebar`                                              |
+| `addSettingsTab`     | `settings`                                             |
+| `registerFileViewer` | `viewer`                                               |
+| `showNotification`   | any of `sidebar` / `statusbar` / `settings` / `viewer` |
+| `addStyle`           | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 
 Notes:
 
@@ -274,6 +421,19 @@ Notes:
   tab — see [Shadow-DOM UI isolation](#shadow-dom-ui-isolation).
 - `addSidebarPanel` / `addSettingsTab` both mount into an isolated Shadow-DOM
   subtree via `onMount(el)` — see the next section.
+- `registerFileViewer` makes the app open files with the listed extensions in
+  your viewer instead of the code editor. The host hands `onMount` a plain
+  (light-DOM) element plus a context: `assetUrl` is the file served over the
+  `asset:` protocol (already cache-busted with `refreshKey`), and `zoomLevel`
+  is the shared editor zoom (Cmd+= / Cmd+- / Cmd+0, Ctrl+wheel) — scaling
+  your content with it is your viewer's job. `onUpdate` fires when the
+  context changes while mounted (zoom, save, external reload). For **text**
+  extensions the app keeps its preview ↔ source toggle: your viewer renders
+  the preview side, CodeMirror the source side. **Binary** extensions are
+  viewer-only, and the app's binary guards (no UTF-8 reads, no text saves)
+  apply whether or not your plugin is enabled. The built-in `media-viewer`
+  plugin (`src/plugins/builtin/media-viewer.ts`) is the reference
+  implementation.
 
 ### `context.ai` (requires `ai`)
 
@@ -332,6 +492,26 @@ remove(key: string): Promise<void>;
 A simple string key/value store, one directory per plugin. See
 [Trust model & security](#trust-model--security) for where it lives and its
 guarantees (or lack thereof).
+
+### `context.settings` (requires `settings`)
+
+```typescript
+getAll(): Record<string, boolean | number | string>;
+```
+
+The user's answers to the fields your manifest declares in
+`contributions.settings`, rendered as a form in your plugin's page under
+**Settings → Plugins**. One entry per declared field, always of the declared
+type; keys your current manifest does not declare are not returned.
+
+Synchronous here and `Promise`-returning in the sandboxed tier — otherwise the
+same function, resolved the same way, so the same plugin source works in both.
+There is no setter in either tier: a value the user chose is not the plugin's to
+move. Use `context.storage` for state of your own.
+
+```javascript
+const { prefix = "»" } = context.settings.getAll();
+```
 
 ### `context.subscriptions`
 
@@ -489,6 +669,10 @@ Copy both files next to your plugin's source (both example plugins'
 approach works) and import types from there:
 
 ```typescript
+// sandboxed (the default tier)
+import type { SandboxContext } from "./plugin-api";
+
+// trusted
 import type { ExtensionContext, StatusBarItem } from "./plugin-api";
 ```
 
@@ -499,16 +683,40 @@ alone (`npm run typecheck` in either example directory, or `tsc --noEmit`).
 
 ## Bundling
 
-Use esbuild to produce a single ESM bundle, keeping `@tiptap/core` and
-`@tiptap/pm` external (the host provides these at runtime; bundling them in
-would duplicate — and likely desync — the app's own ProseMirror instance):
+Use esbuild to produce a single ESM bundle. **What you may leave external depends on your
+tier**, and getting it wrong fails at activate rather than at build time:
+
+**Sandboxed — bundle everything, no `--external` at all:**
+
+```bash
+npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs
+```
+
+A sandboxed plugin is imported from a `blob:` URL, and a blob module has **no base URL**, so
+any bare `import` left in the output cannot resolve. Mark something external and the plugin
+loads to a resolution error. (This tier also cannot use Tiptap at all — extensions are
+injected into the main realm's ProseMirror instance, which is exactly what it has no access
+to.)
+
+**Trusted — keep `@tiptap/core` and `@tiptap/pm` external**, since the host provides them at
+runtime and bundling them in would duplicate — and likely desync — the app's own ProseMirror
+instance:
 
 ```bash
 npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
   --external:@tiptap/core --external:@tiptap/pm
 ```
 
-`package.json` script (as used by both examples):
+`package.json` script — `word-count` (sandboxed) and `ai-summary` (trusted) differ exactly
+here, which is the difference worth copying carefully:
+
+```json
+{
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs"
+  }
+}
+```
 
 ```json
 {
@@ -523,8 +731,7 @@ npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
 ### The registry JSON shape
 
 The marketplace fetches a single JSON document — a `RegistryIndex` — and
-deserializes it on the Rust side (`fetch_registry`,
-`serde_json::from_str::<RegistryIndex>`):
+deserializes it on the Rust side (`fetch_registry`), entry by entry:
 
 ```typescript
 interface RegistryIndex {
@@ -542,6 +749,7 @@ interface RegistryEntry {
   downloadUrl: string; // URL of a hosted plugin ZIP
   checksum: string; // SHA-256 of that ZIP, hex-encoded
   capabilities: PluginCapability[];
+  trust: "sandboxed" | "trusted"; // required — see below
   engines: { baram: string };
   icon?: string;
   keywords?: string[];
@@ -557,6 +765,95 @@ containing the plugin (same contents as the packaging step below); `checksum`
 is that ZIP's SHA-256, hex-encoded. Registry installs verify `checksum`
 before extracting the ZIP — the host refuses to install a package whose hash
 doesn't match.
+
+#### Archive limits
+
+The download and the extraction are bounded separately, because a small archive
+can expand to an enormous one:
+
+| Limit | Value |
+| --- | --- |
+| Compression method | `Stored` or `Deflated` only |
+| Archive size on the wire | 32 MiB |
+| Files in the archive | 2,000 |
+| Path components in any entry | 16 (`dist/chunks/x.mjs` is 3) |
+| Any single file, expanded | 64 MiB |
+| All files together, expanded | 256 MiB |
+| Expanded ÷ compressed ratio | 100:1, or 1 MiB, whichever is larger |
+
+These are set far above anything a real plugin needs — the published reference
+plugin expands to tens of kilobytes, and `dist/chunks/index.mjs` is depth 3 —
+and exist to stop a hostile archive from exhausting memory or disk. If you have
+a legitimate reason to exceed one (a bundled dictionary, a font, a WASM module),
+open an issue; the ratio limit in particular is deliberately loose enough for
+ordinary compressible assets, and the 1 MiB allowance means small archives are
+never judged on a ratio computed from too little output.
+
+Extraction stops at the first limit reached, **while unpacking** rather than
+afterwards, so an archive that would exceed one never gets to write the excess.
+
+Every byte limit is enforced on bytes actually read, not on the sizes the
+archive declares in its own headers, so a mis-stated size will not get you past
+them. The compression allowlist is separate and stricter for a reason: LZMA and
+PPMd size their internal buffers from the archive *before* producing a single
+byte, so no read limit can bound them — `zip -r`, which is what the release
+pipeline runs, produces `Deflated`.
+
+#### A malformed entry costs only itself
+
+Every field above without a `?` is required **of you**, but Baram does not fail
+the whole document when one is missing. An entry it cannot read is dropped and
+the rest of the index is served, so one contributor's typo cannot empty the
+marketplace for everyone. `engines` is looser still: it may be absent on the
+wire, because a missing floor already means "no opinion" to the version gate,
+and deleting an installable plugin over it would be the worse answer.
+
+That tolerance is the reader being liberal, not the requirements going soft —
+and it is silent, which is the trade. A dropped entry looks exactly like an
+entry nobody published. The signal lives at publish time instead:
+`scripts/validate-index.ts` reads the index with the app's own parsers and
+refuses anything the app would quietly prune, demote, or stop protecting. It
+runs in `npm run lint:frontend`, in `plugin-release.yml`, and on every pull
+request to `sayinel/baram-plugins` itself, against the entire index rather than
+only the entry being added.
+
+It judges the *document*, though — it has never opened an archive, because in
+this repository there are none. `scripts/validate-registry-assets.ts` is the
+other half: given a checkout of the registry, it resolves each entry's
+`downloadUrl` the way GitHub Pages will, requires a regular file to be there,
+and hashes it against the declared checksum. An entry naming a missing file, or
+carrying a stale checksum, otherwise deploys cleanly and 404s or fails
+integrity for every user.
+
+Run both before proposing a registry change:
+
+```bash
+npx tsx scripts/validate-index.ts path/to/index.json
+npx tsx scripts/validate-registry-assets.ts path/to/registry-checkout
+```
+
+#### `trust` and `capabilities` are a claim the install verifies
+
+`trust` is **required**. An entry without it is shown with a "Legacy" badge and its
+Install button is disabled: the manifest inside the ZIP must declare a tier, so
+offering the install would only download first and fail second.
+
+`trust` and `capabilities` here are what the user is asked to approve **before** the
+download — the consent dialog is built from the registry entry, because that is all the
+app knows at that point. After the ZIP is fetched, the manifest inside it is checked
+against what was approved, and the install is rolled back if it asks for more:
+
+- a manifest declaring `trust: "trusted"` where the entry said `"sandboxed"`
+- a manifest requesting a capability the entry did not list
+- a manifest whose `id` differs from the entry's
+
+Nothing is written to the plugin store until all three pass, so a registry that
+advertises one thing and ships another fails the install rather than escalating it.
+Listing _fewer_ capabilities in the manifest than in the entry is fine — the check is
+"does not exceed", not "matches exactly" — and `files` covers `files:readonly`, as does
+`editor` for `editor:readonly`.
+
+Keep the entry in step with the manifest you ship. A mismatch is not a warning.
 
 ### How Baram loads the registry
 
@@ -584,6 +881,12 @@ plugin's `baram-plugin.json`) runs `.github/workflows/plugin-release.yml`,
 which builds the plugin, packages the ZIP per the contract above, computes
 its SHA-256, and pushes the ZIP plus an updated `index.json` to the registry
 repo.
+
+Two refusals happen before anything is built: a manifest without a valid
+`trust` fails the release outright (an entry without a tier can only describe
+a plugin nobody can install), and the directories `malicious-fixture` and
+`sandbox-smoke` are denied by name, so a mistyped tag cannot publish a test
+fixture to the public registry.
 
 ### Local testing
 
@@ -617,22 +920,43 @@ the app to pick up a new `registry/index.json`. The **Retry** button shown
 when the fetch errored does the same thing. The cache lives in memory only,
 so restarting the app also forces a fresh fetch if needed.
 `registry/index.json` is the canonical
-example of a valid `RegistryIndex`: it lists the two example plugins
-(`baram-word-count`, `baram-ai-summary`) with every required field populated
-from their real manifests.
+example of a valid `RegistryIndex`: it lists `baram-word-count` with every
+required field — including `trust` — populated from its real manifest. Note that
+**installing** from it is not possible until 2.0.0 is published; see below.
 
 ### The committed seed
 
-The committed seed is a verbatim snapshot of the live registry index: both
-example entries carry the real `downloadUrl` (under
-`https://sayinel.github.io/baram-plugins/plugins/`) and the real SHA-256
-checksum of the published ZIP. It exists so the repo has an offline,
-schema-correct `RegistryIndex` fixture — a Rust drift-guard test
-(`test_committed_registry_seed_deserializes`) deserializes it on every test
-run and fails if its shape or values stop looking like the live registry.
-The example plugins are therefore installable two ways: from the live
-registry via the marketplace, or dev-loaded from source via **Settings →
-Plugins → Developer** (see [Local development loop](#local-development-loop)).
+The seed exists so the repo has an offline, schema-correct `RegistryIndex`
+fixture. A Rust drift-guard test (`test_committed_registry_seed_deserializes`)
+deserializes it on every test run and fails if its shape stops looking like the
+live registry — including a missing `trust`, since an entry without one
+describes a plugin the app refuses to install.
+
+**Installing from the seed does not work right now, and not because of the
+seed.** §260's tier model requires every manifest to declare `trust`, and every
+ZIP published before it — `baram-word-count` 1.0.0/1.0.1, `baram-ai-summary`
+1.0.0 — has a manifest that predates the field, so `validateManifest` rejects
+the download whatever the index says about it. The seed therefore names the
+**next** release (`baram-word-count` 2.0.0) with a `checksum` of **64 zeros**,
+and an install attempt fails on the missing ZIP. Until that release ships, use
+the seed to exercise the marketplace **UI** — listing, capability and tier
+badges, the legacy state, refresh — and dev-load from source
+(**Settings → Plugins → Developer**) to exercise a plugin actually running.
+
+Two further things the seed is **not**:
+
+- It is not a byte-for-byte copy of the live index. It is Prettier-formatted
+  (the live file is written by `update-registry-index.mjs`), and it holds only
+  entries worth publishing — `baram-ai-summary` is absent because it is not
+  published.
+- The placeholder checksum is **not** filled in automatically. The release
+  workflow clones `sayinel/baram-plugins` and updates only _that_ repo's
+  `index.json`; nothing writes back here. After publishing a version, a
+  maintainer copies the workflow's `sha256sum` output into this file by hand.
+  Forgetting is now **reported but not blocked**: `validate-index.ts` warns on
+  an all-zero checksum on every `npm run lint`, while still allowing a seed to
+  name a release whose ZIP does not exist yet. The 64-hex shape check on its
+  own could never see it, since zeros satisfy it.
 
 ### Publishing your own plugin
 
@@ -650,17 +974,18 @@ Plugins → Developer** (see [Local development loop](#local-development-loop)).
 
 ```json
 {
-  "id": "baram-word-count",
+  "id": "my-word-count",
   "name": "Word Count",
   "description": "Displays word and character count",
   "version": "1.0.0",
   "author": "Your Name",
   "license": "MIT",
-  "downloadUrl": "https://github.com/user/baram-word-count/releases/download/v1.0.0/baram-word-count-1.0.0.zip",
+  "downloadUrl": "https://github.com/user/my-word-count/releases/download/v1.0.0/my-word-count-1.0.0.zip",
   "checksum": "sha256-hash-of-zip",
   "capabilities": ["editor:readonly", "events", "statusbar"],
+  "trust": "sandboxed",
   "keywords": ["word", "count"],
-  "engines": { "baram": ">=0.3.0" }
+  "engines": { "baram": ">=0.5.0" }
 }
 ```
 
@@ -715,7 +1040,34 @@ calling `listModels()` is privacy-safe just because privacy mode is on.
 verified against a SHA-256 checksum before install; **dev-folder loads
 (the Developer section) skip this entirely** — loading a local folder is an
 explicit, deliberate act of trusting that code, with no cryptographic check
-in between.
+in between. Dev-folder loading is also **development-builds only**: it bypasses
+the checksum, the registry listing and the consent record all at once, so a
+packaged build refuses it.
+
+**Installing records what you approved.** The install dialog lists the requested
+capabilities and, for `trust: "trusted"`, states plainly that the capability list does
+_not_ bound the plugin — a trusted plugin runs inside Baram itself and holds everything
+regardless of what it declared, so that one needs an explicit acknowledgement. The
+approved `(trust, capabilities)` is stored with the plugin, and an **update that exceeds
+it asks again**: a plugin installed as `sandboxed` cannot quietly become `trusted`, and
+a new capability is shown as new. An update that asks for _less_ installs without a
+prompt and narrows the record.
+
+**Sandboxes share an origin with the app and with each other.** Tauri v2 has no
+per-window origin, so a `plugin-*` webview cannot be given its own. Three consequences,
+all of them bounds rather than bugs:
+
+- The app keeps nothing in `localStorage` — everything persists through Rust's config
+  file — precisely because a plugin could otherwise read it with no capabilities at all.
+- Two installed plugins can still reach each other through `BroadcastChannel`, so a
+  plugin without `network` could use a `network`-granted plugin as a proxy if both are
+  malicious. Capability grants bound one plugin, not a pair that cooperate.
+  `SharedWorker` was the same kind of channel and is blocked — the sandbox denies
+  `worker-src` outright, which also means **no `Worker` at all in a sandboxed plugin**.
+- `indexedDB` and the Cache API are reachable without the `storage` capability. They give
+  a plugin persistence that the capability system does not gate; they do not give it
+  anything of the app's, because the app stores nothing in either. Prefer `ctx.storage`:
+  it is the only plugin storage the user can see and that uninstalling actually removes.
 
 **Bottom line: only install plugins you trust**, especially any declaring
 `ai`, `network`, `files`, or `storage`. New capabilities added in a plugin

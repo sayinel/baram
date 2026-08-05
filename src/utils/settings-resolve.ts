@@ -1,11 +1,6 @@
 // §86 Settings resolve — merge global settings with vault config overrides
 import type { VaultConfig } from "../ipc/types";
 
-/**
- * Merge global settings with vault-scoped overrides.
- * Vault config fields override global when present.
- * Returns a flat ResolvedSettings object.
- */
 /** §86 Frontmatter fields that can override settings (3rd tier). */
 export interface FrontmatterOverrides {
   aiModel?: string;
@@ -44,6 +39,11 @@ export interface ResolvedSettings {
   themeOverride?: string;
 }
 
+/**
+ * Merge global settings with vault-scoped overrides.
+ * Vault config fields override global when present.
+ * Returns a flat ResolvedSettings object.
+ */
 export function resolveSettings(
   globalSettings: {
     aiModel?: string;

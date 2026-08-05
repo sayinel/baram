@@ -76,6 +76,18 @@
         "$value": "{color.blue.50}",
         "$description": "Subtle accent background"
       },
+      "solid": {
+        "$value": "{color.blue.600}",
+        "$description": "Fill for solid accent surfaces that carry text — a step darker than accent-default so white text clears WCAG AA (5.17:1; accent-default is 3.68:1)"
+      },
+      "solidHover": {
+        "$value": "{color.blue.700}",
+        "$description": "Hover fill for solid accent surfaces — darker than accent-solid, so contrast with accent-on-solid rises rather than falls (6.70:1)"
+      },
+      "onSolid": {
+        "$value": "{color.white}",
+        "$description": "Text on accent-solid. Never hardcode white: this flips to black in themes whose accent is light (see src/utils/color-contrast.ts)"
+      },
       "ai": {
         "$value": "{color.violet.500}",
         "$description": "AI feature accent color"
@@ -108,13 +120,37 @@
         "$value": "{color.red.500}",
         "$description": "Danger/error status"
       },
+      "dangerOnSolid": {
+        "$value": "{color.black}",
+        "$description": "Text on a filled danger surface. Black, because white on red-500 is 3.76:1 — under AA (#330). Derived at runtime for user-edited themes; this value covers the default and `system` themes."
+      },
+      "dangerSolidHover": {
+        "$value": "{color.red.400}",
+        "$description": "Hover fill for a solid danger surface — a step LIGHTER, so contrast with the dark danger foreground rises (5.58:1 → 7.59:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+      },
       "warning": {
         "$value": "{color.yellow.500}",
         "$description": "Warning status"
       },
+      "warningOnSolid": {
+        "$value": "{color.black}",
+        "$description": "Text on a filled warning surface. Black, because white on yellow-500 is 2.15:1 — under even the 3:1 non-text floor (#330)."
+      },
+      "warningSolidHover": {
+        "$value": "{color.yellow.400}",
+        "$description": "Hover fill for a solid warning surface — a step LIGHTER, so contrast with the dark warning foreground rises (9.78:1 → 12.58:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+      },
       "success": {
         "$value": "{color.emerald.500}",
         "$description": "Success status"
+      },
+      "successOnSolid": {
+        "$value": "{color.black}",
+        "$description": "Text on a filled success surface. Black, because white on emerald-500 is 2.54:1 — under even the 3:1 non-text floor (#330)."
+      },
+      "successSolidHover": {
+        "$value": "{color.emerald.400}",
+        "$description": "Hover fill for a solid success surface — a step LIGHTER, so contrast with the dark success foreground rises (8.28:1 → 10.92:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
       },
       "info": {
         "$value": "{color.blue.500}",

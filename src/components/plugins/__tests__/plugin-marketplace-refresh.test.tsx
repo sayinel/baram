@@ -37,9 +37,6 @@ const populatedIndex: RegistryIndex = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // §259 — the marketplace renders its browse UI only when plugins are enabled;
-  // this suite exercises that opt-in path.
-  vi.stubEnv("VITE_ENABLE_PLUGINS", "1");
   fetchRegistryIndex.mockResolvedValue(emptyIndex);
   checkForUpdates.mockResolvedValue({});
   usePluginStore.setState({
@@ -210,15 +207,8 @@ describe("PluginMarketplace registry refresh button", () => {
   });
 });
 
-describe("PluginMarketplace when plugins are disabled (#259)", () => {
-  it("shows a security notice and no browse UI in shipped builds", async () => {
-    vi.stubEnv("VITE_ENABLE_PLUGINS", "");
-    render(<PluginMarketplace />);
-    expect(screen.getByText(/temporarily disabled/i)).toBeInTheDocument();
-    // The registry is never fetched and the browse/refresh controls never render.
-    expect(fetchRegistryIndex).not.toHaveBeenCalled();
-    expect(
-      screen.queryByRole("button", { name: /refresh/i }),
-    ).not.toBeInTheDocument();
-  });
-});
+// §260 Phase 5 removed the "plugins are disabled in this build" screen along with the
+// gate that produced it. Nothing replaced the assertion, because nothing replaced the
+// behaviour: the marketplace is now always available, and what a user may install is
+// decided by the consent dialog and the registry cross-check
+// (`plugin-install-consent.test.tsx`).

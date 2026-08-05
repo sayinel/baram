@@ -107,13 +107,13 @@
 }
 
 .custom-ai-btn-primary {
-  color: #fff;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .custom-ai-btn-primary:hover {
-  background: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
 }
 
 .custom-ai-btn-primary:disabled {
@@ -758,15 +758,16 @@
   padding: 0 5px;
   font-size: 11px;
   font-weight: 600;
-  color: white;
   border-radius: 9px;
 }
 
 .skill-lint-badge--error {
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
 }
 
 .skill-lint-badge--warning {
+  color: var(--color-status-warning-on-solid);
   background: var(--color-status-warning);
 }
 
@@ -965,9 +966,9 @@
 }
 
 .skill-gallery-tag--active {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .skill-gallery-list {
@@ -1025,8 +1026,8 @@
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 600;
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 8px;
 }
 
@@ -1085,8 +1086,8 @@
   margin-left: auto;
   font-size: 10px;
   font-weight: 600;
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border-radius: 8px;
 }
 

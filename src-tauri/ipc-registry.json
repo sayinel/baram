@@ -776,15 +776,42 @@
       "description": "파일별 스냅샷 히스토리 조회"
     },
     {
-      "name": "plugin_install",
-      "input": { "url": "string", "checksum": "string?" },
-      "output": "InstalledPluginInfo",
+      "name": "plugin_install_stage",
+      "input": {
+        "url": "string",
+        "registryUrl": "string",
+        "checksum": "string?",
+        "expectedId": "string?"
+      },
+      "output": "StagedPluginInfo",
       "module": "plugin",
       "spec": "§69",
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "플러그인 설치 (URL에서 ZIP 다운로드 + 검증)"
+      "description": "플러그인 스테이징 — ZIP 다운로드·해제·검증만 하고 설치하지 않음 (#261). registryUrl은 필수 — 아카이브가 그 인덱스 디렉터리 아래에서 서빙되지 않으면 거부 (origin+경로 접두, 리다이렉트 홉마다 재검사)"
+    },
+    {
+      "name": "plugin_install_commit",
+      "input": { "stageId": "string", "expectedId": "string" },
+      "output": "CommittedPluginInfo",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "스테이징된 플러그인 설치 — 원자적 교체, 실패 시 이전 버전 복구 (#261)"
+    },
+    {
+      "name": "plugin_install_discard",
+      "input": { "stageId": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "스테이징된 플러그인 폐기 — 설치된 것은 건드리지 않음 (#261)"
     },
     {
       "name": "plugin_uninstall",
@@ -829,6 +856,17 @@
       "milestone": "M10",
       "status": "implemented",
       "description": "플러그인 레지스트리 인덱스 조회"
+    },
+    {
+      "name": "plugin_fetch_revocations",
+      "input": { "url": "string" },
+      "output": "{ body: string, verified: boolean }",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "회수(revocation) 목록 원본 JSON + 서명 검증 여부 조회 — 문서 파싱은 TS의 normalizeRevocationList 담당, 서명(minisign) 검증은 Rust만 수행. TS는 verified=true일 때만 sequence(롤백 방지 카운터)를 신뢰한다"
     },
     {
       "name": "plugin_get_dir",
@@ -943,11 +981,11 @@
     {
       "name": "plugin_call",
       "input": { "op": "PluginOp (internally-tagged on \"kind\")" },
-      "output": "unknown (op-specific JSON)",
+      "output": "string | null (op-specific; a list/object result is JSON-encoded into the string — see BrokerResult)",
       "module": "plugin",
       "spec": "§260",
       "status": "implemented",
-      "description": "§260 broker — authorizes a sandbox op by window.label() + registered capability, executes bounded (caller-derived plugin id)"
+      "description": "§260 broker — authorizes a sandbox op by window.label() + registered capability (any-of for files/files:readonly), rate-limits per plugin and op class, executes bounded (caller-derived plugin id). Ops: storage_*, http_fetch, source_read, staged_read, files_read/write/list (vault-bounded, .baram refused). NOT ai — that is host-mediated over the sandbox transport. §260 Phase 4c: every result is a scalar (string or null); tauri queues a channel payload only when it is ≥8 KiB AND starts with { or [, so encoding lists/objects as a JSON string keeps them out of the ACL-exempt shared queue"
     },
     {
       "name": "plugin_sandbox_register",
@@ -965,7 +1003,43 @@
       "module": "plugin",
       "spec": "§260",
       "status": "implemented",
-      "description": "§260 host-only — drop a sandbox plugin's registered capabilities"
+      "description": "§260 host-only — drop a sandbox plugin's registered capabilities and its inbound message channel"
+    },
+    {
+      "name": "plugin_sandbox_connect",
+      "input": { "channel": "Channel<HostToSandbox>" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 sandbox-only — register this webview's inbound IPC channel (requires prior host registration); a plugin-* window holds no event permission, so this is its only inbound path"
+    },
+    {
+      "name": "plugin_sandbox_report",
+      "input": { "msg": "SandboxToHost" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 sandbox-only — sandbox→host message; re-emitted as plugin:s2h with the plugin id stamped from the caller's window label"
+    },
+    {
+      "name": "plugin_sandbox_send",
+      "input": { "plugin_id": "string", "msg": "HostToSandbox" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 host-only — host→sandbox message over that sandbox's own IPC channel (fails closed if it has not connected)"
+    },
+    {
+      "name": "plugin_sandbox_stage",
+      "input": { "plugin_id": "string", "payload": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 Phase 4b host-only — park a large payload (e.g. the document as markdown) for one sandbox to pull with PluginOp::StagedRead, so it arrives as an invoke result instead of a channel frame that would enter tauri's ACL-exempt channel-data queue"
     },
     {
       "name": "embed_text",
@@ -1282,6 +1356,15 @@
       "phase": 2,
       "milestone": "M7",
       "description": "인덱스 갱신 완료"
+    },
+    {
+      "name": "plugin:s2h",
+      "payload": { "pluginId": "string", "msg": "SandboxToHost" },
+      "module": "plugin",
+      "spec": "§260",
+      "phase": 3,
+      "milestone": "M11",
+      "description": "§260 sandbox→host 메시지 (plugin_sandbox_report가 재발행, pluginId는 caller window label에서 확정). 호스트 윈도우만 수신 — plugin-* 윈도우에는 core:event 권한이 없음"
     }
   ]
 }

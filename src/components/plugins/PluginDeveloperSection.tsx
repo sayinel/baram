@@ -8,6 +8,7 @@ import type { InstalledPlugin, PluginCapability } from "../../plugins/types";
 import { FolderOpen } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import {
   pluginAddDevFolder,
   pluginRemoveDevFolder,
@@ -17,8 +18,10 @@ import { pluginLoader } from "../../plugins/plugin-loader";
 import { usePluginStore } from "../../stores/system/plugin";
 import { useUIStore } from "../../stores/ui/ui";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginSettingsForm } from "./PluginSettingsForm";
 
 export function PluginDeveloperSection() {
+  const { t } = useTranslation();
   const { devPlugins, pluginErrors, addDevPlugin, removeDevPlugin, setError } =
     usePluginStore(
       useShallow((s) => ({
@@ -41,11 +44,20 @@ export function PluginDeveloperSection() {
     try {
       const info = await pluginAddDevFolder(picked);
       const plugin = toInstalledDevPlugin(info);
-      await pluginLoader.loadPlugin(plugin.installPath, plugin.manifest);
+      // `isDev` is DECLARED, not inferred (§260 Phase 5 re-review, G1): `addDevPlugin`
+      // runs on the next line, deliberately after the load so a failing load leaves no
+      // card — so the store cannot yet be asked whether this is a dev folder.
+      await pluginLoader.loadPlugin(plugin.installPath, plugin.manifest, {
+        isDev: true,
+      });
       addDevPlugin(plugin);
-      showToast(`Loaded dev plugin: ${plugin.manifest.name}`);
+      // §260 3c-3 — a load that SUCCEEDS must clear the last failure. Nothing did,
+      // so a transient error (e.g. one activate timeout at startup) stayed on the
+      // card forever, describing a plugin that is now running fine.
+      setError(plugin.manifest.id, null);
+      showToast(t("plugin.dev.toast.loaded", { name: plugin.manifest.name }));
     } catch (err) {
-      showToast(`Failed to load dev plugin: ${String(err)}`);
+      showToast(t("plugin.dev.toast.loadFailed", { error: String(err) }));
     }
   }
 
@@ -53,18 +65,25 @@ export function PluginDeveloperSection() {
     try {
       const info = await pluginAddDevFolder(plugin.installPath); // re-read manifest
       const fresh = toInstalledDevPlugin(info);
-      await pluginLoader.reloadPlugin(fresh.installPath, fresh.manifest);
+      await pluginLoader.reloadPlugin(fresh.installPath, fresh.manifest, {
+        isDev: true,
+      });
       addDevPlugin(fresh);
+      setError(fresh.manifest.id, null); // the reload worked — drop the stale failure
       if (fresh.manifest.tiptapExtensions?.length) {
         showToast(
-          `Reloaded ${fresh.manifest.name} — restart required for Tiptap extensions`,
+          t("plugin.dev.toast.reloadedRestart", {
+            name: fresh.manifest.name,
+          }),
         );
       } else {
-        showToast(`Reloaded dev plugin: ${fresh.manifest.name}`);
+        showToast(
+          t("plugin.dev.toast.reloaded", { name: fresh.manifest.name }),
+        );
       }
     } catch (err) {
       setError(plugin.manifest.id, String(err));
-      showToast(`Reload failed: ${String(err)}`);
+      showToast(t("plugin.dev.toast.reloadFailed", { error: String(err) }));
     }
   }
 
@@ -74,27 +93,25 @@ export function PluginDeveloperSection() {
       await pluginLoader.unloadPlugin(plugin.manifest.id);
       removeDevPlugin(plugin.manifest.id);
       if (selectedId === plugin.manifest.id) setSelectedId(null);
-      showToast(`Removed dev plugin: ${plugin.manifest.name}`);
+      showToast(t("plugin.dev.toast.removed", { name: plugin.manifest.name }));
     } catch (err) {
-      showToast(`Remove failed: ${String(err)}`);
+      showToast(t("plugin.dev.toast.removeFailed", { error: String(err) }));
     }
   }
 
   return (
     <section className="settings-section plugin-dev-section">
-      <h3 className="settings-section-title">Developer</h3>
-      <p className="settings-section-desc">
-        Load and reload local plugin folders in dev.
-      </p>
+      <h3 className="settings-section-title">{t("plugin.dev.title")}</h3>
+      <p className="settings-section-desc">{t("plugin.dev.description")}</p>
 
       <div className="plugin-dev-load-row">
         <span className="plugin-dev-load-row__label">
-          Load dev plugin folder
+          {t("plugin.dev.load")}
         </span>
         <button
           className="plugin-dev-load-btn"
           onClick={handleLoad}
-          title="Load dev plugin folder…"
+          title={t("plugin.dev.loadTitle")}
           type="button"
         >
           <FolderOpen size={16} />
@@ -103,9 +120,7 @@ export function PluginDeveloperSection() {
 
       <div className="vault-tab-list">
         {list.length === 0 ? (
-          <p className="vault-tab-empty">
-            No dev plugins loaded. Point at a folder with baram-plugin.json.
-          </p>
+          <p className="vault-tab-empty">{t("plugin.dev.empty")}</p>
         ) : (
           list.map((p) => (
             <div
@@ -153,23 +168,31 @@ function DevPluginDetail({
   onRemove: () => void;
   plugin: InstalledPlugin;
 }) {
+  const { t } = useTranslation();
   const { manifest, installPath } = plugin;
   return (
     <div className="plugin-dev-detail">
       <h4 className="plugin-dev-detail__name">{manifest.name}</h4>
       <p className="plugin-dev-detail__meta">
-        ID {manifest.id} · Version {manifest.version} · Author{" "}
-        {manifest.author || "—"}
+        {t("plugin.dev.meta", {
+          author: manifest.author || "—",
+          id: manifest.id,
+          version: manifest.version,
+        })}
       </p>
       <div className="plugin-dev-detail__row">
-        <span className="plugin-dev-detail__row-label">Path</span>
+        <span className="plugin-dev-detail__row-label">
+          {t("plugin.dev.path")}
+        </span>
         <code className="plugin-dev-detail__path text-truncate">
           {installPath}
         </code>
       </div>
       {manifest.capabilities.length > 0 && (
         <div className="plugin-dev-detail__row">
-          <span className="plugin-dev-detail__row-label">Capabilities</span>
+          <span className="plugin-dev-detail__row-label">
+            {t("plugin.detail.capabilities")}
+          </span>
           <div className="plugin-dev-detail__capabilities">
             {manifest.capabilities.map((c: PluginCapability) => (
               <PluginCapabilityBadge capability={c} key={c} />
@@ -177,16 +200,20 @@ function DevPluginDetail({
           </div>
         </div>
       )}
+      {/* §260 Phase 4c — a dev plugin is configured HERE, because it never appears in the
+          registry and so never opens `PluginDetail`. Without this the settings form would
+          be unreachable for exactly the plugins being developed against it. */}
+      <PluginSettingsForm pluginId={manifest.id} />
       <div className="plugin-dev-detail__actions">
         <button className="plugin-dev-btn" onClick={onReload} type="button">
-          Reload
+          {t("plugin.action.reload")}
         </button>
         <button
           className="plugin-dev-btn plugin-dev-btn--danger"
           onClick={onRemove}
           type="button"
         >
-          Remove
+          {t("plugin.dev.remove")}
         </button>
       </div>
       {error && <p className="plugin-dev-detail__error">{error}</p>}

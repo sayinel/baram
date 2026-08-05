@@ -8,10 +8,11 @@ on:
   push:
     tags: ['plugin-*']
 
-# Serialize releases: two plugin tags at once must not race on the
-# registry-repo push.
+# Serialize registry writes. Two plugin tags at once must not race on the registry-repo
+# push, and neither must a plugin release and a revocation sync — both clone shallow and
+# push, and revocation-publish.yml shares this group for that reason.
 concurrency:
-  group: plugin-release
+  group: registry-push
   cancel-in-progress: false
 
 permissions:
@@ -27,7 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -39,14 +40,100 @@ jobs:
           [[ "$TAG" =~ ^plugin-(.+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
             || fail "tag $TAG does not match plugin-<dir>-v<semver>"
           DIR="${BASH_REMATCH[1]}"; VERSION="${BASH_REMATCH[2]}"
+          # §260 Phase 6 — WHAT MAY BE PUBLISHED, as an ALLOWLIST.
+          #
+          # This was a denylist naming the two test fixtures, and round 3 of the code review
+          # showed why that was the wrong shape: it enumerated 2 of the 4 directories under
+          # examples/plugins/, and the withheld one was already the counterexample. A tag
+          # `plugin-ai-summary-v1.0.0` passed every check — denylist, version match, id regex,
+          # the release-order gate (its floor is older than the app) — and would have published a
+          # `trust: "trusted"` plugin to the public registry, which is exactly the thing Phase 6
+          # decided not to ship. The withdrawal was enforced only by a unit test asserting the
+          # LOCAL seed, a file this workflow never reads.
+          #
+          # Deny by default. Adding an example must not make it publishable; publishing must be a
+          # deliberate edit here. Pinned by src/plugins/__tests__/malicious-fixture.test.ts, which
+          # EXECUTES this step rather than scanning it.
+          case "$DIR" in
+            word-count) ;;
+            *) fail "$DIR is not in this workflow's publishable allowlist — add it deliberately if that is the intent" ;;
+          esac
           MANIFEST="examples/plugins/$DIR/baram-plugin.json"
           [[ -f "$MANIFEST" ]] || fail "no manifest at $MANIFEST"
+          node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$MANIFEST" \
+            || fail "the manifest at $MANIFEST is not valid JSON"
           MANIFEST_VERSION="$(node -p "require('./$MANIFEST').version")"
           [[ "$VERSION" == "$MANIFEST_VERSION" ]] \
             || fail "tag version $VERSION != manifest version $MANIFEST_VERSION"
           PLUGIN_ID="$(node -p "require('./$MANIFEST').id")"
           [[ "$PLUGIN_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
             || fail "manifest id '$PLUGIN_ID' must match ^[a-z0-9][a-z0-9-]*$"
+          # §260 Phase 6 — only the SANDBOXED tier is published, independently of the allowlist
+          # above. Two conditions rather than one because they fail for different reasons: the
+          # allowlist is "is this directory meant to ship", this is "is this tier fit to ship".
+          # A published trusted plugin would train users to click through the full-trust
+          # acknowledgement for ordinary functionality, which is the opposite of what that
+          # acknowledgement exists for.
+          TRUST="$(node -p "require('./$MANIFEST').trust || ''")"
+          [[ "$TRUST" == "sandboxed" ]] \
+            || fail "manifest trust is '$TRUST'; only sandboxed plugins are published"
+          # §260 Phase 6 code review (H1) — the app must not be BEHIND the floor the plugin
+          # declares. `engines.baram` is validated nowhere at install time (the frontend only
+          # checks that the field is a non-empty string), so publishing a plugin whose floor the
+          # shipped app does not meet gives those users an enabled Install for something that
+          # throws on activate — and destroys a working older version on update.
+          #
+          # ‼️ CAVEAT: `package.json` is bumped when the release is PREPARED, and the GitHub
+          # release is published by hand afterwards. So this proves "the app version has been
+          # bumped to at least the floor", not "that version is in users' hands". Strictly
+          # better than nothing; the ordering itself is still a human step (see the phase 6
+          # spec §7).
+          # Compared numerically in plain node — NOT with `sort -V`, and NOT with the `semver`
+          # package (round-3 LOW plus a defect in the first attempt at this fix):
+          #   • `sort -V` is a version-ish string sort, not a semver comparator; it ordered a
+          #     prerelease `0.5.0-beta.1` as satisfying a `0.5.0` floor.
+          #   • `require("semver")` would NOT RESOLVE here. No root `npm ci` has run at this
+          #     point in the job — the plugin build installs into the plugin directory, and the
+          #     root install happens later, just before the index is validated — and semver is a
+          #     transitive package rather than a declared dependency in any case. Reading a JSON
+          #     file by relative path needs no node_modules; requiring a package does. ‼️ Do not
+          #     "simplify" this to `require("semver")` on the strength of that later install:
+          #     this step runs first, and the failure would be a raw MODULE_NOT_FOUND.
+          # A prerelease app version fails closed: `0.5.0-beta.1` is not the release that ships
+          # the floor, so it must not authorize publishing against it.
+          APP_VERSION="$(node -p "require('./package.json').version")"
+          # `(engines||{})` rather than `engines.baram` (round-4 LOW-1): a manifest with no
+          # `engines` made this assignment throw a raw Node stack, and `set -e` then aborted the
+          # job with NO `::error::` annotation at all — a real refusal that looked like a crash.
+          # Now it comes through as an empty range and is reported by the check below.
+          RANGE="$(node -p "((require('./$MANIFEST').engines)||{}).baram || ''")"
+          # Exit 2 means "the inputs are malformed", 1 means "the app is genuinely behind"
+          # (round-4 LOW-2). One status for both made a legal-but-unsupported range like `^0.5.0`
+          # produce the annotation "release the app first", which is not what happened.
+          set +e
+          node -e '
+            const [app, range] = process.argv.slice(1);
+            const floor = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(range);
+            if (!floor) { console.error(`engines.baram "${range}" must be of the form ">=X.Y.Z"`); process.exit(2); }
+            const appParts = /^(\d+)\.(\d+)\.(\d+)$/.exec(app);
+            if (!appParts) { console.error(`app version "${app}" is not a plain release version`); process.exit(2); }
+            const a = appParts.slice(1).map(Number), f = floor.slice(1).map(Number);
+            const ok = a[0] !== f[0] ? a[0] > f[0] : a[1] !== f[1] ? a[1] > f[1] : a[2] >= f[2];
+            process.exit(ok ? 0 : 3);
+          ' "$APP_VERSION" "$RANGE"
+          VERSION_CHECK=$?
+          set -e
+          # 3 = genuinely behind, 2 = malformed inputs, anything else = the comparator itself
+          # broke. Round-5 LOW-1: a JS throw in that `-e` script also exits 1, so while 1 was the
+          # refusal arm a ReferenceError was annotated "release the app first" — blaming the plugin
+          # author for a bug in this workflow, which is the misdiagnosis LOW-2 set out to remove
+          # surviving on the other path.
+          case "$VERSION_CHECK" in
+            0) ;;
+            3) fail "app version $APP_VERSION does not satisfy this plugin's engines.baram ($RANGE) — release the app first" ;;
+            2) fail "cannot compare versions: app '$APP_VERSION' / engines.baram '$RANGE' (see the message above)" ;;
+            *) fail "the version comparison itself failed (exit $VERSION_CHECK) — this is a bug in this workflow, not a refusal" ;;
+          esac
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || fail "tag commit $GITHUB_SHA is not on main"
           {
@@ -72,6 +159,57 @@ jobs:
           zip -r "$RUNNER_TEMP/$ZIP_NAME" \
             baram-plugin.json dist README.md
 
+      # §260 Phase 6 code review round 5 — RE-VERIFY THE ARTIFACT, and index FROM it.
+      #
+      # Every gate above judges a path in the repo tree, and five review rounds showed that no
+      # in-repo test can prove the later steps stayed inside the directory those gates verified:
+      # each round's guard was a text scan of this file, and each round found the next way past it
+      # (a hardcoded `working-directory`, then a rebound `DIR:`, and `cd`/`defaults.run` were never
+      # covered at all). So stop trying to catch the ways a later step can wander, and re-check the
+      # thing that actually ships.
+      #
+      # The extracted manifest is also what the index is built from, two steps down. That makes the
+      # published ENTRY and the published ARTIFACT agree by construction rather than by review:
+      # they are now the same bytes, so a wandering step cannot make the registry advertise one
+      # plugin while shipping another.
+      - name: Verify the packaged artifact is the plugin that was verified
+        id: artifact
+        env:
+          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          MANIFEST="$RUNNER_TEMP/packaged-manifest.json"
+          unzip -p "$RUNNER_TEMP/$ZIP_NAME" baram-plugin.json > "$MANIFEST" \
+            || fail "the archive has no baram-plugin.json at its root"
+          # All three fields in ONE call, written to a FILE — deliberately not
+          # `X="$(node … || fail …)"`. `fail` echoes to stdout, so inside a command substitution
+          # its `::error::` annotation is captured into the variable instead of being printed, and
+          # the job then aborts with no annotation at all. That is the same
+          # refusal-that-looks-like-a-crash this phase's review filed twice; the first draft of
+          # this very step reproduced it, and the executing test below is what caught it.
+          node -e '
+            const fs = require("fs");
+            let m;
+            try { m = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); }
+            catch { process.exit(1); }
+            process.stdout.write([m.id ?? "", m.version ?? "", m.trust ?? ""].join("\n"));
+          ' "$MANIFEST" > "$RUNNER_TEMP/packaged-fields.txt" \
+            || fail "the packaged baram-plugin.json is not valid JSON"
+          ZIP_ID="$(sed -n 1p "$RUNNER_TEMP/packaged-fields.txt")"
+          ZIP_VERSION="$(sed -n 2p "$RUNNER_TEMP/packaged-fields.txt")"
+          ZIP_TRUST="$(sed -n 3p "$RUNNER_TEMP/packaged-fields.txt")"
+          [[ "$ZIP_ID" == "$PLUGIN_ID" ]] \
+            || fail "the archive contains plugin '$ZIP_ID' but '$PLUGIN_ID' was verified"
+          [[ "$ZIP_VERSION" == "$VERSION" ]] \
+            || fail "the archive contains version '$ZIP_VERSION' but '$VERSION' was verified"
+          # The tier, asserted again on the artifact. The meta step's check judged a repo path; this
+          # one judges the bytes about to be published, so it holds however they got here.
+          [[ "$ZIP_TRUST" == "sandboxed" ]] \
+            || fail "the archive declares trust '$ZIP_TRUST'; only sandboxed plugins are published"
+          echo "manifest=$MANIFEST" >> "$GITHUB_OUTPUT"
+
       - name: Compute checksum
         id: sum
         env:
@@ -80,30 +218,80 @@ jobs:
           CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
+      # For `validate-index.ts` in the next step, which imports the app's own
+      # `parseBaramFloor` and `VALID_CAPABILITIES` rather than restating their rules. Placed
+      # here rather than at the top of the job on purpose: every gate above is deliberately
+      # dependency-free (see the semver note in the meta step), and moving this earlier would
+      # invite those checks to start requiring packages.
+      - uses: ./.github/actions/setup-node
+
+      # ‼️ NO SECRET IS IN REACH OF THIS STEP, and that is the point of splitting it out.
+      #
+      # Security review (MEDIUM-3): the index update and its validation used to live inside
+      # the push step, i.e. AFTER the deploy key was written to `~/.ssh/plugins_deploy` and
+      # `GIT_SSH_COMMAND` pointed at it. So `npx tsx` — and esbuild, and their whole
+      # transitive graph, freshly widened from one plugin's build deps to the entire Baram
+      # frontend dev tree by the `setup-node` above — executed with a key granting write
+      # access to the registry every user's marketplace reads, readable on disk.
+      #
+      # The registry is a public GitHub Pages repo, so READING it needs no credential at
+      # all. Cloning over HTTPS here means every line of third-party code in this job runs
+      # before the key exists; the step below writes it, pushes, and runs no dependency.
+      - name: Update and validate the registry index
+        env:
+          # §260 Phase 6 code review round 5 (HIGH-1) — the manifest comes from the VERIFIED
+          # ARCHIVE, not from a directory named here. This used to bind
+          # `DIR: ${{ steps.meta.outputs.dir }}` and build the path itself, and nothing checked
+          # what `DIR` was bound to: rebinding that one token to `ai-summary` fed the trusted
+          # example's manifest to the index script, which copies `trust` verbatim — publishing an
+          # entry advertising `trust: "trusted"` past both gates Phase 6 rests on, with the whole
+          # test suite green. There is no directory binding here any more.
+          PACKAGED_MANIFEST: ${{ steps.artifact.outputs.manifest }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          CHECKSUM: ${{ steps.sum.outputs.checksum }}
+        run: |
+          git clone --depth 1 "https://github.com/${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          mkdir -p "$RUNNER_TEMP/registry/plugins"
+          cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
+          node scripts/update-registry-index.mjs \
+            --index "$RUNNER_TEMP/registry/index.json" \
+            --manifest "$PACKAGED_MANIFEST" \
+            --zip-name "$ZIP_NAME" \
+            --checksum "$CHECKSUM" \
+            --base-url "$BASE_URL"
+          # The WHOLE index, not just the entry written above. `update-registry-index.mjs`
+          # validates its own manifest input, but nothing has ever read the entries already in
+          # the registry — and those are where a hand-added or community entry lands. The app
+          # now DROPS an entry it cannot deserialize (§69 `tolerant_entries`) instead of failing
+          # the whole fetch, which fixed the outage and removed the last signal that anything
+          # was wrong; this is where that signal comes back. Refusing to publish INTO a broken
+          # index is deliberate: the entries already there are invisible or un-installable to
+          # users right now, and adding one more does not improve that.
+          npx tsx scripts/validate-index.ts "$RUNNER_TEMP/registry/index.json"
+          # And the half the line above structurally cannot judge: that every entry's
+          # `downloadUrl` names an archive that is actually in the registry and hashes to
+          # the checksum the entry declares. The clone plus the `cp` above make this the
+          # exact tree about to be pushed, so a stale checksum or a ZIP that never landed
+          # is caught here rather than by users failing to install.
+          npx tsx scripts/validate-registry-assets.ts "$RUNNER_TEMP/registry" \
+            --base-url "$BASE_URL"
+
+      # Everything third-party has already run. This step writes the key, rewrites the
+      # read-only HTTPS remote to SSH, and pushes — no `node`, no `npx`, no dependency.
       - name: Push ZIP + updated index to registry repo
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
-          DIR: ${{ steps.meta.outputs.dir }}
           ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
           PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
           VERSION: ${{ steps.meta.outputs.version }}
-          CHECKSUM: ${{ steps.sum.outputs.checksum }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
           chmod 600 ~/.ssh/plugins_deploy
           ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
-          git clone --depth 1 "git@github.com:${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
-          mkdir -p "$RUNNER_TEMP/registry/plugins"
-          cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
-          node scripts/update-registry-index.mjs \
-            --index "$RUNNER_TEMP/registry/index.json" \
-            --manifest "examples/plugins/$DIR/baram-plugin.json" \
-            --zip-name "$ZIP_NAME" \
-            --checksum "$CHECKSUM" \
-            --base-url "$BASE_URL"
           cd "$RUNNER_TEMP/registry"
+          git remote set-url origin "git@github.com:${REGISTRY_REPO}.git"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "plugins/$ZIP_NAME" index.json

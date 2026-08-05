@@ -234,9 +234,9 @@
 }
 
 .chat-message-apply-btn:hover {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .ai-chat-error {
@@ -336,8 +336,8 @@
 }
 
 .ai-chat-send-btn {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
 }
 
 .ai-chat-send-btn:disabled {
@@ -346,7 +346,7 @@
 }
 
 .ai-chat-stop-btn {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
 }
 
@@ -446,9 +446,9 @@
   min-width: 16px;
   padding: 0 6px;
   font-size: 10px;
-  color: white;
+  color: var(--color-accent-on-solid);
   text-align: center;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border-radius: 8px;
 }
 
@@ -613,14 +613,27 @@
   opacity: 0.5;
 }
 
+.ai-diff-action-btn-accept:hover {
+  /* Overrides the shared `opacity: 0.9` hover: element opacity composites the label
+     and the fill against the page together, which lowered danger to 4.09:1 on
+     Solarized Light while the resting state passed. */
+  background: var(--color-status-success-solid-hover);
+  opacity: 1;
+}
+
+.ai-diff-action-btn-reject:hover {
+  background: var(--color-status-danger-solid-hover);
+  opacity: 1;
+}
+
 .ai-diff-action-btn-accept {
-  color: white;
+  color: var(--color-status-success-on-solid);
   background: var(--color-status-success);
   border-color: var(--color-status-success);
 }
 
 .ai-diff-action-btn-reject {
-  color: white;
+  color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
   border-color: var(--color-status-danger);
 }

@@ -1,9 +1,15 @@
 import type { PluginTrust } from "../../plugins/types";
 
+import { useTranslation } from "../../i18n/useTranslation";
+
 // §260 — tier badge shown in the plugin install UI.
-const LABEL: Record<PluginTrust, string> = {
-  sandboxed: "Sandboxed",
-  trusted: "Full trust",
+//
+// The label wording tracks the consent dialog on purpose: `plugin.trust.trusted`
+// is the badge-length form of the same term `plugin.consent.fullTrust.title` uses,
+// so the tier a user reads on the card is the tier they are asked to accept.
+const LABEL_KEY: Record<PluginTrust, string> = {
+  sandboxed: "plugin.trust.sandboxed",
+  trusted: "plugin.trust.trusted",
 };
 
 const COLOR: Record<PluginTrust, string> = {
@@ -16,7 +22,8 @@ export function PluginTrustBadge({
 }: {
   trust: PluginTrust | undefined;
 }) {
-  const label = trust ? LABEL[trust] : "Legacy — needs re-validation";
+  const { t } = useTranslation();
+  const label = trust ? t(LABEL_KEY[trust]) : t("plugin.trust.legacy");
   const color = trust ? COLOR[trust] : "var(--color-text-muted)";
   return (
     <span

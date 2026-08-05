@@ -38,6 +38,14 @@ export interface ToastState {
   /** Monotonic id — changing it restarts the auto-dismiss timer */
   id: number;
   message: string;
+  /**
+   * §260 Phase 4a — who is speaking, when it is not the app. Rendered as its OWN
+   * element (see `ToastHost`), never concatenated into `message`: a sandboxed plugin
+   * supplies the message, so a prefix inside that string is a prefix the plugin
+   * controls. The security review found `name: "Baram"` made a plugin's toast
+   * indistinguishable from the app's own.
+   */
+  source?: string;
   type?: "error" | "info" | "warning";
 }
 
@@ -111,7 +119,11 @@ interface UIState {
   /** §298 vim S3 — fed by SourceCodeEditor's vim controller */
   setVimStatus: (status: null | VimStatus) => void;
   /** Show a transient toast (auto-dismisses after a few seconds) */
-  showToast: (message: string, type?: "error" | "info" | "warning") => void;
+  showToast: (
+    message: string,
+    type?: "error" | "info" | "warning",
+    source?: string,
+  ) => void;
   sidebarOpen: boolean;
   sidebarPanel: SidebarPanel;
   sidebarWidth: number;
@@ -188,9 +200,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   toast: null,
 
-  showToast: (message, type) =>
+  showToast: (message, type, source) =>
     set((state) => ({
-      toast: { id: (state.toast?.id ?? 0) + 1, message, type },
+      toast: { id: (state.toast?.id ?? 0) + 1, message, source, type },
     })),
 
   dismissToast: () => set({ toast: null }),

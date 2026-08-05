@@ -2,12 +2,74 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <!-- §260 sandbox-strict CSP. No direct network; scripts only from app origin
-         (Phase 2 loads no asset: plugin — that + the global asset: allowance land
-         in Phase 3). Meta CSP can only tighten vs the global config. -->
+    <!-- §260 sandbox-strict CSP. Everything is 'none' except two things: the app's
+         own entry script, and `blob:` for the plugin bundle.
+
+         `asset:` is deliberately ABSENT (§260 Phase 3c-2b — it was here in 3c-2a and
+         its removal is the fix). Tauri v2's asset scope is APP-GLOBAL — there is no
+         per-webview scope — and at runtime it covers $APPDATA/**, the plugins dir
+         recursively from the PARENT, every dev folder, and the open vault root. With
+         `asset:` in script-src, a plugin could `import('asset://…')` any valid-JS
+         file in those trees (another plugin's bundle, a .js note in the vault): a
+         file-read capability the broker never granted. Do not add it back — the
+         sandbox now gets its bundle via the `source_read` broker op, where Rust picks
+         the file from the caller's own directory.
+
+         `blob:` grants no such thing: a blob is built only from bytes this realm was
+         already handed, so it cannot reach the filesystem. Running plugin-authored
+         code is not a new privilege — that is the plugin's own bundle either way.
+         Consequence: a blob module has no base URL, so a sandboxed plugin must ship a
+         single self-contained ESM (enforced in manifest validation).
+
+         connect-src stays the IPC channel only (invoke + the ipc::Channel
+         large-payload fetch path) — no direct network from this realm.
+
+         ‼️ A meta CSP can only TIGHTEN, never widen: in a PACKAGED build Tauri also
+         serves this document with the global `csp` from tauri.conf.json as a
+         response header (manager/mod.rs set_csp → protocol/tauri.rs), and a resource
+         must pass BOTH policies. Per-window header CSP does not exist in Tauri v2.
+
+         DECIDED in §260 Phase 5: `blob:` is in the global script-src. Two facts
+         settled it, neither of which was written down when the question was raised.
+
+         1. The app ALREADY permits blob-sourced code execution in this origin — the
+            global CSP carries `worker-src 'self' blob:`, and a blob Worker runs
+            attacker-controlled code just as a blob module does. What `script-src
+            blob:` adds on top is DOM access, not the ability to run constructed code.
+            And minting a blob URL requires script execution in the first place, so
+            the path CSP is actually containing here — raw HTML inside a markdown
+            document, with no 'unsafe-inline'/'unsafe-eval' — does not reach it.
+         2. Only script-src had to move. This document also asks for
+            `connect-src ipc: http://ipc.localhost`, which the global policy omits,
+            and that is survivable: tauri's ipc-protocol.js tries the custom-protocol
+            fetch first and, on ANY failure including a CSP block, latches
+            `customProtocolIpcFailed = true` and falls back to
+            `window.ipc.postMessage` for good — which is how the whole app already
+            runs. A blocked module script has no such fallback.
+
+         The narrower alternative, if `blob:` ever proves too broad: serve the bundle
+         from a custom URI scheme whose Rust handler checks `webview_label()`, so the
+         global allowance is inert for the main realm. Rejected here as ~150 lines of
+         Rust to buy back a step `worker-src` had already taken.
+
+         The guardrail test now asserts the POSITIVE form — every source this file
+         needs must exist globally — so widening the sandbox CSP later forces the same
+         deliberation rather than working in dev and failing in release. See
+         plugins-enabled.csp.test.ts. -->
+    <!-- `worker-src 'none'` is explicit because the fallback is wrong here: with no
+         worker-src, the browser falls back to script-src — `'self' blob:` — so this realm
+         could spawn workers, and a SHARED worker is reachable by name from any same-origin
+         context. Every plugin webview shares this origin (Tauri v2 has no per-window
+         origin), so that is a direct plugin-to-plugin channel around the broker: a plugin
+         with no `network` grant could pass data to one that has it. Dedicated workers go
+         with it — CSP cannot separate the two — and that is the intended trade while no
+         plugin depends on them. Relaxing this later behind a capability is easy;
+         retracting it after plugins rely on it is not. (§260 Phase 5 security review.)
+         IndexedDB and the Cache API remain reachable and CSP cannot bound them; they are
+         recorded as residuals in the ADR. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+      content="default-src 'none'; script-src 'self' blob:; worker-src 'none'; connect-src ipc: http://ipc.localhost"
     />
     <title>Baram plugin sandbox</title>
   </head>

@@ -345,7 +345,7 @@ export function useKeybindingActions({
           label: fileName,
           group: "Default",
         });
-        bs.saveBookmarks(fs.rootPath);
+        void bs.saveBookmarks(fs.rootPath);
       }
     });
 

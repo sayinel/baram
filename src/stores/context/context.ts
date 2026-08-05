@@ -13,6 +13,7 @@ import {
   updateContextLabel as ipcUpdateContextLabel,
 } from "../../ipc/context";
 import { logger } from "../../utils/logger";
+import { stripTrailingSeparators } from "../../utils/path-utils";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
@@ -95,6 +96,23 @@ interface ContextState {
 
 // --- Types ---
 
+/**
+ * A context path with trailing separators removed — the string every "is this file inside
+ * that context, and where?" answer must be measured against.
+ *
+ * Exported because §260's `locateInContext` slices a relative path at exactly this
+ * boundary. While it used the RAW `path.length` and this rule stripped separators, a
+ * stored root with two trailing slashes made the two disagree and ate the first character
+ * of the relative path — silently aiming a `files` plugin at a different file (Phase 4a
+ * security re-review, LOW-4). One rule, one place.
+ */
+export function contextRootOf(path: string): string {
+  // Delegates rather than repeating the regex: #306 needed the same rule in three more places,
+  // so it now lives in `path-utils` with the boundary helpers built on it. This name stays
+  // because callers read it as "the context's root".
+  return stripTrailingSeparators(path);
+}
+
 function generateId(): string {
   return `ctx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -133,6 +151,8 @@ function pinSpaceContexts(contexts: ContextInfo[]): ContextInfo[] | null {
   return pinned;
 }
 
+// --- Store ---
+
 /**
  * §95/§98 M1: Keep the zettel id index scoped to the active zettel space.
  * When the newly active context's path is under the configured zettel dir,
@@ -165,8 +185,6 @@ function syncZettelIndexForContext(ctx: ContextInfo | null): void {
     useZettelIndexStore.getState().clear();
   }
 }
-
-// --- Store ---
 
 export const useContextStore = create<ContextState>()(
   persist(
@@ -260,20 +278,42 @@ export const useContextStore = create<ContextState>()(
             if (filePath === ctx.path) return ctx;
             continue;
           }
-          // Vault/Folder: must match with trailing separator to avoid
-          // "/Users/me/work" matching "/Users/me/workspace/note.md"
-          const prefix = ctx.path.endsWith("/") ? ctx.path : ctx.path + "/";
-          if (filePath.startsWith(prefix) && ctx.path.length > bestLen) {
+          // Vault/Folder: the root must be followed by a SEPARATOR, or
+          // "/Users/me/work" would match "/Users/me/workspace/note.md".
+          //
+          // Either separator satisfies it, tested at the boundary rather than inferred
+          // from the root (§260 Phase 4a code review, I3). The original appended "/",
+          // which on Windows — where both sides are backslash-delimited — matched
+          // nothing, so every caller silently got "no context". Inferring the separator
+          // from the root instead (`path.includes("\\") ? "\\" : "/"`) fixed Windows but
+          // broke POSIX, where a backslash is a legal character in a directory name:
+          // a vault at `/home/me/my\dir` would have inferred `"\\"` and then never
+          // matched its own files.
+          const root = contextRootOf(ctx.path);
+          const boundary = filePath[root.length];
+          const contains =
+            filePath.startsWith(root) &&
+            (boundary === "/" || boundary === "\\");
+          if (contains && root.length > bestLen) {
             best = ctx;
-            bestLen = ctx.path.length;
+            bestLen = root.length;
           }
         }
         return best;
       },
 
-      addContext: async (type, path, opts) => {
+      addContext: async (type, rawPath, opts) => {
         const { contexts } = get();
         const colorIndex = contexts.length % DEFAULT_COLORS.length;
+        // §260 Phase 4a security re-review (LOW-2) — normalise trailing separators ONCE,
+        // here, where a path enters the store. Five consumers currently compute a
+        // relative remainder as `filePath.slice(ctx.path.length + 1)` or similar
+        // (`getContextForPath`, §260's `locateInContext`, `chat-context`,
+        // `wikilink-suggest`), so a stored root with a trailing separator was an
+        // off-by-one in each of them — and `journalDirectory` is a user-editable settings
+        // field that can carry one (its zettelkasten twin strips, `resolveJournalDir`
+        // does not). One point of truth beats five compensations.
+        const path = contextRootOf(rawPath) || rawPath;
         const info: ContextInfo = {
           id: generateId(),
           contextType: type,

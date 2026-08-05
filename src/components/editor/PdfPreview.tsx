@@ -102,9 +102,14 @@ export const PdfPreview = memo(function PdfPreview({
     };
   }, [doc]);
 
-  // Fit-width base scale at zoom 1, tracking container resizes
+  // Fit-width base scale at zoom 1, tracking container resizes.
+  // Measure the SCROLL CONTAINER (parent), never .pdf-preview itself: that
+  // element is width:max-content, so it grows with the pages it contains —
+  // measuring it feeds the pages' own width back into baseScale, and any
+  // zoomLevel > 1 then inflates itself through the ResizeObserver forever
+  // (pages wider → container wider → larger baseScale → pages wider …).
   useEffect(() => {
-    const el = containerRef.current;
+    const el = containerRef.current?.parentElement;
     const first = pages[0];
     if (!el || !first) return;
     const update = () => {

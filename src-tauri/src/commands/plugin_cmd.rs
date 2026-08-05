@@ -3,16 +3,46 @@ use crate::config;
 use crate::plugin;
 use tauri::Manager;
 
+/// #261 — install is two commands, and this one installs nothing.
+///
+/// It downloads and extracts to a staging directory and hands back a `stage_id`. Whatever
+/// version the user already has stays installed and running until `plugin_install_commit`
+/// runs, so every check the frontend makes on the downloaded manifest — consent, version
+/// floor, capabilities — costs a `plugin_install_discard` when it refuses, not a working
+/// plugin.
 #[tauri::command]
-pub async fn plugin_install(
+pub async fn plugin_install_stage(
     url: String,
+    registry_url: String,
     checksum: Option<String>,
-) -> Result<plugin::InstalledPluginInfo, String> {
-    // §259 — installing untrusted plugin code is gated off in shipped builds.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
-    plugin::install_plugin(&url, checksum.as_deref())
+    expected_id: Option<String>,
+) -> Result<plugin::StagedPluginInfo, String> {
+    plugin::stage_plugin(
+        &url,
+        &registry_url,
+        checksum.as_deref(),
+        expected_id.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Install a staged plugin, atomically replacing any version already installed.
+#[tauri::command]
+pub async fn plugin_install_commit(
+    stage_id: String,
+    expected_id: String,
+    manifest_sha256: String,
+) -> Result<plugin::CommittedPluginInfo, String> {
+    plugin::commit_staged_plugin(&stage_id, &expected_id, &manifest_sha256)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Throw away a staged plugin. Nothing installed is touched.
+#[tauri::command]
+pub async fn plugin_install_discard(stage_id: String) -> Result<(), String> {
+    plugin::discard_staged_plugin(&stage_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -43,6 +73,16 @@ pub async fn plugin_fetch_registry(url: String) -> Result<plugin::RegistryIndex,
         .map_err(|e| e.to_string())
 }
 
+/// §69 — the revocation list's raw JSON text, plus whether its signature was checked.
+///
+/// Parsing and the drop-bad-entries rule stay on the TS side; see `plugin::fetch_revocations`.
+/// ‼️ `verified` travels with the body because the counter must only be believed when the
+/// bytes were checked — see `plugin::FetchedRevocations` for the attack that made it necessary.
+#[tauri::command]
+pub async fn plugin_fetch_revocations(url: String) -> Result<plugin::FetchedRevocations, String> {
+    plugin::fetch_revocations(&url).await
+}
+
 #[tauri::command]
 pub async fn plugin_get_dir() -> Result<String, String> {
     plugin::get_plugin_dir()
@@ -53,15 +93,23 @@ pub async fn plugin_get_dir() -> Result<String, String> {
 /// Grant the asset protocol runtime scope for the plugin install dir so
 /// convertFileSrc(index.mjs) can load. ~/.baram/plugins is NOT covered by the
 /// static $APPDATA scope, so this MUST run before any plugin loads.
+///
+/// ‼️ THE STAGING DIRECTORY IS CARVED BACK OUT (#261 code review, MEDIUM-4). The grant is
+/// RECURSIVE, and #261 moved extraction from the OS temp directory — outside every scope —
+/// into `~/.baram/plugins/.staging/`, which this would otherwise have made asset-reachable.
+/// A staged archive is un-consented, possibly about-to-be-refused third-party content, and
+/// under §260 3c-1 `asset:` is permitted in `script-src` so an already-loaded trusted plugin
+/// could fetch it. It has no business being reachable before it is installed, and after it
+/// is installed it is reachable under its own directory.
 #[tauri::command]
 pub async fn plugin_prepare_scopes(app: tauri::AppHandle) -> Result<(), String> {
-    // §259 — don't widen the asset-protocol scope when plugins are gated off.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
     let dir = plugin::get_plugin_dir().map_err(|e| e.to_string())?;
-    app.asset_protocol_scope()
+    let scope = app.asset_protocol_scope();
+    scope
         .allow_directory(&dir, true)
+        .map_err(|e| e.to_string())?;
+    scope
+        .forbid_directory(plugin::staging_dir_of(&dir), true)
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -92,8 +140,10 @@ pub async fn plugin_add_dev_folder(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<plugin::InstalledPluginInfo, String> {
-    // §259 — side-loading untrusted plugin code is gated off in shipped builds.
-    if !plugin::plugins_runtime_enabled() {
+    // §260 Phase 5 — the ONE gate that did not lift. Side-loading a directory skips
+    // the checksum, the registry listing and the install consent record, so it stays a
+    // dev-build affordance for plugin authors.
+    if !plugin::dev_plugin_loading_enabled() {
         return Err(plugin::plugins_disabled_error());
     }
     let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
@@ -135,11 +185,6 @@ pub async fn plugin_http_fetch(
     url: String,
     init: Option<plugin::PluginFetchInit>,
 ) -> Result<plugin::PluginFetchResponse, String> {
-    // §259 — the CORS-free network proxy is a data-exfiltration primitive for
-    // untrusted plugin code; gate it off in shipped builds.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
     plugin::http_fetch(url, init).await
 }
 
@@ -157,11 +202,6 @@ pub async fn plugin_storage_write(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    // §259 — no plugin runs when disabled, so nothing should be writing plugin
-    // storage; reject to keep the surface inert.
-    if !plugin::plugins_runtime_enabled() {
-        return Err(plugin::plugins_disabled_error());
-    }
     plugin::storage_write(plugin_id, key, value).await
 }
 
@@ -186,26 +226,553 @@ fn host_window_guard(label: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Upper bound on one sandbox→host frame (§260 Phase 3c-2a). Today's frames
+/// (ready / emitEvent / callResult) are kilobytes, but a Phase-4 document-transform
+/// contribution returns whole documents, and Baram targets 10,000-line files — so
+/// the ceiling is set to bound a monster frame, not to police normal traffic.
+/// Rate limiting is a separate follow-up (a cap alone does not stop a flood).
+const MAX_SANDBOX_REPORT_BYTES: usize = 8 * 1024 * 1024;
+
+/// Bound an attacker-controlled sandbox→host frame before forwarding it: the emit
+/// re-serializes into the main window's event loop and JS heap, so one plugin must
+/// not be able to stall the editor with a multi-MB frame. Tauri has already parsed
+/// `msg` by the time a command runs, so this caps the FORWARD, not the initial
+/// parse — the latter would need an IPC-layer limit Tauri v2 does not expose.
+///
+/// Measured through `plugin::serialized_len_capped` rather than `to_vec().len()`
+/// (§260 3c-2a review, M6): the naive form allocates the whole frame just to learn
+/// its size, so the cost of refusing scaled with the input the check exists to
+/// refuse. Soundness of attributing failure to the cap depends on the parameter
+/// being concretely `&serde_json::Value` — widen it to `impl Serialize` and a custom
+/// `Serialize` could fail for its own reasons, making "too large" a lie.
+fn check_report_size(msg: &serde_json::Value) -> Result<(), String> {
+    match plugin::serialized_len_capped(msg, MAX_SANDBOX_REPORT_BYTES) {
+        Some(_) => Ok(()),
+        None => Err(format!(
+            "sandbox message too large: over {MAX_SANDBOX_REPORT_BYTES} bytes"
+        )),
+    }
+}
+
+/// The mirror of `host_window_guard`: only a `plugin-<id>` window may use the
+/// sandbox-side channel commands, and the id it acts as is derived from the
+/// Tauri-verified label — never from an argument.
+fn sandbox_window_guard(label: &str) -> Result<String, String> {
+    plugin::plugin_id_from_label(label)
+        .ok_or_else(|| "only sandbox windows may use the sandbox message channel".to_string())
+}
+
+// §260 3c-2a review (M4) — the boundary checks live in free functions so the
+// wiring that actually enforces them is unit-testable; the `#[tauri::command]`s
+// below are thin adapters that only supply `window.label()` and managed state.
+
+/// Gate for both sandbox-side transport commands: the caller must be a sandbox
+/// window AND still be registered by the host. Returns the caller-derived id.
+fn authorize_sandbox_caller(
+    label: &str,
+    authorizer: &plugin::PluginAuthorizer,
+) -> Result<String, String> {
+    let plugin_id = sandbox_window_guard(label)?;
+    // The host registers capabilities BEFORE creating the webview, so a live
+    // session is always registered; a stopped one is fully mute (fail closed).
+    if !authorizer.is_registered(label) {
+        return Err("this sandbox is not registered".to_string());
+    }
+    Ok(plugin_id)
+}
+
+/// The `StagedRead` answer — a free function so the property below is TESTABLE.
+///
+/// §260 Phase 4b code review (I1): the test for this phase's central property used to
+/// rebuild the expression itself, so changing the arm to wrap the document in an object —
+/// precisely the mistake the ‼️ warns about — left every Rust test green. `execute_op` is
+/// reachable only through `plugin_call`, which needs an `AppHandle`, so extracting is what
+/// lets a test execute the real code rather than a copy of it (the `admit_staging`
+/// pattern).
+///
+/// ‼️ The result MUST stay a bare JSON string. That is the entire reason this op exists
+/// rather than the host pushing the payload in a frame: tauri routes a channel payload
+/// (and, on the postMessage path, an invoke result) into the app-global
+/// `ChannelDataIpcQueue` once it reaches `CHANNEL_QUEUE_THRESHOLD` **and** its JSON starts
+/// with `{` or `[`, and that queue is reachable by any webview through the ACL-exempt
+/// `FETCH_CHANNEL_DATA_COMMAND` with a guessable sequential id. A scalar string never
+/// matches. Wrap this in an object and a document becomes readable by another sandboxed
+/// plugin.
+fn staged_read_result(
+    staged: &plugin::StagedPayloads,
+    authorizer: &plugin::PluginAuthorizer,
+    label: &str,
+) -> Result<BrokerResult, String> {
+    // The CURRENT registration's epoch: a slot staged for a previous life of this label is
+    // dropped rather than delivered (security review Q5). `authorize_op` already proved
+    // the label is registered, so `None` here means it was deregistered in between —
+    // fail closed.
+    let epoch = authorizer
+        .epoch(label)
+        .ok_or_else(|| "this sandbox is not registered".to_string())?;
+    let payload = staged.take(label, epoch).ok_or_else(|| {
+        // Distinguishable from an empty document on purpose: "" is a legitimate
+        // document, and a plugin that pulls twice must not be handed one.
+        "nothing is staged for this plugin".to_string()
+    })?;
+    // `text`, not `encoded`: a staged payload is ALREADY a scalar string (the host stages
+    // the document, or JSON it composed), so encoding it again would hand the plugin a
+    // quoted string it never asked for.
+    Ok(BrokerResult::text(Some(payload)))
+}
+
+/// Host-only: revoke a sandbox's capabilities AND its inbound channel together, so
+/// a stopped plugin can neither act nor be messaged.
+fn deregister_sandbox(
+    caller_label: &str,
+    plugin_id: &str,
+    authorizer: &plugin::PluginAuthorizer,
+    channels: &plugin::SandboxChannels,
+    limiter: &plugin::PluginRateLimiter,
+    staged: &plugin::StagedPayloads,
+) -> Result<(), String> {
+    host_window_guard(caller_label)?;
+    let label = format!("plugin-{plugin_id}");
+    authorizer.deregister(&label);
+    channels.disconnect(&label);
+    // §260 Phase 4b — a stopped plugin must not leave a document parked in memory.
+    staged.forget(&label);
+    // §260 3c-2c — drop the rate buckets too, so a stopped plugin leaves no state
+    // and a reload does not inherit a drained budget from its previous life.
+    limiter.forget(&label);
+    Ok(())
+}
+
+/// Host-only: deliver one frame to a sandbox over its own IPC channel.
+fn send_to_sandbox(
+    caller_label: &str,
+    plugin_id: &str,
+    msg: serde_json::Value,
+    channels: &plugin::SandboxChannels,
+) -> Result<(), String> {
+    host_window_guard(caller_label)?;
+    channels.send(&format!("plugin-{plugin_id}"), msg)
+}
+
+/// §260 3c-2b — read the caller's entry bundle from the directory the host BOUND at
+/// registration, not from a directory re-derived here.
+///
+/// The earlier version searched (installed dir first, then dev folders) and got the
+/// precedence backwards: the host deliberately lets a dev folder override an
+/// installed copy of the same id (`plugin-lifecycle.ts`), so a search could return
+/// the installed bundle while the host had validated and authorized the DEV
+/// manifest — executing one plugin's code under another's grants, silently
+/// (3c-2b review, I2).
+///
+/// The path comes from the trusted host, once, at register time; the sandbox still
+/// cannot name a file, so `SourceRead` remains argument-free. The containment check
+/// is defence in depth: even a buggy host cannot point a sandbox at somewhere that
+/// is not a plugin directory.
+async fn read_own_source(
+    app: &tauri::AppHandle,
+    label: &str,
+    authorizer: &plugin::PluginAuthorizer,
+) -> Result<String, String> {
+    let dir = authorizer
+        .source_dir(label)
+        .ok_or_else(|| "this sandbox is not registered".to_string())?;
+    let dir = std::path::Path::new(&dir);
+    if !is_plugin_directory(app, dir)? {
+        return Err("plugin source directory is not a plugin location".to_string());
+    }
+    let manifest = plugin::read_manifest_at(dir).map_err(|e| e.to_string())?;
+    plugin::read_bundle_in(dir, &manifest.main).await
+}
+
+/// Is `dir` a plugin location — the installed plugin dir's child, or a registered
+/// dev folder? Canonicalized on both sides so a symlink cannot disguise the answer.
+fn is_plugin_directory(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<bool, String> {
+    let canonical = std::fs::canonicalize(dir)
+        .map_err(|e| format!("plugin source directory is unreadable: {e}"))?;
+    if let Ok(root) = plugin::get_plugin_dir() {
+        if let Ok(canonical_root) = std::fs::canonicalize(&root) {
+            if canonical.parent() == Some(canonical_root.as_path()) {
+                return Ok(true);
+            }
+        }
+    }
+    for folder in read_dev_folders(app)? {
+        if std::fs::canonicalize(&folder).is_ok_and(|dev| dev == canonical) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Upper bound on one brokered file payload (§260 Phase 3c-2c) — 8 MiB, in both
+/// directions. Baram targets 10,000-line documents (~hundreds of KiB), so this
+/// bounds a pathological call without touching real notes: a read is refused by
+/// `metadata` before allocating, and a write is refused before touching the disk.
+/// It bounds SIZE PER CALL, not total bytes written — the rate limiter bounds the
+/// loop, and neither claims to bound a patient plugin's cumulative writes.
+const MAX_PLUGIN_FILE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The app's own per-vault state directory, which brokered file ops refuse.
+const VAULT_STATE_DIR: &str = ".baram";
+
+/// §260 Phase 3c-2c — refuse the `.baram` tree even inside an open vault.
+///
+/// A `files` grant is described to the user as reading and writing files in the
+/// vault, and `.baram/` is not user content — it is the app's own per-vault state, so
+/// writing it is a strictly larger privilege than the grant describes:
+///
+/// - `.baram/config.json` is the vault's SETTINGS OVERRIDE layer (§86,
+///   `context/vault_config.rs`), applied over the user's global settings. It carries
+///   `ai.privacyMode` — a plugin that can write it can turn the privacy restriction
+///   **off**, after which the app itself is permitted to send document content to a
+///   cloud provider — plus `ai.model`, `extensions.enabled/disabled` (silently
+///   disabling editor features), `editor.skillsFolder`, and
+///   `markdown.serializationRules`, which changes how every document in the vault is
+///   written back to disk.
+/// - `.baram/snapshots/` holds copies of earlier file versions (§71), i.e. content
+///   the user may believe they deleted.
+///
+/// (An earlier version of this comment claimed the AI `baseUrl` lives here. It does
+/// not — 3c-2c security review, F6: `AiSection` is model/privacyMode/contextScope,
+/// and `baseUrl` comes from the app-global settings store via `ollamaUrl`. The
+/// carve-out stands on what is actually in the file.)
+///
+/// Matched on path COMPONENTS after canonicalization, so `..` tricks, a nested
+/// `sub/.baram/x`, and a symlink into the tree are all covered, while a file merely
+/// named `.baramish` is not.
+fn reject_app_state_path(resolved: &std::path::Path) -> Result<(), String> {
+    if resolved
+        .components()
+        .any(|c| c.as_os_str() == VAULT_STATE_DIR)
+    {
+        return Err(format!(
+            "access denied: {VAULT_STATE_DIR}/ is app state, not vault content"
+        ));
+    }
+    Ok(())
+}
+
+/// §260 Phase 4a — a sandboxed plugin's path, validated as VAULT-RELATIVE.
+///
+/// The sandboxed tier cannot express an absolute path: the host never tells a sandbox
+/// a root (that would hand every `files`-granted plugin the user's home directory and
+/// username), so a path from that realm is always relative to a context root resolved
+/// here. Refusing anything but plain components is what makes the domain small enough
+/// to reason about — `..`, a leading `/`, and a Windows prefix (`C:`, `\\server\share`)
+/// are all rejected before any filesystem call.
+///
+/// This NARROWS the input; it does not replace the vault rule. `ensure_path_in_vault`
+/// still runs on the resolved path, which is what catches the case this check cannot
+/// see: an in-vault symlink whose target is outside.
+///
+/// `""` and `"."` are accepted and mean the context root, so a plugin needs no
+/// bootstrap path at all — `listDir("")` enumerates the vault.
+fn vault_relative(path: &str) -> Result<&std::path::Path, String> {
+    use std::path::Component;
+    let relative = std::path::Path::new(path);
+    for component in relative.components() {
+        match component {
+            Component::CurDir => {}
+            // §260 Phase 4a security review (LOW-4) — on Windows a colon inside a
+            // component names an alternate data stream (`note.md:hidden`), which
+            // `components()` hands back as one ordinary `Normal`. Such a write lands on
+            // an in-vault file, so it is within what `files` grants, but it is invisible
+            // to `files_list` and to the user. Precautionary: `:` is legal in a POSIX
+            // filename, so the refusal is Windows-only, and the reviewer could not
+            // verify the behaviour on a Windows host.
+            Component::Normal(name) if cfg!(windows) && contains_colon(name) => {
+                return Err(format!(
+                    "path \"{path}\" must not contain \":\" (alternate data stream)"
+                ))
+            }
+            Component::Normal(_) => {}
+            // Deliberately does not echo which rule was hit: one message for every
+            // rejected shape is less to keep in sync, and a plugin learns nothing
+            // useful from the distinction.
+            _ => {
+                return Err(format!(
+                    "path \"{path}\" must be relative to the context root \
+                     (no absolute paths, no \"..\")"
+                ))
+            }
+        }
+    }
+    Ok(relative)
+}
+
+/// Does one path component contain a colon? Compared on the raw bytes so a non-UTF-8
+/// component is judged too, rather than passing by virtue of being unreadable.
+fn contains_colon(name: &std::ffi::OsStr) -> bool {
+    name.as_encoded_bytes().contains(&b':')
+}
+
+/// An `FsError` with any absolute path replaced by the caller's own relative one.
+///
+/// §260 Phase 4a — the sandboxed tier must never receive an absolute path, and two
+/// `FsError` variants carry one in their `Display`. Matched EXHAUSTIVELY on purpose: a
+/// wildcard arm would silently pass through the next variant that happens to embed a
+/// path, which is the fail-open shape this phase's review kept finding.
+fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> String {
+    use crate::fs::FsError;
+    match error {
+        // Keep the sentinel — the frontend's `listDir` wrapper parses it (§4.3) — and
+        // swap only the path after the colon.
+        FsError::PermissionDenied(_) => format!("PERMISSION_DENIED:{caller_path}"),
+        FsError::NotFound(_) => format!("file \"{caller_path}\" was not found"),
+        // These carry an `io::Error` or a watcher message, neither of which embeds a
+        // path on any platform we build for.
+        FsError::ReadError(_) | FsError::TrashError(_) | FsError::WatchError(_) => {
+            error.to_string()
+        }
+    }
+}
+
+/// Where a sandboxed plugin's relative path lands, given its anchor context.
+///
+/// Extracted from `check_plugin_file_path` so the whole decision is unit-testable
+/// without an `AppHandle` (the 3c-2a M4 / 3c-2c `admit_op` pattern): a test that can
+/// only assert on `vault_relative` in isolation would still pass if the caller stopped
+/// calling it.
+fn plugin_target_path(
+    root: std::path::PathBuf,
+    context_type: &crate::context::types::ContextType,
+    path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let relative = vault_relative(path)?;
+    // A `File` context (§89 single-file mode) is a file, not a directory, so the only
+    // path it can anchor is the file itself. Joining onto it would produce a path that
+    // cannot exist, and the error would read as "not found" rather than "there is no
+    // directory here".
+    if *context_type == crate::context::types::ContextType::File {
+        if relative.components().any(|c| c.as_os_str() != ".") {
+            return Err(format!(
+                "path \"{path}\": this context is a single file, so only \"\" or \".\" names it"
+            ));
+        }
+        return Ok(root);
+    }
+    Ok(root.join(relative))
+}
+
+/// The context a relative path resolves against: the one the caller named, else the
+/// active one. Returns its canonical root and type.
+///
+/// Naming a context is not an escalation — `ensure_path_in_vault` already admits any
+/// registered context, so this reaches the same tree either way. It exists because a
+/// plugin that hears `file:open` for context A must be able to read that file while the
+/// user works in context B.
+async fn plugin_path_anchor(
+    app: &tauri::AppHandle,
+    context: Option<&str>,
+) -> Result<(std::path::PathBuf, crate::context::types::ContextType), String> {
+    use tauri::Manager;
+    let manager = app.state::<crate::context::ContextManager>();
+    let id = match context {
+        Some(id) => id.to_string(),
+        None => manager
+            .active_id()
+            .await
+            .ok_or_else(|| "no context is open".to_string())?,
+    };
+    manager
+        .context_root(&id)
+        .await
+        // Echoes the id the CALLER sent, which it already knows.
+        .ok_or_else(|| format!("unknown context \"{id}\""))
+}
+
+/// Every check a brokered file op needs, and the path the op must then act on.
+///
+/// Resolved ONCE (3c-2c review, F7): the vault rule, the app-state carve-out and the
+/// operation all judge and use the *same* `PathBuf`. Checking one resolution and
+/// acting on a second — which is what happens if each step canonicalizes for itself —
+/// leaves a window where the two disagree.
+///
+/// Acting on the canonical path matters more here than for the app's own file
+/// commands, because both halves of a symlink swap are available to this caller: a
+/// `files`-granted plugin can create a symlink inside the vault (pointing in-vault, so
+/// the check passes) and repoint it before the read lands. A canonical path names only
+/// real directories, so no later symlink change can redirect it.
+///
+/// ‼️ EXACT GUARANTEE (§260 Phase 4a security review) — canonicalisation resolves a
+/// symlink that EXISTS. A **dangling** in-vault symlink is different: `resolve_canonical`
+/// falls back to the nearest existing ancestor plus the remaining components
+/// (`context/manager.rs`), so the result is an in-vault path and every check here passes,
+/// while the OS would follow the link on write. What actually neutralises that today is
+/// `crate::fs::write_file`, which writes a sibling `.tmp` and `rename`s it over the link
+/// rather than opening the link itself (§3.6 atomic write). That dependency is
+/// load-bearing: if this arm ever writes with a plain `tokio::fs::write`, a dangling
+/// in-vault symlink becomes arbitrary file creation anywhere the user can write
+/// (`~/Library/LaunchAgents/…`). Do not describe the vault rule as catching symlinks
+/// generally — it catches the ones that resolve.
+///
+/// The vault rule itself is `fs_cmd::ensure_path_in_vault` — the same §88
+/// multi-context, deny-when-nothing-is-open decision `read_file` makes, not a copy.
+///
+/// §260 Phase 4a — the incoming `path` is vault-RELATIVE (`vault_relative`) and is
+/// joined onto the anchor context's canonical root before any of that runs.
+async fn check_plugin_file_path(
+    app: &tauri::AppHandle,
+    context: Option<&str>,
+    path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let (root, context_type) = plugin_path_anchor(app, context).await?;
+    let target = plugin_target_path(root, &context_type, path)?;
+    let resolved = crate::context::manager::resolve_canonical(authorized_path_str(&target)?)?;
+    let resolved_str = authorized_path_str(&resolved)?;
+    super::fs_cmd::ensure_path_in_vault(app, resolved_str).await?;
+    reject_app_state_path(&resolved)?;
+    Ok(resolved)
+}
+
+/// The canonical path as a `&str` for the `crate::fs` helpers, which take one. A
+/// non-UTF-8 path is refused rather than lossily converted: a lossy string would
+/// name a DIFFERENT file than the one just authorized.
+fn authorized_path_str(path: &std::path::Path) -> Result<&str, String> {
+    path.to_str()
+        .ok_or_else(|| "path is not valid UTF-8".to_string())
+}
+
+/// §260 Phase 4c — a broker result that CANNOT enter tauri's shared channel-data queue.
+///
+/// The queue takes a payload only when it is at least `CHANNEL_QUEUE_THRESHOLD` **and** its
+/// JSON starts with `{` or `[`. A JSON string never satisfies the second half, so encoding
+/// a list or an object as one closes the disclosure structurally — no size threshold to get
+/// wrong, no reassembly state machine, no new command, and no ACL change. 3c-2c recorded
+/// this as "chunking, owed with Phase 4"; it turned out not to need chunking.
+///
+/// ‼️ A TYPE rather than a helper function, and that is the whole point. A helper would have
+/// been a convention: the next arm could still write `json!(entries)` and put a listing back
+/// into the queue, and no test would notice — a Rust test can exercise the encoder without
+/// exercising the ARM, which is exactly how §260 Phase 4b's central property came to be
+/// restated by its test instead of executed (I1). With `execute_op` returning this, an arm
+/// cannot express a bare array or object at all; the three constructors below are the only
+/// way to build one, and they are auditable in one screen.
+///
+/// The client parses `encoded` back (`sandbox-client.ts`), so the plugin-facing shape is
+/// unchanged.
+#[derive(Debug)]
+struct BrokerResult(serde_json::Value);
+
+impl BrokerResult {
+    /// A list or an object — the shapes tauri's queue takes — as a JSON string.
+    fn encoded<T: serde::Serialize>(value: &T) -> Result<Self, String> {
+        serde_json::to_string(value)
+            .map(|json| Self(serde_json::Value::String(json)))
+            .map_err(|e| format!("result could not be encoded: {e}"))
+    }
+
+    fn into_value(self) -> serde_json::Value {
+        self.0
+    }
+
+    /// Nothing to answer with — a write.
+    fn nothing() -> Self {
+        Self(serde_json::Value::Null)
+    }
+
+    /// Text that is already a scalar: a document, a file, the plugin's own bundle. `None`
+    /// crosses as JSON null, which `storage_read` uses for "no such key".
+    fn text(value: Option<String>) -> Self {
+        Self(match value {
+            None => serde_json::Value::Null,
+            Some(text) => serde_json::Value::String(text),
+        })
+    }
+}
+
 /// Execute an authorized op using the CALLER-derived plugin id (never a
 /// client-supplied id). Storage is namespaced per plugin id → isolation.
-async fn execute_op(plugin_id: &str, op: plugin::PluginOp) -> Result<serde_json::Value, String> {
+async fn execute_op(
+    app: &tauri::AppHandle,
+    label: &str,
+    plugin_id: &str,
+    op: plugin::PluginOp,
+    authorizer: &plugin::PluginAuthorizer,
+    staged: &plugin::StagedPayloads,
+) -> Result<BrokerResult, String> {
     use plugin::PluginOp::*;
     match op {
-        StorageRead { key } => Ok(serde_json::json!(
-            plugin::storage_read(plugin_id.to_string(), key).await?
+        // §260 3c-2b — the caller's OWN bundle, from the directory the host bound at
+        // registration. No path argument exists, so a sandbox cannot name a file.
+        SourceRead => Ok(BrokerResult::text(Some(
+            read_own_source(app, label, authorizer).await?,
+        ))),
+        // §260 Phase 4b — collect what the host staged for this sandbox.
+        StagedRead => staged_read_result(staged, authorizer, label),
+        // `None` (no such key) crosses as JSON null, which the client distinguishes.
+        StorageRead { key } => Ok(BrokerResult::text(
+            plugin::storage_read(plugin_id.to_string(), key).await?,
         )),
         StorageWrite { key, value } => {
             plugin::storage_write(plugin_id.to_string(), key, value).await?;
-            Ok(serde_json::Value::Null)
+            Ok(BrokerResult::nothing())
         }
-        StorageList => Ok(serde_json::json!(
-            plugin::storage_list(plugin_id.to_string()).await?
-        )),
+        StorageList => BrokerResult::encoded(&plugin::storage_list(plugin_id.to_string()).await?),
         StorageRemove { key } => {
             plugin::storage_remove(plugin_id.to_string(), key).await?;
-            Ok(serde_json::Value::Null)
+            Ok(BrokerResult::nothing())
         }
-        HttpFetch { url, init } => Ok(serde_json::json!(plugin::http_fetch(url, init).await?)),
+        HttpFetch { url, init } => BrokerResult::encoded(&plugin::http_fetch(url, init).await?),
+        // §260 3c-2c — vault-bounded file ops. Authorization (files / files:readonly)
+        // already happened in `plugin_call`; what is left is WHERE, which is the same
+        // decision `read_file` makes, plus the `.baram` carve-out.
+        FilesRead { context, path } => {
+            let resolved = check_plugin_file_path(app, context.as_deref(), &path).await?;
+            let text = plugin::read_text_capped(&resolved, MAX_PLUGIN_FILE_BYTES)
+                .await
+                .map_err(|e| format!("file \"{path}\" {e}"))?;
+            Ok(BrokerResult::text(Some(text)))
+        }
+        FilesWrite {
+            content,
+            context,
+            path,
+        } => {
+            let resolved = check_plugin_file_path(app, context.as_deref(), &path).await?;
+            // Measured on the string we already hold (Tauri parsed the op before this
+            // command ran), so unlike the read there is nothing to save by checking
+            // first — this bounds what reaches the DISK, not what reaches memory.
+            //
+            // KNOWN RESIDUAL (§260 3c-2c code review, LOW-1): because the whole op is
+            // deserialized before the command body runs, a 500 MB `content` is fully
+            // allocated and only then refused — an allocation primitive the rate limit
+            // bounds in frequency but not in size. Closing it needs an IPC-layer limit
+            // Tauri v2 does not expose (the same gap `check_report_size` records for
+            // the frame direction).
+            let len = content.len() as u64;
+            if len > MAX_PLUGIN_FILE_BYTES {
+                return Err(format!(
+                    "file \"{path}\" write is {len} bytes, over the {MAX_PLUGIN_FILE_BYTES}-byte limit"
+                ));
+            }
+            crate::fs::write_file(authorized_path_str(&resolved)?, &content)
+                .await
+                // Report the caller's own path, not the resolved one (LOW-7): the read
+                // arm already did, and echoing the canonical target would tell a plugin
+                // where an in-vault symlink actually points.
+                .map_err(|_| format!("file \"{path}\" could not be written"))?;
+            Ok(BrokerResult::nothing())
+        }
+        FilesList { context, path } => {
+            let resolved = check_plugin_file_path(app, context.as_deref(), &path).await?;
+            // Names only — parity with the trusted tier's `FilesAPI.listDir`, and
+            // strictly less than `FileEntry` (no sizes, no mtimes) for the same call.
+            // Non-recursive: a recursive walk of a large vault is a cost a plugin
+            // should have to pay per directory, where the rate limiter can see it.
+            let entries = crate::fs::list_dir(authorized_path_str(&resolved)?, false)
+                .await
+                // §260 Phase 4a security review (MEDIUM-2) — the ONLY channel that leaked
+                // an absolute path into the sandboxed realm, which is the one thing this
+                // tier's path model exists to prevent. `FsError::PermissionDenied`
+                // Displays as `PERMISSION_DENIED:<canonical path>` (`fs/mod.rs`), so a
+                // TCC-blocked vault answered `ctx.files.listDir("")` with the user's home
+                // directory — and macOS TCC denial is a recurring state for this app
+                // (#252, #285), not a hypothetical. Keeps the sentinel the frontend parses
+                // and substitutes the caller's OWN relative path, like the write arm.
+                .map_err(|e| redact_fs_error(&e, &path))?;
+            BrokerResult::encoded(&entries.into_iter().map(|e| e.name).collect::<Vec<_>>())
+        }
     }
 }
 
@@ -216,44 +783,332 @@ pub async fn plugin_sandbox_register(
     window: tauri::WebviewWindow,
     plugin_id: String,
     capabilities: Vec<String>,
+    install_path: String,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<(), String> {
-    host_window_guard(window.label())?;
-    authorizer.register(format!("plugin-{plugin_id}"), capabilities);
+    register_sandbox(
+        window.label(),
+        &plugin_id,
+        capabilities,
+        install_path,
+        &authorizer,
+        &staged,
+    )
+}
+
+/// Host-only: bind a sandbox's grants, and clear anything the PREVIOUS life of that
+/// label left parked.
+///
+/// §260 Phase 4b security review (LOW-1) — `deregister_sandbox` already forgets the
+/// staged slot, but deregister is not the only way a session ends: a killed webview
+/// leaves the slot behind, and the next instance of the same id would find it there.
+/// `StagedRead` needs no capability, so it would be readable even by a reloaded plugin
+/// whose manifest declares no editor grant at all.
+///
+/// ‼️ Clearing here is the MEMORY half only, and the earlier version of this comment
+/// overstated it (Q5 in the follow-up review): `forget` and `register` take separate
+/// locks, so a stage still in flight from the previous session can land after both and
+/// re-park a document under the new registration. What makes the invariant hold is the
+/// registration EPOCH — `StagedPayloads` records the epoch staging was admitted under and
+/// refuses to deliver across a mismatch. This call keeps a document from lingering; the
+/// epoch keeps it from being read.
+fn register_sandbox(
+    caller_label: &str,
+    plugin_id: &str,
+    capabilities: Vec<String>,
+    install_path: String,
+    authorizer: &plugin::PluginAuthorizer,
+    staged: &plugin::StagedPayloads,
+) -> Result<(), String> {
+    host_window_guard(caller_label)?;
+    let label = format!("plugin-{plugin_id}");
+    staged.forget(&label);
+    // §260 3c-2b — the host binds the directory it resolved and validated together
+    // with the grants, so `SourceRead` reads the code that matches THIS manifest (a
+    // dev folder legitimately shadows an installed copy of the same id).
+    authorizer.register(label, capabilities, install_path);
     Ok(())
 }
 
-/// §260 host-only — drop a sandbox plugin's registered capabilities.
+/// §260 host-only — drop a sandbox plugin's registered capabilities. Also drops
+/// its inbound channel (Phase 3c-2a) so a stopped sandbox cannot be messaged.
 #[tauri::command]
 pub async fn plugin_sandbox_deregister(
     window: tauri::WebviewWindow,
     plugin_id: String,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    channels: tauri::State<'_, plugin::SandboxChannels>,
+    limiter: tauri::State<'_, plugin::PluginRateLimiter>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<(), String> {
-    host_window_guard(window.label())?;
-    authorizer.deregister(&format!("plugin-{plugin_id}"));
+    deregister_sandbox(
+        window.label(),
+        &plugin_id,
+        &authorizer,
+        &channels,
+        &limiter,
+        &staged,
+    )
+}
+
+/// §260 Phase 3c-2a sandbox-only — hand the host an IPC channel for inbound
+/// messages. Called once when the sandbox client boots. Requires the host to
+/// have registered this plugin first (fail closed: a window nobody started
+/// cannot park a channel).
+#[tauri::command]
+pub async fn plugin_sandbox_connect(
+    window: tauri::WebviewWindow,
+    channel: tauri::ipc::Channel<serde_json::Value>,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    channels: tauri::State<'_, plugin::SandboxChannels>,
+) -> Result<(), String> {
+    let label = window.label().to_string();
+    // The derived id is unused here (the label IS the channel key); connect only
+    // needs the gate. `report` below is what acts as the id.
+    authorize_sandbox_caller(&label, &authorizer)?;
+    channels.connect(label, channel);
     Ok(())
+}
+
+/// §260 Phase 3c-2a sandbox-only — the sandbox→host direction. The plugin id is
+/// stamped from the caller's label, so a sandbox cannot impersonate another on
+/// the host's `plugin:s2h` channel.
+///
+/// A plain broadcast `emit` is safe here: no `plugin-*` window holds any
+/// `core:event:*` permission, so only host windows can receive it. `emit_filter`
+/// is deliberately NOT used — it cannot withhold an event from a JS listener
+/// registered with the default `EventTarget::Any` (`match_any_or_filter`,
+/// tauri/src/event/listener.rs), so it would imply a guarantee it does not give.
+#[tauri::command]
+pub async fn plugin_sandbox_report(
+    window: tauri::WebviewWindow,
+    msg: serde_json::Value,
+    app: tauri::AppHandle,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    limiter: tauri::State<'_, plugin::PluginRateLimiter>,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let plugin_id = authorize_sandbox_caller(window.label(), &authorizer)?;
+    // §260 3c-2c review (F3) — rate-limit the FRAME pipe, not just `plugin_call`.
+    // `check_report_size` bounds one frame at 8 MiB and its own comment says a cap
+    // does not stop a flood; this is that follow-up. It also covers `hostRequest`,
+    // which rides this command, so the host-mediated `ai` path is no longer the one
+    // sandbox→host route with no Rust-side limit. Its own bucket, so a plugin's
+    // frames and its broker ops cannot starve each other.
+    limiter
+        .check(window.label(), plugin::RateClass::Transport)
+        .map_err(|e| e.to_string())?;
+    check_report_size(&msg)?;
+    app.emit(
+        "plugin:s2h",
+        serde_json::json!({ "pluginId": plugin_id, "msg": msg }),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// §260 Phase 3c-2a host-only — the host→sandbox direction, delivered over the
+/// target sandbox's own IPC channel (never an event, so no other window sees it).
+#[tauri::command]
+pub async fn plugin_sandbox_send(
+    window: tauri::WebviewWindow,
+    plugin_id: String,
+    msg: serde_json::Value,
+    channels: tauri::State<'_, plugin::SandboxChannels>,
+) -> Result<(), String> {
+    send_to_sandbox(window.label(), &plugin_id, msg, &channels)
+}
+
+/// §260 Phase 4b host-only — park a large payload for one sandbox to pull.
+///
+/// WHY a command instead of `plugin_sandbox_send`: that path is an `ipc::Channel`, and any
+/// frame at or above `CHANNEL_QUEUE_THRESHOLD` is staged in tauri's app-global
+/// channel-data queue, which `FETCH_CHANNEL_DATA_COMMAND` exposes to every webview with a
+/// guessable sequential id (`channels.rs`). A document read is the first payload that
+/// crosses that line routinely, so it goes the way 3c-2b established for the plugin bundle
+/// — the sandbox pulls it as an invoke RESULT (`PluginOp::StagedRead`).
+///
+/// Host-only (`host_window_guard`) so no sandbox can stage into any slot, its own included:
+/// the whole point is that the payload's provenance is the host, which has already checked
+/// the capability for the request that produced it.
+#[tauri::command]
+pub async fn plugin_sandbox_stage(
+    window: tauri::WebviewWindow,
+    plugin_id: String,
+    payload: String,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
+) -> Result<(), String> {
+    let (label, epoch) = admit_staging(
+        window.label(),
+        &plugin_id,
+        payload.len() as u64,
+        &authorizer,
+    )?;
+    staged.stage(label, epoch, payload);
+    Ok(())
+}
+
+/// Every check staging must pass, and the slot label it may then write.
+///
+/// A free function so the ORDER and the rules are unit-testable without an `AppHandle`
+/// (the 3c-2a M4 / `admit_op` pattern): the host-only guard first, because a sandbox must
+/// not learn whether an id is registered by probing this.
+fn admit_staging(
+    caller_label: &str,
+    plugin_id: &str,
+    payload_len: u64,
+    authorizer: &plugin::PluginAuthorizer,
+) -> Result<(String, u64), String> {
+    host_window_guard(caller_label)?;
+    let label = format!("plugin-{plugin_id}");
+    // Fail closed for a plugin nobody registered: staging for it would retain a document
+    // for a sandbox that cannot legally pull anything, and a host that stages for an
+    // unknown id has a bug worth surfacing rather than leaking memory over.
+    // The epoch IS the registration check — `None` means unregistered — and capturing it
+    // here is what ties the payload to the life of the plugin that earned it (Q5).
+    let epoch = authorizer
+        .epoch(&label)
+        .ok_or_else(|| format!("plugin \"{plugin_id}\" is not a registered sandbox"))?;
+    // Bounds what we RETAIN, not what we parsed — tauri deserialized `payload` before the
+    // command body ran, the same limitation `check_report_size` and the `files_write` cap
+    // record.
+    if payload_len > MAX_PLUGIN_FILE_BYTES {
+        return Err(format!(
+            "staged payload is {payload_len} bytes, over the {MAX_PLUGIN_FILE_BYTES}-byte limit"
+        ));
+    }
+    Ok((label, epoch))
 }
 
 /// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
 /// call is authorized by the Tauri-verified caller label + registered capability.
 ///
-/// §260 — unlike the §259-gated plugin_install/plugin_http_fetch, plugin_call is
-/// intentionally NOT behind `plugins_runtime_enabled()`: it is the sandboxed
-/// channel that #260 Phase 5's release-gate transition will *allow* in release
-/// builds. Its control is the authorizer (an unregistered/empty map denies every
-/// call) plus that future release-gate — never the §259 kill-switch, which Phase 5
-/// lifts for sandboxed plugins.
+/// §260 — this command was deliberately left outside the §259 build gate from the day
+/// it was written, because Phase 5 was always going to allow it in release builds; that
+/// happened, and the gate it stood apart from is gone. Its control is, and always was,
+/// the authorizer: an unregistered plugin has an empty capability map, which denies
+/// every op. A build flag was never what made this safe.
 #[tauri::command]
 pub async fn plugin_call(
     window: tauri::WebviewWindow,
     op: plugin::PluginOp,
+    app: tauri::AppHandle,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    limiter: tauri::State<'_, plugin::PluginRateLimiter>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<serde_json::Value, String> {
+    let plugin_id = admit_op(window.label(), &op, &authorizer, &limiter)?;
+    let result = execute_op(&app, window.label(), &plugin_id, op, &authorizer, &staged)
+        .await
+        .map(BrokerResult::into_value);
+    if let Ok(value) = &result {
+        warn_if_result_enters_the_shared_queue(value);
+    }
+    result
+}
+
+/// Tauri's direct-eval threshold: **at or above** this, an `ipc::Channel` payload is
+/// staged in the app-global `ChannelDataIpcQueue` and fetched via the ACL-exempt
+/// `FETCH_CHANNEL_DATA_COMMAND` with a sequential id (see
+/// `capabilities/plugin-sandbox.json`). Tauri's own condition is
+/// `json_string.len() >= MAX_JSON_DIRECT_EXECUTE_THRESHOLD` — its direct-eval arms guard
+/// on `<` — so the boundary value itself is queued.
+///
+/// §260 Phase 4b security review (LOW-2) — scope, because an earlier version of this
+/// comment overstated it. `Channel::send`, i.e. `plugin_sandbox_send`, has NO platform
+/// exclusion, so the host→sandbox push is queue-bound everywhere and that is what
+/// justifies staging on every platform. An invoke RESULT is narrower: only the
+/// postMessage IPC handler can queue one, and it is compiled out on macOS/iOS, while the
+/// custom-protocol handler returns the body as an HTTP response and never queues. The
+/// predicate below therefore OVER-reports on macOS, which is the harmless direction for a
+/// dev warning.
+///
+/// `cfg`-gated with its only users, for the reason recorded on `takes_the_shared_queue`.
+#[cfg(any(debug_assertions, test))]
+const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
+
+/// Would tauri route this value through the app-global channel-data queue?
+///
+/// Both halves of tauri's condition, in one place: the payload reaches
+/// `CHANNEL_QUEUE_THRESHOLD` **and** its JSON starts with `{` or `[`. Extracted from the
+/// dev warning below so the property can be ASSERTED rather than described — §260 Phase 4b
+/// depends on it (a staged document is delivered as a scalar string precisely so this
+/// returns false), and a comment claiming that is one refactor away from being wrong.
+///
+/// The cap passed to the counter is one BELOW the threshold: `serialized_len_capped`
+/// admits a payload of exactly its cap, so passing the threshold itself implemented `>`
+/// where tauri means `>=` and under-reported a payload of exactly 8192 bytes (§260 Phase
+/// 4b security review, LOW-2).
+///
+/// `cfg(any(debug_assertions, test))` because its only production caller is the dev-only
+/// warning below: without it a release build warns `dead_code` (§260 Phase 4b code review,
+/// M3 — CI stayed green only because clippy runs in debug).
+#[cfg(any(debug_assertions, test))]
+fn takes_the_shared_queue(value: &serde_json::Value) -> bool {
+    let json_object_or_array = matches!(
+        value,
+        serde_json::Value::Array(_) | serde_json::Value::Object(_)
+    );
+    json_object_or_array
+        && plugin::serialized_len_capped(value, CHANNEL_QUEUE_THRESHOLD - 1).is_none()
+}
+
+/// §260 3c-2c code review (MEDIUM-2) — warn in dev when a broker RESULT gets big
+/// enough to enter that shared queue.
+///
+/// ‼️ As of Phase 4c nothing should ever trip this: every arm that returns a list or an
+/// object is built with `BrokerResult`, and a JSON string cannot satisfy the `{`/`[` half
+/// of tauri's condition. It is kept as the BACKSTOP for the next arm — a future op that
+/// returns `json!(something)` directly would be the disclosure all over again, and this is
+/// what says so at the moment it happens rather than at the next security review.
+///
+/// (Until 4c this described a live gap: `files_list` and `storage_list` returned arrays and
+/// `http_fetch` an object, and `files_list` crosses 8 KiB on a directory of a few hundred
+/// notes. The fix was expected to be chunking; encoding the result as a scalar turned out
+/// to close it structurally instead.)
+///
+/// Dev-only and advisory on purpose: refusing an over-threshold listing would break a
+/// legitimate op. Measured with the short-circuiting counter so the check never allocates
+/// the payload twice.
+#[cfg(debug_assertions)]
+fn warn_if_result_enters_the_shared_queue(value: &serde_json::Value) {
+    if takes_the_shared_queue(value) {
+        log::warn!(
+            "[plugin] a plugin_call result exceeds tauri's {CHANNEL_QUEUE_THRESHOLD}-byte \
+             direct-eval threshold and is a JSON array/object, so it is staged in the \
+             app-global channel-data queue that FETCH_CHANNEL_DATA_COMMAND exposes to \
+             any webview. Build it with `BrokerResult::encoded` (§260 Phase 4c) — a JSON \
+             string cannot enter that queue."
+        );
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn warn_if_result_enters_the_shared_queue(_value: &serde_json::Value) {}
+
+/// Authorize, then meter — the gate every brokered op passes before any work runs.
+///
+/// A free function (§260 3c-2a review M4's pattern) so the ORDER is unit-testable:
+/// authorization first means a denied call spends no tokens, so a caller that cannot
+/// pass the gate also cannot drain the budget of the plugin whose label it is using.
+/// Metering before execution is what makes the limit bound the work rather than
+/// merely count it afterwards. Returns the caller-derived plugin id.
+fn admit_op(
+    label: &str,
+    op: &plugin::PluginOp,
+    authorizer: &plugin::PluginAuthorizer,
+    limiter: &plugin::PluginRateLimiter,
+) -> Result<String, String> {
+    // `authorize_op` keeps the "does this op need a grant?" decision on the op
+    // (§260 3c-2b: `SourceRead` needs none), so no call site can get it wrong.
     let plugin_id = authorizer
-        .authorize(window.label(), op.required_capability())
+        .authorize_op(label, op)
         .map_err(|e| e.to_string())?;
-    execute_op(&plugin_id, op).await
+    limiter
+        .check(label, op.rate_class())
+        .map_err(|e| e.to_string())?;
+    Ok(plugin_id)
 }
 
 #[cfg(test)]
@@ -265,5 +1120,557 @@ mod tests {
         assert!(host_window_guard("plugin-evil").is_err());
         assert!(host_window_guard("main").is_ok());
         assert!(host_window_guard("file-1").is_ok());
+    }
+
+    /// The managed state every sandbox transport command runs against: authorizer,
+    /// channel map, rate buckets.
+    fn state() -> (
+        plugin::PluginAuthorizer,
+        plugin::SandboxChannels,
+        plugin::PluginRateLimiter,
+    ) {
+        (
+            plugin::PluginAuthorizer::new(),
+            plugin::SandboxChannels::new(),
+            plugin::PluginRateLimiter::new(),
+        )
+    }
+
+    fn dummy_channel() -> tauri::ipc::Channel<serde_json::Value> {
+        tauri::ipc::Channel::new(|_| Ok(()))
+    }
+
+    #[test]
+    fn sandbox_caller_gate_requires_a_sandbox_label_and_registration() {
+        let (authorizer, _, _) = state();
+        // A host window may never use the sandbox-side transport commands.
+        assert!(authorize_sandbox_caller("main", &authorizer).is_err());
+        assert!(authorize_sandbox_caller("file-1", &authorizer).is_err());
+        // A sandbox window the host never registered is refused (fail closed).
+        assert!(authorize_sandbox_caller("plugin-alpha", &authorizer).is_err());
+        authorizer.register("plugin-alpha".into(), vec![], "/p/alpha".into());
+        assert_eq!(
+            authorize_sandbox_caller("plugin-alpha", &authorizer).unwrap(),
+            "alpha"
+        );
+    }
+
+    #[test]
+    fn deregister_revokes_capabilities_and_the_channel_together() {
+        let (authorizer, channels, limiter) = state();
+        authorizer.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/alpha".into(),
+        );
+        channels.connect("plugin-alpha".into(), dummy_channel());
+        assert!(channels.send("plugin-alpha", serde_json::json!({})).is_ok());
+        // Drain this plugin's network budget so the bucket is observably non-fresh.
+        while limiter
+            .check("plugin-alpha", plugin::RateClass::Network)
+            .is_ok()
+        {}
+
+        deregister_sandbox(
+            "main",
+            "alpha",
+            &authorizer,
+            &channels,
+            &limiter,
+            &plugin::StagedPayloads::new(),
+        )
+        .unwrap();
+
+        // Mute in both directions: cannot be messaged, cannot report or broker.
+        assert!(channels
+            .send("plugin-alpha", serde_json::json!({}))
+            .is_err());
+        assert!(authorize_sandbox_caller("plugin-alpha", &authorizer).is_err());
+        assert!(authorizer
+            .authorize_any("plugin-alpha", &["storage"])
+            .is_err());
+        // …and it leaves no rate state behind (§260 3c-2c): a reload gets a fresh
+        // budget rather than inheriting the previous life's drained bucket.
+        assert!(
+            limiter
+                .check("plugin-alpha", plugin::RateClass::Network)
+                .is_ok(),
+            "deregister must drop the plugin's rate buckets"
+        );
+    }
+
+    #[test]
+    fn deregister_and_send_are_host_only() {
+        let (authorizer, channels, limiter) = state();
+        authorizer.register("plugin-alpha".into(), vec![], "/p/alpha".into());
+        channels.connect("plugin-alpha".into(), dummy_channel());
+        // A sandbox must not be able to revoke, or message, another sandbox.
+        assert!(deregister_sandbox(
+            "plugin-evil",
+            "alpha",
+            &authorizer,
+            &channels,
+            &limiter,
+            &plugin::StagedPayloads::new()
+        )
+        .is_err());
+        assert!(send_to_sandbox("plugin-evil", "alpha", serde_json::json!({}), &channels).is_err());
+        // …and the host still can, proving the guard is what rejected above.
+        assert!(send_to_sandbox("main", "alpha", serde_json::json!({}), &channels).is_ok());
+    }
+
+    #[test]
+    fn send_targets_the_label_derived_from_the_plugin_id() {
+        let (_, channels, _) = state();
+        channels.connect("plugin-alpha".into(), dummy_channel());
+        assert!(send_to_sandbox("main", "alpha", serde_json::json!({}), &channels).is_ok());
+        // Guards against passing a label where an id belongs (would key plugin-plugin-alpha).
+        assert!(send_to_sandbox("main", "plugin-alpha", serde_json::json!({}), &channels).is_err());
+    }
+
+    #[test]
+    fn report_size_cap_admits_control_frames_and_rejects_oversized() {
+        let ready = serde_json::json!({
+            "type": "ready",
+            "registered": { "commands": ["hello"], "events": [] }
+        });
+        assert!(check_report_size(&ready).is_ok());
+
+        // Pin the boundary (the check is `>`, not `>=`): a JSON string serializes to
+        // its length plus the two quotes, so this frame is EXACTLY the cap.
+        let exact = serde_json::Value::String("x".repeat(MAX_SANDBOX_REPORT_BYTES - 2));
+        assert!(
+            check_report_size(&exact).is_ok(),
+            "a frame of exactly the cap must be admitted"
+        );
+        let one_over = serde_json::Value::String("x".repeat(MAX_SANDBOX_REPORT_BYTES - 1));
+        assert!(
+            check_report_size(&one_over).is_err(),
+            "one byte over the cap must be refused"
+        );
+
+        // A frame well over the cap is refused rather than forwarded to the host.
+        let huge = serde_json::json!({ "type": "emitEvent", "args": ["x".repeat(MAX_SANDBOX_REPORT_BYTES)] });
+        let err = check_report_size(&huge).expect_err("oversized frame must be refused");
+        assert!(err.contains("too large"), "unexpected error: {err}");
+    }
+
+    /// The resolution step of `check_plugin_file_path` plus the guard. The vault check
+    /// that sits between them needs an `AppHandle`, so it is exercised by the
+    /// `fs_cmd` tests; what matters here is that the guard always judges a RESOLVED
+    /// path, never the caller's string.
+    fn resolve_then_reject(path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+        let resolved = crate::context::manager::resolve_canonical(path.to_str().unwrap())?;
+        reject_app_state_path(&resolved)?;
+        Ok(resolved)
+    }
+
+    /// §260 Phase 4a — the sandboxed tier's whole path domain, asserted through the
+    /// function the op actually calls.
+    ///
+    /// The point of the phase is that a sandbox is never told a root, so it cannot form
+    /// an absolute path; these are the shapes a plugin could still try. Every rejection
+    /// here happens before any filesystem call.
+    #[test]
+    fn a_sandbox_path_cannot_leave_its_context_root() {
+        use crate::context::types::ContextType;
+        let root = std::path::PathBuf::from(if cfg!(windows) { r"C:\vault" } else { "/vault" });
+        let vault = |p: &str| plugin_target_path(root.clone(), &ContextType::Vault, p);
+
+        // Plain relative paths land under the root.
+        assert_eq!(vault("note.md").unwrap(), root.join("note.md"));
+        assert_eq!(
+            vault("notes/deep/a.md").unwrap(),
+            root.join("notes").join("deep").join("a.md")
+        );
+        // …and the root itself needs no path at all, which is what frees a plugin from
+        // having to learn one (the smoke fixture's deleted `VAULT_DIR`).
+        assert_eq!(vault("").unwrap(), root);
+        assert_eq!(vault(".").unwrap(), root);
+        assert_eq!(vault("./note.md").unwrap(), root.join("note.md"));
+
+        let refused = |p: &str| {
+            let e = vault(p).expect_err(&format!("must be refused: {p:?}"));
+            assert!(e.contains("must be relative"), "unexpected error: {e}");
+        };
+        refused("/etc/passwd"); // absolute
+        refused("../../etc/passwd"); // traversal
+        refused("notes/../../escape.md"); // traversal after a valid component
+        refused(".."); // bare traversal
+        if cfg!(windows) {
+            refused(r"C:\Windows\System32\x"); // a drive prefix is absolute here
+            refused(r"\\server\share\x"); // and so is a UNC path
+            refused(r"\Windows\x"); // rooted, no prefix
+                                    // …and an alternate data stream, which `components()` reports as one
+                                    // ordinary component (security review LOW-4). Message differs, so assert
+                                    // separately rather than through `refused`.
+            let e = vault("note.md:hidden").expect_err("an ADS must be refused");
+            assert!(e.contains("alternate data stream"), "unexpected error: {e}");
+        } else {
+            // A colon is a legal POSIX filename character, so the refusal above must
+            // NOT apply here — refusing it would break real vaults.
+            assert_eq!(
+                vault("note:with:colons.md").unwrap(),
+                root.join("note:with:colons.md")
+            );
+        }
+
+        // §89 single-file context: it anchors only itself.
+        let file = |p: &str| plugin_target_path(root.clone(), &ContextType::File, p);
+        assert_eq!(file("").unwrap(), root);
+        let e = file("sibling.md").expect_err("a file context has no directory");
+        assert!(e.contains("single file"), "unexpected error: {e}");
+    }
+
+    /// §260 Phase 4b — the property the whole staging design exists for: a document
+    /// delivered as a `StagedRead` result must NOT be routed through tauri's app-global
+    /// channel-data queue, which `FETCH_CHANNEL_DATA_COMMAND` exposes to every webview
+    /// with a guessable sequential id.
+    #[test]
+    fn a_staged_document_is_delivered_outside_the_shared_queue() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let epoch =
+            authorizer.register("plugin-alpha".into(), vec!["editor".into()], "/p/a".into());
+        let staged = plugin::StagedPayloads::new();
+        // Far over the 8 KiB threshold — a real document, not a toy.
+        let document = "# note\n".repeat(4_000);
+        assert!(document.len() > CHANNEL_QUEUE_THRESHOLD * 2);
+        staged.stage("plugin-alpha".into(), epoch, document.clone());
+
+        // The REAL arm, not a copy of it (code review I1): rebuilding the expression here
+        // meant wrapping the document in an object left every Rust test green.
+        let result = staged_read_result(&staged, &authorizer, "plugin-alpha")
+            .unwrap()
+            .into_value();
+
+        assert!(
+            matches!(result, serde_json::Value::String(_)),
+            "the result must stay a SCALAR string; wrapping it in an object is what \
+             would put the document into the shared queue"
+        );
+        assert!(
+            !takes_the_shared_queue(&result),
+            "a staged document must not take the shared channel-data queue"
+        );
+
+        // The contrast, so this test fails if the predicate stops discriminating: the same
+        // bytes wrapped in an object DO take the queue. That wrapper is the mistake the
+        // arm's comment warns against.
+        let wrapped = serde_json::json!({ "markdown": document });
+        assert!(
+            takes_the_shared_queue(&wrapped),
+            "an over-threshold object must be recognised as queue-bound"
+        );
+
+        // Consumed by the real arm too, so a replayed pull cannot re-read the document.
+        let second = staged_read_result(&staged, &authorizer, "plugin-alpha")
+            .expect_err("a second pull must not be answered");
+        assert!(second.contains("nothing is staged"), "unexpected: {second}");
+    }
+
+    /// §260 Phase 4c — the list-shaped ops cannot enter the shared queue either.
+    ///
+    /// Through `BrokerResult::encoded`, the constructor the arms call (the I1 lesson: a test
+    /// that rebuilds the expression proves nothing about the arm). The fixtures are the two
+    /// shapes that used to be queue-bound in ordinary use — a directory listing of a few
+    /// hundred notes, and an HTTP response body.
+    #[test]
+    fn a_list_or_object_result_is_encoded_out_of_the_shared_queue() {
+        let listing: Vec<String> = (0..600).map(|i| format!("note-{i:04}.md")).collect();
+        let raw = serde_json::json!(listing);
+        assert!(
+            takes_the_shared_queue(&raw),
+            "the fixture must be queue-bound as a bare array or this test proves nothing"
+        );
+
+        let encoded = BrokerResult::encoded(&listing).unwrap().into_value();
+
+        assert!(
+            matches!(encoded, serde_json::Value::String(_)),
+            "a list result must cross as a JSON string"
+        );
+        assert!(!takes_the_shared_queue(&encoded));
+        // Round-trips: the client parses this back, so encoding must not lose the shape.
+        let parsed: Vec<String> =
+            serde_json::from_str(encoded.as_str().unwrap()).expect("must parse back");
+        assert_eq!(parsed, listing);
+
+        // …and the same for an object, which is what `http_fetch` returns.
+        let body =
+            serde_json::json!({ "body": "x".repeat(CHANNEL_QUEUE_THRESHOLD), "status": 200 });
+        assert!(takes_the_shared_queue(&body));
+        assert!(!takes_the_shared_queue(
+            &BrokerResult::encoded(&body).unwrap().into_value()
+        ));
+    }
+
+    /// §260 Phase 4b security review (LOW-2) — the predicate must agree with tauri at the
+    /// BOUNDARY, not one byte past it: tauri queues on `len >= threshold`, and the earlier
+    /// form implemented `>` because `serialized_len_capped` admits exactly its cap.
+    #[test]
+    fn the_queue_predicate_matches_tauri_at_the_exact_threshold() {
+        // Build an array whose serialization is exactly CHANNEL_QUEUE_THRESHOLD bytes.
+        // `["<pad>"]` is 2 brackets + 2 quotes = 4 bytes of framing.
+        let exact = serde_json::json!([("x".repeat(CHANNEL_QUEUE_THRESHOLD - 4))]);
+        assert_eq!(
+            serde_json::to_string(&exact).unwrap().len(),
+            CHANNEL_QUEUE_THRESHOLD,
+            "the fixture must sit exactly on the boundary or this test proves nothing"
+        );
+        assert!(
+            takes_the_shared_queue(&exact),
+            "a payload of exactly the threshold IS queued by tauri"
+        );
+
+        // One byte under is direct-eval'd, so the predicate must say so — otherwise the
+        // fix above would have been "always true" rather than "off by one".
+        let under = serde_json::json!([("x".repeat(CHANNEL_QUEUE_THRESHOLD - 5))]);
+        assert_eq!(
+            serde_json::to_string(&under).unwrap().len(),
+            CHANNEL_QUEUE_THRESHOLD - 1
+        );
+        assert!(!takes_the_shared_queue(&under));
+    }
+
+    /// §260 Phase 4b security review (LOW-1) — a new registration for a label must not
+    /// inherit the previous one's staged document.
+    ///
+    /// The reachable path is a dev reload or a disable→enable: `StagedRead` requires no
+    /// capability, so without this the reloaded instance's first pull would return the
+    /// PREVIOUS session's document even if its manifest now declares no editor grant.
+    #[test]
+    fn re_registering_a_plugin_clears_a_document_its_previous_life_left_staged() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let staged = plugin::StagedPayloads::new();
+
+        register_sandbox(
+            "main",
+            "alpha",
+            vec!["editor".into()],
+            "/p/a".into(),
+            &authorizer,
+            &staged,
+        )
+        .unwrap();
+        let first_epoch = authorizer.epoch("plugin-alpha").expect("registered");
+        staged.stage(
+            "plugin-alpha".into(),
+            first_epoch,
+            "# the user's document".into(),
+        );
+
+        // The webview dies without a deregister — or a stage lands just after one.
+        register_sandbox(
+            "main",
+            "alpha",
+            vec!["statusbar".into()],
+            "/p/a".into(),
+            &authorizer,
+            &staged,
+        )
+        .unwrap();
+
+        let second_epoch = authorizer.epoch("plugin-alpha").expect("registered");
+        assert_ne!(first_epoch, second_epoch, "a reload is a new registration");
+        assert_eq!(
+            staged.take("plugin-alpha", second_epoch),
+            None,
+            "the reloaded instance must not inherit the previous session's document"
+        );
+        // Still host-only, and the grants really were replaced.
+        assert!(register_sandbox(
+            "plugin-alpha",
+            "alpha",
+            vec![],
+            "/p/a".into(),
+            &authorizer,
+            &staged
+        )
+        .is_err());
+    }
+
+    /// §260 Phase 4b — staging is host-only, fails closed for an unregistered plugin, and
+    /// is capped. Checked through `admit_staging` so the decision is covered rather than a
+    /// bare predicate (the 3c-3 M4 lesson).
+    #[test]
+    fn staging_is_host_only_registered_and_capped() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let epoch =
+            authorizer.register("plugin-alpha".into(), vec!["editor".into()], "/p/a".into());
+
+        assert_eq!(
+            admit_staging("main", "alpha", 10, &authorizer).unwrap(),
+            ("plugin-alpha".to_string(), epoch)
+        );
+        // A file-mode window is a host realm too (§89) — consistent with register /
+        // deregister / send, which all admit one. Nothing exercises it today: file windows
+        // skip `initializePlugins` entirely (3c-3), so they build no editor bridge and
+        // never stage. Pinned as a boundary rule, not as a live path (code review N2).
+        assert!(admit_staging("file-1", "alpha", 10, &authorizer).is_ok());
+
+        // A sandbox may not stage — not for another plugin, and not for ITSELF: the
+        // payload's provenance is the whole point, since the host stages only after
+        // checking the capability for the request that produced it.
+        let denied = admit_staging("plugin-alpha", "alpha", 10, &authorizer)
+            .expect_err("a sandbox window must not stage");
+        assert!(denied.contains("may not register"), "unexpected: {denied}");
+        assert!(admit_staging("plugin-evil", "alpha", 10, &authorizer).is_err());
+
+        // Unregistered id: fail closed rather than retain a document nobody can pull.
+        let unknown = admit_staging("main", "ghost", 10, &authorizer)
+            .expect_err("an unregistered plugin must be refused");
+        assert!(
+            unknown.contains("not a registered sandbox"),
+            "unexpected: {unknown}"
+        );
+
+        // Capped, at the boundary.
+        assert!(admit_staging("main", "alpha", MAX_PLUGIN_FILE_BYTES, &authorizer).is_ok());
+        let over = admit_staging("main", "alpha", MAX_PLUGIN_FILE_BYTES + 1, &authorizer)
+            .expect_err("over the cap must be refused");
+        assert!(over.contains("over the"), "unexpected: {over}");
+    }
+
+    /// §260 Phase 4a security review (MEDIUM-2) — an error must not carry an absolute
+    /// path back into the sandboxed realm. This was the only channel that did: a
+    /// TCC-blocked vault answered `listDir("")` with the user's home directory.
+    #[test]
+    fn a_filesystem_error_never_carries_an_absolute_path_to_the_sandbox() {
+        use crate::fs::FsError;
+        let secret = "/Users/someone/Documents/Private Vault";
+
+        let denied = redact_fs_error(&FsError::PermissionDenied(secret.into()), "notes");
+        // The sentinel survives — the frontend's `listDir` wrapper parses it (§4.3) —
+        // but the path is the caller's own.
+        assert_eq!(denied, "PERMISSION_DENIED:notes");
+        assert!(!denied.contains(secret));
+
+        let missing = redact_fs_error(&FsError::NotFound(secret.into()), "notes/a.md");
+        assert!(!missing.contains(secret), "leaked: {missing}");
+        assert!(missing.contains("notes/a.md"), "unexpected: {missing}");
+
+        // A variant that carries no path is passed through unchanged, so a real cause is
+        // not flattened into a generic message.
+        let io = redact_fs_error(
+            &FsError::ReadError(std::io::Error::other("disk on fire")),
+            "notes",
+        );
+        assert!(io.contains("disk on fire"), "unexpected: {io}");
+    }
+
+    /// §260 3c-2c — `.baram/` is the app's own per-vault state, so a plugin that could
+    /// write it could flip `ai.privacyMode` off or rewrite
+    /// `markdown.serializationRules` for every document. Component-matched after
+    /// canonicalization, so nesting and `..` are covered and a similarly-named file
+    /// is not.
+    #[test]
+    fn app_state_paths_are_refused_at_any_depth() {
+        let base = std::env::temp_dir().join(format!("baram-state-{}", std::process::id()));
+        let state = base.join(VAULT_STATE_DIR);
+        let nested = base.join("notes").join(VAULT_STATE_DIR);
+        std::fs::create_dir_all(state.join("snapshots").join("data")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(state.join("config.json"), "{}").unwrap();
+        std::fs::write(base.join("note.md").as_path(), "# hi").unwrap();
+        std::fs::write(base.join(".baramish").as_path(), "not app state").unwrap();
+
+        let denied = |p: std::path::PathBuf| {
+            let e =
+                resolve_then_reject(&p).expect_err(&format!("must be refused: {}", p.display()));
+            assert!(e.contains("app state"), "unexpected error: {e}");
+        };
+        denied(state.join("config.json"));
+        denied(state.join("snapshots").join("data").join("old.md"));
+        denied(nested.join("anything.md")); // not just at the vault root
+        denied(state.join("does-not-exist-yet.json")); // a WRITE target need not exist
+                                                       // Nor can a traversal launder it.
+        denied(
+            base.join("notes")
+                .join("..")
+                .join(VAULT_STATE_DIR)
+                .join("config.json"),
+        );
+
+        // Ordinary content, and a file merely NAMED like the state dir, are fine.
+        assert!(resolve_then_reject(&base.join("note.md")).is_ok());
+        assert!(resolve_then_reject(&base.join(".baramish")).is_ok());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// §260 3c-2c — the ops act on the RESOLVED path, which is what closes the
+    /// symlink-swap window a `files`-granted plugin could otherwise open (it controls
+    /// both the path it asks for and, inside the vault, what that path points at) —
+    /// and it is also what stops a symlink from disguising an app-state target.
+    #[cfg(unix)]
+    #[test]
+    fn resolution_defeats_a_symlink_and_the_guard_judges_the_target() {
+        let base = std::env::temp_dir().join(format!("baram-link-{}", std::process::id()));
+        std::fs::create_dir_all(base.join("real")).unwrap();
+        std::fs::create_dir_all(base.join(VAULT_STATE_DIR)).unwrap();
+        let target = base.join("real").join("note.md");
+        std::fs::write(&target, "# hi").unwrap();
+        std::fs::write(base.join(VAULT_STATE_DIR).join("config.json"), "{}").unwrap();
+
+        // An innocent link resolves to its target, and THAT is what the op receives.
+        let link = base.join("link.md");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert_eq!(
+            resolve_then_reject(&link).unwrap(),
+            std::fs::canonicalize(&target).unwrap(),
+            "a symlinked path must resolve to its target before the op runs"
+        );
+
+        // A link whose name says "note" but which points into app state is refused,
+        // because the guard sees the resolved path, not the innocuous one.
+        let disguise = base.join("innocent.md");
+        std::os::unix::fs::symlink(base.join(VAULT_STATE_DIR).join("config.json"), &disguise)
+            .unwrap();
+        let err = resolve_then_reject(&disguise).expect_err("a disguised link must be refused");
+        assert!(err.contains("app state"), "unexpected error: {err}");
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// §260 3c-2c code review — the ordering claim ("a denied call costs no tokens")
+    /// had no test: swapping the two checks broke nothing. It matters because the
+    /// budget is keyed on the caller's label, so metering an UNAUTHORIZED call would
+    /// let anything that can reach the command spend the budget of the plugin whose
+    /// label it presents.
+    #[test]
+    fn a_denied_op_spends_no_tokens() {
+        let (authorizer, _, limiter) = state();
+        let op = plugin::PluginOp::StorageList;
+        // Unregistered: refused by authorization, and the bucket is untouched.
+        let burst = plugin::RateClass::Default.burst();
+        for _ in 0..burst * 2 {
+            assert!(admit_op("plugin-alpha", &op, &authorizer, &limiter).is_err());
+        }
+
+        // Now grant it: a full burst is still available, which proves none of the
+        // refused calls above was metered.
+        authorizer.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/alpha".into(),
+        );
+        for i in 0..burst {
+            assert!(
+                admit_op("plugin-alpha", &op, &authorizer, &limiter).is_ok(),
+                "call {i} of the fresh burst must be admitted"
+            );
+        }
+        // …and the limiter is genuinely in the path: the next one is refused, with the
+        // rate-limit error rather than an authorization error.
+        let err = admit_op("plugin-alpha", &op, &authorizer, &limiter)
+            .expect_err("past the burst must be refused");
+        assert!(err.contains("rate limit"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn sandbox_window_guard_is_the_mirror_and_derives_the_id() {
+        assert_eq!(sandbox_window_guard("plugin-alpha").unwrap(), "alpha");
+        assert!(sandbox_window_guard("main").is_err());
+        assert!(sandbox_window_guard("file-1").is_err());
     }
 }

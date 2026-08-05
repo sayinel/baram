@@ -45,7 +45,7 @@ import {
   type ProgressiveLoadHandle,
   REST_CHUNK_BLOCKS,
 } from "../utils/editor/progressive-load";
-import { isMarkdownFile, isPdfFile } from "../utils/file-type";
+import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 import {
@@ -116,6 +116,13 @@ export function useTabSwitching({
   };
 
   // --- Tab switching: swap editor content when activeTabId changes ---
+  //
+  // ‼️ Every branch below that installs content must call `markContentLoaded` (§260 Phase
+  // 4b): the plugin editor surface refuses reads and writes while the last-loaded tab is
+  // not the active one, which is what keeps a sandboxed plugin from reading the OUTGOING
+  // tab's document during the deferred install. The early return here is safe only
+  // because a null editor means nothing was installed either — the two facts are aligned
+  // today, not by construction, so a new early return needs one or the other to hold.
   useEffect(() => {
     if (!editor) return;
 
@@ -191,7 +198,11 @@ export function useTabSwitching({
         // PDF tabs are read-only viewers with no editor — caching
         // sourceContentRef here would overwrite the "" sentinel with another
         // tab's text under the PDF's path.
-        if (prevTab?.filePath && !prevMidLoad && !isPdfFile(prevTab.filePath)) {
+        if (
+          prevTab?.filePath &&
+          !prevMidLoad &&
+          !isBinaryViewerFile(prevTab.filePath)
+        ) {
           try {
             const md =
               prevIsCode || isSourceMode

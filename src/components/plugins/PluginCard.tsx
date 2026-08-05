@@ -5,6 +5,7 @@ import type {
 } from "../../plugins/types";
 
 // §69 Plugin Card — Compact card for marketplace listing
+import { useTranslation } from "../../i18n/useTranslation";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 
 interface PluginCardProps {
@@ -14,6 +15,7 @@ interface PluginCardProps {
   onSelect: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
+  revoked?: boolean;
   status: PluginStatus;
   updateAvailable?: string;
 }
@@ -27,7 +29,9 @@ export function PluginCard({
   onUninstall,
   onUpdate,
   onSelect,
+  revoked,
 }: PluginCardProps) {
+  const { t } = useTranslation();
   return (
     <div
       className="plugin-card"
@@ -82,6 +86,14 @@ export function PluginCard({
             >
               v{entry.version}
             </span>
+            {/* §69 — visible in the LIST, not only after opening the detail. A user
+                scanning installed plugins should not have to click each one to find
+                out which has been withdrawn. */}
+            {revoked && (
+              <span className="plugin-revoked-badge">
+                {t("plugin.revoked.badge")}
+              </span>
+            )}
           </div>
           <p
             style={{
@@ -137,7 +149,9 @@ export function PluginCard({
                   color: "var(--color-text-muted)",
                 }}
               >
-                {entry.downloads.toLocaleString()} downloads
+                {t("plugin.card.downloads", {
+                  count: entry.downloads.toLocaleString(),
+                })}
               </span>
             )}
           </div>
@@ -164,7 +178,9 @@ export function PluginCard({
                     alignSelf: "center",
                   }}
                 >
-                  +{entry.capabilities.length - 3} more
+                  {t("plugin.card.moreCapabilities", {
+                    count: String(entry.capabilities.length - 3),
+                  })}
                 </span>
               )}
             </div>
@@ -185,7 +201,7 @@ export function PluginCard({
                 cursor: "not-allowed",
               }}
             >
-              Installing…
+              {t("plugin.action.installing")}
             </button>
           ) : updateAvailable ? (
             <button
@@ -195,13 +211,13 @@ export function PluginCard({
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: 500,
-                backgroundColor: "#f59e0b",
-                color: "#fff",
+                backgroundColor: "var(--color-status-warning)",
+                color: "var(--color-status-warning-on-solid)",
                 border: "none",
                 cursor: "pointer",
               }}
             >
-              Update to v{updateAvailable}
+              {t("plugin.action.updateTo", { version: updateAvailable })}
             </button>
           ) : status === "enabled" || status === "disabled" ? (
             <button
@@ -217,23 +233,31 @@ export function PluginCard({
                 cursor: "pointer",
               }}
             >
-              Uninstall
+              {t("plugin.action.uninstall")}
             </button>
           ) : (
+            // §260 Phase 5 code review (M1) — a legacy entry (no `trust`) cannot be
+            // installed: `validateManifest` rejects a trust-less manifest, so an enabled
+            // button here only downloads and then fails. Both plugins in the live registry
+            // are trust-less today, so this is the FIRST thing a user meets in Browse —
+            // the detail view had the guard and the card did not.
             <button
+              disabled={!entry.trust}
               onClick={onInstall}
               style={{
                 padding: "6px 16px",
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: 500,
-                backgroundColor: "var(--color-accent-default)",
-                color: "#fff",
+                backgroundColor: "var(--color-accent-solid)",
+                color: "var(--color-accent-on-solid)",
                 border: "none",
-                cursor: "pointer",
+                cursor: entry.trust ? "pointer" : "not-allowed",
+                opacity: entry.trust ? 1 : 0.5,
               }}
+              title={entry.trust ? undefined : t("plugin.card.legacyBlocked")}
             >
-              Install
+              {t("plugin.action.install")}
             </button>
           )}
         </div>

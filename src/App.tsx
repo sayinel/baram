@@ -19,6 +19,7 @@ import { useShallow } from "zustand/shallow";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { PluginViewerHost } from "./components/editor/PluginViewerHost";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -76,6 +77,7 @@ import {
   shutdownPlugins,
 } from "./plugins/plugin-lifecycle";
 import { pluginLoader } from "./plugins/plugin-loader";
+import { matchFileViewer, usePluginUIStore } from "./plugins/plugin-ui-store";
 import {
   startUpdateChecker,
   stopUpdateChecker,
@@ -97,7 +99,9 @@ import { registerEditorMutationTask } from "./utils/editor/mutation-tasks";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import {
   getLanguageForFile,
+  isBinaryViewerFile,
   isHtmlFile,
+  isImageFile,
   isMarkdownFile,
   isPdfFile,
 } from "./utils/file-type";
@@ -106,7 +110,9 @@ import { logger } from "./utils/logger";
 import { getConfigForTask } from "./utils/model-selection";
 import { logAppReady } from "./utils/perf";
 import { buildTemplatePrompt } from "./utils/smart-templates";
-import "./styles/index.css";
+// Stylesheet moved to `main.tsx` (§260 Phase 5 re-review, R3): App is dynamically
+// imported, so a stylesheet imported here is bound to that chunk and never reaches
+// index.html's <head> — a blank window on cold start.
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
 const SourceCodeEditor = lazy(() =>
@@ -232,6 +238,19 @@ const FileEditorLayout = lazy(() =>
   })),
 );
 
+// A tab that toggles between rendered preview and raw source: HTML (built-in
+// iframe preview) or any TEXT file a viewer plugin claims (e.g. SVG via the
+// built-in media-viewer). Binary files never toggle — they have no source
+// view. Reads the plugin registry non-reactively: callers are user-action
+// callbacks, and the render path derives the same answer reactively.
+function isPreviewToggleFile(filePath: string | undefined): boolean {
+  if (!filePath || isMarkdownFile(filePath) || isBinaryViewerFile(filePath)) {
+    return false;
+  }
+  if (isHtmlFile(filePath)) return true;
+  return !!matchFileViewer(usePluginUIStore.getState().fileViewers, filePath);
+}
+
 // §89 File mode detection — resolved once at module load (URL params don't change)
 const _fileModeParams = new URLSearchParams(window.location.search);
 const FILE_MODE_PATH =
@@ -271,8 +290,22 @@ function App() {
     ? getLanguageForFile(activeTabFilePath)
     : null;
 
-  // PDF file viewer — read-only, rendered by the webview's native PDF engine
+  // PDF file viewer — read-only, built-in (PDF.js)
   const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
+  // Raster images — binary, rendered by a "viewer" plugin (built-in
+  // media-viewer). The binary guards hold with or without a plugin.
+  const isImageTab = !!activeTabFilePath && isImageFile(activeTabFilePath);
+
+  // Plugin-registered file viewer matching the active tab (§69 "viewer")
+  const fileViewers = usePluginUIStore((s) => s.fileViewers);
+  const pluginViewer = matchFileViewer(
+    fileViewers,
+    activeTabFilePath ?? undefined,
+  );
+  // Text files a plugin claims (e.g. SVG) get the same preview ↔ source
+  // toggle as HTML; binary files (images) are preview-only.
+  const isPluginPreviewTab =
+    !!pluginViewer && isCodeFile && !isPdfTab && !isImageTab;
 
   // HTML file viewer — rendered preview (default) vs raw source, tracked
   // per tab so toggling one tab doesn't affect others.
@@ -281,10 +314,11 @@ function App() {
     () => new Set(),
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
-  // Viewer iframes reload whenever the file's saved/reloaded mtime bumps
+  // Viewers reload whenever the file's saved/reloaded mtime bumps
   // (manual save, auto-save, toggle-flush, or external auto-reload)
   const previewFileMtime = useFileStore((s) =>
-    (isHtmlTab || isPdfTab) && activeTabFilePath
+    (isHtmlTab || isPdfTab || isImageTab || isPluginPreviewTab) &&
+    activeTabFilePath
       ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
       : 0,
   );
@@ -390,15 +424,24 @@ function App() {
 
   // §69 Plugin system — initialize plugins and update checker on mount
   useEffect(() => {
-    initializePlugins().catch((err) =>
-      logger.error("[App] Plugin initialization failed:", err),
-    );
+    // §260 3c-3 — the plugin runtime belongs to ONE host realm. A §89 file-mode
+    // window is a second one: this effect runs before the `FILE_MODE_PATH` branch in
+    // the render below, so a file window used to load plugins too. Nothing about the
+    // design supports that — the Rust authorizer is keyed on `plugin-<id>` with no
+    // realm dimension, so both realms fight over the same label, the same grant and
+    // (since this phase) the same startup sweep, which would close and revoke the
+    // MAIN window's live sandboxes the moment the user opens a file in a new window.
+    if (!FILE_MODE_PATH) {
+      initializePlugins().catch((err) =>
+        logger.error("[App] Plugin initialization failed:", err),
+      );
+    }
     startUpdateChecker();
     startAppUpdateChecker();
     return () => {
       stopUpdateChecker();
       stopAppUpdateChecker();
-      shutdownPlugins().catch((e) => logger.error(e));
+      if (!FILE_MODE_PATH) shutdownPlugins().catch((e) => logger.error(e));
     };
   }, []);
 
@@ -488,7 +531,9 @@ function App() {
   // view update must never overwrite them (S5-a review).
   const statusBarMode: EditorMode = isGraphTabActive
     ? "graph"
-    : isPdfTab || (isHtmlTab && !isHtmlSourceView)
+    : isPdfTab ||
+        isImageTab ||
+        ((isHtmlTab || isPluginPreviewTab) && !isHtmlSourceView)
       ? "preview"
       : isCodeFile || isSourceMode
         ? "source"
@@ -498,6 +543,25 @@ function App() {
       vimSurfaceForMode(statusBarMode) === "wysiwyg" ? activeEditor : null,
     );
   }, [activeEditor, statusBarMode]);
+
+  // §260 Phase 4b security review (LOW-3) — tell the plugin editor API when the Tiptap
+  // document is NOT what the active tab holds. An editor instance stays mounted in all of
+  // these states, so "an editor exists" is not the same question: in Source Mode the user
+  // edits CodeMirror while the Tiptap doc keeps its pre-toggle content, and `handleSave`
+  // writes `sourceContentRef` for a source-mode or non-markdown tab. Without this a plugin
+  // reads a stale document and its writes are dropped on the next toggle or save — silent
+  // data loss for the user, from an API that reported success.
+  useEffect(() => {
+    pluginLoader.setEditorSurfaceBlocked(
+      isGraphTabActive || isPdfTab
+        ? "no document is open in the editor"
+        : isSourceMode
+          ? "the document is open in source mode, so the editor is not its content"
+          : isCodeFile
+            ? "the active tab is not a markdown document"
+            : null,
+    );
+  }, [isCodeFile, isGraphTabActive, isPdfTab, isSourceMode]);
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
@@ -636,14 +700,14 @@ function App() {
     [markDirty],
   );
 
-  // Toggle rendered preview ↔ raw source for the active HTML tab.
-  // The preview iframe loads the file from disk (asset: protocol), so when
+  // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed
+  // text tab. The preview loads the file from disk (asset: protocol), so when
   // leaving source view with unsaved edits, flush them first — the mtime bump
-  // then reloads the iframe with the fresh content.
+  // then reloads the preview with the fresh content.
   const toggleHtmlView = useCallback(() => {
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
-    if (!tab || !isFileTab(tab) || !isHtmlFile(tab.filePath)) return;
+    if (!tab || !isFileTab(tab) || !isPreviewToggleFile(tab.filePath)) return;
     const leavingSourceView = htmlSourceTabs.has(tab.id);
     if (leavingSourceView && tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
@@ -669,12 +733,13 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [htmlSourceTabs, markDirty]);
 
-  // Cmd+/ — route to the HTML preview/source toggle when an HTML tab is
-  // active; otherwise fall through to the markdown source-mode toggle.
+  // Cmd+/ — route to the preview/source toggle when an HTML or plugin-viewed
+  // text tab is active; otherwise fall through to the markdown source-mode
+  // toggle.
   const handleToggleSourceMode = useCallback(() => {
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
-    if (tab && isFileTab(tab) && isHtmlFile(tab.filePath)) {
+    if (tab && isFileTab(tab) && isPreviewToggleFile(tab.filePath)) {
       toggleHtmlView();
       return;
     }
@@ -828,9 +893,31 @@ function App() {
                 />
               </Suspense>
             </div>
+          ) : isImageTab && activeTabFilePath ? (
+            <div
+              className="editor-area-scroll plugin-viewer-scroll"
+              data-editor-scroll
+            >
+              {pluginViewer ? (
+                <PluginViewerHost
+                  filePath={activeTabFilePath}
+                  refreshKey={previewFileMtime}
+                  viewer={pluginViewer}
+                />
+              ) : (
+                <div className="viewer-missing">{t("viewer.noPlugin")}</div>
+              )}
+            </div>
           ) : isCodeFile ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              {isHtmlTab && (
+            <div
+              className={
+                isPluginPreviewTab && !isHtmlSourceView
+                  ? "editor-area-scroll plugin-viewer-scroll"
+                  : "editor-area-scroll"
+              }
+              data-editor-scroll
+            >
+              {(isHtmlTab || isPluginPreviewTab) && (
                 <button
                   className="mode-toggle-btn html-view-toggle"
                   onClick={toggleHtmlView}
@@ -848,6 +935,15 @@ function App() {
                     filePath={activeTabFilePath}
                     refreshKey={previewFileMtime}
                     title={activeTabFilePath}
+                  />
+                ) : isPluginPreviewTab &&
+                  !isHtmlSourceView &&
+                  activeTabFilePath &&
+                  pluginViewer ? (
+                  <PluginViewerHost
+                    filePath={activeTabFilePath}
+                    refreshKey={previewFileMtime}
+                    viewer={pluginViewer}
                   />
                 ) : (
                   <SourceCodeEditor

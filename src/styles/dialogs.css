@@ -102,9 +102,9 @@
 }
 
 .zettel-title-dialog-actions button:last-child {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .quick-capture-header h3 {
@@ -178,9 +178,9 @@
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 600;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 6px;
 }
@@ -191,7 +191,7 @@
 }
 
 .quick-capture-save:not(:disabled):hover {
-  filter: brightness(1.1);
+  background: var(--color-accent-solid-hover);
 }
 
 /* ============================================
@@ -352,13 +352,13 @@
 }
 
 .migration-dialog-btn-primary {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
   border: none;
 }
 
 .migration-dialog-btn-primary:not(:disabled):hover {
-  filter: brightness(1.1);
+  background: var(--color-accent-solid-hover);
 }
 
 /* ============================================
@@ -633,12 +633,12 @@
 }
 
 .export-paper-tab-active {
-  color: white;
-  background-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
 }
 
 .export-paper-tab-active:hover {
-  background-color: var(--color-accent-hover);
+  background-color: var(--color-accent-solid-hover);
 }
 
 .export-scale-value {
@@ -700,14 +700,14 @@
 }
 
 .export-dialog-btn-primary {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .export-dialog-btn-primary:hover {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .export-dialog-btn-primary:disabled {
@@ -773,8 +773,8 @@
 }
 
 .mention-date:hover {
-  color: white;
-  background: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
 }
 
 .mention-icon {
@@ -953,9 +953,9 @@
 .new-skill-create {
   padding: 6px 16px;
   font-size: 13px;
-  color: white;
+  color: var(--color-accent-on-solid);
   cursor: pointer;
-  background: var(--color-accent-default);
+  background: var(--color-accent-solid);
   border: none;
   border-radius: 4px;
 }
@@ -1160,9 +1160,9 @@
 }
 
 .find-replace-action-btn:hover:not(:disabled) {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 .find-replace-action-btn:disabled {
@@ -1181,14 +1181,16 @@
 }
 
 .find-match-active {
-  color: white;
+  /* Dark text: white on this orange is 2.80:1.
+     Opaque in dark mode too — the [data-theme="dark"] override that used
+     `rgb(249 115 22 / 70%)` was removed. Its contrast depended on whatever painted
+     behind it, and `--color-bg-default` is user-editable: over #1a1a2e white read
+     4.77:1, but over Nord's #2e3440 it fell to 4.34:1 while black rose to 4.84:1.
+     No single foreground could serve both, so the alpha is gone and this pairing is
+     now determinate at 6.21:1 in every theme. */
+  color: #1a1a1a;
   background-color: #f97316; /* TODO: tokenize --color-find-match-active */
   border-radius: 2px;
-}
-
-[data-theme="dark"] .find-match-active {
-  color: white;
-  background-color: rgb(249 115 22 / 70%);
 }
 
 /* ============================================
@@ -1399,14 +1401,14 @@
 }
 
 .unsaved-modal-btn-primary {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .unsaved-modal-btn-primary:not(:disabled):hover {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
+  background: var(--color-accent-solid-hover);
+  border-color: var(--color-accent-solid-hover);
 }
 
 /* §3.6 3-way merge resolution overlay */
@@ -1469,9 +1471,9 @@
 }
 
 .merge-btn-apply {
-  color: #fff;
-  background-color: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .merge-btn-apply:disabled {
@@ -1516,9 +1518,9 @@
 }
 
 .merge-choice-active {
-  color: #fff;
-  background-color: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-accent-on-solid);
+  background-color: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .merge-candidates {
@@ -1597,6 +1599,19 @@
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
   box-shadow: var(--shadow-lg);
+}
+
+/* §260 Phase 4a — plugin attribution badge inside a toast. Its own element so the
+   message text cannot occupy or imitate it. */
+.toast-source {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 6px;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
 }
 
 .toast-info {

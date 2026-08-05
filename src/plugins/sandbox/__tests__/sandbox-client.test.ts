@@ -1,5 +1,6 @@
 import type { PluginContributions } from "../../types";
-import type { SandboxContext } from "../sandbox-client";
+import type { SandboxContext } from "../../types";
+import type { PluginOp } from "../plugin-op";
 
 import { describe, expect, it } from "vitest";
 
@@ -16,9 +17,14 @@ const DECLARED: PluginContributions = {
   ],
 };
 
+// §260 3c-2b — the client asks the broker for its own source before
+// importing, so a broker that answers nothing would fail activation.
+const sourceBroker = async (op: PluginOp) =>
+  op.kind === "source_read" ? "// bundle" : undefined;
+
 function wire(activate: (ctx: SandboxContext) => void) {
   const { host, sandbox } = createChannelPair();
-  startSandboxClient(sandbox, async () => ({ activate }));
+  startSandboxClient(sandbox, async () => ({ activate }), sourceBroker);
   return new SandboxSession(host);
 }
 
@@ -28,7 +34,7 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
       ctx.commands.register("add", () => 0);
       ctx.events.on("file:open", () => {});
     });
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     expect(s.registered).toEqual({ commands: ["add"], events: ["file:open"] });
   });
 
@@ -36,7 +42,7 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
     const s = wire((ctx) =>
       ctx.commands.register("add", (a, b) => (a as number) + (b as number)),
     );
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     await expect(s.invokeCommand("add", [2, 3])).resolves.toBe(5);
   });
 
@@ -46,13 +52,13 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
         throw new Error("x");
       }),
     );
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     await expect(s.invokeCommand("boom")).rejects.toThrow(/x/);
   });
 
   it("replies ok:false when the result is not JSON-serializable (I5)", async () => {
     const s = wire((ctx) => ctx.commands.register("bad", () => () => 0)); // returns a function
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     await expect(s.invokeCommand("bad")).rejects.toThrow(/serializ/i);
   });
 
@@ -61,7 +67,7 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
     const s = wire((ctx) =>
       ctx.events.on("file:open", (...a) => calls.push(a)),
     );
-    await s.activate("p", "u", { commands: [] });
+    await s.activate("p", { commands: [] });
     s.deliverEvent("file:open", ["/a.md"]);
     await new Promise((r) => setTimeout(r, 0));
     expect(calls).toEqual([["/a.md"]]);
@@ -73,7 +79,7 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
     );
     const seen: Array<[string, unknown[]]> = [];
     s.onEmit((e, a) => seen.push([e, a]));
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     await s.invokeCommand("go");
     await new Promise((r) => setTimeout(r, 0));
     expect(seen).toEqual([["pinged", [7]]]);
@@ -83,7 +89,7 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
     const s = wire(() => {
       throw new Error("bad activate");
     });
-    await expect(s.activate("p", "u", { commands: [] })).rejects.toThrow(
+    await expect(s.activate("p", { commands: [] })).rejects.toThrow(
       /bad activate/,
     );
   });
@@ -99,17 +105,21 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
       resolveImport = resolve;
     });
     const { host, sandbox } = createChannelPair();
-    startSandboxClient(sandbox, async () => {
-      count.n++;
-      return pendingImport;
-    });
+    startSandboxClient(
+      sandbox,
+      async () => {
+        count.n++;
+        return pendingImport;
+      },
+      sourceBroker,
+    );
 
     // Drive host->sandbox directly: the first activate starts importing and
     // never resolves yet, so a genuine re-entrant guard is the only thing
     // that can stop the second activate from importing again.
-    host.send({ type: "activate", pluginId: "p", pluginUrl: "u" });
+    host.send({ type: "activate", pluginId: "p" });
     await Promise.resolve();
-    host.send({ type: "activate", pluginId: "p", pluginUrl: "u" });
+    host.send({ type: "activate", pluginId: "p" });
     await Promise.resolve();
 
     resolveImport({ activate: () => {} });
@@ -121,28 +131,32 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
   it("recovers after activateError — a retry re-activates cleanly with no stale registrations", async () => {
     let attempt = 0;
     const { host, sandbox } = createChannelPair();
-    startSandboxClient(sandbox, async () => {
-      attempt++;
-      if (attempt === 1) {
+    startSandboxClient(
+      sandbox,
+      async () => {
+        attempt++;
+        if (attempt === 1) {
+          return {
+            activate: (ctx: SandboxContext) => {
+              ctx.commands.register("stale", () => 0);
+              throw new Error("first attempt fails");
+            },
+          };
+        }
         return {
           activate: (ctx: SandboxContext) => {
-            ctx.commands.register("stale", () => 0);
-            throw new Error("first attempt fails");
+            ctx.commands.register("fresh", () => 0);
           },
         };
-      }
-      return {
-        activate: (ctx: SandboxContext) => {
-          ctx.commands.register("fresh", () => 0);
-        },
-      };
-    });
+      },
+      sourceBroker,
+    );
     const s = new SandboxSession(host);
-    await expect(s.activate("p", "u", { commands: [] })).rejects.toThrow(
+    await expect(s.activate("p", { commands: [] })).rejects.toThrow(
       /first attempt fails/,
     );
 
-    await s.activate("p", "u", { commands: [] });
+    await s.activate("p", { commands: [] });
     expect(s.registered).toEqual({ commands: ["fresh"], events: [] });
   });
 });

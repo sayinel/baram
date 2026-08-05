@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { usePluginUIStore } from "../plugin-ui-store";
+import { matchFileViewer, usePluginUIStore } from "../plugin-ui-store";
 
 const item = (itemId: string, pluginId = "p1") => ({
   align: "right" as const,
@@ -107,5 +107,95 @@ describe("plugin-ui-store panels/tabs/palette", () => {
     usePluginUIStore.getState().setActivePluginPanelId("p2:b");
     usePluginUIStore.getState().unregisterPlugin("p1");
     expect(usePluginUIStore.getState().activePluginPanelId).toBe("p2:b");
+  });
+});
+
+// §260 Phase 4a security review (MEDIUM-1) — a sandboxed plugin can call
+// `setStatusBarText` at the transport's full rate (burst 300, 150/s). Committing an
+// identical value re-rendered the status bar for nothing, in the realm this tier exists
+// to protect.
+describe("updateStatusBarItem identity (§260 Phase 4a)", () => {
+  beforeEach(() => usePluginUIStore.setState({ statusBarItems: [] }));
+
+  it("does not commit when the text is unchanged", () => {
+    usePluginUIStore.getState().registerStatusBarItem({
+      align: "right",
+      itemId: "p:sb:x",
+      pluginId: "p",
+      text: "same",
+    });
+    const before = usePluginUIStore.getState().statusBarItems;
+
+    usePluginUIStore.getState().updateStatusBarItem("p:sb:x", "same");
+    // Reference identity, not deep equality: an unchanged array is what stops the
+    // subscribed component from re-rendering.
+    expect(usePluginUIStore.getState().statusBarItems).toBe(before);
+
+    usePluginUIStore.getState().updateStatusBarItem("p:sb:x", "different");
+    expect(usePluginUIStore.getState().statusBarItems).not.toBe(before);
+    expect(usePluginUIStore.getState().statusBarItems[0].text).toBe(
+      "different",
+    );
+  });
+
+  it("ignores an unknown item id", () => {
+    const before = usePluginUIStore.getState().statusBarItems;
+    usePluginUIStore.getState().updateStatusBarItem("nope", "x");
+    expect(usePluginUIStore.getState().statusBarItems).toBe(before);
+  });
+});
+
+const viewer = (id: string, extensions: string[], pluginId = "p1") => ({
+  extensions,
+  onMount: () => {},
+  pluginId,
+  viewerId: `${pluginId}:${id}`,
+});
+
+describe("plugin-ui-store file viewers", () => {
+  beforeEach(() => usePluginUIStore.setState({ fileViewers: [] }));
+
+  it("registers and removes a viewer", () => {
+    usePluginUIStore.getState().registerFileViewer(viewer("media", ["png"]));
+    expect(usePluginUIStore.getState().fileViewers).toHaveLength(1);
+
+    usePluginUIStore.getState().removeFileViewer("p1:media");
+    expect(usePluginUIStore.getState().fileViewers).toHaveLength(0);
+  });
+
+  it("unregisterPlugin drops the plugin's viewers only", () => {
+    usePluginUIStore.getState().registerFileViewer(viewer("a", ["png"], "p1"));
+    usePluginUIStore.getState().registerFileViewer(viewer("b", ["svg"], "p2"));
+    usePluginUIStore.getState().unregisterPlugin("p1");
+    const remaining = usePluginUIStore.getState().fileViewers;
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].pluginId).toBe("p2");
+  });
+});
+
+describe("matchFileViewer", () => {
+  const viewers = [
+    viewer("media", ["png", "svg"], "p1"),
+    viewer("other", ["png"], "p2"),
+  ];
+
+  it("matches by extension, case-insensitively", () => {
+    expect(matchFileViewer(viewers, "/vault/logo.svg")?.viewerId).toBe(
+      "p1:media",
+    );
+    expect(matchFileViewer(viewers, "/vault/PHOTO.PNG")?.viewerId).toBe(
+      "p1:media",
+    );
+  });
+
+  it("first registered viewer wins on overlap", () => {
+    expect(matchFileViewer(viewers, "/vault/a.png")?.viewerId).toBe("p1:media");
+  });
+
+  it("returns null for unmatched, extension-less, or missing paths", () => {
+    expect(matchFileViewer(viewers, "/vault/note.md")).toBeNull();
+    expect(matchFileViewer(viewers, "/vault/README")).toBeNull();
+    expect(matchFileViewer(viewers, undefined)).toBeNull();
+    expect(matchFileViewer([], "/vault/a.png")).toBeNull();
   });
 });
