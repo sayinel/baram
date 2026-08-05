@@ -1,9 +1,11 @@
 // §298 Vim Phase 1 — CoreCommand execution (design §2 adapters, S2).
 //
 // The core hands back INTENTS; this module turns them into dispatches using
-// the S4 builders. Refusals surface through the returned reason (S5 status
-// line); motions land in S3 and are consumed as no-ops until then, so an
-// unbound motion never leaks a keystroke into the document.
+// the operation builders. Refusals surface through the returned reason (the
+// plugin decides whether it is worth a toast). Commands that need the
+// SELECTION rather than a document change — motions, finds, visual entry and
+// exit, the z-family — are handled earlier by the plugin's selection path
+// and reach the switch below only as exhaustiveness no-ops.
 
 import type {
   CoreCommand,
@@ -81,12 +83,12 @@ export function executeCoreCommand(
     case "enterInsert":
       return enterInsert(view, command.at, head);
     case "enterVisual":
-    case "findChar": // the plugin's selection path owns finds — like move
+    case "findChar":
     case "leaveVisual":
-      // Selection rendering for visual mode lands with S5 decorations.
-      return {};
     case "move":
-      // S3: motions. Consumed (never a document keystroke), not yet moving.
+      // Owned by the plugin's selection path (one transaction carries the
+      // core state AND the new selection). Unreachable here; the case keeps
+      // the switch exhaustive so a new command cannot slip through silently.
       return {};
     case "openLine": {
       // §9 minimal o/O: a sibling empty paragraph next to the current block;

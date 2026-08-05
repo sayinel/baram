@@ -219,8 +219,8 @@ export function createVimPlugin(
 
       /** Insert-mode Esc — through PM preprocessing (P3), and through the
        *  SAME core.step as the modal path: the core owns the modifier
-       *  guards (Alt/Ctrl/Mod+Escape pass). The transient stack arbitration
-       *  (§5c/§6 pins) joins in S6. */
+       *  guards (Alt/Ctrl/Mod+Escape pass). An active transient (popup,
+       *  ghost text, diff) takes the first Esc — see the guard below. */
       handleKeyDown: (view, event) => {
         const vim = read(view.state);
         if (!vim.enabled || vim.suspended || isModal(vim)) return false;

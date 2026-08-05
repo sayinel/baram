@@ -1,10 +1,12 @@
-// §298 Phase 1 — spike #7: PM transaction feasibility probe (design v7 §11.7).
+// §298 — the ProseMirror/schema contracts the vim adapters are built on.
 //
-// Each test answers ONE question from the §9 semantic matrix: can the intended
-// line-unit operation be expressed as a schema-valid ProseMirror transaction
-// against the REAL Baram schema? These assertions become the regression base
-// for adapters/line-units.ts once the vim module lands. No vim code exists
-// yet — every transform here is written directly against the editor state.
+// Written first as a feasibility probe (design v7 §11.7, spike #7), these are
+// now DEPENDENCY characterization tests: each one asserts that an intended
+// line-unit operation is expressible as a schema-valid transaction against
+// the REAL Baram schema, with the transform written by hand rather than
+// through the adapters. When a Tiptap or prosemirror-tables upgrade shifts
+// one of these contracts, a failure here names the cause directly instead of
+// surfacing as a puzzling adapter regression.
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 
