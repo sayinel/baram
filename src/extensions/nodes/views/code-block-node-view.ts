@@ -313,12 +313,14 @@ export class CodeBlockNodeView implements NodeView {
       return true;
     }
 
-    // Language changed → destroy and recreate CM with new language.
-    if (oldLang !== lang) {
-      // In place: focus, cursor, vim mode and CM history all survive. A
-      // cold block needs nothing — the deferred initCM reads fresh attrs.
-      if (this.cmView) void this.reconfigureLanguage(lang);
-      return true;
+    // Language changed → reconfigure IN PLACE: focus, cursor, vim mode and
+    // CM history all survive. A cold block needs nothing — the deferred
+    // initCM reads fresh attrs. NO early return: the same PM update can
+    // also carry a content change (an undo event grouping both, an
+    // external setContent) and skipping the sync below would fork the CM
+    // buffer from the document (R7).
+    if (oldLang !== lang && this.cmView) {
+      void this.reconfigureLanguage(lang);
     }
 
     // Sync PM → CM
@@ -408,8 +410,19 @@ export class CodeBlockNodeView implements NodeView {
 
   private async initCM(language: string) {
     const gen = ++this.initGeneration;
-    const langExt = await getLanguageExtension(language);
+    // The language attr can change WHILE the extension loads (update()
+    // cannot reconfigure a CM that does not exist yet) — re-read until the
+    // resolved extension matches the current attr (R7).
+    let lang = language;
+    let langExt = await getLanguageExtension(lang);
     if (this.destroyed || gen !== this.initGeneration) return;
+    for (;;) {
+      const fresh = (this.node.attrs.language as string) || "";
+      if (fresh === lang) break;
+      lang = fresh;
+      langExt = await getLanguageExtension(lang);
+      if (this.destroyed || gen !== this.initGeneration) return;
+    }
 
     const settings = useSettingsStore.getState();
     const { tabSize, codeBlockLineNumbers, autoPairBrackets } = settings;
@@ -505,7 +518,7 @@ export class CodeBlockNodeView implements NodeView {
             );
             tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
             this.view.dispatch(tr);
-            this.view.focus();
+            focusPM(); // view.focus() alone is editable-gated (vim modal)
             return true;
           }
           return false;
@@ -591,11 +604,7 @@ export class CodeBlockNodeView implements NodeView {
         },
       },
       claimFocus: false,
-      restoreMode: () => {
-        const mode = this.pendingVimModeRestore;
-        this.pendingVimModeRestore = null;
-        return mode;
-      },
+      restoreMode: () => this.pendingVimModeRestore,
       editableCompartment: this.vimEditableCompartment,
       onError: () => {
         // failed → deterministic plain editing (v3 contract 1).
@@ -605,6 +614,12 @@ export class CodeBlockNodeView implements NodeView {
       },
       onModeChange: (mode) => {
         this.currentVimMode = mode;
+        // The restore memo clears only when the target mode is REACHED —
+        // consumption-on-read lost it when a second settings recreate
+        // arrived before the deferred handleKey ran (R7).
+        if (mode !== null && mode === this.pendingVimModeRestore) {
+          this.pendingVimModeRestore = null;
+        }
         islandVimMode(island, mode, this.view);
         // Cold-load race: the first mode arrives AFTER focus already sits
         // in the island — claim the indicator now, not on the next focus.
@@ -696,9 +711,13 @@ export class CodeBlockNodeView implements NodeView {
 
   private async reconfigureLanguage(language: string): Promise<void> {
     const gen = ++this.langGeneration;
+    const target = this.cmView;
     const ext = await getLanguageExtension(language);
     if (this.destroyed || gen !== this.langGeneration) return;
-    this.cmView?.dispatch({
+    // Only the CM this reconfigure started for — a settings recreate may
+    // have replaced the instance while the extension loaded (R7).
+    if (!target || this.cmView !== target) return;
+    target.dispatch({
       effects: this.languageCompartment.reconfigure(ext ?? []),
     });
   }
@@ -706,24 +725,33 @@ export class CodeBlockNodeView implements NodeView {
   /** Focus ownership survives a CM replacement: remember it (with the
    *  cursor) so the recreated view can reclaim what destroy() blurs. */
   private snapshotFocusForRecreate(): void {
+    // MID-RECREATE there is nothing to judge: the previous CM is gone and
+    // its replacement not built — both memos from the first snapshot are
+    // still the truth, so leave them alone (R7 back-to-back recreates).
+    if (!this.cmView) return;
     // Containment, not cmView.hasFocus — the getter also requires
     // document.hasFocus(), which drops out under context menus (Safari)
     // and headless runs. Focus anywhere in the island (panels too) counts.
     const active = this.dom.ownerDocument.activeElement;
-    const focused = !!this.cmView && this.cmView.dom.contains(active);
-    this.pendingFocusRestore =
-      focused && this.cmView
-        ? { head: this.cmView.state.selection.main.head }
-        : null;
+    const focused = this.cmView.dom.contains(active);
+    this.pendingFocusRestore = focused
+      ? { head: this.cmView.state.selection.main.head }
+      : null;
     // Re-enter insert/replace after the rebuild — a recreation mid-typing
     // (theme shortcut while inside a block) must not silently flip the
     // user's keystrokes into normal-mode commands (R6). Visual dies with
     // its old view and restores as normal.
-    this.pendingVimModeRestore =
+    // Preserve an UNCONFIRMED memo across back-to-back recreates: the new
+    // controller re-seeded normal before its deferred restore could run,
+    // so the live mode alone would erase the user's insert (R7).
+    if (
       focused &&
       (this.currentVimMode === "insert" || this.currentVimMode === "replace")
-        ? this.currentVimMode
-        : null;
+    ) {
+      this.pendingVimModeRestore = this.currentVimMode;
+    } else if (!focused) {
+      this.pendingVimModeRestore = null;
+    }
   }
 
   /** ONE teardown path for every CM replacement — settings change, language

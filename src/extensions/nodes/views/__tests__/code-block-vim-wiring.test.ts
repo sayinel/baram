@@ -364,6 +364,103 @@ describe("code block vim wiring (S2)", () => {
     document.body.innerHTML = "";
   });
 
+  it("language and content changing in ONE update keep the CM in sync", async () => {
+    // The language branch used to return before the content sync — a tr
+    // carrying both forked the CM buffer from the document (R7).
+    const editor = createEditor("```ts\nab\n```\n");
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    let pos = -1;
+    editor.state.doc.descendants((n, p) => {
+      if (pos < 0 && n.type.name === "codeBlock") pos = p;
+      return pos < 0;
+    });
+    const tr = editor.state.tr
+      .setNodeMarkup(pos, undefined, { language: "python" })
+      .insertText("X", pos + 1);
+    editor.view.dispatch(tr);
+    await vi.waitFor(() => {
+      const cmv = CMEditorView.findFromDOM(content)!;
+      expect(cmv.state.doc.toString()).toBe("Xab");
+    });
+    editor.destroy();
+  });
+
+  it("BACK-TO-BACK settings recreates still restore INSERT", async () => {
+    // The restore memo was consumed on read — a second recreate arriving
+    // before the deferred handleKey saw normal and erased it (R7).
+    const editor = createEditor("```ts\nconst x = 1;\n```\n");
+    document.body.appendChild(editor.view.dom);
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    const dom = editor.view.dom as HTMLElement;
+    const press = (key: string) =>
+      dom.querySelector(".cm-content")!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key,
+        }),
+      );
+    await vi.waitFor(() => {
+      press("i");
+      expect(
+        dom.querySelector(".cm-content")!.getAttribute("contenteditable"),
+      ).toBe("true");
+    });
+    const base = useSettingsStore.getState().codeBlockLineNumbers;
+    useSettingsStore.setState({ codeBlockLineNumbers: !base });
+    useSettingsStore.setState({ codeBlockLineNumbers: base }); // immediate 2nd
+    await vi.waitFor(() => {
+      const fresh = dom.querySelector(".cm-content") as HTMLElement;
+      expect(fresh).not.toBeNull();
+      expect(document.activeElement).toBe(fresh);
+      expect(fresh.getAttribute("contenteditable")).toBe("true"); // INSERT
+    });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
+  it("empty-block Backspace conversion moves FOCUS to PM too", async () => {
+    const editor = createEditor("```ts\n\n```\n");
+    document.body.appendChild(editor.view.dom);
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    const dom = editor.view.dom as HTMLElement;
+    const press = (key: string) =>
+      dom.querySelector(".cm-content")?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key,
+        }),
+      );
+    await vi.waitFor(() => {
+      press("i");
+      expect(
+        dom.querySelector(".cm-content")!.getAttribute("contenteditable"),
+      ).toBe("true");
+    });
+    press("Backspace");
+    await vi.waitFor(() => {
+      let hasCodeBlock = false;
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "codeBlock") hasCodeBlock = true;
+        return !hasCodeBlock;
+      });
+      expect(hasCodeBlock).toBe(false);
+      // focus followed the conversion — view.focus() alone is
+      // editable-gated on the vim-modal surface (R7)
+      expect(document.activeElement).toBe(editor.view.dom);
+    });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
   it("a selection SPANNING past the block never re-claims focus", async () => {
     // stillHere checked only selection.from — a selection reaching from
     // inside the block into the next paragraph passed it (R6).
