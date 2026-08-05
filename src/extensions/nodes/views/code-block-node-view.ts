@@ -636,6 +636,19 @@ export class CodeBlockNodeView implements NodeView {
     // installed CM destroy calls contentDOM.blur() — so a focused island
     // must reclaim focus on its replacement (R5 C10).
     if (this.pendingFocusRestore && this.cmView) {
+      // …but never steal focus from wherever the user went DURING the
+      // async recreation — restore only while focus is orphaned (body)
+      // or still somewhere inside this NodeView.
+      const active = this.dom.ownerDocument.activeElement;
+      if (
+        active &&
+        active !== this.dom.ownerDocument.body &&
+        !this.dom.contains(active)
+      ) {
+        this.pendingFocusRestore = null;
+      }
+    }
+    if (this.pendingFocusRestore && this.cmView) {
       const head = Math.min(
         this.pendingFocusRestore.head,
         this.cmView.state.doc.length,
