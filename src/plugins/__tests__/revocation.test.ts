@@ -378,6 +378,14 @@ describe("the committed revocation seed", () => {
     // every client refuse the REAL list — the arming step's one irreversible mistake, and it
     // presents as the feature working. The seed is what goes live, so the constant and this
     // file have to move together, and this is what says so.
+    //
+    // ‼️ ITS PREMISE IS THAT THIS REPOSITORY'S LIST IS WHAT IS LIVE, and that premise is now
+    // enforced rather than assumed (code review MEDIUM-2). It compares against `registry/`, so a
+    // publish that failed while the constant was raised would leave this green and every client
+    // refusing the genuine list. The publish workflow closes the gap in two links: its counter
+    // gate compares this file against the REGISTRY REPOSITORY, and its verify step will not pass
+    // until Pages serves those same bytes — so after a green run the three are one list. What
+    // this test cannot see is the window between a red publish and its fix.
     expect(normalizeRevocationList(raw)?.sequence).toBeGreaterThanOrEqual(
       MINIMUM_REVOCATION_SEQUENCE,
     );

@@ -2655,6 +2655,39 @@ mod tests {
     }
 
     #[test]
+    fn the_fetch_cap_is_the_number_the_publish_gate_scrapes() {
+        // ‼️ A CROSS-LANGUAGE ANCHOR, and without it the publish gate can be lied to (security
+        // re-review NEW-2). `scripts/rust-constants.ts` reads this constant out of THIS FILE'S TEXT
+        // so `validate-revocations.ts` can refuse a list larger than any client will fetch. Its scan
+        // asserts exactly one match, which stops a declaration being ADDED — and does nothing about
+        // the real one being respelled past the pattern while a decoy keeps the count at 1:
+        //
+        //     /// Historically `MAX_REVOCATION_BYTES: usize = 1024 * 1024`  ← a decoy in this form
+        //     const ONE_MIB: usize = 4096;
+        //     const MAX_REVOCATION_BYTES: usize = ONE_MIB;                  ← letters are not [0-9_ *]
+        //
+        // ‼️ The decoy above is written WITHOUT its semicolon on purpose: with one, this comment is
+        // itself a second match and the scrape refuses to guess. That is not a footnote — it is the
+        // mechanism, and writing this test demonstrated it by accident.
+        //
+        // The gate would then keep publishing lists up to 1 MiB while every client refused anything
+        // over 4 KiB at fetch — no revocation ever landing again, and nothing red. The key scrape
+        // was already anchored this way (the frozen at-arming pair binds the compiled key and the
+        // scraped one to the same signature). ‼️ THIS ANCHOR IS WEAKER THAN THAT ONE, and saying
+        // otherwise flattens the difference: a signature cannot be forged, whereas this is a number,
+        // and defeating it costs the decoy plus ONE literal edit right here. What it buys is a diff
+        // no reviewer reads past, which is enough for a drift guard and is the honest claim. The
+        // literal is
+        // duplicated in `revocation-signature-verify.test.ts` deliberately: two assertions on the
+        // same number in two languages is what makes a respelling contradictory rather than silent.
+        assert_eq!(
+            MAX_REVOCATION_BYTES,
+            1024 * 1024,
+            "the publish gate scrapes this literal; changing it needs the TypeScript assertion changed too"
+        );
+    }
+
+    #[test]
     fn a_signature_from_another_key_does_not_verify() {
         // The updater's own public key — a real, valid minisign key that simply is not ours.
         // Verifying against it must fail, or "signed" would mean "signed by anyone". Read from

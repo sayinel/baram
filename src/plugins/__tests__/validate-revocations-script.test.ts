@@ -9,7 +9,7 @@
 // `::error title=…::` wrote a forged annotation on a job that EXITS 0, and
 // `::stop-commands::` silenced every genuine annotation after it.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -48,6 +48,100 @@ describe("validate-revocations", () => {
   it("accepts the shape the registry actually ships", () => {
     const { status } = run({ revoked: [], version: 1 });
     expect(status).toBe(0);
+  });
+
+  it("REFUSES a list larger than the app will ever fetch", () => {
+    // ‼️ THE ONLY FAIL-OPEN LEFT IN THE PUBLISH PATH (security review MEDIUM-2). Rust caps the
+    // fetch at `MAX_REVOCATION_BYTES`, and nothing here measured size — so a padded `reason` would
+    // validate, sign, verify and publish green, and then every client's fetch would error. No new
+    // revocation would ever land and a fresh install would receive none at all. One merged PR is
+    // the whole capability, and since it is not a Rust change the rust job need not even run.
+    const { output, status } = run({
+      revoked: [
+        {
+          id: "x",
+          reason: "y".repeat(1024 * 1024),
+          severity: "unlisted",
+          versions: "*",
+        },
+      ],
+      sequence: 1,
+      version: 1,
+    });
+    expect(status).toBe(1);
+    // The number is the cross-language contract: the script reads it out of the Rust that enforces
+    // it, so seeing 1048576 here is what says the scrape found the constant rather than a factor
+    // of it.
+    expect(output).toContain("exceeds the 1048576");
+  });
+
+  it("refuses a path it cannot read with a sentence, not a stack trace", () => {
+    // ‼️ THE NEW SIZE CHECK REINTRODUCED THE STACK TRACE THIS FILE FORBIDS (code review MEDIUM-4).
+    // `statSync` sits above the JSON read, so before the fix a missing path threw out of node with a
+    // trace — reachable from the workflow by a path typo, or by a `live.json` the curl never wrote.
+    const result = spawnSync(TSX, [SCRIPT, "/nonexistent/revoked.json"], {
+      encoding: "utf8",
+    });
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).toBe(1);
+    expect(output).toContain("cannot be read");
+    // The anti-property, named: a node trace instead of a sentence.
+    expect(output).not.toContain("at statSync");
+  });
+
+  it("accepts a list of exactly the cap, which the app also accepts", () => {
+    // ‼️ THE BOUNDARY, and it matches Rust exactly: `fetch_capped_text` errors when
+    // `buf.len() + chunk.len() > cap`, so a body of exactly `cap` bytes is fetched fine. A `>=` slip
+    // here would refuse a list every client can read (code review LOW-7).
+    const cap = 1024 * 1024;
+    const padding = "y".repeat(cap - 200);
+    const document = {
+      revoked: [
+        { id: "x", reason: padding, severity: "unlisted", versions: "*" },
+      ],
+      sequence: 1,
+      version: 1,
+    };
+    const path = write(document);
+    const size = statSync(path).size;
+    // Pad to the cap exactly, keeping the JSON valid by growing `reason`.
+    const grown = JSON.parse(readFileSync(path, "utf8")) as typeof document;
+    grown.revoked[0].reason = padding + "y".repeat(cap - size);
+    writeFileSync(path, JSON.stringify(grown));
+    expect(statSync(path).size).toBe(cap);
+    const result = spawnSync(TSX, [SCRIPT, path], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+  });
+
+  it("REFUSES a list one byte over the cap", () => {
+    // ‼️ `size > cap` loosened to `size > cap + 1` survived (third-round code review LOW-3): the
+    // exactly-at-cap case pins one side of the boundary and nothing pinned the other. Rust errors
+    // when `buf.len() + chunk.len() > cap`, so cap+1 is refused by every client and would have
+    // published green.
+    const cap = 1024 * 1024;
+    const path = write({
+      revoked: [
+        {
+          id: "x",
+          reason: "y".repeat(cap),
+          severity: "unlisted",
+          versions: "*",
+        },
+      ],
+      sequence: 1,
+      version: 1,
+    });
+    const document = JSON.parse(readFileSync(path, "utf8")) as {
+      revoked: { reason: string }[];
+    };
+    document.revoked[0].reason = "y".repeat(
+      cap - statSync(path).size + cap + 1,
+    );
+    writeFileSync(path, JSON.stringify(document));
+    expect(statSync(path).size).toBe(cap + 1);
+    const result = spawnSync(TSX, [SCRIPT, path], { encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}${result.stderr}`).toContain("exceeds the 1048576");
   });
 
   it("refuses the document `null` with a sentence, not a stack trace", () => {

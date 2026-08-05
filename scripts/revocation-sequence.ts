@@ -12,11 +12,18 @@
  * value the app would discard is a value this prints as 0, so it loses the comparison here
  * exactly as it would lose it there.
  *
- * An unreadable document prints 0 rather than failing. That is the permissive fallback the
- * gate already applies to an unreachable live list — a Pages outage or a garbled remote file
- * must not block an urgent revocation, and the real protection is the client refusing a
- * rollback, which does not depend on this running at all. What must NOT be permissive is the
- * document being published, and `validate-revocations.ts` refuses that one outright.
+ * An unreadable document prints 0 rather than failing, so a garbled document in the REGISTRY
+ * does not block an urgent revocation: the real protection is the client refusing a rollback,
+ * which does not depend on this running at all. What must NOT be permissive is the document
+ * being published, and `validate-revocations.ts` refuses that one outright.
+ *
+ * ‼️ THE RATIONALE USED TO CITE A BRANCH THAT NO LONGER EXISTS (code review LOW-5): it justified
+ * this fallback by pointing at the gate's "live list is unreachable, skip the gate" skip, and
+ * moving the baseline to the registry clone deleted that skip. The remaining cost of printing 0
+ * is narrower and worth stating plainly: an unparseable `revoked.json` in the registry lets any
+ * counter at or above 1 through the gate. Nothing downstream is fooled — the floor step and every
+ * client still compare against the floor — but this number is not evidence of an advance when the
+ * baseline could not be read.
  *
  * Run: npx tsx scripts/revocation-sequence.ts <path>
  */
