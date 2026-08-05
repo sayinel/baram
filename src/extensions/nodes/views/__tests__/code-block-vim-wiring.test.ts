@@ -21,6 +21,28 @@ declare const MockIntersectionObserver: {
   instances: { triggerIntersect: (v?: boolean) => void }[];
 };
 
+// jsdom lacks Range measurement — an ATTACHED CodeMirror schedules a rAF
+// measure pass that would otherwise throw asynchronously (same polyfill as
+// vim-markdown-enter.test.ts).
+const zeroRect = {
+  bottom: 0,
+  height: 0,
+  left: 0,
+  right: 0,
+  top: 0,
+  width: 0,
+  x: 0,
+  y: 0,
+};
+Range.prototype.getBoundingClientRect ??= () => zeroRect as DOMRect;
+Range.prototype.getClientRects ??= () =>
+  ({
+    item: () => null,
+    length: 0,
+    [Symbol.iterator]: [][Symbol.iterator],
+  }) as unknown as DOMRectList;
+HTMLElement.prototype.getClientRects ??= Range.prototype.getClientRects;
+
 function createEditor(md: string): Editor {
   const editor = new Editor({
     extensions: createBaramExtensions(),
@@ -93,6 +115,11 @@ describe("code block vim wiring (S2)", () => {
     const editor = createEditor("```ts\nconst x = 1;\n```\n");
     setVim(editor, true);
     const content = await revealCM(editor);
+    // Attached + focusable so document.activeElement is real: the escape
+    // must move FOCUS out too — PM's view.focus() skips dom.focus on a
+    // non-editable (vim modal) view (installed prosemirror-view :5711).
+    document.body.appendChild(editor.view.dom);
+    content.setAttribute("tabindex", "0");
     // vim ready = the editing-host barrier holds in normal mode
     await vi.waitFor(() => {
       expect(content.getAttribute("contenteditable")).toBe("false");
@@ -118,6 +145,7 @@ describe("code block vim wiring (S2)", () => {
     await vi.waitFor(() => {
       expect(content.getAttribute("contenteditable")).toBe("false");
     });
+    content.focus();
     press("Escape"); // normal-mode Esc falls through → block exit
     await vi.waitFor(() => {
       const sel = editor.state.selection;
@@ -127,8 +155,12 @@ describe("code block vim wiring (S2)", () => {
         return pos < 0;
       });
       expect(sel.from).toBeLessThanOrEqual(pos); // PM selection left the block
+      // and FOCUS left the island (device finding: selection moved while
+      // focus stayed on cm-content, so keys kept feeding the block)
+      expect(document.activeElement).not.toBe(content);
     });
     editor.destroy();
+    document.body.innerHTML = "";
   });
 
   it("edge j in normal mode exits DOWN into PM", async () => {

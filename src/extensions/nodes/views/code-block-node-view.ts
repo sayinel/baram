@@ -397,6 +397,16 @@ export class CodeBlockNodeView implements NodeView {
     const settings = useSettingsStore.getState();
     const { tabSize, codeBlockLineNumbers, autoPairBrackets } = settings;
 
+    // PM's view.focus() skips dom.focus() on a non-editable view
+    // (installed prosemirror-view :5711, if (this.editable) guard) — and
+    // vim modal IS non-editable, so an escape would move the selection
+    // while focus stayed in the island, keys still feeding CodeMirror.
+    // The vim-modal attributes supply tabindex="0"; focus the DOM directly.
+    const focusPM = () => {
+      this.view.focus();
+      if (!this.view.hasFocus()) this.view.dom.focus();
+    };
+
     // Helper to exit CodeMirror → ProseMirror with proper direction bias.
     // dir: -1 = up/backward, 1 = down/forward
     const maybeEscape = (dir: -1 | 1) => {
@@ -419,12 +429,12 @@ export class CodeBlockNodeView implements NodeView {
         const newCursorPos = dir < 0 ? insertPos + 1 : insertPos + 1;
         tr.setSelection(TextSelection.near(tr.doc.resolve(newCursorPos), dir));
         this.view.dispatch(tr.scrollIntoView());
-        this.view.focus();
+        focusPM();
         return;
       }
       const tr = this.view.state.tr.setSelection(selection).scrollIntoView();
       this.view.dispatch(tr);
-      this.view.focus();
+      focusPM();
     };
 
     // Custom keymaps for PM ↔ CM navigation
