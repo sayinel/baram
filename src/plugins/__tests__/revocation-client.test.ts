@@ -359,6 +359,61 @@ describe("refreshRevocations", () => {
     ).not.toBeNull();
   });
 
+  it.each([
+    [
+      "an unknown document version, which v1 semantics must not be applied to",
+      { revoked: [], sequence: 5, version: 2 },
+    ],
+    [
+      "a `revoked` that is not an array",
+      { revoked: "all of them", version: 1 },
+    ],
+    ["a document that is not an object", "definitely not a list"],
+  ])("DROPS a stored list with %s", async (_label, revocations) => {
+    // ‼️ THE ONE PLACE A LIST WAS TRUSTED WITHOUT THE VALIDATOR (security review MEDIUM-4).
+    // `refreshRevocations` normalises every FETCHED document; rehydration installed whatever was on
+    // disk, and `config.json` is writable by a hand edit and by an in-realm attacker — so a document
+    // the app would have refused over the wire went straight into the gate. `version: 2` is the
+    // sharpest case: the validator refuses an unknown version precisely so v1 semantics are not
+    // applied to it, and rehydration applied them anyway.
+    await rehydrateWith({
+      revocations,
+      revocationsFetchedAt: 1_700_000_000_000,
+      revocationsVerified: true,
+    });
+    const state = usePluginStore.getState();
+    expect(state.revocations).toBeNull();
+    // The timestamp and the verified flag go with it: there is no list, so the marketplace's "never
+    // received" notice is the true one, and a fresh-looking timestamp for nothing is not.
+    expect(state.revocationsFetchedAt).toBe(0);
+    expect(state.revocationsVerified).toBe(false);
+  });
+
+  it("keeps a stored list that is valid, and drops only the unreadable ENTRY", async () => {
+    // The other half, and the asymmetry the validator exists for: one bad entry must not take the
+    // rest of the list down with it — the same rule the fetch path follows.
+    await rehydrateWith({
+      revocations: {
+        revoked: [
+          { id: "keep-me", reason: "r", severity: "malicious", versions: "*" },
+          { id: 42, reason: "not an id" },
+        ],
+        sequence: 7,
+        version: 1,
+      },
+      revocationsFetchedAt: 1_700_000_000_000,
+      revocationsVerified: true,
+    });
+    const state = usePluginStore.getState();
+    expect(state.revocations?.revoked.map((entry) => entry.id)).toEqual([
+      "keep-me",
+    ]);
+    // The counter survives, because the rollback defence reads it.
+    expect(state.revocations?.sequence).toBe(7);
+    expect(state.revocationsFetchedAt).toBe(1_700_000_000_000);
+    expect(state.revocationsVerified).toBe(true);
+  });
+
   it("does not RESTORE a registry URL planted in storage, so the refresh cannot be redirected", async () => {
     // ‼️ THE STRONGER PRIMITIVE THE MARK FIX DID NOT TOUCH (security review HIGH-1). USER
     // DECISION 2026-08-04: stop persisting `registryUrl`.
