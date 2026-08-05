@@ -505,10 +505,10 @@ function depthOffset(node: PMNode): number {
   return node.isTextblock ? 1 : 2; // item(paragraph) needs one more descent
 }
 
-/** Clamp a landing position into the document and off node boundaries, so
- *  the next resolveLineUnit sees the block under it. */
 /**
- * Walk a position to the START of the line unit under it: containers are
+ * Clamp a landing position into the document and off node boundaries, so
+ * the next resolveLineUnit sees the block under it, then walk it to the
+ * START of the line unit: containers are
  * entered level by level (impl review R4 — stopping at a list boundary made
  * resolveLineUnit eat the whole list), but an atom/leaf BLOCK is a line of
  * its own and the walk stops at its boundary (impl review R5 — descending

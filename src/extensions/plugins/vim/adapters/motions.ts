@@ -178,6 +178,8 @@ export function resolveMotion(
   }
 }
 
+/** The hard-break segment (or whole-textblock span) holding `pos`; null on
+ *  an atom boundary. */
 export function segmentSpanAt(
   state: EditorState,
   pos: number,
@@ -192,8 +194,6 @@ export function segmentSpanAt(
   );
 }
 
-/** The hard-break segment (or whole-textblock span) holding `pos`; null on
- *  an atom boundary. */
 /**
  * End position (exclusive) of the word-like segment containing `pos`, or
  * null when the cursor is not on a word character — vim's cw-acts-as-ce

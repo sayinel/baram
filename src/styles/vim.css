@@ -3,7 +3,7 @@
    paints the unit under the vim cursor. */
 
 .vim-cursor {
-  color: var(--color-bg-default);
+  color: var(--color-accent-on-solid);
   background: var(--color-accent-default);
   border-radius: 1px;
 }

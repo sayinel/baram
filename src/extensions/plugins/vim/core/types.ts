@@ -5,6 +5,10 @@
 // boundary is what makes the whole modal layer unit-testable without a DOM,
 // and it is why VisualState carries opaque numbers the adapters supply.
 
+/**
+ * What the core asks the adapters to do. One keystroke yields at most one
+ * command; multi-key sequences (`dd`, `gg`) emit only on completion.
+ */
 export type CoreCommand =
   | { after: boolean; count: number; type: "paste" }
   | { at: InsertAnchor; type: "enterInsert" }
@@ -37,10 +41,6 @@ export type CoreCommand =
   | { type: "leaveVisual" }
   | { type: "yankVisual" };
 
-/**
- * What the core asks the adapters to do. One keystroke yields at most one
- * command; multi-key sequences (`dd`, `gg`) emit only on completion.
- */
 /** f/F = to the char, t/T = till just before it; capitals go backward. */
 export type FindKind = "f" | "F" | "t" | "T";
 
