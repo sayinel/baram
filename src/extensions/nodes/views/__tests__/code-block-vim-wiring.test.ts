@@ -85,6 +85,78 @@ describe("code block vim wiring (S2)", () => {
     editor.destroy();
   });
 
+  it("Esc stair: insert to normal to BLOCK EXIT into PM", async () => {
+    const editor = createEditor("```ts\nconst x = 1;\n```\n");
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    // vim ready = the editing-host barrier holds in normal mode
+    await vi.waitFor(() => {
+      expect(content.getAttribute("contenteditable")).toBe("false");
+    });
+    content.focus();
+    // jsdom's focus() does not synthesize focusin — dispatch it so the PM
+    // suspension chain releases the island's readOnly (the device flow).
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+
+    const press = (key: string) =>
+      content.dispatchEvent(
+        new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key }),
+      );
+
+    // The barrier's contenteditable=false is NOT a ready signal — retry
+    // `i` until vim is attached and answers with insert mode (the extra
+    // presses land on a host-less island and are dropped by design).
+    await vi.waitFor(() => {
+      press("i"); // retried until vim is attached and answers with insert
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    press("Escape"); // back to normal — host removed again
+    await vi.waitFor(() => {
+      expect(content.getAttribute("contenteditable")).toBe("false");
+    });
+    press("Escape"); // normal-mode Esc falls through → block exit
+    await vi.waitFor(() => {
+      const sel = editor.state.selection;
+      let pos = -1;
+      editor.state.doc.descendants((n, p) => {
+        if (pos < 0 && n.type.name === "codeBlock") pos = p;
+        return pos < 0;
+      });
+      expect(sel.from).toBeLessThanOrEqual(pos); // PM selection left the block
+    });
+    editor.destroy();
+  });
+
+  it("edge j in normal mode exits DOWN into PM", async () => {
+    const editor = createEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    await vi.waitFor(() => {
+      expect(content.getAttribute("contenteditable")).toBe("false");
+    });
+    content.focus();
+    content.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "j",
+      }),
+    );
+    await vi.waitFor(() => {
+      let pos = -1;
+      let size = 0;
+      editor.state.doc.descendants((n, p) => {
+        if (pos < 0 && n.type.name === "codeBlock") {
+          pos = p;
+          size = n.nodeSize;
+        }
+        return pos < 0;
+      });
+      expect(editor.state.selection.from).toBeGreaterThanOrEqual(pos + size);
+    });
+    editor.destroy();
+  });
+
   it("a language change tears down and re-arms vim on the new CM", async () => {
     const editor = createEditor("```ts\nconst x = 1;\n```\n");
     await revealCM(editor);

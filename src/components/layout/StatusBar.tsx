@@ -263,11 +263,14 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
         {/* §298 vim S3 — only in source mode AND with a live vim session:
             the store is reset on toggle-off/unmount, and the mode gate
             defends against any stale value (Codex plan review). */}
-        {vimStatus && vimStatus.surface === vimSurface && (
-          <span className="status-mode status-vim-mode">
-            -- {vimStatus.mode.toUpperCase()} --
-          </span>
-        )}
+        {vimStatus &&
+          (vimStatus.surface === vimSurface ||
+            (vimSurface === "wysiwyg" &&
+              vimStatus.surface === "codeblock")) && (
+            <span className="status-mode status-vim-mode">
+              -- {vimStatus.mode.toUpperCase()} --
+            </span>
+          )}
         {isRepo && branch && (
           <span
             className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`}

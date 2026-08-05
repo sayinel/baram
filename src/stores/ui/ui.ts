@@ -49,7 +49,7 @@ export type UnsavedModalRequest =
 /** §298 vim §8 — one atomic status: which SURFACE owns the indicator. */
 export interface VimStatus {
   mode: VimStatusMode;
-  surface: "source" | "wysiwyg";
+  surface: "codeblock" | "source" | "wysiwyg";
 }
 
 /** §298 vim S3 — current vim mode shown in the StatusBar (null = vim off or

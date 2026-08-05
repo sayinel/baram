@@ -30,6 +30,12 @@ import {
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
+import {
+  islandVimBlur,
+  islandVimDispose,
+  islandVimFocus,
+  islandVimMode,
+} from "../../plugins/vim/vim-status";
 import { getHighlightStyle } from "../code-block-highlight";
 import {
   getLanguageExtension,
@@ -49,6 +55,7 @@ export class CodeBlockNodeView implements NodeView {
   private destroyed = false;
   private getPos: () => number | undefined;
   private initGeneration = 0;
+  private islandStatusDispose: (() => void) | null = null;
   private langSelect: HTMLSelectElement;
   private latestEffectiveEditable: boolean | null = null;
   private latestVimEnabled: boolean | null = null;
@@ -559,7 +566,25 @@ export class CodeBlockNodeView implements NodeView {
           effects: this.vimEditableCompartment.reconfigure([]),
         });
       },
+      onModeChange: (mode) => {
+        islandVimMode(island, mode);
+        // Cold-load race: the first mode arrives AFTER focus already sits
+        // in the island — claim the indicator now, not on the next focus.
+        if (mode !== null && island.hasFocus) islandVimFocus(island);
+      },
     });
+    // §3-4 nested StatusBar ownership — the island claims the indicator on
+    // focus (snapshot replay) and releases it on blur/teardown.
+    const island = this.cmView;
+    const onIslandFocus = () => islandVimFocus(island);
+    const onIslandBlur = () => islandVimBlur(island);
+    island.contentDOM.addEventListener("focusin", onIslandFocus);
+    island.contentDOM.addEventListener("focusout", onIslandBlur);
+    this.islandStatusDispose = () => {
+      island.contentDOM.removeEventListener("focusin", onIslandFocus);
+      island.contentDOM.removeEventListener("focusout", onIslandBlur);
+      islandVimDispose(island);
+    };
     if (this.latestVimEnabled) this.applyVim(true);
 
     // Auto-focus newly created (empty) code blocks and scroll into view
@@ -585,6 +610,10 @@ export class CodeBlockNodeView implements NodeView {
    *  change and NodeView.destroy. Dispose BEFORE destroy: the controller's
    *  deferred work checks its disposed flag before dispatching. */
   private teardownCM(): void {
+    if (this.islandStatusDispose) {
+      this.islandStatusDispose();
+      this.islandStatusDispose = null;
+    }
     if (this.vimController) {
       this.vimController.dispose();
       this.vimController = null;

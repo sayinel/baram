@@ -11,10 +11,18 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { useUIStore } from "../../../stores/ui/ui";
+import { useUIStore, type VimStatusMode } from "../../../stores/ui/ui";
 import { vimPluginKey } from "./vim-keys";
 
 let owner: Editor | null = null;
+
+// §298 Phase 0b — the ISLAND layer. A focused code-block CM owns the
+// indicator over the PM feed: CM edits dispatch PM transactions, whose
+// PluginView would otherwise overwrite the island's insert mode with PM
+// normal on every keystroke. Feeders only update snapshots; the store is
+// written from exactly one arbitration path.
+let activeIsland: unknown = null;
+const islandModes = new Map<unknown, VimStatusMode>();
 
 /** PluginView destroy: a dying owner view must not leave its mode behind. */
 export function clearWysiwygVimStatusFor(view: EditorView): void {
@@ -23,8 +31,46 @@ export function clearWysiwygVimStatusFor(view: EditorView): void {
   }
 }
 
+/** Island blur/teardown: release the indicator and REPLAY the PM owner. */
+export function islandVimBlur(id: unknown): void {
+  if (activeIsland !== id) return;
+  activeIsland = null;
+  publish();
+}
+
+/** Island teardown — forget the snapshot too. */
+export function islandVimDispose(id: unknown): void {
+  islandModes.delete(id);
+  islandVimBlur(id);
+}
+
+/** Island focus: claim the indicator ONLY with a live vim snapshot —
+ *  a vim-off island leaves the PM feed alone. */
+export function islandVimFocus(id: unknown): void {
+  const mode = islandModes.get(id);
+  if (mode === undefined) return;
+  activeIsland = id;
+  useUIStore.getState().setVimStatus({ mode, surface: "codeblock" });
+}
+
+/** Island mode transition (null = vim off for that island). */
+export function islandVimMode(id: unknown, mode: null | VimStatusMode): void {
+  if (mode === null) {
+    islandModes.delete(id);
+    islandVimBlur(id);
+    return;
+  }
+  islandModes.set(id, mode);
+  if (activeIsland === id) {
+    useUIStore.getState().setVimStatus({ mode, surface: "codeblock" });
+  }
+}
+
 /** PluginView update: publishes only from the appointed owner. */
 export function publishWysiwygVimStatus(view: EditorView): void {
+  // A focused island owns the indicator — the PM feed stays quiet and is
+  // replayed by islandVimBlur when the island lets go.
+  if (activeIsland !== null) return;
   if (ownerView() === view) publish();
 }
 
