@@ -48,3 +48,37 @@ export function registerCodeBlockEditableSync(
     set.delete(sync);
   };
 }
+
+// §298 Phase 0b — vim on/off channel, same shape as the editable channel:
+// the vim PluginView broadcasts the ENABLED flag, live code blocks flip
+// their vim controller, and the last value replays to late registrants
+// (a lazily created CM must not miss the current setting).
+
+const vimRegistries = new WeakMap<PMView, Set<EditableSync>>();
+const lastVimBroadcast = new WeakMap<PMView, boolean>();
+
+/** Push the vim ENABLED flag to every live code block of this PM view. */
+export function broadcastCodeBlockVim(view: PMView, enabled: boolean): void {
+  lastVimBroadcast.set(view, enabled);
+  const set = vimRegistries.get(view);
+  if (!set) return;
+  for (const sync of set) sync(enabled);
+}
+
+/** Register a code block's vim sync; returns the unregister function. */
+export function registerCodeBlockVimSync(
+  view: PMView,
+  sync: EditableSync,
+): () => void {
+  let set = vimRegistries.get(view);
+  if (!set) {
+    set = new Set();
+    vimRegistries.set(view, set);
+  }
+  set.add(sync);
+  const cached = lastVimBroadcast.get(view);
+  if (cached !== undefined) sync(cached);
+  return () => {
+    set.delete(sync);
+  };
+}

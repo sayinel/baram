@@ -33,7 +33,10 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
-import { broadcastCodeBlockEditable } from "../../nodes/views/code-block-cm-registry";
+import {
+  broadcastCodeBlockEditable,
+  broadcastCodeBlockVim,
+} from "../../nodes/views/code-block-cm-registry";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary } from "./adapters/graphemes";
@@ -256,6 +259,10 @@ export function createVimPlugin(
         (view.editable || read(view.state).suspended);
       let prevEffective = effective(editorView);
       broadcastCodeBlockEditable(editorView, prevEffective);
+      // Phase 0b: code blocks follow the SAME switch — enabled flag only,
+      // mode transitions stay per-island (each CM has its own vim).
+      let prevVimEnabled = read(editorView.state).enabled;
+      broadcastCodeBlockVim(editorView, prevVimEnabled);
       return {
         destroy: () => {
           unregister();
@@ -267,6 +274,11 @@ export function createVimPlugin(
           if (next !== prevEffective) {
             prevEffective = next;
             broadcastCodeBlockEditable(view, next);
+          }
+          const nextVim = read(view.state).enabled;
+          if (nextVim !== prevVimEnabled) {
+            prevVimEnabled = nextVim;
+            broadcastCodeBlockVim(view, nextVim);
           }
         },
       };
