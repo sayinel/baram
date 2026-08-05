@@ -10,6 +10,7 @@ import {
 // Pure/logic helpers live here so the overlay .tsx files export only components
 // (mirrors table-insert-coords.ts).
 import { withVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 
 /** Anchor describing where a grip handle should sit (visual-viewport px). */
 export interface HandleAnchor {
@@ -217,7 +218,7 @@ export function selectColumn(editor: Editor, cellBeforePos: number): void {
   const $cell = editor.state.doc.resolve(cellBeforePos);
   const sel = CellSelection.colSelection($cell);
   editor.view.dispatch(editor.state.tr.setSelection(sel));
-  editor.view.focus();
+  focusEditorView(editor.view);
 }
 
 /** Select the entire row containing the cell at `cellBeforePos`. */
@@ -225,5 +226,5 @@ export function selectRow(editor: Editor, cellBeforePos: number): void {
   const $cell = editor.state.doc.resolve(cellBeforePos);
   const sel = CellSelection.rowSelection($cell);
   editor.view.dispatch(editor.state.tr.setSelection(sel));
-  editor.view.focus();
+  focusEditorView(editor.view);
 }

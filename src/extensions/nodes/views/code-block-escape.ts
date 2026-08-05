@@ -7,6 +7,8 @@ import type { EditorView as PMView } from "@tiptap/pm/view";
 
 import { TextSelection } from "@tiptap/pm/state";
 
+import { focusEditorView } from "../../../utils/editor/focus-editor-view";
+
 export interface CodeBlockEscape {
   /** Focus PM even while non-editable (vim modal). */
   focusPM(): void;
@@ -20,8 +22,7 @@ export function createCodeBlockEscape(
   node: () => PMNode,
 ): CodeBlockEscape {
   const focusPM = () => {
-    view.focus();
-    if (!view.hasFocus()) view.dom.focus();
+    focusEditorView(view);
   };
 
   // Helper to exit CodeMirror → ProseMirror with proper direction bias.

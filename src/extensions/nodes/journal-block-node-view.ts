@@ -13,6 +13,7 @@ import {
   type JournalBlockLanguage,
   JournalDynamicBlock,
 } from "../../components/journal/JournalDynamicBlock";
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 
 export class JournalBlockNodeView implements NodeView {
   dom: HTMLElement;
@@ -61,7 +62,7 @@ export class JournalBlockNodeView implements NodeView {
       1,
     );
     this.view.dispatch(this.view.state.tr.setSelection(sel));
-    this.view.focus();
+    focusEditorView(this.view);
   }
 
   stopEvent(event: Event): boolean {
