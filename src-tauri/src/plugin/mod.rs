@@ -1389,11 +1389,28 @@ fn revocation_http_client() -> Result<reqwest::Client, String> {
 /// ‼️ THE SHARED CLIENT IS NOT WHAT MAKES THEM CONCURRENT, and saying it was is a false causal
 /// claim the earlier version of this line made (third-round code review MEDIUM). What made the
 /// pair serial was awaiting the second fetch after the first; two separate clients under `join!`
-/// overlap exactly as one shared client does. What the shared client buys is a shared pool — an
-/// h2 origin serves both over one connection, and the next refresh can reuse it instead of paying
-/// another handshake. ‼️ And that half has NO test: reverting to a client per request leaves all
-/// four tests green, because the concurrency they measure comes from `join!`. Pinning it needs an
-/// h2 test fixture this suite does not have.
+/// overlap exactly as one shared client does. What the shared client buys is a pool shared by
+/// THIS pair: against an h2 origin both requests go over one connection, and over h1 the second
+/// may open its own — concurrently, not after.
+///
+/// ‼️ AND NOTHING BEYOND THIS PAIR. The correction above claimed "the next refresh can reuse it",
+/// and that is false too: `revocation_http_client` builds a client per call (`fetch_signed_pair`
+/// and `fetch_capped_text`), so the pool is dropped with it. It would buy little anyway — the only
+/// other caller of `refreshRevocations` is the marketplace panel opening, minutes later, past any
+/// idle keep-alive.
+///
+/// ‼️ THE COST THAT DOES MATTER IS NOT THE POOL. Measured in this crate: the FIRST
+/// `reqwest::Client` build in a process takes ~1.08 s (debug) while the second takes ~0.53 ms and
+/// a loopback request ~1-5 ms — a one-time process-global initialisation, not a per-client cost.
+/// `refreshRevocations` is the app's first HTTP client (the app-update check waits 15 s; every
+/// other client site is on demand), so that ~1.08 s lands inside its
+/// `REVOCATION_REFRESH_BUDGET_MS = 1500` window, which is a bigger share of the budget than the
+/// round trip this pair saves. Recorded in `dev/backlog.md`; the fix is to build the client
+/// once, eagerly, off the startup path.
+///
+/// ‼️ The pool sharing has NO test: reverting to a client per request leaves all four tests green,
+/// because the concurrency they measure comes from `join!`. Pinning it needs an h2 test fixture
+/// this suite does not have.
 async fn fetch_capped_text_with(
     client: &reqwest::Client,
     url: &str,
