@@ -95,9 +95,16 @@ describe("revocationUrlFor", () => {
  * Drives the store's real `persist.rehydrate()` rather than reading `partialize` output,
  * because that difference is precisely what hid a CRITICAL for two review rounds.
  */
-async function rehydrateWith(state: Record<string, unknown>): Promise<void> {
+async function rehydrateWith(
+  state: Record<string, unknown>,
+  version = 3,
+): Promise<void> {
   const original = usePluginStore.persist.getOptions().storage;
-  const blob = JSON.stringify({ state, version: 3 });
+  // ‼️ `version` is a parameter so a case can force the MIGRATE path. zustand runs `migrate` only
+  // when the stored version differs from the current one, and `merge` on every rehydrate — the
+  // whole reason the list validator lives in `merge`. A case that only ever stores the current
+  // version cannot tell the two apart.
+  const blob = JSON.stringify({ state, version });
   usePluginStore.persist.setOptions({
     storage: createJSONStorage(() => ({
       getItem: () => blob,
@@ -357,6 +364,86 @@ describe("refreshRevocations", () => {
       revocationFor("bad", "1.0.0", usePluginStore.getState().revocations),
       "a planted mark must not refuse a genuine list after a restart",
     ).not.toBeNull();
+  });
+
+  it.each([
+    [
+      "an unknown document version, which v1 semantics must not be applied to",
+      { revoked: [], sequence: 5, version: 2 },
+    ],
+    [
+      "a `revoked` that is not an array",
+      { revoked: "all of them", version: 1 },
+    ],
+    ["a document that is not an object", "definitely not a list"],
+  ])("DROPS a stored list with %s", async (_label, revocations) => {
+    // ‼️ THE ONE PLACE A LIST WAS TRUSTED WITHOUT THE VALIDATOR (security review MEDIUM-4).
+    // `refreshRevocations` normalises every FETCHED document; rehydration installed whatever was on
+    // disk, and `config.json` is writable by a hand edit and by an in-realm attacker — so a document
+    // the app would have refused over the wire went straight into the gate. `version: 2` is the
+    // sharpest case: the validator refuses an unknown version precisely so v1 semantics are not
+    // applied to it, and rehydration applied them anyway.
+    await rehydrateWith({
+      revocations,
+      revocationsFetchedAt: 1_700_000_000_000,
+      revocationsVerified: true,
+    });
+    const state = usePluginStore.getState();
+    expect(state.revocations).toBeNull();
+    // The timestamp and the verified flag go with it: there is no list, so the marketplace's "never
+    // received" notice is the true one, and a fresh-looking timestamp for nothing is not.
+    expect(state.revocationsFetchedAt).toBe(0);
+    expect(state.revocationsVerified).toBe(false);
+  });
+
+  it("validates the stored list on the MIGRATE path too, not just the ordinary one", async () => {
+    // ‼️ WHAT THIS DOES AND DOES NOT PIN, said plainly. The validator lives in `merge` because
+    // zustand calls `migrate` only on a version change and `merge` always — so putting it in
+    // `migrate` would leave the ordinary launch, i.e. every launch, unvalidated. That direction is
+    // already covered by the cases above (they store the current version, so `migrate` never runs).
+    //
+    // NO mutation in this repository distinguishes this case from those: `merge` cannot see the
+    // version, so there is no realistic edit that validates one path and not the other. Its value is
+    // narrower and worth having anyway — it pins the UPSTREAM ORDER. zustand runs migrate, then
+    // merge; a future version that skipped `merge` for migrated state would silently reinstate the
+    // bypass, and only a case that forces the migrate path would notice.
+    await rehydrateWith(
+      {
+        revocations: { revoked: [], sequence: 5, version: 2 },
+        revocationsFetchedAt: 1_700_000_000_000,
+        revocationsVerified: true,
+      },
+      1,
+    );
+    const state = usePluginStore.getState();
+    expect(state.revocations).toBeNull();
+    expect(state.revocationsFetchedAt).toBe(0);
+    expect(state.revocationsVerified).toBe(false);
+  });
+
+  it("keeps a stored list that is valid, and drops only the unreadable ENTRY", async () => {
+    // The other half, and the asymmetry the validator exists for: one bad entry must not take the
+    // rest of the list down with it — the same rule the fetch path follows.
+    await rehydrateWith({
+      revocations: {
+        revoked: [
+          { id: "keep-me", reason: "r", severity: "malicious", versions: "*" },
+          { id: 42, reason: "not an id" },
+        ],
+        sequence: 7,
+        version: 1,
+      },
+      revocationsFetchedAt: 1_700_000_000_000,
+      revocationsVerified: true,
+    });
+    const state = usePluginStore.getState();
+    expect(state.revocations?.revoked.map((entry) => entry.id)).toEqual([
+      "keep-me",
+    ]);
+    // The counter survives, because the rollback defence reads it.
+    expect(state.revocations?.sequence).toBe(7);
+    expect(state.revocationsFetchedAt).toBe(1_700_000_000_000);
+    expect(state.revocationsVerified).toBe(true);
   });
 
   it("does not RESTORE a registry URL planted in storage, so the refresh cannot be redirected", async () => {

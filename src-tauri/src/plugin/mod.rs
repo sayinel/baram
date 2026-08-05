@@ -1216,32 +1216,102 @@ const MAX_REVOCATION_BYTES: usize = 1024 * 1024;
 /// above lacked all three until it was brought to the same shape; the two now differ only
 /// in their size cap and in returning text rather than a struct.
 pub async fn fetch_revocations(url: &str) -> Result<FetchedRevocations, String> {
-    let body = fetch_capped_text(url, MAX_REVOCATION_BYTES, "revocation list").await?;
-
     // ‼️ Verification applies where we hold the key, which is the first-party registry and
     // nowhere else — see `FIRST_PARTY_REVOCATION_PREFIX`. And it is ARMED only once the key
     // constant is filled in, because demanding a signature before one is published rejects
     // the live list on every client. Both skips are logged: an unverified list must never be
     // mistaken for a verified one just because nothing was said.
-    if !url.starts_with(FIRST_PARTY_REVOCATION_PREFIX) {
-        log::info!("[Revocation] third-party registry — list is not signature-verified");
-        return Ok(FetchedRevocations::unverified(body));
-    }
-    if REVOCATION_PUBLIC_KEY.is_empty() {
-        log::warn!(
-            "[Revocation] signature enforcement is NOT ARMED — no public key is compiled in"
-        );
+    //
+    // ‼️ THE DECISION IS MADE BEFORE ANY REQUEST, and it can be: both conditions are a prefix
+    // test and a compile-time constant. That matters twice over — a third-party registry is
+    // never asked for a `.sig` it does not have, and when a signature IS required both fetches
+    // can start together.
+    let needs_signature =
+        url.starts_with(FIRST_PARTY_REVOCATION_PREFIX) && !REVOCATION_PUBLIC_KEY.is_empty();
+    if !needs_signature {
+        let body = fetch_capped_text(url, MAX_REVOCATION_BYTES, "revocation list").await?;
+        if url.starts_with(FIRST_PARTY_REVOCATION_PREFIX) {
+            log::warn!(
+                "[Revocation] signature enforcement is NOT ARMED — no public key is compiled in"
+            );
+        } else {
+            log::info!("[Revocation] third-party registry — list is not signature-verified");
+        }
         return Ok(FetchedRevocations::unverified(body));
     }
 
-    let signature = fetch_capped_text(
-        &format!("{url}.sig"),
-        MAX_REVOCATION_SIGNATURE_BYTES,
-        "revocation signature",
-    )
-    .await
-    .map_err(|e| format!("revocation list is unsigned or its signature is unreachable: {e}"))?;
+    let (body, signature) = fetch_signed_pair(url).await?;
     verified_revocations(body, &signature, REVOCATION_PUBLIC_KEY)
+}
+
+/// Fetch the list and its detached signature CONCURRENTLY, over one HTTP client.
+///
+/// ‼️ ARMING DOUBLED THE COST OF A STARTUP THAT HAS A BUDGET (security review MEDIUM-3). The two
+/// fetches ran in sequence, each building its own `reqwest::Client` and therefore its own
+/// connection pool, so a launch paid two round trips and two TLS handshakes inside
+/// `REVOCATION_REFRESH_BUDGET_MS` — 1500 ms, after which `plugin-lifecycle.ts` stops waiting and
+/// loads plugins with whatever list is stored. A fresh install has NO stored list, so losing that
+/// race means that launch runs with **no revocations at all**, `malicious` entries included. An
+/// attacker who can only slow the connection, and an ordinary user on a slow link, get the same
+/// outcome. ‼️ MITIGATED, NOT CLOSED: any round trip over the budget still loses the race. What
+/// changed is the probability, not the failure mode.
+///
+/// ‼️ WHAT THIS BUYS, STATED WITHOUT OVERCLAIMING: the two requests now overlap rather than
+/// queueing, and they share one connection pool. Against an HTTP/2 origin they multiplex over a
+/// single connection and there is one handshake; over HTTP/1.1 on a cold pool the second request
+/// may open its own connection, in which case the handshakes are concurrent instead of serial.
+/// Either way the wall clock is one round trip rather than two — the claim is "not serialised",
+/// not "one handshake".
+///
+/// ‼️ `join!`, NOT `try_join!`, AND THE DIFFERENCE IS A DETECTION CONTROL (security re-review
+/// MEDIUM-1, which also explains a CI failure this suite reproduced 19 times in 30 under load).
+/// `try_join!` returns whichever future fails FIRST, and the signature's error is mapped to a
+/// sentence the classifier in `revocation-client.ts` treats as structural. So when BOTH fail the
+/// log level was decided by a timing race. The sequential code got this right by construction —
+/// the body was fetched first, so its error always won — and that precedence is restored below.
+///
+/// ‼️ WHICH FAILURES THIS ACTUALLY RECLASSIFIES, because the first version of this comment claimed
+/// three and delivers one (third-round code review MEDIUM). The classifier is nine alternatives,
+/// not two — `not allowed|forbidden|denied|HTTP \d|signature|public key|unsigned|too large|not
+/// UTF-8` — so precedence changes the level only where the BODY's own error matches none of them:
+///
+/// - transport failure (offline, DNS, connection refused, request timeout) → the body error is
+///   "error sending request …", which matches nothing → QUIET. This is the case the fix buys.
+/// - origin down (5xx) → "revocation list returned HTTP 500" matches `HTTP \d` → LOUD before and
+///   after. The earlier comment listed this as rescued; it is not.
+/// - body over the cap, or not UTF-8 → matches `too large` / `not UTF-8` → LOUD, unchanged.
+///
+/// It still matters: offline is the common case, `logger.warn` is suppressed outside dev while
+/// `logger.error` is not, and that loud channel exists so a mangled `REVOCATION_PUBLIC_KEY` is
+/// audible. Filling it with routine offline noise is a detection loss.
+///
+/// ‼️ Residual, symmetric and inherent: body-ok + signature-transport-failure still lands routine
+/// network trouble in the loud channel, because "the signature is unreachable" and "the signature
+/// is missing" are the same observation from here. Recorded in `dev/backlog.md` rather than fixed.
+///
+/// The cost of `join!` is that a failed body no longer cancels an in-flight signature fetch, so a
+/// hanging `.sig` is waited out to the 15 s per-request timeout instead of returning early. That is
+/// a background path with its own 1500 ms race in front of it; correctness of the one detection
+/// channel is worth more than an early return on a path that already lost its race.
+async fn fetch_signed_pair(url: &str) -> Result<(String, String), String> {
+    let client = revocation_http_client()?;
+    let signature_url = format!("{url}.sig");
+    let (body, signature) = tokio::join!(
+        fetch_capped_text_with(&client, url, MAX_REVOCATION_BYTES, "revocation list"),
+        fetch_capped_text_with(
+            &client,
+            &signature_url,
+            MAX_REVOCATION_SIGNATURE_BYTES,
+            "revocation signature",
+        ),
+    );
+    // The body's failure takes precedence — see above. Only a body that ARRIVED can leave the
+    // signature as the thing that went wrong, which is the only case that deserves the loud
+    // classification.
+    let body = body?;
+    let signature = signature
+        .map_err(|e| format!("revocation list is unsigned or its signature is unreachable: {e}"))?;
+    Ok((body, signature))
 }
 
 /// Check a body against its signature and label it `verified`, or refuse it.
@@ -1300,11 +1370,61 @@ const MAX_REVOCATION_SIGNATURE_BYTES: usize = 8 * 1024;
 /// Extracted when the signature became a second fetch needing all three: a hand-copied
 /// second loop is how one of them ends up missing the cap.
 async fn fetch_capped_text(url: &str, cap: usize, what: &str) -> Result<String, String> {
-    let parsed = validate_http_url(url)?;
-    let client = reqwest::Client::builder()
+    fetch_capped_text_with(&revocation_http_client()?, url, cap, what).await
+}
+
+/// One client for the revocation path, so two fetches can share a connection pool.
+fn revocation_http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())
+}
+
+/// The body of the fetch, over a client the caller owns.
+///
+/// Split from `fetch_capped_text` so `fetch_signed_pair` can hand both of its requests the SAME
+/// client.
+///
+/// ‼️ THE SHARED CLIENT IS NOT WHAT MAKES THEM CONCURRENT, and saying it was is a false causal
+/// claim the earlier version of this line made (third-round code review MEDIUM). What made the
+/// pair serial was awaiting the second fetch after the first; two separate clients under `join!`
+/// overlap exactly as one shared client does. What the shared client buys is a pool shared by
+/// THIS pair: against an h2 origin both requests go over one connection, and over h1 the second
+/// may open its own — concurrently, not after.
+///
+/// ‼️ AND NOTHING BEYOND THIS PAIR. The correction above claimed "the next refresh can reuse it",
+/// and that is false too: `revocation_http_client` builds a client per call (`fetch_signed_pair`
+/// and `fetch_capped_text`), so the pool is dropped with it. It would buy little anyway — the only
+/// other caller of `refreshRevocations` is the marketplace panel opening, minutes later, past any
+/// idle keep-alive.
+///
+/// ‼️ THE FIRST CLIENT BUILD IN A PROCESS IS EXPENSIVE IN DEBUG ONLY — and the version of this
+/// note that claimed otherwise was wrong for a third time in a row. Measured in this crate:
+///
+/// | build | 1st client | 2nd client | loopback request |
+/// |-------|-----------|------------|------------------|
+/// | debug   | 1.079 s   | 0.53 ms    | 1-5 ms |
+/// | release | 10.5 ms   | 0.14 ms    | <1 ms  |
+///
+/// So it is a one-time process-global initialisation (certificate store parsing, unoptimised),
+/// not a per-client cost — and it is a **test** problem, not a product one. Test binaries are
+/// debug builds, and that 1.08 s landed inside a wall-clock assertion in the concurrency test,
+/// which is why that assertion is gone: it measured process start-up and could not catch what it
+/// claimed to. Shipping builds are release, where 10.5 ms against
+/// `REVOCATION_REFRESH_BUDGET_MS = 1500` is noise. The retracted claim was that this cost eats
+/// the startup budget; it does not, and no eager-warm-up work is needed.
+///
+/// ‼️ The pool sharing has NO test: reverting to a client per request leaves all four tests green,
+/// because the concurrency they measure comes from `join!`. Pinning it needs an h2 test fixture
+/// this suite does not have.
+async fn fetch_capped_text_with(
+    client: &reqwest::Client,
+    url: &str,
+    cap: usize,
+    what: &str,
+) -> Result<String, String> {
+    let parsed = validate_http_url(url)?;
     let mut resp = client.get(parsed).send().await.map_err(|e| e.to_string())?;
     let status = resp.status();
     if !status.is_success() {
@@ -1344,15 +1464,19 @@ pub const FIRST_PARTY_REVOCATION_PREFIX: &str = "https://sayinel.github.io/baram
 
 /// The key the first-party revocation list is signed with.
 ///
-/// ‼️ EMPTY MEANS ENFORCEMENT IS NOT ARMED YET, and that is a deliberate transition state, not
-/// an oversight. The rollout order is forced: a signed list must be PUBLISHED before clients
-/// demand one, because a client that demands a signature before one exists rejects the live
-/// list, keeps whatever it has, and gives a fresh install no revocations at all — including
-/// the `baram-ai-summary` entry that is live today.
+/// ‼️ ARMED SINCE 2026-08-04 — this constant is filled and in `main`, so the branches below that
+/// describe the unarmed state are history plus a fallback, not a pending step (security re-review
+/// Q5: the previous version of this docstring still told a reader not to fill it in).
 ///
-/// So while this is empty the fetch path logs loudly and accepts, exactly as before. Filling
-/// it in is the switch that arms verification, and it must not be filled until the signed list
-/// is live.
+/// The rollout order it describes was real and is worth keeping, because it is why the empty case
+/// is handled at all: a signed list had to be PUBLISHED before clients demanded one, since a client
+/// that demands a signature before one exists rejects the live list, keeps whatever it has, and
+/// gives a fresh install no revocations at all. While the constant was empty the fetch path logged
+/// loudly and accepted.
+///
+/// That path is now unreachable in a shipped build and deliberately kept: emptying this constant is
+/// a one-line edit, `an_armed_key_must_actually_be_a_minisign_public_key` refuses it in CI, and if
+/// it ever landed anyway the fetch must degrade audibly rather than silently claim verification.
 pub const REVOCATION_PUBLIC_KEY: &str =
     "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE2RTZCRUIwQTc4QTNCQjQKUldTME80cW5zTDdtRnVSMTI0WGpadUR0QjVUdmlINWFub1h1RjBNaXFEWUhGNVBwN3Rxa0hJK2gK";
 
@@ -2081,6 +2205,9 @@ pub fn read_manifest_at(folder: &Path) -> Result<PluginManifest, PluginError> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+    use std::time::Instant;
+
     use super::*;
 
     /// §260 3c-2b — the bundle read backing `SourceRead`. `main` is manifest-supplied
@@ -3795,6 +3922,62 @@ mod tests {
         format!("http://{addr}/doc.json")
     }
 
+    /// A server on ONE port that answers two requests, stalling each and recording when it was
+    /// accepted.
+    ///
+    /// ‼️ ONE PORT, BECAUSE THE PRODUCTION ENTRY POINT DERIVES THE SIGNATURE URL. `fetch_signed_pair`
+    /// appends `.sig` to the list URL, so two separate servers cannot be reached by it — and a test
+    /// that instead calls `try_join!` itself proves that tokio works, not that our code is
+    /// concurrent. The first version of this test did exactly that and would have passed against a
+    /// fully sequential implementation.
+    ///
+    /// ‼️ THE ACCEPT INSTANTS ARE THE EVIDENCE, not the total elapsed time. Two requests that overlap
+    /// are accepted at almost the same moment; two that queue are accepted `delay` apart. Each
+    /// connection is handled on its own thread so the stall cannot serialise the accepts.
+    fn serve_pair_slow(
+        body: (&'static str, Vec<u8>, Duration),
+        signature: (&'static str, Vec<u8>, Duration),
+    ) -> (String, Arc<Mutex<Vec<Instant>>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let accepted: Arc<Mutex<Vec<Instant>>> = Arc::new(Mutex::new(Vec::new()));
+        let slots = Arc::clone(&accepted);
+        std::thread::spawn(move || {
+            for _ in 0..2 {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                slots.lock().unwrap().push(Instant::now());
+                let body = body.clone();
+                let signature = signature.clone();
+                std::thread::spawn(move || {
+                    use std::io::{Read, Write};
+                    let mut scratch = [0u8; 2048];
+                    let read = stream.read(&mut scratch).unwrap_or(0);
+                    let request = String::from_utf8_lossy(&scratch[..read]).to_string();
+                    // Which document was asked for decides the body; the `.sig` suffix is what
+                    // `fetch_signed_pair` appends.
+                    // ‼️ A STATUS PER PATH, so a case can make EXACTLY ONE side fail. Pointing both
+                    // at a closed port made both futures fail and left the assertion to a race.
+                    let (status, payload, delay) = if request.contains(".sig") {
+                        signature
+                    } else {
+                        body
+                    };
+                    let header = format!(
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        payload.len()
+                    );
+                    std::thread::sleep(delay);
+                    let _ = stream.write_all(header.as_bytes());
+                    let _ = stream.write_all(&payload);
+                    let _ = stream.flush();
+                });
+            }
+        });
+        (format!("http://{addr}/doc.json"), accepted)
+    }
+
     /// A one-shot 302 to `location`, for the redirect policy.
     ///
     /// Its own helper because `serve_once` sends no headers beyond `Content-Length`, and a
@@ -3981,6 +4164,194 @@ mod tests {
             err.to_string().contains("registry index too large"),
             "{err}"
         );
+    }
+
+    #[tokio::test]
+    async fn the_signed_pair_is_fetched_concurrently_not_in_sequence() {
+        // ‼️ THE PROPERTY IS A STARTUP BUDGET, NOT AN OPTIMISATION (security review MEDIUM-3).
+        // `plugin-lifecycle.ts` waits `REVOCATION_REFRESH_BUDGET_MS` = 1500 ms and then loads plugins
+        // with whatever is STORED — and a fresh install has nothing stored, so a launch that loses
+        // that race runs with no revocations at all, `malicious` entries included. Two serial round
+        // trips against a slow link is how it gets lost, and that cost is what arming added.
+        //
+        // Driven through `fetch_signed_pair`, which is the function the armed path uses.
+        let delay = Duration::from_millis(600);
+        let (url, accepted) = serve_pair_slow(
+            ("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec(), delay),
+            ("200 OK", b"not a real signature".to_vec(), delay),
+        );
+        // ‼️ NO STOPWATCH. There was a second assertion here — `elapsed < delay * 2` — introduced as
+        // a guard against "a future change that starts both requests and then serialises the
+        // bodies". It cannot catch that, measured rather than argued: with `fetch_signed_pair`
+        // mutated to `join!` the two `send()`s and then await the two bodies one after the other,
+        // this test PASSED. `serve_pair_slow` sleeps per connection on its own thread and before
+        // writing anything, so both stalls overlap no matter when the client reads, and the payload
+        // is already buffered by the time a serial reader gets to it. Total elapsed is ~one stall
+        // either way. Catching serialised reads would need a server that withholds the body until
+        // the client reads it — this fixture cannot, so do not re-add a wall-clock assertion
+        // believing that it covers the case.
+        //
+        // What it did catch was a fully sequential implementation, which the accept gap below
+        // already kills ("602.218ms apart", verified). And it cost real breakage: in a DEBUG build
+        // the first HTTP client in a process takes ~1.08 s (10.5 ms in release — see
+        // `fetch_capped_text_with`), test binaries are debug, and that landed inside the timing
+        // window. The test therefore failed 3/3 when run alone and passed only when a sibling
+        // network test warmed the process first — red under `cargo test --exact` and under any
+        // runner that gives each test its own process (nextest). The accept gap is immune to that
+        // by construction: both accepts happen after the client exists.
+        let (body, signature) = fetch_signed_pair(&url).await.expect("both fetches succeed");
+        assert!(body.contains("revoked"), "{body}");
+        assert_eq!(signature, "not a real signature");
+        let instants = accepted.lock().unwrap().clone();
+        assert_eq!(instants.len(), 2, "both requests must have been accepted");
+        let gap = instants[1] - instants[0];
+        assert!(
+            gap < delay,
+            "the two requests were {gap:?} apart with a {delay:?} stall each — that is serial, \
+             not concurrent"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failing_signature_fetch_still_says_it_was_the_signature() {
+        // ‼️ THE MESSAGE IS LOAD-BEARING. `revocation-client.ts` matches /signature|unsigned/ to log a
+        // refresh failure LOUDLY as structural rather than quietly as offline — the distinction that
+        // hid a missing ACL grant for a whole review cycle.
+        //
+        // ‼️ EXACTLY ONE SIDE FAILS. The first version of this pair pointed BOTH urls at a closed
+        // port, so both futures failed and the assertion depended on which lost the race: it passed
+        // locally and failed on CI, which is the definition of a test that proves nothing.
+        let (url, _) = serve_pair_slow(
+            (
+                "200 OK",
+                br#"{"version":1,"revoked":[]}"#.to_vec(),
+                Duration::ZERO,
+            ),
+            (
+                "404 Not Found",
+                b"no signature here".to_vec(),
+                Duration::ZERO,
+            ),
+        );
+        let err = fetch_signed_pair(&url)
+            .await
+            .expect_err("the signature is a 404");
+        assert!(
+            err.contains("unsigned or its signature is unreachable"),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failing_body_fetch_is_not_reported_as_a_signature_problem() {
+        // The mirror: the list's own failure must be named, or an operator is sent to look at a
+        // signature that was never the problem.
+        let (url, _) = serve_pair_slow(
+            (
+                "500 Internal Server Error",
+                b"broken".to_vec(),
+                Duration::ZERO,
+            ),
+            ("200 OK", b"not a real signature".to_vec(), Duration::ZERO),
+        );
+        let err = fetch_signed_pair(&url)
+            .await
+            .expect_err("the list is a 500");
+        assert!(
+            err.contains("revocation list returned HTTP 500"),
+            "the list's own failure must be named: {err}"
+        );
+        assert!(
+            !err.contains("unsigned or its signature is unreachable"),
+            "a body failure must not be labelled a signature failure: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn when_both_fetches_fail_the_body_error_wins() {
+        // ‼️ PRECEDENCE, AND ONLY PRECEDENCE — see the sibling case below for the classification
+        // itself (third-round code review MEDIUM). Both candidate messages here contain "HTTP 500",
+        // which the classifier matches either way, so this case cannot fail if the offline
+        // classification breaks. It pins that the BODY's error is the one returned, which is what
+        // kills the implementation that shipped in `053b75d1`.
+        //
+        // `logger.warn` is suppressed outside dev by a runtime `if (isDev)` in `utils/logger.ts` —
+        // not compiled out, as an earlier version of this comment said; the user-visible effect is
+        // the same and the mechanism was misstated.
+        //
+        // ‼️ THE SIGNATURE FAILS FIRST, ON PURPOSE. Pointing both at a closed port makes both fail
+        // "at once" and leaves the winner to the executor — which is how the FIRST version of this
+        // suite passed locally and failed on CI. Stalling the body's failure by 400 ms means
+        // `try_join!` would deterministically return the signature's error, so this case kills that
+        // implementation instead of merely disagreeing with it sometimes.
+        let (url, _) = serve_pair_slow(
+            (
+                "500 Internal Server Error",
+                b"broken".to_vec(),
+                Duration::from_millis(400),
+            ),
+            (
+                "500 Internal Server Error",
+                b"also broken".to_vec(),
+                Duration::ZERO,
+            ),
+        );
+        let err = fetch_signed_pair(&url).await.expect_err("both fail");
+        assert!(
+            !err.contains("unsigned or its signature is unreachable"),
+            "the body's failure must win, or offline reads as a structural signature break: {err}"
+        );
+        assert!(err.contains("revocation list returned HTTP 500"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn offline_stays_quiet_across_the_ipc_boundary() {
+        // ‼️ THE PROPERTY THE PRECEDENCE EXISTS FOR, ASSERTED AGAINST THE REAL CONSUMER (third-round
+        // code review MEDIUM). The sibling case above pins that the BODY's error is returned, but it
+        // uses HTTP 500 on both sides — and BOTH candidate messages contain "HTTP 500", which the
+        // classifier matches either way. So it cannot fail if the classification breaks. This one
+        // makes both fetches fail at the TRANSPORT level, which is what offline is, and then checks
+        // the message against the pattern that actually decides the log level.
+        //
+        // ‼️ THE PATTERN IS READ OUT OF THE TYPESCRIPT, not paraphrased. The classifier is nine
+        // alternatives and the earlier comments in this file described two of them; a copy here would
+        // drift the same way. Asserting the literal appears exactly once in the consumer makes a
+        // change over there fail HERE, which is the only way a cross-boundary property stays true.
+        const CLIENT_TS: &str = include_str!("../../../src/plugins/revocation-client.ts");
+        const LOUD: &str = "not allowed|forbidden|denied|HTTP \\d|signature|public key|unsigned|too large|not UTF-8";
+        assert_eq!(
+            CLIENT_TS.matches(LOUD).count(),
+            1,
+            "the structural-failure classifier moved or changed — update this test with it"
+        );
+
+        // Bind, take the address, drop the listener: both requests are refused at connect, which is
+        // deterministic under `join!` because it waits for both and returns the body's error.
+        let addr = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap()
+        };
+        let err = fetch_signed_pair(&format!("http://{addr}/doc.json"))
+            .await
+            .expect_err("nothing is listening");
+
+        let lowered = err.to_lowercase();
+        for alternative in LOUD.split('|') {
+            if alternative == "HTTP \\d" {
+                assert!(
+                    !lowered
+                        .split("http ")
+                        .skip(1)
+                        .any(|rest| rest.starts_with(|c: char| c.is_ascii_digit())),
+                    "offline must not look like an HTTP status failure: {err}"
+                );
+            } else {
+                assert!(
+                    !lowered.contains(&alternative.to_lowercase()),
+                    "offline must not match the structural alternative `{alternative}`: {err}"
+                );
+            }
+        }
     }
 
     #[tokio::test]

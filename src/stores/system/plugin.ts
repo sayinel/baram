@@ -10,6 +10,7 @@ import type {
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { normalizeRevocationList } from "../../plugins/revocation";
 import { tauriStorage } from "./tauri-storage";
 
 interface PluginState {
@@ -439,12 +440,37 @@ export const usePluginStore = create<PluginState>()(
       // about a value already in storage — which is the mistake this feature made twice.
       // `current` is the initial state, so naming it is how each field says "keep the default,
       // whatever the default becomes".
-      merge: (persisted, current) => ({
-        ...current,
-        ...(persisted as object),
-        registryUrl: current.registryUrl,
-        revocationSequenceSeen: {},
-      }),
+      // ‼️ IN `merge`, NOT `migrate` — and that distinction is the whole fix (security review
+      // MEDIUM-4). zustand calls `migrate` ONLY when the persisted version differs from the current
+      // one, so validation placed there would not run on the ordinary launch, which is every launch.
+      // `merge` runs on every rehydrate. This is the same trap as `partialize` vs `merge` two rounds
+      // ago: the write side and the version-change side both look like the read side and are not.
+      merge: (persisted, current) => {
+        const restored = {
+          ...current,
+          ...(persisted as object),
+          registryUrl: current.registryUrl,
+          revocationSequenceSeen: {},
+        };
+        // ‼️ THE STORED LIST GOES THROUGH THE SHIPPING VALIDATOR, like a fetched one does. It was the
+        // ONE place a list was trusted without it: `refreshRevocations` calls
+        // `normalizeRevocationList` on every fetch, and rehydration installed whatever was on disk —
+        // so a hand-edited or in-realm-written `config.json` could put a document the app would have
+        // refused over the wire straight into the gate. `version: 2` is the sharpest example: the
+        // validator refuses an unknown document version precisely so v1 semantics are not applied to
+        // it, and rehydration applied them anyway.
+        const validated = normalizeRevocationList(restored.revocations);
+        if (validated !== null) return { ...restored, revocations: validated };
+        // Unreadable, so there is no list — and saying so is what makes the marketplace's "never
+        // received" notice true rather than showing a fresh timestamp for nothing. A stored list
+        // that fails here cannot be repaired locally; the next refresh replaces it.
+        return {
+          ...restored,
+          revocations: null,
+          revocationsFetchedAt: 0,
+          revocationsVerified: false,
+        };
+      },
       version: 3,
       migrate: migratePluginPersistedState,
     },
