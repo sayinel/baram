@@ -1253,7 +1253,8 @@ pub async fn fetch_revocations(url: &str) -> Result<FetchedRevocations, String> 
 /// loads plugins with whatever list is stored. A fresh install has NO stored list, so losing that
 /// race means that launch runs with **no revocations at all**, `malicious` entries included. An
 /// attacker who can only slow the connection, and an ordinary user on a slow link, get the same
-/// outcome.
+/// outcome. ‼️ MITIGATED, NOT CLOSED: any round trip over the budget still loses the race. What
+/// changed is the probability, not the failure mode.
 ///
 /// ‼️ WHAT THIS BUYS, STATED WITHOUT OVERCLAIMING: the two requests now overlap rather than
 /// queueing, and they share one connection pool. Against an HTTP/2 origin they multiplex over a
@@ -1261,28 +1262,41 @@ pub async fn fetch_revocations(url: &str) -> Result<FetchedRevocations, String> 
 /// may open its own connection, in which case the handshakes are concurrent instead of serial.
 /// Either way the wall clock is one round trip rather than two — the claim is "not serialised",
 /// not "one handshake".
+///
+/// ‼️ `join!`, NOT `try_join!`, AND THE DIFFERENCE IS A DETECTION CONTROL (security re-review
+/// MEDIUM-1, which also explains a CI failure this test suite could reproduce 19 times in 30 under
+/// load). `try_join!` returns whichever future fails FIRST, and the signature's error is mapped to
+/// a sentence `revocation-client.ts` matches to log a refresh failure LOUDLY as structural. When
+/// BOTH fail — plain offline, DNS failure, origin down — the winner is a timing race, so an
+/// ordinary offline launch started reporting a structural break. In a release build `logger.warn`
+/// is compiled out and `logger.error` is not, which makes the loud channel the ONLY visible one:
+/// the channel built so that a mangled `REVOCATION_PUBLIC_KEY` would be audible now carried
+/// routine noise. The sequential code got this right by construction — the body was fetched first,
+/// so its error always won — and that precedence is restored explicitly below.
+///
+/// The cost of `join!` is that a failed body no longer cancels an in-flight signature fetch, so a
+/// hanging `.sig` is waited out to the 15 s per-request timeout instead of returning early. That is
+/// a background path with its own 1500 ms race in front of it; correctness of the one detection
+/// channel is worth more than an early return on a path that already lost its race.
 async fn fetch_signed_pair(url: &str) -> Result<(String, String), String> {
     let client = revocation_http_client()?;
     let signature_url = format!("{url}.sig");
-    // ‼️ Each error is mapped BEFORE the join, because `try_join!` returns whichever failed and the
-    // two failures are different sentences. The signature's message is load-bearing:
-    // `revocation-client.ts` matches /signature|unsigned/ to decide whether a refresh failure is
-    // structural (loud) or merely offline (quiet).
-    tokio::try_join!(
+    let (body, signature) = tokio::join!(
         fetch_capped_text_with(&client, url, MAX_REVOCATION_BYTES, "revocation list"),
-        async {
-            fetch_capped_text_with(
-                &client,
-                &signature_url,
-                MAX_REVOCATION_SIGNATURE_BYTES,
-                "revocation signature",
-            )
-            .await
-            .map_err(|e| {
-                format!("revocation list is unsigned or its signature is unreachable: {e}")
-            })
-        }
-    )
+        fetch_capped_text_with(
+            &client,
+            &signature_url,
+            MAX_REVOCATION_SIGNATURE_BYTES,
+            "revocation signature",
+        ),
+    );
+    // The body's failure takes precedence — see above. Only a body that ARRIVED can leave the
+    // signature as the thing that went wrong, which is the only case that deserves the loud
+    // classification.
+    let body = body?;
+    let signature = signature
+        .map_err(|e| format!("revocation list is unsigned or its signature is unreachable: {e}"))?;
+    Ok((body, signature))
 }
 
 /// Check a body against its signature and label it `verified`, or refuse it.
@@ -1402,15 +1416,19 @@ pub const FIRST_PARTY_REVOCATION_PREFIX: &str = "https://sayinel.github.io/baram
 
 /// The key the first-party revocation list is signed with.
 ///
-/// ‼️ EMPTY MEANS ENFORCEMENT IS NOT ARMED YET, and that is a deliberate transition state, not
-/// an oversight. The rollout order is forced: a signed list must be PUBLISHED before clients
-/// demand one, because a client that demands a signature before one exists rejects the live
-/// list, keeps whatever it has, and gives a fresh install no revocations at all — including
-/// the `baram-ai-summary` entry that is live today.
+/// ‼️ ARMED SINCE 2026-08-04 — this constant is filled and in `main`, so the branches below that
+/// describe the unarmed state are history plus a fallback, not a pending step (security re-review
+/// Q5: the previous version of this docstring still told a reader not to fill it in).
 ///
-/// So while this is empty the fetch path logs loudly and accepts, exactly as before. Filling
-/// it in is the switch that arms verification, and it must not be filled until the signed list
-/// is live.
+/// The rollout order it describes was real and is worth keeping, because it is why the empty case
+/// is handled at all: a signed list had to be PUBLISHED before clients demanded one, since a client
+/// that demands a signature before one exists rejects the live list, keeps whatever it has, and
+/// gives a fresh install no revocations at all. While the constant was empty the fetch path logged
+/// loudly and accepted.
+///
+/// That path is now unreachable in a shipped build and deliberately kept: emptying this constant is
+/// a one-line edit, `an_armed_key_must_actually_be_a_minisign_public_key` refuses it in CI, and if
+/// it ever landed anyway the fetch must degrade audibly rather than silently claim verification.
 pub const REVOCATION_PUBLIC_KEY: &str =
     "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE2RTZCRUIwQTc4QTNCQjQKUldTME80cW5zTDdtRnVSMTI0WGpadUR0QjVUdmlINWFub1h1RjBNaXFEWUhGNVBwN3Rxa0hJK2gK";
 
@@ -3869,9 +3887,8 @@ mod tests {
     /// are accepted at almost the same moment; two that queue are accepted `delay` apart. Each
     /// connection is handled on its own thread so the stall cannot serialise the accepts.
     fn serve_pair_slow(
-        body: Vec<u8>,
-        signature: Vec<u8>,
-        delay: Duration,
+        body: (&'static str, Vec<u8>, Duration),
+        signature: (&'static str, Vec<u8>, Duration),
     ) -> (String, Arc<Mutex<Vec<Instant>>>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
@@ -3892,13 +3909,15 @@ mod tests {
                     let request = String::from_utf8_lossy(&scratch[..read]).to_string();
                     // Which document was asked for decides the body; the `.sig` suffix is what
                     // `fetch_signed_pair` appends.
-                    let payload = if request.contains(".sig") {
+                    // ‼️ A STATUS PER PATH, so a case can make EXACTLY ONE side fail. Pointing both
+                    // at a closed port made both futures fail and left the assertion to a race.
+                    let (status, payload, delay) = if request.contains(".sig") {
                         signature
                     } else {
                         body
                     };
                     let header = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                         payload.len()
                     );
                     std::thread::sleep(delay);
@@ -4110,9 +4129,8 @@ mod tests {
         // Driven through `fetch_signed_pair`, which is the function the armed path uses.
         let delay = Duration::from_millis(600);
         let (url, accepted) = serve_pair_slow(
-            br#"{"version":1,"revoked":[]}"#.to_vec(),
-            b"not a real signature".to_vec(),
-            delay,
+            ("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec(), delay),
+            ("200 OK", b"not a real signature".to_vec(), delay),
         );
         let started = Instant::now();
         let (body, signature) = fetch_signed_pair(&url).await.expect("both fetches succeed");
@@ -4137,17 +4155,28 @@ mod tests {
 
     #[tokio::test]
     async fn a_failing_signature_fetch_still_says_it_was_the_signature() {
-        // ‼️ THE MESSAGE IS LOAD-BEARING (and `try_join!` returns whichever error came first, so the
-        // mapping has to be attached to the signature future rather than applied after the join).
-        // `revocation-client.ts` matches /signature|unsigned/ to log a refresh failure LOUDLY as
-        // structural rather than quietly as offline — the distinction that hid a missing ACL grant
-        // for a whole review cycle.
-        // One request is answered and the second finds nothing: `serve_once` closes after a single
-        // connection, which is what a missing `.sig` looks like from here.
-        let body_url = serve_once("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec());
-        let err = fetch_signed_pair(&body_url)
+        // ‼️ THE MESSAGE IS LOAD-BEARING. `revocation-client.ts` matches /signature|unsigned/ to log a
+        // refresh failure LOUDLY as structural rather than quietly as offline — the distinction that
+        // hid a missing ACL grant for a whole review cycle.
+        //
+        // ‼️ EXACTLY ONE SIDE FAILS. The first version of this pair pointed BOTH urls at a closed
+        // port, so both futures failed and the assertion depended on which lost the race: it passed
+        // locally and failed on CI, which is the definition of a test that proves nothing.
+        let (url, _) = serve_pair_slow(
+            (
+                "200 OK",
+                br#"{"version":1,"revoked":[]}"#.to_vec(),
+                Duration::ZERO,
+            ),
+            (
+                "404 Not Found",
+                b"no signature here".to_vec(),
+                Duration::ZERO,
+            ),
+        );
+        let err = fetch_signed_pair(&url)
             .await
-            .expect_err("the signature cannot be fetched");
+            .expect_err("the signature is a 404");
         assert!(
             err.contains("unsigned or its signature is unreachable"),
             "{err}"
@@ -4156,15 +4185,61 @@ mod tests {
 
     #[tokio::test]
     async fn a_failing_body_fetch_is_not_reported_as_a_signature_problem() {
-        // The mirror, and the reason the mapping is per-future: applying it to the joined result
-        // would blame the signature for a body that never arrived.
-        let err = fetch_signed_pair("http://127.0.0.1:1/doc.json")
+        // The mirror: the list's own failure must be named, or an operator is sent to look at a
+        // signature that was never the problem.
+        let (url, _) = serve_pair_slow(
+            (
+                "500 Internal Server Error",
+                b"broken".to_vec(),
+                Duration::ZERO,
+            ),
+            ("200 OK", b"not a real signature".to_vec(), Duration::ZERO),
+        );
+        let err = fetch_signed_pair(&url)
             .await
-            .expect_err("nothing is listening");
+            .expect_err("the list is a 500");
+        assert!(
+            err.contains("revocation list returned HTTP 500"),
+            "the list's own failure must be named: {err}"
+        );
         assert!(
             !err.contains("unsigned or its signature is unreachable"),
             "a body failure must not be labelled a signature failure: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn when_both_fetches_fail_the_body_error_wins() {
+        // ‼️ THE CASE THAT WAS MISSING, AND THE ONE THAT MATTERS MOST (security re-review MEDIUM-1).
+        // Offline IS this state, and under `try_join!` the winner was a timing race — so an ordinary
+        // offline launch intermittently reported a STRUCTURAL failure. `logger.warn` is compiled out
+        // of release builds and `logger.error` is not, which makes the loud channel the only visible
+        // one, and it exists so that a mangled public key is audible. Routine noise in it is a
+        // detection loss, not a cosmetic one.
+        //
+        // ‼️ THE SIGNATURE FAILS FIRST, ON PURPOSE. Pointing both at a closed port makes both fail
+        // "at once" and leaves the winner to the executor — which is how the FIRST version of this
+        // suite passed locally and failed on CI. Stalling the body's failure by 400 ms means
+        // `try_join!` would deterministically return the signature's error, so this case kills that
+        // implementation instead of merely disagreeing with it sometimes.
+        let (url, _) = serve_pair_slow(
+            (
+                "500 Internal Server Error",
+                b"broken".to_vec(),
+                Duration::from_millis(400),
+            ),
+            (
+                "500 Internal Server Error",
+                b"also broken".to_vec(),
+                Duration::ZERO,
+            ),
+        );
+        let err = fetch_signed_pair(&url).await.expect_err("both fail");
+        assert!(
+            !err.contains("unsigned or its signature is unreachable"),
+            "the body's failure must win, or offline reads as a structural signature break: {err}"
+        );
+        assert!(err.contains("revocation list returned HTTP 500"), "{err}");
     }
 
     #[tokio::test]
