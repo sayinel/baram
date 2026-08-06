@@ -1,3 +1,4 @@
+import type { BuiltinPlugin } from "./builtin";
 import type {
   ExtensionContext,
   InstalledPlugin,
@@ -65,10 +66,15 @@ export async function initializePlugins(): Promise<void> {
   // directory out of the sandboxed tier.
   setContextResolver(locateInContext);
 
-  // Built-ins load FIRST, and unconditionally: they are app code compiled into this
-  // bundle, so the plugin API is their integration surface rather than a trust
-  // boundary. They loaded ahead of the §259 release gate for the same reason, and
-  // keeping the order after §260 Phase 5 removed that gate costs nothing.
+  // Built-ins load FIRST, still ahead of every installed plugin: they are app code
+  // compiled into this bundle, so the plugin API is their integration surface rather
+  // than a trust boundary. They loaded ahead of the §259 release gate for the same
+  // reason, and keeping the order after §260 Phase 5 removed that gate costs nothing.
+  //
+  // §69 — no longer unconditional, though: `loadBuiltinPlugins` now skips whatever the
+  // user has named in `builtinDisabled`, so a community viewer plugin can claim an
+  // extension a built-in used to hold exclusively (`matchFileViewer` takes the first
+  // registered viewer).
   await loadBuiltinPlugins();
 
   // Grant asset scope for ~/.baram/plugins before any load (see Global Constraints).
@@ -221,30 +227,71 @@ export function notifyFileSave(filePath: string): void {
 
 const activeBuiltins: ActiveBuiltin[] = [];
 
+/** 내장 하나를 활성화한다. 이미 활성이면 아무것도 하지 않는다. */
+export async function activateBuiltin(id: string): Promise<void> {
+  const builtin = BUILTIN_PLUGINS.find((b) => b.manifest.id === id);
+  if (!builtin) return;
+  await activateOne(builtin);
+}
+
+/**
+ * 내장 하나만 떼어낸다.
+ *
+ * ‼️ `shutdownBuiltinPlugins`에서 분리한 것이 이 태스크의 요점이다. 그 함수는
+ * `activeBuiltins.splice(0)`로 전체를 비우므로 하나만 끄는 데 쓸 수 없었다.
+ */
+export async function deactivateBuiltin(id: string): Promise<void> {
+  const index = activeBuiltins.findIndex((b) => b.id === id);
+  if (index === -1) return;
+  const [active] = activeBuiltins.splice(index, 1);
+  if (active) await teardownBuiltin(active);
+}
+
+/**
+ * Activate the compiled-in plugins through the same ExtensionContext external
+ * plugins get. Idempotent per plugin: React.StrictMode double-invokes the mounting
+ * effect in dev, and a second activation would register every viewer twice.
+ *
+ * §69 — `builtinDisabled`에 담긴 것은 건너뛴다. 내장은 앱 코드이므로 플러그인 API는
+ * 통합 지점이지 신뢰 경계가 아니고, 그래서 여전히 설치 플러그인보다 먼저 로드된다.
+ * 끄는 수단이 필요한 이유는 `matchFileViewer`가 먼저 등록된 뷰어를 택하기 때문이다:
+ * 내장이 잡은 확장자는 그것을 끄지 않는 한 커뮤니티 뷰어가 가져올 수 없다.
+ */
+export async function loadBuiltinPlugins(): Promise<void> {
+  const { builtinDisabled } = usePluginStore.getState();
+  for (const builtin of BUILTIN_PLUGINS) {
+    if (builtinDisabled.includes(builtin.manifest.id)) continue;
+    await activateOne(builtin);
+  }
+}
+
+export async function shutdownBuiltinPlugins(): Promise<void> {
+  for (const active of activeBuiltins.splice(0)) {
+    await teardownBuiltin(active);
+  }
+}
+
 /** Cleanup all plugins on app shutdown */
 export async function shutdownPlugins(): Promise<void> {
   await shutdownBuiltinPlugins();
   await pluginLoader.unloadAll();
 }
 
-/**
- * Activate the compiled-in plugins through the same ExtensionContext external
- * plugins get. Idempotent: React.StrictMode double-invokes the mounting
- * effect in dev, and a second activation would register every viewer twice.
- */
-async function loadBuiltinPlugins(): Promise<void> {
-  if (activeBuiltins.length > 0) return;
-  for (const { manifest, module } of BUILTIN_PLUGINS) {
-    try {
-      const context = createExtensionContext(manifest, "");
-      await module.activate?.(context);
-      activeBuiltins.push({ context, id: manifest.id, module });
-    } catch (err) {
-      logger.error(
-        `[PluginLifecycle] builtin ${manifest.id} activate failed:`,
-        err,
-      );
-    }
+async function activateOne(builtin: BuiltinPlugin): Promise<void> {
+  if (activeBuiltins.some((b) => b.id === builtin.manifest.id)) return;
+  try {
+    const context = createExtensionContext(builtin.manifest, "");
+    await builtin.module.activate?.(context);
+    activeBuiltins.push({
+      context,
+      id: builtin.manifest.id,
+      module: builtin.module,
+    });
+  } catch (err) {
+    logger.error(
+      `[PluginLifecycle] builtin ${builtin.manifest.id} activate failed:`,
+      err,
+    );
   }
 }
 
@@ -260,30 +307,6 @@ async function loadBuiltinPlugins(): Promise<void> {
 function notifyPlugins(event: PluginEventName, ...args: unknown[]): void {
   emitPluginEvent(event, ...args);
   deliverSandboxEvent(event, args);
-}
-
-async function shutdownBuiltinPlugins(): Promise<void> {
-  for (const builtin of activeBuiltins.splice(0)) {
-    try {
-      await builtin.module.deactivate?.();
-    } catch (err) {
-      logger.error(
-        `[PluginLifecycle] builtin ${builtin.id} deactivate failed:`,
-        err,
-      );
-    }
-    for (const disposable of builtin.context.subscriptions) {
-      try {
-        disposable.dispose();
-      } catch (err) {
-        logger.error(
-          `[PluginLifecycle] builtin ${builtin.id} dispose failed:`,
-          err,
-        );
-      }
-    }
-    unregisterPluginUI(builtin.id);
-  }
 }
 
 /** Simple topological sort by dependencies */
@@ -310,4 +333,27 @@ function sortByDependencies(plugins: InstalledPlugin[]): InstalledPlugin[] {
     visit(plugin);
   }
   return sorted;
+}
+
+/** 하나의 활성 내장을 정리한다. 전체 종료와 개별 비활성이 공유한다. */
+async function teardownBuiltin(active: ActiveBuiltin): Promise<void> {
+  try {
+    await active.module.deactivate?.();
+  } catch (err) {
+    logger.error(
+      `[PluginLifecycle] builtin ${active.id} deactivate failed:`,
+      err,
+    );
+  }
+  for (const disposable of active.context.subscriptions) {
+    try {
+      disposable.dispose();
+    } catch (err) {
+      logger.error(
+        `[PluginLifecycle] builtin ${active.id} dispose failed:`,
+        err,
+      );
+    }
+  }
+  unregisterPluginUI(active.id);
 }
