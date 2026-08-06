@@ -618,3 +618,32 @@
   color: var(--color-text-muted);
   cursor: pointer;
 }
+
+/* §69 — 접이식 섹션 머리. `.btn-unstyled`는 base.css의 공유 유틸리티다. */
+.plugin-section__head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 16px 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-section__caret {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.plugin-section__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.plugin-section__count {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
