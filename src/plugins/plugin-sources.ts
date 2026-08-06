@@ -7,6 +7,7 @@ import type { BuiltinPlugin } from "./builtin";
 import type { RevocationList } from "./revocation";
 import type { InstalledPlugin, PluginManifest } from "./types";
 
+import { BUILTIN_PLUGINS } from "./builtin";
 import { revocationFor } from "./revocation";
 
 export interface PluginRow {
@@ -112,8 +113,27 @@ export function buildPluginRows(input: BuildRowsInput): PluginRow[] {
   return rows;
 }
 
-// ‼️ `manifestFor` (installed → dev → builtin 순으로 §5.2를 해결하는 조회 함수) is added in
-// Task 5 together with its first consumer. Adding it here unexported would fail `tsc`'s
-// `noUnusedLocals` (a top-level declaration with zero references in the file is a compile
-// error, not just a knip finding), and exporting it early would fail knip's unused-export
-// check instead — there is no version of it that sits alone in this file cleanly.
+/**
+ * 한 pluginId의 매니페스트. installed → dev → builtin 순.
+ *
+ * ‼️ §5.2 — 내장은 `installedPlugins`에 들어가지 않으므로, `installedPlugins[id] ?? devPlugins[id]`
+ * 만 보는 코드는 내장에 대해 조용히 `undefined`를 받는다. `PluginSettingsForm`이 정확히 그랬고
+ * (오류 없이 폼이 안 그려짐), 그것이 이 함수가 존재하는 이유다.
+ *
+ * ‼️ 셀렉터 형태인 것이 핵심이다: 호출자가 `useShallow` 안에서 부르면 구독이 유지된다.
+ * `getState()`로 읽는 형태였다면 dev 플러그인 다시 로드가 매니페스트를 교체해도 열려 있는
+ * 폼이 갱신되지 않는다. 스토어 타입은 export되지 않으므로 필요한 두 필드만 구조적으로 받는다.
+ */
+export function selectManifest(
+  sources: {
+    devPlugins: Record<string, InstalledPlugin>;
+    installedPlugins: Record<string, InstalledPlugin>;
+  },
+  pluginId: string,
+): PluginManifest | undefined {
+  return (
+    sources.installedPlugins[pluginId]?.manifest ??
+    sources.devPlugins[pluginId]?.manifest ??
+    BUILTIN_PLUGINS.find((b) => b.manifest.id === pluginId)?.manifest
+  );
+}

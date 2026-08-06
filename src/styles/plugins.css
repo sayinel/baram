@@ -504,3 +504,117 @@
   background: var(--color-status-danger);
   border-radius: 9999px;
 }
+
+/* §69 — 한 행. 사이드바(~280px)와 설정 모달(넓음) 양쪽에서 같은 레이아웃으로 동작한다:
+   단일 컬럼 + 오른쪽 정렬 액션, 설명문만 잘린다. 폭에 따라 분기하지 않는다. */
+.plugin-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.plugin-row:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.plugin-row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.plugin-row__head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.plugin-row__icon {
+  font-size: 20px;
+}
+
+.plugin-row__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.plugin-row__version {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.plugin-row__badge {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.plugin-row__desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.plugin-row__error {
+  padding: 6px 10px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-status-danger);
+
+  /* 체크섬과 경로는 끊기지 않는 토큰이라 이것 없이는 패널보다 넓어진다. */
+  overflow-wrap: anywhere;
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 6px;
+}
+
+.plugin-row__caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.plugin-row__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+}
+
+.plugin-row__btn {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.plugin-row__btn--warn {
+  color: var(--color-status-warning-on-solid);
+  background-color: var(--color-status-warning);
+  border-color: transparent;
+}
+
+.plugin-row__btn--danger {
+  color: var(--color-status-danger);
+  border-color: var(--color-status-danger);
+}
+
+.plugin-row__toggle {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
