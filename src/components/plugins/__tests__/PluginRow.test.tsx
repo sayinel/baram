@@ -88,14 +88,30 @@ describe("PluginRowView (§69)", () => {
     expect(screen.getByRole("button", { name: /settings/i })).toBeTruthy();
   });
 
-  it("names the plugin in each control's accessible name", () => {
-    // 행마다 같은 이름의 버튼이 생기므로, 스코핑 없는 질의가 모호해지지 않게 한다.
-    // ‼️ `getByRole`이 아니라 `getAllByRole`: community 행은 Details("View details for
-    // Ex")와 Remove("Remove Ex") 둘 다 /Ex/에 매칭된다 — 이는 모호함이 아니라 "모든
-    // 컨트롤이 이름을 담는다"는 의도가 정확히 지켜졌다는 증거다.
-    render(<PluginRowView row={row({})} {...handlers} />);
-    expect(
-      screen.getAllByRole("button", { name: /Ex/ }).length,
-    ).toBeGreaterThan(0);
-  });
+  it.each([
+    ["a default community row (Details, Remove)", row({}), handlers],
+    [
+      "a row with an update offered (adds Update)",
+      row({ updateVersion: "2.0.0" }),
+      handlers,
+    ],
+    [
+      "a row with onSettings passed (adds Settings)",
+      row({}),
+      { ...handlers, onSettings: vi.fn() },
+    ],
+  ])(
+    "names the plugin in every rendered control's accessible name — %s",
+    (_label, r, h) => {
+      // ‼️ `named === all`, not `named > 0`: the weaker form would still pass if a
+      // regression dropped the plugin's name from every button but one. Parametrised
+      // over the row shapes that add more controls (update offered, settings wired up)
+      // so the property holds as the row grows, not just for the two-button default.
+      render(<PluginRowView row={r} {...h} />);
+      const all = screen.getAllByRole("button").length;
+      const named = screen.getAllByRole("button", { name: /Ex/ }).length;
+      expect(all).toBeGreaterThan(0);
+      expect(named).toBe(all);
+    },
+  );
 });
