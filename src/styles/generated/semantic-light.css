@@ -150,6 +150,10 @@
     --color-gray-300
   ); /** Orphan graph node (no links) */
 
+  --color-graph-pinned: var(
+    --color-yellow-500
+  ); /** Pinned graph node border (§30.3c) */
+
   --color-graph-edge: var(--color-gray-400); /** Graph edge/link line */
   --color-graph-label: var(--color-gray-700); /** Graph node label text */
   --color-graph-tag: var(

@@ -57,6 +57,7 @@
     --color-graph-active-border: #93c5fd;
     --color-graph-neighbor: #a78bfa;
     --color-graph-orphan: #4b5563;
+    --color-graph-pinned: #fbbf24;
     --color-graph-edge: #374151;
     --color-graph-label: #d1d5db;
     --color-graph-tag: #34d399;

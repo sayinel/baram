@@ -180,6 +180,10 @@
     --color-gray-600
   ); /** Orphan graph node dark (#4b5563) */
 
+  --color-graph-pinned: var(
+    --color-yellow-400
+  ); /** Pinned graph node border dark — a step lighter than light mode, like active/neighbor (§30.3c) */
+
   --color-graph-edge: var(
     --color-gray-700
   ); /** Graph edge/link line dark (#374151) */

@@ -144,7 +144,7 @@ export function buildGraphStyle(settings: {
       selector: "node.pinned",
       style: {
         "border-width": 2,
-        "border-color": "var(--graph-pinned-color, #f59e0b)",
+        "border-color": "var(--graph-pinned-color)",
         "border-style": "double" as never,
       },
     },
