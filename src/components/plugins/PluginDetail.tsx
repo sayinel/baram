@@ -241,7 +241,9 @@ export function PluginDetail({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {legacy && (
-              <p className="plugin-legacy-note">{legacyEntryMessage(entry)}</p>
+              <p className="plugin-legacy-note">
+                {legacyEntryMessage(entry, t)}
+              </p>
             )}
             <button
               disabled={legacy}

@@ -6,6 +6,7 @@
 // Baram introduced, and one whose `trust` is simply not a tier name. They need different
 // remedies — ask the author, update the app, fix the manifest — which is what
 // `legacyInstallMessage` exists to sort out. "Legacy" is a slight misnomer kept for continuity.
+import type { Translate } from "../i18n/useTranslation";
 import type { PluginManifest, PluginTrust } from "./types";
 
 const TIERS: readonly PluginTrust[] = ["sandboxed", "trusted"];
@@ -54,6 +55,7 @@ export function isLegacyManifest(
  */
 export function legacyInstallMessage(
   manifest: Pick<PluginManifest, "trust">,
+  translate: Translate,
 ): null | string {
   // Not this function's case at all: the tier is one this build enforces, so whatever else is
   // wrong with the manifest is a schema problem. Gating here rather than at the call site keeps
@@ -62,19 +64,12 @@ export function legacyInstallMessage(
 
   const trust = (manifest as { trust?: unknown }).trust;
   if (trust === undefined) {
-    return (
-      "This plugin was installed before Baram's plugin trust model, so it can no longer be " +
-      "loaded. Use Remove on the Installed tab — then, if it is still available in the " +
-      "marketplace, install it again to review what it is allowed to do."
-    );
+    return translate("plugin.legacy.installed.noTier");
   }
   // A non-empty STRING is a genuine declaration this build does not know — most likely a tier
   // added by a later Baram, so updating is the remedy.
   if (typeof trust === "string" && trust.length > 0) {
-    return (
-      "This plugin declares a trust tier this version of Baram does not recognize, so it " +
-      "cannot be loaded. Update Baram and try again."
-    );
+    return translate("plugin.legacy.installed.unknownTier");
   }
   // `null`, `""`, `0`, `false`, a number… present but not a declaration of anything. Found by
   // probing after the fix for the unrecognized-tier case: EVERY one of these was being told to

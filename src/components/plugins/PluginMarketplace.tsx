@@ -492,7 +492,7 @@ export function PluginMarketplace() {
       inFlight.current.add(entry.id);
       try {
         if (!entry.trust) {
-          setError(entry.id, legacyEntryMessage(entry));
+          setError(entry.id, legacyEntryMessage(entry, t));
           return false;
         }
         // §69 — installing is refused for ANY severity, where loading is refused only
@@ -788,7 +788,7 @@ export function PluginMarketplace() {
         return;
       }
       if (!entry.trust) {
-        setError(entry.id, legacyEntryMessage(entry));
+        setError(entry.id, legacyEntryMessage(entry, t));
         return;
       }
       // §69 — checked here as well as in `handleInstall`, so a revoked target is refused

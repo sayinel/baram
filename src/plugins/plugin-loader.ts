@@ -480,7 +480,7 @@ export class PluginLoader {
       // — a real tier, or a `trust` that is present but not a tier name at all (`null`, `""`,
       // a number), where "update Baram" would be a dead end. The whole discrimination lives
       // there; this call site only decides that a DEV load never gets it.
-      const remedy = opts.isDev ? null : legacyInstallMessage(rawManifest);
+      const remedy = opts.isDev ? null : legacyInstallMessage(rawManifest, tr);
       throw new Error(
         remedy ??
           `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
