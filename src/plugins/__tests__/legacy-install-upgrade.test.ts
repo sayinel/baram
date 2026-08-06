@@ -13,16 +13,23 @@
 // the fix. The user's only way out is Uninstall, and the message said nothing about it.
 import type { PluginManifest } from "../types";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
 }));
 
+import { t as lookup } from "../../i18n";
+import { useSettingsStore } from "../../stores/settings/store";
 import { BUILTIN_PLUGINS } from "../builtin";
 import { validateManifest } from "../manifest";
 import { PluginLoader } from "../plugin-loader";
 import { legacyInstallMessage } from "../plugin-trust";
+
+// Bound to `en` deliberately: the cases below assert the English COPY (the conditional
+// "if it is still available"), so the locale has to be the one that copy is written in.
+const t = (key: string, params?: Record<string, string>) =>
+  lookup(key, "en", params);
 
 /** A manifest that loads, so each test can break exactly one thing. */
 const VALID: PluginManifest = {
@@ -100,14 +107,14 @@ describe("a plugin installed by v0.4.x tells the user what to do", () => {
     // `baram-ai-summary` was withdrawn in §260 Phase 6 — no republished version will ever
     // carry a `trust`, and the live registry entry is being deleted outright. So the copy is
     // conditional ("if it is still available"), and an unconditional promise is a defect.
-    const message = legacyInstallMessage(withoutTrust());
+    const message = legacyInstallMessage(withoutTrust(), t);
     expect(message).toMatch(/if it is still available/i);
   });
 
   it("returns null for a manifest whose tier is real, so it cannot mask a schema error", () => {
     // The gate that keeps the complement case above working now that the discrimination lives
     // inside this function rather than at the call site.
-    expect(legacyInstallMessage(VALID)).toBeNull();
+    expect(legacyInstallMessage(VALID, t)).toBeNull();
   });
 
   it("keeps the schema text for a DEV folder, whose author needs the field name", async () => {
@@ -226,5 +233,48 @@ describe("built-in plugin manifests (§69) are validated by something", () => {
         /^>=\s*\d+\.\d+\.\d+$/,
       );
     }
+  });
+});
+
+describe("the refusal reaches the user in their own language (§329)", () => {
+  // ‼️ THE WHOLE CHAIN, not just the helper: `plugin-loader` throws this message, and the tests
+  // above ask for `en`, which is exactly what a hardcoded English sentence returns. Only a
+  // non-English locale can tell the two apart. The record this covers is real — v0.4.0 and
+  // v0.4.1 shipped with the marketplace open and no `trust` requirement — so a Korean user with
+  // such an install sees this sentence on every startup.
+  afterEach(() => {
+    useSettingsStore.setState({ locale: "en" });
+  });
+
+  it("throws the Korean remedy when the UI is Korean", async () => {
+    useSettingsStore.setState({ locale: "ko" });
+    const message = await loadError(withoutTrust());
+    expect(message).toBe(lookup("plugin.legacy.installed.noTier", "ko"));
+    expect(message).not.toContain("This plugin");
+  });
+
+  it("throws the Korean remedy for an unrecognised tier too", async () => {
+    useSettingsStore.setState({ locale: "ko" });
+    const message = await loadError({
+      ...VALID,
+      trust: "full" as unknown as PluginManifest["trust"],
+    });
+    expect(message).toBe(lookup("plugin.legacy.installed.unknownTier", "ko"));
+  });
+
+  it("still falls through to the schema text when there is no better remedy", async () => {
+    // `trust: null` is present but declares nothing, and no version will ever accept it — so
+    // this case deliberately gets the schema message rather than "update Baram". Translating the
+    // other two must not have swept this one into a remedy.
+    useSettingsStore.setState({ locale: "ko" });
+    const message = await loadError({
+      ...VALID,
+      trust: null as unknown as PluginManifest["trust"],
+    });
+    expect(message).not.toBe(lookup("plugin.legacy.installed.noTier", "ko"));
+    expect(message).not.toBe(
+      lookup("plugin.legacy.installed.unknownTier", "ko"),
+    );
+    expect(message).toContain("Invalid manifest");
   });
 });

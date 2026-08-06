@@ -19,7 +19,9 @@ vi.mock("../../ipc/plugin-invoke", () => ({
 
 import type { PluginManifest } from "../types";
 
+import { type Locale, t as lookup } from "../../i18n";
 import { useEditorStore } from "../../stores/editor/editor";
+import { useSettingsStore } from "../../stores/settings/store";
 import { executePluginCommand } from "../extension-context";
 import { PluginLoader } from "../plugin-loader";
 import { legacyInstallMessage } from "../plugin-trust";
@@ -96,6 +98,13 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.useRealTimers();
 });
+
+// ‼️ THE SAME LOCALE RESOLUTION THE LOADER USES. This file compares a thrown message with what
+// this helper returns, so binding the two differently would make the comparison meaningless the
+// moment a test changed the locale — `plugin-loader.ts` resolves through the settings store, so
+// this must too.
+const t = (key: string, params?: Record<string, string>) =>
+  lookup(key, useSettingsStore.getState().locale as Locale, params);
 
 describe("PluginLoader sandboxed path (§260 3c-1)", () => {
   it("registers capabilities, starts the sandbox, and maps commands to the palette", async () => {
@@ -315,7 +324,7 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     // `legacy-install-upgrade.test.ts` says it avoids. This still distinguishes THIS refusal
     // from any other, because the string is specific; it just cannot drift.
     await expect(loader.loadPlugin("/p/demo", legacy)).rejects.toThrow(
-      legacyInstallMessage(legacy),
+      legacyInstallMessage(legacy, t),
     );
     expect(f.start).not.toHaveBeenCalled();
     expect(pluginSandboxRegister).not.toHaveBeenCalled();

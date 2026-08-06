@@ -480,7 +480,7 @@ export class PluginLoader {
       // — a real tier, or a `trust` that is present but not a tier name at all (`null`, `""`,
       // a number), where "update Baram" would be a dead end. The whole discrimination lives
       // there; this call site only decides that a DEV load never gets it.
-      const remedy = opts.isDev ? null : legacyInstallMessage(rawManifest);
+      const remedy = opts.isDev ? null : legacyInstallMessage(rawManifest, tr);
       throw new Error(
         remedy ??
           `Invalid manifest for ${rawManifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
@@ -552,9 +552,17 @@ export class PluginLoader {
     try {
       module = await this.importer(assetUrl);
     } catch (err) {
-      throw new Error(`Failed to load plugin module ${manifest.id}: ${err}`, {
-        cause: err,
-      });
+      // Translated for the same reason the revocation refusal is: an import that fails is an
+      // ORDINARY failure — a plugin whose ESM does not parse on this build — and it lands in
+      // `pluginErrors`, which the Installed row renders verbatim. `${err}` stays as it is: the
+      // underlying message comes from the engine, not from us.
+      throw new Error(
+        tr("plugin.error.moduleLoadFailed", {
+          error: String(err),
+          id: manifest.id,
+        }),
+        { cause: err },
+      );
     }
 
     // 4. Create extension context
@@ -565,7 +573,10 @@ export class PluginLoader {
       await withTimeout(
         Promise.resolve(module.activate(context)),
         ACTIVATE_TIMEOUT,
-        `Plugin ${manifest.id} activation timed out after ${ACTIVATE_TIMEOUT}ms`,
+        tr("plugin.error.activationTimeout", {
+          id: manifest.id,
+          ms: String(ACTIVATE_TIMEOUT),
+        }),
       );
     }
 
@@ -763,10 +774,15 @@ function narrowToConsent(
   if (!consent) return manifest;
 
   if (consent.trust !== "trusted" && pluginTrustOf(manifest) === "trusted") {
+    // ‼️ TRANSLATED, and it is not an edge case: this is the escalation guard §260 Phase 5 was
+    // built for, so it fires on an ORDINARY plugin update that raises its tier. The approved
+    // tier is rendered through its own label key rather than shown raw, since "sandboxed" in the
+    // middle of a Korean sentence is the tier's internal name, not its name in the UI.
     throw new Error(
-      `Plugin ${manifest.id} now declares trust "trusted", but it was approved as ` +
-        `"${consent.trust}". A trusted plugin runs inside Baram with no sandbox, so it ` +
-        `cannot be granted that without asking again — reinstall it to review the change.`,
+      tr("plugin.error.trustEscalated", {
+        approved: tr(`plugin.trust.${consent.trust}`),
+        id: manifest.id,
+      }),
     );
   }
 

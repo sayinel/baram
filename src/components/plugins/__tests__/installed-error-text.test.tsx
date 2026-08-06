@@ -32,7 +32,9 @@ vi.mock("../../../plugins/registry-client", () => ({
   searchRegistry: () => [],
 }));
 
+import { type Locale, t as lookup } from "../../../i18n";
 import { legacyInstallMessage } from "../../../plugins/plugin-trust";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
 
@@ -70,8 +72,15 @@ function openInstalledTab(): void {
  * here would mean the function stopped recognising the very case this file is about — worth
  * failing on rather than rendering the string "null".
  */
+// ‼️ THE SAME LOCALE RESOLUTION THE LOADER USES. This file compares a thrown message with what
+// this helper returns, so binding the two differently would make the comparison meaningless the
+// moment a test changed the locale — `plugin-loader.ts` resolves through the settings store, so
+// this must too.
+const t = (key: string, params?: Record<string, string>) =>
+  lookup(key, useSettingsStore.getState().locale as Locale, params);
+
 function remedy(): string {
-  const message = legacyInstallMessage(legacyInstall.manifest);
+  const message = legacyInstallMessage(legacyInstall.manifest, t);
   expect(message, "an absent tier must produce the remedy").not.toBeNull();
   return message!;
 }

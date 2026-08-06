@@ -1,3 +1,4 @@
+import type { Translate } from "../../i18n/useTranslation";
 import type { RegistryEntry } from "../../plugins/types";
 
 /**
@@ -18,11 +19,18 @@ import type { RegistryEntry } from "../../plugins/types";
  * for one of the two reasons: an entry naming a capability this build cannot enforce usually
  * means the registry is NEWER than the app, so "ask the author to declare a tier" tells them to
  * do something they already did.
+ *
+ * The sentences live in `i18n/{en,ko}.json` and the caller's `t` resolves them, which is the
+ * pattern `capabilityLabel` already uses. This function was written in §260 and never went
+ * through i18n, so both branches reached the Browse card, the detail view and the Installed row
+ * in English regardless of locale. Taking `Translate` rather than reading the settings store
+ * keeps it pure: the three call sites are all components that already hold a `t`.
  */
-export function legacyEntryMessage(entry: RegistryEntry): string {
+export function legacyEntryMessage(
+  entry: RegistryEntry,
+  translate: Translate,
+): string {
   return entry.demotedBecause === "unknown-capability"
-    ? "This plugin needs a capability this version of Baram does not know about, so it " +
-        "cannot be installed. Update Baram and try again."
-    : "This plugin predates Baram's plugin trust model and cannot be installed. " +
-        "Ask the author to publish a manifest that declares a trust tier.";
+    ? translate("plugin.legacy.entry.unknownCapability")
+    : translate("plugin.legacy.entry.noTier");
 }
