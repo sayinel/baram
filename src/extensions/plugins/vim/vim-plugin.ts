@@ -431,8 +431,10 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
     case "core":
       return withCore(prev, meta.core);
     case "setEnabled":
+      if (!meta.enabled) releaseGraphemeIndex();
       // §7: enabling lands in normal with a clean slate; disabling returns
-      // the surface to plain editing.
+      // the surface to plain editing — and drops the boundary index, which
+      // only vim builds (performance review P3).
       return {
         core: initialCoreState(meta.enabled ? "normal" : "insert"),
         enabled: meta.enabled,
@@ -500,10 +502,12 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
-    tr.scrollIntoView(); // vim keeps the cursor visible (device R7)
     view.dispatch(tr);
-    // DIRECTLY — PM's scrollToSelection bails when the DOM selection sits
-    // outside a non-editable view, which is exactly vim modal (ops-R8).
+    // ONE follow, ours. PM's scrollToSelection bails when the DOM selection
+    // sits outside a non-editable view (vim modal), but it does NOT bail
+    // when the surface still owns the selection — flagging the transaction
+    // too ran the whole geometry pass twice per keystroke (performance
+    // review P4).
     scrollCursorIntoView(view, target);
     return true;
   }
@@ -531,7 +535,6 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
-    tr.scrollIntoView(); // vim keeps the cursor visible (device R7)
     view.dispatch(tr);
     scrollCursorIntoView(view, target); // ops-R8 — see the move path
     return true;

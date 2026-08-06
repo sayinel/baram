@@ -1,5 +1,8 @@
 // §298 Vim Phase 1 — cursor-follow scrolling routes through the vim
-// adapter (ops-R8): PM's default scrollIntoView measures hidden (windowed)
+// adapter. This is where the device finding "the view does not follow hjkl"
+// is pinned: the transaction no longer carries PM's scrollIntoView flag
+// (that ran the geometry pass twice — review P4), so the ADAPTER call at the
+// right target is the contract. PM's own pipeline cannot serve it (ops-R8): PM's default scrollIntoView measures hidden (windowed)
 // blocks, adds VISUAL deltas to content-space scrollTop, and follows the
 // normalized PM head — the wrong end of an inverted visual selection.
 

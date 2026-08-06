@@ -220,7 +220,9 @@ const LINEWISE_MOTIONS = new Set<Motion>([
  */
 function dispatchLanded(view: EditorView, tr: Transaction): boolean {
   const before = view.state;
-  view.dispatch(tr.scrollIntoView());
+  // No scrollIntoView flag: the direct follow below is the single route
+  // (flagging it too made PM run its own geometry pass — review P4).
+  view.dispatch(tr);
   // Every edit leaves a landing selection — vim keeps it visible. The
   // DIRECT call matters: PM's own scroll pipeline bails when the DOM
   // selection sits outside a non-editable view, i.e. vim modal (ops-R8).

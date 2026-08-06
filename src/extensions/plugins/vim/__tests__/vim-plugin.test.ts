@@ -1109,31 +1109,4 @@ describe("device R7 pins", () => {
     expect(vim(editor).mode).toBe("visual");
     expect(vim(editor).core.visual?.headCursor).toBe(8); // on "b" of bravo
   });
-
-  it("motions and edits request scrollIntoView — the view follows hjkl", () => {
-    // Vim keeps the cursor visible after every command; without the
-    // request, j below the fold moves the selection off-screen.
-    const editor = makeEditor("<p>one</p><p>two</p><p>tri</p>");
-    editor.commands.setTextSelection(1);
-    enable(editor);
-    const scrolled: boolean[] = [];
-    const original = editor.view.dispatch.bind(editor.view);
-    editor.view.dispatch = (tr) => {
-      scrolled.push(tr.scrolledIntoView);
-      original(tr);
-    };
-
-    key(editor, "j"); // move
-    expect(scrolled.some(Boolean)).toBe(true);
-
-    scrolled.length = 0;
-    key(editor, "d");
-    key(editor, "d"); // edit with a landing selection
-    expect(scrolled.some(Boolean)).toBe(true);
-
-    scrolled.length = 0;
-    key(editor, "f");
-    key(editor, "r"); // find jump ("tri")
-    expect(scrolled.some(Boolean)).toBe(true);
-  });
 });

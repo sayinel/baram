@@ -15,6 +15,7 @@
 // lines stay demoted per §13 ("50j 강등").
 
 import type { FindKind, Motion } from "../core/types";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { TableMap } from "@tiptap/pm/tables";
@@ -214,12 +215,22 @@ export function wordEndAt(state: EditorState, pos: number): null | number {
 // ── the line sequence ──────────────────────────────────────────────────────
 
 /**
- * Every cursor line in document order: hard-break segments, atom blocks,
- * and one ENTRY line per table row (first cell's first textblock — the
- * cell-preserving walk lives in tableVertical). O(doc) per motion command;
- * the §11 gate-5 device pass revisits this against the latency budget.
+ * Every cursor line of a document, in order: hard-break segments, atom
+ * blocks, and one ENTRY line per table row (first cell's first textblock —
+ * the cell-preserving walk lives in tableVertical).
+ *
+ * Cached PER DOCUMENT. Building it walks the whole doc and allocates a line
+ * object each time, and verticalTarget/wordWalk want it for every j/k/w/b:
+ * that measured ~4.8MB of transient garbage per keystroke on a
+ * 10k-paragraph document, roughly 145MB/s under key repeat (performance
+ * review P2). A PM doc is immutable, so its identity is a sound key and a
+ * WeakMap keeps nothing alive. Callers treat the array as READ-ONLY.
  */
+const lineIndex = new WeakMap<PMNode, CursorLine[]>();
+
 function collectLines(state: EditorState): CursorLine[] {
+  const cached = lineIndex.get(state.doc);
+  if (cached) return cached;
   const lines: CursorLine[] = [];
   state.doc.descendants((node, pos) => {
     if (node.type.spec.tableRole === "table") {
@@ -250,6 +261,7 @@ function collectLines(state: EditorState): CursorLine[] {
     }
     return true; // container — descend
   });
+  lineIndex.set(state.doc, lines);
   return lines;
 }
 

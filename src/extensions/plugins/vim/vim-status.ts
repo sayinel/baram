@@ -11,7 +11,11 @@
 import type { Editor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { useUIStore, type VimStatusMode } from "../../../stores/ui/ui";
+import {
+  useUIStore,
+  type VimStatus,
+  type VimStatusMode,
+} from "../../../stores/ui/ui";
 import { vimPluginKey } from "./vim-keys";
 
 let owner: Editor | null = null;
@@ -29,9 +33,7 @@ const islandModes = new Map<
 
 /** PluginView destroy: a dying owner view must not leave its mode behind. */
 export function clearWysiwygVimStatusFor(view: EditorView): void {
-  if (ownerView() === view) {
-    useUIStore.getState().setVimStatus(null);
-  }
+  if (ownerView() === view) writeStatus(null);
 }
 
 /** Island blur/teardown: release the indicator and REPLAY the PM owner. */
@@ -77,7 +79,7 @@ export function islandVimMode(
     parent: parent ?? islandModes.get(id)?.parent ?? null,
   });
   if (activeIsland === id) {
-    useUIStore.getState().setVimStatus({ mode, surface: "codeblock" });
+    writeStatus({ mode, surface: "codeblock" });
   }
 }
 
@@ -122,11 +124,34 @@ function ownerView(): EditorView | null {
 }
 
 function publish(): void {
-  const ui = useUIStore.getState();
   if (!owner || owner.isDestroyed) {
-    ui.setVimStatus(null);
+    writeStatus(null);
     return;
   }
   const vim = vimPluginKey.getState(owner.state);
-  ui.setVimStatus(vim?.enabled ? { mode: vim.mode, surface: "wysiwyg" } : null);
+  writeStatus(vim?.enabled ? { mode: vim.mode, surface: "wysiwyg" } : null);
+}
+
+/**
+ * The ONLY writer. publish() runs on every view update, and the owner is
+ * appointed whenever the WYSIWYG surface is active — vim on or off — so an
+ * unchanged value must never reach the store: zustand treats each partial as
+ * a new root, clones the whole state and notifies EVERY listener, and the
+ * repo has identity useUIStore() subscriptions that then re-render. Compared
+ * against the live store value, not a local memo, because other surfaces
+ * (source mode, islands) write here too (performance review P1).
+ */
+function writeStatus(next: null | VimStatus): void {
+  const ui = useUIStore.getState();
+  const current = ui.vimStatus;
+  if (current === null && next === null) return;
+  if (
+    current !== null &&
+    next !== null &&
+    current.mode === next.mode &&
+    current.surface === next.surface
+  ) {
+    return;
+  }
+  ui.setVimStatus(next);
 }

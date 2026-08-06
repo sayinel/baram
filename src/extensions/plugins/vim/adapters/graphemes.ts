@@ -23,6 +23,11 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 let indexedText: null | string = null;
 let indexedStarts: number[] = [];
 
+/** Retained boundary count — a test seam for the retention contract. */
+export function graphemeIndexSize(): number {
+  return indexedStarts.length;
+}
+
 /**
  * The position one cursor unit to the right of `pos`, or `pos` itself at the
  * end of the textblock. Positions outside a textblock stay put.
@@ -77,7 +82,9 @@ export function prevUnitBoundary(state: EditorState, pos: number): number {
   return prev >= inNode ? pos : pos - (inNode - prev);
 }
 
-/** Release the index — a closed editor must not retain its longest line. */
+/** Release the index — a closed editor, or one where vim just went off,
+ *  must not retain its longest line (measured ~10.4MB for 1M characters;
+ *  performance review P3). */
 export function releaseGraphemeIndex(): void {
   indexedText = null;
   indexedStarts = [];
