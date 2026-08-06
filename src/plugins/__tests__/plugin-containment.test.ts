@@ -33,8 +33,27 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: () => Promise.resolve(null),
 }));
 
+import { type Locale, t } from "../../i18n";
+import { useSettingsStore } from "../../stores/settings/store";
 import { usePluginStore } from "../../stores/system/plugin";
 import { PluginLoader } from "../plugin-loader";
+
+/**
+ * The escalation refusal, matched by its MEANING rather than its wording.
+ *
+ * It used to be `/approved as "sandboxed"/` — the tier's internal name, spliced into an English
+ * sentence. The message is now translated and names the tier by the label the user actually saw
+ * when they approved it ("Sandboxed", "샌드박스"), so a literal here would pin both the copy and
+ * the locale. Built from the same keys the loader resolves, and bound the way the loader binds:
+ * through the settings store.
+ */
+function escalationRefusal(): RegExp {
+  const locale = useSettingsStore.getState().locale as Locale;
+  const approved = t("plugin.trust.sandboxed", locale);
+  // The approved tier has to appear — that is the fact the refusal turns on. Escaped because a
+  // label is free to contain regex metacharacters.
+  return new RegExp(approved.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u");
+}
 
 const BASE: PluginManifest = {
   author: "Baram",
@@ -163,7 +182,7 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
 
     await expect(
       loader.loadPlugin("/p/demo", { ...BASE, trust: "trusted" }),
-    ).rejects.toThrow(/approved as "sandboxed"/);
+    ).rejects.toThrow(escalationRefusal());
 
     // Neither realm ran it, and no grant was made.
     expect(importer).not.toHaveBeenCalled();
@@ -371,7 +390,7 @@ describe("plugin containment (#259 → §260 Phase 5)", () => {
 
     await expect(
       loader.loadPlugin("/p/demo", { ...BASE, trust: "trusted" }),
-    ).rejects.toThrow(/approved as "sandboxed"/);
+    ).rejects.toThrow(escalationRefusal());
     expect(importer).not.toHaveBeenCalled();
   });
 
