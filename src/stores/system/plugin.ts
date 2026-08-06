@@ -90,6 +90,30 @@ interface PluginState {
   updatePluginVersion: (id: string, version: string, checksum: string) => void;
 }
 
+/**
+ * The registry, and — DECISION 2026-08-06 — the only one.
+ *
+ * ‼️ NOT USER-CONFIGURABLE, ON PURPOSE. There is no settings field, `setRegistryUrl` has no
+ * production caller, and `partialize`/`merge` below make sure a value on disk cannot come back.
+ * That is not an oversight to be fixed by adding a field: a persisted registry URL was a
+ * durable primitive stronger than the rollback mark (a `trusted` plugin sets it once, the same
+ * call clears `revocations`, and the startup refresh then asks the ATTACKER whether anything is
+ * revoked — with no self-healing, because the fetch that would heal it is the poisoned one).
+ * Removing persistence in `5cba3e2d` is what bounded that to a single session.
+ *
+ * Three consequences, accepted deliberately rather than worked around:
+ *
+ * - Self-hosted and in-house registries are UNSUPPORTED. The registry accepts first-party
+ *   plugins only for now, so this takes nothing away that was otherwise available.
+ * - Editing `config.json` by hand does nothing; `merge` discards it. The documented local-testing
+ *   procedure that relied on it is gone — see `docs/plugin-development.md`, which now says to
+ *   change this constant in a dev checkout instead.
+ * - Signature enforcement only covers `FIRST_PARTY_REVOCATION_PREFIX` in Rust, so a third-party
+ *   registry could not have its revocation list verified anyway.
+ *
+ * Reopening this means reopening all three: a field needs validation, visible provenance, and an
+ * answer for the revocation gap `setRegistryUrl` leaves behind (`dev/backlog.md`).
+ */
 export const DEFAULT_REGISTRY_URL =
   "https://sayinel.github.io/baram-plugins/index.json";
 
