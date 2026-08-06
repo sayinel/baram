@@ -142,7 +142,7 @@
   "settings.editor.autoPairBrackets": "Auto Pair Brackets",
   "settings.editor.autoPairBrackets.desc": "Auto-close brackets and quotes in source mode and code blocks",
   "settings.editor.vimMode": "Vim Keybindings",
-  "settings.editor.vimMode.desc": "Modal editing (vim) in source mode. Works with Korean IME",
+  "settings.editor.vimMode.desc": "Modal editing (vim) in WYSIWYG, source mode, and code blocks. Works with Korean IME",
   "settings.editor.display": "Display",
   "settings.editor.lineNumbers": "Line Numbers",
   "settings.editor.lineNumbers.desc": "Show line numbers in source mode",
