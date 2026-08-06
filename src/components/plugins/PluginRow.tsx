@@ -8,7 +8,15 @@ import { PluginRevokedNotice } from "./PluginRevokedNotice";
 
 interface PluginRowViewProps {
   onDetails: () => void;
-  onReload: () => void;
+  /**
+   * ‼️ OPTIONAL for the same reason as `onSettings`. PR1 keeps the dev section in
+   * `PluginDeveloperSection`, so the marketplace shell renders no dev row and has no reload
+   * to wire — and a required prop would force it to pass a callback nothing can call, which
+   * is the dead-callback defect this work exists to remove (the Updates tab's
+   * `onInstall={() => {}}`). `actionsFor` still decides the action SET; this answers the
+   * separate question of whether that action is wired up.
+   */
+  onReload?: () => void;
   onRemove: () => void;
   /**
    * ‼️ OPTIONAL, 사용자 결정 2026-08-06. PR1에는 설정 페이지가 아직 없으므로 아무도 이것을
@@ -52,6 +60,12 @@ export function PluginRowView({
           )}
         </div>
         <p className="plugin-row__desc text-truncate">{manifest.description}</p>
+        {/* The error TEXT, not just a badge — this doctrine moved here with the Installed
+            tab's markup. It used to show only an "Error" chip, and this is the one surface
+            where a plugin with no registry entry appears at all: Browse, Updates and the
+            detail view every one of them iterate the REGISTRY. So for a plugin whose entry
+            has been withdrawn, this was the only place the user could see it and the only
+            place that explained nothing. Pinned by `installed-error-text.test.tsx`. */}
         {row.error && <p className="plugin-row__error">⚠ {row.error}</p>}
         {manifest.capabilities.length > 0 && (
           <div className="plugin-row__caps">
@@ -84,7 +98,7 @@ export function PluginRowView({
             {t("plugin.action.settings")}
           </button>
         )}
-        {can.canReload && (
+        {can.canReload && onReload && (
           <button
             aria-label={t("plugin.action.reloadFor", named)}
             className="plugin-row__btn"

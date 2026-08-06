@@ -7,7 +7,13 @@
 // against a build that only opened the detail view through a registry lookup.
 import type { InstalledPlugin, RegistryIndex } from "../../../plugins/types";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../plugins/plugin-loader", () => ({
@@ -114,8 +120,14 @@ describe("Installed tab detail route (§69)", () => {
     });
     render(<PluginMarketplace />);
     fireEvent.click(screen.getByRole("button", { name: /^Installed / }));
+    // §69 — scoped to the community section. Built-ins are listed on this tab now and carry
+    // their own Details button, so the unscoped query counts three rows for these two
+    // installs. Same cause as the scoping in `plugin-marketplace-toggle.test.tsx`.
+    const community = await screen.findByTestId("plugin-section-community");
     const names = (
-      await screen.findAllByRole("button", { name: /^View details for / })
+      await within(community).findAllByRole("button", {
+        name: /^View details for /,
+      })
     ).map((el) => el.getAttribute("aria-label"));
     expect(new Set(names).size).toBe(2);
   });

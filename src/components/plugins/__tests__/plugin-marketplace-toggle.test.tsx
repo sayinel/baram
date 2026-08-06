@@ -7,7 +7,13 @@
 // instance.
 import type { InstalledPlugin, RegistryIndex } from "../../../plugins/types";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadPlugin = vi.fn();
@@ -50,11 +56,14 @@ const disabledPlugin = {
   updatedAt: 0,
 } as unknown as InstalledPlugin;
 
-/** Render, switch to the Installed tab, and return the enable toggle. */
+/** Render, switch to the Installed tab, and return the demo plugin's enable toggle. */
 async function installedToggle() {
   render(<PluginMarketplace />);
   fireEvent.click(screen.getByRole("button", { name: /^Installed / }));
-  return await screen.findByRole("checkbox");
+  // §69 — 커뮤니티 섹션으로 스코핑한다. 내장(Media Viewer)도 이 탭에서 토글을 갖게 되어
+  // 전역 `findByRole("checkbox")`는 모호하다.
+  const community = await screen.findByTestId("plugin-section-community");
+  return within(community).getByRole("checkbox");
 }
 
 describe("marketplace enable toggle (§260 3c-3)", () => {

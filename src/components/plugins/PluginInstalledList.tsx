@@ -15,7 +15,12 @@ interface PluginInstalledListProps {
    */
   hasSettings?: (pluginId: string) => boolean;
   onDetails: (row: PluginRow) => void;
-  onReload: (row: PluginRow) => void;
+  /**
+   * ‼️ OPTIONAL, 같은 이유다 (`onSettings` 참조). PR1의 셸은 dev 섹션을
+   * `PluginDeveloperSection`에 남겨 두므로 dev 행을 렌더하지 않고, 따라서 부를 수 없는
+   * 콜백을 넘기지 않는다.
+   */
+  onReload?: (row: PluginRow) => void;
   onRemove: (row: PluginRow) => void;
   onSettings?: (row: PluginRow) => void;
   onToggle: (row: PluginRow) => void;
@@ -111,7 +116,7 @@ export function PluginInstalledList({
                 <PluginRowView
                   key={r.manifest.id}
                   onDetails={() => onDetails(r)}
-                  onReload={() => onReload(r)}
+                  onReload={onReload ? () => onReload(r) : undefined}
                   onRemove={() => onRemove(r)}
                   onSettings={
                     onSettings && hasSettings?.(r.manifest.id)
