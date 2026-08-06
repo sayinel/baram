@@ -17,6 +17,15 @@ interface PluginState {
   // Actions
   addDevPlugin: (plugin: InstalledPlugin) => void;
   addPlugin: (plugin: InstalledPlugin) => void;
+  /**
+   * §69 — 비활성화된 내장 플러그인의 id.
+   *
+   * ‼️ DISABLED 목록이며 enabled 맵이 아니다. 내장의 매니페스트는 번들의
+   * `BUILTIN_PLUGINS`가 유일한 출처이고(앱 업데이트마다 신선하게 온다), 여기 담기는 것은
+   * 사용자가 끈 것뿐이다. 그래서 다음 릴리스가 내장을 추가해도 마이그레이션 없이 기본
+   * 켜짐이 된다 — enabled 맵이었다면 새 id가 맵에 없어서 꺼진 것으로 읽혔을 것이다.
+   */
+  builtinDisabled: string[];
   clearUpdateAvailable: (id: string) => void;
   // Runtime state (not persisted; Rust config is the source of truth)
   devPlugins: Record<string, InstalledPlugin>;
@@ -70,6 +79,7 @@ interface PluginState {
    * with it or the next launch would present an unverified stored list as verified.
    */
   revocationsVerified: boolean;
+  setBuiltinEnabled: (id: string, enabled: boolean) => void;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
@@ -221,6 +231,7 @@ export const usePluginStore = create<PluginState>()(
   persist(
     (set, get) => ({
       // Persisted
+      builtinDisabled: [],
       installedPlugins: {},
       pluginSettings: {},
       registryUrl: DEFAULT_REGISTRY_URL,
@@ -283,6 +294,15 @@ export const usePluginStore = create<PluginState>()(
             },
           };
         }),
+
+      setBuiltinEnabled: (id, enabled) =>
+        set((state) => ({
+          builtinDisabled: enabled
+            ? state.builtinDisabled.filter((x) => x !== id)
+            : state.builtinDisabled.includes(id)
+              ? state.builtinDisabled
+              : [...state.builtinDisabled, id],
+        })),
 
       setError: (id, error) =>
         set((state) => {
@@ -390,6 +410,10 @@ export const usePluginStore = create<PluginState>()(
       storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({
         installedPlugins: state.installedPlugins,
+        // §69 영속화. 마이그레이션 단계는 필요 없다: 키가 없으면 초기값 `[]`로 떨어지고,
+        // 그것이 "아무 내장도 끄지 않았다"라는 올바른 최초 상태다 — `revocations`가
+        // 아래에서 같은 근거로 version bump 없이 추가된 것과 같다.
+        builtinDisabled: state.builtinDisabled,
         pluginSettings: state.pluginSettings,
         // ‼️ `registryUrl` IS DELIBERATELY ABSENT — see `merge`, which is what makes that true.
         //
