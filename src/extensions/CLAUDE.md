@@ -146,6 +146,9 @@ NodeView 안에 **PM 본문이 아닌 입력 요소**(input/textarea/select/CM �
 - Shadow DOM NodeView는 host 요소에 마커 필수. 에디터 외부 portal은 키가
   view.dom에 도달하지 않으므로 규약 대상 아님.
 - 마커 없는 서드파티 NodeView의 입력 섬은 vim 미지원으로 간주된다.
+- **보안 불변식**: 마커는 앱 capability다. HTML/SVG/외부 마크다운을 처리하는 sanitizer는 반드시
+  `VIM_ISLAND_MARKERS`를 제거할 것 (DOMPurify는 `data-*`·`tabindex`를 기본 허용하므로 공유 문서가
+  suspension을 자칭하거나 실제 island에서 거부해 사용자 타이핑을 vim 명령으로 실행시킬 수 있다).
 
 ## registry.json 유지 규칙
 

@@ -78,16 +78,10 @@ app_handle.emit("file:changed", FileChangedPayload {
 
 ## 이벤트 목록
 
-| Event | Payload | 모듈 | 설명 |
-|-------|---------|------|------|
-| `file:changed` | `{ path, kind }` | fs | 파일 변경 감지 |
-| `file:created` | `{ path }` | fs | 파일 생성 감지 |
-| `file:deleted` | `{ path }` | fs | 파일 삭제 감지 |
-| `llm:token` | `{ requestId, token }` | llm | LLM 스트리밍 토큰 |
-| `llm:done` | `{ requestId }` | llm | LLM 응답 완료 |
-| `llm:error` | `{ requestId, error }` | llm | LLM 에러 |
-| `index:updated` | `{ filesIndexed }` | index | 인덱스 갱신 완료 |
-| `git:progress` | `{ operation, percent }` | git | Git 작업 진행률 |
+**`ipc-registry.json`의 `events`가 canonical이다** — 커맨드와 같은 이유로 이 문서에 목록을 중복 기재하지 않는다
+(실제로 이 표는 3건 누락 + 유령 1건 상태로 낡았던 전례가 있다).
+
+계열 요약: `file:*`(변경·생성·삭제·열기 요청) · `llm:*`(토큰·완료·에러) · `index:updated` · `app://close-requested` · `plugin:*`
 
 ## 파일 쓰기 규칙 (Part 3 §3.6)
 
