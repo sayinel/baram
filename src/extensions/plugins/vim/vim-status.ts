@@ -129,7 +129,16 @@ function publish(): void {
     return;
   }
   const vim = vimPluginKey.getState(owner.state);
-  writeStatus(vim?.enabled ? { mode: vim.mode, surface: "wysiwyg" } : null);
+  if (!vim?.enabled) {
+    writeStatus(null);
+    return;
+  }
+  const exLine = vim.exLine;
+  writeStatus({
+    ...(exLine === null ? {} : { command: `:${exLine}` }),
+    mode: vim.mode,
+    surface: "wysiwyg",
+  });
 }
 
 /**
@@ -149,7 +158,8 @@ function writeStatus(next: null | VimStatus): void {
     current !== null &&
     next !== null &&
     current.mode === next.mode &&
-    current.surface === next.surface
+    current.surface === next.surface &&
+    current.command === next.command
   ) {
     return;
   }

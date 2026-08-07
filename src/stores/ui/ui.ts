@@ -56,6 +56,9 @@ export type UnsavedModalRequest =
 
 /** §298 vim §8 — one atomic status: which SURFACE owns the indicator. */
 export interface VimStatus {
+  /** Ex line being typed, colon included (":w") — absent when none is open.
+   *  vim shows the command line INSTEAD of the mode indicator. */
+  command?: string;
   mode: VimStatusMode;
   surface: "codeblock" | "source" | "wysiwyg";
 }

@@ -19,6 +19,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
+import { getAction } from "../../../../keybindings/keybinding-actions";
 import { nextUnitBoundary } from "./graphemes";
 import { resolveFindChar, segmentSpanAt, wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
@@ -90,6 +91,8 @@ export function executeCoreCommand(
       // core state AND the new selection). Unreachable here; the case keeps
       // the switch exhaustive so a new command cannot slip through silently.
       return {};
+    case "exCommand":
+      return runExCommand(command.name);
     case "openLine": {
       // §9 minimal o/O: a sibling empty paragraph next to the current block;
       // the segment/container refinements arrive with S3 cursor work.
@@ -245,6 +248,27 @@ function dispatchOutcome(
   if (outcome.reason) result.reason = outcome.reason;
   if (outcome.silent) result.silent = true;
   return result;
+}
+
+/** Baram's ex commands, mirroring what the CodeMirror adapter defines for the
+ *  other two surfaces (components/editor/vim-mode.ts). Both go through app
+ *  ACTIONS rather than touching the document, so `:q` keeps the unsaved-changes
+ *  guard. Resolved at invocation time — App registers the actions at startup. */
+const EX_ACTIONS: Record<string, string> = {
+  q: "file.closeTab",
+  quit: "file.closeTab",
+  w: "file.save",
+  write: "file.save",
+};
+
+function runExCommand(name: string): ExecutionResult {
+  const actionId = EX_ACTIONS[name];
+  if (!actionId) return { reason: `not an editor command: :${name}` };
+  const action = getAction(actionId);
+  // Registered at startup; missing means the app is still booting.
+  if (!action) return { reason: `:${name} is not available yet` };
+  action();
+  return {};
 }
 
 /**

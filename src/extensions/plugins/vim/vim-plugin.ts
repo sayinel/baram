@@ -59,6 +59,8 @@ import {
 export interface VimPluginState {
   core: VimCoreState;
   enabled: boolean;
+  /** Mirror of core.exLine — same reason as `mode`. */
+  exLine: null | string;
   /** Mirror of core.mode so vim-keys' snapshot readers stay leaf-typed. */
   mode: VimMode;
   suspended: boolean;
@@ -365,6 +367,7 @@ export function createVimPlugin(
         return {
           core: initialCoreState("insert"),
           enabled: false,
+          exLine: null,
           mode: "insert",
           suspended: false,
         };
@@ -438,6 +441,7 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
       return {
         core: initialCoreState(meta.enabled ? "normal" : "insert"),
         enabled: meta.enabled,
+        exLine: null,
         mode: meta.enabled ? "normal" : "insert",
         suspended: false,
       };
@@ -617,7 +621,7 @@ function visualSelection(state: EditorState, visual: VisualState): Selection {
 }
 
 function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {
-  return { ...prev, core, mode: core.mode };
+  return { ...prev, core, exLine: core.exLine, mode: core.mode };
 }
 
 declare module "@tiptap/pm/view" {

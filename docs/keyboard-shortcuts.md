@@ -246,10 +246,11 @@ Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turn
 | Counts | Any motion or operator (`3j`, `2d3w` = six words) |
 | Edit | `x` · `p` `P` · `u` `Ctrl+r` |
 | View | `zz` `z.` center the cursor line (also in visual mode) |
+| Ex | `:w` save · `:q` close tab |
 
-Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; `dd` on a table row deletes the row (the header row and the last data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
+Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; inside a table, `h`/`l` cross cell boundaries so every cell in a row is reachable, while `j`/`k` move down a row keeping the column; `dd` on a table row deletes the row (the header row and the last data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
 
-WYSIWYG does not yet have text objects (`ciw`), `.` repeat, or `/` search — those live in Source Mode and code blocks today.
+WYSIWYG does not yet have text objects (`ciw`), `.` repeat, `/` search, or the `Ctrl+F`/`Ctrl+B` page motions — those live in Source Mode and code blocks today.
 
 ### Code block boundaries
 
@@ -263,10 +264,14 @@ WYSIWYG does not yet have text objects (`ciw`), `.` repeat, or `/` search — th
 
 ### Ex commands
 
+Available on all three surfaces. The command line appears in the status bar as you type; `Enter` runs it, `Esc` abandons it, and `Backspace` on an empty line closes it.
+
 | Command | Action |
 | ------- | ------------------------ |
-| `:w`    | Save the current file    |
-| `:q`    | Close the current tab (unsaved-changes guard applies) |
+| `:w` / `:write` | Save the current file    |
+| `:q` / `:quit`  | Close the current tab (unsaved-changes guard applies) |
+
+Source Mode and code blocks also accept the CodeMirror adapter's own ex commands and `/` search; WYSIWYG recognises only the two above.
 
 **Korean IME**: vim commands work with the Korean input source active on every surface — in normal/visual mode keys are resolved by physical position (pressing the `j` key moves down even when it would type `ㅓ`), and stray jamo insertion is blocked. Insert mode types Korean normally. In WYSIWYG, `f` followed by a consonant jamo jumps by 초성 (`f` `ㄱ` finds 강, 김, 그). This behavior is verified on macOS; Windows/Linux are not yet validated.
 

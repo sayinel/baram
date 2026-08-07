@@ -268,7 +268,9 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
             (vimSurface === "wysiwyg" &&
               vimStatus.surface === "codeblock")) && (
             <span className="status-mode status-vim-mode">
-              -- {vimStatus.mode.toUpperCase()} --
+              {/* An open ex line REPLACES the mode indicator, as in vim —
+                  otherwise `:` looks like it did nothing (PR 307 review). */}
+              {vimStatus.command ?? `-- ${vimStatus.mode.toUpperCase()} --`}
             </span>
           )}
         {isRepo && branch && (

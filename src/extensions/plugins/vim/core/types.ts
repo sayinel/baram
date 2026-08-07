@@ -36,6 +36,7 @@ export type CoreCommand =
   | { count: number; type: "undo" }
   | { count: number; type: "yankLine" }
   | { firstNonBlank: boolean; type: "scrollCursor" }
+  | { name: string; type: "exCommand" }
   | { type: "deleteVisual" }
   | { type: "enterVisual" }
   | { type: "leaveVisual" }
@@ -107,6 +108,9 @@ export interface StepResult {
 export interface VimCoreState {
   /** Accumulated count prefix, or null when none is being typed. */
   count: null | number;
+  /** Text typed after `:`, WITHOUT the colon — null when no ex line is open.
+   *  An empty string means the user has typed `:` and nothing else. */
+  exLine: null | string;
   /** Last f/F/t/T target, for ; and , repeats. */
   lastFind: null | { char: string; kind: FindKind };
   mode: VimMode;
@@ -135,6 +139,7 @@ export interface VisualState {
 export function initialCoreState(mode: VimMode = "normal"): VimCoreState {
   return {
     count: null,
+    exLine: null,
     lastFind: null,
     mode,
     pending: null,

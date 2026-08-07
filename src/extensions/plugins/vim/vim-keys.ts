@@ -15,6 +15,9 @@ export type VimMode = "insert" | "normal" | "visual";
 /** The subset of vim plugin state that outside consumers may read. */
 export interface VimStateSnapshot {
   enabled: boolean;
+  /** Ex line being typed, WITHOUT the colon — null when none is open. Read
+   *  by the status feed; mirrored from core so readers stay leaf-typed. */
+  exLine: null | string;
   mode: VimMode;
 }
 

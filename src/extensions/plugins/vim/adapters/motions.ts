@@ -122,21 +122,33 @@ export function resolveMotion(
       let p = pos;
       for (let i = 0; i < count; i++) {
         const prev = prevUnitBoundary(state, p);
-        if (prev === p) break;
-        p = prev;
+        if (prev !== p) {
+          p = prev;
+          continue;
+        }
+        // At the segment start: a table row is ONE line, so keep walking
+        // into the previous cell (PR 307 review).
+        const hop = cellHop(state, p, -1);
+        if (hop === null) break;
+        p = hop;
       }
       return p;
     }
     case "charRight": {
-      const span = segmentSpanAt(state, pos);
-      if (!span) return pos;
       let p = pos;
       for (let i = 0; i < count; i++) {
+        const span = segmentSpanAt(state, p);
+        if (!span) break;
         const next = nextUnitBoundary(state, p);
         // A unit must EXIST at the target — the boundary past the last
         // character is not a cursor position (review S3-R1).
-        if (next === p || next >= span.to) break;
-        p = next;
+        if (next !== p && next < span.to) {
+          p = next;
+          continue;
+        }
+        const hop = cellHop(state, p, 1);
+        if (hop === null) break;
+        p = hop;
       }
       return p;
     }
@@ -228,6 +240,42 @@ export function wordEndAt(state: EditorState, pos: number): null | number {
  */
 const lineIndex = new WeakMap<PMNode, CursorLine[]>();
 
+/** Step into the neighbouring cell of the SAME table row.
+ *
+ *  A table row is one cursor line (see collectLines), so h/l have to traverse
+ *  the whole row the way they traverse a paragraph. Without this every cell
+ *  but the first is unreachable from the keyboard: j/k walk rows by column,
+ *  but nothing moves the caret across a cell boundary (PR 307 review).
+ *
+ *  Returns null outside a table and at the row's edge — `l` never leaves its
+ *  line, exactly as in vim. Operators are unaffected: they build their own
+ *  half-open endpoint from nextUnitBoundary, so `dl` still stops at the cell. */
+function cellHop(state: EditorState, pos: number, dir: -1 | 1): null | number {
+  const $pos = state.doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth--) {
+    const role = $pos.node(depth).type.spec.tableRole;
+    if (role !== "cell" && role !== "header_cell") continue;
+
+    const rowDepth = depth - 1;
+    const row = $pos.node(rowDepth);
+    const index = $pos.index(rowDepth);
+
+    if (dir > 0) {
+      if (index + 1 >= row.childCount) return null;
+      return firstTextblockIn(state, $pos.after(depth));
+    }
+    if (index === 0) return null;
+    const prevCell = $pos.before(depth) - row.child(index - 1).nodeSize;
+    const entry = lastTextblockIn(state, prevCell);
+    if (entry === null) return null;
+    // Land on the last unit START — a caret past the final character is not
+    // a normal-mode cursor position.
+    const starts = lineUnitStarts(state, lineSpanAt(state, entry));
+    return starts.length > 0 ? starts[starts.length - 1] : entry;
+  }
+  return null;
+}
+
 function collectLines(state: EditorState): CursorLine[] {
   const cached = lineIndex.get(state.doc);
   if (cached) return cached;
@@ -312,6 +360,20 @@ function initTableWalk(state: EditorState, pos: number): null | TableWalk {
     rect: { bottom: rect.bottom, left: rect.left, top: rect.top },
     tableStart,
   };
+}
+
+/** The END of the last textblock in the node at `pos` — where a leftward
+ *  cell hop arrives (cellHop then backs up to the last unit start). */
+function lastTextblockIn(state: EditorState, pos: number): null | number {
+  const node = state.doc.nodeAt(pos);
+  if (!node) return null;
+  let entry: null | number = null;
+  node.forEach((child, childOffset) => {
+    if (child.isTextblock) {
+      entry = pos + 1 + childOffset + 1 + child.content.size;
+    }
+  });
+  return entry;
 }
 
 /** The line whose span holds `pos`; boundary positions bind to the earliest

@@ -283,4 +283,17 @@ describe("vim surface arbitration (§8, S5-a review)", () => {
     src.unmount();
     useUIStore.getState().setVimStatus(null);
   });
+
+  it("an open ex line replaces the mode indicator, as in vim", () => {
+    // Typing `:` with no visible command line reads as "the key did
+    // nothing" — worse than not having ex commands (PR 307 review).
+    useUIStore
+      .getState()
+      .setVimStatus({ command: ":w", mode: "normal", surface: "wysiwyg" });
+    const { unmount } = render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.queryByText(":w")).not.toBeNull();
+    expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+    unmount();
+    useUIStore.getState().setVimStatus(null);
+  });
 });

@@ -171,6 +171,7 @@ describe("operator sequences", () => {
 describe("visual mode keys", () => {
   const inVisual = (): VimCoreState => ({
     count: null,
+    exLine: null,
     lastFind: null,
     mode: "visual",
     pendingCount: null,
