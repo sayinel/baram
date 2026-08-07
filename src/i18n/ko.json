@@ -513,7 +513,7 @@
   "htmlPreview.showSource": "소스",
   "htmlPreview.toggleTitle": "HTML 미리보기 / 소스 전환",
 
-  "viewer.noPlugin": "이 파일 형식을 표시할 뷰어 플러그인이 활성화되어 있지 않습니다.",
+  "viewer.noPlugin": "이 파일 형식을 표시할 뷰어 플러그인이 활성화되어 있지 않습니다. 설정 → 플러그인에서 켤 수 있습니다.",
 
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",
   "plugin.consent.title.update": "\"{name}\" 플러그인을 업데이트하시겠습니까?",

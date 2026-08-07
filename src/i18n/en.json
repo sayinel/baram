@@ -513,7 +513,7 @@
   "htmlPreview.showSource": "Source",
   "htmlPreview.toggleTitle": "Toggle HTML preview / source",
 
-  "viewer.noPlugin": "No viewer plugin is enabled for this file type.",
+  "viewer.noPlugin": "No viewer plugin is enabled for this file type. You can turn one on in Settings → Plugins.",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",
