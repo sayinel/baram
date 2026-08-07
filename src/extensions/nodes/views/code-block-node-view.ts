@@ -162,6 +162,26 @@ export class CodeBlockNodeView implements NodeView {
     wrapper.appendChild(cmContainer);
     this.dom = wrapper;
 
+    // §298 Phase 0b (PR 307 review) — a click must ENTER the island while
+    // vim is in normal mode, and nothing else in the chain delivers that.
+    // The barrier leaves contentDOM `contenteditable=false` with a negative
+    // tabindex, and WebKit does not focus such an element on click; the
+    // island meanwhile stays read-only until it is focused (suspension is
+    // driven by focusin), so the focus the click needed was exactly what the
+    // click was supposed to produce. Users had to press `i` first — vim's
+    // insert mode makes the PM view editable, which unlocked the island by a
+    // different route. Capture phase, because CodeMirror's own mousedown
+    // handling is what we are standing in for.
+    cmContainer.addEventListener(
+      "mousedown",
+      () => {
+        if (!this.latestVimEnabled || !this.cmView) return;
+        if (this.cmView.hasFocus) return;
+        this.cmView.focus();
+      },
+      true,
+    );
+
     // §perf-large-file: defer CodeMirror creation until the block is near the
     // viewport. Show the raw code as a lightweight placeholder until then.
     const placeholder = document.createElement("pre");

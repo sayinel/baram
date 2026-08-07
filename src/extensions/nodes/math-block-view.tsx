@@ -64,6 +64,11 @@ export function MathBlockView({
   updateAttributesRef.current = updateAttributes;
   const editorRef = useRef(editor);
   editorRef.current = editor;
+  // §298 Phase 1 (PR 307 review) — a CLICK is an explicit request to edit, so
+  // it enters the textarea even while vim is modal. Keyboard traversal is not:
+  // j/k land ON the block as an atom line and `i` is what opens it, which is
+  // why the effect below otherwise refuses to focus during vim normal.
+  const enterByClickRef = useRef(false);
 
   // §perf-large-file: Use shared cache — O(1) per instance, O(n) total per doc change
   useEffect(() => {
@@ -90,7 +95,12 @@ export function MathBlockView({
       if (wasDirty && localFormulaRef.current !== formulaRef.current) {
         updateAttributesRef.current({ formula: localFormulaRef.current });
       }
-    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      enterByClickRef.current = false;
+    } else if (
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state)
+    ) {
+      enterByClickRef.current = false;
       editDirtyRef.current = false;
       setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
@@ -177,6 +187,9 @@ export function MathBlockView({
   const handlePreviewClick = useCallback(() => {
     const pos = getPos();
     if (typeof pos !== "number") return;
+    // Set BEFORE the selection change: the effect that focuses the textarea
+    // runs on the render this dispatch causes.
+    enterByClickRef.current = true;
     editor.commands.setNodeSelection(pos);
   }, [editor, getPos]);
 

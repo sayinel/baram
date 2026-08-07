@@ -529,4 +529,44 @@ describe("code block vim wiring (S2)", () => {
     editor.destroy();
     document.body.innerHTML = "";
   });
+
+  it("a MOUSE CLICK enters the island while vim is in normal mode", async () => {
+    // Device finding (PR 307 review): with vim on, clicking a code block did
+    // nothing — only pressing `i` first got the user in. In normal mode the
+    // PM view is non-editable AND the island is broadcast read-only, so the
+    // island only becomes editable once it is focused (suspension), and the
+    // focus it needs is the very thing the click was supposed to deliver.
+    // Nothing in the chain gives it, so the click has to hand focus over
+    // explicitly.
+    const editor = new Editor({
+      content: "",
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: createBaramExtensions(),
+    });
+    const doc = markdownToProsemirror(
+      "```ts\nconst x = 1;\n```\n",
+      editor.schema,
+    );
+    editor.commands.setContent(doc.toJSON());
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    document.body.focus();
+    expect(document.activeElement).not.toBe(content);
+
+    // Emulate the platform that does NOT hand focus over on its own: WebKit
+    // does not focus a `contenteditable=false` element with a negative
+    // tabindex on click, which is exactly the island's shape under the vim
+    // barrier. Suppressing the default action is how that looks from here.
+    const swallow = (e: Event) => e.preventDefault();
+    document.addEventListener("mousedown", swallow, true);
+    content.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+    );
+    document.removeEventListener("mousedown", swallow, true);
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(content);
+    });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
 });

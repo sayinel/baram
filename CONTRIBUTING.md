@@ -42,18 +42,18 @@ Please run `npm run verify:ci` before opening a pull request — it mirrors the 
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Desktop Framework | Tauri 2.0 |
-| Backend | Rust |
-| Frontend | React 19 + TypeScript |
-| Bundler | Vite 6 |
-| Styling | Tailwind CSS 4 |
-| Editor Engine | Tiptap / ProseMirror |
-| Math | KaTeX |
-| Code | CodeMirror 6 |
-| Diagrams | Mermaid.js |
-| State | Zustand |
+| Layer             | Technology            |
+| ----------------- | --------------------- |
+| Desktop Framework | Tauri 2.0             |
+| Backend           | Rust                  |
+| Frontend          | React 19 + TypeScript |
+| Bundler           | Vite 6                |
+| Styling           | Tailwind CSS 4        |
+| Editor Engine     | Tiptap / ProseMirror  |
+| Math              | KaTeX                 |
+| Code              | CodeMirror 6          |
+| Diagrams          | Mermaid.js            |
+| State             | Zustand               |
 
 ## Architecture
 
@@ -65,6 +65,10 @@ The markdown pipeline is bidirectional and lossless:
 Forward:  remark-parse → mdast → ProseMirror Document
 Reverse:  ProseMirror Document → mdast → remark-stringify
 ```
+
+$$
+x^2
+$$
 
 ## Pull Requests
 
