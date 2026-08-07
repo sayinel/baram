@@ -1,6 +1,12 @@
 // §5.3 Math Block NodeView — selected: textarea + preview, unselected: KaTeX only
 // §11.2.3 AI button on hover
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import type { Node as PmNode } from "@tiptap/pm/model";
 
@@ -42,6 +48,27 @@ export function MathBlockView({
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
   vimGateEditorRef.current = editor;
+
+  // §298 Phase 1 (PR 307 review) — REACTIVE, and that is the whole point.
+  // The focus effect below refuses to open the textarea while vim is modal,
+  // because j/k land ON a math block as an atom line. Pressing `i` is how the
+  // user asks to go in, but it leaves `selected` untouched, so an effect keyed
+  // on selection alone never re-ran: the block showed its editing chrome with
+  // nothing focused, and the next keystroke went to ProseMirror instead —
+  // typing landed outside the formula. Subscribing to the modal flip makes
+  // `i` the trigger it always looked like it was.
+  const vimModal = useSyncExternalStore(
+    useCallback(
+      (onChange: () => void) => {
+        editor.on("transaction", onChange);
+        return () => {
+          editor.off("transaction", onChange);
+        };
+      },
+      [editor],
+    ),
+    () => isWysiwygVimModal(editor.state),
+  );
   // Save-on-deselect fires only after REAL typing in an edit session — a
   // bare attrs-vs-local comparison writes a stale baseline back over attrs
   // updated while unselected (S5/S6 review R2).
@@ -96,10 +123,7 @@ export function MathBlockView({
         updateAttributesRef.current({ formula: localFormulaRef.current });
       }
       enterByClickRef.current = false;
-    } else if (
-      enterByClickRef.current ||
-      !isWysiwygVimModal(vimGateEditorRef.current.state)
-    ) {
+    } else if (enterByClickRef.current || !vimModal) {
       enterByClickRef.current = false;
       editDirtyRef.current = false;
       setLocalFormula(formulaRef.current);
@@ -118,7 +142,11 @@ export function MathBlockView({
         }
       }, 0);
     }
-  }, [selected]);
+    // `vimModal` belongs here: leaving normal mode with the block already
+    // selected is exactly the `i` case. The other values are read through
+    // refs on purpose — localFormula changes on every keystroke and would
+    // re-focus the textarea mid-typing.
+  }, [selected, vimModal]);
 
   // Auto-resize textarea
   useTextareaAutoResize(textareaRef, localFormula, selected);

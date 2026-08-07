@@ -278,15 +278,7 @@ See [**CONTRIBUTING.md**](CONTRIBUTING.md) for how to set up your development en
 
 ## Support
 
-Baram is free and open source — no paywall, no ads, no telemetry — and it always will be. If it earns a place in your workflow, you can chip in to fund its development:
-
-<p>
-  <a href="https://ko-fi.com/sayinel">
-    <img src="https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="40">
-  </a>
-</p>
-
-Entirely optional, always appreciated: there is no paywall and never will be.
+Baram is free and open source — no paywall, no ads, no telemetry — and it always will be. If it earns a place in your workflow, you can chip in to fund its development:Entirely optional, always appreciated: there is no paywall and never will be.
 
 $$
 x^2
