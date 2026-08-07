@@ -18,12 +18,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadPlugin = vi.fn();
 const unloadPlugin = vi.fn();
+const activateBuiltin = vi.fn();
+const deactivateBuiltin = vi.fn();
 
 vi.mock("../../../plugins/plugin-loader", () => ({
   pluginLoader: {
     loadPlugin: (...a: unknown[]) => loadPlugin(...a),
     unloadPlugin: (...a: unknown[]) => unloadPlugin(...a),
   },
+}));
+// ‼️ `importOriginal` + spread: `plugin-lifecycle` exports a dozen names and the marketplace's
+// import graph reaches several of them. Only the two the built-in toggle drives are replaced.
+vi.mock("../../../plugins/plugin-lifecycle", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../plugins/plugin-lifecycle")
+  >()),
+  activateBuiltin: (...a: unknown[]) => activateBuiltin(...a),
+  deactivateBuiltin: (...a: unknown[]) => deactivateBuiltin(...a),
 }));
 vi.mock("../../../plugins/registry-client", () => ({
   checkForUpdates: () => Promise.resolve({}),
@@ -70,6 +81,11 @@ describe("marketplace enable toggle (§260 3c-3)", () => {
   beforeEach(() => {
     loadPlugin.mockReset().mockResolvedValue(undefined);
     unloadPlugin.mockReset().mockResolvedValue(undefined);
+    activateBuiltin.mockReset().mockResolvedValue(undefined);
+    deactivateBuiltin.mockReset().mockResolvedValue(undefined);
+    // The built-in list is PERSISTED, so a case that disables one would leak into its
+    // neighbours without this.
+    usePluginStore.setState({ builtinDisabled: [] });
     usePluginStore.setState({
       installedPlugins: { demo: disabledPlugin },
       pluginErrors: { demo: "Sandbox activate timed out for demo" },
@@ -126,6 +142,60 @@ describe("marketplace enable toggle (§260 3c-3)", () => {
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo ?? null).toBeNull(),
     );
+  });
+
+  // §69 fix round 1 — the branch that used to be unreachable.
+  //
+  // `activateBuiltin` never rejected: `activateOne` caught everything and logged it, so the
+  // promise resolved and this handler took the SUCCESS path — clearing the error and leaving
+  // `builtinDisabled` (persisted) saying "enabled" for a plugin that was not running. Now that
+  // the lifecycle propagates, the rollback below is live, and these two pin it.
+  describe("built-in toggle", () => {
+    const BUILTIN = "baram-media-viewer";
+
+    /** Render, open Installed, and click the built-in section's toggle. */
+    async function toggleBuiltin() {
+      render(<PluginMarketplace />);
+      fireEvent.click(screen.getByRole("button", { name: /^Installed / }));
+      const builtin = await screen.findByTestId("plugin-section-builtin");
+      fireEvent.click(within(builtin).getByRole("checkbox"));
+    }
+
+    it("rolls back and reports when activation fails", async () => {
+      usePluginStore.setState({ builtinDisabled: [BUILTIN], pluginErrors: {} });
+      activateBuiltin.mockRejectedValue(new Error("viewer would not start"));
+
+      await toggleBuiltin();
+
+      await waitFor(() =>
+        expect(usePluginStore.getState().pluginErrors[BUILTIN]).toContain(
+          "viewer would not start",
+        ),
+      );
+      // Rolled back: the id is in the disabled list again, so a restart does not read
+      // "enabled" for something that never came up.
+      expect(usePluginStore.getState().builtinDisabled).toContain(BUILTIN);
+    });
+
+    it("stays enabled and clears the error when activation succeeds", async () => {
+      // The complement. Without it the assertions above also pass for a toggle that rolls
+      // back unconditionally, or for one that does nothing at all.
+      usePluginStore.setState({
+        builtinDisabled: [BUILTIN],
+        pluginErrors: { [BUILTIN]: "an old failure" },
+      });
+      activateBuiltin.mockResolvedValue(undefined);
+
+      await toggleBuiltin();
+
+      await waitFor(() =>
+        expect(
+          usePluginStore.getState().pluginErrors[BUILTIN] ?? null,
+        ).toBeNull(),
+      );
+      expect(usePluginStore.getState().builtinDisabled).not.toContain(BUILTIN);
+      expect(activateBuiltin).toHaveBeenCalledWith(BUILTIN);
+    });
   });
 
   it("does not leave an unhandled rejection when disabling fails", async () => {

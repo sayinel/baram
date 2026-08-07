@@ -550,6 +550,7 @@
   "plugin.action.remove": "제거",
   "plugin.action.details": "상세",
   "plugin.builtin.badge": "내장",
+  "plugin.builtin.teardownFailed": "{name}을(를) 정상적으로 종료하지 못했습니다: {detail}",
   "plugin.section.builtin": "내장",
   "plugin.section.community": "커뮤니티",
   "plugin.section.dev": "개발 중",

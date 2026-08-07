@@ -27,6 +27,13 @@ const h = vi.hoisted(() => {
   const activateB = vi.fn();
   const deactivateA = vi.fn();
   const unregisterPluginUI = vi.fn();
+  /**
+   * Per-built-in disposable lists, keyed by id and handed to `createExtensionContext` as the
+   * context's `subscriptions`. The SAME array object is returned every time for an id, so a
+   * test can push a disposable after activation and the live context sees it.
+   */
+  const subscriptions: Record<string, { dispose: () => void }[]> = {};
+  const subsFor = (id: string) => (subscriptions[id] ??= []);
   return {
     activateA,
     activateB,
@@ -41,6 +48,8 @@ const h = vi.hoisted(() => {
         module: { activate: activateB },
       },
     ],
+    subsFor,
+    subscriptions,
     unregisterPluginUI,
   };
 });
@@ -53,13 +62,18 @@ vi.mock("../builtin", () => ({ BUILTIN_PLUGINS: h.FIXTURES }));
 // import 시점에 깨진다 — `importOriginal`로 나머지를 그대로 두고 이 셋만 덮는다.
 vi.mock("../extension-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../extension-context")>()),
-  createExtensionContext: () => ({ subscriptions: [] }),
+  // 각 내장의 `subscriptions`를 id별 고정 배열로 돌려준다 — teardown이 disposable을
+  // 실제로 도는지 검사하려면 활성화 이후에 하나 밀어 넣을 수 있어야 한다.
+  createExtensionContext: (manifest: { id: string }) => ({
+    subscriptions: h.subsFor(manifest.id),
+  }),
   emitPluginEvent: vi.fn(),
   unregisterPluginUI: h.unregisterPluginUI,
 }));
 
 // 아래 테스트 본문이 그대로 쓰도록 평범한 이름으로 풀어 둔다(호이스팅 이후 정상 순서로 실행된다).
-const { activateA, activateB, deactivateA, unregisterPluginUI } = h;
+const { activateA, activateB, deactivateA, subscriptions, unregisterPluginUI } =
+  h;
 
 import { usePluginStore } from "../../stores/system/plugin";
 import {
@@ -76,6 +90,7 @@ describe("built-in lifecycle (§69)", () => {
     activateB.mockReset();
     deactivateA.mockReset();
     unregisterPluginUI.mockReset();
+    for (const key of Object.keys(subscriptions)) subscriptions[key].length = 0;
     usePluginStore.setState({ builtinDisabled: [] });
   });
 
@@ -132,6 +147,77 @@ describe("built-in lifecycle (§69)", () => {
   it("still tears every built-in down on shutdown", async () => {
     await loadBuiltinPlugins();
     await shutdownBuiltinPlugins();
+    expect(unregisterPluginUI).toHaveBeenCalledWith("fix-a");
+    expect(unregisterPluginUI).toHaveBeenCalledWith("fix-b");
+  });
+});
+
+// ‼️ 실패가 호출자에게 도달하는가 (Task 7 fix round 1, Critical).
+//
+// `activateOne`과 `teardownBuiltin`은 모든 것을 삼켰다. 그래서 `activateBuiltin`은 활성화가
+// 던져도 RESOLVE했고, `handleToggleBuiltin`의 실패 분기는 실행될 수 없는 죽은 코드였다 —
+// 토글은 성공 경로로 가서 오류를 지우고, 영속되는 `builtinDisabled`는 "켜짐"이라고 남았다.
+// 삼키는 동작 자체는 시작/종료에서는 여전히 옳으므로, 그것을 원하는 두 호출자로 옮겼다.
+describe("built-in lifecycle failures reach the caller (§69)", () => {
+  beforeEach(async () => {
+    await shutdownBuiltinPlugins();
+    activateA.mockReset();
+    activateB.mockReset();
+    deactivateA.mockReset();
+    unregisterPluginUI.mockReset();
+    for (const key of Object.keys(subscriptions)) subscriptions[key].length = 0;
+    usePluginStore.setState({ builtinDisabled: [] });
+  });
+
+  it("rejects from activateBuiltin when activation throws", async () => {
+    // 이것이 Critical의 핵심이다. 이전에는 resolve했다.
+    activateA.mockRejectedValue(new Error("activate blew up"));
+    await expect(activateBuiltin("fix-a")).rejects.toThrow("activate blew up");
+  });
+
+  it("does not reject at STARTUP, and still activates the others", async () => {
+    // 삼키는 동작이 사라진 것이 아니라 이 호출자로 옮겨 왔다는 것. 하나가 실패해도
+    // 실행이 멈추지 않아야 한다 — 이 보장이 없으면 위 수정이 시작 경로를 깨뜨린다.
+    activateA.mockRejectedValue(new Error("activate blew up"));
+    await expect(loadBuiltinPlugins()).resolves.toBeUndefined();
+    expect(activateB).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects from deactivateBuiltin when teardown fails, having run every step", async () => {
+    // ‼️ 단계별 가드가 존재하는 이유가 바로 이 property다: `deactivate`가 던져도 disposable은
+    // 정리되고 UI 등록도 해제되어야 한다. 실패를 보고하게 만들면서 이것을 잃으면 안 된다.
+    await loadBuiltinPlugins();
+    const dispose = vi.fn(() => {
+      throw new Error("dispose blew up");
+    });
+    subscriptions["fix-a"].push({ dispose });
+    deactivateA.mockRejectedValue(new Error("deactivate blew up"));
+
+    await expect(deactivateBuiltin("fix-a")).rejects.toThrow(
+      /deactivate blew up[\s\S]*dispose blew up/,
+    );
+    expect(deactivateA).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(unregisterPluginUI).toHaveBeenCalledWith("fix-a");
+  });
+
+  it("reports a failing unregisterPluginUI instead of letting it escape raw", async () => {
+    // 이전에는 이것만이 가드 없는 단계였다 — 유일하게 호출자에게 도달하는 실패이면서
+    // 동시에 그 아래 단계가 없어 아무것도 건너뛰지 않았다. 이제 같은 수집에 들어간다.
+    await loadBuiltinPlugins();
+    unregisterPluginUI.mockImplementation(() => {
+      throw new Error("unregister blew up");
+    });
+    await expect(deactivateBuiltin("fix-a")).rejects.toThrow(
+      "unregister blew up",
+    );
+  });
+
+  it("still tears the rest down at SHUTDOWN when one throws", async () => {
+    await loadBuiltinPlugins();
+    deactivateA.mockRejectedValue(new Error("deactivate blew up"));
+
+    await expect(shutdownBuiltinPlugins()).resolves.toBeUndefined();
     expect(unregisterPluginUI).toHaveBeenCalledWith("fix-a");
     expect(unregisterPluginUI).toHaveBeenCalledWith("fix-b");
   });

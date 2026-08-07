@@ -7,12 +7,14 @@ import type {
   PluginModule,
 } from "./types";
 
+import { type Locale, t } from "../i18n";
 import {
   pluginListDev,
   pluginPrepareScopes,
   toInstalledDevPlugin,
 } from "../ipc/plugin-invoke";
 import { contextRootOf, useContextStore } from "../stores/context/context";
+import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { BUILTIN_PLUGINS } from "./builtin";
@@ -261,13 +263,32 @@ export async function loadBuiltinPlugins(): Promise<void> {
   const { builtinDisabled } = usePluginStore.getState();
   for (const builtin of BUILTIN_PLUGINS) {
     if (builtinDisabled.includes(builtin.manifest.id)) continue;
-    await activateOne(builtin);
+    // Startup keeps swallowing: one built-in that will not activate must not stop the
+    // others, nor the launch. Same message `activateOne` used to log itself, so the
+    // behaviour a user or a log reader sees at startup is unchanged.
+    try {
+      await activateOne(builtin);
+    } catch (err) {
+      logger.error(
+        `[PluginLifecycle] builtin ${builtin.manifest.id} activate failed:`,
+        err,
+      );
+    }
   }
 }
 
 export async function shutdownBuiltinPlugins(): Promise<void> {
   for (const active of activeBuiltins.splice(0)) {
-    await teardownBuiltin(active);
+    // Shutdown keeps swallowing for the same reason teardown guards each step: one
+    // built-in that will not come down must not strand the rest still registered.
+    try {
+      await teardownBuiltin(active);
+    } catch (err) {
+      logger.error(
+        `[PluginLifecycle] builtin ${active.id} teardown failed:`,
+        err,
+      );
+    }
   }
 }
 
@@ -277,22 +298,27 @@ export async function shutdownPlugins(): Promise<void> {
   await pluginLoader.unloadAll();
 }
 
+/**
+ * ‼️ THROWS. It used to swallow, and that made `handleToggleBuiltin`'s failure branch dead
+ * code: a built-in whose `activate` threw was logged, never pushed to `activeBuiltins`, and
+ * the promise still RESOLVED — so the toggle took the success path, cleared the error, and
+ * left `builtinDisabled` (which is persisted) saying "enabled" while nothing was running.
+ * A toggle that is on, no error, and a plugin that is not there, surviving restart.
+ *
+ * Swallowing is still right at startup and shutdown, so it moved to the two callers that
+ * want it — `loadBuiltinPlugins` and `shutdownBuiltinPlugins` — where "one bad built-in must
+ * not stop the others" is the actual requirement. A single toggle has the opposite
+ * requirement: the user is owed the failure.
+ */
 async function activateOne(builtin: BuiltinPlugin): Promise<void> {
   if (activeBuiltins.some((b) => b.id === builtin.manifest.id)) return;
-  try {
-    const context = createExtensionContext(builtin.manifest, "");
-    await builtin.module.activate?.(context);
-    activeBuiltins.push({
-      context,
-      id: builtin.manifest.id,
-      module: builtin.module,
-    });
-  } catch (err) {
-    logger.error(
-      `[PluginLifecycle] builtin ${builtin.manifest.id} activate failed:`,
-      err,
-    );
-  }
+  const context = createExtensionContext(builtin.manifest, "");
+  await builtin.module.activate?.(context);
+  activeBuiltins.push({
+    context,
+    id: builtin.manifest.id,
+    module: builtin.module,
+  });
 }
 
 /**
@@ -335,8 +361,27 @@ function sortByDependencies(plugins: InstalledPlugin[]): InstalledPlugin[] {
   return sorted;
 }
 
-/** 하나의 활성 내장을 정리한다. 전체 종료와 개별 비활성이 공유한다. */
+/**
+ * 하나의 활성 내장을 정리한다. 전체 종료와 개별 비활성이 공유한다.
+ *
+ * ‼️ EVERY STEP STILL RUNS, AND THE FAILURES ARE REPORTED. The per-step guards are what let
+ * a wedged `deactivate` still have its disposables disposed and its UI unregistered — that
+ * property is the reason they exist and must not regress. What changed is that the guards no
+ * longer make the failure disappear: each one is collected, and a non-empty collection throws
+ * at the end. Without that, `deactivateBuiltin` resolved on a failed teardown and the toggle
+ * reported success for a plugin that had not come down.
+ *
+ * `unregisterPluginUI` is inside the collection too. It was the one unguarded step, so it
+ * could propagate raw and skip nothing — but it also meant a failure there was the only kind
+ * that reached a caller, which is backwards.
+ *
+ * A single `Error` rather than an `AggregateError`: `handleToggleBuiltin` surfaces this with
+ * `setError(id, String(err))` and the Installed row renders that string. `String()` of an
+ * `AggregateError` is just "AggregateError: <message>" — the individual failures are dropped,
+ * so the user would be told something went wrong and never what.
+ */
 async function teardownBuiltin(active: ActiveBuiltin): Promise<void> {
+  const failures: string[] = [];
   try {
     await active.module.deactivate?.();
   } catch (err) {
@@ -344,6 +389,7 @@ async function teardownBuiltin(active: ActiveBuiltin): Promise<void> {
       `[PluginLifecycle] builtin ${active.id} deactivate failed:`,
       err,
     );
+    failures.push(String(err));
   }
   for (const disposable of active.context.subscriptions) {
     try {
@@ -353,7 +399,36 @@ async function teardownBuiltin(active: ActiveBuiltin): Promise<void> {
         `[PluginLifecycle] builtin ${active.id} dispose failed:`,
         err,
       );
+      failures.push(String(err));
     }
   }
-  unregisterPluginUI(active.id);
+  try {
+    unregisterPluginUI(active.id);
+  } catch (err) {
+    logger.error(
+      `[PluginLifecycle] builtin ${active.id} UI unregister failed:`,
+      err,
+    );
+    failures.push(String(err));
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      tr("plugin.builtin.teardownFailed", {
+        detail: failures.join("; "),
+        name: active.id,
+      }),
+    );
+  }
+}
+
+/**
+ * §69 — this message is written to `pluginErrors` and rendered by the Installed row, so it
+ * follows the doctrine `plugin-loader.ts` and `loader-refusals-locale.test.ts` set for every
+ * user-reachable plugin refusal: it reaches the user in their own language. Same shape as the
+ * loader's own `tr`, including its caveat — the settings store rehydrates asynchronously, so a
+ * failure during startup teardown may fall back to English. A toggle-driven teardown happens
+ * long after hydration, and that is the path this message exists for.
+ */
+function tr(key: string, params?: Record<string, string>): string {
+  return t(key, useSettingsStore.getState().locale as Locale, params);
 }
