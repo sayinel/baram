@@ -4,7 +4,7 @@
 // Every mutation lives in `usePluginActions`, and each tab's list is its own component.
 import { useCallback, useEffect, useState } from "react";
 
-import type { PluginRow } from "../../plugins/plugin-sources";
+import type { PluginRow, PluginSource } from "../../plugins/plugin-sources";
 import type {
   PluginStatus,
   RegistryEntry,
@@ -76,9 +76,19 @@ export function PluginMarketplace() {
     null,
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedEntry, setSelectedEntry] = useState<null | RegistryEntry>(
-    null,
-  );
+  /**
+   * ‼️ The detail view needs the SOURCE, not just the entry.
+   *
+   * A built-in is never in `installedPlugins` — it is compiled in, not installed — so a
+   * detail view that derived everything from that map read "not-installed" for one and
+   * offered an enabled Install button wired to an entry `entryFromRow` had given
+   * `downloadUrl: ""`. Carrying the source lets this screen ask `actionsFor` the same
+   * question the row asks, instead of judging for itself.
+   */
+  const [selected, setSelected] = useState<null | {
+    entry: RegistryEntry;
+    source: PluginSource;
+  }>(null);
   const [loading, setLoading] = useState(false);
   const [error, setFetchError] = useState<null | string>(null);
   const [readme, setReadme] = useState<null | string>(null);
@@ -95,11 +105,11 @@ export function PluginMarketplace() {
 
   // Load README for selected installed plugin
   useEffect(() => {
-    if (!selectedEntry) {
+    if (!selected) {
       setReadme(null);
       return;
     }
-    const plugin = installedPlugins[selectedEntry.id];
+    const plugin = installedPlugins[selected.entry.id];
     if (!plugin) {
       setReadme(null);
       return;
@@ -115,7 +125,7 @@ export function PluginMarketplace() {
     return () => {
       cancelled = true;
     };
-  }, [selectedEntry, installedPlugins]);
+  }, [selected, installedPlugins]);
 
   // Fetch registry on mount
   useEffect(() => {
@@ -180,9 +190,6 @@ export function PluginMarketplace() {
     updateAvailable,
   });
 
-  const installedList = Object.values(installedPlugins);
-  const updatesCount = Object.keys(updateAvailable).length;
-
   /**
    * The entries the Updates tab lists: an update is only offerable for a plugin that is
    * installed AND still listed, since the download comes from the listing.
@@ -192,6 +199,24 @@ export function PluginMarketplace() {
     const entry = registryIndex?.plugins.find((p) => p.id === id);
     return entry ? [entry] : [];
   });
+
+  /**
+   * ‼️ EACH BADGE COUNTS WHAT ITS PANEL RENDERS.
+   *
+   * `updatesCount` used to count every key in `updateAvailable` while the panel rendered
+   * `updateEntries`, which is filtered to installed-and-still-listed. `removePlugin` never
+   * cleared `updateAvailable` (fixed at the root in `stores/system/plugin.ts`), so
+   * uninstalling a plugin with a pending update left a stale key: the badge read nonzero,
+   * the panel rendered nothing, and the "no updates" message was skipped because the count
+   * said there were some. Counting the rendered list closes the same gap for any other way
+   * an entry can vanish — a withdrawn listing, for one.
+   *
+   * The Installed badge has the same duty: `Object.values(installedPlugins).length` omits
+   * built-ins, which this tab now lists, so it could read "Installed (0)" above a visible
+   * Media Viewer row.
+   */
+  const updatesCount = updateEntries.length;
+  const installedCount = rows.length;
 
   // Force-refresh the registry (bypasses the 24h cache) and re-run the
   // update check against the fresh index. Shared by the always-available
@@ -227,28 +252,38 @@ export function PluginMarketplace() {
   );
 
   // If detail view is showing
-  if (selectedEntry) {
-    const plugin = installedPlugins[selectedEntry.id];
-    const detailStatus: PluginStatus = getPluginStatus(
-      selectedEntry.id,
-      installing,
-      plugin,
-    );
+  if (selected) {
+    const { entry, source } = selected;
+    const isBuiltin = source === "builtin";
+    const builtinEnabled = !builtinDisabled.includes(entry.id);
+    // ‼️ A built-in has no INSTALL state to report — it is compiled in — so its status is
+    // whether the user has it switched on. `getPluginStatus` reads `installedPlugins`,
+    // which never contains one, and answered "not-installed" for every built-in.
+    const detailStatus: PluginStatus = isBuiltin
+      ? builtinEnabled
+        ? "enabled"
+        : "disabled"
+      : getPluginStatus(entry.id, installing, installedPlugins[entry.id]);
     return (
       <>
         {consentDialog}
         <PluginDetail
-          entry={selectedEntry}
-          error={pluginErrors[selectedEntry.id]}
-          onBack={() => setSelectedEntry(null)}
-          onInstall={() => handleInstall(selectedEntry)}
-          onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
-          onUninstall={() => handleUninstall(selectedEntry.id)}
-          onUpdate={() => handleUpdate(selectedEntry)}
+          entry={entry}
+          error={pluginErrors[entry.id]}
+          onBack={() => setSelected(null)}
+          onInstall={() => handleInstall(entry)}
+          onToggleEnabled={() =>
+            isBuiltin
+              ? handleToggleBuiltin(entry.id, !builtinEnabled)
+              : handleToggleEnabled(entry.id)
+          }
+          onUninstall={() => handleUninstall(entry.id)}
+          onUpdate={() => handleUpdate(entry)}
           readme={readme}
-          revocation={shownRevocation(selectedEntry)}
+          revocation={shownRevocation(entry)}
+          source={source}
           status={detailStatus}
-          updateAvailable={updateAvailable[selectedEntry.id]}
+          updateAvailable={updateAvailable[entry.id]}
         />
       </>
     );
@@ -278,7 +313,7 @@ export function PluginMarketplace() {
                   ? t("plugin.marketplace.tab.browse")
                   : tab === "installed"
                     ? t("plugin.marketplace.tab.installed", {
-                        count: String(installedList.length),
+                        count: String(installedCount),
                       })
                     : t("plugin.marketplace.tab.updates", {
                         count: String(updatesCount),
@@ -386,7 +421,8 @@ export function PluginMarketplace() {
               installedPlugins={installedPlugins}
               installing={installing}
               onInstall={(entry) => void handleInstall(entry)}
-              onSelect={setSelectedEntry}
+              // A Browse listing is by definition a registry entry — community.
+              onSelect={(entry) => setSelected({ entry, source: "community" })}
               onUninstall={(id) => void handleUninstall(id)}
               onUpdate={(entry) => void handleUpdate(entry)}
               pluginErrors={pluginErrors}
@@ -403,7 +439,9 @@ export function PluginMarketplace() {
             </div>
           ) : (
             <PluginInstalledList
-              onDetails={(r) => setSelectedEntry(entryFromRow(r))}
+              onDetails={(r) =>
+                setSelected({ entry: entryFromRow(r), source: r.source })
+              }
               onRemove={(r) => void handleUninstall(r.manifest.id)}
               onToggle={(r) =>
                 r.source === "builtin"
@@ -426,12 +464,12 @@ export function PluginMarketplace() {
               entries={updateEntries}
               installedPlugins={installedPlugins}
               installing={installing}
-              // ‼️ Unchanged from what this tab has always passed, and still a dead
-              // callback: every card here is for an installed plugin, so `status` never
-              // admits an Install button. Left exactly as it was rather than quietly
-              // rewired — this commit's claim is that nothing about these handlers moved.
-              onInstall={() => {}}
-              onSelect={setSelectedEntry}
+              // ‼️ NO `onInstall`. Every card here is for an installed plugin, so the
+              // branch that offers Install is unreachable — and a no-op callback is the
+              // dead-callback defect this work exists to remove, not a way to satisfy a
+              // required prop. `onSettings` and `onReload` got the same treatment; absence
+              // is expressed as absence.
+              onSelect={(entry) => setSelected({ entry, source: "community" })}
               onUninstall={(id) => void handleUninstall(id)}
               onUpdate={(entry) => void handleUpdate(entry)}
               pluginErrors={pluginErrors}

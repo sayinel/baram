@@ -18,7 +18,13 @@ interface PluginBrowseListProps {
   entries: RegistryEntry[];
   installedPlugins: { [id: string]: InstalledPlugin };
   installing: { [id: string]: boolean };
-  onInstall: (entry: RegistryEntry) => void;
+  /**
+   * ‼️ OPTIONAL. The Updates tab lists only installed plugins, so its cards never reach the
+   * branch that offers Install — it used to pass `onInstall={() => {}}` to satisfy a
+   * required prop, which is exactly the dead callback this work removes. Same treatment as
+   * `onSettings` and `onReload` on the row.
+   */
+  onInstall?: (entry: RegistryEntry) => void;
   onSelect: (entry: RegistryEntry) => void;
   onUninstall: (id: string) => void;
   onUpdate: (entry: RegistryEntry) => void;
@@ -47,7 +53,7 @@ export function PluginBrowseList({
           entry={entry}
           error={pluginErrors[entry.id]}
           key={entry.id}
-          onInstall={() => onInstall(entry)}
+          onInstall={onInstall ? () => onInstall(entry) : undefined}
           onSelect={() => onSelect(entry)}
           onUninstall={() => onUninstall(entry.id)}
           onUpdate={() => onUpdate(entry)}

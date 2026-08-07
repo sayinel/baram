@@ -281,6 +281,12 @@ export const usePluginStore = create<PluginState>()(
           installedPlugins: omitKey(state.installedPlugins, id),
           pluginSettings: omitKey(state.pluginSettings, id),
           pluginErrors: omitKey(state.pluginErrors, id),
+          // ‼️ §69 — an uninstalled plugin has no pending update. Without this the key
+          // outlived the plugin, and since the whole store is PERSISTED it outlived the
+          // session too: the Updates badge counted it forever while the panel — which
+          // lists installed-and-still-listed plugins — rendered nothing, and the "no
+          // updates" message was skipped because the count said there were some.
+          updateAvailable: omitKey(state.updateAvailable, id),
         })),
 
       setEnabled: (id, enabled) =>

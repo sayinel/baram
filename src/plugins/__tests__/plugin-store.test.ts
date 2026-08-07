@@ -95,6 +95,34 @@ describe("usePluginStore", () => {
         usePluginStore.getState().pluginErrors["test-plugin"],
       ).toBeUndefined();
     });
+
+    test("removePlugin clears a pending update — §69", () => {
+      // ‼️ The whole store is PERSISTED, so a key left here outlived the session, not just
+      // the uninstall. The Updates badge counted it while the panel — which lists
+      // installed-and-still-listed plugins — rendered nothing, and the "no updates"
+      // message was skipped because the count said there were some.
+      const plugin = makePlugin("test-plugin");
+      usePluginStore.getState().addPlugin(plugin);
+      usePluginStore.setState({ updateAvailable: { "test-plugin": "2.0.0" } });
+
+      usePluginStore.getState().removePlugin("test-plugin");
+
+      expect(
+        usePluginStore.getState().updateAvailable["test-plugin"],
+      ).toBeUndefined();
+    });
+
+    test("removePlugin leaves ANOTHER plugin's pending update alone", () => {
+      // The complement: clearing the whole map would also pass the test above.
+      usePluginStore.getState().addPlugin(makePlugin("test-plugin"));
+      usePluginStore.setState({
+        updateAvailable: { other: "3.0.0", "test-plugin": "2.0.0" },
+      });
+
+      usePluginStore.getState().removePlugin("test-plugin");
+
+      expect(usePluginStore.getState().updateAvailable.other).toBe("3.0.0");
+    });
   });
 
   describe("setEnabled", () => {

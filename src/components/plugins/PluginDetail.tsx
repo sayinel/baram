@@ -1,3 +1,4 @@
+import type { PluginSource } from "../../plugins/plugin-sources";
 import type { RevocationEntry } from "../../plugins/revocation";
 import type {
   PluginCapability,
@@ -7,6 +8,7 @@ import type {
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
+import { actionsFor } from "../../plugins/plugin-sources";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 import { PluginRevokedNotice } from "./PluginRevokedNotice";
@@ -23,6 +25,16 @@ interface PluginDetailProps {
   onUpdate: () => void;
   readme?: null | string;
   revocation?: null | RevocationEntry;
+  /**
+   * ‼️ Where the plugin came from, so this screen offers the same action set the row does.
+   *
+   * Optional and defaulting to `community` because every other caller renders a REGISTRY
+   * listing, which is what community means. The Installed tab is the one route that can
+   * reach a built-in, and a built-in is never in `installedPlugins` — it is compiled in,
+   * not installed — so without this `status` read "not-installed" and this screen offered
+   * an enabled Install button wired to an entry whose `downloadUrl` is `""`.
+   */
+  source?: PluginSource;
   status: PluginStatus;
   updateAvailable?: string;
 }
@@ -39,8 +51,13 @@ export function PluginDetail({
   readme,
   onBack,
   revocation,
+  source = "community",
 }: PluginDetailProps) {
   const { t } = useTranslation();
+  // The same single authority the rows use (§3.1). Install is not in that table — it is a
+  // property of a registry listing rather than of an installed row — so it is gated below
+  // on the source directly.
+  const can = actionsFor(source);
   // The full-trust warning moved to `PluginConsentDialog` (§260 Phase 5), which is the
   // step that actually records what the user agreed to. Keeping a second, weaker warning
   // here would have let the two drift apart.
@@ -205,7 +222,7 @@ export function PluginDetail({
                 ? t("plugin.action.enabled")
                 : t("plugin.action.disabled")}
             </button>
-            {updateAvailable && (
+            {can.canUpdate && updateAvailable && (
               <button
                 onClick={onUpdate}
                 style={{
@@ -222,23 +239,25 @@ export function PluginDetail({
                 {t("plugin.action.updateTo", { version: updateAvailable })}
               </button>
             )}
-            <button
-              onClick={onUninstall}
-              style={{
-                padding: "8px 20px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 500,
-                backgroundColor: "transparent",
-                color: "var(--color-status-danger)",
-                border: "1px solid var(--color-status-danger)",
-                cursor: "pointer",
-              }}
-            >
-              {t("plugin.action.uninstall")}
-            </button>
+            {can.canRemove && (
+              <button
+                onClick={onUninstall}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  backgroundColor: "transparent",
+                  color: "var(--color-status-danger)",
+                  border: "1px solid var(--color-status-danger)",
+                  cursor: "pointer",
+                }}
+              >
+                {t("plugin.action.uninstall")}
+              </button>
+            )}
           </>
-        ) : (
+        ) : source === "builtin" ? null : ( // compiled in — nothing to acquire
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {legacy && (
               <p className="plugin-legacy-note">
