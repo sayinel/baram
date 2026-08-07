@@ -1,0 +1,28 @@
+/* §298 vim Phase 1 — S5 block cursor (design §10).
+   The native caret does not render on a non-editable view, so normal mode
+   paints the unit under the vim cursor. */
+
+.vim-cursor {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-default);
+  border-radius: 1px;
+}
+
+/* Empty line / terminal boundary: a zero-width widget caret. */
+.vim-cursor-eol {
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  margin-left: -1px;
+  vertical-align: text-bottom;
+  border-left: 2px solid var(--color-accent-default);
+}
+
+/* Block-atom cursor line (NodeSelection): neither the repo nor Tiptap's
+   core CSS styles .ProseMirror-selectednode, so a bare atom (horizontal
+   rule 등) would carry an invisible cursor. Scoped to vim modal. */
+.vim-modal .ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 1px;
+  border-radius: 2px;
+}

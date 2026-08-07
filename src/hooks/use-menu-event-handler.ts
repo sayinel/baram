@@ -1,4 +1,3 @@
-// Native menu event handler hook — dispatches Tauri menu-event payloads to app actions
 import { useEffect } from "react";
 
 import { listen } from "@tauri-apps/api/event";
@@ -7,11 +6,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { Editor } from "@tiptap/react";
 
+// Native menu event handler hook — dispatches Tauri menu-event payloads to app actions
+import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { handleRecentMenuEvent } from "../ipc/recent-menu";
 import { getAction } from "../keybindings/keybinding-actions";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 
 interface MenuEventHandlerDeps {
   editor: Editor | null;
@@ -139,53 +141,63 @@ export function useMenuEventHandler({
           );
           break;
         case "insert_blockquote":
-          editor?.chain().focus().toggleBlockquote().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleBlockquote().run();
           break;
         case "insert_bold":
-          editor?.chain().focus().toggleBold().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleBold().run();
           break;
         // --- Insert menu: new block handlers ---
         case "insert_callout":
-          editor?.commands.setCallout({ type: "info" });
+          chainWithVimExternalEdit(editor)?.setCallout({ type: "info" }).run();
           break;
         case "insert_code_block":
-          editor?.chain().focus().toggleCodeBlock().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleCodeBlock().run();
           break;
         case "insert_definition_list":
-          editor?.commands.setDefinitionList();
+          chainWithVimExternalEdit(editor)?.setDefinitionList().run();
           break;
         case "insert_footnote": {
           if (!editor) break;
           const fnId = `fn-${Date.now()}`;
-          editor.commands.insertFootnoteRef(fnId);
+          chainWithVimExternalEdit(editor).insertFootnoteRef(fnId).run();
           break;
         }
         case "insert_frontmatter":
-          editor
-            ?.chain()
-            .focus()
+          chainWithVimExternalEdit(editor)
+            ?.focus()
             .insertContent({ type: "frontmatter", attrs: { yaml: "" } })
             .run();
           break;
         // --- Insert menu handlers ---
         case "insert_h1":
-          editor?.chain().focus().toggleHeading({ level: 1 }).run();
+          chainWithVimExternalEdit(editor)
+            ?.focus()
+            .toggleHeading({ level: 1 })
+            .run();
           break;
         case "insert_h2":
-          editor?.chain().focus().toggleHeading({ level: 2 }).run();
+          chainWithVimExternalEdit(editor)
+            ?.focus()
+            .toggleHeading({ level: 2 })
+            .run();
           break;
         case "insert_h3":
-          editor?.chain().focus().toggleHeading({ level: 3 }).run();
+          chainWithVimExternalEdit(editor)
+            ?.focus()
+            .toggleHeading({ level: 3 })
+            .run();
           break;
         // --- Insert menu: new inline mark handlers ---
         case "insert_highlight":
-          editor?.chain().focus().toggleHighlight().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleHighlight().run();
           break;
         case "insert_hr":
-          editor?.chain().focus().setHorizontalRule().run();
+          chainWithVimExternalEdit(editor)?.focus().setHorizontalRule().run();
           break;
         case "insert_image": {
           if (!editor) break;
+          // §298 §12-9b (design §5c): native dialog = unbounded async gap.
+          const task = registerEditorMutationTask(editor.view);
           const imagePath = await open({
             filters: [
               {
@@ -194,80 +206,91 @@ export function useMenuEventHandler({
               },
             ],
           });
-          if (imagePath) {
-            editor.chain().focus().setImage({ src: imagePath }).run();
+          const live = task.isLive();
+          task.finish();
+          if (imagePath && live) {
+            chainWithVimExternalEdit(editor)
+              .focus()
+              .setImage({ src: imagePath })
+              .run();
           }
           break;
         }
         case "insert_inline_code":
-          editor?.chain().focus().toggleCode().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleCode().run();
           break;
         case "insert_italic":
-          editor?.chain().focus().toggleItalic().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleItalic().run();
           break;
         case "insert_link": {
           if (!editor) break;
           const { from, to } = editor.state.selection;
           if (from === to) break; // Need selection for link
+          // §298 §12-9b (design §5c): prompt dialog = unbounded async gap.
+          const task = registerEditorMutationTask(editor.view);
           showPrompt("Enter URL:").then((url) => {
-            if (url) {
-              editor.chain().focus().toggleLink({ href: url }).run();
+            const live = task.isLive();
+            task.finish();
+            if (url && live) {
+              chainWithVimExternalEdit(editor)
+                .focus()
+                .toggleLink({ href: url })
+                .run();
             }
           });
           break;
         }
         case "insert_math_block":
-          editor?.chain().focus().setMathBlock().run();
+          chainWithVimExternalEdit(editor)?.focus().setMathBlock().run();
           break;
 
         case "insert_mermaid":
-          editor?.commands.setMermaidBlock();
+          chainWithVimExternalEdit(editor)?.setMermaidBlock().run();
           break;
         case "insert_ordered_list":
-          editor?.chain().focus().toggleOrderedList().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleOrderedList().run();
           break;
         case "insert_paragraph":
-          editor?.chain().focus().setNode("paragraph").run();
+          chainWithVimExternalEdit(editor)?.focus().setNode("paragraph").run();
           break;
         case "insert_query_block":
-          editor?.commands.setQueryBlock();
+          chainWithVimExternalEdit(editor)?.setQueryBlock().run();
           break;
 
         case "insert_strikethrough":
-          editor?.chain().focus().toggleStrike().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleStrike().run();
           break;
 
         case "insert_subscript":
-          editor?.chain().focus().toggleSubscript().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleSubscript().run();
           break;
         case "insert_superscript":
-          editor?.chain().focus().toggleSuperscript().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleSuperscript().run();
           break;
         case "insert_table":
-          editor
-            ?.chain()
-            .focus()
+          chainWithVimExternalEdit(editor)
+            ?.focus()
             .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
             .run();
           break;
         case "insert_task_list":
-          editor?.chain().focus().toggleTaskList().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleTaskList().run();
           break;
         case "insert_toc":
-          editor?.commands.insertTableOfContents();
+          chainWithVimExternalEdit(editor)?.insertTableOfContents().run();
           break;
         case "insert_toggle":
-          editor?.commands.setToggle();
+          chainWithVimExternalEdit(editor)?.setToggle().run();
           break;
         case "insert_underline":
-          editor?.chain().focus().toggleUnderline().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleUnderline().run();
           break;
         case "insert_unordered_list":
-          editor?.chain().focus().toggleBulletList().run();
+          chainWithVimExternalEdit(editor)?.focus().toggleBulletList().run();
           break;
         // --- Insert menu: inline element handlers ---
         case "insert_wikilink":
-          editor?.chain().focus().insertContent("[[]]").run();
+          chainWithVimExternalEdit(editor)?.focus().insertContent("[[]]").run();
           break;
 
         // --- View menu: right panel handlers ---

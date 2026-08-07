@@ -1,4 +1,3 @@
-// §4.7 Floating Toolbar — BubbleMenu on text selection
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
@@ -8,6 +7,8 @@ import { CellSelection } from "@tiptap/pm/tables";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { Sparkles } from "lucide-react";
 
+// §4.7 Floating Toolbar — BubbleMenu on text selection
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import {
   executeAICommand,
   getSelectedText,
@@ -21,6 +22,10 @@ import {
   type AIAction,
   getActionsForMode,
 } from "../../utils/contextual-ai-actions";
+import {
+  awaitBoundToEditor,
+  registerEditorMutationTask,
+} from "../../utils/editor/mutation-tasks";
 import { showFieldDialog } from "../../utils/field-dialog";
 
 interface FloatingToolbarProps {
@@ -54,6 +59,28 @@ function ToolbarButton({
 
 // §6.2 / §11.2.3 Selection-based contextual AI commands in FloatingToolbar dropdown
 const AFTER_SEL = { afterSelection: true } as const;
+
+/** Contextual AI actions that ask for one value before running. */
+const CONTEXTUAL_PROMPTS: Record<
+  string,
+  { label: string; presets: string[]; token: string }
+> = {
+  "convert-lang": {
+    label: "Target language:",
+    presets: ["Python", "JavaScript", "TypeScript", "Rust"],
+    token: "{language}",
+  },
+  tone: {
+    label: "Select tone:",
+    presets: ["Formal", "Casual", "Professional", "Friendly"],
+    token: "{tone}",
+  },
+  translate: {
+    label: "Target language:",
+    presets: ["English", "Korean"],
+    token: "{language}",
+  },
+};
 
 export function FloatingToolbar({ editor }: FloatingToolbarProps) {
   const [aiOpen, setAiOpen] = useState(false);
@@ -116,48 +143,28 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         return;
       }
       setAiOpen(false);
-      if (action.id === "translate") {
-        showPrompt("Target language:", "", {
-          presets: ["English", "Korean"],
-        }).then((lang) => {
-          if (lang) {
-            executeAICommand(
-              editor,
-              selection,
-              action.systemPrompt.replace("{language}", lang),
-              AFTER_SEL,
-            );
-          }
-        });
-      } else if (action.id === "tone") {
-        showPrompt("Select tone:", "", {
-          presets: ["Formal", "Casual", "Professional", "Friendly"],
-        }).then((tone) => {
-          if (tone) {
-            executeAICommand(
-              editor,
-              selection,
-              action.systemPrompt.replace("{tone}", tone),
-              AFTER_SEL,
-            );
-          }
-        });
-      } else if (action.id === "convert-lang") {
-        showPrompt("Target language:", "", {
-          presets: ["Python", "JavaScript", "TypeScript", "Rust"],
-        }).then((lang) => {
-          if (lang) {
-            executeAICommand(
-              editor,
-              selection,
-              action.systemPrompt.replace("{language}", lang),
-              AFTER_SEL,
-            );
-          }
-        });
-      } else {
+
+      const spec = CONTEXTUAL_PROMPTS[action.id];
+      if (!spec) {
         executeAICommand(editor, selection, action.systemPrompt, AFTER_SEL);
+        return;
       }
+      // §12-9d (design §5c): the selection was captured from THIS document,
+      // so the prompt must be held by a task bound to it — otherwise a state
+      // install while the prompt is open would send the old selection and
+      // insert the answer into the replacing document.
+      void awaitBoundToEditor(
+        editor.view,
+        showPrompt(spec.label, "", { presets: spec.presets }),
+      ).then((value) => {
+        if (!value) return; // cancelled, or the document was replaced
+        executeAICommand(
+          editor,
+          selection,
+          action.systemPrompt.replace(spec.token, value),
+          AFTER_SEL,
+        );
+      });
     },
     [editor],
   );
@@ -182,43 +189,57 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       <ToolbarButton
         isActive={editor.isActive("bold")}
         label="B"
-        onClick={() => editor.chain().focus().toggleBold().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleBold().run()
+        }
         title="Bold (Cmd+B)"
       />
       <ToolbarButton
         isActive={editor.isActive("italic")}
         label="I"
-        onClick={() => editor.chain().focus().toggleItalic().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleItalic().run()
+        }
         title="Italic (Cmd+I)"
       />
       <ToolbarButton
         isActive={editor.isActive("strike")}
         label="S"
-        onClick={() => editor.chain().focus().toggleStrike().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleStrike().run()
+        }
         title="Strikethrough (Cmd+Shift+X)"
       />
       <ToolbarButton
         isActive={editor.isActive("highlight")}
         label="H"
-        onClick={() => editor.chain().focus().toggleHighlight().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleHighlight().run()
+        }
         title="Highlight (Cmd+Shift+H)"
       />
       <ToolbarButton
         isActive={editor.isActive("superscript")}
         label="X²"
-        onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleSuperscript().run()
+        }
         title="Superscript"
       />
       <ToolbarButton
         isActive={editor.isActive("subscript")}
         label="X₂"
-        onClick={() => editor.chain().focus().toggleSubscript().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleSubscript().run()
+        }
         title="Subscript"
       />
       <ToolbarButton
         isActive={editor.isActive("code")}
         label="<>"
-        onClick={() => editor.chain().focus().toggleCode().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleCode().run()
+        }
         title="Inline Code (Cmd+E)"
       />
       <ToolbarButton
@@ -226,18 +247,25 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         label="Lk"
         onClick={async () => {
           if (editor.isActive("link")) {
-            editor.chain().focus().unsetLink().run();
+            chainWithVimExternalEdit(editor).focus().unsetLink().run();
             return;
           }
+          // §12-9b: dialog resolution is an async gap (design §5c)
+          const task = registerEditorMutationTask(editor.view);
           const result = await showFieldDialog({
             title: "Insert Link",
             fields: [{ key: "url", label: "URL", placeholder: "https://..." }],
           });
-          if (!result?.url) {
-            editor.commands.focus();
+          const live = task.isLive();
+          task.finish();
+          if (!result?.url || !live) {
+            if (live) editor.commands.focus();
             return;
           }
-          editor.chain().focus().setLink({ href: result.url }).run();
+          chainWithVimExternalEdit(editor)
+            .focus()
+            .setLink({ href: result.url })
+            .run();
         }}
         title="Link"
       />
@@ -245,32 +273,48 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       <ToolbarButton
         isActive={editor.isActive("heading", { level: 1 })}
         label="H1"
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor)
+            .focus()
+            .toggleHeading({ level: 1 })
+            .run()
+        }
         title="Heading 1"
       />
       <ToolbarButton
         isActive={editor.isActive("heading", { level: 2 })}
         label="H2"
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor)
+            .focus()
+            .toggleHeading({ level: 2 })
+            .run()
+        }
         title="Heading 2"
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
         isActive={editor.isActive("blockquote")}
         label="Q"
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleBlockquote().run()
+        }
         title="Blockquote"
       />
       <ToolbarButton
         isActive={editor.isActive("bulletList")}
         label="UL"
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleBulletList().run()
+        }
         title="Unordered List"
       />
       <ToolbarButton
         isActive={editor.isActive("orderedList")}
         label="OL"
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleOrderedList().run()
+        }
         title="Ordered List"
       />
       <div className="floating-toolbar-separator" />

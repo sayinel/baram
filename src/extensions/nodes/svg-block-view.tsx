@@ -28,6 +28,8 @@ import {
   setSvgRootWidth,
 } from "../../utils/markdown/svg-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { svgBlockEntryKey } from "./svg-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
@@ -80,8 +82,28 @@ export function SvgBlockView({
   );
 
   // Sync local code + focus textarea when entering edit mode; save on deselect.
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
+
   useEffect(() => {
-    if (selected) {
+    if (!selected) {
+      // Save on DESELECT only — a modal (vim-cursor) selection must neither
+      // enter editing nor run this branch, which would restore a stale
+      // local value over fresh attrs (S5/S6 review).
+      // CONSUME dirty at every deselect — a completed session's flag must
+      // not survive into the next one (S5/S6 review R3).
+      const wasDirty = editDirtyRef.current;
+      editDirtyRef.current = false;
+      if (wasDirty && localCodeRef.current !== codeRef.current) {
+        updateAttributesRef.current({ code: localCodeRef.current });
+      }
+    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      editDirtyRef.current = false;
       setLocalCode(codeRef.current);
       const entryState = svgBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
@@ -95,8 +117,6 @@ export function SvgBlockView({
           enteredFromBelow ? end : 0,
         );
       }, 0);
-    } else if (localCodeRef.current !== codeRef.current) {
-      updateAttributesRef.current({ code: localCodeRef.current });
     }
   }, [selected]);
 
@@ -153,9 +173,14 @@ export function SvgBlockView({
 
   const closeFullscreen = useCallback(() => {
     setLocalCode(fullscreenCode);
-    updateAttributes({ code: fullscreenCode });
+    // §12-6: fullscreen Close button commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { code: fullscreenCode });
+    // The direct commit ENDS the textarea session — a leftover dirty flag
+    // would make the next deselect re-save this (by then possibly stale)
+    // local value over an Undo or external update (review S5/S6-R4).
+    editDirtyRef.current = false;
     setFullscreen(false);
-  }, [fullscreenCode, updateAttributes]);
+  }, [fullscreenCode, editor, getPos]);
 
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
@@ -185,7 +210,8 @@ export function SvgBlockView({
 
   // Resize: width persisted as width="N%" on the root <svg> (round-trips).
   const { dragPct, startResize } = useMediaResize(renderRef, (pct) => {
-    updateAttributesRef.current({
+    // §12-6: resize drag commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, {
       code: setSvgRootWidth(codeRef.current, pct),
     });
   });
@@ -278,6 +304,7 @@ export function SvgBlockView({
                   autoFocus
                   className="svg-block-textarea"
                   data-gramm="false"
+                  data-vim-suspend=""
                   onChange={(e) => setFullscreenCode(e.target.value)}
                   ref={fullscreenTextareaRef}
                   spellCheck={false}
@@ -523,7 +550,11 @@ export function SvgBlockView({
         autoCorrect="off"
         className="svg-block-textarea"
         data-gramm="false"
-        onChange={(e) => setLocalCode(e.target.value)}
+        data-vim-suspend=""
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalCode(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder='<svg viewBox="0 0 100 100">...</svg>'
         ref={textareaRef}

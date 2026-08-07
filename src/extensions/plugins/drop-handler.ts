@@ -8,6 +8,7 @@ import { isExternalFileDrag } from "../../hooks/use-external-drop";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
 import { savePhotoToAssets } from "../../utils/journal/journal-photo";
 
 /** Create the drop handler ProseMirror plugin */
@@ -31,25 +32,32 @@ function createDropHandlerPlugin(): Plugin {
 
         const ctx = getJournalContext();
 
-        for (const file of files) {
-          if (ctx.isJournal) {
-            readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(
-                bytes,
-                file.name,
-                ctx.rootPath,
-                ctx.journalDir,
-                ctx.filePath,
-              ).then((relativePath) => {
-                insertImageAtPos(view, relativePath, file.name, insertPos);
-              });
-            });
-          } else {
-            readFileAsDataURL(file).then((dataUrl) => {
-              insertImageAtPos(view, dataUrl, file.name, insertPos);
-            });
-          }
-        }
+        // §298 §12-9b (design §5c): file reads land after an async gap —
+        // once the task dies (state install / vim mode exit), the reads
+        // complete but must not dispatch into the editor.
+        const task = registerEditorMutationTask(view);
+        const jobs = files.map((file) =>
+          ctx.isJournal
+            ? readFileAsBytes(file)
+                .then((bytes) =>
+                  savePhotoToAssets(
+                    bytes,
+                    file.name,
+                    ctx.rootPath,
+                    ctx.journalDir,
+                    ctx.filePath,
+                  ),
+                )
+                .then((relativePath) => {
+                  if (!task.isLive()) return;
+                  insertImageAtPos(view, relativePath, file.name, insertPos);
+                })
+            : readFileAsDataURL(file).then((dataUrl) => {
+                if (!task.isLive()) return;
+                insertImageAtPos(view, dataUrl, file.name, insertPos);
+              }),
+        );
+        void Promise.allSettled(jobs).then(() => task.finish());
 
         return true;
       },
@@ -85,25 +93,30 @@ function createDropHandlerPlugin(): Plugin {
 
         const ctx = getJournalContext();
 
-        for (const file of files) {
-          if (ctx.isJournal) {
-            readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(
-                bytes,
-                file.name,
-                ctx.rootPath,
-                ctx.journalDir,
-                ctx.filePath,
-              ).then((relativePath) => {
-                insertImageAtPos(view, relativePath, file.name);
-              });
-            });
-          } else {
-            readFileAsDataURL(file).then((dataUrl) => {
-              insertImageAtPos(view, dataUrl, file.name);
-            });
-          }
-        }
+        // §298 §12-9b — same contract as handleDrop above.
+        const task = registerEditorMutationTask(view);
+        const jobs = files.map((file) =>
+          ctx.isJournal
+            ? readFileAsBytes(file)
+                .then((bytes) =>
+                  savePhotoToAssets(
+                    bytes,
+                    file.name,
+                    ctx.rootPath,
+                    ctx.journalDir,
+                    ctx.filePath,
+                  ),
+                )
+                .then((relativePath) => {
+                  if (!task.isLive()) return;
+                  insertImageAtPos(view, relativePath, file.name);
+                })
+            : readFileAsDataURL(file).then((dataUrl) => {
+                if (!task.isLive()) return;
+                insertImageAtPos(view, dataUrl, file.name);
+              }),
+        );
+        void Promise.allSettled(jobs).then(() => task.finish());
 
         return true;
       },

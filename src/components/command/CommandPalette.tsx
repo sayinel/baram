@@ -1,10 +1,11 @@
-// §4.5 Command Palette — Cmd+P
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
+// §4.5 Command Palette — Cmd+P
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { getAction } from "../../keybindings/keybinding-actions";
 import { executePluginCommand } from "../../plugins/extension-context";
 import { usePluginUIStore } from "../../plugins/plugin-ui-store";
@@ -19,6 +20,7 @@ import {
   getSelectionOrParagraph,
   showPrompt,
 } from "../../utils/ai-commands";
+import { awaitBoundToEditor } from "../../utils/editor/mutation-tasks";
 import { fuzzyMatch } from "../../utils/file-search";
 
 export interface CommandItem {
@@ -309,7 +311,10 @@ function buildCommands(
       category: "Insert",
       shortcut: "\u23181",
       action: (editor) =>
-        editor?.chain().focus().toggleHeading({ level: 1 }).run(),
+        chainWithVimExternalEdit(editor)
+          ?.focus()
+          .toggleHeading({ level: 1 })
+          .run(),
     },
     {
       id: "insert:h2",
@@ -317,7 +322,10 @@ function buildCommands(
       category: "Insert",
       shortcut: "\u23182",
       action: (editor) =>
-        editor?.chain().focus().toggleHeading({ level: 2 }).run(),
+        chainWithVimExternalEdit(editor)
+          ?.focus()
+          .toggleHeading({ level: 2 })
+          .run(),
     },
     {
       id: "insert:h3",
@@ -325,7 +333,10 @@ function buildCommands(
       category: "Insert",
       shortcut: "\u23183",
       action: (editor) =>
-        editor?.chain().focus().toggleHeading({ level: 3 }).run(),
+        chainWithVimExternalEdit(editor)
+          ?.focus()
+          .toggleHeading({ level: 3 })
+          .run(),
     },
     // Insert — Blocks
     {
@@ -333,49 +344,54 @@ function buildCommands(
       label: "Unordered List",
       category: "Insert",
       shortcut: "\u21E7\u23188",
-      action: (editor) => editor?.chain().focus().toggleBulletList().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleBulletList().run(),
     },
     {
       id: "insert:ordered-list",
       label: "Ordered List",
       category: "Insert",
       shortcut: "\u21E7\u23187",
-      action: (editor) => editor?.chain().focus().toggleOrderedList().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleOrderedList().run(),
     },
     {
       id: "insert:task-list",
       label: "Task List",
       category: "Insert",
-      action: (editor) => editor?.chain().focus().toggleTaskList().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleTaskList().run(),
     },
     {
       id: "insert:blockquote",
       label: "Blockquote",
       category: "Insert",
       shortcut: "\u21E7\u2318>",
-      action: (editor) => editor?.chain().focus().toggleBlockquote().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleBlockquote().run(),
     },
     {
       id: "insert:code-block",
       label: "Code Block",
       category: "Insert",
       shortcut: "\u21E7\u2318C",
-      action: (editor) => editor?.chain().focus().toggleCodeBlock().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleCodeBlock().run(),
     },
     {
       id: "insert:horizontal-rule",
       label: "Horizontal Rule",
       category: "Insert",
-      action: (editor) => editor?.chain().focus().setHorizontalRule().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().setHorizontalRule().run(),
     },
     {
       id: "insert:table",
       label: "Table",
       category: "Insert",
       action: (editor) =>
-        editor
-          ?.chain()
-          .focus()
+        chainWithVimExternalEdit(editor)
+          ?.focus()
           .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
           .run(),
     },
@@ -385,28 +401,32 @@ function buildCommands(
       label: "Bold",
       category: "Format",
       shortcut: "\u2318B",
-      action: (editor) => editor?.chain().focus().toggleBold().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleBold().run(),
     },
     {
       id: "format:italic",
       label: "Italic",
       category: "Format",
       shortcut: "\u2318I",
-      action: (editor) => editor?.chain().focus().toggleItalic().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleItalic().run(),
     },
     {
       id: "format:strikethrough",
       label: "Strikethrough",
       category: "Format",
       shortcut: "\u21E7\u2318X",
-      action: (editor) => editor?.chain().focus().toggleStrike().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleStrike().run(),
     },
     {
       id: "format:inline-code",
       label: "Inline Code",
       category: "Format",
       shortcut: "\u2318E",
-      action: (editor) => editor?.chain().focus().toggleCode().run(),
+      action: (editor) =>
+        chainWithVimExternalEdit(editor)?.focus().toggleCode().run(),
     },
     // Skills
     {
@@ -521,9 +541,15 @@ function buildCommands(
           await showPrompt("Please select text to translate.");
           return;
         }
-        const lang = await showPrompt("Target language:", "", {
-          presets: ["English", "Korean"],
-        });
+        // §12-9d (design §5c): the selection came from THIS document — hold
+        // it with a bound task so a state install during the prompt cannot
+        // land the translation in the replacing document.
+        const lang = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Target language:", "", {
+            presets: ["English", "Korean"],
+          }),
+        );
         if (!lang) return;
         executeAICommand(
           editor,

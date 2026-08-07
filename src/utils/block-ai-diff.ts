@@ -6,8 +6,10 @@ import type { Editor } from "@tiptap/core";
 
 import diff from "fast-diff";
 
+import { withVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { registerEditorMutationTask } from "./editor/mutation-tasks";
 import { createLLMStream } from "./llm-stream";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
@@ -16,6 +18,8 @@ import { getFilePrivacy, isLLMAllowed } from "./privacy-check";
 // ── Apply result to the target block ────────────────────────────────
 
 interface DiffPanel {
+  /** Settle a pending decision as "reject" and tear the overlay down. */
+  abort: () => void;
   remove: () => void;
   setError: (msg: string) => void;
   showActions: () => void;
@@ -47,26 +51,32 @@ export function applyBlockAIResult(
       // Text content is in the document
       const from = targetPos + 1;
       const to = targetPos + node.nodeSize - 1;
-      editor.view.dispatch(editor.state.tr.insertText(cleaned, from, to));
+      editor.view.dispatch(
+        withVimExternalEdit(editor.state.tr.insertText(cleaned, from, to)),
+      );
       break;
     }
     case "image": {
       // Update alt text attribute
       editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(targetPos, undefined, {
-          ...node.attrs,
-          alt: cleaned,
-        }),
+        withVimExternalEdit(
+          editor.state.tr.setNodeMarkup(targetPos, undefined, {
+            ...node.attrs,
+            alt: cleaned,
+          }),
+        ),
       );
       break;
     }
     case "mathBlock": {
       // Formula stored in attribute
       editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(targetPos, undefined, {
-          ...node.attrs,
-          formula: cleaned,
-        }),
+        withVimExternalEdit(
+          editor.state.tr.setNodeMarkup(targetPos, undefined, {
+            ...node.attrs,
+            formula: cleaned,
+          }),
+        ),
       );
       break;
     }
@@ -74,10 +84,12 @@ export function applyBlockAIResult(
     case "svgBlock": {
       // Code/markup stored in attribute
       editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(targetPos, undefined, {
-          ...node.attrs,
-          code: cleaned,
-        }),
+        withVimExternalEdit(
+          editor.state.tr.setNodeMarkup(targetPos, undefined, {
+            ...node.attrs,
+            code: cleaned,
+          }),
+        ),
       );
       break;
     }
@@ -86,7 +98,9 @@ export function applyBlockAIResult(
       const from = targetPos + 1;
       const to = targetPos + node.nodeSize - 1;
       if (from < to) {
-        editor.view.dispatch(editor.state.tr.insertText(cleaned, from, to));
+        editor.view.dispatch(
+          withVimExternalEdit(editor.state.tr.insertText(cleaned, from, to)),
+        );
       }
     }
   }
@@ -133,53 +147,92 @@ export async function executeBlockAIWithDiff(
   let aiText = "";
   let completed = false;
 
-  const cleanupStream = await createLLMStream(requestId, {
-    onToken: (token) => {
-      aiText += token;
-      panel.updateDiff(originalText, aiText);
-    },
-    onDone: () => {
+  // §298 §12-9b (design §5c): tokens only paint the DOM panel, but the
+  // APPLY lands after the dialog resolves — an unbounded async gap. A dead
+  // task (state install / vim mode exit) must not touch the editor.
+  const task = registerEditorMutationTask(editor.view);
+
+  // PRE-EXISTING DEFECT (review R10): the panel is on screen BEFORE the
+  // stream is set up, and every way to dismiss it — Accept/Reject clicks,
+  // Escape, backdrop mousedown — is only wired inside waitForDecision().
+  // If createLLMStream rejects (say the second listen() fails) the old code
+  // threw straight out, leaving a z-index 9999 overlay covering the whole
+  // app with no affordance to close it. Everything from here on is
+  // exception-safe: the finally always tears the panel and task down.
+  let cleanupStream: (() => void) | undefined;
+  try {
+    cleanupStream = await createLLMStream(requestId, {
+      onToken: (token) => {
+        aiText += token;
+        panel.updateDiff(originalText, aiText);
+      },
+      onDone: () => {
+        completed = true;
+        panel.updateDiff(originalText, aiText);
+        panel.showActions();
+      },
+      onError: (error) => {
+        logger.error("Block AI diff error:", error);
+        completed = true;
+        panel.setError(error);
+        panel.showActions();
+      },
+    });
+    const stopStream = cleanupStream;
+    task.addCleanup(() => {
+      stopStream(); // idempotent
+      llmCancel(requestId).catch(() => {});
+      // Invalidation can also land while we are parked on waitForDecision.
+      // Without this the overlay would sit on top of the replacing tab with
+      // its "Streaming…" header and the execute promise would never settle.
+      panel.abort();
+    });
+
+    // Final gate before the outbound request: if the task died while
+    // createLLMStream was awaited, its listeners are already gone (so the
+    // panel would hang on "Streaming…" over the replacing tab) and llmCancel
+    // cannot stop a request the backend has not registered yet.
+    if (!task.isLive()) return;
+
+    // Fire LLM request
+    llmComplete(
+      prompt,
+      inlineCfg.model,
+      requestId,
+      systemPrompt,
+      undefined,
+      inlineCfg.provider,
+      inlineCfg.baseUrl,
+      store.privacyMode,
+    ).catch(() => {
+      // An early IPC failure emits no llm:error event, so without this the
+      // panel would sit on "Streaming…" with no way out.
+      logger.error("LLM request failed");
       completed = true;
-      panel.updateDiff(originalText, aiText);
+      panel.setError("LLM request failed");
       panel.showActions();
-    },
-    onError: (error) => {
-      logger.error("Block AI diff error:", error);
-      completed = true;
-      panel.setError(error);
-      panel.showActions();
-    },
-  });
+    });
 
-  // Fire LLM request
-  llmComplete(
-    prompt,
-    inlineCfg.model,
-    requestId,
-    systemPrompt,
-    undefined,
-    inlineCfg.provider,
-    inlineCfg.baseUrl,
-    store.privacyMode,
-  ).catch(() => logger.error("LLM request failed"));
+    // Wait for user decision
+    const decision = await panel.waitForDecision();
 
-  // Wait for user decision
-  const decision = await panel.waitForDecision();
+    // Cancel if still streaming
+    if (!completed) {
+      llmCancel(requestId).catch(() => {});
+    }
 
-  // Cleanup listeners
-  cleanupStream();
-
-  // Cancel if still streaming
-  if (!completed) {
-    llmCancel(requestId).catch(() => {});
+    // Apply if accepted — targetPos is only valid for the state the task
+    // was registered against (§5c: check right before touching the editor).
+    if (decision === "accept" && aiText.trim() && task.isLive()) {
+      applyBlockAIResult(editor, targetPos, aiText);
+    }
+  } catch (err) {
+    logger.error("Block AI diff aborted:", err);
+  } finally {
+    cleanupStream?.();
+    task.finish();
+    panel.remove();
   }
-
-  // Apply if accepted
-  if (decision === "accept" && aiText.trim()) {
-    applyBlockAIResult(editor, targetPos, aiText);
-  }
-
-  panel.remove();
 }
 
 // ── DOM panel factory ───────────────────────────────────────────────
@@ -269,8 +322,15 @@ function createDiffPanel(
 
   // ── Panel API ───────────────────────────────────────────────
 
+  let aborted = false;
   let resolveDecision: ((d: "accept" | "reject") => void) | null = null;
   let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+
+  function abort() {
+    aborted = true;
+    cleanup("reject");
+    overlay.remove();
+  }
 
   function updateDiff(original: string, ai: string) {
     content.innerHTML = "";
@@ -327,6 +387,9 @@ function createDiffPanel(
   }
 
   function waitForDecision(): Promise<"accept" | "reject"> {
+    // Aborted before anyone awaited: settle immediately so the caller's
+    // await cannot hang forever on a panel that no longer exists.
+    if (aborted) return Promise.resolve("reject");
     return new Promise((resolve) => {
       resolveDecision = resolve;
 
@@ -350,7 +413,7 @@ function createDiffPanel(
     });
   }
 
-  return { updateDiff, showActions, setError, waitForDecision, remove };
+  return { abort, updateDiff, showActions, setError, waitForDecision, remove };
 }
 
 function stripCodeFences(text: string, nodeType: string): string {

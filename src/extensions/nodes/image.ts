@@ -10,6 +10,7 @@ import {
 } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { getSyntaxRevealExpanded } from "../plugins/syntax-reveal";
 import { ImageView } from "./image-view";
 
@@ -212,7 +213,7 @@ export const Image = Node.create<ImageOptions>({
                         NodeSelection.create(view.state.doc, imagePos),
                       ),
                     );
-                    view.focus();
+                    focusEditorView(view);
                     return true;
                   } catch {
                     clickedImagePos = null;
@@ -241,7 +242,7 @@ export const Image = Node.create<ImageOptions>({
                     view.dispatch(
                       view.state.tr.setSelection(TextSelection.near($pos)),
                     );
-                    view.focus();
+                    focusEditorView(view);
                     return true;
                   } catch {
                     /* fall through to default PM handling */

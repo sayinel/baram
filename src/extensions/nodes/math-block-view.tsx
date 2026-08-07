@@ -10,6 +10,7 @@ import { Sparkles } from "lucide-react";
 import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { mathBlockEntryKey } from "./math-block";
 import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
@@ -38,6 +39,14 @@ export function MathBlockView({
   // the block nears the viewport, mirroring mermaid/code. A selected block
   // (edit-entry) bypasses the gate so find/nav into an unrendered block works.
   const [isVisible, setIsVisible] = useState(false);
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
+
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -55,6 +64,11 @@ export function MathBlockView({
   updateAttributesRef.current = updateAttributes;
   const editorRef = useRef(editor);
   editorRef.current = editor;
+  // §298 Phase 1 (PR 307 review) — a CLICK is an explicit request to edit, so
+  // it enters the textarea even while vim is modal. Keyboard traversal is not:
+  // j/k land ON the block as an atom line and `i` is what opens it, which is
+  // why the effect below otherwise refuses to focus during vim normal.
+  const enterByClickRef = useRef(false);
 
   // §perf-large-file: Use shared cache — O(1) per instance, O(n) total per doc change
   useEffect(() => {
@@ -72,7 +86,22 @@ export function MathBlockView({
 
   // Sync local formula and focus textarea when entering edit mode
   useEffect(() => {
-    if (selected) {
+    if (!selected) {
+      // Save on deselect
+      // CONSUME dirty at every deselect — a completed session's flag must
+      // not survive into the next one (S5/S6 review R3).
+      const wasDirty = editDirtyRef.current;
+      editDirtyRef.current = false;
+      if (wasDirty && localFormulaRef.current !== formulaRef.current) {
+        updateAttributesRef.current({ formula: localFormulaRef.current });
+      }
+      enterByClickRef.current = false;
+    } else if (
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state)
+    ) {
+      enterByClickRef.current = false;
+      editDirtyRef.current = false;
       setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
       const entryState = mathBlockEntryKey.getState(editorRef.current.state);
@@ -88,11 +117,6 @@ export function MathBlockView({
           ta.setSelectionRange(0, 0);
         }
       }, 0);
-    } else {
-      // Save on deselect
-      if (localFormulaRef.current !== formulaRef.current) {
-        updateAttributesRef.current({ formula: localFormulaRef.current });
-      }
     }
   }, [selected]);
 
@@ -163,6 +187,9 @@ export function MathBlockView({
   const handlePreviewClick = useCallback(() => {
     const pos = getPos();
     if (typeof pos !== "number") return;
+    // Set BEFORE the selection change: the effect that focuses the textarea
+    // runs on the render this dispatch causes.
+    enterByClickRef.current = true;
     editor.commands.setNodeSelection(pos);
   }, [editor, getPos]);
 
@@ -230,7 +257,11 @@ export function MathBlockView({
         autoCorrect="off"
         className="math-block-textarea"
         data-gramm="false"
-        onChange={(e) => setLocalFormula(e.target.value)}
+        data-vim-suspend=""
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalFormula(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="LaTeX formula..."
         ref={textareaRef}

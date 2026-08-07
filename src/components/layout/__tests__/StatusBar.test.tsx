@@ -28,6 +28,7 @@ import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useWorkspaceStore } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { useUIStore } from "../../../stores/ui/ui";
 import {
   loadFavorites,
   toggleFavorite,
@@ -211,5 +212,88 @@ describe("StatusBar — live word count", () => {
 
     expect(screen.getByText("5 words")).toBeInTheDocument();
     expect(screen.queryByText("2 words")).not.toBeInTheDocument();
+  });
+});
+
+describe("StatusBar — vim mode indicator (§298 S3)", () => {
+  beforeEach(() => {
+    useUIStore.getState().setVimStatus(null);
+  });
+
+  afterEach(() => {
+    act(() => useUIStore.getState().setVimStatus(null));
+  });
+
+  it("shows the vim mode only in source mode with a live session", () => {
+    act(() =>
+      useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" }),
+    );
+    render(<StatusBar editor={null} mode="source" />);
+    expect(screen.getByText("-- NORMAL --")).toBeInTheDocument();
+  });
+
+  it("stays hidden outside source mode even if a stale value lingers", () => {
+    // The store is reset by the controller on toggle-off/unmount, but the
+    // mode gate must hold even if a stale value survives (Codex plan review).
+    act(() =>
+      useUIStore.getState().setVimStatus({ mode: "insert", surface: "source" }),
+    );
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.queryByText("-- INSERT --")).toBeNull();
+  });
+
+  it("stays hidden in source mode when vim is off (null)", () => {
+    render(<StatusBar editor={null} mode="source" />);
+    expect(screen.queryByText(/^-- [A-Z]+ --$/)).toBeNull();
+  });
+
+  it("renders REPLACE for R mode (was missing from the original plan)", () => {
+    act(() =>
+      useUIStore
+        .getState()
+        .setVimStatus({ mode: "replace", surface: "source" }),
+    );
+    render(<StatusBar editor={null} mode="source" />);
+    expect(screen.getByText("-- REPLACE --")).toBeInTheDocument();
+  });
+});
+
+describe("vim surface arbitration (§8, S5-a review)", () => {
+  it("graph and preview render NO vim indicator, either surface", () => {
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "wysiwyg" });
+    for (const mode of ["graph", "preview"] as const) {
+      const { unmount } = render(<StatusBar editor={null} mode={mode} />);
+      expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+      unmount();
+    }
+    useUIStore.getState().setVimStatus({ mode: "normal", surface: "source" });
+    const { unmount } = render(<StatusBar editor={null} mode="graph" />);
+    expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+    unmount();
+    useUIStore.getState().setVimStatus(null);
+  });
+
+  it("a wysiwyg status shows on the wysiwyg surface only", () => {
+    useUIStore.getState().setVimStatus({ mode: "visual", surface: "wysiwyg" });
+    const wys = render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.queryByText(/-- VISUAL --/)).not.toBeNull();
+    wys.unmount();
+    const src = render(<StatusBar editor={null} mode="source" />);
+    expect(screen.queryByText(/-- VISUAL --/)).toBeNull();
+    src.unmount();
+    useUIStore.getState().setVimStatus(null);
+  });
+
+  it("an open ex line replaces the mode indicator, as in vim", () => {
+    // Typing `:` with no visible command line reads as "the key did
+    // nothing" — worse than not having ex commands (PR 307 review).
+    useUIStore
+      .getState()
+      .setVimStatus({ command: ":w", mode: "normal", surface: "wysiwyg" });
+    const { unmount } = render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.queryByText(":w")).not.toBeNull();
+    expect(screen.queryByText(/-- NORMAL --/)).toBeNull();
+    unmount();
+    useUIStore.getState().setVimStatus(null);
   });
 });

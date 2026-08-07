@@ -2,6 +2,8 @@
 // (raw `<svg>` markup) and the dedicated ```svg fenced block.
 import DOMPurify from "dompurify";
 
+import { VIM_ISLAND_MARKERS } from "../../extensions/plugins/vim/adapters/suspension";
+
 /**
  * Inline HTML tags that may legitimately appear inside an SVG `<foreignObject>`
  * (HTML labels, e.g. Mermaid flowchart node text). DOMPurify's `svg` profile
@@ -41,6 +43,8 @@ export function sanitizeSvg(svg: string): string {
     // HTML_INTEGRATION_POINTS replaces (not merges) the default, so re-list the
     // built-in `annotation-xml` alongside `foreignobject`.
     HTML_INTEGRATION_POINTS: { "annotation-xml": true, foreignobject: true },
+    // vim island markers are an app capability — never document-grantable.
+    FORBID_ATTR: [...VIM_ISLAND_MARKERS],
   });
 }
 

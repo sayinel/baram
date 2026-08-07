@@ -135,6 +135,8 @@
   "settings.editor.tabSize.desc": "소스 모드 및 코드 블록의 탭 당 공백 수",
   "settings.editor.autoPairBrackets": "괄호 자동 완성",
   "settings.editor.autoPairBrackets.desc": "소스 모드 및 코드 블록에서 괄호와 따옴표를 자동으로 닫습니다",
+  "settings.editor.vimMode": "Vim 키바인딩",
+  "settings.editor.vimMode.desc": "WYSIWYG·소스 모드·코드 블록에서 vim 모달 편집을 사용합니다 (한글 입력기 호환)",
   "settings.editor.display": "표시",
   "settings.editor.lineNumbers": "줄 번호",
   "settings.editor.lineNumbers.desc": "소스 모드에서 줄 번호를 표시합니다",

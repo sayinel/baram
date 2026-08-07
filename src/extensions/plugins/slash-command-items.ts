@@ -26,12 +26,17 @@ import {
   substituteInput,
   substituteVariables,
 } from "../../utils/custom-ai-commands";
+import {
+  awaitBoundToEditor,
+  registerEditorMutationTask,
+} from "../../utils/editor/mutation-tasks";
 import { showFieldDialog } from "../../utils/field-dialog";
 import {
   generatePhotoFilename,
   getAssetsDir,
 } from "../../utils/journal/journal-photo";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
+import { chainWithVimExternalEdit } from "./vim/vim-keys";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   const items: SlashMenuItem[] = [
@@ -42,7 +47,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Large heading",
       mdHint: "#",
-      action: () => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+      action: () =>
+        chainWithVimExternalEdit(editor)
+          .focus()
+          .toggleHeading({ level: 1 })
+          .run(),
     },
     {
       id: "h2",
@@ -50,7 +59,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Medium heading",
       mdHint: "##",
-      action: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      action: () =>
+        chainWithVimExternalEdit(editor)
+          .focus()
+          .toggleHeading({ level: 2 })
+          .run(),
     },
     {
       id: "h3",
@@ -58,7 +71,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Small heading",
       mdHint: "###",
-      action: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+      action: () =>
+        chainWithVimExternalEdit(editor)
+          .focus()
+          .toggleHeading({ level: 3 })
+          .run(),
     },
     // Lists
     {
@@ -67,7 +84,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Unordered list",
       mdHint: "-",
-      action: () => editor.chain().focus().toggleBulletList().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleBulletList().run(),
     },
     {
       id: "ordered-list",
@@ -75,7 +93,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Numbered list",
       mdHint: "1.",
-      action: () => editor.chain().focus().toggleOrderedList().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleOrderedList().run(),
     },
     {
       id: "task-list",
@@ -83,7 +102,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Checkbox list",
       mdHint: "- [ ]",
-      action: () => editor.chain().focus().toggleTaskList().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleTaskList().run(),
     },
     // Block elements
     {
@@ -92,7 +112,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Quote block",
       mdHint: ">",
-      action: () => editor.chain().focus().toggleBlockquote().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleBlockquote().run(),
     },
     {
       id: "horizontal-rule",
@@ -100,7 +121,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Divider line",
       mdHint: "---",
-      action: () => editor.chain().focus().setHorizontalRule().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().setHorizontalRule().run(),
     },
     {
       id: "callout",
@@ -108,7 +130,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Callout block (tip, warning, …)",
       mdHint: "> [!",
-      action: () => editor.commands.setCallout({ type: "info" }),
+      action: () =>
+        chainWithVimExternalEdit(editor).setCallout({ type: "info" }).run(),
     },
     {
       id: "toggle",
@@ -116,7 +139,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Collapsible details block",
       mdHint: "<details>",
-      action: () => editor.commands.setToggle(),
+      action: () => chainWithVimExternalEdit(editor).setToggle().run(),
     },
     {
       id: "toggle-heading-1",
@@ -125,7 +148,9 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Collapsible heading 1",
       mdHint: "# ▸",
       action: () =>
-        editor.commands.setToggle({ summaryType: "heading", level: 1 }),
+        chainWithVimExternalEdit(editor)
+          .setToggle({ summaryType: "heading", level: 1 })
+          .run(),
     },
     {
       id: "toggle-heading-2",
@@ -134,7 +159,9 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Collapsible heading 2",
       mdHint: "## ▸",
       action: () =>
-        editor.commands.setToggle({ summaryType: "heading", level: 2 }),
+        chainWithVimExternalEdit(editor)
+          .setToggle({ summaryType: "heading", level: 2 })
+          .run(),
     },
     {
       id: "toggle-heading-3",
@@ -143,7 +170,9 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Collapsible heading 3",
       mdHint: "### ▸",
       action: () =>
-        editor.commands.setToggle({ summaryType: "heading", level: 3 }),
+        chainWithVimExternalEdit(editor)
+          .setToggle({ summaryType: "heading", level: 3 })
+          .run(),
     },
     {
       id: "toc",
@@ -151,7 +180,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Auto-generated heading list",
       mdHint: "[TOC]",
-      action: () => editor.commands.insertTableOfContents(),
+      action: () =>
+        chainWithVimExternalEdit(editor).insertTableOfContents().run(),
     },
     {
       id: "definition-list",
@@ -159,7 +189,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Basic",
       description: "Term-definition list",
       mdHint: ": ",
-      action: () => editor.commands.setDefinitionList(),
+      action: () => chainWithVimExternalEdit(editor).setDefinitionList().run(),
     },
     // Rich content
     {
@@ -168,7 +198,8 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Rich Content",
       description: "Syntax highlighted code",
       mdHint: "```",
-      action: () => editor.chain().focus().toggleCodeBlock().run(),
+      action: () =>
+        chainWithVimExternalEdit(editor).focus().toggleCodeBlock().run(),
     },
     {
       id: "math-block",
@@ -177,8 +208,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "LaTeX math equation",
       mdHint: "$$",
       action: () =>
-        editor
-          .chain()
+        chainWithVimExternalEdit(editor)
           .focus()
           .insertContent({ type: "mathBlock", attrs: { formula: "" } })
           .run(),
@@ -189,7 +219,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Rich Content",
       description: "Flowchart, sequence, and more",
       mdHint: "```mermaid",
-      action: () => editor.commands.setMermaidBlock(),
+      action: () => chainWithVimExternalEdit(editor).setMermaidBlock().run(),
     },
     {
       id: "svg",
@@ -197,7 +227,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Rich Content",
       description: "Render raw SVG markup",
       mdHint: "```svg",
-      action: () => editor.commands.setSvgBlock(),
+      action: () => chainWithVimExternalEdit(editor).setSvgBlock().run(),
     },
     {
       id: "html",
@@ -205,7 +235,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Rich Content",
       description: "Embed raw HTML (sanitized)",
       mdHint: "<div>",
-      action: () => editor.commands.setHtmlBlock(),
+      action: () => chainWithVimExternalEdit(editor).setHtmlBlock().run(),
     },
     {
       id: "query",
@@ -213,7 +243,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Rich Content",
       description: "Dynamic query block",
       mdHint: "```query",
-      action: () => editor.commands.setQueryBlock(),
+      action: () => chainWithVimExternalEdit(editor).setQueryBlock().run(),
     },
     {
       id: "table",
@@ -225,13 +255,16 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         // Get cursor position for picker placement
         const { from } = editor.state.selection;
         const coords = editor.view.coordsAtPos(from);
+        // §12-9b: picker resolution is an unbounded async gap (design §5c)
+        const task = registerEditorMutationTask(editor.view);
         const result = await showTableGridPicker(
           coords.left,
           coords.bottom + 4,
         );
-        if (!result) return;
-        editor
-          .chain()
+        const live = task.isLive();
+        task.finish();
+        if (!result || !live) return;
+        chainWithVimExternalEdit(editor)
           .focus()
           .insertTable({
             rows: result.rows,
@@ -249,6 +282,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert an image",
       mdHint: "![](url)",
       action: async () => {
+        const task = registerEditorMutationTask(editor.view); // §12-9b dialog gap
         const result = await showFieldDialog({
           title: "Insert Image",
           fields: [
@@ -260,9 +294,10 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
             },
           ],
         });
-        if (!result?.src) return;
-        editor
-          .chain()
+        const live = task.isLive();
+        task.finish();
+        if (!result?.src || !live) return;
+        chainWithVimExternalEdit(editor)
           .focus()
           .insertContent({
             type: "image",
@@ -278,6 +313,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert a hyperlink",
       mdHint: "[text](url)",
       action: async () => {
+        const task = registerEditorMutationTask(editor.view); // §12-9b dialog gap
         const result = await showFieldDialog({
           title: "Insert Link",
           fields: [
@@ -285,10 +321,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
             { key: "url", label: "URL", placeholder: "https://..." },
           ],
         });
-        if (!result?.url) return;
+        const live = task.isLive();
+        task.finish();
+        if (!result?.url || !live) return;
         const text = result.text || result.url;
-        editor
-          .chain()
+        chainWithVimExternalEdit(editor)
           .focus()
           .insertContent({
             type: "text",
@@ -315,7 +352,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           }
         });
         const nextId = String(maxId + 1);
-        editor.commands.insertFootnoteRef(nextId);
+        chainWithVimExternalEdit(editor).insertFootnoteRef(nextId).run();
       },
     },
   ];
@@ -329,7 +366,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Generate a draft from a topic",
       mdHint: "AI",
       action: async () => {
-        const topic = await showPrompt("Topic or instructions:");
+        // §12-9e (design §5c): dialog gap — bind to this document.
+        const topic = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Topic or instructions:"),
+        );
         if (!topic) return;
         executeAICommand(
           editor,
@@ -345,7 +386,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Generate a list of ideas",
       mdHint: "AI",
       action: async () => {
-        const topic = await showPrompt("Topic to brainstorm:");
+        // §12-9e (design §5c): dialog gap — bind to this document.
+        const topic = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Topic to brainstorm:"),
+        );
         if (!topic) return;
         executeAICommand(
           editor,
@@ -362,9 +407,13 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       mdHint: "AI",
       action: async () => {
         const text = getSelectionOrParagraph(editor);
-        const lang = await showPrompt("Target language:", "", {
-          presets: ["English", "Korean"],
-        });
+        // §12-9e: `text` above came from THIS document.
+        const lang = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Target language:", "", {
+            presets: ["English", "Korean"],
+          }),
+        );
         if (!lang) return;
         executeAICommand(
           editor,
@@ -448,6 +497,25 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert photo from file picker",
       mdHint: "📷",
       action: async () => {
+        // §12-9c (design §5c): bind BEFORE the dialog. Reading the store
+        // afterwards would re-bind the photo to whichever tab is active when
+        // the picker closes — and with no task registered during the dialog,
+        // a state install in that window has nothing to invalidate, so the
+        // insert would land in the wrong document (and resolve the journal
+        // assets dir from the wrong file).
+        const task = registerEditorMutationTask(editor.view);
+        const activeTabId = useEditorStore.getState().activeTabId;
+        const tabs = useEditorStore.getState().tabs;
+        const activeTab = tabs.find(
+          (t: { id: string }) => t.id === activeTabId,
+        );
+        const filePath = activeTab?.filePath ?? "";
+        const rootPath = useFileStore.getState().rootPath ?? "";
+        const journalDir = useSettingsStore.getState().journalDirectory ?? "";
+        const journalAbsPath =
+          rootPath && journalDir ? `${rootPath}/${journalDir}` : "";
+        const isJournal = journalAbsPath && filePath.startsWith(journalAbsPath);
+
         try {
           const selected = await open({
             multiple: true,
@@ -458,70 +526,67 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
               },
             ],
           });
-          if (!selected) return;
+          if (!selected || !task.isLive()) return;
 
           const paths = Array.isArray(selected) ? selected : [selected];
 
-          // Check journal context
-          const activeTabId = useEditorStore.getState().activeTabId;
-          const tabs = useEditorStore.getState().tabs;
-          const activeTab = tabs.find(
-            (t: { id: string }) => t.id === activeTabId,
-          );
-          const filePath = activeTab?.filePath ?? "";
-          const rootPath = useFileStore.getState().rootPath ?? "";
-          const journalDir = useSettingsStore.getState().journalDirectory ?? "";
-          const journalAbsPath =
-            rootPath && journalDir ? `${rootPath}/${journalDir}` : "";
-          const isJournal =
-            journalAbsPath && filePath.startsWith(journalAbsPath);
+          {
+            for (const p of paths) {
+              if (!task.isLive()) return;
+              if (isJournal && rootPath && journalDir) {
+                // Copy file to assets directory using helpers + copyFile IPC
+                const now = new Date();
+                const fileName = p.split("/").pop() ?? "photo.jpg";
+                const assetsRelDir = getAssetsDir(journalDir, now);
+                const absoluteAssetsDir = `${rootPath}/${assetsRelDir}`;
 
-          for (const p of paths) {
-            if (isJournal && rootPath && journalDir) {
-              // Copy file to assets directory using helpers + copyFile IPC
-              const now = new Date();
-              const fileName = p.split("/").pop() ?? "photo.jpg";
-              const assetsRelDir = getAssetsDir(journalDir, now);
-              const absoluteAssetsDir = `${rootPath}/${assetsRelDir}`;
+                try {
+                  await createDir(absoluteAssetsDir);
+                } catch {
+                  /* already exists */
+                }
+                // createDir is an async gap of its own: without this check a
+                // task that died here would still copy the photo into the
+                // PREVIOUS document's journal assets dir, leaving a file
+                // nothing references.
+                if (!task.isLive()) return;
 
-              try {
-                await createDir(absoluteAssetsDir);
-              } catch {
-                /* already exists */
+                const destName = generatePhotoFilename(fileName, now);
+                const absoluteDest = `${absoluteAssetsDir}/${destName}`;
+                const relativePath = `${assetsRelDir}/${destName}`;
+
+                await importFile(p, absoluteDest);
+                if (!task.isLive()) return;
+
+                chainWithVimExternalEdit(editor)
+                  .focus()
+                  .insertContent({
+                    type: "image",
+                    attrs: {
+                      src: relativePath,
+                      alt: fileName.replace(/\.[^.]+$/, ""),
+                      title: "",
+                    },
+                  })
+                  .run();
+              } else {
+                // Non-journal: insert with absolute path
+                chainWithVimExternalEdit(editor)
+                  .focus()
+                  .insertContent({
+                    type: "image",
+                    attrs: { src: p, alt: p.split("/").pop() ?? "", title: "" },
+                  })
+                  .run();
               }
-
-              const destName = generatePhotoFilename(fileName, now);
-              const absoluteDest = `${absoluteAssetsDir}/${destName}`;
-              const relativePath = `${assetsRelDir}/${destName}`;
-
-              await importFile(p, absoluteDest);
-
-              editor
-                .chain()
-                .focus()
-                .insertContent({
-                  type: "image",
-                  attrs: {
-                    src: relativePath,
-                    alt: fileName.replace(/\.[^.]+$/, ""),
-                    title: "",
-                  },
-                })
-                .run();
-            } else {
-              // Non-journal: insert with absolute path
-              editor
-                .chain()
-                .focus()
-                .insertContent({
-                  type: "image",
-                  attrs: { src: p, alt: p.split("/").pop() ?? "", title: "" },
-                })
-                .run();
             }
           }
         } catch {
           // Dialog cancelled or error
+        } finally {
+          // Covers the cancelled-dialog and thrown-dialog paths too — the
+          // task is registered before open(), so every exit must close it.
+          task.finish();
         }
       },
     },
@@ -554,8 +619,12 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         });
 
         if (hasInput) {
-          const userInput = await showPrompt(inputPrompt);
-          if (userInput === null) return; // Cancelled
+          // §12-9e: selection/document above are bound to this document.
+          const userInput = await awaitBoundToEditor(
+            editor.view,
+            showPrompt(inputPrompt),
+          );
+          if (userInput === null) return; // cancelled, or document replaced
           finalPrompt = substituteInput(finalPrompt, userInput);
         }
 

@@ -12,6 +12,7 @@ import {
   foldPluginKey,
   positionsToAnchors,
 } from "../extensions/plugins/fold";
+import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
 import {
   markdownToProsemirror,
   mdastBlocksToPmNodes,
@@ -241,7 +242,7 @@ export function useTabSwitching({
       });
       // Defer updateState outside React commit phase
       setTimeout(() => {
-        editor.view.updateState(newState);
+        replaceEditorStateWithVim(editor.view, newState, "fresh-document");
       });
       onActiveEditorChange(null);
       return;
@@ -459,7 +460,11 @@ export function useTabSwitching({
         // Defer updateState outside React commit phase
         setTimeout(() => {
           timePhase("tabSwitch:restore", () =>
-            editor.view.updateState(cachedState),
+            replaceEditorStateWithVim(
+              editor.view,
+              cachedState,
+              "cached-restore",
+            ),
           );
           markContentLoaded(activeTabId!);
           if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
@@ -608,8 +613,10 @@ export function useTabSwitching({
                 // registration AND drop the ViewportVirtualize plugin — its
                 // controller would be destroyed with no live replacement, so
                 // large-doc windowing never engages (GUI: hidden=0/all blocks).
-                targetEditor.view.updateState(
+                replaceEditorStateWithVim(
+                  targetEditor.view,
                   newState.reconfigure({ plugins: targetEditor.state.plugins }),
+                  "fresh-document",
                 ),
               );
               setIsParsing(false);

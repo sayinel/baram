@@ -1,4 +1,3 @@
-// §5.13 Query Block NodeView — visual builder + results display
 import { useCallback, useEffect, useState } from "react";
 
 import type { VaultFile } from "../../utils/query-executor";
@@ -13,6 +12,8 @@ import {
   type QueryFilter,
   serializeQueryDSL,
 } from "../../utils/query-parser";
+// §5.13 Query Block NodeView — visual builder + results display
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 
 const FIELD_OPTIONS = [
   "tags",
@@ -36,8 +37,9 @@ const DISPLAY_OPTIONS: QueryDisplay[] = ["list", "table", "card"];
 
 export function QueryBlockView({
   node,
-  updateAttributes,
   selected,
+  editor,
+  getPos,
 }: NodeViewProps) {
   const queryStr = (node.attrs.query as string) || "";
   const [def, setDef] = useState<QueryDef>(() => parseQueryDSL(queryStr));
@@ -60,9 +62,10 @@ export function QueryBlockView({
     (newDef: QueryDef) => {
       setDef(newDef);
       const serialized = serializeQueryDSL(newDef);
-      updateAttributes({ query: serialized });
+      // §12-6: query-builder commit — tagged chrome (design §5b)
+      updateNodeAttributesWithVim(editor, getPos, { query: serialized });
     },
-    [updateAttributes],
+    [editor, getPos],
   );
 
   const handleFilterChange = useCallback(
@@ -111,7 +114,9 @@ export function QueryBlockView({
         </div>
 
         {selected && (
-          <div className="qb-builder">
+          // §298 §12-3: one marker on the builder panel covers every
+          // input/select/button inside it (composedPath hits it first — §4).
+          <div className="qb-builder" data-vim-suspend="">
             {/* Filters */}
             <div className="qb-section">
               <div className="qb-section-label">Filters</div>

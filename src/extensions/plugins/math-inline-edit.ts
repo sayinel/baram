@@ -47,7 +47,9 @@ interface MathEditState {
 }
 
 const INACTIVE: MathEditState = { active: false, from: 0, to: 0 };
-const mathEditKey = new PluginKey<MathEditState>("mathInlineEdit");
+// §298 §12-2: exported for the vim Esc arbiter — when math editing is active,
+// vim must not consume Esc (§4 arbitration list).
+export const mathEditKey = new PluginKey<MathEditState>("mathInlineEdit");
 
 // ── Helpers ───────────────────────────────────────────────────────────
 

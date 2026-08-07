@@ -128,6 +128,28 @@ describe('MathBlock Extension', () => {
 
 파일 위치 규칙: `nodes/{name}.ts`, `marks/{name}.ts`, `plugins/{name}.ts` (+ NodeView는 `{name}-view.tsx`).
 
+## `data-vim-suspend` 마커 규약 (§298 vim Phase 1, 설계 §4)
+
+NodeView 안에 **PM 본문이 아닌 입력 요소**(input/textarea/select/CM 등 "입력 섬")를
+두는 경우, 그 요소(또는 섬 전체를 감싸는 컨테이너)에 `data-vim-suspend` 속성을
+반드시 부여할 것. vim 플러그인은 키 이벤트의 `composedPath()`를 target에서
+바깥으로 순회하며 **먼저 만나는 마커로 판정**한다:
+
+- `[data-node-view-content]` → PM 본문 (vim 정상 동작)
+- `[data-vim-suspend]` → vim 일시 중단 (섬이 키를 소유)
+
+규칙:
+
+- 컨트롤이 하나면 요소에 직접, 여러 개가 묶여 있으면 공통 컨테이너에 1개만 부여
+  (단, 컨테이너와 target 사이에 `data-node-view-content`가 끼면 안 됨).
+- `Decoration.widget`처럼 render마다 DOM을 재생성하는 경우 생성 코드에서 부여.
+- Shadow DOM NodeView는 host 요소에 마커 필수. 에디터 외부 portal은 키가
+  view.dom에 도달하지 않으므로 규약 대상 아님.
+- 마커 없는 서드파티 NodeView의 입력 섬은 vim 미지원으로 간주된다.
+- **보안 불변식**: 마커는 앱 capability다. HTML/SVG/외부 마크다운을 처리하는 sanitizer는 반드시
+  `VIM_ISLAND_MARKERS`를 제거할 것 (DOMPurify는 `data-*`·`tabindex`를 기본 허용하므로 공유 문서가
+  suspension을 자칭하거나 실제 island에서 거부해 사용자 타이핑을 vim 명령으로 실행시킬 수 있다).
+
 ## registry.json 유지 규칙
 
 Extension을 추가/수정할 때 반드시 `registry.json`도 함께 업데이트할 것.

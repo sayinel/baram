@@ -66,6 +66,7 @@ export function BlockCaption({
       >
         <input
           className="block-caption-input"
+          data-vim-suspend=""
           onBlur={commit}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

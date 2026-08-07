@@ -24,6 +24,7 @@ import {
 } from "../../stores/file/workspace";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useGitStore } from "../../stores/system/git";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   loadFavorites,
   toggleFavorite,
@@ -37,6 +38,19 @@ import "../../styles/zettelkasten.css";
 import { PluginStatusBarItems } from "./PluginStatusBarItems";
 
 export type EditorMode = "graph" | "preview" | "source" | "wysiwyg";
+
+/** §298 vim §8 — which vim surface a StatusBar mode belongs to. The SAME
+ *  mapping appoints the wysiwyg status owner (App) and arbitrates the
+ *  indicator here; graph/preview map to null so neither surface renders
+ *  and no owner is appointed. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function vimSurfaceForMode(
+  mode: EditorMode,
+): "source" | "wysiwyg" | null {
+  if (mode === "source") return "source";
+  if (mode === "wysiwyg") return "wysiwyg";
+  return null;
+}
 
 const MODE_LABELS: Record<EditorMode, string> = {
   graph: "Graph",
@@ -58,6 +72,15 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ editor, mode }: StatusBarProps) {
+  // §298 vim S3 — repo rule: store subscriptions use the useShallow selector
+  // form without exception (AGENTS.md), even for a single scalar.
+  const { vimStatus } = useUIStore(
+    useShallow((s) => ({ vimStatus: s.vimStatus })),
+  );
+  // §298 vim §8 — the indicator renders only when the ACTIVE surface owns
+  // the status: a stale value from the other surface stays invisible, and
+  // graph/preview own no surface at all.
+  const vimSurface = vimSurfaceForMode(mode);
   // §4.8 Live word count + cursor position. The Tiptap Editor instance is a
   // stable reference whose `.state` mutates in place, so a `useMemo([editor])`
   // never recomputes on typing or cursor moves — it stayed frozen at the empty
@@ -237,6 +260,19 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
           )}
         </div>
         <span className="status-mode">{MODE_LABELS[mode]}</span>
+        {/* §298 vim S3 — only in source mode AND with a live vim session:
+            the store is reset on toggle-off/unmount, and the mode gate
+            defends against any stale value (Codex plan review). */}
+        {vimStatus &&
+          (vimStatus.surface === vimSurface ||
+            (vimSurface === "wysiwyg" &&
+              vimStatus.surface === "codeblock")) && (
+            <span className="status-mode status-vim-mode">
+              {/* An open ex line REPLACES the mode indicator, as in vim —
+                  otherwise `:` looks like it did nothing (PR 307 review). */}
+              {vimStatus.command ?? `-- ${vimStatus.mode.toUpperCase()} --`}
+            </span>
+          )}
         {isRepo && branch && (
           <span
             className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`}

@@ -2,44 +2,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import DOMPurify from "dompurify";
 
-import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
+import { sanitizeHtmlBlock } from "../../utils/markdown/html-sanitize";
+import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
-
-const SANITIZE_CONFIG = {
-  USE_PROFILES: { html: true },
-  ADD_TAGS: [
-    "img",
-    "br",
-    "hr",
-    "a",
-    "table",
-    "tr",
-    "td",
-    "th",
-    "thead",
-    "tbody",
-    "div",
-    "span",
-    "p",
-    "strong",
-    "em",
-  ],
-  ADD_ATTR: [
-    "align",
-    "src",
-    "alt",
-    "width",
-    "height",
-    "href",
-    "class",
-    "colspan",
-    "rowspan",
-  ],
-  FORBID_ATTR: ["style", "onerror", "onload", "onclick"],
-};
 
 export function HtmlBlockView({
   node,
@@ -61,8 +28,26 @@ export function HtmlBlockView({
   updateAttributesRef.current = updateAttributes;
 
   // Sync local content and focus textarea when entering edit mode
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+  // Save-on-deselect fires only after REAL typing in an edit session — a
+  // bare attrs-vs-local comparison writes a stale baseline back over attrs
+  // updated while unselected (S5/S6 review R2).
+  const editDirtyRef = useRef(false);
+
   useEffect(() => {
-    if (selected) {
+    if (!selected) {
+      // Save on deselect
+      // CONSUME dirty at every deselect — a completed session's flag must
+      // not survive into the next one (S5/S6 review R3).
+      const wasDirty = editDirtyRef.current;
+      editDirtyRef.current = false;
+      if (wasDirty && localContentRef.current !== contentRef.current) {
+        updateAttributesRef.current({ content: localContentRef.current });
+      }
+    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      editDirtyRef.current = false;
       setLocalContent(contentRef.current);
       setTimeout(() => {
         const ta = textareaRef.current;
@@ -70,11 +55,6 @@ export function HtmlBlockView({
         ta.focus();
         ta.setSelectionRange(0, 0);
       }, 0);
-    } else {
-      // Save on deselect
-      if (localContentRef.current !== contentRef.current) {
-        updateAttributesRef.current({ content: localContentRef.current });
-      }
     }
   }, [selected]);
 
@@ -145,7 +125,11 @@ export function HtmlBlockView({
         autoCorrect="off"
         className="html-block-textarea"
         data-gramm="false"
-        onChange={(e) => setLocalContent(e.target.value)}
+        data-vim-suspend=""
+        onChange={(e) => {
+          editDirtyRef.current = true;
+          setLocalContent(e.target.value);
+        }}
         onKeyDown={handleKeyDown}
         placeholder="<div>...</div>"
         ref={textareaRef}
@@ -163,16 +147,4 @@ export function HtmlBlockView({
       )}
     </NodeViewWrapper>
   );
-}
-
-/**
- * Raw `<svg>` markup goes through the shared {@link sanitizeSvg} (svg profile +
- * inline `style`/presentation attrs/filters) so it renders with full fidelity;
- * everything else keeps the stricter HTML config. `<script>`, event handlers and
- * `javascript:` URLs stay forbidden on both paths.
- */
-function sanitizeHtmlBlock(html: string): string {
-  return isSvgContent(html)
-    ? sanitizeSvg(html)
-    : DOMPurify.sanitize(html, SANITIZE_CONFIG);
 }

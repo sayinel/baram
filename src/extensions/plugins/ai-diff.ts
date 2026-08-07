@@ -11,6 +11,8 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import diff from "fast-diff";
 
+import { withVimExternalEdit } from "./vim/vim-keys";
+
 // ── Plugin key ────────────────────────────────────────────────────────
 
 export const aiDiffPluginKey = new PluginKey("aiDiff");
@@ -455,11 +457,14 @@ export function dispatchAIDiffAccept(view: Dispatchable) {
   const finalText =
     hunks.length > 0 ? buildTextFromHunks(originalText, hunks, true) : aiText;
 
-  // Replace original text with final text in a single transaction
-  const tr = view.state.tr
-    .insertText(finalText, originalFrom, originalTo)
-    .setMeta(aiDiffPluginKey, { type: "accept" } satisfies AIDiffMeta)
-    .setMeta("aiDiffAccept", true);
+  // Replace original text with final text in a single transaction.
+  // §12-6: the accept click is an explicit user command (design §5b).
+  const tr = withVimExternalEdit(
+    view.state.tr
+      .insertText(finalText, originalFrom, originalTo)
+      .setMeta(aiDiffPluginKey, { type: "accept" } satisfies AIDiffMeta)
+      .setMeta("aiDiffAccept", true),
+  );
   view.dispatch(tr);
 }
 

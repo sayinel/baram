@@ -7,6 +7,7 @@ import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { getPromptLintResults } from "../../extensions/plugins/prompt-lint";
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 
 interface PromptLintPanelProps {
   editor: Editor | null;
@@ -40,7 +41,7 @@ export function PromptLintPanel({ editor }: PromptLintPanelProps) {
       tr.setSelection(TextSelection.near(resolvedPos));
       tr.scrollIntoView();
       editor.view.dispatch(tr);
-      editor.view.focus();
+      focusEditorView(editor.view);
     } catch {
       // Position may be invalid
     }

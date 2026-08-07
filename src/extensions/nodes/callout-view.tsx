@@ -22,7 +22,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
+import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import {
+  canUseEditorChrome,
+  updateNodeAttributesWithVim,
+} from "../plugins/vim/vim-keys";
 
 /** Callout type definition with Lucide icon and display label */
 interface CalloutTypeDef {
@@ -65,34 +70,56 @@ export function CalloutView({
   const pickerRef = useRef<HTMLDivElement>(null);
 
   const toggleCollapsed = useCallback(() => {
-    updateAttributes({ collapsed: !collapsed });
-  }, [collapsed, updateAttributes]);
+    // §12-6: chrome control — tagged (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { collapsed: !collapsed });
+  }, [collapsed, editor, getPos]);
+
+  // §12-⑩: NOT editor.isEditable — that locks chrome and the title island
+  // during vim normal (view.editable=false). Reactive: a bare render read
+  // would go stale, since ReactNodeView skips re-render on unchanged nodes.
+  const canEdit = useEditorChrome(editor);
 
   const handleTitleDoubleClick = useCallback(() => {
-    if (!editor.isEditable) return;
+    if (!canEdit) return;
     setIsEditingTitle(true);
-  }, [editor.isEditable]);
+  }, [canEdit]);
 
   const commitTitle = useCallback(
     (value: string) => {
-      updateAttributes({ title: value });
+      // §12-⑩ event-time guard: the input may be stale-rendered — capability
+      // can have been revoked after it mounted.
+      if (canUseEditorChrome(editor)) updateAttributes({ title: value });
       setIsEditingTitle(false);
     },
-    [updateAttributes],
+    [editor, updateAttributes],
   );
 
   const handleIconClick = useCallback(() => {
-    if (!editor.isEditable) return;
+    if (!canEdit) return;
     setIsPickerOpen((prev) => !prev);
-  }, [editor.isEditable]);
+  }, [canEdit]);
 
   const handleTypeSelect = useCallback(
     (newType: string) => {
-      updateAttributes({ type: newType });
+      // §12-⑩ event-time guard — see commitTitle.
+      if (canUseEditorChrome(editor)) {
+        updateNodeAttributesWithVim(editor, getPos, { type: newType });
+      }
       setIsPickerOpen(false);
     },
-    [updateAttributes],
+    [editor, getPos],
   );
+
+  // §12-⑩: a capability revocation must CLOSE already-open chrome — the
+  // event-time guard keeps the doc safe, but an open picker/title input
+  // would otherwise stay visible and silently discard the user's typing
+  // (impl review R1).
+  useEffect(() => {
+    if (!canEdit) {
+      setIsPickerOpen(false);
+      setIsEditingTitle(false);
+    }
+  }, [canEdit]);
 
   useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {
@@ -129,7 +156,12 @@ export function CalloutView({
       data-callout-type={type}
       data-type="callout"
     >
-      <div className="callout-header" contentEditable={false}>
+      {/* §298 §12-3: header marker covers the type picker AND title input (§4) */}
+      <div
+        className="callout-header"
+        contentEditable={false}
+        data-vim-suspend=""
+      >
         <div className="callout-icon-wrapper" ref={pickerRef}>
           <button
             className="callout-icon-btn"
@@ -140,7 +172,7 @@ export function CalloutView({
             <CalloutIcon type={type} />
           </button>
 
-          {isPickerOpen && (
+          {canEdit && isPickerOpen && (
             <div className="callout-type-picker">
               {CALLOUT_TYPE_KEYS.map((key) => {
                 const def = CALLOUT_TYPES[key];
@@ -163,7 +195,7 @@ export function CalloutView({
           )}
         </div>
 
-        {isEditingTitle ? (
+        {canEdit && isEditingTitle ? (
           <input
             className="callout-title-input"
             defaultValue={title}

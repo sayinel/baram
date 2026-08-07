@@ -18,6 +18,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import type { Editor } from "@tiptap/core";
 
+import { isWysiwygVimModal } from "../extensions/plugins/vim/vim-keys";
 import { createDir, importFile, listDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
@@ -28,6 +29,7 @@ import {
   resolveInsertTarget,
   showDropIndicator,
 } from "../utils/editor/drop-indicator";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { logger } from "../utils/logger";
 import { isImageFile, resolveNameConflict } from "../utils/path-utils";
 
@@ -41,6 +43,86 @@ export let isExternalFileDrag = false;
 // --- Zone detection via bounding rects ---
 
 type DropZone = "editor" | "filetree" | null;
+
+/** @internal — exported for the §12-9 race tests only */
+export async function handleEditorDrop(
+  paths: string[],
+  editor: Editor,
+  insertPos: number,
+) {
+  const imagePaths = paths.filter(isImageFile);
+  if (!imagePaths.length) return;
+
+  const { activeTabId, tabs } = useEditorStore.getState();
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  if (!activeTab?.filePath) return;
+
+  const fileDir = activeTab.filePath.substring(
+    0,
+    activeTab.filePath.lastIndexOf("/"),
+  );
+  const assetsDir = fileDir + "/assets";
+
+  // §298 §12-9b (design §5c): register BEFORE the first await. assetsDir and
+  // insertPos are bound to THIS tab; registering only after createDir/listDir
+  // would leave a state install during those IPC calls with nothing to
+  // invalidate, and the continuation would then register into the new
+  // generation — copying into tab A's assets dir and inserting an
+  // A-relative image at a stale position inside tab B.
+  const task = registerEditorMutationTask(editor.view);
+  try {
+    try {
+      await createDir(assetsDir);
+    } catch {
+      // May already exist
+    }
+    if (!task.isLive()) return;
+
+    let existingNames: Set<string>;
+    try {
+      const entries = await listDir(assetsDir);
+      existingNames = new Set(entries.map((e) => e.name));
+    } catch {
+      existingNames = new Set();
+    }
+    if (!task.isLive()) return;
+
+    let pos = insertPos;
+
+    for (const sourcePath of imagePaths) {
+      // Re-check per iteration, not only after a SUCCESSFUL import: a
+      // rejected import lands in the catch below, which would otherwise let
+      // the loop start copying the next file into the previous tab's
+      // assets dir long after the task died.
+      if (!task.isLive()) return;
+
+      const originalName = sourcePath.split("/").pop() ?? "";
+      if (!originalName) continue;
+
+      const finalName = resolveNameConflict(originalName, existingNames);
+      const destPath = assetsDir + "/" + finalName;
+
+      try {
+        await importFile(sourcePath, destPath);
+        existingNames.add(finalName);
+        if (!task.isLive()) return;
+
+        const relativeSrc = "./assets/" + finalName;
+        const alt = finalName.replace(/\.[^.]+$/, "");
+
+        const imageNode = editor.state.schema.nodes.image.create({
+          src: relativeSrc,
+          alt,
+        });
+        pos = insertNodeAtPos(editor, pos, imageNode);
+      } catch (err) {
+        logger.error("[ExternalDrop] Image drop failed:", err);
+      }
+    }
+  } finally {
+    task.finish();
+  }
+}
 
 export function useExternalDrop({ editor }: UseExternalDropOptions) {
   useEffect(() => {
@@ -57,6 +139,10 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
       const zone = detectZone(e.clientX, e.clientY);
       clearAllHighlights();
       if (zone === "editor") {
+        // §298 §12-5: vim normal/visual rejects editor-zone file drops
+        // (design §5). FileTree drops stay allowed. Highlights are already
+        // cleared above, so returning here leaves no stale indicator.
+        if (isWysiwygVimModal(editor.state)) return;
         const target = resolveInsertTarget(editor, e.clientX, e.clientY);
         if (target) showDropIndicator(target);
       } else if (zone === "filetree") {
@@ -113,6 +199,8 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
                 ?.classList.add("file-tree-ext-drop-target");
             }
           } else if (zone === "editor" && editor) {
+            // §298 §12-5: same modal guard for the Tauri over-path.
+            if (isWysiwygVimModal(editor.state)) return;
             const target = resolveInsertTarget(editor, x, y);
             if (target) {
               showDropIndicator(target);
@@ -139,6 +227,9 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
             const el = document.elementFromPoint(x, y);
             handleFileTreeDrop(paths, el);
           } else if (zone === "editor" && editor) {
+            // §298 §12-5: the drop itself — DOM events cannot cancel the
+            // Tauri-native path, so the hook is the only guard point.
+            if (isWysiwygVimModal(editor.state)) return;
             const target = resolveInsertTarget(editor, x, y);
             if (target) {
               handleEditorDrop(paths, editor, target.pos);
@@ -167,6 +258,8 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
   }, [editor]);
 }
 
+// --- Highlight helpers ---
+
 function clearAllHighlights() {
   document
     .querySelectorAll(".file-tree-ext-drop-target")
@@ -174,7 +267,7 @@ function clearAllHighlights() {
   hideDropIndicator();
 }
 
-// --- Highlight helpers ---
+// --- Hook ---
 
 function detectZone(x: number, y: number): DropZone {
   // §perf-large-file C3.4: scope to the ACTIVE editor's scroll container
@@ -186,67 +279,6 @@ function detectZone(x: number, y: number): DropZone {
   if (hitTestRect(document.querySelector(".file-tree"), x, y))
     return "filetree";
   return null;
-}
-
-// --- Hook ---
-
-async function handleEditorDrop(
-  paths: string[],
-  editor: Editor,
-  insertPos: number,
-) {
-  const imagePaths = paths.filter(isImageFile);
-  if (!imagePaths.length) return;
-
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  if (!activeTab?.filePath) return;
-
-  const fileDir = activeTab.filePath.substring(
-    0,
-    activeTab.filePath.lastIndexOf("/"),
-  );
-  const assetsDir = fileDir + "/assets";
-
-  try {
-    await createDir(assetsDir);
-  } catch {
-    // May already exist
-  }
-
-  let existingNames: Set<string>;
-  try {
-    const entries = await listDir(assetsDir);
-    existingNames = new Set(entries.map((e) => e.name));
-  } catch {
-    existingNames = new Set();
-  }
-
-  let pos = insertPos;
-
-  for (const sourcePath of imagePaths) {
-    const originalName = sourcePath.split("/").pop() ?? "";
-    if (!originalName) continue;
-
-    const finalName = resolveNameConflict(originalName, existingNames);
-    const destPath = assetsDir + "/" + finalName;
-
-    try {
-      await importFile(sourcePath, destPath);
-      existingNames.add(finalName);
-
-      const relativeSrc = "./assets/" + finalName;
-      const alt = finalName.replace(/\.[^.]+$/, "");
-
-      const imageNode = editor.state.schema.nodes.image.create({
-        src: relativeSrc,
-        alt,
-      });
-      pos = insertNodeAtPos(editor, pos, imageNode);
-    } catch (err) {
-      logger.error("[ExternalDrop] Image drop failed:", err);
-    }
-  }
 }
 
 // --- Drop handlers ---
