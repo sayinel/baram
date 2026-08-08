@@ -40,3 +40,61 @@ describe("builtinDisabled (§69)", () => {
     expect(usePluginStore.getState().builtinDisabled).toEqual(["b"]);
   });
 });
+
+/**
+ * §69 — rehydration, which is where the shape actually comes from.
+ *
+ * ‼️ The store's own actions can only ever produce a `string[]`, so every test above is
+ * about a value this app wrote. The value the app READS comes from `config.json`, and
+ * `merge` restores what storage holds — a `null` planted there (hand edit, or a consented
+ * trusted plugin holding `allow-set-config`) made `loadBuiltinPlugins` throw on every
+ * launch, which killed the whole plugin subsystem silently and left the repairing toggle
+ * behind a marketplace that threw during render.
+ *
+ * Driven through the REAL `merge` rather than a copy of its logic: the defect was that
+ * the value never reached a validator, so a test that validates it itself would pass with
+ * the guard deleted.
+ */
+describe("builtinDisabled rehydration (§69)", () => {
+  function rehydrate(persisted: unknown): string[] {
+    const { merge } = usePluginStore.persist.getOptions();
+    if (typeof merge !== "function") {
+      throw new Error("persist merge is not configured");
+    }
+    return merge(persisted, usePluginStore.getState()).builtinDisabled;
+  }
+
+  it.each([
+    ["null", null],
+    ["a string", "baram-media-viewer"],
+    ["a number", 7],
+    ["an object", { "baram-media-viewer": true }],
+    ["a boolean", false],
+  ])("coerces %s to an empty list", (_label, planted) => {
+    expect(rehydrate({ builtinDisabled: planted })).toEqual([]);
+  });
+
+  it("rehydrates an absent key to an empty list", () => {
+    // The ordinary first launch, and the launch after a release adds the key. Uncovered
+    // until now: `partialize` writes the key, so nothing else exercises its absence.
+    expect(rehydrate({ installedPlugins: {} })).toEqual([]);
+  });
+
+  it("survives a persisted state that is not an object at all", () => {
+    expect(rehydrate(null)).toEqual([]);
+    expect(rehydrate("corrupt")).toEqual([]);
+  });
+
+  it("restores a well-formed list unchanged", () => {
+    // The complement: a guard that always returned `[]` would pass every case above,
+    // and would silently re-enable every built-in the user turned off.
+    expect(rehydrate({ builtinDisabled: ["a", "b"] })).toEqual(["a", "b"]);
+  });
+
+  it("drops non-string members and keeps the rest", () => {
+    expect(rehydrate({ builtinDisabled: ["a", null, 7, {}, "b"] })).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+});

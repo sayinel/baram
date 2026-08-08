@@ -220,6 +220,36 @@ function backfillConsent(installedPlugins: unknown): void {
   }
 }
 
+/**
+ * §69 — coerce a stored `builtinDisabled` back to the `string[]` its type promises.
+ *
+ * ‼️ THE DECLARED TYPE IS NOT A RUNTIME GUARANTEE ON THE READ PATH. This value is
+ * persisted, and `merge` restores whatever storage HOLDS — so its shape is decided by
+ * `config.json`, not by TypeScript. The adversary the `revocationSequenceSeen` and
+ * `registryUrl` comments below already accept as in scope (a consented trusted plugin
+ * holding `allow-set-config`, or a hand edit) can put `null` there, and every consumer
+ * calls `.includes` on it unguarded.
+ *
+ * What that costs, end to end: `loadBuiltinPlugins` throws on the first launch after;
+ * `initializePlugins` is only `.catch`-logged in `App.tsx`, so the scope preparation, the
+ * revocation refresh and every installed plugin's load never run — all plugins silently
+ * dead, no error surface. Opening the marketplace then throws inside `buildPluginRows`
+ * during render, so the toggle that would repair the value is unreachable, and
+ * `partialize` writes the bad value back on every store change. One planted key, a
+ * permanent and self-sustaining outage — the same durable-primitive shape as the two
+ * fields forced below, which is why the fix lives beside them.
+ *
+ * Non-string members are filtered, not merely tolerated. Today's three consumers all use
+ * `.includes`, which is total and would simply never match them — but that is an accident
+ * of those three call sites, and it does not survive the next consumer that treats a
+ * member as the `string` the type says it is (`.join`, `.startsWith`, a template). The
+ * boundary is the one place that promise can be made true, and it is cheap to make true.
+ */
+function disabledBuiltinIds(stored: unknown): string[] {
+  if (!Array.isArray(stored)) return [];
+  return stored.filter((id): id is string => typeof id === "string");
+}
+
 /** Remove a key from an object, returning a new object without it */
 function omitKey<T extends Record<string, unknown>>(obj: T, key: string): T {
   return Object.fromEntries(
@@ -500,9 +530,14 @@ export const usePluginStore = create<PluginState>()(
       // `merge` runs on every rehydrate. This is the same trap as `partialize` vs `merge` two rounds
       // ago: the write side and the version-change side both look like the read side and are not.
       merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Record<string, unknown>;
         const restored = {
           ...current,
           ...(persisted as object),
+          // ‼️ VALIDATED, NOT SPREAD — see `disabledBuiltinIds`. A malformed value here
+          // is a permanent, self-sustaining plugin outage with no error surface, and it
+          // is reachable by exactly the writer the two resets below exist to contain.
+          builtinDisabled: disabledBuiltinIds(stored.builtinDisabled),
           registryUrl: current.registryUrl,
           revocationSequenceSeen: {},
         };
