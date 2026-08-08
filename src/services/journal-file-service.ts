@@ -1,5 +1,6 @@
 // §56 Journal file service — shared open/create logic across journal entry points
 import { createDir, readFile, writeFile } from "../ipc/invoke";
+import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
@@ -15,6 +16,7 @@ import {
   notifyJournalChanged,
   requestJournalBodyCursor,
 } from "../utils/journal/journal-events";
+import { logger } from "../utils/logger";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
 
 export interface JournalFileOptions {
@@ -47,6 +49,23 @@ export async function ensureJournalFile(
 
   const resolved = resolveJournalDir(rootPath ?? null, journalDirectory);
   if (!resolved) return null;
+
+  // §88 Register the journal directory BEFORE any filesystem call. `resolveJournalDir`
+  // only accepts absolute paths, so this directory can sit outside the open vault, and
+  // there `check_vault` permits nothing until the journal context exists (the Rust
+  // ContextManager is in-memory; startup re-registers only what the store already
+  // persisted). Doing it here rather than at each entry point is deliberate: four of
+  // the five callers used to skip it, and the shortcut, the calendar and journal
+  // navigation each failed the same way — readFile denied, read as "no such file",
+  // createDir denied, caught and swallowed. A fix at one call site would have left the
+  // other three looking protected.
+  try {
+    await useContextStore.getState().ensureJournalContext(resolved);
+  } catch (err) {
+    // A precondition, not the caller's business: if registration fails, let the
+    // filesystem call below produce the real error instead of masking it with this one.
+    logger.warn("[journal] journal context registration failed:", err);
+  }
 
   const journalPath = journalUseHierarchy
     ? getHierarchicalJournalPath(resolved, date, journalFilenameFormat)
