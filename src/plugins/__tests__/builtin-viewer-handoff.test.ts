@@ -32,15 +32,27 @@ describe("built-in viewer hand-off (§69)", () => {
     ).toBeNull();
   });
 
-  it("a community viewer wins png after the built-in is deactivated", async () => {
+  it("a community viewer can only win png once the built-in is deactivated", async () => {
     await loadBuiltinPlugins();
-    await deactivateBuiltin("baram-media-viewer");
     usePluginUIStore.getState().registerFileViewer({
       extensions: ["png"],
       onMount: () => {},
       pluginId: "third-party",
       viewerId: "third-party:img",
     });
+
+    // Both viewers are registered now, built-in first. This is the
+    // structural unreachability the plan exists to fix: a community viewer
+    // cannot win while the built-in is on, no matter that it asked second.
+    expect(
+      matchFileViewer(usePluginUIStore.getState().fileViewers, "/x/a.png")
+        ?.pluginId,
+    ).toBe("baram-media-viewer");
+
+    await deactivateBuiltin("baram-media-viewer");
+
+    // The hand-off: the same registration that lost above now wins once the
+    // built-in steps aside.
     expect(
       matchFileViewer(usePluginUIStore.getState().fileViewers, "/x/a.png")
         ?.pluginId,
