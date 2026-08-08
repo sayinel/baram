@@ -8,6 +8,7 @@ const { logger } = vi.hoisted(() => ({
 }));
 vi.mock("../../utils/logger", () => ({ logger }));
 
+import { t } from "../../i18n";
 import { getAction } from "../../keybindings/keybinding-actions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -113,5 +114,47 @@ describe("zettelkasten.newFromSelection — gated to the zettel space (§95/§99
     act(() => getAction("zettelkasten.newFromSelection")?.());
 
     expect(useUIStore.getState().zettelTitleDialog.open).toBe(false);
+  });
+});
+
+// §85 — the shortcut must say why nothing opened.
+//
+// `journal.openToday` returned silently when Journal was off or its directory did not
+// resolve: no toast, no log. A keyboard shortcut that does nothing at all is
+// indistinguishable from a shortcut that is not bound, so the user has no way to learn
+// that a setting is missing. The journal preset now toasts for the same two cases
+// (workspace.ts) — this is the shortcut half of that contract.
+describe("journal.openToday — unconfigured feedback", () => {
+  beforeEach(() => {
+    useSettingsStore.setState({
+      journalDirectory: "/tmp/baram-journal-test",
+      journalEnabled: true,
+      locale: "en",
+    });
+    useUIStore.setState({ toast: null });
+  });
+
+  it("toasts when the journal is disabled", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction("journal.openToday")?.());
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.journal.disabled", "en"),
+    );
+  });
+
+  it("toasts when the journal directory does not resolve", () => {
+    // resolveJournalDir takes absolute paths only, so a relative value resolves to
+    // nothing — the same dead end as an empty setting, and it used to be silent too.
+    useSettingsStore.setState({ journalDirectory: "journal" });
+    renderActionsHook(null);
+
+    act(() => getAction("journal.openToday")?.());
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.journal.noDirectory", "en"),
+    );
   });
 });

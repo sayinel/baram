@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { t } from "../../i18n";
 import { BUILTIN_PRESETS, useWorkspaceStore } from "../file/workspace";
+import { useSettingsStore } from "../settings/store";
 import { useUIStore } from "../ui/ui";
 
 describe("§52 Workspace Store", () => {
@@ -212,5 +214,54 @@ describe("§52 Workspace Store", () => {
     expect(ui.sidebarPanel).toBe("graph");
     expect(ui.rightPanelOpen).toBe(true);
     expect(ui.rightPanelMode).toBe("help");
+  });
+});
+
+// §85 — an unconfigured journal must say so, like the Zettel space already does.
+//
+// The journal branch only ran `if (journalEnabled && resolvedDir)`, with no else. So
+// running "Open Today's Journal" (which routes here) with Journal off swapped the
+// panels and opened nothing, and the palette closes before the action runs: the whole
+// user-visible result was a closing palette. Indistinguishable from a broken app.
+describe("§85 journal preset — unconfigured feedback", () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ activePresetId: null, customPresets: [] });
+    useSettingsStore.setState({
+      journalDirectory: "/tmp/baram-journal-test",
+      journalEnabled: true,
+      locale: "en",
+    });
+    useUIStore.setState({ toast: null });
+  });
+
+  it("toasts and does not enter the space when the journal is disabled", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+
+    useWorkspaceStore.getState().applyPreset("journal");
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.journal.disabled", "en"),
+    );
+    expect(useWorkspaceStore.getState().activePresetId).not.toBe("journal");
+  });
+
+  it("toasts when no journal directory resolves", () => {
+    // resolveJournalDir only accepts absolute paths, so a relative value resolves
+    // to nothing — the same dead end as an empty setting.
+    useSettingsStore.setState({ journalDirectory: "journal" });
+
+    useWorkspaceStore.getState().applyPreset("journal");
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("space.journal.noDirectory", "en"),
+    );
+    expect(useWorkspaceStore.getState().activePresetId).not.toBe("journal");
+  });
+
+  it("enters the space when the journal is configured", () => {
+    useWorkspaceStore.getState().applyPreset("journal");
+
+    expect(useUIStore.getState().toast).toBeNull();
+    expect(useWorkspaceStore.getState().activePresetId).toBe("journal");
   });
 });

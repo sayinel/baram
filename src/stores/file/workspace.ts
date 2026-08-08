@@ -142,6 +142,34 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           }
         }
 
+        // §85 The Journal space has the same contract as Zettel: the feature enabled
+        // and a directory that resolves. It used to just skip its open step, so
+        // "Open Today's Journal" (which routes here) swapped the panels and opened
+        // nothing — and the palette closes before the action runs, leaving no signal
+        // at all. `resolveJournalDir` rejects relative paths, so an unresolvable
+        // directory is as much a dead end as an empty setting.
+        if (id === "journal") {
+          const { journalDirectory, journalEnabled, locale } =
+            useSettingsStore.getState();
+          if (!journalEnabled) {
+            useUIStore
+              .getState()
+              .showToast(t("space.journal.disabled", locale as Locale));
+            return;
+          }
+          if (
+            !resolveJournalDir(
+              useFileStore.getState().rootPath,
+              journalDirectory,
+            )
+          ) {
+            useUIStore
+              .getState()
+              .showToast(t("space.journal.noDirectory", locale as Locale));
+            return;
+          }
+        }
+
         const ui = useUIStore.getState();
         const { layout } = preset;
 

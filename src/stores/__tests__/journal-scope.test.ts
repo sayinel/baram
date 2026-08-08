@@ -57,8 +57,15 @@ describe("§56b Journal workspace preset update", () => {
   });
 
   it("applyPreset('journal') sets up memories view layout", () => {
-    // Disable journal to avoid async auto-open logic
-    useSettingsStore.setState({ journalEnabled: false });
+    // This used to disable the journal to skip the async auto-open. It cannot any
+    // more: an unconfigured journal now reports the missing setting and returns
+    // without switching (§85, the contract Zettel already had — see
+    // workspace-store.test.ts). Configure it instead; the auto-open that follows is
+    // fire-and-forget and swallows its own errors under mocked IPC.
+    useSettingsStore.setState({
+      journalDirectory: "/tmp/baram-journal-scope",
+      journalEnabled: true,
+    });
 
     useWorkspaceStore.getState().applyPreset("journal");
 
