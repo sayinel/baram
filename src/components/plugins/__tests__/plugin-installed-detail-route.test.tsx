@@ -207,6 +207,16 @@ describe("Installed tab detail route — built-ins (§69)", () => {
     );
   });
 
+  it("says Built-in, instead of only withholding the actions", async () => {
+    // ‼️ Every assertion above is an ABSENCE, and an absence explains nothing: a screen
+    // with no Update reads exactly like a plugin whose update has not been found yet.
+    // The row carries a "Built-in" chip beside the name and this screen is opened FROM
+    // that row, so the two surfaces have to say the same thing about the same plugin.
+    await openBuiltinDetail();
+
+    expect(screen.getByText("Built-in")).toBeTruthy();
+  });
+
   it("reads its status from the toggle state, not from installedPlugins", async () => {
     // The root of the Critical: "not-installed" was the status for every built-in, which is
     // what made Install render. A disabled built-in must read Disabled, never not-installed.

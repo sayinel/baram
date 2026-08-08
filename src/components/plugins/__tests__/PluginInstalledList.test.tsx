@@ -113,6 +113,21 @@ describe("PluginInstalledList (§69)", () => {
     ).toBe("1");
   });
 
+  it("keeps the caret glyph out of the section heading's name", () => {
+    // 캐럿은 장식이고 펼침 여부는 `aria-expanded`가 말한다. 감추지 않으면 헤딩 버튼의
+    // 접근 가능한 이름이 "▾ Built-in 1"이 된다 — 스크린리더가 읽을 이름이 아니다.
+    render(<PluginInstalledList rows={ROWS} {...handlers} />);
+    const builtin = screen.getByTestId("plugin-section-builtin");
+
+    expect(within(builtin).queryByRole("button", { name: /[▾▸]/u })).toBeNull();
+    // 두 개의 보완 단정: 이름으로는 여전히 찾을 수 있어야 하고(이름을 통째로 지우면
+    // 위 단정도 통과한다), 글리프는 여전히 그려져야 한다.
+    expect(
+      within(builtin).getByRole("button", { name: /Built-in/u }),
+    ).toBeTruthy();
+    expect(builtin.textContent).toContain("▾");
+  });
+
   it("shows no gear at all when the settings props are absent", () => {
     // ‼️ PR1의 상태 (사용자 결정 2026-08-06).
     render(<PluginInstalledList rows={ROWS} {...handlers} />);

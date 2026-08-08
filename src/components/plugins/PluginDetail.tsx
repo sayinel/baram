@@ -151,8 +151,26 @@ export function PluginDetail({
               {entry.license}
             </span>
           </div>
-          <div style={{ marginTop: "6px" }}>
+          {/* ‼️ A POSITIVE SIGNAL, matching the row's chip. Without it a built-in's detail
+              screen differed from a community plugin's only by the ABSENCE of Update and
+              Uninstall — and an absence explains nothing: it reads the same as a plugin
+              whose update simply has not been found yet. `PluginRow` says "Built-in" here
+              and this screen is reached from that row, so saying it twice is what makes
+              the two surfaces one story. */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "6px",
+            }}
+          >
             <PluginTrustBadge trust={entry.trust} />
+            {source === "builtin" && (
+              <span className="plugin-detail__badge">
+                {t("plugin.builtin.badge")}
+              </span>
+            )}
           </div>
         </div>
       </div>

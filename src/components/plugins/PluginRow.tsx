@@ -120,7 +120,17 @@ export function PluginRowView({
         )}
         {can.canToggle && (
           <label className="plugin-row__toggle">
-            <input checked={row.enabled} onChange={onToggle} type="checkbox" />
+            {/* ‼️ NAMED like every other control here. Without this the checkbox took its
+                accessible name from the wrapping label's "On"/"Off" text, so a section
+                with two enabled built-ins offered two checkboxes both called "On" and
+                nothing said which plugin either one governed. The visible text stays —
+                it reports the state, and this reports the object. */}
+            <input
+              aria-label={t("plugin.action.toggleFor", named)}
+              checked={row.enabled}
+              onChange={onToggle}
+              type="checkbox"
+            />
             <span>
               {row.enabled ? t("plugin.action.on") : t("plugin.action.off")}
             </span>

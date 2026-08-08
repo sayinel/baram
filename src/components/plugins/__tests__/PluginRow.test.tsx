@@ -27,6 +27,30 @@ function row(over: Partial<PluginRow>): PluginRow {
   };
 }
 
+/**
+ * 행이 그린 모든 조작 요소를, ARIA role 목록이 아니라 SELECTOR로 모은다.
+ *
+ * ‼️ 아래 "every rendered control" 속성이 썩은 원인이 정확히 role 목록이었다:
+ * `getAllByRole("button")`은 `<input type="checkbox">`를 조용히 제외하므로, 이름이 없던
+ * 유일한 조작 요소인 토글이 애초에 검사 대상 집합에 든 적이 없었다. role 목록은 다음에
+ * 추가될 조작 요소를 기본값으로 통과시키는 denylist다. 셀렉터는 아무것도 통과시키지 않는다.
+ */
+const CONTROLS = "a[href], button, input, select, textarea";
+
+/**
+ * 이 행이 실제로 쓰는 두 형태의 접근 가능한 이름: 명시적 `aria-label`, 그리고 감싸는
+ * `<label>`의 텍스트(체크박스의 "On"/"Off"가 여기서 나왔다). accname 알고리즘 전체가
+ * 아니라, 두 형태를 모두 비교한다는 점이 핵심이다 — `getAllByRole` 질의가 못 하던 것이다.
+ */
+function accessibleName(el: Element): string {
+  return (
+    el.getAttribute("aria-label") ??
+    el.closest("label")?.textContent ??
+    el.textContent ??
+    ""
+  );
+}
+
 /** `onSettings`는 의도적으로 빠져 있다 — optional prop이고, 넘기지 않는 것이 PR1의 상태다. */
 const handlers = {
   onDetails: vi.fn(),
@@ -100,18 +124,24 @@ describe("PluginRowView (§69)", () => {
       row({}),
       { ...handlers, onSettings: vi.fn() },
     ],
+    ["a built-in row (Details, toggle)", row({ source: "builtin" }), handlers],
+    ["a dev row (Details, Reload, Remove)", row({ source: "dev" }), handlers],
   ])(
     "names the plugin in every rendered control's accessible name — %s",
     (_label, r, h) => {
-      // ‼️ `named === all`, not `named > 0`: the weaker form would still pass if a
-      // regression dropped the plugin's name from every button but one. Parametrised
-      // over the row shapes that add more controls (update offered, settings wired up)
-      // so the property holds as the row grows, not just for the two-button default.
-      render(<PluginRowView row={r} {...h} />);
-      const all = screen.getAllByRole("button").length;
-      const named = screen.getAllByRole("button", { name: /Ex/ }).length;
-      expect(all).toBeGreaterThan(0);
-      expect(named).toBe(all);
+      // ‼️ `unnamed === []`, not `named > 0`: the weaker form would still pass if a
+      // regression dropped the plugin's name from every control but one. Parametrised
+      // over the row shapes that add more controls (update offered, settings wired up,
+      // each source's own set) so the property holds as the row grows.
+      const { container } = render(<PluginRowView row={r} {...h} />);
+      const controls = Array.from(container.querySelectorAll(CONTROLS));
+      expect(controls.length).toBeGreaterThan(0);
+      // Reported as the list of offenders, so a failure names the control it found.
+      expect(
+        controls
+          .filter((el) => !/Ex/.test(accessibleName(el)))
+          .map((el) => el.tagName.toLowerCase() + ": " + accessibleName(el)),
+      ).toEqual([]);
     },
   );
 });

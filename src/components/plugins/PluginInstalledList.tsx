@@ -98,7 +98,9 @@ export function PluginInstalledList({
               }
               type="button"
             >
-              <span className="plugin-section__caret">
+              {/* 장식이다. 이것 없이는 글리프가 버튼의 접근 가능한 이름 안에 들어가
+                  "▾ 내장 2"처럼 읽힌다. 펼침 여부는 `aria-expanded`가 이미 말한다. */}
+              <span aria-hidden="true" className="plugin-section__caret">
                 {isCollapsed ? "▸" : "▾"}
               </span>
               <span className="plugin-section__title">
