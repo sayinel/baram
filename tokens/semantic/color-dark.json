@@ -240,6 +240,10 @@
         "$value": "{color.gray.600}",
         "$description": "Orphan graph node dark (#4b5563)"
       },
+      "pinned": {
+        "$value": "{color.yellow.400}",
+        "$description": "Pinned graph node border dark — a step lighter than light mode, like active/neighbor (§30.3c)"
+      },
       "edge": {
         "$value": "{color.gray.700}",
         "$description": "Graph edge/link line dark (#374151)"

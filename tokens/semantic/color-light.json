@@ -240,6 +240,10 @@
         "$value": "{color.gray.300}",
         "$description": "Orphan graph node (no links)"
       },
+      "pinned": {
+        "$value": "{color.yellow.500}",
+        "$description": "Pinned graph node border (§30.3c)"
+      },
       "edge": {
         "$value": "{color.gray.400}",
         "$description": "Graph edge/link line"
