@@ -6,7 +6,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
 import { relativeLuminance } from "../color-contrast";
-import { applyThemeVars, clearThemeVars, DERIVED_KEYS } from "../theme-vars";
+import {
+  appliesInlineVars,
+  applyThemeVars,
+  clearThemeVars,
+  DERIVED_KEYS,
+} from "../theme-vars";
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
 const SOLARIZED_LIGHT = BUILT_IN_THEMES.find(
@@ -34,6 +39,32 @@ describe("THEME_COLOR_KEYS", () => {
     for (const key of DERIVED_KEYS) {
       expect(THEME_COLOR_KEYS.map((e) => e.key)).not.toContain(key);
     }
+  });
+});
+
+describe("appliesInlineVars", () => {
+  // Two places used to know which themes carry inline variables: the settings
+  // effect (an `isDefault` string comparison plus an early return for `system`)
+  // and the theme editor (which knew nothing, so it SET the source colours on
+  // cancel and pinned a light palette under an OS dark cascade). One predicate.
+  it.each(["system", "default-light", "default-dark"])(
+    "reports that %s is governed by the generated cascade",
+    (id) => {
+      expect(appliesInlineVars(id)).toBe(false);
+    },
+  );
+
+  it("reports that a shipped non-default theme carries inline variables", () => {
+    // Every built-in but the two defaults: their values live in ThemeColors, not
+    // in src/styles/generated/.
+    for (const theme of BUILT_IN_THEMES) {
+      if (theme.id === "default-light" || theme.id === "default-dark") continue;
+      expect(appliesInlineVars(theme.id)).toBe(true);
+    }
+  });
+
+  it("reports that a custom theme carries inline variables", () => {
+    expect(appliesInlineVars("custom-1730000000000")).toBe(true);
   });
 });
 

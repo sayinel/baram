@@ -8,7 +8,11 @@ import { useShallow } from "zustand/shallow";
 import { useSettingsStore } from "../stores/settings/store";
 import { findThemeById } from "../types/theme";
 import { logger } from "../utils/logger";
-import { applyThemeVars, clearThemeVars } from "../utils/theme-vars";
+import {
+  appliesInlineVars,
+  applyThemeVars,
+  clearThemeVars,
+} from "../utils/theme-vars";
 
 export function useSettingsEffects(editor: Editor | null) {
   const {
@@ -54,9 +58,7 @@ export function useSettingsEffects(editor: Editor | null) {
     // For non-default themes, apply CSS variable overrides. The default themes
     // need none: src/styles/generated/ already carries their values, including the
     // accent pairing that applyThemeVars derives for everyone else (#330).
-    const isDefault =
-      activeThemeId === "default-light" || activeThemeId === "default-dark";
-    if (!isDefault) {
+    if (appliesInlineVars(activeThemeId)) {
       applyThemeVars(root, themeDef.colors, themeDef.base);
     }
   }, [activeThemeId, customThemes]);
