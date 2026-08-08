@@ -13,7 +13,11 @@ import {
   findThemeById,
   THEME_COLOR_KEYS,
 } from "../../types/theme";
-import { applyThemeVars } from "../../utils/theme-vars";
+import {
+  appliesInlineVars,
+  applyThemeVars,
+  clearThemeVars,
+} from "../../utils/theme-vars";
 
 interface ThemeEditorProps {
   onClose: () => void;
@@ -24,13 +28,23 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const { activeThemeId, customThemes, saveCustomTheme, setActiveTheme } =
     useSettingsStore();
 
+  // The active theme, when it has colours of its own. `system` has none by design,
+  // and an id that resolves to nothing means the settings effect cleared the
+  // variables too — both editing sessions start from the default-light palette.
+  const resolvedTheme = useMemo(
+    () =>
+      activeThemeId === "system"
+        ? undefined
+        : findThemeById(activeThemeId, customThemes),
+    [activeThemeId, customThemes],
+  );
+
   // Resolve the starting theme
-  const sourceTheme = useMemo(() => {
-    if (activeThemeId === "system") {
-      return BUILT_IN_THEMES.find((t) => t.id === "default-light")!;
-    }
-    return findThemeById(activeThemeId, customThemes) ?? BUILT_IN_THEMES[0];
-  }, [activeThemeId, customThemes]);
+  const sourceTheme = useMemo(
+    () =>
+      resolvedTheme ?? BUILT_IN_THEMES.find((t) => t.id === "default-light")!,
+    [resolvedTheme],
+  );
 
   // Local editing state
   const [name, setName] = useState(() =>
@@ -47,6 +61,13 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   // The base the original colors belong to — the derived accent pairing depends on
   // it, so restoring colours without it would restore the wrong foreground (#330).
   const originalBaseRef = useRef<"dark" | "light">(sourceTheme.base);
+
+  // Set once the edited colours have been adopted as a real theme, so the unmount
+  // cleanup knows there is no preview left to undo. Without it, correctness depends
+  // on the cleanup running BEFORE the settings effect re-applies the saved theme —
+  // true only while save + close land in one commit (React flushes passive destroys
+  // before creates), and silently false the moment the close is deferred.
+  const savedRef = useRef(false);
 
   // Group color keys by category
   const categories = useMemo(() => {
@@ -68,8 +89,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   useEffect(() => {
     const orig = originalColorsRef.current;
     const origBase = originalBaseRef.current;
+    // Aliased so the cleanup reads the ref through a stable local (lint rule), not
+    // a value captured at effect time — `saved` must be read AT cleanup.
+    const saved = savedRef;
     return () => {
-      applyThemeVars(document.documentElement, orig, origBase);
+      if (saved.current) return;
+      restorePreview(orig, origBase);
     };
   }, []);
 
@@ -81,6 +106,8 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   );
 
   const handleSave = useCallback(() => {
+    // From here the settings effect owns the DOM: these colours are a real theme.
+    savedRef.current = true;
     const isCustom = !sourceTheme.builtIn;
     const themeId = isCustom ? sourceTheme.id : `custom-${Date.now()}`;
 
@@ -107,11 +134,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   const handleCancel = useCallback(() => {
     // Restore original colors before closing
-    applyThemeVars(
-      document.documentElement,
-      originalColorsRef.current,
-      originalBaseRef.current,
-    );
+    restorePreview(originalColorsRef.current, originalBaseRef.current);
     onClose();
   }, [onClose]);
 
@@ -182,4 +205,31 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Undo the live preview the way the settings effect would have applied the theme.
+ *
+ * Cascade-only themes (`system`, the two defaults) and an `activeThemeId` that
+ * resolves to nothing carry NO inline variables, so restoring them by SETTING the
+ * source colours pins a palette that then outranks `prefers-color-scheme` — and the
+ * settings effect cannot undo it, since it depends on [activeThemeId, customThemes]
+ * and leaving the editor changes neither.
+ *
+ * Reads the active theme at call time rather than taking a snapshot when the editor
+ * opens: a snapshot would restore the PREVIOUS theme's colours over the current one
+ * if a theme switch ever became reachable while the editor is open (today the picker
+ * is unmounted while editing, so the two agree) — the same defect class this fixes.
+ */
+function restorePreview(colors: ThemeColors, base: "dark" | "light"): void {
+  const root = document.documentElement;
+  const { activeThemeId, customThemes } = useSettingsStore.getState();
+  const hasInlineVars =
+    findThemeById(activeThemeId, customThemes) !== undefined &&
+    appliesInlineVars(activeThemeId);
+  if (hasInlineVars) {
+    applyThemeVars(root, colors, base);
+  } else {
+    clearThemeVars(root);
+  }
 }

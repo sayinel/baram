@@ -42,6 +42,33 @@ export const DERIVED_KEYS = [
   "--color-status-warning-solid-hover",
 ] as const;
 
+/**
+ * Themes whose values come from `src/styles/generated/` instead of inline variables.
+ *
+ * `system` is here because it deliberately sets no `data-theme` and lets the
+ * `prefers-color-scheme` cascade decide; the two defaults are here because the
+ * generated stylesheets already carry their palette, including the derived accent
+ * pairing {@link derivedVars} computes for everyone else.
+ */
+const CASCADE_ONLY_THEME_IDS: ReadonlySet<string> = new Set([
+  "default-dark",
+  "default-light",
+  "system",
+]);
+
+/**
+ * Does this theme carry inline variables, or does the generated cascade own it?
+ *
+ * Shared so that whoever restores a theme uses the same rule as whoever applied it.
+ * The theme editor did not: it restored by SETTING the source colours, which pins a
+ * cascade-only theme's palette inline where it outranks the media query — visibly
+ * so on `system` under an OS dark theme, where the editor's `default-light` fallback
+ * left the UI light until the user switched themes (#330 follow-up).
+ */
+export function appliesInlineVars(themeId: string): boolean {
+  return !CASCADE_ONLY_THEME_IDS.has(themeId);
+}
+
 /** Write a theme's colours and every foreground derived from them to `root`. */
 export function applyThemeVars(
   root: HTMLElement,
