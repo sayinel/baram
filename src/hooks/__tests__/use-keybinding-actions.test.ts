@@ -149,9 +149,12 @@ describe("journal.openToday — unconfigured feedback", () => {
 
     act(() => getAction("journal.openToday")?.());
 
-    expect(useUIStore.getState().toast?.message).toBe(
-      t("space.journal.disabled", "en"),
-    );
+    // Compared against the catalogue's TEXT, not `t(...)` on both sides: `t` falls back
+    // to the key, so a `t`-vs-`t` assertion stays green while the toast ships the raw
+    // key "space.journal.disabled" to the user.
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.disabled", "en"));
+    expect(message).toContain("Enable Journal");
   });
 
   it("toasts when the journal directory does not resolve", () => {
@@ -162,9 +165,9 @@ describe("journal.openToday — unconfigured feedback", () => {
 
     act(() => getAction("journal.openToday")?.());
 
-    expect(useUIStore.getState().toast?.message).toBe(
-      t("space.journal.noDirectory", "en"),
-    );
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.noDirectory", "en"));
+    expect(message).toContain("Set the Journal directory");
   });
 
   it("toasts a localized message when the open fails, not the raw error", async () => {
@@ -185,6 +188,7 @@ describe("journal.openToday — unconfigured feedback", () => {
 
     const message = useUIStore.getState().toast?.message;
     expect(message).toBe(t("space.journal.openFailed", "en"));
+    expect(message).toContain("Could not open");
     expect(message).not.toContain("/Volumes/private");
     expect(logger.error).toHaveBeenCalled();
   });

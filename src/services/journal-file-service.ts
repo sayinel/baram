@@ -46,8 +46,11 @@ export interface JournalFileOptions {
  * while the sidebar still showed the previous vault, and "New file" in that tree would
  * write into the journal directory. Switching spaces stays the preset's job.
  *
- * A failure is logged and swallowed on purpose: the following filesystem call then
- * produces the real error instead of being masked by a context error. ‼️ Known gap: the
+ * A failure is swallowed on purpose — the following filesystem call then produces the
+ * real error instead of being masked by a context error — but it is logged with
+ * `logger.error`, not `warn`: `warn` is gated on `import.meta.env.DEV`, so a warn-only
+ * fallback records NOTHING in a release build. That is the very argument the sibling
+ * commit made about the no-op backend logger, and it applies here too. ‼️ Known gap: the
  * backend refuses to register a path that does not exist, so a journal directory that
  * was deleted, renamed or lives on an unmounted volume still ends in the silent no-op
  * described above — the write cannot create it either. Tracked in dev/backlog.md.
@@ -67,7 +70,7 @@ export async function ensureJournalDirRegistered(
       .getState()
       .ensureJournalContext(journalDir, { activate: false });
   } catch (err) {
-    logger.warn("[journal] journal context registration failed:", err);
+    logger.error("[journal] journal context registration failed:", err);
   }
 }
 

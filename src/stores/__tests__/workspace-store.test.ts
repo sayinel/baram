@@ -239,9 +239,11 @@ describe("§85 journal preset — unconfigured feedback", () => {
 
     useWorkspaceStore.getState().applyPreset("journal");
 
-    expect(useUIStore.getState().toast?.message).toBe(
-      t("space.journal.disabled", "en"),
-    );
+    // `t` falls back to the key, so pin the catalogue text too — otherwise deleting
+    // the key keeps this green while the user sees "space.journal.disabled".
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.disabled", "en"));
+    expect(message).toContain("Enable Journal");
     expect(useWorkspaceStore.getState().activePresetId).not.toBe("journal");
   });
 
@@ -252,9 +254,9 @@ describe("§85 journal preset — unconfigured feedback", () => {
 
     useWorkspaceStore.getState().applyPreset("journal");
 
-    expect(useUIStore.getState().toast?.message).toBe(
-      t("space.journal.noDirectory", "en"),
-    );
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.noDirectory", "en"));
+    expect(message).toContain("Set the Journal directory");
     expect(useWorkspaceStore.getState().activePresetId).not.toBe("journal");
   });
 

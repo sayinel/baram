@@ -206,18 +206,28 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         // §85 M2b: Journal preset — activate journal context + open today's file
         if (id === "journal") {
-          const { journalEnabled, journalDirectory } =
-            useSettingsStore.getState();
+          // No re-check of journalEnabled/resolvedDir here: the guard above returned
+          // early for both, so an inner `if` would be dead code claiming a doubt that
+          // no longer exists.
+          const { journalDirectory } = useSettingsStore.getState();
           const { rootPath } = useFileStore.getState();
           const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
-          if (journalEnabled && resolvedDir) {
+          if (resolvedDir) {
             (async () => {
               try {
-                await useContextStore
+                const ctx = await useContextStore
                   .getState()
                   .ensureJournalContext(resolvedDir);
                 await getSpace("journal")?.newFileFlow?.();
-                // File tree switch handled by contextStore subscription in file.ts
+                // Load the journal's tree, exactly as the zettel branch does above.
+                // `ensureJournalContext` activates the context but the subscription in
+                // file.ts syncs `rootPath` ALONE (its own comment says so) — the note
+                // that used to sit here claimed the subscription switched the tree,
+                // which was false: `rootPath` pointed at the journal while `fileTree`
+                // still held the previous vault, so the Files panel, new-file paths and
+                // QuickSwitcher's relative paths all disagreed with each other. Run it
+                // after newFileFlow so today's entry is in the tree it loads.
+                await switchContext(ctx.id);
               } catch (err) {
                 logger.error("[Workspace] Failed to open journal:", err);
               }

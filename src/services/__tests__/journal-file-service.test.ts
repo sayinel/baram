@@ -38,10 +38,23 @@ vi.mock("../../ipc/invoke", () => ({
   createDir,
   writeFile,
 }));
+// All six exports the context store imports. A partial mock leaves the rest
+// `undefined`, and the try/catch this service added would swallow the resulting
+// TypeError — a programming error passing as green.
 vi.mock("../../ipc/context", () => ({
   addContext: ipcAddContext,
+  getContexts: vi.fn(async () => []),
+  removeContext: vi.fn(async () => {}),
   setActiveContext: vi.fn(async () => {}),
+  updateContextAlias: vi.fn(async () => {}),
+  updateContextColor: vi.fn(async () => {}),
+  updateContextLabel: vi.fn(async () => {}),
 }));
+
+const { logger } = vi.hoisted(() => ({
+  logger: { error: vi.fn(), warn: vi.fn() },
+}));
+vi.mock("../../utils/logger", () => ({ logger }));
 
 import type { ContextInfo } from "../../ipc/types";
 
@@ -161,14 +174,23 @@ describe("ensureJournalFile — journal directory registration", () => {
     expect(ipcAddContext).not.toHaveBeenCalled();
   });
 
-  it("still opens the entry when registration fails", async () => {
+  it("still opens the entry when registration fails, and says so where release builds can see it", async () => {
     // Registration is a precondition, not the caller's business: if it fails, let the
     // filesystem produce the real error instead of masking it with a context error.
-    ipcAddContext.mockRejectedValueOnce(new Error("add_context failed (mock)"));
+    // But it must be recorded with `error`, not `warn` — `logger.warn` is gated on
+    // `import.meta.env.DEV`, so a warn-only fallback records nothing in a release build
+    // (the same class this branch called out about the no-op backend logger).
+    logger.error.mockClear();
+    logger.warn.mockClear();
+    ipcAddContext.mockRejectedValueOnce(
+      new Error("Path does not exist: /tmp/baram-journal-test"),
+    );
 
     const result = await ensureJournalFile(DATE, OPTIONS);
 
     expect(result).not.toBeNull();
     expect(calls).toContain("readFile");
+    expect(logger.error).toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
