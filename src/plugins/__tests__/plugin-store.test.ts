@@ -97,10 +97,13 @@ describe("usePluginStore", () => {
     });
 
     test("removePlugin clears a pending update — §69", () => {
-      // ‼️ The whole store is PERSISTED, so a key left here outlived the session, not just
-      // the uninstall. The Updates badge counted it while the panel — which lists
-      // installed-and-still-listed plugins — rendered nothing, and the "no updates"
-      // message was skipped because the count said there were some.
+      // ‼️ A key left here outlived the plugin for the rest of the session: the Updates
+      // badge counted it while the panel — which lists installed-and-still-listed plugins
+      // — rendered nothing, and the "no updates" message was skipped because the count
+      // said there were some. (This comment used to open "The whole store is PERSISTED, so
+      // it outlived the session too". `updateAvailable` is not in `partialize`, so it did
+      // not. The same wrong sentence was in the store; both are corrected, the assertion
+      // is unchanged.)
       const plugin = makePlugin("test-plugin");
       usePluginStore.getState().addPlugin(plugin);
       usePluginStore.setState({ updateAvailable: { "test-plugin": "2.0.0" } });

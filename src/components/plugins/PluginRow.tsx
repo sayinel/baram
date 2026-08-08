@@ -74,8 +74,14 @@ export function PluginRowView({
             ))}
           </div>
         )}
+        {/* ‼️ THROUGH `can`, like every other action on this row. The shell hands every
+            row an `onRemove` — built-ins included — and this passed it straight on, so a
+            row that cannot remove anything would still have offered the button. It never
+            fired only because `buildPluginRows` sets no `revocation` on a built-in and
+            the notice returns null: two incidental facts holding up a rule that has one
+            authority. */}
         <PluginRevokedNotice
-          onRemove={onRemove}
+          onRemove={can.canRemove ? onRemove : undefined}
           revocation={row.revocation ?? null}
         />
       </div>

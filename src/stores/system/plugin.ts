@@ -312,10 +312,13 @@ export const usePluginStore = create<PluginState>()(
           pluginSettings: omitKey(state.pluginSettings, id),
           pluginErrors: omitKey(state.pluginErrors, id),
           // ‼️ §69 — an uninstalled plugin has no pending update. Without this the key
-          // outlived the plugin, and since the whole store is PERSISTED it outlived the
-          // session too: the Updates badge counted it forever while the panel — which
-          // lists installed-and-still-listed plugins — rendered nothing, and the "no
-          // updates" message was skipped because the count said there were some.
+          // outlived the plugin for the rest of the session: the Updates badge counted it
+          // while the panel — which lists installed-and-still-listed plugins — rendered
+          // nothing, and the "no updates" message was skipped because the count said there
+          // were some. (An earlier version of this comment added "and since the whole store
+          // is PERSISTED, the session too". It is not: `updateAvailable` is absent from
+          // `partialize` and always has been, so a restart cleared it. The defect is real
+          // and this fix is right; only that sentence was wrong.)
           updateAvailable: omitKey(state.updateAvailable, id),
         })),
 

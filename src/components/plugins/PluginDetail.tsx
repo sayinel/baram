@@ -92,8 +92,10 @@ export function PluginDetail({
           saying so while rendering after the description, the error banner and the
           action buttons; review caught the comment describing an intent the code did
           not implement. */}
+      {/* Gated like the row's copy: the same callback reaching a source that cannot
+          remove is the same defect on this screen, and this screen now knows `can`. */}
       <PluginRevokedNotice
-        onRemove={onUninstall}
+        onRemove={can.canRemove ? onUninstall : undefined}
         revocation={revocation ?? null}
       />
 
@@ -214,32 +216,41 @@ export function PluginDetail({
           </button>
         ) : status === "enabled" || status === "disabled" ? (
           <>
-            <button
-              onClick={onToggleEnabled}
-              style={{
-                padding: "8px 20px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 500,
-                backgroundColor:
-                  status === "enabled"
-                    ? "var(--color-accent-solid)"
-                    : "var(--color-bg-subtle)",
-                color:
-                  status === "enabled"
-                    ? "var(--color-accent-on-solid)"
-                    : "var(--color-text-primary)",
-                border:
-                  status === "enabled"
-                    ? "none"
-                    : "1px solid var(--color-border-default)",
-                cursor: "pointer",
-              }}
-            >
-              {status === "enabled"
-                ? t("plugin.action.enabled")
-                : t("plugin.action.disabled")}
-            </button>
+            {/* ‼️ `can.canToggle`, not the status branch. The branch answers a different
+                question — "is this thing installed enough to act on" — and reading the
+                toggle off it made this the one action here NOT decided by `actionsFor`,
+                while `canUpdate` and `canRemove` below both go through `can`. No live
+                defect: only `builtin` and `community` reach this screen and both toggle.
+                It becomes one the moment a dev row does, which is a planned follow-up,
+                and it would arrive as a control that does nothing. */}
+            {can.canToggle && (
+              <button
+                onClick={onToggleEnabled}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  backgroundColor:
+                    status === "enabled"
+                      ? "var(--color-accent-solid)"
+                      : "var(--color-bg-subtle)",
+                  color:
+                    status === "enabled"
+                      ? "var(--color-accent-on-solid)"
+                      : "var(--color-text-primary)",
+                  border:
+                    status === "enabled"
+                      ? "none"
+                      : "1px solid var(--color-border-default)",
+                  cursor: "pointer",
+                }}
+              >
+                {status === "enabled"
+                  ? t("plugin.action.enabled")
+                  : t("plugin.action.disabled")}
+              </button>
+            )}
             {can.canUpdate && updateAvailable && (
               <button
                 onClick={onUpdate}
