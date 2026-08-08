@@ -631,15 +631,14 @@ function buildCommands(
       id: "journal:open-today",
       label: "Open Today's Journal",
       category: "Journal",
-      // ‼️ Do NOT "simplify" this to getAction("journal.openToday"). The preset is
-      // the only path that registers the journal directory as a context BEFORE
-      // touching the filesystem (workspace.ts:180-198 → ensureJournalContext, then
-      // the journal space's newFileFlow → ensureJournalFile + openFileInTab). The
-      // registered action skips that registration, so a journal directory outside
-      // the open vault gets "Access denied" from check_vault, which
-      // ensureJournalFile misreads as "file does not exist" — and then createDir
-      // is denied too, leaving a silent no-op. The preset opens today's entry as
-      // well; it just also switches the layout and the active context.
+      // ‼️ Do NOT "simplify" this to getAction("journal.openToday"). Both open
+      // today's entry — the preset via the journal space's newFileFlow — but only
+      // the preset ACTIVATES the journal context, and `editor.ts` fills an empty
+      // contextId from the active context, so the action's tab would be owned by
+      // whichever vault was active and would be closed with it (ContextTabBar).
+      // The preset also applies the journal layout. (Registration is no longer a
+      // difference: `ensureJournalFile` registers the directory itself, without
+      // activating — see ensureJournalDirRegistered.)
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {

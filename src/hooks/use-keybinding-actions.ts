@@ -418,10 +418,20 @@ export function useKeybindingActions({
           if (!result) return;
           await openFileInTab(result.path, result.content);
         } catch (err) {
-          // Surface it: the backend logger is a no-op today, so a logger-only
-          // failure here is invisible to the user AND to whoever debugs the report.
+          // Surface it — a logger-only failure is invisible to the user — but keep the
+          // raw text out of the toast: Tauri rejects with a bare string, so `String(err)`
+          // would put an untranslated absolute path on screen (the project's idiom:
+          // localized key in the toast, raw message in the log — see stores/file/file.ts).
           logger.error("[JournalShortcut] Failed:", err);
-          useUIStore.getState().showToast(String(err), "error");
+          useUIStore
+            .getState()
+            .showToast(
+              t(
+                "space.journal.openFailed",
+                useSettingsStore.getState().locale as Locale,
+              ),
+              "error",
+            );
         }
       })();
     });

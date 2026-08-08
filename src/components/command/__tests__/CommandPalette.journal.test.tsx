@@ -1,14 +1,19 @@
 // §56/§85 — "Open Today's Journal" must go through the journal PRESET.
 //
 // The preset looks like a layout-only command, and the backlog recorded it that way,
-// but `workspace.ts:180-198` calls `ensureJournalContext(resolvedDir)` and then the
-// journal space's `newFileFlow()` (→ ensureJournalFile + openFileInTab): it opens
-// today's entry AND registers the journal directory with the Rust ContextManager
-// first. The registered `journal.openToday` action does only the second half, so
-// rewiring this command to it makes a journal directory outside the open vault fail
-// silently — check_vault denies readFile, ensureJournalFile reads that as "no such
-// file", createDir is denied too, and the action's own catch swallows it. This test
-// pins the routing so that rewiring is a red test, not a silent regression.
+// but `workspace.ts` calls `ensureJournalContext(resolvedDir)` and then the journal
+// space's `newFileFlow()` (→ ensureJournalFile + openFileInTab): it opens today's entry
+// AND activates the journal context.
+//
+// The registered `journal.openToday` action opens the file only. Since
+// `stores/editor/editor.ts` fills an empty `contextId` from the ACTIVE context, its tab
+// would be owned by whichever vault was active and closed together with that vault
+// (`ContextTabBar`), and the journal layout would not appear. This test pins the routing
+// so a rewiring is a red test rather than a silent behaviour loss.
+//
+// (Directory REGISTRATION is no longer part of the difference: `ensureJournalFile` now
+// registers it without activating. That was the reason first written here, and it stopped
+// being true one commit later — hence this note.)
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

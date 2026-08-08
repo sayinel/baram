@@ -124,6 +124,7 @@
   "about.checkUpdates": "업데이트 확인",
   "space.journal.disabled": "저널 공간을 사용하려면 설정 > 일반에서 '저널 활성화'를 켜세요.",
   "space.journal.noDirectory": "먼저 설정 > 일반에서 저널 디렉토리를 지정하세요.",
+  "space.journal.openFailed": "오늘 저널을 열 수 없습니다. 설정 > 일반에서 저널 디렉토리를 확인하세요.",
   "space.zettel.disabled": "Zettel 공간을 사용하려면 설정 > 일반에서 'Zettel 활성화'를 켜세요.",
   "space.zettel.noDirectory": "먼저 설정 > 일반에서 Zettel 디렉토리를 지정하세요.",
   "statusbar.perspective": "화면구성",

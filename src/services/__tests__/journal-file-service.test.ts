@@ -71,12 +71,16 @@ describe("openFileInTab", () => {
 // `resolveJournalDir` only accepts ABSOLUTE paths, so the journal directory can sit
 // outside the open vault. `check_vault` then permits nothing there until the journal
 // context exists (the ContextManager is in-memory; startup re-registers only the
-// contexts the store already persisted). Four of the five `ensureJournalFile` call
-// sites — the keyboard shortcut, the calendar, journal navigation, the startup hook —
-// never created it; only the journal space did. So on first use from any of those,
+// contexts the store already persisted). FIVE of the six `ensureJournalFile` call sites
+// skipped it — the shortcut (`use-keybinding-actions.ts:411`), Alt+←/→ day navigation
+// (`:188`), the calendar (`CalendarPanel.tsx:202`), date-wikilink navigation
+// (`use-navigation.ts:73`) and the startup hook (`use-journal.ts:51`); only the journal
+// space (`spaces/journal-space.ts:33`) registered. So on first use from any of them,
 // `readFile` was denied, this service read that as "file does not exist", `createDir`
 // was denied too, and every caller's catch swallowed it: a silent no-op that healed
 // itself only once the user had entered the journal space at least once.
+// (CalendarPanel's periodic notes — weekly/monthly/yearly — do their own filesystem
+// work and call `ensureJournalDirRegistered` directly for the same reason.)
 const JOURNAL_DIR = "/tmp/baram-journal-test";
 const OPTIONS = {
   journalDirectory: JOURNAL_DIR,
@@ -115,8 +119,34 @@ describe("ensureJournalFile — journal directory registration", () => {
     const result = await ensureJournalFile(DATE, OPTIONS);
 
     expect(calls[0]).toBe("add_context");
+    // …and that it registered THIS directory as the journal — "some context was
+    // registered" would pass for any path, including the vault that was already there.
+    expect(ipcAddContext).toHaveBeenCalledWith(
+      expect.objectContaining({ path: JOURNAL_DIR, vaultType: "journal" }),
+    );
     expect(calls).toContain("writeFile");
     expect(result).not.toBeNull();
+  });
+
+  it("registers without activating, leaving the workspace where it was", async () => {
+    // ‼️ Activating here would repoint `rootPath` at the journal while the sidebar still
+    // showed the previous vault (the file.ts subscription syncs rootPath only, and does
+    // not load the tree), so "New file" in that tree would write into the journal
+    // directory. Switching spaces is the preset's job, not this service's.
+    const vault: ContextInfo = {
+      addedAt: Date.now(),
+      color: "#3b82f6",
+      contextType: "vault",
+      id: "ctx-vault",
+      label: "vault",
+      path: "/vault",
+    };
+    useContextStore.setState({ activeContextId: vault.id, contexts: [vault] });
+
+    await ensureJournalFile(DATE, OPTIONS);
+
+    expect(ipcAddContext).toHaveBeenCalledTimes(1);
+    expect(useContextStore.getState().activeContextId).toBe(vault.id);
   });
 
   it("does not register a second context when the journal one already exists", async () => {

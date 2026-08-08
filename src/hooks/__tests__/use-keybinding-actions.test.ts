@@ -8,6 +8,15 @@ const { logger } = vi.hoisted(() => ({
 }));
 vi.mock("../../utils/logger", () => ({ logger }));
 
+const { ensureJournalFile } = vi.hoisted(() => ({
+  ensureJournalFile: vi.fn(async () => null),
+}));
+vi.mock("../../services/journal-file-service", () => ({
+  ensureJournalDirRegistered: vi.fn(async () => {}),
+  ensureJournalFile,
+  openFileInTab: vi.fn(async () => {}),
+}));
+
 import { t } from "../../i18n";
 import { getAction } from "../../keybindings/keybinding-actions";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -156,5 +165,27 @@ describe("journal.openToday — unconfigured feedback", () => {
     expect(useUIStore.getState().toast?.message).toBe(
       t("space.journal.noDirectory", "en"),
     );
+  });
+
+  it("toasts a localized message when the open fails, not the raw error", async () => {
+    // Tauri commands reject with a bare string (CLAUDE.md: `Result<T, String>`), so
+    // `String(err)` puts an untranslated absolute path on screen — in a surface the
+    // user may be screen-sharing, and in the ko locale from a function that localizes
+    // its two other branches. The project keeps the raw text in the logger and toasts a
+    // key (see stores/file/file.ts access-denied handling).
+    ensureJournalFile.mockRejectedValueOnce(
+      new Error("Access denied: /Volumes/private/journal/2026-08-08.md"),
+    );
+    renderActionsHook(null);
+
+    await act(async () => {
+      getAction("journal.openToday")?.();
+      await Promise.resolve();
+    });
+
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.openFailed", "en"));
+    expect(message).not.toContain("/Volumes/private");
+    expect(logger.error).toHaveBeenCalled();
   });
 });

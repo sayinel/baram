@@ -5,6 +5,7 @@ import { useShallow } from "zustand/shallow";
 
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
 import {
+  ensureJournalDirRegistered,
   ensureJournalFile,
   openFileInTab,
 } from "../../services/journal-file-service";
@@ -231,6 +232,13 @@ export function CalendarPanel() {
       templatePath?: string,
     ) => {
       if (!journalEnabled || !resolvedDir) return;
+      // §88 Same precondition as ensureJournalFile: the journal directory has to be a
+      // registered context before any write, or check_vault denies all three calls
+      // below — createDir into a swallowed catch, readFile misread as "new file", and
+      // writeFile throwing out of here. This path does its own filesystem work instead
+      // of going through ensureJournalFile, so it needs the step explicitly; sitting in
+      // the same file as a call site that IS covered is what made it look protected.
+      await ensureJournalDirRegistered(resolvedDir);
       const notePath = getPath(resolvedDir, date);
       const parentDir = notePath.substring(0, notePath.lastIndexOf("/"));
       await createDir(parentDir).catch(() => {});
@@ -274,12 +282,14 @@ export function CalendarPanel() {
 
   const openWeeklyNote = useCallback(
     (date: Date) => {
+      // The promise used to be dropped: a denied writeFile threw out of
+      // openPeriodicNote into an unhandled rejection — no note, no toast, no log.
       openPeriodicNote(
         getWeeklyJournalPath,
         generateDefaultWeekly,
         date,
         journalWeeklyTemplate || undefined,
-      );
+      ).catch((err) => logger.error("[Calendar] weekly note failed:", err));
     },
     [openPeriodicNote, journalWeeklyTemplate],
   );

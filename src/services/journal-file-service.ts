@@ -28,6 +28,50 @@ export interface JournalFileOptions {
 }
 
 /**
+ * Make the journal directory known to the backend before any filesystem call on it.
+ *
+ * `resolveJournalDir` accepts absolute paths only, so the journal directory can sit
+ * outside the open vault, and there `check_vault` permits nothing until the journal
+ * context exists (the Rust ContextManager is in-memory; startup re-registers only the
+ * contexts the store already persisted). Six call sites write under this directory and
+ * five of them used to skip registration — the shortcut, the calendar, Alt+←/→ day
+ * navigation, date-wikilink navigation (`use-navigation.ts`) and the startup hook —
+ * each failing identically: readFile denied, read as "no such file", createDir denied,
+ * swallowed by the caller's catch. Only the journal space registered.
+ *
+ * ‼️ Registers WITHOUT activating. `ensureSpaceContext` used to activate
+ * unconditionally, and the subscription in `stores/file/file.ts` syncs `rootPath`
+ * without loading the tree (the zettel preset compensates with an explicit
+ * `switchContext`) — so activating from here would repoint `rootPath` at the journal
+ * while the sidebar still showed the previous vault, and "New file" in that tree would
+ * write into the journal directory. Switching spaces stays the preset's job.
+ *
+ * A failure is logged and swallowed on purpose: the following filesystem call then
+ * produces the real error instead of being masked by a context error. ‼️ Known gap: the
+ * backend refuses to register a path that does not exist, so a journal directory that
+ * was deleted, renamed or lives on an unmounted volume still ends in the silent no-op
+ * described above — the write cannot create it either. Tracked in dev/backlog.md.
+ *
+ * §89 note: creating the context here can bring back a journal context the user closed.
+ * That is accepted for EXPLICIT requests (a calendar day, Alt+←/→, a date wikilink, the
+ * shortcut): a write outside the vault requires a registered context, so refusing would
+ * mean refusing what the user just asked for. Activation is what made the old behaviour
+ * intrusive, and that is gone. The automatic paths keep their own §89 guards and check
+ * `journalContext()` before calling in (`use-journal.ts`, `spaces/journal-space.ts`).
+ */
+export async function ensureJournalDirRegistered(
+  journalDir: string,
+): Promise<void> {
+  try {
+    await useContextStore
+      .getState()
+      .ensureJournalContext(journalDir, { activate: false });
+  } catch (err) {
+    logger.warn("[journal] journal context registration failed:", err);
+  }
+}
+
+/**
  * Ensures a journal file for the given date exists (creating it from template
  * or default content if needed) and returns the resolved path and content.
  *
@@ -50,22 +94,7 @@ export async function ensureJournalFile(
   const resolved = resolveJournalDir(rootPath ?? null, journalDirectory);
   if (!resolved) return null;
 
-  // §88 Register the journal directory BEFORE any filesystem call. `resolveJournalDir`
-  // only accepts absolute paths, so this directory can sit outside the open vault, and
-  // there `check_vault` permits nothing until the journal context exists (the Rust
-  // ContextManager is in-memory; startup re-registers only what the store already
-  // persisted). Doing it here rather than at each entry point is deliberate: four of
-  // the five callers used to skip it, and the shortcut, the calendar and journal
-  // navigation each failed the same way — readFile denied, read as "no such file",
-  // createDir denied, caught and swallowed. A fix at one call site would have left the
-  // other three looking protected.
-  try {
-    await useContextStore.getState().ensureJournalContext(resolved);
-  } catch (err) {
-    // A precondition, not the caller's business: if registration fails, let the
-    // filesystem call below produce the real error instead of masking it with this one.
-    logger.warn("[journal] journal context registration failed:", err);
-  }
+  await ensureJournalDirRegistered(resolved);
 
   const journalPath = journalUseHierarchy
     ? getHierarchicalJournalPath(resolved, date, journalFilenameFormat)
