@@ -95,6 +95,37 @@ describe("usePluginStore", () => {
         usePluginStore.getState().pluginErrors["test-plugin"],
       ).toBeUndefined();
     });
+
+    test("removePlugin clears a pending update — §69", () => {
+      // ‼️ A key left here outlived the plugin for the rest of the session: the Updates
+      // badge counted it while the panel — which lists installed-and-still-listed plugins
+      // — rendered nothing, and the "no updates" message was skipped because the count
+      // said there were some. (This comment used to open "The whole store is PERSISTED, so
+      // it outlived the session too". `updateAvailable` is not in `partialize`, so it did
+      // not. The same wrong sentence was in the store; both are corrected, the assertion
+      // is unchanged.)
+      const plugin = makePlugin("test-plugin");
+      usePluginStore.getState().addPlugin(plugin);
+      usePluginStore.setState({ updateAvailable: { "test-plugin": "2.0.0" } });
+
+      usePluginStore.getState().removePlugin("test-plugin");
+
+      expect(
+        usePluginStore.getState().updateAvailable["test-plugin"],
+      ).toBeUndefined();
+    });
+
+    test("removePlugin leaves ANOTHER plugin's pending update alone", () => {
+      // The complement: clearing the whole map would also pass the test above.
+      usePluginStore.getState().addPlugin(makePlugin("test-plugin"));
+      usePluginStore.setState({
+        updateAvailable: { other: "3.0.0", "test-plugin": "2.0.0" },
+      });
+
+      usePluginStore.getState().removePlugin("test-plugin");
+
+      expect(usePluginStore.getState().updateAvailable.other).toBe("3.0.0");
+    });
   });
 
   describe("setEnabled", () => {

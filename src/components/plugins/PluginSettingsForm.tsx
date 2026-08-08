@@ -17,6 +17,7 @@ import {
   resolvePluginSettings,
   sanitizeSettingLabel,
 } from "../../plugins/plugin-settings";
+import { selectManifest } from "../../plugins/plugin-sources";
 import { usePluginStore } from "../../stores/system/plugin";
 
 interface PluginSettingsFormProps {
@@ -38,18 +39,21 @@ interface PluginSettingsFormProps {
  */
 export function PluginSettingsForm({ pluginId }: PluginSettingsFormProps) {
   const { t } = useTranslation();
-  const { persisted, plugin, setPluginSetting } = usePluginStore(
+  const { manifest, persisted, setPluginSetting } = usePluginStore(
     useShallow((s) => ({
+      // ‼️ §5.2 — `installedPlugins[id] ?? devPlugins[id]`였다. 내장은 어느 쪽에도 없으므로
+      // 내장의 설정 폼이 조용히, 오류 없이 안 그려졌다. `selectManifest`가 세 출처를 다 본다.
+      // 셀렉터 안에서 부르는 것이 구독을 유지하는 유일한 방법이다 — 위 함수의 주석을 볼 것.
+      manifest: selectManifest(s, pluginId),
       persisted: s.pluginSettings[pluginId],
-      plugin: s.installedPlugins[pluginId] ?? s.devPlugins[pluginId],
       setPluginSetting: s.setPluginSetting,
     })),
   );
   // Memoised for its IDENTITY, not its cost: `declaredSettingsFor` returns a fresh `[]`
   // for a plugin with no fields, which would re-run the resolver below every render.
   const declared = useMemo(
-    () => (plugin ? declaredSettingsFor(plugin.manifest) : []),
-    [plugin],
+    () => (manifest ? declaredSettingsFor(manifest) : []),
+    [manifest],
   );
   // Resolved, never read raw: the persisted record outlives the manifest that wrote it, so
   // the form has to show what the plugin will actually be told.

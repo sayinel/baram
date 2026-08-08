@@ -19,7 +19,14 @@ export function PluginRevokedNotice({
   onRemove,
   revocation,
 }: {
-  onRemove: () => void;
+  /**
+   * ‼️ OPTIONAL, and its absence removes the button rather than the notice. Removal is
+   * `actionsFor(source).canRemove`'s decision — a built-in has files this app does not
+   * own — but the WARNING is not: a plugin the registry has withdrawn is worth saying
+   * out loud whatever can be done about it. An earlier draft gated the whole notice and
+   * would have silently withheld the warning from the one source that cannot act on it.
+   */
+  onRemove?: () => void;
   revocation: null | RevocationEntry;
 }) {
   const { t } = useTranslation();
@@ -51,9 +58,11 @@ export function PluginRevokedNotice({
           <span className="plugin-revoked__note">
             {t("plugin.revoked.keepFiles")}
           </span>
-          <button className="plugin-revoked__remove" onClick={onRemove}>
-            {t("plugin.revoked.remove")}
-          </button>
+          {onRemove && (
+            <button className="plugin-revoked__remove" onClick={onRemove}>
+              {t("plugin.revoked.remove")}
+            </button>
+          )}
         </>
       )}
     </div>

@@ -1,3 +1,4 @@
+import type { PluginSource } from "../../plugins/plugin-sources";
 import type { RevocationEntry } from "../../plugins/revocation";
 import type {
   PluginCapability,
@@ -7,6 +8,7 @@ import type {
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
+import { actionsFor } from "../../plugins/plugin-sources";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 import { PluginRevokedNotice } from "./PluginRevokedNotice";
@@ -23,6 +25,16 @@ interface PluginDetailProps {
   onUpdate: () => void;
   readme?: null | string;
   revocation?: null | RevocationEntry;
+  /**
+   * ‼️ Where the plugin came from, so this screen offers the same action set the row does.
+   *
+   * Optional and defaulting to `community` because every other caller renders a REGISTRY
+   * listing, which is what community means. The Installed tab is the one route that can
+   * reach a built-in, and a built-in is never in `installedPlugins` — it is compiled in,
+   * not installed — so without this `status` read "not-installed" and this screen offered
+   * an enabled Install button wired to an entry whose `downloadUrl` is `""`.
+   */
+  source?: PluginSource;
   status: PluginStatus;
   updateAvailable?: string;
 }
@@ -39,8 +51,13 @@ export function PluginDetail({
   readme,
   onBack,
   revocation,
+  source = "community",
 }: PluginDetailProps) {
   const { t } = useTranslation();
+  // The same single authority the rows use (§3.1). Install is not in that table — it is a
+  // property of a registry listing rather than of an installed row — so it is gated below
+  // on the source directly.
+  const can = actionsFor(source);
   // The full-trust warning moved to `PluginConsentDialog` (§260 Phase 5), which is the
   // step that actually records what the user agreed to. Keeping a second, weaker warning
   // here would have let the two drift apart.
@@ -75,8 +92,10 @@ export function PluginDetail({
           saying so while rendering after the description, the error banner and the
           action buttons; review caught the comment describing an intent the code did
           not implement. */}
+      {/* Gated like the row's copy: the same callback reaching a source that cannot
+          remove is the same defect on this screen, and this screen now knows `can`. */}
       <PluginRevokedNotice
-        onRemove={onUninstall}
+        onRemove={can.canRemove ? onUninstall : undefined}
         revocation={revocation ?? null}
       />
 
@@ -134,8 +153,26 @@ export function PluginDetail({
               {entry.license}
             </span>
           </div>
-          <div style={{ marginTop: "6px" }}>
+          {/* ‼️ A POSITIVE SIGNAL, matching the row's chip. Without it a built-in's detail
+              screen differed from a community plugin's only by the ABSENCE of Update and
+              Uninstall — and an absence explains nothing: it reads the same as a plugin
+              whose update simply has not been found yet. `PluginRow` says "Built-in" here
+              and this screen is reached from that row, so saying it twice is what makes
+              the two surfaces one story. */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "6px",
+            }}
+          >
             <PluginTrustBadge trust={entry.trust} />
+            {source === "builtin" && (
+              <span className="plugin-detail__badge">
+                {t("plugin.builtin.badge")}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -179,33 +216,42 @@ export function PluginDetail({
           </button>
         ) : status === "enabled" || status === "disabled" ? (
           <>
-            <button
-              onClick={onToggleEnabled}
-              style={{
-                padding: "8px 20px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 500,
-                backgroundColor:
-                  status === "enabled"
-                    ? "var(--color-accent-solid)"
-                    : "var(--color-bg-subtle)",
-                color:
-                  status === "enabled"
-                    ? "var(--color-accent-on-solid)"
-                    : "var(--color-text-primary)",
-                border:
-                  status === "enabled"
-                    ? "none"
-                    : "1px solid var(--color-border-default)",
-                cursor: "pointer",
-              }}
-            >
-              {status === "enabled"
-                ? t("plugin.action.enabled")
-                : t("plugin.action.disabled")}
-            </button>
-            {updateAvailable && (
+            {/* ‼️ `can.canToggle`, not the status branch. The branch answers a different
+                question — "is this thing installed enough to act on" — and reading the
+                toggle off it made this the one action here NOT decided by `actionsFor`,
+                while `canUpdate` and `canRemove` below both go through `can`. No live
+                defect: only `builtin` and `community` reach this screen and both toggle.
+                It becomes one the moment a dev row does, which is a planned follow-up,
+                and it would arrive as a control that does nothing. */}
+            {can.canToggle && (
+              <button
+                onClick={onToggleEnabled}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  backgroundColor:
+                    status === "enabled"
+                      ? "var(--color-accent-solid)"
+                      : "var(--color-bg-subtle)",
+                  color:
+                    status === "enabled"
+                      ? "var(--color-accent-on-solid)"
+                      : "var(--color-text-primary)",
+                  border:
+                    status === "enabled"
+                      ? "none"
+                      : "1px solid var(--color-border-default)",
+                  cursor: "pointer",
+                }}
+              >
+                {status === "enabled"
+                  ? t("plugin.action.enabled")
+                  : t("plugin.action.disabled")}
+              </button>
+            )}
+            {can.canUpdate && updateAvailable && (
               <button
                 onClick={onUpdate}
                 style={{
@@ -222,23 +268,25 @@ export function PluginDetail({
                 {t("plugin.action.updateTo", { version: updateAvailable })}
               </button>
             )}
-            <button
-              onClick={onUninstall}
-              style={{
-                padding: "8px 20px",
-                borderRadius: "6px",
-                fontSize: "13px",
-                fontWeight: 500,
-                backgroundColor: "transparent",
-                color: "var(--color-status-danger)",
-                border: "1px solid var(--color-status-danger)",
-                cursor: "pointer",
-              }}
-            >
-              {t("plugin.action.uninstall")}
-            </button>
+            {can.canRemove && (
+              <button
+                onClick={onUninstall}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  backgroundColor: "transparent",
+                  color: "var(--color-status-danger)",
+                  border: "1px solid var(--color-status-danger)",
+                  cursor: "pointer",
+                }}
+              >
+                {t("plugin.action.uninstall")}
+              </button>
+            )}
           </>
-        ) : (
+        ) : source === "builtin" ? null : ( // compiled in — nothing to acquire
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {legacy && (
               <p className="plugin-legacy-note">

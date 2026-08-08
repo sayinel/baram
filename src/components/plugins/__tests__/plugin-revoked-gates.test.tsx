@@ -18,7 +18,11 @@ const pluginUninstall = vi.fn();
 vi.mock("../../../plugins/plugin-loader", () => ({
   pluginLoader: { loadPlugin: vi.fn(), unloadPlugin: vi.fn() },
 }));
-vi.mock("../../../ipc/plugin-invoke", () => ({
+// ‼️ `importOriginal` + spread, not a bare literal — see the note on the same mock in
+// `plugin-install-consent.test.tsx`. `plugin-lifecycle` imports three more names from this
+// module, and a literal factory replaces it for every importer in the graph.
+vi.mock("../../../ipc/plugin-invoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../ipc/plugin-invoke")>()),
   pluginFetchRevocations: () => Promise.reject(new Error("offline")),
   pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),
   pluginInstallDiscard: (...a: unknown[]) => pluginInstallDiscard(...a),
@@ -59,6 +63,15 @@ const ENTRY: RegistryEntry = {
   trust: "sandboxed",
   version: "1.0.0",
 };
+
+/**
+ * The Installed row's Update button, by its accessible name.
+ *
+ * §69 — the row moved to `PluginRowView`, which names every control after its plugin, so
+ * the `/^Update$/` this replaces now matches nothing. An exact string is stricter than that
+ * anchored regex and still cannot collide with the "Updates (1)" tab.
+ */
+const UPDATE_ROW = "Update Demo";
 
 function revoke(severity: RevocationSeverity): void {
   usePluginStore.setState({
@@ -188,10 +201,10 @@ describe("the marketplace update gate (§69)", () => {
     render(<PluginMarketplace />);
     // Driven from the INSTALLED tab, which is where a revoked plugin is actually
     // reachable: once it is pulled from the index, Browse and Updates both lose it.
-    // Its row action is "Update"; the Updates tab's card says "Update to 1.0.0", and
+    // Its row action is "Update Demo"; the Updates tab's card says "Update to 1.0.0", and
     // an /Update/i query matches the "Updates (1)" TAB before either.
     fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: UPDATE_ROW }));
 
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),
@@ -229,7 +242,7 @@ describe("the marketplace update gate (§69)", () => {
     listing = { ...ENTRY, capabilities: ["editor", "network"] };
     render(<PluginMarketplace />);
     fireEvent.click(await screen.findByRole("button", { name: /^Installed/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+    fireEvent.click(await screen.findByRole("button", { name: UPDATE_ROW }));
 
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toBeTruthy(),

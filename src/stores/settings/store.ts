@@ -117,7 +117,7 @@ export const useSettingsStore = create<SettingsState>()(
         keybindingOverrides: state.keybindingOverrides,
         autoCheckUpdates: state.autoCheckUpdates,
       }),
-      version: 16,
+      version: 17,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -310,6 +310,49 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 16) {
           if (state.autoCheckUpdates === undefined) {
             state.autoCheckUpdates = true;
+          }
+        }
+
+        // v16 → v17: backfill ANY activity-bar id present in
+        // DEFAULT_ACTIVITY_BAR_CONFIG but missing from a persisted config.
+        // Generalizes the v15 zettel-only backfill above — until now, a newly
+        // added item (e.g. "plugins") was invisible AND un-turn-on-able for
+        // anyone who persisted their config before it existed, because
+        // ActivityBar/ActivityBarTab both filter this array instead of
+        // falling back to defaults.
+        if (version < 17) {
+          const cfg = state.activityBarConfig as
+            ActivityBarItemConfig[] | undefined;
+          if (Array.isArray(cfg)) {
+            DEFAULT_ACTIVITY_BAR_CONFIG.forEach((def, defIdx) => {
+              if (cfg.some((c) => c.id === def.id)) return;
+
+              // Insert right after the nearest preceding default id the user
+              // already has, so a mid-list item lands mid-list rather than
+              // at the end. Falls back to the front of its own section when
+              // no such predecessor is present (e.g. it's the first default
+              // item, or none of its predecessors survived).
+              let insertAt = -1;
+              for (let i = defIdx - 1; i >= 0; i--) {
+                const idx = cfg.findIndex(
+                  (c) => c.id === DEFAULT_ACTIVITY_BAR_CONFIG[i].id,
+                );
+                if (idx >= 0) {
+                  insertAt = idx;
+                  break;
+                }
+              }
+
+              if (insertAt >= 0) {
+                cfg.splice(insertAt + 1, 0, { ...def });
+              } else {
+                const sectionIdx = cfg.findIndex(
+                  (c) => c.section === def.section,
+                );
+                if (sectionIdx >= 0) cfg.splice(sectionIdx, 0, { ...def });
+                else cfg.push({ ...def });
+              }
+            });
           }
         }
 

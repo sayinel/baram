@@ -11,7 +11,12 @@ import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 interface PluginCardProps {
   entry: RegistryEntry;
   error?: string;
-  onInstall: () => void;
+  /**
+   * ‼️ OPTIONAL — absent means this card cannot be installed from, and no button is drawn.
+   * The Updates tab passed a no-op to satisfy a required prop; that is the dead callback
+   * this work removes rather than a way to fill the slot.
+   */
+  onInstall?: () => void;
   onSelect: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
@@ -235,7 +240,7 @@ export function PluginCard({
             >
               {t("plugin.action.uninstall")}
             </button>
-          ) : (
+          ) : !onInstall ? null : ( // nothing wired this card to an install
             // §260 Phase 5 code review (M1) — a legacy entry (no `trust`) cannot be
             // installed: `validateManifest` rejects a trust-less manifest, so an enabled
             // button here only downloads and then fails. Both plugins in the live registry

@@ -123,7 +123,16 @@ describe("Installed tab surfaces the load error text", () => {
 
     const named = /Remove/.exec(remedy());
     expect(named, "the message must name a control").not.toBeNull();
-    expect(screen.getByRole("button", { name: named![0] })).toBeInTheDocument();
+    // §69 — a matcher WIDENING, and the derivation above is the reason it must stay a
+    // derivation. The row moved to `PluginRowView`, which qualifies every control's
+    // accessible name with the plugin ("Remove AI Summary") so a screen reader can tell two
+    // rows apart, so the exact-string match no longer lands. Substituting the new literal
+    // would sever this from `remedy()` and the test would then pass even if the message
+    // stopped naming any control at all — which is the whole property under test. The
+    // VISIBLE button text is still `named[0]`; only the aria-label grew.
+    expect(
+      screen.getByRole("button", { name: new RegExp(named![0]) }),
+    ).toBeInTheDocument();
   });
 
   it("renders no error region for a plugin that loaded fine", () => {

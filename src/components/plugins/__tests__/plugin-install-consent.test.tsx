@@ -39,7 +39,14 @@ vi.mock("../../../plugins/plugin-loader", () => ({
     unloadPlugin: (...a: unknown[]) => unloadPlugin(...a),
   },
 }));
-vi.mock("../../../ipc/plugin-invoke", () => ({
+// ‼️ `importOriginal` + spread, not a bare literal. A literal factory replaces the module
+// for EVERY importer in the graph, and `plugin-lifecycle` (reached through the
+// marketplace's built-in toggle) imports `pluginListDev`/`pluginPrepareScopes`/
+// `toInstalledDevPlugin` from here — so a literal dies at collection with "No pluginListDev
+// export is defined on the mock", in the file that carries the §260 consent assertions.
+// The overrides sit BELOW the spread, so they still win.
+vi.mock("../../../ipc/plugin-invoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../ipc/plugin-invoke")>()),
   pluginInstallCommit: (...a: unknown[]) => pluginInstallCommit(...a),
   pluginInstallDiscard: (...a: unknown[]) => pluginInstallDiscard(...a),
   pluginInstallStage: (...a: unknown[]) => pluginInstallStage(...a),
@@ -568,7 +575,11 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
 
     render(<PluginMarketplace />);
     fireEvent.click(screen.getByRole("button", { name: /^Installed/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+    // §69 — the row's controls carry name-qualified accessible names since the Installed
+    // tab moved to `PluginRowView`, so the old `/^Update$/` matches nothing. The exact
+    // string is stricter than the anchored regex it replaces and still cannot collide with
+    // the "Updates (1)" tab, which is what that anchor was for.
+    fireEvent.click(await screen.findByRole("button", { name: "Update Demo" }));
 
     await waitFor(() =>
       expect(usePluginStore.getState().pluginErrors.demo).toMatch(
@@ -592,7 +603,8 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
 
     render(<PluginMarketplace />);
     fireEvent.click(screen.getByRole("button", { name: /^Installed/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /^Update$/ }));
+    // Name-qualified since the row moved to `PluginRowView` — see the note above.
+    fireEvent.click(await screen.findByRole("button", { name: "Update Demo" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("NEW");
