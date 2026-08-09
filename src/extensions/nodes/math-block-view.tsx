@@ -1,12 +1,6 @@
 // §5.3 Math Block NodeView — selected: textarea + preview, unselected: KaTeX only
 // §11.2.3 AI button on hover
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Node as PmNode } from "@tiptap/pm/model";
 
@@ -48,27 +42,10 @@ export function MathBlockView({
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
   vimGateEditorRef.current = editor;
+  // A CLICK is an explicit request to edit and bypasses the modal gate;
+  // keyboard traversal does not. Consumed on entry, cleared on deselect.
+  const enterByClickRef = useRef(false);
 
-  // §298 Phase 1 (PR 307 review) — REACTIVE, and that is the whole point.
-  // The focus effect below refuses to open the textarea while vim is modal,
-  // because j/k land ON a math block as an atom line. Pressing `i` is how the
-  // user asks to go in, but it leaves `selected` untouched, so an effect keyed
-  // on selection alone never re-ran: the block showed its editing chrome with
-  // nothing focused, and the next keystroke went to ProseMirror instead —
-  // typing landed outside the formula. Subscribing to the modal flip makes
-  // `i` the trigger it always looked like it was.
-  const vimModal = useSyncExternalStore(
-    useCallback(
-      (onChange: () => void) => {
-        editor.on("transaction", onChange);
-        return () => {
-          editor.off("transaction", onChange);
-        };
-      },
-      [editor],
-    ),
-    () => isWysiwygVimModal(editor.state),
-  );
   // Save-on-deselect fires only after REAL typing in an edit session — a
   // bare attrs-vs-local comparison writes a stale baseline back over attrs
   // updated while unselected (S5/S6 review R2).
@@ -91,12 +68,6 @@ export function MathBlockView({
   updateAttributesRef.current = updateAttributes;
   const editorRef = useRef(editor);
   editorRef.current = editor;
-  // §298 Phase 1 (PR 307 review) — a CLICK is an explicit request to edit, so
-  // it enters the textarea even while vim is modal. Keyboard traversal is not:
-  // j/k land ON the block as an atom line and `i` is what opens it, which is
-  // why the effect below otherwise refuses to focus during vim normal.
-  const enterByClickRef = useRef(false);
-
   // §perf-large-file: Use shared cache — O(1) per instance, O(n) total per doc change
   useEffect(() => {
     const updateNumber = () => {
@@ -123,7 +94,19 @@ export function MathBlockView({
         updateAttributesRef.current({ formula: localFormulaRef.current });
       }
       enterByClickRef.current = false;
-    } else if (enterByClickRef.current || !vimModal) {
+    } else if (
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state)
+    ) {
+      // §298 §12-⑩ — selection ALONE must not open the block while vim is
+      // modal: j/k traversal lands a NodeSelection on an atom line and that
+      // is navigation, not editing (pinned in editor-chrome.test.tsx).
+      //
+      // The two explicit entries bypass the gate instead: a click sets the
+      // flag below, and the `i` key is handled by vim's own preflight
+      // (adapters/atom-insert.ts), which focuses this textarea directly —
+      // the textarea already exists here, because the editing render is
+      // driven by `selected`, not by focus.
       enterByClickRef.current = false;
       editDirtyRef.current = false;
       setLocalFormula(formulaRef.current);
@@ -142,11 +125,10 @@ export function MathBlockView({
         }
       }, 0);
     }
-    // `vimModal` belongs here: leaving normal mode with the block already
-    // selected is exactly the `i` case. The other values are read through
-    // refs on purpose — localFormula changes on every keystroke and would
-    // re-focus the textarea mid-typing.
-  }, [selected, vimModal]);
+    // Selection is the only trigger. Everything else is read through refs on
+    // purpose — localFormula changes on every keystroke and would re-focus
+    // the textarea mid-typing.
+  }, [selected]);
 
   // Auto-resize textarea
   useTextareaAutoResize(textareaRef, localFormula, selected);
@@ -215,8 +197,8 @@ export function MathBlockView({
   const handlePreviewClick = useCallback(() => {
     const pos = getPos();
     if (typeof pos !== "number") return;
-    // Set BEFORE the selection change: the effect that focuses the textarea
-    // runs on the render this dispatch causes.
+    // Set BEFORE the selection change: the focus effect runs on the render
+    // this dispatch causes.
     enterByClickRef.current = true;
     editor.commands.setNodeSelection(pos);
   }, [editor, getPos]);

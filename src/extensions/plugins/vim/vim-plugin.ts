@@ -37,6 +37,7 @@ import {
   broadcastCodeBlockEditable,
   broadcastCodeBlockVim,
 } from "../../nodes/views/code-block-cm-registry";
+import { planAtomInsert } from "./adapters/atom-insert";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
@@ -173,6 +174,11 @@ export function createVimPlugin(
           event.preventDefault();
           event.stopPropagation();
           if (runSelectionCommand(view, result, vim.core.visual)) return true;
+          // §D1: an atom decides insert entry BEFORE the mode is dispatched.
+          // `editable` is derived from the mode, so a veto afterwards would
+          // already have opened an editable view over a live NodeSelection —
+          // the state where typing replaces the selected node.
+          if (runAtomInsert(view, result)) return true;
           dispatchMeta(view, { core: result.state, type: "core" });
           if (result.command) {
             // PRE-step visual: step() clears it on the visual→normal
@@ -466,6 +472,45 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         }),
         suspended: meta.suspended,
       };
+  }
+}
+
+/**
+ * §D1 insert-entry preflight for atoms. Returns true when the key is fully
+ * handled here, so the caller must NOT dispatch the core's insert state.
+ *
+ * Three outcomes, none of which may leave a live NodeSelection under an
+ * editable view:
+ *
+ * - inline atom → place an exact caret, then let insert proceed. `i` before
+ *   the atom, `a` after: those are real text positions inside the textblock.
+ * - block atom with an editing island → ask the island for focus and stay in
+ *   NORMAL. The `focusin` that follows suspends vim, which is what actually
+ *   hands the keys over; we never assume it succeeded, so a NodeView that
+ *   mounts its input asynchronously simply takes longer, and one that fails
+ *   leaves the document modal and intact.
+ * - block atom without an island → consume the key and stay in normal. `o`/`O`
+ *   are how vim adds a line next to something it cannot enter.
+ */
+function runAtomInsert(view: EditorView, result: StepResult): boolean {
+  const command = result.command;
+  if (command?.type !== "enterInsert") return false;
+
+  const plan = planAtomInsert(view, command.at);
+  switch (plan.kind) {
+    case "caret": {
+      const tr = view.state.tr.setSelection(plan.selection);
+      view.dispatch(tr.scrollIntoView());
+      dispatchMeta(view, { core: result.state, type: "core" });
+      return true;
+    }
+    case "island":
+      plan.enter();
+      return true;
+    case "ordinary":
+      return false;
+    case "refuse":
+      return true;
   }
 }
 
