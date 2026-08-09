@@ -587,6 +587,7 @@
   "plugin.marketplace.viewDetails": "{name} 상세 보기",
   "plugin.detail.description": "설명",
   "plugin.detail.readme": "README",
+  "plugin.detail.unavailable": "이 플러그인은 더 이상 제공되지 않습니다.",
   "plugin.detail.capabilities": "권한",
   "plugin.detail.capabilitiesNone": "별도 권한이 필요하지 않습니다",
   "plugin.detail.links": "링크",

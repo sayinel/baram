@@ -11,12 +11,21 @@ export interface EditorTab {
   isDirty: boolean;
   /** §38 Tab Pin */
   isPinned: boolean;
+  /**
+   * §69 Which plugin a `type: "plugin"` tab shows. Only that type sets it.
+   *
+   * ‼️ Deliberately NOT parked in `filePath`: the graph tab could get away with
+   * `filePath: ""` because it needs no payload, but a plugin id in that field would be
+   * read as a path by `handleSave` (which offers Save As for a falsy path) and by the
+   * tab-switching loader.
+   */
+  pluginId?: string;
   title: string;
   /** Tab type — defaults to "file" for backward compat */
   type?: EditorTabType;
 }
 
-export type EditorTabType = "file" | "graph";
+export type EditorTabType = "file" | "graph" | "plugin";
 
 interface EditorState {
   activeTabId: null | string;
@@ -42,6 +51,8 @@ interface EditorState {
   mruOrder: string[];
   /** Open graph view as a singleton tab */
   openGraphTab: () => void;
+  /** §69 Open a plugin's detail view as a singleton tab PER PLUGIN */
+  openPluginTab: (pluginId: string, title: string) => void;
   openTab: (tab: EditorTab) => void;
   /** §38 Pin a tab — moves to end of pinned group */
   pinTab: (tabId: string) => void;
@@ -64,12 +75,23 @@ interface EditorState {
   /** §38 Unpin a tab — moves to start of unpinned group */
   unpinTab: (tabId: string) => void;
 }
-export function isFileTab(tab: EditorTab | undefined): boolean {
+/**
+ * A type predicate, not just a boolean: callers that pass the result as a gate — "return
+ * unless this is a file tab" — then get `filePath` narrowed for free, which is what makes
+ * the inverted guards (`if (!isFileTab(tab)) return;`) readable instead of needing a second
+ * `tab &&` beside them.
+ */
+export function isFileTab(tab: EditorTab | undefined): tab is EditorTab {
   return !!tab && (!tab.type || tab.type === "file");
 }
 
 export function isGraphTab(tab: EditorTab | undefined): boolean {
   return tab?.type === "graph";
+}
+
+/** §69 Plugin detail tab — a rendered control surface, not a document. */
+export function isPluginTab(tab: EditorTab | undefined): boolean {
+  return tab?.type === "plugin";
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -323,6 +345,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       isDirty: false,
       isPinned: false,
       type: "graph",
+    });
+  },
+
+  openPluginTab: (pluginId, title) => {
+    const { tabs, openTab: open, setActiveTab } = get();
+    // Singleton per plugin — NOT per type. The graph tab is one screen; this one is a
+    // screen per plugin, so keying on `type` alone would show plugin A's detail under
+    // plugin B's tab.
+    const existing = tabs.find(
+      (t) => t.type === "plugin" && t.pluginId === pluginId,
+    );
+    if (existing) {
+      setActiveTab(existing.id);
+      return;
+    }
+    open({
+      contextId: "",
+      id: crypto.randomUUID(),
+      filePath: "",
+      pluginId,
+      title,
+      isDirty: false,
+      isPinned: false,
+      type: "plugin",
     });
   },
 

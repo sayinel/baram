@@ -9,6 +9,7 @@ import type {
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
 import { actionsFor } from "../../plugins/plugin-sources";
+import MarkdownRenderer from "../ai/MarkdownRenderer";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 import { PluginRevokedNotice } from "./PluginRevokedNotice";
@@ -352,25 +353,15 @@ export function PluginDetail({
           >
             {t("plugin.detail.readme")}
           </h3>
-          <pre
-            style={{
-              margin: 0,
-              padding: "12px",
-              borderRadius: "6px",
-              fontSize: "13px",
-              lineHeight: 1.6,
-              backgroundColor: "var(--color-bg-subtle)",
-              color: "var(--color-text-secondary)",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              overflowX: "auto",
-              border: "1px solid var(--color-border-default)",
-              maxHeight: "300px",
-              overflowY: "auto",
-            }}
-          >
-            {readme}
-          </pre>
+          {/* ‼️ Rendered, not dumped. This was a `<pre>` holding the raw source, so a
+              markdown editor showed a markdown document with its headings, links and code
+              fences as plain text. `MarkdownRenderer` is the same component the Help panel
+              uses for `docs/*.md`, and it sanitises link and image URLs — this content comes
+              from a plugin author. The 300px clamp is gone with it: this screen now owns a
+              whole editor tab. */}
+          <div className="plugin-detail-readme">
+            <MarkdownRenderer content={readme} />
+          </div>
         </div>
       )}
 

@@ -15,7 +15,7 @@ import {
 } from "../pipeline/md-to-pm";
 import { parseMdastAsync } from "../pipeline/parse-async";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
-import { isFileTab, isGraphTab, useEditorStore } from "../stores/editor/editor";
+import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import {
   mdOffsetToPmPos,
   pmPosToMdOffset,
@@ -97,14 +97,11 @@ export function useSourceMode({
     const { tabs: currentTabs, activeTabId: currentTabId } =
       useEditorStore.getState();
     const currentTab = currentTabs.find((t) => t.id === currentTabId);
-    // Graph tab / non-MD file — source mode not applicable
-    if (isGraphTab(currentTab)) return;
-    if (
-      currentTab &&
-      isFileTab(currentTab) &&
-      !isMarkdownFile(currentTab.filePath)
-    )
-      return;
+    // Graph / plugin tab — no document to show as source. ‼️ Asked as "is this a file?":
+    // the non-MD check below is itself gated on `isFileTab`, so an enumerated check here
+    // left every non-file type falling through BOTH guards into the toggle.
+    if (!isFileTab(currentTab)) return;
+    if (!isMarkdownFile(currentTab.filePath)) return;
 
     if (!isSourceMode) {
       // WYSIWYG → Source: collapse any active syntax reveal expansion first

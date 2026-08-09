@@ -82,7 +82,7 @@ import {
 } from "./services/app-update";
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
-import { isFileTab, isGraphTab } from "./stores/editor/editor";
+import { isFileTab, isGraphTab, isPluginTab } from "./stores/editor/editor";
 import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
@@ -159,6 +159,11 @@ const AboutModal = lazy(() =>
 const UpdateDialog = lazy(() =>
   import("./components/settings/UpdateDialog").then((m) => ({
     default: m.UpdateDialog,
+  })),
+);
+const PluginDetailTab = lazy(() =>
+  import("./components/plugins/PluginDetailTab").then((m) => ({
+    default: m.PluginDetailTab,
   })),
 );
 const GraphViewTab = lazy(() =>
@@ -262,6 +267,12 @@ function App() {
   const isGraphTabActive = useEditorStore((s) =>
     isGraphTab(s.tabs.find((t) => t.id === s.activeTabId)),
   );
+  // §69 A string, not a boolean: the id both selects the branch and is the payload the
+  // detail host needs, and a primitive keeps this a stable selector without `useShallow`.
+  const activePluginId = useEditorStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    return isPluginTab(tab) ? (tab?.pluginId ?? null) : null;
+  });
   const markDirty = useEditorStore((s) => s.markDirty);
   const rootPath = useFileStore((s) => s.rootPath);
 
@@ -501,7 +512,7 @@ function App() {
   // data loss for the user, from an API that reported success.
   useEffect(() => {
     pluginLoader.setEditorSurfaceBlocked(
-      isGraphTabActive || isPdfTab
+      isGraphTabActive || !!activePluginId || isPdfTab
         ? "no document is open in the editor"
         : isSourceMode
           ? "the document is open in source mode, so the editor is not its content"
@@ -509,7 +520,7 @@ function App() {
             ? "the active tab is not a markdown document"
             : null,
     );
-  }, [isCodeFile, isGraphTabActive, isPdfTab, isSourceMode]);
+  }, [activePluginId, isCodeFile, isGraphTabActive, isPdfTab, isSourceMode]);
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
@@ -783,13 +794,15 @@ function App() {
               mode={
                 isGraphTabActive
                   ? "graph"
-                  : isPdfTab ||
-                      isImageTab ||
-                      ((isHtmlTab || isPluginPreviewTab) && !isHtmlSourceView)
-                    ? "preview"
-                    : isCodeFile || isSourceMode
-                      ? "source"
-                      : "wysiwyg"
+                  : activePluginId
+                    ? "plugin"
+                    : isPdfTab ||
+                        isImageTab ||
+                        ((isHtmlTab || isPluginPreviewTab) && !isHtmlSourceView)
+                      ? "preview"
+                      : isCodeFile || isSourceMode
+                        ? "source"
+                        : "wysiwyg"
               }
             />
           ) : undefined
@@ -839,6 +852,12 @@ function App() {
             <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
                 <GraphViewTab />
+              </Suspense>
+            </div>
+          ) : activePluginId ? (
+            <div className="editor-area-scroll" data-editor-scroll>
+              <Suspense fallback={null}>
+                <PluginDetailTab pluginId={activePluginId} />
               </Suspense>
             </div>
           ) : isPdfTab && activeTabFilePath ? (

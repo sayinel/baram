@@ -213,3 +213,39 @@ describe("StatusBar — live word count", () => {
     expect(screen.queryByText("2 words")).not.toBeInTheDocument();
   });
 });
+
+// §69 The mode indicator, and what it withholds.
+//
+// ‼️ The right-hand panel was gated on `mode !== "graph"` — an enumerated check, so every
+// mode added after it inherited a panel confidently reporting "0 words, Ln 1, Col 1" about a
+// tab holding no text. `DOCUMENT_MODES` inverts that to an allowlist; these tests pin both
+// directions, because the negative alone also passes for a status bar that renders nothing.
+describe("StatusBar — modes without a document", () => {
+  beforeEach(() => {
+    useEditorStore.setState({ activeTabId: null, tabs: [] });
+  });
+
+  it("names the plugin mode and withholds the word count", () => {
+    render(<StatusBar editor={null} mode="plugin" />);
+
+    expect(screen.getByText("Plugin")).toBeInTheDocument();
+    expect(screen.queryByText(/words$/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Ln /u)).not.toBeInTheDocument();
+  });
+
+  it("withholds it for the graph mode too", () => {
+    render(<StatusBar editor={null} mode="graph" />);
+
+    expect(screen.getByText("Graph")).toBeInTheDocument();
+    expect(screen.queryByText(/words$/u)).not.toBeInTheDocument();
+  });
+
+  it("still reports it for a document mode", () => {
+    // The complement. Without it, the two tests above pass against an allowlist that
+    // excludes everything.
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+
+    expect(screen.getByText(/words$/u)).toBeInTheDocument();
+    expect(screen.getByText(/^Ln /u)).toBeInTheDocument();
+  });
+});

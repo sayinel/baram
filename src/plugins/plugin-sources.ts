@@ -5,7 +5,7 @@
 // Updates 탭은 죽은 `onInstall` 콜백을 넘겼다.
 import type { BuiltinPlugin } from "./builtin";
 import type { RevocationList } from "./revocation";
-import type { InstalledPlugin, PluginManifest } from "./types";
+import type { InstalledPlugin, PluginManifest, RegistryEntry } from "./types";
 
 import { BUILTIN_PLUGINS } from "./builtin";
 import { revocationFor } from "./revocation";
@@ -111,6 +111,39 @@ export function buildPluginRows(input: BuildRowsInput): PluginRow[] {
   }
 
   return rows;
+}
+
+/**
+ * §69 한 pluginId의 출처. `selectManifest`와 **같은 순서**로 판단한다 — 두 함수가 다른
+ * 순서를 쓰면 한 화면이 A의 매니페스트에 B의 액션 표를 붙인다.
+ *
+ * 어디에도 없으면 `community`: 아직 설치하지 않은 레지스트리 리스팅이 그 경우이고,
+ * 커뮤니티가 정확히 그 뜻이다(`PluginDetail`의 기본값과 동일).
+ */
+export function derivePluginSource(
+  sources: {
+    devPlugins: Record<string, InstalledPlugin>;
+    installedPlugins: Record<string, InstalledPlugin>;
+  },
+  pluginId: string,
+): PluginSource {
+  if (sources.installedPlugins[pluginId]) return "community";
+  if (sources.devPlugins[pluginId]) return "dev";
+  if (BUILTIN_PLUGINS.some((b) => b.manifest.id === pluginId)) return "builtin";
+  return "community";
+}
+
+/**
+ * 설치된 매니페스트로부터 상세 화면이 읽는 모양을 합성한다.
+ *
+ * `downloadUrl`은 비어 있다. `handleUpdate`가 리스팅을 재해석하므로(§260 Phase 5 코드
+ * 리뷰 H2) 그것을 신뢰하지 않고, 비어 있는 값이 "이 화면에서 받을 것은 없다"를 말한다.
+ */
+export function entryFromManifest(
+  manifest: PluginManifest,
+  checksum = "",
+): RegistryEntry {
+  return { ...manifest, checksum, downloadUrl: "", downloads: undefined };
 }
 
 /**
