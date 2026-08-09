@@ -22,7 +22,7 @@ import type {
   VisualState,
 } from "./core/types";
 import type { Editor as TiptapEditor } from "@tiptap/core";
-import type { EditorState } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import {
@@ -409,6 +409,39 @@ function cursorSelection(state: EditorState, target: number): Selection {
   return Selection.near($target, 1);
 }
 
+/**
+ * Dispatch a transaction that MOVES THE CURSOR, and stop the DOM observer from
+ * undoing it.
+ *
+ * A modal surface is non-editable, so ProseMirror never writes vim's selection
+ * to the DOM. The DOM selection therefore still points where the caret used to
+ * be, and `DOMObserver.flush` (installed prosemirror-view :4788) reads that
+ * disagreement as the BROWSER having moved the caret:
+ *
+ *   newSel = !suppressingSelectionUpdates && !currentSelection.eq(sel) && …
+ *   … if (from > -1 || newSel) this.handleDOMChange(…)
+ *
+ * and readDOMChange then restores the stale position. Measured on device: `k`
+ * onto a math block landed and the next keystroke started from the old spot
+ * again, so the cursor looked stuck. Mutations are not involved — an atom
+ * NodeView has no contentDOM, so Tiptap already ignores its mutations, and
+ * `ignoreSelectionChange` consults the desc where the DOM selection SITS (the
+ * paragraph vim just left), not the block it moved to.
+ *
+ * suppressSelectionUpdates() is PM's own answer for a selection the editor set
+ * deliberately; use-source-mode.ts already relies on it for the same reason.
+ * Scoped to vim's cursor dispatches: ordinary editing needs PM's DOM sync, and
+ * muting it there would break far more than it fixes.
+ */
+function dispatchCursor(view: EditorView, tr: Transaction): void {
+  view.dispatch(tr);
+  (
+    view as unknown as {
+      domObserver?: { suppressSelectionUpdates?: () => void };
+    }
+  ).domObserver?.suppressSelectionUpdates?.();
+}
+
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
   view.dispatch(view.state.tr.setMeta(vimPluginKey, meta));
 }
@@ -551,7 +584,7 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
-    view.dispatch(tr);
+    dispatchCursor(view, tr);
     // ONE follow, ours. PM's scrollToSelection bails when the DOM selection
     // sits outside a non-editable view (vim modal), but it does NOT bail
     // when the surface still owns the selection — flagging the transaction
@@ -584,7 +617,7 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
-    view.dispatch(tr);
+    dispatchCursor(view, tr);
     scrollCursorIntoView(view, target); // ops-R8 — see the move path
     return true;
   }
@@ -609,7 +642,7 @@ function runSelectionCommand(
       center = target;
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
-    view.dispatch(tr);
+    dispatchCursor(view, tr);
     scrollCursorToCenter(view, center);
     return true;
   }
@@ -619,7 +652,7 @@ function runSelectionCommand(
       visualSelection(view.state, result.state.visual),
     );
     tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
-    view.dispatch(tr);
+    dispatchCursor(view, tr);
     return true;
   }
 
@@ -629,7 +662,7 @@ function runSelectionCommand(
       cursorSelection(view.state, collapseTarget(preVisual)),
     );
     tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
-    view.dispatch(tr);
+    dispatchCursor(view, tr);
     return true;
   }
 

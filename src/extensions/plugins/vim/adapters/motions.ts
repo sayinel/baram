@@ -362,6 +362,16 @@ function initTableWalk(state: EditorState, pos: number): null | TableWalk {
   };
 }
 
+/** True when `pos` is the content start of a code block.
+ *
+ *  `codeBlock` declares `content: "text*"`, so it reads as a textblock and
+ *  collectLines records it as ONE line — correct for j/k, wrong for the column
+ *  walk, whose unit list would span the block's entire source. */
+function isCodeBlockLanding(state: EditorState, pos: number): boolean {
+  const $pos = state.doc.resolve(pos);
+  return $pos.parent.type.spec.code === true;
+}
+
 /** The END of the last textblock in the node at `pos` — where a leftward
  *  cell hop arrives (cellHop then backs up to the last unit start). */
 function lastTextblockIn(state: EditorState, pos: number): null | number {
@@ -506,6 +516,19 @@ function verticalTarget(
       landed = lines[nextIndex].start;
       lineIndex = nextIndex;
       walkResolved = false; // the landing may have entered a table
+    }
+
+    // A code block is one cursor line here, but its newlines are literal
+    // characters in a single text node — so the column walk would treat the
+    // whole source as one long line and push the caret that many characters
+    // INTO it. Measured on device: from column 12 above, `j` landed on the
+    // block's third line. Entering always means the first line; the
+    // CodeMirror island owns movement inside from then on (Phase 0b).
+    if (isCodeBlockLanding(state, landed)) {
+      p = landed;
+      // Keep the remembered column: leaving the block downward should return
+      // to where the caret was horizontally, as vim does across short lines.
+      continue;
     }
 
     const starts = lineUnitStarts(state, lineSpanAt(state, landed));
