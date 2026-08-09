@@ -1,47 +1,76 @@
-//! §260 Phase 3b — guardrail: the app-command ACL lockdown must stay in sync
-//! across three places or the app silently breaks (a registered command with no
-//! grant is rejected at runtime) or the sandbox boundary leaks (a command granted
-//! to `plugin-*`). This test derives the canonical command set from the
-//! `generate_handler!` list in `src/lib.rs` (the source of truth) and asserts
-//! that `build.rs`'s `AppManifest` and the capability files agree.
+//! §260 — guardrail for the plugin trust boundary: a permission must not be able to
+//! reach a `plugin-*` sandbox webview without a named test failing.
 //!
-//! ‼️ Everything here keys on **which webviews a capability applies to**, never on the
-//! file it lives in. Until 2026-08-09 five of these tests read exactly two hardcoded
-//! paths — `capabilities/default.json` and `capabilities/plugin-sandbox.json` — so a
-//! third file granting anything it liked to `plugin-*` was invisible. Verified rather
-//! than reasoned: adding `capabilities/zz-leak.json` with `core:window:allow-close` on
-//! `"windows": ["plugin-*"]` (a sandboxed plugin able to close the main window) left all
-//! 7 tests green, including `host_tier_can_close_the_webviews_it_creates`, which asserts
-//! in so many words that "the sandbox tier must hold no window permission at all".
+//! Baram runs sandboxed plugins in per-plugin `WebviewWindow`s labelled `plugin-<id>`;
+//! the host realm is `main` plus `file-*`. The canonical command set comes from the
+//! `generate_handler!` list in `src/lib.rs`, and this file asserts that `build.rs`'s
+//! `AppManifest`, the capability files, and the app ACL manifest all agree with it.
 //!
-//! Discovery therefore mirrors tauri's, which was read out of the crates rather than
-//! assumed (tauri-utils 2.9.3, tauri-build 2.6.3, tauri 2.11.5):
+//! ‼️ Everything keys on **which webviews a capability applies to**, never on the file it
+//! lives in. Until 2026-08-09 five tests read exactly two hardcoded paths, so a third
+//! file granting anything to `plugin-*` was invisible. Proven, not reasoned:
+//! `capabilities/zz-leak.json` with `core:window:allow-close` on `"windows":
+//! ["plugin-*"]` left all 7 tests green — including the one that asserts, in so many
+//! words, that "the sandbox tier must hold no window permission at all".
 //!
-//! - `parse_capabilities("./capabilities/**/*")` — **recursive**, so one directory level
-//!   is not enough either; skips files whose parent directory is `schemas`.
-//! - The extension filter is `["json", "toml"]` plus `"json5"` under `config-json5`.
-//!   **`toml` is not feature-gated**: a `.toml` capability is live today, and a
-//!   `.json`-only reader would not see it. This file refuses those extensions instead
-//!   (see `capability_json_files`).
-//! - `get_capabilities` (tauri-utils `acl/mod.rs:353`): if `app.security.capabilities` in
-//!   `tauri.conf.json` is **empty**, every parsed file is live; if it is non-empty, only
-//!   the listed ones are — a `Reference(id)` pulls a file in, an `Inlined(capability)` is
-//!   defined in the config itself and lives nowhere else. Both are handled here, and
-//!   `capability_discovery_sees_both_known_tiers` fails if that list ever silences one.
-//! - A capability applies where `cmd.webviews.iter().any(…) || cmd.windows.iter().any(…)`
-//!   (tauri `ipc/authority.rs:459`). **`webviews` is an independent second axis**, so
-//!   `"webviews": ["plugin-*"]` with no `windows` reaches the sandbox — the per-plugin
-//!   `WebviewWindow` of §260 has one webview whose label is the window label. Both axes
-//!   are unioned into `targets` below. Empty on both = matches nothing.
-//! - `platforms` is deliberately ignored: a capability limited to `["linux"]` is still a
-//!   grant on Linux, and filtering by the host target would hide it from a macOS dev.
+//! ## Every input that can widen the boundary
 //!
-//! Two things are NOT guarded here because tauri already makes them hard errors:
-//! duplicate identifiers across files (`Error::CapabilityAlreadyExists`) and permissions
-//! that name no known command (`validate_capabilities` in tauri-build).
+//! Read out of the crate sources, not assumed (tauri-utils 2.9.3, tauri-build 2.6.3,
+//! tauri-macros 2.6.3, tauri-codegen 2.6.3, tauri 2.11.5). Each line is an input; each
+//! has a test below, because a review found that four of them were unguarded after the
+//! first rewrite:
+//!
+//! 1. **`capabilities/**/*`** — `parse_capabilities` (tauri-build `acl.rs:428`) globs
+//!    recursively. Its schema filter tests only the **immediate parent**
+//!    (tauri-utils `acl/build.rs:217`), so `capabilities/schemas/desktop/x.json` IS
+//!    applied; pruning the whole `schemas` subtree would audit less than tauri does.
+//! 2. **Extensions** — `CAPABILITY_FILE_EXTENSIONS` is `["json", "toml"]` plus `"json5"`
+//!    under `config-json5` (`acl/build.rs:42`). **`toml` is not feature-gated**, so a
+//!    `.toml` capability is live today. Refused here rather than parsed.
+//! 3. **`app.security.capabilities`** — `get_capabilities` (tauri-utils `acl/mod.rs:353`):
+//!    empty ⇒ every parsed file is live; non-empty ⇒ only the listed ones, where
+//!    `Reference(id)` pulls a file in and `Inlined` lives in the config alone.
+//! 4. **Other config files** — `read_from` merges `tauri.<platform>.conf.json[5]` over
+//!    `tauri.conf.json` by RFC-7396 patch (`config/parse.rs:183`), and the CLI merges any
+//!    `--config` file: this repo's release workflow passes `tauri.release.conf.json`. So
+//!    input 3 has several possible homes, including one that only release builds see.
+//! 5. **`generate_context!(capabilities = […])`** — a `Meta::NameValue` the macro accepts
+//!    (tauri-macros `context.rs:66`); `get_capabilities` appends those files
+//!    unconditionally, AFTER the selector, from any path, and tauri-build's
+//!    `validate_capabilities` never sees them (`acl/mod.rs:396-412`).
+//! 6. **`permissions/**/*`** — tauri-build feeds the app manifest from the autogenerated
+//!    directory AND the whole tree (`acl.rs:~317`), and `get_permissions` resolves a
+//!    `[[set]]` BEFORE a permission of the same name (tauri-utils `resolved.rs:358` vs
+//!    `:360`). So a hand-written set can redefine what an already-granted permission id
+//!    expands to, with every capability file byte-identical.
+//! 7. **`deny-*` entries** — `RuntimeAuthority` treats the mere PRESENCE of a denial as
+//!    denial for every window: `denied_commands.get(cmd).map(|r| r.iter().any(..)).is_some()`
+//!    discards the `any` result (tauri `ipc/authority.rs:446-452`).
+//! 8. **`remote` / `local`** — they become the `ExecutionContext` half of the authority
+//!    check (`resolved.rs:218-226`), so `remote.urls` admits a remote origin and
+//!    `local: false` makes a capability tauri does not apply to local content.
+//!
+//! Deliberately not modelled: `platforms`. A capability limited to `["linux"]` is still a
+//! grant on Linux, and filtering by the host target would hide it from a macOS developer,
+//! so every capability is audited on every platform.
+//!
+//! Two things need no guard because tauri already makes them hard errors: duplicate
+//! identifiers across capability files (`CapabilityAlreadyExists`) and permissions naming
+//! no known command (`validate_capabilities`).
+//!
+//! ## Companion guard, elsewhere
+//!
+//! The sandbox's three IPC permissions are pinned here, but its real authority is what the
+//! `plugin_call` broker will do with a request — the `PluginOp` → `CapabilityRequirement`
+//! mapping in `src/plugin/authorizer.rs`, guarded there by
+//! `required_capability_mapping_is_exhaustive_and_not_cross_wired`. A new op gated at
+//! `CapabilityRequirement::None` widens the sandbox without touching any permission string
+//! this file can see. `the_broker_capability_mapping_guard_still_exists` below fails if
+//! that companion test is deleted.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 fn manifest_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -50,6 +79,61 @@ fn manifest_dir() -> PathBuf {
 fn read(rel: &str) -> String {
     let p = manifest_dir().join(rel);
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+}
+
+/// Rust source with comments and string literals blanked, for the drift guards that scan
+/// code for a call that must (not) be there.
+///
+/// Both comment forms are removed, and string bodies with them. A raw `contains` over
+/// source has two failure modes and this closes both: a future comment that merely NAMES
+/// the thing becomes a spurious failure (the defect a guard in `src/logging` shipped
+/// with), and a `//` inside a string literal truncates the rest of a line, hiding a real
+/// call after it.
+fn code_only(rel: &str) -> String {
+    let src = read(rel);
+    let mut out = String::with_capacity(src.len());
+    let mut chars = src.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '/' if chars.peek() == Some(&'/') => {
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
+            }
+            '/' if chars.peek() == Some(&'*') => {
+                chars.next();
+                let mut prev = '\0';
+                for c in chars.by_ref() {
+                    if prev == '*' && c == '/' {
+                        break;
+                    }
+                    if c == '\n' {
+                        out.push('\n');
+                    }
+                    prev = c;
+                }
+            }
+            '"' => {
+                out.push('"');
+                while let Some(c) = chars.next() {
+                    match c {
+                        '\\' => {
+                            chars.next();
+                        }
+                        '"' => break,
+                        '\n' => out.push('\n'),
+                        _ => {}
+                    }
+                }
+                out.push('"');
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Normalize a command/permission stem so `-` and `_` compare equal. Command
@@ -114,21 +198,31 @@ struct Capability {
     /// `windows` ∪ `webviews` — the two axes tauri ORs at invoke time.
     targets: BTreeSet<String>,
     /// Permission identifiers, `norm`-alized. Colon-prefixed plugin/core
-    /// permissions are kept whole; bare app-command grants keep their `allow_` stem.
+    /// permissions are kept whole; bare grants keep their `allow_` / `deny_` stem.
     permissions: BTreeSet<String>,
+    /// `local` as written — `None` when absent (tauri defaults it to `true`).
+    local: Option<bool>,
+    /// `remote.urls` as written; non-empty means non-local origins are admitted.
+    remote_urls: Vec<String>,
 }
 
-/// Every `*.json` under `capabilities/`, recursively.
+/// Every capability file, discovered the way `parse_capabilities` does.
 ///
-/// `.toml` / `.json5` are refused rather than skipped. tauri parses `.toml`
-/// unconditionally, so skipping it would be the same hole this file exists to close;
-/// this repo has one capability format, and a policy is cheaper than a second parser.
-/// Anything that is not a capability format at all (`.DS_Store`, notes) is ignored,
-/// because tauri ignores it too.
-fn capability_json_files() -> Vec<PathBuf> {
+/// The schema filter mirrors tauri exactly: a FILE is skipped when its immediate parent
+/// directory is `schemas`, and every directory is still descended into. Pruning the whole
+/// subtree instead — the first version of this rewrite did — leaves
+/// `capabilities/schemas/desktop/x.json` applied by tauri and audited by nobody. For a
+/// discovery function, seeing less than tauri is the unsafe direction.
+///
+/// `.toml` / `.json5` are refused rather than skipped, because tauri parses `.toml` with
+/// no cargo feature and a JSON-only reader would audit nothing. Extensions that are not a
+/// capability format at all (`.DS_Store`, notes) are ignored, exactly as tauri ignores
+/// them; a `.json` file that is not a capability is a hard error in both (tauri fails the
+/// build in `CapabilityFile::load`, this file panics while parsing).
+fn capability_files() -> Vec<PathBuf> {
     let dir = manifest_dir().join("capabilities");
     let mut files = Vec::new();
-    let mut stack = vec![dir.clone()];
+    let mut stack = vec![dir];
     while let Some(d) = stack.pop() {
         for entry in std::fs::read_dir(&d)
             .unwrap_or_else(|e| panic!("read {}: {e}", d.display()))
@@ -136,11 +230,14 @@ fn capability_json_files() -> Vec<PathBuf> {
         {
             let path = entry.path();
             if path.is_dir() {
-                // tauri skips a file whose PARENT is `schemas`; skipping the whole
-                // subtree is stricter, which is the safe direction for a guard.
-                if path.file_name().is_some_and(|n| n != "schemas") {
-                    stack.push(path);
-                }
+                stack.push(path);
+                continue;
+            }
+            let in_schema_dir = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .is_some_and(|n| n == "schemas");
+            if in_schema_dir {
                 continue;
             }
             match path.extension().and_then(|x| x.to_str()) {
@@ -209,6 +306,15 @@ fn capability_from_json(json: &serde_json::Value, source: &str) -> Capability {
         identifier,
         targets,
         permissions,
+        local: json["local"].as_bool(),
+        remote_urls: json["remote"]["urls"]
+            .as_array()
+            .map(|a| a.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|u| u.as_str())
+            .map(str::to_string)
+            .collect(),
     }
 }
 
@@ -240,7 +346,7 @@ fn capabilities_in_file(path: &Path) -> Vec<Capability> {
 }
 
 /// `app.security.capabilities` from `tauri.conf.json`. Empty (or absent) means every
-/// parsed file is live; see the module header.
+/// parsed file is live; see input 3 in the module header.
 fn config_capability_entries() -> Vec<serde_json::Value> {
     let json: serde_json::Value =
         serde_json::from_str(&read("tauri.conf.json")).expect("parse tauri.conf.json");
@@ -251,34 +357,41 @@ fn config_capability_entries() -> Vec<serde_json::Value> {
 }
 
 /// Every capability that will actually be applied, from every place tauri looks.
-fn live_capabilities() -> Vec<Capability> {
-    let from_files: Vec<Capability> = capability_json_files()
-        .iter()
-        .flat_map(|p| capabilities_in_file(p))
-        .collect();
+///
+/// Cached: the tests below call this a dozen times and it walks the tree and parses every
+/// file each time. Cheap at this size, but the cache also keeps one panic message for an
+/// unclassifiable capability instead of one per caller.
+fn live_capabilities() -> &'static [Capability] {
+    static CACHE: OnceLock<Vec<Capability>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let from_files: Vec<Capability> = capability_files()
+            .iter()
+            .flat_map(|p| capabilities_in_file(p))
+            .collect();
 
-    let entries = config_capability_entries();
-    if entries.is_empty() {
-        return from_files;
-    }
+        let entries = config_capability_entries();
+        if entries.is_empty() {
+            return from_files;
+        }
 
-    let by_id: BTreeMap<&str, &Capability> = from_files
-        .iter()
-        .map(|c| (c.identifier.as_str(), c))
-        .collect();
-    entries
-        .iter()
-        .map(|entry| match entry.as_str() {
-            Some(id) => (*by_id.get(id).unwrap_or_else(|| {
-                panic!(
-                    "tauri.conf.json references capability `{id}`, which no file under \
-                     capabilities/ defines"
-                )
-            }))
-            .clone(),
-            None => capability_from_json(entry, "tauri.conf.json#app.security.capabilities"),
-        })
-        .collect()
+        let by_id: BTreeMap<&str, &Capability> = from_files
+            .iter()
+            .map(|c| (c.identifier.as_str(), c))
+            .collect();
+        entries
+            .iter()
+            .map(|entry| match entry.as_str() {
+                Some(id) => (*by_id.get(id).unwrap_or_else(|| {
+                    panic!(
+                        "tauri.conf.json references capability `{id}`, which no file under \
+                         capabilities/ defines"
+                    )
+                }))
+                .clone(),
+                None => capability_from_json(entry, "tauri.conf.json#app.security.capabilities"),
+            })
+            .collect()
+    })
 }
 
 /// Which tier a capability applies to, by its target globs — `None` if it reaches
@@ -299,39 +412,45 @@ fn tier_of(capability: &Capability) -> Option<Tier> {
     }
 }
 
+fn unclassifiable(capability: &Capability) -> String {
+    format!(
+        "{} declares capability `{}` on {:?}, which is neither the host tier {:?} nor the \
+         sandbox tier {:?} — a `*`, a new window label, or one capability spanning both. \
+         This lockdown cannot say who it grants to. Split it per tier, or extend the tier \
+         constants deliberately.",
+        capability.source, capability.identifier, capability.targets, HOST_TARGETS, SANDBOX_TARGETS,
+    )
+}
+
 /// Union of the permissions every capability in `tier` grants.
 ///
 /// Panics on an unclassifiable capability rather than dropping it: dropping would make
 /// every aggregate assertion below silently blind to exactly the file that needs
-/// auditing. `every_capability_targets_exactly_one_known_tier` reports it properly.
+/// auditing. `every_capability_targets_exactly_one_known_tier` reports it on its own.
 fn permissions_of(tier: Tier) -> BTreeSet<String> {
     let mut perms = BTreeSet::new();
     for capability in live_capabilities() {
-        match tier_of(&capability) {
-            Some(t) if t == tier => perms.extend(capability.permissions),
+        match tier_of(capability) {
+            Some(t) if t == tier => perms.extend(capability.permissions.iter().cloned()),
             Some(_) => {}
-            None => panic!(
-                "{} declares capability `{}` on {:?}, which is neither the host tier {:?} nor \
-                 the sandbox tier {:?} — this lockdown cannot say who it grants to",
-                capability.source,
-                capability.identifier,
-                capability.targets,
-                HOST_TARGETS,
-                SANDBOX_TARGETS,
-            ),
+            None => panic!("{}", unclassifiable(capability)),
         }
     }
     perms
 }
 
-/// App-command allow-permissions within a permission set: bare `allow_*` entries with
-/// no plugin `:` prefix (core/plugin perms like `core:window:allow_create` or
-/// `clipboard-manager:allow_write_image` are excluded by the `:` test).
+/// Bare app-command grants within a permission set: `allow_*` entries with no plugin `:`
+/// prefix (core/plugin perms like `core:window:allow_create` are excluded by the `:`
+/// test). `deny_*` is not an allowance and is guarded separately by
+/// `no_capability_denies_a_command`.
 fn app_commands(permissions: &BTreeSet<String>) -> BTreeSet<String> {
     permissions
         .iter()
-        .filter(|p| !p.contains(':') && p.starts_with("allow_"))
-        .map(|p| p.trim_start_matches("allow_").to_string())
+        .filter(|p| !p.contains(':'))
+        // `strip_prefix`, not `trim_start_matches`: the latter strips a repeated prefix,
+        // so `allow_allow_x` would become `x`.
+        .filter_map(|p| p.strip_prefix("allow_"))
+        .map(str::to_string)
         .collect()
 }
 
@@ -375,9 +494,9 @@ fn capability_discovery_sees_both_known_tiers() {
     }
 }
 
-/// Everything above walks `capabilities/` because that is tauri-build's default
+/// Input 1 — everything above walks `capabilities/` because that is tauri-build's default
 /// (`parse_capabilities("./capabilities/**/*")`, taken when `Attributes` carries no
-/// `capabilities_path_pattern` — verified: `build.rs` passes only `app_manifest`).
+/// `capabilities_path_pattern`).
 ///
 /// Overriding the pattern would point tauri at a different tree while this file kept
 /// auditing the old one — the whole suite green about files nobody applies. That is the
@@ -385,43 +504,184 @@ fn capability_discovery_sees_both_known_tiers() {
 /// against the source instead.
 #[test]
 fn capability_discovery_uses_the_same_root_as_tauri_build() {
-    // Comment lines are stripped first. build.rs is heavily commented, and a naive
-    // `contains` would turn any future note that merely NAMES the method into a failure —
-    // the same defect a guard in `src/logging` shipped with, where a `.setup(` inside its
-    // own comment was counted as a call site.
-    let build_rs: String = read("build.rs")
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("//"))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let build_rs = code_only("build.rs");
     assert!(
         !build_rs.contains("capabilities_path_pattern"),
         "build.rs overrides the capability path pattern, so `capabilities/` is no longer \
-         where tauri looks. Point `capability_json_files` at the same tree, or this lockdown \
+         where tauri looks. Point `capability_files` at the same tree, or this lockdown \
          audits files that are not applied and misses the ones that are."
     );
 }
 
-/// §260 Phase 3c-3 (security review, M6) — the tiers are only separated if their target
-/// globs stay separated, and until 2026-08-09 only two known files were checked.
+/// Input 4 — `tauri.conf.json` is not the only config. `read_from` merges
+/// `tauri.<platform>.conf.json[5]` over it by RFC-7396 patch (tauri-utils
+/// `config/parse.rs:183`), and the CLI merges whatever `--config` names — this repo's
+/// release workflow passes `src-tauri/tauri.release.conf.json`, which is how that file was
+/// found: by this test failing on its first run.
 ///
-/// Adding `plugin-*` (or `*`) to the host capability would hand sandbox webviews the
-/// entire host command set — and, since 3c-3, the ability to close the main window.
+/// So `app.security.capabilities` has several possible homes and `config_capability_entries`
+/// reads one. A selector added to any of the others would reselect the live capability set
+/// for those builds — the release build, in the `--config` case — while
+/// `capability_discovery_sees_both_known_tiers` kept passing, because the list IT reads is
+/// still absent.
+///
+/// Rather than model tauri's merge, this asserts the property that makes reading one file
+/// correct: **only `tauri.conf.json` declares the selector**. That covers platform configs,
+/// `--config` configs and future variants alike, instead of enumerating names — an
+/// enumeration would admit the next one by default.
+#[test]
+fn only_the_canonical_config_declares_the_capability_selector() {
+    let dir = manifest_dir();
+    let mut checked_canonical = false;
+    for entry in std::fs::read_dir(&dir).expect("read src-tauri/").flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_json_config = name.starts_with("tauri") && name.contains(".conf.json");
+        // A TOML config would need a parser this test does not have, and this repo has no
+        // TOML config; refuse one rather than skip it, as with `.toml` capabilities.
+        assert!(
+            !(name.starts_with("Tauri") && name.ends_with(".toml")),
+            "{name} is a TOML tauri config. It can carry `app.security.capabilities` and this \
+             guard only parses JSON. Convert it, or teach this file that format."
+        );
+        if !is_json_config {
+            continue;
+        }
+        if name == "tauri.conf.json" {
+            checked_canonical = true;
+            continue;
+        }
+        let json: serde_json::Value =
+            serde_json::from_str(&read(&name)).unwrap_or_else(|e| panic!("parse {name}: {e}"));
+        assert!(
+            json["app"]["security"]["capabilities"].is_null(),
+            "{name} declares app.security.capabilities. It is merged over tauri.conf.json \
+             (platform configs automatically, `--config` files when the CLI is given one — \
+             the release workflow passes tauri.release.conf.json), so it reselects the live \
+             capability set for those builds while this lockdown reads only tauri.conf.json. \
+             Move the setting, or teach `config_capability_entries` to merge this file."
+        );
+    }
+    // Non-vacuity: a scan that matched nothing would pass while auditing nothing. The
+    // canonical config is the one file guaranteed to be there.
+    assert!(
+        checked_canonical,
+        "the scan never saw tauri.conf.json in {}, so it is not looking where the configs are",
+        dir.display()
+    );
+}
+
+/// Input 5 — `generate_context!(capabilities = ["…"])` loads capability files from ANY
+/// path (tauri-macros `context.rs:66`), and `get_capabilities` appends them
+/// unconditionally, after the config selector, where tauri-build's `validate_capabilities`
+/// never sees them. A capability injected that way is invisible to every other test here.
+///
+/// Asserted POSITIVELY — the call must be the bare form, and there must be exactly one of
+/// it. An absence check would have to guess how the argument is spelled.
+#[test]
+fn generate_context_injects_no_additional_capabilities() {
+    let lib_rs = code_only("src/lib.rs");
+    let calls = lib_rs.matches("generate_context!").count();
+    assert_eq!(
+        calls, 1,
+        "expected exactly one `generate_context!` in src/lib.rs, found {calls}; this guard \
+         inspects the single call site"
+    );
+    assert!(
+        lib_rs.contains("generate_context!()"),
+        "`generate_context!` in src/lib.rs is not the bare form. Its `capabilities = [...]` \
+         argument injects capability files from any path, bypassing both `capabilities/` and \
+         `app.security.capabilities`, and nothing else in this file would see them. Put the \
+         capability under capabilities/ instead."
+    );
+}
+
+/// Input 6 — the app ACL manifest is fed from `permissions/autogenerated/*` AND from
+/// `permissions/**/*` (tauri-build `acl.rs`), and `get_permissions` resolves a `[[set]]`
+/// before a permission of the same name (tauri-utils `resolved.rs:358` vs `:360`).
+///
+/// So committing `permissions/anything.toml` with
+///
+/// ```toml
+/// [[set]]
+/// identifier = "allow-plugin-sandbox-report"
+/// permissions = ["allow-plugin-sandbox-report", "allow-read-file"]
+/// ```
+///
+/// redefines what an already-granted permission id expands to. `plugin-sandbox.json` stays
+/// byte-identical, `sandbox_tier_grants_exactly_its_allowlist` still sees exactly its three
+/// strings, and a sandboxed plugin gains `read_file`. `permissions/autogenerated` is
+/// gitignored; `permissions/` is not, so the file is committable.
+///
+/// This is why every other test here compares permission *identifiers*: the identifiers are
+/// only meaningful while nothing redefines them.
+#[test]
+fn the_app_acl_manifest_has_no_handwritten_permissions() {
+    let root = manifest_dir().join("permissions");
+    assert!(
+        root.is_dir(),
+        "{} is missing; tauri-build writes the autogenerated app permissions there and this \
+         guard has nothing to check",
+        root.display()
+    );
+
+    let mut seen = 0usize;
+    let mut stack = vec![root.clone()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d)
+            .unwrap_or_else(|e| panic!("read {}: {e}", d.display()))
+            .flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let rel = path.strip_prefix(&root).unwrap_or(&path).to_path_buf();
+            assert!(
+                rel.starts_with("autogenerated"),
+                "{} is a hand-written app permission file. Everything under permissions/ \
+                 joins the app ACL manifest, and a `[[set]]` there can redefine a permission \
+                 id that every capability file already grants — widening a tier while no \
+                 capability file changes. Only permissions/autogenerated/ (written by \
+                 tauri-build) belongs here.",
+                path.display()
+            );
+            let body = std::fs::read_to_string(&path).expect("read permission file");
+            assert!(
+                !body.contains("[[set]]"),
+                "{} declares a permission [[set]]. `get_permissions` resolves a set BEFORE a \
+                 permission of the same name, so a set can shadow an autogenerated \
+                 `allow-<command>` and expand it to other commands.",
+                path.display()
+            );
+            seen += 1;
+        }
+    }
+    // Non-vacuity: one command yields one autogenerated file, and `generate_handler!`
+    // registers over a hundred. A walk that found a handful is broken, not clean.
+    let registered = generate_handler_commands().len();
+    assert!(
+        seen >= registered,
+        "walked only {seen} permission files for {registered} registered commands — the walk \
+         is not seeing the tree it is meant to audit"
+    );
+
+    // …and the same override hazard as the capability pattern: a custom permissions glob
+    // would point tauri at a tree this test does not walk.
+    assert!(
+        !code_only("build.rs").contains("permissions_path_pattern"),
+        "build.rs overrides the app permissions path pattern; point this guard at the same \
+         tree or it audits the wrong one"
+    );
+}
+
 #[test]
 fn every_capability_targets_exactly_one_known_tier() {
     for capability in live_capabilities() {
-        let tier = tier_of(&capability);
         assert!(
-            tier.is_some(),
-            "{} declares capability `{}` on {:?}. A capability is only meaningful together \
-             with the webviews it applies to, and this one reaches outside both known tiers \
-             (host {:?}, sandbox {:?}) — a `*`, a new window label, or one capability \
-             spanning both. Split it per tier, or extend the tier constants deliberately.",
-            capability.source,
-            capability.identifier,
-            capability.targets,
-            HOST_TARGETS,
-            SANDBOX_TARGETS,
+            tier_of(capability).is_some(),
+            "{}",
+            unclassifiable(capability)
         );
     }
 }
@@ -431,27 +691,36 @@ fn the_two_tiers_apply_to_disjoint_window_sets() {
     let mut host: BTreeSet<String> = BTreeSet::new();
     let mut sandbox: BTreeSet<String> = BTreeSet::new();
     for capability in live_capabilities() {
-        match tier_of(&capability) {
-            Some(Tier::Host) => host.extend(capability.targets),
-            Some(Tier::Sandbox) => sandbox.extend(capability.targets),
+        match tier_of(capability) {
+            Some(Tier::Host) => host.extend(capability.targets.iter().cloned()),
+            Some(Tier::Sandbox) => sandbox.extend(capability.targets.iter().cloned()),
             // Reported by `every_capability_targets_exactly_one_known_tier`.
             None => {}
         }
     }
+    // Both directions are named: dropping `file-*` from the host capability breaks the
+    // §89 single-file viewer, and a message about over-granting would describe the
+    // opposite problem. No `is_disjoint` check follows — with both sets pinned to
+    // disjoint constants it could never fail, and the real protection against a `*` is
+    // `tier_of` returning `None`.
+    let expected_host: BTreeSet<String> = HOST_TARGETS.iter().map(|s| s.to_string()).collect();
     assert_eq!(
         host,
-        HOST_TARGETS.iter().map(|s| s.to_string()).collect(),
-        "host capabilities must apply to host windows only"
+        expected_host,
+        "host capabilities must apply to exactly the host windows.\n\
+         unexpected (sandbox reachable from a host capability?): {:?}\nmissing: {:?}",
+        host.difference(&expected_host).collect::<Vec<_>>(),
+        expected_host.difference(&host).collect::<Vec<_>>(),
     );
+    let expected_sandbox: BTreeSet<String> =
+        SANDBOX_TARGETS.iter().map(|s| s.to_string()).collect();
     assert_eq!(
         sandbox,
-        SANDBOX_TARGETS.iter().map(|s| s.to_string()).collect(),
-        "sandbox capabilities must apply to sandbox windows only"
-    );
-    assert!(
-        host.is_disjoint(&sandbox),
-        "the two tiers share a target glob: {:?}",
-        host.intersection(&sandbox).collect::<Vec<_>>()
+        expected_sandbox,
+        "sandbox capabilities must apply to exactly the sandbox windows.\n\
+         unexpected: {:?}\nmissing: {:?}",
+        sandbox.difference(&expected_sandbox).collect::<Vec<_>>(),
+        expected_sandbox.difference(&sandbox).collect::<Vec<_>>(),
     );
 }
 
@@ -500,6 +769,71 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     );
 }
 
+/// Input 7 — a `deny-*` entry is not a narrower grant, it is a global kill switch.
+///
+/// `RuntimeAuthority::resolve_access` reads
+/// `denied_commands.get(cmd).map(|r| r.iter().any(..)).is_some()` (tauri
+/// `ipc/authority.rs:446-452`): `Option::map(..).is_some()` is true whenever the KEY
+/// exists, so the `any()` — the part that consults the window and the origin — is
+/// computed and thrown away. One `deny-read-file` anywhere denies `read_file` to every
+/// window, `main` included.
+///
+/// `app_commands` only collects `allow_*`, so without this test a stray `deny-` would
+/// leave the tier comparisons green while the app silently lost a command — the exact
+/// failure the module header claims to guard.
+#[test]
+fn no_capability_denies_a_command() {
+    for capability in live_capabilities() {
+        let denials: Vec<&String> = capability
+            .permissions
+            .iter()
+            .filter(|p| p.starts_with("deny_") || p.contains(":deny_"))
+            .collect();
+        assert!(
+            denials.is_empty(),
+            "{} grants capability `{}` a denial: {denials:?}. Tauri treats the presence of a \
+             denied command as denial for EVERY window regardless of which capability \
+             declared it, so this removes the command from the host app too.",
+            capability.source,
+            capability.identifier,
+        );
+    }
+}
+
+/// Input 8 — `local` and `remote` decide the `ExecutionContext` half of the authority
+/// check (`resolved.rs:218-226`), which this file otherwise ignores.
+///
+/// Both directions are wrong here: `"remote": {"urls": ["https://*"]}` on the host
+/// capability would let any remote document loaded in `main` invoke every app command,
+/// and `"local": false` would make tauri apply a capability to no local content while
+/// this lockdown still counted its permissions — auditing a grant that is not in force.
+#[test]
+fn every_capability_is_local_and_never_remote() {
+    for capability in live_capabilities() {
+        assert!(
+            capability.remote_urls.is_empty(),
+            "{} lets capability `{}` apply to remote origins {:?}. Baram serves only local \
+             content; a remote URL pattern here hands those origins this tier's commands.",
+            capability.source,
+            capability.identifier,
+            capability.remote_urls,
+        );
+        assert_ne!(
+            capability.local,
+            Some(false),
+            "{} sets `local: false` on capability `{}`, so tauri applies it to no local \
+             content while this lockdown still counts its permissions as granted",
+            capability.source,
+            capability.identifier,
+        );
+    }
+}
+
+/// Kept as a diagnostic rather than as coverage: given
+/// `sandbox_tier_grants_exactly_its_allowlist` and
+/// `main_tier_gets_everything_except_sandbox_only_commands`, both halves below follow
+/// necessarily. It fails with the clearest message of the three when a command is added to
+/// `generate_handler!` and granted nowhere.
 #[test]
 fn every_command_granted_to_exactly_one_tier() {
     let registered = generate_handler_commands();
@@ -617,4 +951,30 @@ fn main_tier_gets_everything_except_sandbox_only_commands() {
         expected.difference(&main).collect::<Vec<_>>(),
         main.difference(&expected).collect::<Vec<_>>(),
     );
+}
+
+/// The sandbox holds `plugin_call`, so its real authority is the broker's
+/// `PluginOp` → `CapabilityRequirement` mapping, not the three permission strings this
+/// file can see. A new op gated at `CapabilityRequirement::None` widens the sandbox with
+/// every capability file untouched.
+///
+/// That mapping is guarded in `src/plugin/authorizer.rs`, and this asserts the guard is
+/// still there — a deleted companion test would otherwise leave this file claiming a
+/// boundary it does not cover. It checks for existence only; the mapping's correctness is
+/// that test's job, not this one's.
+#[test]
+fn the_broker_capability_mapping_guard_still_exists() {
+    let authorizer = read("src/plugin/authorizer.rs");
+    for guard in [
+        "fn required_capability_mapping_is_exhaustive_and_not_cross_wired",
+        "fn the_adversary_attacks_every_plugin_op_variant",
+    ] {
+        assert!(
+            authorizer.contains(guard),
+            "src/plugin/authorizer.rs no longer defines `{guard}`. The sandbox tier's three \
+             IPC permissions are pinned here, but what `plugin_call` will DO is pinned \
+             there; without it a new PluginOp can be gated at CapabilityRequirement::None \
+             and nothing fails."
+        );
+    }
 }
