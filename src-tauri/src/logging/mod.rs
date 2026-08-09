@@ -93,7 +93,21 @@ fn policy() -> Builder {
     builder
 }
 
-/// One record must never be able to become two lines.
+/// Ceiling on one written line, before escaping.
+///
+/// The count bound in `plugin/mod.rs` (`MAX_NAMED_DROPS`) stops many lines from
+/// evicting the log; this stops ONE from doing it. That site interpolates an
+/// attacker-supplied registry `id` with no length of its own, and the index may be
+/// 4 MiB — so a single entry could produce a single line twice the size of the whole
+/// log file, rotating it away and leaving an archive containing nothing but that
+/// line. Bounding it here rather than at the call site makes it a property of the
+/// logger, so the next site that interpolates something remote inherits it.
+///
+/// This does not bound the ALLOCATION: `Arguments` has already been rendered by the
+/// time a formatter sees it. It bounds what reaches the file.
+const MAX_LINE_BYTES: usize = 8 * 1024;
+
+/// One record must never be able to become two lines, or to fill the file.
 ///
 /// Log lines are `[date][time][LEVEL][target] message`, so a newline inside the
 /// message yields a second, complete, attacker-chosen line — in the one file whose
@@ -104,10 +118,22 @@ fn policy() -> Builder {
 /// newline through `convertFileSrc` and into that path. A hostile registry index
 /// gets there more directly still — `plugin/mod.rs` names the offending entry id.
 ///
+/// Applied to the whole formatted line, not just the message: `log::warn!(target:
+/// …)` takes an arbitrary target string, so the prefix is not inherently safe
+/// either, and the prefix contains nothing this would alter.
+///
 /// Escaping every control character (not just `\n`) covers `\r`, NUL and the C1
-/// range in one predicate rather than a list to keep up to date.
+/// range in one predicate rather than a list to keep up to date. `U+2028`/`U+2029`
+/// are not control characters and so are not covered by that predicate, but some
+/// viewers do break lines on them — they are named explicitly for that reason.
+///
+/// Backslashes are deliberately NOT escaped. `\n` in the output is therefore
+/// ambiguous between an escaped newline and a literal backslash-n in the source
+/// string; neither can break a line, and escaping backslashes would turn every
+/// Windows path — the log's main payload — into noise.
 fn escape_control_chars(line: &str) -> Cow<'_, str> {
-    if !line.chars().any(char::is_control) {
+    let (line, overflow) = truncate_on_char_boundary(line, MAX_LINE_BYTES);
+    if overflow == 0 && !line.chars().any(needs_escape) {
         return Cow::Borrowed(line);
     }
     let mut out = String::with_capacity(line.len() + 8);
@@ -116,11 +142,33 @@ fn escape_control_chars(line: &str) -> Cow<'_, str> {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            ch if ch.is_control() => out.push_str(&format!("\\u{{{:04x}}}", ch as u32)),
+            ch if needs_escape(ch) => out.push_str(&format!("\\u{{{:04x}}}", ch as u32)),
             ch => out.push(ch),
         }
     }
+    if overflow > 0 {
+        // Say so in the line itself. A silently shortened record reads as a complete
+        // one, which is the same deception the escaping above exists to prevent.
+        out.push_str(&format!(" …[{overflow} more bytes not logged]"));
+    }
     Cow::Owned(out)
+}
+
+fn needs_escape(ch: char) -> bool {
+    ch.is_control() || ch == '\u{2028}' || ch == '\u{2029}'
+}
+
+/// Split at or below `max` bytes without cutting a `char` in half, returning the
+/// kept prefix and how many bytes were dropped.
+fn truncate_on_char_boundary(line: &str, max: usize) -> (&str, usize) {
+    if line.len() <= max {
+        return (line, 0);
+    }
+    let end = (0..=max)
+        .rev()
+        .find(|&i| line.is_char_boundary(i))
+        .unwrap_or(0);
+    (&line[..end], line.len() - end)
 }
 
 /// A target with the escaping above attached.
@@ -487,6 +535,82 @@ mod tests {
         assert!(
             written.contains("forged\\rand\\u{0000}here"),
             "carriage return and NUL must be escaped too: {written:?}"
+        );
+    }
+
+    #[test]
+    fn a_line_separator_cannot_split_a_record_either() {
+        // U+2028/U+2029 are category Zl/Zp, so `char::is_control` is false for them
+        // and the escaping predicate has to name them. Some viewers break lines on
+        // them, and a forged line only has to fool the person reading the file.
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        emit(
+            &*logger,
+            Level::Warn,
+            "baram_lib::plugin",
+            "before\u{2028}after\u{2029}end",
+        );
+
+        let written = read_log(dir.path());
+        assert!(
+            !written.contains('\u{2028}') && !written.contains('\u{2029}'),
+            "line separators must not survive raw: {written:?}"
+        );
+        assert!(
+            written.contains("before\\u{2028}after\\u{2029}end"),
+            "…and must survive as escapes: {written:?}"
+        );
+    }
+
+    #[test]
+    fn one_record_cannot_fill_the_log_file() {
+        // The companion to `MAX_NAMED_DROPS`, which bounds how MANY lines a hostile
+        // registry index produces but not how BIG one is. `plugin/mod.rs` names the
+        // offending entry id, an id has no length limit of its own, and the index may
+        // be 4 MiB — one line twice the size of the whole log file, rotating every
+        // real diagnostic away and leaving an archive of nothing but that line.
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        let huge = "A".repeat(MAX_LINE_BYTES * 3);
+        emit(&*logger, Level::Warn, "baram_lib::plugin", &huge);
+
+        let written = read_log(dir.path());
+        assert!(
+            written.len() < MAX_LINE_BYTES + 200,
+            "the written line must be bounded, got {} bytes",
+            written.len()
+        );
+        assert!(
+            written.contains("more bytes not logged"),
+            "a shortened record must say so, or it reads as a complete one: {}",
+            &written[written.len().saturating_sub(120)..]
+        );
+    }
+
+    #[test]
+    fn a_multibyte_character_is_not_cut_in_half() {
+        // Truncation happens on byte length, so a naive cut can land inside a UTF-8
+        // sequence — which panics on slicing, in the code path that runs when
+        // something has ALREADY gone wrong. Korean paths make this the normal case
+        // here, not an edge one.
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        // 3 bytes per char, so no multiple of the char width lands on the cap.
+        let korean = "가".repeat(MAX_LINE_BYTES);
+        emit(&*logger, Level::Warn, "baram_lib::tag", &korean);
+
+        let written = read_log(dir.path());
+        assert!(
+            written.contains("가가가"),
+            "the kept prefix must still be readable Korean"
+        );
+        assert!(
+            written.contains("more bytes not logged"),
+            "and it must be marked as shortened"
         );
     }
 
