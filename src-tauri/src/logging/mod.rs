@@ -7,8 +7,9 @@
 //! failure (a denied asset scope, a dropped registry entry, an unreadable revocation
 //! list) were invisible to the user AND to whoever had to debug the user's report.
 //!
-//! [`install`] is called from `lib.rs`'s `setup` hook — deliberately not registered
-//! as a Tauri plugin; see that function for why. The policy it installs:
+//! [`plugin`] is registered first in `lib.rs`'s builder chain and calls [`install`]
+//! from its setup hook; see [`plugin`] for why that position and why it cannot fail.
+//! The policy it installs:
 //!
 //! * **Our code at Info, everything else at Warn.** Stated as an allowlist — the
 //!   default is the strict level and only our own crate is raised — so a dependency
@@ -30,6 +31,7 @@
 //!   UTC, so this does not "improve" to UseLocal.
 
 use std::borrow::Cow;
+use std::fmt::Write as _;
 
 use log::LevelFilter;
 use tauri::plugin::TauriPlugin;
@@ -71,9 +73,19 @@ const MAX_FILE_SIZE: u128 = 2 * 1024 * 1024;
 /// Not a hard guarantee, and the gap is upstream's: rotated names are
 /// second-precision, so two rotations inside one second make the second one rename
 /// the first to `baram_<date>.log.bak`, and the reaper only ever considers names
-/// ending `.log`. Such a file is never reclaimed. Reaching it needs ~4 MiB of log in
-/// one second, which ordinary use does not produce — the one path that could was
-/// `plugin/mod.rs`'s per-entry registry warning, now bounded by `MAX_NAMED_DROPS`.
+/// ending `.log`. Such a file is never reclaimed.
+///
+/// ‼️ Reaching it takes ~4 MiB of log in a second, and there IS a path that produces
+/// it: tauri's asset protocol logs once per request at **error**
+/// (`protocol/asset.rs`), which passes `DEPENDENCY_LEVEL`, and nothing limits how
+/// many requests a document makes. A note with thousands of broken image
+/// destinations therefore evicts the file and both archives as it opens. Only the
+/// per-line size is bounded here (`MAX_LINE_BYTES`) and only the registry site's
+/// COUNT is bounded (`MAX_NAMED_DROPS`) — an earlier version of this comment named
+/// that count as the one path, which was wrong and would let a reader relax the size
+/// bound believing volume was handled. A general rate limit is the missing piece and
+/// is recorded in `dev/backlog.md`; what survives an eviction is the newest records,
+/// which is the right end to keep.
 const KEEP_ROTATED: usize = 2;
 
 /// Everything about WHICH records are kept and how the file is managed, with no
@@ -94,7 +106,7 @@ fn policy() -> Builder {
     builder
 }
 
-/// Ceiling on one written line, before escaping.
+/// Ceiling on the escaped bytes of one written line.
 ///
 /// The count bound in `plugin/mod.rs` (`MAX_NAMED_DROPS`) stops many lines from
 /// evicting the log; this stops ONE from doing it. That site interpolates an
@@ -104,9 +116,10 @@ fn policy() -> Builder {
 /// line. Bounding it here rather than at the call site makes it a property of the
 /// logger, so the next site that interpolates something remote inherits it.
 ///
-/// Applied twice — once to the incoming line and once to the escaped result — because
-/// escaping expands, `\u{0000}` being 8 bytes for one input byte. Bounding only the
-/// input would leave the written line up to 8x this.
+/// The written line is this plus the shortened-record marker (under 40 bytes) plus
+/// fern's newline. Escaping is measured as it is produced rather than truncated
+/// afterwards, because a `\u{0000}` costs 8 bytes for one input byte and cutting the
+/// finished string would leave a half-written escape in the artefact a person reads.
 ///
 /// It does not bound the ALLOCATION: `Arguments` has already been rendered by the
 /// time a formatter sees it. It bounds what reaches the file.
@@ -136,35 +149,47 @@ const MAX_LINE_BYTES: usize = 8 * 1024;
 /// string; neither can break a line, and escaping backslashes would turn every
 /// Windows path — the log's main payload — into noise.
 fn escape_control_chars(line: &str) -> Cow<'_, str> {
-    let (line, overflow) = truncate_on_char_boundary(line, MAX_LINE_BYTES);
-    if overflow == 0 && !line.chars().any(needs_escape) {
+    if line.len() <= MAX_LINE_BYTES && !line.chars().any(needs_escape) {
         return Cow::Borrowed(line);
     }
-    let mut out = String::with_capacity(line.len() + 8);
-    for ch in line.chars() {
-        match ch {
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            ch if needs_escape(ch) => out.push_str(&format!("\\u{{{:04x}}}", ch as u32)),
-            ch => out.push(ch),
+
+    // One pass, stopping when the NEXT escape would not fit. Two earlier shapes were
+    // wrong in ways that only showed up when measured: truncating the input alone let
+    // the written line reach 8x the cap, and truncating the finished string as well
+    // reported `input_dropped + output_dropped` as one figure — a 16 KiB message came
+    // out claiming "65536 more bytes not logged", four times its own size, in the very
+    // line whose job is to stop a shortened record from reading as a complete one.
+    // Measuring as we go leaves exactly one number to report, and cannot cut an escape
+    // sequence in half.
+    let mut out = String::with_capacity(line.len().min(MAX_LINE_BYTES) + 8);
+    let mut kept_input = 0usize;
+    let mut char_buf = [0u8; 4];
+    let mut escape_buf = String::with_capacity(12);
+    for (offset, ch) in line.char_indices() {
+        let piece: &str = match ch {
+            '\n' => "\\n",
+            '\r' => "\\r",
+            '\t' => "\\t",
+            ch if needs_escape(ch) => {
+                escape_buf.clear();
+                let _ = write!(escape_buf, "\\u{{{:04x}}}", ch as u32);
+                escape_buf.as_str()
+            }
+            ch => ch.encode_utf8(&mut char_buf),
+        };
+        if out.len() + piece.len() > MAX_LINE_BYTES {
+            break;
         }
+        out.push_str(piece);
+        kept_input = offset + ch.len_utf8();
     }
-    // Escaping expands: `\u{0000}` is 8 bytes for one input byte, so bounding the
-    // input alone leaves the WRITTEN line up to 8x the cap. Bound the output too, so
-    // the number in the doc is the number that reaches the file.
-    let spilled = {
-        let (kept, spilled) = truncate_on_char_boundary(&out, MAX_LINE_BYTES);
-        let end = kept.len();
-        if spilled > 0 {
-            out.truncate(end);
-        }
-        spilled
-    };
-    if overflow + spilled > 0 {
-        // Say so in the line itself. A silently shortened record reads as a complete
+
+    let dropped = line.len() - kept_input;
+    if dropped > 0 {
+        // Say so in the line itself, in INPUT bytes — the only unit a reader can relate
+        // to the thing that was logged. A silently shortened record reads as a complete
         // one, which is the same deception the escaping above exists to prevent.
-        out.push_str(&format!(" …[{} more bytes not logged]", overflow + spilled));
+        let _ = write!(out, " …[{dropped} more bytes not logged]");
     }
     Cow::Owned(out)
 }
@@ -183,32 +208,40 @@ fn escape_control_chars(line: &str) -> Cow<'_, str> {
 ///   a real override in a path that tauri logs at error.
 ///
 /// These are named as ranges because std cannot test for a Unicode category beyond
-/// Cc without a tables crate. That makes this an enumeration, which is the shape
-/// this codebase distrusts — the residual is recorded in `dev/backlog.md`. The set
-/// is at least closed in practice: Unicode has not added invisible formatting
-/// characters in a long time, and anything new would be *invisible*, not forged.
+/// Cc without a tables crate. That makes it an enumeration, the shape this codebase
+/// distrusts, and the residual is **narrower than before but not closed** — 15 of
+/// Unicode's ~170 Cf codepoints are named here. An earlier version of this comment
+/// claimed the set was closed "because Unicode has not added invisible formatting
+/// characters in a long time"; U+061C falsified both halves, having existed since
+/// 2013 and being the direct sibling of two marks already inside the fence. What
+/// remains uncovered can hide or blank part of a path so a reader misreads which
+/// file was touched; it cannot split a line, which is the property that matters.
+/// Closing it properly means a Unicode-tables crate — recorded in `dev/backlog.md`.
+///
+/// U+200C ZWNJ and U+200D ZWJ are deliberately EXCLUDED from the zero-width range.
+/// ZWJ is mandatory in every multi-person, profession and flag emoji, and ZWNJ is
+/// ordinary Persian and Indic orthography — escaping them mangles real filenames,
+/// which are this log's main payload and the one thing a reader wants to copy out.
+/// Neither can reorder or split anything; the case against them is path spoofing,
+/// which is not a decision made from a log file.
 fn needs_escape(ch: char) -> bool {
     ch.is_control()
         || matches!(ch,
-            '\u{200b}'..='\u{200f}'      // zero-width space … RTL mark
+            '\u{00ad}'                   // soft hyphen
+            | '\u{061c}'                 // Arabic letter mark (bidi, sibling of LRM/RLM)
+            | '\u{115f}' | '\u{1160}'    // Hangul choseong/jungseong filler — render blank
+            | '\u{200b}'                 // zero-width space
+            | '\u{200e}' | '\u{200f}'    // LRM / RLM  (200c ZWNJ, 200d ZWJ excluded above)
             | '\u{2028}' | '\u{2029}'    // line / paragraph separator
             | '\u{202a}'..='\u{202e}'    // bidi embedding and override
+            | '\u{2060}'..='\u{2064}'    // word joiner, invisible times/plus/separator
             | '\u{2066}'..='\u{2069}'    // bidi isolates
+            | '\u{3164}'                 // Hangul filler — renders blank
             | '\u{feff}'                 // BOM / zero-width no-break space
+            | '\u{fff9}'..='\u{fffb}'    // interlinear annotation — hides text
+            | '\u{ffa0}'                 // halfwidth Hangul filler
+            | '\u{e0000}'..='\u{e007f}'  // TAG block — invisible in ~every font
         )
-}
-
-/// Split at or below `max` bytes without cutting a `char` in half, returning the
-/// kept prefix and how many bytes were dropped.
-fn truncate_on_char_boundary(line: &str, max: usize) -> (&str, usize) {
-    if line.len() <= max {
-        return (line, 0);
-    }
-    let end = (0..=max)
-        .rev()
-        .find(|&i| line.is_char_boundary(i))
-        .unwrap_or(0);
-    (&line[..end], line.len() - end)
 }
 
 /// A target with the escaping above attached.
@@ -283,8 +316,16 @@ fn build<R: Runtime>(
 /// no `HOME`, full volume) into "Baram does not start", with a panic that says
 /// "building tauri application" and never mentions logging. This wrapper calls
 /// [`install`], which returns `()`: there is no error left to propagate.
-pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
-    tauri::plugin::Builder::new("baram-logging")
+/// The config type is `serde_json::Value`, not the default `()`. `TauriPlugin::
+/// initialize` deserializes `plugins["baram-logging"]` from `tauri.conf.json` into
+/// that type and returns `Err` on failure — and `deserialize_unit` rejects anything
+/// but `null`. So with the default type, adding so much as `"baram-logging": {}` to
+/// the config would propagate `Error::PluginInitialization` out of `Builder::build()`
+/// and panic in `run()`: a logging config key that stops the app from starting, which
+/// is precisely the failure class the paragraphs above exist to eliminate, arriving
+/// through the config file instead of the filesystem. `Value` accepts anything.
+pub fn plugin<R: Runtime>() -> TauriPlugin<R, serde_json::Value> {
+    tauri::plugin::Builder::<R, serde_json::Value>::new("baram-logging")
         .setup(|app, _api| {
             install(app);
             Ok(())
@@ -554,14 +595,6 @@ mod tests {
         assert_eq!(max_level, LevelFilter::Info);
     }
 
-    /// The policy above is only reached if `run()` registers it, and it must be
-    /// registered FIRST: a plugin's `setup` hook runs in registration order, so
-    /// anything logged by a plugin registered ahead of the logger is emitted while
-    /// the facade is still a no-op and is lost.
-    ///
-    /// A source scan, in the shape `tests/acl_lockdown.rs` established: window the
-    /// search to the builder chain, then assert ORDER rather than presence — a bare
-    /// `contains("logging::plugin")` would also pass with the call sitting last.
     #[test]
     fn a_control_character_cannot_split_one_record_into_two_lines() {
         // The log-injection guard. A line is `[date][time][LEVEL][target] message`,
@@ -653,6 +686,41 @@ mod tests {
     }
 
     #[test]
+    fn the_invisible_characters_review_found_uncovered_are_escaped() {
+        // Each of these was passing through while the doc claimed the set was closed.
+        // U+061C is the bidi sibling of U+200F, which was already inside the fence —
+        // the "enumerated denylist admits the next member by default" shape with the
+        // neighbour already caught. The TAG block is purpose-built for embedding text a
+        // reader cannot see, which is the strongest case in the category for a file
+        // whose whole audience is a person reading it.
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        let sneaky = "path\u{061c}a\u{00ad}b\u{2060}c\u{e0041}d\u{fff9}e\u{3164}f.md";
+        emit(&*logger, Level::Warn, "baram_lib::tag", sneaky);
+
+        let written = read_log(dir.path());
+        for raw in [
+            '\u{061c}',
+            '\u{00ad}',
+            '\u{2060}',
+            '\u{e0041}',
+            '\u{fff9}',
+            '\u{3164}',
+        ] {
+            assert!(
+                !written.contains(raw),
+                "U+{:04X} must not reach the file as itself: {written:?}",
+                raw as u32
+            );
+        }
+        assert!(
+            written.contains("\\u{061c}") && written.contains("\\u{e0041}"),
+            "…and must survive as escapes: {written:?}"
+        );
+    }
+
+    #[test]
     fn the_written_line_is_bounded_even_when_escaping_expands_it() {
         // Escaping is not length-preserving: one NUL byte becomes the 8 bytes
         // `\u{0000}`. Bounding only the INPUT would leave a written line 8x the cap,
@@ -673,6 +741,58 @@ mod tests {
         assert!(
             written.contains("more bytes not logged"),
             "and it must say it was shortened"
+        );
+    }
+
+    #[test]
+    fn the_shortened_record_marker_counts_input_bytes() {
+        // The marker used to add bytes dropped from the INPUT to bytes dropped from the
+        // escaped OUTPUT and report the sum. Measured, a 16 KiB message came out saying
+        // "65536 more bytes not logged" — four times its own size. A number that wrong
+        // is its own deception, in the line whose stated purpose is to stop a shortened
+        // record from reading as a complete one, and its size is attacker-influenced
+        // (the ratio follows how many escape-expanding characters they include).
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        let input = "\0".repeat(MAX_LINE_BYTES * 2);
+        emit(&*logger, Level::Warn, "baram_lib::plugin", &input);
+
+        let written = read_log(dir.path());
+        let reported: usize = written
+            .rsplit_once("…[")
+            .and_then(|(_, tail)| tail.split_whitespace().next())
+            .and_then(|n| n.parse().ok())
+            .unwrap_or_else(|| panic!("no marker in {written:?}"));
+        assert!(
+            reported <= input.len(),
+            "reported {reported} bytes dropped from a {} byte message",
+            input.len()
+        );
+        // Tighter: with one NUL escaping to 8 bytes, ~1 KiB of the input fits in an
+        // 8 KiB line, so nearly all of it is dropped — but never more than there was.
+        assert!(
+            reported > input.len() - 2 * 1024,
+            "reported {reported}, expected close to {}",
+            input.len()
+        );
+    }
+
+    #[test]
+    fn an_emoji_filename_survives_unescaped() {
+        // U+200D ZWJ is mandatory in every multi-person, profession and flag emoji, and
+        // U+200C ZWNJ is ordinary Persian and Indic orthography. Both sit inside the
+        // `200b..=200f` range an earlier version escaped wholesale, which mangled real
+        // filenames — this log's main payload, and the one thing a reader copies out.
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        let path = "failed to write /Users/me/사진/family 👨\u{200d}👩\u{200d}👧.png";
+        emit(&*logger, Level::Warn, "baram_lib::tag", path);
+
+        assert!(
+            read_log(dir.path()).contains(path),
+            "an emoji filename must be byte-identical, including its ZWJ"
         );
     }
 
@@ -784,10 +904,12 @@ mod tests {
 
     #[test]
     fn a_log_directory_that_cannot_be_created_is_not_fatal() {
-        // Why `install` attaches by hand instead of registering a plugin: as a plugin,
-        // this error propagates out of `Builder::build()` into `run()`'s `.expect()`
-        // and the app does not start — a log file the OS will not let us create must
-        // not cost the user their editor.
+        // Why `install` swallows this instead of returning it: tauri-plugin-log's own
+        // plugin propagates the error out of `Builder::build()` into `run()`'s
+        // `.expect()` and the app does not start. A log file the OS will not let us
+        // create must not cost the user their editor. `plugin()` is what keeps the
+        // swallow in place, and `tests/logging_install_unwritable.rs` exercises it
+        // through the real plugin-initialization path.
         let app = tauri::test::mock_app();
         let dir = tempfile::tempdir().unwrap();
         let occupied = dir.path().join("not-a-directory");
@@ -829,9 +951,19 @@ mod tests {
         let start = src
             .find("tauri::Builder::default()")
             .expect("builder chain not found");
+        // The window ends where the BUILDER does. `.build()` consumes it and returns an
+        // `App`, which has no `setup`/`plugin` method, so everything a `.setup(` could
+        // be added to lies inside this slice — that is what makes the count below a
+        // count of the whole property rather than of a region.
+        //
+        // The earlier boundary was `.invoke_handler(`, at line ~230 of a chain running
+        // to ~360. `.on_window_event(` and everything beside it — where lifecycle
+        // wiring naturally goes — fell outside, so a second `.setup()` there counted as
+        // zero and `the_builder_registers_exactly_one_setup_hook` stayed green while
+        // the real closure was silently discarded.
         let end = src[start..]
-            .find(".invoke_handler(")
-            .expect("builder chain has no .invoke_handler(")
+            .find(".build(tauri::generate_context!())")
+            .expect("builder chain has no .build(tauri::generate_context!())")
             + start;
         src[start..end]
             .lines()
@@ -862,6 +994,18 @@ mod tests {
         assert!(
             window.contains("logging::plugin"),
             "the logger must be the first plugin registered. First registration is: {window}"
+        );
+
+        // And tauri-plugin-log's OWN plugin must stay unregistered. `build()` discards
+        // the `TauriPlugin` that `split()` returns, which is why `plugin:log|log` does
+        // not resolve at all — stronger than being denied by capability, and load-bearing
+        // for `no_capability_grants_the_log_plugin_command`. Registering it anywhere
+        // after the first `.plugin(` would make the command exist again and leave every
+        // other test here green.
+        assert!(
+            !chain.contains("tauri_plugin_log"),
+            "tauri-plugin-log's own plugin must not be registered: it would re-create the \
+             `log` IPC command, which lets a webview write lines into the support log"
         );
     }
 

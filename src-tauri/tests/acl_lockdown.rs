@@ -258,20 +258,30 @@ fn the_two_tiers_apply_to_disjoint_window_sets() {
 /// the decision point: it must be replaced deliberately, host tier only, never `plugin-*`.
 #[test]
 fn no_capability_grants_the_log_plugin_command() {
-    // Every file, not the two we happen to have: tauri-build parses
-    // `./capabilities/**/*`, so a new `capabilities/frontend-logs.json` would be a live
-    // grant that a hardcoded pair of filenames cannot see. This test's whole contract is
-    // "nothing, anywhere, grants it".
+    // RECURSIVELY, because tauri-build parses `./capabilities/**/*` — a recursive glob.
+    // A first attempt used `read_dir`, which replaced "two hardcoded filenames" with
+    // "one directory level": `capabilities/extra/frontend-logs.json` would be a live
+    // grant and still invisible here. This test's whole contract is "nothing, anywhere,
+    // grants it", so the discovery has to match tauri's.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
-    let files: Vec<_> = std::fs::read_dir(&dir)
-        .expect("read capabilities/")
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "json"))
-        .collect();
+    let mut files = Vec::new();
+    let mut stack = vec![dir.clone()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).expect("read capabilities/").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // tauri's own walk skips `schemas/`; so do we.
+                if path.file_name().is_some_and(|n| n != "schemas") {
+                    stack.push(path);
+                }
+            } else if path.extension().is_some_and(|x| x == "json") {
+                files.push(path);
+            }
+        }
+    }
     assert!(
         files.len() >= 2,
-        "expected at least the two known capability files in {}, found {files:?}",
+        "expected at least the two known capability files under {}, found {files:?}",
         dir.display()
     );
 
@@ -279,28 +289,44 @@ fn no_capability_grants_the_log_plugin_command() {
         let json: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).expect("read capability"))
                 .expect("parse capability");
-        let granted: Vec<String> = json["permissions"]
-            .as_array()
-            .expect("permissions array")
-            .iter()
-            // A permission entry may be a bare string OR an object with an `identifier`
-            // (`PermissionEntry::ExtendedPermission`, used to attach a scope). Reading
-            // only strings would let `{"identifier": "log:default"}` through.
-            .filter_map(|p| {
-                p.as_str()
-                    .or_else(|| p.get("identifier").and_then(|i| i.as_str()))
-            })
-            // `log:` the PLUGIN prefix, not the substring: `allow-git-log` is one of our own
-            // commands and `dialog:default` contains "log" too.
-            .filter(|p| p.starts_with("log:"))
-            .map(str::to_string)
-            .collect();
-        assert!(
-            granted.is_empty(),
-            "{} grants the log plugin command: {granted:?} — a webview could then write \
-             arbitrary lines into the support log",
-            path.display()
-        );
+        // One file may hold a single capability, a bare array of them, or
+        // `{"capabilities": [...]}` — `CapabilityFile` accepts all three. Reading
+        // `json["permissions"]` alone would panic on the other two shapes, and a
+        // panicking test never gets to inspect the grants it exists to inspect.
+        let capabilities: Vec<&serde_json::Value> = if let Some(list) = json.as_array() {
+            list.iter().collect()
+        } else if let Some(list) = json.get("capabilities").and_then(|c| c.as_array()) {
+            list.iter().collect()
+        } else {
+            vec![&json]
+        };
+
+        for capability in capabilities {
+            let granted: Vec<String> = capability["permissions"]
+                .as_array()
+                .map(|a| a.as_slice())
+                .unwrap_or_default()
+                .iter()
+                // A permission entry may be a bare string OR an object with an
+                // `identifier` (`PermissionEntry::ExtendedPermission`, used to attach a
+                // scope). Reading only strings would let `{"identifier": "log:default"}`
+                // through.
+                .filter_map(|p| {
+                    p.as_str()
+                        .or_else(|| p.get("identifier").and_then(|i| i.as_str()))
+                })
+                // `log:` the PLUGIN prefix, not the substring: `allow-git-log` is one of
+                // our own commands and `dialog:default` contains "log" too.
+                .filter(|p| p.starts_with("log:"))
+                .map(str::to_string)
+                .collect();
+            assert!(
+                granted.is_empty(),
+                "{} grants the log plugin command: {granted:?} — a webview could then write \
+                 arbitrary lines into the support log",
+                path.display()
+            );
+        }
     }
 }
 

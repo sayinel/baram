@@ -21,6 +21,38 @@ fn an_unwritable_log_directory_costs_the_log_but_not_the_app() {
     std::env::set_var("HOME", &not_a_home);
     std::env::set_var("XDG_DATA_HOME", &not_a_home);
 
+    // Fail on the CAUSE. Windows resolves the log directory through the Known Folder
+    // API and reads neither variable, so there the fixture would not apply, `install`
+    // would take the HAPPY path, and every assertion below would pass while the branch
+    // this binary exists for went unexercised — a vacuous green. CI runs `cargo test`
+    // on ubuntu only today.
+    let probe = tauri::test::mock_app();
+    let resolved = tauri::Manager::path(probe.handle())
+        .app_log_dir()
+        .expect("app_log_dir must resolve");
+    assert!(
+        resolved.starts_with(&not_a_home),
+        "this platform ignores HOME/XDG_DATA_HOME for the log directory: it resolved to \
+         {} instead of under {}, so the unwritable branch would not be exercised at all",
+        resolved.display(),
+        not_a_home.display()
+    );
+
+    // ‼️ The assertion that matters most, and the one a direct `install` call cannot
+    // make: build a real app through `logging::plugin()`. That runs tauri's actual
+    // `initialize_plugins` path, so it is the propagation boundary itself under test —
+    // if the plugin's setup ever returns `Err` (a `?` slipped in, someone "surfacing"
+    // the failure), this is `Error::PluginInitialization` out of `build()`, which in
+    // `run()` is a panic and a Baram that does not start. Nothing else executes that
+    // wrapper: the source scan in `logging::tests` only matches its name in a string.
+    let built = tauri::test::mock_builder()
+        .plugin(baram_lib::logging::plugin())
+        .build(tauri::test::mock_context(tauri::test::noop_assets()));
+    assert!(
+        built.is_ok(),
+        "an unwritable log directory must not stop the app from building"
+    );
+
     let app = tauri::test::mock_app();
 
     // Reaching the next line at all is the primary assertion: no panic.

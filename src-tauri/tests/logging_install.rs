@@ -56,12 +56,14 @@ fn install_attaches_a_logger_that_writes_our_records_to_a_file() {
 
     let app = tauri::test::mock_app();
 
-    // Fail on the CAUSE, not on the symptom. The redirect above works because
-    // `app_log_dir()` resolves under `dirs::home_dir()` on macOS and
-    // `dirs::data_local_dir()` on Linux, and both read these variables. Windows does
-    // not — it asks the Known Folder API — so there the log would land in the real
-    // `%LOCALAPPDATA%` and the assertion below would read "no baram.log", pointing at
-    // the logger instead of at the harness. CI runs `cargo test` on ubuntu only today.
+    // Fail on the CAUSE, not on the symptom. The redirect above works on macOS
+    // (`dirs::home_dir()` reads `$HOME`) and on Linux (`dirs::data_local_dir()` reads
+    // `$XDG_DATA_HOME`). It does NOT work on Windows: `data_local_dir()` there calls
+    // `SHGetKnownFolderPath` and reads no environment variable at all — setting
+    // `LOCALAPPDATA` would not help either. So on Windows the log would land in the
+    // developer's real `%LOCALAPPDATA%` and the assertion below would read "no
+    // baram.log", pointing at the logger instead of at the harness. CI runs
+    // `cargo test` on ubuntu only today.
     let resolved = tauri::Manager::path(app.handle())
         .app_log_dir()
         .expect("app_log_dir must resolve");
