@@ -200,6 +200,12 @@ struct Capability {
     /// Permission identifiers, `norm`-alized. Colon-prefixed plugin/core
     /// permissions are kept whole; bare grants keep their `allow_` / `deny_` stem.
     permissions: BTreeSet<String>,
+    /// The same identifiers exactly as written. `norm` maps `-` to `_` so the tier
+    /// comparisons are stable, but the ACL manifests are keyed on the original kebab ids,
+    /// so the expansion below needs them un-normalized. Kept here rather than re-read from
+    /// `source`, which is not always a path — an inline config capability's source names a
+    /// JSON pointer, and reading it as a file would panic.
+    raw_permissions: Vec<String>,
     /// `local` as written — `None` when absent (tauri defaults it to `true`).
     local: Option<bool>,
     /// `remote.urls` as written; non-empty means non-local origins are admitted.
@@ -286,7 +292,7 @@ fn capability_from_json(json: &serde_json::Value, source: &str) -> Capability {
          target or delete it."
     );
 
-    let permissions: BTreeSet<String> = json["permissions"]
+    let raw_permissions: Vec<String> = json["permissions"]
         .as_array()
         .map(|a| a.as_slice())
         .unwrap_or_default()
@@ -298,14 +304,16 @@ fn capability_from_json(json: &serde_json::Value, source: &str) -> Capability {
             p.as_str()
                 .or_else(|| p.get("identifier").and_then(|i| i.as_str()))
         })
-        .map(norm)
+        .map(str::to_string)
         .collect();
+    let permissions: BTreeSet<String> = raw_permissions.iter().map(|p| norm(p)).collect();
 
     Capability {
         source: source.to_string(),
         identifier,
         targets,
         permissions,
+        raw_permissions,
         local: json["local"].as_bool(),
         remote_urls: json["remote"]["urls"]
             .as_array()
@@ -975,6 +983,548 @@ fn the_broker_capability_mapping_guard_still_exists() {
              IPC permissions are pinned here, but what `plugin_call` will DO is pinned \
              there; without it a new PluginOp can be gated at CapabilityRequirement::None \
              and nothing fails."
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Permission-set expansion (2026-08-09)
+//
+// Everything above compares permission *identifiers*. Four of the host tier's are SETS —
+// `core:default`, `dialog:default`, `opener:default`, `updater:default` — and what they
+// allow is decided by tauri's and the plugins' own manifests, not by anything in this
+// repository. So a dependabot bump that adds a command to `core:default` widens the host
+// surface with **no diff in any file here and no test failure**. That was recorded as the
+// most valuable residual when the tier model landed; this closes it by expanding the sets
+// to commands and freezing the result.
+//
+// ‼️ This is the one part of this file that reads a BUILD ARTIFACT rather than source.
+// `gen/schemas/acl-manifests.json` is where the expansion exists at all; it is gitignored
+// and rewritten by `build.rs`, which cargo runs before this test compiles, so it is always
+// fresh. Reading output costs this file its "the source is the truth" property, and the
+// alternative — hand-copying tauri's permission sets — would be a second copy to drift.
+// ---------------------------------------------------------------------------------------
+
+/// Where tauri-build writes the resolved ACL manifests.
+const ACL_MANIFESTS: &str = "gen/schemas/acl-manifests.json";
+/// tauri-utils `acl/mod.rs:50` — the manifest key for the app's own commands.
+const APP_ACL_KEY: &str = "__app-acl__";
+
+/// The host tier's plugin/core command surface, frozen.
+///
+/// ‼️ A tauri or plugin upgrade that widens one of the four `*:default` sets makes this
+/// list wrong, and that is the point: re-freeze **deliberately**, having looked at what the
+/// new command does, rather than inheriting it. `the_host_tier_plugin_command_surface_is_frozen`
+/// prints the diff in both directions.
+///
+/// The app-command half of the same expansion is NOT frozen — it is derived from
+/// `generate_handler!` instead (see `the_host_tier_expands_to_the_registered_app_commands`),
+/// because it changes whenever we add a command and a frozen copy would just be churn.
+const HOST_PLUGIN_COMMANDS: &[&str] = &[
+    "clipboard-manager:write_image",
+    "clipboard-manager:write_text",
+    "core:app:bundle_type",
+    "core:app:identifier",
+    "core:app:name",
+    "core:app:register_listener",
+    "core:app:remove_listener",
+    "core:app:supports_multiple_windows",
+    "core:app:tauri_version",
+    "core:app:version",
+    "core:event:emit",
+    "core:event:emit_to",
+    "core:event:listen",
+    "core:event:unlisten",
+    "core:image:from_bytes",
+    "core:image:from_path",
+    "core:image:new",
+    "core:image:rgba",
+    "core:image:size",
+    "core:menu:append",
+    "core:menu:create_default",
+    "core:menu:get",
+    "core:menu:insert",
+    "core:menu:is_checked",
+    "core:menu:is_enabled",
+    "core:menu:items",
+    "core:menu:new",
+    "core:menu:popup",
+    "core:menu:prepend",
+    "core:menu:remove",
+    "core:menu:remove_at",
+    "core:menu:set_accelerator",
+    "core:menu:set_as_app_menu",
+    "core:menu:set_as_help_menu_for_nsapp",
+    "core:menu:set_as_window_menu",
+    "core:menu:set_as_windows_menu_for_nsapp",
+    "core:menu:set_checked",
+    "core:menu:set_enabled",
+    "core:menu:set_icon",
+    "core:menu:set_text",
+    "core:menu:text",
+    "core:path:basename",
+    "core:path:dirname",
+    "core:path:extname",
+    "core:path:is_absolute",
+    "core:path:join",
+    "core:path:normalize",
+    "core:path:resolve",
+    "core:path:resolve_directory",
+    "core:resources:close",
+    "core:tray:get_by_id",
+    "core:tray:new",
+    "core:tray:remove_by_id",
+    "core:tray:set_icon",
+    "core:tray:set_icon_as_template",
+    "core:tray:set_icon_with_as_template",
+    "core:tray:set_menu",
+    "core:tray:set_show_menu_on_left_click",
+    "core:tray:set_temp_dir_path",
+    "core:tray:set_title",
+    "core:tray:set_tooltip",
+    "core:tray:set_visible",
+    "core:webview:create_webview_window",
+    "core:webview:get_all_webviews",
+    "core:webview:internal_toggle_devtools",
+    "core:webview:webview_position",
+    "core:webview:webview_size",
+    "core:window:activity_name",
+    "core:window:available_monitors",
+    "core:window:close",
+    "core:window:create",
+    "core:window:current_monitor",
+    "core:window:cursor_position",
+    "core:window:get_all_windows",
+    "core:window:inner_position",
+    "core:window:inner_size",
+    "core:window:internal_toggle_maximize",
+    "core:window:is_always_on_top",
+    "core:window:is_closable",
+    "core:window:is_decorated",
+    "core:window:is_enabled",
+    "core:window:is_focused",
+    "core:window:is_fullscreen",
+    "core:window:is_maximizable",
+    "core:window:is_maximized",
+    "core:window:is_minimizable",
+    "core:window:is_minimized",
+    "core:window:is_resizable",
+    "core:window:is_visible",
+    "core:window:monitor_from_point",
+    "core:window:outer_position",
+    "core:window:outer_size",
+    "core:window:primary_monitor",
+    "core:window:scale_factor",
+    "core:window:scene_identifier",
+    "core:window:theme",
+    "core:window:title",
+    "dialog:message",
+    "dialog:open",
+    "dialog:save",
+    "opener:open_url",
+    "opener:reveal_item_in_dir",
+    "process:restart",
+    "updater:check",
+    "updater:download",
+    "updater:download_and_install",
+    "updater:install",
+];
+
+/// Split a permission identifier into (manifest key, base name).
+///
+/// tauri's `Identifier` parser records the separator index on the FIRST colon, but
+/// overwrites it on every subsequent colon when the identifier starts with `core:`
+/// (`separator.is_none() || is_core_identifier`, tauri-utils `acl/identifier.rs:186`).
+/// So `core:window:allow-close` splits at the LAST colon into (`core:window`,
+/// `allow-close`), while `dialog:default` splits at the first into (`dialog`, `default`).
+/// Getting this backwards would look up manifests that do not exist.
+fn split_identifier(id: &str) -> (Option<&str>, &str) {
+    let at = if id.starts_with("core:") {
+        id.rfind(':')
+    } else {
+        id.find(':')
+    };
+    match at {
+        Some(i) => (Some(&id[..i]), &id[i + 1..]),
+        None => (None, id),
+    }
+}
+
+#[derive(Default)]
+struct Expansion {
+    allow: BTreeSet<String>,
+    deny: BTreeSet<String>,
+    /// Permissions reached that carry a `platforms` restriction — see the assertion in
+    /// `the_expansion_is_platform_independent`.
+    platform_restricted: BTreeSet<String>,
+}
+
+impl Expansion {
+    /// Commands with no manifest prefix: this app's own, from `generate_handler!`.
+    fn app_commands(&self) -> BTreeSet<String> {
+        self.allow
+            .iter()
+            .filter(|c| !c.contains(':'))
+            .cloned()
+            .collect()
+    }
+    /// Commands belonging to core or a plugin.
+    fn plugin_commands(&self) -> BTreeSet<String> {
+        self.allow
+            .iter()
+            .filter(|c| c.contains(':'))
+            .cloned()
+            .collect()
+    }
+}
+
+struct Resolver {
+    acl: serde_json::Value,
+    seen: BTreeSet<String>,
+}
+
+impl Resolver {
+    fn new() -> Self {
+        let acl: serde_json::Value =
+            serde_json::from_str(&read(ACL_MANIFESTS)).unwrap_or_else(|e| {
+                panic!(
+                    "parse {ACL_MANIFESTS}: {e}. build.rs writes it; if it is missing, the \
+                     build did not run before this test"
+                )
+            });
+        Self::from_value(acl)
+    }
+
+    /// Injectable so `the_two_resolution_orders_are_not_interchangeable` can feed a manifest
+    /// where a set and a permission share a name — the real ones contain no such collision,
+    /// which is what made the precedence unobservable until this existed.
+    fn from_value(acl: serde_json::Value) -> Self {
+        Self {
+            acl,
+            seen: BTreeSet::new(),
+        }
+    }
+
+    fn manifest(&self, key: &str, whose: &str) -> &serde_json::Value {
+        let m = &self.acl[key];
+        assert!(
+            !m.is_null(),
+            "{whose} names manifest `{key}`, which {ACL_MANIFESTS} does not define"
+        );
+        m
+    }
+
+    fn collect(&mut self, key: &str, name: &str, out: &mut Expansion) {
+        let permission = self.acl[key]["permissions"][name].clone();
+        if permission["platforms"].is_array() {
+            out.platform_restricted.insert(format!("{key}:{name}"));
+        }
+        for (field, bucket) in [
+            ("allow", &mut out.allow as &mut BTreeSet<String>),
+            ("deny", &mut out.deny),
+        ] {
+            for command in permission["commands"][field]
+                .as_array()
+                .map(|a| a.as_slice())
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|c| c.as_str())
+            {
+                bucket.insert(if key == APP_ACL_KEY {
+                    command.to_string()
+                } else {
+                    format!("{key}:{command}")
+                });
+            }
+        }
+    }
+
+    /// Mirrors `get_permissions` (tauri-utils `resolved.rs:340`) — the ENTRY point, used for
+    /// a capability's declared permissions. Order here is `default`, then permission SETS,
+    /// then permissions.
+    fn expand_declared(&mut self, id: &str, out: &mut Expansion) {
+        let (prefix, name) = split_identifier(id);
+        let key = prefix.unwrap_or(APP_ACL_KEY).to_string();
+        let name = name.to_string();
+        self.manifest(&key, id);
+        if name == "default" {
+            if self.first_visit("default", &key, &name) {
+                self.expand_default(&key, out);
+            }
+        } else if !self.acl[&key]["permission_sets"][&name].is_null() {
+            if self.first_visit("set", &key, &name) {
+                self.expand_set_members(&key, &name, out);
+            }
+        } else if !self.acl[&key]["permissions"][&name].is_null() {
+            if self.first_visit("permission", &key, &name) {
+                self.collect(&key, &name, out);
+            }
+        } else {
+            panic!("{ACL_MANIFESTS} defines neither a permission nor a set named `{name}` in `{key}` (declared as `{id}`)");
+        }
+    }
+
+    /// The cycle guard is keyed on the resolution KIND as well as the name.
+    ///
+    /// ‼️ Keying on `key:name` alone was wrong and the synthetic-manifest test caught it: a
+    /// set and a permission may share a name — that collision *is* the shadowing attack —
+    /// and a name-only guard made the set's visit block the permission's, dropping a command
+    /// tauri would have collected. tauri has no guard here at all (a true cycle would blow
+    /// its stack, loudly, at build time), so the guard must not change the outcome in any
+    /// case tauri can actually resolve.
+    fn first_visit(&mut self, kind: &str, key: &str, name: &str) -> bool {
+        self.seen.insert(format!("{kind}\u{1}{key}\u{1}{name}"))
+    }
+
+    /// Mirrors `get_permission_set_permissions` (tauri-utils `resolved.rs:375`) — used for a
+    /// member of a set. ‼️Its order is the OPPOSITE of the entry point: permissions are
+    /// checked BEFORE sets. That asymmetry is not cosmetic — it is exactly why a
+    /// hand-written `[[set]]` can shadow an already-granted permission id at the entry
+    /// point and still resolve its own name to the real permission inside itself, instead of
+    /// recursing. Reversing it here would expand the attack differently from tauri.
+    fn expand_set_member(&mut self, member: &str, current_key: &str, out: &mut Expansion) {
+        let (prefix, base) = split_identifier(member);
+        let (key, name) = match prefix {
+            // In the fallback tauri keeps the WHOLE member string as the name, not its base.
+            Some(p) if !self.acl[p].is_null() => (p.to_string(), base.to_string()),
+            _ => (current_key.to_string(), member.to_string()),
+        };
+        if name == "default" {
+            if self.first_visit("default", &key, &name) {
+                self.expand_default(&key, out);
+            }
+        } else if !self.acl[&key]["permissions"][&name].is_null() {
+            if self.first_visit("permission", &key, &name) {
+                self.collect(&key, &name, out);
+            }
+        } else if !self.acl[&key]["permission_sets"][&name].is_null() {
+            if self.first_visit("set", &key, &name) {
+                self.expand_set_members(&key, &name, out);
+            }
+        } else {
+            panic!("set member `{member}` resolves to `{key}:{name}`, which {ACL_MANIFESTS} does not define");
+        }
+    }
+
+    fn expand_default(&mut self, key: &str, out: &mut Expansion) {
+        let members = self.members_of(&self.acl[key]["default_permission"].clone());
+        for m in members {
+            self.expand_set_member(&m, key, out);
+        }
+    }
+
+    fn expand_set_members(&mut self, key: &str, name: &str, out: &mut Expansion) {
+        let members = self.members_of(&self.acl[key]["permission_sets"][name].clone());
+        for m in members {
+            self.expand_set_member(&m, key, out);
+        }
+    }
+
+    fn members_of(&self, set: &serde_json::Value) -> Vec<String> {
+        set["permissions"]
+            .as_array()
+            .map(|a| a.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|p| p.as_str())
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+/// Expand every permission the tier declares down to the commands it actually allows.
+///
+/// The `seen` set is a test-only cycle guard. tauri has none — a cyclic set would blow its
+/// stack — so a cycle is a loud build failure there and must not be silently absorbed here
+/// either; it would simply show up as commands missing from the frozen list.
+fn expanded_commands(tier: Tier) -> Expansion {
+    let mut resolver = Resolver::new();
+    let mut out = Expansion::default();
+    let mut declared = 0usize;
+    for capability in live_capabilities() {
+        if tier_of(capability) != Some(tier) {
+            continue;
+        }
+        for id in &capability.raw_permissions {
+            resolver.expand_declared(id, &mut out);
+            declared += 1;
+        }
+    }
+    assert!(
+        declared > 0,
+        "expanded no declared permission for the {tier:?} tier — the expansion would then \
+         be arguing about an empty set"
+    );
+    out
+}
+
+/// The sandbox must reach exactly three commands, and none of them core's or a plugin's.
+///
+/// This is the same property `sandbox_tier_grants_exactly_its_allowlist` asserts, one layer
+/// down — and the layer matters. That test compares the three permission *identifiers*;
+/// this one compares what they EXPAND to, so it independently catches a hand-written
+/// `permissions/**` `[[set]]` that redefines one of those ids to also allow `read_file`
+/// (`the_app_acl_manifest_has_no_handwritten_permissions` catches the same attack by
+/// policing the directory — two guards, different evidence).
+#[test]
+fn the_sandbox_tier_expands_to_exactly_its_three_commands() {
+    let expansion = expanded_commands(Tier::Sandbox);
+    let expected: BTreeSet<String> = [
+        "plugin_call",
+        "plugin_sandbox_connect",
+        "plugin_sandbox_report",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
+    assert_eq!(
+        expansion.app_commands(),
+        expected,
+        "the sandbox tier's permissions must expand to exactly the broker and its two \
+         transport commands.\nunexpected: {:?}\nmissing: {:?}",
+        expansion
+            .app_commands()
+            .difference(&expected)
+            .collect::<Vec<_>>(),
+        expected
+            .difference(&expansion.app_commands())
+            .collect::<Vec<_>>(),
+    );
+    assert!(
+        expansion.plugin_commands().is_empty(),
+        "the sandbox tier reaches core/plugin commands: {:?}. Its three permissions are \
+         app-owned, so anything with a manifest prefix means a set-style permission was \
+         added or an app permission now expands into one",
+        expansion.plugin_commands()
+    );
+}
+
+/// The host's app-command surface, derived rather than frozen.
+///
+/// Catches the mirror image of the sandbox case: an app permission whose `commands.allow`
+/// has been redefined to include commands it does not name.
+#[test]
+fn the_host_tier_expands_to_the_registered_app_commands() {
+    let expansion = expanded_commands(Tier::Host);
+    let mut expected = generate_handler_commands();
+    for sandbox_only in [
+        "plugin_call",
+        "plugin_sandbox_connect",
+        "plugin_sandbox_report",
+    ] {
+        expected.remove(&norm(sandbox_only));
+    }
+    let got: BTreeSet<String> = expansion.app_commands().iter().map(|c| norm(c)).collect();
+    assert_eq!(
+        got,
+        expected,
+        "the host tier's app permissions must expand to exactly the registered commands \
+         minus the sandbox-only ones.\nunexpected (a permission expanded wider than its \
+         name): {:?}\nmissing: {:?}",
+        got.difference(&expected).collect::<Vec<_>>(),
+        expected.difference(&got).collect::<Vec<_>>(),
+    );
+}
+
+#[test]
+fn the_host_tier_plugin_command_surface_is_frozen() {
+    let expansion = expanded_commands(Tier::Host);
+    let got = expansion.plugin_commands();
+    let expected: BTreeSet<String> = HOST_PLUGIN_COMMANDS.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        expected.len(),
+        HOST_PLUGIN_COMMANDS.len(),
+        "HOST_PLUGIN_COMMANDS contains a duplicate, so its length overstates what it pins"
+    );
+    assert_eq!(
+        got,
+        expected,
+        "the host tier's core/plugin command surface changed.\n\
+         GAINED (a dependency upgrade widened a `*:default` set, or a permission was added \
+         — look at what each of these does before re-freezing): {:?}\n\
+         LOST (a set narrowed, or a permission was removed): {:?}",
+        got.difference(&expected).collect::<Vec<_>>(),
+        expected.difference(&got).collect::<Vec<_>>(),
+    );
+}
+
+/// A denial reaching either tier through an expansion is a global kill switch, for the
+/// reason `no_capability_denies_a_command` explains — and that test only sees denials
+/// written directly in a capability file, not one arriving inside a `*:default` set.
+#[test]
+fn no_expansion_reaches_a_denied_command() {
+    for tier in [Tier::Host, Tier::Sandbox] {
+        let expansion = expanded_commands(tier);
+        assert!(
+            expansion.deny.is_empty(),
+            "the {tier:?} tier expands to denied commands {:?}. Tauri denies a command for \
+             EVERY window once any capability denies it, so this removes the command from \
+             the host app as well",
+            expansion.deny
+        );
+    }
+}
+
+/// The two resolution orders are opposite, and that is load-bearing — pinned against a
+/// synthetic manifest because the real ones have no name collision to expose it.
+///
+/// tauri checks permission SETS before permissions at the entry point
+/// (`get_permissions`, `resolved.rs:358` vs `:360`) and permissions before SETS inside a set
+/// (`get_permission_set_permissions`, `:407` vs `:413`). That asymmetry is exactly why a
+/// hand-written `[[set]]` named after an already-granted permission can shadow it at the
+/// entry point *and* still resolve its own name to the real permission inside itself,
+/// instead of recursing — i.e. why the attack is silent rather than a build hang.
+///
+/// A fixture where `shared` is BOTH a set and a permission separates all three orders:
+///   - faithful:                    {from_permission, from_other}
+///   - permission-first at entry:    {from_permission}
+///   - set-first inside a set:                        {from_other}  (cycle guard absorbs it)
+///
+/// Without this, swapping either order left all 21 tests green.
+#[test]
+fn the_two_resolution_orders_are_not_interchangeable() {
+    let acl = serde_json::json!({
+        APP_ACL_KEY: {
+            "permissions": {
+                "shared": { "identifier": "shared", "commands": { "allow": ["from_permission"] } },
+                "other":  { "identifier": "other",  "commands": { "allow": ["from_other"] } }
+            },
+            "permission_sets": {
+                "shared": { "identifier": "shared", "permissions": ["shared", "other"] }
+            }
+        }
+    });
+    let mut resolver = Resolver::from_value(acl);
+    let mut out = Expansion::default();
+    resolver.expand_declared("shared", &mut out);
+    let expected: BTreeSet<String> = ["from_other", "from_permission"]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        out.allow, expected,
+        "`shared` is both a set and a permission. Getting {:?} instead of {expected:?} means a \
+         resolution order no longer matches tauri: only {{from_permission}} means the entry \
+         point stopped preferring the SET, and only {{from_other}} means a set member stopped \
+         preferring the PERMISSION.",
+        out.allow,
+    );
+}
+
+/// The frozen list is platform-independent only while nothing it reaches is
+/// platform-restricted; tauri filters those by target at resolve time
+/// (`Permission::is_active`), so one would make the real surface differ between a macOS
+/// developer and Linux CI while this expansion kept reporting the union.
+#[test]
+fn the_expansion_is_platform_independent() {
+    for tier in [Tier::Host, Tier::Sandbox] {
+        let expansion = expanded_commands(tier);
+        assert!(
+            expansion.platform_restricted.is_empty(),
+            "the {tier:?} tier reaches platform-restricted permissions {:?}. Decide whether \
+             the frozen list should be the union or per-target before re-freezing — silently \
+             taking the union makes this test stricter on some platforms than the ACL is",
+            expansion.platform_restricted
         );
     }
 }
