@@ -81,4 +81,15 @@ codegen-units = 1
 panic = "abort"
 
 [dev-dependencies]
+# `test` gives `tauri::test::mock_app()`, which `src/logging` needs to build the real
+# logging policy: `tauri_plugin_log::Builder::split` takes an `&AppHandle`, so without
+# a mock app the policy could only be asserted by reading our own source back.
+#
+# ‼️ It must stay a DEV-dependency. The feature compiles tauri's MockRuntime in, and
+# edition 2021 selects feature resolver v2, which does NOT unify dev-dependency
+# features into a normal build — verified with
+# `cargo tree -e features -i tauri --no-dev-dependencies | grep 'feature "test"'`
+# (0 matches; 1 match once dev-deps are included). Moving this line into
+# [dependencies], or setting `resolver = "1"`, ships the mock runtime in the release
+# binary, and nothing in the build would say so.
 tauri = { version = "2", features = ["test"] }

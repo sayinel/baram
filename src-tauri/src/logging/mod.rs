@@ -14,11 +14,14 @@
 //!   added tomorrow is quiet by default instead of quiet only until someone
 //!   remembers to name it.
 //! * **Nothing verbose from dependencies, ever.** This is a privacy rule, not a
-//!   volume one: `tungstenite` logs frame payloads at trace and PDF export drives
-//!   headless Chrome over a websocket, so a global level of Debug would write the
+//!   volume one. `tungstenite` at trace logs whole frames — its `Display for Frame`
+//!   writes `payload: 0x…` over every byte (`protocol/frame/frame.rs`), and
+//!   `protocol/mod.rs` also traces each decoded message — while PDF export drives
+//!   headless Chrome over a websocket. So a global level of Debug would write the
 //!   user's document into a file we then ask them to attach to a bug report.
-//!   `reqwest` at debug logs request URLs. Raising verbosity to chase a bug means
-//!   raising `OUR_LEVEL`, which cannot reach them.
+//!   `reqwest` is milder but the same shape: `log::debug!` on the host it dials
+//!   (`connect.rs`), which is the LLM provider the user chose. Raising verbosity to
+//!   chase a bug means raising `OUR_LEVEL`, which cannot reach either of them.
 //! * **UTC, deliberately.** `TimezoneStrategy::UseLocal` resolves to local time on
 //!   Windows and falls back to UTC on macOS and Linux, where the `time` crate
 //!   refuses to read the local offset in a multi-threaded process. A timestamp
@@ -209,12 +212,14 @@ mod tests {
 
     #[test]
     fn debug_and_trace_from_dependencies_never_reach_the_log_file() {
-        // The privacy guard. `tungstenite` logs frame payloads at trace, and PDF
-        // export drives chromiumoxide over a websocket — so a verbose third-party
-        // level writes the user's DOCUMENT into a file we then ask them to attach
-        // to a bug report. `reqwest` at debug logs request URLs. Capping the
-        // default at Warn is what prevents it, and it holds for crates nobody has
-        // enumerated yet, which a denylist of known-chatty crates would not.
+        // The privacy guard. `tungstenite` at trace logs whole frames, payload
+        // bytes included, and PDF export drives chromiumoxide over a websocket — so
+        // a verbose third-party level writes the user's DOCUMENT into a file we then
+        // ask them to attach to a bug report. `reqwest` at debug logs the host it
+        // dials. The messages below stand in for those records; the fixture is the
+        // (target, level) pair, not the wording. Capping the default at Warn is what
+        // prevents them, and it holds for crates nobody has enumerated yet, which a
+        // denylist of known-chatty crates would not.
         let dir = tempfile::tempdir().unwrap();
         let (_, logger) = spawn_logger(dir.path());
 
@@ -231,6 +236,16 @@ mod tests {
             "received frame with the private note body",
         );
         emit(&*logger, Level::Trace, "keyring::macos", "getting password");
+        // The generalization, not a fourth example: nothing names this crate
+        // anywhere, so if it is quiet then the DEFAULT level is what silences it and
+        // the rule covers the dependency added next year too. Swap `.level()` for a
+        // per-crate denylist and this is the assertion that goes red.
+        emit(
+            &*logger,
+            Level::Debug,
+            "some_crate_nobody_has_enumerated",
+            "chatty unenumerated record",
+        );
 
         let written = read_log(dir.path());
         assert!(
@@ -244,6 +259,28 @@ mod tests {
         assert!(
             !written.contains("getting password"),
             "a dependency's trace record must not be written: {written:?}"
+        );
+        assert!(
+            !written.contains("chatty unenumerated record"),
+            "an unenumerated crate must be quiet by default, not by being listed: {written:?}"
+        );
+    }
+
+    #[test]
+    fn our_own_debug_records_are_dropped() {
+        // Deliberate, and stated because it surprises: `log::debug!` in our own code
+        // is dead in every build, dev included. Info is the floor so that what ships
+        // stays readable and small enough to attach to a report. A developer who
+        // wants a temporary debug trace raises OUR_LEVEL, which is one line here and
+        // cannot pull dependency verbosity in with it.
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        emit(&*logger, Level::Debug, "baram_lib::plugin", "step by step");
+
+        assert!(
+            !read_log(dir.path()).contains("step by step"),
+            "our own debug records must not be written"
         );
     }
 
