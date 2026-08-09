@@ -47,7 +47,12 @@ const MODE_LABELS: Record<EditorMode, string> = {
 };
 
 /**
- * Modes whose tab holds a document, and therefore have words and a cursor to report.
+ * Modes whose right-hand panel reports words and a cursor.
+ *
+ * ‼️ `preview` is in the list to PRESERVE existing behaviour, not because the claim holds for
+ * it: a PDF or image tab has no words and no cursor, and the panel reports the count of
+ * whatever document the shared editor still holds. That is a pre-existing defect this list
+ * neither introduces nor fixes — it is called out so the membership is not read as a promise.
  *
  * ‼️ An ALLOWLIST on purpose. This was `mode !== "graph"`, so every mode added later
  * inherited a right-hand panel reporting "0 words, Ln 1, Col 1" about a tab that has no

@@ -82,11 +82,15 @@ import {
 } from "./services/app-update";
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
-import { isFileTab, isGraphTab, isPluginTab } from "./stores/editor/editor";
+import { isFileTab, isGraphTab } from "./stores/editor/editor";
 import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
+import {
+  activePluginIdOf,
+  editorSurfaceBlockReason,
+} from "./utils/editor/active-tab";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import {
   getLanguageForFile,
@@ -267,12 +271,16 @@ function App() {
   const isGraphTabActive = useEditorStore((s) =>
     isGraphTab(s.tabs.find((t) => t.id === s.activeTabId)),
   );
-  // §69 A string, not a boolean: the id both selects the branch and is the payload the
-  // detail host needs, and a primitive keeps this a stable selector without `useShallow`.
-  const activePluginId = useEditorStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    return isPluginTab(tab) ? (tab?.pluginId ?? null) : null;
-  });
+  // §69 Derived in `utils/editor/active-tab` so it can be asserted — nothing imports `App`.
+  const activePluginId = useEditorStore((s) =>
+    activePluginIdOf(s.tabs, s.activeTabId),
+  );
+  // The whole tab, not a boolean: `editorSurfaceBlockReason` asks `isFileTab` itself, which is
+  // what makes "a tab kind that does not exist yet is blocked" a property of the tested
+  // function rather than of this untested component.
+  const activeTab = useEditorStore(
+    useShallow((s) => s.tabs.find((t) => t.id === s.activeTabId)),
+  );
   const markDirty = useEditorStore((s) => s.markDirty);
   const rootPath = useFileStore((s) => s.rootPath);
 
@@ -503,24 +511,18 @@ function App() {
     handleSourceChange,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
-  // §260 Phase 4b security review (LOW-3) — tell the plugin editor API when the Tiptap
-  // document is NOT what the active tab holds. An editor instance stays mounted in all of
-  // these states, so "an editor exists" is not the same question: in Source Mode the user
-  // edits CodeMirror while the Tiptap doc keeps its pre-toggle content, and `handleSave`
-  // writes `sourceContentRef` for a source-mode or non-markdown tab. Without this a plugin
-  // reads a stale document and its writes are dropped on the next toggle or save — silent
-  // data loss for the user, from an API that reported success.
+  // §260 Phase 4b — the policy and its rationale now live in `editorSurfaceBlockReason`, with
+  // tests. It moved out because nothing imports `App`, so this gate was unverified.
   useEffect(() => {
     pluginLoader.setEditorSurfaceBlocked(
-      isGraphTabActive || !!activePluginId || isPdfTab
-        ? "no document is open in the editor"
-        : isSourceMode
-          ? "the document is open in source mode, so the editor is not its content"
-          : isCodeFile
-            ? "the active tab is not a markdown document"
-            : null,
+      editorSurfaceBlockReason({
+        activeTab,
+        isCodeFile,
+        isPdfTab,
+        isSourceMode,
+      }),
     );
-  }, [activePluginId, isCodeFile, isGraphTabActive, isPdfTab, isSourceMode]);
+  }, [activeTab, isCodeFile, isPdfTab, isSourceMode]);
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(

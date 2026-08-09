@@ -9,6 +9,7 @@ import type {
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { useTranslation } from "../../i18n/useTranslation";
 import { actionsFor } from "../../plugins/plugin-sources";
+import { safeLinkHref } from "../ai/markdown-url";
 import MarkdownRenderer from "../ai/MarkdownRenderer";
 import { legacyEntryMessage } from "./legacy-entry-message";
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
@@ -419,7 +420,7 @@ export function PluginDetail({
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           {entry.repository && (
             <a
-              href={entry.repository}
+              href={safeLinkHref(entry.repository)}
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",
@@ -432,7 +433,7 @@ export function PluginDetail({
           )}
           {entry.homepage && (
             <a
-              href={entry.homepage}
+              href={safeLinkHref(entry.homepage)}
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",

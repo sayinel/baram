@@ -588,6 +588,7 @@
   "plugin.detail.description": "Description",
   "plugin.detail.readme": "README",
   "plugin.detail.unavailable": "This plugin is no longer available.",
+  "plugin.detail.registryUnreachable": "Could not reach the plugin registry. Check your connection and reopen this tab.",
   "plugin.detail.capabilities": "Capabilities",
   "plugin.detail.capabilitiesNone": "No special permissions required",
   "plugin.detail.links": "Links",

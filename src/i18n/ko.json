@@ -588,6 +588,7 @@
   "plugin.detail.description": "설명",
   "plugin.detail.readme": "README",
   "plugin.detail.unavailable": "이 플러그인은 더 이상 제공되지 않습니다.",
+  "plugin.detail.registryUnreachable": "플러그인 레지스트리에 연결할 수 없습니다. 네트워크를 확인한 뒤 탭을 다시 열어 주세요.",
   "plugin.detail.capabilities": "권한",
   "plugin.detail.capabilitiesNone": "별도 권한이 필요하지 않습니다",
   "plugin.detail.links": "링크",

@@ -1,11 +1,29 @@
 // §69 — the plugin detail tab. A THIRD tab type after "file" and "graph", so the
 // assertions below are as much about what a non-file tab must NOT acquire (a dirty
 // flag, a file path, a save path) as about the payload it carries.
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../file/file", () => ({
+  switchContext: (...a: unknown[]) => switchContext(...a),
+}));
+
+import { useContextStore } from "../../context/context";
 import { isFileTab, isGraphTab, isPluginTab, useEditorStore } from "../editor";
 
+const switchContext = vi.fn();
+
+/**
+ * `setActiveTab` reaches `switchContext` through a dynamic `import()`, which settles on the
+ * module graph rather than in the microtask queue — a run of `await Promise.resolve()` is not
+ * enough, and using one made the non-vacuity control below fail while the guarded assertion
+ * "passed".
+ */
+async function settleDynamicImport(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 beforeEach(() => {
+  switchContext.mockClear();
   useEditorStore.setState({ tabs: [], activeTabId: null, mruOrder: [] });
 });
 
@@ -76,5 +94,113 @@ describe("tab-type predicates", () => {
     };
     expect(isFileTab(legacy)).toBe(true);
     expect(isPluginTab(legacy)).toBe(false);
+  });
+});
+
+// §89 / §81 — a non-file tab inherits `contextId` from the active context (`openTab`
+// backfills it for every tab), and two consumers read that field as "this tab belongs to a
+// vault/file". Both were wrong for a tab that shows no vault content.
+describe("a plugin tab does not act as a member of its backfilled context", () => {
+  beforeEach(() => {
+    useContextStore.setState({
+      activeContextId: "ctx-file",
+      contexts: [
+        {
+          alias: "a.md",
+          contextType: "file",
+          id: "ctx-file",
+          path: "/outside/a.md",
+        },
+        { alias: "V", contextType: "vault", id: "ctx-vault", path: "/vault" },
+      ] as never,
+    });
+  });
+
+  it("does not keep a §89 FileContext alive after its file tab closes", () => {
+    // The leak: `closeTab` removed the FileContext only when NO tab still carried its id, and
+    // the plugin tab carried it. Nothing else removes a FileContext, so it leaked for the rest
+    // of the session.
+    const removeContext = vi.fn().mockResolvedValue(undefined);
+    useContextStore.setState({ removeContext } as never);
+    const store = useEditorStore.getState();
+    store.openTab({
+      contextId: "ctx-file",
+      filePath: "/outside/a.md",
+      id: "f1",
+      isDirty: false,
+      isPinned: false,
+      title: "a.md",
+    });
+    store.openPluginTab("word-count", "Word Count");
+    // Non-vacuity: the backfill really did happen, so this test is about the count and not
+    // about a tab that never had the id.
+    expect(
+      useEditorStore.getState().tabs.find((t) => t.type === "plugin")
+        ?.contextId,
+    ).toBe("ctx-file");
+
+    useEditorStore.getState().closeTab("f1");
+
+    expect(removeContext).toHaveBeenCalledWith("ctx-file");
+  });
+
+  it("still keeps it alive while another FILE tab holds it", () => {
+    // The complement — without this, the assertion above passes for a build that removes the
+    // context whenever any tab closes.
+    const removeContext = vi.fn().mockResolvedValue(undefined);
+    useContextStore.setState({ removeContext } as never);
+    const store = useEditorStore.getState();
+    for (const id of ["f1", "f2"]) {
+      store.openTab({
+        contextId: "ctx-file",
+        filePath: `/outside/${id}.md`,
+        id,
+        isDirty: false,
+        isPinned: false,
+        title: id,
+      });
+    }
+
+    useEditorStore.getState().closeTab("f1");
+
+    expect(removeContext).not.toHaveBeenCalled();
+  });
+
+  it("does not switch the app's context when selected", async () => {
+    // Clicking a plugin tab opened in vault A switched the whole app back to A — file tree
+    // included — for a screen that shows no vault content.
+    //
+    // ‼️ Asserts the DECISION, not `activeContextId`. `setActiveTab` reaches `switchContext`
+    // through a dynamic import, so the state change lands several ticks later and an earlier
+    // version of this test read `activeContextId` before anything had happened — it passed
+    // against the unguarded code.
+    useContextStore.setState({ activeContextId: "ctx-vault" });
+    useEditorStore.getState().openPluginTab("word-count", "Word Count");
+    const pluginTabId = useEditorStore.getState().activeTabId!;
+    useContextStore.setState({ activeContextId: "ctx-file" });
+
+    useEditorStore.getState().setActiveTab(pluginTabId);
+    await settleDynamicImport();
+
+    expect(switchContext).not.toHaveBeenCalled();
+  });
+
+  it("DOES switch context for a file tab from another vault", async () => {
+    // Non-vacuity: §81's whole point. Without this the assertion above passes for a build
+    // that never switches context at all.
+    useContextStore.setState({ activeContextId: "ctx-file" });
+    useEditorStore.getState().openTab({
+      contextId: "ctx-vault",
+      filePath: "/vault/a.md",
+      id: "f9",
+      isDirty: false,
+      isPinned: false,
+      title: "a.md",
+    });
+
+    useEditorStore.getState().setActiveTab("f9");
+    await settleDynamicImport();
+
+    expect(switchContext).toHaveBeenCalledWith("ctx-vault");
   });
 });

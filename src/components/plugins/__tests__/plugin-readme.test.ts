@@ -69,7 +69,10 @@ describe("readPluginReadme (§69)", () => {
   });
 
   it("does not truncate a README at exactly the cap", async () => {
-    // Boundary — an off-by-one in the comparison shows up here and nowhere else.
+    // ‼️ This does NOT catch an off-by-one, and an earlier version of this comment claimed it
+    // did. `>` vs `>=` is an EQUIVALENT mutant: slicing a string of exactly MAX to MAX returns
+    // the same string, so no input distinguishes them. Kept as a boundary regression guard —
+    // what it rules out is a cap that truncates content it should have left alone.
     fetchMock.mockResolvedValue(ok("y".repeat(MAX_README_BYTES)));
 
     expect(await readPluginReadme("/p/x")).toHaveLength(MAX_README_BYTES);

@@ -26,18 +26,34 @@ vi.mock("../../../plugins/plugin-lifecycle", async (importOriginal) => ({
 // Empty by DEFAULT: a detail screen that only worked for a listed plugin would pass against
 // a registry lookup, and the installed-but-unlisted plugin is exactly the one whose
 // provenance a user opens this screen to check. Individual tests push a listing in.
-const listed = vi.hoisted(() => ({ plugins: [] as unknown[] }));
+const listed = vi.hoisted(() => ({
+  /** How `fetchRegistryIndex` behaves: resolved now, rejected, or held open by the test. */
+  mode: "resolve" as "defer" | "hang" | "reject" | "resolve",
+  plugins: [] as unknown[],
+  /** Call count — `settleRegistryFetch` asserts on it, so a flush cannot pass vacuously. */
+  requests: 0,
+  resolve: undefined as ((index: unknown) => void) | undefined,
+}));
 vi.mock("../../../plugins/registry-client", () => ({
   checkForUpdates: () => Promise.resolve({}),
-  fetchRegistryIndex: () =>
-    Promise.resolve({ plugins: listed.plugins } as RegistryIndex),
+  fetchRegistryIndex: () => {
+    listed.requests += 1;
+    if (listed.mode === "reject") return Promise.reject(new Error("offline"));
+    if (listed.mode === "hang") return new Promise(() => undefined);
+    if (listed.mode === "defer") {
+      return new Promise((res) => {
+        listed.resolve = res as (index: unknown) => void;
+      });
+    }
+    return Promise.resolve({ plugins: listed.plugins } as RegistryIndex);
+  },
   searchRegistry: () => [],
 }));
 vi.mock("../plugin-readme", () => ({
-  MAX_README_BYTES: 262144,
   readPluginReadme: (p: string) => readPluginReadme(p),
 }));
 
+import { revocationFor } from "../../../plugins/revocation";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginDetailTab } from "../PluginDetailTab";
@@ -64,9 +80,18 @@ const unlisted = {
   updatedAt: 0,
 } as unknown as InstalledPlugin;
 
-/** Let the registry fetch and the README read settle, so no assertion reads a first-render
- *  state that every resolution order happens to share. */
+/**
+ * Let the registry fetch and the README read settle, so no assertion reads a first-render
+ * state that every resolution order happens to share.
+ *
+ * ‼️ Asserts the fetch was actually REQUESTED first. A fixed number of microtask ticks is a
+ * silent failure mode on its own — if the component never fetched, or a future `await` lands
+ * in the chain, the flush becomes too short and every assertion after it passes for the wrong
+ * reason. That is exactly how the "installed version wins" assertion used to pass. Tests that
+ * need certainty rather than a flush use `mode: "defer"` and resolve explicitly.
+ */
 async function settleRegistryFetch(): Promise<void> {
+  expect(listed.requests).toBeGreaterThan(0);
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -75,7 +100,10 @@ async function settleRegistryFetch(): Promise<void> {
 }
 
 beforeEach(() => {
+  listed.mode = "resolve";
   listed.plugins = [];
+  listed.requests = 0;
+  listed.resolve = undefined;
   readPluginReadme.mockReset().mockResolvedValue(null);
   usePluginStore.setState({
     builtinDisabled: [],
@@ -127,12 +155,16 @@ describe("PluginDetailTab — a plugin the registry does not list (§69)", () =>
       },
     ];
     usePluginStore.setState({ updateAvailable: { sideloaded: "9.0.0" } });
+    // ‼️ Deferred, not flushed. `registryIndex` is null on the first render, so ANY resolution
+    // order shows the installed manifest at that moment — an assertion made before the index
+    // lands passes against a build that prefers the listing. Resolving explicitly inside `act`
+    // makes "the index HAS landed" a fact of the test rather than a hoped-for side effect of
+    // counting microtasks.
+    listed.mode = "defer";
     render(<PluginDetailTab pluginId="sideloaded" />);
-    // ‼️ Flush the registry fetch before asserting. `registryIndex` is null on the first
-    // render, so ANY resolution order shows the installed manifest at that moment — a
-    // `waitFor` here passes against a build that prefers the listing, because it catches
-    // that transient state and stops looking.
-    await settleRegistryFetch();
+    await act(async () => {
+      listed.resolve!({ plugins: listed.plugins });
+    });
 
     expect(screen.getByText("v2.1.0")).toBeTruthy();
     expect(screen.queryByText("v9.0.0")).toBeNull();
@@ -167,11 +199,104 @@ describe("PluginDetailTab — a plugin the registry does not list (§69)", () =>
     // A tab outlives the panel that opened it, so the plugin can be uninstalled — or its
     // listing withdrawn — while this screen is open. Rendering nothing would read as a
     // broken tab.
+    //
+    // ‼️ Settles FIRST. Before the loading state existed, a bare `waitFor` here caught the
+    // first paint — where `registryIndex` is null and this message renders for ANY id — so the
+    // assertion could not tell "the registry says it is gone" from "the registry has not been
+    // asked yet", and it pinned that flash as correct.
     render(<PluginDetailTab pluginId="ghost" />);
+    await settleRegistryFetch();
 
-    await waitFor(() => {
-      expect(screen.getByText(/no longer available/iu)).toBeTruthy();
+    expect(screen.getByText(/no longer available/iu)).toBeTruthy();
+  });
+
+  it("claims nothing while the registry has not answered", async () => {
+    // The flash this replaces: "This plugin is no longer available." on the first paint of
+    // every not-installed plugin, including ones the registry is about to confirm.
+    listed.mode = "hang";
+    const { container } = render(<PluginDetailTab pluginId="notyet" />);
+
+    await act(async () => {
+      await Promise.resolve();
     });
+
+    expect(container.textContent).toBe("");
+  });
+
+  it("distinguishes an unreachable registry from a withdrawn listing", async () => {
+    // A failed fetch used to leave "no longer available" up permanently — reporting a network
+    // fault as a decision the registry made, with no way for the user to tell the difference.
+    listed.mode = "reject";
+    render(<PluginDetailTab pluginId="notyet" />);
+    await settleRegistryFetch();
+
+    expect(screen.getByText(/could not reach/iu)).toBeTruthy();
+    expect(screen.queryByText(/no longer available/iu)).toBeNull();
+  });
+});
+
+// §69 — the revocation notice, on both paths.
+//
+// ‼️ The panel's `shownRevocation` resolves against `installedPlugins[id]?.manifest.version ??
+// entry.version`. Keying only off an install meant the Browse list drew a revoked badge and the
+// detail it links to explained nothing while offering Install — on the one screen whose job is
+// provenance. The install itself was still refused by `usePluginActions`, so this was a
+// display-only regression, on the security explanation path.
+describe("PluginDetailTab — revocation (§69)", () => {
+  const revoked = {
+    revoked: [
+      {
+        id: "risky",
+        reason: "malicious build",
+        severity: "malicious",
+        versions: { eq: "1.0.0" },
+      },
+    ],
+    version: 1,
+  } as never;
+
+  const riskyListing = {
+    ...unlisted.manifest,
+    checksum: "def",
+    downloadUrl: "https://example.test/risky-1.0.0.zip",
+    id: "risky",
+    name: "Risky",
+    version: "1.0.0",
+  };
+
+  it("explains a revocation for a plugin that is listed but not installed", async () => {
+    // ‼️ Fixture validity first — `VersionRange` accepts "*" or {eq|gt|gte|lt|lte}, so a bare
+    // string `versions` silently matches nothing and this test would pass for a build that
+    // renders no notice at all.
+    expect(revocationFor("risky", "1.0.0", revoked as never)?.severity).toBe(
+      "malicious",
+    );
+
+    usePluginStore.setState({ installedPlugins: {}, revocations: revoked });
+    listed.plugins = [riskyListing];
+    render(<PluginDetailTab pluginId="risky" />);
+    await settleRegistryFetch();
+
+    expect(screen.getByText(/malicious build/iu)).toBeTruthy();
+  });
+
+  it("still explains it for an installed plugin", async () => {
+    // The complement: without it, the assertion above passes for a build that reads the
+    // revocation from the listing only and stopped resolving it for installs.
+    usePluginStore.setState({
+      installedPlugins: {
+        risky: {
+          ...unlisted,
+          installPath: "/p/risky",
+          manifest: { ...unlisted.manifest, id: "risky", version: "1.0.0" },
+        } as unknown as InstalledPlugin,
+      },
+      revocations: revoked,
+    });
+    render(<PluginDetailTab pluginId="risky" />);
+    await settleRegistryFetch();
+
+    expect(screen.getByText(/malicious build/iu)).toBeTruthy();
   });
 });
 
@@ -285,5 +410,46 @@ describe("PluginDetailTab — Back closes the tab (§69)", () => {
     await waitFor(() => {
       expect(useEditorStore.getState().tabs).toHaveLength(0);
     });
+  });
+});
+
+describe("PluginDetailTab — the tab label follows the manifest (§69)", () => {
+  it("corrects a stale title from the live manifest", async () => {
+    // ‼️ The title is the only value `openPluginTab` snapshots at click time, which contradicts
+    // this component's premise that a snapshot goes stale. An update that renames the plugin
+    // left the old label on the tab.
+    useEditorStore.setState({ activeTabId: null, mruOrder: [], tabs: [] });
+    useEditorStore.getState().openPluginTab("sideloaded", "Old Name");
+
+    render(<PluginDetailTab pluginId="sideloaded" />);
+    await settleRegistryFetch();
+
+    expect(useEditorStore.getState().tabs[0]?.title).toBe("Sideloaded");
+  });
+
+  it("relabels its OWN tab, not whichever tab is active", async () => {
+    // ‼️ An earlier version of this test opened the file tab first and then the plugin tab —
+    // but `openPluginTab` activates its own tab, so `activeTabId` was already the plugin tab
+    // and keying the lookup on it made no observable difference. The active tab has to be a
+    // DIFFERENT tab for the two implementations to diverge.
+    useEditorStore.setState({ activeTabId: null, mruOrder: [], tabs: [] });
+    const store = useEditorStore.getState();
+    store.openPluginTab("sideloaded", "Old Name");
+    store.openTab({
+      contextId: "",
+      filePath: "/vault/a.md",
+      id: "f1",
+      isDirty: false,
+      isPinned: false,
+      title: "a.md",
+    });
+    expect(useEditorStore.getState().activeTabId).toBe("f1");
+
+    render(<PluginDetailTab pluginId="sideloaded" />);
+    await settleRegistryFetch();
+
+    const tabs = useEditorStore.getState().tabs;
+    expect(tabs.find((t) => t.type === "plugin")?.title).toBe("Sideloaded");
+    expect(tabs.find((t) => t.id === "f1")?.title).toBe("a.md");
   });
 });

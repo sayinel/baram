@@ -385,6 +385,16 @@
   color: var(--color-text-primary);
 }
 
+/* §69 The descendant rules below are shared with the Help panel, but `.help-panel-content`'s
+   OWN font-size and line-height are not — and the heading sizes are absolute (h1 is 18px), so
+   without a base here an 18px h1 sits beside body text inheriting the editor area's ~16px and
+   reads as barely a heading at all. Same rhythm as the Help panel. */
+.plugin-detail-readme {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
 :is(.help-panel-content, .plugin-detail-readme) .markdown-rendered h1 {
   margin: 0 0 12px;
   font-size: 18px;

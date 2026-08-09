@@ -58,6 +58,15 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
   const [registryIndex, setRegistryIndex] = useState<null | RegistryIndex>(
     null,
   );
+  /**
+   * ‼️ Three states, not a nullable index. With only `registryIndex`, "the registry has not
+   * answered yet" and "the registry says this plugin is gone" were the same value — so a
+   * not-installed plugin flashed "no longer available" on its first paint, and a failed fetch
+   * left that message up permanently, reporting a network fault as a withdrawn listing.
+   */
+  const [indexState, setIndexState] = useState<"failed" | "loading" | "ready">(
+    "loading",
+  );
   const [readme, setReadme] = useState<null | string>(null);
 
   const {
@@ -77,10 +86,13 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
     let cancelled = false;
     fetchRegistryIndex()
       .then((index) => {
-        if (!cancelled) setRegistryIndex(index);
+        if (cancelled) return;
+        setRegistryIndex(index);
+        setIndexState("ready");
       })
       .catch((err: unknown) => {
         logger.warn("[PluginDetailTab] registry fetch failed:", err);
+        if (!cancelled) setIndexState("failed");
       });
     return () => {
       cancelled = true;
@@ -90,6 +102,19 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
   const installed = installedPlugins[pluginId] ?? devPlugins[pluginId];
   const manifest = selectManifest({ devPlugins, installedPlugins }, pluginId);
   const source = derivePluginSource({ devPlugins, installedPlugins }, pluginId);
+
+  // ‼️ The tab TITLE was the one thing still snapshotted at click time, which contradicts this
+  // component's whole premise. An update that renames the plugin left a stale label. Keyed on
+  // the id rather than on `activeTabId`, so it addresses its own tab and not whichever is
+  // focused.
+  useEffect(() => {
+    if (!manifest) return;
+    const { setTabTitle, tabs } = useEditorStore.getState();
+    const own = tabs.find(
+      (t) => t.type === "plugin" && t.pluginId === pluginId,
+    );
+    if (own && own.title !== manifest.name) setTabTitle(own.id, manifest.name);
+  }, [manifest, pluginId]);
 
   // Keyed on the PATH rather than on the `installed` object: the store hands back a fresh map
   // on any plugin write, so depending on the object identity re-read the README every time an
@@ -120,11 +145,16 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
     : registryIndex?.plugins.find((p) => p.id === pluginId);
 
   if (!entry) {
-    // Reachable while the fetch is in flight for a not-installed plugin, and permanently if
-    // its listing was withdrawn between opening the tab and this render.
+    // Nothing rather than a claim: the registry has not answered, so neither message is true
+    // yet. An installed plugin never reaches this — its entry comes from the manifest.
+    if (indexState === "loading") return null;
     return (
       <div className="plugin-detail-tab-empty">
-        {t("plugin.detail.unavailable")}
+        {t(
+          indexState === "failed"
+            ? "plugin.detail.registryUnreachable"
+            : "plugin.detail.unavailable",
+        )}
       </div>
     );
   }
@@ -170,11 +200,17 @@ export function PluginDetailTab({ pluginId }: { pluginId: string }) {
         onUninstall={() => handleUninstall(pluginId)}
         onUpdate={() => handleUpdate(entry)}
         readme={readme}
-        revocation={
-          installed
-            ? revocationFor(pluginId, installed.manifest.version, revocations)
-            : null
-        }
+        revocation={revocationFor(
+          pluginId,
+          // ‼️ Falls back to the LISTING's version when nothing is installed, matching the
+          // panel's `shownRevocation`. Passing `null` for a not-installed plugin meant the
+          // Browse list drew a revoked badge and the detail it links to explained nothing,
+          // while offering an Install button — on the one screen whose job is provenance.
+          // (`unlisted` severity is filtered by `PluginRevokedNotice` itself, and the install
+          // gate judges independently in `usePluginActions`.)
+          installed?.manifest.version ?? entry.version,
+          revocations,
+        )}
         source={source}
         status={status}
         updateAvailable={updateAvailable[pluginId]}

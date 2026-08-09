@@ -141,7 +141,10 @@ export function HelpPanel() {
         onClick={handleContentClick}
         ref={contentRef}
       >
-        <MarkdownRenderer content={processedContent} />
+        {/* `docs/*.md` is bundled from this repo at build time, so raw HTML in our own
+            documentation is intended. The renderer's default is the restricted policy for
+            third-party-authored content (§69). */}
+        <MarkdownRenderer content={processedContent} trust="trusted" />
       </div>
     </div>
   );
