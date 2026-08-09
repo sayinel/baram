@@ -142,8 +142,24 @@ export function MathBlockView({
     // the textarea mid-typing.
   }, [selected]);
 
-  // Auto-resize textarea
-  useTextareaAutoResize(textareaRef, localFormula, selected);
+  // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
+  // traversal NodeSelection keeps the preview (plus PM's selectednode
+  // outline), while a click latch, an open session, or a non-modal surface
+  // shows the editor. Single path so the textarea element survives the flip —
+  // preflight focus must not land on a node React is about to replace.
+  // Computed BEFORE the hooks that key on it.
+  const editing =
+    selected &&
+    (isEditing ||
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state));
+
+  // Auto-resize textarea — keyed on `editing`, NOT `selected`: the standby
+  // element is 1px wide, so a measurement there writes an inflated inline
+  // height that would survive into the editing render (opening the session
+  // changes neither `selected` nor the content). Entry flips this flag, which
+  // re-runs the hook at the real width (adversarial review finding).
+  useTextareaAutoResize(textareaRef, localFormula, editing);
 
   // Render KaTeX preview
   useEffect(() => {
@@ -257,17 +273,6 @@ export function MathBlockView({
     if (el) el.onmousedown = (e) => e.stopPropagation();
   }, []);
 
-  // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
-  // traversal NodeSelection keeps the preview (plus PM's selectednode
-  // outline), while a click latch, an open session, or a non-modal surface
-  // shows the editor. Single path so the textarea element survives the flip —
-  // preflight focus must not land on a node React is about to replace.
-  const editing =
-    selected &&
-    (isEditing ||
-      enterByClickRef.current ||
-      !isWysiwygVimModal(vimGateEditorRef.current.state));
-
   return (
     <NodeViewWrapper
       className={
@@ -283,6 +288,12 @@ export function MathBlockView({
     >
       {selected && (
         <textarea
+          // Standby must not be a Tab stop nor AT-visible: a native textarea
+          // defaults into sequential focus, vim does not consume Tab, and an
+          // invisible control opening an edit session on stray focus is the
+          // §12-⑩ violation again. Programmatic .focus() (the preflight)
+          // works regardless of tabIndex -1.
+          aria-hidden={editing ? undefined : true}
           autoCapitalize="off"
           autoCorrect="off"
           className={
@@ -302,6 +313,7 @@ export function MathBlockView({
           ref={textareaRef}
           rows={1}
           spellCheck={false}
+          tabIndex={editing ? 0 : -1}
           value={localFormula}
         />
       )}
