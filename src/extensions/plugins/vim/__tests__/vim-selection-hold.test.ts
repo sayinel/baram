@@ -19,12 +19,18 @@
 // Under vim the view is non-editable, so PM never writes the new selection to
 // the DOM. The DOM selection therefore disagrees with PM's record, flush reads
 // that disagreement as "the browser moved the caret", and restores the stale
-// position. PM exposes setCurSelection() for exactly this, and the
-// repo already uses it once (use-source-mode.ts, source-mode return).
+// position. suppressSelectionUpdates() answers every selectionchange in the
+// next 50 ms by re-asserting state into the DOM — an active defence that
+// outlasts WebKit's async churn (brokenSelectBetweenUneditable: a selection
+// between non-editable blocks cannot be held, and the workaround's cleanup
+// fires a LATE collapsed selectionchange). Re-baselining once with
+// setCurSelection() instead was tried and REFUTED on device: `j` skipped the
+// block again, because a baseline taken at dispatch time loses to an event
+// that arrives after it. These pins also guard against swapping the call back.
 //
 // jsdom cannot reproduce the revert itself (no WebKit DOM-selection sync — a
 // behavioural test reports HELD and proves nothing). So this pins the call:
-// after a motion, vim re-baselines the observer.
+// after a motion, vim suppresses the observer's next reads.
 
 import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -36,7 +42,7 @@ import { vimPluginKey } from "../vim-keys";
 const editors: Editor[] = [];
 
 interface ObserverProbe {
-  setCurSelection: ReturnType<typeof vi.fn>;
+  suppressSelectionUpdates: ReturnType<typeof vi.fn>;
 }
 
 function caretInBelow(editor: Editor): number {
@@ -80,12 +86,12 @@ function probeObserver(editor: Editor): ObserverProbe {
   const spy = vi.fn();
   const observer = (
     editor.view as unknown as {
-      domObserver?: { setCurSelection?: () => void };
+      domObserver?: { suppressSelectionUpdates?: () => void };
     }
   ).domObserver;
   expect(observer).toBeDefined(); // the API this fix relies on must exist
-  if (observer) observer.setCurSelection = spy;
-  return { setCurSelection: spy };
+  if (observer) observer.suppressSelectionUpdates = spy;
+  return { suppressSelectionUpdates: spy };
 }
 
 afterEach(() => {
@@ -94,18 +100,18 @@ afterEach(() => {
   useSettingsStore.setState({ vimMode: false });
 });
 
-describe("a motion re-baselines the DOM observer", () => {
-  it("`k` onto a math block re-baselines the observer's DOM record", () => {
+describe("a motion suppresses the DOM observer's re-read", () => {
+  it("`k` onto a math block suppresses the observer's re-read", () => {
     const editor = makeEditor();
     editor.commands.setTextSelection(caretInBelow(editor));
     const probe = probeObserver(editor);
 
     key(editor, "k");
 
-    expect(probe.setCurSelection).toHaveBeenCalled();
+    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
   });
 
-  it("an ordinary paragraph motion re-baselines it too", () => {
+  it("an ordinary paragraph motion suppresses it too", () => {
     // Not atom-specific: any non-editable move leaves the DOM selection
     // behind, so the same disagreement exists between two paragraphs.
     const editor = makeEditor();
@@ -114,7 +120,7 @@ describe("a motion re-baselines the DOM observer", () => {
 
     key(editor, "j");
 
-    expect(probe.setCurSelection).toHaveBeenCalled();
+    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
   });
 
   it("the selection vim asked for is the one that stands", () => {
@@ -132,10 +138,10 @@ describe("a motion re-baselines the DOM observer", () => {
 });
 
 describe("vim OFF leaves the observer alone (positive control)", () => {
-  it("does not re-baseline when vim is not driving the selection", () => {
-    // A fix that re-baselined unconditionally would pass the pins above while
-    // interfering with ordinary editing, where the observer's record must keep
-    // tracking what the browser actually did.
+  it("does not suppress when vim is not driving the selection", () => {
+    // A fix that suppressed unconditionally would pass the pins above while
+    // muting ordinary editing, where the observer's reads are the source of
+    // truth for native selection changes.
     useSettingsStore.setState({ vimMode: false });
     const editor = new Editor({
       content: "<p>alpha beta</p>",
@@ -148,6 +154,6 @@ describe("vim OFF leaves the observer alone (positive control)", () => {
 
     key(editor, "j"); // plain typing surface — vim must not be involved
     expect(vimPluginKey.getState(editor.state)?.enabled).toBe(false);
-    expect(probe.setCurSelection).not.toHaveBeenCalled();
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
   });
 });

@@ -428,22 +428,35 @@ function cursorSelection(state: EditorState, target: number): Selection {
  * `ignoreSelectionChange` consults the desc where the DOM selection SITS (the
  * paragraph vim just left), not the block it moved to.
  *
- * The cure is `setCurSelection()`: it re-baselines the observer's record of the
- * DOM selection, so the comparison above simply stops finding a disagreement.
- * `suppressSelectionUpdates()` was the first attempt and is worse — it flips a
- * global flag cleared by an uncancelled 50 ms timer, and while that flag is up
- * `onSelectionChange` answers a REAL click by writing PM state back to the DOM,
- * so a user's own selection inside the window is discarded (adversarial review).
- * Re-baselining has no timer, no window, and no opinion about anything the user
- * does next.
+ * WHY THE REVERT CANNOT BE BASELINED AWAY: WebKit refuses to hold a DOM
+ * selection that starts or ends between non-editable blocks
+ * (`brokenSelectBetweenUneditable`, prosemirror-view :2309). PM's own
+ * workaround — `temporarilyEditableNear` briefly makes a neighbour editable,
+ * writes the selection, flips it back — cannot stick under vim either, because
+ * the WHOLE root is non-editable: WebKit re-normalises the selection
+ * afterwards and fires a LATE `selectionchange` with a collapsed position near
+ * the block. `setCurSelection()` (re-baseline once at dispatch) was tried and
+ * REFUTED on device — `j` skipped the block again — since a baseline taken now
+ * cannot win against an event that arrives later; PM even calls it itself at
+ * the end of `selectionToDOM` (:2303) and the revert fired regardless.
+ *
+ * suppressSelectionUpdates() is the instrument PM core itself uses for
+ * same-class churn (:5202, upstream issue 820): for the next 50 ms every
+ * incoming `selectionchange` is answered by RE-ASSERTING state into the DOM
+ * (`onSelectionChange → selectionToDOM`), which outlasts the async churn.
+ * The window does not eat real input — a mouse click travels PM's state path
+ * (`updateSelection → view.dispatch`, :3243), so suppression re-asserts the
+ * click's own selection; only the first ≤50 ms of a native drag-selection
+ * started right after a vim keystroke is affected. use-source-mode.ts leans on
+ * the same call for its source-mode return.
  */
 function dispatchCursor(view: EditorView, tr: Transaction): void {
   view.dispatch(tr);
   (
     view as unknown as {
-      domObserver?: { setCurSelection?: () => void };
+      domObserver?: { suppressSelectionUpdates?: () => void };
     }
-  ).domObserver?.setCurSelection?.();
+  ).domObserver?.suppressSelectionUpdates?.();
 }
 
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
