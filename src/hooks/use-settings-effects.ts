@@ -97,19 +97,41 @@ export function useSettingsEffects(editor: Editor | null) {
   }, [spellCheck, editor]);
 
   // Sync OS menu labels when locale changes (and on mount)
+  //
+  // ‼️ Both native-menu effects load their IPC module lazily, so the module arrives a tick
+  // or more after the effect ran. Without the `active` flag the `.then` fired regardless of
+  // what happened in between: it pushed a menu update after the tree unmounted, and — when
+  // the deps changed faster than the import resolved — an older resolution could overwrite
+  // a newer sync with stale labels. Guarding is the standard cancel-aware shape for an
+  // async effect.
+  //
+  // It does NOT make the load itself cancellable, which is why a test that renders this
+  // hook must also keep the loader out of it (`ThemeEditor.test.tsx` mocks both modules):
+  // an in-flight `import()` resolving after vitest tears the environment down is an
+  // unhandled error that fails the run with every test passing.
   const locale = useSettingsStore((s) => s.locale);
   useEffect(() => {
+    let active = true;
     import("../ipc/menu-locale").then(({ syncMenuLocale }) => {
+      if (!active) return;
       syncMenuLocale(locale as "en" | "ko").catch((e) => logger.error(e));
     });
+    return () => {
+      active = false;
+    };
   }, [locale]);
 
   // Sync the native "Open Recent" submenu on recent-list / locale change (and on mount)
   const recentFolders = useSettingsStore((s) => s.recentFolders);
   const recentFiles = useSettingsStore((s) => s.recentFiles);
   useEffect(() => {
+    let active = true;
     import("../ipc/recent-menu").then(({ syncRecentMenu }) => {
+      if (!active) return;
       syncRecentMenu().catch((e) => logger.error(e));
     });
+    return () => {
+      active = false;
+    };
   }, [recentFolders, recentFiles, locale]);
 }

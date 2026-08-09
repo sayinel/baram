@@ -13,12 +13,32 @@ import { useState } from "react";
 import type { ThemeDef } from "../../../types/theme";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSettingsEffects } from "../../../hooks/use-settings-effects";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../../types/theme";
 import { ThemeEditor } from "../ThemeEditor";
+
+// ‼️ `useSettingsEffects` syncs two native menus through a LAZY `import()` (§82). This file
+// calls that hook, so those loads start here — and one of them resolved after vitest tore
+// this file's environment down, failing the whole run with an `EnvironmentTeardownError`
+// while all 4,407 tests passed. Mocking both modules makes that structurally impossible:
+// the dynamic import resolves from the mock registry and never reaches the loader.
+//
+// The paths must keep matching the ones `use-settings-effects.ts` imports — if the hook
+// moves a module, these mocks silently stop applying and the flake comes back. That is what
+// `keeps the native-menu IPC modules out of the loader` below pins.
+const menuIpc = vi.hoisted(() => ({
+  syncMenuLocale: vi.fn(() => Promise.resolve()),
+  syncRecentMenu: vi.fn(() => Promise.resolve()),
+}));
+vi.mock("../../../ipc/menu-locale", () => ({
+  syncMenuLocale: menuIpc.syncMenuLocale,
+}));
+vi.mock("../../../ipc/recent-menu", () => ({
+  syncRecentMenu: menuIpc.syncRecentMenu,
+}));
 
 const NORD = BUILT_IN_THEMES.find((t) => t.id === "nord")!;
 
@@ -151,5 +171,27 @@ describe("ThemeEditor — leaving the editor", () => {
     act(() => closeEditor());
 
     expect(accentValue()).toBe(SENTINEL);
+  });
+
+  it("keeps the native-menu IPC modules out of the loader", async () => {
+    // Not a theme assertion — it pins the mocks above to the paths the hook actually
+    // imports. Reaching the MOCK is the observable proof that the real module was not
+    // loaded, and it is the only thing that fails if `use-settings-effects.ts` renames one
+    // of those imports: the `vi.mock` would then apply to nothing, this file would start
+    // loading Tauri IPC again, and the teardown race would return with no other test
+    // noticing.
+    function Host() {
+      useSettingsEffects(null);
+      return null;
+    }
+
+    render(<Host />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(menuIpc.syncMenuLocale).toHaveBeenCalled();
+    expect(menuIpc.syncRecentMenu).toHaveBeenCalled();
   });
 });
