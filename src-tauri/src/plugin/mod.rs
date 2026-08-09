@@ -246,10 +246,11 @@ pub struct RegistryEntry {
 /// tolerance fixes. Erroring on total loss keeps the old behaviour for exactly the case the
 /// old behaviour was right about.
 ///
-/// How many were dropped reaches the frontend in `dropped_count`, because nothing on this
-/// side can report it: `src-tauri` installs no `log` implementation, so the `log::warn!` in
-/// the impl below is a no-op in every build today. It is kept for the day one is installed;
-/// the field is what actually carries the signal now.
+/// How many were dropped reaches the frontend in `dropped_count`. That field predates the
+/// backend logger (`src/logging`), which installed an implementation behind the `log::warn!`
+/// in the impl below — so the warning is now live as well. The field is still the signal the
+/// frontend reports; the log is where the offending ids are named, up to
+/// [`MAX_NAMED_DROPS`] of them.
 #[derive(Debug, Clone, Serialize)]
 pub struct RegistryIndex {
     pub plugins: Vec<RegistryEntry>,
@@ -263,6 +264,17 @@ pub struct RegistryIndex {
     #[serde(rename = "droppedCount")]
     pub dropped_count: usize,
 }
+
+/// How many individual bad entries get named in the log before it stops repeating itself.
+///
+/// Unbounded, one warning per dropped entry is a log-eviction primitive. `RegistryEntry`
+/// needs nine fields, so `{"id":"a"}` — 11 bytes on the wire — fails on the second one and
+/// produces a ~114-byte line: roughly 10x amplification, and `MAX_REGISTRY_BYTES` allows a
+/// 4 MiB index, so one fetch would write ~43 MiB through a 2 MiB file that keeps two
+/// archives. Every genuine diagnostic in the log and both archives would be gone, from a
+/// single request. The total still reaches the user through `dropped_count`; the log only
+/// needs enough examples to identify the offender.
+const MAX_NAMED_DROPS: usize = 10;
 
 /// The shape actually on the wire. `plugins` lands as raw `Value`s so each can be tried
 /// independently; `dropped_count` has no counterpart here, which is what makes it un-forgeable.
@@ -286,6 +298,7 @@ impl<'de> Deserialize<'de> for RegistryIndex {
         // millions of junk elements would reserve hundreds of MiB for entries that will
         // never be kept. Growing on demand costs a few reallocations for a real index.
         let mut kept: Vec<RegistryEntry> = Vec::new();
+        let mut named = 0usize;
         for value in raw.plugins {
             // Captured before the move, so the warning can name the offender.
             let label = value
@@ -294,11 +307,23 @@ impl<'de> Deserialize<'de> for RegistryIndex {
                 .map(str::to_owned);
             match serde_json::from_value::<RegistryEntry>(value) {
                 Ok(entry) => kept.push(entry),
-                Err(err) => log::warn!(
-                    "[registry] dropping unreadable index entry {}: {err}",
-                    label.as_deref().unwrap_or("<no id>")
-                ),
+                Err(err) => {
+                    if named < MAX_NAMED_DROPS {
+                        named += 1;
+                        log::warn!(
+                            "[registry] dropping unreadable index entry {}: {err}",
+                            label.as_deref().unwrap_or("<no id>")
+                        );
+                    }
+                }
             }
+        }
+        let dropped = total - kept.len();
+        if dropped > named {
+            log::warn!(
+                "[registry] {} further unreadable entries were not named",
+                dropped - named
+            );
         }
         if total > 0 && kept.is_empty() {
             return Err(serde::de::Error::custom(format!(
@@ -3223,6 +3248,74 @@ mod tests {
         assert_eq!(ids, vec!["first", "last"]);
     }
 
+    /// Collects every record the `log` facade emits, so a test can assert on log VOLUME.
+    struct Capture(Mutex<Vec<String>>);
+
+    impl log::Log for Capture {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record) {
+            self.0.lock().unwrap().push(record.args().to_string());
+        }
+        fn flush(&self) {}
+    }
+
+    static CAPTURE: Capture = Capture(Mutex::new(Vec::new()));
+
+    /// ‼️ The ONE global logger installation in this test binary.
+    ///
+    /// `log::set_boxed_logger` is process-wide and one-shot, so a second call anywhere in
+    /// the lib tests fails. `logging::tests` deliberately never installs one — it drives
+    /// `Box<dyn Log>` directly — precisely so this assertion, which needs the real
+    /// `log::warn!` macro path, can have it. If this `expect` ever fires, some other test
+    /// took the global slot and the two need to be reconciled, not worked around.
+    /// Named for what it proves. It counts records, never bytes on disk, so it is not
+    /// evidence that the log cannot be evicted — one line big enough would do that, and
+    /// what stops it is `logging::MAX_LINE_BYTES`. The two bounds are separate
+    /// properties and each needs its own test.
+    #[test]
+    fn the_number_of_named_registry_drops_is_bounded() {
+        log::set_logger(&CAPTURE).expect("no other lib test may install a global logger");
+        log::set_max_level(log::LevelFilter::Warn);
+
+        // 500 entries that each fail on a missing field. Unbounded, this is one warning per
+        // entry; the 4 MiB input cap allows ~380k of them, enough to overwrite a 2 MiB log
+        // and both of its archives ~21 times over and take every real diagnostic with it.
+        let junk: Vec<serde_json::Value> = (0..500)
+            .map(|i| serde_json::json!({ "id": format!("junk-{i}") }))
+            .collect();
+        let doc = serde_json::json!({ "plugins": junk });
+
+        let err = serde_json::from_value::<RegistryIndex>(doc).unwrap_err();
+        assert!(
+            err.to_string().contains("every one of the 500"),
+            "an all-junk index is still a hard error: {err}"
+        );
+
+        // Count only what THIS test provoked. `CAPTURE` is process-global and
+        // `set_max_level` above turns the facade on for the rest of the binary, so a
+        // bare `records.len()` is coupled to every other test that reaches this same
+        // `log::warn!` — three of them do. With zero headroom, that made a green run
+        // depend on libtest sorting this name ahead of `registry_index_*`.
+        let records = CAPTURE.0.lock().unwrap();
+        let mine: Vec<&String> = records
+            .iter()
+            .filter(|r| r.contains("junk-") || r.contains("further unreadable"))
+            .collect();
+        assert!(
+            mine.len() <= MAX_NAMED_DROPS + 1,
+            "at most {MAX_NAMED_DROPS} named entries plus one summary, got {}",
+            mine.len()
+        );
+        // Not just "few records": the summary has to account for the rest, or the bound
+        // would be silence about 490 dropped entries.
+        assert!(
+            records.iter().any(|r| r.contains("490 further unreadable")),
+            "the entries that were not named must still be counted: {records:?}"
+        );
+    }
+
     /// An absent `engines` costs the entry nothing, because it costs the app nothing.
     ///
     /// The frontend's floor gate reads a missing or unparseable range as "no opinion" and
@@ -3340,8 +3433,10 @@ mod tests {
         assert_eq!(empty.dropped_count, 0);
     }
 
-    /// Partial loss is survivable but must not be silent. `log::warn!` cannot carry it —
-    /// this crate installs no `log` implementation — so the count goes over the wire.
+    /// Partial loss is survivable but must not be silent, and the log alone cannot carry
+    /// it: `src/logging` now gives `log::warn!` an implementation, but only the first
+    /// `MAX_NAMED_DROPS` entries are named there, and a log file is not something the
+    /// user sees. The count over the wire is what reaches them.
     #[test]
     fn registry_index_reports_how_many_entries_it_dropped() {
         let mut broken = entry_json("broken");

@@ -240,6 +240,96 @@ fn the_two_tiers_apply_to_disjoint_window_sets() {
     );
 }
 
+/// The logger's own IPC command must stay ungranted — to BOTH tiers.
+///
+/// `tauri-plugin-log` ships a `log` command (`allow-log`, default set `["allow-log"]`) that
+/// lets a webview write a line of its choosing into `baram.log`. Nothing needs it: the
+/// backend attaches the logger itself (`src/logging`) and no frontend code calls it.
+///
+/// The sandbox side is already exhaustively pinned by `sandbox_tier_grants_exactly_its_
+/// allowlist`. The HOST side is not: `every_command_granted_to_exactly_one_tier` filters on
+/// `!p.contains(':')`, so it ignores every plugin permission, and `log:default` could be
+/// added to `default.json` without a single test noticing. That matters because trusted
+/// plugins run in the main window's realm — granting it there hands any installed plugin an
+/// arbitrary-line writer into the file users are told to attach to bug reports, which is
+/// exactly the deception the escaping in `logging::escape_control_chars` exists to prevent.
+///
+/// If frontend logs are ever routed to the file (recorded in `dev/backlog.md`), this test is
+/// the decision point: it must be replaced deliberately, host tier only, never `plugin-*`.
+#[test]
+fn no_capability_grants_the_log_plugin_command() {
+    // RECURSIVELY, because tauri-build parses `./capabilities/**/*` — a recursive glob.
+    // A first attempt used `read_dir`, which replaced "two hardcoded filenames" with
+    // "one directory level": `capabilities/extra/frontend-logs.json` would be a live
+    // grant and still invisible here. This test's whole contract is "nothing, anywhere,
+    // grants it", so the discovery has to match tauri's.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+    let mut files = Vec::new();
+    let mut stack = vec![dir.clone()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).expect("read capabilities/").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // tauri's own walk skips `schemas/`; so do we.
+                if path.file_name().is_some_and(|n| n != "schemas") {
+                    stack.push(path);
+                }
+            } else if path.extension().is_some_and(|x| x == "json") {
+                files.push(path);
+            }
+        }
+    }
+    assert!(
+        files.len() >= 2,
+        "expected at least the two known capability files under {}, found {files:?}",
+        dir.display()
+    );
+
+    for path in files {
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read capability"))
+                .expect("parse capability");
+        // One file may hold a single capability, a bare array of them, or
+        // `{"capabilities": [...]}` — `CapabilityFile` accepts all three. Reading
+        // `json["permissions"]` alone would panic on the other two shapes, and a
+        // panicking test never gets to inspect the grants it exists to inspect.
+        let capabilities: Vec<&serde_json::Value> = if let Some(list) = json.as_array() {
+            list.iter().collect()
+        } else if let Some(list) = json.get("capabilities").and_then(|c| c.as_array()) {
+            list.iter().collect()
+        } else {
+            vec![&json]
+        };
+
+        for capability in capabilities {
+            let granted: Vec<String> = capability["permissions"]
+                .as_array()
+                .map(|a| a.as_slice())
+                .unwrap_or_default()
+                .iter()
+                // A permission entry may be a bare string OR an object with an
+                // `identifier` (`PermissionEntry::ExtendedPermission`, used to attach a
+                // scope). Reading only strings would let `{"identifier": "log:default"}`
+                // through.
+                .filter_map(|p| {
+                    p.as_str()
+                        .or_else(|| p.get("identifier").and_then(|i| i.as_str()))
+                })
+                // `log:` the PLUGIN prefix, not the substring: `allow-git-log` is one of
+                // our own commands and `dialog:default` contains "log" too.
+                .filter(|p| p.starts_with("log:"))
+                .map(str::to_string)
+                .collect();
+            assert!(
+                granted.is_empty(),
+                "{} grants the log plugin command: {granted:?} — a webview could then write \
+                 arbitrary lines into the support log",
+                path.display()
+            );
+        }
+    }
+}
+
 #[test]
 fn main_tier_gets_everything_except_sandbox_only_commands() {
     let registered = generate_handler_commands();

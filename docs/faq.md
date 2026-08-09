@@ -608,6 +608,18 @@ If you believe there's a roundtrip bug, please [report it on GitHub](https://git
 - File names are matched case-insensitively
 - If autocomplete doesn't show a file, check that the file exists in your workspace folder
 
+### Where are the log files?
+
+Baram writes a plain-text log as it runs. Attaching it to a bug report saves a lot of guesswork:
+
+- **macOS**: `~/Library/Logs/com.inel.baram/baram.log`
+- **Windows**: `%LOCALAPPDATA%\com.inel.baram\logs\baram.log`
+- **Linux**: `~/.local/share/com.inel.baram/logs/baram.log`
+
+Each launch appends a line naming the version, so one file usually covers several sessions. It rotates at 2 MB, and up to two older files are kept beside it, named `baram_<date>_<time>.log`. Timestamps are UTC.
+
+The log holds Baram's own diagnostics — a file it could not read, a plugin it refused to load, and similar. Your API keys are never written to it. **Names are**, though: file and folder paths, plugin ids, and text taken from a document when something in it could not be loaded — a broken image path, for instance. So a log line can quote a piece of a note, and the paths reveal how your vault is organised. Have a look before posting it in a public issue.
+
 ---
 
 See the [User Guide](user-guide.md) and [Keyboard Shortcuts](keyboard-shortcuts.md) for more information.
