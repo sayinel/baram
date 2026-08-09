@@ -3270,8 +3270,12 @@ mod tests {
     /// `Box<dyn Log>` directly — precisely so this assertion, which needs the real
     /// `log::warn!` macro path, can have it. If this `expect` ever fires, some other test
     /// took the global slot and the two need to be reconciled, not worked around.
+    /// Named for what it proves. It counts records, never bytes on disk, so it is not
+    /// evidence that the log cannot be evicted — one line big enough would do that, and
+    /// what stops it is `logging::MAX_LINE_BYTES`. The two bounds are separate
+    /// properties and each needs its own test.
     #[test]
-    fn a_hostile_index_cannot_evict_the_log() {
+    fn the_number_of_named_registry_drops_is_bounded() {
         log::set_logger(&CAPTURE).expect("no other lib test may install a global logger");
         log::set_max_level(log::LevelFilter::Warn);
 
@@ -3289,11 +3293,20 @@ mod tests {
             "an all-junk index is still a hard error: {err}"
         );
 
+        // Count only what THIS test provoked. `CAPTURE` is process-global and
+        // `set_max_level` above turns the facade on for the rest of the binary, so a
+        // bare `records.len()` is coupled to every other test that reaches this same
+        // `log::warn!` — three of them do. With zero headroom, that made a green run
+        // depend on libtest sorting this name ahead of `registry_index_*`.
         let records = CAPTURE.0.lock().unwrap();
+        let mine: Vec<&String> = records
+            .iter()
+            .filter(|r| r.contains("junk-") || r.contains("further unreadable"))
+            .collect();
         assert!(
-            records.len() <= MAX_NAMED_DROPS + 1,
+            mine.len() <= MAX_NAMED_DROPS + 1,
             "at most {MAX_NAMED_DROPS} named entries plus one summary, got {}",
-            records.len()
+            mine.len()
         );
         // Not just "few records": the summary has to account for the rest, or the bound
         // would be silence about 490 dropped entries.
@@ -3420,8 +3433,10 @@ mod tests {
         assert_eq!(empty.dropped_count, 0);
     }
 
-    /// Partial loss is survivable but must not be silent. `log::warn!` cannot carry it —
-    /// this crate installs no `log` implementation — so the count goes over the wire.
+    /// Partial loss is survivable but must not be silent, and the log alone cannot carry
+    /// it: `src/logging` now gives `log::warn!` an implementation, but only the first
+    /// `MAX_NAMED_DROPS` entries are named there, and a log file is not something the
+    /// user sees. The count over the wire is what reaches them.
     #[test]
     fn registry_index_reports_how_many_entries_it_dropped() {
         let mut broken = entry_json("broken");

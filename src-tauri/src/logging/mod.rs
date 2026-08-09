@@ -32,6 +32,7 @@
 use std::borrow::Cow;
 
 use log::LevelFilter;
+use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_log::{Builder, RotationStrategy, Target, TargetKind, TimezoneStrategy};
 
@@ -103,7 +104,11 @@ fn policy() -> Builder {
 /// line. Bounding it here rather than at the call site makes it a property of the
 /// logger, so the next site that interpolates something remote inherits it.
 ///
-/// This does not bound the ALLOCATION: `Arguments` has already been rendered by the
+/// Applied twice — once to the incoming line and once to the escaped result — because
+/// escaping expands, `\u{0000}` being 8 bytes for one input byte. Bounding only the
+/// input would leave the written line up to 8x this.
+///
+/// It does not bound the ALLOCATION: `Arguments` has already been rendered by the
 /// time a formatter sees it. It bounds what reaches the file.
 const MAX_LINE_BYTES: usize = 8 * 1024;
 
@@ -123,9 +128,8 @@ const MAX_LINE_BYTES: usize = 8 * 1024;
 /// either, and the prefix contains nothing this would alter.
 ///
 /// Escaping every control character (not just `\n`) covers `\r`, NUL and the C1
-/// range in one predicate rather than a list to keep up to date. `U+2028`/`U+2029`
-/// are not control characters and so are not covered by that predicate, but some
-/// viewers do break lines on them — they are named explicitly for that reason.
+/// range in one predicate rather than a list to keep up to date; see
+/// [`needs_escape`] for what has to be named on top of it.
 ///
 /// Backslashes are deliberately NOT escaped. `\n` in the output is therefore
 /// ambiguous between an escaped newline and a literal backslash-n in the source
@@ -146,16 +150,52 @@ fn escape_control_chars(line: &str) -> Cow<'_, str> {
             ch => out.push(ch),
         }
     }
-    if overflow > 0 {
+    // Escaping expands: `\u{0000}` is 8 bytes for one input byte, so bounding the
+    // input alone leaves the WRITTEN line up to 8x the cap. Bound the output too, so
+    // the number in the doc is the number that reaches the file.
+    let spilled = {
+        let (kept, spilled) = truncate_on_char_boundary(&out, MAX_LINE_BYTES);
+        let end = kept.len();
+        if spilled > 0 {
+            out.truncate(end);
+        }
+        spilled
+    };
+    if overflow + spilled > 0 {
         // Say so in the line itself. A silently shortened record reads as a complete
         // one, which is the same deception the escaping above exists to prevent.
-        out.push_str(&format!(" …[{overflow} more bytes not logged]"));
+        out.push_str(&format!(" …[{} more bytes not logged]", overflow + spilled));
     }
     Cow::Owned(out)
 }
 
+/// Characters that must not reach the file as themselves.
+///
+/// `char::is_control` is category **Cc** only, and two other groups matter here for
+/// the same reason Cc does — the audience is a person reading the file:
+///
+/// * `U+2028`/`U+2029` (Zl/Zp) are line and paragraph separators. They cannot split
+///   a line in the file, but viewers do render them as breaks.
+/// * The bidi and zero-width controls (Cf) do not split anything either; `U+202E`
+///   REVERSES how the rest of the line renders in any bidi-aware viewer — terminal,
+///   GitHub, most editors. That is the Trojan-Source trick, and it arrives by the
+///   same route the escaping was added for: `![a](x&#8238;y.png)` in a note becomes
+///   a real override in a path that tauri logs at error.
+///
+/// These are named as ranges because std cannot test for a Unicode category beyond
+/// Cc without a tables crate. That makes this an enumeration, which is the shape
+/// this codebase distrusts — the residual is recorded in `dev/backlog.md`. The set
+/// is at least closed in practice: Unicode has not added invisible formatting
+/// characters in a long time, and anything new would be *invisible*, not forged.
 fn needs_escape(ch: char) -> bool {
-    ch.is_control() || ch == '\u{2028}' || ch == '\u{2029}'
+    ch.is_control()
+        || matches!(ch,
+            '\u{200b}'..='\u{200f}'      // zero-width space … RTL mark
+            | '\u{2028}' | '\u{2029}'    // line / paragraph separator
+            | '\u{202a}'..='\u{202e}'    // bidi embedding and override
+            | '\u{2066}'..='\u{2069}'    // bidi isolates
+            | '\u{feff}'                 // BOM / zero-width no-break space
+        )
 }
 
 /// Split at or below `max` bytes without cutting a `char` in half, returning the
@@ -222,21 +262,38 @@ fn build<R: Runtime>(
     Ok((max_level, logger))
 }
 
-/// Install the logger. Called as the first statement of the app's `setup` hook.
+/// The logger as a plugin of our own, registered FIRST in the builder chain.
 ///
-/// Deliberately not registered as a Tauri plugin. `TargetKind::LogDir` resolves
-/// `app_log_dir()` and `create_dir_all`s it inside the plugin's own setup hook, and
-/// a plugin setup error propagates out of `Builder::build()` — which `run()`
-/// `.expect()`s. So as a plugin, a log directory that is unwritable (taken by a
-/// regular file, root-owned, no `HOME`, full volume) would stop Baram from
-/// starting, with a panic message that says "building tauri application" and never
-/// mentions logging. A diagnostics facility must not be able to do that; attaching
-/// by hand is what makes the failure ours to absorb.
+/// Two constraints that pull in opposite directions, and this is what satisfies
+/// both.
 ///
-/// The cost of moving out of the plugin chain is that the logger installs after the
-/// other plugins' setup hooks instead of before. Nothing is lost today: the five
-/// plugins Baram registers contain no `log::` call sites at all, and tauri core's
-/// own are on post-init paths (exit, asset resolution, window events).
+/// It has to install *early*. `tauri::App::setup` creates every configured window
+/// before it calls the app's own `setup` closure (`app.rs`), and window creation is
+/// where the most valuable record of all is produced: `tauri-runtime-wry` logs
+/// `Error creating window: …` at **error** and "WebKit webview runtime not found" at
+/// warn. A launch that fails there panics out of `run()`, so if the logger installs
+/// in the app's `setup` closure those lines land in a no-op facade and the user's
+/// report comes with an empty log for the one session that mattered. Plugin setup
+/// hooks run inside `Builder::build()`, ahead of all of that.
+///
+/// And it must not be *able* to fail. `TargetKind::LogDir` resolves `app_log_dir()`
+/// and `create_dir_all`s it, and a plugin setup error propagates out of
+/// `Builder::build()`, which `run()` `.expect()`s — so tauri-plugin-log's own
+/// plugin turns an unwritable log directory (taken by a regular file, root-owned,
+/// no `HOME`, full volume) into "Baram does not start", with a panic that says
+/// "building tauri application" and never mentions logging. This wrapper calls
+/// [`install`], which returns `()`: there is no error left to propagate.
+pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
+    tauri::plugin::Builder::new("baram-logging")
+        .setup(|app, _api| {
+            install(app);
+            Ok(())
+        })
+        .build()
+}
+
+/// Install the logger, absorbing any failure. See [`plugin`] for why this cannot be
+/// allowed to return an error.
 pub fn install<R: Runtime>(app: &AppHandle<R>) {
     match build(production_target_kinds(), app) {
         Ok(logger) => attach(logger),
@@ -565,6 +622,61 @@ mod tests {
     }
 
     #[test]
+    fn a_direction_override_cannot_reorder_the_line_for_the_reader() {
+        // U+202E cannot split a line, but it reverses how the REST of the line renders
+        // in any bidi-aware viewer — terminal, GitHub, most editors. So a reader
+        // pasting the log into an issue sees text in an order the file does not have.
+        // Same route as the newline: `![a](x&#8238;y.png)` in a note becomes a real
+        // override in a path tauri logs at error. Zero-width characters are in the
+        // same predicate because "invisible" is the same problem as "misleading".
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        emit(
+            &*logger,
+            Level::Warn,
+            "baram_lib::plugin",
+            "denied: \u{202e}gnp.esrever\u{202c} and \u{200b}zero width",
+        );
+
+        let written = read_log(dir.path());
+        for raw in ['\u{202e}', '\u{202c}', '\u{200b}'] {
+            assert!(
+                !written.contains(raw),
+                "{raw:?} must not reach the file as itself: {written:?}"
+            );
+        }
+        assert!(
+            written.contains("\\u{202e}") && written.contains("\\u{200b}"),
+            "…and must survive as escapes: {written:?}"
+        );
+    }
+
+    #[test]
+    fn the_written_line_is_bounded_even_when_escaping_expands_it() {
+        // Escaping is not length-preserving: one NUL byte becomes the 8 bytes
+        // `\u{0000}`. Bounding only the INPUT would leave a written line 8x the cap,
+        // which `one_record_cannot_fill_the_log_file` cannot see because it uses
+        // characters that escape to themselves.
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        let nuls = "\0".repeat(MAX_LINE_BYTES);
+        emit(&*logger, Level::Warn, "baram_lib::plugin", &nuls);
+
+        let written = read_log(dir.path());
+        assert!(
+            written.len() < MAX_LINE_BYTES + 200,
+            "the WRITTEN line must be bounded, not just the input: {} bytes",
+            written.len()
+        );
+        assert!(
+            written.contains("more bytes not logged"),
+            "and it must say it was shortened"
+        );
+    }
+
+    #[test]
     fn one_record_cannot_fill_the_log_file() {
         // The companion to `MAX_NAMED_DROPS`, which bounds how MANY lines a hostile
         // registry index produces but not how BIG one is. `plugin/mod.rs` names the
@@ -702,34 +814,71 @@ mod tests {
         );
     }
 
-    /// The policy above only runs if `setup` installs it, and it must be the FIRST
-    /// statement there: until it returns, `log::*` is a no-op facade, so anything
-    /// the rest of `setup` logs is lost.
+    /// Read `run()`'s builder chain, for the two source-level facts the type system
+    /// cannot state.
     ///
-    /// A source scan, in the shape `tests/acl_lockdown.rs` established: window the
-    /// search, then assert POSITION rather than presence — a bare
-    /// `contains("logging::install")` passes just as well with the call at the end.
-    #[test]
-    fn the_logger_is_installed_first_in_setup() {
+    /// Comment lines are dropped first. Both assertions below count or locate a
+    /// literal like `.setup(`, and the comments in that chain *discuss* `.setup(` and
+    /// `.plugin(` — the first draft of `the_builder_registers_exactly_one_setup_hook`
+    /// read 3 where the code has 1. A guard that a comment can move is not a guard.
+    fn builder_chain() -> String {
         let src = std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
         )
         .expect("read src/lib.rs");
-        let setup = src
-            .find(".setup(")
-            .map(|i| &src[i..])
-            .expect("no .setup( in lib.rs");
-
-        let first_statement = setup
+        let start = src
+            .find("tauri::Builder::default()")
+            .expect("builder chain not found");
+        let end = src[start..]
+            .find(".invoke_handler(")
+            .expect("builder chain has no .invoke_handler(")
+            + start;
+        src[start..end]
             .lines()
-            .skip(1) // the `.setup(|app| {` line itself
-            .map(str::trim)
-            .find(|l| !l.is_empty() && !l.starts_with("//"))
-            .expect("setup closure has no statements");
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The logger must be the FIRST plugin registered: setup hooks run in
+    /// registration order, and a plugin ahead of it logs into a facade with no
+    /// implementation behind it.
+    ///
+    /// Asserted by POSITION in the source text rather than by scanning lines that
+    /// begin with `.plugin(` — the earlier version of this test could be defeated by
+    /// putting a registration on the `tauri::Builder::default()` line, where it is
+    /// not at the start of its line and so was filtered out entirely.
+    #[test]
+    fn the_logger_is_the_first_plugin_registered() {
+        let chain = builder_chain();
+        let count = chain.matches(".plugin(").count();
         assert!(
-            first_statement.contains("logging::install("),
-            "the logger must be installed by the first statement of setup, or whatever runs \
-             before it logs into a no-op facade. First statement is: {first_statement}"
+            count > 1,
+            "expected several plugin registrations, found {count}"
+        );
+
+        let first = chain.find(".plugin(").expect("no .plugin( in the chain");
+        let window = &chain[first..(first + 80).min(chain.len())];
+        assert!(
+            window.contains("logging::plugin"),
+            "the logger must be the first plugin registered. First registration is: {window}"
+        );
+    }
+
+    /// `tauri::Builder::setup` *replaces* the stored closure — `self.setup = Box::new(f)`,
+    /// with no warning. A second `.setup(...)` added anywhere in the chain silently
+    /// discards the first, which would take the menu installation with it as well.
+    ///
+    /// Not strictly about logging, but this is where the reasoning lives: the logger
+    /// moved out of `setup` precisely because that hook runs too late, and the next
+    /// person adding startup work will reach for a second one.
+    #[test]
+    fn the_builder_registers_exactly_one_setup_hook() {
+        let count = builder_chain().matches(".setup(").count();
+        assert_eq!(
+            count, 1,
+            "tauri keeps only the LAST .setup() closure, so a second one silently \
+             disables the first"
         );
     }
 }

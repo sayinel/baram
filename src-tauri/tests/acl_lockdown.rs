@@ -258,16 +258,38 @@ fn the_two_tiers_apply_to_disjoint_window_sets() {
 /// the decision point: it must be replaced deliberately, host tier only, never `plugin-*`.
 #[test]
 fn no_capability_grants_the_log_plugin_command() {
-    for rel in [
-        "capabilities/default.json",
-        "capabilities/plugin-sandbox.json",
-    ] {
-        let json: serde_json::Value = serde_json::from_str(&read(rel)).expect("parse capability");
+    // Every file, not the two we happen to have: tauri-build parses
+    // `./capabilities/**/*`, so a new `capabilities/frontend-logs.json` would be a live
+    // grant that a hardcoded pair of filenames cannot see. This test's whole contract is
+    // "nothing, anywhere, grants it".
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+    let files: Vec<_> = std::fs::read_dir(&dir)
+        .expect("read capabilities/")
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    assert!(
+        files.len() >= 2,
+        "expected at least the two known capability files in {}, found {files:?}",
+        dir.display()
+    );
+
+    for path in files {
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read capability"))
+                .expect("parse capability");
         let granted: Vec<String> = json["permissions"]
             .as_array()
             .expect("permissions array")
             .iter()
-            .filter_map(|p| p.as_str())
+            // A permission entry may be a bare string OR an object with an `identifier`
+            // (`PermissionEntry::ExtendedPermission`, used to attach a scope). Reading
+            // only strings would let `{"identifier": "log:default"}` through.
+            .filter_map(|p| {
+                p.as_str()
+                    .or_else(|| p.get("identifier").and_then(|i| i.as_str()))
+            })
             // `log:` the PLUGIN prefix, not the substring: `allow-git-log` is one of our own
             // commands and `dialog:default` contains "log" too.
             .filter(|p| p.starts_with("log:"))
@@ -275,8 +297,9 @@ fn no_capability_grants_the_log_plugin_command() {
             .collect();
         assert!(
             granted.is_empty(),
-            "{rel} grants the log plugin command: {granted:?} — a webview could then write \
-             arbitrary lines into the support log"
+            "{} grants the log plugin command: {granted:?} — a webview could then write \
+             arbitrary lines into the support log",
+            path.display()
         );
     }
 }

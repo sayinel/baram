@@ -9,7 +9,12 @@ mod fs;
 mod git;
 mod index;
 mod llm;
-mod logging;
+/// Public only so `tests/logging_install*.rs` can reach it. `install` ends in
+/// `log::set_boxed_logger`, which is process-global and one-shot, so the only place it
+/// can be exercised is an integration test binary that owns its own process — and an
+/// integration test links the library as an external crate. Nothing outside the crate
+/// calls this.
+pub mod logging;
 mod menu;
 mod plugin;
 mod search;
@@ -167,23 +172,24 @@ fn confirm_quit(app: tauri::AppHandle, guard: tauri::State<QuitGuard>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // FIRST, and a plugin rather than a line in `.setup()`: plugin setup hooks run
+        // inside `Builder::build()`, while `.setup()` runs after tauri has created every
+        // window — so a window that fails to open would log its cause into a facade
+        // with no implementation behind it. `logging::plugin` explains why it also
+        // cannot fail. `logging::tests` pins both the position and the count.
+        .plugin(logging::plugin())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            // FIRST statement: until this returns, every `log::*` in the app is a
-            // no-op facade, so anything below it would log into nothing. Attached
-            // here rather than registered as a plugin because a plugin's setup error
-            // aborts `Builder::build()` and therefore the app — see `logging::install`.
-            logging::install(app.handle());
-
             // The log file is appended to across sessions, so this doubles as a
             // session separator — and it answers the first question asked of any
             // report ("which version?") without the reporter having to know. Not
-            // guaranteed to be the file's first line of a session: tauri creates
-            // windows before this hook and can log its own failures there.
+            // necessarily the session's first line: the logger is installed earlier
+            // still (see the plugin above), so tauri's own window-creation failures
+            // are recorded ahead of it. That is the point.
             log::info!(
                 "Baram {} starting ({}, {})",
                 app.package_info().version,
