@@ -116,6 +116,34 @@ describe("k out of a code block still leaves it", () => {
   });
 });
 
+describe("frontmatter is NOT a CodeMirror island", () => {
+  // `frontmatter` is also `code: true`, so a `spec.code` predicate caught it
+  // too and `k` into it jumped to the first YAML character from any column.
+  // It renders through NodeViewContent, meaning ProseMirror keeps managing the
+  // caret inside it, so the column walk is correct there.
+  it("k into frontmatter preserves the column", () => {
+    const editor = makeEditor(
+      "---\ntitle: hello world\n---\n\nbody paragraph here\n",
+    );
+    const frontmatter = findNode(editor, "frontmatter");
+    let body = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (body < 0 && node.isTextblock && node.type.name === "paragraph") {
+        body = offset + 1;
+      }
+    });
+    expect(body).toBeGreaterThan(0);
+
+    const fromStart = resolveMotion(editor.state, body, "lineUp", 1);
+    const fromColumn4 = resolveMotion(editor.state, body + 4, "lineUp", 1);
+
+    // Landing on the content start from column 0 is ordinary; landing there
+    // from column 4 as well is the regression.
+    expect(fromStart).toBe(frontmatter.at + 1);
+    expect(fromColumn4).toBeGreaterThan(fromStart);
+  });
+});
+
 describe("ordinary paragraphs keep their column (positive control)", () => {
   // A fix that clamped every vertical move to the line start would satisfy
   // the pins above while destroying normal j/k behaviour.

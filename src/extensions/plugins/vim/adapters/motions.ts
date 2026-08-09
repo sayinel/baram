@@ -362,14 +362,18 @@ function initTableWalk(state: EditorState, pos: number): null | TableWalk {
   };
 }
 
-/** True when `pos` is the content start of a code block.
+/** True when `pos` lands in a block whose own editor owns the caret.
  *
  *  `codeBlock` declares `content: "text*"`, so it reads as a textblock and
  *  collectLines records it as ONE line — correct for j/k, wrong for the column
- *  walk, whose unit list would span the block's entire source. */
+ *  walk, whose unit list would span the block's entire source.
+ *
+ *  Matched by NAME, not by `spec.code`: `frontmatter` is also `code: true` but
+ *  renders through NodeViewContent, so ProseMirror keeps managing the caret
+ *  inside it and the column walk is right there. Using the flag made `k` into
+ *  frontmatter jump to its first YAML character from any column. */
 function isCodeBlockLanding(state: EditorState, pos: number): boolean {
-  const $pos = state.doc.resolve(pos);
-  return $pos.parent.type.spec.code === true;
+  return state.doc.resolve(pos).parent.type.name === "codeBlock";
 }
 
 /** The END of the last textblock in the node at `pos` — where a leftward

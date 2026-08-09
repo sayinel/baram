@@ -19,12 +19,12 @@
 // Under vim the view is non-editable, so PM never writes the new selection to
 // the DOM. The DOM selection therefore disagrees with PM's record, flush reads
 // that disagreement as "the browser moved the caret", and restores the stale
-// position. PM exposes suppressSelectionUpdates() for exactly this, and the
+// position. PM exposes setCurSelection() for exactly this, and the
 // repo already uses it once (use-source-mode.ts, source-mode return).
 //
 // jsdom cannot reproduce the revert itself (no WebKit DOM-selection sync — a
 // behavioural test reports HELD and proves nothing). So this pins the call:
-// after a motion, vim tells the observer to stand down.
+// after a motion, vim re-baselines the observer.
 
 import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -36,7 +36,7 @@ import { vimPluginKey } from "../vim-keys";
 const editors: Editor[] = [];
 
 interface ObserverProbe {
-  suppressSelectionUpdates: ReturnType<typeof vi.fn>;
+  setCurSelection: ReturnType<typeof vi.fn>;
 }
 
 function caretInBelow(editor: Editor): number {
@@ -80,12 +80,12 @@ function probeObserver(editor: Editor): ObserverProbe {
   const spy = vi.fn();
   const observer = (
     editor.view as unknown as {
-      domObserver?: { suppressSelectionUpdates?: () => void };
+      domObserver?: { setCurSelection?: () => void };
     }
   ).domObserver;
   expect(observer).toBeDefined(); // the API this fix relies on must exist
-  if (observer) observer.suppressSelectionUpdates = spy;
-  return { suppressSelectionUpdates: spy };
+  if (observer) observer.setCurSelection = spy;
+  return { setCurSelection: spy };
 }
 
 afterEach(() => {
@@ -94,18 +94,18 @@ afterEach(() => {
   useSettingsStore.setState({ vimMode: false });
 });
 
-describe("a motion tells the DOM observer to stand down", () => {
-  it("`k` onto a math block suppresses the pending selection re-read", () => {
+describe("a motion re-baselines the DOM observer", () => {
+  it("`k` onto a math block re-baselines the observer's DOM record", () => {
     const editor = makeEditor();
     editor.commands.setTextSelection(caretInBelow(editor));
     const probe = probeObserver(editor);
 
     key(editor, "k");
 
-    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
+    expect(probe.setCurSelection).toHaveBeenCalled();
   });
 
-  it("an ordinary paragraph motion suppresses it too", () => {
+  it("an ordinary paragraph motion re-baselines it too", () => {
     // Not atom-specific: any non-editable move leaves the DOM selection
     // behind, so the same disagreement exists between two paragraphs.
     const editor = makeEditor();
@@ -114,7 +114,7 @@ describe("a motion tells the DOM observer to stand down", () => {
 
     key(editor, "j");
 
-    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
+    expect(probe.setCurSelection).toHaveBeenCalled();
   });
 
   it("the selection vim asked for is the one that stands", () => {
@@ -132,10 +132,10 @@ describe("a motion tells the DOM observer to stand down", () => {
 });
 
 describe("vim OFF leaves the observer alone (positive control)", () => {
-  it("does not suppress when vim is not driving the selection", () => {
-    // A fix that called suppress unconditionally would pass the pins above
-    // while interfering with ordinary editing, where PM's DOM sync is the
-    // source of truth and must not be muted.
+  it("does not re-baseline when vim is not driving the selection", () => {
+    // A fix that re-baselined unconditionally would pass the pins above while
+    // interfering with ordinary editing, where the observer's record must keep
+    // tracking what the browser actually did.
     useSettingsStore.setState({ vimMode: false });
     const editor = new Editor({
       content: "<p>alpha beta</p>",
@@ -148,6 +148,6 @@ describe("vim OFF leaves the observer alone (positive control)", () => {
 
     key(editor, "j"); // plain typing surface — vim must not be involved
     expect(vimPluginKey.getState(editor.state)?.enabled).toBe(false);
-    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
+    expect(probe.setCurSelection).not.toHaveBeenCalled();
   });
 });

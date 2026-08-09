@@ -410,7 +410,7 @@ function cursorSelection(state: EditorState, target: number): Selection {
 }
 
 /**
- * Dispatch a transaction that MOVES THE CURSOR, and stop the DOM observer from
+ * Dispatch a transaction that MOVES THE CURSOR, and keep the DOM observer from
  * undoing it.
  *
  * A modal surface is non-editable, so ProseMirror never writes vim's selection
@@ -428,18 +428,22 @@ function cursorSelection(state: EditorState, target: number): Selection {
  * `ignoreSelectionChange` consults the desc where the DOM selection SITS (the
  * paragraph vim just left), not the block it moved to.
  *
- * suppressSelectionUpdates() is PM's own answer for a selection the editor set
- * deliberately; use-source-mode.ts already relies on it for the same reason.
- * Scoped to vim's cursor dispatches: ordinary editing needs PM's DOM sync, and
- * muting it there would break far more than it fixes.
+ * The cure is `setCurSelection()`: it re-baselines the observer's record of the
+ * DOM selection, so the comparison above simply stops finding a disagreement.
+ * `suppressSelectionUpdates()` was the first attempt and is worse — it flips a
+ * global flag cleared by an uncancelled 50 ms timer, and while that flag is up
+ * `onSelectionChange` answers a REAL click by writing PM state back to the DOM,
+ * so a user's own selection inside the window is discarded (adversarial review).
+ * Re-baselining has no timer, no window, and no opinion about anything the user
+ * does next.
  */
 function dispatchCursor(view: EditorView, tr: Transaction): void {
   view.dispatch(tr);
   (
     view as unknown as {
-      domObserver?: { suppressSelectionUpdates?: () => void };
+      domObserver?: { setCurSelection?: () => void };
     }
-  ).domObserver?.suppressSelectionUpdates?.();
+  ).domObserver?.setCurSelection?.();
 }
 
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
