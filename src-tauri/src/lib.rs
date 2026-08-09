@@ -167,19 +167,23 @@ fn confirm_quit(app: tauri::AppHandle, guard: tauri::State<QuitGuard>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // FIRST, deliberately: plugin `setup` hooks run in registration order, so a
-        // plugin registered above this one logs into a facade with no implementation
-        // behind it and its diagnostics are lost. `logging::tests` pins the order.
-        .plugin(logging::plugin())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            // The log file is appended to across sessions, so this doubles as the
+            // FIRST statement: until this returns, every `log::*` in the app is a
+            // no-op facade, so anything below it would log into nothing. Attached
+            // here rather than registered as a plugin because a plugin's setup error
+            // aborts `Builder::build()` and therefore the app — see `logging::install`.
+            logging::install(app.handle());
+
+            // The log file is appended to across sessions, so this doubles as a
             // session separator — and it answers the first question asked of any
-            // report ("which version?") without the reporter having to know.
+            // report ("which version?") without the reporter having to know. Not
+            // guaranteed to be the file's first line of a session: tauri creates
+            // windows before this hook and can log its own failures there.
             log::info!(
                 "Baram {} starting ({}, {})",
                 app.package_info().version,

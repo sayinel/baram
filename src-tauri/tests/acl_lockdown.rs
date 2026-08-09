@@ -240,6 +240,47 @@ fn the_two_tiers_apply_to_disjoint_window_sets() {
     );
 }
 
+/// The logger's own IPC command must stay ungranted — to BOTH tiers.
+///
+/// `tauri-plugin-log` ships a `log` command (`allow-log`, default set `["allow-log"]`) that
+/// lets a webview write a line of its choosing into `baram.log`. Nothing needs it: the
+/// backend attaches the logger itself (`src/logging`) and no frontend code calls it.
+///
+/// The sandbox side is already exhaustively pinned by `sandbox_tier_grants_exactly_its_
+/// allowlist`. The HOST side is not: `every_command_granted_to_exactly_one_tier` filters on
+/// `!p.contains(':')`, so it ignores every plugin permission, and `log:default` could be
+/// added to `default.json` without a single test noticing. That matters because trusted
+/// plugins run in the main window's realm — granting it there hands any installed plugin an
+/// arbitrary-line writer into the file users are told to attach to bug reports, which is
+/// exactly the deception the escaping in `logging::escape_control_chars` exists to prevent.
+///
+/// If frontend logs are ever routed to the file (recorded in `dev/backlog.md`), this test is
+/// the decision point: it must be replaced deliberately, host tier only, never `plugin-*`.
+#[test]
+fn no_capability_grants_the_log_plugin_command() {
+    for rel in [
+        "capabilities/default.json",
+        "capabilities/plugin-sandbox.json",
+    ] {
+        let json: serde_json::Value = serde_json::from_str(&read(rel)).expect("parse capability");
+        let granted: Vec<String> = json["permissions"]
+            .as_array()
+            .expect("permissions array")
+            .iter()
+            .filter_map(|p| p.as_str())
+            // `log:` the PLUGIN prefix, not the substring: `allow-git-log` is one of our own
+            // commands and `dialog:default` contains "log" too.
+            .filter(|p| p.starts_with("log:"))
+            .map(str::to_string)
+            .collect();
+        assert!(
+            granted.is_empty(),
+            "{rel} grants the log plugin command: {granted:?} — a webview could then write \
+             arbitrary lines into the support log"
+        );
+    }
+}
+
 #[test]
 fn main_tier_gets_everything_except_sandbox_only_commands() {
     let registered = generate_handler_commands();
