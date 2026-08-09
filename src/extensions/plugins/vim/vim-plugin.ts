@@ -457,6 +457,22 @@ function dispatchCursor(view: EditorView, tr: Transaction): void {
       domObserver?: { suppressSelectionUpdates?: () => void };
     }
   ).domObserver?.suppressSelectionUpdates?.();
+  // Normal mode needs NO DOM selection: the cursor is a decoration and an
+  // atom line keeps the selectednode outline. The range PM just wrote is the
+  // seed of the churn above — WebKit re-normalises it into a root-anchored
+  // block range (captured live: collapsed=false anchor=<div.tiptap> offset=24)
+  // whose full-width paint `.ProseMirror-hideselection *::selection` cannot
+  // hide, because that rule only silences TEXT selections. Removing the range
+  // leaves the churn nothing to chew on. Visual mode is exempt — its range IS
+  // the native selection the user is extending.
+  if (read(view.state).mode === "normal") {
+    const root = view.root as Document;
+    const sel =
+      typeof root.getSelection === "function"
+        ? root.getSelection()
+        : document.getSelection();
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) sel.removeAllRanges();
+  }
 }
 
 function dispatchMeta(view: EditorView, meta: VimMeta): void {

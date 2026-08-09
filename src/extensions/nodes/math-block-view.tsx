@@ -45,6 +45,12 @@ export function MathBlockView({
   // A CLICK is an explicit request to edit and bypasses the modal gate;
   // keyboard traversal does not. Consumed on entry, cleared on deselect.
   const enterByClickRef = useRef(false);
+  // §12-⑩ — the editing UI follows ENTRY, not selection. While vim is modal a
+  // traversal NodeSelection renders the PREVIEW plus a standby textarea; the
+  // session opens when that textarea gains focus (click path or vim's `i`
+  // preflight). Ref mirror so event handlers see the current value.
+  const [isEditing, setIsEditing] = useState(false);
+  const isEditingRef = useRef(false);
 
   // Save-on-deselect fires only after REAL typing in an edit session — a
   // bare attrs-vs-local comparison writes a stale baseline back over attrs
@@ -94,21 +100,27 @@ export function MathBlockView({
         updateAttributesRef.current({ formula: localFormulaRef.current });
       }
       enterByClickRef.current = false;
+      isEditingRef.current = false;
+      setIsEditing(false);
     } else if (
       enterByClickRef.current ||
       !isWysiwygVimModal(vimGateEditorRef.current.state)
     ) {
       // §298 §12-⑩ — selection ALONE must not open the block while vim is
       // modal: j/k traversal lands a NodeSelection on an atom line and that
-      // is navigation, not editing (pinned in editor-chrome.test.tsx).
+      // is navigation, not editing (pinned in editor-chrome.test.tsx and in
+      // math-block-vim-traversal.test.tsx, which pins the RENDER too — the
+      // editing chrome opening on a `j` landing was a live device finding).
       //
-      // The two explicit entries bypass the gate instead: a click sets the
-      // flag below, and the `i` key is handled by vim's own preflight
-      // (adapters/atom-insert.ts), which focuses this textarea directly —
-      // the textarea already exists here, because the editing render is
-      // driven by `selected`, not by focus.
+      // The explicit entries bypass the gate: a click sets the flag below,
+      // and the `i` key is handled by vim's own preflight
+      // (adapters/atom-insert.ts), which focuses the STANDBY textarea — it
+      // stays mounted (visually hidden) while selected, and its focus event
+      // is the entry signal that opens the editing UI.
       enterByClickRef.current = false;
       editDirtyRef.current = false;
+      isEditingRef.current = true;
+      setIsEditing(true);
       setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
       const entryState = mathBlockEntryKey.getState(editorRef.current.state);
@@ -138,11 +150,19 @@ export function MathBlockView({
     if (!previewRef.current) return;
     // Lazy gate: skip KaTeX while off-screen and not being edited.
     if (!isVisible && !selected) return;
-    const f = selected ? localFormula : formula;
+    // localFormula belongs to an edit SESSION — a traversal selection never
+    // opened one, so its preview must keep rendering the attribute. Read
+    // through the ref, NOT as a dep: the entry effect above sets it in the
+    // same commit, and at session start localFormula === formula anyway (the
+    // divergence — typing — already re-runs this via the localFormula dep).
+    // A dep here double-fires the dynamic import("katex") per selection,
+    // which vitest's mocker resolves to the REAL module on the second call.
+    const editing = selected && isEditingRef.current;
+    const f = editing ? localFormula : formula;
     const el = previewRef.current;
 
     if (!f.trim()) {
-      el.textContent = selected ? "" : "Empty math block";
+      el.textContent = editing ? "" : "Empty math block";
       el.className = "math-block-katex math-block-katex-empty";
       setError(null);
       return;
@@ -193,6 +213,17 @@ export function MathBlockView({
     isEmpty,
   });
 
+  // §12-⑩ entry signal — fires when vim's `i` preflight focuses the standby
+  // textarea, and again (idempotently) when the entry effect's own focus
+  // lands. Opens the edit session exactly once.
+  const handleTextareaFocus = useCallback(() => {
+    if (isEditingRef.current) return;
+    isEditingRef.current = true;
+    editDirtyRef.current = false;
+    setLocalFormula(formulaRef.current);
+    setIsEditing(true);
+  }, []);
+
   // Click on preview → enter edit
   const handlePreviewClick = useCallback(() => {
     const pos = getPos();
@@ -201,6 +232,9 @@ export function MathBlockView({
     // this dispatch causes.
     enterByClickRef.current = true;
     editor.commands.setNodeSelection(pos);
+    // Already-selected standby block: the selection does not change, so no
+    // effect will run — the standby textarea is the entry instead.
+    textareaRef.current?.focus();
   }, [editor, getPos]);
 
   const eqLabel = `(${eqNumber})`;
@@ -223,62 +257,54 @@ export function MathBlockView({
     if (el) el.onmousedown = (e) => e.stopPropagation();
   }, []);
 
-  // Non-editing: KaTeX render only
-  if (!selected) {
-    return (
-      <NodeViewWrapper
-        className="math-block math-block-preview"
-        contentEditable={false}
-        data-math-size={mathSize}
-        onClick={handlePreviewClick}
-        ref={wrapperRef}
-        spellCheck={false}
-      >
-        <div className="math-block-row">
-          <div className="math-block-katex" ref={previewRef} />
-          <span className="math-block-eq-number">{eqLabel}</span>
-        </div>
-        {formula.trim() && (
-          <button
-            className="nodeview-ai-btn"
-            contentEditable={false}
-            onClick={handleAIClick}
-            ref={aiButtonRef}
-            title="AI Commands"
-          >
-            <Sparkles size={14} />
-          </button>
-        )}
-      </NodeViewWrapper>
-    );
-  }
+  // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
+  // traversal NodeSelection keeps the preview (plus PM's selectednode
+  // outline), while a click latch, an open session, or a non-modal surface
+  // shows the editor. Single path so the textarea element survives the flip —
+  // preflight focus must not land on a node React is about to replace.
+  const editing =
+    selected &&
+    (isEditing ||
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state));
 
-  // Editing: textarea + live preview
   return (
     <NodeViewWrapper
-      className="math-block math-block-editing"
+      className={
+        editing
+          ? "math-block math-block-editing"
+          : "math-block math-block-preview"
+      }
       contentEditable={false}
       data-math-size={mathSize}
+      onClick={editing ? undefined : handlePreviewClick}
       ref={wrapperRef}
       spellCheck={false}
     >
-      <textarea
-        autoCapitalize="off"
-        autoCorrect="off"
-        className="math-block-textarea"
-        data-gramm="false"
-        data-vim-suspend=""
-        onChange={(e) => {
-          editDirtyRef.current = true;
-          setLocalFormula(e.target.value);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder="LaTeX formula..."
-        ref={textareaRef}
-        rows={1}
-        spellCheck={false}
-        value={localFormula}
-      />
+      {selected && (
+        <textarea
+          autoCapitalize="off"
+          autoCorrect="off"
+          className={
+            editing
+              ? "math-block-textarea"
+              : "math-block-textarea math-block-textarea-standby"
+          }
+          data-gramm="false"
+          data-vim-suspend=""
+          onChange={(e) => {
+            editDirtyRef.current = true;
+            setLocalFormula(e.target.value);
+          }}
+          onFocus={handleTextareaFocus}
+          onKeyDown={handleKeyDown}
+          placeholder="LaTeX formula..."
+          ref={textareaRef}
+          rows={1}
+          spellCheck={false}
+          value={localFormula}
+        />
+      )}
       <div className="math-block-row">
         <div
           className="math-block-katex"
@@ -289,11 +315,23 @@ export function MathBlockView({
           {eqLabel}
         </span>
       </div>
-      {error && (
-        <div className="math-block-error" contentEditable={false}>
-          {error}
-        </div>
-      )}
+      {editing
+        ? error && (
+            <div className="math-block-error" contentEditable={false}>
+              {error}
+            </div>
+          )
+        : formula.trim() && (
+            <button
+              className="nodeview-ai-btn"
+              contentEditable={false}
+              onClick={handleAIClick}
+              ref={aiButtonRef}
+              title="AI Commands"
+            >
+              <Sparkles size={14} />
+            </button>
+          )}
     </NodeViewWrapper>
   );
 }

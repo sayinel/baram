@@ -137,6 +137,69 @@ describe("a motion suppresses the DOM observer's re-read", () => {
   });
 });
 
+describe("a normal-mode motion clears any ranged DOM selection", () => {
+  // Suppression stops the observer from READING WebKit's churn back, but the
+  // churn still paints: PM's node-range write gets re-normalised into a
+  // root-anchored block range (captured live: [VD2-DOMSEL] collapsed=false
+  // anchor=<DIV.tiptap…> offset=24) and `.ProseMirror-hideselection
+  // *::selection` only silences TEXT selections — a block-wrapping range
+  // paints full-width bars regardless. Normal mode needs no DOM selection at
+  // all: the cursor is a decoration and an atom line keeps the selectednode
+  // outline. So vim removes the range its own dispatch just caused.
+  function plantRange(editor: Editor): void {
+    // selectNodeContents, not offsets — the vim cursor decoration wraps the
+    // first grapheme in a span, so text offsets into firstChild are unstable.
+    const p = editor.view.dom.querySelector("p");
+    expect(p).toBeTruthy();
+    const range = document.createRange();
+    range.selectNodeContents(p!);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    expect(document.getSelection()?.isCollapsed).toBe(false);
+  }
+
+  it("a motion in normal mode removes the ranged DOM selection", () => {
+    const editor = makeEditor();
+    editor.commands.setTextSelection(1);
+    plantRange(editor);
+
+    key(editor, "j");
+
+    const sel = document.getSelection();
+    expect(sel === null || sel.rangeCount === 0 || sel.isCollapsed).toBe(true);
+  });
+
+  it("visual mode keeps the native selection (positive control)", () => {
+    // Visual mode's range IS the native selection — clearing it there would
+    // blank the highlight the user is extending.
+    const editor = makeEditor();
+    editor.commands.setTextSelection(1);
+    key(editor, "v");
+    plantRange(editor);
+
+    key(editor, "l");
+
+    expect(document.getSelection()?.isCollapsed).toBe(false);
+  });
+
+  it("vim OFF leaves the DOM selection alone (positive control)", () => {
+    useSettingsStore.setState({ vimMode: false });
+    const editor = new Editor({
+      content: "<p>alpha beta</p>",
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: createBaramExtensions(),
+    });
+    editors.push(editor);
+    editor.commands.setTextSelection(1);
+    plantRange(editor);
+
+    key(editor, "j");
+
+    expect(document.getSelection()?.isCollapsed).toBe(false);
+  });
+});
+
 describe("vim OFF leaves the observer alone (positive control)", () => {
   it("does not suppress when vim is not driving the selection", () => {
     // A fix that suppressed unconditionally would pass the pins above while
