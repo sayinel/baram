@@ -22,6 +22,7 @@ import {
   abortEditorMutationTasks,
   invalidateEditorMutationTasks,
 } from "../../../utils/editor/mutation-tasks";
+import { activateEditorForDocument } from "./vim-activation";
 
 export type EditorStateInstallReason =
   "cached-restore" | "fresh-document" | "source-return";
@@ -29,14 +30,23 @@ export type EditorStateInstallReason =
 export function replaceEditorStateWithVim(
   view: PMView,
   state: EditorState,
-  reason: EditorStateInstallReason,
+  _reason: EditorStateInstallReason,
 ): void {
-  // Dormant until S1: reason only classifies the install (see header).
-  void reason;
   // §12-9 trigger (design §5c, R6 핀 1): a whole-state install re-targets
   // this view — outstanding async mutations (AI tokens, image imports)
   // must go dead BEFORE the swap, then get their sources cancelled.
   invalidateEditorMutationTasks(view);
   view.updateState(state);
   abortEditorMutationTasks(view);
+  // §298 D2 — the document that is now on screen is a different one, so any
+  // half-typed vim command belongs to the document the user left.
+  //
+  // `reason` does not branch here, and that is measured rather than assumed:
+  // `EditorState.create({plugins})` copies the plugin list, so PM rebuilds the
+  // PluginViews and registerVimLifecycle replays the vim SETTING on its own —
+  // enablement needs no help from this function. What it does not replay is
+  // transient state, which is what this call clears. (An earlier reading of
+  // this file claimed the opposite and blamed source-mode round trips for
+  // turning vim off; with the setting genuinely enabled, vim survives.)
+  activateEditorForDocument(view);
 }

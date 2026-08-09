@@ -13,6 +13,7 @@ import {
   positionsToAnchors,
 } from "../extensions/plugins/fold";
 import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
+import { activateEditorForDocument } from "../extensions/plugins/vim/vim-activation";
 import {
   markdownToProsemirror,
   mdastBlocksToPmNodes,
@@ -262,6 +263,10 @@ export function useTabSwitching({
       // Visibility is controlled by React state (activeKeepaliveEditor) via
       // onActiveEditorChange — no manual DOM style toggle needed.
       onActiveEditorChange(incomingKeepaliveEditor);
+      // §298 D2: this path installs no state, so a half-typed vim command
+      // would survive the switch — `d`, leave, return, `w`, and a word the
+      // user never asked about disappears.
+      activateEditorForDocument(incomingKeepaliveEditor.view);
       // Restore scroll position
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       requestAnimationFrame(() => {
