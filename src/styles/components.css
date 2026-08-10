@@ -772,10 +772,25 @@ body.table-dragging {
 }
 
 .tiptap .qb-container {
+  position: relative; /* anchors the standby input (§12-⑩) */
   overflow: hidden;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
+}
+
+/* §12-⑩ standby — mounted so vim's `i` preflight has something to focus
+   while a traversal selection sits on the block; focusing it opens the
+   builder and forwards into its first control. */
+.qb-standby {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  opacity: 0;
 }
 
 .tiptap .qb-container.qb-editing {

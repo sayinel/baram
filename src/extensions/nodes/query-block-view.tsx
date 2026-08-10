@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { VaultFile } from "../../utils/query-executor";
 
+import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
 import { useQueryBlock } from "../../hooks/use-query-block";
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import {
   parseQueryDSL,
   type QueryDef,
@@ -13,7 +15,11 @@ import {
   serializeQueryDSL,
 } from "../../utils/query-parser";
 // §5.13 Query Block NodeView — visual builder + results display
-import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
+import {
+  isWysiwygVimModal,
+  updateNodeAttributesWithVim,
+  vimPluginKey,
+} from "../plugins/vim/vim-keys";
 
 const FIELD_OPTIONS = [
   "tags",
@@ -44,6 +50,96 @@ export function QueryBlockView({
   const queryStr = (node.attrs.query as string) || "";
   const [def, setDef] = useState<QueryDef>(() => parseQueryDSL(queryStr));
   const { results, loading, error, execute } = useQueryBlock();
+
+  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
+  const vimGateEditorRef = useRef(editor);
+  vimGateEditorRef.current = editor;
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+  // A CLICK is an explicit request to edit and bypasses the modal gate;
+  // keyboard traversal does not. Consumed on entry, cleared on deselect.
+  const enterByClickRef = useRef(false);
+  // §12-⑩ — the builder follows ENTRY, not selection (the math block's
+  // model, f12e2af0, in builder form). Traversal keeps the block closed with
+  // a standby INPUT mounted for vim's `i` preflight; its focus opens the
+  // session and forwards into the first builder control. No save step —
+  // every builder change commits immediately (tagged chrome, §12-6).
+  const [isEditing, setIsEditing] = useState(false);
+  const isEditingRef = useRef(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Session lifecycle: a selection change is the only trigger.
+  useEffect(() => {
+    if (!selected) {
+      enterByClickRef.current = false;
+      isEditingRef.current = false;
+      setIsEditing(false);
+    } else if (
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state)
+    ) {
+      enterByClickRef.current = false;
+      isEditingRef.current = true;
+      setIsEditing(true);
+    }
+  }, [selected]);
+
+  const editing =
+    selected &&
+    (isEditing ||
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state));
+
+  // §12-⑩ entry signal — vim's `i` preflight focuses the standby input;
+  // open the session and forward focus into the first builder control.
+  const handleStandbyFocus = useCallback(() => {
+    if (isEditingRef.current) return;
+    isEditingRef.current = true;
+    setIsEditing(true);
+    setTimeout(() => {
+      wrapperRef.current
+        ?.querySelector<HTMLElement>(".qb-builder select, .qb-builder input")
+        ?.focus();
+    }, 0);
+  }, []);
+
+  // §298 Esc stair — Esc anywhere in the builder lands normal mode and the
+  // block's NodeSelection in ONE transaction, then hands focus back. Nothing
+  // to save: builder edits commit immediately. Without vim, Esc stays inert
+  // (the builder never had an Esc handler).
+  const handleBuilderKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>): void => {
+      if (e.key !== "Escape") return;
+      if (!vimPluginKey.getState(editorRef.current.state)?.enabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      enterByClickRef.current = false;
+      isEditingRef.current = false;
+      setIsEditing(false);
+      const editorNow = editorRef.current;
+      const pos = getPos();
+      const tr = editorNow.state.tr;
+      if (typeof pos === "number") {
+        tr.setSelection(NodeSelection.create(tr.doc, pos));
+      }
+      tr.setMeta(vimPluginKey, { mode: "normal", type: "setMode" });
+      editorNow.view.dispatch(tr);
+      focusEditorView(editorNow.view);
+    },
+    [getPos],
+  );
+
+  const handleWrapperClick = useCallback(() => {
+    if (isEditingRef.current) return;
+    const pos = getPos();
+    if (typeof pos !== "number") return;
+    // Set BEFORE the selection change: the entry effect consumes the latch on
+    // the render this dispatch causes; already-selected standby opens direct.
+    enterByClickRef.current = true;
+    editorRef.current.commands.setNodeSelection(pos);
+    isEditingRef.current = true;
+    setIsEditing(true);
+  }, [getPos]);
 
   // Sync from node attrs when query changes externally
   useEffect(() => {
@@ -103,9 +199,11 @@ export function QueryBlockView({
     <NodeViewWrapper
       className="query-block-wrapper"
       data-type="queryBlock"
+      onClick={editing ? undefined : handleWrapperClick}
+      ref={wrapperRef}
       spellCheck={false}
     >
-      <div className={`qb-container ${selected ? "qb-editing" : ""}`}>
+      <div className={`qb-container ${editing ? "qb-editing" : ""}`}>
         <div className="qb-header">
           <span className="qb-title">Query</span>
           {!selected && results.length > 0 && (
@@ -113,10 +211,28 @@ export function QueryBlockView({
           )}
         </div>
 
-        {selected && (
+        {selected && !editing && (
+          // §12-⑩ standby — vim's `i` preflight queries for an input; the
+          // builder only exists while editing, so this 1px inert control is
+          // what it finds. Its focus opens the session (handleStandbyFocus
+          // forwards into the first builder control).
+          <input
+            aria-hidden={true}
+            className="qb-standby"
+            data-vim-suspend=""
+            onFocus={handleStandbyFocus}
+            readOnly
+            tabIndex={-1}
+          />
+        )}
+        {editing && (
           // §298 §12-3: one marker on the builder panel covers every
           // input/select/button inside it (composedPath hits it first — §4).
-          <div className="qb-builder" data-vim-suspend="">
+          <div
+            className="qb-builder"
+            data-vim-suspend=""
+            onKeyDown={handleBuilderKeyDown}
+          >
             {/* Filters */}
             <div className="qb-section">
               <div className="qb-section-label">Filters</div>

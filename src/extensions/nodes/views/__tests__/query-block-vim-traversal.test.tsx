@@ -1,0 +1,231 @@
+// §298 §12-⑩ — the query block adopts the entry model, in builder form.
+//
+// Same disease, different organ: the builder panel was keyed on bare
+// `selected`, so a vim traversal NodeSelection opened the full visual builder
+// (filters, sorts, run button) — the device finding fixed for math in
+// f12e2af0. Unlike the textarea islands the builder never steals focus on
+// open, so this was purely the §12-⑩ chrome violation, but the entry
+// contract is the same: traversal keeps the block closed, `i` or a click
+// opens it.
+//
+// The standby here is an INPUT, not a textarea — vim's preflight
+// (atom-insert.ts islandEntry) queries "textarea, input, select, …", and the
+// builder itself only exists while editing. Its focus opens the session and
+// forwards into the first builder control. Esc inside the builder lands
+// normal mode and the block's NodeSelection atomically; there is no save
+// step because every builder change commits immediately (tagged chrome).
+
+import { act, fireEvent, render } from "@testing-library/react";
+import { Editor, type JSONContent } from "@tiptap/core";
+import { NodeSelection } from "@tiptap/pm/state";
+import { EditorContent } from "@tiptap/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createBaramExtensions } from "../../..";
+import { useSettingsStore } from "../../../../stores/settings/store";
+import { vimPluginKey } from "../../../plugins/vim/vim-keys";
+
+const editors: Editor[] = [];
+
+/** Flush React effects, dynamic-import microtasks, and rAF callbacks. */
+async function flush(): Promise<void> {
+  await act(async () => {
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  });
+}
+
+const DOC: JSONContent = {
+  content: [
+    { content: [{ text: "above", type: "text" }], type: "paragraph" },
+    { attrs: { query: "tags contains x" }, type: "queryBlock" },
+    { content: [{ text: "below", type: "text" }], type: "paragraph" },
+  ],
+  type: "doc",
+};
+
+function container(): HTMLElement {
+  const el = document.querySelector<HTMLElement>(".qb-container");
+  expect(el).not.toBeNull();
+  return el!;
+}
+
+function queryPos(editor: Editor): number {
+  let pos = -1;
+  editor.state.doc.forEach((node, at) => {
+    if (node.type.name === "queryBlock") pos = at;
+  });
+  expect(pos).toBeGreaterThanOrEqual(0);
+  return pos;
+}
+
+async function selectBlock(editor: Editor): Promise<void> {
+  act(() => {
+    editor.commands.setNodeSelection(queryPos(editor));
+  });
+  await flush();
+}
+
+function setup(): Editor {
+  const editor = new Editor({
+    content: DOC,
+    extensions: createBaramExtensions(),
+  });
+  editors.push(editor);
+  render(<EditorContent editor={editor} />);
+  return editor;
+}
+
+afterEach(() => {
+  while (editors.length) editors.pop()?.destroy();
+  document.body.innerHTML = "";
+  useSettingsStore.setState({ vimMode: false });
+});
+
+describe("vim modal: selection alone keeps the builder closed", () => {
+  it("a traversal NodeSelection does NOT open the builder", async () => {
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+
+    await selectBlock(editor);
+
+    expect(container().className).not.toContain("qb-editing");
+    expect(container().querySelector(".qb-builder")).toBeNull();
+  });
+
+  it("the standby input is mounted, inert to Tab and AT", async () => {
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+
+    await selectBlock(editor);
+
+    const standby = container().querySelector<HTMLInputElement>(
+      "input[data-vim-suspend]",
+    );
+    expect(standby).not.toBeNull();
+    expect(standby!.tabIndex).toBe(-1);
+    expect(standby!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("focus arriving in the standby input opens the builder", async () => {
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+
+    await selectBlock(editor);
+    const standby = container().querySelector<HTMLInputElement>(
+      "input[data-vim-suspend]",
+    )!;
+    expect(standby).not.toBeNull();
+
+    act(() => {
+      standby.focus();
+      standby.dispatchEvent(new FocusEvent("focus"));
+    });
+    await flush();
+
+    expect(container().className).toContain("qb-editing");
+    expect(container().querySelector(".qb-builder")).not.toBeNull();
+  });
+});
+
+describe("Esc inside the builder follows the stair (vim)", () => {
+  it("lands normal mode and the block's NodeSelection atomically", async () => {
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    await selectBlock(editor);
+    const standby = container().querySelector<HTMLInputElement>(
+      "input[data-vim-suspend]",
+    )!;
+    act(() => {
+      standby.focus();
+      standby.dispatchEvent(new FocusEvent("focus"));
+    });
+    await flush();
+    const builder = container().querySelector<HTMLElement>(".qb-builder")!;
+    expect(builder).not.toBeNull();
+
+    act(() => {
+      fireEvent.keyDown(builder.querySelector("select") ?? builder, {
+        key: "Escape",
+      });
+    });
+    await flush();
+
+    const vim = vimPluginKey.getState(editor.state);
+    expect(vim?.mode).toBe("normal");
+    expect(editor.view.editable).toBe(false);
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBe(queryPos(editor));
+    expect(container().querySelector(".qb-builder")).toBeNull();
+  });
+
+  it("entry from SURFACE insert mode still lands in normal on the block", async () => {
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    act(() => {
+      editor.commands.setTextSelection(2);
+    });
+    act(() => {
+      fireEvent.keyDown(editor.view.dom, { key: "i" });
+    });
+    await flush();
+
+    act(() => {
+      fireEvent.click(container());
+    });
+    await flush();
+    const builder = container().querySelector<HTMLElement>(".qb-builder")!;
+    expect(builder).not.toBeNull();
+
+    act(() => {
+      fireEvent.keyDown(builder.querySelector("select") ?? builder, {
+        key: "Escape",
+      });
+    });
+    await flush();
+
+    const vim = vimPluginKey.getState(editor.state);
+    expect(vim?.mode).toBe("normal");
+    expect(editor.view.editable).toBe(false);
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBe(queryPos(editor));
+  });
+});
+
+describe("vim off is untouched (positive controls)", () => {
+  it("a plain NodeSelection opens the builder as before", async () => {
+    const editor = setup();
+    await flush();
+
+    await selectBlock(editor);
+
+    expect(container().className).toContain("qb-editing");
+    expect(container().querySelector(".qb-builder")).not.toBeNull();
+  });
+
+  it("Esc inside the builder stays inert without vim", async () => {
+    // Query never had an Esc handler — the builder simply stays open. The
+    // stair is a vim contract, not a general one.
+    const editor = setup();
+    await flush();
+    await selectBlock(editor);
+    const builder = container().querySelector<HTMLElement>(".qb-builder")!;
+
+    act(() => {
+      fireEvent.keyDown(builder.querySelector("select") ?? builder, {
+        key: "Escape",
+      });
+    });
+    await flush();
+
+    expect(container().querySelector(".qb-builder")).not.toBeNull();
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+  });
+});
