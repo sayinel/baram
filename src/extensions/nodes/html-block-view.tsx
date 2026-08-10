@@ -1,10 +1,12 @@
 // §5.1 HTML Block NodeView — sanitized HTML preview, raw textarea on select
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { sanitizeHtmlBlock } from "../../utils/markdown/html-sanitize";
-import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
+import { isWysiwygVimModal, vimPluginKey } from "../plugins/vim/vim-keys";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -26,11 +28,22 @@ export function HtmlBlockView({
   contentRef.current = content;
   const updateAttributesRef = useRef(updateAttributes);
   updateAttributesRef.current = updateAttributes;
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
 
   // Sync local content and focus textarea when entering edit mode
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
   vimGateEditorRef.current = editor;
+  // A CLICK is an explicit request to edit and bypasses the modal gate;
+  // keyboard traversal does not. Consumed on entry, cleared on deselect.
+  const enterByClickRef = useRef(false);
+  // §12-⑩ — the editing UI follows ENTRY, not selection (the math block's
+  // model, f12e2af0). Traversal renders the PREVIEW plus a standby textarea;
+  // the session opens when that textarea gains focus. Ref mirror so event
+  // handlers see the current value.
+  const [isEditing, setIsEditing] = useState(false);
+  const isEditingRef = useRef(false);
   // Save-on-deselect fires only after REAL typing in an edit session — a
   // bare attrs-vs-local comparison writes a stale baseline back over attrs
   // updated while unselected (S5/S6 review R2).
@@ -46,8 +59,21 @@ export function HtmlBlockView({
       if (wasDirty && localContentRef.current !== contentRef.current) {
         updateAttributesRef.current({ content: localContentRef.current });
       }
-    } else if (!isWysiwygVimModal(vimGateEditorRef.current.state)) {
+      enterByClickRef.current = false;
+      isEditingRef.current = false;
+      setIsEditing(false);
+    } else if (
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state)
+    ) {
+      // §298 §12-⑩ — selection ALONE must not open the block while vim is
+      // modal (the math block's contract, pinned per block). A click sets the
+      // latch below; vim's `i` preflight focuses the STANDBY textarea and its
+      // focus event opens the session.
+      enterByClickRef.current = false;
       editDirtyRef.current = false;
+      isEditingRef.current = true;
+      setIsEditing(true);
       setLocalContent(contentRef.current);
       setTimeout(() => {
         const ta = textareaRef.current;
@@ -58,8 +84,18 @@ export function HtmlBlockView({
     }
   }, [selected]);
 
-  // Auto-resize textarea
-  useTextareaAutoResize(textareaRef, localContent, selected);
+  // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection.
+  // Computed BEFORE the hooks that key on it.
+  const editing =
+    selected &&
+    (isEditing ||
+      enterByClickRef.current ||
+      !isWysiwygVimModal(vimGateEditorRef.current.state));
+
+  // Auto-resize textarea — keyed on `editing`, NOT `selected`: the standby
+  // element is 1px wide, and a measurement there writes an inflated inline
+  // height that survives into the editing render.
+  useTextareaAutoResize(textareaRef, localContent, editing);
 
   // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
   const onSaveBeforeExit = useCallback((): void => {
@@ -79,71 +115,129 @@ export function HtmlBlockView({
     isEmpty,
   });
 
+  // §12-⑩ entry signal — vim's `i` preflight focuses the standby textarea;
+  // the click path's scheduled focus arrives here too. Opens the session once.
+  const handleTextareaFocus = useCallback(() => {
+    if (isEditingRef.current) return;
+    isEditingRef.current = true;
+    editDirtyRef.current = false;
+    setLocalContent(contentRef.current);
+    setIsEditing(true);
+  }, []);
+
+  // §298 Esc stair — while vim owns the surface, Esc lands normal mode and
+  // the block's NodeSelection in ONE transaction, then hands focus back (see
+  // math-block-view for the surface-insert entry that makes atomicity
+  // necessary). Without vim, exitBlock("down") stays as it was.
+  const handleTextareaKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+      if (
+        e.key === "Escape" &&
+        vimPluginKey.getState(editorRef.current.state)?.enabled
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSaveBeforeExit();
+        enterByClickRef.current = false;
+        editDirtyRef.current = false;
+        isEditingRef.current = false;
+        setIsEditing(false);
+        const editorNow = editorRef.current;
+        const pos = getPos();
+        const tr = editorNow.state.tr;
+        if (typeof pos === "number") {
+          tr.setSelection(NodeSelection.create(tr.doc, pos));
+        }
+        tr.setMeta(vimPluginKey, { mode: "normal", type: "setMode" });
+        editorNow.view.dispatch(tr);
+        focusEditorView(editorNow.view);
+        return;
+      }
+      handleKeyDown(e);
+    },
+    [getPos, handleKeyDown, onSaveBeforeExit],
+  );
+
   const handlePreviewClick = useCallback((): void => {
     const pos = getPos();
     if (typeof pos !== "number") return;
+    // Set BEFORE the selection change: the entry effect consumes the latch on
+    // the render this dispatch causes.
+    enterByClickRef.current = true;
     editor.commands.setNodeSelection(pos);
+    // Already-selected standby block: the selection does not change, so no
+    // effect will run — the standby textarea is the entry instead.
+    textareaRef.current?.focus();
   }, [editor, getPos]);
 
   const sanitizedHtml = content ? sanitizeHtmlBlock(content) : "";
 
-  // Non-editing: sanitized HTML render
-  if (!selected) {
-    return (
-      <NodeViewWrapper
-        className="html-block html-block-preview"
-        contentEditable={false}
-        data-type="htmlBlock"
-        onClick={handlePreviewClick}
-        spellCheck={false}
-      >
-        {sanitizedHtml ? (
-          <div
-            className="html-block-render"
-            dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
-          />
-        ) : (
-          <div className="html-block-empty">Empty HTML block</div>
-        )}
-      </NodeViewWrapper>
-    );
-  }
-
-  // Editing: raw HTML textarea
+  // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
+  // traversal NodeSelection keeps the preview (plus PM's selectednode
+  // outline). Single path so the textarea element survives the flip — the
+  // header/textarea slots are positionally stable ({editing && …} keeps its
+  // index), which is what preserves the element identity for preflight focus.
   return (
     <NodeViewWrapper
-      className="html-block html-block-editing"
+      className={
+        editing
+          ? "html-block html-block-editing"
+          : "html-block html-block-preview"
+      }
       contentEditable={false}
       data-type="htmlBlock"
+      onClick={editing ? undefined : handlePreviewClick}
       spellCheck={false}
     >
-      <div className="html-block-header">
-        <span className="html-block-label">html</span>
-      </div>
-      <textarea
-        autoCapitalize="off"
-        autoCorrect="off"
-        className="html-block-textarea"
-        data-gramm="false"
-        data-vim-suspend=""
-        onChange={(e) => {
-          editDirtyRef.current = true;
-          setLocalContent(e.target.value);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder="<div>...</div>"
-        ref={textareaRef}
-        rows={1}
-        spellCheck={false}
-        value={localContent}
-      />
-      {sanitizedHtml && (
-        <div
-          className="html-block-render html-block-render-faded"
-          dangerouslySetInnerHTML={{
-            __html: sanitizeHtmlBlock(localContent),
+      {editing && (
+        <div className="html-block-header">
+          <span className="html-block-label">html</span>
+        </div>
+      )}
+      {selected && (
+        <textarea
+          // Standby must not be a Tab stop nor AT-visible; programmatic
+          // .focus() (vim's preflight) works regardless of tabIndex -1.
+          aria-hidden={editing ? undefined : true}
+          autoCapitalize="off"
+          autoCorrect="off"
+          className={
+            editing
+              ? "html-block-textarea"
+              : "html-block-textarea html-block-textarea-standby"
+          }
+          data-gramm="false"
+          data-vim-suspend=""
+          onChange={(e) => {
+            editDirtyRef.current = true;
+            setLocalContent(e.target.value);
           }}
+          onFocus={handleTextareaFocus}
+          onKeyDown={handleTextareaKeyDown}
+          placeholder="<div>...</div>"
+          ref={textareaRef}
+          rows={1}
+          spellCheck={false}
+          tabIndex={editing ? 0 : -1}
+          value={localContent}
         />
+      )}
+      {editing ? (
+        sanitizedHtml && (
+          <div
+            className="html-block-render html-block-render-faded"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeHtmlBlock(localContent),
+            }}
+          />
+        )
+      ) : sanitizedHtml ? (
+        <div
+          className="html-block-render"
+          dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+        />
+      ) : (
+        <div className="html-block-empty">Empty HTML block</div>
       )}
     </NodeViewWrapper>
   );
