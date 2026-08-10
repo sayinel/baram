@@ -236,6 +236,76 @@ describe("session transitions (adversarial review of the query port)", () => {
     expect(container().querySelector("input[data-vim-suspend]")).not.toBeNull();
   });
 
+  it("a traversal landing on a CLOSED block does not execute", async () => {
+    // execute() recursively lists the vault and reads every markdown file —
+    // an effect keyed on `selected` re-ran it on every landing AND leaving of
+    // a closed block, so j/k through a doc with query blocks launched
+    // overlapping whole-vault scans (adversarial re-review, high).
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    executeSpy.mockClear();
+
+    await selectBlock(editor); // land
+    act(() => {
+      editor.commands.setTextSelection(2); // leave
+    });
+    await flush();
+
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it("deselecting an OPEN session executes exactly once", async () => {
+    // The old predicate double-fired: the deselection render satisfied
+    // !selected, then the lifecycle effect flipped isEditing and re-ran it.
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    await selectBlock(editor);
+    const standby = container().querySelector<HTMLInputElement>(
+      "input[data-vim-suspend]",
+    )!;
+    act(() => {
+      standby.focus();
+      standby.dispatchEvent(new FocusEvent("focus"));
+    });
+    await flush();
+    executeSpy.mockClear();
+
+    act(() => {
+      editor.commands.setTextSelection(2);
+    });
+    await flush();
+
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("surface `i` over an already-open builder lands in the builder", async () => {
+    // The standby sits before .qb-builder in DOM order and vim's preflight
+    // takes the FIRST focusable — after a click-open (focus still on the
+    // surface), `i` focused the read-only hidden proxy and keys went nowhere
+    // (adversarial re-review). An already-open standby focus must forward.
+    useSettingsStore.setState({ vimMode: true });
+    setup();
+    await flush();
+
+    act(() => {
+      fireEvent.click(container()); // click-open: builder opens, no focus
+    });
+    await flush();
+    expect(container().querySelector(".qb-builder")).not.toBeNull();
+
+    const standby = container().querySelector<HTMLInputElement>(
+      "input[data-vim-suspend]",
+    )!;
+    act(() => {
+      standby.focus();
+      standby.dispatchEvent(new FocusEvent("focus"));
+    });
+
+    expect(document.activeElement?.closest(".qb-builder")).not.toBeNull();
+  });
+
   it("closing the session re-runs the committed query", async () => {
     // Builder edits commit immediately, but auto-run was keyed on !selected —
     // Esc closed the builder while the block stayed selected, stranding stale

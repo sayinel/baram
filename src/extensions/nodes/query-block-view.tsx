@@ -104,7 +104,16 @@ export function QueryBlockView({
   // (adversarial review).
   const pendingForwardRef = useRef(false);
   const handleStandbyFocus = useCallback(() => {
-    if (isEditingRef.current) return;
+    if (isEditingRef.current) {
+      // Already open (the click path gives no control focus): the proxy sits
+      // FIRST in DOM order, so vim's preflight finds it — forward straight
+      // into the builder instead of stranding focus on a read-only hidden
+      // input (adversarial re-review).
+      wrapperRef.current
+        ?.querySelector<HTMLElement>(".qb-builder select, .qb-builder input")
+        ?.focus();
+      return;
+    }
     isEditingRef.current = true;
     pendingForwardRef.current = true;
     setIsEditing(true);
@@ -161,16 +170,25 @@ export function QueryBlockView({
     setDef(parsed);
   }, [queryStr]);
 
-  // Auto-run whenever the SESSION is closed — deselected OR selected with the
-  // builder shut (traversal standby, and the Esc stair). Keying on bare
-  // !selected stranded stale results behind a closed builder: edits commit
-  // immediately, Esc keeps the NodeSelection, and nothing re-ran until an
-  // unrelated deselection (adversarial review).
+  // Auto-run on TRANSITIONS only: a session closing (Esc, or deselecting an
+  // open builder) and a query change while closed. execute() recursively
+  // lists the vault and reads every markdown file, so an effect keyed on
+  // `selected` re-ran it on every landing/leaving of a CLOSED block — j/k
+  // through a doc with query blocks launched overlapping whole-vault scans,
+  // and deselecting an open builder double-fired (the deselection render,
+  // then the lifecycle effect's isEditing flip). sessionOpen collapses both
+  // states, so closed-to-closed selection changes never re-run the effect.
+  const sessionOpen = selected && isEditing;
+  const prevSessionOpenRef = useRef(false);
+  const prevQueryRef = useRef<null | string>(null);
   useEffect(() => {
-    if ((!selected || !isEditing) && queryStr) {
-      execute(queryStr);
-    }
-  }, [selected, isEditing, queryStr, execute]);
+    const wasOpen = prevSessionOpenRef.current;
+    prevSessionOpenRef.current = sessionOpen;
+    const queryChanged = prevQueryRef.current !== queryStr;
+    prevQueryRef.current = queryStr;
+    if (!queryStr || sessionOpen) return;
+    if (wasOpen || queryChanged) execute(queryStr);
+  }, [sessionOpen, queryStr, execute]);
 
   const updateDef = useCallback(
     (newDef: QueryDef) => {

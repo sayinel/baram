@@ -22,6 +22,29 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createBaramExtensions } from "../../..";
 import { useSettingsStore } from "../../../../stores/settings/store";
 
+// jsdom has no layout: the caret-follow scroll (tr.scrollIntoView) walks
+// getClientRects, which jsdom does not implement — polyfill the geometry the
+// same way code-block-vim-wiring.test.ts does.
+const zeroRect = {
+  bottom: 0,
+  height: 0,
+  left: 0,
+  right: 0,
+  toJSON: () => ({}),
+  top: 0,
+  width: 0,
+  x: 0,
+  y: 0,
+};
+Range.prototype.getBoundingClientRect ??= () => zeroRect as DOMRect;
+Range.prototype.getClientRects ??= () =>
+  ({
+    item: () => null,
+    length: 0,
+    [Symbol.iterator]: [][Symbol.iterator],
+  }) as unknown as DOMRectList;
+HTMLElement.prototype.getClientRects ??= Range.prototype.getClientRects;
+
 const editors: Editor[] = [];
 
 function doc(content: string): JSONContent {
@@ -142,6 +165,32 @@ describe("boundary exits return DOM focus to the modal surface", () => {
     });
     expect(survives).toBe(false);
     expect(document.activeElement).toBe(editor.view.dom);
+  });
+});
+
+describe("exits keep the caret-follow scroll", () => {
+  // Tiptap's chain .focus() also scheduled scrollIntoView; replacing it with
+  // focusEditorView alone dropped the caret follow, so a boundary exit from a
+  // tall block could land the selection off-screen (adversarial re-review).
+  // jsdom has no layout, so the pin fixes the TRANSACTION's scroll flag.
+  it("the exit transaction carries scrolledIntoView", async () => {
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup("<div>hello</div>");
+    await flush();
+    const ta = await openSession(editor, "<div>hello</div>");
+
+    const scrolled: boolean[] = [];
+    const orig = editor.view.dispatch.bind(editor.view);
+    editor.view.dispatch = (tr) => {
+      if (tr.selectionSet) scrolled.push(tr.scrolledIntoView);
+      orig(tr);
+    };
+    act(() => {
+      fireEvent.keyDown(ta, { key: "ArrowDown" });
+    });
+    await flush();
+
+    expect(scrolled).toContain(true);
   });
 });
 
