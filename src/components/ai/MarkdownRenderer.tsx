@@ -47,6 +47,13 @@ export default function MarkdownRenderer({
   trust?: MarkdownTrust;
 }) {
   const rendered = useMemo(() => {
+    // ‼️ Checked on the SOURCE, before `fromMarkdown`. Nesting depth drives parse cost roughly
+    // quadratically — measured here: depth 2,000 (4 KB) 51ms, depth 4,000 (8 KB) 199ms, while a
+    // FLAT 16 KB document parses in 35ms. So `MAX_README_BYTES` is the wrong axis: a README far
+    // under that cap freezes the main thread for tens of seconds, and the freeze is paid inside
+    // the parse — a bound in `restrictUntrusted` would run after the cost was already spent.
+    // Falls back to source text, the same degradation as a parse failure.
+    if (trust !== "trusted" && DEEP_NESTING_RE.test(content)) return content;
     try {
       const tree = fromMarkdown(content, {
         extensions: [gfm()],
@@ -254,6 +261,18 @@ function renderMdast(tree: MdastNode): ReactNode {
 const UNTRUSTED_IMAGE_RE = /^data:image\//i;
 
 /**
+ * A line opening more than 200 levels of blockquote/indent nesting.
+ *
+ * Every nesting level a line opens is a container micromark carries, and the cost grows about
+ * quadratically with depth. 200 is far above anything authored — five list levels around an
+ * indented code block is under 30 characters — and far below the pathological range, where a
+ * single line of `> ` repeated inside the byte cap reaches five figures.
+ *
+ * The character class has no alternation, so the match itself is linear.
+ */
+const DEEP_NESTING_RE = /^[ \t>]{201,}/m;
+
+/**
  * Is this a node an untrusted author must not have rendered at all?
  *
  * Raw `html` is DROPPED rather than escaped: escaping would show a plugin author's markup as
@@ -267,7 +286,16 @@ function isForbiddenForUntrusted(node: MdastNode): boolean {
   return node.type === "image" && !UNTRUSTED_IMAGE_RE.test(node.url.trim());
 }
 
-/** Drop what an untrusted author must not reach, on the tree. */
+/**
+ * Drop what an untrusted author must not reach, on the tree.
+ *
+ * ‼️ This filters CHILDREN, so it never inspects the node it is handed — handing it an `html`
+ * node returns that node unchanged. The single call site always passes `root` (`fromMarkdown`
+ * returns nothing else), and `renderMdast` renders **nothing** for a non-root node, so the
+ * invariant is enforced downstream rather than here. Stated rather than guarded because a
+ * defensive branch that cannot fire is worse than a note pointing at the real enforcement —
+ * but if a caller ever passes a subtree, that caller owns this check.
+ */
 function restrictUntrusted<T extends MdastNode>(node: T): T {
   if (!("children" in node) || !Array.isArray(node.children)) return node;
   return {

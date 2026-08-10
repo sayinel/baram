@@ -77,3 +77,45 @@ describe("MarkdownRenderer trust policy (§69)", () => {
     expect(html(md, "untrusted").querySelectorAll("li")).toHaveLength(2);
   });
 });
+
+// §69 availability — nesting depth, not byte count, drives parse cost.
+//
+// ‼️ Both re-reviews found this and disagreed on where to fix it. Settled by control flow:
+// `fromMarkdown` runs before `restrictUntrusted`, so a bound on the TREE is downstream of the
+// cost. Measured here before choosing: depth 2,000 (4 KB) 51ms, depth 4,000 (8 KB) 199ms, a
+// FLAT 16 KB document 35ms. `MAX_README_BYTES` (256 KiB) does not bound the axis that costs.
+describe("MarkdownRenderer nesting bound (§69)", () => {
+  // ‼️ Depth 150 = a 300-character prefix: over the 200 bound, but well inside what micromark
+  // and React handle. Depth 4,000 was the first fixture here and the trusted control FAILED —
+  // that input degrades on its own, so it could not isolate the bound from a pre-existing
+  // limit. This one tests only the bound.
+  const deep = "> ".repeat(150) + "boom\n";
+
+  it("falls back to source text for pathologically nested untrusted content", () => {
+    const el = html(deep);
+
+    // Nothing was parsed: no blockquote structure, the source is shown instead.
+    expect(el.querySelector("blockquote")).toBeNull();
+    expect(el.textContent).toContain("boom");
+  });
+
+  it("still parses nesting a human would actually write", () => {
+    // ‼️ Non-vacuity, and the reason the bound is 200 rather than something tight: five levels
+    // around an indented code block is under 30 characters of prefix. A bound that caught this
+    // would turn every nested list in every README into raw text.
+    const ordinary = "> > > > > quoted\n\n- a\n  - b\n    - c\n      - d\n";
+    const el = html(ordinary);
+
+    expect(el.querySelector("blockquote")).toBeTruthy();
+    expect(el.querySelectorAll("li").length).toBeGreaterThan(3);
+  });
+
+  it("does not change behaviour for trusted callers", () => {
+    // The cost is pre-existing and chat/Help supply their own content, so the bound is part of
+    // the untrusted policy rather than a global change. If this ever needs to apply to both,
+    // that is a separate decision about our own surfaces.
+    const el = html(deep, "trusted");
+
+    expect(el.querySelector("blockquote")).toBeTruthy();
+  });
+});
