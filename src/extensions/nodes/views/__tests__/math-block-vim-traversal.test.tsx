@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../..";
 import { useSettingsStore } from "../../../../stores/settings/store";
+import { vimPluginKey } from "../../../plugins/vim/vim-keys";
 import { _resetForTest } from "../lazy-visible";
 
 vi.mock("katex", () => ({
@@ -263,6 +264,43 @@ describe("Esc inside the math editor follows the code block's stair (vim)", () =
       }
     });
     expect(formula).toBe("x+1");
+  });
+
+  it("entry from SURFACE insert mode still lands in normal on the block", async () => {
+    // Adversarial review, reproduced here: `i` in a paragraph puts vim in
+    // insert (editable surface), clicking the math preview then opens the
+    // session with vim STILL in insert. An Esc that only closes React latches
+    // leaves insert+editable over a live NodeSelection — the next keystroke
+    // replaces the block. The handoff must be atomic: normal mode and the
+    // block's NodeSelection in one transaction.
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    act(() => {
+      editor.commands.setTextSelection(2); // caret in "above"
+    });
+    act(() => {
+      fireEvent.keyDown(editor.view.dom, { key: "i" });
+    });
+    await flush();
+
+    act(() => {
+      fireEvent.click(wrapper()); // insert-mode click entry
+    });
+    await flush();
+    const ta = wrapper().querySelector<HTMLTextAreaElement>("textarea")!;
+    expect(ta).not.toBeNull();
+
+    act(() => {
+      fireEvent.keyDown(ta, { key: "Escape" });
+    });
+    await flush();
+
+    const vim = vimPluginKey.getState(editor.state);
+    expect(vim?.mode).toBe("normal");
+    expect(editor.view.editable).toBe(false);
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBe(mathPos(editor));
   });
 
   it("vim off keeps the exit-below behavior (positive control)", async () => {

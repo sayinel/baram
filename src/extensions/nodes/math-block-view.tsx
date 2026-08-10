@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Node as PmNode } from "@tiptap/pm/model";
 
+import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Sparkles } from "lucide-react";
 
@@ -251,12 +252,27 @@ export function MathBlockView({
         editDirtyRef.current = false;
         isEditingRef.current = false;
         setIsEditing(false);
-        focusEditorView(editorRef.current.view);
+        // ATOMIC handoff: entering from SURFACE insert mode (`i` in a
+        // paragraph, then a click on the preview) leaves vim in insert — if
+        // Esc only closed the React latches, the surface would stay editable
+        // over a live NodeSelection and the next keystroke would REPLACE the
+        // block (adversarial review, reproduced in the pin). One transaction
+        // lands normal mode AND the block's NodeSelection together; setMode
+        // also clears count/pending/visual.
+        const editorNow = editorRef.current;
+        const pos = getPos();
+        const tr = editorNow.state.tr;
+        if (typeof pos === "number") {
+          tr.setSelection(NodeSelection.create(tr.doc, pos));
+        }
+        tr.setMeta(vimPluginKey, { mode: "normal", type: "setMode" });
+        editorNow.view.dispatch(tr);
+        focusEditorView(editorNow.view);
         return;
       }
       handleKeyDown(e);
     },
-    [handleKeyDown, onSaveBeforeExit],
+    [getPos, handleKeyDown, onSaveBeforeExit],
   );
 
   // §12-⑩ entry signal — fires when vim's `i` preflight focuses the standby
