@@ -9,6 +9,10 @@ updates:
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
     groups:
+      # react and react-dom assert an exact version match at module load —
+      # bumping one without the other throws on every jsdom render (PR 399)
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       tiptap:
         patterns: ["@tiptap/*"]
       codemirror:
