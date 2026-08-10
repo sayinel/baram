@@ -7,10 +7,11 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Sparkles } from "lucide-react";
 
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
-import { isWysiwygVimModal } from "../plugins/vim/vim-keys";
+import { isWysiwygVimModal, vimPluginKey } from "../plugins/vim/vim-keys";
 import { mathBlockEntryKey } from "./math-block";
 import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
@@ -229,6 +230,35 @@ export function MathBlockView({
     isEmpty,
   });
 
+  // §298 Esc stair — while vim owns the surface, Esc returns to the BLOCK as
+  // a normal-mode NodeSelection, matching the code block island's contract.
+  // exitBlock("down") stays the non-vim path: leaving a block downward on Esc
+  // is ordinary editor behavior, but under vim it strands the caret a line
+  // below the block the user was just editing (device finding A.3). The
+  // selection is already this block's NodeSelection (every entry path sets
+  // it), so closing the session and handing focus back is enough — focusout
+  // releases vim's suspension and normal mode resumes on the atom line.
+  const handleTextareaKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+      if (
+        e.key === "Escape" &&
+        vimPluginKey.getState(editorRef.current.state)?.enabled
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSaveBeforeExit();
+        enterByClickRef.current = false;
+        editDirtyRef.current = false;
+        isEditingRef.current = false;
+        setIsEditing(false);
+        focusEditorView(editorRef.current.view);
+        return;
+      }
+      handleKeyDown(e);
+    },
+    [handleKeyDown, onSaveBeforeExit],
+  );
+
   // §12-⑩ entry signal — fires when vim's `i` preflight focuses the standby
   // textarea, and again (idempotently) when the entry effect's own focus
   // lands. Opens the edit session exactly once.
@@ -308,7 +338,7 @@ export function MathBlockView({
             setLocalFormula(e.target.value);
           }}
           onFocus={handleTextareaFocus}
-          onKeyDown={handleKeyDown}
+          onKeyDown={handleTextareaKeyDown}
           placeholder="LaTeX formula..."
           ref={textareaRef}
           rows={1}

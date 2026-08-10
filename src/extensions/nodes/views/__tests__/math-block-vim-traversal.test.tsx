@@ -19,7 +19,7 @@
 // selected so that preflight has something to focus; that textarea gaining
 // focus IS the entry signal.
 
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { Editor, type JSONContent } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent } from "@tiptap/react";
@@ -204,6 +204,85 @@ describe("standby is inert chrome", () => {
 
     expect(ta.tabIndex).toBe(0);
     expect(ta.getAttribute("aria-hidden")).toBeNull();
+  });
+});
+
+describe("Esc inside the math editor follows the code block's stair (vim)", () => {
+  async function openSession(): Promise<{
+    editor: Editor;
+    ta: HTMLTextAreaElement;
+  }> {
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    act(() => {
+      editor.commands.setNodeSelection(mathPos(editor));
+    });
+    await flush();
+    const ta = wrapper().querySelector<HTMLTextAreaElement>("textarea")!;
+    act(() => {
+      ta.focus();
+      ta.dispatchEvent(new FocusEvent("focus"));
+    });
+    await flush();
+    expect(wrapper().className).toContain("math-block-editing");
+    return { editor, ta };
+  }
+
+  it("returns to the BLOCK as a NodeSelection, not below it", async () => {
+    // Device finding (A.3): Esc exited BELOW the block via exitBlock("down"),
+    // stranding the caret a line down — while the code block island's Esc
+    // lands on the block itself in normal mode.
+    const { editor, ta } = await openSession();
+
+    act(() => {
+      fireEvent.keyDown(ta, { key: "Escape" });
+    });
+    await flush();
+
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBe(mathPos(editor));
+    expect(wrapper().className).toContain("math-block-preview");
+  });
+
+  it("Esc keeps the edit (save-on-exit)", async () => {
+    const { editor, ta } = await openSession();
+    act(() => {
+      fireEvent.change(ta, { target: { value: "x+1" } });
+    });
+
+    act(() => {
+      fireEvent.keyDown(ta, { key: "Escape" });
+    });
+    await flush();
+
+    let formula = "";
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "mathBlock") {
+        formula = node.attrs.formula as string;
+      }
+    });
+    expect(formula).toBe("x+1");
+  });
+
+  it("vim off keeps the exit-below behavior (positive control)", async () => {
+    // Non-vim users leave a block DOWNWARD by design — the stair is a vim
+    // contract, not a general one.
+    const editor = setup();
+    await flush();
+    act(() => {
+      editor.commands.setNodeSelection(mathPos(editor));
+    });
+    await flush();
+    const ta = wrapper().querySelector<HTMLTextAreaElement>("textarea")!;
+
+    act(() => {
+      fireEvent.keyDown(ta, { key: "Escape" });
+    });
+    await flush();
+
+    expect(editor.state.selection).not.toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBeGreaterThan(mathPos(editor));
   });
 });
 
