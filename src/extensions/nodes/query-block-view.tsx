@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type { VaultFile } from "../../utils/query-executor";
 
@@ -91,17 +97,25 @@ export function QueryBlockView({
       !isWysiwygVimModal(vimGateEditorRef.current.state));
 
   // §12-⑩ entry signal — vim's `i` preflight focuses the standby input;
-  // open the session and forward focus into the first builder control.
+  // open the session and forward focus into the first builder control AT THE
+  // COMMIT that mounts it (layout effect). A setTimeout forward leaves a task
+  // window where focus sits on <body>: a fast keypress lands in global
+  // handlers and vim's focusout microtask briefly resumes normal mode
+  // (adversarial review).
+  const pendingForwardRef = useRef(false);
   const handleStandbyFocus = useCallback(() => {
     if (isEditingRef.current) return;
     isEditingRef.current = true;
+    pendingForwardRef.current = true;
     setIsEditing(true);
-    setTimeout(() => {
-      wrapperRef.current
-        ?.querySelector<HTMLElement>(".qb-builder select, .qb-builder input")
-        ?.focus();
-    }, 0);
   }, []);
+  useLayoutEffect(() => {
+    if (!isEditing || !pendingForwardRef.current) return;
+    pendingForwardRef.current = false;
+    wrapperRef.current
+      ?.querySelector<HTMLElement>(".qb-builder select, .qb-builder input")
+      ?.focus();
+  }, [isEditing]);
 
   // §298 Esc stair — Esc anywhere in the builder lands normal mode and the
   // block's NodeSelection in ONE transaction, then hands focus back. Nothing
@@ -147,12 +161,16 @@ export function QueryBlockView({
     setDef(parsed);
   }, [queryStr]);
 
-  // Auto-run query when def changes and not in edit mode
+  // Auto-run whenever the SESSION is closed — deselected OR selected with the
+  // builder shut (traversal standby, and the Esc stair). Keying on bare
+  // !selected stranded stale results behind a closed builder: edits commit
+  // immediately, Esc keeps the NodeSelection, and nothing re-ran until an
+  // unrelated deselection (adversarial review).
   useEffect(() => {
-    if (!selected && queryStr) {
+    if ((!selected || !isEditing) && queryStr) {
       execute(queryStr);
     }
-  }, [selected, queryStr, execute]);
+  }, [selected, isEditing, queryStr, execute]);
 
   const updateDef = useCallback(
     (newDef: QueryDef) => {
@@ -211,11 +229,13 @@ export function QueryBlockView({
           )}
         </div>
 
-        {selected && !editing && (
+        {selected && (
           // §12-⑩ standby — vim's `i` preflight queries for an input; the
           // builder only exists while editing, so this 1px inert control is
           // what it finds. Its focus opens the session (handleStandbyFocus
-          // forwards into the first builder control).
+          // forwards into the first builder control at the mounting commit).
+          // Mounted for the WHOLE selection so opening the session never
+          // unmounts a focused element before the forward lands.
           <input
             aria-hidden={true}
             className="qb-standby"

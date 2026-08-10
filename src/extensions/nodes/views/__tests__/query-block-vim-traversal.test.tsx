@@ -19,11 +19,23 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { Editor, type JSONContent } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent } from "@tiptap/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../..";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { vimPluginKey } from "../../../plugins/vim/vim-keys";
+
+// Observe query execution without the vault IPC round-trip.
+const { executeSpy } = vi.hoisted(() => ({ executeSpy: vi.fn() }));
+vi.mock("../../../../hooks/use-query-block", () => ({
+  useQueryBlock: () => ({
+    error: null,
+    execute: executeSpy,
+    loading: false,
+    results: [],
+    vaultPath: "/",
+  }),
+}));
 
 const editors: Editor[] = [];
 
@@ -196,6 +208,61 @@ describe("Esc inside the builder follows the stair (vim)", () => {
     expect(editor.view.editable).toBe(false);
     expect(editor.state.selection).toBeInstanceOf(NodeSelection);
     expect(editor.state.selection.from).toBe(queryPos(editor));
+  });
+});
+
+describe("session transitions (adversarial review of the query port)", () => {
+  it("i-entry hands focus into the builder without a task gap", async () => {
+    // A setTimeout forward leaves a window where the standby has unmounted
+    // and focus sits on <body> — a fast keypress lands in global handlers and
+    // vim's focusout microtask briefly resumes normal mode. The forward must
+    // happen at the COMMIT that mounts the builder (layout effect), with the
+    // standby kept mounted while selected so no unmount-blur precedes it.
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    await selectBlock(editor);
+    const standby = container().querySelector<HTMLInputElement>(
+      "input[data-vim-suspend]",
+    )!;
+
+    act(() => {
+      standby.focus();
+      standby.dispatchEvent(new FocusEvent("focus"));
+    });
+
+    // No flush: the very next assertion sees the post-commit world.
+    expect(document.activeElement?.closest(".qb-builder")).not.toBeNull();
+    expect(container().querySelector("input[data-vim-suspend]")).not.toBeNull();
+  });
+
+  it("closing the session re-runs the committed query", async () => {
+    // Builder edits commit immediately, but auto-run was keyed on !selected —
+    // Esc closed the builder while the block stayed selected, stranding stale
+    // results behind it until an unrelated deselection.
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+    await selectBlock(editor);
+    const standby = container().querySelector<HTMLInputElement>(
+      "input[data-vim-suspend]",
+    )!;
+    act(() => {
+      standby.focus();
+      standby.dispatchEvent(new FocusEvent("focus"));
+    });
+    await flush();
+    const builder = container().querySelector<HTMLElement>(".qb-builder")!;
+    executeSpy.mockClear();
+
+    act(() => {
+      fireEvent.keyDown(builder.querySelector("select") ?? builder, {
+        key: "Escape",
+      });
+    });
+    await flush();
+
+    expect(executeSpy).toHaveBeenCalledWith("tags contains x");
   });
 });
 
