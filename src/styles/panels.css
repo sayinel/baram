@@ -385,40 +385,50 @@
   color: var(--color-text-primary);
 }
 
-.help-panel-content .markdown-rendered h1 {
+/* §69 The descendant rules below are shared with the Help panel, but `.help-panel-content`'s
+   OWN font-size and line-height are not — and the heading sizes are absolute (h1 is 18px), so
+   without a base here an 18px h1 sits beside body text inheriting the editor area's ~16px and
+   reads as barely a heading at all. Same rhythm as the Help panel. */
+.plugin-detail-readme {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+}
+
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered h1 {
   margin: 0 0 12px;
   font-size: 18px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
-.help-panel-content .markdown-rendered h2 {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered h2 {
   margin: 20px 0 10px;
   font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
-.help-panel-content .markdown-rendered h3 {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered h3 {
   margin: 16px 0 6px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
-.help-panel-content .markdown-rendered h4 {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered h4 {
   margin: 12px 0 4px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
-.help-panel-content .markdown-rendered p {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered p {
   margin: 0 0 10px;
   color: var(--color-text-secondary);
 }
 
-.help-panel-content .markdown-rendered table {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered table {
   display: block;
   margin: 0 0 12px;
   overflow-x: auto;
@@ -426,7 +436,7 @@
   border-collapse: collapse;
 }
 
-.help-panel-content .markdown-rendered th {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered th {
   padding: 4px 8px;
   font-weight: 600;
   color: var(--color-text-primary);
@@ -434,19 +444,21 @@
   border-bottom: 2px solid var(--color-border-default);
 }
 
-.help-panel-content .markdown-rendered td {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered td {
   padding: 4px 8px;
   vertical-align: top;
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-.help-panel-content .markdown-rendered td:first-child {
+:is(.help-panel-content, .plugin-detail-readme)
+  .markdown-rendered
+  td:first-child {
   width: 1%;
   padding-right: 16px;
   white-space: nowrap;
 }
 
-.help-panel-content .markdown-rendered code {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered code {
   padding: 1px 4px;
   font-family: var(--font-family-mono);
   font-size: 12px;
@@ -455,7 +467,7 @@
   border-radius: 3px;
 }
 
-.help-panel-content .markdown-rendered pre {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered pre {
   padding: 8px 10px;
   margin: 0 0 10px;
   overflow-x: auto;
@@ -464,36 +476,36 @@
   border-radius: 4px;
 }
 
-.help-panel-content .markdown-rendered pre code {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered pre code {
   padding: 0;
   background: none;
 }
 
-.help-panel-content .markdown-rendered blockquote {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered blockquote {
   padding-left: 10px;
   margin: 0 0 10px;
   color: var(--color-text-muted);
   border-left: 3px solid var(--color-border-default);
 }
 
-.help-panel-content .markdown-rendered hr {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered hr {
   margin: 16px 0;
   border: none;
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.help-panel-content .markdown-rendered ul,
-.help-panel-content .markdown-rendered ol {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered ul,
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered ol {
   padding-left: 20px;
   margin: 0 0 10px;
   color: var(--color-text-secondary);
 }
 
-.help-panel-content .markdown-rendered li {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered li {
   margin: 2px 0;
 }
 
-.help-panel-content .markdown-rendered a {
+:is(.help-panel-content, .plugin-detail-readme) .markdown-rendered a {
   color: var(--color-accent-default);
 }
 

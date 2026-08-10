@@ -21,7 +21,7 @@ export function ChatMessage({
         <div className="chat-message-text">
           {content ? (
             role === "assistant" ? (
-              <MarkdownRenderer content={content} />
+              <MarkdownRenderer content={content} trust="trusted" />
             ) : (
               content
             )

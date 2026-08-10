@@ -91,8 +91,12 @@
   height: 100%;
 }
 
-/* Binary file with no matching viewer plugin enabled */
-.viewer-missing {
+/* Editor-area placeholder: nothing to render, and the reason why.
+   `.viewer-missing` — a binary file with no matching viewer plugin enabled.
+   `.plugin-detail-tab-empty` (§69) — a plugin detail tab whose plugin is neither installed
+   nor listed any more. */
+.viewer-missing,
+.plugin-detail-tab-empty {
   padding: 2em;
   font-size: 0.85rem;
   color: var(--color-text-muted);

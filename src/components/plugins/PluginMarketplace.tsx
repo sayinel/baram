@@ -4,19 +4,16 @@
 // Every mutation lives in `usePluginActions`, and each tab's list is its own component.
 import { useCallback, useEffect, useState } from "react";
 
-import type { PluginRow, PluginSource } from "../../plugins/plugin-sources";
-import type {
-  PluginStatus,
-  RegistryEntry,
-  RegistryIndex,
-} from "../../plugins/types";
+import type { RegistryEntry, RegistryIndex } from "../../plugins/types";
 
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { readFile } from "../../ipc/invoke";
 import { BUILTIN_PLUGINS } from "../../plugins/builtin";
-import { buildPluginRows } from "../../plugins/plugin-sources";
+import {
+  buildPluginRows,
+  entryFromManifest,
+} from "../../plugins/plugin-sources";
 import {
   checkForUpdates,
   fetchRegistryIndex,
@@ -27,15 +24,16 @@ import {
   refreshRevocations,
   revocationsAreStale,
 } from "../../plugins/revocation-client";
+import { useEditorStore } from "../../stores/editor/editor";
 import { usePluginStore } from "../../stores/system/plugin";
+import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
 import { STYLES } from "./marketplace-styles";
 import { PluginBrowseList } from "./PluginBrowseList";
 import { PluginConsentDialog } from "./PluginConsentDialog";
-import { PluginDetail } from "./PluginDetail";
 import { PluginDeveloperSection } from "./PluginDeveloperSection";
 import { PluginInstalledList } from "./PluginInstalledList";
-import { getPluginStatus, usePluginActions } from "./usePluginActions";
+import { usePluginActions } from "./usePluginActions";
 
 type MarketplaceTab = "browse" | "installed" | "updates";
 
@@ -76,22 +74,8 @@ export function PluginMarketplace() {
     null,
   );
   const [searchQuery, setSearchQuery] = useState("");
-  /**
-   * ‼️ The detail view needs the SOURCE, not just the entry.
-   *
-   * A built-in is never in `installedPlugins` — it is compiled in, not installed — so a
-   * detail view that derived everything from that map read "not-installed" for one and
-   * offered an enabled Install button wired to an entry `entryFromRow` had given
-   * `downloadUrl: ""`. Carrying the source lets this screen ask `actionsFor` the same
-   * question the row asks, instead of judging for itself.
-   */
-  const [selected, setSelected] = useState<null | {
-    entry: RegistryEntry;
-    source: PluginSource;
-  }>(null);
   const [loading, setLoading] = useState(false);
   const [error, setFetchError] = useState<null | string>(null);
-  const [readme, setReadme] = useState<null | string>(null);
 
   const {
     handleInstall,
@@ -103,29 +87,19 @@ export function PluginMarketplace() {
     settleConsent,
   } = usePluginActions(registryIndex);
 
-  // Load README for selected installed plugin
-  useEffect(() => {
-    if (!selected) {
-      setReadme(null);
-      return;
-    }
-    const plugin = installedPlugins[selected.entry.id];
-    if (!plugin) {
-      setReadme(null);
-      return;
-    }
-    let cancelled = false;
-    readFile(`${plugin.installPath}/README.md`)
-      .then((content) => {
-        if (!cancelled) setReadme(content);
-      })
-      .catch(() => {
-        if (!cancelled) setReadme(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selected, installedPlugins]);
+  /**
+   * §69 Details opens the detail in the EDITOR AREA, as its own tab.
+   *
+   * The settings modal has to close on the way: it is an overlay, so the tab it just opened
+   * would be behind it. This panel is mounted in two places — inside `SettingsModal` and as
+   * the `plugins` sidebar panel — and from the sidebar there is nothing to close, hence the
+   * conditional rather than an unconditional toggle.
+   */
+  const openDetail = useCallback((pluginId: string, name: string) => {
+    useEditorStore.getState().openPluginTab(pluginId, name);
+    const ui = useUIStore.getState();
+    if (ui.settingsOpen) ui.toggleSettings();
+  }, []);
 
   // Fetch registry on mount
   useEffect(() => {
@@ -237,9 +211,8 @@ export function PluginMarketplace() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Rendered by BOTH returns below: install can be started from the list or from the
-  // detail view, and the detail view is an early return — mounting the dialog in only
-  // one of them would leave the other's `askConsent` promise pending forever.
+  // Install can be started from any list on this panel. The detail view used to be a second
+  // return that needed its own copy; it is an editor tab now and mounts its own.
   const consentDialog = pendingConsent && (
     <PluginConsentDialog
       consent={pendingConsent.consent}
@@ -250,44 +223,6 @@ export function PluginMarketplace() {
       prior={pendingConsent.prior}
     />
   );
-
-  // If detail view is showing
-  if (selected) {
-    const { entry, source } = selected;
-    const isBuiltin = source === "builtin";
-    const builtinEnabled = !builtinDisabled.includes(entry.id);
-    // ‼️ A built-in has no INSTALL state to report — it is compiled in — so its status is
-    // whether the user has it switched on. `getPluginStatus` reads `installedPlugins`,
-    // which never contains one, and answered "not-installed" for every built-in.
-    const detailStatus: PluginStatus = isBuiltin
-      ? builtinEnabled
-        ? "enabled"
-        : "disabled"
-      : getPluginStatus(entry.id, installing, installedPlugins[entry.id]);
-    return (
-      <>
-        {consentDialog}
-        <PluginDetail
-          entry={entry}
-          error={pluginErrors[entry.id]}
-          onBack={() => setSelected(null)}
-          onInstall={() => handleInstall(entry)}
-          onToggleEnabled={() =>
-            isBuiltin
-              ? handleToggleBuiltin(entry.id, !builtinEnabled)
-              : handleToggleEnabled(entry.id)
-          }
-          onUninstall={() => handleUninstall(entry.id)}
-          onUpdate={() => handleUpdate(entry)}
-          readme={readme}
-          revocation={shownRevocation(entry)}
-          source={source}
-          status={detailStatus}
-          updateAvailable={updateAvailable[entry.id]}
-        />
-      </>
-    );
-  }
 
   return (
     <div className="plugin-marketplace" style={STYLES.container}>
@@ -422,7 +357,7 @@ export function PluginMarketplace() {
               installing={installing}
               onInstall={(entry) => void handleInstall(entry)}
               // A Browse listing is by definition a registry entry — community.
-              onSelect={(entry) => setSelected({ entry, source: "community" })}
+              onSelect={(entry) => openDetail(entry.id, entry.name)}
               onUninstall={(id) => void handleUninstall(id)}
               onUpdate={(entry) => void handleUpdate(entry)}
               pluginErrors={pluginErrors}
@@ -439,16 +374,18 @@ export function PluginMarketplace() {
             </div>
           ) : (
             <PluginInstalledList
-              onDetails={(r) =>
-                setSelected({ entry: entryFromRow(r), source: r.source })
-              }
+              onDetails={(r) => openDetail(r.manifest.id, r.manifest.name)}
               onRemove={(r) => void handleUninstall(r.manifest.id)}
               onToggle={(r) =>
                 r.source === "builtin"
                   ? handleToggleBuiltin(r.manifest.id, !r.enabled)
                   : handleToggleEnabled(r.manifest.id)
               }
-              onUpdate={(r) => void handleUpdate(entryFromRow(r))}
+              onUpdate={(r) =>
+                void handleUpdate(
+                  entryFromManifest(r.manifest, r.installed?.checksum),
+                )
+              }
               rows={rows}
             />
           ))}
@@ -469,7 +406,7 @@ export function PluginMarketplace() {
               // dead-callback defect this work exists to remove, not a way to satisfy a
               // required prop. `onSettings` and `onReload` got the same treatment; absence
               // is expressed as absence.
-              onSelect={(entry) => setSelected({ entry, source: "community" })}
+              onSelect={(entry) => openDetail(entry.id, entry.name)}
               onUninstall={(id) => void handleUninstall(id)}
               onUpdate={(entry) => void handleUpdate(entry)}
               pluginErrors={pluginErrors}
@@ -482,17 +419,4 @@ export function PluginMarketplace() {
       <PluginDeveloperSection />
     </div>
   );
-}
-
-/**
- * 설치된 매니페스트로부터 상세 화면이 읽는 모양을 합성한다. `downloadUrl`은 비어
- * 있고, `handleUpdate`가 리스팅을 재해석하므로 그것을 신뢰하지 않는다.
- */
-function entryFromRow(row: PluginRow): RegistryEntry {
-  return {
-    ...row.manifest,
-    checksum: row.installed?.checksum ?? "",
-    downloadUrl: "",
-    downloads: undefined,
-  };
 }

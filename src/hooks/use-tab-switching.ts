@@ -19,7 +19,7 @@ import {
 import { parseMdastAsync } from "../pipeline/parse-async";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileOpen } from "../plugins/plugin-lifecycle";
-import { isFileTab, isGraphTab } from "../stores/editor/editor";
+import { isFileTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFoldStore } from "../stores/editor/fold";
 import { useLinkStore } from "../stores/editor/link";
@@ -247,9 +247,12 @@ export function useTabSwitching({
       return;
     }
 
-    // Graph tab — no ProseMirror content to load
+    // Graph / plugin tab — no ProseMirror content to load
     // [CRITICAL-1 fix] Reset activeEditor so hooks bind to shared editor
-    if (isGraphTab(incomingTab)) {
+    // ‼️ Asked as "is this a file?": everything below this line reads `filePath`, so an
+    // enumerated check let a new tab type fall through into the keep-alive lookup and the
+    // content load with an empty path.
+    if (!isFileTab(incomingTab)) {
       onActiveEditorChange(null);
       return;
     }

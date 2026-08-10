@@ -36,14 +36,34 @@ import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import "../../styles/zettelkasten.css";
 import { PluginStatusBarItems } from "./PluginStatusBarItems";
 
-export type EditorMode = "graph" | "preview" | "source" | "wysiwyg";
+export type EditorMode = "graph" | "plugin" | "preview" | "source" | "wysiwyg";
 
 const MODE_LABELS: Record<EditorMode, string> = {
   graph: "Graph",
+  plugin: "Plugin",
   preview: "Preview",
   source: "Source",
   wysiwyg: "WYSIWYG",
 };
+
+/**
+ * Modes whose right-hand panel reports words and a cursor.
+ *
+ * ‼️ `preview` is in the list to PRESERVE existing behaviour, not because the claim holds for
+ * it: a PDF or image tab has no words and no cursor, and the panel reports the count of
+ * whatever document the shared editor still holds. That is a pre-existing defect this list
+ * neither introduces nor fixes — it is called out so the membership is not read as a promise.
+ *
+ * ‼️ An ALLOWLIST on purpose. This was `mode !== "graph"`, so every mode added later
+ * inherited a right-hand panel reporting "0 words, Ln 1, Col 1" about a tab that has no
+ * text at all. Defaulting a new mode to "no stats" is the direction that fails visibly
+ * (a missing panel) rather than plausibly (a confident wrong number).
+ */
+const DOCUMENT_MODES: ReadonlySet<EditorMode> = new Set([
+  "preview",
+  "source",
+  "wysiwyg",
+]);
 
 const SPACE_ICONS: Record<string, typeof Pencil> = {
   writing: Pencil,
@@ -283,7 +303,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
         )}
         <PluginStatusBarItems align="left" />
       </div>
-      {mode !== "graph" && (
+      {DOCUMENT_MODES.has(mode) && (
         <div className="status-bar-right">
           <span
             className="status-words cursor-default"

@@ -8,7 +8,7 @@ import type { Editor } from "@tiptap/core";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
-import { isGraphTab, useEditorStore } from "../stores/editor/editor";
+import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { openFolder, useFileStore } from "../stores/file/file";
@@ -155,7 +155,10 @@ export function useFileOperations({
     const { tabs: currentTabs, activeTabId: tabId } = useEditorStore.getState();
     const saveTab = currentTabs.find((t) => t.id === tabId);
     if (!saveTab) return;
-    if (isGraphTab(saveTab)) return;
+    // ‼️ Asked as "is this a file?", not "is this the graph?". A non-file tab falls into
+    // the `!filePath` branch below, which offers Save As and then rewrites the tab into a
+    // file tab — so an enumerated check here hands every future tab type a save path.
+    if (!isFileTab(saveTab)) return;
     // PDF tabs are read-only viewers — writing sourceContentRef (which holds
     // another tab's text) into a .pdf would destroy the binary.
     if (isBinaryViewerFile(saveTab.filePath)) return;
@@ -240,7 +243,8 @@ export function useFileOperations({
     const { tabs: currentTabs, activeTabId: tabId } = useEditorStore.getState();
     const saveAsTab = currentTabs.find((t) => t.id === tabId);
     if (!saveAsTab) return;
-    if (isGraphTab(saveAsTab)) return;
+    // Same inversion as `handleSave` — see the note there.
+    if (!isFileTab(saveAsTab)) return;
     // PDF tabs are read-only viewers — Save As would write text, not the PDF.
     if (isBinaryViewerFile(saveAsTab.filePath)) return;
 
