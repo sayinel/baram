@@ -76,6 +76,8 @@ const ALLOWLIST = new Set([
   "--vtop",
   "--vbot",
   "--editor-zoom",
+  // §5.1 HTML preview zoom — set as an inline style prop on the frame (HtmlPreview.tsx)
+  "--preview-zoom",
 ]);
 
 const undefinedVars: [string, string[]][] = [];

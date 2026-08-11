@@ -62,6 +62,13 @@ sha2 = "0.10"
 minisign-verify = "0.2"
 base64 = "0.23"
 shlex = "2.0"
+# §5.1 `baramhtml:` scheme (protocol/html_preview.rs). Both arrive via tauri itself —
+# its asset protocol is built on exactly this pair — so the `deny` job has been vetting
+# them all along; this promotes them to direct deps rather than adding supply-chain
+# surface. Hand-rolling either (a percent decoder, a Range parser) would put the parsing
+# of attacker-shaped input in our tree instead of a vetted one.
+percent-encoding = "2"
+http-range = "0.1"
 log = "0.4"
 diffy = "0.5.0"
 tauri-plugin-clipboard-manager = "2"
