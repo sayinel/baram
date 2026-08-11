@@ -121,7 +121,7 @@ const HtmlPreview = lazy(() =>
   })),
 );
 const PdfPreview = lazy(() =>
-  import("./components/editor/PdfPreview").then((m) => ({
+  import("./components/editor/pdf/PdfPreview").then((m) => ({
     default: m.PdfPreview,
   })),
 );

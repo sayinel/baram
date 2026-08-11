@@ -7,7 +7,6 @@
 // Cmd+0, Ctrl+wheel, pinch) flows through useZoom exactly like the
 // markdown editor. Pages render lazily as they approach the viewport.
 
-import type { CSSProperties } from "react";
 import { memo, useEffect, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -22,19 +21,17 @@ import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import {
   getDocument,
   GlobalWorkerOptions,
-  TextLayer,
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
-import { useSettingsStore } from "../../stores/settings/store";
-import { logger } from "../../utils/logger";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { logger } from "../../../utils/logger";
+import { PdfPage } from "./PdfPage";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 /** Horizontal breathing room around pages at zoom 1. */
 const PAGE_GUTTER_PX = 24;
-/** Pre-render pages this far outside the viewport. */
-const LAZY_ROOT_MARGIN = "800px";
 
 interface PdfPreviewProps {
   /** Absolute path of the .pdf file (must be inside an opened context). */
@@ -144,86 +141,3 @@ export const PdfPreview = memo(function PdfPreview({
     </div>
   );
 });
-
-function PdfPage({ page, scale }: { page: PDFPageProxy; scale: number }) {
-  const holderRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const textLayerRef = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(false);
-
-  const viewport = page.getViewport({ scale });
-
-  useEffect(() => {
-    const el = holderRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      (entries) => setVisible(entries[0]?.isIntersecting ?? false),
-      { rootMargin: LAZY_ROOT_MARGIN },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    // Render at devicePixelRatio for crisp output on HiDPI displays
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(viewport.width * dpr);
-    canvas.height = Math.floor(viewport.height * dpr);
-    const renderTask = page.render({
-      canvas,
-      transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
-      viewport,
-    });
-    renderTask.promise.catch(() => {
-      // Cancelled by a zoom change or scroll-away — expected, not an error
-    });
-    return () => renderTask.cancel();
-    // viewport is derived from (page, scale) — those deps cover it
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, page, scale]);
-
-  // Text layer — transparent selectable text positioned over the canvas,
-  // so text selection / Cmd+C work like in a regular document
-  useEffect(() => {
-    if (!visible) return;
-    const container = textLayerRef.current;
-    if (!container) return;
-    container.replaceChildren();
-    const textLayer = new TextLayer({
-      container,
-      textContentSource: page.streamTextContent(),
-      viewport,
-    });
-    textLayer.render().catch(() => {
-      // Cancelled by a zoom change or scroll-away — expected, not an error
-    });
-    return () => textLayer.cancel();
-    // viewport is derived from (page, scale) — those deps cover it
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, page, scale]);
-
-  return (
-    <div
-      className="pdf-page"
-      ref={holderRef}
-      style={
-        {
-          // TextLayer reads this to size its font metrics (PDF.js v5+)
-          "--total-scale-factor": String(viewport.scale),
-          height: viewport.height,
-          width: viewport.width,
-        } as CSSProperties
-      }
-    >
-      {visible && (
-        <>
-          <canvas ref={canvasRef} />
-          <div className="pdf-text-layer" ref={textLayerRef} />
-        </>
-      )}
-    </div>
-  );
-}
