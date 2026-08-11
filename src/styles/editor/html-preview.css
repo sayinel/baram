@@ -60,14 +60,39 @@
   color: var(--color-text-muted);
 }
 
+/* Neutralize the container's CSS zoom the way the PDF and plugin viewers do — the
+   frame scales itself below, and the two mechanisms would otherwise compound.
+   Horizontal scroll for the magnified frame; vertical scrolling stays inside the
+   document, which is where a page's own scrollbar belongs. */
+.editor-area-scroll.html-preview-scroll {
+  overflow: auto hidden;
+  zoom: 1;
+}
+
+/* Zoom magnifies the frame rather than restyling the document inside it.
+   `zoom` on the document root — the obvious approach, and the first one tried —
+   shrinks its layout viewport by the same factor, so a fluid page just REFLOWS to
+   fill the frame again: text grows but the page keeps occupying the same box, and a
+   10% step reads as far less than 10%. Scaling the frame leaves the document's
+   viewport alone, so nothing re-wraps and a step is worth its full value. It is also
+   how the PDF and image viewers already behave.
+
+   The sizes are what keep that true in both directions. Width stays at 100% while
+   zoomed in (paint 1.5x wide, scroll horizontally, no re-wrap) and grows past it
+   while zoomed out, so the frame still fills the pane at 0.5x instead of leaving a
+   band of empty container. Height always cancels the scale, so the frame covers the
+   pane exactly and the container never grows a second vertical scrollbar next to the
+   document's own. */
 .html-preview-frame {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: max(100%, calc(100% / var(--preview-zoom, 1)));
+  height: calc(100% / var(--preview-zoom, 1));
 
   /* Standalone HTML documents assume a white canvas regardless of app theme */
   background: #fff;
   border: none;
+  transform: scale(var(--preview-zoom, 1));
+  transform-origin: 0 0;
 }
 
 /* Floating view toggle in the editor area (shares .mode-toggle-btn chrome) */

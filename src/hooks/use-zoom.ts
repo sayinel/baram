@@ -6,6 +6,12 @@
 // CSS zoom on this container creates a containing block for position:fixed
 // descendants, so overlay positions are relative to the scroll area (correct).
 // Persists zoom level in settings store.
+//
+// The settings store is the single source of truth for the level, and this hook
+// subscribes to it — so a zoom request that never touches this window still lands.
+// The HTML preview needs that: its document sits in a sandboxed opaque-origin frame
+// that swallows the keystrokes and wheel events the listeners below are waiting for,
+// and forwards them over postMessage instead (see HtmlPreview.tsx).
 
 import { useEffect } from "react";
 
@@ -19,10 +25,18 @@ const KEYBOARD_STEP = 0.1;
 const PINCH_SENSITIVITY = 0.005;
 
 export function useZoom(editor: Editor | null): void {
-  // Apply persisted zoom level on mount
+  // Apply the persisted level on mount, then follow the store. Subscribing rather
+  // than applying inline at each call site is what lets zoom requests originating
+  // outside this window (the preview bridge) reach the DOM through one path.
   useEffect(() => {
-    const level = useSettingsStore.getState().zoomLevel;
-    if (level !== 1) applyZoom(level, editor);
+    let applied = useSettingsStore.getState().zoomLevel;
+    if (applied !== 1) applyZoom(applied, editor);
+
+    const unsubscribe = useSettingsStore.subscribe((state) => {
+      if (state.zoomLevel === applied) return;
+      applied = state.zoomLevel;
+      applyZoom(applied, editor);
+    });
 
     // The scroll container may not exist yet on first mount; observe for it.
     // §perf-large-file C3.4: resolve via editor.view.dom.closest() when the
@@ -39,7 +53,10 @@ export function useZoom(editor: Editor | null): void {
       }
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    return () => {
+      unsubscribe();
+      observer.disconnect();
+    };
   }, [editor]);
 
   // Trackpad pinch (wheel + ctrlKey) + keyboard shortcuts
@@ -47,14 +64,7 @@ export function useZoom(editor: Editor | null): void {
     const handleWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-
-      const { zoomLevel, setZoomLevel } = useSettingsStore.getState();
-      const delta = -e.deltaY * PINCH_SENSITIVITY;
-      const newLevel = clampZoom(zoomLevel + delta);
-      if (newLevel !== zoomLevel) {
-        setZoomLevel(newLevel);
-        applyZoom(newLevel, editor);
-      }
+      zoomByWheel(e.deltaY);
     };
 
     const handleKeydown = (e: KeyboardEvent) => {
@@ -63,28 +73,21 @@ export function useZoom(editor: Editor | null): void {
       // Cmd+= / Cmd++ → zoom in
       if (e.key === "=" || e.key === "+") {
         e.preventDefault();
-        const { zoomLevel, setZoomLevel } = useSettingsStore.getState();
-        const newLevel = clampZoom(zoomLevel + KEYBOARD_STEP);
-        setZoomLevel(newLevel);
-        applyZoom(newLevel, editor);
+        zoomIn();
         return;
       }
 
       // Cmd+- → zoom out
       if (e.key === "-") {
         e.preventDefault();
-        const { zoomLevel, setZoomLevel } = useSettingsStore.getState();
-        const newLevel = clampZoom(zoomLevel - KEYBOARD_STEP);
-        setZoomLevel(newLevel);
-        applyZoom(newLevel, editor);
+        zoomOut();
         return;
       }
 
       // Cmd+0 → reset zoom
       if (e.key === "0") {
         e.preventDefault();
-        useSettingsStore.getState().setZoomLevel(1);
-        applyZoom(1, editor);
+        zoomReset();
       }
     };
 
@@ -95,6 +98,27 @@ export function useZoom(editor: Editor | null): void {
       window.removeEventListener("keydown", handleKeydown, { capture: true });
     };
   }, [editor]);
+}
+
+/** Continuous zoom from a wheel/pinch delta (`WheelEvent.deltaY`). */
+export function zoomByWheel(deltaY: number): void {
+  if (!Number.isFinite(deltaY)) return;
+  setZoom(useSettingsStore.getState().zoomLevel - deltaY * PINCH_SENSITIVITY);
+}
+
+/** One keyboard step in. */
+export function zoomIn(): void {
+  setZoom(useSettingsStore.getState().zoomLevel + KEYBOARD_STEP);
+}
+
+/** One keyboard step out. */
+export function zoomOut(): void {
+  setZoom(useSettingsStore.getState().zoomLevel - KEYBOARD_STEP);
+}
+
+/** Back to 100%. */
+export function zoomReset(): void {
+  setZoom(1);
 }
 
 function applyZoom(level: number, editor: Editor | null): void {
@@ -118,4 +142,10 @@ function applyZoom(level: number, editor: Editor | null): void {
 
 function clampZoom(level: number): number {
   return Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level)) * 100) / 100;
+}
+
+function setZoom(level: number): void {
+  const { setZoomLevel, zoomLevel } = useSettingsStore.getState();
+  const next = clampZoom(level);
+  if (next !== zoomLevel) setZoomLevel(next);
 }

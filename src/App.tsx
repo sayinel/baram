@@ -314,6 +314,15 @@ function App() {
     () => new Set(),
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
+
+  // Both preview surfaces scale their own content and so neutralize the
+  // container's CSS zoom — see html-preview.css. The source view is ordinary
+  // editor content and keeps it.
+  let previewScrollClass = "";
+  if (!isHtmlSourceView) {
+    if (isPluginPreviewTab) previewScrollClass = " plugin-viewer-scroll";
+    else if (isHtmlTab) previewScrollClass = " html-preview-scroll";
+  }
   // Viewers reload whenever the file's saved/reloaded mtime bumps
   // (manual save, auto-save, toggle-flush, or external auto-reload)
   const previewFileMtime = useFileStore((s) =>
@@ -892,11 +901,7 @@ function App() {
             </div>
           ) : isCodeFile ? (
             <div
-              className={
-                isPluginPreviewTab && !isHtmlSourceView
-                  ? "editor-area-scroll plugin-viewer-scroll"
-                  : "editor-area-scroll"
-              }
+              className={`editor-area-scroll${previewScrollClass}`}
               data-editor-scroll
             >
               {(isHtmlTab || isPluginPreviewTab) && (

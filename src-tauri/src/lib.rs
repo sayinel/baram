@@ -17,6 +17,7 @@ mod llm;
 pub mod logging;
 mod menu;
 mod plugin;
+mod protocol;
 mod search;
 mod snapshot;
 mod tag;
@@ -183,6 +184,14 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // §5.1 The HTML preview loads through this rather than asset:, so that relative
+        // references inside a previewed document resolve — see protocol/html_preview.rs
+        // for why asset: cannot serve them. Access is governed by the asset scope all
+        // the same, so this adds a route, not a permission.
+        .register_uri_scheme_protocol(
+            protocol::html_preview::SCHEME,
+            protocol::html_preview::handle,
+        )
         .setup(|app| {
             // The log file is appended to across sessions, so this doubles as a
             // session separator — and it answers the first question asked of any
