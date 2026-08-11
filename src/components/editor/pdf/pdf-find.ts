@@ -18,6 +18,14 @@ export interface PdfLinkServiceAdapter {
  * 그 클래스가 번들에서 export되지 않기 때문이다.
  *
  * matches는 오름차순이라고 가정한다 (findController가 그렇게 만든다).
+ *
+ * 전제조건:
+ * • matches는 오름차순 및 겹치지 않아야 한다. 각 매치는 이전 매치의 끝 이상에서
+ *   시작해야 한다. PDFFindController가 그렇게 내보낸다. 겹치는 입력이 들어오면
+ *   커서가 이미 후속 매치 시작을 지나 begin.offset이 음수가 될 수 있다.
+ * • 오프셋은 클램핑되지 않는다. 루프가 마지막 항목에 도달하면 i !== last 가드가
+ *   진행을 멈추므로 textItems.join("").length를 초과하는 매치 오프셋에 대해
+ *   begin.offset과 end.offset 모두 최종 항목의 길이를 초과할 수 있다.
  */
 export function convertMatches(
   matches: number[],
