@@ -6,6 +6,12 @@ export interface MatchPosition {
   end: { divIdx: number; offset: number };
 }
 
+/** PDFFindController가 뷰어에게 요구하는 최소 표면. */
+export interface PdfLinkServiceAdapter {
+  page: number;
+  readonly pagesCount: number;
+}
+
 /**
  * findController의 원문 오프셋 매치를 텍스트 레이어 span 좌표로 변환한다.
  * pdfjs `TextHighlighter._convertMatches`(pdf_viewer.mjs:10920) 이식 —
@@ -42,4 +48,45 @@ export function convertMatches(
   }
 
   return result;
+}
+
+/**
+ * PDFFindController용 linkService 어댑터.
+ * `page` setter는 값을 저장하지 않고 스크롤로 위임한다 — 현재 페이지의
+ * 진실은 스크롤 위치이지 이 객체가 아니다.
+ */
+export function createLinkService({
+  getPage,
+  pagesCount,
+  scrollToPage,
+}: {
+  getPage: () => number;
+  pagesCount: number;
+  scrollToPage: (n: number) => void;
+}): PdfLinkServiceAdapter {
+  return {
+    get page() {
+      return getPage();
+    },
+    set page(n: number) {
+      scrollToPage(n);
+    },
+    get pagesCount() {
+      return pagesCount;
+    },
+  };
+}
+
+/**
+ * pdfjs 뷰어 컴포넌트를 로드한다.
+ *
+ * ‼️ 정적 import 금지: pdf_viewer.mjs는 globalThis.pdfjsLib에서
+ * 구조분해하는데(pdf_viewer.mjs:5033) 그 전역은 pdf.mjs가 평가될 때
+ * 설정된다(pdf.mjs:34374). 두 모듈 사이에 의존 간선이 없어 정적 import는
+ * 순서를 보장하지 못한다 — 순서가 뒤집히면 모듈 평가 시점에
+ * "Cannot destructure property of undefined"로 죽는다.
+ */
+export async function loadPdfViewerModule() {
+  await import("pdfjs-dist/legacy/build/pdf.mjs"); // globalThis.pdfjsLib 설정
+  return import("pdfjs-dist/legacy/web/pdf_viewer.mjs");
 }
