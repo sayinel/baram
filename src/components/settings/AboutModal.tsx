@@ -15,9 +15,11 @@ import { useUIStore } from "../../stores/ui/ui";
 const APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0";
 
 // Authors ordered by GitHub contribution (commit count, bots excluded).
+// Names are the contributors' GitHub display names.
 const AUTHORS: ReadonlyArray<{ name: string; url: string }> = [
-  { name: "Donghoon Yoo", url: "https://github.com/sayinel" },
-  { name: "Hanyul ryu", url: "https://github.com/pignuante" },
+  { name: "sayinel", url: "https://github.com/sayinel" },
+  { name: "Pignu", url: "https://github.com/pignuante" },
+  { name: "Aiden Ha", url: "https://github.com/aidenhany" },
 ];
 
 export function AboutModal() {
