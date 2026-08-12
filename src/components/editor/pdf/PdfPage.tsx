@@ -19,6 +19,7 @@ import { PdfSelectionPopup } from "./PdfSelectionPopup";
 const LAZY_ROOT_MARGIN = "800px";
 
 export function PdfPage({
+  flashHighlightId,
   highlights,
   matches,
   onPageMouseDown,
@@ -26,6 +27,9 @@ export function PdfPage({
   popup,
   scale,
 }: {
+  /** §275.6 ref → PDF 점프가 방금 도착한 하이라이트 id — 이 페이지에 있으면
+   * 잠깐 강조한다. 다른 id/페이지면 부모가 null을 내려준다. */
+  flashHighlightId?: null | string;
   /** §274 이 페이지에 속한 하이라이트만 — 부모가 이미 page 번호로 걸러서 내려준다. */
   highlights?: StoredHighlight[];
   /** §272 찾기 매치 — 없으면 하이라이트를 지운다. */
@@ -173,9 +177,14 @@ export function PdfPage({
             {highlights?.map((h) =>
               h.rects.map((r: PdfRect, i) => {
                 const local = pdfRectToPageLocal(r, viewport);
+                const flashing = h.id === flashHighlightId;
                 return (
                   <div
-                    className={`pdf-hl-mark pdf-hl-mark-${h.color}`}
+                    className={
+                      flashing
+                        ? `pdf-hl-mark pdf-hl-mark-${h.color} pdf-hl-mark-flash`
+                        : `pdf-hl-mark pdf-hl-mark-${h.color}`
+                    }
                     key={`${h.id}-${i}`}
                     style={{
                       height: local.height,

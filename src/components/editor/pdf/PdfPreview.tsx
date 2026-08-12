@@ -29,6 +29,7 @@ import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { logger } from "../../../utils/logger";
 import { PdfPage } from "./PdfPage";
+import { PdfToolbar } from "./PdfToolbar";
 import { usePdfFind } from "./use-pdf-find";
 import { usePdfHighlights } from "./use-pdf-highlights";
 
@@ -47,6 +48,10 @@ interface PdfPreviewProps {
    * a stable setState setter here, not an inline arrow — this component is
    * memoized and an unstable callback identity would defeat that. */
   onFindApiChange?: (api: null | PdfFindApi) => void;
+  /** §276.1 Toolbar's find-toggle button — flips the SAME `findOpen` state the
+   * parent already owns (App.tsx), so there is one source of truth for
+   * whether the find bar is open regardless of which control toggled it. */
+  onToggleFind?: () => void;
   /** Bumped on external reloads — forces a re-fetch of the file. */
   refreshKey?: number;
   /** Accessible title for the viewer (file path or name). */
@@ -75,6 +80,7 @@ export const PdfPreview = memo(function PdfPreview({
   filePath,
   findOpen,
   onFindApiChange,
+  onToggleFind,
   refreshKey,
   title,
 }: PdfPreviewProps) {
@@ -168,12 +174,14 @@ export const PdfPreview = memo(function PdfPreview({
   });
   const {
     currentIdx,
+    currentPage,
     getPageMatches,
     matchCount,
     onNext,
     onPrev,
     onQueryChange,
     registerPageEl,
+    scrollToPage,
   } = pdfFind;
 
   // §272 findOpen/matchCount/currentIdx/콜백이 바뀔 때마다 부모(App.tsx)에게
@@ -192,15 +200,42 @@ export const PdfPreview = memo(function PdfPreview({
 
   const scale = baseScale * zoomLevel;
 
+  // §276 Task 12 — pageElsRef(usePdfFind)가 실제로 채워지는 시점과 정확히
+  // 같다: scale>0 && pages.length>0일 때만 아래 JSX가 페이지 wrapper div를
+  // 렌더한다(§272 Fix I1 주석 참조). 이 전에 scrollToPage를 부르면
+  // pageElsRef.get(n)이 undefined라 조용히 no-op한다 — usePdfHighlightFlash가
+  // 대상을 찾기도 전에 pendingPdfHighlightId를 소비해버리는 레이스를 막는다.
+  const pagesReady = scale > 0 && pages.length > 0;
+
+  // §276.3 영역 하이라이트 모드 — 2차 구현. 토글 버튼은 지금 disabled로
+  // 렌더하지만(PdfToolbar), 배선 자체는 지금 잡아둔다.
+  const [areaMode, setAreaMode] = useState(false);
+  const onToggleArea = useCallback(() => setAreaMode((v) => !v), []);
+
+  const onNextPage = useCallback(() => {
+    scrollToPage(Math.min(currentPage + 1, pages.length));
+  }, [currentPage, pages.length, scrollToPage]);
+  const onPrevPage = useCallback(() => {
+    scrollToPage(Math.max(currentPage - 1, 1));
+  }, [currentPage, scrollToPage]);
+
   // §274 사이드카 로드 + 히트 테스트 + 선택 팝업 배선. rootPath가 없으면
   // (vault 밖 단일 파일 모드) 내부적으로 비활성화된다.
   const {
+    flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,
     popupPage,
     popupProps,
     registerPageEl: registerHighlightPageEl,
-  } = usePdfHighlights({ filePath, pages, rootPath, scale });
+  } = usePdfHighlights({
+    filePath,
+    pages,
+    pagesReady,
+    rootPath,
+    scale,
+    scrollToPage,
+  });
 
   return (
     <div
@@ -212,7 +247,7 @@ export const PdfPreview = memo(function PdfPreview({
       {error ? (
         <div className="pdf-preview-error">{error}</div>
       ) : (
-        scale > 0 &&
+        pagesReady &&
         pages.map((page) => (
           <div
             data-pdf-page-number={page.pageNumber}
@@ -225,6 +260,7 @@ export const PdfPreview = memo(function PdfPreview({
             style={{ display: "contents" }}
           >
             <PdfPage
+              flashHighlightId={flashHighlightId}
               highlights={getPageHighlights(page.pageNumber)}
               matches={getPageMatches(page.pageNumber)}
               onPageMouseDown={handlePageMouseDown}
@@ -234,6 +270,20 @@ export const PdfPreview = memo(function PdfPreview({
             />
           </div>
         ))
+      )}
+
+      {/* §276.1 상주 툴바 — 항상 보인다. pagesReady 이전엔 pageCount가
+          의미 없으므로 렌더하지 않는다. */}
+      {!error && pagesReady && (
+        <PdfToolbar
+          areaMode={areaMode}
+          currentPage={currentPage}
+          onNextPage={onNextPage}
+          onPrevPage={onPrevPage}
+          onToggleArea={onToggleArea}
+          onToggleFind={() => onToggleFind?.()}
+          pageCount={pages.length}
+        />
       )}
     </div>
   );

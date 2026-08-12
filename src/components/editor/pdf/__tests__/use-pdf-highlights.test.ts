@@ -201,8 +201,10 @@ describe("usePdfHighlights", () => {
         usePdfHighlights({
           filePath: FILE_PATH,
           pages: [fakePage(1)],
+          pagesReady: true,
           rootPath: ROOT,
           scale: 1,
+          scrollToPage: vi.fn(),
         }),
       );
 
@@ -249,8 +251,10 @@ describe("usePdfHighlights", () => {
         usePdfHighlights({
           filePath: FILE_PATH,
           pages: [fakePage(1)],
+          pagesReady: true,
           rootPath: ROOT,
           scale: 1,
+          scrollToPage: vi.fn(),
         }),
       );
       await waitFor(() =>
@@ -290,8 +294,10 @@ describe("usePdfHighlights", () => {
         usePdfHighlights({
           filePath: FILE_PATH,
           pages: [fakePage(1)],
+          pagesReady: true,
           rootPath: ROOT,
           scale: 1,
+          scrollToPage: vi.fn(),
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -326,8 +332,10 @@ describe("usePdfHighlights", () => {
         usePdfHighlights({
           filePath: FILE_PATH,
           pages: [fakePage(1)],
+          pagesReady: true,
           rootPath: ROOT,
           scale: 1,
+          scrollToPage: vi.fn(),
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));

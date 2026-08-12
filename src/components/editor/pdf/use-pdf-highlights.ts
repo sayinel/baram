@@ -37,6 +37,7 @@ import {
   readSidecar,
 } from "./pdf-highlight-store";
 import { buildRefDisplay } from "./pdf-ref-display";
+import { usePdfHighlightFlash } from "./use-pdf-highlight-flash";
 
 const EMPTY_HIGHLIGHTS: StoredHighlight[] = [];
 
@@ -66,14 +67,24 @@ type PopupState =
 export function usePdfHighlights({
   filePath,
   pages,
+  pagesReady,
   rootPath,
   scale,
+  scrollToPage,
 }: {
   filePath: string;
   pages: PDFPageProxy[];
+  /** §275.6 True once PdfPreview's pages are registered and safe to scroll
+   * to — gates usePdfHighlightFlash, see its own doc comment. */
+  pagesReady: boolean;
   rootPath: null | string;
   scale: number;
+  /** §275.6 The SAME scrollToPage usePdfFind hands the toolbar/find controller. */
+  scrollToPage: (n: number) => void;
 }): {
+  /** §275.6 Set briefly after a ref click lands on this PDF — the highlight
+   * to render with the flash affordance (PdfPage). */
+  flashHighlightId: null | string;
   getPageHighlights: (pageNumber: number) => StoredHighlight[];
   handlePageMouseDown: (
     pageNumber: number,
@@ -89,6 +100,13 @@ export function usePdfHighlights({
   const { t } = useTranslation();
   const [sidecar, setSidecar] = useState<null | Sidecar>(null);
   const [popup, setPopup] = useState<null | PopupState>(null);
+  // §275.6 ref → PDF jump: once this PDF's own sidecar (below) has this
+  // pending id, scroll + flash it.
+  const { flashHighlightId } = usePdfHighlightFlash({
+    pagesReady,
+    scrollToPage,
+    sidecar,
+  });
 
   const pageElsRef = useRef<Map<number, HTMLElement>>(new Map());
   const pagesByNumberRef = useRef<Map<number, PDFPageProxy>>(new Map());
@@ -459,6 +477,7 @@ export function usePdfHighlights({
     : null;
 
   return {
+    flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,
     popupPage: popup?.pageNumber ?? null,

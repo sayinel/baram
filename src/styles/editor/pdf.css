@@ -276,3 +276,83 @@
 .pdf-hl-delete-btn:hover {
   background: color-mix(in srgb, var(--color-status-danger) 12%, transparent);
 }
+
+/* §275.6 ref 클릭으로 도착한 하이라이트를 잠깐 강조한다 — 지속 시간은
+   use-pdf-highlight-flash.ts의 FLASH_DURATION_MS와 맞춰 둘 것. 배경(하이라이트
+   자체 색)은 그대로 두고 outline만 링으로 얹어 fade-out한다. */
+.pdf-hl-mark-flash {
+  animation: pdf-hl-flash 1.6s ease-out;
+}
+
+@keyframes pdf-hl-flash {
+  0%,
+  40% {
+    outline: 2px solid var(--color-accent-default);
+    outline-offset: 1px;
+  }
+
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+  }
+}
+
+/* §276.1 PDF 툴바 — 상주, 문서 단위. pdf-find-bar(우상단)와 같은 배치/스타일
+   관례를 화면 하단 중앙에서 재사용해 둘이 겹치지 않는다. */
+.pdf-toolbar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 50;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  transform: translateX(-50%);
+}
+
+[data-theme="dark"] .pdf-toolbar {
+  background: var(--color-bg-subtle);
+}
+
+.pdf-toolbar-nav-btn,
+.pdf-toolbar-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-secondary);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.pdf-toolbar-nav-btn:hover:not(:disabled),
+.pdf-toolbar-btn:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-default);
+}
+
+.pdf-toolbar-nav-btn:disabled,
+.pdf-toolbar-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.pdf-toolbar-page-count {
+  min-width: 56px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pdf-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border-default);
+}

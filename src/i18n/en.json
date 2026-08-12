@@ -532,6 +532,11 @@
   "pdfHighlight.saveFailed": "Couldn't save the highlight",
   "pdfHighlight.copyFailed": "Couldn't copy to the clipboard",
 
+  "pdfToolbar.prevPage": "Previous page",
+  "pdfToolbar.nextPage": "Next page",
+  "pdfToolbar.find": "Find in PDF",
+  "pdfToolbar.areaMode": "Area highlight (coming soon)",
+
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",
   "plugin.consent.fullTrust.title": "This plugin asks for full trust.",

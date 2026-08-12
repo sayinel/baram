@@ -20,6 +20,9 @@ interface LinkState {
 
   /** Whether backlinks are being loaded */
   loading: boolean;
+  /** §275.6 Highlight id to scroll to + flash once its PDF's PdfPreview mounts
+   * and its sidecar has loaded (consumed by use-pdf-highlight-flash.ts) */
+  pendingPdfHighlightId: null | string;
   /** §30c Block ID to scroll to after block ref navigation */
   pendingScrollBlockId: null | string;
   /** Heading text to scroll to after cross-file navigation (consumed by afterDocLoad) */
@@ -32,6 +35,8 @@ interface LinkState {
   setError: (error: null | string) => void;
   /** Set loading state */
   setLoading: (loading: boolean) => void;
+  /** Set pending PDF highlight id (consumed by use-pdf-highlight-flash.ts) */
+  setPendingPdfHighlightId: (id: null | string) => void;
   /** Set pending scroll block ID (consumed by App.tsx after tab switch) */
   setPendingScrollBlockId: (id: null | string) => void;
   /** Set pending scroll heading (consumed by afterDocLoad after tab switch) */
@@ -78,4 +83,6 @@ export const useLinkStore = create<LinkState>((set, get) => ({
   setPendingScrollBlockId: (id) => set({ pendingScrollBlockId: id }),
   pendingScrollHeading: null,
   setPendingScrollHeading: (heading) => set({ pendingScrollHeading: heading }),
+  pendingPdfHighlightId: null,
+  setPendingPdfHighlightId: (id) => set({ pendingPdfHighlightId: id }),
 }));

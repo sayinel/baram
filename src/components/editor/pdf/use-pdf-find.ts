@@ -51,8 +51,25 @@ export function usePdfFind({
   isOpen: boolean;
   pages: PDFPageProxy[];
 }): PdfFindApi & {
+  /** §276 Task 12 correction 1 — reactive mirror of getCurrentPage(), kept in
+   * sync on scroll (see the effect below). This is what the toolbar's page
+   * counter and prev/next boundary checks read. */
+  currentPage: number;
+  /** §276 Task 12 — the SAME "topmost visible page" reading `createLinkService`
+   * feeds the find controller (getPage above). The toolbar's page counter
+   * must read this, not a second computation, or it can disagree with where
+   * find navigation lands. */
+  getCurrentPage: () => number;
   getPageMatches: (pageNumber: number) => PdfPageMatches | undefined;
   registerPageEl: (pageNumber: number, el: HTMLElement | null) => void;
+  /** §276 Task 12 — the SAME function `createLinkService` above wires into the
+   * find controller's `page` setter. The toolbar's prev/next buttons and any
+   * ref-navigation-triggered jump must call this one, not a second registry —
+   * a second one would very likely re-register the `display:contents`
+   * wrapper instead of `resolvePageBoxEl`'s box-generating child (the I1 bug
+   * PdfPreview.tsx's comment documents), and jsdom can't catch that because
+   * it returns zero rects for every element regardless of `display`. */
+  scrollToPage: (n: number) => void;
 } {
   const [matchCount, setMatchCount] = useState(0);
   const [currentIdx, setCurrentIdx] = useState(-1);
@@ -100,6 +117,35 @@ export function usePdfFind({
     (pageNumber: number) => positionsRef.current.get(pageNumber),
     [],
   );
+
+  // §276 Task 12 correction 1 — 툴바의 페이지 카운터가 읽는 currentPage는
+  // "지금 스크롤이 어디 있는가"의 REACTIVE 미러다. getCurrentPage() 자체는
+  // (linkService adapter가 쓰는 그대로) 호출 시점에만 계산되는 명령형
+  // 함수라 리렌더를 유발하지 않는다 — 스크롤 이벤트에서 다시 샘플링해
+  // React state로 끌어올린다. rAF로 묶어 스크롤 픽셀 하나마다 setState가
+  // 안 나가게 한다. [pages]도 의존성에 둔다 — 스크롤 이벤트 없이 다른
+  // PDF로 전환된 경우에도(§272 lazy 언마운트로 이전 문서의 페이지 엘리먼트가
+  // 이미 pageElsRef에서 빠진 뒤) 새 문서 기준으로 즉시 다시 읽는다.
+  const [currentPage, setCurrentPage] = useState(1);
+  useEffect(() => {
+    const scrollEl = getScrollElement();
+    if (!scrollEl) return;
+    let rafId: null | number = null;
+    const sample = () => {
+      rafId = null;
+      setCurrentPage(getCurrentPage());
+    };
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(sample);
+    };
+    sample();
+    scrollEl.addEventListener("scroll", onScroll);
+    return () => {
+      scrollEl.removeEventListener("scroll", onScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [getCurrentPage, getScrollElement, pages]);
 
   // §272 Fix round 1 — I5: [doc] 이펙트의 .then() 안에서 컨트롤러가 뜬 직후
   // 대기 중인 쿼리를 재전송하려면 dispatchFind가 필요하다 — 그 이펙트보다
@@ -307,11 +353,14 @@ export function usePdfFind({
 
   return {
     currentIdx,
+    currentPage,
+    getCurrentPage,
     getPageMatches,
     matchCount,
     onNext,
     onPrev,
     onQueryChange,
     registerPageEl,
+    scrollToPage,
   };
 }

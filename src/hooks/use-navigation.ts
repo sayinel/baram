@@ -1,8 +1,14 @@
 // §28, §30c, §37 Navigation hooks — wikilink, block ref, local link, back/forward
 import { useCallback, useEffect, useRef } from "react";
 
+import type { StoredHighlight } from "../components/editor/pdf/pdf-highlight-sidecar";
 import type { Editor } from "@tiptap/core";
 
+import {
+  pdfRelPathForHighlightTarget,
+  sidecarPathFor,
+} from "../components/editor/pdf/pdf-highlight-sidecar";
+import { readSidecar } from "../components/editor/pdf/pdf-highlight-store";
 import { writeFile } from "../ipc/invoke";
 import { ensureJournalFile } from "../services/journal-file-service";
 import { useContextStore } from "../stores/context/context";
@@ -209,6 +215,46 @@ export function useNavigation({
     [handleOpenFilePath, editor],
   );
 
+  // §30c Different-file block reference: resolve target, open, set pending
+  // block id, then scroll once the editor settles. Shared by the ordinary
+  // path below and by the §275.6 highlight-ref fallback (sidecar missing/
+  // unreadable, or the highlight's id isn't there anymore — §277 leaves the
+  // companion-note paragraph in place on delete, so this is the expected,
+  // supported landing spot for a ref to a deleted highlight, not an error).
+  const openNoteAndScrollToBlock = useCallback(
+    (target: string, blockId: string) => {
+      const resolved = resolveWikilinkTarget(target);
+      if (!resolved) return;
+
+      // Set pending block ID for scroll after tab switch
+      useLinkStore.getState().setPendingScrollBlockId(blockId);
+
+      handleOpenFilePath(resolved.path)
+        .then(() => {
+          // Wait for editor state to settle
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (!editor) return;
+              const pos = findBlockPosById(editor.state.doc, blockId);
+              if (pos !== null) {
+                try {
+                  editor.commands.setTextSelection(pos + 1);
+                  editor.commands.scrollIntoView();
+                } catch {
+                  // ignore invalid position
+                }
+              }
+              useLinkStore.getState().setPendingScrollBlockId(null);
+            });
+          });
+        })
+        .catch((err) =>
+          logger.error("[Nav] Failed to open block ref target:", err),
+        );
+    },
+    [handleOpenFilePath, editor],
+  );
+
   // §30c Block reference Cmd+Click navigation
   const handleBlockRefNavigate = useCallback(
     (target: string, blockId: string) => {
@@ -224,33 +270,40 @@ export function useNavigation({
         return;
       }
 
+      // §275.6 Highlight ref: if the sidecar still has this id, open the PDF
+      // and jump to it instead of the companion note. rootPath is required to
+      // form the sidecar's absolute path — without a vault (single-file mode)
+      // there's nothing to check, so fall straight through.
+      const pdfRelPath = pdfRelPathForHighlightTarget(target);
+      const { rootPath } = useFileStore.getState();
+      if (pdfRelPath && rootPath) {
+        (async () => {
+          let hit: StoredHighlight | undefined;
+          try {
+            const absSidecarPath = `${rootPath}/${sidecarPathFor(pdfRelPath)}`;
+            const sidecar = await readSidecar(absSidecarPath);
+            hit = sidecar?.highlights.find((h) => h.id === blockId);
+          } catch (err) {
+            logger.error("[Nav] Failed to read highlight sidecar:", err);
+          }
+          if (hit) {
+            useLinkStore.getState().setPendingPdfHighlightId(blockId);
+            handleOpenFilePath(`${rootPath}/${pdfRelPath}`).catch((err) =>
+              logger.error("[Nav] Failed to open highlighted PDF:", err),
+            );
+            return;
+          }
+          // Not found (deleted highlight, or sidecar missing/unreadable) —
+          // fall back to the ordinary block-reference destination.
+          openNoteAndScrollToBlock(target, blockId);
+        })();
+        return;
+      }
+
       // Different file — resolve and open
-      const resolved = resolveWikilinkTarget(target);
-      if (!resolved) return;
-
-      // Set pending block ID for scroll after tab switch
-      useLinkStore.getState().setPendingScrollBlockId(blockId);
-
-      handleOpenFilePath(resolved.path).then(() => {
-        // Wait for editor state to settle
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (!editor) return;
-            const pos = findBlockPosById(editor.state.doc, blockId);
-            if (pos !== null) {
-              try {
-                editor.commands.setTextSelection(pos + 1);
-                editor.commands.scrollIntoView();
-              } catch {
-                // ignore invalid position
-              }
-            }
-            useLinkStore.getState().setPendingScrollBlockId(null);
-          });
-        });
-      });
+      openNoteAndScrollToBlock(target, blockId);
     },
-    [handleOpenFilePath, editor],
+    [editor, openNoteAndScrollToBlock, handleOpenFilePath],
   );
 
   // §5.1 Local .md link Cmd+Click navigation (e.g. [text](sub/doc.md#heading))

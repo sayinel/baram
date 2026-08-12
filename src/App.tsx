@@ -362,6 +362,11 @@ function App() {
     },
     [isPdfTab],
   );
+  // §276.1 PdfToolbar의 찾기 토글 — 같은 pdfFindOpen을 뒤집는다. 인라인
+  // 화살표를 그대로 prop으로 넘기면 PdfPreview(memo)가 매 렌더 다시 그려진다.
+  const handleTogglePdfFind = useCallback(() => {
+    setPdfFindOpen((v) => !v);
+  }, []);
   // §perf-large-file B2/C2: Loading state for async parse
   const [isParsing, setIsParsing] = useState(false);
 
@@ -916,6 +921,7 @@ function App() {
                   filePath={activeTabFilePath}
                   findOpen={pdfFindOpen}
                   onFindApiChange={setPdfFindApi}
+                  onToggleFind={handleTogglePdfFind}
                   refreshKey={previewFileMtime}
                   title={activeTabFilePath}
                 />

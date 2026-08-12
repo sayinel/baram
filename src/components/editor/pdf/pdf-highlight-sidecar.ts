@@ -75,6 +75,18 @@ export function parseSidecar(raw: string): {
   };
 }
 
+/**
+ * §275.6 companionPathFor의 역함수 — 블록 참조 target(확장자 없음, ` ((target#^id))`
+ * 의 target 그대로)이 `highlights/`로 시작하면 대응하는 PDF의 vault 상대 경로를
+ * 복원한다. 그 접두사가 아니면(일반 블록 참조) null — 호출부가 기존 동작으로
+ * 떨어지는 신호다.
+ */
+export function pdfRelPathForHighlightTarget(target: string): null | string {
+  const prefix = "highlights/";
+  if (!target.startsWith(prefix)) return null;
+  return `${target.slice(prefix.length)}.pdf`;
+}
+
 /** vault 상대 PDF 경로 → 사이드카의 vault 상대 경로. */
 export function sidecarPathFor(pdfRelPath: string): string {
   return `.baram/pdf-highlights/${pdfRelPath.replace(/\.pdf$/i, ".json")}`;

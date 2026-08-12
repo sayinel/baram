@@ -138,6 +138,21 @@ export function resolveWikilinkTarget(
     if (stem.toLowerCase() === targetLower) {
       return { path: f.path, name: f.name };
     }
+
+    // §275.4 Path-qualified target, e.g. [[highlights/papers/attention]] —
+    // stem-only matching above picks whichever file anywhere in the tree
+    // happens to share a bare name, which is exactly the ambiguity a
+    // path-qualified target exists to avoid. Only attempted when the target
+    // actually carries a path segment, so plain [[name]] wikilinks keep the
+    // stem-only behavior above untouched.
+    if (target.includes("/")) {
+      const relStem = f.relativePath.endsWith(".markdown")
+        ? f.relativePath.slice(0, -9)
+        : f.relativePath.replace(/\.md$/i, "");
+      if (relStem.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
   }
 
   return null;
