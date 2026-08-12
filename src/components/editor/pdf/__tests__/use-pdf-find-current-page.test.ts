@@ -75,20 +75,35 @@ describe("usePdfFind — reactive currentPage", () => {
   it("re-samples immediately when pages change, without waiting for a scroll (file switch without scrolling)", async () => {
     const scrollEl = document.createElement("div");
     scrollEl.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+    // Stable across rerenders, matching production (PdfPreview.tsx passes a
+    // useCallback). A fresh arrow per render was the bug the review caught:
+    // getCurrentPage's own identity depends on getScrollElement, so an
+    // unstable one re-arms the effect on EVERY render regardless of whether
+    // `pages` actually changed — which is exactly why the original version
+    // of this test kept passing after `pages` was deliberately dropped from
+    // the effect's deps (use-pdf-find.ts) in a reproduction of the bug.
+    const getScrollElement = () => scrollEl;
 
     const { rerender, result } = renderHook(
       (props: { pages: PDFPageProxy[] }) =>
         usePdfFind({
           doc: null,
-          getScrollElement: () => scrollEl,
+          getScrollElement,
           isOpen: false,
           pages: props.pages,
         }),
       { initialProps: { pages: [fakePage(1)] } },
     );
+    // No scroll event anywhere in this test — page 1 registers via a ref
+    // mutation only (registerPageEl doesn't itself trigger a re-render), so
+    // currentPage cannot move off its mount-time default of 1 through any
+    // path OTHER than the pages-change re-sample this test exists to prove.
+    // (An earlier version of this test dispatched a "scroll" event and
+    // awaited currentPage===1 here — vacuous, since 1 is already the initial
+    // value: that wait resolved instantly and left the scroll's rAF
+    // pending, which was what actually produced "5" later, not the `pages`
+    // dependency under test.)
     act(() => result.current.registerPageEl(1, elAt(0)));
-    act(() => scrollEl.dispatchEvent(new Event("scroll")));
-    await waitFor(() => expect(result.current.currentPage).toBe(1));
 
     // Switching PDFs clears the old page's registration (PdfPreview's ref
     // callback fires with null on unmount) before the new one's pages mount.

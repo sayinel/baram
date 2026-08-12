@@ -296,7 +296,16 @@ export function useNavigation({
           // Not found (deleted highlight, or sidecar missing/unreadable) —
           // fall back to the ordinary block-reference destination.
           openNoteAndScrollToBlock(target, blockId);
-        })();
+        })().catch((err: unknown) => {
+          // §275.6 M3: everything above is guarded by its own try/catch, but
+          // openNoteAndScrollToBlock (in the fallback call just above) is a
+          // synchronous function — a throw out of it (e.g. from
+          // resolveWikilinkTarget) would otherwise reject this IIFE's promise
+          // with no one awaiting it, and main.tsx's global unhandledrejection
+          // handler downgrades that to a console.warn (§260 Phase 5 R4's
+          // exact trap, Task 11's I1 was about the same class).
+          logger.error("[Nav] Highlight ref navigation failed:", err);
+        });
         return;
       }
 

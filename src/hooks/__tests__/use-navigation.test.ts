@@ -161,6 +161,34 @@ describe("handleBlockRefNavigate — §275.6 highlight ref → PDF", () => {
     expect(logger.error).toHaveBeenCalled();
   });
 
+  it("§275.6 M3: does not produce an unhandled rejection when the fallback's resolver throws synchronously", async () => {
+    // The sidecar resolves but has no matching highlight, so the branch
+    // falls into openNoteAndScrollToBlock — which calls resolveWikilinkTarget
+    // synchronously. A throw from there used to escape the async IIFE with
+    // nothing awaiting it; main.tsx's global unhandledrejection handler
+    // would downgrade that to a console.warn (§260 Phase 5 R4's trap).
+    readSidecar.mockResolvedValue({
+      companion: "highlights/papers/attention.md",
+      highlights: [],
+      pdf: "papers/attention.pdf",
+      version: 1,
+    });
+    resolveWikilinkTarget.mockImplementation(() => {
+      throw new Error("boom");
+    });
+    const { handleOpenFilePath, result } = renderNav();
+
+    expect(() =>
+      result.current.handleBlockRefNavigate(
+        "highlights/papers/attention",
+        "h1",
+      ),
+    ).not.toThrow();
+
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    expect(handleOpenFilePath).not.toHaveBeenCalled();
+  });
+
   it("falls back without a sidecar round trip when there is no open vault (single-file mode)", () => {
     useFileStore.setState({ rootPath: null });
     resolveWikilinkTarget.mockReturnValue({

@@ -153,12 +153,18 @@ export function usePdfHighlights({
   }, []);
 
   // PDF(또는 vault)가 바뀌면 해당 사이드카를 새로 읽고 열린 팝업을 닫는다.
+  //
+  // §275.6 M2: sidecar를 즉시(비동기 읽기 전에) 비운다 — 안 그러면 경로가
+  // 바뀐 뒤 새 readSidecar가 아직 안 끝난 그 짧은 창에서 usePdfHighlightFlash가
+  // 이전 PDF의 sidecar를 "이 PDF의 것"으로 읽는다. pendingPdfHighlightId가
+  // 그 이전 sidecar에 우연히 없는 id면 조용히 소비되고 점프가 영영 사라진다
+  // (있어도 잘못된 페이지로 스크롤한다). PdfPreview가 ref 클릭 시점에 항상
+  // 언마운트돼 있어(App.tsx) 지금은 닿지 않는 경로지만, 그 전제가 바뀌면 이
+  // 가드가 없으면 조용한 실패가 된다.
   useEffect(() => {
     setPopup(null);
-    if (!absSidecarPath) {
-      setSidecar(null);
-      return;
-    }
+    setSidecar(null);
+    if (!absSidecarPath) return;
     let cancelled = false;
     void readSidecar(absSidecarPath).then((s) => {
       if (!cancelled) setSidecar(s);

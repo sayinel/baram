@@ -187,6 +187,48 @@ describe("usePdfHighlights", () => {
     window.getSelection()?.removeAllRanges();
   });
 
+  describe("§275.6 M2 — sidecar resets immediately on path change", () => {
+    it("clears the previous PDF's highlights synchronously when filePath changes, before the new sidecar load resolves", async () => {
+      readSidecar.mockResolvedValueOnce({
+        companion: "highlights/papers/attention.md",
+        highlights: [HIGHLIGHT],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+      // The new path's read never resolves within this test — proves the
+      // clear happens because the effect resets state up front, not merely
+      // because the new sidecar happened to load fast.
+      readSidecar.mockImplementationOnce(() => new Promise(() => {}));
+
+      const { rerender, result } = renderHook(
+        (props: { filePath: string }) =>
+          usePdfHighlights({
+            filePath: props.filePath,
+            pages: [fakePage(1)],
+            pagesReady: true,
+            rootPath: ROOT,
+            scale: 1,
+            scrollToPage: vi.fn(),
+          }),
+        { initialProps: { filePath: FILE_PATH } },
+      );
+
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+      );
+
+      act(() => {
+        rerender({ filePath: "/vault/papers/other.pdf" });
+      });
+
+      // Without the M2 guard this would still show the FIRST pdf's
+      // highlight — usePdfHighlightFlash reads exactly this sidecar to
+      // decide whether a pending ref-jump's highlight exists, so a stale
+      // read here would let it consume a jump against the wrong document.
+      expect(result.current.getPageHighlights(1)).toHaveLength(0);
+    });
+  });
+
   describe("I1 — write-path failures", () => {
     it("logs and shows a toast when changing colour fails to write the sidecar", async () => {
       readSidecar.mockResolvedValue({
