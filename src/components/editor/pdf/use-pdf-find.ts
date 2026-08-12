@@ -163,7 +163,8 @@ export function usePdfFind({
     let bus: EventBus | null = null;
     let onCount: ((e: FindMatchesCountEvent) => void) | null = null;
     let onState: ((e: FindMatchesCountEvent) => void) | null = null;
-    // ref는 안정적이지만(useRef로 한 번만 만든 같은 Map), 클린업에서
+    // ref는 안정적이다(useRef로 한 번만 만든 같은 Map — recomputeAll이 절대
+    // positionsRef.current를 재대입하지 않는다, 아래 참조). 그래서 클린업에서
     // ref.current를 직접 읽지 말라는 lint 제안을 따라 지금 값을 잡아둔다.
     const positionsCache = positionsRef.current;
 
@@ -198,8 +199,24 @@ export function usePdfFind({
           previous: positionsRef.current,
           selected: findController.selected ?? { matchIdx: -1, pageIdx: -1 },
         });
-        positionsRef.current = cache;
-        if (changed) bumpVersion((v) => v + 1);
+        // §272 Fix round 2 — N1: recomputePageMatches는 순수 함수로 남기려고
+        // (테스트하기 좋게) 호출마다 새 Map을 만든다(pdf-find-cache.ts의
+        // `new Map(previous)`) — 아무것도 안 바뀌어도. 그 반환값으로
+        // positionsRef.current를 통째로 바꿔치기하면(이전 버전이 그랬다)
+        // 위에서 캡처한 positionsCache와 어긋나 버려서, 이 이펙트의
+        // 클린업(:246 근처 positionsCache.clear())이 이미 버려진 Map을
+        // 지우고 진짜 살아있는 Map은 영영 안 지워진다 — 문서를 바꿔도(bar를
+        // 안 닫고) 이전 문서의 매치 위치가 새 문서로 새어 들어간다. 그래서
+        // 여기서는 참조를 바꾸지 않고 **내용만** 옮겨 담는다 — ref의 Map
+        // identity는 이펙트 생애 내내 절대 안 바뀐다(위 positionsCache 캡처가
+        // 계속 유효한 이유).
+        if (changed) {
+          positionsRef.current.clear();
+          for (const [pageNumber, matches] of cache) {
+            positionsRef.current.set(pageNumber, matches);
+          }
+          bumpVersion((v) => v + 1);
+        }
       };
       recomputeRef.current = recomputeAll;
 

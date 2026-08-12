@@ -85,3 +85,29 @@ describe("buildEolDomain", () => {
     expect(toDivPosition(-1, 0).divIdx).toBe(0);
   });
 });
+
+// §272 Fix round 2 — N2: 위 items 픽스처는 hasEOL이 딱 하나라서, "i 이전의
+// 합성 개수"와 "배열 전체의 합성 총개수"가 같은 수가 된다 — 그래서 그 둘을
+// 헷갈린(전체 개수를 쓰는) 잘못된 구현도 이 파일의 모든 테스트를 통과한다.
+// hasEOL이 둘인 픽스처로 그 구분을 실제로 확인한다.
+describe("convertMatchesWithEol — multiple EOLs (N2)", () => {
+  // domain: "aa"(0) + 합성"\n"(1) + "bb"(2) + 합성"\n"(3) + "cc"(4)
+  //       = "aa\nbb\ncc" (문자열 offset: a0 a1 \n2 b3 b4 \n5 c6 c7)
+  const twoEolItems: EolTextItem[] = [
+    { hasEOL: true, str: "aa" },
+    { hasEOL: true, str: "bb" },
+    { hasEOL: false, str: "cc" },
+  ];
+
+  it("resolves a match ending exactly on the SECOND synthetic boundary using the count of synthetics before it, not the total", () => {
+    // "bb\n" — 문자열 offset 3, 길이 3(b,b,\n). end가 두 번째 합성 항목
+    // (도메인 idx3) 자체에 정확히 떨어진다.
+    const positions = convertMatchesWithEol([3], [3], twoEolItems);
+    // begin(도메인 idx2, 실제 항목 "bb")은 이전 합성 1개만 세야 한다
+    // (toRealDivIdx(2) = 2 - 1 = 1). 전체 개수(2)를 쓰면 2 - 2 = 0이 되어
+    // "aa"(div0)로 잘못 떨어진다 — 이게 이 테스트가 잡는 버그다.
+    expect(positions).toEqual([
+      { begin: { divIdx: 1, offset: 0 }, end: { divIdx: 1, offset: 2 } },
+    ]);
+  });
+});
