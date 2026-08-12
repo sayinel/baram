@@ -429,6 +429,134 @@ describe("usePdfHighlights", () => {
       expect(generateBlockId).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe("B.2 — Copy reference guards its own double-click race", () => {
+    it("does not append a second companion-note paragraph when clicked again before the first append resolves", async () => {
+      // appendHighlightBlock을 사용자 제어로 미해결 상태에 붙잡아 둔다 —
+      // popup.blockId는 이 창 내내 계속 null이라, 가드가 없으면 두 번째
+      // 클릭이 두 번째 문단을 만든다.
+      let resolveAppend: () => void = () => {};
+      appendHighlightBlock.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveAppend = () => resolve(undefined);
+          }),
+      );
+
+      const pageEl = document.createElement("div");
+      pageEl.textContent = "Attention mechanisms allow modeling";
+      document.body.appendChild(pageEl);
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      act(() => result.current.registerPageEl(1, pageEl));
+
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
+
+      // 1) 첫 클릭 — append가 시작되지만 아직 안 끝났다.
+      act(() => {
+        result.current.popupProps?.onCopyRef();
+      });
+      expect(appendHighlightBlock).toHaveBeenCalledTimes(1);
+
+      // 2) 그 창 안에서 또 클릭 — 가드가 없으면 여기서 두 번째
+      // appendHighlightBlock이 나간다.
+      act(() => {
+        result.current.popupProps?.onCopyRef();
+      });
+      expect(appendHighlightBlock).toHaveBeenCalledTimes(1);
+      expect(generateBlockId).toHaveBeenCalledTimes(1);
+
+      // 첫 번째 append를 끝낸다 — 정상 경로는 계속 동작해야 한다.
+      act(() => resolveAppend());
+      await waitFor(() =>
+        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1),
+      );
+
+      // 가드는 settle 뒤 풀린다 — 이제 popup.blockId가 채워졌으니 다음
+      // 클릭은 (재사용 경로로 빠져) 여전히 두 번째 append를 만들지 않는다.
+      act(() => {
+        result.current.popupProps?.onCopyRef();
+      });
+      expect(appendHighlightBlock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("G-5 — Copy reference/Copy text give a success affordance", () => {
+    it("shows a copied toast after Copy reference succeeds", async () => {
+      const pageEl = document.createElement("div");
+      pageEl.textContent = "Attention mechanisms allow modeling";
+      document.body.appendChild(pageEl);
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      act(() => result.current.registerPageEl(1, pageEl));
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
+
+      act(() => {
+        result.current.popupProps?.onCopyRef();
+      });
+
+      await waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith("Copied to clipboard", "info"),
+      );
+    });
+
+    it("shows a copied toast after Copy text succeeds", async () => {
+      const pageEl = document.createElement("div");
+      pageEl.textContent = "Attention mechanisms allow modeling";
+      document.body.appendChild(pageEl);
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      act(() => result.current.registerPageEl(1, pageEl));
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
+
+      act(() => {
+        result.current.popupProps?.onCopyText();
+      });
+
+      await waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith("Copied to clipboard", "info"),
+      );
+    });
+  });
 });
 
 /** pageEl의 텍스트 전체를 실제 Selection으로 선택한다(비어있지 않은, 접히지 않은 선택). */

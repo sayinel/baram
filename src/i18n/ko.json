@@ -531,6 +531,7 @@
   "pdfHighlight.color": "하이라이트 색",
   "pdfHighlight.saveFailed": "하이라이트를 저장하지 못했습니다",
   "pdfHighlight.copyFailed": "클립보드에 복사하지 못했습니다",
+  "pdfHighlight.copied": "클립보드에 복사했습니다",
 
   "pdfToolbar.prevPage": "이전 페이지",
   "pdfToolbar.nextPage": "다음 페이지",

@@ -115,6 +115,12 @@ export function usePdfHighlights({
   const pageElsRef = useRef<Map<number, HTMLElement>>(new Map());
   const pagesByNumberRef = useRef<Map<number, PDFPageProxy>>(new Map());
   pagesByNumberRef.current = new Map(pages.map((p) => [p.pageNumber, p]));
+  // §274 B.2 onCopyRef의 "아직 블록 없음" 분기를 가드한다 — appendHighlightBlock이
+  // 끝나기 전까지 popup.blockId는 null로 남아 있어, 그 창에서 또 클릭하면 같은
+  // 선택에 두 번째 문단이 생긴다(§277 non-destructive delete라 영구적). popup
+  // state가 아니라 ref로 막는 이유: React state 업데이트는 비동기라 popup.blockId
+  // 자체가 바로 이 창을 못 막는다.
+  const copyRefAppendInFlightRef = useRef(false);
 
   const pdfRelPath = rootPath ? relativeToRoot(filePath, rootPath) : null;
   const absSidecarPath =
@@ -159,6 +165,18 @@ export function usePdfHighlights({
   const reportClipboardFailure = useCallback((err: unknown) => {
     logger.warn("[pdf-highlight] clipboard write failed:", err);
   }, []);
+
+  // §274 B.2 Copy reference/Copy text은 실패만 토스트로 알리고 성공은 아무
+  // 신호가 없었다 — 팝업이 의도적으로 안 닫히니(§274 I2) 사용자는 "복사됐나?"
+  // 확신할 방법이 없어 다시 클릭하게 되고, 그게 copyRefAppendInFlightRef가
+  // 막는 이중 클릭의 실제 유발 원인이라는 게 리뷰의 지적이다. 토스트를 고른
+  // 이유: 실패 쪽의 정확히 같은 패턴(reportWriteFailure/reportCopyFailure)을
+  // 재사용해, PdfSelectionPopup의 "순수 표시 컴포넌트" 계약(그 파일 자체
+  // 헤더 코멘트)에 새 prop을 얹지 않고 이 훅 안에서만 상태를 닫을 수 있다 —
+  // 버튼 라벨을 일시적으로 바꾸는 대안은 팝업에도 상태를 나눠 들여야 한다.
+  const reportCopySuccess = useCallback(() => {
+    useUIStore.getState().showToast(t("pdfHighlight.copied"), "info");
+  }, [t]);
 
   // PDF(또는 vault)가 바뀌면 해당 사이드카를 새로 읽고 열린 팝업을 닫는다.
   //
@@ -368,6 +386,7 @@ export function usePdfHighlights({
     if (popup.kind === "new") {
       void navigator.clipboard
         .writeText(popup.text)
+        .then(reportCopySuccess)
         .catch((err: unknown) => reportClipboardFailure(err));
     } else if (absCompanionPath) {
       const { id } = popup.existing;
@@ -376,6 +395,7 @@ export function usePdfHighlights({
           if (text) {
             void navigator.clipboard
               .writeText(text)
+              .then(reportCopySuccess)
               .catch((err: unknown) => reportClipboardFailure(err));
           } else {
             logger.warn(
@@ -387,7 +407,13 @@ export function usePdfHighlights({
     }
     // §274 I2 팝업을 닫지 않는다 — Copy text/Copy reference 뒤에도 같은
     // 선택에 색을 입히거나(onPickColor) 삭제(onDelete)를 계속할 수 있게.
-  }, [absCompanionPath, popup, reportClipboardFailure, reportCopyFailure]);
+  }, [
+    absCompanionPath,
+    popup,
+    reportClipboardFailure,
+    reportCopyFailure,
+    reportCopySuccess,
+  ]);
 
   const onCopyRef = useCallback(() => {
     if (!popup || !target) return;
@@ -410,6 +436,7 @@ export function usePdfHighlights({
                 target,
               }),
             )
+            .then(reportCopySuccess)
             .catch((err: unknown) => reportClipboardFailure(err));
         })
         .catch((err: unknown) => reportCopyFailure("read highlight text", err));
@@ -430,9 +457,16 @@ export function usePdfHighlights({
             target,
           }),
         )
+        .then(reportCopySuccess)
         .catch((err: unknown) => reportClipboardFailure(err));
       return;
     }
+
+    // §274 B.2 아직 append가 안 끝났는데(popup.blockId는 그 사이 계속 null이다)
+    // 또 클릭하면 아래 appendHighlightBlock이 같은 선택에 두 번째 문단을
+    // 만든다 — 가드는 copyRefAppendInFlightRef 선언부 코멘트 참조.
+    if (copyRefAppendInFlightRef.current) return;
+    copyRefAppendInFlightRef.current = true;
 
     // 아직 하이라이트로 만들지 않은 선택 — 참조가 가리킬 블록이 없으면
     // 복사한 ((...)) 가 대상 없이 뜬다. 색을 고르지 않아도 참조는 만들 수
@@ -464,11 +498,15 @@ export function usePdfHighlights({
               target,
             }),
           )
+          .then(reportCopySuccess)
           .catch((err: unknown) => reportClipboardFailure(err));
       })
       .catch((err: unknown) =>
         reportCopyFailure("save companion note block", err),
-      );
+      )
+      .finally(() => {
+        copyRefAppendInFlightRef.current = false;
+      });
     // §274 I2 팝업 유지 — 실패해도 닫지 않아 재시도할 수 있고, 성공하면
     // 위에서 blockId만 채운다.
   }, [
@@ -476,6 +514,7 @@ export function usePdfHighlights({
     popup,
     reportClipboardFailure,
     reportCopyFailure,
+    reportCopySuccess,
     target,
   ]);
 

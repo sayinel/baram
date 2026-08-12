@@ -531,6 +531,7 @@
   "pdfHighlight.color": "Highlight colour",
   "pdfHighlight.saveFailed": "Couldn't save the highlight",
   "pdfHighlight.copyFailed": "Couldn't copy to the clipboard",
+  "pdfHighlight.copied": "Copied to clipboard",
 
   "pdfToolbar.prevPage": "Previous page",
   "pdfToolbar.nextPage": "Next page",
