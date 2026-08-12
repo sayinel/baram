@@ -3,7 +3,24 @@
 // 나중에 끼워 넣으면 툴바 레이아웃을 다시 짜야 한다. 이번 PR에서는 disabled +
 // "coming soon" title만 붙인다). PdfFindBar/PdfSelectionPopup과 같은 순수
 // 표시 컴포넌트 — 상태와 IPC는 부모(PdfPreview)가 맡는다.
-import { ChevronLeft, ChevronRight, Highlighter, Search } from "lucide-react";
+//
+// §274 UX fix (defect 3) — 사용자가 실제로 본 문제: disabled 하이라이트
+// 버튼이 하나뿐이라 "하이라이트 기능이 꺼져 있다"로 읽힌다. 실제로는 텍스트
+// 하이라이트는 이미 동작한다(텍스트를 선택하면 팝업이 뜬다) — 진입점이
+// 툴바에 없을 뿐이다. 여기서 고치는 건 그 오해뿐이다: areaMode 라벨을
+// "이미지/영역"으로 명시하고, 텍스트 하이라이트용 힌트를 하나 추가한다.
+// 힌트는 클릭 동작이 없다 — 그래서 <button>이 아니라 title만 있는 정적
+// 아이콘이다(cursor:help로 구분, pdf.css). 새 콜백을 PdfPreview까지
+// 끌어올려 toast를 띄우는 대안도 검토했지만, 이 컴포넌트의 "순수 표시"
+// 계약(이 파일 헤더 참조)을 건드리지 않고도 hover 하나로 충분히
+// 발견 가능해진다.
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleHelp,
+  Highlighter,
+  Search,
+} from "lucide-react";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 
@@ -85,6 +102,18 @@ export function PdfToolbar({
       >
         <Highlighter size={16} />
       </button>
+
+      {/* §274 UX fix (defect 3) — 클릭 동작이 없는 정적 힌트라 button이
+          아니라 title을 가진 아이콘 span이다. */}
+      <span
+        aria-label={t("pdfToolbar.textHighlightHint")}
+        className="pdf-toolbar-hint"
+        data-testid="pdf-text-highlight-hint"
+        role="img"
+        title={t("pdfToolbar.textHighlightHint")}
+      >
+        <CircleHelp size={14} />
+      </span>
     </div>
   );
 }

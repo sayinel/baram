@@ -39,15 +39,46 @@
   line-height: 1;
   user-select: text;
   transform-origin: 0 0;
+
+  /* §274 UX fix (defect 2, root cause #1) — pdf.js's TextLayer (v5+, see
+     PdfPage.tsx's --total-scale-factor comment) writes --font-height/
+     --scale-x/--rotate on every span and expects the CALLER's CSS to
+     consume them (its own reference stylesheet does, in
+     node_modules/pdfjs-dist/web/pdf_viewer.css's .textLayer rule). This
+     project's hand-written rule below never did, so every span rendered
+     at whatever font-size it inherited — unrelated to that item's real
+     size — with no per-item scaleX correction. §272's find highlighting
+     never surfaced this (it only recolors text, never measures geometry),
+     but §274's highlight overlay reads range.getClientRects() directly,
+     so a size mismatch here shows up as rects that over- or under-shoot
+     the visible glyphs. */
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
 }
 
 .pdf-text-layer span,
 .pdf-text-layer br {
   position: absolute;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
   color: transparent;
   white-space: pre;
   cursor: text;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
   transform-origin: 0% 0%;
+
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+}
+
+/* pdf.js also wraps accessibility-tagged runs in a span.markedContent
+   container that carries no size/position of its own — display:contents
+   drops its box so the font-size/transform above (which only ever get
+   set on the actual leaf text spans) don't apply to it either. */
+.pdf-text-layer .markedContent {
+  display: contents;
 }
 
 .pdf-text-layer ::selection {
@@ -355,4 +386,17 @@
   width: 1px;
   height: 18px;
   background: var(--color-border-default);
+}
+
+/* §274 UX fix (defect 3) — 텍스트 하이라이트 발견용 정적 힌트. 버튼이
+   아니므로 icon-btn(cursor:pointer)을 쓰지 않는다 — hover로만 의미를 주는
+   요소라는 걸 cursor:help로 드러낸다. */
+.pdf-toolbar-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-muted);
+  cursor: help;
 }

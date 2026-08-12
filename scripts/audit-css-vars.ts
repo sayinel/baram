@@ -78,6 +78,10 @@ const ALLOWLIST = new Set([
   "--editor-zoom",
   // §5.1 HTML preview zoom — set as an inline style prop on the frame (HtmlPreview.tsx)
   "--preview-zoom",
+  // §272/§274 pdf.js TextLayer (v5+) font-metric input — set as an inline
+  // style prop on .pdf-page (PdfPage.tsx), consumed by pdf.css's
+  // --text-scale-factor calc().
+  "--total-scale-factor",
 ]);
 
 const undefinedVars: [string, string[]][] = [];

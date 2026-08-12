@@ -36,6 +36,12 @@ export function PdfSelectionPopup({
       // 팝업 내부 클릭이 .pdf-page의 mousedown 히트 테스트로 버블돼 팝업을
       // 스스로 닫아버리는 것을 막는다 — PdfPage.tsx는 mousedown에서 판정한다.
       onMouseDown={(e) => e.stopPropagation()}
+      // §274 UX fix (defect 1) — 색 선택/삭제는 브라우저의 네이티브 텍스트
+      // 선택을 지우지 않는다. stopPropagation이 없으면 스와치 클릭의
+      // mouseup이 document까지 버블돼 use-pdf-highlights.ts의 mouseup
+      // 리스너가 (여전히 non-collapsed인) 같은 선택을 다시 읽어 팝업을
+      // 방금 닫은 그 자리에 즉시 재생성한다.
+      onMouseUp={(e) => e.stopPropagation()}
       style={{ left: anchor.left, top: anchor.top }}
     >
       <div className="pdf-hl-swatch-row" role="group">

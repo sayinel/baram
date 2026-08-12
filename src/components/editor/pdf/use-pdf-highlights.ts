@@ -15,6 +15,7 @@ import type {
   StoredHighlight,
 } from "./pdf-highlight-sidecar";
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
+import type { NewSelectionPayload } from "./use-pdf-selection-popup";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -32,8 +33,7 @@ import {
   deleteHighlightById,
   updateHighlightColor,
 } from "./pdf-highlight-actions";
-import { clientRectToPdf } from "./pdf-highlight-geom";
-import { findPageForNode, hitTestRects } from "./pdf-highlight-hittest";
+import { hitTestRects } from "./pdf-highlight-hittest";
 import { companionPathFor, sidecarPathFor } from "./pdf-highlight-sidecar";
 import {
   appendHighlightBlock,
@@ -42,6 +42,7 @@ import {
 } from "./pdf-highlight-store";
 import { buildRefDisplay } from "./pdf-ref-display";
 import { usePdfHighlightFlash } from "./use-pdf-highlight-flash";
+import { usePdfSelectionPopup } from "./use-pdf-selection-popup";
 
 const EMPTY_HIGHLIGHTS: StoredHighlight[] = [];
 
@@ -251,63 +252,21 @@ export function usePdfHighlights({
     [getPageHighlights],
   );
 
-  // §274.1 새 텍스트 선택 감지 — document 전역 selectionchange를 쓴다(개별
-  // 페이지가 아니라): 드래그 도중 앵커가 어느 페이지에 속하는지 미리 알 수
-  // 없기 때문이다. collapsed(단순 클릭으로 caret만 옮긴 경우)는 무시한다 —
-  // 그 클릭은 이미 위 handlePageMouseDown이 처리했다(히트 또는 팝업 닫기).
-  //
-  // §274 M3 rootPath가 아니라 pdfRelPath로 게이팅한다 — vault는 열려 있는데
-  // 이 PDF만 vault 밖에 있으면(relativeToRoot가 null) rootPath는 여전히
-  // truthy라서, rootPath만 보면 팝업이 열려버린다. 그러면 사이드카/동반 노트
-  // 경로가 전부 null이라 색을 고르거나 참조를 복사해도 아무 일도 안 일어나고
-  // (아래 onPickColor/onCopyRef의 guard가 조용히 return), 팝업조차 안
-  // 닫힌다 — 죽은 UI. pdfRelPath로 게이팅하면 그 상태에서는 애초에 열리지
-  // 않는다.
-  useEffect(() => {
-    if (!pdfRelPath) return;
-
-    function handleSelectionChange() {
-      const sel = document.getSelection();
-      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-      const text = sel.toString();
-      if (!text.trim()) return;
-
-      const range = sel.getRangeAt(0);
-      const found = findPageForNode(
-        pageElsRef.current,
-        range.commonAncestorContainer,
-      );
-      if (!found) return;
-      const pageProxy = pagesByNumberRef.current.get(found.pageNumber);
-      if (!pageProxy) return;
-
-      const clientRects = Array.from(range.getClientRects());
-      if (clientRects.length === 0) return;
-
-      const viewport = pageProxy.getViewport({ scale });
-      const origin = found.el.getBoundingClientRect();
-      const rects = clientRects.map((r) =>
-        clientRectToPdf(r, origin, viewport),
-      );
-      const last = clientRects[clientRects.length - 1];
-
-      setPopup({
-        anchor: {
-          left: last.right - origin.left,
-          top: last.bottom - origin.top,
-        },
-        blockId: null,
-        kind: "new",
-        pageNumber: found.pageNumber,
-        rects,
-        text,
-      });
-    }
-
-    document.addEventListener("selectionchange", handleSelectionChange);
-    return () =>
-      document.removeEventListener("selectionchange", handleSelectionChange);
-  }, [pdfRelPath, scale]);
+  // §274.1 새 텍스트 선택 감지 — "언제 열지"(드래그 중엔 열지 않고, mouseup/
+  // 키보드 선택엔 즉시 연다, §274 UX fix defect 1) + "구멍을 닫는" 기하
+  // 병합(defect 2)은 use-pdf-selection-popup.ts로 옮겼다 — 이 파일이 500줄
+  // 기준을 넘어서였다(그 파일 자체 doc comment 참조). 여기서는 결과를 받아
+  // "new" kind로 popup state를 채우기만 한다.
+  const onNewSelection = useCallback((payload: NewSelectionPayload) => {
+    setPopup({ ...payload, blockId: null, kind: "new" });
+  }, []);
+  usePdfSelectionPopup({
+    onSelect: onNewSelection,
+    pageElsRef,
+    pagesByNumberRef,
+    pdfRelPath,
+    scale,
+  });
 
   const onPickColor = useCallback(
     (color: HighlightColor) => {

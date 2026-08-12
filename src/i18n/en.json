@@ -536,7 +536,8 @@
   "pdfToolbar.prevPage": "Previous page",
   "pdfToolbar.nextPage": "Next page",
   "pdfToolbar.find": "Find in PDF",
-  "pdfToolbar.areaMode": "Area highlight (coming soon)",
+  "pdfToolbar.areaMode": "Highlight an image or region (coming soon)",
+  "pdfToolbar.textHighlightHint": "Select text to highlight it",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",
