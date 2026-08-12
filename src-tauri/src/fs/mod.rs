@@ -407,6 +407,23 @@ pub fn start_watching(
 mod tests {
     use super::*;
 
+    /// §275.4 B.1 — `src/ipc/fs.ts`'s `isFileNotFoundError` parses a rejection
+    /// string by `startsWith`-matching this exact prefix (its own
+    /// `READ_FILE_NOT_FOUND_PREFIX` constant). The two sides are coupled only
+    /// through this string, with nothing enforcing it at compile time — a
+    /// rewording here makes `isFileNotFoundError` return false for a genuine
+    /// not-found, which sends `appendHighlightBlock`
+    /// (`pdf-highlight-store.ts`) down its `throw e` branch instead of
+    /// treating a missing companion note as "safe to create", breaking every
+    /// first highlight on every PDF. Pin the prefix so a wording change here
+    /// is caught here, not by that call failing silently in the app.
+    #[test]
+    fn not_found_display_prefix_is_what_the_frontend_parses() {
+        assert!(FsError::NotFound("x".into())
+            .to_string()
+            .starts_with("파일을 찾을 수 없습니다:"));
+    }
+
     #[test]
     fn validate_path_rejects_null_byte() {
         assert!(validate_path("/tmp/a\0b.md").is_err());
