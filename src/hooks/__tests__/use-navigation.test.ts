@@ -98,6 +98,36 @@ describe("handleBlockRefNavigate — §275.6 highlight ref → PDF", () => {
     expect(resolveWikilinkTarget).not.toHaveBeenCalled();
   });
 
+  it("§275.4 IMPORTANT opens the PDF with its original extension case, not the lowercase-coerced one, when the filename is uppercase (.PDF, e.g. on a case-sensitive filesystem)", async () => {
+    // companionPathFor/pdfRelPathForHighlightTarget both strip/append ".pdf"
+    // case-insensitively, so the target below round-trips to a lowercase
+    // "papers/a.pdf" — but the real file (and sidecar.pdf, written verbatim
+    // at highlight-creation time) is "papers/A.PDF". Opening the
+    // lowercase-coerced path would fail on a case-sensitive filesystem.
+    readSidecar.mockResolvedValue({
+      companion: "highlights/papers/A.md",
+      highlights: [
+        {
+          color: "yellow",
+          id: "h1",
+          kind: "text",
+          page: 1,
+          rects: [{ h: 1, w: 1, x: 0, y: 0 }],
+        },
+      ],
+      pdf: "papers/A.PDF",
+      version: 1,
+    });
+    const { handleOpenFilePath, result } = renderNav();
+
+    result.current.handleBlockRefNavigate("highlights/papers/A", "h1");
+
+    await waitFor(() =>
+      expect(handleOpenFilePath).toHaveBeenCalledWith("/vault/papers/A.PDF"),
+    );
+    expect(handleOpenFilePath).not.toHaveBeenCalledWith("/vault/papers/a.pdf");
+  });
+
   it("falls back to opening the companion note when the block id is absent from the sidecar (deleted highlight — §277 leaves the paragraph in place)", async () => {
     readSidecar.mockResolvedValue({
       companion: "highlights/papers/attention.md",

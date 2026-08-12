@@ -279,16 +279,28 @@ export function useNavigation({
       if (pdfRelPath && rootPath) {
         (async () => {
           let hit: StoredHighlight | undefined;
+          // §275.4 IMPORTANT companionPathFor/pdfRelPathForHighlightTarget
+          // strip/append ".pdf" case-insensitively, so `pdfRelPath` above
+          // always ends in a lowercase ".pdf" regardless of the real file's
+          // extension case. sidecarPathFor's own case-insensitive strip means
+          // the sidecar lookup below still succeeds for e.g. "A.PDF" — but
+          // opening the PDF itself needs the ORIGINAL case. sidecar.pdf was
+          // written verbatim from the real pdfRelPath at highlight-creation
+          // time (pdf-highlight-actions.ts), so once we have it, prefer it
+          // over the lowercase-coerced `pdfRelPath` derived from the target.
+          // Without this, a case-sensitive filesystem (Linux) opens nothing.
+          let exactPdfRelPath = pdfRelPath;
           try {
             const absSidecarPath = `${rootPath}/${sidecarPathFor(pdfRelPath)}`;
             const sidecar = await readSidecar(absSidecarPath);
             hit = sidecar?.highlights.find((h) => h.id === blockId);
+            if (sidecar) exactPdfRelPath = sidecar.pdf;
           } catch (err) {
             logger.error("[Nav] Failed to read highlight sidecar:", err);
           }
           if (hit) {
             useLinkStore.getState().setPendingPdfHighlightId(blockId);
-            handleOpenFilePath(`${rootPath}/${pdfRelPath}`).catch((err) =>
+            handleOpenFilePath(`${rootPath}/${exactPdfRelPath}`).catch((err) =>
               logger.error("[Nav] Failed to open highlighted PDF:", err),
             );
             return;
