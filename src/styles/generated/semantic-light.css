@@ -1,6 +1,14 @@
 :root {
   --color-bg-elevated: #f0f0f3; /** Tertiary/elevated background (was --color-bg-tertiary: #f0f0f3, no exact primitive match) */
   --color-text-primary: #1a1a1a; /** Primary text (was --color-text-primary: #1a1a1a, not exactly gray.900 #111827) */
+  --color-editor-find-match: rgb(
+    251 191 36 / 45%
+  ); /** PDF find match highlight (§272) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400) */
+
+  --color-editor-find-match-current: rgb(
+    249 115 22 / 60%
+  ); /** PDF find current-match highlight (§272) — more opaque than find-match to stand out; no exact primitive match (alpha over orange.500) */
+
   --color-git-modified: #e69500; /** Git modified file (no exact primitive match) */
   --color-bg-default: var(
     --color-white

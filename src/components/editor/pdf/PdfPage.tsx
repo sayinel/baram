@@ -2,23 +2,35 @@
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
+import type { MatchPosition } from "./pdf-find";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
+
+import { clearMatches, renderMatches } from "./pdf-find-render";
 
 /** 뷰포트 밖 이만큼까지 미리 렌더한다. */
 const LAZY_ROOT_MARGIN = "800px";
 
 export function PdfPage({
+  matches,
   page,
   scale,
 }: {
+  /** §272 찾기 매치 — 없으면 하이라이트를 지운다. */
+  matches?: { currentIdx: number; positions: MatchPosition[] };
   page: PDFPageProxy;
   scale: number;
 }) {
   const holderRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
+  const textDivsRef = useRef<HTMLElement[]>([]);
+  // 텍스트 레이어가 (재)렌더를 마친 시점에 이미 활성 매치가 있을 수 있어
+  // (마운트/줌 변경이 matches prop 변경과 동시에 일어나지 않는 경우) 항상
+  // 최신값을 읽을 수 있도록 ref로도 들고 있는다.
+  const matchesRef = useRef(matches);
+  matchesRef.current = matches;
   const [visible, setVisible] = useState(false);
 
   const viewport = page.getViewport({ scale });
@@ -69,12 +81,42 @@ export function PdfPage({
       }),
       viewport,
     });
-    textLayer.render().catch(() => {
-      // 줌 변경/스크롤 이탈로 취소됨 — 정상 경로
-    });
-    return () => textLayer.cancel();
+    let cancelled = false;
+    textLayer
+      .render()
+      .then(() => {
+        if (cancelled) return;
+        textDivsRef.current = textLayer.textDivs;
+        // 재렌더로 생긴 새 div에는 하이라이트가 없다 — 활성 매치가 있으면 즉시 다시 칠한다.
+        const active = matchesRef.current;
+        if (active) {
+          renderMatches(
+            textDivsRef.current,
+            active.positions,
+            active.currentIdx,
+          );
+        }
+      })
+      .catch(() => {
+        // 줌 변경/스크롤 이탈로 취소됨 — 정상 경로
+      });
+    return () => {
+      cancelled = true;
+      textDivsRef.current = [];
+      textLayer.cancel();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, page, scale]);
+
+  // §272 matches가 바뀔 때마다 텍스트 레이어에 다시 칠한다.
+  useEffect(() => {
+    const divs = textDivsRef.current;
+    if (matches) {
+      renderMatches(divs, matches.positions, matches.currentIdx);
+    } else {
+      clearMatches(divs);
+    }
+  }, [matches]);
 
   return (
     <div

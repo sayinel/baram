@@ -27,6 +27,8 @@
     --color-editor-selection: #1e3a5f;
     --color-editor-cursor: #e2e8f0;
     --color-editor-line-highlight: #16213e;
+    --color-editor-find-match: rgb(251 191 36 / 45%);
+    --color-editor-find-match-current: rgb(249 115 22 / 60%);
     --color-status-danger: #ef4444;
     --color-status-danger-on-solid: #000;
     --color-status-danger-solid-hover: #f87171;

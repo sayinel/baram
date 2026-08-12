@@ -59,3 +59,13 @@
   font-size: 0.85rem;
   color: var(--color-text-muted);
 }
+
+/* §272 찾기 매치 — 텍스트 레이어는 투명 텍스트이므로 배경만 칠한다 */
+.pdf-text-layer .pdf-find-match {
+  background: var(--color-editor-find-match);
+  border-radius: 2px;
+}
+
+.pdf-text-layer .pdf-find-match-current {
+  background: var(--color-editor-find-match-current);
+}
