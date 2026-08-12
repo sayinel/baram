@@ -78,7 +78,13 @@ export async function appendHighlightBlock(
  *
  * appendHighlightBlock과 같은 이유로 버퍼가 열려 있으면 버퍼를 먼저 본다 —
  * 디스크가 아직 못 받은 최신 편집(사용자가 문단을 고친 경우)을 놓치지
- * 않기 위해서다. 파일이 없거나 읽기에 실패하면 null.
+ * 않기 위해서다. 파일이 없으면 null(정상 경로 — 아직 하이라이트 텍스트가
+ * 없다). §274 M4: 그 외의 읽기 실패(권한 거부, UTF-8 디코딩 실패)는 "없음"과
+ * 같이 취급하지 않는다 — appendHighlightBlock이 같은 구분을 이미 쓰는
+ * 이유와 같다. 조용히 null을 돌리면 호출부(Copy text/Copy reference)가
+ * "동반 노트에 이 블록이 없다"로 오인해 로그만 남기고 끝난다 — 실제로는
+ * 파일을 못 읽은 것뿐인데도. 여기서 던져서 호출부의 실패 처리(§274 I1)를
+ * 타게 한다.
  */
 export async function readHighlightBlockText(
   absCompanionPath: string,
@@ -93,8 +99,12 @@ export async function readHighlightBlockText(
   } else {
     try {
       content = await readFile(absCompanionPath);
-    } catch {
-      return null;
+    } catch (e) {
+      if (isFileNotFoundError(e)) return null;
+      logger.error(
+        `[pdf-highlight] failed to read companion note: ${absCompanionPath}`,
+      );
+      throw e;
     }
   }
   return findBlockContent(content, blockId);

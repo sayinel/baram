@@ -529,6 +529,8 @@
   "pdfHighlight.copyText": "텍스트 복사",
   "pdfHighlight.delete": "삭제",
   "pdfHighlight.color": "하이라이트 색",
+  "pdfHighlight.saveFailed": "하이라이트를 저장하지 못했습니다",
+  "pdfHighlight.copyFailed": "클립보드에 복사하지 못했습니다",
 
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",
   "plugin.consent.title.update": "\"{name}\" 플러그인을 업데이트하시겠습니까?",

@@ -4,7 +4,8 @@
 // pdf-highlight-actions.ts/pdf-highlight-store.ts).
 //
 // 하이라이트는 vault 안에서만 지원한다(사이드카·동반 노트가 vault 상대
-// 경로로 식별되므로) — rootPath가 없으면(단일 파일 모드) 조용히 비활성화된다.
+// 경로로 식별되므로) — pdfRelPath가 없으면(단일 파일 모드, 또는 vault
+// 밖의 PDF) 조용히 비활성화된다.
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PdfRect, ViewportLike } from "./pdf-highlight-geom";
@@ -16,10 +17,13 @@ import type {
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
 import type { PDFPageProxy } from "pdfjs-dist";
 
+import { useTranslation } from "../../../i18n/useTranslation";
 import { generateBlockId, serializeBlockRef } from "../../../pipeline/block-id";
+import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
 import { relativeToRoot } from "../../../utils/path-utils";
 import {
+  addHighlightForExistingBlock,
   createTextHighlight,
   deleteHighlightById,
   updateHighlightColor,
@@ -39,16 +43,24 @@ const EMPTY_HIGHLIGHTS: StoredHighlight[] = [];
 type PopupState =
   | {
       anchor: { left: number; top: number };
-      existing: StoredHighlight;
-      kind: "existing";
-      pageNumber: number;
-    }
-  | {
-      anchor: { left: number; top: number };
+      /**
+       * §274 I2 Copy reference가 이미 이 선택에 대해 동반 노트 블록을
+       * 만들었으면 그 id. null이면 아직 아무것도 안 만들었다 — 색을 고르면
+       * createTextHighlight(새 id)가, 이미 있으면 addHighlightForExistingBlock
+       * (같은 id 재사용)이 갈린다. 이 필드가 없으면 Copy reference 뒤에 색을
+       * 고를 때 두 번째 블록이 중복으로 생긴다.
+       */
+      blockId: null | string;
       kind: "new";
       pageNumber: number;
       rects: PdfRect[];
       text: string;
+    }
+  | {
+      anchor: { left: number; top: number };
+      existing: StoredHighlight;
+      kind: "existing";
+      pageNumber: number;
     };
 
 export function usePdfHighlights({
@@ -74,6 +86,7 @@ export function usePdfHighlights({
   popupProps: null | PdfSelectionPopupProps;
   registerPageEl: (pageNumber: number, el: HTMLElement | null) => void;
 } {
+  const { t } = useTranslation();
   const [sidecar, setSidecar] = useState<null | Sidecar>(null);
   const [popup, setPopup] = useState<null | PopupState>(null);
 
@@ -92,6 +105,34 @@ export function usePdfHighlights({
   const target = pdfRelPath
     ? companionPathFor(pdfRelPath).replace(/\.md$/i, "")
     : null;
+
+  // §274 I1 사이드카/동반 노트 쓰기가 실패했는데 조용히 삼키면 §273.4가
+  // 금지하는 바로 그 "조용한 부분 실패"가 된다 — main.tsx의 전역
+  // unhandledrejection 핸들러가 콘솔 warn으로만 낮춰버려서, void로 던져둔
+  // 실패는 사용자에게 아무 신호도 안 남긴다(§260 Phase 5 R4가 이미 같은
+  // 교훈을 bootstrap()에 대해 기록해 두었다). 로그 + 토스트로 반드시 알린다.
+  const reportWriteFailure = useCallback(
+    (action: string, err: unknown) => {
+      logger.error(`[pdf-highlight] ${action} failed:`, err);
+      useUIStore.getState().showToast(t("pdfHighlight.saveFailed"), "error");
+    },
+    [t],
+  );
+
+  const reportCopyFailure = useCallback(
+    (action: string, err: unknown) => {
+      logger.error(`[pdf-highlight] ${action} failed:`, err);
+      useUIStore.getState().showToast(t("pdfHighlight.copyFailed"), "error");
+    },
+    [t],
+  );
+
+  // 클립보드 API 자체의 실패(포커스 상실 등, 흔하고 저위험)는 warn만 남긴다 —
+  // 텍스트/참조가 이미 준비된 뒤의 마지막 한 걸음이 실패한 것이라, 위
+  // reportCopyFailure(토스트까지)보다 한 단계 낮게 다룬다.
+  const reportClipboardFailure = useCallback((err: unknown) => {
+    logger.warn("[pdf-highlight] clipboard write failed:", err);
+  }, []);
 
   // PDF(또는 vault)가 바뀌면 해당 사이드카를 새로 읽고 열린 팝업을 닫는다.
   useEffect(() => {
@@ -164,8 +205,16 @@ export function usePdfHighlights({
   // 페이지가 아니라): 드래그 도중 앵커가 어느 페이지에 속하는지 미리 알 수
   // 없기 때문이다. collapsed(단순 클릭으로 caret만 옮긴 경우)는 무시한다 —
   // 그 클릭은 이미 위 handlePageMouseDown이 처리했다(히트 또는 팝업 닫기).
+  //
+  // §274 M3 rootPath가 아니라 pdfRelPath로 게이팅한다 — vault는 열려 있는데
+  // 이 PDF만 vault 밖에 있으면(relativeToRoot가 null) rootPath는 여전히
+  // truthy라서, rootPath만 보면 팝업이 열려버린다. 그러면 사이드카/동반 노트
+  // 경로가 전부 null이라 색을 고르거나 참조를 복사해도 아무 일도 안 일어나고
+  // (아래 onPickColor/onCopyRef의 guard가 조용히 return), 팝업조차 안
+  // 닫힌다 — 죽은 UI. pdfRelPath로 게이팅하면 그 상태에서는 애초에 열리지
+  // 않는다.
   useEffect(() => {
-    if (!rootPath) return;
+    if (!pdfRelPath) return;
 
     function handleSelectionChange() {
       const sel = document.getSelection();
@@ -197,6 +246,7 @@ export function usePdfHighlights({
           left: last.right - origin.left,
           top: last.bottom - origin.top,
         },
+        blockId: null,
         kind: "new",
         pageNumber: found.pageNumber,
         rects,
@@ -207,7 +257,7 @@ export function usePdfHighlights({
     document.addEventListener("selectionchange", handleSelectionChange);
     return () =>
       document.removeEventListener("selectionchange", handleSelectionChange);
-  }, [rootPath, scale]);
+  }, [pdfRelPath, scale]);
 
   const onPickColor = useCallback(
     (color: HighlightColor) => {
@@ -223,23 +273,51 @@ export function usePdfHighlights({
             sidecar,
             popup.existing.id,
             color,
-          ).then(setSidecar);
+          )
+            .then(setSidecar)
+            .catch((err: unknown) =>
+              reportWriteFailure("update highlight colour", err),
+            );
         }
       } else if (absCompanionPath && pdfRelPath) {
-        void createTextHighlight({
-          absCompanionPath,
-          absSidecarPath,
-          color,
-          page: popup.pageNumber,
-          pdfRelPath,
-          rects: popup.rects,
-          sidecar,
-          text: popup.text,
-        }).then(({ sidecar: next }) => setSidecar(next));
+        // §274 I2 Copy reference가 이미 블록을 만들어 뒀으면(popup.blockId)
+        // createTextHighlight로 또 만들지 않는다 — 노트에 같은 텍스트의
+        // 문단이 두 번 생기고, 먼저 복사해 둔 참조가 사이드카에 없는 id를
+        // 가리키게 된다.
+        const create = popup.blockId
+          ? addHighlightForExistingBlock({
+              absSidecarPath,
+              blockId: popup.blockId,
+              color,
+              page: popup.pageNumber,
+              pdfRelPath,
+              rects: popup.rects,
+              sidecar,
+            })
+          : createTextHighlight({
+              absCompanionPath,
+              absSidecarPath,
+              color,
+              page: popup.pageNumber,
+              pdfRelPath,
+              rects: popup.rects,
+              sidecar,
+              text: popup.text,
+            });
+        void create
+          .then(({ sidecar: next }) => setSidecar(next))
+          .catch((err: unknown) => reportWriteFailure("create highlight", err));
       }
       setPopup(null);
     },
-    [absCompanionPath, absSidecarPath, pdfRelPath, popup, sidecar],
+    [
+      absCompanionPath,
+      absSidecarPath,
+      pdfRelPath,
+      popup,
+      reportWriteFailure,
+      sidecar,
+    ],
   );
 
   const onDelete = useCallback(() => {
@@ -247,69 +325,127 @@ export function usePdfHighlights({
       setPopup(null);
       return;
     }
-    void deleteHighlightById(absSidecarPath, sidecar, popup.existing.id).then(
-      setSidecar,
-    );
+    void deleteHighlightById(absSidecarPath, sidecar, popup.existing.id)
+      .then(setSidecar)
+      .catch((err: unknown) => reportWriteFailure("delete highlight", err));
     setPopup(null);
-  }, [absSidecarPath, popup, sidecar]);
+  }, [absSidecarPath, popup, reportWriteFailure, sidecar]);
 
   const onCopyText = useCallback(() => {
     if (!popup) return;
     if (popup.kind === "new") {
-      void navigator.clipboard.writeText(popup.text);
+      void navigator.clipboard
+        .writeText(popup.text)
+        .catch((err: unknown) => reportClipboardFailure(err));
     } else if (absCompanionPath) {
       const { id } = popup.existing;
-      void readHighlightBlockText(absCompanionPath, id).then((text) => {
-        if (text) void navigator.clipboard.writeText(text);
-        else
-          logger.warn(
-            `[pdf-highlight] companion block missing for ${id}, nothing to copy`,
-          );
-      });
+      void readHighlightBlockText(absCompanionPath, id)
+        .then((text) => {
+          if (text) {
+            void navigator.clipboard
+              .writeText(text)
+              .catch((err: unknown) => reportClipboardFailure(err));
+          } else {
+            logger.warn(
+              `[pdf-highlight] companion block missing for ${id}, nothing to copy`,
+            );
+          }
+        })
+        .catch((err: unknown) => reportCopyFailure("read highlight text", err));
     }
-    setPopup(null);
-  }, [absCompanionPath, popup]);
+    // §274 I2 팝업을 닫지 않는다 — Copy text/Copy reference 뒤에도 같은
+    // 선택에 색을 입히거나(onPickColor) 삭제(onDelete)를 계속할 수 있게.
+  }, [absCompanionPath, popup, reportClipboardFailure, reportCopyFailure]);
 
   const onCopyRef = useCallback(() => {
     if (!popup || !target) return;
     if (popup.kind === "existing") {
       if (!absCompanionPath) return;
       const { id } = popup.existing;
-      void readHighlightBlockText(absCompanionPath, id).then((text) => {
-        if (!text) {
-          logger.warn(
-            `[pdf-highlight] companion block missing for ${id}, can't build a reference`,
-          );
-          return;
-        }
-        void navigator.clipboard.writeText(
+      void readHighlightBlockText(absCompanionPath, id)
+        .then((text) => {
+          if (!text) {
+            logger.warn(
+              `[pdf-highlight] companion block missing for ${id}, can't build a reference`,
+            );
+            return;
+          }
+          void navigator.clipboard
+            .writeText(
+              serializeBlockRef({
+                blockId: id,
+                display: buildRefDisplay(text),
+                target,
+              }),
+            )
+            .catch((err: unknown) => reportClipboardFailure(err));
+        })
+        .catch((err: unknown) => reportCopyFailure("read highlight text", err));
+      return; // §274 I2 팝업 유지
+    }
+
+    if (!absCompanionPath) return;
+
+    if (popup.blockId) {
+      // §274 I2 이 선택에 대해 이미 만든 블록이 있다 — 재사용한다. 다시
+      // appendHighlightBlock을 부르면 노트에 같은 텍스트가 또 생긴다.
+      const { blockId, text } = popup;
+      void navigator.clipboard
+        .writeText(
           serializeBlockRef({
-            blockId: id,
+            blockId,
             display: buildRefDisplay(text),
             target,
           }),
+        )
+        .catch((err: unknown) => reportClipboardFailure(err));
+      return;
+    }
+
+    // 아직 하이라이트로 만들지 않은 선택 — 참조가 가리킬 블록이 없으면
+    // 복사한 ((...)) 가 대상 없이 뜬다. 색을 고르지 않아도 참조는 만들 수
+    // 있게, 동반 노트에 블록만 먼저 적어둔다(사이드카/오버레이는 손대지
+    // 않는다 — "참조로 저장"과 "PDF에 색칠"은 서로 다른 결정이다).
+    const blockId = generateBlockId();
+    const { pageNumber, text } = popup;
+    void appendHighlightBlock(absCompanionPath, text, blockId)
+      .then(() => {
+        // §274 I2 방금 만든 id를 팝업 상태에 남겨 둔다 — 이어서 색을
+        // 고르면(onPickColor) 두 번째 블록을 만들지 않고 이 id를 재사용
+        // 하도록. setState 업데이터로 "지금 팝업이 여전히 그 선택인가"를
+        // 확인한다 — await 도중 사용자가 다른 텍스트를 선택했으면(같은
+        // 페이지에 같은 문구가 다시 나올 수 있어 text만으로는 부족해
+        // pageNumber도 같이 본다) 엉뚱한 팝업에 id를 심지 않는다.
+        setPopup((p) =>
+          p &&
+          p.kind === "new" &&
+          p.pageNumber === pageNumber &&
+          p.text === text
+            ? { ...p, blockId }
+            : p,
         );
-      });
-    } else if (absCompanionPath) {
-      // 아직 하이라이트로 만들지 않은 선택 — 참조가 가리킬 블록이 없으면
-      // 복사한 ((...)) 가 대상 없이 뜬다. 색을 고르지 않아도 참조는 만들 수
-      // 있게, 동반 노트에 블록만 먼저 적어둔다(사이드카/오버레이는 손대지
-      // 않는다 — "참조로 저장"과 "PDF에 색칠"은 서로 다른 결정이다).
-      const blockId = generateBlockId();
-      void appendHighlightBlock(absCompanionPath, popup.text, blockId).then(
-        () => {
-          void navigator.clipboard.writeText(
+        void navigator.clipboard
+          .writeText(
             serializeBlockRef({
               blockId,
-              display: buildRefDisplay(popup.text),
+              display: buildRefDisplay(text),
               target,
             }),
-          );
-        },
+          )
+          .catch((err: unknown) => reportClipboardFailure(err));
+      })
+      .catch((err: unknown) =>
+        reportCopyFailure("save companion note block", err),
       );
-    }
-    setPopup(null);
-  }, [absCompanionPath, popup, target]);
+    // §274 I2 팝업 유지 — 실패해도 닫지 않아 재시도할 수 있고, 성공하면
+    // 위에서 blockId만 채운다.
+  }, [
+    absCompanionPath,
+    popup,
+    reportClipboardFailure,
+    reportCopyFailure,
+    target,
+  ]);
 
   const popupProps: null | PdfSelectionPopupProps = popup
     ? {

@@ -45,6 +45,7 @@ vi.mock("../../../../pipeline/block-id", () => ({ generateBlockId }));
 import type { Sidecar } from "../pdf-highlight-sidecar";
 
 import {
+  addHighlightForExistingBlock,
   createTextHighlight,
   deleteHighlightById,
   updateHighlightColor,
@@ -71,8 +72,12 @@ describe("createTextHighlight", () => {
       // "yellow"는 §7의 HIGHLIGHT_COLORS 기본값과도 겹쳐 하드코딩된 상수를
       // 못 잡아낼 위험이 있다 — 일부러 다른 색을 골라 color 필드가 실제로
       // input.color에서 왔는지(하드코딩이 아닌지)를 이 테스트 하나로도 고정한다.
+      // page도 같은 이유로 3이 아니다 — 설계 문서(part15)와 브리프의 stored
+      // 픽스처가 둘 다 page: 3을 예시로 쓰므로, 그 값을 그대로 쓰면
+      // "page: input.page" → "page: 3" 하드코딩 뮤테이션을 이 테스트 혼자서는
+      // 못 잡아낸다(§274 리뷰 M1 — color에서 잡았던 것과 같은 부류의 우연).
       color: "purple",
-      page: 3,
+      page: 11,
       pdfRelPath: "papers/attention.pdf",
       rects: [{ h: 12, w: 100, x: 0, y: 0 }],
       sidecar: null,
@@ -97,7 +102,7 @@ describe("createTextHighlight", () => {
       color: "purple",
       id: "h7k2m9",
       kind: "text",
-      page: 3,
+      page: 11,
       rects: [{ h: 12, w: 100, x: 0, y: 0 }],
     });
     expect(written.pdf).toBe("papers/attention.pdf");
@@ -161,6 +166,83 @@ describe("createTextHighlight", () => {
     // 사이드카는 항상 디스크에 쓴다 — 열린 버퍼 경로를 타는 건 companion note뿐.
     expect(writeFile).toHaveBeenCalledTimes(1);
     expect(writeFile.mock.calls[0][0]).toBe(ABS_SIDECAR);
+  });
+});
+
+describe("addHighlightForExistingBlock", () => {
+  beforeEach(() => {
+    writeFile.mockClear();
+    createDir.mockClear();
+    readFile.mockReset();
+  });
+
+  it("§274 I2: adds the highlight to the sidecar without appending a note paragraph", async () => {
+    const result = await addHighlightForExistingBlock({
+      absSidecarPath: ABS_SIDECAR,
+      blockId: "copiedref1",
+      color: "green",
+      page: 5,
+      pdfRelPath: "papers/attention.pdf",
+      rects: [{ h: 9, w: 9, x: 0, y: 0 }],
+      sidecar: null,
+    });
+
+    // 이 함수의 핵심 계약: 동반 노트를 전혀 건드리지 않는다 — 그게
+    // createTextHighlight와의 유일한 차이이자, I2가 고치는 중복의 근본
+    // 원인이다. absCompanionPath 자체를 입력에 안 받으므로 타입으로도
+    // 막혀 있지만, 여기서는 IPC 호출 횟수로 그 계약을 고정한다: readFile은
+    // 아예 안 불리고(동반 노트를 읽을 이유가 없다), writeFile은 사이드카
+    // 경로로 딱 한 번만 불린다 — createTextHighlight의 "동반 노트에 먼저
+    // 쓰고 사이드카에 쓴다"(2회, 서로 다른 경로)와 대조된다.
+    expect(readFile).not.toHaveBeenCalled();
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    expect(writeFile.mock.calls[0][0]).toBe(ABS_SIDECAR);
+
+    const written = JSON.parse(writeFile.mock.calls[0][1] as string) as Sidecar;
+    expect(written.highlights).toEqual([
+      {
+        color: "green",
+        id: "copiedref1",
+        kind: "text",
+        page: 5,
+        rects: [{ h: 9, w: 9, x: 0, y: 0 }],
+      },
+    ]);
+    expect(result.highlight.id).toBe("copiedref1");
+  });
+
+  it("appends to an existing sidecar's highlights instead of replacing them", async () => {
+    const existing: Sidecar = {
+      companion: "highlights/papers/attention.md",
+      highlights: [
+        {
+          color: "blue",
+          id: "already-there",
+          kind: "text",
+          page: 1,
+          rects: [{ h: 1, w: 1, x: 0, y: 0 }],
+        },
+      ],
+      pdf: "papers/attention.pdf",
+      version: 1,
+    };
+
+    const result = await addHighlightForExistingBlock({
+      absSidecarPath: ABS_SIDECAR,
+      blockId: "copiedref2",
+      color: "pink",
+      page: 9,
+      pdfRelPath: "papers/attention.pdf",
+      rects: [{ h: 2, w: 2, x: 0, y: 0 }],
+      sidecar: existing,
+    });
+
+    expect(result.sidecar.highlights).toHaveLength(2);
+    expect(result.sidecar.highlights[0].id).toBe("already-there");
+    expect(result.sidecar.highlights[1]).toMatchObject({
+      color: "pink",
+      id: "copiedref2",
+    });
   });
 });
 

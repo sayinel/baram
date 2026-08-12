@@ -52,6 +52,22 @@ describe("PdfSelectionPopup", () => {
     expect(screen.getByTestId("pdf-hl-delete")).toBeInTheDocument();
   });
 
+  it("§274 M2: marks the existing highlight's own colour swatch as active", () => {
+    // 이 단정이 없으면 array-join으로 클래스를 조립한 이유(prettier가
+    // 멀티라인 템플릿 리터럴의 trailing space를 지워 pdf-hl-swatch-yellow와
+    // active가 붙어버리는 걸 막으려던 것, PdfSelectionPopup.tsx 참조)가
+    // 아무 테스트로도 고정되지 않는다.
+    setup(stored); // stored.color === "yellow"
+
+    const activeSwatch = screen.getByTestId("pdf-hl-color-yellow");
+    expect(activeSwatch).toHaveClass("active");
+    expect(activeSwatch).toHaveAttribute("aria-pressed", "true");
+
+    const inactiveSwatch = screen.getByTestId("pdf-hl-color-green");
+    expect(inactiveSwatch).not.toHaveClass("active");
+    expect(inactiveSwatch).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("reports the chosen colour upward", async () => {
     const props = setup();
     await userEvent.click(screen.getByTestId("pdf-hl-color-green"));

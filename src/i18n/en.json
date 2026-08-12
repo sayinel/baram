@@ -529,6 +529,8 @@
   "pdfHighlight.copyText": "Copy text",
   "pdfHighlight.delete": "Delete",
   "pdfHighlight.color": "Highlight colour",
+  "pdfHighlight.saveFailed": "Couldn't save the highlight",
+  "pdfHighlight.copyFailed": "Couldn't copy to the clipboard",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",

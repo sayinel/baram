@@ -243,10 +243,12 @@ describe("readSidecar", () => {
 
 describe("readHighlightBlockText", () => {
   const COMPANION_PATH = "/vault/highlights/papers/attention.md";
+  const NOT_FOUND_FOR_COMPANION = `파일을 찾을 수 없습니다: ${COMPANION_PATH}`;
 
   beforeEach(() => {
     openFiles.clear();
     readFile.mockReset();
+    logger.error.mockClear();
   });
 
   it("reads from the open buffer when the companion note is open", async () => {
@@ -274,12 +276,27 @@ describe("readHighlightBlockText", () => {
     expect(text).toBeNull();
   });
 
-  it("returns null when the companion note can't be read", async () => {
-    readFile.mockRejectedValueOnce(new Error("boom"));
+  it("returns null when the companion note doesn't exist yet", async () => {
+    readFile.mockRejectedValueOnce(NOT_FOUND_FOR_COMPANION);
 
     const text = await readHighlightBlockText(COMPANION_PATH, "h7k2m9");
 
     expect(text).toBeNull();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("§274 M4: throws (does not silently return null) when the note exists but can't be read for another reason", async () => {
+    // Conflating "note missing" with "permission denied / decode failure"
+    // would make the caller (Copy text/Copy reference, §274 I1) log a warn
+    // and stop as if there were simply no text yet — when the real problem
+    // is that the read itself failed. isFileNotFoundError exists precisely
+    // to keep these apart (same reasoning as appendHighlightBlock above).
+    readFile.mockRejectedValueOnce(PERMISSION_DENIED_REJECTION);
+
+    await expect(readHighlightBlockText(COMPANION_PATH, "h7k2m9")).rejects.toBe(
+      PERMISSION_DENIED_REJECTION,
+    );
+    expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });
 
