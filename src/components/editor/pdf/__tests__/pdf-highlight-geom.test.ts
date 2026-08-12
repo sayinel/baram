@@ -11,7 +11,7 @@ import { clientRectToPdf, pdfRectToPageLocal } from "../pdf-highlight-geom";
  */
 function makeViewport(
   scale: number,
-  rotate: 0 | 90,
+  rotate: 0 | 90 | 180,
   pageHeight = 800,
 ): ViewportLike {
   if (rotate === 0) {
@@ -27,10 +27,24 @@ function makeViewport(
       ],
     };
   }
-  // 90도 회전 — x와 y가 뒤바뀐다
+  if (rotate === 90) {
+    // 90도 회전 — x와 y가 뒤바뀐다
+    return {
+      convertToPdfPoint: (x, y) => [y / scale, x / scale],
+      convertToViewportPoint: (x, y) => [y * scale, x * scale],
+    };
+  }
+  // 180도 회전 — x축이 뒤집힌다 (px0 > px1 상황 유발)
+  const pageWidth = 612; // standard letter width in points
   return {
-    convertToPdfPoint: (x, y) => [y / scale, x / scale],
-    convertToViewportPoint: (x, y) => [y * scale, x * scale],
+    convertToPdfPoint: (x, y) => [
+      (pageWidth * scale - x) / scale,
+      (pageHeight * scale - y) / scale,
+    ],
+    convertToViewportPoint: (x, y) => [
+      pageWidth * scale - x * scale,
+      pageHeight * scale - y * scale,
+    ],
   };
 }
 
@@ -42,6 +56,7 @@ describe("coordinate round-trip", () => {
     ["scale 2.5", 2.5, 0 as const],
     ["scale 0.5", 0.5, 0 as const],
     ["rotated 90", 1.5, 90 as const],
+    ["rotated 180 (reflecting)", 1.5, 180 as const],
   ])("survives client → pdf → page-local: %s", (_label, scale, rotate) => {
     const viewport = makeViewport(scale, rotate);
     const clientRect = {
@@ -61,7 +76,7 @@ describe("coordinate round-trip", () => {
     expect(back.height).toBeCloseTo(clientRect.height, 6);
   });
 
-  it("always produces non-negative width and height", () => {
+  it("clientRectToPdf always produces non-negative width and height", () => {
     // y축이 뒤집히는 변환에서 min/abs를 빠뜨리면 음수가 나온다
     const viewport = makeViewport(1, 0);
     const pdfRect = clientRectToPdf(
@@ -72,5 +87,16 @@ describe("coordinate round-trip", () => {
 
     expect(pdfRect.w).toBeGreaterThan(0);
     expect(pdfRect.h).toBeGreaterThan(0);
+  });
+
+  it("pdfRectToPageLocal always produces non-negative width and height", () => {
+    // 180도 회전에서 x축이 뒤집히는 변환을 거쳐도 음수가 나오지 않아야 한다
+    const viewport = makeViewport(1, 180);
+    const pdfRect = { x: 100, y: 100, w: 200, h: 50 };
+
+    const back = pdfRectToPageLocal(pdfRect, viewport);
+
+    expect(back.width).toBeGreaterThan(0);
+    expect(back.height).toBeGreaterThan(0);
   });
 });
