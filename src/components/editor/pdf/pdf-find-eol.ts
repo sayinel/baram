@@ -22,21 +22,27 @@ export interface EolTextItem {
 
 /**
  * findController와 같은 도메인 문자열 배열(hasEOL item마다 합성 "\n" 삽입)을
- * 만들고, 그 도메인의 인덱스를 textDivs 인덱스로 되돌리는 함수를 함께 준다.
+ * 만들고, 그 도메인의 (divIdx, offset) 좌표를 textDivs 좌표로 되돌리는
+ * 함수를 함께 준다.
  *
  * 경계 사례 — divIdx가 합성 "\n" 항목 자체를 가리키는 경우: textDivs에는 그
- * 위치가 없으므로, 그 항목을 만든 **이전** 실제 div로 되돌린다(아래 shift
- * 계산이 자연히 그렇게 된다). offset은 그대로 넘긴다 — convertMatches는 항목
- * 하나가 통째로 시작/소비될 때만 정확히 이 경계에 닿으므로(길이 1인 합성
- * 항목이라 begin은 항상 offset 0, end는 항상 offset 1로 들어온다), 되돌린
- * div에서 그 offset이 "정확한" 시작/끝은 아닐 수 있다. EOL 경계에 정확히
- * 걸치는 매치는 드물고, 어긋나도 그 한 div 안에서 하이라이트가 살짝 짧아지거나
- * 길어질 뿐이다 — renderMatches의 `end <= start` 가드가 있어 다른 div를
- * 건드리거나 배열 밖을 읽지 않는다. toDivIdx는 음수를 반환하지 않는다.
+ * 위치가 없다. 그 항목을 만든 **이전** 실제 div로 되돌리는 것만으론 부족하다
+ * — offset을 그대로 들고 가면 안 된다. 길이 1인 합성 항목이라 그 위치에
+ * 닿는 offset은 begin이면 항상 0, end면 항상 1(=합성 항목 전체 소비)뿐인데,
+ * 이 값을 이전 div에 그대로 옮기면 begin은 그 div의 **시작**을, end는
+ * "1글자만" 가리키게 되어 버린다 — 실제로는 둘 다 그 div의 **끝**(=EOL
+ * 경계 자체)을 뜻한다. 그래서 여기서는 offset을 이전 div의 문자열 길이로
+ * 대체한다: begin이 되면 `start === end === len`이라 renderMatches의
+ * `end <= start` 가드가 그 div를 건너뛰고(= "foo" 자체는 매치되지 않았다는
+ * 뜻이 정확히 반영됨) 다음 div부터 0에서 시작하고, end가 되면 그 div의
+ * 끝까지 칠해진다(= "\n" 직전까지 전부 매치됐다는 뜻이 정확히 반영됨).
  */
 export function buildEolDomain(items: readonly EolTextItem[]): {
   domainItems: string[];
-  toDivIdx: (i: number) => number;
+  toDivPosition: (
+    i: number,
+    offset: number,
+  ) => { divIdx: number; offset: number };
 } {
   const domainItems: string[] = [];
   // 합성 "\n"이 들어간 domainItems 인덱스들 (오름차순).
@@ -48,8 +54,12 @@ export function buildEolDomain(items: readonly EolTextItem[]): {
       domainItems.push("\n");
     }
   }
+  const syntheticSet = new Set(syntheticAt);
 
-  const toDivIdx = (i: number): number => {
+  // i가 합성 항목이 아니라고 가정했을 때의 실제 div 인덱스. i가 합성
+  // 항목 자체라도 이 계산은 여전히 "그 항목을 만든 이전 실제 div"를 준다
+  // (그 div 뒤에 삽입된 합성 항목까지 shift에 포함되므로).
+  const toRealDivIdx = (i: number): number => {
     let shift = 0;
     for (const s of syntheticAt) {
       if (s > i) break; // syntheticAt는 오름차순이라 더 볼 필요 없다
@@ -58,25 +68,37 @@ export function buildEolDomain(items: readonly EolTextItem[]): {
     return Math.max(0, i - shift);
   };
 
-  return { domainItems, toDivIdx };
+  const toDivPosition = (
+    i: number,
+    offset: number,
+  ): { divIdx: number; offset: number } => {
+    const divIdx = toRealDivIdx(i);
+    if (syntheticSet.has(i)) {
+      // 위 경계 사례: offset을 무시하고 이전 div의 끝으로 고정한다.
+      return { divIdx, offset: items[divIdx].str.length };
+    }
+    return { divIdx, offset };
+  };
+
+  return { domainItems, toDivPosition };
 }
 
 /**
  * pageMatches/pageMatchesLength(findController 도메인의 원문 오프셋)를
  * textDivs 좌표의 MatchPosition[]으로 변환한다. convertMatches를
  * findController와 동일한 도메인(합성 "\n" 포함)으로 호출한 뒤, 결과의
- * divIdx만 textDivs 도메인으로 되돌린다.
+ * (divIdx, offset)을 textDivs 좌표로 되돌린다.
  */
 export function convertMatchesWithEol(
   matches: number[],
   matchesLength: number[],
   items: readonly EolTextItem[],
 ): MatchPosition[] {
-  const { domainItems, toDivIdx } = buildEolDomain(items);
+  const { domainItems, toDivPosition } = buildEolDomain(items);
   const positions = convertMatches(matches, matchesLength, domainItems);
   return positions.map(({ begin, end }) => ({
-    begin: { divIdx: toDivIdx(begin.divIdx), offset: begin.offset },
-    end: { divIdx: toDivIdx(end.divIdx), offset: end.offset },
+    begin: toDivPosition(begin.divIdx, begin.offset),
+    end: toDivPosition(end.divIdx, end.offset),
   }));
 }
 

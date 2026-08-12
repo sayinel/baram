@@ -51,6 +51,24 @@ interface PdfPreviewProps {
   title?: string;
 }
 
+/**
+ * §272 Fix round 1 — I1: the per-page wrapper div is `display:contents` (no
+ * layout box — required so it doesn't disturb `.pdf-preview`'s flex column,
+ * pdf.css:11-20), so `getBoundingClientRect()`/`scrollIntoView()` on it are
+ * always inert. `usePdfFind` needs the box-generating element the wrapper
+ * renders — `PdfPage`'s own root `.pdf-page` div. Extracted as a pure
+ * function (rather than inlined in the ref callback) because jsdom returns
+ * zero rects for every element regardless of `display`, so the layout bug
+ * itself is untestable — this at least pins that the registered element is
+ * the wrapper's child, not the (boxless) wrapper.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function resolvePageBoxEl(
+  wrapperEl: HTMLElement | null,
+): HTMLElement | null {
+  return (wrapperEl?.firstElementChild as HTMLElement | null) ?? null;
+}
+
 export const PdfPreview = memo(function PdfPreview({
   filePath,
   findOpen,
@@ -186,7 +204,7 @@ export const PdfPreview = memo(function PdfPreview({
           <div
             data-pdf-page-number={page.pageNumber}
             key={page.pageNumber}
-            ref={(el) => registerPageEl(page.pageNumber, el)}
+            ref={(el) => registerPageEl(page.pageNumber, resolvePageBoxEl(el))}
             style={{ display: "contents" }}
           >
             <PdfPage

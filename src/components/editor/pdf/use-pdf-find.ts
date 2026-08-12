@@ -10,7 +10,7 @@
 // 다시 안 그리도록.
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { MatchPosition } from "./pdf-find";
+import type { PdfPageMatches } from "./pdf-find-cache";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import type {
   EventBus,
@@ -19,11 +19,10 @@ import type {
 } from "pdfjs-dist/legacy/web/pdf_viewer.mjs";
 
 import { createLinkService, loadPdfViewerModule } from "./pdf-find";
-import {
-  convertMatchesWithEol,
-  type EolTextItem,
-  toEolItems,
-} from "./pdf-find-eol";
+import { recomputePageMatches } from "./pdf-find-cache";
+import { type EolTextItem, toEolItems } from "./pdf-find-eol";
+
+export type { PdfPageMatches } from "./pdf-find-cache";
 
 /** §272 usePdfFind이 내놓는 표면 중 PdfFindBar를 그리는 데 필요한 부분 — 부모
  * (PdfPreview → App.tsx)가 그대로 끌어올려 PdfFindBar props로 펼친다. */
@@ -33,11 +32,6 @@ export interface PdfFindApi {
   onNext: () => void;
   onPrev: () => void;
   onQueryChange: (query: string, caseSensitive: boolean) => void;
-}
-
-export interface PdfPageMatches {
-  currentIdx: number;
-  positions: MatchPosition[];
 }
 
 interface FindMatchesCountEvent {
@@ -107,15 +101,43 @@ export function usePdfFind({
     [],
   );
 
+  // §272 Fix round 1 — I5: [doc] 이펙트의 .then() 안에서 컨트롤러가 뜬 직후
+  // 대기 중인 쿼리를 재전송하려면 dispatchFind가 필요하다 — 그 이펙트보다
+  // 앞에 선언해 참조할 수 있게 한다(onQueryChange/onNext/onPrev는 그대로
+  // 아래에서 이걸 쓴다).
+  const dispatchFind = useCallback(
+    (opts: { findPrevious?: boolean; type?: string }) => {
+      const bus = eventBusRef.current;
+      if (!bus) return;
+      bus.dispatch("find", {
+        caseSensitive: caseSensitiveRef.current,
+        entireWord: false,
+        findPrevious: opts.findPrevious ?? false,
+        highlightAll: true,
+        matchDiacritics: false,
+        query: queryRef.current,
+        type: opts.type,
+      });
+    },
+    [],
+  );
+
   // §272 각 페이지의 텍스트 항목을 한 번씩 캐시한다 — findController가 주는
   // pageMatches/pageMatchesLength를 textDivs 좌표로 되돌리려면 그 페이지의
   // hasEOL 목록이 필요하다(pdf-find-eol.ts). PdfPage가 쓰는 streamTextContent와
   // 같은 옵션(disableNormalization, includeMarkedContent 없음)이어야 항목
   // 순서가 findController의 도메인과 1:1로 맞는다 — 이 정렬 전제는 검증됨
   // (PdfPage.tsx와 findController 둘 다 includeMarkedContent를 안 쓴다).
+  //
+  // §272 Fix round 1 — I2: isOpen으로 게이팅한다. 찾기 바를 한 번도 안 열면
+  // 이 추출은 전혀 필요 없다 — PDFFindController.#extractText가 첫 검색에서
+  // 어차피 같은 일을 다시 한다(우리 쪽 결과와 무관하게). 이전 버전은 [pages]
+  // 만 보고 문서를 열 때마다 N페이지 전부를 즉시 추출했는데, 이는 lazy 페이지
+  // 설계(PdfPage.tsx의 IntersectionObserver)와 정면으로 어긋난다. 늦게
+  // 도착하는 항목은 이미 처리돼 있다 — recomputeRef.current() 호출 참조.
   useEffect(() => {
     pageItemsRef.current.clear();
-    if (pages.length === 0) return;
+    if (!isOpen || pages.length === 0) return;
     let cancelled = false;
     for (const page of pages) {
       page
@@ -132,7 +154,7 @@ export function usePdfFind({
     return () => {
       cancelled = true;
     };
-  }, [pages]);
+  }, [isOpen, pages]);
 
   // §272 doc이 바뀔 때마다 EventBus + PDFFindController를 새로 만든다.
   useEffect(() => {
@@ -168,39 +190,15 @@ export function usePdfFind({
       findController.setDocument(doc);
 
       const recomputeAll = () => {
-        let changed = false;
-        const pageMatches: number[][] = findController.pageMatches ?? [];
-        const pageMatchesLength: number[][] =
-          findController.pageMatchesLength ?? [];
-        const selected = findController.selected ?? {
-          matchIdx: -1,
-          pageIdx: -1,
-        };
-        for (let idx = 0; idx < doc.numPages; idx++) {
-          const pageNumber = idx + 1;
-          const items = pageItemsRef.current.get(pageNumber);
-          if (!items) continue;
-          const matches = pageMatches[idx] ?? [];
-          const matchesLength = pageMatchesLength[idx] ?? [];
-          const positions = matches.length
-            ? convertMatchesWithEol(matches, matchesLength, items)
-            : [];
-          const pageCurrentIdx =
-            selected.pageIdx === idx ? selected.matchIdx : -1;
-          const prev = positionsRef.current.get(pageNumber);
-          if (
-            prev &&
-            prev.currentIdx === pageCurrentIdx &&
-            samePositions(prev.positions, positions)
-          ) {
-            continue;
-          }
-          positionsRef.current.set(pageNumber, {
-            currentIdx: pageCurrentIdx,
-            positions,
-          });
-          changed = true;
-        }
+        const { cache, changed } = recomputePageMatches({
+          numPages: doc.numPages,
+          pageItems: pageItemsRef.current,
+          pageMatches: findController.pageMatches ?? [],
+          pageMatchesLength: findController.pageMatchesLength ?? [],
+          previous: positionsRef.current,
+          selected: findController.selected ?? { matchIdx: -1, pageIdx: -1 },
+        });
+        positionsRef.current = cache;
         if (changed) bumpVersion((v) => v + 1);
       };
       recomputeRef.current = recomputeAll;
@@ -221,6 +219,15 @@ export function usePdfFind({
 
       eventBusRef.current = bus;
       findControllerRef.current = findController;
+
+      // §272 Fix round 1 — I5: 컨트롤러가 뜨는 동안(getDocument +
+      // loadPdfViewerModule이 둘 다 끝나기 전) 이미 타이핑된 쿼리가 있으면
+      // 지금 한 번 검색을 쏴준다 — 안 그러면 dispatchFind가 그동안 매번
+      // eventBusRef.current===null로 조용히 no-op해서, 컨트롤러가 뜬 뒤에도
+      // 아무것도 재전송되지 않아 사용자가 다음 키를 누르기 전까지 거짓
+      // "0 / 0"에 갇힌다. 닫힘 경로가 이미 queryRef를 비우므로(아래 [isOpen]
+      // 이펙트), 빈 쿼리면 그냥 아무 일도 안 한다.
+      if (queryRef.current) dispatchFind({});
     });
 
     return () => {
@@ -246,23 +253,6 @@ export function usePdfFind({
     // 컨트롤러 재생성을 트리거해야 한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
-
-  const dispatchFind = useCallback(
-    (opts: { findPrevious?: boolean; type?: string }) => {
-      const bus = eventBusRef.current;
-      if (!bus) return;
-      bus.dispatch("find", {
-        caseSensitive: caseSensitiveRef.current,
-        entireWord: false,
-        findPrevious: opts.findPrevious ?? false,
-        highlightAll: true,
-        matchDiacritics: false,
-        query: queryRef.current,
-        type: opts.type,
-      });
-    },
-    [],
-  );
 
   const onQueryChange = useCallback(
     (query: string, caseSensitive: boolean) => {
@@ -307,17 +297,4 @@ export function usePdfFind({
     onQueryChange,
     registerPageEl,
   };
-}
-
-function samePositions(a: MatchPosition[], b: MatchPosition[]): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((pos, i) => {
-    const other = b[i];
-    return (
-      pos.begin.divIdx === other.begin.divIdx &&
-      pos.begin.offset === other.begin.offset &&
-      pos.end.divIdx === other.end.divIdx &&
-      pos.end.offset === other.end.offset
-    );
-  });
 }

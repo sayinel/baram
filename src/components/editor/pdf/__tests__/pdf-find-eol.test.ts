@@ -28,8 +28,8 @@ describe("convertMatchesWithEol", () => {
   });
 
   it("MUTATION PROOF: dropping the compensation breaks the previous assertion", () => {
-    // 합성 "\n" 삽입과 toDivIdx 되돌림 없이, findController가 준 오프셋을 raw
-    // item.str 배열에 그대로 흘려보내면(보정을 빼먹으면) divIdx가 어긋난다.
+    // 합성 "\n" 삽입과 toDivPosition 되돌림 없이, findController가 준 오프셋을
+    // raw item.str 배열에 그대로 흘려보내면(보정을 빼먹으면) divIdx가 어긋난다.
     const uncompensated = convertMatches(
       matches,
       matchesLength,
@@ -37,6 +37,19 @@ describe("convertMatchesWithEol", () => {
     );
     expect(uncompensated).not.toEqual([
       { begin: { divIdx: 1, offset: 0 }, end: { divIdx: 1, offset: 3 } },
+    ]);
+  });
+
+  // §272 Fix round 1 — I3: 매치가 합성 "\n" 경계에 정확히 걸치면(예: 쿼리가
+  // 공백으로 시작해 "\n" 자체와 매치되는 경우) offset을 그대로 옮기면 안 된다.
+  // "foo\nbarbaz"에서 인덱스3, 길이4 = "\nbar"(정확히 "\n" 시작 + "bar" 전체).
+  it("resolves a match landing exactly on the synthetic EOL to the previous div's end, not its start", () => {
+    const positions = convertMatchesWithEol([3], [4], items);
+    // begin이 합성 항목(도메인 idx1) 자체에 떨어진다 — "foo"는 매치되지
+    // 않았으므로 div0(foo)의 끝(offset 3 = len("foo"))으로 고정돼야 한다.
+    // (offset을 그대로 옮기면 0이 되어 "foo" 전체가 잘못 칠해진다 — I3.)
+    expect(positions).toEqual([
+      { begin: { divIdx: 0, offset: 3 }, end: { divIdx: 1, offset: 3 } },
     ]);
   });
 });
@@ -47,29 +60,28 @@ describe("buildEolDomain", () => {
     expect(domainItems).toEqual(["foo", "\n", "bar", "baz"]);
   });
 
-  it("maps real (non-synthetic) domain indices back to their textDivs index", () => {
-    const { toDivIdx } = buildEolDomain(items);
-    expect(toDivIdx(0)).toBe(0); // "foo"
-    expect(toDivIdx(2)).toBe(1); // "bar"
-    expect(toDivIdx(3)).toBe(2); // "baz"
+  it("maps real (non-synthetic) domain indices back to their textDivs index, offset unchanged", () => {
+    const { toDivPosition } = buildEolDomain(items);
+    expect(toDivPosition(0, 1)).toEqual({ divIdx: 0, offset: 1 }); // "foo"
+    expect(toDivPosition(2, 0)).toEqual({ divIdx: 1, offset: 0 }); // "bar"
+    expect(toDivPosition(3, 2)).toEqual({ divIdx: 2, offset: 2 }); // "baz"
   });
 
-  it("clamps a divIdx landing exactly on a synthetic entry to a real, non-negative div", () => {
-    const { toDivIdx } = buildEolDomain(items);
-    // domain index 1 is the synthetic "\n" itself — there is no textDivs[1]
-    // for it. toDivIdx must not return that phantom index.
-    const clamped = toDivIdx(1);
-    expect(clamped).toBeGreaterThanOrEqual(0);
-    expect(clamped).toBeLessThan(items.length);
+  // §272 Fix round 1 — M2: 이전 버전은 범위만 확인해(`>=0 && <items.length`)
+  // `if (s >= i) break`로 바꿔도 통과했다. 정확한 값을 고정한다 — domain
+  // idx1은 "foo" 뒤에 삽입된 합성 "\n" 자체이고, 그 항목은 div0(foo)이
+  // 만들었으므로 정확히 divIdx 0이어야 한다(1이 아니다).
+  it("maps a divIdx landing exactly on a synthetic entry to the PRECEDING real div, offset = that div's length", () => {
+    const { toDivPosition } = buildEolDomain(items);
+    expect(toDivPosition(1, 0)).toEqual({ divIdx: 0, offset: 3 });
   });
 
-  it("never returns a negative index even for index 0 with a leading EOL", () => {
-    const leading: EolTextItem[] = [
-      { hasEOL: true, str: "a" },
-      { hasEOL: false, str: "b" },
-    ];
-    const { toDivIdx } = buildEolDomain(leading);
-    expect(toDivIdx(0)).toBe(0);
-    expect(toDivIdx(0)).toBeGreaterThanOrEqual(0);
+  // §272 Fix round 1 — M2: 이전 버전은 자연 발생하는 입력으로는 절대
+  // shift > i가 될 수 없어(합성 인덱스는 항상 그걸 만든 실제 항목보다 하나
+  // 뒤이므로) Math.max(0, …)가 한 번도 실행되지 않았다. 클램프 자체를
+  // 직접 확인하려면 계약 밖의 입력(음수 인덱스)으로 밀어붙여야 한다.
+  it("clamps to 0 rather than going negative, even for an out-of-contract negative index", () => {
+    const { toDivPosition } = buildEolDomain(items);
+    expect(toDivPosition(-1, 0).divIdx).toBe(0);
   });
 });
