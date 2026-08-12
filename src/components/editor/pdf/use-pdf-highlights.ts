@@ -18,7 +18,11 @@ import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { generateBlockId, serializeBlockRef } from "../../../pipeline/block-id";
+import {
+  escapeBlockRefTarget,
+  generateBlockId,
+  serializeBlockRef,
+} from "../../../pipeline/block-id";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
 import { relativeToRoot } from "../../../utils/path-utils";
@@ -120,8 +124,12 @@ export function usePdfHighlights({
       ? `${rootPath}/${companionPathFor(pdfRelPath)}`
       : null;
   // §275.4 경로 한정 target — stem만으로는 highlights/ 아래 동명이인과 모호하다.
+  // §275.4 CRITICAL-2 PDF 파일명은 그대로 여기 들어간다 — ")"·"#"·"|"를 담고
+  // 있으면 escapeBlockRefTarget 없이는 BLOCK_REF_RE가 결과 문자열을 다시
+  // 매치하지 못해 참조가 영원히 생텍스트로 남는다. 소비부(같은 escaping을
+  // 되돌리는 쪽)는 pdfRelPathForHighlightTarget과 resolveWikilinkTarget.
   const target = pdfRelPath
-    ? companionPathFor(pdfRelPath).replace(/\.md$/i, "")
+    ? escapeBlockRefTarget(companionPathFor(pdfRelPath).replace(/\.md$/i, ""))
     : null;
 
   // §274 I1 사이드카/동반 노트 쓰기가 실패했는데 조용히 삼키면 §273.4가

@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   BLOCK_REF_RE,
+  escapeBlockRefTarget,
   parseBlockRefMatch,
   serializeBlockRef,
 } from "../../../../pipeline/block-id";
+import {
+  companionPathFor,
+  pdfRelPathForHighlightTarget,
+} from "../pdf-highlight-sidecar";
 import { buildRefDisplay, MAX_DISPLAY_LEN } from "../pdf-ref-display";
 
 describe("buildRefDisplay", () => {
@@ -92,4 +97,40 @@ describe("generated display survives the block-ref round-trip", () => {
     expect(match).not.toBeNull();
     expect(parseBlockRefMatch(match!)).toEqual(attrs);
   });
+});
+
+describe("highlight-ref target survives escaping across the block-ref round-trip", () => {
+  // §275.4 CRITICAL-2 — the block above holds `target` fixed at
+  // "highlights/papers/attention" in every one of its five fixtures; that is
+  // exactly how a PDF filename containing `)`, `#`, or `|` (BLOCK_REF_RE's
+  // target capture is `[^)#|]*?` and cannot contain any of the three)
+  // produced a `Copy reference` string that never matched BLOCK_REF_RE again,
+  // silently, for twelve tasks and twelve reviews. This block varies the
+  // TARGET instead, mirroring the real pipeline end to end: pdfRelPath →
+  // companionPathFor → escapeBlockRefTarget (as use-pdf-highlights.ts builds
+  // it) → serializeBlockRef → BLOCK_REF_RE match → parseBlockRefMatch →
+  // pdfRelPathForHighlightTarget (the un-escaping consumer) → must equal the
+  // ORIGINAL pdfRelPath.
+  it.each([
+    ["a plain name", "papers/attention.pdf"],
+    ["(2017)-style parens", "papers/Attention Is All You Need (2017).pdf"],
+    ["a hash", "papers/paper#3.pdf"],
+    ["a pipe", "papers/a|b.pdf"],
+    ["a space", "papers/my paper.pdf"],
+    ["a non-ASCII name", "papers/논문 (2017).pdf"],
+  ])(
+    "round-trips a filename with %s through Copy reference and back to the PDF path",
+    (_label, pdfRelPath) => {
+      const target = escapeBlockRefTarget(
+        companionPathFor(pdfRelPath).replace(/\.md$/i, ""),
+      );
+
+      const serialized = serializeBlockRef({ blockId: "h7k2m9", target });
+      const match = new RegExp(BLOCK_REF_RE.source, "g").exec(serialized);
+
+      expect(match).not.toBeNull();
+      const parsed = parseBlockRefMatch(match!);
+      expect(pdfRelPathForHighlightTarget(parsed.target)).toBe(pdfRelPath);
+    },
+  );
 });

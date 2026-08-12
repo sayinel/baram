@@ -1,6 +1,8 @@
 // §273 하이라이트 기하 사이드카 — 스키마, 경로 규칙, 손상 내성 파싱.
 import type { PdfRect } from "./pdf-highlight-geom";
 
+import { unescapeBlockRefTarget } from "../../../pipeline/block-id";
+
 export const HIGHLIGHT_COLORS = [
   "yellow",
   "green",
@@ -80,11 +82,19 @@ export function parseSidecar(raw: string): {
  * 의 target 그대로)이 `highlights/`로 시작하면 대응하는 PDF의 vault 상대 경로를
  * 복원한다. 그 접두사가 아니면(일반 블록 참조) null — 호출부가 기존 동작으로
  * 떨어지는 신호다.
+ *
+ * §275.4 CRITICAL-2 target은 use-pdf-highlights.ts가 escapeBlockRefTarget으로
+ * `)`·`#`·`|`(및 `%`)를 이스케이프해 둔 채로 들어온다 — "highlights/" 접두사
+ * 자체는 그 문자들을 담지 않아 startsWith 판정에는 영향이 없지만, 파일명
+ * 부분을 실제 경로로 되돌리려면 반드시 unescapeBlockRefTarget으로 풀어야
+ * 한다. 안 풀면 (2017) 같은 흔한 논문 파일명에서 .pdf 경로가 원본과 달라져
+ * 조용히 못 찾는다.
  */
 export function pdfRelPathForHighlightTarget(target: string): null | string {
   const prefix = "highlights/";
   if (!target.startsWith(prefix)) return null;
-  return `${target.slice(prefix.length)}.pdf`;
+  const unescaped = unescapeBlockRefTarget(target);
+  return `${unescaped.slice(prefix.length)}.pdf`;
 }
 
 /** vault 상대 PDF 경로 → 사이드카의 vault 상대 경로. */
