@@ -7,10 +7,11 @@
 // Cmd+0, Ctrl+wheel, pinch) flows through useZoom exactly like the
 // markdown editor. Pages render lazily as they approach the viewport.
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+import type { PdfFindApi } from "./use-pdf-find";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 
 // The legacy build, NOT the modern one: pdfjs's modern build assumes
@@ -27,6 +28,7 @@ import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { logger } from "../../../utils/logger";
 import { PdfPage } from "./PdfPage";
+import { usePdfFind } from "./use-pdf-find";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -36,6 +38,13 @@ const PAGE_GUTTER_PX = 24;
 interface PdfPreviewProps {
   /** Absolute path of the .pdf file (must be inside an opened context). */
   filePath: string;
+  /** §272 Whether the PDF find bar is open — drives PDFFindController lifecycle. */
+  findOpen?: boolean;
+  /** §272 Reports the live find API (matchCount/currentIdx/callbacks) upward so
+   * App.tsx can render PdfFindBar as a sibling, mirroring FindReplaceBar. Pass
+   * a stable setState setter here, not an inline arrow — this component is
+   * memoized and an unstable callback identity would defeat that. */
+  onFindApiChange?: (api: null | PdfFindApi) => void;
   /** Bumped on external reloads — forces a re-fetch of the file. */
   refreshKey?: number;
   /** Accessible title for the viewer (file path or name). */
@@ -44,6 +53,8 @@ interface PdfPreviewProps {
 
 export const PdfPreview = memo(function PdfPreview({
   filePath,
+  findOpen,
+  onFindApiChange,
   refreshKey,
   title,
 }: PdfPreviewProps) {
@@ -121,6 +132,43 @@ export const PdfPreview = memo(function PdfPreview({
     return () => observer.disconnect();
   }, [pages]);
 
+  // §272 스크롤 컨테이너를 호출 시점에 얻는다 — getPage/scrollToPage와 같은
+  // 지연 평가 패턴(위 baseScale 측정과 동일한 요소를 재사용).
+  const getScrollElement = useCallback(
+    () => containerRef.current?.parentElement ?? null,
+    [],
+  );
+
+  const pdfFind = usePdfFind({
+    doc,
+    getScrollElement,
+    isOpen: findOpen ?? false,
+    pages,
+  });
+  const {
+    currentIdx,
+    getPageMatches,
+    matchCount,
+    onNext,
+    onPrev,
+    onQueryChange,
+    registerPageEl,
+  } = pdfFind;
+
+  // §272 findOpen/matchCount/currentIdx/콜백이 바뀔 때마다 부모(App.tsx)에게
+  // 알려 PdfFindBar를 이 컴포넌트 바깥에서 그릴 수 있게 한다 — FindReplaceBar가
+  // 마크다운 편집기 옆에 놓이는 것과 같은 구조.
+  useEffect(() => {
+    onFindApiChange?.({
+      currentIdx,
+      matchCount,
+      onNext,
+      onPrev,
+      onQueryChange,
+    });
+    return () => onFindApiChange?.(null);
+  }, [currentIdx, matchCount, onFindApiChange, onNext, onPrev, onQueryChange]);
+
   const scale = baseScale * zoomLevel;
 
   return (
@@ -135,7 +183,18 @@ export const PdfPreview = memo(function PdfPreview({
       ) : (
         scale > 0 &&
         pages.map((page) => (
-          <PdfPage key={page.pageNumber} page={page} scale={scale} />
+          <div
+            data-pdf-page-number={page.pageNumber}
+            key={page.pageNumber}
+            ref={(el) => registerPageEl(page.pageNumber, el)}
+            style={{ display: "contents" }}
+          >
+            <PdfPage
+              matches={getPageMatches(page.pageNumber)}
+              page={page}
+              scale={scale}
+            />
+          </div>
         ))
       )}
     </div>

@@ -519,6 +519,12 @@
 
   "viewer.noPlugin": "No viewer plugin is enabled for this file type. You can turn one on in Settings → Plugins.",
 
+  "pdfFind.placeholder": "Find in PDF",
+  "pdfFind.matchCase": "Match case",
+  "pdfFind.previous": "Previous match",
+  "pdfFind.next": "Next match",
+  "pdfFind.close": "Close find",
+
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",
   "plugin.consent.fullTrust.title": "This plugin asks for full trust.",

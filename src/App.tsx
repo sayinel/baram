@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 
+import type { PdfFindApi } from "./components/editor/pdf/use-pdf-find";
 import type { MergeSegment } from "./ipc/types";
 import type { EditorTab } from "./stores/editor/editor";
 
@@ -18,6 +19,7 @@ import { useShallow } from "zustand/shallow";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
 import { PluginViewerHost } from "./components/editor/PluginViewerHost";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -337,6 +339,29 @@ function App() {
   const [findReplaceMode, setFindReplaceMode] = useState<"find" | "replace">(
     "find",
   );
+  // §272 PDF 찾기 상태 — PdfPreview가 소유한 usePdfFind의 live API를 여기로
+  // 끌어올려 PdfFindBar를 PdfPreview 바깥(FindReplaceBar와 같은 자리)에서
+  // 그린다.
+  const [pdfFindOpen, setPdfFindOpen] = useState(false);
+  const [pdfFindApi, setPdfFindApi] = useState<null | PdfFindApi>(null);
+  // Cmd+F/네이티브 메뉴가 부르는 setFindReplaceOpen을 여기 한 곳에서만
+  // PDF 탭이면 PDF 찾기로, 아니면 원래 마크다운 찾기로 분기한다 — 키바인딩,
+  // 네이티브 메뉴, 탭 전환 복원까지 4개 호출부가 각자 분기하면 어긋나기
+  // 쉽다(§272 Task 5 corrections). value는 boolean이거나 함수형 업데이터일
+  // 수 있다(네이티브 메뉴 edit_find_replace가 함수형을 쓴다) — 두 setState
+  // setter 모두 SetStateAction을 그대로 받으므로 그대로 위임한다.
+  const routeFindReplaceOpen = useCallback<
+    React.Dispatch<React.SetStateAction<boolean>>
+  >(
+    (value) => {
+      if (isPdfTab) {
+        setPdfFindOpen(value);
+        return;
+      }
+      setFindReplaceOpen(value);
+    },
+    [isPdfTab],
+  );
   // §perf-large-file B2/C2: Loading state for async parse
   const [isParsing, setIsParsing] = useState(false);
 
@@ -639,7 +664,7 @@ function App() {
     createKeepaliveEditor,
     onActiveEditorChange: handleActiveEditorChange,
     setFindReplaceMode,
-    setFindReplaceOpen,
+    setFindReplaceOpen: routeFindReplaceOpen,
     setIsSourceMode,
     setIsParsing,
     setSourceContent,
@@ -653,7 +678,7 @@ function App() {
     editorStateCache,
     inlineAI,
     setFindReplaceMode,
-    setFindReplaceOpen,
+    setFindReplaceOpen: routeFindReplaceOpen,
   });
 
   // onChange for non-MD code files — same as source but also marks dirty
@@ -752,7 +777,7 @@ function App() {
     handleSaveAs,
     inlineAI,
     setFindReplaceMode,
-    setFindReplaceOpen,
+    setFindReplaceOpen: routeFindReplaceOpen,
     setSidebarPanel,
     toggleCommandPalette,
     toggleQuickSwitcher,
@@ -787,7 +812,7 @@ function App() {
     handleOpenFolder,
     handleSave,
     handleSaveAs,
-    setFindReplaceOpen,
+    setFindReplaceOpen: routeFindReplaceOpen,
     toggleCommandPalette,
     toggleQuickSwitcher,
     toggleSettings,
@@ -876,9 +901,21 @@ function App() {
               className="editor-area-scroll pdf-preview-scroll"
               data-editor-scroll
             >
+              {pdfFindOpen && pdfFindApi && (
+                <PdfFindBar
+                  currentIdx={pdfFindApi.currentIdx}
+                  matchCount={pdfFindApi.matchCount}
+                  onClose={() => setPdfFindOpen(false)}
+                  onNext={pdfFindApi.onNext}
+                  onPrev={pdfFindApi.onPrev}
+                  onQueryChange={pdfFindApi.onQueryChange}
+                />
+              )}
               <Suspense fallback={null}>
                 <PdfPreview
                   filePath={activeTabFilePath}
+                  findOpen={pdfFindOpen}
+                  onFindApiChange={setPdfFindApi}
                   refreshKey={previewFileMtime}
                   title={activeTabFilePath}
                 />
