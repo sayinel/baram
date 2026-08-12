@@ -13,9 +13,15 @@
 // REAL class via vi.importActual, so bus.on/off/dispatch behave exactly as
 // use-pdf-find.ts expects, and the fake controller can announce results
 // through it exactly like the real one does internally.
+//
+// §272 Follow-up (flush determinism): waits on the ACTUAL condition each
+// step needs (controller constructed, matches recomputed) via waitFor,
+// never on an elapsed tick count — a fixed-tick flush() is a timing-based
+// hack that just lowers the odds of a race, it doesn't remove it (this file
+// failed exactly that way under full-suite load; see task-5-report.md).
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { usePdfFind } from "../use-pdf-find";
@@ -72,13 +78,6 @@ function fakePage(pageNumber: number, str: string): PDFPageProxy {
   } as unknown as PDFPageProxy;
 }
 
-async function flush() {
-  for (let i = 0; i < 5; i++) {
-    // (dynamic import + getTextContent Promise)을 순서대로 배출해야 한다
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-}
-
 describe("usePdfFind — document switch while the find bar stays open (N1)", () => {
   beforeEach(() => {
     instances.length = 0;
@@ -101,22 +100,33 @@ describe("usePdfFind — document switch while the find bar stays open (N1)", ()
       { initialProps: { doc: docA, pages: pagesA } },
     );
 
-    await act(flush);
-    expect(instances).toHaveLength(1);
-
-    // doc A의 findController가 매치를 찾았다고 알린다.
+    // doc A의 findController가 (loadPdfViewerModule의 동적 import 체인을
+    // 거쳐) 실제로 만들어질 때까지 기다린다 — 정해진 틱 수가 아니라 그
+    // 사실 자체를 기다린다.
+    await waitFor(() => expect(instances).toHaveLength(1));
     const controllerA = instances[0];
+
+    // doc A의 findController가 매치를 찾았다고 알린다. pageItemsRef가 이미
+    // 채워졌는지는 신경 쓰지 않는다 — 아직 안 찼어도 페이지 자신의
+    // getTextContent().then()이 나중에 recomputeRef.current()를 다시
+    // 불러 채워준다. 그래서 announce 이후 "매치가 실제로 보이는지"를
+    // 기다리는 게 맞다 — 몇 번째 재계산에서 채워지든 상관없이.
     controllerA.pageMatches = [[0]];
     controllerA.pageMatchesLength = [[5]];
     controllerA.selected = { matchIdx: 0, pageIdx: 0 };
     act(() => controllerA.announce(1, 1));
-
-    expect(result.current.getPageMatches(1)?.positions).toHaveLength(1);
+    await waitFor(() =>
+      expect(result.current.getPageMatches(1)?.positions).toHaveLength(1),
+    );
 
     // 찾기 바를 안 닫고(isOpen: true 유지) 다른 문서로 바꾼다 — 리뷰어가
-    // 지목한 정확한 재현 경로.
+    // 지목한 정확한 재현 경로. doc B의 findController가 실제로 만들어질
+    // 때까지 기다린 뒤 확인한다 — 그래야 "너무 일찍 확인했다"가 아니라
+    // doc B의 새 생애주기가 정말 시작된 뒤의 상태를 보는 것이다. (버그가
+    // 있으면 doc A의 항목은 이 시점에도, 그 이후로도 절대 스스로 사라지지
+    // 않는다 — 더 기다린다고 봐줄 수 있는 조건이 아니다.)
     rerender({ doc: docB, pages: pagesB });
-    await act(flush);
+    await waitFor(() => expect(instances).toHaveLength(2));
 
     // doc B의 findController는 아직 아무것도 알리지 않았다 — doc A의 캐시가
     // 새 것으로 새어 들어가면 안 된다. (N1 회귀 전에는 [doc] 이펙트의
