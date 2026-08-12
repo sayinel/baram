@@ -8,7 +8,22 @@ const { createDir, readFile, writeFile } = vi.hoisted(() => ({
   readFile: vi.fn(async (_path: string) => ""),
   writeFile: vi.fn(async (_path: string, _content: string) => {}),
 }));
-vi.mock("../../../../ipc/fs", () => ({ createDir, readFile, writeFile }));
+// isFileNotFoundError is pulled through from the real module rather than
+// re-implemented here — a duplicate could silently drift from the sentinel
+// prefix ipc/fs.ts actually checks, which would let this suite pass while
+// exercising a different classification than production.
+vi.mock("../../../../ipc/fs", async () => {
+  const actual =
+    await vi.importActual<typeof import("../../../../ipc/fs")>(
+      "../../../../ipc/fs",
+    );
+  return {
+    createDir,
+    isFileNotFoundError: actual.isFileNotFoundError,
+    readFile,
+    writeFile,
+  };
+});
 
 const { logger } = vi.hoisted(() => ({
   logger: { error: vi.fn(), warn: vi.fn() },
@@ -34,6 +49,16 @@ import {
 
 const COMPANION = "/vault/highlights/papers/attention.md";
 
+// Shape of the rejection the real Tauri `read_file` command sends: Rust's
+// `FsError` variants cross the IPC boundary as their Display string
+// (fs_cmd.rs: `.map_err(|e| e.to_string())`), not as an `Error` instance.
+// These mirror the two branches `isFileNotFoundError` (src/ipc/fs.ts) must
+// tell apart: NotFound vs. the generic ReadError (permission denied, bad
+// UTF-8) that Rust maps to on any other read failure.
+const NOT_FOUND_REJECTION = `파일을 찾을 수 없습니다: ${COMPANION}`;
+const PERMISSION_DENIED_REJECTION =
+  "파일 읽기 실패: permission denied (os error 13)";
+
 describe("appendHighlightBlock", () => {
   beforeEach(() => {
     openFiles.clear();
@@ -41,19 +66,37 @@ describe("appendHighlightBlock", () => {
     readFile.mockClear();
     createDir.mockClear();
     setFileContent.mockClear();
+    logger.error.mockClear();
     readFile.mockResolvedValue("");
   });
 
   it("writes to disk when the companion note is not open", async () => {
-    readFile.mockRejectedValueOnce(new Error("not found"));
+    readFile.mockRejectedValueOnce(NOT_FOUND_REJECTION);
 
     await appendHighlightBlock(COMPANION, "Attention mechanisms", "h7k2m9");
 
+    expect(createDir).toHaveBeenCalledWith("/vault/highlights/papers");
     expect(writeFile).toHaveBeenCalledTimes(1);
     expect(setFileContent).not.toHaveBeenCalled();
     expect(writeFile.mock.calls[0][1]).toContain(
       "Attention mechanisms ^h7k2m9",
     );
+  });
+
+  it("aborts without touching the note when an existing companion note fails to read for a reason other than not-found", async () => {
+    // A permission or decode failure on an *existing* note must not be
+    // treated as "safe to overwrite as a new file" — that would silently
+    // destroy every highlight already in the note.
+    readFile.mockRejectedValueOnce(PERMISSION_DENIED_REJECTION);
+
+    await expect(
+      appendHighlightBlock(COMPANION, "Attention mechanisms", "h7k2m9"),
+    ).rejects.toBe(PERMISSION_DENIED_REJECTION);
+
+    expect(createDir).not.toHaveBeenCalled();
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(setFileContent).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledTimes(1);
   });
 
   it("appends into the open buffer instead of writing to disk", async () => {

@@ -1,7 +1,12 @@
 // §277 동반 노트와 사이드카 I/O.
 import type { Sidecar } from "./pdf-highlight-sidecar";
 
-import { createDir, readFile, writeFile } from "../../../ipc/fs";
+import {
+  createDir,
+  isFileNotFoundError,
+  readFile,
+  writeFile,
+} from "../../../ipc/fs";
 import { useFileStore } from "../../../stores/file/file";
 import { logger } from "../../../utils/logger";
 import { dirname } from "../../../utils/path-utils";
@@ -20,6 +25,15 @@ import { parseSidecar } from "./pdf-highlight-sidecar";
  * 빈 문자열("")도 "열려 있음"이기 때문 — falsy 체크(`!buffered`)로 바꾸면
  * 방금 연 빈 버퍼가 디스크 경로로 잘못 새어 나가 바로 이 태스크가 막으려는
  * ConflictModal을 스스로 띄운다.
+ *
+ * §277.readFile-fail: `readFile`이 실패하는 이유는 "아직 파일이 없음"뿐이
+ * 아니다 — 권한 거부나 UTF-8 디코딩 실패도 같은 rejection으로 온다. 이걸
+ * 구분 없이 "새 파일"로 취급하면 이미 N개의 하이라이트가 쌓여 있는 동반
+ * 노트를 이 블록 하나짜리 내용으로 통째로 덮어써 버린다 — 되돌릴 수 없는
+ * 조용한 데이터 손실이라 §273.4가 사이드카에 요구하는 것과 같은 기준으로
+ * 막는다. `isFileNotFoundError`로 진짜 "없음"만 새 파일 경로로 보내고,
+ * 그 외의 실패는 로그를 남기고 그대로 던져 기존 내용을 지키기 위해 쓰기를
+ * 하지 않는다.
  */
 export async function appendHighlightBlock(
   absCompanionPath: string,
@@ -40,7 +54,15 @@ export async function appendHighlightBlock(
   let existing = "";
   try {
     existing = await readFile(absCompanionPath);
-  } catch {
+  } catch (e) {
+    if (!isFileNotFoundError(e)) {
+      // 파일은 존재하는데 읽지 못했다 — 이대로 진행하면 기존 하이라이트를
+      // 잃는다. 쓰기를 하지 않고 실패를 그대로 알린다.
+      logger.error(
+        `[pdf-highlight] failed to read existing companion note, aborting append to avoid overwriting it: ${absCompanionPath}`,
+      );
+      throw e;
+    }
     // 아직 없는 파일 — 부모 디렉터리를 만들고 새로 쓴다
     await createDir(dirname(absCompanionPath));
   }
