@@ -43,6 +43,7 @@ import type { Sidecar } from "../pdf-highlight-sidecar";
 import { findBlockContent } from "../../../../utils/editor/block-nav";
 import {
   appendHighlightBlock,
+  readHighlightBlockText,
   readSidecar,
   writeSidecar,
 } from "../pdf-highlight-store";
@@ -237,6 +238,48 @@ describe("readSidecar", () => {
     expect(result?.highlights).toHaveLength(1);
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("readHighlightBlockText", () => {
+  const COMPANION_PATH = "/vault/highlights/papers/attention.md";
+
+  beforeEach(() => {
+    openFiles.clear();
+    readFile.mockReset();
+  });
+
+  it("reads from the open buffer when the companion note is open", async () => {
+    openFiles.set(COMPANION_PATH, "Attention mechanisms ^h7k2m9\n");
+
+    const text = await readHighlightBlockText(COMPANION_PATH, "h7k2m9");
+
+    expect(text).toBe("Attention mechanisms");
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it("reads from disk when the companion note is not open", async () => {
+    readFile.mockResolvedValueOnce("Attention mechanisms ^h7k2m9\n");
+
+    const text = await readHighlightBlockText(COMPANION_PATH, "h7k2m9");
+
+    expect(text).toBe("Attention mechanisms");
+  });
+
+  it("returns null when the block id is missing from the note", async () => {
+    readFile.mockResolvedValueOnce("Something else ^other1\n");
+
+    const text = await readHighlightBlockText(COMPANION_PATH, "h7k2m9");
+
+    expect(text).toBeNull();
+  });
+
+  it("returns null when the companion note can't be read", async () => {
+    readFile.mockRejectedValueOnce(new Error("boom"));
+
+    const text = await readHighlightBlockText(COMPANION_PATH, "h7k2m9");
+
+    expect(text).toBeNull();
   });
 });
 

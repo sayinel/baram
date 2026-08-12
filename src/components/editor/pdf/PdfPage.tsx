@@ -1,25 +1,47 @@
-// §5.1 PDF 페이지 — canvas + 텍스트 레이어. 뷰포트 근처에서만 렌더한다.
+// §5.1 PDF 페이지 — canvas + 하이라이트 레이어 + 텍스트 레이어. 뷰포트
+// 근처에서만 렌더한다.
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import type { MatchPosition } from "./pdf-find";
+import type { PdfRect, ViewportLike } from "./pdf-highlight-geom";
+import type { StoredHighlight } from "./pdf-highlight-sidecar";
+import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 import { clearMatches, renderMatches } from "./pdf-find-render";
+import { pdfRectToPageLocal } from "./pdf-highlight-geom";
+import { PdfSelectionPopup } from "./PdfSelectionPopup";
 
 /** 뷰포트 밖 이만큼까지 미리 렌더한다. */
 const LAZY_ROOT_MARGIN = "800px";
 
 export function PdfPage({
+  highlights,
   matches,
+  onPageMouseDown,
   page,
+  popup,
   scale,
 }: {
+  /** §274 이 페이지에 속한 하이라이트만 — 부모가 이미 page 번호로 걸러서 내려준다. */
+  highlights?: StoredHighlight[];
   /** §272 찾기 매치 — 없으면 하이라이트를 지운다. */
   matches?: { currentIdx: number; positions: MatchPosition[] };
+  /** §274 하이라이트 클릭 히트 테스트 — .pdf-page 좌표계로 페이지 번호와
+   * viewport, 원점, 클릭 좌표를 그대로 넘긴다(변환은 부모 훅이 한다). */
+  onPageMouseDown?: (
+    pageNumber: number,
+    viewport: ViewportLike,
+    pageOrigin: { left: number; top: number },
+    clientX: number,
+    clientY: number,
+  ) => void;
   page: PDFPageProxy;
+  /** §274 이 페이지에 열린 선택 팝업. 다른 페이지의 팝업이면 부모가 null을 내려준다. */
+  popup?: null | PdfSelectionPopupProps;
   scale: number;
 }) {
   const holderRef = useRef<HTMLDivElement | null>(null);
@@ -118,9 +140,20 @@ export function PdfPage({
     }
   }, [matches]);
 
+  // §274.2 하이라이트 클릭 히트 테스트는 .pdf-page의 mousedown에서 판정한다
+  // — 하이라이트 레이어 자체는 pointer-events:none이라 이벤트를 못 받는다.
+  function handleMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (!onPageMouseDown) return;
+    const pageEl = holderRef.current;
+    if (!pageEl) return;
+    const origin = pageEl.getBoundingClientRect();
+    onPageMouseDown(page.pageNumber, viewport, origin, e.clientX, e.clientY);
+  }
+
   return (
     <div
       className="pdf-page"
+      onMouseDown={handleMouseDown}
       ref={holderRef}
       style={
         {
@@ -134,7 +167,29 @@ export function PdfPage({
       {visible && (
         <>
           <canvas ref={canvasRef} />
+          {/* §274.2 캔버스와 텍스트 레이어 사이 — 순수 시각 오버레이라
+              텍스트 선택/Cmd+C를 방해하지 않는다. */}
+          <div className="pdf-highlight-layer">
+            {highlights?.map((h) =>
+              h.rects.map((r: PdfRect, i) => {
+                const local = pdfRectToPageLocal(r, viewport);
+                return (
+                  <div
+                    className={`pdf-hl-mark pdf-hl-mark-${h.color}`}
+                    key={`${h.id}-${i}`}
+                    style={{
+                      height: local.height,
+                      left: local.left,
+                      top: local.top,
+                      width: local.width,
+                    }}
+                  />
+                );
+              }),
+            )}
+          </div>
           <div className="pdf-text-layer" ref={textLayerRef} />
+          {popup && <PdfSelectionPopup {...popup} />}
         </>
       )}
     </div>

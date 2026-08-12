@@ -8,6 +8,7 @@ import {
   writeFile,
 } from "../../../ipc/fs";
 import { useFileStore } from "../../../stores/file/file";
+import { findBlockContent } from "../../../utils/editor/block-nav";
 import { logger } from "../../../utils/logger";
 import { dirname } from "../../../utils/path-utils";
 import { parseSidecar } from "./pdf-highlight-sidecar";
@@ -67,6 +68,36 @@ export async function appendHighlightBlock(
     await createDir(dirname(absCompanionPath));
   }
   await writeFile(absCompanionPath, joinBlock(existing, block));
+}
+
+/**
+ * §274 이미 만들어진 하이라이트의 원문을 동반 노트에서 읽어온다. Copy
+ * reference/Copy text가 기존 하이라이트를 대상으로 할 때 쓴다 —
+ * StoredHighlight에는 색과 위치만 있고 텍스트는 없다(§273.2 참조), 텍스트의
+ * 유일한 보관처는 동반 노트의 ` ^id` 문단이다.
+ *
+ * appendHighlightBlock과 같은 이유로 버퍼가 열려 있으면 버퍼를 먼저 본다 —
+ * 디스크가 아직 못 받은 최신 편집(사용자가 문단을 고친 경우)을 놓치지
+ * 않기 위해서다. 파일이 없거나 읽기에 실패하면 null.
+ */
+export async function readHighlightBlockText(
+  absCompanionPath: string,
+  blockId: string,
+): Promise<null | string> {
+  const store = useFileStore.getState();
+  const buffered = store.openFiles.get(absCompanionPath);
+
+  let content: string;
+  if (buffered !== undefined) {
+    content = buffered;
+  } else {
+    try {
+      content = await readFile(absCompanionPath);
+    } catch {
+      return null;
+    }
+  }
+  return findBlockContent(content, blockId);
 }
 
 /** 사이드카를 읽는다. 없거나 손상되면 null. 버린 항목 수는 로그로 남긴다. */

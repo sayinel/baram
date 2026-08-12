@@ -29,6 +29,11 @@
     --color-editor-line-highlight: #16213e;
     --color-editor-find-match: rgb(251 191 36 / 45%);
     --color-editor-find-match-current: rgb(249 115 22 / 60%);
+    --color-editor-pdf-hl-yellow: rgb(251 191 36 / 35%);
+    --color-editor-pdf-hl-green: rgb(74 222 128 / 35%);
+    --color-editor-pdf-hl-blue: rgb(96 165 250 / 35%);
+    --color-editor-pdf-hl-pink: rgb(236 72 153 / 35%);
+    --color-editor-pdf-hl-purple: rgb(168 85 246 / 35%);
     --color-status-danger: #ef4444;
     --color-status-danger-on-solid: #000;
     --color-status-danger-solid-hover: #f87171;

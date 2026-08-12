@@ -121,6 +121,26 @@
       "findMatchCurrent": {
         "$value": "rgba(249, 115, 22, 0.6)",
         "$description": "PDF find current-match highlight (§272) — more opaque than find-match to stand out; no exact primitive match (alpha over orange.500)"
+      },
+      "pdf-hl-yellow": {
+        "$value": "rgba(251, 191, 36, 0.35)",
+        "$description": "PDF text highlight — yellow (§273.3) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400)"
+      },
+      "pdf-hl-green": {
+        "$value": "rgba(74, 222, 128, 0.35)",
+        "$description": "PDF text highlight — green (§273.3); no exact primitive match (alpha over green.400)"
+      },
+      "pdf-hl-blue": {
+        "$value": "rgba(96, 165, 250, 0.35)",
+        "$description": "PDF text highlight — blue (§273.3); no exact primitive match (alpha over blue.400)"
+      },
+      "pdf-hl-pink": {
+        "$value": "rgba(236, 72, 153, 0.35)",
+        "$description": "PDF text highlight — pink (§273.3); no exact primitive match (alpha over pink.500)"
+      },
+      "pdf-hl-purple": {
+        "$value": "rgba(168, 85, 246, 0.35)",
+        "$description": "PDF text highlight — purple (§273.3); no exact primitive match (alpha over purple.500)"
       }
     },
     "status": {

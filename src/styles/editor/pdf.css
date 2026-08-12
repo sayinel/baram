@@ -146,3 +146,133 @@
   text-align: center;
   white-space: nowrap;
 }
+
+/* §274.2 하이라이트 오버레이 — canvas와 .pdf-text-layer 사이, 순수 시각
+   레이어(클릭은 .pdf-page의 mousedown 히트 테스트가 판정한다, PdfPage.tsx). */
+.pdf-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-hl-mark {
+  position: absolute;
+  border-radius: 2px;
+}
+
+/* 색은 클래스로 고정한다 — 인라인 style에 문자열 템플릿으로 CSS 변수
+   이름을 조합하지 않는다. scripts/audit-css-vars.ts는 CSS 파일만 정적으로
+   스캔하므로 TSX 쪽의 그런 런타임 조합은 잡아내지 못하고 오탐만 낸다. */
+.pdf-hl-mark-yellow {
+  background: var(--color-editor-pdf-hl-yellow);
+}
+
+.pdf-hl-mark-green {
+  background: var(--color-editor-pdf-hl-green);
+}
+
+.pdf-hl-mark-blue {
+  background: var(--color-editor-pdf-hl-blue);
+}
+
+.pdf-hl-mark-pink {
+  background: var(--color-editor-pdf-hl-pink);
+}
+
+.pdf-hl-mark-purple {
+  background: var(--color-editor-pdf-hl-purple);
+}
+
+/* §274 선택 팝업 — pdf-find-bar와 같은 배치/스타일 관례. anchor는 .pdf-page
+   기준 페이지 로컬 좌표라 팝업도 .pdf-page 자식으로 그린다. */
+.pdf-hl-popup {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="dark"] .pdf-hl-popup {
+  background: var(--color-bg-subtle);
+}
+
+.pdf-hl-swatch-row {
+  display: flex;
+  gap: 4px;
+}
+
+.pdf-hl-swatch {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 50%;
+  transition: transform 0.1s;
+}
+
+.pdf-hl-swatch:hover {
+  transform: scale(1.15);
+}
+
+.pdf-hl-swatch.active {
+  border-color: var(--color-accent-default);
+  border-width: 2px;
+}
+
+.pdf-hl-swatch-yellow {
+  background: var(--color-editor-pdf-hl-yellow);
+}
+
+.pdf-hl-swatch-green {
+  background: var(--color-editor-pdf-hl-green);
+}
+
+.pdf-hl-swatch-blue {
+  background: var(--color-editor-pdf-hl-blue);
+}
+
+.pdf-hl-swatch-pink {
+  background: var(--color-editor-pdf-hl-pink);
+}
+
+.pdf-hl-swatch-purple {
+  background: var(--color-editor-pdf-hl-purple);
+}
+
+.pdf-hl-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border-default);
+}
+
+.pdf-hl-action-btn {
+  padding: 4px 6px;
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  border-radius: 4px;
+}
+
+.pdf-hl-action-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+/* icon-btn(base.css)이 display:flex/align/justify/cursor를 이미 준다 —
+   여기서는 크기·색·hover만 얹는다. */
+.pdf-hl-delete-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-status-danger);
+  border-radius: 4px;
+}
+
+.pdf-hl-delete-btn:hover {
+  background: color-mix(in srgb, var(--color-status-danger) 12%, transparent);
+}

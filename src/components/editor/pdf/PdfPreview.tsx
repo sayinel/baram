@@ -25,10 +25,12 @@ import {
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
+import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { logger } from "../../../utils/logger";
 import { PdfPage } from "./PdfPage";
 import { usePdfFind } from "./use-pdf-find";
+import { usePdfHighlights } from "./use-pdf-highlights";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -82,6 +84,7 @@ export const PdfPreview = memo(function PdfPreview({
   const [error, setError] = useState<null | string>(null);
   const [baseScale, setBaseScale] = useState(0);
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
+  const rootPath = useFileStore((s) => s.rootPath);
 
   // Load the document via the asset: protocol; reload on external change
   useEffect(() => {
@@ -189,6 +192,16 @@ export const PdfPreview = memo(function PdfPreview({
 
   const scale = baseScale * zoomLevel;
 
+  // §274 사이드카 로드 + 히트 테스트 + 선택 팝업 배선. rootPath가 없으면
+  // (vault 밖 단일 파일 모드) 내부적으로 비활성화된다.
+  const {
+    getPageHighlights,
+    handlePageMouseDown,
+    popupPage,
+    popupProps,
+    registerPageEl: registerHighlightPageEl,
+  } = usePdfHighlights({ filePath, pages, rootPath, scale });
+
   return (
     <div
       aria-label={title || "PDF preview"}
@@ -204,12 +217,19 @@ export const PdfPreview = memo(function PdfPreview({
           <div
             data-pdf-page-number={page.pageNumber}
             key={page.pageNumber}
-            ref={(el) => registerPageEl(page.pageNumber, resolvePageBoxEl(el))}
+            ref={(el) => {
+              const boxEl = resolvePageBoxEl(el);
+              registerPageEl(page.pageNumber, boxEl);
+              registerHighlightPageEl(page.pageNumber, boxEl);
+            }}
             style={{ display: "contents" }}
           >
             <PdfPage
+              highlights={getPageHighlights(page.pageNumber)}
               matches={getPageMatches(page.pageNumber)}
+              onPageMouseDown={handlePageMouseDown}
               page={page}
+              popup={popupPage === page.pageNumber ? popupProps : null}
               scale={scale}
             />
           </div>

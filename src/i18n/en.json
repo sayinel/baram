@@ -525,6 +525,11 @@
   "pdfFind.next": "Next match",
   "pdfFind.close": "Close find",
 
+  "pdfHighlight.copyRef": "Copy reference",
+  "pdfHighlight.copyText": "Copy text",
+  "pdfHighlight.delete": "Delete",
+  "pdfHighlight.color": "Highlight colour",
+
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",
   "plugin.consent.fullTrust.title": "This plugin asks for full trust.",

@@ -525,6 +525,11 @@
   "pdfFind.next": "다음 일치",
   "pdfFind.close": "찾기 닫기",
 
+  "pdfHighlight.copyRef": "참조 복사",
+  "pdfHighlight.copyText": "텍스트 복사",
+  "pdfHighlight.delete": "삭제",
+  "pdfHighlight.color": "하이라이트 색",
+
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",
   "plugin.consent.title.update": "\"{name}\" 플러그인을 업데이트하시겠습니까?",
   "plugin.consent.fullTrust.title": "이 플러그인은 완전한 신뢰 권한을 요청합니다.",
