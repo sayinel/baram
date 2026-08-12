@@ -304,9 +304,9 @@
       "milestone": "M7",
       "status": "implemented",
       "hasNodeView": true,
-      "inputRules": [],
+      "inputRules": ["(("],
       "shortcuts": {},
-      "_note": "Inline atom node with NodeView. Cmd+click navigates to target block."
+      "_note": "Inline atom node with NodeView. Cmd+click navigates to target block. §275.5: also has a pasteRule, so pasted ((...)) refs (e.g. from PDF highlight copy) convert to nodes immediately, not just typed input."
     },
     {
       "name": "blockEmbed",
