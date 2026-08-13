@@ -71,43 +71,55 @@ export async function appendHighlightBlock(
 }
 
 /**
+ * 동반 노트 파일 전체를 읽는다. 파일이 아직 없으면 null(정상 경로 — 이 PDF에
+ * 하이라이트가 하나도 없다).
+ *
+ * appendHighlightBlock과 같은 이유로 버퍼가 열려 있으면 버퍼를 먼저 본다 —
+ * 디스크가 아직 못 받은 최신 편집(사용자가 문단을 고친 경우)을 놓치지
+ * 않기 위해서다. §274 M4: 그 외의 읽기 실패(권한 거부, UTF-8 디코딩 실패)는
+ * "없음"과 같이 취급하지 않는다 — appendHighlightBlock이 같은 구분을 이미
+ * 쓰는 이유와 같다. 조용히 null을 돌리면 호출부(Copy text/Copy reference)가
+ * "동반 노트에 이 블록이 없다"로 오인해 로그만 남기고 끝난다 — 실제로는
+ * 파일을 못 읽은 것뿐인데도. 여기서 던져서 호출부의 실패 처리(§274 I1)를
+ * 타게 한다.
+ *
+ * §276.5 blockId 추출과 분리해 둔 이유: 참조 프리뷰는 같은 동반 노트에서
+ * 서로 다른 blockId를 한꺼번에 읽는다. 파일 읽기 한 번을 여럿이 나눠 쓰려면
+ * "파일을 읽는 단계"와 "블록을 뽑는 단계"가 갈라져 있어야 한다
+ * (pdf-companion-text-cache.ts).
+ */
+export async function readCompanionNoteContent(
+  absCompanionPath: string,
+): Promise<null | string> {
+  const store = useFileStore.getState();
+  const buffered = store.openFiles.get(absCompanionPath);
+  if (buffered !== undefined) return buffered;
+
+  try {
+    return await readFile(absCompanionPath);
+  } catch (e) {
+    if (isFileNotFoundError(e)) return null;
+    logger.error(
+      `[pdf-highlight] failed to read companion note: ${absCompanionPath}`,
+    );
+    throw e;
+  }
+}
+
+/**
  * §274 이미 만들어진 하이라이트의 원문을 동반 노트에서 읽어온다. Copy
  * reference/Copy text가 기존 하이라이트를 대상으로 할 때 쓴다 —
  * StoredHighlight에는 색과 위치만 있고 텍스트는 없다(§273.2 참조), 텍스트의
  * 유일한 보관처는 동반 노트의 ` ^id` 문단이다.
  *
- * appendHighlightBlock과 같은 이유로 버퍼가 열려 있으면 버퍼를 먼저 본다 —
- * 디스크가 아직 못 받은 최신 편집(사용자가 문단을 고친 경우)을 놓치지
- * 않기 위해서다. 파일이 없으면 null(정상 경로 — 아직 하이라이트 텍스트가
- * 없다). §274 M4: 그 외의 읽기 실패(권한 거부, UTF-8 디코딩 실패)는 "없음"과
- * 같이 취급하지 않는다 — appendHighlightBlock이 같은 구분을 이미 쓰는
- * 이유와 같다. 조용히 null을 돌리면 호출부(Copy text/Copy reference)가
- * "동반 노트에 이 블록이 없다"로 오인해 로그만 남기고 끝난다 — 실제로는
- * 파일을 못 읽은 것뿐인데도. 여기서 던져서 호출부의 실패 처리(§274 I1)를
- * 타게 한다.
+ * 읽기 규약(버퍼 우선, 없음 vs 실패 구분)은 readCompanionNoteContent에 있다.
  */
 export async function readHighlightBlockText(
   absCompanionPath: string,
   blockId: string,
 ): Promise<null | string> {
-  const store = useFileStore.getState();
-  const buffered = store.openFiles.get(absCompanionPath);
-
-  let content: string;
-  if (buffered !== undefined) {
-    content = buffered;
-  } else {
-    try {
-      content = await readFile(absCompanionPath);
-    } catch (e) {
-      if (isFileNotFoundError(e)) return null;
-      logger.error(
-        `[pdf-highlight] failed to read companion note: ${absCompanionPath}`,
-      );
-      throw e;
-    }
-  }
-  return findBlockContent(content, blockId);
+  const content = await readCompanionNoteContent(absCompanionPath);
+  return content === null ? null : findBlockContent(content, blockId);
 }
 
 /** 사이드카를 읽는다. 없거나 손상되면 null. 버린 항목 수는 로그로 남긴다. */

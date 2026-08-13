@@ -141,6 +141,16 @@
 /* §30c Block Reference — inline chip */
 .block-reference {
   padding: 0 4px;
+
+  /* §276.5 A text-highlight ref renders the full original sentence, so the chip
+     routinely spans several lines. Without cloning, the padding/border/radius
+     are drawn ONCE around the whole fragmented inline box — the first line gets
+     a left border and no right one, the last the reverse, and the middle lines
+     no frame at all. `clone` repeats the decoration per line fragment, which is
+     the only way this reads as one chip. The -webkit- prefix is not optional
+     here: WKWebView (the Tauri webview on macOS) still needs it. */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   font-size: 0.9em;
   color: var(--color-accent-default);
   cursor: pointer;

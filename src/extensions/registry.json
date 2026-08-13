@@ -306,7 +306,7 @@
       "hasNodeView": true,
       "inputRules": ["(("],
       "shortcuts": {},
-      "_note": "Inline atom node with NodeView. Cmd+click navigates to target block. §275.5: also has a pasteRule, so pasted ((...)) refs (e.g. from PDF highlight copy) convert to nodes immediately, not just typed input. §276.4: a ref whose target resolves to an AREA highlight renders the cropped PDF region instead of the text chip — display-time only, the markdown on disk is unchanged."
+      "_note": "Inline atom node with NodeView. Cmd+click navigates to target block. §275.5: also has a pasteRule, so pasted ((...)) refs (e.g. from PDF highlight copy) convert to nodes immediately, not just typed input. §276.4: a ref whose target resolves to an AREA highlight renders the cropped PDF region instead of the text chip — display-time only, the markdown on disk is unchanged. §276.5: a ref resolving to a TEXT highlight renders the full original sentence read from the companion note, with the truncated `display` label kept only as the fallback (loading / unreadable / outside a vault)."
     },
     {
       "name": "blockEmbed",

@@ -1,8 +1,15 @@
-// §276.4 영역 하이라이트 참조를 잘라낸 PDF 이미지로 그리는 훅.
+// §276.4/§276.5 하이라이트 참조를 그 하이라이트 자체로 그리는 훅.
 //
-// 디스크에는 여전히 좌표만 있다(§276.3의 결정을 뒤집지 않는다) — 이미지
+// area — 디스크에는 여전히 좌표만 있다(§276.3의 결정을 뒤집지 않는다). 이미지
 // 파일을 만들지 않고 매 표시마다 PDF에서 그 영역만 캔버스로 잘라낸다.
-// 마크다운 표현은 `((target#^blockId|display))` 그대로다.
+// text — 원문 전체를 동반 노트에서 읽어 온다. 마크다운의 `display` 슬롯은
+// 여전히 §275.3이 구워 넣은 80자 라벨이지만, 그것은 이제 폴백일 뿐이다
+// (로딩 중 · 읽기 실패 · vault 밖). 원문은 동반 노트에 온전히 있으므로 이미
+// 붙여넣은 참조도 소급해서 전문이 보이고, buildRefDisplay가 지우는
+// `( ) [ ] |`도 되살아난다.
+//
+// 어느 쪽이든 마크다운 표현은 `((target#^blockId|display))` 그대로다 —
+// 표시 시점의 결정이고 디스크는 한 글자도 바뀌지 않는다.
 import { useEffect, useState } from "react";
 
 import { logger } from "../../../utils/logger";
@@ -12,43 +19,53 @@ import {
   readAreaPreview,
   writeAreaPreview,
 } from "./pdf-area-preview-cache";
-import { resolveAreaHighlightRef } from "./pdf-area-ref-resolve";
+import { readCompanionTextCoalesced } from "./pdf-companion-text-cache";
 import { withPdfDocument } from "./pdf-doc-cache";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
+import { resolveHighlightRef } from "./pdf-highlight-ref-resolve";
 import { pdfRelPathForHighlightTarget } from "./pdf-highlight-sidecar";
 
-export interface AreaRefPreview {
-  /** CSS px. status !== "ready"면 0. */
+export interface HighlightRefPreview {
+  /** CSS px. area가 아니거나 status !== "ready"면 0. */
   height: number;
+  /** "none" = 그릴 하이라이트가 없다(평범한 블록 참조이거나 해석 실패). */
+  kind: HighlightRefPreviewKind;
+  /** area의 dataURL. 그 외에는 null. */
   src: null | string;
-  status: AreaRefPreviewStatus;
-  /** CSS px. status !== "ready"면 0. */
+  status: HighlightRefPreviewStatus;
+  /** text의 원문 전체. 그 외에는 null. */
+  text: null | string;
+  /** CSS px. area가 아니거나 status !== "ready"면 0. */
   width: number;
 }
 
-/** "idle" = 영역 참조가 아니다(평범한 블록 참조 — 가장 흔한 경우). */
-export type AreaRefPreviewStatus = "idle" | "loading" | "ready" | "unavailable";
+export type HighlightRefPreviewKind = "area" | "none" | "text";
+
+/** "idle" = 하이라이트 참조가 아니다(평범한 블록 참조 — 가장 흔한 경우). */
+export type HighlightRefPreviewStatus =
+  "idle" | "loading" | "ready" | "unavailable";
 
 /**
- * `(target, blockId)`가 영역 하이라이트를 가리키면 잘라낸 PNG dataURL을
- * 돌려준다. 아니거나 실패하면 status가 "ready"가 아니고, 호출부는 기존 글자
- * 칩을 그대로 그린다 — **이 훅은 절대 던지지 않는다.**
+ * `(target, blockId)`가 하이라이트를 가리키면 그것을 그리는 데 필요한 것을
+ * 돌려준다 — area면 잘라낸 PNG dataURL, text면 동반 노트의 원문 전체.
+ * 아니거나 실패하면 status가 "ready"가 아니고, 호출부는 기존 글자 칩을 그대로
+ * 그린다 — **이 훅은 절대 던지지 않는다.**
  *
  * 던지지 않는 것이 왜 중요한가: main.tsx의 전역 unhandledrejection 핸들러가
  * preventDefault()로 rejection을 삼킨다. 떠도는 Promise를 남기면 실패가
  * 로그도 없이 사라지고 칩은 영원히 "loading"에 머문다.
  */
-export function usePdfAreaRefPreview(
+export function usePdfHighlightRefPreview(
   target: string,
   blockId: string,
-): AreaRefPreview {
-  const [preview, setPreview] = useState<AreaRefPreview>(IDLE);
+): HighlightRefPreview {
+  const [preview, setPreview] = useState<HighlightRefPreview>(IDLE);
 
   useEffect(() => {
     // 평범한 블록 참조는 여기서 끝낸다 — 사이드카 I/O도, pdfjs 동적 import도
     // 하지 않는다. 문서의 블록 참조 대부분이 이 경로다.
     //
-    // ‼️ 이 가드가 막는 것은 I/O가 아니다(resolveAreaHighlightRef도 같은
+    // ‼️ 이 가드가 막는 것은 I/O가 아니다(resolveHighlightRef도 같은
     // 검사를 먼저 해서 아무것도 읽지 않고 null을 돌려준다). 막는 것은
     // **상태 전이**다: 이게 없으면 문서 안의 모든 블록 참조가 마운트마다
     // LOADING → UNAVAILABLE 두 번의 리렌더를 낸다. IDLE은 useState의 초기값과
@@ -64,9 +81,35 @@ export function usePdfAreaRefPreview(
     setPreview(LOADING);
 
     void (async () => {
-      const resolved = await resolveAreaHighlightRef(target, blockId);
+      const resolved = await resolveHighlightRef(target, blockId);
       if (cancelled || !resolved) {
         if (!cancelled) setPreview(UNAVAILABLE);
+        return;
+      }
+
+      // §276.5 텍스트 분기는 pdfjs를 아예 건드리지 않는다 — 동적 import도,
+      // 문서 캐시도 타지 않는다. 필요한 것은 동반 노트 한 줄뿐이다.
+      if (resolved.kind === "text") {
+        const text = await readCompanionTextCoalesced(
+          resolved.absCompanionPath,
+          blockId,
+        );
+        if (cancelled) return;
+        // 공백만 남은 문단(문단이 지워졌거나 ` ^id`만 남은 줄)을 "ready"로
+        // 보내면 칩이 빈 채로 그려져 클릭할 것조차 없어진다. display 라벨로
+        // 떨어지는 편이 낫다.
+        setPreview(
+          text && text.trim().length > 0
+            ? {
+                height: 0,
+                kind: "text",
+                src: null,
+                status: "ready",
+                text,
+                width: 0,
+              }
+            : UNAVAILABLE,
+        );
         return;
       }
 
@@ -90,7 +133,7 @@ export function usePdfAreaRefPreview(
             // 그릴 수 없는 기하 — 조용히 칩으로 떨어지면 사이드카가 상했다는
             // 사실이 어디에도 남지 않는다.
             logger.error(
-              `[pdf-area-ref] unrenderable area geometry for ^${blockId} (page ${String(resolved.page)}) in ${resolved.absPdfPath}`,
+              `[pdf-highlight-ref] unrenderable area geometry for ^${blockId} (page ${String(resolved.page)}) in ${resolved.absPdfPath}`,
             );
             return null;
           }
@@ -140,12 +183,14 @@ export function usePdfAreaRefPreview(
 
       if (cancelled) return;
       setPreview(
-        rendered ? { ...rendered, status: "ready" as const } : UNAVAILABLE,
+        rendered
+          ? { ...rendered, kind: "area" as const, status: "ready", text: null }
+          : UNAVAILABLE,
       );
     })().catch((err: unknown) => {
       // 렌더 취소는 정상 경로(언마운트/attrs 변경) — cancelled면 조용히 끝낸다.
       if (cancelled) return;
-      logger.error("[pdf-area-ref] failed to render area preview:", err);
+      logger.error("[pdf-highlight-ref] failed to render preview:", err);
       setPreview(UNAVAILABLE);
     });
 
@@ -161,23 +206,29 @@ export function usePdfAreaRefPreview(
 /** 프리뷰 표시 폭 상한(CSS px). 넘는 영역은 비율을 유지하며 축소된다. */
 const MAX_PREVIEW_CSS_WIDTH = 640;
 
-const IDLE: AreaRefPreview = {
+const IDLE: HighlightRefPreview = {
   height: 0,
+  kind: "none",
   src: null,
   status: "idle",
+  text: null,
   width: 0,
 };
 
-const LOADING: AreaRefPreview = {
+const LOADING: HighlightRefPreview = {
   height: 0,
+  kind: "none",
   src: null,
   status: "loading",
+  text: null,
   width: 0,
 };
 
-const UNAVAILABLE: AreaRefPreview = {
+const UNAVAILABLE: HighlightRefPreview = {
   height: 0,
+  kind: "none",
   src: null,
   status: "unavailable",
+  text: null,
   width: 0,
 };

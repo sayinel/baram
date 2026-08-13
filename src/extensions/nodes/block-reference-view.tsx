@@ -1,7 +1,12 @@
 // §30c Block Reference NodeView — renders ((target#^blockId)) as inline chip
 // §276.4 …except when the ref points at an AREA highlight, where it renders the
-// cropped PDF region itself. That is a display-time affordance only: the
-// markdown on disk is the same `((target#^blockId|display))` either way.
+// cropped PDF region itself.
+// §276.5 …and when it points at a TEXT highlight, where it renders the full
+// original sentence from the companion note instead of the truncated `display`
+// label that was baked into the markdown at copy time.
+//
+// Both are display-time affordances only: the markdown on disk is the same
+// `((target#^blockId|display))` in every branch.
 import { useCallback } from "react";
 
 import type { BlockReferenceOptions } from "./block-reference";
@@ -9,7 +14,7 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
-import { usePdfAreaRefPreview } from "../../components/editor/pdf/use-pdf-area-ref-preview";
+import { usePdfHighlightRefPreview } from "../../components/editor/pdf/use-pdf-highlight-ref-preview";
 
 export function BlockReferenceView({
   node,
@@ -25,10 +30,12 @@ export function BlockReferenceView({
   // Display text priority: display > "target > ^blockId" > "^blockId"
   const text = display || (target ? `${target} > ^${blockId}` : `^${blockId}`);
 
-  // §276.4 Everything but "ready" keeps the text chip — including while the
-  // crop is still rendering, so the line doesn't reflow twice.
-  const preview = usePdfAreaRefPreview(target, blockId);
-  const previewSrc = preview.status === "ready" ? preview.src : null;
+  // §276.4/§276.5 Everything but "ready" keeps the text chip — including while
+  // the preview is still loading, so the line doesn't reflow twice.
+  const preview = usePdfHighlightRefPreview(target, blockId);
+  const ready = preview.status === "ready";
+  const previewSrc = ready && preview.kind === "area" ? preview.src : null;
+  const fullText = ready && preview.kind === "text" ? preview.text : null;
 
   // Cmd+Click navigates to block
   const handleClick = useCallback(
@@ -50,6 +57,8 @@ export function BlockReferenceView({
       className={`block-reference ${selected ? "block-reference-selected" : ""}`}
       // Lets links.css switch off the chip's background/border/padding — the
       // crop is the content now, and a chip frame around it reads as a bug.
+      // The TEXT branch keeps the chip: it is still a run of words, and the
+      // frame is what marks it as a reference rather than prose.
       data-area-preview={previewSrc ? "true" : undefined}
       data-block-id={blockId}
       data-target={target}
@@ -74,7 +83,7 @@ export function BlockReferenceView({
           width={preview.width}
         />
       ) : (
-        text
+        (fullText ?? text)
       )}
     </NodeViewWrapper>
   );
