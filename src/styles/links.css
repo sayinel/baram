@@ -167,6 +167,28 @@
     color-mix(in srgb, var(--color-accent-default) 40%, transparent);
 }
 
+/* §276.4 Area highlight ref — the cropped PDF region replaces the chip text,
+   so the chip's own frame has to go: keeping it draws a tinted accent border
+   around a picture, which reads as a rendering bug rather than a link. */
+.block-reference[data-area-preview="true"] {
+  display: inline-block;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+}
+
+.block-reference[data-area-preview="true"]:hover {
+  background-color: transparent;
+}
+
+.block-reference-area-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
 /* §30c Block Embed — bordered preview container */
 .block-embed {
   margin: 8px 0;
