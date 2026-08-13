@@ -12,8 +12,15 @@
 // ‼️ 이 합류는 구조적으로 보장된다. 한 문서의 BlockReferenceView는 포털 flush
 // 한 번에 모두 마운트되고, 각 effect는 첫 await 전에 동기로
 // `readSidecarCoalesced`까지 도달한다 — N건이 같은 tick에 맵에 들어오므로
-// 읽기는 1회다. (동반 노트 쪽은 사이드카 해석을 기다린 뒤라 그런 보장이
-// 없다 — pdf-companion-text-cache.ts 헤더 참조.)
+// 읽기는 1회다.
+//
+// 그리고 그 보장은 동반 노트 읽기로 **전파된다**(pdf-companion-text-cache.ts).
+// 동반 노트 읽기는 이 Promise가 resolve된 뒤에 시작되는데, 같은 사이드카를
+// 공유하는 참조들은 **같은 Promise 하나**를 기다리므로 같은 마이크로태스크
+// 드레인에서 함께 재개된다. 실제 파일 I/O는 매크로태스크라 첫 동반 노트
+// 읽기가 완료되기 전에 N건이 전부 합류 지점에 도달한다 — 확률이 아니라
+// 잡 큐 의미론이 보장한다. (§276.5 재리뷰가 프로브로 확인: 5건 → 사이드카
+// 1회 + 동반 노트 1회, 매 실행. 사이드카 합류를 뺀 대조군은 동반 노트 2회.)
 import type { Sidecar } from "./pdf-highlight-sidecar";
 
 import { readSidecar } from "./pdf-highlight-store";
