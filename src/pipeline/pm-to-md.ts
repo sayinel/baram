@@ -70,6 +70,8 @@ const INLINE_SERIALIZERS = new Map<string, InlineSerializerEntry>([
         blockId: string;
         display?: null | string;
         target: string;
+        // §276.6 — width is appended as `|w=NN` by serializeBlockRef.
+        width?: null | number;
       }) => serializeBlockRef(attrs),
     },
   ],
