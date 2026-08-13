@@ -5,7 +5,11 @@ import { InputRule, mergeAttributes, Node, nodePasteRule } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
-import { BLOCK_REF_RE, parseBlockRefMatch } from "../../pipeline/block-id";
+import {
+  BLOCK_REF_RE,
+  parseBlockRefMatch,
+  parseRefWidth,
+} from "../../pipeline/block-id";
 import { BlockReferenceView } from "./block-reference-view";
 
 export interface BlockReferenceOptions {
@@ -20,6 +24,7 @@ declare module "@tiptap/core" {
         blockId: string;
         display?: null | string;
         target: string;
+        width?: null | number;
       }) => ReturnType;
     };
   }
@@ -44,6 +49,18 @@ export const BlockReference = Node.create<BlockReferenceOptions>({
       target: { default: "" },
       blockId: { default: "" },
       display: { default: null },
+      // §276.6 Per-reference render width (percent). The clipboard carries HTML,
+      // not markdown, so without this parseHTML the width vanishes on
+      // copy-paste even though the same reference re-serializes with it. The
+      // value is re-validated on the way in: `data-width` is attacker-writable
+      // (any pasted HTML) and must not smuggle a non-integer or out-of-range %.
+      width: {
+        default: null,
+        parseHTML: (element) =>
+          parseRefWidth(element.getAttribute("data-width")),
+        // Emitted by hand in renderHTML below, alongside the other data-*.
+        renderHTML: () => ({}),
+      },
     };
   },
 
@@ -54,6 +71,7 @@ export const BlockReference = Node.create<BlockReferenceOptions>({
   renderHTML({ node, HTMLAttributes }) {
     const display =
       node.attrs.display || `${node.attrs.target}#^${node.attrs.blockId}`;
+    const width = node.attrs.width as null | number;
     return [
       "span",
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
@@ -61,6 +79,7 @@ export const BlockReference = Node.create<BlockReferenceOptions>({
         "data-target": node.attrs.target,
         "data-block-id": node.attrs.blockId,
         "data-display": node.attrs.display || "",
+        ...(width ? { "data-width": String(width) } : {}),
         class: "block-reference",
       }),
       display,

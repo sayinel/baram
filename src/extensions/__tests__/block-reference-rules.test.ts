@@ -190,3 +190,87 @@ describe("PasteRule: block reference paste conversion", () => {
     editor.destroy();
   });
 });
+
+// --- §276.6 width attribute ---
+
+function firstRef(editor: Editor) {
+  return editor.state.doc.firstChild!.firstChild!;
+}
+
+describe("§276.6 width attribute through the rules", () => {
+  it("carries |w=NN from a typed reference onto the node", () => {
+    const editor = createBlockRefEditor();
+    typeBlockRef(editor, "((notes/a#^abc123|Attention|w=60))");
+    const node = firstRef(editor);
+    expect(node.attrs.display).toBe("Attention");
+    expect(node.attrs.width).toBe(60);
+    editor.destroy();
+  });
+
+  it("carries a width-only reference from a paste", () => {
+    const editor = createBlockRefEditor();
+    pasteText(editor, "((notes/a#^abc123|w=75))");
+    const node = firstRef(editor);
+    expect(node.attrs.display).toBeNull();
+    expect(node.attrs.width).toBe(75);
+    editor.destroy();
+  });
+
+  it("leaves an out-of-range w=200 as display text", () => {
+    const editor = createBlockRefEditor();
+    pasteText(editor, "((notes/a#^abc123|w=200))");
+    const node = firstRef(editor);
+    expect(node.attrs.display).toBe("w=200");
+    expect(node.attrs.width).toBeNull();
+    editor.destroy();
+  });
+});
+
+// The clipboard carries HTML, not markdown: a reference copied inside the
+// editor takes the renderHTML → parseHTML path, so a width that survives the
+// markdown pipeline can still be lost here. These pin that path directly.
+describe("§276.6 width survives the HTML round-trip", () => {
+  function htmlRoundTrip(attrs: Record<string, unknown>) {
+    const editor = createBlockRefEditor();
+    editor.commands.insertContent({ type: "blockReference", attrs });
+    const html = editor.getHTML();
+    editor.commands.setContent(html);
+    const node = firstRef(editor);
+    const result = { html, attrs: { ...node.attrs } };
+    editor.destroy();
+    return result;
+  }
+
+  it("renders data-width and reads it back", () => {
+    const { attrs, html } = htmlRoundTrip({
+      target: "notes/a",
+      blockId: "abc123",
+      display: "Attention",
+      width: 60,
+    });
+    expect(html).toContain('data-width="60"');
+    expect(attrs.width).toBe(60);
+    expect(attrs.display).toBe("Attention");
+  });
+
+  it("omits data-width entirely when there is no width", () => {
+    const { attrs, html } = htmlRoundTrip({
+      target: "notes/a",
+      blockId: "abc123",
+      display: "Attention",
+    });
+    expect(html).not.toContain("data-width");
+    expect(attrs.width).toBeNull();
+  });
+
+  it("rejects a hand-written data-width outside 10..100 or non-integer", () => {
+    const editor = createBlockRefEditor();
+    for (const bad of ["200", "5", "60.5", "abc", ""]) {
+      editor.commands.setContent(
+        `<p><span data-type="block-reference" data-target="notes/a" data-block-id="abc123" data-width="${bad}">x</span></p>`,
+      );
+      expect(firstRef(editor).attrs.width).toBeNull();
+    }
+    editor.destroy();
+  });
+});
