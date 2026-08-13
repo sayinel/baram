@@ -37,6 +37,7 @@ export function usePdfHighlights({
   rootPath,
   scale,
   scrollToPage,
+  textModeActive,
 }: {
   filePath: string;
   pages: PDFPageProxy[];
@@ -47,6 +48,9 @@ export function usePdfHighlights({
   scale: number;
   /** §275.6 The SAME scrollToPage usePdfFind hands the toolbar/find controller. */
   scrollToPage: (n: number) => void;
+  /** §276.3.1 use-pdf-highlight-mode.ts의 `mode === "text"` — 그대로
+   * usePdfSelectionPopup에 넘긴다(그 훅의 doc comment 참조). */
+  textModeActive: boolean;
 }): {
   /** §275.6 Set briefly after a ref click lands on this PDF — the highlight
    * to render with the flash affordance (PdfPage). */
@@ -223,6 +227,7 @@ export function usePdfHighlights({
     pagesByNumberRef,
     pdfRelPath,
     scale,
+    textModeActive,
   });
 
   // §276.3 영역 드래그 완료 — onNewSelection과 같은 자리, highlightKind만

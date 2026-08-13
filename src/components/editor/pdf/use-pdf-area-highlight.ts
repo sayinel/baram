@@ -8,11 +8,17 @@
 // use-pdf-highlights.ts(usePdfSelectionPopup의 onNewSelection과 정확히
 // 같은 자리)다.
 //
+// §276.3.1 토글 자체(모드가 "area"인지)는 더 이상 이 훅이 갖지 않는다 —
+// 세 상태(none/text/area)가 하나의 enum(use-pdf-highlight-mode.ts)으로
+// 옮겨졌기 때문이다. 이 훅은 그 enum의 "area" 값 여부(areaModeOn)를
+// 파라미터로 받아 자신의 Alt-hold 추적과 OR로 묶기만 한다 — 토글이 어디서
+// 오는지는 이 훅의 관심사가 아니다.
+//
 // Splitter.tsx와 같은 패턴 — mousedown 클로저 안에서 document
 // mousemove/mouseup을 그때그때 붙이고 뗀다(useEffect로 "dragging" state를
 // 감시하며 리스너를 여닫는 방식 대신). 드래그 취소(cancelDragRef)만
 // 예외적으로 상태 밖에 둔다 — Escape 키다운과 "areaCaptureActive가 false로
-// 바뀜"(모드 토글 OFF 또는 Alt 릴리즈, §276.3이 둘 다 명시한 취소 경로) 두
+// 바뀜"(모드 전환 또는 Alt 릴리즈, §276.3이 둘 다 명시한 취소 경로) 두
 // 곳에서 같은 취소 함수를 불러야 하기 때문이다.
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -38,12 +44,9 @@ export interface AreaDrawnPayload {
 }
 
 export interface UsePdfAreaHighlightResult {
-  /** areaMode || altHeld — 이 값이 true인 동안 텍스트 레이어를 비활성화하고
+  /** areaModeOn || altHeld — 이 값이 true인 동안 텍스트 레이어를 비활성화하고
    * (PdfPage.tsx) mousedown을 이 훅으로도 보내야 한다(PdfPreview.tsx). */
   areaCaptureActive: boolean;
-  /** 툴바 토글의 raw 상태 — aria-pressed는 이 값만 반영한다(Alt를 누르고
-   * 있다고 토글 버튼이 눌린 것처럼 보이면 안 된다). */
-  areaMode: boolean;
   /** 드래그 중인 페이지 + 페이지 로컬 미리보기 사각형. 드래그 중이 아니면 null. */
   dragPreview: null | { pageNumber: number; rect: LocalRect };
   onPageMouseDown: (
@@ -53,16 +56,20 @@ export interface UsePdfAreaHighlightResult {
     clientX: number,
     clientY: number,
   ) => void;
-  toggleAreaMode: () => void;
 }
 
 export function usePdfAreaHighlight({
+  areaModeOn,
   onAreaHighlightDrawn,
 }: {
+  /** §276.3.1 use-pdf-highlight-mode.ts의 `mode === "area"` — 툴바 토글의
+   * raw 상태다. aria-pressed는 이 값만 반영해야 한다(Alt를 누르고 있다고
+   * 토글 버튼이 눌린 것처럼 보이면 안 된다) — 그 판단은 호출부의 몫이라 이
+   * 훅은 그대로 받기만 한다. */
+  areaModeOn: boolean;
   onAreaHighlightDrawn: (payload: AreaDrawnPayload) => void;
 }): UsePdfAreaHighlightResult {
   const { t } = useTranslation();
-  const [areaMode, setAreaMode] = useState(false);
   const [altHeld, setAltHeld] = useState(false);
   const [dragPreview, setDragPreview] = useState<null | {
     pageNumber: number;
@@ -72,7 +79,7 @@ export function usePdfAreaHighlight({
   // 없으면 null — Escape/모드-OFF 핸들러가 no-op 가드로 쓴다.
   const cancelDragRef = useRef<(() => void) | null>(null);
 
-  const areaCaptureActive = areaMode || altHeld;
+  const areaCaptureActive = areaModeOn || altHeld;
 
   // Alt 홀드 추적 + Escape. 하나의 keydown 리스너에 모은다 — 마운트 동안
   // 항상 붙어 있고 모드와 무관하다(Escape는 드래그가 없으면 아무것도 안
@@ -106,8 +113,6 @@ export function usePdfAreaHighlight({
   useEffect(() => {
     if (!areaCaptureActive) cancelDragRef.current?.();
   }, [areaCaptureActive]);
-
-  const toggleAreaMode = useCallback(() => setAreaMode((v) => !v), []);
 
   const onPageMouseDown = useCallback(
     (
@@ -166,9 +171,7 @@ export function usePdfAreaHighlight({
 
   return {
     areaCaptureActive,
-    areaMode,
     dragPreview,
     onPageMouseDown,
-    toggleAreaMode,
   };
 }

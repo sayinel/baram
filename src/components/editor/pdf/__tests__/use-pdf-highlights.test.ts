@@ -209,6 +209,7 @@ describe("usePdfHighlights", () => {
             rootPath: ROOT,
             scale: 1,
             scrollToPage: vi.fn(),
+            textModeActive: true,
           }),
         { initialProps: { filePath: FILE_PATH } },
       );
@@ -258,6 +259,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       await waitFor(() =>
@@ -301,6 +303,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       await waitFor(() =>
@@ -339,6 +342,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       await waitFor(() =>
@@ -386,6 +390,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       await waitFor(() =>
@@ -424,6 +429,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
 
@@ -474,6 +480,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       await waitFor(() =>
@@ -517,6 +524,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -555,6 +563,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -624,6 +633,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -691,6 +701,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -750,6 +761,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       await waitFor(() =>
@@ -791,6 +803,7 @@ describe("usePdfHighlights", () => {
             rootPath: ROOT,
             scale: 1,
             scrollToPage: vi.fn(),
+            textModeActive: true,
           }),
         { initialProps: { filePath: FILE_PATH } },
       );
@@ -860,6 +873,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -915,6 +929,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -946,6 +961,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -979,6 +995,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -1016,6 +1033,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       act(() => result.current.registerPageEl(1, pageEl));
@@ -1038,6 +1056,54 @@ describe("usePdfHighlights", () => {
     });
   });
 
+  // §276.3.1 — clicking an EXISTING highlight must open its management
+  // popup regardless of mode. This hook doesn't even take an "area mode"
+  // parameter (only PdfPreview's mousedown routing knows about that), so
+  // the only mode this level can vary is textModeActive — proving it here
+  // for both values pins the property this hook is actually responsible
+  // for: handlePageMouseDown's hit-test never consults textModeActive.
+  describe("§276.3.1 existing-highlight management is mode-independent", () => {
+    it.each([true, false])(
+      "opens the management popup on hit when textModeActive is %s",
+      async (textModeActive) => {
+        readSidecar.mockResolvedValue({
+          companion: "highlights/papers/attention.md",
+          highlights: [HIGHLIGHT],
+          pdf: "papers/attention.pdf",
+          version: 1,
+        });
+
+        const { result } = renderHook(() =>
+          usePdfHighlights({
+            filePath: FILE_PATH,
+            pages: [fakePage(1)],
+            pagesReady: true,
+            rootPath: ROOT,
+            scale: 1,
+            scrollToPage: vi.fn(),
+            textModeActive,
+          }),
+        );
+        await waitFor(() =>
+          expect(result.current.getPageHighlights(1)).toHaveLength(1),
+        );
+
+        let hit: boolean | undefined;
+        act(() => {
+          hit = result.current.handlePageMouseDown(
+            1,
+            identityViewport(),
+            { left: 0, top: 0 },
+            10,
+            10,
+          );
+        });
+        expect(hit).toBe(true);
+        expect(result.current.popupProps?.existing?.id).toBe("existing1");
+      },
+    );
+  });
+
   describe("§276.3 area highlight wiring", () => {
     it("is disabled when the PDF is outside a vault (no rootPath)", () => {
       const { result } = renderHook(() =>
@@ -1048,6 +1114,7 @@ describe("usePdfHighlights", () => {
           rootPath: null,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       expect(result.current.highlightsEnabled).toBe(false);
@@ -1062,6 +1129,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       expect(result.current.highlightsEnabled).toBe(true);
@@ -1076,6 +1144,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
 
@@ -1101,6 +1170,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
 
@@ -1148,6 +1218,7 @@ describe("usePdfHighlights", () => {
           rootPath: ROOT,
           scale: 1,
           scrollToPage: vi.fn(),
+          textModeActive: true,
         }),
       );
       await waitFor(() =>

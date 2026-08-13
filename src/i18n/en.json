@@ -537,7 +537,8 @@
   "pdfToolbar.prevPage": "Previous page",
   "pdfToolbar.nextPage": "Next page",
   "pdfToolbar.find": "Find in PDF",
-  "pdfToolbar.areaMode": "Area highlight — drag to draw (or Alt+drag anywhere)",
+  "pdfToolbar.areaMode": "Area highlight mode — drag to draw (or Alt+drag anywhere)",
+  "pdfToolbar.textMode": "Text highlight mode — select text to highlight it",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",

@@ -33,6 +33,7 @@ import { PdfPage } from "./PdfPage";
 import { PdfToolbar } from "./PdfToolbar";
 import { usePdfAreaHighlight } from "./use-pdf-area-highlight";
 import { usePdfFind } from "./use-pdf-find";
+import { usePdfHighlightMode } from "./use-pdf-highlight-mode";
 import { usePdfHighlights } from "./use-pdf-highlights";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -216,6 +217,14 @@ export const PdfPreview = memo(function PdfPreview({
     scrollToPage(Math.max(currentPage - 1, 1));
   }, [currentPage, scrollToPage]);
 
+  // §276.3.1 세 상태(none/text/area) 하나의 공유 enum — 상호 배타성은 이
+  // 하나의 변수라는 성질에서 나온다(두 토글이 서로를 알 필요가 없다). 텍스트
+  // 선택 팝업(usePdfHighlights → usePdfSelectionPopup)과 영역 드래그
+  // (usePdfAreaHighlight) 둘 다 이 값을 읽기만 한다.
+  const highlightMode = usePdfHighlightMode();
+  const textModeActive = highlightMode.mode === "text";
+  const areaModeOn = highlightMode.mode === "area";
+
   // §274 사이드카 로드 + 히트 테스트 + 선택 팝업 배선. rootPath가 없으면
   // (vault 밖 단일 파일 모드) 내부적으로 비활성화된다.
   const {
@@ -234,6 +243,7 @@ export const PdfPreview = memo(function PdfPreview({
     rootPath,
     scale,
     scrollToPage,
+    textModeActive,
   });
 
   // §276.3 영역 하이라이트 — highlightsEnabled로 vault 밖에서는 완전히
@@ -241,6 +251,7 @@ export const PdfPreview = memo(function PdfPreview({
   // 훅 자체는 vault 여부를 몰라도 된다 — 이 컴포넌트(합성 계층)가 그
   // 정책을 쥔다.
   const areaHighlight = usePdfAreaHighlight({
+    areaModeOn,
     onAreaHighlightDrawn,
   });
   const areaCaptureActive =
@@ -325,15 +336,19 @@ export const PdfPreview = memo(function PdfPreview({
           의미 없으므로 렌더하지 않는다. */}
       {!error && pagesReady && (
         <PdfToolbar
-          areaMode={areaHighlight.areaMode}
+          areaMode={areaModeOn}
           currentPage={currentPage}
           onNextPage={onNextPage}
           onPrevPage={onPrevPage}
           onToggleAreaMode={
-            highlightsEnabled ? areaHighlight.toggleAreaMode : undefined
+            highlightsEnabled ? highlightMode.toggleAreaMode : undefined
           }
           onToggleFind={() => onToggleFind?.()}
+          onToggleTextMode={
+            highlightsEnabled ? highlightMode.toggleTextMode : undefined
+          }
           pageCount={pages.length}
+          textMode={textModeActive}
         />
       )}
     </div>

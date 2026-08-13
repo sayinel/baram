@@ -1,4 +1,7 @@
 // §276.3 usePdfAreaHighlight — mode/alt gating, drag lifecycle, cancel paths.
+// §276.3.1 — the hook no longer owns the toggle itself; areaModeOn is a prop
+// (from the shared use-pdf-highlight-mode.ts enum), so these tests drive it
+// via renderHook's rerender rather than calling a toggle method on the hook.
 import type { ViewportLike } from "../pdf-highlight-geom";
 
 import { act, renderHook } from "@testing-library/react";
@@ -43,32 +46,28 @@ describe("usePdfAreaHighlight", () => {
     fireKeyUp("Alt");
   });
 
-  it("toggleAreaMode flips areaMode and areaCaptureActive", () => {
-    const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+  it("areaModeOn drives areaCaptureActive directly", () => {
+    const { rerender, result } = renderHook(
+      (props: { areaModeOn: boolean }) =>
+        usePdfAreaHighlight({ ...props, onAreaHighlightDrawn }),
+      { initialProps: { areaModeOn: false } },
     );
-    expect(result.current.areaMode).toBe(false);
     expect(result.current.areaCaptureActive).toBe(false);
 
-    act(() => result.current.toggleAreaMode());
-    expect(result.current.areaMode).toBe(true);
+    act(() => rerender({ areaModeOn: true }));
     expect(result.current.areaCaptureActive).toBe(true);
 
-    act(() => result.current.toggleAreaMode());
-    expect(result.current.areaMode).toBe(false);
+    act(() => rerender({ areaModeOn: false }));
     expect(result.current.areaCaptureActive).toBe(false);
   });
 
-  it("holding Alt activates capture without flipping the toggle's own state", () => {
+  it("holding Alt activates capture even while areaModeOn stays false", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn }),
     );
 
     act(() => fireKeyDown("Alt"));
     expect(result.current.areaCaptureActive).toBe(true);
-    // aria-pressed는 이 값만 반영해야 한다 — Alt를 누르고 있다고 토글
-    // 버튼이 눌린 것처럼 보이면 안 된다(브리프의 명시적 요구).
-    expect(result.current.areaMode).toBe(false);
 
     act(() => fireKeyUp("Alt"));
     expect(result.current.areaCaptureActive).toBe(false);
@@ -76,7 +75,7 @@ describe("usePdfAreaHighlight", () => {
 
   it("window blur clears a stuck Alt hold", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn }),
     );
     act(() => fireKeyDown("Alt"));
     expect(result.current.areaCaptureActive).toBe(true);
@@ -87,7 +86,7 @@ describe("usePdfAreaHighlight", () => {
 
   it("a meaningful drag calls onAreaHighlightDrawn with the converted rect", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
     );
 
     act(() => {
@@ -112,7 +111,7 @@ describe("usePdfAreaHighlight", () => {
 
   it("clears the live preview after the drag completes", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
     );
     act(() => {
       result.current.onPageMouseDown(
@@ -135,7 +134,7 @@ describe("usePdfAreaHighlight", () => {
 
   it("a click with no real movement creates nothing", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
     );
     act(() => {
       result.current.onPageMouseDown(
@@ -154,7 +153,7 @@ describe("usePdfAreaHighlight", () => {
 
   it("Escape mid-drag cancels cleanly — a later mouseup does nothing (listeners were removed)", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
     );
     act(() => {
       result.current.onPageMouseDown(
@@ -176,11 +175,12 @@ describe("usePdfAreaHighlight", () => {
     expect(onAreaHighlightDrawn).not.toHaveBeenCalled();
   });
 
-  it("toggling the mode off mid-drag cancels without creating anything", () => {
-    const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+  it("turning areaModeOn off mid-drag cancels without creating anything", () => {
+    const { rerender, result } = renderHook(
+      (props: { areaModeOn: boolean }) =>
+        usePdfAreaHighlight({ ...props, onAreaHighlightDrawn }),
+      { initialProps: { areaModeOn: true } },
     );
-    act(() => result.current.toggleAreaMode()); // mode ON
     act(() => {
       result.current.onPageMouseDown(
         1,
@@ -192,16 +192,16 @@ describe("usePdfAreaHighlight", () => {
     });
     act(() => fireMouseMove(200, 200));
 
-    act(() => result.current.toggleAreaMode()); // mode OFF mid-drag
+    act(() => rerender({ areaModeOn: false })); // mode OFF mid-drag
     expect(result.current.dragPreview).toBeNull();
 
     act(() => fireMouseUp(200, 200));
     expect(onAreaHighlightDrawn).not.toHaveBeenCalled();
   });
 
-  it("releasing Alt mid-drag cancels the same way toggling off does", () => {
+  it("releasing Alt mid-drag cancels the same way turning the mode off does", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn }),
+      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn }),
     );
     act(() => fireKeyDown("Alt"));
     act(() => {
@@ -222,13 +222,12 @@ describe("usePdfAreaHighlight", () => {
     expect(onAreaHighlightDrawn).not.toHaveBeenCalled();
   });
 
-  it("Alt+drag and the toggle reach the identical code path", () => {
-    // 인스턴스 A — 토글로 진입.
+  it("Alt+drag (mode off) and the mode toggle (Alt released) reach the identical code path", () => {
+    // 인스턴스 A — areaModeOn: true(토글로 진입한 것과 동등)로 진입.
     const drawnA = vi.fn();
     const a = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn: drawnA }),
+      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn: drawnA }),
     );
-    act(() => a.result.current.toggleAreaMode());
     act(() => {
       a.result.current.onPageMouseDown(
         2,
@@ -246,7 +245,7 @@ describe("usePdfAreaHighlight", () => {
     // 대신, 인스턴스 A를 완전히 unmount하고 B를 새로 만든다.
     const drawnB = vi.fn();
     const b = renderHook(() =>
-      usePdfAreaHighlight({ onAreaHighlightDrawn: drawnB }),
+      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn: drawnB }),
     );
     act(() => fireKeyDown("Alt"));
     act(() => {

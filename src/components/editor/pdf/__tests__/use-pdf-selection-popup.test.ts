@@ -69,7 +69,10 @@ describe("usePdfSelectionPopup", () => {
     sel?.addRange(range);
   }
 
-  function setup(onSelect: (p: NewSelectionPayload) => void) {
+  function setup(
+    onSelect: (p: NewSelectionPayload) => void,
+    textModeActive = true,
+  ) {
     const pageEl = document.createElement("div");
     pageEl.textContent = "Attention mechanisms allow modeling";
     document.body.appendChild(pageEl);
@@ -86,6 +89,7 @@ describe("usePdfSelectionPopup", () => {
         pagesByNumberRef,
         pdfRelPath: "papers/attention.pdf",
         scale: 1,
+        textModeActive,
       }),
     );
 
@@ -166,5 +170,79 @@ describe("usePdfSelectionPopup", () => {
     // 병합된 결과는 두 rect가 아니라 왼쪽 끝(0)에서 오른쪽 끝(140)까지 하나.
     expect(rects).toHaveLength(1);
     expect(rects[0]).toMatchObject({ w: 140, x: 0 });
+  });
+
+  // §276.3.1 — the user's actual requirement: with no highlight mode active,
+  // plain drag-to-select must not be interrupted by a popup. This is the
+  // gate every other test in this file already exercises implicitly
+  // (textModeActive defaults to true above); these pin the OFF state
+  // explicitly, on both trigger paths (keyboard selectionchange and mouse
+  // drag mouseup).
+  describe("§276.3.1 text-highlight mode gating", () => {
+    it("never opens on a keyboard selection when textModeActive is false", () => {
+      const onSelect = vi.fn();
+      const { pageEl } = setup(onSelect, false);
+
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("never opens on a mouse drag selection when textModeActive is false", () => {
+      const onSelect = vi.fn();
+      const { pageEl } = setup(onSelect, false);
+
+      act(() => {
+        document.dispatchEvent(new Event("mousedown"));
+      });
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("mouseup"));
+      });
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("opens normally once textModeActive turns on", () => {
+      const onSelect = vi.fn();
+      const pageEl = document.createElement("div");
+      pageEl.textContent = "Attention mechanisms allow modeling";
+      document.body.appendChild(pageEl);
+      const pageElsRef = {
+        current: new Map<number, HTMLElement>([[1, pageEl]]),
+      };
+      const pagesByNumberRef = {
+        current: new Map<number, PDFPageProxy>([[1, fakePage(1)]]),
+      };
+
+      const { rerender } = renderHook(
+        (props: { textModeActive: boolean }) =>
+          usePdfSelectionPopup({
+            onSelect,
+            pageElsRef,
+            pagesByNumberRef,
+            pdfRelPath: "papers/attention.pdf",
+            scale: 1,
+            textModeActive: props.textModeActive,
+          }),
+        { initialProps: { textModeActive: false } },
+      );
+
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      expect(onSelect).not.toHaveBeenCalled();
+
+      act(() => rerender({ textModeActive: true }));
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      expect(onSelect).toHaveBeenCalledTimes(1);
+    });
   });
 });

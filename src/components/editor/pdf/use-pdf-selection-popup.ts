@@ -38,6 +38,12 @@ export interface NewSelectionPayload {
  * 만든 선택(Shift+Arrow, Cmd+A 등)은 마우스 이벤트가 전혀 없어
  * isMouseDown이 계속 false이므로 selectionchange가 예전과 똑같이 즉시
  * 연다 — 회귀 없음.
+ *
+ * §276.3.1 텍스트 하이라이트 모드 게이팅 — 세 가지 상태 중 "모드 없음"에서는
+ * 평범한 드래그 선택 + `Cmd+C`가 방해받지 않아야 한다는 사용자 판단으로,
+ * 이 감지 자체를 textModeActive로 끈다. 이 effect의 나머지(구멍 병합,
+ * mouseup 시점 재-읽기, 앵커 계산)는 세 번의 실사용 리포트로 다듬어진
+ * 로직이라 손대지 않는다 — 게이트 한 줄만 추가한다.
  */
 export function usePdfSelectionPopup({
   onSelect,
@@ -45,6 +51,7 @@ export function usePdfSelectionPopup({
   pagesByNumberRef,
   pdfRelPath,
   scale,
+  textModeActive,
 }: {
   onSelect: (payload: NewSelectionPayload) => void;
   pageElsRef: { current: Map<number, HTMLElement> };
@@ -53,9 +60,12 @@ export function usePdfSelectionPopup({
    * 같은 이름 변수 doc comment 참조. */
   pdfRelPath: null | string;
   scale: number;
+  /** §276.3.1 텍스트 하이라이트 모드가 꺼져 있으면(기본값) 이 감지 자체를
+   * 걸지 않는다 — 평범한 텍스트 선택이 팝업 없이 그대로 동작해야 한다. */
+  textModeActive: boolean;
 }): void {
   useEffect(() => {
-    if (!pdfRelPath) return;
+    if (!pdfRelPath || !textModeActive) return;
     const isMouseDownRef = { current: false };
 
     function trySelectionPopup() {
@@ -125,5 +135,5 @@ export function usePdfSelectionPopup({
     // onSelect는 매 렌더 새 클로저를 만들 수 있는 콜백이라 deps에서 뺀다 —
     // 호출부는 useCallback으로 안정된 참조를 넘긴다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfRelPath, scale]);
+  }, [pdfRelPath, scale, textModeActive]);
 }
