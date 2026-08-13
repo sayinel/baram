@@ -318,6 +318,15 @@ export function usePdfHighlights({
           .catch((err: unknown) => reportWriteFailure("create highlight", err));
       }
       setPopup(null);
+      // §274 UX fix round 2 (defect B) — 색을 고르면 브라우저 네이티브 선택을
+      // 지운다. popup.rects/popup.existing은 이 시점 이전에(usePdfSelectionPopup의
+      // mouseup, 또는 이전 클릭의 handlePageMouseDown) 이미 확정돼 있으므로
+      // 지금 선택을 지워도 위에서 쓴 값에 영향이 없다 — "먼저 지우면 안 된다"는
+      // 건 rects를 뽑아내기 전에 지우는 경우 얘기다. 지우면 selectionchange가
+      // 한 번 더 뜨지만 rangeCount===0이라 trySelectionPopup이 곧바로
+      // 리턴하므로(use-pdf-selection-popup.ts) 팝업이 즉시 재생성되는 회귀는
+      // 없다 — use-pdf-highlights.test.ts에서 이 경로를 직접 고정해 둔다.
+      window.getSelection()?.removeAllRanges();
     },
     [
       absCompanionPath,

@@ -557,6 +557,79 @@ describe("usePdfHighlights", () => {
       );
     });
   });
+
+  describe("defect B — clears the browser selection after a highlight is committed", () => {
+    it("clears the native text selection once a colour is picked for a fresh selection", () => {
+      const pageEl = document.createElement("div");
+      pageEl.textContent = "Attention mechanisms allow modeling";
+      document.body.appendChild(pageEl);
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      act(() => result.current.registerPageEl(1, pageEl));
+
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      expect(result.current.popupProps).not.toBeNull();
+      // 전제 확인 — 색을 고르기 전엔 진짜로 선택돼 있어야 한다.
+      expect(window.getSelection()?.rangeCount).toBeGreaterThan(0);
+
+      act(() => {
+        result.current.popupProps?.onPickColor("green");
+      });
+
+      expect(window.getSelection()?.rangeCount).toBe(0);
+    });
+
+    it("does not reopen the popup when clearing the selection fires its own selectionchange", () => {
+      // 실제 브라우저는 removeAllRanges() 뒤에 selectionchange를 스스로 한 번
+      // 더 낸다(jsdom은 그렇지 않아 여기서 직접 흉내낸다) — 그 이벤트가
+      // 방금 닫은 팝업을 재생성하면 회귀다. use-pdf-selection-popup.ts의
+      // trySelectionPopup은 rangeCount===0이면 즉시 리턴하므로 열리지 않아야
+      // 한다.
+      const pageEl = document.createElement("div");
+      pageEl.textContent = "Attention mechanisms allow modeling";
+      document.body.appendChild(pageEl);
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      act(() => result.current.registerPageEl(1, pageEl));
+
+      selectAllTextIn(pageEl);
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      expect(result.current.popupProps).not.toBeNull();
+
+      act(() => {
+        result.current.popupProps?.onPickColor("green");
+      });
+      expect(result.current.popupProps).toBeNull();
+
+      act(() => {
+        document.dispatchEvent(new Event("selectionchange"));
+      });
+      expect(result.current.popupProps).toBeNull();
+    });
+  });
 });
 
 /** pageEl의 텍스트 전체를 실제 Selection으로 선택한다(비어있지 않은, 접히지 않은 선택). */
