@@ -95,7 +95,9 @@ describe("BlockReferenceView: highlight ref preview", () => {
     });
   }
 
-  async function mount(): Promise<HTMLElement> {
+  async function mount(
+    extraAttrs: Record<string, unknown> = {},
+  ): Promise<HTMLElement> {
     editor = new Editor({
       content: "<p>seed</p>",
       extensions: createBaramExtensions({ onNavigateBlockRef: onNavigate }),
@@ -109,7 +111,12 @@ describe("BlockReferenceView: highlight ref preview", () => {
             type: "paragraph",
             content: [
               {
-                attrs: { blockId: BLOCK_ID, display: DISPLAY, target: TARGET },
+                attrs: {
+                  blockId: BLOCK_ID,
+                  display: DISPLAY,
+                  target: TARGET,
+                  ...extraAttrs,
+                },
                 type: "blockReference",
               },
             ],
@@ -269,5 +276,124 @@ describe("BlockReferenceView: highlight ref preview", () => {
     fireEvent.click(el.querySelector("img") as HTMLImageElement);
 
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe("BlockReferenceView: §276.6 per-reference width", () => {
+  let editor: Editor;
+
+  beforeEach(() => {
+    preview.current = IDLE;
+  });
+
+  afterEach(() => {
+    editor.destroy();
+    vi.clearAllMocks();
+  });
+
+  async function flush(): Promise<void> {
+    await act(async () => {
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  }
+
+  async function mount(
+    extraAttrs: Record<string, unknown> = {},
+  ): Promise<HTMLElement> {
+    editor = new Editor({
+      content: "<p>seed</p>",
+      extensions: createBaramExtensions({ onNavigateBlockRef: vi.fn() }),
+    });
+    render(<EditorContent editor={editor} />);
+    act(() => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                attrs: {
+                  blockId: BLOCK_ID,
+                  display: DISPLAY,
+                  target: TARGET,
+                  ...extraAttrs,
+                },
+                type: "blockReference",
+              },
+            ],
+          },
+        ],
+      });
+    });
+    await flush();
+    return editor.view.dom.querySelector(".block-reference") as HTMLElement;
+  }
+
+  it("renders a right-edge resize handle on a ready area preview", async () => {
+    preview.current = READY;
+    const el = await mount();
+
+    expect(el.querySelectorAll(".media-resize-handle")).toHaveLength(1);
+    expect(el.querySelector(".media-resize-handle-right")).not.toBeNull();
+    // 왼쪽 가장자리는 문단의 글자에 고정되어 있다 — 왼쪽 핸들은 크기가 아니라
+    // 위치를 옮기려 드는 것이라 애초에 붙이지 않는다.
+    expect(el.querySelector(".media-resize-handle-left")).toBeNull();
+  });
+
+  it("does not render a resize handle on the TEXT branch", async () => {
+    // ‼️ §276.6은 영역 참조 전용이다. 텍스트 참조에 핸들이 붙으면 드래그 한 번이
+    // 그릴 그림도 없는 참조의 마크다운에 |w=NN을 적어 넣는다.
+    preview.current = READY_TEXT;
+    const el = await mount();
+
+    expect(el.querySelector(".media-resize-handle")).toBeNull();
+  });
+
+  it.each([
+    ["idle", IDLE],
+    ["loading", { ...IDLE, status: "loading" as const }],
+    ["unavailable", { ...IDLE, status: "unavailable" as const }],
+    [
+      "unavailable with a stale src",
+      { ...READY, status: "unavailable" as const },
+    ],
+  ])(
+    "does not render a resize handle while the preview is %s",
+    async (_label, state) => {
+      preview.current = state;
+      const el = await mount();
+
+      expect(el.querySelector(".media-resize-handle")).toBeNull();
+    },
+  );
+
+  it("applies a stored width as a percentage on the wrapper", async () => {
+    preview.current = READY;
+    const el = await mount({ width: 60 });
+
+    expect(el.style.width).toBe("60%");
+    // links.css는 이 표시로만 크롭에 width:100%를 준다 — 없으면 래퍼만 넓어지고
+    // 그림은 원래 크기 그대로 남는다.
+    expect(el.getAttribute("data-sized")).toBe("true");
+  });
+
+  it("leaves an unsized reference at its natural size", async () => {
+    preview.current = READY;
+    const el = await mount();
+
+    expect(el.style.width).toBe("");
+    expect(el.hasAttribute("data-sized")).toBe(false);
+  });
+
+  it("ignores a width on the TEXT branch", async () => {
+    // 텍스트 칩에 60%를 먹이면 문장이 잘린 칸에 갇힌다. 너비는 크롭이 실제로
+    // 그려진 분기에서만 의미가 있다.
+    preview.current = READY_TEXT;
+    const el = await mount({ width: 60 });
+
+    expect(el.style.width).toBe("");
+    expect(el.hasAttribute("data-sized")).toBe(false);
   });
 });

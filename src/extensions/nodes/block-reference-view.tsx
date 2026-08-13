@@ -7,7 +7,11 @@
 //
 // Both are display-time affordances only: the markdown on disk is the same
 // `((target#^blockId|display))` in every branch.
-import { useCallback } from "react";
+//
+// §276.6 …with one exception. An area preview can be resized by dragging its
+// right edge, and that width IS written to the markdown — `|w=NN` — because
+// the same crop wants a different size in different notes.
+import { useCallback, useRef } from "react";
 
 import type { BlockReferenceOptions } from "./block-reference";
 import type { NodeViewProps } from "@tiptap/react";
@@ -15,16 +19,19 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 
 import { usePdfHighlightRefPreview } from "../../components/editor/pdf/use-pdf-highlight-ref-preview";
+import { useInlineResize } from "./views/use-inline-resize";
 
 export function BlockReferenceView({
   node,
   selected,
   extension,
+  updateAttributes,
 }: NodeViewProps) {
-  const { target, blockId, display } = node.attrs as {
+  const { target, blockId, display, width } = node.attrs as {
     blockId: string;
     display: null | string;
     target: string;
+    width: null | number;
   };
 
   // Display text priority: display > "target > ^blockId" > "^blockId"
@@ -47,6 +54,19 @@ export function BlockReferenceView({
   const storedText = ready && preview.kind === "text" ? preview.text : null;
   const fullText =
     storedText && storedText.trim().length > 0 ? storedText : null;
+
+  // §276.6 Resize is keyed off `previewSrc`, i.e. off the branch that actually
+  // paints the crop — not off `kind === "area"` alone. A handle on a chip that
+  // is still loading (or on the text branch, or on a plain block reference)
+  // would let a drag write `|w=NN` into markdown for a reference that has no
+  // rendered size to speak of.
+  const wrapperRef = useRef<HTMLElement | null>(null);
+  const { dragPct, startResize } = useInlineResize(wrapperRef, (pct) => {
+    updateAttributes({ width: pct });
+  });
+  // The drag repaints from `dragPct` alone — the attribute (and the markdown)
+  // is only written on mouseup, so a drag costs no transactions.
+  const effectiveWidth = previewSrc ? (dragPct ?? width) : null;
 
   // Cmd+Click navigates to block
   const handleClick = useCallback(
@@ -72,8 +92,16 @@ export function BlockReferenceView({
       // frame is what marks it as a reference rather than prose.
       data-area-preview={previewSrc ? "true" : undefined}
       data-block-id={blockId}
+      // links.css keys the crop's `width: 100%` off this: the wrapper carries
+      // the percentage, and the image only fills it when there IS one —
+      // otherwise a natural-size crop would stretch to the paragraph.
+      data-sized={effectiveWidth == null ? undefined : "true"}
       data-target={target}
       onClick={handleClick}
+      ref={wrapperRef}
+      style={
+        effectiveWidth == null ? undefined : { width: `${effectiveWidth}%` }
+      }
     >
       {previewSrc ? (
         <img
@@ -95,6 +123,22 @@ export function BlockReferenceView({
         />
       ) : (
         (fullText ?? text)
+      )}
+      {previewSrc && (
+        <>
+          {/* §276.6 Right edge only: the left edge is pinned by the text the
+              reference sits in, so a left handle could only move the crop, not
+              size it. A <span>, not the <div> the media blocks use — this is
+              inline content inside a paragraph. */}
+          <span
+            className="media-resize-handle media-resize-handle-right"
+            onMouseDown={startResize}
+            title="Drag to resize"
+          />
+          {dragPct != null && (
+            <span className="media-resize-label">{dragPct}%</span>
+          )}
+        </>
       )}
     </NodeViewWrapper>
   );

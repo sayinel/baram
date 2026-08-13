@@ -189,6 +189,7 @@
    so the chip's own frame has to go: keeping it draws a tinted accent border
    around a picture, which reads as a rendering bug rather than a link. */
 .block-reference[data-area-preview="true"] {
+  position: relative; /* §276.6 anchor for the resize handle and its % label */
   display: inline-block;
 
   /* The <img>'s own `max-width: 100%` resolves against THIS span, and an
@@ -214,6 +215,24 @@
   height: auto;
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
+}
+
+/* §276.6 Per-reference width. The percentage lives on the WRAPPER (it resolves
+   against the paragraph; the wrapper is shrink-to-fit, so a percentage on the
+   image itself would resolve against a box the image is sizing — circular).
+   The crop then fills it, which is what makes the drag visible at all: the
+   image's own `max-width: 100%` can shrink it but never grow it back. Only
+   when a width is set — an unsized crop keeps its natural size. */
+.block-reference[data-area-preview="true"][data-sized="true"]
+  .block-reference-area-image {
+  width: 100%;
+}
+
+/* The media chrome's own reveal rules key off .media-resize-frame /
+   .image-figure, neither of which exists here, so the inline wrapper brings its
+   own. Handle and label styling is reused as-is from media-block.css. */
+.tiptap .block-reference[data-area-preview="true"]:hover .media-resize-handle {
+  opacity: 1;
 }
 
 /* §30c Block Embed — bordered preview container */
