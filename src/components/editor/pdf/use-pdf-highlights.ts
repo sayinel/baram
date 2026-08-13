@@ -1,73 +1,33 @@
 // §274 하이라이트 오버레이 + 선택 팝업 배선. PdfPreview가 소유한다 —
 // use-pdf-find.ts와 같은 자리, 같은 책임 분리(사이드카/DOM 상태는 여기,
 // 좌표 변환은 pdf-highlight-geom.ts, IPC 오케스트레이션은
-// pdf-highlight-actions.ts/pdf-highlight-store.ts).
+// pdf-highlight-actions.ts/pdf-highlight-store.ts, 팝업 액션 자체의 동작은
+// use-pdf-highlight-popup-actions.ts, "언제/무엇을 열지"는
+// use-pdf-selection-popup.ts).
 //
 // 하이라이트는 vault 안에서만 지원한다(사이드카·동반 노트가 vault 상대
 // 경로로 식별되므로) — pdfRelPath가 없으면(단일 파일 모드, 또는 vault
 // 밖의 PDF) 조용히 비활성화된다.
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { PdfRect, ViewportLike } from "./pdf-highlight-geom";
-import type {
-  HighlightColor,
-  Sidecar,
-  StoredHighlight,
-} from "./pdf-highlight-sidecar";
+import type { ViewportLike } from "./pdf-highlight-geom";
+import type { Sidecar, StoredHighlight } from "./pdf-highlight-sidecar";
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
+import type { PopupState } from "./use-pdf-highlight-popup-actions";
 import type { NewSelectionPayload } from "./use-pdf-selection-popup";
 import type { PDFPageProxy } from "pdfjs-dist";
 
-import { useTranslation } from "../../../i18n/useTranslation";
-import {
-  escapeBlockRefTarget,
-  generateBlockId,
-  serializeBlockRef,
-} from "../../../pipeline/block-id";
-import { useUIStore } from "../../../stores/ui/ui";
-import { logger } from "../../../utils/logger";
+import { escapeBlockRefTarget } from "../../../pipeline/block-id";
 import { relativeToRoot } from "../../../utils/path-utils";
-import {
-  addHighlightForExistingBlock,
-  createTextHighlight,
-  deleteHighlightById,
-  updateHighlightColor,
-} from "./pdf-highlight-actions";
 import { hitTestRects } from "./pdf-highlight-hittest";
+import { PendingRefBlockCache } from "./pdf-highlight-selection-cache";
 import { companionPathFor, sidecarPathFor } from "./pdf-highlight-sidecar";
-import {
-  appendHighlightBlock,
-  readHighlightBlockText,
-  readSidecar,
-} from "./pdf-highlight-store";
-import { buildRefDisplay } from "./pdf-ref-display";
+import { readSidecar } from "./pdf-highlight-store";
 import { usePdfHighlightFlash } from "./use-pdf-highlight-flash";
+import { usePdfHighlightPopupActions } from "./use-pdf-highlight-popup-actions";
 import { usePdfSelectionPopup } from "./use-pdf-selection-popup";
 
 const EMPTY_HIGHLIGHTS: StoredHighlight[] = [];
-
-type PopupState =
-  | {
-      anchor: { left: number; top: number };
-      /**
-       * §274 I2 Copy reference가 이미 이 선택에 대해 동반 노트 블록을
-       * 만들었으면 그 id. null이면 아직 아무것도 안 만들었다 — 색을 고르면
-       * createTextHighlight(새 id)가, 이미 있으면 addHighlightForExistingBlock
-       * (같은 id 재사용)이 갈린다. 이 필드가 없으면 Copy reference 뒤에 색을
-       * 고를 때 두 번째 블록이 중복으로 생긴다.
-       */
-      blockId: null | string;
-      kind: "new";
-      pageNumber: number;
-      rects: PdfRect[];
-      text: string;
-    }
-  | {
-      anchor: { left: number; top: number };
-      existing: StoredHighlight;
-      kind: "existing";
-      pageNumber: number;
-    };
 
 export function usePdfHighlights({
   filePath,
@@ -102,7 +62,6 @@ export function usePdfHighlights({
   popupProps: null | PdfSelectionPopupProps;
   registerPageEl: (pageNumber: number, el: HTMLElement | null) => void;
 } {
-  const { t } = useTranslation();
   const [sidecar, setSidecar] = useState<null | Sidecar>(null);
   const [popup, setPopup] = useState<null | PopupState>(null);
   // §275.6 ref → PDF jump: once this PDF's own sidecar (below) has this
@@ -116,12 +75,13 @@ export function usePdfHighlights({
   const pageElsRef = useRef<Map<number, HTMLElement>>(new Map());
   const pagesByNumberRef = useRef<Map<number, PDFPageProxy>>(new Map());
   pagesByNumberRef.current = new Map(pages.map((p) => [p.pageNumber, p]));
-  // §274 B.2 onCopyRef의 "아직 블록 없음" 분기를 가드한다 — appendHighlightBlock이
-  // 끝나기 전까지 popup.blockId는 null로 남아 있어, 그 창에서 또 클릭하면 같은
-  // 선택에 두 번째 문단이 생긴다(§277 non-destructive delete라 영구적). popup
-  // state가 아니라 ref로 막는 이유: React state 업데이트는 비동기라 popup.blockId
-  // 자체가 바로 이 창을 못 막는다.
-  const copyRefAppendInFlightRef = useRef(false);
+  // §274 round 4 — Copy reference가 아직 색을 고르지 않은 선택에 대해 미리
+  // 만들어 둔 동반 노트 블록 id를, 팝업이 닫혔다 다시 열려도 재사용할 수
+  // 있게 붙잡아 둔다. onNewSelection(아래)이 읽고, use-pdf-highlight-popup-
+  // actions.ts의 onCopyRef/onPickColor가 쓰고 지운다 — 세 곳 모두 같은
+  // 인스턴스를 봐야 하므로 여기(공통 부모)에서 만들어 ref로 내려보낸다.
+  // 자세한 설계(키 구성, 수명)는 그 모듈의 doc comment 참조.
+  const pendingRefBlockCacheRef = useRef(new PendingRefBlockCache());
 
   const pdfRelPath = rootPath ? relativeToRoot(filePath, rootPath) : null;
   const absSidecarPath =
@@ -139,46 +99,6 @@ export function usePdfHighlights({
     ? escapeBlockRefTarget(companionPathFor(pdfRelPath).replace(/\.md$/i, ""))
     : null;
 
-  // §274 I1 사이드카/동반 노트 쓰기가 실패했는데 조용히 삼키면 §273.4가
-  // 금지하는 바로 그 "조용한 부분 실패"가 된다 — main.tsx의 전역
-  // unhandledrejection 핸들러가 콘솔 warn으로만 낮춰버려서, void로 던져둔
-  // 실패는 사용자에게 아무 신호도 안 남긴다(§260 Phase 5 R4가 이미 같은
-  // 교훈을 bootstrap()에 대해 기록해 두었다). 로그 + 토스트로 반드시 알린다.
-  const reportWriteFailure = useCallback(
-    (action: string, err: unknown) => {
-      logger.error(`[pdf-highlight] ${action} failed:`, err);
-      useUIStore.getState().showToast(t("pdfHighlight.saveFailed"), "error");
-    },
-    [t],
-  );
-
-  const reportCopyFailure = useCallback(
-    (action: string, err: unknown) => {
-      logger.error(`[pdf-highlight] ${action} failed:`, err);
-      useUIStore.getState().showToast(t("pdfHighlight.copyFailed"), "error");
-    },
-    [t],
-  );
-
-  // 클립보드 API 자체의 실패(포커스 상실 등, 흔하고 저위험)는 warn만 남긴다 —
-  // 텍스트/참조가 이미 준비된 뒤의 마지막 한 걸음이 실패한 것이라, 위
-  // reportCopyFailure(토스트까지)보다 한 단계 낮게 다룬다.
-  const reportClipboardFailure = useCallback((err: unknown) => {
-    logger.warn("[pdf-highlight] clipboard write failed:", err);
-  }, []);
-
-  // §274 B.2 Copy reference/Copy text은 실패만 토스트로 알리고 성공은 아무
-  // 신호가 없었다 — 팝업이 의도적으로 안 닫히니(§274 I2) 사용자는 "복사됐나?"
-  // 확신할 방법이 없어 다시 클릭하게 되고, 그게 copyRefAppendInFlightRef가
-  // 막는 이중 클릭의 실제 유발 원인이라는 게 리뷰의 지적이다. 토스트를 고른
-  // 이유: 실패 쪽의 정확히 같은 패턴(reportWriteFailure/reportCopyFailure)을
-  // 재사용해, PdfSelectionPopup의 "순수 표시 컴포넌트" 계약(그 파일 자체
-  // 헤더 코멘트)에 새 prop을 얹지 않고 이 훅 안에서만 상태를 닫을 수 있다 —
-  // 버튼 라벨을 일시적으로 바꾸는 대안은 팝업에도 상태를 나눠 들여야 한다.
-  const reportCopySuccess = useCallback(() => {
-    useUIStore.getState().showToast(t("pdfHighlight.copied"), "info");
-  }, [t]);
-
   // PDF(또는 vault)가 바뀌면 해당 사이드카를 새로 읽고 열린 팝업을 닫는다.
   //
   // §275.6 M2: sidecar를 즉시(비동기 읽기 전에) 비운다 — 안 그러면 경로가
@@ -188,9 +108,15 @@ export function usePdfHighlights({
   // (있어도 잘못된 페이지로 스크롤한다). PdfPreview가 ref 클릭 시점에 항상
   // 언마운트돼 있어(App.tsx) 지금은 닿지 않는 경로지만, 그 전제가 바뀌면 이
   // 가드가 없으면 조용한 실패가 된다.
+  //
+  // §274 round 4: pendingRefBlockCacheRef도 같이 비운다 — 다른 문서(또는 다른
+  // vault 안의 같은 상대경로 PDF, absSidecarPath는 rootPath까지 포함하니
+  // 이 경우도 잡힌다)에서 민팅한 블록 id를 이 문서의 재선택이 이어받으면
+  // 안 되기 때문이다.
   useEffect(() => {
     setPopup(null);
     setSidecar(null);
+    pendingRefBlockCacheRef.current.clear();
     if (!absSidecarPath) return;
     let cancelled = false;
     void readSidecar(absSidecarPath).then((s) => {
@@ -257,8 +183,14 @@ export function usePdfHighlights({
   // 병합(defect 2)은 use-pdf-selection-popup.ts로 옮겼다 — 이 파일이 500줄
   // 기준을 넘어서였다(그 파일 자체 doc comment 참조). 여기서는 결과를 받아
   // "new" kind로 popup state를 채우기만 한다.
+  //
+  // §274 round 4 — blockId를 무조건 null로 두지 않는다: 이 선택이 이전에
+  // Copy reference로 이미 블록을 만들어 뒀던 바로 그 선택이면(팝업이 그
+  // 사이 닫혔더라도) pendingRefBlockCacheRef가 그 id를 갖고 있다. 있으면
+  // 재사용해, 팝업이 닫혔다 다시 열려도 §274 I2가 재발하지 않는다.
   const onNewSelection = useCallback((payload: NewSelectionPayload) => {
-    setPopup({ ...payload, blockId: null, kind: "new" });
+    const cached = pendingRefBlockCacheRef.current.get(payload);
+    setPopup({ ...payload, blockId: cached, kind: "new" });
   }, []);
   usePdfSelectionPopup({
     onSelect: onNewSelection,
@@ -268,223 +200,18 @@ export function usePdfHighlights({
     scale,
   });
 
-  const onPickColor = useCallback(
-    (color: HighlightColor) => {
-      if (!popup || !absSidecarPath) return;
-      if (popup.kind === "existing") {
-        // sidecar가 null일 수는 없다 — popup.existing은 getPageHighlights가
-        // 돌려준(즉 로드된 sidecar에서 온) 하이라이트라서다. 그래도 null을
-        // 빈 사이드카로 대신 밀어넣지 않는다 — 그러면 companion/pdf 필드가
-        // 빈 문자열로 덮여 써져 §273.2가 요구하는 기록을 잃는다.
-        if (sidecar) {
-          void updateHighlightColor(
-            absSidecarPath,
-            sidecar,
-            popup.existing.id,
-            color,
-          )
-            .then(setSidecar)
-            .catch((err: unknown) =>
-              reportWriteFailure("update highlight colour", err),
-            );
-        }
-      } else if (absCompanionPath && pdfRelPath) {
-        // §274 I2 Copy reference가 이미 블록을 만들어 뒀으면(popup.blockId)
-        // createTextHighlight로 또 만들지 않는다 — 노트에 같은 텍스트의
-        // 문단이 두 번 생기고, 먼저 복사해 둔 참조가 사이드카에 없는 id를
-        // 가리키게 된다.
-        const create = popup.blockId
-          ? addHighlightForExistingBlock({
-              absSidecarPath,
-              blockId: popup.blockId,
-              color,
-              page: popup.pageNumber,
-              pdfRelPath,
-              rects: popup.rects,
-              sidecar,
-            })
-          : createTextHighlight({
-              absCompanionPath,
-              absSidecarPath,
-              color,
-              page: popup.pageNumber,
-              pdfRelPath,
-              rects: popup.rects,
-              sidecar,
-              text: popup.text,
-            });
-        void create
-          .then(({ sidecar: next }) => setSidecar(next))
-          .catch((err: unknown) => reportWriteFailure("create highlight", err));
-      }
-      setPopup(null);
-      // §274 UX fix round 2 (defect B) — 색을 고르면 브라우저 네이티브 선택을
-      // 지운다. popup.rects/popup.existing은 이 시점 이전에(usePdfSelectionPopup의
-      // mouseup, 또는 이전 클릭의 handlePageMouseDown) 이미 확정돼 있으므로
-      // 지금 선택을 지워도 위에서 쓴 값에 영향이 없다 — "먼저 지우면 안 된다"는
-      // 건 rects를 뽑아내기 전에 지우는 경우 얘기다. 지우면 selectionchange가
-      // 한 번 더 뜨지만 rangeCount===0이라 trySelectionPopup이 곧바로
-      // 리턴하므로(use-pdf-selection-popup.ts) 팝업이 즉시 재생성되는 회귀는
-      // 없다 — use-pdf-highlights.test.ts에서 이 경로를 직접 고정해 둔다.
-      window.getSelection()?.removeAllRanges();
-    },
-    [
+  const { onCopyRef, onCopyText, onDelete, onPickColor } =
+    usePdfHighlightPopupActions({
       absCompanionPath,
       absSidecarPath,
       pdfRelPath,
+      pendingRefBlockCacheRef,
       popup,
-      reportWriteFailure,
+      setPopup,
+      setSidecar,
       sidecar,
-    ],
-  );
-
-  const onDelete = useCallback(() => {
-    if (!popup || popup.kind !== "existing" || !absSidecarPath || !sidecar) {
-      setPopup(null);
-      return;
-    }
-    void deleteHighlightById(absSidecarPath, sidecar, popup.existing.id)
-      .then(setSidecar)
-      .catch((err: unknown) => reportWriteFailure("delete highlight", err));
-    setPopup(null);
-  }, [absSidecarPath, popup, reportWriteFailure, sidecar]);
-
-  const onCopyText = useCallback(() => {
-    if (!popup) return;
-    if (popup.kind === "new") {
-      void navigator.clipboard
-        .writeText(popup.text)
-        .then(reportCopySuccess)
-        .catch((err: unknown) => reportClipboardFailure(err));
-    } else if (absCompanionPath) {
-      const { id } = popup.existing;
-      void readHighlightBlockText(absCompanionPath, id)
-        .then((text) => {
-          if (text) {
-            void navigator.clipboard
-              .writeText(text)
-              .then(reportCopySuccess)
-              .catch((err: unknown) => reportClipboardFailure(err));
-          } else {
-            logger.warn(
-              `[pdf-highlight] companion block missing for ${id}, nothing to copy`,
-            );
-          }
-        })
-        .catch((err: unknown) => reportCopyFailure("read highlight text", err));
-    }
-    // §274 I2 팝업을 닫지 않는다 — Copy text/Copy reference 뒤에도 같은
-    // 선택에 색을 입히거나(onPickColor) 삭제(onDelete)를 계속할 수 있게.
-  }, [
-    absCompanionPath,
-    popup,
-    reportClipboardFailure,
-    reportCopyFailure,
-    reportCopySuccess,
-  ]);
-
-  const onCopyRef = useCallback(() => {
-    if (!popup || !target) return;
-    if (popup.kind === "existing") {
-      if (!absCompanionPath) return;
-      const { id } = popup.existing;
-      void readHighlightBlockText(absCompanionPath, id)
-        .then((text) => {
-          if (!text) {
-            logger.warn(
-              `[pdf-highlight] companion block missing for ${id}, can't build a reference`,
-            );
-            return;
-          }
-          void navigator.clipboard
-            .writeText(
-              serializeBlockRef({
-                blockId: id,
-                display: buildRefDisplay(text),
-                target,
-              }),
-            )
-            .then(reportCopySuccess)
-            .catch((err: unknown) => reportClipboardFailure(err));
-        })
-        .catch((err: unknown) => reportCopyFailure("read highlight text", err));
-      return; // §274 I2 팝업 유지
-    }
-
-    if (!absCompanionPath) return;
-
-    if (popup.blockId) {
-      // §274 I2 이 선택에 대해 이미 만든 블록이 있다 — 재사용한다. 다시
-      // appendHighlightBlock을 부르면 노트에 같은 텍스트가 또 생긴다.
-      const { blockId, text } = popup;
-      void navigator.clipboard
-        .writeText(
-          serializeBlockRef({
-            blockId,
-            display: buildRefDisplay(text),
-            target,
-          }),
-        )
-        .then(reportCopySuccess)
-        .catch((err: unknown) => reportClipboardFailure(err));
-      return;
-    }
-
-    // §274 B.2 아직 append가 안 끝났는데(popup.blockId는 그 사이 계속 null이다)
-    // 또 클릭하면 아래 appendHighlightBlock이 같은 선택에 두 번째 문단을
-    // 만든다 — 가드는 copyRefAppendInFlightRef 선언부 코멘트 참조.
-    if (copyRefAppendInFlightRef.current) return;
-    copyRefAppendInFlightRef.current = true;
-
-    // 아직 하이라이트로 만들지 않은 선택 — 참조가 가리킬 블록이 없으면
-    // 복사한 ((...)) 가 대상 없이 뜬다. 색을 고르지 않아도 참조는 만들 수
-    // 있게, 동반 노트에 블록만 먼저 적어둔다(사이드카/오버레이는 손대지
-    // 않는다 — "참조로 저장"과 "PDF에 색칠"은 서로 다른 결정이다).
-    const blockId = generateBlockId();
-    const { pageNumber, text } = popup;
-    void appendHighlightBlock(absCompanionPath, text, blockId)
-      .then(() => {
-        // §274 I2 방금 만든 id를 팝업 상태에 남겨 둔다 — 이어서 색을
-        // 고르면(onPickColor) 두 번째 블록을 만들지 않고 이 id를 재사용
-        // 하도록. setState 업데이터로 "지금 팝업이 여전히 그 선택인가"를
-        // 확인한다 — await 도중 사용자가 다른 텍스트를 선택했으면(같은
-        // 페이지에 같은 문구가 다시 나올 수 있어 text만으로는 부족해
-        // pageNumber도 같이 본다) 엉뚱한 팝업에 id를 심지 않는다.
-        setPopup((p) =>
-          p &&
-          p.kind === "new" &&
-          p.pageNumber === pageNumber &&
-          p.text === text
-            ? { ...p, blockId }
-            : p,
-        );
-        void navigator.clipboard
-          .writeText(
-            serializeBlockRef({
-              blockId,
-              display: buildRefDisplay(text),
-              target,
-            }),
-          )
-          .then(reportCopySuccess)
-          .catch((err: unknown) => reportClipboardFailure(err));
-      })
-      .catch((err: unknown) =>
-        reportCopyFailure("save companion note block", err),
-      )
-      .finally(() => {
-        copyRefAppendInFlightRef.current = false;
-      });
-    // §274 I2 팝업 유지 — 실패해도 닫지 않아 재시도할 수 있고, 성공하면
-    // 위에서 blockId만 채운다.
-  }, [
-    absCompanionPath,
-    popup,
-    reportClipboardFailure,
-    reportCopyFailure,
-    reportCopySuccess,
-    target,
-  ]);
+      target,
+    });
 
   const popupProps: null | PdfSelectionPopupProps = popup
     ? {
