@@ -13,6 +13,10 @@ import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 import { clearMatches, renderMatches } from "./pdf-find-render";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
+import {
+  attachTextLayerEndOfContent,
+  detachTextLayerEndOfContent,
+} from "./pdf-text-layer-selection";
 import { PdfSelectionPopup } from "./PdfSelectionPopup";
 
 /** 뷰포트 밖 이만큼까지 미리 렌더한다. */
@@ -122,6 +126,10 @@ export function PdfPage({
             active.currentIdx,
           );
         }
+        // §274 UX fix round 3 (defect A) — pdf-text-layer-selection.ts 참조.
+        // 렌더가 끝나 실제 span들이 갖춰진 지금이 pdf.js의 TextLayerBuilder가
+        // endOfContent를 붙이는 것과 같은 시점이다.
+        attachTextLayerEndOfContent(container);
       })
       .catch(() => {
         // 줌 변경/스크롤 이탈로 취소됨 — 정상 경로
@@ -130,6 +138,7 @@ export function PdfPage({
       cancelled = true;
       textDivsRef.current = [];
       textLayer.cancel();
+      detachTextLayerEndOfContent(container);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, page, scale]);

@@ -35,6 +35,13 @@
 .pdf-text-layer {
   position: absolute;
   inset: 0;
+
+  /* §274 UX fix round 3 (defect A) — an explicit z-index establishes this
+     element's own stacking context, so the span/endOfContent ordering
+     below is scoped here and doesn't disturb sibling ordering in
+     .pdf-page (canvas/highlight-layer/popup keep following plain DOM
+     order — z-index:0 sits at the same paint level as z-index:auto). */
+  z-index: 0;
   overflow: hidden;
   line-height: 1;
   user-select: text;
@@ -60,6 +67,11 @@
 .pdf-text-layer span,
 .pdf-text-layer br {
   position: absolute;
+
+  /* §274 UX fix round 3 (defect A) — real glyphs must win hit-testing over
+     .endOfContent (z-index 0 below) wherever the two overlap, so a drag
+     over actual text never lands on the filler element instead. */
+  z-index: 1;
   font-size: calc(var(--text-scale-factor) * var(--font-height));
   color: transparent;
   white-space: pre;
@@ -79,6 +91,27 @@
    set on the actual leaf text spans) don't apply to it either. */
 .pdf-text-layer .markedContent {
   display: contents;
+}
+
+/* §274 UX fix round 3 (defect A) — pdf.js's TextLayerBuilder anchor-follow
+   trick (pdf-text-layer-selection.ts) repositions this element next to
+   whichever node the selection is extending from, giving native selection-
+   extension hit-testing a normally-flowing, correctly sized target to land
+   on instead of hunting through the gaps between sparse absolutely-
+   positioned spans — that hunting is what reads as the selection "jumping"
+   when a drag crosses a paragraph boundary or reverses direction.
+   Collapsed to ~0 height until a drag starts (top:100%, bottom:0). */
+.pdf-text-layer .endOfContent {
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  display: block;
+  cursor: default;
+  user-select: none;
+}
+
+.pdf-text-layer.selecting .endOfContent {
+  top: 0;
 }
 
 .pdf-text-layer ::selection {
