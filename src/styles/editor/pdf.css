@@ -387,16 +387,3 @@
   height: 18px;
   background: var(--color-border-default);
 }
-
-/* §274 UX fix (defect 3) — 텍스트 하이라이트 발견용 정적 힌트. 버튼이
-   아니므로 icon-btn(cursor:pointer)을 쓰지 않는다 — hover로만 의미를 주는
-   요소라는 걸 cursor:help로 드러낸다. */
-.pdf-toolbar-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--color-text-muted);
-  cursor: help;
-}

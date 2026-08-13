@@ -536,8 +536,6 @@
   "pdfToolbar.prevPage": "이전 페이지",
   "pdfToolbar.nextPage": "다음 페이지",
   "pdfToolbar.find": "PDF에서 찾기",
-  "pdfToolbar.areaMode": "이미지·영역 하이라이트 (준비 중)",
-  "pdfToolbar.textHighlightHint": "텍스트를 선택하면 하이라이트할 수 있어요",
 
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",
   "plugin.consent.title.update": "\"{name}\" 플러그인을 업데이트하시겠습니까?",

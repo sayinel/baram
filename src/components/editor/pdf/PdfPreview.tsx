@@ -207,11 +207,6 @@ export const PdfPreview = memo(function PdfPreview({
   // 대상을 찾기도 전에 pendingPdfHighlightId를 소비해버리는 레이스를 막는다.
   const pagesReady = scale > 0 && pages.length > 0;
 
-  // §276.3 영역 하이라이트 모드 — 2차 구현. 토글 버튼은 지금 disabled로
-  // 렌더하지만(PdfToolbar), 배선 자체는 지금 잡아둔다.
-  const [areaMode, setAreaMode] = useState(false);
-  const onToggleArea = useCallback(() => setAreaMode((v) => !v), []);
-
   const onNextPage = useCallback(() => {
     scrollToPage(Math.min(currentPage + 1, pages.length));
   }, [currentPage, pages.length, scrollToPage]);
@@ -276,11 +271,9 @@ export const PdfPreview = memo(function PdfPreview({
           의미 없으므로 렌더하지 않는다. */}
       {!error && pagesReady && (
         <PdfToolbar
-          areaMode={areaMode}
           currentPage={currentPage}
           onNextPage={onNextPage}
           onPrevPage={onPrevPage}
-          onToggleArea={onToggleArea}
           onToggleFind={() => onToggleFind?.()}
           pageCount={pages.length}
         />

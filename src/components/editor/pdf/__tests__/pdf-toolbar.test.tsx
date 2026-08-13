@@ -6,11 +6,9 @@ import { PdfToolbar } from "../PdfToolbar";
 
 function setup(overrides: Partial<Parameters<typeof PdfToolbar>[0]> = {}) {
   const props = {
-    areaMode: false,
     currentPage: 3,
     onNextPage: vi.fn(),
     onPrevPage: vi.fn(),
-    onToggleArea: vi.fn(),
     onToggleFind: vi.fn(),
     pageCount: 27,
     ...overrides,
@@ -36,10 +34,12 @@ describe("PdfToolbar", () => {
     expect(screen.getByTestId("pdf-next-page")).toBeDisabled();
   });
 
-  it("reserves the area-highlight slot but keeps it disabled for now", () => {
+  it("does not render the removed area-highlight toggle or text-highlight hint (§274 UX fix round 2)", () => {
     setup();
-    // §276.3 슬롯은 지금 확보한다 — 2차에 끼워 넣으면 레이아웃을 다시 짜야 한다
-    expect(screen.getByTestId("pdf-area-mode")).toBeDisabled();
+    expect(screen.queryByTestId("pdf-area-mode")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("pdf-text-highlight-hint"),
+    ).not.toBeInTheDocument();
   });
 
   it("reports find toggling upward", async () => {
