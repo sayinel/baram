@@ -10,8 +10,10 @@ import {
   generateBlockId,
   parseBlockEmbedMatch,
   parseBlockRefMatch,
+  parseRefWidth,
   serializeBlockEmbed,
   serializeBlockRef,
+  splitRefWidth,
 } from "../block-id";
 
 describe("extractBlockId", () => {
@@ -142,6 +144,7 @@ describe("parseBlockRefMatch", () => {
       target: "file",
       blockId: "abc123",
       display: "text",
+      width: null,
     });
   });
 
@@ -153,7 +156,113 @@ describe("parseBlockRefMatch", () => {
       target: "file",
       blockId: "abc123",
       display: null,
+      width: null,
     });
+  });
+
+  // §276.6 — the width lives inside the display capture, so these pin that
+  // parseBlockRefMatch actually delegates the split instead of handing the
+  // raw capture straight through as display text.
+  it("parses display and trailing |w=NN width", () => {
+    const re = new RegExp(BLOCK_REF_RE.source, "g");
+    const match = re.exec("((file#^abc123|text|w=60))")!;
+    expect(parseBlockRefMatch(match)).toEqual({
+      target: "file",
+      blockId: "abc123",
+      display: "text",
+      width: 60,
+    });
+  });
+
+  it("parses a width-only reference as null display", () => {
+    const re = new RegExp(BLOCK_REF_RE.source, "g");
+    const match = re.exec("((file#^abc123|w=60))")!;
+    expect(parseBlockRefMatch(match)).toEqual({
+      target: "file",
+      blockId: "abc123",
+      display: null,
+      width: 60,
+    });
+  });
+});
+
+// §276.6 — the pure split, tested directly at every boundary. The range check
+// here is the only thing separating a width field from display text that
+// happens to read `w=…`; markdown round-trip cannot see the difference
+// (both re-serialize byte-identically), so it has to be asserted here.
+describe("splitRefWidth", () => {
+  it("splits a trailing |w=NN off the display text", () => {
+    expect(splitRefWidth("text|w=60")).toEqual({ display: "text", width: 60 });
+  });
+
+  it("treats a bare w=NN display as width-only", () => {
+    expect(splitRefWidth("w=60")).toEqual({ display: null, width: 60 });
+  });
+
+  it("leaves a display with no width untouched", () => {
+    expect(splitRefWidth("핵심 원칙")).toEqual({
+      display: "핵심 원칙",
+      width: null,
+    });
+  });
+
+  it("splits only at the LAST pipe", () => {
+    expect(splitRefWidth("a|b|w=75")).toEqual({ display: "a|b", width: 75 });
+  });
+
+  it("keeps w=5 (below the 10 minimum) as display text", () => {
+    expect(splitRefWidth("w=5")).toEqual({ display: "w=5", width: null });
+  });
+
+  it("keeps w=200 (above the 100 maximum) as display text", () => {
+    expect(splitRefWidth("w=200")).toEqual({ display: "w=200", width: null });
+  });
+
+  it("accepts the 10 and 100 boundaries themselves", () => {
+    expect(splitRefWidth("w=10")).toEqual({ display: null, width: 10 });
+    expect(splitRefWidth("w=100")).toEqual({ display: null, width: 100 });
+  });
+
+  it("keeps a non-integer w=60.5 as display text", () => {
+    expect(splitRefWidth("w=60.5")).toEqual({
+      display: "w=60.5",
+      width: null,
+    });
+  });
+
+  it("keeps a non-numeric w=abc as display text", () => {
+    expect(splitRefWidth("w=abc")).toEqual({ display: "w=abc", width: null });
+  });
+
+  it("keeps a leading-zero w=060 as display text (it would not re-serialize)", () => {
+    expect(splitRefWidth("w=060")).toEqual({ display: "w=060", width: null });
+  });
+
+  it("does not split when the display before the pipe is empty", () => {
+    // `((a#^id||w=60))` — splitting would drop the first pipe on the way out.
+    expect(splitRefWidth("|w=60")).toEqual({ display: "|w=60", width: null });
+  });
+
+  it("keeps a trailing pipe with no field as display text", () => {
+    expect(splitRefWidth("text|")).toEqual({ display: "text|", width: null });
+  });
+});
+
+describe("parseRefWidth", () => {
+  it("accepts integers in 10..100", () => {
+    expect(parseRefWidth("10")).toBe(10);
+    expect(parseRefWidth("60")).toBe(60);
+    expect(parseRefWidth("100")).toBe(100);
+  });
+
+  it("rejects out-of-range, malformed, and empty values", () => {
+    expect(parseRefWidth("9")).toBeNull();
+    expect(parseRefWidth("101")).toBeNull();
+    expect(parseRefWidth("60.5")).toBeNull();
+    expect(parseRefWidth("abc")).toBeNull();
+    expect(parseRefWidth("060")).toBeNull();
+    expect(parseRefWidth("")).toBeNull();
+    expect(parseRefWidth(null)).toBeNull();
   });
 });
 
@@ -174,6 +283,50 @@ describe("serializeBlockRef", () => {
     expect(serializeBlockRef({ target: "", blockId: "abc123" })).toBe(
       "((#^abc123))",
     );
+  });
+
+  // §276.6
+  it("serializes display + width", () => {
+    expect(
+      serializeBlockRef({
+        target: "file",
+        blockId: "abc123",
+        display: "text",
+        width: 60,
+      }),
+    ).toBe("((file#^abc123|text|w=60))");
+  });
+
+  it("serializes width without display as ((target#^id|w=NN))", () => {
+    expect(
+      serializeBlockRef({ target: "file", blockId: "abc123", width: 60 }),
+    ).toBe("((file#^abc123|w=60))");
+  });
+
+  it("omits the width field when width is null", () => {
+    expect(
+      serializeBlockRef({
+        target: "file",
+        blockId: "abc123",
+        display: "text",
+        width: null,
+      }),
+    ).toBe("((file#^abc123|text))");
+  });
+
+  // The two functions are each other's inverse — this is what keeps the
+  // markdown on disk byte-identical across a load/save cycle.
+  it("round-trips serialize → match → parse with a width", () => {
+    const attrs = {
+      target: "file",
+      blockId: "abc123",
+      display: "text",
+      width: 60,
+    };
+    const match = new RegExp(BLOCK_REF_RE.source, "g").exec(
+      serializeBlockRef(attrs),
+    )!;
+    expect(parseBlockRefMatch(match)).toEqual(attrs);
   });
 });
 

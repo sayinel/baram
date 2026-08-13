@@ -72,17 +72,46 @@ export function escapeBlockRefTarget(target: string): string {
   return out;
 }
 
+// §276.6 Per-reference width — `((target#^id|display|w=60))` / `((target#^id|w=60))`.
+// BLOCK_REF_RE's display capture is `([^)]+)`, which already accepts `|`, so the
+// width field is separated *after* the regex match rather than by the regex: making
+// the pattern itself width-aware would ripple into the InputRule, the pasteRule and
+// convert-inline-text.ts. Only the segment after the LAST `|` is a candidate, and
+// only when it is exactly `w=<integer 10..100>` — anything else stays part of the
+// display text, so a reference whose label genuinely reads `w=200` is left alone.
+const REF_WIDTH_MIN = 10;
+const REF_WIDTH_MAX = 100;
+// Leading zeros are rejected on purpose: `w=060` parses to 60 but would come back
+// out of serializeBlockRef as `w=60`, breaking byte-identical markdown round-trip.
+const REF_WIDTH_DIGITS_RE = /^[1-9]\d{0,2}$/;
+const REF_WIDTH_PREFIX = "w=";
+
 /** Parse block reference attributes from a regex match */
 export function parseBlockRefMatch(match: RegExpMatchArray): {
   blockId: string;
   display: null | string;
   target: string;
+  width: null | number;
 } {
+  const raw = match[3];
+  const { display, width } = raw
+    ? splitRefWidth(raw)
+    : { display: null, width: null };
   return {
     target: match[1],
     blockId: match[2],
-    display: match[3] || null,
+    display,
+    width,
   };
+}
+
+/** Parse a bare width value ("60"), returning null unless it is an integer
+ * percentage in [10, 100] written without a leading zero. */
+export function parseRefWidth(raw: null | string | undefined): null | number {
+  if (!raw || !REF_WIDTH_DIGITS_RE.test(raw)) return null;
+  const width = Number(raw);
+  if (width < REF_WIDTH_MIN || width > REF_WIDTH_MAX) return null;
+  return width;
 }
 
 /** Serialize block reference attrs back to ((...)) string */
@@ -90,12 +119,39 @@ export function serializeBlockRef(attrs: {
   blockId: string;
   display?: null | string;
   target: string;
+  width?: null | number;
 }): string {
   const ref = `${attrs.target}#^${attrs.blockId}`;
+  const width = attrs.width ? `|${REF_WIDTH_PREFIX}${attrs.width}` : "";
   if (attrs.display) {
-    return `((${ref}|${attrs.display}))`;
+    return `((${ref}|${attrs.display}${width}))`;
   }
-  return `((${ref}))`;
+  // Width without display still needs its own `|` — `((target#^id|w=60))`.
+  return `((${ref}${width}))`;
+}
+
+/** Split a raw display capture into its display text and trailing `|w=NN` width.
+ * Pure counterpart of serializeBlockRef's width branch — `splitRefWidth` of a
+ * serialized display must reproduce the inputs it was serialized from. */
+export function splitRefWidth(display: string): {
+  display: null | string;
+  width: null | number;
+} {
+  const lastPipe = display.lastIndexOf("|");
+  const field = display.slice(lastPipe + 1); // whole string when there is no `|`
+  const width = field.startsWith(REF_WIDTH_PREFIX)
+    ? parseRefWidth(field.slice(REF_WIDTH_PREFIX.length))
+    : null;
+
+  // `|w=60` (empty display before the pipe) is NOT split: serializing back would
+  // drop the leading pipe and change the markdown on disk.
+  if (width === null || lastPipe === 0) {
+    return { display: display || null, width: null };
+  }
+  return {
+    display: lastPipe > 0 ? display.slice(0, lastPipe) : null,
+    width,
+  };
 }
 
 /** Inverse of escapeBlockRefTarget. */

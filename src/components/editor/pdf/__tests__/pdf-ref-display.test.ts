@@ -95,7 +95,9 @@ describe("generated display survives the block-ref round-trip", () => {
     const match = new RegExp(BLOCK_REF_RE.source, "g").exec(serialized);
 
     expect(match).not.toBeNull();
-    expect(parseBlockRefMatch(match!)).toEqual(attrs);
+    // §276.6 — highlight refs are created without a width; buildRefDisplay
+    // strips `|` from the text, so no display can be mistaken for a width field.
+    expect(parseBlockRefMatch(match!)).toEqual({ ...attrs, width: null });
   });
 });
 
