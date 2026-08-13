@@ -219,32 +219,42 @@
   pointer-events: none;
 }
 
-.pdf-hl-mark {
+/* §274 UX fix round 3 (defect B) — 하이라이트 채우기는 이제 <svg><path>
+   하나가 담당한다(pdf-highlight-path.ts). .pdf-hl-mark는 배경 없이
+   §275.6 flash 링(outline만)에만 남아 쓰인다. */
+.pdf-hl-svg {
   position: absolute;
-  border-radius: 2px;
+  inset: 0;
 }
 
 /* 색은 클래스로 고정한다 — 인라인 style에 문자열 템플릿으로 CSS 변수
    이름을 조합하지 않는다. scripts/audit-css-vars.ts는 CSS 파일만 정적으로
    스캔하므로 TSX 쪽의 그런 런타임 조합은 잡아내지 못하고 오탐만 낸다. */
-.pdf-hl-mark-yellow {
-  background: var(--color-editor-pdf-hl-yellow);
+.pdf-hl-path-yellow {
+  fill: var(--color-editor-pdf-hl-yellow);
 }
 
-.pdf-hl-mark-green {
-  background: var(--color-editor-pdf-hl-green);
+.pdf-hl-path-green {
+  fill: var(--color-editor-pdf-hl-green);
 }
 
-.pdf-hl-mark-blue {
-  background: var(--color-editor-pdf-hl-blue);
+.pdf-hl-path-blue {
+  fill: var(--color-editor-pdf-hl-blue);
 }
 
-.pdf-hl-mark-pink {
-  background: var(--color-editor-pdf-hl-pink);
+.pdf-hl-path-pink {
+  fill: var(--color-editor-pdf-hl-pink);
 }
 
-.pdf-hl-mark-purple {
-  background: var(--color-editor-pdf-hl-purple);
+.pdf-hl-path-purple {
+  fill: var(--color-editor-pdf-hl-purple);
+}
+
+/* §275.6 flash 링 전용 — 배경은 위 <svg>가 칠하므로 여기서는 outline
+   애니메이션(.pdf-hl-mark-flash, 아래)만 얹힌다. */
+.pdf-hl-mark {
+  position: absolute;
+  border-radius: 2px;
 }
 
 /* §274 선택 팝업 — pdf-find-bar와 같은 배치/스타일 관례. anchor는 .pdf-page

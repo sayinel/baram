@@ -107,8 +107,53 @@ describe("§275.6 PdfPage highlight flash", () => {
   });
 
   it("leaves other highlights and the no-flash case unmarked", () => {
+    // §274 UX fix round 3 (defect B) — 채우기는 <svg><path>가 맡고,
+    // .pdf-hl-mark는 이제 flash 링 전용이라 flash 대상이 없으면 아예 안
+    // 그려진다(PdfPage.tsx).
     const container = renderWithFlash("some-other-id");
-    const mark = container.querySelector(".pdf-hl-mark");
-    expect(mark?.className).not.toContain("pdf-hl-mark-flash");
+    expect(container.querySelector(".pdf-hl-mark")).toBeNull();
+  });
+});
+
+describe("§274 UX fix round 3 (defect B) PdfPage highlight fill", () => {
+  it("draws one <svg><path> per highlight with a non-empty d and the color class — not a <div> per rect", () => {
+    const streamTextContent = vi.fn(() => ({}));
+    const highlight: StoredHighlight = {
+      color: "green",
+      id: "h1",
+      kind: "text",
+      page: 1,
+      // 세로로 겹치는 두 "줄" rect — 겹침 자체는 여기서 재확인하지 않는다
+      // (buildHighlightPath 단위 테스트가 맡는다). 여기서는 PdfPage가 rect당
+      // <div> 하나씩이 아니라 하나의 <svg><path>로 배선했는지만 본다.
+      rects: [
+        { h: 14, w: 200, x: 0, y: 0 },
+        { h: 14, w: 200, x: 0, y: 10 },
+      ],
+    };
+    const { container } = render(
+      <PdfPage
+        highlights={[highlight]}
+        page={makePage(streamTextContent)}
+        scale={1}
+      />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+
+    const svgs = container.querySelectorAll(".pdf-hl-svg");
+    expect(svgs).toHaveLength(1);
+    const path = svgs[0]?.querySelector("path.pdf-hl-path-green");
+    expect(path).not.toBeNull();
+    expect(path?.getAttribute("d")).not.toBe("");
+    // rect당 배경 <div>는 더 이상 없다 — flash가 아닐 때 .pdf-hl-mark 자체가
+    // 안 그려진다(위 describe 블록의 두 번째 테스트와 같은 이유).
+    expect(container.querySelectorAll(".pdf-hl-mark")).toHaveLength(0);
   });
 });

@@ -13,6 +13,7 @@ import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 import { clearMatches, renderMatches } from "./pdf-find-render";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
+import { buildHighlightPath } from "./pdf-highlight-path";
 import {
   attachTextLayerEndOfContent,
   detachTextLayerEndOfContent,
@@ -183,28 +184,51 @@ export function PdfPage({
           {/* §274.2 캔버스와 텍스트 레이어 사이 — 순수 시각 오버레이라
               텍스트 선택/Cmd+C를 방해하지 않는다. */}
           <div className="pdf-highlight-layer">
-            {highlights?.map((h) =>
-              h.rects.map((r: PdfRect, i) => {
-                const local = pdfRectToPageLocal(r, viewport);
-                const flashing = h.id === flashHighlightId;
-                return (
-                  <div
-                    className={
-                      flashing
-                        ? `pdf-hl-mark pdf-hl-mark-${h.color} pdf-hl-mark-flash`
-                        : `pdf-hl-mark pdf-hl-mark-${h.color}`
-                    }
-                    key={`${h.id}-${i}`}
-                    style={{
-                      height: local.height,
-                      left: local.left,
-                      top: local.top,
-                      width: local.width,
-                    }}
+            {/* §274 UX fix round 3 (defect B) — 하이라이트 하나당 rect들을
+                모두 하나의 SVG <path>로 합쳐 그린다(pdf-highlight-path.ts
+                doc comment 참조) — 인접한 두 줄의 rect가 세로로 겹쳐도
+                반투명 배경이 두 번 칠해지지 않는다. */}
+            {highlights?.map((h) => {
+              const localRects = h.rects.map((r: PdfRect) =>
+                pdfRectToPageLocal(r, viewport),
+              );
+              return (
+                <svg
+                  className="pdf-hl-svg"
+                  height={viewport.height}
+                  key={h.id}
+                  width={viewport.width}
+                >
+                  <path
+                    className={`pdf-hl-path pdf-hl-path-${h.color}`}
+                    d={buildHighlightPath(localRects)}
+                    fillRule="nonzero"
                   />
-                );
-              }),
-            )}
+                </svg>
+              );
+            })}
+            {/* §275.6 ref 클릭 도착 강조 — 배경은 위 SVG가 이미 칠했으니
+                여기서는 outline 링만 얹는다. 별도 레이어라 defect B의 union
+                방식과 무관하게 항상 원래 밝기로 보인다. */}
+            {highlights
+              ?.filter((h) => h.id === flashHighlightId)
+              .flatMap((h) =>
+                h.rects.map((r: PdfRect, i) => {
+                  const local = pdfRectToPageLocal(r, viewport);
+                  return (
+                    <div
+                      className="pdf-hl-mark pdf-hl-mark-flash"
+                      key={`${h.id}-flash-${i}`}
+                      style={{
+                        height: local.height,
+                        left: local.left,
+                        top: local.top,
+                        width: local.width,
+                      }}
+                    />
+                  );
+                }),
+              )}
           </div>
           <div className="pdf-text-layer" ref={textLayerRef} />
           {popup && <PdfSelectionPopup {...popup} />}
