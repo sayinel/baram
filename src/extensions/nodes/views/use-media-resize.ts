@@ -1,6 +1,8 @@
 import type React from "react";
 import { useCallback, useRef, useState } from "react";
 
+import { clampSnapPct } from "./resize-pct";
+
 interface UseMediaResize {
   /** Live % during a drag (null when idle) — for a label / preview width. */
   dragPct: null | number;
@@ -12,7 +14,11 @@ interface UseMediaResize {
  * Width (%) for a centered media block given the cursor X, the block's centre X,
  * and the available container width. Centered ⇒ width tracks twice the cursor's
  * distance from the centre, so either edge handle uses the same maths. Clamped
- * to 10–100% with a light snap to the nearest 10% (within ±3%), then rounded.
+ * to 10–100% with a light snap to the nearest 10% (within ±3%), then rounded —
+ * that part is clampSnapPct, shared with the inline reference handle (§276.6).
+ *
+ * ‼️ A left-anchored inline element must NOT use this: doubling the distance
+ * from a left edge doubles the width. See computeInlineResizePct.
  */
 export function computeResizePct(
   cursorX: number,
@@ -20,13 +26,7 @@ export function computeResizePct(
   containerW: number,
 ): number {
   if (containerW <= 0) return 100;
-  // Round to an integer percent first so the ±3% snap window is exact (floating
-  // point can otherwise put a boundary value like 57% at distance 3.0000…1).
-  let pct = Math.round(((2 * Math.abs(cursorX - centerX)) / containerW) * 100);
-  pct = Math.max(10, Math.min(100, pct));
-  const nearest = Math.round(pct / 10) * 10;
-  if (Math.abs(pct - nearest) <= 3) pct = nearest;
-  return pct;
+  return clampSnapPct(((2 * Math.abs(cursorX - centerX)) / containerW) * 100);
 }
 
 /**
