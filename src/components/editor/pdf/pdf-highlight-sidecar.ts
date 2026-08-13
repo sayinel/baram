@@ -13,6 +13,9 @@ export const HIGHLIGHT_COLORS = [
 
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
 
+/** §276.3 "text" | "area" — pulled out once both creation paths need to name it. */
+export type HighlightKind = StoredHighlight["kind"];
+
 export interface Sidecar {
   /** 파생이 아니라 기록 — 규칙이 바뀌거나 노트를 옮겨도 추적이 끊기지 않는다. */
   companion: string;

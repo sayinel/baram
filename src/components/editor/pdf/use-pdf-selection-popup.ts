@@ -11,8 +11,10 @@ import { clientRectToPdf, mergeRectsByLine } from "./pdf-highlight-geom";
 import { findPageForNode } from "./pdf-highlight-hittest";
 
 /** §274 UX fix (defect 1) — 선택 팝업을 선택 끝 지점에서 이만큼 아래로
- * 띄운다. 정확히 마우스를 뗀 자리에 딱 붙어 뜨지 않게 하는 최소한의 여백. */
-const POPUP_ANCHOR_GAP = 6;
+ * 띄운다. 정확히 마우스를 뗀 자리에 딱 붙어 뜨지 않게 하는 최소한의 여백.
+ * §276.3 export — 영역 하이라이트(use-pdf-area-highlight.ts)도 같은 팝업을
+ * 같은 방식으로 앵커링하므로 여백 값을 따로 두지 않고 재사용한다. */
+export const POPUP_ANCHOR_GAP = 6;
 
 export interface NewSelectionPayload {
   anchor: { left: number; top: number };

@@ -17,6 +17,7 @@ import type { PdfRect } from "./pdf-highlight-geom";
 import type { PendingRefBlockCache } from "./pdf-highlight-selection-cache";
 import type {
   HighlightColor,
+  HighlightKind,
   Sidecar,
   StoredHighlight,
 } from "./pdf-highlight-sidecar";
@@ -57,6 +58,10 @@ export type PopupState =
        * 캐시 히트일 수도 있다.
        */
       blockId: null | string;
+      /** §276.3 이 초안이 색을 고르면 만들 StoredHighlight.kind. 텍스트
+       * 선택은 항상 "text"(onNewSelection), 영역 드래그는 항상 "area"
+       * (onAreaHighlightDrawn) — 생성 시점에 확정되고 이후 절대 바뀌지 않는다. */
+      highlightKind: HighlightKind;
       kind: "new";
       pageNumber: number;
       rects: PdfRect[];
@@ -186,6 +191,7 @@ export function usePdfHighlightPopupActions({
               absSidecarPath,
               blockId: popup.blockId,
               color,
+              kind: popup.highlightKind,
               page: popup.pageNumber,
               pdfRelPath,
               rects: popup.rects,
@@ -195,6 +201,7 @@ export function usePdfHighlightPopupActions({
               absCompanionPath,
               absSidecarPath,
               color,
+              kind: popup.highlightKind,
               page: popup.pageNumber,
               pdfRelPath,
               rects: popup.rects,

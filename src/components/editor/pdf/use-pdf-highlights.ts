@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewportLike } from "./pdf-highlight-geom";
 import type { Sidecar, StoredHighlight } from "./pdf-highlight-sidecar";
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
+import type { AreaDrawnPayload } from "./use-pdf-area-highlight";
 import type { PopupState } from "./use-pdf-highlight-popup-actions";
 import type { NewSelectionPayload } from "./use-pdf-selection-popup";
 import type { PDFPageProxy } from "pdfjs-dist";
@@ -51,13 +52,24 @@ export function usePdfHighlights({
    * to render with the flash affordance (PdfPage). */
   flashHighlightId: null | string;
   getPageHighlights: (pageNumber: number) => StoredHighlight[];
+  /** §274.2 하이라이트 클릭 히트 테스트 + "바깥 클릭으로 닫기". §276.3부터
+   * 존재하는 하이라이트를 맞혔는지(true)를 돌려준다 — PdfPreview가 이
+   * 값으로 "이 mousedown을 영역 드래그 시작으로도 볼지"를 정한다(맞혔으면
+   * 관리 팝업이 이미 열렸으니 드래그를 시작하지 않는다). */
   handlePageMouseDown: (
     pageNumber: number,
     viewport: ViewportLike,
     pageOrigin: { left: number; top: number },
     clientX: number,
     clientY: number,
-  ) => void;
+  ) => boolean;
+  /** §276.3 하이라이트가 vault 상대 경로로 식별되므로 vault 밖/단일 파일
+   * 모드에서는 false — PdfPreview가 영역 모드 토글을 숨기고 Alt+드래그를
+   * 무효화하는 데 쓴다(§274의 "조용히 비활성화"와 같은 게이트). */
+  highlightsEnabled: boolean;
+  /** §276.3 영역 드래그가 끝났을 때(use-pdf-area-highlight.ts) 호출 —
+   * onNewSelection과 정확히 같은 자리, highlightKind만 다르다. */
+  onAreaHighlightDrawn: (payload: AreaDrawnPayload) => void;
   popupPage: null | number;
   popupProps: null | PdfSelectionPopupProps;
   registerPageEl: (pageNumber: number, el: HTMLElement | null) => void;
@@ -149,6 +161,11 @@ export function usePdfHighlights({
   // §274 UX fix round 5 — 겹친 하이라이트는 배열 마지막(가장 최근 생성,
   // 화면에서 맨 위)이 잡혀야 한다. hitTestTopmost가 그 순서를 지킨다 — 왜
   // 그 순서인지는 pdf-highlight-hittest.ts의 doc comment 참조.
+  //
+  // §276.3 반환값(boolean, 맞혔는지)을 PdfPreview가 소비한다: 영역 캡처가
+  // 활성이어도 기존 하이라이트를 맞힌 mousedown은 그 관리 팝업을 그대로
+  // 열고 드래그를 시작하지 않는다 — 모드 중에도 기존 하이라이트를 클릭해
+  // 관리할 수 있어야 하기 때문이다(모드를 끄지 않아도 된다).
   const handlePageMouseDown = useCallback(
     (
       pageNumber: number,
@@ -156,7 +173,7 @@ export function usePdfHighlights({
       pageOrigin: { left: number; top: number },
       clientX: number,
       clientY: number,
-    ) => {
+    ): boolean => {
       const highlights = getPageHighlights(pageNumber);
       const [px, py] = viewport.convertToPdfPoint(
         clientX - pageOrigin.left,
@@ -173,9 +190,10 @@ export function usePdfHighlights({
           kind: "existing",
           pageNumber,
         });
-      } else {
-        setPopup(null);
+        return true;
       }
+      setPopup(null);
+      return false;
     },
     [getPageHighlights],
   );
@@ -192,7 +210,12 @@ export function usePdfHighlights({
   // 재사용해, 팝업이 닫혔다 다시 열려도 §274 I2가 재발하지 않는다.
   const onNewSelection = useCallback((payload: NewSelectionPayload) => {
     const cached = pendingRefBlockCacheRef.current.get(payload);
-    setPopup({ ...payload, blockId: cached, kind: "new" });
+    setPopup({
+      ...payload,
+      blockId: cached,
+      highlightKind: "text",
+      kind: "new",
+    });
   }, []);
   usePdfSelectionPopup({
     onSelect: onNewSelection,
@@ -201,6 +224,24 @@ export function usePdfHighlights({
     pdfRelPath,
     scale,
   });
+
+  // §276.3 영역 드래그 완료 — onNewSelection과 같은 자리, highlightKind만
+  // "area". 재드래그로 같은 rect가 나올 확률은 실질적으로 0이라(텍스트
+  // 선택과 달리 부동소수 좌표가 그대로 재현되지 않는다) pendingRefBlockCacheRef를
+  // 거치지 않는다 — Copy reference 후 다시 그려도 새 블록이 하나 더 생길
+  // 뿐이고, 그건 서로 다른 두 영역 하이라이트를 만든 것과 같은 무해한
+  // 결과다.
+  const onAreaHighlightDrawn = useCallback((payload: AreaDrawnPayload) => {
+    setPopup({
+      anchor: payload.anchor,
+      blockId: null,
+      highlightKind: "area",
+      kind: "new",
+      pageNumber: payload.pageNumber,
+      rects: payload.rects,
+      text: payload.text,
+    });
+  }, []);
 
   const { onCopyRef, onCopyText, onDelete, onPickColor } =
     usePdfHighlightPopupActions({
@@ -219,6 +260,8 @@ export function usePdfHighlights({
     ? {
         anchor: popup.anchor,
         existing: popup.kind === "existing" ? popup.existing : null,
+        highlightKind:
+          popup.kind === "existing" ? popup.existing.kind : popup.highlightKind,
         onCopyRef,
         onCopyText,
         onDelete,
@@ -230,6 +273,8 @@ export function usePdfHighlights({
     flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,
+    highlightsEnabled: pdfRelPath !== null,
+    onAreaHighlightDrawn,
     popupPage: popup?.pageNumber ?? null,
     popupProps,
     registerPageEl,

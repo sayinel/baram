@@ -77,6 +77,7 @@ describe("createTextHighlight", () => {
       // "page: input.page" → "page: 3" 하드코딩 뮤테이션을 이 테스트 혼자서는
       // 못 잡아낸다(§274 리뷰 M1 — color에서 잡았던 것과 같은 부류의 우연).
       color: "purple",
+      kind: "text",
       page: 11,
       pdfRelPath: "papers/attention.pdf",
       rects: [{ h: 12, w: 100, x: 0, y: 0 }],
@@ -132,6 +133,7 @@ describe("createTextHighlight", () => {
       absCompanionPath: ABS_COMPANION,
       absSidecarPath: ABS_SIDECAR,
       color: "blue",
+      kind: "text",
       page: 2,
       pdfRelPath: "papers/attention.pdf",
       rects: [{ h: 5, w: 5, x: 1, y: 1 }],
@@ -155,6 +157,7 @@ describe("createTextHighlight", () => {
       absCompanionPath: ABS_COMPANION,
       absSidecarPath: ABS_SIDECAR,
       color: "pink",
+      kind: "text",
       page: 1,
       pdfRelPath: "papers/attention.pdf",
       rects: [{ h: 1, w: 1, x: 0, y: 0 }],
@@ -166,6 +169,29 @@ describe("createTextHighlight", () => {
     // 사이드카는 항상 디스크에 쓴다 — 열린 버퍼 경로를 타는 건 companion note뿐.
     expect(writeFile).toHaveBeenCalledTimes(1);
     expect(writeFile.mock.calls[0][0]).toBe(ABS_SIDECAR);
+  });
+
+  // §276.3 — 이름은 "createTextHighlight"지만 area도 같은 경로를 재사용한다
+  // (companion note에 먼저 쓰고 사이드카에 추가하는 순서는 kind와 무관).
+  // input.kind가 그대로 저장 스키마에 반영되는지 확인 — kind: "text"
+  // 하드코딩으로 되돌리는 뮤테이션을 이 테스트가 잡는다.
+  it("§276.3 writes kind: 'area' when the input says so", async () => {
+    const result = await createTextHighlight({
+      absCompanionPath: ABS_COMPANION,
+      absSidecarPath: ABS_SIDECAR,
+      color: "yellow",
+      kind: "area",
+      page: 3,
+      pdfRelPath: "papers/attention.pdf",
+      rects: [{ h: 200, w: 300, x: 10, y: 10 }],
+      sidecar: null,
+      text: "Area highlight (page 3)",
+    });
+
+    const sidecarCall = writeFile.mock.calls.find((c) => c[0] === ABS_SIDECAR);
+    const written = JSON.parse(sidecarCall![1] as string) as Sidecar;
+    expect(written.highlights[0].kind).toBe("area");
+    expect(result.highlight.kind).toBe("area");
   });
 });
 
@@ -181,6 +207,7 @@ describe("addHighlightForExistingBlock", () => {
       absSidecarPath: ABS_SIDECAR,
       blockId: "copiedref1",
       color: "green",
+      kind: "text",
       page: 5,
       pdfRelPath: "papers/attention.pdf",
       rects: [{ h: 9, w: 9, x: 0, y: 0 }],
@@ -231,6 +258,7 @@ describe("addHighlightForExistingBlock", () => {
       absSidecarPath: ABS_SIDECAR,
       blockId: "copiedref2",
       color: "pink",
+      kind: "text",
       page: 9,
       pdfRelPath: "papers/attention.pdf",
       rects: [{ h: 2, w: 2, x: 0, y: 0 }],
@@ -243,6 +271,23 @@ describe("addHighlightForExistingBlock", () => {
       color: "pink",
       id: "copiedref2",
     });
+  });
+
+  it("§276.3 writes kind: 'area' when the input says so", async () => {
+    const result = await addHighlightForExistingBlock({
+      absSidecarPath: ABS_SIDECAR,
+      blockId: "area1",
+      color: "blue",
+      kind: "area",
+      page: 4,
+      pdfRelPath: "papers/attention.pdf",
+      rects: [{ h: 150, w: 250, x: 0, y: 0 }],
+      sidecar: null,
+    });
+
+    const written = JSON.parse(writeFile.mock.calls[0][1] as string) as Sidecar;
+    expect(written.highlights[0].kind).toBe("area");
+    expect(result.highlight.kind).toBe("area");
   });
 });
 

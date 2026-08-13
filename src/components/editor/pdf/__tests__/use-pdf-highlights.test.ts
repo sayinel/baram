@@ -321,6 +321,55 @@ describe("usePdfHighlights", () => {
       expect(result.current.popupProps?.existing?.id).toBe("disjoint");
     });
 
+    // §276.3 — PdfPreview uses this return value to decide whether an
+    // area-mode mousedown should ALSO start a drag (only when it missed).
+    it("returns true when the mousedown hits an existing highlight, false when it misses", async () => {
+      readSidecar.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights: [FIRST],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+      );
+
+      let hit: boolean | undefined;
+      act(() => {
+        hit = result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          10,
+          10,
+        );
+      });
+      expect(hit).toBe(true);
+
+      let miss: boolean | undefined;
+      act(() => {
+        miss = result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          900,
+          900,
+        );
+      });
+      expect(miss).toBe(false);
+    });
+
     it("a click outside every highlight closes the popup instead of picking either one", async () => {
       readSidecar.mockResolvedValue({
         companion: "highlights/papers/attention.md",
@@ -986,6 +1035,138 @@ describe("usePdfHighlights", () => {
         document.dispatchEvent(new Event("selectionchange"));
       });
       expect(result.current.popupProps).toBeNull();
+    });
+  });
+
+  describe("§276.3 area highlight wiring", () => {
+    it("is disabled when the PDF is outside a vault (no rootPath)", () => {
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: null,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      expect(result.current.highlightsEnabled).toBe(false);
+    });
+
+    it("is enabled inside a vault", () => {
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      expect(result.current.highlightsEnabled).toBe(true);
+    });
+
+    it("onAreaHighlightDrawn opens a 'new' popup tagged highlightKind: area, with no Copy-text-only text field surprises", () => {
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+
+      act(() => {
+        result.current.onAreaHighlightDrawn({
+          anchor: { left: 5, top: 6 },
+          pageNumber: 4,
+          rects: [{ h: 200, w: 300, x: 10, y: 10 }],
+          text: "Area highlight (page 4)",
+        });
+      });
+
+      expect(result.current.popupProps?.highlightKind).toBe("area");
+      expect(result.current.popupProps?.existing).toBeNull();
+    });
+
+    it("picking a colour on an area draft writes kind: 'area' to the sidecar", async () => {
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+
+      act(() => {
+        result.current.onAreaHighlightDrawn({
+          anchor: { left: 5, top: 6 },
+          pageNumber: 4,
+          rects: [{ h: 200, w: 300, x: 10, y: 10 }],
+          text: "Area highlight (page 4)",
+        });
+      });
+
+      act(() => {
+        result.current.popupProps?.onPickColor("blue");
+      });
+
+      await waitFor(() => expect(createTextHighlight).toHaveBeenCalledTimes(1));
+      expect(createTextHighlight).toHaveBeenCalledWith(
+        expect.objectContaining({ color: "blue", kind: "area", page: 4 }),
+      );
+    });
+
+    // §276.3 — an area highlight loaded from the sidecar hit-tests exactly
+    // like a text one; no kind-specific branching in the mousedown routing.
+    it("an area highlight in the sidecar is clickable via handlePageMouseDown", async () => {
+      const AREA_HIGHLIGHT: StoredHighlight = {
+        color: "green",
+        id: "area1",
+        kind: "area",
+        page: 1,
+        rects: [{ h: 100, w: 100, x: 0, y: 0 }],
+      };
+      readSidecar.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights: [AREA_HIGHLIGHT],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+      );
+
+      let hit: boolean | undefined;
+      act(() => {
+        hit = result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          10,
+          10,
+        );
+      });
+      expect(hit).toBe(true);
+      expect(result.current.popupProps?.existing?.id).toBe("area1");
+      expect(result.current.popupProps?.highlightKind).toBe("area");
     });
   });
 });

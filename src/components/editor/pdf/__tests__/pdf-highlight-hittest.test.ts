@@ -84,6 +84,29 @@ describe("hitTestTopmost", () => {
   it("returns null for an empty highlight list", () => {
     expect(hitTestTopmost([], { x: 0, y: 0 })).toBeNull();
   });
+
+  // §276.3 hitTestTopmost is generic over `{ rects }` and never reads
+  // `kind` — an area highlight participates exactly like a text one,
+  // including in the "topmost wins" tie-break. Mixing kinds here pins that
+  // no kind-specific branching crept in.
+  it("picks the topmost regardless of whether it's a text or area highlight", () => {
+    const mixed = [
+      {
+        id: "text-1",
+        kind: "text" as const,
+        rects: [{ h: 20, w: 100, x: 0, y: 0 }],
+      },
+      {
+        id: "area-1",
+        kind: "area" as const,
+        rects: [{ h: 20, w: 100, x: 0, y: 0 }],
+      },
+    ];
+    expect(hitTestTopmost(mixed, { x: 10, y: 10 })?.id).toBe("area-1");
+
+    const reversed = [mixed[1], mixed[0]];
+    expect(hitTestTopmost(reversed, { x: 10, y: 10 })?.id).toBe("text-1");
+  });
 });
 
 describe("findPageForNode", () => {

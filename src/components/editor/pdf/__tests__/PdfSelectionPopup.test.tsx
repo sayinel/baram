@@ -14,6 +14,7 @@ describe("PdfSelectionPopup", () => {
       <PdfSelectionPopup
         anchor={{ left: 0, top: 0 }}
         existing={null}
+        highlightKind="text"
         onCopyRef={vi.fn()}
         onCopyText={vi.fn()}
         onDelete={vi.fn()}
@@ -43,6 +44,7 @@ describe("PdfSelectionPopup", () => {
       <PdfSelectionPopup
         anchor={{ left: 0, top: 0 }}
         existing={null}
+        highlightKind="text"
         onCopyRef={vi.fn()}
         onCopyText={vi.fn()}
         onDelete={vi.fn()}

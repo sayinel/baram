@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { MatchPosition } from "./pdf-find";
 import type { PdfRect, ViewportLike } from "./pdf-highlight-geom";
+import type { LocalRect } from "./pdf-highlight-path";
 import type { StoredHighlight } from "./pdf-highlight-sidecar";
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
 import type { PDFPageProxy } from "pdfjs-dist";
@@ -24,6 +25,8 @@ import { PdfSelectionPopup } from "./PdfSelectionPopup";
 const LAZY_ROOT_MARGIN = "800px";
 
 export function PdfPage({
+  areaCaptureActive,
+  dragPreview,
   flashHighlightId,
   highlights,
   matches,
@@ -32,6 +35,13 @@ export function PdfPage({
   popup,
   scale,
 }: {
+  /** §276.3 영역 하이라이트 모드가 켜져 있거나 Alt가 눌려 있는 동안 true —
+   * 텍스트 레이어를 pointer-events:none으로 만들어(pdf.css) 캔버스 위
+   * 드래그를 텍스트 선택이 먼저 먹지 못하게 한다. */
+  areaCaptureActive?: boolean;
+  /** §276.3 이 페이지에서 진행 중인 영역 드래그의 페이지 로컬 미리보기
+   * 사각형. 다른 페이지에서 드래그 중이면 부모가 null을 내려준다. */
+  dragPreview?: LocalRect | null;
   /** §275.6 ref → PDF 점프가 방금 도착한 하이라이트 id — 이 페이지에 있으면
    * 잠깐 강조한다. 다른 id/페이지면 부모가 null을 내려준다. */
   flashHighlightId?: null | string;
@@ -229,8 +239,34 @@ export function PdfPage({
                   );
                 }),
               )}
+            {/* §276.3 드래그 중인 영역 하이라이트의 실시간 미리보기 — 저장된
+                하이라이트가 아니므로 buildHighlightPath의 union 렌더링과는
+                무관한 별도의(점선) 오버레이다. */}
+            {dragPreview && (
+              <div
+                className="pdf-area-drag-preview"
+                style={{
+                  height: dragPreview.height,
+                  left: dragPreview.left,
+                  top: dragPreview.top,
+                  width: dragPreview.width,
+                }}
+              />
+            )}
           </div>
-          <div className="pdf-text-layer" ref={textLayerRef} />
+          <div
+            // §276.3 조건부 클래스는 배열 join으로 조립한다 — 템플릿
+            // 리터럴의 삼항 분기 안에 넣은 앞공백은 prettier 재포맷에서
+            // 조용히 사라질 수 있다(PdfSelectionPopup.tsx의 같은 코멘트,
+            // prettier-tailwind-classname-whitespace-trim 메모 참조).
+            className={[
+              "pdf-text-layer",
+              areaCaptureActive ? "pdf-text-layer-inert" : null,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            ref={textLayerRef}
+          />
           {popup && <PdfSelectionPopup {...popup} />}
         </>
       )}

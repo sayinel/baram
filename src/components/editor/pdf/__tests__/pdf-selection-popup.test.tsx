@@ -7,10 +7,14 @@ import { describe, expect, it, vi } from "vitest";
 import { HIGHLIGHT_COLORS } from "../pdf-highlight-sidecar";
 import { PdfSelectionPopup } from "../PdfSelectionPopup";
 
-function setup(existing: null | StoredHighlight = null) {
+function setup(
+  existing: null | StoredHighlight = null,
+  highlightKind: "area" | "text" = "text",
+) {
   const props = {
     anchor: { left: 100, top: 200 },
     existing,
+    highlightKind,
     onCopyRef: vi.fn(),
     onCopyText: vi.fn(),
     onDelete: vi.fn(),
@@ -80,5 +84,19 @@ describe("PdfSelectionPopup", () => {
     await userEvent.click(screen.getByTestId("pdf-hl-copy-text"));
     expect(props.onCopyRef).toHaveBeenCalledTimes(1);
     expect(props.onCopyText).toHaveBeenCalledTimes(1);
+  });
+
+  // §276.3 — 영역 하이라이트에는 복사할 원문이 없다.
+  describe("§276.3 area highlight", () => {
+    it("hides Copy text but keeps Copy reference for a fresh area draft", () => {
+      setup(null, "area");
+      expect(screen.queryByTestId("pdf-hl-copy-text")).toBeNull();
+      expect(screen.getByTestId("pdf-hl-copy-ref")).toBeInTheDocument();
+    });
+
+    it("hides Copy text for an existing area highlight too", () => {
+      setup({ ...stored, kind: "area" }, "area");
+      expect(screen.queryByTestId("pdf-hl-copy-text")).toBeNull();
+    });
   });
 });

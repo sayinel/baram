@@ -118,6 +118,15 @@
   background: color-mix(in srgb, var(--color-accent-default) 30%, transparent);
 }
 
+/* §276.3 영역 하이라이트 모드(또는 Alt 홀드) 중에는 텍스트 레이어가
+   캔버스 위 드래그를 먼저 먹지 않아야 한다 — pointer-events:none으로
+   두면 브라우저가 이 레이어를 히트 테스트에서 완전히 건너뛰어 네이티브
+   텍스트 선택이 시작되지 않는다. 모드가 꺼져 있으면 이 클래스가 안
+   붙으므로 텍스트 선택은 완전히 이전과 동일하다. */
+.pdf-text-layer.pdf-text-layer-inert {
+  pointer-events: none;
+}
+
 .pdf-preview-error {
   padding: 2em;
   font-size: 0.85rem;
@@ -254,6 +263,16 @@
    애니메이션(.pdf-hl-mark-flash, 아래)만 얹힌다. */
 .pdf-hl-mark {
   position: absolute;
+  border-radius: 2px;
+}
+
+/* §276.3 영역 하이라이트 드래그 중 실시간 미리보기 — 저장된 하이라이트가
+   아니므로 5색 스와치 토큰이 아니라 accent 하나로 "지금 그리고 있다"는
+   임시 상태를 표시한다(마퀴 선택 관례). */
+.pdf-area-drag-preview {
+  position: absolute;
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
+  border: 1.5px dashed var(--color-accent-default);
   border-radius: 2px;
 }
 
@@ -409,6 +428,15 @@
 .pdf-toolbar-btn:hover:not(:disabled) {
   background: var(--color-bg-subtle);
   border-color: var(--color-border-default);
+}
+
+/* §276.3 영역 하이라이트 토글의 눌림 상태 — 반드시 "모드"로 보여야 한다
+   (브리프 요구): 다른 툴바 버튼(찾기 등)은 순간 액션이라 눌림 상태가
+   없지만, 이 버튼은 켜져 있는 동안 지속되는 상태를 나타낸다. */
+.pdf-toolbar-btn.active {
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
+  border-color: var(--color-accent-default);
 }
 
 .pdf-toolbar-nav-btn:disabled,

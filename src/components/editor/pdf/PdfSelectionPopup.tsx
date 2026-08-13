@@ -1,7 +1,11 @@
 // §274 하이라이트 선택 팝업 — 색 선택 + 참조/텍스트 복사 + (기존 하이라이트를
 // 클릭했을 때만) 삭제. 순수 표시 컴포넌트다: 좌표 계산·클립보드·IPC는 부모
 // (use-pdf-highlights.ts)가 맡고, 여기는 콜백을 그대로 전달만 한다.
-import type { HighlightColor, StoredHighlight } from "./pdf-highlight-sidecar";
+import type {
+  HighlightColor,
+  HighlightKind,
+  StoredHighlight,
+} from "./pdf-highlight-sidecar";
 
 import { Trash2 } from "lucide-react";
 
@@ -13,6 +17,9 @@ export interface PdfSelectionPopupProps {
   anchor: { left: number; top: number };
   /** 이미 만들어진 하이라이트를 클릭한 경우에만 채워진다 — Delete 노출 여부를 가른다. */
   existing: null | StoredHighlight;
+  /** §276.3 새 초안이면 앞으로 만들 kind, 기존이면 existing.kind — "Copy
+   * text" 노출 여부를 가른다(영역 하이라이트에는 복사할 원문이 없다). */
+  highlightKind: HighlightKind;
   onCopyRef: () => void;
   onCopyText: () => void;
   onDelete: () => void;
@@ -22,6 +29,7 @@ export interface PdfSelectionPopupProps {
 export function PdfSelectionPopup({
   anchor,
   existing,
+  highlightKind,
   onCopyRef,
   onCopyText,
   onDelete,
@@ -79,14 +87,21 @@ export function PdfSelectionPopup({
       >
         {t("pdfHighlight.copyRef")}
       </button>
-      <button
-        className="btn-unstyled pdf-hl-action-btn"
-        data-testid="pdf-hl-copy-text"
-        onClick={onCopyText}
-        type="button"
-      >
-        {t("pdfHighlight.copyText")}
-      </button>
+      {/* §276.3 영역 하이라이트에는 복사할 원문이 없다 — 사이드카에 저장된
+          건 좌표뿐이고, 동반 노트의 문단은 우리가 지어낸 라벨이다. 그
+          라벨을 "Copy text"로 내주면 사용자가 진짜 PDF 내용인 것처럼 붙여넣게
+          된다. Copy reference는 그대로 유효하다("이 페이지의 이 영역"을
+          가리키는 참조는 의미가 있다). */}
+      {highlightKind !== "area" && (
+        <button
+          className="btn-unstyled pdf-hl-action-btn"
+          data-testid="pdf-hl-copy-text"
+          onClick={onCopyText}
+          type="button"
+        >
+          {t("pdfHighlight.copyText")}
+        </button>
+      )}
 
       {existing && (
         <button

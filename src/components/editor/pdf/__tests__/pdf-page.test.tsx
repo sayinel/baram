@@ -158,6 +158,97 @@ describe("§274 UX fix round 3 (defect B) PdfPage highlight fill", () => {
   });
 });
 
+describe("§276.3 area capture gating", () => {
+  it("marks the text layer inert while area capture is active", () => {
+    const streamTextContent = vi.fn(() => ({}));
+    const { container } = render(
+      <PdfPage
+        areaCaptureActive
+        page={makePage(streamTextContent)}
+        scale={1}
+      />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+
+    expect(container.querySelector(".pdf-text-layer")).toHaveClass(
+      "pdf-text-layer-inert",
+    );
+  });
+
+  it("leaves the text layer untouched when area capture is off (or omitted)", () => {
+    const streamTextContent = vi.fn(() => ({}));
+    const { container } = render(
+      <PdfPage page={makePage(streamTextContent)} scale={1} />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+
+    expect(container.querySelector(".pdf-text-layer")).not.toHaveClass(
+      "pdf-text-layer-inert",
+    );
+  });
+
+  it("renders the live drag-preview rectangle when given one", () => {
+    const streamTextContent = vi.fn(() => ({}));
+    const { container } = render(
+      <PdfPage
+        dragPreview={{ height: 40, left: 5, top: 10, width: 60 }}
+        page={makePage(streamTextContent)}
+        scale={1}
+      />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+
+    const preview = container.querySelector(".pdf-area-drag-preview");
+    expect(preview).not.toBeNull();
+    expect((preview as HTMLElement).style.left).toBe("5px");
+    expect((preview as HTMLElement).style.top).toBe("10px");
+    expect((preview as HTMLElement).style.width).toBe("60px");
+    expect((preview as HTMLElement).style.height).toBe("40px");
+  });
+
+  it("renders no preview when dragPreview is null", () => {
+    const streamTextContent = vi.fn(() => ({}));
+    const { container } = render(
+      <PdfPage
+        dragPreview={null}
+        page={makePage(streamTextContent)}
+        scale={1}
+      />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+
+    expect(container.querySelector(".pdf-area-drag-preview")).toBeNull();
+  });
+});
+
 describe("§274 UX fix round 5 — paint order pins hit order", () => {
   // ‼️불변식: 여기서 highlights 배열 순서 그대로 DOM에 그려진다는 것을
   // 고정한다 — pdf-highlight-hittest.ts의 hitTestTopmost는 이 순서를

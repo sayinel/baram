@@ -532,10 +532,12 @@
   "pdfHighlight.saveFailed": "Couldn't save the highlight",
   "pdfHighlight.copyFailed": "Couldn't copy to the clipboard",
   "pdfHighlight.copied": "Copied to clipboard",
+  "pdfHighlight.areaNoteLabel": "Area highlight (page {page})",
 
   "pdfToolbar.prevPage": "Previous page",
   "pdfToolbar.nextPage": "Next page",
   "pdfToolbar.find": "Find in PDF",
+  "pdfToolbar.areaMode": "Area highlight — drag to draw (or Alt+drag anywhere)",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",

@@ -11,6 +11,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+import type { ViewportLike } from "./pdf-highlight-geom";
 import type { PdfFindApi } from "./use-pdf-find";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 
@@ -30,6 +31,7 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { logger } from "../../../utils/logger";
 import { PdfPage } from "./PdfPage";
 import { PdfToolbar } from "./PdfToolbar";
+import { usePdfAreaHighlight } from "./use-pdf-area-highlight";
 import { usePdfFind } from "./use-pdf-find";
 import { usePdfHighlights } from "./use-pdf-highlights";
 
@@ -220,6 +222,8 @@ export const PdfPreview = memo(function PdfPreview({
     flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,
+    highlightsEnabled,
+    onAreaHighlightDrawn,
     popupPage,
     popupProps,
     registerPageEl: registerHighlightPageEl,
@@ -231,6 +235,50 @@ export const PdfPreview = memo(function PdfPreview({
     scale,
     scrollToPage,
   });
+
+  // §276.3 영역 하이라이트 — highlightsEnabled로 vault 밖에서는 완전히
+  // 무력화한다(툴바 토글도 안 보이고 Alt+드래그도 아무 효과가 없다). 모드
+  // 훅 자체는 vault 여부를 몰라도 된다 — 이 컴포넌트(합성 계층)가 그
+  // 정책을 쥔다.
+  const areaHighlight = usePdfAreaHighlight({
+    onAreaHighlightDrawn,
+  });
+  const areaCaptureActive =
+    highlightsEnabled && areaHighlight.areaCaptureActive;
+
+  // §274.2 하이라이트 클릭은 언제나 먼저 판정한다 — 영역 모드가 켜져
+  // 있어도 기존 하이라이트를 클릭하면 그 관리 팝업이 열려야 한다(모드를
+  // 끄지 않고도 관리할 수 있어야 하므로). 그 클릭이 아무것도 맞히지
+  // 못했을 때만(hitExisting === false), 영역 캡처가 활성이면 이 mousedown을
+  // 드래그 시작으로도 본다 — 둘 다 같은 handlePageMouseDown을 부르므로
+  // 모드가 꺼져 있을 때는 완전히 이전과 동일한 동작이다.
+  const onPageMouseDown = useCallback(
+    (
+      pageNumber: number,
+      viewport: ViewportLike,
+      pageOrigin: { left: number; top: number },
+      clientX: number,
+      clientY: number,
+    ) => {
+      const hitExisting = handlePageMouseDown(
+        pageNumber,
+        viewport,
+        pageOrigin,
+        clientX,
+        clientY,
+      );
+      if (!hitExisting && areaCaptureActive) {
+        areaHighlight.onPageMouseDown(
+          pageNumber,
+          viewport,
+          pageOrigin,
+          clientX,
+          clientY,
+        );
+      }
+    },
+    [areaCaptureActive, areaHighlight, handlePageMouseDown],
+  );
 
   return (
     <div
@@ -255,10 +303,16 @@ export const PdfPreview = memo(function PdfPreview({
             style={{ display: "contents" }}
           >
             <PdfPage
+              areaCaptureActive={areaCaptureActive}
+              dragPreview={
+                areaHighlight.dragPreview?.pageNumber === page.pageNumber
+                  ? areaHighlight.dragPreview.rect
+                  : null
+              }
               flashHighlightId={flashHighlightId}
               highlights={getPageHighlights(page.pageNumber)}
               matches={getPageMatches(page.pageNumber)}
-              onPageMouseDown={handlePageMouseDown}
+              onPageMouseDown={onPageMouseDown}
               page={page}
               popup={popupPage === page.pageNumber ? popupProps : null}
               scale={scale}
@@ -271,9 +325,13 @@ export const PdfPreview = memo(function PdfPreview({
           의미 없으므로 렌더하지 않는다. */}
       {!error && pagesReady && (
         <PdfToolbar
+          areaMode={areaHighlight.areaMode}
           currentPage={currentPage}
           onNextPage={onNextPage}
           onPrevPage={onPrevPage}
+          onToggleAreaMode={
+            highlightsEnabled ? areaHighlight.toggleAreaMode : undefined
+          }
           onToggleFind={() => onToggleFind?.()}
           pageCount={pages.length}
         />

@@ -4,6 +4,7 @@
 import type { PdfRect } from "./pdf-highlight-geom";
 import type {
   HighlightColor,
+  HighlightKind,
   Sidecar,
   StoredHighlight,
 } from "./pdf-highlight-sidecar";
@@ -17,6 +18,8 @@ export interface AddHighlightForBlockInput {
   /** 동반 노트에 이미 있는 블록의 id — 여기서는 다시 만들지 않는다. */
   blockId: string;
   color: HighlightColor;
+  /** §276.3 "text" | "area" — 사이드카에 그대로 기록된다. */
+  kind: HighlightKind;
   /** 1-based 페이지 번호. */
   page: number;
   /** vault 상대 PDF 경로 — 사이드카를 새로 만들 때만 쓴다(companion/pdf 필드). */
@@ -30,6 +33,11 @@ export interface CreateTextHighlightInput {
   absCompanionPath: string;
   absSidecarPath: string;
   color: HighlightColor;
+  /** §276.3 "text" | "area" — addHighlightForExistingBlock에 그대로 전달된다.
+   * 이름은 "createTextHighlight"지만 §276.3부터 area도 이 함수를 그대로
+   * 재사용한다 — 동반 노트 문단을 먼저 쓰고 사이드카에 추가하는 순서
+   * 자체는 kind와 무관하다. */
+  kind: HighlightKind;
   /** 1-based 페이지 번호. */
   page: number;
   /** vault 상대 PDF 경로 — 사이드카를 새로 만들 때만 쓴다(companion/pdf 필드). */
@@ -53,7 +61,7 @@ export async function addHighlightForExistingBlock(
   const highlight: StoredHighlight = {
     color: input.color,
     id: input.blockId,
-    kind: "text",
+    kind: input.kind,
     page: input.page,
     rects: input.rects,
   };
@@ -91,6 +99,7 @@ export async function createTextHighlight(
     absSidecarPath: input.absSidecarPath,
     blockId,
     color: input.color,
+    kind: input.kind,
     page: input.page,
     pdfRelPath: input.pdfRelPath,
     rects: input.rects,
