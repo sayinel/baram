@@ -88,9 +88,14 @@ describe("computeAreaCropLayout", () => {
   });
 
   // ‼️ 판별력: 이 케이스들은 `Number.isFinite` 가드를 `typeof === "number"`나
-  // 크기 비교만으로 바꾸면 전부 통과해 버린다 — NaN은 어떤 비교에도 걸리지
-  // 않기 때문이다. 사이드카 검증기(isPdfRect)가 바로 그 typeof 검사를 쓰고
-  // 있어 NaN 좌표는 실제로 여기까지 온다.
+  // 크기 비교만으로 바꾸면 전부 통과해 버린다 — NaN도 Infinity도 typeof는
+  // "number"이고, NaN은 어떤 크기 비교에도 걸리지 않기 때문이다.
+  //
+  // NaN과 Infinity를 **둘 다** 넣는 이유: 실제 도달 경로가 그 둘을 섞어서
+  // 만든다. 사이드카의 `1e400`이 JSON.parse에서 Infinity가 되고(JSON에는 NaN
+  // 리터럴이 없다), isPdfRect의 typeof 검사가 그걸 통과시키고, pdfjs의
+  // convertToViewportPoint가 90도 배수 회전 행렬의 0 성분과 곱해
+  // `0 * Infinity = NaN`을 만든다 — 자세한 근거는 pdf-area-crop.ts의 doc comment.
   it.each([
     ["NaN width", { width: NaN }],
     ["NaN height", { height: NaN }],
@@ -99,6 +104,7 @@ describe("computeAreaCropLayout", () => {
     ["Infinite width", { width: Infinity }],
     ["Infinite height", { height: Infinity }],
     ["Infinite left", { left: Infinity }],
+    ["Infinite top", { top: Infinity }],
     ["zero width", { width: 0 }],
     ["zero height", { height: 0 }],
     ["negative width", { width: -10 }],

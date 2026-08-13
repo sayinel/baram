@@ -48,9 +48,20 @@ export interface PageLocalRect {
  * 공유한다), 크롭 좌상단 (left, top)을 캔버스 원점으로 옮기려면
  * `renderScale * left + offsetX = 0` ⇒ `offsetX = -left * renderScale`이다.
  *
- * ‼️ 유한성 검사에 `typeof x === "number"`를 쓰지 말 것 — NaN을 통과시킨다.
- * 사이드카 검증기(isPdfRect, pdf-highlight-sidecar.ts:110-117)가 바로 그
- * 검사를 쓰고 있어 NaN 좌표가 실제로 여기까지 도달할 수 있다.
+ * ‼️ 유한성 검사는 반드시 `Number.isFinite`로 한다 — `typeof x === "number"`는
+ * NaN도 Infinity도 통과시킨다. 실제 도달 경로(측정으로 확인):
+ *   1. JSON에는 NaN 리터럴이 없으므로 사이드카가 NaN을 **직접** 담을 수는
+ *      없다. 대신 `1e400` 같이 배정밀도를 넘는 리터럴이 `JSON.parse`에서
+ *      `Infinity`가 된다.
+ *   2. 사이드카 검증기 isPdfRect(pdf-highlight-sidecar.ts:108-117, typeof
+ *      검사는 112-115행)는 `typeof === "number"`만 보므로 그 Infinity를
+ *      그대로 통과시킨다.
+ *   3. pdfjs `convertToViewportPoint`는 `p0*m[0] + p1*m[2] + m[4]`를 계산하는데
+ *      (Util.applyTransform, pdf.mjs:6598-6603), 90도 배수 회전 행렬은 m[0..3]에
+ *      항상 0이 두 개 있다 — 그래서 `0 * Infinity`가 나와 **회전 각도와 무관하게**
+ *      (0/90/180/270 전부에서 확인) 결과 성분 하나가 NaN, 다른 하나가 ±Infinity가
+ *      된다.
+ * 즉 여기 도착하는 것은 NaN과 Infinity가 섞인 값이고, 둘 다 걸러야 한다.
  */
 export function computeAreaCropLayout({
   dpr,

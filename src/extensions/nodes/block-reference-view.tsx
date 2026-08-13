@@ -63,8 +63,15 @@ export function BlockReferenceView({
           // for; the Cmd+Click handler above still fires because the click
           // bubbles from the <img> to this wrapper.
           draggable={false}
+          // ‼️ ATTRIBUTES, not inline style. An inline `style` declaration
+          // outranks the class rule, so `.block-reference-area-image
+          // { height: auto }` (links.css) could never apply and a preview
+          // wider than the editor column got squashed at its pinned pixel
+          // height. As attributes these only set the intrinsic aspect ratio,
+          // which `max-width: 100%` + `height: auto` are then free to scale.
+          height={preview.height}
           src={previewSrc}
-          style={{ height: preview.height, width: preview.width }}
+          width={preview.width}
         />
       ) : (
         text

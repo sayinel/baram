@@ -113,13 +113,21 @@ describe("BlockReferenceView: area highlight preview", () => {
     expect(el.querySelector("img")?.getAttribute("alt")).toBe(DISPLAY);
   });
 
-  it("sizes the image from the preview's CSS dimensions", async () => {
+  it("sizes the image with width/height ATTRIBUTES, never inline style", async () => {
+    // ‼️ The distinction is load-bearing, not stylistic. An inline `style`
+    // declaration outranks `.block-reference-area-image { height: auto }`
+    // (links.css), so a preview wider than the editor column would keep its
+    // pinned pixel height while the width shrank — a squashed image. As
+    // attributes they only supply the intrinsic ratio, which `max-width:
+    // 100%` + `height: auto` can then scale freely.
     preview.current = READY;
     const el = await mount();
 
     const img = el.querySelector("img") as HTMLImageElement;
-    expect(img.style.width).toBe("320px");
-    expect(img.style.height).toBe("90px");
+    expect(img.getAttribute("width")).toBe("320");
+    expect(img.getAttribute("height")).toBe("90");
+    expect(img.style.width).toBe("");
+    expect(img.style.height).toBe("");
   });
 
   it.each([

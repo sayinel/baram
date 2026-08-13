@@ -7,6 +7,11 @@ import { useEffect, useState } from "react";
 
 import { logger } from "../../../utils/logger";
 import { computeAreaCropLayout } from "./pdf-area-crop";
+import {
+  areaPreviewCacheKey,
+  readAreaPreview,
+  writeAreaPreview,
+} from "./pdf-area-preview-cache";
 import { resolveAreaHighlightRef } from "./pdf-area-ref-resolve";
 import { withPdfDocument } from "./pdf-doc-cache";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
@@ -42,6 +47,13 @@ export function usePdfAreaRefPreview(
   useEffect(() => {
     // 평범한 블록 참조는 여기서 끝낸다 — 사이드카 I/O도, pdfjs 동적 import도
     // 하지 않는다. 문서의 블록 참조 대부분이 이 경로다.
+    //
+    // ‼️ 이 가드가 막는 것은 I/O가 아니다(resolveAreaHighlightRef도 같은
+    // 검사를 먼저 해서 아무것도 읽지 않고 null을 돌려준다). 막는 것은
+    // **상태 전이**다: 이게 없으면 문서 안의 모든 블록 참조가 마운트마다
+    // LOADING → UNAVAILABLE 두 번의 리렌더를 낸다. IDLE은 useState의 초기값과
+    // 같은 모듈 상수라 setPreview(IDLE)은 React의 즉시 bailout에 걸려
+    // 리렌더를 만들지 않는다.
     if (!pdfRelPathForHighlightTarget(target)) {
       setPreview(IDLE);
       return;
@@ -74,14 +86,29 @@ export function usePdfAreaRefPreview(
               page.getViewport({ scale: 1 }),
             ),
           });
-          if (!layout) return null;
+          if (!layout) {
+            // 그릴 수 없는 기하 — 조용히 칩으로 떨어지면 사이드카가 상했다는
+            // 사실이 어디에도 남지 않는다.
+            logger.error(
+              `[pdf-area-ref] unrenderable area geometry for ^${blockId} (page ${String(resolved.page)}) in ${resolved.absPdfPath}`,
+            );
+            return null;
+          }
+          // 레이아웃 계산과 렌더 사이의 언마운트를 여기서 잡는다. 이 지점의
+          // renderTask는 아직 null이라 cleanup의 cancel()이 닿지 못한다 —
+          // 확인하지 않으면 언마운트된 뒤에도 렌더가 끝까지 돌아간다.
+          if (cancelled) return null;
 
           // 캐시 조회를 레이아웃 **뒤에** 하는 이유: 키에 들어가는 canvasWidth는
-          // 회전을 반영한 rect 크기에서 나오므로 뷰포트 없이는 알 수 없다.
-          // 여기까지의 비용은 pdfjs가 내부적으로 캐시하는 getPage/getViewport뿐이고,
-          // 진짜 비싼 render + toDataURL은 히트 시 건너뛴다.
-          const key = `${resolved.absPdfPath}|${blockId}|${layout.canvasWidth}`;
-          const hit = readPreviewCache(key);
+          // 회전이 반영된 rect 크기에서 나오므로 뷰포트 없이는 알 수 없다.
+          // 그래서 이 캐시는 PDF 로드를 아껴주지 못하고, 아끼는 것은 그 뒤의
+          // render + toDataURL이다(비용 논의는 pdf-area-preview-cache.ts 헤더).
+          const key = areaPreviewCacheKey(
+            resolved.absPdfPath,
+            blockId,
+            layout.canvasWidth,
+          );
+          const hit = readAreaPreview(key);
           if (hit) {
             return {
               height: layout.cssHeight,
@@ -106,7 +133,7 @@ export function usePdfAreaRefPreview(
           if (cancelled) return null;
 
           const src = canvas.toDataURL("image/png");
-          writePreviewCache(key, src);
+          writeAreaPreview(key, src);
           return { height: layout.cssHeight, src, width: layout.cssWidth };
         },
       );
@@ -134,9 +161,6 @@ export function usePdfAreaRefPreview(
 /** 프리뷰 표시 폭 상한(CSS px). 넘는 영역은 비율을 유지하며 축소된다. */
 const MAX_PREVIEW_CSS_WIDTH = 640;
 
-/** dataURL 캐시 상한. PNG dataURL은 수백 KB가 될 수 있어 넉넉히 잡지 않는다. */
-const PREVIEW_CACHE_LIMIT = 32;
-
 const IDLE: AreaRefPreview = {
   height: 0,
   src: null,
@@ -157,26 +181,3 @@ const UNAVAILABLE: AreaRefPreview = {
   status: "unavailable",
   width: 0,
 };
-
-// 모듈 레벨 — 같은 참조를 다시 마운트해도(스크롤 아웃/인, 탭 전환) 다시
-// 그리지 않는다. Map의 삽입 순서를 LRU로 쓴다.
-const previewCache = new Map<string, string>();
-
-function readPreviewCache(key: string): string | undefined {
-  const src = previewCache.get(key);
-  if (src === undefined) return undefined;
-  // 재삽입으로 최신으로 올린다 — 안 하면 자주 보는 프리뷰가 먼저 버려진다.
-  previewCache.delete(key);
-  previewCache.set(key, src);
-  return src;
-}
-
-function writePreviewCache(key: string, src: string): void {
-  previewCache.delete(key);
-  previewCache.set(key, src);
-  while (previewCache.size > PREVIEW_CACHE_LIMIT) {
-    const oldest = previewCache.keys().next().value;
-    if (oldest === undefined) break;
-    previewCache.delete(oldest);
-  }
-}
