@@ -153,6 +153,14 @@
   box-decoration-break: clone;
   font-size: 0.9em;
   color: var(--color-accent-default);
+
+  /* §276.5 Wrapping between words is not enough once the chip carries a whole
+     sentence: a highlight over a URL or a long identifier is one unbreakable
+     token, and an inline box that cannot break it overflows the editor column
+     (the paragraph has no horizontal scroll to fall back on). `break-word`
+     breaks such a token only when it would otherwise overflow, so ordinary
+     sentences still break at spaces. */
+  overflow-wrap: break-word;
   cursor: pointer;
   background-color: color-mix(
     in srgb,

@@ -18,7 +18,7 @@ import {
   pdfRelPathForHighlightTarget,
   sidecarPathFor,
 } from "./pdf-highlight-sidecar";
-import { readSidecar } from "./pdf-highlight-store";
+import { readSidecarCoalesced } from "./pdf-sidecar-coalesce";
 
 /**
  * 하이라이트 하나를 표시하는 데 필요한 전부.
@@ -54,10 +54,21 @@ export type ResolvedHighlightRef =
  * sidecar.pdf는 하이라이트 생성 시점의 실제 경로를 그대로 기록해 둔 값이다
  * (use-navigation.ts:282-297이 같은 이유로 같은 선택을 한다).
  *
- * ‼️ text의 동반 노트 경로도 같은 이유로 `sidecar.companion`이다 — 여기서
- * companionPathFor로 다시 파생하면 안 된다. §273이 그 필드를 "파생이 아니라
- * 기록"으로 둔 이유가 이것이고(사용자가 동반 노트를 옮기거나 이름을 바꿔도
- * 추적이 끊기지 않는다), 파생 경로는 위의 대소문자 문제까지 그대로 물려받는다.
+ * ‼️ text의 동반 노트 경로는 `sidecar.companion`을 **읽는다** — 여기서
+ * companionPathFor로 다시 파생하지 않는다. 두 이유다:
+ * • 파생 경로는 위의 대소문자 문제를 그대로 물려받는다(companionPathFor의
+ *   치환도 `/\.pdf$/i`라 확장자가 항상 소문자다).
+ * • §273이 그 필드를 "파생이 아니라 기록"으로 둔 것은, 규칙이 바뀌거나
+ *   동반 노트를 따라다니는 기능이 생겼을 때 **고칠 곳이 한 군데**가 되도록
+ *   하기 위해서다.
+ * ‼️ 지금 그런 기능은 없다. 이 필드를 쓰는 곳은 pdf-highlight-actions.ts:69의
+ * `companionPathFor(input.pdfRelPath)` 하나뿐이고(사이드카를 처음 만들 때만;
+ * 이후 쓰기는 `...base`로 실어 나른다), 노트를 옮기거나 이름을 바꿀 때 이
+ * 필드를 갱신하는 핸들러는 없다. 그러니 오늘의 `sidecar.companion`은 파생
+ * 경로와 항상 바이트 단위로 같다 — **여기서 파생해도 지금은 티가 나지 않는다.**
+ * 그것이 아래 판별 테스트가 실제 코드로는 만들 수 없는 합성 사이드카를 쓰는
+ * 이유다: 고정하려는 것은 "이 코드가 기록된 값을 읽는다"는 성질이고, 그
+ * 성질은 실제 데이터로는 관찰되지 않는다.
  */
 export async function resolveHighlightRef(
   target: string,
@@ -70,7 +81,9 @@ export async function resolveHighlightRef(
   if (!rootPath) return null;
 
   try {
-    const sidecar = await readSidecar(
+    // 합류된 읽기다: 한 문서의 참조 N개가 같은 tick에 들어와 읽기 1회가 된다
+    // (pdf-sidecar-coalesce.ts). 캐시가 아니라 방금 만든 하이라이트도 보인다.
+    const sidecar = await readSidecarCoalesced(
       `${rootPath}/${sidecarPathFor(pdfRelPath)}`,
     );
     if (!sidecar) return null;

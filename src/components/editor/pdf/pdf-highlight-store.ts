@@ -99,8 +99,13 @@ export async function readCompanionNoteContent(
     return await readFile(absCompanionPath);
   } catch (e) {
     if (isFileNotFoundError(e)) return null;
+    // §276.5 이 한 줄이 이 실패의 **유일한** 로그다. 표시 경로의 합류
+    // 래퍼(pdf-read-coalesce.ts)는 rejection을 null로 접기만 하고 다시 찍지
+    // 않는다 — 실패 하나가 로그 두 줄이 되면 원인이 둘로 보인다. 그래서
+    // 여기서 원인(e)까지 함께 남긴다.
     logger.error(
       `[pdf-highlight] failed to read companion note: ${absCompanionPath}`,
+      e,
     );
     throw e;
   }

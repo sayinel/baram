@@ -30,12 +30,23 @@ export function BlockReferenceView({
   // Display text priority: display > "target > ^blockId" > "^blockId"
   const text = display || (target ? `${target} > ^${blockId}` : `^${blockId}`);
 
-  // §276.4/§276.5 Everything but "ready" keeps the text chip — including while
-  // the preview is still loading, so the line doesn't reflow twice.
+  // §276.4/§276.5 Everything but "ready" renders `display`. For a highlight ref
+  // that means the label is painted first and replaced once the preview lands,
+  // two IPC round trips later (sidecar, then the crop or the companion note) —
+  // one reflow per ref, on every document open and every tab switch, since
+  // `view.updateState()` recreates all NodeViews. Showing the label rather than
+  // nothing is what keeps the ref readable and clickable throughout.
   const preview = usePdfHighlightRefPreview(target, blockId);
   const ready = preview.status === "ready";
   const previewSrc = ready && preview.kind === "area" ? preview.src : null;
-  const fullText = ready && preview.kind === "text" ? preview.text : null;
+  // ‼️ Blank is treated as absent, not just null. The hook already rejects a
+  // whitespace-only paragraph, but if that check ever regressed, rendering the
+  // blank string would produce an empty chip with nothing to click — a ref the
+  // user cannot even see, let alone navigate. The `display` label is always the
+  // better fallback, so the guard is repeated at the point of render.
+  const storedText = ready && preview.kind === "text" ? preview.text : null;
+  const fullText =
+    storedText && storedText.trim().length > 0 ? storedText : null;
 
   // Cmd+Click navigates to block
   const handleClick = useCallback(

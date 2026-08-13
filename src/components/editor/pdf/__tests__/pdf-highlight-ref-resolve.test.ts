@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// readSidecar를 목으로 갈아끼운다: 이 파일이 검증하는 것은 "사이드카 내용을
+// 사이드카 읽기를 목으로 갈아끼운다: 이 파일이 검증하는 것은 "사이드카 내용을
 // 어떻게 해석하는가"이지 JSON 파싱이 아니다(그쪽은 pdf-highlight-sidecar.test.ts).
 // 덕분에 실제 파서가 만들어 줄 수 없는 입력(rects: [])도 직접 넣어 볼 수 있다.
-const { readSidecar } = vi.hoisted(() => ({ readSidecar: vi.fn() }));
-vi.mock("../pdf-highlight-store", () => ({ readSidecar }));
+//
+// §276.5 목의 대상은 합류 래퍼(readSidecarCoalesced)다 — 리졸버가 부르는 것이
+// 그것이고, 합류 자체는 pdf-sidecar-coalesce.test.ts가 따로 고정한다. 여기서
+// 진짜 합류를 통과시키면 테스트마다 바꾸는 mockResolvedValue가 앞선 테스트의
+// in-flight 항목에 가려질 수 있다.
+const { readSidecarCoalesced } = vi.hoisted(() => ({
+  readSidecarCoalesced: vi.fn(),
+}));
+vi.mock("../pdf-sidecar-coalesce", () => ({ readSidecarCoalesced }));
 
 const { logger } = vi.hoisted(() => ({
   logger: { error: vi.fn(), warn: vi.fn() },
@@ -27,10 +34,21 @@ const REAL_PDF_REL_PATH = "papers/Attention.PDF";
 
 /**
  * ‼️ companionPathFor("papers/Attention.PDF")가 만들어 낼 값
- * ("highlights/papers/Attention.md")과 **일부러 다르게** 둔다. 사용자가 동반
- * 노트를 옮기거나 이름을 바꾸면 사이드카의 이 필드만 갱신되고 파생 규칙은
- * 그것을 따라올 수 없다 — §273이 companion을 "파생이 아니라 기록"으로 둔
- * 이유다. 두 값이 같으면 파생으로 바꿔치기해도 테스트가 통과해 버린다.
+ * ("highlights/papers/Attention.md")과 **일부러 다르게** 둔 합성 픽스처다.
+ *
+ * 실제 앱은 이런 사이드카를 만들지 않는다: `companion`을 쓰는 곳은
+ * pdf-highlight-actions.ts:69의 `companionPathFor(input.pdfRelPath)` 하나뿐이고
+ * (사이드카를 처음 만들 때만), 노트를 옮기거나 이름을 바꿀 때 이 필드를
+ * 갱신하는 핸들러는 없다. 그래서 실제 데이터에서 기록된 값과 파생된 값은
+ * 항상 같다 — 즉 **고정하려는 성질이 실제 데이터로는 관찰되지 않는다.**
+ * 두 값이 같은 픽스처를 쓰면 리졸버를 파생 방식으로 바꿔치기해도 모든
+ * 단정이 통과한다.
+ *
+ * 고정하는 성질은 "리졸버가 기록된 필드를 **읽는다**"는 것 하나다. 그 성질이
+ * 왜 중요한가: §273이 이 필드를 "파생이 아니라 기록"으로 둔 것은, 규칙이
+ * 바뀌거나 동반 노트를 따라다니는 기능이 생겼을 때 고칠 곳이 한 군데가
+ * 되도록 하기 위해서다. 여기서 파생해 버리면 그때 이 파일도 함께 고쳐야
+ * 한다는 사실을 아무도 모른다.
  */
 const RECORDED_COMPANION = "highlights/moved/Attention (annotated).md";
 
@@ -58,7 +76,7 @@ describe("resolveHighlightRef", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.rootPath = "/vault";
-    readSidecar.mockResolvedValue(sidecarWith(areaHighlight()));
+    readSidecarCoalesced.mockResolvedValue(sidecarWith(areaHighlight()));
   });
 
   it("resolves an area highlight to its page and first rect", async () => {
@@ -92,7 +110,7 @@ describe("resolveHighlightRef", () => {
   it("reads the sidecar at the vault-relative path derived from the target", async () => {
     await resolveHighlightRef("highlights/papers/Attention", "abc123");
 
-    expect(readSidecar).toHaveBeenCalledWith(
+    expect(readSidecarCoalesced).toHaveBeenCalledWith(
       "/vault/.baram/pdf-highlights/papers/Attention.json",
     );
   });
@@ -101,14 +119,14 @@ describe("resolveHighlightRef", () => {
     // 종류별로 리졸버를 나누면 참조 하나에 사이드카 I/O가 두 번 일어난다.
     await resolveHighlightRef("highlights/papers/Attention", "abc123");
 
-    expect(readSidecar).toHaveBeenCalledTimes(1);
+    expect(readSidecarCoalesced).toHaveBeenCalledTimes(1);
   });
 
   it("returns null without any I/O for an ordinary (non-highlight) block ref", async () => {
     // 문서의 블록 참조 대다수가 이 경로다 — 여기서 사이드카를 읽으면 모든
     // 블록 참조가 디스크를 때린다.
     expect(await resolveHighlightRef("notes/Meeting", "abc123")).toBeNull();
-    expect(readSidecar).not.toHaveBeenCalled();
+    expect(readSidecarCoalesced).not.toHaveBeenCalled();
   });
 
   it("returns null in single-file mode (no vault root to resolve against)", async () => {
@@ -117,11 +135,11 @@ describe("resolveHighlightRef", () => {
     expect(
       await resolveHighlightRef("highlights/papers/Attention", "abc123"),
     ).toBeNull();
-    expect(readSidecar).not.toHaveBeenCalled();
+    expect(readSidecarCoalesced).not.toHaveBeenCalled();
   });
 
   it("returns null when the sidecar is missing or unreadable", async () => {
-    readSidecar.mockResolvedValue(null);
+    readSidecarCoalesced.mockResolvedValue(null);
 
     expect(
       await resolveHighlightRef("highlights/papers/Attention", "abc123"),
@@ -129,7 +147,9 @@ describe("resolveHighlightRef", () => {
   });
 
   it("returns null when the sidecar no longer has that id (deleted highlight)", async () => {
-    readSidecar.mockResolvedValue(sidecarWith(areaHighlight({ id: "other" })));
+    readSidecarCoalesced.mockResolvedValue(
+      sidecarWith(areaHighlight({ id: "other" })),
+    );
 
     expect(
       await resolveHighlightRef("highlights/papers/Attention", "abc123"),
@@ -137,17 +157,24 @@ describe("resolveHighlightRef", () => {
   });
 
   it("returns null when the matching AREA highlight carries no rects", async () => {
-    readSidecar.mockResolvedValue(sidecarWith(areaHighlight({ rects: [] })));
+    readSidecarCoalesced.mockResolvedValue(
+      sidecarWith(areaHighlight({ rects: [] })),
+    );
 
     expect(
       await resolveHighlightRef("highlights/papers/Attention", "abc123"),
     ).toBeNull();
   });
 
-  it("logs and returns null instead of throwing when the read fails", async () => {
+  it("logs and returns null instead of throwing when the sidecar read rejects", async () => {
     // 던지면 main.tsx의 전역 unhandledrejection 핸들러가 preventDefault()로
     // 삼켜 흔적 없이 사라진다.
-    readSidecar.mockRejectedValue(new Error("permission denied"));
+    //
+    // 프로덕션에서 이 분기에 오는 것은 읽기 실패가 아니다 — 합류 래퍼가
+    // rejection을 이미 null로 접기 때문이다(그 경우는 위 "missing or
+    // unreadable" 테스트가 덮는다). 여기서 지키는 것은 그 뒤의 해석 코드가
+    // 던졌을 때(상한 사이드카 객체 등) NodeView가 칩으로 떨어진다는 것이다.
+    readSidecarCoalesced.mockRejectedValue(new Error("permission denied"));
 
     expect(
       await resolveHighlightRef("highlights/papers/Attention", "abc123"),
@@ -158,7 +185,7 @@ describe("resolveHighlightRef", () => {
   it("returns null for a kind that is neither area nor text", async () => {
     // 스키마상 불가능하지만(§273 isStoredHighlight가 두 값만 통과시킨다),
     // 세 번째 종류가 생겼을 때 여기가 조용히 그것을 text로 그리면 안 된다.
-    readSidecar.mockResolvedValue(
+    readSidecarCoalesced.mockResolvedValue(
       sidecarWith(
         areaHighlight({ kind: "ink" as unknown as StoredHighlight["kind"] }),
       ),
@@ -171,7 +198,7 @@ describe("resolveHighlightRef", () => {
 
   describe("text highlights (§276.5)", () => {
     beforeEach(() => {
-      readSidecar.mockResolvedValue(
+      readSidecarCoalesced.mockResolvedValue(
         sidecarWith(areaHighlight({ kind: "text" })),
       );
     });
@@ -190,8 +217,9 @@ describe("resolveHighlightRef", () => {
 
     it("‼️ uses the RECORDED sidecar.companion, never a path derived from the target", async () => {
       // 판별력: `${rootPath}/${companionPathFor(pdfRelPath)}`로 바꿔치기하면
-      // 이 단정이 죽는다 — 파생값은 "highlights/papers/Attention.md"이고,
-      // 사용자가 노트를 옮긴 뒤에는 그 파일이 존재하지도 않는다.
+      // 이 단정이 죽는다 — 파생값은 "highlights/papers/Attention.md"다.
+      // 오늘의 실제 데이터에서는 두 값이 같아 그 치환이 아무 증상도 내지
+      // 않는다는 점이 바로 이 합성 픽스처가 필요한 이유다(위 주석 참조).
       const resolved = await resolveHighlightRef(
         "highlights/papers/Attention",
         "abc123",
@@ -208,7 +236,7 @@ describe("resolveHighlightRef", () => {
     it("resolves even when rects is empty — text refs never need geometry", async () => {
       // area의 rects 가드가 text까지 잡으면, 좌표가 상한 사이드카에서
       // 읽을 수 있는 원문까지 함께 잃는다.
-      readSidecar.mockResolvedValue(
+      readSidecarCoalesced.mockResolvedValue(
         sidecarWith(areaHighlight({ kind: "text", rects: [] })),
       );
 

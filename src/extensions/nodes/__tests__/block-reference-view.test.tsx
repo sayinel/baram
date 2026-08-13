@@ -203,14 +203,22 @@ describe("BlockReferenceView: highlight ref preview", () => {
     expect(el.hasAttribute("data-area-preview")).toBe(false);
   });
 
-  it("falls back to the display label when a text preview is ready but empty", async () => {
-    // 훅이 공백 판정을 통과시켜 버린 경우의 두 번째 방어선 — 빈 칩은
-    // 클릭할 글자조차 없다.
-    preview.current = { ...READY_TEXT, text: null };
-    const el = await mount();
+  it.each([
+    ["null", null],
+    ["empty", ""],
+    ["whitespace only", "   \t "],
+  ])(
+    "falls back to the display label when a ready text preview is %s",
+    async (_label, stored) => {
+      // ‼️ 훅이 공백 판정을 통과시켜 버린 경우의 두 번째 방어선. null만
+      // 검사하면(`fullText ?? text`) 공백 문자열은 그대로 그려져 클릭할 글자조차
+      // 없는 빈 칩이 된다 — 이 파일이 이름으로 약속하는 바로 그 실패다.
+      preview.current = { ...READY_TEXT, text: stored };
+      const el = await mount();
 
-    expect(el.textContent).toBe(DISPLAY);
-  });
+      expect(el.textContent).toBe(DISPLAY);
+    },
+  );
 
   it("navigates on Cmd+Click from the TEXT branch too", async () => {
     preview.current = READY_TEXT;

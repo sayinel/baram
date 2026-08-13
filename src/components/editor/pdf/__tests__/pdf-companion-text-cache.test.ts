@@ -17,7 +17,9 @@ vi.mock("../../../../utils/logger", () => ({ logger }));
 // 테스트는 reader를 직접 주입하지만, 실수로 빠뜨렸을 때 진짜 IPC를 때리는
 // 대신 여기서 잡힌다.
 const { readCompanionNoteContent } = vi.hoisted(() => ({
-  readCompanionNoteContent: vi.fn(async () => null),
+  readCompanionNoteContent: vi
+    .fn<(absCompanionPath: string) => Promise<null | string>>()
+    .mockResolvedValue(null),
 }));
 vi.mock("../pdf-highlight-store", () => ({ readCompanionNoteContent }));
 
@@ -151,7 +153,7 @@ describe("readCompanionTextCoalesced", () => {
     ]);
   });
 
-  it("returns null (never throws) when the read fails, and logs it", async () => {
+  it("returns null (never throws) when the read fails", async () => {
     // 호출부는 NodeView다 — 던지면 main.tsx의 전역 unhandledrejection
     // 핸들러가 preventDefault()로 삼켜 흔적 없이 사라진다.
     const read = vi.fn(() => Promise.reject(new Error("permission denied")));
@@ -159,7 +161,20 @@ describe("readCompanionTextCoalesced", () => {
     expect(
       await readCompanionTextCoalesced(COMPANION, "h7k2m9", read),
     ).toBeNull();
-    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("‼️ does not add a SECOND log line for a failure the reader already logged", async () => {
+    // 실패 하나에 로그가 두 줄이면 원인이 둘로 보인다. 진단은 읽기 함수가
+    // 남긴다 — readCompanionNoteContent가 경로와 원인을 함께 찍고 던지며,
+    // 그 동작은 pdf-highlight-store.test.ts가 고정한다. 여기서는 합류 래퍼가
+    // 거기에 아무것도 보태지 않는다는 것만 본다(그 reader는 이 파일에서
+    // 목이라 로그를 남기지 않는다 — 그래서 0이 곧 "래퍼가 안 찍었다"다).
+    readCompanionNoteContent.mockRejectedValueOnce(
+      new Error("permission denied"),
+    );
+
+    expect(await readCompanionTextCoalesced(COMPANION, "h7k2m9")).toBeNull();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 
   it("releases the in-flight entry on failure too, so a retry is possible", async () => {
