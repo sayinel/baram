@@ -19,7 +19,7 @@ import type { PDFPageProxy } from "pdfjs-dist";
 
 import { escapeBlockRefTarget } from "../../../pipeline/block-id";
 import { relativeToRoot } from "../../../utils/path-utils";
-import { hitTestRects } from "./pdf-highlight-hittest";
+import { hitTestTopmost } from "./pdf-highlight-hittest";
 import { PendingRefBlockCache } from "./pdf-highlight-selection-cache";
 import { companionPathFor, sidecarPathFor } from "./pdf-highlight-sidecar";
 import { readSidecar } from "./pdf-highlight-store";
@@ -145,6 +145,10 @@ export function usePdfHighlights({
   // §274.2 하이라이트는 pointer-events:none이라 클릭은 .pdf-page의
   // mousedown에서 히트 테스트로 판정한다(PdfPage.tsx). 못 맞히면 열려있던
   // 팝업을 닫는다 — "바깥 클릭으로 닫기"를 이 한 판정으로 겸한다.
+  //
+  // §274 UX fix round 5 — 겹친 하이라이트는 배열 마지막(가장 최근 생성,
+  // 화면에서 맨 위)이 잡혀야 한다. hitTestTopmost가 그 순서를 지킨다 — 왜
+  // 그 순서인지는 pdf-highlight-hittest.ts의 doc comment 참조.
   const handlePageMouseDown = useCallback(
     (
       pageNumber: number,
@@ -158,9 +162,7 @@ export function usePdfHighlights({
         clientX - pageOrigin.left,
         clientY - pageOrigin.top,
       );
-      const hit = highlights.find((h) =>
-        hitTestRects(h.rects, { x: px, y: py }),
-      );
+      const hit = hitTestTopmost(highlights, { x: px, y: py });
       if (hit) {
         setPopup({
           anchor: {

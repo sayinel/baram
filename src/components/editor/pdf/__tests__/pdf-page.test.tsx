@@ -157,3 +157,64 @@ describe("§274 UX fix round 3 (defect B) PdfPage highlight fill", () => {
     expect(container.querySelectorAll(".pdf-hl-mark")).toHaveLength(0);
   });
 });
+
+describe("§274 UX fix round 5 — paint order pins hit order", () => {
+  // ‼️불변식: 여기서 highlights 배열 순서 그대로 DOM에 그려진다는 것을
+  // 고정한다 — pdf-highlight-hittest.ts의 hitTestTopmost는 이 순서를
+  // 거꾸로(마지막부터) 훑어 "화면에서 맨 위 = 배열 마지막"을 가정한다
+  // (pdf-highlight-hittest.test.ts의 hitTestTopmost describe 블록 중
+  // "returns the most recently created" 테스트가 그 절반). PdfPage가
+  // 언젠가 정렬해서 그리도록 바뀌면 이 테스트가 먼저
+  // 깨져, hitTestTopmost도 같이 고쳐야 한다는 신호를 준다.
+  it("draws highlights as <svg> siblings in the same order the highlights prop gives them, so later entries paint on top", () => {
+    const streamTextContent = vi.fn(() => ({}));
+    const highlights: StoredHighlight[] = [
+      {
+        color: "yellow",
+        id: "first",
+        kind: "text",
+        page: 1,
+        rects: [{ h: 20, w: 100, x: 0, y: 0 }],
+      },
+      {
+        color: "green",
+        id: "second",
+        kind: "text",
+        page: 1,
+        rects: [{ h: 20, w: 100, x: 0, y: 0 }],
+      },
+      {
+        color: "blue",
+        id: "third",
+        kind: "text",
+        page: 1,
+        rects: [{ h: 20, w: 100, x: 0, y: 0 }],
+      },
+    ];
+    const { container } = render(
+      <PdfPage
+        highlights={highlights}
+        page={makePage(streamTextContent)}
+        scale={1}
+      />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+
+    const svgs = container.querySelectorAll(".pdf-hl-svg");
+    const paintedColors = Array.from(svgs).map((svg) =>
+      svg.querySelector("path")?.getAttribute("class"),
+    );
+    expect(paintedColors).toEqual([
+      "pdf-hl-path pdf-hl-path-yellow",
+      "pdf-hl-path pdf-hl-path-green",
+      "pdf-hl-path pdf-hl-path-blue",
+    ]);
+  });
+});

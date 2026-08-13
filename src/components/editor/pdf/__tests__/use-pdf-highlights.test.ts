@@ -229,6 +229,134 @@ describe("usePdfHighlights", () => {
     });
   });
 
+  // §274 UX fix round 5 — 사용자 리포트: 겹쳐서 하이라이트한 부분을 클릭하면
+  // 가장 처음 만든 것이 잡혔다. 화면에는 가장 나중에 만든 것이 맨 위에
+  // 그려지는데(PdfPage.tsx가 배열 순서 그대로 그린다) 클릭은 그 반대를
+  // 골랐다는 것 — 이 describe는 훅 전체(handlePageMouseDown)를 통해 그
+  // 정확한 시나리오를 재현한다. 순수 함수 단위 테스트는
+  // pdf-highlight-hittest.test.ts의 hitTestTopmost 쪽에 있다.
+  describe("§274 UX fix round 5 — overlapping highlights resolve to the topmost", () => {
+    const FIRST: StoredHighlight = { ...HIGHLIGHT, id: "first" };
+    // SECOND는 FIRST와 완전히 같은 rect를 갖는다 — 사용자가 같은 자리를
+    // 두 번 하이라이트한 경우. 사이드카 배열에서 FIRST 다음(더 나중 = 더
+    // 최근 생성)에 온다.
+    const SECOND: StoredHighlight = { ...HIGHLIGHT, id: "second" };
+
+    it("clicking an overlap region opens the popup for the most recently created highlight, not the oldest", async () => {
+      readSidecar.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights: [FIRST, SECOND],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(2),
+      );
+
+      // 두 하이라이트가 공유하는 rect(x:[0,100], y:[0,20]) 안의 점을 클릭.
+      act(() => {
+        result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          10,
+          10,
+        );
+      });
+
+      expect(result.current.popupProps?.existing?.id).toBe("second");
+    });
+
+    it("a non-overlapping click still returns the only highlight covering that point", async () => {
+      const disjoint: StoredHighlight = {
+        color: "green",
+        id: "disjoint",
+        kind: "text",
+        page: 1,
+        rects: [{ h: 20, w: 100, x: 200, y: 200 } satisfies PdfRect],
+      };
+      readSidecar.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights: [FIRST, disjoint],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(2),
+      );
+
+      // disjoint의 rect(x:[200,300], y:[200,220]) 안의 점 — FIRST와 안 겹친다.
+      act(() => {
+        result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          210,
+          210,
+        );
+      });
+
+      expect(result.current.popupProps?.existing?.id).toBe("disjoint");
+    });
+
+    it("a click outside every highlight closes the popup instead of picking either one", async () => {
+      readSidecar.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights: [FIRST, SECOND],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+
+      const { result } = renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+        }),
+      );
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(2),
+      );
+
+      act(() => {
+        result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          900,
+          900,
+        );
+      });
+
+      expect(result.current.popupProps).toBeNull();
+    });
+  });
+
   describe("I1 — write-path failures", () => {
     it("logs and shows a toast when changing colour fails to write the sidecar", async () => {
       readSidecar.mockResolvedValue({
