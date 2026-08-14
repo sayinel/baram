@@ -103,7 +103,13 @@ describe("usePdfFind — document switch while the find bar stays open (N1)", ()
     // doc A의 findController가 (loadPdfViewerModule의 동적 import 체인을
     // 거쳐) 실제로 만들어질 때까지 기다린다 — 정해진 틱 수가 아니라 그
     // 사실 자체를 기다린다.
-    await waitFor(() => expect(instances).toHaveLength(1));
+    //
+    // ‼️ 기본 1초 한도로는 부족하다. 이 파일의 vi.mock이 importActual로
+    // pdf_viewer.mjs(14,756줄)를 **실제로** 로드하므로, 전체 스위트가 코어를
+    // 다 쓰는 동안에는 그 import 하나가 1초를 넘긴다 — 실제로 전체 실행에서
+    // 1,186ms에 타임아웃해 이 테스트만 빨개진 적이 있다(단독 실행은 통과).
+    // 한도를 실제 소요에 맞추는 것이지 증상을 덮는 것이 아니다.
+    await waitFor(() => expect(instances).toHaveLength(1), { timeout: 10000 });
     const controllerA = instances[0];
 
     // doc A의 findController가 매치를 찾았다고 알린다. pageItemsRef가 이미
@@ -126,7 +132,9 @@ describe("usePdfFind — document switch while the find bar stays open (N1)", ()
     // 있으면 doc A의 항목은 이 시점에도, 그 이후로도 절대 스스로 사라지지
     // 않는다 — 더 기다린다고 봐줄 수 있는 조건이 아니다.)
     rerender({ doc: docB, pages: pagesB });
-    await waitFor(() => expect(instances).toHaveLength(2));
+    // 위와 같은 이유로 한도를 올린다(모듈은 이미 캐시돼 있지만, 부하가 걸린
+    // 워커에서는 이펙트 재실행과 마이크로태스크 소진도 1초를 넘길 수 있다).
+    await waitFor(() => expect(instances).toHaveLength(2), { timeout: 10000 });
 
     // doc B의 findController는 아직 아무것도 알리지 않았다 — doc A의 캐시가
     // 새 것으로 새어 들어가면 안 된다. (N1 회귀 전에는 [doc] 이펙트의

@@ -18,6 +18,7 @@ import type {
   PDFLinkService,
 } from "pdfjs-dist/legacy/web/pdf_viewer.mjs";
 
+import { logger } from "../../../utils/logger";
 import { createLinkService, loadPdfViewerModule } from "./pdf-find";
 import { recomputePageMatches } from "./pdf-find-cache";
 import { type EolTextItem, toEolItems } from "./pdf-find-eol";
@@ -193,8 +194,18 @@ export function usePdfFind({
           pageItemsRef.current.set(page.pageNumber, toEolItems(tc.items));
           recomputeRef.current();
         })
-        .catch(() => {
-          // 페이지 텍스트 추출 실패 — 그 페이지는 매치를 못 칠한다
+        .catch((err: unknown) => {
+          // ‼️ 조용히 삼키면 안 된다. 이 실패가 곧 "찾기가 아무것도 못
+          // 찾는다"이고, pdfjs 자신도 같은 실패를 #extractText의 catch에서
+          // console.error로 남긴다(pdf_viewer.mjs). 빈 catch로 두면 사용자와
+          // 우리 둘 다 그 페이지의 텍스트가 왜 없는지 알 방법이 없다 —
+          // 실제로 이 구멍 때문에 32페이지 논문의 추출 실패가 진단 불가능한
+          // "0 / 0"으로만 보였다.
+          if (cancelled) return;
+          logger.error(
+            `[PdfFind] failed to extract text for page ${String(page.pageNumber)} — find cannot match on it:`,
+            err,
+          );
         });
     }
     return () => {
@@ -214,84 +225,106 @@ export function usePdfFind({
     // ref.current를 직접 읽지 말라는 lint 제안을 따라 지금 값을 잡아둔다.
     const positionsCache = positionsRef.current;
 
-    loadPdfViewerModule().then((mod) => {
-      if (cancelled) return;
-      bus = new mod.EventBus();
-      const linkService = createLinkService({
-        getPage: getCurrentPage,
-        pagesCount: doc.numPages,
-        scrollToPage,
-      });
-      const findController = new mod.PDFFindController({
-        eventBus: bus,
-        // PdfLinkServiceAdapter는 findController가 실제로 읽는 page/pagesCount
-        // 만 갖춘 최소 표면이다(pdf-find.ts 주석). 진짜 PDFLinkService의 나머지
-        // 멤버(goToDestination 등)는 findController가 내부에서 절대 부르지
-        // 않는다 — pdf_viewer.mjs의 #nextMatch/#updatePage 본문을 읽어 확인했다.
-        linkService: linkService as unknown as PDFLinkService,
-      });
-      // §272 onIsPageVisible을 안 채워도 기본값(null)이 같은 효과(항상 true)를
-      // 내지만, 브리프가 명시적으로 연결하라고 지시했고 앞으로(§272 Task 12)
-      // 실제 가시성 체크로 바꿀 자리이므로 의도를 남겨둔다.
-      findController.onIsPageVisible = () => true;
-      findController.setDocument(doc);
-
-      const recomputeAll = () => {
-        const { cache, changed } = recomputePageMatches({
-          numPages: doc.numPages,
-          pageItems: pageItemsRef.current,
-          pageMatches: findController.pageMatches ?? [],
-          pageMatchesLength: findController.pageMatchesLength ?? [],
-          previous: positionsRef.current,
-          selected: findController.selected ?? { matchIdx: -1, pageIdx: -1 },
+    loadPdfViewerModule()
+      .then((mod) => {
+        if (cancelled) return;
+        bus = new mod.EventBus();
+        const linkService = createLinkService({
+          getPage: getCurrentPage,
+          pagesCount: doc.numPages,
+          scrollToPage,
         });
-        // §272 Fix round 2 — N1: recomputePageMatches는 순수 함수로 남기려고
-        // (테스트하기 좋게) 호출마다 새 Map을 만든다(pdf-find-cache.ts의
-        // `new Map(previous)`) — 아무것도 안 바뀌어도. 그 반환값으로
-        // positionsRef.current를 통째로 바꿔치기하면(이전 버전이 그랬다)
-        // 위에서 캡처한 positionsCache와 어긋나 버려서, 이 이펙트의
-        // 클린업(:246 근처 positionsCache.clear())이 이미 버려진 Map을
-        // 지우고 진짜 살아있는 Map은 영영 안 지워진다 — 문서를 바꿔도(bar를
-        // 안 닫고) 이전 문서의 매치 위치가 새 문서로 새어 들어간다. 그래서
-        // 여기서는 참조를 바꾸지 않고 **내용만** 옮겨 담는다 — ref의 Map
-        // identity는 이펙트 생애 내내 절대 안 바뀐다(위 positionsCache 캡처가
-        // 계속 유효한 이유).
-        if (changed) {
-          positionsRef.current.clear();
-          for (const [pageNumber, matches] of cache) {
-            positionsRef.current.set(pageNumber, matches);
+        const findController = new mod.PDFFindController({
+          eventBus: bus,
+          // PdfLinkServiceAdapter는 findController가 실제로 읽는 page/pagesCount
+          // 만 갖춘 최소 표면이다(pdf-find.ts 주석). 진짜 PDFLinkService의 나머지
+          // 멤버(goToDestination 등)는 findController가 내부에서 절대 부르지
+          // 않는다 — pdf_viewer.mjs의 #nextMatch/#updatePage 본문을 읽어 확인했다.
+          linkService: linkService as unknown as PDFLinkService,
+        });
+        // §272 onIsPageVisible을 안 채워도 기본값(null)이 같은 효과(항상 true)를
+        // 내지만, 브리프가 명시적으로 연결하라고 지시했고 앞으로(§272 Task 12)
+        // 실제 가시성 체크로 바꿀 자리이므로 의도를 남겨둔다.
+        findController.onIsPageVisible = () => true;
+        findController.setDocument(doc);
+
+        const recomputeAll = () => {
+          const { cache, changed } = recomputePageMatches({
+            numPages: doc.numPages,
+            pageItems: pageItemsRef.current,
+            pageMatches: findController.pageMatches ?? [],
+            pageMatchesLength: findController.pageMatchesLength ?? [],
+            previous: positionsRef.current,
+            selected: findController.selected ?? { matchIdx: -1, pageIdx: -1 },
+          });
+          // §272 Fix round 2 — N1: recomputePageMatches는 순수 함수로 남기려고
+          // (테스트하기 좋게) 호출마다 새 Map을 만든다(pdf-find-cache.ts의
+          // `new Map(previous)`) — 아무것도 안 바뀌어도. 그 반환값으로
+          // positionsRef.current를 통째로 바꿔치기하면(이전 버전이 그랬다)
+          // 위에서 캡처한 positionsCache와 어긋나 버려서, 이 이펙트의
+          // 클린업(:246 근처 positionsCache.clear())이 이미 버려진 Map을
+          // 지우고 진짜 살아있는 Map은 영영 안 지워진다 — 문서를 바꿔도(bar를
+          // 안 닫고) 이전 문서의 매치 위치가 새 문서로 새어 들어간다. 그래서
+          // 여기서는 참조를 바꾸지 않고 **내용만** 옮겨 담는다 — ref의 Map
+          // identity는 이펙트 생애 내내 절대 안 바뀐다(위 positionsCache 캡처가
+          // 계속 유효한 이유).
+          if (changed) {
+            positionsRef.current.clear();
+            for (const [pageNumber, matches] of cache) {
+              positionsRef.current.set(pageNumber, matches);
+            }
+            bumpVersion((v) => v + 1);
           }
-          bumpVersion((v) => v + 1);
-        }
-      };
-      recomputeRef.current = recomputeAll;
+        };
+        recomputeRef.current = recomputeAll;
 
-      onCount = (e) => {
-        setMatchCount(e.matchesCount.total);
-        recomputeAll();
-      };
-      onState = (e) => {
-        setMatchCount(e.matchesCount.total);
-        setCurrentIdx(
-          e.matchesCount.current > 0 ? e.matchesCount.current - 1 : -1,
+        // ‼️ 두 이벤트 모두 current와 total을 **함께** 반영해야 한다. 실제 순서를
+        // 측정해 확인한 것(단일 페이지, 매치 2개):
+        //   +404ms updatefindcontrolstate  state=PENDING  {current:0, total:0}
+        //   +655ms updatefindcontrolstate  state=FOUND    {current:0, total:0}
+        //   +655ms updatefindmatchescount                 {current:1, total:2}
+        // FOUND 상태는 #calculateMatch가 카운터를 올리기 **전에** 나간다
+        // (pdf_viewer.mjs: #nextPageMatch()가 _matchesCountTotal += 보다 앞줄이다).
+        // 그래서 옳은 값을 싣고 오는 것은 마지막의 updatefindmatchescount 하나뿐인데,
+        // 이전 구현은 그 핸들러에서 total만 읽고 current를 버렸다 — currentIdx가
+        // FOUND가 남긴 -1에 그대로 묶여 찾기 바가 "0 / 2"로 표시됐다.
+        const applyCount = (e: FindMatchesCountEvent) => {
+          setMatchCount(e.matchesCount.total);
+          setCurrentIdx(
+            e.matchesCount.current > 0 ? e.matchesCount.current - 1 : -1,
+          );
+          recomputeAll();
+        };
+        onCount = applyCount;
+        onState = applyCount;
+        bus.on("updatefindmatchescount", onCount);
+        bus.on("updatefindcontrolstate", onState);
+
+        eventBusRef.current = bus;
+        findControllerRef.current = findController;
+
+        // §272 Fix round 1 — I5: 컨트롤러가 뜨는 동안(getDocument +
+        // loadPdfViewerModule이 둘 다 끝나기 전) 이미 타이핑된 쿼리가 있으면
+        // 지금 한 번 검색을 쏴준다 — 안 그러면 dispatchFind가 그동안 매번
+        // eventBusRef.current===null로 조용히 no-op해서, 컨트롤러가 뜬 뒤에도
+        // 아무것도 재전송되지 않아 사용자가 다음 키를 누르기 전까지 거짓
+        // "0 / 0"에 갇힌다. 닫힘 경로가 이미 queryRef를 비우므로(아래 [isOpen]
+        // 이펙트), 빈 쿼리면 그냥 아무 일도 안 한다.
+        if (queryRef.current) dispatchFind({});
+      })
+      // ‼️ 이 catch가 없으면 찾기가 **조용히** 죽는다. 위 .then() 안의 어떤
+      // 실패든(pdf_viewer.mjs 로드 실패, EventBus/PDFFindController 생성 중
+      // throw, setDocument 실패) rejection이 떠돌게 되고, main.tsx의 전역
+      // unhandledrejection 핸들러가 preventDefault()로 그것을 console.warn으로
+      // 강등시킨다. 그러면 eventBusRef가 영원히 null이라 dispatchFind가 매번
+      // no-op하는데, 찾기 바 자체는 순수 React 상태라 멀쩡히 반응한다 —
+      // "바는 뜨고 입력도 되는데 검색만 안 되는" 진단 불가능한 상태가 된다.
+      .catch((err: unknown) => {
+        logger.error(
+          "[PdfFind] failed to initialise the find controller — find is disabled for this document:",
+          err,
         );
-        recomputeAll();
-      };
-      bus.on("updatefindmatchescount", onCount);
-      bus.on("updatefindcontrolstate", onState);
-
-      eventBusRef.current = bus;
-      findControllerRef.current = findController;
-
-      // §272 Fix round 1 — I5: 컨트롤러가 뜨는 동안(getDocument +
-      // loadPdfViewerModule이 둘 다 끝나기 전) 이미 타이핑된 쿼리가 있으면
-      // 지금 한 번 검색을 쏴준다 — 안 그러면 dispatchFind가 그동안 매번
-      // eventBusRef.current===null로 조용히 no-op해서, 컨트롤러가 뜬 뒤에도
-      // 아무것도 재전송되지 않아 사용자가 다음 키를 누르기 전까지 거짓
-      // "0 / 0"에 갇힌다. 닫힘 경로가 이미 queryRef를 비우므로(아래 [isOpen]
-      // 이펙트), 빈 쿼리면 그냥 아무 일도 안 한다.
-      if (queryRef.current) dispatchFind({});
-    });
+      });
 
     return () => {
       cancelled = true;
