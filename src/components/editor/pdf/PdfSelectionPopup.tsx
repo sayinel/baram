@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef } from "react";
+
 // §274 하이라이트 선택 팝업 — 색 선택 + 참조/텍스트 복사 + (기존 하이라이트를
 // 클릭했을 때만) 삭제. 순수 표시 컴포넌트다: 좌표 계산·클립보드·IPC는 부모
 // (use-pdf-highlights.ts)가 맡고, 여기는 콜백을 그대로 전달만 한다.
@@ -11,6 +13,7 @@ import { Trash2 } from "lucide-react";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { HIGHLIGHT_COLORS } from "./pdf-highlight-sidecar";
+import { clampPopupToBounds } from "./pdf-popup-position";
 
 export interface PdfSelectionPopupProps {
   /** .pdf-page 기준 페이지 로컬 좌표. */
@@ -36,6 +39,52 @@ export function PdfSelectionPopup({
   onPickColor,
 }: PdfSelectionPopupProps) {
   const { t } = useTranslation();
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  // §274.1 앵커는 선택 영역의 오른쪽-아래 모서리라, 페이지 오른쪽 여백 근처에서
+  // 드래그를 끝내면 팝업이 창 밖으로 나가 잘린다. 그려진 뒤 자기 크기와 보이는
+  // 영역을 재서 물린다.
+  //
+  // 왜 state가 아니라 DOM에 직접 쓰는가: 측정하려면 일단 앵커 위치로 한 번
+  // 그려야 하는데, 그 결과를 state로 되돌리면 잘린 위치가 한 프레임 보인다.
+  // useLayoutEffect + 직접 스타일 대입은 페인트 전에 끝난다.
+  //
+  // 앵커는 페이지 로컬이고 경계는 뷰포트 좌표라 단위가 다르지만, 둘의 차이는
+  // 상수 평행이동이므로 뷰포트에서 구한 보정량(delta)을 페이지 로컬 앵커에
+  // 그대로 더하면 된다.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // 매 실행마다 보정 없는 앵커에서 다시 시작한다 — 이전 보정 위에 또
+    // 보정하면 팝업이 경계에서 계속 밀려난다.
+    el.style.left = `${String(anchor.left)}px`;
+    el.style.top = `${String(anchor.top)}px`;
+
+    const rect = el.getBoundingClientRect();
+    // jsdom(및 아직 레이아웃 전인 경우)은 모든 rect가 0이다 — 보정할 것이 없다.
+    if (rect.width === 0 && rect.height === 0) return;
+
+    const scroller = el.closest(".pdf-preview-scroll");
+    const bounds = scroller
+      ? scroller.getBoundingClientRect()
+      : {
+          bottom: window.innerHeight,
+          left: 0,
+          right: window.innerWidth,
+          top: 0,
+        };
+
+    const clamped = clampPopupToBounds({
+      bounds,
+      desired: { left: rect.left, top: rect.top },
+      size: { height: rect.height, width: rect.width },
+    });
+    const dx = clamped.left - rect.left;
+    const dy = clamped.top - rect.top;
+    if (dx === 0 && dy === 0) return;
+    el.style.left = `${String(anchor.left + dx)}px`;
+    el.style.top = `${String(anchor.top + dy)}px`;
+  }, [anchor.left, anchor.top, existing, highlightKind]);
 
   return (
     <div
@@ -50,6 +99,7 @@ export function PdfSelectionPopup({
       // 리스너가 (여전히 non-collapsed인) 같은 선택을 다시 읽어 팝업을
       // 방금 닫은 그 자리에 즉시 재생성한다.
       onMouseUp={(e) => e.stopPropagation()}
+      ref={ref}
       style={{ left: anchor.left, top: anchor.top }}
     >
       <div className="pdf-hl-swatch-row" role="group">
