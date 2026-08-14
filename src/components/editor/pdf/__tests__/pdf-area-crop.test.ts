@@ -122,6 +122,23 @@ describe("computeAreaCropLayout", () => {
     const result = layout({ height: 100000, width: 0.001 });
     expect(result?.canvasWidth).toBe(1);
     expect(result?.canvasHeight).toBeGreaterThanOrEqual(1);
+    // ‼️ 1px 바닥은 면적 상한 **뒤에** 축별로 걸리므로, 여기를 보지 않으면
+    // 이 입력이 만드는 1 × 20,000,000 캔버스(예산의 5배, ~80MB)를 그냥
+    // 지나친다 — 방문하고도 쳐다보지 않는 테스트가 된다.
+    expect(
+      (result?.canvasWidth ?? 0) * (result?.canvasHeight ?? 0),
+    ).toBeLessThanOrEqual(MAX_AREA_CANVAS_PIXELS * 1.01);
+  });
+
+  it("does not shrink the other axis when a floored axis is harmless", () => {
+    // 클램프의 반대 가지 — 여기서는 면적 상한이 걸리지도 않는다(900 × 1).
+    // 바닥이 걸렸다는 이유만으로 멀쩡한 축까지 줄이면 크롭이 잘려 나간다.
+    // (두 축이 동시에 바닥을 칠 수는 없다: 상한이 걸리면 두 축의 곱이 정확히
+    // 예산이므로 둘 다 1.5 미만일 수 없다.)
+    const result = layout({ height: 0.001, width: 100000 });
+
+    expect(result?.canvasHeight).toBe(1);
+    expect(result?.canvasWidth).toBe(900);
   });
 
   // ‼️ 판별력: 이 케이스들은 `Number.isFinite` 가드를 `typeof === "number"`나

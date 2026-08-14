@@ -50,7 +50,15 @@ export const AREA_RENDER_TARGET_CSS_WIDTH = 900;
  *
  * ‼️ 폭이 아니라 **면적**으로 건다. 좁고 긴 크롭(50×700pt짜리 세로 막대)을
  * 900px 목표로 올리면 18배 스케일이 되어 ~11M 픽셀 — 한 참조가 40MB 넘는
- * 캔버스를 잡는다. 면적 예산은 종횡비와 무관하게 그 폭발을 막는다.
+ * 캔버스를 잡는다. 면적 예산은 그 폭발을 종횡비와 무관하게 막는다(축별 1px
+ * 바닥이 면적을 되살리는 구멍은 canvasSize가 막는다 — 그쪽 주석 참조).
+ *
+ * **이 상한이 무는 지점은 흔하다.** dpr 2에서 `h/w > 1.235`면 걸린다
+ * (`MAX / (900² · dpr²)`) — 즉 세로가 가로의 1.24배만 넘어도 목표 900px에
+ * 도달하지 못한다. 300×900pt 크롭은 canvasW 1155를 받는데, 700 CSS px 컬럼의
+ * 100%는 1400을 원한다. 여전히 예전(600)보다 훨씬 낫지만 완전히 선명하지는
+ * 않다 — 알려진 한계이고, 예산을 올리지 않는 이유는 메모리다(항목당 4M px는
+ * 이미 디코드 15.26MB, base64 최대 12.43MB다).
  */
 export const MAX_AREA_CANVAS_PIXELS = 4_000_000;
 
@@ -119,9 +127,7 @@ export function computeAreaCropLayout({
   );
 
   return {
-    // 0폭/0높이 캔버스는 pdfjs가 던진다 — 반올림이 0으로 떨어져도 1은 남긴다.
-    canvasHeight: Math.max(1, Math.round(height * renderScale)),
-    canvasWidth: Math.max(1, Math.round(width * renderScale)),
+    ...canvasSize(width * renderScale, height * renderScale),
     cssHeight,
     cssWidth,
     offsetX: -left * renderScale,
@@ -137,10 +143,62 @@ export function computeAreaCropLayout({
  * 값은 같지만 이 형태는 중간값이 Infinity로 넘치지 않는다(극단적 종횡비에서
  * `면적`이 넘치면 곱셈 쪽은 스케일 0을 돌려준다).
  *
- * 이 상한이 낮추는 유일한 실제 경우는 폭보다 2.4배 이상 긴 크롭인데, 그런
- * 크롭은 **예전 코드에서도** 예산을 넘는 캔버스를 잡고 있었다(640×2000 CSS px
- * 크롭 = dpr 2에서 5.1M px). 표시 크기는 어느 쪽이든 바뀌지 않는다.
+ * ‼️ 두 임계를 섞지 말 것 (둘 다 dpr 2 기준, 계산해 확인함):
+ *   - 상한이 **무는** 지점: `h/w > 1.235` — 드문 세로 막대가 아니라 웬만한
+ *     세로 그림 전부다(MAX_AREA_CANVAS_PIXELS 주석 참조).
+ *   - 새 백킹이 **예전보다 작아지는** 지점: 훨씬 위쪽인 `w·h > 1e6 pt²`
+ *     (자연 폭이 640 이하일 때. 640×2000 크롭 = 1280 → 1131 device px,
+ *     500×2000은 정확히 동점). 자연 폭이 640을 넘으면 `h/w > 2.44`.
+ * 즉 상한에 걸리는 크롭 대부분은 그래도 예전보다 큰 백킹을 받는다
+ * (300×900 크롭: 600 → 1155). 표시 크기는 어느 쪽이든 바뀌지 않는다.
  */
+/**
+ * 스케일된 크기를 실제 캔버스 픽셀 크기로 만든다. 0폭/0높이 캔버스는 pdfjs가
+ * 던지므로 각 축은 최소 1이다.
+ *
+ * ‼️ 그 1px 바닥은 면적 상한 **뒤에** 축별로 적용되므로, 극단적인 종횡비에서는
+ * 바닥이 면적을 되살린다: w/h = 1e-8이면 폭이 0.2에서 1로 올라가는 동안 높이는
+ * 상한 스케일을 그대로 유지해 **1 × 20,000,000**(예산의 5배, ~80MB)이 된다.
+ * 바닥이 걸린 축이 있으면 반대 축을 예산에 맞춰 자르는 이유다. 임계는
+ * `w/h < 5.63e-7` — 실제 PDF이 아니라 상한 사이드카에서나 나오는 값이지만,
+ * 상한이 "종횡비와 무관"하다는 주장은 이 절이 있어야 참이 된다.
+ *
+ * 바닥이 걸리지 않은 일반 경로는 손대지 않는다. 축별 반올림 때문에 곱이 예산을
+ * 0.1% 미만 넘길 수 있지만(50×700 크롭이 1.00085배), 거기서 한 축을 더 자르면
+ * 예산을 지키는 대가로 크롭 아래쪽 몇 줄이 **잘려 나간다** — 캔버스를 줄이는
+ * 것은 축소가 아니라 클리핑이기 때문이다.
+ */
+function canvasSize(
+  scaledWidth: number,
+  scaledHeight: number,
+): { canvasHeight: number; canvasWidth: number } {
+  const roundedWidth = Math.round(scaledWidth);
+  const roundedHeight = Math.round(scaledHeight);
+  if (roundedWidth >= 1 && roundedHeight >= 1) {
+    return { canvasHeight: roundedHeight, canvasWidth: roundedWidth };
+  }
+  // 한 축이 1로 올라갔다 — 반대 축을 예산 안으로 되돌린다. 두 예산 모두
+  // 클램프 **전** 값에서 계산해야 짝이 맞는다.
+  const flooredWidth = Math.max(1, roundedWidth);
+  const flooredHeight = Math.max(1, roundedHeight);
+  return {
+    canvasHeight: Math.max(
+      1,
+      Math.min(
+        flooredHeight,
+        Math.floor(MAX_AREA_CANVAS_PIXELS / flooredWidth),
+      ),
+    ),
+    canvasWidth: Math.max(
+      1,
+      Math.min(
+        flooredWidth,
+        Math.floor(MAX_AREA_CANVAS_PIXELS / flooredHeight),
+      ),
+    ),
+  };
+}
+
 function fitToCanvasArea(width: number, height: number, scale: number): number {
   if (width * height * scale * scale <= MAX_AREA_CANVAS_PIXELS) return scale;
   return Math.sqrt(MAX_AREA_CANVAS_PIXELS / (width * height));
