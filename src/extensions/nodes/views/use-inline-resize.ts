@@ -97,6 +97,13 @@ export function resolveContainingBlock(el: HTMLElement): HTMLElement | null {
  * mouseup only if the pointer actually moved — a plain click must never change
  * the width — and the callback is re-read at commit time, so a caller can still
  * refuse the write from state that changed mid-drag.
+ *
+ * Three things end a drag: mouseup (commits), unmount, and the window losing
+ * focus (neither commits). The last one covers releasing the button outside the
+ * window, where no `mouseup` ever arrives — without it the crop would keep
+ * tracking the cursor until the next click. `useMediaResize` deliberately does
+ * NOT have this: its behaviour is unchanged from the day it shipped, and an
+ * inline element is far easier to drag off the window than a full-width block.
  */
 export function useInlineResize(
   elementRef: React.RefObject<HTMLElement | null>,
@@ -132,7 +139,17 @@ export function useInlineResize(
       const detach = () => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
+        window.removeEventListener("blur", onWindowBlur);
         detachRef.current = null;
+      };
+      // Releasing the button outside the window can cost us the `mouseup`
+      // entirely, and then the crop keeps tracking the cursor until the next
+      // click somewhere in the app. Losing focus is the observable end of that
+      // gesture — tear down, and commit nothing: a width the user set by
+      // dragging into another window is not a width they chose.
+      const onWindowBlur = () => {
+        detach();
+        setDragPct(null);
       };
       const onUp = () => {
         detach();
@@ -150,6 +167,7 @@ export function useInlineResize(
       detachRef.current = detach;
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
+      window.addEventListener("blur", onWindowBlur);
     },
     [elementRef],
   );

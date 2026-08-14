@@ -331,8 +331,10 @@ describe("BlockReferenceView: §276.6 per-reference width", () => {
     return editor.view.dom.querySelector(".block-reference") as HTMLElement;
   }
 
-  /** The same reference, but inside a one-cell table. */
-  async function mountInTableCell(): Promise<HTMLElement> {
+  /** The same reference, but inside a one-cell table (body or header cell). */
+  async function mountInTableCell(
+    cellType: "tableCell" | "tableHeader" = "tableCell",
+  ): Promise<HTMLElement> {
     editor = new Editor({
       content: "<p>seed</p>",
       extensions: createBaramExtensions({ onNavigateBlockRef: vi.fn() }),
@@ -349,7 +351,7 @@ describe("BlockReferenceView: §276.6 per-reference width", () => {
                 type: "tableRow",
                 content: [
                   {
-                    type: "tableCell",
+                    type: cellType,
                     content: [
                       {
                         type: "paragraph",
@@ -443,18 +445,24 @@ describe("BlockReferenceView: §276.6 per-reference width", () => {
     expect(el.hasAttribute("data-sized")).toBe(false);
   });
 
-  it("does not offer the handle inside a table cell", async () => {
-    // ‼️ 너비는 `|w=NN`으로 실린다. 이스케이프되지 않은 `|`는 GFM 셀을 쪼개므로
-    // `| ((f#^id)) |`가 다음 저장/열기에서 두 칸이 되고 참조는 사라진다 —
-    // 마우스 제스처 한 번이 표와 참조를 동시에 날린다. 표 안에서 안전하게
-    // 왕복하던 것은 파이프 없는 참조뿐이고, 이 핸들이 그 첫 파이프를 넣는다.
-    preview.current = READY;
-    const el = await mountInTableCell();
+  it.each([["tableCell" as const], ["tableHeader" as const]])(
+    "does not offer the handle inside a %s",
+    async (cellType) => {
+      // ‼️ 너비는 `|w=NN`으로 실린다. 이스케이프되지 않은 `|`는 GFM 셀을 쪼개므로
+      // `| ((f#^id)) |`가 다음 저장/열기에서 두 칸이 되고 참조는 사라진다 —
+      // 마우스 제스처 한 번이 표와 참조를 동시에 날린다. 표 안에서 안전하게
+      // 왕복하던 것은 파이프 없는 참조뿐이고, 이 핸들이 그 첫 파이프를 넣는다.
+      //
+      // 헤더 셀도 본문 셀과 **똑같이** `|`로 쪼개진다. 봉쇄 집합의 절반이
+      // 테스트되지 않으면 `tableHeader`를 지워도 아무도 모른다.
+      preview.current = READY;
+      const el = await mountInTableCell(cellType);
 
-    // 크롭 자체는 그대로 그려진다 — 막는 것은 리사이즈뿐이다.
-    expect(el.querySelector("img")).not.toBeNull();
-    expect(el.querySelector(".media-resize-handle")).toBeNull();
-  });
+      // 크롭 자체는 그대로 그려진다 — 막는 것은 리사이즈뿐이다.
+      expect(el.querySelector("img")).not.toBeNull();
+      expect(el.querySelector(".media-resize-handle")).toBeNull();
+    },
+  );
 });
 
 describe("BlockReferenceView: §276.6 drag against the real editor DOM", () => {
@@ -598,6 +606,30 @@ describe("BlockReferenceView: §276.6 drag against the real editor DOM", () => {
     const { handle } = await mountAndMeasure();
 
     fireEvent.mouseDown(handle);
+    fireEvent.mouseUp(document);
+
+    expect(storedWidth()).toBeNull();
+  });
+
+  it("commits nothing when the preview stops being ready mid-drag", async () => {
+    // ‼️ 렌더 시점의 가드만으로는 부족하다. 버튼을 누른 채로 사이드카가 다시
+    // 해석되거나(vault 전환, 파일 이동) 프리뷰가 실패하면, 이미 시작된 드래그가
+    // mouseup에서 여전히 `|w=NN`을 마크다운에 적는다 — 그릴 그림이 없어진
+    // 참조에. 커밋 콜백 안에서 다시 확인해야 막힌다.
+    const { el, handle } = await mountAndMeasure();
+
+    fireEvent.mouseDown(handle);
+    fireEvent.mouseMove(document, { clientX: 500 });
+    expect(el.querySelector(".media-resize-label")?.textContent).toBe("30%");
+
+    preview.current = { ...READY, status: "unavailable" };
+    // 드래그 자체가 매 mousemove마다 리렌더를 낸다 — 그 리렌더가 새 프리뷰를
+    // 읽고, 커밋 콜백도 새것으로 갈린다. ‼️ 퍼센트가 **실제로 달라지는** 곳까지
+    // 움직여야 한다: 같은 값이면 setState가 bail out해서 리렌더가 아예 없다
+    // (520px는 32% → ±3% 스냅으로 다시 30%가 된다).
+    fireEvent.mouseMove(document, { clientX: 700 });
+    expect(el.querySelector(".media-resize-handle")).toBeNull();
+
     fireEvent.mouseUp(document);
 
     expect(storedWidth()).toBeNull();

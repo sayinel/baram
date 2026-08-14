@@ -132,6 +132,30 @@ describe("useInlineResize", () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it("abandons the drag when the window loses focus, committing nothing", () => {
+    // 창 밖에서 버튼을 놓으면 mouseup이 아예 오지 않는다 — 그러면 크롭이 다음
+    // 클릭까지 커서를 계속 따라다닌다. 포커스 상실이 그 제스처의 관측 가능한
+    // 끝이고, 다른 창으로 끌고 나가며 정해진 폭은 사용자가 고른 폭이 아니다.
+    const { getByTestId, onCommit, queryByTestId } = setup();
+    stubRect(getByTestId("paragraph"), 0, 1000);
+    stubRect(getByTestId("element"), 0, 100);
+
+    fireEvent.mouseDown(getByTestId("handle"));
+    fireEvent.mouseMove(document, { clientX: 400 });
+    expect(getByTestId("label").textContent).toBe("40%");
+
+    fireEvent.blur(window);
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(queryByTestId("label")).toBeNull();
+
+    // 그리고 리스너가 남아 있지 않아야 한다 — 남으면 다음 클릭에서 되살아난다.
+    fireEvent.mouseMove(document, { clientX: 900 });
+    fireEvent.mouseUp(document);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(queryByTestId("label")).toBeNull();
+  });
+
   it("swallows the click the browser fires after a drag", () => {
     // ‼️ The block reference navigates on Cmd/Ctrl+click. A drag ending with
     // the modifier held synthesizes exactly that click on the reference, so
