@@ -6,7 +6,8 @@
 import type { MatchPosition } from "./pdf-find";
 import type { EolTextItem } from "./pdf-find-eol";
 
-import { convertMatchesWithEol } from "./pdf-find-eol";
+import { convertMatches } from "./pdf-find";
+import { toDomainStrings } from "./pdf-find-eol";
 
 export interface PdfPageMatches {
   currentIdx: number;
@@ -58,8 +59,12 @@ export function recomputePageMatches({
     if (!items) continue;
     const matches = pageMatches[idx] ?? [];
     const matchesLength = pageMatchesLength[idx] ?? [];
+    // §272.6 보정 없이 item.str 배열에 그대로 walk시킨다 — pdfjs 자신의
+    // TextHighlighter._convertMatches와 같은 도메인이다. 합성 "\n"을 끼워
+    // 넣던 이전 구현은 두 번째 매치부터 앞선 EOL 개수만큼 왼쪽으로 밀었다
+    // (근거와 측정값은 pdf-find-eol.ts 헤더 참조).
     const positions = matches.length
-      ? convertMatchesWithEol(matches, matchesLength, items)
+      ? convertMatches(matches, matchesLength, toDomainStrings(items))
       : [];
     const pageCurrentIdx = selected.pageIdx === idx ? selected.matchIdx : -1;
     const prev = cache.get(pageNumber);

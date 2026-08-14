@@ -1,105 +1,40 @@
-// §272 EOL 오프셋 보정 — findController 도메인과 텍스트 레이어 도메인의 차이를 메운다.
+// §272.6 findController의 매치 오프셋이 사는 도메인 — **합성 "\n"은 없다.**
 //
-// PDFFindController는 텍스트를 추출할 때(pdf_viewer.mjs:6156-6163) 각 item.str
-// 뒤에, item.hasEOL이면 합성 "\n" 문자를 하나 더 끼워 넣는다. 매치 오프셋은 그
-// 늘어난 문자열을 기준으로 나온다. 반면 TextLayer의 textDivs(pdf.mjs:21309,
-// 21376-21380)는 item당 정확히 하나의 div만 가지고 "\n" 항목은 전혀 없다 —
-// hasEOL item은 그냥 <br>을 하나 더 붙일 뿐, 그 <br>은 textDivs에 들어가지
-// 않는다. 그래서 findController가 보고하는 오프셋을 곧이곧대로 textDivs에
-// 대응하는 텍스트 배열에 넣으면, 앞서 지나간 EOL 개수만큼 divIdx가 어긋난다.
+// ‼️ 이 파일은 원래 "EOL 오프셋 보정"을 했다. 그 전제가 틀렸고, 그 보정이
+// 실제 버그였다. 측정으로 확인한 것(2페이지 합성 PDF, 1페이지의 item 2개,
+// 첫 item만 hasEOL=true, "alpha"를 검색):
 //
-// convertMatches(pdf-find.ts)는 pdfjs TextHighlighter의 충실한 포트로 남겨두고
-// (앞선 태스크에서 그렇게 결정됨), 보정은 호출부인 이 모듈에서 한다.
-import type { MatchPosition } from "./pdf-find";
+//   items                     ["Baram find probe alpha"(hasEOL), "second line beta alpha"]
+//   controller _pageContents  "Baram find probe alpha second line beta alpha"  (45자)
+//   controller pageMatches    [17, 39]
+//
+//   합성 "\n"을 넣은 도메인("...alpha\nsecond...")에서 39 → " alph"   ✗ 한 칸 앞
+//   item.str만 이어붙인 도메인("...alphasecond...")에서 39 → "alpha"  ✓
+//
+// 왜 그런가: PDFFindController는 확실히 "\n"이 들어간 문자열로 검색하지만,
+// 매치를 배열에 넣기 전에 #calculateMatch가 getOriginalIndex(diffs, …)로
+// 인덱스를 되돌린다. pdfjs 자신의 TextHighlighter._convertMatches
+// (pdf_viewer.mjs:10926)가 그 오프셋을 **textContentItemsStr** — 합성 항목이
+// 전혀 없는 순수 item.str 배열 — 에 그대로 walk시키는 것이 그 증거다.
+//
+// 증상: 첫 매치는 정확하고, 그 이후 매치가 **앞선 EOL 개수만큼 왼쪽으로**
+// 밀렸다. 실사용자가 정확히 그렇게 보고했고, 진짜 pdfjs로 도는 통합
+// 테스트(use-pdf-find-integration.test.ts)가 같은 어긋남을 독립적으로 잡았다.
+//
+// 그래서 변환은 보정 없이 convertMatches(pdf-find.ts)를 item.str 배열에 그대로
+// 호출한다 — pdfjs와 같은 도메인, 같은 산술. 이 파일에 남은 것은 pdfjs의
+// item 유니온을 좁히는 일뿐이다.
 
-import { convertMatches } from "./pdf-find";
-
-/** convertMatches의 텍스트 도메인을 재구성하는 데 필요한 최소 표면. */
+/** convertMatches에 넘길 텍스트 항목. hasEOL은 더 이상 오프셋에 영향을 주지
+ * 않지만(위 헤더 참조), pdfjs item의 형태를 그대로 반영해 둔다. */
 export interface EolTextItem {
   hasEOL?: boolean;
   str: string;
 }
 
-/**
- * findController와 같은 도메인 문자열 배열(hasEOL item마다 합성 "\n" 삽입)을
- * 만들고, 그 도메인의 (divIdx, offset) 좌표를 textDivs 좌표로 되돌리는
- * 함수를 함께 준다.
- *
- * 경계 사례 — divIdx가 합성 "\n" 항목 자체를 가리키는 경우: textDivs에는 그
- * 위치가 없다. 그 항목을 만든 **이전** 실제 div로 되돌리는 것만으론 부족하다
- * — offset을 그대로 들고 가면 안 된다. 길이 1인 합성 항목이라 그 위치에
- * 닿는 offset은 begin이면 항상 0, end면 항상 1(=합성 항목 전체 소비)뿐인데,
- * 이 값을 이전 div에 그대로 옮기면 begin은 그 div의 **시작**을, end는
- * "1글자만" 가리키게 되어 버린다 — 실제로는 둘 다 그 div의 **끝**(=EOL
- * 경계 자체)을 뜻한다. 그래서 여기서는 offset을 이전 div의 문자열 길이로
- * 대체한다: begin이 되면 `start === end === len`이라 renderMatches의
- * `end <= start` 가드가 그 div를 건너뛰고(= "foo" 자체는 매치되지 않았다는
- * 뜻이 정확히 반영됨) 다음 div부터 0에서 시작하고, end가 되면 그 div의
- * 끝까지 칠해진다(= "\n" 직전까지 전부 매치됐다는 뜻이 정확히 반영됨).
- */
-export function buildEolDomain(items: readonly EolTextItem[]): {
-  domainItems: string[];
-  toDivPosition: (
-    i: number,
-    offset: number,
-  ) => { divIdx: number; offset: number };
-} {
-  const domainItems: string[] = [];
-  // 합성 "\n"이 들어간 domainItems 인덱스들 (오름차순).
-  const syntheticAt: number[] = [];
-  for (const item of items) {
-    domainItems.push(item.str);
-    if (item.hasEOL) {
-      syntheticAt.push(domainItems.length);
-      domainItems.push("\n");
-    }
-  }
-  const syntheticSet = new Set(syntheticAt);
-
-  // i가 합성 항목이 아니라고 가정했을 때의 실제 div 인덱스. i가 합성
-  // 항목 자체라도 이 계산은 여전히 "그 항목을 만든 이전 실제 div"를 준다
-  // (그 div 뒤에 삽입된 합성 항목까지 shift에 포함되므로).
-  const toRealDivIdx = (i: number): number => {
-    let shift = 0;
-    for (const s of syntheticAt) {
-      if (s > i) break; // syntheticAt는 오름차순이라 더 볼 필요 없다
-      shift++;
-    }
-    return Math.max(0, i - shift);
-  };
-
-  const toDivPosition = (
-    i: number,
-    offset: number,
-  ): { divIdx: number; offset: number } => {
-    const divIdx = toRealDivIdx(i);
-    if (syntheticSet.has(i)) {
-      // 위 경계 사례: offset을 무시하고 이전 div의 끝으로 고정한다.
-      return { divIdx, offset: items[divIdx].str.length };
-    }
-    return { divIdx, offset };
-  };
-
-  return { domainItems, toDivPosition };
-}
-
-/**
- * pageMatches/pageMatchesLength(findController 도메인의 원문 오프셋)를
- * textDivs 좌표의 MatchPosition[]으로 변환한다. convertMatches를
- * findController와 동일한 도메인(합성 "\n" 포함)으로 호출한 뒤, 결과의
- * (divIdx, offset)을 textDivs 좌표로 되돌린다.
- */
-export function convertMatchesWithEol(
-  matches: number[],
-  matchesLength: number[],
-  items: readonly EolTextItem[],
-): MatchPosition[] {
-  const { domainItems, toDivPosition } = buildEolDomain(items);
-  const positions = convertMatches(matches, matchesLength, domainItems);
-  return positions.map(({ begin, end }) => ({
-    begin: toDivPosition(begin.divIdx, begin.offset),
-    end: toDivPosition(end.divIdx, end.offset),
-  }));
+/** findController 도메인의 오프셋을 그대로 walk할 텍스트 배열. */
+export function toDomainStrings(items: readonly EolTextItem[]): string[] {
+  return items.map((i) => i.str);
 }
 
 /**
@@ -111,6 +46,9 @@ export function convertMatchesWithEol(
  * 겹치는 프로퍼티가 하나도 없다고 보고 weak-type 오류를 낸다
  * (TextMarkedContent는 str/hasEOL이 전혀 없다) — 직접 unknown으로 받아
  * 런타임에 좁힌다.
+ *
+ * ‼️ 건너뛰기는 오프셋에 안전하다: findController도 같은 항목들을 같은 순서로
+ * 보고, str이 없는 항목은 어느 쪽 도메인에도 문자를 기여하지 않는다.
  */
 export function toEolItems(items: readonly unknown[]): EolTextItem[] {
   const result: EolTextItem[] = [];
