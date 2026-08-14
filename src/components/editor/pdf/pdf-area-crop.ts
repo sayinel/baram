@@ -27,6 +27,33 @@ export interface AreaCropLayoutInput {
   pageLocalAtScale1: PageLocalRect;
 }
 
+/**
+ * §276.6 백킹 이미지를 그릴 **목표 표시 폭**(CSS px). 표시 크기(cssWidth)와는
+ * 다른 질문이다.
+ *
+ * 참조별 리사이즈가 생기면서 크롭은 자연 크기보다 크게 표시될 수 있는데,
+ * 확대는 CSS가 같은 비트맵을 늘리는 것뿐이다. 예전 렌더 스케일은
+ * `shrink * dpr`이었고 `shrink ≤ 1`이라 백킹은 **절대 자연 크기를 넘지
+ * 않았다** — US Letter 페이지가 612pt이므로 사실상 모든 크롭이 640 상한 아래고,
+ * 즉 자연 크기 위 구간(이 기능이 존재하는 이유의 절반)이 전부 흐렸다.
+ * 400pt 그림은 dpr 2에서 800 device px로 그려지는데 700 CSS px 컬럼의 100%는
+ * ~1400을 필요로 한다.
+ *
+ * pdfjs는 벡터를 요청한 스케일로 래스터화하므로, 도달 가능한 최대 표시 폭에
+ * 맞춰 **한 번** 그려 두면 보간이 아니라 진짜로 선명하다. 드래그마다 다시
+ * 그리는 것은 여전히 금지다(§276.6 비-범위) — 이건 렌더 1회의 예산이다.
+ */
+export const AREA_RENDER_TARGET_CSS_WIDTH = 900;
+
+/**
+ * 캔버스 픽셀 총량 상한(device px).
+ *
+ * ‼️ 폭이 아니라 **면적**으로 건다. 좁고 긴 크롭(50×700pt짜리 세로 막대)을
+ * 900px 목표로 올리면 18배 스케일이 되어 ~11M 픽셀 — 한 참조가 40MB 넘는
+ * 캔버스를 잡는다. 면적 예산은 종횡비와 무관하게 그 폭발을 막는다.
+ */
+export const MAX_AREA_CANVAS_PIXELS = 4_000_000;
+
 /** pdfRectToPageLocal이 돌려주는 페이지 로컬 CSS 픽셀 사각형. */
 export interface PageLocalRect {
   height: number;
@@ -79,11 +106,17 @@ export function computeAreaCropLayout({
   // **전에** 걸러야 캔버스 크기가 NaN이 되지 않는다.
   const clampedDpr = Number.isFinite(dpr) ? Math.min(Math.max(dpr, 1), 2) : 1;
 
-  // 축소만 한다 — 작은 영역을 늘리면 흐려지기만 한다.
+  // 표시 크기는 축소만 한다 — 기본 표시 크기는 §276.4 그대로다.
   const shrink = Math.min(1, maxCssWidth / width);
   const cssWidth = width * shrink;
   const cssHeight = height * shrink;
-  const renderScale = shrink * clampedDpr;
+
+  // 백킹 해상도는 표시 크기를 따르지 않는다(§276.6, 위 상수 참조).
+  const renderScale = fitToCanvasArea(
+    width,
+    height,
+    (AREA_RENDER_TARGET_CSS_WIDTH / width) * clampedDpr,
+  );
 
   return {
     // 0폭/0높이 캔버스는 pdfjs가 던진다 — 반올림이 0으로 떨어져도 1은 남긴다.
@@ -95,4 +128,20 @@ export function computeAreaCropLayout({
     offsetY: -top * renderScale,
     renderScale,
   };
+}
+
+/**
+ * `scale`을 그대로 쓰되, 캔버스 면적이 예산을 넘으면 예산에 **딱 맞는**
+ * 스케일로 낮춘다. 면적은 스케일의 제곱이므로 예산 스케일은
+ * `sqrt(예산 / (width * height))`이다 — 곱셈 형태(`scale * sqrt(예산/면적)`)와
+ * 값은 같지만 이 형태는 중간값이 Infinity로 넘치지 않는다(극단적 종횡비에서
+ * `면적`이 넘치면 곱셈 쪽은 스케일 0을 돌려준다).
+ *
+ * 이 상한이 낮추는 유일한 실제 경우는 폭보다 2.4배 이상 긴 크롭인데, 그런
+ * 크롭은 **예전 코드에서도** 예산을 넘는 캔버스를 잡고 있었다(640×2000 CSS px
+ * 크롭 = dpr 2에서 5.1M px). 표시 크기는 어느 쪽이든 바뀌지 않는다.
+ */
+function fitToCanvasArea(width: number, height: number, scale: number): number {
+  if (width * height * scale * scale <= MAX_AREA_CANVAS_PIXELS) return scale;
+  return Math.sqrt(MAX_AREA_CANVAS_PIXELS / (width * height));
 }
