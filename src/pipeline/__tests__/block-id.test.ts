@@ -314,6 +314,17 @@ describe("serializeBlockRef", () => {
     ).toBe("((file#^abc123|text))");
   });
 
+  it("treats only null as absent — 0 is a number, and is written out", () => {
+    // ‼️ 진공 상태의 단정이 아니다. 진입점(parseRefWidth / clampSnapPct)이
+    // 전부 검증하므로 0은 오늘 도달하지 못하지만, 진리값 검사(`attrs.width ?`)는
+    // 0을 **조용히 없는 값으로** 만들어 필드를 통째로 버린다. 여기서는 써 내고,
+    // 읽을 때 parseRefWidth가 `w=0`을 거부해 display 텍스트로 남긴다 — 즉
+    // 왕복은 여전히 바이트 동일하고, 데이터는 사라지지 않는다.
+    expect(
+      serializeBlockRef({ target: "file", blockId: "abc123", width: 0 }),
+    ).toBe("((file#^abc123|w=0))");
+  });
+
   // The two functions are each other's inverse — this is what keeps the
   // markdown on disk byte-identical across a load/save cycle.
   it("round-trips serialize → match → parse with a width", () => {

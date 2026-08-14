@@ -356,6 +356,29 @@ details summary { cursor: pointer; font-weight: 600; }
   border: 1px solid rgba(124, 58, 237, 0.25);
 }
 
+/* §276.4/§276.6 Area highlight reference — mirrors links.css. export-html.ts
+   clones the live editor DOM, so the crop, the wrapper's inline width:N% and
+   data-sized all reach the export. Without these three rules the chip frame
+   stays (a purple border around a picture), and a resized reference exports as
+   a 60%-wide box holding a natural-size image that overflows it. */
+.block-reference[data-area-preview="true"] {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+}
+.block-reference-area-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+}
+.block-reference[data-area-preview="true"][data-sized="true"] .block-reference-area-image {
+  width: 100%;
+}
+
 /* Block embed */
 .block-embed {
   border: 1px solid #e5e7eb;

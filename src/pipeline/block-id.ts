@@ -122,7 +122,11 @@ export function serializeBlockRef(attrs: {
   width?: null | number;
 }): string {
   const ref = `${attrs.target}#^${attrs.blockId}`;
-  const width = attrs.width ? `|${REF_WIDTH_PREFIX}${attrs.width}` : "";
+  // `!= null`, not truthiness: `null | number` says absent is null, and 0/NaN
+  // are numbers. Every entry point validates through parseRefWidth or
+  // clampSnapPct so neither can arrive today, but the guard should state what
+  // the type states rather than silently agreeing by accident.
+  const width = attrs.width == null ? "" : `|${REF_WIDTH_PREFIX}${attrs.width}`;
   if (attrs.display) {
     return `((${ref}|${attrs.display}${width}))`;
   }
