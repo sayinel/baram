@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { computeInlineResizePct } from "../use-inline-resize";
+import {
+  computeInlineResizePct,
+  resolveContainingBlock,
+} from "../use-inline-resize";
 import { computeResizePct } from "../use-media-resize";
 
 describe("computeInlineResizePct", () => {
@@ -44,5 +47,62 @@ describe("computeInlineResizePct", () => {
   it("falls back to 100 for a zero-width or negative container", () => {
     expect(computeInlineResizePct(300, LEFT, 0)).toBe(100);
     expect(computeInlineResizePct(300, LEFT, -50)).toBe(100);
+  });
+});
+
+describe("resolveContainingBlock", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  /** Build a tree in the document (getComputedStyle needs it attached). */
+  function mountHtml(html: string): HTMLElement {
+    document.body.innerHTML = html;
+    return document.querySelector("[data-target]") as HTMLElement;
+  }
+
+  it("skips the inline wrapper @tiptap/react puts around every NodeView", () => {
+    // ‼️ CRITICAL-1. `span.react-renderer` has no CSS rule in this codebase, so
+    // it is display:inline and its box is exactly its one inline-block child —
+    // the reference itself. Taking parentElement measured the crop and then
+    // committed the result as a fraction of the paragraph.
+    const el = mountHtml(
+      `<p id="para">text <span class="react-renderer"><span data-target></span></span></p>`,
+    );
+
+    expect(resolveContainingBlock(el)?.id).toBe("para");
+  });
+
+  it.each([
+    [
+      "a table cell",
+      `<table><tbody><tr><td id="host"><span data-target></span></td></tr></tbody></table>`,
+    ],
+    ["a list item", `<ul><li id="host"><span data-target></span></li></ul>`],
+    [
+      "a blockquote",
+      `<blockquote id="host"><span data-target></span></blockquote>`,
+    ],
+    ["a heading", `<h2 id="host"><span data-target></span></h2>`],
+  ])("resolves %s as the containing block", (_label, html) => {
+    expect(resolveContainingBlock(mountHtml(html))?.id).toBe("host");
+  });
+
+  it("walks past several nested inline ancestors", () => {
+    const el = mountHtml(
+      `<p id="para"><em><strong><span><span data-target></span></span></strong></em></p>`,
+    );
+
+    expect(resolveContainingBlock(el)?.id).toBe("para");
+  });
+
+  it("returns null for a detached subtree rather than guessing", () => {
+    // Refusing is what makes the drag no-op instead of committing a width
+    // measured against nothing.
+    const wrapper = document.createElement("span");
+    const el = document.createElement("span");
+    wrapper.append(el);
+
+    expect(resolveContainingBlock(el)).toBeNull();
   });
 });

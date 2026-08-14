@@ -19,12 +19,15 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 
 import { usePdfHighlightRefPreview } from "../../components/editor/pdf/use-pdf-highlight-ref-preview";
+import { isInsideTableCell } from "./views/table-cell-position";
 import { useInlineResize } from "./views/use-inline-resize";
 
 export function BlockReferenceView({
   node,
   selected,
   extension,
+  editor,
+  getPos,
   updateAttributes,
 }: NodeViewProps) {
   const { target, blockId, display, width } = node.attrs as {
@@ -60,8 +63,22 @@ export function BlockReferenceView({
   // is still loading (or on the text branch, or on a plain block reference)
   // would let a drag write `|w=NN` into markdown for a reference that has no
   // rendered size to speak of.
+  //
+  // …and never inside a table cell, whatever the preview says: the `|` the
+  // width is written with splits the GFM cell and destroys both the reference
+  // and the table on the next round trip (table-cell-position.ts).
+  const pos = getPos();
+  const resizable =
+    previewSrc != null &&
+    (pos == null || !isInsideTableCell(editor.state.doc, pos));
   const wrapperRef = useRef<HTMLElement | null>(null);
   const { dragPct, startResize } = useInlineResize(wrapperRef, (pct) => {
+    // Re-checked HERE, not only at render: the preview can flip away from
+    // "ready" while the button is held (a re-resolve, a vault change), and a
+    // drag that started on a legitimate crop would otherwise still write
+    // `|w=NN` on mouseup — the exact write the render-time guard exists to
+    // prevent. The hook re-reads this callback at commit time.
+    if (!resizable) return;
     updateAttributes({ width: pct });
   });
   // The drag repaints from `dragPct` alone — the attribute (and the markdown)
@@ -85,7 +102,13 @@ export function BlockReferenceView({
   return (
     <NodeViewWrapper
       as="span"
-      className={`block-reference ${selected ? "block-reference-selected" : ""}`}
+      className={`block-reference ${selected ? "block-reference-selected" : ""} ${
+        // The handle's reveal is :hover-gated, and an inline crop is small
+        // enough that dragging left or below it drops hover — the grip would
+        // vanish under the cursor mid-gesture. This keeps it painted for the
+        // duration of the drag.
+        dragPct == null ? "" : "is-resizing"
+      }`}
       // Lets links.css switch off the chip's background/border/padding — the
       // crop is the content now, and a chip frame around it reads as a bug.
       // The TEXT branch keeps the chip: it is still a run of words, and the
@@ -124,7 +147,7 @@ export function BlockReferenceView({
       ) : (
         (fullText ?? text)
       )}
-      {previewSrc && (
+      {resizable && (
         <>
           {/* §276.6 Right edge only: the left edge is pinned by the text the
               reference sits in, so a left handle could only move the crop, not

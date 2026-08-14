@@ -230,8 +230,15 @@
 
 /* The media chrome's own reveal rules key off .media-resize-frame /
    .image-figure, neither of which exists here, so the inline wrapper brings its
-   own. Handle and label styling is reused as-is from media-block.css. */
-.tiptap .block-reference[data-area-preview="true"]:hover .media-resize-handle {
+   own. Handle and label styling is reused as-is from media-block.css.
+
+   `.is-resizing` is not redundant with `:hover`: an inline crop is small, and
+   dragging left or below it takes the pointer off the element — hover drops and
+   the grip the user is holding disappears mid-gesture. */
+.tiptap .block-reference[data-area-preview="true"]:hover .media-resize-handle,
+.tiptap
+  .block-reference[data-area-preview="true"].is-resizing
+  .media-resize-handle {
   opacity: 1;
 }
 
