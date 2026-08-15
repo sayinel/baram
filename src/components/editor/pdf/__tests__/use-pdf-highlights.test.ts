@@ -1,4 +1,8 @@
-// §274 Fix round 1 — I1(조용한 실패 억제)/I2(중복 블록 생성) 회귀 테스트.
+// §274 하이라이트 훅 배선 테스트 — I1(조용한 실패 억제) 회귀를 포함한다.
+//
+// §274.3에서 I2(초안에서 "참조 먼저 복사" → 중복 블록) 관련 테스트는
+// 사라졌다: 그 기구를 지탱하던 UI 진입점이 없어져 검증하던 흐름 자체가
+// 도달 불가가 됐기 때문이다(PdfSelectionPopup.tsx의 `existing &&`).
 //
 // use-pdf-find.test.ts와 같은 패턴: renderHook으로 실제 훅을 돌리고, 이 훅이
 // 실제로 호출하는 한 겹(pdf-highlight-actions/pdf-highlight-store)만
@@ -30,19 +34,13 @@ import {
   vi,
 } from "vitest";
 
-const {
-  addHighlightForExistingBlock,
-  createTextHighlight,
-  deleteHighlightById,
-  updateHighlightColor,
-} = vi.hoisted(() => ({
-  addHighlightForExistingBlock: vi.fn(),
-  createTextHighlight: vi.fn(),
-  deleteHighlightById: vi.fn(),
-  updateHighlightColor: vi.fn(),
-}));
+const { createTextHighlight, deleteHighlightById, updateHighlightColor } =
+  vi.hoisted(() => ({
+    createTextHighlight: vi.fn(),
+    deleteHighlightById: vi.fn(),
+    updateHighlightColor: vi.fn(),
+  }));
 vi.mock("../pdf-highlight-actions", () => ({
-  addHighlightForExistingBlock,
   createTextHighlight,
   deleteHighlightById,
   updateHighlightColor,
@@ -172,15 +170,6 @@ describe("usePdfHighlights", () => {
       highlights: [],
       pdf: "papers/attention.pdf",
       version: 1,
-    });
-    addHighlightForExistingBlock.mockResolvedValue({
-      highlight: HIGHLIGHT,
-      sidecar: {
-        companion: "highlights/papers/attention.md",
-        highlights: [HIGHLIGHT],
-        pdf: "papers/attention.pdf",
-        version: 1,
-      },
     });
     generateBlockId.mockReturnValue("newblock1");
     document.body.replaceChildren();
@@ -549,144 +538,6 @@ describe("usePdfHighlights", () => {
     });
   });
 
-  describe("I2 — Copy reference then colour-pick must not duplicate the note block", () => {
-    it("reuses the block id Copy reference minted, even after the popup closes and reopens on a reselection", async () => {
-      const pageEl = document.createElement("div");
-      pageEl.textContent = "Attention mechanisms allow modeling";
-      document.body.appendChild(pageEl);
-
-      const { result } = renderHook(() =>
-        usePdfHighlights({
-          filePath: FILE_PATH,
-          pages: [fakePage(1)],
-          pagesReady: true,
-          rootPath: ROOT,
-          scale: 1,
-          scrollToPage: vi.fn(),
-          textModeActive: true,
-        }),
-      );
-      act(() => result.current.registerPageEl(1, pageEl));
-
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-      expect(result.current.popupProps?.existing).toBeNull();
-
-      // 1) Copy reference — 아직 블록이 없으니 새로 만든다.
-      act(() => {
-        result.current.popupProps?.onCopyRef();
-      });
-      await waitFor(() =>
-        expect(appendHighlightBlock).toHaveBeenCalledTimes(1),
-      );
-      expect(appendHighlightBlock).toHaveBeenCalledWith(
-        ABS_COMPANION,
-        "Attention mechanisms allow modeling",
-        "newblock1",
-      );
-      await waitFor(() =>
-        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1),
-      );
-
-      // §274 round 4 — 팝업은 다른 세 액션과 똑같이 즉시 닫힌다.
-      expect(result.current.popupProps).toBeNull();
-
-      // 2) 같은 텍스트를 다시 선택한다 — 완전히 새로운 팝업 인스턴스지만,
-      // pendingRefBlockCacheRef가 방금 만든 id를 기억하고 있어야 한다.
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      // 3) 이 재선택된 팝업에서 색을 고른다 — createTextHighlight(새 id)가
-      // 아니라 addHighlightForExistingBlock(방금 그 id)로 가야 한다.
-      act(() => {
-        result.current.popupProps?.onPickColor("purple");
-      });
-      await waitFor(() =>
-        expect(addHighlightForExistingBlock).toHaveBeenCalledTimes(1),
-      );
-
-      expect(createTextHighlight).not.toHaveBeenCalled();
-      expect(addHighlightForExistingBlock).toHaveBeenCalledWith(
-        expect.objectContaining({ blockId: "newblock1", color: "purple" }),
-      );
-      // appendHighlightBlock은 여전히 딱 한 번 — 노트에 문단이 하나만 생겼다.
-      expect(appendHighlightBlock).toHaveBeenCalledTimes(1);
-      expect(generateBlockId).toHaveBeenCalledTimes(1);
-    });
-
-    it("evicts the cached id once it is consumed, so a later re-colour does not append a second sidecar entry sharing that id", async () => {
-      const pageEl = document.createElement("div");
-      pageEl.textContent = "Attention mechanisms allow modeling";
-      document.body.appendChild(pageEl);
-
-      const { result } = renderHook(() =>
-        usePdfHighlights({
-          filePath: FILE_PATH,
-          pages: [fakePage(1)],
-          pagesReady: true,
-          rootPath: ROOT,
-          scale: 1,
-          scrollToPage: vi.fn(),
-          textModeActive: true,
-        }),
-      );
-      act(() => result.current.registerPageEl(1, pageEl));
-
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      // 1) Copy reference — id를 민팅하고 캐시에 남긴다.
-      act(() => {
-        result.current.popupProps?.onCopyRef();
-      });
-      await waitFor(() =>
-        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1),
-      );
-
-      // 2) 재선택 → 캐시 히트로 색을 고른다 — addHighlightForExistingBlock이
-      // 그 id로 사이드카 하이라이트를 만든다. 성공하는 순간 캐시에서 그
-      // 항목이 지워져야 한다(§274 round 4 설계).
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-      act(() => {
-        result.current.popupProps?.onPickColor("purple");
-      });
-      await waitFor(() =>
-        expect(addHighlightForExistingBlock).toHaveBeenCalledTimes(1),
-      );
-
-      // 3) 같은 텍스트를 또 재선택해 다시 색을 고른다 — 캐시가 지워져
-      // 있었어야 하니 addHighlightForExistingBlock을 또 부르며 같은 id로
-      // 두 번째 사이드카 항목을 만들면 안 된다. (createTextHighlight로
-      // 가서 별개의 새 하이라이트를 만드는 것은 허용된다 — 오늘의 동작과
-      // 같다.)
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-      act(() => {
-        result.current.popupProps?.onPickColor("blue");
-      });
-      await waitFor(() => expect(createTextHighlight).toHaveBeenCalledTimes(1));
-      // addHighlightForExistingBlock은 여전히 딱 한 번 — 캐시가 지워진
-      // 덕분에 같은 id로 두 번째 사이드카 항목이 생기지 않았다.
-      expect(addHighlightForExistingBlock).toHaveBeenCalledTimes(1);
-    });
-  });
-
   describe("§274 round 4 — every popup action closes the popup", () => {
     function renderWithFreshSelection() {
       const pageEl = document.createElement("div");
@@ -729,17 +580,6 @@ describe("usePdfHighlights", () => {
 
       act(() => {
         result.current.popupProps?.onCopyText();
-      });
-
-      expect(result.current.popupProps).toBeNull();
-    });
-
-    it("closes after copying a reference on a fresh selection", async () => {
-      const result = renderWithFreshSelection();
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      act(() => {
-        result.current.popupProps?.onCopyRef();
       });
 
       expect(result.current.popupProps).toBeNull();
@@ -788,138 +628,22 @@ describe("usePdfHighlights", () => {
     });
   });
 
-  describe("§274 round 4 — the pending block-id cache does not survive a document change", () => {
-    it("mints a fresh block instead of reusing the previous PDF's id after switching documents", async () => {
-      const pageEl = document.createElement("div");
-      pageEl.textContent = "Attention mechanisms allow modeling";
-      document.body.appendChild(pageEl);
-
-      const { rerender, result } = renderHook(
-        (props: { filePath: string }) =>
-          usePdfHighlights({
-            filePath: props.filePath,
-            pages: [fakePage(1)],
-            pagesReady: true,
-            rootPath: ROOT,
-            scale: 1,
-            scrollToPage: vi.fn(),
-            textModeActive: true,
-          }),
-        { initialProps: { filePath: FILE_PATH } },
-      );
-      act(() => result.current.registerPageEl(1, pageEl));
-
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      // Copy reference on the FIRST document — mints and caches an id.
-      act(() => {
-        result.current.popupProps?.onCopyRef();
-      });
-      await waitFor(() =>
-        expect(appendHighlightBlock).toHaveBeenCalledTimes(1),
-      );
-      await waitFor(() =>
-        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1),
-      );
-
-      // Switch to a different PDF under the same vault.
-      act(() => {
-        rerender({ filePath: "/vault/papers/other.pdf" });
-      });
-
-      // Re-select the IDENTICAL text on the new document and pick a colour
-      // straight away — must mint a fresh block, not reuse the first
-      // document's cached id.
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      act(() => {
-        result.current.popupProps?.onPickColor("blue");
-      });
-      await waitFor(() => expect(createTextHighlight).toHaveBeenCalledTimes(1));
-      expect(addHighlightForExistingBlock).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("B.2 — Copy reference guards its own double-click race", () => {
-    it("does not append a second companion-note paragraph when clicked again before the first append resolves", async () => {
-      // appendHighlightBlock을 사용자 제어로 미해결 상태에 붙잡아 둔다 —
-      // popup.blockId는 이 창 내내 계속 null이라, 가드가 없으면 두 번째
-      // 클릭이 두 번째 문단을 만든다.
-      let resolveAppend: () => void = () => {};
-      appendHighlightBlock.mockImplementationOnce(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveAppend = () => resolve(undefined);
-          }),
-      );
-
-      const pageEl = document.createElement("div");
-      pageEl.textContent = "Attention mechanisms allow modeling";
-      document.body.appendChild(pageEl);
-
-      const { result } = renderHook(() =>
-        usePdfHighlights({
-          filePath: FILE_PATH,
-          pages: [fakePage(1)],
-          pagesReady: true,
-          rootPath: ROOT,
-          scale: 1,
-          scrollToPage: vi.fn(),
-          textModeActive: true,
-        }),
-      );
-      act(() => result.current.registerPageEl(1, pageEl));
-
-      selectAllTextIn(pageEl);
-      act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
-      });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      // §274 round 4 — onCopyRef가 이제 즉시 popup을 닫으므로, 두 번째
-      // "클릭"을 흉내내려면 popupProps가 null이 되기 전에 같은 핸들러
-      // 참조를 잡아 둬야 한다. 이건 실제 더블클릭과도 더 정확히 들어맞는다
-      // — 진짜 더블클릭은 React가 팝업 제거를 커밋하기 전, 같은 DOM 버튼의
-      // 같은 onClick 참조가 두 번 불리는 것이다.
-      const onCopyRef = result.current.popupProps?.onCopyRef;
-      expect(onCopyRef).toBeDefined();
-
-      // 1) 첫 클릭 — append가 시작되지만 아직 안 끝났다. 팝업은 바로
-      // 닫힌다(모든 액션의 공통 계약) — 이 가드가 막는 건 그것과 무관하게
-      // in-flight append 자체다.
-      act(() => onCopyRef?.());
-      expect(appendHighlightBlock).toHaveBeenCalledTimes(1);
-      expect(result.current.popupProps).toBeNull();
-
-      // 2) 같은 핸들러를 또 부른다 — 가드가 없으면 여기서 두 번째
-      // appendHighlightBlock이 나간다.
-      act(() => onCopyRef?.());
-      expect(appendHighlightBlock).toHaveBeenCalledTimes(1);
-      expect(generateBlockId).toHaveBeenCalledTimes(1);
-
-      // 첫 번째 append를 끝낸다 — 정상 경로는 계속 동작해야 한다(클립보드
-      // 쓰기까지 끝남 = pendingRefBlockCacheRef에도 이 id가 채워졌다는 뜻,
-      // 같은 then 체인의 연속 단계라서).
-      act(() => resolveAppend());
-      await waitFor(() =>
-        expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1),
-      );
-    });
-  });
-
   describe("G-5 — Copy reference/Copy text give a success affordance", () => {
-    it("shows a copied toast after Copy reference succeeds", async () => {
-      const pageEl = document.createElement("div");
-      pageEl.textContent = "Attention mechanisms allow modeling";
-      document.body.appendChild(pageEl);
+    // §274.3 — Copy reference는 **이미 만들어진** 하이라이트에서만 노출되므로
+    // (PdfSelectionPopup.tsx의 `existing &&`) 이 테스트도 그 팝업을 통해
+    // 돌린다. 초안에서 부르던 예전 버전은 UI가 도달할 수 없는 경로를
+    // 검증하고 있었다. 참조 문자열까지 함께 단정한다 — 토스트만 보면
+    // "클립보드에 무엇이 갔는가"는 고정되지 않아, 살아 있는 유일한 경로가
+    // 조용히 잘못된 id를 복사해도 초록불이 된다.
+    it("shows a copied toast after Copy reference succeeds on an existing highlight", async () => {
+      readSidecar.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights: [HIGHLIGHT],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+      // findBlockContent가 돌려주는 것은 `^id` 마커를 뗀 문단 본문이다.
+      readHighlightBlockText.mockResolvedValue("Attention mechanisms");
 
       const { result } = renderHook(() =>
         usePdfHighlights({
@@ -932,12 +656,22 @@ describe("usePdfHighlights", () => {
           textModeActive: true,
         }),
       );
-      act(() => result.current.registerPageEl(1, pageEl));
-      selectAllTextIn(pageEl);
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+      );
+
+      // 하이라이트의 rect(x:[0,100], y:[0,20]) 안의 점을 클릭 — 이것이
+      // "existing" 팝업이 열리는 유일한 방법이다.
       act(() => {
-        document.dispatchEvent(new Event("selectionchange"));
+        result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          10,
+          10,
+        );
       });
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
+      expect(result.current.popupProps?.existing?.id).toBe("existing1");
 
       act(() => {
         result.current.popupProps?.onCopyRef();
@@ -945,6 +679,13 @@ describe("usePdfHighlights", () => {
 
       await waitFor(() =>
         expect(showToast).toHaveBeenCalledWith("Copied to clipboard", "info"),
+      );
+      expect(readHighlightBlockText).toHaveBeenCalledWith(
+        ABS_COMPANION,
+        "existing1",
+      );
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        "((highlights/papers/attention#^existing1|Attention mechanisms))",
       );
     });
 

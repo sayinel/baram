@@ -45,7 +45,6 @@ vi.mock("../../../../pipeline/block-id", () => ({ generateBlockId }));
 import type { Sidecar } from "../pdf-highlight-sidecar";
 
 import {
-  addHighlightForExistingBlock,
   createTextHighlight,
   deleteHighlightById,
   updateHighlightColor,
@@ -193,101 +192,43 @@ describe("createTextHighlight", () => {
     expect(written.highlights[0].kind).toBe("area");
     expect(result.highlight.kind).toBe("area");
   });
-});
 
-describe("addHighlightForExistingBlock", () => {
-  beforeEach(() => {
-    writeFile.mockClear();
-    createDir.mockClear();
-    readFile.mockReset();
-  });
-
-  it("§274 I2: adds the highlight to the sidecar without appending a note paragraph", async () => {
-    const result = await addHighlightForExistingBlock({
+  // §274.3 — "하이라이트 하나를 만들면 사이드카에 정확히 한 항목이 늘어난다"는
+  // 단정은 §274.3에서 지운 두 번째 진입점("참조를 먼저 복사하고 색은 나중에")의
+  // 테스트에 있었다. 그 진입점은 사라졌지만 단정 자체는 여전히 유효하므로
+  // 여기로 옮겨, 사이드카 쓰기 동작이 인라인 과정에서 바뀌지 않았음을 고정한다.
+  //
+  // 그 위에 쓰기의 **횟수와 순서**까지 함께 건다 — 동반 노트가 먼저,
+  // 사이드카가 나중. 뒤집히면 사이드카에 적힌 id를 동반 노트가 아직 갖고 있지
+  // 않은 창이 생겨 그 사이 어떤 `((...#^id))`도 대상을 못 찾는다
+  // (pdf-highlight-actions.ts doc comment).
+  it("§274.3 writes the companion note first and the sidecar second, adding exactly one entry", async () => {
+    await createTextHighlight({
+      absCompanionPath: ABS_COMPANION,
       absSidecarPath: ABS_SIDECAR,
-      blockId: "copiedref1",
       color: "green",
       kind: "text",
       page: 5,
       pdfRelPath: "papers/attention.pdf",
       rects: [{ h: 9, w: 9, x: 0, y: 0 }],
       sidecar: null,
+      text: "Copied first",
     });
 
-    // 이 함수의 핵심 계약: 동반 노트를 전혀 건드리지 않는다 — 그게
-    // createTextHighlight와의 유일한 차이이자, I2가 고치는 중복의 근본
-    // 원인이다. absCompanionPath 자체를 입력에 안 받으므로 타입으로도
-    // 막혀 있지만, 여기서는 IPC 호출 횟수로 그 계약을 고정한다: readFile은
-    // 아예 안 불리고(동반 노트를 읽을 이유가 없다), writeFile은 사이드카
-    // 경로로 딱 한 번만 불린다 — createTextHighlight의 "동반 노트에 먼저
-    // 쓰고 사이드카에 쓴다"(2회, 서로 다른 경로)와 대조된다.
-    expect(readFile).not.toHaveBeenCalled();
-    expect(writeFile).toHaveBeenCalledTimes(1);
-    expect(writeFile.mock.calls[0][0]).toBe(ABS_SIDECAR);
+    expect(writeFile).toHaveBeenCalledTimes(2);
+    expect(writeFile.mock.calls[0][0]).toBe(ABS_COMPANION);
+    expect(writeFile.mock.calls[1][0]).toBe(ABS_SIDECAR);
 
-    const written = JSON.parse(writeFile.mock.calls[0][1] as string) as Sidecar;
+    const written = JSON.parse(writeFile.mock.calls[1][1] as string) as Sidecar;
     expect(written.highlights).toEqual([
       {
         color: "green",
-        id: "copiedref1",
+        id: "h7k2m9",
         kind: "text",
         page: 5,
         rects: [{ h: 9, w: 9, x: 0, y: 0 }],
       },
     ]);
-    expect(result.highlight.id).toBe("copiedref1");
-  });
-
-  it("appends to an existing sidecar's highlights instead of replacing them", async () => {
-    const existing: Sidecar = {
-      companion: "highlights/papers/attention.md",
-      highlights: [
-        {
-          color: "blue",
-          id: "already-there",
-          kind: "text",
-          page: 1,
-          rects: [{ h: 1, w: 1, x: 0, y: 0 }],
-        },
-      ],
-      pdf: "papers/attention.pdf",
-      version: 1,
-    };
-
-    const result = await addHighlightForExistingBlock({
-      absSidecarPath: ABS_SIDECAR,
-      blockId: "copiedref2",
-      color: "pink",
-      kind: "text",
-      page: 9,
-      pdfRelPath: "papers/attention.pdf",
-      rects: [{ h: 2, w: 2, x: 0, y: 0 }],
-      sidecar: existing,
-    });
-
-    expect(result.sidecar.highlights).toHaveLength(2);
-    expect(result.sidecar.highlights[0].id).toBe("already-there");
-    expect(result.sidecar.highlights[1]).toMatchObject({
-      color: "pink",
-      id: "copiedref2",
-    });
-  });
-
-  it("§276.3 writes kind: 'area' when the input says so", async () => {
-    const result = await addHighlightForExistingBlock({
-      absSidecarPath: ABS_SIDECAR,
-      blockId: "area1",
-      color: "blue",
-      kind: "area",
-      page: 4,
-      pdfRelPath: "papers/attention.pdf",
-      rects: [{ h: 150, w: 250, x: 0, y: 0 }],
-      sidecar: null,
-    });
-
-    const written = JSON.parse(writeFile.mock.calls[0][1] as string) as Sidecar;
-    expect(written.highlights[0].kind).toBe("area");
-    expect(result.highlight.kind).toBe("area");
   });
 });
 

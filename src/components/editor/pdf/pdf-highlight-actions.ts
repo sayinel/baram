@@ -13,30 +13,14 @@ import { generateBlockId } from "../../../pipeline/block-id";
 import { companionPathFor } from "./pdf-highlight-sidecar";
 import { appendHighlightBlock, writeSidecar } from "./pdf-highlight-store";
 
-export interface AddHighlightForBlockInput {
-  absSidecarPath: string;
-  /** 동반 노트에 이미 있는 블록의 id — 여기서는 다시 만들지 않는다. */
-  blockId: string;
-  color: HighlightColor;
-  /** §276.3 "text" | "area" — 사이드카에 그대로 기록된다. */
-  kind: HighlightKind;
-  /** 1-based 페이지 번호. */
-  page: number;
-  /** vault 상대 PDF 경로 — 사이드카를 새로 만들 때만 쓴다(companion/pdf 필드). */
-  pdfRelPath: string;
-  rects: PdfRect[];
-  /** 이 PDF에 아직 하이라이트가 하나도 없으면 null. */
-  sidecar: null | Sidecar;
-}
-
 export interface CreateTextHighlightInput {
   absCompanionPath: string;
   absSidecarPath: string;
   color: HighlightColor;
-  /** §276.3 "text" | "area" — addHighlightForExistingBlock에 그대로 전달된다.
-   * 이름은 "createTextHighlight"지만 §276.3부터 area도 이 함수를 그대로
-   * 재사용한다 — 동반 노트 문단을 먼저 쓰고 사이드카에 추가하는 순서
-   * 자체는 kind와 무관하다. */
+  /** §276.3 "text" | "area" — 사이드카에 그대로 기록된다. 이름은
+   * "createTextHighlight"지만 §276.3부터 area도 이 함수를 그대로 재사용한다 —
+   * 동반 노트 문단을 먼저 쓰고 사이드카에 추가하는 순서 자체는 kind와
+   * 무관하다. */
   kind: HighlightKind;
   /** 1-based 페이지 번호. */
   page: number;
@@ -49,18 +33,22 @@ export interface CreateTextHighlightInput {
 }
 
 /**
- * §274 I2 이미 동반 노트에 블록이 있는 선택(예: Copy reference로 먼저 만든
- * 경우)에 색을 입힌다. `createTextHighlight`와 달리 `appendHighlightBlock`을
- * 다시 부르지 않는다 — 같은 id를 가진 두 번째 진입점이 그걸 또 부르면 노트에
- * 같은 텍스트의 문단이 중복되고, 먼저 복사해 둔 참조는 사이드카에 없는(먼저
- * 만든) id를 가리키게 되어 PDF로 못 돌아간다.
+ * 새 선택을 하이라이트로 만든다 — 동반 노트 블록과 사이드카 항목을 함께
+ * 만드는 유일한 진입점이다.
+ *
+ * ‼️ 순서가 중요하다 — 동반 노트에 블록을 먼저 만들어야 사이드카에 적을 id가
+ * 가리킬 대상이 실제로 존재한다. 블록이 없는데 사이드카만 먼저 써버리면
+ * 오버레이는 그려지지만 그 하이라이트를 참조하는 어떤 `((...#^id))`도
+ * 대상을 찾지 못하는 상태가 (짧게라도) 생긴다.
  */
-export async function addHighlightForExistingBlock(
-  input: AddHighlightForBlockInput,
+export async function createTextHighlight(
+  input: CreateTextHighlightInput,
 ): Promise<{ highlight: StoredHighlight; sidecar: Sidecar }> {
+  const blockId = generateBlockId();
+  await appendHighlightBlock(input.absCompanionPath, input.text, blockId);
   const highlight: StoredHighlight = {
     color: input.color,
-    id: input.blockId,
+    id: blockId,
     kind: input.kind,
     page: input.page,
     rects: input.rects,
@@ -77,34 +65,6 @@ export async function addHighlightForExistingBlock(
   };
   await writeSidecar(input.absSidecarPath, sidecar);
   return { highlight, sidecar };
-}
-
-/**
- * 새 텍스트 선택을 하이라이트로 만든다 — 동반 노트에 블록이 아직 없는
- * (Copy reference를 먼저 누르지 않은) 경우의 진입점.
- *
- * 순서가 중요하다 — 동반 노트에 블록을 먼저 만들어야 사이드카에 적을 id가
- * 가리킬 대상이 실제로 존재한다. 블록이 없는데 사이드카만 먼저 써버리면
- * 오버레이는 그려지지만 그 하이라이트를 참조하는 어떤 `((...#^id))`도
- * 대상을 찾지 못하는 상태가 (짧게라도) 생긴다. 사이드카에 실제로 추가하는
- * 부분은 `addHighlightForExistingBlock`에 위임한다 — 이미 블록이 있는
- * 경로(§274 I2)와 로직이 갈라지지 않도록.
- */
-export async function createTextHighlight(
-  input: CreateTextHighlightInput,
-): Promise<{ highlight: StoredHighlight; sidecar: Sidecar }> {
-  const blockId = generateBlockId();
-  await appendHighlightBlock(input.absCompanionPath, input.text, blockId);
-  return addHighlightForExistingBlock({
-    absSidecarPath: input.absSidecarPath,
-    blockId,
-    color: input.color,
-    kind: input.kind,
-    page: input.page,
-    pdfRelPath: input.pdfRelPath,
-    rects: input.rects,
-    sidecar: input.sidecar,
-  });
 }
 
 /**

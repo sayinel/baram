@@ -21,7 +21,6 @@ import type { PDFPageProxy } from "pdfjs-dist";
 import { escapeBlockRefTarget } from "../../../pipeline/block-id";
 import { relativeToRoot } from "../../../utils/path-utils";
 import { hitTestTopmost } from "./pdf-highlight-hittest";
-import { PendingRefBlockCache } from "./pdf-highlight-selection-cache";
 import { companionPathFor, sidecarPathFor } from "./pdf-highlight-sidecar";
 import { readSidecar } from "./pdf-highlight-store";
 import { usePdfHighlightFlash } from "./use-pdf-highlight-flash";
@@ -95,13 +94,6 @@ export function usePdfHighlights({
   const pageElsRef = useRef<Map<number, HTMLElement>>(new Map());
   const pagesByNumberRef = useRef<Map<number, PDFPageProxy>>(new Map());
   pagesByNumberRef.current = new Map(pages.map((p) => [p.pageNumber, p]));
-  // §274 round 4 — Copy reference가 아직 색을 고르지 않은 선택에 대해 미리
-  // 만들어 둔 동반 노트 블록 id를, 팝업이 닫혔다 다시 열려도 재사용할 수
-  // 있게 붙잡아 둔다. onNewSelection(아래)이 읽고, use-pdf-highlight-popup-
-  // actions.ts의 onCopyRef/onPickColor가 쓰고 지운다 — 세 곳 모두 같은
-  // 인스턴스를 봐야 하므로 여기(공통 부모)에서 만들어 ref로 내려보낸다.
-  // 자세한 설계(키 구성, 수명)는 그 모듈의 doc comment 참조.
-  const pendingRefBlockCacheRef = useRef(new PendingRefBlockCache());
 
   const pdfRelPath = rootPath ? relativeToRoot(filePath, rootPath) : null;
   const absSidecarPath =
@@ -128,15 +120,9 @@ export function usePdfHighlights({
   // (있어도 잘못된 페이지로 스크롤한다). PdfPreview가 ref 클릭 시점에 항상
   // 언마운트돼 있어(App.tsx) 지금은 닿지 않는 경로지만, 그 전제가 바뀌면 이
   // 가드가 없으면 조용한 실패가 된다.
-  //
-  // §274 round 4: pendingRefBlockCacheRef도 같이 비운다 — 다른 문서(또는 다른
-  // vault 안의 같은 상대경로 PDF, absSidecarPath는 rootPath까지 포함하니
-  // 이 경우도 잡힌다)에서 민팅한 블록 id를 이 문서의 재선택이 이어받으면
-  // 안 되기 때문이다.
   useEffect(() => {
     setPopup(null);
     setSidecar(null);
-    pendingRefBlockCacheRef.current.clear();
     if (!absSidecarPath) return;
     let cancelled = false;
     void readSidecar(absSidecarPath).then((s) => {
@@ -211,19 +197,8 @@ export function usePdfHighlights({
   // 병합(defect 2)은 use-pdf-selection-popup.ts로 옮겼다 — 이 파일이 500줄
   // 기준을 넘어서였다(그 파일 자체 doc comment 참조). 여기서는 결과를 받아
   // "new" kind로 popup state를 채우기만 한다.
-  //
-  // §274 round 4 — blockId를 무조건 null로 두지 않는다: 이 선택이 이전에
-  // Copy reference로 이미 블록을 만들어 뒀던 바로 그 선택이면(팝업이 그
-  // 사이 닫혔더라도) pendingRefBlockCacheRef가 그 id를 갖고 있다. 있으면
-  // 재사용해, 팝업이 닫혔다 다시 열려도 §274 I2가 재발하지 않는다.
   const onNewSelection = useCallback((payload: NewSelectionPayload) => {
-    const cached = pendingRefBlockCacheRef.current.get(payload);
-    setPopup({
-      ...payload,
-      blockId: cached,
-      highlightKind: "text",
-      kind: "new",
-    });
+    setPopup({ ...payload, highlightKind: "text", kind: "new" });
   }, []);
   usePdfSelectionPopup({
     onSelect: onNewSelection,
@@ -235,15 +210,10 @@ export function usePdfHighlights({
   });
 
   // §276.3 영역 드래그 완료 — onNewSelection과 같은 자리, highlightKind만
-  // "area". 재드래그로 같은 rect가 나올 확률은 실질적으로 0이라(텍스트
-  // 선택과 달리 부동소수 좌표가 그대로 재현되지 않는다) pendingRefBlockCacheRef를
-  // 거치지 않는다 — Copy reference 후 다시 그려도 새 블록이 하나 더 생길
-  // 뿐이고, 그건 서로 다른 두 영역 하이라이트를 만든 것과 같은 무해한
-  // 결과다.
+  // "area".
   const onAreaHighlightDrawn = useCallback((payload: AreaDrawnPayload) => {
     setPopup({
       anchor: payload.anchor,
-      blockId: null,
       highlightKind: "area",
       kind: "new",
       pageNumber: payload.pageNumber,
@@ -257,7 +227,6 @@ export function usePdfHighlights({
       absCompanionPath,
       absSidecarPath,
       pdfRelPath,
-      pendingRefBlockCacheRef,
       popup,
       setPopup,
       setSidecar,
