@@ -27,6 +27,40 @@ pub enum FsError {
 /// Directories excluded from markdown file collection.
 pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
 
+/// §278 Recursively collect EVERY file under root, skipping hidden entries and SKIP_DIRS.
+///
+/// The link index scans only markdown for outgoing links, but a wikilink may *point* at
+/// any file — `[[Paper.pdf]]`. Those targets have to be registered somewhere or the link
+/// shows up as a dangling node in the graph and produces no backlink.
+///
+/// ‼️ No extension filter, deliberately. Enumerating the viewable types here would put a
+/// second copy of a list that already lives in the frontend (`utils/file-type.ts`), and a
+/// rule kept in two places is one that eventually only gets updated in one — the 1%
+/// quantisation defect in the zoom path was exactly that. A target map entry for a file
+/// nobody links to costs a string; it can only ever be reached by someone writing that
+/// exact name.
+pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
+    let mut read_dir = tokio::fs::read_dir(root).await?;
+    while let Some(entry) = read_dir.next_entry().await? {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let metadata = match entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if metadata.is_dir() {
+            if !SKIP_DIRS.contains(&name.as_str()) {
+                Box::pin(collect_all_files(&entry.path(), files)).await?;
+            }
+        } else if metadata.is_file() {
+            files.push(entry.path());
+        }
+    }
+    Ok(())
+}
+
 /// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
 pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
     let mut read_dir = tokio::fs::read_dir(root).await?;
