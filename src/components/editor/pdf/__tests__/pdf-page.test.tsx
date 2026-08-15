@@ -125,6 +125,69 @@ describe("§281.1 zoom must not tear down the text layer", () => {
   });
 });
 
+describe("§281.2 live zoom scales the text layer by transform, not by re-layout", () => {
+  // 측정 (핀치 1.4초): gesturechange 85개에 프레임 20장 = 14.7 FPS, 최악
+  // 프레임 202ms. update()는 페이지의 모든 span을 순회하며 스타일을 다시 쓴다.
+  // 제스처 중에는 그것을 하지 않고 컨테이너 변환 하나로 대신한다.
+  let streamTextContent: ReturnType<typeof vi.fn>;
+  let page: ReturnType<typeof makePage>;
+
+  function renderPage(scale: number, renderScale: number) {
+    const r = render(
+      <PdfPage page={page} renderScale={renderScale} scale={scale} />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+    return r;
+  }
+
+  beforeEach(() => {
+    textLayerUpdate.mockClear();
+    streamTextContent = vi.fn(() => ({}));
+    page = makePage(streamTextContent);
+  });
+
+  it("라이브 배율만 움직이면 update를 부르지 않고 변환으로 늘린다", () => {
+    const { container, rerender } = renderPage(1, 1);
+    textLayerUpdate.mockClear();
+
+    // 제스처 진행 중 — scale은 움직이지만 renderScale은 아직 정착 전이다.
+    rerender(<PdfPage page={page} renderScale={1} scale={1.5} />);
+
+    expect(textLayerUpdate).not.toHaveBeenCalled();
+    const layer = container.querySelector<HTMLElement>(".pdf-text-layer");
+    expect(layer?.style.transform).toBe("scale(1.5)");
+  });
+
+  it("정착하면 변환을 걷어내고 그때 한 번 재배치한다", () => {
+    const { container, rerender } = renderPage(1, 1);
+    rerender(<PdfPage page={page} renderScale={1} scale={1.5} />);
+    textLayerUpdate.mockClear();
+
+    rerender(<PdfPage page={page} renderScale={1.5} scale={1.5} />);
+
+    expect(textLayerUpdate).toHaveBeenCalledTimes(1);
+    const layer = container.querySelector<HTMLElement>(".pdf-text-layer");
+    expect(layer?.style.transform).toBe("");
+  });
+
+  it("--total-scale-factor는 배치 배율(renderScale)을 따른다", () => {
+    // 라이브 배율을 내리면 글자 크기만 커지고 위치는 그대로라 어긋난다 —
+    // 이 변수의 유일한 소비자가 스팬의 font-size이기 때문이다(pdf.css).
+    const { container, rerender } = renderPage(1, 1);
+    rerender(<PdfPage page={page} renderScale={1} scale={1.5} />);
+
+    const pageEl = container.querySelector<HTMLElement>(".pdf-page");
+    expect(pageEl?.style.getPropertyValue("--total-scale-factor")).toBe("1");
+  });
+});
+
 describe("PdfPage text extraction", () => {
   it("requests text with disableNormalization so find offsets align", () => {
     const streamTextContent = vi.fn(() => ({}));

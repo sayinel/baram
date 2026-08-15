@@ -88,8 +88,26 @@ export function PdfPage({
   // §281.1 텍스트 레이어를 (visible, page)마다 한 번만 만들기 위한 배선 —
   // 빌드 effect가 최신 배율을 읽고, 배율 변경은 update()로만 반영한다.
   const textLayerObjRef = useRef<null | TextLayer>(null);
-  const viewportRef = useRef(viewport);
-  viewportRef.current = viewport;
+
+  // §281.2 텍스트 레이어도 캔버스와 같은 규칙을 따른다: **renderScale**로
+  // 배치하고, 라이브 배율과의 차이는 컨테이너 CSS 변환으로 흡수한다.
+  //
+  // 측정 (핀치 1.4초): gesturechange 85개에 프레임 20장 = **14.7 FPS**,
+  // 최악 프레임 202ms. `update()`는 페이지의 모든 span(논문이면 1,000~3,000개)을
+  // 순회하며 스타일을 다시 쓰는데, 그것을 초당 63번 하고 있었다.
+  //
+  // 변환은 그 수천 번의 쓰기를 **한 번**으로 만든다. 정렬도 유지된다 —
+  // .pdf-text-layer에는 이미 `transform-origin: 0 0`이 있고(pdf.css), 스팬은
+  // 전부 `color: transparent`라 눈에 보이는 것은 찾기 매치 배경과 선택 영역인데
+  // 둘 다 컨테이너와 함께 늘어난다.
+  //
+  // ‼️ `--total-scale-factor`도 renderScale로 내려야 한다. 그 변수의 유일한
+  // 소비자는 텍스트 레이어 스팬의 font-size(pdf.css의 --text-scale-factor)이므로,
+  // 배치 배율과 어긋나면 글자 크기만 라이브로 커지면서 위치와 맞지 않게 된다.
+  const textScaleRatio = renderScale > 0 ? scale / renderScale : 1;
+  // 빌드 effect는 deps에 배율이 없으므로 최신값을 ref로 읽는다.
+  const renderScaleRef = useRef(renderScale);
+  renderScaleRef.current = renderScale;
 
   useEffect(() => {
     const el = holderRef.current;
@@ -161,9 +179,10 @@ export function PdfPage({
       textContentSource: page.streamTextContent({
         disableNormalization: true,
       }),
-      // ‼️ ref로 읽는다. scale을 deps에 넣지 않으므로 이 effect는 최신 배율을
-      // 렌더 시점의 ref에서 가져와야 한다.
-      viewport: viewportRef.current,
+      // ‼️ §281.2 배치 배율은 **renderScale**이다(라이브 scale이 아니다).
+      // 라이브와의 차이는 컨테이너 변환이 흡수하므로, 여기서 라이브 배율로
+      // 배치하면 변환이 이중으로 적용된다. deps에 배율이 없어 ref로 읽는다.
+      viewport: page.getViewport({ scale: renderScaleRef.current }),
     });
     textLayerObjRef.current = textLayer;
     let cancelled = false;
@@ -196,7 +215,7 @@ export function PdfPage({
       textLayer.cancel();
       detachTextLayerEndOfContent(container);
     };
-    // viewportRef는 매 렌더 갱신되는 ref라 deps에 넣을 값이 아니다.
+    // renderScaleRef는 매 렌더 갱신되는 ref라 deps에 넣을 값이 아니다.
   }, [visible, page]);
 
   // §281.1 배율 변경은 **재배치**로만 처리한다. pdfjs의 update()는 기존
@@ -204,8 +223,10 @@ export function PdfPage({
   // 않는다(legacy/build/pdf.mjs의 update 구현 확인). 그래서 진행 중인 핀치
   // 제스처의 타깃 span이 살아남는다.
   useEffect(() => {
-    textLayerObjRef.current?.update({ viewport: viewportRef.current });
-  }, [scale]);
+    textLayerObjRef.current?.update({
+      viewport: page.getViewport({ scale: renderScale }),
+    });
+  }, [page, renderScale]);
 
   // §272 matches가 바뀔 때마다 텍스트 레이어에 다시 칠한다.
   useEffect(() => {
@@ -234,8 +255,11 @@ export function PdfPage({
       ref={holderRef}
       style={
         {
-          // TextLayer가 폰트 메트릭 계산에 읽는다 (PDF.js v5+)
-          "--total-scale-factor": String(viewport.scale),
+          // TextLayer가 폰트 메트릭 계산에 읽는다 (PDF.js v5+).
+          // ‼️ §281.2 **renderScale**이다 — 이 변수의 유일한 소비자는 텍스트
+          // 레이어 스팬의 font-size이고(pdf.css), 그 스팬들은 renderScale로
+          // 배치돼 있다. 라이브 배율을 내리면 글자 크기만 커져 위치와 어긋난다.
+          "--total-scale-factor": String(renderScale),
           height: viewport.height,
           width: viewport.width,
         } as CSSProperties
@@ -341,6 +365,13 @@ export function PdfPage({
               .filter(Boolean)
               .join(" ")}
             ref={textLayerRef}
+            // §281.2 라이브 배율과 레이아웃 배율의 차이를 변환 하나로 흡수한다.
+            // 스팬 수천 개를 다시 배치하는 대신 컨테이너를 늘린다.
+            style={
+              textScaleRatio === 1
+                ? undefined
+                : { transform: `scale(${textScaleRatio})` }
+            }
           />
           {popup && <PdfSelectionPopup {...popup} />}
         </>
