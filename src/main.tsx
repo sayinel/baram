@@ -13,6 +13,14 @@ import ReactDOM from "react-dom/client";
 import "./styles/index.css";
 import { migrateFromLocalStorage } from "./stores/system/tauri-storage";
 import { markAppStart } from "./utils/perf";
+import { installStreamPolyfills } from "./utils/readable-stream-async-iterator";
+
+// §272.5 WKWebView has no `ReadableStream[Symbol.asyncIterator]`, so every
+// `for await (const x of stream)` throws. Installed HERE, at the entry module,
+// because it has to be in place before ANY consumer is evaluated — pdfjs's
+// `getTextContent` is one, and it is reached through a dynamic import we do not
+// control the timing of. See the module for what this actually broke.
+installStreamPolyfills();
 
 // §8.4 Record app start time for performance measurement
 markAppStart();

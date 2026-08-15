@@ -10,4 +10,5 @@
 @import "./editor/media-block.css"; /* shared media-block chrome — resize handles + caption */
 @import "./editor/svg-block.css"; /* §5.1 svg block (```svg) + inline SVG in HTML block */
 @import "./editor/html-block.css"; /* §5.1 html block — render + source editor chrome */
-@import "./editor/html-preview.css"; /* §5.1 html/pdf file viewers — iframe + toggle */
+@import "./editor/html-preview.css"; /* §5.1 html file viewer — iframe + toggle */
+@import "./editor/pdf.css"; /* §5.1 / §270 pdf 뷰어 — 페이지, 텍스트 레이어, 툴바, 하이라이트 */

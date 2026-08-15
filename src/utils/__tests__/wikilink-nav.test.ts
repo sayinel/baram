@@ -86,6 +86,40 @@ const mockFileTree = [
     path: "/vault/readme.txt",
     isDir: false,
   },
+  {
+    // §275.4 fixture: two files sharing the bare stem "attention" in
+    // different folders — the exact ambiguity path-qualified targets exist
+    // to resolve (mirrors the design doc's own example, part15 §275.4).
+    name: "highlights",
+    path: "/vault/highlights",
+    isDir: true,
+    children: [
+      {
+        name: "papers",
+        path: "/vault/highlights/papers",
+        isDir: true,
+        children: [
+          {
+            name: "attention.md",
+            path: "/vault/highlights/papers/attention.md",
+            isDir: false,
+          },
+        ],
+      },
+      {
+        name: "notes",
+        path: "/vault/highlights/notes",
+        isDir: true,
+        children: [
+          {
+            name: "attention.md",
+            path: "/vault/highlights/notes/attention.md",
+            isDir: false,
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 beforeEach(() => {
@@ -157,6 +191,47 @@ describe("resolveWikilinkTarget", () => {
     } as unknown as ReturnType<typeof useFileStore.getState>);
     const result = resolveWikilinkTarget("architecture");
     expect(result).toBeNull();
+  });
+});
+
+describe("§275.4 resolveWikilinkTarget with path-qualified targets", () => {
+  it("resolves [[highlights/papers/attention]] to that exact file, not the first stem match anywhere in the tree", () => {
+    const result = resolveWikilinkTarget("highlights/papers/attention");
+    expect(result).toEqual({
+      path: "/vault/highlights/papers/attention.md",
+      name: "attention.md",
+    });
+  });
+
+  it("resolves the sibling with the same stem in a different folder distinctly", () => {
+    const result = resolveWikilinkTarget("highlights/notes/attention");
+    expect(result).toEqual({
+      path: "/vault/highlights/notes/attention.md",
+      name: "attention.md",
+    });
+  });
+
+  it("is case-insensitive on the path-qualified form", () => {
+    const result = resolveWikilinkTarget("Highlights/Papers/Attention");
+    expect(result).toEqual({
+      path: "/vault/highlights/papers/attention.md",
+      name: "attention.md",
+    });
+  });
+
+  it("returns null for a path-qualified target that doesn't exist", () => {
+    const result = resolveWikilinkTarget("highlights/papers/nonexistent");
+    expect(result).toBeNull();
+  });
+
+  it("bare [[attention]] still falls back to stem-only matching (first match wins, unchanged)", () => {
+    // No path segment in the target — the new branch must not run at all,
+    // so this keeps its pre-existing (ambiguous) stem-only behavior.
+    const result = resolveWikilinkTarget("attention");
+    expect(result).toEqual({
+      path: "/vault/highlights/papers/attention.md",
+      name: "attention.md",
+    });
   });
 });
 

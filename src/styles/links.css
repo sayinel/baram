@@ -141,8 +141,26 @@
 /* §30c Block Reference — inline chip */
 .block-reference {
   padding: 0 4px;
+
+  /* §276.5 A text-highlight ref renders the full original sentence, so the chip
+     routinely spans several lines. Without cloning, the padding/border/radius
+     are drawn ONCE around the whole fragmented inline box — the first line gets
+     a left border and no right one, the last the reverse, and the middle lines
+     no frame at all. `clone` repeats the decoration per line fragment, which is
+     the only way this reads as one chip. The -webkit- prefix is not optional
+     here: WKWebView (the Tauri webview on macOS) still needs it. */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
   font-size: 0.9em;
   color: var(--color-accent-default);
+
+  /* §276.5 Wrapping between words is not enough once the chip carries a whole
+     sentence: a highlight over a URL or a long identifier is one unbreakable
+     token, and an inline box that cannot break it overflows the editor column
+     (the paragraph has no horizontal scroll to fall back on). `break-word`
+     breaks such a token only when it would otherwise overflow, so ordinary
+     sentences still break at spaces. */
+  overflow-wrap: break-word;
   cursor: pointer;
   background-color: color-mix(
     in srgb,
@@ -165,6 +183,63 @@
 .block-reference-selected {
   outline: 2px solid
     color-mix(in srgb, var(--color-accent-default) 40%, transparent);
+}
+
+/* §276.4 Area highlight ref — the cropped PDF region replaces the chip text,
+   so the chip's own frame has to go: keeping it draws a tinted accent border
+   around a picture, which reads as a rendering bug rather than a link. */
+.block-reference[data-area-preview="true"] {
+  position: relative; /* §276.6 anchor for the resize handle and its % label */
+  display: inline-block;
+
+  /* The <img>'s own `max-width: 100%` resolves against THIS span, and an
+     inline-block is shrink-to-fit — i.e. sized from the image, so that rule
+     alone can never clamp anything. Clamping the wrapper against the
+     paragraph is what actually keeps a 640px crop inside a narrower editor
+     column (`.tiptap` has no max-width and loses 4rem of padding per side,
+     so a 640px preview needs a ~768px pane — routinely not the case with the
+     file tree and a right panel open). */
+  max-width: 100%;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+}
+
+.block-reference[data-area-preview="true"]:hover {
+  background-color: transparent;
+}
+
+.block-reference-area-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+/* §276.6 Per-reference width. The percentage lives on the WRAPPER (it resolves
+   against the paragraph; the wrapper is shrink-to-fit, so a percentage on the
+   image itself would resolve against a box the image is sizing — circular).
+   The crop then fills it, which is what makes the drag visible at all: the
+   image's own `max-width: 100%` can shrink it but never grow it back. Only
+   when a width is set — an unsized crop keeps its natural size. */
+.block-reference[data-area-preview="true"][data-sized="true"]
+  .block-reference-area-image {
+  width: 100%;
+}
+
+/* The media chrome's own reveal rules key off .media-resize-frame /
+   .image-figure, neither of which exists here, so the inline wrapper brings its
+   own. Handle and label styling is reused as-is from media-block.css.
+
+   `.is-resizing` is not redundant with `:hover`: an inline crop is small, and
+   dragging left or below it takes the pointer off the element — hover drops and
+   the grip the user is holding disappears mid-gesture. */
+.tiptap .block-reference[data-area-preview="true"]:hover .media-resize-handle,
+.tiptap
+  .block-reference[data-area-preview="true"].is-resizing
+  .media-resize-handle {
+  opacity: 1;
 }
 
 /* §30c Block Embed — bordered preview container */

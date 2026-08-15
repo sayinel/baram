@@ -6,6 +6,18 @@ import type { FileEntry } from "./types";
 /** §4.3 Sentinel emitted by the Rust `list_dir` command when read_dir is denied. */
 const PERMISSION_DENIED_PREFIX = "PERMISSION_DENIED:";
 
+/**
+ * §277 Prefix from `FsError::NotFound`'s Display impl (`src-tauri/src/fs/mod.rs`),
+ * which `read_file` rejects with (via `.map_err(|e| e.to_string())` in
+ * `fs_cmd.rs`) when the path does not exist. Unlike `PERMISSION_DENIED:` above,
+ * this was not designed as a dedicated ASCII sentinel — it is the pre-existing
+ * Korean error copy — but it is already distinct from the generic
+ * `FsError::ReadError` branch's "파일 읽기 실패:" prefix (permission-denied
+ * reads, invalid-UTF-8 decode failures), so no Rust change is needed to detect
+ * it. A future wording edit to that Display string would need updating here too.
+ */
+const READ_FILE_NOT_FOUND_PREFIX = "파일을 찾을 수 없습니다:";
+
 /** §4.3 Thrown by `listDir` when the OS denied folder access (macOS TCC / EACCES). */
 export class FolderAccessDeniedError extends Error {
   readonly path: string;
@@ -61,6 +73,18 @@ export async function getOpenedUrls(): Promise<string[]> {
  *  Only the destination path is vault-confined; source may be external. */
 export async function importFile(from: string, to: string): Promise<void> {
   return invoke<void>("import_file", { from, to });
+}
+
+/**
+ * §277 True when `e` is a rejection from `readFile` (or another `read_file`-
+ * backed call) caused by the file not existing, as opposed to a permission or
+ * decode failure. Callers that must not conflate "safe to treat as a new
+ * file" with "read failed for an unrelated reason" — e.g. appending to a
+ * companion note that may already have content worth preserving — should
+ * branch on this instead of swallowing every `readFile` rejection alike.
+ */
+export function isFileNotFoundError(e: unknown): boolean {
+  return typeof e === "string" && e.startsWith(READ_FILE_NOT_FOUND_PREFIX);
 }
 
 export function isFolderAccessDeniedError(

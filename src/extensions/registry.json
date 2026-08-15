@@ -304,9 +304,9 @@
       "milestone": "M7",
       "status": "implemented",
       "hasNodeView": true,
-      "inputRules": [],
+      "inputRules": ["(("],
       "shortcuts": {},
-      "_note": "Inline atom node with NodeView. Cmd+click navigates to target block."
+      "_note": "Inline atom node with NodeView. Cmd+click navigates to target block. §275.5: also has a pasteRule, so pasted ((...)) refs (e.g. from PDF highlight copy) convert to nodes immediately, not just typed input. §276.4: a ref whose target resolves to an AREA highlight renders the cropped PDF region instead of the text chip — display-time only, the markdown on disk is unchanged. §276.5: a ref resolving to a TEXT highlight renders the full original sentence read from the companion note, with the truncated `display` label kept only as the fallback (loading / unreadable / outside a vault). §276.6: an optional trailing width field — `((target#^id|display|w=60))` or, with no display, `((target#^id|w=60))` — carries the area preview's render width as an integer percentage (10–100) in the markdown itself, so the same highlight can be 60% in one note and 100% in another. The field is split off the display capture only when it is exactly `w=<10..100>`; anything else (`w=5`, `w=200`, `w=60.5`, `w=abc`) stays part of the display text and round-trips untouched."
     },
     {
       "name": "blockEmbed",

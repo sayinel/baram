@@ -37,6 +37,9 @@ export function splitTextWithBlockRefs(
         target: parsed.target,
         blockId: parsed.blockId,
         display: parsed.display,
+        // §276.6 — a schema without the `width` attr (older test schemas)
+        // silently drops this, which is exactly the pre-width behaviour.
+        width: parsed.width,
       });
     },
   );

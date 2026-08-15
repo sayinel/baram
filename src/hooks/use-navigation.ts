@@ -1,8 +1,14 @@
 // §28, §30c, §37 Navigation hooks — wikilink, block ref, local link, back/forward
 import { useCallback, useEffect, useRef } from "react";
 
+import type { StoredHighlight } from "../components/editor/pdf/pdf-highlight-sidecar";
 import type { Editor } from "@tiptap/core";
 
+import {
+  pdfRelPathForHighlightTarget,
+  sidecarPathFor,
+} from "../components/editor/pdf/pdf-highlight-sidecar";
+import { readSidecar } from "../components/editor/pdf/pdf-highlight-store";
 import { writeFile } from "../ipc/invoke";
 import { ensureJournalFile } from "../services/journal-file-service";
 import { useContextStore } from "../stores/context/context";
@@ -209,6 +215,46 @@ export function useNavigation({
     [handleOpenFilePath, editor],
   );
 
+  // §30c Different-file block reference: resolve target, open, set pending
+  // block id, then scroll once the editor settles. Shared by the ordinary
+  // path below and by the §275.6 highlight-ref fallback (sidecar missing/
+  // unreadable, or the highlight's id isn't there anymore — §277 leaves the
+  // companion-note paragraph in place on delete, so this is the expected,
+  // supported landing spot for a ref to a deleted highlight, not an error).
+  const openNoteAndScrollToBlock = useCallback(
+    (target: string, blockId: string) => {
+      const resolved = resolveWikilinkTarget(target);
+      if (!resolved) return;
+
+      // Set pending block ID for scroll after tab switch
+      useLinkStore.getState().setPendingScrollBlockId(blockId);
+
+      handleOpenFilePath(resolved.path)
+        .then(() => {
+          // Wait for editor state to settle
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              if (!editor) return;
+              const pos = findBlockPosById(editor.state.doc, blockId);
+              if (pos !== null) {
+                try {
+                  editor.commands.setTextSelection(pos + 1);
+                  editor.commands.scrollIntoView();
+                } catch {
+                  // ignore invalid position
+                }
+              }
+              useLinkStore.getState().setPendingScrollBlockId(null);
+            });
+          });
+        })
+        .catch((err) =>
+          logger.error("[Nav] Failed to open block ref target:", err),
+        );
+    },
+    [handleOpenFilePath, editor],
+  );
+
   // §30c Block reference Cmd+Click navigation
   const handleBlockRefNavigate = useCallback(
     (target: string, blockId: string) => {
@@ -224,33 +270,61 @@ export function useNavigation({
         return;
       }
 
-      // Different file — resolve and open
-      const resolved = resolveWikilinkTarget(target);
-      if (!resolved) return;
-
-      // Set pending block ID for scroll after tab switch
-      useLinkStore.getState().setPendingScrollBlockId(blockId);
-
-      handleOpenFilePath(resolved.path).then(() => {
-        // Wait for editor state to settle
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (!editor) return;
-            const pos = findBlockPosById(editor.state.doc, blockId);
-            if (pos !== null) {
-              try {
-                editor.commands.setTextSelection(pos + 1);
-                editor.commands.scrollIntoView();
-              } catch {
-                // ignore invalid position
-              }
-            }
-            useLinkStore.getState().setPendingScrollBlockId(null);
-          });
+      // §275.6 Highlight ref: if the sidecar still has this id, open the PDF
+      // and jump to it instead of the companion note. rootPath is required to
+      // form the sidecar's absolute path — without a vault (single-file mode)
+      // there's nothing to check, so fall straight through.
+      const pdfRelPath = pdfRelPathForHighlightTarget(target);
+      const { rootPath } = useFileStore.getState();
+      if (pdfRelPath && rootPath) {
+        (async () => {
+          let hit: StoredHighlight | undefined;
+          // §275.4 IMPORTANT companionPathFor/pdfRelPathForHighlightTarget
+          // strip/append ".pdf" case-insensitively, so `pdfRelPath` above
+          // always ends in a lowercase ".pdf" regardless of the real file's
+          // extension case. sidecarPathFor's own case-insensitive strip means
+          // the sidecar lookup below still succeeds for e.g. "A.PDF" — but
+          // opening the PDF itself needs the ORIGINAL case. sidecar.pdf was
+          // written verbatim from the real pdfRelPath at highlight-creation
+          // time (pdf-highlight-actions.ts), so once we have it, prefer it
+          // over the lowercase-coerced `pdfRelPath` derived from the target.
+          // Without this, a case-sensitive filesystem (Linux) opens nothing.
+          let exactPdfRelPath = pdfRelPath;
+          try {
+            const absSidecarPath = `${rootPath}/${sidecarPathFor(pdfRelPath)}`;
+            const sidecar = await readSidecar(absSidecarPath);
+            hit = sidecar?.highlights.find((h) => h.id === blockId);
+            if (sidecar) exactPdfRelPath = sidecar.pdf;
+          } catch (err) {
+            logger.error("[Nav] Failed to read highlight sidecar:", err);
+          }
+          if (hit) {
+            useLinkStore.getState().setPendingPdfHighlightId(blockId);
+            handleOpenFilePath(`${rootPath}/${exactPdfRelPath}`).catch((err) =>
+              logger.error("[Nav] Failed to open highlighted PDF:", err),
+            );
+            return;
+          }
+          // Not found (deleted highlight, or sidecar missing/unreadable) —
+          // fall back to the ordinary block-reference destination.
+          openNoteAndScrollToBlock(target, blockId);
+        })().catch((err: unknown) => {
+          // §275.6 M3: everything above is guarded by its own try/catch, but
+          // openNoteAndScrollToBlock (in the fallback call just above) is a
+          // synchronous function — a throw out of it (e.g. from
+          // resolveWikilinkTarget) would otherwise reject this IIFE's promise
+          // with no one awaiting it, and main.tsx's global unhandledrejection
+          // handler downgrades that to a console.warn (§260 Phase 5 R4's
+          // exact trap, Task 11's I1 was about the same class).
+          logger.error("[Nav] Highlight ref navigation failed:", err);
         });
-      });
+        return;
+      }
+
+      // Different file — resolve and open
+      openNoteAndScrollToBlock(target, blockId);
     },
-    [handleOpenFilePath, editor],
+    [editor, openNoteAndScrollToBlock, handleOpenFilePath],
   );
 
   // §5.1 Local .md link Cmd+Click navigation (e.g. [text](sub/doc.md#heading))

@@ -1,3 +1,4 @@
+import { unescapeBlockRefTarget } from "../../pipeline/block-id";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 // §28 Wikilink navigation — resolve target to file path
@@ -51,9 +52,16 @@ export function resolveRelativeTarget(
  * 4. Fallback → any file in fileTree (existing behavior)
  */
 export function resolveWikilinkTarget(
-  target: string,
+  rawTarget: string,
   vaultAlias?: null | string,
 ): null | { name: string; path: string } {
+  // §275.4 CRITICAL-2 highlight-ref targets carry escapeBlockRefTarget's
+  // `)`/`#`/`|`/`%` escaping (see pipeline/block-id.ts) — undo it before any
+  // resolution below, all of which compare against real on-disk paths.
+  // Ordinary wikilink/block-ref targets never legitimately contain the
+  // escaped sequences, so this is a no-op for them.
+  const target = unescapeBlockRefTarget(rawTarget);
+
   // §87 Cross-vault: resolve in the alias context
   if (vaultAlias) {
     return resolveCrossVaultTarget(vaultAlias, target);
@@ -137,6 +145,21 @@ export function resolveWikilinkTarget(
 
     if (stem.toLowerCase() === targetLower) {
       return { path: f.path, name: f.name };
+    }
+
+    // §275.4 Path-qualified target, e.g. [[highlights/papers/attention]] —
+    // stem-only matching above picks whichever file anywhere in the tree
+    // happens to share a bare name, which is exactly the ambiguity a
+    // path-qualified target exists to avoid. Only attempted when the target
+    // actually carries a path segment, so plain [[name]] wikilinks keep the
+    // stem-only behavior above untouched.
+    if (target.includes("/")) {
+      const relStem = f.relativePath.endsWith(".markdown")
+        ? f.relativePath.slice(0, -9)
+        : f.relativePath.replace(/\.md$/i, "");
+      if (relStem.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
     }
   }
 
