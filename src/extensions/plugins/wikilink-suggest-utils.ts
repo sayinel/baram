@@ -11,6 +11,20 @@ import {
 } from "../../utils/zettelkasten/parse-note-title";
 
 export interface WikilinkSuggestionItem {
+  /**
+   * §278 마크다운이 **아닌** 파일의 타입 배지 — "PDF", "PNG". 마크다운이면 없다.
+   *
+   * 왜 필요한가: PDF와 그 하이라이트 동반 노트는 이름이 같다(companionPathFor가
+   * `papers/x.pdf` → `highlights/papers/x.md`로 만든다). 메뉴가 그리는 문자열은
+   * `attention-is-all-you-need` / `attention-is-all-you-need.pdf`라 구분 정보가
+   * **맨 끝**에 있는데, `.wikilink-item-label`의 말줄임이 끝에서 자르므로 이름이
+   * 길면 정확히 그 부분만 사라진다.
+   *
+   * 배지는 별도 요소라 줄어들지 않는다(flex-shrink:0). 호버 툴팁이 아니라 배지인
+   * 이유는 이 메뉴를 주로 화살표 키로 훑기 때문이다 — 툴팁은 마우스를 올려야
+   * 보이고, 애초에 "지금 모호하다"를 이미 의심해야 손이 간다.
+   */
+  ext?: string;
   /** §87 Parent folder path relative to vault root (for grouped display) */
   folder?: string;
   heading?: string;
@@ -42,11 +56,15 @@ export function buildFileSuggestionItem(
   file: { name: string; path: string },
   id: string,
 ): WikilinkSuggestionItem {
+  // §278 두 분기 모두 배지를 받아야 한다 — id 접두사가 붙은 PDF도 있을 수 있고,
+  // 그쪽만 빠뜨리면 하필 이름이 긴 그 항목이 구분되지 않는다.
+  const ext = badgeExtension(file.name);
   const zettelId = extractLeadingId(file.name);
   if (zettelId) {
     const title = titleForId(zettelId) ?? parseNoteTitle(file.name, "");
     return {
       id,
+      ext,
       target: zettelId,
       label: title,
       path: file.path,
@@ -55,6 +73,7 @@ export function buildFileSuggestionItem(
   }
   return {
     id,
+    ext,
     target: fileNameWithoutExtension(file.name),
     label: file.name,
     path: file.path,
@@ -145,4 +164,18 @@ export function longestCommonPrefix(strings: string[]): string {
  */
 export function shouldBlockCompletedWikilink(matchText: string): boolean {
   return matchText.includes("]]");
+}
+
+/**
+ * §278 마크다운이 아닌 파일의 타입 배지 문자열. 마크다운이거나 확장자가 없으면
+ * undefined — 목록의 대다수가 노트이므로 거기에 배지를 달면 잡음만 는다.
+ * **배지가 없는 줄이 곧 노트**라는 것이 읽는 규칙이다.
+ */
+function badgeExtension(fileName: string): string | undefined {
+  const dot = fileName.lastIndexOf(".");
+  // 0번째 점은 확장자가 아니라 숨김 파일 표시다(".gitignore").
+  if (dot <= 0) return undefined;
+  const ext = fileName.slice(dot + 1).toLowerCase();
+  if (ext === "md" || ext === "markdown") return undefined;
+  return ext.toUpperCase();
 }
