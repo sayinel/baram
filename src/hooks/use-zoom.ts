@@ -20,6 +20,13 @@ import type { Editor } from "@tiptap/react";
 import { useSettingsStore } from "../stores/settings/store";
 import { clampZoomLevel } from "../utils/zoom";
 
+// §281 WKWebView 트랙패드 핀치 — Safari GestureEvent 경로. 표준이 아니라
+// lib.dom에 타입이 없다. 우리가 읽는 필드만 좁게 선언한다.
+interface SafariGestureEvent extends Event {
+  /** 제스처 시작 대비 **누적** 배율. 시작 시 1.0, 벌리면 > 1. */
+  readonly scale: number;
+}
+
 const KEYBOARD_STEP = 0.1;
 const PINCH_SENSITIVITY = 0.005;
 
@@ -59,10 +66,19 @@ export function useZoom(editor: Editor | null): void {
     };
   }, [editor]);
 
-  // Trackpad pinch (wheel + ctrlKey) + keyboard shortcuts
+  // Trackpad pinch + keyboard shortcuts.
+  //
+  // ‼️ 핀치는 두 가지 경로로 온다. ctrl+wheel은 Chrome/Windows 규약이고,
+  // WKWebView(Safari 엔진)는 Safari 고유의 GestureEvent를 보낸다. 이 앱이
+  // 실제로 도는 곳은 WKWebView다 — 아래 gesture 경로가 없으면 트랙패드
+  // 핀치가 사실상 동작하지 않는다. 측정 근거는 handleGestureChange 위 주석.
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
+      // 제스처가 진행 중이면 무시한다 — WKWebView는 같은 물리적 동작에 대해
+      // gesture 이벤트와 ctrl+wheel을 **둘 다** 보낸다(같은 타임스탬프로
+      // 관측됨). 둘 다 적용하면 한 번의 핀치가 두 번 반영된다.
+      if (gestureActive) return;
       e.preventDefault();
       zoomByWheel(e.deltaY);
     };
@@ -93,12 +109,72 @@ export function useZoom(editor: Editor | null): void {
 
     window.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("keydown", handleKeydown, { capture: true });
+    // GestureEvent는 표준이 아니라 addEventListener의 타입 맵에 없다.
+    for (const [type, handler] of GESTURE_HANDLERS) {
+      window.addEventListener(type, handler as EventListener, {
+        passive: false,
+      });
+    }
     return () => {
       window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("keydown", handleKeydown, { capture: true });
+      for (const [type, handler] of GESTURE_HANDLERS) {
+        window.removeEventListener(type, handler as EventListener);
+      }
+      // 핸들러가 떨어진 뒤에도 플래그가 남으면 ctrl+wheel 경로가 영영 막힌다.
+      gestureActive = false;
     };
   }, [editor]);
 }
+
+/**
+ * 측정 근거 (2026-08-15, WKWebView, 사용자 트랙패드):
+ *
+ *   gesturestart scale=1.0010  ms=0     ←→  ctrl-wheel deltaY=-0.099  ms=0
+ *   gesturestart scale=1.0020  ms=1796  ←→  ctrl-wheel deltaY=-0.200  ms=1796
+ *   gesturestart scale=0.9990  ms=3579  ←→  ctrl-wheel deltaY=+0.099  ms=3579
+ *   gesturestart scale=2.1909  ms=412   ←→  (대응하는 wheel 없음)
+ *   gesturestart scale=3.8938  ms=7806  ←→  (대응하는 wheel 없음)
+ *
+ * 즉 WKWebView는 배율이 0.1~0.2%씩 움직일 때만 ctrl+wheel을 합성해 보내고,
+ * 실제 핀치의 크기(scale 2.19, 3.89, 0.285)는 **GestureEvent로만** 온다.
+ * ctrl+wheel만 듣던 동안에는 그 부스러기만 받아서, 12초에 12개 남짓한
+ * 0.1% 변화가 전부였다 — 사용자에게는 "핀치가 안 먹는" 것으로 보였다.
+ *
+ * scale이 누적값이라 `시작 시점의 줌 × scale`이 그대로 목표 배율이 된다.
+ * 곱셈이므로 어느 배율에서든 같은 손동작이 같은 비율 변화를 낸다 — deltaY를
+ * 더하던 방식은 줌 0.5에서와 2.0에서 반응이 4배 달랐다.
+ */
+let gestureActive = false;
+let gestureBaseZoom = 1;
+
+function handleGestureChange(e: SafariGestureEvent): void {
+  if (!gestureActive) return;
+  e.preventDefault();
+  setZoom(gestureBaseZoom * e.scale);
+}
+
+function handleGestureEnd(e: SafariGestureEvent): void {
+  e.preventDefault();
+  gestureActive = false;
+}
+
+function handleGestureStart(e: SafariGestureEvent): void {
+  // ‼️ preventDefault가 없으면 WKWebView가 자기 페이지 줌을 수행하면서
+  // 제스처를 다시 시작한다 — 진단 로그에서 gesturestart가 반복되고
+  // gestureend가 한 번뿐이었던 이유다. 여기서 막아야 start → change* → end
+  // 스트림이 온전해진다.
+  e.preventDefault();
+  gestureActive = true;
+  gestureBaseZoom = useSettingsStore.getState().zoomLevel;
+}
+
+/** 등록/해제를 한 곳에서 — 짝이 어긋나면 플래그가 영영 켜진 채 남는다. */
+const GESTURE_HANDLERS: [string, (e: SafariGestureEvent) => void][] = [
+  ["gesturestart", handleGestureStart],
+  ["gesturechange", handleGestureChange],
+  ["gestureend", handleGestureEnd],
+];
 
 /** Continuous zoom from a wheel/pinch delta (`WheelEvent.deltaY`). */
 export function zoomByWheel(deltaY: number): void {
