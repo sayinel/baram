@@ -126,14 +126,27 @@ export function PdfSelectionPopup({
 
       <div className="pdf-hl-divider" />
 
-      <button
-        className="btn-unstyled pdf-hl-action-btn"
-        data-testid="pdf-hl-copy-ref"
-        onClick={onCopyRef}
-        type="button"
-      >
-        {t("pdfHighlight.copyRef")}
-      </button>
+      {/* §274.2 참조 복사는 **이미 만들어진** 하이라이트에서만 제공한다.
+          초안(색을 아직 안 고른 상태)에서 누르면 동반 노트에 문단만 생기고
+          사이드카에는 아무것도 안 들어가, 그 참조는 가리킬 하이라이트가 없는
+          채로 남는다 — 다른 문서에 붙여 Cmd+Click하면 PDF로 점프하지 못하고
+          동반 노트가 열린다(use-navigation.ts의 fallback). 사용자가 실사용에서
+          정확히 그 상태를 보고했다.
+
+          "먼저 참조를 복사하고 나중에 색을 고른다"는 흐름(§274 I2)을 지탱하려고
+          만든 경로였지만, 색을 안 고르면 끊어진 참조가 남는 것이 기본 결과였다.
+          참조는 하이라이트를 가리키는 것이므로, 하이라이트가 생긴 뒤에만
+          제공하는 편이 모델과도 맞는다. */}
+      {existing && (
+        <button
+          className="btn-unstyled pdf-hl-action-btn"
+          data-testid="pdf-hl-copy-ref"
+          onClick={onCopyRef}
+          type="button"
+        >
+          {t("pdfHighlight.copyRef")}
+        </button>
+      )}
       {/* §276.3 영역 하이라이트에는 복사할 원문이 없다 — 사이드카에 저장된
           건 좌표뿐이고, 동반 노트의 문단은 우리가 지어낸 라벨이다. 그
           라벨을 "Copy text"로 내주면 사용자가 진짜 PDF 내용인 것처럼 붙여넣게

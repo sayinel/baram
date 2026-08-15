@@ -40,10 +40,18 @@ describe("PdfSelectionPopup", () => {
     }
   });
 
-  it("offers both Copy reference and Copy text on a fresh selection", () => {
+  // §274.2 초안에서는 참조를 복사할 수 없다. 예전에는 가능했고, 그 결과가
+  // 사이드카에 대응 항목이 없는 참조였다 — 붙여넣어 Cmd+Click하면 PDF가
+  // 아니라 동반 노트가 열렸다(실사용자 보고).
+  it("offers Copy text but NOT Copy reference on a fresh selection", () => {
     setup();
-    expect(screen.getByTestId("pdf-hl-copy-ref")).toBeInTheDocument();
     expect(screen.getByTestId("pdf-hl-copy-text")).toBeInTheDocument();
+    expect(screen.queryByTestId("pdf-hl-copy-ref")).toBeNull();
+  });
+
+  it("offers Copy reference once the highlight exists", () => {
+    setup(stored);
+    expect(screen.getByTestId("pdf-hl-copy-ref")).toBeInTheDocument();
   });
 
   it("hides delete for a fresh selection", () => {
@@ -88,15 +96,19 @@ describe("PdfSelectionPopup", () => {
 
   // §276.3 — 영역 하이라이트에는 복사할 원문이 없다.
   describe("§276.3 area highlight", () => {
-    it("hides Copy text but keeps Copy reference for a fresh area draft", () => {
+    // 영역 초안에는 남는 액션이 없다 — 원문이 없어 Copy text가 빠지고
+    // (§276.3), 하이라이트가 아직 없어 Copy reference도 빠진다(§274.2).
+    // 남는 것은 색 스와치뿐이고, 그것이 이 팝업이 초안에서 하는 유일한 일이다.
+    it("shows neither copy action for a fresh area draft", () => {
       setup(null, "area");
       expect(screen.queryByTestId("pdf-hl-copy-text")).toBeNull();
-      expect(screen.getByTestId("pdf-hl-copy-ref")).toBeInTheDocument();
+      expect(screen.queryByTestId("pdf-hl-copy-ref")).toBeNull();
     });
 
-    it("hides Copy text for an existing area highlight too", () => {
+    it("hides Copy text for an existing area highlight but offers Copy reference", () => {
       setup({ ...stored, kind: "area" }, "area");
       expect(screen.queryByTestId("pdf-hl-copy-text")).toBeNull();
+      expect(screen.getByTestId("pdf-hl-copy-ref")).toBeInTheDocument();
     });
   });
 });
