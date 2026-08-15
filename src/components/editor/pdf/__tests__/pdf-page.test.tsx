@@ -3,12 +3,20 @@ import type { StoredHighlight } from "../pdf-highlight-sidecar";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { act, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PdfPage } from "../PdfPage";
 
-// TextLayer는 실제 pdfjs 클래스를 쓰지 않는다 — 우리가 검증할 것은
-// "어떤 인자로 streamTextContent를 부르는가"뿐이다.
+// TextLayer는 실제 pdfjs 클래스를 쓰지 않는다 — 우리가 검증할 것은 "어떤
+// 인자로 streamTextContent를 부르는가"와 "배율이 바뀔 때 재구축이 아니라
+// update를 부르는가"다.
+//
+// §281.1 update의 실제 pdfjs 구현은 기존 #textDivs를 순회하며 재배치할 뿐
+// 컨테이너를 비우지 않는다(legacy/build/pdf.mjs에서 확인). 여기서는 그것이
+// **호출되는지**만 관찰하면 된다.
+const textLayerUpdate = vi.fn();
+const textLayerCtor = vi.fn();
+
 vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
   GlobalWorkerOptions: { workerSrc: "" },
   TextLayer: class {
@@ -18,9 +26,15 @@ vi.mock("pdfjs-dist/legacy/build/pdf.mjs", () => ({
     get textDivs() {
       return [];
     }
+    constructor(...args: unknown[]) {
+      textLayerCtor(...args);
+    }
     cancel() {}
     render() {
       return Promise.resolve();
+    }
+    update(...args: unknown[]) {
+      textLayerUpdate(...args);
     }
   },
   getDocument: vi.fn(),
@@ -48,6 +62,68 @@ function makePage(streamTextContent: ReturnType<typeof vi.fn>): PDFPageProxy {
     streamTextContent,
   } as unknown as PDFPageProxy;
 }
+
+describe("§281.1 zoom must not tear down the text layer", () => {
+  // ‼️ 이것은 성능 테스트가 아니라 **기능 결함**의 회귀 방지다. WKWebView 핀치의
+  // 제스처 타깃은 텍스트 레이어 안의 <span>이다. 배율이 바뀔 때 레이어를
+  // 재구축하면 그 span이 DOM에서 사라져 웹뷰가 제스처를 중단하고, 사용자에게는
+  // "핀치가 한 스텝만 먹고 끊긴다"로 나타난다.
+  //
+  // 측정 (PDF 탭, 첫 핀치부터):
+  //   tgt=SPAN           → gesturechange 1개 뒤 중단, gestureend 없음 (반복)
+  //   tgt=pdf-text-layer → gesturechange 약 390개 + gestureend (정상)
+
+  // ‼️ page 객체는 **한 번만** 만들어 재사용한다. 빌드 effect의 deps가
+  // [visible, page]라, rerender마다 새 page를 넘기면 정당하게 재구축이 일어나
+  // 이 테스트가 검증하려는 것과 무관한 이유로 실패한다. 실앱에서 page는
+  // PdfPreview의 pages 배열에서 오는 안정적인 참조다.
+  let streamTextContent: ReturnType<typeof vi.fn>;
+  let page: ReturnType<typeof makePage>;
+
+  function renderAtScale(scale: number) {
+    const r = render(<PdfPage page={page} renderScale={scale} scale={scale} />);
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+    return r;
+  }
+
+  beforeEach(() => {
+    textLayerUpdate.mockClear();
+    textLayerCtor.mockClear();
+    streamTextContent = vi.fn(() => ({}));
+    page = makePage(streamTextContent);
+  });
+
+  it("배율이 바뀌어도 레이어를 다시 만들지 않고 update만 부른다", () => {
+    const { rerender } = renderAtScale(1);
+    expect(textLayerCtor).toHaveBeenCalledTimes(1);
+    expect(streamTextContent).toHaveBeenCalledTimes(1);
+
+    for (const s of [1.2, 1.5, 1.9]) {
+      rerender(<PdfPage page={page} renderScale={s} scale={s} />);
+    }
+
+    // 생성자도 텍스트 추출도 더 일어나지 않아야 한다 — 재구축이 곧 span 파괴다.
+    expect(textLayerCtor).toHaveBeenCalledTimes(1);
+    expect(streamTextContent).toHaveBeenCalledTimes(1);
+    // 대신 배율 변경마다 재배치가 호출된다.
+    expect(textLayerUpdate).toHaveBeenCalledTimes(3);
+  });
+
+  it("배율이 그대로면 update도 부르지 않는다", () => {
+    const { rerender } = renderAtScale(1);
+    textLayerUpdate.mockClear();
+
+    rerender(<PdfPage page={page} renderScale={1} scale={1} />);
+    expect(textLayerUpdate).not.toHaveBeenCalled();
+  });
+});
 
 describe("PdfPage text extraction", () => {
   it("requests text with disableNormalization so find offsets align", () => {

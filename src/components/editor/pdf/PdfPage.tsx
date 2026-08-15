@@ -85,6 +85,11 @@ export function PdfPage({
   const [visible, setVisible] = useState(false);
 
   const viewport = page.getViewport({ scale });
+  // §281.1 텍스트 레이어를 (visible, page)마다 한 번만 만들기 위한 배선 —
+  // 빌드 effect가 최신 배율을 읽고, 배율 변경은 update()로만 반영한다.
+  const textLayerObjRef = useRef<null | TextLayer>(null);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
 
   useEffect(() => {
     const el = holderRef.current;
@@ -126,6 +131,23 @@ export function PdfPage({
     return () => renderTask.cancel();
   }, [visible, page, renderScale]);
 
+  // §281.1 텍스트 레이어는 (visible, page)마다 **한 번만** 만든다 — scale은
+  // deps에 없다.
+  //
+  // 전에는 scale이 바뀔 때마다 `container.replaceChildren()`으로 레이어를 통째로
+  // 재구축했다. 그것이 성능 문제이기 전에 **기능 결함**이었다: WKWebView 핀치의
+  // 제스처 타깃이 텍스트 레이어 안의 <span>인데, 첫 gesturechange가 줌을 바꾸는
+  // 순간 그 span이 DOM에서 사라져 웹뷰가 제스처를 중단한다.
+  //
+  // 측정 (2026-08-15, PDF 탭에서 첫 핀치부터 기록):
+  //   tgt=SPAN            → gesturestart + gesturechange 1개, gestureend 없음.
+  //                         이것이 반복 — 핀치가 한 스텝마다 끊긴다.
+  //   tgt=pdf-text-layer  → gesturestart 1개 + gesturechange 약 390개 + gestureend.
+  // 컨테이너(글자 사이 빈 공간) 위에서 시작한 제스처만 살아남았다는 뜻이다.
+  // 마크다운 탭이 멀쩡했던 이유도 같다 — 거기선 CSS zoom만 바뀌고 DOM이 안 죽는다.
+  //
+  // 재구축을 없애면 줌 스텝마다 일어나던 텍스트 재추출(streamTextContent)도
+  // 함께 사라진다.
   useEffect(() => {
     if (!visible) return;
     const container = textLayerRef.current;
@@ -139,8 +161,11 @@ export function PdfPage({
       textContentSource: page.streamTextContent({
         disableNormalization: true,
       }),
-      viewport,
+      // ‼️ ref로 읽는다. scale을 deps에 넣지 않으므로 이 effect는 최신 배율을
+      // 렌더 시점의 ref에서 가져와야 한다.
+      viewport: viewportRef.current,
     });
+    textLayerObjRef.current = textLayer;
     let cancelled = false;
     textLayer
       .render()
@@ -167,11 +192,20 @@ export function PdfPage({
     return () => {
       cancelled = true;
       textDivsRef.current = [];
+      textLayerObjRef.current = null;
       textLayer.cancel();
       detachTextLayerEndOfContent(container);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, page, scale]);
+    // viewportRef는 매 렌더 갱신되는 ref라 deps에 넣을 값이 아니다.
+  }, [visible, page]);
+
+  // §281.1 배율 변경은 **재배치**로만 처리한다. pdfjs의 update()는 기존
+  // #textDivs를 순회하며 각 div를 그 자리에서 다시 배치할 뿐 컨테이너를 비우지
+  // 않는다(legacy/build/pdf.mjs의 update 구현 확인). 그래서 진행 중인 핀치
+  // 제스처의 타깃 span이 살아남는다.
+  useEffect(() => {
+    textLayerObjRef.current?.update({ viewport: viewportRef.current });
+  }, [scale]);
 
   // §272 matches가 바뀔 때마다 텍스트 레이어에 다시 칠한다.
   useEffect(() => {
