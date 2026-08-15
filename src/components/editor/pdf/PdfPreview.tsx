@@ -233,6 +233,7 @@ export const PdfPreview = memo(function PdfPreview({
     handlePageMouseDown,
     highlightsEnabled,
     onAreaHighlightDrawn,
+    pendingAreaRects,
     popupPage,
     popupProps,
     registerPageEl: registerHighlightPageEl,
@@ -325,6 +326,11 @@ export const PdfPreview = memo(function PdfPreview({
               matches={getPageMatches(page.pageNumber)}
               onPageMouseDown={onPageMouseDown}
               page={page}
+              pendingAreaRects={
+                pendingAreaRects?.pageNumber === page.pageNumber
+                  ? pendingAreaRects.rects
+                  : null
+              }
               popup={popupPage === page.pageNumber ? popupProps : null}
               scale={scale}
             />

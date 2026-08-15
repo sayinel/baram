@@ -309,3 +309,52 @@ describe("§274 UX fix round 5 — paint order pins hit order", () => {
     ]);
   });
 });
+
+// §276.3.2 드래그를 놓으면 dragPreview는 사라지지만, 색을 고르기 전까지는
+// 무엇을 선택했는지가 계속 보여야 한다 — 그러지 않으면 "선택이 취소된 채
+// 메뉴만 뜬" 것처럼 읽힌다(사용자 보고).
+describe("§276.3.2 pending area draft stays visible until a colour is picked", () => {
+  function renderVisible(props: Record<string, unknown>) {
+    const streamTextContent = vi.fn(() => ({}));
+    const r = render(
+      <PdfPage page={makePage(streamTextContent)} scale={1} {...props} />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+    return r;
+  }
+
+  it("draws the draft rect after the drag has ended", () => {
+    const { container } = renderVisible({
+      pendingAreaRects: [{ h: 20, w: 30, x: 10, y: 40 }],
+    });
+    expect(container.querySelectorAll(".pdf-area-drag-preview")).toHaveLength(
+      1,
+    );
+  });
+
+  it("draws nothing when there is no draft", () => {
+    const { container } = renderVisible({ pendingAreaRects: null });
+    expect(container.querySelectorAll(".pdf-area-drag-preview")).toHaveLength(
+      0,
+    );
+  });
+
+  // 드래그 중에는 dragPreview가 이미 같은 자리를 그린다 — 둘 다 그리면 점선이
+  // 겹쳐 두 겹으로 보인다.
+  it("does not double-draw while a drag is still in progress", () => {
+    const { container } = renderVisible({
+      dragPreview: { height: 20, left: 10, top: 40, width: 30 },
+      pendingAreaRects: [{ h: 20, w: 30, x: 10, y: 40 }],
+    });
+    expect(container.querySelectorAll(".pdf-area-drag-preview")).toHaveLength(
+      1,
+    );
+  });
+});

@@ -32,6 +32,7 @@ export function PdfPage({
   matches,
   onPageMouseDown,
   page,
+  pendingAreaRects,
   popup,
   scale,
 }: {
@@ -59,6 +60,11 @@ export function PdfPage({
     clientY: number,
   ) => void;
   page: PDFPageProxy;
+  /** §276.3.2 색이 아직 정해지지 않은 영역 초안의 PDF user space 사각형.
+   * 드래그가 끝나면 dragPreview는 사라지므로, 팝업이 열려 있는 동안 "무엇을
+   * 선택했는지"를 계속 보여주는 것은 이쪽이다. 다른 페이지의 초안이면
+   * 부모가 null을 내려준다. */
+  pendingAreaRects?: null | PdfRect[];
   /** §274 이 페이지에 열린 선택 팝업. 다른 페이지의 팝업이면 부모가 null을 내려준다. */
   popup?: null | PdfSelectionPopupProps;
   scale: number;
@@ -253,6 +259,28 @@ export function PdfPage({
                 }}
               />
             )}
+            {/* §276.3.2 드래그를 놓은 뒤 색을 고르기 전까지 남는 초안 —
+                dragPreview와 **같은** 점선 스타일을 쓴다. 드래그 중과 팝업이
+                열린 뒤의 모습이 이어져 보여야 "선택이 유지되고 있다"로
+                읽힌다. 드래그가 진행 중일 때는 dragPreview가 이미 같은 자리를
+                그리므로 둘이 동시에 나오지 않는다(초안은 mouseup 이후에만
+                생긴다). */}
+            {!dragPreview &&
+              pendingAreaRects?.map((r, i) => {
+                const local = pdfRectToPageLocal(r, viewport);
+                return (
+                  <div
+                    className="pdf-area-drag-preview"
+                    key={`pending-area-${String(i)}`}
+                    style={{
+                      height: local.height,
+                      left: local.left,
+                      top: local.top,
+                      width: local.width,
+                    }}
+                  />
+                );
+              })}
           </div>
           <div
             // §276.3 조건부 클래스는 배열 join으로 조립한다 — 템플릿

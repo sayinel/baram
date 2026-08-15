@@ -10,7 +10,7 @@
 // 밖의 PDF) 조용히 비활성화된다.
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ViewportLike } from "./pdf-highlight-geom";
+import type { PdfRect, ViewportLike } from "./pdf-highlight-geom";
 import type { Sidecar, StoredHighlight } from "./pdf-highlight-sidecar";
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
 import type { AreaDrawnPayload } from "./use-pdf-area-highlight";
@@ -74,6 +74,10 @@ export function usePdfHighlights({
   /** §276.3 영역 드래그가 끝났을 때(use-pdf-area-highlight.ts) 호출 —
    * onNewSelection과 정확히 같은 자리, highlightKind만 다르다. */
   onAreaHighlightDrawn: (payload: AreaDrawnPayload) => void;
+  /** §276.3.2 색이 정해지기 전의 영역 초안(PDF user space). 팝업이 열려 있는
+   * 동안 "무엇을 선택했는지"를 계속 보여주기 위한 것 — 텍스트 초안은 네이티브
+   * 선택이 그 역할을 하므로 여기 들어오지 않는다. */
+  pendingAreaRects: null | { pageNumber: number; rects: PdfRect[] };
   popupPage: null | number;
   popupProps: null | PdfSelectionPopupProps;
   registerPageEl: (pageNumber: number, el: HTMLElement | null) => void;
@@ -274,12 +278,26 @@ export function usePdfHighlights({
       }
     : null;
 
+  // §276.3.2 색이 정해지기 전의 영역 초안. 드래그를 놓는 순간
+  // usePdfAreaHighlight의 dragPreview는 사라지는데, 그때까지 그려진 것이
+  // 그것뿐이라 사용자에게는 "선택이 취소된 채 메뉴만 뜬" 것처럼 보였다.
+  // 텍스트 쪽은 브라우저의 네이티브 선택이 팝업이 닫힐 때까지 남아 있어
+  // 같은 문제가 없다 — 영역에도 같은 지속성을 준다.
+  //
+  // 텍스트 초안에는 일부러 주지 않는다: 네이티브 선택 위에 우리 사각형을
+  // 겹쳐 그리면 같은 영역이 두 번 칠해진다.
+  const pendingAreaRects: null | { pageNumber: number; rects: PdfRect[] } =
+    popup && popup.kind === "new" && popup.highlightKind === "area"
+      ? { pageNumber: popup.pageNumber, rects: popup.rects }
+      : null;
+
   return {
     flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,
     highlightsEnabled: pdfRelPath !== null,
     onAreaHighlightDrawn,
+    pendingAreaRects,
     popupPage: popup?.pageNumber ?? null,
     popupProps,
     registerPageEl,
