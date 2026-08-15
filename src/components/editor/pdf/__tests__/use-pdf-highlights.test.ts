@@ -46,14 +46,11 @@ vi.mock("../pdf-highlight-actions", () => ({
   updateHighlightColor,
 }));
 
-const { appendHighlightBlock, readHighlightBlockText, readSidecar } =
-  vi.hoisted(() => ({
-    appendHighlightBlock: vi.fn(),
-    readHighlightBlockText: vi.fn(),
-    readSidecar: vi.fn(),
-  }));
+const { readHighlightBlockText, readSidecar } = vi.hoisted(() => ({
+  readHighlightBlockText: vi.fn(),
+  readSidecar: vi.fn(),
+}));
 vi.mock("../pdf-highlight-store", () => ({
-  appendHighlightBlock,
   readHighlightBlockText,
   readSidecar,
 }));
@@ -68,16 +65,13 @@ const { logger } = vi.hoisted(() => ({
 }));
 vi.mock("../../../../utils/logger", () => ({ logger }));
 
-// generateBlockId만 결정적으로 바꾼다 — serializeBlockRef 등 나머지는 실제
-// 구현을 그대로 통과시켜(§275.3/§275.4 규칙이 그대로 적용됐는지도 같이
-// 검증할 수 있게) importActual로 가져온다.
-const { generateBlockId } = vi.hoisted(() => ({ generateBlockId: vi.fn() }));
-vi.mock("../../../../pipeline/block-id", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../../../pipeline/block-id")
-  >("../../../../pipeline/block-id");
-  return { ...actual, generateBlockId };
-});
+// pipeline/block-id는 모킹하지 않는다 — serializeBlockRef/escapeBlockRefTarget이
+// 실제 구현이라야 §275.3/§275.4 규칙이 그대로 적용됐는지까지 같이 검증된다
+// (G-5 테스트가 클립보드에 들어간 참조 문자열을 통째로 단정하는 근거).
+//
+// §274.3 이전에는 generateBlockId만 결정적으로 바꿔 끼웠는데, 그 함수를 부르던
+// 유일한 임포터가 pdf-highlight-actions.ts이고 이 파일은 그 모듈을 통째로
+// 모킹한다 — 훅 트리에서 도달할 수 없게 되어 모의도 함께 걷어냈다.
 
 import { usePdfHighlights } from "../use-pdf-highlights";
 
@@ -148,7 +142,6 @@ describe("usePdfHighlights", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readSidecar.mockResolvedValue(null);
-    appendHighlightBlock.mockResolvedValue(undefined);
     readHighlightBlockText.mockResolvedValue(null);
     createTextHighlight.mockResolvedValue({
       highlight: HIGHLIGHT,
@@ -171,7 +164,6 @@ describe("usePdfHighlights", () => {
       pdf: "papers/attention.pdf",
       version: 1,
     });
-    generateBlockId.mockReturnValue("newblock1");
     document.body.replaceChildren();
     window.getSelection()?.removeAllRanges();
   });
@@ -563,29 +555,10 @@ describe("usePdfHighlights", () => {
       return result;
     }
 
-    it("closes after picking a colour on a fresh selection", async () => {
-      const result = renderWithFreshSelection();
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      act(() => {
-        result.current.popupProps?.onPickColor("green");
-      });
-
-      expect(result.current.popupProps).toBeNull();
-    });
-
-    it("closes after copying text on a fresh selection", async () => {
-      const result = renderWithFreshSelection();
-      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
-
-      act(() => {
-        result.current.popupProps?.onCopyText();
-      });
-
-      expect(result.current.popupProps).toBeNull();
-    });
-
-    it("closes after deleting an existing highlight", async () => {
+    /** 기존 하이라이트를 클릭해 "existing" 팝업을 연 상태까지 간다 — Copy
+     * reference와 Delete는 그 팝업에서만 노출되므로(PdfSelectionPopup.tsx의
+     * `existing &&`) 이 둘은 초안 헬퍼를 쓸 수 없다. */
+    async function renderWithExistingHighlightPopup() {
       readSidecar.mockResolvedValue({
         companion: "highlights/papers/attention.md",
         highlights: [HIGHLIGHT],
@@ -619,6 +592,50 @@ describe("usePdfHighlights", () => {
         );
       });
       expect(result.current.popupProps?.existing?.id).toBe("existing1");
+      return result;
+    }
+
+    it("closes after picking a colour on a fresh selection", async () => {
+      const result = renderWithFreshSelection();
+      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
+
+      act(() => {
+        result.current.popupProps?.onPickColor("green");
+      });
+
+      expect(result.current.popupProps).toBeNull();
+    });
+
+    it("closes after copying text on a fresh selection", async () => {
+      const result = renderWithFreshSelection();
+      await waitFor(() => expect(result.current.popupProps).not.toBeNull());
+
+      act(() => {
+        result.current.popupProps?.onCopyText();
+      });
+
+      expect(result.current.popupProps).toBeNull();
+    });
+
+    // §274.3 — 네 번째 액션은 **기존 하이라이트** 팝업에서만 노출되므로 여기서
+    // 돈다. 초안에서 부르던 예전 버전은 §274.3에서 도달 불가가 돼 지웠는데,
+    // 그때 이 describe가 주장하는 "every popup action"이 셋으로 줄었다 —
+    // 살아 있는 경로로 복원한다. 닫힘은 클립보드 결과와 무관하게 동기적으로
+    // 일어나야 한다(use-pdf-highlight-popup-actions.ts의 setPopup(null)은
+    // readHighlightBlockText의 then 바깥에 있다).
+    it("closes after copying a reference on an existing highlight", async () => {
+      readHighlightBlockText.mockResolvedValue("Attention mechanisms");
+      const result = await renderWithExistingHighlightPopup();
+
+      act(() => {
+        result.current.popupProps?.onCopyRef();
+      });
+
+      expect(result.current.popupProps).toBeNull();
+    });
+
+    it("closes after deleting an existing highlight", async () => {
+      const result = await renderWithExistingHighlightPopup();
 
       act(() => {
         result.current.popupProps?.onDelete();
