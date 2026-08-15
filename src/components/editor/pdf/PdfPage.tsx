@@ -34,6 +34,7 @@ export function PdfPage({
   page,
   pendingAreaRects,
   popup,
+  renderScale,
   scale,
 }: {
   /** §276.3 영역 하이라이트 모드가 켜져 있거나 Alt가 눌려 있는 동안 true —
@@ -67,6 +68,9 @@ export function PdfPage({
   pendingAreaRects?: null | PdfRect[];
   /** §274 이 페이지에 열린 선택 팝업. 다른 페이지의 팝업이면 부모가 null을 내려준다. */
   popup?: null | PdfSelectionPopupProps;
+  /** §280 캔버스를 래스터할 배율 — 줌 제스처가 멎은 뒤에야 `scale`을 따라온다
+   * (use-settled-scale.ts). 레이아웃/텍스트/하이라이트는 `scale`을 쓴다. */
+  renderScale: number;
   scale: number;
 }) {
   const holderRef = useRef<HTMLDivElement | null>(null);
@@ -93,25 +97,34 @@ export function PdfPage({
     return () => observer.disconnect();
   }, []);
 
+  // §280 캔버스는 **renderScale**로 그린다 — live `scale`이 아니다.
+  //
+  // `canvas.width = ...` 대입은 캔버스를 지운다. 전에는 이 효과가 매 줌
+  // 이벤트마다 돌아서, 캔버스를 비우고 → 그리기 시작하고 → 다음 이벤트의
+  // cleanup이 `renderTask.cancel()`로 그것을 취소했다. 그래서 핀치하는 동안
+  // 페이지가 계속 비어 있었다. 이제 이 효과는 제스처가 멎은 뒤 한 번만 돈다.
+  //
+  // 그 사이에도 페이지는 보인다: `.pdf-page`의 width/height는 live viewport를
+  // 따르고, `.pdf-page canvas { width:100%; height:100% }`가 마지막 래스터를
+  // 그 크기로 늘려 그린다(덜 선명할 뿐이다).
   useEffect(() => {
     if (!visible) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const renderViewport = page.getViewport({ scale: renderScale });
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(viewport.width * dpr);
-    canvas.height = Math.floor(viewport.height * dpr);
+    canvas.width = Math.floor(renderViewport.width * dpr);
+    canvas.height = Math.floor(renderViewport.height * dpr);
     const renderTask = page.render({
       canvas,
       transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
-      viewport,
+      viewport: renderViewport,
     });
     renderTask.promise.catch(() => {
       // 줌 변경/스크롤 이탈로 취소됨 — 정상 경로
     });
     return () => renderTask.cancel();
-    // viewport는 (page, scale)에서 파생된다 — 아래 deps가 이를 포괄한다
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, page, scale]);
+  }, [visible, page, renderScale]);
 
   useEffect(() => {
     if (!visible) return;

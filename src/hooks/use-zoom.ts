@@ -18,9 +18,8 @@ import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 
 import { useSettingsStore } from "../stores/settings/store";
+import { clampZoomLevel } from "../utils/zoom";
 
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 2.0;
 const KEYBOARD_STEP = 0.1;
 const PINCH_SENSITIVITY = 0.005;
 
@@ -56,6 +55,7 @@ export function useZoom(editor: Editor | null): void {
     return () => {
       unsubscribe();
       observer.disconnect();
+      cancelReflow();
     };
   }, [editor]);
 
@@ -130,22 +130,54 @@ function applyZoom(level: number, editor: Editor | null): void {
     "--editor-zoom",
     level === 1 ? "1" : String(level),
   );
-  // Force ProseMirror plugins (BlockHandle, colwidth-init, etc.) to
-  // recalculate positions after zoom changes the layout.
-  requestAnimationFrame(() => {
-    if (editor && !editor.isDestroyed) {
-      editor.view.dispatch(editor.state.tr.setMeta("zoom", level));
+  scheduleReflow(level, editor);
+}
+
+// Force ProseMirror plugins (BlockHandle, colwidth-init, etc.) to recalculate
+// positions after zoom changes the layout.
+//
+// ‼️ 프레임당 한 번으로 합류시킨다. 미루는 것이 아니라 **중복을 접는** 것이다 —
+// 예전에는 줌 변경마다 rAF를 새로 걸어서, 한 프레임 안에 도착한 휠 이벤트 N개가
+// 트랜잭션 N개와 전역 resize 이벤트 N개를 만들었다. 그 프레임이 그리는 결과는
+// 마지막 하나와 같으므로 앞의 N-1개는 전부 버려지는 작업이었다. 트랜잭션 비용은
+// 마운트된 NodeView 수에 비례해서(PR #140) 큰 문서일수록 이 낭비가 커진다.
+//
+// 1% 양자화가 있던 동안에는 이 폭주가 우연히 가려져 있었다 — 대부분의 휠
+// 이벤트가 레벨을 바꾸지 못해 여기까지 오지 않았다. 그 양자화를 걷어낸
+// 지금(utils/zoom.ts) 합류는 선택이 아니라 필수다.
+let reflowHandle: null | number = null;
+let reflowLevel = 1;
+let reflowEditor: Editor | null = null;
+
+/** 언마운트 정리 — 예약된 reflow가 destroy된 에디터를 건드리지 않게 한다. */
+function cancelReflow(): void {
+  if (reflowHandle === null) return;
+  cancelAnimationFrame(reflowHandle);
+  reflowHandle = null;
+  reflowEditor = null;
+}
+
+function scheduleReflow(level: number, editor: Editor | null): void {
+  // 항상 **가장 최근** 값을 쓴다. 이미 예약돼 있으면 그 예약이 이 값을 그린다.
+  reflowLevel = level;
+  reflowEditor = editor;
+  if (reflowHandle !== null) return;
+  reflowHandle = requestAnimationFrame(() => {
+    reflowHandle = null;
+    if (reflowEditor && !reflowEditor.isDestroyed) {
+      reflowEditor.view.dispatch(
+        reflowEditor.state.tr.setMeta("zoom", reflowLevel),
+      );
     }
     window.dispatchEvent(new Event("resize"));
   });
 }
 
-function clampZoom(level: number): number {
-  return Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level)) * 100) / 100;
-}
-
 function setZoom(level: number): void {
   const { setZoomLevel, zoomLevel } = useSettingsStore.getState();
-  const next = clampZoom(level);
+  // ‼️ 스토어와 **같은** 정규화를 쓴다(utils/zoom.ts). 여기서 따로 반올림하면
+  // 이 비교가 스토어가 실제로 저장할 값이 아닌 값을 보게 되어, 스토어에서는
+  // 달라지는 변경이 여기서 "같다"고 버려진다.
+  const next = clampZoomLevel(level);
   if (next !== zoomLevel) setZoomLevel(next);
 }

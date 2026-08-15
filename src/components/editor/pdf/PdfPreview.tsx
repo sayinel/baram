@@ -35,6 +35,7 @@ import { usePdfAreaHighlight } from "./use-pdf-area-highlight";
 import { usePdfFind } from "./use-pdf-find";
 import { usePdfHighlightMode } from "./use-pdf-highlight-mode";
 import { usePdfHighlights } from "./use-pdf-highlights";
+import { useSettledScale } from "./use-settled-scale";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -202,6 +203,9 @@ export const PdfPreview = memo(function PdfPreview({
   }, [currentIdx, matchCount, onFindApiChange, onNext, onPrev, onQueryChange]);
 
   const scale = baseScale * zoomLevel;
+  // §280 캔버스 래스터 해상도만 제스처가 멎은 뒤에 따라온다. 레이아웃·텍스트
+  // 레이어·하이라이트는 위의 live `scale`을 그대로 쓴다 (use-settled-scale.ts).
+  const renderScale = useSettledScale(scale);
 
   // §276 Task 12 — pageElsRef(usePdfFind)가 실제로 채워지는 시점과 정확히
   // 같다: scale>0 && pages.length>0일 때만 아래 JSX가 페이지 wrapper div를
@@ -332,6 +336,7 @@ export const PdfPreview = memo(function PdfPreview({
                   : null
               }
               popup={popupPage === page.pageNumber ? popupProps : null}
+              renderScale={renderScale}
               scale={scale}
             />
           </div>

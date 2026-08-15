@@ -52,7 +52,9 @@ function makePage(streamTextContent: ReturnType<typeof vi.fn>): PDFPageProxy {
 describe("PdfPage text extraction", () => {
   it("requests text with disableNormalization so find offsets align", () => {
     const streamTextContent = vi.fn(() => ({}));
-    render(<PdfPage page={makePage(streamTextContent)} scale={1} />);
+    render(
+      <PdfPage page={makePage(streamTextContent)} renderScale={1} scale={1} />,
+    );
 
     // 페이지는 IntersectionObserver로 지연 마운트된다 — 교차를 수동 발화
     const observers = (
@@ -86,6 +88,7 @@ describe("§275.6 PdfPage highlight flash", () => {
         flashHighlightId={flashHighlightId}
         highlights={[HIGHLIGHT]}
         page={makePage(streamTextContent)}
+        renderScale={1}
         scale={1}
       />,
     );
@@ -135,6 +138,7 @@ describe("§274 UX fix round 3 (defect B) PdfPage highlight fill", () => {
       <PdfPage
         highlights={[highlight]}
         page={makePage(streamTextContent)}
+        renderScale={1}
         scale={1}
       />,
     );
@@ -165,6 +169,7 @@ describe("§276.3 area capture gating", () => {
       <PdfPage
         areaCaptureActive
         page={makePage(streamTextContent)}
+        renderScale={1}
         scale={1}
       />,
     );
@@ -185,7 +190,7 @@ describe("§276.3 area capture gating", () => {
   it("leaves the text layer untouched when area capture is off (or omitted)", () => {
     const streamTextContent = vi.fn(() => ({}));
     const { container } = render(
-      <PdfPage page={makePage(streamTextContent)} scale={1} />,
+      <PdfPage page={makePage(streamTextContent)} renderScale={1} scale={1} />,
     );
     const observers = (
       globalThis as unknown as {
@@ -207,6 +212,7 @@ describe("§276.3 area capture gating", () => {
       <PdfPage
         dragPreview={{ height: 40, left: 5, top: 10, width: 60 }}
         page={makePage(streamTextContent)}
+        renderScale={1}
         scale={1}
       />,
     );
@@ -233,6 +239,7 @@ describe("§276.3 area capture gating", () => {
       <PdfPage
         dragPreview={null}
         page={makePage(streamTextContent)}
+        renderScale={1}
         scale={1}
       />,
     );
@@ -286,6 +293,7 @@ describe("§274 UX fix round 5 — paint order pins hit order", () => {
       <PdfPage
         highlights={highlights}
         page={makePage(streamTextContent)}
+        renderScale={1}
         scale={1}
       />,
     );
@@ -317,7 +325,12 @@ describe("§276.3.2 pending area draft stays visible until a colour is picked", 
   function renderVisible(props: Record<string, unknown>) {
     const streamTextContent = vi.fn(() => ({}));
     const r = render(
-      <PdfPage page={makePage(streamTextContent)} scale={1} {...props} />,
+      <PdfPage
+        page={makePage(streamTextContent)}
+        renderScale={1}
+        scale={1}
+        {...props}
+      />,
     );
     const observers = (
       globalThis as unknown as {
