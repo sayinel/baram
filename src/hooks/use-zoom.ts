@@ -122,7 +122,9 @@ export function useZoom(editor: Editor | null): void {
         window.removeEventListener(type, handler as EventListener);
       }
       // 핸들러가 떨어진 뒤에도 플래그가 남으면 ctrl+wheel 경로가 영영 막힌다.
-      gestureActive = false;
+      // ‼️ setGestureActive로 끈다 — 구독자에게 알리지 않고 플래그만 내리면
+      // 정착을 기다리던 소비자가 영원히 깨어나지 않는다.
+      setGestureActive(false);
     };
   }, [editor]);
 }
@@ -148,6 +150,35 @@ export function useZoom(editor: Editor | null): void {
 let gestureActive = false;
 let gestureBaseZoom = 1;
 
+// §281.3 "핀치가 진행 중인가"를 밖에서 볼 수 있게 한다.
+//
+// 왜 필요한가 — 측정 (핀치·해제 3~4회, 4.7초):
+//   제스처 중 : 프레임 32,  최악 116ms
+//   제스처 밖 : 프레임 194, 최악 157ms
+//
+// 두 버킷 모두에서 큰 정지가 났고, 원인은 하나다. PDF의 정착 로직은 "마지막
+// 배율 변화로부터 140ms"에 걸리는데, 핀치 도중 손이 잠깐 멎기만 해도 조건이
+// 성립한다. 그 순간 보이는 페이지마다 캔버스 재래스터가 한 프레임에 몰린다
+// (pdfjs의 캔버스 페인팅은 메인 스레드다).
+//
+// 제스처가 진행 중일 때의 재래스터는 **논리적으로 불필요하다** — 사용자가 아직
+// 배율을 정하는 중이라 어차피 곧 다시 그려야 한다. 그래서 소비자가 제스처가
+// 끝날 때까지 기다릴 수 있도록 상태를 알린다.
+const gestureListeners = new Set<(active: boolean) => void>();
+
+/** 지금 핀치 제스처가 진행 중인가. */
+export function isZoomGestureActive(): boolean {
+  return gestureActive;
+}
+
+/** 제스처 시작/종료 알림을 구독한다. 반환값을 호출하면 해제된다. */
+export function subscribeZoomGesture(
+  fn: (active: boolean) => void,
+): () => void {
+  gestureListeners.add(fn);
+  return () => gestureListeners.delete(fn);
+}
+
 function handleGestureChange(e: SafariGestureEvent): void {
   if (!gestureActive) return;
   e.preventDefault();
@@ -156,7 +187,7 @@ function handleGestureChange(e: SafariGestureEvent): void {
 
 function handleGestureEnd(e: SafariGestureEvent): void {
   e.preventDefault();
-  gestureActive = false;
+  setGestureActive(false);
 }
 
 function handleGestureStart(e: SafariGestureEvent): void {
@@ -165,8 +196,14 @@ function handleGestureStart(e: SafariGestureEvent): void {
   // gestureend가 한 번뿐이었던 이유다. 여기서 막아야 start → change* → end
   // 스트림이 온전해진다.
   e.preventDefault();
-  gestureActive = true;
+  setGestureActive(true);
   gestureBaseZoom = useSettingsStore.getState().zoomLevel;
+}
+
+function setGestureActive(active: boolean): void {
+  if (gestureActive === active) return;
+  gestureActive = active;
+  for (const fn of gestureListeners) fn(active);
 }
 
 /** 등록/해제를 한 곳에서 — 짝이 어긋나면 플래그가 영영 켜진 채 남는다. */

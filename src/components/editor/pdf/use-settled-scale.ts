@@ -21,6 +21,11 @@
 // 상호작용 중에는 싼 근사, 멎으면 정확한 결과 — 표준적인 점진적 렌더링이다.
 import { useEffect, useState } from "react";
 
+import {
+  isZoomGestureActive,
+  subscribeZoomGesture,
+} from "../../../hooks/use-zoom";
+
 /** 제스처가 멎었다고 볼 때까지의 정지 시간. */
 const SETTLE_MS = 140;
 
@@ -32,6 +37,10 @@ const SETTLE_MS = 140;
  */
 export function useSettledScale(scale: number, settleMs = SETTLE_MS): number {
   const [settled, setSettled] = useState(scale);
+  // §281.3 핀치가 진행 중인 동안에는 정착을 아예 시작하지 않는다. 아래 effect가
+  // 이 값을 deps로 읽어, 제스처가 끝나는 순간 다시 돌며 타이머를 건다.
+  const [gesturing, setGesturing] = useState(isZoomGestureActive);
+  useEffect(() => subscribeZoomGesture(setGesturing), []);
 
   useEffect(() => {
     if (settled === scale) return;
@@ -40,9 +49,14 @@ export function useSettledScale(scale: number, settleMs = SETTLE_MS): number {
       setSettled(scale);
       return;
     }
+    // ‼️ 손이 잠깐 멎은 것만으로 재래스터가 터지던 것이 측정된 정지의 원인이다
+    // (제스처 중 최악 116ms). 아직 핀치 중이면 기다린다 — 어차피 곧 또 바뀐다.
+    // 그 사이에도 화면은 정확하다: 레이아웃은 라이브 배율을 따르고 캔버스와
+    // 텍스트 레이어가 CSS로 늘어난다.
+    if (gesturing) return;
     const id = setTimeout(() => setSettled(scale), settleMs);
     return () => clearTimeout(id);
-  }, [scale, settled, settleMs]);
+  }, [scale, settled, settleMs, gesturing]);
 
   return settled;
 }
