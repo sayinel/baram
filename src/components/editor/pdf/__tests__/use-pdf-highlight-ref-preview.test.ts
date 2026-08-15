@@ -4,7 +4,7 @@
 // that branch this file covers only what the hook decides BEFORE any pixel is
 // touched: whether it starts work at all, and what it does with geometry it
 // cannot draw. The text branch is fully exercised — it never touches pdfjs.
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { resolveHighlightRef } = vi.hoisted(() => ({
@@ -219,5 +219,44 @@ describe("usePdfHighlightRefPreview", () => {
       expect(result.current.status).toBe("unavailable");
       expect(logger.error).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// §276.5.1 콜드 스타트에서는 세션 복원이 노트를 먼저 그리고 vault 루트는 그
+// 뒤 IPC로 도착한다. 그 창에 마운트된 참조는 resolveHighlightRef가 rootPath를
+// 못 봐서 null을 받는데, rootPath를 구독하지 않으면 재시도할 계기가 없어
+// 영구히 잘린 display 라벨로 굳는다(실사용자 보고: 만든 직후엔 전문이 보이고
+// 앱을 껐다 켜면 앞부분만 보인다).
+describe("§276.5.1 recovers when the vault root arrives after mount", () => {
+  it("re-resolves once rootPath is set, instead of staying unavailable", async () => {
+    const { useFileStore } = await import("../../../../stores/file/file");
+    useFileStore.setState({ rootPath: null });
+
+    // rootPath가 없는 동안은 리졸버가 null을 돌려주는 실제 동작을 흉내낸다.
+    resolveHighlightRef.mockImplementation(() =>
+      Promise.resolve(
+        useFileStore.getState().rootPath
+          ? {
+              absCompanionPath: "/v/highlights/paper.md",
+              kind: "text" as const,
+            }
+          : null,
+      ),
+    );
+    readCompanionTextCoalesced.mockResolvedValue("the full original sentence");
+
+    const { result } = renderHook(() =>
+      usePdfHighlightRefPreview("highlights/paper", "abc123"),
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("unavailable"));
+
+    // 루트가 도착한다.
+    act(() => {
+      useFileStore.setState({ rootPath: "/v" });
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.text).toBe("the full original sentence");
   });
 });

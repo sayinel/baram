@@ -12,6 +12,7 @@
 // 표시 시점의 결정이고 디스크는 한 글자도 바뀌지 않는다.
 import { useEffect, useState } from "react";
 
+import { useFileStore } from "../../../stores/file/file";
 import { logger } from "../../../utils/logger";
 import { computeAreaCropLayout } from "./pdf-area-crop";
 import {
@@ -60,6 +61,18 @@ export function usePdfHighlightRefPreview(
   blockId: string,
 ): HighlightRefPreview {
   const [preview, setPreview] = useState<HighlightRefPreview>(IDLE);
+  // ‼️ §276.5.1 rootPath를 **구독**한다. resolveHighlightRef는 이 값을
+  // getState()로 읽고 없으면 즉시 null을 돌려주는데(단일 파일 모드), 콜드
+  // 스타트에서는 세션 복원이 노트를 먼저 그리고 vault 루트는 그 뒤 IPC로
+  // 도착한다. 구독하지 않으면 그 창에서 마운트된 모든 하이라이트 참조가
+  // 영구히 "unavailable"로 굳어 잘린 display 라벨만 남는다 — 재시도할 계기가
+  // 없기 때문이다(deps가 [target, blockId]뿐이었다). 실사용자가 정확히 그
+  // 증상을 보고했다: 만든 직후에는 원문 전체가 보이는데 앱을 껐다 켜면
+  // 앞부분만 보인다.
+  //
+  // 값 자체는 아래에서 쓰지 않는다(resolveHighlightRef가 스스로 읽는다) —
+  // 여기서는 **effect를 다시 돌릴 계기**로만 쓴다.
+  const rootPath = useFileStore((s) => s.rootPath);
 
   useEffect(() => {
     // 평범한 블록 참조는 여기서 끝낸다 — 사이드카 I/O도, pdfjs 동적 import도
@@ -198,7 +211,7 @@ export function usePdfHighlightRefPreview(
       cancelled = true;
       renderTask?.cancel();
     };
-  }, [target, blockId]);
+  }, [target, blockId, rootPath]);
 
   return preview;
 }
