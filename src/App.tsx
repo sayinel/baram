@@ -288,6 +288,17 @@ function App() {
 
   // Derived: non-markdown code file detection for rendering branch
   const isCodeFile = !!activeTabFilePath && !isMarkdownFile(activeTabFilePath);
+  // ‼️ "Not markdown" is NOT the same question as "may the text editor write this".
+  // `isCodeFile` answers the first — a PDF passes it, because a PDF is not markdown —
+  // and the non-markdown auto-save effect below used it as if it answered the second,
+  // so a PDF that went dirty was a PDF about to be overwritten with
+  // `sourceContentRef.current`. `autoSave` defaults to true, so that path was live.
+  //
+  // Named rather than inlined at the one call site on purpose: the next effect that
+  // writes files must be able to ask this question by name instead of rediscovering it.
+  // Guarding call sites one by one is what leaves the following one exposed.
+  const isEditableTextFile =
+    isCodeFile && !isBinaryViewerFile(activeTabFilePath);
   const codeLanguage = activeTabFilePath
     ? getLanguageForFile(activeTabFilePath)
     : null;
@@ -573,7 +584,9 @@ function App() {
   const { setFileContent } = useFileStore();
   const codeAutoSaveTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
-    if (!isCodeFile || !autoSave) return;
+    // ‼️ isEditableTextFile, not isCodeFile — the write below must never target a
+    // binary file. See the definition for what went wrong when it did.
+    if (!isEditableTextFile || !autoSave) return;
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
     if (!tab?.isDirty || !tab.filePath) return;
@@ -596,7 +609,7 @@ function App() {
       if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
     };
   }, [
-    isCodeFile,
+    isEditableTextFile,
     autoSave,
     autoSaveDelay,
     sourceContent,
