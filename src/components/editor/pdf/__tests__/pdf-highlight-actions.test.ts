@@ -149,7 +149,11 @@ describe("createTextHighlight", () => {
     });
   });
 
-  it("writes into the open companion buffer instead of disk when it's already open", async () => {
+  // ‼️ §277.1 이 테스트도 예전에는 반대를 단정했다("열린 버퍼면 companion note는
+  // 디스크에 안 쓴다"). 그 단정이 데이터 손실을 지켰다 — 그 버퍼를 저장하는
+  // 주체가 없어 앱을 닫으면 문단이 사라졌다. 근거는 pdf-highlight-store.ts의
+  // appendHighlightBlock 헤더 참조(사용자 vault 실측 포함).
+  it("persists BOTH the companion note and the sidecar even when the note is open", async () => {
     openFiles.set(ABS_COMPANION, "Earlier ^p3n8q1\n");
 
     await createTextHighlight({
@@ -164,10 +168,13 @@ describe("createTextHighlight", () => {
       text: "New highlight",
     });
 
+    // 열린 탭도 갱신된다.
     expect(setFileContent).toHaveBeenCalledTimes(1);
-    // 사이드카는 항상 디스크에 쓴다 — 열린 버퍼 경로를 타는 건 companion note뿐.
-    expect(writeFile).toHaveBeenCalledTimes(1);
-    expect(writeFile.mock.calls[0][0]).toBe(ABS_SIDECAR);
+    // 그리고 둘 다 디스크에 간다 — 순서는 companion note가 먼저다.
+    expect(writeFile).toHaveBeenCalledTimes(2);
+    expect(writeFile.mock.calls[0][0]).toBe(ABS_COMPANION);
+    expect(writeFile.mock.calls[1][0]).toBe(ABS_SIDECAR);
+    expect(writeFile.mock.calls[0][1]).toContain("New highlight ^");
   });
 
   // §276.3 — 이름은 "createTextHighlight"지만 area도 같은 경로를 재사용한다

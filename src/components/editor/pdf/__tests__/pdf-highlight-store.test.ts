@@ -100,34 +100,43 @@ describe("appendHighlightBlock", () => {
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 
-  it("appends into the open buffer instead of writing to disk", async () => {
+  // ‼️ §277.1 이 테스트는 예전에 정확히 반대를 단정했다("버퍼가 소유자이므로
+  // 디스크를 건드리지 않는다"). 그 단정이 실제 데이터 손실을 지키고 있었다:
+  // 그 버퍼를 저장하는 주체가 없어서(auto-save는 활성 에디터 탭의 Tiptap
+  // 내용으로 돈다) 동반 노트가 한 번 열린 뒤로는 모든 하이라이트 문단이
+  // 메모리에만 쌓였고 앱 종료와 함께 사라졌다. 사용자 vault 실측: 사이드카
+  // 9개 대 동반 노트 문단 1개.
+  it("reads the open buffer but STILL writes to disk", async () => {
     openFiles.set(COMPANION, "Earlier highlight ^p3n8q1\n");
 
     await appendHighlightBlock(COMPANION, "Attention mechanisms", "h7k2m9");
 
-    // 버퍼가 열려 있으면 버퍼가 소유자 — 디스크를 건드리면 ConflictModal이 뜬다
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    const [wPath, wContent] = writeFile.mock.calls[0];
+    expect(wPath).toBe(COMPANION);
+    // 버퍼 내용 위에 이어붙는다 — 디스크가 아직 못 받은 편집을 잃지 않는다.
+    expect(wContent).toContain("Earlier highlight ^p3n8q1");
+    expect(wContent).toContain("Attention mechanisms ^h7k2m9");
+    // 그리고 열린 탭도 같은 내용으로 맞춘다.
     expect(setFileContent).toHaveBeenCalledTimes(1);
-    const [path, content] = setFileContent.mock.calls[0];
-    expect(path).toBe(COMPANION);
-    expect(content).toContain("Earlier highlight ^p3n8q1");
-    expect(content).toContain("Attention mechanisms ^h7k2m9");
+    expect(setFileContent.mock.calls[0][1]).toBe(wContent);
   });
 
-  it("routes to the buffer even when it is empty, never to disk", async () => {
+  it("treats an open-but-EMPTY buffer as open, and still persists", async () => {
     // buffered === "" is falsy but !== undefined. A `!buffered` regression
-    // would misroute an open-but-empty buffer to disk and pop the very
-    // ConflictModal this task exists to prevent.
+    // would read from disk instead of the buffer and lose whatever the user
+    // has in that tab.
     openFiles.set(COMPANION, "");
 
     await appendHighlightBlock(COMPANION, "Attention mechanisms", "h7k2m9");
 
-    expect(writeFile).not.toHaveBeenCalled();
+    // 버퍼에서 읽었으므로 디스크 읽기도, 디렉터리 생성도 없다.
+    expect(readFile).not.toHaveBeenCalled();
     expect(createDir).not.toHaveBeenCalled();
+    // 그래도 쓰기는 디스크로 간다.
+    expect(writeFile).toHaveBeenCalledTimes(1);
+    expect(writeFile.mock.calls[0][1]).toBe("Attention mechanisms ^h7k2m9\n");
     expect(setFileContent).toHaveBeenCalledTimes(1);
-    const [path, content] = setFileContent.mock.calls[0];
-    expect(path).toBe(COMPANION);
-    expect(content).toBe("Attention mechanisms ^h7k2m9\n");
   });
 
   it("separates blocks with a blank line so each is its own paragraph", async () => {
@@ -135,7 +144,7 @@ describe("appendHighlightBlock", () => {
 
     await appendHighlightBlock(COMPANION, "Second", "bbb222");
 
-    const content = setFileContent.mock.calls[0][1] as string;
+    const content = writeFile.mock.calls[0][1] as string;
     expect(content).toBe("First ^aaa111\n\nSecond ^bbb222\n");
   });
 

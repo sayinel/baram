@@ -20,12 +20,26 @@ import { parseSidecar } from "./pdf-highlight-sidecar";
  * 접두사만 제거한다. 리스트/인용 마커는 프리뷰에 그대로 노출되므로 평문
  * 문단을 쓰고, 문단끼리 합쳐지지 않도록 빈 줄로 분리한다.
  *
- * §277 소유권: 버퍼가 열려 있으면 버퍼가 소유자다. 열린 파일을 디스크에서
- * 고치면 파일 워처가 ConflictModal을 띄운다(use-file-watcher.ts:159) —
- * PDF를 읽는 중에 그것이 뜨면 안 된다. `!== undefined`로 비교하는 이유는
- * 빈 문자열("")도 "열려 있음"이기 때문 — falsy 체크(`!buffered`)로 바꾸면
- * 방금 연 빈 버퍼가 디스크 경로로 잘못 새어 나가 바로 이 태스크가 막으려는
- * ConflictModal을 스스로 띄운다.
+ * ‼️ §277.1 버퍼는 **읽기 우선**이고 쓰기는 **항상 디스크로** 간다. 예전에는
+ * 버퍼가 열려 있으면 setFileContent만 하고 끝냈는데(§277 "버퍼가 소유자"),
+ * 그 버퍼를 저장하는 주체가 없었다 — auto-save는 활성 에디터 탭의 Tiptap
+ * 내용으로 돌지 openFiles 맵으로 돌지 않는다. 그래서 동반 노트가 한 번이라도
+ * 열리면(끊어진 참조를 클릭하면 실제로 열린다) 그 뒤 모든 하이라이트 문단이
+ * 메모리에만 쌓이고 앱 종료와 함께 사라졌다.
+ *
+ * 실측(사용자 vault): 사이드카에 하이라이트 9개, 동반 노트는 166바이트에
+ * 문단 하나뿐이고 그 id는 사이드카 어디에도 없었다 — 노트의 최종 수정 시각이
+ * 사이드카보다 하루 앞섰다. 아홉 개 전부의 원문이 디스크에 없었다는 뜻이다.
+ * 증상은 두 갈래로 나타났다: 재시작 후 참조가 잘린 라벨만 보이고(§276.5가
+ * 원문을 못 읽는다), 기존 하이라이트의 참조 복사가 조용히 아무 일도 안 했다.
+ *
+ * 지금 형태는 use-embed-sync.ts:149-162의 선례와 같다 — 버퍼가 있으면 그것을
+ * 읽고, 디스크에 쓰고, 버퍼를 갱신한다. `!== undefined`로 비교하는 이유는 빈
+ * 문자열("")도 "열려 있음"이기 때문이다.
+ *
+ * 알려진 좁은 경쟁: 버퍼를 읽은 뒤 writeFile이 끝나기 전 사용자가 그 탭을
+ * 편집하면 그 편집이 덮인다. 위 선례도 같은 성질이고, 데이터 손실을 막는
+ * 쪽이 우선이라 지금은 그대로 둔다.
  *
  * §277.readFile-fail: `readFile`이 실패하는 이유는 "아직 파일이 없음"뿐이
  * 아니다 — 권한 거부나 UTF-8 디코딩 실패도 같은 rejection으로 온다. 이걸
@@ -44,30 +58,37 @@ export async function appendHighlightBlock(
   const oneLine = text.replace(/\s+/g, " ").trim();
   const block = `${oneLine} ^${blockId}`;
 
-  const store = useFileStore.getState();
-  const buffered = store.openFiles.get(absCompanionPath);
+  const buffered = useFileStore.getState().openFiles.get(absCompanionPath);
 
+  let existing: string;
   if (buffered !== undefined) {
-    store.setFileContent(absCompanionPath, joinBlock(buffered, block));
-    return;
+    // 버퍼가 열려 있으면 그쪽이 최신이다 — 디스크가 아직 못 받은 사용자 편집을
+    // 덮어쓰지 않으려면 여기서 읽어야 한다.
+    existing = buffered;
+  } else {
+    try {
+      existing = await readFile(absCompanionPath);
+    } catch (e) {
+      if (!isFileNotFoundError(e)) {
+        // 파일은 존재하는데 읽지 못했다 — 이대로 진행하면 기존 하이라이트를
+        // 잃는다. 쓰기를 하지 않고 실패를 그대로 알린다.
+        logger.error(
+          `[pdf-highlight] failed to read existing companion note, aborting append to avoid overwriting it: ${absCompanionPath}`,
+        );
+        throw e;
+      }
+      // 아직 없는 파일 — 부모 디렉터리를 만들고 새로 쓴다
+      existing = "";
+      await createDir(dirname(absCompanionPath));
+    }
   }
 
-  let existing = "";
-  try {
-    existing = await readFile(absCompanionPath);
-  } catch (e) {
-    if (!isFileNotFoundError(e)) {
-      // 파일은 존재하는데 읽지 못했다 — 이대로 진행하면 기존 하이라이트를
-      // 잃는다. 쓰기를 하지 않고 실패를 그대로 알린다.
-      logger.error(
-        `[pdf-highlight] failed to read existing companion note, aborting append to avoid overwriting it: ${absCompanionPath}`,
-      );
-      throw e;
-    }
-    // 아직 없는 파일 — 부모 디렉터리를 만들고 새로 쓴다
-    await createDir(dirname(absCompanionPath));
+  const next = joinBlock(existing, block);
+  await writeFile(absCompanionPath, next);
+  // 열린 버퍼가 있으면 함께 맞춰 둔다 — 그 탭이 새 문단을 바로 보여준다.
+  if (buffered !== undefined) {
+    useFileStore.getState().setFileContent(absCompanionPath, next);
   }
-  await writeFile(absCompanionPath, joinBlock(existing, block));
 }
 
 /**
