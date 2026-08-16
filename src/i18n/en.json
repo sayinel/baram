@@ -539,6 +539,9 @@
   "pdfToolbar.find": "Find in PDF",
   "pdfToolbar.areaMode": "Area highlight mode — drag to draw (or Alt+drag anywhere)",
   "pdfToolbar.textMode": "Text highlight mode — select text to highlight it",
+  "pdfToolbar.toggleRail": "Page & highlight list",
+  "pdfSidePanel.pages": "Pages",
+  "pdfSidePanel.highlights": "Highlights",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",

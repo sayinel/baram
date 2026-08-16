@@ -12,6 +12,16 @@ export interface ConflictModalState {
 export type ExportFormat =
   "docx" | "epub" | "html" | "latex" | "notion" | "pdf" | "rst";
 
+/**
+ * §282 PDF 사이드 레일이 보여주는 목록. 레일은 PDF 탭에서만 렌더되지만 상태가
+ * 여기 사는 이유는 RightPanelMode/SidebarPanel과 같다 — PdfPreview는 탭을
+ * 바꿀 때마다 언마운트되므로, 컴포넌트 state에 두면 탭을 오갈 때마다 레일이
+ * 닫힌다. 이 스토어는 persist를 쓰지 않으므로 세션 범위다(앱을 다시 켜면
+ * 닫힌 상태로 시작한다). 재시작까지 살리려면 settings 스토어 버전 범프 +
+ * 백필 마이그레이션이 필요하다 — 지금은 그 비용을 지지 않는다.
+ */
+export type PdfRailTab = "highlights" | "pages";
+
 export type RightPanelMode =
   "chat" | "help" | "memories" | "none" | "photo-gallery" | "properties";
 
@@ -90,6 +100,10 @@ interface UIState {
     onSubmit: (title: string) => void;
     title: string;
   }) => void;
+  /** §282 PDF 사이드 레일이 열려 있는가. */
+  pdfRailOpen: boolean;
+  /** §282 레일에서 보고 있는 목록. */
+  pdfRailTab: PdfRailTab;
   pendingApplyContent: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
@@ -97,6 +111,7 @@ interface UIState {
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
+  setPdfRailTab: (tab: PdfRailTab) => void;
   setPendingApplyContent: (content: null | string) => void;
   setPendingSearchHighlight: (term: null | string) => void;
   setRightPanelMode: (mode: RightPanelMode) => void;
@@ -121,6 +136,7 @@ interface UIState {
   toast: null | ToastState;
   toggleAbout: () => void;
   toggleCommandPalette: () => void;
+  togglePdfRail: () => void;
   toggleQuickCapture: () => void;
   toggleQuickSwitcher: () => void;
   toggleRightPanel: () => void;
@@ -164,6 +180,8 @@ export const useUIStore = create<UIState>((set) => ({
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
   smartTemplateDialogOpen: false,
+  pdfRailOpen: false,
+  pdfRailTab: "pages" as const,
   pendingApplyContent: null,
   quickCaptureOpen: false,
   unsavedModal: null,
@@ -204,6 +222,10 @@ export const useUIStore = create<UIState>((set) => ({
   setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
 
   setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
+
+  togglePdfRail: () => set((state) => ({ pdfRailOpen: !state.pdfRailOpen })),
+
+  setPdfRailTab: (tab) => set({ pdfRailTab: tab }),
 
   toggleCommandPalette: () =>
     set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),

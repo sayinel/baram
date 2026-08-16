@@ -1,0 +1,65 @@
+/* §282 PDF 사이드 레일 — 페이지/하이라이트 목록의 공통 프레임 */
+
+/* ‼️ 컨테이닝 블록은 `.editor-area`(layout.css:113)다 — 이 요소가 렌더되는
+   `.pdf-preview`도, 그 부모인 `.editor-area-scroll`도 `position`이 없기
+   때문이다. 그래서 스크롤 컨테이너 **바깥**에 앵커되어 페이지가 스크롤해도
+   제자리에 있고 `overflow: auto`에 잘리지도 않는다. `.pdf-toolbar`가 이미
+   같은 트릭을 쓴다(pdf.css) — 둘 중 하나에 `position: relative`를 붙이면
+   레일과 툴바가 함께 페이지를 따라 스크롤해 버린다.
+
+   폭은 PdfSidePanel.tsx의 PDF_RAIL_WIDTH_PX가 유일한 출처다. 여기서 숫자를
+   다시 적으면 PdfPreview의 fit-width 계산과 어긋나 조용히 가로 스크롤이 된다. */
+.pdf-side-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+
+  /* 툴바(50)보다 아래 — 툴바는 화면 하단 중앙이라 겹치지 않지만, 겹칠 때
+     떠 있어야 하는 쪽은 조작 대상인 툴바다. */
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: var(--pdf-rail-width, 200px);
+  background: var(--color-bg-subtle);
+  border-right: 1px solid var(--color-border-default);
+}
+
+.pdf-side-panel-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.pdf-side-panel-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.pdf-side-panel-tab:hover {
+  color: var(--color-text-default);
+  background: var(--color-bg-hover);
+}
+
+.pdf-side-panel-tab.active {
+  color: var(--color-text-default);
+  border-bottom-color: var(--color-accent-default);
+}
+
+.pdf-side-panel-body {
+  flex: 1;
+
+  /* 목록은 §282.1/§282.2가 채운다 — 프레임은 스크롤만 책임진다. */
+  overflow-y: auto;
+}
+
+/* 레일은 오버레이라 스크롤 컨테이너의 폭을 줄이지 않는다 — 페이지가 레일 뒤로
+   들어가지 않게 왼쪽 여백을 직접 준다. `.pdf-preview`의 `padding: 24px`에서
+   왼쪽만 덮어쓴다(align-items: center의 중심도 이 여백을 반영해 옮겨간다). */
+.pdf-preview-with-rail {
+  padding-left: calc(24px + var(--pdf-rail-width, 200px));
+}

@@ -82,6 +82,11 @@ const ALLOWLIST = new Set([
   // style prop on .pdf-page (PdfPage.tsx), consumed by pdf.css's
   // --text-scale-factor calc().
   "--total-scale-factor",
+  // §282 pdf 사이드 레일 폭 — 단일 출처는 PDF_RAIL_WIDTH_PX(TS)다.
+  // PdfPreview가 .pdf-preview에 인라인 style prop으로 내려주고, 레일의 width와
+  // .pdf-preview-with-rail의 padding-left가 그것을 읽는다. 토큰으로 정의하면
+  // 폭이 두 곳(TS의 fit-width 계산 + CSS)에 생겨 어긋날 수 있다.
+  "--pdf-rail-width",
 ]);
 
 const undefinedVars: [string, string[]][] = [];

@@ -12,3 +12,4 @@
 @import "./editor/html-block.css"; /* §5.1 html block — render + source editor chrome */
 @import "./editor/html-preview.css"; /* §5.1 html file viewer — iframe + toggle */
 @import "./editor/pdf.css"; /* §5.1 / §270 pdf 뷰어 — 페이지, 텍스트 레이어, 툴바, 하이라이트 */
+@import "./editor/pdf-side-panel.css"; /* §282 pdf 사이드 레일 — 페이지/하이라이트 목록 프레임 */

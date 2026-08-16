@@ -10,6 +10,7 @@ function setup(overrides: Partial<Parameters<typeof PdfToolbar>[0]> = {}) {
     onNextPage: vi.fn(),
     onPrevPage: vi.fn(),
     onToggleFind: vi.fn(),
+    onToggleRail: vi.fn(),
     pageCount: 27,
     ...overrides,
   };
@@ -47,6 +48,38 @@ describe("PdfToolbar", () => {
     const props = setup();
     await userEvent.click(screen.getByTestId("pdf-toggle-find"));
     expect(props.onToggleFind).toHaveBeenCalledTimes(1);
+  });
+
+  // §282 레일 토글은 하이라이트 토글들과 달리 게이트되지 않는다 — 페이지
+  // 목록은 vault 밖에서도 유효하다(하이라이트 탭만 PdfSidePanel이 접는다).
+  describe("§282 rail toggle", () => {
+    it("is offered even without highlight support", () => {
+      setup();
+      expect(screen.queryByTestId("pdf-area-mode")).not.toBeInTheDocument();
+      expect(screen.getByTestId("pdf-toggle-rail")).toBeInTheDocument();
+    });
+
+    it("reports rail toggling upward", async () => {
+      const props = setup();
+      await userEvent.click(screen.getByTestId("pdf-toggle-rail"));
+      expect(props.onToggleRail).toHaveBeenCalledTimes(1);
+    });
+
+    it("reflects the open state on aria-pressed", () => {
+      setup({ railOpen: true });
+      expect(screen.getByTestId("pdf-toggle-rail")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("reports closed when the rail is not open", () => {
+      setup();
+      expect(screen.getByTestId("pdf-toggle-rail")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
   });
 
   // §276.3 — the area-mode toggle is back, this time functional: no
