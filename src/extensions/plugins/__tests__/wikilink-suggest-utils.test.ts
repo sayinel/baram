@@ -5,8 +5,10 @@ import { useZettelIndexStore } from "../../../stores/zettelkasten/zettel-index";
 import {
   buildFileSuggestionItem,
   filterFiles,
+  isCreatableTarget,
   shouldBlockCompletedWikilink,
   type WikilinkSuggestionItem,
+  withMarkdownExtension,
 } from "../wikilink-suggest-utils";
 
 describe("wikilink-suggest-utils — §95 zettel autocomplete", () => {
@@ -202,5 +204,39 @@ describe("§278 type badge — telling a PDF from its highlight companion note",
       "8",
     );
     expect(item.ext).toBe("PDF");
+  });
+});
+
+describe("§278.2 the Create option must not invent a file the link cannot reach", () => {
+  // `[[Paper.pdf]]`를 타이핑할 수 있게 되면서 생긴 코너다. 매치가 없을 때 메뉴는
+  // "Create"를 제안했고, 그것을 고르면 `# Paper.pdf` 내용의 **`Paper.pdf.md`** 가
+  // 만들어졌다 — 삽입된 링크 `[[Paper.pdf]]`가 가리키는 파일이 아니다.
+
+  it("뷰어로 여는 타입은 생성 대상이 아니다", () => {
+    // 앱은 메뉴에서 PDF나 이미지를 만들 수 없다. 그럴듯한 무언가를 만드는 대신
+    // 선택지를 거둔다.
+    expect(isCreatableTarget("Paper.pdf")).toBe(false);
+    expect(isCreatableTarget("figure-1.png")).toBe(false);
+    expect(isCreatableTarget("design.html")).toBe(false);
+  });
+
+  it("평범한 노트 이름은 그대로 생성 대상이다", () => {
+    // ‼️ 반대 방향. 이 억제가 과하게 걸리면 기존 기능(새 노트 만들기)이 죽는다.
+    expect(isCreatableTarget("새 회의록")).toBe(true);
+    expect(isCreatableTarget("architecture")).toBe(true);
+    expect(isCreatableTarget("v1.2 회의록")).toBe(true); // 이름 속의 점
+    expect(isCreatableTarget("notes/todo")).toBe(true);
+  });
+
+  it("확장자를 이미 적었으면 .md를 또 붙이지 않는다", () => {
+    // 기존 결함: `[[architecture.md]]` → architecture.md.md 가 만들어졌다.
+    expect(withMarkdownExtension("architecture.md")).toBe("architecture.md");
+    expect(withMarkdownExtension("ideas.markdown")).toBe("ideas.markdown");
+    expect(withMarkdownExtension("Notes.MD")).toBe("Notes.MD");
+  });
+
+  it("확장자가 없으면 .md를 붙인다", () => {
+    expect(withMarkdownExtension("architecture")).toBe("architecture.md");
+    expect(withMarkdownExtension("v1.2 회의록")).toBe("v1.2 회의록.md");
   });
 });

@@ -22,10 +22,12 @@ import {
   buildFileSuggestionItem,
   fileNameWithoutExtension,
   filterFiles,
+  isCreatableTarget,
   loadFileHeadings,
   longestCommonPrefix,
   shouldBlockCompletedWikilink,
   type WikilinkSuggestionItem,
+  withMarkdownExtension,
 } from "./wikilink-suggest-utils";
 
 /**
@@ -146,7 +148,12 @@ export const WikilinkSuggest = Extension.create({
               // Create new file and insert wikilink
               const { rootPath } = useFileStore.getState();
               if (rootPath) {
-                const newPath = `${rootPath}/${props.target}.md`;
+                // §278.2 Pre-existing defect, surfaced while fixing the PDF case:
+                // the suffix was appended unconditionally, so `[[architecture.md]]`
+                // created `architecture.md.md`. The link inserted is `[[architecture.md]]`
+                // either way, and that resolves to `architecture.md` — so the file the
+                // menu created was one the link never pointed at.
+                const newPath = `${rootPath}/${withMarkdownExtension(props.target)}`;
                 writeFile(newPath, `# ${props.target}\n`)
                   .then(async () => {
                     await refreshIndex(rootPath);
@@ -394,7 +401,11 @@ export const WikilinkSuggest = Extension.create({
           const filtered = filterFiles(files, query, 20);
 
           // Add "Create" option if query is non-empty and no exact match
-          if (query && !hasExactMatch(files, query)) {
+          if (
+            query &&
+            !hasExactMatch(files, query) &&
+            isCreatableTarget(query)
+          ) {
             filtered.push({
               id: "__create__",
               target: query,

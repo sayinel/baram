@@ -5,6 +5,7 @@ import { useFileStore } from "../../stores/file/file";
 import { titleForId } from "../../stores/zettelkasten/zettel-index";
 // §31 Wikilink autocomplete — utility functions
 import { extractHeadings, fuzzyScore } from "../../utils/file-search";
+import { isBinaryViewerFile, isHtmlFile } from "../../utils/file-type";
 import {
   extractLeadingId,
   parseNoteTitle,
@@ -113,6 +114,23 @@ export function filterFiles(
 }
 
 /**
+ * §278.2 "Create" writes a markdown note — `${target}.md` holding `# ${target}`.
+ *
+ * Now that `[[Paper.pdf]]` is a target you can type, a miss on one used to offer to
+ * create `Paper.pdf.md` containing `# Paper.pdf`. Nothing about that is what the user
+ * asked for, and the app cannot create a PDF from a menu either — so the option is
+ * withdrawn rather than made to produce something plausible-looking.
+ *
+ * ‼️ This is a SUPPRESSION, which is why it may key off the file type at all. Getting it
+ * wrong costs a missing "create" entry for a name the user can still create from the file
+ * tree; the resolver, by contrast, must stay permissive and enumerates nothing (see
+ * wikilink-nav.ts). Different jobs, different rules.
+ */
+export function isCreatableTarget(target: string): boolean {
+  return !isBinaryViewerFile(target) && !isHtmlFile(target);
+}
+
+/**
  * Load headings from a file. Uses in-memory cache if available, falls back to readFile IPC.
  */
 export async function loadFileHeadings(
@@ -164,6 +182,14 @@ export function longestCommonPrefix(strings: string[]): string {
  */
 export function shouldBlockCompletedWikilink(matchText: string): boolean {
   return matchText.includes("]]");
+}
+
+/** §278.2 `foo` → `foo.md`, but `foo.md` stays `foo.md`. */
+export function withMarkdownExtension(target: string): string {
+  const lower = target.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown")
+    ? target
+    : `${target}.md`;
 }
 
 /**
