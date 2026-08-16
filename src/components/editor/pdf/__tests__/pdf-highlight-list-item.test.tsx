@@ -1,0 +1,176 @@
+// §282.2 목록 한 줄 — 영역 크롭의 지연 렌더와 해상도 예산.
+import type { StoredHighlight } from "../pdf-highlight-sidecar";
+import type { PDFPageProxy } from "pdfjs-dist";
+
+import { act, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { PdfHighlightListItem } from "../PdfHighlightListItem";
+
+interface MockIO {
+  triggerIntersect: (isIntersecting?: boolean) => void;
+}
+
+function observers(): MockIO[] {
+  return (
+    globalThis as unknown as {
+      MockIntersectionObserver: { instances: MockIO[] };
+    }
+  ).MockIntersectionObserver.instances;
+}
+
+const renderCalls = vi.fn();
+const cancelCalls = vi.fn();
+
+/** 200×100pt 영역 — 폭이 크롭 표시 폭(150)보다 커서 축소가 걸린다. */
+function areaHighlight(): StoredHighlight {
+  return {
+    color: "yellow",
+    id: "area-1",
+    kind: "area",
+    page: 1,
+    rects: [{ h: 100, w: 200, x: 50, y: 400 }],
+  };
+}
+
+function makePage(): PDFPageProxy {
+  return {
+    getViewport: ({ scale }: { scale: number }) => ({
+      convertToPdfPoint: (x: number, y: number) => [x, y],
+      convertToViewportPoint: (x: number, y: number) => [x, y],
+      height: 792 * scale,
+      scale,
+      width: 612 * scale,
+    }),
+    pageNumber: 1,
+    render: (args: unknown) => {
+      renderCalls(args);
+      return { cancel: cancelCalls, promise: Promise.resolve() };
+    },
+  } as unknown as PDFPageProxy;
+}
+
+function setup(
+  overrides: Partial<Parameters<typeof PdfHighlightListItem>[0]> = {},
+) {
+  const props = {
+    isFlashing: false,
+    item: { highlight: areaHighlight(), text: null },
+    onSelect: vi.fn(),
+    page: makePage(),
+    pageLabel: "p. 1",
+    ...overrides,
+  };
+  const view = render(<PdfHighlightListItem {...props} />);
+  return { ...props, view };
+}
+
+function textHighlight(): StoredHighlight {
+  return {
+    color: "green",
+    id: "text-1",
+    kind: "text",
+    page: 1,
+    rects: [{ h: 10, w: 300, x: 0, y: 700 }],
+  };
+}
+
+beforeEach(() => {
+  observers().length = 0;
+  renderCalls.mockClear();
+  cancelCalls.mockClear();
+  vi.stubGlobal("devicePixelRatio", 2);
+});
+
+describe("PdfHighlightListItem", () => {
+  it("does not draw the crop before the row is in view", () => {
+    setup();
+    expect(renderCalls).not.toHaveBeenCalled();
+  });
+
+  it("draws the crop once the row comes into view", () => {
+    setup();
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    expect(renderCalls).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the crop render when the row scrolls away", () => {
+    setup();
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+    expect(cancelCalls).toHaveBeenCalled();
+  });
+
+  // 텍스트 하이라이트의 rect들은 줄마다 흩어져 있어 그 상자를 잘라내면
+  // 무의미한 띠가 나온다 — 원문이 곧 그 줄의 내용이다.
+  it("does not draw a crop for a text highlight", () => {
+    setup({ item: { highlight: textHighlight(), text: "quoted line" } });
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    expect(renderCalls).not.toHaveBeenCalled();
+    expect(document.querySelector(".pdf-highlight-item-crop")).toBeNull();
+  });
+
+  // ‼️ §276.6의 기본 백킹 목표(900 CSS px)는 노트에 박힌 참조가 리사이즈로
+  // 커질 수 있어서다. 레일은 폭이 고정이라 그 전제가 없다 — 기본값을 쓰면
+  // 150px 자리에 6배 폭(=36배 픽셀)을 그린다.
+  it("sizes the crop backing to the rail, not to the note-embed target", () => {
+    setup();
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    const canvas = document.querySelector<HTMLCanvasElement>("canvas");
+    // 200pt 폭을 150 CSS px 목표 × dpr 2 = 300 device px로 그린다.
+    expect(canvas?.width).toBe(300);
+  });
+
+  // computeAreaCropLayout은 매번 새 객체를 돌려준다 — deps에 그대로 넣으면
+  // 리렌더마다 cancel → 재렌더가 반복된다(그림 깜빡임 + 워커 부하).
+  it("does not redraw the crop on an unrelated re-render", () => {
+    // ‼️ page와 item은 **같은 참조**를 다시 넘겨야 한다. 새 인스턴스를 넘기면
+    // useMemo가 정당하게 다시 계산하므로, 메모가 없어도 이 테스트가 통과해
+    // 아무것도 고정하지 못한다.
+    const { item, page, view } = setup();
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    expect(renderCalls).toHaveBeenCalledTimes(1);
+
+    view.rerender(
+      <PdfHighlightListItem
+        isFlashing
+        item={item}
+        onSelect={vi.fn()}
+        page={page}
+        pageLabel="p. 1"
+      />,
+    );
+
+    expect(renderCalls).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the companion text when there is some", () => {
+    setup({ item: { highlight: textHighlight(), text: "attention is all" } });
+    expect(screen.getByText("attention is all")).toBeInTheDocument();
+  });
+
+  // 그림 위의 영역 하이라이트는 그 아래 텍스트가 없어 문단이 비어 있다 —
+  // 빈 span을 그리면 줄 높이만 차지하는 유령 요소가 된다.
+  it("renders no text element when the companion paragraph is empty", () => {
+    setup({ item: { highlight: areaHighlight(), text: null } });
+    expect(document.querySelector(".pdf-highlight-item-text")).toBeNull();
+  });
+
+  it("reports the highlight id when clicked", () => {
+    const props = setup();
+    screen.getByRole("button").click();
+    expect(props.onSelect).toHaveBeenCalledWith("area-1");
+  });
+});

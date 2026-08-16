@@ -109,6 +109,89 @@
   color: var(--color-text-default);
 }
 
+/* §282.2 하이라이트 목록 */
+
+.pdf-highlight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+.pdf-highlight-list-empty {
+  padding: 16px 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.pdf-highlight-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 6px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.pdf-highlight-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.pdf-highlight-item.flashing {
+  background: var(--color-bg-selection);
+}
+
+.pdf-highlight-item-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* 색상은 pdf.css의 .pdf-hl-path-* 를 그대로 재사용한다 — 오버레이와 목록이
+   같은 색을 쓰는 것이 이 목록의 요점이므로 색을 다시 정의하지 않는다. */
+.pdf-highlight-item-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.pdf-highlight-item-page {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+/* 크기는 인라인 style로 들어온다(computeAreaCropLayout이 계산) — 썸네일과
+   같은 이유로 여기서 정하지 않는다. */
+.pdf-highlight-item-crop {
+  display: block;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--color-border-default);
+  border-radius: 2px;
+}
+
+.pdf-highlight-item-crop canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-highlight-item-text {
+  display: -webkit-box;
+  overflow: hidden;
+
+  /* 긴 인용이 목록을 삼키지 않게 네 줄로 자른다 — 클릭하면 본문의 그 자리로
+     가므로 전문은 거기서 본다. */
+  -webkit-line-clamp: 4;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-text-default);
+  -webkit-box-orient: vertical;
+}
+
 /* 레일은 오버레이라 스크롤 컨테이너의 폭을 줄이지 않는다 — 페이지가 레일 뒤로
    들어가지 않게 왼쪽 여백을 직접 준다. `.pdf-preview`의 `padding: 24px`에서
    왼쪽만 덮어쓴다(align-items: center의 중심도 이 여백을 반영해 옮겨간다). */

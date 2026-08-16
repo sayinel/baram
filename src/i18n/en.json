@@ -542,6 +542,8 @@
   "pdfToolbar.toggleRail": "Page & highlight list",
   "pdfSidePanel.pages": "Pages",
   "pdfSidePanel.highlights": "Highlights",
+  "pdfSidePanel.noHighlights": "No highlights in this PDF yet",
+  "pdfSidePanel.pageLabel": "p. {page}",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",

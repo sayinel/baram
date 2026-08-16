@@ -51,6 +51,13 @@ export function usePdfHighlights({
    * usePdfSelectionPopup에 넘긴다(그 훅의 doc comment 참조). */
   textModeActive: boolean;
 }): {
+  /** §282.2 동반 노트의 절대 경로 — 하이라이트 목록이 원문을 읽는 곳.
+   * vault 밖이면 null(그때는 하이라이트 자체가 없다). */
+  absCompanionPath: null | string;
+  /** §282.2 이 PDF의 모든 하이라이트. 목록이 소비한다 — getPageHighlights는
+   * 페이지별 오버레이용이라 전체를 훑으려면 N번 불러야 하고, 그 N은
+   * 여기(사이드카)에만 있는 정보다. 사이드카가 아직 없으면 빈 배열. */
+  allHighlights: StoredHighlight[];
   /** §275.6 Set briefly after a ref click lands on this PDF — the highlight
    * to render with the flash affordance (PdfPage). */
   flashHighlightId: null | string;
@@ -261,6 +268,8 @@ export function usePdfHighlights({
       : null;
 
   return {
+    absCompanionPath,
+    allHighlights: sidecar?.highlights ?? EMPTY_HIGHLIGHTS,
     flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,

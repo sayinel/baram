@@ -33,6 +33,7 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
 import { PDF_RAIL_WIDTH_PX } from "./pdf-side-panel-utils";
+import { PdfHighlightList } from "./PdfHighlightList";
 import { PdfPage } from "./PdfPage";
 import { PdfPageList } from "./PdfPageList";
 import { PdfSidePanel } from "./PdfSidePanel";
@@ -273,6 +274,8 @@ export const PdfPreview = memo(function PdfPreview({
   // §274 사이드카 로드 + 히트 테스트 + 선택 팝업 배선. rootPath가 없으면
   // (vault 밖 단일 파일 모드) 내부적으로 비활성화된다.
   const {
+    absCompanionPath,
+    allHighlights,
     flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,
@@ -400,6 +403,14 @@ export const PdfPreview = memo(function PdfPreview({
       {!error && pagesReady && pdfRailOpen && (
         <PdfSidePanel
           activeTab={pdfRailTab}
+          highlightsContent={
+            <PdfHighlightList
+              absCompanionPath={absCompanionPath}
+              flashHighlightId={flashHighlightId}
+              highlights={allHighlights}
+              pages={pages}
+            />
+          }
           highlightsEnabled={highlightsEnabled}
           onTabChange={setPdfRailTab}
           pagesContent={
