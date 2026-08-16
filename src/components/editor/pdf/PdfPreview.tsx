@@ -7,6 +7,7 @@
 // Cmd+0, Ctrl+wheel, pinch) flows through useZoom exactly like the
 // markdown editor. Pages render lazily as they approach the viewport.
 
+import type { CSSProperties } from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -25,11 +26,17 @@ import {
   GlobalWorkerOptions,
 } from "pdfjs-dist/legacy/build/pdf.mjs";
 import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import { useShallow } from "zustand/shallow";
 
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
+import { PDF_RAIL_WIDTH_PX } from "./pdf-side-panel-utils";
+import { PdfHighlightList } from "./PdfHighlightList";
 import { PdfPage } from "./PdfPage";
+import { PdfPageList } from "./PdfPageList";
+import { PdfSidePanel } from "./PdfSidePanel";
 import { PdfToolbar } from "./PdfToolbar";
 import { usePdfAreaHighlight } from "./use-pdf-area-highlight";
 import { usePdfFind } from "./use-pdf-find";
@@ -60,6 +67,31 @@ interface PdfPreviewProps {
   refreshKey?: number;
   /** Accessible title for the viewer (file path or name). */
   title?: string;
+}
+
+/**
+ * §282 zoom 1에서 페이지 하나가 차지할 수 있는 가로 폭(CSS px).
+ *
+ * 레일을 빼는 것이 핵심이다. 레일은 `.editor-area`에 붙는 **오버레이**라 스크롤
+ * 컨테이너의 `clientWidth`를 줄이지 않는다 — 그래서 ResizeObserver도, 이 식의
+ * 다른 어떤 항도 레일의 존재를 알지 못한다. 빼지 않으면 zoom 100%에서도 페이지가
+ * 레일 폭만큼 넓게 잡혀 **항상 가로 스크롤이 생긴다**(레일 뒤로 페이지가 밀려
+ * 들어간 것처럼 보인다).
+ *
+ * resolvePageBoxEl과 같은 이유로 순수 함수로 뽑았다 — jsdom에는 레이아웃이 없어
+ * 이 규칙을 렌더로 관찰할 수 없다. 호출부는 아래 effect 하나뿐이고, 그 effect의
+ * deps에서 pdfRailOpen이 빠지면(= 레일을 열어도 fit-width가 다시 계산되지 않는
+ * 결함) react-hooks/exhaustive-deps가 **경고**를 낸다 — 확인함. 빨간불이 되는
+ * 것은 `npm run lint`의 `--max-warnings=0` 덕분이고, 맨 `npx eslint`는 exit 0이다.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function availableFitWidth(
+  scrollClientWidth: number,
+  railOpen: boolean,
+): number {
+  return (
+    scrollClientWidth - PAGE_GUTTER_PX * 2 - (railOpen ? PDF_RAIL_WIDTH_PX : 0)
+  );
 }
 
 /**
@@ -95,6 +127,16 @@ export const PdfPreview = memo(function PdfPreview({
   const [baseScale, setBaseScale] = useState(0);
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const rootPath = useFileStore((s) => s.rootPath);
+  // §282 레일 상태는 UI 스토어에 산다 — 이 컴포넌트는 탭을 바꿀 때마다
+  // 언마운트되므로 컴포넌트 state에 두면 레일이 매번 닫힌다(ui.ts 참조).
+  const { pdfRailOpen, pdfRailTab, setPdfRailTab, togglePdfRail } = useUIStore(
+    useShallow((s) => ({
+      pdfRailOpen: s.pdfRailOpen,
+      pdfRailTab: s.pdfRailTab,
+      setPdfRailTab: s.setPdfRailTab,
+      togglePdfRail: s.togglePdfRail,
+    })),
+  );
 
   // Load the document via the asset: protocol; reload on external change
   useEffect(() => {
@@ -152,7 +194,7 @@ export const PdfPreview = memo(function PdfPreview({
     const first = pages[0];
     if (!el || !first) return;
     const update = () => {
-      const avail = el.clientWidth - PAGE_GUTTER_PX * 2;
+      const avail = availableFitWidth(el.clientWidth, pdfRailOpen);
       if (avail > 0) {
         setBaseScale(avail / first.getViewport({ scale: 1 }).width);
       }
@@ -161,7 +203,7 @@ export const PdfPreview = memo(function PdfPreview({
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [pages]);
+  }, [pages, pdfRailOpen]);
 
   // §272 스크롤 컨테이너를 호출 시점에 얻는다 — getPage/scrollToPage와 같은
   // 지연 평가 패턴(위 baseScale 측정과 동일한 요소를 재사용).
@@ -213,6 +255,9 @@ export const PdfPreview = memo(function PdfPreview({
   // pageElsRef.get(n)이 undefined라 조용히 no-op한다 — usePdfHighlightFlash가
   // 대상을 찾기도 전에 pendingPdfHighlightId를 소비해버리는 레이스를 막는다.
   const pagesReady = scale > 0 && pages.length > 0;
+  // §282 레일이 실제로 화면에 있는 조건 — 아래 렌더와 `.pdf-preview`의 왼쪽
+  // 여백이 **같은** 값을 봐야 한다(M7).
+  const railVisible = !error && pagesReady && pdfRailOpen;
 
   const onNextPage = useCallback(() => {
     scrollToPage(Math.min(currentPage + 1, pages.length));
@@ -232,6 +277,8 @@ export const PdfPreview = memo(function PdfPreview({
   // §274 사이드카 로드 + 히트 테스트 + 선택 팝업 배선. rootPath가 없으면
   // (vault 밖 단일 파일 모드) 내부적으로 비활성화된다.
   const {
+    absCompanionPath,
+    allHighlights,
     flashHighlightId,
     getPageHighlights,
     handlePageMouseDown,
@@ -299,9 +346,23 @@ export const PdfPreview = memo(function PdfPreview({
   return (
     <div
       aria-label={title || "PDF preview"}
-      className="pdf-preview"
+      // §282 M7 — 여백은 레일이 **실제로 렌더되는** 조건과 같아야 한다.
+      // pdfRailOpen만 보면 로드 중이나 오류 화면에서도 왼쪽 224px이 비고,
+      // 오류 메시지가 아무것도 없는 여백 오른쪽에 치우쳐 그려진다.
+      className={["pdf-preview", railVisible ? "pdf-preview-with-rail" : null]
+        .filter(Boolean)
+        .join(" ")}
       ref={containerRef}
       role="document"
+      // §282 레일 폭의 단일 출처는 PDF_RAIL_WIDTH_PX다 — CSS는 이 변수로 레일의
+      // width와 `.pdf-preview-with-rail`의 padding-left를 함께 잡는다. 여기서
+      // 내려주지 않고 CSS에 숫자를 또 적으면, 위 fit-width 계산과 어긋나는 순간
+      // 조용히 가로 스크롤로 나타난다.
+      style={
+        {
+          "--pdf-rail-width": `${String(PDF_RAIL_WIDTH_PX)}px`,
+        } as CSSProperties
+      }
     >
       {error ? (
         <div className="pdf-preview-error">{error}</div>
@@ -355,11 +416,42 @@ export const PdfPreview = memo(function PdfPreview({
             highlightsEnabled ? highlightMode.toggleAreaMode : undefined
           }
           onToggleFind={() => onToggleFind?.()}
+          onToggleRail={togglePdfRail}
           onToggleTextMode={
             highlightsEnabled ? highlightMode.toggleTextMode : undefined
           }
           pageCount={pages.length}
+          railOpen={pdfRailOpen}
           textMode={textModeActive}
+        />
+      )}
+
+      {/* §282 사이드 레일 — 툴바와 같은 게이트(pagesReady)를 쓴다. 목록이
+          가리킬 대상이 아직 없는 동안 프레임만 떠 있으면 "비어 있다"로 읽힌다.
+          ‼️ 툴바 **뒤에** 둔다. 둘 다 absolute라 화면 배치는 순서와 무관하지만
+          Tab 순서는 DOM 순서를 따른다 — 레일이 앞에 있으면 300페이지 문서에서
+          썸네일 버튼 300개를 지나야 툴바에 닿아, 사실상 키보드로 못 쓴다
+          (리뷰 I2). 레일 안에서의 화살표 이동은 아직 없다 — backlog. */}
+      {railVisible && (
+        <PdfSidePanel
+          activeTab={pdfRailTab}
+          highlightsContent={
+            <PdfHighlightList
+              absCompanionPath={absCompanionPath}
+              flashHighlightId={flashHighlightId}
+              highlights={allHighlights}
+              pages={pages}
+            />
+          }
+          highlightsEnabled={highlightsEnabled}
+          onTabChange={setPdfRailTab}
+          pagesContent={
+            <PdfPageList
+              currentPage={currentPage}
+              onSelectPage={scrollToPage}
+              pages={pages}
+            />
+          }
         />
       )}
     </div>

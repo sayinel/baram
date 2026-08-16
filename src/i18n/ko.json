@@ -539,6 +539,12 @@
   "pdfToolbar.find": "PDF에서 찾기",
   "pdfToolbar.areaMode": "영역 하이라이트 모드 — 드래그로 그리기 (또는 Alt+드래그)",
   "pdfToolbar.textMode": "텍스트 하이라이트 모드 — 텍스트를 선택해 하이라이트",
+  "pdfToolbar.toggleRail": "페이지·하이라이트 목록",
+  "pdfSidePanel.pages": "페이지",
+  "pdfSidePanel.highlights": "하이라이트",
+  "pdfSidePanel.label": "페이지 및 하이라이트",
+  "pdfSidePanel.noHighlights": "이 PDF에는 아직 하이라이트가 없습니다",
+  "pdfSidePanel.pageLabel": "{page}쪽",
 
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",
   "plugin.consent.title.update": "\"{name}\" 플러그인을 업데이트하시겠습니까?",

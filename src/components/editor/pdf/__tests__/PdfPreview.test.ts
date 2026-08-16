@@ -6,7 +6,8 @@
 // — this pins the DOM-tree-structure half of the fix instead.
 import { describe, expect, it } from "vitest";
 
-import { resolvePageBoxEl } from "../PdfPreview";
+import { PDF_RAIL_WIDTH_PX } from "../pdf-side-panel-utils";
+import { availableFitWidth, resolvePageBoxEl } from "../PdfPreview";
 
 describe("resolvePageBoxEl", () => {
   it("returns the wrapper's rendered child, not the (boxless) wrapper itself", () => {
@@ -27,5 +28,34 @@ describe("resolvePageBoxEl", () => {
 
   it("returns null when the wrapper itself is null (ref cleanup on unmount)", () => {
     expect(resolvePageBoxEl(null)).toBeNull();
+  });
+});
+
+// §282 레일은 `.editor-area`에 붙는 오버레이라 스크롤 컨테이너의 clientWidth를
+// 줄이지 않는다 — 이 함수가 그 사실을 보정하는 유일한 자리다. 보정이 빠지면
+// zoom 100%에서도 페이지가 레일 폭만큼 넓어져 항상 가로 스크롤이 생긴다.
+// jsdom에는 레이아웃이 없어 렌더로는 관찰할 수 없다(resolvePageBoxEl과 같은 이유).
+describe("availableFitWidth", () => {
+  it("subtracts the rail width while the rail is open", () => {
+    const closed = availableFitWidth(1000, false);
+    const open = availableFitWidth(1000, true);
+
+    expect(closed - open).toBe(PDF_RAIL_WIDTH_PX);
+  });
+
+  it("leaves the width untouched while the rail is closed", () => {
+    // 게터 두 개(1000 → 952)가 아니라 gutter만 빠진 값이어야 한다 — 상수를
+    // 되풀이하지 않고 "레일이 닫혔을 때는 레일 항이 0"임을 고정한다.
+    expect(availableFitWidth(1000, false)).toBeGreaterThan(
+      availableFitWidth(1000, true),
+    );
+    expect(availableFitWidth(1000, false)).toBeLessThan(1000);
+  });
+
+  // 레일이 열린 채로 창을 아주 좁히면 음수가 나온다. 호출부가 `avail > 0`으로
+  // 거르므로 여기서 0으로 자르지 않는다 — 자르면 호출부의 가드가 통과해
+  // baseScale이 0이 되고 페이지가 사라진다.
+  it("reports a negative width when the rail cannot fit", () => {
+    expect(availableFitWidth(PDF_RAIL_WIDTH_PX, true)).toBeLessThan(0);
   });
 });

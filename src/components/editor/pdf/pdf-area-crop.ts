@@ -25,6 +25,19 @@ export interface AreaCropLayoutInput {
   maxCssWidth: number;
   /** pdfRectToPageLocal(rect, page.getViewport({ scale: 1 }))의 결과. */
   pageLocalAtScale1: PageLocalRect;
+  /**
+   * §282.2 백킹 해상도를 그릴 목표 표시 폭(CSS px). 기본값은
+   * AREA_RENDER_TARGET_CSS_WIDTH(900) — 노트에 박힌 참조는 **리사이즈로 커질
+   * 수 있어서** 도달 가능한 최대 폭에 맞춰 미리 그려 둬야 하기 때문이다
+   * (§276.6, 그 상수의 doc comment).
+   *
+   * 레일의 하이라이트 목록은 그 전제가 성립하지 않는다 — 크기가 레일 폭으로
+   * 고정이라 확대될 일이 없다. 900을 그대로 쓰면 150px 자리에 ~11배 픽셀을
+   * 그리게 되므로 표시 폭을 그대로 넘긴다. 오프셋 유도(`-left * renderScale`)를
+   * 복제하지 않으려고 파라미터로 열었다 — 그 계산이 이 파일의 어려운 부분이고,
+   * 두 벌이 되면 한쪽만 고쳐지는 종류의 코드다.
+   */
+  renderTargetCssWidth?: number;
 }
 
 /**
@@ -102,6 +115,7 @@ export function computeAreaCropLayout({
   dpr,
   maxCssWidth,
   pageLocalAtScale1,
+  renderTargetCssWidth = AREA_RENDER_TARGET_CSS_WIDTH,
 }: AreaCropLayoutInput): AreaCropLayout | null {
   const { height, left, top, width } = pageLocalAtScale1;
 
@@ -109,6 +123,11 @@ export function computeAreaCropLayout({
   if (!Number.isFinite(width) || width <= 0) return null;
   if (!Number.isFinite(height) || height <= 0) return null;
   if (!Number.isFinite(maxCssWidth) || maxCssWidth <= 0) return null;
+  // maxCssWidth와 같은 이유로 걸러야 한다 — 0이나 NaN이 들어오면 renderScale이
+  // 0/NaN이 되어 캔버스 크기가 무너진다.
+  if (!Number.isFinite(renderTargetCssWidth) || renderTargetCssWidth <= 0) {
+    return null;
+  }
 
   // NaN dpr은 clamp를 그대로 통과한다(Math.max(NaN, 1) === NaN) — 클램프
   // **전에** 걸러야 캔버스 크기가 NaN이 되지 않는다.
@@ -123,7 +142,7 @@ export function computeAreaCropLayout({
   const renderScale = fitToCanvasArea(
     width,
     height,
-    (AREA_RENDER_TARGET_CSS_WIDTH / width) * clampedDpr,
+    (renderTargetCssWidth / width) * clampedDpr,
   );
 
   return {

@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Highlighter,
+  PanelLeft,
   Search,
   SquareDashedMousePointer,
 } from "lucide-react";
@@ -37,10 +38,16 @@ interface PdfToolbarProps {
   /** §276.3 없으면(vault 밖 등) 버튼을 렌더하지 않는다. */
   onToggleAreaMode?: () => void;
   onToggleFind: () => void;
+  /** §282 사이드 레일 토글. 하이라이트 토글들과 달리 **게이트하지 않는다** —
+   * 레일의 페이지 목록은 vault 밖에서도 그대로 유효하다(하이라이트 탭만
+   * PdfSidePanel 안에서 사라진다). */
+  onToggleRail: () => void;
   /** §276.3.1 없으면(vault 밖 등) 버튼을 렌더하지 않는다 — onToggleAreaMode와
    * 같은 게이트. */
   onToggleTextMode?: () => void;
   pageCount: number;
+  /** §282 raw 토글 상태 — aria-pressed가 반영하는 값. */
+  railOpen?: boolean;
   /** §276.3.1 raw 토글 상태 — areaMode와 대칭. */
   textMode?: boolean;
 }
@@ -52,14 +59,38 @@ export function PdfToolbar({
   onPrevPage,
   onToggleAreaMode,
   onToggleFind,
+  onToggleRail,
   onToggleTextMode,
   pageCount,
+  railOpen,
   textMode,
 }: PdfToolbarProps) {
   const { t } = useTranslation();
 
   return (
     <div className="pdf-toolbar" role="toolbar">
+      {/* §282 레일 토글은 문서 탐색(페이지 이동)의 상위 개념이라 맨 앞에 둔다. */}
+      <button
+        aria-label={t("pdfToolbar.toggleRail")}
+        aria-pressed={railOpen ?? false}
+        className={[
+          "btn-unstyled",
+          "icon-btn",
+          "pdf-toolbar-btn",
+          railOpen ? "active" : null,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        data-testid="pdf-toggle-rail"
+        onClick={onToggleRail}
+        title={t("pdfToolbar.toggleRail")}
+        type="button"
+      >
+        <PanelLeft size={16} />
+      </button>
+
+      <div className="pdf-toolbar-divider" />
+
       <button
         aria-label={t("pdfToolbar.prevPage")}
         className="btn-unstyled icon-btn pdf-toolbar-nav-btn"
