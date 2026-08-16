@@ -5,7 +5,7 @@
 // 텍스트가 없어 문단이 비어 있다. 그런 줄은 "5페이지"만 남아 무엇을 표시해
 // 뒀는지 알 수 없다 — 영역 하이라이트의 주된 용도가 바로 그림이므로, 크롭이
 // 곁다리가 아니라 그 줄의 내용이다.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import type { HighlightListItem } from "./use-pdf-highlight-list";
 import type { PDFPageProxy } from "pdfjs-dist";
@@ -13,14 +13,15 @@ import type { PDFPageProxy } from "pdfjs-dist";
 import { computeAreaCropLayout } from "./pdf-area-crop";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
 import { boundingPdfRect } from "./pdf-highlight-list-order";
-
-/** 크롭 표시 폭(CSS px) — 썸네일과 같은 레일 안쪽 폭. */
-const CROP_WIDTH_PX = 150;
+import { PDF_RAIL_CONTENT_WIDTH_PX } from "./pdf-side-panel-utils";
 
 /** 뷰포트 밖 이만큼까지 미리 그린다 (PdfThumbnail과 같은 값). */
 const LAZY_ROOT_MARGIN = "200px";
 
-export function PdfHighlightListItem({
+// memo가 필요한 이유는 PdfThumbnail과 같다(그쪽 주석 참조) — 영역 드래그의
+// raw mousemove가 PdfPreview 전체를 다시 렌더한다. 여기서는 `item`이 관건이라
+// usePdfHighlightList가 그 배열을 메모해야 이 memo가 실제로 걸린다.
+export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   isFlashing,
   item,
   onSelect,
@@ -55,14 +56,17 @@ export function PdfHighlightListItem({
     if (!bounds) return null;
     return computeAreaCropLayout({
       dpr: window.devicePixelRatio,
-      maxCssWidth: CROP_WIDTH_PX,
+      maxCssWidth: PDF_RAIL_CONTENT_WIDTH_PX,
       pageLocalAtScale1: pdfRectToPageLocal(
         bounds,
         page.getViewport({ scale: 1 }),
       ),
-      // ‼️ 레일의 크롭은 확대되지 않으므로 표시 폭 그대로 그린다 —
-      // 기본값(900)이면 150px 자리에 ~11배 픽셀을 그린다(§276.6 참조).
-      renderTargetCssWidth: CROP_WIDTH_PX,
+      // ‼️ 레일의 크롭은 확대되지 않으므로 백킹 목표를 레일 폭으로 낮춘다 —
+      // 기본값(900)이면 150px 자리에 ~36배 픽셀을 그린다(§276.6 참조).
+      // 정확히는 "표시 폭과 같다"가 아니라 **상한**이다: 이보다 좁은 크롭은
+      // cssWidth가 더 작으므로 여전히 조금 과하게 그린다(리뷰 M6). 그 오차는
+      // 좁은 크롭에서만 생기고 절대 크기가 작아 지금은 받아들인다.
+      renderTargetCssWidth: PDF_RAIL_CONTENT_WIDTH_PX,
     });
   }, [highlight, isArea, page]);
 
@@ -115,8 +119,13 @@ export function PdfHighlightListItem({
       type="button"
     >
       <span className="pdf-highlight-item-meta">
+        {/* ‼️ .pdf-hl-path-* 를 재사용할 수 없다 — 그 클래스는 `fill:`만
+            세우고 fill은 SVG 전용이라 HTML span에서는 아무 효과가 없다.
+            처음엔 그걸 재사용했고, 결과는 모든 줄에 투명한 10×10 상자였다
+            (색이 목록의 요점인데 색이 없었다). 색 **토큰**은 오버레이와
+            그대로 공유한다 — pdf-side-panel.css 참조. */}
         <span
-          className={`pdf-highlight-item-swatch pdf-hl-path-${highlight.color}`}
+          className={`pdf-highlight-item-swatch pdf-highlight-item-swatch-${highlight.color}`}
         />
         <span className="pdf-highlight-item-page">{pageLabel}</span>
       </span>
@@ -133,4 +142,4 @@ export function PdfHighlightListItem({
       {text !== null && <span className="pdf-highlight-item-text">{text}</span>}
     </button>
   );
-}
+});

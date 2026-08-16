@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLinkStore } from "../../../../stores/editor/link";
 import { PdfHighlightList } from "../PdfHighlightList";
+import { usePdfHighlightList } from "../use-pdf-highlight-list";
 
 const readCompanion = vi.fn();
 vi.mock("../pdf-highlight-store", () => ({
@@ -29,9 +30,15 @@ function makePages(count: number): PDFPageProxy[] {
     { length: count },
     (_, i) =>
       ({
+        // ‼️ 항등 변환은 실제 뷰포트가 아니다 — 진짜 뷰포트는 y축을 뒤집는다
+        // (PDF는 y가 위로, 화면은 아래로 증가). 항등으로 두면 정렬 테스트가
+        // 거꾸로 통과하거나 실패해서 아무것도 고정하지 못한다.
         getViewport: ({ scale }: { scale: number }) => ({
-          convertToPdfPoint: (x: number, y: number) => [x, y],
-          convertToViewportPoint: (x: number, y: number) => [x, y],
+          convertToPdfPoint: (x: number, y: number) => [x, 792 * scale - y],
+          convertToViewportPoint: (x: number, y: number) => [
+            x * scale,
+            (792 - y) * scale,
+          ],
           height: 792 * scale,
           scale,
           width: 612 * scale,
@@ -168,6 +175,31 @@ describe("PdfHighlightList", () => {
         .querySelector(".pdf-highlight-item.flashing")
         ?.getAttribute("data-pdf-highlight-id"),
     ).toBe("b");
+  });
+
+  // ‼️ PdfHighlightListItem을 React.memo로 감싸도 `item`의 신원이 매 렌더
+  // 바뀌면 memo가 항상 통과해 아무 효과가 없다. 그 성질은 컴포넌트가 아니라
+  // **훅의 반환값**에 있으므로 여기서 단정한다 — 항목 수준에서 재렌더를
+  // 세는 테스트는 이 뮤테이션을 놓친다(실제로 놓쳤다).
+  it("returns a stable item array across re-renders with unchanged inputs", async () => {
+    readCompanion.mockResolvedValue("one ^a\n\ntwo ^b\n");
+    const highlights = [hl("a", 1, 700), hl("b", 1, 600)];
+    const seen: unknown[] = [];
+
+    function Harness() {
+      seen.push(usePdfHighlightList(highlights, "/vault/highlights/paper.md"));
+      return null;
+    }
+
+    const view = render(<Harness />);
+    await waitFor(() => {
+      expect(seen.length).toBeGreaterThan(1);
+    });
+    const settled = seen.at(-1);
+
+    view.rerender(<Harness />);
+
+    expect(seen.at(-1)).toBe(settled);
   });
 
   it("does not read anything outside a vault", async () => {

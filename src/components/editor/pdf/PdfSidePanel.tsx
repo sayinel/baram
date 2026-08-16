@@ -43,7 +43,11 @@ export function PdfSidePanel({
   const resolved = resolvePdfRailTab(activeTab, highlightsEnabled);
 
   return (
-    <aside className="pdf-side-panel" data-testid="pdf-side-panel">
+    <aside
+      aria-label={t("pdfSidePanel.label")}
+      className="pdf-side-panel"
+      data-testid="pdf-side-panel"
+    >
       <div className="pdf-side-panel-tabs" role="tablist">
         <button
           aria-selected={resolved === "pages"}

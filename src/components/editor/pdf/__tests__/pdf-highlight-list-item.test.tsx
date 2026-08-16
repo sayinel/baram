@@ -168,6 +168,27 @@ describe("PdfHighlightListItem", () => {
     expect(document.querySelector(".pdf-highlight-item-text")).toBeNull();
   });
 
+  // ‼️ 리뷰 I1. 첫 판은 오버레이의 `.pdf-hl-path-*`를 스와치에 그대로 붙였는데,
+  // 그 규칙은 `fill:`만 세우고 fill은 **SVG 전용**이라 HTML span에서는 아무
+  // 효과가 없었다 — 모든 줄의 스와치가 투명했고, 색이 곧 요점인 목록에서 색이
+  // 사라져 있었다. jsdom은 CSS 파일을 로드하지 않으므로 계산된 배경색은 볼 수
+  // 없다. 대신 "SVG 전용 클래스에 기대지 않는다"를 클래스 이름으로 고정한다.
+  it("does not paint the swatch with the SVG-only overlay class", () => {
+    setup({ item: { highlight: textHighlight(), text: "x" } });
+    const swatch = document.querySelector(".pdf-highlight-item-swatch");
+
+    expect(swatch).not.toBeNull();
+    expect(swatch?.className).not.toMatch(/\bpdf-hl-path-/);
+    expect(swatch?.className).toContain("pdf-highlight-item-swatch-green");
+  });
+
+  it("names the swatch class after the highlight's own colour", () => {
+    setup({ item: { highlight: areaHighlight(), text: null } });
+    expect(
+      document.querySelector(".pdf-highlight-item-swatch-yellow"),
+    ).not.toBeNull();
+  });
+
   it("reports the highlight id when clicked", () => {
     const props = setup();
     screen.getByRole("button").click();

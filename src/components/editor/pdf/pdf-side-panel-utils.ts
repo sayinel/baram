@@ -16,6 +16,16 @@ import type { PdfRailTab } from "../../../stores/ui/ui";
 export const PDF_RAIL_WIDTH_PX = 200;
 
 /**
+ * 레일 안쪽 콘텐츠 폭(CSS px) — 썸네일과 영역 크롭이 함께 쓴다.
+ *
+ * PDF_RAIL_WIDTH_PX에서 파생시키는 이유는 그 상수를 단일 출처로 둔 이유와
+ * 똑같다. 리뷰에서 지적됐듯 처음엔 150이 두 파일에 각각 하드코딩돼 있었고,
+ * 양쪽에 "레일 폭이 바뀌면 여기도 보라"는 주석만 달려 있었다 — 그 주석이
+ * 필요하다는 것 자체가 값이 파생돼야 한다는 신호다.
+ */
+export const PDF_RAIL_CONTENT_WIDTH_PX = PDF_RAIL_WIDTH_PX - 50;
+
+/**
  * 실제로 그릴 탭. 하이라이트는 vault 안에서만 지원되므로(사이드카·동반 노트가
  * vault 상대 경로로 식별된다, use-pdf-highlights.ts 참조) vault 밖에서는
  * 하이라이트 탭이 존재하지 않는다.

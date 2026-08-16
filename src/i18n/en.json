@@ -542,6 +542,7 @@
   "pdfToolbar.toggleRail": "Page & highlight list",
   "pdfSidePanel.pages": "Pages",
   "pdfSidePanel.highlights": "Highlights",
+  "pdfSidePanel.label": "Pages and highlights",
   "pdfSidePanel.noHighlights": "No highlights in this PDF yet",
   "pdfSidePanel.pageLabel": "p. {page}",
 

@@ -10,7 +10,7 @@
 // 그 함수의 호출부가 서로를 모르는 NodeView들일 때 필요한 장치다. 여기서는
 // 전체 목록을 한 컴포넌트가 알고 있으므로 읽기 1회 + 문자열 추출 N회가
 // 그냥 옳다 — 합류에 기대면 "왜 1회인가"가 이 파일 밖의 미묘한 성질이 된다.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { StoredHighlight } from "./pdf-highlight-sidecar";
 
@@ -74,10 +74,17 @@ export function usePdfHighlightList(
     };
   }, [absCompanionPath, highlights]);
 
-  return highlights.map((highlight) => ({
-    highlight,
-    text: texts.get(highlight.id) ?? null,
-  }));
+  // ‼️ 메모해야 한다. 이 배열과 그 안의 래퍼 객체가 매 렌더 새로 만들어지면
+  // PdfHighlightListItem의 React.memo가 `item` 신원 변화만으로 항상 통과돼
+  // 아무 효과가 없다 — 목록을 memo로 감싸는 일 자체가 무의미해진다.
+  return useMemo(
+    () =>
+      highlights.map((highlight) => ({
+        highlight,
+        text: texts.get(highlight.id) ?? null,
+      })),
+    [highlights, texts],
+  );
 }
 
 const EMPTY_TEXTS = new Map<string, string>();

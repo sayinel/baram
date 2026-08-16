@@ -542,6 +542,7 @@
   "pdfToolbar.toggleRail": "페이지·하이라이트 목록",
   "pdfSidePanel.pages": "페이지",
   "pdfSidePanel.highlights": "하이라이트",
+  "pdfSidePanel.label": "페이지 및 하이라이트",
   "pdfSidePanel.noHighlights": "이 PDF에는 아직 하이라이트가 없습니다",
   "pdfSidePanel.pageLabel": "{page}쪽",
 

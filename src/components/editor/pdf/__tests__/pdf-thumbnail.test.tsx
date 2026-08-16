@@ -41,6 +41,7 @@ function makePage(pageNumber = 1): PDFPageProxy {
 function setup(overrides: Partial<Parameters<typeof PdfThumbnail>[0]> = {}) {
   const props = {
     isCurrent: false,
+    label: "Page 1",
     onSelect: vi.fn(),
     page: makePage(),
     width: 150,

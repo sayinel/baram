@@ -31,18 +31,24 @@ export function PdfHighlightList({
 }) {
   const { t } = useTranslation();
 
-  // 사이드카는 생성 순서로 쌓인다 — 목록은 읽는 순서여야 한다
-  // (pdf-highlight-list-order.ts의 y축 함정 참조).
-  const ordered = useMemo(
-    () => sortHighlightsForList(highlights),
-    [highlights],
-  );
-  const items = usePdfHighlightList(ordered, absCompanionPath);
-
   const pagesByNumber = useMemo(
     () => new Map(pages.map((p) => [p.pageNumber, p])),
     [pages],
   );
+
+  // 사이드카는 생성 순서로 쌓인다 — 목록은 읽는 순서여야 한다. 정렬이
+  // 뷰포트 공간에서 이뤄지므로(회전 페이지, pdf-highlight-list-order.ts 참조)
+  // 페이지 프록시가 필요하다.
+  const ordered = useMemo(
+    () =>
+      sortHighlightsForList(
+        highlights,
+        (pageNumber) =>
+          pagesByNumber.get(pageNumber)?.getViewport({ scale: 1 }) ?? null,
+      ),
+    [highlights, pagesByNumber],
+  );
+  const items = usePdfHighlightList(ordered, absCompanionPath);
 
   if (items.length === 0) {
     return (

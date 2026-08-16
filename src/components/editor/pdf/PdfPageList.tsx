@@ -8,14 +8,9 @@ import { useEffect, useRef } from "react";
 
 import type { PDFPageProxy } from "pdfjs-dist";
 
+import { useTranslation } from "../../../i18n/useTranslation";
+import { PDF_RAIL_CONTENT_WIDTH_PX } from "./pdf-side-panel-utils";
 import { PdfThumbnail } from "./PdfThumbnail";
-
-/**
- * 썸네일 표시 폭(CSS px). 레일 폭(200) - 좌우 여백 - 스크롤바 여유.
- * 레일 폭을 바꾸면 이 값도 함께 봐야 한다 — CSS의 `.pdf-thumbnail-frame`은
- * 인라인 style로 크기를 받으므로 여기가 유일한 출처다.
- */
-const THUMB_WIDTH_PX = 150;
 
 export function PdfPageList({
   currentPage,
@@ -27,6 +22,7 @@ export function PdfPageList({
   onSelectPage: (pageNumber: number) => void;
   pages: PDFPageProxy[];
 }) {
+  const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement | null>(null);
 
   // 본문을 스크롤하면 레일의 현재 썸네일도 따라와야 한다. `block: "nearest"`가
@@ -45,9 +41,12 @@ export function PdfPageList({
         <PdfThumbnail
           isCurrent={page.pageNumber === currentPage}
           key={page.pageNumber}
+          label={t("pdfSidePanel.pageLabel", {
+            page: String(page.pageNumber),
+          })}
           onSelect={onSelectPage}
           page={page}
-          width={THUMB_WIDTH_PX}
+          width={PDF_RAIL_CONTENT_WIDTH_PX}
         />
       ))}
     </div>

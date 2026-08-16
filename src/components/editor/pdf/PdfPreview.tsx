@@ -255,6 +255,9 @@ export const PdfPreview = memo(function PdfPreview({
   // pageElsRef.get(n)이 undefined라 조용히 no-op한다 — usePdfHighlightFlash가
   // 대상을 찾기도 전에 pendingPdfHighlightId를 소비해버리는 레이스를 막는다.
   const pagesReady = scale > 0 && pages.length > 0;
+  // §282 레일이 실제로 화면에 있는 조건 — 아래 렌더와 `.pdf-preview`의 왼쪽
+  // 여백이 **같은** 값을 봐야 한다(M7).
+  const railVisible = !error && pagesReady && pdfRailOpen;
 
   const onNextPage = useCallback(() => {
     scrollToPage(Math.min(currentPage + 1, pages.length));
@@ -343,7 +346,10 @@ export const PdfPreview = memo(function PdfPreview({
   return (
     <div
       aria-label={title || "PDF preview"}
-      className={["pdf-preview", pdfRailOpen ? "pdf-preview-with-rail" : null]
+      // §282 M7 — 여백은 레일이 **실제로 렌더되는** 조건과 같아야 한다.
+      // pdfRailOpen만 보면 로드 중이나 오류 화면에서도 왼쪽 224px이 비고,
+      // 오류 메시지가 아무것도 없는 여백 오른쪽에 치우쳐 그려진다.
+      className={["pdf-preview", railVisible ? "pdf-preview-with-rail" : null]
         .filter(Boolean)
         .join(" ")}
       ref={containerRef}
@@ -398,31 +404,6 @@ export const PdfPreview = memo(function PdfPreview({
         ))
       )}
 
-      {/* §282 사이드 레일 — 툴바와 같은 게이트(pagesReady)를 쓴다. 목록이
-          가리킬 대상이 아직 없는 동안 프레임만 떠 있으면 "비어 있다"로 읽힌다. */}
-      {!error && pagesReady && pdfRailOpen && (
-        <PdfSidePanel
-          activeTab={pdfRailTab}
-          highlightsContent={
-            <PdfHighlightList
-              absCompanionPath={absCompanionPath}
-              flashHighlightId={flashHighlightId}
-              highlights={allHighlights}
-              pages={pages}
-            />
-          }
-          highlightsEnabled={highlightsEnabled}
-          onTabChange={setPdfRailTab}
-          pagesContent={
-            <PdfPageList
-              currentPage={currentPage}
-              onSelectPage={scrollToPage}
-              pages={pages}
-            />
-          }
-        />
-      )}
-
       {/* §276.1 상주 툴바 — 항상 보인다. pagesReady 이전엔 pageCount가
           의미 없으므로 렌더하지 않는다. */}
       {!error && pagesReady && (
@@ -442,6 +423,35 @@ export const PdfPreview = memo(function PdfPreview({
           pageCount={pages.length}
           railOpen={pdfRailOpen}
           textMode={textModeActive}
+        />
+      )}
+
+      {/* §282 사이드 레일 — 툴바와 같은 게이트(pagesReady)를 쓴다. 목록이
+          가리킬 대상이 아직 없는 동안 프레임만 떠 있으면 "비어 있다"로 읽힌다.
+          ‼️ 툴바 **뒤에** 둔다. 둘 다 absolute라 화면 배치는 순서와 무관하지만
+          Tab 순서는 DOM 순서를 따른다 — 레일이 앞에 있으면 300페이지 문서에서
+          썸네일 버튼 300개를 지나야 툴바에 닿아, 사실상 키보드로 못 쓴다
+          (리뷰 I2). 레일 안에서의 화살표 이동은 아직 없다 — backlog. */}
+      {railVisible && (
+        <PdfSidePanel
+          activeTab={pdfRailTab}
+          highlightsContent={
+            <PdfHighlightList
+              absCompanionPath={absCompanionPath}
+              flashHighlightId={flashHighlightId}
+              highlights={allHighlights}
+              pages={pages}
+            />
+          }
+          highlightsEnabled={highlightsEnabled}
+          onTabChange={setPdfRailTab}
+          pagesContent={
+            <PdfPageList
+              currentPage={currentPage}
+              onSelectPage={scrollToPage}
+              pages={pages}
+            />
+          }
         />
       )}
     </div>

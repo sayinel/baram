@@ -12,11 +12,13 @@ function makePages(count: number): PDFPageProxy[] {
     { length: count },
     (_, i) =>
       ({
-        getViewport: ({ scale }: { scale: number }) => ({
+        // vi.fn — 아래 memo 테스트가 "컴포넌트 본문이 다시 돌았는가"를
+        // 이 호출 수로 관찰한다(PdfThumbnail이 본문에서 부른다).
+        getViewport: vi.fn(({ scale }: { scale: number }) => ({
           height: 792 * scale,
           scale,
           width: 612 * scale,
-        }),
+        })),
         pageNumber: i + 1,
         render: () => ({ cancel: vi.fn(), promise: Promise.resolve() }),
       }) as unknown as PDFPageProxy,
@@ -80,6 +82,31 @@ describe("PdfPageList", () => {
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
       block: "nearest",
     });
+  });
+
+  // ‼️ 이 목록이 다시 렌더되는 흔한 계기는 스크롤이 아니라 **영역 하이라이트
+  // 드래그**다 — use-pdf-area-highlight의 setDragPreview가 rAF 스로틀 없이 raw
+  // mousemove마다 새 객체로 state를 세워 PdfPreview 전체를 다시 렌더한다
+  // (초당 60~120회+). PdfThumbnail이 memo가 아니면 그때마다 썸네일 N개의 본문이
+  // 전부 다시 실행된다. 본문이 돌았는지는 getViewport 호출 수로 관찰한다.
+  it("does not re-run its thumbnails when the parent re-renders with the same props", () => {
+    const pages = makePages(20);
+    const onSelectPage = vi.fn();
+    const viewportCalls = () =>
+      pages.reduce((n, p) => n + vi.mocked(p.getViewport).mock.calls.length, 0);
+
+    const view = render(
+      <PdfPageList currentPage={1} onSelectPage={onSelectPage} pages={pages} />,
+    );
+    const before = viewportCalls();
+
+    // 같은 참조를 그대로 다시 넘긴다 — 새 인스턴스를 만들면 memo가 정당하게
+    // 통과하므로 이 테스트가 아무것도 고정하지 못한다.
+    view.rerender(
+      <PdfPageList currentPage={1} onSelectPage={onSelectPage} pages={pages} />,
+    );
+
+    expect(viewportCalls()).toBe(before);
   });
 
   it("does not scroll when the current page has not moved", () => {
