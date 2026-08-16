@@ -57,6 +57,58 @@
   overflow-y: auto;
 }
 
+/* §282.1 페이지 목록 — 썸네일 세로 스트립 */
+
+.pdf-page-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.pdf-thumbnail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.pdf-thumbnail:hover {
+  background: var(--color-bg-hover);
+}
+
+.pdf-thumbnail.active {
+  background: var(--color-bg-selection);
+}
+
+/* 크기는 인라인 style로 들어온다(PdfThumbnail이 페이지 종횡비로 계산) — 여기서
+   폭/높이를 정하면 지연 렌더가 도착할 때 자리가 흔들린다. */
+.pdf-thumbnail-frame {
+  display: block;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--color-border-default);
+}
+
+.pdf-thumbnail-frame canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-thumbnail-label {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.pdf-thumbnail.active .pdf-thumbnail-label {
+  color: var(--color-text-default);
+}
+
 /* 레일은 오버레이라 스크롤 컨테이너의 폭을 줄이지 않는다 — 페이지가 레일 뒤로
    들어가지 않게 왼쪽 여백을 직접 준다. `.pdf-preview`의 `padding: 24px`에서
    왼쪽만 덮어쓴다(align-items: center의 중심도 이 여백을 반영해 옮겨간다). */

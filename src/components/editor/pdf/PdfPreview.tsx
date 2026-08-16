@@ -34,6 +34,7 @@ import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
 import { PDF_RAIL_WIDTH_PX } from "./pdf-side-panel-utils";
 import { PdfPage } from "./PdfPage";
+import { PdfPageList } from "./PdfPageList";
 import { PdfSidePanel } from "./PdfSidePanel";
 import { PdfToolbar } from "./PdfToolbar";
 import { usePdfAreaHighlight } from "./use-pdf-area-highlight";
@@ -401,6 +402,13 @@ export const PdfPreview = memo(function PdfPreview({
           activeTab={pdfRailTab}
           highlightsEnabled={highlightsEnabled}
           onTabChange={setPdfRailTab}
+          pagesContent={
+            <PdfPageList
+              currentPage={currentPage}
+              onSelectPage={scrollToPage}
+              pages={pages}
+            />
+          }
         />
       )}
 
