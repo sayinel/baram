@@ -550,11 +550,38 @@
 }
 
 .wikilink-item-label {
+  /* ‼️ §278 flex 자식의 기본 min-width는 `auto`라 내용보다 작게 줄어들지
+     못한다 — 그 상태에서는 아래 text-overflow가 **발동하지 않고** 이름이
+     그냥 넘쳐서 옆의 배지를 밀어낸다. flex:1과 짝으로만 의미가 있다. */
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.875rem;
   color: var(--color-text-primary);
   white-space: nowrap;
+}
+
+/* §278 마크다운이 아닌 항목의 타입 배지 — PDF와 그 하이라이트 동반 노트는
+   이름이 같아서(companionPathFor), 말줄임이 이름 끝을 먹으면 화면에 남는
+   구분 정보가 하나도 없다.
+
+   ‼️ flex-shrink:0 — 이름이 아무리 길어도 줄어들지 않는 것이 이 요소의 존재
+   이유다. 줄어들 수 있으면 원래 문제로 돌아간다.
+
+   배경을 bg-default로 두는 이유: 선택된 행이 bg-subtle이라(.wikilink-item-selected),
+   배지에 같은 색을 쓰면 하필 **지금 보고 있는 줄**에서 배지가 사라진다. */
+.wikilink-item-ext {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  margin-left: 8px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
 }
 
 .wikilink-item-create {

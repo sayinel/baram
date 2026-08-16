@@ -464,6 +464,21 @@ pub async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexError> {
         .collect())
 }
 
+/// §278 Every file under root — wikilink TARGETS, not link sources.
+///
+/// Only markdown is scanned for outgoing links; this exists so a link pointing at a
+/// non-markdown file (`[[Paper.pdf]]`) resolves to a real node instead of dangling.
+pub async fn collect_all_files(root: &str) -> Result<Vec<String>, IndexError> {
+    let mut path_bufs = Vec::new();
+    crate::fs::collect_all_files(std::path::Path::new(root), &mut path_bufs)
+        .await
+        .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
+    Ok(path_bufs
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
