@@ -42,6 +42,7 @@ export const PdfThumbnail = memo(function PdfThumbnail({
   label,
   onSelect,
   page,
+  tabIndex,
   width,
 }: {
   isCurrent: boolean;
@@ -50,6 +51,8 @@ export const PdfThumbnail = memo(function PdfThumbnail({
   label: string;
   onSelect: (pageNumber: number) => void;
   page: PDFPageProxy;
+  /** §282.4 roving tabindex — 목록 전체가 탭 정지점 하나가 되도록 하나만 0이다. */
+  tabIndex: number;
   /** 썸네일 표시 폭(CSS px). 높이는 페이지 종횡비로 정해진다. */
   width: number;
 }) {
@@ -113,6 +116,7 @@ export const PdfThumbnail = memo(function PdfThumbnail({
       data-pdf-thumbnail={page.pageNumber}
       onClick={() => onSelect(page.pageNumber)}
       ref={holderRef}
+      tabIndex={tabIndex}
       type="button"
     >
       {/* 캔버스가 아직 없어도 자리는 잡아 둔다 — 지연 렌더가 스크롤 위치를

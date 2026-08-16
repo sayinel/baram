@@ -6,7 +6,7 @@
 // 쓰는 그 경로다). 목록 항목의 onClick은 그 스토어 값을 세우기만 하면 된다.
 // 두 번째 점프 경로를 만들면 "어느 쪽이 진짜인가"가 생기고, 스크롤 대상 등록
 // (pageElsRef)이 한 곳뿐이라는 §272의 전제도 흐려진다.
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 
 import type { StoredHighlight } from "./pdf-highlight-sidecar";
 import type { PDFPageProxy } from "pdfjs-dist";
@@ -16,6 +16,7 @@ import { useLinkStore } from "../../../stores/editor/link";
 import { sortHighlightsForList } from "./pdf-highlight-list-order";
 import { PdfHighlightListItem } from "./PdfHighlightListItem";
 import { usePdfHighlightList } from "./use-pdf-highlight-list";
+import { useRailRovingFocus } from "./use-rail-roving-focus";
 
 export function PdfHighlightList({
   absCompanionPath,
@@ -30,6 +31,7 @@ export function PdfHighlightList({
   pages: PDFPageProxy[];
 }) {
   const { t } = useTranslation();
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   const pagesByNumber = useMemo(
     () => new Map(pages.map((p) => [p.pageNumber, p])),
@@ -50,6 +52,16 @@ export function PdfHighlightList({
   );
   const items = usePdfHighlightList(ordered, absCompanionPath);
 
+  // §282.4 페이지 목록과 같은 이유 — 목록 전체가 탭 정지점 하나여야 한다.
+  // 기본 위치는 방금 점프한 항목(없으면 첫 줄)이다.
+  const keys = useMemo(() => ordered.map((h) => h.id), [ordered]);
+  const { onKeyDown, rovingKey } = useRailRovingFocus(
+    keys,
+    flashHighlightId,
+    listRef,
+    "data-pdf-highlight-id",
+  );
+
   if (items.length === 0) {
     return (
       <p className="pdf-highlight-list-empty">
@@ -59,7 +71,7 @@ export function PdfHighlightList({
   }
 
   return (
-    <div className="pdf-highlight-list">
+    <div className="pdf-highlight-list" onKeyDown={onKeyDown} ref={listRef}>
       {items.map((item) => (
         <PdfHighlightListItem
           isFlashing={item.highlight.id === flashHighlightId}
@@ -70,6 +82,7 @@ export function PdfHighlightList({
           pageLabel={t("pdfSidePanel.pageLabel", {
             page: String(item.highlight.page),
           })}
+          tabIndex={item.highlight.id === rovingKey ? 0 : -1}
         />
       ))}
     </div>

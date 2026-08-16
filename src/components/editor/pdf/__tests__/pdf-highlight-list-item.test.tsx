@@ -59,6 +59,7 @@ function setup(
     onSelect: vi.fn(),
     page: makePage(),
     pageLabel: "p. 1",
+    tabIndex: 0,
     ...overrides,
   };
   const view = render(<PdfHighlightListItem {...props} />);
@@ -150,6 +151,7 @@ describe("PdfHighlightListItem", () => {
         onSelect={vi.fn()}
         page={page}
         pageLabel="p. 1"
+        tabIndex={0}
       />,
     );
 

@@ -27,6 +27,7 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   onSelect,
   page,
   pageLabel,
+  tabIndex,
 }: {
   /** 방금 이 항목으로 점프했는가 — 목록에서도 같은 항목을 짚어 준다. */
   isFlashing: boolean;
@@ -36,6 +37,8 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   page: null | PDFPageProxy;
   /** 이미 번역된 페이지 라벨 — 이 컴포넌트는 i18n을 모른다(목록이 넘겨준다). */
   pageLabel: string;
+  /** §282.4 roving tabindex — 페이지 목록과 같은 이유(그쪽 주석 참조). */
+  tabIndex: number;
 }) {
   const { highlight, text } = item;
   const isArea = highlight.kind === "area";
@@ -116,6 +119,7 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
       data-pdf-highlight-id={highlight.id}
       onClick={() => onSelect(highlight.id)}
       ref={holderRef}
+      tabIndex={tabIndex}
       type="button"
     >
       <span className="pdf-highlight-item-meta">

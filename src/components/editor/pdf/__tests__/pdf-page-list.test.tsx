@@ -1,7 +1,7 @@
 // §282.1 페이지 목록 — 현재 페이지 표시와 클릭 이동.
 import type { PDFPageProxy } from "pdfjs-dist";
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -107,6 +107,91 @@ describe("PdfPageList", () => {
     );
 
     expect(viewportCalls()).toBe(before);
+  });
+
+  // §282.4 — 사용자가 실제로 밟은 자리: 마지막 썸네일에서 Tab을 누르니 툴바가
+  // 아니라 상태 표시줄로 갔다. 항목이 전부 탭 정지점이면 300페이지 문서에서
+  // Tab을 300번 눌러야 레일을 빠져나온다.
+  describe("§282.4 roving tabindex", () => {
+    it("exposes exactly one tab stop for the whole list", () => {
+      setup({ pages: makePages(30) });
+      const stops = screen
+        .getAllByRole("button")
+        .filter((b) => b.getAttribute("tabindex") === "0");
+      expect(stops).toHaveLength(1);
+    });
+
+    // Tab으로 레일에 들어가면 지금 보고 있는 페이지에서 시작해야 한다 —
+    // 1페이지에서 시작하면 300페이지 문서에서 아무 쓸모가 없다.
+    it("puts the tab stop on the page the reader is looking at", () => {
+      setup({ currentPage: 12, pages: makePages(30) });
+      const stop = screen
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("tabindex") === "0");
+      expect(stop).toHaveAttribute("data-pdf-thumbnail", "12");
+    });
+
+    it("moves the tab stop with the arrow keys", async () => {
+      setup({ currentPage: 5, pages: makePages(30) });
+      const list = document.querySelector<HTMLElement>(".pdf-page-list")!;
+
+      await userEvent.click(
+        document.querySelector<HTMLElement>('[data-pdf-thumbnail="5"]')!,
+      );
+      fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      const stop = screen
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("tabindex") === "0");
+      expect(stop).toHaveAttribute("data-pdf-thumbnail", "6");
+      expect(document.activeElement).toBe(stop);
+    });
+
+    it("jumps to the first and last page with Home and End", () => {
+      setup({ currentPage: 5, pages: makePages(30) });
+      const list = document.querySelector<HTMLElement>(".pdf-page-list")!;
+
+      fireEvent.keyDown(list, { key: "End" });
+      expect(document.activeElement).toHaveAttribute(
+        "data-pdf-thumbnail",
+        "30",
+      );
+
+      fireEvent.keyDown(list, { key: "Home" });
+      expect(document.activeElement).toHaveAttribute("data-pdf-thumbnail", "1");
+    });
+
+    it("stops at the ends instead of wrapping", () => {
+      setup({ currentPage: 1, pages: makePages(5) });
+      const list = document.querySelector<HTMLElement>(".pdf-page-list")!;
+
+      fireEvent.keyDown(list, { key: "ArrowUp" });
+
+      const stop = screen
+        .getAllByRole("button")
+        .find((b) => b.getAttribute("tabindex") === "0");
+      expect(stop).toHaveAttribute("data-pdf-thumbnail", "1");
+    });
+
+    // 화살표를 그대로 두면 레일 본문이 함께 스크롤되어 방금 포커스한 항목이
+    // 화면에서 밀려난다.
+    it("consumes the arrow key so the rail does not also scroll", () => {
+      setup({ pages: makePages(5) });
+      const list = document.querySelector<HTMLElement>(".pdf-page-list")!;
+
+      const consumed = !fireEvent.keyDown(list, { key: "ArrowDown" });
+
+      expect(consumed).toBe(true);
+    });
+
+    it("leaves other keys alone", () => {
+      setup({ pages: makePages(5) });
+      const list = document.querySelector<HTMLElement>(".pdf-page-list")!;
+
+      const consumed = !fireEvent.keyDown(list, { key: "a" });
+
+      expect(consumed).toBe(false);
+    });
   });
 
   it("does not scroll when the current page has not moved", () => {

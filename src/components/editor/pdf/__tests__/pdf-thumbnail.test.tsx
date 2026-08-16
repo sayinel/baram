@@ -44,6 +44,7 @@ function setup(overrides: Partial<Parameters<typeof PdfThumbnail>[0]> = {}) {
     label: "Page 1",
     onSelect: vi.fn(),
     page: makePage(),
+    tabIndex: 0,
     width: 150,
     ...overrides,
   };
