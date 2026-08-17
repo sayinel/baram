@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLinkStore } from "../../../../stores/editor/link";
+import { PdfPageRetention } from "../pdf-page-retention";
 import { PdfHighlightList } from "../PdfHighlightList";
 import { usePdfHighlightList } from "../use-pdf-highlight-list";
 
@@ -43,6 +44,7 @@ function makePages(count: number): PDFPageProxy[] {
           scale,
           width: 612 * scale,
         }),
+        cleanup: vi.fn(() => true),
         pageNumber: i + 1,
         render: () => ({ cancel: vi.fn(), promise: Promise.resolve() }),
       }) as unknown as PDFPageProxy,
@@ -61,11 +63,21 @@ function setup(
     flashHighlightId: null,
     highlights: [hl("a", 1, 700)],
     pages: makePages(3),
+    retention,
     ...overrides,
   };
   render(<PdfHighlightList {...props} />);
   return props;
 }
+
+// §282.3 렌더 캐시 보관 레지스트리 — 테스트마다 새로 만든다. **한 테스트 안에서는
+// 같은 인스턴스**여야 한다: memo/effect deps 테스트가 리렌더 사이에 prop 신원이
+// 유지된다는 전제 위에 서 있어서, 렌더할 때마다 새로 만들면 그 테스트들이
+// 아무것도 고정하지 못한 채 통과한다.
+let retention: PdfPageRetention;
+beforeEach(() => {
+  retention = new PdfPageRetention();
+});
 
 beforeEach(() => {
   readCompanion.mockReset();

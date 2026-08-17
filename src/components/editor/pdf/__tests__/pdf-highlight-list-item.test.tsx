@@ -5,6 +5,7 @@ import type { PDFPageProxy } from "pdfjs-dist";
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PdfPageRetention } from "../pdf-page-retention";
 import { PdfHighlightListItem } from "../PdfHighlightListItem";
 
 interface MockIO {
@@ -35,6 +36,7 @@ function areaHighlight(): StoredHighlight {
 
 function makePage(): PDFPageProxy {
   return {
+    cleanup: vi.fn(() => true),
     getViewport: ({ scale }: { scale: number }) => ({
       convertToPdfPoint: (x: number, y: number) => [x, y],
       convertToViewportPoint: (x: number, y: number) => [x, y],
@@ -59,6 +61,7 @@ function setup(
     onSelect: vi.fn(),
     page: makePage(),
     pageLabel: "p. 1",
+    retention,
     tabIndex: 0,
     ...overrides,
   };
@@ -76,7 +79,14 @@ function textHighlight(): StoredHighlight {
   };
 }
 
+// §282.3 렌더 캐시 보관 레지스트리 — 테스트마다 새로 만든다. **한 테스트 안에서는
+// 같은 인스턴스**여야 한다: 아래 memo 테스트가 리렌더 사이에 prop 신원이
+// 유지된다는 전제 위에 서 있어서, 렌더할 때마다 새로 만들면 그 테스트가
+// 아무것도 고정하지 못한 채 통과한다.
+let retention: PdfPageRetention;
+
 beforeEach(() => {
+  retention = new PdfPageRetention();
   observers().length = 0;
   renderCalls.mockClear();
   cancelCalls.mockClear();
@@ -151,6 +161,7 @@ describe("PdfHighlightListItem", () => {
         onSelect={vi.fn()}
         page={page}
         pageLabel="p. 1"
+        retention={retention}
         tabIndex={0}
       />,
     );
@@ -195,5 +206,39 @@ describe("PdfHighlightListItem", () => {
     const props = setup();
     screen.getByRole("button").click();
     expect(props.onSelect).toHaveBeenCalledWith("area-1");
+  });
+});
+
+// §282.3 렌더 캐시 보관 배선 — 영역 크롭도 같은 프록시를 그린다.
+describe("§282.3 PdfHighlightListItem render-cache retention", () => {
+  it("frees the page's render cache when the row scrolls out of view", () => {
+    const page = makePage();
+    setup({ page, retention: new PdfPageRetention(0) });
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    expect(page.cleanup).not.toHaveBeenCalled();
+
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  // ‼️ 순서가 계약이다 — PdfPage의 같은 이름 테스트 주석 참조.
+  it("cancels the in-flight crop render before releasing the cache", () => {
+    const page = makePage();
+    setup({ page, retention: new PdfPageRetention(0) });
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+
+    expect(cancelCalls).toHaveBeenCalled();
+    expect(cancelCalls.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(page.cleanup).mock.invocationCallOrder[0],
+    );
   });
 });

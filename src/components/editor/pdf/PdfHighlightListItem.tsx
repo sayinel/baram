@@ -7,6 +7,7 @@
 // 곁다리가 아니라 그 줄의 내용이다.
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
+import type { PdfPageRetention } from "./pdf-page-retention";
 import type { HighlightListItem } from "./use-pdf-highlight-list";
 import type { PDFPageProxy } from "pdfjs-dist";
 
@@ -27,6 +28,7 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   onSelect,
   page,
   pageLabel,
+  retention,
   tabIndex,
 }: {
   /** 방금 이 항목으로 점프했는가 — 목록에서도 같은 항목을 짚어 준다. */
@@ -37,6 +39,8 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   page: null | PDFPageProxy;
   /** 이미 번역된 페이지 라벨 — 이 컴포넌트는 i18n을 모른다(목록이 넘겨준다). */
   pageLabel: string;
+  /** §282.3 페이지 렌더 캐시 수명 레지스트리 — 본문·썸네일과 같은 인스턴스. */
+  retention: PdfPageRetention;
   /** §282.4 roving tabindex — 페이지 목록과 같은 이유(그쪽 주석 참조). */
   tabIndex: number;
 }) {
@@ -92,6 +96,7 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
     if (!canvas) return;
     canvas.width = layout.canvasWidth;
     canvas.height = layout.canvasHeight;
+    const release = retention.retain(page);
     const task = page.render({
       canvas,
       viewport: page.getViewport({
@@ -103,8 +108,12 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
     task.promise.catch(() => {
       // 스크롤 이탈/언마운트로 취소됨 — 정상 경로
     });
-    return () => task.cancel();
-  }, [layout, page, visible]);
+    return () => {
+      // ‼️ cancel() 다음에 release() — PdfPage와 같은 계약이다(그쪽 주석 참조).
+      task.cancel();
+      release();
+    };
+  }, [layout, page, visible, retention]);
 
   return (
     <button

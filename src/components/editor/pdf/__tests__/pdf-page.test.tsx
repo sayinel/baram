@@ -5,6 +5,7 @@ import type { PDFPageProxy } from "pdfjs-dist";
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PdfPageRetention } from "../pdf-page-retention";
 import { PdfPage } from "../PdfPage";
 
 // TextLayer는 실제 pdfjs 클래스를 쓰지 않는다 — 우리가 검증할 것은 "어떤
@@ -51,6 +52,9 @@ function identityViewport(): ViewportLike {
 
 function makePage(streamTextContent: ReturnType<typeof vi.fn>): PDFPageProxy {
   return {
+    // 레지스트리가 축출할 때 실제로 부르는 메서드 — 가짜가 이 표면을 갖추지
+    // 않으면 축출 경로가 테스트에서 던진다.
+    cleanup: vi.fn(() => true),
     getViewport: () => ({
       ...identityViewport(),
       height: 800,
@@ -58,10 +62,22 @@ function makePage(streamTextContent: ReturnType<typeof vi.fn>): PDFPageProxy {
       width: 600,
     }),
     pageNumber: 1,
-    render: () => ({ cancel() {}, promise: Promise.resolve() }),
+    render: () => ({ cancel: renderCancel, promise: Promise.resolve() }),
     streamTextContent,
   } as unknown as PDFPageProxy;
 }
+
+/** §282.3 취소와 릴리스의 **순서**를 관찰하기 위한 스파이 — 아래 보관 테스트가 쓴다. */
+const renderCancel = vi.fn();
+
+// §282.3 렌더 캐시 보관 레지스트리 — 테스트마다 새로 만든다. **한 테스트 안에서는
+// 같은 인스턴스**여야 한다: memo/effect deps 테스트가 리렌더 사이에 prop 신원이
+// 유지된다는 전제 위에 서 있어서, 렌더할 때마다 새로 만들면 그 테스트들이
+// 아무것도 고정하지 못한 채 통과한다.
+let retention: PdfPageRetention;
+beforeEach(() => {
+  retention = new PdfPageRetention();
+});
 
 describe("§281.1 zoom must not tear down the text layer", () => {
   // ‼️ 이것은 성능 테스트가 아니라 **기능 결함**의 회귀 방지다. WKWebView 핀치의
@@ -81,7 +97,14 @@ describe("§281.1 zoom must not tear down the text layer", () => {
   let page: ReturnType<typeof makePage>;
 
   function renderAtScale(scale: number) {
-    const r = render(<PdfPage page={page} renderScale={scale} scale={scale} />);
+    const r = render(
+      <PdfPage
+        page={page}
+        renderScale={scale}
+        retention={retention}
+        scale={scale}
+      />,
+    );
     const observers = (
       globalThis as unknown as {
         MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
@@ -106,7 +129,9 @@ describe("§281.1 zoom must not tear down the text layer", () => {
     expect(streamTextContent).toHaveBeenCalledTimes(1);
 
     for (const s of [1.2, 1.5, 1.9]) {
-      rerender(<PdfPage page={page} renderScale={s} scale={s} />);
+      rerender(
+        <PdfPage page={page} renderScale={s} retention={retention} scale={s} />,
+      );
     }
 
     // 생성자도 텍스트 추출도 더 일어나지 않아야 한다 — 재구축이 곧 span 파괴다.
@@ -120,7 +145,9 @@ describe("§281.1 zoom must not tear down the text layer", () => {
     const { rerender } = renderAtScale(1);
     textLayerUpdate.mockClear();
 
-    rerender(<PdfPage page={page} renderScale={1} scale={1} />);
+    rerender(
+      <PdfPage page={page} renderScale={1} retention={retention} scale={1} />,
+    );
     expect(textLayerUpdate).not.toHaveBeenCalled();
   });
 });
@@ -134,7 +161,12 @@ describe("§281.2 live zoom scales the text layer by transform, not by re-layout
 
   function renderPage(scale: number, renderScale: number) {
     const r = render(
-      <PdfPage page={page} renderScale={renderScale} scale={scale} />,
+      <PdfPage
+        page={page}
+        renderScale={renderScale}
+        retention={retention}
+        scale={scale}
+      />,
     );
     const observers = (
       globalThis as unknown as {
@@ -158,7 +190,9 @@ describe("§281.2 live zoom scales the text layer by transform, not by re-layout
     textLayerUpdate.mockClear();
 
     // 제스처 진행 중 — scale은 움직이지만 renderScale은 아직 정착 전이다.
-    rerender(<PdfPage page={page} renderScale={1} scale={1.5} />);
+    rerender(
+      <PdfPage page={page} renderScale={1} retention={retention} scale={1.5} />,
+    );
 
     expect(textLayerUpdate).not.toHaveBeenCalled();
     const layer = container.querySelector<HTMLElement>(".pdf-text-layer");
@@ -167,10 +201,19 @@ describe("§281.2 live zoom scales the text layer by transform, not by re-layout
 
   it("정착하면 변환을 걷어내고 그때 한 번 재배치한다", () => {
     const { container, rerender } = renderPage(1, 1);
-    rerender(<PdfPage page={page} renderScale={1} scale={1.5} />);
+    rerender(
+      <PdfPage page={page} renderScale={1} retention={retention} scale={1.5} />,
+    );
     textLayerUpdate.mockClear();
 
-    rerender(<PdfPage page={page} renderScale={1.5} scale={1.5} />);
+    rerender(
+      <PdfPage
+        page={page}
+        renderScale={1.5}
+        retention={retention}
+        scale={1.5}
+      />,
+    );
 
     expect(textLayerUpdate).toHaveBeenCalledTimes(1);
     const layer = container.querySelector<HTMLElement>(".pdf-text-layer");
@@ -181,7 +224,9 @@ describe("§281.2 live zoom scales the text layer by transform, not by re-layout
     // 라이브 배율을 내리면 글자 크기만 커지고 위치는 그대로라 어긋난다 —
     // 이 변수의 유일한 소비자가 스팬의 font-size이기 때문이다(pdf.css).
     const { container, rerender } = renderPage(1, 1);
-    rerender(<PdfPage page={page} renderScale={1} scale={1.5} />);
+    rerender(
+      <PdfPage page={page} renderScale={1} retention={retention} scale={1.5} />,
+    );
 
     const pageEl = container.querySelector<HTMLElement>(".pdf-page");
     expect(pageEl?.style.getPropertyValue("--total-scale-factor")).toBe("1");
@@ -192,7 +237,12 @@ describe("PdfPage text extraction", () => {
   it("requests text with disableNormalization so find offsets align", () => {
     const streamTextContent = vi.fn(() => ({}));
     render(
-      <PdfPage page={makePage(streamTextContent)} renderScale={1} scale={1} />,
+      <PdfPage
+        page={makePage(streamTextContent)}
+        renderScale={1}
+        retention={retention}
+        scale={1}
+      />,
     );
 
     // 페이지는 IntersectionObserver로 지연 마운트된다 — 교차를 수동 발화
@@ -228,6 +278,7 @@ describe("§275.6 PdfPage highlight flash", () => {
         highlights={[HIGHLIGHT]}
         page={makePage(streamTextContent)}
         renderScale={1}
+        retention={retention}
         scale={1}
       />,
     );
@@ -278,6 +329,7 @@ describe("§274 UX fix round 3 (defect B) PdfPage highlight fill", () => {
         highlights={[highlight]}
         page={makePage(streamTextContent)}
         renderScale={1}
+        retention={retention}
         scale={1}
       />,
     );
@@ -309,6 +361,7 @@ describe("§276.3 area capture gating", () => {
         areaCaptureActive
         page={makePage(streamTextContent)}
         renderScale={1}
+        retention={retention}
         scale={1}
       />,
     );
@@ -329,7 +382,12 @@ describe("§276.3 area capture gating", () => {
   it("leaves the text layer untouched when area capture is off (or omitted)", () => {
     const streamTextContent = vi.fn(() => ({}));
     const { container } = render(
-      <PdfPage page={makePage(streamTextContent)} renderScale={1} scale={1} />,
+      <PdfPage
+        page={makePage(streamTextContent)}
+        renderScale={1}
+        retention={retention}
+        scale={1}
+      />,
     );
     const observers = (
       globalThis as unknown as {
@@ -352,6 +410,7 @@ describe("§276.3 area capture gating", () => {
         dragPreview={{ height: 40, left: 5, top: 10, width: 60 }}
         page={makePage(streamTextContent)}
         renderScale={1}
+        retention={retention}
         scale={1}
       />,
     );
@@ -379,6 +438,7 @@ describe("§276.3 area capture gating", () => {
         dragPreview={null}
         page={makePage(streamTextContent)}
         renderScale={1}
+        retention={retention}
         scale={1}
       />,
     );
@@ -433,6 +493,7 @@ describe("§274 UX fix round 5 — paint order pins hit order", () => {
         highlights={highlights}
         page={makePage(streamTextContent)}
         renderScale={1}
+        retention={retention}
         scale={1}
       />,
     );
@@ -467,6 +528,7 @@ describe("§276.3.2 pending area draft stays visible until a colour is picked", 
       <PdfPage
         page={makePage(streamTextContent)}
         renderScale={1}
+        retention={retention}
         scale={1}
         {...props}
       />,
@@ -508,5 +570,73 @@ describe("§276.3.2 pending area draft stays visible until a colour is picked", 
     expect(container.querySelectorAll(".pdf-area-drag-preview")).toHaveLength(
       1,
     );
+  });
+});
+
+// §282.3 렌더 캐시 보관 배선.
+//
+// 이 배선이 없으면 페이지를 한 번 지나칠 때마다 operator list와 디코드된
+// 이미지가 탭이 닫힐 때까지 남는다(실측: 텍스트만 있는 페이지가 ~687 KB).
+// 아래 테스트들은 "얼마나 아끼는가"가 아니라 **호출이 실제로 일어나는가**와
+// **어떤 순서인가**를 고정한다 — 절약량은 pdfjs 계약 테스트가 따로 잡는다
+// (pdf-page-retention-pdfjs.test.ts).
+describe("§282.3 PdfPage render-cache retention", () => {
+  function renderVisiblePage(retention: PdfPageRetention, page: PDFPageProxy) {
+    const r = render(
+      <PdfPage page={page} renderScale={1} retention={retention} scale={1} />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: {
+          instances: { triggerIntersect(v?: boolean): void }[];
+        };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect(true);
+    });
+    return r;
+  }
+
+  it("frees the page's render cache when the page unmounts", () => {
+    // 상한 0 = 놓는 즉시 축출. 상한 자체의 동작은 레지스트리 테스트가 잡는다.
+    const retention = new PdfPageRetention(0);
+    const page = makePage(vi.fn(() => ({})));
+    const { unmount } = renderVisiblePage(retention, page);
+    expect(page.cleanup).not.toHaveBeenCalled();
+
+    unmount();
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  // ‼️ 이 순서가 계약이다. pdfjs의 cleanup()은 렌더 중이면 false를 돌려주면서도
+  // pendingCleanup 래치를 남겨, 그 렌더가 끝나는 순간 대신 비운다
+  // (pdf-page-retention-pdfjs.test.ts의 "defers a refused cleanup" 참조).
+  // cancel()이 renderTasks를 동기로 비우므로 그 **뒤**에 놓아야 래치가 안 남는다.
+  it("cancels the in-flight render before releasing the cache", () => {
+    const retention = new PdfPageRetention(0);
+    const page = makePage(vi.fn(() => ({})));
+    renderCancel.mockClear();
+    const { unmount } = renderVisiblePage(retention, page);
+    unmount();
+
+    expect(renderCancel).toHaveBeenCalled();
+    expect(renderCancel.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(page.cleanup).mock.invocationCallOrder[0],
+    );
+  });
+
+  // 레일의 썸네일이 같은 페이지를 붙잡고 있는 상황 — 본문이 스크롤로 벗어나도
+  // 비우면 안 된다. pdfjs의 cleanup()은 "지금 그리는 중"만 막아 주므로 이
+  // 성질을 지키는 것은 오직 레지스트리의 refcount다.
+  it("leaves the cache alone while another surface still holds the page", () => {
+    const retention = new PdfPageRetention(0);
+    const page = makePage(vi.fn(() => ({})));
+    retention.retain(page); // 레일 썸네일이 잡고 있다고 치자
+
+    const { unmount } = renderVisiblePage(retention, page);
+    unmount();
+
+    expect(page.cleanup).not.toHaveBeenCalled();
   });
 });

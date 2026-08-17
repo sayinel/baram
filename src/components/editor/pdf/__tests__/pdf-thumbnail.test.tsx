@@ -5,6 +5,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PdfPageRetention } from "../pdf-page-retention";
 import { PdfThumbnail } from "../PdfThumbnail";
 
 interface MockIO {
@@ -25,6 +26,7 @@ const cancelCalls = vi.fn();
 /** US Letter 세로(612×792pt) — 종횡비가 1이 아니라서 폭/높이 혼동을 잡는다. */
 function makePage(pageNumber = 1): PDFPageProxy {
   return {
+    cleanup: vi.fn(() => true),
     getViewport: ({ scale }: { scale: number }) => ({
       height: 792 * scale,
       scale,
@@ -44,6 +46,7 @@ function setup(overrides: Partial<Parameters<typeof PdfThumbnail>[0]> = {}) {
     label: "Page 1",
     onSelect: vi.fn(),
     page: makePage(),
+    retention,
     tabIndex: 0,
     width: 150,
     ...overrides,
@@ -51,6 +54,15 @@ function setup(overrides: Partial<Parameters<typeof PdfThumbnail>[0]> = {}) {
   render(<PdfThumbnail {...props} />);
   return props;
 }
+
+// §282.3 렌더 캐시 보관 레지스트리 — 테스트마다 새로 만든다. **한 테스트 안에서는
+// 같은 인스턴스**여야 한다: memo/effect deps 테스트가 리렌더 사이에 prop 신원이
+// 유지된다는 전제 위에 서 있어서, 렌더할 때마다 새로 만들면 그 테스트들이
+// 아무것도 고정하지 못한 채 통과한다.
+let retention: PdfPageRetention;
+beforeEach(() => {
+  retention = new PdfPageRetention();
+});
 
 beforeEach(() => {
   observers().length = 0;
@@ -126,6 +138,7 @@ describe("PdfThumbnail", () => {
   // NaN이 되어 캔버스 대입에서 던진다.
   it("does not render a page with no width", () => {
     const broken = {
+      cleanup: vi.fn(() => true),
       getViewport: ({ scale }: { scale: number }) => ({
         height: 0,
         scale,
@@ -158,5 +171,61 @@ describe("PdfThumbnail", () => {
   it("leaves aria-current off for other pages", () => {
     setup();
     expect(screen.getByRole("button")).not.toHaveAttribute("aria-current");
+  });
+});
+
+// §282.3 렌더 캐시 보관 배선. 레일이 이 누수를 **무한** 경로로 만든 장본인이다:
+// 레일 본문은 독립적으로 스크롤되므로, 본문을 한 줄도 안 읽고 레일 스크롤바만
+// 끝까지 끌어도 300페이지 분량의 operator list가 물린다.
+describe("§282.3 PdfThumbnail render-cache retention", () => {
+  it("frees the page's render cache when the thumbnail scrolls out of view", () => {
+    // 상한 0 = 놓는 즉시 축출. 상한 동작 자체는 레지스트리 테스트가 잡는다.
+    const page = makePage();
+    setup({ page, retention: new PdfPageRetention(0) });
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    expect(page.cleanup).not.toHaveBeenCalled();
+
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  // ‼️ 순서가 계약이다 — PdfPage의 같은 이름 테스트 주석 참조.
+  it("cancels the in-flight render before releasing the cache", () => {
+    const page = makePage();
+    setup({ page, retention: new PdfPageRetention(0) });
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+
+    expect(cancelCalls).toHaveBeenCalled();
+    expect(cancelCalls.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(page.cleanup).mock.invocationCallOrder[0],
+    );
+  });
+
+  // 본문 PdfPage가 그 페이지를 띄워 두고 있는데 썸네일이 스크롤로 지나갔다는
+  // 이유로 비우면, 본문의 다음 줌에서 워커 왕복을 다시 한다. pdfjs의 cleanup()은
+  // "지금 그리는 중"만 막아 주므로 이 성질을 지키는 것은 refcount뿐이다.
+  it("leaves the cache alone while the main view still holds the page", () => {
+    const page = makePage();
+    const retention = new PdfPageRetention(0);
+    retention.retain(page); // 본문 PdfPage가 잡고 있다고 치자
+    setup({ page, retention });
+
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+
+    expect(page.cleanup).not.toHaveBeenCalled();
   });
 });

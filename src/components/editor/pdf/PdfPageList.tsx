@@ -6,6 +6,7 @@
 // 이 컴포넌트가 새로 하는 일은 그리기와 "현재 페이지를 보이게 유지"뿐이다.
 import { useEffect, useMemo, useRef } from "react";
 
+import type { PdfPageRetention } from "./pdf-page-retention";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -17,11 +18,14 @@ export function PdfPageList({
   currentPage,
   onSelectPage,
   pages,
+  retention,
 }: {
   /** 1-based. usePdfFind가 스크롤에서 샘플링한 값 그대로. */
   currentPage: number;
   onSelectPage: (pageNumber: number) => void;
   pages: PDFPageProxy[];
+  /** §282.3 본문 페이지와 공유하는 렌더 캐시 레지스트리 — 그대로 썸네일에 넘긴다. */
+  retention: PdfPageRetention;
 }) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -57,6 +61,7 @@ export function PdfPageList({
           })}
           onSelect={onSelectPage}
           page={page}
+          retention={retention}
           tabIndex={String(page.pageNumber) === rovingKey ? 0 : -1}
           width={PDF_RAIL_CONTENT_WIDTH_PX}
         />
