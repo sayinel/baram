@@ -95,7 +95,8 @@ interface BaramExtensionOptions {
     vaultAlias?: null | string,
   ) => void;
   onNavigateBlockRef?: (target: string, blockId: string) => void;
-  onNavigateLocal?: (href: string) => void;
+  /** §278.1 Returns whether the href was handled in-app; see `LinkOptions`. */
+  onNavigateLocal?: (href: string) => boolean;
 }
 
 /** M2 기본 편집 Extension 세트 */
@@ -191,7 +192,7 @@ export function createBaramExtensions(
     Code,
     Strike,
     Link.configure({
-      onNavigateLocal: options?.onNavigateLocal ?? (() => {}),
+      onNavigateLocal: options?.onNavigateLocal ?? (() => false),
     }),
     Underline,
     Highlight,

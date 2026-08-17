@@ -4,8 +4,36 @@ import {
   extractNamespace,
   getRelativePath,
   isImageFile,
+  normalizePath,
   resolveNameConflict,
 } from "../path-utils";
+
+describe("normalizePath", () => {
+  test.each([
+    ["/vault/notes/../a.md", "/vault/a.md"],
+    ["/vault/notes/./a.md", "/vault/notes/a.md"],
+    ["/vault/notes//a.md", "/vault/notes/a.md"],
+    ["/vault/a/b/../../c.md", "/vault/c.md"],
+    ["/vault/notes/sub/../sub/a.md", "/vault/notes/sub/a.md"],
+    // 절대 경로는 루트를 벗어날 수 없다 — POSIX와 같다.
+    ["/../a.md", "/a.md"],
+    ["/vault/../../a.md", "/a.md"],
+    ["/", "/"],
+    ["/vault/notes", "/vault/notes"],
+    // 상대 경로는 아직 풀 기준이 없으므로 앞쪽 ..를 남긴다.
+    ["../a.md", "../a.md"],
+    ["../../a.md", "../../a.md"],
+    ["a/../b.md", "b.md"],
+    ["./a.md", "a.md"],
+  ])("%s → %s", (input, expected) => {
+    expect(normalizePath(input)).toBe(expected);
+  });
+
+  test("keeps an absolute path absolute and a relative path relative", () => {
+    expect(normalizePath("/a/b").startsWith("/")).toBe(true);
+    expect(normalizePath("a/b").startsWith("/")).toBe(false);
+  });
+});
 
 describe("isImageFile", () => {
   test("returns true for image extensions", () => {

@@ -27,6 +27,7 @@ import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
+import { isMarkdownHref } from "../../utils/editor/local-link-nav";
 import { logger } from "../../utils/logger";
 import { dirname } from "../../utils/path-utils";
 import { MergeView } from "../editor/MergeView";
@@ -57,7 +58,16 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     extensions: createBaramExtensions({
       onNavigate: () => {},
       onNavigateBlockRef: () => {},
-      onNavigateLocal: () => {},
+      // §89 standalone window has no file tree and no tabs, so there is nothing
+      // to navigate to and every callback here is a no-op.
+      //
+      // ‼️ Not `() => false`. Declining would send a markdown href to the OS
+      // opener, and the pre-§278.1 predicate claimed markdown before any
+      // callback ran — so `[x](/other/note.md)` would newly hand an absolute
+      // path to the OS from a window that has no navigation at all. Claiming
+      // markdown and declining the rest reproduces that predicate exactly,
+      // which keeps scheme-less external addresses (www.example.com) opening.
+      onNavigateLocal: (href) => isMarkdownHref(href),
       onMentionNavigate: () => {},
     }),
     autofocus: true,

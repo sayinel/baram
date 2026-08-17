@@ -8,6 +8,7 @@ import { isActiveContextJournal, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { flattenFileTree } from "../file-search";
 import { isDateString, resolveJournalDir } from "../journal/journal";
+import { normalizePath } from "../path-utils";
 
 /**
  * §61 Resolve a relative wikilink target (starting with ./ or ../)
@@ -20,17 +21,11 @@ export function resolveRelativeTarget(
   const sourceDir = sourcePath.substring(0, sourcePath.lastIndexOf("/"));
   const isAbsolute = sourceDir.startsWith("/");
   // Build candidate: join sourceDir + target, then normalize
-  const parts = `${sourceDir}/${target}`.split("/");
-  const resolved: string[] = [];
-  for (const p of parts) {
-    if (p === "." || p === "") continue;
-    if (p === "..") {
-      if (resolved.length > 0) resolved.pop();
-    } else {
-      resolved.push(p);
-    }
-  }
-  const candidateBase = (isAbsolute ? "/" : "") + resolved.join("/");
+  const normalized = normalizePath(`${sourceDir}/${target}`);
+  // normalizePath reads absoluteness off the joined string, which starts with
+  // "/" even when sourcePath had no directory part at all ("note.md" → "").
+  // Absoluteness is a property of the source, not of the join.
+  const candidateBase = isAbsolute ? normalized : normalized.replace(/^\//, "");
   // Try with .md extension
   const candidate = candidateBase.endsWith(".md")
     ? candidateBase
