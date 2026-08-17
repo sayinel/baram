@@ -10,7 +10,7 @@ import type { PdfPageRetention } from "./pdf-page-retention";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { PDF_RAIL_CONTENT_WIDTH_PX } from "./pdf-side-panel-utils";
+import { railContentWidth } from "./pdf-side-panel-utils";
 import { PdfThumbnail } from "./PdfThumbnail";
 import { useRailRovingFocus } from "./use-rail-roving-focus";
 
@@ -18,12 +18,19 @@ export function PdfPageList({
   currentPage,
   onSelectPage,
   pages,
+  railRasterWidth,
+  railWidth,
   retention,
 }: {
   /** 1-based. usePdfFind가 스크롤에서 샘플링한 값 그대로. */
   currentPage: number;
   onSelectPage: (pageNumber: number) => void;
   pages: PDFPageProxy[];
+  /** §283 캔버스를 그릴 때 쓸 레일 폭 — 드래그를 **놓았을 때만** 바뀐다.
+   * 왜 라이브 폭과 갈라야 하는지는 use-pdf-rail-resize.ts 참조. */
+  railRasterWidth: number;
+  /** §283 레이아웃에 쓸 레일 폭 — 드래그 중 매 프레임 바뀐다. */
+  railWidth: number;
   /** §282.3 본문 페이지와 공유하는 렌더 캐시 레지스트리 — 그대로 썸네일에 넘긴다. */
   retention: PdfPageRetention;
 }) {
@@ -61,9 +68,10 @@ export function PdfPageList({
           })}
           onSelect={onSelectPage}
           page={page}
+          renderWidth={railContentWidth(railRasterWidth)}
           retention={retention}
           tabIndex={String(page.pageNumber) === rovingKey ? 0 : -1}
-          width={PDF_RAIL_CONTENT_WIDTH_PX}
+          width={railContentWidth(railWidth)}
         />
       ))}
     </div>

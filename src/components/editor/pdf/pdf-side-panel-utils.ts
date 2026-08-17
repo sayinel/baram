@@ -7,23 +7,53 @@
 import type { PdfRailTab } from "../../../stores/ui/ui";
 
 /**
- * 레일 폭(CSS px). **이 상수가 유일한 출처다** — CSS는 `--pdf-rail-width`
- * 커스텀 속성으로 이 값을 받아 쓰고(PdfPreview가 인라인으로 내려준다),
- * PdfPreview의 fit-width 계산(availableFitWidth)도 같은 값을 뺀다. CSS에 폭을
- * 따로 적으면 둘이 어긋나는 순간 "zoom 100%인데 항상 가로 스크롤이 생긴다"로
- * 나타난다.
+ * 레일 기본 폭(CSS px). §283 이전에는 이 값이 **고정 상수**였고, 지금은
+ * 설정(`pdfRailWidth`)의 초기값이다.
+ *
+ * 값이 어디로 흐르는지는 그대로다 — CSS는 `--pdf-rail-width` 커스텀 속성으로
+ * 받아 쓰고(PdfPreview가 인라인으로 내려준다), fit-width 계산(availableFitWidth)도
+ * 같은 값을 뺀다. CSS에 폭을 따로 적으면 둘이 어긋나는 순간 "zoom 100%인데
+ * 항상 가로 스크롤이 생긴다"로 나타난다.
  */
-export const PDF_RAIL_WIDTH_PX = 200;
+export const PDF_RAIL_DEFAULT_WIDTH_PX = 200;
 
 /**
- * 레일 안쪽 콘텐츠 폭(CSS px) — 썸네일과 영역 크롭이 함께 쓴다.
- *
- * PDF_RAIL_WIDTH_PX에서 파생시키는 이유는 그 상수를 단일 출처로 둔 이유와
- * 똑같다. 리뷰에서 지적됐듯 처음엔 150이 두 파일에 각각 하드코딩돼 있었고,
- * 양쪽에 "레일 폭이 바뀌면 여기도 보라"는 주석만 달려 있었다 — 그 주석이
- * 필요하다는 것 자체가 값이 파생돼야 한다는 신호다.
+ * §283 드래그로 줄일 수 있는 하한. 이보다 좁으면 썸네일이 페이지인지 분간이
+ * 안 되고(콘텐츠 폭이 90px 아래로 내려간다), 하이라이트 목록의 두 액션 버튼이
+ * 한 줄에 못 들어간다.
  */
-export const PDF_RAIL_CONTENT_WIDTH_PX = PDF_RAIL_WIDTH_PX - 50;
+export const PDF_RAIL_MIN_WIDTH_PX = 140;
+
+/**
+ * §283 상한. 본문이 설 자리를 남기기 위한 값이다 — 이보다 넓히면 좁은 창에서
+ * availableFitWidth가 음수가 되어 페이지가 아예 안 그려진다(그 경우를 위한
+ * `avail > 0` 가드가 PdfPreview에 있지만, 그건 창을 줄였을 때의 방어이지
+ * 사용자가 드래그로 도달할 상태는 아니다).
+ */
+export const PDF_RAIL_MAX_WIDTH_PX = 420;
+
+/** 레일 폭을 허용 범위로 자른다. 저장 시점과 드래그 중 양쪽에서 쓴다. */
+export function clampRailWidth(width: number): number {
+  if (!Number.isFinite(width)) return PDF_RAIL_DEFAULT_WIDTH_PX;
+  return Math.round(
+    Math.min(PDF_RAIL_MAX_WIDTH_PX, Math.max(PDF_RAIL_MIN_WIDTH_PX, width)),
+  );
+}
+
+/**
+ * 레일 폭 → 안쪽 콘텐츠 폭(CSS px). 썸네일과 영역 크롭이 함께 쓴다.
+ *
+ * 파생시키는 이유는 §282에서 상수를 단일 출처로 둔 이유와 똑같다. 리뷰에서
+ * 지적됐듯 처음엔 150이 두 파일에 각각 하드코딩돼 있었고, 양쪽에 "레일 폭이
+ * 바뀌면 여기도 보라"는 주석만 달려 있었다 — 그 주석이 필요하다는 것 자체가
+ * 값이 파생돼야 한다는 신호다. §283에서 폭이 **움직이게** 되면서 그 신호가
+ * 실제 결함이 됐을 자리다.
+ *
+ * 빼는 50px은 레일의 좌우 여백과 스크롤바 몫이다(pdf-side-panel.css).
+ */
+export function railContentWidth(railWidth: number): number {
+  return clampRailWidth(railWidth) - 50;
+}
 
 /**
  * 실제로 그릴 탭. 하이라이트는 vault 안에서만 지원되므로(사이드카·동반 노트가

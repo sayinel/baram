@@ -552,6 +552,7 @@
   "pdfSidePanel.highlightsDeleted": "삭제됨",
   "pdfSidePanel.noDeletedHighlights": "삭제된 하이라이트가 없습니다",
   "pdfSidePanel.pageLabel": "{page}쪽",
+  "pdfSidePanel.resize": "패널 폭 조절",
 
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",
   "plugin.consent.title.update": "\"{name}\" 플러그인을 업데이트하시겠습니까?",

@@ -43,6 +43,7 @@ export const PdfThumbnail = memo(function PdfThumbnail({
   label,
   onSelect,
   page,
+  renderWidth,
   retention,
   tabIndex,
   width,
@@ -53,6 +54,12 @@ export const PdfThumbnail = memo(function PdfThumbnail({
   label: string;
   onSelect: (pageNumber: number) => void;
   page: PDFPageProxy;
+  /** §283 캔버스를 **래스터할** 폭(CSS px) — 드래그를 놓았을 때만 `width`를
+   * 따라온다. PdfPage의 scale/renderScale과 같은 계약이다(§280): 표시 크기는
+   * 즉시 따라가고 해상도만 뒤늦게 올라온다. 아래 렌더 effect가 `canvas.width =`
+   * 대입으로 캔버스를 지우고 시작하므로, 라이브 폭을 그대로 쓰면 드래그하는
+   * 내내 썸네일이 비어 보인다. */
+  renderWidth: number;
   /** §282.3 페이지 렌더 캐시 수명 레지스트리 — PdfPage와 **같은 인스턴스**를
    * 받는다. 그래야 본문이 띄워 둔 페이지를 썸네일이 스크롤로 지나갔다는
    * 이유로 비우지 않는다. */
@@ -68,7 +75,11 @@ export const PdfThumbnail = memo(function PdfThumbnail({
 
   // scale 1 뷰포트로 종횡비를 잡는다 — 회전은 pdfjs가 이미 반영해서 준다.
   const natural = page.getViewport({ scale: 1 });
+  // ‼️ 표시 크기는 라이브 폭, 래스터 배율은 renderWidth. 둘이 다른 동안에는
+  // `.pdf-thumbnail-frame canvas { width:100%; height:100% }`가 마지막 래스터를
+  // 프레임 크기로 늘려 그린다(pdf-side-panel.css) — .pdf-page canvas와 같은 계약.
   const scale = natural.width > 0 ? width / natural.width : 0;
+  const renderScale = natural.width > 0 ? renderWidth / natural.width : 0;
   const height = Math.round(natural.height * scale);
 
   useEffect(() => {
@@ -94,11 +105,11 @@ export const PdfThumbnail = memo(function PdfThumbnail({
   // **deps로만** 남긴다 — 캔버스가 마운트된 뒤에 이 effect가 다시 돌아야 하고,
   // 사라질 때는 cleanup이 렌더를 취소해야 하기 때문이다.
   useEffect(() => {
-    if (scale <= 0) return;
+    if (renderScale <= 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_THUMB_DPR);
-    const viewport = page.getViewport({ scale });
+    const viewport = page.getViewport({ scale: renderScale });
     canvas.width = Math.floor(viewport.width * dpr);
     canvas.height = Math.floor(viewport.height * dpr);
     const release = retention.retain(page);
@@ -115,7 +126,7 @@ export const PdfThumbnail = memo(function PdfThumbnail({
       task.cancel();
       release();
     };
-  }, [visible, page, scale, retention]);
+  }, [visible, page, renderScale, retention]);
 
   return (
     <button

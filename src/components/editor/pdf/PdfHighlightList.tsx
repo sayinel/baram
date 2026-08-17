@@ -34,6 +34,7 @@ export function PdfHighlightList({
   onPurgeHighlight,
   onRestoreHighlight,
   pages,
+  railRasterWidth,
   retention,
 }: {
   absCompanionPath: null | string;
@@ -44,6 +45,9 @@ export function PdfHighlightList({
   onPurgeHighlight: (id: string) => void;
   onRestoreHighlight: (id: string) => void;
   pages: PDFPageProxy[];
+  /** §283 영역 크롭을 그릴 때 쓸 레일 폭 — 드래그를 놓았을 때만 바뀐다.
+   * 그대로 항목에 넘긴다(use-pdf-rail-resize.ts 참조). */
+  railRasterWidth: number;
   /** §282.3 본문 페이지와 공유하는 렌더 캐시 레지스트리 — 그대로 항목에 넘긴다. */
   retention: PdfPageRetention;
 }) {
@@ -134,6 +138,7 @@ export function PdfHighlightList({
                 pageLabel={t("pdfSidePanel.pageLabel", {
                   page: String(item.highlight.page),
                 })}
+                railRasterWidth={railRasterWidth}
                 retention={retention}
                 tabIndex={item.highlight.id === rovingKey ? 0 : -1}
               />

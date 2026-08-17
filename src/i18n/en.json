@@ -552,6 +552,7 @@
   "pdfSidePanel.highlightsDeleted": "Deleted",
   "pdfSidePanel.noDeletedHighlights": "No deleted highlights",
   "pdfSidePanel.pageLabel": "p. {page}",
+  "pdfSidePanel.resize": "Resize the panel",
 
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",

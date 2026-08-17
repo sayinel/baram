@@ -6,6 +6,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PdfPageRetention } from "../pdf-page-retention";
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../pdf-side-panel-utils";
 import { PdfHighlightListItem } from "../PdfHighlightListItem";
 
 interface MockIO {
@@ -62,6 +63,7 @@ function setup(
     onSelect: vi.fn(),
     page: makePage(),
     pageLabel: "p. 1",
+    railRasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
     retention,
     tabIndex: 0,
     ...overrides,
@@ -163,6 +165,7 @@ describe("PdfHighlightListItem", () => {
         onSelect={vi.fn()}
         page={page}
         pageLabel="p. 1"
+        railRasterWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
         retention={retention}
         tabIndex={0}
       />,

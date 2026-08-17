@@ -140,7 +140,7 @@ baram/
 - **3-tier 계층**: Primitive (raw values) → Semantic (meaning) → Component CSS
 - **소스**: `tokens/*.json` (W3C DTCG) → **빌드** `npm run tokens:build` → `src/styles/generated/` 자동 생성
 - **감사** `npm run audit:css-vars` (미정의 CSS 변수 검출) · **Figma export** `npm run tokens:export` → `tokens/tokens-studio.json`
-- **Settings store version**: 12 (v10: CSS 변수키 리네이밍, v11: ThemeColors 16→25 키 확장, v12: 대형 파일 windowing kill-switch)
+- **Settings store version**: 17 — 실제 값은 `src/stores/settings/store.ts`의 `version:`이 유일한 출처다(이 줄은 참고용이고 실제로 12에서 멎어 있었다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
 
 ## 설계 문서 참조 규칙
 

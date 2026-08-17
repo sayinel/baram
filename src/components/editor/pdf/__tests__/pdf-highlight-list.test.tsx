@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLinkStore } from "../../../../stores/editor/link";
 import { PdfPageRetention } from "../pdf-page-retention";
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../pdf-side-panel-utils";
 import { PdfHighlightList } from "../PdfHighlightList";
 import { usePdfHighlightList } from "../use-pdf-highlight-list";
 
@@ -65,6 +66,7 @@ function setup(
     onPurgeHighlight: vi.fn(),
     onRestoreHighlight: vi.fn(),
     pages: makePages(3),
+    railRasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
     retention,
     ...overrides,
   };
@@ -246,6 +248,7 @@ describe("§277.2 deleted highlights", () => {
       onPurgeHighlight: vi.fn(),
       onRestoreHighlight: vi.fn(),
       pages: makePages(3),
+      railRasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
       retention,
     };
     const view = render(

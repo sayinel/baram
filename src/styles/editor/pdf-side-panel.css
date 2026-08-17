@@ -7,8 +7,10 @@
    같은 트릭을 쓴다(pdf.css) — 둘 중 하나에 `position: relative`를 붙이면
    레일과 툴바가 함께 페이지를 따라 스크롤해 버린다.
 
-   폭은 PdfSidePanel.tsx의 PDF_RAIL_WIDTH_PX가 유일한 출처다. 여기서 숫자를
-   다시 적으면 PdfPreview의 fit-width 계산과 어긋나 조용히 가로 스크롤이 된다. */
+   폭은 설정의 `pdfRailWidth`가 유일한 출처다(§283 — 그 전에는 상수였다).
+   PdfPreview가 `--pdf-rail-width`로 내려주고 fit-width 계산도 같은 값을 뺀다.
+   여기서 숫자를 다시 적으면 둘이 어긋나 조용히 가로 스크롤이 된다.
+   폴백 200px은 그 변수가 없을 때(테스트/스토리) 쓰이는 기본값이다. */
 .pdf-side-panel {
   position: absolute;
   top: 0;
@@ -23,6 +25,46 @@
   width: var(--pdf-rail-width, 200px);
   background: var(--color-bg-subtle);
   border-right: 1px solid var(--color-border-default);
+}
+
+/* §283 폭 손잡이 — 레일의 오른쪽 테두리 위에 얹는다.
+   테두리 자체(1px)는 너무 얇아 못 잡으므로 히트 영역만 넓히고, 보이는 것은
+   호버/포커스/드래그 때만 나타난다. */
+.pdf-side-panel-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 1;
+  width: 7px;
+  cursor: col-resize;
+
+  /* 드래그 중 텍스트가 선택되면 커서가 I-beam으로 바뀌고 레일 안 라벨이
+     파랗게 칠해진다. 손잡이 자체는 어차피 선택할 것이 없다. */
+  user-select: none;
+}
+
+.pdf-side-panel-resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  content: "";
+  background: transparent;
+  transition: background-color 0.12s;
+}
+
+.pdf-side-panel-resizer:hover::after,
+.pdf-side-panel-resizer:focus-visible::after,
+.pdf-side-panel-resizer.resizing::after {
+  background: var(--color-accent-default);
+}
+
+/* 키보드로 잡았을 때는 얇은 선만으로는 어디에 있는지 알기 어렵다. */
+.pdf-side-panel-resizer:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: -1px;
 }
 
 .pdf-side-panel-tabs {

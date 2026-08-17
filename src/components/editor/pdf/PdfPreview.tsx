@@ -32,7 +32,6 @@ import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
-import { PDF_RAIL_WIDTH_PX } from "./pdf-side-panel-utils";
 import { PdfHighlightList } from "./PdfHighlightList";
 import { PdfPage } from "./PdfPage";
 import { PdfPageList } from "./PdfPageList";
@@ -43,6 +42,7 @@ import { usePdfFind } from "./use-pdf-find";
 import { usePdfHighlightMode } from "./use-pdf-highlight-mode";
 import { usePdfHighlights } from "./use-pdf-highlights";
 import { usePdfPageRetention } from "./use-pdf-page-retention";
+import { usePdfRailResize } from "./use-pdf-rail-resize";
 import { useSettledScale } from "./use-settled-scale";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -89,10 +89,9 @@ interface PdfPreviewProps {
 export function availableFitWidth(
   scrollClientWidth: number,
   railOpen: boolean,
+  railWidth: number,
 ): number {
-  return (
-    scrollClientWidth - PAGE_GUTTER_PX * 2 - (railOpen ? PDF_RAIL_WIDTH_PX : 0)
-  );
+  return scrollClientWidth - PAGE_GUTTER_PX * 2 - (railOpen ? railWidth : 0);
 }
 
 /**
@@ -171,6 +170,10 @@ export const PdfPreview = memo(function PdfPreview({
   // cleanup()을 부를 수 있다(pdf-page-retention.ts 참조).
   const retention = usePdfPageRetention(doc);
 
+  // §283 레일 폭. 두 값이 나오는 이유는 그 훅의 헤더 주석 참조 — 레이아웃은
+  // 라이브(width), 캔버스는 놓았을 때만(rasterWidth).
+  const railResize = usePdfRailResize();
+
   // Fetch all page proxies (lightweight — no rendering yet)
   useEffect(() => {
     if (!doc) return;
@@ -200,7 +203,11 @@ export const PdfPreview = memo(function PdfPreview({
     const first = pages[0];
     if (!el || !first) return;
     const update = () => {
-      const avail = availableFitWidth(el.clientWidth, pdfRailOpen);
+      const avail = availableFitWidth(
+        el.clientWidth,
+        pdfRailOpen,
+        railResize.width,
+      );
       if (avail > 0) {
         setBaseScale(avail / first.getViewport({ scale: 1 }).width);
       }
@@ -209,7 +216,7 @@ export const PdfPreview = memo(function PdfPreview({
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [pages, pdfRailOpen]);
+  }, [pages, pdfRailOpen, railResize.width]);
 
   // §272 스크롤 컨테이너를 호출 시점에 얻는다 — getPage/scrollToPage와 같은
   // 지연 평가 패턴(위 baseScale 측정과 동일한 요소를 재사용).
@@ -368,7 +375,7 @@ export const PdfPreview = memo(function PdfPreview({
       // 조용히 가로 스크롤로 나타난다.
       style={
         {
-          "--pdf-rail-width": `${String(PDF_RAIL_WIDTH_PX)}px`,
+          "--pdf-rail-width": `${String(railResize.width)}px`,
         } as CSSProperties
       }
     >
@@ -452,6 +459,7 @@ export const PdfPreview = memo(function PdfPreview({
               onPurgeHighlight={onPurgeHighlight}
               onRestoreHighlight={onRestoreHighlight}
               pages={pages}
+              railRasterWidth={railResize.rasterWidth}
               retention={retention}
             />
           }
@@ -462,9 +470,12 @@ export const PdfPreview = memo(function PdfPreview({
               currentPage={currentPage}
               onSelectPage={scrollToPage}
               pages={pages}
+              railRasterWidth={railResize.rasterWidth}
+              railWidth={railResize.width}
               retention={retention}
             />
           }
+          resize={railResize}
         />
       )}
     </div>
