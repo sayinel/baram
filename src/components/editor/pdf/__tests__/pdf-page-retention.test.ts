@@ -25,38 +25,100 @@ function fakePage(pageNumber: number, result = true): FakePage {
   return { cleanup: vi.fn(() => result), pageNumber };
 }
 
+/**
+ * 축출 판정은 마이크로태스크로 미뤄진다(#scheduleEviction) — 단정 전에 흘려준다.
+ *
+ * 이 한 줄이 이 파일에서 가장 중요한 계약이다: 미뤄지지 않으면 React가 한 커밋에서
+ * 모든 페이지를 동시에 놓는 순간(줌 변경) 화면에 떠 있는 페이지들이 서로를 축출한다.
+ */
+async function settle(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    queueMicrotask(resolve);
+  });
+}
+
 /** 잡았다가 즉시 놓는다 — "지나간 페이지" 한 건. */
 function touch(r: PdfPageRetention, page: FakePage): void {
   r.retain(asProxy(page))();
 }
 
 describe("PdfPageRetention", () => {
-  it("never cleans up a page while it is still retained", () => {
+  it("never cleans up a page while it is still retained", async () => {
     const r = new PdfPageRetention(1);
     const held = fakePage(1);
     r.retain(asProxy(held));
     // 상한을 한참 넘기도록 다른 페이지를 흘려보낸다.
     for (let i = 2; i <= 20; i++) touch(r, fakePage(i));
+    await settle();
     expect(held.cleanup).not.toHaveBeenCalled();
   });
 
   // 이것이 이 클래스의 존재 이유다. pdfjs의 cleanup()은 "지금 그리는 중"만
   // 막아 주므로, 본문이 띄워 둔 페이지를 썸네일이 스크롤로 지나갔다는 이유로
   // 비우는 것은 pdfjs가 막아 주지 않는다.
-  it("does not clean up a page one surface released while another still holds it", () => {
+  it("does not clean up a page one surface released while another still holds it", async () => {
     const r = new PdfPageRetention(0);
     const shared = fakePage(1);
     const fromMainView = r.retain(asProxy(shared));
     const fromThumbnail = r.retain(asProxy(shared));
 
     fromThumbnail();
+    await settle();
     expect(shared.cleanup).not.toHaveBeenCalled();
 
     fromMainView();
+    await settle();
     expect(shared.cleanup).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps exactly the cap's worth of released pages before evicting", () => {
+  // ‼️ 리뷰가 실측으로 찾은 결함의 회귀 테스트.
+  //
+  // React는 한 커밋에서 트리 전체의 effect destroy를 **전부** 돌린 뒤 create를
+  // **전부** 돌린다. 줌이 한 스텝 바뀌면 보이는 PdfPage가 모두 재실행되므로,
+  // destroy 패스가 끝난 찰나에 **모든 페이지의 refCount가 동시에 0**이 된다.
+  // 그 순간에 축출을 판정하면 "아무도 안 보는 페이지"가 아니라 화면에 떠 있는
+  // 페이지를 세게 되고, 상한을 넘는 만큼이 비워진다 — 곧바로 다시 그려야 하는,
+  // 하필 뷰포트 최상단의 페이지들이.
+  it("does not evict pages that are all released and re-retained within one commit", async () => {
+    const r = new PdfPageRetention(10);
+    const pages = Array.from({ length: 14 }, (_, i) => fakePage(i + 1));
+    const releases = pages.map((p) => r.retain(asProxy(p)));
+
+    // ── React의 destroy 패스: 보이는 페이지가 전부 한꺼번에 놓인다.
+    for (const release of releases) release();
+    // ── React의 create 패스: 같은 커밋에서 곧바로 다시 잡는다.
+    for (const p of pages) r.retain(asProxy(p));
+
+    await settle();
+
+    for (const p of pages) {
+      expect(
+        p.cleanup,
+        `page ${String(p.pageNumber)} was evicted while still on screen`,
+      ).not.toHaveBeenCalled();
+    }
+    expect(r.trackedCount).toBe(14);
+  });
+
+  // 위 테스트의 짝 — 미루기가 축출 **자체**를 없애 버리면 누수가 그대로 남는다.
+  it("still evicts once the burst settles and the pages are not taken again", async () => {
+    const r = new PdfPageRetention(10);
+    const pages = Array.from({ length: 14 }, (_, i) => fakePage(i + 1));
+    for (const p of pages) r.retain(asProxy(p))();
+
+    await settle();
+
+    expect(r.trackedCount).toBe(10);
+    // 가장 먼저 놓인 4개가 희생된다.
+    for (const p of pages.slice(0, 4)) {
+      expect(p.cleanup).toHaveBeenCalledTimes(1);
+    }
+    for (const p of pages.slice(4)) {
+      expect(p.cleanup).not.toHaveBeenCalled();
+    }
+  });
+
+  it("keeps exactly the cap's worth of released pages before evicting", async () => {
     const r = new PdfPageRetention(2);
     const p1 = fakePage(1);
     const p2 = fakePage(2);
@@ -64,11 +126,13 @@ describe("PdfPageRetention", () => {
 
     touch(r, p1);
     touch(r, p2);
+    await settle();
     // 상한과 같은 수까지는 아무것도 비우지 않는다.
     expect(p1.cleanup).not.toHaveBeenCalled();
     expect(p2.cleanup).not.toHaveBeenCalled();
 
     touch(r, p3);
+    await settle();
     // 하나를 넘기면 **가장 오래 전에 놓은 것**만 비운다.
     expect(p1.cleanup).toHaveBeenCalledTimes(1);
     expect(p2.cleanup).not.toHaveBeenCalled();
@@ -82,7 +146,7 @@ describe("PdfPageRetention", () => {
   // 찍으므로 어느 쪽 기준이든 같은 답이 나와 뮤테이션이 살아남았다. 두 페이지를
   // **먼저 함께 붙잡은 뒤 잡은 순서와 반대로 놓아야** 비로소 갈린다.
   // cf. [[mutation-survived-fixture-cannot-discriminate]]
-  it("evicts by when a page was last let go, not by when it was first taken", () => {
+  it("evicts by when a page was last let go, not by when it was first taken", async () => {
     const r = new PdfPageRetention(1);
     const takenFirst = fakePage(1);
     const takenSecond = fakePage(2);
@@ -94,6 +158,7 @@ describe("PdfPageRetention", () => {
     // 나중에 잡은 쪽을 **먼저** 놓는다.
     releaseSecond();
     releaseFirst();
+    await settle();
 
     // 놓은 순서가 기준이면 takenSecond가 가장 오래 방치된 것이다.
     // 잡은 순서가 기준이면 거꾸로 takenFirst를 고르게 된다 — 사용자가 방금
@@ -102,7 +167,7 @@ describe("PdfPageRetention", () => {
     expect(takenFirst.cleanup).not.toHaveBeenCalled();
   });
 
-  it("ignores a duplicate release instead of letting the refcount go negative", () => {
+  it("ignores a duplicate release instead of letting the refcount go negative", async () => {
     const r = new PdfPageRetention(0);
     const page = fakePage(1);
     const releaseA = r.retain(asProxy(page));
@@ -110,16 +175,18 @@ describe("PdfPageRetention", () => {
 
     releaseA();
     releaseA(); // 두 번째 호출은 무시돼야 한다
+    await settle();
     expect(page.cleanup).not.toHaveBeenCalled();
 
     releaseB();
+    await settle();
     expect(page.cleanup).toHaveBeenCalledTimes(1);
   });
 
   // cleanup()이 false를 돌려주는 경우(진행 중인 렌더가 남아 있었다) 항목을
   // 그대로 두면, 다음 릴리스마다 같은 페이지를 다시 고르면서 축출이 한 발짝도
   // 나아가지 못한다 — 뒤에 놓인 페이지들이 영원히 안 비워진다.
-  it("stops tracking an evicted page even when pdfjs refuses the cleanup", () => {
+  it("stops tracking an evicted page even when pdfjs refuses the cleanup", async () => {
     const r = new PdfPageRetention(1);
     const stubborn = fakePage(1, false);
     const p2 = fakePage(2);
@@ -127,31 +194,46 @@ describe("PdfPageRetention", () => {
 
     touch(r, stubborn);
     touch(r, p2); // stubborn 축출 시도 → cleanup()이 false
+    await settle();
     expect(stubborn.cleanup).toHaveBeenCalledTimes(1);
 
     touch(r, p3); // 다음 축출은 stubborn이 아니라 p2를 골라야 한다
+    await settle();
     expect(stubborn.cleanup).toHaveBeenCalledTimes(1);
     expect(p2.cleanup).toHaveBeenCalledTimes(1);
   });
 
-  it("cleans up everything it still tracks when disposed", () => {
+  it("cleans up the pages nobody is holding when disposed", async () => {
     const r = new PdfPageRetention(10);
-    const held = fakePage(1);
     const released = fakePage(2);
-    r.retain(asProxy(held));
     touch(r, released);
+    await settle();
 
     r.dispose();
-    // 붙잡혀 있던 것도 비운다 — 문서가 사라지는 마당에 "사용 중"은 의미가 없다.
-    expect(held.cleanup).toHaveBeenCalledTimes(1);
     expect(released.cleanup).toHaveBeenCalledTimes(1);
+    expect(r.trackedCount).toBe(0);
+  });
+
+  // ‼️ 붙잡힌 페이지는 dispose에서도 건드리지 않는다. React의 passive destroy는
+  // 언마운트와 StrictMode 더블 인보크에서 **부모가 먼저** 돌기 때문에(리뷰 실측),
+  // 여기서 비우면 아직 렌더 중인 페이지에 cleanup()이 걸리고 — 거절당하면서 남은
+  // 래치가 곧이어 도착하는 자식의 cancel()에서 발화한다. 이 커밋이 막으려던 바로
+  // 그 시나리오다. 홀더는 곧 스스로 놓고, 문서 파기가 어차피 회수한다.
+  it("leaves a page that is still held alone when disposed", () => {
+    const r = new PdfPageRetention(10);
+    const held = fakePage(1);
+    r.retain(asProxy(held));
+
+    r.dispose();
+
+    expect(held.cleanup).not.toHaveBeenCalled();
     expect(r.trackedCount).toBe(0);
   });
 
   // 버려진 레지스트리가 새 페이지를 받아 들면 그 페이지는 아무도 정리하지 않는다.
   // 지금은 React의 effect 순서 덕에 이 경로를 타는 호출부가 없지만, 그 순서는 이
   // 클래스 바깥에 있고 어디에도 적혀 있지 않다 — 스스로 지키게 하고 그것을 고정한다.
-  it("takes nothing new once it has been disposed", () => {
+  it("takes nothing new once it has been disposed", async () => {
     const r = new PdfPageRetention(0);
     const page = fakePage(1);
     r.dispose();
@@ -161,23 +243,27 @@ describe("PdfPageRetention", () => {
 
     // 릴리스는 여전히 부를 수 있어야 한다 — 호출부(effect cleanup)는 조건 없이 부른다.
     expect(() => release()).not.toThrow();
+    await settle();
     expect(page.cleanup).not.toHaveBeenCalled();
   });
 
-  it("bounds what it tracks so a long scroll cannot grow the registry", () => {
+  it("bounds what it tracks so a long scroll cannot grow the registry", async () => {
     const r = new PdfPageRetention(3);
     for (let i = 1; i <= 300; i++) touch(r, fakePage(i));
+    await settle();
     expect(r.trackedCount).toBe(3);
   });
 
   // 상한이 pdfjs 자체 뷰어의 DEFAULT_CACHE_SIZE와 같다는 사실을 고정한다 —
   // 근거 없이 바뀌면 여기서 걸린다(legacy/web/pdf_viewer.mjs).
-  it("defaults to the same buffer size pdfjs's own viewer uses", () => {
+  it("defaults to the same buffer size pdfjs's own viewer uses", async () => {
     expect(MAX_RELEASED_PDF_PAGES).toBe(10);
     const r = new PdfPageRetention();
     for (let i = 1; i <= MAX_RELEASED_PDF_PAGES; i++) touch(r, fakePage(i));
+    await settle();
     expect(r.trackedCount).toBe(MAX_RELEASED_PDF_PAGES);
     touch(r, fakePage(999));
+    await settle();
     expect(r.trackedCount).toBe(MAX_RELEASED_PDF_PAGES);
   });
 });

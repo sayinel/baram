@@ -575,37 +575,49 @@ describe("§276.3.2 pending area draft stays visible until a colour is picked", 
 
 // §282.3 렌더 캐시 보관 배선.
 //
-// 이 배선이 없으면 페이지를 한 번 지나칠 때마다 operator list와 디코드된
-// 이미지가 탭이 닫힐 때까지 남는다(실측: 텍스트만 있는 페이지가 ~687 KB).
-// 아래 테스트들은 "얼마나 아끼는가"가 아니라 **호출이 실제로 일어나는가**와
-// **어떤 순서인가**를 고정한다 — 절약량은 pdfjs 계약 테스트가 따로 잡는다
-// (pdf-page-retention-pdfjs.test.ts).
+// 이 배선이 없으면 페이지를 한 번 지나칠 때마다 operator list와 디코드된 이미지가
+// 탭이 닫힐 때까지 남는다(실측: 텍스트만 있는 페이지가 ~687 KB). 아래 테스트들은
+// "얼마나 아끼는가"가 아니라 **호출이 실제로 일어나는가**·**어떤 순서인가**·
+// **줌 한 번에 화면이 통째로 버려지지 않는가**를 고정한다. 절약량 자체는 진짜
+// 문서를 도는 pdf-page-retention-pdfjs.test.ts가 잡는다.
 describe("§282.3 PdfPage render-cache retention", () => {
-  function renderVisiblePage(retention: PdfPageRetention, page: PDFPageProxy) {
-    const r = render(
-      <PdfPage page={page} renderScale={1} retention={retention} scale={1} />,
-    );
-    const observers = (
+  /** 축출은 마이크로태스크로 미뤄진다 — 단정 전에 흘려준다. */
+  async function settle(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+  }
+
+  function ios() {
+    return (
       globalThis as unknown as {
         MockIntersectionObserver: {
           instances: { triggerIntersect(v?: boolean): void }[];
         };
       }
     ).MockIntersectionObserver.instances;
-    act(() => {
-      observers[observers.length - 1].triggerIntersect(true);
-    });
-    return r;
   }
 
-  it("frees the page's render cache when the page unmounts", () => {
+  function renderVisiblePage(r: PdfPageRetention, page: PDFPageProxy) {
+    const view = render(
+      <PdfPage page={page} renderScale={1} retention={r} scale={1} />,
+    );
+    act(() => {
+      ios()[ios().length - 1].triggerIntersect(true);
+    });
+    return view;
+  }
+
+  it("frees the page's render cache when the page unmounts", async () => {
     // 상한 0 = 놓는 즉시 축출. 상한 자체의 동작은 레지스트리 테스트가 잡는다.
-    const retention = new PdfPageRetention(0);
+    const r = new PdfPageRetention(0);
     const page = makePage(vi.fn(() => ({})));
-    const { unmount } = renderVisiblePage(retention, page);
+    const { unmount } = renderVisiblePage(r, page);
+    await settle();
     expect(page.cleanup).not.toHaveBeenCalled();
 
     unmount();
+    await settle();
     expect(page.cleanup).toHaveBeenCalledTimes(1);
   });
 
@@ -613,30 +625,112 @@ describe("§282.3 PdfPage render-cache retention", () => {
   // pendingCleanup 래치를 남겨, 그 렌더가 끝나는 순간 대신 비운다
   // (pdf-page-retention-pdfjs.test.ts의 "defers a refused cleanup" 참조).
   // cancel()이 renderTasks를 동기로 비우므로 그 **뒤**에 놓아야 래치가 안 남는다.
+  //
+  // ‼️ `cleanup()` 호출 시점으로는 이 순서를 볼 수 없다 — 축출이 마이크로태스크로
+  // 밀려 어느 쪽이든 항상 나중이라 단정이 언제나 참이 된다(처음에 그렇게 썼다가
+  // 뮤테이션이 살아남았다). **release 자체**의 호출 시점을 봐야 한다.
   it("cancels the in-flight render before releasing the cache", () => {
-    const retention = new PdfPageRetention(0);
+    const r = new PdfPageRetention(0);
     const page = makePage(vi.fn(() => ({})));
+    const releaseCalled = vi.fn();
+    const realRetain = r.retain.bind(r);
+    vi.spyOn(r, "retain").mockImplementation((p) => {
+      const release = realRetain(p);
+      return () => {
+        releaseCalled();
+        release();
+      };
+    });
     renderCancel.mockClear();
-    const { unmount } = renderVisiblePage(retention, page);
+
+    const { unmount } = renderVisiblePage(r, page);
     unmount();
 
     expect(renderCancel).toHaveBeenCalled();
+    expect(releaseCalled).toHaveBeenCalled();
     expect(renderCancel.mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(page.cleanup).mock.invocationCallOrder[0],
+      releaseCalled.mock.invocationCallOrder[0],
     );
   });
 
   // 레일의 썸네일이 같은 페이지를 붙잡고 있는 상황 — 본문이 스크롤로 벗어나도
-  // 비우면 안 된다. pdfjs의 cleanup()은 "지금 그리는 중"만 막아 주므로 이
-  // 성질을 지키는 것은 오직 레지스트리의 refcount다.
-  it("leaves the cache alone while another surface still holds the page", () => {
-    const retention = new PdfPageRetention(0);
+  // 비우면 안 된다. pdfjs의 cleanup()은 "지금 그리는 중"만 막아 주므로 이 성질을
+  // 지키는 것은 오직 레지스트리의 refcount다.
+  //
+  // ‼️ 수동 hold를 **먼저 놓는** 것이 이 테스트의 핵심이다. 처음엔 hold를 끝까지
+  // 쥔 채로 "cleanup이 안 불렸다"만 단정했는데, 그러면 컴포넌트가 retain을 하든
+  // 말든 refCount가 1 아래로 안 내려가 **retain 줄을 지워도 통과**했다(리뷰 지적).
+  it("leaves the cache alone while another surface still holds the page", async () => {
+    const r = new PdfPageRetention(0);
     const page = makePage(vi.fn(() => ({})));
-    retention.retain(page); // 레일 썸네일이 잡고 있다고 치자
+    const releaseOtherSurface = r.retain(page); // 레일 썸네일이 잡고 있다고 치자
 
-    const { unmount } = renderVisiblePage(retention, page);
-    unmount();
+    const { unmount } = renderVisiblePage(r, page);
+    releaseOtherSurface(); // 썸네일이 스크롤로 사라졌다
+    await settle();
 
+    // 본문이 아직 띄우고 있다 — 컴포넌트가 retain하지 않았다면 여기서 비워진다.
     expect(page.cleanup).not.toHaveBeenCalled();
+
+    unmount();
+    await settle();
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  // ‼️ 리뷰가 실측으로 찾은 결함의 회귀 테스트 — 컴포넌트 층에서.
+  //
+  // React는 한 커밋에서 트리 전체의 destroy를 전부 돌린 뒤 create를 전부 돌린다.
+  // 줌이 바뀌면(renderScale이 deps에 있다) 보이는 페이지가 한꺼번에 놓였다가
+  // 한꺼번에 다시 잡히는데, 그 사이에 축출을 판정하면 화면에 떠 있는 페이지가
+  // 상한을 넘는 만큼 비워진다. 사용자에게는 "줌할 때마다 위쪽 페이지가 다시
+  // 로딩된다"로 나타난다.
+  //
+  // ‼️ 페이지들이 **한 루트 안에** 있어야 한다. `render()`를 14번 부르면 루트가
+  // 14개라 커밋도 14번 따로 일어나고(destroy→create가 페이지마다 완결된다),
+  // 재현하려던 "한 커밋 안에서 전부 놓였다가 전부 다시 잡힌다"가 성립하지 않아
+  // 동기 축출로 되돌려도 테스트가 통과한다 — 처음에 그렇게 썼다가 뮤테이션이
+  // 살아남았다.
+  it("does not evict on-screen pages when a zoom step re-runs every page effect", async () => {
+    const CAP = 10;
+    const ON_SCREEN = 14; // 상한보다 많아야 축출이 일어날 수 있다
+    const r = new PdfPageRetention(CAP);
+    const pages = Array.from({ length: ON_SCREEN }, () =>
+      makePage(vi.fn(() => ({}))),
+    );
+
+    function Viewer({ renderScale }: { renderScale: number }) {
+      return (
+        <>
+          {pages.map((page, i) => (
+            <PdfPage
+              key={i}
+              page={page}
+              renderScale={renderScale}
+              retention={r}
+              scale={renderScale}
+            />
+          ))}
+        </>
+      );
+    }
+
+    const { rerender } = render(<Viewer renderScale={1} />);
+    act(() => {
+      for (const io of ios()) io.triggerIntersect(true);
+    });
+    await settle();
+
+    // 줌 한 스텝 — 한 커밋에서 14개의 렌더 effect가 모두 재실행된다.
+    act(() => {
+      rerender(<Viewer renderScale={1.5} />);
+    });
+    await settle();
+
+    for (const [i, page] of pages.entries()) {
+      expect(
+        page.cleanup,
+        `page ${String(i + 1)} lost its cache to a zoom step`,
+      ).not.toHaveBeenCalled();
+    }
   });
 });

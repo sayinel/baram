@@ -29,6 +29,13 @@ async function openPage() {
   return { doc, internals: page as unknown as PageInternals, page };
 }
 
+/** 레지스트리의 축출은 마이크로태스크로 미뤄진다 — 단정 전에 흘려준다. */
+async function settle(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    queueMicrotask(resolve);
+  });
+}
+
 describe("the pdfjs contract PdfPageRetention depends on", () => {
   // 누수의 존재 증명. getOperatorList는 render()가 채우는 것과 같은 자리를
   // 채우되 캔버스가 필요 없다(jsdom에는 2D 컨텍스트가 없다).
@@ -87,10 +94,12 @@ describe("the pdfjs contract PdfPageRetention depends on", () => {
     expect(internals._intentStates.size).toBeGreaterThan(0);
 
     fromThumbnail();
+    await settle();
     // 한 표면이 놓았을 뿐이다 — 본문이 아직 띄우고 있으므로 그대로여야 한다.
     expect(internals._intentStates.size).toBeGreaterThan(0);
 
     fromMainView();
+    await settle();
     expect(internals._intentStates.size).toBe(0);
 
     await doc.loadingTask.destroy();

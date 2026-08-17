@@ -63,8 +63,9 @@ import type { PDFPageProxy } from "pdfjs-dist";
  *
  * 값의 근거는 pdfjs 자체 뷰어다 — `DEFAULT_CACHE_SIZE = 10`
  * (legacy/web/pdf_viewer.mjs:12875). 그쪽은 보이는 페이지 수에 따라
- * `max(10, 2 × visible + 1)`로 늘리지만, 우리는 붙잡힌 페이지를 애초에 세지
- * 않으므로 그 확장이 하는 일을 이미 하고 있다.
+ * `max(10, 2 × visible + 1)`로 늘린다(pdf_viewer.mjs:14094). 우리가 그 확장 없이
+ * 고정 상한을 쓸 수 있는 이유는 붙잡힌 페이지를 **세지 않기** 때문인데, 그 전제가
+ * 성립하려면 세는 시점이 옳아야 한다 — `#scheduleEviction`의 주석 참조.
  */
 export const MAX_RELEASED_PDF_PAGES = 10;
 
@@ -99,6 +100,8 @@ export class PdfPageRetention {
 
   readonly #entries = new Map<PDFPageProxy, Entry>();
 
+  #evictionScheduled = false;
+
   readonly #maxReleased: number;
 
   constructor(maxReleased: number = MAX_RELEASED_PDF_PAGES) {
@@ -110,13 +113,28 @@ export class PdfPageRetention {
    *
    * 문서를 `loadingTask.destroy()`로 파기하면 페이지도 함께 정리되므로 메모리
    * 관점에서는 없어도 되지만, 파기 없이 레지스트리만 교체되는 경로(파일 경로
-   * 변경)에서 맵이 죽은 프록시를 붙들지 않도록 명시적으로 비운다. 이미 파기된
-   * 페이지의 cleanup()은 `destroyed` 검사에 걸려 조용히 false를 돌려준다
-   * (pdf.mjs:22206) — 안전한 no-op이다.
+   * 변경)에서 맵이 죽은 프록시를 붙들지 않도록 명시적으로 비운다.
+   *
+   * ‼️ **붙잡혀 있는 페이지는 건드리지 않는다.** 처음엔 전부 비웠는데, 그것이 이
+   * 파일 맨 위의 순서 계약을 레지스트리 쪽에서 깬다: React의 passive destroy 순회
+   * 방향이 경로마다 달라 **언마운트와 StrictMode 더블 인보크에서는 부모가 먼저**
+   * 돈다(리뷰 실측). 그 두 경로에서 dispose는 아직 `renderTasks`가 살아 있는
+   * 페이지에 cleanup()을 걸게 되고, 거절당하면서 남긴 래치가 곧이어 도착하는
+   * 자식의 `cancel()`에서 발화한다 — 이 커밋 전체가 막으려던 바로 그 시나리오다.
+   * 홀더들은 몇 마이크로초 뒤 스스로 `cancel(); release()`를 하고, 진짜 teardown
+   * 이라면 `loadingTask.destroy()`가 어차피 회수하므로 잃는 것이 없다.
+   *
+   * (여기서 보는 페이지는 대개 **아직 살아 있다**. `loadingTask.destroy()`는 async라
+   *  `_setupCapability`를 먼저 기다린 뒤에야 `_transport.destroy()`로 가는데
+   *  (pdf.mjs:21704-21712), PdfPreview의 cleanup은 `void task.destroy()` 다음에
+   *  이 메서드를 **동기로** 잇는다. 즉 이 cleanup()들은 no-op이 아니라 실제로
+   *  일을 하며, 그래서 위의 래치 문제도 실재한다.)
    */
   dispose(): void {
     this.#disposed = true;
-    for (const page of this.#entries.keys()) page.cleanup();
+    for (const [page, entry] of this.#entries) {
+      if (entry.refCount === 0) page.cleanup();
+    }
     this.#entries.clear();
   }
 
@@ -127,13 +145,15 @@ export class PdfPageRetention {
    * 파일 맨 위 래치 설명 참조.
    */
   retain(page: PDFPageProxy): () => void {
-    // 버려진 레지스트리에는 아무것도 담지 않는다. 실제로 이 경로를 타는 호출부는
-    // 없다 — React가 부모의 dispose effect보다 자식의 effect cleanup을 먼저 돌리고,
-    // 자식이 다시 잡을 때는 이미 **새** 인스턴스를 prop으로 받은 뒤다. 그렇더라도
-    // 그 안전이 이 클래스 바깥의 effect 실행 순서에 기대고 있다는 것이 문제라
-    // (그 순서는 어디에도 적혀 있지 않고 리팩터로 조용히 바뀐다) 스스로 지킨다.
-    // 담지 않으면 그 페이지는 문서 파기와 함께 정리된다 — dispose는 문서가
-    // 사라질 때만 불리므로 잃을 것이 없다.
+    // 버려진 레지스트리에는 아무것도 담지 않는다.
+    //
+    // 이 경로를 타는 호출부는 지금 없다. 다만 그 근거로 "React가 자식 cleanup을
+    // 부모보다 먼저 돌린다"를 대면 안 된다 — **그 순회 방향은 경로마다 다르다**
+    // (업데이트는 자식 먼저, 언마운트와 StrictMode 더블 인보크는 부모 먼저.
+    // dispose()의 주석 참조). 실제 근거는 자식이 다시 잡을 때 이미 **새** 인스턴스를
+    // prop으로 받은 뒤라는 것이고, 그것 역시 이 클래스 바깥의 사실이다. 그래서
+    // 스스로 지킨다. 담지 않아도 잃을 것은 없다 — dispose는 문서가 사라질 때만
+    // 불리고, 그 문서의 페이지는 loadingTask.destroy()가 회수한다.
     if (this.#disposed) return () => undefined;
 
     // ‼️ 여기서 lastUsed를 찍지 않는다. 그 값은 `refCount === 0`인 항목에서만
@@ -154,12 +174,11 @@ export class PdfPageRetention {
       if (done) return;
       done = true;
       entry.refCount--;
-      // ‼️ 놓는 순간을 **최신**으로 찍는다. 이것이 LRU의 핵심이자, 줌 변경처럼
-      // "놓자마자 다시 잡는" 경로(PdfPage의 렌더 effect는 renderScale이 deps에
-      // 있어 줌마다 재실행된다)에서 자기 자신이 축출 대상이 되지 않게 하는
-      // 장치다 — 방금 놓은 것이 가장 오래된 것이 되면 정확히 거꾸로 고른다.
+      // 놓는 순간을 **최신**으로 찍는다 — LRU의 기준은 "언제 놓였는가"다.
+      // (이것만으로는 줌 변경에서 자기 자신이 축출되는 것을 막지 못한다.
+      //  그 문제는 아래 #scheduleEviction이 다룬다.)
       entry.lastUsed = ++this.#clock;
-      this.#evictReleasedOverflow();
+      this.#scheduleEviction();
     };
   }
 
@@ -197,5 +216,37 @@ export class PdfPageRetention {
       this.#entries.delete(victim);
       victim.cleanup();
     }
+  }
+
+  /**
+   * 축출 판정을 **현재 동기 작업이 끝난 뒤로** 미룬다. 릴리스가 몰려도 한 번만 돈다.
+   *
+   * ‼️ 이것이 없으면 화면에 떠 있는 페이지가 서로를 축출한다. React는 한 커밋에서
+   * 트리 전체의 effect destroy를 **전부** 돌린 뒤에 create를 **전부** 돌린다. 줌이
+   * 바뀌면(`renderScale`이 PdfPage 렌더 effect의 deps에 있다) 보이는 페이지가 한꺼번에
+   * 재실행되므로, destroy 패스가 끝난 순간 **모든 페이지의 refCount가 동시에 0**이 된다.
+   * 그 찰나에 세면 `released`는 "아무도 안 보는 페이지 수"가 아니라 **화면에 떠 있는
+   * 페이지 수**이고, 상한을 넘는 만큼이 비워진다. 곧이어 create 패스가 같은 페이지들을
+   * 다시 잡고 다시 그리므로 결과는 옳지만, 방금 버린 operator list를 워커에서 다시
+   * 받아 온다 — 캐시가 가장 필요한 순간에 정확히 캐시를 버리는 셈이다.
+   * 게다가 희생자는 트리 순서상 앞쪽, 즉 **뷰포트 최상단의 페이지**다.
+   *
+   * (측정: 홀더 14개 + deps 1회 변경 → 마운트된 채로 4개가 축출됐다. 리뷰의 실측이다.)
+   *
+   * `queueMicrotask`인 이유: React의 passive flush는 **동기**라 마이크로태스크는 반드시
+   * destroy+create가 모두 끝난 뒤에 돈다. 그때는 다시 잡힌 페이지의 refCount가 1로
+   * 돌아와 있어 애초에 축출 후보가 아니다. 지연 시간을 **추측하는** setTimeout/rAF
+   * 해킹이 아니라 언어가 정의한 경계까지 미루는 것이다 — 값을 고를 여지가 없다는 점이
+   * 그 차이다. (대안이던 "pdfjs처럼 상한을 2×visible+1로 늘리기"는 붙잡힌 수의
+   * 최고치를 영구히 들고 있어야 해서, 한 번 커진 상한이 다시 줄지 않는다.)
+   */
+  #scheduleEviction(): void {
+    if (this.#evictionScheduled) return;
+    this.#evictionScheduled = true;
+    queueMicrotask(() => {
+      this.#evictionScheduled = false;
+      if (this.#disposed) return;
+      this.#evictReleasedOverflow();
+    });
   }
 }

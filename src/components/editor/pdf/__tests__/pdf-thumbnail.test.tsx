@@ -178,45 +178,45 @@ describe("PdfThumbnail", () => {
 // 레일 본문은 독립적으로 스크롤되므로, 본문을 한 줄도 안 읽고 레일 스크롤바만
 // 끝까지 끌어도 300페이지 분량의 operator list가 물린다.
 describe("§282.3 PdfThumbnail render-cache retention", () => {
-  it("frees the page's render cache when the thumbnail scrolls out of view", () => {
+  /** 축출은 마이크로태스크로 미뤄진다 — 단정 전에 흘려준다. */
+  async function settle(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+  }
+
+  it("frees the page's render cache when the thumbnail scrolls out of view", async () => {
     // 상한 0 = 놓는 즉시 축출. 상한 동작 자체는 레지스트리 테스트가 잡는다.
     const page = makePage();
     setup({ page, retention: new PdfPageRetention(0) });
     act(() => {
       observers()[0].triggerIntersect(true);
     });
+    await settle();
     expect(page.cleanup).not.toHaveBeenCalled();
 
     act(() => {
       observers()[0].triggerIntersect(false);
     });
+    await settle();
     expect(page.cleanup).toHaveBeenCalledTimes(1);
   });
 
-  // ‼️ 순서가 계약이다 — PdfPage의 같은 이름 테스트 주석 참조.
+  // ‼️ 순서가 계약이다 — PdfPage의 같은 이름 테스트 주석 참조. `cleanup()` 시점으로는
+  // 볼 수 없다(축출이 마이크로태스크로 밀려 어느 쪽이든 항상 나중이라 단정이 언제나
+  // 참이 된다). **release 자체**의 호출 시점을 봐야 한다.
   it("cancels the in-flight render before releasing the cache", () => {
     const page = makePage();
-    setup({ page, retention: new PdfPageRetention(0) });
-    act(() => {
-      observers()[0].triggerIntersect(true);
-    });
-    act(() => {
-      observers()[0].triggerIntersect(false);
-    });
-
-    expect(cancelCalls).toHaveBeenCalled();
-    expect(cancelCalls.mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(page.cleanup).mock.invocationCallOrder[0],
-    );
-  });
-
-  // 본문 PdfPage가 그 페이지를 띄워 두고 있는데 썸네일이 스크롤로 지나갔다는
-  // 이유로 비우면, 본문의 다음 줌에서 워커 왕복을 다시 한다. pdfjs의 cleanup()은
-  // "지금 그리는 중"만 막아 주므로 이 성질을 지키는 것은 refcount뿐이다.
-  it("leaves the cache alone while the main view still holds the page", () => {
-    const page = makePage();
     const retention = new PdfPageRetention(0);
-    retention.retain(page); // 본문 PdfPage가 잡고 있다고 치자
+    const releaseCalled = vi.fn();
+    const realRetain = retention.retain.bind(retention);
+    vi.spyOn(retention, "retain").mockImplementation((p) => {
+      const release = realRetain(p);
+      return () => {
+        releaseCalled();
+        release();
+      };
+    });
     setup({ page, retention });
 
     act(() => {
@@ -226,6 +226,37 @@ describe("§282.3 PdfThumbnail render-cache retention", () => {
       observers()[0].triggerIntersect(false);
     });
 
+    expect(cancelCalls).toHaveBeenCalled();
+    expect(releaseCalled).toHaveBeenCalled();
+    expect(cancelCalls.mock.invocationCallOrder[0]).toBeLessThan(
+      releaseCalled.mock.invocationCallOrder[0],
+    );
+  });
+
+  // 본문 PdfPage가 그 페이지를 띄워 두고 있는데 썸네일이 스크롤로 지나갔다는
+  // 이유로 비우면, 본문의 다음 줌에서 워커 왕복을 다시 한다.
+  //
+  // ‼️ 본문 쪽 hold를 **먼저 놓는** 것이 핵심이다 — 끝까지 쥐고 있으면 썸네일이
+  // retain을 하든 말든 cleanup이 안 불려서 아무것도 고정하지 못한다(리뷰 지적).
+  it("leaves the cache alone while the main view still holds the page", async () => {
+    const page = makePage();
+    const retention = new PdfPageRetention(0);
+    const releaseMainView = retention.retain(page);
+    setup({ page, retention });
+
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    act(() => {
+      observers()[0].triggerIntersect(false); // 썸네일이 스크롤로 사라졌다
+    });
+    await settle();
+
+    // 본문이 아직 잡고 있다 — 썸네일이 retain하지 않았다면 여기서 이미 비워졌다.
     expect(page.cleanup).not.toHaveBeenCalled();
+
+    releaseMainView();
+    await settle();
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
   });
 });

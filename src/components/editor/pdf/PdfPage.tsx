@@ -136,16 +136,21 @@ export function PdfPage({
   // 따르고, `.pdf-page canvas { width:100%; height:100% }`가 마지막 래스터를
   // 그 크기로 늘려 그린다(덜 선명할 뿐이다).
   useEffect(() => {
-    if (!visible) return;
+    // ‼️ `!visible` 조기 반환을 두지 않는다 — 안 보이면 아래 JSX가 캔버스를
+    // 언마운트해 canvasRef.current가 null이므로 다음 줄에서 어차피 멎는다. 같은
+    // 성질을 두 곳에서 지키면 어느 쪽이 진짜인지 알 수 없고, 실제로 PdfThumbnail
+    // 에서는 그 중복 가드에 뮤테이션이 살아남았다(그쪽 주석 참조). visible은
+    // 조건이 아니라 **deps로만** 남긴다.
     const canvas = canvasRef.current;
     if (!canvas) return;
     const renderViewport = page.getViewport({ scale: renderScale });
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.floor(renderViewport.width * dpr);
     canvas.height = Math.floor(renderViewport.height * dpr);
-    // §282.3 그리는 동안 이 페이지의 렌더 캐시를 붙잡는다. 줌이 바뀌면
-    // renderScale이 deps에 있어 놓았다가 즉시 다시 잡는데, 릴리스가 lastUsed를
-    // 최신으로 찍으므로 그 틈에 자기 자신이 축출되지는 않는다(레지스트리 주석).
+    // §282.3 그리는 동안 이 페이지의 렌더 캐시를 붙잡는다. 줌이 바뀌면 renderScale이
+    // deps에 있어 놓았다가 즉시 다시 잡는다 — 그 틈에 보이는 페이지들이 서로를
+    // 축출하지 않는 것은 레지스트리가 축출 판정을 마이크로태스크로 미루기 때문이다
+    // (pdf-page-retention.ts의 #scheduleEviction). 여기서 지킬 것은 순서뿐이다.
     const release = retention.retain(page);
     const renderTask = page.render({
       canvas,
