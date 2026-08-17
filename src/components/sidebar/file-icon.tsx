@@ -37,6 +37,10 @@ export function getFileIcon(name: string): React.JSX.Element {
     case "md":
     case "mdx":
       return <IconFile color="#519aba" label="M" />;
+    // §5.1 PDFs open in the built-in viewer, but the tree drew them as the
+    // unlabelled default — the one viewer-backed type with no icon of its own.
+    case "pdf":
+      return <IconFile color="#ef4444" label="PDF" />;
     case "py":
       return <IconFile color="#3572a5" label="PY" />;
     case "rs":
