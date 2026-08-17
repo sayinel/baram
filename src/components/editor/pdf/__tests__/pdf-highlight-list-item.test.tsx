@@ -56,6 +56,7 @@ function setup(
   overrides: Partial<Parameters<typeof PdfHighlightListItem>[0]> = {},
 ) {
   const props = {
+    isDeleted: false,
     isFlashing: false,
     item: { highlight: areaHighlight(), text: null },
     onSelect: vi.fn(),
@@ -156,6 +157,7 @@ describe("PdfHighlightListItem", () => {
 
     view.rerender(
       <PdfHighlightListItem
+        isDeleted={false}
         isFlashing
         item={item}
         onSelect={vi.fn()}

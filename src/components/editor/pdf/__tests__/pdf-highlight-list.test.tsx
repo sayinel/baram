@@ -62,6 +62,8 @@ function setup(
     absCompanionPath: "/vault/highlights/paper.md",
     flashHighlightId: null,
     highlights: [hl("a", 1, 700)],
+    onPurgeHighlight: vi.fn(),
+    onRestoreHighlight: vi.fn(),
     pages: makePages(3),
     retention,
     ...overrides,
@@ -220,5 +222,129 @@ describe("PdfHighlightList", () => {
       expect(screen.getAllByRole("button")).toHaveLength(1);
     });
     expect(readCompanion).not.toHaveBeenCalled();
+  });
+});
+
+// §277.2 목록이 아카이브의 집이다 — 삭제된 하이라이트를 다시 볼 수단이
+// 없으면 사용자는 되돌릴 수도, 정말로 지울 수도 없고 사이드카가 아무도 못
+// 보는 채로 무한히 자란다.
+describe("§277.2 deleted highlights", () => {
+  function deleted(id: string, page = 1, y = 700): StoredHighlight {
+    return { ...hl(id, page, y), deletedAt: "2026-08-17T01:23:45.000Z" };
+  }
+
+  function rows(): string[] {
+    return screen
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("data-pdf-highlight-id"))
+      .filter((v): v is string => v !== null);
+  }
+
+  it("shows only the live highlights by default", async () => {
+    setup({ highlights: [hl("live", 1, 700), deleted("gone", 1, 600)] });
+    await waitFor(() => expect(rows()).toEqual(["live"]));
+  });
+
+  it("counts each branch on its own tab", async () => {
+    setup({
+      highlights: [
+        hl("live", 1, 700),
+        deleted("g1", 1, 600),
+        deleted("g2", 2, 500),
+      ],
+    });
+    await waitFor(() => expect(rows()).toEqual(["live"]));
+
+    expect(screen.getByTestId("pdf-highlight-view-active")).toHaveTextContent(
+      "1",
+    );
+    expect(screen.getByTestId("pdf-highlight-view-deleted")).toHaveTextContent(
+      "2",
+    );
+  });
+
+  it("switches to the deleted branch and shows exactly those", async () => {
+    setup({ highlights: [hl("live", 1, 700), deleted("gone", 1, 600)] });
+    await waitFor(() => expect(rows()).toEqual(["live"]));
+
+    await userEvent.click(screen.getByTestId("pdf-highlight-view-deleted"));
+
+    await waitFor(() => expect(rows()).toEqual(["gone"]));
+  });
+
+  // 갈래를 바꾸는 것만으로 컨트롤이 나타났다 사라졌다 하면 안 된다 — 마지막
+  // 항목을 복원한 순간 지금 보고 있던 화면이 발밑에서 없어진다.
+  it("keeps both branches reachable even when one is empty", () => {
+    setup({ highlights: [hl("live", 1, 700)] });
+    expect(
+      screen.getByTestId("pdf-highlight-view-deleted"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a branch-specific empty state", async () => {
+    setup({ highlights: [hl("live", 1, 700)] });
+    await userEvent.click(screen.getByTestId("pdf-highlight-view-deleted"));
+
+    expect(
+      document.querySelector(".pdf-highlight-list-empty"),
+    ).toHaveTextContent("No deleted highlights");
+  });
+
+  // 액션은 삭제된 갈래에만 있다. 활성 목록에 "복원"이 보이면 무엇을
+  // 복원한다는 것인지 설명할 수 없다.
+  it("offers no restore/delete actions in the active branch", async () => {
+    setup({ highlights: [hl("live", 1, 700), deleted("gone", 1, 600)] });
+    await waitFor(() => expect(rows()).toEqual(["live"]));
+
+    expect(screen.queryByText("Restore")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete permanently")).not.toBeInTheDocument();
+  });
+
+  it("calls onRestoreHighlight with the row's id", async () => {
+    const props = setup({
+      highlights: [deleted("gone"), deleted("other", 2, 500)],
+    });
+    await userEvent.click(screen.getByTestId("pdf-highlight-view-deleted"));
+    await waitFor(() => expect(rows()).toEqual(["gone", "other"]));
+
+    await userEvent.click(screen.getAllByText("Restore")[0]);
+
+    expect(props.onRestoreHighlight).toHaveBeenCalledWith("gone");
+    expect(props.onPurgeHighlight).not.toHaveBeenCalled();
+  });
+
+  it("calls onPurgeHighlight with the row's id", async () => {
+    const props = setup({
+      highlights: [deleted("gone"), deleted("other", 2, 500)],
+    });
+    await userEvent.click(screen.getByTestId("pdf-highlight-view-deleted"));
+    await waitFor(() => expect(rows()).toEqual(["gone", "other"]));
+
+    await userEvent.click(screen.getAllByText("Delete permanently")[1]);
+
+    expect(props.onPurgeHighlight).toHaveBeenCalledWith("other");
+    expect(props.onRestoreHighlight).not.toHaveBeenCalled();
+  });
+
+  // ‼️ 항목 자체가 <button>이다 — 액션 버튼을 그 안에 넣으면 유효하지 않은
+  // HTML인 데다 액션 클릭이 바깥 버튼의 onSelect까지 발화시켜 클릭 한 번에
+  // 점프와 복원이 동시에 일어난다.
+  it("does not nest the action buttons inside the row button", async () => {
+    setup({ highlights: [deleted("gone")] });
+    await userEvent.click(screen.getByTestId("pdf-highlight-view-deleted"));
+    await waitFor(() => expect(rows()).toEqual(["gone"]));
+
+    const restore = screen.getByText("Restore");
+    expect(restore.closest("[data-pdf-highlight-id]")).toBeNull();
+  });
+
+  it("does not jump when a row action is clicked", async () => {
+    setup({ highlights: [deleted("gone")] });
+    await userEvent.click(screen.getByTestId("pdf-highlight-view-deleted"));
+    await waitFor(() => expect(rows()).toEqual(["gone"]));
+
+    await userEvent.click(screen.getByText("Restore"));
+
+    expect(useLinkStore.getState().pendingPdfHighlightId).toBeNull();
   });
 });

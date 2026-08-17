@@ -533,6 +533,10 @@
   "pdfHighlight.copyFailed": "클립보드에 복사하지 못했습니다",
   "pdfHighlight.copied": "클립보드에 복사했습니다",
   "pdfHighlight.areaNoteLabel": "영역 하이라이트 ({page}페이지)",
+  "pdfHighlight.restore": "복원",
+  "pdfHighlight.purge": "완전 삭제",
+  "pdfHighlight.purgeConfirm": "이 하이라이트를 완전히 삭제할까요? 되돌릴 수 없습니다. 이 하이라이트를 가리키는 참조는 미리보기를 잃습니다. 인용된 원문은 동반 노트에 그대로 남습니다.",
+  "pdfHighlight.purgeConfirmWithRefs": "이 하이라이트를 완전히 삭제할까요? 참조 {count}곳이 미리보기를 잃습니다. 되돌릴 수 없습니다. 인용된 원문은 동반 노트에 그대로 남습니다.",
 
   "pdfToolbar.prevPage": "이전 페이지",
   "pdfToolbar.nextPage": "다음 페이지",
@@ -544,6 +548,9 @@
   "pdfSidePanel.highlights": "하이라이트",
   "pdfSidePanel.label": "페이지 및 하이라이트",
   "pdfSidePanel.noHighlights": "이 PDF에는 아직 하이라이트가 없습니다",
+  "pdfSidePanel.highlightsActive": "활성",
+  "pdfSidePanel.highlightsDeleted": "삭제됨",
+  "pdfSidePanel.noDeletedHighlights": "삭제된 하이라이트가 없습니다",
   "pdfSidePanel.pageLabel": "{page}쪽",
 
   "plugin.consent.title.install": "\"{name}\" 플러그인을 설치하시겠습니까?",

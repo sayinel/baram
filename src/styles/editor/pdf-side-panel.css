@@ -111,11 +111,81 @@
 
 /* §282.2 하이라이트 목록 */
 
+/* §277.2 목록 프레임 — 위쪽 갈래 전환 + 아래쪽 목록. 레일 본문이 이미
+   세로 스크롤을 갖고 있으므로 여기서는 흐름만 잡는다. */
+.pdf-highlight-list-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pdf-highlight-list-views {
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px 0;
+}
+
+.pdf-highlight-list-view {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.pdf-highlight-list-view:hover {
+  background: var(--color-bg-hover);
+}
+
+/* 위 `.pdf-side-panel-tab.active`와 다른 모양을 쓴다: 저쪽은 패널 상단의
+   1차 탭이라 밑줄이 어울리지만, 이것은 목록 안의 필터 칩이라 알약 배경이
+   "지금 이 갈래를 보고 있다"를 더 분명히 말한다. 색은 같은 accent다. */
+.pdf-highlight-list-view.active {
+  color: var(--color-text-default);
+  background: color-mix(in srgb, var(--color-accent-default) 14%, transparent);
+}
+
+.pdf-highlight-list-view-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
 .pdf-highlight-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 8px;
+}
+
+/* §277.2 항목 + (삭제됨 갈래에서만) 액션 줄. 항목 자체가 <button>이라
+   액션을 그 안에 넣을 수 없어 형제로 둔다 — PdfHighlightList 주석 참조. */
+.pdf-highlight-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-highlight-row-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 6px 4px;
+}
+
+.pdf-highlight-row-action {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pdf-highlight-row-action:hover {
+  color: var(--color-text-default);
+}
+
+.pdf-highlight-row-action.danger:hover {
+  color: var(--color-status-danger);
 }
 
 .pdf-highlight-list-empty {
@@ -142,6 +212,13 @@
 
 .pdf-highlight-item.flashing {
   background: var(--color-bg-selection);
+}
+
+/* §277.2 삭제된 항목 — 흐리게. 페이지에서는 이미 사라졌으니 목록에서도
+   "보관 중"으로 읽혀야 한다. 완전히 감추지는 않는다: 복원/완전 삭제를
+   고르려면 무엇인지 보여야 한다. */
+.pdf-highlight-item.deleted {
+  opacity: 0.55;
 }
 
 .pdf-highlight-item-meta {
