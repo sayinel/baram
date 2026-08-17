@@ -8,8 +8,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLinkStore } from "../../../../stores/editor/link";
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../../../../utils/pdf-rail-width";
 import { PdfPageRetention } from "../pdf-page-retention";
-import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../pdf-side-panel-utils";
 import { PdfHighlightList } from "../PdfHighlightList";
 import { usePdfHighlightList } from "../use-pdf-highlight-list";
 

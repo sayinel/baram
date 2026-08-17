@@ -10,7 +10,7 @@ import type { PdfPageRetention } from "./pdf-page-retention";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { railContentWidth } from "./pdf-side-panel-utils";
+import { railContentWidth } from "../../../utils/pdf-rail-width";
 import { PdfThumbnail } from "./PdfThumbnail";
 import { useRailRovingFocus } from "./use-rail-roving-focus";
 

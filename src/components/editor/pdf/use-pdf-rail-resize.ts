@@ -24,7 +24,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { useSettingsStore } from "../../../stores/settings/store";
-import { clampRailWidth } from "./pdf-side-panel-utils";
+import { clampRailWidth } from "../../../utils/pdf-rail-width";
 
 /** 방향키 한 번에 움직이는 폭(CSS px). Shift와 조합하면 아래 배수만큼. */
 const KEY_STEP_PX = 8;
@@ -44,21 +44,34 @@ export interface PdfRailResize {
 }
 
 export function usePdfRailResize(): PdfRailResize {
-  const committed = useSettingsStore((s) => s.pdfRailWidth);
+  // ‼️ clamp를 거쳐 읽는다. setPdfRailWidth는 자르지만 persist의 기본 merge는
+  // **setter를 통하지 않고** 저장값을 얕게 밀어 넣으므로, 손상된 설정 파일이나
+  // 다음 릴리스에서 범위를 좁혔을 때의 옛 저장값이 그대로 흘러든다. 그러면
+  // railContentWidth를 거치는 소비자(썸네일·크롭)와 그렇지 않은 소비자
+  // (CSS 변수·fit-width)가 서로 다른 폭을 보게 된다.
+  const committed = useSettingsStore((s) => clampRailWidth(s.pdfRailWidth));
   const setPdfRailWidth = useSettingsStore((s) => s.setPdfRailWidth);
 
   // null = 드래그 중이 아님. 드래그 중에만 라이브 값이 여기 있다.
   const [dragWidth, setDragWidth] = useState<null | number>(null);
-  // 드래그 시작 시점의 기준점. ref인 이유는 포인터 이벤트 사이에서만 읽고
-  // 렌더에는 영향이 없어서다.
-  const originRef = useRef({ clientX: 0, width: 0 });
+  // 지금 드래그를 쥐고 있는 포인터. 재진입 판정에만 쓴다.
+  const activePointerRef = useRef<null | number>(null);
 
   const onResizeStart = useCallback(
     (e: React.PointerEvent<HTMLElement>) => {
       // 주 버튼만. 오른쪽 클릭으로 드래그가 시작되면 컨텍스트 메뉴와 겹친다.
       if (e.button !== 0) return;
+      // ‼️ 두 번째 포인터는 무시한다. 멀티터치(터치 노트북)나 마우스+펜에서
+      // 실제로 온다 — 리뷰가 실측했다: 두 번째 pointerdown이 기준점을 덮어써서
+      // 진행 중이던 첫 드래그가 하한으로 130px 역방향 점프했다.
+      if (activePointerRef.current !== null) return;
       e.preventDefault();
-      originRef.current = { clientX: e.clientX, width: committed };
+      activePointerRef.current = e.pointerId;
+
+      // ‼️ 기준점은 이 드래그의 **지역 상수**다. ref에 두면 위 재진입 가드가
+      // 뚫렸을 때 두 드래그가 같은 기준점을 공유한다 — 가드와 이 클로저는
+      // 같은 결함을 두 겹으로 막는다.
+      const origin = { clientX: e.clientX, width: committed };
       setDragWidth(committed);
 
       // ‼️ 포인터 캡처를 쓴다 — document에 리스너를 달지 않는다. 커서가 레일
@@ -66,11 +79,16 @@ export function usePdfRailResize(): PdfRailResize {
       // 받으므로, 빠르게 끌었을 때 드래그가 끊기지 않는다. 정리도 자동이다.
       const handle = e.currentTarget;
       handle.setPointerCapture(e.pointerId);
+      // pointerdown의 preventDefault가 호환 mousedown을 막고, 포커스는 그
+      // mousedown의 기본 동작이다 — 명시적으로 주지 않으면 드래그 직후
+      // 방향키로 미세 조정할 수 없다(손잡이에 포커스가 없으므로).
+      handle.focus();
+
+      const widthAt = (clientX: number) =>
+        clampRailWidth(origin.width + (clientX - origin.clientX));
 
       const onMove = (ev: PointerEvent) => {
-        const next =
-          originRef.current.width + (ev.clientX - originRef.current.clientX);
-        setDragWidth(clampRailWidth(next));
+        setDragWidth(widthAt(ev.clientX));
       };
       const onEnd = (ev: PointerEvent) => {
         handle.removeEventListener("pointermove", onMove);
@@ -79,12 +97,13 @@ export function usePdfRailResize(): PdfRailResize {
         if (handle.hasPointerCapture(ev.pointerId)) {
           handle.releasePointerCapture(ev.pointerId);
         }
-        // ‼️ 커밋을 먼저, 그 다음에 드래그 상태를 지운다. 순서가 뒤집히면
-        // dragWidth가 null인데 committed는 아직 옛값인 한 프레임이 생겨 레일이
-        // 원래 폭으로 튀었다가 돌아온다.
-        setPdfRailWidth(
-          originRef.current.width + (ev.clientX - originRef.current.clientX),
-        );
+        activePointerRef.current = null;
+        // 순서는 무관하다 — React가 두 갱신을 한 번의 렌더로 배치한다
+        // (zustand의 set도 useSyncExternalStore를 거쳐 같은 flush에 들어간다).
+        // 처음엔 "뒤집으면 옛 폭으로 한 프레임 튄다"고 적었는데 **거짓**이었다:
+        // 리뷰가 두 순서를 실제로 돌려 pointerup 이후 렌더가 양쪽 다 1회,
+        // 값도 최종값 하나뿐임을 보였다. 읽기 순서로만 커밋을 먼저 둔다.
+        setPdfRailWidth(widthAt(ev.clientX));
         setDragWidth(null);
       };
       handle.addEventListener("pointermove", onMove);

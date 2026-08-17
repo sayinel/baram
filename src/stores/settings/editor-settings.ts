@@ -3,7 +3,7 @@ import type { StateCreator } from "zustand";
 import {
   clampRailWidth,
   PDF_RAIL_DEFAULT_WIDTH_PX,
-} from "../../components/editor/pdf/pdf-side-panel-utils";
+} from "../../utils/pdf-rail-width";
 import { clampZoomLevel } from "../../utils/zoom";
 
 export interface EditorSettingsSlice {

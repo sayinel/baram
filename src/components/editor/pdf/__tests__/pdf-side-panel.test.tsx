@@ -5,8 +5,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../../../../utils/pdf-rail-width";
 import { resolvePdfRailTab } from "../pdf-side-panel-utils";
-import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../pdf-side-panel-utils";
 import { PdfSidePanel } from "../PdfSidePanel";
 
 function setup(overrides: Partial<Parameters<typeof PdfSidePanel>[0]> = {}) {

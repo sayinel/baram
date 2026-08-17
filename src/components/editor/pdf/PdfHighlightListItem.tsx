@@ -11,10 +11,10 @@ import type { PdfPageRetention } from "./pdf-page-retention";
 import type { HighlightListItem } from "./use-pdf-highlight-list";
 import type { PDFPageProxy } from "pdfjs-dist";
 
+import { railContentWidth } from "../../../utils/pdf-rail-width";
 import { computeAreaCropLayout } from "./pdf-area-crop";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
 import { boundingPdfRect } from "./pdf-highlight-list-order";
-import { railContentWidth } from "./pdf-side-panel-utils";
 
 /** 뷰포트 밖 이만큼까지 미리 그린다 (PdfThumbnail과 같은 값). */
 const LAZY_ROOT_MARGIN = "200px";

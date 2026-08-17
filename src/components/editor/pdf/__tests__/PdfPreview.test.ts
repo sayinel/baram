@@ -6,7 +6,11 @@
 // — this pins the DOM-tree-structure half of the fix instead.
 import { describe, expect, it } from "vitest";
 
-import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../pdf-side-panel-utils";
+import {
+  fitRailWidth,
+  PDF_RAIL_DEFAULT_WIDTH_PX,
+  PDF_RAIL_MAX_WIDTH_PX,
+} from "../../../../utils/pdf-rail-width";
 import { availableFitWidth, resolvePageBoxEl } from "../PdfPreview";
 
 describe("resolvePageBoxEl", () => {
@@ -79,5 +83,39 @@ describe("availableFitWidth", () => {
   // baseScale이 0이 되고 페이지가 사라진다.
   it("reports a negative width when the rail cannot fit", () => {
     expect(availableFitWidth(W, true, W)).toBeLessThan(0);
+  });
+});
+
+// ‼️ §283 리뷰 HIGH-1의 회귀 테스트. 두 함수를 **함께** 걸어야 의미가 있다 —
+// 각자는 멀쩡한데 조합이 화면을 백지로 만들었다:
+//   저장된 420px → availableFitWidth 음수 → `avail > 0` 가드가 baseScale을 0에
+//   남김 → pagesReady=false → 페이지·툴바·레일이 전부 사라짐 → 레일 토글이
+//   없으니 앱 안에서 복구 불가. 그리고 폭이 영속되므로 재시작해도 그대로다.
+describe("§283 a persisted rail width must never blank the viewer", () => {
+  // 창 640(minWidth) − 액티비티바 48 − 사이드바 260 = 332 부근부터가 위험 구간.
+  const NARROW = [332, 300, 260, 240, 200];
+
+  it.each(NARROW)(
+    "keeps room for the page in a %ipx editor area",
+    (containerWidth) => {
+      const fitted = fitRailWidth(PDF_RAIL_MAX_WIDTH_PX, containerWidth);
+
+      expect(
+        availableFitWidth(containerWidth, true, fitted),
+        `a ${String(containerWidth)}px container blanked the viewer`,
+      ).toBeGreaterThan(0);
+    },
+  );
+
+  // 맞추지 않으면 실제로 음수가 된다는 것 — 이 테스트가 무엇을 막고 있는지
+  // 스스로 보여 준다(맞춤을 걷어내면 위 테스트가 빨개지는 이유).
+  it("would go negative without the fit", () => {
+    expect(availableFitWidth(332, true, PDF_RAIL_MAX_WIDTH_PX)).toBeLessThan(0);
+  });
+
+  it("leaves a comfortable window untouched", () => {
+    expect(fitRailWidth(PDF_RAIL_DEFAULT_WIDTH_PX, 1400)).toBe(
+      PDF_RAIL_DEFAULT_WIDTH_PX,
+    );
   });
 });

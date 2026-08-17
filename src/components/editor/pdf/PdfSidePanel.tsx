@@ -24,8 +24,8 @@ import { useTranslation } from "../../../i18n/useTranslation";
 import {
   PDF_RAIL_MAX_WIDTH_PX,
   PDF_RAIL_MIN_WIDTH_PX,
-  resolvePdfRailTab,
-} from "./pdf-side-panel-utils";
+} from "../../../utils/pdf-rail-width";
+import { resolvePdfRailTab } from "./pdf-side-panel-utils";
 
 export function PdfSidePanel({
   activeTab,
@@ -99,6 +99,7 @@ export function PdfSidePanel({
       <div
         className="pdf-side-panel-body"
         data-testid="pdf-side-panel-body"
+        id="pdf-side-panel-body"
         role="tabpanel"
       >
         {resolved === "pages" ? pagesContent : highlightsContent}
@@ -110,6 +111,7 @@ export function PdfSidePanel({
           같다). tabIndex=0이 레일에 정지점을 하나 더하지만, §282.4가 막으려던
           것은 **목록 길이에 비례해 늘어나는** 정지점이다 — 이건 하나다. */}
       <div
+        aria-controls="pdf-side-panel-body"
         aria-label={t("pdfSidePanel.resize")}
         aria-orientation="vertical"
         aria-valuemax={PDF_RAIL_MAX_WIDTH_PX}

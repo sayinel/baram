@@ -5,8 +5,8 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../../../../utils/pdf-rail-width";
 import { PdfPageRetention } from "../pdf-page-retention";
-import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../pdf-side-panel-utils";
 import { PdfPageList } from "../PdfPageList";
 
 function makePages(count: number): PDFPageProxy[] {
