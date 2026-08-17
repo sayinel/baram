@@ -32,7 +32,7 @@ import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
-import { PDF_RAIL_WIDTH_PX } from "./pdf-side-panel-utils";
+import { fitRailWidth } from "../../../utils/pdf-rail-width";
 import { PdfHighlightList } from "./PdfHighlightList";
 import { PdfPage } from "./PdfPage";
 import { PdfPageList } from "./PdfPageList";
@@ -43,6 +43,7 @@ import { usePdfFind } from "./use-pdf-find";
 import { usePdfHighlightMode } from "./use-pdf-highlight-mode";
 import { usePdfHighlights } from "./use-pdf-highlights";
 import { usePdfPageRetention } from "./use-pdf-page-retention";
+import { usePdfRailResize } from "./use-pdf-rail-resize";
 import { useSettledScale } from "./use-settled-scale";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -89,10 +90,9 @@ interface PdfPreviewProps {
 export function availableFitWidth(
   scrollClientWidth: number,
   railOpen: boolean,
+  railWidth: number,
 ): number {
-  return (
-    scrollClientWidth - PAGE_GUTTER_PX * 2 - (railOpen ? PDF_RAIL_WIDTH_PX : 0)
-  );
+  return scrollClientWidth - PAGE_GUTTER_PX * 2 - (railOpen ? railWidth : 0);
 }
 
 /**
@@ -126,6 +126,8 @@ export const PdfPreview = memo(function PdfPreview({
   const [pages, setPages] = useState<PDFPageProxy[]>([]);
   const [error, setError] = useState<null | string>(null);
   const [baseScale, setBaseScale] = useState(0);
+  // §283 스크롤 컨테이너의 clientWidth — 레일 폭을 이 창에 맞추는 데 쓴다.
+  const [containerWidth, setContainerWidth] = useState(0);
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const rootPath = useFileStore((s) => s.rootPath);
   // §282 레일 상태는 UI 스토어에 산다 — 이 컴포넌트는 탭을 바꿀 때마다
@@ -171,6 +173,18 @@ export const PdfPreview = memo(function PdfPreview({
   // cleanup()을 부를 수 있다(pdf-page-retention.ts 참조).
   const retention = usePdfPageRetention(doc);
 
+  // §283 레일 폭. 두 값이 나오는 이유는 그 훅의 헤더 주석 참조 — 레이아웃은
+  // 라이브(width), 캔버스는 놓았을 때만(rasterWidth).
+  const railResize = usePdfRailResize();
+
+  // ‼️ 저장된 폭을 **이 창에 맞춘다.** 안 맞추면 넓은 창에서 끌어 둔 420px이
+  // 좁은 창 세션으로 따라와 availableFitWidth가 음수가 되고, 아래 `avail > 0`
+  // 가드가 baseScale을 0으로 남겨 pagesReady가 false가 된다 — 페이지·툴바·레일이
+  // **전부** 사라지고 레일 토글조차 없어 앱 안에서는 되돌릴 수 없다(리뷰 HIGH-1,
+  // 실측 avail = −136). 줄어든 값은 저장하지 않으므로 창을 넓히면 그대로 돌아온다.
+  const railWidth = fitRailWidth(railResize.width, containerWidth);
+  const railRasterWidth = fitRailWidth(railResize.rasterWidth, containerWidth);
+
   // Fetch all page proxies (lightweight — no rendering yet)
   useEffect(() => {
     if (!doc) return;
@@ -195,21 +209,31 @@ export const PdfPreview = memo(function PdfPreview({
   // measuring it feeds the pages' own width back into baseScale, and any
   // zoomLevel > 1 then inflates itself through the ResizeObserver forever
   // (pages wider → container wider → larger baseScale → pages wider …).
+  //
+  // ‼️ §283 옵저버는 **폭에 의존하지 않는다.** 레일 폭을 deps에 넣었더니
+  // 드래그 매 프레임(초당 60~120회)마다 disconnect → new ResizeObserver →
+  // observe가 돌았다. 레일 폭은 관찰 대상 요소의 크기와 아무 상관이 없으므로
+  // 순수한 낭비다(리뷰 MEDIUM-4). 폭은 아래 별도 effect가 반영한다.
   useEffect(() => {
     const el = containerRef.current?.parentElement;
-    const first = pages[0];
-    if (!el || !first) return;
-    const update = () => {
-      const avail = availableFitWidth(el.clientWidth, pdfRailOpen);
-      if (avail > 0) {
-        setBaseScale(avail / first.getViewport({ scale: 1 }).width);
-      }
-    };
-    update();
-    const observer = new ResizeObserver(update);
+    if (!el) return;
+    const measure = () => setContainerWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [pages, pdfRailOpen]);
+  }, []);
+
+  // 측정된 폭과 레일 폭 중 무엇이 바뀌든 배율을 다시 잡는다. 여기에는 DOM
+  // 작업이 없으므로 매 프레임 돌아도 상수 비용이다.
+  useEffect(() => {
+    const first = pages[0];
+    if (!first || containerWidth <= 0) return;
+    const avail = availableFitWidth(containerWidth, pdfRailOpen, railWidth);
+    if (avail > 0) {
+      setBaseScale(avail / first.getViewport({ scale: 1 }).width);
+    }
+  }, [containerWidth, pages, pdfRailOpen, railWidth]);
 
   // §272 스크롤 컨테이너를 호출 시점에 얻는다 — getPage/scrollToPage와 같은
   // 지연 평가 패턴(위 baseScale 측정과 동일한 요소를 재사용).
@@ -362,13 +386,13 @@ export const PdfPreview = memo(function PdfPreview({
         .join(" ")}
       ref={containerRef}
       role="document"
-      // §282 레일 폭의 단일 출처는 PDF_RAIL_WIDTH_PX다 — CSS는 이 변수로 레일의
+      // §283 레일 폭의 단일 출처는 설정의 pdfRailWidth다 — CSS는 이 변수로 레일의
       // width와 `.pdf-preview-with-rail`의 padding-left를 함께 잡는다. 여기서
       // 내려주지 않고 CSS에 숫자를 또 적으면, 위 fit-width 계산과 어긋나는 순간
       // 조용히 가로 스크롤로 나타난다.
       style={
         {
-          "--pdf-rail-width": `${String(PDF_RAIL_WIDTH_PX)}px`,
+          "--pdf-rail-width": `${String(railWidth)}px`,
         } as CSSProperties
       }
     >
@@ -452,6 +476,7 @@ export const PdfPreview = memo(function PdfPreview({
               onPurgeHighlight={onPurgeHighlight}
               onRestoreHighlight={onRestoreHighlight}
               pages={pages}
+              railRasterWidth={railRasterWidth}
               retention={retention}
             />
           }
@@ -462,9 +487,12 @@ export const PdfPreview = memo(function PdfPreview({
               currentPage={currentPage}
               onSelectPage={scrollToPage}
               pages={pages}
+              railRasterWidth={railRasterWidth}
+              railWidth={railWidth}
               retention={retention}
             />
           }
+          resize={railResize}
         />
       )}
     </div>

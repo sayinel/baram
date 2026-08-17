@@ -18,8 +18,13 @@
 import type { ReactNode } from "react";
 
 import type { PdfRailTab } from "../../../stores/ui/ui";
+import type { PdfRailResize } from "./use-pdf-rail-resize";
 
 import { useTranslation } from "../../../i18n/useTranslation";
+import {
+  PDF_RAIL_MAX_WIDTH_PX,
+  PDF_RAIL_MIN_WIDTH_PX,
+} from "../../../utils/pdf-rail-width";
 import { resolvePdfRailTab } from "./pdf-side-panel-utils";
 
 export function PdfSidePanel({
@@ -28,6 +33,7 @@ export function PdfSidePanel({
   highlightsEnabled,
   onTabChange,
   pagesContent,
+  resize,
 }: {
   /** 스토어의 raw 선택값 — 표시용 해석은 resolvePdfRailTab이 한다. */
   activeTab: PdfRailTab;
@@ -38,6 +44,10 @@ export function PdfSidePanel({
   highlightsEnabled: boolean;
   onTabChange: (tab: PdfRailTab) => void;
   pagesContent?: ReactNode;
+  /** §283 폭 조절 배선. 폭 자체는 이 컴포넌트가 쓰지 않는다 — CSS 변수로
+   * `.pdf-side-panel`에 들어오고(PdfPreview가 내려준다), 여기서는 손잡이만
+   * 그린다. */
+  resize: PdfRailResize;
 }) {
   const { t } = useTranslation();
   const resolved = resolvePdfRailTab(activeTab, highlightsEnabled);
@@ -89,10 +99,36 @@ export function PdfSidePanel({
       <div
         className="pdf-side-panel-body"
         data-testid="pdf-side-panel-body"
+        id="pdf-side-panel-body"
         role="tabpanel"
       >
         {resolved === "pages" ? pagesContent : highlightsContent}
       </div>
+
+      {/* §283 폭 손잡이. separator 관례를 따른다 — 스크린 리더에 "지금 몇 px,
+          범위는 얼마"가 읽히고, 방향키로도 조절된다(포인터가 없으면 드래그
+          자체가 불가능하므로 키보드 경로가 없으면 이 기능은 존재하지 않는 것과
+          같다). tabIndex=0이 레일에 정지점을 하나 더하지만, §282.4가 막으려던
+          것은 **목록 길이에 비례해 늘어나는** 정지점이다 — 이건 하나다. */}
+      <div
+        aria-controls="pdf-side-panel-body"
+        aria-label={t("pdfSidePanel.resize")}
+        aria-orientation="vertical"
+        aria-valuemax={PDF_RAIL_MAX_WIDTH_PX}
+        aria-valuemin={PDF_RAIL_MIN_WIDTH_PX}
+        aria-valuenow={Math.round(resize.width)}
+        className={[
+          "pdf-side-panel-resizer",
+          resize.isResizing ? "resizing" : null,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        data-testid="pdf-rail-resizer"
+        onKeyDown={resize.onResizeKeyDown}
+        onPointerDown={resize.onResizeStart}
+        role="separator"
+        tabIndex={0}
+      />
     </aside>
   );
 }

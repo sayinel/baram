@@ -5,6 +5,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../../../../utils/pdf-rail-width";
 import { resolvePdfRailTab } from "../pdf-side-panel-utils";
 import { PdfSidePanel } from "../PdfSidePanel";
 
@@ -13,6 +14,13 @@ function setup(overrides: Partial<Parameters<typeof PdfSidePanel>[0]> = {}) {
     activeTab: "pages" as PdfRailTab,
     highlightsEnabled: true,
     onTabChange: vi.fn(),
+    resize: {
+      isResizing: false,
+      onResizeKeyDown: vi.fn(),
+      onResizeStart: vi.fn(),
+      rasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
+      width: PDF_RAIL_DEFAULT_WIDTH_PX,
+    },
     ...overrides,
   };
   render(<PdfSidePanel {...props} />);
@@ -97,5 +105,65 @@ describe("PdfSidePanel", () => {
     });
     expect(screen.getByText("page list")).toBeInTheDocument();
     expect(screen.queryByText("highlight list")).not.toBeInTheDocument();
+  });
+});
+
+// §283 폭 손잡이. 이 요소가 없으면 마우스 사용자에게 조절 수단 자체가 없고,
+// role/aria가 빠지면 키보드 사용자에게 "지금 몇 px인지"가 안 읽힌다.
+describe("§283 width handle", () => {
+  it("renders a separator with the current width and its range", () => {
+    setup();
+    const handle = screen.getByTestId("pdf-rail-resizer");
+
+    expect(handle).toHaveAttribute("role", "separator");
+    expect(handle).toHaveAttribute("aria-orientation", "vertical");
+    expect(handle).toHaveAttribute(
+      "aria-valuenow",
+      String(PDF_RAIL_DEFAULT_WIDTH_PX),
+    );
+    expect(handle).toHaveAttribute("aria-valuemin");
+    expect(handle).toHaveAttribute("aria-valuemax");
+  });
+
+  // ‼️ 드래그가 유일한 경로면 포인터가 없는 사용자에게는 이 기능이 없는 것과
+  // 같다. 정지점을 하나 더하는 대가는 §282.4가 막으려던 "목록 길이에 비례해
+  // 늘어나는" 것과 다르다 — 이건 하나다.
+  it("is reachable by keyboard", () => {
+    setup();
+    expect(screen.getByTestId("pdf-rail-resizer")).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+  });
+
+  it("reports the live width while a drag is in flight", () => {
+    setup({
+      resize: {
+        isResizing: true,
+        onResizeKeyDown: vi.fn(),
+        onResizeStart: vi.fn(),
+        rasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
+        width: 321,
+      },
+    });
+
+    expect(screen.getByTestId("pdf-rail-resizer")).toHaveAttribute(
+      "aria-valuenow",
+      "321",
+    );
+  });
+
+  it("marks itself while resizing so the handle stays visible", () => {
+    setup({
+      resize: {
+        isResizing: true,
+        onResizeKeyDown: vi.fn(),
+        onResizeStart: vi.fn(),
+        rasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
+        width: PDF_RAIL_DEFAULT_WIDTH_PX,
+      },
+    });
+
+    expect(screen.getByTestId("pdf-rail-resizer")).toHaveClass("resizing");
   });
 });

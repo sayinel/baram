@@ -1,10 +1,11 @@
 // §282.1 페이지 목록 — 현재 페이지 표시와 클릭 이동.
 import type { PDFPageProxy } from "pdfjs-dist";
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../../../../utils/pdf-rail-width";
 import { PdfPageRetention } from "../pdf-page-retention";
 import { PdfPageList } from "../PdfPageList";
 
@@ -32,6 +33,8 @@ function setup(overrides: Partial<Parameters<typeof PdfPageList>[0]> = {}) {
     currentPage: 1,
     onSelectPage: vi.fn(),
     pages: makePages(5),
+    railRasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
+    railWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
     retention,
     ...overrides,
   };
@@ -51,6 +54,36 @@ beforeEach(() => {
 beforeEach(() => {
   // jsdom에는 scrollIntoView가 없다 — 현재 페이지 추적이 이것을 부른다.
   Element.prototype.scrollIntoView = vi.fn();
+});
+
+// §283 목록이 **어느 폭을 어느 쪽에** 넘기는지. 두 prop에 같은 값을 주는
+// 픽스처로는 이것을 고정할 수 없다 — 뮤테이션 테스트가 그 구멍으로 살아남았다
+// (renderWidth에 라이브 폭을 넘겨도 전부 초록이었다). 실제 증상은 드래그하는
+// 내내 썸네일이 지워졌다 다시 그려지는 것이다.
+describe("§283 rail width routing", () => {
+  function observers() {
+    return (
+      globalThis as unknown as {
+        MockIntersectionObserver: {
+          instances: { triggerIntersect(v: boolean): void }[];
+        };
+      }
+    ).MockIntersectionObserver.instances;
+  }
+
+  it("sizes the frame from the live width and the canvas from the raster width", () => {
+    // 두 값을 **다르게** 준다. 같으면 어느 쪽이 어디로 갔는지 알 수 없다.
+    setup({ pages: makePages(1), railRasterWidth: 200, railWidth: 300 });
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+
+    const frame = document.querySelector<HTMLElement>(".pdf-thumbnail-frame");
+    const canvas = document.querySelector<HTMLCanvasElement>("canvas");
+    // railContentWidth = 폭 − 50 → 라이브 250, 래스터 150.
+    expect(frame?.style.width).toBe("250px");
+    expect(canvas?.width).toBe(150);
+  });
 });
 
 describe("PdfPageList", () => {
@@ -88,6 +121,8 @@ describe("PdfPageList", () => {
         currentPage={9}
         onSelectPage={vi.fn()}
         pages={makePages(12)}
+        railRasterWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
+        railWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
         retention={retention}
       />,
     );
@@ -113,6 +148,8 @@ describe("PdfPageList", () => {
         currentPage={1}
         onSelectPage={onSelectPage}
         pages={pages}
+        railRasterWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
+        railWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
         retention={retention}
       />,
     );
@@ -125,6 +162,8 @@ describe("PdfPageList", () => {
         currentPage={1}
         onSelectPage={onSelectPage}
         pages={pages}
+        railRasterWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
+        railWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
         retention={retention}
       />,
     );
@@ -226,6 +265,8 @@ describe("PdfPageList", () => {
         currentPage={2}
         onSelectPage={vi.fn()}
         pages={pages}
+        railRasterWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
+        railWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
         retention={retention}
       />,
     );

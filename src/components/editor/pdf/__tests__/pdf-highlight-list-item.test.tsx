@@ -5,6 +5,7 @@ import type { PDFPageProxy } from "pdfjs-dist";
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PDF_RAIL_DEFAULT_WIDTH_PX } from "../../../../utils/pdf-rail-width";
 import { PdfPageRetention } from "../pdf-page-retention";
 import { PdfHighlightListItem } from "../PdfHighlightListItem";
 
@@ -62,6 +63,7 @@ function setup(
     onSelect: vi.fn(),
     page: makePage(),
     pageLabel: "p. 1",
+    railRasterWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
     retention,
     tabIndex: 0,
     ...overrides,
@@ -163,6 +165,7 @@ describe("PdfHighlightListItem", () => {
         onSelect={vi.fn()}
         page={page}
         pageLabel="p. 1"
+        railRasterWidth={PDF_RAIL_DEFAULT_WIDTH_PX}
         retention={retention}
         tabIndex={0}
       />,

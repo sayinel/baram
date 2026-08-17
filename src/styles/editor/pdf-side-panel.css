@@ -7,8 +7,10 @@
    같은 트릭을 쓴다(pdf.css) — 둘 중 하나에 `position: relative`를 붙이면
    레일과 툴바가 함께 페이지를 따라 스크롤해 버린다.
 
-   폭은 PdfSidePanel.tsx의 PDF_RAIL_WIDTH_PX가 유일한 출처다. 여기서 숫자를
-   다시 적으면 PdfPreview의 fit-width 계산과 어긋나 조용히 가로 스크롤이 된다. */
+   폭은 설정의 `pdfRailWidth`가 유일한 출처다(§283 — 그 전에는 상수였다).
+   PdfPreview가 `--pdf-rail-width`로 내려주고 fit-width 계산도 같은 값을 뺀다.
+   여기서 숫자를 다시 적으면 둘이 어긋나 조용히 가로 스크롤이 된다.
+   폴백 200px은 그 변수가 없을 때(테스트/스토리) 쓰이는 기본값이다. */
 .pdf-side-panel {
   position: absolute;
   top: 0;
@@ -23,6 +25,53 @@
   width: var(--pdf-rail-width, 200px);
   background: var(--color-bg-subtle);
   border-right: 1px solid var(--color-border-default);
+}
+
+/* §283 폭 손잡이 — 레일의 오른쪽 테두리 위에 얹는다.
+   테두리 자체(1px)는 너무 얇아 못 잡으므로 히트 영역만 넓히고, 보이는 것은
+   호버/포커스/드래그 때만 나타난다. */
+.pdf-side-panel-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 1;
+  width: 7px;
+
+  /* ‼️ 없으면 터치 드래그가 조용히 동작하지 않는다. 터치 pointerdown 뒤
+     브라우저가 pan을 인수하며 pointercancel을 쏘아 드래그가 즉시 끝나는데,
+     pointerdown의 preventDefault로는 막지 못한다(그건 touchstart/touch-action의
+     영역이다). pointercancel 처리가 있어 상태가 굳지는 않으므로 증상이
+     "안 되네"로만 보인다. */
+  touch-action: none;
+  cursor: col-resize;
+
+  /* 드래그 중 텍스트가 선택되면 커서가 I-beam으로 바뀌고 레일 안 라벨이
+     파랗게 칠해진다. 손잡이 자체는 어차피 선택할 것이 없다. */
+  user-select: none;
+}
+
+.pdf-side-panel-resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  content: "";
+  background: transparent;
+  transition: background-color 0.12s;
+}
+
+.pdf-side-panel-resizer:hover::after,
+.pdf-side-panel-resizer:focus-visible::after,
+.pdf-side-panel-resizer.resizing::after {
+  background: var(--color-accent-default);
+}
+
+/* 키보드로 잡았을 때는 얇은 선만으로는 어디에 있는지 알기 어렵다. */
+.pdf-side-panel-resizer:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: -1px;
 }
 
 .pdf-side-panel-tabs {
@@ -174,17 +223,27 @@
   flex-direction: column;
 }
 
+/* ‼️ wrap이 필요하다. 두 버튼은 `flex: 1`이지만 flex 아이템의 기본
+   `min-width: auto` 때문에 min-content 아래로는 줄지 않는다 — 좁은 레일에서
+   줄바꿈 없이 **넘친다**(그리고 `.pdf-side-panel-body`의 overflow-y:auto가
+   overflow-x를 auto로 계산해 가로 스크롤바가 생긴다). 영문
+   "Delete permanently"가 임계값이고, 한국어("완전 삭제")는 짧아서 개발 중에는
+   안 보였다. 하한을 180으로 올린 것과 **둘 다** 필요하다: 폭은 번역 길이를
+   모르고, 번역은 하한을 모른다. */
 .pdf-highlight-row-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 0 6px 6px;
 }
 
 /* 밑줄 링크가 아니라 버튼으로 그린다. 둘 다 파괴적이거나 되돌리는 동작이라
    "누르는 것"으로 읽혀야 하고, 특히 완전 삭제는 실수로 지나칠 자리가 아니다.
-   레일이 좁으므로(PDF_RAIL_CONTENT_WIDTH_PX) 둘이 폭을 반씩 나눠 갖는다. */
+   레일이 좁으므로(railContentWidth) 둘이 폭을 반씩 나눠 갖고, 안 들어가면
+   위 wrap 규칙으로 줄바꿈한다. */
 .pdf-highlight-row-action {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 3px 6px;
   font-size: 0.6875rem;
   color: var(--color-text-secondary);

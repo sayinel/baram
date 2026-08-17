@@ -11,10 +11,10 @@ import type { PdfPageRetention } from "./pdf-page-retention";
 import type { HighlightListItem } from "./use-pdf-highlight-list";
 import type { PDFPageProxy } from "pdfjs-dist";
 
+import { railContentWidth } from "../../../utils/pdf-rail-width";
 import { computeAreaCropLayout } from "./pdf-area-crop";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
 import { boundingPdfRect } from "./pdf-highlight-list-order";
-import { PDF_RAIL_CONTENT_WIDTH_PX } from "./pdf-side-panel-utils";
 
 /** 뷰포트 밖 이만큼까지 미리 그린다 (PdfThumbnail과 같은 값). */
 const LAZY_ROOT_MARGIN = "200px";
@@ -29,6 +29,7 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   onSelect,
   page,
   pageLabel,
+  railRasterWidth,
   retention,
   tabIndex,
 }: {
@@ -44,6 +45,10 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   page: null | PDFPageProxy;
   /** 이미 번역된 페이지 라벨 — 이 컴포넌트는 i18n을 모른다(목록이 넘겨준다). */
   pageLabel: string;
+  /** §283 크롭을 그릴 때 쓸 레일 폭 — 드래그를 **놓았을 때만** 바뀐다.
+   * 라이브 폭을 쓰면 드래그 픽셀마다 computeAreaCropLayout이 새 객체를 내고
+   * 아래 렌더 effect가 취소·재시작을 반복한다(그 effect의 memo 주석 참조). */
+  railRasterWidth: number;
   /** §282.3 페이지 렌더 캐시 수명 레지스트리 — 본문·썸네일과 같은 인스턴스. */
   retention: PdfPageRetention;
   /** §282.4 roving tabindex — 페이지 목록과 같은 이유(그쪽 주석 참조). */
@@ -68,7 +73,7 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
     if (!bounds) return null;
     return computeAreaCropLayout({
       dpr: window.devicePixelRatio,
-      maxCssWidth: PDF_RAIL_CONTENT_WIDTH_PX,
+      maxCssWidth: railContentWidth(railRasterWidth),
       pageLocalAtScale1: pdfRectToPageLocal(
         bounds,
         page.getViewport({ scale: 1 }),
@@ -78,9 +83,9 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
       // 정확히는 "표시 폭과 같다"가 아니라 **상한**이다: 이보다 좁은 크롭은
       // cssWidth가 더 작으므로 여전히 조금 과하게 그린다(리뷰 M6). 그 오차는
       // 좁은 크롭에서만 생기고 절대 크기가 작아 지금은 받아들인다.
-      renderTargetCssWidth: PDF_RAIL_CONTENT_WIDTH_PX,
+      renderTargetCssWidth: railContentWidth(railRasterWidth),
     });
-  }, [highlight, isArea, page]);
+  }, [highlight, isArea, page, railRasterWidth]);
 
   useEffect(() => {
     const el = holderRef.current;

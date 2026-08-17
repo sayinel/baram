@@ -46,13 +46,14 @@ function setup(overrides: Partial<Parameters<typeof PdfThumbnail>[0]> = {}) {
     label: "Page 1",
     onSelect: vi.fn(),
     page: makePage(),
+    renderWidth: 150,
     retention,
     tabIndex: 0,
     width: 150,
     ...overrides,
   };
-  render(<PdfThumbnail {...props} />);
-  return props;
+  const view = render(<PdfThumbnail {...props} />);
+  return { ...props, view };
 }
 
 // §282.3 렌더 캐시 보관 레지스트리 — 테스트마다 새로 만든다. **한 테스트 안에서는
@@ -121,6 +122,59 @@ describe("PdfThumbnail", () => {
     setup();
     const frame = document.querySelector<HTMLElement>(".pdf-thumbnail-frame");
     expect(frame?.style.height).toBe("194px");
+  });
+
+  // §283 표시 폭과 래스터 폭이 갈린다 — PdfPage의 scale/renderScale과 같은
+  // 계약이다. 드래그 중에는 width만 움직이고 renderWidth는 멎어 있어야 한다:
+  // 렌더 effect가 `canvas.width =` 대입으로 캔버스를 **지우고** 시작하므로,
+  // 라이브 폭을 그대로 쓰면 드래그하는 내내 썸네일이 비어 보인다.
+  describe("§283 display width vs raster width", () => {
+    it("sizes the frame from the live width", () => {
+      setup({ renderWidth: 150, width: 300 });
+      const frame = document.querySelector<HTMLElement>(".pdf-thumbnail-frame");
+      // 792/612 × 300 ≈ 388 — 표시 크기는 즉시 커져야 한다.
+      expect(frame?.style.width).toBe("300px");
+      expect(frame?.style.height).toBe("388px");
+    });
+
+    it("rasters at renderWidth, not at the live width", () => {
+      vi.stubGlobal("devicePixelRatio", 1);
+      setup({ renderWidth: 150, width: 300 });
+      act(() => {
+        observers()[0].triggerIntersect(true);
+      });
+      const canvas = document.querySelector<HTMLCanvasElement>("canvas");
+      // 라이브 폭을 따랐다면 300이다. 캔버스는 아직 옛 해상도여야 한다.
+      expect(canvas?.width).toBe(150);
+    });
+
+    // ‼️ 드래그 중(width만 변함)에는 다시 그리지 않고, 놓았을 때
+    // (renderWidth가 따라옴) 비로소 다시 그린다. 이 두 단정이 함께 있어야
+    // "renderWidth를 받기는 하지만 deps는 여전히 width" 같은 배선을 잡는다.
+    it("does not re-render while only the live width moves", () => {
+      const { view, ...props } = setup({ renderWidth: 150, width: 150 });
+      act(() => {
+        observers()[0].triggerIntersect(true);
+      });
+      expect(renderCalls).toHaveBeenCalledTimes(1);
+
+      view.rerender(<PdfThumbnail {...props} renderWidth={150} width={220} />);
+
+      expect(renderCalls).toHaveBeenCalledTimes(1);
+      expect(cancelCalls).not.toHaveBeenCalled();
+    });
+
+    it("re-renders once the raster width catches up", () => {
+      const { view, ...props } = setup({ renderWidth: 150, width: 150 });
+      act(() => {
+        observers()[0].triggerIntersect(true);
+      });
+      expect(renderCalls).toHaveBeenCalledTimes(1);
+
+      view.rerender(<PdfThumbnail {...props} renderWidth={220} width={220} />);
+
+      expect(renderCalls).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("clamps the backing resolution at 2x on higher-density screens", () => {
