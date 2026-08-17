@@ -148,6 +148,22 @@ describe("PdfPageRetention", () => {
     expect(r.trackedCount).toBe(0);
   });
 
+  // 버려진 레지스트리가 새 페이지를 받아 들면 그 페이지는 아무도 정리하지 않는다.
+  // 지금은 React의 effect 순서 덕에 이 경로를 타는 호출부가 없지만, 그 순서는 이
+  // 클래스 바깥에 있고 어디에도 적혀 있지 않다 — 스스로 지키게 하고 그것을 고정한다.
+  it("takes nothing new once it has been disposed", () => {
+    const r = new PdfPageRetention(0);
+    const page = fakePage(1);
+    r.dispose();
+
+    const release = r.retain(asProxy(page));
+    expect(r.trackedCount).toBe(0);
+
+    // 릴리스는 여전히 부를 수 있어야 한다 — 호출부(effect cleanup)는 조건 없이 부른다.
+    expect(() => release()).not.toThrow();
+    expect(page.cleanup).not.toHaveBeenCalled();
+  });
+
   it("bounds what it tracks so a long scroll cannot grow the registry", () => {
     const r = new PdfPageRetention(3);
     for (let i = 1; i <= 300; i++) touch(r, fakePage(i));

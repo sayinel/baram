@@ -81,13 +81,21 @@ interface Entry {
  * 바뀐 뒤에도 같은 맵을 쓰면 이미 파기된 프록시를 붙들고 있게 된다.
  */
 export class PdfPageRetention {
-  /** 테스트 전용 — 현재 추적 중인 페이지 수(붙잡힌 것 + 놓였지만 아직 살아 있는 것). */
+  /**
+   * 현재 추적 중인 페이지 수(붙잡힌 것 + 놓였지만 아직 살아 있는 것).
+   *
+   * @internal 테스트가 축출 정책을 관찰하기 위한 창이다. 제품 코드에서 읽지 말 것 —
+   * 이 값으로 분기하면 렌더가 캐시 정책에 의존하게 되고, 그 순간 "캐시는 성능
+   * 최적화일 뿐"이라는 이 클래스의 전제가 깨진다.
+   */
   get trackedCount(): number {
     return this.#entries.size;
   }
 
   /** 단조 증가 카운터 — LRU 기준. pdf-doc-cache.ts와 같은 이유로 Date.now()가 아니다. */
   #clock = 0;
+
+  #disposed = false;
 
   readonly #entries = new Map<PDFPageProxy, Entry>();
 
@@ -107,6 +115,7 @@ export class PdfPageRetention {
    * (pdf.mjs:22206) — 안전한 no-op이다.
    */
   dispose(): void {
+    this.#disposed = true;
     for (const page of this.#entries.keys()) page.cleanup();
     this.#entries.clear();
   }
@@ -118,6 +127,15 @@ export class PdfPageRetention {
    * 파일 맨 위 래치 설명 참조.
    */
   retain(page: PDFPageProxy): () => void {
+    // 버려진 레지스트리에는 아무것도 담지 않는다. 실제로 이 경로를 타는 호출부는
+    // 없다 — React가 부모의 dispose effect보다 자식의 effect cleanup을 먼저 돌리고,
+    // 자식이 다시 잡을 때는 이미 **새** 인스턴스를 prop으로 받은 뒤다. 그렇더라도
+    // 그 안전이 이 클래스 바깥의 effect 실행 순서에 기대고 있다는 것이 문제라
+    // (그 순서는 어디에도 적혀 있지 않고 리팩터로 조용히 바뀐다) 스스로 지킨다.
+    // 담지 않으면 그 페이지는 문서 파기와 함께 정리된다 — dispose는 문서가
+    // 사라질 때만 불리므로 잃을 것이 없다.
+    if (this.#disposed) return () => undefined;
+
     // ‼️ 여기서 lastUsed를 찍지 않는다. 그 값은 `refCount === 0`인 항목에서만
     // 읽히는데(축출 후보 고르기), refCount가 0이 되는 경로는 릴리스뿐이고
     // 릴리스가 매번 lastUsed를 덮어쓴다 — 즉 잡을 때 찍은 값은 **읽히기 전에
@@ -148,9 +166,17 @@ export class PdfPageRetention {
   /**
    * 놓인 페이지가 상한을 넘으면 가장 오래 전에 놓인 것부터 비운다.
    *
-   * 스캔이 O(n)인 것은 의도적이다: n은 "붙잡힌 수 + 상한"으로 묶여 있고(축출된
-   * 항목은 맵에서 사라진다) 실제로는 30 안팎이라, 놓을 때마다 도는 비용이
-   * 별도의 정렬 구조를 유지하는 복잡도보다 싸다.
+   * 스캔이 O(n)인 것은 의도적이다. n은 "붙잡힌 수 + 상한"이고(축출된 항목은 맵에서
+   * 사라진다), 릴리스는 반환 전에 항상 상한을 회복시키므로 호출당 전체 순회는
+   * 두 번을 넘지 않는다 — 릴리스가 몰려도 선형이지 제곱이 아니다.
+   *
+   * ‼️ 다만 "n이 30 안팎"은 **이 파일이 강제하는 성질이 아니다.** 세 소비자가 각자
+   * IntersectionObserver로 보이는 동안에만 retain하기 때문에 그렇게 되는 것이고
+   * (PdfPage 800px · PdfThumbnail 200px · PdfHighlightListItem 200px), 그중 하나라도
+   * 가시성 게이트를 없애면 n이 문서 길이만큼 커진다. 그래도 **동작은 옳다** —
+   * 붙잡힌 페이지는 어차피 축출 대상이 아니므로 정확성이 아니라 스캔 비용만
+   * 나빠진다. 1,000페이지를 전부 붙잡아도 릴리스당 1,000칸 순회라 실질적인
+   * 문제는 아니지만, 그때는 이 주석이 틀린 근거를 대고 있게 되므로 여기 적어 둔다.
    */
   #evictReleasedOverflow(): void {
     for (;;) {
