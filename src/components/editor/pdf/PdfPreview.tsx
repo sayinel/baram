@@ -42,6 +42,7 @@ import { usePdfAreaHighlight } from "./use-pdf-area-highlight";
 import { usePdfFind } from "./use-pdf-find";
 import { usePdfHighlightMode } from "./use-pdf-highlight-mode";
 import { usePdfHighlights } from "./use-pdf-highlights";
+import { usePdfPageRetention } from "./use-pdf-page-retention";
 import { useSettledScale } from "./use-settled-scale";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -164,6 +165,11 @@ export const PdfPreview = memo(function PdfPreview({
       void task.destroy();
     };
   }, [filePath, refreshKey]);
+
+  // §282.3 페이지 렌더 캐시의 수명을 쥐는 레지스트리 — 본문 페이지·썸네일·
+  // 하이라이트 크롭이 **같은 프록시**를 그리므로, 셋이 모두 놓았을 때만
+  // cleanup()을 부를 수 있다(pdf-page-retention.ts 참조).
+  const retention = usePdfPageRetention(doc);
 
   // Fetch all page proxies (lightweight — no rendering yet)
   useEffect(() => {
@@ -398,6 +404,7 @@ export const PdfPreview = memo(function PdfPreview({
               }
               popup={popupPage === page.pageNumber ? popupProps : null}
               renderScale={renderScale}
+              retention={retention}
               scale={scale}
             />
           </div>
@@ -441,6 +448,7 @@ export const PdfPreview = memo(function PdfPreview({
               flashHighlightId={flashHighlightId}
               highlights={allHighlights}
               pages={pages}
+              retention={retention}
             />
           }
           highlightsEnabled={highlightsEnabled}
@@ -450,6 +458,7 @@ export const PdfPreview = memo(function PdfPreview({
               currentPage={currentPage}
               onSelectPage={scrollToPage}
               pages={pages}
+              retention={retention}
             />
           }
         />

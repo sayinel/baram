@@ -9,6 +9,7 @@
 import { useMemo, useRef } from "react";
 
 import type { StoredHighlight } from "./pdf-highlight-sidecar";
+import type { PdfPageRetention } from "./pdf-page-retention";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { useTranslation } from "../../../i18n/useTranslation";
@@ -23,12 +24,15 @@ export function PdfHighlightList({
   flashHighlightId,
   highlights,
   pages,
+  retention,
 }: {
   absCompanionPath: null | string;
   /** 방금 점프한 하이라이트 — 본문과 같은 항목을 목록에서도 짚어 준다. */
   flashHighlightId: null | string;
   highlights: StoredHighlight[];
   pages: PDFPageProxy[];
+  /** §282.3 본문 페이지와 공유하는 렌더 캐시 레지스트리 — 그대로 항목에 넘긴다. */
+  retention: PdfPageRetention;
 }) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -82,6 +86,7 @@ export function PdfHighlightList({
           pageLabel={t("pdfSidePanel.pageLabel", {
             page: String(item.highlight.page),
           })}
+          retention={retention}
           tabIndex={item.highlight.id === rovingKey ? 0 : -1}
         />
       ))}

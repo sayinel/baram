@@ -7,6 +7,7 @@ import type { MatchPosition } from "./pdf-find";
 import type { PdfRect, ViewportLike } from "./pdf-highlight-geom";
 import type { LocalRect } from "./pdf-highlight-path";
 import type { StoredHighlight } from "./pdf-highlight-sidecar";
+import type { PdfPageRetention } from "./pdf-page-retention";
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
 import type { PDFPageProxy } from "pdfjs-dist";
 
@@ -35,6 +36,7 @@ export function PdfPage({
   pendingAreaRects,
   popup,
   renderScale,
+  retention,
   scale,
 }: {
   /** §276.3 영역 하이라이트 모드가 켜져 있거나 Alt가 눌려 있는 동안 true —
@@ -71,6 +73,9 @@ export function PdfPage({
   /** §280 캔버스를 래스터할 배율 — 줌 제스처가 멎은 뒤에야 `scale`을 따라온다
    * (use-settled-scale.ts). 레이아웃/텍스트/하이라이트는 `scale`을 쓴다. */
   renderScale: number;
+  /** §282.3 페이지 렌더 캐시 수명 레지스트리 — 이 페이지를 그리는 동안
+   * 붙잡아 다른 표면(썸네일·크롭)이 놓더라도 캐시가 유지되게 한다. */
+  retention: PdfPageRetention;
   scale: number;
 }) {
   const holderRef = useRef<HTMLDivElement | null>(null);
@@ -131,13 +136,22 @@ export function PdfPage({
   // 따르고, `.pdf-page canvas { width:100%; height:100% }`가 마지막 래스터를
   // 그 크기로 늘려 그린다(덜 선명할 뿐이다).
   useEffect(() => {
-    if (!visible) return;
+    // ‼️ `!visible` 조기 반환을 두지 않는다 — 안 보이면 아래 JSX가 캔버스를
+    // 언마운트해 canvasRef.current가 null이므로 다음 줄에서 어차피 멎는다. 같은
+    // 성질을 두 곳에서 지키면 어느 쪽이 진짜인지 알 수 없고, 실제로 PdfThumbnail
+    // 에서는 그 중복 가드에 뮤테이션이 살아남았다(그쪽 주석 참조). visible은
+    // 조건이 아니라 **deps로만** 남긴다.
     const canvas = canvasRef.current;
     if (!canvas) return;
     const renderViewport = page.getViewport({ scale: renderScale });
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.floor(renderViewport.width * dpr);
     canvas.height = Math.floor(renderViewport.height * dpr);
+    // §282.3 그리는 동안 이 페이지의 렌더 캐시를 붙잡는다. 줌이 바뀌면 renderScale이
+    // deps에 있어 놓았다가 즉시 다시 잡는다 — 그 틈에 보이는 페이지들이 서로를
+    // 축출하지 않는 것은 레지스트리가 축출 판정을 마이크로태스크로 미루기 때문이다
+    // (pdf-page-retention.ts의 #scheduleEviction). 여기서 지킬 것은 순서뿐이다.
+    const release = retention.retain(page);
     const renderTask = page.render({
       canvas,
       transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
@@ -146,8 +160,15 @@ export function PdfPage({
     renderTask.promise.catch(() => {
       // 줌 변경/스크롤 이탈로 취소됨 — 정상 경로
     });
-    return () => renderTask.cancel();
-  }, [visible, page, renderScale]);
+    return () => {
+      // ‼️ 순서가 계약이다 — cancel()이 renderTasks를 **동기로** 비우므로
+      // 그 뒤의 cleanup()은 즉시 성공하고 pdfjs의 pendingCleanup 래치를
+      // 남기지 않는다. 뒤집으면 래치가 남아, 나중에 끝나는 렌더가 방금 만든
+      // 캐시를 대신 날린다(pdf-page-retention.ts 맨 위 참조).
+      renderTask.cancel();
+      release();
+    };
+  }, [visible, page, renderScale, retention]);
 
   // §281.1 텍스트 레이어는 (visible, page)마다 **한 번만** 만든다 — scale은
   // deps에 없다.

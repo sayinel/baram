@@ -5,6 +5,7 @@ import type { PDFPageProxy } from "pdfjs-dist";
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { PdfPageRetention } from "../pdf-page-retention";
 import { PdfHighlightListItem } from "../PdfHighlightListItem";
 
 interface MockIO {
@@ -35,6 +36,7 @@ function areaHighlight(): StoredHighlight {
 
 function makePage(): PDFPageProxy {
   return {
+    cleanup: vi.fn(() => true),
     getViewport: ({ scale }: { scale: number }) => ({
       convertToPdfPoint: (x: number, y: number) => [x, y],
       convertToViewportPoint: (x: number, y: number) => [x, y],
@@ -59,6 +61,7 @@ function setup(
     onSelect: vi.fn(),
     page: makePage(),
     pageLabel: "p. 1",
+    retention,
     tabIndex: 0,
     ...overrides,
   };
@@ -76,7 +79,14 @@ function textHighlight(): StoredHighlight {
   };
 }
 
+// §282.3 렌더 캐시 보관 레지스트리 — 테스트마다 새로 만든다. **한 테스트 안에서는
+// 같은 인스턴스**여야 한다: 아래 memo 테스트가 리렌더 사이에 prop 신원이
+// 유지된다는 전제 위에 서 있어서, 렌더할 때마다 새로 만들면 그 테스트가
+// 아무것도 고정하지 못한 채 통과한다.
+let retention: PdfPageRetention;
+
 beforeEach(() => {
+  retention = new PdfPageRetention();
   observers().length = 0;
   renderCalls.mockClear();
   cancelCalls.mockClear();
@@ -151,6 +161,7 @@ describe("PdfHighlightListItem", () => {
         onSelect={vi.fn()}
         page={page}
         pageLabel="p. 1"
+        retention={retention}
         tabIndex={0}
       />,
     );
@@ -195,5 +206,83 @@ describe("PdfHighlightListItem", () => {
     const props = setup();
     screen.getByRole("button").click();
     expect(props.onSelect).toHaveBeenCalledWith("area-1");
+  });
+});
+
+// §282.3 렌더 캐시 보관 배선 — 영역 크롭도 같은 프록시를 그린다.
+describe("§282.3 PdfHighlightListItem render-cache retention", () => {
+  /** 축출은 마이크로태스크로 미뤄진다 — 단정 전에 흘려준다. */
+  async function settle(): Promise<void> {
+    await new Promise<void>((resolve) => {
+      queueMicrotask(resolve);
+    });
+  }
+
+  it("frees the page's render cache when the row scrolls out of view", async () => {
+    const page = makePage();
+    setup({ page, retention: new PdfPageRetention(0) });
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    await settle();
+    expect(page.cleanup).not.toHaveBeenCalled();
+
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+    await settle();
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  // ‼️ 순서가 계약이다 — PdfPage의 같은 이름 테스트 주석 참조. `cleanup()` 시점으로는
+  // 볼 수 없다(축출이 마이크로태스크로 밀려 어느 쪽이든 항상 나중이라 단정이 언제나
+  // 참이 된다). **release 자체**의 호출 시점을 봐야 한다.
+  it("cancels the in-flight crop render before releasing the cache", () => {
+    const page = makePage();
+    const retention = new PdfPageRetention(0);
+    const releaseCalled = vi.fn();
+    const realRetain = retention.retain.bind(retention);
+    vi.spyOn(retention, "retain").mockImplementation((p) => {
+      const release = realRetain(p);
+      return () => {
+        releaseCalled();
+        release();
+      };
+    });
+    setup({ page, retention });
+
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+
+    expect(cancelCalls).toHaveBeenCalled();
+    expect(releaseCalled).toHaveBeenCalled();
+    expect(cancelCalls.mock.invocationCallOrder[0]).toBeLessThan(
+      releaseCalled.mock.invocationCallOrder[0],
+    );
+  });
+
+  // 본문이 같은 페이지를 띄워 두고 있으면 크롭이 스크롤로 사라져도 비우지 않는다.
+  it("leaves the cache alone while the main view still holds the page", async () => {
+    const page = makePage();
+    const retention = new PdfPageRetention(0);
+    const releaseMainView = retention.retain(page);
+    setup({ page, retention });
+
+    act(() => {
+      observers()[0].triggerIntersect(true);
+    });
+    act(() => {
+      observers()[0].triggerIntersect(false);
+    });
+    await settle();
+    expect(page.cleanup).not.toHaveBeenCalled();
+
+    releaseMainView();
+    await settle();
+    expect(page.cleanup).toHaveBeenCalledTimes(1);
   });
 });

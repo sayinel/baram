@@ -6,14 +6,15 @@
 // ‼️ 본문 페이지가 이미 렌더 중인 PDFPageProxy를 **같은 프록시 그대로** 다시
 // 렌더한다. pdfjs 소스로 확인한 사실이다(legacy/build/pdf.mjs):
 //   - `intentState.renderTasks`는 Set이다(22089) — 페이지당 동시 렌더가 허용된다
-//   - 유일한 배타 가드(23243)는 페이지가 아니라 **캔버스 엘리먼트**를 키로 잡는
-//     static Set이다. 캔버스가 다르면 충돌하지 않는다
+//   - 유일한 배타 가드(23244)는 페이지가 아니라 **캔버스 엘리먼트**를 키로 잡는
+//     static WeakSet(23186 선언)이다. 캔버스가 다르면 충돌하지 않는다
 //   - 같은 intent라 operator list를 공유한다 — 썸네일이 페이지를 다시 파싱하지
 //     않는다는 뜻이라 오히려 이득이다
 // 그래서 두 번째 문서 핸들(pdf-doc-cache.ts)을 열 이유가 없다. 그쪽은 **다른**
 // PDF를 참조에서 그릴 때의 경로이고, 여기는 이미 열려 있는 그 문서다.
 import { memo, useEffect, useRef, useState } from "react";
 
+import type { PdfPageRetention } from "./pdf-page-retention";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 /** 뷰포트(레일 본문 스크롤 포함) 밖 이만큼까지 미리 렌더한다. */
@@ -42,6 +43,7 @@ export const PdfThumbnail = memo(function PdfThumbnail({
   label,
   onSelect,
   page,
+  retention,
   tabIndex,
   width,
 }: {
@@ -51,6 +53,10 @@ export const PdfThumbnail = memo(function PdfThumbnail({
   label: string;
   onSelect: (pageNumber: number) => void;
   page: PDFPageProxy;
+  /** §282.3 페이지 렌더 캐시 수명 레지스트리 — PdfPage와 **같은 인스턴스**를
+   * 받는다. 그래야 본문이 띄워 둔 페이지를 썸네일이 스크롤로 지나갔다는
+   * 이유로 비우지 않는다. */
+  retention: PdfPageRetention;
   /** §282.4 roving tabindex — 목록 전체가 탭 정지점 하나가 되도록 하나만 0이다. */
   tabIndex: number;
   /** 썸네일 표시 폭(CSS px). 높이는 페이지 종횡비로 정해진다. */
@@ -95,6 +101,7 @@ export const PdfThumbnail = memo(function PdfThumbnail({
     const viewport = page.getViewport({ scale });
     canvas.width = Math.floor(viewport.width * dpr);
     canvas.height = Math.floor(viewport.height * dpr);
+    const release = retention.retain(page);
     const task = page.render({
       canvas,
       transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
@@ -103,8 +110,12 @@ export const PdfThumbnail = memo(function PdfThumbnail({
     task.promise.catch(() => {
       // 스크롤 이탈/언마운트로 취소됨 — 정상 경로 (PdfPage와 같다)
     });
-    return () => task.cancel();
-  }, [visible, page, scale]);
+    return () => {
+      // ‼️ cancel() 다음에 release() — PdfPage와 같은 계약이다(그쪽 주석 참조).
+      task.cancel();
+      release();
+    };
+  }, [visible, page, scale, retention]);
 
   return (
     <button
