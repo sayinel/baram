@@ -26,6 +26,22 @@ export interface Sidecar {
 
 export interface StoredHighlight {
   color: HighlightColor;
+  /**
+   * §277.2 삭제 시각(ISO-8601). **있으면 삭제된 것**이고, 항목 자체는 남는다 —
+   * 없으면 살아 있다.
+   *
+   * 왜 지우지 않는가: 사이드카에는 좌표만 있고 원문은 동반 노트에만 있다
+   * (§273.2). 항목을 지우면 `resolveHighlightRef`가 그 자리에서 멈춰
+   * (pdf-highlight-ref-resolve.ts) 이 하이라이트를 가리키던 모든 블록 참조가
+   * 마크다운에 구워진 80자 `display`로 퇴화한다. 영역 하이라이트는 rect까지
+   * 함께 사라져 **원리상 되살릴 수 없다**. 플래그를 세우면 kind·rects·page가
+   * 남아 text와 area 참조가 둘 다 온전히 산다.
+   *
+   * ‼️ 문자열 값 자체를 읽는 곳은 없다 — 판정은 항상 isDeletedHighlight다.
+   * 시각을 담는 이유는 나중에 "N일 지난 항목 정리" 같은 정책이 생겼을 때
+   * 스키마를 다시 바꾸지 않기 위해서다.
+   */
+  deletedAt?: string;
   id: string;
   /** "area"는 2차용 자리 — 지금 잡아두면 나중에 스키마 마이그레이션이 없다. */
   kind: "area" | "text";
@@ -37,6 +53,18 @@ export interface StoredHighlight {
 /** vault 상대 PDF 경로 → 동반 노트의 vault 상대 경로. */
 export function companionPathFor(pdfRelPath: string): string {
   return `highlights/${pdfRelPath.replace(/\.pdf$/i, ".md")}`;
+}
+
+/**
+ * §277.2 이 하이라이트가 삭제되었는가.
+ *
+ * 판정을 함수 하나로 모으는 이유: 사이드카를 읽는 소비자가 여덟 곳이고
+ * 각자 **다른 답**을 원한다(오버레이는 감춰야 하고 참조 해석은 봐야 한다).
+ * `h.deletedAt` 비교를 소비자마다 손으로 쓰면 그 여덟 개가 서로 어긋나도
+ * 아무 데서도 안 걸린다.
+ */
+export function isDeletedHighlight(h: StoredHighlight): boolean {
+  return h.deletedAt !== undefined;
 }
 
 /**
@@ -72,6 +100,13 @@ export function parseSidecar(raw: string): {
   return {
     dropped: rawList.length - highlights.length,
     sidecar: {
+      // ‼️ 봉투(envelope)도 **펼쳐서** 실어 나른다. 하이라이트 배열이 map이
+      // 아니라 filter인 것과 같은 이유다: 여기서 네 필드만 열거해 새 객체를
+      // 만들면, 우리가 모르는 최상위 키를 가진 사이드카는 이 앱의 **아무 쓰기
+      // 한 번**에 그 키를 영구히 잃는다(모든 쓰기가 파일을 통째로 다시 쓴다).
+      // 라운드트립 보존이 이 프로젝트의 최우선 품질 기준이므로 항목 수준에서만
+      // 지키는 것으로는 부족하다.
+      ...obj,
       companion: obj.companion,
       highlights,
       pdf: obj.pdf,
@@ -126,6 +161,12 @@ function isStoredHighlight(v: unknown): v is StoredHighlight {
     typeof h.page === "number" &&
     h.page >= 1 &&
     HIGHLIGHT_COLORS.includes(h.color as HighlightColor) &&
+    // §277.2 없거나 비어 있지 않은 문자열. 다른 모양이면 이 항목을 버린다 —
+    // 나쁜 `page`나 나쁜 `rects`와 똑같이 다룬다. 여기서 특별히 관대해지면
+    // "삭제 여부를 알 수 없는 하이라이트"라는 세 번째 상태가 생기고, 그 상태를
+    // 오버레이·참조 해석·목록이 각자 다르게 해석하게 된다.
+    (h.deletedAt === undefined ||
+      (typeof h.deletedAt === "string" && h.deletedAt.length > 0)) &&
     Array.isArray(h.rects) &&
     h.rects.length > 0 &&
     h.rects.every(isPdfRect)

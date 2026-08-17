@@ -533,6 +533,10 @@
   "pdfHighlight.copyFailed": "Couldn't copy to the clipboard",
   "pdfHighlight.copied": "Copied to clipboard",
   "pdfHighlight.areaNoteLabel": "Area highlight (page {page})",
+  "pdfHighlight.restore": "Restore",
+  "pdfHighlight.purge": "Delete permanently",
+  "pdfHighlight.purgeConfirm": "Delete this highlight permanently? This can't be undone. Any reference to it will lose its preview. The quoted text stays in the companion note.",
+  "pdfHighlight.purgeConfirmWithRefs": "Delete this highlight permanently? {count} reference(s) point to it and will lose their preview. This can't be undone. The quoted text stays in the companion note.",
 
   "pdfToolbar.prevPage": "Previous page",
   "pdfToolbar.nextPage": "Next page",
@@ -544,6 +548,9 @@
   "pdfSidePanel.highlights": "Highlights",
   "pdfSidePanel.label": "Pages and highlights",
   "pdfSidePanel.noHighlights": "No highlights in this PDF yet",
+  "pdfSidePanel.highlightsActive": "Active",
+  "pdfSidePanel.highlightsDeleted": "Deleted",
+  "pdfSidePanel.noDeletedHighlights": "No deleted highlights",
   "pdfSidePanel.pageLabel": "p. {page}",
 
   "plugin.consent.title.install": "Install \"{name}\"?",

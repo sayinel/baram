@@ -1,8 +1,8 @@
 // §274 하이라이트 오버레이 + 선택 팝업 배선. PdfPreview가 소유한다 —
 // use-pdf-find.ts와 같은 자리, 같은 책임 분리(사이드카/DOM 상태는 여기,
 // 좌표 변환은 pdf-highlight-geom.ts, IPC 오케스트레이션은
-// pdf-highlight-actions.ts/pdf-highlight-store.ts, 팝업 액션 자체의 동작은
-// use-pdf-highlight-popup-actions.ts, "언제/무엇을 열지"는
+// pdf-highlight-actions.ts/pdf-highlight-store.ts, 쓰기 액션 자체의 동작은
+// use-pdf-highlight-write-actions.ts, "언제/무엇을 열지"는
 // use-pdf-selection-popup.ts).
 //
 // 하이라이트는 vault 안에서만 지원한다(사이드카·동반 노트가 vault 상대
@@ -14,17 +14,21 @@ import type { PdfRect, ViewportLike } from "./pdf-highlight-geom";
 import type { Sidecar, StoredHighlight } from "./pdf-highlight-sidecar";
 import type { PdfSelectionPopupProps } from "./PdfSelectionPopup";
 import type { AreaDrawnPayload } from "./use-pdf-area-highlight";
-import type { PopupState } from "./use-pdf-highlight-popup-actions";
+import type { PopupState } from "./use-pdf-highlight-write-actions";
 import type { NewSelectionPayload } from "./use-pdf-selection-popup";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { escapeBlockRefTarget } from "../../../pipeline/block-id";
 import { relativeToRoot } from "../../../utils/path-utils";
 import { hitTestTopmost } from "./pdf-highlight-hittest";
-import { companionPathFor, sidecarPathFor } from "./pdf-highlight-sidecar";
+import {
+  companionPathFor,
+  isDeletedHighlight,
+  sidecarPathFor,
+} from "./pdf-highlight-sidecar";
 import { readSidecar } from "./pdf-highlight-store";
 import { usePdfHighlightFlash } from "./use-pdf-highlight-flash";
-import { usePdfHighlightPopupActions } from "./use-pdf-highlight-popup-actions";
+import { usePdfHighlightWriteActions } from "./use-pdf-highlight-write-actions";
 import { usePdfSelectionPopup } from "./use-pdf-selection-popup";
 
 const EMPTY_HIGHLIGHTS: StoredHighlight[] = [];
@@ -56,7 +60,12 @@ export function usePdfHighlights({
   absCompanionPath: null | string;
   /** §282.2 이 PDF의 모든 하이라이트. 목록이 소비한다 — getPageHighlights는
    * 페이지별 오버레이용이라 전체를 훑으려면 N번 불러야 하고, 그 N은
-   * 여기(사이드카)에만 있는 정보다. 사이드카가 아직 없으면 빈 배열. */
+   * 여기(사이드카)에만 있는 정보다. 사이드카가 아직 없으면 빈 배열.
+   *
+   * §277.2 삭제된 것도 **그대로 들어 있다** — 목록이 활성/삭제됨 두 갈래로
+   * 나눠 보여주는 것이 아카이브의 유일한 출입구이기 때문이다. 여기서 미리
+   * 걸러 내보내면 사용자가 삭제한 것을 다시 볼 방법이 없어져, 사이드카가
+   * 아무도 못 보는 채로 무한히 자란다. */
   allHighlights: StoredHighlight[];
   /** §275.6 Set briefly after a ref click lands on this PDF — the highlight
    * to render with the flash affordance (PdfPage). */
@@ -80,6 +89,10 @@ export function usePdfHighlights({
   /** §276.3 영역 드래그가 끝났을 때(use-pdf-area-highlight.ts) 호출 —
    * onNewSelection과 정확히 같은 자리, highlightKind만 다르다. */
   onAreaHighlightDrawn: (payload: AreaDrawnPayload) => void;
+  /** §277.2 목록의 "완전 삭제" — 확인을 받은 뒤 사이드카에서 항목을 뺀다. */
+  onPurgeHighlight: (id: string) => void;
+  /** §277.2 목록의 "복원" — 삭제 표시를 걷어내 페이지에 다시 나타나게 한다. */
+  onRestoreHighlight: (id: string) => void;
   /** §276.3.2 색이 정해지기 전의 영역 초안(PDF user space). 팝업이 열려 있는
    * 동안 "무엇을 선택했는지"를 계속 보여주기 위한 것 — 텍스트 초안은 네이티브
    * 선택이 그 역할을 하므로 여기 들어오지 않는다. */
@@ -148,11 +161,43 @@ export function usePdfHighlights({
     [],
   );
 
-  const getPageHighlights = useCallback(
+  // §277.2 페이지에 **살아 있는** 하이라이트 — 오버레이의 기본이자 클릭
+  // 판정의 유일한 입력이다. 삭제된 항목은 페이지에서 사라져야 하고(그것이
+  // 사용자에게 "삭제"의 전부다), 사라진 것을 클릭할 수는 없어야 한다.
+  const getLivePageHighlights = useCallback(
     (pageNumber: number) =>
-      sidecar?.highlights.filter((h) => h.page === pageNumber) ??
-      EMPTY_HIGHLIGHTS,
+      sidecar?.highlights.filter(
+        (h) => h.page === pageNumber && !isDeletedHighlight(h),
+      ) ?? EMPTY_HIGHLIGHTS,
     [sidecar],
+  );
+
+  // §277.2 **그리기용** 목록 = 살아 있는 것 + "지금 강조 중인 삭제된 것 하나".
+  //
+  // 왜 삭제된 것을 그리기도 하는가: 삭제해도 블록 참조는 계속 살아 있고
+  // (그것이 소프트 삭제의 목적이다), 그 참조를 클릭하면 use-navigation이
+  // 이 PDF를 열어 해당 페이지로 스크롤한다. 그때 아무것도 그리지 않으면
+  // 사용자는 "엉뚱한 데로 왔다"고 읽는다 — 참조 칩은 원문/영역 크롭을
+  // 보여주는데 클릭하면 빈 페이지인 셈이다. flash가 도는 1.6초 동안만
+  // 점선으로 그 자리를 표시한다(PdfPage.tsx의 pdf-hl-path-deleted).
+  //
+  // ‼️ 클릭 판정(handlePageMouseDown)은 여전히 getLivePageHighlights를 쓴다.
+  // 삭제된 하이라이트는 보이는 동안에도 클릭 대상이 아니다 — 팝업의 "삭제"·
+  // 색 고르기가 이미 지운 것에 다시 걸리면 무슨 일이 일어나는지 설명할 수
+  // 없다. 복원과 완전 삭제는 레일의 목록에 있다.
+  const getPageHighlights = useCallback(
+    (pageNumber: number) => {
+      const live = getLivePageHighlights(pageNumber);
+      if (!flashHighlightId) return live;
+      const flashed = sidecar?.highlights.find(
+        (h) =>
+          h.id === flashHighlightId &&
+          h.page === pageNumber &&
+          isDeletedHighlight(h),
+      );
+      return flashed ? [...live, flashed] : live;
+    },
+    [flashHighlightId, getLivePageHighlights, sidecar],
   );
 
   // §274.2 하이라이트는 pointer-events:none이라 클릭은 .pdf-page의
@@ -175,7 +220,8 @@ export function usePdfHighlights({
       clientX: number,
       clientY: number,
     ): boolean => {
-      const highlights = getPageHighlights(pageNumber);
+      // §277.2 살아 있는 것만 — 위 getPageHighlights의 doc comment 참조.
+      const highlights = getLivePageHighlights(pageNumber);
       const [px, py] = viewport.convertToPdfPoint(
         clientX - pageOrigin.left,
         clientY - pageOrigin.top,
@@ -196,7 +242,7 @@ export function usePdfHighlights({
       setPopup(null);
       return false;
     },
-    [getPageHighlights],
+    [getLivePageHighlights],
   );
 
   // §274.1 새 텍스트 선택 감지 — "언제 열지"(드래그 중엔 열지 않고, mouseup/
@@ -229,17 +275,23 @@ export function usePdfHighlights({
     });
   }, []);
 
-  const { onCopyRef, onCopyText, onDelete, onPickColor } =
-    usePdfHighlightPopupActions({
-      absCompanionPath,
-      absSidecarPath,
-      pdfRelPath,
-      popup,
-      setPopup,
-      setSidecar,
-      sidecar,
-      target,
-    });
+  const {
+    onCopyRef,
+    onCopyText,
+    onDelete,
+    onPickColor,
+    onPurgeHighlight,
+    onRestoreHighlight,
+  } = usePdfHighlightWriteActions({
+    absCompanionPath,
+    absSidecarPath,
+    pdfRelPath,
+    popup,
+    setPopup,
+    setSidecar,
+    sidecar,
+    target,
+  });
 
   const popupProps: null | PdfSelectionPopupProps = popup
     ? {
@@ -275,6 +327,8 @@ export function usePdfHighlights({
     handlePageMouseDown,
     highlightsEnabled: pdfRelPath !== null,
     onAreaHighlightDrawn,
+    onPurgeHighlight,
+    onRestoreHighlight,
     pendingAreaRects,
     popupPage: popup?.pageNumber ?? null,
     popupProps,

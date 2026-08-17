@@ -80,10 +80,16 @@ export function showConfirm(message: string): Promise<boolean> {
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
+    // ‼️ §277.2 R1 Enter는 **포커스된 버튼**을 따른다. 예전에는 어디서 눌리든
+    // 무조건 확인(cleanup(true))이었는데, 이 리스너는 document에 달려 있고
+    // 아래에서 포커스를 Cancel에 준다 — 즉 화면은 "취소가 기본"이라고 말하면서
+    // Enter는 반대로 동작했다. showConfirm의 네 호출부(파일/폴더 삭제, Zettel
+    // 휴지통, 하이라이트 완전 삭제)가 전부 파괴적이고 되돌릴 수 없는 것도
+    // 있으므로, 어긋나는 쪽은 Enter다.
     const handleKeydown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        cleanup(true);
+        cleanup(document.activeElement === deleteBtn);
       }
       if (e.key === "Escape") {
         e.preventDefault();

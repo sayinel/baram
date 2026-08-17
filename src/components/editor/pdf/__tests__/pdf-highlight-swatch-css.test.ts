@@ -20,6 +20,11 @@ const css = readFileSync(
   "utf8",
 );
 
+const overlayCss = readFileSync(
+  join(process.cwd(), "src/styles/editor/pdf.css"),
+  "utf8",
+);
+
 describe("highlight swatch colours", () => {
   it.each(HIGHLIGHT_COLORS)(
     "gives %s a swatch rule with a background",
@@ -50,4 +55,95 @@ describe("highlight swatch colours", () => {
       expect(rule.exec(css)?.[1]).toContain(`--color-editor-pdf-hl-${color}`);
     },
   );
+});
+
+// §277.2 삭제된 하이라이트는 "채우지 않고 점선 윤곽만"으로 그린다. 그 판정은
+// 전부 CSS에 있다 — PdfPage는 클래스 하나를 붙일 뿐이라 jsdom 렌더 테스트는
+// 클래스가 붙었다는 것까지만 볼 수 있고, 규칙이 사라져도 초록불이다
+// (스와치가 전부 투명했던 §282.2의 그 구멍과 정확히 같은 모양이다).
+describe("§277.2 deleted-highlight outline rule", () => {
+  const rule = /\.pdf-hl-path\.pdf-hl-path-deleted\s*\{([^}]*)\}/;
+
+  it("exists and turns the fill off", () => {
+    const match = rule.exec(overlayCss);
+    expect(match, "no .pdf-hl-path.pdf-hl-path-deleted rule").not.toBeNull();
+    expect(match?.[1]).toMatch(/fill:\s*none/);
+  });
+
+  it("draws a dashed stroke instead", () => {
+    const body = rule.exec(overlayCss)?.[1] ?? "";
+    expect(body).toMatch(/stroke:/);
+    expect(body).toMatch(/stroke-dasharray:/);
+  });
+
+  // ‼️ 특이도가 요점이다. `.pdf-hl-path-yellow` 등과 같은 (0,1,0)으로 두면
+  // 이 규칙이 파일에서 아래에 있다는 사실에만 기대게 되는데, 그것은 규칙을
+  // 옮기는 순간 조용히 깨진다 — 그때 삭제된 하이라이트가 살아 있는 것과
+  // 똑같이 칠해진다.
+  // ‼️ 이 단정의 요점은 **비교의 양쪽**이다. `.pdf-hl-path.pdf-hl-path-deleted`가
+  // 파일에 있다는 것만 보면, 누군가 색 규칙을 두 클래스로 올려도 초록불인 채
+  // 성질이 깨진다("source-scan guards find *a* match, not *the* match").
+  // 그래서 색 규칙들이 여전히 **한 클래스**임을 함께 고정한다.
+  it("outranks the per-colour fill rules on specificity, not on source order", () => {
+    expect(overlayCss).toContain(".pdf-hl-path.pdf-hl-path-deleted");
+    for (const color of HIGHLIGHT_COLORS) {
+      expect(
+        overlayCss,
+        `.pdf-hl-path-${color} must stay a single-class selector`,
+      ).toMatch(new RegExp(`(^|\\n)\\.pdf-hl-path-${color}\\s*\\{`));
+    }
+  });
+});
+
+// §277.2 아카이브 줄의 흐림도 오버레이의 점선 규칙과 정확히 같은 종류의
+// 구멍이다 — jsdom은 스타일시트를 안 읽으므로 렌더 테스트는 클래스가 붙었다는
+// 것까지만 보고, 규칙이 사라져도 초록불이다. 두 표시가 다 없어지면 삭제된
+// 하이라이트가 살아 있는 것과 똑같이 보인다.
+describe("§277.2 archived row styling", () => {
+  it("dims archived rows", () => {
+    const rule = /\.pdf-highlight-item\.deleted\s*\{([^}]*)\}/;
+    const match = rule.exec(css);
+    expect(match, "no .pdf-highlight-item.deleted rule").not.toBeNull();
+    expect(match?.[1]).toMatch(/opacity:/);
+  });
+
+  // 완전히 감추면 안 된다 — 복원/완전 삭제를 고르려면 무엇인지 보여야 한다.
+  it("keeps them visible rather than hiding them", () => {
+    const body =
+      /\.pdf-highlight-item\.deleted\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    const opacity = /opacity:\s*([\d.]+)/.exec(body)?.[1];
+    expect(Number(opacity)).toBeGreaterThan(0.3);
+  });
+});
+
+// §277.2 아카이브의 행동 버튼. 여기도 jsdom이 못 보는 층이라, 규칙이 사라져도
+// 렌더 테스트는 초록이다 — 그러면 두 버튼이 스타일 없는 맨 텍스트로 남는다
+// (btn-unstyled가 배경·테두리를 지우고 시작하기 때문이다).
+describe("§277.2 archive row actions", () => {
+  const rule = /\.pdf-highlight-row-action\s*\{([^}]*)\}/;
+
+  it("draws them as buttons, not bare text", () => {
+    const body = rule.exec(css)?.[1];
+    expect(body, "no .pdf-highlight-row-action rule").toBeDefined();
+    expect(body).toMatch(/border:/);
+    expect(body).toMatch(/background:/);
+  });
+
+  it("keeps them reachable by keyboard with a visible focus ring", () => {
+    expect(css).toMatch(
+      /\.pdf-highlight-row-action:focus-visible\s*\{[^}]*outline:/,
+    );
+  });
+
+  // ‼️ 되돌릴 수 없는 쪽만 위험색이어야 한다. 둘 다 빨가면 무엇이 위험한지가
+  // 사라지고, 아무것도 안 빨가면 실수로 누를 자리가 된다.
+  it("marks only the irreversible action with the danger colour", () => {
+    const danger =
+      /\.pdf-highlight-row-action\.danger:hover\s*\{([^}]*)\}/.exec(css)?.[1];
+    expect(danger, "no danger hover rule").toBeDefined();
+    expect(danger).toContain("--color-status-danger");
+
+    // 기본 상태(위 rule)에는 위험색이 없어야 한다.
+    expect(rule.exec(css)?.[1]).not.toContain("--color-status-danger");
+  });
 });

@@ -111,11 +111,111 @@
 
 /* §282.2 하이라이트 목록 */
 
+/* §277.2 목록 프레임 — 위쪽 갈래 전환 + 아래쪽 목록. 레일 본문이 이미
+   세로 스크롤을 갖고 있으므로 여기서는 흐름만 잡는다. */
+.pdf-highlight-list-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ‼️ sticky여야 한다. 스크롤 컨테이너는 `.pdf-side-panel-body`이고 이 전환
+   컨트롤이 아카이브로 들어가는 **유일한** 입구인데, 하이라이트가 많으면
+   그대로 위로 밀려 올라가 사라진다. */
+.pdf-highlight-list-views {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  background: var(--color-bg-default);
+}
+
+.pdf-highlight-list-view {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.pdf-highlight-list-view:hover {
+  background: var(--color-bg-hover);
+}
+
+/* 위 `.pdf-side-panel-tab.active`와 다른 모양을 쓴다: 저쪽은 패널 상단의
+   1차 탭이라 밑줄이 어울리지만, 이것은 목록 안의 필터 칩이라 알약 배경이
+   "지금 이 갈래를 보고 있다"를 더 분명히 말한다. 색은 같은 accent다. */
+.pdf-highlight-list-view.active {
+  color: var(--color-text-default);
+  background: color-mix(in srgb, var(--color-accent-default) 14%, transparent);
+}
+
+.pdf-highlight-list-view-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
 .pdf-highlight-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 8px;
+}
+
+/* §277.2 항목 + (삭제됨 갈래에서만) 액션 줄. 항목 자체가 <button>이라
+   액션을 그 안에 넣을 수 없어 형제로 둔다 — PdfHighlightList 주석 참조. */
+.pdf-highlight-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-highlight-row-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 6px 6px;
+}
+
+/* 밑줄 링크가 아니라 버튼으로 그린다. 둘 다 파괴적이거나 되돌리는 동작이라
+   "누르는 것"으로 읽혀야 하고, 특히 완전 삭제는 실수로 지나칠 자리가 아니다.
+   레일이 좁으므로(PDF_RAIL_CONTENT_WIDTH_PX) 둘이 폭을 반씩 나눠 갖는다. */
+.pdf-highlight-row-action {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.pdf-highlight-row-action:hover {
+  color: var(--color-text-default);
+  background: var(--color-bg-hover);
+  border-color: var(--color-text-muted);
+}
+
+.pdf-highlight-row-action:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 1px;
+}
+
+/* 되돌릴 수 없는 쪽만 색으로 구분한다. 평소에는 조용히 두고(둘 다 빨가면
+   무엇이 위험한지가 사라진다) 커서가 올라갔을 때 확실히 말한다. */
+.pdf-highlight-row-action.danger:hover {
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
+  border-color: var(--color-status-danger);
 }
 
 .pdf-highlight-list-empty {
@@ -142,6 +242,13 @@
 
 .pdf-highlight-item.flashing {
   background: var(--color-bg-selection);
+}
+
+/* §277.2 삭제된 항목 — 흐리게. 페이지에서는 이미 사라졌으니 목록에서도
+   "보관 중"으로 읽혀야 한다. 완전히 감추지는 않는다: 복원/완전 삭제를
+   고르려면 무엇인지 보여야 한다. */
+.pdf-highlight-item.deleted {
+  opacity: 0.55;
 }
 
 .pdf-highlight-item-meta {

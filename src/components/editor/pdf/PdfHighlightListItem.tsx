@@ -23,6 +23,7 @@ const LAZY_ROOT_MARGIN = "200px";
 // raw mousemove가 PdfPreview 전체를 다시 렌더한다. 여기서는 `item`이 관건이라
 // usePdfHighlightList가 그 배열을 메모해야 이 memo가 실제로 걸린다.
 export const PdfHighlightListItem = memo(function PdfHighlightListItem({
+  isDeleted,
   isFlashing,
   item,
   onSelect,
@@ -31,6 +32,10 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
   retention,
   tabIndex,
 }: {
+  /** §277.2 삭제된 항목인가 — 흐리게 그려 활성 목록과 구분한다. 판정 자체는
+   * 목록이 이미 갈라 놓았으므로(PdfHighlightList) 여기서 다시 하지 않는다:
+   * 두 곳이 각자 판정하면 서로 어긋나도 아무 데서도 안 걸린다. */
+  isDeleted: boolean;
   /** 방금 이 항목으로 점프했는가 — 목록에서도 같은 항목을 짚어 준다. */
   isFlashing: boolean;
   item: HighlightListItem;
@@ -121,6 +126,7 @@ export const PdfHighlightListItem = memo(function PdfHighlightListItem({
         "btn-unstyled",
         "pdf-highlight-item",
         `pdf-highlight-item-${highlight.color}`,
+        isDeleted ? "deleted" : null,
         isFlashing ? "flashing" : null,
       ]
         .filter(Boolean)

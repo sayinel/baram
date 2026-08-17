@@ -290,6 +290,8 @@ export const PdfPreview = memo(function PdfPreview({
     handlePageMouseDown,
     highlightsEnabled,
     onAreaHighlightDrawn,
+    onPurgeHighlight,
+    onRestoreHighlight,
     pendingAreaRects,
     popupPage,
     popupProps,
@@ -447,6 +449,8 @@ export const PdfPreview = memo(function PdfPreview({
               absCompanionPath={absCompanionPath}
               flashHighlightId={flashHighlightId}
               highlights={allHighlights}
+              onPurgeHighlight={onPurgeHighlight}
+              onRestoreHighlight={onRestoreHighlight}
               pages={pages}
               retention={retention}
             />

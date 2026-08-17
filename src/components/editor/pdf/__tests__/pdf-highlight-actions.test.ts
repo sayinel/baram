@@ -46,7 +46,9 @@ import type { Sidecar } from "../pdf-highlight-sidecar";
 
 import {
   createTextHighlight,
-  deleteHighlightById,
+  purgeHighlightById,
+  restoreHighlightById,
+  softDeleteHighlightById,
   updateHighlightColor,
 } from "../pdf-highlight-actions";
 
@@ -293,7 +295,7 @@ describe("updateHighlightColor", () => {
   });
 });
 
-describe("deleteHighlightById", () => {
+describe("§277.2 delete / restore / purge", () => {
   const sidecar: Sidecar = {
     companion: "highlights/papers/attention.md",
     highlights: [
@@ -316,16 +318,133 @@ describe("deleteHighlightById", () => {
     version: 1,
   };
 
+  /** 삭제 표시가 이미 붙어 있는 사이드카 — 복원/완전 삭제의 출발점. */
+  function withDeleted(id: string, at = DELETED_AT): Sidecar {
+    return {
+      ...sidecar,
+      highlights: sidecar.highlights.map((h) =>
+        h.id === id ? { ...h, deletedAt: at } : h,
+      ),
+    };
+  }
+
+  function written(): Sidecar {
+    return JSON.parse(writeFile.mock.calls[0][1] as string) as Sidecar;
+  }
+
+  const DELETED_AT = "2026-08-17T01:23:45.000Z";
+
   beforeEach(() => {
     writeFile.mockClear();
   });
 
-  it("removes only the matching highlight and writes the sidecar", async () => {
-    const next = await deleteHighlightById(ABS_SIDECAR, sidecar, "h1");
+  describe("softDeleteHighlightById", () => {
+    // 이 성질 하나가 §277.2 전체의 근거다 — 항목을 지우면 그것을 가리키던
+    // 블록 참조가 복구 불가능하게 퇴화한다(pdf-highlight-sidecar.ts).
+    it("keeps the entry and every field of it, only adding deletedAt", async () => {
+      const next = await softDeleteHighlightById(
+        ABS_SIDECAR,
+        sidecar,
+        "h1",
+        DELETED_AT,
+      );
 
-    expect(next.highlights).toHaveLength(1);
-    expect(next.highlights[0].id).toBe("h2");
-    const written = JSON.parse(writeFile.mock.calls[0][1] as string) as Sidecar;
-    expect(written.highlights.map((h) => h.id)).toEqual(["h2"]);
+      expect(next.highlights).toHaveLength(2);
+      const hit = next.highlights.find((h) => h.id === "h1");
+      expect(hit).toEqual({ ...sidecar.highlights[0], deletedAt: DELETED_AT });
+      // 파일에도 남아야 한다 — 메모리 상태만 맞으면 다음 실행에서 사라진다.
+      expect(written().highlights.find((h) => h.id === "h1")?.deletedAt).toBe(
+        DELETED_AT,
+      );
+    });
+
+    // 시각을 인자로 받는 이유가 이것이다 — 함수 안에서 만들면 이 단정을
+    // 쓰려고 시계를 가짜로 만들어야 한다.
+    it("stamps the deletedAt it was given, not one of its own", async () => {
+      const other = "1999-12-31T23:59:59.000Z";
+      const next = await softDeleteHighlightById(
+        ABS_SIDECAR,
+        sidecar,
+        "h1",
+        other,
+      );
+      expect(next.highlights.find((h) => h.id === "h1")?.deletedAt).toBe(other);
+    });
+
+    it("leaves the other highlights untouched", async () => {
+      const next = await softDeleteHighlightById(
+        ABS_SIDECAR,
+        sidecar,
+        "h1",
+        DELETED_AT,
+      );
+      expect(next.highlights.find((h) => h.id === "h2")).toEqual(
+        sidecar.highlights[1],
+      );
+    });
+  });
+
+  describe("restoreHighlightById", () => {
+    // ‼️ `deletedAt: undefined`로 덮으면 JSON.stringify가 파일에서는 지워
+    // 주지만 **메모리 객체에는 키가 남는다** — 그러면 파일과 화면이 다른
+    // 답을 내는 상태가 생긴다. 그래서 키 자체가 없어야 한다.
+    it("removes the key outright, not just its value", async () => {
+      const next = await restoreHighlightById(
+        ABS_SIDECAR,
+        withDeleted("h1"),
+        "h1",
+      );
+
+      const hit = next.highlights.find((h) => h.id === "h1");
+      expect(hit).toBeDefined();
+      expect(Object.hasOwn(hit as object, "deletedAt")).toBe(false);
+      expect(hit).toEqual(sidecar.highlights[0]);
+    });
+
+    it("restores only the named highlight", async () => {
+      const both = {
+        ...sidecar,
+        highlights: sidecar.highlights.map((h) => ({
+          ...h,
+          deletedAt: DELETED_AT,
+        })),
+      };
+      const next = await restoreHighlightById(ABS_SIDECAR, both, "h1");
+
+      expect(
+        next.highlights.find((h) => h.id === "h1")?.deletedAt,
+      ).toBeUndefined();
+      expect(next.highlights.find((h) => h.id === "h2")?.deletedAt).toBe(
+        DELETED_AT,
+      );
+    });
+
+    it("writes the restored sidecar to disk", async () => {
+      await restoreHighlightById(ABS_SIDECAR, withDeleted("h1"), "h1");
+      expect(writeFile.mock.calls[0][0]).toBe(ABS_SIDECAR);
+      const hit = written().highlights.find((h) => h.id === "h1");
+      expect(Object.hasOwn(hit as object, "deletedAt")).toBe(false);
+    });
+  });
+
+  describe("purgeHighlightById", () => {
+    it("removes only the matching highlight and writes the sidecar", async () => {
+      const next = await purgeHighlightById(ABS_SIDECAR, sidecar, "h1");
+
+      expect(next.highlights).toHaveLength(1);
+      expect(next.highlights[0].id).toBe("h2");
+      expect(written().highlights.map((h) => h.id)).toEqual(["h2"]);
+    });
+
+    // 완전 삭제는 삭제 표시 여부와 무관하게 지운다 — 목록에서만 닿는
+    // 경로지만, 그 전제를 함수가 직접 들고 있으면 안 된다.
+    it("purges an already-deleted entry too", async () => {
+      const next = await purgeHighlightById(
+        ABS_SIDECAR,
+        withDeleted("h1"),
+        "h1",
+      );
+      expect(next.highlights.map((h) => h.id)).toEqual(["h2"]);
+    });
   });
 });

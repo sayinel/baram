@@ -305,8 +305,14 @@ export function useNavigation({
             );
             return;
           }
-          // Not found (deleted highlight, or sidecar missing/unreadable) —
-          // fall back to the ordinary block-reference destination.
+          // Not found (sidecar missing/unreadable, or the highlight was
+          // permanently deleted) — fall back to the ordinary block-reference
+          // destination.
+          //
+          // §277.2 소프트 삭제된 하이라이트는 여기 오지 않는다 — 사이드카에
+          // 항목이 남아 있어 위에서 hit로 잡히고, PDF의 그 자리로 점프한다.
+          // 그것이 소프트 삭제의 요점이다: 참조가 계속 원래 자리를 가리킨다.
+          // 오버레이는 그 순간 점선으로만 그린다(use-pdf-highlights.ts).
           openNoteAndScrollToBlock(target, blockId);
         })().catch((err: unknown) => {
           // §275.6 M3: everything above is guarded by its own try/catch, but
