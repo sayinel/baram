@@ -22,10 +22,15 @@ import {
   findBlockPosById,
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
+import {
+  isMarkdownHref,
+  resolveLocalLinkTarget,
+} from "../utils/editor/local-link-nav";
 import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
 import { flattenFileTree } from "../utils/file-search";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
+import { dirname, normalizePath } from "../utils/path-utils";
 import { isZettelId } from "../utils/zettelkasten/parse-note-title";
 
 interface UseNavigationParams {
@@ -49,8 +54,8 @@ export function useNavigation({
   const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(
     () => {},
   );
-  // §5.1 Local .md link navigation ref (e.g. [text](sub/doc.md))
-  const localLinkNavigateRef = useRef<(href: string) => void>(() => {});
+  // §5.1 Local link navigation ref (e.g. [text](sub/doc.md), [text](Paper.pdf))
+  const localLinkNavigateRef = useRef<(href: string) => boolean>(() => false);
   // §57 Mention navigation ref
   const mentionNavigateRef = useRef<(type: string, value: string) => void>(
     () => {},
@@ -333,19 +338,22 @@ export function useNavigation({
     [editor, openNoteAndScrollToBlock, handleOpenFilePath],
   );
 
-  // §5.1 Local .md link Cmd+Click navigation (e.g. [text](sub/doc.md#heading))
+  // §5.1 Local link Cmd+Click navigation (e.g. [text](sub/doc.md#heading))
+  // §278.1 Also opens any other file that exists — [text](Paper.pdf) — in its
+  // viewer. Returns whether the href was handled; `false` sends it to the OS
+  // opener, which is what keeps scheme-less external addresses working.
   const handleLocalLinkNavigate = useCallback(
-    (href: string) => {
+    (href: string): boolean => {
       // Same-doc heading link: #heading
       if (href.startsWith("#")) {
-        if (!editor) return;
+        if (!editor) return true;
         const heading = href.slice(1).replace(/-/g, " ");
         const targetPos = findHeadingPosByText(editor.state.doc, heading);
         if (targetPos !== null) {
           editor.commands.setTextSelection(targetPos + 1);
           editor.commands.scrollIntoView();
         }
-        return;
+        return true;
       }
 
       // Split href into file path and optional heading fragment
@@ -354,27 +362,47 @@ export function useNavigation({
         ? headingFragment.replace(/-/g, " ")
         : null;
 
-      // Resolve relative path against the current file's directory
+      // Resolve relative paths against the current file's directory
       const { activeTabId: currentTabId, tabs: currentTabs } =
         useEditorStore.getState();
       const activeTab = currentTabs.find((t) => t.id === currentTabId);
-      if (!activeTab?.filePath) return;
+      const sourceDir = activeTab?.filePath
+        ? dirname(activeTab.filePath)
+        : null;
 
-      const currentDir = activeTab.filePath.substring(
-        0,
-        activeTab.filePath.lastIndexOf("/"),
-      );
-      // Normalize simple relative path (handles ../ and ./)
-      const resolvedPath = `${currentDir}/${filePart}`;
+      const { fileTree, rootPath } = useFileStore.getState();
+      const flat =
+        rootPath && fileTree.length > 0
+          ? flattenFileTree(fileTree, rootPath)
+          : [];
+      const existing = resolveLocalLinkTarget(filePart, sourceDir, flat);
+
+      // ‼️ The markdown fallback runs only after the tree lookup fails, and it
+      // is what makes this change purely additive: a `.md` href that resolves
+      // to nothing still opens (and still logs the same failure) instead of
+      // leaking to the OS opener, exactly as before §278.1.
+      const isMarkdown = isMarkdownHref(filePart);
+      const target =
+        existing ??
+        (isMarkdown && sourceDir
+          ? normalizePath(`${sourceDir}/${filePart}`)
+          : null);
+      // Claim markdown either way: with no source directory there is nothing to
+      // resolve against, and the pre-§278.1 code did nothing here as well.
+      if (!target) return isMarkdown;
 
       // Cross-file navigation: set pending heading for afterDocLoad() to consume
       // after the document finishes loading (avoids stale-state race with async parse).
-      if (heading) {
+      // ‼️ Only for markdown targets. A viewer tab loads no ProseMirror document,
+      // so a `[x](Paper.pdf#page=3)` fragment would sit in the store unconsumed
+      // and then scroll the NEXT markdown file that happens to open.
+      if (heading && isMarkdownHref(target)) {
         useLinkStore.getState().setPendingScrollHeading(heading);
       }
-      handleOpenFilePath(resolvedPath).catch((err) =>
+      handleOpenFilePath(target).catch((err) =>
         logger.error("[App] Failed to open file:", err),
       );
+      return true;
     },
     [handleOpenFilePath, editor],
   );

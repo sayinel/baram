@@ -57,7 +57,10 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     extensions: createBaramExtensions({
       onNavigate: () => {},
       onNavigateBlockRef: () => {},
-      onNavigateLocal: () => {},
+      // §89 standalone window has no file tree and no tabs — every navigation
+      // callback here is a no-op, so scheme-less links fall through to the OS
+      // opener exactly as they already did for non-markdown targets.
+      onNavigateLocal: () => false,
       onMentionNavigate: () => {},
     }),
     autofocus: true,
