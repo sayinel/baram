@@ -80,7 +80,38 @@ describe("§277.2 deleted-highlight outline rule", () => {
   // 이 규칙이 파일에서 아래에 있다는 사실에만 기대게 되는데, 그것은 규칙을
   // 옮기는 순간 조용히 깨진다 — 그때 삭제된 하이라이트가 살아 있는 것과
   // 똑같이 칠해진다.
+  // ‼️ 이 단정의 요점은 **비교의 양쪽**이다. `.pdf-hl-path.pdf-hl-path-deleted`가
+  // 파일에 있다는 것만 보면, 누군가 색 규칙을 두 클래스로 올려도 초록불인 채
+  // 성질이 깨진다("source-scan guards find *a* match, not *the* match").
+  // 그래서 색 규칙들이 여전히 **한 클래스**임을 함께 고정한다.
   it("outranks the per-colour fill rules on specificity, not on source order", () => {
     expect(overlayCss).toContain(".pdf-hl-path.pdf-hl-path-deleted");
+    for (const color of HIGHLIGHT_COLORS) {
+      expect(
+        overlayCss,
+        `.pdf-hl-path-${color} must stay a single-class selector`,
+      ).toMatch(new RegExp(`(^|\\n)\\.pdf-hl-path-${color}\\s*\\{`));
+    }
+  });
+});
+
+// §277.2 아카이브 줄의 흐림도 오버레이의 점선 규칙과 정확히 같은 종류의
+// 구멍이다 — jsdom은 스타일시트를 안 읽으므로 렌더 테스트는 클래스가 붙었다는
+// 것까지만 보고, 규칙이 사라져도 초록불이다. 두 표시가 다 없어지면 삭제된
+// 하이라이트가 살아 있는 것과 똑같이 보인다.
+describe("§277.2 archived row styling", () => {
+  it("dims archived rows", () => {
+    const rule = /\.pdf-highlight-item\.deleted\s*\{([^}]*)\}/;
+    const match = rule.exec(css);
+    expect(match, "no .pdf-highlight-item.deleted rule").not.toBeNull();
+    expect(match?.[1]).toMatch(/opacity:/);
+  });
+
+  // 완전히 감추면 안 된다 — 복원/완전 삭제를 고르려면 무엇인지 보여야 한다.
+  it("keeps them visible rather than hiding them", () => {
+    const body =
+      /\.pdf-highlight-item\.deleted\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    const opacity = /opacity:\s*([\d.]+)/.exec(body)?.[1];
+    expect(Number(opacity)).toBeGreaterThan(0.3);
   });
 });

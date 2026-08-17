@@ -20,10 +20,14 @@ import { countHighlightRefs } from "../pdf-highlight-ref-count";
 
 const COMPANION = "/vault/highlights/papers/attention.md";
 
+// ‼️ linkType을 기본값에 **반드시** 담는다. Rust 인덱스는 항상 채워 보내는데
+// (extractor.rs), 픽스처가 비워 두면 "어떤 링크 종류를 세는가"가 어느 방향으로도
+// 고정되지 않는다 — 필터를 조이든 풀든 전부 초록이다.
 function entry(overrides: Partial<BacklinkEntry> = {}): BacklinkEntry {
   return {
     context: "see ((highlights/papers/attention#^h1))",
     line: 3,
+    linkType: "blockRef",
     sourcePath: "/vault/notes/reading.md",
     targetPath: COMPANION,
     ...overrides,
@@ -66,6 +70,33 @@ describe("countHighlightRefs", () => {
     getBacklinks.mockResolvedValue([]);
     await countHighlightRefs(COMPANION, "h1");
     expect(getBacklinks).toHaveBeenCalledWith(COMPANION);
+  });
+
+  // 블록 임베드는 완전 삭제로 아무것도 잃지 않는다 — 임베드가 그리는 것은
+  // 동반 노트의 문단이고, 완전 삭제는 사이드카 항목만 지운다. 세면 경고가
+  // 실제보다 무거워진다.
+  it("does not count a block embed, which keeps rendering after a purge", async () => {
+    getBacklinks.mockResolvedValue([
+      entry({ blockId: "h1", linkType: "blockRef" }),
+      entry({
+        blockId: "h1",
+        context: "{{embed ((highlights/papers/attention#^h1))}}",
+        linkType: "blockEmbed",
+      }),
+    ]);
+
+    expect(await countHighlightRefs(COMPANION, "h1")).toBe(1);
+  });
+
+  // ‼️ 반대 방향은 열어 둔다. 과소 집계가 위험한 방향이므로("참조 0곳"이
+  // 없는 안전을 약속한다), 모르는 종류는 뺀다가 아니라 **센다**.
+  it.each([
+    ["an unknown future link type", "someFutureKind"],
+    ["a missing link type", undefined],
+  ])("counts %s rather than dropping it", async (_label, linkType) => {
+    getBacklinks.mockResolvedValue([entry({ blockId: "h1", linkType })]);
+
+    expect(await countHighlightRefs(COMPANION, "h1")).toBe(1);
   });
 
   it("returns 0 without asking when there is no companion path", async () => {

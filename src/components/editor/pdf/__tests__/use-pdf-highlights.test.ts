@@ -20,7 +20,7 @@
 //   빈 배열이 아니라 함수 자체가 없다. 선택 감지 경로(§274.1)를 실제로
 //   태우려면 이 파일 스코프에서만 대체 구현을 심어야 한다.
 import type { PdfRect, ViewportLike } from "../pdf-highlight-geom";
-import type { StoredHighlight } from "../pdf-highlight-sidecar";
+import type { Sidecar, StoredHighlight } from "../pdf-highlight-sidecar";
 import type { PDFPageProxy } from "pdfjs-dist";
 
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -1026,6 +1026,14 @@ describe("usePdfHighlights", () => {
   // 다뤄야 한다는 것이 이 기능의 전부다. 여기서 고정하는 것은 이 훅이 쥔
   // 세 갈래다: 오버레이(감춘다) · 클릭 판정(안 잡힌다) · 목록(보여준다).
   describe("§277.2 soft delete", () => {
+    // §277.2 R1 쓰기가 줄에 서면서 첫 단계가 **마이크로태스크 뒤**에 시작한다.
+    // 클릭 직후를 동기로 단정하면 아무것도 관찰하지 못한다.
+    async function settle() {
+      await act(async () => {
+        await Promise.resolve();
+      });
+    }
+
     const DELETED: StoredHighlight = {
       ...HIGHLIGHT,
       deletedAt: "2026-08-17T01:23:45.000Z",
@@ -1207,27 +1215,43 @@ describe("usePdfHighlights", () => {
       expect(hit).toBe(false);
     });
 
-    it("routes the popup's Delete through the soft-delete write, not the purge", async () => {
-      const { result } = loadSidecar([HIGHLIGHT]);
+    // ‼️ 하이라이트를 **둘** 넣고 두 번째를 지운다. 하나짜리 픽스처로는
+    // `popup.existing.id` → `sidecar.highlights[0].id` 치환이 살아남는다
+    // (실제 앱에서는 "7번을 눌렀는데 1번이 사라진다"). 리뷰가 잡았다.
+    it("routes the popup's Delete through the soft-delete write, naming the clicked highlight", async () => {
+      const second: StoredHighlight = {
+        ...HIGHLIGHT,
+        id: "existing2",
+        // 클릭 좌표가 이것만 맞히도록 첫 번째와 겹치지 않는 자리에 둔다.
+        rects: [{ h: 20, w: 100, x: 200, y: 0 }],
+      };
+      const { result } = loadSidecar([HIGHLIGHT, second]);
       await waitFor(() =>
-        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+        expect(result.current.getPageHighlights(1)).toHaveLength(2),
       );
       act(() => {
         result.current.handlePageMouseDown(
           1,
           identityViewport(),
           { left: 0, top: 0 },
-          10,
+          210,
           10,
         );
       });
+      expect(result.current.popupProps?.existing?.id).toBe("existing2");
 
       act(() => {
         result.current.popupProps?.onDelete();
       });
+      await settle();
 
       expect(purgeHighlightById).not.toHaveBeenCalled();
-      expect(softDeleteHighlightById).toHaveBeenCalledTimes(1);
+      expect(softDeleteHighlightById).toHaveBeenCalledWith(
+        "/vault/.baram/pdf-highlights/papers/attention.json",
+        expect.objectContaining({ pdf: "papers/attention.pdf" }),
+        "existing2",
+        expect.any(String),
+      );
       // 네 번째 인자가 삭제 시각이다. 값 자체는 호출부가 만들지만, ISO 문자열
       // 이라는 것과 "실제로 넘어간다"는 것은 여기서 고정한다 — 안 넘기면
       // deletedAt이 undefined가 되어 삭제가 아무 일도 하지 않는다.
@@ -1237,8 +1261,9 @@ describe("usePdfHighlights", () => {
     });
 
     it("restores through restoreHighlightById and adopts the returned sidecar", async () => {
-      const { result } = loadSidecar([DELETED]);
-      await waitFor(() => expect(result.current.allHighlights).toHaveLength(1));
+      // 같은 이유로 둘을 넣는다 — 하나짜리면 어떤 id를 넘겨도 통과한다.
+      const { result } = loadSidecar([{ ...DELETED, id: "gone0" }, DELETED]);
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(2));
       restoreHighlightById.mockResolvedValue({
         companion: "highlights/papers/attention.md",
         highlights: [HIGHLIGHT],
@@ -1262,7 +1287,161 @@ describe("usePdfHighlights", () => {
       );
     });
 
+    // ‼️ §277.2 R1 — 리뷰가 잡은 HIGH. writeSidecar는 파일을 통째로 다시 쓰고
+    // React 상태는 IPC 왕복 뒤에야 갱신되므로, 그 사이에 눌린 두 번째 액션은
+    // **갱신 전 스냅샷**에서 조립된다. 그러면 나중 쓰기가 먼저 쓰기를 조용히
+    // 되돌린다 — 아카이브에서 "복원"을 연달아 누르는 것은 자연스러운 동작이라
+    // 실제로 재현된다(고치기 전 마지막 쓰기에 h1의 삭제 표시가 그대로 남았다).
+    //
+    // 여기서 고정하는 것은 "두 번째 쓰기가 **첫 번째의 결과**에서 조립된다"는
+    // 성질이다. 그래서 각 액션이 받은 사이드카 인자를 직접 본다 — 최종 상태만
+    // 보면 우연히 맞아떨어질 수 있다.
+    // §274 I1의 계약("조용한 실패 금지")은 새 쓰기 경로에도 그대로 적용된다.
+    // 기존 세 경로에는 실패 테스트가 있는데 복원·완전 삭제에는 없었다 —
+    // 리뷰가 짚었다. 토스트가 사라져도 아무 데서도 안 걸리는 상태였다.
+    describe("I1 — the new write paths report failures too", () => {
+      it("logs and shows a toast when restoring fails to write", async () => {
+        const { result } = loadSidecar([DELETED]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+        restoreHighlightById.mockRejectedValueOnce(new Error("disk full"));
+
+        act(() => {
+          result.current.onRestoreHighlight("gone1");
+        });
+
+        await waitFor(() => expect(showToast).toHaveBeenCalled());
+        expect(logger.error).toHaveBeenCalled();
+      });
+
+      it("logs and shows a toast when purging fails to write", async () => {
+        countHighlightRefs.mockResolvedValue(0);
+        showConfirm.mockResolvedValue(true);
+        purgeHighlightById.mockRejectedValueOnce(new Error("disk full"));
+        const { result } = loadSidecar([DELETED]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+
+        act(() => {
+          result.current.onPurgeHighlight("gone1");
+        });
+
+        await waitFor(() => expect(showToast).toHaveBeenCalled());
+        expect(logger.error).toHaveBeenCalled();
+      });
+    });
+
+    describe("R1 — concurrent writes must not roll each other back", () => {
+      const D1: StoredHighlight = {
+        ...HIGHLIGHT,
+        deletedAt: "2026-08-17T00:00:00.000Z",
+        id: "d1",
+      };
+      const D2: StoredHighlight = {
+        ...HIGHLIGHT,
+        deletedAt: "2026-08-17T00:00:00.000Z",
+        id: "d2",
+      };
+
+      it("composes the second restore from the first restore's result", async () => {
+        const { result } = loadSidecar([D1, D2]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(2),
+        );
+
+        // 첫 쓰기는 이 테스트가 놓아줄 때까지 끝나지 않는다 — 실제 IPC 왕복이
+        // 열어 두는 창을 그대로 재현한다.
+        let finishFirst: (s: Sidecar) => void = () => undefined;
+        restoreHighlightById.mockReturnValueOnce(
+          new Promise<Sidecar>((resolve) => {
+            finishFirst = resolve;
+          }),
+        );
+        const afterFirst: Sidecar = {
+          companion: "highlights/papers/attention.md",
+          highlights: [{ ...D1, deletedAt: undefined }, D2],
+          pdf: "papers/attention.pdf",
+          version: 1,
+        };
+        restoreHighlightById.mockResolvedValueOnce(afterFirst);
+
+        act(() => {
+          result.current.onRestoreHighlight("d1");
+        });
+        act(() => {
+          result.current.onRestoreHighlight("d2");
+        });
+        await settle();
+
+        // 두 번째는 아직 시작조차 하지 않았어야 한다 — 첫 쓰기가 끝나지
+        // 않았으므로 줄에서 기다린다.
+        expect(restoreHighlightById).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          finishFirst(afterFirst);
+          await Promise.resolve();
+        });
+
+        await waitFor(() =>
+          expect(restoreHighlightById).toHaveBeenCalledTimes(2),
+        );
+        // 핵심 단정: 두 번째 호출이 받은 사이드카가 **첫 번째의 결과**다.
+        // 고치기 전에는 마운트 시점의 사이드카(d1이 아직 삭제 표시인 것)를
+        // 받아, 그 쓰기가 d1의 복원을 파일에서 지웠다.
+        expect(restoreHighlightById.mock.calls[1][1]).toBe(afterFirst);
+      });
+
+      // 한 번의 실패가 이후 모든 하이라이트 조작을 영구히 멎게 하면 안 된다.
+      it("keeps the queue running after a write fails", async () => {
+        const { result } = loadSidecar([D1, D2]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(2),
+        );
+        restoreHighlightById.mockRejectedValueOnce(new Error("disk full"));
+        restoreHighlightById.mockResolvedValueOnce({
+          companion: "highlights/papers/attention.md",
+          highlights: [D1, { ...D2, deletedAt: undefined }],
+          pdf: "papers/attention.pdf",
+          version: 1,
+        });
+
+        act(() => {
+          result.current.onRestoreHighlight("d1");
+        });
+        act(() => {
+          result.current.onRestoreHighlight("d2");
+        });
+
+        await waitFor(() =>
+          expect(restoreHighlightById).toHaveBeenCalledTimes(2),
+        );
+        expect(showToast).toHaveBeenCalled();
+        // 실패한 단계는 이어 나를 값이 없으므로, 다음 단계는 React 상태에서
+        // 다시 출발한다.
+        expect(restoreHighlightById.mock.calls[1][1]).toMatchObject({
+          pdf: "papers/attention.pdf",
+        });
+      });
+    });
+
     describe("purge", () => {
+      /**
+       * 확인 대화상자를 놓아주고, 그 뒤의 비동기 경로가 끝까지 가게 한다.
+       *
+       * ‼️ 마이크로태스크만 비우면 부족하다 — 지금은 충분하지만, 확인 이후에
+       * IPC 한 번(매크로태스크)이 끼는 순간 부정 단정이 조용히 무의미해진다.
+       * 아래 두 테스트(부정 + 양성 대조군)가 **같은 함수**를 써야 그 변화가
+       * 대조군에서 먼저 드러난다.
+       */
+      async function releaseDialog(allow: (v: boolean) => void) {
+        await act(async () => {
+          allow(true);
+          await new Promise((r) => setTimeout(r, 0));
+        });
+      }
+
       it("does nothing when the confirmation is declined", async () => {
         countHighlightRefs.mockResolvedValue(0);
         showConfirm.mockResolvedValue(false);
@@ -1306,6 +1485,50 @@ describe("usePdfHighlights", () => {
       // ‼️ 확인 대화상자가 await 틈을 만든다 — 그 사이에 사이드카가 바뀌면
       // 캡처된 옛 사이드카로 파일을 통째로 다시 써서 그 변경을 조용히
       // 되돌린다. 여기서는 그 틈에 항목이 사라진 경우를 재현한다.
+      // ‼️ 문구 자체를 단정한다. 개수를 세는 것과 그것을 사용자에게 어떻게
+      // 말하는가는 다른 결정이고, "호출됐다"만 보면 `refCount > 0`을
+      // `refCount >= 0`으로 바꿔도 아무 데서도 안 걸린다 — 그러면 참조가 없는
+      // 하이라이트마다 "참조 0곳이 미리보기를 잃습니다"라고 말한다.
+      it("names the reference count in the confirmation when there is one", async () => {
+        countHighlightRefs.mockResolvedValue(2);
+        showConfirm.mockResolvedValue(false);
+        const { result } = loadSidecar([DELETED]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+
+        act(() => {
+          result.current.onPurgeHighlight("gone1");
+        });
+
+        await waitFor(() =>
+          expect(showConfirm).toHaveBeenCalledWith(
+            expect.stringContaining("2 reference"),
+          ),
+        );
+      });
+
+      // 0은 "참조가 없다"가 아니라 "있다고 말할 근거가 없다"이므로 개수를
+      // 언급하지 않는다(pdf-highlight-ref-count.ts). 기본 문구는 이미
+      // "되돌릴 수 없다"고 말한다.
+      it("falls back to the plain warning when the count is 0", async () => {
+        countHighlightRefs.mockResolvedValue(0);
+        showConfirm.mockResolvedValue(false);
+        const { result } = loadSidecar([DELETED]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+
+        act(() => {
+          result.current.onPurgeHighlight("gone1");
+        });
+
+        await waitFor(() => expect(showConfirm).toHaveBeenCalledTimes(1));
+        const message = showConfirm.mock.calls[0][0] as string;
+        expect(message).not.toContain("0 reference");
+        expect(message).toContain("can't be undone");
+      });
+
       it("does not write a stale sidecar when the entry vanished while the dialog was open", async () => {
         countHighlightRefs.mockResolvedValue(0);
         let allow: (v: boolean) => void = () => undefined;
@@ -1361,12 +1584,42 @@ describe("usePdfHighlights", () => {
           ]),
         );
 
-        await act(async () => {
-          allow(true);
-          await Promise.resolve();
-        });
+        await releaseDialog(allow);
 
         expect(purgeHighlightById).not.toHaveBeenCalled();
+      });
+
+      // ‼️ 위 테스트의 **양성 대조군**이다. 부정 단정("불리지 않았다")은 시간이
+      // 모자라도 통과하므로, 그 자체로는 언제 무의미해졌는지 알 수 없다. 이
+      // 테스트가 **바이트 단위로 같은 타이밍**으로 긍정 단정을 하므로, 나중에
+      // 확인 이후 경로에 매크로태스크가 하나라도 끼면 이쪽이 먼저 빨개진다.
+      it("positive control — the same timing DOES purge when the entry is still there", async () => {
+        countHighlightRefs.mockResolvedValue(0);
+        let allow: (v: boolean) => void = () => undefined;
+        showConfirm.mockReturnValue(
+          new Promise<boolean>((resolve) => {
+            allow = resolve;
+          }),
+        );
+        purgeHighlightById.mockResolvedValue({
+          companion: "highlights/papers/attention.md",
+          highlights: [],
+          pdf: "papers/attention.pdf",
+          version: 1,
+        });
+        const { result } = loadSidecar([DELETED]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+
+        act(() => {
+          result.current.onPurgeHighlight("gone1");
+        });
+        await waitFor(() => expect(showConfirm).toHaveBeenCalledTimes(1));
+
+        await releaseDialog(allow);
+
+        expect(purgeHighlightById).toHaveBeenCalledTimes(1);
       });
     });
   });

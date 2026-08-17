@@ -119,10 +119,17 @@
   min-height: 0;
 }
 
+/* ‼️ sticky여야 한다. 스크롤 컨테이너는 `.pdf-side-panel-body`이고 이 전환
+   컨트롤이 아카이브로 들어가는 **유일한** 입구인데, 하이라이트가 많으면
+   그대로 위로 밀려 올라가 사라진다. */
 .pdf-highlight-list-views {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   gap: 4px;
-  padding: 8px 8px 0;
+  padding: 8px;
+  background: var(--color-bg-default);
 }
 
 .pdf-highlight-list-view {

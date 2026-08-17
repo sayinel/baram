@@ -142,9 +142,16 @@ export function PdfHighlightList({
                   바깥 버튼에도 잡힌다). 형제로 둔다. */}
               {view === "deleted" && (
                 <div className="pdf-highlight-row-actions">
+                  {/* ‼️ §282.4 액션 버튼도 로빙 tabIndex를 따라야 한다. 기본값
+                      (0)으로 두면 삭제됨 갈래의 탭 정지점이 1 + 2N개가 되어,
+                      use-rail-roving-focus.ts가 막으려고 존재하는 바로 그
+                      회귀가 된다(사용자가 실제로 밟았던 문제다 — 그 파일의
+                      헤더 주석 참조). 지금 로빙 중인 줄의 두 버튼만 정지점이
+                      되므로 목록 길이와 무관하게 최대 3개다. */}
                   <button
                     className="btn-unstyled pdf-highlight-row-action"
                     onClick={() => onRestoreHighlight(item.highlight.id)}
+                    tabIndex={item.highlight.id === rovingKey ? 0 : -1}
                     type="button"
                   >
                     {t("pdfHighlight.restore")}
@@ -152,6 +159,7 @@ export function PdfHighlightList({
                   <button
                     className="btn-unstyled pdf-highlight-row-action danger"
                     onClick={() => onPurgeHighlight(item.highlight.id)}
+                    tabIndex={item.highlight.id === rovingKey ? 0 : -1}
                     type="button"
                   >
                     {t("pdfHighlight.purge")}

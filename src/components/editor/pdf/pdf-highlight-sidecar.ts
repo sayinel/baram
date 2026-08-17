@@ -100,6 +100,13 @@ export function parseSidecar(raw: string): {
   return {
     dropped: rawList.length - highlights.length,
     sidecar: {
+      // ‼️ 봉투(envelope)도 **펼쳐서** 실어 나른다. 하이라이트 배열이 map이
+      // 아니라 filter인 것과 같은 이유다: 여기서 네 필드만 열거해 새 객체를
+      // 만들면, 우리가 모르는 최상위 키를 가진 사이드카는 이 앱의 **아무 쓰기
+      // 한 번**에 그 키를 영구히 잃는다(모든 쓰기가 파일을 통째로 다시 쓴다).
+      // 라운드트립 보존이 이 프로젝트의 최우선 품질 기준이므로 항목 수준에서만
+      // 지키는 것으로는 부족하다.
+      ...obj,
       companion: obj.companion,
       highlights,
       pdf: obj.pdf,

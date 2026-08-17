@@ -95,8 +95,8 @@ export function usePdfHighlightWriteActions({
 }): UsePdfHighlightWriteActionsResult {
   const { t } = useTranslation();
 
-  // §277.2 onPurgeHighlight 전용 — 확인 대화상자가 만드는 await 틈 **뒤에**
-  // 읽을 최신값이다. 그 액션의 doc comment에 왜 캡처값을 쓰면 안 되는지 있다.
+  // 클릭 시점이 아니라 **지금** 값을 읽어야 하는 자리를 위한 최신값 —
+  // 아래 확인 대화상자 뒤, 그리고 쓰기 줄의 출발점.
   const latestRef = useRef({ absCompanionPath, absSidecarPath, sidecar });
   latestRef.current = { absCompanionPath, absSidecarPath, sidecar };
 
@@ -139,43 +139,102 @@ export function usePdfHighlightWriteActions({
     useUIStore.getState().showToast(t("pdfHighlight.copied"), "info");
   }, [t]);
 
+  // ‼️ §277.2 R1 사이드카 쓰기는 파일을 **통째로** 다시 쓴다(writeSidecar).
+  // 그래서 두 쓰기가 겹치면 나중 것이 먼저 것을 조용히 되돌린다: React 상태는
+  // IPC 왕복이 끝난 뒤에야 setSidecar로 갱신되므로, 그 사이에 눌린 두 번째
+  // 액션은 **갱신 전 스냅샷**에서 조립된다.
+  //
+  // 재현했다 — 아카이브에서 "복원"을 연달아 두 번 누르면 디스크의 사이드카에
+  // 첫 번째 복원이 남지 않는다. 토스트도 로그도 없이 사용자 데이터가 되돌아간다.
+  // (처음엔 이 틈이 확인 대화상자에만 있다고 적었는데 **틀렸다**. 대화상자는
+  // 오히려 그 창을 좁힌다 — 전면 오버레이가 마우스 입력을 막는다. 창이 넓은
+  // 쪽은 색 고르기·삭제·복원, 즉 아무것도 가리지 않는 액션들이다.)
+  //
+  // 그래서 모든 쓰기를 한 줄로 세우고 각 단계는 **직전 쓰기의 결과**에서
+  // 조립한다. React 상태는 줄의 첫 단계에서만 출발점으로 쓴다.
+  const writeChainRef = useRef<{
+    last: Promise<null | Sidecar>;
+    path: null | string;
+  }>({ last: Promise.resolve(null), path: absSidecarPath });
+
+  // 문서가 바뀌면 줄을 새로 시작한다 — 이전 PDF의 사이드카를 이어받으면 그
+  // 내용을 다른 파일에 쓴다. (렌더 중 ref 리셋이지만 prop에서 파생된 값이라
+  // 안전하다 — 이 훅은 그 판정에 상태를 쓰지 않는다.)
+  if (writeChainRef.current.path !== absSidecarPath) {
+    writeChainRef.current = {
+      last: Promise.resolve(null),
+      path: absSidecarPath,
+    };
+  }
+
+  /**
+   * 사이드카 쓰기를 줄 끝에 붙인다.
+   *
+   * @param apply 직전 쓰기의 결과(없으면 현재 React 상태)를 받아 **쓰기를
+   *   수행하고** 새 사이드카를 돌려준다. 할 일이 없으면 null — 그러면
+   *   setSidecar도 부르지 않고 줄은 이전 값을 그대로 이어 나른다.
+   */
+  const queueSidecarWrite = useCallback(
+    (
+      action: string,
+      apply: (current: null | Sidecar) => Promise<null | Sidecar>,
+    ) => {
+      const run = writeChainRef.current.last.then(async (carried) => {
+        const next = await apply(carried ?? latestRef.current.sidecar);
+        if (next) setSidecar(next);
+        return next ?? carried;
+      });
+      // ‼️ 줄은 실패해도 끊기지 않아야 한다 — 한 번의 쓰기 실패가 이후 모든
+      // 하이라이트 조작을 영구히 멎게 하면 안 된다. 실패한 단계는 이어 나를
+      // 값이 없으므로 null로 접고, 다음 단계가 React 상태에서 다시 출발한다.
+      writeChainRef.current.last = run.catch(() => null);
+      run.catch((err: unknown) => {
+        reportWriteFailure(action, err);
+      });
+    },
+    [reportWriteFailure, setSidecar],
+  );
+
   const onPickColor = useCallback(
     (color: HighlightColor) => {
       if (!popup || !absSidecarPath) return;
       if (popup.kind === "existing") {
-        // sidecar가 null일 수는 없다 — popup.existing은 getPageHighlights가
-        // 돌려준(즉 로드된 sidecar에서 온) 하이라이트라서다. 그래도 null을
-        // 빈 사이드카로 대신 밀어넣지 않는다 — 그러면 companion/pdf 필드가
-        // 빈 문자열로 덮여 써져 §273.2가 요구하는 기록을 잃는다.
-        if (sidecar) {
-          void updateHighlightColor(
-            absSidecarPath,
-            sidecar,
-            popup.existing.id,
-            color,
-          )
-            .then(setSidecar)
-            .catch((err: unknown) =>
-              reportWriteFailure("update highlight colour", err),
-            );
-        }
+        const { id } = popup.existing;
+        queueSidecarWrite("update highlight colour", async (current) =>
+          // current가 null일 수는 없다 — popup.existing은 getPageHighlights가
+          // 돌려준(즉 로드된 sidecar에서 온) 하이라이트라서다. 그래도 null을
+          // 빈 사이드카로 대신 밀어넣지 않는다 — 그러면 companion/pdf 필드가
+          // 빈 문자열로 덮여 써져 §273.2가 요구하는 기록을 잃는다.
+          current
+            ? await updateHighlightColor(absSidecarPath, current, id, color)
+            : null,
+        );
       } else if (absCompanionPath && pdfRelPath) {
         // 초안에 색을 고르는 것이 하이라이트가 만들어지는 유일한 경로다 —
         // 동반 노트 블록과 사이드카 항목이 여기서 함께 생긴다
         // (pdf-highlight-actions.ts의 순서 doc comment 참조).
-        void createTextHighlight({
-          absCompanionPath,
-          absSidecarPath,
-          color,
-          kind: popup.highlightKind,
-          page: popup.pageNumber,
-          pdfRelPath,
-          rects: popup.rects,
-          sidecar,
-          text: popup.text,
-        })
-          .then(({ sidecar: next }) => setSidecar(next))
-          .catch((err: unknown) => reportWriteFailure("create highlight", err));
+        //
+        // ‼️ 이 액션이 줄에 서야 하는 이유가 가장 뚜렷하다: appendHighlightBlock을
+        // **먼저 await한 뒤** 캡처한 사이드카에서 조립하므로, 창이 그 파일 쓰기
+        // 하나만큼 더 넓다.
+        const { highlightKind, pageNumber, rects, text } = popup;
+        queueSidecarWrite(
+          "create highlight",
+          async (current) =>
+            (
+              await createTextHighlight({
+                absCompanionPath,
+                absSidecarPath,
+                color,
+                kind: highlightKind,
+                page: pageNumber,
+                pdfRelPath,
+                rects,
+                sidecar: current,
+                text,
+              })
+            ).sidecar,
+        );
       }
       setPopup(null);
       // §274 UX fix round 2 (defect B) — 색을 고르면 브라우저 네이티브 선택을
@@ -193,10 +252,8 @@ export function usePdfHighlightWriteActions({
       absSidecarPath,
       pdfRelPath,
       popup,
-      reportWriteFailure,
+      queueSidecarWrite,
       setPopup,
-      setSidecar,
-      sidecar,
     ],
   );
 
@@ -204,36 +261,30 @@ export function usePdfHighlightWriteActions({
   // 사이드카에 남아 블록 참조가 계속 해석된다(pdf-highlight-actions.ts 참조).
   // 되돌리기와 완전 삭제는 레일의 하이라이트 목록에 있다.
   const onDelete = useCallback(() => {
-    if (!popup || popup.kind !== "existing" || !absSidecarPath || !sidecar) {
+    if (!popup || popup.kind !== "existing" || !absSidecarPath) {
       setPopup(null);
       return;
     }
-    void softDeleteHighlightById(
-      absSidecarPath,
-      sidecar,
-      popup.existing.id,
-      new Date().toISOString(),
-    )
-      .then(setSidecar)
-      .catch((err: unknown) => reportWriteFailure("delete highlight", err));
+    const { id } = popup.existing;
+    const deletedAt = new Date().toISOString();
+    queueSidecarWrite("delete highlight", async (current) =>
+      current
+        ? await softDeleteHighlightById(absSidecarPath, current, id, deletedAt)
+        : null,
+    );
     setPopup(null);
-  }, [
-    absSidecarPath,
-    popup,
-    reportWriteFailure,
-    setPopup,
-    setSidecar,
-    sidecar,
-  ]);
+  }, [absSidecarPath, popup, queueSidecarWrite, setPopup]);
 
   const onRestoreHighlight = useCallback(
     (id: string) => {
-      if (!absSidecarPath || !sidecar) return;
-      void restoreHighlightById(absSidecarPath, sidecar, id)
-        .then(setSidecar)
-        .catch((err: unknown) => reportWriteFailure("restore highlight", err));
+      if (!absSidecarPath) return;
+      queueSidecarWrite("restore highlight", async (current) =>
+        current
+          ? await restoreHighlightById(absSidecarPath, current, id)
+          : null,
+      );
     },
-    [absSidecarPath, reportWriteFailure, setSidecar, sidecar],
+    [absSidecarPath, queueSidecarWrite],
   );
 
   // §277.2 완전 삭제는 되돌릴 수 없으므로 반드시 확인을 받는다.
@@ -243,12 +294,10 @@ export function usePdfHighlightWriteActions({
   // 적으면 없는 안전을 약속하는 셈이다. 0/실패는 기본 문구로 떨어지고 그
   // 문구는 이미 "되돌릴 수 없다"고 말한다 — 어느 방향으로도 과장하지 않는다.
   //
-  // ‼️ 확인 대화상자가 **await 틈**을 만든다 — 다른 액션에는 없는 성질이다.
-  // 그 사이에 사이드카가 바뀔 수 있으므로(같은 목록에서 다른 항목을 복원했다,
-  // 팝업에서 색을 골랐다, 탭이 바뀌어 다른 PDF의 사이드카가 로드됐다) 클릭
-  // 시점에 캡처된 값이 아니라 **지금 값**으로 쓴다. 캡처된 값으로 쓰면 그
-  // 사이의 변경이 조용히 되돌아간다 — 사이드카 전체를 통째로 다시 쓰기
-  // 때문이다(writeSidecar).
+  // ‼️ 확인은 줄에 서기 **전에** 받는다. 대화상자를 줄 안에서 띄우면 사용자가
+  // 답할 때까지 다른 모든 하이라이트 쓰기가 멎는다 — 사람의 반응 시간을
+  // 파일 쓰기 큐에 넣는 셈이다. 확인이 끝난 뒤 줄에 서므로 그 사이의 변경은
+  // queueSidecarWrite가 이어 나르는 값에 이미 반영돼 있다.
   const onPurgeHighlight = useCallback(
     (id: string) => {
       void (async () => {
@@ -264,18 +313,26 @@ export function usePdfHighlightWriteActions({
             : t("pdfHighlight.purgeConfirm");
         if (!(await showConfirm(message))) return;
 
-        const { absSidecarPath: path, sidecar: current } = latestRef.current;
-        // 그 사이 문서가 바뀌었거나 이 항목이 이미 사라졌으면 아무것도 하지
-        // 않는다 — 지금의 사이드카에 없는 id를 지우는 쓰기는 순전히 손해다
-        // (그 파일을 통째로 다시 쓰면서 최신 변경만 잃는다).
-        if (!path || !current) return;
-        if (!current.highlights.some((h) => h.id === id)) return;
-        setSidecar(await purgeHighlightById(path, current, id));
+        const path = latestRef.current.absSidecarPath;
+        if (!path) return;
+        queueSidecarWrite("purge highlight", async (current) => {
+          // 그 사이 이 항목이 이미 사라졌으면 아무것도 하지 않는다 — 지금의
+          // 사이드카에 없는 id를 지우는 쓰기는 순전히 손해다.
+          if (!current?.highlights.some((h) => h.id === id)) {
+            // §273.4 조용한 부분 실패 금지. 사용자가 확인까지 누른 파괴적
+            // 동작이 아무 일도 안 했다면 최소한 흔적은 남아야 한다.
+            logger.warn(
+              `[pdf-highlight] purge skipped — ${id} is no longer in the sidecar`,
+            );
+            return null;
+          }
+          return await purgeHighlightById(path, current, id);
+        });
       })().catch((err: unknown) => {
         reportWriteFailure("purge highlight", err);
       });
     },
-    [reportWriteFailure, setSidecar, t],
+    [queueSidecarWrite, reportWriteFailure, t],
   );
 
   const onCopyText = useCallback(() => {

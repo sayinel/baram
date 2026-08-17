@@ -160,3 +160,35 @@ describe("isDeletedHighlight", () => {
     expect(isDeletedHighlight(sidecar!.highlights[0])).toBe(true);
   });
 });
+
+// ‼️ 봉투(최상위 키)의 라운드트립. 항목 수준만 지키는 것으로는 부족하다 —
+// 모든 쓰기가 파일을 통째로 다시 쓰므로, 파서가 네 필드만 열거해 새 객체를
+// 만들면 우리가 모르는 최상위 키는 **첫 쓰기 한 번에** 영구히 사라진다.
+describe("§277.2 envelope round-trip", () => {
+  it("carries unknown top-level keys through a parse", () => {
+    const raw = JSON.stringify({
+      companion: "highlights/papers/attention.md",
+      highlights: [validHighlight],
+      lastPurgedAt: "2026-08-17T00:00:00Z",
+      pdf: "papers/attention.pdf",
+      version: 1,
+    });
+
+    const { sidecar } = parseSidecar(raw);
+
+    expect((sidecar as unknown as { lastPurgedAt: string }).lastPurgedAt).toBe(
+      "2026-08-17T00:00:00Z",
+    );
+  });
+
+  // 펼치기가 알려진 필드를 덮으면 안 된다 — highlights는 **검증을 거친**
+  // 배열이어야지 원본 그대로가 아니다.
+  it("still replaces highlights with the validated list, not the raw one", () => {
+    const { dropped, sidecar } = parseSidecar(
+      sidecarJson([validHighlight, { id: "broken" }]),
+    );
+
+    expect(dropped).toBe(1);
+    expect(sidecar?.highlights).toHaveLength(1);
+  });
+});

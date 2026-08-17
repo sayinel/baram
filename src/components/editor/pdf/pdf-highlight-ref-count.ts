@@ -42,5 +42,23 @@ export async function countHighlightRefs(
     logger.warn("[pdf-highlight] failed to count refs before purge:", err);
     return 0;
   }
-  return entries.filter((e) => e.blockId === blockId).length;
+  return entries.filter((e) => e.blockId === blockId && losesPreview(e)).length;
+}
+
+/**
+ * 이 백링크가 완전 삭제로 **무언가를 잃는가**.
+ *
+ * 블록 **임베드**(`{{embed ((…#^id))}}`)는 잃지 않는다 — 임베드는 동반 노트의
+ * 그 문단을 그대로 그리고, 완전 삭제는 사이드카 항목만 지우므로 그 문단은
+ * 남는다. 하이라이트 미리보기(원문 칩·영역 크롭)를 그리는 것은 블록 **참조**
+ * 뿐이다: resolveHighlightRef의 유일한 소비자가 usePdfHighlightRefPreview이고,
+ * 그것을 쓰는 NodeView는 block-reference-view.tsx 하나다.
+ *
+ * ‼️ 판정은 "잃는 것으로 안다"가 아니라 **"안 잃는다고 아는 것만 뺀다"**이다.
+ * 위험한 방향이 과소 집계이기 때문이다 — 없는 안전을 약속하면 사용자가
+ * 되돌릴 수 없는 삭제를 누른다. 그래서 linkType이 비어 있거나 우리가 모르는
+ * 값이면 **센다**. 나중에 새 링크 종류가 생겨도 조용히 빠지지 않는다.
+ */
+function losesPreview(entry: BacklinkEntry): boolean {
+  return entry.linkType !== "blockEmbed";
 }
