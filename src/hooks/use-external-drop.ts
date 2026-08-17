@@ -18,9 +18,12 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import type { Editor } from "@tiptap/core";
 
+import { type Locale, t } from "../i18n";
 import { createDir, importFile, listDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
+import { useUIStore } from "../stores/ui/ui";
 import {
   hideDropIndicator,
   insertNodeAtPos,
@@ -29,7 +32,11 @@ import {
   showDropIndicator,
 } from "../utils/editor/drop-indicator";
 import { logger } from "../utils/logger";
-import { isImageFile, resolveNameConflict } from "../utils/path-utils";
+import {
+  basename,
+  isImageFile,
+  resolveNameConflict,
+} from "../utils/path-utils";
 
 interface UseExternalDropOptions {
   editor: Editor | null;
@@ -42,6 +49,46 @@ export let isExternalFileDrag = false;
 
 type DropZone = "editor" | "filetree" | null;
 
+export async function handleFileTreeDrop(paths: string[], el: Element | null) {
+  const { rootPath, addFileEntry } = useFileStore.getState();
+  if (!rootPath) return;
+
+  // The folder wrapper encloses its child rows, so `closest` from a file row
+  // already resolves to that file's own directory; a top-level row has no
+  // wrapper and correctly falls back to the vault root.
+  const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
+  const targetDir = folderEl?.dataset.dropPath || rootPath;
+
+  let existingNames: Set<string>;
+  try {
+    const entries = await listDir(targetDir);
+    existingNames = new Set(entries.map((e) => e.name));
+  } catch {
+    existingNames = new Set();
+  }
+
+  for (const sourcePath of paths) {
+    const originalName = basename(sourcePath);
+    if (!originalName) continue;
+
+    const finalName = resolveNameConflict(originalName, existingNames);
+    const destPath = targetDir + "/" + finalName;
+
+    try {
+      await importFile(sourcePath, destPath);
+      existingNames.add(finalName);
+      addFileEntry(targetDir, {
+        name: finalName,
+        path: destPath,
+        isDir: false,
+      });
+    } catch (err) {
+      logger.error("[ExternalDrop] Copy to FileTree failed:", err);
+      await reportDropFailure(sourcePath, originalName);
+    }
+  }
+}
+
 export function useExternalDrop({ editor }: UseExternalDropOptions) {
   useEffect(() => {
     // Guard flag: set to false on cleanup so stale async Tauri listeners
@@ -52,11 +99,15 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
     // Browser dragover listener — shows drop indicator using continuous
     // browser events (Tauri "over" events alone can be too infrequent).
     const handleBrowserDragOver = (e: DragEvent) => {
-      if (!isExternalFileDrag || !editor) return;
+      // Only the editor branch needs an editor. Gating the whole handler on it
+      // dropped the file-tree highlight whenever no tab was open — the state
+      // the app starts in — leaving the sparse Tauri "over" events as the only
+      // feedback. Matches the Tauri handler below, which gates per branch.
+      if (!isExternalFileDrag) return;
       e.preventDefault(); // Required to allow drop
       const zone = detectZone(e.clientX, e.clientY);
       clearAllHighlights();
-      if (zone === "editor") {
+      if (zone === "editor" && editor) {
         const target = resolveInsertTarget(editor, e.clientX, e.clientY);
         if (target) showDropIndicator(target);
       } else if (zone === "filetree") {
@@ -167,6 +218,8 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
   }, [editor]);
 }
 
+// --- Highlight helpers ---
+
 function clearAllHighlights() {
   document
     .querySelectorAll(".file-tree-ext-drop-target")
@@ -174,7 +227,7 @@ function clearAllHighlights() {
   hideDropIndicator();
 }
 
-// --- Highlight helpers ---
+// --- Hook ---
 
 function detectZone(x: number, y: number): DropZone {
   // §perf-large-file C3.4: scope to the ACTIVE editor's scroll container
@@ -188,7 +241,7 @@ function detectZone(x: number, y: number): DropZone {
   return null;
 }
 
-// --- Hook ---
+// --- Drop handlers ---
 
 async function handleEditorDrop(
   paths: string[],
@@ -225,7 +278,7 @@ async function handleEditorDrop(
   let pos = insertPos;
 
   for (const sourcePath of imagePaths) {
-    const originalName = sourcePath.split("/").pop() ?? "";
+    const originalName = basename(sourcePath);
     if (!originalName) continue;
 
     const finalName = resolveNameConflict(originalName, existingNames);
@@ -249,46 +302,42 @@ async function handleEditorDrop(
   }
 }
 
-// --- Drop handlers ---
-
-async function handleFileTreeDrop(paths: string[], el: Element | null) {
-  const { rootPath, addFileEntry } = useFileStore.getState();
-  if (!rootPath) return;
-
-  const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
-  const targetDir = folderEl?.dataset.dropPath || rootPath;
-
-  let existingNames: Set<string>;
-  try {
-    const entries = await listDir(targetDir);
-    existingNames = new Set(entries.map((e) => e.name));
-  } catch {
-    existingNames = new Set();
-  }
-
-  for (const sourcePath of paths) {
-    const originalName = sourcePath.split("/").pop() ?? "";
-    if (!originalName) continue;
-
-    const finalName = resolveNameConflict(originalName, existingNames);
-    const destPath = targetDir + "/" + finalName;
-
-    try {
-      await importFile(sourcePath, destPath);
-      existingNames.add(finalName);
-      addFileEntry(targetDir, {
-        name: finalName,
-        path: destPath,
-        isDir: false,
-      });
-    } catch (err) {
-      logger.error("[ExternalDrop] Copy to FileTree failed:", err);
-    }
-  }
-}
-
 function hitTestRect(el: Element | null, x: number, y: number): boolean {
   if (!el) return false;
   const r = el.getBoundingClientRect();
   return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
+/**
+ * Surface a failed copy. Before this the only trace was a `logger.error`, so a
+ * drop that could not land looked identical to one the app never received.
+ *
+ * `import_file` copies a single file, so a dropped FOLDER always rejects.
+ * Naming that specific case is worth one extra `listDir` — which succeeds only
+ * for a directory — and it is paid on the error path alone.
+ */
+async function reportDropFailure(
+  sourcePath: string,
+  name: string,
+): Promise<void> {
+  let isDirectory: boolean;
+  try {
+    await listDir(sourcePath);
+    isDirectory = true;
+  } catch {
+    isDirectory = false;
+  }
+  const { locale } = useSettingsStore.getState();
+  useUIStore
+    .getState()
+    .showToast(
+      t(
+        isDirectory
+          ? "fileTree.drop.folderUnsupported"
+          : "fileTree.drop.failed",
+        locale as Locale,
+        { name },
+      ),
+      "error",
+    );
 }
