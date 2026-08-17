@@ -1,116 +1,171 @@
 // §277.2 완전 삭제 확인 문구에 들어갈 "참조 N곳".
 //
-// 이 수의 위험한 방향은 **과소**다 — 실제로는 참조가 있는데 0이 나오면
-// 사용자는 안전하다고 읽고 되돌릴 수 없는 삭제를 누른다. 그래서 여기서
-// 고정하는 것은 "0을 안전으로 쓰지 말라"는 계약(호출부)이 아니라, 0이
-// 나오는 **모든 경로**가 실제로 0을 돌려준다는 사실이다.
-import type { BacklinkEntry } from "../../../../ipc/types";
+// ‼️ 이 파일의 첫 판은 **전부 초록인 채로 기능이 죽어 있었다.** getBacklinks를
+// vi.mock으로 덮어 두었더니, 링크 인덱스가 이 참조들을 애초에 찾지 못한다는
+// 사실(저장 키 "highlights/paper" vs 조회 키 "paper")이 테스트에는 보이지
+// 않았다. 실기기에서야 드러났다 — cf. mocked-integration-hides-total-failure.
+//
+// 그래서 이 파일은 두 층을 따로 본다:
+//   1. **배선** — searchFiles를 모킹해 "무엇을 물어보는가"를 본다.
+//   2. **패턴 자체** — 그 질의 문자열을 진짜 마크다운에 돌려 본다. IPC는
+//      vitest에서 못 돌리지만, 실제로 틀렸던 층(무엇을 매치하는가)은 여기서
+//      진짜로 실행할 수 있다. 모킹 뒤에 숨는 부분을 최소로 줄이는 것이 요점이다.
+import type { SearchResult } from "../../../../ipc/types";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getBacklinks } = vi.hoisted(() => ({ getBacklinks: vi.fn() }));
-vi.mock("../../../../ipc/link-index", () => ({ getBacklinks }));
+const { searchFiles } = vi.hoisted(() => ({ searchFiles: vi.fn() }));
+vi.mock("../../../../ipc/search", () => ({ searchFiles }));
 
 const { logger } = vi.hoisted(() => ({
   logger: { error: vi.fn(), warn: vi.fn() },
 }));
 vi.mock("../../../../utils/logger", () => ({ logger }));
 
+const state = { rootPath: "/vault" as null | string };
+vi.mock("../../../../stores/file/file", () => ({
+  useFileStore: { getState: () => state },
+}));
+
 import { countHighlightRefs } from "../pdf-highlight-ref-count";
 
-const COMPANION = "/vault/highlights/papers/attention.md";
+const ID = "a1b2c3d4";
 
-// ‼️ linkType을 기본값에 **반드시** 담는다. Rust 인덱스는 항상 채워 보내는데
-// (extractor.rs), 픽스처가 비워 두면 "어떤 링크 종류를 세는가"가 어느 방향으로도
-// 고정되지 않는다 — 필터를 조이든 풀든 전부 초록이다.
-function entry(overrides: Partial<BacklinkEntry> = {}): BacklinkEntry {
-  return {
-    context: "see ((highlights/papers/attention#^h1))",
-    line: 3,
-    linkType: "blockRef",
-    sourcePath: "/vault/notes/reading.md",
-    targetPath: COMPANION,
-    ...overrides,
-  };
+function hit(n: number): SearchResult[] {
+  return Array.from({ length: n }, (_, i) => ({
+    column: 1,
+    filePath: `/vault/notes/${String(i)}.md`,
+    line: 1,
+    snippet: "",
+  }));
 }
 
-describe("countHighlightRefs", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+/** 배선 테스트가 실제로 넘긴 질의 문자열을 꺼낸다. */
+function queries(): string[] {
+  return searchFiles.mock.calls.map((c) => c[1] as string);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  state.rootPath = "/vault";
+  searchFiles.mockResolvedValue([]);
+});
+
+describe("countHighlightRefs — wiring", () => {
+  it("subtracts embeds, which keep rendering after a purge", async () => {
+    // 임베드는 참조 패턴에도 걸린다(임베드가 참조를 품고 있다).
+    searchFiles.mockResolvedValueOnce(hit(5)); // refs + embeds
+    searchFiles.mockResolvedValueOnce(hit(2)); // embeds
+
+    expect(await countHighlightRefs(ID)).toBe(3);
   });
 
-  it("counts only the entries whose blockId matches", async () => {
-    getBacklinks.mockResolvedValue([
-      entry({ blockId: "h1" }),
-      entry({ blockId: "h1", sourcePath: "/vault/notes/other.md" }),
-      entry({ blockId: "h2" }),
-      // 블록 id 없는 항목 = 평범한 위키링크. 이 하이라이트를 가리키지 않는다.
-      entry(),
-    ]);
+  // ‼️ includeGlob을 **넘기지 않는다는 것**이 단정의 요점이다. 생략이 곧
+  // ".md만"이고(search/mod.rs의 include_matches), 넘기면 그 매처의 문법을
+  // 따라야 한다 — `"**/*.md"`를 넘겼다가 아무것도 못 찾은 적이 있다.
+  // 그 매처는 `*.`으로 시작하지 않는 패턴을 **경로 접두사**로 본다.
+  it("searches the vault root and lets the default .md scope stand", async () => {
+    await countHighlightRefs(ID);
 
-    expect(await countHighlightRefs(COMPANION, "h1")).toBe(2);
+    expect(searchFiles).toHaveBeenCalledTimes(2);
+    for (const call of searchFiles.mock.calls) {
+      expect(call[0]).toBe("/vault");
+      expect(call[2]).toMatchObject({ regex: true });
+      expect((call[2] as { includeGlob?: string }).includeGlob).toBeUndefined();
+    }
   });
 
-  // 인덱스의 키는 파일 stem 기반이라 `Paper.pdf`와 `highlights/Paper.md`가
-  // 같은 키로 겹친다(§278에 적힌 기존 결함) — 그 겹침이 이 수를 오염시키지
-  // 못한다는 것이 blockId로 거르는 이유다.
-  it("is not confused by backlinks that belong to the PDF's own stem collision", async () => {
-    getBacklinks.mockResolvedValue([
-      entry({ blockId: "h1" }),
-      entry({
-        context: "[[attention]]",
-        targetPath: "/vault/papers/attention.pdf",
-      }),
-    ]);
+  it("returns 0 without searching when there is no vault", async () => {
+    state.rootPath = null;
 
-    expect(await countHighlightRefs(COMPANION, "h1")).toBe(1);
-  });
-
-  it("asks the index about the companion note, which is what block refs target", async () => {
-    getBacklinks.mockResolvedValue([]);
-    await countHighlightRefs(COMPANION, "h1");
-    expect(getBacklinks).toHaveBeenCalledWith(COMPANION);
-  });
-
-  // 블록 임베드는 완전 삭제로 아무것도 잃지 않는다 — 임베드가 그리는 것은
-  // 동반 노트의 문단이고, 완전 삭제는 사이드카 항목만 지운다. 세면 경고가
-  // 실제보다 무거워진다.
-  it("does not count a block embed, which keeps rendering after a purge", async () => {
-    getBacklinks.mockResolvedValue([
-      entry({ blockId: "h1", linkType: "blockRef" }),
-      entry({
-        blockId: "h1",
-        context: "{{embed ((highlights/papers/attention#^h1))}}",
-        linkType: "blockEmbed",
-      }),
-    ]);
-
-    expect(await countHighlightRefs(COMPANION, "h1")).toBe(1);
-  });
-
-  // ‼️ 반대 방향은 열어 둔다. 과소 집계가 위험한 방향이므로("참조 0곳"이
-  // 없는 안전을 약속한다), 모르는 종류는 뺀다가 아니라 **센다**.
-  it.each([
-    ["an unknown future link type", "someFutureKind"],
-    ["a missing link type", undefined],
-  ])("counts %s rather than dropping it", async (_label, linkType) => {
-    getBacklinks.mockResolvedValue([entry({ blockId: "h1", linkType })]);
-
-    expect(await countHighlightRefs(COMPANION, "h1")).toBe(1);
-  });
-
-  it("returns 0 without asking when there is no companion path", async () => {
-    expect(await countHighlightRefs(null, "h1")).toBe(0);
-    expect(getBacklinks).not.toHaveBeenCalled();
+    expect(await countHighlightRefs(ID)).toBe(0);
+    expect(searchFiles).not.toHaveBeenCalled();
   });
 
   // 개수를 못 세는 것이 완전 삭제를 막을 이유는 아니다 — 던지면 호출부의
   // catch가 "쓰기 실패" 토스트를 띄워, 아직 아무것도 쓰지 않았는데 실패한
   // 것처럼 보인다.
-  it("returns 0 and logs instead of throwing when the index call fails", async () => {
-    getBacklinks.mockRejectedValue(new Error("index not ready"));
+  it("returns 0 and logs instead of throwing when the search fails", async () => {
+    searchFiles.mockRejectedValue(new Error("search unavailable"));
 
-    await expect(countHighlightRefs(COMPANION, "h1")).resolves.toBe(0);
+    await expect(countHighlightRefs(ID)).resolves.toBe(0);
     expect(logger.warn).toHaveBeenCalled();
+  });
+
+  // 두 검색이 같은 순간의 디스크를 본다는 보장이 없다.
+  it("never reports a negative count", async () => {
+    searchFiles.mockResolvedValueOnce(hit(1));
+    searchFiles.mockResolvedValueOnce(hit(3));
+
+    expect(await countHighlightRefs(ID)).toBe(0);
+  });
+
+  // 정규식 메타문자가 든 id는 패턴을 깨뜨리는 대신 **다른 것을 세게** 만든다.
+  it("refuses to search for an id that is not a plain block id", async () => {
+    expect(await countHighlightRefs("a.*b")).toBe(0);
+    expect(searchFiles).not.toHaveBeenCalled();
+  });
+});
+
+// ‼️ 여기가 진짜로 돌아가는 층이다. 위 배선이 꺼내 온 **바로 그 질의 문자열**을
+// 실제 마크다운에 적용한다 — 형식을 눈대중으로 흉내 낸 별도 패턴을 쓰면 이
+// 파일이 검증하는 대상이 제품 코드가 아니게 된다.
+describe("countHighlightRefs — the patterns it actually sends", () => {
+  let refRe: RegExp;
+  let embedRe: RegExp;
+
+  beforeEach(async () => {
+    await countHighlightRefs(ID);
+    const [ref, embed] = queries();
+    refRe = new RegExp(ref, "g");
+    embedRe = new RegExp(embed, "g");
+  });
+
+  function refCount(line: string): number {
+    return [...line.matchAll(refRe)].length;
+  }
+
+  it.each([
+    ["a plain reference", "see ((highlights/papers/attention#^a1b2c3d4))"],
+    [
+      "a reference with display text",
+      "see ((highlights/p#^a1b2c3d4|Attention is))",
+    ],
+    ["a self reference", "see ((#^a1b2c3d4))"],
+  ])("matches %s", (_label, line) => {
+    expect(refCount(line)).toBe(1);
+  });
+
+  // ‼️ 동반 노트의 **정의**는 세면 안 된다. `highlights/*.md`도 검색 범위에
+  // 들어가므로, 정의를 세면 모든 하이라이트가 최소 1곳으로 잡힌다.
+  it("does not match the block-id definition in the companion note", () => {
+    expect(refCount("Attention is all you need ^a1b2c3d4")).toBe(0);
+  });
+
+  it("does not match a different block id", () => {
+    expect(refCount("see ((highlights/p#^ffffffff))")).toBe(0);
+  });
+
+  // 인덱스는 한 줄의 두 참조 중 뒤엣것을 버린다(index/mod.rs:233의
+  // (파일, 줄) 중복 제거). 검색으로 세는 이유 중 하나가 이것이다.
+  it("counts both references on one line — the thing the index drops", () => {
+    expect(
+      refCount(
+        "compare ((highlights/p#^a1b2c3d4)) with ((highlights/p#^a1b2c3d4))",
+      ),
+    ).toBe(2);
+  });
+
+  it("matches an embed with the embed pattern", () => {
+    const line = "{{embed ((highlights/papers/attention#^a1b2c3d4))}}";
+    expect([...line.matchAll(embedRe)]).toHaveLength(1);
+    // 참조 패턴에도 걸리므로 빼는 것이다 — 그 전제를 여기서 고정한다.
+    expect(refCount(line)).toBe(1);
+  });
+
+  it("does not treat a plain reference as an embed", () => {
+    expect([
+      ..."see ((highlights/p#^a1b2c3d4))".matchAll(embedRe),
+    ]).toHaveLength(0);
   });
 });

@@ -115,3 +115,35 @@ describe("§277.2 archived row styling", () => {
     expect(Number(opacity)).toBeGreaterThan(0.3);
   });
 });
+
+// §277.2 아카이브의 행동 버튼. 여기도 jsdom이 못 보는 층이라, 규칙이 사라져도
+// 렌더 테스트는 초록이다 — 그러면 두 버튼이 스타일 없는 맨 텍스트로 남는다
+// (btn-unstyled가 배경·테두리를 지우고 시작하기 때문이다).
+describe("§277.2 archive row actions", () => {
+  const rule = /\.pdf-highlight-row-action\s*\{([^}]*)\}/;
+
+  it("draws them as buttons, not bare text", () => {
+    const body = rule.exec(css)?.[1];
+    expect(body, "no .pdf-highlight-row-action rule").toBeDefined();
+    expect(body).toMatch(/border:/);
+    expect(body).toMatch(/background:/);
+  });
+
+  it("keeps them reachable by keyboard with a visible focus ring", () => {
+    expect(css).toMatch(
+      /\.pdf-highlight-row-action:focus-visible\s*\{[^}]*outline:/,
+    );
+  });
+
+  // ‼️ 되돌릴 수 없는 쪽만 위험색이어야 한다. 둘 다 빨가면 무엇이 위험한지가
+  // 사라지고, 아무것도 안 빨가면 실수로 누를 자리가 된다.
+  it("marks only the irreversible action with the danger colour", () => {
+    const danger =
+      /\.pdf-highlight-row-action\.danger:hover\s*\{([^}]*)\}/.exec(css)?.[1];
+    expect(danger, "no danger hover rule").toBeDefined();
+    expect(danger).toContain("--color-status-danger");
+
+    // 기본 상태(위 rule)에는 위험색이 없어야 한다.
+    expect(rule.exec(css)?.[1]).not.toContain("--color-status-danger");
+  });
+});

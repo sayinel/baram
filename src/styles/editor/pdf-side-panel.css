@@ -176,23 +176,46 @@
 
 .pdf-highlight-row-actions {
   display: flex;
-  gap: 8px;
-  padding: 0 6px 4px;
+  gap: 6px;
+  padding: 0 6px 6px;
 }
 
+/* 밑줄 링크가 아니라 버튼으로 그린다. 둘 다 파괴적이거나 되돌리는 동작이라
+   "누르는 것"으로 읽혀야 하고, 특히 완전 삭제는 실수로 지나칠 자리가 아니다.
+   레일이 좁으므로(PDF_RAIL_CONTENT_WIDTH_PX) 둘이 폭을 반씩 나눠 갖는다. */
 .pdf-highlight-row-action {
+  flex: 1;
+  padding: 3px 6px;
   font-size: 0.6875rem;
-  color: var(--color-text-muted);
-  text-decoration: underline;
+  color: var(--color-text-secondary);
+  text-align: center;
   cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
 }
 
 .pdf-highlight-row-action:hover {
   color: var(--color-text-default);
+  background: var(--color-bg-hover);
+  border-color: var(--color-text-muted);
 }
 
+.pdf-highlight-row-action:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 1px;
+}
+
+/* 되돌릴 수 없는 쪽만 색으로 구분한다. 평소에는 조용히 두고(둘 다 빨가면
+   무엇이 위험한지가 사라진다) 커서가 올라갔을 때 확실히 말한다. */
 .pdf-highlight-row-action.danger:hover {
   color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
+  border-color: var(--color-status-danger);
 }
 
 .pdf-highlight-list-empty {

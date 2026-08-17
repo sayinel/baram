@@ -301,10 +301,7 @@ export function usePdfHighlightWriteActions({
   const onPurgeHighlight = useCallback(
     (id: string) => {
       void (async () => {
-        const refCount = await countHighlightRefs(
-          latestRef.current.absCompanionPath,
-          id,
-        );
+        const refCount = await countHighlightRefs(id);
         const message =
           refCount > 0
             ? t("pdfHighlight.purgeConfirmWithRefs", {
