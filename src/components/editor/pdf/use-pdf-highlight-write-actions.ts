@@ -1,9 +1,15 @@
-// §274 하이라이트 선택 팝업의 네 액션(색 고르기/삭제/Copy text/Copy
-// reference)이 실제로 무엇을 하는지는 여기 모았다 — use-pdf-highlights.ts가
-// 500줄 기준을 넘어서였다(그 파일 헤더 comment의 책임 분리 원칙, 그리고
-// use-pdf-selection-popup.ts가 "언제/무엇을 열지"를 이미 같은 이유로 뽑아둔
-// 것과 같은 패턴). 상태(popup 자체, sidecar)는 여전히 use-pdf-highlights.ts가
-// 갖고, 이 훅은 그 상태를 읽고 setPopup/setSidecar로 되돌려 쓰기만 한다.
+// §274/§277.2 **UI가 유발하는 사이드카 쓰기 전부**가 여기 모여 있다 —
+// use-pdf-highlights.ts가 500줄 기준을 넘어서 뽑아냈다(그 파일 헤더 comment의
+// 책임 분리 원칙, 그리고 use-pdf-selection-popup.ts가 "언제/무엇을 열지"를
+// 이미 같은 이유로 뽑아둔 것과 같은 패턴). 상태(popup 자체, sidecar)는 여전히
+// use-pdf-highlights.ts가 갖고, 이 훅은 그 상태를 읽고 setPopup/setSidecar로
+// 되돌려 쓰기만 한다.
+//
+// §277.2에서 트리거가 둘이 됐다 — 페이지 위의 선택 팝업(색·삭제·복사)과 레일의
+// 하이라이트 목록(복원·완전 삭제). 파일 이름이 use-pdf-highlight-popup-actions
+// 였던 것은 그래서 바꿨다: 쓰기 실패 보고(reportWriteFailure)와 setSidecar
+// 되돌리기 규약이 두 트리거에 **똑같이** 적용되어야 하므로, 훅을 갈라 놓으면
+// 그 규약이 두 벌이 되고 한쪽만 토스트를 빠뜨려도 아무 데서도 안 걸린다.
 //
 // PopupState 타입도 여기서 정의해 내보낸다 — 액션들이 이 타입의 분기
 // (new vs existing)에 맞춰 동작이 갈리므로, 실제로 그 분기를 소비하는 쪽이
@@ -11,7 +17,7 @@
 // state와 handlePageMouseDown/onNewSelection에 쓴다 — 참조 방향은 한쪽
 // (여기 → use-pdf-highlights.ts)뿐이라 순환 import가 아니다.
 import type { Dispatch, SetStateAction } from "react";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 import type { PdfRect } from "./pdf-highlight-geom";
 import type {
@@ -24,12 +30,16 @@ import type {
 import { useTranslation } from "../../../i18n/useTranslation";
 import { serializeBlockRef } from "../../../pipeline/block-id";
 import { useUIStore } from "../../../stores/ui/ui";
+import { showConfirm } from "../../../utils/confirm-dialog";
 import { logger } from "../../../utils/logger";
 import {
   createTextHighlight,
-  deleteHighlightById,
+  purgeHighlightById,
+  restoreHighlightById,
+  softDeleteHighlightById,
   updateHighlightColor,
 } from "./pdf-highlight-actions";
+import { countHighlightRefs } from "./pdf-highlight-ref-count";
 import { readHighlightBlockText } from "./pdf-highlight-store";
 import { buildRefDisplay } from "./pdf-ref-display";
 
@@ -52,14 +62,19 @@ export type PopupState =
       pageNumber: number;
     };
 
-export interface UsePdfHighlightPopupActionsResult {
+export interface UsePdfHighlightWriteActionsResult {
   onCopyRef: () => void;
   onCopyText: () => void;
+  /** §277.2 팝업의 "삭제" — 실제로는 삭제 표시다(softDeleteHighlightById). */
   onDelete: () => void;
   onPickColor: (color: HighlightColor) => void;
+  /** §277.2 목록의 "완전 삭제" — 확인을 받고 사이드카에서 항목을 뺀다. */
+  onPurgeHighlight: (id: string) => void;
+  /** §277.2 목록의 "복원" — 삭제 표시를 걷어낸다. */
+  onRestoreHighlight: (id: string) => void;
 }
 
-export function usePdfHighlightPopupActions({
+export function usePdfHighlightWriteActions({
   absCompanionPath,
   absSidecarPath,
   pdfRelPath,
@@ -77,8 +92,13 @@ export function usePdfHighlightPopupActions({
   setSidecar: Dispatch<SetStateAction<null | Sidecar>>;
   sidecar: null | Sidecar;
   target: null | string;
-}): UsePdfHighlightPopupActionsResult {
+}): UsePdfHighlightWriteActionsResult {
   const { t } = useTranslation();
+
+  // §277.2 onPurgeHighlight 전용 — 확인 대화상자가 만드는 await 틈 **뒤에**
+  // 읽을 최신값이다. 그 액션의 doc comment에 왜 캡처값을 쓰면 안 되는지 있다.
+  const latestRef = useRef({ absCompanionPath, absSidecarPath, sidecar });
+  latestRef.current = { absCompanionPath, absSidecarPath, sidecar };
 
   // §274 I1 사이드카/동반 노트 쓰기가 실패했는데 조용히 삼키면 §273.4가
   // 금지하는 바로 그 "조용한 부분 실패"가 된다 — main.tsx의 전역
@@ -180,12 +200,20 @@ export function usePdfHighlightPopupActions({
     ],
   );
 
+  // §277.2 "삭제"는 이제 삭제 표시다 — 페이지에서는 즉시 사라지지만 항목은
+  // 사이드카에 남아 블록 참조가 계속 해석된다(pdf-highlight-actions.ts 참조).
+  // 되돌리기와 완전 삭제는 레일의 하이라이트 목록에 있다.
   const onDelete = useCallback(() => {
     if (!popup || popup.kind !== "existing" || !absSidecarPath || !sidecar) {
       setPopup(null);
       return;
     }
-    void deleteHighlightById(absSidecarPath, sidecar, popup.existing.id)
+    void softDeleteHighlightById(
+      absSidecarPath,
+      sidecar,
+      popup.existing.id,
+      new Date().toISOString(),
+    )
       .then(setSidecar)
       .catch((err: unknown) => reportWriteFailure("delete highlight", err));
     setPopup(null);
@@ -197,6 +225,58 @@ export function usePdfHighlightPopupActions({
     setSidecar,
     sidecar,
   ]);
+
+  const onRestoreHighlight = useCallback(
+    (id: string) => {
+      if (!absSidecarPath || !sidecar) return;
+      void restoreHighlightById(absSidecarPath, sidecar, id)
+        .then(setSidecar)
+        .catch((err: unknown) => reportWriteFailure("restore highlight", err));
+    },
+    [absSidecarPath, reportWriteFailure, setSidecar, sidecar],
+  );
+
+  // §277.2 완전 삭제는 되돌릴 수 없으므로 반드시 확인을 받는다.
+  //
+  // ‼️ 참조 개수는 **있을 때만** 문구에 더한다. 인덱스가 아직 안 돌았거나
+  // 실패하면 0이 오는데(pdf-highlight-ref-count.ts), 그때 "참조 0곳"이라고
+  // 적으면 없는 안전을 약속하는 셈이다. 0/실패는 기본 문구로 떨어지고 그
+  // 문구는 이미 "되돌릴 수 없다"고 말한다 — 어느 방향으로도 과장하지 않는다.
+  //
+  // ‼️ 확인 대화상자가 **await 틈**을 만든다 — 다른 액션에는 없는 성질이다.
+  // 그 사이에 사이드카가 바뀔 수 있으므로(같은 목록에서 다른 항목을 복원했다,
+  // 팝업에서 색을 골랐다, 탭이 바뀌어 다른 PDF의 사이드카가 로드됐다) 클릭
+  // 시점에 캡처된 값이 아니라 **지금 값**으로 쓴다. 캡처된 값으로 쓰면 그
+  // 사이의 변경이 조용히 되돌아간다 — 사이드카 전체를 통째로 다시 쓰기
+  // 때문이다(writeSidecar).
+  const onPurgeHighlight = useCallback(
+    (id: string) => {
+      void (async () => {
+        const refCount = await countHighlightRefs(
+          latestRef.current.absCompanionPath,
+          id,
+        );
+        const message =
+          refCount > 0
+            ? t("pdfHighlight.purgeConfirmWithRefs", {
+                count: String(refCount),
+              })
+            : t("pdfHighlight.purgeConfirm");
+        if (!(await showConfirm(message))) return;
+
+        const { absSidecarPath: path, sidecar: current } = latestRef.current;
+        // 그 사이 문서가 바뀌었거나 이 항목이 이미 사라졌으면 아무것도 하지
+        // 않는다 — 지금의 사이드카에 없는 id를 지우는 쓰기는 순전히 손해다
+        // (그 파일을 통째로 다시 쓰면서 최신 변경만 잃는다).
+        if (!path || !current) return;
+        if (!current.highlights.some((h) => h.id === id)) return;
+        setSidecar(await purgeHighlightById(path, current, id));
+      })().catch((err: unknown) => {
+        reportWriteFailure("purge highlight", err);
+      });
+    },
+    [reportWriteFailure, setSidecar, t],
+  );
 
   const onCopyText = useCallback(() => {
     if (!popup) return;
@@ -277,5 +357,12 @@ export function usePdfHighlightPopupActions({
     target,
   ]);
 
-  return { onCopyRef, onCopyText, onDelete, onPickColor };
+  return {
+    onCopyRef,
+    onCopyText,
+    onDelete,
+    onPickColor,
+    onPurgeHighlight,
+    onRestoreHighlight,
+  };
 }

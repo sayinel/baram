@@ -34,17 +34,37 @@ import {
   vi,
 } from "vitest";
 
-const { createTextHighlight, deleteHighlightById, updateHighlightColor } =
-  vi.hoisted(() => ({
-    createTextHighlight: vi.fn(),
-    deleteHighlightById: vi.fn(),
-    updateHighlightColor: vi.fn(),
-  }));
+const {
+  createTextHighlight,
+  purgeHighlightById,
+  restoreHighlightById,
+  softDeleteHighlightById,
+  updateHighlightColor,
+} = vi.hoisted(() => ({
+  createTextHighlight: vi.fn(),
+  purgeHighlightById: vi.fn(),
+  restoreHighlightById: vi.fn(),
+  softDeleteHighlightById: vi.fn(),
+  updateHighlightColor: vi.fn(),
+}));
 vi.mock("../pdf-highlight-actions", () => ({
   createTextHighlight,
-  deleteHighlightById,
+  purgeHighlightById,
+  restoreHighlightById,
+  softDeleteHighlightById,
   updateHighlightColor,
 }));
+
+// §277.2 완전 삭제는 확인 대화상자와 참조 개수 조회를 탄다. 둘 다 이 훅이
+// 직접 부르는 한 겹이라 여기서 모킹한다 — 그 아래(IPC, DOM 대화상자)는
+// 각자의 테스트가 본다.
+const { showConfirm } = vi.hoisted(() => ({ showConfirm: vi.fn() }));
+vi.mock("../../../../utils/confirm-dialog", () => ({ showConfirm }));
+
+const { countHighlightRefs } = vi.hoisted(() => ({
+  countHighlightRefs: vi.fn(),
+}));
+vi.mock("../pdf-highlight-ref-count", () => ({ countHighlightRefs }));
 
 const { readHighlightBlockText, readSidecar } = vi.hoisted(() => ({
   readHighlightBlockText: vi.fn(),
@@ -73,6 +93,7 @@ vi.mock("../../../../utils/logger", () => ({ logger }));
 // 유일한 임포터가 pdf-highlight-actions.ts이고 이 파일은 그 모듈을 통째로
 // 모킹한다 — 훅 트리에서 도달할 수 없게 되어 모의도 함께 걷어냈다.
 
+import { useLinkStore } from "../../../../stores/editor/link";
 import { usePdfHighlights } from "../use-pdf-highlights";
 
 const ROOT = "/vault";
@@ -158,7 +179,7 @@ describe("usePdfHighlights", () => {
       pdf: "papers/attention.pdf",
       version: 1,
     });
-    deleteHighlightById.mockResolvedValue({
+    softDeleteHighlightById.mockResolvedValue({
       companion: "highlights/papers/attention.md",
       highlights: [],
       pdf: "papers/attention.pdf",
@@ -451,7 +472,9 @@ describe("usePdfHighlights", () => {
         pdf: "papers/attention.pdf",
         version: 1,
       });
-      deleteHighlightById.mockRejectedValueOnce(new Error("permission denied"));
+      softDeleteHighlightById.mockRejectedValueOnce(
+        new Error("permission denied"),
+      );
 
       const { result } = renderHook(() =>
         usePdfHighlights({
@@ -996,6 +1019,355 @@ describe("usePdfHighlights", () => {
       expect(hit).toBe(true);
       expect(result.current.popupProps?.existing?.id).toBe("area1");
       expect(result.current.popupProps?.highlightKind).toBe("area");
+    });
+  });
+
+  // §277.2 소프트 삭제 — 사이드카를 읽는 소비자마다 "삭제된 것"을 다르게
+  // 다뤄야 한다는 것이 이 기능의 전부다. 여기서 고정하는 것은 이 훅이 쥔
+  // 세 갈래다: 오버레이(감춘다) · 클릭 판정(안 잡힌다) · 목록(보여준다).
+  describe("§277.2 soft delete", () => {
+    const DELETED: StoredHighlight = {
+      ...HIGHLIGHT,
+      deletedAt: "2026-08-17T01:23:45.000Z",
+      id: "gone1",
+    };
+
+    function loadSidecar(highlights: StoredHighlight[]) {
+      readSidecar.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights,
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+      return renderHook(() =>
+        usePdfHighlights({
+          filePath: FILE_PATH,
+          pages: [fakePage(1)],
+          pagesReady: true,
+          rootPath: ROOT,
+          scale: 1,
+          scrollToPage: vi.fn(),
+          textModeActive: true,
+        }),
+      );
+    }
+
+    it("hides a deleted highlight from the page overlay", async () => {
+      const { result } = loadSidecar([HIGHLIGHT, DELETED]);
+
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(2));
+      expect(result.current.getPageHighlights(1).map((h) => h.id)).toEqual([
+        "existing1",
+      ]);
+    });
+
+    // 사라진 것을 클릭할 수는 없어야 한다 — 잡히면 "삭제"·색 고르기 팝업이
+    // 이미 지운 하이라이트에 걸린다.
+    it("makes a deleted highlight unclickable even where its rects still are", async () => {
+      const { result } = loadSidecar([DELETED]);
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(1));
+
+      let hit: boolean | undefined;
+      act(() => {
+        hit = result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          10,
+          10,
+        );
+      });
+
+      expect(hit).toBe(false);
+      expect(result.current.popupProps).toBeNull();
+    });
+
+    // 목록이 아카이브의 유일한 출입구다 — 여기서 미리 걸러 내보내면 사용자가
+    // 삭제한 것을 다시 볼 방법이 없다.
+    it("still reports deleted highlights in allHighlights for the list", async () => {
+      const { result } = loadSidecar([HIGHLIGHT, DELETED]);
+
+      await waitFor(() =>
+        expect(result.current.allHighlights.map((h) => h.id)).toEqual([
+          "existing1",
+          "gone1",
+        ]),
+      );
+    });
+
+    // 참조를 클릭해 여기로 왔을 때만 그린다 — 그래야 참조 칩이 보여주는 것과
+    // 클릭 결과가 어긋나지 않는다.
+    it("draws a deleted highlight while it is the one being flashed", async () => {
+      const { result } = loadSidecar([DELETED]);
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(1));
+      expect(result.current.getPageHighlights(1)).toHaveLength(0);
+
+      act(() => {
+        useLinkStore.getState().setPendingPdfHighlightId("gone1");
+      });
+
+      await waitFor(() =>
+        expect(result.current.flashHighlightId).toBe("gone1"),
+      );
+      expect(result.current.getPageHighlights(1).map((h) => h.id)).toEqual([
+        "gone1",
+      ]);
+    });
+
+    // ‼️ 강조는 그 하이라이트 **하나**만 되살린다. 페이지의 다른 삭제된
+    // 하이라이트까지 함께 나타나면 "지운 것이 돌아왔다"로 읽힌다.
+    it("draws only the flashed one, not every deleted highlight on the page", async () => {
+      // ‼️ 강조 대상이 배열의 **첫 항목이 아니어야** 한다. 뮤테이션 테스트가
+      // 잡았다: 첫 번째를 강조하는 픽스처로는 "이 페이지의 삭제된 것 중
+      // 아무거나 하나"를 돌려주는 구현도 정확히 같은 답을 내서, 어떤 단정으로도
+      // id 판정을 고정할 수 없다.
+      const other: StoredHighlight = { ...DELETED, id: "gone2" };
+      const { result } = loadSidecar([DELETED, other]);
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(2));
+
+      act(() => {
+        useLinkStore.getState().setPendingPdfHighlightId("gone2");
+      });
+
+      await waitFor(() =>
+        expect(result.current.flashHighlightId).toBe("gone2"),
+      );
+      expect(result.current.getPageHighlights(1).map((h) => h.id)).toEqual([
+        "gone2",
+      ]);
+    });
+
+    // ‼️ 뮤테이션 테스트가 잡았다: 픽스처의 하이라이트가 전부 1페이지에
+    // 있으면 페이지 판정을 아예 빼도 모든 단정이 통과한다. 실제로는 그때
+    // 5페이지의 삭제된 하이라이트가 **모든 페이지의 오버레이에** 그려진다 —
+    // 페이지마다 getPageHighlights가 따로 불리기 때문이다.
+    it("draws the flashed deleted highlight only on its own page", async () => {
+      const onPage2: StoredHighlight = { ...DELETED, id: "gone2", page: 2 };
+      const { result } = loadSidecar([onPage2]);
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(1));
+
+      act(() => {
+        useLinkStore.getState().setPendingPdfHighlightId("gone2");
+      });
+      await waitFor(() =>
+        expect(result.current.flashHighlightId).toBe("gone2"),
+      );
+
+      expect(result.current.getPageHighlights(2).map((h) => h.id)).toEqual([
+        "gone2",
+      ]);
+      expect(result.current.getPageHighlights(1)).toHaveLength(0);
+    });
+
+    // 살아 있는 하이라이트를 강조하는 것이 훨씬 흔한 경우다(§275.6부터의 기본
+    // 경로). 그때 "강조 중인 것을 얹는" 가지가 삭제 여부를 안 보면 같은
+    // 하이라이트가 두 번 그려져, 반투명 배경이 겹쳐 진해진다 —
+    // pdf-highlight-path.ts가 union 렌더링으로 없앤 바로 그 증상이다.
+    it("does not draw a live highlight twice when it is the one being flashed", async () => {
+      const { result } = loadSidecar([HIGHLIGHT]);
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+      );
+
+      act(() => {
+        useLinkStore.getState().setPendingPdfHighlightId("existing1");
+      });
+
+      await waitFor(() =>
+        expect(result.current.flashHighlightId).toBe("existing1"),
+      );
+      expect(result.current.getPageHighlights(1).map((h) => h.id)).toEqual([
+        "existing1",
+      ]);
+    });
+
+    // 강조 중이어도 클릭 대상은 아니다 — 그리는 목록과 판정하는 목록이
+    // 갈라져 있다는 것이 이 성질의 전부다.
+    it("keeps the flashed deleted highlight unclickable", async () => {
+      const { result } = loadSidecar([DELETED]);
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(1));
+
+      act(() => {
+        useLinkStore.getState().setPendingPdfHighlightId("gone1");
+      });
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+      );
+
+      let hit: boolean | undefined;
+      act(() => {
+        hit = result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          10,
+          10,
+        );
+      });
+      expect(hit).toBe(false);
+    });
+
+    it("routes the popup's Delete through the soft-delete write, not the purge", async () => {
+      const { result } = loadSidecar([HIGHLIGHT]);
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1)).toHaveLength(1),
+      );
+      act(() => {
+        result.current.handlePageMouseDown(
+          1,
+          identityViewport(),
+          { left: 0, top: 0 },
+          10,
+          10,
+        );
+      });
+
+      act(() => {
+        result.current.popupProps?.onDelete();
+      });
+
+      expect(purgeHighlightById).not.toHaveBeenCalled();
+      expect(softDeleteHighlightById).toHaveBeenCalledTimes(1);
+      // 네 번째 인자가 삭제 시각이다. 값 자체는 호출부가 만들지만, ISO 문자열
+      // 이라는 것과 "실제로 넘어간다"는 것은 여기서 고정한다 — 안 넘기면
+      // deletedAt이 undefined가 되어 삭제가 아무 일도 하지 않는다.
+      const stamp = softDeleteHighlightById.mock.calls[0][3] as unknown;
+      expect(typeof stamp).toBe("string");
+      expect(new Date(stamp as string).toISOString()).toBe(stamp);
+    });
+
+    it("restores through restoreHighlightById and adopts the returned sidecar", async () => {
+      const { result } = loadSidecar([DELETED]);
+      await waitFor(() => expect(result.current.allHighlights).toHaveLength(1));
+      restoreHighlightById.mockResolvedValue({
+        companion: "highlights/papers/attention.md",
+        highlights: [HIGHLIGHT],
+        pdf: "papers/attention.pdf",
+        version: 1,
+      });
+
+      act(() => {
+        result.current.onRestoreHighlight("gone1");
+      });
+
+      await waitFor(() =>
+        expect(result.current.getPageHighlights(1).map((h) => h.id)).toEqual([
+          "existing1",
+        ]),
+      );
+      expect(restoreHighlightById).toHaveBeenCalledWith(
+        "/vault/.baram/pdf-highlights/papers/attention.json",
+        expect.objectContaining({ pdf: "papers/attention.pdf" }),
+        "gone1",
+      );
+    });
+
+    describe("purge", () => {
+      it("does nothing when the confirmation is declined", async () => {
+        countHighlightRefs.mockResolvedValue(0);
+        showConfirm.mockResolvedValue(false);
+        const { result } = loadSidecar([DELETED]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+
+        act(() => {
+          result.current.onPurgeHighlight("gone1");
+        });
+
+        await waitFor(() => expect(showConfirm).toHaveBeenCalledTimes(1));
+        expect(purgeHighlightById).not.toHaveBeenCalled();
+      });
+
+      it("purges once the confirmation is accepted", async () => {
+        countHighlightRefs.mockResolvedValue(0);
+        showConfirm.mockResolvedValue(true);
+        purgeHighlightById.mockResolvedValue({
+          companion: "highlights/papers/attention.md",
+          highlights: [],
+          pdf: "papers/attention.pdf",
+          version: 1,
+        });
+        const { result } = loadSidecar([DELETED]);
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+
+        act(() => {
+          result.current.onPurgeHighlight("gone1");
+        });
+
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(0),
+        );
+        expect(purgeHighlightById).toHaveBeenCalledTimes(1);
+      });
+
+      // ‼️ 확인 대화상자가 await 틈을 만든다 — 그 사이에 사이드카가 바뀌면
+      // 캡처된 옛 사이드카로 파일을 통째로 다시 써서 그 변경을 조용히
+      // 되돌린다. 여기서는 그 틈에 항목이 사라진 경우를 재현한다.
+      it("does not write a stale sidecar when the entry vanished while the dialog was open", async () => {
+        countHighlightRefs.mockResolvedValue(0);
+        let allow: (v: boolean) => void = () => undefined;
+        showConfirm.mockReturnValue(
+          new Promise<boolean>((resolve) => {
+            allow = resolve;
+          }),
+        );
+        const { rerender, result } = renderHook(
+          (props: { filePath: string }) =>
+            usePdfHighlights({
+              filePath: props.filePath,
+              pages: [fakePage(1)],
+              pagesReady: true,
+              rootPath: ROOT,
+              scale: 1,
+              scrollToPage: vi.fn(),
+              textModeActive: true,
+            }),
+          { initialProps: { filePath: FILE_PATH } },
+        );
+        readSidecar.mockResolvedValue({
+          companion: "highlights/papers/attention.md",
+          highlights: [DELETED],
+          pdf: "papers/attention.pdf",
+          version: 1,
+        });
+        act(() => {
+          rerender({ filePath: "/vault/papers/other.pdf" });
+        });
+        await waitFor(() =>
+          expect(result.current.allHighlights).toHaveLength(1),
+        );
+
+        act(() => {
+          result.current.onPurgeHighlight("gone1");
+        });
+        await waitFor(() => expect(showConfirm).toHaveBeenCalledTimes(1));
+
+        // 대화상자가 떠 있는 동안 이 항목이 사라진 사이드카가 도착한다.
+        readSidecar.mockResolvedValue({
+          companion: "highlights/papers/attention.md",
+          highlights: [HIGHLIGHT],
+          pdf: "papers/attention.pdf",
+          version: 1,
+        });
+        act(() => {
+          rerender({ filePath: FILE_PATH });
+        });
+        await waitFor(() =>
+          expect(result.current.allHighlights.map((h) => h.id)).toEqual([
+            "existing1",
+          ]),
+        );
+
+        await act(async () => {
+          allow(true);
+          await Promise.resolve();
+        });
+
+        expect(purgeHighlightById).not.toHaveBeenCalled();
+      });
     });
   });
 });

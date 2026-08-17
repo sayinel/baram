@@ -259,6 +259,24 @@
   fill: var(--color-editor-pdf-hl-purple);
 }
 
+/* §277.2 삭제된 하이라이트가 페이지에 그려지는 경우는 하나뿐이다 — 그것을
+   가리키는 블록 참조를 클릭해 방금 여기로 왔을 때(use-pdf-highlights.ts의
+   getPageHighlights). 채우지 않고 점선 윤곽만 남겨 "여기 있었다"로 읽히게 한다.
+
+   ‼️ 클래스를 두 번 적어 특이도를 올린다(0,2,0). `.pdf-hl-path-yellow` 등과
+   같은 (0,1,0)으로 두면 이 규칙이 파일에서 **아래에 있다**는 사실에만 기대게
+   되는데, 그것은 규칙을 옮기는 순간 조용히 깨지는 성질이다.
+
+   색은 하이라이트 색을 따르지 않고 muted 하나로 통일한다 — 지워진 자리의
+   원래 색은 더 이상 의미가 없고, 5색 중 옅은 것은 점선으로 그리면 사실상
+   안 보인다. */
+.pdf-hl-path.pdf-hl-path-deleted {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
 /* §275.6 flash 링 전용 — 배경은 위 <svg>가 칠하므로 여기서는 outline
    애니메이션(.pdf-hl-mark-flash, 아래)만 얹힌다. */
 .pdf-hl-mark {

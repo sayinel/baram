@@ -20,6 +20,11 @@ const css = readFileSync(
   "utf8",
 );
 
+const overlayCss = readFileSync(
+  join(process.cwd(), "src/styles/editor/pdf.css"),
+  "utf8",
+);
+
 describe("highlight swatch colours", () => {
   it.each(HIGHLIGHT_COLORS)(
     "gives %s a swatch rule with a background",
@@ -50,4 +55,32 @@ describe("highlight swatch colours", () => {
       expect(rule.exec(css)?.[1]).toContain(`--color-editor-pdf-hl-${color}`);
     },
   );
+});
+
+// §277.2 삭제된 하이라이트는 "채우지 않고 점선 윤곽만"으로 그린다. 그 판정은
+// 전부 CSS에 있다 — PdfPage는 클래스 하나를 붙일 뿐이라 jsdom 렌더 테스트는
+// 클래스가 붙었다는 것까지만 볼 수 있고, 규칙이 사라져도 초록불이다
+// (스와치가 전부 투명했던 §282.2의 그 구멍과 정확히 같은 모양이다).
+describe("§277.2 deleted-highlight outline rule", () => {
+  const rule = /\.pdf-hl-path\.pdf-hl-path-deleted\s*\{([^}]*)\}/;
+
+  it("exists and turns the fill off", () => {
+    const match = rule.exec(overlayCss);
+    expect(match, "no .pdf-hl-path.pdf-hl-path-deleted rule").not.toBeNull();
+    expect(match?.[1]).toMatch(/fill:\s*none/);
+  });
+
+  it("draws a dashed stroke instead", () => {
+    const body = rule.exec(overlayCss)?.[1] ?? "";
+    expect(body).toMatch(/stroke:/);
+    expect(body).toMatch(/stroke-dasharray:/);
+  });
+
+  // ‼️ 특이도가 요점이다. `.pdf-hl-path-yellow` 등과 같은 (0,1,0)으로 두면
+  // 이 규칙이 파일에서 아래에 있다는 사실에만 기대게 되는데, 그것은 규칙을
+  // 옮기는 순간 조용히 깨진다 — 그때 삭제된 하이라이트가 살아 있는 것과
+  // 똑같이 칠해진다.
+  it("outranks the per-colour fill rules on specificity, not on source order", () => {
+    expect(overlayCss).toContain(".pdf-hl-path.pdf-hl-path-deleted");
+  });
 });

@@ -246,3 +246,55 @@ describe("resolveHighlightRef", () => {
     });
   });
 });
+
+// §277.2 소프트 삭제의 **목적 자체**가 이것이다 — 항목이 남아 있으므로
+// 리졸버는 아무 일도 하지 않고, 참조가 계속 원문과 영역 크롭을 보여준다.
+// 여기서 deletedAt을 거르도록 바뀌면 §277.2가 통째로 무의미해진다:
+// 페이지에서만 감추는 대신 참조가 80자 display로 퇴화하고, area는 rect까지
+// 잃어 원리상 되살릴 수 없다.
+describe("§277.2 deleted highlights still resolve", () => {
+  const DELETED_AT = "2026-08-17T01:23:45.000Z";
+
+  it("resolves a deleted area highlight with its geometry intact", async () => {
+    readSidecarCoalesced.mockResolvedValue(
+      sidecarWith(areaHighlight({ deletedAt: DELETED_AT })),
+    );
+
+    expect(
+      await resolveHighlightRef("highlights/papers/Attention", "abc123"),
+    ).toEqual({
+      absPdfPath: `/vault/${REAL_PDF_REL_PATH}`,
+      kind: "area",
+      page: 3,
+      rect: RECT,
+    });
+  });
+
+  it("resolves a deleted text highlight to its companion note", async () => {
+    readSidecarCoalesced.mockResolvedValue(
+      sidecarWith(areaHighlight({ deletedAt: DELETED_AT, kind: "text" })),
+    );
+
+    expect(
+      await resolveHighlightRef("highlights/papers/Attention", "abc123"),
+    ).toEqual({
+      absCompanionPath: `/vault/${RECORDED_COMPANION}`,
+      kind: "text",
+    });
+  });
+
+  // 완전 삭제는 항목이 없어지는 것이라 여기서 null이 된다 — 그것이
+  // 되돌릴 수 없다고 경고하는 이유다.
+  it("returns null once the entry is gone for good", async () => {
+    readSidecarCoalesced.mockResolvedValue({
+      companion: RECORDED_COMPANION,
+      highlights: [],
+      pdf: REAL_PDF_REL_PATH,
+      version: 1,
+    } satisfies Sidecar);
+
+    expect(
+      await resolveHighlightRef("highlights/papers/Attention", "abc123"),
+    ).toBeNull();
+  });
+});

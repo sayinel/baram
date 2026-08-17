@@ -52,7 +52,11 @@ export function usePdfHighlightFlash({
     // Consumed either way — leaving it set would let a later, unrelated
     // sidecar reload (e.g. after picking a color) replay a stale jump.
     useLinkStore.getState().setPendingPdfHighlightId(null);
-    if (!hit) return; // deleted between the nav-time check and now — no-op
+    // §277.2 삭제 여부로 거르지 않는다 — 삭제된 하이라이트도 자리로 데려가
+    // 점선으로 짚어 준다(use-pdf-highlights.ts의 getPageHighlights). 여기서
+    // 걸러 버리면 참조 칩은 원문/크롭을 보여주는데 클릭은 아무 일도 안 하는,
+    // 설명할 수 없는 상태가 된다.
+    if (!hit) return; // 완전 삭제됐거나 다른 PDF의 id — no-op
     scrollToPage(hit.page);
     setFlash((prev) => ({ id: hit.id, token: (prev?.token ?? 0) + 1 }));
   }, [pagesReady, pendingHighlightId, scrollToPage, sidecar]);

@@ -16,6 +16,7 @@ import { TextLayer } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { clearMatches, renderMatches } from "./pdf-find-render";
 import { pdfRectToPageLocal } from "./pdf-highlight-geom";
 import { buildHighlightPath } from "./pdf-highlight-path";
+import { isDeletedHighlight } from "./pdf-highlight-sidecar";
 import {
   attachTextLayerEndOfContent,
   detachTextLayerEndOfContent,
@@ -308,7 +309,20 @@ export function PdfPage({
                   width={viewport.width}
                 >
                   <path
-                    className={`pdf-hl-path pdf-hl-path-${h.color}`}
+                    // §276.3의 같은 이유로 배열 join이다 — 조건부 클래스의
+                    // 공백을 템플릿 리터럴에 맡기지 않는다.
+                    className={[
+                      "pdf-hl-path",
+                      `pdf-hl-path-${h.color}`,
+                      // §277.2 삭제된 하이라이트가 여기까지 오는 경우는 하나뿐
+                      // ("지금 강조 중" — use-pdf-highlights.ts의
+                      // getPageHighlights). 채우지 않고 점선 윤곽만 그려
+                      // "여기 있었다"로 읽히게 한다. 살아 있는 것과 같은
+                      // 모습이면 사용자는 삭제가 안 됐다고 읽는다.
+                      isDeletedHighlight(h) ? "pdf-hl-path-deleted" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     d={buildHighlightPath(localRects)}
                     fillRule="nonzero"
                   />

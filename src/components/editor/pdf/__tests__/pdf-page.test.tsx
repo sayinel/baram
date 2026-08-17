@@ -353,6 +353,64 @@ describe("§274 UX fix round 3 (defect B) PdfPage highlight fill", () => {
   });
 });
 
+// §277.2 삭제된 하이라이트가 이 컴포넌트에 도달하는 경우는 하나뿐이다 —
+// 그것을 가리키는 참조를 클릭해 방금 이 페이지로 왔을 때(부모의
+// getPageHighlights가 그때만 얹어 준다). 살아 있는 것과 같은 모습으로
+// 그리면 사용자는 삭제가 안 됐다고 읽으므로, 채우기를 끄는 클래스가
+// 반드시 붙어야 한다.
+describe("§277.2 a deleted highlight is drawn as an outline, not a fill", () => {
+  function paint(highlights: StoredHighlight[]) {
+    const { container } = render(
+      <PdfPage
+        highlights={highlights}
+        page={makePage(vi.fn(() => ({})))}
+        renderScale={1}
+        retention={retention}
+        scale={1}
+      />,
+    );
+    const observers = (
+      globalThis as unknown as {
+        MockIntersectionObserver: { instances: { triggerIntersect(): void }[] };
+      }
+    ).MockIntersectionObserver.instances;
+    act(() => {
+      observers[observers.length - 1].triggerIntersect();
+    });
+    return Array.from(container.querySelectorAll(".pdf-hl-svg")).map((svg) =>
+      svg.querySelector("path")?.getAttribute("class"),
+    );
+  }
+
+  const live: StoredHighlight = {
+    color: "green",
+    id: "live",
+    kind: "text",
+    page: 1,
+    rects: [{ h: 14, w: 200, x: 0, y: 0 }],
+  };
+  const deleted: StoredHighlight = {
+    ...live,
+    deletedAt: "2026-08-17T01:23:45.000Z",
+    id: "gone",
+  };
+
+  it("marks the deleted one and leaves the live one alone", () => {
+    // 한 페이지에 둘을 함께 그린다 — 클래스가 **항목별로** 붙는지 고정한다.
+    // 하나만 넣으면 "전부 붙인다"는 버그도 통과한다.
+    expect(paint([live, deleted])).toEqual([
+      "pdf-hl-path pdf-hl-path-green",
+      "pdf-hl-path pdf-hl-path-green pdf-hl-path-deleted",
+    ]);
+  });
+
+  // 색 클래스는 그대로 남긴다 — CSS가 fill을 끄는 쪽(특이도 0,2,0)이라
+  // 여기서 색을 빼면 규칙 하나가 아무것도 덮지 않게 된다.
+  it("keeps the colour class so the stylesheet's override still has something to override", () => {
+    expect(paint([deleted])[0]).toContain("pdf-hl-path-green");
+  });
+});
+
 describe("§276.3 area capture gating", () => {
   it("marks the text layer inert while area capture is active", () => {
     const streamTextContent = vi.fn(() => ({}));
