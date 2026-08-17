@@ -1,7 +1,11 @@
 // §278.1 인라인 링크 `[label](target)`의 경로 해석.
 import { describe, expect, it } from "vitest";
 
-import { isMarkdownHref, resolveLocalLinkTarget } from "../local-link-nav";
+import {
+  isMarkdownHref,
+  planLocalLinkNavigation,
+  resolveLocalLinkTarget,
+} from "../local-link-nav";
 
 const SOURCE_DIR = "/vault/notes";
 
@@ -135,5 +139,70 @@ describe("§278.1 isMarkdownHref", () => {
     ["guide.md#section", false],
   ])("%s → %s", (href, expected) => {
     expect(isMarkdownHref(href)).toBe(expected);
+  });
+});
+
+// §278.1 결정 자체 — 스토어도 에디터도 없이 직접 단정한다. 훅을 통과시키면
+// `claimed`와 "열지 않았다"가 같은 관찰로 뭉개져서 서로 구별되지 않는다.
+describe("§278.1 planLocalLinkNavigation", () => {
+  it("claims and opens a file that exists", () => {
+    expect(planLocalLinkNavigation("Paper.pdf", SOURCE_DIR, TREE)).toEqual({
+      claimed: true,
+      scrollHeading: null,
+      target: "/vault/notes/Paper.pdf",
+    });
+  });
+
+  it("declines a non-markdown href that resolves to nothing", () => {
+    expect(
+      planLocalLinkNavigation("www.example.com", SOURCE_DIR, TREE),
+    ).toEqual({ claimed: false, scrollHeading: null, target: null });
+  });
+
+  it("claims a missing markdown href AND still names a target to open", () => {
+    expect(planLocalLinkNavigation("gone.md", SOURCE_DIR, TREE)).toEqual({
+      claimed: true,
+      scrollHeading: null,
+      target: "/vault/notes/gone.md",
+    });
+  });
+
+  it("claims a markdown href with nothing to open when there is no source dir", () => {
+    // ‼️ claimed=true 인데 target=null 인 유일한 조합. 훅 밖에서만 구별된다 —
+    // 이 둘이 뭉개지면 §89 단독 창의 계약이 검증되지 않는다.
+    expect(planLocalLinkNavigation("gone.md", null, TREE)).toEqual({
+      claimed: true,
+      scrollHeading: null,
+      target: null,
+    });
+  });
+
+  it("carries a fragment for a markdown target", () => {
+    expect(
+      planLocalLinkNavigation("guide.md#my-section", SOURCE_DIR, TREE),
+    ).toEqual({
+      claimed: true,
+      scrollHeading: "my section",
+      target: "/vault/notes/guide.md",
+    });
+  });
+
+  it("drops a fragment on a viewer target", () => {
+    expect(
+      planLocalLinkNavigation("Paper.pdf#page=3", SOURCE_DIR, TREE),
+    ).toEqual({
+      claimed: true,
+      scrollHeading: null,
+      target: "/vault/notes/Paper.pdf",
+    });
+  });
+
+  it("truncates a fragment at a second # — pre-existing, pinned not endorsed", () => {
+    // `split("#", 2)`의 limit은 나머지를 이어붙이지 않고 **버린다**. §278.1
+    // 이전부터의 동작이라 여기서 바꾸지 않았다. CommonMark대로라면 첫 `#`
+    // 뒤 전체가 프래그먼트이므로 "a b#c"가 맞다. dev/backlog.md에 적어 뒀다.
+    expect(
+      planLocalLinkNavigation("guide.md#a-b#c", SOURCE_DIR, TREE).scrollHeading,
+    ).toBe("a b");
   });
 });

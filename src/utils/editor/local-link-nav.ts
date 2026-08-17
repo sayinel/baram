@@ -19,9 +19,63 @@ export interface LocalLinkFile {
   path: string;
 }
 
+/** 스킴 없는 href 하나에 대한 결정. 부수효과는 전부 호출부에 남는다. */
+export interface LocalLinkPlan {
+  /** 앱이 이 href를 가져가는가. `false`면 호출부가 `openUrl()`로 넘긴다. */
+  claimed: boolean;
+  /** 문서 로드 뒤 스크롤할 heading. 마크다운 타깃일 때만 채워진다. */
+  scrollHeading: null | string;
+  /** 열 절대 경로. `null`이면 열 것이 없다(가져갔더라도). */
+  target: null | string;
+}
+
 /** 인라인 링크가 마크다운 문서를 가리키는가 — 확장자만 본다. */
 export function isMarkdownHref(filePart: string): boolean {
   return /\.(?:md|markdown)$/i.test(filePart);
+}
+
+/**
+ * `#fragment`로 시작하지 **않는** 인라인 링크 href에 대해 무엇을 할지 정한다.
+ * 스토어도 에디터도 건드리지 않으므로 결정 자체를 그대로 단정할 수 있다.
+ *
+ * @param href      링크 href 전체(`#fragment` 포함 가능).
+ * @param sourceDir 링크가 들어 있는 문서의 디렉터리. 없으면 상대 경로는 못 푼다.
+ * @param files     현재 컨텍스트의 평탄화된 파일 목록.
+ */
+export function planLocalLinkNavigation(
+  href: string,
+  sourceDir: null | string,
+  files: LocalLinkFile[],
+): LocalLinkPlan {
+  const [filePart, headingFragment] = href.split("#", 2);
+  const heading = headingFragment ? headingFragment.replace(/-/g, " ") : null;
+
+  const existing = resolveLocalLinkTarget(filePart, sourceDir, files);
+
+  // ‼️ 마크다운 폴백은 트리 조회가 **실패한 뒤에만** 돈다. 이것이 §278.1을
+  // '해석을 추가만 하는' 변경으로 만든다: 트리에 없는 `.md` href도 예전처럼
+  // 열기를 시도하고(같은 실패 로그를 남기고), OS opener로 새지 않는다.
+  const isMarkdown = isMarkdownHref(filePart);
+  const target =
+    existing ??
+    (isMarkdown && sourceDir
+      ? normalizePath(`${sourceDir}/${filePart}`)
+      : null);
+
+  // 열 것이 없어도 마크다운이면 가져간다: 기준 디렉터리가 없으면 풀 수가 없고,
+  // §278.1 이전 코드도 이 자리에서 아무 일도 하지 않았다.
+  if (!target)
+    return { claimed: isMarkdown, scrollHeading: null, target: null };
+
+  // ‼️ heading은 마크다운 타깃에만. 뷰어 탭은 ProseMirror 문서를 싣지 않아
+  // (use-tab-switching.ts가 afterDocLoad 앞에서 early return 한다) 이 값을
+  // 소비하지도 해제하지도 않는다 — 남으면 **그 다음에 열리는 마크다운 파일**이
+  // 엉뚱하게 스크롤된다.
+  return {
+    claimed: true,
+    scrollHeading: heading && isMarkdownHref(target) ? heading : null,
+    target,
+  };
 }
 
 /**
