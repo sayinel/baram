@@ -41,6 +41,10 @@ export function IconFile({
   label?: string;
 }): React.JSX.Element {
   const props = color ? { ...S, stroke: color } : S;
+  // The page outline is ~16 units wide, which two bold glyphs at 8 fill exactly.
+  // A third glyph ("PDF", "img") overruns the page it sits on, so those labels
+  // step down to a size that stays inside the outline.
+  const fontSize = (label?.length ?? 0) > 2 ? 6.6 : 8;
   return (
     <svg {...props}>
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -49,7 +53,7 @@ export function IconFile({
         <text
           fill={color ?? "currentColor"}
           fontFamily="system-ui,sans-serif"
-          fontSize="8"
+          fontSize={fontSize}
           fontWeight="700"
           stroke="none"
           textAnchor="middle"

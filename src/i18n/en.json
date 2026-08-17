@@ -512,6 +512,8 @@
   "fileTree.accessDenied.retry": "Retry",
   "fileTree.accessDenied.toast": "Folder access was denied by the system.",
   "fileTree.accessDenied.toastGeneric": "Couldn't read the folder.",
+  "fileTree.drop.failed": "Could not copy “{name}”.",
+  "fileTree.drop.folderUnsupported": "“{name}” is a folder. Only files can be dropped in.",
 
   "htmlPreview.showPreview": "Preview",
   "htmlPreview.showSource": "Source",
