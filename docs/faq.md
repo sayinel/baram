@@ -669,19 +669,17 @@ See the [Plugin Development Guide](plugin-development.md). A plugin is a directo
 
 ### The app won't start
 
-- **macOS**: If you see a "damaged" or "can't verify" warning, open **System Settings > Privacy & Security** and click "Open Anyway"
+- **macOS**: Builds from v0.6.0 on are notarized and should open normally. A "damaged" or "can't verify" warning means the copy you have is older, or the download was corrupted — re-download the current release. The prompt asking you to confirm an app downloaded from the internet is normal and not an error.
 - **Windows**: If SmartScreen blocks the app, click "More info" then "Run anyway"
 - **Linux**: Make sure the AppImage has execute permissions: `chmod +x Baram-*.AppImage`
 
-### macOS keeps asking for folder access every launch
+### macOS asks for folder access
 
-macOS shows a system permission prompt when an app reads files in a protected location — **Documents, Desktop, Downloads, or iCloud Drive**. Because Baram isn't notarized by Apple yet, macOS can't reliably remember your "Allow" choice, so the prompt may reappear every time you launch Baram or open a file. To stop it:
+macOS shows a system permission prompt the first time an app reads files in a protected location — **Documents, Desktop, Downloads, or iCloud Drive**. Allow it once and the grant is remembered, including across updates.
 
-- **Keep your vault outside protected folders** (recommended) — e.g. `~/Notes` or `~/baram-notes` rather than inside Documents/Desktop/Downloads. Baram then never triggers the prompt.
-- **Grant Full Disk Access** — open **System Settings > Privacy & Security > Full Disk Access** and add Baram.
-- **Clear the quarantine flag** — in Terminal: `xattr -cr /Applications/Baram.app` (optionally followed by `codesign --force --deep --sign - /Applications/Baram.app`).
+**Upgrading from v0.5.x or earlier?** You will be asked once more, even though you already allowed it. Those builds were ad-hoc signed, which gave the app no identity that survived a rebuild, so macOS treated every version as a different app and re-asked every time. From v0.6.0 Baram is signed with an Apple Developer ID certificate, and the identity is stable — this is the last time you should see it.
 
-This is a limitation of distributing without an Apple Developer certificate; a future notarized build will remember the grant permanently.
+If the prompt still repeats on v0.6.0 or later, grant **Full Disk Access** under **System Settings > Privacy & Security**, or keep your vault outside the protected folders (e.g. `~/Notes`).
 
 ### The editor feels slow
 
