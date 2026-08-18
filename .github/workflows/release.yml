@@ -70,7 +70,11 @@ jobs:
             args: ''
             rust-targets: ''
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 90
+    # 150, not 90: notarization is a queue on Apple's side, not work we do.
+    # v0.6.0's first submission sat In Progress for 1h49m before Accepted,
+    # which the old 90 killed at 70m in — after the build had already
+    # succeeded and signed.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
@@ -172,6 +176,10 @@ jobs:
           echo "API key staged."
 
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        # Bounded below the job so the diagnostic step below still gets to run.
+        # A job-level kill skips every remaining step, which is exactly how the
+        # first attempt produced no information about why it stopped.
+        timeout-minutes: 120
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -196,6 +204,25 @@ jobs:
           # merge (RFC 7396) turns it on so tauri-action signs the .sig files
           # and generates latest.json. Path is relative to projectPath (./).
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+
+      # tauri drives `notarytool submit --wait`, which waits without a bound and
+      # prints nothing while it does. When the wait is what failed, the log says
+      # only "Terminate orphan process (notarytool)" — the actual state lives on
+      # Apple's side and had to be fetched by hand to learn that the submission
+      # was still queued rather than rejected. This asks Apple directly so the
+      # answer is in the run that failed.
+      - name: Report notarization state on failure
+        if: failure() && runner.os == 'macOS'
+        run: |
+          echo "Most recent submissions for this key:"
+          xcrun notarytool history \
+            --key "$RUNNER_TEMP/asc-api-key.p8" \
+            --key-id "${{ secrets.APPLE_API_KEY }}" \
+            --issuer "${{ secrets.APPLE_API_ISSUER }}" 2>&1 | head -30 || true
+          echo
+          echo "In Progress  → Apple's queue, not a defect here; re-run."
+          echo "Invalid      → the binary was rejected; fetch the log with:"
+          echo "               xcrun notarytool log <submission-id> --key ... --key-id ... --issuer ..."
 
       # The release config deletes bundle.macOS.signingIdentity so APPLE_SIGNING_IDENTITY
       # applies (see src-tauri/tauri.release.conf.json). If that merge ever stops
