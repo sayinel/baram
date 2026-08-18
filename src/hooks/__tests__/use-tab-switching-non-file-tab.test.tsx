@@ -54,7 +54,6 @@ function harness(editor: Editor) {
       setFindReplaceOpen: vi.fn(),
       setIsParsing,
       setSourceBuffer: vi.fn(),
-      setSourceModeForTab: vi.fn(),
       sourceModeTabs: new Set<string>(),
     });
     return null;

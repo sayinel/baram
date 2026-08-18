@@ -41,9 +41,15 @@ function CountingPdf(ctx: {
 
 const renderers: TabSurfaceRenderers = {
   ...createTabSurfaceRenderers({
+    codeLanguageFor: () => undefined,
+    getSourceBuffer: () => "",
+    markDirty: vi.fn(),
     onPdfFindApiChange: vi.fn(),
     onTogglePdfFind: vi.fn(),
     pdfFindOpen: false,
+    pluginIdFor: () => "",
+    setSourceBuffer: vi.fn(),
+    sourceCursorOffsetFor: () => 0,
   }),
   pdf: (ctx) => <CountingPdf {...ctx} />,
 };

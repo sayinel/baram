@@ -74,7 +74,6 @@ interface UseTabSwitchingParams {
   setFindReplaceOpen: (open: boolean) => void;
   setIsParsing: (v: boolean) => void;
   setSourceBuffer: (tabId: string, content: string) => void;
-  setSourceModeForTab: (tabId: string, on: boolean) => void;
   /** §287 소스 모드인 탭들. 나가는 탭의 모드를 그 탭 id로 물어보기 위해 필요하다. */
   sourceModeTabs: ReadonlySet<string>;
 }
@@ -91,7 +90,6 @@ export function useTabSwitching({
   setFindReplaceOpen,
   setSourceBuffer,
   setIsParsing,
-  setSourceModeForTab,
   sourceModeTabs,
   getSourceBuffer,
 }: UseTabSwitchingParams) {
@@ -221,13 +219,15 @@ export function useTabSwitching({
           }
         }
       }
-      // Exit source mode when switching tabs (only applies to markdown).
+      // §287 소스 모드는 이제 탭을 따라 남는다 — 여기서 끄지 않는다.
       //
-      // ‼️ 나가는 탭을 명시적으로 지목한다. 예전에는 전역 boolean 하나를 껐는데, 그 값은
-      // 이 effect의 클로저가 이전 렌더에서 잡은 것이라 어느 탭 얘기인지 코드에 적혀 있지
-      // 않았다(dev/backlog.md:184의 stale-closure 항목). 탭별 Set이 되면서 그 모호함이
-      // 사라진다 — 끄는 대상이 prevTabId라고 쓰여 있다.
-      setSourceModeForTab(prevTabId, false);
+      // 예전에는 전환할 때마다 전역 boolean을 껐다. 편집 영역이 표면을 하나만 마운트하던
+      // 시절에는 그럴 수밖에 없었다(돌아와도 CodeMirror가 재생성돼 커서가 사라졌으니
+      // WYSIWYG로 되돌리는 편이 덜 나빴다). §286 유지 집합이 들어오면서 그 전제가 사라졌다:
+      // 소스 표면은 마운트된 채 숨고, 돌아오면 커서와 스크롤이 그대로다.
+      //
+      // ‼️ 사용자에게 보이는 동작 변경이다. 끄는 코드를 지운 자리에 이 주석을 남기는 이유는,
+      // 다음 사람이 "탭을 바꿔도 소스 모드가 안 꺼진다"를 결함으로 오해하지 않게 하기 위해서다.
     }
 
     // The outgoing-save block above has already read isTabLoading(prevTabId).

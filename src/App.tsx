@@ -109,16 +109,6 @@ import { buildTemplatePrompt } from "./utils/smart-templates";
 // index.html's <head> — a blank window on cold start.
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
-const SourceCodeEditor = lazy(() =>
-  import("./components/editor/SourceCodeEditor").then((m) => ({
-    default: m.SourceCodeEditor,
-  })),
-);
-const HtmlPreview = lazy(() =>
-  import("./components/editor/HtmlPreview").then((m) => ({
-    default: m.HtmlPreview,
-  })),
-);
 const CommandPalette = lazy(() =>
   import("./components/command/CommandPalette").then((m) => ({
     default: m.CommandPalette,
@@ -157,16 +147,6 @@ const AboutModal = lazy(() =>
 const UpdateDialog = lazy(() =>
   import("./components/settings/UpdateDialog").then((m) => ({
     default: m.UpdateDialog,
-  })),
-);
-const PluginDetailTab = lazy(() =>
-  import("./components/plugins/PluginDetailTab").then((m) => ({
-    default: m.PluginDetailTab,
-  })),
-);
-const GraphViewTab = lazy(() =>
-  import("./components/sidebar/GraphView").then((m) => ({
-    default: m.GraphView,
   })),
 );
 const SkillGeneratorDialog = lazy(() =>
@@ -291,9 +271,6 @@ function App() {
   // Guarding call sites one by one is what leaves the following one exposed.
   const isEditableTextFile =
     isCodeFile && !isBinaryViewerFile(activeTabFilePath);
-  const codeLanguage = activeTabFilePath
-    ? getLanguageForFile(activeTabFilePath)
-    : null;
 
   // PDF file viewer — read-only, built-in (PDF.js)
   const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
@@ -320,14 +297,6 @@ function App() {
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
 
-  // Both preview surfaces scale their own content and so neutralize the
-  // container's CSS zoom — see html-preview.css. The source view is ordinary
-  // editor content and keeps it.
-  let previewScrollClass = "";
-  if (!isHtmlSourceView) {
-    if (isPluginPreviewTab) previewScrollClass = " plugin-viewer-scroll";
-    else if (isHtmlTab) previewScrollClass = " html-preview-scroll";
-  }
   // Viewers reload whenever the file's saved/reloaded mtime bumps
   // (manual save, auto-save, toggle-flush, or external auto-reload)
   const previewFileMtime = useFileStore((s) =>
@@ -544,10 +513,8 @@ function App() {
     bufferVersion,
     editorStateCache,
     getSourceBuffer,
-    handleSourceChange,
     isSourceMode,
     setSourceBuffer,
-    setSourceModeForTab,
     sourceCursorOffsetFor,
     sourceEditorRef,
     sourceModeTabs,
@@ -556,10 +523,6 @@ function App() {
 
   // §287 활성 탭의 버퍼/커서. 지금은 편집 영역이 활성 탭 하나만 렌더하므로 여기서 파생한다 —
   // §286에서 TabSurface가 자기 탭으로 직접 읽게 되면 이 두 줄은 사라진다.
-  const activeSourceBuffer = activeTabId ? getSourceBuffer(activeTabId) : "";
-  const activeSourceCursorOffset = activeTabId
-    ? sourceCursorOffsetFor(activeTabId)
-    : 0;
 
   // §285 유지 집합 — 마운트를 유지할 탭과 그 표면 종류.
   //
@@ -579,12 +542,29 @@ function App() {
   const tabSurfaceRenderers = useMemo(
     () =>
       createTabSurfaceRenderers({
+        codeLanguageFor: (filePath) =>
+          getLanguageForFile(filePath) ?? undefined,
+        getSourceBuffer,
+        markDirty,
         onPdfFindApiChange: setPdfFindApi,
         onTogglePdfFind: handleTogglePdfFind,
         pdfFindOpen,
+        pluginIdFor: (tabId) =>
+          useEditorStore.getState().tabs.find((t) => t.id === tabId)
+            ?.pluginId ?? "",
+        setSourceBuffer,
+        sourceCursorOffsetFor,
       }),
-    [handleTogglePdfFind, pdfFindOpen],
+    [
+      getSourceBuffer,
+      handleTogglePdfFind,
+      markDirty,
+      pdfFindOpen,
+      setSourceBuffer,
+      sourceCursorOffsetFor,
+    ],
   );
+
   const retainedTabs = useRetainedTabs(
     activeTabId,
     tabs,
@@ -734,7 +714,6 @@ function App() {
     setFindReplaceOpen: routeFindReplaceOpen,
     setIsParsing,
     setSourceBuffer,
-    setSourceModeForTab,
     sourceModeTabs,
     getSourceBuffer,
   });
@@ -748,17 +727,6 @@ function App() {
     setFindReplaceMode,
     setFindReplaceOpen: routeFindReplaceOpen,
   });
-
-  // onChange for non-MD code files — same as source but also marks dirty
-  const handleCodeFileChange = useCallback(
-    (content: string) => {
-      const { activeTabId: tabId } = useEditorStore.getState();
-      if (!tabId) return;
-      setSourceBuffer(tabId, content);
-      markDirty(tabId, true);
-    },
-    [markDirty, setSourceBuffer],
-  );
 
   // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed
   // text tab. The preview loads the file from disk (asset: protocol), so when
@@ -790,6 +758,22 @@ function App() {
       return next;
     });
   }, [htmlSourceTabs, markDirty, getSourceBuffer]);
+
+  // §5.1 HTML·플러그인 프리뷰 파일의 프리뷰 ↔ 원본 토글 버튼. 활성 표면 안에 겹쳐 그린다
+  // (TabSurface의 `overlay` prop 주석 참조 — `.editor-area-scroll`의 CSS zoom 때문이다).
+  const previewToggleButton =
+    isHtmlTab || isPluginPreviewTab ? (
+      <button
+        className="mode-toggle-btn html-view-toggle"
+        onClick={toggleHtmlView}
+        title={t("htmlPreview.toggleTitle")}
+        type="button"
+      >
+        {isHtmlSourceView
+          ? t("htmlPreview.showPreview")
+          : t("htmlPreview.showSource")}
+      </button>
+    ) : null;
 
   // Cmd+/ — route to the preview/source toggle when an HTML or plugin-viewed
   // text tab is active; otherwise fall through to the markdown source-mode
@@ -947,18 +931,6 @@ function App() {
                 <p>{t("home.emptyWorkspace")}</p>
               </div>
             </div>
-          ) : isGraphTabActive ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              <Suspense fallback={null}>
-                <GraphViewTab />
-              </Suspense>
-            </div>
-          ) : activePluginId ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              <Suspense fallback={null}>
-                <PluginDetailTab pluginId={activePluginId} />
-              </Suspense>
-            </div>
           ) : isImageTab && activeTabFilePath ? (
             <div
               className="editor-area-scroll plugin-viewer-scroll"
@@ -974,60 +946,20 @@ function App() {
                 <div className="viewer-missing">{t("viewer.noPlugin")}</div>
               )}
             </div>
-          ) : isCodeFile ? (
+          ) : isPluginPreviewTab && !isHtmlSourceView && pluginViewer ? (
+            // §290 플러그인이 그리는 프리뷰는 유지하지 않는다 — 공개 viewer 계약에
+            // 가시성 신호가 없어, 마운트를 유지하면 미디어 뷰어가 숨은 탭에서 계속
+            // 재생된다(dev/backlog.md 참조). 활성일 때만 렌더한다.
             <div
-              className={`editor-area-scroll${previewScrollClass}`}
+              className="editor-area-scroll plugin-viewer-scroll"
               data-editor-scroll
             >
-              {(isHtmlTab || isPluginPreviewTab) && (
-                <button
-                  className="mode-toggle-btn html-view-toggle"
-                  onClick={toggleHtmlView}
-                  title={t("htmlPreview.toggleTitle")}
-                  type="button"
-                >
-                  {isHtmlSourceView
-                    ? t("htmlPreview.showPreview")
-                    : t("htmlPreview.showSource")}
-                </button>
-              )}
-              <Suspense fallback={null}>
-                {isHtmlTab && !isHtmlSourceView && activeTabFilePath ? (
-                  <HtmlPreview
-                    filePath={activeTabFilePath}
-                    refreshKey={previewFileMtime}
-                    title={activeTabFilePath}
-                  />
-                ) : isPluginPreviewTab &&
-                  !isHtmlSourceView &&
-                  activeTabFilePath &&
-                  pluginViewer ? (
-                  <PluginViewerHost
-                    filePath={activeTabFilePath}
-                    refreshKey={previewFileMtime}
-                    viewer={pluginViewer}
-                  />
-                ) : (
-                  <SourceCodeEditor
-                    content={activeSourceBuffer}
-                    key={`code-${activeTabId}`}
-                    language={codeLanguage ?? undefined}
-                    onChange={handleCodeFileChange}
-                    ref={sourceEditorRef}
-                  />
-                )}
-              </Suspense>
-            </div>
-          ) : isSourceMode ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              <Suspense fallback={null}>
-                <SourceCodeEditor
-                  content={activeSourceBuffer}
-                  initialCursorOffset={activeSourceCursorOffset}
-                  onChange={handleSourceChange}
-                  ref={sourceEditorRef}
-                />
-              </Suspense>
+              {previewToggleButton}
+              <PluginViewerHost
+                filePath={activeTabFilePath!}
+                refreshKey={previewFileMtime}
+                viewer={pluginViewer}
+              />
             </div>
           ) : null}
           {/* §272 활성 PDF의 찾기 바 — 표면 바깥(FindReplaceBar와 같은 자리)에 그린다.
@@ -1048,7 +980,9 @@ function App() {
               active={entry.tabId === activeTabId}
               entry={entry}
               key={`${entry.kind}-${entry.tabId}`}
+              overlay={previewToggleButton}
               renderers={tabSurfaceRenderers}
+              sourceEditorRef={sourceEditorRef}
             />
           ))}
           <MarkdownSurface
