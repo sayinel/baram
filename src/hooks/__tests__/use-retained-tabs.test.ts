@@ -139,3 +139,28 @@ describe("computeRetained", () => {
     ]);
   });
 });
+
+describe("html retention (regression)", () => {
+  // ‼️ 상한 1이던 시절, HTML 탭 두 개를 오가면 매번 축출·재마운트되어 문서가 처음으로
+  // 돌아갔다. 같은 세션의 PDF는 멀쩡했기 때문에 "HTML만 안 된다"로 보였다.
+  it("keeps both html tabs alive across a round trip", () => {
+    const tabs = [tab("h1", "/v/1.html"), tab("h2", "/v/2.html")];
+    let r = computeRetained([], "h1", tabs, EMPTY);
+    r = computeRetained(r, "h2", tabs, EMPTY);
+    expect(r.map((e) => e.tabId).sort()).toEqual(["h1", "h2"]);
+    r = computeRetained(r, "h1", tabs, EMPTY);
+    expect(r.map((e) => e.tabId).sort()).toEqual(["h1", "h2"]);
+  });
+
+  it("still evicts the LRU html tab beyond the cap", () => {
+    const tabs = [
+      tab("h1", "/v/1.html"),
+      tab("h2", "/v/2.html"),
+      tab("h3", "/v/3.html"),
+    ];
+    let r = computeRetained([], "h1", tabs, EMPTY);
+    r = computeRetained(r, "h2", tabs, EMPTY);
+    r = computeRetained(r, "h3", tabs, EMPTY);
+    expect(r.map((e) => e.tabId)).toEqual(["h3", "h2"]);
+  });
+});

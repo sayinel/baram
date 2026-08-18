@@ -7,7 +7,7 @@
 // ‼️ 이 컴포넌트는 활성 탭 파생값을 **받지 않는다.** App.tsx의 previewFileMtime·
 // activeTabFilePath 같은 값은 전부 "활성 탭"의 것이라, 숨은 표면에 그대로 넘기면 남의 mtime을
 // refreshKey로 받아 엉뚱하게 리로드한다(§288 규칙 2). 자기 `entry.tabId`로 직접 읽는다.
-import type { ReactNode, RefObject } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { useEffect, useRef } from "react";
 
 import type {
@@ -105,7 +105,7 @@ export function TabSurface({
       {...(active ? { "data-editor-active": "" } : {})}
       data-editor-scroll
       ref={wrapperRef}
-      style={{ display: active ? undefined : "none" }}
+      style={hiddenStyleFor(entry.kind, active)}
     >
       {active && overlay}
       {renderers[entry.kind]({
@@ -117,6 +117,34 @@ export function TabSurface({
       })}
     </div>
   );
+}
+
+/**
+ * 숨기는 방식은 kind마다 다르다.
+ *
+ * 기본은 `display: none`이다 — 레이아웃에서 완전히 빠지므로 숨은 표면이 리사이즈 비용을
+ * 만들지 않는다. 잃어버리는 스크롤 위치는 §291이 기록·복원한다.
+ *
+ * ‼️ HTML만 예외다. `.editor-area-scroll.html-preview-scroll`은 `overflow: auto hidden`이라
+ * **세로 스크롤이 래퍼가 아니라 iframe 내부 문서에 있다.** 그 문서는 opaque origin이라
+ * scrollTop을 읽지도 쓰지도 못한다 — §291의 기록·복원이 원리적으로 닿지 않는다. 거기에
+ * `display: none`이 그 문서의 레이아웃 박스까지 파기하면 위치와 페인트를 함께 잃는다(실앱:
+ * 복귀 시 문서 처음으로 + 스크롤하기 전까지 흰 화면).
+ *
+ * **저장할 수 없는 상태는 잃지 않는 수밖에 없다.** 그래서 HTML은 레이아웃에 남기고 시각적으로만
+ * 감춘다. 그대로 두면 flex 흐름에서 자리를 차지하므로(형제와 높이를 나눠 갖는다) 절대 배치로
+ * 겹쳐 둔다 — `.editor-area`가 `position: relative`다. `visibility: hidden`은 페인트도
+ * 히트테스트도 받지 않으므로 숨은 표면이 클릭을 가로채지 않는다.
+ */
+function hiddenStyleFor(kind: RetainedKind, active: boolean): CSSProperties {
+  if (kind === "html") {
+    return {
+      inset: 0,
+      position: "absolute",
+      visibility: active ? undefined : "hidden",
+    };
+  }
+  return { display: active ? undefined : "none" };
 }
 
 /** 래퍼에 붙는 kind별 추가 클래스 — 기존 삼항 사슬이 쓰던 것과 같은 값이어야 한다. */

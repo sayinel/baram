@@ -49,6 +49,7 @@ function harness(editor: Editor) {
       isNavBackForwardRef,
       getSourceBuffer: () => "",
       keepalive: createKeepalivePool(),
+      scrollOffsets: { current: new Map<string, number>() },
       onActiveEditorChange,
       setFindReplaceMode: vi.fn(),
       setFindReplaceOpen: vi.fn(),

@@ -1,4 +1,3 @@
-import type { UseInlineAIReturn } from "../../hooks/use-inline-ai";
 // §286 마크다운 편집 표면 — **항상 마운트**된다.
 //
 // 예전에는 App.tsx의 삼항 사슬 마지막 갈래였다. 그래서 PDF·코드·그래프 탭으로 가면 React가
@@ -10,10 +9,15 @@ import type { UseInlineAIReturn } from "../../hooks/use-inline-ai";
 //
 // 사슬 밖으로 꺼내 숨기기만 하면 그 사슬 전체가 성립하지 않는다: 언마운트가 없으니 파기할
 // NodeView도, 복원할 것도 없다. 편집기 인스턴스는 원래 하나뿐이라 메모리 대가도 없다.
+import type { MutableRefObject } from "react";
+import { useRef } from "react";
+
+import type { UseInlineAIReturn } from "../../hooks/use-inline-ai";
 import type { Editor } from "@tiptap/react";
 
 import { EditorContent } from "@tiptap/react";
 
+import { useTabScrollMemory } from "../../hooks/use-tab-scroll-memory";
 import { InlineAIPrompt } from "../ai/InlineAIPrompt";
 import { BlockHandle } from "../toolbar/BlockHandle";
 import { ContextMenu } from "../toolbar/ContextMenu";
@@ -46,6 +50,13 @@ interface MarkdownSurfaceProps {
   mountedKeepaliveEditor: Editor | null;
   onFindReplaceClose: () => void;
   onFindReplaceModeChange: (mode: "find" | "replace") => void;
+  /**
+   * §291 탭별 스크롤 오프셋 맵. 이 표면이 **기록**하고, 탭이 바뀌는 전환의 복원은
+   * use-tab-switching이 같은 맵을 읽어서 한다(그쪽은 콘텐츠 설치 뒤에 돌아야 하므로).
+   */
+  scrollOffsets: MutableRefObject<Map<string, number>>;
+  /** 지금 이 표면이 보여주고 있는 탭. 오프셋 맵의 키다. */
+  tabId: null | string;
 }
 
 export function MarkdownSurface({
@@ -60,7 +71,30 @@ export function MarkdownSurface({
   mountedKeepaliveEditor,
   onFindReplaceClose,
   onFindReplaceModeChange,
+  scrollOffsets,
+  tabId,
 }: MarkdownSurfaceProps) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // §291 스크롤 위치는 **scroll 이벤트로** 기록한다. 나가는 순간에 읽으려 하면 이미
+  // display:none이 적용돼 있어 0이 잡힌다 — 이 앱에서 실제로 그렇게 깨졌다.
+  useTabScrollMemory(
+    tabId ?? "",
+    active && !!tabId,
+    () => {
+      const el = wrapperRef.current;
+      if (!el) return null;
+      return {
+        element: el,
+        getScrollTop: () => el.scrollTop,
+        setScrollTop: (n: number) => {
+          el.scrollTop = n;
+        },
+      };
+    },
+    scrollOffsets,
+  );
+
   return (
     <>
       {active && findReplaceOpen && activeEditor && (
@@ -73,6 +107,7 @@ export function MarkdownSurface({
       )}
       <div
         className="editor-area-scroll"
+        ref={wrapperRef}
         // ‼️ 활성일 때만 단다. activeEditorScrollContainer(§288 규칙 4)가 이 표시로 숨은
         // 컨테이너를 걸러내므로, 항상 달려 있으면 그 헬퍼가 무력해진다.
         {...(active ? { "data-editor-active": "" } : {})}

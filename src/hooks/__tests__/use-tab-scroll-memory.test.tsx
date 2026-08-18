@@ -61,22 +61,26 @@ describe("useTabScrollMemory", () => {
   });
 
   it("keeps each tab's offset separate", () => {
+    // 탭마다 별개로 기억하되, 되돌리는 시점은 **다시 보이게 될 때**다(아래 restore edge 참조).
     const { el, target } = makeTarget();
     const { rerender } = renderHook(
-      ({ tabId }: { tabId: string }) =>
-        useTabScrollMemory(tabId, true, () => target),
-      { initialProps: { tabId: "a" } },
+      ({ active, tabId }: { active: boolean; tabId: string }) =>
+        useTabScrollMemory(tabId, active, () => target),
+      { initialProps: { active: true, tabId: "a" } },
     );
     act(() => {
       el.scrollTop = 100;
       el.dispatchEvent(new Event("scroll"));
     });
-    rerender({ tabId: "b" });
+    rerender({ active: false, tabId: "b" });
+    rerender({ active: true, tabId: "b" });
     act(() => {
       el.scrollTop = 300;
       el.dispatchEvent(new Event("scroll"));
     });
-    rerender({ tabId: "a" });
+    rerender({ active: false, tabId: "a" });
+    el.scrollTop = 0;
+    rerender({ active: true, tabId: "a" });
     expect(el.scrollTop).toBe(100);
   });
 
@@ -99,5 +103,47 @@ describe("useTabScrollMemory", () => {
     });
     rerender({ active: true });
     expect(el.scrollTop).toBe(250);
+  });
+});
+
+// §291 회귀 — 복원은 **비활성→활성 엣지에서만** 일어나야 한다.
+//
+// ‼️ 실앱에서 드러난 결함: 마크다운은 같은 컨테이너에 다른 문서를 설치하므로, tabId가 바뀔
+// 때 이 훅이 복원해 버리면 **아직 이전 문서가 들어 있는 상태**에서 새 탭의 오프셋을 쓴다.
+// 그러면 클램프된 값이 scroll 이벤트로 다시 기록되어 진짜 오프셋을 덮어쓴다. 그 전환의
+// 복원은 콘텐츠 설치 뒤에 도는 use-tab-switching이 담당한다.
+describe("useTabScrollMemory restore edge", () => {
+  it("does not restore when only the tabId changes while staying active", () => {
+    const { el, target } = makeTarget();
+    const { rerender } = renderHook(
+      ({ tabId }: { tabId: string }) =>
+        useTabScrollMemory(tabId, true, () => target),
+      { initialProps: { tabId: "a" } },
+    );
+    act(() => {
+      el.scrollTop = 100;
+      el.dispatchEvent(new Event("scroll"));
+    });
+    rerender({ tabId: "b" });
+    act(() => {
+      el.scrollTop = 300;
+      el.dispatchEvent(new Event("scroll"));
+    });
+
+    // A로 돌아가되 활성 상태는 계속 유지된다 — 훅은 손대지 않아야 한다.
+    rerender({ tabId: "a" });
+    expect(el.scrollTop).toBe(300);
+  });
+
+  it("shares an external offsets map so another restorer can read it", () => {
+    // 마크다운은 기록자(이 훅)와 복원자(use-tab-switching)가 다르다. 같은 맵을 봐야 한다.
+    const { el, target } = makeTarget();
+    const offsets = { current: new Map<string, number>() };
+    renderHook(() => useTabScrollMemory("a", true, () => target, offsets));
+    act(() => {
+      el.scrollTop = 250;
+      el.dispatchEvent(new Event("scroll"));
+    });
+    expect(offsets.current.get("a")).toBe(250);
   });
 });

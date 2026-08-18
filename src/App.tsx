@@ -504,6 +504,10 @@ function App() {
   // covers source-mode fills and tab-switch cancellation covers both.
   const appendHandleRef: AppendHandleRef = useRef(null);
 
+  // §291 탭별 스크롤 오프셋. MarkdownSurface가 scroll 이벤트로 **기록**하고,
+  // useTabSwitching이 콘텐츠 설치 뒤에 **복원**한다 — 두 시점이 달라 맵을 공유한다.
+  const scrollOffsets = useRef(new Map<string, number>());
+
   // --- Source mode (WYSIWYG ↔ raw markdown toggle) ---
   // Must be called before useFileOperations and useTabSwitching because it owns
   // editorStateCache and exposes isSourceMode / sourceContentRef they need.
@@ -708,6 +712,7 @@ function App() {
     editorStateCache,
     isNavBackForwardRef,
     keepalive,
+    scrollOffsets,
     createKeepaliveEditor,
     onActiveEditorChange: handleActiveEditorChange,
     setFindReplaceMode,
@@ -997,6 +1002,8 @@ function App() {
             mountedKeepaliveEditor={mountedKeepaliveEditor}
             onFindReplaceClose={() => setFindReplaceOpen(false)}
             onFindReplaceModeChange={setFindReplaceMode}
+            scrollOffsets={scrollOffsets}
+            tabId={activeTabId}
           />
         </div>
         <PromptLintPanel editor={activeEditor} />

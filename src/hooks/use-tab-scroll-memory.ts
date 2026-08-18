@@ -15,6 +15,7 @@
 // 적용 범위는 유지 표면(PDF·코드·HTML·그래프·플러그인 탭)뿐이다. 마크다운은 "같은 컨테이너에
 // 다른 문서를 설치"하는 경우라 높이가 실제로 바뀌고, `use-tab-switching.ts`가 그 순서를 이미
 // 다룬다. 두 기구가 같은 책임을 나눠 가지면 버그 밭이 되므로 여기서는 다루지 않는다.
+import type { MutableRefObject } from "react";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 export interface TabScrollTarget {
@@ -28,8 +29,18 @@ export function useTabScrollMemory(
   tabId: string,
   active: boolean,
   resolveTarget: () => null | TabScrollTarget,
+  /**
+   * 외부 오프셋 맵. 기록자와 복원자가 다른 표면이 쓴다.
+   *
+   * 마크다운이 그렇다: 기록은 여기(scroll 이벤트)에서 하지만, **탭이 바뀌는** 전환의 복원은
+   * 콘텐츠 설치 뒤에 도는 use-tab-switching이 해야 한다. 둘이 같은 맵을 봐야 한다.
+   */
+  externalOffsets?: MutableRefObject<Map<string, number>>,
 ): void {
-  const offsets = useRef(new Map<string, number>());
+  const ownOffsets = useRef(new Map<string, number>());
+  const offsets = externalOffsets ?? ownOffsets;
+  // 직전 active 값 — 복원은 비활성→활성 **엣지**에서만 일어난다(아래 참조).
+  const wasActive = useRef(active);
   // 매 렌더 새 클로저로 들어오는 콜백을 deps에 넣으면 리스너가 매번 재등록된다.
   const resolveRef = useRef(resolveTarget);
   resolveRef.current = resolveTarget;
@@ -44,13 +55,20 @@ export function useTabScrollMemory(
     const onScroll = () => offsets.current.set(tabId, target.getScrollTop());
     element.addEventListener("scroll", onScroll, { passive: true });
     return () => element.removeEventListener("scroll", onScroll);
-  }, [active, tabId]);
+  }, [active, offsets, tabId]);
 
   // 복원 — 보이게 된 직후, 페인트 전에.
+  //
+  // ‼️ **비활성→활성 엣지에서만** 되돌린다. tabId가 바뀔 때도 되돌리면, 같은 컨테이너에 다른
+  // 문서를 설치하는 표면(마크다운)에서 **아직 이전 문서가 들어 있는 상태**로 새 탭의 오프셋을
+  // 쓰게 된다. 그 값은 클램프되고, 클램프된 값이 scroll 이벤트로 다시 기록되어 진짜 오프셋을
+  // 덮어쓴다. 그 전환의 복원은 콘텐츠 설치 뒤에 도는 use-tab-switching의 몫이다.
   useLayoutEffect(() => {
-    if (!active) return;
+    const becameActive = active && !wasActive.current;
+    wasActive.current = active;
+    if (!becameActive) return;
     const saved = offsets.current.get(tabId);
     if (saved === undefined) return;
     resolveRef.current()?.setScrollTop(saved);
-  }, [active, tabId]);
+  }, [active, offsets, tabId]);
 }

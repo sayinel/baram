@@ -70,6 +70,15 @@ interface UseTabSwitchingParams {
   keepalive: KeepalivePool;
   /** §perf-large-file C3.5: notify App of the active editor change */
   onActiveEditorChange: (editor: Editor | null) => void;
+  /**
+   * §291 탭별 스크롤 오프셋 — **기록은 MarkdownSurface의 scroll 리스너가 한다.**
+   *
+   * ‼️ 여기서 읽지 않는 이유가 이 결함의 전부다. 이 effect는 React 커밋의 passive 단계에서
+   * 도는데, 그때는 나가는 표면에 이미 `display:none`이 적용돼 있다(측정으로 확인:
+   * effect가 관찰하는 style.display는 "none"이다). 레이아웃 박스가 사라진 컨테이너의
+   * scrollTop은 0이므로, 여기서 읽으면 매번 0을 캐시하고 돌아올 때 문서 처음으로 간다.
+   */
+  scrollOffsets: React.MutableRefObject<Map<string, number>>;
   setFindReplaceMode: (mode: "find" | "replace") => void;
   setFindReplaceOpen: (open: boolean) => void;
   setIsParsing: (v: boolean) => void;
@@ -84,6 +93,7 @@ export function useTabSwitching({
   editorStateCache,
   isNavBackForwardRef,
   keepalive,
+  scrollOffsets,
   createKeepaliveEditor,
   onActiveEditorChange,
   setFindReplaceMode,
@@ -97,8 +107,8 @@ export function useTabSwitching({
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<null | string>(null);
-  // Per-tab scroll position cache — preserves view position across tab switches
-  const scrollTopCache = useRef(new Map<string, number>());
+  // §291 기록자가 아니라 **독자**다. 위 파라미터 주석 참조.
+  const scrollTopCache = scrollOffsets;
   // §perf-large-file B2/C2: Loading state for async parse + progressive loading
   const progressiveLoadRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
@@ -150,16 +160,6 @@ export function useTabSwitching({
       // §perf-large-file C3.5: determine which editor was active for the outgoing tab
       const prevKeepaliveEditor = keepalive.get(prevTabId);
       const prevEditor = prevKeepaliveEditor ?? editor;
-
-      // Save scroll position of .editor-area-scroll for the outgoing tab
-      // §perf-large-file C3.4: resolve via editor.view.dom.closest() so this
-      // targets the ACTIVE editor's scroll container in a dual-editor layout.
-      const scrollContainer = prevEditor?.view.dom.closest<HTMLElement>(
-        ".editor-area-scroll",
-      );
-      if (scrollContainer) {
-        scrollTopCache.current.set(prevTabId, scrollContainer.scrollTop);
-      }
 
       // §perf-large-file C3.5: keep-alive tabs — hide their DOM, skip cache write
       // and skip outgoing serialize. The live editor IS the state; auto-save hooks

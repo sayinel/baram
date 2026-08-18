@@ -39,14 +39,19 @@ export interface RetentionInput {
 }
 
 /**
- * kind별 독립 상한. PDF만 작은 이유는 메모리다 — 150p 문서의 안정 힙이 ~46MB(§282.3 실측)이고
- * 유휴 메모리 목표가 100MB다. html이 1인 이유는 메모리가 아니라 CPU다: sandbox="allow-scripts"
- * iframe은 숨어서도 setInterval을 돌린다.
+ * kind별 독립 상한. PDF가 작은 이유는 메모리다 — 150p 문서의 안정 힙이 ~46MB(§282.3 실측)이고
+ * 유휴 메모리 목표가 100MB다.
+ *
+ * ‼️ html은 처음에 1이었다. `sandbox="allow-scripts"` iframe이 숨어서도 setInterval을 돌리니
+ * 적을수록 좋다는 판단이었는데, 상한 1은 **HTML 탭 두 개를 오갈 때마다 축출·재마운트**를
+ * 뜻한다 — 실앱에서 "HTML↔HTML만 위치가 초기화된다(PDF는 유지되는데)"로 드러났다. 두 개를
+ * 오가는 것이 이 기능이 겨냥하는 바로 그 사용 방식이므로 2로 올린다. 백그라운드 스크립트
+ * 우려는 남지만 상한이 그것을 2로 묶고, 메시지 브릿지는 §288 규칙 1이 이미 막는다.
  */
 export const RETENTION_CAPS: Readonly<Record<RetainedKind, number>> = {
   code: 3,
   graph: 1,
-  html: 1,
+  html: 2,
   pdf: 2,
   plugin: 2,
 };
