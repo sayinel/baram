@@ -205,6 +205,55 @@ jobs:
           # and generates latest.json. Path is relative to projectPath (./).
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
+      # Tauri notarizes and staples the .app, builds the dmg from it, and signs
+      # the dmg — but never notarizes the dmg. The app inside is fine; the dmg is
+      # what a user downloads, and Gatekeeper judges it on its own:
+      #
+      #   $ spctl --assess --type open --context context:primary-signature Baram.dmg
+      #     rejected
+      #     source=Unnotarized Developer ID
+      #
+      # Measured on the artifact this workflow actually produced, not inferred.
+      # The .app in the same build reports "source=Notarized Developer ID", which
+      # is why only the dmg needs this.
+      - name: Notarize and staple the dmg
+        if: runner.os == 'macOS'
+        timeout-minutes: 120
+        run: |
+          DMG="$(find src-tauri/target -name '*.dmg' | head -n1)"
+          [ -n "$DMG" ] || { echo "::error::no .dmg found under src-tauri/target"; exit 1; }
+          echo "Notarizing $DMG"
+          xcrun notarytool submit "$DMG" \
+            --key "$RUNNER_TEMP/asc-api-key.p8" \
+            --key-id "${{ secrets.APPLE_API_KEY }}" \
+            --issuer "${{ secrets.APPLE_API_ISSUER }}" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          echo "DMG_PATH=$DMG" >> "$GITHUB_ENV"
+
+      # tauri-action uploaded the pre-staple dmg, so the release still holds the
+      # rejected copy. Replace it. The draft is addressed by id from a listing:
+      # a draft is not connected to its tag until it is published, so
+      # `releases/tags/{tag}` returns 404 for it.
+      - name: Replace the uploaded dmg with the stapled one
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NAME="$(basename "$DMG_PATH")"
+          RID="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=20" \
+            --jq ".[] | select(.tag_name==\"${GITHUB_REF_NAME}\") | .id" | head -n1)"
+          [ -n "$RID" ] || { echo "::error::no release found for ${GITHUB_REF_NAME}"; exit 1; }
+          AID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RID}/assets" \
+            --jq ".[] | select(.name==\"${NAME}\") | .id" | head -n1)"
+          if [ -n "$AID" ]; then
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${AID}"
+            echo "Removed the unstapled $NAME"
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "$DMG_PATH" --repo "${GITHUB_REPOSITORY}" --clobber
+          echo "Uploaded the stapled $NAME"
+
       # tauri drives `notarytool submit --wait`, which waits without a bound and
       # prints nothing while it does. When the wait is what failed, the log says
       # only "Terminate orphan process (notarytool)" — the actual state lives on
