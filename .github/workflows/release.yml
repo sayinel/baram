@@ -131,6 +131,16 @@ jobs:
           echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
+          # ‼️ create-keychain does NOT put the keychain in the search list, and
+          # default-keychain does not either. Without this line the identity is
+          # importable but unusable: scoping a lookup to a keychain that is not
+          # searched cannot reach the Apple root in SystemRootCertificates, so
+          # chain validation returns CSSMERR_TP_NOT_TRUSTED and
+          # `find-identity -v` reports "0 valid identities" for a perfectly good
+          # certificate. Reproduced locally against this exact certificate.
+          # The existing entries are preserved so system roots stay reachable.
+          security list-keychains -d user -s build.keychain \
+            $(security list-keychains -d user | sed 's/^[[:space:]]*"//;s/"$//')
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
           security import "$RUNNER_TEMP/certificate.p12" -k build.keychain \
