@@ -1,6 +1,13 @@
 // §206 App auto-update — check()/install() wrapper + periodic background
-// checker. macOS has no Apple Developer signing yet, so it never replaces the
-// app bundle: it only notifies and opens the releases page. Windows and
+// checker. macOS never replaces the app bundle: it only notifies and opens the
+// releases page.
+//
+// The reason was that macOS builds were ad-hoc signed. That is no longer true —
+// release.yml now signs with a Developer ID certificate and notarizes — but the
+// gate below stays until a signed build has actually shipped and the in-place
+// replace path has been exercised against it. Replacing a notarized bundle is
+// the one update path that cannot be tested before the certificate exists, and
+// getting it wrong leaves a user with an app macOS refuses to launch. Windows and
 // Linux(AppImage) download, install, and relaunch. Linux deb/rpm installs are
 // unsupported by the updater plugin, so an install error there falls back to
 // opening the releases page too (mirrors src/plugins/update-checker.ts).
