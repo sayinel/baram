@@ -33,6 +33,7 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
 import { fitRailWidth } from "../../../utils/pdf-rail-width";
+import { nextContainerWidth } from "./pdf-measure";
 import { PdfHighlightList } from "./PdfHighlightList";
 import { PdfPage } from "./PdfPage";
 import { PdfPageList } from "./PdfPageList";
@@ -226,7 +227,9 @@ export const PdfPreview = memo(function PdfPreview({
   useEffect(() => {
     const el = containerRef.current?.parentElement;
     if (!el) return;
-    const measure = () => setContainerWidth(el.clientWidth);
+    // §288 규칙 5 — 숨은 표면(display:none)에서 옵저버가 싣고 오는 0을 무시한다.
+    const measure = () =>
+      setContainerWidth((cur) => nextContainerWidth(el.clientWidth, cur));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
