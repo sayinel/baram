@@ -29,7 +29,16 @@ import { useSettingsStore } from "../../stores/settings/store";
 export interface SourceCodeEditorRef {
   getContent(): string;
   getCursorOffset(): number;
+  /**
+   * §291 CodeMirror의 실제 스크롤 요소.
+   *
+   * ‼️ 바깥 래퍼 div가 아니다. CM6는 `.cm-scroller`가 스크롤하고 `view.scrollDOM`이 그것을
+   * 가리킨다. 래퍼에 리스너를 달면 scroll 이벤트가 오지 않는다.
+   */
+  getScrollElement(): HTMLElement | null;
+  getScrollTop(): number;
   hasUserEdited(): boolean;
+  setScrollTop(n: number): void;
 }
 
 interface SourceCodeEditorProps {
@@ -64,8 +73,17 @@ export function SourceCodeEditor({
       if (!viewRef.current) return "";
       return viewRef.current.state.doc.toString();
     },
+    getScrollElement(): HTMLElement | null {
+      return viewRef.current?.scrollDOM ?? null;
+    },
+    getScrollTop(): number {
+      return viewRef.current?.scrollDOM.scrollTop ?? 0;
+    },
     hasUserEdited(): boolean {
       return userEditedRef.current;
+    },
+    setScrollTop(n: number): void {
+      if (viewRef.current) viewRef.current.scrollDOM.scrollTop = n;
     },
   }));
 
