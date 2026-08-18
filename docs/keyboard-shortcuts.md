@@ -92,7 +92,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Reset Zoom          | `Cmd+0`       | `Ctrl+0`        |
 
 Zoom scales the editor content, not the whole window. Trackpad pinch works too, and the level is
-shared with the built-in image/SVG viewer.
+shared with the built-in image/SVG viewer and the PDF reader.
 
 ## Navigation
 
@@ -194,6 +194,24 @@ shared with the built-in image/SVG viewer.
 | ------------------ | ------------- | --------------- |
 | Confirm Block Math | `Shift+Enter` | `Shift+Enter`   |
 | Cancel / Exit      | `Esc`         | `Esc`           |
+
+## PDF Reader (inside a PDF tab)
+
+<!-- colwidths:200,120,153 -->
+
+| Action                     | macOS           | Windows / Linux  |
+| -------------------------- | --------------- | ---------------- |
+| Find in PDF                | `Cmd+F`         | `Ctrl+F`         |
+| Next / Previous Match      | `Enter` / `Shift+Enter` | `Enter` / `Shift+Enter` |
+| Close Find                 | `Esc`           | `Esc`            |
+| Zoom In / Out              | `Cmd+=` / `Cmd+-` | `Ctrl+=` / `Ctrl+-` |
+| Area Highlight (temporary) | `Alt+drag`      | `Alt+drag`       |
+| Cancel Area Drag           | `Esc`           | `Esc`            |
+
+`Cmd+F` in a PDF tab opens **Find in PDF** rather than the editor's find bar. Holding `Alt` while
+dragging draws an area highlight without switching the toolbar into area mode. Page navigation,
+the side panel, and the two highlight modes are toolbar buttons — see the
+[User Guide](user-guide.md#pdf-reading--highlights).
 
 ## File Tree
 

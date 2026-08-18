@@ -607,3 +607,9 @@ skills-lock.json
 # §69 Phase E: committed example plugin bundles (override global dist/ ignore)
 !examples/plugins/**/dist/
 !examples/plugins/**/dist/index.mjs
+
+# Local-only working paths. `dev` is a symlink to an absolute path on one
+# machine — internal docs live outside this repo by an earlier deliberate
+# split — so committing it hands everyone else a dangling link.
+/dev
+/task

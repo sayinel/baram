@@ -104,7 +104,7 @@ Baram **edits** standard markdown files (`.md`, `.markdown`). It supports Common
 
 It also **opens** several other types in place, so you do not have to leave the app to look at them:
 
-- **PDF** (`.pdf`) — read-only viewer.
+- **PDF** (`.pdf`) — a reader with find, zoom, a page/highlight panel, and text & area highlighting you can cite from your notes. The PDF file itself is never modified.
 - **HTML** (`.html`, `.htm`) — rendered live preview with a Preview / Source toggle; the source is editable and saves normally.
 - **Images** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.avif`) **and SVG** (`.svg`) — read-only viewer with zoom.
 
@@ -194,6 +194,13 @@ Advanced syntax:
 - `[[page|custom text]]` — Display custom text
 - `[[page#heading]]` — Link to a specific heading
 - `[[page#^block-id]]` — Link to a specific block
+- `[[paper.pdf]]` — Link to a non-markdown file Baram can view
+
+A wikilink can also point at a file Baram opens in place — a PDF, an HTML file, an image or SVG —
+by writing its extension. The autocomplete offers those files and labels each with its type, so
+`report.pdf` is distinguishable from `report.md` before you pick. Plain markdown links such as
+`[the paper](papers/attention.pdf)` open in Baram too, and all of these are indexed like ordinary
+links, so they appear in backlinks and in the Graph View.
 
 ### What are backlinks?
 
@@ -240,6 +247,79 @@ Press `Cmd+D` (macOS) or `Ctrl+D` (Windows/Linux) to bookmark the current file. 
 ### How do I quickly switch between files?
 
 Press `Cmd+K` (macOS) or `Ctrl+K` (Windows/Linux) to open the Quick Switcher. Type to search files by name. Type `#` to search by heading. The switcher also supports `Ctrl+Tab` for MRU (Most Recently Used) tab switching.
+
+---
+
+## PDF Reading & Highlights
+
+### Can I edit a PDF in Baram?
+
+No. Baram reads PDFs and lets you annotate them, but it never writes to the PDF file. Your
+highlights are stored beside it in your vault as separate plain-text files.
+
+### How do I highlight text in a PDF?
+
+Turn on **Text highlight mode** in the PDF toolbar, then select text. A popup offers five colours
+— yellow, green, blue, pink, purple. The mode is off by default so that an ordinary drag-select
+and `Cmd+C` works the way it does in any other PDF reader.
+
+### How do I highlight a figure, table, or equation?
+
+Use an **area highlight**: turn on *Area highlight mode* and drag a rectangle, or just hold
+**Alt** and drag anywhere without switching modes. Press `Escape` mid-drag to cancel. Area
+highlights capture the region as an image, which is what you want for anything whose meaning is
+not in the PDF's text layer.
+
+### How do I quote a PDF highlight in my notes?
+
+Click the highlight, choose **Copy reference**, and paste into any markdown file. You get a block
+reference that renders inline as the quoted sentence — or, for an area highlight, as the cropped
+region of the page. `Cmd+click` it to jump back to that spot in the PDF.
+
+If you want the plain text with no link, use **Copy text** on the same popup — it is offered for
+text highlights, since an area highlight has no text behind it to copy.
+
+### An area reference is too big or too small
+
+Drag its right edge, or write the width into the markdown yourself:
+`((highlights/papers/attention#^a1b2c3|w=60))`. `w=` is an integer percentage from 10 to 100 of
+the available width. Because it lives in the markdown, the size travels with the file.
+
+### Where are my PDF highlights stored?
+
+Two plain files inside your vault, per PDF:
+
+- `highlights/<path-to-pdf>.md` — a companion markdown note holding the quoted text, one
+  block-ID'd paragraph per highlight. It is an ordinary note; open and read it like any other.
+- `.baram/pdf-highlights/<path-to-pdf>.json` — the geometry: page, rectangles, colour, kind.
+
+Nothing is kept in a hidden database and nothing is written into the PDF, so highlights diff,
+merge, and sync alongside your notes.
+
+### I deleted a highlight by mistake
+
+Deleting is a soft delete. Open the side panel, go to the **Highlights** tab and its **Deleted**
+sub-tab, and press **Restore** — the highlight comes back exactly as it was, and so do any
+references to it.
+
+Deleting is soft on purpose: the quoted text lives in the companion note and the geometry in the
+sidecar, so discarding the record outright would strip every reference back to a bare label, and
+an area reference would lose its crop rectangle and become unrecoverable.
+
+**Delete permanently** on that same tab removes it for good. Baram counts the references pointing
+at it first and tells you the number, since those references will lose their preview. The quoted
+text stays in the companion note either way.
+
+### Can I search inside a PDF?
+
+Yes — `Cmd+F` in a PDF tab opens **Find in PDF**. `Enter` and `Shift+Enter` step through matches,
+there is a **Match case** option, and the counter shows your position (`3 / 17`).
+
+### The highlight buttons aren't showing
+
+Highlighting requires a vault, because the highlight has to be written somewhere. A PDF opened
+through **File > Open File** from outside a vault gets the reader, find, zoom, and the page list,
+but no highlight controls.
 
 ---
 
@@ -532,11 +612,33 @@ Each vault can have its own journal directory set in **Settings > Vault > Journa
 
 ### Does Baram support plugins?
 
-Yes. Open **Settings > Plugins** to browse, install, update, and manage community plugins. The tab has three sections: Browse (discover plugins), Installed (configure your plugins), and Updates (apply new versions).
+Yes. Open **Settings > Plugins** to browse, install, update, and manage plugins. The tab has three sections: Browse (discover plugins), Installed (everything you have, grouped into Built-in, Community, and In development), and Updates (apply new versions).
+
+Clicking a plugin opens its detail page in an editor tab, with the full description, its rendered
+README, the capabilities it asks for, and links to its repository and homepage.
+
+### Can I turn off a plugin that ships with Baram?
+
+Yes. Built-in plugins — the Media Viewer, for example — have the same **On / Off** toggle as any
+other, and your choice is remembered across restarts. Turning one off deactivates it without
+uninstalling anything.
+
+### One of my plugins says "Withdrawn"
+
+A plugin version can be withdrawn after you install it, either because a security issue was found
+or because its author pulled it. Baram checks your installed plugins against a signed withdrawal
+list, marks that plugin **Withdrawn**, shows the reason, and **does not run it**.
+
+Its files are left where they are — nothing is deleted without you — and a **Remove it** action is
+offered. If the report is a vulnerability rather than a withdrawal, the plugin keeps running and
+Baram asks you to update once a newer version is published.
+
+Baram also tells you when it cannot trust that list — if it has never been received, could not be
+signature-verified, or has gone stale — rather than implying everything is fine.
 
 ### Are plugins safe?
 
-Plugins are capability-gated: each declares the permissions it needs (editor, files, commands, UI, etc.), and you review and approve them before installing. Downloads are verified with a SHA-256 checksum.
+Plugins are capability-gated: each declares the permissions it needs (editor, files, commands, UI, etc.), and you review and approve them before installing. Downloads are verified with a SHA-256 checksum, and installation is staged — unpacked and validated elsewhere, then swapped into place only once every check passes — so an interrupted install cannot leave a half-written plugin behind.
 
 How strongly that approval is enforced depends on the plugin's kind:
 
