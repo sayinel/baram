@@ -70,7 +70,7 @@ Pre-built binaries for macOS, Windows, and Linux are available on the [Releases]
 | Windows | x64 | `.msi`, `.exe` |
 | Linux | x64 | `.deb`, `.AppImage`, `.rpm` |
 
-> **macOS note:** Baram is distributed without an Apple Developer certificate, so Gatekeeper warns on first launch — open **System Settings → Privacy & Security** and click **Open Anyway**. macOS may also re-prompt for folder access on every launch; to avoid it, keep your vault outside Documents/Desktop/Downloads or grant Baram **Full Disk Access**. See the [FAQ](docs/faq.md#macos-keeps-asking-for-folder-access-every-launch) for details.
+> **macOS note:** Baram is signed with an Apple Developer ID certificate and notarized by Apple, so it opens without a Gatekeeper warning. macOS still asks to confirm an app downloaded from the internet on first launch — that prompt appears for every notarized app. Access to Documents/Desktop/Downloads/iCloud is requested once and then remembered, including across updates.
 
 ### Build from Source
 
