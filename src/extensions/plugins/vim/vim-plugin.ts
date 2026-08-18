@@ -182,12 +182,13 @@ export function createVimPlugin(
           const vim = read(view.state);
           if (!vim.enabled) return false;
           const suspended = isSuspendTarget(event);
-          if (suspended !== vim.suspended) {
-            dispatchMeta(view, {
-              island: suspended ? islandLabel(event) : null,
-              suspended,
-              type: "setSuspended",
-            });
+          // The label must track suspended-to-suspended handoffs too: focus
+          // moving from a math textarea to another suspended host keeps the
+          // boolean true, and a boolean-only dispatch left the bar naming an
+          // island that no longer owned the keys (adversarial review).
+          const island = suspended ? islandLabel(event) : null;
+          if (suspended !== vim.suspended || island !== vim.island) {
+            dispatchMeta(view, { island, suspended, type: "setSuspended" });
           }
           return false;
         },

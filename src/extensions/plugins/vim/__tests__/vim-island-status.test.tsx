@@ -46,6 +46,11 @@ const DOC: JSONContent = {
   content: [
     { content: [{ text: "above", type: "text" }], type: "paragraph" },
     { attrs: { formula: "E=mc^2" }, type: "mathBlock" },
+    {
+      attrs: { language: "js" },
+      content: [{ text: "x", type: "text" }],
+      type: "codeBlock",
+    },
     { content: [{ text: "below", type: "text" }], type: "paragraph" },
   ],
   type: "doc",
@@ -135,6 +140,38 @@ describe("island focus publishes an insert status with the island label", () => 
     const status = useUIStore.getState().vimStatus;
     expect(status?.mode).toBe("normal");
     expect(status?.island).toBeUndefined();
+  });
+
+  it("an island-to-island handoff does not keep the old label", async () => {
+    // The handler dispatched only when the suspension BOOLEAN changed, so a
+    // suspended-to-suspended focus move (math textarea → a code block's
+    // suspended wrapper) kept island === "math" and the bar named an island
+    // that no longer owned the keys (adversarial review). The unlabeled
+    // destination must fall back to the surface display.
+    const editor = setup();
+    await flush();
+    act(() => {
+      editor.commands.setNodeSelection(mathPos(editor));
+    });
+    await flush();
+    focusIsland();
+    await flush();
+    expect(useUIStore.getState().vimStatus?.island).toBe("math");
+
+    let codePos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "codeBlock") codePos = at;
+    });
+    const codeDOM = editor.view.nodeDOM(codePos);
+    expect(codeDOM).toBeInstanceOf(HTMLElement);
+    act(() => {
+      (codeDOM as HTMLElement).dispatchEvent(
+        new FocusEvent("focusin", { bubbles: true }),
+      );
+    });
+    await flush();
+
+    expect(useUIStore.getState().vimStatus?.island).toBeUndefined();
   });
 
   it("vim off leaves the feed alone (positive control)", async () => {
