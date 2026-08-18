@@ -90,7 +90,7 @@ The built application will be in `src-tauri/target/release/bundle/`.
 
 ## Features
 
-Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-native editing**, and **bidirectional links** — in a lightweight desktop app. The v0.5.0 downloads are ~8MB (Windows `.exe`), ~13MB (Linux `.deb`/`.rpm`), and ~23MB for the universal macOS `.dmg`, which ships Apple Silicon and Intel in one bundle.
+Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-native editing**, and **bidirectional links** — in a lightweight desktop app. Downloads are ~8MB (Windows `.exe`), ~13MB (Linux `.deb`/`.rpm`), and ~23MB for the universal macOS `.dmg`, which ships Apple Silicon and Intel in one bundle.
 
 ### Editing
 
@@ -100,15 +100,16 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Rich blocks** — Headings, lists, tables (with cell merge & virtual scroll), task lists, Obsidian-compatible callouts, toggles, footnotes, definition lists, and YAML frontmatter — created by typing markdown, `/` slash commands, or shortcuts.
 - **Math, code & diagrams** — Inline/block LaTeX (KaTeX), syntax highlighting for 14+ languages (CodeMirror 6), and Mermaid diagrams — all with live preview.
 - **Images** — Drag-and-drop, paste from clipboard, resize, and edit alt text inline.
-- **Other file types** — Open PDFs read-only, HTML with a sandboxed live preview and a source-edit toggle, and images/SVG in a built-in viewer — all in place, without leaving the app. Plugins can add viewers for more types.
+- **Other file types** — Open HTML with a sandboxed live preview and a source-edit toggle, and images/SVG in a built-in viewer — all in place, without leaving the app. Plugins can add viewers for more types.
 
 ### Knowledge & Navigation
 
-- **Wikilinks** — `[[links]]` with autocomplete, heading/block links, aliases, and relative/namespace paths.
+- **Wikilinks** — `[[links]]` with autocomplete, heading/block links, aliases, and relative/namespace paths. Links can target PDFs and other viewable files (`[[paper.pdf]]`), and those count as real edges in backlinks and the graph.
 - **Backlinks & unlinked mentions** — See what links here; links auto-update on rename.
 - **Block references & embeds** — Reference `((file#^id))` or embed `{{embed ((file#^id))}}` any block; embeds stay editable.
 - **@Mentions & tags** — Inline `@[[...]]` page/date chips and `#nested/tags` with a vault-wide index.
 - **Graph view & global search** — Visual map of your connections, plus vault-wide full-text search with regex and replace.
+- **PDF reading & highlights** — Read PDFs in place with find, zoom, and a page/highlight side panel. Highlight text or draw a box around a figure, then paste a **reference** into any note: it renders as the quoted sentence, or as the cropped region of the page, and `Cmd+click` jumps back to the source. Highlights are stored beside the PDF as plain markdown and JSON — the PDF is never modified.
 - **Query blocks** — Embed live, self-updating result lists with a visual query builder.
 
 ### Workspaces
@@ -122,7 +123,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 
 - **Export** — HTML, PDF, and — via Pandoc — Word, LaTeX, EPUB, and RST, plus Notion-compatible markdown.
 - **Themes** — 6 built-in editor themes (plus 6 journal themes), system auto light/dark, and a full color editor with import/export.
-- **Plugins** — Install community plugins from a built-in marketplace. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation.
+- **Plugins** — Install community plugins from a built-in marketplace, browse each one's README in a detail tab, and toggle any plugin — built-ins included — on or off. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation. Installs are staged and atomic, and a signed withdrawal list stops a plugin that was later pulled or found vulnerable from running.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
 
 > 📖 See the **[User Guide](docs/user-guide.md)** for detailed usage of every feature.
