@@ -46,6 +46,7 @@ export interface NewSelectionPayload {
  * 로직이라 손대지 않는다 — 게이트 한 줄만 추가한다.
  */
 export function usePdfSelectionPopup({
+  active,
   onSelect,
   pageElsRef,
   pagesByNumberRef,
@@ -53,6 +54,14 @@ export function usePdfSelectionPopup({
   scale,
   textModeActive,
 }: {
+  /**
+   * §288 규칙 1 — 이 PDF 표면이 지금 화면에 보이는가.
+   *
+   * 유지 집합(§286)은 PDF를 여러 개 마운트해 둔 채 하나만 보여준다. 숨은 표면이 document의
+   * selectionchange를 계속 들으면, 사용자가 **다른 탭에서** 만든 선택에 반응해 자기 페이지
+   * 좌표로 앵커를 계산하고 팝업을 띄운다.
+   */
+  active: boolean;
   onSelect: (payload: NewSelectionPayload) => void;
   pageElsRef: { current: Map<number, HTMLElement> };
   pagesByNumberRef: { current: Map<number, PDFPageProxy> };
@@ -65,7 +74,7 @@ export function usePdfSelectionPopup({
   textModeActive: boolean;
 }): void {
   useEffect(() => {
-    if (!pdfRelPath || !textModeActive) return;
+    if (!active || !pdfRelPath || !textModeActive) return;
     const isMouseDownRef = { current: false };
 
     function trySelectionPopup() {
@@ -135,5 +144,5 @@ export function usePdfSelectionPopup({
     // onSelect는 매 렌더 새 클로저를 만들 수 있는 콜백이라 deps에서 뺀다 —
     // 호출부는 useCallback으로 안정된 참조를 넘긴다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfRelPath, scale, textModeActive]);
+  }, [active, pdfRelPath, scale, textModeActive]);
 }

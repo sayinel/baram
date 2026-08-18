@@ -52,6 +52,14 @@ GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 const PAGE_GUTTER_PX = 24;
 
 interface PdfPreviewProps {
+  /**
+   * §288 규칙 1 — 이 표면이 지금 화면에 보이는가. 기본값 true.
+   *
+   * §286 유지 집합은 PDF를 여러 개 마운트해 둔 채 하나만 보여준다. 숨은 표면이 document
+   * 전역 리스너를 계속 들면, 사용자가 **다른 탭에서** 만든 선택과 누른 Alt에 보이지 않는
+   * 문서가 반응한다.
+   */
+  active?: boolean;
   /** Absolute path of the .pdf file (must be inside an opened context). */
   filePath: string;
   /** §272 Whether the PDF find bar is open — drives PDFFindController lifecycle. */
@@ -114,6 +122,7 @@ export function resolvePageBoxEl(
 }
 
 export const PdfPreview = memo(function PdfPreview({
+  active = true,
   filePath,
   findOpen,
   onFindApiChange,
@@ -321,6 +330,7 @@ export const PdfPreview = memo(function PdfPreview({
     popupProps,
     registerPageEl: registerHighlightPageEl,
   } = usePdfHighlights({
+    active,
     filePath,
     pages,
     pagesReady,
@@ -335,6 +345,7 @@ export const PdfPreview = memo(function PdfPreview({
   // 훅 자체는 vault 여부를 몰라도 된다 — 이 컴포넌트(합성 계층)가 그
   // 정책을 쥔다.
   const areaHighlight = usePdfAreaHighlight({
+    active,
     areaModeOn,
     onAreaHighlightDrawn,
   });

@@ -39,6 +39,12 @@ import {
 } from "./html-preview-url";
 
 interface HtmlPreviewProps {
+  /**
+   * §288 규칙 1 — 이 프리뷰가 지금 화면에 보이는가. 기본값 true.
+   *
+   * 보이지 않는 동안 브릿지 메시지를 처리하지 않는다. 이유는 아래 effect의 주석 참조.
+   */
+  active?: boolean;
   /** Absolute path of the .html file (must be inside an opened context). */
   filePath: string;
   /** Bumped on every save — forces the iframe to reload the file from disk. */
@@ -48,6 +54,7 @@ interface HtmlPreviewProps {
 }
 
 export const HtmlPreview = memo(function HtmlPreview({
+  active = true,
   filePath,
   refreshKey,
   title,
@@ -60,6 +67,12 @@ export const HtmlPreview = memo(function HtmlPreview({
   );
 
   useEffect(() => {
+    // §288 규칙 1 — 보안 사안이다. 이 iframe은 sandbox="allow-scripts"라 숨어 있어도
+    // 스크립트가 돈다(display:none 아래에서 rAF는 멎지만 setInterval은 산다). 핸들러를
+    // 그대로 두면 백그라운드 HTML 파일이 사용자가 다른 탭을 보는 동안 `zoom`으로 앱 줌을
+    // 바꾸거나 `open-external`로 브라우저를 띄울 수 있다. 지금까지는 언마운트가 우연히
+    // 이걸 막고 있었고, 마운트를 유지하는 순간 그 방어가 사라진다.
+    if (!active) return;
     const handleMessage = (event: MessageEvent) => {
       // Identity comes from the window object, not the origin: an opaque-origin
       // frame reports its origin as the string "null", which every other
@@ -90,7 +103,7 @@ export const HtmlPreview = memo(function HtmlPreview({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  }, [active]);
 
   return (
     <iframe

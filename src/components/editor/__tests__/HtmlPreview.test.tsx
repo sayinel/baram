@@ -22,8 +22,10 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { BRIDGE_TAG } from "../html-preview-url";
 import { HtmlPreview } from "../HtmlPreview";
 
-function renderPreview() {
-  const { container } = render(<HtmlPreview filePath="/Users/me/a.html" />);
+function renderPreview(active = true) {
+  const { container } = render(
+    <HtmlPreview active={active} filePath="/Users/me/a.html" />,
+  );
   const frame = container.querySelector("iframe");
   if (!frame) throw new Error("preview rendered no iframe");
   return {
@@ -158,5 +160,34 @@ describe("frame element", () => {
     expect(frame.getAttribute("src")).toBe(
       "baramhtml://localhost/Users/me/a.html",
     );
+  });
+});
+
+// §288 규칙 1 — 이 iframe은 sandbox="allow-scripts"라 **숨어 있어도 스크립트가 돈다**
+// (display:none 아래에서 rAF는 멎지만 setInterval은 산다). §286 유지 집합이 프리뷰를
+// 마운트한 채로 두면, 지금까지 언마운트가 우연히 막아 주던 것이 사라진다: 백그라운드 HTML
+// 파일이 사용자가 다른 탭을 보는 동안 앱 줌을 바꾸거나 브라우저를 띄울 수 있다.
+describe("a hidden preview is muted", () => {
+  const zoomIn = { __baram: BRIDGE_TAG, action: "in", type: "zoom" };
+
+  it("applies zoom from its own frame while visible", () => {
+    // 대조군. 이게 없으면 아래 단정은 "메시지가 애초에 도착하지 않았다"와 구분되지 않는다.
+    const { post } = renderPreview(true);
+    const before = useSettingsStore.getState().zoomLevel;
+    act(() => post(zoomIn));
+    expect(useSettingsStore.getState().zoomLevel).not.toBe(before);
+  });
+
+  it("ignores the very same message while hidden", () => {
+    const { post } = renderPreview(false);
+    const before = useSettingsStore.getState().zoomLevel;
+    act(() => post(zoomIn));
+    expect(useSettingsStore.getState().zoomLevel).toBe(before);
+  });
+
+  it("ignores an external-link request while hidden", () => {
+    const { post } = renderPreview(false);
+    act(() => post(openExternal("https://example.com")));
+    expect(openUrlMock).not.toHaveBeenCalled();
   });
 });
