@@ -112,6 +112,26 @@ describe("vim modal: selection alone keeps the preview render", () => {
     expect(wrapper().className).not.toContain("math-block-editing");
   });
 
+  it("a click while modal only SELECTS the block — `i` is the entry", async () => {
+    // UX decision (issue 408): normal mode is navigation. A click lands the
+    // outline exactly like j/k; the editor opens via `i` (or click in insert
+    // mode / vim off). The churn suppression keeps the landed NodeSelection
+    // from being reverted, so the outline actually sticks.
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+
+    act(() => {
+      fireEvent.click(wrapper());
+    });
+    await flush();
+
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBe(mathPos(editor));
+    expect(wrapper().className).toContain("math-block-preview");
+    expect(wrapper().className).not.toContain("math-block-editing");
+  });
+
   it("the standby textarea is mounted for vim's `i` preflight", async () => {
     // atom-insert.ts islandEntry() looks for a focusable inside nodeDOM —
     // remove this and `i` on a math block silently refuses.

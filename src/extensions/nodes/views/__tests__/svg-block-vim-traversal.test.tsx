@@ -91,6 +91,26 @@ describe("vim modal: selection alone keeps the preview render", () => {
     expect(wrapper().className).not.toContain("svg-block-editing");
   });
 
+  it("a click while modal only SELECTS the block — `i` is the entry", async () => {
+    // UX decision (issue 408): normal mode is navigation. A click lands the
+    // outline exactly like j/k; the editor opens via `i` (or click in insert
+    // mode / vim off). The churn suppression keeps the landed NodeSelection
+    // from being reverted, so the outline actually sticks.
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+
+    act(() => {
+      fireEvent.click(wrapper());
+    });
+    await flush();
+
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBe(svgPos(editor));
+    expect(wrapper().className).toContain("svg-block-preview");
+    expect(wrapper().className).not.toContain("svg-block-editing");
+  });
+
   it("the standby textarea is mounted, inert to Tab and AT", async () => {
     useSettingsStore.setState({ vimMode: true });
     const editor = setup();

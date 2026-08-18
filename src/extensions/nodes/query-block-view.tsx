@@ -156,6 +156,13 @@ export function QueryBlockView({
     if (isEditingRef.current) return;
     const pos = getPos();
     if (typeof pos !== "number") return;
+    // §12-⑩ modal click = NAVIGATION (issue 408, UX decision): land the
+    // outline exactly like j/k and stop — `i` is the entry. Non-modal (insert
+    // mode, vim off) keeps the click entry below.
+    if (isWysiwygVimModal(editorRef.current.state)) {
+      editorRef.current.commands.setNodeSelection(pos);
+      return;
+    }
     // Set BEFORE the selection change: the entry effect consumes the latch on
     // the render this dispatch causes; already-selected standby opens direct.
     enterByClickRef.current = true;

@@ -108,6 +108,23 @@ describe("vim modal: selection alone keeps the builder closed", () => {
     expect(container().querySelector(".qb-builder")).toBeNull();
   });
 
+  it("a click while modal only SELECTS the block — `i` is the entry", async () => {
+    // UX decision (issue 408): normal mode is navigation; the builder opens
+    // via `i` (or click in insert mode / vim off).
+    useSettingsStore.setState({ vimMode: true });
+    const editor = setup();
+    await flush();
+
+    act(() => {
+      fireEvent.click(container());
+    });
+    await flush();
+
+    expect(editor.state.selection).toBeInstanceOf(NodeSelection);
+    expect(editor.state.selection.from).toBe(queryPos(editor));
+    expect(container().querySelector(".qb-builder")).toBeNull();
+  });
+
   it("the standby input is mounted, inert to Tab and AT", async () => {
     useSettingsStore.setState({ vimMode: true });
     const editor = setup();
@@ -282,25 +299,28 @@ describe("session transitions (adversarial review of the query port)", () => {
 
   it("surface `i` over an already-open builder lands in the builder", async () => {
     // The standby sits before .qb-builder in DOM order and vim's preflight
-    // takes the FIRST focusable — after a click-open (focus still on the
-    // surface), `i` focused the read-only hidden proxy and keys went nowhere
-    // (adversarial re-review). An already-open standby focus must forward.
+    // takes the FIRST focusable — with the session already open and focus
+    // back on the surface, a second `i` focused the read-only hidden proxy
+    // and keys went nowhere (adversarial re-review). An already-open standby
+    // focus must forward. (Setup opens via the standby — the `i` path — since
+    // a modal click is navigation-only by the issue-408 UX decision.)
     useSettingsStore.setState({ vimMode: true });
-    setup();
+    const editor = setup();
     await flush();
-
-    act(() => {
-      fireEvent.click(container()); // click-open: builder opens, no focus
-    });
-    await flush();
-    expect(container().querySelector(".qb-builder")).not.toBeNull();
-
+    await selectBlock(editor);
     const standby = container().querySelector<HTMLInputElement>(
       "input[data-vim-suspend]",
     )!;
     act(() => {
       standby.focus();
       standby.dispatchEvent(new FocusEvent("focus"));
+    });
+    await flush();
+    expect(container().querySelector(".qb-builder")).not.toBeNull();
+
+    act(() => {
+      standby.focus();
+      standby.dispatchEvent(new FocusEvent("focus")); // second `i`
     });
 
     expect(document.activeElement?.closest(".qb-builder")).not.toBeNull();
