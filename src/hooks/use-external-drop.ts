@@ -19,7 +19,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Editor } from "@tiptap/core";
 
 import { type Locale, t } from "../i18n";
-import { createDir, importFile, listDir } from "../ipc/invoke";
+import { createDir, importDir, importFile, listDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
@@ -84,7 +84,20 @@ export async function handleFileTreeDrop(paths: string[], el: Element | null) {
       });
     } catch (err) {
       logger.error("[ExternalDrop] Copy to FileTree failed:", err);
-      await reportDropFailure(sourcePath, originalName);
+      // `import_file` is a single-file copy, so a dropped FOLDER always lands
+      // here. `import_dir` is what tells the two apart — it returns null for a
+      // non-directory. The frontend must NOT probe the source itself: the
+      // source is vault-external by design and every command that could
+      // inspect it is vault-confined, so any such probe reports "not a
+      // directory" for every folder ever dropped.
+      await importDroppedFolder(
+        sourcePath,
+        destPath,
+        finalName,
+        originalName,
+        targetDir,
+      );
+      existingNames.add(finalName);
     }
   }
 }
@@ -309,35 +322,64 @@ function hitTestRect(el: Element | null, x: number, y: number): boolean {
 }
 
 /**
- * Surface a failed copy. Before this the only trace was a `logger.error`, so a
- * drop that could not land looked identical to one the app never received.
+ * §4.3 Copy a dropped folder in, recursively.
  *
- * `import_file` copies a single file, so a dropped FOLDER always rejects.
- * Naming that specific case is worth one extra `listDir` — which succeeds only
- * for a directory — and it is paid on the error path alone.
+ * Reports the outcome either way. Before toasts existed here the only trace of
+ * a failure was a `logger.error`, so a drop that could not land looked exactly
+ * like one the app never received.
+ *
+ * Skipped symlinks get their own message rather than being folded into the
+ * count: "copied 12 files" would otherwise be a true sentence about an
+ * incomplete copy.
  */
-async function reportDropFailure(
+async function importDroppedFolder(
   sourcePath: string,
+  destPath: string,
   name: string,
+  originalName: string,
+  targetDir: string,
 ): Promise<void> {
-  let isDirectory: boolean;
   try {
-    await listDir(sourcePath);
-    isDirectory = true;
-  } catch {
-    isDirectory = false;
+    const report = await importDir(sourcePath, destPath);
+    if (report === null) {
+      // Not a directory — the original single-file copy is the real failure.
+      toast("fileTree.drop.failed", { name: originalName }, "error");
+      return;
+    }
+    useFileStore.getState().addFileEntry(targetDir, {
+      name,
+      path: destPath,
+      isDir: true,
+    });
+    if (report.skippedSymlinks > 0) {
+      toast(
+        "fileTree.drop.folderCopiedWithSkips",
+        {
+          count: String(report.copied),
+          name,
+          skipped: String(report.skippedSymlinks),
+        },
+        "warning",
+      );
+    } else {
+      toast(
+        "fileTree.drop.folderCopied",
+        { count: String(report.copied), name },
+        "info",
+      );
+    }
+  } catch (err) {
+    logger.error("[ExternalDrop] Folder copy failed:", err);
+    toast("fileTree.drop.folderFailed", { name }, "error");
   }
+}
+
+/** Show a translated toast in the user's current locale. */
+function toast(
+  key: string,
+  params: Record<string, string>,
+  type: "error" | "info" | "warning",
+): void {
   const { locale } = useSettingsStore.getState();
-  useUIStore
-    .getState()
-    .showToast(
-      t(
-        isDirectory
-          ? "fileTree.drop.folderUnsupported"
-          : "fileTree.drop.failed",
-        locale as Locale,
-        { name },
-      ),
-      "error",
-    );
+  useUIStore.getState().showToast(t(key, locale as Locale, params), type);
 }

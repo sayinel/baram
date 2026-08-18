@@ -513,7 +513,9 @@
   "fileTree.accessDenied.toast": "시스템이 폴더 접근을 거부했습니다.",
   "fileTree.accessDenied.toastGeneric": "폴더를 읽을 수 없습니다.",
   "fileTree.drop.failed": "'{name}' 복사에 실패했습니다.",
-  "fileTree.drop.folderUnsupported": "폴더 '{name}'은(는) 끌어다 놓을 수 없습니다. 파일만 복사됩니다.",
+  "fileTree.drop.folderCopied": "폴더 '{name}'을(를) 복사했습니다 (파일 {count}개).",
+  "fileTree.drop.folderCopiedWithSkips": "폴더 '{name}'을(를) 복사했습니다 (파일 {count}개, 심볼릭 링크 {skipped}개는 건너뜀).",
+  "fileTree.drop.folderFailed": "폴더 '{name}' 복사에 실패했습니다.",
 
   "htmlPreview.showPreview": "미리보기",
   "htmlPreview.showSource": "소스",
