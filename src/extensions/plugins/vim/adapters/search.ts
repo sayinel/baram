@@ -39,6 +39,8 @@ export function resolveSearch(
     if (!node.isTextblock) return true;
     const text = node.textBetween(0, node.content.size, "\n", leafText);
     regex.lastIndex = 0;
+    let boundaries: null | Set<number> = null;
+    let previous = -1;
     let m = regex.exec(text);
     while (m !== null) {
       // A zero-length match (e.g. `x*` with no x) would loop forever and
@@ -46,7 +48,16 @@ export function resolveSearch(
       if (m[0].length === 0) {
         regex.lastIndex += 1;
       } else {
-        matches.push(pos + 1 + m.index);
+        // Match indices are UTF-16 offsets, and a non-unicode regex `.`
+        // happily matches HALF a surrogate pair — landing the cursor there
+        // lets the next `x` delete half an emoji (adversarial review,
+        // reproduced). Only grapheme STARTS are real cursor targets; the
+        // boundary set is built lazily, for blocks that match at all.
+        boundaries ??= graphemeStarts(text);
+        if (boundaries.has(m.index) && m.index !== previous) {
+          matches.push(pos + 1 + m.index);
+          previous = m.index;
+        }
       }
       m = regex.exec(text);
     }
@@ -74,14 +85,29 @@ export function resolveSearch(
   return matches[index];
 }
 
-/** smartcase + always "gm"; an invalid pattern is a miss, not a crash. */
+/** smartcase + always "gm"; an invalid pattern is a miss, not a crash.
+ *  Escape opcodes (`\W`, `\S`, `\B`…) are regex syntax, not uppercase
+ *  intent — vim's smartcase ignores them too, while an explicit `[A-Z]`
+ *  range stays case-sensitive (adversarial review, reproduced with
+ *  `\Wfoo` missing " FOO"). Non-ASCII capitals count via \p{Lu}. */
 function compile(pattern: string): null | RegExp {
-  const flags = /[A-Z]/.test(pattern) ? "gm" : "gim";
+  const literal = pattern.replace(/\\./g, "");
+  const flags = /\p{Lu}/u.test(literal) ? "gm" : "gim";
   try {
     return new RegExp(pattern, flags);
   } catch {
     return null;
   }
+}
+
+/** UTF-16 indices where a grapheme begins — the only legal cursor targets. */
+function graphemeStarts(text: string): Set<number> {
+  const starts = new Set<number>();
+  const segmenter = new Intl.Segmenter();
+  for (const segment of segmenter.segment(text)) {
+    starts.add(segment.index);
+  }
+  return starts;
 }
 
 function leafText(leaf: PMNode): string {

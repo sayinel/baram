@@ -123,6 +123,23 @@ describe("regex semantics", () => {
   });
 });
 
+describe("grapheme alignment (adversarial review)", () => {
+  it("`.` never lands mid-surrogate — half an emoji is not a target", () => {
+    const state = makeState("a😀b\n");
+    // Cursor on the emoji start (pos 2). The next grapheme start is `b` at 4;
+    // 3 (between the surrogate halves) must never be returned — an `x` there
+    // deletes half the emoji.
+    expect(resolveSearch(state, 2, ".", "forward", 1)).toBe(4);
+  });
+
+  it("a match inside a combining sequence snaps out of existence", () => {
+    // "e\u0301" is one grapheme; a pattern hitting the combining mark alone
+    // is not a real cursor target.
+    const state = makeState("xe\u0301y\n");
+    expect(resolveSearch(state, 1, "\u0301", "forward", 1)).toBeNull();
+  });
+});
+
 describe("smartcase", () => {
   const md = "Alpha alpha ALPHA\n";
 
@@ -139,6 +156,20 @@ describe("smartcase", () => {
     // From the start: the only "Alpha" is at position 1 → wraps onto itself.
     const cap = nthOccurrence(state, "Alpha", 0);
     expect(resolveSearch(state, cap, "Alpha", "forward", 1)).toBe(cap);
+  });
+
+  it("escape opcodes are not uppercase intent (`\\Wfoo` matches ` FOO`)", () => {
+    // vim's smartcase ignores capitals that are regex syntax — only literal
+    // capitals (and explicit ranges) make the pattern exact (adversarial
+    // review, reproduced: the raw scan forced sensitivity and missed FOO).
+    const state = makeState("x FOO y\n");
+    expect(resolveSearch(state, 1, "\\Wfoo", "forward", 1)).not.toBeNull();
+  });
+
+  it("an explicit `[A-Z]` range stays case-sensitive", () => {
+    const state = makeState("abc Abc\n");
+    const cap = nthOccurrence(state, "Abc", 0);
+    expect(resolveSearch(state, 1, "[A-Z]bc", "forward", 1)).toBe(cap);
   });
 });
 
