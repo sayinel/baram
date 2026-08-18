@@ -142,9 +142,12 @@ function publish(): void {
     writeStatus({ island: vim.island, mode: "insert", surface: "wysiwyg" });
     return;
   }
-  const exLine = vim.exLine;
+  // The command slot: an open ex line, else an open search line — the two
+  // are mutually exclusive in the core.
+  const command =
+    vim.exLine === null ? (vim.searchLine ?? undefined) : `:${vim.exLine}`;
   writeStatus({
-    ...(exLine === null ? {} : { command: `:${exLine}` }),
+    ...(command === undefined ? {} : { command }),
     mode: vim.mode,
     surface: "wysiwyg",
   });

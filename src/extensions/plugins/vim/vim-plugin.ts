@@ -44,6 +44,7 @@ import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
 import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
+import { resolveSearch } from "./adapters/search";
 import {
   islandLabel,
   isSuspendTarget,
@@ -71,6 +72,9 @@ export interface VimPluginState {
   island: null | string;
   /** Mirror of core.mode so vim-keys' snapshot readers stay leaf-typed. */
   mode: VimMode;
+  /** core.searchLine mirrored AS ITS DISPLAY FORM ("/te", "?a") — the status
+   *  feed shows it in the command slot exactly like the ex line. */
+  searchLine: null | string;
   suspended: boolean;
 }
 
@@ -427,6 +431,7 @@ export function createVimPlugin(
           exLine: null,
           island: null,
           mode: "insert",
+          searchLine: null,
           suspended: false,
         };
       },
@@ -568,6 +573,7 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         exLine: null,
         island: null,
         mode: meta.enabled ? "normal" : "insert",
+        searchLine: null,
         suspended: false,
       };
     case "setMode":
@@ -681,6 +687,27 @@ function runSelectionCommand(
     return true;
   }
 
+  if (command.type === "search") {
+    // Buffer-local `/`·`?`·`n`·`N`. A miss (no match, invalid pattern) is the
+    // same silence as an `f` miss — but the META must still land: Enter just
+    // closed the search line and recorded lastSearch.
+    const target = resolveSearch(
+      view.state,
+      vimCursor(view.state),
+      command.pattern,
+      command.direction,
+      command.count,
+    );
+    const tr = view.state.tr;
+    if (target !== null) {
+      tr.setSelection(cursorSelection(view.state, target));
+    }
+    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+    dispatchCursor(view, tr);
+    if (target !== null) scrollCursorIntoView(view, target);
+    return true;
+  }
+
   if (command.type === "findChar") {
     const base =
       result.state.mode === "visual" && preVisual
@@ -786,7 +813,17 @@ function visualSelection(state: EditorState, visual: VisualState): Selection {
 }
 
 function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {
-  return { ...prev, core, exLine: core.exLine, mode: core.mode };
+  return {
+    ...prev,
+    core,
+    exLine: core.exLine,
+    mode: core.mode,
+    searchLine:
+      core.searchLine === null
+        ? null
+        : (core.searchLine.direction === "forward" ? "/" : "?") +
+          core.searchLine.text,
+  };
 }
 
 declare module "@tiptap/pm/view" {

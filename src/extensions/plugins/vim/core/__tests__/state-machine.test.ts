@@ -173,9 +173,11 @@ describe("visual mode keys", () => {
     count: null,
     exLine: null,
     lastFind: null,
+    lastSearch: null,
     mode: "visual",
     pendingCount: null,
     pending: null,
+    searchLine: null,
     visual: { anchorCursor: 5, headCursor: 9, kind: "char" },
   });
 

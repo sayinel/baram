@@ -27,6 +27,12 @@ export type CoreCommand =
       repeat?: boolean;
       type: "findChar";
     }
+  | {
+      count: number;
+      direction: SearchDirection;
+      pattern: string;
+      type: "search";
+    }
   | { count: number; motion: Motion; op: OperatorKey; type: "operatorMotion" }
   | { count: number; motion: Motion; type: "move" }
   | { count: number; type: "changeLine" }
@@ -92,6 +98,9 @@ export type PendingKey =
   | FindKind
   | OperatorKey;
 
+/** `/` = forward, `?` = backward — vim's buffer-local search (§298 tier 3). */
+export type SearchDirection = "backward" | "forward";
+
 /**
  * The result of feeding one key to the core.
  *
@@ -113,11 +122,15 @@ export interface VimCoreState {
   exLine: null | string;
   /** Last f/F/t/T target, for ; and , repeats. */
   lastFind: null | { char: string; kind: FindKind };
+  /** Last executed search — `n`/`N` replay it (vim's search register). */
+  lastSearch: null | { direction: SearchDirection; pattern: string };
   mode: VimMode;
   pending: null | PendingKey;
   /** Digits typed AFTER an operator (d2w) — multiplied with `count` at
    *  resolution, per vim (2d3w = 6). */
   pendingCount: null | number;
+  /** Open `/` or `?` line — the StatusBar shows it instead of the mode. */
+  searchLine: null | { direction: SearchDirection; text: string };
   visual: null | VisualState;
 }
 
@@ -141,9 +154,11 @@ export function initialCoreState(mode: VimMode = "normal"): VimCoreState {
     count: null,
     exLine: null,
     lastFind: null,
+    lastSearch: null,
     mode,
     pending: null,
     pendingCount: null,
+    searchLine: null,
     visual: null,
   };
 }

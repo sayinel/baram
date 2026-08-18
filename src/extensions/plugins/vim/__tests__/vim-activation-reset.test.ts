@@ -77,6 +77,24 @@ describe("a half-typed operator does not survive activation", () => {
     expect(vim(editor)?.core.count).toBeNull();
   });
 
+  it("an open search line does not survive, but its history does", () => {
+    const editor = makeEditor();
+    key(editor, "/");
+    key(editor, "o");
+    key(editor, "Enter"); // search "o" — records lastSearch
+    key(editor, "/");
+    key(editor, "x");
+    expect(vim(editor)?.core.searchLine?.text).toBe("x");
+
+    activateEditorForDocument(editor.view);
+
+    expect(vim(editor)?.core.searchLine).toBeNull();
+    expect(vim(editor)?.core.lastSearch).toEqual({
+      direction: "forward",
+      pattern: "o",
+    });
+  });
+
   it("an open ex line does not survive", () => {
     const editor = makeEditor();
     key(editor, ":");

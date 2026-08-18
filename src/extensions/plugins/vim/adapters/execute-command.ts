@@ -87,6 +87,7 @@ export function executeCoreCommand(
     case "findChar":
     case "leaveVisual":
     case "move":
+    case "search":
       // Owned by the plugin's selection path (one transaction carries the
       // core state AND the new selection). Unreachable here; the case keeps
       // the switch exhaustive so a new command cannot slip through silently.

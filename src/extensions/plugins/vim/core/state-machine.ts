@@ -170,10 +170,22 @@ function normalKey(
   const { count, next } = takeCount(state);
 
   switch (token.key) {
+    case "/":
+      // A count before `/` multiplies the JUMP in vim; nothing here takes
+      // it — drop it like `:` does rather than half-apply it.
+      return swallow({
+        ...next,
+        searchLine: { direction: "forward", text: "" },
+      });
     case ":":
       // Open the ex line. A count before `:` is vim's line-range prefix,
       // which no Baram ex command takes — drop it rather than half-apply it.
       return swallow({ ...next, exLine: "" });
+    case "?":
+      return swallow({
+        ...next,
+        searchLine: { direction: "backward", text: "" },
+      });
     case "A":
       return emit(
         { ...next, mode: "insert" },
@@ -201,6 +213,23 @@ function normalKey(
         { ...next, mode: "insert" },
         { at: "atCursor", type: "enterInsert" },
       );
+    case "N":
+    case "n": {
+      const last = state.lastSearch;
+      if (last === null) return swallow(next); // silent, like an f miss
+      const direction =
+        token.key === "n"
+          ? last.direction
+          : last.direction === "forward"
+            ? "backward"
+            : "forward";
+      return emit(next, {
+        count,
+        direction,
+        pattern: last.pattern,
+        type: "search",
+      });
+    }
     case "O":
       return emit(
         { ...next, mode: "insert" },
@@ -247,6 +276,7 @@ function normalOrVisualStep(
 ): StepResult {
   // An open ex line owns every key until it is submitted or abandoned —
   // this must come before the chord and count branches (PR 307 review).
+  if (state.searchLine !== null) return searchLineStep(state, token);
   if (state.exLine !== null) return exLineStep(state, token);
 
   // <C-r> is vim's redo. Every other chord belongs to the app.
@@ -293,6 +323,41 @@ function normalOrVisualStep(
 
 function pass(state: VimCoreState): StepResult {
   return { command: null, handled: false, state };
+}
+
+/** `/`·`?` line — the exLine's twin: accumulate, Escape closes, Enter emits
+ *  the search and records it for `n`/`N`. An empty Enter repeats the LAST
+ *  pattern in the line's direction (vim semantics); with no history it just
+ *  closes — the same silence as an `f` miss. */
+function searchLineStep(state: VimCoreState, token: KeyToken): StepResult {
+  const line = state.searchLine;
+  if (line === null) return swallow(state);
+  const closed = { ...state, searchLine: null };
+
+  if (token.key === "Escape") return swallow(closed);
+  if (token.key === "Enter") {
+    const pattern = line.text !== "" ? line.text : state.lastSearch?.pattern;
+    if (pattern === undefined) return swallow(closed);
+    return emit(
+      { ...closed, lastSearch: { direction: line.direction, pattern } },
+      { count: 1, direction: line.direction, pattern, type: "search" },
+    );
+  }
+  if (token.key === "Backspace") {
+    if (line.text === "") return swallow(closed);
+    return swallow({
+      ...state,
+      searchLine: { ...line, text: line.text.slice(0, -1) },
+    });
+  }
+  const char = token.raw ?? token.key;
+  if (char.length !== 1 || token.mod || token.ctrl || token.alt) {
+    return swallow(state);
+  }
+  return swallow({
+    ...state,
+    searchLine: { ...line, text: line.text + char },
+  });
 }
 
 /** Next key of a `c`/`d`/`y`/`g` sequence. */

@@ -23,6 +23,9 @@ export interface VimStateSnapshot {
    *  status feed for `-- INSERT (x) --` (§8). */
   island: null | string;
   mode: VimMode;
+  /** Open `/`·`?` line in display form ("/te") — shown in the command slot
+   *  like the ex line; null when closed. */
+  searchLine: null | string;
   /** True while an input island owns the keys (§4). */
   suspended: boolean;
 }

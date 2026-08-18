@@ -46,7 +46,8 @@ export function activateEditorForDocument(view: EditorView): void {
     core.pending !== null ||
     core.pendingCount !== null ||
     core.visual !== null ||
-    core.exLine !== null;
+    core.exLine !== null ||
+    core.searchLine !== null;
   if (!transient) return;
 
   const tr = view.state.tr;
@@ -67,9 +68,11 @@ export function activateEditorForDocument(view: EditorView): void {
       count: null,
       exLine: null,
       lastFind: core.lastFind, // f/; repeats are not transient — vim keeps them
+      lastSearch: core.lastSearch, // n/N history survives, like lastFind
       mode: "normal" as const,
       pending: null,
       pendingCount: null,
+      searchLine: null, // an open `/` line is as transient as the ex line
       visual: null,
     },
     type: "core",
