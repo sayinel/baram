@@ -200,6 +200,73 @@ describe("a normal-mode motion clears any ranged DOM selection", () => {
   });
 });
 
+describe("a pointer NodeSelection is held too (issue 408)", () => {
+  // The click path was the one selection write WITHOUT churn suppression:
+  // PM's pointer dispatch (updateSelection) never goes through
+  // dispatchCursor, so WebKit's late re-normalisation deselected the block
+  // right after the click opened it. Captured on device:
+  //
+  //   [MMD] postclick sel=NodeSelection@8761 → entry-effect gate PASS
+  //   [MMD] entry-effect DESELECT              ← one second later, no input
+  //
+  // The plugin's click handler now suppresses on a microtask (so the React
+  // click handlers — entry latch, setNodeSelection — run first).
+  function click(editor: Editor): void {
+    editor.view.dom.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+  }
+
+  async function microtasks(): Promise<void> {
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it("a click over a NodeSelection suppresses the observer", async () => {
+    const editor = makeEditor();
+    let mathPos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "mathBlock") mathPos = at;
+    });
+    editor.commands.setNodeSelection(mathPos);
+    const probe = probeObserver(editor);
+
+    click(editor);
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
+  });
+
+  it("a click over a TextSelection does not (drag-copy stays live)", async () => {
+    // Suppression re-asserts state into the DOM for 50 ms — running it after
+    // an ordinary text click would fight the selection the user just made.
+    const editor = makeEditor();
+    editor.commands.setTextSelection(2);
+    const probe = probeObserver(editor);
+
+    click(editor);
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
+  });
+
+  it("vim OFF leaves clicks alone", async () => {
+    useSettingsStore.setState({ vimMode: false });
+    const editor = new Editor({
+      content: "<p>alpha</p>",
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: createBaramExtensions(),
+    });
+    editors.push(editor);
+    const probe = probeObserver(editor);
+
+    click(editor);
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
+  });
+});
+
 describe("vim OFF leaves the observer alone (positive control)", () => {
   it("does not suppress when vim is not driving the selection", () => {
     // A fix that suppressed unconditionally would pass the pins above while

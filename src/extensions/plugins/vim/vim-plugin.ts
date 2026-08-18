@@ -116,6 +116,30 @@ export function createVimPlugin(
       editable: (state) => !isModal(read(state)),
 
       handleDOMEvents: {
+        /** §12-⑩ pointer entry (issue 408) — a click that lands a
+         *  NodeSelection is the ONE selection write that does not go through
+         *  dispatchCursor, so it got no churn suppression: PM's pointer
+         *  dispatch wrote the node range, WebKit re-normalised it, and the
+         *  late selectionchange deselected the block — closing the edit
+         *  session the click had just opened (measured: gate PASS, then
+         *  DESELECT with no input). Microtask so the React click handlers
+         *  (entry latch, setNodeSelection) run first; the TextSelection
+         *  guard keeps drag-copy clicks live, since suppression re-asserts
+         *  state into the DOM for 50 ms. */
+        click: (view) => {
+          if (!read(view.state).enabled) return false;
+          queueMicrotask(() => {
+            if (view.isDestroyed) return;
+            if (!(view.state.selection instanceof NodeSelection)) return;
+            (
+              view as unknown as {
+                domObserver?: { suppressSelectionUpdates?: () => void };
+              }
+            ).domObserver?.suppressSelectionUpdates?.();
+          });
+          return false;
+        },
+
         /** §5: browser-default cut is actively consumed while modal. */
         cut: (view, event) => consumeClipboard(view, event),
 
