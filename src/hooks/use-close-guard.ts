@@ -7,7 +7,6 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import type { EditorTab } from "../stores/editor/editor";
-import type { Editor } from "@tiptap/core";
 
 import { confirmQuit, updateFileIndex, writeFile } from "../ipc/invoke";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
@@ -17,12 +16,15 @@ import { useUIStore } from "../stores/ui/ui";
 import { isMarkdownFile } from "../utils/file-type";
 import { basename } from "../utils/path-utils";
 
-/** Deps required to save the active tab (its content lives in the live editor). */
+/**
+ * Deps required to save the active tab (its content lives in the live editor).
+ *
+ * ‼️ `handleSave` 하나뿐이다. 예전에는 `editor`/`isSourceMode`/`sourceContentRef`도 받았지만
+ * 이 파일도 UnsavedChangesModal도 그 셋을 **한 번도 읽지 않았다** — 활성 탭 저장을 통째로
+ * `handleSave`에 위임하기 때문이다. §287에서 소스 버퍼가 탭별로 바뀌면서 드러났다.
+ */
 export interface CloseGuardDeps {
-  editor: Editor | null;
   handleSave: () => Promise<void>;
-  isSourceMode: boolean;
-  sourceContentRef: React.RefObject<string>;
 }
 
 /**

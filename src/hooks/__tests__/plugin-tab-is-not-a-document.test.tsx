@@ -25,8 +25,6 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn().mockResolvedValue(null),
 }));
 
-import { useRef } from "react";
-
 import { save } from "@tauri-apps/plugin-dialog";
 
 import type { Editor } from "@tiptap/core";
@@ -62,14 +60,15 @@ beforeEach(() => {
 
 describe("a plugin tab never enters the save path (§69)", () => {
   function harness() {
-    return renderHook(() => {
-      const sourceContentRef = useRef("stale text from another tab");
-      return useFileOperations({
+    return renderHook(() =>
+      useFileOperations({
         editor: editorStub,
-        isSourceMode: true,
-        sourceContentRef,
-      });
-    });
+        // ‼️ 적대적 픽스처를 유지한다: 버퍼는 다른 탭의 텍스트로 장전돼 있고, 어떤 탭이든
+        // 소스 모드로 간주된다. 가드가 없으면 이 텍스트가 플러그인 탭 경로로 흘러간다.
+        getSourceBuffer: () => "stale text from another tab",
+        sourceModeTabs: { has: () => true } as unknown as ReadonlySet<string>,
+      }),
+    );
   }
 
   it("Cmd+S neither writes a file nor opens a Save As dialog", async () => {

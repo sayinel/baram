@@ -64,8 +64,8 @@ interface UseTabSwitchingParams {
   editor: Editor | null;
   /** Per-tab EditorState cache — owned by useSourceMode, shared here */
   editorStateCache: React.MutableRefObject<Map<string, EditorState>>;
+  getSourceBuffer: (tabId: string) => string;
   isNavBackForwardRef: React.RefObject<boolean>;
-  isSourceMode: boolean;
   /** §perf-large-file C3.5: keep-alive editor pool for large documents */
   keepalive: KeepalivePool;
   /** §perf-large-file C3.5: notify App of the active editor change */
@@ -73,9 +73,10 @@ interface UseTabSwitchingParams {
   setFindReplaceMode: (mode: "find" | "replace") => void;
   setFindReplaceOpen: (open: boolean) => void;
   setIsParsing: (v: boolean) => void;
-  setIsSourceMode: (v: boolean) => void;
-  setSourceContent: (v: string) => void;
-  sourceContentRef: React.MutableRefObject<string>;
+  setSourceBuffer: (tabId: string, content: string) => void;
+  setSourceModeForTab: (tabId: string, on: boolean) => void;
+  /** §287 소스 모드인 탭들. 나가는 탭의 모드를 그 탭 id로 물어보기 위해 필요하다. */
+  sourceModeTabs: ReadonlySet<string>;
 }
 
 export function useTabSwitching({
@@ -83,16 +84,16 @@ export function useTabSwitching({
   editor,
   editorStateCache,
   isNavBackForwardRef,
-  isSourceMode,
   keepalive,
   createKeepaliveEditor,
   onActiveEditorChange,
   setFindReplaceMode,
   setFindReplaceOpen,
-  setIsSourceMode,
+  setSourceBuffer,
   setIsParsing,
-  setSourceContent,
-  sourceContentRef,
+  setSourceModeForTab,
+  sourceModeTabs,
+  getSourceBuffer,
 }: UseTabSwitchingParams) {
   const activeTabId = useEditorStore((s) => s.activeTabId);
 
@@ -177,7 +178,7 @@ export function useTabSwitching({
         const prevMidLoad = isTabLoading(prevTabId);
         // Cache EditorState before switching (keeps undo/redo stack intact)
         // Non-MD files don't use ProseMirror — skip caching
-        if (!isSourceMode && !prevIsCode && !prevMidLoad) {
+        if (!sourceModeTabs.has(prevTabId) && !prevIsCode && !prevMidLoad) {
           editorStateCache.current.set(prevTabId, prevEditor.state);
           logCacheEvent("set", prevTabId, prevEditor.state.doc.childCount);
           // Save fold state as content-based anchors
@@ -194,9 +195,9 @@ export function useTabSwitching({
             }
           }
         }
-        // PDF tabs are read-only viewers with no editor — caching
-        // sourceContentRef here would overwrite the "" sentinel with another
-        // tab's text under the PDF's path.
+        // PDF tabs are read-only viewers with no editor — caching the source
+        // buffer here would overwrite the "" sentinel with another tab's text
+        // under the PDF's path.
         if (
           prevTab?.filePath &&
           !prevMidLoad &&
@@ -204,8 +205,8 @@ export function useTabSwitching({
         ) {
           try {
             const md =
-              prevIsCode || isSourceMode
-                ? sourceContentRef.current
+              prevIsCode || sourceModeTabs.has(prevTabId)
+                ? getSourceBuffer(prevTabId)
                 : timePhase("tabSwitch:serializeOutgoing", () =>
                     prosemirrorToMarkdown(prevEditor.state.doc),
                   );
@@ -220,10 +221,13 @@ export function useTabSwitching({
           }
         }
       }
-      // Exit source mode when switching tabs (only applies to markdown)
-      if (isSourceMode) {
-        setIsSourceMode(false);
-      }
+      // Exit source mode when switching tabs (only applies to markdown).
+      //
+      // ‼️ 나가는 탭을 명시적으로 지목한다. 예전에는 전역 boolean 하나를 껐는데, 그 값은
+      // 이 effect의 클로저가 이전 렌더에서 잡은 것이라 어느 탭 얘기인지 코드에 적혀 있지
+      // 않았다(dev/backlog.md:184의 stale-closure 항목). 탭별 Set이 되면서 그 모호함이
+      // 사라진다 — 끄는 대상이 prevTabId라고 쓰여 있다.
+      setSourceModeForTab(prevTabId, false);
     }
 
     // The outgoing-save block above has already read isTabLoading(prevTabId).
@@ -378,8 +382,7 @@ export function useTabSwitching({
       if (!isMarkdownFile(incomingTab.filePath)) {
         // [CRITICAL-1 fix] Reset to shared editor
         onActiveEditorChange(null);
-        sourceContentRef.current = content;
-        setSourceContent(content);
+        setSourceBuffer(incomingTab.id, content);
         if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
         return;
       }

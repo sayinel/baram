@@ -549,17 +549,25 @@ function App() {
   // [MAJOR-3 fix] Pass activeEditor so source-mode toggle reads/writes the
   // correct document for keep-alive tabs.
   const {
-    isSourceMode,
-    setIsSourceMode,
-    sourceContent,
-    setSourceContent,
-    sourceCursorOffset,
-    sourceEditorRef,
-    sourceContentRef,
+    bufferVersion,
     editorStateCache,
-    toggleSourceMode,
+    getSourceBuffer,
     handleSourceChange,
+    isSourceMode,
+    setSourceBuffer,
+    setSourceModeForTab,
+    sourceCursorOffsetFor,
+    sourceEditorRef,
+    sourceModeTabs,
+    toggleSourceMode,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
+
+  // §287 활성 탭의 버퍼/커서. 지금은 편집 영역이 활성 탭 하나만 렌더하므로 여기서 파생한다 —
+  // §286에서 TabSurface가 자기 탭으로 직접 읽게 되면 이 두 줄은 사라진다.
+  const activeSourceBuffer = activeTabId ? getSourceBuffer(activeTabId) : "";
+  const activeSourceCursorOffset = activeTabId
+    ? sourceCursorOffsetFor(activeTabId)
+    : 0;
 
   // §260 Phase 4b — the policy and its rationale now live in `editorSurfaceBlockReason`, with
   // tests. It moved out because nothing imports `App`, so this gate was unverified.
@@ -594,9 +602,10 @@ function App() {
     if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
     codeAutoSaveTimer.current = setTimeout(async () => {
       try {
-        await writeFile(tab.filePath!, sourceContentRef.current);
+        const content = getSourceBuffer(tab.id);
+        await writeFile(tab.filePath!, content);
         useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
-        setFileContent(tab.filePath!, sourceContentRef.current);
+        setFileContent(tab.filePath!, content);
         markDirty(tab.id, false);
         // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
         useSnapshotStore.getState().markPendingAutoSnapshot();
@@ -612,10 +621,10 @@ function App() {
     isEditableTextFile,
     autoSave,
     autoSaveDelay,
-    sourceContent,
+    bufferVersion,
     markDirty,
     setFileContent,
-    sourceContentRef,
+    getSourceBuffer,
   ]);
 
   // --- File operations ---
@@ -634,8 +643,8 @@ function App() {
     handleSaveAs,
   } = useFileOperations({
     editor: activeEditor,
-    isSourceMode,
-    sourceContentRef,
+    getSourceBuffer,
+    sourceModeTabs,
   });
 
   // --- Navigation ---
@@ -677,16 +686,16 @@ function App() {
     editor,
     editorStateCache,
     isNavBackForwardRef,
-    isSourceMode,
     keepalive,
     createKeepaliveEditor,
     onActiveEditorChange: handleActiveEditorChange,
     setFindReplaceMode,
     setFindReplaceOpen: routeFindReplaceOpen,
-    setIsSourceMode,
     setIsParsing,
-    setSourceContent,
-    sourceContentRef,
+    setSourceBuffer,
+    setSourceModeForTab,
+    sourceModeTabs,
+    getSourceBuffer,
   });
 
   // --- Editor effects (selection, content reload, goto-position, title) ---
@@ -702,15 +711,12 @@ function App() {
   // onChange for non-MD code files — same as source but also marks dirty
   const handleCodeFileChange = useCallback(
     (content: string) => {
-      sourceContentRef.current = content;
-      setSourceContent(content);
       const { activeTabId: tabId } = useEditorStore.getState();
-      if (tabId) markDirty(tabId, true);
+      if (!tabId) return;
+      setSourceBuffer(tabId, content);
+      markDirty(tabId, true);
     },
-    // setSourceContent (useState setter) and sourceContentRef (useRef) are stable —
-    // intentionally omitted from deps for consistency with toggleSourceMode pattern.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [markDirty],
+    [markDirty, setSourceBuffer],
   );
 
   // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed
@@ -724,7 +730,7 @@ function App() {
     const leavingSourceView = htmlSourceTabs.has(tab.id);
     if (leavingSourceView && tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
-      const content = sourceContentRef.current;
+      const content = getSourceBuffer(tab.id);
       void writeFile(filePath, content)
         .then(() => {
           useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
@@ -742,9 +748,7 @@ function App() {
       else next.add(tab.id);
       return next;
     });
-    // sourceContentRef (useRef) is stable — intentionally omitted from deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [htmlSourceTabs, markDirty]);
+  }, [htmlSourceTabs, markDirty, getSourceBuffer]);
 
   // Cmd+/ — route to the preview/source toggle when an HTML or plugin-viewed
   // text tab is active; otherwise fall through to the markdown source-mode
@@ -990,7 +994,7 @@ function App() {
                   />
                 ) : (
                   <SourceCodeEditor
-                    content={sourceContent}
+                    content={activeSourceBuffer}
                     key={`code-${activeTabId}`}
                     language={codeLanguage ?? undefined}
                     onChange={handleCodeFileChange}
@@ -1003,8 +1007,8 @@ function App() {
             <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
                 <SourceCodeEditor
-                  content={sourceContent}
-                  initialCursorOffset={sourceCursorOffset}
+                  content={activeSourceBuffer}
+                  initialCursorOffset={activeSourceCursorOffset}
                   onChange={handleSourceChange}
                   ref={sourceEditorRef}
                 />
@@ -1111,12 +1115,7 @@ function App() {
         <SettingsModal />
         <AboutModal />
         <UpdateDialog />
-        <UnsavedChangesModal
-          editor={activeEditor}
-          handleSave={handleSave}
-          isSourceMode={isSourceMode}
-          sourceContentRef={sourceContentRef}
-        />
+        <UnsavedChangesModal handleSave={handleSave} />
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />

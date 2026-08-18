@@ -23,8 +23,9 @@ import { basename } from "../utils/path-utils";
 
 interface UseFileOperationsParams {
   editor: Editor | null;
-  isSourceMode: boolean;
-  sourceContentRef: React.RefObject<string>;
+  getSourceBuffer: (tabId: string) => string;
+  /** §287 소스 모드인 탭들 — 저장 대상 탭 자신의 모드를 물어본다. */
+  sourceModeTabs: ReadonlySet<string>;
 }
 
 /**
@@ -73,8 +74,8 @@ export async function triggerAutoReload(
 
 export function useFileOperations({
   editor,
-  isSourceMode,
-  sourceContentRef,
+  getSourceBuffer,
+  sourceModeTabs,
 }: UseFileOperationsParams) {
   const openTab = useEditorStore((s) => s.openTab);
   const markDirty = useEditorStore((s) => s.markDirty);
@@ -159,14 +160,14 @@ export function useFileOperations({
     // the `!filePath` branch below, which offers Save As and then rewrites the tab into a
     // file tab — so an enumerated check here hands every future tab type a save path.
     if (!isFileTab(saveTab)) return;
-    // PDF tabs are read-only viewers — writing sourceContentRef (which holds
+    // PDF tabs are read-only viewers — writing the source buffer (which holds
     // another tab's text) into a .pdf would destroy the binary.
     if (isBinaryViewerFile(saveTab.filePath)) return;
 
     const isCode = saveTab.filePath && !isMarkdownFile(saveTab.filePath);
     const md =
-      isCode || isSourceMode
-        ? sourceContentRef.current
+      isCode || sourceModeTabs.has(saveTab.id)
+        ? getSourceBuffer(saveTab.id)
         : prosemirrorToMarkdown(editor.state.doc);
 
     if (saveTab.filePath) {
@@ -235,8 +236,8 @@ export function useFileOperations({
         logger.error("[App] Failed to save as:", err);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
-  }, [editor, isSourceMode, setFileContent, markDirty]);
+     
+  }, [editor, sourceModeTabs, getSourceBuffer, setFileContent, markDirty]);
 
   const handleSaveAs = useCallback(async () => {
     if (!editor) return;
@@ -250,8 +251,8 @@ export function useFileOperations({
 
     const isCode = saveAsTab.filePath && !isMarkdownFile(saveAsTab.filePath);
     const md =
-      isCode || isSourceMode
-        ? sourceContentRef.current
+      isCode || sourceModeTabs.has(saveAsTab.id)
+        ? getSourceBuffer(saveAsTab.id)
         : prosemirrorToMarkdown(editor.state.doc);
     const savePath = await save({
       filters: [
@@ -287,8 +288,8 @@ export function useFileOperations({
     } catch (err) {
       logger.error("[App] Failed to save as:", err);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
-  }, [editor, isSourceMode, setFileContent, markDirty]);
+     
+  }, [editor, sourceModeTabs, getSourceBuffer, setFileContent, markDirty]);
 
   const handleCloseTab = useCallback(() => {
     const { activeTabId: tabId, tabs } = useEditorStore.getState();

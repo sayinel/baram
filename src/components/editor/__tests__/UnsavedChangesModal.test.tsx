@@ -35,10 +35,7 @@ import { UnsavedChangesModal } from "../UnsavedChangesModal";
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 const deps: CloseGuardDeps = {
-  editor: null,
-  handleSave: vi.fn().mockResolvedValue(undefined),
-  isSourceMode: false,
-  sourceContentRef: { current: "" },
+  handleSave: vi.fn(async () => undefined),
 };
 
 function dirtyFileTab(id: string, title = `${id}.md`): EditorTab {

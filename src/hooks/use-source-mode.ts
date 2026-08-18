@@ -57,16 +57,23 @@ interface UseSourceModeParams {
 }
 
 interface UseSourceModeReturn {
+  /**
+   * §287 자동 저장 effect의 deps용 카운터. 버퍼는 ref에 살아 리렌더를 유발하지 않으므로,
+   * "버퍼가 바뀌었다"를 관찰 가능하게 만드는 값이 따로 필요하다(기존 `sourceContent`의 역할).
+   */
+  bufferVersion: number;
   /** Per-tab EditorState cache — owns the map, shared with useTabSwitching */
   editorStateCache: MutableRefObject<Map<string, PmEditorState>>;
+  getSourceBuffer: (tabId: string) => string;
   handleSourceChange: (content: string) => void;
+  /** 활성 탭이 소스 모드인가 — `sourceModeTabs.has(activeTabId)`의 파생값. */
   isSourceMode: boolean;
-  setIsSourceMode: (v: boolean) => void;
-  setSourceContent: (v: string) => void;
-  sourceContent: string;
-  sourceContentRef: MutableRefObject<string>;
-  sourceCursorOffset: number;
+  setSourceBuffer: (tabId: string, content: string) => void;
+  setSourceModeForTab: (tabId: string, on: boolean) => void;
+  sourceCursorOffsetFor: (tabId: string) => number;
   sourceEditorRef: RefObject<null | SourceCodeEditorRef>;
+  /** §287 소스 모드인 탭들. 전역 boolean이 아니다 — App의 htmlSourceTabs와 같은 모양. */
+  sourceModeTabs: ReadonlySet<string>;
   toggleSourceMode: () => void;
 }
 
@@ -78,18 +85,57 @@ export function useSourceMode({
   // Per-tab EditorState cache — owned here so toggleSourceMode can write to it
   // without a circular dependency with useTabSwitching
   const editorStateCache = useRef(new Map<string, PmEditorState>());
-  const [isSourceMode, setIsSourceMode] = useState(false);
-  const [sourceContent, setSourceContent] = useState("");
-  const [sourceCursorOffset, setSourceCursorOffset] = useState(0);
   const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
-  // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
-  const sourceContentRef = useRef("");
 
-  // Stable onChange for SourceCodeEditor — updates both ref and state
-  const handleSourceChange = useCallback((content: string) => {
-    sourceContentRef.current = content;
-    setSourceContent(content);
+  // §287 탭별 소스 버퍼.
+  //
+  // ‼️ 전역 버퍼 하나였을 때는 코드 표면이 항상 한 개뿐이라는 사실에 기대고 있었다. 유지
+  // 집합(§286)이 표면을 여러 개 마운트하는 순간 그 가정이 깨지고, 마지막에 타이핑한 표면이
+  // 버퍼를 쥔 채 자동 저장이 **활성 탭 경로에** 그것을 쓴다.
+  //
+  // 값을 state가 아니라 ref의 Map에 두는 이유: state로 두면 타이핑 한 글자마다 새 Map을
+  // 만들게 된다. 리렌더가 필요한 소비자(자동 저장 deps)를 위해 카운터만 state로 둔다.
+  const buffersRef = useRef(new Map<string, string>());
+  const cursorOffsetsRef = useRef(new Map<string, number>());
+  const [bufferVersion, setBufferVersion] = useState(0);
+  const [sourceModeTabs, setSourceModeTabs] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const activeTabId = useEditorStore((s) => s.activeTabId);
+  const isSourceMode = !!activeTabId && sourceModeTabs.has(activeTabId);
+
+  const getSourceBuffer = useCallback(
+    (tabId: string): string => buffersRef.current.get(tabId) ?? "",
+    [],
+  );
+  const setSourceBuffer = useCallback((tabId: string, content: string) => {
+    buffersRef.current.set(tabId, content);
+    setBufferVersion((v) => v + 1);
   }, []);
+  const sourceCursorOffsetFor = useCallback(
+    (tabId: string): number => cursorOffsetsRef.current.get(tabId) ?? 0,
+    [],
+  );
+  const setSourceModeForTab = useCallback((tabId: string, on: boolean) => {
+    setSourceModeTabs((prev) => {
+      if (prev.has(tabId) === on) return prev;
+      const next = new Set(prev);
+      if (on) next.add(tabId);
+      else next.delete(tabId);
+      return next;
+    });
+  }, []);
+
+  // Stable onChange for the ACTIVE surface's SourceCodeEditor. 탭 id를 클로저가 아니라
+  // 호출 시점에 읽는다 — 이 콜백은 안정된 참조로 여러 렌더를 살아남기 때문이다.
+  const handleSourceChange = useCallback(
+    (content: string) => {
+      const tabId = useEditorStore.getState().activeTabId;
+      if (tabId) setSourceBuffer(tabId, content);
+    },
+    [setSourceBuffer],
+  );
 
   // Cmd+/ toggle between WYSIWYG and Source Code mode (§5.1 cursor preservation)
   const toggleSourceMode = useCallback(() => {
@@ -112,19 +158,19 @@ export function useSourceMode({
       const pmPos = editor.state.selection.from;
       const mdOffset = pmPosToMdOffset(editor.state.doc, pmPos, md);
 
-      sourceContentRef.current = md;
-      setSourceContent(md);
-      setSourceCursorOffset(mdOffset);
-      setIsSourceMode(true);
+      setSourceBuffer(currentTab.id, md);
+      cursorOffsetsRef.current.set(currentTab.id, mdOffset);
+      setSourceModeForTab(currentTab.id, true);
     } else {
       // Source → WYSIWYG
       // Use original markdown unless the user actually edited in Source mode.
       // WebKit injects "<!--  -->" into CodeMirror on focus — getContent()
       // would return corrupted content if the user didn't edit.
       const userEdited = sourceEditorRef.current?.hasUserEdited() ?? false;
+      const tabBuffer = getSourceBuffer(currentTab.id);
       const currentSource = userEdited
-        ? (sourceEditorRef.current?.getContent() ?? sourceContentRef.current)
-        : sourceContentRef.current;
+        ? (sourceEditorRef.current?.getContent() ?? tabBuffer)
+        : tabBuffer;
       const mdOffset = sourceEditorRef.current?.getCursorOffset() ?? 0;
 
       const newDoc = markdownToProsemirror(currentSource, editor.schema);
@@ -135,7 +181,7 @@ export function useSourceMode({
       // to avoid a multi-second whole-DOM rebuild on toggle-back. Cursor
       // restore is deferred to finishLoad (same as fold restore in tab switch).
       if (newDoc.childCount >= LARGE_DOC_BLOCK_THRESHOLD) {
-        setIsSourceMode(false);
+        setSourceModeForTab(currentTab.id, false);
 
         // [MAJOR fix] Mark the pool entry incomplete so a mid-fill tab
         // switch + return takes the release-and-reload path instead of
@@ -257,7 +303,7 @@ export function useSourceMode({
         editorStateCache.current.set(currentTabId, cachedState);
       }
 
-      setIsSourceMode(false);
+      setSourceModeForTab(currentTab.id, false);
 
       // Apply cursor AFTER EditorContent mounts (DOM attached).
       // Double RAF: first waits for React render, second for layout.
@@ -298,18 +344,27 @@ export function useSourceMode({
     // intentionally omitted from deps; they never change identity across renders.
     // appendHandleRef is a stable ref passed from App — included for exhaustive-deps.
     // pool is a stable ref-based object — included for exhaustive-deps.
-  }, [editor, isSourceMode, appendHandleRef, pool]);
+  }, [
+    editor,
+    isSourceMode,
+    appendHandleRef,
+    pool,
+    getSourceBuffer,
+    setSourceBuffer,
+    setSourceModeForTab,
+  ]);
 
   return {
-    isSourceMode,
-    setIsSourceMode,
-    sourceContent,
-    setSourceContent,
-    sourceCursorOffset,
-    sourceEditorRef,
-    sourceContentRef,
+    bufferVersion,
     editorStateCache,
-    toggleSourceMode,
+    getSourceBuffer,
     handleSourceChange,
+    isSourceMode,
+    setSourceBuffer,
+    setSourceModeForTab,
+    sourceCursorOffsetFor,
+    sourceEditorRef,
+    sourceModeTabs,
+    toggleSourceMode,
   };
 }
