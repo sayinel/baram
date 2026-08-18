@@ -750,8 +750,9 @@ cite.
 1. Click a highlight and choose **Copy reference**
 2. Paste into any markdown file
 
-The pasted text is a block reference — `((highlights/papers/attention#^a1b2c3))` — and it renders
-inline as a preview of what you highlighted:
+The pasted text is a block reference — `((highlights/papers/attention#^a1b2c3|Attention is all you need))`
+— pointing at the companion note, with a short label after the `|`. It renders inline as a preview
+of what you highlighted, not as that label:
 
 - A **text** highlight renders the full quoted sentence, not a truncated label
 - An **area** highlight renders the cropped region of the PDF as an image
@@ -767,10 +768,11 @@ An area reference renders at a percentage of the available width. Drag its right
 it, or write the width by hand:
 
 ```markdown
-((highlights/papers/attention#^a1b2c3|w=60))
+((highlights/papers/attention#^a1b2c3|Figure 2|w=60))
 ```
 
-`w=` takes an integer percentage from **10 to 100**. It is part of the markdown, so the width
+`w=` goes last and takes an integer percentage from **10 to 100**. The label before it is
+optional — `((target#^id|w=60))` is equally valid. It is part of the markdown, so the width
 survives a round-trip and travels with the file — and it is visible in the source, not hidden in
 a metadata store.
 
