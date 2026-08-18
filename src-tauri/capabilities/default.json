@@ -55,6 +55,7 @@
     "allow-git-status",
     "allow-git-switch-branch",
     "allow-git-unstage",
+    "allow-import-dir",
     "allow-import-file",
     "allow-index-file",
     "allow-index-status",

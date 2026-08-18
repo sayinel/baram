@@ -18,6 +18,15 @@ const PERMISSION_DENIED_PREFIX = "PERMISSION_DENIED:";
  */
 const READ_FILE_NOT_FOUND_PREFIX = "파일을 찾을 수 없습니다:";
 
+/**
+ * §4.3 Result of a recursive folder import. `skippedSymlinks` is reported so
+ * the caller can say a link was passed over rather than claim a clean copy.
+ */
+export interface CopyDirReport {
+  copied: number;
+  skippedSymlinks: number;
+}
+
 /** §4.3 Thrown by `listDir` when the OS denied folder access (macOS TCC / EACCES). */
 export class FolderAccessDeniedError extends Error {
   readonly path: string;
@@ -67,6 +76,22 @@ export async function extractZip(
 // macOS file association: get pending file paths from cold start
 export async function getOpenedUrls(): Promise<string[]> {
   return invoke<string[]>("get_opened_urls");
+}
+
+/**
+ * §4.3 Recursively import a folder from any location into the vault.
+ * Same policy as `importFile` — only the destination is vault-confined.
+ * Symlinks and `.DS_Store` are skipped, and `to` must not already exist.
+ *
+ * Resolves to `null` when `from` is not a directory. Rust has to decide that:
+ * `from` is vault-external by design and `listDir` — the obvious probe — is
+ * vault-confined, so it rejects every source path a drop can produce.
+ */
+export async function importDir(
+  from: string,
+  to: string,
+): Promise<CopyDirReport | null> {
+  return invoke<CopyDirReport | null>("import_dir", { from, to });
 }
 
 /** Import a file from any location (including outside vault) into the vault.

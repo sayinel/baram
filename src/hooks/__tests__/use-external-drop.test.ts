@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const importDirMock = vi.hoisted(() => vi.fn());
 const importFileMock = vi.hoisted(() => vi.fn());
 const listDirMock = vi.hoisted(() => vi.fn());
 const showToastMock = vi.hoisted(() => vi.fn());
@@ -24,6 +25,7 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
   return {
     ...actual,
     createDir: vi.fn(async () => undefined),
+    importDir: importDirMock,
     importFile: importFileMock,
     listDir: listDirMock,
   };
@@ -106,8 +108,113 @@ describe("handleFileTreeDrop — where the copy lands", () => {
   });
 });
 
+describe("handleFileTreeDrop — dropping a folder", () => {
+  const FOLDER = "/Users/x/Desktop/notes";
+
+  beforeEach(() => {
+    importDirMock.mockReset().mockResolvedValue({
+      copied: 3,
+      skippedSymlinks: 0,
+    });
+    // A folder always fails importFile — `import_file` is a single-file copy.
+    importFileMock
+      .mockReset()
+      .mockRejectedValue("Is a directory (os error 21)");
+    // listDir is only used for the DESTINATION listing here. It must never be
+    // asked about the source — see the regression test at the end of this suite.
+    listDirMock.mockReset().mockResolvedValue([]);
+    showToastMock.mockReset();
+    useFileStore.setState({ rootPath: ROOT, fileTree: [] } as never);
+  });
+
+  it("copies the folder into the target directory", async () => {
+    const { folderRow } = mountTree();
+    await handleFileTreeDrop([FOLDER], folderRow);
+    expect(importDirMock).toHaveBeenCalledWith(FOLDER, `${NOTES}/notes`);
+  });
+
+  it("adds the folder to the tree as a directory, not a file", async () => {
+    // `addFileEntry` inserts into the parent NODE, so the parent has to be in
+    // the tree — with an empty fileTree the insert is a silent no-op and the
+    // assertion would fail for a reason that has nothing to do with isDir.
+    useFileStore.setState({
+      rootPath: ROOT,
+      fileTree: [{ name: "notes", path: NOTES, isDir: true, children: [] }],
+    } as never);
+
+    const { folderRow } = mountTree();
+    await handleFileTreeDrop([FOLDER], folderRow);
+
+    const parent = useFileStore
+      .getState()
+      .fileTree.find((e) => e.path === NOTES);
+    const child = parent?.children?.find((c) => c.name === "notes");
+    expect(child).toBeDefined();
+    expect(child?.isDir).toBe(true);
+    expect(child?.path).toBe(`${NOTES}/notes`);
+  });
+
+  it("resolves a name conflict instead of merging into the existing folder", async () => {
+    // listDir(targetDir) reports an existing `notes`, so the copy must land on
+    // a free name — merging would be an irreversible surprise.
+    listDirMock.mockImplementation(async (path: string) => {
+      if (path === NOTES) return [{ name: "notes", path: `${NOTES}/notes` }];
+      return [];
+    });
+    const { folderRow } = mountTree();
+    await handleFileTreeDrop([FOLDER], folderRow);
+    const dest = importDirMock.mock.calls.at(-1)?.[1] as string;
+    expect(dest).not.toBe(`${NOTES}/notes`);
+    expect(dest.startsWith(`${NOTES}/notes`)).toBe(true);
+  });
+
+  it("says how many files landed", async () => {
+    importDirMock.mockResolvedValue({ copied: 12, skippedSymlinks: 0 });
+    const { folderRow } = mountTree();
+    await handleFileTreeDrop([FOLDER], folderRow);
+    const [message, type] = showToastMock.mock.calls.at(-1) as [string, string];
+    expect(message).toContain("12");
+    expect(type).toBe("info");
+  });
+
+  it("does not report a clean copy when symlinks were skipped", async () => {
+    // "copied 12 files" would be true and still misleading: the copy is
+    // incomplete, so the skipped count has to reach the user.
+    importDirMock.mockResolvedValue({ copied: 12, skippedSymlinks: 2 });
+    const { folderRow } = mountTree();
+    await handleFileTreeDrop([FOLDER], folderRow);
+    const [message, type] = showToastMock.mock.calls.at(-1) as [string, string];
+    expect(message).toContain("2");
+    expect(type).toBe("warning");
+  });
+
+  it("toasts an error when the folder copy itself fails", async () => {
+    importDirMock.mockRejectedValue("Destination already exists");
+    const { folderRow } = mountTree();
+    await handleFileTreeDrop([FOLDER], folderRow);
+    expect(showToastMock).toHaveBeenCalledWith(expect.any(String), "error");
+  });
+
+  it("never asks listDir about the SOURCE path", async () => {
+    // The regression that made folder drops fail in the real app while every
+    // test stayed green. The source is vault-external by design and `list_dir`
+    // is vault-confined, so probing it there reports "not a directory" for
+    // every folder a user can drop. Only the DESTINATION may be listed.
+    //
+    // The old test suite mocked listDir to resolve for any path, so the broken
+    // probe looked like it worked; this asserts on the argument instead.
+    const { folderRow } = mountTree();
+    await handleFileTreeDrop([FOLDER], folderRow);
+
+    const listed = listDirMock.mock.calls.map((c) => c[0] as string);
+    expect(listed).not.toContain(FOLDER);
+    expect(listed.every((p) => p.startsWith(ROOT))).toBe(true);
+  });
+});
+
 describe("handleFileTreeDrop — telling the user when it fails", () => {
   beforeEach(() => {
+    importDirMock.mockReset();
     importFileMock.mockReset();
     listDirMock.mockReset();
     showToastMock.mockReset();
@@ -122,30 +229,25 @@ describe("handleFileTreeDrop — telling the user when it fails", () => {
     expect(showToastMock).toHaveBeenCalledWith(expect.any(String), "error");
   });
 
-  it("names a dropped FOLDER as the reason, not a generic failure", async () => {
-    // `import_file` is a file copy; a directory source rejects. Distinguishing
-    // it costs one listDir, and only on the error path.
-    //
+  it("toasts a plain file failure when import_dir says it was not a directory", async () => {
     // Both runs drop the SAME path, so the two messages share their {name}
     // interpolation and the only thing that can separate them is the template
     // the code picked. An earlier version of this test used a different name
     // per run; the messages then differed for that reason alone and the
-    // assertion held even when the folder branch was deleted.
+    // assertion held even when the branch under test was deleted.
     const DROPPED = "/Users/x/Desktop/thing";
     const { folderRow } = mountTree();
     importFileMock.mockRejectedValue("copy failed");
-
-    // listDir succeeds for the source ⇒ it is a directory
     listDirMock.mockResolvedValue([]);
+
+    // import_dir copied it ⇒ it was a directory
+    importDirMock.mockResolvedValue({ copied: 3, skippedSymlinks: 0 });
     await handleFileTreeDrop([DROPPED], folderRow);
     const folderMessage = showToastMock.mock.calls.at(-1)?.[0] as string;
 
-    // listDir rejects for the source ⇒ it is a file
+    // import_dir returned null ⇒ it was a file, so the copy failure stands
     showToastMock.mockReset();
-    listDirMock.mockImplementation(async (path: string) => {
-      if (path === DROPPED) throw new Error("not a directory");
-      return [];
-    });
+    importDirMock.mockResolvedValue(null);
     await handleFileTreeDrop([DROPPED], folderRow);
     const fileMessage = showToastMock.mock.calls.at(-1)?.[0] as string;
 

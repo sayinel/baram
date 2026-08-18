@@ -513,7 +513,9 @@
   "fileTree.accessDenied.toast": "Folder access was denied by the system.",
   "fileTree.accessDenied.toastGeneric": "Couldn't read the folder.",
   "fileTree.drop.failed": "Could not copy “{name}”.",
-  "fileTree.drop.folderUnsupported": "“{name}” is a folder. Only files can be dropped in.",
+  "fileTree.drop.folderCopied": "Copied “{name}” ({count} files).",
+  "fileTree.drop.folderCopiedWithSkips": "Copied “{name}” ({count} files, skipped {skipped} symlinks).",
+  "fileTree.drop.folderFailed": "Could not copy the folder “{name}”.",
 
   "htmlPreview.showPreview": "Preview",
   "htmlPreview.showSource": "Source",

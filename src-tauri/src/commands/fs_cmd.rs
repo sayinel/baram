@@ -270,6 +270,32 @@ pub async fn import_file(
         .map_err(|e| e.to_string())
 }
 
+/// §4.3 Import a whole directory from any location into the vault.
+///
+/// Same policy as `import_file`: the source may sit outside the vault
+/// (~/Desktop, ~/Downloads) and only the destination is vault-confined. The
+/// destination must not already exist — the caller picks an unused name — so a
+/// folder drop never merges into unrelated content.
+///
+/// Returns `null` when the source is not a directory. The frontend cannot work
+/// that out for itself: the source is vault-external by design, and `list_dir`
+/// — the obvious probe — is vault-confined and rejects it, which is exactly how
+/// an earlier version of the drop path failed to recognise any folder at all.
+#[tauri::command]
+pub async fn import_dir(
+    from: String,
+    to: String,
+    state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
+) -> Result<Option<crate::fs::CopyDirReport>, String> {
+    check(&from)?;
+    check(&to)?;
+    check_vault(&to, &state, &ctx_mgr).await?;
+    crate::fs::copy_dir_all(&from, &to)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn watch_dir(
     path: String,

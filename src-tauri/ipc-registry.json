@@ -1240,6 +1240,17 @@
       "description": "cross-vault 링크 해석 ([[alias::target]] → 파일 경로)"
     },
     {
+      "name": "import_dir",
+      "input": { "from": "string", "to": "string" },
+      "output": "CopyDirReport | null",
+      "module": "fs",
+      "spec": "§4.3",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "외부 폴더를 vault 내부로 재귀 복사 (source는 vault 외부 허용, 심링크·.DS_Store 제외, 목적지가 이미 있으면 거부). source가 디렉터리가 아니면 null — list_dir은 vault 제한이라 프론트엔드가 vault 밖 source를 판별할 수 없다"
+    },
+    {
       "name": "import_file",
       "input": { "from": "string", "to": "string" },
       "output": "void",

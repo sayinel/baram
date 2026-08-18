@@ -58,6 +58,7 @@ fn main() {
         "git_status",
         "git_switch_branch",
         "git_unstage",
+        "import_dir",
         "import_file",
         "index_file",
         "index_status",

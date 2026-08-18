@@ -1,5 +1,9 @@
 // §3.6 파일 시스템 모듈 — 읽기/쓰기/디렉토리 목록/이름변경/삭제/감시
 
+mod copy_dir;
+
+pub use copy_dir::{copy_dir_all, CopyDirReport};
+
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
