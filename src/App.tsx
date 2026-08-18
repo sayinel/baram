@@ -13,12 +13,11 @@ import type { MergeSegment } from "./ipc/types";
 import type { EditorTab } from "./stores/editor/editor";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { useEditor } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
-import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
-import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { MarkdownSurface } from "./components/editor/MarkdownSurface";
 import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
 import { PluginViewerHost } from "./components/editor/PluginViewerHost";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
@@ -27,12 +26,6 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
-import { BlockHandle } from "./components/toolbar/BlockHandle";
-import { ContextMenu } from "./components/toolbar/ContextMenu";
-import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
-import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
-import { TableSelectionHandles } from "./components/toolbar/TableSelectionHandles";
-import { TableToolbar } from "./components/toolbar/TableToolbar";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useAppStartup } from "./hooks/use-app-startup";
@@ -569,6 +562,23 @@ function App() {
     ? sourceCursorOffsetFor(activeTabId)
     : 0;
 
+  // §286 마크다운 표면이 지금 보여야 하는가.
+  //
+  // ‼️ 이 값은 아래 삼항 사슬의 **마지막 else에 도달하는 조건과 정확히 같아야 한다.** 새 갈래를
+  // 사슬에 추가하면 여기에도 부정을 더해야 하고, 안 그러면 두 표면이 동시에 보인다. 조건을
+  // 새로 발명하지 말고 사슬을 위에서 아래로 읽어 그대로 부정할 것 — 순서가 곧 정의다.
+  //
+  // 사슬 순서: HomeScreen(!rootPath && !activeTabId) → empty(!activeTabId) → graph →
+  // plugin → pdf → image → code → source → **markdown**.
+  const isMarkdownSurfaceActive =
+    !!activeTabId &&
+    !isGraphTabActive &&
+    !activePluginId &&
+    !(isPdfTab && activeTabFilePath) &&
+    !(isImageTab && activeTabFilePath) &&
+    !isCodeFile &&
+    !isSourceMode;
+
   // §260 Phase 4b — the policy and its rationale now live in `editorSurfaceBlockReason`, with
   // tests. It moved out because nothing imports `App`, so this gate was unverified.
   useEffect(() => {
@@ -1014,80 +1024,20 @@ function App() {
                 />
               </Suspense>
             </div>
-          ) : (
-            <>
-              {findReplaceOpen && activeEditor && (
-                <FindReplaceBar
-                  editor={activeEditor}
-                  mode={findReplaceMode}
-                  onClose={() => setFindReplaceOpen(false)}
-                  onSetMode={setFindReplaceMode}
-                />
-              )}
-              <div
-                className="editor-area-scroll"
-                data-editor-active
-                data-editor-scroll
-              >
-                {/* §perf-large-file B2: Loading skeleton while Worker parses */}
-                {isParsing && (
-                  <div className="editor-loading-skeleton">
-                    <div className="skeleton-line w-3/4" />
-                    <div className="skeleton-line w-full" />
-                    <div className="skeleton-line w-5/6" />
-                    <div className="skeleton-line w-2/3" />
-                    <div className="skeleton-line w-full" />
-                    <div className="skeleton-line w-1/2" />
-                  </div>
-                )}
-                {/* §perf-large-file C3.5: keep-alive editor — stays mounted while
-                    in pool (DOM kept alive), hidden when another tab is active. */}
-                {mountedKeepaliveEditor && (
-                  <div
-                    data-keepalive-editor
-                    style={{
-                      display: activeKeepaliveEditor ? "" : "none",
-                    }}
-                  >
-                    <EditorContent editor={mountedKeepaliveEditor} />
-                  </div>
-                )}
-                {/* Shared editor — hidden when a keep-alive editor is active */}
-                <div style={{ display: activeKeepaliveEditor ? "none" : "" }}>
-                  <EditorContent editor={editor} />
-                </div>
-                {activeEditor && (
-                  <>
-                    <FloatingToolbar editor={activeEditor} />
-                    <TableToolbar editor={activeEditor} />
-                    <BlockHandle editor={activeEditor} />
-                    <TableInsertButtons editor={activeEditor} />
-                    <TableSelectionHandles editor={activeEditor} />
-                    <ContextMenu editor={activeEditor} />
-                    {inlineAI.isActive && inlineAI.phase !== "idle" && (
-                      <InlineAIPrompt
-                        editor={activeEditor}
-                        hasSelection={inlineAI.hasSelection}
-                        hunks={inlineAI.hunks}
-                        onAccept={inlineAI.accept}
-                        onAcceptHunk={inlineAI.acceptHunk}
-                        onClose={inlineAI.cancel}
-                        onRegenerate={inlineAI.regenerate}
-                        onReject={inlineAI.reject}
-                        onRejectHunk={inlineAI.rejectHunk}
-                        onSubmit={inlineAI.submitPrompt}
-                        phase={
-                          inlineAI.phase as "completed" | "input" | "streaming"
-                        }
-                        selectionFrom={inlineAI.selectionFrom}
-                        selectionTo={inlineAI.selectionTo}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </>
-          )}
+          ) : null}
+          <MarkdownSurface
+            active={isMarkdownSurfaceActive}
+            activeEditor={activeEditor}
+            activeKeepaliveEditor={activeKeepaliveEditor}
+            editor={editor}
+            findReplaceMode={findReplaceMode}
+            findReplaceOpen={findReplaceOpen}
+            inlineAI={inlineAI}
+            isParsing={isParsing}
+            mountedKeepaliveEditor={mountedKeepaliveEditor}
+            onFindReplaceClose={() => setFindReplaceOpen(false)}
+            onFindReplaceModeChange={setFindReplaceMode}
+          />
         </div>
         <PromptLintPanel editor={activeEditor} />
         {isSkill && (
