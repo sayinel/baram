@@ -18,7 +18,13 @@ export interface VimStateSnapshot {
   /** Ex line being typed, WITHOUT the colon — null when none is open. Read
    *  by the status feed; mirrored from core so readers stay leaf-typed. */
   exLine: null | string;
+  /** StatusBar label of the focused input island ("math", "mermaid", …) —
+   *  null while not suspended or when the island is unknown. Read by the
+   *  status feed for `-- INSERT (x) --` (§8). */
+  island: null | string;
   mode: VimMode;
+  /** True while an input island owns the keys (§4). */
+  suspended: boolean;
 }
 
 export const vimPluginKey = new PluginKey<VimStateSnapshot>("wysiwygVim");

@@ -270,7 +270,10 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
             <span className="status-mode status-vim-mode">
               {/* An open ex line REPLACES the mode indicator, as in vim —
                   otherwise `:` looks like it did nothing (PR 307 review). */}
-              {vimStatus.command ?? `-- ${vimStatus.mode.toUpperCase()} --`}
+              {vimStatus.command ??
+                `-- ${vimStatus.mode.toUpperCase()}${
+                  vimStatus.island ? ` (${vimStatus.island})` : ""
+                } --`}
             </span>
           )}
         {isRepo && branch && (

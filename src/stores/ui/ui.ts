@@ -59,6 +59,10 @@ export interface VimStatus {
   /** Ex line being typed, colon included (":w") — absent when none is open.
    *  vim shows the command line INSTEAD of the mode indicator. */
   command?: string;
+  /** Focused non-vim island's label ("math", "mermaid", …) — rendered as
+   *  `-- INSERT (math) --` so the mode line stays honest while an island
+   *  owns the keys (§8). Absent for plain surface modes. */
+  island?: string;
   mode: VimStatusMode;
   surface: "codeblock" | "source" | "wysiwyg";
 }

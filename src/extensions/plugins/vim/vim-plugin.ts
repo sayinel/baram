@@ -44,7 +44,11 @@ import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
 import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
-import { isSuspendTarget, shouldSuspendFor } from "./adapters/suspension";
+import {
+  islandLabel,
+  isSuspendTarget,
+  shouldSuspendFor,
+} from "./adapters/suspension";
 import { isMacPlatform, toKeyToken } from "./core/keys";
 import { step } from "./core/state-machine";
 import { initialCoreState } from "./core/types";
@@ -62,6 +66,9 @@ export interface VimPluginState {
   enabled: boolean;
   /** Mirror of core.exLine — same reason as `mode`. */
   exLine: null | string;
+  /** Label of the focused input island while suspended ("math", …) — null
+   *  when not suspended or unknown. Drives `-- INSERT (x) --` (§8). */
+  island: null | string;
   /** Mirror of core.mode so vim-keys' snapshot readers stay leaf-typed. */
   mode: VimMode;
   suspended: boolean;
@@ -70,8 +77,8 @@ export interface VimPluginState {
 type VimMeta =
   | { core: VimCoreState; type: "core" }
   | { enabled: boolean; type: "setEnabled" }
-  | { mode: VimMode; type: "setMode" }
-  | { suspended: boolean; type: "setSuspended" };
+  | { island?: null | string; suspended: boolean; type: "setSuspended" }
+  | { mode: VimMode; type: "setMode" };
 
 export function createVimPlugin(
   tiptapEditor: TiptapEditor,
@@ -176,7 +183,11 @@ export function createVimPlugin(
           if (!vim.enabled) return false;
           const suspended = isSuspendTarget(event);
           if (suspended !== vim.suspended) {
-            dispatchMeta(view, { suspended, type: "setSuspended" });
+            dispatchMeta(view, {
+              island: suspended ? islandLabel(event) : null,
+              suspended,
+              type: "setSuspended",
+            });
           }
           return false;
         },
@@ -413,6 +424,7 @@ export function createVimPlugin(
           core: initialCoreState("insert"),
           enabled: false,
           exLine: null,
+          island: null,
           mode: "insert",
           suspended: false,
         };
@@ -553,6 +565,7 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         core: initialCoreState(meta.enabled ? "normal" : "insert"),
         enabled: meta.enabled,
         exLine: null,
+        island: null,
         mode: meta.enabled ? "normal" : "insert",
         suspended: false,
       };
@@ -575,6 +588,7 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
           pending: null,
           pendingCount: null,
         }),
+        island: meta.suspended ? (meta.island ?? null) : null,
         suspended: meta.suspended,
       };
   }

@@ -258,6 +258,18 @@ describe("StatusBar — vim mode indicator (§298 S3)", () => {
   });
 });
 
+describe("island label (§8) — the mode line names the focused island", () => {
+  it("renders -- INSERT (math) -- from an island status", () => {
+    useUIStore
+      .getState()
+      .setVimStatus({ island: "math", mode: "insert", surface: "wysiwyg" });
+    const { unmount } = render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.getByText("-- INSERT (math) --")).toBeInTheDocument();
+    unmount();
+    useUIStore.getState().setVimStatus(null);
+  });
+});
+
 describe("vim surface arbitration (§8, S5-a review)", () => {
   it("graph and preview render NO vim indicator, either surface", () => {
     useUIStore.getState().setVimStatus({ mode: "normal", surface: "wysiwyg" });

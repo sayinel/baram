@@ -133,6 +133,15 @@ function publish(): void {
     writeStatus(null);
     return;
   }
+  // §8 island honesty: while a KNOWN plain island holds the keys, the mode
+  // line shows insert with the island label instead of claiming NORMAL —
+  // the island is effectively insert mode (every key types). Unknown hosts
+  // (captions, third-party) keep today's display; CM code blocks never get
+  // here, their own vim claims the indicator through the island layer.
+  if (vim.suspended && vim.island) {
+    writeStatus({ island: vim.island, mode: "insert", surface: "wysiwyg" });
+    return;
+  }
   const exLine = vim.exLine;
   writeStatus({
     ...(exLine === null ? {} : { command: `:${exLine}` }),
@@ -159,7 +168,8 @@ function writeStatus(next: null | VimStatus): void {
     next !== null &&
     current.mode === next.mode &&
     current.surface === next.surface &&
-    current.command === next.command
+    current.command === next.command &&
+    current.island === next.island
   ) {
     return;
   }

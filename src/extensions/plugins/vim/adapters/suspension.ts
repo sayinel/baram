@@ -69,3 +69,31 @@ function markerOn(entry: unknown): boolean | null {
   if (entry.hasAttribute(BODY_MARKER)) return false;
   return null;
 }
+
+/** Known non-vim islands, outermost wrapper → StatusBar label. Code blocks
+ *  are deliberately absent: their CodeMirror runs its own vim and claims the
+ *  indicator through the island layer (vim-status), so labelling them here
+ *  would only flash a wrong INSERT before that claim lands. */
+const ISLAND_LABELS: readonly (readonly [string, string])[] = [
+  [".math-block", "math"],
+  ['[data-type="mermaidBlock"]', "mermaid"],
+  ['[data-type="svgBlock"]', "svg"],
+  ['[data-type="htmlBlock"]', "html"],
+  ['[data-type="queryBlock"]', "query"],
+];
+
+/**
+ * StatusBar label for the island a focus event landed in, null when the host
+ * block is not one of the known plain islands. Drives `-- INSERT (math) --`:
+ * a plain textarea island is effectively insert mode, and without the label
+ * the mode line keeps claiming NORMAL while keys go into the island — the
+ * one place it lies (§8, design v3 follow-up).
+ */
+export function islandLabel(event: Event): null | string {
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+  for (const [selector, label] of ISLAND_LABELS) {
+    if (target.closest(selector)) return label;
+  }
+  return null;
+}
