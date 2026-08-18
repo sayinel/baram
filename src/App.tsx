@@ -4,6 +4,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -20,6 +21,8 @@ import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { MarkdownSurface } from "./components/editor/MarkdownSurface";
 import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
 import { PluginViewerHost } from "./components/editor/PluginViewerHost";
+import { createTabSurfaceRenderers } from "./components/editor/tab-surface-renderers";
+import { TabSurface } from "./components/editor/TabSurface";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -50,6 +53,7 @@ import {
 import { useLargeDocKeepalive } from "./hooks/use-large-doc-keepalive";
 import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
+import { useRetainedTabs } from "./hooks/use-retained-tabs";
 import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
 import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
@@ -113,11 +117,6 @@ const SourceCodeEditor = lazy(() =>
 const HtmlPreview = lazy(() =>
   import("./components/editor/HtmlPreview").then((m) => ({
     default: m.HtmlPreview,
-  })),
-);
-const PdfPreview = lazy(() =>
-  import("./components/editor/pdf/PdfPreview").then((m) => ({
-    default: m.PdfPreview,
   })),
 );
 const CommandPalette = lazy(() =>
@@ -562,6 +561,38 @@ function App() {
     ? sourceCursorOffsetFor(activeTabId)
     : 0;
 
+  // §285 유지 집합 — 마운트를 유지할 탭과 그 표면 종류.
+  //
+  // `pluginPreviewTabs`를 여기서 만드는 이유: 뷰어 레지스트리를 아는 것은 App뿐이다.
+  // SVG처럼 **텍스트인데 플러그인이 그리는** 파일은 판정 함수만 보면 `code`로 떨어지는데,
+  // 프리뷰 상태에서는 유지 대상이 아니다(§290에서 플러그인 뷰어를 제외했다).
+  const tabs = useEditorStore((s) => s.tabs);
+  const pluginPreviewTabs = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tabs) {
+      if (isFileTab(t) && matchFileViewer(fileViewers, t.filePath)) {
+        set.add(t.id);
+      }
+    }
+    return set;
+  }, [tabs, fileViewers]);
+  const tabSurfaceRenderers = useMemo(
+    () =>
+      createTabSurfaceRenderers({
+        onPdfFindApiChange: setPdfFindApi,
+        onTogglePdfFind: handleTogglePdfFind,
+        pdfFindOpen,
+      }),
+    [handleTogglePdfFind, pdfFindOpen],
+  );
+  const retainedTabs = useRetainedTabs(
+    activeTabId,
+    tabs,
+    sourceModeTabs,
+    htmlSourceTabs,
+    pluginPreviewTabs,
+  );
+
   // §286 마크다운 표면이 지금 보여야 하는가.
   //
   // ‼️ 이 값은 아래 삼항 사슬의 **마지막 else에 도달하는 조건과 정확히 같아야 한다.** 새 갈래를
@@ -928,32 +959,6 @@ function App() {
                 <PluginDetailTab pluginId={activePluginId} />
               </Suspense>
             </div>
-          ) : isPdfTab && activeTabFilePath ? (
-            <div
-              className="editor-area-scroll pdf-preview-scroll"
-              data-editor-scroll
-            >
-              {pdfFindOpen && pdfFindApi && (
-                <PdfFindBar
-                  currentIdx={pdfFindApi.currentIdx}
-                  matchCount={pdfFindApi.matchCount}
-                  onClose={() => setPdfFindOpen(false)}
-                  onNext={pdfFindApi.onNext}
-                  onPrev={pdfFindApi.onPrev}
-                  onQueryChange={pdfFindApi.onQueryChange}
-                />
-              )}
-              <Suspense fallback={null}>
-                <PdfPreview
-                  filePath={activeTabFilePath}
-                  findOpen={pdfFindOpen}
-                  onFindApiChange={setPdfFindApi}
-                  onToggleFind={handleTogglePdfFind}
-                  refreshKey={previewFileMtime}
-                  title={activeTabFilePath}
-                />
-              </Suspense>
-            </div>
           ) : isImageTab && activeTabFilePath ? (
             <div
               className="editor-area-scroll plugin-viewer-scroll"
@@ -1025,6 +1030,27 @@ function App() {
               </Suspense>
             </div>
           ) : null}
+          {/* §272 활성 PDF의 찾기 바 — 표면 바깥(FindReplaceBar와 같은 자리)에 그린다.
+              유지 집합에는 PDF가 여러 개 있을 수 있으므로 여기 하나만 존재해야 한다. */}
+          {isPdfTab && pdfFindOpen && pdfFindApi && (
+            <PdfFindBar
+              currentIdx={pdfFindApi.currentIdx}
+              matchCount={pdfFindApi.matchCount}
+              onClose={() => setPdfFindOpen(false)}
+              onNext={pdfFindApi.onNext}
+              onPrev={pdfFindApi.onPrev}
+              onQueryChange={pdfFindApi.onQueryChange}
+            />
+          )}
+          {/* §286 유지 집합 — 활성만 보이고 나머지는 마운트된 채 숨는다. */}
+          {retainedTabs.map((entry) => (
+            <TabSurface
+              active={entry.tabId === activeTabId}
+              entry={entry}
+              key={`${entry.kind}-${entry.tabId}`}
+              renderers={tabSurfaceRenderers}
+            />
+          ))}
           <MarkdownSurface
             active={isMarkdownSurfaceActive}
             activeEditor={activeEditor}
