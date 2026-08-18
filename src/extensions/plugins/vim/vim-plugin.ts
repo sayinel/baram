@@ -126,11 +126,26 @@ export function createVimPlugin(
          *  (entry latch, setNodeSelection) run first; the TextSelection
          *  guard keeps drag-copy clicks live, since suppression re-asserts
          *  state into the DOM for 50 ms. */
-        click: (view) => {
+        click: (view, event) => {
           if (!read(view.state).enabled) return false;
+          const target = event.target;
           queueMicrotask(() => {
             if (view.isDestroyed) return;
-            if (!(view.state.selection instanceof NodeSelection)) return;
+            const sel = view.state.selection;
+            if (!(sel instanceof NodeSelection)) return;
+            // Correlate with the CLICKED atom: with an atom parked-selected,
+            // an ordinary text click's state update can arrive through the
+            // LATE selectionchange — a suppression armed off the stale
+            // NodeSelection would answer that click by re-asserting the old
+            // selection, eating the user's click (adversarial review).
+            const dom = view.nodeDOM(sel.from);
+            if (
+              !(dom instanceof Node) ||
+              !(target instanceof Node) ||
+              !dom.contains(target)
+            ) {
+              return;
+            }
             (
               view as unknown as {
                 domObserver?: { suppressSelectionUpdates?: () => void };

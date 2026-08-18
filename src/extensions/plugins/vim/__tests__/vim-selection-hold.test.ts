@@ -211,10 +211,20 @@ describe("a pointer NodeSelection is held too (issue 408)", () => {
   //
   // The plugin's click handler now suppresses on a microtask (so the React
   // click handlers — entry latch, setNodeSelection — run first).
-  function click(editor: Editor): void {
-    editor.view.dom.dispatchEvent(
+  function click(editor: Editor, target?: Element | null): void {
+    (target ?? editor.view.dom).dispatchEvent(
       new MouseEvent("click", { bubbles: true, cancelable: true }),
     );
+  }
+
+  function mathNodeDOM(editor: Editor): Element {
+    let mathPos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "mathBlock") mathPos = at;
+    });
+    const dom = editor.view.nodeDOM(mathPos);
+    expect(dom).toBeInstanceOf(Element);
+    return dom as Element;
   }
 
   async function microtasks(): Promise<void> {
@@ -222,7 +232,7 @@ describe("a pointer NodeSelection is held too (issue 408)", () => {
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  it("a click over a NodeSelection suppresses the observer", async () => {
+  it("a click ON the selected atom suppresses the observer", async () => {
     const editor = makeEditor();
     let mathPos = -1;
     editor.state.doc.forEach((node, at) => {
@@ -231,10 +241,30 @@ describe("a pointer NodeSelection is held too (issue 408)", () => {
     editor.commands.setNodeSelection(mathPos);
     const probe = probeObserver(editor);
 
-    click(editor);
+    click(editor, mathNodeDOM(editor));
     await microtasks();
 
     expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
+  });
+
+  it("a click ELSEWHERE over a parked NodeSelection does not", async () => {
+    // The state check alone is not enough: with an atom parked-selected, an
+    // ordinary text click's state update can arrive through the LATE
+    // selectionchange — a suppression armed off the stale NodeSelection
+    // would answer that click by re-asserting the old selection, eating the
+    // user's click (adversarial review). Correlate with the clicked atom.
+    const editor = makeEditor();
+    let mathPos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "mathBlock") mathPos = at;
+    });
+    editor.commands.setNodeSelection(mathPos);
+    const probe = probeObserver(editor);
+
+    click(editor, editor.view.dom.querySelector("p"));
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
   });
 
   it("a click over a TextSelection does not (drag-copy stays live)", async () => {
