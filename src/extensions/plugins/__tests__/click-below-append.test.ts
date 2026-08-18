@@ -233,6 +233,34 @@ describe("handleEmptyAreaMousedown: press on the editor root below the last bloc
     ).toBe(true);
   });
 
+  // Regression: a folded heading hides every block after it (display:none), so
+  // the editor's last child reports an all-zero rect. Treating that 0 as the
+  // content bottom made every press look like it landed below the document —
+  // and the preventDefault() that follows makes ProseMirror drop the event
+  // (eventBelongsToView bails on defaultPrevented), silently disabling every
+  // other mousedown handler including the heading fold arrow.
+  it("ignores presses when the trailing block is not rendered (folded away)", () => {
+    const lastEl = editor.view.dom.lastElementChild!;
+    lastEl.getBoundingClientRect = () =>
+      ({
+        bottom: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const docBefore = editor.state.doc;
+    const event = fakeEvent(editor.view.dom, LAST_BLOCK_BOTTOM + 30);
+
+    expect(handleEmptyAreaMousedown(editor.view, event)).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(editor.state.doc.eq(docBefore)).toBe(true);
+  });
+
   it("does nothing in read-only mode", () => {
     editor.setEditable(false);
     const docBefore = editor.state.doc;
