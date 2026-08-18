@@ -2,6 +2,8 @@
 // Kept in its own module so the React component file only exports a component
 // (react-refresh/only-export-components).
 
+import { activeEditorScrollContainer } from "../../utils/editor/active-scroll-container";
+
 /** Minimal anchor describing where the ⊕ button should sit. */
 export interface InsertButtonAnchor {
   /** "col" → button above a column boundary; "row" → left of a row boundary. */
@@ -67,9 +69,7 @@ export function findTableNearPoint(
 ): HTMLTableElement | null {
   // §perf-large-file C3.4: scope to the ACTIVE editor's scroll container
   // so tables from a hidden keep-alive editor are excluded.
-  const scroll =
-    document.querySelector(".editor-area-scroll[data-editor-active]") ??
-    document.querySelector(".editor-area-scroll");
+  const scroll = activeEditorScrollContainer();
   if (!scroll) return null;
   const tables = scroll.querySelectorAll("table");
   for (let i = 0; i < tables.length; i++) {
