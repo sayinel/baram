@@ -106,6 +106,10 @@ export function GraphView() {
       });
 
       cyRef.current = cy;
+      // TEMP-DIAG(§286)
+      logger.warn(
+        `[graph-diag] cy created box=${containerRef.current?.clientWidth}x${containerRef.current?.clientHeight} parentDisplay=${containerRef.current?.parentElement ? getComputedStyle(containerRef.current.parentElement).display : "?"}`,
+      );
 
       // §30.2 Continuous d3-force simulation drives node positions each tick
       const { centerForce, repelForce, linkForce, linkDistance } =

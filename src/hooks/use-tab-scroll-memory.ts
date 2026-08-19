@@ -72,7 +72,30 @@ export function useTabScrollMemory(
     wasActive.current = active;
     if (!becameActive) return;
     const saved = offsets.current.get(tabId);
-    if (saved === undefined) return;
-    resolveRef.current()?.setScrollTop(saved);
+    if (saved === undefined || saved <= 0) return;
+
+    const apply = (): boolean => {
+      const target = resolveRef.current();
+      if (!target) return false;
+      target.setScrollTop(saved);
+      return target.getScrollTop() >= saved;
+    };
+    if (apply()) return;
+
+    // ‼️ 여기까지 왔다는 것은 **내용이 아직 그 자리를 담을 만큼 자라지 않았다**는 뜻이다.
+    // scrollTop이 scrollHeight로 잘렸다. 축출됐다 다시 열린 표면이 그렇다 — PDF는 이 시점에
+    // 페이지가 하나도 렌더되지 않아 문서 높이가 0이다(실앱에서 상한 밖 PDF가 맨 위로 갔다).
+    //
+    // 기다리는 방법은 타이머가 아니라 사실 관찰이다: 내용이 자라면 다시 놓는다. 스크롤
+    // 컨테이너 자신은 내용이 늘어도 크기가 그대로이므로, **자식들**을 관찰해야 한다.
+    const target = resolveRef.current();
+    if (!target) return;
+    const observer = new ResizeObserver(() => {
+      if (apply()) observer.disconnect();
+    });
+    for (const child of Array.from(target.element.children)) {
+      observer.observe(child);
+    }
+    return () => observer.disconnect();
   }, [active, offsets, tabId]);
 }

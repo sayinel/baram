@@ -7,7 +7,7 @@ import type { TabScrollTarget } from "../use-tab-scroll-memory";
 // scrollTop이 0이다. 그래서 아래 테스트는 숨기기 직전에 scrollTop을 0으로 만들어 두고,
 // 그럼에도 복원이 마지막으로 **스크롤된** 값을 되돌리는지 단정한다.
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useTabScrollMemory } from "../use-tab-scroll-memory";
 
@@ -145,5 +145,75 @@ describe("useTabScrollMemory restore edge", () => {
       el.dispatchEvent(new Event("scroll"));
     });
     expect(offsets.current.get("a")).toBe(250);
+  });
+});
+
+// §291 축출 후 다시 열린 표면은 **복원 시점에 아직 내용이 없다.**
+//
+// ‼️ 실앱에서 PDF로 드러났다: 상한을 넘겨 축출된 PDF를 다시 열면 자리를 기억하고 있는데도
+// 맨 위로 갔다. layout effect가 도는 시점엔 페이지가 하나도 렌더되지 않아 문서 높이가 0이고,
+// scrollTop이 그대로 잘린다. HTML이 멀쩡했던 건 iframe의 load 이벤트를 기다리기 때문이다.
+//
+// 기다리는 방법은 타이머가 아니라 **사실 관찰**이다: 내용이 그 자리를 담을 만큼 자라면 그때
+// 다시 놓는다.
+describe("useTabScrollMemory on a surface whose content arrives later", () => {
+  /** scrollTop을 scrollHeight로 클램프하는, 실제 스크롤 컨테이너에 가까운 스텁. */
+  function makeGrowingTarget() {
+    const el = document.createElement("div");
+    const content = document.createElement("div");
+    el.appendChild(content);
+    document.body.appendChild(el);
+    let height = 0;
+    let top = 0;
+    return {
+      el,
+      grow: (h: number) => {
+        height = h;
+        // jsdom은 레이아웃이 없으므로 성장 통지를 직접 쏜다.
+        observers.forEach((cb) => cb());
+      },
+      target: {
+        element: el,
+        getScrollTop: () => top,
+        setScrollTop: (n: number) => {
+          top = Math.min(n, height);
+        },
+      },
+    };
+  }
+
+  const observers: (() => void)[] = [];
+
+  beforeEach(() => {
+    observers.length = 0;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: () => void) {
+          observers.push(cb);
+        }
+        disconnect() {
+          /* 관찰 해제 — 이 스텁에서는 통지 목록에서 빼지 않는다 */
+        }
+        observe() {
+          /* 관찰 대상은 이 스텁의 관심사가 아니다 */
+        }
+        unobserve() {
+          /* noop */
+        }
+      },
+    );
+  });
+
+  it("re-applies the offset once the content is tall enough to hold it", () => {
+    const { grow, target } = makeGrowingTarget();
+    const offsets = { current: new Map<string, number>([["a", 900]]) };
+
+    renderHook(() => useTabScrollMemory("a", true, () => target, offsets));
+    // 아직 내용이 없다 — 잘려서 0이다.
+    expect(target.getScrollTop()).toBe(0);
+
+    grow(4000);
+    expect(target.getScrollTop()).toBe(900);
   });
 });
