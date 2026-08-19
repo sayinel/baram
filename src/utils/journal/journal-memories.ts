@@ -57,7 +57,10 @@ export function extractImages(content: string): { alt: string; src: string }[] {
   return images;
 }
 
-/** Extract a one-line summary from journal markdown content */
+/**
+ * Extract the One Line summary: the frontmatter `oneline` field when the entry
+ * has one, otherwise the diary's whole first paragraph.
+ */
 export function extractOneLine(content: string): string {
   if (!content.trim()) return "";
 
@@ -106,43 +109,36 @@ export function extractOneLine(content: string): string {
     }
   }
 
-  // 4. Find first meaningful text line (skip headings, empty lines, blockquotes, list items starting with icons)
-  const lines = textBlock.split("\n");
-  const textLines: string[] = [];
-  for (const line of lines) {
+  // 4. Take the whole first paragraph. Skip headings, blank lines, blockquotes
+  //    and Captures-style icon items to find where it starts, then keep every
+  //    line of that run — a soft-wrapped paragraph must not be cut at its first
+  //    line, and neither the first sentence nor a character budget bounds it.
+  const paragraph: string[] = [];
+  for (const line of textBlock.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith("#")) continue;
-    if (trimmed.startsWith(">")) continue;
-    if (
-      trimmed.startsWith("- ✦") ||
-      trimmed.startsWith("- ↗") ||
-      trimmed.startsWith("- ❝") ||
-      trimmed.startsWith("- ☰")
-    )
+
+    if (paragraph.length === 0) {
+      if (!trimmed) continue;
+      if (trimmed.startsWith("#")) continue;
+      if (trimmed.startsWith(">")) continue;
+      if (
+        trimmed.startsWith("- ✦") ||
+        trimmed.startsWith("- ↗") ||
+        trimmed.startsWith("- ❝") ||
+        trimmed.startsWith("- ☰")
+      )
+        continue;
+      paragraph.push(trimmed);
       continue;
-    textLines.push(trimmed);
-  }
-
-  if (textLines.length === 0) return "";
-
-  const firstLine = textLines[0];
-
-  // If this is the only text line and contains multiple sentences, extract first sentence
-  if (textLines.length === 1) {
-    const sentenceMatch = firstLine.match(/^(.+?[.。])\s/);
-    if (sentenceMatch) {
-      const result = sentenceMatch[1];
-      if (result.length > 100) return result.slice(0, 100) + "…";
-      return result;
     }
+
+    // A blank line or the start of any other block ends the paragraph.
+    if (!trimmed || startsNewBlock(trimmed)) break;
+    paragraph.push(trimmed);
   }
 
-  // Truncate at 100 characters
-  if (firstLine.length > 100) {
-    return firstLine.slice(0, 100) + "…";
-  }
-  return firstLine;
+  // Soft line breaks render as spaces, so join the run the way the preview does.
+  return paragraph.join(" ");
 }
 
 /** Group memory entries by year in reverse chronological order */
@@ -403,4 +399,21 @@ function sanitizeUrl(
   const allowed = allowedPrefixes.some((re) => re.test(trimmed));
   const safe = allowed ? trimmed : fallback;
   return safe.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Does this line open a block other than the running paragraph? Used to bound
+ * the first paragraph: a list, heading, quote, rule, fence or table row after a
+ * text line belongs to the next block, not to the paragraph being collected.
+ */
+function startsNewBlock(trimmed: string): boolean {
+  return (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith(">") ||
+    trimmed.startsWith("```") ||
+    trimmed.startsWith("|") ||
+    /^(-{3,}|\*{3,}|_{3,})$/.test(trimmed) ||
+    /^[-*+]\s+/.test(trimmed) ||
+    /^\d+\.\s+/.test(trimmed)
+  );
 }
