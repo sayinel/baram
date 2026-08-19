@@ -19,6 +19,7 @@ import {
   nodeSize,
   toGraphElements,
 } from "./graph-utils";
+import { boxOf, shouldRunViewportWork } from "./graph-viewport";
 
 /**
  * Fetch the link graph (single- or multi-vault §87), transform it into
@@ -26,13 +27,15 @@ import {
  * Positions are seeded from the simulation so refreshes don't jump.
  */
 export function useGraphData(params: {
+  /** §286 그래프가 보이는가 — 숨은 동안에는 뷰포트를 재지 않는다(graph-viewport.ts). */
+  active: boolean;
   cyReady: boolean;
   cyRef: RefObject<Core | null>;
   graphScope: GraphScope;
   handleNodeTap: (evt: EventObject) => void;
   simRef: RefObject<GraphSimulation | null>;
 }): { edgeCount: number; graphEpoch: number; nodeCount: number } {
-  const { cyReady, cyRef, graphScope, handleNodeTap, simRef } = params;
+  const { active, cyReady, cyRef, graphScope, handleNodeTap, simRef } = params;
   const rootPath = useFileStore((s) => s.rootPath);
   const indexVersion = useLinkStore((s) => s.indexVersion);
   const contexts = useContextStore((s) => s.contexts);
@@ -175,8 +178,13 @@ export function useGraphData(params: {
           if (el.length > 0) el.addClass("pinned");
         });
 
-        // Ensure container dimensions are available before first paint
-        cy.resize();
+        // Ensure container dimensions are available before first paint.
+        //
+        // ‼️ 숨은 동안에는 재지 않는다 — `display: none`이면 0×0이 나와 뷰포트가
+        // degenerate해진다. 다시 보이게 될 때 아래 별도 effect가 잰다.
+        if (shouldRunViewportWork(active, boxOf(cy.container()))) {
+          cy.resize();
+        }
         // §87 Force style recalculation for newly added nodes
         // (without this, nodes from non-active vaults may not render)
         cy.style().update();
@@ -201,6 +209,7 @@ export function useGraphData(params: {
     // handles size updates incrementally.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    active,
     rootPath,
     indexVersion,
     handleNodeTap,

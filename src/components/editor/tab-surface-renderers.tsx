@@ -100,9 +100,9 @@ export function createTabSurfaceRenderers(
           />
         </Suspense>
       ),
-    graph: () => (
+    graph: ({ active }) => (
       <Suspense fallback={null}>
-        <GraphViewLazy />
+        <GraphViewLazy active={active} />
       </Suspense>
     ),
     html: ({ active, filePath, refreshKey }) => (
