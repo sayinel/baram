@@ -236,7 +236,6 @@ export function useFileOperations({
         logger.error("[App] Failed to save as:", err);
       }
     }
-     
   }, [editor, sourceModeTabs, getSourceBuffer, setFileContent, markDirty]);
 
   const handleSaveAs = useCallback(async () => {
@@ -288,7 +287,6 @@ export function useFileOperations({
     } catch (err) {
       logger.error("[App] Failed to save as:", err);
     }
-     
   }, [editor, sourceModeTabs, getSourceBuffer, setFileContent, markDirty]);
 
   const handleCloseTab = useCallback(() => {
