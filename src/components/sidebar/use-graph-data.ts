@@ -1,10 +1,11 @@
 // §30 Graph View — link-graph data fetching + cytoscape element population
 import type { RefObject } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { LinkGraph } from "../../ipc/types";
 import type { GraphScope } from "../../stores/ui/graph-settings";
 import type { GraphSimulation } from "./graph-simulation";
+import type { GraphViewport } from "./graph-viewport";
 import type { Core, ElementDefinition, EventObject } from "cytoscape";
 
 import { getLinkIndex, refreshIndex } from "../../ipc/invoke";
@@ -19,7 +20,11 @@ import {
   nodeSize,
   toGraphElements,
 } from "./graph-utils";
-import { boxOf, shouldRunViewportWork } from "./graph-viewport";
+import {
+  boxOf,
+  isUsableViewport,
+  shouldRunViewportWork,
+} from "./graph-viewport";
 
 /**
  * Fetch the link graph (single- or multi-vault §87), transform it into
@@ -182,6 +187,10 @@ export function useGraphData(params: {
         //
         // ‼️ 숨은 동안에는 재지 않는다 — `display: none`이면 0×0이 나와 뷰포트가
         // degenerate해진다. 다시 보이게 될 때 아래 별도 effect가 잰다.
+        // Ensure container dimensions are available before first paint.
+        //
+        // ‼️ 숨은 동안에는 재지 않는다 — `display: none`이면 0×0이 나와 뷰포트가
+        // degenerate해진다. 그때는 아래 별도 effect가 다시 보이는 순간 잰다.
         if (shouldRunViewportWork(active, boxOf(cy.container()))) {
           cy.resize();
         }
@@ -209,7 +218,6 @@ export function useGraphData(params: {
     // handles size updates incrementally.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    active,
     rootPath,
     indexVersion,
     handleNodeTap,
@@ -218,6 +226,44 @@ export function useGraphData(params: {
     graphScope,
     contexts,
   ]);
+
+  // §286 숨은 동안 건너뛴 측정을 다시 보이는 순간 한 번 한다.
+  //
+  // ‼️ 이걸 populate effect의 deps에 `active`를 넣어 해결하려 했다가, **탭 전환마다 링크
+  // 그래프를 다시 가져오고 요소 119개를 다시 만드는** 회귀를 만들었다(계측 로그에서
+  // `populate`가 전환마다 두 번 찍혔다). 측정은 측정만 다시 하면 된다.
+  // §286 카메라를 기억했다 되돌린다.
+  //
+  // ‼️ 실측이 원인을 특정했다: 탭을 오갈 때 **노드는 그대로고 카메라만 움직인다.** MD를 오갈
+  // 때마다 pan이 조금씩 밀리고(402,443 → 407,66 → 454,208), PDF를 다녀오면 zoom 1 / pan 0,0 —
+  // cytoscape의 손대지 않은 초기 뷰포트 — 로 되돌아간다. 그리고 그 값은 우리 `cy.resize()`
+  // **이전에** 이미 그렇다. 컨테이너가 0×0이 되면 라이브러리가 스스로 카메라를 흔든다.
+  //
+  // 우리 게이트는 *우리* 호출만 막을 수 있으므로, §291과 같은 결론을 쓴다: 지킬 수 없는
+  // 상태는 기억했다 되돌린다. 기록은 viewport 이벤트로(숨는 순간에 읽으면 이미 늦다),
+  // 복원은 보이게 된 직후에.
+  const cameraRef = useRef<GraphViewport | null>(null);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    const remember = () => {
+      const vp = { pan: cy.pan(), zoom: cy.zoom() };
+      if (isUsableViewport(vp)) cameraRef.current = vp;
+    };
+    cy.on("viewport", remember);
+    return () => void cy.off("viewport", remember);
+  }, [cyRef, cyReady]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    if (!shouldRunViewportWork(active, boxOf(cy.container()))) return;
+    cy.resize();
+    const saved = cameraRef.current;
+    if (!saved) return;
+    cy.viewport({ pan: saved.pan, zoom: saved.zoom });
+  }, [active, cyRef, cyReady]);
 
   return { edgeCount, graphEpoch, nodeCount };
 }
