@@ -571,8 +571,11 @@ function App() {
     ],
   );
 
+  // §286 MRU는 스토어가 관리한다(touchMru). 유지 집합은 그 순서의 순수 함수여야 한다 —
+  // 렌더 도중 직전 결과를 기억하던 구현이 표면을 반복 재마운트했다(use-retained-tabs.ts).
+  const mruOrder = useEditorStore((s) => s.mruOrder);
   const retainedTabs = useRetainedTabs(
-    activeTabId,
+    mruOrder,
     tabs,
     sourceModeTabs,
     htmlSourceTabs,

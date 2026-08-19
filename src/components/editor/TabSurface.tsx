@@ -75,6 +75,7 @@ export function TabSurface({
    * 이건 "한 프레임 기다린다" 같은 추정이 아니라 가시성이라는 사실에 대한 조건이다.
    */
   const [everActive, setEverActive] = useState(active);
+
   useEffect(() => {
     if (active) setEverActive(true);
   }, [active]);

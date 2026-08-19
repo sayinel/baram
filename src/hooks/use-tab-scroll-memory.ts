@@ -56,7 +56,9 @@ export function useTabScrollMemory(
     const target = resolveRef.current();
     if (!target) return;
     const { element } = target;
-    const onScroll = () => offsets.current.set(tabId, target.getScrollTop());
+    const onScroll = () => {
+      offsets.current.set(tabId, target.getScrollTop());
+    };
     element.addEventListener("scroll", onScroll, { passive: true });
     return () => element.removeEventListener("scroll", onScroll);
   }, [active, offsets, tabId]);

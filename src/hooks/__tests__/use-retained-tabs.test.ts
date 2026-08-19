@@ -85,9 +85,9 @@ describe("retainedKindForTab", () => {
 describe("computeRetained", () => {
   it("puts the active tab at the front (MRU)", () => {
     const tabs = [tab("p1", "/v/1.pdf"), tab("p2", "/v/2.pdf")];
-    const first = computeRetained([], "p1", tabs, EMPTY);
-    const second = computeRetained(first, "p2", tabs, EMPTY);
-    expect(second.map((e) => e.tabId)).toEqual(["p2", "p1"]);
+    expect(
+      computeRetained(["p2", "p1"], tabs, EMPTY).map((e) => e.tabId),
+    ).toEqual(["p2", "p1"]);
   });
 
   it("evicts the LRU entry of the SAME kind only", () => {
@@ -98,10 +98,7 @@ describe("computeRetained", () => {
       tab("p3", "/v/3.pdf"),
       tab("c1", "/v/1.py"),
     ];
-    let r = computeRetained([], "c1", tabs, EMPTY);
-    r = computeRetained(r, "p1", tabs, EMPTY);
-    r = computeRetained(r, "p2", tabs, EMPTY);
-    r = computeRetained(r, "p3", tabs, EMPTY);
+    const r = computeRetained(["p3", "p2", "p1", "c1"], tabs, EMPTY);
     expect(r.filter((e) => e.kind === "pdf").map((e) => e.tabId)).toEqual([
       "p3",
       "p2",
@@ -110,22 +107,20 @@ describe("computeRetained", () => {
   });
 
   it("drops entries whose tab was closed", () => {
-    const open = [tab("p1", "/v/1.pdf"), tab("p2", "/v/2.pdf")];
-    let r = computeRetained([], "p1", open, EMPTY);
-    r = computeRetained(r, "p2", open, EMPTY);
-    r = computeRetained(r, "p2", [tab("p2", "/v/2.pdf")], EMPTY);
+    // mru에는 남아 있어도 스토어에 없는 탭은 유지 대상이 아니다.
+    const r = computeRetained(["p2", "p1"], [tab("p2", "/v/2.pdf")], EMPTY);
     expect(r.map((e) => e.tabId)).toEqual(["p2"]);
   });
 
   it("re-kinds an entry when the tab toggles source mode", () => {
     const tabs = [tab("m", "/v/m.md")];
-    const off = computeRetained([], "m", tabs, EMPTY);
-    expect(off).toEqual([]);
-    const on = computeRetained(off, "m", tabs, {
-      ...EMPTY,
-      sourceModeTabs: new Set(["m"]),
-    });
-    expect(on).toEqual([{ kind: "code", tabId: "m" }]);
+    expect(computeRetained(["m"], tabs, EMPTY)).toEqual([]);
+    expect(
+      computeRetained(["m"], tabs, {
+        ...EMPTY,
+        sourceModeTabs: new Set(["m"]),
+      }),
+    ).toEqual([{ kind: "code", tabId: "m" }]);
   });
 
   it("declares a cap for every kind", () => {
@@ -145,11 +140,16 @@ describe("html retention (regression)", () => {
   // 돌아갔다. 같은 세션의 PDF는 멀쩡했기 때문에 "HTML만 안 된다"로 보였다.
   it("keeps both html tabs alive across a round trip", () => {
     const tabs = [tab("h1", "/v/1.html"), tab("h2", "/v/2.html")];
-    let r = computeRetained([], "h1", tabs, EMPTY);
-    r = computeRetained(r, "h2", tabs, EMPTY);
-    expect(r.map((e) => e.tabId).sort()).toEqual(["h1", "h2"]);
-    r = computeRetained(r, "h1", tabs, EMPTY);
-    expect(r.map((e) => e.tabId).sort()).toEqual(["h1", "h2"]);
+    expect(
+      computeRetained(["h2", "h1"], tabs, EMPTY)
+        .map((e) => e.tabId)
+        .sort(),
+    ).toEqual(["h1", "h2"]);
+    expect(
+      computeRetained(["h1", "h2"], tabs, EMPTY)
+        .map((e) => e.tabId)
+        .sort(),
+    ).toEqual(["h1", "h2"]);
   });
 
   it("still evicts the LRU html tab beyond the cap", () => {
@@ -158,10 +158,9 @@ describe("html retention (regression)", () => {
       tab("h2", "/v/2.html"),
       tab("h3", "/v/3.html"),
     ];
-    let r = computeRetained([], "h1", tabs, EMPTY);
-    r = computeRetained(r, "h2", tabs, EMPTY);
-    r = computeRetained(r, "h3", tabs, EMPTY);
-    expect(r.map((e) => e.tabId)).toEqual(["h3", "h2"]);
+    expect(
+      computeRetained(["h3", "h2", "h1"], tabs, EMPTY).map((e) => e.tabId),
+    ).toEqual(["h3", "h2"]);
   });
 });
 
@@ -176,10 +175,64 @@ describe("the graph tab is deliberately not retained", () => {
   // 일어나지 않게 한다 — 다시 넣으려면 그때는 저 카메라 문제의 답이 있어야 한다.
   it("never enters the retained set", () => {
     const tabs = [tab("g", "", "graph")];
-    expect(computeRetained([], "g", tabs, EMPTY)).toEqual([]);
+    expect(computeRetained(["g"], tabs, EMPTY)).toEqual([]);
   });
 
   it("has no cap, because it has no kind", () => {
     expect(Object.keys(RETENTION_CAPS)).not.toContain("graph");
+  });
+});
+
+// §286 유지 집합은 **순수 함수**여야 한다.
+//
+// ‼️ 처음에는 직전 결과를 ref에 들고 렌더 도중 갱신했다. 실앱 로그가 그 대가를 보여줬다:
+// 표면이 MOUNT → UNMOUNT → MOUNT를 반복했고(같은 탭인데도), 그때마다 PDF 문서가 파기·재로드되고
+// 스크롤 복원을 기다리던 관찰자가 끊겼다. React는 렌더를 버리거나 다시 실행할 수 있어서, 렌더
+// 도중의 ref 변경은 남으면 안 될 상태를 남긴다.
+//
+// MRU는 이미 스토어가 관리한다(`touchMru`). 그것을 입력으로 받으면 같은 입력에 같은 결과가
+// 나오고, 몇 번을 다시 계산해도 집합이 흔들리지 않는다.
+describe("computeRetained is pure", () => {
+  const tabs = [
+    tab("p1", "/v/1.pdf"),
+    tab("p2", "/v/2.pdf"),
+    tab("p3", "/v/3.pdf"),
+  ];
+
+  it("returns the same set for the same inputs, however many times it runs", () => {
+    const mru = ["p3", "p2", "p1"];
+    const a = computeRetained(mru, tabs, EMPTY);
+    const b = computeRetained(mru, tabs, EMPTY);
+    const c = computeRetained(mru, tabs, EMPTY);
+    expect(b).toEqual(a);
+    expect(c).toEqual(a);
+  });
+
+  it("keeps the most recent entries of each kind", () => {
+    expect(
+      computeRetained(["p3", "p2", "p1"], tabs, EMPTY).map((e) => e.tabId),
+    ).toEqual(["p3", "p2"]);
+  });
+
+  it("follows the store's order rather than a remembered one", () => {
+    // 되돌아온 탭이 앞으로 오면 밀려났던 탭이 다시 들어온다 — 이전 결과를 기억하지 않는다.
+    expect(
+      computeRetained(["p1", "p3", "p2"], tabs, EMPTY).map((e) => e.tabId),
+    ).toEqual(["p1", "p3"]);
+  });
+
+  it("ignores ids the store no longer has", () => {
+    // 'gone'은 건너뛰고, 아직 mru에 없는 열린 탭이 남은 자리를 채운다.
+    expect(
+      computeRetained(["gone", "p1"], tabs, EMPTY).map((e) => e.tabId),
+    ).toEqual(["p1", "p2"]);
+  });
+
+  it("includes an open tab the mru order has not seen yet", () => {
+    // 새로 열린 탭이 아직 touchMru를 못 받았어도 빠지면 안 된다.
+    expect(computeRetained([], tabs, EMPTY).map((e) => e.tabId)).toEqual([
+      "p1",
+      "p2",
+    ]);
   });
 });

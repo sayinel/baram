@@ -4,7 +4,7 @@
 // 컴포넌트라, 목록에서 빠지면 React가 언마운트하며 각자의 cleanup(PDF의 task.destroy() 등)이
 // 돈다. 기존 KeepalivePool이 수동 destroy를 갖는 것은 Tiptap Editor가 React 바깥 인스턴스이기
 // 때문이고 여기엔 해당하지 않는다.
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 
 import type { EditorTab } from "../stores/editor/editor";
 
@@ -60,46 +60,47 @@ export const RETENTION_CAPS: Readonly<Record<RetainedKind, number>> = {
 };
 
 /**
- * 활성 탭을 MRU 앞으로 올리고, 닫힌 탭을 버리고, kind별 상한을 적용한다.
- * 순수 함수 — 훅과 테스트가 같은 코드를 쓴다.
+ * 유지할 표면 목록을 **순수하게** 계산한다.
+ *
+ * ‼️ 예전에는 직전 결과를 ref에 들고 렌더 도중 갱신했다. 실앱 로그가 그 대가를 보여줬다:
+ * 표면이 같은 탭인데도 MOUNT → UNMOUNT → MOUNT를 반복했고, 그때마다 PDF 문서가 파기·재로드되고
+ * 스크롤 복원을 기다리던 ResizeObserver가 끊겼다. React는 렌더를 버리거나 다시 실행할 수
+ * 있으므로 렌더 도중의 ref 변경은 남으면 안 될 상태를 남긴다.
+ *
+ * MRU는 이미 스토어가 관리한다(`touchMru` — 활성 탭이 앞). 그것을 입력으로 받으면 같은 입력에
+ * 같은 결과가 나오고, 몇 번을 다시 계산해도 집합이 흔들리지 않는다.
+ *
+ * @param mruOrder 최근 사용 순 tabId. 앞이 가장 최근.
  */
 export function computeRetained(
-  prev: readonly RetainedEntry[],
-  activeTabId: null | string,
+  mruOrder: readonly string[],
   tabs: readonly EditorTab[],
   input: RetentionInput,
 ): RetainedEntry[] {
   const byId = new Map(tabs.map((t) => [t.id, t]));
 
-  // 1) 닫힌 탭 제거 + kind 재판정(소스 모드 토글로 바뀔 수 있다)
-  const kept: RetainedEntry[] = [];
-  for (const entry of prev) {
-    const tab = byId.get(entry.tabId);
-    if (!tab) continue;
-    const kind = retainedKindForTab(tab, input);
-    if (kind === null) continue;
-    kept.push({ kind, tabId: entry.tabId });
+  // MRU에 있는 것 먼저, 그다음 아직 touchMru를 받지 못한 열린 탭들.
+  const seen = new Set<string>();
+  const ordered: EditorTab[] = [];
+  for (const id of mruOrder) {
+    const tab = byId.get(id);
+    if (!tab || seen.has(id)) continue;
+    seen.add(id);
+    ordered.push(tab);
+  }
+  for (const tab of tabs) {
+    if (!seen.has(tab.id)) ordered.push(tab);
   }
 
-  // 2) 활성 탭을 앞으로
-  const activeTab = activeTabId === null ? undefined : byId.get(activeTabId);
-  const activeKind = activeTab ? retainedKindForTab(activeTab, input) : null;
-  const ordered =
-    activeTab && activeKind !== null
-      ? [
-          { kind: activeKind, tabId: activeTab.id },
-          ...kept.filter((e) => e.tabId !== activeTab.id),
-        ]
-      : kept;
-
-  // 3) kind별 상한 (ordered가 MRU 순이므로 앞에서부터 채운다)
   const counts = new Map<RetainedKind, number>();
   const result: RetainedEntry[] = [];
-  for (const entry of ordered) {
-    const n = counts.get(entry.kind) ?? 0;
-    if (n >= RETENTION_CAPS[entry.kind]) continue;
-    counts.set(entry.kind, n + 1);
-    result.push(entry);
+  for (const tab of ordered) {
+    const kind = retainedKindForTab(tab, input);
+    if (kind === null) continue;
+    const n = counts.get(kind) ?? 0;
+    if (n >= RETENTION_CAPS[kind]) continue;
+    counts.set(kind, n + 1);
+    result.push({ kind, tabId: tab.id });
   }
   return result;
 }
@@ -136,28 +137,20 @@ export function retainedKindForTab(
   return "code";
 }
 
-/**
- * computeRetained를 렌더 사이에 이어 붙인다.
- *
- * ‼️ RetentionInput 객체를 통째로 받지 않는다. 호출부가 인라인으로 만들면 매 렌더 새 참조가
- * 되어 useMemo가 항상 무효화되고, 그러면 렌더마다 prevRef가 갱신된다. 세 Set은 useState가
- * 돌려주는 안정된 참조이므로 따로 받아야 메모가 실제로 걸린다.
- */
 export function useRetainedTabs(
-  activeTabId: null | string,
+  mruOrder: readonly string[],
   tabs: readonly EditorTab[],
   sourceModeTabs: ReadonlySet<string>,
   htmlSourceTabs: ReadonlySet<string>,
   pluginPreviewTabs: ReadonlySet<string>,
 ): RetainedEntry[] {
-  const prevRef = useRef<RetainedEntry[]>([]);
-  return useMemo(() => {
-    const next = computeRetained(prevRef.current, activeTabId, tabs, {
-      htmlSourceTabs,
-      pluginPreviewTabs,
-      sourceModeTabs,
-    });
-    prevRef.current = next;
-    return next;
-  }, [activeTabId, tabs, sourceModeTabs, htmlSourceTabs, pluginPreviewTabs]);
+  return useMemo(
+    () =>
+      computeRetained(mruOrder, tabs, {
+        htmlSourceTabs,
+        pluginPreviewTabs,
+        sourceModeTabs,
+      }),
+    [mruOrder, tabs, sourceModeTabs, htmlSourceTabs, pluginPreviewTabs],
+  );
 }

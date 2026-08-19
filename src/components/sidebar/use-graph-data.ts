@@ -179,10 +179,6 @@ export function useGraphData(params: {
         //
         // ‼️ 숨은 동안에는 재지 않는다 — `display: none`이면 0×0이 나와 뷰포트가
         // degenerate해진다. 다시 보이게 될 때 아래 별도 effect가 잰다.
-        // TEMP-DIAG(§286)
-        logger.warn(
-          `[graph-diag] populate n=${nodes.length} e=${edges.length} box=${cy.container()?.clientWidth}x${cy.container()?.clientHeight}`,
-        );
         // Ensure container dimensions are available before first paint
         cy.resize();
         // §87 Force style recalculation for newly added nodes
