@@ -111,48 +111,52 @@ describe("code surface waits for its document", () => {
 
 describe("surfaces that measure their container wait to be visible", () => {
   // ‼️ Suspense가 아무것도 안 그리는 것과 구별되도록 **동기 스텁**을 주입해 마운트를 센다.
-  let graphMounts = 0;
-  function CountingGraph() {
+  let mounts = 0;
+  function CountingPdf() {
     useEffect(() => {
-      graphMounts += 1;
+      mounts += 1;
     }, []);
-    return <div data-graph="" />;
+    return <div data-pdf="" />;
   }
-  const withGraph = (): TabSurfaceRenderers => ({
+  const withPdf = (): TabSurfaceRenderers => ({
     ...makeRenderers(),
-    graph: () => <CountingGraph />,
+    pdf: () => <CountingPdf />,
   });
 
   beforeEach(() => {
-    graphMounts = 0;
+    mounts = 0;
   });
 
-  it("does not mount a graph surface that has never been shown", () => {
-    // Cytoscape는 생성 시점에 컨테이너를 잰다. display:none이면 0×0이라 뷰포트가 뭉개진다.
+  it("does not mount a surface that has never been shown", () => {
+    // PdfPreview는 스크롤 컨테이너를 ResizeObserver로 잰다. display:none이면 0×0이다.
+    //
+    // 그래프도 같은 이유로 여기 있었다 — Cytoscape가 생성 시점에 컨테이너를 잰다. 하지만
+    // 그래프는 마운트 이후에도 라이브러리가 스스로 카메라를 흔들어, 유지 대상에서 아예
+    // 빠졌다(use-retained-tabs.ts). 이 성질 자체는 남은 kind들에 여전히 필요하다.
     const { container } = render(
       <TabSurface
         active={false}
-        entry={entry("graph", "g1")}
-        renderers={withGraph()}
+        entry={entry("pdf", "p1")}
+        renderers={withPdf()}
       />,
     );
-    expect(graphMounts).toBe(0);
-    expect(container.querySelector("[data-graph]")).toBeNull();
+    expect(mounts).toBe(0);
+    expect(container.querySelector("[data-pdf]")).toBeNull();
   });
 
   it("mounts it as soon as it becomes visible, and only once", () => {
-    const r = withGraph();
+    const r = withPdf();
     const { rerender } = render(
-      <TabSurface active={false} entry={entry("graph", "g1")} renderers={r} />,
+      <TabSurface active={false} entry={entry("pdf", "p1")} renderers={r} />,
     );
-    rerender(<TabSurface active entry={entry("graph", "g1")} renderers={r} />);
-    expect(graphMounts).toBe(1);
+    rerender(<TabSurface active entry={entry("pdf", "p1")} renderers={r} />);
+    expect(mounts).toBe(1);
 
     // 유지의 핵심 — 다시 숨겨도 언마운트되지 않는다.
     rerender(
-      <TabSurface active={false} entry={entry("graph", "g1")} renderers={r} />,
+      <TabSurface active={false} entry={entry("pdf", "p1")} renderers={r} />,
     );
-    rerender(<TabSurface active entry={entry("graph", "g1")} renderers={r} />);
-    expect(graphMounts).toBe(1);
+    rerender(<TabSurface active entry={entry("pdf", "p1")} renderers={r} />);
+    expect(mounts).toBe(1);
   });
 });

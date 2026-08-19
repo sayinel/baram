@@ -8,7 +8,7 @@ import { useMemo, useRef } from "react";
 
 import type { EditorTab } from "../stores/editor/editor";
 
-import { isFileTab, isGraphTab, isPluginTab } from "../stores/editor/editor";
+import { isFileTab, isPluginTab } from "../stores/editor/editor";
 import {
   isBinaryViewerFile,
   isHtmlFile,
@@ -21,7 +21,7 @@ export interface RetainedEntry {
   tabId: string;
 }
 
-export type RetainedKind = "code" | "graph" | "html" | "pdf" | "plugin";
+export type RetainedKind = "code" | "html" | "pdf" | "plugin";
 
 export interface RetentionInput {
   /** §5.1 HTML(및 플러그인 프리뷰 파일)을 원본으로 보고 있는 탭 — App의 htmlSourceTabs. */
@@ -39,6 +39,10 @@ export interface RetentionInput {
 }
 
 /**
+ * ‼️ `graph`는 여기 없다. 유지해 봤지만 cytoscape가 0×0 컨테이너에서 자기 카메라를 흔들거나
+ * 초기값으로 되돌려, 세 번의 수정에도 실앱에서 계속 깨졌다(측정 기록은 dev/backlog.md). 그래프
+ * 탭은 예전처럼 활성일 때만 렌더한다 — 떠나면 언마운트, 돌아오면 재레이아웃.
+ *
  * kind별 독립 상한. PDF가 작은 이유는 메모리다 — 150p 문서의 안정 힙이 ~46MB(§282.3 실측)이고
  * 유휴 메모리 목표가 100MB다.
  *
@@ -50,7 +54,6 @@ export interface RetentionInput {
  */
 export const RETENTION_CAPS: Readonly<Record<RetainedKind, number>> = {
   code: 3,
-  graph: 1,
   html: 2,
   pdf: 2,
   plugin: 2,
@@ -106,7 +109,6 @@ export function retainedKindForTab(
   tab: EditorTab,
   input: RetentionInput,
 ): null | RetainedKind {
-  if (isGraphTab(tab)) return "graph";
   if (isPluginTab(tab)) return "plugin";
   if (!isFileTab(tab)) return null;
 

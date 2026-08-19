@@ -11,7 +11,6 @@ import type { SourceCodeEditorRef } from "./SourceCodeEditor";
 
 import { isMarkdownFile } from "../../utils/file-type";
 import { PluginDetailTabLazy } from "../plugins/PluginDetailTabLazy";
-import { GraphViewLazy } from "../sidebar/GraphViewLazy";
 import { HtmlPreview } from "./HtmlPreview";
 import { PdfPreviewLazy } from "./pdf/PdfPreviewLazy";
 import { SourceCodeEditor } from "./SourceCodeEditor";
@@ -100,11 +99,6 @@ export function createTabSurfaceRenderers(
           />
         </Suspense>
       ),
-    graph: ({ active }) => (
-      <Suspense fallback={null}>
-        <GraphViewLazy active={active} />
-      </Suspense>
-    ),
     html: ({ active, filePath, refreshKey }) => (
       <HtmlPreview
         active={active}

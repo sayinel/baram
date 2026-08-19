@@ -15,7 +15,6 @@ import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { applySearchHighlight } from "./graph-highlight";
 import { localSubgraphDepths } from "./graph-utils";
-import { boxOf, shouldRunViewportWork } from "./graph-viewport";
 
 export interface GraphFilterOptions {
   activeFilePath: null | string;
@@ -235,18 +234,6 @@ export function applyGraphFilter(
  * (`graphEpoch`) — change.
  */
 export function useGraphFilter(params: {
-  /**
-   * §286 그래프가 보이는가.
-   *
-   * ‼️ 이 effect는 `activeFilePath`를 deps에 갖고 있어 **탭을 바꿀 때마다** 돈다 — 그래프가
-   * 숨어 있어도. 유지 집합 이전에는 그래프 탭을 떠나면 언마운트돼 그럴 일이 없었다. 숨은 채로
-   * 돌면 `cy.fit()`이 0×0 컨테이너를 재서 뷰포트를 뭉개고, 시뮬레이션 reheat가 사용자가 보지도
-   * 못하는 사이에 배치를 흔든다(실앱: 여러 MD를 오갈 때마다 그래프가 조금씩 달라짐).
-   *
-   * 숨은 동안 미루면 값을 잃지 않는다 — deps에 `active`가 들어 있으므로 다시 보이는 순간
-   * 그때의 최신 값으로 한 번 돈다.
-   */
-  active: boolean;
   activeFilePath: null | string;
   cyReady: boolean;
   cyRef: RefObject<Core | null>;
@@ -256,15 +243,8 @@ export function useGraphFilter(params: {
   graphScope: GraphScope;
   simRef: RefObject<GraphSimulation | null>;
 }): void {
-  const {
-    active,
-    activeFilePath,
-    cyReady,
-    cyRef,
-    graphEpoch,
-    graphScope,
-    simRef,
-  } = params;
+  const { activeFilePath, cyReady, cyRef, graphEpoch, graphScope, simRef } =
+    params;
   const rootPath = useFileStore((s) => s.rootPath);
   const searchQuery = useGraphSettingsStore((s) => s.searchQuery);
   const showOrphans = useGraphSettingsStore((s) => s.showOrphans);
@@ -284,7 +264,6 @@ export function useGraphFilter(params: {
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    if (!shouldRunViewportWork(active, boxOf(cy.container()))) return;
 
     // §87 In All mode, include all vault paths (not just active rootPath)
     const scopePaths =
@@ -320,7 +299,6 @@ export function useGraphFilter(params: {
       syncStateRef.current,
     );
   }, [
-    active,
     cyRef,
     simRef,
     rootPath,

@@ -39,7 +39,8 @@ describe("retainedKindForTab", () => {
     expect(retainedKindForTab(tab("a", "/v/a.pdf"), EMPTY)).toBe("pdf");
     expect(retainedKindForTab(tab("b", "/v/b.py"), EMPTY)).toBe("code");
     expect(retainedKindForTab(tab("c", "/v/c.html"), EMPTY)).toBe("html");
-    expect(retainedKindForTab(tab("g", "", "graph"), EMPTY)).toBe("graph");
+    // ‼️ 그래프는 유지하지 않는다 — 아래 별도 테스트 참조.
+    expect(retainedKindForTab(tab("g", "", "graph"), EMPTY)).toBeNull();
     expect(retainedKindForTab(tab("p", "", "plugin"), EMPTY)).toBe("plugin");
   });
 
@@ -132,7 +133,6 @@ describe("computeRetained", () => {
     expect(Object.values(RETENTION_CAPS).every((n) => n >= 1)).toBe(true);
     expect(Object.keys(RETENTION_CAPS).sort()).toEqual([
       "code",
-      "graph",
       "html",
       "pdf",
       "plugin",
@@ -162,5 +162,24 @@ describe("html retention (regression)", () => {
     r = computeRetained(r, "h2", tabs, EMPTY);
     r = computeRetained(r, "h3", tabs, EMPTY);
     expect(r.map((e) => e.tabId)).toEqual(["h3", "h2"]);
+  });
+});
+
+describe("the graph tab is deliberately not retained", () => {
+  // ‼️ 유지해 봤고, 세 번 고쳤고, 세 번 다 실앱에서 깨졌다. 마지막 계측이 이유를 특정했다:
+  // 노드는 그대로인데 **cytoscape가 자기 카메라를 움직인다.** 컨테이너가 0×0이 되면 팬이
+  // 밀리고(402,443 → 407,66 → 454,208), PDF를 다녀오면 zoom 1 / pan 0,0 — 손대지 않은 초기
+  // 뷰포트 — 로 되돌아간다. 그 값은 우리 `cy.resize()` 이전에 이미 그렇다. 우리 호출에 건
+  // 가드로도, 카메라를 기억했다 되돌리는 방법으로도 막지 못했다.
+  //
+  // 그래프 탭은 예전처럼 활성일 때만 렌더한다. 이 테스트는 "유지 대상에 다시 넣기"가 조용히
+  // 일어나지 않게 한다 — 다시 넣으려면 그때는 저 카메라 문제의 답이 있어야 한다.
+  it("never enters the retained set", () => {
+    const tabs = [tab("g", "", "graph")];
+    expect(computeRetained([], "g", tabs, EMPTY)).toEqual([]);
+  });
+
+  it("has no cap, because it has no kind", () => {
+    expect(Object.keys(RETENTION_CAPS)).not.toContain("graph");
   });
 });

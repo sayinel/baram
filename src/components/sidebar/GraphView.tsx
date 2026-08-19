@@ -20,18 +20,7 @@ import { GraphSettingsPanel } from "./GraphSettingsPanel";
 import { useGraphData } from "./use-graph-data";
 import { useGraphFilter } from "./use-graph-filter";
 
-interface GraphViewProps {
-  /**
-   * §286 이 그래프가 지금 화면에 보이는가. 기본 true — 항상 보이는 자리에서 쓰이는 경우를
-   * 위해서다.
-   *
-   * ‼️ 유지 집합은 그래프를 마운트한 채 숨긴다. Cytoscape의 resize/fit은 컨테이너를 재는데
-   * `display: none`이면 0×0이라 뷰포트가 degenerate해진다(graph-viewport.ts).
-   */
-  active?: boolean;
-}
-
-export function GraphView({ active = true }: GraphViewProps) {
+export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const simRef = useRef<GraphSimulation | null>(null);
@@ -198,7 +187,6 @@ export function GraphView({ active = true }: GraphViewProps) {
 
   // Effect 2: Fetch data + populate cytoscape (extracted hook)
   const { nodeCount, edgeCount, graphEpoch } = useGraphData({
-    active,
     cyReady,
     cyRef,
     graphScope,
@@ -354,7 +342,6 @@ export function GraphView({ active = true }: GraphViewProps) {
 
   // Effect 7: Visibility filters + simulation sync (extracted hook)
   useGraphFilter({
-    active,
     activeFilePath,
     cyReady,
     cyRef,

@@ -38,7 +38,6 @@ const renderers: TabSurfaceRenderers = {
     sourceCursorOffsetFor: () => 0,
   }),
   code: () => null,
-  graph: () => null,
   html: () => null,
   pdf: () => null,
   plugin: () => null,
@@ -78,7 +77,7 @@ describe("every kind hides the same way", () => {
   // 주고받으므로(html-preview-shim.js) 예외를 둘 이유가 없어졌다.
   //
   // 이 테스트는 그 예외가 조용히 되살아나지 않게 한다. 되살리려면 그때는 **증거**가 있어야 한다.
-  it.each<RetainedKind>(["pdf", "code", "graph", "plugin", "html"])(
+  it.each<RetainedKind>(["pdf", "code", "plugin", "html"])(
     "%s hides with display:none and stays in flow",
     (kind) => {
       const el = wrapperFor(kind, false);
@@ -88,7 +87,7 @@ describe("every kind hides the same way", () => {
     },
   );
 
-  it.each<RetainedKind>(["pdf", "code", "graph", "plugin", "html"])(
+  it.each<RetainedKind>(["pdf", "code", "plugin", "html"])(
     "%s is visible when active",
     (kind) => {
       const el = wrapperFor(kind, true);

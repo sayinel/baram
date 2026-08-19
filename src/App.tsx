@@ -29,6 +29,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
+import { GraphViewLazy } from "./components/sidebar/GraphViewLazy";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useAppStartup } from "./hooks/use-app-startup";
@@ -935,6 +936,14 @@ function App() {
               <div className="empty-workspace">
                 <p>{t("home.emptyWorkspace")}</p>
               </div>
+            </div>
+          ) : isGraphTabActive ? (
+            // §286 그래프는 유지 대상이 아니다 — cytoscape가 0×0 컨테이너에서 자기 카메라를
+            // 흔들어, 세 번의 수정에도 실앱에서 계속 깨졌다(use-retained-tabs.ts 참조).
+            <div className="editor-area-scroll" data-editor-scroll>
+              <Suspense fallback={null}>
+                <GraphViewLazy />
+              </Suspense>
             </div>
           ) : isImageTab && activeTabFilePath ? (
             <div
