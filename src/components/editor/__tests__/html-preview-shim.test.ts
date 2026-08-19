@@ -37,6 +37,8 @@ interface Harness {
   open: (url?: string) => unknown;
   parent: object;
   posted: Record<string, unknown>[];
+  /** The options the shim last passed to scrollTo, or null. */
+  scrollCall: () => null | Record<string, unknown>;
   /** The (x, y) the shim last asked the document to scroll to, or null. */
   scrolledTo: () => [number, number] | null;
   setScrollY: (y: number) => void;
@@ -69,6 +71,7 @@ function mount(bodyHtml = ""): Harness {
   };
 
   let scrolledTo: [number, number] | null = null;
+  let scrollCall: null | Record<string, unknown> = null;
   // rAF is driven by hand so the coalescing below is observable rather than assumed.
   const frameQueue: (() => void)[] = [];
   const fakeWindow = {
@@ -80,8 +83,14 @@ function mount(bodyHtml = ""): Harness {
     open: vi.fn(() => "native-window"),
     parent,
     requestAnimationFrame: (fn: () => void) => void frameQueue.push(fn),
-    scrollTo: (x: number, y: number) => {
-      scrolledTo = [x, y];
+    scrollTo: (arg: number | Record<string, unknown>, y?: number) => {
+      if (typeof arg === "number") {
+        scrolledTo = [arg, y ?? 0];
+        scrollCall = { left: arg, top: y };
+        return;
+      }
+      scrollCall = arg;
+      scrolledTo = [Number(arg.left ?? 0), Number(arg.top ?? 0)];
     },
     scrollY: 0,
   };
@@ -122,6 +131,7 @@ function mount(bodyHtml = ""): Harness {
     open: fakeWindow.open as (url?: string) => unknown,
     parent,
     posted,
+    scrollCall: () => scrollCall,
     scrolledTo: () => scrolledTo,
     setScrollY: (y: number) => {
       fakeWindow.scrollY = y;
@@ -182,6 +192,20 @@ describe("scroll position bridge", () => {
     const { message, scrolledTo } = mount("<p>hello</p>");
     message({ __baram: TAG, type: "restore-scroll", y: 512 }, "parent");
     expect(scrolledTo()).toEqual([0, 512]);
+  });
+
+  // ‼️ 실앱에서 **한 파일만** 깨졌다. 두 HTML의 차이가 정확히 하나였다:
+  //
+  //   hyperaccel_lpu_architecture.html   scroll-behavior: smooth  → 깨짐
+  //   VJEPA2_AC_workload_analysis.html   (없음)                    → 정상
+  //
+  // `scroll-behavior: smooth`가 걸린 문서에서는 `scrollTo`가 **애니메이션**이 된다. 프레임이
+  // 막 다시 보이며 레이아웃 박스가 재생성되는 순간에 시작된 애니메이션은 0에서 끊긴다.
+  // 복원은 이동이 아니라 **되돌리기**이므로 애니메이션이면 안 된다 — 문서가 무엇을 선언했든.
+  it("jumps instantly, so a document's smooth scroll-behavior cannot animate the restore", () => {
+    const { message, scrollCall } = mount("<p>hello</p>");
+    message({ __baram: TAG, type: "restore-scroll", y: 512 }, "parent");
+    expect(scrollCall()).toMatchObject({ behavior: "instant", top: 512 });
   });
 
   it("refuses a restore from any window other than the host", () => {

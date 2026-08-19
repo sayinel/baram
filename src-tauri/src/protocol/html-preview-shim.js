@@ -172,6 +172,18 @@
     if (data.__baram !== TAG) return;
     if (data.type !== "restore-scroll") return;
     if (typeof data.y !== "number") return;
-    window.scrollTo(0, data.y);
+    // ‼️ `behavior: "instant"` is not decoration. A document that declares
+    // `html { scroll-behavior: smooth }` turns a plain scrollTo into an ANIMATION, and an
+    // animation started at the moment this frame is shown again -- its layout box only just
+    // re-established -- lands back at the top. One previewed file did exactly that while
+    // every other one restored fine; the CSS was the only difference between them.
+    // Restoring a position is not travelling to it, so it must never animate, whatever the
+    // document declared. The two-argument form is the fallback for engines without the
+    // options overload, where nothing overrides the declaration anyway.
+    try {
+      window.scrollTo({ behavior: "instant", left: 0, top: data.y });
+    } catch (err) {
+      window.scrollTo(0, data.y);
+    }
   });
 })();
