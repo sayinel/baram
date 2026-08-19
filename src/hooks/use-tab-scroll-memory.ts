@@ -40,7 +40,11 @@ export function useTabScrollMemory(
   const ownOffsets = useRef(new Map<string, number>());
   const offsets = externalOffsets ?? ownOffsets;
   // 직전 active 값 — 복원은 비활성→활성 **엣지**에서만 일어난다(아래 참조).
-  const wasActive = useRef(active);
+  //
+  // ‼️ `false`로 시작한다. 상한을 넘겨 축출된 표면은 다시 열릴 때 **새로 마운트**되는데,
+  // `active`로 시작하면 엣지가 없어 저장해 둔 자리를 못 되돌린다. 저장된 값이 없으면 어차피
+  // 아무것도 하지 않으므로 첫 마운트를 엣지로 쳐도 손해가 없다.
+  const wasActive = useRef(false);
   // 매 렌더 새 클로저로 들어오는 콜백을 deps에 넣으면 리스너가 매번 재등록된다.
   const resolveRef = useRef(resolveTarget);
   resolveRef.current = resolveTarget;

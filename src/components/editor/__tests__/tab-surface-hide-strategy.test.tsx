@@ -34,6 +34,7 @@ const renderers: TabSurfaceRenderers = {
     onTogglePdfFind: vi.fn(),
     pdfFindOpen: false,
     pluginIdFor: () => "",
+    scrollOffsets: { current: new Map<string, number>() },
     setSourceBuffer: vi.fn(),
     sourceCursorOffsetFor: () => 0,
   }),

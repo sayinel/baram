@@ -2,7 +2,7 @@
 //
 // TabSurface.tsx에서 분리한 이유는 이 저장소의 기존 규칙과 같다(table-insert-coords.ts 헤더
 // 참조): 컴포넌트 파일은 컴포넌트만 export해야 react-refresh가 동작한다.
-import type { ReactNode, RefObject } from "react";
+import type { MutableRefObject, ReactNode, RefObject } from "react";
 import { Suspense } from "react";
 
 import type { RetainedKind } from "../../hooks/use-retained-tabs";
@@ -48,6 +48,11 @@ export interface TabSurfaceDeps {
   pdfFindOpen: boolean;
   /** §69 플러그인 탭이 보여줄 플러그인 id — 자기 탭에서 읽는다. */
   pluginIdFor: (tabId: string) => string;
+  /**
+   * §291 탭별 스크롤 오프셋. App이 소유하므로 상한을 넘겨 축출돼도 자리는 남는다.
+   * HTML은 iframe 안이라 DOM에서 읽을 수 없어, bridge가 실어 온 값을 여기에 적는다.
+   */
+  scrollOffsets: MutableRefObject<Map<string, number>>;
   setSourceBuffer: (tabId: string, content: string) => void;
   sourceCursorOffsetFor: (tabId: string) => number;
 }
@@ -99,10 +104,12 @@ export function createTabSurfaceRenderers(
           />
         </Suspense>
       ),
-    html: ({ active, filePath, refreshKey }) => (
+    html: ({ active, filePath, refreshKey, tabId }) => (
       <HtmlPreview
         active={active}
         filePath={filePath}
+        getScrollY={() => deps.scrollOffsets.current.get(tabId) ?? 0}
+        onScrollY={(y) => deps.scrollOffsets.current.set(tabId, y)}
         refreshKey={refreshKey}
         title={filePath}
       />

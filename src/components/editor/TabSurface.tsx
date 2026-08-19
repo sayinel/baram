@@ -7,7 +7,12 @@
 // ‼️ 이 컴포넌트는 활성 탭 파생값을 **받지 않는다.** App.tsx의 previewFileMtime·
 // activeTabFilePath 같은 값은 전부 "활성 탭"의 것이라, 숨은 표면에 그대로 넘기면 남의 mtime을
 // refreshKey로 받아 엉뚱하게 리로드한다(§288 규칙 2). 자기 `entry.tabId`로 직접 읽는다.
-import type { CSSProperties, ReactNode, RefObject } from "react";
+import type {
+  CSSProperties,
+  MutableRefObject,
+  ReactNode,
+  RefObject,
+} from "react";
 import { useEffect, useRef, useState } from "react";
 
 import type {
@@ -34,6 +39,13 @@ interface TabSurfaceProps {
   /** createTabSurfaceRenderers(...)의 결과. 테스트는 일부 kind만 갈아끼운다. */
   renderers: TabSurfaceRenderers;
   /**
+   * §291 탭별 스크롤 오프셋. **App이 소유한다** — 이 컴포넌트가 아니라.
+   *
+   * ‼️ 여기 두면 상한을 넘겨 축출될 때 위치도 함께 사라진다. 상한은 "재로딩을 얼마나 피할
+   * 것인가"의 문제여야지 "자리를 잃느냐"의 문제여서는 안 된다.
+   */
+  scrollOffsets?: MutableRefObject<Map<string, number>>;
+  /**
    * §287 활성 코드 표면을 App의 단일 ref로 올려 보낼 통로. handleSave/toggleHtmlView가
    * 그 ref로 "지금 편집 중인 CodeMirror"를 읽는다 — 숨은 표면을 가리키면 저장이 엉뚱한
    * 내용을 집는다.
@@ -46,6 +58,7 @@ export function TabSurface({
   entry,
   overlay,
   renderers,
+  scrollOffsets,
   sourceEditorRef,
 }: TabSurfaceProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -91,26 +104,31 @@ export function TabSurface({
   // §291 스크롤 요소는 표면마다 다르다. PDF·그래프·HTML·플러그인 탭은 래퍼 자신이지만,
   // 코드 표면은 CodeMirror의 `.cm-scroller`(view.scrollDOM)가 스크롤한다 — 래퍼에 리스너를
   // 달면 scroll 이벤트가 오지 않는다.
-  useTabScrollMemory(entry.tabId, active, () => {
-    if (entry.kind === "code") {
-      const el = codeEditorRef.current?.getScrollElement();
+  useTabScrollMemory(
+    entry.tabId,
+    active,
+    () => {
+      if (entry.kind === "code") {
+        const el = codeEditorRef.current?.getScrollElement();
+        if (!el) return null;
+        return {
+          element: el,
+          getScrollTop: () => codeEditorRef.current?.getScrollTop() ?? 0,
+          setScrollTop: (n: number) => codeEditorRef.current?.setScrollTop(n),
+        };
+      }
+      const el = wrapperRef.current;
       if (!el) return null;
       return {
         element: el,
-        getScrollTop: () => codeEditorRef.current?.getScrollTop() ?? 0,
-        setScrollTop: (n: number) => codeEditorRef.current?.setScrollTop(n),
+        getScrollTop: () => el.scrollTop,
+        setScrollTop: (n: number) => {
+          el.scrollTop = n;
+        },
       };
-    }
-    const el = wrapperRef.current;
-    if (!el) return null;
-    return {
-      element: el,
-      getScrollTop: () => el.scrollTop,
-      setScrollTop: (n: number) => {
-        el.scrollTop = n;
-      },
-    };
-  });
+    },
+    scrollOffsets,
+  );
 
   return (
     <div

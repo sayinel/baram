@@ -553,6 +553,7 @@ function App() {
         onPdfFindApiChange: setPdfFindApi,
         onTogglePdfFind: handleTogglePdfFind,
         pdfFindOpen,
+        scrollOffsets,
         pluginIdFor: (tabId) =>
           useEditorStore.getState().tabs.find((t) => t.id === tabId)
             ?.pluginId ?? "",
@@ -996,6 +997,7 @@ function App() {
               key={`${entry.kind}-${entry.tabId}`}
               overlay={previewToggleButton}
               renderers={tabSurfaceRenderers}
+              scrollOffsets={scrollOffsets}
               sourceEditorRef={sourceEditorRef}
             />
           ))}

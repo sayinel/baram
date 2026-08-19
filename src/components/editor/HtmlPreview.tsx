@@ -25,7 +25,7 @@
 // here — see `externalUrlToOpen`.
 
 import type { CSSProperties } from "react";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -47,6 +47,12 @@ interface HtmlPreviewProps {
   active?: boolean;
   /** Absolute path of the .html file (must be inside an opened context). */
   filePath: string;
+  /**
+   * §291 이 탭의 마지막 위치를 읽고 쓴다. **컴포넌트 밖에 산다** — 상한을 넘겨 축출되면
+   * 이 컴포넌트는 사라지지만 자리는 남아야 한다. 생략하면 컴포넌트 수명만큼만 기억한다.
+   */
+  getScrollY?: () => number;
+  onScrollY?: (y: number) => void;
   /** Bumped on every save — forces the iframe to reload the file from disk. */
   refreshKey?: number;
   /** Accessible title for the iframe (file path or name). */
@@ -56,6 +62,8 @@ interface HtmlPreviewProps {
 export const HtmlPreview = memo(function HtmlPreview({
   active = true,
   filePath,
+  getScrollY,
+  onScrollY,
   refreshKey,
   title,
 }: HtmlPreviewProps) {
@@ -67,6 +75,10 @@ export const HtmlPreview = memo(function HtmlPreview({
    * 실제 스크롤은 opaque-origin 중첩 문서 안에 있다. 그래서 값은 bridge로만 들어온다.
    */
   const scrollYRef = useRef(0);
+  // 호출부가 인라인으로 만드는 콜백이라 매 렌더 참조가 바뀐다. deps에 넣으면 그때마다
+  // 리스너를 다시 달게 되므로 ref로 미러링한다(use-tab-scroll-memory.ts와 같은 이유).
+  const onScrollYRef = useRef(onScrollY);
+  onScrollYRef.current = onScrollY;
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const src = useMemo(
     () => htmlPreviewUrl(filePath, refreshKey),
@@ -105,7 +117,9 @@ export const HtmlPreview = memo(function HtmlPreview({
         // §291 프레임이 자기 스크롤 위치를 알려 온다. 우리는 이 문서의 scrollTop을 읽을 수
         // 없으므로(opaque origin) 이것이 유일한 출처다.
         case "scroll":
-          if (typeof payload.y === "number") scrollYRef.current = payload.y;
+          if (typeof payload.y !== "number") return;
+          scrollYRef.current = payload.y;
+          onScrollYRef.current?.(payload.y);
           return;
         case "zoom":
           applyZoomAction(payload.action, payload.delta);
@@ -117,7 +131,21 @@ export const HtmlPreview = memo(function HtmlPreview({
     return () => window.removeEventListener("message", handleMessage);
   }, [active]);
 
-  // §291 다시 보이게 되면 프레임에 위치를 돌려준다.
+  // §291 프레임에 위치를 돌려준다.
+  //
+  // 두 시점에서 부른다: 다시 **보이게 될 때**(마운트는 유지된 채 숨었다 나온 경우)와 프레임이
+  // **로드를 마쳤을 때**(상한을 넘겨 축출됐다가 다시 열린 경우 — 그때는 문서가 새로 뜨므로
+  // 보이게 되는 시점엔 아직 받을 문서가 없다).
+  const restore = useCallback(() => {
+    const y = getScrollY ? getScrollY() : scrollYRef.current;
+    if (y <= 0) return;
+    frameRef.current?.contentWindow?.postMessage(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y },
+      "*",
+    );
+  }, [getScrollY]);
+
+  // 다시 보이게 되면 프레임에 위치를 돌려준다.
   //
   // 숨겨질 때 이 문서의 레이아웃 박스가 파기되어 위치가 0으로 돌아가므로, 살아 있는 것은
   // 우리가 받아 둔 마지막 보고뿐이다. 되돌릴 값이 0이면 보내지 않는다 — 프레임은 이미 거기
@@ -125,17 +153,13 @@ export const HtmlPreview = memo(function HtmlPreview({
   // 앵커 스크롤을 덮어쓴다.
   useEffect(() => {
     if (!active) return;
-    const y = scrollYRef.current;
-    if (y <= 0) return;
-    frameRef.current?.contentWindow?.postMessage(
-      { __baram: BRIDGE_TAG, type: "restore-scroll", y },
-      "*",
-    );
-  }, [active]);
+    restore();
+  }, [active, restore]);
 
   return (
     <iframe
       className="html-preview-frame"
+      onLoad={restore}
       ref={frameRef}
       sandbox="allow-scripts"
       src={src}

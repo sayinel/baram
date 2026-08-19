@@ -248,3 +248,52 @@ describe("scroll position round trip", () => {
     expect(send).not.toHaveBeenCalled();
   });
 });
+
+// §291 상한(RETENTION_CAPS.html = 2)을 넘겨 축출된 탭은 다시 열릴 때 문서를 새로 로드한다.
+// 그때도 자리는 남아야 한다 — 상한은 "재로딩을 얼마나 피할 것인가"의 문제여야지 "자리를
+// 잃느냐"의 문제여서는 안 된다.
+describe("position outlives the component", () => {
+  it("reads its position from the caller's store, not its own lifetime", () => {
+    const offsets = new Map<string, number>([["t1", 640]]);
+    const { container } = render(
+      <HtmlPreview
+        active
+        filePath="/Users/me/a.html"
+        getScrollY={() => offsets.get("t1") ?? 0}
+        onScrollY={(y) => offsets.set("t1", y)}
+      />,
+    );
+    const frame = container.querySelector("iframe");
+    const send = vi.fn();
+    Object.defineProperty(frame!.contentWindow, "postMessage", { value: send });
+
+    // 새로 열린 문서는 로드를 마쳐야 받을 준비가 된다.
+    act(() => frame!.dispatchEvent(new Event("load")));
+    expect(send).toHaveBeenCalledWith(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y: 640 },
+      "*",
+    );
+  });
+
+  it("writes every reported position out to the caller's store", () => {
+    const offsets = new Map<string, number>();
+    const { container } = render(
+      <HtmlPreview
+        active
+        filePath="/Users/me/a.html"
+        getScrollY={() => offsets.get("t1") ?? 0}
+        onScrollY={(y) => offsets.set("t1", y)}
+      />,
+    );
+    const frame = container.querySelector("iframe");
+    act(() =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { __baram: BRIDGE_TAG, type: "scroll", y: 921 },
+          source: frame!.contentWindow,
+        }),
+      ),
+    );
+    expect(offsets.get("t1")).toBe(921);
+  });
+});
