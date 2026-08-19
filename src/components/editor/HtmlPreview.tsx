@@ -60,6 +60,13 @@ export const HtmlPreview = memo(function HtmlPreview({
   title,
 }: HtmlPreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  /**
+   * §291 프레임이 마지막으로 알려 온 세로 위치.
+   *
+   * ‼️ 호스트가 직접 잴 수 없다. 래퍼는 `overflow: auto hidden`이라 세로로 스크롤하지 않고,
+   * 실제 스크롤은 opaque-origin 중첩 문서 안에 있다. 그래서 값은 bridge로만 들어온다.
+   */
+  const scrollYRef = useRef(0);
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const src = useMemo(
     () => htmlPreviewUrl(filePath, refreshKey),
@@ -95,6 +102,11 @@ export const HtmlPreview = memo(function HtmlPreview({
           );
           return;
         }
+        // §291 프레임이 자기 스크롤 위치를 알려 온다. 우리는 이 문서의 scrollTop을 읽을 수
+        // 없으므로(opaque origin) 이것이 유일한 출처다.
+        case "scroll":
+          if (typeof payload.y === "number") scrollYRef.current = payload.y;
+          return;
         case "zoom":
           applyZoomAction(payload.action, payload.delta);
           return;
@@ -103,6 +115,22 @@ export const HtmlPreview = memo(function HtmlPreview({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
+  }, [active]);
+
+  // §291 다시 보이게 되면 프레임에 위치를 돌려준다.
+  //
+  // 숨겨질 때 이 문서의 레이아웃 박스가 파기되어 위치가 0으로 돌아가므로, 살아 있는 것은
+  // 우리가 받아 둔 마지막 보고뿐이다. 되돌릴 값이 0이면 보내지 않는다 — 프레임은 이미 거기
+  // 있고, 문서를 새로 연 직후에도 이 effect가 도는데 그때 0을 쏘면 문서 자신의 `#fragment`
+  // 앵커 스크롤을 덮어쓴다.
+  useEffect(() => {
+    if (!active) return;
+    const y = scrollYRef.current;
+    if (y <= 0) return;
+    frameRef.current?.contentWindow?.postMessage(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y },
+      "*",
+    );
   }, [active]);
 
   return (

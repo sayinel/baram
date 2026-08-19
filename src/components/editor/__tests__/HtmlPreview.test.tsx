@@ -23,9 +23,10 @@ import { BRIDGE_TAG } from "../html-preview-url";
 import { HtmlPreview } from "../HtmlPreview";
 
 function renderPreview(active = true) {
-  const { container } = render(
+  const view = render(
     <HtmlPreview active={active} filePath="/Users/me/a.html" />,
   );
+  const { container } = view;
   const frame = container.querySelector("iframe");
   if (!frame) throw new Error("preview rendered no iframe");
   return {
@@ -33,6 +34,9 @@ function renderPreview(active = true) {
     /** Delivers a message as some window on the page. */
     post: (data: unknown, source: null | Window = frame.contentWindow) =>
       window.dispatchEvent(new MessageEvent("message", { data, source })),
+    /** Re-renders with a different `active`, as a tab switch does. */
+    setActive: (next: boolean) =>
+      view.rerender(<HtmlPreview active={next} filePath="/Users/me/a.html" />),
   };
 }
 
@@ -189,5 +193,58 @@ describe("a hidden preview is muted", () => {
     const { post } = renderPreview(false);
     act(() => post(openExternal("https://example.com")));
     expect(openUrlMock).not.toHaveBeenCalled();
+  });
+});
+
+// §291 The preview's vertical scroll lives inside the frame's document, which is
+// opaque-origin: the host can neither read nor write it. Hiding the surface destroys
+// that document's layout box and the reader's place with it, so the position has to
+// travel over the bridge in both directions.
+describe("scroll position round trip", () => {
+  it("hands the frame back the last position it reported", () => {
+    const { frame, post, setActive } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 880 }));
+    act(() => setActive(false));
+    act(() => setActive(true));
+
+    expect(send).toHaveBeenCalledWith(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y: 880 },
+      "*",
+    );
+  });
+
+  it("does not send a restore for a position of zero", () => {
+    // 문서를 처음 열었을 때도 이 effect가 돈다. 0을 쏘면 문서 자신의 #fragment 앵커
+    // 스크롤을 덮어쓴다.
+    const { frame } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+    act(() => undefined);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ignores a scroll report from a window that is not its frame", () => {
+    const { frame, post, setActive } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 999 }, window));
+    act(() => setActive(false));
+    act(() => setActive(true));
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ignores a scroll report with a non-numeric position", () => {
+    const { frame, post, setActive } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: "880" }));
+    act(() => setActive(false));
+    act(() => setActive(true));
+    expect(send).not.toHaveBeenCalled();
   });
 });

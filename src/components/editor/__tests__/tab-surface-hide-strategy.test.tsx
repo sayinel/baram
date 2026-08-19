@@ -71,35 +71,28 @@ beforeEach(() => {
   });
 });
 
-describe("html surface stays in layout", () => {
-  it("hides with visibility, never display:none", () => {
-    const el = wrapperFor("html", false);
-    expect(el.style.visibility).toBe("hidden");
-    // display:none이면 iframe 문서의 레이아웃 박스가 파기되어 내부 스크롤과 페인트를 잃는다.
-    expect(el.style.display).not.toBe("none");
-  });
-
-  it("is absolutely positioned so a laid-out hidden surface cannot disturb the flex flow", () => {
-    const el = wrapperFor("html", false);
-    expect(el.style.position).toBe("absolute");
-  });
-
-  it("is visible and positioned the same way when active", () => {
-    const el = wrapperFor("html", true);
-    expect(el.style.visibility).toBe("");
-    expect(el.style.position).toBe("absolute");
-  });
-});
-
-describe("other kinds keep display:none", () => {
-  it.each<RetainedKind>(["pdf", "code", "graph", "plugin"])(
-    "%s hides with display:none",
+describe("every kind hides the same way", () => {
+  // ‼️ 한때 HTML만 `visibility: hidden` + 절대 배치로 예외를 뒀다. iframe의 세로 스크롤이
+  // opaque-origin 문서 안에 있으니 박스를 파기하지 말자는 생각이었는데, 실앱에서 반박됐다 —
+  // 위치도 여전히 잃었고 화면도 여전히 하얗게 남았다. 그 위치는 이제 §291 bridge가 프레임과
+  // 주고받으므로(html-preview-shim.js) 예외를 둘 이유가 없어졌다.
+  //
+  // 이 테스트는 그 예외가 조용히 되살아나지 않게 한다. 되살리려면 그때는 **증거**가 있어야 한다.
+  it.each<RetainedKind>(["pdf", "code", "graph", "plugin", "html"])(
+    "%s hides with display:none and stays in flow",
     (kind) => {
-      // 이 표면들의 스크롤은 우리가 읽고 되돌릴 수 있으므로(§291), 레이아웃에서 빼는 편이
-      // 싸다. 특히 마크다운·대용량 PDF를 숨은 채로 레이아웃에 남기면 리사이즈마다 비용이 든다.
       const el = wrapperFor(kind, false);
       expect(el.style.display).toBe("none");
       expect(el.style.position).toBe("");
+      expect(el.style.visibility).toBe("");
+    },
+  );
+
+  it.each<RetainedKind>(["pdf", "code", "graph", "plugin", "html"])(
+    "%s is visible when active",
+    (kind) => {
+      const el = wrapperFor(kind, true);
+      expect(el.style.display).toBe("");
     },
   );
 });

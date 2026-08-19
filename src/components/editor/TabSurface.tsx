@@ -120,7 +120,7 @@ export function TabSurface({
       {...(active ? { "data-editor-active": "" } : {})}
       data-editor-scroll
       ref={wrapperRef}
-      style={hiddenStyleFor(entry.kind, active)}
+      style={hiddenStyleFor(active)}
     >
       {active && overlay}
       {everActive &&
@@ -136,30 +136,16 @@ export function TabSurface({
 }
 
 /**
- * 숨기는 방식은 kind마다 다르다.
+ * 숨기는 방식은 모든 kind가 같다 — `display: none`. 레이아웃에서 완전히 빠지므로 숨은 표면이
+ * 리사이즈 비용을 만들지 않는다.
  *
- * 기본은 `display: none`이다 — 레이아웃에서 완전히 빠지므로 숨은 표면이 리사이즈 비용을
- * 만들지 않는다. 잃어버리는 스크롤 위치는 §291이 기록·복원한다.
- *
- * ‼️ HTML만 예외다. `.editor-area-scroll.html-preview-scroll`은 `overflow: auto hidden`이라
- * **세로 스크롤이 래퍼가 아니라 iframe 내부 문서에 있다.** 그 문서는 opaque origin이라
- * scrollTop을 읽지도 쓰지도 못한다 — §291의 기록·복원이 원리적으로 닿지 않는다. 거기에
- * `display: none`이 그 문서의 레이아웃 박스까지 파기하면 위치와 페인트를 함께 잃는다(실앱:
- * 복귀 시 문서 처음으로 + 스크롤하기 전까지 흰 화면).
- *
- * **저장할 수 없는 상태는 잃지 않는 수밖에 없다.** 그래서 HTML은 레이아웃에 남기고 시각적으로만
- * 감춘다. 그대로 두면 flex 흐름에서 자리를 차지하므로(형제와 높이를 나눠 갖는다) 절대 배치로
- * 겹쳐 둔다 — `.editor-area`가 `position: relative`다. `visibility: hidden`은 페인트도
- * 히트테스트도 받지 않으므로 숨은 표면이 클릭을 가로채지 않는다.
+ * ‼️ HTML만 `visibility: hidden` + 절대 배치로 레이아웃에 남겨 본 적이 있다. iframe의 세로
+ * 스크롤이 opaque-origin 문서 안에 있어 우리가 되돌릴 수 없으니 박스를 파기하지 말자는
+ * 생각이었다. **실앱에서 반박됐다** — 위치도 여전히 잃었고 화면도 여전히 하얗게 남았다.
+ * 지금은 그 위치를 §291 bridge가 프레임과 주고받으므로(html-preview-shim.js) 박스를 살려
+ * 둘 이유가 없다.
  */
-function hiddenStyleFor(kind: RetainedKind, active: boolean): CSSProperties {
-  if (kind === "html") {
-    return {
-      inset: 0,
-      position: "absolute",
-      visibility: active ? undefined : "hidden",
-    };
-  }
+function hiddenStyleFor(active: boolean): CSSProperties {
   return { display: active ? undefined : "none" };
 }
 
