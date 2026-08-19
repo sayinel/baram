@@ -59,9 +59,17 @@ export interface UsePdfAreaHighlightResult {
 }
 
 export function usePdfAreaHighlight({
+  active,
   areaModeOn,
   onAreaHighlightDrawn,
 }: {
+  /**
+   * §288 규칙 1 — 이 PDF 표면이 지금 화면에 보이는가.
+   *
+   * 아래 Alt 추적은 document 전역이고 모드와 무관하게 항상 붙는다. 숨은 표면까지 듣게 두면
+   * 사용자가 **다른 탭에서** Alt를 누를 때마다 보이지 않는 PDF가 영역 선택 모드로 들어간다.
+   */
+  active: boolean;
   /** §276.3.1 use-pdf-highlight-mode.ts의 `mode === "area"` — 툴바 토글의
    * raw 상태다. aria-pressed는 이 값만 반영해야 한다(Alt를 누르고 있다고
    * 토글 버튼이 눌린 것처럼 보이면 안 된다) — 그 판단은 호출부의 몫이라 이
@@ -86,6 +94,7 @@ export function usePdfAreaHighlight({
   // 한다). blur에서도 altHeld를 반드시 끈다 — Alt+Tab으로 창을 떠나면
   // keyup이 이 문서에 도착하지 않아 안 그러면 눌림 상태가 영원히 고정된다.
   useEffect(() => {
+    if (!active) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Alt") setAltHeld(true);
       else if (e.key === "Escape") cancelDragRef.current?.();
@@ -104,7 +113,7 @@ export function usePdfAreaHighlight({
       document.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, []);
+  }, [active]);
 
   // §276.3 "Escape(또는 모드 OFF)로 드래그 중 취소" — 모드 토글과 Alt
   // 릴리즈는 서로 다른 이벤트지만 둘 다 areaCaptureActive를 false로

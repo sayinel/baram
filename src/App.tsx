@@ -4,6 +4,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -13,26 +14,22 @@ import type { MergeSegment } from "./ipc/types";
 import type { EditorTab } from "./stores/editor/editor";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { useEditor } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
-import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
-import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { MarkdownSurface } from "./components/editor/MarkdownSurface";
 import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
 import { PluginViewerHost } from "./components/editor/PluginViewerHost";
+import { createTabSurfaceRenderers } from "./components/editor/tab-surface-renderers";
+import { TabSurface } from "./components/editor/TabSurface";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
-import { BlockHandle } from "./components/toolbar/BlockHandle";
-import { ContextMenu } from "./components/toolbar/ContextMenu";
-import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
-import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
-import { TableSelectionHandles } from "./components/toolbar/TableSelectionHandles";
-import { TableToolbar } from "./components/toolbar/TableToolbar";
+import { GraphViewLazy } from "./components/sidebar/GraphViewLazy";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useAppStartup } from "./hooks/use-app-startup";
@@ -57,6 +54,7 @@ import {
 import { useLargeDocKeepalive } from "./hooks/use-large-doc-keepalive";
 import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
+import { useRetainedTabs } from "./hooks/use-retained-tabs";
 import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
 import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
@@ -112,21 +110,6 @@ import { buildTemplatePrompt } from "./utils/smart-templates";
 // index.html's <head> — a blank window on cold start.
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
-const SourceCodeEditor = lazy(() =>
-  import("./components/editor/SourceCodeEditor").then((m) => ({
-    default: m.SourceCodeEditor,
-  })),
-);
-const HtmlPreview = lazy(() =>
-  import("./components/editor/HtmlPreview").then((m) => ({
-    default: m.HtmlPreview,
-  })),
-);
-const PdfPreview = lazy(() =>
-  import("./components/editor/pdf/PdfPreview").then((m) => ({
-    default: m.PdfPreview,
-  })),
-);
 const CommandPalette = lazy(() =>
   import("./components/command/CommandPalette").then((m) => ({
     default: m.CommandPalette,
@@ -165,16 +148,6 @@ const AboutModal = lazy(() =>
 const UpdateDialog = lazy(() =>
   import("./components/settings/UpdateDialog").then((m) => ({
     default: m.UpdateDialog,
-  })),
-);
-const PluginDetailTab = lazy(() =>
-  import("./components/plugins/PluginDetailTab").then((m) => ({
-    default: m.PluginDetailTab,
-  })),
-);
-const GraphViewTab = lazy(() =>
-  import("./components/sidebar/GraphView").then((m) => ({
-    default: m.GraphView,
   })),
 );
 const SkillGeneratorDialog = lazy(() =>
@@ -299,9 +272,6 @@ function App() {
   // Guarding call sites one by one is what leaves the following one exposed.
   const isEditableTextFile =
     isCodeFile && !isBinaryViewerFile(activeTabFilePath);
-  const codeLanguage = activeTabFilePath
-    ? getLanguageForFile(activeTabFilePath)
-    : null;
 
   // PDF file viewer — read-only, built-in (PDF.js)
   const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
@@ -328,14 +298,6 @@ function App() {
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
 
-  // Both preview surfaces scale their own content and so neutralize the
-  // container's CSS zoom — see html-preview.css. The source view is ordinary
-  // editor content and keeps it.
-  let previewScrollClass = "";
-  if (!isHtmlSourceView) {
-    if (isPluginPreviewTab) previewScrollClass = " plugin-viewer-scroll";
-    else if (isHtmlTab) previewScrollClass = " html-preview-scroll";
-  }
   // Viewers reload whenever the file's saved/reloaded mtime bumps
   // (manual save, auto-save, toggle-flush, or external auto-reload)
   const previewFileMtime = useFileStore((s) =>
@@ -543,23 +505,99 @@ function App() {
   // covers source-mode fills and tab-switch cancellation covers both.
   const appendHandleRef: AppendHandleRef = useRef(null);
 
+  // §291 탭별 스크롤 오프셋. MarkdownSurface가 scroll 이벤트로 **기록**하고,
+  // useTabSwitching이 콘텐츠 설치 뒤에 **복원**한다 — 두 시점이 달라 맵을 공유한다.
+  const scrollOffsets = useRef(new Map<string, number>());
+
   // --- Source mode (WYSIWYG ↔ raw markdown toggle) ---
   // Must be called before useFileOperations and useTabSwitching because it owns
   // editorStateCache and exposes isSourceMode / sourceContentRef they need.
   // [MAJOR-3 fix] Pass activeEditor so source-mode toggle reads/writes the
   // correct document for keep-alive tabs.
   const {
-    isSourceMode,
-    setIsSourceMode,
-    sourceContent,
-    setSourceContent,
-    sourceCursorOffset,
-    sourceEditorRef,
-    sourceContentRef,
+    bufferVersion,
     editorStateCache,
+    getSourceBuffer,
+    hasSourceBuffer,
+    isSourceMode,
+    setSourceBuffer,
+    sourceCursorOffsetFor,
+    sourceEditorRef,
+    sourceModeTabs,
     toggleSourceMode,
-    handleSourceChange,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
+
+  // §285 유지 집합 — 마운트를 유지할 탭과 그 표면 종류.
+  //
+  // `pluginPreviewTabs`를 여기서 만드는 이유: 뷰어 레지스트리를 아는 것은 App뿐이다.
+  // SVG처럼 **텍스트인데 플러그인이 그리는** 파일은 판정 함수만 보면 `code`로 떨어지는데,
+  // 프리뷰 상태에서는 유지 대상이 아니다(§290에서 플러그인 뷰어를 제외했다).
+  const tabs = useEditorStore((s) => s.tabs);
+  const pluginPreviewTabs = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tabs) {
+      if (isFileTab(t) && matchFileViewer(fileViewers, t.filePath)) {
+        set.add(t.id);
+      }
+    }
+    return set;
+  }, [tabs, fileViewers]);
+  const tabSurfaceRenderers = useMemo(
+    () =>
+      createTabSurfaceRenderers({
+        codeLanguageFor: (filePath) =>
+          getLanguageForFile(filePath) ?? undefined,
+        getSourceBuffer,
+        hasSourceBuffer,
+        markDirty,
+        onPdfFindApiChange: setPdfFindApi,
+        onTogglePdfFind: handleTogglePdfFind,
+        pdfFindOpen,
+        scrollOffsets,
+        pluginIdFor: (tabId) =>
+          useEditorStore.getState().tabs.find((t) => t.id === tabId)
+            ?.pluginId ?? "",
+        setSourceBuffer,
+        sourceCursorOffsetFor,
+      }),
+    [
+      getSourceBuffer,
+      hasSourceBuffer,
+      handleTogglePdfFind,
+      markDirty,
+      pdfFindOpen,
+      setSourceBuffer,
+      sourceCursorOffsetFor,
+    ],
+  );
+
+  // §286 MRU는 스토어가 관리한다(touchMru). 유지 집합은 그 순서의 순수 함수여야 한다 —
+  // 렌더 도중 직전 결과를 기억하던 구현이 표면을 반복 재마운트했다(use-retained-tabs.ts).
+  const mruOrder = useEditorStore((s) => s.mruOrder);
+  const retainedTabs = useRetainedTabs(
+    mruOrder,
+    tabs,
+    sourceModeTabs,
+    htmlSourceTabs,
+    pluginPreviewTabs,
+  );
+
+  // §286 마크다운 표면이 지금 보여야 하는가.
+  //
+  // ‼️ 이 값은 아래 삼항 사슬의 **마지막 else에 도달하는 조건과 정확히 같아야 한다.** 새 갈래를
+  // 사슬에 추가하면 여기에도 부정을 더해야 하고, 안 그러면 두 표면이 동시에 보인다. 조건을
+  // 새로 발명하지 말고 사슬을 위에서 아래로 읽어 그대로 부정할 것 — 순서가 곧 정의다.
+  //
+  // 사슬 순서: HomeScreen(!rootPath && !activeTabId) → empty(!activeTabId) → graph →
+  // plugin → pdf → image → code → source → **markdown**.
+  const isMarkdownSurfaceActive =
+    !!activeTabId &&
+    !isGraphTabActive &&
+    !activePluginId &&
+    !(isPdfTab && activeTabFilePath) &&
+    !(isImageTab && activeTabFilePath) &&
+    !isCodeFile &&
+    !isSourceMode;
 
   // §260 Phase 4b — the policy and its rationale now live in `editorSurfaceBlockReason`, with
   // tests. It moved out because nothing imports `App`, so this gate was unverified.
@@ -594,9 +632,10 @@ function App() {
     if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
     codeAutoSaveTimer.current = setTimeout(async () => {
       try {
-        await writeFile(tab.filePath!, sourceContentRef.current);
+        const content = getSourceBuffer(tab.id);
+        await writeFile(tab.filePath!, content);
         useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
-        setFileContent(tab.filePath!, sourceContentRef.current);
+        setFileContent(tab.filePath!, content);
         markDirty(tab.id, false);
         // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
         useSnapshotStore.getState().markPendingAutoSnapshot();
@@ -612,10 +651,10 @@ function App() {
     isEditableTextFile,
     autoSave,
     autoSaveDelay,
-    sourceContent,
+    bufferVersion,
     markDirty,
     setFileContent,
-    sourceContentRef,
+    getSourceBuffer,
   ]);
 
   // --- File operations ---
@@ -634,8 +673,8 @@ function App() {
     handleSaveAs,
   } = useFileOperations({
     editor: activeEditor,
-    isSourceMode,
-    sourceContentRef,
+    getSourceBuffer,
+    sourceModeTabs,
   });
 
   // --- Navigation ---
@@ -677,16 +716,16 @@ function App() {
     editor,
     editorStateCache,
     isNavBackForwardRef,
-    isSourceMode,
     keepalive,
+    scrollOffsets,
     createKeepaliveEditor,
     onActiveEditorChange: handleActiveEditorChange,
     setFindReplaceMode,
     setFindReplaceOpen: routeFindReplaceOpen,
-    setIsSourceMode,
     setIsParsing,
-    setSourceContent,
-    sourceContentRef,
+    setSourceBuffer,
+    sourceModeTabs,
+    getSourceBuffer,
   });
 
   // --- Editor effects (selection, content reload, goto-position, title) ---
@@ -699,20 +738,6 @@ function App() {
     setFindReplaceOpen: routeFindReplaceOpen,
   });
 
-  // onChange for non-MD code files — same as source but also marks dirty
-  const handleCodeFileChange = useCallback(
-    (content: string) => {
-      sourceContentRef.current = content;
-      setSourceContent(content);
-      const { activeTabId: tabId } = useEditorStore.getState();
-      if (tabId) markDirty(tabId, true);
-    },
-    // setSourceContent (useState setter) and sourceContentRef (useRef) are stable —
-    // intentionally omitted from deps for consistency with toggleSourceMode pattern.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [markDirty],
-  );
-
   // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed
   // text tab. The preview loads the file from disk (asset: protocol), so when
   // leaving source view with unsaved edits, flush them first — the mtime bump
@@ -724,7 +749,7 @@ function App() {
     const leavingSourceView = htmlSourceTabs.has(tab.id);
     if (leavingSourceView && tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
-      const content = sourceContentRef.current;
+      const content = getSourceBuffer(tab.id);
       void writeFile(filePath, content)
         .then(() => {
           useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
@@ -742,9 +767,23 @@ function App() {
       else next.add(tab.id);
       return next;
     });
-    // sourceContentRef (useRef) is stable — intentionally omitted from deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [htmlSourceTabs, markDirty]);
+  }, [htmlSourceTabs, markDirty, getSourceBuffer]);
+
+  // §5.1 HTML·플러그인 프리뷰 파일의 프리뷰 ↔ 원본 토글 버튼. 활성 표면 안에 겹쳐 그린다
+  // (TabSurface의 `overlay` prop 주석 참조 — `.editor-area-scroll`의 CSS zoom 때문이다).
+  const previewToggleButton =
+    isHtmlTab || isPluginPreviewTab ? (
+      <button
+        className="mode-toggle-btn html-view-toggle"
+        onClick={toggleHtmlView}
+        title={t("htmlPreview.toggleTitle")}
+        type="button"
+      >
+        {isHtmlSourceView
+          ? t("htmlPreview.showPreview")
+          : t("htmlPreview.showSource")}
+      </button>
+    ) : null;
 
   // Cmd+/ — route to the preview/source toggle when an HTML or plugin-viewed
   // text tab is active; otherwise fall through to the markdown source-mode
@@ -903,41 +942,11 @@ function App() {
               </div>
             </div>
           ) : isGraphTabActive ? (
+            // §286 그래프는 유지 대상이 아니다 — cytoscape가 0×0 컨테이너에서 자기 카메라를
+            // 흔들어, 세 번의 수정에도 실앱에서 계속 깨졌다(use-retained-tabs.ts 참조).
             <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
-                <GraphViewTab />
-              </Suspense>
-            </div>
-          ) : activePluginId ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              <Suspense fallback={null}>
-                <PluginDetailTab pluginId={activePluginId} />
-              </Suspense>
-            </div>
-          ) : isPdfTab && activeTabFilePath ? (
-            <div
-              className="editor-area-scroll pdf-preview-scroll"
-              data-editor-scroll
-            >
-              {pdfFindOpen && pdfFindApi && (
-                <PdfFindBar
-                  currentIdx={pdfFindApi.currentIdx}
-                  matchCount={pdfFindApi.matchCount}
-                  onClose={() => setPdfFindOpen(false)}
-                  onNext={pdfFindApi.onNext}
-                  onPrev={pdfFindApi.onPrev}
-                  onQueryChange={pdfFindApi.onQueryChange}
-                />
-              )}
-              <Suspense fallback={null}>
-                <PdfPreview
-                  filePath={activeTabFilePath}
-                  findOpen={pdfFindOpen}
-                  onFindApiChange={setPdfFindApi}
-                  onToggleFind={handleTogglePdfFind}
-                  refreshKey={previewFileMtime}
-                  title={activeTabFilePath}
-                />
+                <GraphViewLazy />
               </Suspense>
             </div>
           ) : isImageTab && activeTabFilePath ? (
@@ -955,135 +964,61 @@ function App() {
                 <div className="viewer-missing">{t("viewer.noPlugin")}</div>
               )}
             </div>
-          ) : isCodeFile ? (
+          ) : isPluginPreviewTab && !isHtmlSourceView && pluginViewer ? (
+            // §290 플러그인이 그리는 프리뷰는 유지하지 않는다 — 공개 viewer 계약에
+            // 가시성 신호가 없어, 마운트를 유지하면 미디어 뷰어가 숨은 탭에서 계속
+            // 재생된다(dev/backlog.md 참조). 활성일 때만 렌더한다.
             <div
-              className={`editor-area-scroll${previewScrollClass}`}
+              className="editor-area-scroll plugin-viewer-scroll"
               data-editor-scroll
             >
-              {(isHtmlTab || isPluginPreviewTab) && (
-                <button
-                  className="mode-toggle-btn html-view-toggle"
-                  onClick={toggleHtmlView}
-                  title={t("htmlPreview.toggleTitle")}
-                  type="button"
-                >
-                  {isHtmlSourceView
-                    ? t("htmlPreview.showPreview")
-                    : t("htmlPreview.showSource")}
-                </button>
-              )}
-              <Suspense fallback={null}>
-                {isHtmlTab && !isHtmlSourceView && activeTabFilePath ? (
-                  <HtmlPreview
-                    filePath={activeTabFilePath}
-                    refreshKey={previewFileMtime}
-                    title={activeTabFilePath}
-                  />
-                ) : isPluginPreviewTab &&
-                  !isHtmlSourceView &&
-                  activeTabFilePath &&
-                  pluginViewer ? (
-                  <PluginViewerHost
-                    filePath={activeTabFilePath}
-                    refreshKey={previewFileMtime}
-                    viewer={pluginViewer}
-                  />
-                ) : (
-                  <SourceCodeEditor
-                    content={sourceContent}
-                    key={`code-${activeTabId}`}
-                    language={codeLanguage ?? undefined}
-                    onChange={handleCodeFileChange}
-                    ref={sourceEditorRef}
-                  />
-                )}
-              </Suspense>
+              {previewToggleButton}
+              <PluginViewerHost
+                filePath={activeTabFilePath!}
+                refreshKey={previewFileMtime}
+                viewer={pluginViewer}
+              />
             </div>
-          ) : isSourceMode ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              <Suspense fallback={null}>
-                <SourceCodeEditor
-                  content={sourceContent}
-                  initialCursorOffset={sourceCursorOffset}
-                  onChange={handleSourceChange}
-                  ref={sourceEditorRef}
-                />
-              </Suspense>
-            </div>
-          ) : (
-            <>
-              {findReplaceOpen && activeEditor && (
-                <FindReplaceBar
-                  editor={activeEditor}
-                  mode={findReplaceMode}
-                  onClose={() => setFindReplaceOpen(false)}
-                  onSetMode={setFindReplaceMode}
-                />
-              )}
-              <div
-                className="editor-area-scroll"
-                data-editor-active
-                data-editor-scroll
-              >
-                {/* §perf-large-file B2: Loading skeleton while Worker parses */}
-                {isParsing && (
-                  <div className="editor-loading-skeleton">
-                    <div className="skeleton-line w-3/4" />
-                    <div className="skeleton-line w-full" />
-                    <div className="skeleton-line w-5/6" />
-                    <div className="skeleton-line w-2/3" />
-                    <div className="skeleton-line w-full" />
-                    <div className="skeleton-line w-1/2" />
-                  </div>
-                )}
-                {/* §perf-large-file C3.5: keep-alive editor — stays mounted while
-                    in pool (DOM kept alive), hidden when another tab is active. */}
-                {mountedKeepaliveEditor && (
-                  <div
-                    data-keepalive-editor
-                    style={{
-                      display: activeKeepaliveEditor ? "" : "none",
-                    }}
-                  >
-                    <EditorContent editor={mountedKeepaliveEditor} />
-                  </div>
-                )}
-                {/* Shared editor — hidden when a keep-alive editor is active */}
-                <div style={{ display: activeKeepaliveEditor ? "none" : "" }}>
-                  <EditorContent editor={editor} />
-                </div>
-                {activeEditor && (
-                  <>
-                    <FloatingToolbar editor={activeEditor} />
-                    <TableToolbar editor={activeEditor} />
-                    <BlockHandle editor={activeEditor} />
-                    <TableInsertButtons editor={activeEditor} />
-                    <TableSelectionHandles editor={activeEditor} />
-                    <ContextMenu editor={activeEditor} />
-                    {inlineAI.isActive && inlineAI.phase !== "idle" && (
-                      <InlineAIPrompt
-                        editor={activeEditor}
-                        hasSelection={inlineAI.hasSelection}
-                        hunks={inlineAI.hunks}
-                        onAccept={inlineAI.accept}
-                        onAcceptHunk={inlineAI.acceptHunk}
-                        onClose={inlineAI.cancel}
-                        onRegenerate={inlineAI.regenerate}
-                        onReject={inlineAI.reject}
-                        onRejectHunk={inlineAI.rejectHunk}
-                        onSubmit={inlineAI.submitPrompt}
-                        phase={
-                          inlineAI.phase as "completed" | "input" | "streaming"
-                        }
-                        selectionFrom={inlineAI.selectionFrom}
-                        selectionTo={inlineAI.selectionTo}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </>
+          ) : null}
+          {/* §272 활성 PDF의 찾기 바 — 표면 바깥(FindReplaceBar와 같은 자리)에 그린다.
+              유지 집합에는 PDF가 여러 개 있을 수 있으므로 여기 하나만 존재해야 한다. */}
+          {isPdfTab && pdfFindOpen && pdfFindApi && (
+            <PdfFindBar
+              currentIdx={pdfFindApi.currentIdx}
+              matchCount={pdfFindApi.matchCount}
+              onClose={() => setPdfFindOpen(false)}
+              onNext={pdfFindApi.onNext}
+              onPrev={pdfFindApi.onPrev}
+              onQueryChange={pdfFindApi.onQueryChange}
+            />
           )}
+          {/* §286 유지 집합 — 활성만 보이고 나머지는 마운트된 채 숨는다. */}
+          {retainedTabs.map((entry) => (
+            <TabSurface
+              active={entry.tabId === activeTabId}
+              entry={entry}
+              key={`${entry.kind}-${entry.tabId}`}
+              overlay={previewToggleButton}
+              renderers={tabSurfaceRenderers}
+              scrollOffsets={scrollOffsets}
+              sourceEditorRef={sourceEditorRef}
+            />
+          ))}
+          <MarkdownSurface
+            active={isMarkdownSurfaceActive}
+            activeEditor={activeEditor}
+            activeKeepaliveEditor={activeKeepaliveEditor}
+            editor={editor}
+            findReplaceMode={findReplaceMode}
+            findReplaceOpen={findReplaceOpen}
+            inlineAI={inlineAI}
+            isParsing={isParsing}
+            mountedKeepaliveEditor={mountedKeepaliveEditor}
+            onFindReplaceClose={() => setFindReplaceOpen(false)}
+            onFindReplaceModeChange={setFindReplaceMode}
+            scrollOffsets={scrollOffsets}
+            tabId={activeTabId}
+          />
         </div>
         <PromptLintPanel editor={activeEditor} />
         {isSkill && (
@@ -1111,12 +1046,7 @@ function App() {
         <SettingsModal />
         <AboutModal />
         <UpdateDialog />
-        <UnsavedChangesModal
-          editor={activeEditor}
-          handleSave={handleSave}
-          isSourceMode={isSourceMode}
-          sourceContentRef={sourceContentRef}
-        />
+        <UnsavedChangesModal handleSave={handleSave} />
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />

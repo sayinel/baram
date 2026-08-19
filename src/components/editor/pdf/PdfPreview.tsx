@@ -10,22 +10,10 @@
 import type { CSSProperties } from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import { convertFileSrc } from "@tauri-apps/api/core";
-
 import type { ViewportLike } from "./pdf-highlight-geom";
 import type { PdfFindApi } from "./use-pdf-find";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 
-// The legacy build, NOT the modern one: pdfjs's modern build assumes
-// bleeding-edge engine APIs (e.g. Map.prototype.getOrInsertComputed) that
-// current WKWebView lacks — page.render() crashes at runtime. The legacy
-// build ships core-js polyfills for those and supports the webview range
-// our minimumSystemVersion (macOS 13) implies.
-import {
-  getDocument,
-  GlobalWorkerOptions,
-} from "pdfjs-dist/legacy/build/pdf.mjs";
-import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import { useShallow } from "zustand/shallow";
 
 import { useFileStore } from "../../../stores/file/file";
@@ -33,6 +21,8 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
 import { fitRailWidth } from "../../../utils/pdf-rail-width";
+import { acquirePdfDocument } from "./pdf-doc-cache";
+import { nextContainerWidth } from "./pdf-measure";
 import { PdfHighlightList } from "./PdfHighlightList";
 import { PdfPage } from "./PdfPage";
 import { PdfPageList } from "./PdfPageList";
@@ -46,12 +36,18 @@ import { usePdfPageRetention } from "./use-pdf-page-retention";
 import { usePdfRailResize } from "./use-pdf-rail-resize";
 import { useSettledScale } from "./use-settled-scale";
 
-GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-
 /** Horizontal breathing room around pages at zoom 1. */
 const PAGE_GUTTER_PX = 24;
 
 interface PdfPreviewProps {
+  /**
+   * §288 규칙 1 — 이 표면이 지금 화면에 보이는가. 기본값 true.
+   *
+   * §286 유지 집합은 PDF를 여러 개 마운트해 둔 채 하나만 보여준다. 숨은 표면이 document
+   * 전역 리스너를 계속 들면, 사용자가 **다른 탭에서** 만든 선택과 누른 Alt에 보이지 않는
+   * 문서가 반응한다.
+   */
+  active?: boolean;
   /** Absolute path of the .pdf file (must be inside an opened context). */
   filePath: string;
   /** §272 Whether the PDF find bar is open — drives PDFFindController lifecycle. */
@@ -114,6 +110,7 @@ export function resolvePageBoxEl(
 }
 
 export const PdfPreview = memo(function PdfPreview({
+  active = true,
   filePath,
   findOpen,
   onFindApiChange,
@@ -141,17 +138,23 @@ export const PdfPreview = memo(function PdfPreview({
     })),
   );
 
-  // Load the document via the asset: protocol; reload on external change
+  // §291 문서는 **임대한다**(pdf-doc-cache) — 직접 열고 언마운트에서 파기하지 않는다.
+  //
+  // 유지 상한(RETENTION_CAPS.pdf)을 넘겨 축출된 PDF 탭은 표면이 언마운트되므로, 예전에는
+  // 돌아올 때마다 워커 파싱을 처음부터 다시 했다. PDF 세 개를 오가면 매 세 번째 방문이
+  // 그랬다. 캐시가 표면보다 오래 살아 그 파싱을 건너뛴다. 놓인 문서는 LRU가 가져가므로
+  // 무한히 쌓이지 않는다(MAX_CACHED_PDF_DOCUMENTS).
+  //
+  // ‼️ 문서가 살아남아도 **렌더 캐시는 따라오지 않는다.** operator list와 디코드된 이미지는
+  // usePdfPageRetention이 이 표면의 언마운트에서 비운다 — 문서 파기가 회수해 주던 안전망이
+  // 사라졌으므로 그쪽이 이제 유일한 경로다(pdf-page-retention.ts의 dispose 주석).
   useEffect(() => {
     let cancelled = false;
     setDoc(null);
     setPages([]);
     setError(null);
-    const url = refreshKey
-      ? `${convertFileSrc(filePath)}?v=${refreshKey}`
-      : convertFileSrc(filePath);
-    const task = getDocument({ url });
-    task.promise.then(
+    const lease = acquirePdfDocument(filePath, refreshKey ?? 0);
+    lease.promise.then(
       (loaded) => {
         if (!cancelled) setDoc(loaded);
       },
@@ -163,8 +166,7 @@ export const PdfPreview = memo(function PdfPreview({
     );
     return () => {
       cancelled = true;
-      // Destroying the loading task also frees the document + worker memory
-      void task.destroy();
+      lease.release();
     };
   }, [filePath, refreshKey]);
 
@@ -217,7 +219,9 @@ export const PdfPreview = memo(function PdfPreview({
   useEffect(() => {
     const el = containerRef.current?.parentElement;
     if (!el) return;
-    const measure = () => setContainerWidth(el.clientWidth);
+    // §288 규칙 5 — 숨은 표면(display:none)에서 옵저버가 싣고 오는 0을 무시한다.
+    const measure = () =>
+      setContainerWidth((cur) => nextContainerWidth(el.clientWidth, cur));
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
@@ -321,6 +325,7 @@ export const PdfPreview = memo(function PdfPreview({
     popupProps,
     registerPageEl: registerHighlightPageEl,
   } = usePdfHighlights({
+    active,
     filePath,
     pages,
     pagesReady,
@@ -335,6 +340,7 @@ export const PdfPreview = memo(function PdfPreview({
   // 훅 자체는 vault 여부를 몰라도 된다 — 이 컴포넌트(합성 계층)가 그
   // 정책을 쥔다.
   const areaHighlight = usePdfAreaHighlight({
+    active,
     areaModeOn,
     onAreaHighlightDrawn,
   });

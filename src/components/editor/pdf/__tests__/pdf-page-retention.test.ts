@@ -214,11 +214,11 @@ describe("PdfPageRetention", () => {
     expect(r.trackedCount).toBe(0);
   });
 
-  // ‼️ 붙잡힌 페이지는 dispose에서도 건드리지 않는다. React의 passive destroy는
+  // ‼️ 붙잡힌 페이지는 dispose **시점에는** 건드리지 않는다. React의 passive destroy는
   // 언마운트와 StrictMode 더블 인보크에서 **부모가 먼저** 돌기 때문에(리뷰 실측),
   // 여기서 비우면 아직 렌더 중인 페이지에 cleanup()이 걸리고 — 거절당하면서 남은
   // 래치가 곧이어 도착하는 자식의 cancel()에서 발화한다. 이 커밋이 막으려던 바로
-  // 그 시나리오다. 홀더는 곧 스스로 놓고, 문서 파기가 어차피 회수한다.
+  // 그 시나리오다.
   it("leaves a page that is still held alone when disposed", () => {
     const r = new PdfPageRetention(10);
     const held = fakePage(1);
@@ -228,6 +228,46 @@ describe("PdfPageRetention", () => {
 
     expect(held.cleanup).not.toHaveBeenCalled();
     expect(r.trackedCount).toBe(0);
+  });
+
+  // ‼️ **그러나 결국은 비워져야 한다.** 예전에는 "문서 파기(loadingTask.destroy())가
+  // 어차피 회수한다"에 기댔는데, 그 전제가 사라졌다 — pdf-doc-cache의 임대로 문서가
+  // 표면보다 오래 산다(재방문 시 워커 파싱을 건너뛰기 위해). 그러면 언마운트 순간 화면에
+  // 있던 페이지들의 operator list가 LRU가 문서를 파기할 때까지 남는다. 페이지당 ~687KB
+  // 실측이고, 스캔본의 디코드된 비트맵은 측정조차 안 된 크기다.
+  //
+  // 비우기에 안전한 시점은 홀더가 놓는 순간이다 — 호출부가 `cancel(); release()` 순서를
+  // 지키므로 그때는 렌더가 끝나 있고, 래치를 남기지 않는다.
+  it("cleans a held page once its holder lets go after dispose", async () => {
+    const r = new PdfPageRetention(10);
+    const held = fakePage(1);
+    const release = r.retain(asProxy(held));
+
+    r.dispose();
+    expect(held.cleanup).not.toHaveBeenCalled();
+
+    release();
+    await settle();
+    expect(held.cleanup).toHaveBeenCalledTimes(1);
+    expect(r.trackedCount).toBe(0);
+  });
+
+  // 세 표면이 같은 프록시를 그린다(본문·썸네일·영역 크롭). dispose 뒤에도 그 계약은
+  // 같다 — **마지막** 홀더가 놓을 때만 비운다.
+  it("waits for the last holder after dispose", async () => {
+    const r = new PdfPageRetention(10);
+    const held = fakePage(1);
+    const releaseA = r.retain(asProxy(held));
+    const releaseB = r.retain(asProxy(held));
+
+    r.dispose();
+    releaseA();
+    await settle();
+    expect(held.cleanup).not.toHaveBeenCalled();
+
+    releaseB();
+    await settle();
+    expect(held.cleanup).toHaveBeenCalledTimes(1);
   });
 
   // 버려진 레지스트리가 새 페이지를 받아 들면 그 페이지는 아무도 정리하지 않는다.

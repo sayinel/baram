@@ -205,6 +205,7 @@ describe("usePdfHighlights", () => {
       const { rerender, result } = renderHook(
         (props: { filePath: string }) =>
           usePdfHighlights({
+            active: true,
             filePath: props.filePath,
             pages: [fakePage(1)],
             pagesReady: true,
@@ -255,6 +256,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -299,6 +301,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -338,6 +341,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -386,6 +390,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -425,6 +430,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -478,6 +484,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -522,6 +529,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -561,6 +569,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -591,6 +600,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -687,6 +697,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -736,6 +747,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -770,6 +782,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -808,6 +821,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -856,6 +870,7 @@ describe("usePdfHighlights", () => {
 
         const { result } = renderHook(() =>
           usePdfHighlights({
+            active: true,
             filePath: FILE_PATH,
             pages: [fakePage(1)],
             pagesReady: true,
@@ -889,6 +904,7 @@ describe("usePdfHighlights", () => {
     it("is disabled when the PDF is outside a vault (no rootPath)", () => {
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -904,6 +920,7 @@ describe("usePdfHighlights", () => {
     it("is enabled inside a vault", () => {
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -919,6 +936,7 @@ describe("usePdfHighlights", () => {
     it("onAreaHighlightDrawn opens a 'new' popup tagged highlightKind: area, with no Copy-text-only text field surprises", () => {
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -945,6 +963,7 @@ describe("usePdfHighlights", () => {
     it("picking a colour on an area draft writes kind: 'area' to the sidecar", async () => {
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -993,6 +1012,7 @@ describe("usePdfHighlights", () => {
 
       const { result } = renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -1049,6 +1069,7 @@ describe("usePdfHighlights", () => {
       });
       return renderHook(() =>
         usePdfHighlights({
+          active: true,
           filePath: FILE_PATH,
           pages: [fakePage(1)],
           pagesReady: true,
@@ -1540,6 +1561,7 @@ describe("usePdfHighlights", () => {
         const { rerender, result } = renderHook(
           (props: { filePath: string }) =>
             usePdfHighlights({
+              active: true,
               filePath: props.filePath,
               pages: [fakePage(1)],
               pagesReady: true,

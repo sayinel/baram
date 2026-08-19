@@ -39,7 +39,6 @@ function harness(editor: Editor) {
     const appendHandleRef = useRef(null);
     const editorStateCache = useRef(new Map<string, EditorState>());
     const isNavBackForwardRef = useRef(false);
-    const sourceContentRef = useRef("");
     useTabSwitching({
       appendHandleRef,
       createKeepaliveEditor: () => {
@@ -48,15 +47,15 @@ function harness(editor: Editor) {
       editor,
       editorStateCache,
       isNavBackForwardRef,
-      isSourceMode: false,
+      getSourceBuffer: () => "",
       keepalive: createKeepalivePool(),
+      scrollOffsets: { current: new Map<string, number>() },
       onActiveEditorChange,
       setFindReplaceMode: vi.fn(),
       setFindReplaceOpen: vi.fn(),
       setIsParsing,
-      setIsSourceMode: vi.fn(),
-      setSourceContent: vi.fn(),
-      sourceContentRef,
+      setSourceBuffer: vi.fn(),
+      sourceModeTabs: new Set<string>(),
     });
     return null;
   });

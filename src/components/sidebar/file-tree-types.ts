@@ -30,6 +30,3 @@ export const GHOST_OFFSET_X = 12;
 export const GHOST_OFFSET_Y = -10;
 export const TREE_INDENT_PX = 16;
 export const TREE_BASE_PADDING_PX = 8;
-
-/** Data attribute selector for the editor scroll container */
-export const EDITOR_SCROLL_SELECTOR = "[data-editor-scroll]";

@@ -84,6 +84,7 @@ describe("usePdfSelectionPopup", () => {
 
     renderHook(() =>
       usePdfSelectionPopup({
+        active: true,
         onSelect,
         pageElsRef,
         pagesByNumberRef,
@@ -221,6 +222,7 @@ describe("usePdfSelectionPopup", () => {
       const { rerender } = renderHook(
         (props: { textModeActive: boolean }) =>
           usePdfSelectionPopup({
+            active: true,
             onSelect,
             pageElsRef,
             pagesByNumberRef,

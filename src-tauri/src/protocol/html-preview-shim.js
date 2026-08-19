@@ -125,8 +125,65 @@
     { capture: true, passive: false },
   );
 
-  // Nothing is received from the host, deliberately: this frame paints nothing, so
-  // there is no state to hand it and no handshake to miss. A document that loses this
-  // bridge (`document.write` replacing the document mid-parse) loses input forwarding
-  // and its links -- but zoom keeps working, because zoom never depended on it.
+  // --- scroll position -----------------------------------------------------
+  // The one thing this frame takes FROM the host.
+  //
+  // The preview's vertical scroll lives in THIS document -- the host's wrapper is
+  // `overflow: auto hidden` -- and the host cannot read or write it, because this is an
+  // opaque origin. So when the host keeps the surface mounted across tab switches and
+  // hides it, the reader's place is lost anyway: hiding destroys this document's layout
+  // box. The position has to travel over the bridge or not at all.
+  //
+  // Reports are coalesced to one per frame: a scroll fires this handler far more often
+  // than the host needs, and every extra message is a structured clone across a process
+  // boundary.
+
+  var pending = false;
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (pending) return;
+      pending = true;
+      var raf =
+        window.requestAnimationFrame ||
+        function (fn) {
+          return setTimeout(fn, 0);
+        };
+      raf(function () {
+        pending = false;
+        post({ type: "scroll", y: window.scrollY });
+      });
+    },
+    { capture: true, passive: true },
+  );
+
+  // The ONLY instruction accepted from the host. The sender is checked by window
+  // identity, not origin: every sandboxed frame reports its origin as the string
+  // "null", so an origin check would let a nested frame inside this document drive the
+  // scroll. `window.parent` cannot be forged by page content.
+  //
+  // A document that loses this bridge (`document.write` replacing the document
+  // mid-parse) loses input forwarding, its links, and now its scroll restore -- but
+  // zoom keeps working, because zoom never depended on it.
+  window.addEventListener("message", function (event) {
+    if (event.source !== window.parent) return;
+    var data = event.data;
+    if (!data || typeof data !== "object") return;
+    if (data.__baram !== TAG) return;
+    if (data.type !== "restore-scroll") return;
+    if (typeof data.y !== "number") return;
+    // ‼️ `behavior: "instant"` is not decoration. A document that declares
+    // `html { scroll-behavior: smooth }` turns a plain scrollTo into an ANIMATION, and an
+    // animation started at the moment this frame is shown again -- its layout box only just
+    // re-established -- lands back at the top. One previewed file did exactly that while
+    // every other one restored fine; the CSS was the only difference between them.
+    // Restoring a position is not travelling to it, so it must never animate, whatever the
+    // document declared. The two-argument form is the fallback for engines without the
+    // options overload, where nothing overrides the declaration anyway.
+    try {
+      window.scrollTo({ behavior: "instant", left: 0, top: data.y });
+    } catch (err) {
+      window.scrollTo(0, data.y);
+    }
+  });
 })();

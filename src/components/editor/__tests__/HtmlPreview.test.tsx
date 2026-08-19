@@ -22,8 +22,11 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { BRIDGE_TAG } from "../html-preview-url";
 import { HtmlPreview } from "../HtmlPreview";
 
-function renderPreview() {
-  const { container } = render(<HtmlPreview filePath="/Users/me/a.html" />);
+function renderPreview(active = true) {
+  const view = render(
+    <HtmlPreview active={active} filePath="/Users/me/a.html" />,
+  );
+  const { container } = view;
   const frame = container.querySelector("iframe");
   if (!frame) throw new Error("preview rendered no iframe");
   return {
@@ -31,6 +34,9 @@ function renderPreview() {
     /** Delivers a message as some window on the page. */
     post: (data: unknown, source: null | Window = frame.contentWindow) =>
       window.dispatchEvent(new MessageEvent("message", { data, source })),
+    /** Re-renders with a different `active`, as a tab switch does. */
+    setActive: (next: boolean) =>
+      view.rerender(<HtmlPreview active={next} filePath="/Users/me/a.html" />),
   };
 }
 
@@ -158,5 +164,136 @@ describe("frame element", () => {
     expect(frame.getAttribute("src")).toBe(
       "baramhtml://localhost/Users/me/a.html",
     );
+  });
+});
+
+// §288 규칙 1 — 이 iframe은 sandbox="allow-scripts"라 **숨어 있어도 스크립트가 돈다**
+// (display:none 아래에서 rAF는 멎지만 setInterval은 산다). §286 유지 집합이 프리뷰를
+// 마운트한 채로 두면, 지금까지 언마운트가 우연히 막아 주던 것이 사라진다: 백그라운드 HTML
+// 파일이 사용자가 다른 탭을 보는 동안 앱 줌을 바꾸거나 브라우저를 띄울 수 있다.
+describe("a hidden preview is muted", () => {
+  const zoomIn = { __baram: BRIDGE_TAG, action: "in", type: "zoom" };
+
+  it("applies zoom from its own frame while visible", () => {
+    // 대조군. 이게 없으면 아래 단정은 "메시지가 애초에 도착하지 않았다"와 구분되지 않는다.
+    const { post } = renderPreview(true);
+    const before = useSettingsStore.getState().zoomLevel;
+    act(() => post(zoomIn));
+    expect(useSettingsStore.getState().zoomLevel).not.toBe(before);
+  });
+
+  it("ignores the very same message while hidden", () => {
+    const { post } = renderPreview(false);
+    const before = useSettingsStore.getState().zoomLevel;
+    act(() => post(zoomIn));
+    expect(useSettingsStore.getState().zoomLevel).toBe(before);
+  });
+
+  it("ignores an external-link request while hidden", () => {
+    const { post } = renderPreview(false);
+    act(() => post(openExternal("https://example.com")));
+    expect(openUrlMock).not.toHaveBeenCalled();
+  });
+});
+
+// §291 The preview's vertical scroll lives inside the frame's document, which is
+// opaque-origin: the host can neither read nor write it. Hiding the surface destroys
+// that document's layout box and the reader's place with it, so the position has to
+// travel over the bridge in both directions.
+describe("scroll position round trip", () => {
+  it("hands the frame back the last position it reported", () => {
+    const { frame, post, setActive } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 880 }));
+    act(() => setActive(false));
+    act(() => setActive(true));
+
+    expect(send).toHaveBeenCalledWith(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y: 880 },
+      "*",
+    );
+  });
+
+  it("does not send a restore for a position of zero", () => {
+    // 문서를 처음 열었을 때도 이 effect가 돈다. 0을 쏘면 문서 자신의 #fragment 앵커
+    // 스크롤을 덮어쓴다.
+    const { frame } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+    act(() => undefined);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ignores a scroll report from a window that is not its frame", () => {
+    const { frame, post, setActive } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 999 }, window));
+    act(() => setActive(false));
+    act(() => setActive(true));
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ignores a scroll report with a non-numeric position", () => {
+    const { frame, post, setActive } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: "880" }));
+    act(() => setActive(false));
+    act(() => setActive(true));
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
+// §291 상한(RETENTION_CAPS.html = 2)을 넘겨 축출된 탭은 다시 열릴 때 문서를 새로 로드한다.
+// 그때도 자리는 남아야 한다 — 상한은 "재로딩을 얼마나 피할 것인가"의 문제여야지 "자리를
+// 잃느냐"의 문제여서는 안 된다.
+describe("position outlives the component", () => {
+  it("reads its position from the caller's store, not its own lifetime", () => {
+    const offsets = new Map<string, number>([["t1", 640]]);
+    const { container } = render(
+      <HtmlPreview
+        active
+        filePath="/Users/me/a.html"
+        getScrollY={() => offsets.get("t1") ?? 0}
+        onScrollY={(y) => offsets.set("t1", y)}
+      />,
+    );
+    const frame = container.querySelector("iframe");
+    const send = vi.fn();
+    Object.defineProperty(frame!.contentWindow, "postMessage", { value: send });
+
+    // 새로 열린 문서는 로드를 마쳐야 받을 준비가 된다.
+    act(() => frame!.dispatchEvent(new Event("load")));
+    expect(send).toHaveBeenCalledWith(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y: 640 },
+      "*",
+    );
+  });
+
+  it("writes every reported position out to the caller's store", () => {
+    const offsets = new Map<string, number>();
+    const { container } = render(
+      <HtmlPreview
+        active
+        filePath="/Users/me/a.html"
+        getScrollY={() => offsets.get("t1") ?? 0}
+        onScrollY={(y) => offsets.set("t1", y)}
+      />,
+    );
+    const frame = container.querySelector("iframe");
+    act(() =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { __baram: BRIDGE_TAG, type: "scroll", y: 921 },
+          source: frame!.contentWindow,
+        }),
+      ),
+    );
+    expect(offsets.get("t1")).toBe(921);
   });
 });

@@ -49,7 +49,11 @@ describe("usePdfAreaHighlight", () => {
   it("areaModeOn drives areaCaptureActive directly", () => {
     const { rerender, result } = renderHook(
       (props: { areaModeOn: boolean }) =>
-        usePdfAreaHighlight({ ...props, onAreaHighlightDrawn }),
+        usePdfAreaHighlight({
+          active: true,
+          ...props,
+          onAreaHighlightDrawn,
+        }),
       { initialProps: { areaModeOn: false } },
     );
     expect(result.current.areaCaptureActive).toBe(false);
@@ -63,7 +67,11 @@ describe("usePdfAreaHighlight", () => {
 
   it("holding Alt activates capture even while areaModeOn stays false", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: false,
+        onAreaHighlightDrawn,
+      }),
     );
 
     act(() => fireKeyDown("Alt"));
@@ -75,7 +83,11 @@ describe("usePdfAreaHighlight", () => {
 
   it("window blur clears a stuck Alt hold", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: false,
+        onAreaHighlightDrawn,
+      }),
     );
     act(() => fireKeyDown("Alt"));
     expect(result.current.areaCaptureActive).toBe(true);
@@ -86,7 +98,11 @@ describe("usePdfAreaHighlight", () => {
 
   it("a meaningful drag calls onAreaHighlightDrawn with the converted rect", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: true,
+        onAreaHighlightDrawn,
+      }),
     );
 
     act(() => {
@@ -111,7 +127,11 @@ describe("usePdfAreaHighlight", () => {
 
   it("clears the live preview after the drag completes", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: true,
+        onAreaHighlightDrawn,
+      }),
     );
     act(() => {
       result.current.onPageMouseDown(
@@ -134,7 +154,11 @@ describe("usePdfAreaHighlight", () => {
 
   it("a click with no real movement creates nothing", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: true,
+        onAreaHighlightDrawn,
+      }),
     );
     act(() => {
       result.current.onPageMouseDown(
@@ -153,7 +177,11 @@ describe("usePdfAreaHighlight", () => {
 
   it("Escape mid-drag cancels cleanly — a later mouseup does nothing (listeners were removed)", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: true,
+        onAreaHighlightDrawn,
+      }),
     );
     act(() => {
       result.current.onPageMouseDown(
@@ -178,7 +206,11 @@ describe("usePdfAreaHighlight", () => {
   it("turning areaModeOn off mid-drag cancels without creating anything", () => {
     const { rerender, result } = renderHook(
       (props: { areaModeOn: boolean }) =>
-        usePdfAreaHighlight({ ...props, onAreaHighlightDrawn }),
+        usePdfAreaHighlight({
+          active: true,
+          ...props,
+          onAreaHighlightDrawn,
+        }),
       { initialProps: { areaModeOn: true } },
     );
     act(() => {
@@ -201,7 +233,11 @@ describe("usePdfAreaHighlight", () => {
 
   it("releasing Alt mid-drag cancels the same way turning the mode off does", () => {
     const { result } = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: false,
+        onAreaHighlightDrawn,
+      }),
     );
     act(() => fireKeyDown("Alt"));
     act(() => {
@@ -226,7 +262,11 @@ describe("usePdfAreaHighlight", () => {
     // 인스턴스 A — areaModeOn: true(토글로 진입한 것과 동등)로 진입.
     const drawnA = vi.fn();
     const a = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: true, onAreaHighlightDrawn: drawnA }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: true,
+        onAreaHighlightDrawn: drawnA,
+      }),
     );
     act(() => {
       a.result.current.onPageMouseDown(
@@ -245,7 +285,11 @@ describe("usePdfAreaHighlight", () => {
     // 대신, 인스턴스 A를 완전히 unmount하고 B를 새로 만든다.
     const drawnB = vi.fn();
     const b = renderHook(() =>
-      usePdfAreaHighlight({ areaModeOn: false, onAreaHighlightDrawn: drawnB }),
+      usePdfAreaHighlight({
+        active: true,
+        areaModeOn: false,
+        onAreaHighlightDrawn: drawnB,
+      }),
     );
     act(() => fireKeyDown("Alt"));
     act(() => {

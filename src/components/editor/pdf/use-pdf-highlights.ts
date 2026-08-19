@@ -34,6 +34,7 @@ import { usePdfSelectionPopup } from "./use-pdf-selection-popup";
 const EMPTY_HIGHLIGHTS: StoredHighlight[] = [];
 
 export function usePdfHighlights({
+  active,
   filePath,
   pages,
   pagesReady,
@@ -42,6 +43,8 @@ export function usePdfHighlights({
   scrollToPage,
   textModeActive,
 }: {
+  /** §288 규칙 1 — 이 PDF 표면이 보이는가. 그대로 usePdfSelectionPopup으로 내려간다. */
+  active: boolean;
   filePath: string;
   pages: PDFPageProxy[];
   /** §275.6 True once PdfPreview's pages are registered and safe to scroll
@@ -254,6 +257,7 @@ export function usePdfHighlights({
     setPopup({ ...payload, highlightKind: "text", kind: "new" });
   }, []);
   usePdfSelectionPopup({
+    active,
     onSelect: onNewSelection,
     pageElsRef,
     pagesByNumberRef,

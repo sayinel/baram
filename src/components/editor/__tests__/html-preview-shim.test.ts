@@ -29,10 +29,19 @@ interface Harness {
   click: (selector: string, init?: MouseEventInit) => { prevented: boolean };
   doc: Document;
   fire: (type: string, event: unknown) => void;
+  /** Runs the callbacks the shim queued for the next frame. */
+  flushFrame: () => void;
   key: (init: KeyboardEventInit) => { prevented: boolean };
+  /** Delivers a postMessage as either the host window or some other window. */
+  message: (data: unknown, from: "other" | "parent") => void;
   open: (url?: string) => unknown;
   parent: object;
   posted: Record<string, unknown>[];
+  /** The options the shim last passed to scrollTo, or null. */
+  scrollCall: () => null | Record<string, unknown>;
+  /** The (x, y) the shim last asked the document to scroll to, or null. */
+  scrolledTo: () => [number, number] | null;
+  setScrollY: (y: number) => void;
 }
 
 /**
@@ -61,6 +70,10 @@ function mount(bodyHtml = ""): Harness {
       void posted.push(message),
   };
 
+  let scrolledTo: [number, number] | null = null;
+  let scrollCall: null | Record<string, unknown> = null;
+  // rAF is driven by hand so the coalescing below is observable rather than assumed.
+  const frameQueue: (() => void)[] = [];
   const fakeWindow = {
     addEventListener: (type: string, handler: (event: unknown) => void) => {
       const existing = windowListeners.get(type) ?? [];
@@ -69,6 +82,17 @@ function mount(bodyHtml = ""): Harness {
     },
     open: vi.fn(() => "native-window"),
     parent,
+    requestAnimationFrame: (fn: () => void) => void frameQueue.push(fn),
+    scrollTo: (arg: number | Record<string, unknown>, y?: number) => {
+      if (typeof arg === "number") {
+        scrolledTo = [arg, y ?? 0];
+        scrollCall = { left: arg, top: y };
+        return;
+      }
+      scrollCall = arg;
+      scrolledTo = [Number(arg.left ?? 0), Number(arg.top ?? 0)];
+    },
+    scrollY: 0,
   };
 
   new Function("window", "document", SHIM_SOURCE)(fakeWindow, doc);
@@ -95,9 +119,23 @@ function mount(bodyHtml = ""): Harness {
       doc.dispatchEvent(event);
       return { prevented: event.defaultPrevented };
     },
+    flushFrame: () => {
+      const queued = frameQueue.splice(0, frameQueue.length);
+      for (const fn of queued) fn();
+    },
+    message: (data, from) => {
+      for (const handler of windowListeners.get("message") ?? []) {
+        handler({ data, source: from === "parent" ? parent : {} });
+      }
+    },
     open: fakeWindow.open as (url?: string) => unknown,
     parent,
     posted,
+    scrollCall: () => scrollCall,
+    scrolledTo: () => scrolledTo,
+    setScrollY: (y: number) => {
+      fakeWindow.scrollY = y;
+    },
   };
 }
 
@@ -107,12 +145,82 @@ it("harness sanity: the document really is served over the preview scheme", () =
 });
 
 describe("bridge scope", () => {
-  /** The frame paints nothing, so it needs nothing from the host — and a bridge
-   *  that receives nothing has no handshake to miss and no state to fall out of
-   *  sync. Zoom in particular must not depend on this script existing. */
-  it("says nothing until the page does something, and listens for nothing", () => {
+  it("says nothing until the page does something", () => {
     const { posted } = mount("<p>hello</p>");
     expect(posted).toEqual([]);
+  });
+});
+
+// §291 The one thing the frame DOES take from the host.
+//
+// ‼️ This bridge was deliberately one-way, and the reason it changed is worth keeping:
+// the preview's vertical scroll lives in THIS document, not in the host's wrapper
+// (`overflow: auto hidden` there). The host cannot read or write it — opaque origin —
+// so retaining the surface across tab switches still lost the reader's place. The
+// position has to travel over the bridge or not at all.
+//
+// The frame reports on scroll and accepts exactly one instruction back. Everything else
+// from the host is refused, and the sender is checked by window identity rather than
+// origin: every sandboxed frame reports its origin as the string "null".
+describe("scroll position bridge", () => {
+  it("reports the position when the document scrolls", () => {
+    const { fire, flushFrame, posted, setScrollY } = mount("<p>hello</p>");
+    setScrollY(742);
+    fire("scroll", {});
+    flushFrame();
+    expect(posted.at(-1)).toEqual({ __baram: TAG, type: "scroll", y: 742 });
+  });
+
+  it("coalesces a burst of scroll events into one report per frame", () => {
+    // ‼️ 이걸 단정하지 않으면 rAF는 그냥 지연일 뿐이다. 스크롤 한 번에 핸들러가 수십 번
+    // 도는데, 메시지 하나하나가 프로세스 경계를 넘는 structured clone이다.
+    const { fire, flushFrame, posted, setScrollY } = mount("<p>hello</p>");
+    setScrollY(10);
+    fire("scroll", {});
+    setScrollY(20);
+    fire("scroll", {});
+    setScrollY(30);
+    fire("scroll", {});
+    flushFrame();
+    const reports = posted.filter((m) => m.type === "scroll");
+    expect(reports).toHaveLength(1);
+    // 프레임 끝의 값을 보고한다 — 중간값이 아니라.
+    expect(reports[0]?.y).toBe(30);
+  });
+
+  it("applies a restore instruction from the host", () => {
+    const { message, scrolledTo } = mount("<p>hello</p>");
+    message({ __baram: TAG, type: "restore-scroll", y: 512 }, "parent");
+    expect(scrolledTo()).toEqual([0, 512]);
+  });
+
+  // ‼️ 실앱에서 **한 파일만** 깨졌다. 두 HTML의 차이가 정확히 하나였다:
+  //
+  //   hyperaccel_lpu_architecture.html   scroll-behavior: smooth  → 깨짐
+  //   VJEPA2_AC_workload_analysis.html   (없음)                    → 정상
+  //
+  // `scroll-behavior: smooth`가 걸린 문서에서는 `scrollTo`가 **애니메이션**이 된다. 프레임이
+  // 막 다시 보이며 레이아웃 박스가 재생성되는 순간에 시작된 애니메이션은 0에서 끊긴다.
+  // 복원은 이동이 아니라 **되돌리기**이므로 애니메이션이면 안 된다 — 문서가 무엇을 선언했든.
+  it("jumps instantly, so a document's smooth scroll-behavior cannot animate the restore", () => {
+    const { message, scrollCall } = mount("<p>hello</p>");
+    message({ __baram: TAG, type: "restore-scroll", y: 512 }, "parent");
+    expect(scrollCall()).toMatchObject({ behavior: "instant", top: 512 });
+  });
+
+  it("refuses a restore from any window other than the host", () => {
+    // A nested frame inside the previewed document must not be able to drive this.
+    const { message, scrolledTo } = mount("<p>hello</p>");
+    message({ __baram: TAG, type: "restore-scroll", y: 512 }, "other");
+    expect(scrolledTo()).toBeNull();
+  });
+
+  it("refuses an untagged or non-numeric restore", () => {
+    const { message, scrolledTo } = mount("<p>hello</p>");
+    message({ type: "restore-scroll", y: 512 }, "parent");
+    message({ __baram: TAG, type: "restore-scroll", y: "512" }, "parent");
+    message({ __baram: TAG, type: "something-else", y: 512 }, "parent");
+    expect(scrolledTo()).toBeNull();
   });
 });
 
