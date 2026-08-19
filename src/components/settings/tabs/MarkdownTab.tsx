@@ -1,3 +1,5 @@
+import type { Translate } from "../../../i18n/useTranslation";
+
 import registry from "../../../extensions/registry.json";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -85,9 +87,15 @@ export function MarkdownTab() {
       {/* Extension Settings (merged from ExtensionsTab) */}
       {getExtensionsWithSettings().map((ext) => (
         <div key={ext.name}>
-          <SettingsSectionHeader title={formatExtName(ext.name)} />
+          <SettingsSectionHeader
+            title={translated(
+              t,
+              `settings.ext.${ext.name}`,
+              formatExtName(ext.name),
+            )}
+          />
           {ext.settings.map((s) => (
-            <ExtensionSettingRow key={s.key} setting={s} />
+            <ExtensionSettingRow key={s.key} setting={s} t={t} />
           ))}
         </div>
       ))}
@@ -95,13 +103,25 @@ export function MarkdownTab() {
   );
 }
 
-function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
+function ExtensionSettingRow({
+  setting,
+  t,
+}: {
+  setting: SettingDef;
+  t: Translate;
+}) {
   const { extensionSettings, setExtensionSetting } = useSettingsStore();
   const value = extensionSettings[setting.key] ?? setting.default;
+  const label = translated(t, `settings.ext.${setting.key}`, setting.label);
+  const description = translated(
+    t,
+    `settings.ext.${setting.key}.desc`,
+    setting.description,
+  );
   switch (setting.type) {
     case "boolean":
       return (
-        <SettingsRow description={setting.description} label={setting.label}>
+        <SettingsRow description={description} label={label}>
           <ToggleSwitch
             checked={!!value}
             onChange={(v) => setExtensionSetting(setting.key, v)}
@@ -110,10 +130,7 @@ function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
       );
     case "number":
       return (
-        <SettingsRow
-          description={`${setting.description} (${value})`}
-          label={setting.label}
-        >
+        <SettingsRow description={`${description} (${value})`} label={label}>
           <input
             className="settings-range"
             max={setting.max ?? 100}
@@ -129,7 +146,7 @@ function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
       );
     case "select":
       return (
-        <SettingsRow description={setting.description} label={setting.label}>
+        <SettingsRow description={description} label={label}>
           <select
             className="settings-select"
             onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
@@ -137,7 +154,11 @@ function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
           >
             {(setting.options ?? []).map((opt) => (
               <option key={opt.value} value={opt.value}>
-                {opt.label}
+                {translated(
+                  t,
+                  `settings.ext.${setting.key}.${opt.value}`,
+                  opt.label,
+                )}
               </option>
             ))}
           </select>
@@ -145,7 +166,7 @@ function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
       );
     case "string":
       return (
-        <SettingsRow description={setting.description} label={setting.label}>
+        <SettingsRow description={description} label={label}>
           <input
             className="settings-input"
             onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
@@ -165,8 +186,6 @@ function formatExtName(name: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-// ─── Markdown Tab ───────────────────────────────────────
-
 function getExtensionsWithSettings() {
   const allEntries: RegistryEntry[] = [
     ...(registry.nodes as RegistryEntry[]),
@@ -179,4 +198,16 @@ function getExtensionsWithSettings() {
         Array.isArray(e.settings) && e.settings.length > 0,
     )
     .map((e) => ({ name: e.name, settings: e.settings }));
+}
+
+/**
+ * A registry.json entry carries ENGLISH label/description strings — the registry is developer
+ * metadata shared with skills and slash commands, not a locale file. The Markdown tab rendered
+ * them verbatim, so Code Block and Mermaid Block were the only settings in the app that stayed
+ * English under a Korean locale. Each string now resolves through `settings.ext.<key>`, and the
+ * registry string is the fallback for an extension that has no key yet (third-party ones).
+ */
+function translated(t: Translate, key: string, fallback: string): string {
+  const value = t(key);
+  return value === key ? fallback : value;
 }
