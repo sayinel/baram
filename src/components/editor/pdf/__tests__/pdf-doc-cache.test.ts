@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetPdfDocumentCacheForTest,
   __setPdfDocumentLoaderForTest,
+  acquirePdfDocument,
   MAX_CACHED_PDF_DOCUMENTS,
   withPdfDocument,
 } from "../pdf-doc-cache";
@@ -153,5 +154,97 @@ describe("withPdfDocument", () => {
       "ok",
     );
     expect(loader).toHaveBeenCalledTimes(2);
+  });
+});
+
+// §291 표면 수명만큼 붙잡는 임대. PdfPreview가 쓰는 형태다 — 유지 상한을 넘겨 축출된 PDF
+// 탭으로 돌아올 때 워커 파싱을 건너뛰는 것이 목적이다.
+describe("acquirePdfDocument", () => {
+  let docs: Map<string, FakeDoc>;
+  let loader: Mock<PdfDocumentLoader>;
+
+  beforeEach(() => {
+    __resetPdfDocumentCacheForTest();
+    docs = new Map();
+    loader = vi.fn(async (path: string) => {
+      const doc = fakeDoc();
+      docs.set(path, doc);
+      return doc as unknown as PDFDocumentProxy;
+    });
+    __setPdfDocumentLoaderForTest(loader);
+  });
+
+  afterEach(() => {
+    __setPdfDocumentLoaderForTest(null);
+    __resetPdfDocumentCacheForTest();
+  });
+
+  // 이 기능의 전부다: 표면이 사라졌다 다시 생겨도 문서는 다시 파싱하지 않는다.
+  it("reuses the parsed document after the surface that held it went away", async () => {
+    const first = acquirePdfDocument("/a.pdf");
+    await first.promise;
+    first.release();
+    await flush();
+
+    const second = acquirePdfDocument("/a.pdf");
+    await second.promise;
+
+    expect(loader).toHaveBeenCalledTimes(1);
+    expect(docs.get("/a.pdf")!.loadingTask.destroy).not.toHaveBeenCalled();
+    second.release();
+  });
+
+  // 놓인 문서는 축출 대상이다 — 캐시가 무한히 자라지 않는다.
+  it("lets the LRU take a document nobody leases any more", async () => {
+    const lease = acquirePdfDocument("/old.pdf");
+    await lease.promise;
+    lease.release();
+
+    for (let i = 0; i < MAX_CACHED_PDF_DOCUMENTS; i++) {
+      const other = acquirePdfDocument(`/other-${String(i)}.pdf`);
+      await other.promise;
+      other.release();
+    }
+    await flush();
+
+    expect(docs.get("/old.pdf")!.loadingTask.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  // ‼️ 같은 임대를 두 번 놓으면 refCount가 음수가 되어, **아직 그리고 있는** 다른 임대의
+  // 문서가 축출 후보로 뽑힌다 — 그 렌더는 "Worker was destroyed"로 죽는다.
+  it("does not strand another lease when one is released twice", async () => {
+    const a = acquirePdfDocument("/shared.pdf");
+    const b = acquirePdfDocument("/shared.pdf");
+    await a.promise;
+    a.release();
+    a.release();
+
+    for (let i = 0; i < MAX_CACHED_PDF_DOCUMENTS; i++) {
+      const other = acquirePdfDocument(`/filler-${String(i)}.pdf`);
+      await other.promise;
+      other.release();
+    }
+    await flush();
+
+    expect(docs.get("/shared.pdf")!.loadingTask.destroy).not.toHaveBeenCalled();
+    b.release();
+  });
+
+  // 파일이 디스크에서 바뀌면(refreshKey) 캐시된 바이트를 돌려주면 안 된다.
+  it("parses again when the version changes and shares the entry when it does not", async () => {
+    const v0 = acquirePdfDocument("/paper.pdf");
+    await v0.promise;
+    const same = acquirePdfDocument("/paper.pdf", 0);
+    await same.promise;
+    expect(loader).toHaveBeenCalledTimes(1);
+
+    const v7 = acquirePdfDocument("/paper.pdf", 7);
+    await v7.promise;
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(loader).toHaveBeenLastCalledWith("/paper.pdf", 7);
+
+    v0.release();
+    same.release();
+    v7.release();
   });
 });
