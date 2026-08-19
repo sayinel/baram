@@ -12,11 +12,13 @@ import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { logger } from "../../utils/logger";
 import { MenuList } from "../toolbar/MenuList";
+import { resolveGraphColors } from "./graph-colors";
 import { buildGraphNodeMenu } from "./graph-context-menu";
 import { createGraphSimulation } from "./graph-simulation";
 import { buildGraphStyle } from "./graph-style";
 import { nodeSize } from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
+import { useGraphColors } from "./use-graph-colors";
 import { useGraphData } from "./use-graph-data";
 import { useGraphFilter } from "./use-graph-filter";
 
@@ -80,6 +82,9 @@ export function GraphView() {
   const showArrows = useGraphSettingsStore((s) => s.showArrows);
   const colorByNamespace = useGraphSettingsStore((s) => s.colorByNamespace);
 
+  // §54 Theme colours, as literals cytoscape can parse (see graph-colors.ts)
+  const graphColors = useGraphColors();
+
   const handleOpenInTab = useCallback(() => {
     useEditorStore.getState().openGraphTab();
   }, []);
@@ -98,7 +103,13 @@ export function GraphView() {
 
       cy = cytoscape({
         container: containerRef.current,
-        style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
+        // Resolved here rather than read from the render closure: the dynamic import
+        // above means an arbitrary gap between mount and creation, and the theme can
+        // change inside it.
+        style: buildGraphStyle(
+          { linkThickness, showArrows, colorByNamespace },
+          resolveGraphColors(),
+        ),
         layout: { name: "preset" },
         minZoom: 0.1,
         maxZoom: 5,
@@ -350,17 +361,24 @@ export function GraphView() {
     simRef,
   });
 
-  // Effect: Update styles when display settings change
+  // Effect: Update styles when display settings or the theme's colours change.
+  //
+  // `cyReady` is a dependency because the instance is created asynchronously: a setting or
+  // theme that changes while the cytoscape import is in flight would otherwise be dropped,
+  // since Effect 1 captured its values at mount.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
 
     cy.style()
       .fromJson(
-        buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
+        buildGraphStyle(
+          { linkThickness, showArrows, colorByNamespace },
+          graphColors,
+        ),
       )
       .update();
-  }, [linkThickness, showArrows, colorByNamespace]);
+  }, [linkThickness, showArrows, colorByNamespace, graphColors, cyReady]);
 
   // Effect: Update node sizes when nodeSize setting changes
   useEffect(() => {
