@@ -1,11 +1,13 @@
-import type { TabScrollTarget } from "../use-tab-scroll-memory";
-
 // §291 탭 스크롤 메모리.
 //
 // ‼️ 이 훅이 scroll 이벤트로 기록하는 이유를 테스트가 그대로 재현한다: "비활성이 되는 순간
 // 읽기"는 불가능하다. React 커밋 순서상 effect/cleanup이 돌 때는 이미 display:none이 적용돼
 // scrollTop이 0이다. 그래서 아래 테스트는 숨기기 직전에 scrollTop을 0으로 만들어 두고,
 // 그럼에도 복원이 마지막으로 **스크롤된** 값을 되돌리는지 단정한다.
+import { StrictMode } from "react";
+
+import type { TabScrollTarget } from "../use-tab-scroll-memory";
+
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -215,5 +217,117 @@ describe("useTabScrollMemory on a surface whose content arrives later", () => {
 
     grow(4000);
     expect(target.getScrollTop()).toBe(900);
+  });
+});
+
+// §291 ‼️ 개발 빌드는 StrictMode다(main.tsx). React는 마운트마다 effect를
+// **create → destroy → create**로 두 번 돌린다. "복원했는가"를 effect 본문에서 ref에 적어
+// 두면 두 번째 create가 그 ref를 보고 건너뛰는데, 첫 번째가 만든 관찰자는 그 사이 destroy에서
+// 이미 끊겨 있다 — 내용이 늦게 도착하는 표면의 복원 경로가 개발 빌드에서 통째로 죽는다.
+// 상한을 넘겨 축출된 PDF가 세 차례 수정에도 실앱에서 계속 맨 위로 갔던 이유가 이것이다.
+//
+// 위쪽 스텁과 달리 이 블록의 스텁은 **관찰 대상과 연결 상태를 실제로 추적한다.** 그래야
+// "관찰자가 끊겼다"와 "살아서 기다린다"를 구별할 수 있다 — 앞의 스텁은 disconnect를 무시하고
+// observe도 보지 않으므로 이 결함을 통과시킨다.
+class FakeResizeObserver {
+  static live = new Set<FakeResizeObserver>();
+
+  private readonly observed = new Set<Element>();
+
+  constructor(private readonly cb: () => void) {
+    FakeResizeObserver.live.add(this);
+  }
+
+  static fire(el: Element) {
+    for (const observer of [...FakeResizeObserver.live]) {
+      if (observer.observed.has(el)) observer.cb();
+    }
+  }
+
+  disconnect() {
+    this.observed.clear();
+    FakeResizeObserver.live.delete(this);
+  }
+
+  observe(el: Element) {
+    this.observed.add(el);
+  }
+
+  unobserve(el: Element) {
+    this.observed.delete(el);
+  }
+}
+
+/** scrollTop을 자기 내용 높이로 클램프하는, 실제 스크롤 컨테이너에 가까운 스텁. */
+function makeLateContentSurface() {
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  let height = 0;
+  let top = 0;
+  return {
+    /** 늦게 도착하는 자식 — 컨테이너가 비어 있는 상태를 재현한다. */
+    addChild: () => {
+      const child = document.createElement("div");
+      el.appendChild(child);
+      return child;
+    },
+    element: el,
+    grow: (child: Element, h: number) => {
+      height = h;
+      FakeResizeObserver.fire(child);
+    },
+    target: {
+      element: el,
+      getScrollTop: () => top,
+      setScrollTop: (n: number) => {
+        top = Math.min(n, height);
+      },
+    },
+  };
+}
+
+describe("useTabScrollMemory under StrictMode", () => {
+  beforeEach(() => {
+    FakeResizeObserver.live.clear();
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  });
+
+  it("still waits for content when effects are double-invoked", () => {
+    const surface = makeLateContentSurface();
+    const child = surface.addChild();
+    const offsets = { current: new Map<string, number>([["a", 900]]) };
+
+    renderHook(
+      () => useTabScrollMemory("a", true, () => surface.target, offsets),
+      { wrapper: StrictMode },
+    );
+    // 아직 내용이 없다 — 잘려서 0이다.
+    expect(surface.target.getScrollTop()).toBe(0);
+
+    act(() => surface.grow(child, 4000));
+    expect(surface.target.getScrollTop()).toBe(900);
+  });
+
+  it("waits for a child that appears only after the restore attempt", async () => {
+    // Suspense fallback=null처럼 복원 시점에 컨테이너가 **비어 있는** 표면. 자식이 없으면
+    // 관찰할 대상도 없으므로, 자식이 생기는 것까지 관찰해야 한다.
+    const surface = makeLateContentSurface();
+    const offsets = { current: new Map<string, number>([["b", 700]]) };
+
+    renderHook(
+      () => useTabScrollMemory("b", true, () => surface.target, offsets),
+      { wrapper: StrictMode },
+    );
+    expect(surface.target.getScrollTop()).toBe(0);
+
+    // MutationObserver 통지는 마이크로태스크로 온다.
+    let child!: Element;
+    await act(async () => {
+      child = surface.addChild();
+      await Promise.resolve();
+    });
+    act(() => surface.grow(child, 3000));
+
+    expect(surface.target.getScrollTop()).toBe(700);
   });
 });
