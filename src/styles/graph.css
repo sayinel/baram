@@ -94,19 +94,6 @@
   text-align: center;
 }
 
-/* Graph color variables — point local aliases at semantic tokens */
-:root {
-  --graph-node-color: var(--color-graph-node);
-  --graph-active-color: var(--color-graph-active);
-  --graph-active-border: var(--color-graph-active-border);
-  --graph-neighbor-color: var(--color-graph-neighbor);
-  --graph-orphan-color: var(--color-graph-orphan);
-  --graph-pinned-color: var(--color-graph-pinned);
-  --graph-edge-color: var(--color-graph-edge);
-  --graph-cross-vault-edge: var(--color-graph-cross-vault);
-  --graph-label-color: var(--color-graph-label);
-}
-
 /* Graph settings button */
 .graph-view-settings-btn {
   display: flex;
