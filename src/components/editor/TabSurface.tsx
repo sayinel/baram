@@ -8,7 +8,7 @@
 // activeTabFilePath 같은 값은 전부 "활성 탭"의 것이라, 숨은 표면에 그대로 넘기면 남의 mtime을
 // refreshKey로 받아 엉뚱하게 리로드한다(§288 규칙 2). 자기 `entry.tabId`로 직접 읽는다.
 import type { CSSProperties, ReactNode, RefObject } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   RetainedEntry,
@@ -50,6 +50,21 @@ export function TabSurface({
 }: TabSurfaceProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const codeEditorRef = useRef<null | SourceCodeEditorRef>(null);
+
+  /**
+   * 이 표면이 **한 번이라도 보인 적이 있는가.**
+   *
+   * ‼️ 유지는 "미리 마운트해 둔다"가 아니라 "한 번 보인 뒤로는 언마운트하지 않는다"이다.
+   * 여기 실리는 컴포넌트 중에는 마운트 시점에 컨테이너를 재는 것이 있다 — GraphView는
+   * Cytoscape 인스턴스를 mount-only로 만들고(그 파일의 useEffect([]) 주석), `display:none`
+   * 아래에서는 0×0을 잰다. 실앱에서 그래프가 구석으로 뭉쳐 나타난 원인이 이것이다.
+   *
+   * 이건 "한 프레임 기다린다" 같은 추정이 아니라 가시성이라는 사실에 대한 조건이다.
+   */
+  const [everActive, setEverActive] = useState(active);
+  useEffect(() => {
+    if (active) setEverActive(true);
+  }, [active]);
 
   const filePath = useEditorStore(
     (s) => s.tabs.find((t) => t.id === entry.tabId)?.filePath ?? "",
@@ -108,13 +123,14 @@ export function TabSurface({
       style={hiddenStyleFor(entry.kind, active)}
     >
       {active && overlay}
-      {renderers[entry.kind]({
-        active,
-        codeEditorRef,
-        filePath,
-        refreshKey,
-        tabId: entry.tabId,
-      })}
+      {everActive &&
+        renderers[entry.kind]({
+          active,
+          codeEditorRef,
+          filePath,
+          refreshKey,
+          tabId: entry.tabId,
+        })}
     </div>
   );
 }

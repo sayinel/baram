@@ -46,6 +46,7 @@ const buffers: Record<string, string> = {
 const renderers: TabSurfaceRenderers = createTabSurfaceRenderers({
   codeLanguageFor: () => undefined,
   getSourceBuffer: (id) => buffers[id] ?? "",
+  hasSourceBuffer: (id) => id in buffers,
   markDirty,
   onPdfFindApiChange: vi.fn(),
   onTogglePdfFind: vi.fn(),
@@ -85,8 +86,24 @@ beforeEach(() => {
 });
 
 describe("two mounted code surfaces", () => {
-  it("routes each surface's edit to its OWN tab", () => {
-    const { container } = render(
+  /**
+   * 실제 순서를 따른다: B를 먼저 열어(활성) 마운트시킨 뒤 A로 옮겨 B가 숨겨진 상태를 만든다.
+   *
+   * ‼️ 처음부터 active={false}로 렌더하면 안 된다 — 유지는 "미리 마운트"가 아니라 "한 번 보인
+   * 뒤로는 언마운트하지 않는다"이므로, 한 번도 활성이 아니었던 표면은 아예 마운트되지 않는다.
+   */
+  function mountBothWithBHidden() {
+    const view = render(
+      <>
+        <TabSurface
+          active={false}
+          entry={entryFor("a")}
+          renderers={renderers}
+        />
+        <TabSurface active entry={entryFor("b")} renderers={renderers} />
+      </>,
+    );
+    view.rerender(
       <>
         <TabSurface active entry={entryFor("a")} renderers={renderers} />
         <TabSurface
@@ -96,6 +113,11 @@ describe("two mounted code surfaces", () => {
         />
       </>,
     );
+    return view;
+  }
+
+  it("routes each surface's edit to its OWN tab", () => {
+    const { container } = mountBothWithBHidden();
 
     // 숨은 표면 B가 편집된다(플러그인·외부 이벤트로 실제로 일어날 수 있다).
     // content가 B의 버퍼라는 것 자체가 "렌더러가 자기 탭에서 읽었다"의 증거다.
@@ -114,16 +136,7 @@ describe("two mounted code surfaces", () => {
 
   it("mounts both surfaces at once — the precondition this guards", () => {
     // 이 단정이 깨지면 위 테스트는 "숨은 표면이 없어서" 통과한다.
-    const { container } = render(
-      <>
-        <TabSurface active entry={entryFor("a")} renderers={renderers} />
-        <TabSurface
-          active={false}
-          entry={entryFor("b")}
-          renderers={renderers}
-        />
-      </>,
-    );
+    const { container } = mountBothWithBHidden();
     expect(container.querySelectorAll("[data-code]")).toHaveLength(2);
   });
 });

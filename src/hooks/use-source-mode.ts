@@ -66,6 +66,11 @@ interface UseSourceModeReturn {
   editorStateCache: MutableRefObject<Map<string, PmEditorState>>;
   getSourceBuffer: (tabId: string) => string;
   handleSourceChange: (content: string) => void;
+  /**
+   * 이 탭의 문서를 이미 읽어 왔는가. 빈 파일도 정당한 문서이므로 내용 길이로는 알 수 없다 —
+   * 맵에 키가 있는지가 유일한 판정이다.
+   */
+  hasSourceBuffer: (tabId: string) => boolean;
   /** 활성 탭이 소스 모드인가 — `sourceModeTabs.has(activeTabId)`의 파생값. */
   isSourceMode: boolean;
   setSourceBuffer: (tabId: string, content: string) => void;
@@ -108,6 +113,13 @@ export function useSourceMode({
   const getSourceBuffer = useCallback(
     (tabId: string): string => buffersRef.current.get(tabId) ?? "",
     [],
+  );
+  const hasSourceBuffer = useCallback(
+    (tabId: string): boolean => buffersRef.current.has(tabId),
+    // bufferVersion을 deps에 두어, 버퍼가 처음 채워진 렌더에서 이 콜백의 참조가 바뀌고
+    // 소비자(TabSurface 렌더러)가 다시 판정하게 한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bufferVersion],
   );
   const setSourceBuffer = useCallback((tabId: string, content: string) => {
     buffersRef.current.set(tabId, content);
@@ -359,6 +371,7 @@ export function useSourceMode({
     editorStateCache,
     getSourceBuffer,
     handleSourceChange,
+    hasSourceBuffer,
     isSourceMode,
     setSourceBuffer,
     setSourceModeForTab,

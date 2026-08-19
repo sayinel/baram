@@ -33,6 +33,13 @@ export interface TabSurfaceDeps {
   /** 파일 경로 → CodeMirror 언어 이름. */
   codeLanguageFor: (filePath: string) => string | undefined;
   getSourceBuffer: (tabId: string) => string;
+  /**
+   * 이 탭의 문서를 **이미 읽어 왔는가.**
+   *
+   * ‼️ `getSourceBuffer(id) !== ""`로 대신할 수 없다 — 빈 파일도 정당한 문서다. 조건은
+   * "내용이 있는가"가 아니라 "읽어 왔는가"이고, 그건 맵에 키가 있는지로만 알 수 있다.
+   */
+  hasSourceBuffer: (tabId: string) => boolean;
   /** 자기 탭을 dirty로 표시 — 활성 탭이 아니라 편집이 일어난 탭이다. */
   markDirty: (tabId: string, dirty: boolean) => void;
   /** §272 활성 PDF가 자기 find API를 App으로 끌어올리는 통로. */
@@ -65,24 +72,34 @@ export function createTabSurfaceRenderers(
   return {
     // ‼️ content/onChange/커서가 전부 **자기 tabId**를 쓴다. 예전에는 전역 버퍼 하나였고
     // 편집 영역이 코드 표면을 하나만 마운트한다는 사실에 기대고 있었다(§287).
-    code: ({ codeEditorRef, filePath, tabId }) => (
-      <Suspense fallback={null}>
-        <SourceCodeEditor
-          content={deps.getSourceBuffer(tabId)}
-          initialCursorOffset={deps.sourceCursorOffsetFor(tabId)}
-          language={deps.codeLanguageFor(filePath)}
-          onChange={(next) => {
-            deps.setSourceBuffer(tabId, next);
-            // ‼️ 마크다운은 여기서 dirty로 표시하지 않는다 — 예전 두 갈래의 비대칭을 그대로
-            // 보존한 것이다. 마크다운의 dirty는 use-auto-save가 Tiptap `update` 트랜잭션에서
-            // 판정하고(내용이 실제로 달라졌는지 비교까지 한다), 소스 모드에서 돌아올 때 그
-            // 경로가 돈다. 여기서 같이 표시하면 두 곳이 같은 상태를 쓰게 된다.
-            if (!isMarkdownFile(filePath)) deps.markDirty(tabId, true);
-          }}
-          ref={codeEditorRef}
-        />
-      </Suspense>
-    ),
+    //
+    // ‼️ 문서를 읽어 오기 전에는 아무것도 마운트하지 않는다. SourceCodeEditor는 마운트 때의
+    // `content`로 EditorState를 굳히고 이후 prop을 다시 읽지 않으며(그 파일의 useEffect([])
+    // 주석 참조), 2단계 init이 문서를 그 값으로 **되돌리기까지** 한다. 그래서 빈 버퍼로
+    // 마운트되면 영원히 빈 화면이다 — 실앱에서 .ts/.json/.py가 전부 그렇게 죽었다.
+    //
+    // 예전 코드가 살아 있던 이유는 App이 이 컴포넌트를 lazy()로 불러서 **모듈 로딩이라는
+    // 우연한 지연**이 마운트를 버퍼 채우기 뒤로 밀어줬기 때문이다. 그런 타이밍 의존을
+    // 되살리는 대신, 조건을 데이터로 적는다.
+    code: ({ codeEditorRef, filePath, tabId }) =>
+      !deps.hasSourceBuffer(tabId) ? null : (
+        <Suspense fallback={null}>
+          <SourceCodeEditor
+            content={deps.getSourceBuffer(tabId)}
+            initialCursorOffset={deps.sourceCursorOffsetFor(tabId)}
+            language={deps.codeLanguageFor(filePath)}
+            onChange={(next) => {
+              deps.setSourceBuffer(tabId, next);
+              // ‼️ 마크다운은 여기서 dirty로 표시하지 않는다 — 예전 두 갈래의 비대칭을 그대로
+              // 보존한 것이다. 마크다운의 dirty는 use-auto-save가 Tiptap `update` 트랜잭션에서
+              // 판정하고(내용이 실제로 달라졌는지 비교까지 한다), 소스 모드에서 돌아올 때 그
+              // 경로가 돈다. 여기서 같이 표시하면 두 곳이 같은 상태를 쓰게 된다.
+              if (!isMarkdownFile(filePath)) deps.markDirty(tabId, true);
+            }}
+            ref={codeEditorRef}
+          />
+        </Suspense>
+      ),
     graph: () => (
       <Suspense fallback={null}>
         <GraphViewLazy />

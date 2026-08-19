@@ -43,6 +43,7 @@ const renderers: TabSurfaceRenderers = {
   ...createTabSurfaceRenderers({
     codeLanguageFor: () => undefined,
     getSourceBuffer: () => "",
+    hasSourceBuffer: () => true,
     markDirty: vi.fn(),
     onPdfFindApiChange: vi.fn(),
     onTogglePdfFind: vi.fn(),
@@ -126,8 +127,11 @@ describe("TabSurface (pdf)", () => {
 
   it("derives path and refreshKey from its OWN tab, not the active tab", () => {
     // §288 규칙 2 — 숨은 PDF가 활성 탭의 mtime을 refreshKey로 받으면 엉뚱하게 리로드한다.
+    // 먼저 활성으로 마운트한 뒤 다른 탭으로 옮긴다 — 한 번도 활성이 아니었던 표면은
+    // 애초에 마운트되지 않는다(유지의 정의).
+    const { container, rerender } = render(surface(true));
     useEditorStore.setState({ activeTabId: "m1" });
-    const { container } = render(surface(false));
+    rerender(surface(false));
     const el = container.querySelector<HTMLElement>("[data-pdf]");
     expect(el?.dataset.pdf).toBe("p1");
     expect(el?.dataset.pdfPath).toBe("/v/1.pdf");

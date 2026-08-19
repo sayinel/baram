@@ -517,6 +517,7 @@ function App() {
     bufferVersion,
     editorStateCache,
     getSourceBuffer,
+    hasSourceBuffer,
     isSourceMode,
     setSourceBuffer,
     sourceCursorOffsetFor,
@@ -524,9 +525,6 @@ function App() {
     sourceModeTabs,
     toggleSourceMode,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
-
-  // §287 활성 탭의 버퍼/커서. 지금은 편집 영역이 활성 탭 하나만 렌더하므로 여기서 파생한다 —
-  // §286에서 TabSurface가 자기 탭으로 직접 읽게 되면 이 두 줄은 사라진다.
 
   // §285 유지 집합 — 마운트를 유지할 탭과 그 표면 종류.
   //
@@ -549,6 +547,7 @@ function App() {
         codeLanguageFor: (filePath) =>
           getLanguageForFile(filePath) ?? undefined,
         getSourceBuffer,
+        hasSourceBuffer,
         markDirty,
         onPdfFindApiChange: setPdfFindApi,
         onTogglePdfFind: handleTogglePdfFind,
@@ -561,6 +560,7 @@ function App() {
       }),
     [
       getSourceBuffer,
+      hasSourceBuffer,
       handleTogglePdfFind,
       markDirty,
       pdfFindOpen,

@@ -28,6 +28,7 @@ const renderers: TabSurfaceRenderers = {
   ...createTabSurfaceRenderers({
     codeLanguageFor: () => undefined,
     getSourceBuffer: () => "",
+    hasSourceBuffer: () => true,
     markDirty: vi.fn(),
     onPdfFindApiChange: vi.fn(),
     onTogglePdfFind: vi.fn(),
