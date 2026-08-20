@@ -948,7 +948,7 @@ so restarting the app also forces a fresh fetch if needed.
 `registry/index.json` is the canonical
 example of a valid `RegistryIndex`: it lists `baram-word-count` with every
 required field — including `trust` — populated from its real manifest. Note that
-**installing** from it is not possible until 2.0.0 is published; see below.
+**installing** from it is not possible until 2.1.0 is published; see below.
 
 ### The committed seed
 
@@ -959,12 +959,13 @@ live registry — including a missing `trust`, since an entry without one
 describes a plugin the app refuses to install.
 
 **Installing from the seed does not work right now, and not because of the
-seed.** §260's tier model requires every manifest to declare `trust`, and every
-ZIP published before it — `baram-word-count` 1.0.0/1.0.1, `baram-ai-summary`
-1.0.0 — has a manifest that predates the field, so `validateManifest` rejects
-the download whatever the index says about it. The seed therefore names the
-**next** release (`baram-word-count` 2.0.0) with a `checksum` of **64 zeros**,
-and an install attempt fails on the missing ZIP. Until that release ships, use
+seed.** The seed names the **next** release (`baram-word-count` 2.1.0) with a
+`checksum` of **64 zeros**, so an install attempt fails on the missing ZIP until
+that release ships. Older published ZIPs are no help either: §260's tier model
+requires every manifest to declare `trust`, and everything published before it —
+`baram-word-count` 1.0.0/1.0.1, `baram-ai-summary` 1.0.0 — has a manifest that
+predates the field, so `validateManifest` rejects the download whatever the
+index says about it. Until that release ships, use
 the seed to exercise the marketplace **UI** — listing, capability and tier
 badges, the legacy state, refresh — and dev-load from source
 (**Settings → Plugins → Developer**) to exercise a plugin actually running.
