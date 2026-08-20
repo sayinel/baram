@@ -249,3 +249,101 @@ describe("StatusBar — modes without a document", () => {
     expect(screen.getByText(/^Ln /u)).toBeInTheDocument();
   });
 });
+
+// §4.8 WHICH document the right-hand numbers describe.
+//
+// ‼️ They come from the shared Tiptap editor, and `use-tab-switching` returns BEFORE
+// ProseMirror for a non-markdown file (see its `if (!isMarkdownFile(...))` branch), so the
+// editor keeps holding the last markdown document while a PDF / image / HTML preview / code
+// file is on screen. The mode alone cannot gate this: `source` covers both a markdown source
+// view (the editor does hold it) and a code file (it holds something else entirely).
+describe("StatusBar — whose words are these", () => {
+  let editor: Editor | null = null;
+
+  beforeEach(() => {
+    useEditorStore.setState({ activeTabId: null, tabs: [] });
+    useFileStore.getState().setRootPath("/vault");
+    useSettingsStore.getState().setZoomLevel(1);
+  });
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+    useSettingsStore.getState().setZoomLevel(1);
+  });
+
+  function editorHolding(markdown: string): Editor {
+    return new Editor({
+      content: markdown,
+      extensions: createBaramExtensions(),
+    });
+  }
+
+  it("withholds words/Ln/Col on a PDF tab, though the editor still holds a markdown document", () => {
+    editor = editorHolding("alpha beta gamma");
+    setActiveTab("/vault/paper.pdf");
+
+    render(<StatusBar editor={editor} mode="preview" />);
+
+    expect(screen.queryByText(/words$/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Ln /u)).not.toBeInTheDocument();
+  });
+
+  it("withholds them for a code file, whose text lives in CodeMirror and not in the editor", () => {
+    editor = editorHolding("alpha beta gamma");
+    setActiveTab("/vault/main.ts");
+
+    render(<StatusBar editor={editor} mode="source" />);
+
+    expect(screen.queryByText(/words$/u)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Ln /u)).not.toBeInTheDocument();
+  });
+
+  it("still reports them for a markdown file shown as source — the editor does hold that one", () => {
+    // The complement. Without it, the two above also pass for a panel that reports nothing.
+    editor = editorHolding("alpha beta gamma");
+    setActiveTab("/vault/note.md");
+
+    render(<StatusBar editor={editor} mode="source" />);
+
+    expect(screen.getByText("3 words")).toBeInTheDocument();
+    expect(screen.getByText(/^Ln /u)).toBeInTheDocument();
+  });
+
+  // A synthetic combination App does not produce today — every preview surface is a
+  // non-markdown extension, so the allowlist's exclusion of `preview` is invisible to real
+  // data and no assertion over real tabs can pin it (the file check alone already answers
+  // those). Injecting it anyway is what stops a future surface that PREVIEWS a markdown file
+  // — a reading mode, a diff view — from silently opting itself back into these numbers.
+  it("withholds them for a preview surface even over a markdown file", () => {
+    editor = editorHolding("alpha beta gamma");
+    setActiveTab("/vault/note.md");
+
+    render(<StatusBar editor={editor} mode="preview" />);
+
+    expect(screen.queryByText(/words$/u)).not.toBeInTheDocument();
+  });
+
+  it("still reports them for an untitled buffer, which has no path yet", () => {
+    editor = editorHolding("alpha beta gamma");
+    setActiveTab("");
+
+    render(<StatusBar editor={editor} mode="wysiwyg" />);
+
+    expect(screen.getByText("3 words")).toBeInTheDocument();
+  });
+
+  // The zoom level is applied to `.editor-area-scroll`, which is what a PDF renders inside —
+  // PdfPreview even multiplies its raster scale by it. Withholding the word count must not
+  // take this live, pinch-changeable readout down with it.
+  it("keeps the zoom indicator on a PDF tab, with no stray separator before it", () => {
+    editor = editorHolding("alpha beta gamma");
+    setActiveTab("/vault/paper.pdf");
+    useSettingsStore.getState().setZoomLevel(1.2);
+
+    render(<StatusBar editor={editor} mode="preview" />);
+
+    expect(screen.getByText("120%")).toBeInTheDocument();
+    expect(screen.queryAllByText("|")).toHaveLength(0);
+  });
+});

@@ -30,6 +30,7 @@ import {
   useZettelFavoritesStore,
 } from "../../stores/zettelkasten/zettel-favorites";
 import { subscribeContentLoaded } from "../../utils/editor/programmatic-update";
+import { isMarkdownFile } from "../../utils/file-type";
 import { basename } from "../../utils/path-utils";
 import { extractLeadingId } from "../../utils/zettelkasten/parse-note-title";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
@@ -47,23 +48,22 @@ const MODE_LABELS: Record<EditorMode, string> = {
 };
 
 /**
- * Modes whose right-hand panel reports words and a cursor.
+ * Modes whose surface is a text document the shared editor holds.
  *
- * ‼️ `preview` is in the list to PRESERVE existing behaviour, not because the claim holds for
- * it: a PDF or image tab has no words and no cursor, and the panel reports the count of
- * whatever document the shared editor still holds. That is a pre-existing defect this list
- * neither introduces nor fixes — it is called out so the membership is not read as a promise.
+ * ‼️ `preview` USED to be in this list, and that is the bug this set no longer has: a PDF,
+ * image or HTML-preview tab has no words and no cursor, so the panel reported the count of
+ * whatever markdown the shared editor was still holding from the previous tab.
+ *
+ * ‼️ Membership is necessary but NOT sufficient — see `showDocumentStats`. `source` covers
+ * both a markdown source view (the editor does hold that document) and a code file (it holds
+ * something else entirely), so no mode check alone can gate these numbers.
  *
  * ‼️ An ALLOWLIST on purpose. This was `mode !== "graph"`, so every mode added later
  * inherited a right-hand panel reporting "0 words, Ln 1, Col 1" about a tab that has no
  * text at all. Defaulting a new mode to "no stats" is the direction that fails visibly
  * (a missing panel) rather than plausibly (a confident wrong number).
  */
-const DOCUMENT_MODES: ReadonlySet<EditorMode> = new Set([
-  "preview",
-  "source",
-  "wysiwyg",
-]);
+const DOCUMENT_MODES: ReadonlySet<EditorMode> = new Set(["source", "wysiwyg"]);
 
 const SPACE_ICONS: Record<string, typeof Pencil> = {
   writing: Pencil,
@@ -224,6 +224,19 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [spaceMenuOpen]);
 
+  // §4.8 May the right-hand panel report words and a cursor at all?
+  //
+  // ‼️ These numbers have exactly one source — the shared Tiptap editor — and that editor is
+  // NOT reloaded for a tab whose surface it does not draw: `use-tab-switching` returns before
+  // ProseMirror for a non-markdown file (`if (!isMarkdownFile(incomingTab.filePath))`), so it
+  // keeps holding the last markdown document while a PDF, an image, an HTML preview or a code
+  // file is on screen. Asking the ACTIVE TAB rather than the render chain is deliberate: it is
+  // a property of the tab's own path, so a future surface cannot silently opt itself in.
+  //
+  // `isMarkdownFile("")` is true, which is what keeps an untitled buffer reporting normally.
+  const showDocumentStats =
+    DOCUMENT_MODES.has(mode) && isMarkdownFile(activeFilePath);
+
   return (
     <div className="status-bar">
       <div className="status-bar-left">
@@ -303,29 +316,37 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
         )}
         <PluginStatusBarItems align="left" />
       </div>
-      {DOCUMENT_MODES.has(mode) && (
-        <div className="status-bar-right">
-          <span
-            className="status-words cursor-default"
-            title={`${stats.chars} characters`}
-          >
-            {stats.words} words
-          </span>
-          <span className="status-separator">|</span>
-          <span className="status-position cursor-default">
-            Ln {stats.line}, Col {stats.col}
-          </span>
-          {zoomPercent !== 100 && (
-            <>
-              <span className="status-separator">|</span>
-              <span className="status-zoom" title="Cmd+0 to reset zoom">
-                {zoomPercent}%
-              </span>
-            </>
-          )}
-          <PluginStatusBarItems align="right" />
-        </div>
-      )}
+      {/* ‼️ The panel itself is NOT gated on `showDocumentStats`. The zoom level applies to
+          `.editor-area-scroll`, which is what a PDF, an image and the graph all render inside
+          — PdfPreview even multiplies its raster scale by it, and §281 lets a trackpad pinch
+          change it there. Withholding the word count must not take that live readout, or a
+          plugin's right-aligned item, down with it. Both children render nothing when empty. */}
+      <div className="status-bar-right">
+        {showDocumentStats && (
+          <>
+            <span
+              className="status-words cursor-default"
+              title={`${stats.chars} characters`}
+            >
+              {stats.words} words
+            </span>
+            <span className="status-separator">|</span>
+            <span className="status-position cursor-default">
+              Ln {stats.line}, Col {stats.col}
+            </span>
+          </>
+        )}
+        {zoomPercent !== 100 && (
+          <>
+            {/* Only a separator when something precedes it. */}
+            {showDocumentStats && <span className="status-separator">|</span>}
+            <span className="status-zoom" title="Cmd+0 to reset zoom">
+              {zoomPercent}%
+            </span>
+          </>
+        )}
+        <PluginStatusBarItems align="right" />
+      </div>
     </div>
   );
 }
