@@ -6,7 +6,22 @@
  */
 import { listDir, readFile, writeFile } from "../../ipc/invoke";
 import { extractFrontmatter } from "../markdown/frontmatter";
+import { countMarkdownWords } from "../word-count-markdown";
 import { JOURNAL_FILENAME_RE } from "./journal";
+
+/**
+ * §56g On-disk shape of the stats cache.
+ *
+ * ‼️ Bump this whenever the meaning of a cached FIELD changes, not just its shape. It went
+ * 1 → 2 when `words` moved to the canonical prose counter: a cache written by the old
+ * line-based stripper is well-formed but holds numbers this code would never produce, and
+ * `readStatsCache` has no way to tell stale numbers from fresh ones except this.
+ *
+ * A named constant rather than five literals — the previous version had `1` written out in
+ * `createEmptyCache`, `buildFullCache`, `updateCacheEntry` and the read guard, so a partial
+ * bump would have written v2 caches that the reader still accepted as v1.
+ */
+const CACHE_VERSION = 2;
 
 // ---- Types ----------------------------------------------------------------
 
@@ -31,7 +46,7 @@ export interface JournalStatsCache {
     totalEntries: number;
     totalWords: number;
   };
-  version: 1;
+  version: typeof CACHE_VERSION;
 }
 
 // ---- Cache path -----------------------------------------------------------
@@ -98,7 +113,7 @@ export async function buildFullCache(
   const stats = recomputeStats(entriesByDate);
 
   return {
-    version: 1,
+    version: CACHE_VERSION,
     stats: {
       ...stats,
       lastFullScan: new Date().toISOString(),
@@ -112,7 +127,7 @@ export async function buildFullCache(
 /** Create a fresh empty cache object. */
 export function createEmptyCache(): JournalStatsCache {
   return {
-    version: 1,
+    version: CACHE_VERSION,
     stats: {
       currentStreak: 0,
       longestStreak: 0,
@@ -133,7 +148,7 @@ export async function readStatsCache(
   try {
     const raw = await readFile(cachePath(journalDir));
     const parsed = JSON.parse(raw) as JournalStatsCache;
-    if (parsed.version !== 1) return null;
+    if (parsed.version !== CACHE_VERSION) return null;
     return parsed;
   } catch {
     return null;
@@ -163,7 +178,7 @@ export function updateCacheEntry(
   const stats = recomputeStats(newEntriesByDate);
 
   return {
-    version: 1,
+    version: CACHE_VERSION,
     stats: {
       ...stats,
       lastFullScan: cache.stats.lastFullScan,
@@ -220,12 +235,17 @@ function parseEntryContent(content: string): JournalEntryMeta {
   const frontmatter = fmResult ? parseRawYaml(fmResult.yaml) : {};
   const body = fmResult ? fmResult.rest : content;
 
-  // Word count: body text only, strip headings (#…) and count tokens
-  const bodyText = body
-    .split("\n")
-    .filter((line) => !line.startsWith("#"))
-    .join(" ");
-  const words = bodyText.split(/\s+/).filter(Boolean).length;
+  // §4.8 The canonical prose counter, NOT a local stripper.
+  //
+  // ‼️ This used to drop every line starting with `#` and count what remained, which made it
+  // the third of three counters that disagreed about the same document — the status bar and
+  // the Word Count plugin both count a heading's text, and both exclude code, which this did
+  // not. Divergence here is user-visible: the same day's entry could be "42 words" in the
+  // journal panel and a different number in the status bar.
+  //
+  // Frontmatter is already excluded by the counter itself (`spec.code`), so `body` rather
+  // than `content` is passed only to keep the YAML out of the mdast parse.
+  const words = countMarkdownWords(body);
 
   const hasPhotos = content.includes("![");
 

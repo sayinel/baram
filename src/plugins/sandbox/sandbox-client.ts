@@ -293,6 +293,10 @@ export function startSandboxClient(
       const { from, to } = value as { from: number; to: number };
       return { from, text: payload, to };
     },
+    // §4.8 Staged like `getMarkdown` — see the protocol member for why prose is no smaller
+    // a secret than its source.
+    getText: async () =>
+      (await readStaged({ kind: "editor_get_text" })).payload,
     insertText: async (text) => {
       await hostRequest({ kind: "editor_insert_text", text });
     },

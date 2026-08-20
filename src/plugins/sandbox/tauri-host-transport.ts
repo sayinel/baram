@@ -150,6 +150,7 @@ const HOST_REQUEST_VALIDATORS: {
   ai_list_models: () => true,
   ai_stream: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
   editor_get_markdown: () => true,
+  editor_get_text: () => true,
   editor_get_selection: () => true,
   // Its own bound, NOT `isRenderableText` (§260 Phase 4b code review, I2): 4096 is the
   // limit written for one-line toast and status-bar strings, and inserting text silently
