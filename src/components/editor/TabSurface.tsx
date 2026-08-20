@@ -20,11 +20,16 @@ import type {
   RetainedKind,
 } from "../../hooks/use-retained-tabs";
 import type { SourceCodeEditorRef } from "./SourceCodeEditor";
-import type { TabSurfaceRenderers } from "./tab-surface-renderers";
+import type {
+  TabSurfaceContext,
+  TabSurfaceRenderers,
+} from "./tab-surface-renderers";
 
 import { useTabScrollMemory } from "../../hooks/use-tab-scroll-memory";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { ErrorBoundary } from "../ErrorBoundary";
+import { TabSurfaceError } from "./TabSurfaceError";
 
 interface TabSurfaceProps {
   active: boolean;
@@ -142,14 +147,39 @@ export function TabSurface({
       style={hiddenStyleFor(active)}
     >
       {active && overlay}
-      {everActive &&
-        renderers[entry.kind]({
-          active,
-          codeEditorRef,
-          filePath,
-          refreshKey,
-          tabId: entry.tabId,
-        })}
+      {/*
+        ‼️ 경계는 `.editor-area-scroll` **안쪽**이다. 밖으로 빼면 실패한 표면과 함께
+        스크롤 컨테이너(§291)와 overlay의 zoom 기준(위 `overlay` 주석)까지 사라진다.
+
+        표면 하나가 던지면 예전에는 App 루트의 경계까지 올라가 사이드바·탭 바를 포함한
+        앱 전체가 "Something went wrong"으로 대체됐다. 실앱에서 플러그인 상세의
+        `import()` 실패로 관측된 그대로다.
+      */}
+      {everActive && (
+        <ErrorBoundary
+          fallback={(error, retry) => (
+            <TabSurfaceError
+              error={error}
+              // ‼️ 자기 `entry.tabId`를 닫는다 — `activeTabId`가 아니다(§288 규칙 2).
+              // 숨은 표면이 실패한 뒤 활성 탭에서 이 버튼을 누르면 남의 탭이 닫힌다.
+              onClose={() => useEditorStore.getState().closeTab(entry.tabId)}
+              onReload={() => window.location.reload()}
+              onRetry={retry}
+            />
+          )}
+        >
+          <SurfaceContent
+            ctx={{
+              active,
+              codeEditorRef,
+              filePath,
+              refreshKey,
+              tabId: entry.tabId,
+            }}
+            render={renderers[entry.kind]}
+          />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
@@ -166,6 +196,24 @@ export function TabSurface({
  */
 function hiddenStyleFor(active: boolean): CSSProperties {
   return { display: active ? undefined : "none" };
+}
+
+/**
+ * kind별 렌더러를 **컴포넌트 안에서** 부른다.
+ *
+ * ‼️ 이 한 겹이 없으면 위의 ErrorBoundary가 아무것도 잡지 못한다. 에러 경계는 자기
+ * **자손이 렌더되는 동안** 던진 것만 잡는데, `renderers[kind](ctx)`를 JSX children 자리에서
+ * 바로 부르면 그 호출은 TabSurface 자신의 렌더 중에 일어나 경계보다 위에서 던진 셈이 된다.
+ * 실제로 그렇게 짰다가 테스트가 잡았다 — 표면이 던지면 여전히 앱 전체가 내려갔다.
+ */
+function SurfaceContent({
+  ctx,
+  render,
+}: {
+  ctx: TabSurfaceContext;
+  render: (ctx: TabSurfaceContext) => ReactNode;
+}) {
+  return <>{render(ctx)}</>;
 }
 
 /** 래퍼에 붙는 kind별 추가 클래스 — 기존 삼항 사슬이 쓰던 것과 같은 값이어야 한다. */

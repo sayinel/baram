@@ -4,7 +4,17 @@ import { logger } from "../utils/logger";
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
+  /**
+   * Either a fixed node, or a render function receiving the caught error and a reset
+   * handler.
+   *
+   * ‼️ The function form is what lets a boundary live somewhere other than the app root.
+   * With `ReactNode` alone a caller's own fallback could see neither the message nor the
+   * reset, so the only fallback worth using was this class's built-in one — and a boundary
+   * whose fallback fills the window can only be mounted at the top. §286 tab surfaces need
+   * the opposite: a failure that stays inside one pane and can say what happened.
+   */
+  fallback?: ((error: Error, retry: () => void) => ReactNode) | ReactNode;
 }
 
 interface State {
@@ -27,8 +37,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
+      const { fallback } = this.props;
+      if (typeof fallback === "function") {
+        // `state.error` is set together with `hasError` by getDerivedStateFromError, so it is
+        // non-null here; the fallback is spared a null check it could not act on anyway.
+        return fallback(
+          this.state.error ?? new Error("Unknown error"),
+          this.handleRetry,
+        );
+      }
+      if (fallback) {
+        return fallback;
       }
       return (
         <div style={{ padding: "2rem", textAlign: "center" }}>
