@@ -32,6 +32,7 @@ import {
 import { subscribeContentLoaded } from "../../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../../utils/file-type";
 import { basename } from "../../utils/path-utils";
+import { countDocumentChars, countDocumentWords } from "../../utils/word-count";
 import { extractLeadingId } from "../../utils/zettelkasten/parse-note-title";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import "../../styles/zettelkasten.css";
@@ -103,10 +104,16 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
       return { col, line };
     };
 
-    const computeWords = () => {
-      const text = editor.state.doc.textContent;
-      return { chars: text.length, words: countWords(text) };
-    };
+    // ‼️ NOT `doc.textContent`, which is what shipped: that is
+    // `textBetween(0, size, "")`, and prosemirror-model skips its separator when the
+    // separator is falsy — so every block boundary fused two words and the bar undercounted
+    // by (textblocks − 1). The policy (block separators, code and frontmatter excluded,
+    // wikilink labels included) lives in `utils/word-count` because the Word Count plugin
+    // and the journal stats cache have to agree with this number.
+    const computeWords = () => ({
+      chars: countDocumentChars(editor.state.doc),
+      words: countDocumentWords(editor.state.doc),
+    });
 
     const refreshAll = () => {
       if (editor.isDestroyed) return;
@@ -349,10 +356,4 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
       </div>
     </div>
   );
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
 }

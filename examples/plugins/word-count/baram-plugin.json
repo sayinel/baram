@@ -14,7 +14,7 @@
       {
         "id": "count",
         "text": "— words",
-        "tooltip": "Words and characters in the current document (markdown source)"
+        "tooltip": "Words and characters of prose in the current document"
       }
     ]
   },

@@ -7,7 +7,7 @@ function count(text) {
 }
 function activate(ctx) {
   const update = async () => {
-    const { chars, words } = count(await ctx.editor.getMarkdown());
+    const { chars, words } = count(await ctx.editor.getText());
     ctx.ui.setStatusBarText(ITEM, `${words} words \xB7 ${chars} chars`);
   };
   ctx.events.on("editor:ready", () => void update());

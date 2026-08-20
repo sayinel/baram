@@ -16,6 +16,7 @@ import type { SandboxHostRequest } from "./protocol";
 import { pluginSandboxStage } from "../../ipc/plugin-invoke";
 import { markdownToProsemirrorAsync } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { documentProseText } from "../../utils/word-count";
 import {
   editorRefusalMessage,
   editorSurfaceBlocked,
@@ -218,6 +219,19 @@ export function createEditorRequestHandler(
         const selection = readSelection(instance);
         await stage(pluginId, selection.text);
         return { from: selection.from, staged: true, to: selection.to };
+      }
+      case "editor_get_text": {
+        requireCapability(EDITOR_READ_CAPABILITIES, "getText");
+        const instance = live("getText");
+        // Charged the same as `getMarkdown`, from the same O(1) measure: this is also a
+        // whole-document walk, and metering it after the fact would count the cost the
+        // budget exists to refuse.
+        budget.spend(instance.state.doc.content.size, "getText");
+        // The app's OWN counting policy — the same function the status bar reads — so a
+        // plugin cannot arrive at a different number for the same document.
+        const text = documentProseText(instance.state.doc);
+        await stage(pluginId, text);
+        return undefined;
       }
       case "editor_insert_text": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");

@@ -120,6 +120,29 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
     expect(wire.length).toBeLessThan(2_000);
   });
 
+  // §4.8 `getText` — the member whose ABSENCE made the Word Count plugin count `#` and `|`
+  // as words. It travels the same staged path as `getMarkdown` for the same reason: prose is
+  // only a little smaller than its source, so it clears tauri's 8 KiB threshold too.
+  it("delivers the document's prose through the staged pull, never in a frame", async () => {
+    const { ctx, framesToSandbox, pulls } = await pair(["editor:readonly"]);
+
+    const text = await ctx.editor.getText();
+
+    // The markdown reader on the same document keeps its `# ` — this one does not.
+    expect(await ctx.editor.getMarkdown()).toContain("# Title");
+    expect(text).not.toContain("#");
+    expect(text).toContain("Title");
+    expect(text).toContain("Body paragraph.");
+    expect(pulls).toContain(text);
+    const wire = JSON.stringify(framesToSandbox);
+    expect(wire).not.toContain("Body paragraph.");
+  });
+
+  it("refuses getText without an editor-read capability", async () => {
+    const { ctx } = await pair(["ui"]);
+    await expect(ctx.editor.getText()).rejects.toThrow(/requires one of/u);
+  });
+
   it("serialises concurrent reads instead of racing one slot", async () => {
     // Rust holds ONE staged slot per plugin. Two reads in flight would otherwise have the
     // first pull take the second document and the second find the slot empty.

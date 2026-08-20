@@ -175,8 +175,12 @@ describe("baram-word-count — the reference SANDBOXED plugin (§260 Phase 6)", 
     const editorCalls = [...source.matchAll(/ctx\.editor\.(\w+)\s*\(/g)].map(
       (m) => m[1],
     );
-    expect(editorCalls).toEqual(["getMarkdown"]);
-    expect(source).toMatch(/await ctx\.editor\.getMarkdown\(\)/);
+    // §4.8 `getText`, NOT `getMarkdown`. Counting the markdown SOURCE made this plugin
+    // report `#`, `-` and `|` as words, so it contradicted the app's own status bar in the
+    // same status bar. The reader it needs now exists in this tier, and a reference plugin
+    // reaching for the wrong one teaches the wrong thing.
+    expect(editorCalls).toEqual(["getText"]);
+    expect(source).toMatch(/await ctx\.editor\.getText\(\)/);
   });
 
   it("ships a dist/ that was rebuilt from the current source", () => {

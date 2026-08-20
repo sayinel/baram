@@ -14,11 +14,11 @@ Two things it exists to prove:
 
 ## Capabilities
 
-| Capability        | Why it's needed                                            |
-| ----------------- | ---------------------------------------------------------- |
-| `editor:readonly` | `ctx.editor.getMarkdown()` to read the document            |
-| `events`          | `ctx.events.on(...)` to recompute on ready / open / save   |
-| `statusbar`       | `ctx.ui.setStatusBarText(...)` to write the declared item   |
+| Capability        | Why it's needed                                           |
+| ----------------- | --------------------------------------------------------- |
+| `editor:readonly` | `ctx.editor.getMarkdown()` to read the document           |
+| `events`          | `ctx.events.on(...)` to recompute on ready / open / save  |
+| `statusbar`       | `ctx.ui.setStatusBarText(...)` to write the declared item |
 
 The status-bar item itself is **declared** in `baram-plugin.json` under
 `contributions.statusBar`; code addresses it by id. The host refuses an id that was not
@@ -26,30 +26,45 @@ declared, so the manifest and the code have to agree.
 
 ## Ported from the trusted tier — what changed (v1.0.1 → v2.0.0)
 
-| trusted (v1) | sandboxed (v2) |
-| --- | --- |
+| trusted (v1)                                                 | sandboxed (v2)                                                    |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- |
 | `ctx.ui.showStatusBarItem("0 words", "right")` → item handle | `contributions.statusBar` + `ctx.ui.setStatusBarText("count", …)` |
-| `ctx.editor.getContent()` (sync, flat text) | `await ctx.editor.getMarkdown()` (async, markdown source) |
-| `ctx.ui.addStyle(STYLE)` | **gone** — no DOM and no CSS in this tier |
-| `export function deactivate()` | **gone** — never called; teardown destroys the realm |
+| `ctx.editor.getContent()` (sync, flat text)                  | `await ctx.editor.getText()` (async, prose)                       |
+| `ctx.ui.addStyle(STYLE)`                                     | **gone** — no DOM and no CSS in this tier                         |
+| `export function deactivate()`                               | **gone** — never called; teardown destroys the realm              |
 
 A major version because the tier changed: an existing v1 install is a pre-`trust` record the
 app will not auto-run, so updating is a re-consent rather than a patch. `engines.baram` is
 `>=0.5.0` — the sandboxed runtime has never shipped in a release before that, so no earlier
-build can run this plugin. Note that Baram does not currently *enforce* `engines`: it validates
+build can run this plugin. Note that Baram does not currently _enforce_ `engines`: it validates
 the field's presence and never compares versions, so the floor is a statement to a human
 reading the manifest, not a gate.
 
-### Known difference: the count is of the markdown source
+### Fixed in this source; not yet in the published 2.0.0 — the count was of the markdown source
 
-The trusted tier's `editor.getContent()` returned flat text. This tier has only
-`getMarkdown()`, so heading marks, list bullets, table pipes and emphasis marks are counted
-too — the character count in particular reads higher than v1 for the same document.
+‼️ **The committed source here is AHEAD of the published artifact.** `baram-plugin.json` still
+says `2.0.0` / `engines.baram >=0.5.0`, which is what the live registry serves and what its
+checksum covers. `src/index.ts` already calls `getText()`, an API that lands in the next app
+release. The version bump, the `engines` floor and the registry seed move together with that
+release — bumping them here first would point the offline seed at a zip that does not exist.
 
-This is left visible rather than papered over with a regex markdown-stripper: the real gap is
-that the sandboxed editor surface has no flat-text read, and an approximate stripper inside
-the reference plugin would teach the wrong lesson. Adding `getText()` to `SandboxEditorAPI`
-is a contribution-surface change, tracked with the rest of Phase 4's remainder.
+The history is the lesson worth copying.
+
+The trusted tier's `editor.getContent()` returned flat text; the sandboxed tier had only
+`getMarkdown()`. So 2.0.0 counted the markdown SOURCE — heading marks, list bullets, table
+pipes and emphasis marks all became words, and the character count read well above v1's for
+the same document. On `docs/keyboard-shortcuts.md` that is 1,611 "words" against 973 of actual
+prose, and the app's own status bar sat right next to it showing a third number.
+
+That was left VISIBLE rather than papered over with a regex markdown-stripper, because the
+real gap was a missing protocol member, and an approximate stripper inside a reference plugin
+would teach the wrong lesson. The fix was to add the member: `SandboxEditorAPI.getText()`
+returns the document's prose — block text with real separators, code blocks and frontmatter
+excluded, a wikilink's label included — computed by the very function the status bar counts.
+So this plugin now AGREES with the number beside it instead of contradicting it.
+
+**Rule of thumb for your own plugin:** `getText()` to read or measure the text, `getMarkdown()`
+only to round-trip it. A word count over `getMarkdown()` counts syntax as words.
 
 ## Build
 

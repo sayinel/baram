@@ -19,12 +19,16 @@ function count(text: string): { chars: number; words: number } {
 
 export function activate(ctx: SandboxContext): void {
   const update = async (): Promise<void> => {
-    // MARKDOWN SOURCE, not prose. The trusted tier's `editor.getContent()` returned
-    // `editor.getText()` (flat text); this tier has only `getMarkdown()`, so `# `, `- `,
-    // table pipes and emphasis marks are counted too. Deliberately NOT worked around with a
-    // regex stripper here: a flat-text read is a missing protocol member, and inventing an
-    // approximate one inside a reference plugin would teach the wrong thing. See README.
-    const { chars, words } = count(await ctx.editor.getMarkdown());
+    // PROSE, via `getText()` — and the history is the lesson. This tier used to have only
+    // `getMarkdown()`, so v2.0.0 counted the markdown SOURCE: `# `, `- `, table pipes and
+    // emphasis marks all became words. That was documented rather than papered over with a
+    // regex stripper, because a flat-text read was a missing PROTOCOL MEMBER and a reference
+    // plugin approximating one teaches the wrong thing.
+    //
+    // The right fix was to add the member (§4.8), not to strip markdown here. `getText()`
+    // returns exactly what the app's own status bar counts, so this plugin now AGREES with
+    // the number next to it instead of contradicting it in the same bar.
+    const { chars, words } = count(await ctx.editor.getText());
     // Data-only UI: the host owns the item and renders the text. There is no DOM and no
     // `addStyle` in this tier, which is why v1's `tabular-nums` styling is gone.
     ctx.ui.setStatusBarText(ITEM, `${words} words · ${chars} chars`);

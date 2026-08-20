@@ -188,6 +188,24 @@ describe("StatusBar — live word count", () => {
     expect(screen.getByText("3 words")).toBeInTheDocument();
   });
 
+  // ‼️ Every case above this one is a SINGLE paragraph, which is why the status bar shipped
+  // fusing words across block boundaries: `doc.textContent` inserts no separator, so the
+  // shipped bar reported "1 words" for ten one-word paragraphs and undercounted every real
+  // document by (textblocks − 1). Multi-block content is the case that discriminates.
+  it("counts words across block boundaries rather than fusing them", () => {
+    editor = makeEditor("<p>alpha beta</p><p>gamma delta</p>");
+    render(<StatusBar editor={editor} mode="wysiwyg" />);
+    expect(screen.getByText("4 words")).toBeInTheDocument();
+  });
+
+  it("does not count a code block's contents as prose", () => {
+    editor = makeEditor(
+      "<p>alpha beta</p><pre><code>const x = 1;</code></pre>",
+    );
+    render(<StatusBar editor={editor} mode="wysiwyg" />);
+    expect(screen.getByText("2 words")).toBeInTheDocument();
+  });
+
   it("refreshes the word count on a content-loaded signal even when the swap bypasses editor events (tab switch)", () => {
     editor = makeEditor("one two");
     render(<StatusBar editor={editor} mode="wysiwyg" />);
