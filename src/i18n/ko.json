@@ -694,5 +694,10 @@
   "plugin.revoked.stale": "회수 목록을 마지막으로 받은 지 {days}일 지났습니다.",
   "plugin.revoked.unverified": "이 기기의 회수 목록은 서명이 검증되지 않았습니다. 목록이 완전하다고 신뢰할 수 없습니다.",
   "plugin.revoked.vulnerable": "이 버전에서 보안 문제가 보고되었습니다. 새 버전이 나오면 업데이트해 주세요.",
-  "plugin.error.consentGap": "내려받은 파일이 레지스트리 등록 정보와 일치하지 않습니다 — {detail}"
+  "plugin.error.consentGap": "내려받은 파일이 레지스트리 등록 정보와 일치하지 않습니다 — {detail}",
+  "editor.surfaceError.title": "이 탭을 열 수 없습니다",
+  "editor.surfaceError.hint": "이 탭만 실패했습니다. 다시 시도해도 안 되면 앱을 리로드해 주세요.",
+  "editor.surfaceError.retry": "다시 시도",
+  "editor.surfaceError.close": "탭 닫기",
+  "editor.surfaceError.reload": "앱 리로드"
 }

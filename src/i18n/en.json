@@ -694,5 +694,10 @@
   "plugin.revoked.stale": "The withdrawal list was last updated {days} days ago.",
   "plugin.revoked.unverified": "The withdrawal list on this machine was NOT signature-verified, so it cannot be trusted to be complete.",
   "plugin.revoked.vulnerable": "A security issue has been reported in this version. Update it when a newer one is available.",
-  "plugin.error.consentGap": "the download does not match the registry listing — {detail}"
+  "plugin.error.consentGap": "the download does not match the registry listing — {detail}",
+  "editor.surfaceError.title": "This tab could not be opened",
+  "editor.surfaceError.hint": "Only this tab failed. If retrying does not help, reload the app.",
+  "editor.surfaceError.retry": "Retry",
+  "editor.surfaceError.close": "Close tab",
+  "editor.surfaceError.reload": "Reload app"
 }
