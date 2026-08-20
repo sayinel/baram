@@ -75,6 +75,12 @@ export function useSettingsEffects(editor: Editor | null) {
       ? `${fontFamily}, var(--font-family-editor)`
       : "";
     tiptap.style.lineHeight = String(lineHeight);
+    // Also as a variable, because CSS has to compute WITH the line height, not just
+    // inherit it: the list markers and the fold arrow are absolutely positioned, so they
+    // centre on the first line box by arithmetic (editor/lists.css). Reading the inline
+    // `line-height` is not possible from a `calc()`, which is why those offsets used to be
+    // constants that only matched the default 1.75.
+    tiptap.style.setProperty("--editor-line-height", String(lineHeight));
     tiptap.style.maxWidth = editorMaxWidth > 0 ? `${editorMaxWidth}px` : "";
     tiptap.style.marginLeft = editorMaxWidth > 0 ? "auto" : "";
     tiptap.style.marginRight = editorMaxWidth > 0 ? "auto" : "";
