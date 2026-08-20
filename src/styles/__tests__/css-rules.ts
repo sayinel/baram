@@ -24,6 +24,44 @@ export interface Rule {
 }
 
 /**
+ * A CSS rule body as declarations, split at semicolons outside parentheses.
+ *
+ * Not {@link objectProperty}: that one splits on COMMAS, which is right for a JS
+ * style object and wrong for a stylesheet — on `margin: 0; padding-left: 1.6em` it
+ * finds no comma, so it reports the whole remainder as `margin`'s value and the
+ * padding disappears into it. A guard asking "what does this rule set for margin?"
+ * needs the declarations separated the way CSS separates them.
+ */
+export function cssDeclarations(
+  body: string,
+): { prop: string; value: string }[] {
+  const declarations: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of body) {
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    if (char === ";" && depth === 0) {
+      declarations.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  declarations.push(current);
+  return declarations.flatMap((declaration) => {
+    const split = declaration.indexOf(":");
+    if (split === -1) return [];
+    return [
+      {
+        prop: declaration.slice(0, split).trim(),
+        value: declaration.slice(split + 1).trim(),
+      },
+    ];
+  });
+}
+
+/**
  * Every CSS rule outside `generated/`, which Style Dictionary owns.
  *
  * Nested at-rules yield their INNER rule: the outer `@media (...)` cannot be captured
@@ -129,6 +167,46 @@ export function objectProperty(body: string, key: RegExp): null | string {
     }
   }
   return null;
+}
+
+/**
+ * A grouped selector's individual selectors, split at commas outside parentheses.
+ *
+ * The depth tracking is load-bearing: this repo writes `:is(h1, h2, …, h6) + ul`, and a
+ * naive `split(",")` shreds that into fragments like `h6) + ul` — which still ends in
+ * `ul`, so a guard reading the fragment would answer questions about a rule that does
+ * not exist.
+ */
+export function selectorParts(selector: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of selector) {
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    if (char === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  parts.push(current.trim());
+  return parts.filter((part) => part !== "");
+}
+
+/**
+ * The element a single selector actually styles — its rightmost compound, lowercased.
+ *
+ * Functional pseudo-classes are dropped first, because the element they NAME is not the
+ * element the rule styles: `h2:has(+ ul)` sets properties on the heading, and a guard
+ * that read `ul` out of it would report the heading's margin as a list's margin.
+ */
+export function selectorTarget(part: string): string {
+  const stripped = part
+    .replaceAll(/:(?:has|is|where|not)\([^)]*\)/gu, "")
+    .trim();
+  return (stripped.split(/[\s>+~]+/u).at(-1) ?? "").toLowerCase();
 }
 
 /** Files under `dir` with extension `ext`, recursively. */

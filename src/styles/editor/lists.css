@@ -1,0 +1,375 @@
+/* §5.1 Lists — bullet, ordered and task lists.
+ *
+ * Split out of blocks.css, which was the largest editor module, when this section grew
+ * indent guides and drawn markers. Imported directly after blocks.css so the cascade is
+ * unchanged: the only rules that used to follow this section are `hr`, which shares no
+ * selector with a list.
+ *
+ * Two invariants hold the whole file together.
+ *
+ * MARKERS ARE `::before`, NEVER `::marker`. Under `.editor-area-scroll`'s CSS `zoom`,
+ * WKWebView paints the text caret ~1 character into a list item whenever a native
+ * `::marker` is present — the model and selection positions are correct, only the
+ * painted caret is wrong. `list-style: none` plus a `::before` avoids it. Anchoring with
+ * `right: 100%` (a percentage) keeps the marker column scale-perfect under zoom, unlike
+ * an absolute offset, which drifts (cf. the fold arrow's history).
+ *
+ * EVERY LENGTH IS FONT-RELATIVE. `use-settings-effects.ts` writes `fontSize`,
+ * `lineHeight` and `--editor-line-height` onto `.tiptap` from user settings, so a `px`
+ * here is a value that is correct at one setting and wrong at every other. Vertical
+ * centring reads `--editor-line-height`; nothing hardcodes 1.75.
+ *
+ * Both invariants, plus the theme-token rule below, are held by
+ * `src/styles/__tests__/list-styling.test.ts`.
+ */
+
+/* One gutter variable per list, so the marker column, the indent guide and the fold arrow
+ * cannot drift apart — they are three positions in the same space, and the arrow offset in
+ * editor/base.css is derived from this rather than restated.
+ *
+ * An ordered list is only as wide as its numbers need, and it asks the FONT how wide that
+ * is. `1ch` is the advance of the font's own "0", which matters here because no font is
+ * bundled: `--font-family-editor` names Pretendard and Inter but falls back to
+ * `-apple-system`, so the same `2em` is roomy on one machine and overflowing on the next.
+ * A digit count in `em` would be a guess about a font we do not ship.
+ *
+ *   gutter = N·ch + 0.6em   — N digits, plus the period (~0.3em) and 0.11em of clearance
+ *                             for the hover fold arrow's triangle
+ *   floor  = 1.4em          — never narrower than a bullet list
+ *
+ * Checked across ch = 0.48em…0.65em (the plausible range for the fallback stack): the
+ * marker stays inside the gutter and clears the arrow at every width.
+ *
+ * The consequence worth knowing: a list of nine items or fewer indents EXACTLY like a
+ * bullet list, so the two read as one system, and their indent guides land on the same
+ * subpixel offset instead of one rendering crisper than the other.
+ *
+ * `:has(> li:nth-child(10))` asks "does this list reach two digits?" — the only way CSS
+ * can count. `[start]` is the companion case: it is emitted only when a list does not
+ * begin at 1, and such a list reaches two digits with far fewer items. The gap this leaves
+ * is a list that STARTS at 100+ with few items — CSS cannot add `start` to the item count,
+ * and the cost is a three-digit number hanging into the margin, so it is left alone. */
+.tiptap ul,
+.tiptap ol {
+  --list-gutter: 1.4em;
+  --list-arrow-offset: 0.2em;
+
+  padding-left: var(--list-gutter);
+  margin: 0.5em 0;
+  list-style: none;
+}
+
+/* Ordered markers are text, not a fixed column, so the arrow clears them from further out.
+ * Declared on the base rule too, so a bullet list nested inside an ordered one resets it
+ * rather than inheriting the ordered offset. */
+.tiptap ol {
+  --list-arrow-offset: 0.5em;
+}
+
+.tiptap ol[start],
+.tiptap ol:has(> li:nth-child(10)) {
+  --list-gutter: max(1.4em, calc(2ch + 0.6em));
+}
+
+/* Must follow the two-digit rule — same specificity, so source order decides. */
+.tiptap ol:has(> li:nth-child(100)) {
+  --list-gutter: max(1.4em, calc(3ch + 0.6em));
+}
+
+/* A nested list is part of its parent item, not a block that follows it. `position` is
+ * for the indent guide below.
+ *
+ * The gutter is deliberately NOT widened for nesting: the guide sits at the gutter's left
+ * edge and the hover fold arrow's BOX straddles it, but the arrow's box is transparent —
+ * only a 0.375em triangle paints, and that clears the guide by 0.11em at both gutter
+ * widths. Widening the gutter to separate boxes that never both paint would only make
+ * deep lists indent faster.
+ *
+ * Descendant selectors, not `>`: a nested task list sits inside the task item's content
+ * `<div>`, so a child selector would miss it. */
+.tiptap li ul,
+.tiptap li ol {
+  position: relative;
+  margin: 0;
+}
+
+/* A list separates from surrounding prose (paragraphs sit at 0.5em), but only at the top
+ * level — `>` is load-bearing. The former unscoped `margin: 0.5em 0` reached nested lists
+ * too, which put a parent item MORE than three times farther from its own children
+ * (0.5em) than from its siblings (0.15em). The gap now reads as containment. */
+.tiptap > ul,
+.tiptap > ol {
+  margin: 0.75em 0;
+}
+
+.tiptap li {
+  /* The gap between the marker column and the content. */
+  padding-left: 0.5em;
+  margin: 0.15em 0;
+}
+
+.tiptap li p {
+  margin: 0;
+}
+
+/* ── Indent guides ──────────────────────────────────────────────────────────
+ *
+ * The rail hangs from the PARENT'S MARKER, not from the parent's text. `left: -1em` is
+ * that column's centre and is derived, not measured: the parent's marker column is the
+ * 1em box ending at the parent item's padding-box edge (`right: 100%`), and `li`'s
+ * `padding-left: 0.5em` puts the nested list 0.5em to the right of it — so the centre
+ * lands exactly 1em left of this list's own edge, at any font size.
+ *
+ * Anchoring to the marker is what makes a deep list readable: the eye follows a line that
+ * starts at a bullet it can see, rather than one that begins in the middle of a word. It
+ * also moves the rail 1.11em clear of a child's hover fold arrow, instead of 0.11em.
+ *
+ * Drawn as a pseudo-element rather than `border-left`, which would add to the box and
+ * push each level one step further right than the last. `::before` on the list is free —
+ * markers live on `li::before`, and the windowing spacers on `.tiptap::before`.
+ *
+ * The colour is mixed from the editor's own two colours rather than borrowing
+ * `--color-border-subtle`, which is theme-set and would have followed the theme too — but
+ * it is tuned against the PANEL backgrounds, and `--color-editor-bg` is a separate theme
+ * key. A theme is free to tint the editor surface without touching the chrome, and then a
+ * chrome border sits at the wrong contrast on it. Mixing toward the background rather
+ * than using an alpha keeps the rail opaque, so a selection sweeping across it does not
+ * tint it.
+ *
+ * The width is em, not a device pixel: a fixed-pixel rail reads as heavy chrome at a small
+ * editor font and as a hairline at a large one. 0.09em is ~1.4px at the default 16px.
+ *
+ * Spanning the list's full box is deliberate — measured against the reference, the rail
+ * runs from the first child's line-box top to the last child's, which is what makes it
+ * look like it descends from the parent's bullet. */
+.tiptap li ul::before,
+.tiptap li ol::before {
+  --guide-width: 0.09em;
+
+  position: absolute;
+  top: 0;
+  bottom: 0.1em;
+  left: -1em;
+  width: var(--guide-width);
+  margin-left: calc(var(--guide-width) / -2);
+  content: "";
+  background: color-mix(
+    in srgb,
+    var(--color-editor-text) 22%,
+    var(--color-editor-bg)
+  );
+}
+
+/* ── Markers ────────────────────────────────────────────────────────────────
+ *
+ * Bullets are DRAWN, not typed. The glyph version had to choose between aligning the
+ * first level and aligning the deeper ones, because •, ◦ and ▪ carry different advance
+ * widths and different in-box baselines — a compromise the old code documented rather
+ * than solved, and one that shifted again with the user's font. A box has no baseline,
+ * so `top` centres it on the first line box exactly, at any font size or line height.
+ *
+ * Every marker sits in the same 1em-wide column via `right: 100%` plus a `margin-right`
+ * that recentres the narrower shape in it, so the arrow-to-marker gap is identical at
+ * every depth. Tailwind's preflight makes the border box-sizing `border-box`, which is
+ * what keeps the ring's outer diameter equal to the disc's.
+ */
+.tiptap ul > li::before,
+.tiptap ol > li::before {
+  --marker-size: 0.34em;
+
+  position: absolute;
+  right: 100%;
+  color: color-mix(
+    in srgb,
+    var(--color-editor-text) 55%,
+    var(--color-editor-bg)
+  );
+}
+
+.tiptap ul > li::before {
+  top: calc((var(--editor-line-height, 1.75) * 1em - var(--marker-size)) / 2);
+  width: var(--marker-size);
+  height: var(--marker-size);
+  margin-right: calc((1em - var(--marker-size)) / 2);
+  content: "";
+  background: currentcolor;
+  border-radius: 50%;
+}
+
+/* Depth 2 = ring, depth 3+ = square. Element-count specificity carries the cascade, so
+ * each level only states what changes from the one above it. */
+.tiptap li ul > li::before {
+  background: none;
+  border: 0.085em solid currentcolor;
+}
+
+.tiptap li li ul > li::before {
+  --marker-size: 0.3em;
+
+  background: currentcolor;
+  border: 0;
+  border-radius: 0.02em;
+}
+
+/* Ordered markers stay text, because their width has to follow the digits.
+ * `counter(list-item)` is the built-in counter, so `<ol start>` is honoured with no
+ * manual counter-reset, and right-alignment at `right: 100%` lines the periods up in a
+ * column. `tabular-nums` evens out the digits themselves, which a proportional font
+ * staggers. Line height is inherited rather than declared: matching the paragraph's line
+ * box is what puts the two baselines together, and inheritance matches it by definition.
+ *
+ * The style steps with ordered depth so nested numbering reads as a hierarchy instead of
+ * three identical `1.` columns. Display only — the serializer never reads a marker, so
+ * markdown output is unchanged. */
+.tiptap ol > li::before {
+  top: 0;
+  font-variant-numeric: tabular-nums;
+  content: counter(list-item) ".";
+}
+
+.tiptap ol ol > li::before {
+  content: counter(list-item, lower-alpha) ".";
+}
+
+.tiptap ol ol ol > li::before {
+  content: counter(list-item, lower-roman) ".";
+}
+
+/* Task items draw their own control in the marker column — suppress the bullet. */
+.tiptap ul[data-type="taskList"] > li::before {
+  content: none;
+}
+
+/* List atom fix widget — provides an editable first line box for WebKit
+   ::marker alignment without adding visible height or affecting selection.
+   The actual zero-width space is inserted by ListAtomFix ProseMirror plugin. */
+.list-atom-fix {
+  font-size: 0;
+  line-height: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── §5.1 Task List ─────────────────────────────────────────────────────────
+ *
+ * The checkbox sits in the marker column like every other marker, so `- item` and
+ * `- [ ] item` share one text column. It used to be a flex item in a list with
+ * `padding-left: 0`, which put task text at the list's left edge while bullet text sat
+ * a full gutter in — the two ragged against each other in any document that mixed them. Task
+ * lists now inherit the gutter from the base rule above, so nothing here restates it.
+ *
+ * Dropping the flex also restores the hanging indent: the content `<div>` is a plain
+ * block again, so a wrapped task line aligns under the first, as a bullet item does.
+ * The `<label>`'s position in the DOM is untouched, so `task-item.ts`'s
+ * `posAtDOM(li, 0)` click handling is unaffected.
+ */
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] {
+  display: block;
+}
+
+/* The LABEL draws the control and the INPUT is a transparent hit target stretched over
+ * it. Not `input { appearance: none }` with a `::after` tick: pseudo-elements on form
+ * controls are not reliably rendered in WebKit, and the tick would be the one part of
+ * the control that silently vanished. The input keeps its native semantics and stays the
+ * topmost element, which `task-item.ts` requires — its mousedown handler only fires for
+ * an `HTMLInputElement` target.
+ *
+ * `--color-accent-default` is a theme key, so the checked fill follows the theme, and
+ * `--color-accent-on-solid` is derived from it by `theme-vars.ts` — the tick is legible
+ * on the fill whatever the theme's accent is. */
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label {
+  --checkbox-size: 0.85em;
+  --checkbox-border: 0.09em;
+
+  position: absolute;
+  top: calc((var(--editor-line-height, 1.75) * 1em - var(--checkbox-size)) / 2);
+  right: 100%;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+  margin-right: calc((1em - var(--checkbox-size)) / 2);
+  cursor: pointer;
+  user-select: none;
+  background: var(--color-editor-bg);
+  border: var(--checkbox-border) solid
+    color-mix(in srgb, var(--color-editor-text) 38%, var(--color-editor-bg));
+  border-radius: 0.2em;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label:hover {
+  border-color: var(--color-accent-default);
+}
+
+/* The input is invisible, so the focus ring has to be drawn by the box the user sees. */
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > label:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 0.1em;
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"][data-checked="true"]
+  > label {
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+/* The tick: two borders of a rotated box, so it scales with the control and needs no
+ * glyph, mask or SVG. Sized from the control rather than from the font, so it stays
+ * centred if the control's size changes. */
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"][data-checked="true"]
+  > label::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--checkbox-size) * 0.28);
+  height: calc(var(--checkbox-size) * 0.52);
+  content: "";
+  border: solid var(--color-accent-on-solid);
+  border-width: 0 0.085em 0.085em 0;
+  transform: translate(-62%, -66%) rotate(40deg);
+}
+
+/* Stretched over the label, INCLUDING its border. `inset` resolves against the padding
+ * box, so `inset: 0` would leave the drawn border uncovered — and a click there reports
+ * the label as the target, which `task-item.ts`'s handler ignores, so the outer ring of
+ * the control would silently stop toggling. The negative inset is the border width, and
+ * the size is explicit because an absolutely positioned replaced element does not stretch
+ * to its containing block from `inset` alone. */
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > label
+  input[type="checkbox"] {
+  position: absolute;
+  inset: calc(-1 * var(--checkbox-border));
+  width: calc(100% + 2 * var(--checkbox-border));
+  height: calc(100% + 2 * var(--checkbox-border));
+  margin: 0;
+  appearance: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div {
+  min-width: 0;
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"][data-checked="true"]
+  > div {
+  color: color-mix(
+    in srgb,
+    var(--color-editor-text) 45%,
+    var(--color-editor-bg)
+  );
+  text-decoration: line-through;
+}
