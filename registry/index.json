@@ -8,7 +8,7 @@
       "author": "Baram",
       "license": "Apache-2.0",
       "downloadUrl": "https://sayinel.github.io/baram-plugins/plugins/baram-word-count-2.1.0.zip",
-      "checksum": "0000000000000000000000000000000000000000000000000000000000000000",
+      "checksum": "7daebeaf3f9814377d942ed2744995ef99371b82acc4e67d0b836ee8ad5b9e0c",
       "capabilities": ["editor:readonly", "events", "statusbar"],
       "trust": "sandboxed",
       "engines": {
