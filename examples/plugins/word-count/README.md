@@ -34,19 +34,19 @@ declared, so the manifest and the code have to agree.
 | `export function deactivate()`                               | **gone** — never called; teardown destroys the realm              |
 
 A major version because the tier changed: an existing v1 install is a pre-`trust` record the
-app will not auto-run, so updating is a re-consent rather than a patch. `engines.baram` is
-`>=0.5.0` — the sandboxed runtime has never shipped in a release before that, so no earlier
-build can run this plugin. Note that Baram does not currently _enforce_ `engines`: it validates
-the field's presence and never compares versions, so the floor is a statement to a human
-reading the manifest, not a gate.
+app will not auto-run, so updating is a re-consent rather than a patch. The sandboxed runtime
+has never shipped in a release before 0.5.0, so no earlier build can run this plugin at all;
+the floor now sits higher than that for the reason in the next section.
 
-### Fixed in this source; not yet in the published 2.0.0 — the count was of the markdown source
+### 2.0.0 → 2.1.0 — the count was of the markdown source
 
-‼️ **The committed source here is AHEAD of the published artifact.** `baram-plugin.json` still
-says `2.0.0` / `engines.baram >=0.5.0`, which is what the live registry serves and what its
-checksum covers. `src/index.ts` already calls `getText()`, an API that lands in the next app
-release. The version bump, the `engines` floor and the registry seed move together with that
-release — bumping them here first would point the offline seed at a zip that does not exist.
+2.1.0 counts prose; 2.0.0 counted the markdown SOURCE. `engines.baram` moves to `>=0.6.1`
+with it, because that is the release adding the API this version calls: on any earlier build
+`ctx.editor.getText` is undefined, `update()` throws, and the item never leaves the text the
+manifest declares. Baram evaluates that floor before installing or updating (`>=X.Y.Z` is the
+only grammar it reads) and names the version needed — but that evaluation itself only shipped
+in 0.6.0, so a 0.5.x build offers the install anyway. That is why the app release goes out
+before this plugin's tag is pushed, rather than the floor being the whole protection.
 
 The history is the lesson worth copying.
 
