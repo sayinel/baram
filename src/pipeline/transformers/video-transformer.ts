@@ -5,6 +5,20 @@ import type { Html, Image, Node as MdastNode, Paragraph } from "mdast";
 
 import { classifyMediaSrc } from "../../utils/media-src";
 
+/**
+ * `<video>` 태그가 실을 수 있는 속성의 화이트리스트 (§294 I4).
+ *
+ * ‼️ `controls`, `poster` 등 이 목록 밖의 속성이 하나라도 있으면 `parseVideoHtml`은
+ * 태그 전체를 거부한다 — 무시하고 넘어가면 그 속성이 조용히 사라지기 때문이다.
+ * 거부된 태그는 md-to-pm.ts가 `htmlBlock`으로 원문 그대로 보존한다.
+ */
+const ALLOWED_VIDEO_ATTR_NAMES: ReadonlySet<string> = new Set([
+  "alt",
+  "src",
+  "title",
+  "width",
+]);
+
 export interface VideoHtmlAttrs {
   alt: null | string;
   src: string;
@@ -67,9 +81,11 @@ export function parseVideoHtml(html: string): null | VideoHtmlAttrs {
     .match(/^<video\s+([^>]*?)\s*(?:\/>|>\s*<\/video>)$/i);
   if (!match) return null;
   const attrStr = match[1];
+  if (!hasOnlyAllowedAttrs(attrStr)) return null;
 
   const getAttr = (name: string): null | string => {
-    const re = new RegExp(`${name}="([^"]*)"`, "i");
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`${escaped}="([^"]*)"`, "i");
     const m = attrStr.match(re);
     return m ? unescapeHtmlAttr(m[1]) : null;
   };
@@ -96,8 +112,8 @@ export function parseVideoHtml(html: string): null | VideoHtmlAttrs {
 
   return {
     src,
-    alt: getAttr("alt"),
-    title: getAttr("title"),
+    alt: getAttr("alt") || null,
+    title: getAttr("title") || null,
     widthPercent,
     widthPixel,
   };
@@ -109,6 +125,16 @@ function escapeHtmlAttr(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/** `attrStr`에 등장하는 모든 속성 이름이 허용 목록 안에만 있는지 검사한다. */
+function hasOnlyAllowedAttrs(attrStr: string): boolean {
+  const attrNameRe = /([a-zA-Z_:][-\w:.]*)(?:\s*=\s*"[^"]*")?/g;
+  let match: null | RegExpExecArray;
+  while ((match = attrNameRe.exec(attrStr)) !== null) {
+    if (!ALLOWED_VIDEO_ATTR_NAMES.has(match[1].toLowerCase())) return false;
+  }
+  return true;
 }
 
 function unescapeHtmlAttr(s: string): string {

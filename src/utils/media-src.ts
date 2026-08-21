@@ -3,10 +3,11 @@
 // ‼️ 이 파일이 유일한 열거다. 소비자는 둘이다: md-to-pm(어떤 노드를 만들지)과
 // NodeView(어떻게 그릴지). 한쪽만 고치는 사고를 막으려고 목록을 여기 하나만 둔다.
 // 확장자나 provider를 더할 때는 여기만 고친다.
+//
+// ‼️ store-free 유지: 이 파일은 파이프라인(md-to-pm.ts, pm-to-md.ts)이 직접
+// import한다. zustand 스토어를 여기서 import하면 그 체인 전체가 파이프라인에
+// 딸려 들어온다 — 탭 기준 경로 해석이 필요하면 `./active-file-dir`를 쓸 것.
 import { convertFileSrc } from "@tauri-apps/api/core";
-
-import { useEditorStore } from "../stores/editor/editor";
-import { dirname } from "./path-utils";
 
 export type MediaKind = "image" | "video-embed" | "video-file";
 
@@ -27,22 +28,6 @@ const VIDEO_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
 
 const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const VIMEO_ID_RE = /^[0-9]{1,20}$/;
-
-/**
- * 상대경로 해석의 기준 — 활성 탭 파일의 디렉터리.
- *
- * ‼️ 훅이 아니라 `getState()`를 읽는 명령형 함수다. §56d의 `use-image-preview.ts`가
- * 이미 이 방식이고, 훅으로 바꾸면 탭 전환마다 이미지 NodeView가 리렌더되는 **동작 변경**이
- * 된다. 갓 착지한 코드의 동작을 이 작업에서 바꾸지 않는다.
- *
- * 유지된 표면(§286)이 여러 개 마운트돼 있으면 숨은 탭의 상대경로가 활성 탭 기준으로
- * 풀리는 문제가 있다 — 이 작업이 만든 것이 아니라 그대로 물려받은 것이다.
- */
-export function activeFileDir(): null | string {
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const filePath = tabs.find((t) => t.id === activeTabId)?.filePath;
-  return (filePath && dirname(filePath)) || null;
-}
 
 export function classifyMediaSrc(src: string): MediaKind {
   if (!src) return "image";

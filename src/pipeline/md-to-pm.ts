@@ -307,9 +307,16 @@ function convertBlockNode(
   // 없어서(iframe과 다르게) block html이 아니라 paragraph 안 인라인 html 조각
   // 두 개(여는/닫는 태그)로 쪼개진다. 다시 합쳐 parseVideoHtml에 넘긴다.
   if (schema.nodes.video && isVideoHtmlPair(node)) {
-    const videoAttrs = parseVideoHtml(joinVideoHtmlPair(node));
+    const joined = joinVideoHtmlPair(node);
+    const videoAttrs = parseVideoHtml(joined);
     if (videoAttrs) {
       return schema.nodes.video.create(videoAttrs);
+    }
+    // ‼️ 거부됐다고 그냥 지나치면 두 인라인 html 조각이 아래 일반 paragraph
+    // 처리에서 조용히 사라진다(§294 I3) — 화이트리스트 밖으로 판정된 태그도
+    // 사용자의 원문이다. htmlBlock으로 원문 그대로 보존한다.
+    if (schema.nodes.htmlBlock) {
+      return schema.nodes.htmlBlock.create({ content: joined });
     }
   }
 

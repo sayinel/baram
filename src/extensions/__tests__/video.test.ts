@@ -9,6 +9,14 @@ const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: { content: "inline*", group: "block", marks: "_" },
+    // §294 fix round 1 (I1): a single-block document can't observe a missing
+    // separator — C1 only shows up with a heading or a second block beside it.
+    heading: {
+      content: "inline*",
+      group: "block",
+      marks: "_",
+      attrs: { level: { default: 1 } },
+    },
     image: {
       group: "block",
       atom: true,
@@ -27,6 +35,10 @@ const schema = new Schema({
         alt: { default: null },
         title: { default: null },
         widthPercent: { default: 100 },
+        // §294 fix round 1 (M3): the real node declares this (video.ts) — the
+        // fixture must match the shipped schema or the pixel-width branch of
+        // parseVideoHtml is exercised by nothing.
+        widthPixel: { default: undefined },
       },
     },
     htmlBlock: {
@@ -77,16 +89,26 @@ describe("video roundtrip (§294)", () => {
     expect(roundtrip(input)).toBe("![](clip.mp4)");
   });
 
+  test("pixel width round-trips as a video HTML tag", () => {
+    // §294 fix round 1 (M3): px > 100 takes the widthPixel branch, not widthPercent.
+    const input = '<video src="clip.mp4" width="640"></video>';
+    expect(firstChildType(input)).toBe("video");
+    expect(roundtrip(input)).toBe(input);
+  });
+
   test("an iframe is NOT parsed as a video node", () => {
     const input = '<iframe src="https://evil.test/x"></iframe>';
     expect(firstChildType(input)).not.toBe("video");
     expect(roundtrip(input)).toBe(input);
   });
 
-  test("a video tag holding a provider URL is refused", () => {
+  test("a video tag holding a provider URL is refused, and preserved verbatim", () => {
     // provider URL은 video-file이 아니므로 parseVideoHtml이 거부한다 (§294)
+    // §294 fix round 1 (I3): a refusal must not erase the user's markup — it
+    // falls back to htmlBlock, not to a silently-emptied paragraph.
     const input = '<video src="https://youtu.be/abc" width="60%"></video>';
-    expect(firstChildType(input)).not.toBe("video");
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
   });
 
   test("inline occurrence stays out of the video path", () => {
@@ -131,5 +153,124 @@ describe("video roundtrip (§294)", () => {
       "a & b",
     );
     expect(roundtrip(md)).toBe(md);
+  });
+});
+
+// §294 fix round 1 (C1, critical): a widthPercent===100 video serializes as a
+// bare phrasing-level mdast `image` node. Before this fix, pm-to-md.ts only
+// wrapped `typeName === "image"` in a paragraph — video fell through to the
+// generic lookup, and the unwrapped node got glued to its neighbors by
+// remark-stringify with no blank-line separator. A single-block fixture can
+// never observe this — every case here needs a second block.
+describe("multi-block round trip preserves block separators (§294 C1)", () => {
+  test("text, video, text", () => {
+    const input = "a\n\n![](clip.mp4)\n\nb";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("video followed by a heading", () => {
+    const input = "![](clip.mp4)\n\n# H";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("two videos back to back", () => {
+    const input = "![](a.mp4)\n\n![](b.mp4)";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("control: text, image, text (already worked before this fix)", () => {
+    const input = "a\n\n![](photo.png)\n\nb";
+    expect(roundtrip(input)).toBe(input);
+  });
+});
+
+// §294 fix round 1 (I2): isVideoHtmlPair's only defense is `children.length
+// === 2` plus the two exact tag-shape checks. These pin that a future
+// "make it more permissive" edit can't start swallowing content without a
+// test going red — firstChildType must never become "video" for any of these
+// malformed shapes.
+//
+// ‼️ Only the last case gets a full round-trip-identity assertion. The other
+// four hit a pre-existing, unrelated pipeline limitation that predates this
+// task entirely: convertInlineNode has no passthrough for an unrecognized
+// inline "html" mdast node (true for `<span>`, `<b>`, any tag that isn't
+// `<u>/<mark>/<sub>/<sup>` today) — it is dropped regardless of whether video
+// code is even in the picture. isVideoHtmlPair correctly refuses to touch
+// these shapes (proven by firstChildType below); the dropped content is a
+// property of the general pipeline, not of this function, so this test pins
+// the actual (imperfect but stable, non-video-caused) current output rather
+// than asserting a round-trip identity that was never true before video
+// existed either.
+describe("isVideoHtmlPair refuses malformed shapes (§294 I2)", () => {
+  test("text on both sides of the pair", () => {
+    const input = 'a <video src="x.mp4"></video> b';
+    expect(firstChildType(input)).not.toBe("video");
+    expect(roundtrip(input)).toBe("a  b");
+  });
+
+  test("fallback content between the tags", () => {
+    const input = '<video src="x.mp4">fallback</video>';
+    expect(firstChildType(input)).not.toBe("video");
+    expect(roundtrip(input)).toBe("fallback");
+  });
+
+  test("two videos in one paragraph (no blank line between them)", () => {
+    const input = '<video src="a.mp4"></video><video src="b.mp4"></video>';
+    expect(firstChildType(input)).not.toBe("video");
+    expect(roundtrip(input)).toBe("");
+  });
+
+  test("an unrelated inline html pair", () => {
+    const input = "<span>a</span>";
+    expect(firstChildType(input)).not.toBe("video");
+    expect(roundtrip(input)).toBe("a");
+  });
+
+  test("a lone closing tag is its own (non-paired) html block", () => {
+    // This one is NOT a paragraph at all — `</video>` alone on a line is a
+    // single CommonMark type-7 html block, so it never reaches
+    // isVideoHtmlPair (which only looks inside paragraphs). It survives via
+    // the ordinary htmlBlock fallback, byte-exact.
+    const input = "</video>";
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+});
+
+// §294 fix round 1 (I4): parseVideoHtml refuses any <video> tag carrying an
+// attribute outside {src, alt, title, width} — refusal keeps it as htmlBlock
+// (verbatim) rather than silently discarding the attribute while normalizing
+// the rest to `![](…)`.
+describe("attribute allowlist refuses unrecognized attributes (§294 I4)", () => {
+  test("self-closing tag with controls/poster is refused, byte-exact", () => {
+    const input = '<video src="clip.mp4" controls poster="p.jpg" />';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("open/close pair with controls/poster is refused, byte-exact", () => {
+    const input = '<video src="clip.mp4" controls poster="p.jpg"></video>';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("multi-line tag with controls/poster is refused, byte-exact", () => {
+    const input = '<video src="clip.mp4" controls poster="p.jpg">\n</video>';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("a multi-line tag with no extra attributes normalizes like width=100%", () => {
+    // No attribute here falls outside {src, alt, title, width}, so this is
+    // NOT refused by the allowlist above — it behaves like the width=100%
+    // case: a video-file src with nothing else normalizes to plain
+    // markdown. That loses the fact it was written across two lines, but
+    // that is a formatting detail, not a discarded attribute — the same
+    // category of intended §294 normalization as width=100%, flagged to
+    // the reviewer as the one reading of I4 its two paired examples left
+    // ambiguous (one of the two, this one, carries no attribute to discard).
+    const input = '<video src="clip.mp4">\n</video>';
+    expect(firstChildType(input)).toBe("video");
+    expect(roundtrip(input)).toBe("![](clip.mp4)");
   });
 });

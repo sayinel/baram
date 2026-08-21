@@ -31,6 +31,7 @@ import type { InlineMath } from "mdast-util-math";
 // - Code block: fenced (```)
 // - 1 blank line between block elements
 // - Single newline at file end
+import { isMediaAtom } from "../utils/media-src";
 import { appendBlockId, serializeBlockRef } from "./block-id";
 import { mdastToMarkdown } from "./serializer";
 import { pmMarkTransformers, pmNodeTransformers } from "./transformers";
@@ -352,19 +353,27 @@ function convertPmNode(node: PmNode): Content | null {
     return { type: "html", value: groups.join("\n\n") } as Content;
   }
 
-  // Image → wrap in paragraph for mdast (mdast image is inline)
-  // When widthPercent !== 100, transformer returns html node → return directly
-  if (typeName === "image") {
-    const transformer = pmNodeTransformers.get("image");
+  // §294: Image/Video → wrap in paragraph for mdast (mdast image is inline).
+  // When widthPercent !== 100 (or widthPixel is set), the transformer returns
+  // an html node instead → return that directly, unwrapped.
+  //
+  // ‼️ Both media atoms go through isMediaAtom(), not a hardcoded
+  // typeName === "image" check — a bare mdast `image`/video-as-`image` node
+  // is phrasing content, and returning it unwrapped as block-level Content
+  // (the old video codepath, before this branch existed) lets remark-stringify
+  // glue it to its neighbors with no blank-line separator, silently corrupting
+  // any multi-block document on save (§294 C1).
+  if (isMediaAtom(typeName)) {
+    const transformer = pmNodeTransformers.get(typeName);
     if (transformer) {
-      const imgNode = transformer.pmToMdast(node, () => []);
-      if (imgNode) {
-        if ((imgNode as { type: string }).type === "html") {
-          return imgNode as Content;
+      const mediaNode = transformer.pmToMdast(node, () => []);
+      if (mediaNode) {
+        if ((mediaNode as { type: string }).type === "html") {
+          return mediaNode as Content;
         }
         return {
           type: "paragraph",
-          children: [imgNode as PhrasingContent],
+          children: [mediaNode as PhrasingContent],
         } as Content;
       }
     }

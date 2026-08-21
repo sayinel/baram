@@ -18,12 +18,13 @@ import { useEffect, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+import { activeFileDir } from "../../../utils/active-file-dir";
 import {
   cachedThumbUrl,
   PREVIEW_MAX_PX,
   resolveThumbUrl,
 } from "../../../utils/journal/photo-thumbnail";
-import { activeFileDir, isRemoteOrData } from "../../../utils/media-src";
+import { isRemoteOrData } from "../../../utils/media-src";
 
 /**
  * **원본**의 URL — 프리뷰가 아니다. "원본 보기"(ImageOriginalView)만 쓴다.
@@ -73,8 +74,8 @@ export function useImagePreview(rawSrc: string): null | string {
 /**
  * 상대 경로를 현재 파일의 디렉터리에 붙여 절대 경로로 만든다.
  *
- * 활성 탭 기준(§286 관련 함정 포함)은 `media-src.ts`의 `activeFileDir`가 갖는다 — 이미지와
- * 동영상이 같은 규칙으로 상대경로를 풀도록 (§293) 그쪽으로 통합했다.
+ * 활성 탭 기준(§286 관련 함정 포함)은 `active-file-dir.ts`의 `activeFileDir`가 갖는다 —
+ * 이미지와 동영상이 같은 규칙으로 상대경로를 풀도록 (§293) 그쪽으로 통합했다.
  */
 function absolutePathOf(src: string): null | string {
   if (src.startsWith("/")) return src;
