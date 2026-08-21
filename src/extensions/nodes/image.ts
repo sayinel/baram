@@ -3,6 +3,7 @@ import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { classifyMediaSrc } from "../../utils/media-src";
 import { createAtomMediaClickGuard } from "../plugins/atom-media-click-guard";
 import { ImageView } from "./image-view";
 
@@ -90,6 +91,8 @@ export const Image = Node.create<ImageOptions>({
         find: /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/,
         handler: ({ state, range, match }) => {
           const [, alt, src, title] = match;
+          if (classifyMediaSrc(src) !== "image") return;
+
           const { tr } = state;
           const imageNode = this.type.create({
             src,

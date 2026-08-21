@@ -8,6 +8,7 @@
 import type { Mark, Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Content, PhrasingContent, Root, Text } from "mdast";
 
+import { classifyMediaSrc } from "../utils/media-src";
 import { BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
 import {
   extractBlockIdFromMdast,
@@ -36,6 +37,11 @@ import {
   parseImgHtml,
 } from "./transformers/image-transformer";
 import { isDetailsOpening } from "./transformers/toggle-transformer";
+import {
+  isVideoHtmlPair,
+  joinVideoHtmlPair,
+  parseVideoHtml,
+} from "./transformers/video-transformer";
 
 // §5.5 Mermaid / §5.13 Query: code block lang → dedicated block node mapping
 // Moved to module scope to avoid per-call allocation inside convertBlockNode
@@ -182,6 +188,17 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
       }
     }
 
+    // §294: <video> html → video 노드. parseVideoHtml이 화이트리스트를 강제한다.
+    if (child.type === "html" && schema.nodes.video) {
+      const videoAttrs = parseVideoHtml((child as { value: string }).value);
+      if (videoAttrs) {
+        result.push(schema.nodes.video.create(videoAttrs));
+        i++;
+        pendingColwidths = null;
+        continue;
+      }
+    }
+
     // Fallback: unrecognized HTML block → htmlBlock node
     if (child.type === "html" && schema.nodes.htmlBlock) {
       const htmlVal = (child as { value: string }).value;
@@ -267,10 +284,14 @@ function convertBlockNode(
   node: Content,
   schema: Schema,
 ): null | PmNode | PmNode[] {
-  // Special handling: paragraph with single image → block-level image
+  // Special handling: paragraph with single image → block-level image or video
   if (isStandaloneImage(node)) {
     const imgNode = (node as { children: Content[] }).children[0];
-    const transformer = nodeTransformers.get("image");
+    // §294 동영상은 같은 `![](…)` 문법을 쓴다 — src가 노드 타입을 정한다.
+    const isVideo =
+      schema.nodes.video &&
+      classifyMediaSrc((imgNode as { url?: string }).url ?? "") !== "image";
+    const transformer = nodeTransformers.get(isVideo ? "video" : "image");
     if (transformer) {
       return transformer.mdastToPm(imgNode, schema, (parent) =>
         convertInlineChildren(
@@ -279,6 +300,16 @@ function convertBlockNode(
           [],
         ),
       );
+    }
+  }
+
+  // §294: 한 줄 `<video …></video>`는 CommonMark HTML-block 태그 목록에 video가
+  // 없어서(iframe과 다르게) block html이 아니라 paragraph 안 인라인 html 조각
+  // 두 개(여는/닫는 태그)로 쪼개진다. 다시 합쳐 parseVideoHtml에 넘긴다.
+  if (schema.nodes.video && isVideoHtmlPair(node)) {
+    const videoAttrs = parseVideoHtml(joinVideoHtmlPair(node));
+    if (videoAttrs) {
+      return schema.nodes.video.create(videoAttrs);
     }
   }
 

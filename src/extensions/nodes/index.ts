@@ -30,3 +30,4 @@ export {
 export { TableOfContents } from "./table-of-contents";
 export { TaskItem } from "./task-item";
 export { TaskList } from "./task-list";
+export { Video } from "./video";
