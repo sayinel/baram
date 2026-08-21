@@ -7,6 +7,22 @@ use tauri::Manager;
 /// 캐시 히트라 처리량보다 최대치를 눌러 두는 편이 맞다.
 const MAX_CONCURRENT_THUMBNAILS: usize = 2;
 
+/// 이보다 오래 걸린 생성만 로그에 남고, 그것도 **세션당 한 줄**이다(SLOW_REPORTED).
+///
+/// 한때 1000ms였고 그건 잘못된 계산이었다. 실측 177장의 생성 시간이 release 평균 142ms
+/// (최장 2371ms)인 데 반해 dev는 평균 453ms(최장 5703ms)라, release 기준으로 고른 문턱이
+/// **정작 매일 쓰는 dev에서는 평범한 큰 사진마다** 걸렸다. 2000ms는 dev에서도 파노라마급만
+/// 넘는 값이다.
+///
+/// 그래도 한 줄은 남기는 이유: 사용자가 "갤러리가 느리다"고 할 때 우리가 가진 유일한 증거가
+/// 그 로그다. cargo 벤치를 돌려 달라고 할 수는 없다. 존재를 알리는 것이 목적이므로 한 줄로
+/// 족하고, 그 뒤로는 Debug로 내려간다.
+const SLOW_THUMBNAIL_MS: u128 = 2000;
+
+/// 위 문턱을 넘은 것을 이 세션에서 이미 보고했는가. 개수를 세는 것이 아니라 **있음/없음**만
+/// 알리므로 Relaxed로 충분하다.
+static SLOW_REPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub struct ThumbnailSemaphore(pub tokio::sync::Semaphore);
 
 impl ThumbnailSemaphore {
@@ -61,12 +77,22 @@ pub async fn photo_thumbnail(
     // "고친 경로를 한 번도 못 탔다"가 화면상 구별되지 않는다.
     match result {
         Ok(out) => {
-            // 성공은 **새로 만든 것만** Info로 남긴다(로그 정책의 우리 레벨이 Info다).
-            // 캐시 히트는 파일 존재 확인 한 번이라 1ms도 안 걸리므로, 이 문턱을 넘은 것은
-            // 곧 디코드를 한 것이다 — 캐시 히트까지 남기면 세션마다 사진 수만큼 줄이 쌓인다.
+            // ‼️ 평범한 생성은 Debug다 — 우리 레벨이 Info이므로 기본적으로 나오지 않는다.
+            //
+            // 한때 이것이 Info였다. 그때는 ACL이 모든 호출을 거부하고 있었고, 프론트엔드가
+            // 원본으로 조용히 폴백해서 화면만으로는 "고쳐지지 않았다"와 "그 경로를 한 번도
+            // 안 탔다"를 구분할 수 없었다. 그 진단이 끝난 뒤로는 사진 수만큼(첫 조회에 177줄)
+            // 쌓이는 잡음일 뿐이다. 타깃이 LogDir + Stdout이라 터미널과 로그 파일 양쪽에 남는다.
+            //
+            // 타이밍을 다시 재고 싶으면 레벨을 올리는 것보다 벤치가 낫다:
+            // `BARAM_THUMB_BENCH_DIR=… cargo test --lib thumbnail -- --ignored`.
             let ms = started.elapsed().as_millis();
-            if ms >= 50 {
-                log::info!("§56d thumbnail generated in {ms}ms ({max_px}px): {logged_path}");
+            let first_slow_of_the_session = ms >= SLOW_THUMBNAIL_MS
+                && !SLOW_REPORTED.swap(true, std::sync::atomic::Ordering::Relaxed);
+            if first_slow_of_the_session {
+                log::info!("§56d slow thumbnail: {ms}ms ({max_px}px) for {logged_path}");
+            } else {
+                log::debug!("§56d thumbnail in {ms}ms ({max_px}px): {logged_path}");
             }
             Ok(out.to_string_lossy().to_string())
         }
