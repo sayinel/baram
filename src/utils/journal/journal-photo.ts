@@ -6,6 +6,16 @@ import {
   readFile,
   writeBinaryFile,
 } from "../../ipc/invoke";
+import { basename } from "../path-utils";
+import { JOURNAL_DATE_PARTS_RE } from "./journal";
+
+/**
+ * 캡션을 찾으려고 한 달의 md를 읽을 때 동시에 띄우는 요청 수.
+ *
+ * 8인 이유: 병목은 CPU가 아니라 IPC 왕복이고, 한 달은 md가 최대 31개다 — 그 이상 올려도
+ * 왕복 한 번보다 짧아지지 않으면서 백엔드 스레드풀을 사진 썸네일 생성과 다투게 된다.
+ */
+const CAPTION_READ_CONCURRENCY = 8;
 
 export interface PhotoGalleryEntry {
   absolutePath: string;
@@ -180,6 +190,11 @@ export async function scanJournalPhotos(
         }
 
         const journalDirPath = `${dailyBase}/${yearDir.name}/${monthDir.name}`;
+        // ‼️ 이 달의 사진만 담는다. 예전에는 누적 배열 전체를 캡션 채우기에 넘겼는데,
+        // 그러면 달마다 "아직 캡션 없는 사진" 목록이 계속 길어져 매치 루프가 달 수 ×
+        // 누적 사진 수로 커졌다. 캡션의 출처는 같은 달 디렉터리의 md뿐이므로 다른 달의
+        // 사진을 그 목록에 둘 이유가 없다.
+        const monthEntries: PhotoGalleryEntry[] = [];
 
         for (const file of files) {
           if (file.isDir) continue;
@@ -210,7 +225,7 @@ export async function scanJournalPhotos(
           // relativePath as referenced in markdown (assets/filename.ext)
           const relativePath = `assets/${file.name}`;
 
-          entries.push({
+          monthEntries.push({
             filename: file.name,
             relativePath,
             absolutePath,
@@ -222,7 +237,8 @@ export async function scanJournalPhotos(
         }
 
         // Populate captions from journal markdown files in this month directory
-        await populateCaptionsFromDir(entries, journalDirPath, readFile);
+        await populateCaptionsFromDir(monthEntries, journalDirPath, readFile);
+        entries.push(...monthEntries);
       }
     }
   } catch {
@@ -239,9 +255,51 @@ function isAbsolutePath(p: string): boolean {
   return p.startsWith("/") || /^[A-Z]:\\/i.test(p);
 }
 
+/** 일별 저널 파일 경로 → 그 날짜. 저널 파일명이 아니면 null. */
+function journalDateFromFilename(journalPath: string): Date | null {
+  const parts = basename(journalPath).match(JOURNAL_DATE_PARTS_RE);
+  if (!parts) return null;
+  return new Date(
+    parseInt(parts[1]),
+    parseInt(parts[2]) - 1,
+    parseInt(parts[3]),
+  );
+}
+
+/**
+ * `items`를 최대 `limit`개씩 동시에 `fn`에 흘리고, 결과를 **입력 순서대로** 돌려준다.
+ *
+ * `Promise.all(items.map(fn))`이 아닌 이유: 한 번에 449개의 IPC를 띄우면 웹뷰와 백엔드
+ * 스레드풀이 그 큐를 소화하는 동안 사용자가 누른 다음 동작(저널 열기)이 그 뒤에 선다.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let i = next++; i < items.length; i = next++) {
+      results[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
+}
+
 /**
  * Populate captions by scanning all markdown files in a month directory.
  * Only updates entries that don't already have captions.
+ *
+ * ‼️ md 파일 읽기는 **한 번에 여러 건**을 띄운다. 예전에는 `for` 안에서 하나씩 await 했는데,
+ * 그 하나하나가 Tauri IPC 왕복이라 저널 규모에 정직하게 비례했다 — 실측 저널(449개 md)의
+ * Year 뷰 한 번이 449번의 순차 왕복이다. 읽기는 서로 독립이므로 순서를 지킬 이유가 없다.
+ *
+ * 대신 **적용은 디렉터리 순서대로** 한다. 두 md가 같은 사진을 참조하면 마지막 것이 이기는
+ * 기존 동작이 유지돼야 하고, 완료 순서대로 적용하면 그 결과가 실행마다 달라진다.
  */
 async function populateCaptionsFromDir(
   entries: PhotoGalleryEntry[],
@@ -259,45 +317,40 @@ async function populateCaptionsFromDir(
     return;
   }
 
-  for (const mdFile of mdFiles) {
-    if (mdFile.isDir || !mdFile.name.endsWith(".md")) continue;
+  const journalPaths = mdFiles
+    .filter((f) => !f.isDir && f.name.endsWith(".md"))
+    .map((f) => `${monthDirPath}/${f.name}`);
 
-    const journalPath = `${monthDirPath}/${mdFile.name}`;
+  const contents = await mapWithConcurrency(
+    journalPaths,
+    CAPTION_READ_CONCURRENCY,
+    (journalPath) => readFile(journalPath).catch(() => null),
+  );
 
-    // Parse date from md filename (e.g., "2026-03-03.md")
-    const mdDateMatch = mdFile.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/);
-    const mdDate = mdDateMatch
-      ? new Date(
-          parseInt(mdDateMatch[1]),
-          parseInt(mdDateMatch[2]) - 1,
-          parseInt(mdDateMatch[3]),
-        )
-      : null;
+  for (const [i, content] of contents.entries()) {
+    if (content === null) continue; // File read failed
+    const journalPath = journalPaths[i];
+    const mdDate = journalDateFromFilename(journalPath);
 
-    try {
-      const content = await readFile(journalPath);
-      const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-      let match;
-      while ((match = imgRegex.exec(content)) !== null) {
-        const caption = match[1];
-        const imgPath = match[2];
-        for (const entry of uncaptioned) {
-          if (
-            imgPath.includes(entry.filename) ||
-            imgPath === entry.relativePath
-          ) {
-            entry.caption = caption;
-            entry.journalPath = journalPath;
-            // If entry date was a fallback, use the journal file's date
-            if (mdDate && !entry.dateFromFilename) {
-              entry.date = mdDate;
-              entry.dateFromFilename = true;
-            }
+    const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let match;
+    while ((match = imgRegex.exec(content)) !== null) {
+      const caption = match[1];
+      const imgPath = match[2];
+      for (const entry of uncaptioned) {
+        if (
+          imgPath.includes(entry.filename) ||
+          imgPath === entry.relativePath
+        ) {
+          entry.caption = caption;
+          entry.journalPath = journalPath;
+          // If entry date was a fallback, use the journal file's date
+          if (mdDate && !entry.dateFromFilename) {
+            entry.date = mdDate;
+            entry.dateFromFilename = true;
           }
         }
       }
-    } catch {
-      // File read failed
     }
   }
 }

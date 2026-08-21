@@ -9,7 +9,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { cssRules, innermostObjects, objectProperty, walk } from "./css-rules";
+import {
+  cssRules,
+  innermostObjects,
+  objectProperty,
+  selectorParts,
+  walk,
+} from "./css-rules";
 
 const SRC = "src";
 
@@ -139,22 +145,34 @@ describe("hardcoded light foregrounds anywhere in CSS", () => {
     ".photo-lightbox-close",
     ".photo-lightbox-nav",
     ".photo-lightbox-open-journal",
+    ".photo-lightbox-view-original",
   ]);
+
+  // ‼️ 판정은 **셀렉터 부분별로** 한다 — 예전에는 `rule.selector` 전체를 이름과 비교했다.
+  // 두 동등한 버튼이 한 규칙을 공유하는 순간(`.a, .b { color: #fff }`) 그 비교는 어느
+  // 이름과도 맞지 않아, 이미 승인된 색이 새 위반으로 잡히고 "not vacuous" 쪽은 승인된
+  // 이름을 못 찾아 같이 깨졌다. 그룹 셀렉터는 정상적인 CSS이고, 그것을 표현할 수 없던
+  // 것은 가드의 한계였다. selectorParts는 이 모듈이 이미 그 목적으로 제공한다.
+  const litParts = (rule: { selector: string }) => selectorParts(rule.selector);
 
   it("has none outside the named exceptions", () => {
     const offenders = RULES.filter(
       (rule) =>
-        HARDCODED_LIGHT_FG.test(rule.body) && !ALLOWED.has(rule.selector),
+        HARDCODED_LIGHT_FG.test(rule.body) &&
+        litParts(rule).some((part) => !ALLOWED.has(part)),
     ).map((rule) => `${rule.file}:${rule.line} ${rule.selector}`);
     expect(offenders).toEqual([]);
   });
 
   it("still finds the named exceptions, so the check is not vacuous", () => {
-    const found = RULES.filter(
-      (rule) =>
-        HARDCODED_LIGHT_FG.test(rule.body) && ALLOWED.has(rule.selector),
+    // 이름 하나하나가 실제로 관측돼야 한다 — 규칙 수를 세면 그룹 하나가 두 이름을
+    // 덮으면서 낡은 이름이 목록에 남아 있어도 통과한다.
+    const observed = new Set(
+      RULES.filter((rule) => HARDCODED_LIGHT_FG.test(rule.body)).flatMap(
+        litParts,
+      ),
     );
-    expect(found.length).toBe(ALLOWED.size);
+    expect([...ALLOWED].filter((name) => !observed.has(name))).toEqual([]);
   });
 });
 

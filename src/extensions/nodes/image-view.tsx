@@ -1,14 +1,13 @@
 // §3.3 Image NodeView — edge-drag resize, caption editing, AI menu
-import { useCallback, useMemo, useRef, useState } from "react";
-
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useCallback, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import { Captions, Sparkles } from "lucide-react";
+import { Captions, Maximize2, Sparkles } from "lucide-react";
 
-import { useEditorStore } from "../../stores/editor/editor";
+import { ImageOriginalView } from "../../components/editor/ImageOriginalView";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
+import { originalImageUrl, useImagePreview } from "./views/use-image-preview";
 import { useMediaResize } from "./views/use-media-resize";
 
 export function ImageView({
@@ -23,12 +22,14 @@ export function ImageView({
   const title = (node.attrs.title as string) || "";
   const widthPercent = (node.attrs.widthPercent as number) || 100;
 
-  // Resolve src for Tauri webview (memoize to avoid repeated conversion)
-  const src = useMemo(() => resolveImageSrc(rawSrc), [rawSrc]);
+  // §3.3 표시용 URL — 원본이 아니라 2048px 프리뷰다(그 이유는 use-image-preview.ts).
+  // 준비되기 전에는 null이고, 그동안 <img>를 만들지 않는다.
+  const src = useImagePreview(rawSrc);
 
   // §56d: Show caption placeholder for journal photo assets
   const isJournalAsset = /assets\/\d{4}-\d{2}\//.test(rawSrc);
 
+  const [viewingOriginal, setViewingOriginal] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState(alt);
   const captionRef = useRef<HTMLInputElement>(null);
@@ -82,15 +83,29 @@ export function ImageView({
     <NodeViewWrapper className="image-node-view" ref={containerRef}>
       <figure
         className={`image-figure ${selected ? "image-selected" : ""}`}
+        // 프리뷰를 기다리는 동안 자리를 잡아 둔다 — <img>가 없으면 figure 높이가 0이라
+        // 본문이 두 번 밀린다. 정확한 비율은 아직 알 수 없으므로 최소 높이만 준다.
+        data-preview-loading={src ? undefined : ""}
         style={{ width: `${effectiveWidth}%` }}
       >
-        <img
-          alt={alt}
-          data-drag-handle=""
-          draggable={false}
-          src={src}
-          title={title || undefined}
-        />
+        {/*
+          ‼️ `decoding="async"`를 쓰지 않는다. 그 속성은 "디코드된 이미지 없이 프레임을 먼저
+          내보내도 된다"는 허락이고, 비트맵이 버려졌다 다시 디코드되는 상황에서는 그 빈
+          프레임이 바로 사용자가 본 깜박임이다. 프리뷰는 최대 3.1 MPix라 동기 디코드가 싸다.
+
+          `loading="lazy"`는 남긴다: 사진이 여러 장인 하루에서 화면 밖 이미지까지 첫 페인트
+          전에 받아 오지 않게 한다.
+        */}
+        {src && (
+          <img
+            alt={alt}
+            data-drag-handle=""
+            draggable={false}
+            loading="lazy"
+            src={src}
+            title={title || undefined}
+          />
+        )}
 
         {/* Edge resize handles */}
         <div
@@ -115,6 +130,14 @@ export function ImageView({
             title="Caption"
           >
             <Captions size={16} strokeWidth={2} />
+          </MediaToolbarButton>
+          {/* §3.3 본문은 프리뷰를 그리므로 원본을 볼 통로가 필요하다 — SVG/Mermaid의
+              Fullscreen view와 같은 자리, 같은 아이콘. */}
+          <MediaToolbarButton
+            onClick={() => setViewingOriginal(true)}
+            title="View original"
+          >
+            <Maximize2 size={16} strokeWidth={2} />
           </MediaToolbarButton>
           <MediaToolbarButton
             onClick={(e) => {
@@ -173,34 +196,14 @@ export function ImageView({
           </figcaption>
         ) : null}
       </figure>
+      {viewingOriginal && (
+        <ImageOriginalView
+          alt={alt}
+          onClose={() => setViewingOriginal(false)}
+          originalUrl={originalImageUrl(rawSrc)}
+          previewUrl={src}
+        />
+      )}
     </NodeViewWrapper>
   );
-}
-
-/** Check if src is a remote URL or data URI (no conversion needed) */
-function isRemoteOrData(src: string): boolean {
-  return /^https?:\/\/|^data:/i.test(src);
-}
-
-/** Resolve image src for Tauri webview.
- *  - Remote URLs and data URIs pass through unchanged.
- *  - Local paths (absolute or relative) are converted via Tauri's asset protocol.
- */
-function resolveImageSrc(src: string): string {
-  if (!src || isRemoteOrData(src)) return src;
-
-  // Resolve relative path against the current file's directory
-  let absolutePath = src;
-  if (!src.startsWith("/")) {
-    const activeTabId = useEditorStore.getState().activeTabId;
-    const tabs = useEditorStore.getState().tabs;
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    const filePath = activeTab?.filePath;
-    if (filePath) {
-      const dir = filePath.substring(0, filePath.lastIndexOf("/"));
-      absolutePath = `${dir}/${src}`;
-    }
-  }
-
-  return convertFileSrc(absolutePath);
 }

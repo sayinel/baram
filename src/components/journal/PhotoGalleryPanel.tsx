@@ -1,7 +1,7 @@
 // §56d Photo Gallery — full gallery view panel
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useShallow } from "zustand/shallow";
 
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -13,13 +13,23 @@ import {
   type PhotoGalleryEntry,
   scanJournalPhotos,
 } from "../../utils/journal/journal-photo";
+import { PhotoGalleryThumb } from "./PhotoGalleryThumb";
+import { PhotoLightbox } from "./PhotoLightbox";
 
 type GroupMode = "day" | "month" | "year";
 
 export function PhotoGalleryPanel() {
-  const { rightPanelOpen, rightPanelMode } = useUIStore();
-  const { rootPath } = useFileStore();
-  const { journalDirectory } = useSettingsStore();
+  // ‼️ bare `useUIStore()`가 아니어야 한다. 그 형태는 스토어 전체를 구독하므로 무관한 UI
+  // 변화 하나하나가 사진 수백 칸을 다시 렌더한다 — 저널을 열면 파일 스토어가 바뀌므로
+  // 정확히 그 순간에 걸린다.
+  const { rightPanelMode, rightPanelOpen } = useUIStore(
+    useShallow((s) => ({
+      rightPanelMode: s.rightPanelMode,
+      rightPanelOpen: s.rightPanelOpen,
+    })),
+  );
+  const rootPath = useFileStore((s) => s.rootPath);
+  const journalDirectory = useSettingsStore((s) => s.journalDirectory);
 
   const [photos, setPhotos] = useState<PhotoGalleryEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,17 +140,18 @@ export function PhotoGalleryPanel() {
 
   const closeLightbox = useCallback(() => setLightboxIndex(null), []);
 
-  // Keyboard navigation for lightbox
-  useEffect(() => {
-    if (lightboxIndex === null) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeLightbox();
-      else if (e.key === "ArrowLeft") navigateLightbox("prev");
-      else if (e.key === "ArrowRight") navigateLightbox("next");
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [lightboxIndex, closeLightbox, navigateLightbox]);
+  // ‼️ useCallback이어야 한다 — 매 렌더 새 함수를 넘기면 칸마다 걸어 둔 `memo`가 전부
+  // 무효가 되어 사진 수백 개가 같이 다시 렌더된다.
+  const openLightbox = useCallback(
+    (photo: PhotoGalleryEntry) => {
+      const idx = flatPhotos.indexOf(photo);
+      setLightboxIndex(idx >= 0 ? idx : 0);
+    },
+    [flatPhotos],
+  );
+
+  // ‼️ 라이트박스의 키보드(Esc·좌우)는 PhotoLightbox가 가진다 — 여기 있으면 원본 보기가
+  // 열렸을 때 Esc 한 번에 두 레이어가 같이 닫힌다(그쪽 effect의 주석 참조).
 
   if (!isVisible) return null;
 
@@ -185,11 +196,6 @@ export function PhotoGalleryPanel() {
       case "year":
         return `${key}년`;
     }
-  };
-
-  const openLightbox = (photo: PhotoGalleryEntry) => {
-    const idx = flatPhotos.indexOf(photo);
-    setLightboxIndex(idx >= 0 ? idx : 0);
   };
 
   const lightboxPhoto =
@@ -255,25 +261,14 @@ export function PhotoGalleryPanel() {
                 </span>
               </div>
               <div className="photo-gallery-grid">
-                {groupPhotos.map((photo, i) => (
-                  <div
-                    className="photo-gallery-item"
-                    key={`${photo.filename}-${i}`}
-                    onClick={() => openLightbox(photo)}
-                    title={photo.caption || photo.filename}
-                  >
-                    <img
-                      alt={photo.caption || photo.filename}
-                      className="photo-gallery-thumb"
-                      loading="lazy"
-                      src={convertFileSrc(photo.absolutePath)}
-                    />
-                    {photo.caption && (
-                      <span className="photo-gallery-item-caption">
-                        {photo.caption}
-                      </span>
-                    )}
-                  </div>
+                {groupPhotos.map((photo) => (
+                  // key가 absolutePath인 이유: 파일마다 유일하고, 기간을 옮길 때 같은
+                  // 자리의 다른 사진이 이전 사진의 썸네일 상태를 물려받지 않는다.
+                  <PhotoGalleryThumb
+                    key={photo.absolutePath}
+                    onOpen={openLightbox}
+                    photo={photo}
+                  />
                 ))}
               </div>
             </div>
@@ -281,103 +276,13 @@ export function PhotoGalleryPanel() {
         })}
       </div>
 
-      {/* Lightbox overlay */}
       {lightboxPhoto && (
-        <div className="photo-lightbox-overlay" onClick={closeLightbox}>
-          {/* Nav buttons fixed to overlay edges */}
-          <button
-            className="photo-lightbox-nav photo-lightbox-prev"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigateLightbox("prev");
-            }}
-          >
-            <svg
-              fill="none"
-              height="20"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="20"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <button
-            className="photo-lightbox-nav photo-lightbox-next"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigateLightbox("next");
-            }}
-          >
-            <svg
-              fill="none"
-              height="20"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="20"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-
-          <button
-            className="photo-lightbox-close"
-            onClick={(e) => {
-              e.stopPropagation();
-              closeLightbox();
-            }}
-          >
-            <svg
-              fill="none"
-              height="18"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="18"
-            >
-              <line x1="18" x2="6" y1="6" y2="18" />
-              <line x1="6" x2="18" y1="6" y2="18" />
-            </svg>
-          </button>
-
-          <div
-            className="photo-lightbox-content"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              alt={lightboxPhoto.caption || lightboxPhoto.filename}
-              className="photo-lightbox-img"
-              src={convertFileSrc(lightboxPhoto.absolutePath)}
-            />
-            <div className="photo-lightbox-info">
-              <span className="photo-lightbox-caption">
-                {lightboxPhoto.caption || lightboxPhoto.filename}
-              </span>
-              <span className="photo-lightbox-date">
-                {lightboxPhoto.date.toLocaleDateString("ko-KR")}
-              </span>
-              {lightboxPhoto.journalPath && (
-                <button
-                  className="photo-lightbox-open-journal"
-                  onClick={() => {
-                    closeLightbox();
-                    handleOpenJournal(lightboxPhoto.journalPath!);
-                  }}
-                >
-                  일기 보기
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <PhotoLightbox
+          onClose={closeLightbox}
+          onNavigate={navigateLightbox}
+          onOpenJournal={handleOpenJournal}
+          photo={lightboxPhoto}
+        />
       )}
     </div>
   );
