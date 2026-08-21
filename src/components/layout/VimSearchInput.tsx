@@ -42,6 +42,12 @@ export function VimSearchInput({ editor, prefix, text }: VimSearchInputProps) {
         onBlur={() => closeSearchLine(editor, false)}
         onChange={(e) => updateSearchLineText(editor, e.target.value)}
         onKeyDown={(e) => {
+          // A composing Enter/Escape belongs to the IME: Korean IMEs commit
+          // or cancel the active composition with a keydown that arrives
+          // BEFORE the change event — submitting there would search a
+          // pattern missing its final syllable and unmount the input
+          // mid-composition (adversarial review).
+          if (e.nativeEvent.isComposing) return;
           if (e.key === "Enter") {
             e.preventDefault();
             submitSearchLine(editor);

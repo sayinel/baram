@@ -118,6 +118,30 @@ describe("the search line is a real input — IME composes natively", () => {
     expect(editor.state.selection.from).toBe(occurrence(editor, "한글", 1));
   });
 
+  it("a COMPOSING Enter belongs to the IME, not the search", () => {
+    // Korean IMEs commit the active composition with an Enter whose keydown
+    // arrives FIRST (isComposing / keyCode 229) — submitting there searches a
+    // pattern missing its final syllable and unmounts the input mid-
+    // composition (adversarial review). The guard yields to the IME; the
+    // follow-up plain Enter submits the completed text.
+    const editor = makeEditor();
+    render(<StatusBar editor={editor} mode="wysiwyg" />);
+    const input = openLine(editor);
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "한" } });
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    });
+    // Still open: the composing Enter was the IME's.
+    expect(useUIStore.getState().vimStatus?.command).toBe("/한");
+
+    act(() => {
+      fireEvent.change(input, { target: { value: "한글" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(editor.state.selection.from).toBe(occurrence(editor, "한글", 0));
+  });
+
   it("Escape closes without moving and hands focus back", () => {
     const editor = makeEditor();
     render(<StatusBar editor={editor} mode="wysiwyg" />);

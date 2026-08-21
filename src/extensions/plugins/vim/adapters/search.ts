@@ -84,6 +84,11 @@ export function resolveSearch(
     }
     return false;
   });
+  // An incomplete scan must fail CLOSED: the collected early matches would
+  // wrap the cursor backward past a real next match the scan never reached —
+  // a confident wrong answer is worse than a silent miss (adversarial
+  // review, reproduced).
+  if (spent) return null;
   if (matches.length === 0) return null;
 
   const len = matches.length;

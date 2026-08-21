@@ -191,6 +191,23 @@ describe("time budget (adversarial review — self-inflicted ReDoS)", () => {
     expect(target).toBeNull();
   });
 
+  it("a PARTIAL scan fails closed — no wrap onto unverified ground", () => {
+    // With early blocks scanned and the budget spent before later ones, the
+    // collected matches would wrap the cursor BACKWARD past a real next match
+    // the scan never saw (adversarial review, reproduced). Incomplete scans
+    // return null instead of a confident wrong answer.
+    const state = makeState("bag early\n\nbag desired\n");
+    const early = nthOccurrence(state, "bag", 0);
+    const ticks = [0, 0, 100]; // deadline calc, block-1 check, block-2 check
+    const target = resolveSearch(state, early, "bag", "forward", 1, {
+      budgetMs: 50,
+      // Block 1 scans (its match is collected), block 2 expires unscanned —
+      // matches now hold ONLY the early hit.
+      now: () => ticks.shift() ?? 100,
+    });
+    expect(target).toBeNull();
+  });
+
   it("the default clock finds the same match (positive control)", () => {
     const state = makeState("first line\n\nsecond bag line\n");
     expect(resolveSearch(state, 1, "bag", "forward", 1)).toBe(
