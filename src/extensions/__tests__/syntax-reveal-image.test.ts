@@ -232,3 +232,103 @@ describe("image syntax reveal (§300-3 regression guard)", () => {
     });
   });
 });
+
+describe("video syntax reveal (§295)", () => {
+  // ‼️ 브리프의 원안은 "![캡션](clip.mp4)\n"처럼 문서 전체가 미디어 atom
+  // 하나뿐인 픽스처에 `setNodeSelection(0)`을 직접 호출했다. `loadMarkdown`의
+  // `setContent`가 이미 그 atom 위에 `NodeSelection(0,1)`을 남겨두므로, 같은
+  // 위치를 다시 선택해도 `.from`이 그대로 0이라 syntax-reveal.ts의
+  // `cursorAtDocChange` 가드가 절대 풀리지 않는다(재현: 소스 수정 여부와 무관
+  // 하게 항상 실패). 이 파일의 기존 회귀 스위트가 쓰는 그대로 — 선행 "Hello"
+  // 문단 + `selectNodeAndAwaitExpand` — 를 재사용해 가드를 정상적으로 통과시킨다.
+  it("expands a selected video into the same ![](…) markdown", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![캡션](clip.mp4)\n");
+    expect(nodeTypeNames(editor)).toContain("video");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+
+    expect(editor.state.doc.textContent).toContain("![캡션](clip.mp4)");
+    expect(nodeTypeNames(editor)).not.toContain("video");
+    editor.destroy();
+  });
+
+  it("collapses back into a video node (forceCollapseSyntaxReveal path)", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![](clip.mp4)\n");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+    expect(nodeTypeNames(editor)).not.toContain("video"); // sanity: expansion actually happened
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(nodeTypeNames(editor)).toContain("video");
+    expect(findNode(editor, "video")?.attrs.src).toBe("clip.mp4");
+    editor.destroy();
+  });
+
+  // ‼️ 이것이 kind에 "video"를 추가하는 대안이 얻지 못하는 동작이다 (§295).
+  it("follows the edited src across the image/video boundary (forceCollapseSyntaxReveal path)", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![a](clip.mp4)\n");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+
+    // doc.textContent는 textblock 구분자를 넣지 않으므로("Hello" + revealed
+    // text가 두 textblock) 그 위에서 인덱스를 찾지 않는다 — 소유 textblock 안에서
+    // 찾는 findTextPos를 쓴다.
+    const start = findTextPos(editor, "clip.mp4");
+    editor.commands.insertContentAt(
+      { from: start, to: start + "clip.mp4".length },
+      "photo.png",
+    );
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(nodeTypeNames(editor)).toContain("image");
+    expect(nodeTypeNames(editor)).not.toContain("video");
+    editor.destroy();
+  });
+
+  // §295 컨트롤러 정정: collapse는 두 곳에 있다 — forceCollapseSyntaxReveal이
+  // 부르는 syntax-reveal-collapse.ts의 collapseExpanded (위 두 테스트가 그 경로)와,
+  // 커서가 확장된 범위를 "벗어날 때" syntax-reveal.ts의 appendTransaction이 직접
+  // 만드는 collapse 분기(두 번째, 독립된 구현)다. 위 테스트들은 전부
+  // forceCollapseSyntaxReveal을 호출하므로 이 두 번째 경로를 전혀 넣지 않는다.
+  // 아래는 syntax-reveal.test.ts:94 "cursor exiting expanded bold restores mark"와
+  // 같은 모양으로 — 순수 커서 이동만으로 — appendTransaction 분기를 구동한다.
+  it("collapses back into a video node when the cursor leaves the expanded range (appendTransaction path)", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![](clip.mp4)\n");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+    expect(nodeTypeNames(editor)).not.toContain("video");
+
+    // 확장 범위 밖(선행 "Hello" 문단)으로 커서만 옮긴다 — forceCollapseSyntaxReveal은
+    // 호출하지 않는다. 이 한 줄이 appendTransaction의 collapse 분기를 구동한다.
+    editor.commands.setTextSelection(2);
+
+    expect(nodeTypeNames(editor)).toContain("video");
+    expect(findNode(editor, "video")?.attrs.src).toBe("clip.mp4");
+    editor.destroy();
+  });
+
+  // 같은 두 번째 경로에서 image/video 경계 추종도 확인한다 — kind가 "video"를
+  // 새로 얻지 않는다는 §295 결정은 두 collapse 구현 모두에 적용된다.
+  it("follows the edited src across the image/video boundary (appendTransaction path)", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![a](clip.mp4)\n");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+
+    const start = findTextPos(editor, "clip.mp4");
+    editor.commands.insertContentAt(
+      { from: start, to: start + "clip.mp4".length },
+      "photo.png",
+    );
+    // 확장 범위 밖으로 커서 이동 → appendTransaction이 collapse를 만든다.
+    editor.commands.setTextSelection(2);
+
+    expect(nodeTypeNames(editor)).toContain("image");
+    expect(nodeTypeNames(editor)).not.toContain("video");
+    editor.destroy();
+  });
+});

@@ -5,6 +5,7 @@ import type { EditorView } from "@tiptap/pm/view";
 
 import { TextSelection } from "@tiptap/pm/state";
 
+import { classifyMediaSrc } from "../../utils/media-src";
 import {
   INACTIVE,
   syntaxRevealKey,
@@ -121,14 +122,18 @@ export function collapseExpanded(
     }
 
     const [, alt, src, title] = imgMatch;
-    const imageNode = state.schema.nodes.image.create({
-      src,
-      alt: alt || null,
-      title: title || null,
-    });
+    // §295 src가 노드 타입을 정한다 — syntax-reveal.ts의 appendTransaction
+    // collapse 분기와 같은 결정. 이 함수(collapseExpanded)는 그와 별개의
+    // 두 번째 collapse 구현이라 결정을 여기도 복제해야 한다.
+    const attrs = { src, alt: alt || null, title: title || null };
+    const useVideo =
+      classifyMediaSrc(src) !== "image" && !!state.schema.nodes.video;
+    const mediaNode = useVideo
+      ? state.schema.nodes.video.create(attrs)
+      : state.schema.nodes.image.create(attrs);
     const imgFrom = from - 1;
     const imgTo = to + 1;
-    tr.replaceWith(imgFrom, imgTo, imageNode);
+    tr.replaceWith(imgFrom, imgTo, mediaNode);
   } else if (kind === "wikilink") {
     const fullText = state.doc.textBetween(from, to);
     const wlMatch = fullText.match(WIKILINK_REGEX);
