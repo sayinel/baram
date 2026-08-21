@@ -220,6 +220,13 @@ pub fn run() {
                         log::warn!("§56d thumbnail cache dir creation failed: {e}");
                     } else if let Err(e) = app.asset_protocol_scope().allow_directory(&dir, true) {
                         log::warn!("§56d thumbnail asset scope registration failed: {e}");
+                    } else {
+                        // 낡은 세대 정리. 세션당 한 번, 디렉터리 목록만 보는 일이므로 여기서
+                        // 해도 시작을 지연시키지 않는다(사진도 vault도 읽지 않는다).
+                        let removed = thumbnail::purge_stale_generations(&dir);
+                        if removed > 0 {
+                            log::info!("§56d purged {removed} stale thumbnail cache entries");
+                        }
                     }
                 }
                 Err(e) => log::warn!("§56d thumbnail cache dir unavailable: {e}"),
