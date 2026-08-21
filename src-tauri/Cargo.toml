@@ -71,6 +71,21 @@ percent-encoding = "2"
 http-range = "0.1"
 log = "0.4"
 diffy = "0.5.0"
+# §56d Photo Gallery thumbnails (thumbnail/mod.rs).
+#
+# ‼️ default-features = false is a binary-size setting (target: <15MB, Part 8 §8.4). The
+# default set compiles decoders for dds/exr/ff/hdr/ico/pnm/qoi/tga/tiff plus rayon; a
+# journal asset folder holds what a camera and a screenshot tool produce. The five formats
+# here are exactly the raster set the gallery already accepts (journal-photo.ts's extension
+# filter) — svg is in that filter too but is not a raster format, and falls back to the
+# original file.
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "webp",
+] }
 tauri-plugin-clipboard-manager = "2"
 trash = "5"
 tauri-plugin-log = "2.9.0"
@@ -79,6 +94,46 @@ tauri-plugin-log = "2.9.0"
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 devtools = ["tauri/devtools"]
+
+# §56d 디코더만 개발 빌드에서도 최적화한다.
+#
+# ‼️ 취향 문제가 아니라 **개발 빌드에서 기능이 못 쓰게 되는** 문제다. 실측 저널 사진 177장으로
+# `thumbnail` 벤치(BARAM_THUMB_BENCH_DIR)를 돌리면:
+#   debug   평균 3541ms / 최장 51397ms / 합계 627초
+#   release 평균  142ms / 최장  2371ms / 합계  25초
+# `tauri dev`는 debug라, 이 줄이 없으면 개발 중에는 썸네일이 원본을 그리는 것보다 느려 보이고
+# "고쳐지지 않았다"로 읽힌다. 픽셀 루프의 최적화 유무가 25배다.
+#
+# 우리 코드(baram)는 그대로 debug로 둔다 — 최적화하는 것은 이미지 코덱 크레이트들뿐이다.
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.zune-core]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.image-webp]
+opt-level = 3
+
+[profile.dev.package.gif]
+opt-level = 3
+
+[profile.dev.package.moxcms]
+opt-level = 3
+
+[profile.dev.package.bytemuck]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
 
 [profile.release]
 opt-level = "s"

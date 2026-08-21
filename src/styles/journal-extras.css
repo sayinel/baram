@@ -254,6 +254,12 @@
   border-radius: 6px;
 }
 
+/* §56d 큰 프리뷰가 만들어지기 전에 그리드 썸네일(320px)을 늘려 놓은 상태. 늘린 것을
+   감추지 않으려고 흐리게 둔다 — 그래야 "화질이 낮다"가 아니라 "아직 오는 중"으로 읽힌다. */
+.photo-lightbox-img-placeholder {
+  filter: blur(6px);
+}
+
 .photo-lightbox-info {
   display: flex;
   gap: 12px;
@@ -273,7 +279,9 @@
   color: #999;
 }
 
-.photo-lightbox-open-journal {
+/* 라이트박스 하단의 동등한 액션 둘 — 같은 모양이어야 하므로 규칙을 공유한다. */
+.photo-lightbox-open-journal,
+.photo-lightbox-view-original {
   padding: 4px 12px;
   font-size: 0.8rem;
   color: #fff;
@@ -284,7 +292,8 @@
   transition: background-color 0.15s;
 }
 
-.photo-lightbox-open-journal:hover {
+.photo-lightbox-open-journal:hover,
+.photo-lightbox-view-original:hover {
   background: rgb(255 255 255 / 22%);
 }
 

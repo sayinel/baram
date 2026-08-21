@@ -485,6 +485,8 @@ Insert images in multiple ways:
 
 Hover over an image to access the toolbar for resizing (25% / 50% / 75% / 100%) and editing alt text.
 
+**Previews and the original.** In the document, images are drawn from a cached preview (up to 2048px on the long edge) rather than the file itself, so a page of camera-sized photos opens without stalling. Click the **View original** button (⤢) in the hover toolbar — or press `Esc` to leave it — to see the full-resolution file. Your markdown is untouched either way: the path you wrote is what stays in the file and what gets exported.
+
 ### Table of Contents
 
 Insert a table of contents that automatically lists all headings in the document:
@@ -1197,7 +1199,8 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 ### Photo Journal
 
 - Drag, paste, or use the `/photo` slash command to add images — they are auto-saved to an `assets/` folder next to your journal
-- Open the **Photo Gallery** (`Cmd+Shift+I` / `Ctrl+Shift+I`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox
+- Open the **Photo Gallery** (`Cmd+Shift+I` / `Ctrl+Shift+I`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox (`←` / `→` to move between photos, `Esc` to close)
+- Thumbnails and lightbox images are cached previews, so a year of camera-sized photos scrolls smoothly. In the lightbox, **원본 보기 / View original** opens the full-resolution file; `Esc` closes that view first and leaves the lightbox open
 
 ### Memories
 

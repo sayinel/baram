@@ -73,6 +73,7 @@ fn main() {
         "llm_complete",
         "llm_list_models",
         "merge_texts",
+        "photo_thumbnail",
         "plugin_add_dev_folder",
         "plugin_call",
         "plugin_fetch_registry",
