@@ -35,10 +35,11 @@ export function ImageView({
   const captionRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLElement | null>(null);
 
-  // §5.1: Image click → NodeSelection is handled by the ProseMirror plugin
-  // in image.ts (handleDOMEvents.mousedown). React handlers must NOT call
-  // stopPropagation() because React 18 processes onMouseDown during the
-  // capture phase on #root, which would block the event from reaching PM.
+  // §5.1: Image click → NodeSelection is handled by the atom media click
+  // guard in atom-media-click-guard.ts (handleDOMEvents.mousedown). React
+  // handlers must NOT call stopPropagation() because React 18 processes
+  // onMouseDown during the capture phase on #root, which would block the
+  // event from reaching PM.
 
   // Edge-drag resize (Notion-style), shared with the SVG/Mermaid blocks. The
   // figure is centered, so the same centre-distance maths apply; width persists

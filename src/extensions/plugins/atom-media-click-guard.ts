@@ -95,8 +95,25 @@ export function createAtomMediaClickGuard(
 
           // 좌표 기반 폴백: WebKit이 event.target을 잘못 보고할 수 있다.
           if (!wrapper) {
+            // §295: 안쪽 미디어 엘리먼트가 아니라 래퍼(`.${wrapperClass}`) 자체의
+            // 사각형으로 히트테스트한다. 미디어 종류마다 안쪽 엘리먼트가 다르다 —
+            // image는 <img>, video는 <video>, 재생 전 provider embed는 <iframe>
+            // 이거나 아예 미디어 엘리먼트가 없는 카드 div일 수 있다. 엘리먼트
+            // 태그로 열거하면 다음 미디어 종류가 그 열거를 빠져나간다; 래퍼는
+            // 종류와 무관하게 항상 존재한다.
+            // 동작 영향: 래퍼(예 `.image-node-view`)는 margin·text-align만
+            // 걸려 있어 콘텐츠 폭 전체를 차지한다(안쪽 figure보다 넓다) —
+            // 그래서 더 좁은 figure 옆 여백을 클릭하거나 안쪽 엘리먼트가 아직
+            // 마운트되지 않은 순간(프리뷰 로딩 중)을 클릭해도 여기서 래퍼가
+            // 잡힌다. 이는 제대로 보고된 클릭에 대해 위 target.closest()가
+            // 이미 하는 동작과 같다 — WebKit 오보고 케이스를 그 경로로
+            // 수렴시키는 것이지 새로운 동작이 아니다.
             for (const el of view.dom.querySelectorAll(`.${wrapperClass}`)) {
               const rect = el.getBoundingClientRect();
+              // 폭/높이가 0인 래퍼(display:none, 레이아웃 전)는 후보에서
+              // 제외한다. 이 가드가 없어도 all-zero rect는 클릭 좌표가 정확히
+              // (0,0)일 때만 우연히 일치하므로 "문서 어디를 클릭해도 걸린다"는
+              // 아니지만, 그런 래퍼가 애초에 후보가 될 이유는 없다.
               if (
                 rect.width > 0 &&
                 rect.height > 0 &&
@@ -146,8 +163,9 @@ export function createAtomMediaClickGuard(
           }
 
           // SyntaxReveal이 이 노드의 원문을 펼쳐 둔 상태에서 그 밖을 클릭했다면
-          // TextSelection을 명시적으로 디스패치한다. 없으면 collapse 이후 WebKit의
-          // 네이티브 선택 처리가 상한 선택을 만들어 커서가 노드 옆에 붙어버린다.
+          // TextSelection을 명시적으로 디스패치한다. 없으면 collapse(appendTransaction)
+          // 이후 WebKit의 네이티브 선택 처리가 상한 선택을 만들어 커서가 노드 옆에
+          // 붙어버린다.
           const expanded = getSyntaxRevealExpanded(view.state);
           if (expanded?.kind === "image") {
             const coords = view.posAtCoords({
