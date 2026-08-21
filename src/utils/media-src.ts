@@ -120,10 +120,6 @@ function extensionOf(src: string): null | string {
 
 function parseHttpUrl(src: string): null | URL {
   if (!/^https?:\/\//i.test(src)) return null;
-  // WHATWG URL silently collapses "/../" segments (e.g. ".../../../evil" →
-  // "/evil") before we ever see them, so a raw dot-segment in the input is
-  // never a real share link — reject it before parsing normalizes it away.
-  if (/\/\.\.(?:\/|$)/.test(src)) return null;
   try {
     return new URL(src);
   } catch {

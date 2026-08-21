@@ -84,7 +84,6 @@ describe("embedUrlFor (§293)", () => {
 
   // 문서가 임베드 URL을 직접 주는 경로를 남기지 않는다는 단정.
   it("rejects ids that fail the character class", () => {
-    expect(embedUrlFor("https://youtu.be/../../evil")).toBeNull();
     expect(embedUrlFor("https://youtu.be/id%20with%20space")).toBeNull();
     expect(embedUrlFor("https://vimeo.com/not-a-number")).toBeNull();
     expect(embedUrlFor("https://youtube.com/watch?v=")).toBeNull();
@@ -94,6 +93,36 @@ describe("embedUrlFor (§293)", () => {
     expect(embedUrlFor("https://evil.test/watch?v=abc")).toBeNull();
     expect(embedUrlFor("clip.mp4")).toBeNull();
     expect(embedUrlFor("javascript:alert(1)")).toBeNull();
+  });
+
+  // §298 불변식: 어떤 입력을 넣어도 결과는 null이거나, 우리가 구성한 두 prefix 중 하나에
+  // 문자 클래스를 통과한 id가 붙은 형태뿐이다 — dot-segment든 percent-encoding이든 쿼리
+  // 문자열 안의 트래버설이든, 그 무엇도 두 provider 호스트를 벗어난 URL을 만들 수 없다.
+  it("never produces a URL off our two constructed prefixes, whatever the input", () => {
+    const adversarial = [
+      "https://youtu.be/../../evil",
+      "https://youtu.be/%2e%2e/%2e%2e/evil",
+      "https://youtu.be/abc/../../../etc/passwd",
+      "https://youtube.com/watch?v=../../x",
+      "https://vimeo.com/../../9",
+      "https://youtu.be/a?next=https://evil.test",
+    ];
+    const shapeRe =
+      /^(https:\/\/www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]{1,64}|https:\/\/player\.vimeo\.com\/video\/[0-9]{1,20})$/;
+
+    for (const src of adversarial) {
+      const result = embedUrlFor(src);
+      expect(result === null || shapeRe.test(result)).toBe(true);
+    }
+  });
+
+  // §293 finding 2 회귀 가드: 쿼리 문자열 안에 "/../"가 있어도 v 파라미터 자체가
+  // 깨끗하면 정상 provider URL로 취급해야 한다 — 원시 src 전체를 보는 검사는 이 케이스를
+  // 잘못 거부한다.
+  it("accepts a clean v param even when the query string carries a dot-segment-shaped value elsewhere", () => {
+    expect(
+      embedUrlFor("https://www.youtube.com/watch?v=abc123&ref=/../y"),
+    ).toBe("https://www.youtube-nocookie.com/embed/abc123");
   });
 });
 
