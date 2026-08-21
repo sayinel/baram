@@ -1,0 +1,136 @@
+// §293 미디어 소스 분류 — 확장자와 호스트만 보는 순수 함수.
+//
+// ‼️ 이 파일이 유일한 열거다. 소비자는 둘이다: md-to-pm(어떤 노드를 만들지)과
+// NodeView(어떻게 그릴지). 한쪽만 고치는 사고를 막으려고 목록을 여기 하나만 둔다.
+// 확장자나 provider를 더할 때는 여기만 고친다.
+import { convertFileSrc } from "@tauri-apps/api/core";
+
+import { useEditorStore } from "../stores/editor/editor";
+import { dirname } from "./path-utils";
+
+export type MediaKind = "image" | "video-embed" | "video-file";
+
+/** `![](…)` 형태로 문서에 들어오는 블록 atom 노드 이름 (§295). */
+export const MEDIA_ATOM_NAMES: ReadonlySet<string> = new Set([
+  "image",
+  "video",
+]);
+
+/** 재생될 여지가 있는 컨테이너. `.mkv`는 어느 웹뷰에서도 안 되므로 없다 (§293). */
+const VIDEO_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
+  "m4v",
+  "mov",
+  "mp4",
+  "ogv",
+  "webm",
+]);
+
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const VIMEO_ID_RE = /^[0-9]{1,20}$/;
+
+/**
+ * 상대경로 해석의 기준 — 활성 탭 파일의 디렉터리.
+ *
+ * ‼️ 훅이 아니라 `getState()`를 읽는 명령형 함수다. §56d의 `use-image-preview.ts`가
+ * 이미 이 방식이고, 훅으로 바꾸면 탭 전환마다 이미지 NodeView가 리렌더되는 **동작 변경**이
+ * 된다. 갓 착지한 코드의 동작을 이 작업에서 바꾸지 않는다.
+ *
+ * 유지된 표면(§286)이 여러 개 마운트돼 있으면 숨은 탭의 상대경로가 활성 탭 기준으로
+ * 풀리는 문제가 있다 — 이 작업이 만든 것이 아니라 그대로 물려받은 것이다.
+ */
+export function activeFileDir(): null | string {
+  const { activeTabId, tabs } = useEditorStore.getState();
+  const filePath = tabs.find((t) => t.id === activeTabId)?.filePath;
+  return (filePath && dirname(filePath)) || null;
+}
+
+export function classifyMediaSrc(src: string): MediaKind {
+  if (!src) return "image";
+  if (embedUrlFor(src)) return "video-embed";
+  const ext = extensionOf(src);
+  return ext && VIDEO_FILE_EXTENSIONS.has(ext) ? "video-file" : "image";
+}
+
+/**
+ * provider URL → **우리가 구성한** 임베드 URL. provider가 아니면 null.
+ *
+ * ‼️ 문서가 iframe src를 직접 주는 경로를 만들지 않는다 (§298). 문서는 id만 주고,
+ * id가 문자 클래스를 통과하지 못하면 provider가 아닌 것으로 취급한다.
+ */
+export function embedUrlFor(src: string): null | string {
+  const url = parseHttpUrl(src);
+  if (!url) return null;
+  const host = url.hostname.replace(/^www\./, "").replace(/^m\./, "");
+  const seg = url.pathname.split("/").filter(Boolean);
+
+  if (host === "youtu.be") {
+    return YOUTUBE_ID_RE.test(seg[0] ?? "") ? youtubeEmbed(seg[0]) : null;
+  }
+
+  if (host === "youtube.com") {
+    if (url.pathname === "/watch") {
+      const id = url.searchParams.get("v") ?? "";
+      return YOUTUBE_ID_RE.test(id) ? youtubeEmbed(id) : null;
+    }
+    if (
+      (seg[0] === "shorts" || seg[0] === "embed") &&
+      YOUTUBE_ID_RE.test(seg[1] ?? "")
+    ) {
+      return youtubeEmbed(seg[1]);
+    }
+    return null;
+  }
+
+  if (host === "vimeo.com" || host === "player.vimeo.com") {
+    const id = seg[seg.length - 1] ?? "";
+    return VIMEO_ID_RE.test(id) ? `https://player.vimeo.com/video/${id}` : null;
+  }
+
+  return null;
+}
+
+export function isMediaAtom(nodeName: string): boolean {
+  return MEDIA_ATOM_NAMES.has(nodeName);
+}
+
+/** 원격 URL과 data URI는 우리 해석의 대상이 아니다 — 그대로 통과시킨다. */
+export function isRemoteOrData(src: string): boolean {
+  return /^https?:\/\/|^data:/i.test(src);
+}
+
+/**
+ * Tauri 웹뷰용 src 해석 (§296). 이미지·동영상이 공유한다.
+ *  - 원격 URL과 data URI는 통과
+ *  - 로컬 경로(절대·상대)는 `asset:` 프로토콜로. 상대경로는 `baseDir` 기준
+ */
+export function resolveMediaSrc(src: string, baseDir: null | string): string {
+  if (!src || isRemoteOrData(src)) return src;
+  const absolutePath =
+    src.startsWith("/") || !baseDir ? src : `${baseDir}/${src}`;
+  return convertFileSrc(absolutePath);
+}
+
+/** 확장자만 뽑는다. 쿼리와 프래그먼트는 버린다(`a.mp4?token=1`, `clip.mp4#t=0.1`). */
+function extensionOf(src: string): null | string {
+  const path = src.split("#")[0].split("?")[0];
+  const base = path.split("/").pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : null;
+}
+
+function parseHttpUrl(src: string): null | URL {
+  if (!/^https?:\/\//i.test(src)) return null;
+  // WHATWG URL silently collapses "/../" segments (e.g. ".../../../evil" →
+  // "/evil") before we ever see them, so a raw dot-segment in the input is
+  // never a real share link — reject it before parsing normalizes it away.
+  if (/\/\.\.(?:\/|$)/.test(src)) return null;
+  try {
+    return new URL(src);
+  } catch {
+    return null;
+  }
+}
+
+function youtubeEmbed(id: string): string {
+  return `https://www.youtube-nocookie.com/embed/${id}`;
+}
