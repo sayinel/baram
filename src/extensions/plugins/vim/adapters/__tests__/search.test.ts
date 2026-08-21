@@ -173,6 +173,32 @@ describe("smartcase", () => {
   });
 });
 
+describe("time budget (adversarial review — self-inflicted ReDoS)", () => {
+  // A pathological pattern like `(a+)+$` backtracks exponentially. The
+  // pattern only ever comes from the user's own keyboard — a shared document
+  // cannot run a search — so this is a self-freeze, not an attack surface;
+  // the budget bounds the damage to one line's exec and skips the rest.
+  // Deterministic via an injected clock: wall-clock timing pins flake.
+  it("stops scanning once the budget is spent (injected clock)", () => {
+    const state = makeState("first line\n\nsecond bag line\n");
+    let ticks = 0;
+    const target = resolveSearch(state, 1, "bag", "forward", 1, {
+      budgetMs: 50,
+      now: () => (ticks += 100), // every check "costs" 100ms
+    });
+    // The match exists in the second block, but the clock burned the budget
+    // before the scan reached it — a silent miss, same as any other.
+    expect(target).toBeNull();
+  });
+
+  it("the default clock finds the same match (positive control)", () => {
+    const state = makeState("first line\n\nsecond bag line\n");
+    expect(resolveSearch(state, 1, "bag", "forward", 1)).toBe(
+      nthOccurrence(state, "bag", 0),
+    );
+  });
+});
+
 describe("no match", () => {
   it("returns null when the pattern is absent", () => {
     const state = makeState("plain text\n");

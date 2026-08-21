@@ -24,19 +24,40 @@ const OBJECT_CHAR = "￼";
  * last one strictly before, both wrapping (vim's wrapscan). `count` steps
  * that many matches. The returned position is the match START.
  */
+export interface SearchOptions {
+  /** Synchronous scan budget. The pattern is the USER's own regex — a shared
+   *  document cannot run a search — so a pathological one is a self-freeze,
+   *  not an attack surface; the budget bounds it to one block's exec and
+   *  turns the rest into a silent miss. Worker-based full containment is a
+   *  follow-up (#372). */
+  budgetMs?: number;
+  /** Injected clock so the budget can be pinned without wall-clock flake. */
+  now?: () => number;
+}
+
 export function resolveSearch(
   state: EditorState,
   from: number,
   pattern: string,
   direction: SearchDirection,
   count: number,
+  options: SearchOptions = {},
 ): null | number {
   const regex = compile(pattern);
   if (regex === null) return null;
+  const budgetMs = options.budgetMs ?? 50;
+  const now = options.now ?? (() => performance.now());
+  const deadline = now() + budgetMs;
 
   const matches: number[] = [];
+  let spent = false;
   state.doc.descendants((node, pos) => {
+    if (spent) return false;
     if (!node.isTextblock) return true;
+    if (now() > deadline) {
+      spent = true;
+      return false;
+    }
     const text = node.textBetween(0, node.content.size, "\n", leafText);
     regex.lastIndex = 0;
     let boundaries: null | Set<number> = null;

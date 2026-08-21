@@ -34,8 +34,9 @@ import { subscribeContentLoaded } from "../../utils/editor/programmatic-update";
 import { basename } from "../../utils/path-utils";
 import { extractLeadingId } from "../../utils/zettelkasten/parse-note-title";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
-import "../../styles/zettelkasten.css";
 import { PluginStatusBarItems } from "./PluginStatusBarItems";
+import "../../styles/zettelkasten.css";
+import { VimSearchInput } from "./VimSearchInput";
 
 export type EditorMode = "graph" | "preview" | "source" | "wysiwyg";
 
@@ -269,11 +270,25 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
               vimStatus.surface === "codeblock")) && (
             <span className="status-mode status-vim-mode">
               {/* An open ex line REPLACES the mode indicator, as in vim —
-                  otherwise `:` looks like it did nothing (PR 307 review). */}
-              {vimStatus.command ??
+                  otherwise `:` looks like it did nothing (PR 307 review).
+                  An open SEARCH line becomes a real input: the modal surface
+                  is non-editable, so this is where the IME composes (§298). */}
+              {editor !== null &&
+              vimStatus.surface === "wysiwyg" &&
+              vimStatus.command !== undefined &&
+              (vimStatus.command.startsWith("/") ||
+                vimStatus.command.startsWith("?")) ? (
+                <VimSearchInput
+                  editor={editor}
+                  prefix={vimStatus.command[0]}
+                  text={vimStatus.command.slice(1)}
+                />
+              ) : (
+                (vimStatus.command ??
                 `-- ${vimStatus.mode.toUpperCase()}${
                   vimStatus.island ? ` (${vimStatus.island})` : ""
-                } --`}
+                } --`)
+              )}
             </span>
           )}
         {isRepo && branch && (

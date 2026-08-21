@@ -400,6 +400,23 @@
   border-radius: 3px;
 }
 
+/* §298 vim `/` — StatusBar의 실제 검색 입력 (IME 조합 목적지) */
+.status-vim-search {
+  display: inline-flex;
+  gap: 1px;
+  align-items: center;
+}
+
+.status-vim-search-input {
+  width: 16ch;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  outline: none;
+  background: transparent;
+  border: none;
+}
+
 .status-separator {
   color: var(--color-border-default);
 }
