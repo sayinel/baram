@@ -51,9 +51,9 @@ pub enum ThumbnailError {
 /// 어느 사진 것인지도 알 수 없다. 세대가 없으면 320을 400으로 바꾸는 순간 낡은 항목이
 /// **구분할 수 없는 채로 영구히** 남는다. 세대가 있으면 그 상황이 디렉터리 하나를 지우는
 /// 일이 된다(purge_stale_generations).
-const CACHE_GENERATION: &str = "v1";
+const CACHE_GENERATION: &str = "v2";
 
-/// 한 크기의 항목들이 사는 디렉터리 — `{cache}/v1/{max_px}/`.
+/// 한 크기의 항목들이 사는 디렉터리 — `{cache}/{CACHE_GENERATION}/{max_px}/`.
 ///
 /// 크기를 경로로 가르는 이유는 정리 정책 때문이다. 실측한 두 계층은 경제가 전혀 다르다:
 /// 320px는 사진 177장이 전부 3.3MB이고 그리드가 그것 없이는 못 돌지만, 2048px는 한 장이
@@ -152,7 +152,17 @@ pub fn ensure_thumbnail(
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let [jpg, png] = cache_paths(cache_dir, src, mtime_nanos, metadata.len(), max_px);
+    // ‼️ 키는 **파일**을 가리켜야 하고, 그 파일을 어떻게 적었는지를 가리켜서는 안 된다.
+    // 실앱 로그가 이걸 드러냈다: 에디터는 `![](./assets/x.jpg)`를 활성 파일 디렉터리에 붙여
+    // `/…/baram-test/./assets/x.jpg`를 보내고, 갤러리는 같은 파일을 `/…/assets/x.jpg`로 보낸다.
+    // 문자열을 그대로 해시하면 한 사진이 항목 두 개를 갖는다 — 2048px 계층을 에디터와
+    // 라이트박스가 **공유하도록** 만들어 둔 설계가 그 지점에서 조용히 무력화된다.
+    //
+    // 정규화는 키에만 쓴다. 돌려주는 경로와 디코드 대상은 호출자가 준 것을 그대로 유지한다:
+    // vault 루트 자체가 symlink 뒤에 있으면 canonical 경로가 asset 스코프 밖으로 나가
+    // 이미지가 아예 안 뜬다(스코프는 set_vault_root가 받은 경로로 등록된다).
+    let key_path = std::fs::canonicalize(src).unwrap_or_else(|_| src.to_path_buf());
+    let [jpg, png] = cache_paths(cache_dir, &key_path, mtime_nanos, metadata.len(), max_px);
 
     // 캐시 히트. 두 경로를 다 보는 이유: 출력 포맷은 알파 유무로 갈리고, 그건 디코드해야
     // 알 수 있다 — 히트 판정에 디코드를 끼우면 캐시의 의미가 없다.
@@ -162,9 +172,19 @@ pub fn ensure_thumbnail(
         }
     }
 
-    let thumb = decode_and_scale(src, max_px)?;
+    let Some(thumb) = scale_if_needed(src, max_px)? else {
+        // 이미 충분히 작다 — 줄일 것이 없으므로 **원본 경로를 그대로 돌려준다.**
+        //
+        // 이 분기가 없으면 `thumbnail`이 경계에 맞춰 **확대한다**: 297x413 / 10KB
+        // 스크린샷이 1473x2048 / 113KB로 캐시됐다. 원본보다 11배 크고 더 흐린 파일을
+        // 만들어 두는 셈이라, 문서에 스크린샷 몇 장만 있어도 캐시가 원본 총량을 넘는다.
+        //
+        // 호출자에게는 투명하다: 프론트엔드는 받은 경로를 asset URL로 바꿀 뿐이고, 작은
+        // 이미지에 대해서는 원본이 곧 올바른 프리뷰다.
+        return Ok(src.to_path_buf());
+    };
 
-    // 계층 디렉터리까지 만든다 — 캐시 루트가 아니다(경로가 `{cache}/v1/{max_px}/`).
+    // 계층 디렉터리까지 만든다 — 캐시 루트가 아니다(경로가 `{cache}/{세대}/{max_px}/`).
     std::fs::create_dir_all(tier_dir(cache_dir, max_px))?;
     let has_alpha = thumb.color().has_alpha();
     let (out, format, encodable) = if has_alpha {
@@ -185,7 +205,11 @@ pub fn ensure_thumbnail(
     Ok(out)
 }
 
-fn decode_and_scale(src: &Path, max_px: u32) -> Result<DynamicImage, ThumbnailError> {
+/// 축소가 필요하면 축소한 이미지를, 원본이 이미 `max_px` 안에 들면 `None`을 준다.
+///
+/// 판정을 여기서 하는 이유: 크기는 헤더만 읽으면 알 수 있고(`dimensions()`), 그 판정을 위해
+/// 파일을 두 번 열지 않으려면 디코더를 이미 손에 든 이 자리가 유일하게 맞다.
+fn scale_if_needed(src: &Path, max_px: u32) -> Result<Option<DynamicImage>, ThumbnailError> {
     let mut limits = Limits::default();
     limits.max_alloc = Some(MAX_DECODE_ALLOC);
 
@@ -199,6 +223,12 @@ fn decode_and_scale(src: &Path, max_px: u32) -> Result<DynamicImage, ThumbnailEr
         return Err(ThumbnailError::TooLarge { width, height });
     }
 
+    // ‼️ 여기서 빠져나간다 — 디코드 **전에**. 작은 이미지는 디코드도, 인코딩도, 캐시 항목도
+    // 필요 없다. `thumbnail`은 이 경우 확대하므로, 그냥 넘기면 원본보다 크고 흐린 파일이 된다.
+    if width <= max_px && height <= max_px {
+        return Ok(None);
+    }
+
     // ‼️ 방향은 디코더에서 **먼저** 읽는다. `from_decoder`가 디코더를 소비하므로 그 뒤엔
     // 물어볼 대상이 없다. 이걸 빼먹으면 세로로 찍은 사진의 썸네일만 눕는다 — 에디터의
     // `<img>`는 WKWebView가 EXIF를 적용해 바로 세워 주므로 같은 사진이 두 방향으로 보인다.
@@ -210,7 +240,7 @@ fn decode_and_scale(src: &Path, max_px: u32) -> Result<DynamicImage, ThumbnailEr
 
     // `thumbnail`은 소스 픽셀 하나가 타깃 픽셀 하나에 기여하는 정수 알고리즘이다 — 20배
     // 축소에서는 필터 품질 차이가 보이지 않고, `resize`의 Lanczos보다 훨씬 싸다.
-    Ok(img.thumbnail(max_px, max_px))
+    Ok(Some(img.thumbnail(max_px, max_px)))
 }
 
 /// 임시 파일에 쓰고 rename한다. 같은 사진을 두 곳(그리드와 라이트박스)에서 동시에 요청할 수
@@ -399,14 +429,77 @@ mod tests {
     }
 
     #[test]
+    fn two_spellings_of_the_same_file_share_one_cache_entry() {
+        // 실앱에서 관측된 두 형태: 에디터는 `./assets/x.jpg`를 붙여 `/dir/./x.jpg`를 보내고,
+        // 갤러리는 `/dir/x.jpg`를 보낸다. 같은 사진이 두 항목을 가지면 두 배로 만들고 두 배로
+        // 저장하며, 두 곳이 2048px 계층을 공유하도록 맞춰 둔 것이 무의미해진다.
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let plain = write_jpeg(dir.path(), "photo.jpg", 900, 900);
+        let with_dot_segment = dir.path().join(".").join("photo.jpg");
+
+        let a = ensure_thumbnail(&plain, &cache, 320).unwrap();
+        let b = ensure_thumbnail(&with_dot_segment, &cache, 320).unwrap();
+
+        assert_eq!(a, b);
+        let entries: Vec<_> = std::fs::read_dir(cache.join(CACHE_GENERATION).join("320"))
+            .unwrap()
+            .flatten()
+            .collect();
+        assert_eq!(entries.len(), 1, "항목이 하나여야 한다");
+    }
+
+    #[test]
+    fn a_source_already_within_the_bound_is_returned_untouched() {
+        // 실제로 있던 버그: `thumbnail`이 경계에 맞춰 **확대**하므로, 297x413 / 10KB
+        // 스크린샷이 1473x2048 / 113KB로 캐시됐다. 원본보다 크고 흐린 파일을 만들어 두는 것은
+        // 캐시가 아니다 — 그리고 평범한 문서의 이미지는 대부분 2048px보다 작다.
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "screenshot.jpg", 297, 413);
+
+        let out = ensure_thumbnail(&src, &cache, 2048).unwrap();
+
+        assert_eq!(out, src, "원본 경로를 그대로 돌려줘야 한다");
+        assert!(!cache.exists(), "캐시에 아무것도 쓰지 않아야 한다");
+    }
+
+    #[test]
+    fn a_source_exactly_at_the_bound_is_not_re_encoded() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "exact.jpg", 320, 200);
+
+        assert_eq!(ensure_thumbnail(&src, &cache, 320).unwrap(), src);
+    }
+
+    #[test]
+    fn a_source_over_the_bound_on_either_axis_is_scaled() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        // 짧은 변은 경계 안, 긴 변은 밖 — 한 축만 넘어도 축소해야 한다.
+        let tall = write_jpeg(dir.path(), "tall.jpg", 200, 900);
+
+        let out = ensure_thumbnail(&tall, &cache, 320).unwrap();
+
+        assert_ne!(out, tall);
+        let thumb = image::open(&out).unwrap();
+        assert_eq!(thumb.height(), 320);
+        assert!(thumb.width() < 200);
+    }
+
+    #[test]
     fn writes_under_a_generation_and_a_per_size_directory() {
         let dir = tempfile::tempdir().unwrap();
         let cache = dir.path().join("cache");
-        let src = write_jpeg(dir.path(), "photo.jpg", 200, 200);
+        let src = write_jpeg(dir.path(), "photo.jpg", 900, 900);
 
         let out = ensure_thumbnail(&src, &cache, 320).unwrap();
 
-        assert_eq!(out.parent().unwrap(), cache.join("v1").join("320"));
+        assert_eq!(
+            out.parent().unwrap(),
+            cache.join(CACHE_GENERATION).join("320")
+        );
     }
 
     #[test]
@@ -420,16 +513,23 @@ mod tests {
         let thumb = ensure_thumbnail(&src, &cache, 320).unwrap();
         let preview = ensure_thumbnail(&src, &cache, 2048).unwrap();
 
-        assert_eq!(thumb.parent().unwrap(), cache.join("v1").join("320"));
-        assert_eq!(preview.parent().unwrap(), cache.join("v1").join("2048"));
+        assert_eq!(
+            thumb.parent().unwrap(),
+            cache.join(CACHE_GENERATION).join("320")
+        );
+        assert_eq!(
+            preview.parent().unwrap(),
+            cache.join(CACHE_GENERATION).join("2048")
+        );
     }
 
     #[test]
     fn purging_removes_old_generations_and_pre_generation_files_but_keeps_the_current_one() {
         let dir = tempfile::tempdir().unwrap();
         let cache = dir.path().join("cache");
-        let src = write_jpeg(dir.path(), "photo.jpg", 200, 200);
+        let src = write_jpeg(dir.path(), "photo.jpg", 900, 900);
         let live = ensure_thumbnail(&src, &cache, 320).unwrap();
+        assert!(live.starts_with(&cache), "현재 세대의 캐시 항목이어야 한다");
 
         // 세대 도입 전의 평평한 파일과, 이전 세대 디렉터리.
         let legacy_flat = cache.join("deadbeefdeadbeef.jpg");
