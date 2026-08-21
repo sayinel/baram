@@ -1274,6 +1274,17 @@
       "_note": "TS wrapper: setVaultRoot in src/ipc/fs.ts"
     },
     {
+      "name": "photo_thumbnail",
+      "input": { "path": "string", "maxPx": "u32" },
+      "output": "string",
+      "module": "thumbnail",
+      "spec": "§56d",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "사진 썸네일을 앱 캐시에 만들고 그 절대 경로 반환 (convertFileSrc로 로드). 실패 시 호출자가 원본으로 폴백"
+    },
+    {
       "name": "resolve_settings",
       "input": { "contextId": "string" },
       "output": "ResolvedSettings",

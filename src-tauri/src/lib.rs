@@ -21,6 +21,7 @@ mod protocol;
 mod search;
 mod snapshot;
 mod tag;
+mod thumbnail;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,7 +29,7 @@ use std::sync::Mutex;
 
 use commands::{
     config_cmd, context_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd,
-    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd,
+    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, thumbnail_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -210,6 +211,20 @@ pub fn run() {
                 }
             );
 
+            // §56d 썸네일 캐시는 vault 밖(앱 캐시 디렉터리)에 있으므로 asset:// 스코프에
+            // 따로 넣어 줘야 한다 — 정적 스코프는 $APPDATA뿐이고, vault는 set_vault_root가
+            // 런타임에 등록한다. 실패는 비치명적이다: 갤러리가 원본으로 폴백한다.
+            match thumbnail_cmd::cache_dir(app.handle()) {
+                Ok(dir) => {
+                    if let Err(e) = std::fs::create_dir_all(&dir) {
+                        log::warn!("§56d thumbnail cache dir creation failed: {e}");
+                    } else if let Err(e) = app.asset_protocol_scope().allow_directory(&dir, true) {
+                        log::warn!("§56d thumbnail asset scope registration failed: {e}");
+                    }
+                }
+                Err(e) => log::warn!("§56d thumbnail cache dir unavailable: {e}"),
+            }
+
             let (built_menu, menu_state) = menu::build_menu(app)?;
             app.set_menu(built_menu)?;
             app.manage(menu_state);
@@ -236,6 +251,7 @@ pub fn run() {
         .manage(plugin::SandboxChannels::new())
         .manage(plugin::PluginRateLimiter::new())
         .manage(plugin::StagedPayloads::new())
+        .manage(thumbnail_cmd::ThumbnailSemaphore::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::set_vault_root,
             fs_cmd::read_file,
@@ -252,6 +268,7 @@ pub fn run() {
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
             fs_cmd::export_binary_file,
+            thumbnail_cmd::photo_thumbnail,
             config_cmd::get_config,
             config_cmd::set_config,
             config_cmd::remove_config,
