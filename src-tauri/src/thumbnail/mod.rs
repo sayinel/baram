@@ -45,10 +45,32 @@ pub enum ThumbnailError {
     TooLarge { height: u32, width: u32 },
 }
 
+/// 캐시 레이아웃의 세대. **크기 상수나 인코딩 방식을 바꾸면 이 값을 올린다.**
+///
+/// 왜 경로에 세대가 있어야 하는가: 파일 이름은 해시 하나뿐이라 그것만 보고는 어느 크기인지도,
+/// 어느 사진 것인지도 알 수 없다. 세대가 없으면 320을 400으로 바꾸는 순간 낡은 항목이
+/// **구분할 수 없는 채로 영구히** 남는다. 세대가 있으면 그 상황이 디렉터리 하나를 지우는
+/// 일이 된다(purge_stale_generations).
+const CACHE_GENERATION: &str = "v1";
+
+/// 한 크기의 항목들이 사는 디렉터리 — `{cache}/v1/{max_px}/`.
+///
+/// 크기를 경로로 가르는 이유는 정리 정책 때문이다. 실측한 두 계층은 경제가 전혀 다르다:
+/// 320px는 사진 177장이 전부 3.3MB이고 그리드가 그것 없이는 못 돌지만, 2048px는 한 장이
+/// 403KB로 용량의 95%를 차지하면서 miss 비용은 142ms다. 상한을 걸 곳과 걸지 말 곳이 다르므로,
+/// `read_dir` 한 번으로 그 둘을 가릴 수 있어야 한다.
+fn tier_dir(cache_dir: &Path, max_px: u32) -> PathBuf {
+    cache_dir.join(CACHE_GENERATION).join(max_px.to_string())
+}
+
 /// 캐시 파일 경로 두 개(불투명→jpg, 알파→png)를 만든다.
 ///
 /// 키에 mtime과 파일 크기가 들어가는 이유: 사용자가 사진을 교체하면(같은 이름, 다른 내용)
 /// 낡은 썸네일이 영원히 남는다. 두 값이 같이 바뀌지 않는 교체는 사실상 없다.
+///
+/// ‼️ `max_px`는 경로가 이미 가르지만 해시에도 남긴다. 중복이지만 inert한 중복이고, 나중에
+/// 누가 계층 디렉터리를 없애 평평하게 되돌리면 크기만 다른 두 항목이 같은 파일명을 갖는다 —
+/// 320px 썸네일이 2048px 프리뷰 자리에 조용히 서는 쪽이, 해시 입력 하나보다 훨씬 나쁘다.
 fn cache_paths(
     cache_dir: &Path,
     src: &Path,
@@ -63,10 +85,46 @@ fn cache_paths(
     hasher.update(size.to_le_bytes());
     hasher.update(max_px.to_le_bytes());
     let key = hex32(&hasher.finalize());
+    let tier = tier_dir(cache_dir, max_px);
     [
-        cache_dir.join(format!("{key}.jpg")),
-        cache_dir.join(format!("{key}.png")),
+        tier.join(format!("{key}.jpg")),
+        tier.join(format!("{key}.png")),
     ]
+}
+
+/// 현재 세대가 아닌 것을 지운다 — 낡은 세대 디렉터리와, 세대 도입 전의 평평한 파일들.
+///
+/// 세대 접두사가 사는 이유가 이 함수다. 값을 올리는 것만으로 낡은 항목이 사라지므로,
+/// 레이아웃을 바꿀 때 "구분할 수 없는 파일이 남는다"를 고민하지 않아도 된다.
+///
+/// ‼️ 소스 사진이 아직 있는지는 **묻지 않는다.** 그것을 물으려면 vault를 훑어야 하고, 다중
+/// vault(§88)에서 그 순간 닫혀 있는 vault의 캐시를 전부 지우게 된다. 고아 항목 회수는 이
+/// 함수의 일이 아니다 — 여기서 확실히 지울 수 있는 것만 지운다.
+///
+/// 지운 항목 수를 돌려준다. 실패는 무시한다: 캐시는 지워도 다시 만들어지므로
+/// (`ensure_thumbnail`이 파일 없음을 곧 재생성으로 처리한다) 정리 실패가 앱을 막을 이유가 없다.
+pub fn purge_stale_generations(cache_dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(cache_dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_current_generation =
+            path.is_dir() && path.file_name().and_then(|n| n.to_str()) == Some(CACHE_GENERATION);
+        if is_current_generation {
+            continue;
+        }
+        let outcome = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        if outcome.is_ok() {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 fn hex32(digest: &[u8]) -> String {
@@ -106,7 +164,8 @@ pub fn ensure_thumbnail(
 
     let thumb = decode_and_scale(src, max_px)?;
 
-    std::fs::create_dir_all(cache_dir)?;
+    // 계층 디렉터리까지 만든다 — 캐시 루트가 아니다(경로가 `{cache}/v1/{max_px}/`).
+    std::fs::create_dir_all(tier_dir(cache_dir, max_px))?;
     let has_alpha = thumb.color().has_alpha();
     let (out, format, encodable) = if has_alpha {
         (png, ImageFormat::Png, thumb)
@@ -337,6 +396,61 @@ mod tests {
                 out.push(path);
             }
         }
+    }
+
+    #[test]
+    fn writes_under_a_generation_and_a_per_size_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "photo.jpg", 200, 200);
+
+        let out = ensure_thumbnail(&src, &cache, 320).unwrap();
+
+        assert_eq!(out.parent().unwrap(), cache.join("v1").join("320"));
+    }
+
+    #[test]
+    fn the_two_size_tiers_are_separable_by_directory() {
+        // 정리 정책이 계층별로 다르므로(320px는 남기고 2048px에 상한) read_dir 한 번으로
+        // 가려낼 수 있어야 한다.
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "photo.jpg", 4000, 4000);
+
+        let thumb = ensure_thumbnail(&src, &cache, 320).unwrap();
+        let preview = ensure_thumbnail(&src, &cache, 2048).unwrap();
+
+        assert_eq!(thumb.parent().unwrap(), cache.join("v1").join("320"));
+        assert_eq!(preview.parent().unwrap(), cache.join("v1").join("2048"));
+    }
+
+    #[test]
+    fn purging_removes_old_generations_and_pre_generation_files_but_keeps_the_current_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "photo.jpg", 200, 200);
+        let live = ensure_thumbnail(&src, &cache, 320).unwrap();
+
+        // 세대 도입 전의 평평한 파일과, 이전 세대 디렉터리.
+        let legacy_flat = cache.join("deadbeefdeadbeef.jpg");
+        std::fs::write(&legacy_flat, b"old").unwrap();
+        let old_generation = cache.join("v0").join("320");
+        std::fs::create_dir_all(&old_generation).unwrap();
+        std::fs::write(old_generation.join("stale.jpg"), b"old").unwrap();
+
+        let removed = purge_stale_generations(&cache);
+
+        assert_eq!(removed, 2);
+        assert!(!legacy_flat.exists());
+        assert!(!cache.join("v0").exists());
+        assert!(live.is_file(), "현재 세대는 남아야 한다");
+    }
+
+    #[test]
+    fn purging_a_cache_that_does_not_exist_yet_is_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert_eq!(purge_stale_generations(&dir.path().join("nope")), 0);
     }
 
     #[test]
