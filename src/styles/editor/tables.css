@@ -107,6 +107,24 @@
   contain: layout;
 }
 
+/* Video (§296): the hover toolbar is position:absolute; bottom:100% — deliberately
+ * moved OUTSIDE the frame, above it (§296 UX2 in video.css), so it doesn't collide
+ * with WebKit's own bottom control bar. That overflows the block's TOP edge, which
+ * paint containment clips (same failure mode as headings' left-overflowing fold
+ * arrow, code-block-wrapper's above-floating lang tab, and mermaid-block's
+ * below-overflowing dropdown — this is that same list's next member). Confirmed by
+ * measurement, not assumption: `.tiptap`'s direct child for a React node view is the
+ * @tiptap/react-created wrapper carrying `node-<type>` (`react-renderer node-video`,
+ * ReactNodeView in node_modules/@tiptap/react — the component's own
+ * `<NodeViewWrapper className="video-node-view">` is one level further in). Paint
+ * containment on that wrapper also stops `.video-node-view`'s own `margin: 1em 0`
+ * from collapsing through it, moving the clip edge 16px above the frame and cutting
+ * ~12px off the toolbar's 28px height — the "top of the button sliced off" report.
+ * Layout only, matching every other entry here. */
+.tiptap > .node-video {
+  contain: layout;
+}
+
 /* Empty paragraphs: in a tall document a newly-created empty line (Enter, or a
  * click) shows NO text caret in WKWebView until something forces a full reflow.
  * Diagnosis in-app: scrolling and refocusing (repaint-only) do nothing, but a

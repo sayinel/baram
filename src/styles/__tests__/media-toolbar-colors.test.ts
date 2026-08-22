@@ -3,13 +3,16 @@
 // in every generated stylesheet but is NOT one of the 25 keys a custom theme
 // (Nord, Solarized ×2, Tokyo Night, Baram Garden ×2) actually overrides
 // (`THEME_COLOR_KEYS`/`ThemeColors`, src/types/theme.ts) — same shape as the
-// list-styling bug this file's sibling guards (list-styling.test.ts). Live
-// evidence: a user on Nord (bg-default `#2e3440`) saw the video toolbar's
-// button drawn but its icon reduced to a barely-legible mark — computed
-// contrast of the frozen dark-base `--color-text-muted` (`#64748b`) against
-// Nord's bg-default is 2.62:1, under the WCAG 3:1 floor for graphical/icon
-// content. `--color-text-secondary` IS theme-set and clears 5.56:1 on the
-// same pair.
+// list-styling bug this file's sibling guards (list-styling.test.ts). This is
+// a real, independent legibility defect on its own merits: this app's live
+// persisted settings had `activeThemeId: "nord"`; Nord sets
+// `--color-bg-default: #2e3440` (theme-set, correctly follows) but not
+// `--color-text-muted`, which resolves to the dark-base value `#64748b` —
+// contrast 2.62:1 against that background, under the WCAG 3:1 floor for
+// graphical/icon content. `--color-text-secondary` IS theme-set and clears
+// 5.56:1 on the same pair. (It was NOT, however, what caused the specific
+// sliced-looking-button bug report on video — that was `tables.css`'s paint
+// containment clipping the toolbar, fixed separately there.)
 //
 // Scoped to `.media-toolbar`/`.media-toolbar-btn` rather than reusing
 // list-styling's list-selector filter, so this guards the shared component

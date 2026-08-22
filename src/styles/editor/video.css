@@ -72,38 +72,37 @@
    regardless of file order; image/SVG/Mermaid are untouched since they don't
    match this selector. Reveal (hover/selected → opacity: 1) is still driven
    entirely by media-block.css's rule — this only repositions.
-   §296 fix (reachability — separate from the icon-legibility fix in
-   media-block.css's `.media-toolbar-btn`): margin-bottom used to add an 8px
-   gap between the frame's top edge and the toolbar's bottom edge. That gap
-   is neither `.video-figure`'s box nor the toolbar's — moving the pointer
-   from the video up toward the button crosses it, the reveal rule
-   (`.video-node-view:hover .media-toolbar`) stops matching the moment the
-   pointer leaves `.video-figure`'s box, and `pointer-events` snaps to `none`
-   immediately (it does not animate like `opacity` does) — so a pointer that
-   lands back on the toolbar mid-fade finds nothing hoverable there anymore.
-   Zero margin makes the two boxes contiguous — no dead space to cross. (This
-   is NOT what produced the illegible-icon report — a live screenshot showed
-   the button fully drawn, not mid-fade; that turned out to be a color-token
-   contrast bug, fixed separately. This gap was still a real, independent
-   defect and is fixed on its own merits.) */
+   §296 fix (the actual '-'/sliced-button report): moving the toolbar to
+   `bottom: 100%` puts it outside `.video-figure`'s own box, which put it at
+   the mercy of `tables.css`'s `.tiptap > * { contain: layout paint }` (every
+   top-level block, §perf-large-file C3.1c) — paint containment clips
+   anything painted outside the containing element's box. The real fix is
+   the exemption at `tables.css`'s `.tiptap > .node-video { contain: layout }`
+   (see that file for the measured clip math); nothing here needed to change
+   for it. Two things WERE wrongly blamed for this along the way and are
+   corrected in the git history: a hover mid-fade theory, and a color-token
+   contrast theory — neither was it. The contrast issue itself was real
+   (media-block.css's `.media-toolbar-btn`) and stays fixed on its own
+   merits; it just wasn't the cause of what was reported here.
+   §296 fix (reachability — separate, independent defect): margin-bottom
+   used to add an 8px gap between the frame's top edge and the toolbar's
+   bottom edge. That gap is neither `.video-figure`'s box nor the toolbar's
+   — moving the pointer from the video up toward the button crosses it, the
+   reveal rule (`.video-node-view:hover .media-toolbar`) stops matching the
+   moment the pointer leaves `.video-figure`'s box, and `pointer-events`
+   snaps to `none` immediately (it does not animate like `opacity` does) —
+   so a pointer that lands back on the toolbar mid-fade finds nothing
+   hoverable there anymore. Zero margin makes the two boxes contiguous, so
+   hit-testing always resolves to one of them (both DOM descendants of
+   `.video-node-view`) — no dead space to cross, and no self-hover rule on
+   the toolbar is needed: it could never fire anyway, since `.media-toolbar`
+   is `pointer-events: none` in its resting state and an element excluded
+   from hit-testing cannot match `:hover` on itself. */
 .tiptap .video-figure .media-toolbar {
   top: auto;
   right: 8px;
   bottom: 100%;
   margin-bottom: 0;
-}
-
-/* Backstop for the remaining edge case — the pointer landing exactly on the
-   seam between the two now-contiguous boxes. Once it is truly over the
-   toolbar's own box, this keeps it revealed independent of whether the
-   ancestor selector above still matches, so a hover that starts here doesn't
-   need the `.video-node-view`/`.video-figure` chain at all. Same specificity
-   family as the shared reveal rule but scoped to `.video-figure` (matches
-   this file's existing override convention above), so it applies regardless
-   of import order. */
-.tiptap .video-figure .media-toolbar:hover {
-  pointer-events: auto;
-  opacity: 1;
 }
 
 .tiptap .video-caption {
