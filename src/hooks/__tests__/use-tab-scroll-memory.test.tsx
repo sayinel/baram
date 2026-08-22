@@ -492,3 +492,123 @@ describe("useTabScrollMemory while the content arrives in stages", () => {
     expect(surface.target.getScrollTop()).toBe(40);
   });
 });
+
+// §291 ‼️ 복원은 **에피소드**다. 두 번째 활성화부터 죽어 있었다.
+//
+// 위의 블록들은 전부 **한 번만** 렌더한다 — 그래서 "에피소드 단위" 성질을 가진 값이 훅 수명 단위로
+// 새는 것을 아무도 못 봤다. 최종 게이트가 잡아낸 결함이다.
+//
+// `lastWritten`은 write마다 갱신되지만 되돌려지지 않았고, 포기 판정은 그것을 **새 에피소드의 첫
+// write 전에** 읽는다. 활성 구간 사이에는 display:none이 박스를 파기해 scrollTop이 0이므로(이 파일
+// 맨 위) `before`는 항상 0인데 지난 에피소드의 착지값은 0이 아니다 → 매번 "사용자가 옮겼다"로
+// 오판하고, `pending`을 지워 **복원 (2)의 관찰자까지 무장하지 못하게** 한다.
+//
+// MarkdownSurface가 정확히 이 함정이다: App은 그것을 앱 수명 동안 **한 인스턴스**로 렌더하고
+// `tabId={activeTabId}`만 갈아 끼운다(App.tsx:1007). TabSurface는 키가 탭마다 갈려 있어
+// (`${entry.kind}-${entry.tabId}`, App.tsx:1000) 우연히 무사했다.
+describe("useTabScrollMemory across more than one activation", () => {
+  /**
+   * 클램프하는 스크롤 컨테이너 + `display:none`이 박스를 파기하는 것까지 재현하는 스텁.
+   *
+   * ‼️ 위치는 **정착된 상태**(`top`)에서만 읽는다. 호출 기록에서 유도하지 않는다 — 인자를 적어
+   * 두고 그것을 "지금 위치"로 읽으면, 클램프가 실제로 어디에 떨어뜨렸는지와 무관해져서 어떤
+   * 단정으로도 고정되지 않는다.
+   */
+  function makeSurface(initialHeight: number) {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const child = document.createElement("div");
+    el.appendChild(child);
+    let height = initialHeight;
+    let top = 0;
+    const put = (n: number) => {
+      const next = Math.min(Math.max(n, 0), height);
+      if (next === top) return;
+      top = next;
+      el.dispatchEvent(new Event("scroll"));
+    };
+    return {
+      grow: (h: number) => {
+        height = h;
+        FakeResizeObserver.fire(child);
+      },
+      /** display:none — 레이아웃 박스가 사라지면 scrollTop은 0이 된다. */
+      hide: () => {
+        top = 0;
+      },
+      target: {
+        element: el,
+        getScrollTop: () => top,
+        setScrollTop: put,
+      },
+      userScrollTo: put,
+    };
+  }
+
+  beforeEach(() => {
+    FakeResizeObserver.live.clear();
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  });
+
+  it("still waits for late content on a later activation with another tabId", () => {
+    const surface = makeSurface(4000);
+    const offsets = {
+      current: new Map<string, number>([
+        ["a", 500],
+        ["b", 1200],
+      ]),
+    };
+
+    const { rerender } = renderHook(
+      ({ active, tabId }: { active: boolean; tabId: string }) =>
+        useTabScrollMemory(tabId, active, () => surface.target, offsets),
+      { initialProps: { active: true, tabId: "a" } },
+    );
+    // 에피소드 1 — 탭 A의 자리를 되돌린다. 이 write가 착지값을 남긴다.
+    expect(surface.target.getScrollTop()).toBe(500);
+
+    // 탭 B로 간다. 표면이 숨으면 scrollTop은 0으로 파기된다.
+    rerender({ active: false, tabId: "a" });
+    surface.hide();
+
+    // 에피소드 2 — 탭 B는 **긴 문서**라 활성 시점에 아직 1200을 담지 못한다.
+    surface.grow(300);
+    rerender({ active: true, tabId: "b" });
+
+    // 내용이 도착하면 되돌려야 한다. 지난 에피소드의 착지값(500)을 들고 있으면 여기서
+    // 첫 write 전에 포기하고, 관찰자도 무장하지 않아 영원히 0에 머문다.
+    surface.grow(4000);
+    expect(surface.target.getScrollTop()).toBe(1200);
+  });
+
+  it("still yields to the user inside that later episode", () => {
+    // 에피소드마다 되돌린다는 것이 "매 시도마다 되돌린다"는 뜻이면 안 된다 — 그러면 포기 판정이
+    // 통째로 무력해져 되감기 루프가 돌아온다. 되돌리는 자리는 **엣지**다.
+    const surface = makeSurface(4000);
+    const offsets = {
+      current: new Map<string, number>([
+        ["a", 500],
+        ["b", 1200],
+      ]),
+    };
+
+    const { rerender } = renderHook(
+      ({ active, tabId }: { active: boolean; tabId: string }) =>
+        useTabScrollMemory(tabId, active, () => surface.target, offsets),
+      { initialProps: { active: true, tabId: "a" } },
+    );
+    expect(surface.target.getScrollTop()).toBe(500);
+
+    rerender({ active: false, tabId: "a" });
+    surface.hide();
+    surface.grow(300);
+    rerender({ active: true, tabId: "b" });
+    // 1200은 아직 담기지 않는다 — 300으로 잘리고 대기가 남는다.
+    expect(surface.target.getScrollTop()).toBe(300);
+
+    // 사용자가 자리를 잡는다. 그 뒤 내용이 자라도 되감지 않아야 한다.
+    act(() => surface.userScrollTo(40));
+    act(() => surface.grow(4000));
+    expect(surface.target.getScrollTop()).toBe(40);
+  });
+});

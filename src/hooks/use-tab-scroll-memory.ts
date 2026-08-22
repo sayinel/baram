@@ -83,9 +83,13 @@ export function useTabScrollMemory(
   const pending = useRef<null | number>(null);
 
   /**
-   * 마지막 시도가 **우리 write로** 남겨 놓은 자리. null이면 아직 시도한 적이 없다.
+   * 마지막 시도가 **우리 write로** 남겨 놓은 자리. null이면 이 에피소드에서 아직 쓴 적이 없다.
    *
    * 다음 시도에서 위치가 이것과 다르면 우리 밖의 무엇이(사용자가) 옮긴 것이다.
+   *
+   * ‼️ **에피소드 단위 값이다** — 훅 수명 단위가 아니다. 복원 (1)이 비활성→활성 엣지에서 null로
+   * 되돌린다. 활성 구간 사이에는 표면이 숨어 scrollTop이 0으로 파기되므로, 지난 구간의 착지값과
+   * 비교하는 것은 정의상 무의미하다.
    */
   const lastWritten = useRef<null | number>(null);
 
@@ -129,6 +133,18 @@ export function useTabScrollMemory(
     const becameActive = active && !wasActive.current;
     wasActive.current = active;
     if (!becameActive) return;
+    // ‼️ 새 복원 **에피소드**가 시작된다 — 지난 에피소드가 놓아 둔 자리는 여기서 버린다.
+    // 이것을 남겨 두면 `applyPending`의 포기 판정이 **첫 write 전에** 걸린다: 숨는 동안
+    // display:none이 박스를 파기해 scrollTop이 0이므로(이 파일 맨 위 참조) `before`는 항상 0인데,
+    // 지난 에피소드의 착지값은 0이 아니다 → 매번 "사용자가 옮겼다"로 오판해 아무것도 쓰지 않고
+    // 포기한다. `pending`이 지워지므로 **복원 (2)의 관찰자도 무장하지 못한다** — 늦게 도착하는
+    // 내용을 기다리는 경로가 두 번째 활성화부터 통째로 죽는다.
+    //
+    // MarkdownSurface가 이 함정에 정확히 걸린다: App은 그것을 **앱 수명 동안 한 인스턴스**로
+    // 렌더하고 `tabId={activeTabId}`만 갈아 끼우므로(App.tsx:1007), 이 ref가 탭도 에피소드도
+    // 넘나들며 살아남는다. TabSurface는 `${entry.kind}-${entry.tabId}`로 키가 갈려 있어(App.tsx:1000)
+    // 우연히 무사했다.
+    lastWritten.current = null;
     // ‼️ 조건부로 **덮어쓴다.** 저장된 값이 없을 때 예전 대기를 그대로 두면, 아래 관찰자가
     // 지난 활성 구간에서 못 놓은 낡은 오프셋을 되살린다.
     const saved = offsets.current.get(tabId);
