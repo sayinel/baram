@@ -17,15 +17,16 @@ const schema = new Schema({
     image: {
       group: "block",
       atom: true,
-      // ‼️ No widthPixel here, matching the shipped node (image.ts). That
-      // absence is what makes `<img width="640">` unrepresentable, and why the
-      // shared parser refuses it instead of dropping it — see the
-      // refuse-and-preserve block at the bottom of this file.
+      // ‼️ widthPixel must be here, matching the shipped node (image.ts).
+      // A fixture schema missing it silently drops the attr in create() and
+      // leaves the whole pixel-width branch exercised by nothing — the same
+      // blind spot §294 M3 found on the video side.
       attrs: {
         src: { default: null },
         alt: { default: null },
         title: { default: null },
         widthPercent: { default: 100 },
+        widthPixel: { default: undefined },
       },
     },
     // §294 fix round 3 (I5): needed by the refusal cases below — a refused
@@ -146,15 +147,19 @@ describe("Image Extension", () => {
 //  1. An attribute name outside {alt, src, title, width} used to be ignored,
 //     so `<img src="a.png" loading="lazy">` became an image node and saved
 //     back as `![](a.png)` — `loading` gone from the user's file.
-//  2. A pixel width used to be parsed into a `widthPixel` the image node does
+//  2. A pixel width used to be parsed into a `widthPixel` the image node did
 //     not declare, so ProseMirror dropped the key in `create()` and the tag
 //     saved back as `![](a.png)` — `width="640"` gone. And a bare number
 //     <= 100 was reinterpreted as a PERCENTAGE, rewriting the user's
 //     `width="80"` as `width="80%"`.
 //
-// Both now land on htmlBlock, byte-exact. The fix for (2) is a refusal rather
-// than a render because image.ts has no widthPixel attr — see IMG_TAG's
-// supportsPixelWidth comment in image-transformer.ts for the flip condition.
+// (1) is refused and kept verbatim, below. (2) is now RENDERED instead: the
+// image node gained widthPixel and image-view draws it, so the width survives
+// AND the image still draws as an image (see the pixel-width describe further
+// down). Refusing (2) — which is what the first version of this fix did —
+// closed the data loss but degraded `<img width="640">` to a raw HTML block,
+// a regression a user notices immediately in a feature far older and far more
+// used than video.
 describe("unrepresentable <img> markup is preserved, not silently stripped", () => {
   function firstChildType(md: string): string {
     return markdownToProsemirror(md, schema).firstChild!.type.name;
@@ -162,18 +167,6 @@ describe("unrepresentable <img> markup is preserved, not silently stripped", () 
 
   test("an unrecognized attribute name keeps the whole tag verbatim", () => {
     const input = '<img src="a.png" loading="lazy" />';
-    expect(firstChildType(input)).toBe("htmlBlock");
-    expect(roundtrip(input)).toBe(input);
-  });
-
-  test("a pixel width keeps the whole tag verbatim", () => {
-    const input = '<img src="a.png" width="640" />';
-    expect(firstChildType(input)).toBe("htmlBlock");
-    expect(roundtrip(input)).toBe(input);
-  });
-
-  test("a bare number <= 100 is NOT reinterpreted as a percentage", () => {
-    const input = '<img src="a.png" width="80" />';
     expect(firstChildType(input)).toBe("htmlBlock");
     expect(roundtrip(input)).toBe(input);
   });
@@ -195,5 +188,73 @@ describe("unrepresentable <img> markup is preserved, not silently stripped", () 
     const input = '<img src="a.png" width="60%" />';
     expect(firstChildType(input)).toBe("image");
     expect(roundtrip(input)).toBe(input);
+  });
+});
+
+// §294 I1, image parity. The pixel width is RENDERED, not refused — image.ts
+// declares widthPixel and image-view.tsx draws it, exactly as video does. The
+// first version of the C-1 fix refused it instead, which closed the data loss
+// (the attr used to vanish on save) but cost `<img src="a.png" width="640">`
+// its rendering: it became a raw HTML block. Rendering loses nothing.
+describe("a pixel width on <img> renders and survives (§294 I1)", () => {
+  function firstChild(md: string) {
+    return markdownToProsemirror(md, schema).firstChild!;
+  }
+
+  test("a bare number is PIXELS, kept on the node and written back unchanged", () => {
+    const input = '<img src="a.png" width="640" />';
+    const node = firstChild(input);
+    expect(node.type.name).toBe("image");
+    expect(node.attrs.widthPixel).toBe(640);
+    expect(node.attrs.widthPercent).toBe(100);
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("a bare number <= 100 is pixels too — NOT reinterpreted as a percentage", () => {
+    // The old heuristic turned this into widthPercent 80 and rewrote the
+    // user's file as `width="80%"`.
+    const input = '<img src="a.png" width="80" />';
+    const node = firstChild(input);
+    expect(node.type.name).toBe("image");
+    expect(node.attrs.widthPixel).toBe(80);
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("alt and title ride along with a pixel width", () => {
+    const input = '<img src="a.png" alt="cap" title="t" width="640" />';
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  // The other half of I1: the resize commit clears widthPixel by passing
+  // `widthPixel: undefined`. That only discards the stale pixel width if PM
+  // really resets the attr, and only helps if the markdown then carries the
+  // DRAG's percentage rather than the pixel width the builder prefers.
+  test("clearing widthPixel lets a resize reach the file", () => {
+    const sized = schema.nodes.image.create({ src: "a.png", widthPixel: 640 });
+    expect(sized.attrs.widthPixel).toBe(640);
+
+    const resized = sized.type.create({
+      ...sized.attrs,
+      widthPercent: 20,
+      widthPixel: undefined,
+    });
+    expect(resized.attrs.widthPixel).toBeUndefined();
+
+    const doc = schema.nodes.doc.create(null, [resized]);
+    expect(prosemirrorToMarkdown(doc).trimEnd()).toBe(
+      '<img src="a.png" width="20%" />',
+    );
+  });
+
+  test("control: without the clear, the pixel width still wins on save", () => {
+    const stale = schema.nodes.image.create({
+      src: "a.png",
+      widthPercent: 20,
+      widthPixel: 640,
+    });
+    const doc = schema.nodes.doc.create(null, [stale]);
+    expect(prosemirrorToMarkdown(doc).trimEnd()).toBe(
+      '<img src="a.png" width="640" />',
+    );
   });
 });

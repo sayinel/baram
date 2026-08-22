@@ -21,6 +21,7 @@ export function ImageView({
   const alt = (node.attrs.alt as string) || "";
   const title = (node.attrs.title as string) || "";
   const widthPercent = (node.attrs.widthPercent as number) || 100;
+  const widthPixel = node.attrs.widthPixel as number | undefined;
 
   // §3.3 표시용 URL — 원본이 아니라 2048px 프리뷰다(그 이유는 use-image-preview.ts).
   // 준비되기 전에는 null이고, 그동안 <img>를 만들지 않는다.
@@ -45,9 +46,19 @@ export function ImageView({
   // figure is centered, so the same centre-distance maths apply; width persists
   // to the widthPercent attr (already serialized to `<img width="X%">`).
   const { dragPct, startResize } = useMediaResize(containerRef, (pct) => {
-    updateAttributes({ widthPercent: pct });
+    // ‼️ widthPixel도 함께 지운다 (§294 I1). buildMediaHtmlTag는 픽셀 폭이 있으면
+    // 그쪽을 먼저 쓰므로, 남겨 두면 방금 끝낸 드래그가 저장 시점에 조용히 버려진다 —
+    // 파일은 `width="640"`을 그대로 들고 있고 다시 열면 원래 크기다.
+    updateAttributes({ widthPercent: pct, widthPixel: undefined });
   });
   const effectiveWidth = dragPct ?? widthPercent;
+
+  // §294 I1: 맨숫자 `width`는 **픽셀**이다(HTML `<img width>`의 의미). 파싱해서
+  // 저장까지 하면서 그리지 않으면 `<img src="a.png" width="640">`이 자기 마크다운과
+  // 어긋나게 100%로 렌더된다. 드래그 중에는 % 미리보기가 이긴다 — 드래그가 끝나면
+  // 위 onCommit이 픽셀 폭을 지우므로 그 %가 그대로 남는다.
+  const figureWidth =
+    dragPct == null && widthPixel ? `${widthPixel}px` : `${effectiveWidth}%`;
 
   const handleCaptionSave = useCallback(() => {
     setEditingCaption(false);
@@ -87,7 +98,7 @@ export function ImageView({
         // 프리뷰를 기다리는 동안 자리를 잡아 둔다 — <img>가 없으면 figure 높이가 0이라
         // 본문이 두 번 밀린다. 정확한 비율은 아직 알 수 없으므로 최소 높이만 준다.
         data-preview-loading={src ? undefined : ""}
-        style={{ width: `${effectiveWidth}%` }}
+        style={{ width: figureWidth }}
       >
         {/*
           ‼️ `decoding="async"`를 쓰지 않는다. 그 속성은 "디코드된 이미지 없이 프레임을 먼저

@@ -38,6 +38,9 @@ const schema = new Schema({
         alt: { default: null },
         title: { default: null },
         widthPercent: { default: 100 },
+        // Mirrors the shipped node (image.ts). Without it, create() drops the
+        // attr and the <img> test below cannot observe a pixel width at all.
+        widthPixel: { default: undefined },
       },
     },
     blockquote: { content: "block+", group: "block" },
@@ -126,25 +129,17 @@ describe("HTML Block does not capture special HTML", () => {
     expect(firstChild.type.name).toBe("toggle");
   });
 
-  // §294 fix round 3 (I5) CHANGED THIS FIXTURE. It used to be
-  // `width="200"`, which asserted that a PIXEL width becomes an image node —
-  // and that encoded a silent loss: the image node has no widthPixel attr
-  // (image.ts), so ProseMirror dropped the key and the tag saved back as
-  // `![](test.png)` with `width="200"` gone from the user's file. The
-  // assertion this test actually exists to make is "the <img> branch beats
-  // the htmlBlock fallback", which a percentage width makes just as well.
-  // The pixel case is now a refusal, pinned in image.test.ts.
+  // §294: the original fixture asserted only the node TYPE, which held even
+  // while the pixel width was being silently dropped on save (the image node
+  // had no widthPixel attr then). It now declares one, so this asserts the
+  // round trip too — the strictly stronger claim, and the one that would have
+  // caught the old loss.
   it("<img> standalone should become image, not htmlBlock", () => {
-    const input = '<img src="test.png" width="20%" />\n';
+    const input = '<img src="test.png" width="200" />\n';
     const doc = markdownToProsemirror(input, schema);
     const firstChild = doc.firstChild!;
     expect(firstChild.type.name).toBe("image");
-  });
-
-  it("<img> with a width it cannot represent stays htmlBlock, byte-exact", () => {
-    const input = '<img src="test.png" width="200" />\n';
-    const doc = markdownToProsemirror(input, schema);
-    expect(doc.firstChild!.type.name).toBe("htmlBlock");
+    expect(firstChild.attrs.widthPixel).toBe(200);
     expect(roundtrip(input)).toBe(input);
   });
 });

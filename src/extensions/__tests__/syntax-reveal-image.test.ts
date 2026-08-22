@@ -369,6 +369,24 @@ describe("width survives expand/collapse (§294 C1)", () => {
     editor.destroy();
   });
 
+  // §294 I1 (image parity): the image node gained widthPixel in the same round
+  // that made image-view render it. expandMediaAtom copies whatever attrs the
+  // node actually has rather than naming them, so this needed no production
+  // change — which is exactly why it needs a test: nothing would have gone red
+  // if the generic copy had been narrowed to widthPercent.
+  it("preserves an image's widthPixel (the px branch) through forceCollapseSyntaxReveal", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, 'Hello\n\n<img src="photo.jpg" width="640" />\n');
+    expect(findNode(editor, "image")?.attrs.widthPixel).toBe(640);
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+    expect(nodeTypeNames(editor)).not.toContain("image"); // sanity: expanded
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(findNode(editor, "image")?.attrs.widthPixel).toBe(640);
+    editor.destroy();
+  });
+
   it("preserves a video's widthPixel (>100, the px branch) through forceCollapseSyntaxReveal", async () => {
     const editor = createEditor();
     loadMarkdown(

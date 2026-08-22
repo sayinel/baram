@@ -43,6 +43,14 @@ export const Image = Node.create<ImageOptions>({
       alt: { default: null },
       title: { default: null },
       widthPercent: { default: 100 },
+      // §294 I1 (image parity): a bare `width="640"` in HTML means PIXELS, and
+      // without somewhere to put it the parser had to refuse the whole tag to
+      // avoid deleting the value (image-transformer.ts). Declaring it here is
+      // what lets `<img src="a.png" width="640">` render as an image again
+      // instead of degrading to a raw HTML block. image-view.tsx draws it and
+      // clears it on resize — the two halves have to ship together, or the
+      // attr is write-only and swallows the user's drag (the video defect).
+      widthPixel: { default: undefined },
     };
   },
 

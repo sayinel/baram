@@ -136,9 +136,11 @@ export function expandMediaAtom(
 
   // §294 fix (C1): `![alt](src)` cannot represent width — stash every attr
   // besides src/alt/title so collapse can restore it. Both image and video
-  // atoms go through this path; only video also carries widthPixel, but
-  // copying whatever the node actually has (rather than naming widthPercent
-  // specifically) means a schema/node-type mismatch on collapse (image ↔
+  // atoms go through this path, and since §294's image-parity round BOTH also
+  // carry widthPixel (this comment used to say only video did). Copying
+  // whatever the node actually has — rather than naming widthPercent
+  // specifically — is why that change needed nothing here: a schema/node-type
+  // mismatch on collapse (image ↔
   // video, keyed off the edited src) still gets whichever fields the target
   // type reads and silently ignores the rest — see ExpandedRange.mediaAttrs.
   const mediaAttrs: Record<string, unknown> = {};
