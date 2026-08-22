@@ -72,14 +72,20 @@
    regardless of file order; image/SVG/Mermaid are untouched since they don't
    match this selector. Reveal (hover/selected → opacity: 1) is still driven
    entirely by media-block.css's rule — this only repositions.
-   §296 fix (toolbar unreachable): margin-bottom used to add an 8px gap
-   between the frame's top edge and the toolbar's bottom edge. That gap is
-   neither `.video-figure`'s box nor the toolbar's — moving the pointer
-   through it made the reveal rule (`.video-node-view:hover .media-toolbar`)
-   stop matching mid-transit, and `pointer-events` snaps to `none` the
-   instant that happens (it does not animate like `opacity` does), so the
-   still-fading pill was already untouchable. Zero margin makes the two boxes
-   contiguous — no dead space to cross. */
+   §296 fix (reachability — separate from the icon-legibility fix in
+   media-block.css's `.media-toolbar-btn`): margin-bottom used to add an 8px
+   gap between the frame's top edge and the toolbar's bottom edge. That gap
+   is neither `.video-figure`'s box nor the toolbar's — moving the pointer
+   from the video up toward the button crosses it, the reveal rule
+   (`.video-node-view:hover .media-toolbar`) stops matching the moment the
+   pointer leaves `.video-figure`'s box, and `pointer-events` snaps to `none`
+   immediately (it does not animate like `opacity` does) — so a pointer that
+   lands back on the toolbar mid-fade finds nothing hoverable there anymore.
+   Zero margin makes the two boxes contiguous — no dead space to cross. (This
+   is NOT what produced the illegible-icon report — a live screenshot showed
+   the button fully drawn, not mid-fade; that turned out to be a color-token
+   contrast bug, fixed separately. This gap was still a real, independent
+   defect and is fixed on its own merits.) */
 .tiptap .video-figure .media-toolbar {
   top: auto;
   right: 8px;
