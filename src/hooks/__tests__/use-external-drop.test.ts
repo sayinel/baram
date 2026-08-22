@@ -359,7 +359,12 @@ describe("handleEditorDrop — routing image vs video (§297)", () => {
     editor.destroy();
   });
 
-  it("does nothing when there is no active document path (video or image)", async () => {
+  // §297 fix (M-9, whole-branch review): this used to no-op with no toast,
+  // while the paste path (drop-handler.ts's insertVideoFromBytes) toasts
+  // video.noDocumentPath for the exact same condition — same user intent
+  // (drop a media file into an unsaved document), two different outcomes
+  // depending on which surface it arrived through.
+  it("toasts video.noDocumentPath and inserts nothing when there is no active document path", async () => {
     useEditorStore.setState({ activeTabId: null, tabs: [] } as never);
     const editor = createTestEditor();
 
@@ -367,6 +372,21 @@ describe("handleEditorDrop — routing image vs video (§297)", () => {
 
     expect(importFileMock).not.toHaveBeenCalled();
     expect(editor.state.doc.firstChild?.type.name).not.toBe("video");
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    const [message, type] = showToastMock.mock.calls[0] as [string, string];
+    expect(message).toContain("clip.mp4");
+    expect(type).toBe("error");
+    editor.destroy();
+  });
+
+  it("ignores an unsaved document drop of something that isn't media anyway (M1 parity — no toast, no filesystem call)", async () => {
+    useEditorStore.setState({ activeTabId: null, tabs: [] } as never);
+    const editor = createTestEditor();
+
+    await handleEditorDrop(["/Users/x/Desktop/report.pdf"], editor, 0);
+
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(showToastMock).not.toHaveBeenCalled();
     editor.destroy();
   });
 

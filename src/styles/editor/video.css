@@ -112,7 +112,13 @@
   text-align: center;
 }
 
-.tiptap .video-figure.video-selected,
+/* §297 fix (M-2, whole-branch review): `.video-figure.video-selected` used
+   to ALSO carry this outline, painting a second, larger ring around the
+   whole figure (video/card/error + caption) concentric with the one below —
+   two rings for one selection. Dropped in favor of outlining just the
+   visible media element, matching image's own convention
+   (`.image-figure.image-selected img`, media.css) rather than the figure
+   that contains it. */
 .tiptap .video-selected video,
 .tiptap .video-selected .video-embed-card,
 .tiptap .video-selected .video-embed-frame,

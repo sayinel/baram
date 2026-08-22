@@ -70,7 +70,6 @@ export async function handleEditorDrop(
 ) {
   const { activeTabId, tabs } = useEditorStore.getState();
   const activeTab = tabs.find((t) => t.id === activeTabId);
-  if (!activeTab?.filePath) return;
 
   // §297 fix (M1): filter BEFORE touching the filesystem, not inside the
   // loop below. A prior version filtered inside the loop, so a drop with
@@ -79,6 +78,18 @@ export async function handleEditorDrop(
   // this regression it left nothing.
   const mediaPaths = paths.filter(isMediaFilePath);
   if (!mediaPaths.length) return;
+
+  // §297 fix (M-9, whole-branch review): this used to return here with no
+  // toast, while the paste path (drop-handler.ts's insertVideoFromBytes)
+  // toasts video.noDocumentPath for the exact same condition — same user
+  // intent (drop a media file into an unsaved doc), two different outcomes
+  // depending on which surface the file arrived through. Checked AFTER the
+  // media filter above so an unsaved-doc drop of something that isn't media
+  // anyway still no-ops silently, matching M1's own reasoning.
+  if (!activeTab?.filePath) {
+    toast("video.noDocumentPath", { name: basename(mediaPaths[0]) }, "error");
+    return;
+  }
 
   const fileDir = activeTab.filePath.substring(
     0,

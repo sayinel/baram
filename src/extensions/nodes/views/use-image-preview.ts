@@ -16,15 +16,13 @@
 // 바꾼다. 내보내기(HTML/PDF)도 마크다운에서 다시 렌더하므로 원본을 쓴다.
 import { useEffect, useState } from "react";
 
-import { convertFileSrc } from "@tauri-apps/api/core";
-
 import { activeFileDir } from "../../../utils/active-file-dir";
 import {
   cachedThumbUrl,
   PREVIEW_MAX_PX,
   resolveThumbUrl,
 } from "../../../utils/journal/photo-thumbnail";
-import { isRemoteOrData } from "../../../utils/media-src";
+import { isRemoteOrData, resolveMediaSrc } from "../../../utils/media-src";
 
 /**
  * **원본**의 URL — 프리뷰가 아니다. "원본 보기"(ImageOriginalView)만 쓴다.
@@ -32,11 +30,15 @@ import { isRemoteOrData } from "../../../utils/media-src";
  * 이 함수가 따로 있는 이유: 프리뷰로 바꾼 뒤에도 원본에 닿는 길이 하나는 남아 있어야 하고,
  * 그 길이 어디인지가 코드에서 분명해야 한다. 본문 렌더가 이걸 부르면 우리가 없앤 비용이
  * 그대로 돌아온다.
+ *
+ * §297 fix (M-5, whole-branch review): this used to reimplement
+ * `resolveMediaSrc`'s own logic locally (isRemoteOrData check +
+ * absolute-path-or-join + convertFileSrc) — image·video가 상대경로를 같은
+ * 규칙으로 푼다는 §293의 전제를 두 곳에서 지키게 됐던 것. `resolveMediaSrc`를
+ * 직접 호출한다.
  */
 export function originalImageUrl(rawSrc: string): string {
-  if (!rawSrc || isRemoteOrData(rawSrc)) return rawSrc;
-  const absolutePath = absolutePathOf(rawSrc);
-  return absolutePath ? convertFileSrc(absolutePath) : rawSrc;
+  return resolveMediaSrc(rawSrc, activeFileDir());
 }
 
 /**
