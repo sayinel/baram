@@ -82,15 +82,39 @@ export function useTabScrollMemory(
    */
   const pending = useRef<null | number>(null);
 
+  /**
+   * 마지막 시도가 **우리 write로** 남겨 놓은 자리. null이면 아직 시도한 적이 없다.
+   *
+   * 다음 시도에서 위치가 이것과 다르면 우리 밖의 무엇이(사용자가) 옮긴 것이다.
+   */
+  const lastWritten = useRef<null | number>(null);
+
   /** 대기 중인 오프셋을 놓아 본다. true면 더 기다릴 것이 없다(성공했거나 대기가 없다). */
   const applyPending = useCallback((): boolean => {
     const saved = pending.current;
     if (saved === null) return true;
     const target = resolveRef.current();
     if (!target) return false;
+
+    // ‼️ **사용자가 자리를 잡았으면 포기한다.** 아래 클램프 판정은 담을 수 없는 오프셋을
+    // 영구히 대기로 남긴다 — 다른 좌표계에서 온 값(§5.1 Cmd+/), 내용이 줄어든 표면이 그렇다.
+    // 그러면 자식 크기가 바뀔 때마다(오버레이 등장, 미디어 메타데이터 도착, CM6 뷰포트 재렌더)
+    // 관찰자가 사용자의 스크롤을 되감아 그 자리에서 진동한다. 실앱에서 "비디오 위/아래로
+    // 넘어갈 수 없다"로 나타난 것이 이 되감기다.
+    //
+    // 판정은 시간이 아니라 사실이다: **우리가 놓아 둔 자리에서 위치가 움직였는가.** 시도 직전에
+    // 비교하므로 우리 write가 되쏘는 scroll 이벤트를 사용자 입력으로 오해할 여지가 없다.
+    const before = target.getScrollTop();
+    if (lastWritten.current !== null && before !== lastWritten.current) {
+      pending.current = null;
+      return true;
+    }
+
     target.setScrollTop(saved);
+    const landed = target.getScrollTop();
+    lastWritten.current = landed;
     // 내용이 아직 그 자리를 담을 만큼 자라지 않았으면 scrollTop이 scrollHeight로 잘린다.
-    if (target.getScrollTop() < saved) return false;
+    if (landed < saved) return false;
     pending.current = null;
     return true;
   }, []);

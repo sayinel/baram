@@ -331,3 +331,164 @@ describe("useTabScrollMemory under StrictMode", () => {
     expect(surface.target.getScrollTop()).toBe(700);
   });
 });
+
+// §291 ‼️ 담을 수 없는 오프셋은 **되감기 루프**가 된다.
+//
+// 위의 블록들은 내용이 결국 그 자리를 담을 만큼 자라는 경우만 다룬다. 자라지 않는 경우가 빠져
+// 있었다: `applyPending`은 `getScrollTop() < saved`인 동안 대기를 놓지 않으므로, 담을 수 없는
+// 오프셋이 들어오면 대기가 **영구히** 남는다. 그러면 자식 크기가 바뀔 때마다(오버레이 등장,
+// 비디오 메타데이터 도착, CM6 뷰포트 재렌더) 관찰자가 사용자의 스크롤을 되감는다.
+//
+// 실앱에서 이것이 "비디오 위/아래로 넘어갈 수 없고 그 자리에서 진동한다"로 나타났다.
+describe("useTabScrollMemory when the saved offset can never be reached", () => {
+  /** 클램프하고, 실제 컨테이너처럼 자기 write에도 scroll 이벤트를 쏘는 스텁. */
+  function makeShortSurface(contentHeight: number) {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    let top = 0;
+    const put = (n: number) => {
+      const next = Math.min(Math.max(n, 0), contentHeight);
+      if (next === top) return;
+      top = next;
+      el.dispatchEvent(new Event("scroll"));
+    };
+    return {
+      addChild: () => {
+        const child = document.createElement("div");
+        el.appendChild(child);
+        return child;
+      },
+      /** 자식 크기 변화 통지 — 높이는 그대로다(이 표면은 더 자라지 않는다). */
+      resize: (child: Element) => FakeResizeObserver.fire(child),
+      target: {
+        element: el,
+        getScrollTop: () => top,
+        setScrollTop: put,
+      },
+      /** 사용자의 스크롤. */
+      userScrollTo: put,
+    };
+  }
+
+  beforeEach(() => {
+    FakeResizeObserver.live.clear();
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  });
+
+  it("does not drag the user back after they have scrolled away", () => {
+    const surface = makeShortSurface(200);
+    const child = surface.addChild();
+    const offsets = { current: new Map<string, number>([["a", 900]]) };
+
+    renderHook(() =>
+      useTabScrollMemory("a", true, () => surface.target, offsets),
+    );
+    // 900은 이 표면에 담기지 않는다 — 맨 아래로 클램프된다.
+    expect(surface.target.getScrollTop()).toBe(200);
+
+    // 사용자가 위로 올라간다.
+    act(() => surface.userScrollTo(40));
+    expect(surface.target.getScrollTop()).toBe(40);
+
+    // 오버레이가 나타나거나 미디어 메타데이터가 도착해 자식 크기가 바뀐다.
+    act(() => surface.resize(child));
+
+    // 사용자가 잡은 자리가 유지되어야 한다. 예전에는 200으로 되감겼다 — 그것이 진동이다.
+    expect(surface.target.getScrollTop()).toBe(40);
+  });
+
+  it("stops re-applying on every later resize", () => {
+    const surface = makeShortSurface(200);
+    const child = surface.addChild();
+    const offsets = { current: new Map<string, number>([["a", 900]]) };
+
+    renderHook(() =>
+      useTabScrollMemory("a", true, () => surface.target, offsets),
+    );
+    act(() => surface.userScrollTo(0));
+
+    // 자식 크기가 여러 번 바뀌어도(스크롤 중에는 흔한 일이다) 되감기지 않아야 한다.
+    for (let i = 0; i < 5; i++) act(() => surface.resize(child));
+    expect(surface.target.getScrollTop()).toBe(0);
+  });
+});
+
+// §291 포기 판정은 **우리가 놓아 둔 자리에서 움직였는가**로 사용자를 알아낸다.
+//
+// 그래서 시도마다 "우리가 놓은 자리"를 갱신해야 한다. 내용은 단계적으로 도착하므로(PDF 페이지가
+// 한 장씩, NodeView가 하나씩) 아직 담지 못하는 중간 단계에서도 위치가 움직인다 — 그 움직임은
+// 우리가 만든 것이지 사용자가 만든 것이 아니다. 이것을 구별하지 못하면 늦게 도착하는 내용을
+// 기다리는 경로가 첫 중간 단계에서 죽는다.
+//
+// ‼️ 초기 높이가 **부분적**이어야 이 성질이 관측된다. 높이 0에서 시작하면 클램프된 write가
+// 위치를 바꾸지 못해(0 → 0) 구별할 것이 생기지 않는다. 부분 높이는 실제 상황이기도 하다:
+// 첫 페이지만 렌더된 PDF, 노드뷰가 아직 안 붙은 문서.
+describe("useTabScrollMemory while the content arrives in stages", () => {
+  /** 클램프하고, 실제 컨테이너처럼 write에도 scroll을 쏘며, 단계적으로 자라는 표면. */
+  function makeGrowingInStages(initialHeight: number) {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    let height = initialHeight;
+    let top = 0;
+    const put = (n: number) => {
+      const next = Math.min(Math.max(n, 0), height);
+      if (next === top) return;
+      top = next;
+      el.dispatchEvent(new Event("scroll"));
+    };
+    const child = document.createElement("div");
+    el.appendChild(child);
+    return {
+      grow: (h: number) => {
+        height = h;
+        FakeResizeObserver.fire(child);
+      },
+      target: {
+        element: el,
+        getScrollTop: () => top,
+        setScrollTop: put,
+      },
+      userScrollTo: put,
+    };
+  }
+
+  beforeEach(() => {
+    FakeResizeObserver.live.clear();
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  });
+
+  it("keeps waiting when its own re-attempt is still clamped", () => {
+    const surface = makeGrowingInStages(200);
+    const offsets = { current: new Map<string, number>([["a", 900]]) };
+
+    renderHook(() =>
+      useTabScrollMemory("a", true, () => surface.target, offsets),
+    );
+    // 900은 아직 담기지 않는다 — 200으로 잘린다.
+    expect(surface.target.getScrollTop()).toBe(200);
+
+    // 중간 단계. 다시 시도하면 200 → 500으로 움직이지만 여전히 담지 못한다. 이 움직임을
+    // 사용자 입력으로 오해하면 여기서 대기가 사라진다.
+    act(() => surface.grow(500));
+    expect(surface.target.getScrollTop()).toBe(500);
+
+    // 마지막으로 충분히 자라면 저장된 자리에 정확히 놓여야 한다.
+    act(() => surface.grow(4000));
+    expect(surface.target.getScrollTop()).toBe(900);
+  });
+
+  it("yields to the user even mid-wait", () => {
+    const surface = makeGrowingInStages(200);
+    const offsets = { current: new Map<string, number>([["a", 900]]) };
+
+    renderHook(() =>
+      useTabScrollMemory("a", true, () => surface.target, offsets),
+    );
+    expect(surface.target.getScrollTop()).toBe(200);
+
+    // 사용자가 자리를 잡는다. 그 뒤에 내용이 자라도 되감지 않는다.
+    act(() => surface.userScrollTo(40));
+    act(() => surface.grow(4000));
+    expect(surface.target.getScrollTop()).toBe(40);
+  });
+});

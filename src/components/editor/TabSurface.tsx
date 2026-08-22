@@ -111,7 +111,7 @@ export function TabSurface({
   // 코드 표면은 CodeMirror의 `.cm-scroller`(view.scrollDOM)가 스크롤한다 — 래퍼에 리스너를
   // 달면 scroll 이벤트가 오지 않는다.
   useTabScrollMemory(
-    entry.tabId,
+    scrollKeyFor(entry),
     active,
     () => {
       if (entry.kind === "code") {
@@ -196,6 +196,41 @@ export function TabSurface({
  */
 function hiddenStyleFor(active: boolean): CSSProperties {
   return { display: active ? undefined : "none" };
+}
+
+/**
+ * §291 이 kind가 **대체 보기**인가 — 같은 탭에 주 표면이 따로 있는가.
+ *
+ * ‼️ 스크롤 오프셋 맵을 `tabId` 하나로 색인하면 안 되는 이유다. **한 탭을 좌표계가 다른 두
+ * 표면이 그릴 수 있다.** 마크다운 탭은 WYSIWYG(MarkdownSurface)과 Cmd+/의 원본 텍스트를
+ * 오가고, HTML 탭은 프리뷰와 원본 보기를 오간다. 같은 문서라도 렌더된 높이와 원본 텍스트의
+ * 높이는 크게 다르다 — 비디오는 16:9 박스인데 원본에서는 `![](clip.mp4)` 한 줄이다. 슬롯을
+ * 공유하면 한쪽의 픽셀 오프셋이 다른 쪽에 놓여 클램프되거나 엉뚱한 곳에 떨어진다(실앱: 비디오
+ * 위/아래로 넘어갈 수 없는 스크롤 함정).
+ *
+ * 규칙은 "kind마다 슬롯"이 아니라 **"대체 보기는 자기 슬롯을 쓴다"**이다. 맨 `tabId`는 그 탭의
+ * 주 표면 것이고, use-tab-switching이 WYSIWYG 복원에 같은 슬롯을 읽는다 — 그 계약은 유지해야
+ * 한다.
+ *
+ * ‼️ **이 표를 주석이 아니라 타입으로 둔 이유:** 이 판정이 `kind === "code"` 한 줄이었을 때는
+ * 새 kind가 추가되면 아무 신호 없이 기본값(주 표면)으로 떨어졌다 — 이 저장소에서 가장 자주
+ * 반복된 실패 모양이다(열거한 가드는 다음 멤버를 놓친다). `satisfies Record<RetainedKind, …>`는
+ * `RetainedKind`에 멤버가 늘면 **tsc가 컴파일을 거부한다.** 새 kind를 넣는 사람이 "이건 대체
+ * 보기인가"를 반드시 한 번 답하게 된다.
+ */
+const IS_ALTERNATE_VIEW = {
+  // 원본 텍스트 보기. 마크다운 탭의 WYSIWYG, HTML 탭의 프리뷰가 각각 주 표면이다.
+  code: true,
+  html: false,
+  pdf: false,
+  plugin: false,
+} satisfies Record<RetainedKind, boolean>;
+
+/** §291 오프셋 맵의 키. 대체 보기만 kind로 갈라진 자기 슬롯을 쓴다(위 표 참조). */
+function scrollKeyFor(entry: RetainedEntry): string {
+  return IS_ALTERNATE_VIEW[entry.kind]
+    ? `${entry.kind}:${entry.tabId}`
+    : entry.tabId;
 }
 
 /**
