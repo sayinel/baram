@@ -43,18 +43,25 @@ describe("media-toolbar colors follow the active theme (§296)", () => {
     expect(THEME_SAFE.has("--color-text-secondary")).toBe(true);
   });
 
+  // §296 fix (I-8, whole-branch review): this used to filter to declarations
+  // named `color`/`background`/`background-color`/`border-color` before
+  // scanning their values — an enumerated property-name allowlist in a test
+  // written specifically to catch an enumeration bug (video's toolbar
+  // slipping through the reveal-selector list). A color token inside ANY
+  // other property escaped it: `border: 1px solid var(--color-…)`,
+  // `outline`, `box-shadow`, `fill`, `stroke`. Benign today only because
+  // `.media-toolbar-btn`'s `border` happens to use a theme-safe token — the
+  // next one might not. Scanning every declaration's value (not just
+  // color-named properties) for `var(--color-…)` is strictly stronger and
+  // shorter, so there is no longer a property-name list to fall behind.
   it("names only tokens every theme overrides", () => {
     const offenders = TOOLBAR_RULES.flatMap((rule) =>
-      cssDeclarations(rule.body)
-        .filter((declaration) =>
-          /(?:^|-)(?:color|background)$/u.test(declaration.prop),
-        )
-        .flatMap((declaration) =>
-          [...declaration.value.matchAll(/var\(\s*(--color-[\w-]+)/gu)]
-            .map((match) => match[1])
-            .filter((token) => !THEME_SAFE.has(token))
-            .map((token) => `${where(rule)} { ${declaration.prop}: ${token} }`),
-        ),
+      cssDeclarations(rule.body).flatMap((declaration) =>
+        [...declaration.value.matchAll(/var\(\s*(--color-[\w-]+)/gu)]
+          .map((match) => match[1])
+          .filter((token) => !THEME_SAFE.has(token))
+          .map((token) => `${where(rule)} { ${declaration.prop}: ${token} }`),
+      ),
     );
     expect(offenders).toEqual([]);
   });
