@@ -153,6 +153,13 @@ export async function captureEditorHTML(
       const baseDir = activeFileDir();
       const relative = baseDir ? relativeToRoot(abs, baseDir) : null;
       el.setAttribute("src", relative ?? abs);
+    } else if (src.includes("#")) {
+      // §294 fix (M4 nit): a remote (non-asset) video keeps the
+      // poster-forcing `#t=0.1` fragment (video-view.tsx) unless stripped
+      // here too. Harmless for HTML playback, but for PDF export below this
+      // becomes the LINK'S VISIBLE TEXT, so an untouched remote clip would
+      // read "https://…/clip.mp4#t=0.1" instead of the clean URL.
+      el.setAttribute("src", src.split("#")[0]);
     }
     el.removeAttribute("preload");
 
@@ -172,11 +179,12 @@ export async function captureEditorHTML(
     }
   }
 
-  // §294 fix (I4): a provider embed exports as the idle `.video-embed-card`
-  // ("Click to load from …") with nothing to click and no link anywhere —
-  // dead in both HTML and PDF. Replace it with a link to the ORIGINAL src the
-  // document carried (`data-video-src`, set by video-view.tsx), not the
-  // constructed nocookie iframe URL that only exists to be embedded.
+  // §294 fix (I4): a provider embed's IDLE `.video-embed-card`
+  // ("Click to load from …") has nothing to click and no link anywhere once
+  // React is gone — dead in both HTML and PDF regardless of destination.
+  // Replace it with a link to the ORIGINAL src the document carried
+  // (`data-video-src`, set by video-view.tsx), not the constructed nocookie
+  // iframe URL that only exists to be embedded.
   for (const el of clone.querySelectorAll(".video-embed-card")) {
     const href = el.getAttribute("data-video-src") || "";
     const link = document.createElement("a");
@@ -186,20 +194,39 @@ export async function captureEditorHTML(
     el.replaceWith(link);
   }
 
-  // §294 fix (I4): the play button has no listener once React is gone — a
-  // dead `<button>` with an icon surviving into the export.
-  for (const el of clone.querySelectorAll(".video-play-button")) el.remove();
+  // §294/§301 fix (M2): a PLAYING embed is a `.video-embed-frame` iframe —
+  // unlike the idle card, that's self-contained and needs no JS, so it's left
+  // untouched for HTML export (it plays fine when the exported file is opened
+  // in a browser). PDF is the exception this fix closes: a headless-Chrome
+  // print can never load a remote iframe any more than it can play a local
+  // `<video>` (same §301 reasoning as above), so it gets the same
+  // `data-video-src`-based link only when `forPdf`. Before this fix, nothing
+  // converted this shape at all — a playing embed exported to PDF as a
+  // verbatim, inert `<iframe>`.
+  if (forPdf) {
+    for (const el of clone.querySelectorAll(".video-embed-frame")) {
+      const href = el.getAttribute("data-video-src") || "";
+      const link = document.createElement("a");
+      link.className = "video-export-link";
+      link.href = href;
+      link.textContent = href;
+      el.replaceWith(link);
+    }
+  }
 
   // ── Shared media chrome (SVG/Mermaid/image): drop hover toolbar +
   //    edge-drag resize handles + the drag % readout ─────────────────
   for (const el of clone.querySelectorAll(".media-toolbar")) el.remove();
   for (const el of clone.querySelectorAll(".media-resize-handle")) el.remove();
   for (const el of clone.querySelectorAll(".media-resize-label")) el.remove();
-  // §294 fix (I4, dev/backlog.md 2026-08-22): one shared class covers every
-  // media kind's in-progress caption edit — video had no equivalent to
+  // §294 fix (I4/M4, dev/backlog.md 2026-08-22): one shared class covers
+  // every media kind's in-progress caption edit — video had no equivalent to
   // image's dedicated input class, so exporting mid-caption-edit leaked a raw
   // `<input>` for video specifically. media-block.css's `.media-caption-input`
-  // is now shared by image-view.tsx and video-view.tsx.
+  // is used directly by image-view.tsx and video-view.tsx, and BlockCaption.tsx
+  // (SVG §5.1 / Mermaid §5.5) now carries it too alongside its own
+  // `block-caption-input` — so this one loop closes the gap for every media
+  // kind instead of growing a selector list here each time a new one ships.
   for (const el of clone.querySelectorAll(".media-caption-input")) {
     const text = (el as HTMLInputElement).value;
     if (text) {

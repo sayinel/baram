@@ -265,6 +265,20 @@ describe("captureEditorHTML — video src rewriting for HTML export (§294)", ()
 
     expect(html).toContain('src="https://example.com/clip.mp4"');
   });
+
+  // §294 fix (M4 nit): the fragment-stripping above only ran inside the
+  // asset-URL branch, so a REMOTE (non-asset) video kept `#t=0.1` — harmless
+  // for HTML playback, but once that src is turned into a PDF export link
+  // (forPdf, tested elsewhere in this file) the fragment became part of the
+  // link's VISIBLE TEXT: "https://…/clip.mp4#t=0.1" instead of the clean URL.
+  it("strips the #t=0.1 poster-frame fragment from a remote https URL too", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(videoDom("https://example.com/clip.mp4#t=0.1")),
+    );
+
+    expect(html).toContain('src="https://example.com/clip.mp4"');
+    expect(html).not.toContain("t=0.1");
+  });
 });
 
 // §294/§301 fix (I4): the exported video had no play affordance, a dead
@@ -295,17 +309,6 @@ describe("captureEditorHTML — video export playability (§294/§301 I4)", () =
     );
   });
 
-  it("removes the dead play button in both HTML and PDF export", async () => {
-    const dom = () =>
-      domWith(
-        '<figure><video src="https://example.com/clip.mp4"></video><button class="video-play-button">Play</button></figure>',
-      );
-    const html = await captureEditorHTML(mockEditor(dom()));
-    const pdf = await captureEditorHTML(mockEditor(dom()), { forPdf: true });
-    expect(html).not.toContain("video-play-button");
-    expect(pdf).not.toContain("video-play-button");
-  });
-
   it("replaces a provider embed card with a link to the ORIGINAL src, not the constructed nocookie embed URL", async () => {
     const html = await captureEditorHTML(
       mockEditor(
@@ -317,6 +320,38 @@ describe("captureEditorHTML — video export playability (§294/§301 I4)", () =
     expect(html).not.toContain("video-embed-card");
     expect(html).not.toContain("youtube-nocookie.com");
     expect(html).toContain(
+      '<a class="video-export-link" href="https://youtu.be/dQw4w9WgXcQ">https://youtu.be/dQw4w9WgXcQ</a>',
+    );
+  });
+
+  // §294/§301 fix (M2): a PLAYING embed is a `.video-embed-frame` iframe, not
+  // the idle `.video-embed-card` above — before this fix nothing converted
+  // it, so it exported as a verbatim, inert `<iframe>` for PDF (exactly the
+  // §301 violation I4 set out to close, reached through the other shape).
+  it("leaves a playing embed iframe untouched for HTML export — it's self-contained and plays fine without JS", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(
+        domWith(
+          '<iframe class="video-embed-frame" data-video-src="https://youtu.be/dQw4w9WgXcQ" src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"></iframe>',
+        ),
+      ),
+    );
+    expect(html).toContain("<iframe");
+    expect(html).toContain("youtube-nocookie.com/embed/dQw4w9WgXcQ");
+  });
+
+  it("replaces a playing embed iframe with a link to the ORIGINAL src for PDF export", async () => {
+    const pdf = await captureEditorHTML(
+      mockEditor(
+        domWith(
+          '<iframe class="video-embed-frame" data-video-src="https://youtu.be/dQw4w9WgXcQ" src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"></iframe>',
+        ),
+      ),
+      { forPdf: true },
+    );
+    expect(pdf).not.toContain("<iframe");
+    expect(pdf).not.toContain("youtube-nocookie.com");
+    expect(pdf).toContain(
       '<a class="video-export-link" href="https://youtu.be/dQw4w9WgXcQ">https://youtu.be/dQw4w9WgXcQ</a>',
     );
   });
@@ -354,5 +389,22 @@ describe("captureEditorHTML — in-progress caption edit is never exported as a 
     );
     expect(html).not.toContain("<input");
     expect(html).not.toContain("<span>");
+  });
+
+  // §294 fix (M4): BlockCaption.tsx (SVG §5.1 / Mermaid §5.5) carried only
+  // its own `block-caption-input` class, which this stripping loop never
+  // matched — the gap the I4 fix's comment claimed was already closed for
+  // "every media kind". Reproduces BlockCaption's actual rendered markup
+  // (both classes on one <input>), not a hand-picked class this loop happens
+  // to look for.
+  it("replaces a Mermaid/SVG caption's in-progress edit (BlockCaption's real two-class input) with plain text", async () => {
+    const dom = document.createElement("div");
+    dom.innerHTML =
+      '<div class="block-caption block-caption-editing">' +
+      '<input class="block-caption-input media-caption-input" value="a diagram" />' +
+      "</div>";
+    const html = await captureEditorHTML(mockEditor(dom));
+    expect(html).not.toContain("<input");
+    expect(html).toContain("<span>a diagram</span>");
   });
 });

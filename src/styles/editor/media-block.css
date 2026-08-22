@@ -161,10 +161,13 @@
   border-color: var(--color-accent-solid);
 }
 
-/* Shared caption edit input — image (§3.3) and video (§296). One class so the
-   next media kind's caption input is covered automatically instead of adding
-   another entry to export-html.ts's chrome-stripping selector list
-   (dev/backlog.md 2026-08-22). */
+/* Shared caption edit input for export-html.ts's chrome-stripping loop to
+   find — image (§3.3) and video (§296) use it directly, and BlockCaption.tsx
+   (SVG §5.1 / Mermaid §5.5) carries it alongside its own styling class
+   (`.block-caption-input` below) so the next media kind is covered
+   automatically too, without another entry in that selector list
+   (dev/backlog.md 2026-08-22). Visual styling for BlockCaption stays on
+   `.block-caption-input`, which wins ties by coming later in this file. */
 .tiptap .media-caption-input {
   width: 100%;
   padding: 2px 6px;

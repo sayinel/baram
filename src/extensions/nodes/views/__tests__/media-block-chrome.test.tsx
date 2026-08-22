@@ -75,6 +75,25 @@ describe("BlockCaption", () => {
     expect(onEditingChange).toHaveBeenCalledWith(false);
   });
 
+  // §294 fix (M4): the input must ALSO carry `media-caption-input` — the
+  // class export-html.ts's chrome-stripping loop actually looks for. Kept
+  // alongside `block-caption-input` (asserted above), not instead of it: that
+  // class still owns this input's visual styling (media-block.css).
+  it("also carries the shared media-caption-input class, so export can find it (§294 M4)", () => {
+    const { container } = render(
+      <BlockCaption
+        editing
+        onCommit={vi.fn()}
+        onEditingChange={vi.fn()}
+        value={null}
+      />,
+    );
+    const input = container.querySelector(
+      ".block-caption-input",
+    ) as HTMLInputElement;
+    expect(input.classList.contains("media-caption-input")).toBe(true);
+  });
+
   it("exits edit mode on Escape without committing", () => {
     const onCommit = vi.fn();
     const onEditingChange = vi.fn();
