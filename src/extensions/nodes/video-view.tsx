@@ -77,12 +77,25 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
     setTimeout(() => captionRef.current?.focus(), 0);
   }, [alt]);
 
-  const embedHost = embedUrl ? new URL(embedUrl).hostname : "";
+  // §296 fix (deferred-minor #12): show the host the user actually typed,
+  // not the constructed nocookie/player host we load — a youtu.be link
+  // shouldn't be described as "Click to load from www.youtube-nocookie.com".
+  // Safe without a try/catch: embedUrl is non-null only when embedUrlFor
+  // already parsed rawSrc as a URL (media-src.ts), so rawSrc parses here too.
+  const embedHost = embedUrl && rawSrc ? new URL(rawSrc).hostname : "";
 
   return (
     <NodeViewWrapper className="video-node-view" ref={containerRef}>
       <figure
         className={`video-figure ${selected ? "video-selected" : ""}`}
+        // §296 fix (deferred-minor #10): one data-drag-handle here (rather
+        // than only on the <video> element, as before) covers all four
+        // render shapes — poster/video, playing embed iframe, unplayed embed
+        // card, error card. See tiptap-core's onDragStart
+        // (target.closest("[data-drag-handle]")) for the mechanism. The play
+        // button's own mousedown handler below adds preventDefault to stay
+        // exempt from becoming a drag surface as a side effect of this.
+        data-drag-handle=""
         style={{ width: `${effectiveWidth}%` }}
       >
         {failed ? (
@@ -92,7 +105,12 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
         ) : isEmbed ? (
           playing && embedUrl ? (
             <iframe
-              allow="encrypted-media; picture-in-picture"
+              // §296 fix (deferred-minor #11): fullscreen was missing from
+              // `allow`, so the embedded player's own fullscreen control was
+              // inert. allowFullScreen is the legacy attribute some engines
+              // still check alongside the Permissions-Policy-style token.
+              allow="encrypted-media; picture-in-picture; fullscreen"
+              allowFullScreen
               className="video-embed-frame"
               referrerPolicy="strict-origin-when-cross-origin"
               sandbox="allow-scripts allow-same-origin allow-presentation"
@@ -110,7 +128,6 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
         ) : (
           <video
             controls={playing}
-            data-drag-handle=""
             draggable={false}
             onError={() => setFailed(true)}
             preload="metadata"
@@ -132,8 +149,22 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
             // — too late to stop PM from selecting/expanding the video atom.
             // Attaching the listener directly to this element intercepts the
             // event during the real bubble phase, before it ever reaches PM.
+            //
+            // §296 fix (deferred-minor #10): also preventDefault. Now that
+            // data-drag-handle sits on the whole figure (above), a plain
+            // <button> has no native-widget semantics to protect (unlike the
+            // live <video> controls, which this deliberately does NOT touch —
+            // preventDefault on THEIR mousedown risks suppressing the
+            // browser's own seek/volume/play-pause handling, since native
+            // form-control-like widgets commonly gate their activation
+            // behavior on defaultPrevented; that trade is not worth making
+            // for a low-probability accidental-drag-from-the-scrub-bar case).
             ref={(el) => {
-              if (el) el.onmousedown = (e) => e.stopPropagation();
+              if (el)
+                el.onmousedown = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                };
             }}
             type="button"
           >

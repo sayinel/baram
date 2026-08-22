@@ -98,6 +98,100 @@ describe("VideoView (§296)", () => {
   });
 });
 
+// §296 fix (deferred-minor #10): a single data-drag-handle on the figure
+// covers all four render shapes — before this, only the plain <video>
+// element carried it, so an unplayed embed card, a playing embed iframe, and
+// the error card were all completely undraggable (tiptap-core's onDragStart
+// checks event.target.closest("[data-drag-handle]"), which a sibling never
+// satisfies).
+describe("VideoView drag handle covers every render shape (§296 deferred-minor #10)", () => {
+  it("puts data-drag-handle on the figure, not (only) the video element", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    expect(
+      container
+        .querySelector(".video-figure")!
+        .hasAttribute("data-drag-handle"),
+    ).toBe(true);
+  });
+
+  it("covers the poster/video shape (figure ancestor, no separate attr needed on <video>)", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    const video = container.querySelector("video")!;
+    expect(video.closest("[data-drag-handle]")).not.toBeNull();
+  });
+
+  it("covers the unplayed embed card", () => {
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    const card = container.querySelector(".video-embed-card")!;
+    expect(card.closest("[data-drag-handle]")).not.toBeNull();
+  });
+
+  it("covers the playing embed iframe", () => {
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    fireEvent.click(container.querySelector(".video-play-button")!);
+    const iframe = container.querySelector("iframe")!;
+    expect(iframe.closest("[data-drag-handle]")).not.toBeNull();
+  });
+
+  it("covers the error card", () => {
+    const { container } = renderVideo({ src: "missing.mp4" });
+    fireEvent.error(container.querySelector("video")!);
+    const errorCard = container.querySelector(".video-error")!;
+    expect(errorCard.closest("[data-drag-handle]")).not.toBeNull();
+  });
+
+  it("keeps the play button exempt from starting a native drag (preventDefault added alongside the existing stopPropagation)", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    const button = container.querySelector(".video-play-button")!;
+    const event = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    button.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+});
+
+// §296 fix (deferred-minor #11): the embedded player's own fullscreen
+// control was inert — `allow` had encrypted-media/picture-in-picture but not
+// fullscreen, and the legacy allowFullScreen attribute was never set either.
+describe("VideoView embed iframe allows fullscreen (§296 deferred-minor #11)", () => {
+  it("includes the fullscreen token in allow, and the legacy allowfullscreen attribute", () => {
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    fireEvent.click(container.querySelector(".video-play-button")!);
+    const iframe = container.querySelector("iframe")!;
+    expect(iframe.getAttribute("allow")).toContain("fullscreen");
+    expect(iframe.hasAttribute("allowfullscreen")).toBe(true);
+  });
+});
+
+// §296 fix (deferred-minor #12): the embed card/hint used to show the HOST
+// WE CONSTRUCT (www.youtube-nocookie.com / player.vimeo.com) rather than the
+// one the user actually typed — accurate about the request target, useless
+// for recognising what they pasted.
+describe("VideoView shows the original host, not the constructed one (§296 deferred-minor #12)", () => {
+  it("shows youtu.be, not www.youtube-nocookie.com, for a youtu.be link", () => {
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    const host = container.querySelector(".video-embed-host")!;
+    expect(host.textContent).toBe("youtu.be");
+    expect(host.textContent).not.toContain("youtube-nocookie");
+  });
+
+  it("shows the typed www.youtube.com host, not youtube-nocookie, for a /watch link", () => {
+    const { container } = renderVideo({
+      src: "https://www.youtube.com/watch?v=abc123",
+    });
+    const host = container.querySelector(".video-embed-host")!;
+    expect(host.textContent).toBe("www.youtube.com");
+  });
+
+  it("shows vimeo.com, not player.vimeo.com, for a vimeo link", () => {
+    const { container } = renderVideo({ src: "https://vimeo.com/123456789" });
+    const host = container.querySelector(".video-embed-host")!;
+    expect(host.textContent).toBe("vimeo.com");
+  });
+});
+
 // §296.1 클릭 가드 회귀 — 재생 버튼과 재생 중 네이티브 컨트롤은 mousedown이
 // ProseMirror까지 닿기 전에 삼켜져야 한다.
 //
