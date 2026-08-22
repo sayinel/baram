@@ -170,7 +170,7 @@ export function ImageView({
         {editingCaption ? (
           <figcaption className="image-caption image-caption-editing">
             <input
-              className="image-caption-input"
+              className="media-caption-input"
               onBlur={handleCaptionSave}
               onChange={(e) => setCaptionText(e.target.value)}
               onKeyDown={handleCaptionKeyDown}

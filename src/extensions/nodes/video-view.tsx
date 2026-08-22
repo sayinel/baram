@@ -100,7 +100,7 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
               title={title || alt || embedHost}
             />
           ) : (
-            <div className="video-embed-card">
+            <div className="video-embed-card" data-video-src={rawSrc}>
               <span className="video-embed-host">{embedHost}</span>
               <span className="video-embed-hint">
                 {t("video.embedHint", { host: embedHost })}
@@ -168,9 +168,20 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
         </MediaToolbar>
 
         {(alt || editingCaption) && (
-          <figcaption className="video-caption">
+          <figcaption
+            className="video-caption"
+            contentEditable={false}
+            // §296 fix (I1): the toolbar's Caption button was the only advertised
+            // path to this, and media-block.css never revealed the toolbar for
+            // video — so clicking the caption text itself (image's parity path,
+            // image-view.tsx) is the only reachable entry point. No-op while
+            // already editing so a click on the surrounding figcaption doesn't
+            // reset in-progress text via startCaptionEdit's setCaptionText(alt).
+            onClick={editingCaption ? undefined : startCaptionEdit}
+          >
             {editingCaption ? (
               <input
+                className="media-caption-input"
                 onBlur={handleCaptionSave}
                 onChange={(e) => setCaptionText(e.target.value)}
                 onKeyDown={(e) => {

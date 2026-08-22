@@ -85,8 +85,10 @@
   text-align: center;
 }
 
-.tiptap .video-selected .video-figure,
+.tiptap .video-figure.video-selected,
 .tiptap .video-selected video,
-.tiptap .video-selected .video-embed-card {
+.tiptap .video-selected .video-embed-card,
+.tiptap .video-selected .video-embed-frame,
+.tiptap .video-selected .video-error {
   outline: 2px solid var(--color-accent-default);
 }

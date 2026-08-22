@@ -73,7 +73,8 @@
 }
 
 .tiptap .media-resize-frame:hover .media-resize-handle,
-.tiptap .image-figure:hover .media-resize-handle {
+.tiptap .image-figure:hover .media-resize-handle,
+.tiptap .video-figure:hover .media-resize-handle {
   opacity: 1;
 }
 
@@ -111,7 +112,9 @@
 .tiptap .svg-block-preview:hover .media-toolbar,
 .tiptap .mermaid-block-preview:hover .media-toolbar,
 .tiptap .image-node-view:hover .media-toolbar,
-.tiptap .image-figure.image-selected .media-toolbar {
+.tiptap .image-figure.image-selected .media-toolbar,
+.tiptap .video-node-view:hover .media-toolbar,
+.tiptap .video-figure.video-selected .media-toolbar {
   pointer-events: auto;
   opacity: 1;
 }
@@ -156,6 +159,26 @@
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
   border-color: var(--color-accent-solid);
+}
+
+/* Shared caption edit input — image (§3.3) and video (§296). One class so the
+   next media kind's caption input is covered automatically instead of adding
+   another entry to export-html.ts's chrome-stripping selector list
+   (dev/backlog.md 2026-08-22). */
+.tiptap .media-caption-input {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  color: var(--color-text-primary);
+  text-align: center;
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.tiptap .media-caption-input:focus {
+  border-color: var(--color-accent-default);
 }
 
 /* Caption shown below a media block (centered, muted), click-to-edit. */
