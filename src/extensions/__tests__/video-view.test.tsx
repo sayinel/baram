@@ -28,6 +28,18 @@ vi.mock("@tiptap/react", () => ({
   }) => <div className={className}>{children}</div>,
 }));
 
+// §296 fullscreen — jsdom has no real Fullscreen API, so the two functions
+// this component actually calls are mocked; behavior is asserted against the
+// mocks, not real browser fullscreen (see utils/fullscreen.test.ts for that).
+const { isFullscreenSupported, requestVideoFullscreen } = vi.hoisted(() => ({
+  isFullscreenSupported: vi.fn(() => true),
+  requestVideoFullscreen: vi.fn(),
+}));
+vi.mock("../../utils/fullscreen", () => ({
+  isFullscreenSupported,
+  requestVideoFullscreen,
+}));
+
 import { VideoView } from "../nodes/video-view";
 
 type Attrs = Record<string, unknown>;
@@ -222,6 +234,47 @@ describe("VideoView embed iframe carries data-video-src for export (§294 M2)", 
 // `container`(NodeView를 감싸는, 실제 앱의 view.dom과 같은 자리)에 mousedown
 // 리스너를 달아 두고 그게 불려지지 않는지만 보면 "PM이 이 클릭을 아예 못 봤다"를
 // 정확히 증명한다.
+// §296 fullscreen button — jsdom cannot exercise real fullscreen, so this
+// asserts the two things that ARE observable: the button's presence tracks
+// isFullscreenSupported() (not blind assumption), it is file-branch only, and
+// clicking it calls requestVideoFullscreen with the actual <video> element.
+describe("VideoView fullscreen button (§296)", () => {
+  it("renders when fullscreen is supported, for a local file", () => {
+    isFullscreenSupported.mockReturnValue(true);
+    const { getByTitle } = renderVideo({ src: "assets/clip.mp4" });
+    expect(getByTitle("Fullscreen")).toBeInTheDocument();
+  });
+
+  it("does not render when fullscreen is unsupported — a dead button is worse than none", () => {
+    isFullscreenSupported.mockReturnValue(false);
+    const { queryByTitle } = renderVideo({ src: "assets/clip.mp4" });
+    expect(queryByTitle("Fullscreen")).toBeNull();
+  });
+
+  it("does not render on the embed branch even when fullscreen is supported", () => {
+    isFullscreenSupported.mockReturnValue(true);
+    const { queryByTitle } = renderVideo({ src: "https://youtu.be/abc123" });
+    expect(queryByTitle("Fullscreen")).toBeNull();
+  });
+
+  it("does not render once the file has errored — nothing left to fullscreen", () => {
+    isFullscreenSupported.mockReturnValue(true);
+    const { container, queryByTitle } = renderVideo({ src: "missing.mp4" });
+    fireEvent.error(container.querySelector("video")!);
+    expect(queryByTitle("Fullscreen")).toBeNull();
+  });
+
+  it("calls requestVideoFullscreen with the actual <video> element on click", () => {
+    isFullscreenSupported.mockReturnValue(true);
+    const { container, getByTitle } = renderVideo({ src: "assets/clip.mp4" });
+    fireEvent.click(getByTitle("Fullscreen"));
+    expect(requestVideoFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestVideoFullscreen).toHaveBeenCalledWith(
+      container.querySelector("video"),
+    );
+  });
+});
+
 describe("VideoView click-guard regression (§296.1)", () => {
   it("swallows mousedown on the video's native controls so scrubbing doesn't reach PM", () => {
     const { container } = renderVideo({ src: "assets/clip.mp4" });

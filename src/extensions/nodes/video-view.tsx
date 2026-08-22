@@ -2,10 +2,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import { Captions } from "lucide-react";
+import { Captions, Maximize } from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { activeFileDir } from "../../utils/active-file-dir";
+import {
+  isFullscreenSupported,
+  requestVideoFullscreen,
+} from "../../utils/fullscreen";
 import {
   classifyMediaSrc,
   embedUrlFor,
@@ -65,6 +69,16 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
     updateAttributes({ widthPercent: pct });
   });
   const effectiveWidth = isEmbed ? 100 : (dragPct ?? widthPercent);
+
+  // §296 fullscreen button — computed once (not per-render): whether calling
+  // requestFullscreen would do anything at all is a document-level fact, not
+  // a per-instance one. See utils/fullscreen.ts for why method presence
+  // alone isn't the right check.
+  const fullscreenSupported = useMemo(() => isFullscreenSupported(), []);
+  const handleFullscreen = useCallback(() => {
+    const el = videoElRef.current;
+    if (el) requestVideoFullscreen(el);
+  }, []);
 
   const handleCaptionSave = useCallback(() => {
     setEditingCaption(false);
@@ -187,6 +201,19 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
           >
             <Captions size={16} strokeWidth={2} />
           </MediaToolbarButton>
+          {/* §296 fullscreen — file branch only. Provider embeds get their
+              own fullscreen inside the iframe (allow="…; fullscreen" +
+              allowFullScreen, §296 deferred-minor #11); this button drives
+              the <video> element directly and has nothing to attach to
+              before a file's controls exist. */}
+          {!isEmbed && !failed && fullscreenSupported && (
+            <MediaToolbarButton
+              onClick={handleFullscreen}
+              title={t("video.fullscreen")}
+            >
+              <Maximize size={16} strokeWidth={2} />
+            </MediaToolbarButton>
+          )}
         </MediaToolbar>
 
         {(alt || editingCaption) && (

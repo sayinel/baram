@@ -541,6 +541,7 @@
 
   "video.loadError": "Cannot load the video — the file is missing or this platform does not support the format: {src}",
   "video.caption": "Caption",
+  "video.fullscreen": "Fullscreen",
   "video.embedHint": "Click to load from {host}",
   "video.saveFailed": "Could not save the video “{name}”.",
   "video.noDocumentPath": "Save the document before adding “{name}”.",

@@ -541,6 +541,7 @@
 
   "video.loadError": "동영상을 불러올 수 없습니다 — 파일이 없거나 이 플랫폼이 지원하지 않는 형식입니다: {src}",
   "video.caption": "캡션",
+  "video.fullscreen": "전체 화면",
   "video.embedHint": "{host}에서 불러오려면 클릭",
   "video.saveFailed": "동영상 '{name}' 저장에 실패했습니다.",
   "video.noDocumentPath": "'{name}'을(를) 추가하려면 먼저 문서를 저장하세요.",

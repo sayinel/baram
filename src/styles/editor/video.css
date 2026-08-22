@@ -71,12 +71,33 @@
    the frame does. Higher specificity than the shared rule, so this wins
    regardless of file order; image/SVG/Mermaid are untouched since they don't
    match this selector. Reveal (hover/selected → opacity: 1) is still driven
-   entirely by media-block.css's rule — this only repositions. */
+   entirely by media-block.css's rule — this only repositions.
+   §296 fix (toolbar unreachable): margin-bottom used to add an 8px gap
+   between the frame's top edge and the toolbar's bottom edge. That gap is
+   neither `.video-figure`'s box nor the toolbar's — moving the pointer
+   through it made the reveal rule (`.video-node-view:hover .media-toolbar`)
+   stop matching mid-transit, and `pointer-events` snaps to `none` the
+   instant that happens (it does not animate like `opacity` does), so the
+   still-fading pill was already untouchable. Zero margin makes the two boxes
+   contiguous — no dead space to cross. */
 .tiptap .video-figure .media-toolbar {
   top: auto;
   right: 8px;
   bottom: 100%;
-  margin-bottom: 8px;
+  margin-bottom: 0;
+}
+
+/* Backstop for the remaining edge case — the pointer landing exactly on the
+   seam between the two now-contiguous boxes. Once it is truly over the
+   toolbar's own box, this keeps it revealed independent of whether the
+   ancestor selector above still matches, so a hover that starts here doesn't
+   need the `.video-node-view`/`.video-figure` chain at all. Same specificity
+   family as the shared reveal rule but scoped to `.video-figure` (matches
+   this file's existing override convention above), so it applies regardless
+   of import order. */
+.tiptap .video-figure .media-toolbar:hover {
+  pointer-events: auto;
+  opacity: 1;
 }
 
 .tiptap .video-caption {
