@@ -98,6 +98,105 @@ describe("resolveMediaSrcsIn (§294 gate I3)", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  // ‼️ THE gap the verification pass found. The selector was `img[src]`, and
+  // the premise behind that was wrong: `USE_PROFILES: { html: true }` already
+  // allows `video`, `audio`, `source` and `track`, and `ADD_TAGS` only ADDS to
+  // that set. Verified against the real dompurify 3.4.13 with the app's actual
+  // SANITIZE_CONFIG. So a refused `<video src="assets/clip.mp4">` did not
+  // vanish — it rendered as a LIVE player with an unresolved relative src, an
+  // empty black box that looks like a broken app rather than a preserved tag.
+  //
+  // The selector now keys off the URL ATTRIBUTE rather than the element name,
+  // so the next member (audio, source, track) cannot escape the way video did.
+  it("resolves a video src", () => {
+    const el = root('<video src="assets/clip.mp4" width="60%"></video>');
+    resolveMediaSrcsIn(el, "/vault/notes");
+    expect(el.querySelector("video")?.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/assets/clip.mp4",
+    );
+  });
+
+  it("resolves an audio src", () => {
+    const el = root('<audio src="assets/a.mp3" controls></audio>');
+    resolveMediaSrcsIn(el, "/vault/notes");
+    expect(el.querySelector("audio")?.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/assets/a.mp3",
+    );
+  });
+
+  it("resolves a <source> child inside a video", () => {
+    const el = root('<video><source src="assets/clip.mp4"></video>');
+    resolveMediaSrcsIn(el, "/vault/notes");
+    expect(el.querySelector("source")?.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/assets/clip.mp4",
+    );
+  });
+
+  it("resolves a track src", () => {
+    const el = root('<video src="a.mp4"><track src="subs.vtt"></video>');
+    resolveMediaSrcsIn(el, "/d");
+    expect(el.querySelector("track")?.getAttribute("src")).toBe(
+      "asset://localhost//d/subs.vtt",
+    );
+  });
+
+  // `<video src="clip.mp4" controls poster="p.jpg">` is a shape the parser
+  // genuinely refuses (controls and poster are both outside the allowlist), so
+  // resolving only src would leave a broken poster over a working player.
+  it("resolves a video poster alongside its src", () => {
+    const el = root('<video src="clip.mp4" controls poster="p.jpg"></video>');
+    resolveMediaSrcsIn(el, "/vault/notes");
+    const v = el.querySelector("video")!;
+    expect(v.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/clip.mp4",
+    );
+    expect(v.getAttribute("poster")).toBe(
+      "asset://localhost//vault/notes/p.jpg",
+    );
+  });
+
+  it("leaves a remote video src alone", () => {
+    const el = root('<video src="https://x.test/a.mp4"></video>');
+    resolveMediaSrcsIn(el, "/vault/notes");
+    expect(el.querySelector("video")?.getAttribute("src")).toBe(
+      "https://x.test/a.mp4",
+    );
+  });
+
+  it("is idempotent for a video src too", () => {
+    const el = root('<video src="a.mp4"></video>');
+    resolveMediaSrcsIn(el, "/vault/notes");
+    resolveMediaSrcsIn(el, "/vault/other");
+    expect(el.querySelector("video")?.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/a.mp4",
+    );
+  });
+
+  it("resolves a mixed block of img, video and source in one pass", () => {
+    const el = root(
+      '<div><img src="a.png"><video src="b.mp4"></video><audio><source src="c.mp3"></audio></div>',
+    );
+    resolveMediaSrcsIn(el, "/d");
+    expect(
+      [...el.querySelectorAll("[src]")].map((e) => e.getAttribute("src")),
+    ).toEqual([
+      "asset://localhost//d/a.png",
+      "asset://localhost//d/b.mp4",
+      "asset://localhost//d/c.mp3",
+    ]);
+  });
+
+  // Known limit, stated rather than silently carried: srcset survives
+  // sanitization but is a comma-separated descriptor list, so it is left alone.
+  it("leaves srcset unresolved (documented limit)", () => {
+    const el = root('<img src="a.png" srcset="a2.png 2x">');
+    resolveMediaSrcsIn(el, "/d");
+    expect(el.querySelector("img")?.getAttribute("srcset")).toBe("a2.png 2x");
+    expect(el.querySelector("img")?.getAttribute("src")).toBe(
+      "asset://localhost//d/a.png",
+    );
+  });
+
   it("resolves every img, not just the first", () => {
     const el = root('<img src="a.png"><p>x</p><img src="sub/b.png">');
     resolveMediaSrcsIn(el, "/d");

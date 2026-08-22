@@ -173,6 +173,66 @@ describe("HtmlBlockView resolves relative media srcs (§294 gate I3)", () => {
     );
   });
 
+  // ‼️ THE case the verification pass found, driven through the real component
+  // and therefore the real SANITIZE_CONFIG. The premise behind the original
+  // `img[src]` selector was that DOMPurify strips `<video>`; it does not.
+  // `USE_PROFILES: { html: true }` already allows video/audio/source/track and
+  // `ADD_TAGS` only ADDS to that set, so a refused `<video>` rendered as a LIVE
+  // player pointing at an unresolved relative path — an empty black box, which
+  // reads as a broken app rather than as preserved markup.
+  it("renders a refused <video> live, with its src resolved", () => {
+    const { container } = renderHtmlBlock(
+      '<video src="assets/clip.mp4" controls poster="p.jpg"></video>',
+    );
+    const video = container.querySelector("video");
+    // Half the point: the element survives sanitization at all.
+    expect(video).not.toBeNull();
+    expect(video!.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/assets/clip.mp4",
+    );
+    expect(video!.getAttribute("poster")).toBe(
+      "asset://localhost//vault/notes/p.jpg",
+    );
+  });
+
+  it("resolves a <source> child of a preserved video", () => {
+    const { container } = renderHtmlBlock(
+      '<video><source src="assets/clip.mp4"></video>',
+    );
+    expect(container.querySelector("source")?.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/assets/clip.mp4",
+    );
+  });
+
+  // ‼️ Security-relevant record, verified against the real package rather than
+  // assumed: `iframe`, `object` and `embed` are NOT in the html profile the way
+  // video is, so a refused tag carrying one cannot render live in an htmlBlock.
+  // This is the assertion that would go red if a future ADD_TAGS edit widened
+  // the sanitizer, and it is why "video renders live" is a rendering finding
+  // rather than a security one.
+  it("still strips iframe, object and embed entirely", () => {
+    const { container } = renderHtmlBlock(
+      '<div><iframe src="https://evil.test/x"></iframe>' +
+        '<object data="https://evil.test/y"></object>' +
+        '<embed src="https://evil.test/z"></div>',
+    );
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector("object")).toBeNull();
+    expect(container.querySelector("embed")).toBeNull();
+    expect(container.innerHTML).not.toContain("evil.test");
+  });
+
+  it("strips an onerror handler from a preserved video too", () => {
+    const { container } = renderHtmlBlock(
+      '<video src="a.mp4" onerror="alert(1)"></video>',
+    );
+    const video = container.querySelector("video")!;
+    expect(video.hasAttribute("onerror")).toBe(false);
+    expect(video.getAttribute("src")).toBe(
+      "asset://localhost//vault/notes/a.mp4",
+    );
+  });
+
   it("does not invent an img where the markup had none", () => {
     const { container } = renderHtmlBlock("<div>plain</div>");
     expect(container.querySelector("img")).toBeNull();
