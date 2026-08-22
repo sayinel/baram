@@ -97,3 +97,34 @@ describe("paint containment exempts every out-of-frame media toolbar (§296)", (
     expect(offenders).toEqual([]);
   });
 });
+
+// Two more specific facts this fix depends on, pinned separately so each has
+// its own named failure rather than sharing one test that could pass for the
+// wrong reason. `cssDeclarations()` parses real property/value pairs (not a
+// substring search), so a comment mentioning either value can't false-pass
+// this the way a raw `.includes()` scan could.
+describe("video toolbar: exact values this fix depends on (§296)", () => {
+  const RULES = cssRules();
+
+  it("`.tiptap .video-figure .media-toolbar` keeps margin-bottom at 0 — reopening the reachability gap", () => {
+    const rule = RULES.find(
+      (r) => r.selector === ".tiptap .video-figure .media-toolbar",
+    );
+    expect(rule).toBeDefined();
+    const marginBottom = cssDeclarations(rule!.body).find(
+      (d) => d.prop === "margin-bottom",
+    );
+    // A non-shorthand property that's simply absent is equivalent to its
+    // initial value (0) — only a PRESENT nonzero value is a regression.
+    expect(marginBottom?.value.trim() ?? "0").toBe("0");
+  });
+
+  it("`.tiptap > .node-video` sets contain to exactly `layout`, not `layout paint` — reopening the clip", () => {
+    const rule = RULES.find((r) => r.selector === ".tiptap > .node-video");
+    expect(rule).toBeDefined();
+    const contain = cssDeclarations(rule!.body).find(
+      (d) => d.prop === "contain",
+    );
+    expect(contain?.value.trim()).toBe("layout");
+  });
+});
