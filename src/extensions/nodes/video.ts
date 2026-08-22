@@ -1,12 +1,11 @@
-// §294 Video Extension (block-level)
-//
-// ‼️ NodeView는 이 노드에 아직 없다 — Task 6이 `video-view.tsx`를 만들며 함께
-// 추가한다. 그때까지는 renderHTML의 <video> 태그가 그대로 렌더된다.
+// §294 Video Extension (block-level) with §296 NodeView
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
+import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { classifyMediaSrc } from "../../utils/media-src";
 import { createAtomMediaClickGuard } from "../plugins/atom-media-click-guard";
+import { VideoView } from "./video-view";
 
 export interface VideoOptions {
   HTMLAttributes: Record<string, string>;
@@ -53,6 +52,10 @@ export const Video = Node.create<VideoOptions>({
       "video",
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
     ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(VideoView);
   },
 
   addCommands() {

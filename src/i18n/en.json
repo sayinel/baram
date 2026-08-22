@@ -539,6 +539,11 @@
 
   "viewer.noPlugin": "No viewer plugin is enabled for this file type. You can turn one on in Settings → Plugins.",
 
+  "video.loadError": "Cannot load the video — the file is missing or this platform does not support the format: {src}",
+  "video.play": "Play",
+  "video.caption": "Caption",
+  "video.embedHint": "Click to load from {host}",
+
   "pdfFind.placeholder": "Find in PDF",
   "pdfFind.matchCase": "Match case",
   "pdfFind.previous": "Previous match",
