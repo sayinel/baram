@@ -327,6 +327,15 @@ img { max-width: 100%; height: auto; border-radius: 4px; }
 figure { margin: 1em 0; text-align: center; }
 figcaption { font-size: 0.85em; color: #6b7280; margin-top: 0.25em; text-align: center; }
 
+/* Video (§294 fix I4) — the poster/play-button/embed-card chrome is stripped
+   by captureEditorHTML; what's left is a plain <video> (with controls, or a
+   link in the PDF case) or a link standing in for a provider embed. */
+video { display: block; width: 100%; border-radius: 6px; }
+.video-node-view { margin: 1em 0; text-align: center; }
+.video-figure { display: inline-block; max-width: 100%; }
+.video-caption { font-size: 0.875em; color: #6b7280; margin-top: 0.5em; text-align: center; }
+.video-export-link { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+
 /* Callout */
 .callout { border-left: 3px solid #3b82f6; padding: 0.5em 1em; margin: 0.5em 0; background: #eff6ff; border-radius: 0 6px 6px 0; }
 

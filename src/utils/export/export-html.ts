@@ -14,6 +14,16 @@ import {
 } from "./export-html-code-block";
 import { EDITOR_CSS, PRINT_CSS } from "./export-html-styles";
 
+export interface CaptureEditorHTMLOptions {
+  /**
+   * §301: PDF rendering can never play video — a headless-Chrome print of a
+   * `<video>` element is an inert box with no poster frame, worse than
+   * useless. When true, every video (local file AND provider embed) is
+   * replaced with a plain link to its resolved src instead of `controls`.
+   */
+  forPdf?: boolean;
+}
+
 export interface ExportHTMLOptions {
   theme?: "dark" | "light";
 }
@@ -29,7 +39,11 @@ export interface ExportHTMLOptions {
  * For code blocks, reads computed styles from the live DOM BEFORE cloning
  * to preserve syntax highlighting as inline styles.
  */
-export async function captureEditorHTML(editor: Editor): Promise<string> {
+export async function captureEditorHTML(
+  editor: Editor,
+  options?: CaptureEditorHTMLOptions,
+): Promise<string> {
+  const forPdf = options?.forPdf ?? false;
   const dom = editor.view.dom;
 
   // ── Collect code block data + clone, with windowing suspended ─────
@@ -141,14 +155,52 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
       el.setAttribute("src", relative ?? abs);
     }
     el.removeAttribute("preload");
+
+    // §294/§301 fix (I4): the exported `<video>` had no play affordance in
+    // either destination. HTML can actually play it (`controls`); PDF cannot
+    // play anything, so §301 calls for a plain link instead — no poster
+    // frame pretending playback might happen.
+    if (forPdf) {
+      const href = el.getAttribute("src") || "";
+      const link = document.createElement("a");
+      link.className = "video-export-link";
+      link.href = href;
+      link.textContent = href;
+      el.replaceWith(link);
+    } else {
+      el.setAttribute("controls", "");
+    }
   }
+
+  // §294 fix (I4): a provider embed exports as the idle `.video-embed-card`
+  // ("Click to load from …") with nothing to click and no link anywhere —
+  // dead in both HTML and PDF. Replace it with a link to the ORIGINAL src the
+  // document carried (`data-video-src`, set by video-view.tsx), not the
+  // constructed nocookie iframe URL that only exists to be embedded.
+  for (const el of clone.querySelectorAll(".video-embed-card")) {
+    const href = el.getAttribute("data-video-src") || "";
+    const link = document.createElement("a");
+    link.className = "video-export-link";
+    link.href = href;
+    link.textContent = href;
+    el.replaceWith(link);
+  }
+
+  // §294 fix (I4): the play button has no listener once React is gone — a
+  // dead `<button>` with an icon surviving into the export.
+  for (const el of clone.querySelectorAll(".video-play-button")) el.remove();
 
   // ── Shared media chrome (SVG/Mermaid/image): drop hover toolbar +
   //    edge-drag resize handles + the drag % readout ─────────────────
   for (const el of clone.querySelectorAll(".media-toolbar")) el.remove();
   for (const el of clone.querySelectorAll(".media-resize-handle")) el.remove();
   for (const el of clone.querySelectorAll(".media-resize-label")) el.remove();
-  for (const el of clone.querySelectorAll(".image-caption input")) {
+  // §294 fix (I4, dev/backlog.md 2026-08-22): one shared class covers every
+  // media kind's in-progress caption edit — video had no equivalent to
+  // image's dedicated input class, so exporting mid-caption-edit leaked a raw
+  // `<input>` for video specifically. media-block.css's `.media-caption-input`
+  // is now shared by image-view.tsx and video-view.tsx.
+  for (const el of clone.querySelectorAll(".media-caption-input")) {
     const text = (el as HTMLInputElement).value;
     if (text) {
       const span = document.createElement("span");

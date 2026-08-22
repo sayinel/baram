@@ -266,3 +266,93 @@ describe("captureEditorHTML — video src rewriting for HTML export (§294)", ()
     expect(html).toContain('src="https://example.com/clip.mp4"');
   });
 });
+
+// §294/§301 fix (I4): the exported video had no play affordance, a dead
+// leftover play button, no link for a provider embed, and PDF export carried
+// an unplayable <video> instead of §301's "link only" fallback.
+describe("captureEditorHTML — video export playability (§294/§301 I4)", () => {
+  function domWith(html: string): HTMLElement {
+    const dom = document.createElement("div");
+    dom.innerHTML = html;
+    return dom;
+  }
+
+  it("adds controls to a local video for HTML export", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(domWith('<video src="https://example.com/clip.mp4"></video>')),
+    );
+    expect(html).toContain("controls");
+  });
+
+  it("replaces the video with a link instead, for PDF export (§301 — no poster frame pretending playback)", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(domWith('<video src="https://example.com/clip.mp4"></video>')),
+      { forPdf: true },
+    );
+    expect(html).not.toContain("<video");
+    expect(html).toContain(
+      '<a class="video-export-link" href="https://example.com/clip.mp4">https://example.com/clip.mp4</a>',
+    );
+  });
+
+  it("removes the dead play button in both HTML and PDF export", async () => {
+    const dom = () =>
+      domWith(
+        '<figure><video src="https://example.com/clip.mp4"></video><button class="video-play-button">Play</button></figure>',
+      );
+    const html = await captureEditorHTML(mockEditor(dom()));
+    const pdf = await captureEditorHTML(mockEditor(dom()), { forPdf: true });
+    expect(html).not.toContain("video-play-button");
+    expect(pdf).not.toContain("video-play-button");
+  });
+
+  it("replaces a provider embed card with a link to the ORIGINAL src, not the constructed nocookie embed URL", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(
+        domWith(
+          '<div class="video-embed-card" data-video-src="https://youtu.be/dQw4w9WgXcQ"><span class="video-embed-host">www.youtube-nocookie.com</span></div>',
+        ),
+      ),
+    );
+    expect(html).not.toContain("video-embed-card");
+    expect(html).not.toContain("youtube-nocookie.com");
+    expect(html).toContain(
+      '<a class="video-export-link" href="https://youtu.be/dQw4w9WgXcQ">https://youtu.be/dQw4w9WgXcQ</a>',
+    );
+  });
+});
+
+// §294 fix (I4, dev/backlog.md 2026-08-22): video's caption input had no
+// image-caption-input-equivalent class, so exporting mid-caption-edit leaked
+// a raw <input> for video specifically. Both media kinds now share one class.
+describe("captureEditorHTML — in-progress caption edit is never exported as a raw <input> (§294 I4)", () => {
+  function captionDom(containerClass: string, value: string): HTMLElement {
+    const dom = document.createElement("div");
+    dom.innerHTML = `<figcaption class="${containerClass}"><input class="media-caption-input" value="${value}" /></figcaption>`;
+    return dom;
+  }
+
+  it("replaces an image's in-progress caption input with plain text", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(captionDom("image-caption image-caption-editing", "a cat")),
+    );
+    expect(html).not.toContain("<input");
+    expect(html).toContain("<span>a cat</span>");
+  });
+
+  it("replaces a video's in-progress caption input with plain text (the gap this fix closes)", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(captionDom("video-caption", "a clip")),
+    );
+    expect(html).not.toContain("<input");
+    expect(html).toContain("<span>a clip</span>");
+  });
+
+  it("removes an empty caption input entirely rather than exporting a blank span", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(captionDom("video-caption", "")),
+    );
+    expect(html).not.toContain("<input");
+    expect(html).not.toContain("<span>");
+  });
+});
