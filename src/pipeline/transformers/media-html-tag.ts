@@ -11,6 +11,8 @@
 // htmlBlock으로 원문 그대로 남긴다(md-to-pm.ts) — 값을 깎아서 받아 두면 저장할 때
 // 사용자 파일이 조용히 바뀐다.
 
+import type { Html, Node as MdastNode, Paragraph, Text } from "mdast";
+
 /** `<img>`/`<video>` 태그에서 PM 노드 attr로 옮겨지는 속성 집합. */
 export interface MediaHtmlAttrs {
   alt: null | string;
@@ -44,6 +46,32 @@ interface WidthAttrs {
   widthPixel?: number;
 }
 
+/**
+ * remark가 이미 풀어 놨을 수 있는 표기. 이 글자가 text 자식에 있으면 원문 복원을
+ * 포기한다 ({@link inlineMediaParagraphSource}) — `&amp;`는 `&`로, `\*`는 `*`로
+ * 들어오므로 우리가 다시 써도 원문 바이트와 달라진다.
+ */
+const DECODED_TEXT_RE = /[&\\]/;
+
+/**
+ * paragraph 안의 인라인 html 조각이 **실제 미디어 요소**인지 판정한다 (§294 I6).
+ *
+ * ‼️ `src=`를 요구하는 것이 핵심이다. 닫는 태그 유무로는 판정할 수 없다: `img`는
+ * void 요소라 닫는 태그가 아예 **없다**. 그렇다고 여는 태그 이름만 보면 산문이
+ * 걸린다 — "use the `<video>` tag for clips"처럼 태그 이름을 **말하는** 문장까지
+ * 통째로 raw html 블록이 되어 편집할 수 없게 된다(로컬 이미지를 안 보이게 만들었던
+ * 것과 같은 종류의 회귀다). src를 든 태그만이 앱이 실제로 쓰는 모양이고, 잃을
+ * 데이터가 있는 모양이다.
+ *
+ * 뮤테이션 테스트가 이 설계를 끌어냈다: 처음엔 video에 닫는 태그를 요구했는데,
+ * 그 요구를 없애도 빨개지는 테스트가 없었다 — 닫는 태그는 "요소냐 산문이냐"를
+ * 가리지 못하기 때문이다. src가 가린다.
+ */
+const MEDIA_TAG_OPEN_RES: readonly RegExp[] = [
+  /^<img\s[^>]*\bsrc\s*=/i,
+  /^<video\s[^>]*\bsrc\s*=/i,
+];
+
 /** 폭 속성이 아예 없는 태그의 기본값 — 100%는 마크다운 `![](src)`로 나간다. */
 const DEFAULT_WIDTH: Readonly<WidthAttrs> = { widthPercent: 100 };
 
@@ -73,6 +101,58 @@ export function buildMediaHtmlTag(
   return spec.shape === "void"
     ? `<${spec.tagName} ${body} />`
     : `<${spec.tagName} ${body}></${spec.tagName}>`;
+}
+
+/**
+ * 인라인 미디어 태그를 담은 paragraph의 **원문**. 그대로 되돌려 쓸 수 없으면 null.
+ *
+ * 왜 필요한가 (§294 I6): `convertInlineNode`에는 알 수 없는 인라인 `html` mdast
+ * 노드를 통과시키는 경로가 없다 — `<span>`, `<b>`, 오늘의 `<u>/<mark>/<sub>/<sup>`
+ * 밖의 모든 태그가 그냥 사라진다. 오래된 백로그 항목이고 미디어와 무관하게
+ * 그랬다. 달라진 것은 노출이다: **앱이** 리사이즈할 때마다 파일에 태그를 쓴다 —
+ * video는 `<video src="…" width="60%"></video>`, image는 `<img src="…"
+ * width="60%" />`(`pmToMdast`가 `widthPercent !== 100 || widthPixel`이면
+ * 언제나 그렇게 쓴다). 두 태그 다 혼자 한 줄에 있으면 왕복하지만, CommonMark
+ * type-7 HTML 블록은 **paragraph를 끊지 못한다** — 그 줄에 글자를 하나 타이핑하거나
+ * 위의 빈 줄을 지우는 순간 인라인 html 조각이 되고, 다음 저장에서 통째로 사라진다.
+ * 앱이 만든 내용이 없어지는 것이다. 그래서 파서와 같은 정책을 쓴다: 표현할 수
+ * 없으면 거부하고 원문을 남긴다.
+ *
+ * ‼️ 두 가지로 좁혀져 있고, 둘 다 의도한 것이다.
+ *
+ * 1. **자식 종류** — `text`/`html` 자식만으로 이뤄질 때만 복원한다. 파이프라인은
+ *    원본 마크다운 문자열을 여기까지 넘기지 않으므로(position offset을 슬라이스할
+ *    소스가 없다) 마크가 섞인 paragraph는 바이트 단위로 되돌릴 수 없다.
+ *    {@link DECODED_TEXT_RE}가 걸리는 text도 같은 이유로 거부한다.
+ * 2. **미디어 태그** — {@link MEDIA_TAG_OPEN_RES}가 잡는 `src`를 든 `<img>`·
+ *    `<video>` 여는 태그가 하나라도 있어야 한다. `<span>`/`<b>`만 있는
+ *    paragraph, 그리고 태그 이름을 **말하는** 산문(`use the <video> tag`)은 여기서
+ *    보존되지 않는다 — 앞의 손실은 미디어와 무관한 기존 한계이고(테스트가 그대로
+ *    고정한다), 뒤는 편집 가능한 단락을 raw html로 굳히지 않으려는 의도다.
+ *
+ * 되돌릴 수 없으면 null — 그 모양은 지금까지의 (손실 있는) 경로에 그대로 남는다.
+ */
+export function inlineMediaParagraphSource(node: MdastNode): null | string {
+  if (node.type !== "paragraph") return null;
+  let hasMedia = false;
+  let source = "";
+  for (const child of (node as Paragraph).children) {
+    if (child.type === "html") {
+      const value = (child as Html).value;
+      const trimmed = value.trim();
+      if (MEDIA_TAG_OPEN_RES.some((re) => re.test(trimmed))) hasMedia = true;
+      source += value;
+      continue;
+    }
+    if (child.type === "text") {
+      const value = (child as Text).value;
+      if (DECODED_TEXT_RE.test(value)) return null;
+      source += value;
+      continue;
+    }
+    return null;
+  }
+  return hasMedia ? source : null;
 }
 
 /**

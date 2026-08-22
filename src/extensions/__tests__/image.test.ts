@@ -258,3 +258,105 @@ describe("a pixel width on <img> renders and survives (§294 I1)", () => {
     );
   });
 });
+
+// §294 I6 for `<img>` — final-gate Important #4. The I-6 fix originally matched
+// `/^<video(?=[\s/>])/i` only, and that media-type narrowing was documented
+// nowhere, while `pmToMdast` writes `<img src="…" width="60%" />` into the file
+// on EVERY resized image. `<img …/>` alone on a line is a CommonMark type-7
+// HTML block so it round-trips — but a type-7 block cannot interrupt a
+// paragraph, so the moment a word shares that line (or the blank line above it
+// is deleted) the tag becomes an inline `html` mdast child, convertInlineNode
+// has no passthrough for it, and the image is destroyed on the next save.
+// Same mechanism as video, on the older and more-used feature.
+describe("an inline <img> sharing a line is preserved, not destroyed (§294 I6)", () => {
+  function firstChildType(md: string): string {
+    return markdownToProsemirror(md, schema).firstChild!.type.name;
+  }
+
+  test("text on both sides of the tag", () => {
+    const input = 'a <img src="x.png" /> b';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("the app-generated resize markup on a paragraph continuation line", () => {
+    // The exact shape a resized image writes, one keystroke away from being
+    // swallowed: a type-7 block cannot interrupt the paragraph above it.
+    const input = 'text\n<img src="a.png" width="60%" />';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("two resized images on one line", () => {
+    const input =
+      '<img src="a.png" width="60%" /><img src="b.png" width="60%" />';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("an img and a video in the same paragraph", () => {
+    // The generalized predicate counts either tag, so a mixed paragraph is
+    // preserved on the strength of whichever it finds first.
+    const input = 'a <img src="x.png" /> and <video src="y.mp4"></video> b';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  // The two refusal boundaries carry over from the video side unchanged: the
+  // paragraph is only rebuilt when it can be rebuilt byte-for-byte.
+  test("a non-text/html inline sibling refuses reconstruction", () => {
+    const input = '`code` <img src="x.png" />';
+    expect(firstChildType(input)).toBe("paragraph");
+    expect(roundtrip(input)).not.toContain("<img");
+  });
+
+  test("an ampersand in the surrounding text refuses reconstruction", () => {
+    const input = 'a &amp; b <img src="x.png" />';
+    expect(firstChildType(input)).not.toBe("htmlBlock");
+  });
+
+  test("control: the tag alone on a line is still an image node, not preserved raw", () => {
+    // Type-7 block html → the <img> branch of md-to-pm, unchanged by I6.
+    const input = '<img src="a.png" width="60%" />';
+    expect(firstChildType(input)).toBe("image");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("control: a paragraph with no media tag is untouched", () => {
+    const input = "<span>a</span>";
+    expect(firstChildType(input)).not.toBe("htmlBlock");
+    expect(roundtrip(input)).toBe("a");
+  });
+
+  // ‼️ The predicate keys off `src=`, not off a closing tag, and mutation
+  // testing is what forced that design. Requiring `</video>` looked reasonable
+  // but nothing went red when the requirement was deleted — a closing tag
+  // cannot tell an ELEMENT from PROSE THAT NAMES THE TAG, and `<img>` has no
+  // closing tag to require in the first place. `src=` tells them apart: it is
+  // the shape the app writes and the only shape with data to lose.
+  test("an unclosed tag that still carries a src is preserved", () => {
+    const input = 'a <video src="x.mp4"> b';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("prose naming a tag stays an editable paragraph, not a raw html block", () => {
+    // Turning this into an htmlBlock would be the same class of regression as
+    // making local images invisible: the user loses editability of ordinary
+    // text. The `<video>` mention is still dropped, which is the pre-existing
+    // inline-html limitation and not something media preservation should fix.
+    const input = "use the <video> tag for clips";
+    expect(firstChildType(input)).toBe("paragraph");
+    expect(roundtrip(input)).not.toContain("<video");
+  });
+
+  test("prose naming the img tag likewise stays a paragraph", () => {
+    const input = "use the <img> tag for pictures";
+    expect(firstChildType(input)).toBe("paragraph");
+  });
+
+  test("a src-less tag with other attributes is still prose, not media", () => {
+    const input = 'a <img class="x"> b';
+    expect(firstChildType(input)).toBe("paragraph");
+  });
+});

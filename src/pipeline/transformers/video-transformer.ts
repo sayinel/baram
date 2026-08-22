@@ -2,7 +2,7 @@ import type { NodeTransformerEntry } from "../types";
 import type { MediaHtmlAttrs, MediaTagSpec } from "./media-html-tag";
 // video-transformer.ts — §294 동영상 mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Html, Image, Node as MdastNode, Paragraph, Text } from "mdast";
+import type { Html, Image, Node as MdastNode, Paragraph } from "mdast";
 
 import { classifyMediaSrc } from "../../utils/media-src";
 import { buildMediaHtmlTag, parseMediaHtmlTag } from "./media-html-tag";
@@ -25,66 +25,9 @@ const VIDEO_TAG: MediaTagSpec = {
   tagName: "video",
 };
 
-/** 인라인 html 조각이 여는 `<video …>` 태그인가. */
-const VIDEO_OPEN_RE = /^<video(?=[\s/>])/i;
-
-/** 인라인 html 조각이 닫는 `</video>` 태그인가. */
-const VIDEO_CLOSE_RE = /^<\/video\s*>$/i;
-
-/**
- * remark가 이미 풀어 놨을 수 있는 표기. 이 글자가 text 자식에 있으면 원문
- * 복원을 포기한다 ({@link inlineVideoParagraphSource}) — `&amp;`는 `&`로,
- * `\*`는 `*`로 들어오므로 우리가 다시 써도 원문 바이트와 달라진다.
- */
-const DECODED_TEXT_RE = /[&\\]/;
-
 /** PM video attrs → `<video …></video>` 문자열. */
 export function buildVideoHtml(attrs: Record<string, unknown>): string {
   return buildMediaHtmlTag(VIDEO_TAG, attrs);
-}
-
-/**
- * `<video …>`/`</video>` 인라인 쌍을 담은 paragraph의 **원문**. 원문 그대로
- * 되돌려 쓸 수 없으면 null.
- *
- * 왜 필요한가 (§294 I6): `convertInlineNode`에는 알 수 없는 인라인 `html` mdast
- * 노드를 통과시키는 경로가 없다 — `<span>`, `<b>`, 오늘의 `<u>/<mark>/<sub>/<sup>`
- * 밖의 모든 태그가 그냥 사라진다. 오래된 백로그 항목이고 video와 무관하게
- * 그랬다. 달라진 것은 노출이다: 이제 **앱이** 동영상을 리사이즈할 때마다
- * `<video src="…" width="60%"></video>`를 파일에 쓴다. 그 줄에 글자를 하나
- * 타이핑하거나 리사이즈된 두 동영상 사이의 빈 줄을 지우면 다음 저장에서
- * 동영상이 통째로 사라진다 — 앱이 만든 내용이 없어지는 것이다. 그래서
- * `parseVideoHtml`과 같은 정책을 쓴다: 표현할 수 없으면 거부하고 원문을 남긴다.
- *
- * ‼️ 복원은 `text`/`html` 자식만으로 이뤄질 때만 한다. 파이프라인은 원본
- * 마크다운 문자열을 여기까지 넘기지 않으므로(position offset을 슬라이스할 소스가
- * 없다) 마크가 섞인 paragraph는 바이트 단위로 되돌릴 수 없다. {@link
- * DECODED_TEXT_RE}가 걸리는 text도 같은 이유로 거부한다. 되돌릴 수 없으면 null —
- * 그 모양은 지금까지의 (손실 있는) 경로에 그대로 남는다.
- */
-export function inlineVideoParagraphSource(node: MdastNode): null | string {
-  if (node.type !== "paragraph") return null;
-  let hasOpen = false;
-  let hasClose = false;
-  let source = "";
-  for (const child of (node as Paragraph).children) {
-    if (child.type === "html") {
-      const value = (child as Html).value;
-      const trimmed = value.trim();
-      if (VIDEO_OPEN_RE.test(trimmed)) hasOpen = true;
-      if (VIDEO_CLOSE_RE.test(trimmed)) hasClose = true;
-      source += value;
-      continue;
-    }
-    if (child.type === "text") {
-      const value = (child as Text).value;
-      if (DECODED_TEXT_RE.test(value)) return null;
-      source += value;
-      continue;
-    }
-    return null;
-  }
-  return hasOpen && hasClose ? source : null;
 }
 
 /**

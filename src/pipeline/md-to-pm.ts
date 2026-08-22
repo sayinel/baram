@@ -36,9 +36,9 @@ import {
   isStandaloneImage,
   parseImgHtml,
 } from "./transformers/image-transformer";
+import { inlineMediaParagraphSource } from "./transformers/media-html-tag";
 import { isDetailsOpening } from "./transformers/toggle-transformer";
 import {
-  inlineVideoParagraphSource,
   isVideoHtmlPair,
   joinVideoHtmlPair,
   parseVideoHtml,
@@ -323,16 +323,16 @@ function convertBlockNode(
     }
   }
 
-  // §294 I6: `<video …></video>` 쌍이 **다른 인라인 내용과 함께** 한 paragraph에
-  // 들어 있는 경우. 위 분기는 쌍만 있는 paragraph를 video 노드로 바꾸고, 여기서는
-  // 원문을 되돌려 쓸 수 있을 때 paragraph 전체를 htmlBlock으로 보존한다. 앱이
-  // 리사이즈할 때마다 쓰는 `<video …></video>` 줄에 사용자가 글자 하나를
-  // 타이핑하면 다음 저장에서 동영상이 사라지던 경로다 — 자세한 이유는
-  // inlineVideoParagraphSource의 주석.
+  // §294 I6: 인라인 미디어 태그(`<img>`·`<video>`)가 **다른 인라인 내용과 함께**
+  // 한 paragraph에 들어 있는 경우. 위 분기는 video 쌍만 있는 paragraph를 video
+  // 노드로 바꾸고, 여기서는 원문을 되돌려 쓸 수 있을 때 paragraph 전체를
+  // htmlBlock으로 보존한다. 앱이 리사이즈할 때마다 쓰는 태그 줄에 사용자가 글자
+  // 하나를 타이핑하면 다음 저장에서 그 미디어가 사라지던 경로다 — 좁혀 둔 범위와
+  // 이유는 inlineMediaParagraphSource의 주석에 있다.
   if (schema.nodes.htmlBlock) {
-    const inlineVideoSource = inlineVideoParagraphSource(node);
-    if (inlineVideoSource !== null) {
-      return schema.nodes.htmlBlock.create({ content: inlineVideoSource });
+    const inlineMediaSource = inlineMediaParagraphSource(node);
+    if (inlineMediaSource !== null) {
+      return schema.nodes.htmlBlock.create({ content: inlineMediaSource });
     }
   }
 

@@ -8,6 +8,20 @@
 // renders `<MediaToolbar`, and real CSS for the class tokens the reveal rule actually
 // names — rather than hand-listing "the four media node views" here, which is exactly
 // the enumeration that let video slip through the first time.
+//
+// ‼️ LIMIT OF THE SCAN (§294 M-12d): the comment above says the scan replaces the
+// enumeration, and it does — but only for a wrapper whose class list is a
+// double-quoted LITERAL that is also the FIRST attribute. The regex below is
+// `/<NodeViewWrapper\s+className="([^"]+)"/`, so both of these leave the scan
+// silently:
+//   <NodeViewWrapper className={`x ${sel ? "y" : ""}`}>   // template literal
+//   <NodeViewWrapper as="span" className="x">             // another attr first
+// Neither is hypothetical — block-embed, callout, footnote-ref, math-inline, mention,
+// table-of-contents and block-reference already write one of those two forms today.
+// None of them renders <MediaToolbar>, so the gate is honest right now; the failure
+// mode is a media NodeView adopting a dynamic wrapper class later and dropping out
+// unnoticed, exactly the way video was invisible before this scan existed. The vacuity
+// check below (>= 4 wrappers) catches a total collapse, not the loss of one member.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
