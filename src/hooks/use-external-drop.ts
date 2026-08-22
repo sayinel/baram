@@ -1,6 +1,6 @@
 // External file drag & drop hook — Tauri onDragDropEvent (OS-level file drop)
 // Feature 1: External files → FileTree (copy to project)
-// Feature 2: External images → Editor (copy to assets/, insert image node)
+// Feature 2: External images/videos → Editor (copy to assets/, insert image/video node, §297)
 //
 // Coordinate handling:
 // wry's macOS drag_drop.rs gets NSView points (= CSS logical pixels) from
@@ -32,11 +32,8 @@ import {
   showDropIndicator,
 } from "../utils/editor/drop-indicator";
 import { logger } from "../utils/logger";
-import {
-  basename,
-  isImageFile,
-  resolveNameConflict,
-} from "../utils/path-utils";
+import { classifyMediaSrc } from "../utils/media-src";
+import { basename, resolveNameConflict } from "../utils/path-utils";
 
 interface UseExternalDropOptions {
   editor: Editor | null;
@@ -48,6 +45,82 @@ export let isExternalFileDrag = false;
 // --- Zone detection via bounding rects ---
 
 type DropZone = "editor" | "filetree" | null;
+
+// --- Drop handlers ---
+
+/**
+ * §297 OS 드래그(Finder 등)로 들어온 파일을 에디터에 삽입한다.
+ *
+ * 이미지·동영상 모두 여기서 다룬다 — 노드 타입은 `classifyMediaSrc`(§293, 유일한
+ * 미디어 분류 열거)로 정한다. 이 함수는 IPC로 실제 파일을 존재하는 경로에서
+ * 복사하는 경로라 `isImageFile` 같은 확장자 사전 필터가 없다: video/image가
+ * 아닌 다른 확장자는 `classifyMediaSrc`가 기본값인 "image"로 분류해 그대로
+ * 진행한다 — `insertMediaAtPos`(drop-handler.ts)의 같은 분류기 기반 라우팅과
+ * 동일한 절충이다. 문서 본문에 직접 `![]("아무 확장자")`를 쓸 때도 같은 결과다.
+ */
+export async function handleEditorDrop(
+  paths: string[],
+  editor: Editor,
+  insertPos: number,
+) {
+  const { activeTabId, tabs } = useEditorStore.getState();
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  if (!activeTab?.filePath) return;
+
+  const fileDir = activeTab.filePath.substring(
+    0,
+    activeTab.filePath.lastIndexOf("/"),
+  );
+  const assetsDir = fileDir + "/assets";
+
+  try {
+    await createDir(assetsDir);
+  } catch {
+    // May already exist
+  }
+
+  let existingNames: Set<string>;
+  try {
+    const entries = await listDir(assetsDir);
+    existingNames = new Set(entries.map((e) => e.name));
+  } catch {
+    existingNames = new Set();
+  }
+
+  let pos = insertPos;
+
+  for (const sourcePath of paths) {
+    const originalName = basename(sourcePath);
+    if (!originalName) continue;
+
+    const isVideo = classifyMediaSrc(sourcePath) === "video-file";
+    const nodeType = editor.state.schema.nodes[isVideo ? "video" : "image"];
+    // 스키마에 해당 노드가 없으면(예: 축소된 테스트 스키마) 건너뛴다 — throw하지
+    // 않는다. insertMediaAtPos(drop-handler.ts)의 같은 방어와 동일한 이유.
+    if (!nodeType) continue;
+
+    const finalName = resolveNameConflict(originalName, existingNames);
+    const destPath = assetsDir + "/" + finalName;
+
+    try {
+      await importFile(sourcePath, destPath);
+      existingNames.add(finalName);
+
+      const relativeSrc = "assets/" + finalName;
+      const alt = finalName.replace(/\.[^.]+$/, "");
+
+      const mediaNode = nodeType.create({ src: relativeSrc, alt });
+      pos = insertNodeAtPos(editor, pos, mediaNode);
+    } catch (err) {
+      logger.error("[ExternalDrop] Media drop failed:", err);
+      if (isVideo) {
+        // §297 동영상 저장 실패는 조용한 실패로 두지 않는다 — 이미지는 기존
+        // 동작(logger.error만)을 그대로 유지한다.
+        toast("video.saveFailed", { name: originalName }, "error");
+      }
+    }
+  }
+}
 
 export async function handleFileTreeDrop(paths: string[], el: Element | null) {
   const { rootPath, addFileEntry } = useFileStore.getState();
@@ -101,6 +174,8 @@ export async function handleFileTreeDrop(paths: string[], el: Element | null) {
     }
   }
 }
+
+// --- Hook ---
 
 export function useExternalDrop({ editor }: UseExternalDropOptions) {
   useEffect(() => {
@@ -240,7 +315,7 @@ function clearAllHighlights() {
   hideDropIndicator();
 }
 
-// --- Hook ---
+// --- Zone detection helpers ---
 
 function detectZone(x: number, y: number): DropZone {
   // §perf-large-file C3.4: scope to the ACTIVE editor's scroll container
@@ -252,67 +327,6 @@ function detectZone(x: number, y: number): DropZone {
   if (hitTestRect(document.querySelector(".file-tree"), x, y))
     return "filetree";
   return null;
-}
-
-// --- Drop handlers ---
-
-async function handleEditorDrop(
-  paths: string[],
-  editor: Editor,
-  insertPos: number,
-) {
-  const imagePaths = paths.filter(isImageFile);
-  if (!imagePaths.length) return;
-
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  if (!activeTab?.filePath) return;
-
-  const fileDir = activeTab.filePath.substring(
-    0,
-    activeTab.filePath.lastIndexOf("/"),
-  );
-  const assetsDir = fileDir + "/assets";
-
-  try {
-    await createDir(assetsDir);
-  } catch {
-    // May already exist
-  }
-
-  let existingNames: Set<string>;
-  try {
-    const entries = await listDir(assetsDir);
-    existingNames = new Set(entries.map((e) => e.name));
-  } catch {
-    existingNames = new Set();
-  }
-
-  let pos = insertPos;
-
-  for (const sourcePath of imagePaths) {
-    const originalName = basename(sourcePath);
-    if (!originalName) continue;
-
-    const finalName = resolveNameConflict(originalName, existingNames);
-    const destPath = assetsDir + "/" + finalName;
-
-    try {
-      await importFile(sourcePath, destPath);
-      existingNames.add(finalName);
-
-      const relativeSrc = "./assets/" + finalName;
-      const alt = finalName.replace(/\.[^.]+$/, "");
-
-      const imageNode = editor.state.schema.nodes.image.create({
-        src: relativeSrc,
-        alt,
-      });
-      pos = insertNodeAtPos(editor, pos, imageNode);
-    } catch (err) {
-      logger.error("[ExternalDrop] Image drop failed:", err);
-    }
-  }
 }
 
 function hitTestRect(el: Element | null, x: number, y: number): boolean {

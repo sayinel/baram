@@ -11,6 +11,9 @@
 // getBoundingClientRect as all-zero, so a jsdom assertion would pass whether or
 // not the layout is fixed. It is pinned by a bound source guard at the bottom
 // of this file plus a manual drop in the running app.
+import { Editor } from "@tiptap/core";
+import Document from "@tiptap/extension-document";
+import Text from "@tiptap/extension-text";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,8 +37,12 @@ vi.mock("../../stores/ui/ui", () => ({
   useUIStore: { getState: () => ({ showToast: showToastMock }) },
 }));
 
+import { createBaramExtensions } from "../../extensions";
+import { Image } from "../../extensions/nodes/image";
+import { Paragraph } from "../../extensions/nodes/paragraph";
+import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
-import { handleFileTreeDrop } from "../use-external-drop";
+import { handleEditorDrop, handleFileTreeDrop } from "../use-external-drop";
 
 const ROOT = "/vault";
 const NOTES = "/vault/notes";
@@ -267,6 +274,114 @@ describe("handleFileTreeDrop — telling the user when it fails", () => {
       "/Users/x/Desktop/ok.md",
       `${NOTES}/ok.md`,
     );
+  });
+});
+
+// §297 OS 드래그로 들어온 파일을 에디터 본문에 삽입하는 경로. `handleEditorDrop`은
+// 모듈-프라이빗이었다가 이 테스트를 위해 export됐다 — 동작 변경은 없다.
+describe("handleEditorDrop — routing image vs video (§297)", () => {
+  const DOC_PATH = "/vault/notes/today.md";
+  const ASSETS_DIR = "/vault/notes/assets";
+
+  function createTestEditor(): Editor {
+    return new Editor({ extensions: createBaramExtensions(), content: "" });
+  }
+
+  beforeEach(() => {
+    importFileMock.mockReset().mockResolvedValue(undefined);
+    listDirMock.mockReset().mockResolvedValue([]);
+    showToastMock.mockReset();
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: DOC_PATH }],
+    } as never);
+  });
+
+  it("imports a dropped video as a video node", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(["/Users/x/Desktop/clip.mp4"], editor, 0);
+
+    expect(importFileMock).toHaveBeenCalledWith(
+      "/Users/x/Desktop/clip.mp4",
+      `${ASSETS_DIR}/clip.mp4`,
+    );
+    expect(editor.state.doc.firstChild?.type.name).toBe("video");
+    expect(editor.state.doc.firstChild?.attrs.src).toBe("assets/clip.mp4");
+    editor.destroy();
+  });
+
+  it("keeps importing a dropped image as an image node", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(["/Users/x/Desktop/photo.png"], editor, 0);
+
+    expect(importFileMock).toHaveBeenCalledWith(
+      "/Users/x/Desktop/photo.png",
+      `${ASSETS_DIR}/photo.png`,
+    );
+    expect(editor.state.doc.firstChild?.type.name).toBe("image");
+    expect(editor.state.doc.firstChild?.attrs.src).toBe("assets/photo.png");
+    editor.destroy();
+  });
+
+  it("routes a mixed drop to the right node type for each file", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(
+      ["/Users/x/Desktop/photo.png", "/Users/x/Desktop/clip.mp4"],
+      editor,
+      0,
+    );
+
+    const types: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "image" || node.type.name === "video") {
+        types.push(node.type.name);
+      }
+    });
+    expect(types).toEqual(["image", "video"]);
+    editor.destroy();
+  });
+
+  it("toasts a video-specific error when the import fails, but stays silent for an image failure (parity with prior image behaviour)", async () => {
+    const editor = createTestEditor();
+
+    importFileMock.mockRejectedValueOnce("disk full");
+    await handleEditorDrop(["/Users/x/Desktop/clip.mp4"], editor, 0);
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(showToastMock.mock.calls[0]?.[1]).toBe("error");
+
+    showToastMock.mockReset();
+    importFileMock.mockRejectedValueOnce("disk full");
+    await handleEditorDrop(["/Users/x/Desktop/photo.png"], editor, 0);
+    expect(showToastMock).not.toHaveBeenCalled();
+
+    editor.destroy();
+  });
+
+  it("does nothing when there is no active document path (video or image)", async () => {
+    useEditorStore.setState({ activeTabId: null, tabs: [] } as never);
+    const editor = createTestEditor();
+
+    await handleEditorDrop(["/Users/x/Desktop/clip.mp4"], editor, 0);
+
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(editor.state.doc.firstChild?.type.name).not.toBe("video");
+    editor.destroy();
+  });
+
+  it("skips a video without throwing when the schema has no video node (e.g. a reduced test schema)", async () => {
+    // Mirrors insertMediaAtPos's own defensive guard in drop-handler.ts.
+    const editor = new Editor({
+      extensions: [Document, Text, Paragraph, Image],
+      content: "",
+    });
+
+    await expect(
+      handleEditorDrop(["/Users/x/Desktop/clip.mp4"], editor, 0),
+    ).resolves.not.toThrow();
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(editor.state.doc.firstChild?.type.name).not.toBe("video");
+
+    editor.destroy();
   });
 });
 
