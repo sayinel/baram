@@ -117,30 +117,51 @@ describe("captureEditorHTML over a real editor — local video node", () => {
   // dropped. The URL line was the thing the user read as "only source code" —
   // it is character-for-character the inside of the markdown's parentheses,
   // printed directly above a caption that says the same thing in words.
-  it("makes the caption the link and drops the redundant URL line, for PDF", async () => {
+  // §301 ruling (round 3): in PDF a local file is UNLINKED. Its href could only
+  // be document-relative, and Chrome resolves that against the temp file
+  // generate_pdf deletes on return — a click that silently does nothing, which
+  // is what the user reported. With a caption present nothing stands in for the
+  // video at all: the figcaption already prints that text.
+  it("leaves a captioned local video as plain caption text in the PDF, with no link at all", async () => {
     const editor = await mountEditor(LOCAL_MD);
     const pdf = await capture(editor, true);
 
     expect(pdf).not.toContain("<video");
     expect(pdf).toContain(
-      '<figcaption class="video-caption"><a class="video-export-link" href="assets/Xenoscube_20260427_Part1.pptx.mp4">Xenoscube Part1</a></figcaption>',
+      '<figcaption class="video-caption">Xenoscube Part1</figcaption>',
     );
-    // The URL must not survive as VISIBLE text anywhere — only as the href.
-    // Without this the assertion above would still pass with the old URL line
-    // sitting above the caption, which is the whole defect.
-    expect(pdf).not.toContain(">assets/Xenoscube_20260427_Part1.pptx.mp4</a>");
+    // No anchor, and no href — a dead link is worse than none.
+    expect(pdf).not.toContain("<a ");
+    expect(pdf).not.toContain("href=");
+    // And the path is not printed alongside the caption it duplicates.
+    expect(pdf).not.toContain("assets/Xenoscube_20260427_Part1.pptx.mp4");
   });
 
-  // The other half of the ruling: with no caption there is nothing else left
-  // to say a video was here, so the URL stays as the visible text.
-  it("keeps the URL as visible text when the node has no caption", async () => {
+  // The other half: with no caption, something has to say a video was here, so
+  // the path is printed — as text, still not as a link.
+  it("prints the path as unlinked text when a local video has no caption", async () => {
     const editor = await mountEditor("![](assets/clip.mp4)");
     const pdf = await capture(editor, true);
 
     expect(pdf).not.toContain("<figcaption");
     expect(pdf).toContain(
-      '<a class="video-export-link" href="assets/clip.mp4">assets/clip.mp4</a>',
+      '<span class="video-export-path">assets/clip.mp4</span>',
     );
+    expect(pdf).not.toContain("<a ");
+  });
+
+  // The boundary the ruling turns on, driven through the real view: a REMOTE
+  // video file keeps its anchor, because an absolute URL resolves anywhere.
+  // Without this, narrowing the plain-text branch to nothing — or widening it
+  // to every video — would both go unnoticed here.
+  it("keeps the anchor for a REMOTE video file in the PDF", async () => {
+    const editor = await mountEditor("![clip](https://example.com/clip.mp4)");
+    const pdf = await capture(editor, true);
+
+    expect(pdf).toContain(
+      '<a class="video-export-link" href="https://example.com/clip.mp4">clip</a>',
+    );
+    expect(pdf).not.toContain("video-export-path");
   });
 });
 
@@ -241,8 +262,13 @@ describe("the exported video link is actually visible", () => {
 
     const dom = document.createElement("div");
     dom.innerHTML = pdf;
+    // One link, not two: the local video is unlinked text in PDF now, so only
+    // the provider embed still carries an anchor.
     const links = [...dom.querySelectorAll("a.video-export-link")];
-    expect(links).toHaveLength(2);
+    expect(links).toHaveLength(1);
+    expect(dom.querySelector(".video-caption")?.textContent).toBe(
+      "Xenoscube Part1",
+    );
     for (const a of links) {
       // Text, or the reader sees nothing at all where a video was.
       expect(a.textContent?.trim()).not.toBe("");
@@ -256,17 +282,30 @@ describe("the exported video link is actually visible", () => {
   // links the first figcaption's text, and every single-video test in this
   // file would still pass, because in a one-video document the first
   // figcaption is the right one.
+  // Two PROVIDER embeds, because only those still produce anchors in PDF — a
+  // local video is unlinked text now, so it cannot carry the second caption
+  // this check needs.
   it("gives each video its OWN caption, not the first one in the document", async () => {
-    const editor = await mountEditor(`${LOCAL_MD}\n\n${EMBED_MD}\n`);
+    const editor = await mountEditor(
+      `${EMBED_MD}\n\n![두 번째](https://youtu.be/dQw4w9WgXcQ)\n`,
+    );
     const pdf = await capture(editor, true);
 
     const dom = document.createElement("div");
     dom.innerHTML = pdf;
     const links = [...dom.querySelectorAll("a.video-export-link")];
-    expect(links.map((a) => a.textContent)).toEqual([
-      "Xenoscube Part1",
-      "한로로 0+0",
-    ]);
+    expect(links.map((a) => a.textContent)).toEqual(["한로로 0+0", "두 번째"]);
+  });
+
+  // §301 round 3: the unlinked stand-in needs the same wrapping as the link (a
+  // long path must not run off the page) and must NOT get link affordance, or
+  // it would look clickable while being deliberately inert.
+  it("wraps the unlinked path stand-in but gives it no link affordance", async () => {
+    const doc = generateStandaloneHTML("", "t");
+    const rule = doc.match(/\.video-export-path \{([^}]*)\}/)?.[1] ?? "";
+    expect(rule).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule).not.toMatch(/color:/);
+    expect(rule).not.toMatch(/text-decoration:/);
   });
 
   it("ships a .video-export-link rule in the exported stylesheet", async () => {

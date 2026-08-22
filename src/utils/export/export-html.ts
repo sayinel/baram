@@ -6,6 +6,7 @@ import katexCSS from "katex/dist/katex.min.css?raw";
 
 import { withVirtualizationSuspended } from "../../extensions/plugins/viewport-virtualize";
 import { activeFileDir } from "../active-file-dir";
+import { isRemoteOrData } from "../media-src";
 import { relativeToRoot } from "../path-utils";
 import {
   buildCodeBlockExport,
@@ -167,8 +168,28 @@ export async function captureEditorHTML(
     // either destination. HTML can actually play it (`controls`); PDF cannot
     // play anything, so §301 calls for a plain link instead — no poster
     // frame pretending playback might happen.
+    //
+    // §301 ruling (round 3): in PDF, a LOCAL file gets plain text rather than
+    // an anchor. Its href can only ever be document-relative, and Chrome
+    // resolves that against the print-time base URL — the temp file
+    // `generate_pdf` writes and then deletes (src-tauri/src/export/mod.rs:116
+    // and :213). So the annotation points into a directory that is gone before
+    // anyone can click it: the link invites a click and silently does nothing,
+    // which is exactly what the user reported. Plain text is honest about what
+    // the reader can actually do. A REMOTE src keeps its anchor — that one is
+    // absolute and demonstrably works (the annotation is emitted; see
+    // test_generate_pdf_emits_link_annotations).
+    //
+    // `isRemoteOrData` is the shared answer to "is this ours to resolve?"
+    // (utils/media-src.ts), reused rather than re-spelled here — a second
+    // predicate for the same question is how the two sides drift apart.
     if (forPdf) {
-      replaceWithExportLink(el, el.getAttribute("src") || "", true);
+      const src = el.getAttribute("src") || "";
+      if (isRemoteOrData(src)) {
+        replaceWithExportLink(el, src, true);
+      } else {
+        replaceWithExportText(el, src);
+      }
     } else {
       el.setAttribute("controls", "");
     }
@@ -370,6 +391,22 @@ export function generateStandaloneHTML(
 </html>`;
 }
 
+/**
+ * This element's own caption, or null.
+ *
+ * ‼️ Scoped through `closest("figure.video-figure")`: a document-wide lookup
+ * would hand every video the FIRST figcaption in the document, and every
+ * single-video test would still pass, because in a one-video document the
+ * first figcaption is the right one.
+ */
+function captionFor(el: Element): Element | null {
+  return (
+    el
+      .closest("figure.video-figure")
+      ?.querySelector("figcaption.video-caption") ?? null
+  );
+}
+
 /** Convert an image URL to a base64 data URI */
 async function imageToDataURI(src: string): Promise<string> {
   try {
@@ -438,11 +475,7 @@ function replaceWithExportLink(
   link.className = "video-export-link";
   link.href = href;
 
-  // Scoped to this element's own figure: two videos in one document must not
-  // borrow each other's captions.
-  const caption = el
-    .closest("figure.video-figure")
-    ?.querySelector("figcaption.video-caption");
+  const caption = captionFor(el);
   const captionText = caption?.textContent ?? "";
 
   // ‼️ An in-progress caption edit keeps its text in an `<input value>`, not in
@@ -460,4 +493,29 @@ function replaceWithExportLink(
 
   link.textContent = href;
   el.replaceWith(link);
+}
+
+/**
+ * Replace a media element with plain, unlinked text — for the PDF case where no
+ * href could resolve (see the call site for why a local file has none).
+ *
+ * When the node HAS a caption, nothing is emitted at all: the `figcaption`
+ * right below already prints that text, and printing it twice is the exact
+ * redundancy the §301 ruling removed. When it has none, the path is emitted, so
+ * a video never vanishes from the page without a trace.
+ *
+ * A `<span>`, not an `<a>`: it must not look clickable, because it is not. It
+ * carries `.video-export-path` purely for the wrapping behaviour a long path
+ * needs (export-html-styles.ts) — no colour and no underline, so it reads as
+ * body text, which is the honest signal.
+ */
+function replaceWithExportText(el: Element, path: string): void {
+  if (captionFor(el)?.textContent?.trim()) {
+    el.remove();
+    return;
+  }
+  const span = document.createElement("span");
+  span.className = "video-export-path";
+  span.textContent = path;
+  el.replaceWith(span);
 }

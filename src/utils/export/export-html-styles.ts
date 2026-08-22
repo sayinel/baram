@@ -335,6 +335,9 @@ video { display: block; width: 100%; border-radius: 6px; }
 .video-figure { display: inline-block; max-width: 100%; }
 .video-caption { font-size: 0.875em; color: #6b7280; margin-top: 0.5em; text-align: center; }
 .video-export-link { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+/* §301: a local video in PDF is unlinked text (no href can resolve there) —
+   same wrapping as the link, deliberately no colour/underline. */
+.video-export-path { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 
 /* Callout */
 .callout { border-left: 3px solid #3b82f6; padding: 0.5em 1em; margin: 0.5em 0; background: #eff6ff; border-radius: 0 6px 6px 0; }
