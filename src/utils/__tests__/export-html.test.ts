@@ -325,10 +325,17 @@ describe("captureEditorHTML — video export playability (§294/§301 I4)", () =
   });
 
   // §294/§301 fix (M2): a PLAYING embed is a `.video-embed-frame` iframe, not
-  // the idle `.video-embed-card` above — before this fix nothing converted
+  // the idle `.video-embed-card` above — before that fix nothing converted
   // it, so it exported as a verbatim, inert `<iframe>` for PDF (exactly the
   // §301 violation I4 set out to close, reached through the other shape).
-  it("leaves a playing embed iframe untouched for HTML export — it's self-contained and plays fine without JS", async () => {
+  //
+  // Export-defect round (user report, 2026-08-22): M2 exempted the frame from
+  // HTML export on the claim that it "plays fine when the exported file is
+  // opened in a browser". The user exported one with the embed playing and got
+  // a black box and the caption. Both shapes now become the same link in both
+  // destinations, so the exported file no longer depends on whether the reader
+  // had clicked play first.
+  it("replaces a playing embed iframe with a link for HTML export too — same shape, same output, whatever the reader clicked", async () => {
     const html = await captureEditorHTML(
       mockEditor(
         domWith(
@@ -336,8 +343,11 @@ describe("captureEditorHTML — video export playability (§294/§301 I4)", () =
         ),
       ),
     );
-    expect(html).toContain("<iframe");
-    expect(html).toContain("youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("youtube-nocookie.com");
+    expect(html).toContain(
+      '<a class="video-export-link" href="https://youtu.be/dQw4w9WgXcQ">https://youtu.be/dQw4w9WgXcQ</a>',
+    );
   });
 
   it("replaces a playing embed iframe with a link to the ORIGINAL src for PDF export", async () => {
@@ -454,6 +464,31 @@ describe("captureEditorHTML — a resized video keeps its width (§294 M12b)", (
     expect(html).toContain("width: 60%");
     expect(html).not.toContain("media-resize-handle");
     expect(html).not.toContain("media-resize-label");
+  });
+
+  // §301 ruling's fallback branch, reached through a shape a real editor can
+  // only be in for the moment a caption is being typed: the figcaption holds
+  // an <input value>, so it has no textContent and must NOT be treated as a
+  // caption. Injected as a fixture because the property is otherwise
+  // unobservable — and it is worth pinning, because using that empty
+  // figcaption would both hide the link (no text) and destroy the caption
+  // text (the input is removed to make room for it).
+  it("falls back to URL text when the only caption is an in-progress edit, and keeps that edit's text", async () => {
+    const dom = document.createElement("div");
+    dom.innerHTML =
+      `<div class="video-node-view">` +
+      `<figure class="video-figure">` +
+      `<video src="https://example.com/clip.mp4"></video>` +
+      `<figcaption class="video-caption">` +
+      `<input class="media-caption-input" value="a clip" />` +
+      `</figcaption>` +
+      `</figure></div>`;
+    const html = await captureEditorHTML(mockEditor(dom), { forPdf: true });
+
+    expect(html).toContain(
+      '<a class="video-export-link" href="https://example.com/clip.mp4">https://example.com/clip.mp4</a>',
+    );
+    expect(html).toContain("<span>a clip</span>");
   });
 
   it("keeps the width for PDF export, where the video becomes a link", async () => {

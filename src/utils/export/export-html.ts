@@ -168,50 +168,40 @@ export async function captureEditorHTML(
     // play anything, so §301 calls for a plain link instead — no poster
     // frame pretending playback might happen.
     if (forPdf) {
-      const href = el.getAttribute("src") || "";
-      const link = document.createElement("a");
-      link.className = "video-export-link";
-      link.href = href;
-      link.textContent = href;
-      el.replaceWith(link);
+      replaceWithExportLink(el, el.getAttribute("src") || "");
     } else {
       el.setAttribute("controls", "");
     }
   }
 
-  // §294 fix (I4): a provider embed's IDLE `.video-embed-card`
-  // ("Click to load from …") has nothing to click and no link anywhere once
-  // React is gone — dead in both HTML and PDF regardless of destination.
-  // Replace it with a link to the ORIGINAL src the document carried
-  // (`data-video-src`, set by video-view.tsx), not the constructed nocookie
-  // iframe URL that only exists to be embedded.
-  for (const el of clone.querySelectorAll(".video-embed-card")) {
-    const href = el.getAttribute("data-video-src") || "";
-    const link = document.createElement("a");
-    link.className = "video-export-link";
-    link.href = href;
-    link.textContent = href;
-    el.replaceWith(link);
-  }
-
-  // §294/§301 fix (M2): a PLAYING embed is a `.video-embed-frame` iframe —
-  // unlike the idle card, that's self-contained and needs no JS, so it's left
-  // untouched for HTML export (it plays fine when the exported file is opened
-  // in a browser). PDF is the exception this fix closes: a headless-Chrome
-  // print can never load a remote iframe any more than it can play a local
-  // `<video>` (same §301 reasoning as above), so it gets the same
-  // `data-video-src`-based link only when `forPdf`. Before this fix, nothing
-  // converted this shape at all — a playing embed exported to PDF as a
-  // verbatim, inert `<iframe>`.
-  if (forPdf) {
-    for (const el of clone.querySelectorAll(".video-embed-frame")) {
-      const href = el.getAttribute("data-video-src") || "";
-      const link = document.createElement("a");
-      link.className = "video-export-link";
-      link.href = href;
-      link.textContent = href;
-      el.replaceWith(link);
-    }
+  // §294 fix (I4) / §301: a provider embed exports as a LINK in BOTH
+  // destinations, whichever of its two live shapes the document happens to be
+  // showing — the idle `.video-embed-card` ("Click to load from …") or the
+  // `.video-embed-frame` iframe that replaces it once the reader clicks play.
+  // The link points at the ORIGINAL src the document carried
+  // (`data-video-src`, set by video-view.tsx on both shapes), not the
+  // constructed nocookie iframe URL that only exists to be embedded.
+  //
+  // ‼️ The frame used to be exempted for HTML export, on the claim that it is
+  // "self-contained and plays fine when the exported file is opened in a
+  // browser". Two things are wrong with that:
+  //   1. It is state-dependent. Whether the reader had clicked play before
+  //      choosing Export decided whether the .html got a player or a link —
+  //      same document, same command, two different files. Nothing about the
+  //      document says which one it should be.
+  //   2. It is false for the destination that matters. An exported .html is
+  //      opened by double-clicking it, so the page origin is `file://`/null;
+  //      a provider's embed player routinely refuses that origin and paints
+  //      its (black) shell instead of the video. And export-html-styles.ts
+  //      carries no `.video-embed-frame` rule — every rule for it in
+  //      styles/editor/video.css is `.tiptap`-scoped and the export wrapper is
+  //      `article.baram-export` — so the surviving iframe rendered at the UA
+  //      default 300x150 rather than 100%-wide 16:9. A dead player at the
+  //      wrong size is worse than the URL it came from.
+  for (const el of clone.querySelectorAll(
+    ".video-embed-card, .video-embed-frame",
+  )) {
+    replaceWithExportLink(el, el.getAttribute("data-video-src") || "");
   }
 
   // ── Shared media chrome (SVG/Mermaid/image): drop hover toolbar +
@@ -394,4 +384,65 @@ async function imageToDataURI(src: string): Promise<string> {
   } catch {
     return src; // fallback to original URL
   }
+}
+
+/**
+ * Replace one media element with the export's link stand-in.
+ *
+ * §301 ruling (export-defect round, 2026-08-22): when the node HAS a caption,
+ * **the caption becomes the link** and no separate URL line is emitted. The
+ * `figcaption` already prints right below, so a URL line above it is pure
+ * redundancy — and that redundancy is exactly what a user read as "the PDF
+ * only shows source code" (the printed path/URL is character-for-character the
+ * inside of the markdown's parentheses). For a local file the URL is a *dead*
+ * link in a PDF besides: the href is document-relative while the print-time
+ * base URL is a temp file that `generate_pdf` deletes on return
+ * (src-tauri/src/export/mod.rs:116 and :213), so it costs a line and returns
+ * nothing. Making that href absolute instead was rejected — it would resolve
+ * on the exporting machine only, and it leaks `/Users/<name>/…` into a
+ * document meant to be shared.
+ *
+ * An UNCAPTIONED node keeps the URL as its visible text: with no caption there
+ * is nothing else left to say a video was ever here.
+ *
+ * ‼️ The tradeoff, recorded so it can be reversed knowingly rather than
+ * rediscovered: on PAPER a hyperlink is invisible, so a printed provider embed
+ * loses its `https://youtu.be/…` entirely under this rule. The alternative was
+ * to keep URL text for provider embeds and caption text for local files; it
+ * was rejected because it leaves the two shapes inconsistent, and a Baram PDF
+ * is read on screen far more often than it is printed. Reverse this if that
+ * ever stops being true.
+ *
+ * One rule for every link this file creates, both destinations. The ruling was
+ * written about PDF, but its reasoning is destination-independent — the
+ * caption prints in the exported .html too — and in HTML the caption-as-link
+ * is strictly better, because there the hyperlink is live.
+ */
+function replaceWithExportLink(el: Element, href: string): void {
+  const link = document.createElement("a");
+  link.className = "video-export-link";
+  link.href = href;
+
+  // Scoped to this element's own figure: two videos in one document must not
+  // borrow each other's captions.
+  const caption = el
+    .closest("figure.video-figure")
+    ?.querySelector("figcaption.video-caption");
+  const captionText = caption?.textContent ?? "";
+
+  // ‼️ An in-progress caption edit keeps its text in an `<input value>`, not in
+  // textContent, so it reads as empty here and falls back to the URL — the
+  // pre-ruling shape. That input is normalized to a plain span further up in
+  // captureEditorHTML, so exporting mid-edit still prints the caption; it just
+  // prints the URL line above it too.
+  if (caption && captionText.trim()) {
+    link.textContent = captionText;
+    caption.textContent = "";
+    caption.appendChild(link);
+    el.remove();
+    return;
+  }
+
+  link.textContent = href;
+  el.replaceWith(link);
 }
