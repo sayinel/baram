@@ -368,6 +368,37 @@ describe("handleEditorDrop — routing image vs video (§297)", () => {
     editor.destroy();
   });
 
+  // §297 fix (R1): before isMediaFilePath, an unrecognized extension fell
+  // through classifyMediaSrc's "image" fallback (correct for markdown
+  // `![](…)`, wrong for "is this a real media file") and was copied into
+  // assets/ as a broken image node. This app has a PDF viewer, so dropping a
+  // PDF is a real user action, not a hypothetical one.
+  it("ignores an unrecognized file extension (e.g. a dropped PDF), same as before the mediaSrc-routing regression", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(["/Users/x/Desktop/report.pdf"], editor, 0);
+
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(editor.state.doc.firstChild?.type.name).not.toBe("image");
+    expect(editor.state.doc.firstChild?.type.name).not.toBe("video");
+    editor.destroy();
+  });
+
+  it("still imports the recognized files in a mixed drop that also includes an unrecognized one", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(
+      ["/Users/x/Desktop/report.pdf", "/Users/x/Desktop/photo.png"],
+      editor,
+      0,
+    );
+
+    expect(importFileMock).toHaveBeenCalledTimes(1);
+    expect(importFileMock).toHaveBeenCalledWith(
+      "/Users/x/Desktop/photo.png",
+      `${ASSETS_DIR}/photo.png`,
+    );
+    editor.destroy();
+  });
+
   it("skips a video without throwing when the schema has no video node (e.g. a reduced test schema)", async () => {
     // Mirrors insertMediaAtPos's own defensive guard in drop-handler.ts.
     const editor = new Editor({

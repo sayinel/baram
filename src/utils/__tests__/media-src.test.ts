@@ -9,6 +9,7 @@ import {
   classifyMediaSrc,
   embedUrlFor,
   isMediaAtom,
+  isMediaFilePath,
   resolveMediaSrc,
 } from "../media-src";
 
@@ -158,5 +159,39 @@ describe("isMediaAtom (§295)", () => {
     expect(isMediaAtom("video")).toBe(true);
     expect(isMediaAtom("wikilink")).toBe(false);
     expect(isMediaAtom("paragraph")).toBe(false);
+  });
+});
+
+// §297 fix (R1): a different question from classifyMediaSrc's — "is this file
+// media at all", not "which node should `![](this)` become". The two must
+// disagree on an unrecognized extension: classifyMediaSrc's "image" fallback
+// is correct for the markdown-fallback contract md-to-pm.ts depends on, and
+// wrong as an "is this a real media file" test — use-external-drop.ts's OS
+// drop filter needed the second answer, not the first.
+describe("isMediaFilePath (§297 R1)", () => {
+  it("accepts recognized image extensions", () => {
+    expect(isMediaFilePath("photo.png")).toBe(true);
+    expect(isMediaFilePath("./a/b/photo.JPG")).toBe(true);
+  });
+
+  it("accepts recognized video extensions", () => {
+    expect(isMediaFilePath("clip.mp4")).toBe(true);
+    expect(isMediaFilePath("clip.MOV")).toBe(true);
+  });
+
+  it("rejects an unrecognized document extension, unlike classifyMediaSrc's fallback", () => {
+    expect(classifyMediaSrc("report.pdf")).toBe("image"); // the fallback this guards against
+    expect(isMediaFilePath("report.pdf")).toBe(false);
+    expect(isMediaFilePath("archive.zip")).toBe(false);
+    expect(isMediaFilePath("notes.docx")).toBe(false);
+  });
+
+  it("rejects .mkv, matching classifyMediaSrc's video-file refusal", () => {
+    expect(isMediaFilePath("clip.mkv")).toBe(false);
+  });
+
+  it("rejects an extensionless or empty path", () => {
+    expect(isMediaFilePath("no-extension")).toBe(false);
+    expect(isMediaFilePath("")).toBe(false);
   });
 });

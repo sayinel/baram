@@ -9,6 +9,8 @@
 // 딸려 들어온다 — 탭 기준 경로 해석이 필요하면 `./active-file-dir`를 쓸 것.
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+import { isImageFile } from "./path-utils";
+
 export type MediaKind = "image" | "video-embed" | "video-file";
 
 /** `![](…)` 형태로 문서에 들어오는 블록 atom 노드 이름 (§295). */
@@ -76,6 +78,23 @@ export function embedUrlFor(src: string): null | string {
 
 export function isMediaAtom(nodeName: string): boolean {
   return MEDIA_ATOM_NAMES.has(nodeName);
+}
+
+/**
+ * §297 fix (R1) 확장자가 이미지·동영상 둘 중 하나로 **인식되는** 경우에만 true.
+ *
+ * `classifyMediaSrc`와는 다른 질문에 답한다: 그쪽은 "`![](anything)`이면 어떤
+ * 노드로 만들까" — 인식 못 하는 확장자도 image로 떨어지는 것이 마크다운 문맥에서는
+ * 옳다(파이프라인 fallback 계약, md-to-pm.ts가 의존한다 — 여기서 바꾸지 않는다).
+ * 이 함수는 "이 파일이 애초에 미디어인가"를 묻는다 — OS 드래그 필터
+ * (use-external-drop.ts)가 원하는 질문. 같은 fallback으로 답하면 `.pdf`/`.zip`을
+ * 드롭했을 때 "image"로 분류돼 assets/에 복사되고 깨진 이미지 노드가 생긴다.
+ *
+ * 두 목록에서 합성한다 — 세 번째 열거를 새로 만들지 않는다: `isImageFile`
+ * (path-utils.ts, 이미지 판정의 유일한 출처)과 이 파일의 비디오 확장자 집합.
+ */
+export function isMediaFilePath(path: string): boolean {
+  return isImageFile(path) || classifyMediaSrc(path) === "video-file";
 }
 
 /** 원격 URL과 data URI는 우리 해석의 대상이 아니다 — 그대로 통과시킨다. */

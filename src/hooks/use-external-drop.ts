@@ -32,7 +32,7 @@ import {
   showDropIndicator,
 } from "../utils/editor/drop-indicator";
 import { logger } from "../utils/logger";
-import { classifyMediaSrc } from "../utils/media-src";
+import { classifyMediaSrc, isMediaFilePath } from "../utils/media-src";
 import { basename, resolveNameConflict } from "../utils/path-utils";
 
 interface UseExternalDropOptions {
@@ -52,11 +52,16 @@ type DropZone = "editor" | "filetree" | null;
  * §297 OS 드래그(Finder 등)로 들어온 파일을 에디터에 삽입한다.
  *
  * 이미지·동영상 모두 여기서 다룬다 — 노드 타입은 `classifyMediaSrc`(§293, 유일한
- * 미디어 분류 열거)로 정한다. 이 함수는 IPC로 실제 파일을 존재하는 경로에서
- * 복사하는 경로라 `isImageFile` 같은 확장자 사전 필터가 없다: video/image가
- * 아닌 다른 확장자는 `classifyMediaSrc`가 기본값인 "image"로 분류해 그대로
- * 진행한다 — `insertMediaAtPos`(drop-handler.ts)의 같은 분류기 기반 라우팅과
- * 동일한 절충이다. 문서 본문에 직접 `![]("아무 확장자")`를 쓸 때도 같은 결과다.
+ * 미디어 분류 열거)로 정한다.
+ *
+ * §297 fix (R1): 이전에는 확장자 사전 필터가 없었다 — video/image가 아닌 다른
+ * 확장자는 `classifyMediaSrc`의 기본값인 "image"로 떨어져 그대로 진행했고,
+ * `.pdf`/`.zip`/`.docx`를 에디터에 드롭하면 assets/에 복사되고 깨진 이미지
+ * 노드가 생겼다(회귀 — 이전에는 조용히 무시됐다). `classifyMediaSrc`의 "image"
+ * fallback은 `![]("아무 확장자")` 같은 마크다운 문맥에서는 옳은 답이라 그 함수
+ * 자체는 바꾸지 않는다 — "이 파일이 미디어인가"라는 다른 질문에는
+ * `isMediaFilePath`(§293, 같은 두 확장자 목록에서 합성)로 답해, 인식 못 하는
+ * 확장자는 예전처럼 무시한다.
  */
 export async function handleEditorDrop(
   paths: string[],
@@ -91,7 +96,7 @@ export async function handleEditorDrop(
 
   for (const sourcePath of paths) {
     const originalName = basename(sourcePath);
-    if (!originalName) continue;
+    if (!originalName || !isMediaFilePath(sourcePath)) continue;
 
     const isVideo = classifyMediaSrc(sourcePath) === "video-file";
     const nodeType = editor.state.schema.nodes[isVideo ? "video" : "image"];
