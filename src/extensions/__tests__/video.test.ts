@@ -96,6 +96,24 @@ describe("video roundtrip (§294)", () => {
     expect(roundtrip(input)).toBe(input);
   });
 
+  // §294 fix round 2 (I5): the ONE success shape that reaches md-to-pm.ts's
+  // block-html branch (~191-200) directly, rather than through
+  // isVideoHtmlPair's open/close-pair reassembly. A self-closing tag alone on
+  // a line satisfies CommonMark's HTML-block type 7 ("a complete tag ...
+  // followed only by whitespace to end of line"), so remark hands md-to-pm a
+  // single block `html` mdast node — unlike `<video ...></video>` on one
+  // line, which does NOT match type 7 (content follows the open tag on the
+  // same line) and falls to inline HTML split into a pair instead. Every
+  // other fixture reaching the block-html branch (above, and the two
+  // multi-line cases below) is a REFUSAL landing on htmlBlock; without this
+  // case, deleting the block-html branch entirely would leave the suite
+  // green while a self-closing `<video .../>` silently degraded to htmlBlock.
+  test("self-closing tag alone on a line takes the block-html path directly", () => {
+    const input = '<video src="clip.mp4" width="60%"/>';
+    expect(firstChildType(input)).toBe("video");
+    expect(roundtrip(input)).toBe('<video src="clip.mp4" width="60%"></video>');
+  });
+
   test("an iframe is NOT parsed as a video node", () => {
     const input = '<iframe src="https://evil.test/x"></iframe>';
     expect(firstChildType(input)).not.toBe("video");
