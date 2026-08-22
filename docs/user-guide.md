@@ -496,10 +496,13 @@ Embed videos with the same syntax as images:
 2. **Direct links** — `![](https://example.com/clip.mp4)`
 3. **YouTube / Vimeo** — `![](https://youtu.be/VIDEO_ID)`
 
-Videos show a poster frame with a play button; nothing is downloaded from YouTube or Vimeo
-until you click play. Local and remote video files can be resized by dragging their edges,
-which is stored as `<video src="…" width="60%"></video>`. Provider embeds are always full
-width at a 16:9 ratio.
+Local and remote video files get native playback controls from the moment they render —
+there is no separate poster frame or play button to click first. Provider embeds instead
+show a card naming the host, and nothing is downloaded from YouTube or Vimeo until you click
+it to load the player. A direct remote video URL doesn't fetch anything from its host either
+until you press play — opening the document alone does not reach out to it. Local and remote
+video files can be resized by dragging their edges, which is stored as
+`<video src="…" width="60%"></video>`. Provider embeds are always full width at a 16:9 ratio.
 
 `.mp4` (H.264) plays on every platform. `.webm`, `.mov`, and `.ogv` depend on the
 platform's media support — if a video cannot play, the editor says so instead of showing a
