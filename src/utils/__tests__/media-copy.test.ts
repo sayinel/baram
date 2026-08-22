@@ -58,12 +58,7 @@ describe("copyBytesToDir (§297 I-3)", () => {
     );
   });
 
-  it("never writes two different payloads to the same path in one loop", async () => {
-    // Reproduces the bug directly: two saves for the same preferred name,
-    // back to back, the way a drop loop fires them (drop-handler.ts's
-    // `for (const file of files)` doesn't await between files). Without
-    // conflict resolution, both would resolve to the same path and the
-    // second write clobbers the first.
+  it("resolves a collision across two SEQUENTIAL calls, which is the contract a caller gets by awaiting each one", async () => {
     listDir.mockResolvedValue([]);
     const first = await copyBytesToDir(
       "/vault/notes/assets",
@@ -82,6 +77,38 @@ describe("copyBytesToDir (§297 I-3)", () => {
     expect(first).not.toBe(second);
     const paths = writeBinaryFile.mock.calls.map((c) => c[0]);
     expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  // §297 fix (I-3 concurrency, final-gate Important #1): the previous version
+  // of this test was named "never writes two different payloads to the same
+  // path in one loop" and claimed in its own comment to reproduce
+  // drop-handler.ts's un-awaited loop — but it actually awaited the first
+  // call to completion before starting the second, which is the sequential
+  // case above, not a loop. This test names and pins the ACTUAL, narrower
+  // contract honestly: copyBytesToDir does NOT protect against two calls
+  // that are genuinely in flight at once — each one reads its own listDir
+  // snapshot independently, so both can resolve to the same name. That is
+  // exactly why the real fix lives one level up, in drop-handler.ts's loops
+  // (now sequential — see drop-handler-concurrency.test.ts for the test that
+  // proves no clobber AT THAT LEVEL, which is where the guarantee actually
+  // needs to hold).
+  it("does NOT protect two genuinely concurrent calls from colliding — serializing them is the caller's job", async () => {
+    listDir.mockResolvedValue([]); // both calls see the same empty snapshot
+    const [first, second] = await Promise.all([
+      copyBytesToDir("/vault/notes/assets", "clip.mp4", new Uint8Array([1])),
+      copyBytesToDir("/vault/notes/assets", "clip.mp4", new Uint8Array([2])),
+    ]);
+
+    expect(first).toBe("clip.mp4");
+    expect(second).toBe("clip.mp4");
+    expect(writeBinaryFile).toHaveBeenCalledWith(
+      "/vault/notes/assets/clip.mp4",
+      [1],
+    );
+    expect(writeBinaryFile).toHaveBeenCalledWith(
+      "/vault/notes/assets/clip.mp4",
+      [2],
+    );
   });
 
   it("still creates the directory (idempotent — createDir succeeds on an existing dir)", async () => {

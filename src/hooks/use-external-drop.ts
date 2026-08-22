@@ -62,6 +62,18 @@ type DropZone = "editor" | "filetree" | null;
  * 자체는 바꾸지 않는다 — "이 파일이 미디어인가"라는 다른 질문에는
  * `isMediaFilePath`(§293, 같은 두 확장자 목록에서 합성)로 답해, 인식 못 하는
  * 확장자는 예전처럼 무시한다.
+ *
+ * ‼️ §297 fix (I-3 final-gate Important #1): 이 함수는 `media-copy.ts`의
+ * `copyBytesToDir`를 쓰지 않는다 — 쓸 수 없다. 여기 들어오는 파일은 이미
+ * 디스크에 있는 실제 경로(`sourcePath`)이고 Rust `import_file`이 경로→경로
+ * 복사를 한다; `copyBytesToDir`는 메모리 바이트(`Uint8Array`)를 받아
+ * `writeBinaryFile`로 쓴다 — IPC 모양 자체가 다르다. 그래서 정책은 여기서
+ * 독립적으로 유지한다: `listDir`을 루프 **밖에서 한 번만** 부르고, 루프
+ * **안에서 각 파일의 `importFile`을 await**한 뒤 `existingNames`에 추가한다
+ * — drop-handler.ts의 두 루프가 파일마다 await 없이 `.then()`을 쏘던 것과
+ * 달리, 이 함수는 처음부터 순차적이었다(그래서 그 동시성 결함이 여기엔
+ * 없었다). 두 진입 표면이 "같은 정책"이라는 말은 API 모양이 같다는 뜻이
+ * 아니라 결과(경합 없는 이름 충돌 해소)가 같다는 뜻이다.
  */
 export async function handleEditorDrop(
   paths: string[],

@@ -20,6 +20,17 @@ import { resolveNameConflict } from "./path-utils";
  *
  * `createDir`은 이미 존재하는 디렉터리에 대해 에러 없이 성공한다
  * (`tokio::fs::create_dir_all`) — 별도 try/catch가 필요 없다.
+ *
+ * ‼️ §297 fix (I-3 concurrency, final-gate Important #1): 이 함수 **자체는**
+ * 동시 호출에 안전하지 않다 — 매 호출이 독립적으로 `listDir`을 읽으므로,
+ * `await` 없이 같은 `dir`에 같은 `preferredName`으로 두 번 부르면 둘 다 같은
+ * 스냅샷을 보고 같은 이름을 고른다. 이 함수는 **한 번의 호출**만 책임진다;
+ * 여러 파일을 다루는 호출부(`drop-handler.ts`의 두 루프)가 파일마다
+ * **순차적으로 await**해서 경합을 없앤다 — OS 드래그 경로
+ * (`use-external-drop.ts`)가 처음부터 그렇게 하고 있었다. 이 함수에 누적
+ * `Set`을 받는 매개변수를 더하지 않은 이유: 호출부를 순차화하는 것으로
+ * 충분하고, 그쪽이 실제로 겪는 유일한 동시 호출 패턴(한 번의 드랍/붙여넣기
+ * 루프)을 정확히 덮는다.
  */
 export async function copyBytesToDir(
   dir: string,

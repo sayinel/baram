@@ -147,34 +147,46 @@ function createDropHandlerPlugin(): Plugin {
 
         const ctx = getJournalContext();
 
-        for (const file of files) {
-          if (ctx.isJournal) {
-            readFileAsBytes(file).then((bytes) =>
-              insertJournalMediaFromBytes(
+        // §297 fix (I-3 concurrency, final-gate Important #1): each file
+        // used to fire its own independent readFileAsBytes(...).then(...)
+        // chain with no await between loop iterations, so N files in one
+        // drop all reached copyBytesToDir's listDir before any of them
+        // reached writeBinaryFile — both saw the directory without the
+        // other's file, both resolved the same unsuffixed name, and the
+        // later write clobbered the earlier one. use-external-drop.ts's
+        // handleEditorDrop never had this bug because its own for loop
+        // awaits importFile before starting the next file. Sequentializing
+        // this loop the same way — one file's full read+save+insert
+        // completes before the next file starts — gives it the same
+        // guarantee without touching copyBytesToDir itself, which stays a
+        // plain single-call function.
+        void (async () => {
+          for (const file of files) {
+            if (ctx.isJournal) {
+              const bytes = await readFileAsBytes(file);
+              await insertJournalMediaFromBytes(
                 view,
                 bytes,
                 file.name,
                 ctx,
                 insertPos,
-              ),
-            );
-          } else if (classifyMediaSrc(file.name) !== "image") {
-            // §297 동영상은 반드시 파일로 — data URL 경로가 존재하지 않는다.
-            readFileAsBytes(file).then((bytes) =>
-              insertVideoFromBytes(
+              );
+            } else if (classifyMediaSrc(file.name) !== "image") {
+              // §297 동영상은 반드시 파일로 — data URL 경로가 존재하지 않는다.
+              const bytes = await readFileAsBytes(file);
+              await insertVideoFromBytes(
                 view,
                 bytes,
                 file.name,
                 ctx.filePath || undefined,
                 insertPos,
-              ),
-            );
-          } else {
-            readFileAsDataURL(file).then((dataUrl) => {
+              );
+            } else {
+              const dataUrl = await readFileAsDataURL(file);
               insertMediaAtPos(view, dataUrl, file.name, insertPos);
-            });
+            }
           }
-        }
+        })();
 
         return true;
       },
@@ -210,26 +222,28 @@ function createDropHandlerPlugin(): Plugin {
 
         const ctx = getJournalContext();
 
-        for (const file of files) {
-          if (ctx.isJournal) {
-            readFileAsBytes(file).then((bytes) =>
-              insertJournalMediaFromBytes(view, bytes, file.name, ctx),
-            );
-          } else if (classifyMediaSrc(file.name) !== "image") {
-            readFileAsBytes(file).then((bytes) =>
-              insertVideoFromBytes(
+        // §297 fix (I-3 concurrency, final-gate Important #1): see the
+        // matching comment in handleDrop above — same fire-and-forget loop,
+        // same fix.
+        void (async () => {
+          for (const file of files) {
+            if (ctx.isJournal) {
+              const bytes = await readFileAsBytes(file);
+              await insertJournalMediaFromBytes(view, bytes, file.name, ctx);
+            } else if (classifyMediaSrc(file.name) !== "image") {
+              const bytes = await readFileAsBytes(file);
+              await insertVideoFromBytes(
                 view,
                 bytes,
                 file.name,
                 ctx.filePath || undefined,
-              ),
-            );
-          } else {
-            readFileAsDataURL(file).then((dataUrl) => {
+              );
+            } else {
+              const dataUrl = await readFileAsDataURL(file);
               insertMediaAtPos(view, dataUrl, file.name);
-            });
+            }
           }
-        }
+        })();
 
         return true;
       },
