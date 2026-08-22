@@ -75,8 +75,18 @@ export const Video = Node.create<VideoOptions>({
         excludeSelectors: [
           ".media-toolbar",
           ".video-caption",
-          ".video-play-button",
           ".video-embed-card",
+          // §296 fix (M3): the error card had no exclusion, so it was the
+          // only one of the four render shapes data-drag-handle covers
+          // (poster/video, playing embed iframe, unplayed embed card, error
+          // card) that the guard's own preventDefault() on mousedown (see
+          // atom-media-click-guard.ts) suppressed drag-initiation for. A
+          // broken embed is exactly the node a user wants to relocate or
+          // delete, so being unable to drag it was worse than the
+          // alternative. Selection still works for it exactly as it already
+          // does for <video>/<iframe> below — via PM's own default mousedown
+          // handling, not this guard's.
+          ".video-error",
         ],
         excludeTagNames: ["INPUT", "VIDEO", "IFRAME"],
       }),

@@ -45,35 +45,40 @@ function renderVideo(attrs: Attrs) {
 }
 
 describe("VideoView (§296)", () => {
-  it("renders a poster video element for a local file, not controls", () => {
+  // §296 UX1: the poster → click-to-reveal-controls two-step is gone — a
+  // local/remote file gets real native controls from the start (Logseq-style),
+  // matching what the user actually asked for and removing a step that read
+  // as a fake button turning into a real one.
+  it("renders a video element with native controls from the start, for a local file", () => {
     const { container } = renderVideo({ src: "assets/clip.mp4" });
     const el = container.querySelector("video");
     expect(el).not.toBeNull();
     expect(el!.getAttribute("preload")).toBe("metadata");
-    expect(el!.hasAttribute("controls")).toBe(false);
+    expect(el!.hasAttribute("controls")).toBe(true);
     expect(el!.getAttribute("src")).toBe(
       "asset://localhost//vault/notes/assets/clip.mp4#t=0.1",
     );
   });
 
-  it("attaches controls after the play button is clicked", () => {
+  it("renders no play button at all — there is nothing left to click before controls appear", () => {
     const { container } = renderVideo({ src: "assets/clip.mp4" });
-    fireEvent.click(container.querySelector(".video-play-button")!);
-    expect(container.querySelector("video")!.hasAttribute("controls")).toBe(
-      true,
-    );
+    expect(container.querySelector(".video-play-button")).toBeNull();
   });
 
-  // §17.2-8 문서를 여는 순간 provider에 요청이 가지 않는다.
+  // §17.2-8 문서를 여는 순간 provider에 요청이 가지 않는다. This is the ONE
+  // media shape that keeps a click-to-load step — a privacy decision
+  // (youtube-nocookie was chosen so opening a document sends nothing to the
+  // provider), not a UI one, so it is deliberately NOT unified with the file
+  // branch above.
   it("does not mount an embed iframe before the user clicks", () => {
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.querySelector(".video-embed-card")).not.toBeNull();
   });
 
-  it("mounts the constructed nocookie iframe on click", () => {
+  it("mounts the constructed nocookie iframe when the embed card is clicked", () => {
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
-    fireEvent.click(container.querySelector(".video-play-button")!);
+    fireEvent.click(container.querySelector(".video-embed-card")!);
     const iframe = container.querySelector("iframe");
     expect(iframe).not.toBeNull();
     expect(iframe!.getAttribute("src")).toBe(
@@ -99,10 +104,9 @@ describe("VideoView (§296)", () => {
 });
 
 // §296 fix (deferred-minor #10): a single data-drag-handle on the figure
-// covers all four render shapes — before this, only the plain <video>
-// element carried it, so an unplayed embed card, a playing embed iframe, and
-// the error card were all completely undraggable (tiptap-core's onDragStart
-// checks event.target.closest("[data-drag-handle]"), which a sibling never
+// covers all four render shapes — video, playing embed iframe, unplayed
+// embed card, and error card (tiptap-core's onDragStart checks
+// event.target.closest("[data-drag-handle]"), which a sibling never
 // satisfies).
 describe("VideoView drag handle covers every render shape (§296 deferred-minor #10)", () => {
   it("puts data-drag-handle on the figure, not (only) the video element", () => {
@@ -114,7 +118,7 @@ describe("VideoView drag handle covers every render shape (§296 deferred-minor 
     ).toBe(true);
   });
 
-  it("covers the poster/video shape (figure ancestor, no separate attr needed on <video>)", () => {
+  it("covers the video shape (figure ancestor, no separate attr needed on <video>)", () => {
     const { container } = renderVideo({ src: "assets/clip.mp4" });
     const video = container.querySelector("video")!;
     expect(video.closest("[data-drag-handle]")).not.toBeNull();
@@ -128,7 +132,7 @@ describe("VideoView drag handle covers every render shape (§296 deferred-minor 
 
   it("covers the playing embed iframe", () => {
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
-    fireEvent.click(container.querySelector(".video-play-button")!);
+    fireEvent.click(container.querySelector(".video-embed-card")!);
     const iframe = container.querySelector("iframe")!;
     expect(iframe.closest("[data-drag-handle]")).not.toBeNull();
   });
@@ -140,14 +144,17 @@ describe("VideoView drag handle covers every render shape (§296 deferred-minor 
     expect(errorCard.closest("[data-drag-handle]")).not.toBeNull();
   });
 
-  it("keeps the play button exempt from starting a native drag (preventDefault added alongside the existing stopPropagation)", () => {
-    const { container } = renderVideo({ src: "assets/clip.mp4" });
-    const button = container.querySelector(".video-play-button")!;
+  // §296 UX1: the old play button carried this same preventDefault trick —
+  // now the embed card is the only remaining click-to-load surface, so it
+  // inherits the exemption.
+  it("keeps the embed card exempt from starting a native drag (preventDefault on mousedown)", () => {
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    const card = container.querySelector(".video-embed-card")!;
     const event = new MouseEvent("mousedown", {
       bubbles: true,
       cancelable: true,
     });
-    button.dispatchEvent(event);
+    card.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
   });
 });
@@ -158,7 +165,7 @@ describe("VideoView drag handle covers every render shape (§296 deferred-minor 
 describe("VideoView embed iframe allows fullscreen (§296 deferred-minor #11)", () => {
   it("includes the fullscreen token in allow, and the legacy allowfullscreen attribute", () => {
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
-    fireEvent.click(container.querySelector(".video-play-button")!);
+    fireEvent.click(container.querySelector(".video-embed-card")!);
     const iframe = container.querySelector("iframe")!;
     expect(iframe.getAttribute("allow")).toContain("fullscreen");
     expect(iframe.hasAttribute("allowfullscreen")).toBe(true);
@@ -192,7 +199,21 @@ describe("VideoView shows the original host, not the constructed one (§296 defe
   });
 });
 
-// §296.1 클릭 가드 회귀 — 재생 버튼과 재생 중 네이티브 컨트롤은 mousedown이
+// §294 fix (M2): a playing embed needs its own data-video-src so export can
+// find the original URL even after the card (which carried it before) is
+// gone from the DOM, replaced by the iframe.
+describe("VideoView embed iframe carries data-video-src for export (§294 M2)", () => {
+  it("puts the original src on the iframe once loaded, not just the card", () => {
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    fireEvent.click(container.querySelector(".video-embed-card")!);
+    const iframe = container.querySelector("iframe")!;
+    expect(iframe.getAttribute("data-video-src")).toBe(
+      "https://youtu.be/abc123",
+    );
+  });
+});
+
+// §296.1 클릭 가드 회귀 — 네이티브 컨트롤(항상 켜짐, §296 UX1)의 mousedown이
 // ProseMirror까지 닿기 전에 삼켜져야 한다.
 //
 // ProseMirror의 모든 클릭/선택 처리는 `mousedown` 리스너 하나에서 시작한다
@@ -200,51 +221,10 @@ describe("VideoView shows the original host, not the constructed one (§296 defe
 // `handleClick` prop 호출까지 다 몬다 — 별도의 "click" 리스너가 없다). 그래서
 // `container`(NodeView를 감싸는, 실제 앱의 view.dom과 같은 자리)에 mousedown
 // 리스너를 달아 두고 그게 불려지지 않는지만 보면 "PM이 이 클릭을 아예 못 봤다"를
-// 정확히 증명한다 — video-play-button의 React onClick은 별개의 이벤트라 이
-// 가드와 무관하게 계속 동작해야 한다(위 "attaches controls" 테스트가 그걸 잡는다).
-//
-// MediaToolbar.tsx(§295)와 같은 메커니즘: React의 `onMouseDown` prop은 React가
-// 루트에서 재구현하는 합성 디스패치라 실제 mousedown이 view.dom을 이미 통과한
-// "뒤"에 실행된다 — 그래서 반드시 ref로 붙인 네이티브 리스너여야 한다.
+// 정확히 증명한다.
 describe("VideoView click-guard regression (§296.1)", () => {
-  it("swallows mousedown on the play button before it reaches an ancestor (PM's view.dom)", () => {
+  it("swallows mousedown on the video's native controls so scrubbing doesn't reach PM", () => {
     const { container } = renderVideo({ src: "assets/clip.mp4" });
-    const ancestorMouseDown = vi.fn();
-    container.addEventListener("mousedown", ancestorMouseDown);
-
-    fireEvent.mouseDown(container.querySelector(".video-play-button")!);
-
-    expect(ancestorMouseDown).not.toHaveBeenCalled();
-  });
-
-  it("still plays on click even though mousedown was swallowed", () => {
-    const { container } = renderVideo({ src: "assets/clip.mp4" });
-    // A real pointer interaction is mousedown → mouseup → click; drive all
-    // three so this fails the same way a removed swallow-ref would in the
-    // browser (a plain fireEvent.click alone doesn't touch mousedown at all).
-    const button = container.querySelector(".video-play-button")!;
-    fireEvent.mouseDown(button);
-    fireEvent.mouseUp(button);
-    fireEvent.click(button);
-
-    expect(container.querySelector("video")!.hasAttribute("controls")).toBe(
-      true,
-    );
-  });
-
-  it("does NOT swallow mousedown on the poster before playing — it must still select the node like an image", () => {
-    const { container } = renderVideo({ src: "assets/clip.mp4" });
-    const ancestorMouseDown = vi.fn();
-    container.addEventListener("mousedown", ancestorMouseDown);
-
-    fireEvent.mouseDown(container.querySelector("video")!);
-
-    expect(ancestorMouseDown).toHaveBeenCalledTimes(1);
-  });
-
-  it("swallows mousedown on the native controls once playing, so scrubbing doesn't reach PM", () => {
-    const { container } = renderVideo({ src: "assets/clip.mp4" });
-    fireEvent.click(container.querySelector(".video-play-button")!);
     expect(container.querySelector("video")!.hasAttribute("controls")).toBe(
       true,
     );

@@ -1,5 +1,6 @@
-/* §296 Video NodeView — 포스터·재생 버튼·임베드 카드·오류 카드.
-   리사이즈 핸들과 툴바는 media-block.css의 공유 크롬을 그대로 쓴다. */
+/* §296 Video NodeView — 파일(네이티브 컨트롤)·임베드 카드·오류 카드.
+   리사이즈 핸들은 media-block.css의 공유 크롬을 그대로 쓴다. 툴바는
+   video만 프레임 밖 위쪽으로 옮긴다 (§296 UX2, 아래). */
 
 .tiptap .video-node-view {
   margin: 1em 0;
@@ -37,6 +38,7 @@
   gap: 0.25em;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
   background-color: var(--color-bg-subtle);
   border-radius: 6px;
 }
@@ -51,23 +53,6 @@
   color: var(--color-text-secondary);
 }
 
-.tiptap .video-play-button {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 3.5em;
-  height: 3.5em;
-  color: var(--color-text-primary);
-  background-color: var(--color-bg-default);
-  border: 1px solid var(--color-border-default);
-  border-radius: 50%;
-  box-shadow: var(--shadow-md);
-  transform: translate(-50%, -50%);
-}
-
 .tiptap .video-error {
   padding: 1em;
   font-size: 0.875em;
@@ -76,6 +61,22 @@
   background-color: var(--color-status-error-bg);
   border: 1px solid var(--color-status-error-border);
   border-radius: 6px;
+}
+
+/* §296 UX2: for video only, move the hover toolbar OUT of the frame, above
+   it. The shared corner-pill position (media-block.css's `.media-toolbar`,
+   top-right) collides VERTICALLY with WebKit's own bottom control bar on a
+   short video — it read as covering the mute control. Moving it sideways
+   would not have helped since the collision isn't horizontal; only leaving
+   the frame does. Higher specificity than the shared rule, so this wins
+   regardless of file order; image/SVG/Mermaid are untouched since they don't
+   match this selector. Reveal (hover/selected → opacity: 1) is still driven
+   entirely by media-block.css's rule — this only repositions. */
+.tiptap .video-figure .media-toolbar {
+  top: auto;
+  right: 8px;
+  bottom: 100%;
+  margin-bottom: 8px;
 }
 
 .tiptap .video-caption {
