@@ -2,12 +2,16 @@
 //
 // ‼️ 핵심 단정은 음성이다: 실패할 때 data URL로도, 조용한 절대경로로도 떨어지지
 // 않고 — 대신 사용자에게 보이는 토스트를 띄우고 아무것도 삽입하지 않는다.
+import type { Locale } from "../../i18n";
 import type { NodeSpec } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { t } from "../../i18n";
+import { useSettingsStore } from "../../stores/settings/store";
 
 const showToast = vi.fn();
 const saveMediaToDocAssets = vi.fn(
@@ -127,7 +131,7 @@ describe("insertVideoFromBytes (§297)", () => {
     saveMediaToDocAssets.mockClear();
   });
 
-  it("toasts and inserts nothing when there is no document path (unsaved doc)", async () => {
+  it("toasts the noDocumentPath message and inserts nothing when there is no document path (unsaved doc)", async () => {
     const view = makeView(["video"]);
 
     await insertVideoFromBytes(
@@ -141,10 +145,18 @@ describe("insertVideoFromBytes (§297)", () => {
     expect(saveMediaToDocAssets).not.toHaveBeenCalled();
     expect(view.dispatch).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledTimes(1);
-    expect(showToast.mock.calls[0][1]).toBe("error");
+    // Pinned against the SAME t(key, locale, params) call the source makes —
+    // this fails if the wrong i18n key is chosen for this branch (e.g. the
+    // two toastVideoError call sites get swapped), but keeps passing if the
+    // copy is ever reworded.
+    const { locale } = useSettingsStore.getState();
+    expect(showToast).toHaveBeenCalledWith(
+      t("video.noDocumentPath", locale as Locale, { name: "clip.mp4" }),
+      "error",
+    );
   });
 
-  it("toasts and inserts nothing when the copy fails", async () => {
+  it("toasts the saveFailed message and inserts nothing when the copy fails", async () => {
     saveMediaToDocAssets.mockRejectedValueOnce(new Error("disk full"));
     const view = makeView(["video"]);
 
@@ -158,7 +170,11 @@ describe("insertVideoFromBytes (§297)", () => {
 
     expect(view.dispatch).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledTimes(1);
-    expect(showToast.mock.calls[0][1]).toBe("error");
+    const { locale } = useSettingsStore.getState();
+    expect(showToast).toHaveBeenCalledWith(
+      t("video.saveFailed", locale as Locale, { name: "clip.mp4" }),
+      "error",
+    );
   });
 
   it("inserts a video node when the copy succeeds, without toasting", async () => {
