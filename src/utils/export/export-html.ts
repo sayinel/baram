@@ -168,7 +168,7 @@ export async function captureEditorHTML(
     // play anything, so §301 calls for a plain link instead — no poster
     // frame pretending playback might happen.
     if (forPdf) {
-      replaceWithExportLink(el, el.getAttribute("src") || "");
+      replaceWithExportLink(el, el.getAttribute("src") || "", true);
     } else {
       el.setAttribute("controls", "");
     }
@@ -201,7 +201,7 @@ export async function captureEditorHTML(
   for (const el of clone.querySelectorAll(
     ".video-embed-card, .video-embed-frame",
   )) {
-    replaceWithExportLink(el, el.getAttribute("data-video-src") || "");
+    replaceWithExportLink(el, el.getAttribute("data-video-src") || "", forPdf);
   }
 
   // ── Shared media chrome (SVG/Mermaid/image): drop hover toolbar +
@@ -413,12 +413,27 @@ async function imageToDataURI(src: string): Promise<string> {
  * is read on screen far more often than it is printed. Reverse this if that
  * ever stops being true.
  *
- * One rule for every link this file creates, both destinations. The ruling was
- * written about PDF, but its reasoning is destination-independent — the
- * caption prints in the exported .html too — and in HTML the caption-as-link
- * is strictly better, because there the hyperlink is live.
+ * ‼️ `useCaption` is **PDF only**, and that scope is load-bearing. An earlier
+ * round applied caption-as-link to HTML export too, reasoning that the ruling
+ * was destination-independent. The user re-exported and read the result as
+ * "the YouTube embed vanished entirely, only the caption is left" — which is
+ * the honest reading: in HTML the caption-link collapses a 16:9 embed to one
+ * line whose text is the caption that was already there, so nothing on the
+ * page says a video was there or where it pointed. Their own prescription
+ * ("just make it a clickable link") describes the pre-extension HTML output
+ * exactly: a visible, clickable `https://youtu.be/…`.
+ *
+ * The asymmetry is deliberate and each half is justified by its destination.
+ * HTML: the URL is live and identifies the target, so show it. PDF: the ruling
+ * judged the URL line redundant against the caption printed right below it,
+ * and it is also the destination where a document-relative href cannot resolve
+ * at all (see the note above), so there is less to lose by hiding it.
  */
-function replaceWithExportLink(el: Element, href: string): void {
+function replaceWithExportLink(
+  el: Element,
+  href: string,
+  useCaption: boolean,
+): void {
   const link = document.createElement("a");
   link.className = "video-export-link";
   link.href = href;
@@ -435,7 +450,7 @@ function replaceWithExportLink(el: Element, href: string): void {
   // pre-ruling shape. That input is normalized to a plain span further up in
   // captureEditorHTML, so exporting mid-edit still prints the caption; it just
   // prints the URL line above it too.
-  if (caption && captionText.trim()) {
+  if (useCaption && caption && captionText.trim()) {
     link.textContent = captionText;
     caption.textContent = "";
     caption.appendChild(link);
