@@ -1,0 +1,127 @@
+/* §296 Video NodeView — 파일(네이티브 컨트롤)·임베드 카드·오류 카드.
+   리사이즈 핸들은 media-block.css의 공유 크롬을 그대로 쓴다. 툴바는
+   video만 프레임 밖 위쪽으로 옮긴다 (§296 UX2, 아래). */
+
+.tiptap .video-node-view {
+  margin: 1em 0;
+}
+
+.tiptap .video-figure {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.tiptap .video-figure video,
+.tiptap .video-embed-frame {
+  display: block;
+  width: 100%;
+  background-color: var(--color-bg-subtle);
+  border-radius: 6px;
+}
+
+/* 임베드는 100% 폭 고정 + 16:9 (§17.2-6) */
+.tiptap .video-embed-frame,
+.tiptap .video-embed-card {
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.tiptap .video-embed-frame {
+  border: none;
+}
+
+.tiptap .video-embed-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background-color: var(--color-bg-subtle);
+  border-radius: 6px;
+}
+
+.tiptap .video-embed-host {
+  font-size: 0.875em;
+  color: var(--color-text-secondary);
+}
+
+.tiptap .video-embed-hint {
+  font-size: 0.75em;
+  color: var(--color-text-secondary);
+}
+
+.tiptap .video-error {
+  padding: 1em;
+  font-size: 0.875em;
+  color: var(--color-status-danger);
+  overflow-wrap: anywhere;
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 6px;
+}
+
+/* §296 UX2: for video only, move the hover toolbar OUT of the frame, above
+   it. The shared corner-pill position (media-block.css's `.media-toolbar`,
+   top-right) collides VERTICALLY with WebKit's own bottom control bar on a
+   short video — it read as covering the mute control. Moving it sideways
+   would not have helped since the collision isn't horizontal; only leaving
+   the frame does. Higher specificity than the shared rule, so this wins
+   regardless of file order; image/SVG/Mermaid are untouched since they don't
+   match this selector. Reveal (hover/selected → opacity: 1) is still driven
+   entirely by media-block.css's rule — this only repositions.
+   §296 fix (the actual '-'/sliced-button report): moving the toolbar to
+   `bottom: 100%` puts it outside `.video-figure`'s own box, which put it at
+   the mercy of `tables.css`'s `.tiptap > * { contain: layout paint }` (every
+   top-level block, §perf-large-file C3.1c) — paint containment clips
+   anything painted outside the containing element's box. The real fix is
+   the exemption at `tables.css`'s `.tiptap > .node-video { contain: layout }`
+   (see that file for the measured clip math); nothing here needed to change
+   for it. Two things WERE wrongly blamed for this along the way and are
+   corrected in the git history: a hover mid-fade theory, and a color-token
+   contrast theory — neither was it. The contrast issue itself was real
+   (media-block.css's `.media-toolbar-btn`) and stays fixed on its own
+   merits; it just wasn't the cause of what was reported here.
+   §296 fix (reachability — separate, independent defect): margin-bottom
+   used to add an 8px gap between the frame's top edge and the toolbar's
+   bottom edge. That gap is neither `.video-figure`'s box nor the toolbar's
+   — moving the pointer from the video up toward the button crosses it, the
+   reveal rule (`.video-node-view:hover .media-toolbar`) stops matching the
+   moment the pointer leaves `.video-figure`'s box, and `pointer-events`
+   snaps to `none` immediately (it does not animate like `opacity` does) —
+   so a pointer that lands back on the toolbar mid-fade finds nothing
+   hoverable there anymore. Zero margin makes the two boxes contiguous, so
+   hit-testing always resolves to one of them (both DOM descendants of
+   `.video-node-view`) — no dead space to cross, and no self-hover rule on
+   the toolbar is needed: it could never fire anyway, since `.media-toolbar`
+   is `pointer-events: none` in its resting state and an element excluded
+   from hit-testing cannot match `:hover` on itself. */
+.tiptap .video-figure .media-toolbar {
+  top: auto;
+  right: 8px;
+  bottom: 100%;
+  margin-bottom: 0;
+}
+
+.tiptap .video-caption {
+  margin-top: 0.5em;
+  font-size: 0.875em;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* §297 fix (M-2, whole-branch review): `.video-figure.video-selected` used
+   to ALSO carry this outline, painting a second, larger ring around the
+   whole figure (video/card/error + caption) concentric with the one below —
+   two rings for one selection. Dropped in favor of outlining just the
+   visible media element, matching image's own convention
+   (`.image-figure.image-selected img`, media.css) rather than the figure
+   that contains it. */
+.tiptap .video-selected video,
+.tiptap .video-selected .video-embed-card,
+.tiptap .video-selected .video-embed-frame,
+.tiptap .video-selected .video-error {
+  outline: 2px solid var(--color-accent-default);
+}

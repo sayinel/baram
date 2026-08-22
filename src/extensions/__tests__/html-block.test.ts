@@ -38,6 +38,9 @@ const schema = new Schema({
         alt: { default: null },
         title: { default: null },
         widthPercent: { default: 100 },
+        // Mirrors the shipped node (image.ts). Without it, create() drops the
+        // attr and the <img> test below cannot observe a pixel width at all.
+        widthPixel: { default: undefined },
       },
     },
     blockquote: { content: "block+", group: "block" },
@@ -126,11 +129,18 @@ describe("HTML Block does not capture special HTML", () => {
     expect(firstChild.type.name).toBe("toggle");
   });
 
+  // §294: the original fixture asserted only the node TYPE, which held even
+  // while the pixel width was being silently dropped on save (the image node
+  // had no widthPixel attr then). It now declares one, so this asserts the
+  // round trip too — the strictly stronger claim, and the one that would have
+  // caught the old loss.
   it("<img> standalone should become image, not htmlBlock", () => {
     const input = '<img src="test.png" width="200" />\n';
     const doc = markdownToProsemirror(input, schema);
     const firstChild = doc.firstChild!;
     expect(firstChild.type.name).toBe("image");
+    expect(firstChild.attrs.widthPixel).toBe(200);
+    expect(roundtrip(input)).toBe(input);
   });
 });
 

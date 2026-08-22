@@ -539,6 +539,14 @@
 
   "viewer.noPlugin": "이 파일 형식을 표시할 뷰어 플러그인이 활성화되어 있지 않습니다. 설정 → 플러그인에서 켤 수 있습니다.",
 
+  "video.loadError": "동영상을 불러올 수 없습니다 — 파일이 없거나 이 플랫폼이 지원하지 않는 형식입니다: {src}",
+  "video.caption": "캡션",
+  "video.fullscreen": "전체 화면",
+  "video.embedHint": "{host}에서 불러오려면 클릭",
+  "video.saveFailed": "동영상 '{name}' 저장에 실패했습니다.",
+  "video.noDocumentPath": "'{name}'을(를) 추가하려면 먼저 문서를 저장하세요.",
+  "journal.mediaSaveFailed": "이 저널 항목에 '{name}'을(를) 저장하지 못했습니다.",
+
   "pdfFind.placeholder": "PDF에서 찾기",
   "pdfFind.matchCase": "대소문자 구분",
   "pdfFind.previous": "이전 일치",

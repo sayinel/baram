@@ -14,12 +14,13 @@ import {
 } from "@tiptap/pm/state";
 import { DecorationSet, type EditorView } from "@tiptap/pm/view";
 
+import { classifyMediaSrc, isMediaAtom } from "../../utils/media-src";
 import { collapseExpanded } from "./syntax-reveal-collapse";
 import { buildExpandedDecorations } from "./syntax-reveal-decorations";
 import {
-  expandImage,
   expandLink,
   expandMark,
+  expandMediaAtom,
   expandWikilink,
 } from "./syntax-reveal-expand";
 import {
@@ -152,7 +153,8 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       }
 
       // Cursor moved outside → build collapse transaction with explicit cursor
-      const { from, to, kind, openCheck, closeCheck, markName } = es.expanded;
+      const { from, to, kind, openCheck, closeCheck, markName, mediaAttrs } =
+        es.expanded;
       const tr = newState.tr;
 
       // Validate open delimiter
@@ -246,12 +248,22 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
 
         const [, alt, src, title2] = imgMatch;
-        const imageNode = newState.schema.nodes.image.create({
+        // §295 src가 노드 타입을 정한다 — 노출된 원문에서 파일명을 고치면
+        // image ↔ video가 따라온다.
+        // §294 fix (C1): mediaAttrs restores width, which `![alt](src)` cannot
+        // carry — see expandMediaAtom.
+        const attrs = {
           src,
           alt: alt || null,
           title: title2 || null,
-        });
-        tr.replaceWith(from - 1, to + 1, imageNode);
+          ...mediaAttrs,
+        };
+        const useVideo =
+          classifyMediaSrc(src) !== "image" && !!newState.schema.nodes.video;
+        const mediaNode = useVideo
+          ? newState.schema.nodes.video.create(attrs)
+          : newState.schema.nodes.image.create(attrs);
+        tr.replaceWith(from - 1, to + 1, mediaNode);
       } else if (kind === "wikilink") {
         const fullText = newState.doc.textBetween(from, to);
         // §87 Regex includes optional alias:: prefix for cross-vault wikilinks
@@ -313,8 +325,8 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const nodeAfter = $pos.nodeAfter;
 
         // Click on image atom → expand to editable markdown
-        if (nodeAfter && nodeAfter.type.name === "image") {
-          expandImage(view, nodeAfter, pos);
+        if (nodeAfter && isMediaAtom(nodeAfter.type.name)) {
+          expandMediaAtom(view, nodeAfter, pos);
           return true;
         }
 
@@ -341,7 +353,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           const { selection } = view.state;
           if (selection instanceof NodeSelection) {
             const nodeName = selection.node.type.name;
-            if (nodeName === "image" || nodeName === "wikilink") {
+            if (isMediaAtom(nodeName) || nodeName === "wikilink") {
               if (event.key === "Backspace" || event.key === "Delete")
                 return false;
 
@@ -359,8 +371,8 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
                   cancelAnimationFrame(pendingRaf);
                   pendingRaf = null;
                 }
-                if (nodeName === "image") {
-                  expandImage(view, selection.node, selection.from);
+                if (isMediaAtom(nodeName)) {
+                  expandMediaAtom(view, selection.node, selection.from);
                 } else {
                   expandWikilink(view, selection.node, selection.from);
                 }
@@ -534,15 +546,15 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const { selection } = view.state;
         if (selection instanceof NodeSelection) {
           const nodeName = selection.node.type.name;
-          if (nodeName === "image" || nodeName === "wikilink") {
+          if (isMediaAtom(nodeName) || nodeName === "wikilink") {
             if (pendingRaf) cancelAnimationFrame(pendingRaf);
 
             pendingRaf = requestAnimationFrame(() => {
               pendingRaf = null;
               const { selection: sel } = view.state;
               if (!(sel instanceof NodeSelection)) return;
-              if (sel.node.type.name === "image") {
-                expandImage(view, sel.node, sel.from);
+              if (isMediaAtom(sel.node.type.name)) {
+                expandMediaAtom(view, sel.node, sel.from);
               } else if (sel.node.type.name === "wikilink") {
                 expandWikilink(view, sel.node, sel.from);
               }

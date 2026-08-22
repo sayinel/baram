@@ -62,6 +62,7 @@ import { TagNode } from "./nodes/tag-node";
 import { TaskItem } from "./nodes/task-item";
 import { TaskList } from "./nodes/task-list";
 import { Toggle } from "./nodes/toggle";
+import { Video } from "./nodes/video";
 import { Wikilink } from "./nodes/wikilink";
 import { AIDiff } from "./plugins/ai-diff";
 import { BlockIdDecoration } from "./plugins/block-id-decoration";
@@ -122,6 +123,7 @@ export function createBaramExtensions(
     TaskItem,
     HorizontalRule,
     Image,
+    Video,
     CodeBlock,
 
     // Nodes — §5.3 Math
@@ -352,5 +354,6 @@ export {
   TaskList,
   Toggle,
   Underline,
+  Video,
   Wikilink,
 };

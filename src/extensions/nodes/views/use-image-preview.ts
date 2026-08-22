@@ -16,15 +16,13 @@
 // 바꾼다. 내보내기(HTML/PDF)도 마크다운에서 다시 렌더하므로 원본을 쓴다.
 import { useEffect, useState } from "react";
 
-import { convertFileSrc } from "@tauri-apps/api/core";
-
-import { useEditorStore } from "../../../stores/editor/editor";
+import { activeFileDir } from "../../../utils/active-file-dir";
 import {
   cachedThumbUrl,
   PREVIEW_MAX_PX,
   resolveThumbUrl,
 } from "../../../utils/journal/photo-thumbnail";
-import { dirname } from "../../../utils/path-utils";
+import { isRemoteOrData, resolveMediaSrc } from "../../../utils/media-src";
 
 /**
  * **원본**의 URL — 프리뷰가 아니다. "원본 보기"(ImageOriginalView)만 쓴다.
@@ -32,11 +30,15 @@ import { dirname } from "../../../utils/path-utils";
  * 이 함수가 따로 있는 이유: 프리뷰로 바꾼 뒤에도 원본에 닿는 길이 하나는 남아 있어야 하고,
  * 그 길이 어디인지가 코드에서 분명해야 한다. 본문 렌더가 이걸 부르면 우리가 없앤 비용이
  * 그대로 돌아온다.
+ *
+ * §297 fix (M-5, whole-branch review): this used to reimplement
+ * `resolveMediaSrc`'s own logic locally (isRemoteOrData check +
+ * absolute-path-or-join + convertFileSrc) — image·video가 상대경로를 같은
+ * 규칙으로 푼다는 §293의 전제를 두 곳에서 지키게 됐던 것. `resolveMediaSrc`를
+ * 직접 호출한다.
  */
 export function originalImageUrl(rawSrc: string): string {
-  if (!rawSrc || isRemoteOrData(rawSrc)) return rawSrc;
-  const absolutePath = absolutePathOf(rawSrc);
-  return absolutePath ? convertFileSrc(absolutePath) : rawSrc;
+  return resolveMediaSrc(rawSrc, activeFileDir());
 }
 
 /**
@@ -74,16 +76,13 @@ export function useImagePreview(rawSrc: string): null | string {
 /**
  * 상대 경로를 현재 파일의 디렉터리에 붙여 절대 경로로 만든다.
  *
- * ‼️ 활성 탭을 기준으로 삼는 것은 원래 구현(resolveImageSrc)이 하던 것과 같다. 유지된
- * 표면(§286)이 여러 개 마운트돼 있으면 숨은 탭의 상대 경로가 활성 탭 기준으로 풀리는
- * 문제가 남아 있지만, 그것은 이 변경이 만든 것이 아니라 그대로 물려받은 것이다.
+ * 활성 탭 기준(§286 관련 함정 포함)은 `active-file-dir.ts`의 `activeFileDir`가 갖는다 —
+ * 이미지와 동영상이 같은 규칙으로 상대경로를 풀도록 (§293) 그쪽으로 통합했다.
  */
 function absolutePathOf(src: string): null | string {
   if (src.startsWith("/")) return src;
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const filePath = tabs.find((t) => t.id === activeTabId)?.filePath;
-  if (!filePath) return null;
-  return `${dirname(filePath)}/${src}`;
+  const dir = activeFileDir();
+  return dir ? `${dir}/${src}` : null;
 }
 
 /** 기다릴 필요가 없는 경우의 URL(원격·데이터 URI, 또는 이미 캐시된 프리뷰). 없으면 null. */
@@ -93,9 +92,4 @@ function initialUrl(rawSrc: string): null | string {
   const absolutePath = absolutePathOf(rawSrc);
   if (!absolutePath) return null;
   return cachedThumbUrl(absolutePath, PREVIEW_MAX_PX)?.url ?? null;
-}
-
-/** 원격 URL과 data URI는 우리 캐시의 대상이 아니다 — 그대로 통과시킨다. */
-function isRemoteOrData(src: string): boolean {
-  return /^https?:\/\/|^data:/i.test(src);
 }

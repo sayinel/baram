@@ -37,6 +37,7 @@ import { tableTransformer } from "./table-transformer";
 import { tagTransformer } from "./tag-transformer";
 import { taskListTransformer } from "./task-list-transformer";
 import { toggleTransformer } from "./toggle-transformer";
+import { videoTransformer } from "./video-transformer";
 
 /** Node transformers — mdast type → transformer */
 export const nodeTransformers: Map<string, NodeTransformerEntry> = new Map();
@@ -85,6 +86,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   htmlBlockTransformer,
   mentionTransformer,
   tagTransformer,
+  videoTransformer,
 ];
 
 for (const entry of nodeEntries) {

@@ -73,22 +73,6 @@
   cursor: pointer;
 }
 
-.tiptap .image-caption-input {
-  width: 100%;
-  padding: 2px 6px;
-  font-size: 0.85em;
-  color: var(--color-text-primary);
-  text-align: center;
-  outline: none;
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border-default);
-  border-radius: 3px;
-}
-
-.tiptap .image-caption-input:focus {
-  border-color: var(--color-accent-default);
-}
-
 /* Inline marks */
 .tiptap strong {
   font-weight: 700;
@@ -149,7 +133,12 @@
 .image-fullscreen-label {
   font-family: var(--font-family-mono);
   font-size: 0.8em;
-  color: var(--color-text-muted);
+
+  /* §297 fix (M-1, whole-branch review): --color-text-muted is not in
+     THEME_COLOR_KEYS/DERIVED_KEYS (src/types/theme.ts), so it freezes at
+     its light/dark-base value under the 6 custom themes — same defect
+     already fixed for .media-toolbar-btn (media-block.css). */
+  color: var(--color-text-secondary);
 }
 
 .image-fullscreen-close {
@@ -157,7 +146,7 @@
   margin-left: auto;
   font-family: var(--font-family-mono);
   font-size: 0.8em;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-subtle);

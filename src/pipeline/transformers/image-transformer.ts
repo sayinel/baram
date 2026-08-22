@@ -1,89 +1,45 @@
 import type { NodeTransformerEntry } from "../types";
+import type { MediaHtmlAttrs, MediaTagSpec } from "./media-html-tag";
 // image-transformer.ts — §5.1 Image mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Html, Image, Node as MdastNode, Paragraph } from "mdast";
 
-/** Parse an <img .../> HTML tag into ProseMirror image attributes.
- *  Returns null if the string is not an img tag. */
-export function parseImgHtml(html: string): null | {
-  alt: null | string;
-  src: string;
-  title: null | string;
-  widthPercent: number;
-  widthPixel?: number;
-} {
-  const match = html.match(/^<img\s+([^>]*?)\s*\/?>$/i);
-  if (!match) return null;
-  const attrStr = match[1];
+import { buildMediaHtmlTag, parseMediaHtmlTag } from "./media-html-tag";
 
-  const getAttr = (name: string): null | string => {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`${escaped}="([^"]*)"`, "i");
-    const m = attrStr.match(re);
-    return m ? unescapeHtmlAttr(m[1]) : null;
-  };
+/**
+ * `<img>` 태그의 문법·정책 (§294 I5).
+ *
+ * ‼️ `allowedAttrs`는 새 정책이다. 예전 `parseImgHtml`은 이름을 검사하지 않아서
+ * `<img src="a.png" loading="lazy">`가 image 노드가 되고 저장할 때 `loading`이
+ * 조용히 사라졌다. 이제 목록 밖 속성이 있으면 태그를 거부하고 htmlBlock으로
+ * 원문 그대로 보존한다 — video 쪽이 이미 쓰던 정책이다.
+ *
+ * `supportsPixelWidth: true` — image 노드는 `widthPixel`을 선언하고
+ * image-view가 그것을 실제로 그린다 (§294 I1 image parity). 잠깐 `false`였던
+ * 적이 있다: 그때는 노드에 담을 자리가 없어서 픽셀 폭을 **거부**해야 값이 안
+ * 사라졌는데, 거부는 곧 `<img src="a.png" width="640">`이 이미지로 안 그려지고
+ * raw HTML 블록으로 떨어진다는 뜻이었다. 이미지는 동영상보다 훨씬 오래되고 훨씬
+ * 많이 쓰인 기능이라 그 회귀가 더 아팠다 — 그려서 살리는 쪽이 아무것도 잃지 않는다.
+ */
+const IMG_TAG: MediaTagSpec = {
+  allowedAttrs: new Set(["alt", "src", "title", "width"]),
+  shape: "void",
+  supportsPixelWidth: true,
+  tagName: "img",
+};
 
-  const src = getAttr("src");
-  if (!src) return null;
-
-  let widthPercent = 100;
-  let widthPixel: number | undefined;
-  const widthVal = getAttr("width");
-  if (widthVal) {
-    if (widthVal.includes("%")) {
-      const pct = parseInt(widthVal.replace("%", ""), 10);
-      if (!isNaN(pct) && pct > 0 && pct <= 100) widthPercent = pct;
-    } else {
-      const px = parseInt(widthVal, 10);
-      if (!isNaN(px) && px > 0) {
-        if (px <= 100) {
-          widthPercent = px;
-        } else {
-          widthPixel = px;
-        }
-      }
-    }
-  }
-
-  return {
-    src,
-    alt: getAttr("alt") || null,
-    title: getAttr("title") || null,
-    widthPercent,
-    widthPixel,
-  };
+/**
+ * Parse an `<img …>` HTML tag into ProseMirror image attributes.
+ * Returns null when the tag cannot be represented losslessly — the caller
+ * (md-to-pm.ts) then keeps the markup verbatim as an `htmlBlock`.
+ */
+export function parseImgHtml(html: string): MediaHtmlAttrs | null {
+  return parseMediaHtmlTag(IMG_TAG, html);
 }
 
-/** Build an HTML <img> tag string from ProseMirror image attributes */
+/** Build an HTML `<img>` tag string from ProseMirror image attributes. */
 function buildImgHtml(attrs: Record<string, unknown>): string {
-  const parts: string[] = [];
-  if (attrs.src) parts.push(`src="${escapeHtmlAttr(String(attrs.src))}"`);
-  if (attrs.alt) parts.push(`alt="${escapeHtmlAttr(String(attrs.alt))}"`);
-  if (attrs.title) parts.push(`title="${escapeHtmlAttr(String(attrs.title))}"`);
-  const px = attrs.widthPixel as number | undefined;
-  if (px) {
-    parts.push(`width="${px}"`);
-  } else {
-    const w = attrs.widthPercent as number;
-    if (w && w !== 100) parts.push(`width="${w}%"`);
-  }
-  return `<img ${parts.join(" ")} />`;
-}
-
-function escapeHtmlAttr(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function unescapeHtmlAttr(s: string): string {
-  return s
-    .replace(/&gt;/g, ">")
-    .replace(/&lt;/g, "<")
-    .replace(/&quot;/g, '"')
-    .replace(/&amp;/g, "&");
+  return buildMediaHtmlTag(IMG_TAG, attrs);
 }
 
 export const imageTransformer: NodeTransformerEntry = {

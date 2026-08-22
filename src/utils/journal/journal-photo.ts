@@ -1,11 +1,7 @@
 // §56d Journal Photo — asset utility functions
 
-import {
-  createDir,
-  listDir,
-  readFile,
-  writeBinaryFile,
-} from "../../ipc/invoke";
+import { listDir, readFile } from "../../ipc/invoke";
+import { copyBytesToDir } from "../media-copy";
 import { basename } from "../path-utils";
 import { JOURNAL_DATE_PARTS_RE } from "./journal";
 
@@ -42,9 +38,18 @@ export function generatePhotoFilename(
   const ss = String(d.getSeconds()).padStart(2, "0");
 
   // Sanitize original name: lowercase, replace spaces with hyphens, remove special chars
-  const ext = originalName.includes(".")
+  //
+  // §297 보안 리뷰 Low: 확장자 추출이 경로 구분자를 모른다. 오늘은 도달 불가능하다
+  // (호출부의 `originalName`은 항상 브라우저 File/DataTransfer의 `file.name`이라
+  // `/`를 담을 수 없고, `classifyMediaSrc`가 그 전에 확장자를 걸러 낸다) — 하지만
+  // 이 함수 자신은 호출부의 문지기에 기대지 말고 독립적으로 안전해야 한다.
+  // 허용목록으로 확장자를 제한해 둔다: `../`가 섞여 들어와도 `rawExt`가
+  // 허용목록을 통과 못 해 `jpg`로 떨어지고, 그 값은 이후 문자열 결합에만 쓰이며
+  // Rust `write_binary_file`의 `check`/`check_vault`가 어차피 다시 검증한다.
+  const rawExt = originalName.includes(".")
     ? originalName.split(".").pop()!.toLowerCase()
     : "jpg";
+  const ext = /^[a-z0-9]{1,10}$/.test(rawExt) ? rawExt : "jpg";
   const base = originalName
     .replace(/\.[^.]+$/, "")
     .toLowerCase()
@@ -125,17 +130,14 @@ export async function savePhotoToAssets(
   const fileDir = activeFilePath.substring(0, activeFilePath.lastIndexOf("/"));
   const absoluteAssetsDir = `${fileDir}/assets`;
 
-  // Ensure directory exists
-  try {
-    await createDir(absoluteAssetsDir);
-  } catch {
-    // Directory may already exist
-  }
-
-  const filename = generatePhotoFilename(originalName);
-  const absolutePath = `${absoluteAssetsDir}/${filename}`;
-
-  await writeBinaryFile(absolutePath, Array.from(fileBytes));
+  // §297 fix (I-3): shares saveMediaToDocAssets's collision policy via
+  // copyBytesToDir — this predates video and had the same flaw (second photo
+  // with the same original name in one second overwrote the first).
+  const filename = await copyBytesToDir(
+    absoluteAssetsDir,
+    generatePhotoFilename(originalName),
+    fileBytes,
+  );
 
   // Return path relative to the md file's directory
   return `assets/${filename}`;
