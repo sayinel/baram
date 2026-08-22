@@ -6,11 +6,15 @@ import type { Locale } from "../../i18n";
 import type { NodeSpec } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { Schema } from "@tiptap/pm/model";
+import { Editor } from "@tiptap/core";
+import { Schema, Slice } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createBaramExtensions } from "..";
 import { t } from "../../i18n";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 
 const showToast = vi.fn();
@@ -286,5 +290,73 @@ describe("insertJournalMediaFromBytes (§297 I6)", () => {
 
     expect(view.dispatch).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledTimes(1);
+  });
+});
+
+// §297 fix (I-2): `getJournalContext()` used to zero `filePath` whenever
+// `journalDirectory` was empty — its default on a fresh install, set only by
+// hand in Settings — so pasting a video into ANY saved document on a default
+// install was refused as "unsaved", even though the document plainly had a
+// path. The tests above never caught this: they call the extracted leaf
+// functions directly with a hand-built `ctx` that already has `filePath`
+// filled in, so `getJournalContext` itself is never exercised. This one goes
+// through the REAL plugin — a full `Editor` with `createBaramExtensions()`
+// (which includes `DropHandler`) and real Zustand store state, invoking the
+// registered `handlePaste` prop the way ProseMirror itself would.
+describe("handlePaste through the real plugin, journalDirectory unset (§297 I-2)", () => {
+  const DOC_PATH = "/vault/notes/today.md";
+
+  function createTestEditor(): Editor {
+    return new Editor({ extensions: createBaramExtensions(), content: "" });
+  }
+
+  function makePasteEvent(file: File): ClipboardEvent {
+    return {
+      clipboardData: {
+        files: [file],
+        getData: () => "",
+      },
+      preventDefault: vi.fn(),
+    } as unknown as ClipboardEvent;
+  }
+
+  beforeEach(() => {
+    showToast.mockClear();
+    saveMediaToDocAssets.mockClear();
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: DOC_PATH }],
+    } as never);
+    useFileStore.setState({ rootPath: "/vault" } as never);
+    // The default a fresh install ships with (src/stores/settings/journal-settings.ts) —
+    // never configured, not "" because the user cleared it.
+    useSettingsStore.setState({ journalDirectory: "" } as never);
+  });
+
+  it("saves the pasted video next to the document instead of refusing it as unsaved", async () => {
+    const editor = createTestEditor();
+    const event = makePasteEvent(
+      new File(["x"], "clip.mp4", { type: "video/mp4" }),
+    );
+
+    const handled = editor.view.someProp("handlePaste", (f) =>
+      f(editor.view, event, Slice.empty),
+    );
+    expect(handled).toBe(true);
+
+    // readFileAsBytes goes through a real jsdom FileReader — poll rather than
+    // a single setTimeout(0), since jsdom's FileReader can take more than one
+    // macrotask to fire onload.
+    await vi.waitFor(() => {
+      expect(saveMediaToDocAssets).toHaveBeenCalled();
+    });
+
+    expect(saveMediaToDocAssets).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      "clip.mp4",
+      DOC_PATH,
+    );
+    expect(showToast).not.toHaveBeenCalled();
+    editor.destroy();
   });
 });

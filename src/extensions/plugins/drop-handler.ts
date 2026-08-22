@@ -269,7 +269,21 @@ function detectTabSeparatedData(text: string): null | string[][] {
   return rows;
 }
 
-/** Check if the active file is inside a journal directory */
+/**
+ * Check if the active file is inside a journal directory.
+ *
+ * §297 fix (I-2): the early return used to zero `filePath` along with
+ * `rootPath`/`journalDir` whenever ANY of the three was missing — but
+ * `journalDirectory` defaults to `""` (only ever set by hand in Settings),
+ * so on a fresh install this fired for every non-journal document. The
+ * non-journal video branch (`ctx.filePath || undefined` in
+ * `handleDrop`/`handlePaste`) then saw an empty path and refused to save
+ * the video at all, blaming "the document isn't saved" when it was. Only
+ * `isJournal` should be forced false here — `filePath` is already known
+ * and correct, and `rootPath`/`journalDir` being empty/missing is exactly
+ * why `isJournal` is false, not a reason to also hide the file path from
+ * callers that don't care about journal status.
+ */
 function getJournalContext(): {
   filePath: string;
   isJournal: boolean;
@@ -284,7 +298,7 @@ function getJournalContext(): {
   const journalDir = useSettingsStore.getState().journalDirectory ?? "";
 
   if (!rootPath || !journalDir || !filePath)
-    return { isJournal: false, rootPath: "", journalDir: "", filePath: "" };
+    return { isJournal: false, rootPath, journalDir, filePath };
 
   // journalDir is always absolute after migration
   const journalAbsPath =
