@@ -107,6 +107,31 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   }
   await Promise.all(imgPromises);
 
+  // ── Videos: asset URL을 상대경로로 되돌린다 ────────────────────────
+  // 50MB를 base64로 인라인하지 않는다 (§294). 내보낸 HTML은 동영상 파일이 함께
+  // 이동해야 재생된다.
+  //
+  // ‼️ convertFileSrc는 플랫폼마다 다른 형태를 낸다: macOS/Linux는
+  // `asset://localhost/…`, Windows는 `http(s)://asset.localhost/…`. 공통
+  // 부분문자열 "asset.localhost/"로는 macOS/Linux 형태를 못 잡는다 — 그
+  // 스킴은 "asset:" + "//" + "localhost/"라 "asset"과 "localhost" 사이에
+  // 점(.)이 없다. 위 이미지 루프처럼 세 접두사를 각각 확인한다.
+  const ASSET_URL_PREFIXES = [
+    "http://asset.localhost/",
+    "https://asset.localhost/",
+    "asset://localhost/",
+  ];
+  for (const el of clone.querySelectorAll("video[src]")) {
+    const src = el.getAttribute("src") || "";
+    const prefix = ASSET_URL_PREFIXES.find((p) => src.startsWith(p));
+    if (prefix) {
+      const abs = decodeURIComponent(src.slice(prefix.length));
+      const relative = abs.split("#")[0];
+      el.setAttribute("src", relative.split("/").pop() || relative);
+    }
+    el.removeAttribute("preload");
+  }
+
   // ── Shared media chrome (SVG/Mermaid/image): drop hover toolbar +
   //    edge-drag resize handles + the drag % readout ─────────────────
   for (const el of clone.querySelectorAll(".media-toolbar")) el.remove();

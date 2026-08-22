@@ -1,0 +1,92 @@
+/* §296 Video NodeView — 포스터·재생 버튼·임베드 카드·오류 카드.
+   리사이즈 핸들과 툴바는 media-block.css의 공유 크롬을 그대로 쓴다. */
+
+.tiptap .video-node-view {
+  margin: 1em 0;
+}
+
+.tiptap .video-figure {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.tiptap .video-figure video,
+.tiptap .video-embed-frame {
+  display: block;
+  width: 100%;
+  background-color: var(--color-bg-subtle);
+  border-radius: 6px;
+}
+
+/* 임베드는 100% 폭 고정 + 16:9 (§17.2-6) */
+.tiptap .video-embed-frame,
+.tiptap .video-embed-card {
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.tiptap .video-embed-frame {
+  border: none;
+}
+
+.tiptap .video-embed-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-bg-subtle);
+  border-radius: 6px;
+}
+
+.tiptap .video-embed-host {
+  font-size: 0.875em;
+  color: var(--color-text-secondary);
+}
+
+.tiptap .video-embed-hint {
+  font-size: 0.75em;
+  color: var(--color-text-secondary);
+}
+
+.tiptap .video-play-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5em;
+  height: 3.5em;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 50%;
+  box-shadow: var(--shadow-md);
+  transform: translate(-50%, -50%);
+}
+
+.tiptap .video-error {
+  padding: 1em;
+  font-size: 0.875em;
+  color: var(--color-status-danger);
+  overflow-wrap: anywhere;
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 6px;
+}
+
+.tiptap .video-caption {
+  margin-top: 0.5em;
+  font-size: 0.875em;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.tiptap .video-selected .video-figure,
+.tiptap .video-selected video,
+.tiptap .video-selected .video-embed-card {
+  outline: 2px solid var(--color-accent-default);
+}

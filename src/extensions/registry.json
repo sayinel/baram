@@ -106,6 +106,18 @@
       "shortcuts": {}
     },
     {
+      "name": "video",
+      "file": "nodes/video.ts",
+      "markdown": "![alt](clip.mp4)",
+      "spec": "§294",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": ["![alt](url)"],
+      "shortcuts": {}
+    },
+    {
       "name": "codeBlock",
       "file": "nodes/code-block.ts",
       "markdown": "```lang",

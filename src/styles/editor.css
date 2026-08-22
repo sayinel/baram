@@ -9,6 +9,7 @@
 @import "./editor/code-blocks.css"; /* §5.4 code block language header + style variants */
 @import "./editor/mermaid.css"; /* §5.5 / §50 mermaid block, enhanced, context menu, fullscreen */
 @import "./editor/media-block.css"; /* shared media-block chrome — resize handles + caption */
+@import "./editor/video.css"; /* §296 video NodeView — poster, play button, embed card, error card */
 @import "./editor/svg-block.css"; /* §5.1 svg block (```svg) + inline SVG in HTML block */
 @import "./editor/html-block.css"; /* §5.1 html block — render + source editor chrome */
 @import "./editor/html-preview.css"; /* §5.1 html file viewer — iframe + toggle */
