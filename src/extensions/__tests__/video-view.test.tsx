@@ -82,9 +82,24 @@ describe("VideoView (§296)", () => {
     );
   });
 
-  it("renders no play button at all — there is nothing left to click before controls appear", () => {
-    const { container } = renderVideo({ src: "assets/clip.mp4" });
-    expect(container.querySelector(".video-play-button")).toBeNull();
+  // Security review Medium: a remote (non-local, non-data) video src used to
+  // get preload="metadata" unconditionally, which fires a network request to
+  // the src's host the moment the block renders — an open-tracking-pixel
+  // vector (§297 §security-review). Local files keep "metadata" so their
+  // duration/poster still populate; only genuinely remote sources are gated,
+  // via isRemoteOrData (the same predicate resolveMediaSrc itself uses) —
+  // NOT a fresh regex against the post-resolution src, which would wrongly
+  // flag a local Windows asset URL (`http://asset.localhost/...`) as remote.
+  it("sets preload=none for a remote https:// video, to avoid beaconing on open", () => {
+    const { container } = renderVideo({
+      src: "https://attacker.example/t.mp4",
+    });
+    const el = container.querySelector("video");
+    expect(el).not.toBeNull();
+    expect(el!.getAttribute("preload")).toBe("none");
+    expect(el!.getAttribute("src")).toBe(
+      "https://attacker.example/t.mp4#t=0.1",
+    );
   });
 
   // §17.2-8 문서를 여는 순간 provider에 요청이 가지 않는다. This is the ONE
@@ -114,6 +129,30 @@ describe("VideoView (§296)", () => {
     fireEvent.error(container.querySelector("video")!);
     expect(screen.getByText(/missing\.mp4/)).toBeInTheDocument();
     expect(container.querySelector(".video-error")).not.toBeNull();
+  });
+
+  // §297 fix (M-10, whole-branch review): `failed` used to stay true forever
+  // once set — an in-app src edit goes through syntax-reveal expand/collapse,
+  // which replaces the whole node (fresh state), but any OTHER re-render with
+  // a changed `src` attr (e.g. an external sync bringing the missing file
+  // into place) left the error card up regardless.
+  it("clears the error card once the src attribute actually changes", () => {
+    const { container, rerender } = renderVideo({ src: "missing.mp4" });
+    fireEvent.error(container.querySelector("video")!);
+    expect(container.querySelector(".video-error")).not.toBeNull();
+
+    const props = {
+      node: { attrs: { widthPercent: 100, src: "assets/clip.mp4" } },
+      updateAttributes: vi.fn(),
+      selected: false,
+      editor: {} as never,
+      getPos: () => 0,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rerender(<VideoView {...(props as any)} />);
+
+    expect(container.querySelector(".video-error")).toBeNull();
+    expect(container.querySelector("video")).not.toBeNull();
   });
 
   it("never resizes an embed (§17.2-6)", () => {
@@ -235,15 +274,6 @@ describe("VideoView embed iframe carries data-video-src for export (§294 M2)", 
   });
 });
 
-// §296.1 클릭 가드 회귀 — 네이티브 컨트롤(항상 켜짐, §296 UX1)의 mousedown이
-// ProseMirror까지 닿기 전에 삼켜져야 한다.
-//
-// ProseMirror의 모든 클릭/선택 처리는 `mousedown` 리스너 하나에서 시작한다
-// (prosemirror-view의 `handlers.mousedown`이 곧 singleClick 판정과
-// `handleClick` prop 호출까지 다 몬다 — 별도의 "click" 리스너가 없다). 그래서
-// `container`(NodeView를 감싸는, 실제 앱의 view.dom과 같은 자리)에 mousedown
-// 리스너를 달아 두고 그게 불려지지 않는지만 보면 "PM이 이 클릭을 아예 못 봤다"를
-// 정확히 증명한다.
 // §296 fullscreen button — jsdom cannot exercise real fullscreen, so this
 // asserts the two things that ARE observable: the button's presence tracks
 // isFullscreenSupported() (not blind assumption), it is file-branch only, and
@@ -285,6 +315,15 @@ describe("VideoView fullscreen button (§296)", () => {
   });
 });
 
+// §296.1 클릭 가드 회귀 — 네이티브 컨트롤(항상 켜짐, §296 UX1)의 mousedown이
+// ProseMirror까지 닿기 전에 삼켜져야 한다.
+//
+// ProseMirror의 모든 클릭/선택 처리는 `mousedown` 리스너 하나에서 시작한다
+// (prosemirror-view의 `handlers.mousedown`이 곧 singleClick 판정과
+// `handleClick` prop 호출까지 다 몬다 — 별도의 "click" 리스너가 없다). 그래서
+// `container`(NodeView를 감싸는, 실제 앱의 view.dom과 같은 자리)에 mousedown
+// 리스너를 달아 두고 그게 불려지지 않는지만 보면 "PM이 이 클릭을 아예 못 봤다"를
+// 정확히 증명한다.
 describe("VideoView click-guard regression (§296.1)", () => {
   it("swallows mousedown on the video's native controls so scrubbing doesn't reach PM", () => {
     const { container } = renderVideo({ src: "assets/clip.mp4" });

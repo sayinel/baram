@@ -13,6 +13,7 @@ import {
 import {
   classifyMediaSrc,
   embedUrlFor,
+  isRemoteOrData,
   resolveMediaSrc,
 } from "../../utils/media-src";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
@@ -38,6 +39,17 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
     () => (isEmbed ? "" : `${resolveMediaSrc(rawSrc, baseDir)}#t=0.1`),
     [isEmbed, rawSrc, baseDir],
   );
+  // 보안 리뷰 Medium 수정: 원격(`https://`)/data URI 동영상은 `preload="metadata"`
+  // 여도 문서를 여는 순간 요청이 나간다 — provider 임베드용으로 만든 클릭-게이트
+  // (§17.2-8)를 이 형제 케이스엔 적용하지 않았던 것이 구멍이었다. `resolveMediaSrc`
+  // 자신이 "그대로 통과시킬 대상"을 판단할 때 쓰는 `isRemoteOrData`를 그대로 재사용한다
+  // — `fileSrc`(변환 후)에 `^https?:\/\//`를 새로 매칭하면 Windows의 로컬 asset URL
+  // (`http://asset.localhost/...`)까지 "원격"으로 오판한다. 로컬 파일은
+  // `preload="metadata"` 그대로 — duration/치수가 그려져야 한다. data URI까지
+  // "none"에 묶는 건 §293이 이미 정한 유일한 분류를 새로 쪼개지 않기 위한 선택이다 —
+  // data URI는 네트워크 비용이 없어 보안 목적은 아니지만, 이 앱의 삽입 경로는
+  // 동영상을 data URL로 절대 만들지 않으므로(§297) 비용도 사실상 0이다.
+  const isRemoteFile = isRemoteOrData(rawSrc);
 
   // §296 UX1: 로컬/원격 파일은 처음부터 네이티브 컨트롤이라 재생 여부를 가릴
   // 상태가 필요 없다 — 이 플래그는 provider 임베드 카드→iframe 전환 하나만
@@ -51,6 +63,16 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
   const captionRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLElement | null>(null);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
+
+  // §297 fix (M-10, whole-branch review): `failed` never reset once true.
+  // An in-app src edit (syntax-reveal expand/collapse) replaces the whole
+  // node, so state starts fresh there — but if the missing file the error
+  // card names simply appears later (moved into place, sync finishes, …)
+  // and something else re-renders this NodeView, the card stayed up until
+  // an unrelated remount cleared it.
+  useEffect(() => {
+    setFailed(false);
+  }, [rawSrc]);
 
   // §296.1 / §296 UX1 fix: native controls are on from the start now (no more
   // poster → click-to-reveal-controls two-step), so this always has to own
@@ -183,7 +205,7 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
             controls
             draggable={false}
             onError={() => setFailed(true)}
-            preload="metadata"
+            preload={isRemoteFile ? "none" : "metadata"}
             ref={videoElRef}
             src={fileSrc}
             title={title || undefined}
