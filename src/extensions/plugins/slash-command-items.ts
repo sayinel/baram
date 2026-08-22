@@ -31,6 +31,7 @@ import {
   generatePhotoFilename,
   getAssetsDir,
 } from "../../utils/journal/journal-photo";
+import { classifyMediaSrc } from "../../utils/media-src";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
@@ -261,11 +262,18 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           ],
         });
         if (!result?.src) return;
+        // §297 fix (I-4): the dialog is titled "Insert Image", but the node
+        // type must be whatever classifyMediaSrc (§293, the one enumeration)
+        // says — every other insertion point in this app (drop, paste, both
+        // input rules, both syntax-reveal collapse sites) already asks it
+        // first. Without this, typing a .mp4 path into the Image dialog
+        // creates an `image` node that classifies as `video` on the next
+        // save/reload, so the live and reloaded documents disagree.
         editor
           .chain()
           .focus()
           .insertContent({
-            type: "image",
+            type: classifyMediaSrc(result.src) === "image" ? "image" : "video",
             attrs: { src: result.src, alt: result.alt || "", title: "" },
           })
           .run();
@@ -290,11 +298,14 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           ],
         });
         if (!result?.src) return;
+        // §297 fix (I-4): mirror of the /image fix above — a src that
+        // classifies as `image` (e.g. a .png typed into this dialog) must
+        // become an `image` node, or it silently flips to one on reload.
         editor
           .chain()
           .focus()
           .insertContent({
-            type: "video",
+            type: classifyMediaSrc(result.src) === "image" ? "image" : "video",
             attrs: { src: result.src, alt: result.alt || "", title: "" },
           })
           .run();

@@ -59,4 +59,59 @@ describe("§297 /video slash command", () => {
       attrs: { src: "clip.mp4", alt: "My caption", title: "" },
     });
   });
+
+  // §297 fix (I-4): the dialog used to insert unconditionally as `video`,
+  // regardless of what the user actually typed. classifyMediaSrc reclassifies
+  // an unrecognized/image src as `image` on the very next save/reload
+  // (md-to-pm.ts asks the same classifier), so the live document and the
+  // reloaded one would silently disagree about this node's type.
+  test("inserts an IMAGE node when the Video dialog's src classifies as an image", async () => {
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({
+      src: "photo.png",
+      alt: "",
+    });
+    const editor = createMockEditor() as unknown as {
+      chain: () => { insertContent: ReturnType<typeof vi.fn> };
+    };
+    const items = buildSlashItems(editor as never);
+    await items.find((i) => i.id === "video")!.action();
+    expect(editor.chain().insertContent).toHaveBeenCalledWith({
+      type: "image",
+      attrs: { src: "photo.png", alt: "", title: "" },
+    });
+  });
+});
+
+describe("§297 /image slash command routes through the classifier too (I-4)", () => {
+  test("inserts a VIDEO node when the Image dialog's src classifies as a video", async () => {
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({
+      src: "clip.mp4",
+      alt: "",
+    });
+    const editor = createMockEditor() as unknown as {
+      chain: () => { insertContent: ReturnType<typeof vi.fn> };
+    };
+    const items = buildSlashItems(editor as never);
+    await items.find((i) => i.id === "image")!.action();
+    expect(editor.chain().insertContent).toHaveBeenCalledWith({
+      type: "video",
+      attrs: { src: "clip.mp4", alt: "", title: "" },
+    });
+  });
+
+  test("keeps inserting an image node for an actual image src", async () => {
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({
+      src: "photo.png",
+      alt: "A photo",
+    });
+    const editor = createMockEditor() as unknown as {
+      chain: () => { insertContent: ReturnType<typeof vi.fn> };
+    };
+    const items = buildSlashItems(editor as never);
+    await items.find((i) => i.id === "image")!.action();
+    expect(editor.chain().insertContent).toHaveBeenCalledWith({
+      type: "image",
+      attrs: { src: "photo.png", alt: "A photo", title: "" },
+    });
+  });
 });
