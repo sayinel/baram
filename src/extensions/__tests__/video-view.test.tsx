@@ -22,10 +22,20 @@ vi.mock("@tiptap/react", () => ({
   NodeViewWrapper: ({
     children,
     className,
+    ref,
   }: {
     children: React.ReactNode;
     className?: string;
-  }) => <div className={className}>{children}</div>,
+    // §294 I1: the ref has to reach a real DOM node. The first version of
+    // this mock dropped it, which made every resize assertion vacuous —
+    // useMediaResize measures containerRef.current and startResize returns
+    // early when it is null, so the drag simply never happened.
+    ref?: React.Ref<HTMLDivElement>;
+  }) => (
+    <div className={className} ref={ref}>
+      {children}
+    </div>
+  ),
 }));
 
 // §296 fullscreen — jsdom has no real Fullscreen API, so the two functions
@@ -44,10 +54,10 @@ import { VideoView } from "../nodes/video-view";
 
 type Attrs = Record<string, unknown>;
 
-function renderVideo(attrs: Attrs) {
+function renderVideo(attrs: Attrs, updateAttributes = vi.fn()) {
   const props = {
     node: { attrs: { widthPercent: 100, ...attrs } },
-    updateAttributes: vi.fn(),
+    updateAttributes,
     selected: false,
     editor: {} as never,
     getPos: () => 0,
@@ -298,5 +308,93 @@ describe("VideoView click-guard regression (§296.1)", () => {
     fireEvent.mouseDown(container.querySelector(".video-figure")!);
 
     expect(ancestorMouseDown).toHaveBeenCalledTimes(2);
+  });
+});
+
+// §294 fix round 3 (I1): widthPixel was WRITE-ONLY. video.ts declared it,
+// parseVideoHtml filled it, buildVideoHtml preferred it over widthPercent and
+// syntax-reveal-image.test.ts pinned it through expand/collapse — but nothing
+// read it for rendering, so `<video src="clip.mp4" width="640"></video>` drew
+// at 100% while its own markdown said 640px, and a resize drag updated
+// widthPercent only: buildVideoHtml still took the widthPixel branch, so the
+// file kept `width="640"` and the user's resize was discarded on save with no
+// error at all.
+describe("VideoView renders and yields the pixel width (§294 I1)", () => {
+  function figureWidth(container: HTMLElement): string {
+    return (container.querySelector(".video-figure") as HTMLElement).style
+      .width;
+  }
+
+  /**
+   * useMediaResize measures the wrapper, and jsdom reports an all-zero rect
+   * for everything — a zero width makes startResize bail before any drag
+   * state exists. Injecting a rect is what makes the drag observable at all.
+   */
+  function stubWrapperRect(container: HTMLElement): void {
+    const wrapper = container.querySelector(".video-node-view") as HTMLElement;
+    wrapper.getBoundingClientRect = () =>
+      ({ left: 0, right: 1000, width: 1000 }) as DOMRect;
+  }
+
+  it("draws a pixel width in px, not at 100%", () => {
+    const { container } = renderVideo({
+      src: "assets/clip.mp4",
+      widthPixel: 640,
+    });
+    expect(figureWidth(container)).toBe("640px");
+  });
+
+  it("draws a percentage when there is no pixel width", () => {
+    const { container } = renderVideo({
+      src: "assets/clip.mp4",
+      widthPercent: 60,
+    });
+    expect(figureWidth(container)).toBe("60%");
+  });
+
+  it("ignores a pixel width on an embed, which is always full width (§17.2-6)", () => {
+    const { container } = renderVideo({
+      src: "https://youtu.be/abc123",
+      widthPixel: 640,
+    });
+    expect(figureWidth(container)).toBe("100%");
+  });
+
+  // ‼️ THE test this fix needed: a resize must WIN over a pre-existing pixel
+  // width. Without the widthPixel: undefined in the commit, buildVideoHtml
+  // keeps writing width="640" and the drag is silently thrown away on save.
+  it("a drag beats a pre-existing pixel width, live and on commit", () => {
+    const updateAttributes = vi.fn();
+    const { container } = renderVideo(
+      { src: "assets/clip.mp4", widthPixel: 640 },
+      updateAttributes,
+    );
+    stubWrapperRect(container);
+
+    fireEvent.mouseDown(
+      container.querySelector(".media-resize-handle-right")!,
+      { clientX: 500 },
+    );
+    fireEvent.mouseMove(document, { clientX: 400 });
+
+    // Live preview: the drag % is what is drawn, not the 640px still on the node.
+    expect(figureWidth(container)).toBe("20%");
+
+    fireEvent.mouseUp(document);
+
+    expect(updateAttributes).toHaveBeenCalledTimes(1);
+    // ‼️ toStrictEqual, not toHaveBeenCalledWith. Mutation testing caught the
+    // first version of this line: `toHaveBeenCalledWith`/`toEqual` IGNORE a
+    // key whose value is undefined, so they cannot tell `{widthPercent: 20}`
+    // from `{widthPercent: 20, widthPixel: undefined}` — which is the entire
+    // difference this test exists to observe. Deleting the widthPixel from the
+    // commit left the assertion green. The key has to be PRESENT: Tiptap's
+    // updateAttributes spreads the object over node.attrs, so a missing key
+    // leaves the stale 640 in place while an explicit undefined resets it to
+    // the schema default.
+    expect(updateAttributes.mock.calls[0][0]).toStrictEqual({
+      widthPercent: 20,
+      widthPixel: undefined,
+    });
   });
 });

@@ -38,6 +38,7 @@ import {
 } from "./transformers/image-transformer";
 import { isDetailsOpening } from "./transformers/toggle-transformer";
 import {
+  inlineVideoParagraphSource,
   isVideoHtmlPair,
   joinVideoHtmlPair,
   parseVideoHtml,
@@ -306,17 +307,32 @@ function convertBlockNode(
   // §294: 한 줄 `<video …></video>`는 CommonMark HTML-block 태그 목록에 video가
   // 없어서(iframe과 다르게) block html이 아니라 paragraph 안 인라인 html 조각
   // 두 개(여는/닫는 태그)로 쪼개진다. 다시 합쳐 parseVideoHtml에 넘긴다.
-  if (schema.nodes.video && isVideoHtmlPair(node)) {
+  if (isVideoHtmlPair(node)) {
     const joined = joinVideoHtmlPair(node);
-    const videoAttrs = parseVideoHtml(joined);
-    if (videoAttrs) {
-      return schema.nodes.video.create(videoAttrs);
+    if (schema.nodes.video) {
+      const videoAttrs = parseVideoHtml(joined);
+      if (videoAttrs) {
+        return schema.nodes.video.create(videoAttrs);
+      }
     }
     // ‼️ 거부됐다고 그냥 지나치면 두 인라인 html 조각이 아래 일반 paragraph
     // 처리에서 조용히 사라진다(§294 I3) — 화이트리스트 밖으로 판정된 태그도
     // 사용자의 원문이다. htmlBlock으로 원문 그대로 보존한다.
     if (schema.nodes.htmlBlock) {
       return schema.nodes.htmlBlock.create({ content: joined });
+    }
+  }
+
+  // §294 I6: `<video …></video>` 쌍이 **다른 인라인 내용과 함께** 한 paragraph에
+  // 들어 있는 경우. 위 분기는 쌍만 있는 paragraph를 video 노드로 바꾸고, 여기서는
+  // 원문을 되돌려 쓸 수 있을 때 paragraph 전체를 htmlBlock으로 보존한다. 앱이
+  // 리사이즈할 때마다 쓰는 `<video …></video>` 줄에 사용자가 글자 하나를
+  // 타이핑하면 다음 저장에서 동영상이 사라지던 경로다 — 자세한 이유는
+  // inlineVideoParagraphSource의 주석.
+  if (schema.nodes.htmlBlock) {
+    const inlineVideoSource = inlineVideoParagraphSource(node);
+    if (inlineVideoSource !== null) {
+      return schema.nodes.htmlBlock.create({ content: inlineVideoSource });
     }
   }
 

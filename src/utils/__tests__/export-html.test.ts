@@ -408,3 +408,60 @@ describe("captureEditorHTML — in-progress caption edit is never exported as a 
     expect(html).toContain("<span>a diagram</span>");
   });
 });
+
+// §294 fix round 3 (M12b): every video fixture in this file was a synthetic
+// bare `<video src>`, so nothing covered the shape the app actually produces
+// for a RESIZED video — video-view.tsx wraps it in
+// `<figure class="video-figure" style="width: 60%">`. The export path rewrites
+// the `<video>` element itself (src, preload, controls / PDF link) and strips
+// the hover chrome around it, all of which reach INTO the figure; a stray
+// `figure` selector or a replaceWith on the wrong node would silently drop the
+// user's size from the exported document with the suite still green.
+describe("captureEditorHTML — a resized video keeps its width (§294 M12b)", () => {
+  function resizedVideoDom(width: string, extras = ""): HTMLElement {
+    const dom = document.createElement("div");
+    dom.innerHTML =
+      `<div class="video-node-view">` +
+      `<figure class="video-figure" style="width: ${width}">` +
+      `<video src="https://example.com/clip.mp4" preload="metadata"></video>` +
+      extras +
+      `</figure></div>`;
+    return dom;
+  }
+
+  it("keeps a percentage width on the figure for HTML export", async () => {
+    const html = await captureEditorHTML(mockEditor(resizedVideoDom("60%")));
+    expect(html).toContain("video-figure");
+    expect(html).toContain("width: 60%");
+    expect(html).toContain("controls");
+  });
+
+  it("keeps a pixel width on the figure (§294 I1's render branch)", async () => {
+    const html = await captureEditorHTML(mockEditor(resizedVideoDom("640px")));
+    expect(html).toContain("width: 640px");
+  });
+
+  it("keeps the width while dropping the resize chrome inside the figure", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(
+        resizedVideoDom(
+          "60%",
+          `<div class="media-resize-handle media-resize-handle-left"></div>` +
+            `<div class="media-resize-label">60%</div>`,
+        ),
+      ),
+    );
+    expect(html).toContain("width: 60%");
+    expect(html).not.toContain("media-resize-handle");
+    expect(html).not.toContain("media-resize-label");
+  });
+
+  it("keeps the width for PDF export, where the video becomes a link", async () => {
+    const html = await captureEditorHTML(mockEditor(resizedVideoDom("60%")), {
+      forPdf: true,
+    });
+    expect(html).toContain("width: 60%");
+    expect(html).not.toContain("<video");
+    expect(html).toContain('class="video-export-link"');
+  });
+});

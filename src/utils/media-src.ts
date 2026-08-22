@@ -114,9 +114,16 @@ export function resolveMediaSrc(src: string, baseDir: null | string): string {
   return convertFileSrc(absolutePath);
 }
 
-/** 확장자만 뽑는다. 쿼리와 프래그먼트는 버린다(`a.mp4?token=1`, `clip.mp4#t=0.1`). */
+/**
+ * 확장자만 뽑는다. 쿼리와 프래그먼트는 버린다(`a.mp4?token=1`, `clip.mp4#t=0.1`).
+ *
+ * ‼️ `.trim()`이 없으면 `clip.mp4 `(뒤 공백)의 확장자가 `"mp4 "`가 되어 동영상이
+ * image로 분류된다 (§294 M6). `![](<clip.mp4 >)`로, 그리고 공백으로 끝나는 macOS
+ * 파일명으로 실제로 들어온다. 자르는 건 **분류**에서만이다 — `resolveMediaSrc`는
+ * 원문 경로를 그대로 넘겨야 그 파일을 실제로 찾는다.
+ */
 function extensionOf(src: string): null | string {
-  const path = src.split("#")[0].split("?")[0];
+  const path = src.trim().split("#")[0].split("?")[0];
   const base = path.split("/").pop() ?? "";
   const dot = base.lastIndexOf(".");
   return dot > 0 ? base.slice(dot + 1).toLowerCase() : null;

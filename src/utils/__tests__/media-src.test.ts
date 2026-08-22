@@ -10,6 +10,7 @@ import {
   embedUrlFor,
   isMediaAtom,
   isMediaFilePath,
+  isRemoteOrData,
   resolveMediaSrc,
 } from "../media-src";
 
@@ -193,5 +194,74 @@ describe("isMediaFilePath (§297 R1)", () => {
   it("rejects an extensionless or empty path", () => {
     expect(isMediaFilePath("no-extension")).toBe(false);
     expect(isMediaFilePath("")).toBe(false);
+  });
+});
+
+// §294 fix round 3 (M6): extensionOf did not trim, so `clip.mp4 ` yielded the
+// extension `"mp4 "` and the file classified as an IMAGE — a video rendered
+// as a broken image node. Both spellings below are reachable: markdown's
+// angle-bracket destination `![](<clip.mp4 >)` keeps the trailing space, and
+// macOS allows a filename that ends in one.
+describe("classifyMediaSrc ignores surrounding whitespace (§294 M6)", () => {
+  it("classifies a trailing-space video path as a video file", () => {
+    expect(classifyMediaSrc("clip.mp4 ")).toBe("video-file");
+  });
+
+  it("classifies a leading-space video path as a video file", () => {
+    expect(classifyMediaSrc(" clip.mp4")).toBe("video-file");
+  });
+
+  it("still classifies a trailing-space image path as an image", () => {
+    expect(classifyMediaSrc("photo.png ")).toBe("image");
+  });
+
+  // ‼️ The trim belongs to CLASSIFICATION only. resolveMediaSrc must keep the
+  // raw path — a file really named "clip.mp4 " is only found with its space.
+  it("does not let the trim reach the resolved asset URL", () => {
+    expect(resolveMediaSrc("clip.mp4 ", "/vault")).toBe(
+      "asset://localhost//vault/clip.mp4 ",
+    );
+  });
+});
+
+// §294 fix round 3 (M12c): isRemoteOrData had no direct test — it was only
+// exercised transitively through resolveMediaSrc, so its own boundaries
+// (scheme-anchored, case-insensitive, protocol-relative NOT remote) were
+// unpinned.
+describe("isRemoteOrData (§296)", () => {
+  it("accepts http and https", () => {
+    expect(isRemoteOrData("http://x.test/a.mp4")).toBe(true);
+    expect(isRemoteOrData("https://x.test/a.mp4")).toBe(true);
+  });
+
+  it("accepts a data URI", () => {
+    expect(isRemoteOrData("data:video/mp4;base64,AAA")).toBe(true);
+  });
+
+  it("is case-insensitive on the scheme", () => {
+    expect(isRemoteOrData("HTTPS://x.test/a.mp4")).toBe(true);
+    expect(isRemoteOrData("Data:video/mp4;base64,AAA")).toBe(true);
+  });
+
+  it("rejects local paths, absolute and relative", () => {
+    expect(isRemoteOrData("/vault/clip.mp4")).toBe(false);
+    expect(isRemoteOrData("assets/clip.mp4")).toBe(false);
+    expect(isRemoteOrData("./clip.mp4")).toBe(false);
+    expect(isRemoteOrData("")).toBe(false);
+  });
+
+  it("is anchored at the start — a scheme in mid-string is not remote", () => {
+    expect(isRemoteOrData("assets/https://not-a-url.mp4")).toBe(false);
+    expect(isRemoteOrData("a data:thing.mp4")).toBe(false);
+  });
+
+  // Known, deliberately unfixed (§294 M6, second half): a protocol-relative
+  // URL is not remote by this test, so resolveMediaSrc treats `//host/x.mp4`
+  // as an absolute LOCAL path. Pinned as the current answer rather than left
+  // undefined — there is no page origin in a Tauri webview to resolve it
+  // against, so both readings fail, and preserving the current one keeps the
+  // decision in one place if a future fix wants it.
+  it("does not treat a protocol-relative URL as remote (documented gap)", () => {
+    expect(isRemoteOrData("//host/clip.mp4")).toBe(false);
   });
 });

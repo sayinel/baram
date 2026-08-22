@@ -24,6 +24,7 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
   const alt = (node.attrs.alt as string) || "";
   const title = (node.attrs.title as string) || "";
   const widthPercent = (node.attrs.widthPercent as number) || 100;
+  const widthPixel = node.attrs.widthPixel as number | undefined;
 
   const baseDir = activeFileDir();
   const kind = useMemo(() => classifyMediaSrc(rawSrc), [rawSrc]);
@@ -66,9 +67,21 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
 
   // 임베드는 리사이즈하지 않는다 (§17.2-6) — 폭을 마크다운에 저장할 안전한 길이 없다.
   const { dragPct, startResize } = useMediaResize(containerRef, (pct) => {
-    updateAttributes({ widthPercent: pct });
+    // ‼️ widthPixel을 반드시 함께 지운다 (§294 I1). buildVideoHtml은 픽셀 폭이
+    // 있으면 그쪽을 먼저 쓰므로, 남겨 두면 방금 끝낸 드래그가 저장 시점에 조용히
+    // 버려진다 — 파일은 `width="640"`을 그대로 들고 있고, 다시 열면 원래 크기다.
+    updateAttributes({ widthPercent: pct, widthPixel: undefined });
   });
   const effectiveWidth = isEmbed ? 100 : (dragPct ?? widthPercent);
+
+  // §294 I1: 맨숫자 `width`는 **픽셀**이다(HTML `<video width>`의 의미). 파싱해서
+  // 저장까지 하면서 그리지 않으면 `<video src="clip.mp4" width="640"></video>`가
+  // 자기 마크다운과 어긋나게 100%로 렌더된다. 드래그 중에는 % 미리보기가 이긴다 —
+  // 드래그가 끝나면 위 onCommit이 픽셀 폭을 지우므로 그 % 가 그대로 남는다.
+  const figureWidth =
+    !isEmbed && dragPct == null && widthPixel
+      ? `${widthPixel}px`
+      : `${effectiveWidth}%`;
 
   // §296 fullscreen button — computed once (not per-render): whether calling
   // requestFullscreen would do anything at all is a document-level fact, not
@@ -112,7 +125,7 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
         // card's own mousedown handler below adds preventDefault to stay
         // exempt from becoming a drag surface as a side effect of this.
         data-drag-handle=""
-        style={{ width: `${effectiveWidth}%` }}
+        style={{ width: figureWidth }}
       >
         {failed ? (
           <div className="video-error" role="alert">

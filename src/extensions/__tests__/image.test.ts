@@ -17,12 +17,25 @@ const schema = new Schema({
     image: {
       group: "block",
       atom: true,
+      // ‼️ No widthPixel here, matching the shipped node (image.ts). That
+      // absence is what makes `<img width="640">` unrepresentable, and why the
+      // shared parser refuses it instead of dropping it — see the
+      // refuse-and-preserve block at the bottom of this file.
       attrs: {
         src: { default: null },
         alt: { default: null },
         title: { default: null },
         widthPercent: { default: 100 },
       },
+    },
+    // §294 fix round 3 (I5): needed by the refusal cases below — a refused
+    // `<img>` tag has to land somewhere verbatim, and htmlBlock is where.
+    // Without this node in the fixture a refusal would look like deletion,
+    // which is the opposite of what the policy does in the real schema.
+    htmlBlock: {
+      group: "block",
+      atom: true,
+      attrs: { content: { default: "" } },
     },
     text: { group: "inline" },
   },
@@ -121,5 +134,66 @@ describe("Image Extension", () => {
     expect(imgNode.attrs.alt).toBe("a & b");
     expect(imgNode.attrs.widthPercent).toBe(75);
     expect(prosemirrorToMarkdown(doc2).trimEnd()).toBe(md);
+  });
+});
+
+// §294 fix round 3 (I5/C1): `<img>` and `<video>` now share one parser
+// (pipeline/transformers/media-html-tag.ts), and unifying them CHANGED IMAGE
+// BEHAVIOR in two ways — both from "silently lose the attribute" to
+// "refuse and keep the markup verbatim", which is the policy the rest of the
+// pipeline already used:
+//
+//  1. An attribute name outside {alt, src, title, width} used to be ignored,
+//     so `<img src="a.png" loading="lazy">` became an image node and saved
+//     back as `![](a.png)` — `loading` gone from the user's file.
+//  2. A pixel width used to be parsed into a `widthPixel` the image node does
+//     not declare, so ProseMirror dropped the key in `create()` and the tag
+//     saved back as `![](a.png)` — `width="640"` gone. And a bare number
+//     <= 100 was reinterpreted as a PERCENTAGE, rewriting the user's
+//     `width="80"` as `width="80%"`.
+//
+// Both now land on htmlBlock, byte-exact. The fix for (2) is a refusal rather
+// than a render because image.ts has no widthPixel attr — see IMG_TAG's
+// supportsPixelWidth comment in image-transformer.ts for the flip condition.
+describe("unrepresentable <img> markup is preserved, not silently stripped", () => {
+  function firstChildType(md: string): string {
+    return markdownToProsemirror(md, schema).firstChild!.type.name;
+  }
+
+  test("an unrecognized attribute name keeps the whole tag verbatim", () => {
+    const input = '<img src="a.png" loading="lazy" />';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("a pixel width keeps the whole tag verbatim", () => {
+    const input = '<img src="a.png" width="640" />';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("a bare number <= 100 is NOT reinterpreted as a percentage", () => {
+    const input = '<img src="a.png" width="80" />';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("a percentage above 100 is preserved verbatim, not clamped", () => {
+    const input = '<img src="a.png" width="150%" />';
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("a single-quoted attribute is preserved verbatim", () => {
+    const input = "<img src='a.png' />";
+    expect(firstChildType(input)).toBe("htmlBlock");
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  test("control: a percentage width still becomes an image node", () => {
+    // The refusals above must not have swallowed the supported shape.
+    const input = '<img src="a.png" width="60%" />';
+    expect(firstChildType(input)).toBe("image");
+    expect(roundtrip(input)).toBe(input);
   });
 });
