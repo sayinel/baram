@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const createDirMock = vi.hoisted(() => vi.fn());
 const importDirMock = vi.hoisted(() => vi.fn());
 const importFileMock = vi.hoisted(() => vi.fn());
 const listDirMock = vi.hoisted(() => vi.fn());
@@ -27,7 +28,7 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../ipc/invoke")>();
   return {
     ...actual,
-    createDir: vi.fn(async () => undefined),
+    createDir: createDirMock,
     importDir: importDirMock,
     importFile: importFileMock,
     listDir: listDirMock,
@@ -288,6 +289,7 @@ describe("handleEditorDrop — routing image vs video (§297)", () => {
   }
 
   beforeEach(() => {
+    createDirMock.mockReset().mockResolvedValue(undefined);
     importFileMock.mockReset().mockResolvedValue(undefined);
     listDirMock.mockReset().mockResolvedValue([]);
     showToastMock.mockReset();
@@ -380,6 +382,11 @@ describe("handleEditorDrop — routing image vs video (§297)", () => {
     expect(importFileMock).not.toHaveBeenCalled();
     expect(editor.state.doc.firstChild?.type.name).not.toBe("image");
     expect(editor.state.doc.firstChild?.type.name).not.toBe("video");
+    // §297 fix (M1): the filter used to live inside the loop below, so even a
+    // fully-unrecognized drop still ran createDir(assets/) — leaving a stray
+    // empty folder next to the document where before this regression it left
+    // nothing on disk at all.
+    expect(createDirMock).not.toHaveBeenCalled();
     editor.destroy();
   });
 

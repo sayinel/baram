@@ -72,6 +72,14 @@ export async function handleEditorDrop(
   const activeTab = tabs.find((t) => t.id === activeTabId);
   if (!activeTab?.filePath) return;
 
+  // §297 fix (M1): filter BEFORE touching the filesystem, not inside the
+  // loop below. A prior version filtered inside the loop, so a drop with
+  // nothing recognized (e.g. a lone `.pdf`) still ran createDir + listDir —
+  // leaving a stray empty `assets/` folder next to the document where before
+  // this regression it left nothing.
+  const mediaPaths = paths.filter(isMediaFilePath);
+  if (!mediaPaths.length) return;
+
   const fileDir = activeTab.filePath.substring(
     0,
     activeTab.filePath.lastIndexOf("/"),
@@ -94,9 +102,9 @@ export async function handleEditorDrop(
 
   let pos = insertPos;
 
-  for (const sourcePath of paths) {
+  for (const sourcePath of mediaPaths) {
     const originalName = basename(sourcePath);
-    if (!originalName || !isMediaFilePath(sourcePath)) continue;
+    if (!originalName) continue;
 
     const isVideo = classifyMediaSrc(sourcePath) === "video-file";
     const nodeType = editor.state.schema.nodes[isVideo ? "video" : "image"];
