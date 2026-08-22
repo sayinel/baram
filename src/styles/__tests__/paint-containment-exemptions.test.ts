@@ -108,20 +108,71 @@ describe("paint containment exempts every out-of-frame media toolbar (§296)", (
 // check above (any `.media-toolbar` rule moved to `bottom: 100%`) rather
 // than hardcoded to video's selector, so the next media kind that uses this
 // technique is covered the same way, not just video.
+//
+// Known, deliberate limits of this guard (a source scan cannot do more):
+// - `bottom` is matched by exact string against `"100%"`. A rewrite to
+//   `calc(100% + Npx)` empties `externalToolbarRules()`'s result — this
+//   block's own "not vacuous" check below is what catches that (it does NOT
+//   pass silently: the emptied set fails ITS OWN vacuity assertion). Do not
+//   loosen the `bottom` match to accept `calc()` — that would pull in rules
+//   that are not actually moved outside their frame and weaken this guard
+//   and the containment one above, which share the same filter.
+// - `transform: translateY(...)` on the toolbar, or `padding` added to an
+//   intervening ancestor (`.video-figure`, `.video-node-view`, or the
+//   `react-renderer.node-video` wrapper `tables.css`'s exemption protects),
+//   can reopen the same visual/functional gap without touching `bottom` or
+//   `margin-bottom` at all. Neither is reachable by name-matching declared
+//   properties — telling them apart from a harmless change needs the
+//   ELEMENT'S RENDERED geometry, which a source scan over stylesheet text
+//   cannot compute (no different in kind from why `media-toolbar-reveal.test.ts`
+//   only checks selector membership, not paint). This guard pins the ONE
+//   regression vector this bug actually took; it is not a general
+//   reachability oracle.
 describe("media toolbar reachability: no gap from margin-bottom (§296)", () => {
-  it("no out-of-frame `.media-toolbar` rule sets a nonzero margin-bottom", () => {
-    const offenders = externalToolbarRules().flatMap((rule) => {
-      const marginBottom = cssDeclarations(rule.body).find(
-        (d) => d.prop === "margin-bottom",
-      );
-      // A non-shorthand property that's simply absent is equivalent to its
-      // initial value (0) — only a PRESENT nonzero value is a regression.
-      const value = marginBottom?.value.trim() ?? "0";
-      return value === "0"
-        ? []
-        : [
-            `${rule.selector} { margin-bottom: ${value} } (${rule.file}:${rule.line})`,
-          ];
+  const rules = externalToolbarRules();
+
+  // Same shape as the containment describe block's own check above — this
+  // one does NOT share that block's assertion (each `it` gets a fresh
+  // `describe` closure), so without its own copy this guard would go
+  // silently vacuous on the exact `calc()` rewrite mentioned above, saved
+  // only by living in the same file as a sibling that happens to still
+  // fail. Verified: with `bottom: 100%` rewritten to `calc(100% + 8px)`,
+  // this test fails alongside the containment block's identically-named one.
+  it("found at least one out-of-frame toolbar, so the check below is not vacuous", () => {
+    expect(rules.length).toBeGreaterThan(0);
+  });
+
+  it("no out-of-frame `.media-toolbar` rule sets a nonzero margin-bottom, via the longhand or the shorthand", () => {
+    const offenders = rules.flatMap((rule) => {
+      const declarations = cssDeclarations(rule.body);
+      const marginBottom = declarations.find((d) => d.prop === "margin-bottom");
+      if (marginBottom) {
+        // A non-shorthand property that's simply absent is equivalent to
+        // its initial value (0) — only a PRESENT nonzero value is a
+        // regression.
+        const value = marginBottom.value.trim();
+        return value === "0"
+          ? []
+          : [
+              `${rule.selector} { margin-bottom: ${value} } (${rule.file}:${rule.line})`,
+            ];
+      }
+      // The `margin` SHORTHAND is a different declaration name entirely —
+      // cssDeclarations() does not expand it, so the longhand check above
+      // can't see a shorthand's bottom component at all. Rather than parse
+      // the shorthand (1-, 2-, 3-, and 4-value forms all place "bottom"
+      // differently, and a shorthand can itself be a var()/calc() this
+      // scan can't evaluate), flag its mere PRESENCE on an out-of-frame
+      // toolbar rule as an offender outright. Deliberately conservative: a
+      // future `margin: 0` here is a false positive that costs one
+      // maintainer a comment's worth of confusion; a missed nonzero
+      // bottom component is the exact bug this file exists to prevent.
+      const marginShorthand = declarations.find((d) => d.prop === "margin");
+      return marginShorthand
+        ? [
+            `${rule.selector} { margin: ${marginShorthand.value.trim()} } — shorthand on an out-of-frame toolbar rule is flagged outright, not parsed (${rule.file}:${rule.line})`,
+          ]
+        : [];
     });
     expect(offenders).toEqual([]);
   });
