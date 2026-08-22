@@ -43,6 +43,38 @@ export function getMediaFiles(dataTransfer: DataTransfer): File[] {
   return files;
 }
 
+/**
+ * §297 fix (I6) 저널 컨텍스트로 드랍·붙여넣기된 이미지/동영상을 저장하고 삽입한다.
+ * 사진이든 동영상이든 §56d의 `savePhotoToAssets` 하나로 저장한다 — 저널 안에서는
+ * 미디어 종류가 저장 경로를 가르지 않는다.
+ *
+ * 실패하면 삽입하지 않고 토스트로 알린다 — 이 함수가 추출되기 전에는
+ * `savePhotoToAssets(...).then(...)`에 `.catch()`가 없어 조용한 unhandled
+ * rejection이었다(§297의 핵심 요구사항 위반). 사진에도 이미 있던 결함이고
+ * 동영상이 새로 이 분기를 타면서 드러났다 — `insertVideoFromBytes`의 비저널
+ * 실패 처리와 같은 계약이므로 사진·동영상 구분 없이 고친다.
+ */
+export async function insertJournalMediaFromBytes(
+  view: EditorView,
+  bytes: Uint8Array,
+  name: string,
+  ctx: { filePath: string; journalDir: string; rootPath: string },
+  pos?: number,
+): Promise<void> {
+  try {
+    const relativePath = await savePhotoToAssets(
+      bytes,
+      name,
+      ctx.rootPath,
+      ctx.journalDir,
+      ctx.filePath,
+    );
+    insertMediaAtPos(view, relativePath, name, pos);
+  } catch {
+    toastMediaError("journal.mediaSaveFailed", name);
+  }
+}
+
 /** Insert an image or video node into the editor at the given position or selection */
 export function insertMediaAtPos(
   view: EditorView,
@@ -83,14 +115,14 @@ export async function insertVideoFromBytes(
   pos?: number,
 ): Promise<void> {
   if (!filePath) {
-    toastVideoError("video.noDocumentPath", name);
+    toastMediaError("video.noDocumentPath", name);
     return;
   }
   try {
     const relativePath = await saveMediaToDocAssets(bytes, name, filePath);
     insertMediaAtPos(view, relativePath, name, pos);
   } catch {
-    toastVideoError("video.saveFailed", name);
+    toastMediaError("video.saveFailed", name);
   }
 }
 
@@ -117,17 +149,15 @@ function createDropHandlerPlugin(): Plugin {
 
         for (const file of files) {
           if (ctx.isJournal) {
-            readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(
+            readFileAsBytes(file).then((bytes) =>
+              insertJournalMediaFromBytes(
+                view,
                 bytes,
                 file.name,
-                ctx.rootPath,
-                ctx.journalDir,
-                ctx.filePath,
-              ).then((relativePath) => {
-                insertMediaAtPos(view, relativePath, file.name, insertPos);
-              });
-            });
+                ctx,
+                insertPos,
+              ),
+            );
           } else if (classifyMediaSrc(file.name) !== "image") {
             // §297 동영상은 반드시 파일로 — data URL 경로가 존재하지 않는다.
             readFileAsBytes(file).then((bytes) =>
@@ -182,17 +212,9 @@ function createDropHandlerPlugin(): Plugin {
 
         for (const file of files) {
           if (ctx.isJournal) {
-            readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(
-                bytes,
-                file.name,
-                ctx.rootPath,
-                ctx.journalDir,
-                ctx.filePath,
-              ).then((relativePath) => {
-                insertMediaAtPos(view, relativePath, file.name);
-              });
-            });
+            readFileAsBytes(file).then((bytes) =>
+              insertJournalMediaFromBytes(view, bytes, file.name, ctx),
+            );
           } else if (classifyMediaSrc(file.name) !== "image") {
             readFileAsBytes(file).then((bytes) =>
               insertVideoFromBytes(
@@ -329,7 +351,7 @@ function readFileAsDataURL(file: File): Promise<string> {
 }
 
 /** §297 복사/저장 실패를 사용자에게 보이는 토스트로 알린다 — 조용한 실패 금지. */
-function toastVideoError(key: string, name: string): void {
+function toastMediaError(key: string, name: string): void {
   const { locale } = useSettingsStore.getState();
   useUIStore.getState().showToast(t(key, locale as Locale, { name }), "error");
 }

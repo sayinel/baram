@@ -545,6 +545,7 @@
   "video.embedHint": "{host}에서 불러오려면 클릭",
   "video.saveFailed": "동영상 '{name}' 저장에 실패했습니다.",
   "video.noDocumentPath": "'{name}'을(를) 추가하려면 먼저 문서를 저장하세요.",
+  "journal.mediaSaveFailed": "이 저널 항목에 '{name}'을(를) 저장하지 못했습니다.",
 
   "pdfFind.placeholder": "PDF에서 찾기",
   "pdfFind.matchCase": "대소문자 구분",

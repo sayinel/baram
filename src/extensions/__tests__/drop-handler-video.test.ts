@@ -18,10 +18,18 @@ const saveMediaToDocAssets = vi.fn(
   async (_bytes: Uint8Array, name: string, _docPath: string) =>
     `assets/${name}`,
 );
+const savePhotoToAssets = vi.fn(
+  async (_bytes: Uint8Array, name: string) => `assets/${name}`,
+);
 
 vi.mock("../../utils/media-assets", () => ({
   saveMediaToDocAssets: (...a: unknown[]) =>
     saveMediaToDocAssets(...(a as [Uint8Array, string, string])),
+}));
+
+vi.mock("../../utils/journal/journal-photo", () => ({
+  savePhotoToAssets: (...a: unknown[]) =>
+    savePhotoToAssets(...(a as [Uint8Array, string])),
 }));
 
 vi.mock("../../stores/ui/ui", () => ({
@@ -30,6 +38,7 @@ vi.mock("../../stores/ui/ui", () => ({
 
 import {
   getMediaFiles,
+  insertJournalMediaFromBytes,
   insertMediaAtPos,
   insertVideoFromBytes,
 } from "../plugins/drop-handler";
@@ -196,5 +205,86 @@ describe("insertVideoFromBytes (§297)", () => {
     expect(view.dispatch).toHaveBeenCalledTimes(1);
     expect(nodeTypesIn(view)).toContain("video");
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+// §297 fix (I6): the journal-context drop/paste branch used to be
+// `savePhotoToAssets(...).then(...)` with no `.catch()` — a write failure was
+// an unhandled rejection, nothing inserted and nothing said, contradicting
+// §297's core requirement. Fixed for both photos and videos, since the
+// contract isn't media-kind specific (see insertJournalMediaFromBytes).
+describe("insertJournalMediaFromBytes (§297 I6)", () => {
+  const ctx = {
+    rootPath: "/vault",
+    journalDir: "daily",
+    filePath: "/vault/daily/2026-08-22.md",
+  };
+
+  beforeEach(() => {
+    showToast.mockClear();
+    savePhotoToAssets.mockClear();
+  });
+
+  it("inserts a media node when the save succeeds, without toasting", async () => {
+    const view = makeView(["image", "video"]);
+
+    await insertJournalMediaFromBytes(
+      view,
+      new Uint8Array([0]),
+      "clip.mp4",
+      ctx,
+      undefined,
+    );
+
+    expect(savePhotoToAssets).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      "clip.mp4",
+      ctx.rootPath,
+      ctx.journalDir,
+      ctx.filePath,
+    );
+    expect(view.dispatch).toHaveBeenCalledTimes(1);
+    expect(nodeTypesIn(view)).toContain("video");
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("toasts and inserts nothing when the save fails, instead of an unhandled rejection", async () => {
+    savePhotoToAssets.mockRejectedValueOnce(new Error("disk full"));
+    const view = makeView(["image", "video"]);
+
+    await insertJournalMediaFromBytes(
+      view,
+      new Uint8Array([0]),
+      "clip.mp4",
+      ctx,
+      undefined,
+    );
+
+    expect(view.dispatch).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledTimes(1);
+    const { locale } = useSettingsStore.getState();
+    expect(showToast).toHaveBeenCalledWith(
+      t("journal.mediaSaveFailed", locale as Locale, { name: "clip.mp4" }),
+      "error",
+    );
+  });
+
+  it("applies the same failure handling to a photo, not just a video", async () => {
+    // The defect predates video: photos went through this same unguarded
+    // .then() before this branch ever routed videos. Pin that the fix covers
+    // both media kinds, not just the one that surfaced it.
+    savePhotoToAssets.mockRejectedValueOnce(new Error("disk full"));
+    const view = makeView(["image", "video"]);
+
+    await insertJournalMediaFromBytes(
+      view,
+      new Uint8Array([0]),
+      "photo.png",
+      ctx,
+      undefined,
+    );
+
+    expect(view.dispatch).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledTimes(1);
   });
 });

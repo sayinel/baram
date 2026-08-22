@@ -545,6 +545,7 @@
   "video.embedHint": "Click to load from {host}",
   "video.saveFailed": "Could not save the video “{name}”.",
   "video.noDocumentPath": "Save the document before adding “{name}”.",
+  "journal.mediaSaveFailed": "Could not save “{name}” to this journal entry.",
 
   "pdfFind.placeholder": "Find in PDF",
   "pdfFind.matchCase": "Match case",
