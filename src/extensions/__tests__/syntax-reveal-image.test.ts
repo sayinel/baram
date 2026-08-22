@@ -332,3 +332,79 @@ describe("video syntax reveal (§295)", () => {
     editor.destroy();
   });
 });
+
+// §294 fix (C1, critical): expandMediaAtom rendered the node as `![alt](src)`,
+// which cannot represent width — both collapse sites rebuilt the node from
+// {src, alt, title} only, so widthPercent/widthPixel silently fell back to the
+// schema default (100) on every click-to-expand-to-collapse round trip, and
+// the loss reached disk on the next autosave. Reviewer-measured before the
+// fix: 60 -> 100 through exactly this path (real Editor, all plugins live).
+describe("width survives expand/collapse (§294 C1)", () => {
+  it("preserves an image's widthPercent through forceCollapseSyntaxReveal", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, 'Hello\n\n<img src="photo.jpg" width="60%" />\n');
+    expect(findNode(editor, "image")?.attrs.widthPercent).toBe(60);
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+    expect(nodeTypeNames(editor)).not.toContain("image"); // sanity: expansion happened
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(findNode(editor, "image")?.attrs.widthPercent).toBe(60);
+    editor.destroy();
+  });
+
+  it("preserves a video's widthPercent through forceCollapseSyntaxReveal", async () => {
+    const editor = createEditor();
+    loadMarkdown(
+      editor,
+      'Hello\n\n<video src="clip.mp4" width="60%"></video>\n',
+    );
+    expect(findNode(editor, "video")?.attrs.widthPercent).toBe(60);
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+    expect(nodeTypeNames(editor)).not.toContain("video");
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(findNode(editor, "video")?.attrs.widthPercent).toBe(60);
+    editor.destroy();
+  });
+
+  it("preserves a video's widthPixel (>100, the px branch) through forceCollapseSyntaxReveal", async () => {
+    const editor = createEditor();
+    loadMarkdown(
+      editor,
+      'Hello\n\n<video src="clip.mp4" width="640"></video>\n',
+    );
+    expect(findNode(editor, "video")?.attrs.widthPixel).toBe(640);
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(findNode(editor, "video")?.attrs.widthPixel).toBe(640);
+    editor.destroy();
+  });
+
+  // The second, independent collapse implementation (appendTransaction's
+  // cursor-exit branch in syntax-reveal.ts) needed the same fix — this drives
+  // that path specifically, the same way the §295 boundary-following tests
+  // above do for the image/video decision.
+  it("preserves widthPercent through the appendTransaction cursor-exit collapse path", async () => {
+    const editor = createEditor();
+    loadMarkdown(
+      editor,
+      'Hello\n\n<video src="clip.mp4" width="60%"></video>\n',
+    );
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+    expect(nodeTypeNames(editor)).not.toContain("video");
+
+    // Cursor leaves the expanded range without calling
+    // forceCollapseSyntaxReveal — same trigger as the boundary-following test
+    // above for this path.
+    editor.commands.setTextSelection(2);
+
+    expect(nodeTypeNames(editor)).toContain("video");
+    expect(findNode(editor, "video")?.attrs.widthPercent).toBe(60);
+    editor.destroy();
+  });
+});

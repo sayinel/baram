@@ -27,7 +27,8 @@ export function collapseExpanded(
 ): void {
   const { state } = view;
   const { tr } = state;
-  const { from, to, kind, openCheck, closeCheck, markName } = expanded;
+  const { from, to, kind, openCheck, closeCheck, markName, mediaAttrs } =
+    expanded;
 
   // Validate open delimiter still exists
   try {
@@ -125,7 +126,14 @@ export function collapseExpanded(
     // §295 src가 노드 타입을 정한다 — syntax-reveal.ts의 appendTransaction
     // collapse 분기와 같은 결정. 이 함수(collapseExpanded)는 그와 별개의
     // 두 번째 collapse 구현이라 결정을 여기도 복제해야 한다.
-    const attrs = { src, alt: alt || null, title: title || null };
+    // §294 fix (C1): mediaAttrs restores width, which `![alt](src)` cannot
+    // carry — see expandMediaAtom. Same duplication note applies.
+    const attrs = {
+      src,
+      alt: alt || null,
+      title: title || null,
+      ...mediaAttrs,
+    };
     const useVideo =
       classifyMediaSrc(src) !== "image" && !!state.schema.nodes.video;
     const mediaNode = useVideo

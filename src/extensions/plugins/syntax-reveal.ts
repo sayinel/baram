@@ -153,7 +153,8 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       }
 
       // Cursor moved outside → build collapse transaction with explicit cursor
-      const { from, to, kind, openCheck, closeCheck, markName } = es.expanded;
+      const { from, to, kind, openCheck, closeCheck, markName, mediaAttrs } =
+        es.expanded;
       const tr = newState.tr;
 
       // Validate open delimiter
@@ -249,7 +250,14 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const [, alt, src, title2] = imgMatch;
         // §295 src가 노드 타입을 정한다 — 노출된 원문에서 파일명을 고치면
         // image ↔ video가 따라온다.
-        const attrs = { src, alt: alt || null, title: title2 || null };
+        // §294 fix (C1): mediaAttrs restores width, which `![alt](src)` cannot
+        // carry — see expandMediaAtom.
+        const attrs = {
+          src,
+          alt: alt || null,
+          title: title2 || null,
+          ...mediaAttrs,
+        };
         const useVideo =
           classifyMediaSrc(src) !== "image" && !!newState.schema.nodes.video;
         const mediaNode = useVideo

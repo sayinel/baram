@@ -134,6 +134,19 @@ export function expandMediaAtom(
   // Place cursor right after "![" for natural alt-text editing
   const cursorPos = contentStart + 2;
 
+  // §294 fix (C1): `![alt](src)` cannot represent width — stash every attr
+  // besides src/alt/title so collapse can restore it. Both image and video
+  // atoms go through this path; only video also carries widthPixel, but
+  // copying whatever the node actually has (rather than naming widthPercent
+  // specifically) means a schema/node-type mismatch on collapse (image ↔
+  // video, keyed off the edited src) still gets whichever fields the target
+  // type reads and silently ignores the rest — see ExpandedRange.mediaAttrs.
+  const mediaAttrs: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node.attrs)) {
+    if (key === "src" || key === "alt" || key === "title") continue;
+    mediaAttrs[key] = value;
+  }
+
   tr.setSelection(TextSelection.create(tr.doc, cursorPos));
   tr.setMeta(syntaxRevealKey, {
     expanded: {
@@ -141,6 +154,7 @@ export function expandMediaAtom(
       from: contentStart,
       to: contentStart + text.length,
       openCheck: "![",
+      mediaAttrs,
     },
   });
 

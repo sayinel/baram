@@ -12,6 +12,12 @@ export interface ExpandedRange {
   from: number; // start of expanded text (for images: inside paragraph)
   kind: "image" | "link" | "mark" | "wikilink";
   markName?: string; // for marks: "bold", "italic", etc.
+  // §294 fix (C1): non-src/alt/title attrs (image/video widthPercent, video
+  // widthPixel) that `![alt](src)` cannot represent. Stashed here on expand so
+  // both collapse sites (syntax-reveal.ts's appendTransaction and
+  // syntax-reveal-collapse.ts) can merge them back instead of silently
+  // falling back to the schema default — see expandMediaAtom.
+  mediaAttrs?: Record<string, unknown>;
   openCheck: string; // opening delimiter to validate
   to: number; // end of expanded text
 }
