@@ -1,5 +1,5 @@
 // §296 Video NodeView — 포스터 → 클릭 재생, provider 임베드는 클릭 후 마운트
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Play } from "lucide-react";
@@ -40,6 +40,23 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
   const [captionText, setCaptionText] = useState(alt);
   const captionRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLElement | null>(null);
+  const videoElRef = useRef<HTMLVideoElement | null>(null);
+
+  // §296.1 Live native controls must own their own clicks. Once `playing` is
+  // true the `<video>` renders `controls` — without this, a mousedown on the
+  // scrub bar or volume slider still reaches ProseMirror first (see the
+  // play-button fix below for why `mousedown`, specifically, is what matters),
+  // PM's default click handling selects the video atom, and syntax-reveal
+  // expands it back to raw markdown mid-scrub. Before playing there are no
+  // native controls to protect, so the poster area is left alone and behaves
+  // like an image thumbnail (click → select/expand) as designed.
+  useEffect(() => {
+    const el = videoElRef.current;
+    if (!el || !playing) return;
+    const swallow = (e: MouseEvent) => e.stopPropagation();
+    el.addEventListener("mousedown", swallow);
+    return () => el.removeEventListener("mousedown", swallow);
+  }, [playing]);
 
   // 임베드는 리사이즈하지 않는다 (§17.2-6) — 폭을 마크다운에 저장할 안전한 길이 없다.
   const { dragPct, startResize } = useMediaResize(containerRef, (pct) => {
@@ -97,6 +114,7 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
             draggable={false}
             onError={() => setFailed(true)}
             preload="metadata"
+            ref={videoElRef}
             src={fileSrc}
             title={title || undefined}
           />
@@ -107,6 +125,16 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
             aria-label={t("video.play")}
             className="video-play-button btn-unstyled"
             onClick={() => setPlaying(true)}
+            // §296.1 Same native-listener-via-ref trick as MediaToolbar
+            // (views/MediaToolbar.tsx): a React `onMouseDown` prop fires from
+            // React's own dispatch at the root, which happens AFTER the real
+            // mousedown has already bubbled through ProseMirror's editable DOM
+            // — too late to stop PM from selecting/expanding the video atom.
+            // Attaching the listener directly to this element intercepts the
+            // event during the real bubble phase, before it ever reaches PM.
+            ref={(el) => {
+              if (el) el.onmousedown = (e) => e.stopPropagation();
+            }}
             type="button"
           >
             <Play size={28} strokeWidth={2} />

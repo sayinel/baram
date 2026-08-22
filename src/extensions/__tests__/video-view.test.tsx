@@ -97,3 +97,79 @@ describe("VideoView (§296)", () => {
     expect(container.querySelectorAll(".media-resize-handle").length).toBe(0);
   });
 });
+
+// §296.1 클릭 가드 회귀 — 재생 버튼과 재생 중 네이티브 컨트롤은 mousedown이
+// ProseMirror까지 닿기 전에 삼켜져야 한다.
+//
+// ProseMirror의 모든 클릭/선택 처리는 `mousedown` 리스너 하나에서 시작한다
+// (prosemirror-view의 `handlers.mousedown`이 곧 singleClick 판정과
+// `handleClick` prop 호출까지 다 몬다 — 별도의 "click" 리스너가 없다). 그래서
+// `container`(NodeView를 감싸는, 실제 앱의 view.dom과 같은 자리)에 mousedown
+// 리스너를 달아 두고 그게 불려지지 않는지만 보면 "PM이 이 클릭을 아예 못 봤다"를
+// 정확히 증명한다 — video-play-button의 React onClick은 별개의 이벤트라 이
+// 가드와 무관하게 계속 동작해야 한다(위 "attaches controls" 테스트가 그걸 잡는다).
+//
+// MediaToolbar.tsx(§295)와 같은 메커니즘: React의 `onMouseDown` prop은 React가
+// 루트에서 재구현하는 합성 디스패치라 실제 mousedown이 view.dom을 이미 통과한
+// "뒤"에 실행된다 — 그래서 반드시 ref로 붙인 네이티브 리스너여야 한다.
+describe("VideoView click-guard regression (§296.1)", () => {
+  it("swallows mousedown on the play button before it reaches an ancestor (PM's view.dom)", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    const ancestorMouseDown = vi.fn();
+    container.addEventListener("mousedown", ancestorMouseDown);
+
+    fireEvent.mouseDown(container.querySelector(".video-play-button")!);
+
+    expect(ancestorMouseDown).not.toHaveBeenCalled();
+  });
+
+  it("still plays on click even though mousedown was swallowed", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    // A real pointer interaction is mousedown → mouseup → click; drive all
+    // three so this fails the same way a removed swallow-ref would in the
+    // browser (a plain fireEvent.click alone doesn't touch mousedown at all).
+    const button = container.querySelector(".video-play-button")!;
+    fireEvent.mouseDown(button);
+    fireEvent.mouseUp(button);
+    fireEvent.click(button);
+
+    expect(container.querySelector("video")!.hasAttribute("controls")).toBe(
+      true,
+    );
+  });
+
+  it("does NOT swallow mousedown on the poster before playing — it must still select the node like an image", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    const ancestorMouseDown = vi.fn();
+    container.addEventListener("mousedown", ancestorMouseDown);
+
+    fireEvent.mouseDown(container.querySelector("video")!);
+
+    expect(ancestorMouseDown).toHaveBeenCalledTimes(1);
+  });
+
+  it("swallows mousedown on the native controls once playing, so scrubbing doesn't reach PM", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    fireEvent.click(container.querySelector(".video-play-button")!);
+    expect(container.querySelector("video")!.hasAttribute("controls")).toBe(
+      true,
+    );
+
+    const ancestorMouseDown = vi.fn();
+    container.addEventListener("mousedown", ancestorMouseDown);
+    fireEvent.mouseDown(container.querySelector("video")!);
+
+    expect(ancestorMouseDown).not.toHaveBeenCalled();
+  });
+
+  it("does not swallow mousedown on the wrapper/figure margin — node selection must keep working", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    const ancestorMouseDown = vi.fn();
+    container.addEventListener("mousedown", ancestorMouseDown);
+
+    fireEvent.mouseDown(container.querySelector(".video-node-view")!);
+    fireEvent.mouseDown(container.querySelector(".video-figure")!);
+
+    expect(ancestorMouseDown).toHaveBeenCalledTimes(2);
+  });
+});
