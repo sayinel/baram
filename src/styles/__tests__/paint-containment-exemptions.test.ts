@@ -98,29 +98,43 @@ describe("paint containment exempts every out-of-frame media toolbar (§296)", (
   });
 });
 
-// Two more specific facts this fix depends on, pinned separately so each has
-// its own named failure rather than sharing one test that could pass for the
-// wrong reason. `cssDeclarations()` parses real property/value pairs (not a
-// substring search), so a comment mentioning either value can't false-pass
-// this the way a raw `.includes()` scan could.
-describe("video toolbar: exact values this fix depends on (§296)", () => {
-  const RULES = cssRules();
-
-  it("`.tiptap .video-figure .media-toolbar` keeps margin-bottom at 0 — reopening the reachability gap", () => {
-    const rule = RULES.find(
-      (r) => r.selector === ".tiptap .video-figure .media-toolbar",
-    );
-    expect(rule).toBeDefined();
-    const marginBottom = cssDeclarations(rule!.body).find(
-      (d) => d.prop === "margin-bottom",
-    );
-    // A non-shorthand property that's simply absent is equivalent to its
-    // initial value (0) — only a PRESENT nonzero value is a regression.
-    expect(marginBottom?.value.trim() ?? "0").toBe("0");
+// The reachability fix (video.css's `margin-bottom: 0`) depends on a fact
+// separate from the containment exemption above, and just as load-bearing:
+// with the exemption in place, a nonzero margin-bottom would paint the
+// button fully again while leaving it just as unreachable as before — the
+// gap sits above the frame's own box, outside the node view's hoverable
+// area, matching nothing (and, with the dead backstop rule gone, nothing
+// re-acquires it). Generalized over the SAME rule set as the containment
+// check above (any `.media-toolbar` rule moved to `bottom: 100%`) rather
+// than hardcoded to video's selector, so the next media kind that uses this
+// technique is covered the same way, not just video.
+describe("media toolbar reachability: no gap from margin-bottom (§296)", () => {
+  it("no out-of-frame `.media-toolbar` rule sets a nonzero margin-bottom", () => {
+    const offenders = externalToolbarRules().flatMap((rule) => {
+      const marginBottom = cssDeclarations(rule.body).find(
+        (d) => d.prop === "margin-bottom",
+      );
+      // A non-shorthand property that's simply absent is equivalent to its
+      // initial value (0) — only a PRESENT nonzero value is a regression.
+      const value = marginBottom?.value.trim() ?? "0";
+      return value === "0"
+        ? []
+        : [
+            `${rule.selector} { margin-bottom: ${value} } (${rule.file}:${rule.line})`,
+          ];
+    });
+    expect(offenders).toEqual([]);
   });
+});
 
+// A separate, narrower pin for the specific value the clip fix depends on
+// right now. The general exemption-existence test above already requires
+// this generically (any offending value fails it); this names the fact
+// directly, so a regression to `layout paint` specifically is unambiguous
+// rather than reported only as "found an offender".
+describe("video toolbar: exact contain value (§296)", () => {
   it("`.tiptap > .node-video` sets contain to exactly `layout`, not `layout paint` — reopening the clip", () => {
-    const rule = RULES.find((r) => r.selector === ".tiptap > .node-video");
+    const rule = cssRules().find((r) => r.selector === ".tiptap > .node-video");
     expect(rule).toBeDefined();
     const contain = cssDeclarations(rule!.body).find(
       (d) => d.prop === "contain",
