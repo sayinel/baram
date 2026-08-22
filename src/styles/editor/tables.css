@@ -116,10 +116,24 @@
  * measurement, not assumption: `.tiptap`'s direct child for a React node view is the
  * @tiptap/react-created wrapper carrying `node-<type>` (`react-renderer node-video`,
  * ReactNodeView in node_modules/@tiptap/react — the component's own
- * `<NodeViewWrapper className="video-node-view">` is one level further in). Paint
- * containment on that wrapper also stops `.video-node-view`'s own `margin: 1em 0`
- * from collapsing through it, moving the clip edge 16px above the frame and cutting
- * ~12px off the toolbar's 28px height — the "top of the button sliced off" report.
+ * `<NodeViewWrapper className="video-node-view">` is one level further in).
+ *
+ * Corrected claim: an earlier version of this comment credited PAINT
+ * containment with stopping `.video-node-view`'s `margin: 1em 0` from
+ * collapsing through the wrapper. Wrong keyword — `layout` was present in
+ * `contain: layout paint` before this exemption existed and stays present
+ * after it, so removing `paint` changed nothing about margin collapsing.
+ * Per the CSS Containment spec, BOTH `layout` and `paint` independently
+ * establish an "independent formatting context" (their own separate
+ * normative effects, not one implying the other) — that is what keeps a
+ * descendant's margin from collapsing through the box, and it was already
+ * true here from `layout` alone. So the clip edge sat 16px above the frame
+ * (at the default editor font size, where `1em` = 16px — it scales with the
+ * user's editor font size setting) BEFORE this exemption too; paint
+ * containment's OWN separate, defining effect (clipping content to the
+ * padding edge) is what cut ~12px off the toolbar's 28px height — the "top
+ * of the button sliced off" report. Dropping `paint` removes that clip
+ * while leaving the margin behavior — and the 16px figure — unchanged.
  * Layout only, matching every other entry here. */
 .tiptap > .node-video {
   contain: layout;

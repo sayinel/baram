@@ -12,8 +12,8 @@
 // area, but ~12px of the toolbar's 28px height sat outside that area.
 //
 // This scans for the general shape rather than hardcoding "video": any rule
-// that moves `.media-toolbar` to `bottom: 100%` (the same "leave the frame,
-// go above it" technique video uses) names a node view that needs the same
+// that sets `bottom` on `.media-toolbar` at all (the shared base rule never
+// does — see `externalToolbarRules()`) names a node view that needs the same
 // exemption, so the next media kind that does this doesn't repeat the bug.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -38,20 +38,37 @@ function containByNodeClass(): Map<string, string> {
   return map;
 }
 
-/** Every CSS rule that moves `.media-toolbar` to `bottom: 100%` — i.e. fully
- * outside its frame's own box, above it. */
+/** Every CSS rule that sets `bottom` on `.media-toolbar` at all. The shared
+ * base rule (media-block.css) positions with `top: 8px` — it never sets
+ * `bottom` — so ANY rule that does is, by construction, moving the toolbar
+ * out of its normal top-right corner. Membership is deliberately broad
+ * (not narrowed to `=== "100%"`): a narrower filter can be evaded by
+ * changing the VALUE (e.g. to `calc(100% + 8px)`) without ever leaving the
+ * set, which would make the evasion invisible rather than merely
+ * unflagged. The exact value each member sets is asserted separately, by
+ * name, in `every out-of-frame toolbar rule sets bottom to exactly 100%`
+ * below — that is what catches a `calc()` rewrite, at any set size, rather
+ * than relying on a vacuity check that only works while there is exactly
+ * one member. */
 function externalToolbarRules() {
   return cssRules().filter(
     (rule) =>
       rule.selector.includes(".media-toolbar") &&
-      cssDeclarations(rule.body).some(
-        (d) => d.prop === "bottom" && d.value.trim() === "100%",
-      ),
+      cssDeclarations(rule.body).some((d) => d.prop === "bottom"),
   );
 }
 
 /** The node type `name` an extension declares (`name: "video"`), read from
- * source rather than guessed from a class name or file path. */
+ * source rather than guessed from a class name or file path.
+ *
+ * The CSS-basename ↔ extension-basename pairing this assumes
+ * (`video.css` ↔ `extensions/nodes/video.ts`) is a CONVENTION this file
+ * happens to follow, not a repo-wide invariant — it disagrees elsewhere
+ * (`mermaid.css` ↔ `mermaid-block.ts`, `code-blocks.css` ↔ `code-block.ts`,
+ * and `tables.css` itself covers several node types at once). When the
+ * pairing doesn't hold, this returns `null` and the caller reports "could
+ * not resolve a node type name" as an offender — failing loudly, which is
+ * the right mode for a convention that isn't enforced anywhere else. */
 function nodeTypeName(file: string): null | string {
   let source: string;
   try {
@@ -67,6 +84,21 @@ describe("paint containment exempts every out-of-frame media toolbar (§296)", (
 
   it("found at least one out-of-frame toolbar, so the check below is not vacuous", () => {
     expect(rules.length).toBeGreaterThan(0);
+  });
+
+  it("every out-of-frame toolbar rule sets bottom to exactly 100%, not calc() or another offset", () => {
+    const offenders = rules.flatMap((rule) => {
+      const bottom = cssDeclarations(rule.body).find(
+        (d) => d.prop === "bottom",
+      );
+      const value = bottom?.value.trim();
+      return value === "100%"
+        ? []
+        : [
+            `${rule.selector} { bottom: ${value ?? "MISSING"} } (${rule.file}:${rule.line})`,
+          ];
+    });
+    expect(offenders).toEqual([]);
   });
 
   it("has a `.tiptap > .node-<name> { contain: layout }` exemption for each", () => {
@@ -105,29 +137,22 @@ describe("paint containment exempts every out-of-frame media toolbar (§296)", (
 // gap sits above the frame's own box, outside the node view's hoverable
 // area, matching nothing (and, with the dead backstop rule gone, nothing
 // re-acquires it). Generalized over the SAME rule set as the containment
-// check above (any `.media-toolbar` rule moved to `bottom: 100%`) rather
+// check above (any `.media-toolbar` rule that sets `bottom` at all) rather
 // than hardcoded to video's selector, so the next media kind that uses this
 // technique is covered the same way, not just video.
 //
-// Known, deliberate limits of this guard (a source scan cannot do more):
-// - `bottom` is matched by exact string against `"100%"`. A rewrite to
-//   `calc(100% + Npx)` empties `externalToolbarRules()`'s result — this
-//   block's own "not vacuous" check below is what catches that (it does NOT
-//   pass silently: the emptied set fails ITS OWN vacuity assertion). Do not
-//   loosen the `bottom` match to accept `calc()` — that would pull in rules
-//   that are not actually moved outside their frame and weaken this guard
-//   and the containment one above, which share the same filter.
-// - `transform: translateY(...)` on the toolbar, or `padding` added to an
-//   intervening ancestor (`.video-figure`, `.video-node-view`, or the
-//   `react-renderer.node-video` wrapper `tables.css`'s exemption protects),
-//   can reopen the same visual/functional gap without touching `bottom` or
-//   `margin-bottom` at all. Neither is reachable by name-matching declared
-//   properties — telling them apart from a harmless change needs the
-//   ELEMENT'S RENDERED geometry, which a source scan over stylesheet text
-//   cannot compute (no different in kind from why `media-toolbar-reveal.test.ts`
-//   only checks selector membership, not paint). This guard pins the ONE
-//   regression vector this bug actually took; it is not a general
-//   reachability oracle.
+// Known, deliberate limit of this guard (a source scan cannot do more):
+// `padding` added to an intervening ancestor (`.video-figure`,
+// `.video-node-view`, or the `react-renderer.node-video` wrapper
+// `tables.css`'s exemption protects) can reopen the same visual/functional
+// gap without touching any property on THIS rule at all. It isn't reachable
+// by name-matching this rule's own declarations — telling it apart from a
+// harmless ancestor change needs the element's RENDERED geometry, which a
+// source scan over stylesheet text cannot compute (no different in kind
+// from why `media-toolbar-reveal.test.ts` only checks selector membership,
+// not paint). This guard (plus the `transform` check below and the `bottom`
+// exactness check above) pins the regression vectors this bug actually
+// took; it is not a general reachability oracle.
 describe("media toolbar reachability: no gap from margin-bottom (§296)", () => {
   const rules = externalToolbarRules();
 
@@ -174,6 +199,24 @@ describe("media toolbar reachability: no gap from margin-bottom (§296)", () => 
           ]
         : [];
     });
+    expect(offenders).toEqual([]);
+  });
+
+  // `transform: translateY(-8px)` shifts the toolbar's painted position by
+  // the same 8px a `margin-bottom` gap did, without setting `margin-bottom`
+  // (or the shorthand) at all — recreating the identical reachability gap
+  // through a property neither check above inspects. Rather than try to
+  // compute whether a given transform is "safe" (a translate along any axis
+  // can reopen the gap; a scale or rotate might not, depending on origin),
+  // forbid `transform` entirely on an out-of-frame toolbar rule.
+  it("no out-of-frame `.media-toolbar` rule sets a transform", () => {
+    const offenders = rules
+      .filter((rule) =>
+        cssDeclarations(rule.body).some((d) => d.prop === "transform"),
+      )
+      .map(
+        (rule) => `${rule.selector} sets transform (${rule.file}:${rule.line})`,
+      );
     expect(offenders).toEqual([]);
   });
 });
