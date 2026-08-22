@@ -1,14 +1,98 @@
-// §3.3 DropHandler — drag-and-drop & paste image insertion
-// Handles image files dropped or pasted into the editor,
-// converting them to data URLs and inserting as image blocks.
+// §3.3 / §297 DropHandler — drag-and-drop & paste image/video insertion
+// Handles image and video files dropped or pasted into the editor.
+// Images (outside a journal) become data URLs; videos never do — they are
+// always copied to disk (§297, see `saveMediaToDocAssets`).
+import type { Locale } from "../../i18n";
+import type { EditorView } from "@tiptap/pm/view";
+
 import { Extension } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 
 import { isExternalFileDrag } from "../../hooks/use-external-drop";
+import { t } from "../../i18n";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { savePhotoToAssets } from "../../utils/journal/journal-photo";
+import { saveMediaToDocAssets } from "../../utils/media-assets";
+import { classifyMediaSrc } from "../../utils/media-src";
+
+/**
+ * Extract image and video files from a DataTransfer (§297).
+ *
+ * Two different tests, because the two file kinds arrive differently:
+ *  - Images: MIME-typed (`image/*`). Pasted clipboard images often carry a
+ *    meaningless generated filename, so the MIME check stays the only one.
+ *  - Videos: classified by `classifyMediaSrc` — the SAME extension list
+ *    `pipeline`/NodeView use (§293) — never by MIME. A `.mkv`'s MIME is
+ *    `video/x-matroska`, but no webview can play it, so a MIME-based test
+ *    would silently accept a file this app can never render.
+ */
+export function getMediaFiles(dataTransfer: DataTransfer): File[] {
+  const files: File[] = [];
+  for (let i = 0; i < dataTransfer.files.length; i++) {
+    const file = dataTransfer.files[i];
+    if (
+      file.type.startsWith("image/") ||
+      classifyMediaSrc(file.name) !== "image"
+    ) {
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+/** Insert an image or video node into the editor at the given position or selection */
+export function insertMediaAtPos(
+  view: EditorView,
+  src: string,
+  alt: string,
+  pos?: number,
+): void {
+  const typeName = classifyMediaSrc(src) === "image" ? "image" : "video";
+  const nodeType = view.state.schema.nodes[typeName];
+  // 스키마에 해당 노드가 없으면(예: 축소된 테스트 스키마) 아무것도 하지 않는다 —
+  // throw하지 않는다. 다른 타입으로 잘못 끼워 넣는 것(예: video src를 image 노드에)은
+  // 더 나쁘다.
+  if (!nodeType) return;
+
+  const { tr } = view.state;
+  const mediaNode = nodeType.create({ src, alt, title: null });
+  if (pos !== undefined) {
+    tr.insert(pos, mediaNode);
+  } else {
+    tr.replaceSelectionWith(mediaNode);
+  }
+  view.dispatch(tr);
+}
+
+/**
+ * §297 저장된 동영상 바이트를 문서 assets/에 복사하고 삽입한다.
+ *
+ * 실패 경로 둘 다 토스트로 알리고 삽입하지 않는다 — 조용한 실패가 아니다:
+ *  - `filePath`가 없다 = 저장 안 된 문서라 `assets/`를 걸어 둘 자리가 없다.
+ *  - 복사 자체가 실패한다 = 디스크/권한 문제.
+ * 두 경우 모두 data URL이나 절대경로로 조용히 떨어지지 않는다 (§297 핵심 요구사항).
+ */
+export async function insertVideoFromBytes(
+  view: EditorView,
+  bytes: Uint8Array,
+  name: string,
+  filePath: string | undefined,
+  pos?: number,
+): Promise<void> {
+  if (!filePath) {
+    toastVideoError("video.noDocumentPath", name);
+    return;
+  }
+  try {
+    const relativePath = await saveMediaToDocAssets(bytes, name, filePath);
+    insertMediaAtPos(view, relativePath, name, pos);
+  } catch {
+    toastVideoError("video.saveFailed", name);
+  }
+}
 
 /** Create the drop handler ProseMirror plugin */
 function createDropHandlerPlugin(): Plugin {
@@ -19,7 +103,7 @@ function createDropHandlerPlugin(): Plugin {
         if (isExternalFileDrag) return false;
 
         if (!event.dataTransfer) return false;
-        const files = getImageFiles(event.dataTransfer);
+        const files = getMediaFiles(event.dataTransfer);
         if (files.length === 0) return false;
 
         event.preventDefault();
@@ -41,12 +125,23 @@ function createDropHandlerPlugin(): Plugin {
                 ctx.journalDir,
                 ctx.filePath,
               ).then((relativePath) => {
-                insertImageAtPos(view, relativePath, file.name, insertPos);
+                insertMediaAtPos(view, relativePath, file.name, insertPos);
               });
             });
+          } else if (classifyMediaSrc(file.name) !== "image") {
+            // §297 동영상은 반드시 파일로 — data URL 경로가 존재하지 않는다.
+            readFileAsBytes(file).then((bytes) =>
+              insertVideoFromBytes(
+                view,
+                bytes,
+                file.name,
+                ctx.filePath || undefined,
+                insertPos,
+              ),
+            );
           } else {
             readFileAsDataURL(file).then((dataUrl) => {
-              insertImageAtPos(view, dataUrl, file.name, insertPos);
+              insertMediaAtPos(view, dataUrl, file.name, insertPos);
             });
           }
         }
@@ -78,7 +173,7 @@ function createDropHandlerPlugin(): Plugin {
           }
         }
 
-        const files = getImageFiles(event.clipboardData);
+        const files = getMediaFiles(event.clipboardData);
         if (files.length === 0) return false;
 
         event.preventDefault();
@@ -95,12 +190,21 @@ function createDropHandlerPlugin(): Plugin {
                 ctx.journalDir,
                 ctx.filePath,
               ).then((relativePath) => {
-                insertImageAtPos(view, relativePath, file.name);
+                insertMediaAtPos(view, relativePath, file.name);
               });
             });
+          } else if (classifyMediaSrc(file.name) !== "image") {
+            readFileAsBytes(file).then((bytes) =>
+              insertVideoFromBytes(
+                view,
+                bytes,
+                file.name,
+                ctx.filePath || undefined,
+              ),
+            );
           } else {
             readFileAsDataURL(file).then((dataUrl) => {
-              insertImageAtPos(view, dataUrl, file.name);
+              insertMediaAtPos(view, dataUrl, file.name);
             });
           }
         }
@@ -143,18 +247,6 @@ function detectTabSeparatedData(text: string): null | string[][] {
   return rows;
 }
 
-/** Extract image files from a DataTransfer */
-function getImageFiles(dataTransfer: DataTransfer): File[] {
-  const files: File[] = [];
-  for (let i = 0; i < dataTransfer.files.length; i++) {
-    const file = dataTransfer.files[i];
-    if (file.type.startsWith("image/")) {
-      files.push(file);
-    }
-  }
-  return files;
-}
-
 /** Check if the active file is inside a journal directory */
 function getJournalContext(): {
   filePath: string;
@@ -164,7 +256,7 @@ function getJournalContext(): {
 } {
   const activeTabId = useEditorStore.getState().activeTabId;
   const tabs = useEditorStore.getState().tabs;
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const filePath = activeTab?.filePath ?? "";
   const rootPath = useFileStore.getState().rootPath ?? "";
   const journalDir = useSettingsStore.getState().journalDirectory ?? "";
@@ -181,35 +273,11 @@ function getJournalContext(): {
   return { isJournal, rootPath, journalDir, filePath };
 }
 
-/** Insert an image node into the editor at the given position or selection */
-function insertImageAtPos(
-  view: import("@tiptap/pm/view").EditorView,
-  src: string,
-  alt: string,
-  pos?: number,
-) {
-  const { tr } = view.state;
-  const imageNode = view.state.schema.nodes.image.create({
-    src,
-    alt,
-    title: null,
-  });
-  if (pos !== undefined) {
-    tr.insert(pos, imageNode);
-  } else {
-    tr.replaceSelectionWith(imageNode);
-  }
-  view.dispatch(tr);
-}
-
 /**
  * Insert a table from parsed TSV data.
  * First row → tableHeader cells, remaining rows → tableCell cells.
  */
-function insertTableFromTSV(
-  view: import("@tiptap/pm/view").EditorView,
-  data: string[][],
-): boolean {
+function insertTableFromTSV(view: EditorView, data: string[][]): boolean {
   const { schema } = view.state;
   const tableType = schema.nodes.table;
   const tableRowType = schema.nodes.tableRow;
@@ -258,6 +326,12 @@ function readFileAsDataURL(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+/** §297 복사/저장 실패를 사용자에게 보이는 토스트로 알린다 — 조용한 실패 금지. */
+function toastVideoError(key: string, name: string): void {
+  const { locale } = useSettingsStore.getState();
+  useUIStore.getState().showToast(t(key, locale as Locale, { name }), "error");
 }
 
 /** Tiptap Extension wrapper */

@@ -543,6 +543,8 @@
   "video.play": "Play",
   "video.caption": "Caption",
   "video.embedHint": "Click to load from {host}",
+  "video.saveFailed": "Could not save the video “{name}”.",
+  "video.noDocumentPath": "Save the document before adding “{name}”.",
 
   "pdfFind.placeholder": "Find in PDF",
   "pdfFind.matchCase": "Match case",

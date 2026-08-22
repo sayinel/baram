@@ -272,6 +272,35 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       },
     },
     {
+      id: "video",
+      label: "Video",
+      category: "Media",
+      description: "Insert a video",
+      mdHint: "![](video.mp4)",
+      action: async () => {
+        const result = await showFieldDialog({
+          title: "Insert Video",
+          fields: [
+            { key: "alt", label: "Caption", placeholder: "Video caption" },
+            {
+              key: "src",
+              label: "Video URL or path",
+              placeholder: "https://youtu.be/... or ./clip.mp4",
+            },
+          ],
+        });
+        if (!result?.src) return;
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "video",
+            attrs: { src: result.src, alt: result.alt || "", title: "" },
+          })
+          .run();
+      },
+    },
+    {
       id: "link",
       label: "Link",
       category: "Media",
