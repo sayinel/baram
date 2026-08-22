@@ -5,6 +5,8 @@ import type { Editor } from "@tiptap/core";
 import katexCSS from "katex/dist/katex.min.css?raw";
 
 import { withVirtualizationSuspended } from "../../extensions/plugins/viewport-virtualize";
+import { activeFileDir } from "../active-file-dir";
+import { relativeToRoot } from "../path-utils";
 import {
   buildCodeBlockExport,
   collectCodeBlockInfo,
@@ -125,9 +127,18 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
     const src = el.getAttribute("src") || "";
     const prefix = ASSET_URL_PREFIXES.find((p) => src.startsWith(p));
     if (prefix) {
-      const abs = decodeURIComponent(src.slice(prefix.length));
-      const relative = abs.split("#")[0];
-      el.setAttribute("src", relative.split("/").pop() || relative);
+      const abs = decodeURIComponent(src.slice(prefix.length)).split("#")[0];
+      // Relative to the exported document's own directory when the file is
+      // under it — `assets/clip.mp4` stays `assets/clip.mp4`, and a nested
+      // `media/sub/clip.mp4` keeps its full relative form, not just its
+      // basename (an earlier version threw the folder away here entirely).
+      // An out-of-tree absolute path (the user typed one elsewhere, or there
+      // is no active document) is left absolute rather than reduced to a
+      // basename — an absolute path still resolves on this machine, while a
+      // bare basename resolves nowhere.
+      const baseDir = activeFileDir();
+      const relative = baseDir ? relativeToRoot(abs, baseDir) : null;
+      el.setAttribute("src", relative ?? abs);
     }
     el.removeAttribute("preload");
   }

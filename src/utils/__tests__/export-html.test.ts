@@ -1,7 +1,19 @@
 // §5.12 Export HTML — generateStandaloneHTML unit tests
 import type { Editor } from "@tiptap/core";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// §294 video export path — activeFileDir() resolves against the active tab's
+// file path, so pin one here to test relativizing an asset URL back to a
+// path relative to the exported document.
+vi.mock("../../stores/editor/editor", () => ({
+  useEditorStore: {
+    getState: () => ({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: "/vault/notes/today.md" }],
+    }),
+  },
+}));
 
 import {
   captureEditorHTML,
@@ -173,5 +185,84 @@ describe("captureEditorHTML — mermaid diagram sizing normalization", () => {
     // No viewBox → cannot derive natural size; still strips the inline cap.
     expect(html).not.toContain('width="');
     expect(html).not.toContain("max-width: 200px");
+  });
+});
+
+describe("captureEditorHTML — video src rewriting for HTML export (§294)", () => {
+  // Mocked active tab's file lives at /vault/notes/today.md → dirname is
+  // /vault/notes (see the useEditorStore mock above).
+  const DOC_DIR = "/vault/notes";
+
+  /**
+   * Reproduces the real asset URL shape, not a hand-typed approximation.
+   * `@tauri-apps/api/mocks`' `mockConvertFileSrc` — the Tauri team's own
+   * stand-in for the native implementation — percent-encodes the ENTIRE
+   * absolute path with `encodeURIComponent`, slashes included, so
+   * `/vault/notes/assets/clip.mp4` becomes `%2Fvault%2Fnotes%2Fassets%2Fclip.mp4`
+   * before the scheme wraps it. Building fixtures any other way would test
+   * a URL shape that never occurs in the app.
+   */
+  function assetUrl(absPath: string, windows = false): string {
+    const encoded = encodeURIComponent(absPath);
+    return windows
+      ? `http://asset.localhost/${encoded}`
+      : `asset://localhost/${encoded}`;
+  }
+
+  function videoDom(src: string): HTMLElement {
+    const dom = document.createElement("div");
+    dom.innerHTML = `<video src="${src}" preload="metadata"></video>`;
+    return dom;
+  }
+
+  it("keeps a video under the document's directory relative, folder included", async () => {
+    const src = `${assetUrl(`${DOC_DIR}/assets/clip.mp4`)}#t=0.1`;
+    const html = await captureEditorHTML(mockEditor(videoDom(src)));
+
+    expect(html).toContain('src="assets/clip.mp4"');
+  });
+
+  it("keeps a nested relative path in full, not reduced to its basename", async () => {
+    const src = `${assetUrl(`${DOC_DIR}/media/sub/clip.mp4`)}#t=0.1`;
+    const html = await captureEditorHTML(mockEditor(videoDom(src)));
+
+    // The bug this guards: an earlier version did `.split("/").pop()`, which
+    // would have produced "clip.mp4" here — playable only by accident, when
+    // the file happens to sit directly in assets/ next to the document.
+    expect(html).toContain('src="media/sub/clip.mp4"');
+  });
+
+  it("leaves an out-of-tree absolute path absolute rather than reducing it to a basename", async () => {
+    const src = `${assetUrl("/Users/other/Downloads/clip.mp4")}#t=0.1`;
+    const html = await captureEditorHTML(mockEditor(videoDom(src)));
+
+    expect(html).toContain('src="/Users/other/Downloads/clip.mp4"');
+  });
+
+  it("strips the #t=0.1 poster-frame fragment in every case", async () => {
+    const underTree = await captureEditorHTML(
+      mockEditor(videoDom(`${assetUrl(`${DOC_DIR}/assets/clip.mp4`)}#t=0.1`)),
+    );
+    const outOfTree = await captureEditorHTML(
+      mockEditor(videoDom(`${assetUrl("/Users/other/clip.mp4")}#t=0.1`)),
+    );
+
+    expect(underTree).not.toContain("t=0.1");
+    expect(outOfTree).not.toContain("t=0.1");
+  });
+
+  it("handles the Windows asset URL spelling (http://asset.localhost/) identically", async () => {
+    const src = `${assetUrl(`${DOC_DIR}/assets/clip.mp4`, true)}#t=0.1`;
+    const html = await captureEditorHTML(mockEditor(videoDom(src)));
+
+    expect(html).toContain('src="assets/clip.mp4"');
+  });
+
+  it("leaves a remote https URL untouched", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(videoDom("https://example.com/clip.mp4")),
+    );
+
+    expect(html).toContain('src="https://example.com/clip.mp4"');
   });
 });

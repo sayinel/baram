@@ -507,8 +507,12 @@ blank frame. `.mkv` is not a recognized video container on any platform, so Bara
 treat it as a video at all — it falls back to an image reference that will not display.
 Convert to `.mp4` instead.
 
-When you export to HTML, videos are referenced by relative path rather than embedded, so
-the video files need to travel with the exported document.
+When you export to HTML, a local video keeps the same relative path it has in your document
+— `assets/clip.mp4` stays `assets/clip.mp4` — rather than being embedded. That means the
+`assets` folder (or wherever the video lives, for a nested path) has to sit next to the
+exported HTML file in that same relative position, or the video won't play. A video
+referenced by an absolute path outside your vault keeps that absolute path in the export, so
+it will only play on the machine it was exported from.
 
 ### Table of Contents
 
