@@ -150,8 +150,19 @@
   border-radius: 4px;
 }
 
+/* ‼️ `opacity`가 아니다. 그건 하이라이트가 아니라 칸을 반투명하게 만드는 것이라 합성이
+   `0.85 × 사진 + 0.15 × 패널 배경`이 되고, 그 배경(`--color-bg-panel`)은 밝은 테마 3개에서
+   밝고 어두운 테마 5개에서 어둡다 — 같은 규칙이 테마마다 반대 방향으로 보였다. 게다가 사진
+   휘도가 배경과 비슷하면 섞어도 변화가 없어 피드백이 아예 사라졌다.
+
+   둘을 함께 쓰는 이유: brightness는 곱셈이라 양 극단에서 약해진다(거의 흰 사진은 클리핑,
+   아주 어두운 사진은 절대 변화량이 작다). 그 두 경우에 보이는 것은 링뿐이고, 반대로 링만
+   두면 "밝아진다"는 기대에 답하지 못한다. outline-offset이 음수인 건 링을 칸 안쪽에
+   그려 4px 그리드 간격을 침범하지 않게 하려는 것이다. */
 .photo-gallery-item:hover {
-  opacity: 0.85;
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: -2px;
+  filter: brightness(1.12);
 }
 
 .photo-gallery-thumb {
