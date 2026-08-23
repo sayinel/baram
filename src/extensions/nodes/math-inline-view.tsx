@@ -44,6 +44,11 @@ export function MathInlineView({ node, selected }: NodeViewProps) {
       as="span"
       className={`math-inline math-inline-rendered ${selected ? "math-inline-selected" : ""}`}
       contentEditable={false}
+      // The render effect above returns before touching the DOM when there is
+      // no formula, so an empty node stays empty forever. The export waits for
+      // inline math to fill in (export-heavy-blocks.ts) and cannot tell "not
+      // rendered yet" from "nothing to render" by looking — this says which.
+      data-empty={formula ? undefined : "true"}
       data-math-size={mathSize}
       ref={wrapperRef}
     >

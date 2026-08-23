@@ -323,28 +323,40 @@ describe("the exported video link is actually visible", () => {
 // `a` already carries them, so a video link looks like every other link in the
 // same document instead of a new species.
 //
-// Hard-coded hex on purpose. A theme token (`var(--color-…)`) would resolve to
-// nothing here: the export carries no token stylesheet, and a canvas-free
-// standalone file has no app root to inherit from.
+// ‼️ Corrected premise. This used to require a hard-coded hex, on the grounds
+// that "the export carries no token stylesheet, and a standalone file has no
+// app root to inherit from". It carries one now (export-editor-css.ts inlines
+// the light theme), and the anchor rule is the editor's own — so the check is
+// that the rule names a token AND that the token is defined, which is the pair
+// that actually decides whether the link is painted. A `var()` with no
+// definition takes the whole declaration down with it, so asserting only the
+// first half would pass on an invisible link.
 describe("the exported stylesheet gives anchors a visible affordance", () => {
   const CSS = generateStandaloneHTML("", "t");
 
-  /** The top-level `a { … }` rule, excluding the @media print block. */
+  /** The scoped `a { … }` rule, excluding the @media print block. */
   function anchorRule(): string {
     const editorCss = CSS.slice(0, CSS.indexOf("@media print"));
-    const m = editorCss.match(/\na \{([^}]*)\}/);
+    const m = editorCss.match(/\narticle\.baram-export a \{([^}]*)\}/);
     return m?.[1] ?? "";
   }
 
-  it("found exactly one top-level anchor rule, so the checks below are not vacuous", () => {
+  it("found exactly one anchor rule, so the checks below are not vacuous", () => {
     const editorCss = CSS.slice(0, CSS.indexOf("@media print"));
-    expect(editorCss.match(/\na \{[^}]*\}/g)).toHaveLength(1);
+    expect(
+      editorCss.match(/\narticle\.baram-export a \{[^}]*\}/g),
+    ).toHaveLength(1);
   });
 
   it("gives anchors a colour distinct from body text", () => {
-    expect(anchorRule()).toMatch(/color:\s*#[0-9a-f]{3,6}/i);
-    // Body text is #1f2937/#374151-ish; the link must not be painted the same.
+    expect(anchorRule()).toMatch(/color:\s*var\(--color-accent-default\)/);
     expect(anchorRule()).not.toMatch(/color:\s*inherit/i);
+  });
+
+  it("defines the token that colour resolves through", () => {
+    // Without this the declaration above is dropped at computed-value time and
+    // the link paints as body text — visibly identical to having no rule.
+    expect(CSS).toMatch(/--color-accent-default:\s*[^;]+;/);
   });
 
   it("gives anchors an underline", () => {

@@ -10,7 +10,7 @@
 // rule it has to override.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { EDITOR_CSS } from "../export-html-styles";
+import { buildExportStylesheet } from "../export-html-styles";
 
 const AREA_IMAGE = `<img class="block-reference-area-image" src="data:image/png;base64,AAAA" width="320" height="90">`;
 
@@ -21,7 +21,7 @@ let style: HTMLStyleElement;
 
 beforeAll(() => {
   style = document.createElement("style");
-  style.textContent = EDITOR_CSS;
+  style.textContent = buildExportStylesheet();
   document.head.append(style);
 });
 
@@ -32,7 +32,10 @@ afterAll(() => {
 
 /** Render export-shaped markup and hand back the pieces worth asserting on. */
 function mount(attrs: string): { img: HTMLElement; wrapper: HTMLElement } {
-  document.body.innerHTML = `<p><span class="block-reference" ${attrs}>${AREA_IMAGE}</span></p>`;
+  // Inside the export wrapper, because the stylesheet is now the editor's own
+  // rescoped onto it — markup mounted bare would miss every scoped rule and
+  // the cascade under test would not be the one that ships.
+  document.body.innerHTML = `<article class="baram-export"><p><span class="block-reference" ${attrs}>${AREA_IMAGE}</span></p></article>`;
   return {
     img: document.querySelector(".block-reference-area-image") as HTMLElement,
     wrapper: document.querySelector(".block-reference") as HTMLElement,

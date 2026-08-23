@@ -20,9 +20,26 @@ import {
   generateStandaloneHTML,
 } from "../export/export-html";
 
-/** Build a minimal mock Editor whose view.dom is the given element. */
-function mockEditor(dom: HTMLElement): Editor {
-  return { view: { dom } } as unknown as Editor;
+/**
+ * A minimal mock Editor: `view.dom` is the given element.
+ *
+ * ‼️ `state` is not decoration. `captureEditorHTML` reads each code block's text
+ * from the DOCUMENT now, because a mounted CodeMirror only renders its own
+ * viewport and the DOM therefore holds a fraction of a long block's lines. A
+ * fixture with no code blocks needs an empty doc; one WITH them belongs in
+ * export-heavy-blocks.test.tsx, driven through a real editor.
+ */
+function mockEditor(dom: HTMLElement, codeTexts: string[] = []): Editor {
+  const doc = {
+    descendants(
+      fn: (node: { textContent: string; type: { name: string } }) => void,
+    ) {
+      for (const textContent of codeTexts) {
+        fn({ textContent, type: { name: "codeBlock" } });
+      }
+    },
+  };
+  return { state: { doc }, view: { dom } } as unknown as Editor;
 }
 
 describe("generateStandaloneHTML", () => {
@@ -46,12 +63,21 @@ describe("generateStandaloneHTML", () => {
     );
   });
 
-  it("includes KaTeX CSS style block (raw import may be empty in test env)", () => {
+  it("ships KaTeX's stylesheet for a document that has math", () => {
+    const html = generateStandaloneHTML('<p class="katex">x</p>', "Test");
+    // Two blocks: KaTeX's own sheet, then everything Baram ships (tokens + the
+    // editor's rescoped CSS + export frame + print).
+    expect(html.match(/<style>/g)).toHaveLength(2);
+    // ‼️ The old version of this test said "may be empty in test env" in its
+    // own name and asserted only the COUNT — so it passed with three empty
+    // blocks, which is exactly what vitest's default CSS stubbing produced.
+    // vitest.config.ts now processes CSS; assert the content, not the shape.
+    expect(html).toContain(".katex");
+  });
+
+  it("leaves KaTeX out of a document with none", () => {
     const html = generateStandaloneHTML("<p>x</p>", "Test");
-    // The first <style> block is for KaTeX CSS (may be empty in vitest jsdom)
-    // Verify the structure has 3 style blocks: katex, editor, print
-    const styleBlocks = html.match(/<style>/g);
-    expect(styleBlocks?.length).toBe(3);
+    expect(html.match(/<style>/g)).toHaveLength(1);
   });
 
   it("includes @media print rules", () => {
@@ -108,7 +134,7 @@ describe("captureEditorHTML — mermaid interactive UI stripping", () => {
   it("removes the shared media toolbar (AI / copy / expand buttons) but keeps the SVG", async () => {
     const dom = document.createElement("div");
     dom.innerHTML = `
-      <div class="mermaid-block mermaid-block-preview">
+      <div class="mermaid-block mermaid-block-preview" data-render-state="done">
         <svg class="mermaid-svg"><g></g></svg>
         <div class="media-toolbar">
           <button class="media-toolbar-btn">AI</button>
@@ -130,7 +156,7 @@ describe("captureEditorHTML — mermaid interactive UI stripping", () => {
   it("removes the mermaid context menu portal markup", async () => {
     const dom = document.createElement("div");
     dom.innerHTML = `
-      <div class="mermaid-block">
+      <div class="mermaid-block" data-render-state="done">
         <svg class="mermaid-svg"></svg>
         <div class="mermaid-context-menu"><button>Copy as SVG</button></div>
       </div>`;
@@ -143,14 +169,44 @@ describe("captureEditorHTML — mermaid interactive UI stripping", () => {
 });
 
 describe("captureEditorHTML — mermaid diagram sizing normalization", () => {
-  it("pins natural size from viewBox and drops mermaid's inline max-width", async () => {
+  /**
+   * The DOM mermaid-block-view actually renders for an UNSELECTED block — the
+   * only state an export ever captures.
+   *
+   * ‼️ These fixtures used to be `<div class="mermaid-block-svg">`, and they
+   * were wrong: `.mermaid-block-svg` exists only in the EDITING and FULLSCREEN
+   * branches. The unselected branch nests the SVG in
+   * `.media-render > .media-resize-frame > .media-resize-content`. The
+   * production selector was `.mermaid-block-svg svg`, so it matched nothing in
+   * a real export and every one of these tests passed anyway — a synthetic
+   * fixture agreeing with a broken selector about a shape neither of them
+   * shares with the app.
+   *
+   * `data-render-state="done"` is what mermaid-block-view sets once it has
+   * attempted a render; without it the capture would (correctly) wait for a
+   * diagram that is never coming.
+   */
+  function mermaidDOM(svg: string): HTMLElement {
     const dom = document.createElement("div");
     dom.innerHTML = `
-      <div class="mermaid-block-svg">
-        <svg viewBox="0 0 480 300" style="max-width: 480px;"><g></g></svg>
+      <div class="mermaid-block mermaid-block-preview" data-render-state="done">
+        <div class="media-render">
+          <div class="media-resize-frame">
+            <div class="media-resize-content">${svg}</div>
+          </div>
+        </div>
       </div>`;
+    return dom;
+  }
 
-    const html = await captureEditorHTML(mockEditor(dom));
+  it("pins natural size from viewBox and drops mermaid's inline max-width", async () => {
+    const html = await captureEditorHTML(
+      mockEditor(
+        mermaidDOM(
+          '<svg viewBox="0 0 480 300" style="max-width: 480px;"><g></g></svg>',
+        ),
+      ),
+    );
 
     // Natural dimensions pinned as attributes (drives intrinsic aspect ratio).
     expect(html).toContain('width="480"');
@@ -161,26 +217,22 @@ describe("captureEditorHTML — mermaid diagram sizing normalization", () => {
   });
 
   it("rounds fractional viewBox dimensions", async () => {
-    const dom = document.createElement("div");
-    dom.innerHTML = `
-      <div class="mermaid-block-svg">
-        <svg viewBox="0 0 764.5 512.25" style="max-width: 764.5px;"></svg>
-      </div>`;
-
-    const html = await captureEditorHTML(mockEditor(dom));
+    const html = await captureEditorHTML(
+      mockEditor(
+        mermaidDOM(
+          '<svg viewBox="0 0 764.5 512.25" style="max-width: 764.5px;"></svg>',
+        ),
+      ),
+    );
 
     expect(html).toContain('width="765"');
     expect(html).toContain('height="512"');
   });
 
   it("leaves a viewBox-less svg without pinned dimensions", async () => {
-    const dom = document.createElement("div");
-    dom.innerHTML = `
-      <div class="mermaid-block-svg">
-        <svg style="max-width: 200px;"></svg>
-      </div>`;
-
-    const html = await captureEditorHTML(mockEditor(dom));
+    const html = await captureEditorHTML(
+      mockEditor(mermaidDOM('<svg style="max-width: 200px;"></svg>')),
+    );
 
     // No viewBox → cannot derive natural size; still strips the inline cap.
     expect(html).not.toContain('width="');

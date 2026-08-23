@@ -13,6 +13,8 @@ import {
   detectMermaidType,
   downloadMermaidPng,
   MERMAID_TEMPLATES,
+  MERMAID_THEME,
+  MERMAID_THEME_VARIABLES,
   normalizeMermaidSvgSize,
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
@@ -39,6 +41,12 @@ export function MermaidBlockView({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<null | string>(null);
   const [svgHtml, setSvgHtml] = useState<string>("");
+  // §5.12: whether a render has been ATTEMPTED, which is not the same question
+  // as whether it produced anything. "no SVG yet" is the DOM for three
+  // different states — still lazy, empty source, failed — and the export has to
+  // tell "wait for this" from "nothing is coming" without guessing. Reflected
+  // onto the wrapper as `data-render-state` (export-heavy-blocks.ts).
+  const [renderAttempted, setRenderAttempted] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenCode, setFullscreenCode] = useState("");
@@ -79,6 +87,7 @@ export function MermaidBlockView({
     if (!source.trim()) {
       setSvgHtml("");
       setError(null);
+      setRenderAttempted(true);
       return;
     }
 
@@ -92,10 +101,14 @@ export function MermaidBlockView({
             if (!cancelled) {
               setSvgHtml(svg);
               setError(null);
+              setRenderAttempted(true);
             }
           },
           (msg) => {
-            if (!cancelled) setError(msg);
+            if (!cancelled) {
+              setError(msg);
+              setRenderAttempted(true);
+            }
           },
         );
       },
@@ -405,6 +418,7 @@ export function MermaidBlockView({
       <NodeViewWrapper
         className="mermaid-block mermaid-block-preview"
         contentEditable={false}
+        data-render-state={renderAttempted ? "done" : "pending"}
         data-type="mermaidBlock"
         onClick={handlePreviewClick}
         onContextMenu={(e: React.MouseEvent) => {
@@ -616,6 +630,7 @@ export function MermaidBlockView({
     <NodeViewWrapper
       className="mermaid-block mermaid-block-editing"
       contentEditable={false}
+      data-render-state={renderAttempted ? "done" : "pending"}
       data-type="mermaidBlock"
       ref={wrapperRef}
       spellCheck={false}
@@ -720,8 +735,10 @@ async function renderMermaid(
     const mermaid = (await import("mermaid")).default;
     mermaid.initialize({
       startOnLoad: false,
-      theme:
-        document.documentElement.dataset.theme === "dark" ? "dark" : "default",
+      // One palette for every render path — see MERMAID_THEME's note for why
+      // this deliberately ignores the app theme.
+      theme: MERMAID_THEME,
+      themeVariables: MERMAID_THEME_VARIABLES,
       // "antiscript" allows inline HTML in labels (e.g. <br>, <b>, <i>) while
       // stripping <script>. "strict" would HTML-encode every tag, breaking <br>.
       securityLevel: "antiscript",

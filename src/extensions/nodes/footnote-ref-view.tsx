@@ -95,6 +95,11 @@ export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
     <NodeViewWrapper
       as="sup"
       className={`footnote-ref ${selected ? "footnote-ref-selected" : ""}`}
+      // The rendered text is the DISPLAY NUMBER, not the identifier, so the DOM
+      // alone could not say which definition this points at. The export needs
+      // that to turn the reference into a real link (§5.12) — in a PDF the
+      // click handler above does not exist.
+      data-identifier={identifier}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
