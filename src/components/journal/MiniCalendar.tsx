@@ -1,23 +1,10 @@
 // §56c MiniCalendar — date picker calendar for MemoriesPanel
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { INTL_LOCALES } from "../../i18n";
+import { monthShortNames, weekdayShortNames } from "../../i18n/date-names";
+import { useTranslation } from "../../i18n/useTranslation";
 import { getFirstDayOfWeek, getMonthDays } from "../../utils/journal/journal";
-
-const MINI_CAL_DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
-const MINI_CAL_MONTH_NAMES = [
-  "1월",
-  "2월",
-  "3월",
-  "4월",
-  "5월",
-  "6월",
-  "7월",
-  "8월",
-  "9월",
-  "10월",
-  "11월",
-  "12월",
-];
 
 export interface MiniCalendarProps {
   onClose: () => void;
@@ -32,6 +19,10 @@ export function MiniCalendar({
   onSelect,
   onClose,
 }: MiniCalendarProps) {
+  const { locale } = useTranslation();
+  const intl = INTL_LOCALES[locale];
+  const dayNames = useMemo(() => weekdayShortNames(intl), [intl]);
+  const monthLabels = useMemo(() => monthShortNames(intl), [intl]);
   const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
   const [view, setView] = useState<CalendarView>("days");
@@ -94,7 +85,7 @@ export function MiniCalendar({
           className="memories-mini-calendar-title-btn"
           onClick={() => setView("months")}
         >
-          {MINI_CAL_MONTH_NAMES[viewMonth]}
+          {monthLabels[viewMonth]}
         </button>{" "}
         <button
           className="memories-mini-calendar-title-btn"
@@ -108,7 +99,9 @@ export function MiniCalendar({
         className="memories-mini-calendar-title-btn"
         onClick={() => setView("years")}
       >
-        {viewYear}년
+        {new Date(viewYear, 0).toLocaleDateString(intl, {
+          year: "numeric",
+        })}
       </button>
     ) : (
       <span className="memories-mini-calendar-title-text">
@@ -130,8 +123,8 @@ export function MiniCalendar({
 
       {view === "days" && (
         <div className="memories-mini-calendar-grid">
-          {MINI_CAL_DAY_NAMES.map((d) => (
-            <div className="memories-mini-calendar-dow" key={d}>
+          {dayNames.map((d, i) => (
+            <div className="memories-mini-calendar-dow" key={i}>
               {d}
             </div>
           ))}
@@ -160,7 +153,7 @@ export function MiniCalendar({
 
       {view === "months" && (
         <div className="memories-mini-calendar-picker">
-          {MINI_CAL_MONTH_NAMES.map((name, i) => (
+          {monthLabels.map((name, i) => (
             <button
               className={`memories-mini-calendar-pick-btn ${i === viewMonth && viewYear === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${i === today.getMonth() && viewYear === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
               key={i}

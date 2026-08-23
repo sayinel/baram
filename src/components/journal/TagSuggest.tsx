@@ -1,6 +1,7 @@
 // §56l — Tag autocomplete dropdown for journal captures
 import { useEffect, useRef } from "react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { filterTags } from "../../utils/journal/journal-tags";
 
 interface TagSuggestProps {
@@ -20,6 +21,7 @@ export function TagSuggest({
   activeIndex,
   position,
 }: TagSuggestProps) {
+  const { t } = useTranslation();
   const listRef = useRef<HTMLUListElement>(null);
 
   const suggestions = filterTags(query, tags);
@@ -40,7 +42,7 @@ export function TagSuggest({
 
   return (
     <ul
-      aria-label="Tag suggestions"
+      aria-label={t("journal.tagSuggest.aria")}
       className="tag-suggest"
       role="listbox"
       style={style}

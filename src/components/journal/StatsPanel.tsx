@@ -1,6 +1,9 @@
 // §56g Journal Streaks & Stats panel
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { INTL_LOCALES } from "../../i18n";
+import { weekdayShortNames } from "../../i18n/date-names";
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -36,6 +39,8 @@ export function StatsPanel({
   lastSavedDate,
   lastSavedContent,
 }: StatsPanelProps) {
+  const { locale, t } = useTranslation();
+  const intl = INTL_LOCALES[locale];
   const [heatmapEntries, setHeatmapEntries] = useState<HeatmapEntry[]>([]);
   const [cache, setCache] = useState<JournalStatsCache | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -104,7 +109,7 @@ export function StatsPanel({
     }
 
     // Most active day of week
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const dayNames = weekdayShortNames(intl);
     let maxDow = 0;
     for (let i = 1; i < 7; i++) {
       if (dowCount[i] > dowCount[maxDow]) maxDow = i;
@@ -133,10 +138,13 @@ export function StatsPanel({
       const avgHour = ((avgAngle / TWO_PI) * 24 + 24) % 24;
       const h = Math.floor(avgHour);
       const m = Math.round((avgHour - h) * 60);
-      const period = h < 12 ? "오전" : "오후";
-      const displayH = h % 12 === 0 ? 12 : h % 12;
-      const displayM = String(m).padStart(2, "0");
-      avgWritingTime = `${period} ${displayH}:${displayM}`;
+      // Intl decides where the AM/PM marker goes and whether there is one at all: the
+      // hand-built `${period} ${h}:${m}` put 오전 in front unconditionally, which is right for
+      // ko and wrong for en ("오전 9:30" vs "9:30 AM").
+      avgWritingTime = new Intl.DateTimeFormat(intl, {
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(new Date(2026, 0, 1, h, m));
     }
 
     return {
@@ -149,7 +157,7 @@ export function StatsPanel({
       mostActiveDayCount: dowCount[maxDow],
       avgWritingTime,
     };
-  }, [cache, currentYear]);
+  }, [cache, currentYear, intl]);
 
   /** Run a full cache rebuild and persist it. */
   const runFullScan = useCallback(
@@ -282,7 +290,7 @@ export function StatsPanel({
 
   return (
     <>
-      <JournalSection id="journal-activity" title="활동">
+      <JournalSection id="journal-activity" title={t("journal.stats.activity")}>
         <ContributionHeatmap
           entries={heatmapEntries}
           onDateClick={handleDateClick}
@@ -292,11 +300,11 @@ export function StatsPanel({
       <JournalSection
         action={
           <button
-            aria-label="Refresh journal stats"
+            aria-label={t("journal.stats.refresh.aria")}
             className="journal-stats-refresh"
             disabled={refreshing}
             onClick={handleRefresh}
-            title="Refresh stats"
+            title={t("journal.stats.refresh")}
           >
             <svg
               fill="none"
@@ -314,7 +322,7 @@ export function StatsPanel({
           </button>
         }
         id="journal-stats"
-        title="통계"
+        title={t("journal.stats.title")}
       >
         <div className="journal-stats-grid">
           <div className="journal-stats-row">
@@ -331,14 +339,20 @@ export function StatsPanel({
             >
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
-            <span className="journal-stats-label">Streak</span>
+            <span className="journal-stats-label">
+              {t("journal.stats.streak")}
+            </span>
             <span className="journal-stats-value">
-              <strong>{streak.current}</strong>d
+              <strong>{streak.current}</strong>
+              {t("journal.stats.daysSuffix")}
             </span>
             <span className="journal-stats-sep" />
-            <span className="journal-stats-label">Best</span>
+            <span className="journal-stats-label">
+              {t("journal.stats.best")}
+            </span>
             <span className="journal-stats-value">
-              <strong>{streak.longest}</strong>d
+              <strong>{streak.longest}</strong>
+              {t("journal.stats.daysSuffix")}
             </span>
           </div>
           <div className="journal-stats-row">
@@ -358,7 +372,9 @@ export function StatsPanel({
               <line x1="8" x2="8" y1="2" y2="6" />
               <line x1="3" x2="21" y1="10" y2="10" />
             </svg>
-            <span className="journal-stats-label">This month</span>
+            <span className="journal-stats-label">
+              {t("journal.stats.thisMonth")}
+            </span>
             <span className="journal-stats-value">
               <strong>{monthStats.total}</strong>/{monthStats.daysInMonth}
             </span>
@@ -382,14 +398,20 @@ export function StatsPanel({
                   <path d="M18 20V4" />
                   <path d="M6 20v-4" />
                 </svg>
-                <span className="journal-stats-label">Year</span>
+                <span className="journal-stats-label">
+                  {t("journal.stats.year")}
+                </span>
                 <span className="journal-stats-value">
-                  <strong>{extStats.yearEntries}</strong>d
+                  <strong>{extStats.yearEntries}</strong>
+                  {t("journal.stats.daysSuffix")}
                 </span>
                 <span className="journal-stats-sep" />
-                <span className="journal-stats-label">All</span>
+                <span className="journal-stats-label">
+                  {t("journal.stats.all")}
+                </span>
                 <span className="journal-stats-value">
-                  <strong>{extStats.totalEntries}</strong>d
+                  <strong>{extStats.totalEntries}</strong>
+                  {t("journal.stats.daysSuffix")}
                 </span>
               </div>
               <div className="journal-stats-row">
@@ -406,17 +428,19 @@ export function StatsPanel({
                 >
                   <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                 </svg>
-                <span className="journal-stats-label">Words</span>
+                <span className="journal-stats-label">
+                  {t("journal.stats.words")}
+                </span>
                 <span className="journal-stats-value">
-                  <strong>{extStats.monthWords.toLocaleString()}</strong>
+                  <strong>{extStats.monthWords.toLocaleString(intl)}</strong>
                 </span>
                 <span className="journal-stats-sep" />
                 <span className="journal-stats-value">
-                  <strong>{extStats.yearWords.toLocaleString()}</strong>
+                  <strong>{extStats.yearWords.toLocaleString(intl)}</strong>
                 </span>
                 <span className="journal-stats-sep" />
                 <span className="journal-stats-value journal-stats-dim">
-                  {extStats.totalWords.toLocaleString()}
+                  {extStats.totalWords.toLocaleString(intl)}
                 </span>
               </div>
               {extStats.mostActiveDay && (
@@ -435,12 +459,16 @@ export function StatsPanel({
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
-                  <span className="journal-stats-label">Most active</span>
+                  <span className="journal-stats-label">
+                    {t("journal.stats.mostActive")}
+                  </span>
                   <span className="journal-stats-value">
                     <strong>{extStats.mostActiveDay}</strong>
                   </span>
                   <span className="journal-stats-pct">
-                    {extStats.mostActiveDayCount} entries
+                    {t("journal.stats.entryCount", {
+                      count: String(extStats.mostActiveDayCount),
+                    })}
                   </span>
                 </div>
               )}
@@ -460,7 +488,9 @@ export function StatsPanel({
                     <circle cx="12" cy="12" r="10" />
                     <polyline points="12 6 12 12 16 14" />
                   </svg>
-                  <span className="journal-stats-label">평균 작성 시간</span>
+                  <span className="journal-stats-label">
+                    {t("journal.stats.avgWritingTime")}
+                  </span>
                   <span className="journal-stats-value">
                     <strong>{extStats.avgWritingTime}</strong>
                   </span>
