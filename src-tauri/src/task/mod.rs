@@ -279,4 +279,28 @@ mod scan_tests {
         let tasks = get_file_tasks(&p).await.unwrap();
         assert_eq!(tasks.len(), 2);
     }
+
+    /// 리스크 2 측정용. 평소 CI에서는 건너뛴다.
+    /// 실행: cargo test --manifest-path src-tauri/Cargo.toml -- --ignored --nocapture scan_10k
+    #[tokio::test]
+    #[ignore]
+    async fn scan_10k_files_timing() {
+        let d = TempDir::new().unwrap();
+        for i in 0..10_000 {
+            let body = format!(
+                "---\ntags: [t{}]\n---\n# 문서 {}\n\n본문 한 줄.\n\n- [ ] 할 일 {} 📅2026-08-30 ⏫\n- [x] 끝난 것 {} ✅2026-08-01\n",
+                i % 50, i, i, i
+            );
+            write(&d, &format!("d{}/f{}.md", i % 100, i), &body).await;
+        }
+
+        let started = std::time::Instant::now();
+        let tasks = get_vault_tasks(d.path().to_str().unwrap(), &[])
+            .await
+            .unwrap();
+        let elapsed = started.elapsed();
+
+        println!("scanned {} tasks in {:?}", tasks.len(), elapsed);
+        assert_eq!(tasks.len(), 20_000);
+    }
 }
