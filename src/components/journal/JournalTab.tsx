@@ -1,6 +1,7 @@
 // §56c JournalTab — journal memories tab for MemoriesPanel
 import { useCallback, useEffect } from "react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -12,6 +13,7 @@ import {
   renderSimpleMarkdown,
   updateOneLineFrontmatter,
 } from "../../utils/journal/journal-memories";
+import { basename } from "../../utils/path-utils";
 import { type MemoryEntry, OneLineEditor } from "./OneLineEditor";
 import { resolveImageSrcs, resolveJournalBase } from "./utils";
 
@@ -38,8 +40,18 @@ export function JournalTab({
   month,
   day,
 }: JournalTabProps) {
-  const { rootPath } = useFileStore();
-  const { journalDirectory } = useSettingsStore();
+  const { t } = useTranslation();
+  const rootPath = useFileStore((s) => s.rootPath);
+  const journalDirectory = useSettingsStore((s) => s.journalDirectory);
+
+  /**
+   * Fallback for an entry that renders to nothing.
+   *
+   * It is wrapped in a `<p>` because it goes through the same `dangerouslySetInnerHTML` as the
+   * rendered markdown beside it. The text comes from our own locale files — no locale value
+   * contains markup, and none is user input — so there is nothing here to escape.
+   */
+  const emptyRender = `<p>${t("journal.memories.emptyEntry")}</p>`;
 
   const loadMemories = useCallback(async () => {
     if (!rootPath || !journalDirectory) return;
@@ -104,7 +116,7 @@ export function JournalTab({
     } else {
       readFile(path)
         .then((content) => {
-          const fileName = path.split("/").pop() ?? "Unknown";
+          const fileName = basename(path);
           useFileStore.getState().setFileContent(path, content);
           useEditorStore.getState().openTab({
             contextId: "",
@@ -126,24 +138,24 @@ export function JournalTab({
           className={`memories-mode-btn ${mode === "oneline" ? "memories-mode-btn-active" : ""}`}
           onClick={() => setMode("oneline")}
         >
-          One Line
+          {t("journal.memories.mode.oneline")}
         </button>
         <button
           className={`memories-mode-btn ${mode === "full" ? "memories-mode-btn-active" : ""}`}
           onClick={() => setMode("full")}
         >
-          Full
+          {t("journal.memories.mode.full")}
         </button>
       </div>
 
       {loading && (
         <div aria-live="polite" className="memories-loading">
-          Loading…
+          {t("journal.loading")}
         </div>
       )}
 
       {!loading && memories.length === 0 && (
-        <div className="memories-empty">이 날짜의 기록이 없습니다.</div>
+        <div className="memories-empty">{t("journal.memories.empty")}</div>
       )}
 
       {memories.map((entry) => (
@@ -155,13 +167,15 @@ export function JournalTab({
             <span className="memories-year-card-year">
               {entry.year}
               {entry.isCurrentYear && (
-                <span className="memories-year-card-badge">오늘</span>
+                <span className="memories-year-card-badge">
+                  {t("journal.today")}
+                </span>
               )}
             </span>
             <button
               className="memories-year-card-open"
               onClick={() => handleOpenEntry(entry.path)}
-              title="일기 열기"
+              title={t("journal.memories.open")}
             >
               <svg
                 fill="none"
@@ -207,8 +221,7 @@ export function JournalTab({
                   className="memories-oneline memories-md-render"
                   dangerouslySetInnerHTML={{
                     __html: resolveImageSrcs(
-                      renderSimpleMarkdown(entry.oneLine) ||
-                        "<p>(내용 없음)</p>",
+                      renderSimpleMarkdown(entry.oneLine) || emptyRender,
                       entry.path.substring(0, entry.path.lastIndexOf("/")),
                     ),
                   }}
@@ -219,8 +232,7 @@ export function JournalTab({
                 className="memories-full memories-md-render"
                 dangerouslySetInnerHTML={{
                   __html: resolveImageSrcs(
-                    renderSimpleMarkdown(entry.diaryContent) ||
-                      "<p>(내용 없음)</p>",
+                    renderSimpleMarkdown(entry.diaryContent) || emptyRender,
                     entry.path.substring(0, entry.path.lastIndexOf("/")),
                   ),
                 }}

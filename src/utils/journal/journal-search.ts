@@ -44,14 +44,18 @@ export function categorizeJournalResult(
   return "other";
 }
 
-/** Human-readable label for each category */
+/**
+ * The i18n key for each category's label — KEYS, not display strings — the same shape `keybindings/keybinding-registry.ts` uses,
+ * so the caller renders `t(CATEGORY_LABELS[c])`. They held English words before, which is how
+ * a Korean journal search grouped its results under "Daily" and "Weekly".
+ */
 export const CATEGORY_LABELS: Record<JournalCategory, string> = {
-  daily: "Daily",
-  weekly: "Weekly",
-  monthly: "Monthly",
-  yearly: "Yearly",
-  notes: "Notes",
-  other: "Other",
+  daily: "journal.search.category.daily",
+  weekly: "journal.search.category.weekly",
+  monthly: "journal.search.category.monthly",
+  yearly: "journal.search.category.yearly",
+  notes: "journal.search.category.notes",
+  other: "journal.search.category.other",
 };
 
 /** Canonical display order for categories */

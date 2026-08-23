@@ -17,6 +17,16 @@ vi.mock("../../../ipc/thumbnail", () => ({
 }));
 
 const { PhotoLightbox } = await import("../PhotoLightbox");
+const { t } = await import("../../../i18n");
+const { useSettingsStore } = await import("../../../stores/settings/store");
+
+// The labels are looked up, not spelled: asserting on "원본 보기" would pin the Korean copy to
+// an English default install and would have to be edited every time the wording changes. The
+// locale is pinned explicitly rather than inherited from the store default, so a change to
+// that default cannot quietly decide which language these assertions are about.
+const LOCALE = "en";
+const viewOriginal = t("journal.lightbox.viewOriginal", LOCALE);
+const openEntry = t("journal.lightbox.openEntry", LOCALE);
 const { _resetThumbCache, GALLERY_THUMB_PX, resolveThumbUrl } =
   await import("../../../utils/journal/photo-thumbnail");
 
@@ -63,6 +73,7 @@ describe("PhotoLightbox", () => {
   beforeEach(() => {
     _resetThumbCache();
     photoThumbnail.mockReset();
+    useSettingsStore.setState({ locale: LOCALE });
   });
 
   test("asks for a 2048px preview, not the original", async () => {
@@ -112,7 +123,7 @@ describe("PhotoLightbox", () => {
     renderLightbox();
     await waitFor(() => screen.getByRole("img"));
 
-    fireEvent.click(screen.getByText("원본 보기"));
+    fireEvent.click(screen.getByText(viewOriginal));
 
     // 원본 보기는 프리뷰 캐시가 아니라 사진 파일 자체를 가리켜야 한다.
     const original = screen
@@ -129,7 +140,7 @@ describe("PhotoLightbox", () => {
     photoThumbnail.mockResolvedValue("/cache/thumbnails/big.jpg");
     renderLightbox({ onClose });
     await waitFor(() => screen.getByRole("img"));
-    fireEvent.click(screen.getByText("원본 보기"));
+    fireEvent.click(screen.getByText(viewOriginal));
 
     fireEvent.keyDown(window, { key: "Escape" });
 
@@ -151,7 +162,7 @@ describe("PhotoLightbox", () => {
     fireEvent.keyDown(window, { key: "ArrowRight" });
     expect(onNavigate).toHaveBeenCalledWith("next");
 
-    fireEvent.click(screen.getByText("원본 보기"));
+    fireEvent.click(screen.getByText(viewOriginal));
     onNavigate.mockClear();
     fireEvent.keyDown(window, { key: "ArrowRight" });
     expect(onNavigate).not.toHaveBeenCalled();
@@ -164,6 +175,7 @@ describe("PhotoLightbox — video clip", () => {
   beforeEach(() => {
     _resetThumbCache();
     photoThumbnail.mockReset();
+    useSettingsStore.setState({ locale: LOCALE });
   });
 
   test("plays the file itself instead of asking for a preview that cannot exist", () => {
@@ -185,7 +197,7 @@ describe("PhotoLightbox — video clip", () => {
   test("offers no 원본 보기 — this screen already is the original", () => {
     renderLightbox({ photo: CLIP });
 
-    expect(screen.queryByText("원본 보기")).toBeNull();
+    expect(screen.queryByText(viewOriginal)).toBeNull();
   });
 
   // 사용자는 이 칸을 **눌러서** 여기 왔다 — 그 클릭이 곧 재생 의사다. WebKit의 자동재생
@@ -201,7 +213,7 @@ describe("PhotoLightbox — video clip", () => {
   test("still offers the way back to the journal", () => {
     renderLightbox({ photo: CLIP });
 
-    expect(screen.getByText("일기 보기")).toBeTruthy();
+    expect(screen.getByText(openEntry)).toBeTruthy();
   });
 
   // ‼️ `<video controls>`의 네이티브 컨트롤도 좌우 화살표로 탐색한다. 창 전체에 걸린

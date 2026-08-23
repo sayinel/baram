@@ -9,18 +9,33 @@ vi.mock("../../../services/zettelkasten-service", () => ({
   captureFleeting: vi.fn().mockResolvedValue({ path: "/z/inbox/x.md" }),
 }));
 
+import { t } from "../../../i18n";
 import { captureFleeting } from "../../../services/zettelkasten-service";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { QuickCaptureDialog } from "../QuickCaptureDialog";
 
-// The save button label embeds a platform-dependent shortcut (⌘↩ / Ctrl+Enter).
-const saveButton = () => screen.getByRole("button", { name: /^저장/ });
+// The save button label embeds a platform-dependent shortcut (⌘↩ / Ctrl+Enter), so the match
+// is on the translated text before it rather than the whole label. Pinned to a locale: the
+// label used to be Korean on an English default install, which is the defect this now guards.
+const LOCALE = "en";
+const noSpaceHint = t("journal.capture.error.noSpace", LOCALE);
+const bodyPlaceholder = t("journal.capture.body.placeholder", LOCALE);
+const sourcePlaceholder = t("journal.capture.source.placeholder", LOCALE);
+const tagsPlaceholder = t("journal.capture.tags.placeholder", LOCALE);
+const SAVE_PREFIX = t("journal.capture.save", LOCALE).split("{")[0].trim();
+// A predicate, not a RegExp: the English label is "Save (…)" and that "(" is an unterminated
+// group once it is interpolated into a pattern.
+const saveButton = () =>
+  screen.getByRole("button", {
+    name: (name: string) => name.startsWith(SAVE_PREFIX),
+  });
 
 describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useSettingsStore.setState({ locale: LOCALE });
     useSettingsStore.getState().setZettelkastenEnabled(false);
     useSettingsStore.getState().setZettelkastenDirectory("");
     useFileStore.getState().setRootPath(null as unknown as string);
@@ -30,9 +45,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
   it("shows the setup hint and disables Save immediately when the zettel space isn't configured", () => {
     render(<QuickCaptureDialog />);
 
-    expect(
-      screen.getByText("Zettel 공간을 먼저 설정하세요."),
-    ).toBeInTheDocument();
+    expect(screen.getByText(noSpaceHint)).toBeInTheDocument();
     expect(saveButton()).toBeDisabled();
   });
 
@@ -42,13 +55,11 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useFileStore.getState().setRootPath("/vault");
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText("메모를 입력하세요..."), {
+    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
       target: { value: "hello" },
     });
 
-    expect(
-      screen.queryByText("Zettel 공간을 먼저 설정하세요."),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(noSpaceHint)).not.toBeInTheDocument();
     expect(saveButton()).not.toBeDisabled();
   });
 
@@ -59,7 +70,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useUIStore.setState({ quickCaptureOpen: true });
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText("메모를 입력하세요..."), {
+    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
       target: { value: "a fleeting thought" },
     });
     fireEvent.click(saveButton());
@@ -81,10 +92,10 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useUIStore.setState({ quickCaptureOpen: true });
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText("메모를 입력하세요..."), {
+    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
       target: { value: "note body" },
     });
-    fireEvent.change(screen.getByPlaceholderText("출처 (선택): https://..."), {
+    fireEvent.change(screen.getByPlaceholderText(sourcePlaceholder), {
       target: { value: "https://example.com" },
     });
     fireEvent.click(saveButton());
@@ -105,10 +116,10 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useUIStore.setState({ quickCaptureOpen: true });
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText("메모를 입력하세요..."), {
+    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
       target: { value: "note body" },
     });
-    fireEvent.change(screen.getByPlaceholderText("#태그1 #태그2"), {
+    fireEvent.change(screen.getByPlaceholderText(tagsPlaceholder), {
       target: { value: "#idea #todo" },
     });
     fireEvent.click(saveButton());
@@ -129,13 +140,14 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
 describe("QuickCaptureDialog — multiline memo & dismissal guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useSettingsStore.setState({ locale: LOCALE });
     useSettingsStore.getState().setZettelkastenEnabled(true);
     useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
     useFileStore.getState().setRootPath("/vault");
     useUIStore.setState({ quickCaptureOpen: true });
   });
 
-  const memoInput = () => screen.getByPlaceholderText("메모를 입력하세요...");
+  const memoInput = () => screen.getByPlaceholderText(bodyPlaceholder);
   const overlay = () => document.querySelector(".quick-capture-overlay")!;
 
   it("does NOT save on plain Enter — newline stays in the memo textarea", () => {
@@ -191,7 +203,7 @@ describe("QuickCaptureDialog — multiline memo & dismissal guard", () => {
   it("Cancel button closes even with content typed", () => {
     render(<QuickCaptureDialog />);
     fireEvent.change(memoInput(), { target: { value: "precious note" } });
-    fireEvent.click(screen.getByText("취소"));
+    fireEvent.click(screen.getByText(t("common.cancel", "en")));
 
     expect(useUIStore.getState().quickCaptureOpen).toBe(false);
   });

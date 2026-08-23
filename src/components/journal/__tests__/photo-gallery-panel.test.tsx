@@ -27,6 +27,13 @@ const { PhotoGalleryPanel } = await import("../PhotoGalleryPanel");
 const { useFileStore } = await import("../../../stores/file/file");
 const { useSettingsStore } = await import("../../../stores/settings/store");
 const { useUIStore } = await import("../../../stores/ui/ui");
+const { t } = await import("../../../i18n");
+
+// Looked up rather than spelled: the empty-state copy is what these two tests are about, and
+// pinning its Korean wording would tie them to a locale the default install does not use.
+const LOCALE = "en";
+const emptyVideo = t("journal.gallery.empty.video", LOCALE);
+const emptyAll = t("journal.gallery.empty.all", LOCALE);
 
 const entry = (name: string) => ({
   name,
@@ -67,6 +74,7 @@ const counts = (c: HTMLElement) =>
 
 describe("PhotoGalleryPanel — media filter", () => {
   beforeEach(() => {
+    useSettingsStore.setState({ locale: LOCALE });
     // Day 모드의 기본 창은 "오늘"이다 — 픽스처가 달력에 걸리지 않게 시계를 고정한다.
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(2026, 7, 15));
@@ -143,7 +151,7 @@ describe("PhotoGalleryPanel — media filter", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Videos" }));
 
-    expect(screen.getByText(/동영상이 없습니다/)).toBeTruthy();
+    expect(screen.getByText(emptyVideo)).toBeTruthy();
   });
 
   // 갤러리가 이제 둘 다 담으므로 빈 안내도 둘 다 말해야 한다 — "이미지를 드래그하세요"만
@@ -153,6 +161,6 @@ describe("PhotoGalleryPanel — media filter", () => {
     render(<PhotoGalleryPanel />);
     await settle();
 
-    expect(screen.getByText(/사진이나 동영상이 없습니다/)).toBeTruthy();
+    expect(screen.getByText(emptyAll)).toBeTruthy();
   });
 });

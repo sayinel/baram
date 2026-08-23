@@ -16,6 +16,8 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 import type { PhotoGalleryEntry } from "../../utils/journal/journal-photo";
 
+import { INTL_LOCALES } from "../../i18n";
+import { useTranslation } from "../../i18n/useTranslation";
 import { cachedThumbUrl } from "../../utils/journal/photo-thumbnail";
 import { ImageOriginalView } from "../editor/ImageOriginalView";
 import { usePhotoPreview } from "./use-photo-thumb";
@@ -31,6 +33,7 @@ export function PhotoLightbox({
   onOpenJournal: (journalPath: string) => void;
   photo: PhotoGalleryEntry;
 }) {
+  const { locale, t } = useTranslation();
   // `insertMediaAtPos`(drop-handler.ts)·NodeView와 같은 판정 — image가 아니면 동영상.
   const isVideo = photo.kind !== "image";
   const preview = usePhotoPreview(isVideo ? null : photo.absolutePath);
@@ -171,7 +174,7 @@ export function PhotoLightbox({
             {photo.caption || photo.filename}
           </span>
           <span className="photo-lightbox-date">
-            {photo.date.toLocaleDateString("ko-KR")}
+            {photo.date.toLocaleDateString(INTL_LOCALES[locale])}
           </span>
           {/* 동영상에는 없다 — ImageOriginalView는 이미지 뷰어이고, 위 <video>가
               이미 파일 자체를 재생하고 있어 "더 원본"이라는 것이 존재하지 않는다. */}
@@ -180,7 +183,7 @@ export function PhotoLightbox({
               className="photo-lightbox-view-original"
               onClick={() => setViewingOriginal(true)}
             >
-              원본 보기
+              {t("journal.lightbox.viewOriginal")}
             </button>
           )}
           {photo.journalPath && (
@@ -192,7 +195,7 @@ export function PhotoLightbox({
                 onOpenJournal(journalPath);
               }}
             >
-              일기 보기
+              {t("journal.lightbox.openEntry")}
             </button>
           )}
         </div>
