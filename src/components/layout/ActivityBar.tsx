@@ -7,6 +7,7 @@ import {
   BookText,
   BotMessageSquare,
   Calendar,
+  CircleCheck,
   CircleHelp,
   Clock,
   Folder,
@@ -44,6 +45,7 @@ const PANEL_ICONS: { icon: ReactNode; id: SidebarPanel; label: string }[] = [
   { id: "git", label: "Source Control", icon: <GitBranch {...ICON_PROPS} /> },
   { id: "calendar", label: "Calendar", icon: <Calendar {...ICON_PROPS} /> },
   { id: "tags", label: "Tags", icon: <Tag {...ICON_PROPS} /> },
+  { id: "tasks", label: "Tasks", icon: <CircleCheck {...ICON_PROPS} /> },
   { id: "zettel", label: "Zettel", icon: <StickyNote {...ICON_PROPS} /> },
   {
     id: "skills-gallery",

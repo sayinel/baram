@@ -1,0 +1,83 @@
+/* §306 태스크 아젠다 패널 */
+.task-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.task-panel-header {
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+.task-panel-filter {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--color-text-default);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.task-panel-body {
+  flex: 1;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+}
+
+.task-bucket-header {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.task-bucket-count {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.task-bucket-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.task-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+
+.task-row:hover {
+  background: var(--color-bg-hover);
+}
+
+.task-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--color-text-default);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.task-row-check:checked + .task-row-text {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.task-row-age {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-status-danger);
+}

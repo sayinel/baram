@@ -59,6 +59,11 @@ const TagPanel = lazy(() =>
     default: m.TagPanel,
   })),
 );
+const TaskAgendaPanel = lazy(() =>
+  import("../tasks/TaskAgendaPanel").then((m) => ({
+    default: m.TaskAgendaPanel,
+  })),
+);
 const VersionHistoryPanel = lazy(() =>
   import("../sidebar/VersionHistoryPanel").then((m) => ({
     default: m.VersionHistoryPanel,
@@ -86,6 +91,7 @@ export function Sidebar() {
           {sidebarPanel === "git" && <GitPanel />}
           {sidebarPanel === "calendar" && <CalendarPanel />}
           {sidebarPanel === "tags" && <TagPanel />}
+          {sidebarPanel === "tasks" && <TaskAgendaPanel />}
           {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
           {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
           {sidebarPanel === "plugins" && <PluginMarketplace />}
