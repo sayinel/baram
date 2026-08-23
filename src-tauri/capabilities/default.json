@@ -113,6 +113,8 @@
     "allow-search-knowledge",
     "allow-set-active-context",
     "allow-set-config",
+    "allow-set-task-field",
+    "allow-set-task-state",
     "allow-set-vault-config",
     "allow-set-vault-config-by-path",
     "allow-set-vault-root",

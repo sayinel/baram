@@ -119,6 +119,8 @@ fn main() {
         "search_knowledge",
         "set_active_context",
         "set_config",
+        "set_task_field",
+        "set_task_state",
         "set_vault_config",
         "set_vault_config_by_path",
         "set_vault_root",

@@ -331,6 +331,8 @@ pub fn run() {
             task_cmd::get_vault_tasks,
             task_cmd::get_file_tasks,
             task_cmd::get_tasks_linking_to,
+            task_cmd::set_task_state,
+            task_cmd::set_task_field,
             snapshot_cmd::create_snapshot,
             snapshot_cmd::list_snapshots,
             snapshot_cmd::get_snapshot_diff,

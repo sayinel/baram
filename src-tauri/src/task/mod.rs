@@ -2,14 +2,13 @@
 mod parse;
 mod write;
 
-#[allow(unused_imports)] // TODO(Task 5): consumed by write.rs
-pub use parse::{normalize_line, ParsedTask};
+pub use parse::normalize_line;
 pub use parse::{parse_task_line, TaskState};
+pub use write::{set_task_field, set_task_state};
 
 use serde::Serialize;
 use thiserror::Error;
 
-#[allow(dead_code)] // TODO(Task 5): consumed by write.rs
 #[derive(Debug, Error)]
 pub enum TaskError {
     #[error("IO error: {0}")]
@@ -21,7 +20,6 @@ pub enum TaskError {
 }
 
 /// 한 줄의 태스크. `raw`는 §305 낙관적 잠금의 비교 기준이다.
-#[allow(dead_code)] // TODO(Task 5): consumed by write.rs
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskEntry {
