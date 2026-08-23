@@ -13,6 +13,7 @@ export * from "./llm";
 export * from "./search";
 export * from "./snapshot";
 export * from "./tag";
+export * from "./task";
 export * from "./thumbnail";
 
 // Re-export types that were previously defined directly in this file.
