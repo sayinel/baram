@@ -67,7 +67,8 @@ pub fn normalize_line(line: &str) -> String {
 }
 
 /// 달력상 실재하는 날짜인지 확인한다. 2026-13-99 같은 값은 버린다.
-fn is_valid_date(s: &str) -> bool {
+/// `write.rs`가 필드 위치를 판정할 때도 같은 기준을 써야 하므로 `task` 모듈 내부에 공개한다.
+pub(super) fn is_valid_date(s: &str) -> bool {
     if !ISO_DATE_RE.is_match(s) {
         return false;
     }
