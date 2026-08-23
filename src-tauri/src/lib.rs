@@ -22,6 +22,7 @@ mod protocol;
 mod search;
 mod snapshot;
 mod tag;
+mod task;
 mod thumbnail;
 
 use std::collections::HashMap;
