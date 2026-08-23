@@ -34,7 +34,6 @@ pub enum TaskState {
     Done,
 }
 
-#[allow(dead_code)] // TODO(Task 3): consumed by the vault scanner
 #[derive(Debug, Clone)]
 pub struct ParsedTask {
     pub indent: u8,
