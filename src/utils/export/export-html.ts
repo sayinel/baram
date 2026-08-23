@@ -4,16 +4,19 @@ import type { Editor } from "@tiptap/core";
 
 import katexCSS from "katex/dist/katex.min.css?raw";
 
-import { withVirtualizationSuspended } from "../../extensions/plugins/viewport-virtualize";
+import { withVirtualizationSuspendedAsync } from "../../extensions/plugins/viewport-virtualize";
+import { useSettingsStore } from "../../stores/settings/store";
 import { activeFileDir } from "../active-file-dir";
 import { isRemoteOrData } from "../media-src";
 import { relativeToRoot } from "../path-utils";
+import { settleHeavyBlocks } from "./export-heavy-blocks";
 import {
   buildCodeBlockExport,
   collectCodeBlockInfo,
   escapeHTML,
 } from "./export-html-code-block";
-import { EDITOR_CSS, PRINT_CSS } from "./export-html-styles";
+import { buildExportStylesheet } from "./export-html-styles";
+import { inlineKatexFonts } from "./export-katex-fonts";
 
 export interface CaptureEditorHTMLOptions {
   /**
@@ -47,21 +50,72 @@ export async function captureEditorHTML(
   const forPdf = options?.forPdf ?? false;
   const dom = editor.view.dom;
 
-  // ── Collect code block data + clone, with windowing suspended ─────
-  // §perf-large-file C4: under windowing, off-screen blocks are display:none —
-  // reveal them ALL so the clone captures the FULL document, then re-window.
-  // getComputedStyle() only works on elements in the live DOM, so collect here.
-  // (No-op when no large-doc windowing controller is active.)
-  const { clone, codeBlockInfos } = withVirtualizationSuspended(() => {
-    const infos: CodeBlockInfo[] = [];
-    for (const wrapper of dom.querySelectorAll(".code-block-wrapper")) {
-      infos.push(collectCodeBlockInfo(wrapper));
-    }
-    return {
-      clone: dom.cloneNode(true) as HTMLElement,
-      codeBlockInfos: infos,
-    };
-  });
+  // ── Wake the deferred blocks, then collect + clone ────────────────
+  // Two independent mechanisms hide content from a naive clone, and BOTH have
+  // to be lifted before the DOM is read:
+  //
+  //   1. §perf-large-file C4 windowing puts off-screen blocks at display:none.
+  //      `withVirtualizationSuspendedAsync` reveals them all, then re-windows.
+  //      (No-op when no large-doc windowing controller is active.)
+  //   2. Heavy blocks — code, math, Mermaid — defer their CONTENT until they
+  //      near the viewport, revealed or not. `settleHeavyBlocks` mounts them
+  //      and waits for the renders to land. Without it, every block the reader
+  //      had not scrolled to exported as its placeholder: raw text under a
+  //      language `<select>`, an empty formula, a missing diagram.
+  //
+  // The reveal has to hold across the wait, which is why the async variant
+  // exists: re-windowing before the renders land would hide them again.
+  //
+  // getComputedStyle() only works on elements in the live DOM, so the code
+  // blocks' syntax colours are collected here, before the clone.
+  const { clone, codeBlockInfos } = await withVirtualizationSuspendedAsync(
+    async () => {
+      const unsettled = await settleHeavyBlocks(dom);
+      if (unsettled.length > 0) {
+        // Not fatal: each block kind has a fallback below. Worth saying out
+        // loud, because a silently degraded export is what this whole path
+        // exists to stop being.
+        console.warn(
+          `[export] ${unsettled.length} block(s) did not finish rendering and were exported in fallback form:`,
+          unsettled.map((b) => b.kind),
+        );
+      }
+      const lineNumbers = useSettingsStore.getState().codeBlockLineNumbers;
+      // ‼️ The block's text comes from the DOCUMENT, not from the DOM. A mounted
+      // CodeMirror renders only its viewport, and a lazily-woken off-screen
+      // block therefore has a fraction of its lines in the DOM (38 of 500,
+      // measured). Walking the doc gives every block's full text; the two
+      // sequences line up because `descendants` and `querySelectorAll` are both
+      // document order.
+      const codeTexts: string[] = [];
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "codeBlock") codeTexts.push(node.textContent);
+      });
+      // ‼️ `isAuthoredMarkup` is what keeps the two sequences aligned, not just
+      // a courtesy to the author. An HTML block can contain a literal
+      // `<div class="code-block-wrapper">` — nothing stops someone writing one
+      // — and it has no ProseMirror codeBlock behind it. Counting it here would
+      // shift every later block onto the wrong text, so each one would print
+      // some OTHER block's code. Excluding it also means the export leaves that
+      // markup exactly as written, which is the same rule the control strip
+      // follows.
+      const wrappers = [...dom.querySelectorAll(".code-block-wrapper")].filter(
+        (el) => !isAuthoredMarkup(el),
+      );
+      if (wrappers.length !== codeTexts.length) {
+        console.warn(
+          `[export] ${wrappers.length} code block element(s) but ${codeTexts.length} in the document — falling back to unhighlighted text`,
+        );
+      }
+      const infos: CodeBlockInfo[] = wrappers.map((wrapper, i) =>
+        collectCodeBlockInfo(wrapper, codeTexts[i] ?? "", lineNumbers),
+      );
+      return {
+        clone: dom.cloneNode(true) as HTMLElement,
+        codeBlockInfos: infos,
+      };
+    },
+  );
 
   // ── Math blocks: keep rendered KaTeX, remove editing UI ──────────
   for (const el of clone.querySelectorAll(".math-block-textarea")) el.remove();
@@ -90,7 +144,15 @@ export async function captureEditorHTML(
   // size from viewBox as width/height attributes and drop the inline cap so the
   // export/print CSS governs: small diagrams keep their natural size, large
   // ones shrink to the text column (and fit one page in print). See §5.12.
-  for (const svg of clone.querySelectorAll(".mermaid-block-svg svg")) {
+  //
+  // ‼️ `.mermaid-block svg`, not `.mermaid-block-svg svg`. The latter was a dead
+  // selector: `.mermaid-block-svg` only exists in the EDITING and FULLSCREEN
+  // branches of mermaid-block-view. The branch an export actually captures —
+  // unselected — puts the SVG in `.media-render > .media-resize-frame >
+  // .media-resize-content`, which this never matched, so no exported diagram
+  // was ever normalized. (It went unnoticed because no diagram reached the
+  // export at all until the lazy blocks were woken above.)
+  for (const svg of clone.querySelectorAll(".mermaid-block svg")) {
     const viewBox = svg.getAttribute("viewBox");
     const parts = viewBox?.split(/[\s,]+/).map(Number);
     if (parts && parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
@@ -253,12 +315,19 @@ export async function captureEditorHTML(
   }
 
   // ── Code blocks: replace with pre-collected highlighted HTML ──────
-  const cloneCodeBlocks = clone.querySelectorAll(".code-block-wrapper");
+  // Unconditionally — an empty code block exports as an empty frame. The old
+  // `highlightedLines.length === 0 → skip` left the LIVE wrapper in place, so
+  // the one case that most needed replacing (a block that never mounted) was
+  // the one case that kept its `<select>` and its AI button.
+  // Same filter as the collection loop above, so index i means the same block
+  // in both — and an authored `.code-block-wrapper` is left untouched.
+  const cloneCodeBlocks = [
+    ...clone.querySelectorAll(".code-block-wrapper"),
+  ].filter((el) => !isAuthoredMarkup(el));
   cloneCodeBlocks.forEach((wrapper, i) => {
     const info = codeBlockInfos[i];
-    if (!info || info.highlightedLines.length === 0) return;
-    const exportEl = buildCodeBlockExport(info);
-    wrapper.replaceWith(exportEl);
+    if (!info) return;
+    wrapper.replaceWith(buildCodeBlockExport(info));
   });
 
   // ── Block embeds: remove editing UI, keep preview ─────────────────
@@ -335,6 +404,11 @@ export async function captureEditorHTML(
       ";border-collapse:collapse;width:100%;";
   }
 
+  // ── Everything interactive, and anything collapsed ───────────────
+  stripEditingChrome(clone);
+  expandCollapsedContent(clone);
+  linkInternalReferences(clone);
+
   // ── Remove contenteditable attributes ────────────────────────────
   clone.removeAttribute("contenteditable");
   for (const el of clone.querySelectorAll("[contenteditable]")) {
@@ -381,14 +455,26 @@ export function generateStandaloneHTML(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Baram">
   <title>${safeTitle}</title>
-  <style>${katexCSS}</style>
-  <style>${EDITOR_CSS}</style>
-  <style>${PRINT_CSS}</style>
+  ${katexStyles(editorHTML)}
+  <style>${buildExportStylesheet()}</style>
 </head>
 <body>
   <article class="baram-export">${editorHTML}</article>
 </body>
 </html>`;
+}
+
+/**
+ * A fragment-safe anchor name.
+ *
+ * ‼️ Both the `id` and the `href` are built from this one function, so they
+ * cannot disagree. A block id is user-authored text — a space or a `#` in it
+ * makes a raw `#block-my id` fragment point nowhere, and a space is not even
+ * legal in an `id`. Encoding both sides keeps the link resolvable whatever the
+ * author typed.
+ */
+function anchorFor(prefix: string, id: string): string {
+  return `${prefix}-${encodeURIComponent(id)}`;
 }
 
 /**
@@ -407,6 +493,29 @@ function captionFor(el: Element): Element | null {
   );
 }
 
+/**
+ * Expand anything the reader had collapsed.
+ *
+ * A PDF has no disclosure triangle. Content hidden behind one is content the
+ * reader can never reach, so a collapsed callout, a folded heading or a closed
+ * toggle would simply be missing from the document — a silent omission, which
+ * is worse than a long page. Obsidian's PDF export makes the same call.
+ */
+function expandCollapsedContent(clone: HTMLElement): void {
+  for (const el of clone.querySelectorAll(
+    ".callout-body-collapsed, .fold-hidden, .fold-collapsed",
+  )) {
+    el.classList.remove(
+      "callout-body-collapsed",
+      "fold-hidden",
+      "fold-collapsed",
+    );
+  }
+  for (const el of clone.querySelectorAll('.toggle[data-open="false"]')) {
+    el.setAttribute("data-open", "true");
+  }
+}
+
 /** Convert an image URL to a base64 data URI */
 async function imageToDataURI(src: string): Promise<string> {
   try {
@@ -420,6 +529,126 @@ async function imageToDataURI(src: string): Promise<string> {
     });
   } catch {
     return src; // fallback to original URL
+  }
+}
+
+/**
+ * Is this element part of the DOCUMENT rather than part of the editor?
+ *
+ * ‼️ An HTML block renders the author's own (sanitized) markup verbatim —
+ * html-block-view.tsx sets it with `dangerouslySetInnerHTML` into
+ * `.html-block-render`. A `<button>` in there is not chrome the editor added
+ * around the content; it IS the content, written by the person exporting. The
+ * blanket "remove every control" rule below is right for everything the editor
+ * put on the page and wrong for everything the author put in it, and this is
+ * where that line falls.
+ *
+ * The block's own chrome — its `html-block-textarea`, its header — sits OUTSIDE
+ * `.html-block-render`, so it is still removed.
+ */
+function isAuthoredMarkup(el: Element): boolean {
+  return el.closest(".html-block-render") !== null;
+}
+
+/**
+ * KaTeX's stylesheet — fonts embedded — or nothing at all.
+ *
+ * The 20 inlined woff2 faces are ~400KB of base64 and a document with no
+ * formula has nothing to spend them on. But the answer for that document is to
+ * ship NO KaTeX block, not the stylesheet without the fonts: every `@font-face`
+ * in it points at `fonts/KaTeX_*.woff2` relative to the page, and in an export
+ * that directory does not exist — so the lighter version is 23KB of rules
+ * nothing matches plus twenty requests that 404.
+ *
+ * `katex` is KaTeX's own class prefix and appears on every rendered formula,
+ * inline or block. The test errs toward INCLUDING: `.math-block-katex` (the
+ * preview host, present even when the formula did not render) also matches, so
+ * a document with math keeps the stylesheet even if something went wrong
+ * upstream.
+ */
+function katexStyles(editorHTML: string): string {
+  if (!editorHTML.includes("katex")) return "";
+  return `<style>${inlineKatexFonts(katexCSS)}</style>`;
+}
+
+/**
+ * Turn same-document references into real links.
+ *
+ * User report (2026-08-23): "블록참조 등 참조 링크 사라짐". They do not vanish —
+ * the chip and the superscript number both print. What vanishes is the ABILITY
+ * TO FOLLOW them: a block reference is navigated by a Cmd+click handler
+ * (block-reference-view.tsx) and a footnote by an onClick, and an exported
+ * document runs no JavaScript. So the reader sees a reference and cannot use
+ * it. Chrome emits a PDF link annotation for a same-document anchor, so giving
+ * the export the ids and hrefs the editor never needed makes both work.
+ *
+ * ‼️ Only same-document targets. A reference into another note (`data-target`
+ * non-empty) has no destination inside a single exported file, and a footnote
+ * reference whose definition was not exported has none either — those keep the
+ * chip and stay unlinked. A link that resolves to nothing is not a lesser
+ * version of a working link: it invites a click and silently does nothing,
+ * which is the exact complaint §301 answered for local video.
+ */
+function linkInternalReferences(clone: HTMLElement): void {
+  // ── Block references ──────────────────────────────────────────────
+  // ‼️ `.block-reference` carries `data-block-id` too — it names the block it
+  // POINTS AT. Without this guard every reference would also claim to BE its
+  // own target, and `#block-intro` would resolve to the chip rather than to
+  // the paragraph.
+  const blockTargets = new Set<string>();
+  for (const el of clone.querySelectorAll("[data-block-id]")) {
+    if (el.classList.contains("block-reference")) continue;
+    // An author can write `data-block-id` in a raw HTML block; that is their
+    // markup, not a Baram block id, and minting an anchor on it would let it
+    // shadow a real target.
+    if (isAuthoredMarkup(el)) continue;
+    const id = el.getAttribute("data-block-id");
+    // First wins: a duplicate id in the document would make the anchor
+    // ambiguous, and the earlier block is the one the reader reaches by
+    // reading forward.
+    if (!id || blockTargets.has(id)) continue;
+    blockTargets.add(id);
+    el.setAttribute("id", anchorFor("block", id));
+  }
+  for (const el of clone.querySelectorAll(".block-reference")) {
+    const id = el.getAttribute("data-block-id");
+    const target = el.getAttribute("data-target");
+    if (!id || target || !blockTargets.has(id)) continue;
+    retag(el, "a").setAttribute("href", `#${anchorFor("block", id)}`);
+  }
+
+  // ── Footnotes, in both directions ─────────────────────────────────
+  const definitions = new Set<string>();
+  for (const el of clone.querySelectorAll(
+    ".footnote-definition[data-identifier]",
+  )) {
+    const id = el.getAttribute("data-identifier");
+    if (!id || definitions.has(id)) continue;
+    definitions.add(id);
+    el.setAttribute("id", anchorFor("fn", id));
+  }
+
+  const firstRef = new Set<string>();
+  for (const el of clone.querySelectorAll(".footnote-ref[data-identifier]")) {
+    const id = el.getAttribute("data-identifier");
+    if (!id || !definitions.has(id)) continue;
+    const link = retag(el, "a");
+    link.setAttribute("href", `#${anchorFor("fn", id)}`);
+    // The back-link needs somewhere to land, and only the FIRST occurrence can
+    // own the id — the same note may be referenced several times.
+    if (!firstRef.has(id)) {
+      firstRef.add(id);
+      link.setAttribute("id", anchorFor("fnref", id));
+    }
+  }
+
+  for (const el of clone.querySelectorAll(
+    ".footnote-definition[data-identifier]",
+  )) {
+    const id = el.getAttribute("data-identifier");
+    const label = el.querySelector(".footnote-definition-label");
+    if (!id || !label || !firstRef.has(id)) continue;
+    retag(label, "a").setAttribute("href", `#${anchorFor("fnref", id)}`);
   }
 }
 
@@ -518,4 +747,80 @@ function replaceWithExportText(el: Element, path: string): void {
   span.className = "video-export-path";
   span.textContent = path;
   el.replaceWith(span);
+}
+
+/** Replace `el` with the same content and attributes under a different tag. */
+function retag(el: Element, tagName: string): HTMLElement {
+  const next = document.createElement(tagName);
+  for (const attr of Array.from(el.attributes)) {
+    next.setAttribute(attr.name, attr.value);
+  }
+  next.append(...el.childNodes);
+  el.replaceWith(next);
+  return next;
+}
+
+/**
+ * Remove every interactive affordance from the clone.
+ *
+ * ‼️ This is a POSITIVE rule on purpose. It replaces a hand-maintained list of
+ * class names (`.media-toolbar`, `.mermaid-context-menu`, …) that admitted
+ * every control shipped after it was written: the code block's language
+ * `<select>` and AI button, the callout's AI and collapse buttons, the math
+ * block's AI button and the footnote's ↩ all reached the user's PDF because
+ * nobody remembered to add a line here. An export contains nothing the reader
+ * can press, so "remove the pressable things" is the rule the destination
+ * actually implies — and it covers the next control automatically.
+ *
+ * Two exceptions, each with a reason a new control will not accidentally
+ * inherit:
+ *
+ *   - A task checkbox is CONTENT. `- [x]` is part of the document, and a
+ *     printed checklist has to show which items are ticked. It stays (disabled;
+ *     `checked` still paints).
+ *   - `.callout-icon-btn` is a button only so the type can be changed by
+ *     clicking it — the icon inside it is content, and it is what makes a
+ *     warning callout legible as a warning. It is downgraded to a `<span>`
+ *     keeping the same class, so the callout's own stylesheet still lays the
+ *     header out with the icon, the title and nothing else on one line.
+ *
+ * Widget decorations go too: every `Decoration.widget` in this codebase is an
+ * editing affordance (fold arrows and their ellipsis, the AI diff controls, the
+ * list atom fix, block-id hints) — none of them is document content.
+ */
+function stripEditingChrome(clone: HTMLElement): void {
+  // `retag`, not a hand-rolled span: copying only `className` silently dropped
+  // `title`, `aria-*` and every `data-*` the control carried.
+  for (const el of clone.querySelectorAll(".callout-icon-btn")) {
+    retag(el, "span").removeAttribute("type");
+  }
+
+  for (const el of clone.querySelectorAll("button, select, textarea")) {
+    if (isAuthoredMarkup(el)) continue;
+    el.remove();
+  }
+  for (const el of clone.querySelectorAll("input")) {
+    if (isAuthoredMarkup(el)) continue;
+    if ((el as HTMLInputElement).type === "checkbox") {
+      (el as HTMLInputElement).disabled = true;
+      // `checked` is a property, not an attribute — an unserialised property is
+      // lost the moment this clone becomes a string, so every ticked box would
+      // print empty.
+      if ((el as HTMLInputElement).checked) el.setAttribute("checked", "");
+      else el.removeAttribute("checked");
+      continue;
+    }
+    el.remove();
+  }
+
+  for (const el of clone.querySelectorAll(".ProseMirror-widget")) el.remove();
+
+  // Tiptap writes `white-space: pre-wrap` inline onto every NodeViewContent
+  // host so ProseMirror's own whitespace handling survives inside a React
+  // NodeView. In an export it only makes callout and footnote bodies keep the
+  // source's stray newlines.
+  for (const el of clone.querySelectorAll("[data-node-view-content]")) {
+    (el as HTMLElement).style.removeProperty("white-space");
+    el.removeAttribute("data-node-view-content");
+  }
 }

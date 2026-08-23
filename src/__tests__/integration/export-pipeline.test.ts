@@ -48,9 +48,14 @@ describe("Integration: HTML Export Pipeline", () => {
     expect(standalone).toContain("<title>Test Document</title>");
     expect(standalone).toContain('<article class="baram-export">');
 
-    // 3 style blocks (KaTeX, editor, print)
+    // Two style blocks: Baram's own (design tokens + the editor's rescoped CSS
+    // + the export frame + print), and KaTeX's — the latter only because this
+    // fixture carries `math-block-katex`. That match is deliberate: the gate
+    // errs toward including the stylesheet whenever anything KaTeX-shaped is
+    // present, so a formula never prints in the wrong fonts because its render
+    // happened to fail. A document with no math at all gets one block.
     const styleCount = (standalone.match(/<style>/g) || []).length;
-    expect(styleCount).toBe(3);
+    expect(styleCount).toBe(2);
 
     // Content is embedded
     expect(standalone).toContain("<h1>Rich Content</h1>");

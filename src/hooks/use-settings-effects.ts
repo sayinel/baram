@@ -52,7 +52,10 @@ export function useSettingsEffects(editor: Editor | null) {
       return;
     }
 
-    // Set base mode (light/dark) for CSS + CodeMirror/Mermaid
+    // Set base mode (light/dark) for CSS + CodeMirror.
+    // ‼️ NOT Mermaid any more — it renders in one fixed palette regardless
+    // (MERMAID_THEME in utils/markdown/mermaid-utils.ts), because its colours
+    // are baked into the SVG and would follow the editor's theme into a PDF.
     root.dataset.theme = themeDef.base;
 
     // For non-default themes, apply CSS variable overrides. The default themes

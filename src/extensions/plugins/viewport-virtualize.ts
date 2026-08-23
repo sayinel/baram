@@ -499,6 +499,28 @@ export function withVirtualizationSuspended<T>(fn: () => T): T {
   }
 }
 
+/**
+ * Await version of {@link withVirtualizationSuspended}.
+ *
+ * §5.12: the export cannot do its work inside the synchronous variant any more.
+ * Waking every lazily-mounted heavy block starts CodeMirror, KaTeX and Mermaid
+ * renders that only finish on later ticks, and the clone has to be taken AFTER
+ * they land — so the reveal has to stay in force across an await, not just
+ * across a call.
+ */
+export async function withVirtualizationSuspendedAsync<T>(
+  fn: () => Promise<T>,
+): Promise<T> {
+  const c = activeController;
+  if (!c) return fn();
+  c.revealAll();
+  try {
+    return await fn();
+  } finally {
+    c.rewindow();
+  }
+}
+
 /** Inert NodeView: renders via toDOM, no controller registration, no hiding. */
 function passthroughNodeView(node: PMNode): NodeView {
   const toDOM = node.type.spec.toDOM;
