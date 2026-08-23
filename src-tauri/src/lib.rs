@@ -15,6 +15,7 @@ mod llm;
 /// integration test links the library as an external crate. Nothing outside the crate
 /// calls this.
 pub mod logging;
+mod md;
 mod menu;
 mod plugin;
 mod protocol;

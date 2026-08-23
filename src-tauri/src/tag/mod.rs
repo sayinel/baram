@@ -1,5 +1,6 @@
 // §56m Vault-wide tag index — business logic
 
+use crate::md::{extract_inline_tags, split_frontmatter, strip_code_blocks};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -18,11 +19,6 @@ static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
 // Frontmatter block list item:   - tag
 static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
-
-// Inline #tag regex: #tag, #parent/child, #한국어태그
-static INLINE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}]+(?:/[\w\p{Script=Hangul}]+)*)").unwrap()
-});
 
 #[derive(Debug, Error)]
 pub enum TagError {
@@ -44,45 +40,6 @@ pub struct TagEntry {
 pub struct RenameTagResult {
     pub files_modified: usize,
     pub occurrences_replaced: usize,
-}
-
-/// Strip fenced code blocks from content so tags inside them are not extracted.
-fn strip_code_blocks(content: &str) -> String {
-    let mut result = String::with_capacity(content.len());
-    let mut in_fence = false;
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            in_fence = !in_fence;
-            result.push('\n'); // preserve line count
-            continue;
-        }
-        if in_fence {
-            result.push('\n');
-        } else {
-            result.push_str(line);
-            result.push('\n');
-        }
-    }
-    result
-}
-
-/// Extract frontmatter block (between first `---` lines) from content.
-/// Returns (frontmatter, rest_of_content).
-fn split_frontmatter(content: &str) -> (String, String) {
-    let mut lines = content.splitn(2, '\n');
-    let first = lines.next().unwrap_or("").trim();
-    if first != "---" {
-        return (String::new(), content.to_string());
-    }
-    let rest = lines.next().unwrap_or("");
-    if let Some(end) = rest.find("\n---") {
-        let fm = rest[..end].to_string();
-        let body = rest[end + 4..].to_string(); // skip "\n---"
-        (fm, body)
-    } else {
-        (String::new(), content.to_string())
-    }
 }
 
 /// Extract tags from frontmatter string.
@@ -133,17 +90,6 @@ fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
     }
 
     tags
-}
-
-/// Extract inline #tags from body text (outside code blocks).
-/// Supports nested tags: #parent/child/grandchild and Korean characters.
-fn extract_inline_tags(body: &str) -> Vec<String> {
-    // Match #tag, #parent/child, #한국어태그
-    // Require that # is preceded by whitespace or start-of-line (not inside a word)
-    INLINE_TAG_RE
-        .captures_iter(body)
-        .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-        .collect()
 }
 
 pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> {
