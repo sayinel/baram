@@ -59,6 +59,7 @@ import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
 import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
+import { useTaskWatcher } from "./hooks/use-task-watcher";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
 import { llmComplete, readFile, writeFile } from "./ipc/invoke";
@@ -477,6 +478,9 @@ function App() {
 
   // File system watcher — auto-refresh FileTree on external changes
   useFileWatcher();
+
+  // §304 태스크 캐시 증분 갱신 — file:* 이벤트로 변경된 파일만 재스캔
+  useTaskWatcher();
 
   // §71 Periodic auto-snapshot — fires performAutoSnapshot on the configured interval
   useAutoSnapshot();
