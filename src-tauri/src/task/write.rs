@@ -27,7 +27,7 @@ where
     } else {
         "\n"
     };
-    let ends_with_newline = content.ends_with('\n');
+    let ends_with_newline = content.ends_with(newline);
 
     let mut lines: Vec<String> = content.split(newline).map(|s| s.to_string()).collect();
     // split은 끝 개행 뒤의 빈 조각을 남긴다 — 재조립 때 되살릴 것이므로 떼어 둔다.
@@ -274,6 +274,27 @@ mod tests {
 
         let after = tokio::fs::read_to_string(&p).await.unwrap();
         assert_eq!(after, "# T\r\n- [x] 할 일\r\n");
+    }
+
+    #[tokio::test]
+    async fn mixed_eol_toggle_does_not_truncate_the_rest_of_the_file() {
+        // C1: 파일이 "\r\n"을 포함하면 구분자로 "\r\n"을 고르지만, 그 판정과
+        // 무관하게 파일이 bare "\n"으로 끝나기만 해도 `ends_with('\n')`이 참이
+        // 됐다. split("\r\n")은 이 경우 끝에 빈 조각을 남기지 않으므로(마지막
+        // 조각이 실제 나머지 두 줄을 통째로 담고 있다) pop()이 그 실제 내용을
+        // 지워버렸다 — 반환값은 멀쩡해 보여도 디스크에는 2줄이 사라진 채 쓰였다.
+        let d = TempDir::new().unwrap();
+        let original = "- [ ] a\r\n- [ ] b\n- [ ] c\n";
+        let p = f(&d, original).await;
+
+        let updated = set_task_state(&p, 0, "- [ ] a", TaskState::Done, false, "2026-08-23")
+            .await
+            .unwrap();
+        assert_eq!(updated, "- [x] a");
+
+        // 가장 중요한 단언: 반환된 한 줄이 아니라 파일 전체가 온전해야 한다.
+        let after = tokio::fs::read_to_string(&p).await.unwrap();
+        assert_eq!(after, "- [x] a\r\n- [ ] b\n- [ ] c\n");
     }
 
     #[tokio::test]
