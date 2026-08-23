@@ -3,8 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { TaskEntry, TaskState } from "./types";
 
-export async function getFileTasks(path: string): Promise<TaskEntry[]> {
-  return invoke<TaskEntry[]>("get_file_tasks", { path });
+/**
+ * `rootPath`/`exclude`가 주어지면 vault 전체 스캔과 같은 제외 규칙을 적용한다 —
+ * 그러지 않으면 exclude 설정이 워처 기반 증분 갱신에서만 조용히 무시된다(I1).
+ */
+export async function getFileTasks(
+  path: string,
+  rootPath?: null | string,
+  exclude: string[] = [],
+): Promise<TaskEntry[]> {
+  return invoke<TaskEntry[]>("get_file_tasks", {
+    path,
+    rootPath: rootPath ?? null,
+    exclude,
+  });
 }
 
 export async function getTasksLinkingTo(

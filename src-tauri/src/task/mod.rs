@@ -97,6 +97,15 @@ fn is_excluded(rel: &str, exclude: &[String]) -> bool {
     })
 }
 
+/// `root` 기준 상대 경로 문자열(제외 판정 전용) — 구분자를 `/`로 정규화한다.
+/// vault 전체 스캔과 증분 갱신(`get_file_tasks`)이 같은 판정을 공유하도록 뽑아 뒀다(I1).
+fn rel_to_root(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 async fn collect(root: &Path, exclude: &[String]) -> Result<Vec<TaskEntry>, TaskError> {
     let mut files: Vec<PathBuf> = Vec::new();
     crate::fs::collect_md_files(root, &mut files)
@@ -106,12 +115,7 @@ async fn collect(root: &Path, exclude: &[String]) -> Result<Vec<TaskEntry>, Task
     let mut out = Vec::new();
     for file in &files {
         // 상대 경로는 제외 판정에만 쓴다. 엔트리에 담기는 것은 절대 경로다.
-        let rel = file
-            .strip_prefix(root)
-            .unwrap_or(file)
-            .to_string_lossy()
-            .replace('\\', "/");
-        if is_excluded(&rel, exclude) {
+        if is_excluded(&rel_to_root(file, root), exclude) {
             continue;
         }
         let Ok(content) = tokio::fs::read_to_string(file).await else {
@@ -137,7 +141,18 @@ pub async fn get_vault_tasks(
 }
 
 /// 증분 갱신용 — 파일 하나만 다시 읽는다. `path`는 절대 경로.
-pub async fn get_file_tasks(path: &str) -> Result<Vec<TaskEntry>, TaskError> {
+/// `root_path`가 주어지면 vault 전체 스캔과 같은 `is_excluded` 규칙을 적용한다 —
+/// 그러지 않으면 exclude 설정이 워처 기반 증분 경로에서만 조용히 무시된다(I1).
+pub async fn get_file_tasks(
+    path: &str,
+    root_path: Option<&str>,
+    exclude: &[String],
+) -> Result<Vec<TaskEntry>, TaskError> {
+    if let Some(root) = root_path {
+        if is_excluded(&rel_to_root(Path::new(path), Path::new(root)), exclude) {
+            return Ok(Vec::new());
+        }
+    }
     let content = tokio::fs::read_to_string(path).await?;
     Ok(tasks_in_content(path, &content))
 }
@@ -262,7 +277,7 @@ mod scan_tests {
         let from_vault = get_vault_tasks(d.path().to_str().unwrap(), &[])
             .await
             .unwrap();
-        let from_file = get_file_tasks(&abs).await.unwrap();
+        let from_file = get_file_tasks(&abs, None, &[]).await.unwrap();
 
         assert_eq!(from_vault[0].path, from_file[0].path);
         assert!(from_vault[0].path.ends_with("a.md"));
@@ -274,8 +289,61 @@ mod scan_tests {
         let d = TempDir::new().unwrap();
         let p = write(&d, "a.md", "- [ ] 하나\n- [ ] 둘\n").await;
 
-        let tasks = get_file_tasks(&p).await.unwrap();
+        let tasks = get_file_tasks(&p, None, &[]).await.unwrap();
         assert_eq!(tasks.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn get_file_tasks_honours_the_exclude_list_like_the_vault_scan() {
+        // I1: 워처가 부르는 증분 경로가 vault 전체 스캔과 다른 규칙을 쓰면 exclude
+        // 설정이 조용히 무력화된다 — 마운트 시 한 번 걸러지고, 이후 그 파일이
+        // 바뀔 때마다 캐시에 도로 들어온다.
+        let d = TempDir::new().unwrap();
+        let p = write(&d, "archive/old.md", "- [ ] 제외\n").await;
+        let root = d.path().to_str().unwrap();
+
+        let tasks = get_file_tasks(&p, Some(root), &["archive".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn get_file_tasks_exclude_ignores_a_trailing_slash_on_the_entry() {
+        let d = TempDir::new().unwrap();
+        let p = write(&d, "archive/old.md", "- [ ] 제외\n").await;
+        let root = d.path().to_str().unwrap();
+
+        let tasks = get_file_tasks(&p, Some(root), &["archive/".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn get_file_tasks_exclude_matches_a_nested_path() {
+        let d = TempDir::new().unwrap();
+        let p = write(&d, "archive/2026/old.md", "- [ ] 제외\n").await;
+        let root = d.path().to_str().unwrap();
+
+        let tasks = get_file_tasks(&p, Some(root), &["archive".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn get_file_tasks_exclude_does_not_match_a_prefix_collision() {
+        // "archive"를 제외해도 "archived-notes/"는 별개 디렉터리다 — 문자열
+        // prefix가 아니라 경로 세그먼트 경계로 판정해야 한다.
+        let d = TempDir::new().unwrap();
+        let p = write(&d, "archived-notes/keep.md", "- [ ] 남김\n").await;
+        let root = d.path().to_str().unwrap();
+
+        let tasks = get_file_tasks(&p, Some(root), &["archive".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(tasks.len(), 1);
     }
 
     /// 리스크 2 측정용. 평소 CI에서는 건너뛴다.

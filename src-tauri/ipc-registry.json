@@ -1309,14 +1309,14 @@
     },
     {
       "name": "get_file_tasks",
-      "input": { "path": "string" },
+      "input": { "path": "string", "rootPath": "string | null", "exclude": "string[]" },
       "output": "TaskEntry[]",
       "module": "task",
-      "spec": "§304",
+      "spec": "§304 §I1",
       "phase": 3,
       "milestone": "M11",
       "status": "implemented",
-      "description": "파일 하나만 재스캔 — 워처 기반 증분 갱신용"
+      "description": "파일 하나만 재스캔 — 워처 기반 증분 갱신용. rootPath/exclude를 주면 vault 전체 스캔과 같은 제외 규칙을 적용한다"
     },
     {
       "name": "get_tasks_linking_to",

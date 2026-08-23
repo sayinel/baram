@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
+import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { refreshFileTasks, useTaskStore } from "../stores/tasks/task-store";
 
@@ -22,11 +23,11 @@ export function useTaskWatcher(): void {
     void (async () => {
       const fns = await Promise.all([
         listen<{ path: string }>("file:changed", (e) => {
-          if (isMarkdown(e.payload.path)) void refreshFileTasks(e.payload.path);
+          if (isMarkdown(e.payload.path)) refreshChangedFile(e.payload.path);
         }),
         listen<{ isDir?: boolean; path: string }>("file:created", (e) => {
           if (!e.payload.isDir && isMarkdown(e.payload.path)) {
-            void refreshFileTasks(e.payload.path);
+            refreshChangedFile(e.payload.path);
           }
         }),
         listen<{ path: string }>("file:deleted", (e) => {
@@ -49,4 +50,12 @@ export function useTaskWatcher(): void {
 
 function isMarkdown(path: string): boolean {
   return path.endsWith(".md") || path.endsWith(".markdown");
+}
+
+/** 최신 rootPath/exclude로 증분 재스캔한다 — vault가 없으면 스킵. */
+function refreshChangedFile(path: string): void {
+  const { rootPath } = useFileStore.getState();
+  if (!rootPath) return;
+  const { tasksExcludePaths } = useSettingsStore.getState();
+  void refreshFileTasks(path, rootPath, tasksExcludePaths);
 }

@@ -10,9 +10,15 @@ pub async fn get_vault_tasks(
         .map_err(|e| e.to_string())
 }
 
+/// `root_path`/`exclude`는 §304 vault 전체 스캔과 같은 제외 규칙을 워처 기반
+/// 증분 갱신에도 적용하기 위한 것이다(I1) — 생략하면(None) 걸러지지 않는다.
 #[tauri::command]
-pub async fn get_file_tasks(path: String) -> Result<Vec<crate::task::TaskEntry>, String> {
-    crate::task::get_file_tasks(&path)
+pub async fn get_file_tasks(
+    path: String,
+    root_path: Option<String>,
+    exclude: Vec<String>,
+) -> Result<Vec<crate::task::TaskEntry>, String> {
+    crate::task::get_file_tasks(&path, root_path.as_deref(), &exclude)
         .await
         .map_err(|e| e.to_string())
 }
