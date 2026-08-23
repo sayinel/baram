@@ -25,6 +25,10 @@ import {
   type JournalSettingsSlice,
 } from "./journal-settings";
 import {
+  createTaskSettingsSlice,
+  type TaskSettingsSlice,
+} from "./task-settings";
+import {
   createZettelkastenSettingsSlice,
   type ZettelkastenSettingsSlice,
 } from "./zettelkasten-settings";
@@ -35,12 +39,14 @@ export type SettingsState = AppearanceSettingsSlice &
   EditorSettingsSlice &
   GeneralSettingsSlice &
   JournalSettingsSlice &
+  TaskSettingsSlice &
   ZettelkastenSettingsSlice;
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (...a) => ({
       ...createJournalSettingsSlice(...a),
+      ...createTaskSettingsSlice(...a),
       ...createZettelkastenSettingsSlice(...a),
       ...createEditorSettingsSlice(...a),
       ...createAppearanceSettingsSlice(...a),
@@ -111,6 +117,10 @@ export const useSettingsStore = create<SettingsState>()(
         wordTemplatePath: state.wordTemplatePath,
         customExports: state.customExports,
         tagColors: state.tagColors,
+        tasksEnabled: state.tasksEnabled,
+        tasksExcludePaths: state.tasksExcludePaths,
+        tasksRecordDoneDate: state.tasksRecordDoneDate,
+        tasksWeekStart: state.tasksWeekStart,
         snapshotInterval: state.snapshotInterval,
         snapshotMaxCount: state.snapshotMaxCount,
         activityBarConfig: state.activityBarConfig,
