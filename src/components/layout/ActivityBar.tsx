@@ -109,7 +109,12 @@ export function ActivityBar() {
       setRightPanelMode: s.setRightPanelMode,
     })),
   );
-  const { activityBarConfig } = useSettingsStore();
+  const { activityBarConfig, tasksEnabled } = useSettingsStore(
+    useShallow((s) => ({
+      activityBarConfig: s.activityBarConfig,
+      tasksEnabled: s.tasksEnabled,
+    })),
+  );
   const { activePluginPanelId, sidebarPanels, setActivePluginPanelId } =
     usePluginUIStore(
       useShallow((s) => ({
@@ -159,6 +164,8 @@ export function ActivityBar() {
 
   const visibleTopItems = activityBarConfig
     .filter((c) => c.section === "top" && c.visible)
+    // I2: tasksEnabled off hides the icon entirely, not just incremental updates.
+    .filter((c) => c.id !== "tasks" || tasksEnabled)
     .map((c) => PANEL_ICONS.find((p) => p.id === c.id))
     .filter(Boolean) as { icon: ReactNode; id: SidebarPanel; label: string }[];
 
