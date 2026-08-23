@@ -28,6 +28,8 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
 
 // 2026-08-23은 일요일이다.
 const SUN = new Date(2026, 7, 23, 12, 0, 0);
+// 2026-08-26은 수요일이다 — weekStart=monday에서 thisWeek이 실제로 열리는 유일한 지점.
+const WED = new Date(2026, 7, 26, 12, 0, 0);
 
 describe("classifyTask", () => {
   it("puts a completed task in done regardless of its due date", () => {
@@ -95,12 +97,45 @@ describe("classifyTask", () => {
         "later",
       );
     });
+
+    // 수요일(8/26) 기준 weekStart=monday: 그 주는 8/24~8/30 → 8/30까지 thisWeek, 8/31부터 later.
+    // SUN(8/23)만으로는 weekStart=monday의 thisWeek 분기가 절대 열리지 않는다 — 이 경계를 놓치면
+    // endOfWeek의 오프셋 계산이 깨져도 전체 테스트가 통과해버린다.
+    it("with weekStart=monday and a mid-week now, the end of that week is thisWeek", () => {
+      expect(classifyTask(task({ due: "2026-08-30" }), WED, "monday")).toBe(
+        "thisWeek",
+      );
+    });
+
+    it("with weekStart=monday and a mid-week now, the day after week end is later", () => {
+      expect(classifyTask(task({ due: "2026-08-31" }), WED, "monday")).toBe(
+        "later",
+      );
+    });
   });
 
   it("ignores an unparseable date and treats the task as noDate", () => {
     expect(classifyTask(task({ due: "not-a-date" }), SUN, "monday")).toBe(
       "noDate",
     );
+  });
+
+  it("rejects a calendar-invalid date that Date would roll over", () => {
+    // new Date(2026, 1, 30)는 3월 2일로 롤오버된다 — parseLocalDate의 되돌림 검사가
+    // 이걸 잡지 못하면 엉뚱한 날짜로 조용히 분류된다.
+    expect(classifyTask(task({ due: "2026-02-30" }), SUN, "monday")).toBe(
+      "noDate",
+    );
+  });
+
+  it("falls back to scheduled when due is unparseable", () => {
+    expect(
+      classifyTask(
+        task({ due: "not-a-date", scheduled: "2026-08-23" }),
+        SUN,
+        "monday",
+      ),
+    ).toBe("today");
   });
 });
 
