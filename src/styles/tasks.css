@@ -28,6 +28,8 @@
   overflow-y: auto;
 }
 
+/* I3: <summary> — a bucket's disclosure header, so it needs a pointer cursor
+   the old <h3> never had. */
 .task-bucket-header {
   margin: 10px 0 4px;
   font-size: 11px;
@@ -35,6 +37,8 @@
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
 }
 
 .task-bucket-count {
