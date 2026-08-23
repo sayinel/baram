@@ -106,10 +106,17 @@ describe("settings store v16 -> v17 migration (activity bar backfill)", () => {
     expect(twice).toEqual(once);
   });
 
-  it("does not add anything when already at version 17", () => {
+  // §306 added a second gate (v17 -> v18, see
+  // activity-bar-tasks-migration.test.ts) that calls this exact same
+  // backfill again. So "17" is no longer the terminal version — anyone
+  // handed version 17 now also runs the v17 -> v18 gate and gets backfilled
+  // by it. This test moves its input to 18, the new terminal version, to
+  // keep testing what it always meant to test: nothing gets added once
+  // you're fully migrated.
+  it("does not add anything when already at version 18", () => {
     const result = migrate(
       { activityBarConfig: configMissingIds("plugins") },
-      17,
+      18,
     );
     expect(result.map((c) => c.id)).not.toContain("plugins");
   });
