@@ -1,7 +1,10 @@
 // §56d Journal Photo — asset utility functions
 
+import type { MediaKind } from "../media-src";
+
 import { listDir, readFile } from "../../ipc/invoke";
 import { copyBytesToDir } from "../media-copy";
+import { classifyMediaSrc, isMediaFilePath } from "../media-src";
 import { basename } from "../path-utils";
 import { JOURNAL_DATE_PARTS_RE } from "./journal";
 
@@ -13,6 +16,9 @@ import { JOURNAL_DATE_PARTS_RE } from "./journal";
  */
 const CAPTION_READ_CONCURRENCY = 8;
 
+/** §56d 갤러리 헤더의 매체 토글 값. */
+export type MediaFilter = "all" | "photo" | "video";
+
 export interface PhotoGalleryEntry {
   absolutePath: string;
   caption: string;
@@ -21,7 +27,33 @@ export interface PhotoGalleryEntry {
   dateFromFilename: boolean;
   filename: string;
   journalPath: null | string;
+  /**
+   * §293 분류기가 답한 종류. assets/ 안에서는 `image` 또는 `video-file`뿐이다
+   * (`video-embed`는 URL이라 디스크에 파일로 존재하지 않는다) — 그래도 좁히지 않고
+   * `MediaKind` 그대로 둔다. 종류의 어휘는 `media-src.ts` 하나여야 한다.
+   */
+  kind: MediaKind;
   relativePath: string;
+}
+
+/**
+ * 매체 종류로 거른다. 순서는 그대로 둔다(호출부가 이미 날짜순으로 정렬해 두었다).
+ *
+ * ‼️ 호출부는 이것을 `groupPhotosByDate` **앞에서** 불러야 한다. 뒤에서 거르면 그룹
+ * 헤더의 개수와 라이트박스가 좌우로 넘기는 목록이 화면에 보이는 칸과 어긋난다.
+ *
+ * "image가 아니면 video"인 이유: `insertMediaAtPos`(drop-handler.ts)와 NodeView가
+ * 이미 그 규칙으로 갈라진다. 도달 불가능한 `video-embed`에도 같은 규칙을 적용해 두면
+ * 나중에 멤버가 늘거나 갤러리가 문서를 스캔하게 돼도 어느 필터에도 안 걸리는 항목이
+ * 조용히 생기지 않는다.
+ */
+export function filterEntriesByMedia(
+  entries: PhotoGalleryEntry[],
+  filter: MediaFilter,
+): PhotoGalleryEntry[] {
+  if (filter === "all") return entries;
+  const wantVideo = filter === "video";
+  return entries.filter((e) => (e.kind !== "image") === wantVideo);
 }
 
 /** Generate photo filename: YYYYMMDD-HHmmss-{sanitized-original}.{ext} */
@@ -200,7 +232,15 @@ export async function scanJournalPhotos(
 
         for (const file of files) {
           if (file.isDir) continue;
-          if (!/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(file.name)) continue;
+          // ‼️ 확장자를 여기서 다시 열거하지 않는다. 예전에는 손으로 쓴 정규식이었고,
+          // §292–§301이 동영상을 사진과 같은 assets/에 저장하게 만든 뒤에도 갤러리에는
+          // 동영상만 빠져 있었다 — 목록이 넷이면 하나는 반드시 낡는다.
+          //
+          // `classifyMediaSrc(...) === "image"`가 아니라 `isMediaFilePath`인 이유:
+          // 전자는 못 알아보는 확장자를 image로 떨어뜨리는 파이프라인 fallback
+          // 계약이라 assets/의 `.pdf`·`.zip`까지 사진 칸이 된다. 갤러리가 묻는 것은
+          // "이게 애초에 미디어인가"이고, 그 질문에 답하는 함수가 이쪽이다.
+          if (!isMediaFilePath(file.name)) continue;
 
           // Parse date from filename: YYYYMMDD-HHmmss-name.ext
           const dateMatch = file.name.match(
@@ -235,6 +275,7 @@ export async function scanJournalPhotos(
             dateFromFilename,
             caption: "",
             journalPath: null,
+            kind: classifyMediaSrc(file.name),
           });
         }
 
