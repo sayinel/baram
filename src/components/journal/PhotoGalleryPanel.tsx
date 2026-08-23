@@ -9,7 +9,9 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import {
+  filterEntriesByMedia,
   groupPhotosByDate,
+  type MediaFilter,
   type PhotoGalleryEntry,
   scanJournalPhotos,
 } from "../../utils/journal/journal-photo";
@@ -34,6 +36,9 @@ export function PhotoGalleryPanel() {
   const [photos, setPhotos] = useState<PhotoGalleryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>("day");
+  // 세션 상태로 둔다. 설정에 영속시키면 "왜 사진이 안 보이지"가 앱을 다시 켜도 계속되는데,
+  // 그 상태를 만든 클릭은 지난 세션의 것이라 사용자가 원인을 이어 붙일 방법이 없다.
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
   const [lightboxIndex, setLightboxIndex] = useState<null | number>(null);
 
   // Date navigation state
@@ -106,9 +111,17 @@ export function PhotoGalleryPanel() {
     return "전체";
   }, [groupMode, selectedYear, selectedMonth]);
 
+  // ‼️ 거르기가 그룹 짓기 **앞**에 있어야 한다. 뒤에서 걸러도 그리드는 맞게 보이지만
+  // 그룹 헤더의 개수와 `flatPhotos`(라이트박스의 좌우 이동)는 걸러지기 전 목록을 세게
+  // 되어, 화면에 한 칸인데 헤더는 3이라 적고 오른쪽 화살표가 보이지도 않는 사진으로 넘어간다.
+  const visibleEntries = useMemo(
+    () => filterEntriesByMedia(photos, mediaFilter),
+    [photos, mediaFilter],
+  );
+
   const groups = useMemo(
-    () => groupPhotosByDate(photos, groupMode),
-    [photos, groupMode],
+    () => groupPhotosByDate(visibleEntries, groupMode),
+    [visibleEntries, groupMode],
   );
 
   // Sort group keys descending (newest first)
@@ -201,6 +214,15 @@ export function PhotoGalleryPanel() {
   const lightboxPhoto =
     lightboxIndex !== null ? flatPhotos[lightboxIndex] : null;
 
+  // 빈 화면이 무엇 때문에 비었는지 말해야 한다. 사진이 세 장 있는데 필터가 동영상일 뿐인
+  // 상태에서 "저널에 이미지를 드래그하세요"라고 안내하면 사용자를 엉뚱한 곳으로 보낸다.
+  const emptyMessage =
+    mediaFilter === "video"
+      ? "동영상이 없습니다. 저널에 동영상을 드래그해 추가하세요."
+      : mediaFilter === "photo"
+        ? "사진이 없습니다. 저널에 이미지를 드래그하거나 /photo로 추가하세요."
+        : "사진이나 동영상이 없습니다. 저널에 파일을 드래그하거나 /photo로 추가하세요.";
+
   return (
     <div className="photo-gallery-panel">
       <div className="photo-gallery-header">
@@ -213,6 +235,29 @@ export function PhotoGalleryPanel() {
               onClick={() => setGroupMode(m)}
             >
               {m === "day" ? "Day" : m === "month" ? "Month" : "Year"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 매체 토글은 자기 행에 둔다. 좁은 패널(~300px)에서 "Day Month Year"와
+          "All Photos Videos"를 한 줄에 넣으면 min-content 아래로 줄지 않는 flex
+          아이템 둘이 헤더를 넘긴다. */}
+      <div className="photo-gallery-media-row">
+        <div className="photo-gallery-mode-toggle">
+          {(
+            [
+              ["all", "All"],
+              ["photo", "Photos"],
+              ["video", "Videos"],
+            ] as [MediaFilter, string][]
+          ).map(([value, label]) => (
+            <button
+              className={`photo-gallery-mode-btn ${mediaFilter === value ? "photo-gallery-mode-btn-active" : ""}`}
+              key={value}
+              onClick={() => setMediaFilter(value)}
+            >
+              {label}
             </button>
           ))}
         </div>
@@ -244,10 +289,8 @@ export function PhotoGalleryPanel() {
           </div>
         )}
 
-        {!loading && photos.length === 0 && (
-          <div className="photo-gallery-empty">
-            사진이 없습니다. 저널에 이미지를 드래그하거나 /photo로 추가하세요.
-          </div>
+        {!loading && visibleEntries.length === 0 && (
+          <div className="photo-gallery-empty">{emptyMessage}</div>
         )}
 
         {sortedKeys.map((key) => {

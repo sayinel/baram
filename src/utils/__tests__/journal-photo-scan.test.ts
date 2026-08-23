@@ -156,3 +156,97 @@ describe("scanJournalPhotos caption pass", () => {
     );
   });
 });
+
+// §293 갤러리가 보는 파일 목록. 예전에는 이 파일이 확장자를 손으로 다시 열거했다(네 번째
+// 목록) — 그래서 §292–§301이 동영상을 사진과 **같은** assets/에 저장하도록 만든 뒤에도
+// 갤러리에는 동영상만 빠져 있었다. 이제 `isMediaFilePath` 하나에 묻는다.
+describe("scanJournalPhotos media filter", () => {
+  beforeEach(() => {
+    listDir.mockReset();
+    readFile.mockReset();
+  });
+
+  /** daily/2026/08/assets/에 주어진 파일들을 놓고, md는 `content` 하나만 둔다. */
+  function vaultWithAssets(names: string[], content = "") {
+    listDir.mockImplementation((path: string) => {
+      if (path === "/vault/journal/daily")
+        return Promise.resolve([dir("2026")]);
+      if (path === "/vault/journal/daily/2026")
+        return Promise.resolve([dir("08")]);
+      if (path.endsWith("/assets"))
+        return Promise.resolve(names.map((n) => file(n)));
+      return Promise.resolve([dir("assets"), file("2026-08-05.md")]);
+    });
+    readFile.mockResolvedValue(content);
+  }
+
+  test("a video clip in assets/ shows up next to the photos", async () => {
+    vaultWithAssets(["20260805-101500-a.jpg", "20260805-102000-clip.mp4"]);
+
+    const entries = await scanJournalPhotos("/vault", "/vault/journal");
+
+    expect(entries.map((e) => e.filename).sort()).toEqual([
+      "20260805-101500-a.jpg",
+      "20260805-102000-clip.mp4",
+    ]);
+  });
+
+  test("tags each entry with the kind the single classifier reports", async () => {
+    vaultWithAssets([
+      "20260805-101500-a.jpg",
+      "20260805-102000-clip.mp4",
+      "20260805-103000-b.webm",
+    ]);
+
+    const entries = await scanJournalPhotos("/vault", "/vault/journal");
+    const kindOf = (name: string) =>
+      entries.find((e) => e.filename === name)?.kind;
+
+    expect(kindOf("20260805-101500-a.jpg")).toBe("image");
+    expect(kindOf("20260805-102000-clip.mp4")).toBe("video-file");
+    expect(kindOf("20260805-103000-b.webm")).toBe("video-file");
+  });
+
+  // ‼️ 이 테스트가 이 변경에서 제일 중요하다. `classifyMediaSrc` 단독으로 열면 통과하지
+  // 못한다 — 그쪽은 못 알아보는 확장자를 "image"로 떨어뜨리는 **파이프라인 fallback
+  // 계약**이라(md-to-pm이 의존한다) `.pdf`도 사진 칸이 된다. 갤러리가 물어야 하는 것은
+  // "애초에 미디어인가"이고 그 질문에 답하는 함수는 `isMediaFilePath`다.
+  test("a pdf or an archive sitting in assets/ is not a gallery entry", async () => {
+    vaultWithAssets([
+      "20260805-101500-a.jpg",
+      "20260805-102000-report.pdf",
+      "20260805-103000-backup.zip",
+      "20260805-104000-notes.md",
+    ]);
+
+    const entries = await scanJournalPhotos("/vault", "/vault/journal");
+
+    expect(entries.map((e) => e.filename)).toEqual(["20260805-101500-a.jpg"]);
+  });
+
+  // .mkv는 어느 웹뷰에서도 재생되지 않아 §293의 목록에 일부러 없다. 갤러리가 그것만
+  // 따로 허용하면 재생도 포스터도 없는 검은 칸이 된다.
+  test("a container no webview can play stays out", async () => {
+    vaultWithAssets(["20260805-102000-clip.mkv"]);
+
+    const entries = await scanJournalPhotos("/vault", "/vault/journal");
+
+    expect(entries).toEqual([]);
+  });
+
+  // 동영상은 사진과 **같은** `![](…)` 문법으로 문서에 들어간다(§292). 캡션 수집기가
+  // 이미 그 정규식을 쓰므로 동영상에도 그대로 붙어야 한다.
+  test("a video's caption comes from the journal just like a photo's", async () => {
+    vaultWithAssets(
+      ["20260805-102000-clip.mp4"],
+      "![파도](assets/20260805-102000-clip.mp4)",
+    );
+
+    const entries = await scanJournalPhotos("/vault", "/vault/journal");
+
+    expect(entries[0].caption).toBe("파도");
+    expect(entries[0].journalPath).toBe(
+      "/vault/journal/daily/2026/08/2026-08-05.md",
+    );
+  });
+});

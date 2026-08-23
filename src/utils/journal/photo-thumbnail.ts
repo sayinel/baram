@@ -1,4 +1,8 @@
-// §56d Photo Gallery — 원본 대신 쓸 썸네일 URL을 해결한다.
+// §56d Photo Gallery — 갤러리가 자산 하나를 그리는 데 필요한 것들.
+//
+// 대부분은 원본 대신 쓸 썸네일 URL을 해결하는 일이고, §293부터 동영상의 길이 배지
+// 포맷터가 함께 산다 — 컴포넌트 파일에 두면 그 파일이 컴포넌트만 export하지 않게 되어
+// Fast Refresh가 깨진다(react-refresh/only-export-components).
 //
 // 갤러리가 원본을 <img>에 그대로 걸면 브라우저는 100px 칸에 그리려고 해도 원본을 통째로
 // 디코드한다(측정: 사진 177장 = RGBA 12.2GB, 유휴 메모리 목표는 100MB). 그래서 여기서
@@ -28,6 +32,24 @@ export const PREVIEW_MAX_PX = 2048;
 export interface ThumbUrl {
   isOriginal: boolean;
   url: string;
+}
+
+/**
+ * 초 → `m:ss`(한 시간을 넘으면 `h:mm:ss`). 길이를 알 수 없으면 null.
+ *
+ * ‼️ null을 돌려주는 경우가 실제로 온다: metadata를 아직 못 읽었으면 `NaN`,
+ * 길이를 모르는 스트림이면 `Infinity`다. 그대로 포맷하면 배지에 `NaN:aN`이 뜬다.
+ */
+export function formatClipDuration(seconds: number): null | string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  // 올림이 아니라 버림 — 14.9초짜리를 "0:15"로 적으면 끝까지 재생해도 도달하지 않는 값이다.
+  const total = Math.floor(seconds);
+  const ss = String(total % 60).padStart(2, "0");
+  const minutes = Math.floor(total / 60);
+  const hours = Math.floor(total / 3600);
+  return hours > 0
+    ? `${hours}:${String(minutes % 60).padStart(2, "0")}:${ss}`
+    : `${minutes}:${ss}`;
 }
 
 /** absolutePath|maxPx → 결과. 세션 내 재요청은 IPC를 타지 않는다. */

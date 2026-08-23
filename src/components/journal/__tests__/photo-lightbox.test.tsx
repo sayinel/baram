@@ -27,13 +27,26 @@ const PHOTO: PhotoGalleryEntry = {
   dateFromFilename: true,
   filename: "20260805-101500-a.jpg",
   journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
+  kind: "image",
   relativePath: "assets/20260805-101500-a.jpg",
+};
+
+const CLIP: PhotoGalleryEntry = {
+  absolutePath: "/vault/journal/daily/2026/08/assets/20260805-102000-c.mp4",
+  caption: "파도",
+  date: new Date(2026, 7, 5),
+  dateFromFilename: true,
+  filename: "20260805-102000-c.mp4",
+  journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
+  kind: "video-file",
+  relativePath: "assets/20260805-102000-c.mp4",
 };
 
 function renderLightbox(
   overrides: Partial<{
     onClose: () => void;
     onNavigate: (d: "next" | "prev") => void;
+    photo: PhotoGalleryEntry;
   }> = {},
 ) {
   return render(
@@ -41,7 +54,7 @@ function renderLightbox(
       onClose={overrides.onClose ?? vi.fn()}
       onNavigate={overrides.onNavigate ?? vi.fn()}
       onOpenJournal={vi.fn()}
-      photo={PHOTO}
+      photo={overrides.photo ?? PHOTO}
     />,
   );
 }
@@ -142,5 +155,82 @@ describe("PhotoLightbox", () => {
     onNavigate.mockClear();
     fireEvent.keyDown(window, { key: "ArrowRight" });
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+});
+
+// §293 라이트박스의 동영상. 사진 경로와 공유하는 것은 껍데기(오버레이·좌우·닫기·일기 보기)
+// 뿐이고, 안쪽은 다른 계약이다.
+describe("PhotoLightbox — video clip", () => {
+  beforeEach(() => {
+    _resetThumbCache();
+    photoThumbnail.mockReset();
+  });
+
+  test("plays the file itself instead of asking for a preview that cannot exist", () => {
+    const { container } = renderLightbox({ photo: CLIP });
+
+    const video = container.querySelector("video");
+    expect(video?.getAttribute("src")).toBe(
+      `asset://localhost/${CLIP.absolutePath}`,
+    );
+    expect(video?.hasAttribute("controls")).toBe(true);
+    // 그리드 칸과 달리 `#t=0.1`을 붙이지 않는다 — 여기서는 처음부터 재생해야 한다.
+    expect(video?.getAttribute("src")).not.toContain("#t=");
+    expect(photoThumbnail).not.toHaveBeenCalled();
+  });
+
+  // "원본 보기"는 2048px 프리뷰 대신 원본 사진을 여는 버튼이다(ImageOriginalView는
+  // 이미지 뷰어다). 동영상에는 프리뷰라는 중간 단계가 없어 이 화면이 이미 원본이다 —
+  // 버튼을 남겨 두면 누르는 순간 <img>에 mp4가 걸려 깨진 아이콘이 뜬다.
+  test("offers no 원본 보기 — this screen already is the original", () => {
+    renderLightbox({ photo: CLIP });
+
+    expect(screen.queryByText("원본 보기")).toBeNull();
+  });
+
+  // 사용자는 이 칸을 **눌러서** 여기 왔다 — 그 클릭이 곧 재생 의사다. WebKit의 자동재생
+  // 정책도 사용자 제스처에서 출발한 재생은 허용한다. 막히더라도 컨트롤이 그대로 있다.
+  test("starts playing rather than waiting for a second click", () => {
+    const { container } = renderLightbox({ photo: CLIP });
+
+    expect(container.querySelector("video")?.hasAttribute("autoplay")).toBe(
+      true,
+    );
+  });
+
+  test("still offers the way back to the journal", () => {
+    renderLightbox({ photo: CLIP });
+
+    expect(screen.getByText("일기 보기")).toBeTruthy();
+  });
+
+  // ‼️ `<video controls>`의 네이티브 컨트롤도 좌우 화살표로 탐색한다. 창 전체에 걸린
+  // 리스너가 그대로 듣고 있으면 10초 되감기와 "다음 항목으로 이동"이 **동시에** 일어난다.
+  test("arrow keys inside the player scrub it — they do not skip to the next clip", () => {
+    const onNavigate = vi.fn();
+    const { container } = renderLightbox({ onNavigate, photo: CLIP });
+
+    fireEvent.keyDown(container.querySelector("video")!, { key: "ArrowRight" });
+
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  test("arrow keys outside the player still move through the gallery", () => {
+    const onNavigate = vi.fn();
+    renderLightbox({ onNavigate, photo: CLIP });
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+
+    expect(onNavigate).toHaveBeenCalledWith("next");
+  });
+
+  // Esc는 재생 중에도 닫혀야 한다 — 동영상이 열려 있다고 갇히면 안 된다.
+  test("Escape closes the lightbox even from inside the player", () => {
+    const onClose = vi.fn();
+    const { container } = renderLightbox({ onClose, photo: CLIP });
+
+    fireEvent.keyDown(container.querySelector("video")!, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

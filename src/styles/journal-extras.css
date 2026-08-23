@@ -49,6 +49,16 @@
   box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
 }
 
+/* §293 매체 필터는 자기 행이다. 좁은 패널(~300px)에서 "Day Month Year"와
+   "All Photos Videos"를 헤더 한 줄에 함께 두면 flex 아이템이 min-content 아래로
+   줄지 않아 넘친다 — 한국어 UI에서는 안 보이지만 이 라벨들은 영문 고정이다. */
+.photo-gallery-media-row {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  padding: 8px 16px 0;
+}
+
 .photo-gallery-nav {
   display: flex;
   gap: 12px;
@@ -140,14 +150,51 @@
   border-radius: 4px;
 }
 
+/* ‼️ `opacity`가 아니다. 그건 하이라이트가 아니라 칸을 반투명하게 만드는 것이라 합성이
+   `0.85 × 사진 + 0.15 × 패널 배경`이 되고, 그 배경(`--color-bg-panel`)은 밝은 테마 3개에서
+   밝고 어두운 테마 5개에서 어둡다 — 같은 규칙이 테마마다 반대 방향으로 보였다. 게다가 사진
+   휘도가 배경과 비슷하면 섞어도 변화가 없어 피드백이 아예 사라졌다.
+
+   둘을 함께 쓰는 이유: brightness는 곱셈이라 양 극단에서 약해진다(거의 흰 사진은 클리핑,
+   아주 어두운 사진은 절대 변화량이 작다). 그 두 경우에 보이는 것은 링뿐이고, 반대로 링만
+   두면 "밝아진다"는 기대에 답하지 못한다. outline-offset이 음수인 건 링을 칸 안쪽에
+   그려 4px 그리드 간격을 침범하지 않게 하려는 것이다. */
 .photo-gallery-item:hover {
-  opacity: 0.85;
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: -2px;
+  filter: brightness(1.12);
 }
 
 .photo-gallery-thumb {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* §293 동영상 칸의 표식. 사진 위에 겹치므로 테마 토큰이 아니라 고정값을 쓴다 —
+   배경은 8개 테마의 색이 아니라 그 사진이다.
+   scrim이 78%인 이유: 최악의 배경(순백 사진) 위에서 흰 글자 대비가 11.7:1이고,
+   hover의 brightness(1.12)가 이 배지에도 함께 걸린 뒤에도 10.6:1이다. 이웃한 캡션과
+   맞춘 55%도 4.8:1로 AA는 통과하지만, 0.65rem 글자가 예측할 수 없는 사진 위에 놓이므로
+   평평한 배경 기준의 최소치보다 여유를 둔다.
+
+   ‼️ 알파 합성은 **sRGB(감마 인코딩) 공간**에서 일어난다 — 선형 휘도로 계산하면 같은
+   55%가 2.1:1로 나와 멀쩡한 값을 위반으로 오판한다. 검산: 50% 검정을 흰 배경에 올리면
+   `#7f7f7f`(3.98:1)여야 한다. */
+.photo-gallery-clip-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  padding: 1px 5px;
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  color: #fff;
+  background: rgb(0 0 0 / 78%);
+  border-radius: 3px;
 }
 
 .photo-gallery-item-caption {
@@ -258,6 +305,14 @@
    감추지 않으려고 흐리게 둔다 — 그래야 "화질이 낮다"가 아니라 "아직 오는 중"으로 읽힌다. */
 .photo-lightbox-img-placeholder {
   filter: blur(6px);
+}
+
+/* 사진의 프리뷰와 같은 상자에 맞춘다. 동영상은 축소본이 없어 파일 자체가 여기 온다. */
+.photo-lightbox-video {
+  max-width: 80vw;
+  max-height: 78vh;
+  background: #000;
+  border-radius: 6px;
 }
 
 .photo-lightbox-info {

@@ -140,6 +140,10 @@ describe("hardcoded light foregrounds anywhere in CSS", () => {
   const ALLOWED = new Set([
     // White on the photo lightbox's own dark scrim (rgb(0 0 0 / 60-92%)), not on a
     // theme colour, so no token applies.
+    // 이 둘은 라이트박스가 아니라 **사진 자체** 위에 있다 — 배경이 테마 색이 아니라
+    // 사용자의 사진이므로 어떤 토큰도 그 대비를 보장할 수 없다. 그래서 각자 자기
+    // scrim을 깔고, 그 scrim의 최악 배경(순백 사진) 대비를 계산해 정해 두었다.
+    ".photo-gallery-clip-badge",
     ".photo-gallery-item-caption",
     ".photo-lightbox-caption",
     ".photo-lightbox-close",
