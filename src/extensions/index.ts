@@ -82,6 +82,7 @@ import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
+import { TaskInputRules } from "./plugins/task-input-rules";
 import { ViewportVirtualize } from "./plugins/viewport-virtualize";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
@@ -257,6 +258,9 @@ export function createBaramExtensions(
 
     // Plugins — Heading & List Folding (Obsidian-style)
     Fold,
+
+    // Plugins — §303 Word-trigger input rules (due:/sched:/start:/prio:, !1-!5)
+    TaskInputRules,
 
     // §perf-large-file C4: true windowing — registered ONLY on the large
     // keep-alive editor (small docs never get the NodeViews). isEnabled is the
