@@ -143,3 +143,8 @@
   font-size: 11px;
   line-height: 1;
 }
+
+/* §309 기한 초과 일괄 조정 — 기한 초과가 있을 때만 나타나므로 눈에 띄어야 한다 */
+.task-panel-overdue-action {
+  color: var(--color-status-danger);
+}
