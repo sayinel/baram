@@ -25,6 +25,8 @@ vi.mock("../../../utils/confirm-dialog", () => ({
 
 vi.mock("../../../utils/tasks/apply-task-write", () => ({
   applyTaskWrite: vi.fn(),
+  applyToContent: vi.fn(),
+  resolveTaskWriteTarget: vi.fn(() => ({ kind: "disk" })),
 }));
 
 import { useTaskStore } from "../../../stores/tasks/task-store";

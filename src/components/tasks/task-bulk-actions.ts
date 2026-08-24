@@ -4,63 +4,166 @@
 // (use-file-tree-crud.ts:69-113의 handleDeleteMany)를 따른다: 항목별 try/catch,
 // 누적, 루프가 끝난 뒤 한 번 보고. 항목마다 낙관적 잠금이 걸려 있으므로 부분
 // 실패가 파일을 손상시키지는 않는다.
+//
+// 다만 §305의 라우터는 **한 번에 한 줄**을 쓰도록 설계됐다. 문서 경로는
+// `useFileStore`에 쓰고 `requestContentRefresh()`로 키만 올리며, 에디터가 실제로
+// 따라잡는 것은 React가 커밋한 뒤다. 루프가 반복 사이에 React에 제어를 넘기지
+// 않으므로 반복 N+1이 N 이전의 문서를 읽어 변경 N을 조용히 덮어쓴다. 그래서
+// 여기서는 라우팅 대상별로 태스크를 먼저 나누고, 문서 쪽은 문자열 하나에 전부
+// 적용한 뒤 **한 번만** 커밋한다.
 
 import type { TaskEntry } from "../../ipc/types";
+import type { TaskChange } from "../../utils/tasks/apply-task-write";
 import type { Editor } from "@tiptap/react";
 
+import { prosemirrorToMarkdown } from "../../pipeline";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useTaskStore } from "../../stores/tasks/task-store";
 import { logger } from "../../utils/logger";
-import { applyTaskWrite } from "../../utils/tasks/apply-task-write";
+import {
+  applyTaskWrite,
+  applyToContent,
+  resolveTaskWriteTarget,
+} from "../../utils/tasks/apply-task-write";
 
 export interface BulkResult {
+  /** 디스크에 쓴 파일 — 호출자가 이만큼만 다시 읽는다 */
+  diskPaths: string[];
   /** 오류로 건너뛴 개수 (권한·디스크 등) */
   failed: number;
   /** 그 사이 파일이 바뀌어 거절된 개수 — 오류가 아니라 정상 경합이다 */
   stale: number;
-  /** 실제로 쓴 파일 경로(중복 없음) — 호출자가 이만큼만 다시 읽으면 된다 */
-  touchedPaths: string[];
   /** 성공한 개수 */
+  updated: number;
+}
+
+interface Counts {
+  failed: number;
+  stale: number;
   updated: number;
 }
 
 /**
  * `tasks`의 기한을 전부 `today`로 세운다. 순차 best-effort.
  *
- * `editor`는 그대로 `applyTaskWrite`에 전달된다 — 열린 문서 경로가 라이브
- * ProseMirror 문서에서 읽고 써야 하기 때문이다(apply-task-write.ts 참조).
+ * `diskPaths`에는 **디스크에 쓴** 파일만 담긴다. 열린 문서에 쓴 파일은 아직
+ * 저장되지 않았으므로 호출자가 다시 읽으면 방금 만든 변경이 되돌아간다 —
+ * 그 파일의 태스크는 이 함수가 직접 `patchTask`로 갱신한다(`onToggle`의
+ * 문서 경로와 같은 처리).
  */
 export async function rescheduleOverdueToToday(
   tasks: TaskEntry[],
   today: string,
   editor: Editor | null,
 ): Promise<BulkResult> {
-  const touched = new Set<string>();
+  const diskPaths = new Set<string>();
   let updated = 0;
   let stale = 0;
   let failed = 0;
 
+  // 문서 경로는 "활성 + dirty" 탭에서만 성립하고 활성 탭은 하나뿐이므로
+  // (그리고 openTab이 filePath로 중복 제거하므로) 한 번의 실행에서 문서로
+  // 가는 태스크는 전부 **같은 한 파일**의 것이다.
+  const docTasks: TaskEntry[] = [];
+
   for (const task of tasks) {
+    if (resolveTaskWriteTarget(task.path, editor).kind === "document") {
+      docTasks.push(task);
+      continue;
+    }
     try {
-      const r = await applyTaskWrite(
-        task,
-        {
-          field: "due",
-          kind: "field",
-          value: today,
-        },
-        editor,
-      );
+      const r = await applyTaskWrite(task, changeFor(task, today), editor);
       if (r.kind === "stale") {
         stale += 1;
       } else {
         updated += 1;
       }
       // stale도 그 파일을 다시 읽어야 옳은 상태가 보인다.
-      touched.add(task.path);
+      diskPaths.add(task.path);
     } catch (err) {
       logger.error("[tasks] bulk reschedule failed:", task.path, err);
       failed += 1;
     }
   }
 
-  return { failed, stale, touchedPaths: [...touched], updated };
+  const doc = await rescheduleInOpenDocument(docTasks, today, editor);
+
+  return {
+    diskPaths: [...diskPaths],
+    failed: failed + doc.failed,
+    stale: stale + doc.stale,
+    updated: updated + doc.updated,
+  };
+}
+
+/**
+ * §309 기한 초과를 만든 필드를 그대로 민다 — `due`가 있으면 `due`, 없으면
+ * `scheduled`다. 버킷은 `due ?? scheduled`로 판정하므로(task-buckets.ts:78-80)
+ * `⏳`만 가진 태스크도 Overdue에 들어오는데, 거기에 무조건 `📅`를 붙이면
+ * 사용자가 정한 적 없는 마감이 생기고 한 줄에 모순되는 두 날짜가 남는다.
+ */
+function changeFor(task: TaskEntry, today: string): TaskChange {
+  return { field: task.due ? "due" : "scheduled", kind: "field", value: today };
+}
+
+/** 실제로 민 필드만 스토어에 반영한다 — 쓰지 않은 필드를 채우면 파일에 없는 날짜를 주장하게 된다. */
+function datePatch(
+  task: TaskEntry,
+  today: string,
+  raw: string,
+): Partial<TaskEntry> {
+  return task.due ? { due: today, raw } : { raw, scheduled: today };
+}
+
+/**
+ * 문서 경로 태스크 전부를 **문자열 하나**에 차례로 적용한 뒤 한 번만 커밋한다.
+ * 반복마다 `setFileContent`를 부르면 서로를 덮어쓴다(파일 머리말 참조).
+ */
+async function rescheduleInOpenDocument(
+  tasks: TaskEntry[],
+  today: string,
+  editor: Editor | null,
+): Promise<Counts> {
+  const counts: Counts = { failed: 0, stale: 0, updated: 0 };
+  const first = tasks[0];
+  if (!first || !editor) return counts;
+  const target = resolveTaskWriteTarget(first.path, editor);
+  if (target.kind !== "document") return counts;
+
+  const path = first.path;
+  let content = prosemirrorToMarkdown(editor.state.doc);
+  const applied: { raw: string; task: TaskEntry }[] = [];
+
+  for (const task of tasks) {
+    try {
+      // `refresh`를 주지 않는다 — 배치 중에는 누적 문자열이 진실이고 라이브
+      // 문서는 React 커밋 전까지 따라오지 않는다(apply-task-write.ts 참조).
+      const r = await applyToContent(content, task, changeFor(task, today));
+      if (r === null) {
+        // 문서 경로의 stale은 `diskPaths`에 넣지 않는다 — 같은 파일을 다시
+        // 읽으면 이 배치가 만든 나머지 변경까지 옛 디스크 내용으로 되돌아간다.
+        counts.stale += 1;
+        continue;
+      }
+      content = r.content;
+      applied.push({ raw: r.raw, task });
+      counts.updated += 1;
+    } catch (err) {
+      logger.error("[tasks] bulk reschedule failed:", task.path, err);
+      counts.failed += 1;
+    }
+  }
+
+  if (applied.length === 0) return counts;
+
+  useFileStore.getState().setFileContent(path, content);
+  useEditorStore.getState().requestContentRefresh();
+  useEditorStore.getState().markDirty(target.tabId, true);
+  for (const { raw, task } of applied) {
+    useTaskStore
+      .getState()
+      .patchTask(task.path, task.line, datePatch(task, today, raw));
+  }
+  return counts;
 }

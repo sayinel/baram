@@ -19,7 +19,6 @@ import {
 } from "../../stores/tasks/task-store";
 import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
-import { showAlert, showConfirm } from "../../utils/confirm-dialog";
 import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";
 import { applyTaskWrite } from "../../utils/tasks/apply-task-write";
@@ -29,8 +28,8 @@ import {
   collectTags,
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
-import { rescheduleOverdueToToday } from "./task-bulk-actions";
 import { TaskBucketList } from "./TaskBucketList";
+import { useRescheduleOverdue } from "./use-reschedule-overdue";
 
 // 사이드바 패널의 사용자 노출 문자열은 영어가 이 코드베이스의 관례다
 // ("Filter tags...", "File tree", "Label (optional)" 등). 코드 주석은 한국어 유지.
@@ -167,23 +166,13 @@ export function TaskAgendaPanel() {
     [visible, now, tasksWeekStart],
   );
 
-  const onRescheduleOverdue = useCallback(async () => {
-    const overdue = groups.overdue;
-    if (overdue.length === 0) return;
-    // §309 파일을 대량 수정하는 동작이므로 자동 실행하지 않는다.
-    const ok = await showConfirm(
-      `Reschedule ${overdue.length} overdue task(s) to today?`,
-    );
-    if (!ok) return;
-
-    const r = await rescheduleOverdueToToday(overdue, todayIso(now), editor);
-    for (const path of r.touchedPaths) {
-      await refreshFileTasks(path, rootPath, tasksExcludePaths);
-    }
-    if (r.failed > 0) {
-      await showAlert(`Couldn't reschedule ${r.failed} task(s). See the log.`);
-    }
-  }, [groups, now, rootPath, tasksExcludePaths, editor]);
+  const reschedule = useRescheduleOverdue({
+    editor,
+    exclude: tasksExcludePaths,
+    rootPath,
+    tasks: groups.overdue,
+    today: todayIso(now),
+  });
 
   return (
     <div className="task-panel">
@@ -202,8 +191,8 @@ export function TaskAgendaPanel() {
           {groups.overdue.length > 0 && (
             <button
               className="icon-btn task-panel-overdue-action"
-              disabled={loading}
-              onClick={() => void onRescheduleOverdue()}
+              disabled={loading || reschedule.busy}
+              onClick={() => void reschedule.run()}
               title={`Reschedule ${groups.overdue.length} overdue task(s) to today`}
               type="button"
             >

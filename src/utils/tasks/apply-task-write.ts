@@ -35,6 +35,9 @@ export type TaskWriteResult =
   | { kind: "document"; raw: string }
   | { kind: "stale" };
 
+export type TaskWriteTarget =
+  { kind: "disk" } | { kind: "document"; tabId: string };
+
 /**
  * 태스크 한 줄을 고친다.
  *
@@ -51,20 +54,10 @@ export async function applyTaskWrite(
   change: TaskChange,
   editor: Editor | null,
 ): Promise<TaskWriteResult> {
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const tab = tabs.find((t) => t.filePath === task.path);
-
-  // 문서 경로는 "활성 + dirty" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
-  // - 탭이 없다(닫힌 파일) → 디스크가 유일한 진실원.
-  // - 배경 탭 → openFiles에 써도 나중에 그 탭으로 돌아오면 캐시된 PM 상태가
-  //   덮어쓴다(use-tab-switching.ts:461-494는 openFiles가 아니라
-  //   editorStateCache를 복원한다) — 방금 만든 변경이 사라지고 탭만 거짓으로
-  //   dirty가 된다.
-  // - 활성이지만 clean → 버퍼와 디스크가 이미 같으므로 디스크에 써도 잃는 게
-  //   없고, non-dirty 탭의 외부 변경 자동 리로드(use-file-operations.ts의
-  //   triggerAutoReload)가 에디터를 알아서 갱신한다.
-  // - editor가 없다 → 문서를 읽을 방법이 없다.
-  if (!tab || tab.id !== activeTabId || !tab.isDirty || !editor) {
+  const target = resolveTaskWriteTarget(task.path, editor);
+  // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다 — 런타임에는
+  // 도달 불가한 분기다.
+  if (target.kind === "disk" || !editor) {
     try {
       return { kind: "disk", raw: await writeToDisk(task, change) };
     } catch (err) {
@@ -74,30 +67,80 @@ export async function applyTaskWrite(
     }
   }
 
-  const current = lineAt(prosemirrorToMarkdown(editor.state.doc), task.line);
-  if (current === null || !isSameLine(current, task.raw)) {
-    return { kind: "stale" };
-  }
+  const applied = await applyToContent(
+    prosemirrorToMarkdown(editor.state.doc),
+    task,
+    change,
+    () => prosemirrorToMarkdown(editor.state.doc),
+  );
+  if (applied === null) return { kind: "stale" };
+
+  useFileStore.getState().setFileContent(task.path, applied.content);
+  useEditorStore.getState().requestContentRefresh();
+  useEditorStore.getState().markDirty(target.tabId, true);
+  return { kind: "document", raw: applied.raw };
+}
+
+/**
+ * 문서 경로의 순수 부분 — 문자열을 받아 갱신된 문자열을 돌려준다. 스토어를
+ * 건드리지 않는다. `null`은 stale(낙관적 잠금 거절)이다.
+ *
+ * `refresh`를 주면 preview await 뒤에 그것으로 내용을 다시 읽어 재확인한다.
+ * 단건 경로(`applyTaskWrite`)가 그렇게 한다 — await 동안 외부 리로드
+ * (triggerAutoReload)나 PropertiesPanel 같은 다른 패널의 편집이 같은 파일에
+ * 끼어들 수 있고, await 전에 잡아둔 문서로 스플라이스하면 그 변경을 조용히
+ * 덮어쓰기 때문이다.
+ *
+ * 일괄 경로는 **일부러 주지 않는다**. 배치 중에는 자기 누적 문자열이 진실이고
+ * (라이브 문서는 React가 커밋할 때까지 따라오지 않는다) 한 번의 사용자 제스처
+ * 안이라 중간에 다른 편집이 끼어들 여지도 없다.
+ */
+export async function applyToContent(
+  content: string,
+  task: TaskEntry,
+  change: TaskChange,
+  refresh?: () => string,
+): Promise<null | { content: string; raw: string }> {
+  const current = lineAt(content, task.line);
+  if (current === null || !isSameLine(current, task.raw)) return null;
 
   const updated = await previewLine(current, change);
 
-  // 위 await 동안 외부 리로드(triggerAutoReload)나 PropertiesPanel 같은 다른
-  // 패널의 편집이 같은 파일에 끼어들 수 있다. await 전에 잡아둔 문서로
-  // 스플라이스하면 그 변경을 조용히 덮어쓴다 — 라이브 문서를 다시 읽어 같은
-  // 검사를 한 번 더 한다.
-  const contentAfter = prosemirrorToMarkdown(editor.state.doc);
+  const contentAfter = refresh ? refresh() : content;
   const currentAfter = lineAt(contentAfter, task.line);
-  if (currentAfter === null || !isSameLine(currentAfter, task.raw)) {
-    return { kind: "stale" };
-  }
+  if (currentAfter === null || !isSameLine(currentAfter, task.raw)) return null;
 
   const next = spliceLine(contentAfter, task.line, updated);
-  if (next === null) return { kind: "stale" };
+  if (next === null) return null;
+  return { content: next, raw: updated };
+}
 
-  useFileStore.getState().setFileContent(task.path, next);
-  useEditorStore.getState().requestContentRefresh();
-  useEditorStore.getState().markDirty(tab.id, true);
-  return { kind: "document", raw: updated };
+/**
+ * 이 파일이 어디에 써야 하는지 판정한다 — 라우팅 규칙의 **유일한** 정의다.
+ * §309 일괄 경로도 이것을 불러 태스크를 분류하므로, 규칙을 두 벌로 두면
+ * 반드시 드리프트한다.
+ *
+ * 문서 경로는 "활성 + dirty" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
+ * - 탭이 없다(닫힌 파일) → 디스크가 유일한 진실원.
+ * - 배경 탭 → openFiles에 써도 나중에 그 탭으로 돌아오면 캐시된 PM 상태가
+ *   덮어쓴다(use-tab-switching.ts:461-494는 openFiles가 아니라
+ *   editorStateCache를 복원한다) — 방금 만든 변경이 사라지고 탭만 거짓으로
+ *   dirty가 된다.
+ * - 활성이지만 clean → 버퍼와 디스크가 이미 같으므로 디스크에 써도 잃는 게
+ *   없고, non-dirty 탭의 외부 변경 자동 리로드(use-file-operations.ts의
+ *   triggerAutoReload)가 에디터를 알아서 갱신한다.
+ * - editor가 없다 → 문서를 읽을 방법이 없다.
+ */
+export function resolveTaskWriteTarget(
+  path: string,
+  editor: Editor | null,
+): TaskWriteTarget {
+  const { activeTabId, tabs } = useEditorStore.getState();
+  const tab = tabs.find((t) => t.filePath === path);
+  if (!tab || tab.id !== activeTabId || !tab.isDirty || !editor) {
+    return { kind: "disk" };
+  }
+  return { kind: "document", tabId: tab.id };
 }
 
 /** 변환 결과 줄만 Rust에서 받아온다 — 변환 로직을 TS에 재구현하지 않는다. */

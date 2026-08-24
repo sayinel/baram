@@ -1,12 +1,20 @@
+// §309 일괄 재조정의 카운터·라우팅 회계. 여기서는 라우터를 통째로 모킹해
+// 디스크 경로만 본다 — 실제 라우터에 대고 도는 문서 경로는
+// task-bulk-actions-document.test.ts가 본다.
 import type { TaskEntry } from "../../../ipc/types";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../utils/tasks/apply-task-write", () => ({
   applyTaskWrite: vi.fn(),
+  applyToContent: vi.fn(),
+  resolveTaskWriteTarget: vi.fn(() => ({ kind: "disk" })),
 }));
 
-import { applyTaskWrite } from "../../../utils/tasks/apply-task-write";
+import {
+  applyTaskWrite,
+  resolveTaskWriteTarget,
+} from "../../../utils/tasks/apply-task-write";
 import { rescheduleOverdueToToday } from "../task-bulk-actions";
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
@@ -31,7 +39,10 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
   };
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(resolveTaskWriteTarget).mockReturnValue({ kind: "disk" });
+});
 
 describe("rescheduleOverdueToToday", () => {
   it("각 태스크의 기한 필드를 오늘로 세운다", async () => {
@@ -47,6 +58,29 @@ describe("rescheduleOverdueToToday", () => {
       null,
     );
     expect(r.updated).toBe(1);
+  });
+
+  it("`⏳`만으로 기한 초과가 된 태스크는 `scheduled`를 민다 — 없던 마감(`📅`)을 만들지 않는다", async () => {
+    // 버킷은 `due ?? scheduled`로 판정하므로 `due`가 없는 태스크도 Overdue에
+    // 들어온다. 거기에 `📅`를 붙이면 사용자가 정한 적 없는 마감이 생기고
+    // 한 줄에 `⏳옛날 📅오늘`이라는 모순되는 두 날짜가 남는다.
+    vi.mocked(applyTaskWrite).mockResolvedValue({ kind: "disk", raw: "" });
+    await rescheduleOverdueToToday(
+      [
+        task({
+          due: null,
+          raw: "- [ ] a ⏳2026-08-01",
+          scheduled: "2026-08-01",
+        }),
+      ],
+      "2026-08-24",
+      null,
+    );
+    expect(applyTaskWrite).toHaveBeenCalledWith(
+      expect.anything(),
+      { field: "scheduled", kind: "field", value: "2026-08-24" },
+      null,
+    );
   });
 
   it("실패한 항목이 있어도 나머지를 계속 처리한다", async () => {
@@ -68,7 +102,7 @@ describe("rescheduleOverdueToToday", () => {
     expect(r).toMatchObject({ failed: 0, stale: 1, updated: 0 });
   });
 
-  it("건드린 파일 경로를 중복 없이 모은다 — 호출자가 그만큼만 다시 읽는다", async () => {
+  it("디스크에 쓴 파일 경로를 중복 없이 모은다 — 호출자가 그만큼만 다시 읽는다", async () => {
     vi.mocked(applyTaskWrite).mockResolvedValue({ kind: "disk", raw: "" });
     const r = await rescheduleOverdueToToday(
       [
@@ -79,24 +113,18 @@ describe("rescheduleOverdueToToday", () => {
       "2026-08-24",
       null,
     );
-    expect(r.touchedPaths.sort()).toEqual(["/v/a.md", "/v/b.md"]);
+    expect(r.diskPaths.sort()).toEqual(["/v/a.md", "/v/b.md"]);
   });
 
   it("빈 목록이면 아무것도 부르지 않는다", async () => {
     const r = await rescheduleOverdueToToday([], "2026-08-24", null);
     expect(applyTaskWrite).not.toHaveBeenCalled();
-    expect(r).toMatchObject({ failed: 0, stale: 0, updated: 0 });
-  });
-
-  it("열린 문서에 쓴 것도 updated로 센다", async () => {
-    vi.mocked(applyTaskWrite).mockResolvedValue({ kind: "document", raw: "" });
-    const r = await rescheduleOverdueToToday([task()], "2026-08-24", null);
-    expect(r.updated).toBe(1);
+    expect(r).toMatchObject({ diskPaths: [], failed: 0, stale: 0, updated: 0 });
   });
 
   it("성공·stale·실패가 섞인 배치에서도 각 카운터가 정확하고 합이 처리한 개수와 같다 — 중복 집계도 누락도 없다", async () => {
     // 앞 두 태스크는 같은 파일(/v/a.md)을 공유한다 — 성공/stale이 둘 다
-    // touchedPaths를 채우면서도 중복 없이 한 번만 남는지 같은 호출에서 함께 본다.
+    // diskPaths를 채우면서도 중복 없이 한 번만 남는지 같은 호출에서 함께 본다.
     vi.mocked(applyTaskWrite)
       .mockResolvedValueOnce({ kind: "disk", raw: "" }) // 성공
       .mockResolvedValueOnce({ kind: "stale" }) // 경합
@@ -114,8 +142,8 @@ describe("rescheduleOverdueToToday", () => {
     expect(r.failed).toBe(1);
     // 카운터의 합이 처리한 태스크 수와 같아야 한다 — 이중 집계나 누락이 없다는 증거.
     expect(r.updated + r.stale + r.failed).toBe(tasks.length);
-    // 실패한 태스크(/v/b.md)는 touched에 들어가지 않는다 — 쓰지 않은 파일을
+    // 실패한 태스크(/v/b.md)는 diskPaths에 들어가지 않는다 — 쓰지 않은 파일을
     // 다시 읽을 이유가 없다. /v/a.md는 성공·stale 둘 다 한 번만 남는다.
-    expect(r.touchedPaths).toEqual(["/v/a.md"]);
+    expect(r.diskPaths).toEqual(["/v/a.md"]);
   });
 });
