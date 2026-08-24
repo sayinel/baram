@@ -333,6 +333,8 @@ pub fn run() {
             task_cmd::get_tasks_linking_to,
             task_cmd::set_task_state,
             task_cmd::set_task_field,
+            task_cmd::preview_task_state_line,
+            task_cmd::preview_task_field_line,
             snapshot_cmd::create_snapshot,
             snapshot_cmd::list_snapshots,
             snapshot_cmd::get_snapshot_diff,

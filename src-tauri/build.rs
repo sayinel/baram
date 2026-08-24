@@ -102,6 +102,8 @@ fn main() {
         "plugin_storage_remove",
         "plugin_storage_write",
         "plugin_uninstall",
+        "preview_task_field_line",
+        "preview_task_state_line",
         "read_file",
         "refresh_index",
         "remove_config",

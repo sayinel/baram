@@ -1363,6 +1363,33 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "태스크 메타데이터 필드 설정. 빈 value는 필드 제거. expectedRaw 낙관적 잠금"
+    },
+    {
+      "name": "preview_task_state_line",
+      "input": {
+        "raw": "string",
+        "newState": "string",
+        "recordDoneDate": "boolean",
+        "today": "string"
+      },
+      "output": "string",
+      "module": "task",
+      "spec": "§305",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "상태 전이 결과 줄만 계산한다(I/O 없음). 열린 파일은 디스크 대신 이 줄로 갈아끼운다"
+    },
+    {
+      "name": "preview_task_field_line",
+      "input": { "raw": "string", "field": "string", "value": "string" },
+      "output": "string",
+      "module": "task",
+      "spec": "§305",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "필드 설정 결과 줄만 계산한다(I/O 없음). 빈 value는 필드 제거"
     }
   ],
   "events": [

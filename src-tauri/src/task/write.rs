@@ -111,6 +111,61 @@ fn append_field(line: &str, field: &str, value: &str) -> String {
     format!("{} {}{}", line.trim_end(), emoji, value)
 }
 
+/// 상태 전이 결과 줄을 만든다 — I/O 없음.
+///
+/// 디스크 경로(`set_task_state`)와 열린 파일 경로(`preview_task_state_line`)가
+/// **같은 구현**을 쓰게 하는 것이 이 함수의 존재 이유다. TypeScript에 재구현하면
+/// 두 벌이 되어 반드시 드리프트한다.
+///
+/// `current`는 이미 `normalize_line`을 거친 줄이어야 한다.
+pub fn apply_state(
+    current: &str,
+    new_state: TaskState,
+    record_done_date: bool,
+    today: &str,
+) -> String {
+    let marker = match new_state {
+        TaskState::Done => "[x]",
+        TaskState::Todo => "[ ]",
+    };
+    // 가장 **왼쪽** 마커만 바꾼다 — 본문에 "[x]"가 들어 있어도 체크박스를 놓치지 않는다.
+    let swapped = if let Some(p) = ["[ ]", "[x]", "[X]"]
+        .iter()
+        .filter_map(|pat| current.find(pat))
+        .min()
+    {
+        let mut s = current.to_string();
+        s.replace_range(p..p + 3, marker);
+        s
+    } else {
+        current.to_string()
+    };
+
+    if !record_done_date {
+        return swapped;
+    }
+    match new_state {
+        TaskState::Done => append_field(&strip_field(&swapped, "done"), "done", today),
+        TaskState::Todo => strip_field(&swapped, "done"),
+    }
+}
+
+/// 필드 설정 결과 줄 — I/O 없음. 빈 `value`는 필드를 제거한다.
+/// 알 수 없는 필드 이름이면 `None`.
+///
+/// `current`는 이미 `normalize_line`을 거친 줄이어야 한다.
+pub fn apply_field(current: &str, field: &str, value: &str) -> Option<String> {
+    if !FIELD_EMOJI.iter().any(|(f, _)| *f == field) {
+        return None;
+    }
+    let stripped = strip_field(current, field);
+    Some(if value.is_empty() {
+        stripped
+    } else {
+        append_field(&stripped, field, value)
+    })
+}
+
 pub async fn set_task_state(
     path: &str,
     line: u32,
@@ -121,33 +176,7 @@ pub async fn set_task_state(
 ) -> Result<String, TaskError> {
     let today = today.to_string();
     replace_line(path, line, expected_raw, move |current| {
-        let marker = match new_state {
-            TaskState::Done => "[x]",
-            TaskState::Todo => "[ ]",
-        };
-        // 줄에서 가장 왼쪽에 오는 "[ ]"/"[x]"/"[X]"만 바꾼다 — 체크박스는 항상 줄
-        // 맨 앞이므로 이거면 충분하고, 본문에 대괄호가 있어도 안전하다. 패턴별
-        // 우선순위(or_else)로 고르면 본문 쪽 "[ ]"가 실제 마커보다 먼저 걸릴 수
-        // 있으므로 반드시 바이트 위치 최솟값을 취해야 한다.
-        let swapped = if let Some(p) = ["[ ]", "[x]", "[X]"]
-            .iter()
-            .filter_map(|pat| current.find(pat))
-            .min()
-        {
-            let mut s = current.to_string();
-            s.replace_range(p..p + 3, marker);
-            s
-        } else {
-            current.to_string()
-        };
-
-        if !record_done_date {
-            return swapped;
-        }
-        match new_state {
-            TaskState::Done => append_field(&strip_field(&swapped, "done"), "done", &today),
-            TaskState::Todo => strip_field(&swapped, "done"),
-        }
+        apply_state(current, new_state, record_done_date, &today)
     })
     .await
 }
@@ -168,12 +197,8 @@ pub async fn set_task_field(
     let field = field.to_string();
     let value = value.to_string();
     replace_line(path, line, expected_raw, move |current| {
-        let stripped = strip_field(current, &field);
-        if value.is_empty() {
-            stripped
-        } else {
-            append_field(&stripped, &field, &value)
-        }
+        // 위에서 이름을 이미 검증했으므로 `None`은 도달 불가다.
+        apply_field(current, &field, &value).unwrap_or_else(|| current.to_string())
     })
     .await
 }
@@ -454,6 +479,53 @@ mod tests {
 
         assert!(matches!(err, TaskError::Custom(ref msg) if msg.contains("duee")));
         assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
+    }
+
+    #[test]
+    fn apply_state_swaps_marker_and_appends_done_date() {
+        let out = apply_state(
+            "- [ ] 초안 📅2026-08-30",
+            TaskState::Done,
+            true,
+            "2026-08-24",
+        );
+        assert_eq!(out, "- [x] 초안 📅2026-08-30 ✅2026-08-24");
+    }
+
+    #[test]
+    fn apply_state_strips_done_date_when_reverting() {
+        let out = apply_state(
+            "- [x] 초안 📅2026-08-30 ✅2026-08-24",
+            TaskState::Todo,
+            true,
+            "2026-08-24",
+        );
+        assert_eq!(out, "- [x] 초안 📅2026-08-30".replace("[x]", "[ ]"));
+    }
+
+    #[test]
+    fn apply_state_leaves_done_date_alone_when_recording_is_off() {
+        let out = apply_state("- [ ] 초안", TaskState::Done, false, "2026-08-24");
+        assert_eq!(out, "- [x] 초안");
+    }
+
+    #[test]
+    fn apply_state_preserves_indentation() {
+        let out = apply_state("    - [ ] 중첩", TaskState::Done, false, "2026-08-24");
+        assert_eq!(out, "    - [x] 중첩");
+    }
+
+    #[test]
+    fn apply_field_sets_and_clears() {
+        let set = apply_field("- [ ] 초안", "due", "2026-08-30").unwrap();
+        assert_eq!(set, "- [ ] 초안 📅2026-08-30");
+        let cleared = apply_field(&set, "due", "").unwrap();
+        assert_eq!(cleared, "- [ ] 초안");
+    }
+
+    #[test]
+    fn apply_field_rejects_unknown_field() {
+        assert!(apply_field("- [ ] 초안", "priority", "high").is_none());
     }
 
     #[cfg(unix)]

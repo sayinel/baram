@@ -4,7 +4,7 @@ mod write;
 
 pub use parse::normalize_line;
 pub use parse::{parse_task_line, TaskState};
-pub use write::{set_task_field, set_task_state};
+pub use write::{apply_field, apply_state, set_task_field, set_task_state};
 
 use serde::Serialize;
 use thiserror::Error;

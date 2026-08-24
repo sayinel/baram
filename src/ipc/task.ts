@@ -38,6 +38,33 @@ export async function getVaultTasks(
   return invoke<TaskEntry[]>("get_vault_tasks", { rootPath, exclude });
 }
 
+/** §305 필드 설정 결과 줄만 받아온다. 빈 `value`는 필드를 제거한다. */
+export async function previewTaskFieldLine(
+  raw: string,
+  field: string,
+  value: string,
+): Promise<string> {
+  return invoke<string>("preview_task_field_line", { raw, field, value });
+}
+
+/**
+ * §305 파일을 건드리지 않고 상태 전이 결과 줄만 받아온다. 열린 문서를 고칠 때
+ * 쓴다 — 변환 로직을 TS에 재구현하지 않기 위한 경로다.
+ */
+export async function previewTaskStateLine(
+  raw: string,
+  newState: TaskState,
+  recordDoneDate: boolean,
+  today: string,
+): Promise<string> {
+  return invoke<string>("preview_task_state_line", {
+    raw,
+    newState,
+    recordDoneDate,
+    today,
+  });
+}
+
 /** 빈 `value`는 필드를 제거한다. 갱신된 줄 원문을 돌려준다. */
 export async function setTaskField(
   path: string,

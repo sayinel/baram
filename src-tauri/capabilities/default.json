@@ -96,6 +96,8 @@
     "allow-plugin-storage-remove",
     "allow-plugin-storage-write",
     "allow-plugin-uninstall",
+    "allow-preview-task-field-line",
+    "allow-preview-task-state-line",
     "allow-read-file",
     "allow-refresh-index",
     "allow-remove-config",

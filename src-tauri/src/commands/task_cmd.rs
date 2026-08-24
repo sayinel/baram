@@ -66,3 +66,38 @@ pub async fn set_task_field(
         .await
         .map_err(|e| e.to_string())
 }
+
+/// §305 열린 파일 경로 — 디스크를 건드리지 않고 상태 전이 결과 줄만 돌려준다.
+/// 프론트가 이 줄을 `useFileStore.openFiles`의 문자열에 갈아끼운다.
+#[tauri::command]
+pub fn preview_task_state_line(
+    raw: String,
+    new_state: String,
+    record_done_date: bool,
+    today: String,
+) -> Result<String, String> {
+    let state = match new_state.as_str() {
+        "done" => crate::task::TaskState::Done,
+        "todo" => crate::task::TaskState::Todo,
+        other => return Err(format!("unknown state: {}", other)),
+    };
+    // `replace_line`이 transform에 정규화된 줄을 넘기므로(write.rs) 여기서도 같아야
+    // 디스크 경로와 열린 파일 경로의 결과가 바이트 단위로 일치한다.
+    Ok(crate::task::apply_state(
+        &crate::task::normalize_line(&raw),
+        state,
+        record_done_date,
+        &today,
+    ))
+}
+
+/// §305 열린 파일 경로 — 필드 설정 결과 줄. 빈 `value`는 필드 제거.
+#[tauri::command]
+pub fn preview_task_field_line(
+    raw: String,
+    field: String,
+    value: String,
+) -> Result<String, String> {
+    crate::task::apply_field(&crate::task::normalize_line(&raw), &field, &value)
+        .ok_or_else(|| format!("unknown field: {}", field))
+}
