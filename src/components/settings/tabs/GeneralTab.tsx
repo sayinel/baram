@@ -60,6 +60,14 @@ export function GeneralTab() {
     setJournalMonthlyTemplate,
     journalYearlyTemplate,
     setJournalYearlyTemplate,
+    tasksEnabled,
+    setTasksEnabled,
+    tasksWeekStart,
+    setTasksWeekStart,
+    tasksRecordDoneDate,
+    setTasksRecordDoneDate,
+    tasksExcludePaths,
+    setTasksExcludePaths,
     zettelkastenEnabled,
     setZettelkastenEnabled,
     zettelkastenDirectory,
@@ -80,6 +88,16 @@ export function GeneralTab() {
       })),
     );
   const [appVersion, setAppVersion] = useState("");
+  // Buffered separately from the store: the store holds string[], but the
+  // field edits a comma-separated string. Deriving `value` from
+  // `tasksExcludePaths.join(", ")` on every keystroke would strip a
+  // trailing ", " (or a lone trailing comma) as soon as it's typed, since
+  // split+filter(Boolean) drops the empty segment it produces — making it
+  // impossible to type a second folder. This buffer shows exactly what was
+  // typed while still pushing the parsed array to the store on each change.
+  const [tasksExcludePathsText, setTasksExcludePathsText] = useState(() =>
+    tasksExcludePaths.join(", "),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -517,6 +535,61 @@ export function GeneralTab() {
           )}
         </>
       )}
+
+      <SettingsSectionHeader title={t("settings.general.tasks")} />
+
+      <SettingsRow
+        description={t("settings.general.tasksEnabled.desc")}
+        label={t("settings.general.tasksEnabled")}
+      >
+        <ToggleSwitch checked={tasksEnabled} onChange={setTasksEnabled} />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.general.tasksWeekStart.desc")}
+        label={t("settings.general.tasksWeekStart")}
+      >
+        <select
+          className="settings-select"
+          onChange={(e) =>
+            setTasksWeekStart(e.target.value as "monday" | "sunday")
+          }
+          value={tasksWeekStart}
+        >
+          <option value="monday">Monday</option>
+          <option value="sunday">Sunday</option>
+        </select>
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.general.tasksRecordDoneDate.desc")}
+        label={t("settings.general.tasksRecordDoneDate")}
+      >
+        <ToggleSwitch
+          checked={tasksRecordDoneDate}
+          onChange={setTasksRecordDoneDate}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.general.tasksExcludePaths.desc")}
+        label={t("settings.general.tasksExcludePaths")}
+      >
+        <input
+          className="settings-input"
+          onChange={(e) => {
+            setTasksExcludePathsText(e.target.value);
+            setTasksExcludePaths(
+              e.target.value
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+            );
+          }}
+          placeholder="archive/, drafts/"
+          value={tasksExcludePathsText}
+        />
+      </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.general.zettelkasten")} />
 

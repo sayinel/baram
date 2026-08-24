@@ -183,6 +183,56 @@ export function useSettingsRegistry(): SearchableSetting[] {
         settings.setJournalEnabled,
       ),
     },
+    {
+      id: "tasksEnabled",
+      label: "settings.general.tasksEnabled",
+      description: "settings.general.tasksEnabled.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "todo", "checkbox", "agenda"],
+      control: makeToggleControl(
+        () => settings.tasksEnabled,
+        settings.setTasksEnabled,
+      ),
+    },
+    {
+      id: "tasksRecordDoneDate",
+      label: "settings.general.tasksRecordDoneDate",
+      description: "settings.general.tasksRecordDoneDate.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "done", "completion", "date"],
+      control: makeToggleControl(
+        () => settings.tasksRecordDoneDate,
+        settings.setTasksRecordDoneDate,
+      ),
+    },
+    {
+      id: "tasksWeekStart",
+      label: "settings.general.tasksWeekStart",
+      description: "settings.general.tasksWeekStart.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "week", "monday", "sunday"],
+      control: {
+        controlType: "select",
+        options: [
+          { label: "Monday", value: "monday" },
+          { label: "Sunday", value: "sunday" },
+        ],
+        storeSelector: () => settings.tasksWeekStart,
+        storeSetter: settings.setTasksWeekStart as (v: unknown) => void,
+      },
+    },
+    {
+      id: "tasksExcludePaths",
+      label: "settings.general.tasksExcludePaths",
+      description: "settings.general.tasksExcludePaths.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "exclude", "ignore", "folder"],
+      control: NAVIGATE_CONTROL,
+    },
     // ── Editor ───────────────────────────────────────────────────────────────
     {
       id: "fontFamily",
