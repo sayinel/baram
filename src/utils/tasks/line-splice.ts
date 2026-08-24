@@ -32,6 +32,14 @@ export function spliceLine(
   line: number,
   newText: string,
 ): null | string {
+  // 이 함수의 불변식은 "정확히 한 줄을 한 줄로 바꾼다"이다. 여러 줄을 넣으면
+  // 줄 수가 늘어 호출자가 들고 있는 이후 줄 번호가 전부 어긋난다 — 조용히
+  // 넘기면 M2-b의 아카이브/수집함 이동에서 문서 손상으로 나타난다.
+  if (/[\r\n]/.test(newText)) {
+    throw new Error(
+      `spliceLine: newText must be a single line, got ${JSON.stringify(newText)}`,
+    );
+  }
   const parts = splitKeepingEol(content);
   const part = parts[line];
   if (part === undefined) return null;
