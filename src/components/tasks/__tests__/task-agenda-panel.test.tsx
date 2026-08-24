@@ -188,6 +188,62 @@ describe("TaskAgendaPanel", () => {
     expect(screen.getByRole("option", { name: "#home" })).toBeInTheDocument();
   });
 
+  it("shows every task again once the selected tag disappears entirely (I2a)", async () => {
+    useTaskStore
+      .getState()
+      .setAll([task({ tags: ["work"], text: "work item" })]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Filter by tag"),
+      "work",
+    );
+    expect(screen.getByText("work item")).toBeInTheDocument();
+
+    // The tag control (and the tag itself) is gone from the vault entirely —
+    // e.g. the last tagged task was deleted, or tasksExcludePaths just
+    // excluded the folder it lived in. `filters.tag` still holds "work"
+    // internally; the derived reconciliation must stop it from zeroing out
+    // the visible list.
+    act(() => {
+      useTaskStore
+        .getState()
+        .setAll([task({ tags: [], text: "untagged item" })]);
+    });
+
+    expect(screen.getByText("untagged item")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Filter by tag")).not.toBeInTheDocument();
+  });
+
+  it('resets the tag select to "Any tag" instead of a blank selection when the chosen tag disappears but others remain (I2b)', async () => {
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ tags: ["work"], text: "work item" }),
+        task({ line: 1, tags: ["home"], text: "home item" }),
+      ]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Filter by tag"),
+      "work",
+    );
+
+    // "work" disappears (e.g. its only task was excluded) but "home" remains
+    // — the select must fall back to "Any tag" rather than a selectedIndex
+    // of -1 (a blank row over a populated list).
+    act(() => {
+      useTaskStore
+        .getState()
+        .setAll([task({ tags: ["home"], text: "home item" })]);
+    });
+
+    const select = screen.getByLabelText<HTMLSelectElement>("Filter by tag");
+    expect(select.value).toBe("");
+    expect(select.selectedOptions[0]).toHaveTextContent("Any tag");
+    expect(screen.getByText("home item")).toBeInTheDocument();
+  });
+
   describe("midnight rollover (I4)", () => {
     beforeEach(() => {
       vi.useFakeTimers();

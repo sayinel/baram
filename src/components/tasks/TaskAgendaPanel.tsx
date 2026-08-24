@@ -131,9 +131,18 @@ export function TaskAgendaPanel() {
   // 방금 고른 태그 하나만 남아 다른 태그로 바꿀 수 없게 된다.
   const tagOptions = useMemo(() => collectTags(tasks), [tasks]);
 
+  // I2: filters.tag는 자유 입력 state라 tagOptions와 저절로 맞물리지 않는다.
+  // 선택했던 태그가 vault에서 사라지면(태스크가 지워졌거나 tasksExcludePaths로
+  // 그 폴더가 막 제외됐거나) 필터는 여전히 그 값으로 걸려 있는데 <select>는
+  // 옵션이 하나도 없어 사라지거나(마지막 태그였던 경우) "work" 같은 값을 든 채
+  // 일치하는 <option>이 없어 빈 선택으로 보인다(다른 태그만 남은 경우). 매
+  // 렌더에서 유효성을 다시 계산해 둘 다 "전체"로 되돌린다 — effect 없이 파생
+  // 값 하나로 충분하다. state/priority는 닫힌 옵션 집합이라 같은 문제가 없다.
+  const tag = tagOptions.includes(filters.tag) ? filters.tag : "";
+
   const visible = useMemo(
-    () => applyTaskFilters(tasks, filters),
-    [tasks, filters],
+    () => applyTaskFilters(tasks, { ...filters, tag }),
+    [tasks, filters, tag],
   );
 
   const groups = useMemo(
@@ -207,12 +216,12 @@ export function TaskAgendaPanel() {
               onChange={(e) =>
                 setFilters((f) => ({ ...f, tag: e.target.value }))
               }
-              value={filters.tag}
+              value={tag}
             >
               <option value="">Any tag</option>
-              {tagOptions.map((tag) => (
-                <option key={tag} value={tag}>
-                  #{tag}
+              {tagOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  #{opt}
                 </option>
               ))}
             </select>
