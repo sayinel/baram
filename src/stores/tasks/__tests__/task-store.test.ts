@@ -1,8 +1,16 @@
 import type { TaskEntry } from "../../../ipc/types";
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useTaskStore } from "../task-store";
+const getVaultTasks = vi.fn();
+const getFileTasks = vi.fn();
+
+vi.mock("../../../ipc/invoke", () => ({
+  getFileTasks: (...a: unknown[]) => getFileTasks(...a),
+  getVaultTasks: (...a: unknown[]) => getVaultTasks(...a),
+}));
+
+import { refreshAllTasks, useTaskStore } from "../task-store";
 
 function task(path: string, text: string): TaskEntry {
   return {
@@ -28,6 +36,8 @@ function task(path: string, text: string): TaskEntry {
 describe("useTaskStore", () => {
   beforeEach(() => {
     useTaskStore.getState().clear();
+    getVaultTasks.mockReset();
+    getFileTasks.mockReset();
   });
 
   it("replaces only the given file's entries", () => {
@@ -64,5 +74,37 @@ describe("useTaskStore", () => {
     useTaskStore.getState().replaceFile("a.md", []);
 
     expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+});
+
+describe("refreshAllTasks (I3 stale-response guard)", () => {
+  beforeEach(() => {
+    useTaskStore.getState().clear();
+    getVaultTasks.mockReset();
+  });
+
+  it("keeps the later scan's results when an earlier scan resolves last", async () => {
+    // Scan A starts first (shorter/older exclude list), then scan B starts
+    // (e.g. the user just typed another excluded folder). B resolves first;
+    // A resolves after. Without the sequence guard, A's stale result would
+    // overwrite B's and resurrect tasks from a folder the user just excluded.
+    let resolveA!: (v: TaskEntry[]) => void;
+    let resolveB!: (v: TaskEntry[]) => void;
+    const a = new Promise<TaskEntry[]>((r) => (resolveA = r));
+    const b = new Promise<TaskEntry[]>((r) => (resolveB = r));
+    getVaultTasks.mockReturnValueOnce(a).mockReturnValueOnce(b);
+
+    const pA = refreshAllTasks("/vault", []);
+    const pB = refreshAllTasks("/vault", ["archive"]);
+
+    resolveB([task("b.md", "from B")]);
+    await pB;
+    resolveA([task("a.md", "from A")]);
+    await pA;
+
+    expect(useTaskStore.getState().tasks.map((t) => t.text)).toEqual([
+      "from B",
+    ]);
+    expect(useTaskStore.getState().loading).toBe(false);
   });
 });

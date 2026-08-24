@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -103,6 +103,14 @@ export function GeneralTab() {
   const [tasksExcludePathsText, setTasksExcludePathsText] = useState(() =>
     tasksExcludePaths.join(", "),
   );
+  // I3: tasksExcludePaths is a scan *input* (TaskAgendaPanel's refresh effect
+  // keys on it), unlike this tab's other per-keystroke-write fields — writing
+  // the parsed array on every keystroke fires a full vault scan per
+  // keystroke, and a stale scan can even resolve after a newer one and
+  // overwrite it (guarded separately in task-store.ts). Debounce the store
+  // write; the text buffer above still updates immediately so typing stays
+  // responsive.
+  const excludePathsTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +123,12 @@ export function GeneralTab() {
       });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (excludePathsTimer.current) clearTimeout(excludePathsTimer.current);
     };
   }, []);
 
@@ -587,13 +601,19 @@ export function GeneralTab() {
         <input
           className="settings-input"
           onChange={(e) => {
-            setTasksExcludePathsText(e.target.value);
-            setTasksExcludePaths(
-              e.target.value
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean),
-            );
+            const value = e.target.value;
+            setTasksExcludePathsText(value);
+            if (excludePathsTimer.current) {
+              clearTimeout(excludePathsTimer.current);
+            }
+            excludePathsTimer.current = setTimeout(() => {
+              setTasksExcludePaths(
+                value
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              );
+            }, 400);
           }}
           placeholder="archive/, drafts/"
           value={tasksExcludePathsText}

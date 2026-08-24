@@ -35,6 +35,12 @@ export const useTaskStore = create<TaskStoreState>((set) => ({
   clear: () => set({ tasks: [], loading: false, error: null }),
 }));
 
+// I3: 요청 순번. 두 스캔이 겹쳐 돌다가 exclude 리스트가 더 짧던(=옛) 요청이
+// 나중에 응답하면, 그 결과로 최신 요청의 결과를 덮어써 방금 제외한 폴더의
+// 태스크가 되살아나 보인다. 시작할 때 순번을 찍고 응답 시점에 아직 최신인지
+// 확인해 낡은 응답은 버린다 — 수동 새로고침 버튼과 워처 경로도 함께 보호된다.
+let requestSeq = 0;
+
 /**
  * vault 전체 재스캔. 패널 마운트·컨텍스트 변경·수동 새로고침에서 부른다.
  * `tasksEnabled`가 꺼져 있으면 아무것도 하지 않는다(I2) — 그러지 않으면
@@ -45,15 +51,19 @@ export async function refreshAllTasks(
   exclude: string[],
 ): Promise<void> {
   if (!useSettingsStore.getState().tasksEnabled) return;
+  const seq = ++requestSeq;
   const store = useTaskStore.getState();
   store.setLoading(true);
   try {
-    store.setAll(await getVaultTasks(rootPath, exclude));
+    const tasks = await getVaultTasks(rootPath, exclude);
+    if (seq !== requestSeq) return; // 이 응답이 도착하기 전에 더 최신 스캔이 시작됨
+    store.setAll(tasks);
   } catch (err) {
+    if (seq !== requestSeq) return;
     logger.error("[tasks] vault scan failed:", err);
     store.setError(String(err));
   } finally {
-    useTaskStore.getState().setLoading(false);
+    if (seq === requestSeq) useTaskStore.getState().setLoading(false);
   }
 }
 
