@@ -38,6 +38,7 @@ import {
   broadcastCodeBlockVim,
 } from "../../nodes/views/code-block-cm-registry";
 import { planAtomInsert } from "./adapters/atom-insert";
+import { cursorSelection } from "./adapters/cursor-selection";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
@@ -448,24 +449,6 @@ function consumeClipboard(view: EditorView, event: Event): boolean {
   return true;
 }
 
-/** A normal-mode cursor at `target`: NodeSelection on a block atom line
- *  (TextSelection endpoints must be inline — review S3-R1), a caret
- *  otherwise. */
-function cursorSelection(state: EditorState, target: number): Selection {
-  const $target = state.doc.resolve(target);
-  if (!$target.parent.isTextblock) {
-    const after = $target.nodeAfter;
-    if (
-      after &&
-      (after.isAtom || after.isLeaf) &&
-      NodeSelection.isSelectable(after)
-    ) {
-      return NodeSelection.create(state.doc, target);
-    }
-  }
-  return Selection.near($target, 1);
-}
-
 /**
  * Dispatch a transaction that MOVES THE CURSOR, and keep the DOM observer from
  * undoing it.
@@ -674,7 +657,7 @@ function runSelectionCommand(
       core = { ...result.state, visual };
       tr.setSelection(visualSelection(view.state, visual));
     } else {
-      tr.setSelection(cursorSelection(view.state, target));
+      tr.setSelection(cursorSelection(view.state.doc, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
     dispatchCursor(view, tr);
@@ -700,7 +683,7 @@ function runSelectionCommand(
     );
     const tr = view.state.tr;
     if (target !== null) {
-      tr.setSelection(cursorSelection(view.state, target));
+      tr.setSelection(cursorSelection(view.state.doc, target));
     }
     tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
     dispatchCursor(view, tr);
@@ -728,7 +711,7 @@ function runSelectionCommand(
       core = { ...result.state, visual };
       tr.setSelection(visualSelection(view.state, visual));
     } else if (target !== base) {
-      tr.setSelection(cursorSelection(view.state, target));
+      tr.setSelection(cursorSelection(view.state.doc, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
     dispatchCursor(view, tr);
@@ -751,7 +734,7 @@ function runSelectionCommand(
         core = { ...result.state, visual: moved };
         tr.setSelection(visualSelection(view.state, moved));
       } else if (target !== center) {
-        tr.setSelection(cursorSelection(view.state, target));
+        tr.setSelection(cursorSelection(view.state.doc, target));
       }
       center = target;
     }
@@ -773,7 +756,7 @@ function runSelectionCommand(
   if (command.type === "leaveVisual" && preVisual) {
     // Esc collapses to the vim head — not PM's selection head (§6).
     const tr = view.state.tr.setSelection(
-      cursorSelection(view.state, collapseTarget(preVisual)),
+      cursorSelection(view.state.doc, collapseTarget(preVisual)),
     );
     tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
     dispatchCursor(view, tr);

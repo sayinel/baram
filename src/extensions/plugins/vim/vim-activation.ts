@@ -20,8 +20,7 @@
 import type { VimPluginState } from "./vim-plugin";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { TextSelection } from "@tiptap/pm/state";
-
+import { cursorSelection } from "./adapters/cursor-selection";
 import { collapseTarget } from "./core/visual-state";
 import { vimPluginKey } from "./vim-keys";
 
@@ -58,9 +57,9 @@ export function activateEditorForDocument(view: EditorView): void {
       collapseTarget(core.visual),
       view.state.doc.content.size,
     );
-    tr.setSelection(TextSelection.create(tr.doc, target));
+    tr.setSelection(cursorSelection(tr.doc, target));
   } else if (!view.state.selection.empty) {
-    tr.setSelection(TextSelection.create(tr.doc, view.state.selection.head));
+    tr.setSelection(cursorSelection(tr.doc, view.state.selection.head));
   }
 
   tr.setMeta(vimPluginKey, {
