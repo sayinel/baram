@@ -338,6 +338,29 @@ export interface TagEntry {
   tag: string;
 }
 
+export interface TaskEntry {
+  cancelled: null | string;
+  created: null | string;
+  done: null | string;
+  due: null | string;
+  indent: number;
+  line: number;
+  links: string[];
+  path: string;
+  priority: number;
+  /** 줄 원문 — §305 낙관적 잠금의 비교 기준 */
+  raw: string;
+  recurrence: null | string;
+  scheduled: null | string;
+  start: null | string;
+  state: TaskState;
+  tags: string[];
+  text: string;
+}
+
+// §304 Task types
+export type TaskState = "done" | "todo";
+
 // §34 Unlinked Mentions
 export interface UnlinkedMention {
   context: string;

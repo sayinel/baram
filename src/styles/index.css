@@ -39,6 +39,7 @@
 @import "./links.css";
 @import "./graph.css";
 @import "./panels.css";
+@import "./tasks.css";
 
 /* 12. Plugins */
 @import "./plugins.css";

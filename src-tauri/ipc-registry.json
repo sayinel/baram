@@ -1295,6 +1295,74 @@
       "status": "implemented",
       "description": "글로벌 설정 + vault 설정 머지 결과 조회",
       "_note": "TS wrapper: resolveSettingsIpc in src/ipc/context.ts (Ipc 접미사로 동기 버전과 구분)"
+    },
+    {
+      "name": "get_vault_tasks",
+      "input": { "rootPath": "string", "exclude": "string[]" },
+      "output": "TaskEntry[]",
+      "module": "task",
+      "spec": "§304",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "Vault 전역 마크다운 체크박스를 태스크로 인덱싱 (제외 경로 목록 적용)"
+    },
+    {
+      "name": "get_file_tasks",
+      "input": { "path": "string", "rootPath": "string | null", "exclude": "string[]" },
+      "output": "TaskEntry[]",
+      "module": "task",
+      "spec": "§304 §I1",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "파일 하나만 재스캔 — 워처 기반 증분 갱신용. rootPath/exclude를 주면 vault 전체 스캔과 같은 제외 규칙을 적용한다"
+    },
+    {
+      "name": "get_tasks_linking_to",
+      "input": { "rootPath": "string", "target": "string", "exclude": "string[]" },
+      "output": "TaskEntry[]",
+      "module": "task",
+      "spec": "§304",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "[[target]]을 링크한 태스크만 필터 — Zettel 연계의 축"
+    },
+    {
+      "name": "set_task_state",
+      "input": {
+        "path": "string",
+        "line": "number",
+        "expectedRaw": "string",
+        "newState": "string",
+        "recordDoneDate": "boolean",
+        "today": "string"
+      },
+      "output": "string",
+      "module": "task",
+      "spec": "§305",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태스크 체크 상태 변경. expectedRaw 낙관적 잠금 — 불일치 시 \"stale\" 반환. 갱신된 줄 원문을 돌려준다"
+    },
+    {
+      "name": "set_task_field",
+      "input": {
+        "path": "string",
+        "line": "number",
+        "expectedRaw": "string",
+        "field": "string",
+        "value": "string"
+      },
+      "output": "string",
+      "module": "task",
+      "spec": "§305",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태스크 메타데이터 필드 설정. 빈 value는 필드 제거. expectedRaw 낙관적 잠금"
     }
   ],
   "events": [

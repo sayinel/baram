@@ -25,6 +25,10 @@ import {
   type JournalSettingsSlice,
 } from "./journal-settings";
 import {
+  createTaskSettingsSlice,
+  type TaskSettingsSlice,
+} from "./task-settings";
+import {
   createZettelkastenSettingsSlice,
   type ZettelkastenSettingsSlice,
 } from "./zettelkasten-settings";
@@ -35,12 +39,56 @@ export type SettingsState = AppearanceSettingsSlice &
   EditorSettingsSlice &
   GeneralSettingsSlice &
   JournalSettingsSlice &
+  TaskSettingsSlice &
   ZettelkastenSettingsSlice;
+
+/**
+ * Backfills any activity-bar id present in DEFAULT_ACTIVITY_BAR_CONFIG but
+ * missing from a persisted config, in place. Originally the body of the v16
+ * → v17 migration (see the comment there); extracted so a later version gate
+ * (e.g. v17 → v18 below) can reuse it verbatim instead of duplicating ~25
+ * lines. Idempotent — each id is only inserted once, so calling this more
+ * than once against the same array (as happens when several version gates
+ * fire in one `migrate()` call) is safe.
+ */
+function backfillMissingActivityBarItems(
+  cfg: ActivityBarItemConfig[] | undefined,
+): void {
+  if (!Array.isArray(cfg)) return;
+  DEFAULT_ACTIVITY_BAR_CONFIG.forEach((def, defIdx) => {
+    if (cfg.some((c) => c.id === def.id)) return;
+
+    // Insert right after the nearest preceding default id the user
+    // already has, so a mid-list item lands mid-list rather than
+    // at the end. Falls back to the front of its own section when
+    // no such predecessor is present (e.g. it's the first default
+    // item, or none of its predecessors survived).
+    let insertAt = -1;
+    for (let i = defIdx - 1; i >= 0; i--) {
+      const idx = cfg.findIndex(
+        (c) => c.id === DEFAULT_ACTIVITY_BAR_CONFIG[i].id,
+      );
+      if (idx >= 0) {
+        insertAt = idx;
+        break;
+      }
+    }
+
+    if (insertAt >= 0) {
+      cfg.splice(insertAt + 1, 0, { ...def });
+    } else {
+      const sectionIdx = cfg.findIndex((c) => c.section === def.section);
+      if (sectionIdx >= 0) cfg.splice(sectionIdx, 0, { ...def });
+      else cfg.push({ ...def });
+    }
+  });
+}
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (...a) => ({
       ...createJournalSettingsSlice(...a),
+      ...createTaskSettingsSlice(...a),
       ...createZettelkastenSettingsSlice(...a),
       ...createEditorSettingsSlice(...a),
       ...createAppearanceSettingsSlice(...a),
@@ -111,6 +159,10 @@ export const useSettingsStore = create<SettingsState>()(
         wordTemplatePath: state.wordTemplatePath,
         customExports: state.customExports,
         tagColors: state.tagColors,
+        tasksEnabled: state.tasksEnabled,
+        tasksExcludePaths: state.tasksExcludePaths,
+        tasksRecordDoneDate: state.tasksRecordDoneDate,
+        tasksWeekStart: state.tasksWeekStart,
         snapshotInterval: state.snapshotInterval,
         snapshotMaxCount: state.snapshotMaxCount,
         activityBarConfig: state.activityBarConfig,
@@ -121,7 +173,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 18,
+      version: 19,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -325,39 +377,9 @@ export const useSettingsStore = create<SettingsState>()(
         // ActivityBar/ActivityBarTab both filter this array instead of
         // falling back to defaults.
         if (version < 17) {
-          const cfg = state.activityBarConfig as
-            ActivityBarItemConfig[] | undefined;
-          if (Array.isArray(cfg)) {
-            DEFAULT_ACTIVITY_BAR_CONFIG.forEach((def, defIdx) => {
-              if (cfg.some((c) => c.id === def.id)) return;
-
-              // Insert right after the nearest preceding default id the user
-              // already has, so a mid-list item lands mid-list rather than
-              // at the end. Falls back to the front of its own section when
-              // no such predecessor is present (e.g. it's the first default
-              // item, or none of its predecessors survived).
-              let insertAt = -1;
-              for (let i = defIdx - 1; i >= 0; i--) {
-                const idx = cfg.findIndex(
-                  (c) => c.id === DEFAULT_ACTIVITY_BAR_CONFIG[i].id,
-                );
-                if (idx >= 0) {
-                  insertAt = idx;
-                  break;
-                }
-              }
-
-              if (insertAt >= 0) {
-                cfg.splice(insertAt + 1, 0, { ...def });
-              } else {
-                const sectionIdx = cfg.findIndex(
-                  (c) => c.section === def.section,
-                );
-                if (sectionIdx >= 0) cfg.splice(sectionIdx, 0, { ...def });
-                else cfg.push({ ...def });
-              }
-            });
-          }
+          backfillMissingActivityBarItems(
+            state.activityBarConfig as ActivityBarItemConfig[] | undefined,
+          );
         }
 
         // v17 → v18: §298 Vim keybindings (default off). Was v17 on the
@@ -367,6 +389,26 @@ export const useSettingsStore = create<SettingsState>()(
           if (state.vimMode === undefined) {
             state.vimMode = false;
           }
+        }
+
+        // v18 → v19: §306 add the Tasks agenda activity-bar item. Reuses the
+        // very same backfill as v16 → v17 above (see
+        // `backfillMissingActivityBarItems`) — generalizing the *logic* in
+        // v17 didn't generalize the *trigger*: that gate is pinned to
+        // `version < 17`, so it does nothing for anyone already persisted at
+        // v17 or later. Every future activity-bar addition needs its own
+        // `version < N` gate calling this same helper; this is the second one.
+        //
+        // **This was v18 on the feature branch and was renumbered to v19 when
+        // main was merged in.** main shipped its own v18 (the Vim default
+        // above) first, so anyone running a main build is already persisted at
+        // v18 — keeping this at `version < 18` would skip them entirely and
+        // leave the Tasks activity-bar button permanently invisible, which is
+        // the exact defect this backfill exists to prevent.
+        if (version < 19) {
+          backfillMissingActivityBarItems(
+            state.activityBarConfig as ActivityBarItemConfig[] | undefined,
+          );
         }
 
         return state;

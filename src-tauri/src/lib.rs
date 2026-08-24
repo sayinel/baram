@@ -15,12 +15,14 @@ mod llm;
 /// integration test links the library as an external crate. Nothing outside the crate
 /// calls this.
 pub mod logging;
+mod md;
 mod menu;
 mod plugin;
 mod protocol;
 mod search;
 mod snapshot;
 mod tag;
+mod task;
 mod thumbnail;
 
 use std::collections::HashMap;
@@ -29,7 +31,7 @@ use std::sync::Mutex;
 
 use commands::{
     config_cmd, context_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd,
-    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, thumbnail_cmd,
+    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, task_cmd, thumbnail_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -326,6 +328,11 @@ pub fn run() {
             tag_cmd::get_vault_tags,
             tag_cmd::rename_tag,
             tag_cmd::get_files_by_tag,
+            task_cmd::get_vault_tasks,
+            task_cmd::get_file_tasks,
+            task_cmd::get_tasks_linking_to,
+            task_cmd::set_task_state,
+            task_cmd::set_task_field,
             snapshot_cmd::create_snapshot,
             snapshot_cmd::list_snapshots,
             snapshot_cmd::get_snapshot_diff,

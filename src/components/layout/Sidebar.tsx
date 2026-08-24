@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 
 // §4.3 Left sidebar container — panel switching via ActivityBar
+import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { PluginPanelHost } from "./PluginPanelHost";
 
@@ -59,6 +60,11 @@ const TagPanel = lazy(() =>
     default: m.TagPanel,
   })),
 );
+const TaskAgendaPanel = lazy(() =>
+  import("../tasks/TaskAgendaPanel").then((m) => ({
+    default: m.TaskAgendaPanel,
+  })),
+);
 const VersionHistoryPanel = lazy(() =>
   import("../sidebar/VersionHistoryPanel").then((m) => ({
     default: m.VersionHistoryPanel,
@@ -72,6 +78,9 @@ const ZettelHubPanel = lazy(() =>
 
 export function Sidebar() {
   const { sidebarPanel } = useUIStore();
+  // I2: tasksEnabled off keeps the panel from mounting even if sidebarPanel
+  // was persisted as "tasks" from before the setting was turned off.
+  const tasksEnabled = useSettingsStore((s) => s.tasksEnabled);
 
   return (
     <div className="sidebar">
@@ -86,6 +95,7 @@ export function Sidebar() {
           {sidebarPanel === "git" && <GitPanel />}
           {sidebarPanel === "calendar" && <CalendarPanel />}
           {sidebarPanel === "tags" && <TagPanel />}
+          {sidebarPanel === "tasks" && tasksEnabled && <TaskAgendaPanel />}
           {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
           {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
           {sidebarPanel === "plugins" && <PluginMarketplace />}

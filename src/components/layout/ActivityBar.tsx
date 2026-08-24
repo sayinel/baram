@@ -7,6 +7,7 @@ import {
   BookText,
   BotMessageSquare,
   Calendar,
+  CircleCheck,
   CircleHelp,
   Clock,
   Folder,
@@ -44,6 +45,7 @@ const PANEL_ICONS: { icon: ReactNode; id: SidebarPanel; label: string }[] = [
   { id: "git", label: "Source Control", icon: <GitBranch {...ICON_PROPS} /> },
   { id: "calendar", label: "Calendar", icon: <Calendar {...ICON_PROPS} /> },
   { id: "tags", label: "Tags", icon: <Tag {...ICON_PROPS} /> },
+  { id: "tasks", label: "Tasks", icon: <CircleCheck {...ICON_PROPS} /> },
   { id: "zettel", label: "Zettel", icon: <StickyNote {...ICON_PROPS} /> },
   {
     id: "skills-gallery",
@@ -107,7 +109,12 @@ export function ActivityBar() {
       setRightPanelMode: s.setRightPanelMode,
     })),
   );
-  const { activityBarConfig } = useSettingsStore();
+  const { activityBarConfig, tasksEnabled } = useSettingsStore(
+    useShallow((s) => ({
+      activityBarConfig: s.activityBarConfig,
+      tasksEnabled: s.tasksEnabled,
+    })),
+  );
   const { activePluginPanelId, sidebarPanels, setActivePluginPanelId } =
     usePluginUIStore(
       useShallow((s) => ({
@@ -157,6 +164,8 @@ export function ActivityBar() {
 
   const visibleTopItems = activityBarConfig
     .filter((c) => c.section === "top" && c.visible)
+    // I2: tasksEnabled off hides the icon entirely, not just incremental updates.
+    .filter((c) => c.id !== "tasks" || tasksEnabled)
     .map((c) => PANEL_ICONS.find((p) => p.id === c.id))
     .filter(Boolean) as { icon: ReactNode; id: SidebarPanel; label: string }[];
 

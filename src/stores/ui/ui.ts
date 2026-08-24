@@ -42,6 +42,7 @@ export type SidebarPanel =
   | "skills-gallery"
   | "snapshots"
   | "tags"
+  | "tasks"
   | "zettel";
 
 export interface ToastState {
