@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
+import type { TaskFilters } from "../../utils/tasks/task-filters";
 
 import { useShallow } from "zustand/shallow";
 
@@ -20,6 +21,11 @@ import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
+import {
+  applyTaskFilters,
+  collectTags,
+  EMPTY_FILTERS,
+} from "../../utils/tasks/task-filters";
 import { TaskBucketList } from "./TaskBucketList";
 
 // 사이드바 패널의 사용자 노출 문자열은 영어가 이 코드베이스의 관례다
@@ -47,7 +53,7 @@ export function TaskAgendaPanel() {
       })),
     );
   const byId = useZettelIndexStore((s) => s.byId);
-  const [filter, setFilter] = useState("");
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
 
   // I4: 밤새 패널을 열어 둬도 버킷 경계가 어제로 굳어버리지 않도록 state로
   // 관리한다 — 렌더마다 새로 만들면 버킷 경계가 흔들리므로 여전히 고정값이되,
@@ -121,10 +127,14 @@ export function TaskAgendaPanel() {
     void openFileByPath(task.path);
   }, []);
 
-  const visible = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    return q ? tasks.filter((t) => t.text.toLowerCase().includes(q)) : tasks;
-  }, [tasks, filter]);
+  // 태그 목록은 **필터 적용 전** 전체에서 뽑는다 — 태그로 거른 뒤 목록을 만들면
+  // 방금 고른 태그 하나만 남아 다른 태그로 바꿀 수 없게 된다.
+  const tagOptions = useMemo(() => collectTags(tasks), [tasks]);
+
+  const visible = useMemo(
+    () => applyTaskFilters(tasks, filters),
+    [tasks, filters],
+  );
 
   const groups = useMemo(
     () => groupIntoBuckets(visible, now, tasksWeekStart),
@@ -133,24 +143,81 @@ export function TaskAgendaPanel() {
 
   return (
     <div className="task-panel">
-      <div className="flex-header task-panel-header">
-        <input
-          aria-label="Filter tasks"
-          className="task-panel-filter"
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter tasks…"
-          type="search"
-          value={filter}
-        />
-        <button
-          className="icon-btn"
-          disabled={!rootPath || loading}
-          onClick={refresh}
-          title="Refresh"
-          type="button"
-        >
-          ⟳
-        </button>
+      <div className="task-panel-header">
+        <div className="flex-header task-panel-search">
+          <input
+            aria-label="Filter tasks"
+            className="task-panel-filter"
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, text: e.target.value }))
+            }
+            placeholder="Filter tasks…"
+            type="search"
+            value={filters.text}
+          />
+          <button
+            className="icon-btn"
+            disabled={!rootPath || loading}
+            onClick={refresh}
+            title="Refresh"
+            type="button"
+          >
+            ⟳
+          </button>
+        </div>
+
+        <div className="task-panel-selects">
+          <select
+            aria-label="Filter by state"
+            className="task-panel-select"
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                state: e.target.value as TaskFilters["state"],
+              }))
+            }
+            value={filters.state}
+          >
+            <option value="all">All</option>
+            <option value="todo">To do</option>
+            <option value="done">Done</option>
+          </select>
+
+          <select
+            aria-label="Filter by priority"
+            className="task-panel-select"
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                priority: e.target.value as TaskFilters["priority"],
+              }))
+            }
+            value={filters.priority}
+          >
+            <option value="all">Any priority</option>
+            <option value="high">⏫ High+</option>
+            <option value="normal">Normal</option>
+            <option value="low">🔽 Low−</option>
+          </select>
+
+          {tagOptions.length > 0 && (
+            <select
+              aria-label="Filter by tag"
+              className="task-panel-select"
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, tag: e.target.value }))
+              }
+              value={filters.tag}
+            >
+              <option value="">Any tag</option>
+              {tagOptions.map((tag) => (
+                <option key={tag} value={tag}>
+                  #{tag}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       <div className="task-panel-body">

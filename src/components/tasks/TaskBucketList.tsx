@@ -3,6 +3,7 @@ import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 
 import { overdueDays } from "../../utils/tasks/task-buckets";
+import { PRIORITY_MARKER } from "../../utils/tasks/task-filters";
 
 interface Props {
   /** I3: "done"만 기본으로 접는다 — 그 외는 기본 펼침. */
@@ -36,7 +37,11 @@ export function TaskBucketList({
     // 기본으로 접는다 — <details>는 가상 스크롤 없이도 그 <li>들을 마운트하지
     // 않게 한다. bucket이 리렌더 사이에 바뀌지 않으므로 이 초기값은 사용자가
     // 손으로 편 상태를 리렌더가 되돌리지 않는다.
-    <details className="task-bucket" open={bucket !== "done"}>
+    <details
+      className="task-bucket"
+      data-bucket={bucket}
+      open={bucket !== "done"}
+    >
       <summary className="task-bucket-header">
         {label} <span className="task-bucket-count">({tasks.length})</span>
       </summary>
@@ -53,6 +58,14 @@ export function TaskBucketList({
                 onChange={() => onToggle(task)}
                 type="checkbox"
               />
+              {PRIORITY_MARKER[task.priority] && (
+                <span
+                  aria-label={`priority ${task.priority}`}
+                  className="task-row-priority"
+                >
+                  {PRIORITY_MARKER[task.priority]}
+                </span>
+              )}
               <button
                 className="btn-unstyled task-row-text"
                 onClick={() => onJump(task)}

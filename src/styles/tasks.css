@@ -6,12 +6,35 @@
   overflow: hidden;
 }
 
+/* 검색줄 + 필터줄 두 행 — flex-header는 각 행 안에서만 쓰인다 */
 .task-panel-header {
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   padding: 6px 8px;
 }
 
+.task-panel-search {
+  gap: 4px;
+}
+
 .task-panel-filter {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--color-text-default);
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.task-panel-selects {
+  display: flex;
+  gap: 4px;
+}
+
+.task-panel-select {
   flex: 1;
   min-width: 0;
   padding: 4px 6px;
@@ -84,4 +107,37 @@
   flex-shrink: 0;
   font-size: 11px;
   color: var(--color-status-danger);
+}
+
+/* 네이티브 disclosure 마커는 사이드바의 다른 헤더와 어긋난다 — 직접 그린다 */
+.task-bucket-header {
+  cursor: pointer;
+  list-style: none;
+}
+
+.task-bucket-header::-webkit-details-marker {
+  display: none;
+}
+
+.task-bucket-header::before {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 9px;
+  content: "▸";
+  transition: transform 0.12s ease;
+}
+
+.task-bucket[open] > .task-bucket-header::before {
+  transform: rotate(90deg);
+}
+
+/* §306: 오늘 = warning, 기한 초과 = danger(.task-row-age가 이미 씀) */
+.task-bucket[data-bucket="today"] > .task-bucket-header {
+  color: var(--color-status-warning);
+}
+
+.task-row-priority {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1;
 }

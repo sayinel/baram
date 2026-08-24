@@ -114,6 +114,80 @@ describe("TaskAgendaPanel", () => {
     expect(getFileTasks).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a priority marker on a prioritised row and none on a normal one", () => {
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ priority: 2, text: "urgent" }),
+        task({ line: 1, priority: 0, text: "plain" }),
+      ]);
+    render(<TaskAgendaPanel />);
+
+    expect(screen.getByLabelText("priority 2")).toHaveTextContent("🔺");
+    expect(screen.queryByLabelText("priority 0")).not.toBeInTheDocument();
+  });
+
+  it("filters rows by state", async () => {
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ text: "open one" }),
+        task({ line: 1, state: "done", text: "closed one" }),
+      ]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Filter by state"),
+      "todo",
+    );
+
+    expect(screen.getByText("open one")).toBeInTheDocument();
+    expect(screen.queryByText("closed one")).not.toBeInTheDocument();
+  });
+
+  it("filters rows by tag without prefix-matching a longer tag", async () => {
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ tags: ["work"], text: "work item" }),
+        task({ line: 1, tags: ["workout"], text: "gym item" }),
+      ]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Filter by tag"),
+      "work",
+    );
+
+    expect(screen.getByText("work item")).toBeInTheDocument();
+    expect(screen.queryByText("gym item")).not.toBeInTheDocument();
+  });
+
+  it("hides the tag control when nothing is tagged", () => {
+    useTaskStore.getState().setAll([task({ tags: [] })]);
+    render(<TaskAgendaPanel />);
+
+    expect(screen.queryByLabelText("Filter by tag")).not.toBeInTheDocument();
+  });
+
+  it("keeps every tag selectable after one is chosen", async () => {
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ tags: ["work"], text: "a" }),
+        task({ line: 1, tags: ["home"], text: "b" }),
+      ]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Filter by tag"),
+      "work",
+    );
+
+    // 태그 목록을 필터 적용 후 집합에서 뽑으면 "home"이 사라져 되돌아갈 수 없다
+    expect(screen.getByRole("option", { name: "#home" })).toBeInTheDocument();
+  });
+
   describe("midnight rollover (I4)", () => {
     beforeEach(() => {
       vi.useFakeTimers();
