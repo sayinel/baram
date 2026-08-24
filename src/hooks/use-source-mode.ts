@@ -9,6 +9,7 @@ import type { Editor } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 
 import { forceCollapseSyntaxReveal } from "../extensions/plugins/syntax-reveal";
+import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
 import {
   markdownToProsemirror,
   mdastBlocksToPmNodes,
@@ -20,6 +21,7 @@ import {
   mdOffsetToPmPos,
   pmPosToMdOffset,
 } from "../utils/editor/cursor-mapper";
+import { focusEditorView } from "../utils/editor/focus-editor-view";
 import {
   markContentLoaded,
   setTabLoading,
@@ -246,7 +248,10 @@ export function useSourceMode({
                     editor.view.dispatch(
                       editor.view.state.tr.setSelection(sel).scrollIntoView(),
                     );
-                    editor.view.focus();
+                    // Not PM's own focus: it is gated on `editable`, and vim
+                    // normal runs the view non-editable — the caret would
+                    // land but every key after Cmd+/ would go nowhere.
+                    focusEditorView(editor.view);
                   } catch {
                     // ignore invalid position
                   }
@@ -255,7 +260,11 @@ export function useSourceMode({
             };
 
             setTimeout(() => {
-              editor.view.updateState(firstState);
+              replaceEditorStateWithVim(
+                editor.view,
+                firstState,
+                "source-return",
+              );
               if (restChunks.length === 0) {
                 finishLoad();
                 return;
@@ -301,7 +310,7 @@ export function useSourceMode({
         plugins: editor.state.plugins,
         selection: TextSelection.atStart(newDoc),
       });
-      editor.view.updateState(tempState);
+      replaceEditorStateWithVim(editor.view, tempState, "source-return");
 
       // Cache state with correct selection for tab-switching safety
       const targetPos = clampedPos;
@@ -336,7 +345,9 @@ export function useSourceMode({
             editor.view.dispatch(
               editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
             );
-            editor.view.focus();
+            // See the progressive path above — the editable-gated focus is a
+            // silent no-op while vim owns the surface.
+            focusEditorView(editor.view);
             domObserver?.suppressSelectionUpdates?.();
 
             // DOM-level scroll fallback for .editor-area-scroll

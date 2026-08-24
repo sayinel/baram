@@ -64,17 +64,18 @@ Your `.md` files stay 100% standard markdown. No proprietary format, no lock-in.
 
 Pre-built binaries for macOS, Windows, and Linux are available on the [Releases](https://github.com/sayinel/baram/releases) page.
 
-| Platform | Architecture | Format |
-|----------|-------------|--------|
-| macOS 13+ | Universal (Apple Silicon + Intel) | `.dmg` |
-| Windows | x64 | `.msi`, `.exe` |
-| Linux | x64 | `.deb`, `.AppImage`, `.rpm` |
+| Platform  | Architecture                      | Format                      |
+| --------- | --------------------------------- | --------------------------- |
+| macOS 13+ | Universal (Apple Silicon + Intel) | `.dmg`                      |
+| Windows   | x64                               | `.msi`, `.exe`              |
+| Linux     | x64                               | `.deb`, `.AppImage`, `.rpm` |
 
 > **macOS note:** Baram is signed with an Apple Developer ID certificate and notarized by Apple, so it opens without a Gatekeeper warning. macOS still asks to confirm an app downloaded from the internet on first launch — that prompt appears for every notarized app. Access to Documents/Desktop/Downloads/iCloud is requested once and then remembered, including across updates.
 
 ### Build from Source
 
 **Prerequisites:**
+
 - [Node.js](https://nodejs.org/) v24 (24.14+)
 - [Rust](https://rustup.rs/) (latest stable)
 - [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
@@ -126,7 +127,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Plugins** — Install community plugins from a built-in marketplace, browse each one's README in a detail tab, and toggle any plugin — built-ins included — on or off. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation. Installs are staged and atomic, and a signed withdrawal list stops a plugin that was later pulled or found vulnerable from running.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
 
-> 📖 See the **[User Guide](docs/user-guide.md)** for detailed usage of every feature.
+> 📖 See the [**User Guide**](docs/user-guide.md) for detailed usage of every feature.
 
 ## AI Integration
 
@@ -190,16 +191,16 @@ Type `/ai-template` in the slash menu to generate document content from AI-power
 
 Type `/` to open the slash menu. AI-powered commands include:
 
-| Command | Description |
-|---------|-------------|
-| `/ai-write` | Write or continue from current context |
-| `/ai-brainstorm` | Brainstorm ideas from current context |
-| `/ai-summarize` | Summarize selected text |
-| `/ai-expand` | Expand and elaborate on selected text |
-| `/ai-fix-grammar` | Fix grammar and spelling |
-| `/ai-translate` | Translate to another language |
-| `/ai-explain` | Explain selected text in simple terms |
-| `/ai-template` | Generate content from AI templates |
+| Command           | Description                            |
+| ----------------- | -------------------------------------- |
+| `/ai-write`       | Write or continue from current context |
+| `/ai-brainstorm`  | Brainstorm ideas from current context  |
+| `/ai-summarize`   | Summarize selected text                |
+| `/ai-expand`      | Expand and elaborate on selected text  |
+| `/ai-fix-grammar` | Fix grammar and spelling               |
+| `/ai-translate`   | Translate to another language          |
+| `/ai-explain`     | Explain selected text in simple terms  |
+| `/ai-template`    | Generate content from AI templates     |
 
 ### Custom AI Commands
 
@@ -209,21 +210,21 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 
 > On Windows/Linux, replace `Cmd` with `Ctrl`. Every shortcut is remappable in **Settings > Keybindings**.
 
-| Action | Shortcut |
-|--------|----------|
+| Action                      | Shortcut                    |
+| --------------------------- | --------------------------- |
 | Bold / Italic / Inline Code | `Cmd+B` / `Cmd+I` / `Cmd+E` |
-| Heading 1–6 | `Cmd+1` – `Cmd+6` |
-| Code Block / Math Block | `Cmd+Alt+C` / `Cmd+Shift+M` |
-| Table | `Cmd+T` |
-| Source Mode | `Cmd+/` |
-| Command Palette | `Cmd+P` |
-| Global Search | `Cmd+Shift+F` |
-| Find / Replace | `Cmd+F` / `Cmd+H` |
-| AI Inline Edit / AI Chat | `Cmd+J` / `Cmd+Shift+A` |
-| Toggle Sidebar | `Cmd+Shift+L` |
-| Settings | `Cmd+,` |
+| Heading 1–6                 | `Cmd+1` – `Cmd+6`           |
+| Code Block / Math Block     | `Cmd+Alt+C` / `Cmd+Shift+M` |
+| Table                       | `Cmd+T`                     |
+| Source Mode                 | `Cmd+/`                     |
+| Command Palette             | `Cmd+P`                     |
+| Global Search               | `Cmd+Shift+F`               |
+| Find / Replace              | `Cmd+F` / `Cmd+H`           |
+| AI Inline Edit / AI Chat    | `Cmd+J` / `Cmd+Shift+A`     |
+| Toggle Sidebar              | `Cmd+Shift+L`               |
+| Settings                    | `Cmd+,`                     |
 
-> 📖 See the full **[Keyboard Shortcuts reference](docs/keyboard-shortcuts.md)** for every binding.
+> 📖 See the full [**Keyboard Shortcuts reference**](docs/keyboard-shortcuts.md) for every binding.
 
 ## User Interface
 
@@ -268,28 +269,28 @@ Shows word count, line count, cursor position, and current Git branch at the bot
 
 Contributions are welcome! Baram is built with Tauri, React, and Rust.
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)** for how to set up your development environment, run the test suite, and submit changes.
+See [**CONTRIBUTING.md**](CONTRIBUTING.md) for how to set up your development environment, run the test suite, and submit changes.
 
 ## Community
 
 - 🐛 **Found a bug or have a feature request?** Open an [issue](https://github.com/sayinel/baram/issues).
 - 💬 **Questions or ideas?** Start a [discussion](https://github.com/sayinel/baram/discussions).
-- 📖 **Documentation** — [User Guide](docs/user-guide.md) &middot; [Keyboard Shortcuts](docs/keyboard-shortcuts.md) &middot; [FAQ](docs/faq.md)
+- 📖 **Documentation** — [User Guide](docs/user-guide.md) · [Keyboard Shortcuts](docs/keyboard-shortcuts.md) · [FAQ](docs/faq.md)
 
 ## Support
 
-Baram is free and open source — no paywall, no ads, no telemetry — and it always will be. If it earns a place in your workflow, you can chip in to fund its development:
+Baram is free and open source — no paywall, no ads, no telemetry — and it always will be. If it earns a place in your workflow, you can chip in to fund its development:Entirely optional, always appreciated: there is no paywall and never will be.
 
-<p>
-  <a href="https://ko-fi.com/sayinel">
-    <img src="https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="40">
-  </a>
-</p>
-
-Entirely optional, always appreciated: there is no paywall and never will be.
+$$
+x^2
+$$
 
 ## License
 
-Baram is licensed under the **[Apache License 2.0](LICENSE)**.
+Baram is licensed under the [**Apache License 2.0**](LICENSE).
 
 Third-party open-source components and their licenses are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+$$
+x^2
+$$

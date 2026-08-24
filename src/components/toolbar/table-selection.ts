@@ -1,6 +1,3 @@
-// §5.5 — shared table geometry, whole row/column selection, and (Task 5) reorder.
-// Pure/logic helpers live here so the overlay .tsx files export only components
-// (mirrors table-insert-coords.ts).
 import type { Editor } from "@tiptap/react";
 
 import {
@@ -8,6 +5,12 @@ import {
   moveTableColumn,
   moveTableRow,
 } from "@tiptap/pm/tables";
+
+// §5.5 — shared table geometry, whole row/column selection, and (Task 5) reorder.
+// Pure/logic helpers live here so the overlay .tsx files export only components
+// (mirrors table-insert-coords.ts).
+import { withVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 
 /** Anchor describing where a grip handle should sit (visual-viewport px). */
 export interface HandleAnchor {
@@ -168,9 +171,8 @@ export function moveColumn(
 ): boolean {
   const to = boundaryToDestIndex(from, boundaryIndex);
   if (to === from) return false;
-  return moveTableColumn({ from, to, pos: tablePos + 1 })(
-    editor.state,
-    editor.view.dispatch,
+  return moveTableColumn({ from, to, pos: tablePos + 1 })(editor.state, (tr) =>
+    editor.view.dispatch(withVimExternalEdit(tr)),
   );
 }
 
@@ -183,9 +185,8 @@ export function moveRow(
 ): boolean {
   const to = boundaryToDestIndex(from, boundaryIndex);
   if (to === from) return false;
-  return moveTableRow({ from, to, pos: tablePos + 1 })(
-    editor.state,
-    editor.view.dispatch,
+  return moveTableRow({ from, to, pos: tablePos + 1 })(editor.state, (tr) =>
+    editor.view.dispatch(withVimExternalEdit(tr)),
   );
 }
 
@@ -217,7 +218,7 @@ export function selectColumn(editor: Editor, cellBeforePos: number): void {
   const $cell = editor.state.doc.resolve(cellBeforePos);
   const sel = CellSelection.colSelection($cell);
   editor.view.dispatch(editor.state.tr.setSelection(sel));
-  editor.view.focus();
+  focusEditorView(editor.view);
 }
 
 /** Select the entire row containing the cell at `cellBeforePos`. */
@@ -225,5 +226,5 @@ export function selectRow(editor: Editor, cellBeforePos: number): void {
   const $cell = editor.state.doc.resolve(cellBeforePos);
   const sel = CellSelection.rowSelection($cell);
   editor.view.dispatch(editor.state.tr.setSelection(sel));
-  editor.view.focus();
+  focusEditorView(editor.view);
 }

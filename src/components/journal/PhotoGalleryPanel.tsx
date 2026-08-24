@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useShallow } from "zustand/shallow";
 
+import { INTL_LOCALES } from "../../i18n";
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -15,12 +17,26 @@ import {
   type PhotoGalleryEntry,
   scanJournalPhotos,
 } from "../../utils/journal/journal-photo";
+import { basename } from "../../utils/path-utils";
 import { PhotoGalleryThumb } from "./PhotoGalleryThumb";
 import { PhotoLightbox } from "./PhotoLightbox";
 
 type GroupMode = "day" | "month" | "year";
 
+const GROUP_MODE_KEYS: Record<GroupMode, string> = {
+  day: "journal.gallery.group.day",
+  month: "journal.gallery.group.month",
+  year: "journal.gallery.group.year",
+};
+
+const MEDIA_FILTER_KEYS: Record<MediaFilter, string> = {
+  all: "journal.gallery.filter.all",
+  photo: "journal.gallery.filter.photo",
+  video: "journal.gallery.filter.video",
+};
+
 export function PhotoGalleryPanel() {
+  const { locale, t } = useTranslation();
   // ‼️ bare `useUIStore()`가 아니어야 한다. 그 형태는 스토어 전체를 구독하므로 무관한 UI
   // 변화 하나하나가 사진 수백 칸을 다시 렌더한다 — 저널을 열면 파일 스토어가 바뀌므로
   // 정확히 그 순간에 걸린다.
@@ -101,15 +117,25 @@ export function PhotoGalleryPanel() {
     [groupMode, selectedMonth, selectedYear],
   );
 
-  // Period label for the navigator
+  // Period label for the navigator.
+  //
+  // Built by Intl rather than by a format string: `${y}년 ${m}월` is not a translation
+  // problem with a key-shaped answer — the year/month ORDER differs by locale, so a key
+  // holding "{year} {month}" would still be wrong somewhere. Intl owns that ordering.
   const periodLabel = useMemo(() => {
     if (groupMode === "day") {
-      return `${selectedYear}년 ${selectedMonth}월`;
+      return new Date(selectedYear, selectedMonth - 1).toLocaleDateString(
+        INTL_LOCALES[locale],
+        { year: "numeric", month: "long" },
+      );
     } else if (groupMode === "month") {
-      return `${selectedYear}년`;
+      return new Date(selectedYear, 0).toLocaleDateString(
+        INTL_LOCALES[locale],
+        { year: "numeric" },
+      );
     }
-    return "전체";
-  }, [groupMode, selectedYear, selectedMonth]);
+    return t("journal.gallery.period.all");
+  }, [groupMode, selectedYear, selectedMonth, locale, t]);
 
   // ‼️ 거르기가 그룹 짓기 **앞**에 있어야 한다. 뒤에서 걸러도 그리드는 맞게 보이지만
   // 그룹 헤더의 개수와 `flatPhotos`(라이트박스의 좌우 이동)는 걸러지기 전 목록을 세게
@@ -176,7 +202,7 @@ export function PhotoGalleryPanel() {
     } else {
       readFile(journalPath)
         .then((content) => {
-          const fileName = journalPath.split("/").pop() ?? "Unknown";
+          const fileName = basename(journalPath);
           useFileStore.getState().setFileContent(journalPath, content);
           useEditorStore.getState().openTab({
             contextId: "",
@@ -192,10 +218,11 @@ export function PhotoGalleryPanel() {
   };
 
   const formatGroupLabel = (key: string): string => {
+    const intl = INTL_LOCALES[locale];
     switch (groupMode) {
       case "day": {
         const d = new Date(key);
-        return d.toLocaleDateString("ko-KR", {
+        return d.toLocaleDateString(intl, {
           year: "numeric",
           month: "long",
           day: "numeric",
@@ -204,10 +231,15 @@ export function PhotoGalleryPanel() {
       }
       case "month": {
         const [y, m] = key.split("-");
-        return `${y}년 ${parseInt(m)}월`;
+        return new Date(Number(y), Number(m) - 1).toLocaleDateString(intl, {
+          year: "numeric",
+          month: "long",
+        });
       }
       case "year":
-        return `${key}년`;
+        return new Date(Number(key), 0).toLocaleDateString(intl, {
+          year: "numeric",
+        });
     }
   };
 
@@ -218,15 +250,15 @@ export function PhotoGalleryPanel() {
   // 상태에서 "저널에 이미지를 드래그하세요"라고 안내하면 사용자를 엉뚱한 곳으로 보낸다.
   const emptyMessage =
     mediaFilter === "video"
-      ? "동영상이 없습니다. 저널에 동영상을 드래그해 추가하세요."
+      ? t("journal.gallery.empty.video")
       : mediaFilter === "photo"
-        ? "사진이 없습니다. 저널에 이미지를 드래그하거나 /photo로 추가하세요."
-        : "사진이나 동영상이 없습니다. 저널에 파일을 드래그하거나 /photo로 추가하세요.";
+        ? t("journal.gallery.empty.photo")
+        : t("journal.gallery.empty.all");
 
   return (
     <div className="photo-gallery-panel">
       <div className="photo-gallery-header">
-        <h3 className="photo-gallery-title">Photo Gallery</h3>
+        <h3 className="photo-gallery-title">{t("journal.gallery.title")}</h3>
         <div className="photo-gallery-mode-toggle">
           {(["day", "month", "year"] as GroupMode[]).map((m) => (
             <button
@@ -234,30 +266,24 @@ export function PhotoGalleryPanel() {
               key={m}
               onClick={() => setGroupMode(m)}
             >
-              {m === "day" ? "Day" : m === "month" ? "Month" : "Year"}
+              {t(GROUP_MODE_KEYS[m])}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 매체 토글은 자기 행에 둔다. 좁은 패널(~300px)에서 "Day Month Year"와
-          "All Photos Videos"를 한 줄에 넣으면 min-content 아래로 줄지 않는 flex
-          아이템 둘이 헤더를 넘긴다. */}
+      {/* 매체 토글은 자기 행에 둔다. 좁은 패널(~300px)에서 기간 토글 세 개와 매체 토글
+          세 개를 한 줄에 넣으면 min-content 아래로 줄지 않는 flex 아이템 둘이 헤더를
+          넘긴다 — 번역된 라벨은 영어보다 길어질 수 있으므로 폭 여유는 더 좁다. */}
       <div className="photo-gallery-media-row">
         <div className="photo-gallery-mode-toggle">
-          {(
-            [
-              ["all", "All"],
-              ["photo", "Photos"],
-              ["video", "Videos"],
-            ] as [MediaFilter, string][]
-          ).map(([value, label]) => (
+          {(["all", "photo", "video"] as MediaFilter[]).map((value) => (
             <button
               className={`photo-gallery-mode-btn ${mediaFilter === value ? "photo-gallery-mode-btn-active" : ""}`}
               key={value}
               onClick={() => setMediaFilter(value)}
             >
-              {label}
+              {t(MEDIA_FILTER_KEYS[value])}
             </button>
           ))}
         </div>
@@ -285,7 +311,7 @@ export function PhotoGalleryPanel() {
       <div className="photo-gallery-content">
         {loading && (
           <div aria-live="polite" className="photo-gallery-loading">
-            Loading…
+            {t("journal.loading")}
           </div>
         )}
 

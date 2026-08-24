@@ -1,4 +1,3 @@
-// §4.8 Context Menu — right-click with node-type detection
 import { useCallback, useEffect, useState } from "react";
 
 import type { MenuItem } from "./context-menu-types";
@@ -10,6 +9,8 @@ import {
   editBlockId,
   removeBlockId,
 } from "../../extensions/plugins/block-id-decoration";
+// §4.8 Context Menu — right-click with node-type detection
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
 import { buildMermaidBlockMenu } from "./context-menu-mermaid";
 import { buildTableMenu } from "./context-menu-table";
@@ -147,19 +148,23 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         { label: "", action: () => {}, separator: true },
         {
           label: "Bold",
-          action: () => editor.chain().focus().toggleBold().run(),
+          action: () =>
+            chainWithVimExternalEdit(editor).focus().toggleBold().run(),
         },
         {
           label: "Italic",
-          action: () => editor.chain().focus().toggleItalic().run(),
+          action: () =>
+            chainWithVimExternalEdit(editor).focus().toggleItalic().run(),
         },
         {
           label: "Strikethrough",
-          action: () => editor.chain().focus().toggleStrike().run(),
+          action: () =>
+            chainWithVimExternalEdit(editor).focus().toggleStrike().run(),
         },
         {
           label: "Inline Code",
-          action: () => editor.chain().focus().toggleCode().run(),
+          action: () =>
+            chainWithVimExternalEdit(editor).focus().toggleCode().run(),
         },
         ...blockIdItems,
       ];

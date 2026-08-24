@@ -3,10 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
+import { INTL_LOCALES } from "../../i18n";
+import { useTranslation } from "../../i18n/useTranslation";
 import { listDir, readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { basename } from "../../utils/path-utils";
 
 export type JournalBlockLanguage = "journal-list" | "journal-photos";
 
@@ -67,16 +70,17 @@ function datesInRange(start: string, end: string): string[] {
   return dates;
 }
 
-function formatMonthLabel(start: string, end: string): string {
+function formatMonthLabel(start: string, end: string, intl: string): string {
   const s = new Date(start + "T00:00:00");
   const e = new Date(end + "T00:00:00");
   if (s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth()) {
-    return s.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
+    return s.toLocaleDateString(intl, { year: "numeric", month: "long" });
   }
   return `${start} ~ ${end}`;
 }
 
 function JournalListBlock({ params }: { params: Record<string, string> }) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<JournalListEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const rootPath = useFileStore((s) => s.rootPath);
@@ -138,7 +142,7 @@ function JournalListBlock({ params }: { params: Record<string, string> }) {
     } else {
       readFile(filePath)
         .then((content) => {
-          const fileName = filePath.split("/").pop() ?? "Unknown";
+          const fileName = basename(filePath);
           useFileStore.getState().setFileContent(filePath, content);
           useEditorStore.getState().openTab({
             contextId: "",
@@ -156,11 +160,13 @@ function JournalListBlock({ params }: { params: Record<string, string> }) {
   if (loading)
     return (
       <div aria-live="polite" className="journal-block-loading">
-        Loading…
+        {t("journal.loading")}
       </div>
     );
   if (entries.length === 0)
-    return <div className="journal-block-empty">(해당 기간 데이터 없음)</div>;
+    return (
+      <div className="journal-block-empty">{t("journal.block.empty")}</div>
+    );
 
   return (
     <ul className="journal-list-items">
@@ -183,6 +189,7 @@ function JournalListBlock({ params }: { params: Record<string, string> }) {
 // ---------------------------------------------------------------------------
 
 function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
+  const { t } = useTranslation();
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const rootPath = useFileStore((s) => s.rootPath);
@@ -255,11 +262,13 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
   if (loading)
     return (
       <div aria-live="polite" className="journal-block-loading">
-        Loading…
+        {t("journal.loading")}
       </div>
     );
   if (photos.length === 0)
-    return <div className="journal-block-empty">(해당 기간 데이터 없음)</div>;
+    return (
+      <div className="journal-block-empty">{t("journal.block.empty")}</div>
+    );
 
   const gridStyle =
     layout === "strip"
@@ -289,9 +298,10 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-const BLOCK_ICONS: Record<JournalBlockLanguage, string> = {
-  "journal-list": "List",
-  "journal-photos": "Photos",
+/** i18n keys for the block header, keyed by the fence language. */
+const BLOCK_TITLE_KEYS: Record<JournalBlockLanguage, string> = {
+  "journal-list": "journal.block.list",
+  "journal-photos": "journal.block.photos",
 };
 
 export function JournalDynamicBlock({
@@ -299,13 +309,17 @@ export function JournalDynamicBlock({
   content,
   onShowSource,
 }: JournalDynamicBlockProps) {
+  const { locale, t } = useTranslation();
   const params = parseBlockParams(content);
   const range = params.range ? parseRange(params.range) : null;
 
   const rangeLabel = range
-    ? formatMonthLabel(range[0], range[1])
+    ? formatMonthLabel(range[0], range[1], INTL_LOCALES[locale])
     : (params.range ?? "");
-  const headerTitle = `${BLOCK_ICONS[language] ?? language}: ${rangeLabel}`;
+  // `language` is the fence word (`journal-list`) and stays as the fallback: an unmapped
+  // language is a document the user wrote, not a missing translation.
+  const blockTitleKey = BLOCK_TITLE_KEYS[language];
+  const headerTitle = `${blockTitleKey ? t(blockTitleKey) : language}: ${rangeLabel}`;
 
   return (
     <div className="journal-dynamic-block" contentEditable={false}>
@@ -314,7 +328,7 @@ export function JournalDynamicBlock({
         <button
           className="journal-dynamic-block-source-btn"
           onClick={onShowSource}
-          title="Show source"
+          title={t("journal.block.showSource")}
         >
           {"</>"}
         </button>

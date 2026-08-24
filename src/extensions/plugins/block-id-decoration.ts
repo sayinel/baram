@@ -17,6 +17,7 @@ import { useFileStore } from "../../stores/file/file";
 import { changedRanges } from "../../utils/editor/changed-ranges";
 import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
 import { logger } from "../../utils/logger";
+import { withVimExternalEdit } from "./vim/vim-keys";
 
 // ── Plugin state ──────────────────────────────────────────────────────
 
@@ -404,7 +405,7 @@ export function addBlockId(view: EditorView, nodePos: number): void {
   const id = generateBlockId();
   const { tr } = view.state;
   tr.setNodeMarkup(nodePos, undefined, { ...node.attrs, blockId: id });
-  view.dispatch(tr);
+  view.dispatch(withVimExternalEdit(tr));
 }
 
 export function copyBlockId(blockId: string): void {
@@ -456,7 +457,7 @@ export function removeBlockId(view: EditorView, nodePos: number): void {
 
   const { tr } = view.state;
   tr.setNodeMarkup(nodePos, undefined, { ...node.attrs, blockId: null });
-  view.dispatch(tr);
+  view.dispatch(withVimExternalEdit(tr));
 }
 
 function cancelBlockIdEdit(view: EditorView): void {
@@ -809,6 +810,9 @@ function createEditWidget(
   const wrapper = document.createElement("span");
   wrapper.className = "block-id-editing";
   wrapper.contentEditable = "false";
+  // §298 §12-3: input island — vim suspends while focus is inside (design §4).
+  // The widget is recreated every render, so the marker must be set here.
+  wrapper.setAttribute("data-vim-suspend", "");
 
   const caret = document.createElement("span");
   caret.className = "block-id-caret";

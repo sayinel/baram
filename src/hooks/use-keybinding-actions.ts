@@ -1,4 +1,3 @@
-// §settings Keybinding actions hook — register command handlers + global keyboard shortcuts
 import { useEffect } from "react";
 
 import type { EditorTab } from "../stores/editor/editor";
@@ -10,6 +9,8 @@ import {
   dispatchUnfoldAll,
   toggleFoldAtCursor,
 } from "../extensions/plugins/fold";
+// §settings Keybinding actions hook — register command handlers + global keyboard shortcuts
+import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { type Locale, t } from "../i18n";
 import { readFile } from "../ipc/invoke";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
@@ -35,6 +36,7 @@ import { useFileStore } from "../stores/file/file";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
@@ -205,7 +207,7 @@ export function useGlobalKeyboard({
       // §5.5 Cmd+Enter — add row after in table (context-dependent)
       if (mod && e.key === "Enter" && editor && editor.isActive("table")) {
         e.preventDefault();
-        editor.chain().focus().addRowAfter().run();
+        chainWithVimExternalEdit(editor).focus().addRowAfter().run();
         return;
       }
 
@@ -216,6 +218,37 @@ export function useGlobalKeyboard({
 
       const overrides = useSettingsStore.getState().keybindingOverrides;
       const command = findCommandByKey(normalized, overrides);
+
+      // §298 vim S3 — the source editor swallows Mod-/ (preventDefault) so
+      // vim's Prec.highest handler cannot eat it; the event still bubbles
+      // here with defaultPrevented=true. The source-mode toggle is the ONE
+      // command that must survive that, or the user is trapped in source
+      // mode. Runs before the guard below (Codex plan-review correction).
+      if (isSourceMode && command?.id === "view.sourceMode") {
+        const action = getAction(command.id);
+        if (action) {
+          e.preventDefault();
+          action();
+        }
+        return;
+      }
+
+      // §298 vim S3 — guard SCOPED to a live vim source session. The vim
+      // adapter stopPropagations the keys it handles (they never reach
+      // window); what arrives here defaultPrevented are CM-keymap-handled
+      // keys from the source editor, which must not double-fire registry
+      // commands during a vim session. Deliberately NOT a blanket
+      // defaultPrevented guard: WYSIWYG extensions also preventDefault
+      // (e.g. Mod+Shift+B blockquote) and their long-standing double-fire
+      // semantics (blockquote + backlinks) are outside this change's scope
+      // (Codex final gate — a blanket guard regressed that key).
+      const isVimSourceEvent =
+        e.defaultPrevented &&
+        e.target instanceof Element &&
+        e.target.closest(".source-code-editor") !== null &&
+        useUIStore.getState().vimStatus?.surface === "source";
+      if (isVimSourceEvent) return;
+
       if (command) {
         const action = getAction(command.id);
         if (action) {
@@ -334,10 +367,14 @@ export function useKeybindingActions({
       if (editor && !editor.isActive("table")) {
         const { from } = editor.state.selection;
         const coords = editor.view.coordsAtPos(from);
+        // §298 §12-9b (design §5c): the picker resolves after an unbounded
+        // gap — a dead task must not insert into whatever doc is live then.
+        const task = registerEditorMutationTask(editor.view);
         showTableGridPicker(coords.left, coords.bottom + 4).then((result) => {
-          if (!result) return;
-          editor
-            .chain()
+          const live = task.isLive();
+          task.finish();
+          if (!result || !live) return;
+          chainWithVimExternalEdit(editor)
             .focus()
             .insertTable({
               rows: result.rows,
@@ -555,6 +592,11 @@ export function useKeybindingActions({
         .slice(0, 3)
         .join(" ")
         .slice(0, 40);
+      // §298 §12-9b (design §5c): dialog + note creation are async gaps; the
+      // selection replacement must not land after a state install re-targets
+      // the shared editor. Registered before the dialog opens so a swap
+      // DURING the dialog also kills it.
+      const task = registerEditorMutationTask(activeEditor.view);
       useUIStore.getState().openZettelTitleDialog({
         onSubmit: (title) => {
           // openTab=false: stay on the current document — this note's own
@@ -562,9 +604,10 @@ export function useKeybindingActions({
           // must not be swapped to the newly created note first.
           createZettelNote(dir, title, selectionText, false)
             .then((result) => {
-              if (!result) return;
-              activeEditor
-                .chain()
+              const live = task.isLive();
+              task.finish();
+              if (!result || !live) return;
+              chainWithVimExternalEdit(activeEditor)
                 .focus()
                 .deleteSelection()
                 .insertWikilink({ target: result.id })

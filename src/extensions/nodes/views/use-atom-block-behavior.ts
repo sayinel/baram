@@ -10,6 +10,8 @@ import type { Editor } from "@tiptap/react";
 
 import { TextSelection } from "@tiptap/pm/state";
 
+import { focusEditorView } from "../../../utils/editor/focus-editor-view";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -89,8 +91,15 @@ export function useAtomBlockBehavior({
     tr.delete(pos, pos + nodeSize);
     const $pos = tr.doc.resolve(Math.min(pos, tr.doc.content.size));
     tr.setSelection(TextSelection.near($pos, -1));
+    // Keep the caret follow the old chain .focus() used to schedule — a tall
+    // block's exit must not land the selection off-screen.
+    tr.scrollIntoView();
     editor.view.dispatch(tr);
-    editor.view.focus();
+    // focusEditorView, not view.focus(): PM guards its focus() behind
+    // `this.editable`, so under vim (non-editable surface) a bare focus is a
+    // silent no-op — the island unmounts, focus falls to <body>, and vim is
+    // dead until the user clicks back in.
+    focusEditorView(editor.view);
   }, [editor, getPos, nodeSize]);
 
   // Exit block: save content and move focus to target position.
@@ -103,7 +112,7 @@ export function useAtomBlockBehavior({
       onSaveBeforeExit();
 
       if (direction === "up") {
-        editor.chain().setTextSelection(pos).focus().run();
+        editor.chain().setTextSelection(pos).scrollIntoView().run();
       } else {
         const afterPos = pos + nodeSize;
         const { doc } = editor.state;
@@ -113,12 +122,15 @@ export function useAtomBlockBehavior({
             .chain()
             .insertContentAt(afterPos, { type: "paragraph" })
             .setTextSelection(afterPos + 1)
-            .focus()
+            .scrollIntoView()
             .run();
         } else {
-          editor.chain().setTextSelection(afterPos).focus().run();
+          editor.chain().setTextSelection(afterPos).scrollIntoView().run();
         }
       }
+      // Shared exit focus — see deleteBlock: the chain's .focus() would be a
+      // no-op on a vim-modal (non-editable) view.
+      focusEditorView(editor.view);
     },
     [editor, getPos, nodeSize, onSaveBeforeExit],
   );

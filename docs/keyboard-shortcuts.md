@@ -243,9 +243,63 @@ the side panel, and the two highlight modes are toolbar buttons — see the
 
 ---
 
+## Vim Mode
+
+Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turns vim on across **three editing surfaces**, and the status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`).
+
+| Surface | How you get there | What is available |
+| ------- | ----------------- | ----------------- |
+| **Source Mode** | `Cmd+/` / `Ctrl+/`, and code-file tabs (JSON, Python, …) | Full vim: modal editing, motions, operators, counts, text objects (`ciw`, `di"`), `.` repeat, search (`/`, `n`), marks, macros, registers |
+| **WYSIWYG** | The normal rich-text editor | Modal editing on the rendered document — see the command list below |
+| **Code blocks** | Click into (or move into) a code block in a WYSIWYG document | Full vim, as in Source Mode, plus boundary crossing back to the document |
+
+### WYSIWYG commands
+
+| Group | Keys |
+| ----- | ---- |
+| Modes | `i` `a` `I` `A` · `o` `O` · `v` (charwise) `V` (linewise) · `Esc` |
+| Motions | `h` `j` `k` `l` and the arrow keys · `0` `$` `^` (Home/End) · `w` `b` · `gg` `G` |
+| Find in line | `f` `F` `t` `T` + a character · `;` `,` to repeat |
+| Operators | `d` `c` `y` with a motion (`dw`, `cw`, `dj`, `d$`, `dfx`) · doubled for whole lines (`dd` `yy` `cc`) |
+| Counts | Any motion or operator (`3j`, `2d3w` = six words) |
+| Edit | `x` · `p` `P` · `u` `Ctrl+r` |
+| View | `zz` `z.` center the cursor line (also in visual mode) |
+| Ex | `:w` save · `:q` close tab |
+
+Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; inside a table, `h`/`l` cross cell boundaries so every cell in a row is reachable, while `j`/`k` move down a row keeping the column; `dd` on a table row deletes the row (the header row and the last data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
+
+WYSIWYG does not yet have text objects (`ciw`), `.` repeat, `/` search, or the `Ctrl+F`/`Ctrl+B` page motions — those live in Source Mode and code blocks today.
+
+### Code block boundaries
+
+| Keys | Action |
+| ---- | ------ |
+| `Esc` (in normal mode) | Leave the block and return to document-level vim |
+| `j` / `k` (or arrows) on the last / first line | Leave the block downward / upward |
+| `u` / `Ctrl+r` | Undo/redo the **document** history, so edits inside and outside the block share one stack |
+
+`:` and `/` open vim's own prompt inside the block; keys typed there stay in the prompt.
+
+### Ex commands
+
+Available on all three surfaces. The command line appears in the status bar as you type; `Enter` runs it, `Esc` abandons it, and `Backspace` on an empty line closes it.
+
+| Command | Action |
+| ------- | ------------------------ |
+| `:w` / `:write` | Save the current file    |
+| `:q` / `:quit`  | Close the current tab (unsaved-changes guard applies) |
+
+Source Mode and code blocks also accept the CodeMirror adapter's own ex commands and `/` search; WYSIWYG recognises only the two above.
+
+**Korean IME**: vim commands work with the Korean input source active on every surface — in normal/visual mode keys are resolved by physical position (pressing the `j` key moves down even when it would type `ㅓ`), and stray jamo insertion is blocked. Insert mode types Korean normally. In WYSIWYG, `f` followed by a consonant jamo jumps by 초성 (`f` `ㄱ` finds 강, 김, 그). This behavior is verified on macOS; Windows/Linux are not yet validated.
+
+The vim register is shared app-wide (like the clipboard) and is not written to disk. Vim key sequences are not remappable via Settings > Keybindings.
+
+---
+
 ## Customization
 
-All keyboard shortcuts can be remapped in **Settings > Keybindings**. Search for a shortcut by name or key, click **Edit**, then press the new key combination. Conflicts are detected automatically. Use the ↺ button to reset individual shortcuts, or **Reset All Keybindings** to restore defaults.
+All keyboard shortcuts can be remapped in **Settings > Keybindings**. Search for a shortcut by name or key, click **Edit**, then press the new key combination. Conflicts are detected automatically. Use the ↺ button to reset individual shortcuts, or **Reset All Keybindings** to restore defaults. Vim key sequences (see above) are a separate layer and are not remappable here.
 
 ---
 

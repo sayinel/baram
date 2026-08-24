@@ -46,6 +46,8 @@ export function EditorTab() {
     setEditorMaxWidth,
     virtualizeLargeDocs,
     setVirtualizeLargeDocs,
+    vimMode,
+    setVimMode,
   } = useSettingsStore();
 
   return (
@@ -119,6 +121,13 @@ export function EditorTab() {
           checked={autoPairBrackets}
           onChange={setAutoPairBrackets}
         />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.vimMode.desc")}
+        label={t("settings.editor.vimMode")}
+      >
+        <ToggleSwitch checked={vimMode} onChange={setVimMode} />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.editor.display")} />

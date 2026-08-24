@@ -1,6 +1,7 @@
 /* §5.1 HTML Block — dual mode (sanitized HTML render / raw source edit) */
 
 .tiptap .html-block {
+  position: relative; /* anchors the standby textarea (§12-⑩) */
   margin: 1em 0;
 }
 
@@ -75,6 +76,20 @@
   border: 1px solid var(--color-border-subtle);
   border-radius: 6px;
   transition: border-color 0.12s ease;
+}
+
+/* §12-⑩ standby — mounted so vim's `i` preflight has something to focus
+   while a traversal selection sits on the block; visually absent until its
+   focus event opens the edit session. */
+.tiptap .html-block-textarea-standby {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  opacity: 0;
 }
 
 .tiptap .html-block-textarea::placeholder {

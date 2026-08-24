@@ -3,13 +3,25 @@ import { useState } from "react";
 
 import type { MemoryEntry } from "./OneLineEditor";
 
+import { useShallow } from "zustand/shallow";
+
+import { INTL_LOCALES } from "../../i18n";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { JournalTab } from "./JournalTab";
 import { MiniCalendar } from "./MiniCalendar";
 
 export function MemoriesPanel() {
-  const { rightPanelOpen, rightPanelMode } = useUIStore();
+  const { locale, t } = useTranslation();
+  // ‼️ bare `useUIStore()` subscribes to the whole store, so any unrelated UI change re-renders
+  // the panel and the memory cards under it.
+  const { rightPanelMode, rightPanelOpen } = useUIStore(
+    useShallow((s) => ({
+      rightPanelMode: s.rightPanelMode,
+      rightPanelOpen: s.rightPanelOpen,
+    })),
+  );
   const mode = useSettingsStore((s) => s.memoriesMode);
   const setMode = useSettingsStore((s) => s.setMemoriesMode);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
@@ -40,12 +52,14 @@ export function MemoriesPanel() {
   return (
     <div className="memories-panel">
       <div className="memories-header flex-header">
-        <span className="memories-header-title">Memories</span>
+        <span className="memories-header-title">
+          {t("journal.memories.title")}
+        </span>
         <div className="memories-date-nav">
           <button
             className="memories-date-nav-btn"
             onClick={() => navigateDay(-1)}
-            title="이전 날"
+            title={t("journal.memories.prevDay")}
           >
             <svg
               fill="none"
@@ -63,15 +77,22 @@ export function MemoriesPanel() {
           <button
             className={`memories-date-nav-label ${showCalendar ? "memories-date-nav-label-active" : ""}`}
             onClick={() => setShowCalendar(!showCalendar)}
-            title="캘린더 열기"
+            title={t("journal.memories.openCalendar")}
           >
-            {month}월 {day}일
-            {isToday && <span className="memories-date-nav-today">오늘</span>}
+            {selectedDate.toLocaleDateString(INTL_LOCALES[locale], {
+              month: "long",
+              day: "numeric",
+            })}
+            {isToday && (
+              <span className="memories-date-nav-today">
+                {t("journal.today")}
+              </span>
+            )}
           </button>
           <button
             className="memories-date-nav-btn"
             onClick={() => navigateDay(1)}
-            title="다음 날"
+            title={t("journal.memories.nextDay")}
           >
             <svg
               fill="none"

@@ -16,6 +16,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 
+import { VIM_ISLAND_MARKERS } from "../../extensions/plugins/vim/adapters/suspension";
 import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
 import { safeImageSrc, safeLinkHref } from "./markdown-url";
 
@@ -306,7 +307,11 @@ function restrictUntrusted<T extends MdastNode>(node: T): T {
   };
 }
 
-/** Raw HTML embedded in AI markdown — render SVG faithfully, sanitize the rest. */
+/** Raw HTML embedded in AI markdown — render SVG faithfully, sanitize the
+ *  rest. vim island markers are stripped here too: they are an app
+ *  capability, and model output is no more trusted than a shared file. */
 function sanitizeEmbeddedHtml(value: string): string {
-  return isSvgContent(value) ? sanitizeSvg(value) : DOMPurify.sanitize(value);
+  return isSvgContent(value)
+    ? sanitizeSvg(value)
+    : DOMPurify.sanitize(value, { FORBID_ATTR: [...VIM_ISLAND_MARKERS] });
 }

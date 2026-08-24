@@ -794,6 +794,15 @@
       "milestone": "M11",
       "status": "implemented",
       "_note": "Word triggers (due:/sched:/start:/prio:, plus !1-!5) expand to Obsidian Tasks emoji fields so metadata is never typed as emoji. !3/prio:3 (normal priority) clears the trigger without inserting an emoji — only !1/!2/!4/!5 produce one. Triggers must be preceded by line-start or whitespace (a lookbehind), so e.g. \"overdue:\" does not misfire as \"due:\". Fires only inside taskItem; triggers and values are ASCII-only to avoid misfiring during Hangul IME composition."
+    },
+    {
+      "name": "wysiwygVim",
+      "file": "plugins/vim/index.ts",
+      "spec": "issue 298 / design .omc/research/vim-phase1-design.md",
+      "phase": 3,
+      "milestone": "vim-phase1",
+      "status": "implemented",
+      "_note": "Always installed, dormant until enabled. Modal engine: pure core state machine + PM adapters; entry points per design P3. The same setting also drives source mode and per-code-block CodeMirror vim."
     }
   ]
 }

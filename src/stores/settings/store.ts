@@ -169,8 +169,11 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
         autoCheckUpdates: state.autoCheckUpdates,
+        // §298 vim keybindings — partialize is a whitelist; omitting this
+        // would silently drop the setting on every restart.
+        vimMode: state.vimMode,
       }),
-      version: 18,
+      version: 19,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -379,15 +382,30 @@ export const useSettingsStore = create<SettingsState>()(
           );
         }
 
-        // v17 → v18: §306 add the Tasks agenda activity-bar item. Reuses the
+        // v17 → v18: §298 Vim keybindings (default off). Was v17 on the
+        // feature branch; renumbered because main's v17 (the activity-bar
+        // backfill above) shipped first.
+        if (version < 18) {
+          if (state.vimMode === undefined) {
+            state.vimMode = false;
+          }
+        }
+
+        // v18 → v19: §306 add the Tasks agenda activity-bar item. Reuses the
         // very same backfill as v16 → v17 above (see
         // `backfillMissingActivityBarItems`) — generalizing the *logic* in
         // v17 didn't generalize the *trigger*: that gate is pinned to
         // `version < 17`, so it does nothing for anyone already persisted at
         // v17 or later. Every future activity-bar addition needs its own
-        // `version < N` gate calling this same helper; this is the second
-        // one.
-        if (version < 18) {
+        // `version < N` gate calling this same helper; this is the second one.
+        //
+        // **This was v18 on the feature branch and was renumbered to v19 when
+        // main was merged in.** main shipped its own v18 (the Vim default
+        // above) first, so anyone running a main build is already persisted at
+        // v18 — keeping this at `version < 18` would skip them entirely and
+        // leave the Tasks activity-bar button permanently invisible, which is
+        // the exact defect this backfill exists to prevent.
+        if (version < 19) {
           backfillMissingActivityBarItems(
             state.activityBarConfig as ActivityBarItemConfig[] | undefined,
           );

@@ -1,0 +1,526 @@
+// §298 Vim Phase 1 core — state machine tests (design §14 S1).
+//
+// The core is pure, so these run without a DOM or a ProseMirror document.
+// Two properties get as much attention as the commands themselves:
+//   - pass-through: normal mode must NOT swallow Cmd+S or the menu chords
+//   - operator sequences: a half-typed `d` must not leak into the next key
+
+import type { CoreCommand, KeyToken, VimCoreState } from "../types";
+
+import { describe, expect, it } from "vitest";
+
+import { step } from "../state-machine";
+import { initialCoreState } from "../types";
+
+function key(k: string, mods: Partial<KeyToken> = {}): KeyToken {
+  return { alt: false, ctrl: false, key: k, mod: false, shift: false, ...mods };
+}
+
+/** Feed a sequence of bare keys, returning the final state and last command. */
+function run(
+  keys: string[],
+  start: VimCoreState = initialCoreState(),
+  cursor = 10,
+): { commands: CoreCommand[]; state: VimCoreState } {
+  const commands: CoreCommand[] = [];
+  let state = start;
+  for (const k of keys) {
+    const r = step(state, key(k), { cursor });
+    state = r.state;
+    if (r.command) commands.push(r.command);
+  }
+  return { commands, state };
+}
+
+describe("mode entry and exit", () => {
+  it("i/a/I/A enter insert with the right anchor", () => {
+    for (const [k, at] of [
+      ["i", "atCursor"],
+      ["a", "afterCursor"],
+      ["I", "lineStart"],
+      ["A", "lineEnd"],
+    ] as const) {
+      const { commands, state } = run([k]);
+      expect(commands).toEqual([{ at, type: "enterInsert" }]);
+      expect(state.mode).toBe("insert");
+    }
+  });
+
+  it("Escape leaves insert without emitting an edit", () => {
+    const { commands, state } = run(["Escape"], initialCoreState("insert"));
+    expect(commands).toEqual([]);
+    expect(state.mode).toBe("normal");
+  });
+
+  it("v anchors visual at the supplied cursor; Escape collapses it", () => {
+    const entered = step(initialCoreState(), key("v"), { cursor: 42 });
+    expect(entered.command).toEqual({ type: "enterVisual" });
+    expect(entered.state.visual).toEqual({
+      anchorCursor: 42,
+      headCursor: 42,
+      kind: "char",
+    });
+
+    const left = step(entered.state, key("Escape"), { cursor: 42 });
+    expect(left.command).toEqual({ type: "leaveVisual" });
+    expect(left.state.mode).toBe("normal");
+    expect(left.state.visual).toBeNull();
+  });
+});
+
+describe("counts", () => {
+  it("accumulates multi-digit prefixes", () => {
+    const { commands } = run(["5", "0", "j"]);
+    expect(commands).toEqual([{ count: 50, motion: "lineDown", type: "move" }]);
+  });
+
+  it("treats a leading 0 as the line-start motion, not a count", () => {
+    const { commands } = run(["0"]);
+    expect(commands).toEqual([{ count: 1, motion: "lineStart", type: "move" }]);
+  });
+
+  it("carries the count across an operator sequence", () => {
+    const { commands } = run(["3", "d", "d"]);
+    expect(commands).toEqual([{ count: 3, type: "deleteLine" }]);
+  });
+
+  it("resets the count after the command consumes it", () => {
+    const { commands } = run(["3", "j", "j"]);
+    expect(commands).toEqual([
+      { count: 3, motion: "lineDown", type: "move" },
+      { count: 1, motion: "lineDown", type: "move" },
+    ]);
+  });
+});
+
+describe("operator sequences", () => {
+  it("dd deletes lines and yy yanks them", () => {
+    expect(run(["d", "d"]).commands).toEqual([
+      { count: 1, type: "deleteLine" },
+    ]);
+    expect(run(["y", "y"]).commands).toEqual([{ count: 1, type: "yankLine" }]);
+  });
+
+  it("gg jumps to the document start", () => {
+    expect(run(["g", "g"]).commands).toEqual([
+      { count: 1, motion: "docStart", type: "move" },
+    ]);
+  });
+
+  it("an aborted operator consumes the next key instead of running it", () => {
+    // `dx` must not fall through to `x` — that would delete a character the
+    // user never asked for.
+    const { commands, state } = run(["d", "x"]);
+    expect(commands).toEqual([]);
+    expect(state.pending).toBeNull();
+    expect(state.count).toBeNull();
+  });
+
+  it("z. centers on the first non-blank; zz keeps the column", () => {
+    expect(run(["z", "."]).commands).toEqual([
+      { firstNonBlank: true, type: "scrollCursor" },
+    ]);
+    expect(run(["z", "z"]).commands).toEqual([
+      { firstNonBlank: false, type: "scrollCursor" },
+    ]);
+  });
+
+  it("an aborted z consumes the key; a count is spent, never leaked", () => {
+    const aborted = run(["z", "q"]);
+    expect(aborted.commands).toEqual([]);
+    expect(aborted.state.pending).toBeNull();
+    const counted = run(["3", "z", "z", "x"]);
+    expect(counted.commands).toEqual([
+      { firstNonBlank: false, type: "scrollCursor" },
+      { count: 1, type: "deleteCharForward" },
+    ]);
+  });
+
+  it("dz aborts the operator without scrolling or deleting", () => {
+    const { commands, state } = run(["d", "z"]);
+    expect(commands).toEqual([]);
+    expect(state.pending).toBeNull();
+  });
+
+  it("zz in visual keeps the selection and still asks for a center", () => {
+    const entered = step(initialCoreState(), key("v"), { cursor: 5 }).state;
+    const { commands, state } = run(["z", "z"], entered, 5);
+    expect(commands).toEqual([{ firstNonBlank: false, type: "scrollCursor" }]);
+    expect(state.mode).toBe("visual");
+    expect(state.visual).toEqual(entered.visual);
+  });
+
+  it("an aborted z in visual keeps the selection too", () => {
+    const entered = step(initialCoreState(), key("v"), { cursor: 5 }).state;
+    const { commands, state } = run(["z", "q"], entered, 5);
+    expect(commands).toEqual([]);
+    expect(state.pending).toBeNull();
+    expect(state.mode).toBe("visual");
+    expect(state.visual).toEqual(entered.visual);
+  });
+
+  it("Escape cancels a pending operator without leaving normal mode", () => {
+    const { commands, state } = run(["2", "d", "Escape"]);
+    expect(commands).toEqual([]);
+    expect(state.mode).toBe("normal");
+    expect(state.pending).toBeNull();
+    expect(state.count).toBeNull();
+  });
+});
+
+describe("visual mode keys", () => {
+  const inVisual = (): VimCoreState => ({
+    count: null,
+    exLine: null,
+    lastFind: null,
+    lastSearch: null,
+    mode: "visual",
+    pendingCount: null,
+    pending: null,
+    searchLine: null,
+    visual: { anchorCursor: 5, headCursor: 9, kind: "char" },
+  });
+
+  it("d and x both delete the selection and return to normal", () => {
+    for (const k of ["d", "x"]) {
+      const r = step(inVisual(), key(k), { cursor: 9 });
+      expect(r.command).toEqual({ type: "deleteVisual" });
+      expect(r.state.mode).toBe("normal");
+      expect(r.state.visual).toBeNull();
+    }
+  });
+
+  it("y yanks and v toggles back out", () => {
+    expect(step(inVisual(), key("y"), { cursor: 9 }).command).toEqual({
+      type: "yankVisual",
+    });
+    expect(step(inVisual(), key("v"), { cursor: 9 }).command).toEqual({
+      type: "leaveVisual",
+    });
+  });
+
+  it("motions stay motions in visual mode (the adapter moves the head)", () => {
+    const r = step(inVisual(), key("j"), { cursor: 9 });
+    expect(r.command).toEqual({ count: 1, motion: "lineDown", type: "move" });
+    expect(r.state.mode).toBe("visual");
+  });
+});
+
+describe("pass-through — the core must not eat the app's keys", () => {
+  it("lets Mod chords through in normal mode", () => {
+    for (const k of ["s", "c", "v", "x", "/"]) {
+      const r = step(initialCoreState(), key(k, { mod: true }), { cursor: 0 });
+      expect(r.handled).toBe(false);
+      expect(r.command).toBeNull();
+    }
+  });
+
+  it("lets unknown Ctrl chords through but claims <C-r> for redo", () => {
+    expect(
+      step(initialCoreState(), key("t", { ctrl: true }), { cursor: 0 }).handled,
+    ).toBe(false);
+    const redo = step(initialCoreState(), key("r", { ctrl: true }), {
+      cursor: 0,
+    });
+    expect(redo.command).toEqual({ count: 1, type: "redo" });
+  });
+
+  it("passes every insert-mode key except Escape", () => {
+    const insert = initialCoreState("insert");
+    for (const k of ["a", "ㅁ", "j", "d"]) {
+      expect(step(insert, key(k), { cursor: 0 }).handled).toBe(false);
+    }
+  });
+
+  it("swallows unmapped bare keys in normal mode so they cannot type", () => {
+    const r = step(initialCoreState(), key("ㅁ"), { cursor: 0 });
+    expect(r.handled).toBe(true);
+    expect(r.command).toBeNull();
+  });
+});
+
+describe("normal-mode edits", () => {
+  it("x deletes forward, p/P paste on either side, u undoes", () => {
+    expect(run(["2", "x"]).commands).toEqual([
+      { count: 2, type: "deleteCharForward" },
+    ]);
+    expect(run(["p"]).commands).toEqual([
+      { after: true, count: 1, type: "paste" },
+    ]);
+    expect(run(["P"]).commands).toEqual([
+      { after: false, count: 1, type: "paste" },
+    ]);
+    expect(run(["u"]).commands).toEqual([{ count: 1, type: "undo" }]);
+  });
+
+  it("o and O open a line and enter insert", () => {
+    const below = run(["o"]);
+    expect(below.commands).toEqual([{ below: true, type: "openLine" }]);
+    expect(below.state.mode).toBe("insert");
+    expect(run(["O"]).commands).toEqual([{ below: false, type: "openLine" }]);
+  });
+});
+
+describe("arrow keys are motions (device report)", () => {
+  it.each([
+    ["ArrowLeft", "charLeft"],
+    ["ArrowRight", "charRight"],
+    ["ArrowUp", "lineUp"],
+    ["ArrowDown", "lineDown"],
+    ["Home", "lineStart"],
+    ["End", "lineEnd"],
+    ["^", "lineFirstNonBlank"],
+  ] as const)("%s → %s in normal mode", (k, motion) => {
+    const result = step(initialCoreState("normal"), key(k), { cursor: 0 });
+    expect(result.handled).toBe(true);
+    expect(result.command).toEqual({ count: 1, motion, type: "move" });
+  });
+
+  it("counts apply: 3 ArrowDown moves three lines", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("3"), { cursor: 0 }).state;
+    const result = step(state, key("ArrowDown"), { cursor: 0 });
+    expect(result.command).toEqual({
+      count: 3,
+      motion: "lineDown",
+      type: "move",
+    });
+  });
+
+  it("arrows in visual mode move the head too", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("v"), { cursor: 0 }).state;
+    const result = step(state, key("ArrowRight"), { cursor: 0 });
+    expect(result.command).toEqual({
+      count: 1,
+      motion: "charRight",
+      type: "move",
+    });
+    expect(result.state.mode).toBe("visual");
+  });
+});
+
+describe("V — linewise visual", () => {
+  it("V in normal enters LINEWISE visual anchored at the cursor", () => {
+    const r = step(initialCoreState("normal"), key("V", { shift: true }), {
+      cursor: 7,
+    });
+    expect(r.command).toEqual({ type: "enterVisual" });
+    expect(r.state.mode).toBe("visual");
+    expect(r.state.visual).toEqual({
+      anchorCursor: 7,
+      headCursor: 7,
+      kind: "line",
+    });
+  });
+
+  it("V inside charwise visual switches the KIND, keeping the range", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("v"), { cursor: 3 }).state;
+    const r = step(state, key("V", { shift: true }), { cursor: 3 });
+    expect(r.state.visual).toEqual({
+      anchorCursor: 3,
+      headCursor: 3,
+      kind: "line",
+    });
+    expect(r.command).toEqual({ type: "enterVisual" }); // re-render
+  });
+
+  it("V inside linewise visual exits to normal", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("V", { shift: true }), { cursor: 3 }).state;
+    const r = step(state, key("V", { shift: true }), { cursor: 3 });
+    expect(r.state.mode).toBe("normal");
+    expect(r.command).toEqual({ type: "leaveVisual" });
+  });
+
+  it("v inside linewise visual switches back to charwise", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("V", { shift: true }), { cursor: 3 }).state;
+    const r = step(state, key("v"), { cursor: 3 });
+    expect(r.state.visual?.kind).toBe("char");
+    expect(r.state.mode).toBe("visual");
+  });
+
+  it("v still starts CHARWISE visual", () => {
+    const r = step(initialCoreState("normal"), key("v"), { cursor: 5 });
+    expect(r.state.visual).toEqual({
+      anchorCursor: 5,
+      headCursor: 5,
+      kind: "char",
+    });
+  });
+});
+
+describe("operator + motion (d/y/c + w b h l 0 ^ \u0024 j k gg G)", () => {
+  it("dw emits a delete over wordForward", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toEqual({
+      count: 1,
+      motion: "wordForward",
+      op: "d",
+      type: "operatorMotion",
+    });
+    expect(r.state.mode).toBe("normal");
+  });
+
+  it("2dw carries the count typed before the operator", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("2"), { cursor: 0 }).state;
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 2, motion: "wordForward" });
+  });
+
+  it("d2w accepts digits BETWEEN operator and motion", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    state = step(state, key("2"), { cursor: 0 }).state;
+    expect(state.pending).toBe("d"); // digit keeps the operator pending
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 2, motion: "wordForward" });
+  });
+
+  it("cw enters insert and emits a change operator", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("c"), { cursor: 0 }).state;
+    expect(state.pending).toBe("c");
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toEqual({
+      count: 1,
+      motion: "wordForward",
+      op: "c",
+      type: "operatorMotion",
+    });
+    expect(r.state.mode).toBe("insert");
+  });
+
+  it("cc changes the whole line: deleteLine-like plus insert", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("c"), { cursor: 0 }).state;
+    const r = step(state, key("c"), { cursor: 0 });
+    expect(r.command).toEqual({ count: 1, type: "changeLine" });
+    expect(r.state.mode).toBe("insert");
+  });
+
+  it("dG emits the operator over docEnd", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("G", { shift: true }), { cursor: 0 });
+    expect(r.command).toMatchObject({ motion: "docEnd", op: "d" });
+  });
+
+  it("dgg resolves the g-prefix inside a pending operator", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    state = step(state, key("g"), { cursor: 0 }).state;
+    const r = step(state, key("g"), { cursor: 0 });
+    expect(r.command).toMatchObject({ motion: "docStart", op: "d" });
+  });
+
+  it("an unknown motion still aborts the sequence and is consumed", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("d"), { cursor: 0 }).state;
+    const r = step(state, key("z"), { cursor: 0 });
+    expect(r.handled).toBe(true);
+    expect(r.command).toBeNull();
+    expect(r.state.pending).toBeNull();
+  });
+});
+
+describe("f/t char find", () => {
+  it("f holds a pending char; the next key emits findChar", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    expect(state.pending).toBe("f");
+    const r = step(state, key("x"), { cursor: 0 });
+    expect(r.command).toEqual({
+      char: "x",
+      count: 1,
+      kind: "f",
+      type: "findChar",
+    });
+    expect(r.state.lastFind).toEqual({ char: "x", kind: "f" });
+  });
+
+  it("the find ARGUMENT uses the raw key — hangul stays hangul", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, { ...key("j"), raw: "\u3153" }, { cursor: 0 });
+    expect(r.command).toMatchObject({ char: "\u3153", kind: "f" });
+  });
+
+  it("2fx carries the count; T works too", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("2"), { cursor: 0 }).state;
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, key("x"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 2 });
+
+    let s2 = initialCoreState("normal");
+    s2 = step(s2, key("T", { shift: true }), { cursor: 0 }).state;
+    expect(s2.pending).toBe("T");
+  });
+
+  it("; repeats the last find and , reverses it", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    state = step(state, key("x"), { cursor: 0 }).state;
+
+    const rep = step(state, key(";"), { cursor: 0 });
+    expect(rep.command).toEqual({
+      char: "x",
+      count: 1,
+      kind: "f",
+      repeat: true,
+      type: "findChar",
+    });
+    const rev = step(state, key(","), { cursor: 0 });
+    expect(rev.command).toMatchObject({ char: "x", kind: "F" });
+  });
+
+  it("Escape aborts a pending find; ; with no history is a no-op", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, key("Escape"), { cursor: 0 });
+    expect(r.command).toBeNull();
+    expect(r.state.pending).toBeNull();
+
+    const none = step(initialCoreState("normal"), key(";"), { cursor: 0 });
+    expect(none.command).toBeNull();
+    expect(none.handled).toBe(true);
+  });
+
+  it("f2 searches the literal character 2 — digits never leak into counts", () => {
+    let state = initialCoreState("normal");
+    state = step(state, key("f"), { cursor: 0 }).state;
+    const r = step(state, key("2"), { cursor: 0 });
+    expect(r.command).toEqual({
+      char: "2",
+      count: 1,
+      kind: "f",
+      type: "findChar",
+    });
+    expect(r.state.pendingCount).toBeNull();
+  });
+});
+
+describe("operator counts MULTIPLY (review ops-R1)", () => {
+  it("2d3w is six words, not twenty-three", () => {
+    let state = initialCoreState("normal");
+    for (const k of ["2", "d", "3"])
+      state = step(state, key(k), { cursor: 0 }).state;
+    const r = step(state, key("w"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 6, motion: "wordForward" });
+  });
+
+  it("2d2j multiplies too", () => {
+    let state = initialCoreState("normal");
+    for (const k of ["2", "d", "2"])
+      state = step(state, key(k), { cursor: 0 }).state;
+    const r = step(state, key("j"), { cursor: 0 });
+    expect(r.command).toMatchObject({ count: 4 });
+  });
+});

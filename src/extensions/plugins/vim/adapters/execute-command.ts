@@ -1,0 +1,372 @@
+// §298 Vim Phase 1 — CoreCommand execution (design §2 adapters, S2).
+//
+// The core hands back INTENTS; this module turns them into dispatches using
+// the operation builders. Refusals surface through the returned reason (the
+// plugin decides whether it is worth a toast). Commands that need the
+// SELECTION rather than a document change — motions, finds, visual entry and
+// exit, the z-family — are handled earlier by the plugin's selection path
+// and reach the switch below only as exhaustiveness no-ops.
+
+import type {
+  CoreCommand,
+  InsertAnchor,
+  Motion,
+  VisualState,
+} from "../core/types";
+import type { Transaction } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
+
+import { redo, undo } from "@tiptap/pm/history";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+
+import { getAction } from "../../../../keybindings/keybinding-actions";
+import { cursorSelection } from "./cursor-selection";
+import { nextUnitBoundary } from "./graphemes";
+import { resolveFindChar, segmentSpanAt, wordEndAt } from "./motions";
+import { resolveMotion } from "./motions";
+import {
+  changeLines,
+  deleteCharForward,
+  deleteLine,
+  deleteVisual,
+  linewiseSpan,
+  type OperationOutcome,
+  yankLine,
+  yankVisual,
+} from "./operations";
+import { pasteRegister } from "./paste";
+import { readVimRegister, writeVimRegister } from "./register";
+import { scrollCursorIntoView } from "./scroll";
+
+export interface ExecutionResult {
+  /** True when a transaction landed. A PARTIALLY applied change returns a
+   *  reason AND applied — rolling such a change back to normal would lie
+   *  about a document that already changed (review ops-R3). */
+  applied?: boolean;
+  /** Refusal message for the status line, when the operation said no. */
+  reason?: string;
+  /** Routine no-op — consumed like vim, but never worth a toast. */
+  silent?: boolean;
+}
+
+export function executeCoreCommand(
+  view: EditorView,
+  command: CoreCommand,
+  visual: null | VisualState,
+): ExecutionResult {
+  const state = view.state;
+  // A NodeSelection (block atom line) reads as its own position — PM's head
+  // points past the node and would resolve the NEXT line (review S3-R1).
+  const head =
+    state.selection instanceof NodeSelection
+      ? state.selection.from
+      : state.selection.head;
+
+  switch (command.type) {
+    case "changeLine":
+      // cc — the register holds exactly what the change removes (review
+      // ops-R1: a counted yank next to a single-segment delete lied).
+      return dispatchOutcome(view, changeLines(state, head, command.count));
+    case "deleteCharForward":
+      return dispatchOutcome(
+        view,
+        deleteCharForward(state, head, command.count),
+      );
+    case "deleteLine":
+      return dispatchOutcome(view, deleteLine(state, head, command.count));
+    case "deleteVisual": {
+      if (!visual) return {};
+      if (visual.kind === "line") {
+        const span = linewiseSpan(state, visual);
+        return dispatchOutcome(view, deleteLine(state, span.start, span.count));
+      }
+      return dispatchOutcome(view, deleteVisual(state, visual));
+    }
+    case "enterInsert":
+      return enterInsert(view, command.at, head);
+    case "enterVisual":
+    case "findChar":
+    case "leaveVisual":
+    case "move":
+    case "search":
+      // Owned by the plugin's selection path (one transaction carries the
+      // core state AND the new selection). Unreachable here; the case keeps
+      // the switch exhaustive so a new command cannot slip through silently.
+      return {};
+    case "exCommand":
+      return runExCommand(command.name);
+    case "openLine": {
+      // §9 minimal o/O: a sibling empty paragraph next to the current block;
+      // the segment/container refinements arrive with S3 cursor work.
+      const $head = state.doc.resolve(head);
+      const depth = $head.depth === 0 ? 0 : $head.depth;
+      const blockPos = depth === 0 ? head : $head.before(depth);
+      const node = state.doc.nodeAt(blockPos);
+      const at = command.below ? blockPos + (node?.nodeSize ?? 1) : blockPos;
+      const paragraph = state.schema.nodes.paragraph.create();
+      const tr = state.tr.insert(at, paragraph);
+      tr.setSelection(TextSelection.create(tr.doc, at + 1));
+      return { applied: dispatchLanded(view, tr) };
+    }
+    case "operatorFind": {
+      const match = resolveFindChar(
+        state,
+        head,
+        command.char,
+        command.kind === "f" || command.kind === "t" ? "f" : "F",
+        command.count,
+      );
+      if (match === head) return { reason: "char not found", silent: true };
+      const forward = command.kind === "f" || command.kind === "t";
+      const lo = forward
+        ? head
+        : command.kind === "T"
+          ? nextUnitBoundary(state, match)
+          : match;
+      const hi = forward
+        ? command.kind === "f"
+          ? nextUnitBoundary(state, match)
+          : match
+        : head;
+      // FOUND but an empty range (T with the match right next door): vim
+      // enters insert for c and quietly does nothing for d/y — the register
+      // survives either way (vim-verified, review ops-R3).
+      if (hi <= lo) return {};
+      writeVimRegister({
+        kind: "char",
+        slice: state.doc.slice(lo, hi).toJSON(),
+      });
+      if (command.op !== "y") {
+        const tr = state.tr.delete(lo, hi);
+        tr.setSelection(TextSelection.create(tr.doc, lo));
+        return { applied: dispatchLanded(view, tr) };
+      }
+      return {};
+    }
+    case "operatorMotion":
+      return runOperatorMotion(view, command, head);
+    case "paste":
+      return dispatchOutcome(
+        view,
+        pasteRegister(
+          state,
+          head,
+          readVimRegister(),
+          command.after,
+          command.count,
+        ),
+      );
+    case "redo":
+      runHistory(view, redo, command.count);
+      return {};
+    case "scrollCursor":
+      // Owned by the plugin's selection path (z. moves the cursor, both
+      // variants scroll the view) — never reaches the executor.
+      return {};
+    case "undo":
+      runHistory(view, undo, command.count);
+      return {};
+    case "yankLine":
+      return dispatchOutcome(view, yankLine(state, head, command.count));
+    case "yankVisual": {
+      if (!visual) return {};
+      if (visual.kind === "line") {
+        const span = linewiseSpan(state, visual);
+        return dispatchOutcome(view, yankLine(state, span.start, span.count));
+      }
+      return dispatchOutcome(view, yankVisual(state, visual));
+    }
+  }
+}
+
+/**
+ * i / a / I / A place the caret BEFORE insert mode takes over. Insert mode
+ * may sit one unit past the last character (normal mode clamps to unit
+ * starts), so `a` at the end of a line and `A` land on the segment end.
+ */
+function enterInsert(
+  view: EditorView,
+  at: InsertAnchor,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  if (at === "atCursor") return {};
+  const span = segmentSpanAt(state, head);
+  if (!span) return {}; // atom line — nothing to place
+  const target =
+    at === "lineStart"
+      ? resolveMotion(state, head, "lineFirstNonBlank", 1)
+      : at === "lineEnd"
+        ? span.to
+        : Math.min(nextUnitBoundary(state, head), span.to);
+  if (target === head) return {};
+  const tr = state.tr.setSelection(TextSelection.create(state.doc, target));
+  return { applied: dispatchLanded(view, tr.scrollIntoView()) };
+}
+
+/** Motions that make an operator act LINEWISE, like vim (dj deletes two
+ *  whole lines, dG to the end of the document). */
+const LINEWISE_MOTIONS = new Set<Motion>([
+  "docEnd",
+  "docStart",
+  "lineDown",
+  "lineUp",
+]);
+
+/**
+ * Dispatches and reports whether the transaction was ACCEPTED. A coexisting
+ * plugin's filterTransaction can drop the dispatch wholesale — `applied`
+ * must not lie about a transaction that never landed (review ops-R4).
+ * Acceptance is STATE identity, exactly runHistory's progress guard: a
+ * dropped transaction keeps the same state object, while an accepted one
+ * always makes a new one — even when the resulting document happens to
+ * equal the original, as in 2cc on an empty line whose second line refuses
+ * (document equality misread that as a drop, review ops-R5).
+ */
+function dispatchLanded(view: EditorView, tr: Transaction): boolean {
+  const before = view.state;
+  // No scrollIntoView flag: the direct follow below is the single route
+  // (flagging it too made PM run its own geometry pass — review P4).
+  view.dispatch(tr);
+  // Every edit leaves a landing selection — vim keeps it visible. The
+  // DIRECT call matters: PM's own scroll pipeline bails when the DOM
+  // selection sits outside a non-editable view, i.e. vim modal (ops-R8).
+  if (view.state !== before) {
+    scrollCursorIntoView(view, vimHeadOf(view.state));
+    return true;
+  }
+  return false;
+}
+
+/** Registers first, then dispatches — a yank has no tr and that is fine. */
+function dispatchOutcome(
+  view: EditorView,
+  outcome: OperationOutcome,
+): ExecutionResult {
+  if (outcome.register) writeVimRegister(outcome.register);
+  const result: ExecutionResult = {
+    applied: outcome.tr !== null && dispatchLanded(view, outcome.tr),
+  };
+  if (outcome.reason) result.reason = outcome.reason;
+  if (outcome.silent) result.silent = true;
+  return result;
+}
+
+/** Baram's ex commands, mirroring what the CodeMirror adapter defines for the
+ *  other two surfaces (components/editor/vim-mode.ts). Both go through app
+ *  ACTIONS rather than touching the document, so `:q` keeps the unsaved-changes
+ *  guard. Resolved at invocation time — App registers the actions at startup. */
+const EX_ACTIONS: Record<string, string> = {
+  q: "file.closeTab",
+  quit: "file.closeTab",
+  w: "file.save",
+  write: "file.save",
+};
+
+function runExCommand(name: string): ExecutionResult {
+  const actionId = EX_ACTIONS[name];
+  if (!actionId) return { reason: `not an editor command: :${name}` };
+  const action = getAction(actionId);
+  // Registered at startup; missing means the app is still booting.
+  if (!action) return { reason: `:${name} is not available yet` };
+  action();
+  return {};
+}
+
+/**
+ * Counted history with a PROGRESS guard. PM's undo/redo return "history
+ * exists", not "the dispatch landed" — a filterTransaction-style drop keeps
+ * returning true while view.state never changes, and a bare count loop
+ * would spin to the full count (or forever) doing nothing (review S2-R2).
+ */
+function runHistory(
+  view: EditorView,
+  command: typeof undo,
+  count: number,
+): void {
+  const start = view.state;
+  for (let i = 0; i < count; i++) {
+    const before = view.state;
+    if (!command(view.state, view.dispatch)) break;
+    if (view.state === before) break; // dispatch was dropped — no progress
+  }
+  // prosemirror-history flags its transactions, but PM's scroll pipeline
+  // is dead on a non-editable view — follow the restored cursor directly.
+  // Only on PROGRESS: u at history's start must not snap a wheel-scrolled
+  // viewport back to an unchanged cursor (review ops-R9).
+  if (view.state !== start) {
+    scrollCursorIntoView(view, vimHeadOf(view.state));
+  }
+}
+
+function runOperatorMotion(
+  view: EditorView,
+  command: Extract<CoreCommand, { type: "operatorMotion" }>,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  const { count, motion, op } = command;
+
+  if (LINEWISE_MOTIONS.has(motion)) {
+    const target = resolveMotion(state, head, motion, count);
+    const span = linewiseSpan(state, {
+      anchorCursor: head,
+      headCursor: target,
+      kind: "line",
+    });
+    if (op === "y") {
+      return dispatchOutcome(view, yankLine(state, span.start, span.count));
+    }
+    if (op === "c") {
+      // change: context-aware replacement in ONE transaction (review
+      // ops-R1: a post-inserted top-level paragraph split lists).
+      return dispatchOutcome(view, changeLines(state, span.start, span.count));
+    }
+    return dispatchOutcome(view, deleteLine(state, span.start, span.count));
+  }
+
+  // Charwise. Exclusive by default; \u0024 runs through the line end, and
+  // cw acts as ce (change the word only — vim's famous special case).
+  let target = resolveMotion(state, head, motion, count);
+  if (
+    op === "c" &&
+    motion === "wordForward" &&
+    wordEndAt(state, head) !== null
+  ) {
+    // vim's cw-as-ce, counted: c2w ends at the SECOND word's end (review
+    // ops-R1: overwriting with the current word's end dropped the count).
+    const nthStart =
+      count > 1 ? resolveMotion(state, head, "wordForward", count - 1) : head;
+    target = wordEndAt(state, nthStart) ?? target;
+  }
+  if (motion === "charRight") {
+    // Operators need the half-open endpoint — the cursor motion clamps to
+    // the last unit START, making dl/cl a no-op there (review ops-R1).
+    let boundary = head;
+    for (let i = 0; i < count; i++) {
+      const next = nextUnitBoundary(state, boundary);
+      if (next === boundary) break;
+      boundary = next;
+    }
+    target = boundary;
+  }
+  const lo = Math.min(head, target);
+  let hi = Math.max(head, target);
+  if (motion === "lineEnd") hi = nextUnitBoundary(state, hi);
+  if (hi <= lo) return {};
+
+  writeVimRegister({ kind: "char", slice: state.doc.slice(lo, hi).toJSON() });
+  if (op !== "y") {
+    const tr = state.tr.delete(lo, hi);
+    tr.setSelection(cursorSelection(tr.doc, lo));
+    return { applied: dispatchLanded(view, tr) };
+  }
+  return {};
+}
+
+/** The vim head of a landing selection — a NodeSelection reads as its own
+ *  position, like vimCursor in the plugin (review S3-R1). */
+function vimHeadOf(state: EditorView["state"]): number {
+  const sel = state.selection;
+  return sel instanceof NodeSelection ? sel.from : sel.head;
+}

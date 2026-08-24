@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { useUIStore } from "../../stores/ui/ui";
 
 export function ZettelTitleDialog() {
+  const { t } = useTranslation();
   const { dialog, close } = useUIStore(
     useShallow((s) => ({
       dialog: s.zettelTitleDialog,
@@ -46,12 +48,12 @@ export function ZettelTitleDialog() {
             }
             if (e.key === "Escape") close();
           }}
-          placeholder="노트 제목"
+          placeholder={t("journal.zettel.titlePlaceholder")}
           type="text"
           value={title}
         />
         <div className="zettel-title-dialog-actions">
-          <button onClick={close}>Cancel</button>
+          <button onClick={close}>{t("common.cancel")}</button>
           <button onClick={submit}>{dialog.confirmLabel}</button>
         </div>
       </div>

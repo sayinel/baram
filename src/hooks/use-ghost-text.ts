@@ -22,6 +22,10 @@ import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
 import { useEditorStore } from "../stores/editor/editor";
 import { useWritingFlowStore } from "../stores/writing-flow-store";
+import {
+  type EditorMutationTask,
+  registerEditorMutationTask,
+} from "../utils/editor/mutation-tasks";
 import { GhostTextCache } from "../utils/ghost-text-cache";
 import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
 import { createLLMStream } from "../utils/llm-stream";
@@ -45,6 +49,8 @@ export function useGhostText(editor: Editor | null) {
   const activeRequestRef = useRef<null | string>(null);
   const accumulatedRef = useRef("");
   const lastFilePathRef = useRef<string | undefined>(undefined);
+  // §298 §12-9b: one mutation task per in-flight request (design §5c).
+  const activeTaskRef = useRef<EditorMutationTask | null>(null);
 
   const cleanup = useCallback(async () => {
     if (debounceRef.current) {
@@ -60,6 +66,9 @@ export function useGhostText(editor: Editor | null) {
     unlistenRefs.current = [];
     activeRequestRef.current = null;
     accumulatedRef.current = "";
+    // The request this task tracked is gone either way — close the record.
+    activeTaskRef.current?.finish();
+    activeTaskRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -123,8 +132,19 @@ export function useGhostText(editor: Editor | null) {
 
       const currentStore = useAIStore.getState();
 
+      // §298 §12-9b (design §5c) — the task must bind HERE, not inside the
+      // timer: `from`/`textBefore` above belong to THIS document. Registering
+      // inside the callback would leave a state install during the debounce
+      // with nothing to invalidate, and the callback would then register into
+      // the NEW generation — painting the previous tab's suggestion into the
+      // new document (and Tab-accepting it there).
+      const task = registerEditorMutationTask(editor.view);
+      activeTaskRef.current = task;
+      task.addCleanup(() => void cleanup());
+
       // Debounce
       debounceRef.current = setTimeout(async () => {
+        if (!task.isLive()) return;
         const requestId = `ghost_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         activeRequestRef.current = requestId;
         accumulatedRef.current = "";
@@ -139,8 +159,10 @@ export function useGhostText(editor: Editor | null) {
             taskCfg.provider,
             getFilePrivacy(editor),
           )
-        )
+        ) {
+          task.finish();
           return;
+        }
 
         try {
           const tokenUn = await listen<LLMTokenPayload>(
@@ -148,6 +170,7 @@ export function useGhostText(editor: Editor | null) {
             (event) => {
               if (event.payload.requestId !== requestId) return;
               if (activeRequestRef.current !== requestId) return;
+              if (!task.isLive()) return;
 
               accumulatedRef.current += event.payload.token;
               const suggestion = accumulatedRef.current.slice(
@@ -183,6 +206,7 @@ export function useGhostText(editor: Editor | null) {
                 currentFilePath,
               );
             }
+            task.finish(); // cache write above is editor-independent
           });
           unlistenRefs.current.push(doneUn);
 
@@ -191,16 +215,19 @@ export function useGhostText(editor: Editor | null) {
             (event) => {
               if (event.payload.requestId !== requestId) return;
               // Silently dismiss on error
-              try {
-                editor.view.dispatch(
-                  editor.state.tr.setMeta(ghostTextPluginKey, {
-                    text: null,
-                    pos: 0,
-                  }),
-                );
-              } catch {
-                // ignore
+              if (task.isLive()) {
+                try {
+                  editor.view.dispatch(
+                    editor.state.tr.setMeta(ghostTextPluginKey, {
+                      text: null,
+                      pos: 0,
+                    }),
+                  );
+                } catch {
+                  // ignore
+                }
               }
+              task.finish();
             },
           );
           unlistenRefs.current.push(errorUn);
@@ -212,6 +239,10 @@ export function useGhostText(editor: Editor | null) {
           const systemPrompt = flowContext
             ? `${ghostConfig.systemPrompt}\n\n${flowContext}`
             : ghostConfig.systemPrompt;
+
+          // Listener registration awaited above — recheck before spending a
+          // request on a document that is no longer installed.
+          if (!task.isLive()) return;
 
           await llmComplete(
             ghostConfig.contextText,
@@ -225,6 +256,7 @@ export function useGhostText(editor: Editor | null) {
           );
         } catch {
           // silently ignore — ghost text is non-critical
+          task.finish();
         }
       }, currentStore.ghostTextDebounceMs);
     };

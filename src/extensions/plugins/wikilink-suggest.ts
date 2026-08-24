@@ -3,7 +3,6 @@ import type { Editor } from "@tiptap/core";
 // §31 Wikilink autocomplete — Tiptap Extension using Suggestion API
 // Triggers on [[ and shows a file search popup
 import { Extension } from "@tiptap/core";
-import { PluginKey } from "@tiptap/pm/state";
 import { Suggestion } from "@tiptap/suggestion";
 
 import { WikilinkMenuList } from "../../components/command/WikilinkMenu";
@@ -13,6 +12,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { buildFileTree, useFileStore } from "../../stores/file/file";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { isBinaryViewerFile, isHtmlFile } from "../../utils/file-type";
+import { wikilinkSuggestPluginKey } from "./suggestion-keys";
 import {
   createSuggestionRenderer,
   type SuggestionRendererState,
@@ -98,7 +98,7 @@ export const WikilinkSuggest = Extension.create({
         editor,
         char: "[[",
         allowSpaces: true,
-        pluginKey: new PluginKey("wikilinkSuggest"),
+        pluginKey: wikilinkSuggestPluginKey,
         // Block autocomplete when SyntaxReveal is editing non-wikilink expansions (marks, links, images).
         // Allow during wikilink expansion so user can change the target via autocomplete.
         allow: ({ state, range }) => {
