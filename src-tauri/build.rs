@@ -11,6 +11,7 @@
 fn main() {
     let app_manifest = tauri_build::AppManifest::new().commands(&[
         "add_context",
+        "append_task_line",
         "confirm_quit",
         "copy_file",
         "create_dir",

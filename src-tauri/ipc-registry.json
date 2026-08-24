@@ -1390,6 +1390,17 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "필드 설정 결과 줄만 계산한다(I/O 없음). 빈 value는 필드 제거"
+    },
+    {
+      "name": "append_task_line",
+      "input": { "path": "string", "line": "string" },
+      "output": "string",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "수집함 파일 끝에 한 줄 append. 없으면 생성, 줄바꿈 스타일 보존"
     }
   ],
   "events": [

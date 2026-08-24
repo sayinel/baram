@@ -1,7 +1,9 @@
 // §304 Vault-wide task index
+mod append;
 mod parse;
 mod write;
 
+pub use append::append_line;
 pub use parse::normalize_line;
 pub use parse::{parse_task_line, TaskState};
 pub use write::{apply_field, apply_state, set_task_field, set_task_state};

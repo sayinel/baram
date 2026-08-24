@@ -3,6 +3,14 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { TaskEntry, TaskState } from "./types";
 
+/** §312 수집함 파일 끝에 한 줄 붙인다. 파일이 없으면 만든다. */
+export async function appendTaskLine(
+  path: string,
+  line: string,
+): Promise<string> {
+  return invoke<string>("append_task_line", { path, line });
+}
+
 /**
  * `rootPath`/`exclude`가 주어지면 vault 전체 스캔과 같은 제외 규칙을 적용한다 —
  * 그러지 않으면 exclude 설정이 워처 기반 증분 갱신에서만 조용히 무시된다(I1).

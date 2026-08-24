@@ -102,6 +102,14 @@ pub fn preview_task_field_line(
         .ok_or_else(|| format!("unknown field: {}", field))
 }
 
+/// §312 수집함 append — 파일이 없으면 만들고 끝에 한 줄 붙인다.
+#[tauri::command]
+pub async fn append_task_line(path: String, line: String) -> Result<String, String> {
+    crate::task::append_line(&path, &line)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
