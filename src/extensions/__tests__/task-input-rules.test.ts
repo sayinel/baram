@@ -54,6 +54,7 @@ describe("TaskInputRules", () => {
     await type(editor, " due:2026-08-30 ");
     expect(editor.getText()).toContain("📅2026-08-30 ");
     expect(editor.getText()).not.toContain("due:");
+    editor.destroy();
   });
 
   it("does not fire when the trigger is embedded inside a longer word", async () => {
@@ -63,22 +64,26 @@ describe("TaskInputRules", () => {
     await type(editor, " overdue:8/30 ");
     expect(editor.getText()).toContain("overdue:8/30");
     expect(editor.getText()).not.toContain("📅");
+    editor.destroy();
   });
 
   it("turns start: and sched: into their own emoji", async () => {
     const a = editorWith(TASK_DOC);
     await type(a, " start:2026-08-25 ");
     expect(a.getText()).toContain("🛫2026-08-25 ");
+    a.destroy();
 
     const b = editorWith(TASK_DOC);
     await type(b, " sched:2026-08-25 ");
     expect(b.getText()).toContain("⏳2026-08-25 ");
+    b.destroy();
   });
 
   it("turns !2 into the high priority emoji", async () => {
     const editor = editorWith(TASK_DOC);
     await type(editor, " !2 ");
     expect(editor.getText()).toContain("⏫");
+    editor.destroy();
   });
 
   it("clears prio:3/!3 (normal priority) without inserting an emoji", async () => {
@@ -88,11 +93,13 @@ describe("TaskInputRules", () => {
     await type(a, " prio:3 ");
     expect(a.getText()).not.toContain("prio:");
     expect(a.getText()).not.toMatch(/[🔺⏫🔽⏬]/u);
+    a.destroy();
 
     const b = editorWith(TASK_DOC);
     await type(b, " !3 ");
     expect(b.getText()).not.toContain("!3");
     expect(b.getText()).not.toMatch(/[🔺⏫🔽⏬]/u);
+    b.destroy();
   });
 
   it("leaves an unparseable value alone", async () => {
@@ -100,6 +107,7 @@ describe("TaskInputRules", () => {
     await type(editor, " due:내일 ");
     expect(editor.getText()).toContain("due:");
     expect(editor.getText()).not.toContain("📅");
+    editor.destroy();
   });
 
   it("does NOT fire inside a plain paragraph", async () => {
@@ -108,5 +116,6 @@ describe("TaskInputRules", () => {
     await type(editor, " due:8/30 ");
     expect(editor.getText()).toContain("due:8/30");
     expect(editor.getText()).not.toContain("📅");
+    editor.destroy();
   });
 });
