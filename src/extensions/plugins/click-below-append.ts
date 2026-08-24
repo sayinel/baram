@@ -34,6 +34,8 @@ import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
  * - windowing spacer inactive (see windowingSpacerActive)
  * - this editor instance is visible (keep-alive editors stay mounted with
  *   display:none; their rects are all-zero, so geometry alone can't tell)
+ * - the document's trailing block is actually rendered (a folded heading hides
+ *   everything after it, so the last child collapses to an all-zero rect)
  * - the press is below the last rendered content — the real "empty area" test.
  *   Geometric, so it also excludes every mid-content click. The threshold is
  *   the last block's bottom edge, EXCEPT when the last block is an empty
@@ -68,6 +70,17 @@ export function handleEmptyAreaMousedown(
     const lastIsEmptyParagraph =
       lastNode?.type.name === "paragraph" && lastNode.content.size === 0;
     const rect = lastEl.getBoundingClientRect();
+    // Folding a heading marks every block after it `.fold-hidden`
+    // (display:none), so the editor's last child collapses to an all-zero rect.
+    // Taking 0 as "the bottom of the content" put EVERY press in the editor
+    // below the document, and the preventDefault() further down then made
+    // ProseMirror discard the event wholesale — `eventBelongsToView` bails on
+    // `defaultPrevented`, so no plugin's handleDOMEvents ran at all. That took
+    // the heading fold arrow with it: a folded last heading could never be
+    // unfolded. An unrendered trailing block means the document end is simply
+    // not on screen, so — exactly like the windowing spacer — the space below
+    // it does not stand for the end of the document.
+    if (rect.width === 0 && rect.height === 0) return false;
     const contentBottom = lastIsEmptyParagraph ? rect.top : rect.bottom;
     if (event.clientY <= contentBottom) return false;
   }

@@ -10,15 +10,22 @@ import { syntaxRevealKey } from "../plugins/syntax-reveal";
 export interface LinkOptions {
   autolink: boolean;
   HTMLAttributes: Record<string, string>;
-  /** Callback for navigating to local .md file links (relative paths). */
-  onNavigateLocal: (href: string) => void;
+  /**
+   * §278.1 Navigate a scheme-less href in the app. Returns whether it did:
+   * `false` hands the href to the OS opener instead.
+   *
+   * ‼️ The return value exists because this extension cannot answer the only
+   * question that separates `[x](Paper.pdf)` from `[x](www.example.com)` —
+   * "is there a file at that path?". The file tree lives in the store layer,
+   * so the decision belongs there and this extension only routes.
+   */
+  onNavigateLocal: (href: string) => boolean;
   openOnClick: boolean;
 }
 
-/** Check if href points to a local markdown file (not an external URL). */
-function isLocalFileLink(href: string): boolean {
-  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return false; // scheme: http, mailto, etc.
-  return /\.(?:md|markdown)(?:#.*)?$/i.test(href) || href.startsWith("#");
+/** scheme: http, mailto, tel, … — an address for the OS, never a file path. */
+function hasUriScheme(href: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:/i.test(href);
 }
 
 declare module "@tiptap/core" {
@@ -59,7 +66,7 @@ export const Link = Mark.create<LinkOptions>({
       HTMLAttributes: { target: "_blank", rel: "noopener noreferrer nofollow" },
       openOnClick: true,
       autolink: true,
-      onNavigateLocal: () => {},
+      onNavigateLocal: () => false,
     };
   },
 
@@ -137,11 +144,14 @@ export const Link = Mark.create<LinkOptions>({
     const { onNavigateLocal } = this.options;
 
     const navigateHref = (href: string) => {
-      if (isLocalFileLink(href)) {
+      // A fragment addresses this very document — never the OS, whether or not
+      // the app layer knows what to do with it.
+      if (href.startsWith("#")) {
         onNavigateLocal(href);
-      } else {
-        openUrl(href).catch((e) => logger.error(e));
+        return;
       }
+      if (!hasUriScheme(href) && onNavigateLocal(href)) return;
+      openUrl(href).catch((e) => logger.error(e));
     };
 
     return [

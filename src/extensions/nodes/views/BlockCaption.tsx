@@ -65,8 +65,19 @@ export function BlockCaption({
         ref={stopNativeMousedown}
       >
         <input
-          className="block-caption-input"
+          // §294 fix (M4, dev/backlog.md 2026-08-22): `media-caption-input`
+          // is what export-html.ts's chrome-stripping loop looks for — SVG
+          // (§5.1) and Mermaid (§5.5) captions carried only
+          // `block-caption-input`, so exporting mid-edit on those blocks
+          // leaked a raw `<input>` (image/video were already covered).
+          // Kept ALONGSIDE `block-caption-input`, not instead of it —
+          // media-block.css styles the two classes differently (this one's
+          // own rule wins on specificity ties by coming later in the file),
+          // so this only closes the export gap without touching how SVG/
+          // Mermaid captions look while editing.
+          className="block-caption-input media-caption-input"
           data-vim-suspend=""
+
           onBlur={commit}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

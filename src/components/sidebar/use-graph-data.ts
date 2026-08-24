@@ -175,6 +175,10 @@ export function useGraphData(params: {
           if (el.length > 0) el.addClass("pinned");
         });
 
+        // Ensure container dimensions are available before first paint.
+        //
+        // ‼️ 숨은 동안에는 재지 않는다 — `display: none`이면 0×0이 나와 뷰포트가
+        // degenerate해진다. 다시 보이게 될 때 아래 별도 effect가 잰다.
         // Ensure container dimensions are available before first paint
         cy.resize();
         // §87 Force style recalculation for newly added nodes
@@ -210,5 +214,10 @@ export function useGraphData(params: {
     contexts,
   ]);
 
+  // §286 숨은 동안 건너뛴 측정을 다시 보이는 순간 한 번 한다.
+  //
+  // ‼️ 이걸 populate effect의 deps에 `active`를 넣어 해결하려 했다가, **탭 전환마다 링크
+  // 그래프를 다시 가져오고 요소 119개를 다시 만드는** 회귀를 만들었다(계측 로그에서
+  // `populate`가 전환마다 두 번 찍혔다). 측정은 측정만 다시 하면 된다.
   return { edgeCount, graphEpoch, nodeCount };
 }

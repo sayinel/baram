@@ -146,6 +146,10 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
               key={item.id}
               onClick={() => selectItem(selectableIdx)}
               onMouseEnter={() => setSelectedIndex(selectableIdx)}
+              // §278 배지가 못 하는 것을 메운다 — 같은 이름이 다른 폴더에 있을 때는
+              // 타입이 같아 배지로 갈리지 않는다. 마우스 사용자에게만 닿는
+              // 보조 수단이라, 구분의 **주된** 수단으로 삼지 않는다(배지가 그것이다).
+              title={item.path || undefined}
             >
               {item.kind === "create" ? (
                 <>
@@ -160,7 +164,16 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
                   <span className="wikilink-item-label">{item.heading}</span>
                 </>
               ) : (
-                <span className="wikilink-item-label">{item.target}</span>
+                <>
+                  <span className="wikilink-item-label">{item.target}</span>
+                  {/* §278 마크다운이 아닌 항목만 — 배지 없는 줄이 곧 노트다.
+                      말줄임이 이름의 끝을 먹어도 타입은 남는다(links.css의
+                      flex-shrink:0). PDF와 그 동반 노트는 이름이 같으므로
+                      이것이 화면에 남는 유일한 구분 정보다. */}
+                  {item.ext && (
+                    <span className="wikilink-item-ext">{item.ext}</span>
+                  )}
+                </>
               )}
             </div>
           );

@@ -504,3 +504,192 @@
   background: var(--color-status-danger);
   border-radius: 9999px;
 }
+
+/* §69 — 한 행. 사이드바(~280px)와 설정 모달(넓음) 양쪽에서 같은 레이아웃으로 동작한다:
+   단일 컬럼 + 오른쪽 정렬 액션, 설명문만 잘린다. 폭에 따라 분기하지 않는다.
+
+   ‼️ `flex-wrap`이 그 "분기하지 않는다"를 실제로 성립시킨다. 액션 묶음은 행의 상태에
+   따라 자란다 — 업데이트가 있는 커뮤니티 행은 Details + "Update to v1.2.0" + 토글 +
+   Remove로 ~290px다. 280px 사이드바에서 행의 콘텐츠 폭은 (border-box, 좌우 패딩 16px씩)
+   248px뿐이라, 줄바꿈 없이는 그 묶음이 패널 밖으로 나갔다.
+
+   미디어 쿼리로 분기하지 않는 이유: 임계값은 패널 폭이 아니라 그 행이 실제로 그린
+   버튼들의 폭이고, 그것은 상태(업데이트 유무·설정 유무·번역문 길이)가 정하므로 CSS가
+   미리 알 수 없다. 줄바꿈은 그 폭을 재지 않고도 성립한다. */
+.plugin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.plugin-row:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+/* `flex-basis`가 줄바꿈 임계점이고, 그것이 이 규칙의 전부다: 텍스트 열은 **8rem 이상을
+   받거나, 아니면 자기 줄을 통째로** 받는다. 그 사이는 없다.
+
+   이전의 `flex: 1`(basis 0)에는 그 중간이 있었다. 액션이 한 줄을 통째로 넘길 때에만
+   내려가므로, 액션이 240px쯤인 구간에서는 같은 줄에 남은 채 텍스트 열이 0px까지 눌려
+   이름과 설명이 통째로 사라진다. basis를 주면 그 구간이 사라진다.
+
+   값이 8rem인 이유는 밀도다: 12rem이면 Details + 토글밖에 없는 내장 행(액션 ~103px)까지
+   280px 사이드바에서 두 줄이 된다 — 넘치지도 않던 행이다. 8rem은 넘치던 행만 내려보낸다. */
+.plugin-row__main {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+/* 긴 이름이 아이콘·버전·배지를 밀어내지 않도록 머리도 줄바꿈한다. */
+.plugin-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.plugin-row__icon {
+  font-size: 20px;
+}
+
+/* 이름은 잘리지 않고 접힌다(설명문만 잘린다는 원칙). `overflow-wrap: anywhere`를 쓰는
+   이유는 그것이 이 스팬의 min-content 폭까지 낮추기 때문이다 — `break-word`는 min-content를
+   그대로 두므로 공백 없는 긴 이름(플러그인 id를 이름으로 쓰는 경우)에 대해 flex 항목의
+   자동 최소 크기가 여전히 열보다 넓어진다. */
+.plugin-row__name {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.plugin-row__version {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* 상세 화면의 "내장" 칩은 행의 것과 같은 칩이어야 한다 — 같은 사실을 두 화면이 같은
+   모양으로 말한다. 규칙을 복제하는 대신 선택자를 묶는다: 복제본은 한쪽만 고쳐지는 순간
+   갈라지고, 갈라진 두 칩은 "같은 것"이라는 신호를 잃는다. */
+.plugin-detail__badge,
+.plugin-row__badge {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.plugin-row__desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.plugin-row__error {
+  padding: 6px 10px;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-status-danger);
+
+  /* 체크섬과 경로는 끊기지 않는 토큰이라 이것 없이는 패널보다 넓어진다. */
+  overflow-wrap: anywhere;
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 6px;
+}
+
+.plugin-row__caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* ‼️ 여기 있던 `flex-shrink: 0`이 결함이었다. 줄바꿈만 켜면 묶음이 자기 줄로 내려오지만,
+   줄어들 수 없는 항목은 그 줄에서도 폭을 그대로 주장하므로 여전히 밖으로 나간다. 기본
+   축소를 허용하면 남은 폭에 맞춰 줄어들고, 아래 `flex-wrap`으로 버튼들이 여러 줄이 된다.
+   `margin-left: auto`는 자기 줄에 혼자 있을 때의 오른쪽 정렬을 담당한다 — 한 줄일 때는
+   `.plugin-row__main`이 남는 공간을 모두 가져가므로 이 auto 여백은 0이 되고, 따라서 넓은
+   모달의 배치는 바뀌지 않는다. */
+.plugin-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+/* 버튼 하나가 홀로 한 줄보다 넓어질 수 있다(긴 번역문, 긴 버전 문자열). 그때를 위해
+   기본 `flex-shrink: 1`을 그대로 두고 — `flex: none`이면 그 버튼이 넘친다 — min-content를
+   낮춰 버튼 안에서 접히게 한다. `max-width`는 축소 해석에 기대지 않는 상한이다. */
+.plugin-row__btn {
+  max-width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  background-color: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.plugin-row__btn--warn {
+  color: var(--color-status-warning-on-solid);
+  background-color: var(--color-status-warning);
+  border-color: transparent;
+}
+
+.plugin-row__btn--danger {
+  color: var(--color-status-danger);
+  border-color: var(--color-status-danger);
+}
+
+/* 버튼과 같은 이유의 상한. 액션 묶음의 직계 자식은 모두 줄 폭 안에 갇혀야 한다. */
+.plugin-row__toggle {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+/* §69 — 접이식 섹션 머리. `.btn-unstyled`는 base.css의 공유 유틸리티다. */
+.plugin-section__head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 16px 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plugin-section__caret {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.plugin-section__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.plugin-section__count {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { listDir, readFile } from "../../ipc/invoke";
 import { formatKeyForDisplay } from "../../keybindings/key-utils";
 import { captureFleeting } from "../../services/zettelkasten-service";
@@ -21,7 +22,15 @@ const saveKeyLabel = formatKeyForDisplay(
 );
 
 export function QuickCaptureDialog() {
-  const { quickCaptureOpen, toggleQuickCapture } = useUIStore();
+  const { t } = useTranslation();
+  // ‼️ bare `useUIStore()` subscribes to the whole store, so an unrelated UI change re-renders
+  // the dialog — and re-renders it while the user is typing into it.
+  const { quickCaptureOpen, toggleQuickCapture } = useUIStore(
+    useShallow((s) => ({
+      quickCaptureOpen: s.quickCaptureOpen,
+      toggleQuickCapture: s.toggleQuickCapture,
+    })),
+  );
   // §99 M4: reactive read so the "space not configured" hint / disabled Save
   // surface immediately on open/render, not only after a failed save attempt.
   const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
@@ -99,14 +108,14 @@ export function QuickCaptureDialog() {
     setSaveError("");
 
     if (!body.trim()) {
-      setSaveError("내용을 입력해주세요.");
+      setSaveError(t("journal.capture.error.empty"));
       return;
     }
 
     // §99 M4: the Save button is disabled while !zettelReady, but keep this
     // check as a defense-in-depth guard (e.g. Enter key submit).
     if (!zettelReady || !zettelDir) {
-      setSaveError("Zettel 공간을 먼저 설정하세요.");
+      setSaveError(t("journal.capture.error.noSpace"));
       return;
     }
 
@@ -115,6 +124,8 @@ export function QuickCaptureDialog() {
       // array, not inline in the body.
       const bodyLines: string[] = [];
       if (body) bodyLines.push(body, "");
+      // ‼️ Not translated: this line is written into the note on disk, not shown in the UI.
+      // A localised key here would make the saved file's format depend on the app language.
       if (source) bodyLines.push(`Source: ${source}`, "");
 
       const tagList = tags
@@ -128,7 +139,7 @@ export function QuickCaptureDialog() {
         tagList,
       );
       if (!result) {
-        setSaveError("Zettel inbox에 저장하지 못했습니다.");
+        setSaveError(t("journal.capture.error.inbox"));
         return;
       }
 
@@ -136,10 +147,12 @@ export function QuickCaptureDialog() {
     } catch (err) {
       logger.error("[QuickCapture] Save failed:", err);
       setSaveError(
-        `저장 실패: ${err instanceof Error ? err.message : String(err)}`,
+        t("journal.capture.error.save", {
+          message: err instanceof Error ? err.message : String(err),
+        }),
       );
     }
-  }, [body, source, tags, zettelReady, zettelDir, toggleQuickCapture]);
+  }, [body, source, tags, zettelReady, zettelDir, toggleQuickCapture, t]);
 
   // Handle tag input changes — detect #prefix for autocomplete
   const handleTagsChange = useCallback(
@@ -259,14 +272,14 @@ export function QuickCaptureDialog() {
         onKeyDown={handleKeyDown}
       >
         <div className="quick-capture-header">
-          <h3>Quick Capture</h3>
+          <h3>{t("journal.capture.title")}</h3>
         </div>
 
         {/* Body */}
         <textarea
           className="quick-capture-textarea"
           onChange={(e) => setBody(e.target.value)}
-          placeholder="메모를 입력하세요..."
+          placeholder={t("journal.capture.body.placeholder")}
           ref={inputRef}
           rows={3}
           value={body}
@@ -276,7 +289,7 @@ export function QuickCaptureDialog() {
         <input
           className="quick-capture-input"
           onChange={(e) => setSource(e.target.value)}
-          placeholder="출처 (선택): https://..."
+          placeholder={t("journal.capture.source.placeholder")}
           type="text"
           value={source}
         />
@@ -291,7 +304,7 @@ export function QuickCaptureDialog() {
             }}
             onChange={handleTagsChange}
             onKeyDown={handleTagsKeyDown}
-            placeholder="#태그1 #태그2"
+            placeholder={t("journal.capture.tags.placeholder")}
             ref={tagsInputRef}
             type="text"
             value={tags}
@@ -309,7 +322,7 @@ export function QuickCaptureDialog() {
             render, not only after a failed save attempt. */}
         {!zettelReady && (
           <div className="quick-capture-error">
-            Zettel 공간을 먼저 설정하세요.
+            {t("journal.capture.error.noSpace")}
           </div>
         )}
 
@@ -319,14 +332,14 @@ export function QuickCaptureDialog() {
         {/* Actions */}
         <div className="quick-capture-actions">
           <button className="quick-capture-cancel" onClick={toggleQuickCapture}>
-            취소
+            {t("common.cancel")}
           </button>
           <button
             className="quick-capture-save"
             disabled={!body.trim() || !zettelReady}
             onClick={handleSave}
           >
-            {`저장 (${saveKeyLabel})`}
+            {t("journal.capture.save", { key: saveKeyLabel })}
           </button>
         </div>
       </div>

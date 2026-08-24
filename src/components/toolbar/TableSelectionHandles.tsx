@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+import { activeEditorScrollContainer } from "../../utils/editor/active-scroll-container";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import { findTableNearPoint } from "./table-insert-coords";
 import {
@@ -164,8 +165,8 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
 
   useEffect(() => {
     const scroll =
-      editor.view.dom.closest(".editor-area-scroll") ??
-      document.querySelector(".editor-area-scroll");
+      editor.view.dom.closest<HTMLElement>(".editor-area-scroll") ??
+      activeEditorScrollContainer();
     if (!scroll) return;
 
     const onMove = (e: MouseEvent) => {

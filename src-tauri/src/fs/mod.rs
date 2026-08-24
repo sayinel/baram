@@ -1,5 +1,9 @@
 // §3.6 파일 시스템 모듈 — 읽기/쓰기/디렉토리 목록/이름변경/삭제/감시
 
+mod copy_dir;
+
+pub use copy_dir::{copy_dir_all, CopyDirReport};
+
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
@@ -26,6 +30,40 @@ pub enum FsError {
 
 /// Directories excluded from markdown file collection.
 pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
+
+/// §278 Recursively collect EVERY file under root, skipping hidden entries and SKIP_DIRS.
+///
+/// The link index scans only markdown for outgoing links, but a wikilink may *point* at
+/// any file — `[[Paper.pdf]]`. Those targets have to be registered somewhere or the link
+/// shows up as a dangling node in the graph and produces no backlink.
+///
+/// ‼️ No extension filter, deliberately. Enumerating the viewable types here would put a
+/// second copy of a list that already lives in the frontend (`utils/file-type.ts`), and a
+/// rule kept in two places is one that eventually only gets updated in one — the 1%
+/// quantisation defect in the zoom path was exactly that. A target map entry for a file
+/// nobody links to costs a string; it can only ever be reached by someone writing that
+/// exact name.
+pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
+    let mut read_dir = tokio::fs::read_dir(root).await?;
+    while let Some(entry) = read_dir.next_entry().await? {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+        let metadata = match entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if metadata.is_dir() {
+            if !SKIP_DIRS.contains(&name.as_str()) {
+                Box::pin(collect_all_files(&entry.path(), files)).await?;
+            }
+        } else if metadata.is_file() {
+            files.push(entry.path());
+        }
+    }
+    Ok(())
+}
 
 /// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
 pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
@@ -406,6 +444,23 @@ pub fn start_watching(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §275.4 B.1 — `src/ipc/fs.ts`'s `isFileNotFoundError` parses a rejection
+    /// string by `startsWith`-matching this exact prefix (its own
+    /// `READ_FILE_NOT_FOUND_PREFIX` constant). The two sides are coupled only
+    /// through this string, with nothing enforcing it at compile time — a
+    /// rewording here makes `isFileNotFoundError` return false for a genuine
+    /// not-found, which sends `appendHighlightBlock`
+    /// (`pdf-highlight-store.ts`) down its `throw e` branch instead of
+    /// treating a missing companion note as "safe to create", breaking every
+    /// first highlight on every PDF. Pin the prefix so a wording change here
+    /// is caught here, not by that call failing silently in the app.
+    #[test]
+    fn not_found_display_prefix_is_what_the_frontend_parses() {
+        assert!(FsError::NotFound("x".into())
+            .to_string()
+            .starts_with("파일을 찾을 수 없습니다:"));
+    }
 
     #[test]
     fn validate_path_rejects_null_byte() {

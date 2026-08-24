@@ -388,6 +388,18 @@ export interface SandboxEditorAPI {
         text: string;
         to: number;
     }>;
+    /**
+     * §4.8 The document's PROSE — what a reader sees, not what the file holds. Block text
+     * joined by newlines, with code blocks and frontmatter excluded and a wikilink's label
+     * included. Requires `editor` or `editor:readonly`.
+     *
+     * Use this, not `getMarkdown()`, for anything that measures or reads the text: counting
+     * words, summarising, sending a document to a model. `getMarkdown()` is for round-tripping
+     * — it hands back `#`, `|` and `**`, which a word count turns into words. The app's own
+     * status bar counts what this returns, so a plugin that uses it agrees with the app
+     * instead of contradicting it on screen.
+     */
+    getText(): Promise<string>;
     /** Insert plain text at the cursor, as one undoable step. Requires `editor`. */
     insertText(text: string): Promise<void>;
     /** Replace the whole document, as one undoable step. Requires `editor`. */

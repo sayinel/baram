@@ -5,7 +5,7 @@ import type {
   PluginSettingField,
 } from "../../../plugins/types";
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { usePluginStore } from "../../../stores/system/plugin";
@@ -137,5 +137,21 @@ describe("PluginSettingsForm", () => {
     expect(
       screen.getByText(/^L+…$/, { normalizer: (s) => s }).textContent,
     ).toHaveLength(80);
+  });
+
+  it("re-renders when the manifest is replaced (dev reload)", () => {
+    // ‼️ dev 플러그인 "다시 로드"는 `addDevPlugin(fresh)`로 매니페스트를 갈아끼운다.
+    // 비반응 `getState()` 조회였다면 열려 있는 폼이 낡은 필드를 계속 보여준다.
+    install([{ default: "", key: "old", label: "Old Field", type: "string" }]);
+    render(<PluginSettingsForm pluginId="p-1" />);
+    expect(screen.getByText("Old Field")).toBeTruthy();
+
+    act(() => {
+      install([
+        { default: "", key: "new", label: "New Field", type: "string" },
+      ]);
+    });
+    expect(screen.getByText("New Field")).toBeTruthy();
+    expect(screen.queryByText("Old Field")).toBeNull();
   });
 });

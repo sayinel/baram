@@ -1,4 +1,5 @@
 // §50 Mermaid diagram utilities — copy, templates, type detection
+import { onSolidForeground } from "../color-contrast";
 import { copySvgAsPng, downloadSvgAsPng } from "./svg-export";
 import { copySvgSource, sanitizeSvg } from "./svg-utils";
 
@@ -192,6 +193,204 @@ export function forceSvgLabels(code: string): string {
 }
 
 /**
+ * Mermaid's theme, and the palette fed to it — one fixed set, for every render
+ * path (NodeView · PNG copy · PNG download · Pandoc assets).
+ *
+ * ‼️ Deliberately NOT a function of the app theme. Mermaid bakes its colours
+ * into the SVG it returns, as an inline `<style>` block, so nothing downstream
+ * can restyle them — a theme-dependent choice here decides how the diagram
+ * looks in a PDF, a DOCX and a copied PNG, destinations that have no theme of
+ * their own. A dark-theme user was getting near-black nodes and light-grey
+ * labels printed onto white paper (measured, mermaid 11.16.1: theme "dark"
+ * gives #ccc text on #1f2020, "default" gives #333 on #ECECFF).
+ *
+ * Following the theme was also never coherent, which is why the answer is to
+ * stop rather than to do it properly:
+ *   - The NodeView's render effect does not depend on the theme, so switching
+ *     theme re-rendered nothing. One document could hold a light diagram and a
+ *     dark one at once, depending on when each last rendered.
+ *   - `activeThemeId === "system"` REMOVES `data-theme`
+ *     (hooks/use-settings-effects.ts), so system-dark rendered LIGHT while
+ *     explicit-dark rendered dark — two dark editors, two palettes.
+ *
+ * A diagram is content. It should not change colour because the chrome did.
+ */
+export const MERMAID_THEME = "base";
+
+// Baram's LIGHT semantic tokens, resolved to literals. Literals rather than
+// `var()` because these values are read by JavaScript and handed to a library
+// that knows nothing about our stylesheet — and because reading them from the
+// live document at render time is exactly the theme-following this removes.
+// `mermaid-theme.test.ts` re-resolves each one from src/styles/generated/ and
+// fails if a token moves, so the copies cannot drift silently.
+const BG_SUBTLE = "#f8f9fa"; // --color-bg-subtle
+const BG_ELEVATED = "#f0f0f3"; // --color-bg-elevated
+const BORDER = "#e5e7eb"; // --color-border-default
+const ACCENT = "#3b82f6"; // --color-accent-default
+const TEXT = "#1a1a1a"; // --color-text-primary
+const TEXT_2 = "#6b7280"; // --color-text-secondary
+const SURFACE = "#ffffff"; // --color-bg-default
+
+/**
+ * Mermaid's own `default` pie and git colours, converted from the `hsl()` it
+ * reports to the hex our contrast helpers can read. Categorical: see the note
+ * at their use site for why these are pinned rather than brand-derived.
+ */
+const PIE_SERIES = [
+  "#ececff",
+  "#ffffde",
+  "#b5ff20",
+  "#b9b9ff",
+  "#ffff45",
+  "#d7ff86",
+  "#ff86ff",
+  "#20ffff",
+  "#ff2020",
+  "#ff20ff",
+  "#20ff8f",
+  "#ff5353",
+];
+
+const GIT_SERIES = [
+  "#0000ec",
+  "#dede00",
+  "#9dec00",
+  "#0076ec",
+  "#00ecec",
+  "#00ec76",
+  "#ec00ec",
+  "#ec0000",
+];
+
+/**
+ * The palette. Mermaid's `base` theme derives everything it is not given from
+ * these, so the set below is "everything that decides a colour a reader sees".
+ *
+ * ‼️ One fixed palette has to be legible on TWO backgrounds — the white page an
+ * export always is, and whatever the editor is wearing. No single colour can do
+ * that for text: 4.5:1 against #fff needs luminance ≤ 0.10, 4.5:1 against the
+ * dark theme's #1a1a2e needs ≥ 0.25. The best any single value achieves is
+ * 4.0:1 on both. So the design puts text on an OPAQUE fill wherever mermaid
+ * allows one — node fills, note fills, `edgeLabelBackground` — and reserves the
+ * balanced mid-tone (`TEXT_2`, measured 4.83:1 on white and 3.53:1 on the dark
+ * theme) for lines and for the few labels that have no fill behind them.
+ *
+ * ‼️ `background: transparent` and `clusterBkg: transparent` are load-bearing,
+ * not tidiness. An opaque surround paints a white slab in a dark editor, which
+ * is the specific thing that read as "awkward" when the palette was mermaid's
+ * own light theme.
+ */
+export const MERMAID_THEME_VARIABLES: Record<string, string> = {
+  background: "transparent",
+  fontFamily: "Pretendard, Inter, -apple-system, system-ui, sans-serif",
+  fontSize: "14px",
+
+  // Core — everything mermaid does not name explicitly derives from these.
+  primaryColor: BG_SUBTLE,
+  primaryBorderColor: ACCENT,
+  primaryTextColor: TEXT,
+  secondaryColor: BG_ELEVATED,
+  secondaryBorderColor: BORDER,
+  secondaryTextColor: TEXT,
+  tertiaryColor: SURFACE,
+  tertiaryBorderColor: BORDER,
+  tertiaryTextColor: TEXT,
+  lineColor: TEXT_2,
+  textColor: TEXT_2,
+  titleColor: TEXT_2,
+
+  // Flowchart
+  mainBkg: BG_SUBTLE,
+  nodeBorder: ACCENT,
+  nodeTextColor: TEXT,
+  edgeLabelBackground: BG_SUBTLE,
+  clusterBkg: "transparent",
+  clusterBorder: BORDER,
+
+  // Notes (mermaid's own default here is a saturated yellow)
+  noteBkgColor: BG_ELEVATED,
+  noteTextColor: TEXT,
+  noteBorderColor: BORDER,
+
+  // Sequence
+  actorBkg: BG_SUBTLE,
+  actorBorder: ACCENT,
+  actorTextColor: TEXT,
+  actorLineColor: BORDER,
+  signalColor: TEXT_2,
+  signalTextColor: TEXT_2,
+  labelBoxBkgColor: BG_SUBTLE,
+  labelBoxBorderColor: BORDER,
+  labelTextColor: TEXT,
+  loopTextColor: TEXT_2,
+  activationBkgColor: BG_ELEVATED,
+  activationBorderColor: BORDER,
+  sequenceNumberColor: SURFACE,
+  altBackground: BG_ELEVATED,
+
+  // Class / state
+  classText: TEXT,
+  labelColor: TEXT,
+
+  // Git graph label chips (mermaid's defaults are cream/lavender)
+  commitLabelColor: TEXT,
+  commitLabelBackground: BG_ELEVATED,
+  tagLabelColor: TEXT,
+  tagLabelBackground: BG_SUBTLE,
+  tagLabelBorder: BORDER,
+
+  // Pie chrome. The section label sits ON a slice, so it stays dark; the title,
+  // the legend and the strokes sit on the page, so they take the mid-tone that
+  // works on both backgrounds. (Mermaid's own default for the strokes is
+  // `black`, which is invisible in a dark editor.)
+  pieSectionTextColor: TEXT,
+  pieTitleTextColor: TEXT_2,
+  pieLegendTextColor: TEXT_2,
+  pieStrokeColor: TEXT_2,
+  pieOuterStrokeColor: TEXT_2,
+
+  // ── Qualitative series ────────────────────────────────────────────────
+  //
+  // ‼️ Pinned to mermaid's own `default` values rather than derived from the
+  // brand palette, and that is the whole point: these are CATEGORICAL. Their
+  // job is to be told apart from each other, which a set of near-neutral brand
+  // tints cannot do. Measured: with the brand primaries above and no pins,
+  // mermaid derives every one of them at 16.7% saturation — twelve pie slices
+  // that are all the same pale grey, i.e. a chart that no longer conveys
+  // anything. Pinning also makes them theme-independent, which is what was
+  // asked for; the values are exactly what a light-theme user already saw.
+  //
+  // ‼️ Written as hex, though mermaid reports them as `hsl()`. The conversion is
+  // exact, and hex is what `color-contrast.ts` can parse — which is what lets
+  // the branch labels below be DERIVED and the tests check them for real. Left
+  // as `hsl()` they would silently fall back to white and the check would pass
+  // on a colour nobody had verified.
+  ...Object.fromEntries(PIE_SERIES.map((c, i) => [`pie${i + 1}`, c])),
+  ...Object.fromEntries(GIT_SERIES.map((c, i) => [`git${i}`, c])),
+
+  // Branch label text, paired to each chip instead of left at mermaid's single
+  // white. Six of the eight chips fail AA against white — the yellow one at
+  // 1.44:1 — and `onSolidForeground` is the project's existing answer to
+  // exactly this question (utils/color-contrast.ts), with a guarantee verified
+  // over the whole sRGB cube: whichever of white and black it returns clears
+  // AA. Derived rather than pinned so it cannot drift from the chips above.
+  ...Object.fromEntries(
+    GIT_SERIES.map((c, i) => [`gitBranchLabel${i}`, onSolidForeground(c)]),
+  ),
+};
+
+/** The tokens `MERMAID_THEME_VARIABLES` copies, for the guard test to re-resolve. */
+export const MERMAID_PALETTE_TOKENS: Record<string, string> = {
+  "--color-accent-default": ACCENT,
+  "--color-bg-default": SURFACE,
+  "--color-bg-elevated": BG_ELEVATED,
+  "--color-bg-subtle": BG_SUBTLE,
+  "--color-border-default": BORDER,
+  "--color-text-primary": TEXT,
+  "--color-text-secondary": TEXT_2,
+};
+
+/**
  * Render Mermaid source to an SVG string that uses SVG `<text>` labels (not HTML
  * `<foreignObject>`) so it survives PNG rasterization in WKWebView. `<br>` still
  * becomes multi-line text; inline `<b>`/`<i>` label formatting is not reproduced
@@ -201,8 +400,8 @@ export async function renderMermaidRasterSvg(code: string): Promise<string> {
   const mermaid = (await import("mermaid")).default;
   mermaid.initialize({
     startOnLoad: false,
-    theme:
-      document.documentElement.dataset.theme === "dark" ? "dark" : "default",
+    theme: MERMAID_THEME,
+    themeVariables: MERMAID_THEME_VARIABLES,
     securityLevel: "antiscript",
     // Global htmlLabels (flowchart.htmlLabels deprecated since v11.12.3) → SVG
     // text labels. forceSvgLabels strips any per-diagram directive that would

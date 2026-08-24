@@ -95,3 +95,59 @@ describe("shouldDeferSave — post-save baseline contract", () => {
     ).toBe(false);
   });
 });
+
+describe("§278.1 a binary viewer tab must never be marked dirty", () => {
+  // 실앱 증상: 위키링크로 PDF를 열면 아무 편집도 안 했는데 dirty 표시가 뜨고,
+  // 닫을 때 저장하겠냐고 묻는다.
+  //
+  // ‼️ 표시만의 문제가 아니다. App.tsx의 비-마크다운 자동 저장 효과는
+  // `isCodeFile`(= "마크다운이 아님", 그래서 PDF도 통과)로 걸려 있고 탭이 dirty일 때
+  // 발화해 `sourceContentRef.current`를 그 경로에 쓴다. autoSave 기본값이 true이므로
+  // **dirty가 된 PDF는 곧 텍스트로 덮어써질 PDF다.**
+  //
+  // handleUpdate는 이벤트 시점의 activeTabId를 읽는다. 그래서 마크다운 문서에서
+  // 발생한 트랜잭션이 그 시점에 활성인 탭(= 방금 연 PDF)에 dirty를 찍는다.
+  //
+  // 순수 술어를 따로 만들어 단정하지 않는다 — 그러면 배선이 아니라 래퍼를 시험하게
+  // 되고, 가드가 실제로 그 경로에 꽂혔는지는 증명되지 않는다.
+  it("PDF 탭이 활성인 동안 발생한 트랜잭션은 dirty를 만들지 않는다", async () => {
+    const { Editor } = await import("@tiptap/core");
+    const { renderHook } = await import("@testing-library/react");
+    const { createBaramExtensions } = await import("../../extensions");
+    const { useEditorStore } = await import("../../stores/editor/editor");
+    const { useAutoSave } = await import("../use-auto-save");
+
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>hello</p>",
+    });
+    renderHook(() => useAutoSave(editor));
+
+    const store = useEditorStore.getState();
+    const pdfTab = {
+      filePath: "/vault/papers/attention.pdf",
+      id: "pdf-tab",
+      isDirty: false,
+      isPinned: false,
+      title: "attention.pdf",
+    };
+    useEditorStore.setState({
+      activeTabId: pdfTab.id,
+      tabs: [pdfTab],
+    } as never);
+
+    // 마크다운 문서 쪽에서 온 편집 — 활성 탭은 PDF다.
+    editor.commands.insertContent(" edited");
+
+    const after = useEditorStore
+      .getState()
+      .tabs.find((t) => t.id === pdfTab.id);
+    expect(after?.isDirty).toBe(false);
+
+    editor.destroy();
+    useEditorStore.setState({
+      activeTabId: store.activeTabId,
+      tabs: store.tabs,
+    });
+  });
+});

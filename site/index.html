@@ -81,6 +81,10 @@
           <p data-i18n="features.links.d">[[links]] with autocomplete, backlinks, block references, tags — and a visual graph of your knowledge.</p>
         </article>
         <article class="card">
+          <h3 data-i18n="features.pdf.t">PDF reading &amp; highlights</h3>
+          <p data-i18n="features.pdf.d">Read PDFs in place — find, zoom, page and highlight panels. Highlight a sentence or a figure, then cite it in a note: the reference renders as the quote, or as the cropped region of the page.</p>
+        </article>
+        <article class="card">
           <h3 data-i18n="features.rich.t">Math, code &amp; diagrams</h3>
           <p data-i18n="features.rich.d">KaTeX math, code blocks with highlighting for 14+ languages, Mermaid diagrams, SVG blocks, and advanced tables with cell merge.</p>
         </article>
@@ -94,7 +98,7 @@
         </article>
         <article class="card">
           <h3 data-i18n="features.plugins.t">Plugins</h3>
-          <p data-i18n="features.plugins.d">Install community plugins from a built-in, capability-gated marketplace — or build your own with the plugin API.</p>
+          <p data-i18n="features.plugins.d">Install community plugins from a built-in, capability-gated marketplace — sandboxed by default, with signed withdrawal checks. Or build your own with the plugin API.</p>
         </article>
         <article class="card">
           <h3 data-i18n="features.light.t">Featherweight</h3>
@@ -174,14 +178,8 @@
         <li data-i18n="install.s3">Launch Baram and open any folder or markdown file — no account, no setup.</li>
       </ol>
       <div class="install-note">
-        <p data-i18n="install.noteMacLead">macOS first launch: Baram isn't notarized by Apple yet, so macOS warns it "can't verify the app is free of malware". This is expected for an app distributed without an Apple Developer certificate — allow it once:</p>
-        <ol>
-          <li data-i18n="install.noteMac1">In the warning dialog, click "Done" — not "Move to Trash".</li>
-          <li data-i18n="install.noteMac2">Open System Settings → Privacy &amp; Security, scroll down to "'Baram' was blocked", and click "Open Anyway".</li>
-          <li data-i18n="install.noteMac3">Approve with your password or Touch ID — Baram opens normally from then on.</li>
-        </ol>
-        <p><span data-i18n="install.noteMacAlt">On macOS 15 and later, the old right-click → Open bypass no longer works for unnotarized apps. Terminal alternative:</span> <code>xattr -cr /Applications/Baram.app</code></p>
-        <p data-i18n="install.noteMacFolder">macOS may also prompt for folder access on every launch when your files live in Documents, Desktop, Downloads, or iCloud. To avoid it, keep your vault outside those folders, or grant Baram Full Disk Access in System Settings → Privacy &amp; Security.</p>
+        <p data-i18n="install.noteMacLead">macOS: Baram is signed with an Apple Developer ID certificate and notarized by Apple, so it opens without a Gatekeeper warning. On first launch macOS still asks to confirm an app downloaded from the internet — that prompt is normal and appears for every notarized app.</p>
+        <p data-i18n="install.noteMacFolder">macOS asks once for access to folders such as Documents, Desktop, Downloads, or iCloud. Grant it and the permission persists, including across updates.</p>
         <p data-i18n="install.noteWin">Windows: if SmartScreen blocks the app, choose More info → Run anyway.</p>
       </div>
       <a class="see-all" href="https://github.com/sayinel/baram#build-from-source" data-i18n="install.buildFromSource">Build from source →</a>

@@ -1,7 +1,10 @@
 import type { PluginEditorHandle } from "../../extension-context";
+import type { SandboxHostRequest } from "../protocol";
 
 import { Schema } from "@tiptap/pm/model";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
@@ -47,6 +50,53 @@ const schema = new Schema({
     text: { group: "inline" },
   },
 });
+
+/**
+ * Derived from the protocol, exactly as `host-editor-bridge` derives it internally — stated
+ * here rather than exported from production, so the type is not a test-only API.
+ */
+type EditorRequest = Extract<SandboxHostRequest, { kind: `editor_${string}` }>;
+
+/**
+ * Every `editor_*` request the protocol declares, as a callable request object.
+ *
+ * The union in `protocol.ts` is the source of truth for WHICH ops exist, so it is read
+ * rather than restated — a guard that enumerates cannot fail when a member is added.
+ *
+ * ‼️ A source scan finds *a* match, not *the* match: the count is asserted, and any kind
+ * without an argument recipe throws rather than being skipped, so a new op fails this file
+ * instead of quietly escaping every loop that uses it.
+ */
+function everyEditorRequest(): EditorRequest[] {
+  const protocol = readFileSync(resolve(__dirname, "../protocol.ts"), "utf8");
+  const kinds = [
+    ...new Set(
+      [...protocol.matchAll(/kind: "(editor_\w+)"/gu)].map((m) => m[1]),
+    ),
+  ];
+  // Four today: get_markdown, get_selection, get_text, insert_text, set_markdown — five.
+  // Asserted as "at least the ones this file knows about" so adding an op raises the floor
+  // rather than tripping an unrelated equality.
+  if (kinds.length < 5) {
+    throw new Error(
+      `only found ${kinds.length} editor_* kinds in protocol.ts — the scan is broken`,
+    );
+  }
+  const args: Record<string, Record<string, unknown>> = {
+    editor_insert_text: { text: "x" },
+    editor_set_markdown: { markdown: "# b\n" },
+  };
+  return kinds.map((kind) => {
+    if (kind.startsWith("editor_get_")) return { kind } as EditorRequest;
+    const extra = args[kind];
+    if (!extra) {
+      throw new Error(
+        `${kind} has no argument recipe here — add one so it is actually exercised`,
+      );
+    }
+    return { kind, ...extra } as EditorRequest;
+  });
+}
 
 /** A live-editor stand-in whose dispatched transactions really apply. */
 function fakeEditor(markdown: string) {
@@ -276,12 +326,11 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
       surfaceBlocked: () => "the document is open in source mode",
     });
 
-    for (const request of [
-      { kind: "editor_get_markdown" },
-      { kind: "editor_get_selection" },
-      { kind: "editor_insert_text", text: "x" },
-      { kind: "editor_set_markdown", markdown: "# b\n" },
-    ] as const) {
+    // ‼️ DERIVED from the protocol, not enumerated here. This list used to be written out,
+    // so `editor_get_text` — a whole-document read that must be refused for exactly the same
+    // reason — was added months later and defaulted to UNTESTED. An enumeration in a guard is
+    // an open set: it admits the next member silently.
+    for (const request of everyEditorRequest()) {
       await expect(handler(request)).rejects.toThrow(/source mode/);
     }
     // Distinguishable from "no editor is open": a plugin that cannot tell them apart
@@ -438,6 +487,34 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     ).rejects.toThrow(/still loading/);
     expect(staged).toEqual([]);
     expect(editor.dispatched).toEqual([]);
+  });
+
+  // ‼️ DERIVED over every whole-document READ, for the same reason the blocked-surface loop
+  // above is: the throttling test below names `editor_get_markdown`, so `editor_get_text` was
+  // added later as an UNMETERED whole-document walk and nothing noticed. The meter is what
+  // stops a read loop bought with `editor:readonly` from freezing the editor thread, so
+  // "which reads are metered" must not be a list someone remembers to extend.
+  it("meters every whole-document read, not just the markdown one", async () => {
+    const reads = everyEditorRequest().filter(
+      (r) => r.kind === "editor_get_markdown" || r.kind === "editor_get_text",
+    );
+    expect(reads).toHaveLength(2);
+
+    for (const request of reads) {
+      // ‼️ The SECOND call is the one that proves metering. The meter starts full
+      // (`tokens = burst`) and clamps a charge to the burst so an oversized document is not
+      // permanently unreadable — so the first call is admitted no matter what it costs. An
+      // UNMETERED op would let the second through as well, with no refill to explain it.
+      const { handler } = harness("x".repeat(300), ["editor:readonly"], {
+        budget: { burst: 10, refillPerSecond: 0 },
+        now: () => 1_000_000,
+      });
+      await expect(handler(request)).resolves.toBeUndefined();
+      await expect(
+        handler(request),
+        `${request.kind} is not charged against the document budget`,
+      ).rejects.toThrow(/document budget is exhausted/);
+    }
   });
 
   it("throttles whole-document reads by SIZE, and recovers as the budget refills", async () => {

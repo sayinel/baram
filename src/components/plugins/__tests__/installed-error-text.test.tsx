@@ -32,7 +32,9 @@ vi.mock("../../../plugins/registry-client", () => ({
   searchRegistry: () => [],
 }));
 
+import { type Locale, t as lookup } from "../../../i18n";
 import { legacyInstallMessage } from "../../../plugins/plugin-trust";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { usePluginStore } from "../../../stores/system/plugin";
 import { PluginMarketplace } from "../PluginMarketplace";
 
@@ -70,8 +72,15 @@ function openInstalledTab(): void {
  * here would mean the function stopped recognising the very case this file is about — worth
  * failing on rather than rendering the string "null".
  */
+// ‼️ THE SAME LOCALE RESOLUTION THE LOADER USES. This file compares a thrown message with what
+// this helper returns, so binding the two differently would make the comparison meaningless the
+// moment a test changed the locale — `plugin-loader.ts` resolves through the settings store, so
+// this must too.
+const t = (key: string, params?: Record<string, string>) =>
+  lookup(key, useSettingsStore.getState().locale as Locale, params);
+
 function remedy(): string {
-  const message = legacyInstallMessage(legacyInstall.manifest);
+  const message = legacyInstallMessage(legacyInstall.manifest, t);
   expect(message, "an absent tier must produce the remedy").not.toBeNull();
   return message!;
 }
@@ -114,7 +123,16 @@ describe("Installed tab surfaces the load error text", () => {
 
     const named = /Remove/.exec(remedy());
     expect(named, "the message must name a control").not.toBeNull();
-    expect(screen.getByRole("button", { name: named![0] })).toBeInTheDocument();
+    // §69 — a matcher WIDENING, and the derivation above is the reason it must stay a
+    // derivation. The row moved to `PluginRowView`, which qualifies every control's
+    // accessible name with the plugin ("Remove AI Summary") so a screen reader can tell two
+    // rows apart, so the exact-string match no longer lands. Substituting the new literal
+    // would sever this from `remedy()` and the test would then pass even if the message
+    // stopped naming any control at all — which is the whole property under test. The
+    // VISIBLE button text is still `named[0]`; only the aria-label grew.
+    expect(
+      screen.getByRole("button", { name: new RegExp(named![0]) }),
+    ).toBeInTheDocument();
   });
 
   it("renders no error region for a plugin that loaded fine", () => {

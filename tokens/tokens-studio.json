@@ -156,6 +156,10 @@
           "value": "#fee2e2",
           "type": "color"
         },
+        "200": {
+          "value": "#fecaca",
+          "type": "color"
+        },
         "400": {
           "value": "#f87171",
           "type": "color"
@@ -178,6 +182,10 @@
         },
         "900": {
           "value": "#450a0a",
+          "type": "color"
+        },
+        "950": {
+          "value": "#4c0519",
           "type": "color"
         }
       },
@@ -624,6 +632,11 @@
           "type": "color",
           "description": "Secondary background (was --color-bg-secondary: #f8f9fa)"
         },
+        "hover": {
+          "value": "{color.slate.100}",
+          "type": "color",
+          "description": "Hover background for interactive rows (was undefined --color-bg-hover)"
+        },
         "panel": {
           "value": "{color.slate.100}",
           "type": "color",
@@ -633,6 +646,16 @@
           "value": "#f0f0f3",
           "type": "color",
           "description": "Tertiary/elevated background (was --color-bg-tertiary: #f0f0f3, no exact primitive match)"
+        },
+        "input": {
+          "value": "{color.white}",
+          "type": "color",
+          "description": "Input field background"
+        },
+        "selection": {
+          "value": "{color.blue.100}",
+          "type": "color",
+          "description": "General selection background (non-editor)"
         }
       },
       "text": {
@@ -640,6 +663,11 @@
           "value": "#1a1a1a",
           "type": "color",
           "description": "Primary text (was --color-text-primary: #1a1a1a, not exactly gray.900 #111827)"
+        },
+        "default": {
+          "value": "{color.text.primary}",
+          "type": "color",
+          "description": "Default body text (alias of text.primary; was undefined --color-text-default)"
         },
         "secondary": {
           "value": "{color.gray.500}",
@@ -684,6 +712,26 @@
           "value": "{color.blue.50}",
           "type": "color",
           "description": "Subtle accent background"
+        },
+        "solid": {
+          "value": "{color.blue.600}",
+          "type": "color",
+          "description": "Fill for solid accent surfaces that carry text — a step darker than accent-default so white text clears WCAG AA (5.17:1; accent-default is 3.68:1)"
+        },
+        "solidHover": {
+          "value": "{color.blue.700}",
+          "type": "color",
+          "description": "Hover fill for solid accent surfaces — darker than accent-solid, so contrast with accent-on-solid rises rather than falls (6.70:1)"
+        },
+        "onSolid": {
+          "value": "{color.white}",
+          "type": "color",
+          "description": "Text on accent-solid. Never hardcode white: this flips to black in themes whose accent is light (see src/utils/color-contrast.ts)"
+        },
+        "ai": {
+          "value": "{color.violet.500}",
+          "type": "color",
+          "description": "AI feature accent color"
         }
       },
       "editor": {
@@ -711,6 +759,41 @@
           "value": "{color.bg.subtle}",
           "type": "color",
           "description": "Editor current line highlight (alias of color.bg.subtle, was --color-editor-line-highlight: #f8f9fa)"
+        },
+        "findMatch": {
+          "value": "rgba(251, 191, 36, 0.45)",
+          "type": "color",
+          "description": "PDF find match highlight (§272) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400)"
+        },
+        "findMatchCurrent": {
+          "value": "rgba(249, 115, 22, 0.6)",
+          "type": "color",
+          "description": "PDF find current-match highlight (§272) — more opaque than find-match to stand out; no exact primitive match (alpha over orange.500)"
+        },
+        "pdf-hl-yellow": {
+          "value": "rgba(251, 191, 36, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — yellow (§273.3) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400)"
+        },
+        "pdf-hl-green": {
+          "value": "rgba(74, 222, 128, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — green (§273.3); no exact primitive match (alpha over green.400)"
+        },
+        "pdf-hl-blue": {
+          "value": "rgba(96, 165, 250, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — blue (§273.3); no exact primitive match (alpha over blue.400)"
+        },
+        "pdf-hl-pink": {
+          "value": "rgba(236, 72, 153, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — pink (§273.3); no exact primitive match (alpha over pink.500)"
+        },
+        "pdf-hl-purple": {
+          "value": "rgba(168, 85, 246, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — purple (§273.3); no exact primitive match (alpha over purple.500)"
         }
       },
       "status": {
@@ -719,20 +802,60 @@
           "type": "color",
           "description": "Danger/error status"
         },
+        "dangerOnSolid": {
+          "value": "{color.black}",
+          "type": "color",
+          "description": "Text on a filled danger surface. Black, because white on red-500 is 3.76:1 — under AA (#330). Derived at runtime for user-edited themes; this value covers the default and `system` themes."
+        },
+        "dangerSolidHover": {
+          "value": "{color.red.400}",
+          "type": "color",
+          "description": "Hover fill for a solid danger surface — a step LIGHTER, so contrast with the dark danger foreground rises (5.58:1 → 7.59:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+        },
         "warning": {
           "value": "{color.yellow.500}",
           "type": "color",
           "description": "Warning status"
+        },
+        "warningOnSolid": {
+          "value": "{color.black}",
+          "type": "color",
+          "description": "Text on a filled warning surface. Black, because white on yellow-500 is 2.15:1 — under even the 3:1 non-text floor (#330)."
+        },
+        "warningSolidHover": {
+          "value": "{color.yellow.400}",
+          "type": "color",
+          "description": "Hover fill for a solid warning surface — a step LIGHTER, so contrast with the dark warning foreground rises (9.78:1 → 12.58:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
         },
         "success": {
           "value": "{color.emerald.500}",
           "type": "color",
           "description": "Success status"
         },
+        "successOnSolid": {
+          "value": "{color.black}",
+          "type": "color",
+          "description": "Text on a filled success surface. Black, because white on emerald-500 is 2.54:1 — under even the 3:1 non-text floor (#330)."
+        },
+        "successSolidHover": {
+          "value": "{color.emerald.400}",
+          "type": "color",
+          "description": "Hover fill for a solid success surface — a step LIGHTER, so contrast with the dark success foreground rises (8.28:1 → 10.92:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+        },
         "info": {
           "value": "{color.blue.500}",
           "type": "color",
           "description": "Informational status"
+        },
+        "errorBg": {
+          "value": "{color.red.50}",
+          "type": "color",
+          "description": "Error background (light tint for error containers)"
+        },
+        "errorBorder": {
+          "value": "{color.red.200}",
+          "type": "color",
+          "description": "Error container border"
         }
       },
       "callout": {
@@ -828,6 +951,11 @@
           "type": "color",
           "description": "Orphan graph node (no links)"
         },
+        "pinned": {
+          "value": "{color.yellow.500}",
+          "type": "color",
+          "description": "Pinned graph node border (§30.3c)"
+        },
         "edge": {
           "value": "{color.gray.400}",
           "type": "color",
@@ -837,6 +965,16 @@
           "value": "{color.gray.700}",
           "type": "color",
           "description": "Graph node label text"
+        },
+        "tag": {
+          "value": "{color.emerald.500}",
+          "type": "color",
+          "description": "Tag node color in graph view"
+        },
+        "crossVault": {
+          "value": "{color.violet.500}",
+          "type": "color",
+          "description": "Cross-vault link edge/node in graph view (matches prior #8b5cf6 fallback)"
         }
       },
       "git": {
@@ -876,6 +1014,11 @@
           "type": "color",
           "description": "Secondary background dark (was --color-bg-secondary: #16213e)"
         },
+        "hover": {
+          "value": "{color.navy.750}",
+          "type": "color",
+          "description": "Hover background for interactive rows dark (was undefined --color-bg-hover)"
+        },
         "panel": {
           "value": "{color.slate.900}",
           "type": "color",
@@ -885,6 +1028,16 @@
           "value": "{color.navy.750}",
           "type": "color",
           "description": "Tertiary/elevated background dark (was --color-bg-tertiary: #1e2a45)"
+        },
+        "input": {
+          "value": "{color.slate.800}",
+          "type": "color",
+          "description": "Input field background"
+        },
+        "selection": {
+          "value": "{color.blue.900}",
+          "type": "color",
+          "description": "General selection background (non-editor)"
         }
       },
       "text": {
@@ -892,6 +1045,11 @@
           "value": "{color.slate.200}",
           "type": "color",
           "description": "Primary text dark (was --color-text-primary: #e2e8f0)"
+        },
+        "default": {
+          "value": "{color.text.primary}",
+          "type": "color",
+          "description": "Default body text (alias of text.primary; was undefined --color-text-default)"
         },
         "secondary": {
           "value": "{color.slate.400}",
@@ -936,6 +1094,26 @@
           "value": "{color.blue.950}",
           "type": "color",
           "description": "Subtle accent background dark"
+        },
+        "solid": {
+          "value": "{color.blue.400}",
+          "type": "color",
+          "description": "Fill for solid accent surfaces that carry text — equals accent-default here on purpose: darkening it would win the text ratio but drop the button below the 3:1 non-text floor against the dark page"
+        },
+        "solidHover": {
+          "value": "{color.blue.300}",
+          "type": "color",
+          "description": "Hover fill for solid accent surfaces — lighter than accent-solid, so contrast with the dark accent-on-solid rises rather than falls (11.65:1)"
+        },
+        "onSolid": {
+          "value": "{color.black}",
+          "type": "color",
+          "description": "Text on accent-solid. Dark here because white on the bright dark-theme accent is 2.54:1 — below even the 3:1 non-text floor (#330)"
+        },
+        "ai": {
+          "value": "{color.violet.400}",
+          "type": "color",
+          "description": "AI feature accent color"
         }
       },
       "editor": {
@@ -963,6 +1141,41 @@
           "value": "{color.navy.850}",
           "type": "color",
           "description": "Editor current line highlight dark (was --color-editor-line-highlight: #16213e)"
+        },
+        "findMatch": {
+          "value": "rgba(251, 191, 36, 0.45)",
+          "type": "color",
+          "description": "PDF find match highlight (§272) — same as light: .pdf-page canvas background is fixed white regardless of theme, so the translucent overlay needs no dark variant; no exact primitive match (alpha over yellow.400)"
+        },
+        "findMatchCurrent": {
+          "value": "rgba(249, 115, 22, 0.6)",
+          "type": "color",
+          "description": "PDF find current-match highlight (§272) — same as light, see findMatch; no exact primitive match (alpha over orange.500)"
+        },
+        "pdf-hl-yellow": {
+          "value": "rgba(251, 191, 36, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — yellow (§273.3) — same as light: .pdf-page canvas background is fixed white regardless of theme, so the translucent overlay needs no dark variant; no exact primitive match (alpha over yellow.400)"
+        },
+        "pdf-hl-green": {
+          "value": "rgba(74, 222, 128, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — green (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over green.400)"
+        },
+        "pdf-hl-blue": {
+          "value": "rgba(96, 165, 250, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — blue (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over blue.400)"
+        },
+        "pdf-hl-pink": {
+          "value": "rgba(236, 72, 153, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — pink (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over pink.500)"
+        },
+        "pdf-hl-purple": {
+          "value": "rgba(168, 85, 246, 0.35)",
+          "type": "color",
+          "description": "PDF text highlight — purple (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over purple.500)"
         }
       },
       "status": {
@@ -971,20 +1184,60 @@
           "type": "color",
           "description": "Danger/error status dark"
         },
+        "dangerOnSolid": {
+          "value": "{color.black}",
+          "type": "color",
+          "description": "Text on a filled danger surface. Black, because white on red-500 is 3.76:1 — under AA (#330). Derived at runtime for user-edited themes; this value covers the default and `system` themes."
+        },
+        "dangerSolidHover": {
+          "value": "{color.red.400}",
+          "type": "color",
+          "description": "Hover fill for a solid danger surface — a step LIGHTER, so contrast with the dark danger foreground rises (5.58:1 → 7.59:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+        },
         "warning": {
           "value": "{color.yellow.500}",
           "type": "color",
           "description": "Warning status dark"
+        },
+        "warningOnSolid": {
+          "value": "{color.black}",
+          "type": "color",
+          "description": "Text on a filled warning surface. Black, because white on yellow-500 is 2.15:1 — under even the 3:1 non-text floor (#330)."
+        },
+        "warningSolidHover": {
+          "value": "{color.yellow.400}",
+          "type": "color",
+          "description": "Hover fill for a solid warning surface — a step LIGHTER, so contrast with the dark warning foreground rises (9.78:1 → 12.58:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
         },
         "success": {
           "value": "{color.emerald.500}",
           "type": "color",
           "description": "Success status dark"
         },
+        "successOnSolid": {
+          "value": "{color.black}",
+          "type": "color",
+          "description": "Text on a filled success surface. Black, because white on emerald-500 is 2.54:1 — under even the 3:1 non-text floor (#330)."
+        },
+        "successSolidHover": {
+          "value": "{color.emerald.400}",
+          "type": "color",
+          "description": "Hover fill for a solid success surface — a step LIGHTER, so contrast with the dark success foreground rises (8.28:1 → 10.92:1) instead of falling. Direction is not a constant: it is derived from whichever foreground the fill took (#330)."
+        },
         "info": {
           "value": "{color.blue.400}",
           "type": "color",
           "description": "Informational status dark"
+        },
+        "errorBg": {
+          "value": "{color.red.950}",
+          "type": "color",
+          "description": "Error background (light tint for error containers)"
+        },
+        "errorBorder": {
+          "value": "{color.red.800}",
+          "type": "color",
+          "description": "Error container border"
         }
       },
       "callout": {
@@ -1080,6 +1333,11 @@
           "type": "color",
           "description": "Orphan graph node dark (#4b5563)"
         },
+        "pinned": {
+          "value": "{color.yellow.400}",
+          "type": "color",
+          "description": "Pinned graph node border dark — a step lighter than light mode, like active/neighbor (§30.3c)"
+        },
         "edge": {
           "value": "{color.gray.700}",
           "type": "color",
@@ -1089,6 +1347,16 @@
           "value": "{color.gray.300}",
           "type": "color",
           "description": "Graph node label text dark (#d1d5db)"
+        },
+        "tag": {
+          "value": "{color.emerald.400}",
+          "type": "color",
+          "description": "Tag node color in graph view"
+        },
+        "crossVault": {
+          "value": "{color.violet.500}",
+          "type": "color",
+          "description": "Cross-vault link edge/node in graph view (matches prior #8b5cf6 fallback)"
         }
       },
       "git": {
@@ -1116,7 +1384,11 @@
     }
   },
   "$metadata": {
-    "tokenSetOrder": ["primitive", "semantic/light", "semantic/dark"]
+    "tokenSetOrder": [
+      "primitive",
+      "semantic/light",
+      "semantic/dark"
+    ]
   },
   "$themes": [
     {

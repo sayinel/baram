@@ -8,6 +8,16 @@ const { logger } = vi.hoisted(() => ({
 }));
 vi.mock("../../utils/logger", () => ({ logger }));
 
+const { ensureJournalFile } = vi.hoisted(() => ({
+  ensureJournalFile: vi.fn(async () => null),
+}));
+vi.mock("../../services/journal-file-service", () => ({
+  ensureJournalDirRegistered: vi.fn(async () => {}),
+  ensureJournalFile,
+  openFileInTab: vi.fn(async () => {}),
+}));
+
+import { t } from "../../i18n";
 import { getAction } from "../../keybindings/keybinding-actions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -115,5 +125,73 @@ describe("zettelkasten.newFromSelection — gated to the zettel space (§95/§99
     act(() => getAction("zettelkasten.newFromSelection")?.());
 
     expect(useUIStore.getState().zettelTitleDialog.open).toBe(false);
+  });
+});
+
+// §85 — the shortcut must say why nothing opened.
+//
+// `journal.openToday` returned silently when Journal was off or its directory did not
+// resolve: no toast, no log. A keyboard shortcut that does nothing at all is
+// indistinguishable from a shortcut that is not bound, so the user has no way to learn
+// that a setting is missing. The journal preset now toasts for the same two cases
+// (workspace.ts) — this is the shortcut half of that contract.
+describe("journal.openToday — unconfigured feedback", () => {
+  beforeEach(() => {
+    useSettingsStore.setState({
+      journalDirectory: "/tmp/baram-journal-test",
+      journalEnabled: true,
+      locale: "en",
+    });
+    useUIStore.setState({ toast: null });
+  });
+
+  it("toasts when the journal is disabled", () => {
+    useSettingsStore.setState({ journalEnabled: false });
+    renderActionsHook(null);
+
+    act(() => getAction("journal.openToday")?.());
+
+    // Compared against the catalogue's TEXT, not `t(...)` on both sides: `t` falls back
+    // to the key, so a `t`-vs-`t` assertion stays green while the toast ships the raw
+    // key "space.journal.disabled" to the user.
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.disabled", "en"));
+    expect(message).toContain("Enable Journal");
+  });
+
+  it("toasts when the journal directory does not resolve", () => {
+    // resolveJournalDir takes absolute paths only, so a relative value resolves to
+    // nothing — the same dead end as an empty setting, and it used to be silent too.
+    useSettingsStore.setState({ journalDirectory: "journal" });
+    renderActionsHook(null);
+
+    act(() => getAction("journal.openToday")?.());
+
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.noDirectory", "en"));
+    expect(message).toContain("Set the Journal directory");
+  });
+
+  it("toasts a localized message when the open fails, not the raw error", async () => {
+    // Tauri commands reject with a bare string (CLAUDE.md: `Result<T, String>`), so
+    // `String(err)` puts an untranslated absolute path on screen — in a surface the
+    // user may be screen-sharing, and in the ko locale from a function that localizes
+    // its two other branches. The project keeps the raw text in the logger and toasts a
+    // key (see stores/file/file.ts access-denied handling).
+    ensureJournalFile.mockRejectedValueOnce(
+      new Error("Access denied: /Volumes/private/journal/2026-08-08.md"),
+    );
+    renderActionsHook(null);
+
+    await act(async () => {
+      getAction("journal.openToday")?.();
+      await Promise.resolve();
+    });
+
+    const message = useUIStore.getState().toast?.message;
+    expect(message).toBe(t("space.journal.openFailed", "en"));
+    expect(message).toContain("Could not open");
+    expect(message).not.toContain("/Volumes/private");
+    expect(logger.error).toHaveBeenCalled();
   });
 });

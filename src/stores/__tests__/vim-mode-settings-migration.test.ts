@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { useSettingsStore } from "../settings/store";
 
-describe("settings store v16 -> v17 migration (§298 vimMode)", () => {
+describe("settings store vimMode migration (§298, v18 after the merge renumber)", () => {
   it("adds vimMode=false when migrating from an older persisted state", () => {
     const migrate = useSettingsStore.persist.getOptions().migrate;
     expect(migrate).toBeDefined();
@@ -16,10 +16,19 @@ describe("settings store v16 -> v17 migration (§298 vimMode)", () => {
     expect(result.vimMode).toBe(true);
   });
 
-  it("does not touch vimMode when already at version 17", () => {
+  it("does not touch vimMode when already at version 18", () => {
+    const migrate = useSettingsStore.persist.getOptions().migrate;
+    const result = migrate!({}, 18) as { vimMode?: boolean };
+    expect(result.vimMode).toBeUndefined();
+  });
+
+  it("BACKFILLS vimMode for main's v17 users (renumbered migration)", () => {
+    // The branch's vim migration was v17 until main's v17 (activity-bar
+    // backfill) shipped first — the merge renumbered ours to v18, so a
+    // persisted v17 state from a main release must still receive the field.
     const migrate = useSettingsStore.persist.getOptions().migrate;
     const result = migrate!({}, 17) as { vimMode?: boolean };
-    expect(result.vimMode).toBeUndefined();
+    expect(result.vimMode).toBe(false);
   });
 
   it("runs the full chain from a very old version without clobbering vimMode default", () => {

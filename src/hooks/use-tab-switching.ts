@@ -21,7 +21,7 @@ import {
 import { parseMdastAsync } from "../pipeline/parse-async";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileOpen } from "../plugins/plugin-lifecycle";
-import { isFileTab, isGraphTab } from "../stores/editor/editor";
+import { isFileTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFoldStore } from "../stores/editor/fold";
 import { useLinkStore } from "../stores/editor/link";
@@ -66,18 +66,27 @@ interface UseTabSwitchingParams {
   editor: Editor | null;
   /** Per-tab EditorState cache — owned by useSourceMode, shared here */
   editorStateCache: React.MutableRefObject<Map<string, EditorState>>;
+  getSourceBuffer: (tabId: string) => string;
   isNavBackForwardRef: React.RefObject<boolean>;
-  isSourceMode: boolean;
   /** §perf-large-file C3.5: keep-alive editor pool for large documents */
   keepalive: KeepalivePool;
   /** §perf-large-file C3.5: notify App of the active editor change */
   onActiveEditorChange: (editor: Editor | null) => void;
+  /**
+   * §291 탭별 스크롤 오프셋 — **기록은 MarkdownSurface의 scroll 리스너가 한다.**
+   *
+   * ‼️ 여기서 읽지 않는 이유가 이 결함의 전부다. 이 effect는 React 커밋의 passive 단계에서
+   * 도는데, 그때는 나가는 표면에 이미 `display:none`이 적용돼 있다(측정으로 확인:
+   * effect가 관찰하는 style.display는 "none"이다). 레이아웃 박스가 사라진 컨테이너의
+   * scrollTop은 0이므로, 여기서 읽으면 매번 0을 캐시하고 돌아올 때 문서 처음으로 간다.
+   */
+  scrollOffsets: React.MutableRefObject<Map<string, number>>;
   setFindReplaceMode: (mode: "find" | "replace") => void;
   setFindReplaceOpen: (open: boolean) => void;
   setIsParsing: (v: boolean) => void;
-  setIsSourceMode: (v: boolean) => void;
-  setSourceContent: (v: string) => void;
-  sourceContentRef: React.MutableRefObject<string>;
+  setSourceBuffer: (tabId: string, content: string) => void;
+  /** §287 소스 모드인 탭들. 나가는 탭의 모드를 그 탭 id로 물어보기 위해 필요하다. */
+  sourceModeTabs: ReadonlySet<string>;
 }
 
 export function useTabSwitching({
@@ -85,23 +94,23 @@ export function useTabSwitching({
   editor,
   editorStateCache,
   isNavBackForwardRef,
-  isSourceMode,
   keepalive,
+  scrollOffsets,
   createKeepaliveEditor,
   onActiveEditorChange,
   setFindReplaceMode,
   setFindReplaceOpen,
-  setIsSourceMode,
+  setSourceBuffer,
   setIsParsing,
-  setSourceContent,
-  sourceContentRef,
+  sourceModeTabs,
+  getSourceBuffer,
 }: UseTabSwitchingParams) {
   const activeTabId = useEditorStore((s) => s.activeTabId);
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<null | string>(null);
-  // Per-tab scroll position cache — preserves view position across tab switches
-  const scrollTopCache = useRef(new Map<string, number>());
+  // §291 기록자가 아니라 **독자**다. 위 파라미터 주석 참조.
+  const scrollTopCache = scrollOffsets;
   // §perf-large-file B2/C2: Loading state for async parse + progressive loading
   const progressiveLoadRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
@@ -154,16 +163,6 @@ export function useTabSwitching({
       const prevKeepaliveEditor = keepalive.get(prevTabId);
       const prevEditor = prevKeepaliveEditor ?? editor;
 
-      // Save scroll position of .editor-area-scroll for the outgoing tab
-      // §perf-large-file C3.4: resolve via editor.view.dom.closest() so this
-      // targets the ACTIVE editor's scroll container in a dual-editor layout.
-      const scrollContainer = prevEditor?.view.dom.closest<HTMLElement>(
-        ".editor-area-scroll",
-      );
-      if (scrollContainer) {
-        scrollTopCache.current.set(prevTabId, scrollContainer.scrollTop);
-      }
-
       // §perf-large-file C3.5: keep-alive tabs — hide their DOM, skip cache write
       // and skip outgoing serialize. The live editor IS the state; auto-save hooks
       // already run against it continuously.
@@ -179,7 +178,7 @@ export function useTabSwitching({
         const prevMidLoad = isTabLoading(prevTabId);
         // Cache EditorState before switching (keeps undo/redo stack intact)
         // Non-MD files don't use ProseMirror — skip caching
-        if (!isSourceMode && !prevIsCode && !prevMidLoad) {
+        if (!sourceModeTabs.has(prevTabId) && !prevIsCode && !prevMidLoad) {
           editorStateCache.current.set(prevTabId, prevEditor.state);
           logCacheEvent("set", prevTabId, prevEditor.state.doc.childCount);
           // Save fold state as content-based anchors
@@ -196,9 +195,9 @@ export function useTabSwitching({
             }
           }
         }
-        // PDF tabs are read-only viewers with no editor — caching
-        // sourceContentRef here would overwrite the "" sentinel with another
-        // tab's text under the PDF's path.
+        // PDF tabs are read-only viewers with no editor — caching the source
+        // buffer here would overwrite the "" sentinel with another tab's text
+        // under the PDF's path.
         if (
           prevTab?.filePath &&
           !prevMidLoad &&
@@ -206,8 +205,8 @@ export function useTabSwitching({
         ) {
           try {
             const md =
-              prevIsCode || isSourceMode
-                ? sourceContentRef.current
+              prevIsCode || sourceModeTabs.has(prevTabId)
+                ? getSourceBuffer(prevTabId)
                 : timePhase("tabSwitch:serializeOutgoing", () =>
                     prosemirrorToMarkdown(prevEditor.state.doc),
                   );
@@ -222,10 +221,15 @@ export function useTabSwitching({
           }
         }
       }
-      // Exit source mode when switching tabs (only applies to markdown)
-      if (isSourceMode) {
-        setIsSourceMode(false);
-      }
+      // §287 소스 모드는 이제 탭을 따라 남는다 — 여기서 끄지 않는다.
+      //
+      // 예전에는 전환할 때마다 전역 boolean을 껐다. 편집 영역이 표면을 하나만 마운트하던
+      // 시절에는 그럴 수밖에 없었다(돌아와도 CodeMirror가 재생성돼 커서가 사라졌으니
+      // WYSIWYG로 되돌리는 편이 덜 나빴다). §286 유지 집합이 들어오면서 그 전제가 사라졌다:
+      // 소스 표면은 마운트된 채 숨고, 돌아오면 커서와 스크롤이 그대로다.
+      //
+      // ‼️ 사용자에게 보이는 동작 변경이다. 끄는 코드를 지운 자리에 이 주석을 남기는 이유는,
+      // 다음 사람이 "탭을 바꿔도 소스 모드가 안 꺼진다"를 결함으로 오해하지 않게 하기 위해서다.
     }
 
     // The outgoing-save block above has already read isTabLoading(prevTabId).
@@ -249,9 +253,12 @@ export function useTabSwitching({
       return;
     }
 
-    // Graph tab — no ProseMirror content to load
+    // Graph / plugin tab — no ProseMirror content to load
     // [CRITICAL-1 fix] Reset activeEditor so hooks bind to shared editor
-    if (isGraphTab(incomingTab)) {
+    // ‼️ Asked as "is this a file?": everything below this line reads `filePath`, so an
+    // enumerated check let a new tab type fall through into the keep-alive lookup and the
+    // content load with an empty path.
+    if (!isFileTab(incomingTab)) {
       onActiveEditorChange(null);
       return;
     }
@@ -381,8 +388,7 @@ export function useTabSwitching({
       if (!isMarkdownFile(incomingTab.filePath)) {
         // [CRITICAL-1 fix] Reset to shared editor
         onActiveEditorChange(null);
-        sourceContentRef.current = content;
-        setSourceContent(content);
+        setSourceBuffer(incomingTab.id, content);
         if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
         return;
       }

@@ -102,7 +102,7 @@ baram/
   - `fuzzyMatch()` → `src/utils/file-search.ts`
   - `RightPanelMode` / `SidebarPanel` 타입 → `src/stores/ui/ui.ts`
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
-- **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴 (예: `--color-bg-default`, `--color-text-muted`, `--color-accent-default`)
+- **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
 - **Shadow 토큰**: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-xl`
 - **CSS 파일 크기**: 단일 CSS 파일 ~1,500줄 이하 유지
@@ -151,7 +151,7 @@ baram/
 - **3-tier 계층**: Primitive (raw values) → Semantic (meaning) → Component CSS
 - **소스**: `tokens/*.json` (W3C DTCG) → **빌드** `npm run tokens:build` → `src/styles/generated/` 자동 생성
 - **감사** `npm run audit:css-vars` (미정의 CSS 변수 검출) · **Figma export** `npm run tokens:export` → `tokens/tokens-studio.json`
-- **Settings store version**: `src/stores/settings/store.ts`의 `version` + `migrate`가 canonical (2026-08 기준 17) — 이 문서에 버전별 내역을 열거하지 않는다
+- **Settings store version**: 18 — 실제 값은 `src/stores/settings/store.ts`의 `version:`이 유일한 출처다(이 줄은 참고용이고 실제로 12에서 멎어 있었다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
 
 ## 설계 문서 참조 규칙
 

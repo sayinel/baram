@@ -1,13 +1,23 @@
 // §30 Graph View — cytoscape stylesheet builder
+import type { GraphColors } from "./graph-colors";
 import type cytoscape from "cytoscape";
 import type { StylesheetStyle } from "cytoscape";
 
-/** Build dynamic Cytoscape stylesheet from settings */
-export function buildGraphStyle(settings: {
-  colorByNamespace: boolean;
-  linkThickness: number;
-  showArrows: boolean;
-}): StylesheetStyle[] {
+/**
+ * Build the dynamic Cytoscape stylesheet from settings and the resolved theme colours.
+ *
+ * ‼️ Every colour must arrive as a literal. Cytoscape parses colours itself and rejects a
+ * `var()` string outright, falling back to its own default — see graph-colors.ts, which is
+ * where `colors` comes from.
+ */
+export function buildGraphStyle(
+  settings: {
+    colorByNamespace: boolean;
+    linkThickness: number;
+    showArrows: boolean;
+  },
+  colors: GraphColors,
+): StylesheetStyle[] {
   return [
     {
       selector: "node",
@@ -18,10 +28,10 @@ export function buildGraphStyle(settings: {
         "text-margin-y": 4,
         "text-max-width": "80px",
         "text-wrap": "ellipsis",
-        "background-color": "var(--graph-node-color, #6b7280)",
+        "background-color": colors.node,
         width: "data(size)",
         height: "data(size)",
-        color: "var(--graph-label-color, #d1d5db)",
+        color: colors.label,
         "transition-property":
           "opacity, border-width, border-color, background-color",
         "transition-duration": 150,
@@ -41,30 +51,30 @@ export function buildGraphStyle(settings: {
     {
       selector: "node:selected",
       style: {
-        "background-color": "var(--graph-active-color, #3b82f6)",
+        "background-color": colors.active,
         "border-width": 2,
-        "border-color": "var(--graph-active-border, #60a5fa)",
+        "border-color": colors.activeBorder,
         "background-blacken": 0,
       } as cytoscape.Css.Node,
     },
     {
       selector: "node.active",
       style: {
-        "background-color": "var(--graph-active-color, #3b82f6)",
+        "background-color": colors.active,
         "border-width": 2,
-        "border-color": "var(--graph-active-border, #60a5fa)",
+        "border-color": colors.activeBorder,
       },
     },
     {
       selector: "node.neighbor",
       style: {
-        "background-color": "var(--graph-neighbor-color, #8b5cf6)",
+        "background-color": colors.neighbor,
       },
     },
     {
       selector: "node.orphan",
       style: {
-        "background-color": "var(--graph-orphan-color, #4b5563)",
+        "background-color": colors.orphan,
         opacity: 0.6,
       },
     },
@@ -80,7 +90,7 @@ export function buildGraphStyle(settings: {
       style: {
         "background-color": "transparent",
         "border-width": 1.5,
-        "border-color": "var(--graph-node-color, #6b7280)",
+        "border-color": colors.node,
         "border-style": "dashed" as never,
       },
     },
@@ -88,7 +98,7 @@ export function buildGraphStyle(settings: {
       selector: "node[?isTag]",
       style: {
         shape: "diamond",
-        "background-color": "var(--color-graph-tag, #f59e0b)",
+        "background-color": colors.tag,
         "font-size": 9,
         "text-valign": "bottom",
         "text-margin-y": 6,
@@ -98,10 +108,10 @@ export function buildGraphStyle(settings: {
       selector: "edge",
       style: {
         width: settings.linkThickness,
-        "line-color": "var(--graph-edge-color, #374151)",
+        "line-color": colors.edge,
         "curve-style": "bezier",
         "target-arrow-shape": settings.showArrows ? "triangle" : "none",
-        "target-arrow-color": "var(--graph-edge-color, #374151)",
+        "target-arrow-color": colors.edge,
         "arrow-scale": 0.6,
         opacity: 0.5,
         "transition-property": "opacity, line-color, width",
@@ -111,8 +121,8 @@ export function buildGraphStyle(settings: {
     {
       selector: "edge.highlighted",
       style: {
-        "line-color": "var(--graph-active-color, #3b82f6)",
-        "target-arrow-color": "var(--graph-active-color, #3b82f6)",
+        "line-color": colors.active,
+        "target-arrow-color": colors.active,
         opacity: 1,
         width: Math.max(settings.linkThickness * 2, 2),
       },
@@ -123,7 +133,7 @@ export function buildGraphStyle(settings: {
       style: {
         opacity: 1,
         "border-width": 2,
-        "border-color": "var(--graph-active-border, #60a5fa)",
+        "border-color": colors.activeBorder,
         "z-index": 9,
       },
     },
@@ -144,7 +154,7 @@ export function buildGraphStyle(settings: {
       selector: "node.pinned",
       style: {
         "border-width": 2,
-        "border-color": "var(--graph-pinned-color, #f59e0b)",
+        "border-color": colors.pinned,
         "border-style": "double" as never,
       },
     },
@@ -165,7 +175,7 @@ export function buildGraphStyle(settings: {
       selector: "node.hover",
       style: {
         "border-width": 2,
-        "border-color": "var(--graph-active-border, #60a5fa)",
+        "border-color": colors.activeBorder,
         "z-index": 10,
       },
     },
@@ -174,15 +184,15 @@ export function buildGraphStyle(settings: {
       style: {
         opacity: 1,
         "border-width": 1,
-        "border-color": "var(--graph-neighbor-color, #8b5cf6)",
+        "border-color": colors.neighbor,
       },
     },
     {
       selector: "edge.hover-edge",
       style: {
         opacity: 0.8,
-        "line-color": "var(--graph-active-color, #3b82f6)",
-        "target-arrow-color": "var(--graph-active-color, #3b82f6)",
+        "line-color": colors.active,
+        "target-arrow-color": colors.active,
         width: Math.max(settings.linkThickness * 1.5, 1.5),
       },
     },
@@ -192,8 +202,8 @@ export function buildGraphStyle(settings: {
       style: {
         "line-style": "dashed",
         "line-dash-pattern": [6, 3],
-        "line-color": "var(--graph-cross-vault-edge, #8b5cf6)",
-        "target-arrow-color": "var(--graph-cross-vault-edge, #8b5cf6)",
+        "line-color": colors.crossVault,
+        "target-arrow-color": colors.crossVault,
         opacity: 0.6,
       } as cytoscape.Css.Edge,
     },

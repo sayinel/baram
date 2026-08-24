@@ -151,17 +151,18 @@
   transform: translateY(-50%) rotate(0deg);
 }
 
-/* Fold arrow — gutter positioned, hidden by default (list items only) */
+/* Fold arrow — gutter positioned, hidden by default (list items only: fold.ts renders
+   the heading arrow as a `::before` above and emits this widget only for list items). */
 .fold-arrow {
   position: absolute;
   top: 50%;
-  left: -24px;
+  left: -1.6em;
   z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 1em;
+  height: 1em;
   cursor: pointer;
   user-select: none;
   opacity: 0;
@@ -174,30 +175,39 @@
   opacity: 0.5;
 }
 
-/* Vertically center the arrow on the first line's MARKER. The arrow sits next
-   to the marker, whose optical centre is slightly below the line-box centre; a
-   box of exactly line-height (1.75em) reads as too high, 2.1em as too low, so
-   1.95em lands the flex-centred triangle on the number/bullet. Tuned in WebKit
-   against the real editor font (Inter + Apple SD Gothic Neo). */
+/* Both coordinates are derived, because both used to be constants that were right at
+   exactly one setting.
+
+   VERTICAL: centred on the first line box, which is where the marker now sits. This was a
+   hand-tuned 1.95em, because a glyph marker's optical centre is not its line box's centre
+   — the arrow had to be aimed at the glyph rather than at the line. Markers are drawn
+   boxes centred on the line box (editor/lists.css), so both read the same line height and
+   land together. `lineHeight` is a user setting, so a constant could only ever match one
+   of its values.
+
+   HORIZONTAL: from the list's own `--list-gutter` and `--list-arrow-offset`
+   (editor/lists.css) rather than restated per list type — a second copy of those numbers is
+   how the arrow and the marker drift apart, and an ordered list's gutter is not a constant
+   at all any more: it is computed from the font's digit width, so nothing here could
+   restate it correctly even in principle.
+
+   Because the offset is measured from the list's LEFT EDGE, the arrow keeps a constant
+   0.81em clearance from a nested list's indent guide no matter how wide the gutter gets.
+   Its clearance from the MARKER is the thing the gutter has to pay for, which is why the
+   floor lives next to the gutter definition. (The -1.8em that an earlier version used for
+   bullet lists was measured in WebKit across zoom 1.0–2.5; the derivation is unchanged but
+   the constant is not, so that measurement no longer covers today's value literally.)
+
+   The arrow sits just outside the list's left edge; `contain: layout` (not `paint`) on
+   top-level lists in editor/tables.css is what keeps that overflow visible. No
+   `--editor-zoom` compensation is needed: markers are `::before` boxes anchored with
+   `right: 100%`, which is scale-perfect under CSS zoom
+   (see [[wkwebview-css-zoom-coords]]). */
 .tiptap li > .fold-arrow {
   top: 0;
-  height: 1.95em;
+  left: calc(-1 * var(--list-gutter, 1.4em) - var(--list-arrow-offset, 0.2em));
+  height: calc(var(--editor-line-height, 1.75) * 1em);
   transform: none;
-}
-
-/* Gutter offset: a small static negative `left` sits the arrow just left of the
-   marker — ul wider than the narrow bullet would suggest, since the triangle
-   box is ~1em wide. No `--editor-zoom` compensation is needed now that markers
-   are custom `::before` glyphs anchored with `right: 100%` (scale-perfect under
-   CSS zoom): verified in WebKit that the gap stays close and never overlaps the
-   bullet/number across zoom 1.0–2.5 (see [[wkwebview-css-zoom-coords]]). */
-.tiptap ul > li > .fold-arrow {
-  left: -1.8em;
-}
-
-/* Ordered lists: wider to clear 2-digit numbers ("10."). */
-.tiptap ol > li > .fold-arrow {
-  left: -2.4em;
 }
 
 .fold-arrow:hover {
@@ -209,7 +219,9 @@
   opacity: 0.7 !important;
 }
 
-/* Triangle via border trick (same as toggle-arrow) */
+/* Triangle via border trick (same as toggle-arrow). Sized in em so it tracks the editor
+   font like the marker it points at — the former 4px/6px stayed put while everything
+   around it grew. 0.375em wide is the 6px this replaces at the default 16px font. */
 .fold-arrow::before {
   display: block;
   width: 0;
@@ -217,7 +229,7 @@
   content: "";
   border-color: transparent transparent transparent currentcolor;
   border-style: solid;
-  border-width: 4px 0 4px 6px;
+  border-width: 0.25em 0 0.25em 0.375em;
   transition: transform 0.2s ease;
 }
 

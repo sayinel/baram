@@ -7,40 +7,6 @@ import { TextSelection } from "@tiptap/pm/state";
 
 import { MARK_DELIMITERS, syntaxRevealKey } from "./syntax-reveal-state";
 
-// ── Mark expansion ────────────────────────────────────────────────────
-
-export function expandImage(view: EditorView, node: PmNode, pos: number): void {
-  const src = (node.attrs.src as string) || "";
-  const alt = (node.attrs.alt as string) || "";
-  const title = node.attrs.title as null | string;
-
-  const text = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
-
-  const { tr } = view.state;
-
-  // Image is block-level → replace with paragraph containing markdown text
-  const textNode = view.state.schema.text(text);
-  const para = view.state.schema.nodes.paragraph.create(null, textNode);
-  tr.replaceWith(pos, pos + node.nodeSize, para);
-
-  // Content starts at pos+1 (inside paragraph)
-  const contentStart = pos + 1;
-  // Place cursor right after "![" for natural alt-text editing
-  const cursorPos = contentStart + 2;
-
-  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-  tr.setMeta(syntaxRevealKey, {
-    expanded: {
-      kind: "image",
-      from: contentStart,
-      to: contentStart + text.length,
-      openCheck: "![",
-    },
-  });
-
-  view.dispatch(tr);
-}
-
 // ── Link expansion ────────────────────────────────────────────────────
 
 export function expandLink(
@@ -86,7 +52,7 @@ export function expandLink(
   view.dispatch(tr);
 }
 
-// ── Image expansion ───────────────────────────────────────────────────
+// ── Mark expansion ────────────────────────────────────────────────────
 
 export function expandMark(
   view: EditorView,
@@ -137,6 +103,60 @@ export function expandMark(
       to: newTo,
       openCheck: delim.open,
       closeCheck: delim.close,
+    },
+  });
+
+  view.dispatch(tr);
+}
+
+// ── Media expansion (image/video, §295) ─────────────────────────────────
+
+export function expandMediaAtom(
+  view: EditorView,
+  node: PmNode,
+  pos: number,
+): void {
+  const src = (node.attrs.src as string) || "";
+  const alt = (node.attrs.alt as string) || "";
+  const title = node.attrs.title as null | string;
+
+  const text = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
+
+  const { tr } = view.state;
+
+  // Media atoms are block-level → replace with paragraph containing markdown text
+  const textNode = view.state.schema.text(text);
+  const para = view.state.schema.nodes.paragraph.create(null, textNode);
+  tr.replaceWith(pos, pos + node.nodeSize, para);
+
+  // Content starts at pos+1 (inside paragraph)
+  const contentStart = pos + 1;
+  // Place cursor right after "![" for natural alt-text editing
+  const cursorPos = contentStart + 2;
+
+  // §294 fix (C1): `![alt](src)` cannot represent width — stash every attr
+  // besides src/alt/title so collapse can restore it. Both image and video
+  // atoms go through this path, and since §294's image-parity round BOTH also
+  // carry widthPixel (this comment used to say only video did). Copying
+  // whatever the node actually has — rather than naming widthPercent
+  // specifically — is why that change needed nothing here: a schema/node-type
+  // mismatch on collapse (image ↔
+  // video, keyed off the edited src) still gets whichever fields the target
+  // type reads and silently ignores the rest — see ExpandedRange.mediaAttrs.
+  const mediaAttrs: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node.attrs)) {
+    if (key === "src" || key === "alt" || key === "title") continue;
+    mediaAttrs[key] = value;
+  }
+
+  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+  tr.setMeta(syntaxRevealKey, {
+    expanded: {
+      kind: "image",
+      from: contentStart,
+      to: contentStart + text.length,
+      openCheck: "![",
+      mediaAttrs,
     },
   });
 

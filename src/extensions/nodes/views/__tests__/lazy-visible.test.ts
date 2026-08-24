@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   _mountQueueLength,
   _resetForTest,
+  flushPendingVisibility,
   onFirstVisible,
 } from "../lazy-visible";
 
@@ -198,5 +199,81 @@ describe("onFirstVisible — shared observer + idle queue (C3.2)", () => {
     expect(cb).toHaveBeenCalledTimes(1);
 
     globalThis.IntersectionObserver = saved;
+  });
+});
+
+// §5.12 export: an export reads the whole document from a viewport that never
+// moves, so it has to wake every deferred block itself.
+describe("flushPendingVisibility — the export's escape hatch", () => {
+  afterEach(() => {
+    _resetForTest();
+    vi.clearAllTimers();
+  });
+
+  it("runs callbacks that have never intersected", () => {
+    const cbs = [vi.fn(), vi.fn(), vi.fn()];
+    for (const cb of cbs) onFirstVisible(document.createElement("div"), cb);
+    // Premise: nothing has intersected, so none of them would ever run.
+    for (const cb of cbs) expect(cb).not.toHaveBeenCalled();
+
+    expect(flushPendingVisibility()).toBe(3);
+    for (const cb of cbs) expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops at `limit`, leaving the rest for the next pass", () => {
+    const cbs = Array.from({ length: 5 }, () => vi.fn());
+    for (const cb of cbs) onFirstVisible(document.createElement("div"), cb);
+
+    expect(flushPendingVisibility(2)).toBe(2);
+    expect(cbs.filter((c) => c.mock.calls.length > 0)).toHaveLength(2);
+
+    expect(flushPendingVisibility(2)).toBe(2);
+    expect(cbs.filter((c) => c.mock.calls.length > 0)).toHaveLength(4);
+
+    // Reports what it actually ran, not the limit — that is how the caller
+    // knows the document is drained.
+    expect(flushPendingVisibility(2)).toBe(1);
+    expect(flushPendingVisibility(2)).toBe(0);
+  });
+
+  it("never runs a callback twice, whichever stage it was in", () => {
+    vi.useFakeTimers();
+    const queued = vi.fn();
+    const observedOnly = vi.fn();
+    const elA = document.createElement("div");
+    onFirstVisible(elA, queued);
+    onFirstVisible(document.createElement("div"), observedOnly);
+
+    // elA intersects → moves from the observer map into the mount queue.
+    const io = MockIntersectionObserver.instances.at(-1)!;
+    io.cb(
+      [
+        {
+          isIntersecting: true,
+          target: elA,
+        } as unknown as IntersectionObserverEntry,
+      ],
+      null as unknown as IntersectionObserver,
+    );
+    expect(_mountQueueLength()).toBe(1);
+
+    flushPendingVisibility();
+    flushPendingVisibility();
+    // …and let the idle drain that was already scheduled fire into an empty
+    // queue, which must not re-run anything either.
+    vi.runAllTimers();
+
+    expect(queued).toHaveBeenCalledTimes(1);
+    expect(observedOnly).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("does not run a callback whose disposer already ran", () => {
+    const cb = vi.fn();
+    const dispose = onFirstVisible(document.createElement("div"), cb);
+    dispose();
+
+    expect(flushPendingVisibility()).toBe(0);
+    expect(cb).not.toHaveBeenCalled();
   });
 });

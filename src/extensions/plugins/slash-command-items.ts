@@ -35,6 +35,7 @@ import {
   generatePhotoFilename,
   getAssetsDir,
 } from "../../utils/journal/journal-photo";
+import { classifyMediaSrc } from "../../utils/media-src";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
 import { chainWithVimExternalEdit } from "./vim/vim-keys";
 
@@ -297,10 +298,49 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         const live = task.isLive();
         task.finish();
         if (!result?.src || !live) return;
+        // §297 fix (I-4): the dialog is titled "Insert Image", but the node
+        // type must be whatever classifyMediaSrc (§293, the one enumeration)
+        // says — every other insertion point in this app (drop, paste, both
+        // input rules, both syntax-reveal collapse sites) already asks it
+        // first. Without this, typing a .mp4 path into the Image dialog
+        // creates an `image` node that classifies as `video` on the next
+        // save/reload, so the live and reloaded documents disagree.
         chainWithVimExternalEdit(editor)
           .focus()
           .insertContent({
-            type: "image",
+            type: classifyMediaSrc(result.src) === "image" ? "image" : "video",
+            attrs: { src: result.src, alt: result.alt || "", title: "" },
+          })
+          .run();
+      },
+    },
+    {
+      id: "video",
+      label: "Video",
+      category: "Media",
+      description: "Insert a video",
+      mdHint: "![](video.mp4)",
+      action: async () => {
+        const result = await showFieldDialog({
+          title: "Insert Video",
+          fields: [
+            { key: "alt", label: "Caption", placeholder: "Video caption" },
+            {
+              key: "src",
+              label: "Video URL or path",
+              placeholder: "https://youtu.be/... or ./clip.mp4",
+            },
+          ],
+        });
+        if (!result?.src) return;
+        // §297 fix (I-4): mirror of the /image fix above — a src that
+        // classifies as `image` (e.g. a .png typed into this dialog) must
+        // become an `image` node, or it silently flips to one on reload.
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: classifyMediaSrc(result.src) === "image" ? "image" : "video",
             attrs: { src: result.src, alt: result.alt || "", title: "" },
           })
           .run();

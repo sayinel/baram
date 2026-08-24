@@ -2,13 +2,34 @@
  * §85 M2b — Journal VaultContext migration tests
  * §56b — Journal workspace layout tests
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The journal preset fires an async open chain. Without a local mock the global
+// `invoke` stub answers `add_context` with `undefined`, `addContext` then throws on
+// `saved.id`, and the branch dies inside its own catch — leaving `logger.error` noise
+// and covering nothing. Echoing the info keeps the chain benign and quiet.
+vi.mock("../../ipc/context", () => ({
+  addContext: vi.fn(async (info: unknown) => info),
+  getContexts: vi.fn(async () => []),
+  removeContext: vi.fn(async () => {}),
+  setActiveContext: vi.fn(async () => {}),
+  updateContextAlias: vi.fn(async () => {}),
+  updateContextColor: vi.fn(async () => {}),
+  updateContextLabel: vi.fn(async () => {}),
+}));
+
+import { invoke } from "@tauri-apps/api/core";
 
 import { useContextStore } from "../context/context";
 import { isActiveContextJournal } from "../file/file";
 import { BUILTIN_PRESETS, useWorkspaceStore } from "../file/workspace";
 import { useSettingsStore } from "../settings/store";
 import { useUIStore } from "../ui/ui";
+
+const JOURNAL_SETTINGS_BEFORE = {
+  journalDirectory: useSettingsStore.getState().journalDirectory,
+  journalEnabled: useSettingsStore.getState().journalEnabled,
+};
 
 describe("§56b UIStore memories panel mode", () => {
   beforeEach(async () => {
@@ -56,9 +77,26 @@ describe("§56b Journal workspace preset update", () => {
     expect(journalPreset!.layout.rightPanelMode).toBe("memories");
   });
 
-  it("applyPreset('journal') sets up memories view layout", () => {
-    // Disable journal to avoid async auto-open logic
-    useSettingsStore.setState({ journalEnabled: false });
+  // The journal settings this test needs must not leak into the ones after it.
+  afterEach(() => {
+    useSettingsStore.setState({
+      journalDirectory: JOURNAL_SETTINGS_BEFORE.journalDirectory,
+      journalEnabled: JOURNAL_SETTINGS_BEFORE.journalEnabled,
+    });
+  });
+
+  it("applyPreset('journal') sets up memories view layout", async () => {
+    // This used to disable the journal to skip the async auto-open. It cannot any
+    // more: an unconfigured journal now reports the missing setting and returns
+    // without switching (§85, the contract Zettel already had — see
+    // workspace-store.test.ts). So configure it, and assert what the auto-open owes
+    // the user as well as the layout.
+    const journalDir = "/tmp/baram-journal-scope";
+    useSettingsStore.setState({
+      journalDirectory: journalDir,
+      journalEnabled: true,
+    });
+    vi.mocked(invoke).mockClear();
 
     useWorkspaceStore.getState().applyPreset("journal");
 
@@ -67,6 +105,17 @@ describe("§56b Journal workspace preset update", () => {
     expect(ui.sidebarPanel).toBe("calendar");
     expect(ui.rightPanelOpen).toBe(true);
     expect(ui.rightPanelMode).toBe("memories");
+
+    // …and the space actually SWITCHES to the journal. `ensureJournalContext` only
+    // activates it; the subscription in file.ts syncs `rootPath` without loading the
+    // tree, so the preset has to call `switchContext` (as the zettel branch does) or
+    // the Files panel keeps showing the previous vault while new files, search and the
+    // index all resolve against the journal. `set_vault_root` is that call's fingerprint.
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith("set_vault_root", {
+      path: journalDir,
+    });
   });
 });
 

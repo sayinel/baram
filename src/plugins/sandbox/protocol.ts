@@ -60,6 +60,19 @@ export type HostToSandbox =
  */
 export type SandboxHostRequest =
   | {
+      // §4.8 — the document's PROSE: block text with real separators, code and frontmatter
+      // excluded, wikilink labels included. Staged like the markdown for the same reason —
+      // prose is only a little smaller than its source, so it clears tauri's 8 KiB
+      // channel-data threshold on any real document too.
+      //
+      // WHY a second reader rather than letting plugins strip markdown themselves: the
+      // reference Word Count plugin did exactly that arithmetic on `getMarkdown()` and
+      // counted `#`, `-` and `|` as words, disagreeing with the app's own status bar in the
+      // same status bar. The counting policy is the app's, so the app has to be able to
+      // hand it over.
+      kind: "editor_get_text";
+    }
+  | {
       // §260 Phase 4a — set the text of one DECLARED status-bar item. `id` is the
       // manifest-declared id, not a store key: the host namespaces it and refuses one
       // this plugin did not declare, so the frame cannot reach another plugin's item.

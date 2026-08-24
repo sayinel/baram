@@ -12,8 +12,8 @@ use thiserror::Error;
 
 // Re-export public API consumed by commands/index_cmd.rs
 pub use extractor::{
-    collect_md_files, find_unlinked_mentions, replace_block_id_refs, replace_wikilink_target,
-    rewrite_relative_wikilinks, UnlinkedMentionResult,
+    collect_all_files, collect_md_files, find_unlinked_mentions, replace_block_id_refs,
+    replace_wikilink_target, rewrite_relative_wikilinks, UnlinkedMentionResult,
 };
 
 use extractor::{extract_file_tags, extract_links};
@@ -101,6 +101,18 @@ pub struct LinkIndex {
     relative_map: HashMap<String, String>,
     /// Note id (12–14 digit filename prefix) → absolute file path (Zettelkasten `[[ID]]` links)
     id_map: HashMap<String, String>,
+    /// §278 Full lowercased file NAME (extension included) → absolute file paths.
+    ///
+    /// `file_map` is keyed by `file_stem()`, so `Paper.pdf` lands under `paper` and a
+    /// bare `[[Paper.pdf]]` (which `normalize_target` leaves as `paper.pdf`, since it
+    /// only strips `.md`) never matches. Path-qualified targets already worked through
+    /// `relative_map`, which strips only markdown extensions too — this closes the
+    /// remaining case so a PDF link is a real edge in backlinks and the graph rather
+    /// than a dangling node.
+    ///
+    /// A `Vec` for the same reason `file_map` uses one: two folders can hold files with
+    /// the same name, and first-registered wins consistently with the stem lookup.
+    name_map: HashMap<String, Vec<String>>,
     /// file_path → list of tags found in that file (for graph tag nodes)
     file_tags: HashMap<String, Vec<String>>,
 }
@@ -119,6 +131,7 @@ impl LinkIndex {
         self.file_map.clear();
         self.relative_map.clear();
         self.id_map.clear();
+        self.name_map.clear();
         self.file_tags.clear();
 
         let mut files_indexed: u32 = 0;
@@ -130,6 +143,12 @@ impl LinkIndex {
         // Build file maps for wikilink target resolution
         for file_path in &md_files {
             self.register_file_path(file_path, root_path);
+        }
+
+        // §278 Non-markdown files are link TARGETS only — registered after the markdown
+        // pass so that where the two could collide, markdown is already in place.
+        for file_path in collect_all_files(root_path).await? {
+            self.register_link_target(&file_path, root_path);
         }
 
         for file_path in &md_files {
@@ -189,6 +208,12 @@ impl LinkIndex {
         }
         self.relative_map.retain(|_, v| v != file_path);
         self.id_map.retain(|_, v| v != file_path);
+        // §278 same shape as the file_map cleanup above — drop the path, then the key
+        // once nothing points at it.
+        self.name_map.retain(|_, paths| {
+            paths.retain(|p| p != file_path);
+            !paths.is_empty()
+        });
         self.file_tags.remove(file_path);
     }
 
@@ -250,6 +275,49 @@ impl LinkIndex {
         }
     }
 
+    /// §278 Register a file as a wikilink TARGET only — `name_map` and nothing else.
+    ///
+    /// ‼️ Deliberately NOT `register_file_path`. That one also fills `file_map` (keyed by
+    /// file stem) and `relative_map`, and a PDF landing in `file_map` would put
+    /// `Paper.pdf` under the stem `paper` — the same key its highlight companion note
+    /// uses, since `companionPathFor` derives one name from the other. Whichever
+    /// registered first would then win a bare `[[Paper]]`, silently changing where an
+    /// existing link points. Confining non-markdown files to `name_map` keeps the stem
+    /// and relative lookups exactly as they were: this can only add resolutions.
+    ///
+    /// Both the bare name and the vault-relative path are registered, because
+    /// `normalize_target` strips only markdown extensions — `[[Paper.pdf]]` normalises to
+    /// `paper.pdf` and `[[papers/Paper.pdf]]` to `papers/paper.pdf`, and both forms have
+    /// to find the file.
+    fn register_link_target(&mut self, file_path: &str, root_path: &str) {
+        let mut keys: Vec<String> = Vec::new();
+
+        if let Some(name) = std::path::Path::new(file_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+        {
+            keys.push(name);
+        }
+
+        if let Some(rel) = file_path.strip_prefix(root_path) {
+            let rel = rel
+                .strip_prefix('/')
+                .or_else(|| rel.strip_prefix('\\'))
+                .unwrap_or(rel)
+                .to_lowercase();
+            if !keys.contains(&rel) {
+                keys.push(rel);
+            }
+        }
+
+        for key in keys {
+            let paths = self.name_map.entry(key).or_default();
+            if !paths.contains(&file_path.to_string()) {
+                paths.push(file_path.to_string());
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn id_map_len(&self) -> usize {
         self.id_map.len()
@@ -278,6 +346,19 @@ impl LinkIndex {
 
         // 3) Look up in file_map
         if let Some(paths) = self.file_map.get(stem) {
+            if !paths.is_empty() {
+                return Some(paths[0].clone());
+            }
+        }
+
+        // 4) §278 Full file name, extension included — `[[Paper.pdf]]`.
+        //
+        // ‼️ LAST, exactly like the frontend resolver. The order is the safety property:
+        // every target that resolves today is decided above, so this step can only add
+        // resolutions, never change one. In particular a bare `[[Paper]]` keeps going to
+        // the markdown note (which, for a PDF, is its highlight companion — they share a
+        // stem because companionPathFor builds one from the other).
+        if let Some(paths) = self.name_map.get(target_normalized) {
             if !paths.is_empty() {
                 return Some(paths[0].clone());
             }
@@ -461,6 +542,153 @@ mod tests {
     }
 
     // --- File map target resolution tests ---
+
+    #[tokio::test]
+    async fn test_build_routes_non_markdown_through_the_target_only_path() {
+        // ‼️ This one goes through `build()` ON A REAL DIRECTORY, and it has to.
+        //
+        // Every other test here calls the register_* functions directly, so none of them
+        // can see WHICH of the two the build loop picks. Swapping `register_link_target`
+        // for `register_file_path` in that loop — the mutation that puts a PDF into
+        // file_map under its stem, stealing `[[attention]]` from the companion note —
+        // left the whole suite green. The property lives at the call site, so the test
+        // has to reach the call site.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().to_string_lossy().to_string();
+
+        let papers = dir.path().join("papers");
+        let companions = dir.path().join("highlights").join("papers");
+        tokio::fs::create_dir_all(&papers).await.expect("mkdir");
+        tokio::fs::create_dir_all(&companions).await.expect("mkdir");
+        tokio::fs::write(papers.join("attention.pdf"), b"%PDF-1.4\n")
+            .await
+            .expect("write pdf");
+        tokio::fs::write(companions.join("attention.md"), "quoted line ^abc123\n")
+            .await
+            .expect("write md");
+
+        let mut index = LinkIndex::new();
+        index.build(&root).await.expect("build");
+
+        // The bare target keeps going to the note — the PDF never entered file_map.
+        assert_eq!(
+            index.resolve_target_from_map("attention"),
+            Some(
+                companions
+                    .join("attention.md")
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        );
+        // …and the explicit form reaches the PDF, which is the point of §278.
+        assert_eq!(
+            index.resolve_target_from_map("attention.pdf"),
+            Some(papers.join("attention.pdf").to_string_lossy().into_owned())
+        );
+    }
+
+    #[test]
+    fn test_name_lookup_runs_after_the_stem_and_relative_lookups() {
+        // ‼️ This fixture is SYNTHETIC on purpose, and it has to be.
+        //
+        // The obvious ordering test — a PDF beside its companion note — cannot fail: the
+        // PDF's name_map keys carry an extension ("attention.pdf") while a bare
+        // `[[attention]]` normalises without one, so the name lookup misses no matter
+        // where it sits. A mutation that hoists it above the stem lookup survived that
+        // test, which is how this gap was found.
+        //
+        // The two orders are only distinguishable when a name_map key equals a target
+        // that the earlier maps also answer. An extension-LESS file does that: it
+        // registers under "notes/architecture", the exact key `relative_map` builds for
+        // "notes/architecture.md" (normalize_target strips the markdown extension).
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_file_path("/vault/notes/architecture.md", "/vault");
+        index.register_link_target("/vault/notes/architecture", "/vault");
+
+        // Markdown wins — hoisting the name lookup returns the extension-less file here.
+        assert_eq!(
+            index.resolve_target_from_map("notes/architecture"),
+            Some("/vault/notes/architecture.md".to_string())
+        );
+        assert_eq!(
+            index.resolve_target_from_map("architecture"),
+            Some("/vault/notes/architecture.md".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_pdf_target_by_full_name() {
+        // §278 `[[Paper.pdf]]` — normalize_target strips only markdown extensions, so the
+        // target stays "paper.pdf" while file_map is keyed by the stem "paper".
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_link_target("/vault/papers/attention.pdf", "/vault");
+
+        assert_eq!(
+            index.resolve_target_from_map("attention.pdf"),
+            Some("/vault/papers/attention.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_pdf_target_by_relative_path() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_link_target("/vault/papers/attention.pdf", "/vault");
+
+        assert_eq!(
+            index.resolve_target_from_map("papers/attention.pdf"),
+            Some("/vault/papers/attention.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_bare_target_still_resolves_to_the_markdown_note() {
+        // ‼️ THE safety property. A PDF and its highlight companion note share a stem by
+        // construction (companionPathFor). Registering the PDF must not steal `[[x]]`
+        // from the note — non-markdown files go into name_map alone, and the name lookup
+        // runs last.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_link_target("/vault/papers/attention.pdf", "/vault");
+        index.register_file_path("/vault/highlights/papers/attention.md", "/vault");
+
+        assert_eq!(
+            index.resolve_target_from_map("attention"),
+            Some("/vault/highlights/papers/attention.md".to_string())
+        );
+        // …and the explicit form still reaches the PDF.
+        assert_eq!(
+            index.resolve_target_from_map("attention.pdf"),
+            Some("/vault/papers/attention.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_link_target_registration_is_case_insensitive() {
+        // The real file is "Survey.PDF"; a case-sensitive filesystem will not open a
+        // lower-cased path, so the stored value must be the path as it is on disk.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_link_target("/vault/papers/Survey.PDF", "/vault");
+
+        assert_eq!(
+            index.resolve_target_from_map("survey.pdf"),
+            Some("/vault/papers/Survey.PDF".to_string())
+        );
+    }
+
+    #[test]
+    fn test_removing_a_file_drops_its_link_target_keys() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_link_target("/vault/papers/attention.pdf", "/vault");
+        assert!(index.resolve_target_from_map("attention.pdf").is_some());
+
+        index.remove_file("/vault/papers/attention.pdf");
+        assert_eq!(index.resolve_target_from_map("attention.pdf"), None);
+    }
 
     #[test]
     fn test_resolve_target_stem_only() {

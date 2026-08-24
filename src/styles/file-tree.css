@@ -1,5 +1,13 @@
 /* §4.3 File Tree */
 .file-tree {
+  /* Fill `.sidebar-content` rather than stopping at the last row. The tree is
+     that container's only child, so without this the empty space below the
+     list belongs to the scroll container, not the tree — which silently killed
+     two features that identify the tree by hit-testing it: external file drops
+     (`detectZone` in use-external-drop.ts, measured failing at y=940 against a
+     tree whose rect ended at 850) and the empty-area context menu
+     (`handleEmptyAreaContextMenu`, which requires e.target to be .file-tree). */
+  min-height: 100%;
   padding: 4px 0;
 }
 

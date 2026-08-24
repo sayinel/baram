@@ -20,7 +20,7 @@ import {
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
-import { isMarkdownFile } from "../utils/file-type";
+import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
 import { notifyJournalChanged } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
@@ -133,6 +133,22 @@ export function useAutoSave(editor: Editor | null) {
       const { activeTabId, tabs, markDirty } = useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab?.filePath) return;
+
+      // ‼️ The active tab is read at EVENT TIME, so a transaction that belongs to the
+      // markdown document can land on whatever tab is active by the time it fires. Open
+      // a PDF and that is the PDF's tab: it goes dirty without anyone editing anything,
+      // and closing it asks whether to save.
+      //
+      // The dirty flag is not cosmetic here. App.tsx's non-markdown auto-save effect is
+      // gated on `isCodeFile` — which is merely "not markdown", so a PDF qualifies — and
+      // fires when the tab is dirty, writing `sourceContentRef.current` over the file.
+      // With `autoSave` defaulting to true, a PDF marked dirty is a PDF about to be
+      // overwritten with text.
+      //
+      // A binary file cannot be edited through this editor, so a dirty signal attributed
+      // to one is spurious by construction. This is the rule file-type.ts already states:
+      // every text path must skip these files.
+      if (isBinaryViewerFile(tab.filePath)) return;
 
       // Auto-measured table colwidth init (createColResizePlugin) is load-time
       // normalization, not a user edit, and is never serialized (userResized:

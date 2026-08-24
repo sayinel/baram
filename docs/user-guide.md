@@ -12,6 +12,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Formatting](#formatting)
 - [Rich Content](#rich-content)
 - [Linking & Navigation](#linking--navigation)
+- [PDF Reading & Highlights](#pdf-reading--highlights)
 - [Source Mode](#source-mode)
 - [Find & Replace](#find--replace)
 - [AI Features](#ai-features)
@@ -130,7 +131,7 @@ them to another application. Click one in the file tree, or use **File > Open Fi
 
 | Type | Extensions | What you get |
 | ---- | ---------- | ------------ |
-| **PDF** | `.pdf` | A read-only viewer. Page navigation and zoom come from the viewer; PDFs cannot be edited. |
+| **PDF** | `.pdf` | A reader with page navigation, find, zoom, a page/highlight side panel, and text & area highlighting you can reference from your notes. The PDF file itself is never modified. See [PDF Reading & Highlights](#pdf-reading--highlights). |
 | **HTML** | `.html`, `.htm` | A rendered live preview by default, with a **Preview / Source** toggle in the corner. Switch to Source to edit the markup with syntax highlighting; saving works as it does for any file. The preview is sandboxed, so scripts in the file cannot reach your vault or the app. |
 | **Images** | `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.avif` | A viewer that fits the image to the window without upscaling small ones. |
 | **SVG** | `.svg` | The same viewer, rendered as vector — it stays sharp at any zoom. Scripts inside an SVG do not execute. |
@@ -164,6 +165,16 @@ The Journal feature integrates with vaults. Each vault can have its own journal 
 | Quick Switcher | `Cmd+K`       | `Ctrl+K`       |
 
 You can also open files from the file tree in the left sidebar, or use the **Quick Switcher** (`Cmd+K`) for fast file and heading navigation.
+
+### Importing files by drag and drop
+
+Drag files or folders from Finder or Explorer onto the file tree and Baram copies them into your
+vault at the drop target. Folders are copied recursively.
+
+- If a name is already taken, Baram picks a free one rather than overwriting anything.
+- Symbolic links are skipped rather than followed, and Baram tells you how many it skipped — a
+  count of copied files would otherwise be a true sentence about an incomplete copy.
+- Dropping onto empty space below the tree — or onto a top-level row — lands at the vault root.
 
 ### Tabs
 
@@ -474,6 +485,38 @@ Insert images in multiple ways:
 
 Hover over an image to access the toolbar for resizing (25% / 50% / 75% / 100%) and editing alt text.
 
+**Previews and the original.** In the document, images are drawn from a cached preview (up to 2048px on the long edge) rather than the file itself, so a page of camera-sized photos opens without stalling. Click the **View original** button (⤢) in the hover toolbar — or press `Esc` to leave it — to see the full-resolution file. Your markdown is untouched either way: the path you wrote is what stays in the file and what gets exported.
+
+### Videos
+
+Embed videos with the same syntax as images:
+
+1. **Local files** — `![caption](assets/clip.mp4)`. Drag and drop a video file and it is
+   copied into an `assets/` folder next to your document.
+2. **Direct links** — `![](https://example.com/clip.mp4)`
+3. **YouTube / Vimeo** — `![](https://youtu.be/VIDEO_ID)`
+
+Local and remote video files get native playback controls from the moment they render —
+there is no separate poster frame or play button to click first. Provider embeds instead
+show a card naming the host, and nothing is downloaded from YouTube or Vimeo until you click
+it to load the player. A direct remote video URL doesn't fetch anything from its host either
+until you press play — opening the document alone does not reach out to it. Local and remote
+video files can be resized by dragging their edges, which is stored as
+`<video src="…" width="60%"></video>`. Provider embeds are always full width at a 16:9 ratio.
+
+`.mp4` (H.264) plays on every platform. `.webm`, `.mov`, and `.ogv` depend on the
+platform's media support — if a video cannot play, the editor says so instead of showing a
+blank frame. `.mkv` is not a recognized video container on any platform, so Baram does not
+treat it as a video at all — it falls back to an image reference that will not display.
+Convert to `.mp4` instead.
+
+When you export to HTML, a local video keeps the same relative path it has in your document
+— `assets/clip.mp4` stays `assets/clip.mp4` — rather than being embedded. That means the
+`assets` folder (or wherever the video lives, for a nested path) has to sit next to the
+exported HTML file in that same relative position, or the video won't play. A video
+referenced by an absolute path outside the document's own directory keeps that absolute path
+in the export, so it will only play on the machine it was exported from.
+
 ### Table of Contents
 
 Insert a table of contents that automatically lists all headings in the document:
@@ -560,6 +603,16 @@ Connect your notes using `[[wikilinks]]`:
 | `[[page\|display text]]` | Link with custom display text |
 | `[[page#heading]]`       | Link to a specific heading    |
 | `[[page#^block-id]]`     | Link to a specific block      |
+| `[[paper.pdf]]`          | Link to a non-markdown file Baram can view |
+
+**Linking to other file types:** A wikilink can name any file Baram opens in place — PDFs, HTML,
+images, SVG — by writing the extension: `[[diagram.svg]]`, `[[paper.pdf]]`. The autocomplete
+offers these files alongside your notes and labels each one with its type, so you can tell a
+`report.pdf` from a `report.md` before you pick. Plain markdown links work too: `[the paper](papers/attention.pdf)`
+opens in Baram rather than handing the file to your operating system.
+
+These links are indexed the same way links between notes are, so a PDF you cite appears in
+backlinks and as a node in the Graph View.
 
 **Hover Preview:** Hover over any wikilink to see a preview of the target document's content without navigating away.
 
@@ -628,6 +681,12 @@ Reference specific blocks from other documents:
 
 Block references appear as inline chips that you can `Cmd+click` to navigate to the source. Block embeds show a live, read-only preview of the referenced block — and you can edit the embedded content directly, with changes syncing back to the source file.
 
+**References to PDF highlights** are block references too, produced by **Copy reference** in the
+PDF reader. They render as the quoted sentence, or as the cropped region for an area highlight,
+and take an optional width — `((target#^id|w=60))`, an integer percentage from 10 to 100 — which
+you can also set by dragging the reference's right edge. See
+[PDF Reading & Highlights](#pdf-reading--highlights).
+
 ### Navigation History
 
 Navigate between recently visited locations:
@@ -648,6 +707,146 @@ Bookmark frequently accessed files for quick access:
 ### Graph View
 
 A visual map of your note connections. Nodes represent files, edges represent wikilinks between them. Use the Graph View to explore the structure of your workspace and discover clusters of related notes.
+
+---
+
+## PDF Reading & Highlights
+
+Baram opens `.pdf` files in a built-in reader. You cannot edit the PDF — but you can read it,
+search it, and highlight it, and every highlight can become a reference inside your markdown
+notes. **The PDF file itself is never written to.** Highlights are stored alongside it in
+your vault as plain files (see [Where highlights are stored](#where-highlights-are-stored)).
+
+> Highlighting requires a vault, because the highlight has to be stored somewhere. Open a PDF
+> outside a vault — through **File > Open File** — and you still get the reader, find, zoom, and
+> the page list; the highlight controls are simply not shown.
+
+### The PDF toolbar
+
+| Control | What it does |
+| ------- | ------------ |
+| **Page & highlight list** | Toggles the side panel (see below) |
+| **‹ / ›** and `3 / 40` | Previous/next page, and the current page counter |
+| **Find** | Opens the find bar (`Cmd+F` does the same) |
+| **Text highlight mode** | Selecting text creates a highlight instead of a plain selection |
+| **Area highlight mode** | Drag to draw a rectangle over a figure, table, or equation |
+
+The two highlight modes are mutually exclusive — turning one on turns the other off. Both stay off
+by default, so an ordinary drag-select and `Cmd+C` behaves the way it does in any PDF reader.
+
+### Zoom
+
+The PDF renders onto canvases, so it zooms with the same controls as the editor: `Cmd+=` /
+`Cmd+-` to step, and a two-finger pinch on a trackpad. Pages re-render sharply at the new scale
+once you settle, rather than being scaled as a blurry bitmap.
+
+### Find in a PDF (`Cmd+F`)
+
+`Cmd+F` inside a PDF opens **Find in PDF** instead of the editor's find bar.
+
+- Type to highlight every match across the document
+- **↑ / ↓** or `Enter` / `Shift+Enter` step through matches; the counter shows `3 / 17`
+- **Match case** narrows the search
+- `Escape` closes the bar
+
+Matches are painted onto the PDF's text layer, so they line up with the words on the page even
+where the PDF's internal text is broken across lines.
+
+### The side panel
+
+The panel button opens a rail on the left of the PDF with two tabs:
+
+- **Pages** — Thumbnails of every page, rendered lazily as you scroll. Click one to jump there.
+- **Highlights** — Every highlight in this PDF, in page order. Click one to jump to it and flash
+  it. This tab has **Active** and **Deleted** sub-tabs (see [Deleting](#deleting-restoring-and-purging)).
+
+Drag the panel's inner edge to resize it. The width is remembered per install.
+
+### Creating a highlight
+
+**Text highlights** — Turn on *Text highlight mode*, then select text. A popup appears with five
+colours (yellow, green, blue, pink, purple); pick one and the highlight is written.
+
+**Area highlights** — Turn on *Area highlight mode* and drag a rectangle, or hold **Alt** and drag
+anywhere without switching modes. Press `Escape` mid-drag to cancel. Use these for figures,
+tables, screenshots, and typeset equations — anything whose meaning is not in the text layer.
+
+Clicking an existing highlight reopens the popup, where you can recolour it, copy from it, or
+delete it. Where two highlights overlap, the click resolves to the topmost one.
+
+### Referencing a highlight from your notes
+
+This is the point of the feature: a highlight is not just a mark on a PDF, it is a block you can
+cite.
+
+1. Click a highlight and choose **Copy reference**
+2. Paste into any markdown file
+
+The pasted text is a block reference — `((highlights/papers/attention#^a1b2c3|Attention is all you need))`
+— pointing at the companion note, with a short label after the `|`. It renders inline as a preview
+of what you highlighted, not as that label:
+
+- A **text** highlight renders the full quoted sentence, not a truncated label
+- An **area** highlight renders the cropped region of the PDF as an image
+
+`Cmd+click` a reference to open the PDF at that highlight.
+
+**Copy text** is also on the popup for text highlights, when you want the raw quoted text and
+no link. Area highlights do not offer it — there is no text behind a region to copy.
+
+#### Resizing an area reference
+
+An area reference renders at a percentage of the available width. Drag its right edge to resize
+it, or write the width by hand:
+
+```markdown
+((highlights/papers/attention#^a1b2c3|Figure 2|w=60))
+```
+
+`w=` goes last and takes an integer percentage from **10 to 100**. The label before it is
+optional — `((target#^id|w=60))` is equally valid. It is part of the markdown, so the width
+survives a round-trip and travels with the file — and it is visible in the source, not hidden in
+a metadata store.
+
+### Deleting, restoring, and purging
+
+Deleting a highlight is a **soft delete**. The entry stays in place with a deletion timestamp, the
+overlay stops being drawn, and it moves to the **Deleted** sub-tab of the Highlights panel.
+
+This is deliberate. The quoted text lives in the companion note and the geometry lives in the
+sidecar; discarding the entry outright would strip every reference pointing at it back to a bare
+80-character label, and an area reference would lose its crop rectangle and become
+**unrecoverable**. Soft deletion keeps both kinds of reference whole.
+
+From the Deleted tab you can:
+
+- **Restore** — the highlight comes back exactly as it was, references included
+- **Delete permanently** — the entry is removed for good. Baram counts how many references point
+  at it first and says so in the confirmation, because those references will lose their preview.
+  The quoted text stays in the companion note either way.
+
+### Where highlights are stored
+
+Nothing is hidden in a database, and nothing is written into the PDF:
+
+| File | Contents |
+| ---- | -------- |
+| `highlights/<path-to-pdf>.md` | A companion markdown note holding the quoted text of each highlight, one block-ID'd paragraph per highlight |
+| `.baram/pdf-highlights/<path-to-pdf>.json` | The geometry — page number, rectangles, colour, kind, and deletion state |
+
+Both are plain text inside your vault, so they diff, merge, and sync like everything else. The
+companion note is an ordinary markdown file: you can open it, read the highlights as a reading
+list, and write around them.
+
+A malformed entry in the sidecar is dropped on its own rather than taking the whole file with it,
+so one bad record cannot cost you every highlight in a document.
+
+### Linking to PDFs
+
+PDFs are ordinary link targets. `[[paper.pdf]]` resolves and opens in the reader, the wikilink
+autocomplete offers viewable files and labels their type, and a plain markdown link —
+`[see the paper](papers/attention.pdf)` — opens in the app rather than handing off to the OS.
+Because these are indexed as real edges, PDFs show up in backlinks and in the graph.
 
 ---
 
@@ -1031,7 +1230,8 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 ### Photo Journal
 
 - Drag, paste, or use the `/photo` slash command to add images — they are auto-saved to an `assets/` folder next to your journal
-- Open the **Photo Gallery** (`Cmd+Shift+I` / `Ctrl+Shift+I`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox
+- Open the **Photo Gallery** (`Cmd+Shift+I` / `Ctrl+Shift+I`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox (`←` / `→` to move between photos, `Esc` to close)
+- Thumbnails and lightbox images are cached previews, so a year of camera-sized photos scrolls smoothly. In the lightbox, **원본 보기 / View original** opens the full-resolution file; `Esc` closes that view first and leaves the lightbox open
 
 ### Memories
 
@@ -1216,11 +1416,24 @@ See the full [Keyboard Shortcuts Reference](keyboard-shortcuts.md) for all avail
 
 ## Plugins
 
-Baram can be extended with community plugins, managed from **Settings > Plugins**.
+Baram can be extended with plugins, managed from **Settings > Plugins**.
 
-- **Browse** — Discover plugins from the registry
-- **Installed** — See and configure the plugins you have installed
-- **Updates** — Check for and apply plugin updates
+- **Browse** — Discover plugins from the registry. Click any plugin to open its **detail page** in
+  an editor tab, with the full description, its rendered README, the capabilities it asks for, and
+  links to its repository and homepage.
+- **Installed** — Everything currently installed, grouped by where it came from: **Built-in**
+  (ships with Baram), **Community** (installed from the registry), and **In development** (a local
+  folder you loaded yourself).
+- **Updates** — Check for and apply plugin updates.
+
+### Turning plugins on and off
+
+Every plugin has an **On / Off** toggle, built-in ones included — so you can switch off a bundled
+feature you do not want, such as the Media Viewer, and your choice is remembered across restarts.
+Plugins activate and deactivate one at a time; if one fails to start, the failure is reported on
+that plugin's row instead of failing silently.
+
+### Capabilities and trust
 
 Each plugin declares the **capabilities** (permissions) it needs — access to the editor, files, commands, UI, and so on. You review and approve these before installing, and downloads are checksum-verified.
 
@@ -1230,6 +1443,25 @@ Plugins come in two kinds, and the difference matters:
 - **Full trust** — the plugin runs inside Baram itself with no isolation. Its capability list describes what it intends to do but does **not** limit it: it can read and write any file your account can reach, contact any network host, and use every credential the app holds. Baram shows a red warning and requires a separate confirmation before installing one.
 
 > **Upgrading from v0.4.x?** Plugins installed before v0.5.0 predate this model and can no longer be loaded. Use **Remove** on the Installed tab, then install again from the marketplace if a current version is published.
+
+Installation is a staged, all-or-nothing transaction: the download is unpacked and validated
+somewhere else first and only swapped into place once every check passes, so a failed or
+interrupted install cannot leave you with a half-written plugin.
+
+### Withdrawn plugins
+
+A plugin version can be **withdrawn** after you have already installed it — because a security
+issue was found in it, or because it was pulled by its author. Baram fetches a signed withdrawal
+list and checks your installed plugins against it.
+
+A withdrawn plugin is marked **Withdrawn** in the list and **is not run**, with the reason shown.
+Its files are left exactly where they are — nothing is deleted behind your back — and a **Remove
+it** action is offered. Where the report is a vulnerability rather than a withdrawal, the plugin
+keeps running and you are told to update when a newer version appears.
+
+Baram tells you when it cannot rely on that list: if the list has never been received, or could
+not be signature-verified, or has not been updated in a long time, it says so rather than quietly
+implying that everything you have is fine.
 
 To build your own plugin, see the [Plugin Development Guide](plugin-development.md) for the manifest format, the `ExtensionContext` API, and bundling/publishing.
 

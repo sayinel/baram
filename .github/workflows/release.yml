@@ -70,7 +70,11 @@ jobs:
             args: ''
             rust-targets: ''
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 90
+    # 150, not 90: notarization is a queue on Apple's side, not work we do.
+    # v0.6.0's first submission sat In Progress for 1h49m before Accepted,
+    # which the old 90 killed at 70m in — after the build had already
+    # succeeded and signed.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
@@ -83,20 +87,111 @@ jobs:
 
       # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
       # the toolchain is selected via the input, not the ref name.
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
         with:
           toolchain: stable
           targets: ${{ matrix.rust-targets }}
 
-      - uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri -> target
 
+      # ── macOS Developer ID signing + notarization ──────────────────────
+      # Refuse early and by name. Without this, a missing secret surfaces as a
+      # base64 decode error or an ad-hoc fallback that only fails minutes later
+      # inside notarization, where the message says nothing about which secret
+      # was absent.
+      - name: Check macOS signing secrets are present
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          missing=()
+          for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                   APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_P8; do
+            [ -n "${!v:-}" ] || missing+=("$v")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::missing macOS signing secrets: ${missing[*]}"
+            exit 1
+          fi
+          echo "All six macOS signing secrets are present."
+
+      # A throwaway keychain, not the runner's login keychain: the runner is
+      # ephemeral, but making it the default for the job keeps codesign from
+      # searching anything else and picking up a stray identity.
+      - name: Import Apple Developer ID certificate
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          # ‼️ create-keychain does NOT put the keychain in the search list, and
+          # default-keychain does not either. Without this line the identity is
+          # importable but unusable: scoping a lookup to a keychain that is not
+          # searched cannot reach the Apple root in SystemRootCertificates, so
+          # chain validation returns CSSMERR_TP_NOT_TRUSTED and
+          # `find-identity -v` reports "0 valid identities" for a perfectly good
+          # certificate. Reproduced locally against this exact certificate.
+          # The existing entries are preserved so system roots stay reachable.
+          security list-keychains -d user -s build.keychain \
+            $(security list-keychains -d user | sed 's/^[[:space:]]*"//;s/"$//')
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import "$RUNNER_TEMP/certificate.p12" -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain > /dev/null
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          # ‼️ Developer ID Application, NOT "Apple Development". The upstream
+          # Tauri example greps the latter, which is a development certificate:
+          # it signs, but Apple refuses to notarize it, and the failure only
+          # appears after the whole universal build has been paid for.
+          security find-identity -v -p codesigning build.keychain \
+            | grep -q "Developer ID Application" \
+            || { echo "::error::no 'Developer ID Application' identity in the imported certificate"; exit 1; }
+          echo "Developer ID certificate imported."
+
+      # notarytool reads the key from a FILE, so the .p8 has to land on disk.
+      # RUNNER_TEMP (not the workspace) keeps it out of anything that gets
+      # bundled or uploaded; the cleanup step below runs even on failure.
+      - name: Stage App Store Connect API key
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          printf '%s' "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/asc-api-key.p8"
+          chmod 600 "$RUNNER_TEMP/asc-api-key.p8"
+          head -1 "$RUNNER_TEMP/asc-api-key.p8" | grep -q 'BEGIN PRIVATE KEY' \
+            || { echo "::error::APPLE_API_KEY_P8 did not decode to a PEM private key"; exit 1; }
+          echo "API key staged."
+
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        # Bounded below the job so the diagnostic step below still gets to run.
+        # A job-level kill skips every remaining step, which is exactly how the
+        # first attempt produced no information about why it stopped.
+        timeout-minutes: 120
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple signing + notarization. Empty on Linux/Windows, where the
+          # bundler ignores them entirely.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
         with:
           tagName: v__VERSION__
           releaseName: 'Baram v__VERSION__'
@@ -110,17 +205,116 @@ jobs:
           # and generates latest.json. Path is relative to projectPath (./).
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
-      # macOS ships ad-hoc signed (tauri.conf.json → bundle.macOS.signingIdentity: "-").
-      # A valid, stable code seal is what lets macOS TCC persist folder-access grants
-      # across launches; without it every launch re-prompts. This guards against the
-      # universal-binary merge silently invalidating the seal. NOT a substitute for
-      # Developer ID + notarization (Gatekeeper still warns) — that needs a paid cert.
-      - name: Verify macOS ad-hoc code signature
+      # Tauri notarizes and staples the .app, builds the dmg from it, and signs
+      # the dmg — but never notarizes the dmg. The app inside is fine; the dmg is
+      # what a user downloads, and Gatekeeper judges it on its own:
+      #
+      #   $ spctl --assess --type open --context context:primary-signature Baram.dmg
+      #     rejected
+      #     source=Unnotarized Developer ID
+      #
+      # Measured on the artifact this workflow actually produced, not inferred.
+      # The .app in the same build reports "source=Notarized Developer ID", which
+      # is why only the dmg needs this.
+      - name: Notarize and staple the dmg
+        if: runner.os == 'macOS'
+        timeout-minutes: 120
+        run: |
+          DMG="$(find src-tauri/target -name '*.dmg' | head -n1)"
+          [ -n "$DMG" ] || { echo "::error::no .dmg found under src-tauri/target"; exit 1; }
+          echo "Notarizing $DMG"
+          xcrun notarytool submit "$DMG" \
+            --key "$RUNNER_TEMP/asc-api-key.p8" \
+            --key-id "${{ secrets.APPLE_API_KEY }}" \
+            --issuer "${{ secrets.APPLE_API_ISSUER }}" \
+            --wait
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          echo "DMG_PATH=$DMG" >> "$GITHUB_ENV"
+
+      # tauri-action uploaded the pre-staple dmg, so the release still holds the
+      # rejected copy. Replace it. The draft is addressed by id from a listing:
+      # a draft is not connected to its tag until it is published, so
+      # `releases/tags/{tag}` returns 404 for it.
+      - name: Replace the uploaded dmg with the stapled one
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NAME="$(basename "$DMG_PATH")"
+          RID="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=20" \
+            --jq ".[] | select(.tag_name==\"${GITHUB_REF_NAME}\") | .id" | head -n1)"
+          [ -n "$RID" ] || { echo "::error::no release found for ${GITHUB_REF_NAME}"; exit 1; }
+          AID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RID}/assets" \
+            --jq ".[] | select(.name==\"${NAME}\") | .id" | head -n1)"
+          if [ -n "$AID" ]; then
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${AID}"
+            echo "Removed the unstapled $NAME"
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "$DMG_PATH" --repo "${GITHUB_REPOSITORY}" --clobber
+          echo "Uploaded the stapled $NAME"
+
+      # tauri drives `notarytool submit --wait`, which waits without a bound and
+      # prints nothing while it does. When the wait is what failed, the log says
+      # only "Terminate orphan process (notarytool)" — the actual state lives on
+      # Apple's side and had to be fetched by hand to learn that the submission
+      # was still queued rather than rejected. This asks Apple directly so the
+      # answer is in the run that failed.
+      - name: Report notarization state on failure
+        if: failure() && runner.os == 'macOS'
+        run: |
+          echo "Most recent submissions for this key:"
+          xcrun notarytool history \
+            --key "$RUNNER_TEMP/asc-api-key.p8" \
+            --key-id "${{ secrets.APPLE_API_KEY }}" \
+            --issuer "${{ secrets.APPLE_API_ISSUER }}" 2>&1 | head -30 || true
+          echo
+          echo "In Progress  → Apple's queue, not a defect here; re-run."
+          echo "Invalid      → the binary was rejected; fetch the log with:"
+          echo "               xcrun notarytool log <submission-id> --key ... --key-id ... --issuer ..."
+
+      # The release config deletes bundle.macOS.signingIdentity so APPLE_SIGNING_IDENTITY
+      # applies (see src-tauri/tauri.release.conf.json). If that merge ever stops
+      # working, the bundler falls back to the base config's ad-hoc "-" — which still
+      # produces a .app and a .dmg. Asserting the authority by name is what turns that
+      # silent downgrade into a failed release.
+      - name: Verify macOS Developer ID signature and notarization
         if: runner.os == 'macOS'
         run: |
+          fail() { echo "::error::$1"; exit 1; }
+
           APP="$(find src-tauri/target -type d -name 'Baram.app' | head -n1)"
-          [ -n "$APP" ] || { echo "::error::Baram.app not found under src-tauri/target"; exit 1; }
-          echo "Verifying code signature: $APP"
-          codesign -dvv "$APP" || true
+          [ -n "$APP" ] || fail "Baram.app not found under src-tauri/target"
+          echo "Verifying: $APP"
+
           codesign --verify --deep --strict --verbose=2 "$APP"
-          echo "macOS ad-hoc signature verified."
+
+          AUTH="$(codesign -dvv "$APP" 2>&1 | grep '^Authority=' | head -n1)"
+          echo "$AUTH"
+          case "$AUTH" in
+            *"Developer ID Application"*) ;;
+            *) fail "expected a Developer ID Application authority, got: ${AUTH:-<none>}" ;;
+          esac
+
+          # Hardened runtime is a notarization precondition. codesign reports it in
+          # the flags line; without it notarization is rejected.
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -q 'flags=.*runtime' \
+            || fail "hardened runtime is not enabled on the app bundle"
+
+          # Gatekeeper's own verdict, which is the thing a user's Mac actually runs.
+          spctl --assess --type execute --verbose=4 "$APP"
+
+          # The dmg is what gets downloaded, so it is the artifact that must carry a
+          # stapled ticket — a notarized app inside an unstapled dmg still warns on a
+          # machine that is offline at first launch.
+          DMG="$(find src-tauri/target -name '*.dmg' | head -n1)"
+          [ -n "$DMG" ] || fail "no .dmg found under src-tauri/target"
+          xcrun stapler validate "$DMG" || fail "notarization ticket is not stapled to $DMG"
+
+          echo "Developer ID signature verified and notarization stapled."
+
+      # Runs even when the build fails: the key is a credential, and a cancelled
+      # job would otherwise leave it on a runner image.
+      - name: Remove staged API key
+        if: always() && runner.os == 'macOS'
+        run: rm -f "$RUNNER_TEMP/asc-api-key.p8"

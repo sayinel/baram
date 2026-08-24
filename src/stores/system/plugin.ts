@@ -17,6 +17,15 @@ interface PluginState {
   // Actions
   addDevPlugin: (plugin: InstalledPlugin) => void;
   addPlugin: (plugin: InstalledPlugin) => void;
+  /**
+   * §69 — 비활성화된 내장 플러그인의 id.
+   *
+   * ‼️ DISABLED 목록이며 enabled 맵이 아니다. 내장의 매니페스트는 번들의
+   * `BUILTIN_PLUGINS`가 유일한 출처이고(앱 업데이트마다 신선하게 온다), 여기 담기는 것은
+   * 사용자가 끈 것뿐이다. 그래서 다음 릴리스가 내장을 추가해도 마이그레이션 없이 기본
+   * 켜짐이 된다 — enabled 맵이었다면 새 id가 맵에 없어서 꺼진 것으로 읽혔을 것이다.
+   */
+  builtinDisabled: string[];
   clearUpdateAvailable: (id: string) => void;
   // Runtime state (not persisted; Rust config is the source of truth)
   devPlugins: Record<string, InstalledPlugin>;
@@ -70,6 +79,7 @@ interface PluginState {
    * with it or the next launch would present an unverified stored list as verified.
    */
   revocationsVerified: boolean;
+  setBuiltinEnabled: (id: string, enabled: boolean) => void;
   setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
@@ -90,6 +100,30 @@ interface PluginState {
   updatePluginVersion: (id: string, version: string, checksum: string) => void;
 }
 
+/**
+ * The registry, and — DECISION 2026-08-06 — the only one.
+ *
+ * ‼️ NOT USER-CONFIGURABLE, ON PURPOSE. There is no settings field, `setRegistryUrl` has no
+ * production caller, and `partialize`/`merge` below make sure a value on disk cannot come back.
+ * That is not an oversight to be fixed by adding a field: a persisted registry URL was a
+ * durable primitive stronger than the rollback mark (a `trusted` plugin sets it once, the same
+ * call clears `revocations`, and the startup refresh then asks the ATTACKER whether anything is
+ * revoked — with no self-healing, because the fetch that would heal it is the poisoned one).
+ * Removing persistence in `5cba3e2d` is what bounded that to a single session.
+ *
+ * Three consequences, accepted deliberately rather than worked around:
+ *
+ * - Self-hosted and in-house registries are UNSUPPORTED. The registry accepts first-party
+ *   plugins only for now, so this takes nothing away that was otherwise available.
+ * - Editing `config.json` by hand does nothing; `merge` discards it. The documented local-testing
+ *   procedure that relied on it is gone — see `docs/plugin-development.md`, which now says to
+ *   change this constant in a dev checkout instead.
+ * - Signature enforcement only covers `FIRST_PARTY_REVOCATION_PREFIX` in Rust, so a third-party
+ *   registry could not have its revocation list verified anyway.
+ *
+ * Reopening this means reopening all three: a field needs validation, visible provenance, and an
+ * answer for the revocation gap `setRegistryUrl` leaves behind (`dev/backlog.md`).
+ */
 export const DEFAULT_REGISTRY_URL =
   "https://sayinel.github.io/baram-plugins/index.json";
 
@@ -186,6 +220,36 @@ function backfillConsent(installedPlugins: unknown): void {
   }
 }
 
+/**
+ * §69 — coerce a stored `builtinDisabled` back to the `string[]` its type promises.
+ *
+ * ‼️ THE DECLARED TYPE IS NOT A RUNTIME GUARANTEE ON THE READ PATH. This value is
+ * persisted, and `merge` restores whatever storage HOLDS — so its shape is decided by
+ * `config.json`, not by TypeScript. The adversary the `revocationSequenceSeen` and
+ * `registryUrl` comments below already accept as in scope (a consented trusted plugin
+ * holding `allow-set-config`, or a hand edit) can put `null` there, and every consumer
+ * calls `.includes` on it unguarded.
+ *
+ * What that costs, end to end: `loadBuiltinPlugins` throws on the first launch after;
+ * `initializePlugins` is only `.catch`-logged in `App.tsx`, so the scope preparation, the
+ * revocation refresh and every installed plugin's load never run — all plugins silently
+ * dead, no error surface. Opening the marketplace then throws inside `buildPluginRows`
+ * during render, so the toggle that would repair the value is unreachable, and
+ * `partialize` writes the bad value back on every store change. One planted key, a
+ * permanent and self-sustaining outage — the same durable-primitive shape as the two
+ * fields forced below, which is why the fix lives beside them.
+ *
+ * Non-string members are filtered, not merely tolerated. Today's three consumers all use
+ * `.includes`, which is total and would simply never match them — but that is an accident
+ * of those three call sites, and it does not survive the next consumer that treats a
+ * member as the `string` the type says it is (`.join`, `.startsWith`, a template). The
+ * boundary is the one place that promise can be made true, and it is cheap to make true.
+ */
+function disabledBuiltinIds(stored: unknown): string[] {
+  if (!Array.isArray(stored)) return [];
+  return stored.filter((id): id is string => typeof id === "string");
+}
+
 /** Remove a key from an object, returning a new object without it */
 function omitKey<T extends Record<string, unknown>>(obj: T, key: string): T {
   return Object.fromEntries(
@@ -197,6 +261,7 @@ export const usePluginStore = create<PluginState>()(
   persist(
     (set, get) => ({
       // Persisted
+      builtinDisabled: [],
       installedPlugins: {},
       pluginSettings: {},
       registryUrl: DEFAULT_REGISTRY_URL,
@@ -246,6 +311,15 @@ export const usePluginStore = create<PluginState>()(
           installedPlugins: omitKey(state.installedPlugins, id),
           pluginSettings: omitKey(state.pluginSettings, id),
           pluginErrors: omitKey(state.pluginErrors, id),
+          // ‼️ §69 — an uninstalled plugin has no pending update. Without this the key
+          // outlived the plugin for the rest of the session: the Updates badge counted it
+          // while the panel — which lists installed-and-still-listed plugins — rendered
+          // nothing, and the "no updates" message was skipped because the count said there
+          // were some. (An earlier version of this comment added "and since the whole store
+          // is PERSISTED, the session too". It is not: `updateAvailable` is absent from
+          // `partialize` and always has been, so a restart cleared it. The defect is real
+          // and this fix is right; only that sentence was wrong.)
+          updateAvailable: omitKey(state.updateAvailable, id),
         })),
 
       setEnabled: (id, enabled) =>
@@ -259,6 +333,15 @@ export const usePluginStore = create<PluginState>()(
             },
           };
         }),
+
+      setBuiltinEnabled: (id, enabled) =>
+        set((state) => ({
+          builtinDisabled: enabled
+            ? state.builtinDisabled.filter((x) => x !== id)
+            : state.builtinDisabled.includes(id)
+              ? state.builtinDisabled
+              : [...state.builtinDisabled, id],
+        })),
 
       setError: (id, error) =>
         set((state) => {
@@ -366,6 +449,10 @@ export const usePluginStore = create<PluginState>()(
       storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({
         installedPlugins: state.installedPlugins,
+        // §69 영속화. 마이그레이션 단계는 필요 없다: 키가 없으면 초기값 `[]`로 떨어지고,
+        // 그것이 "아무 내장도 끄지 않았다"라는 올바른 최초 상태다 — `revocations`가
+        // 아래에서 같은 근거로 version bump 없이 추가된 것과 같다.
+        builtinDisabled: state.builtinDisabled,
         pluginSettings: state.pluginSettings,
         // ‼️ `registryUrl` IS DELIBERATELY ABSENT — see `merge`, which is what makes that true.
         //
@@ -446,9 +533,14 @@ export const usePluginStore = create<PluginState>()(
       // `merge` runs on every rehydrate. This is the same trap as `partialize` vs `merge` two rounds
       // ago: the write side and the version-change side both look like the read side and are not.
       merge: (persisted, current) => {
+        const stored = (persisted ?? {}) as Record<string, unknown>;
         const restored = {
           ...current,
           ...(persisted as object),
+          // ‼️ VALIDATED, NOT SPREAD — see `disabledBuiltinIds`. A malformed value here
+          // is a permanent, self-sustaining plugin outage with no error surface, and it
+          // is reachable by exactly the writer the two resets below exist to contain.
+          builtinDisabled: disabledBuiltinIds(stored.builtinDisabled),
           registryUrl: current.registryUrl,
           revocationSequenceSeen: {},
         };

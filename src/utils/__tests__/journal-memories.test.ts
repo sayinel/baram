@@ -92,7 +92,7 @@ date: 2026-02-28
     expect(extractOneLine(content)).toBe("드디어 좋은 소식이 왔다.");
   });
 
-  it("truncates at 100 characters with ellipsis", () => {
+  it("keeps a long first paragraph whole instead of truncating it", () => {
     const longText = "가".repeat(120);
     const content = `---
 date: 2026-02-28
@@ -103,12 +103,10 @@ date: 2026-02-28
 ## Diary
 
 ${longText}`;
-    const result = extractOneLine(content);
-    expect(result.length).toBeLessThanOrEqual(101); // 100 chars + …
-    expect(result.endsWith("…")).toBe(true);
+    expect(extractOneLine(content)).toBe(longText);
   });
 
-  it("extracts first sentence ending with period", () => {
+  it("keeps every sentence of the first paragraph", () => {
     const content = `---
 date: 2026-02-28
 ---
@@ -116,7 +114,48 @@ date: 2026-02-28
 ## Diary
 
 좋은 하루였다. 내일도 기대된다.`;
-    expect(extractOneLine(content)).toBe("좋은 하루였다.");
+    expect(extractOneLine(content)).toBe("좋은 하루였다. 내일도 기대된다.");
+  });
+
+  it("joins a soft-wrapped first paragraph and stops at the blank line", () => {
+    const content = `---
+date: 2026-02-28
+---
+
+## Diary
+
+아침에는 버스를 놓쳐 정류장까지 달렸고,
+점심에는 처음 가본 식당에서 백반을 먹었다.
+
+다음 단락은 제외된다.`;
+    expect(extractOneLine(content)).toBe(
+      "아침에는 버스를 놓쳐 정류장까지 달렸고, 점심에는 처음 가본 식당에서 백반을 먹었다.",
+    );
+  });
+
+  it("ends the first paragraph where the next block starts", () => {
+    const content = `---
+date: 2026-02-28
+---
+
+## Diary
+
+오늘 한 일을 적어둔다.
+- 첫 번째 항목
+- 두 번째 항목`;
+    expect(extractOneLine(content)).toBe("오늘 한 일을 적어둔다.");
+  });
+
+  it("keeps a single list item as-is without swallowing the rest of the list", () => {
+    const content = `---
+date: 2026-02-28
+---
+
+## Diary
+
+- 리스트로 쓴 첫 항목
+- 둘째 항목`;
+    expect(extractOneLine(content)).toBe("- 리스트로 쓴 첫 항목");
   });
 
   it("returns empty string for empty content", () => {

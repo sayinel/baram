@@ -1,4 +1,32 @@
 [data-theme="dark"] {
+  --color-editor-find-match: rgb(
+    251 191 36 / 45%
+  ); /** PDF find match highlight (§272) — same as light: .pdf-page canvas background is fixed white regardless of theme, so the translucent overlay needs no dark variant; no exact primitive match (alpha over yellow.400) */
+
+  --color-editor-find-match-current: rgb(
+    249 115 22 / 60%
+  ); /** PDF find current-match highlight (§272) — same as light, see findMatch; no exact primitive match (alpha over orange.500) */
+
+  --color-editor-pdf-hl-yellow: rgb(
+    251 191 36 / 35%
+  ); /** PDF text highlight — yellow (§273.3) — same as light: .pdf-page canvas background is fixed white regardless of theme, so the translucent overlay needs no dark variant; no exact primitive match (alpha over yellow.400) */
+
+  --color-editor-pdf-hl-green: rgb(
+    74 222 128 / 35%
+  ); /** PDF text highlight — green (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over green.400) */
+
+  --color-editor-pdf-hl-blue: rgb(
+    96 165 250 / 35%
+  ); /** PDF text highlight — blue (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over blue.400) */
+
+  --color-editor-pdf-hl-pink: rgb(
+    236 72 153 / 35%
+  ); /** PDF text highlight — pink (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over pink.500) */
+
+  --color-editor-pdf-hl-purple: rgb(
+    168 85 246 / 35%
+  ); /** PDF text highlight — purple (§273.3) — same as light, see pdf-hl-yellow; no exact primitive match (alpha over purple.500) */
+
   --color-git-modified: #e69500; /** Git modified file dark (no exact primitive match) */
   --color-bg-default: var(
     --color-navy-800
@@ -179,6 +207,10 @@
   --color-graph-orphan: var(
     --color-gray-600
   ); /** Orphan graph node dark (#4b5563) */
+
+  --color-graph-pinned: var(
+    --color-yellow-400
+  ); /** Pinned graph node border dark — a step lighter than light mode, like active/neighbor (§30.3c) */
 
   --color-graph-edge: var(
     --color-gray-700

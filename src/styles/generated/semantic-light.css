@@ -1,6 +1,34 @@
 :root {
   --color-bg-elevated: #f0f0f3; /** Tertiary/elevated background (was --color-bg-tertiary: #f0f0f3, no exact primitive match) */
   --color-text-primary: #1a1a1a; /** Primary text (was --color-text-primary: #1a1a1a, not exactly gray.900 #111827) */
+  --color-editor-find-match: rgb(
+    251 191 36 / 45%
+  ); /** PDF find match highlight (§272) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400) */
+
+  --color-editor-find-match-current: rgb(
+    249 115 22 / 60%
+  ); /** PDF find current-match highlight (§272) — more opaque than find-match to stand out; no exact primitive match (alpha over orange.500) */
+
+  --color-editor-pdf-hl-yellow: rgb(
+    251 191 36 / 35%
+  ); /** PDF text highlight — yellow (§273.3) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400) */
+
+  --color-editor-pdf-hl-green: rgb(
+    74 222 128 / 35%
+  ); /** PDF text highlight — green (§273.3); no exact primitive match (alpha over green.400) */
+
+  --color-editor-pdf-hl-blue: rgb(
+    96 165 250 / 35%
+  ); /** PDF text highlight — blue (§273.3); no exact primitive match (alpha over blue.400) */
+
+  --color-editor-pdf-hl-pink: rgb(
+    236 72 153 / 35%
+  ); /** PDF text highlight — pink (§273.3); no exact primitive match (alpha over pink.500) */
+
+  --color-editor-pdf-hl-purple: rgb(
+    168 85 246 / 35%
+  ); /** PDF text highlight — purple (§273.3); no exact primitive match (alpha over purple.500) */
+
   --color-git-modified: #e69500; /** Git modified file (no exact primitive match) */
   --color-bg-default: var(
     --color-white
@@ -149,6 +177,10 @@
   --color-graph-orphan: var(
     --color-gray-300
   ); /** Orphan graph node (no links) */
+
+  --color-graph-pinned: var(
+    --color-yellow-500
+  ); /** Pinned graph node border (§30.3c) */
 
   --color-graph-edge: var(--color-gray-400); /** Graph edge/link line */
   --color-graph-label: var(--color-gray-700); /** Graph node label text */

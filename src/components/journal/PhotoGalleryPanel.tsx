@@ -1,29 +1,60 @@
 // §56d Photo Gallery — full gallery view panel
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { useShallow } from "zustand/shallow";
 
+import { INTL_LOCALES } from "../../i18n";
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import {
+  filterEntriesByMedia,
   groupPhotosByDate,
+  type MediaFilter,
   type PhotoGalleryEntry,
   scanJournalPhotos,
 } from "../../utils/journal/journal-photo";
+import { basename } from "../../utils/path-utils";
+import { PhotoGalleryThumb } from "./PhotoGalleryThumb";
+import { PhotoLightbox } from "./PhotoLightbox";
 
 type GroupMode = "day" | "month" | "year";
 
+const GROUP_MODE_KEYS: Record<GroupMode, string> = {
+  day: "journal.gallery.group.day",
+  month: "journal.gallery.group.month",
+  year: "journal.gallery.group.year",
+};
+
+const MEDIA_FILTER_KEYS: Record<MediaFilter, string> = {
+  all: "journal.gallery.filter.all",
+  photo: "journal.gallery.filter.photo",
+  video: "journal.gallery.filter.video",
+};
+
 export function PhotoGalleryPanel() {
-  const { rightPanelOpen, rightPanelMode } = useUIStore();
-  const { rootPath } = useFileStore();
-  const { journalDirectory } = useSettingsStore();
+  const { locale, t } = useTranslation();
+  // ‼️ bare `useUIStore()`가 아니어야 한다. 그 형태는 스토어 전체를 구독하므로 무관한 UI
+  // 변화 하나하나가 사진 수백 칸을 다시 렌더한다 — 저널을 열면 파일 스토어가 바뀌므로
+  // 정확히 그 순간에 걸린다.
+  const { rightPanelMode, rightPanelOpen } = useUIStore(
+    useShallow((s) => ({
+      rightPanelMode: s.rightPanelMode,
+      rightPanelOpen: s.rightPanelOpen,
+    })),
+  );
+  const rootPath = useFileStore((s) => s.rootPath);
+  const journalDirectory = useSettingsStore((s) => s.journalDirectory);
 
   const [photos, setPhotos] = useState<PhotoGalleryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>("day");
+  // 세션 상태로 둔다. 설정에 영속시키면 "왜 사진이 안 보이지"가 앱을 다시 켜도 계속되는데,
+  // 그 상태를 만든 클릭은 지난 세션의 것이라 사용자가 원인을 이어 붙일 방법이 없다.
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
   const [lightboxIndex, setLightboxIndex] = useState<null | number>(null);
 
   // Date navigation state
@@ -86,19 +117,37 @@ export function PhotoGalleryPanel() {
     [groupMode, selectedMonth, selectedYear],
   );
 
-  // Period label for the navigator
+  // Period label for the navigator.
+  //
+  // Built by Intl rather than by a format string: `${y}년 ${m}월` is not a translation
+  // problem with a key-shaped answer — the year/month ORDER differs by locale, so a key
+  // holding "{year} {month}" would still be wrong somewhere. Intl owns that ordering.
   const periodLabel = useMemo(() => {
     if (groupMode === "day") {
-      return `${selectedYear}년 ${selectedMonth}월`;
+      return new Date(selectedYear, selectedMonth - 1).toLocaleDateString(
+        INTL_LOCALES[locale],
+        { year: "numeric", month: "long" },
+      );
     } else if (groupMode === "month") {
-      return `${selectedYear}년`;
+      return new Date(selectedYear, 0).toLocaleDateString(
+        INTL_LOCALES[locale],
+        { year: "numeric" },
+      );
     }
-    return "전체";
-  }, [groupMode, selectedYear, selectedMonth]);
+    return t("journal.gallery.period.all");
+  }, [groupMode, selectedYear, selectedMonth, locale, t]);
+
+  // ‼️ 거르기가 그룹 짓기 **앞**에 있어야 한다. 뒤에서 걸러도 그리드는 맞게 보이지만
+  // 그룹 헤더의 개수와 `flatPhotos`(라이트박스의 좌우 이동)는 걸러지기 전 목록을 세게
+  // 되어, 화면에 한 칸인데 헤더는 3이라 적고 오른쪽 화살표가 보이지도 않는 사진으로 넘어간다.
+  const visibleEntries = useMemo(
+    () => filterEntriesByMedia(photos, mediaFilter),
+    [photos, mediaFilter],
+  );
 
   const groups = useMemo(
-    () => groupPhotosByDate(photos, groupMode),
-    [photos, groupMode],
+    () => groupPhotosByDate(visibleEntries, groupMode),
+    [visibleEntries, groupMode],
   );
 
   // Sort group keys descending (newest first)
@@ -130,17 +179,18 @@ export function PhotoGalleryPanel() {
 
   const closeLightbox = useCallback(() => setLightboxIndex(null), []);
 
-  // Keyboard navigation for lightbox
-  useEffect(() => {
-    if (lightboxIndex === null) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeLightbox();
-      else if (e.key === "ArrowLeft") navigateLightbox("prev");
-      else if (e.key === "ArrowRight") navigateLightbox("next");
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [lightboxIndex, closeLightbox, navigateLightbox]);
+  // ‼️ useCallback이어야 한다 — 매 렌더 새 함수를 넘기면 칸마다 걸어 둔 `memo`가 전부
+  // 무효가 되어 사진 수백 개가 같이 다시 렌더된다.
+  const openLightbox = useCallback(
+    (photo: PhotoGalleryEntry) => {
+      const idx = flatPhotos.indexOf(photo);
+      setLightboxIndex(idx >= 0 ? idx : 0);
+    },
+    [flatPhotos],
+  );
+
+  // ‼️ 라이트박스의 키보드(Esc·좌우)는 PhotoLightbox가 가진다 — 여기 있으면 원본 보기가
+  // 열렸을 때 Esc 한 번에 두 레이어가 같이 닫힌다(그쪽 effect의 주석 참조).
 
   if (!isVisible) return null;
 
@@ -152,7 +202,7 @@ export function PhotoGalleryPanel() {
     } else {
       readFile(journalPath)
         .then((content) => {
-          const fileName = journalPath.split("/").pop() ?? "Unknown";
+          const fileName = basename(journalPath);
           useFileStore.getState().setFileContent(journalPath, content);
           useEditorStore.getState().openTab({
             contextId: "",
@@ -168,10 +218,11 @@ export function PhotoGalleryPanel() {
   };
 
   const formatGroupLabel = (key: string): string => {
+    const intl = INTL_LOCALES[locale];
     switch (groupMode) {
       case "day": {
         const d = new Date(key);
-        return d.toLocaleDateString("ko-KR", {
+        return d.toLocaleDateString(intl, {
           year: "numeric",
           month: "long",
           day: "numeric",
@@ -180,25 +231,34 @@ export function PhotoGalleryPanel() {
       }
       case "month": {
         const [y, m] = key.split("-");
-        return `${y}년 ${parseInt(m)}월`;
+        return new Date(Number(y), Number(m) - 1).toLocaleDateString(intl, {
+          year: "numeric",
+          month: "long",
+        });
       }
       case "year":
-        return `${key}년`;
+        return new Date(Number(key), 0).toLocaleDateString(intl, {
+          year: "numeric",
+        });
     }
-  };
-
-  const openLightbox = (photo: PhotoGalleryEntry) => {
-    const idx = flatPhotos.indexOf(photo);
-    setLightboxIndex(idx >= 0 ? idx : 0);
   };
 
   const lightboxPhoto =
     lightboxIndex !== null ? flatPhotos[lightboxIndex] : null;
 
+  // 빈 화면이 무엇 때문에 비었는지 말해야 한다. 사진이 세 장 있는데 필터가 동영상일 뿐인
+  // 상태에서 "저널에 이미지를 드래그하세요"라고 안내하면 사용자를 엉뚱한 곳으로 보낸다.
+  const emptyMessage =
+    mediaFilter === "video"
+      ? t("journal.gallery.empty.video")
+      : mediaFilter === "photo"
+        ? t("journal.gallery.empty.photo")
+        : t("journal.gallery.empty.all");
+
   return (
     <div className="photo-gallery-panel">
       <div className="photo-gallery-header">
-        <h3 className="photo-gallery-title">Photo Gallery</h3>
+        <h3 className="photo-gallery-title">{t("journal.gallery.title")}</h3>
         <div className="photo-gallery-mode-toggle">
           {(["day", "month", "year"] as GroupMode[]).map((m) => (
             <button
@@ -206,7 +266,24 @@ export function PhotoGalleryPanel() {
               key={m}
               onClick={() => setGroupMode(m)}
             >
-              {m === "day" ? "Day" : m === "month" ? "Month" : "Year"}
+              {t(GROUP_MODE_KEYS[m])}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 매체 토글은 자기 행에 둔다. 좁은 패널(~300px)에서 기간 토글 세 개와 매체 토글
+          세 개를 한 줄에 넣으면 min-content 아래로 줄지 않는 flex 아이템 둘이 헤더를
+          넘긴다 — 번역된 라벨은 영어보다 길어질 수 있으므로 폭 여유는 더 좁다. */}
+      <div className="photo-gallery-media-row">
+        <div className="photo-gallery-mode-toggle">
+          {(["all", "photo", "video"] as MediaFilter[]).map((value) => (
+            <button
+              className={`photo-gallery-mode-btn ${mediaFilter === value ? "photo-gallery-mode-btn-active" : ""}`}
+              key={value}
+              onClick={() => setMediaFilter(value)}
+            >
+              {t(MEDIA_FILTER_KEYS[value])}
             </button>
           ))}
         </div>
@@ -234,14 +311,12 @@ export function PhotoGalleryPanel() {
       <div className="photo-gallery-content">
         {loading && (
           <div aria-live="polite" className="photo-gallery-loading">
-            Loading…
+            {t("journal.loading")}
           </div>
         )}
 
-        {!loading && photos.length === 0 && (
-          <div className="photo-gallery-empty">
-            사진이 없습니다. 저널에 이미지를 드래그하거나 /photo로 추가하세요.
-          </div>
+        {!loading && visibleEntries.length === 0 && (
+          <div className="photo-gallery-empty">{emptyMessage}</div>
         )}
 
         {sortedKeys.map((key) => {
@@ -255,25 +330,14 @@ export function PhotoGalleryPanel() {
                 </span>
               </div>
               <div className="photo-gallery-grid">
-                {groupPhotos.map((photo, i) => (
-                  <div
-                    className="photo-gallery-item"
-                    key={`${photo.filename}-${i}`}
-                    onClick={() => openLightbox(photo)}
-                    title={photo.caption || photo.filename}
-                  >
-                    <img
-                      alt={photo.caption || photo.filename}
-                      className="photo-gallery-thumb"
-                      loading="lazy"
-                      src={convertFileSrc(photo.absolutePath)}
-                    />
-                    {photo.caption && (
-                      <span className="photo-gallery-item-caption">
-                        {photo.caption}
-                      </span>
-                    )}
-                  </div>
+                {groupPhotos.map((photo) => (
+                  // key가 absolutePath인 이유: 파일마다 유일하고, 기간을 옮길 때 같은
+                  // 자리의 다른 사진이 이전 사진의 썸네일 상태를 물려받지 않는다.
+                  <PhotoGalleryThumb
+                    key={photo.absolutePath}
+                    onOpen={openLightbox}
+                    photo={photo}
+                  />
                 ))}
               </div>
             </div>
@@ -281,103 +345,13 @@ export function PhotoGalleryPanel() {
         })}
       </div>
 
-      {/* Lightbox overlay */}
       {lightboxPhoto && (
-        <div className="photo-lightbox-overlay" onClick={closeLightbox}>
-          {/* Nav buttons fixed to overlay edges */}
-          <button
-            className="photo-lightbox-nav photo-lightbox-prev"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigateLightbox("prev");
-            }}
-          >
-            <svg
-              fill="none"
-              height="20"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="20"
-            >
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <button
-            className="photo-lightbox-nav photo-lightbox-next"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigateLightbox("next");
-            }}
-          >
-            <svg
-              fill="none"
-              height="20"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="20"
-            >
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-
-          <button
-            className="photo-lightbox-close"
-            onClick={(e) => {
-              e.stopPropagation();
-              closeLightbox();
-            }}
-          >
-            <svg
-              fill="none"
-              height="18"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-              width="18"
-            >
-              <line x1="18" x2="6" y1="6" y2="18" />
-              <line x1="6" x2="18" y1="6" y2="18" />
-            </svg>
-          </button>
-
-          <div
-            className="photo-lightbox-content"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <img
-              alt={lightboxPhoto.caption || lightboxPhoto.filename}
-              className="photo-lightbox-img"
-              src={convertFileSrc(lightboxPhoto.absolutePath)}
-            />
-            <div className="photo-lightbox-info">
-              <span className="photo-lightbox-caption">
-                {lightboxPhoto.caption || lightboxPhoto.filename}
-              </span>
-              <span className="photo-lightbox-date">
-                {lightboxPhoto.date.toLocaleDateString("ko-KR")}
-              </span>
-              {lightboxPhoto.journalPath && (
-                <button
-                  className="photo-lightbox-open-journal"
-                  onClick={() => {
-                    closeLightbox();
-                    handleOpenJournal(lightboxPhoto.journalPath!);
-                  }}
-                >
-                  일기 보기
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <PhotoLightbox
+          onClose={closeLightbox}
+          onNavigate={navigateLightbox}
+          onOpenJournal={handleOpenJournal}
+          photo={lightboxPhoto}
+        />
       )}
     </div>
   );

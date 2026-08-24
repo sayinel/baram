@@ -3,6 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SearchResult } from "../../ipc/types";
 
+import { useShallow } from "zustand/shallow";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, searchFiles } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
@@ -28,7 +31,15 @@ interface JournalSearchPanelProps {
 }
 
 export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
-  const { journalEnabled, journalDirectory } = useSettingsStore();
+  const { t } = useTranslation();
+  // ‼️ bare `useSettingsStore()` subscribes to the whole store, so every unrelated setting
+  // change re-runs this panel's debounced search effect.
+  const { journalDirectory, journalEnabled } = useSettingsStore(
+    useShallow((s) => ({
+      journalDirectory: s.journalDirectory,
+      journalEnabled: s.journalEnabled,
+    })),
+  );
   const resolvedDir = resolveJournalDir(null, journalDirectory);
 
   const [query, setQuery] = useState("");
@@ -168,7 +179,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
   if (!journalEnabled) {
     return (
       <div className="journal-search journal-search-disabled">
-        Journal is disabled. Enable it in Settings &gt; General &gt; Journal.
+        {t("journal.search.disabled")}
       </div>
     );
   }
@@ -176,7 +187,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
   if (!resolvedDir) {
     return (
       <div className="journal-search journal-search-disabled">
-        Set the journal directory in Settings &gt; General &gt; Journal.
+        {t("journal.search.noDirectory")}
       </div>
     );
   }
@@ -192,12 +203,14 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
     <div className="journal-search">
       <div className="journal-search-input-row">
         <input
-          aria-label="Journal search"
+          aria-label={t("journal.search.aria")}
           className="journal-search-input"
           onChange={(e) => handleQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            isTagSearch ? "Tag search: #rust…" : "Search journal… (# for tags)"
+            isTagSearch
+              ? t("journal.search.placeholder.tag")
+              : t("journal.search.placeholder")
           }
           ref={inputRef}
           spellCheck={false}
@@ -205,19 +218,19 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           value={query}
         />
         <button
-          aria-label="Toggle filters"
+          aria-label={t("journal.search.filters.toggle")}
           className={`journal-search-filter-toggle ${showFilters ? "active" : ""} ${filtersActive ? "has-filters" : ""}`}
           onClick={() => setShowFilters((v) => !v)}
-          title="필터"
+          title={t("journal.search.filters.toggle")}
         >
           ⊟
         </button>
         {onClose && (
           <button
-            aria-label="Close"
+            aria-label={t("journal.search.close")}
             className="journal-search-close"
             onClick={onClose}
-            title="Close journal search"
+            title={t("journal.search.close")}
           >
             ✕
           </button>
@@ -228,7 +241,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
         <div className="journal-search-filters">
           {/* Date range */}
           <div className="jsf-row">
-            <span className="jsf-label">기간</span>
+            <span className="jsf-label">{t("journal.search.dateRange")}</span>
             <input
               onChange={(e) =>
                 handleFilterChange({
@@ -254,7 +267,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
 
           {/* Tags filter — comma separated */}
           <div className="jsf-row">
-            <span className="jsf-label">태그</span>
+            <span className="jsf-label">{t("journal.search.tags")}</span>
             <input
               onChange={(e) => {
                 const tags = e.target.value
@@ -266,7 +279,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                   tagsFilter: tags.length > 0 ? tags : undefined,
                 });
               }}
-              placeholder="태그1, 태그2"
+              placeholder={t("journal.search.tags.placeholder")}
               type="text"
               value={(filters.tagsFilter ?? []).join(", ")}
             />
@@ -285,7 +298,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                 }
                 type="checkbox"
               />
-              사진 있는 일기만
+              {t("journal.search.hasPhotos")}
             </label>
           </div>
         </div>
@@ -293,16 +306,31 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
 
       {error && <div className="journal-search-error">{error}</div>}
 
-      {loading && <div className="journal-search-status">Searching…</div>}
+      {loading && (
+        <div className="journal-search-status">{t("journal.searching")}</div>
+      )}
 
       {!loading && (query.trim() || filtersActive) && !error && (
         <div className="journal-search-status">
-          {totalMatches} match{totalMatches !== 1 ? "es" : ""}
+          {t(
+            totalMatches === 1
+              ? "journal.search.matches.one"
+              : "journal.search.matches.other",
+            { count: String(totalMatches) },
+          )}
           {grouped.size > 0
-            ? ` across ${grouped.size} category${grouped.size !== 1 ? "ies" : ""}`
+            ? t(
+                grouped.size === 1
+                  ? "journal.search.categories.one"
+                  : "journal.search.categories.other",
+                { count: String(grouped.size) },
+              )
             : ""}
           {filtersActive && (
-            <span className="jsf-active-badge"> (필터 적용 중)</span>
+            <span className="jsf-active-badge">
+              {" "}
+              {t("journal.search.filtersActive")}
+            </span>
           )}
         </div>
       )}
@@ -311,12 +339,14 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
         (query.trim() || filtersActive) &&
         totalMatches === 0 &&
         !error && (
-          <div className="journal-search-empty">No results in journal</div>
+          <div className="journal-search-empty">
+            {t("journal.search.empty")}
+          </div>
         )}
 
       <div className="journal-search-results">
         {[...grouped.entries()].map(([category, categoryResults]) => {
-          const label = CATEGORY_LABELS[category as JournalCategory];
+          const label = t(CATEGORY_LABELS[category as JournalCategory]);
           const shown = categoryResults.slice(0, MAX_PER_CATEGORY);
           const overflow = categoryResults.length - shown.length;
 
@@ -359,7 +389,10 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
               })}
               {overflow > 0 && (
                 <div className="journal-search-overflow">
-                  +{overflow} more in {label.toLowerCase()}
+                  {t("journal.search.overflow", {
+                    count: String(overflow),
+                    category: label,
+                  })}
                 </div>
               )}
             </div>

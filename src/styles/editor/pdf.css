@@ -1,0 +1,487 @@
+/* §5.1 / §270 PDF 뷰어 — 페이지, 텍스트 레이어, 툴바, 하이라이트 */
+
+/* PDF zoom re-renders pages at the target scale (see PdfPreview.tsx) —
+   neutralize the container's CSS zoom so the two mechanisms don't multiply,
+   and allow horizontal scroll for zoom levels above 100%. */
+.editor-area-scroll.pdf-preview-scroll {
+  overflow: auto;
+  zoom: 1;
+}
+
+.pdf-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 24px;
+}
+
+.pdf-page {
+  position: relative;
+  background: #fff;
+  box-shadow: var(--shadow-md);
+}
+
+.pdf-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Transparent selectable text overlay (PDF.js TextLayer output) */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+
+  /* §274 UX fix round 3 (defect A) — an explicit z-index establishes this
+     element's own stacking context, so the span/endOfContent ordering
+     below is scoped here and doesn't disturb sibling ordering in
+     .pdf-page (canvas/highlight-layer/popup keep following plain DOM
+     order — z-index:0 sits at the same paint level as z-index:auto). */
+  z-index: 0;
+  overflow: hidden;
+  line-height: 1;
+  user-select: text;
+  transform-origin: 0 0;
+
+  /* §274 UX fix (defect 2, root cause #1) — pdf.js's TextLayer (v5+, see
+     PdfPage.tsx's --total-scale-factor comment) writes --font-height/
+     --scale-x/--rotate on every span and expects the CALLER's CSS to
+     consume them (its own reference stylesheet does, in
+     node_modules/pdfjs-dist/web/pdf_viewer.css's .textLayer rule). This
+     project's hand-written rule below never did, so every span rendered
+     at whatever font-size it inherited — unrelated to that item's real
+     size — with no per-item scaleX correction. §272's find highlighting
+     never surfaced this (it only recolors text, never measures geometry),
+     but §274's highlight overlay reads range.getClientRects() directly,
+     so a size mismatch here shows up as rects that over- or under-shoot
+     the visible glyphs. */
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-text-layer span,
+.pdf-text-layer br {
+  position: absolute;
+
+  /* §274 UX fix round 3 (defect A) — real glyphs must win hit-testing over
+     .endOfContent (z-index 0 below) wherever the two overlap, so a drag
+     over actual text never lands on the filler element instead. */
+  z-index: 1;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+  transform-origin: 0% 0%;
+
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+}
+
+/* pdf.js also wraps accessibility-tagged runs in a span.markedContent
+   container that carries no size/position of its own — display:contents
+   drops its box so the font-size/transform above (which only ever get
+   set on the actual leaf text spans) don't apply to it either. */
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+
+/* §274 UX fix round 3 (defect A) — pdf.js's TextLayerBuilder anchor-follow
+   trick (pdf-text-layer-selection.ts) repositions this element next to
+   whichever node the selection is extending from, giving native selection-
+   extension hit-testing a normally-flowing, correctly sized target to land
+   on instead of hunting through the gaps between sparse absolutely-
+   positioned spans — that hunting is what reads as the selection "jumping"
+   when a drag crosses a paragraph boundary or reverses direction.
+   Collapsed to ~0 height until a drag starts (top:100%, bottom:0). */
+.pdf-text-layer .endOfContent {
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  display: block;
+  cursor: default;
+  user-select: none;
+}
+
+.pdf-text-layer.selecting .endOfContent {
+  top: 0;
+}
+
+.pdf-text-layer ::selection {
+  background: color-mix(in srgb, var(--color-accent-default) 30%, transparent);
+}
+
+/* §276.3 영역 하이라이트 모드(또는 Alt 홀드) 중에는 텍스트 레이어가
+   캔버스 위 드래그를 먼저 먹지 않아야 한다 — pointer-events:none으로
+   두면 브라우저가 이 레이어를 히트 테스트에서 완전히 건너뛰어 네이티브
+   텍스트 선택이 시작되지 않는다. 모드가 꺼져 있으면 이 클래스가 안
+   붙으므로 텍스트 선택은 완전히 이전과 동일하다. */
+.pdf-text-layer.pdf-text-layer-inert {
+  pointer-events: none;
+}
+
+.pdf-preview-error {
+  padding: 2em;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+/* §272 찾기 매치 — 텍스트 레이어는 투명 텍스트이므로 배경만 칠한다 */
+.pdf-text-layer .pdf-find-match {
+  position: static;
+  background: var(--color-editor-find-match);
+  border-radius: 2px;
+}
+
+.pdf-text-layer .pdf-find-match-current {
+  background: var(--color-editor-find-match-current);
+}
+
+/* §272 PDF 내 찾기 바 — find-replace-bar(§5.6, dialogs.css)와 같은 배치/스타일 관례 */
+.pdf-find-bar {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 50;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="dark"] .pdf-find-bar {
+  background: var(--color-bg-subtle);
+}
+
+.pdf-find-input {
+  min-width: 180px;
+  padding: 4px 8px;
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  color: var(--color-text-primary);
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  transition: border-color 0.15s;
+}
+
+.pdf-find-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.pdf-find-toggle,
+.pdf-find-nav-btn,
+.pdf-find-close-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-secondary);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.pdf-find-toggle:hover,
+.pdf-find-nav-btn:hover:not(:disabled),
+.pdf-find-close-btn:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-default);
+}
+
+.pdf-find-toggle.active {
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 10%, transparent);
+  border-color: var(--color-accent-default);
+}
+
+.pdf-find-nav-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.pdf-find-count {
+  min-width: 56px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* §274.2 하이라이트 오버레이 — canvas와 .pdf-text-layer 사이, 순수 시각
+   레이어(클릭은 .pdf-page의 mousedown 히트 테스트가 판정한다, PdfPage.tsx). */
+.pdf-highlight-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* §274 UX fix round 3 (defect B) — 하이라이트 채우기는 이제 <svg><path>
+   하나가 담당한다(pdf-highlight-path.ts). .pdf-hl-mark는 배경 없이
+   §275.6 flash 링(outline만)에만 남아 쓰인다. */
+.pdf-hl-svg {
+  position: absolute;
+  inset: 0;
+}
+
+/* 색은 클래스로 고정한다 — 인라인 style에 문자열 템플릿으로 CSS 변수
+   이름을 조합하지 않는다. scripts/audit-css-vars.ts는 CSS 파일만 정적으로
+   스캔하므로 TSX 쪽의 그런 런타임 조합은 잡아내지 못하고 오탐만 낸다. */
+.pdf-hl-path-yellow {
+  fill: var(--color-editor-pdf-hl-yellow);
+}
+
+.pdf-hl-path-green {
+  fill: var(--color-editor-pdf-hl-green);
+}
+
+.pdf-hl-path-blue {
+  fill: var(--color-editor-pdf-hl-blue);
+}
+
+.pdf-hl-path-pink {
+  fill: var(--color-editor-pdf-hl-pink);
+}
+
+.pdf-hl-path-purple {
+  fill: var(--color-editor-pdf-hl-purple);
+}
+
+/* §277.2 삭제된 하이라이트가 페이지에 그려지는 경우는 하나뿐이다 — 그것을
+   가리키는 블록 참조를 클릭해 방금 여기로 왔을 때(use-pdf-highlights.ts의
+   getPageHighlights). 채우지 않고 점선 테두리만 남겨 "여기 있었다"로 읽히게 한다.
+
+   ‼️ 클래스를 두 번 적어 특이도를 올린다(0,2,0). `.pdf-hl-path-yellow` 등과
+   같은 (0,1,0)으로 두면 이 규칙이 파일에서 **아래에 있다**는 사실에만 기대게
+   되는데, 그것은 규칙을 옮기는 순간 조용히 깨지는 성질이다.
+
+   ‼️ 여러 줄에 걸친 하이라이트는 **줄마다 점선 상자 하나씩**이 되고, 인접한
+   줄끼리 겹치는 구간에는 안쪽 점선도 보인다. buildHighlightPath의 nonzero
+   union은 fill 전용 기법이라(pdf-highlight-path.ts) stroke에는 듣지 않는다 —
+   각 서브패스의 테두리가 그대로 그려진다. 하나의 영역 윤곽이 아니라는 뜻이다.
+   "여기 있었다"는 신호로는 충분해서 그대로 둔다.
+
+   색은 하이라이트 색을 따르지 않는다 — 지워진 자리의 원래 색은 더 이상 의미가
+   없고, 5색 중 옅은 것은 점선으로 그리면 사실상 안 보인다. 토큰이 아니라 고정
+   값인 이유: 바탕이 되는 `.pdf-page`가 테마와 무관하게 항상 흰색이라(위 22번째
+   줄), 테마따라 밝아지는 토큰을 쓰면 라이트 테마에서 대비가 오히려 낮아진다
+   (--color-text-muted로 재면 라이트 ≈2.6:1). 사용자 커스텀 테마가 이 값을
+   흰색 위에서 안 보이게 만들 수도 있다. */
+.pdf-hl-path.pdf-hl-path-deleted {
+  fill: none;
+  stroke: #6b7280;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+/* §275.6 flash 링 전용 — 배경은 위 <svg>가 칠하므로 여기서는 outline
+   애니메이션(.pdf-hl-mark-flash, 아래)만 얹힌다. */
+.pdf-hl-mark {
+  position: absolute;
+  border-radius: 2px;
+}
+
+/* §276.3 영역 하이라이트 드래그 중 실시간 미리보기 — 저장된 하이라이트가
+   아니므로 5색 스와치 토큰이 아니라 accent 하나로 "지금 그리고 있다"는
+   임시 상태를 표시한다(마퀴 선택 관례). */
+.pdf-area-drag-preview {
+  position: absolute;
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
+  border: 1.5px dashed var(--color-accent-default);
+  border-radius: 2px;
+}
+
+/* §274 선택 팝업 — pdf-find-bar와 같은 배치/스타일 관례. anchor는 .pdf-page
+   기준 페이지 로컬 좌표라 팝업도 .pdf-page 자식으로 그린다. */
+.pdf-hl-popup {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="dark"] .pdf-hl-popup {
+  background: var(--color-bg-subtle);
+}
+
+.pdf-hl-swatch-row {
+  display: flex;
+  gap: 4px;
+}
+
+.pdf-hl-swatch {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 50%;
+  transition: transform 0.1s;
+}
+
+.pdf-hl-swatch:hover {
+  transform: scale(1.15);
+}
+
+.pdf-hl-swatch.active {
+  border-color: var(--color-accent-default);
+  border-width: 2px;
+}
+
+.pdf-hl-swatch-yellow {
+  background: var(--color-editor-pdf-hl-yellow);
+}
+
+.pdf-hl-swatch-green {
+  background: var(--color-editor-pdf-hl-green);
+}
+
+.pdf-hl-swatch-blue {
+  background: var(--color-editor-pdf-hl-blue);
+}
+
+.pdf-hl-swatch-pink {
+  background: var(--color-editor-pdf-hl-pink);
+}
+
+.pdf-hl-swatch-purple {
+  background: var(--color-editor-pdf-hl-purple);
+}
+
+.pdf-hl-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border-default);
+}
+
+.pdf-hl-action-btn {
+  padding: 4px 6px;
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  border-radius: 4px;
+}
+
+.pdf-hl-action-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+/* icon-btn(base.css)이 display:flex/align/justify/cursor를 이미 준다 —
+   여기서는 크기·색·hover만 얹는다. */
+.pdf-hl-delete-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-status-danger);
+  border-radius: 4px;
+}
+
+.pdf-hl-delete-btn:hover {
+  background: color-mix(in srgb, var(--color-status-danger) 12%, transparent);
+}
+
+/* §275.6 ref 클릭으로 도착한 하이라이트를 잠깐 강조한다 — 지속 시간은
+   use-pdf-highlight-flash.ts의 FLASH_DURATION_MS와 맞춰 둘 것. 배경(하이라이트
+   자체 색)은 그대로 두고 outline만 링으로 얹어 fade-out한다. */
+.pdf-hl-mark-flash {
+  animation: pdf-hl-flash 1.6s ease-out;
+}
+
+@keyframes pdf-hl-flash {
+  0%,
+  40% {
+    outline: 2px solid var(--color-accent-default);
+    outline-offset: 1px;
+  }
+
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 1px;
+  }
+}
+
+/* §276.1 PDF 툴바 — 상주, 문서 단위. pdf-find-bar(우상단)와 같은 배치/스타일
+   관례를 화면 하단 중앙에서 재사용해 둘이 겹치지 않는다. */
+.pdf-toolbar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 50;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 8px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  transform: translateX(-50%);
+}
+
+[data-theme="dark"] .pdf-toolbar {
+  background: var(--color-bg-subtle);
+}
+
+.pdf-toolbar-nav-btn,
+.pdf-toolbar-btn {
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-secondary);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.pdf-toolbar-nav-btn:hover:not(:disabled),
+.pdf-toolbar-btn:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-default);
+}
+
+/* §276.3 영역 하이라이트 토글의 눌림 상태 — 반드시 "모드"로 보여야 한다
+   (브리프 요구): 다른 툴바 버튼(찾기 등)은 순간 액션이라 눌림 상태가
+   없지만, 이 버튼은 켜져 있는 동안 지속되는 상태를 나타낸다. */
+.pdf-toolbar-btn.active {
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
+  border-color: var(--color-accent-default);
+}
+
+.pdf-toolbar-nav-btn:disabled,
+.pdf-toolbar-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+.pdf-toolbar-page-count {
+  min-width: 56px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pdf-toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border-default);
+}

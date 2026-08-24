@@ -2,8 +2,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock IPC context module before store import
+const { ipcAddContext } = vi.hoisted(() => ({
+  ipcAddContext: vi.fn(async (info: unknown) => info),
+}));
 vi.mock("../../../ipc/context", () => ({
-  addContext: vi.fn(async (info: unknown) => info),
+  addContext: ipcAddContext,
   removeContext: vi.fn(async () => undefined),
   setActiveContext: vi.fn(async () => undefined),
   getContexts: vi.fn(async () => []),
@@ -324,5 +327,94 @@ describe("§93 space tab pinning order", () => {
     expect(contexts[0].vaultType).toBe("zettelkasten");
     expect(contexts[1].vaultType).toBe("journal");
     expect(contexts[2].path).toBe("/late");
+  });
+});
+
+// §88 — the Rust ContextManager dedups by canonical path and returns the EXISTING
+// entry (`context/manager.rs:62-70`, pinned by its own `add_dedup_returns_existing`
+// test). The store appended that response unconditionally, so a dedup hit produced a
+// second entry carrying an id it already had — duplicate React keys in the context tab
+// bar, and a list that grows once per call, persisted. Reachable whenever the journal
+// directory is a path that is already registered (the vault root, a folder opened with
+// "+", or a symlink/case variant that canonicalizes to the same path).
+describe("§88 addContext — a dedup response must not append", () => {
+  beforeEach(() => {
+    ipcAddContext.mockClear();
+    ipcAddContext.mockImplementation(async (info: unknown) => info);
+    useContextStore.setState({ activeContextId: null, contexts: [] });
+  });
+
+  it("returns the existing context instead of appending a duplicate id", async () => {
+    const first = await useContextStore
+      .getState()
+      .addContext("vault", "/Users/test/notes");
+    expect(useContextStore.getState().contexts).toHaveLength(1);
+
+    // Rust canonicalizes /tmp → /private/tmp (and dedups symlinks, case variants,
+    // the vault root itself), so a DIFFERENT requested path can come back as `first`.
+    ipcAddContext.mockImplementationOnce(async () => first);
+    const second = await useContextStore
+      .getState()
+      .addContext("vault", "/Users/test/notes-symlink", {
+        vaultType: "journal",
+      });
+
+    expect(second.id).toBe(first.id);
+    expect(useContextStore.getState().contexts).toHaveLength(1);
+    const ids = useContextStore.getState().contexts.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+// §85/§89 — registering a space directory and SWITCHING to it are different acts.
+//
+// `ensureSpaceContext` activated unconditionally, and the subscription in
+// `stores/file/file.ts:726` syncs only `rootPath` — not the file tree (its own comment
+// says so, and the zettel preset compensates with an explicit `switchContext`). So a
+// caller that only needs the directory registered so the backend permits writing to it
+// would silently repoint `rootPath` away from the tree still on screen.
+describe("§85 ensureJournalContext — activation is opt-out", () => {
+  beforeEach(() => {
+    ipcAddContext.mockClear();
+    ipcAddContext.mockImplementation(async (info: unknown) => info);
+    useContextStore.setState({ activeContextId: null, contexts: [] });
+  });
+
+  it("registers without activating when activation is declined", async () => {
+    const vault = await useContextStore
+      .getState()
+      .addContext("vault", "/Users/test/vault");
+    expect(useContextStore.getState().activeContextId).toBe(vault.id);
+
+    const journal = await useContextStore
+      .getState()
+      .ensureJournalContext("/Users/test/journal", { activate: false });
+
+    expect(useContextStore.getState().contexts).toHaveLength(2);
+    expect(journal.vaultType).toBe("journal");
+    // The point: the workspace did not move.
+    expect(useContextStore.getState().activeContextId).toBe(vault.id);
+  });
+
+  it("still activates by default, and when an existing journal context is found", async () => {
+    await useContextStore.getState().addContext("vault", "/Users/test/vault");
+
+    const journal = await useContextStore
+      .getState()
+      .ensureJournalContext("/Users/test/journal");
+    expect(useContextStore.getState().activeContextId).toBe(journal.id);
+
+    // Existing-context branch: also declines activation when asked. The active
+    // context must be moved AWAY from the journal explicitly — `addContext` only
+    // auto-activates the very first context, so simply adding another one would
+    // leave the journal active and this assertion would hold either way.
+    const other = await useContextStore
+      .getState()
+      .addContext("vault", "/Users/test/other");
+    useContextStore.setState({ activeContextId: other.id });
+    await useContextStore
+      .getState()
+      .ensureJournalContext("/Users/test/journal", { activate: false });
+    expect(useContextStore.getState().activeContextId).toBe(other.id);
   });
 });

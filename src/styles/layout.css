@@ -124,6 +124,64 @@
   zoom: var(--editor-zoom, 1);
 }
 
+/* §286 한 유지 표면이 실패했을 때 그 표면 자리에만 그려진다 (TabSurfaceError.tsx).
+   토큰은 theme-tracked 것만 쓴다 — `--color-text-muted`처럼 THEME_COLOR_KEYS 밖의
+   변수는 8개 테마 중 일부에서 얼어붙는다. */
+.tab-surface-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+  max-width: 44em;
+  padding: 1.25rem 1.5rem;
+  margin: 3rem auto;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+}
+
+.tab-surface-error-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.tab-surface-error-message {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-status-danger);
+  overflow-wrap: anywhere;
+}
+
+.tab-surface-error-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.tab-surface-error-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.tab-surface-error-actions button {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.tab-surface-error-actions button:hover {
+  color: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
 /* §4.2 Splitter */
 .splitter {
   flex-shrink: 0;

@@ -657,6 +657,14 @@ function buildCommands(
       id: "journal:open-today",
       label: "Open Today's Journal",
       category: "Journal",
+      // ‼️ Do NOT "simplify" this to getAction("journal.openToday"). Both open
+      // today's entry — the preset via the journal space's newFileFlow — but only
+      // the preset ACTIVATES the journal context, and `editor.ts` fills an empty
+      // contextId from the active context, so the action's tab would be owned by
+      // whichever vault was active and would be closed with it (ContextTabBar).
+      // The preset also applies the journal layout. (Registration is no longer a
+      // difference: `ensureJournalFile` registers the directory itself, without
+      // activating — see ensureJournalDirRegistered.)
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {

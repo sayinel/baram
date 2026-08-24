@@ -73,7 +73,8 @@
 }
 
 .tiptap .media-resize-frame:hover .media-resize-handle,
-.tiptap .image-figure:hover .media-resize-handle {
+.tiptap .image-figure:hover .media-resize-handle,
+.tiptap .video-figure:hover .media-resize-handle {
   opacity: 1;
 }
 
@@ -111,7 +112,9 @@
 .tiptap .svg-block-preview:hover .media-toolbar,
 .tiptap .mermaid-block-preview:hover .media-toolbar,
 .tiptap .image-node-view:hover .media-toolbar,
-.tiptap .image-figure.image-selected .media-toolbar {
+.tiptap .image-figure.image-selected .media-toolbar,
+.tiptap .video-node-view:hover .media-toolbar,
+.tiptap .video-figure.video-selected .media-toolbar {
   pointer-events: auto;
   opacity: 1;
 }
@@ -123,7 +126,29 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: var(--color-text-muted);
+
+  /* §296 fix (icon legibility, independent of the video toolbar-clipping fix
+     in tables.css — see that file's `.node-video` entry for the bug this is
+     NOT): was `--color-text-muted`, which is defined in every generated
+     stylesheet but is NOT one of the 25 keys in `ThemeColors`/
+     `THEME_COLOR_KEYS` (src/types/theme.ts) — switching to a custom theme
+     (Nord, Solarized ×2, Tokyo Night, Baram Garden ×2) does not touch it, so
+     it stays pinned to whichever of the light/dark BASE stylesheet's
+     authored value happens to be active instead of the active theme's own
+     muted tone. Confirmed live: this app's persisted settings had
+     `activeThemeId: "nord"`; Nord sets `--color-bg-default: #2e3440`
+     (theme-set, correctly follows) but not `--color-text-muted`, which
+     resolves to the dark-base value `#64748b` — contrast 2.62:1 against
+     that background, under the 3:1 WCAG minimum for graphical/icon content.
+     `--color-text-secondary` IS theme-set (in `ThemeColors`), giving 5.56:1
+     on the same pair, and already sits one step below this rule's own
+     `:hover` target (`--color-text-primary`) in every theme, so the
+     resting/hover pair keeps the same relative hierarchy everywhere instead
+     of just in the two default themes. This is a genuine, separate
+     legibility defect on every theme in that list — it is shared by
+     image/SVG/Mermaid/video's toolbars (`.media-toolbar-btn` is common to
+     all four), so fixing the token here fixes all four, not just video. */
+  color: var(--color-text-secondary);
   cursor: pointer;
   background: var(--color-bg-default);
   border: 1px solid var(--color-border-subtle);
@@ -156,6 +181,29 @@
   color: var(--color-accent-on-solid);
   background: var(--color-accent-solid);
   border-color: var(--color-accent-solid);
+}
+
+/* Shared caption edit input for export-html.ts's chrome-stripping loop to
+   find — image (§3.3) and video (§296) use it directly, and BlockCaption.tsx
+   (SVG §5.1 / Mermaid §5.5) carries it alongside its own styling class
+   (`.block-caption-input` below) so the next media kind is covered
+   automatically too, without another entry in that selector list
+   (dev/backlog.md 2026-08-22). Visual styling for BlockCaption stays on
+   `.block-caption-input`, which wins ties by coming later in this file. */
+.tiptap .media-caption-input {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  color: var(--color-text-primary);
+  text-align: center;
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.tiptap .media-caption-input:focus {
+  border-color: var(--color-accent-default);
 }
 
 /* Caption shown below a media block (centered, muted), click-to-edit. */

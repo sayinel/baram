@@ -1,0 +1,506 @@
+// §5.1 PDF file viewer — renders pages in-app with PDF.js.
+// The webview's native PDF plugin (iframe) can't be zoomed from the host:
+// it keeps its own magnification (widening the frame only grows margins)
+// and swallows keyboard focus, so Cmd+= never reaches the app. Rendering
+// pages onto canvases instead makes the shared editor zoomLevel re-render
+// pages sharply at the new scale, and every zoom input (Cmd+= / Cmd+- /
+// Cmd+0, Ctrl+wheel, pinch) flows through useZoom exactly like the
+// markdown editor. Pages render lazily as they approach the viewport.
+
+import type { CSSProperties } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+
+import type { ViewportLike } from "./pdf-highlight-geom";
+import type { PdfFindApi } from "./use-pdf-find";
+import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+
+import { useShallow } from "zustand/shallow";
+
+import { useFileStore } from "../../../stores/file/file";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { useUIStore } from "../../../stores/ui/ui";
+import { logger } from "../../../utils/logger";
+import { fitRailWidth } from "../../../utils/pdf-rail-width";
+import { acquirePdfDocument } from "./pdf-doc-cache";
+import { nextContainerWidth } from "./pdf-measure";
+import { PdfHighlightList } from "./PdfHighlightList";
+import { PdfPage } from "./PdfPage";
+import { PdfPageList } from "./PdfPageList";
+import { PdfSidePanel } from "./PdfSidePanel";
+import { PdfToolbar } from "./PdfToolbar";
+import { usePdfAreaHighlight } from "./use-pdf-area-highlight";
+import { usePdfFind } from "./use-pdf-find";
+import { usePdfHighlightMode } from "./use-pdf-highlight-mode";
+import { usePdfHighlights } from "./use-pdf-highlights";
+import { usePdfPageRetention } from "./use-pdf-page-retention";
+import { usePdfRailResize } from "./use-pdf-rail-resize";
+import { useSettledScale } from "./use-settled-scale";
+
+/** Horizontal breathing room around pages at zoom 1. */
+const PAGE_GUTTER_PX = 24;
+
+interface PdfPreviewProps {
+  /**
+   * §288 규칙 1 — 이 표면이 지금 화면에 보이는가. 기본값 true.
+   *
+   * §286 유지 집합은 PDF를 여러 개 마운트해 둔 채 하나만 보여준다. 숨은 표면이 document
+   * 전역 리스너를 계속 들면, 사용자가 **다른 탭에서** 만든 선택과 누른 Alt에 보이지 않는
+   * 문서가 반응한다.
+   */
+  active?: boolean;
+  /** Absolute path of the .pdf file (must be inside an opened context). */
+  filePath: string;
+  /** §272 Whether the PDF find bar is open — drives PDFFindController lifecycle. */
+  findOpen?: boolean;
+  /** §272 Reports the live find API (matchCount/currentIdx/callbacks) upward so
+   * App.tsx can render PdfFindBar as a sibling, mirroring FindReplaceBar. Pass
+   * a stable setState setter here, not an inline arrow — this component is
+   * memoized and an unstable callback identity would defeat that. */
+  onFindApiChange?: (api: null | PdfFindApi) => void;
+  /** §276.1 Toolbar's find-toggle button — flips the SAME `findOpen` state the
+   * parent already owns (App.tsx), so there is one source of truth for
+   * whether the find bar is open regardless of which control toggled it. */
+  onToggleFind?: () => void;
+  /** Bumped on external reloads — forces a re-fetch of the file. */
+  refreshKey?: number;
+  /** Accessible title for the viewer (file path or name). */
+  title?: string;
+}
+
+/**
+ * §282 zoom 1에서 페이지 하나가 차지할 수 있는 가로 폭(CSS px).
+ *
+ * 레일을 빼는 것이 핵심이다. 레일은 `.editor-area`에 붙는 **오버레이**라 스크롤
+ * 컨테이너의 `clientWidth`를 줄이지 않는다 — 그래서 ResizeObserver도, 이 식의
+ * 다른 어떤 항도 레일의 존재를 알지 못한다. 빼지 않으면 zoom 100%에서도 페이지가
+ * 레일 폭만큼 넓게 잡혀 **항상 가로 스크롤이 생긴다**(레일 뒤로 페이지가 밀려
+ * 들어간 것처럼 보인다).
+ *
+ * resolvePageBoxEl과 같은 이유로 순수 함수로 뽑았다 — jsdom에는 레이아웃이 없어
+ * 이 규칙을 렌더로 관찰할 수 없다. 호출부는 아래 effect 하나뿐이고, 그 effect의
+ * deps에서 pdfRailOpen이 빠지면(= 레일을 열어도 fit-width가 다시 계산되지 않는
+ * 결함) react-hooks/exhaustive-deps가 **경고**를 낸다 — 확인함. 빨간불이 되는
+ * 것은 `npm run lint`의 `--max-warnings=0` 덕분이고, 맨 `npx eslint`는 exit 0이다.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function availableFitWidth(
+  scrollClientWidth: number,
+  railOpen: boolean,
+  railWidth: number,
+): number {
+  return scrollClientWidth - PAGE_GUTTER_PX * 2 - (railOpen ? railWidth : 0);
+}
+
+/**
+ * §272 Fix round 1 — I1: the per-page wrapper div is `display:contents` (no
+ * layout box — required so it doesn't disturb `.pdf-preview`'s flex column,
+ * pdf.css:11-20), so `getBoundingClientRect()`/`scrollIntoView()` on it are
+ * always inert. `usePdfFind` needs the box-generating element the wrapper
+ * renders — `PdfPage`'s own root `.pdf-page` div. Extracted as a pure
+ * function (rather than inlined in the ref callback) because jsdom returns
+ * zero rects for every element regardless of `display`, so the layout bug
+ * itself is untestable — this at least pins that the registered element is
+ * the wrapper's child, not the (boxless) wrapper.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function resolvePageBoxEl(
+  wrapperEl: HTMLElement | null,
+): HTMLElement | null {
+  return (wrapperEl?.firstElementChild as HTMLElement | null) ?? null;
+}
+
+export const PdfPreview = memo(function PdfPreview({
+  active = true,
+  filePath,
+  findOpen,
+  onFindApiChange,
+  onToggleFind,
+  refreshKey,
+  title,
+}: PdfPreviewProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [doc, setDoc] = useState<null | PDFDocumentProxy>(null);
+  const [pages, setPages] = useState<PDFPageProxy[]>([]);
+  const [error, setError] = useState<null | string>(null);
+  const [baseScale, setBaseScale] = useState(0);
+  // §283 스크롤 컨테이너의 clientWidth — 레일 폭을 이 창에 맞추는 데 쓴다.
+  const [containerWidth, setContainerWidth] = useState(0);
+  const zoomLevel = useSettingsStore((s) => s.zoomLevel);
+  const rootPath = useFileStore((s) => s.rootPath);
+  // §282 레일 상태는 UI 스토어에 산다 — 이 컴포넌트는 탭을 바꿀 때마다
+  // 언마운트되므로 컴포넌트 state에 두면 레일이 매번 닫힌다(ui.ts 참조).
+  const { pdfRailOpen, pdfRailTab, setPdfRailTab, togglePdfRail } = useUIStore(
+    useShallow((s) => ({
+      pdfRailOpen: s.pdfRailOpen,
+      pdfRailTab: s.pdfRailTab,
+      setPdfRailTab: s.setPdfRailTab,
+      togglePdfRail: s.togglePdfRail,
+    })),
+  );
+
+  // §291 문서는 **임대한다**(pdf-doc-cache) — 직접 열고 언마운트에서 파기하지 않는다.
+  //
+  // 유지 상한(RETENTION_CAPS.pdf)을 넘겨 축출된 PDF 탭은 표면이 언마운트되므로, 예전에는
+  // 돌아올 때마다 워커 파싱을 처음부터 다시 했다. PDF 세 개를 오가면 매 세 번째 방문이
+  // 그랬다. 캐시가 표면보다 오래 살아 그 파싱을 건너뛴다. 놓인 문서는 LRU가 가져가므로
+  // 무한히 쌓이지 않는다(MAX_CACHED_PDF_DOCUMENTS).
+  //
+  // ‼️ 문서가 살아남아도 **렌더 캐시는 따라오지 않는다.** operator list와 디코드된 이미지는
+  // usePdfPageRetention이 이 표면의 언마운트에서 비운다 — 문서 파기가 회수해 주던 안전망이
+  // 사라졌으므로 그쪽이 이제 유일한 경로다(pdf-page-retention.ts의 dispose 주석).
+  useEffect(() => {
+    let cancelled = false;
+    setDoc(null);
+    setPages([]);
+    setError(null);
+    const lease = acquirePdfDocument(filePath, refreshKey ?? 0);
+    lease.promise.then(
+      (loaded) => {
+        if (!cancelled) setDoc(loaded);
+      },
+      (err: unknown) => {
+        if (cancelled) return;
+        logger.error("[PdfPreview] failed to load PDF:", err);
+        setError(err instanceof Error ? err.message : String(err));
+      },
+    );
+    return () => {
+      cancelled = true;
+      lease.release();
+    };
+  }, [filePath, refreshKey]);
+
+  // §282.3 페이지 렌더 캐시의 수명을 쥐는 레지스트리 — 본문 페이지·썸네일·
+  // 하이라이트 크롭이 **같은 프록시**를 그리므로, 셋이 모두 놓았을 때만
+  // cleanup()을 부를 수 있다(pdf-page-retention.ts 참조).
+  const retention = usePdfPageRetention(doc);
+
+  // §283 레일 폭. 두 값이 나오는 이유는 그 훅의 헤더 주석 참조 — 레이아웃은
+  // 라이브(width), 캔버스는 놓았을 때만(rasterWidth).
+  const railResize = usePdfRailResize();
+
+  // ‼️ 저장된 폭을 **이 창에 맞춘다.** 안 맞추면 넓은 창에서 끌어 둔 420px이
+  // 좁은 창 세션으로 따라와 availableFitWidth가 음수가 되고, 아래 `avail > 0`
+  // 가드가 baseScale을 0으로 남겨 pagesReady가 false가 된다 — 페이지·툴바·레일이
+  // **전부** 사라지고 레일 토글조차 없어 앱 안에서는 되돌릴 수 없다(리뷰 HIGH-1,
+  // 실측 avail = −136). 줄어든 값은 저장하지 않으므로 창을 넓히면 그대로 돌아온다.
+  const railWidth = fitRailWidth(railResize.width, containerWidth);
+  const railRasterWidth = fitRailWidth(railResize.rasterWidth, containerWidth);
+
+  // Fetch all page proxies (lightweight — no rendering yet)
+  useEffect(() => {
+    if (!doc) return;
+    let cancelled = false;
+    (async () => {
+      const loaded: PDFPageProxy[] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        loaded.push(await doc.getPage(i));
+      }
+      if (!cancelled) setPages(loaded);
+    })().catch((err: unknown) => {
+      if (!cancelled) logger.error("[PdfPreview] failed to load pages:", err);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc]);
+
+  // Fit-width base scale at zoom 1, tracking container resizes.
+  // Measure the SCROLL CONTAINER (parent), never .pdf-preview itself: that
+  // element is width:max-content, so it grows with the pages it contains —
+  // measuring it feeds the pages' own width back into baseScale, and any
+  // zoomLevel > 1 then inflates itself through the ResizeObserver forever
+  // (pages wider → container wider → larger baseScale → pages wider …).
+  //
+  // ‼️ §283 옵저버는 **폭에 의존하지 않는다.** 레일 폭을 deps에 넣었더니
+  // 드래그 매 프레임(초당 60~120회)마다 disconnect → new ResizeObserver →
+  // observe가 돌았다. 레일 폭은 관찰 대상 요소의 크기와 아무 상관이 없으므로
+  // 순수한 낭비다(리뷰 MEDIUM-4). 폭은 아래 별도 effect가 반영한다.
+  useEffect(() => {
+    const el = containerRef.current?.parentElement;
+    if (!el) return;
+    // §288 규칙 5 — 숨은 표면(display:none)에서 옵저버가 싣고 오는 0을 무시한다.
+    const measure = () =>
+      setContainerWidth((cur) => nextContainerWidth(el.clientWidth, cur));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // 측정된 폭과 레일 폭 중 무엇이 바뀌든 배율을 다시 잡는다. 여기에는 DOM
+  // 작업이 없으므로 매 프레임 돌아도 상수 비용이다.
+  useEffect(() => {
+    const first = pages[0];
+    if (!first || containerWidth <= 0) return;
+    const avail = availableFitWidth(containerWidth, pdfRailOpen, railWidth);
+    if (avail > 0) {
+      setBaseScale(avail / first.getViewport({ scale: 1 }).width);
+    }
+  }, [containerWidth, pages, pdfRailOpen, railWidth]);
+
+  // §272 스크롤 컨테이너를 호출 시점에 얻는다 — getPage/scrollToPage와 같은
+  // 지연 평가 패턴(위 baseScale 측정과 동일한 요소를 재사용).
+  const getScrollElement = useCallback(
+    () => containerRef.current?.parentElement ?? null,
+    [],
+  );
+
+  const pdfFind = usePdfFind({
+    doc,
+    getScrollElement,
+    isOpen: findOpen ?? false,
+    pages,
+  });
+  const {
+    currentIdx,
+    currentPage,
+    getPageMatches,
+    matchCount,
+    onNext,
+    onPrev,
+    onQueryChange,
+    registerPageEl,
+    scrollToPage,
+  } = pdfFind;
+
+  // §272 findOpen/matchCount/currentIdx/콜백이 바뀔 때마다 부모(App.tsx)에게
+  // 알려 PdfFindBar를 이 컴포넌트 바깥에서 그릴 수 있게 한다 — FindReplaceBar가
+  // 마크다운 편집기 옆에 놓이는 것과 같은 구조.
+  useEffect(() => {
+    onFindApiChange?.({
+      currentIdx,
+      matchCount,
+      onNext,
+      onPrev,
+      onQueryChange,
+    });
+    return () => onFindApiChange?.(null);
+  }, [currentIdx, matchCount, onFindApiChange, onNext, onPrev, onQueryChange]);
+
+  const scale = baseScale * zoomLevel;
+  // §280 캔버스 래스터 해상도만 제스처가 멎은 뒤에 따라온다. 레이아웃·텍스트
+  // 레이어·하이라이트는 위의 live `scale`을 그대로 쓴다 (use-settled-scale.ts).
+  const renderScale = useSettledScale(scale);
+
+  // §276 Task 12 — pageElsRef(usePdfFind)가 실제로 채워지는 시점과 정확히
+  // 같다: scale>0 && pages.length>0일 때만 아래 JSX가 페이지 wrapper div를
+  // 렌더한다(§272 Fix I1 주석 참조). 이 전에 scrollToPage를 부르면
+  // pageElsRef.get(n)이 undefined라 조용히 no-op한다 — usePdfHighlightFlash가
+  // 대상을 찾기도 전에 pendingPdfHighlightId를 소비해버리는 레이스를 막는다.
+  const pagesReady = scale > 0 && pages.length > 0;
+  // §282 레일이 실제로 화면에 있는 조건 — 아래 렌더와 `.pdf-preview`의 왼쪽
+  // 여백이 **같은** 값을 봐야 한다(M7).
+  const railVisible = !error && pagesReady && pdfRailOpen;
+
+  const onNextPage = useCallback(() => {
+    scrollToPage(Math.min(currentPage + 1, pages.length));
+  }, [currentPage, pages.length, scrollToPage]);
+  const onPrevPage = useCallback(() => {
+    scrollToPage(Math.max(currentPage - 1, 1));
+  }, [currentPage, scrollToPage]);
+
+  // §276.3.1 세 상태(none/text/area) 하나의 공유 enum — 상호 배타성은 이
+  // 하나의 변수라는 성질에서 나온다(두 토글이 서로를 알 필요가 없다). 텍스트
+  // 선택 팝업(usePdfHighlights → usePdfSelectionPopup)과 영역 드래그
+  // (usePdfAreaHighlight) 둘 다 이 값을 읽기만 한다.
+  const highlightMode = usePdfHighlightMode();
+  const textModeActive = highlightMode.mode === "text";
+  const areaModeOn = highlightMode.mode === "area";
+
+  // §274 사이드카 로드 + 히트 테스트 + 선택 팝업 배선. rootPath가 없으면
+  // (vault 밖 단일 파일 모드) 내부적으로 비활성화된다.
+  const {
+    absCompanionPath,
+    allHighlights,
+    flashHighlightId,
+    getPageHighlights,
+    handlePageMouseDown,
+    highlightsEnabled,
+    onAreaHighlightDrawn,
+    onPurgeHighlight,
+    onRestoreHighlight,
+    pendingAreaRects,
+    popupPage,
+    popupProps,
+    registerPageEl: registerHighlightPageEl,
+  } = usePdfHighlights({
+    active,
+    filePath,
+    pages,
+    pagesReady,
+    rootPath,
+    scale,
+    scrollToPage,
+    textModeActive,
+  });
+
+  // §276.3 영역 하이라이트 — highlightsEnabled로 vault 밖에서는 완전히
+  // 무력화한다(툴바 토글도 안 보이고 Alt+드래그도 아무 효과가 없다). 모드
+  // 훅 자체는 vault 여부를 몰라도 된다 — 이 컴포넌트(합성 계층)가 그
+  // 정책을 쥔다.
+  const areaHighlight = usePdfAreaHighlight({
+    active,
+    areaModeOn,
+    onAreaHighlightDrawn,
+  });
+  const areaCaptureActive =
+    highlightsEnabled && areaHighlight.areaCaptureActive;
+
+  // §274.2 하이라이트 클릭은 언제나 먼저 판정한다 — 영역 모드가 켜져
+  // 있어도 기존 하이라이트를 클릭하면 그 관리 팝업이 열려야 한다(모드를
+  // 끄지 않고도 관리할 수 있어야 하므로). 그 클릭이 아무것도 맞히지
+  // 못했을 때만(hitExisting === false), 영역 캡처가 활성이면 이 mousedown을
+  // 드래그 시작으로도 본다 — 둘 다 같은 handlePageMouseDown을 부르므로
+  // 모드가 꺼져 있을 때는 완전히 이전과 동일한 동작이다.
+  const onPageMouseDown = useCallback(
+    (
+      pageNumber: number,
+      viewport: ViewportLike,
+      pageOrigin: { left: number; top: number },
+      clientX: number,
+      clientY: number,
+    ) => {
+      const hitExisting = handlePageMouseDown(
+        pageNumber,
+        viewport,
+        pageOrigin,
+        clientX,
+        clientY,
+      );
+      if (!hitExisting && areaCaptureActive) {
+        areaHighlight.onPageMouseDown(
+          pageNumber,
+          viewport,
+          pageOrigin,
+          clientX,
+          clientY,
+        );
+      }
+    },
+    [areaCaptureActive, areaHighlight, handlePageMouseDown],
+  );
+
+  return (
+    <div
+      aria-label={title || "PDF preview"}
+      // §282 M7 — 여백은 레일이 **실제로 렌더되는** 조건과 같아야 한다.
+      // pdfRailOpen만 보면 로드 중이나 오류 화면에서도 왼쪽 224px이 비고,
+      // 오류 메시지가 아무것도 없는 여백 오른쪽에 치우쳐 그려진다.
+      className={["pdf-preview", railVisible ? "pdf-preview-with-rail" : null]
+        .filter(Boolean)
+        .join(" ")}
+      ref={containerRef}
+      role="document"
+      // §283 레일 폭의 단일 출처는 설정의 pdfRailWidth다 — CSS는 이 변수로 레일의
+      // width와 `.pdf-preview-with-rail`의 padding-left를 함께 잡는다. 여기서
+      // 내려주지 않고 CSS에 숫자를 또 적으면, 위 fit-width 계산과 어긋나는 순간
+      // 조용히 가로 스크롤로 나타난다.
+      style={
+        {
+          "--pdf-rail-width": `${String(railWidth)}px`,
+        } as CSSProperties
+      }
+    >
+      {error ? (
+        <div className="pdf-preview-error">{error}</div>
+      ) : (
+        pagesReady &&
+        pages.map((page) => (
+          <div
+            data-pdf-page-number={page.pageNumber}
+            key={page.pageNumber}
+            ref={(el) => {
+              const boxEl = resolvePageBoxEl(el);
+              registerPageEl(page.pageNumber, boxEl);
+              registerHighlightPageEl(page.pageNumber, boxEl);
+            }}
+            style={{ display: "contents" }}
+          >
+            <PdfPage
+              areaCaptureActive={areaCaptureActive}
+              dragPreview={
+                areaHighlight.dragPreview?.pageNumber === page.pageNumber
+                  ? areaHighlight.dragPreview.rect
+                  : null
+              }
+              flashHighlightId={flashHighlightId}
+              highlights={getPageHighlights(page.pageNumber)}
+              matches={getPageMatches(page.pageNumber)}
+              onPageMouseDown={onPageMouseDown}
+              page={page}
+              pendingAreaRects={
+                pendingAreaRects?.pageNumber === page.pageNumber
+                  ? pendingAreaRects.rects
+                  : null
+              }
+              popup={popupPage === page.pageNumber ? popupProps : null}
+              renderScale={renderScale}
+              retention={retention}
+              scale={scale}
+            />
+          </div>
+        ))
+      )}
+
+      {/* §276.1 상주 툴바 — 항상 보인다. pagesReady 이전엔 pageCount가
+          의미 없으므로 렌더하지 않는다. */}
+      {!error && pagesReady && (
+        <PdfToolbar
+          areaMode={areaModeOn}
+          currentPage={currentPage}
+          onNextPage={onNextPage}
+          onPrevPage={onPrevPage}
+          onToggleAreaMode={
+            highlightsEnabled ? highlightMode.toggleAreaMode : undefined
+          }
+          onToggleFind={() => onToggleFind?.()}
+          onToggleRail={togglePdfRail}
+          onToggleTextMode={
+            highlightsEnabled ? highlightMode.toggleTextMode : undefined
+          }
+          pageCount={pages.length}
+          railOpen={pdfRailOpen}
+          textMode={textModeActive}
+        />
+      )}
+
+      {/* §282 사이드 레일 — 툴바와 같은 게이트(pagesReady)를 쓴다. 목록이
+          가리킬 대상이 아직 없는 동안 프레임만 떠 있으면 "비어 있다"로 읽힌다.
+          ‼️ 툴바 **뒤에** 둔다. 둘 다 absolute라 화면 배치는 순서와 무관하지만
+          Tab 순서는 DOM 순서를 따른다 — 레일이 앞에 있으면 300페이지 문서에서
+          썸네일 버튼 300개를 지나야 툴바에 닿아, 사실상 키보드로 못 쓴다
+          (리뷰 I2). 레일 안에서의 화살표 이동은 아직 없다 — backlog. */}
+      {railVisible && (
+        <PdfSidePanel
+          activeTab={pdfRailTab}
+          highlightsContent={
+            <PdfHighlightList
+              absCompanionPath={absCompanionPath}
+              flashHighlightId={flashHighlightId}
+              highlights={allHighlights}
+              onPurgeHighlight={onPurgeHighlight}
+              onRestoreHighlight={onRestoreHighlight}
+              pages={pages}
+              railRasterWidth={railRasterWidth}
+              retention={retention}
+            />
+          }
+          highlightsEnabled={highlightsEnabled}
+          onTabChange={setPdfRailTab}
+          pagesContent={
+            <PdfPageList
+              currentPage={currentPage}
+              onSelectPage={scrollToPage}
+              pages={pages}
+              railRasterWidth={railRasterWidth}
+              railWidth={railWidth}
+              retention={retention}
+            />
+          }
+          resize={railResize}
+        />
+      )}
+    </div>
+  );
+});

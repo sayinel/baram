@@ -1,0 +1,395 @@
+/* §282 PDF 사이드 레일 — 페이지/하이라이트 목록의 공통 프레임 */
+
+/* ‼️ 컨테이닝 블록은 `.editor-area`(layout.css:113)다 — 이 요소가 렌더되는
+   `.pdf-preview`도, 그 부모인 `.editor-area-scroll`도 `position`이 없기
+   때문이다. 그래서 스크롤 컨테이너 **바깥**에 앵커되어 페이지가 스크롤해도
+   제자리에 있고 `overflow: auto`에 잘리지도 않는다. `.pdf-toolbar`가 이미
+   같은 트릭을 쓴다(pdf.css) — 둘 중 하나에 `position: relative`를 붙이면
+   레일과 툴바가 함께 페이지를 따라 스크롤해 버린다.
+
+   폭은 설정의 `pdfRailWidth`가 유일한 출처다(§283 — 그 전에는 상수였다).
+   PdfPreview가 `--pdf-rail-width`로 내려주고 fit-width 계산도 같은 값을 뺀다.
+   여기서 숫자를 다시 적으면 둘이 어긋나 조용히 가로 스크롤이 된다.
+   폴백 200px은 그 변수가 없을 때(테스트/스토리) 쓰이는 기본값이다. */
+.pdf-side-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+
+  /* 툴바(50)보다 아래 — 툴바는 화면 하단 중앙이라 겹치지 않지만, 겹칠 때
+     떠 있어야 하는 쪽은 조작 대상인 툴바다. */
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: var(--pdf-rail-width, 200px);
+  background: var(--color-bg-subtle);
+  border-right: 1px solid var(--color-border-default);
+}
+
+/* §283 폭 손잡이 — 레일의 오른쪽 테두리 위에 얹는다.
+   테두리 자체(1px)는 너무 얇아 못 잡으므로 히트 영역만 넓히고, 보이는 것은
+   호버/포커스/드래그 때만 나타난다. */
+.pdf-side-panel-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 1;
+  width: 7px;
+
+  /* ‼️ 없으면 터치 드래그가 조용히 동작하지 않는다. 터치 pointerdown 뒤
+     브라우저가 pan을 인수하며 pointercancel을 쏘아 드래그가 즉시 끝나는데,
+     pointerdown의 preventDefault로는 막지 못한다(그건 touchstart/touch-action의
+     영역이다). pointercancel 처리가 있어 상태가 굳지는 않으므로 증상이
+     "안 되네"로만 보인다. */
+  touch-action: none;
+  cursor: col-resize;
+
+  /* 드래그 중 텍스트가 선택되면 커서가 I-beam으로 바뀌고 레일 안 라벨이
+     파랗게 칠해진다. 손잡이 자체는 어차피 선택할 것이 없다. */
+  user-select: none;
+}
+
+.pdf-side-panel-resizer::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  content: "";
+  background: transparent;
+  transition: background-color 0.12s;
+}
+
+.pdf-side-panel-resizer:hover::after,
+.pdf-side-panel-resizer:focus-visible::after,
+.pdf-side-panel-resizer.resizing::after {
+  background: var(--color-accent-default);
+}
+
+/* 키보드로 잡았을 때는 얇은 선만으로는 어디에 있는지 알기 어렵다. */
+.pdf-side-panel-resizer:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: -1px;
+}
+
+.pdf-side-panel-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.pdf-side-panel-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.pdf-side-panel-tab:hover {
+  color: var(--color-text-default);
+  background: var(--color-bg-hover);
+}
+
+.pdf-side-panel-tab.active {
+  color: var(--color-text-default);
+  border-bottom-color: var(--color-accent-default);
+}
+
+.pdf-side-panel-body {
+  flex: 1;
+
+  /* 목록은 §282.1/§282.2가 채운다 — 프레임은 스크롤만 책임진다. */
+  overflow-y: auto;
+}
+
+/* §282.1 페이지 목록 — 썸네일 세로 스트립 */
+
+.pdf-page-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.pdf-thumbnail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.pdf-thumbnail:hover {
+  background: var(--color-bg-hover);
+}
+
+.pdf-thumbnail.active {
+  background: var(--color-bg-selection);
+}
+
+/* 크기는 인라인 style로 들어온다(PdfThumbnail이 페이지 종횡비로 계산) — 여기서
+   폭/높이를 정하면 지연 렌더가 도착할 때 자리가 흔들린다. */
+.pdf-thumbnail-frame {
+  display: block;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--color-border-default);
+}
+
+.pdf-thumbnail-frame canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-thumbnail-label {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.pdf-thumbnail.active .pdf-thumbnail-label {
+  color: var(--color-text-default);
+}
+
+/* §282.2 하이라이트 목록 */
+
+/* §277.2 목록 프레임 — 위쪽 갈래 전환 + 아래쪽 목록. 레일 본문이 이미
+   세로 스크롤을 갖고 있으므로 여기서는 흐름만 잡는다. */
+.pdf-highlight-list-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ‼️ sticky여야 한다. 스크롤 컨테이너는 `.pdf-side-panel-body`이고 이 전환
+   컨트롤이 아카이브로 들어가는 **유일한** 입구인데, 하이라이트가 많으면
+   그대로 위로 밀려 올라가 사라진다. */
+.pdf-highlight-list-views {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  background: var(--color-bg-default);
+}
+
+.pdf-highlight-list-view {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.pdf-highlight-list-view:hover {
+  background: var(--color-bg-hover);
+}
+
+/* 위 `.pdf-side-panel-tab.active`와 다른 모양을 쓴다: 저쪽은 패널 상단의
+   1차 탭이라 밑줄이 어울리지만, 이것은 목록 안의 필터 칩이라 알약 배경이
+   "지금 이 갈래를 보고 있다"를 더 분명히 말한다. 색은 같은 accent다. */
+.pdf-highlight-list-view.active {
+  color: var(--color-text-default);
+  background: color-mix(in srgb, var(--color-accent-default) 14%, transparent);
+}
+
+.pdf-highlight-list-view-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+.pdf-highlight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+/* §277.2 항목 + (삭제됨 갈래에서만) 액션 줄. 항목 자체가 <button>이라
+   액션을 그 안에 넣을 수 없어 형제로 둔다 — PdfHighlightList 주석 참조. */
+.pdf-highlight-row {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ‼️ wrap이 필요하다. 두 버튼은 `flex: 1`이지만 flex 아이템의 기본
+   `min-width: auto` 때문에 min-content 아래로는 줄지 않는다 — 좁은 레일에서
+   줄바꿈 없이 **넘친다**(그리고 `.pdf-side-panel-body`의 overflow-y:auto가
+   overflow-x를 auto로 계산해 가로 스크롤바가 생긴다). 영문
+   "Delete permanently"가 임계값이고, 한국어("완전 삭제")는 짧아서 개발 중에는
+   안 보였다. 하한을 180으로 올린 것과 **둘 다** 필요하다: 폭은 번역 길이를
+   모르고, 번역은 하한을 모른다. */
+.pdf-highlight-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 6px 6px;
+}
+
+/* 밑줄 링크가 아니라 버튼으로 그린다. 둘 다 파괴적이거나 되돌리는 동작이라
+   "누르는 것"으로 읽혀야 하고, 특히 완전 삭제는 실수로 지나칠 자리가 아니다.
+   레일이 좁으므로(railContentWidth) 둘이 폭을 반씩 나눠 갖고, 안 들어가면
+   위 wrap 규칙으로 줄바꿈한다. */
+.pdf-highlight-row-action {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.pdf-highlight-row-action:hover {
+  color: var(--color-text-default);
+  background: var(--color-bg-hover);
+  border-color: var(--color-text-muted);
+}
+
+.pdf-highlight-row-action:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 1px;
+}
+
+/* 되돌릴 수 없는 쪽만 색으로 구분한다. 평소에는 조용히 두고(둘 다 빨가면
+   무엇이 위험한지가 사라진다) 커서가 올라갔을 때 확실히 말한다. */
+.pdf-highlight-row-action.danger:hover {
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
+  border-color: var(--color-status-danger);
+}
+
+.pdf-highlight-list-empty {
+  padding: 16px 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.pdf-highlight-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 6px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.pdf-highlight-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.pdf-highlight-item.flashing {
+  background: var(--color-bg-selection);
+}
+
+/* §277.2 삭제된 항목 — 흐리게. 페이지에서는 이미 사라졌으니 목록에서도
+   "보관 중"으로 읽혀야 한다. 완전히 감추지는 않는다: 복원/완전 삭제를
+   고르려면 무엇인지 보여야 한다. */
+.pdf-highlight-item.deleted {
+  opacity: 0.55;
+}
+
+.pdf-highlight-item-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ‼️ pdf.css의 `.pdf-hl-path-*`를 그대로 붙이면 안 된다 — 그 규칙은 `fill:`만
+   세우고 fill은 SVG 전용이라 HTML span에는 아무 효과가 없다(처음 판이 그랬고
+   스와치가 전부 투명했다). 색 **토큰**은 그대로 공유하므로 오버레이와 목록의
+   색은 여전히 한 곳에서 온다. */
+.pdf-highlight-item-swatch {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 2px;
+}
+
+.pdf-highlight-item-swatch-yellow {
+  background: var(--color-editor-pdf-hl-yellow);
+}
+
+.pdf-highlight-item-swatch-green {
+  background: var(--color-editor-pdf-hl-green);
+}
+
+.pdf-highlight-item-swatch-blue {
+  background: var(--color-editor-pdf-hl-blue);
+}
+
+.pdf-highlight-item-swatch-pink {
+  background: var(--color-editor-pdf-hl-pink);
+}
+
+.pdf-highlight-item-swatch-purple {
+  background: var(--color-editor-pdf-hl-purple);
+}
+
+.pdf-highlight-item-page {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+/* 크기는 인라인 style로 들어온다(computeAreaCropLayout이 계산) — 썸네일과
+   같은 이유로 여기서 정하지 않는다. */
+.pdf-highlight-item-crop {
+  display: block;
+
+  /* ‼️ 높이 상한이 필요하다. computeAreaCropLayout은 **폭만** 제한하므로
+     좁고 긴 영역(여백에 세로로 그은 50×700pt)은 shrink가 1이라 한 줄이 700px로
+     그려져 나머지 하이라이트를 전부 화면 밖으로 밀어낸다. overflow:hidden이
+     이미 있으므로 넘치는 부분은 잘린다. */
+  max-height: 180px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--color-border-default);
+  border-radius: 2px;
+}
+
+.pdf-highlight-item-crop canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-highlight-item-text {
+  display: -webkit-box;
+  overflow: hidden;
+
+  /* 긴 인용이 목록을 삼키지 않게 네 줄로 자른다 — 클릭하면 본문의 그 자리로
+     가므로 전문은 거기서 본다. */
+  -webkit-line-clamp: 4;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-text-default);
+  -webkit-box-orient: vertical;
+}
+
+/* 레일은 오버레이라 스크롤 컨테이너의 폭을 줄이지 않는다 — 페이지가 레일 뒤로
+   들어가지 않게 왼쪽 여백을 직접 준다. `.pdf-preview`의 `padding: 24px`에서
+   왼쪽만 덮어쓴다(align-items: center의 중심도 이 여백을 반영해 옮겨간다). */
+.pdf-preview-with-rail {
+  padding-left: calc(24px + var(--pdf-rail-width, 200px));
+}

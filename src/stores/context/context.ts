@@ -69,7 +69,10 @@ interface ContextState {
    * §85 M2b: Ensure a journal vault context exists and is active.
    * Creates one if not present; activates it if not already active.
    */
-  ensureJournalContext: (journalDir: string) => Promise<ContextInfo>;
+  ensureJournalContext: (
+    journalDir: string,
+    opts?: { activate?: boolean },
+  ) => Promise<ContextInfo>;
   /**
    * §92 Generic space-aware variant of ensureJournalContext: ensures a vault
    * context of the given vaultType exists at `dir` (creates+activates if missing,
@@ -78,7 +81,13 @@ interface ContextState {
   ensureSpaceContext: (
     vaultType: VaultType,
     dir: string,
-    opts?: { color?: string; label?: string },
+    /**
+     * `activate` defaults to true. Pass false to REGISTER only: the backend needs the
+     * directory to permit writes there, but the subscription in `stores/file/file.ts`
+     * syncs `rootPath` without loading the tree, so activating from a caller that is
+     * not switching spaces leaves `rootPath` pointing away from the tree on screen.
+     */
+    opts?: { activate?: boolean; color?: string; label?: string },
   ) => Promise<ContextInfo>;
   getContextForPath: (filePath: string) => ContextInfo | null;
   journalContext: () => ContextInfo | null;
@@ -229,9 +238,10 @@ export const useContextStore = create<ContextState>()(
         });
       },
 
-      ensureJournalContext: async (journalDir: string) => {
+      ensureJournalContext: async (journalDir: string, opts) => {
         const wasExisting = get().spaceContext("journal") !== null;
         const ctx = await get().ensureSpaceContext("journal", journalDir, {
+          activate: opts?.activate,
           label: "journal",
           color: "#10b981",
         });
@@ -245,12 +255,13 @@ export const useContextStore = create<ContextState>()(
       },
 
       ensureSpaceContext: async (vaultType, dir, opts) => {
+        const activate = opts?.activate !== false;
         const existing = get().contexts.find(
           (c) => c.contextType === "vault" && c.vaultType === vaultType,
         );
         if (existing) {
           // Activate if not active — use local-only to avoid stale ID IPC failures
-          if (get().activeContextId !== existing.id) {
+          if (activate && get().activeContextId !== existing.id) {
             get()._setActiveContextLocal(existing.id);
           }
           return existing;
@@ -262,7 +273,7 @@ export const useContextStore = create<ContextState>()(
           color: opts?.color,
         });
         // Activate the newly created context
-        if (get().activeContextId !== created.id) {
+        if (activate && get().activeContextId !== created.id) {
           get()._setActiveContextLocal(created.id);
         }
         return created;
@@ -328,6 +339,14 @@ export const useContextStore = create<ContextState>()(
 
         try {
           const saved = await ipcAddContext(info);
+          // §88 The backend dedups by CANONICAL path and returns the entry that
+          // already covers it (`context/manager.rs`), so `saved` can be a context this
+          // store already holds — the vault root, a folder added with "+", or a
+          // symlink/case variant of either. Appending it produced a second entry with
+          // an id it already had (duplicate React keys in the tab bar) and grew the
+          // persisted list once per call.
+          const deduped = get().contexts.find((c) => c.id === saved.id);
+          if (deduped) return deduped;
           set((state) => {
             const next = [...state.contexts, saved];
             // Auto-activate first context

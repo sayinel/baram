@@ -1,5 +1,5 @@
 // §69 Marketplace registry refresh button — always-available force-refresh
-import type { RegistryIndex } from "../../../plugins/types";
+import type { InstalledPlugin, RegistryIndex } from "../../../plugins/types";
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,7 +77,10 @@ describe("PluginMarketplace registry refresh button", () => {
   it("does not render on the installed tab", async () => {
     render(<PluginMarketplace />);
     await waitFor(() => expect(fetchRegistryIndex).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "Installed (0)" }));
+    // §69 — "(1)", not "(0)": the badge counts what the panel renders, and this tab now
+    // lists built-ins as well as installs. `installedPlugins` is empty here, so the one
+    // row is the compiled-in Media Viewer. The old string encoded the pre-built-in world.
+    fireEvent.click(screen.getByRole("button", { name: "Installed (1)" }));
     expect(
       screen.queryByRole("button", { name: /refresh/i }),
     ).not.toBeInTheDocument();
@@ -171,6 +174,57 @@ describe("PluginMarketplace registry refresh button", () => {
         screen.getByRole("button", { name: "↻ Refresh" }),
       ).toBeInTheDocument(),
     );
+  });
+
+  // ‼️ §69 fix round 1, Important 2 — a badge must count what its panel renders.
+  //
+  // `updatesCount` counted every key in `updateAvailable` while the panel rendered entries
+  // filtered to installed-and-still-listed. `removePlugin` never cleared that map (fixed at
+  // the root in the store), so uninstalling a plugin with a pending update left a stale key:
+  // nonzero badge, empty panel, and no "no updates" message either — that branch is skipped
+  // when the count is nonzero. The store fix covers the uninstall route; this covers every
+  // other way an entry can vanish, a withdrawn listing being the obvious one.
+  describe("the Updates badge and its panel agree", () => {
+    it("reads zero, and says so, for an update whose plugin is not installed", async () => {
+      usePluginStore.setState({ updateAvailable: { ghost: "2.0.0" } });
+      render(<PluginMarketplace />);
+      await waitFor(() => expect(fetchRegistryIndex).toHaveBeenCalled());
+
+      const tab = screen.getByRole("button", { name: /^Updates/ });
+      expect(tab.textContent).toContain("(0)");
+
+      // The message the count used to suppress: a nonzero badge skipped this branch, so
+      // the user got a blank panel with no explanation.
+      fireEvent.click(tab);
+      expect(
+        screen.getByText("All plugins are up to date"),
+      ).toBeInTheDocument();
+    });
+
+    it("counts one when the plugin IS installed and still listed", async () => {
+      // The complement — without it the assertion above passes for a badge stuck at zero.
+      fetchRegistryIndex.mockResolvedValue(populatedIndex);
+      usePluginStore.setState({
+        installedPlugins: {
+          "test-plugin": {
+            checksum: "abc123",
+            enabled: true,
+            installedAt: 0,
+            installPath: "/p/test-plugin",
+            manifest: { ...samplePlugin, main: "index.mjs" },
+            updatedAt: 0,
+          } as unknown as InstalledPlugin,
+        },
+        updateAvailable: { "test-plugin": "2.0.0" },
+      });
+      render(<PluginMarketplace />);
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: /^Updates/ }).textContent,
+        ).toContain("(1)"),
+      );
+    });
   });
 
   it("surfaces a store-level plugin error on the Browse tab card", async () => {

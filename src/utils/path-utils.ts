@@ -89,6 +89,35 @@ export function isUnderRoot(candidate: string, root: string): boolean {
 }
 
 /**
+ * Collapse `.`, `..` and empty segments in a POSIX-style path.
+ *
+ * ‼️ Two callers used to inline this loop, and the third — the one that
+ * mattered — only *claimed* to (`use-navigation.ts` had the comment
+ * "Normalize simple relative path (handles ../ and ./)" above a bare string
+ * concatenation). A `[x](../a.md)` link therefore opened `/vault/dir/../a.md`,
+ * which reads fine but is a different string from `/vault/a.md`, so the
+ * already-open-tab lookup missed and the same file opened twice.
+ *
+ * An absolute path cannot escape its root: `/a/../..` is `/`, matching POSIX.
+ * A relative one keeps leading `..` segments, since there is nothing to
+ * resolve them against yet.
+ */
+export function normalizePath(path: string): string {
+  const isAbsolute = path.startsWith("/");
+  const out: string[] = [];
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (out.length > 0 && out[out.length - 1] !== "..") out.pop();
+      else if (!isAbsolute) out.push("..");
+      continue;
+    }
+    out.push(segment);
+  }
+  return (isAbsolute ? "/" : "") + out.join("/");
+}
+
+/**
  * `candidate` expressed relative to `root`, or `null` when it is not inside.
  *
  * Separators in the result are normalised to `/` — deliberately, and not merely for tidiness:

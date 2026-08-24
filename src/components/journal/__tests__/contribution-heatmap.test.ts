@@ -90,29 +90,29 @@ describe("getWeekColumns", () => {
 
 describe("getMonthLabels", () => {
   test("returns 12 labels", () => {
-    const labels = getMonthLabels(2025);
+    const labels = getMonthLabels(2025, "en-US");
     expect(labels).toHaveLength(12);
   });
 
   test("first label is Jan", () => {
-    const labels = getMonthLabels(2025);
+    const labels = getMonthLabels(2025, "en-US");
     expect(labels[0].month).toBe("Jan");
   });
 
   test("last label is Dec", () => {
-    const labels = getMonthLabels(2025);
+    const labels = getMonthLabels(2025, "en-US");
     expect(labels[11].month).toBe("Dec");
   });
 
   test("Jan always has weekIndex 0", () => {
     for (const year of [2020, 2021, 2022, 2023, 2024, 2025]) {
-      const labels = getMonthLabels(year);
+      const labels = getMonthLabels(year, "en-US");
       expect(labels[0].weekIndex).toBe(0);
     }
   });
 
   test("weekIndex is non-decreasing across months", () => {
-    const labels = getMonthLabels(2025);
+    const labels = getMonthLabels(2025, "en-US");
     for (let i = 1; i < labels.length; i++) {
       expect(labels[i].weekIndex).toBeGreaterThanOrEqual(
         labels[i - 1].weekIndex,
@@ -135,13 +135,33 @@ describe("getMonthLabels", () => {
       "Nov",
       "Dec",
     ];
-    const labels = getMonthLabels(2025);
+    const labels = getMonthLabels(2025, "en-US");
     expect(labels.map((l) => l.month)).toEqual(expected);
   });
 
+  test("month names follow the locale, not the source language", () => {
+    // The abbreviations used to be a hardcoded English array, so a Korean UI read "Jan" in a
+    // panel whose every other label was Korean. An en-only assertion cannot see that: it
+    // passes both before and after. This one fails on the hardcoded array.
+    const ko = getMonthLabels(2025, "ko-KR");
+    expect(ko[0].month).toBe("1월");
+    expect(ko[11].month).toBe("12월");
+    expect(ko.map((l) => l.month)).not.toEqual(
+      getMonthLabels(2025, "en-US").map((l) => l.month),
+    );
+  });
+
+  test("weekIndex does not depend on the locale", () => {
+    // Only the NAME is localised. If a formatter change ever moved the month boundaries, the
+    // labels would drift off the columns they sit on.
+    expect(getMonthLabels(2025, "ko-KR").map((l) => l.weekIndex)).toEqual(
+      getMonthLabels(2025, "en-US").map((l) => l.weekIndex),
+    );
+  });
+
   test("leap year 2024: Feb starts at correct column", () => {
-    const labels2024 = getMonthLabels(2024);
-    const labels2023 = getMonthLabels(2023);
+    const labels2024 = getMonthLabels(2024, "en-US");
+    const labels2023 = getMonthLabels(2023, "en-US");
     // Feb weekIndex should be >= 4 (Jan has 31 days, always at least 4 weeks)
     expect(labels2024[1].weekIndex).toBeGreaterThanOrEqual(4);
     expect(labels2023[1].weekIndex).toBeGreaterThanOrEqual(4);

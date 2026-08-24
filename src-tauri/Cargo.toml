@@ -1,6 +1,6 @@
 [package]
 name = "baram"
-version = "0.5.1"
+version = "0.6.2"
 description = "Lightweight WYSIWYG Markdown Editor"
 authors = ["Baram Team"]
 license = "Apache-2.0"
@@ -14,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["protocol-asset", "macos-private-api"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
@@ -60,17 +60,80 @@ sha2 = "0.10"
 # than adding supply-chain surface. Same scheme and same file format as the updater, so the
 # verification path here is the one tauri already exercises in production.
 minisign-verify = "0.2"
-base64 = "0.22"
+base64 = "0.23"
 shlex = "2.0"
+# §5.1 `baramhtml:` scheme (protocol/html_preview.rs). Both arrive via tauri itself —
+# its asset protocol is built on exactly this pair — so the `deny` job has been vetting
+# them all along; this promotes them to direct deps rather than adding supply-chain
+# surface. Hand-rolling either (a percent decoder, a Range parser) would put the parsing
+# of attacker-shaped input in our tree instead of a vetted one.
+percent-encoding = "2"
+http-range = "0.1"
 log = "0.4"
 diffy = "0.5.0"
+# §56d Photo Gallery thumbnails (thumbnail/mod.rs).
+#
+# ‼️ default-features = false is a binary-size setting (target: <15MB, Part 8 §8.4). The
+# default set compiles decoders for dds/exr/ff/hdr/ico/pnm/qoi/tga/tiff plus rayon; a
+# journal asset folder holds what a camera and a screenshot tool produce. The five formats
+# here are exactly the raster set the gallery already accepts (journal-photo.ts's extension
+# filter) — svg is in that filter too but is not a raster format, and falls back to the
+# original file.
+image = { version = "0.25", default-features = false, features = [
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "webp",
+] }
 tauri-plugin-clipboard-manager = "2"
 trash = "5"
+tauri-plugin-log = "2.9.0"
 
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 devtools = ["tauri/devtools"]
+
+# §56d 디코더만 개발 빌드에서도 최적화한다.
+#
+# ‼️ 취향 문제가 아니라 **개발 빌드에서 기능이 못 쓰게 되는** 문제다. 실측 저널 사진 177장으로
+# `thumbnail` 벤치(BARAM_THUMB_BENCH_DIR)를 돌리면:
+#   debug   평균 3541ms / 최장 51397ms / 합계 627초
+#   release 평균  142ms / 최장  2371ms / 합계  25초
+# `tauri dev`는 debug라, 이 줄이 없으면 개발 중에는 썸네일이 원본을 그리는 것보다 느려 보이고
+# "고쳐지지 않았다"로 읽힌다. 픽셀 루프의 최적화 유무가 25배다.
+#
+# 우리 코드(baram)는 그대로 debug로 둔다 — 최적화하는 것은 이미지 코덱 크레이트들뿐이다.
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.zune-core]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.image-webp]
+opt-level = 3
+
+[profile.dev.package.gif]
+opt-level = 3
+
+[profile.dev.package.moxcms]
+opt-level = 3
+
+[profile.dev.package.bytemuck]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
 
 [profile.release]
 opt-level = "s"
@@ -78,3 +141,17 @@ lto = true
 strip = "symbols"
 codegen-units = 1
 panic = "abort"
+
+[dev-dependencies]
+# `test` gives `tauri::test::mock_app()`, which `src/logging` needs to build the real
+# logging policy: `tauri_plugin_log::Builder::split` takes an `&AppHandle`, so without
+# a mock app the policy could only be asserted by reading our own source back.
+#
+# ‼️ It must stay a DEV-dependency. The feature compiles tauri's MockRuntime in, and
+# edition 2021 selects feature resolver v2, which does NOT unify dev-dependency
+# features into a normal build — verified with
+# `cargo tree -e features -i tauri --no-dev-dependencies | grep 'feature "test"'`
+# (0 matches; 1 match once dev-deps are included). Moving this line into
+# [dependencies], or setting `resolver = "1"`, ships the mock runtime in the release
+# binary, and nothing in the build would say so.
+tauri = { version = "2", features = ["test"] }

@@ -1,6 +1,7 @@
 // §56c OneLineEditor — inline one-line editing for current year journal entry
 import { useEffect, useState } from "react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { renderSimpleMarkdown } from "../../utils/journal/journal-memories";
 import { resolveImageSrcs } from "./utils";
 
@@ -19,6 +20,7 @@ interface OneLineEditorProps {
 }
 
 export function OneLineEditor({ entry, onSave }: OneLineEditorProps) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(entry.oneLine);
 
@@ -34,10 +36,12 @@ export function OneLineEditor({ entry, onSave }: OneLineEditorProps) {
         dangerouslySetInnerHTML={{
           __html: entry.oneLine
             ? resolveImageSrcs(renderSimpleMarkdown(entry.oneLine), fileDir)
-            : "<p>(클릭하여 한 줄 요약 입력)</p>",
+            : // Wrapped in a <p> because it shares the markdown render path above. Locale
+              // strings are ours and carry no markup, so nothing here needs escaping.
+              `<p>${t("journal.oneline.prompt")}</p>`,
         }}
         onClick={() => setEditing(true)}
-        title="클릭하여 편집"
+        title={t("journal.oneline.editHint")}
       />
     );
   }
@@ -60,7 +64,7 @@ export function OneLineEditor({ entry, onSave }: OneLineEditorProps) {
           setDraft(entry.oneLine);
         }
       }}
-      placeholder="한 줄 요약 입력..."
+      placeholder={t("journal.oneline.placeholder")}
       value={draft}
     />
   );

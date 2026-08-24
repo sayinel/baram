@@ -13,9 +13,13 @@ import {
 // createEmptyCache
 // ============================================================
 describe("createEmptyCache", () => {
-  it("returns version 1", () => {
+  // Bumped 1 → 2 when the word count moved to the canonical prose counter. A cache written
+  // by the old line-based stripper holds numbers this code would never produce, and
+  // `readStatsCache` only rejects what it can recognise as stale — so the version is the
+  // thing that has to move, or existing journals keep showing the old totals forever.
+  it("returns version 2", () => {
     const cache = createEmptyCache();
-    expect(cache.version).toBe(1);
+    expect(cache.version).toBe(2);
   });
 
   it("returns zeroed stats", () => {
@@ -65,16 +69,20 @@ Hello world`;
     expect(result.entriesByDate["2026-01-01"].words).toBe(2);
   });
 
-  it("excludes heading lines from word count", () => {
+  // ‼️ This test used to be named "excludes heading lines from word count", and it was one
+  // of THREE counters disagreeing about the same document: the status bar and the Word Count
+  // plugin both count heading text, this one dropped the whole line. A heading is prose the
+  // user typed, so the unified policy counts its text (never its `#` markers).
+  it("counts heading text, like every other surface", () => {
     const content = `# My Journal
 
 Some text here`;
     const result = updateCacheEntry(base, "2026-01-01", content);
-    // Heading line excluded; "Some text here" = 3 words
-    expect(result.entriesByDate["2026-01-01"].words).toBe(3);
+    // "My Journal" + "Some text here" = 5
+    expect(result.entriesByDate["2026-01-01"].words).toBe(5);
   });
 
-  it("excludes both frontmatter and headings", () => {
+  it("excludes frontmatter but keeps the heading's text", () => {
     const content = `---
 date: 2026-01-01
 ---
@@ -83,7 +91,28 @@ date: 2026-01-01
 
 One two three`;
     const result = updateCacheEntry(base, "2026-01-01", content);
-    expect(result.entriesByDate["2026-01-01"].words).toBe(3);
+    // "Title" + "One two three" = 4
+    expect(result.entriesByDate["2026-01-01"].words).toBe(4);
+  });
+
+  // The old stripper joined lines with a space, so it never hit the status bar's fusion bug
+  // — but it did count code, and it disagreed with the bar on both counts.
+  it("does not fuse words across a blank-line block boundary", () => {
+    const content = "alpha beta\n\ngamma delta";
+    const result = updateCacheEntry(base, "2026-01-01", content);
+    expect(result.entriesByDate["2026-01-01"].words).toBe(4);
+  });
+
+  it("excludes fenced code block contents", () => {
+    const content = "I wrote this today\n\n```ts\nconst x = 1;\n```\n";
+    const result = updateCacheEntry(base, "2026-01-01", content);
+    expect(result.entriesByDate["2026-01-01"].words).toBe(4);
+  });
+
+  it("counts a wikilink's label, which the reader sees as prose", () => {
+    const content = "Talked to [[Jane Doe]] today";
+    const result = updateCacheEntry(base, "2026-01-01", content);
+    expect(result.entriesByDate["2026-01-01"].words).toBe(5);
   });
 
   it("returns 0 for empty content", () => {

@@ -9,6 +9,7 @@ import type { Editor } from "@tiptap/react";
 
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { activeEditorScrollContainer } from "../../../utils/editor/active-scroll-container";
 import {
   hideDropIndicator,
   insertNodeAtPos,
@@ -19,7 +20,6 @@ import { getRelativePath, isImageFile } from "../../../utils/path-utils";
 import { resolveDragSet } from "../file-tree-multi-ops";
 import {
   DRAG_THRESHOLD_PX,
-  EDITOR_SCROLL_SELECTOR,
   GHOST_OFFSET_X,
   GHOST_OFFSET_Y,
 } from "../file-tree-types";
@@ -107,7 +107,7 @@ export function useFileTreeDnD(
 
       // Feature 3: editor drop indicator bar for image files
       if (editor && singleSource && isImageFile(singleSource)) {
-        const scrollEl = document.querySelector(EDITOR_SCROLL_SELECTOR);
+        const scrollEl = activeEditorScrollContainer();
         const scrollRect = scrollEl?.getBoundingClientRect();
         if (
           scrollRect &&
@@ -156,7 +156,7 @@ export function useFileTreeDnD(
 
       // Feature 3: Drop image file onto editor -- insert relative-path image
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      const scrollEl = document.querySelector(EDITOR_SCROLL_SELECTOR);
+      const scrollEl = activeEditorScrollContainer();
       const scrollRect = scrollEl?.getBoundingClientRect();
       const overEditor =
         scrollRect &&

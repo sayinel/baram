@@ -1,3 +1,4 @@
+import { unescapeBlockRefTarget } from "../../pipeline/block-id";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 // §28 Wikilink navigation — resolve target to file path
@@ -7,6 +8,7 @@ import { isActiveContextJournal, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { flattenFileTree } from "../file-search";
 import { isDateString, resolveJournalDir } from "../journal/journal";
+import { normalizePath } from "../path-utils";
 
 /**
  * §61 Resolve a relative wikilink target (starting with ./ or ../)
@@ -19,17 +21,11 @@ export function resolveRelativeTarget(
   const sourceDir = sourcePath.substring(0, sourcePath.lastIndexOf("/"));
   const isAbsolute = sourceDir.startsWith("/");
   // Build candidate: join sourceDir + target, then normalize
-  const parts = `${sourceDir}/${target}`.split("/");
-  const resolved: string[] = [];
-  for (const p of parts) {
-    if (p === "." || p === "") continue;
-    if (p === "..") {
-      if (resolved.length > 0) resolved.pop();
-    } else {
-      resolved.push(p);
-    }
-  }
-  const candidateBase = (isAbsolute ? "/" : "") + resolved.join("/");
+  const normalized = normalizePath(`${sourceDir}/${target}`);
+  // normalizePath reads absoluteness off the joined string, which starts with
+  // "/" even when sourcePath had no directory part at all ("note.md" → "").
+  // Absoluteness is a property of the source, not of the join.
+  const candidateBase = isAbsolute ? normalized : normalized.replace(/^\//, "");
   // Try with .md extension
   const candidate = candidateBase.endsWith(".md")
     ? candidateBase
@@ -51,9 +47,16 @@ export function resolveRelativeTarget(
  * 4. Fallback → any file in fileTree (existing behavior)
  */
 export function resolveWikilinkTarget(
-  target: string,
+  rawTarget: string,
   vaultAlias?: null | string,
 ): null | { name: string; path: string } {
+  // §275.4 CRITICAL-2 highlight-ref targets carry escapeBlockRefTarget's
+  // `)`/`#`/`|`/`%` escaping (see pipeline/block-id.ts) — undo it before any
+  // resolution below, all of which compare against real on-disk paths.
+  // Ordinary wikilink/block-ref targets never legitimately contain the
+  // escaped sequences, so this is a no-op for them.
+  const target = unescapeBlockRefTarget(rawTarget);
+
   // §87 Cross-vault: resolve in the alias context
   if (vaultAlias) {
     return resolveCrossVaultTarget(vaultAlias, target);
@@ -138,8 +141,62 @@ export function resolveWikilinkTarget(
     if (stem.toLowerCase() === targetLower) {
       return { path: f.path, name: f.name };
     }
+
+    // §275.4 Path-qualified target, e.g. [[highlights/papers/attention]] —
+    // stem-only matching above picks whichever file anywhere in the tree
+    // happens to share a bare name, which is exactly the ambiguity a
+    // path-qualified target exists to avoid. Only attempted when the target
+    // actually carries a path segment, so plain [[name]] wikilinks keep the
+    // stem-only behavior above untouched.
+    if (target.includes("/")) {
+      const relStem = f.relativePath.endsWith(".markdown")
+        ? f.relativePath.slice(0, -9)
+        : f.relativePath.replace(/\.md$/i, "");
+      if (relStem.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
   }
 
+  return resolveByExactFileName(flat, targetLower, target.includes("/"));
+}
+
+/**
+ * §278 확장자를 적은 타깃을 실제 파일에 맞춘다 — `[[Paper.pdf]]`, `[[그림.png]]`.
+ *
+ * PDF를 마크다운에서 가리킬 방법이 없었다. 위의 표준 해석이 `.md`/`.markdown`만
+ * 후보로 보기 때문인데, 하필 하이라이트 동반 노트의 경로 규칙이
+ * `Paper.pdf` → `highlights/Paper.md`라 stem이 정확히 겹친다. 그래서 `[[Paper]]`는
+ * PDF가 아니라 동반 노트로 갔다 — 우리 명명 규칙이 만든 충돌이다.
+ *
+ * ‼️ **md 해석이 실패한 뒤에만** 불린다. 순서가 안전장치다: 지금 해석되는 링크는
+ * 전부 위에서 결정되므로 이 함수가 기존 링크의 의미를 바꿀 수 없다. bare `[[Paper]]`도
+ * 계속 동반 노트를 가리킨다 — 그것을 뺏으면 이미 그 링크를 쓰던 문서가 조용히 끊긴다
+ * (발견 함수를 더 엄격하게 만드는 방향은 위험하다). 대신 자동완성이 둘 다 보여준다.
+ *
+ * ‼️ 확장자 목록도, "확장자가 있는가" 판별도 두지 않는다. 판별을 패턴으로 하면
+ * `[[v1.2 회의록]]`처럼 이름에 점이 든 노트가 확장자로 오인된다. 그냥 트리의 실제
+ * 파일명과 정확히 같은지만 본다 — 그래서 §69의 새 뷰어 타입(이미지·SVG·HTML)이
+ * 자동으로 따라오고, 열거를 갱신하지 않아 조용히 빠지는 일이 없다.
+ *
+ * 열기는 이미 준비돼 있다: 네비게이션은 확장자를 보고 뷰어로 보낸다
+ * (use-navigation.ts의 하이라이트 참조 점프가 같은 경로로 PDF를 연다).
+ */
+function resolveByExactFileName(
+  flat: { name: string; path: string; relativePath: string }[],
+  targetLower: string,
+  targetHasPath: boolean,
+): null | { name: string; path: string } {
+  for (const f of flat) {
+    if (f.name.toLowerCase() === targetLower) {
+      return { path: f.path, name: f.name };
+    }
+    // 경로를 적은 타깃만 상대경로와 대조한다 — bare 타깃까지 여기서 맞추면
+    // 위 stem 규칙(경로 세그먼트가 있을 때만 경로 대조)과 어긋난다.
+    if (targetHasPath && f.relativePath.toLowerCase() === targetLower) {
+      return { path: f.path, name: f.name };
+    }
+  }
   return null;
 }
 

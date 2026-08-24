@@ -76,6 +76,23 @@ const ALLOWLIST = new Set([
   "--vtop",
   "--vbot",
   "--editor-zoom",
+  // §5.1 editor line height — set on .tiptap from the user's setting alongside the inline
+  // `line-height` (use-settings-effects.ts), because the list markers, the task checkbox
+  // and the fold arrow are absolutely positioned and have to compute WITH it, which an
+  // inherited `line-height` cannot do from inside a calc(). Every consumer passes a 1.75
+  // fallback, so the stylesheet is still correct before the effect runs.
+  "--editor-line-height",
+  // §5.1 HTML preview zoom — set as an inline style prop on the frame (HtmlPreview.tsx)
+  "--preview-zoom",
+  // §272/§274 pdf.js TextLayer (v5+) font-metric input — set as an inline
+  // style prop on .pdf-page (PdfPage.tsx), consumed by pdf.css's
+  // --text-scale-factor calc().
+  "--total-scale-factor",
+  // §282 pdf 사이드 레일 폭 — 단일 출처는 PDF_RAIL_WIDTH_PX(TS)다.
+  // PdfPreview가 .pdf-preview에 인라인 style prop으로 내려주고, 레일의 width와
+  // .pdf-preview-with-rail의 padding-left가 그것을 읽는다. 토큰으로 정의하면
+  // 폭이 두 곳(TS의 fit-width 계산 + CSS)에 생겨 어긋날 수 있다.
+  "--pdf-rail-width",
 ]);
 
 const undefinedVars: [string, string[]][] = [];

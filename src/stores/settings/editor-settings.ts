@@ -1,5 +1,11 @@
 import type { StateCreator } from "zustand";
 
+import {
+  clampRailWidth,
+  PDF_RAIL_DEFAULT_WIDTH_PX,
+} from "../../utils/pdf-rail-width";
+import { clampZoomLevel } from "../../utils/zoom";
+
 export interface EditorSettingsSlice {
   autoPairBrackets: boolean;
   codeBlockLineNumbers: boolean;
@@ -13,6 +19,9 @@ export interface EditorSettingsSlice {
   inlineMath: boolean;
   lineHeight: number;
   lineNumbers: boolean;
+  /** §283 PDF 사이드 레일의 폭(CSS px). 드래그로 조절하고 재시작 뒤에도 남는다.
+   * clampRailWidth 범위 밖의 값은 setter가 자른다. */
+  pdfRailWidth: number;
   setAutoPairBrackets: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
   setCodeBlockStyle: (style: CodeBlockStyle) => void;
@@ -25,6 +34,7 @@ export interface EditorSettingsSlice {
   setInlineMath: (enabled: boolean) => void;
   setLineHeight: (height: number) => void;
   setLineNumbers: (enabled: boolean) => void;
+  setPdfRailWidth: (width: number) => void;
   setSmartPunctuation: (enabled: boolean) => void;
   setSpellCheck: (enabled: boolean) => void;
   setStrikethrough: (enabled: boolean) => void;
@@ -61,6 +71,7 @@ export const createEditorSettingsSlice: StateCreator<
   lineNumbers: false,
   autoPairBrackets: true,
   editorMaxWidth: 800,
+  pdfRailWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
   zoomLevel: 1,
   spellCheck: false,
   vimMode: false,
@@ -86,10 +97,12 @@ export const createEditorSettingsSlice: StateCreator<
   setLineNumbers: (lineNumbers) => set({ lineNumbers }),
   setAutoPairBrackets: (autoPairBrackets) => set({ autoPairBrackets }),
   setEditorMaxWidth: (editorMaxWidth) => set({ editorMaxWidth }),
-  setZoomLevel: (zoomLevel) =>
-    set({
-      zoomLevel: Math.round(Math.max(0.5, Math.min(2, zoomLevel)) * 100) / 100,
-    }),
+  // ‼️ 정규화는 clampZoomLevel 한 곳에만 있다. 여기에 범위/정밀도를 다시 적으면
+  // use-zoom.ts와 갈라져 "한쪽만 고쳐진" 상태가 되고, 그게 부드러운 핀치가
+  // 죽어 있던 원인이었다 (utils/zoom.ts 주석의 측정값 참조).
+  setPdfRailWidth: (width) => set({ pdfRailWidth: clampRailWidth(width) }),
+
+  setZoomLevel: (zoomLevel) => set({ zoomLevel: clampZoomLevel(zoomLevel) }),
   setSpellCheck: (spellCheck) => set({ spellCheck }),
   setVimMode: (vimMode) => set({ vimMode }),
   setVirtualizeLargeDocs: (virtualizeLargeDocs) => set({ virtualizeLargeDocs }),

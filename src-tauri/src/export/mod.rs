@@ -289,4 +289,57 @@ mod tests {
         let bytes = std::fs::read(&output_path).unwrap();
         assert_eq!(&bytes[..5], b"%PDF-", "Not a valid PDF file");
     }
+
+    /// §301: a video that cannot play becomes an `<a>` in the exported HTML, so
+    /// the PDF has to carry that anchor as a clickable **link annotation** — a
+    /// `/Link` annot with a `/URI` action — or the export is a dead end for the
+    /// reader.
+    ///
+    /// ‼️ This asserts against the REAL path: `generate_pdf`, i.e. chromiumoxide's
+    /// CDP `Page.printToPDF`, not Chrome's `--print-to-pdf` CLI entry point. The
+    /// two share a printing backend but are different call sites, and the claim
+    /// under test ("headless Chrome does not emit link annotations unless tagged
+    /// PDF is requested") is about this one. It is false: no tagging flag is set
+    /// anywhere in `generate_pdf` and the annotations are present regardless.
+    ///
+    /// It also pins the reason a document-relative href is useless here: Chrome
+    /// resolves it against the print-time base URL, which is the temp file this
+    /// function creates and then deletes — so a relative link lands inside a
+    /// directory that no longer exists by the time anyone clicks it.
+    #[tokio::test]
+    #[ignore] // Requires Chrome installed — run with: cargo test -- --ignored
+    async fn test_generate_pdf_emits_link_annotations() {
+        let html = r#"<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>t</title></head>
+<body><p><a href="https://youtu.be/ILDol5yPM0Q">remote</a></p>
+<p><a href="assets/clip.mp4">local</a></p></body></html>"#;
+
+        let tmp_dir = tempdir().unwrap();
+        let output_path = tmp_dir.path().join("links.pdf");
+        let result = generate_pdf(html, output_path.to_str().unwrap(), None).await;
+        assert!(result.is_ok(), "generate_pdf failed: {:?}", result.err());
+
+        let bytes = std::fs::read(&output_path).unwrap();
+        let pdf = String::from_utf8_lossy(&bytes);
+        assert!(
+            pdf.contains("/Link"),
+            "no /Link annotation in the PDF — anchors did not survive printing"
+        );
+        assert!(
+            pdf.contains("/URI"),
+            "no /URI action in the PDF — the link has no destination"
+        );
+        assert!(
+            pdf.contains("https://youtu.be/ILDol5yPM0Q"),
+            "the absolute URL is not in the PDF's link annotations"
+        );
+        // The relative href is resolved against the temp file's own directory,
+        // which `generate_pdf` deletes on return. Pinned so that nobody
+        // "fixes" a dead PDF link by making the exported href relative again.
+        assert!(
+            pdf.contains("file://") && pdf.contains("assets/clip.mp4"),
+            "expected the relative href to be resolved against the print-time \
+             base URL (the temp file), which is exactly why it cannot survive"
+        );
+    }
 }

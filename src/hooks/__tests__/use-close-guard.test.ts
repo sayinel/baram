@@ -53,12 +53,7 @@ function fileTab(over: Partial<EditorTab> = {}): EditorTab {
 }
 
 function makeDeps(handleSave: () => Promise<void>): CloseGuardDeps {
-  return {
-    editor: null,
-    handleSave,
-    isSourceMode: false,
-    sourceContentRef: { current: "" },
-  };
+  return { handleSave };
 }
 
 beforeEach(() => {

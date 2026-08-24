@@ -11,6 +11,7 @@ import {
 } from "../extensions/plugins/fold";
 // §settings Keybinding actions hook — register command handlers + global keyboard shortcuts
 import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
+import { type Locale, t } from "../i18n";
 import { readFile } from "../ipc/invoke";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
 import {
@@ -36,7 +37,7 @@ import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
-import { isDateString } from "../utils/journal/journal";
+import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
 import { firstBodyLine } from "../utils/zettelkasten/parse-note-title";
@@ -426,9 +427,24 @@ export function useKeybindingActions({
             journalFilenameFormat,
             journalTemplatePath,
             journalUseHierarchy,
+            locale,
           } = useSettingsStore.getState();
-          if (!journalEnabled || !journalDirectory) return;
           const { rootPath } = useFileStore.getState();
+          // §85 Say why nothing opened. A shortcut that returns silently is
+          // indistinguishable from one that is not bound — the same two cases the
+          // journal preset now reports (workspace.ts), worded identically.
+          if (!journalEnabled) {
+            useUIStore
+              .getState()
+              .showToast(t("space.journal.disabled", locale as Locale));
+            return;
+          }
+          if (!resolveJournalDir(rootPath, journalDirectory)) {
+            useUIStore
+              .getState()
+              .showToast(t("space.journal.noDirectory", locale as Locale));
+            return;
+          }
           const result = await ensureJournalFile(new Date(), {
             journalDirectory,
             journalFilenameFormat,
@@ -439,7 +455,20 @@ export function useKeybindingActions({
           if (!result) return;
           await openFileInTab(result.path, result.content);
         } catch (err) {
+          // Surface it — a logger-only failure is invisible to the user — but keep the
+          // raw text out of the toast: Tauri rejects with a bare string, so `String(err)`
+          // would put an untranslated absolute path on screen (the project's idiom:
+          // localized key in the toast, raw message in the log — see stores/file/file.ts).
           logger.error("[JournalShortcut] Failed:", err);
+          useUIStore
+            .getState()
+            .showToast(
+              t(
+                "space.journal.openFailed",
+                useSettingsStore.getState().locale as Locale,
+              ),
+              "error",
+            );
         }
       })();
     });
@@ -617,7 +646,16 @@ export function useKeybindingActions({
         confirmLabel: "Create",
       });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setFindReplaceOpen/setFindReplaceMode are stable store actions
+    // §272 Fix round 1 — I4: setFindReplaceOpen used to be a raw useState
+    // setter (always stable) — the comment below was true then. It is no
+    // longer true: App.tsx now passes routeFindReplaceOpen, a
+    // useCallback(…, [isPdfTab]) wrapper, so its identity changes whenever
+    // isPdfTab flips. It must be a real dep so edit.find's registered
+    // closure picks up the current wrapper instead of a stale one — without
+    // this, Cmd+F on a PDF tab would only work by accident (only because
+    // `inlineAI` below happens to be unmemoized and re-runs this effect
+    // every render regardless).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setFindReplaceMode is still a stable store action
   }, [
     toggleSourceMode,
     toggleSidebar,
@@ -625,6 +663,7 @@ export function useKeybindingActions({
     toggleQuickSwitcher,
     toggleSettings,
     setSidebarPanel,
+    setFindReplaceOpen,
     handleNewFile,
     handleOpenFile,
     handleOpenFolder,

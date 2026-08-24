@@ -9,11 +9,19 @@ mod fs;
 mod git;
 mod index;
 mod llm;
+/// Public only so `tests/logging_install*.rs` can reach it. `install` ends in
+/// `log::set_boxed_logger`, which is process-global and one-shot, so the only place it
+/// can be exercised is an integration test binary that owns its own process — and an
+/// integration test links the library as an external crate. Nothing outside the crate
+/// calls this.
+pub mod logging;
 mod menu;
 mod plugin;
+mod protocol;
 mod search;
 mod snapshot;
 mod tag;
+mod thumbnail;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,7 +29,7 @@ use std::sync::Mutex;
 
 use commands::{
     config_cmd, context_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd,
-    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd,
+    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, thumbnail_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -166,12 +174,64 @@ fn confirm_quit(app: tauri::AppHandle, guard: tauri::State<QuitGuard>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // FIRST, and a plugin rather than a line in `.setup()`: plugin setup hooks run
+        // inside `Builder::build()`, while `.setup()` runs after tauri has created every
+        // window — so a window that fails to open would log its cause into a facade
+        // with no implementation behind it. `logging::plugin` explains why it also
+        // cannot fail. `logging::tests` pins both the position and the count.
+        .plugin(logging::plugin())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // §5.1 The HTML preview loads through this rather than asset:, so that relative
+        // references inside a previewed document resolve — see protocol/html_preview.rs
+        // for why asset: cannot serve them. Access is governed by the asset scope all
+        // the same, so this adds a route, not a permission.
+        .register_uri_scheme_protocol(
+            protocol::html_preview::SCHEME,
+            protocol::html_preview::handle,
+        )
         .setup(|app| {
+            // The log file is appended to across sessions, so this doubles as a
+            // session separator — and it answers the first question asked of any
+            // report ("which version?") without the reporter having to know. Not
+            // necessarily the session's first line: the logger is installed earlier
+            // still (see the plugin above), so tauri's own window-creation failures
+            // are recorded ahead of it. That is the point.
+            log::info!(
+                "Baram {} starting ({}, {})",
+                app.package_info().version,
+                std::env::consts::OS,
+                if cfg!(debug_assertions) {
+                    "debug"
+                } else {
+                    "release"
+                }
+            );
+
+            // §56d 썸네일 캐시는 vault 밖(앱 캐시 디렉터리)에 있으므로 asset:// 스코프에
+            // 따로 넣어 줘야 한다 — 정적 스코프는 $APPDATA뿐이고, vault는 set_vault_root가
+            // 런타임에 등록한다. 실패는 비치명적이다: 갤러리가 원본으로 폴백한다.
+            match thumbnail_cmd::cache_dir(app.handle()) {
+                Ok(dir) => {
+                    if let Err(e) = std::fs::create_dir_all(&dir) {
+                        log::warn!("§56d thumbnail cache dir creation failed: {e}");
+                    } else if let Err(e) = app.asset_protocol_scope().allow_directory(&dir, true) {
+                        log::warn!("§56d thumbnail asset scope registration failed: {e}");
+                    } else {
+                        // 낡은 세대 정리. 세션당 한 번, 디렉터리 목록만 보는 일이므로 여기서
+                        // 해도 시작을 지연시키지 않는다(사진도 vault도 읽지 않는다).
+                        let removed = thumbnail::purge_stale_generations(&dir);
+                        if removed > 0 {
+                            log::info!("§56d purged {removed} stale thumbnail cache entries");
+                        }
+                    }
+                }
+                Err(e) => log::warn!("§56d thumbnail cache dir unavailable: {e}"),
+            }
+
             let (built_menu, menu_state) = menu::build_menu(app)?;
             app.set_menu(built_menu)?;
             app.manage(menu_state);
@@ -198,6 +258,7 @@ pub fn run() {
         .manage(plugin::SandboxChannels::new())
         .manage(plugin::PluginRateLimiter::new())
         .manage(plugin::StagedPayloads::new())
+        .manage(thumbnail_cmd::ThumbnailSemaphore::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::set_vault_root,
             fs_cmd::read_file,
@@ -208,11 +269,13 @@ pub fn run() {
             fs_cmd::create_dir,
             fs_cmd::delete_dir,
             fs_cmd::copy_file,
+            fs_cmd::import_dir,
             fs_cmd::import_file,
             fs_cmd::watch_dir,
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
             fs_cmd::export_binary_file,
+            thumbnail_cmd::photo_thumbnail,
             config_cmd::get_config,
             config_cmd::set_config,
             config_cmd::remove_config,

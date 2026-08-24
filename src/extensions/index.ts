@@ -62,6 +62,7 @@ import { TagNode } from "./nodes/tag-node";
 import { TaskItem } from "./nodes/task-item";
 import { TaskList } from "./nodes/task-list";
 import { Toggle } from "./nodes/toggle";
+import { Video } from "./nodes/video";
 import { Wikilink } from "./nodes/wikilink";
 import { AIDiff } from "./plugins/ai-diff";
 import { BlockIdDecoration } from "./plugins/block-id-decoration";
@@ -96,7 +97,8 @@ interface BaramExtensionOptions {
     vaultAlias?: null | string,
   ) => void;
   onNavigateBlockRef?: (target: string, blockId: string) => void;
-  onNavigateLocal?: (href: string) => void;
+  /** §278.1 Returns whether the href was handled in-app; see `LinkOptions`. */
+  onNavigateLocal?: (href: string) => boolean;
 }
 
 /** M2 기본 편집 Extension 세트 */
@@ -125,6 +127,7 @@ export function createBaramExtensions(
     TaskItem,
     HorizontalRule,
     Image,
+    Video,
     CodeBlock,
 
     // Nodes — §5.3 Math
@@ -195,7 +198,7 @@ export function createBaramExtensions(
     Code,
     Strike,
     Link.configure({
-      onNavigateLocal: options?.onNavigateLocal ?? (() => {}),
+      onNavigateLocal: options?.onNavigateLocal ?? (() => false),
     }),
     Underline,
     Highlight,
@@ -355,5 +358,6 @@ export {
   TaskList,
   Toggle,
   Underline,
+  Video,
   Wikilink,
 };

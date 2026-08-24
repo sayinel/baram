@@ -6,6 +6,7 @@ import { TextSelection } from "@tiptap/pm/state";
 
 // §5.5 Table Insert Buttons — hover ⊕ buttons for row/column insertion
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { activeEditorScrollContainer } from "../../utils/editor/active-scroll-container";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import {
   computeInsertButtonStyle,
@@ -312,8 +313,8 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
     // §perf-large-file C3.4: resolve via editor.view.dom.closest() so this
     // targets the ACTIVE editor's scroll container in a dual-editor layout.
     const scrollContainer =
-      editor.view.dom.closest(".editor-area-scroll") ??
-      document.querySelector(".editor-area-scroll");
+      editor.view.dom.closest<HTMLElement>(".editor-area-scroll") ??
+      activeEditorScrollContainer();
     if (!scrollContainer) return;
 
     scrollContainer.addEventListener(

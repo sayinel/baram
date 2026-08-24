@@ -1,0 +1,145 @@
+// §272 Fix round 2 — N1/N2: pdf-find-cache.test.ts only exercises
+// recomputePageMatches in isolation (fresh `previous: new Map()` every
+// call), which cannot see the use-pdf-find.ts ref-reassignment/cleanup
+// interaction bug — that bug is specifically about whether
+// positionsRef.current keeps the SAME object identity across recomputes so
+// the [doc] effect's captured cleanup variable still points at the live
+// Map. This file drives the real hook through the reviewer's exact repro:
+// search in one document with the bar open, then switch documents WITHOUT
+// closing the bar.
+//
+// PDFFindController itself is mocked out (real search/regex/debounce logic
+// is irrelevant here and would make the test fragile) — but EventBus is the
+// REAL class via vi.importActual, so bus.on/off/dispatch behave exactly as
+// use-pdf-find.ts expects, and the fake controller can announce results
+// through it exactly like the real one does internally.
+//
+// §272 Follow-up (flush determinism): waits on the ACTUAL condition each
+// step needs (controller constructed, matches recomputed) via waitFor,
+// never on an elapsed tick count — a fixed-tick flush() is a timing-based
+// hack that just lowers the odds of a race, it doesn't remove it (this file
+// failed exactly that way under full-suite load; see task-5-report.md).
+import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { usePdfFind } from "../use-pdf-find";
+
+interface FakeEventBus {
+  dispatch: (name: string, data: unknown) => void;
+}
+
+class FakeFindController {
+  onIsPageVisible: (() => boolean) | null = null;
+  pageMatches: number[][] = [];
+  pageMatchesLength: number[][] = [];
+  selected: { matchIdx: number; pageIdx: number } = {
+    matchIdx: -1,
+    pageIdx: -1,
+  };
+  private readonly bus: FakeEventBus;
+
+  constructor({ eventBus }: { eventBus: FakeEventBus }) {
+    this.bus = eventBus;
+  }
+
+  /** 실제 findController가 매치를 계산한 뒤 하는 일을 흉내낸다. */
+  announce(current: number, total: number): void {
+    this.bus.dispatch("updatefindmatchescount", {
+      matchesCount: { current, total },
+    });
+  }
+
+  setDocument(): void {}
+}
+
+const instances: FakeFindController[] = [];
+
+vi.mock("pdfjs-dist/legacy/web/pdf_viewer.mjs", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>(
+    "pdfjs-dist/legacy/web/pdf_viewer.mjs",
+  );
+  return {
+    ...actual,
+    PDFFindController: class extends FakeFindController {
+      constructor(opts: { eventBus: FakeEventBus }) {
+        super(opts);
+        instances.push(this);
+      }
+    },
+  };
+});
+
+function fakePage(pageNumber: number, str: string): PDFPageProxy {
+  return {
+    getTextContent: () => Promise.resolve({ items: [{ hasEOL: false, str }] }),
+    pageNumber,
+  } as unknown as PDFPageProxy;
+}
+
+describe("usePdfFind — document switch while the find bar stays open (N1)", () => {
+  beforeEach(() => {
+    instances.length = 0;
+  });
+
+  it("does not leak the previous document's cached match positions into the new one", async () => {
+    const docA = { numPages: 1 } as unknown as PDFDocumentProxy;
+    const docB = { numPages: 1 } as unknown as PDFDocumentProxy;
+    const pagesA = [fakePage(1, "hello world")];
+    const pagesB = [fakePage(1, "goodbye")];
+
+    const { rerender, result } = renderHook(
+      (props: { doc: PDFDocumentProxy; pages: PDFPageProxy[] }) =>
+        usePdfFind({
+          doc: props.doc,
+          getScrollElement: () => null,
+          isOpen: true,
+          pages: props.pages,
+        }),
+      { initialProps: { doc: docA, pages: pagesA } },
+    );
+
+    // doc A의 findController가 (loadPdfViewerModule의 동적 import 체인을
+    // 거쳐) 실제로 만들어질 때까지 기다린다 — 정해진 틱 수가 아니라 그
+    // 사실 자체를 기다린다.
+    //
+    // ‼️ 기본 1초 한도로는 부족하다. 이 파일의 vi.mock이 importActual로
+    // pdf_viewer.mjs(14,756줄)를 **실제로** 로드하므로, 전체 스위트가 코어를
+    // 다 쓰는 동안에는 그 import 하나가 1초를 넘긴다 — 실제로 전체 실행에서
+    // 1,186ms에 타임아웃해 이 테스트만 빨개진 적이 있다(단독 실행은 통과).
+    // 한도를 실제 소요에 맞추는 것이지 증상을 덮는 것이 아니다.
+    await waitFor(() => expect(instances).toHaveLength(1), { timeout: 10000 });
+    const controllerA = instances[0];
+
+    // doc A의 findController가 매치를 찾았다고 알린다. pageItemsRef가 이미
+    // 채워졌는지는 신경 쓰지 않는다 — 아직 안 찼어도 페이지 자신의
+    // getTextContent().then()이 나중에 recomputeRef.current()를 다시
+    // 불러 채워준다. 그래서 announce 이후 "매치가 실제로 보이는지"를
+    // 기다리는 게 맞다 — 몇 번째 재계산에서 채워지든 상관없이.
+    controllerA.pageMatches = [[0]];
+    controllerA.pageMatchesLength = [[5]];
+    controllerA.selected = { matchIdx: 0, pageIdx: 0 };
+    act(() => controllerA.announce(1, 1));
+    await waitFor(() =>
+      expect(result.current.getPageMatches(1)?.positions).toHaveLength(1),
+    );
+
+    // 찾기 바를 안 닫고(isOpen: true 유지) 다른 문서로 바꾼다 — 리뷰어가
+    // 지목한 정확한 재현 경로. doc B의 findController가 실제로 만들어질
+    // 때까지 기다린 뒤 확인한다 — 그래야 "너무 일찍 확인했다"가 아니라
+    // doc B의 새 생애주기가 정말 시작된 뒤의 상태를 보는 것이다. (버그가
+    // 있으면 doc A의 항목은 이 시점에도, 그 이후로도 절대 스스로 사라지지
+    // 않는다 — 더 기다린다고 봐줄 수 있는 조건이 아니다.)
+    rerender({ doc: docB, pages: pagesB });
+    // 위와 같은 이유로 한도를 올린다(모듈은 이미 캐시돼 있지만, 부하가 걸린
+    // 워커에서는 이펙트 재실행과 마이크로태스크 소진도 1초를 넘길 수 있다).
+    await waitFor(() => expect(instances).toHaveLength(2), { timeout: 10000 });
+
+    // doc B의 findController는 아직 아무것도 알리지 않았다 — doc A의 캐시가
+    // 새 것으로 새어 들어가면 안 된다. (N1 회귀 전에는 [doc] 이펙트의
+    // 클린업이 이미 버려진 Map을 지워서, 진짜 살아있는 Map에는 doc A의
+    // 항목이 그대로 남아 이 assert가 깨졌다.)
+    expect(result.current.getPageMatches(1)).toBeUndefined();
+  });
+});

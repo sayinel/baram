@@ -41,9 +41,13 @@ export async function exportAsPDF(
   title: string,
   options?: PdfOptions,
 ): Promise<void> {
-  const html = generateStandaloneHTML(await captureEditorHTML(editor), title, {
-    theme: "light",
-  });
+  const html = generateStandaloneHTML(
+    // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it
+    // with a link instead of leaving an inert `<video>`.
+    await captureEditorHTML(editor, { forPdf: true }),
+    title,
+    { theme: "light" },
+  );
 
   const path = await save({
     filters: [{ name: "PDF", extensions: ["pdf"] }],

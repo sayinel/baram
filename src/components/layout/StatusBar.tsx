@@ -31,14 +31,16 @@ import {
   useZettelFavoritesStore,
 } from "../../stores/zettelkasten/zettel-favorites";
 import { subscribeContentLoaded } from "../../utils/editor/programmatic-update";
+import { isMarkdownFile } from "../../utils/file-type";
 import { basename } from "../../utils/path-utils";
+import { countDocumentChars, countDocumentWords } from "../../utils/word-count";
 import { extractLeadingId } from "../../utils/zettelkasten/parse-note-title";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { PluginStatusBarItems } from "./PluginStatusBarItems";
 import "../../styles/zettelkasten.css";
 import { VimSearchInput } from "./VimSearchInput";
 
-export type EditorMode = "graph" | "preview" | "source" | "wysiwyg";
+export type EditorMode = "graph" | "plugin" | "preview" | "source" | "wysiwyg";
 
 /** §298 vim §8 — which vim surface a StatusBar mode belongs to. The SAME
  *  mapping appoints the wysiwyg status owner (App) and arbitrates the
@@ -55,10 +57,29 @@ export function vimSurfaceForMode(
 
 const MODE_LABELS: Record<EditorMode, string> = {
   graph: "Graph",
+  plugin: "Plugin",
   preview: "Preview",
   source: "Source",
   wysiwyg: "WYSIWYG",
 };
+
+/**
+ * Modes whose surface is a text document the shared editor holds.
+ *
+ * ‼️ `preview` USED to be in this list, and that is the bug this set no longer has: a PDF,
+ * image or HTML-preview tab has no words and no cursor, so the panel reported the count of
+ * whatever markdown the shared editor was still holding from the previous tab.
+ *
+ * ‼️ Membership is necessary but NOT sufficient — see `showDocumentStats`. `source` covers
+ * both a markdown source view (the editor does hold that document) and a code file (it holds
+ * something else entirely), so no mode check alone can gate these numbers.
+ *
+ * ‼️ An ALLOWLIST on purpose. This was `mode !== "graph"`, so every mode added later
+ * inherited a right-hand panel reporting "0 words, Ln 1, Col 1" about a tab that has no
+ * text at all. Defaulting a new mode to "no stats" is the direction that fails visibly
+ * (a missing panel) rather than plausibly (a confident wrong number).
+ */
+const DOCUMENT_MODES: ReadonlySet<EditorMode> = new Set(["source", "wysiwyg"]);
 
 const SPACE_ICONS: Record<string, typeof Pencil> = {
   writing: Pencil,
@@ -107,10 +128,16 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
       return { col, line };
     };
 
-    const computeWords = () => {
-      const text = editor.state.doc.textContent;
-      return { chars: text.length, words: countWords(text) };
-    };
+    // ‼️ NOT `doc.textContent`, which is what shipped: that is
+    // `textBetween(0, size, "")`, and prosemirror-model skips its separator when the
+    // separator is falsy — so every block boundary fused two words and the bar undercounted
+    // by (textblocks − 1). The policy (block separators, code and frontmatter excluded,
+    // wikilink labels included) lives in `utils/word-count` because the Word Count plugin
+    // and the journal stats cache have to agree with this number.
+    const computeWords = () => ({
+      chars: countDocumentChars(editor.state.doc),
+      words: countDocumentWords(editor.state.doc),
+    });
 
     const refreshAll = () => {
       if (editor.isDestroyed) return;
@@ -228,6 +255,19 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [spaceMenuOpen]);
 
+  // §4.8 May the right-hand panel report words and a cursor at all?
+  //
+  // ‼️ These numbers have exactly one source — the shared Tiptap editor — and that editor is
+  // NOT reloaded for a tab whose surface it does not draw: `use-tab-switching` returns before
+  // ProseMirror for a non-markdown file (`if (!isMarkdownFile(incomingTab.filePath))`), so it
+  // keeps holding the last markdown document while a PDF, an image, an HTML preview or a code
+  // file is on screen. Asking the ACTIVE TAB rather than the render chain is deliberate: it is
+  // a property of the tab's own path, so a future surface cannot silently opt itself in.
+  //
+  // `isMarkdownFile("")` is true, which is what keeps an untitled buffer reporting normally.
+  const showDocumentStats =
+    DOCUMENT_MODES.has(mode) && isMarkdownFile(activeFilePath);
+
   return (
     <div className="status-bar">
       <div className="status-bar-left">
@@ -337,35 +377,37 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
         )}
         <PluginStatusBarItems align="left" />
       </div>
-      {mode !== "graph" && (
-        <div className="status-bar-right">
-          <span
-            className="status-words cursor-default"
-            title={`${stats.chars} characters`}
-          >
-            {stats.words} words
-          </span>
-          <span className="status-separator">|</span>
-          <span className="status-position cursor-default">
-            Ln {stats.line}, Col {stats.col}
-          </span>
-          {zoomPercent !== 100 && (
-            <>
-              <span className="status-separator">|</span>
-              <span className="status-zoom" title="Cmd+0 to reset zoom">
-                {zoomPercent}%
-              </span>
-            </>
-          )}
-          <PluginStatusBarItems align="right" />
-        </div>
-      )}
+      {/* ‼️ The panel itself is NOT gated on `showDocumentStats`. The zoom level applies to
+          `.editor-area-scroll`, which is what a PDF, an image and the graph all render inside
+          — PdfPreview even multiplies its raster scale by it, and §281 lets a trackpad pinch
+          change it there. Withholding the word count must not take that live readout, or a
+          plugin's right-aligned item, down with it. Both children render nothing when empty. */}
+      <div className="status-bar-right">
+        {showDocumentStats && (
+          <>
+            <span
+              className="status-words cursor-default"
+              title={`${stats.chars} characters`}
+            >
+              {stats.words} words
+            </span>
+            <span className="status-separator">|</span>
+            <span className="status-position cursor-default">
+              Ln {stats.line}, Col {stats.col}
+            </span>
+          </>
+        )}
+        {zoomPercent !== 100 && (
+          <>
+            {/* Only a separator when something precedes it. */}
+            {showDocumentStats && <span className="status-separator">|</span>}
+            <span className="status-zoom" title="Cmd+0 to reset zoom">
+              {zoomPercent}%
+            </span>
+          </>
+        )}
+        <PluginStatusBarItems align="right" />
+      </div>
     </div>
   );
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
 }

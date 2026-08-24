@@ -411,7 +411,7 @@ describe("the malicious fixture stays a fixture (§260 Phase 6)", () => {
     // …and the one allowlisted plugin gets PAST the allowlist and the tier check. It still stops
     // at the release-order gate while the app is behind the floor, which is that gate working —
     // asserted here so this case cannot silently become a refusal for the wrong reason.
-    const allowed = runFor("plugin-word-count-v2.0.0");
+    const allowed = runFor("plugin-word-count-v2.1.0");
     expect(allowed.output).not.toContain("publishable allowlist");
     expect(allowed.output).not.toContain(
       "only sandboxed plugins are published",
