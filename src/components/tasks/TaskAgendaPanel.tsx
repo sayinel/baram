@@ -8,6 +8,7 @@ import type { TaskFilters } from "../../utils/tasks/task-filters";
 
 import { useShallow } from "zustand/shallow";
 
+import { useEditorContext } from "../../contexts/editor-context";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -54,6 +55,9 @@ export function TaskAgendaPanel() {
       })),
     );
   const byId = useZettelIndexStore((s) => s.byId);
+  // §305 문서 경로 판정에 필요한 라이브 Editor — 활성 탭이 없으면 null이고,
+  // 라우터는 그 경우 디스크로 폴백한다.
+  const editor = useEditorContext();
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
 
   // I4: 밤새 패널을 열어 둬도 버킷 경계가 어제로 굳어버리지 않도록 state로
@@ -90,14 +94,18 @@ export function TaskAgendaPanel() {
       const next = task.state === "done" ? "todo" : "done";
       let result: null | TaskWriteResult = null;
       try {
-        result = await applyTaskWrite(task, {
-          kind: "state",
-          newState: next,
-          recordDoneDate: tasksRecordDoneDate,
-          // `now`로 통일 — 라이브 new Date()를 쓰면 자정을 넘긴 직후 적히는 ✅
-          // 날짜가 사용자가 보고 있는 버킷 경계와 하루 어긋난다(I4).
-          today: todayIso(now),
-        });
+        result = await applyTaskWrite(
+          task,
+          {
+            kind: "state",
+            newState: next,
+            recordDoneDate: tasksRecordDoneDate,
+            // `now`로 통일 — 라이브 new Date()를 쓰면 자정을 넘긴 직후 적히는 ✅
+            // 날짜가 사용자가 보고 있는 버킷 경계와 하루 어긋난다(I4).
+            today: todayIso(now),
+          },
+          editor,
+        );
       } catch (err) {
         // stale이 아닌 실패(권한·디스크 가득 참·파일 삭제)를 조용히 되돌리면
         // 사용자에게는 원인 모를 죽은 체크박스로만 보인다(I5).
@@ -109,8 +117,12 @@ export function TaskAgendaPanel() {
 
       if (result?.kind === "document") {
         // 아직 저장되지 않았다 — 디스크를 읽으면 방금 만든 변경이 사라진다.
+        // done 날짜는 tasksRecordDoneDate로 다시 계산하지 않고 실제로 쓰인
+        // 줄에서 읽는다 — apply_state는 그 설정이 꺼져 있으면 기존 ✅date를
+        // 그대로 보존하므로(write.rs:143-145) 재계산은 그 값과 어긋난다.
+        const doneMatch = /✅(\d{4}-\d{2}-\d{2})/.exec(result.raw);
         useTaskStore.getState().patchTask(task.path, task.line, {
-          done: next === "done" && tasksRecordDoneDate ? todayIso(now) : null,
+          done: doneMatch ? doneMatch[1] : null,
           raw: result.raw,
           state: next,
         });
@@ -120,7 +132,7 @@ export function TaskAgendaPanel() {
       // 디스크가 진실원이므로 그 파일만 다시 읽는다.
       await refreshFileTasks(task.path, rootPath, tasksExcludePaths);
     },
-    [tasksRecordDoneDate, rootPath, tasksExcludePaths, now],
+    [tasksRecordDoneDate, rootPath, tasksExcludePaths, now, editor],
   );
 
   const onJump = useCallback((task: TaskEntry) => {

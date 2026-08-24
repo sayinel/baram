@@ -1,4 +1,5 @@
 import type { TaskEntry } from "../../../ipc/types";
+import type { Editor } from "@tiptap/react";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -7,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const setTaskState = vi.fn().mockResolvedValue("- [x] 하나");
 const getVaultTasks = vi.fn().mockResolvedValue([]);
 const getFileTasks = vi.fn().mockResolvedValue([]);
+// §305 문서 경로(활성 + dirty 탭)가 라이브 문서를 읽고 쓰는 데 쓴다.
+const previewTaskStateLine = vi.fn();
+const prosemirrorToMarkdown = vi.fn();
 
 // listDir/readFile 스텁이 필요한 이유: TaskAgendaPanel → useZettelIndexStore →
 // 같은 모듈에서 listDir/readFile을 import한다. 3개만 목하면 그 import가 깨진다.
@@ -14,13 +18,24 @@ vi.mock("../../../ipc/invoke", () => ({
   getFileTasks: (...a: unknown[]) => getFileTasks(...a),
   getVaultTasks: (...a: unknown[]) => getVaultTasks(...a),
   listDir: vi.fn().mockResolvedValue([]),
+  previewTaskStateLine: (...a: unknown[]) => previewTaskStateLine(...a),
   readFile: vi.fn().mockResolvedValue(""),
   setTaskState: (...a: unknown[]) => setTaskState(...a),
 }));
 
+vi.mock("../../../pipeline", () => ({
+  prosemirrorToMarkdown: (...a: unknown[]) => prosemirrorToMarkdown(...a),
+}));
+
+import { EditorProvider } from "../../../contexts/editor-context";
+import { useEditorStore } from "../../../stores/editor/editor";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { TaskAgendaPanel } from "../TaskAgendaPanel";
+
+// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
+const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
   return {
@@ -296,6 +311,97 @@ describe("TaskAgendaPanel", () => {
         true,
         "2026-08-23",
       );
+    });
+  });
+
+  // §305 문서 경로 — 활성 탭이 dirty일 때만 들어간다. 이 스위트가 이 태스크가
+  // 존재하는 이유(디스크를 다시 읽지 않는다)와 Minor 1(recordDoneDate가
+  // 꺼져 있을 때의 done 날짜)을 검증한다.
+  describe("document branch (§305 activeTab && dirty)", () => {
+    beforeEach(() => {
+      useEditorStore.setState({
+        activeTabId: "t1",
+        tabs: [
+          {
+            contextId: "c",
+            filePath: "a.md",
+            id: "t1",
+            isDirty: true,
+            isPinned: false,
+            title: "a",
+          },
+        ],
+      });
+    });
+
+    afterEach(() => {
+      useEditorStore.setState({ activeTabId: null, tabs: [] });
+      useSettingsStore.getState().setTasksRecordDoneDate(true);
+    });
+
+    it("디스크를 다시 읽지 않는다 — 이 태스크가 존재하는 이유", async () => {
+      prosemirrorToMarkdown.mockReturnValue("- [ ] 하나\n");
+      previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
+      useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+      render(
+        <EditorProvider value={FAKE_EDITOR}>
+          <TaskAgendaPanel />
+        </EditorProvider>,
+      );
+
+      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+      expect(setTaskState).not.toHaveBeenCalled();
+      expect(getFileTasks).not.toHaveBeenCalled();
+    });
+
+    it("recordDoneDate가 꺼져 있으면 재계산 대신 실제로 쓰인 줄에서 done을 읽는다 (Minor 1)", async () => {
+      useSettingsStore.getState().setTasksRecordDoneDate(false);
+      // apply_state는 recordDoneDate=false일 때 기존 ✅date를 그대로 보존해
+      // 돌려준다(write.rs:143-145) — 패널이 설정값으로 재계산하면 이 값과 어긋난다.
+      prosemirrorToMarkdown.mockReturnValue("- [ ] 하나 ✅2026-01-01\n");
+      previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-01-01");
+      useTaskStore
+        .getState()
+        .setAll([task({ raw: "- [ ] 하나 ✅2026-01-01" })]);
+      render(
+        <EditorProvider value={FAKE_EDITOR}>
+          <TaskAgendaPanel />
+        </EditorProvider>,
+      );
+
+      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+      const patched = useTaskStore.getState().tasks[0];
+      expect(patched.done).toBe("2026-01-01");
+      expect(patched.raw).toBe("- [x] 하나 ✅2026-01-01");
+      expect(patched.state).toBe("done");
+    });
+
+    it("완료된 태스크를 체크 해제하면 done을 null로 patch한다", async () => {
+      prosemirrorToMarkdown.mockReturnValue("- [x] 하나 ✅2026-08-01\n");
+      previewTaskStateLine.mockResolvedValue("- [ ] 하나");
+      useTaskStore
+        .getState()
+        .setAll([
+          task({
+            done: "2026-08-01",
+            raw: "- [x] 하나 ✅2026-08-01",
+            state: "done",
+          }),
+        ]);
+      render(
+        <EditorProvider value={FAKE_EDITOR}>
+          <TaskAgendaPanel />
+        </EditorProvider>,
+      );
+
+      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+      const patched = useTaskStore.getState().tasks[0];
+      expect(patched.done).toBeNull();
+      expect(patched.state).toBe("todo");
+      expect(getFileTasks).not.toHaveBeenCalled();
     });
   });
 });

@@ -77,6 +77,56 @@ describe("useTaskStore", () => {
   });
 });
 
+describe("patchTask (§305 열린 문서 경로의 낙관적 갱신)", () => {
+  beforeEach(() => {
+    useTaskStore.getState().clear();
+  });
+
+  it("path와 line이 모두 일치하는 엔트리만 patch한다", () => {
+    useTaskStore.getState().setAll([task("a.md", "하나"), task("b.md", "둘")]);
+
+    useTaskStore
+      .getState()
+      .patchTask("a.md", 0, { raw: "- [x] 하나", state: "done" });
+
+    const [a, b] = useTaskStore.getState().tasks;
+    expect(a).toMatchObject({ raw: "- [x] 하나", state: "done" });
+    expect(b).toMatchObject({ raw: "- [ ] 둘", state: "todo" });
+  });
+
+  it("같은 path라도 line이 다르면 건드리지 않는다", () => {
+    const t0 = { ...task("a.md", "하나"), line: 0 };
+    const t1 = { ...task("a.md", "둘"), line: 1 };
+    useTaskStore.getState().setAll([t0, t1]);
+
+    useTaskStore.getState().patchTask("a.md", 1, { state: "done" });
+
+    const [first, second] = useTaskStore.getState().tasks;
+    expect(first.state).toBe("todo");
+    expect(second.state).toBe("done");
+  });
+
+  it("일치하는 엔트리가 없으면 아무것도 바꾸지 않는다", () => {
+    useTaskStore.getState().setAll([task("a.md", "하나")]);
+
+    useTaskStore.getState().patchTask("missing.md", 0, { state: "done" });
+
+    expect(useTaskStore.getState().tasks).toEqual([task("a.md", "하나")]);
+  });
+
+  it("전달한 필드만 덮어쓰고 나머지는 보존한다", () => {
+    useTaskStore.getState().setAll([task("a.md", "하나")]);
+
+    useTaskStore.getState().patchTask("a.md", 0, { done: "2026-08-24" });
+
+    expect(useTaskStore.getState().tasks[0]).toMatchObject({
+      done: "2026-08-24",
+      raw: "- [ ] 하나",
+      text: "하나",
+    });
+  });
+});
+
 describe("refreshAllTasks (I3 stale-response guard)", () => {
   beforeEach(() => {
     useTaskStore.getState().clear();
