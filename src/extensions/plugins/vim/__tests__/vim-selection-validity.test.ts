@@ -26,7 +26,9 @@ const editors: Editor[] = [];
 
 afterEach(() => {
   resetVimRegister();
-  for (const e of editors.splice(0)) e.destroy();
+  // The sweep tears its editors down as it goes, so this is a backstop for
+  // whatever a failing assertion left behind.
+  for (const e of editors.splice(0)) if (!e.isDestroyed) e.destroy();
 });
 
 /** PM's own condition (`checkTextSelection`), applied to both endpoints. */
@@ -186,31 +188,47 @@ const SEQUENCES: string[][] = [
 ];
 
 describe("vim never installs a selection with a non-inline endpoint", () => {
-  it("survives every command sequence from every start position", () => {
-    const failures: string[] = [];
-
-    for (const seq of SEQUENCES) {
+  // One editor per (sequence, start) is what buys the isolation — a sequence
+  // mutates the document, so cases cannot share one. That is a few hundred
+  // full Baram editors, and CI is several times slower than a laptop, so the
+  // default 5s timeout is not the right budget for a sweep. The pin asserts
+  // structure, never wall-clock, so a generous ceiling costs nothing.
+  it(
+    "survives every command sequence from every start position",
+    { timeout: 120_000 },
+    () => {
+      const failures: string[] = [];
+      // The fixture is constant, so its start positions are too: probe once
+      // instead of building a throwaway editor per sequence.
       const probe = makeEditor(DOC);
-      for (const start of startPositions(probe)) {
-        const editor = makeEditor(DOC);
-        // Park the cursor exactly where the sweep wants it.
-        const $s = editor.state.doc.resolve(start);
-        editor.view.dispatch(
-          editor.state.tr.setSelection(
-            $s.parent.inlineContent
-              ? TextSelection.create(editor.state.doc, start)
-              : NodeSelection.create(editor.state.doc, start),
-          ),
-        );
-        for (const k of seq) key(editor, k);
-        const bad = invalidEndpoints(editor);
-        if (bad !== null)
-          failures.push(`[${seq.join("")}] from ${String(start)}: ${bad}`);
-      }
-    }
+      const starts = startPositions(probe);
+      probe.destroy();
 
-    expect(failures).toEqual([]);
-  });
+      for (const seq of SEQUENCES) {
+        for (const start of starts) {
+          const editor = makeEditor(DOC);
+          // Park the cursor exactly where the sweep wants it.
+          const $s = editor.state.doc.resolve(start);
+          editor.view.dispatch(
+            editor.state.tr.setSelection(
+              $s.parent.inlineContent
+                ? TextSelection.create(editor.state.doc, start)
+                : NodeSelection.create(editor.state.doc, start),
+            ),
+          );
+          for (const k of seq) key(editor, k);
+          const bad = invalidEndpoints(editor);
+          if (bad !== null)
+            failures.push(`[${seq.join("")}] from ${String(start)}: ${bad}`);
+          // Tear down as we go: holding every view alive until afterEach was
+          // hundreds of live PM views competing for the same jsdom.
+          editor.destroy();
+        }
+      }
+
+      expect(failures).toEqual([]);
+    },
+  );
 
   it("activation reset keeps the selection valid (visual head on an atom)", () => {
     const editor = makeEditor(DOC);
