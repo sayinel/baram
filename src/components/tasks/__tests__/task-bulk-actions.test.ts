@@ -93,4 +93,29 @@ describe("rescheduleOverdueToToday", () => {
     const r = await rescheduleOverdueToToday([task()], "2026-08-24", null);
     expect(r.updated).toBe(1);
   });
+
+  it("성공·stale·실패가 섞인 배치에서도 각 카운터가 정확하고 합이 처리한 개수와 같다 — 중복 집계도 누락도 없다", async () => {
+    // 앞 두 태스크는 같은 파일(/v/a.md)을 공유한다 — 성공/stale이 둘 다
+    // touchedPaths를 채우면서도 중복 없이 한 번만 남는지 같은 호출에서 함께 본다.
+    vi.mocked(applyTaskWrite)
+      .mockResolvedValueOnce({ kind: "disk", raw: "" }) // 성공
+      .mockResolvedValueOnce({ kind: "stale" }) // 경합
+      .mockRejectedValueOnce(new Error("disk full")); // 오류
+
+    const tasks = [
+      task({ line: 0, path: "/v/a.md" }),
+      task({ line: 1, path: "/v/a.md" }),
+      task({ line: 0, path: "/v/b.md" }),
+    ];
+    const r = await rescheduleOverdueToToday(tasks, "2026-08-24", null);
+
+    expect(r.updated).toBe(1);
+    expect(r.stale).toBe(1);
+    expect(r.failed).toBe(1);
+    // 카운터의 합이 처리한 태스크 수와 같아야 한다 — 이중 집계나 누락이 없다는 증거.
+    expect(r.updated + r.stale + r.failed).toBe(tasks.length);
+    // 실패한 태스크(/v/b.md)는 touched에 들어가지 않는다 — 쓰지 않은 파일을
+    // 다시 읽을 이유가 없다. /v/a.md는 성공·stale 둘 다 한 번만 남는다.
+    expect(r.touchedPaths).toEqual(["/v/a.md"]);
+  });
 });
