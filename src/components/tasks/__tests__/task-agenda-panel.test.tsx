@@ -381,15 +381,13 @@ describe("TaskAgendaPanel", () => {
     it("완료된 태스크를 체크 해제하면 done을 null로 patch한다", async () => {
       prosemirrorToMarkdown.mockReturnValue("- [x] 하나 ✅2026-08-01\n");
       previewTaskStateLine.mockResolvedValue("- [ ] 하나");
-      useTaskStore
-        .getState()
-        .setAll([
-          task({
-            done: "2026-08-01",
-            raw: "- [x] 하나 ✅2026-08-01",
-            state: "done",
-          }),
-        ]);
+      useTaskStore.getState().setAll([
+        task({
+          done: "2026-08-01",
+          raw: "- [x] 하나 ✅2026-08-01",
+          state: "done",
+        }),
+      ]);
       render(
         <EditorProvider value={FAKE_EDITOR}>
           <TaskAgendaPanel />
