@@ -106,17 +106,16 @@ describe("settings store v16 -> v17 migration (activity bar backfill)", () => {
     expect(twice).toEqual(once);
   });
 
-  // §306 added a second gate (v17 -> v18, see
-  // activity-bar-tasks-migration.test.ts) that calls this exact same
-  // backfill again. So "17" is no longer the terminal version — anyone
-  // handed version 17 now also runs the v17 -> v18 gate and gets backfilled
-  // by it. This test moves its input to 18, the new terminal version, to
-  // keep testing what it always meant to test: nothing gets added once
-  // you're fully migrated.
-  it("does not add anything when already at version 18", () => {
+  // This test's input version tracks the *terminal* migration version, and has
+  // now moved twice. §306 added a second gate calling this same backfill, so
+  // 17 stopped being terminal and it moved to 18. Then merging main in brought
+  // main's own v18 (the Vim default), which renumbered the §306 gate to v19 —
+  // so 18 is no longer terminal either. What it tests is unchanged: nothing
+  // gets added once you're fully migrated. Only the boundary moves.
+  it("does not add anything when already at version 19", () => {
     const result = migrate(
       { activityBarConfig: configMissingIds("plugins") },
-      18,
+      19,
     );
     expect(result.map((c) => c.id)).not.toContain("plugins");
   });

@@ -33,7 +33,7 @@ function migrate(persisted: unknown, version: number): ActivityBarItemConfig[] {
   return result.activityBarConfig;
 }
 
-describe("settings store v17 -> v18 migration (§306 tasks backfill)", () => {
+describe("settings store v18 -> v19 migration (§306 tasks backfill)", () => {
   it("adds 'tasks' right after its default predecessor 'tags'", () => {
     const result = migrate(
       { activityBarConfig: configMissingIds("tasks") },
@@ -50,12 +50,24 @@ describe("settings store v17 -> v18 migration (§306 tasks backfill)", () => {
     expect(tasks?.visible).toBe(true);
   });
 
-  it("does not add anything when already at version 18", () => {
+  // 18 is no longer terminal: merging main in brought its own v18 (the Vim
+  // default), which pushed the §306 tasks backfill to v19. A user sitting at
+  // 18 — anyone who ran a main build — MUST still be backfilled, which is the
+  // whole reason the renumbering happened. Terminal is now 19.
+  it("does not add anything when already at version 19", () => {
+    const result = migrate(
+      { activityBarConfig: configMissingIds("tasks") },
+      19,
+    );
+    expect(result.map((c) => c.id)).not.toContain("tasks");
+  });
+
+  it("still backfills someone sitting at version 18 from a main build", () => {
     const result = migrate(
       { activityBarConfig: configMissingIds("tasks") },
       18,
     );
-    expect(result.map((c) => c.id)).not.toContain("tasks");
+    expect(result.map((c) => c.id)).toContain("tasks");
   });
 
   it("does not throw when activityBarConfig is missing or corrupt", () => {
