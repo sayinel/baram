@@ -20,6 +20,7 @@ import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { getAction } from "../../../../keybindings/keybinding-actions";
+import { cursorSelection } from "./cursor-selection";
 import { nextUnitBoundary } from "./graphemes";
 import { resolveFindChar, segmentSpanAt, wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
@@ -357,7 +358,7 @@ function runOperatorMotion(
   writeVimRegister({ kind: "char", slice: state.doc.slice(lo, hi).toJSON() });
   if (op !== "y") {
     const tr = state.tr.delete(lo, hi);
-    tr.setSelection(TextSelection.create(tr.doc, lo));
+    tr.setSelection(cursorSelection(tr.doc, lo));
     return { applied: dispatchLanded(view, tr) };
   }
   return {};
