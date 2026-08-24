@@ -11,6 +11,7 @@ interface TaskStoreState {
   clear: () => void;
   error: null | string;
   loading: boolean;
+  patchTask: (path: string, line: number, patch: Partial<TaskEntry>) => void;
   removeFile: (path: string) => void;
   replaceFile: (path: string, entries: TaskEntry[]) => void;
   setAll: (tasks: TaskEntry[]) => void;
@@ -29,6 +30,15 @@ export const useTaskStore = create<TaskStoreState>((set) => ({
   replaceFile: (path, entries) =>
     set((s) => ({
       tasks: [...s.tasks.filter((t) => t.path !== path), ...entries],
+    })),
+  // §305 열린 문서 경로 — 아직 저장되지 않았으므로 디스크를 다시 읽으면 방금
+  // 만든 변경이 옛 내용으로 되돌아간다. 그 한 줄만 제자리에서 갱신한다.
+  // 자동 저장이 켜져 있으면 저장 시 워처가 전체를 조정한다.
+  patchTask: (path, line, patch) =>
+    set((s) => ({
+      tasks: s.tasks.map((t) =>
+        t.path === path && t.line === line ? { ...t, ...patch } : t,
+      ),
     })),
   removeFile: (path) =>
     set((s) => ({ tasks: s.tasks.filter((t) => t.path !== path) })),

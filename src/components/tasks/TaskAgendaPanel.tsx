@@ -2,12 +2,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TaskEntry } from "../../ipc/types";
+import type { TaskWriteResult } from "../../utils/tasks/apply-task-write";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
 
 import { useShallow } from "zustand/shallow";
 
-import { setTaskState } from "../../ipc/invoke";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -20,6 +20,7 @@ import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";
+import { applyTaskWrite } from "../../utils/tasks/apply-task-write";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
 import {
   applyTaskFilters,
@@ -87,35 +88,37 @@ export function TaskAgendaPanel() {
   const onToggle = useCallback(
     async (task: TaskEntry) => {
       const next = task.state === "done" ? "todo" : "done";
+      let result: null | TaskWriteResult = null;
       try {
-        await setTaskState(
-          task.path,
-          task.line,
-          task.raw,
-          next,
-          tasksRecordDoneDate,
-          // `now`로 통일 — 라이브 new Date()를 쓰면 자정을 넘긴 직후 디스크에
-          // 적히는 ✅ 날짜가 사용자가 보고 있는 버킷 경계와 하루 어긋난다(I4).
-          todayIso(now),
-        );
+        result = await applyTaskWrite(task, {
+          kind: "state",
+          newState: next,
+          recordDoneDate: tasksRecordDoneDate,
+          // `now`로 통일 — 라이브 new Date()를 쓰면 자정을 넘긴 직후 적히는 ✅
+          // 날짜가 사용자가 보고 있는 버킷 경계와 하루 어긋난다(I4).
+          today: todayIso(now),
+        });
       } catch (err) {
-        if (err === "stale") {
-          // §305 stale — 사이에 파일이 바뀐 정상적인 경합이다. 토스트 없이
-          // 조용히 재인덱싱한다.
-          logger.warn("[tasks] write rejected (stale), re-scanning:", err);
-        } else {
-          // I5: stale이 아닌 실패(권한 오류, 디스크 가득 참, 파일 삭제 등)를
-          // 똑같이 조용히 되돌리면 사용자에게는 원인 모를 죽은 체크박스로만
-          // 보인다 — 알려야 한다.
-          logger.warn("[tasks] write failed, re-scanning:", err);
-          useUIStore
-            .getState()
-            .showToast("Couldn't save the task change.", "error");
-        }
-      } finally {
-        // 성공/실패 각 분기에 있던 동일한 호출을 하나로 모았다.
-        await refreshFileTasks(task.path, rootPath, tasksExcludePaths);
+        // stale이 아닌 실패(권한·디스크 가득 참·파일 삭제)를 조용히 되돌리면
+        // 사용자에게는 원인 모를 죽은 체크박스로만 보인다(I5).
+        logger.warn("[tasks] write failed, re-scanning:", err);
+        useUIStore
+          .getState()
+          .showToast("Couldn't save the task change.", "error");
       }
+
+      if (result?.kind === "document") {
+        // 아직 저장되지 않았다 — 디스크를 읽으면 방금 만든 변경이 사라진다.
+        useTaskStore.getState().patchTask(task.path, task.line, {
+          done: next === "done" && tasksRecordDoneDate ? todayIso(now) : null,
+          raw: result.raw,
+          state: next,
+        });
+        return;
+      }
+      // 디스크에 썼거나(kind: "disk") 경합으로 거절됐다(kind: "stale") — 양쪽 다
+      // 디스크가 진실원이므로 그 파일만 다시 읽는다.
+      await refreshFileTasks(task.path, rootPath, tasksExcludePaths);
     },
     [tasksRecordDoneDate, rootPath, tasksExcludePaths, now],
   );
