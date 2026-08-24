@@ -101,3 +101,78 @@ pub fn preview_task_field_line(
     crate::task::apply_field(&crate::task::normalize_line(&raw), &field, &value)
         .ok_or_else(|| format!("unknown field: {}", field))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    async fn write_temp(d: &TempDir, body: &str) -> String {
+        let p = d.path().join("a.md");
+        tokio::fs::write(&p, body).await.unwrap();
+        p.to_string_lossy().to_string()
+    }
+
+    // §305 이 설계 전체가 서 있는 불변식: 디스크 경로(`set_task_state`/`set_task_field`)와
+    // 열린 문서 경로(`preview_*_line`)가 **같은 바이트**를 낸다. 성립하는 유일한 이유는
+    // 양쪽 모두 변환 전에 `normalize_line`을 거치기 때문이다 — 커맨드에서 그 호출을
+    // 빼면 아래 두 테스트가 깨져야 한다. 정규화된 입력만 넣는 `write.rs`의 단위
+    // 테스트는 이 차이를 볼 수 없다.
+
+    #[tokio::test]
+    async fn disk_and_preview_state_paths_agree_byte_for_byte_on_a_non_breaking_space() {
+        // NBSP(U+00A0)는 파일에는 그대로 있지만 인덱스의 raw와 변환 결과에서는
+        // 보통 공백이어야 한다. 문서 경로가 정규화를 건너뛰면 디스크에는
+        // "회의 준비"가, 열린 문서에는 "회의\u{00A0}준비"가 남아 두 진실원이 갈린다.
+        let raw = "- [ ] 회의\u{00A0}준비";
+        let d = TempDir::new().unwrap();
+        let p = write_temp(&d, &format!("{}\n", raw)).await;
+
+        let disk = set_task_state(
+            p,
+            0,
+            raw.to_string(),
+            "done".to_string(),
+            true,
+            "2026-08-24".to_string(),
+        )
+        .await
+        .unwrap();
+        let document = preview_task_state_line(
+            raw.to_string(),
+            "done".to_string(),
+            true,
+            "2026-08-24".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(disk, document);
+        assert_eq!(disk, "- [x] 회의 준비 ✅2026-08-24");
+    }
+
+    #[tokio::test]
+    async fn disk_and_preview_field_paths_agree_byte_for_byte_on_a_variation_selector() {
+        // 이모지 뒤의 이형태 선택자(U+FE0F)는 `find_field_span`이 값의 시작으로
+        // 오인하는 자리에 놓인다 — 정규화가 빠지면 기존 📅를 필드로 알아보지 못해
+        // 지우지 못하고, 한 줄에 모순되는 기한 두 개(옛것 + 새것)를 남긴다.
+        let raw = "- [ ] 회의 📅\u{FE0F}2026-08-20";
+        let d = TempDir::new().unwrap();
+        let p = write_temp(&d, &format!("{}\n", raw)).await;
+
+        let disk = set_task_field(
+            p,
+            0,
+            raw.to_string(),
+            "due".to_string(),
+            "2026-08-24".to_string(),
+        )
+        .await
+        .unwrap();
+        let document =
+            preview_task_field_line(raw.to_string(), "due".to_string(), "2026-08-24".to_string())
+                .unwrap();
+
+        assert_eq!(disk, document);
+        assert_eq!(disk, "- [ ] 회의 📅2026-08-24");
+    }
+}
