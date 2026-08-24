@@ -214,15 +214,14 @@ export function useSettingsRegistry(): SearchableSetting[] {
       category: "general",
       section: "settings.general.tasks",
       keywords: ["task", "week", "monday", "sunday"],
-      control: {
-        controlType: "select",
-        options: [
-          { label: "Monday", value: "monday" },
-          { label: "Sunday", value: "sunday" },
+      control: makeSelectControl(
+        () => settings.tasksWeekStart,
+        (v) => settings.setTasksWeekStart(v as "monday" | "sunday"),
+        [
+          { value: "monday", label: "settings.general.tasksWeekStart.monday" },
+          { value: "sunday", label: "settings.general.tasksWeekStart.sunday" },
         ],
-        storeSelector: () => settings.tasksWeekStart,
-        storeSetter: settings.setTasksWeekStart as (v: unknown) => void,
-      },
+      ),
     },
     {
       id: "tasksExcludePaths",

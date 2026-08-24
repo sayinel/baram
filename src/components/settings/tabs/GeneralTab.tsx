@@ -95,6 +95,11 @@ export function GeneralTab() {
   // split+filter(Boolean) drops the empty segment it produces — making it
   // impossible to type a second folder. This buffer shows exactly what was
   // typed while still pushing the parsed array to the store on each change.
+  // Seeded once at mount — assumes nothing else writes tasksExcludePaths
+  // while this tab is mounted (true today: no reset-to-defaults touches it,
+  // and it's a NAVIGATE_CONTROL in the search registry, so search never
+  // edits it directly). Reusing this pattern for a field an external writer
+  // *can* change underneath should resync the buffer from the store.
   const [tasksExcludePathsText, setTasksExcludePathsText] = useState(() =>
     tasksExcludePaths.join(", "),
   );
@@ -556,8 +561,12 @@ export function GeneralTab() {
           }
           value={tasksWeekStart}
         >
-          <option value="monday">Monday</option>
-          <option value="sunday">Sunday</option>
+          <option value="monday">
+            {t("settings.general.tasksWeekStart.monday")}
+          </option>
+          <option value="sunday">
+            {t("settings.general.tasksWeekStart.sunday")}
+          </option>
         </select>
       </SettingsRow>
 

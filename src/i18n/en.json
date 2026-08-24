@@ -95,6 +95,8 @@
   "settings.general.tasksEnabled.desc": "Index checkboxes across the vault and show the Tasks panel",
   "settings.general.tasksWeekStart": "Week starts on",
   "settings.general.tasksWeekStart.desc": "Decides which due dates fall into the This week bucket",
+  "settings.general.tasksWeekStart.monday": "Monday",
+  "settings.general.tasksWeekStart.sunday": "Sunday",
   "settings.general.tasksRecordDoneDate": "Record completion date",
   "settings.general.tasksRecordDoneDate.desc": "Append ✅ with today's date when a task is checked",
   "settings.general.tasksExcludePaths": "Exclude folders",
