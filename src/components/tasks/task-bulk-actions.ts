@@ -44,6 +44,12 @@ interface Counts {
   updated: number;
 }
 
+interface DocumentBatch {
+  counts: Counts;
+  /** 분류 뒤 문서 경로가 사라져 디스크로 보내야 하는 태스크 */
+  fallback: TaskEntry[];
+}
+
 /**
  * `tasks`의 기한을 전부 `today`로 세운다. 순차 best-effort.
  *
@@ -58,9 +64,7 @@ export async function rescheduleOverdueToToday(
   editor: Editor | null,
 ): Promise<BulkResult> {
   const diskPaths = new Set<string>();
-  let updated = 0;
-  let stale = 0;
-  let failed = 0;
+  const counts: Counts = { failed: 0, stale: 0, updated: 0 };
 
   // 문서 경로는 "활성 + dirty" 탭에서만 성립하고 활성 탭은 하나뿐이므로
   // (그리고 openTab이 filePath로 중복 제거하므로) 한 번의 실행에서 문서로
@@ -72,28 +76,29 @@ export async function rescheduleOverdueToToday(
       docTasks.push(task);
       continue;
     }
-    try {
-      const r = await applyTaskWrite(task, changeFor(task, today), editor);
-      if (r.kind === "stale") {
-        stale += 1;
-      } else {
-        updated += 1;
-      }
-      // stale도 그 파일을 다시 읽어야 옳은 상태가 보인다.
-      diskPaths.add(task.path);
-    } catch (err) {
-      logger.error("[tasks] bulk reschedule failed:", task.path, err);
-      failed += 1;
-    }
+    await writeOneToDisk(task, today, editor, diskPaths, counts);
   }
 
   const doc = await rescheduleInOpenDocument(docTasks, today, editor);
+  counts.failed += doc.counts.failed;
+  counts.stale += doc.counts.stale;
+  counts.updated += doc.counts.updated;
+
+  // 분류와 커밋 사이에 활성 탭이 clean해지면(자동 저장 디바운스 만료·Cmd+S·
+  // 탭 전환/닫기) 문서 경로가 사라진다. 디스크 태스크마다 IPC 왕복이 있으므로
+  // 그 창은 실제로 넓다. 조용히 버리면 확인 다이얼로그가 약속한 개수와 결과가
+  // 어긋나고 사용자에게는 "버튼이 아무 일도 안 한 것"으로 보인다 — 이 작업이
+  // 없앤 Major 1과 같은 증상이다. 탭이 clean이면 디스크가 곧 진실원이므로
+  // 그리로 보낸다: 쓰기 직전에 라우팅을 판정하던 이 웨이브 이전과 같은 결과다.
+  for (const task of doc.fallback) {
+    await writeOneToDisk(task, today, editor, diskPaths, counts);
+  }
 
   return {
     diskPaths: [...diskPaths],
-    failed: failed + doc.failed,
-    stale: stale + doc.stale,
-    updated: updated + doc.updated,
+    failed: counts.failed,
+    stale: counts.stale,
+    updated: counts.updated,
   };
 }
 
@@ -124,12 +129,15 @@ async function rescheduleInOpenDocument(
   tasks: TaskEntry[],
   today: string,
   editor: Editor | null,
-): Promise<Counts> {
+): Promise<DocumentBatch> {
   const counts: Counts = { failed: 0, stale: 0, updated: 0 };
   const first = tasks[0];
-  if (!first || !editor) return counts;
+  if (!first) return { counts, fallback: [] };
+  // 분류 이후 라우팅이 바뀌었는지 다시 본다. 더는 문서 경로가 아니면 이 태스크들을
+  // 버리지 않고 호출자가 디스크로 흘리도록 돌려준다.
+  if (!editor) return { counts, fallback: tasks };
   const target = resolveTaskWriteTarget(first.path, editor);
-  if (target.kind !== "document") return counts;
+  if (target.kind !== "document") return { counts, fallback: tasks };
 
   const path = first.path;
   let content = prosemirrorToMarkdown(editor.state.doc);
@@ -155,7 +163,7 @@ async function rescheduleInOpenDocument(
     }
   }
 
-  if (applied.length === 0) return counts;
+  if (applied.length === 0) return { counts, fallback: [] };
 
   useFileStore.getState().setFileContent(path, content);
   useEditorStore.getState().requestContentRefresh();
@@ -165,5 +173,41 @@ async function rescheduleInOpenDocument(
       .getState()
       .patchTask(task.path, task.line, datePatch(task, today, raw));
   }
-  return counts;
+  return { counts, fallback: [] };
+}
+
+/**
+ * 디스크 경로 한 건 — `counts`와 `diskPaths`를 제자리에서 갱신한다.
+ *
+ * 라우터가 그 사이 **다시** 문서 경로를 골랐다면(폴백 직전에 탭이 또 dirty가
+ * 됐다) 그 파일은 `diskPaths`에 넣으면 안 된다 — 저장 전이라 다시 읽으면 방금
+ * 만든 변경이 되돌아간다(Major 1). 그때는 스토어를 직접 패치한다.
+ */
+async function writeOneToDisk(
+  task: TaskEntry,
+  today: string,
+  editor: Editor | null,
+  diskPaths: Set<string>,
+  counts: Counts,
+): Promise<void> {
+  try {
+    const r = await applyTaskWrite(task, changeFor(task, today), editor);
+    if (r.kind === "stale") {
+      counts.stale += 1;
+      // stale도 그 파일을 다시 읽어야 옳은 상태가 보인다.
+      diskPaths.add(task.path);
+      return;
+    }
+    counts.updated += 1;
+    if (r.kind === "document") {
+      useTaskStore
+        .getState()
+        .patchTask(task.path, task.line, datePatch(task, today, r.raw));
+      return;
+    }
+    diskPaths.add(task.path);
+  } catch (err) {
+    logger.error("[tasks] bulk reschedule failed:", task.path, err);
+    counts.failed += 1;
+  }
 }
