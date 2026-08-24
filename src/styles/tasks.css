@@ -31,11 +31,14 @@
 
 .task-panel-selects {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
+/* 작은 기본(260px) 사이드바나 MIN_SIDEBAR(180px)에서 3개가 flex:1로 나뉘면
+   ~6자만 남아 라벨을 읽을 수 없다 — flex-basis를 줘서 넘치면 다음 줄로 접는다 */
 .task-panel-select {
-  flex: 1;
+  flex: 1 1 96px;
   min-width: 0;
   padding: 4px 6px;
   font-size: 12px;
@@ -52,7 +55,8 @@
 }
 
 /* I3: <summary> — a bucket's disclosure header, so it needs a pointer cursor
-   the old <h3> never had. */
+   the old <h3> never had. 네이티브 disclosure 마커는 사이드바의 다른 헤더와
+   어긋난다 — list-style: none으로 지우고 ::before로 직접 그린다(아래). */
 .task-bucket-header {
   margin: 10px 0 4px;
   font-size: 11px;
@@ -62,6 +66,7 @@
   letter-spacing: 0.04em;
   cursor: pointer;
   user-select: none;
+  list-style: none;
 }
 
 .task-bucket-count {
@@ -110,12 +115,6 @@
   flex-shrink: 0;
   font-size: 11px;
   color: var(--color-status-danger);
-}
-
-/* 네이티브 disclosure 마커는 사이드바의 다른 헤더와 어긋난다 — 직접 그린다 */
-.task-bucket-header {
-  cursor: pointer;
-  list-style: none;
 }
 
 .task-bucket-header::-webkit-details-marker {

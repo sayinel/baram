@@ -101,6 +101,7 @@
   "settings.general.tasksRecordDoneDate.desc": "Append ✅ with today's date when a task is checked",
   "settings.general.tasksExcludePaths": "Exclude folders",
   "settings.general.tasksExcludePaths.desc": "Comma-separated folders to skip when indexing tasks",
+  "settings.general.tasksExcludePaths.placeholder": "archive/, drafts/",
   "settings.general.zettelkasten": "Zettel",
   "settings.general.zettelkastenEnabled": "Enable Zettel",
   "settings.general.zettelkastenEnabled.desc": "Turn on a dedicated space for atomic, densely-linked notes",

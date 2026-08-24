@@ -3,7 +3,7 @@ import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 
 import { overdueDays } from "../../utils/tasks/task-buckets";
-import { PRIORITY_MARKER } from "../../utils/tasks/task-filters";
+import { priorityBadge } from "../../utils/tasks/task-filters";
 
 interface Props {
   /** I3: "done"만 기본으로 접는다 — 그 외는 기본 펼침. */
@@ -49,6 +49,7 @@ export function TaskBucketList({
         {tasks.map((task) => {
           const age = showOverdueAge ? overdueDays(task, now) : 0;
           const shown = displayText(task.text, titleFor);
+          const priority = priorityBadge(task.priority);
           return (
             <li className="task-row" key={`${task.path}:${task.line}`}>
               <input
@@ -58,12 +59,13 @@ export function TaskBucketList({
                 onChange={() => onToggle(task)}
                 type="checkbox"
               />
-              {PRIORITY_MARKER[task.priority] && (
+              {priority && (
                 <span
-                  aria-label={`priority ${task.priority}`}
+                  aria-label={priority.label}
                   className="task-row-priority"
+                  role="img"
                 >
-                  {PRIORITY_MARKER[task.priority]}
+                  {priority.marker}
                 </span>
               )}
               <button

@@ -100,6 +100,7 @@
   "settings.general.tasksRecordDoneDate.desc": "태스크를 체크하면 ✅와 오늘 날짜를 덧붙입니다",
   "settings.general.tasksExcludePaths": "제외할 폴더",
   "settings.general.tasksExcludePaths.desc": "태스크 인덱싱에서 건너뛸 폴더를 쉼표로 구분해 적습니다",
+  "settings.general.tasksExcludePaths.placeholder": "archive/, drafts/",
   "settings.general.zettelkasten": "Zettel",
   "settings.general.zettelkastenEnabled": "Zettel 활성화",
   "settings.general.zettelkastenEnabled.desc": "원자적이고 촘촘하게 연결된 노트를 위한 전용 공간을 켭니다",

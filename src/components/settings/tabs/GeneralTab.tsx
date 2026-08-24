@@ -564,61 +564,65 @@ export function GeneralTab() {
         <ToggleSwitch checked={tasksEnabled} onChange={setTasksEnabled} />
       </SettingsRow>
 
-      <SettingsRow
-        description={t("settings.general.tasksWeekStart.desc")}
-        label={t("settings.general.tasksWeekStart")}
-      >
-        <select
-          className="settings-select"
-          onChange={(e) =>
-            setTasksWeekStart(e.target.value as "monday" | "sunday")
-          }
-          value={tasksWeekStart}
-        >
-          <option value="monday">
-            {t("settings.general.tasksWeekStart.monday")}
-          </option>
-          <option value="sunday">
-            {t("settings.general.tasksWeekStart.sunday")}
-          </option>
-        </select>
-      </SettingsRow>
+      {tasksEnabled && (
+        <>
+          <SettingsRow
+            description={t("settings.general.tasksWeekStart.desc")}
+            label={t("settings.general.tasksWeekStart")}
+          >
+            <select
+              className="settings-select"
+              onChange={(e) =>
+                setTasksWeekStart(e.target.value as "monday" | "sunday")
+              }
+              value={tasksWeekStart}
+            >
+              <option value="monday">
+                {t("settings.general.tasksWeekStart.monday")}
+              </option>
+              <option value="sunday">
+                {t("settings.general.tasksWeekStart.sunday")}
+              </option>
+            </select>
+          </SettingsRow>
 
-      <SettingsRow
-        description={t("settings.general.tasksRecordDoneDate.desc")}
-        label={t("settings.general.tasksRecordDoneDate")}
-      >
-        <ToggleSwitch
-          checked={tasksRecordDoneDate}
-          onChange={setTasksRecordDoneDate}
-        />
-      </SettingsRow>
+          <SettingsRow
+            description={t("settings.general.tasksRecordDoneDate.desc")}
+            label={t("settings.general.tasksRecordDoneDate")}
+          >
+            <ToggleSwitch
+              checked={tasksRecordDoneDate}
+              onChange={setTasksRecordDoneDate}
+            />
+          </SettingsRow>
 
-      <SettingsRow
-        description={t("settings.general.tasksExcludePaths.desc")}
-        label={t("settings.general.tasksExcludePaths")}
-      >
-        <input
-          className="settings-input"
-          onChange={(e) => {
-            const value = e.target.value;
-            setTasksExcludePathsText(value);
-            if (excludePathsTimer.current) {
-              clearTimeout(excludePathsTimer.current);
-            }
-            excludePathsTimer.current = setTimeout(() => {
-              setTasksExcludePaths(
-                value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              );
-            }, 400);
-          }}
-          placeholder="archive/, drafts/"
-          value={tasksExcludePathsText}
-        />
-      </SettingsRow>
+          <SettingsRow
+            description={t("settings.general.tasksExcludePaths.desc")}
+            label={t("settings.general.tasksExcludePaths")}
+          >
+            <input
+              className="settings-input"
+              onChange={(e) => {
+                const value = e.target.value;
+                setTasksExcludePathsText(value);
+                if (excludePathsTimer.current) {
+                  clearTimeout(excludePathsTimer.current);
+                }
+                excludePathsTimer.current = setTimeout(() => {
+                  setTasksExcludePaths(
+                    value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  );
+                }, 400);
+              }}
+              placeholder={t("settings.general.tasksExcludePaths.placeholder")}
+              value={tasksExcludePathsText}
+            />
+          </SettingsRow>
+        </>
+      )}
 
       <SettingsSectionHeader title={t("settings.general.zettelkasten")} />
 

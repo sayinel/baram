@@ -115,6 +115,10 @@ describe("TaskAgendaPanel", () => {
   });
 
   it("shows a priority marker on a prioritised row and none on a normal one", () => {
+    // fix #5: a role-less <span aria-label="priority 2"> is ignored by
+    // several screen readers, and the number alone is not meaningful. The
+    // marker now uses role="img" with a word label instead — assert that
+    // real accessibility tree shape rather than the old bare aria-label.
     useTaskStore
       .getState()
       .setAll([
@@ -123,8 +127,11 @@ describe("TaskAgendaPanel", () => {
       ]);
     render(<TaskAgendaPanel />);
 
-    expect(screen.getByLabelText("priority 2")).toHaveTextContent("🔺");
-    expect(screen.queryByLabelText("priority 0")).not.toBeInTheDocument();
+    const marker = screen.getByRole("img", { name: "Highest priority" });
+    expect(marker).toHaveTextContent("🔺");
+    // "plain" (priority 0) renders no marker at all, so there must be
+    // exactly one img-role element on the page.
+    expect(screen.getAllByRole("img")).toHaveLength(1);
   });
 
   it("filters rows by state", async () => {

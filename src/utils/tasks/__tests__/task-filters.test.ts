@@ -7,6 +7,7 @@ import {
   collectTags,
   EMPTY_FILTERS,
   PRIORITY_MARKER,
+  priorityBadge,
 } from "../task-filters";
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
@@ -142,5 +143,32 @@ describe("PRIORITY_MARKER", () => {
     expect(PRIORITY_MARKER[0]).toBe("");
     expect(PRIORITY_MARKER[-1]).toBe("🔽");
     expect(PRIORITY_MARKER[-2]).toBe("⏬");
+  });
+});
+
+describe("priorityBadge", () => {
+  it("returns a marker and a word label for each non-normal level", () => {
+    expect(priorityBadge(2)).toEqual({
+      label: "Highest priority",
+      marker: "🔺",
+    });
+    expect(priorityBadge(1)).toEqual({ label: "High priority", marker: "⏫" });
+    expect(priorityBadge(-1)).toEqual({ label: "Low priority", marker: "🔽" });
+    expect(priorityBadge(-2)).toEqual({
+      label: "Lowest priority",
+      marker: "⏬",
+    });
+  });
+
+  it("returns null for normal priority (no marker)", () => {
+    expect(priorityBadge(0)).toBeNull();
+  });
+
+  it("returns null for a priority value outside the known 5 levels (fix #6)", () => {
+    // The old `Record<number, string>` typed PRIORITY_MARKER[3] as `string`
+    // even though it is `undefined` at runtime. priorityBadge is the safe
+    // accessor callers now use instead of indexing PRIORITY_MARKER directly.
+    expect(priorityBadge(3)).toBeNull();
+    expect(priorityBadge(-3)).toBeNull();
   });
 });
