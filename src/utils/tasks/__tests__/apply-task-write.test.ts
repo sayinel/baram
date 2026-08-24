@@ -234,6 +234,25 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
     expect(useFileStore.getState().openFiles.size).toBe(0);
   });
 
+  it("사후 재검사가 통과하면 사전에 읽은 문서가 아니라 재검사 때 읽은 최신 문서를 스플라이스한다", async () => {
+    // 태스크 자신의 줄은 await 전후로 똑같다(재검사를 통과시켜 스플라이스까지
+    // 도달해야 한다) — 대신 **다른** 줄이 그 사이 바뀐다. 사전에 잡아둔
+    // 문서를 스플라이스하면 이 다른 줄의 편집이 조용히 사라진다.
+    vi.mocked(prosemirrorToMarkdown)
+      .mockReturnValueOnce("머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n")
+      .mockReturnValueOnce("머리말\n- [ ] 초안 📅2026-08-30\n꼬리말 수정됨\n");
+    vi.mocked(previewTaskStateLine).mockResolvedValue(
+      "- [x] 초안 📅2026-08-30 ✅2026-08-24",
+    );
+
+    await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    // 토글된 태스크 줄과, await 중에 끼어든 다른 줄의 편집이 둘 다 남아야 한다.
+    expect(useFileStore.getState().openFiles.get("/v/note.md")).toBe(
+      "머리말\n- [x] 초안 📅2026-08-30 ✅2026-08-24\n꼬리말 수정됨\n",
+    );
+  });
+
   it("kind: field도 문서 경로에서 라이브 문서를 고친다", async () => {
     vi.mocked(prosemirrorToMarkdown).mockReturnValue(
       "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n",
