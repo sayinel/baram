@@ -44,6 +44,24 @@ describe("buildCaptureLine", () => {
       "- [ ] 우유 사기 ➕2026-08-24",
     );
   });
+
+  it("대시 뒤에 공백이 없는 체크박스도 두 번 붙이지 않는다", () => {
+    expect(buildCaptureLine("-[ ] foo", "2026-08-24")).toBe(
+      "- [ ] foo ➕2026-08-24",
+    );
+  });
+
+  it("체크박스가 아닌 대괄호는 건드리지 않는다 — [1]은 [ ]/[x]/[X]가 아니다", () => {
+    expect(buildCaptureLine("-[1] 참고", "2026-08-24")).toBe(
+      "- [ ] -[1] 참고 ➕2026-08-24",
+    );
+  });
+
+  it("본문에 이미 ➕생성일이 있으면 새 날짜로 교체한다 — 두 번 붙이면 Rust 파서가 첫 마커를 취해 잘못된 생성일을 기록한다", () => {
+    expect(buildCaptureLine("foo ➕2026-01-01", "2026-08-24")).toBe(
+      "- [ ] foo ➕2026-08-24",
+    );
+  });
 });
 
 describe("captureTask — 수집함이 닫혀 있을 때", () => {
@@ -89,6 +107,51 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
       }),
     ).rejects.toThrow();
     expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  it("rootPath에 트레일링 슬래시가 있어도 이중 슬래시를 만들지 않는다", async () => {
+    vi.mocked(appendTaskLine).mockResolvedValue("x");
+    await captureTask({
+      body: "a",
+      captureFile: "Inbox.md",
+      editor: null,
+      rootPath: "/v/",
+      today: "2026-08-24",
+    });
+    expect(appendTaskLine).toHaveBeenCalledWith(
+      "/v/Inbox.md",
+      expect.any(String),
+    );
+  });
+
+  it("설정값의 ./ 같은 상대 세그먼트를 정리한다", async () => {
+    vi.mocked(appendTaskLine).mockResolvedValue("x");
+    await captureTask({
+      body: "a",
+      captureFile: "./Inbox.md",
+      editor: null,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
+    expect(appendTaskLine).toHaveBeenCalledWith(
+      "/v/Inbox.md",
+      expect.any(String),
+    );
+  });
+
+  it("설정값이 빈 문자열이면 기본 파일명으로 대체한다 — 디렉터리 경로에 쓰지 않는다", async () => {
+    vi.mocked(appendTaskLine).mockResolvedValue("x");
+    await captureTask({
+      body: "a",
+      captureFile: "",
+      editor: null,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
+    expect(appendTaskLine).toHaveBeenCalledWith(
+      "/v/Inbox.md",
+      expect.any(String),
+    );
   });
 });
 
