@@ -29,6 +29,7 @@ import {
 } from "../extensions/plugins/ai-diff";
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { getConfigForTask } from "../utils/model-selection";
 import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";
 
@@ -154,40 +155,80 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
         ? `Text to rewrite:\n${selectedText}\n\nInstruction: ${instruction}`
         : instruction;
 
+      // §298 §12-9b (design §5c): the diff stream is a background mutation.
+      // A dead task (state install / vim mode exit) must stop touching the
+      // editor; llmCancel + unlisten via cleanupListeners is the source abort.
+      const task = registerEditorMutationTask(editor.view);
+      // Handles are appended as each listener lands, never assigned as a
+      // batch at the end: an invalidation mid-setup runs cleanupListeners
+      // while only some listeners exist, and a batch assignment would leave
+      // the earlier ones installed forever.
+      unlistenRefs.current = [];
+      task.addCleanup(() => void cleanupListeners());
+
+      /** True (and tears down) when the task died during an await. */
+      const abandonIfDead = (): boolean => {
+        if (task.isLive()) return false;
+        void cleanupListeners();
+        return true;
+      };
+
       try {
         const tokenUn = await listen<LLMTokenPayload>("llm:token", (event) => {
           if (event.payload.requestId !== requestId) return;
           if (activeRequestRef.current !== requestId) return;
+          if (!task.isLive()) return;
           try {
             dispatchAIDiffChunk(editor.view, event.payload.token);
           } catch {
             // editor state may have changed
           }
         });
+        unlistenRefs.current.push(tokenUn);
+        if (abandonIfDead()) return;
 
         const doneUn = await listen<LLMDonePayload>("llm:done", (event) => {
           if (event.payload.requestId !== requestId) return;
+          // A dead task must not touch the doc OR the UI — leaving the phase
+          // on "completed" would surface stale inline-AI chrome in the tab
+          // that replaced this one.
+          if (!task.isLive()) {
+            task.finish();
+            return;
+          }
           try {
             dispatchAIDiffDone(editor.view);
           } catch {
             // ignore
           }
+          task.finish();
           setPhase("completed");
         });
+        unlistenRefs.current.push(doneUn);
+        if (abandonIfDead()) return;
 
         const errorUn = await listen<LLMErrorPayload>("llm:error", (event) => {
           if (event.payload.requestId !== requestId) return;
+          if (!task.isLive()) {
+            task.finish();
+            return;
+          }
           try {
             dispatchAIDiffClear(editor.view);
           } catch {
             // ignore
           }
+          task.finish();
           setPhase("input");
         });
-
-        unlistenRefs.current = [tokenUn, doneUn, errorUn];
+        unlistenRefs.current.push(errorUn);
+        if (abandonIfDead()) return;
 
         const inlineCfg = getConfigForTask("inline-edit");
+        // Last gate before the outbound request: llmCancel cannot stop a
+        // request the backend has not registered yet, so a task that died
+        // during listener setup must never reach llmComplete.
+        if (abandonIfDead()) return;
         await llmComplete(
           prompt,
           inlineCfg.model,
@@ -199,6 +240,21 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
           store.privacyMode,
         );
       } catch {
+        // This catch is also the ABORT path: our own cleanup calls llmCancel,
+        // and llm_complete resolves to Err("Request cancelled") — so by the
+        // time we get here the document may already have been replaced.
+        // Read liveness before finishing, and always tear the listeners down
+        // (a plain network error would otherwise strand all three handles,
+        // since the next submit resets unlistenRefs).
+        const live = task.isLive();
+        // cleanupListeners operates on the SHARED refs, so only the request
+        // that still owns them may run it — otherwise a late rejection from
+        // an aborted request would cancel (and unlisten) the submit the user
+        // started afterwards.
+        const ownsRequest = activeRequestRef.current === requestId;
+        if (ownsRequest) void cleanupListeners();
+        task.finish();
+        if (!live || !ownsRequest) return;
         setPhase("input");
         try {
           dispatchAIDiffClear(editor.view);
@@ -207,7 +263,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
         }
       }
     },
-    [editor, selectionFrom, selectionTo],
+    [editor, selectionFrom, selectionTo, cleanupListeners],
   );
 
   const applyContent = useCallback(

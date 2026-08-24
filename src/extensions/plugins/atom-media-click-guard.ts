@@ -18,6 +18,7 @@ import {
   TextSelection,
 } from "@tiptap/pm/state";
 
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { getSyntaxRevealExpanded } from "./syntax-reveal";
 
 export interface AtomMediaClickGuardOptions {
@@ -154,7 +155,10 @@ export function createAtomMediaClickGuard(
                     NodeSelection.create(view.state.doc, pos),
                   ),
                 );
-                view.focus();
+                // focusEditorView, not view.focus(): PM guards its focus() behind
+                // `this.editable`, a silent no-op on the vim-modal surface
+                // (§298 — ported from the pre-factory inline fix in image.ts).
+                focusEditorView(view);
                 return true;
               } catch {
                 clickedPos = null;
@@ -182,7 +186,10 @@ export function createAtomMediaClickGuard(
                 view.dispatch(
                   view.state.tr.setSelection(TextSelection.near($pos)),
                 );
-                view.focus();
+                // focusEditorView, not view.focus(): PM guards its focus() behind
+                // `this.editable`, a silent no-op on the vim-modal surface
+                // (§298 — ported from the pre-factory inline fix in image.ts).
+                focusEditorView(view);
                 return true;
               } catch {
                 /* fall through to default PM handling */

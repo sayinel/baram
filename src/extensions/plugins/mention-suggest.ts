@@ -3,13 +3,13 @@ import type { Editor } from "@tiptap/core";
 // §57 Mention autocomplete — Tiptap Extension using Suggestion API
 // Triggers on @ and shows Quick Dates + page search popup
 import { Extension } from "@tiptap/core";
-import { PluginKey } from "@tiptap/pm/state";
 import { Suggestion } from "@tiptap/suggestion";
 
 import { MentionMenuList } from "../../components/command/MentionMenu";
 import { useFileStore } from "../../stores/file/file";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { resolveDateAlias } from "../../utils/journal/journal";
+import { mentionSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 
 export interface MentionSuggestionItem {
@@ -82,7 +82,7 @@ export const MentionSuggest = Extension.create({
         editor,
         char: "@",
         allowSpaces: true,
-        pluginKey: new PluginKey("mentionSuggest"),
+        pluginKey: mentionSuggestPluginKey,
         // Don't trigger when part of email address (letter before @)
         allow: ({ state, range }) => {
           const $from = state.doc.resolve(range.from);

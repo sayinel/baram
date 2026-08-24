@@ -1,0 +1,319 @@
+// §298 D1 (PR 307 device finding) — a vim motion's selection must SURVIVE.
+//
+// WHAT BROKE: `k` onto a math block appeared to do nothing. Instrumented on
+// device, the selection moved and then came back, and the stack named the
+// culprit:
+//
+//   [VD-SEL] -> NodeSelection@8756  keydown << runSelectionCommand   ← vim moved it
+//   [VD-SEL] -> TextSelection@8758  readDOMChange << flush           ← reverted
+//
+// DOMObserver.flush (installed prosemirror-view :4788) computes
+//
+//   newSel = !suppressingSelectionUpdates && !currentSelection.eq(sel) && …
+//
+// and calls handleDOMChange when it is true — mutations are irrelevant, which
+// is why `ignoreMutation` on the atom cannot help (an atom NodeView has no
+// contentDOM, so Tiptap already returns true there, and `ignoreSelectionChange`
+// consults the desc where the DOM selection SITS: the paragraph vim just left).
+//
+// Under vim the view is non-editable, so PM never writes the new selection to
+// the DOM. The DOM selection therefore disagrees with PM's record, flush reads
+// that disagreement as "the browser moved the caret", and restores the stale
+// position. suppressSelectionUpdates() answers every selectionchange in the
+// next 50 ms by re-asserting state into the DOM — an active defence that
+// outlasts WebKit's async churn (brokenSelectBetweenUneditable: a selection
+// between non-editable blocks cannot be held, and the workaround's cleanup
+// fires a LATE collapsed selectionchange). Re-baselining once with
+// setCurSelection() instead was tried and REFUTED on device: `j` skipped the
+// block again, because a baseline taken at dispatch time loses to an event
+// that arrives after it. These pins also guard against swapping the call back.
+//
+// jsdom cannot reproduce the revert itself (no WebKit DOM-selection sync — a
+// behavioural test reports HELD and proves nothing). So this pins the call:
+// after a motion, vim suppresses the observer's next reads.
+
+import { Editor } from "@tiptap/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { useSettingsStore } from "../../../../stores/settings/store";
+import { createBaramExtensions } from "../../../index";
+import { vimPluginKey } from "../vim-keys";
+
+const editors: Editor[] = [];
+
+interface ObserverProbe {
+  suppressSelectionUpdates: ReturnType<typeof vi.fn>;
+}
+
+function caretInBelow(editor: Editor): number {
+  let pos = -1;
+  editor.state.doc.descendants((node, at) => {
+    if (pos < 0 && node.isTextblock && node.textContent === "below") {
+      pos = at + 1;
+    }
+  });
+  expect(pos).toBeGreaterThan(0);
+  return pos;
+}
+
+function key(editor: Editor, k: string): void {
+  editor.view.dom.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: k }),
+  );
+}
+
+function makeEditor(): Editor {
+  useSettingsStore.setState({ vimMode: true });
+  const editor = new Editor({
+    content: "<p></p>",
+    element: document.body.appendChild(document.createElement("div")),
+    extensions: createBaramExtensions(),
+  });
+  editors.push(editor);
+  editor.commands.setContent({
+    content: [
+      { content: [{ text: "above", type: "text" }], type: "paragraph" },
+      { attrs: { formula: "E=mc^2" }, type: "mathBlock" },
+      { content: [{ text: "below", type: "text" }], type: "paragraph" },
+    ],
+    type: "doc",
+  });
+  return editor;
+}
+
+/** Replace the observer's suppress call with a spy. */
+function probeObserver(editor: Editor): ObserverProbe {
+  const spy = vi.fn();
+  const observer = (
+    editor.view as unknown as {
+      domObserver?: { suppressSelectionUpdates?: () => void };
+    }
+  ).domObserver;
+  expect(observer).toBeDefined(); // the API this fix relies on must exist
+  if (observer) observer.suppressSelectionUpdates = spy;
+  return { suppressSelectionUpdates: spy };
+}
+
+afterEach(() => {
+  for (const e of editors.splice(0)) e.destroy();
+  document.body.innerHTML = "";
+  useSettingsStore.setState({ vimMode: false });
+});
+
+describe("a motion suppresses the DOM observer's re-read", () => {
+  it("`k` onto a math block suppresses the observer's re-read", () => {
+    const editor = makeEditor();
+    editor.commands.setTextSelection(caretInBelow(editor));
+    const probe = probeObserver(editor);
+
+    key(editor, "k");
+
+    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
+  });
+
+  it("an ordinary paragraph motion suppresses it too", () => {
+    // Not atom-specific: any non-editable move leaves the DOM selection
+    // behind, so the same disagreement exists between two paragraphs.
+    const editor = makeEditor();
+    editor.commands.setTextSelection(1);
+    const probe = probeObserver(editor);
+
+    key(editor, "j");
+
+    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
+  });
+
+  it("the selection vim asked for is the one that stands", () => {
+    const editor = makeEditor();
+    editor.commands.setTextSelection(caretInBelow(editor));
+
+    key(editor, "k");
+
+    let mathPos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "mathBlock") mathPos = at;
+    });
+    expect(editor.state.selection.from).toBe(mathPos);
+  });
+});
+
+describe("a normal-mode motion clears any ranged DOM selection", () => {
+  // Suppression stops the observer from READING WebKit's churn back, but the
+  // churn still paints: PM's node-range write gets re-normalised into a
+  // root-anchored block range (captured live: [VD2-DOMSEL] collapsed=false
+  // anchor=<DIV.tiptap…> offset=24) and `.ProseMirror-hideselection
+  // *::selection` only silences TEXT selections — a block-wrapping range
+  // paints full-width bars regardless. Normal mode needs no DOM selection at
+  // all: the cursor is a decoration and an atom line keeps the selectednode
+  // outline. So vim removes the range its own dispatch just caused.
+  function plantRange(editor: Editor): void {
+    // selectNodeContents, not offsets — the vim cursor decoration wraps the
+    // first grapheme in a span, so text offsets into firstChild are unstable.
+    const p = editor.view.dom.querySelector("p");
+    expect(p).toBeTruthy();
+    const range = document.createRange();
+    range.selectNodeContents(p!);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    expect(document.getSelection()?.isCollapsed).toBe(false);
+  }
+
+  it("a motion in normal mode removes the ranged DOM selection", () => {
+    const editor = makeEditor();
+    editor.commands.setTextSelection(1);
+    plantRange(editor);
+
+    key(editor, "j");
+
+    const sel = document.getSelection();
+    expect(sel === null || sel.rangeCount === 0 || sel.isCollapsed).toBe(true);
+  });
+
+  it("visual mode keeps the native selection (positive control)", () => {
+    // Visual mode's range IS the native selection — clearing it there would
+    // blank the highlight the user is extending.
+    const editor = makeEditor();
+    editor.commands.setTextSelection(1);
+    key(editor, "v");
+    plantRange(editor);
+
+    key(editor, "l");
+
+    expect(document.getSelection()?.isCollapsed).toBe(false);
+  });
+
+  it("vim OFF leaves the DOM selection alone (positive control)", () => {
+    useSettingsStore.setState({ vimMode: false });
+    const editor = new Editor({
+      content: "<p>alpha beta</p>",
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: createBaramExtensions(),
+    });
+    editors.push(editor);
+    editor.commands.setTextSelection(1);
+    plantRange(editor);
+
+    key(editor, "j");
+
+    expect(document.getSelection()?.isCollapsed).toBe(false);
+  });
+});
+
+describe("a pointer NodeSelection is held too (issue 408)", () => {
+  // The click path was the one selection write WITHOUT churn suppression:
+  // PM's pointer dispatch (updateSelection) never goes through
+  // dispatchCursor, so WebKit's late re-normalisation deselected the block
+  // right after the click opened it. Captured on device:
+  //
+  //   [MMD] postclick sel=NodeSelection@8761 → entry-effect gate PASS
+  //   [MMD] entry-effect DESELECT              ← one second later, no input
+  //
+  // The plugin's click handler now suppresses on a microtask (so the React
+  // click handlers — entry latch, setNodeSelection — run first).
+  function click(editor: Editor, target?: Element | null): void {
+    (target ?? editor.view.dom).dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+  }
+
+  function mathNodeDOM(editor: Editor): Element {
+    let mathPos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "mathBlock") mathPos = at;
+    });
+    const dom = editor.view.nodeDOM(mathPos);
+    expect(dom).toBeInstanceOf(Element);
+    return dom as Element;
+  }
+
+  async function microtasks(): Promise<void> {
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  it("a click ON the selected atom suppresses the observer", async () => {
+    const editor = makeEditor();
+    let mathPos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "mathBlock") mathPos = at;
+    });
+    editor.commands.setNodeSelection(mathPos);
+    const probe = probeObserver(editor);
+
+    click(editor, mathNodeDOM(editor));
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).toHaveBeenCalled();
+  });
+
+  it("a click ELSEWHERE over a parked NodeSelection does not", async () => {
+    // The state check alone is not enough: with an atom parked-selected, an
+    // ordinary text click's state update can arrive through the LATE
+    // selectionchange — a suppression armed off the stale NodeSelection
+    // would answer that click by re-asserting the old selection, eating the
+    // user's click (adversarial review). Correlate with the clicked atom.
+    const editor = makeEditor();
+    let mathPos = -1;
+    editor.state.doc.forEach((node, at) => {
+      if (node.type.name === "mathBlock") mathPos = at;
+    });
+    editor.commands.setNodeSelection(mathPos);
+    const probe = probeObserver(editor);
+
+    click(editor, editor.view.dom.querySelector("p"));
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
+  });
+
+  it("a click over a TextSelection does not (drag-copy stays live)", async () => {
+    // Suppression re-asserts state into the DOM for 50 ms — running it after
+    // an ordinary text click would fight the selection the user just made.
+    const editor = makeEditor();
+    editor.commands.setTextSelection(2);
+    const probe = probeObserver(editor);
+
+    click(editor);
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
+  });
+
+  it("vim OFF leaves clicks alone", async () => {
+    useSettingsStore.setState({ vimMode: false });
+    const editor = new Editor({
+      content: "<p>alpha</p>",
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: createBaramExtensions(),
+    });
+    editors.push(editor);
+    const probe = probeObserver(editor);
+
+    click(editor);
+    await microtasks();
+
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
+  });
+});
+
+describe("vim OFF leaves the observer alone (positive control)", () => {
+  it("does not suppress when vim is not driving the selection", () => {
+    // A fix that suppressed unconditionally would pass the pins above while
+    // muting ordinary editing, where the observer's reads are the source of
+    // truth for native selection changes.
+    useSettingsStore.setState({ vimMode: false });
+    const editor = new Editor({
+      content: "<p>alpha beta</p>",
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: createBaramExtensions(),
+    });
+    editors.push(editor);
+    editor.commands.setTextSelection(2);
+    const probe = probeObserver(editor);
+
+    key(editor, "j"); // plain typing surface — vim must not be involved
+    expect(vimPluginKey.getState(editor.state)?.enabled).toBe(false);
+    expect(probe.suppressSelectionUpdates).not.toHaveBeenCalled();
+  });
+});

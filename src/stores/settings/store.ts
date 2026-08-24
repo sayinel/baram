@@ -117,8 +117,11 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
         autoCheckUpdates: state.autoCheckUpdates,
+        // §298 vim keybindings — partialize is a whitelist; omitting this
+        // would silently drop the setting on every restart.
+        vimMode: state.vimMode,
       }),
-      version: 17,
+      version: 18,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -354,6 +357,15 @@ export const useSettingsStore = create<SettingsState>()(
                 else cfg.push({ ...def });
               }
             });
+          }
+        }
+
+        // v17 → v18: §298 Vim keybindings (default off). Was v17 on the
+        // feature branch; renumbered because main's v17 (the activity-bar
+        // backfill above) shipped first.
+        if (version < 18) {
+          if (state.vimMode === undefined) {
+            state.vimMode = false;
           }
         }
 

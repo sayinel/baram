@@ -14,6 +14,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
 import { savePhotoToAssets } from "../../utils/journal/journal-photo";
 import { saveMediaToDocAssets } from "../../utils/media-assets";
 import { classifyMediaSrc } from "../../utils/media-src";
@@ -147,6 +148,11 @@ function createDropHandlerPlugin(): Plugin {
 
         const ctx = getJournalContext();
 
+        // §298 §12-9b (design §5c): file reads land after an async gap —
+        // once the task dies (state install / vim mode exit), the reads
+        // complete but must not dispatch into the editor. The liveness check
+        // sits before every dispatching call in the sequential loop below.
+        const task = registerEditorMutationTask(view);
         // §297 fix (I-3 concurrency, final-gate Important #1): each file
         // used to fire its own independent readFileAsBytes(...).then(...)
         // chain with no await between loop iterations, so N files in one
@@ -162,8 +168,10 @@ function createDropHandlerPlugin(): Plugin {
         // plain single-call function.
         void (async () => {
           for (const file of files) {
+            if (!task.isLive()) break;
             if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
+              if (!task.isLive()) break;
               await insertJournalMediaFromBytes(
                 view,
                 bytes,
@@ -174,6 +182,7 @@ function createDropHandlerPlugin(): Plugin {
             } else if (classifyMediaSrc(file.name) !== "image") {
               // §297 동영상은 반드시 파일로 — data URL 경로가 존재하지 않는다.
               const bytes = await readFileAsBytes(file);
+              if (!task.isLive()) break;
               await insertVideoFromBytes(
                 view,
                 bytes,
@@ -183,9 +192,11 @@ function createDropHandlerPlugin(): Plugin {
               );
             } else {
               const dataUrl = await readFileAsDataURL(file);
+              if (!task.isLive()) break;
               insertMediaAtPos(view, dataUrl, file.name, insertPos);
             }
           }
+          task.finish();
         })();
 
         return true;
@@ -222,16 +233,21 @@ function createDropHandlerPlugin(): Plugin {
 
         const ctx = getJournalContext();
 
+        // §298 §12-9b — same contract as handleDrop above.
+        const task = registerEditorMutationTask(view);
         // §297 fix (I-3 concurrency, final-gate Important #1): see the
         // matching comment in handleDrop above — same fire-and-forget loop,
         // same fix.
         void (async () => {
           for (const file of files) {
+            if (!task.isLive()) break;
             if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
+              if (!task.isLive()) break;
               await insertJournalMediaFromBytes(view, bytes, file.name, ctx);
             } else if (classifyMediaSrc(file.name) !== "image") {
               const bytes = await readFileAsBytes(file);
+              if (!task.isLive()) break;
               await insertVideoFromBytes(
                 view,
                 bytes,
@@ -240,9 +256,11 @@ function createDropHandlerPlugin(): Plugin {
               );
             } else {
               const dataUrl = await readFileAsDataURL(file);
+              if (!task.isLive()) break;
               insertMediaAtPos(view, dataUrl, file.name);
             }
           }
+          task.finish();
         })();
 
         return true;

@@ -26,12 +26,17 @@ import { TabSurface } from "./components/editor/TabSurface";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
-import { StatusBar } from "./components/layout/StatusBar";
+import {
+  type EditorMode,
+  StatusBar,
+  vimSurfaceForMode,
+} from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
 import { GraphViewLazy } from "./components/sidebar/GraphViewLazy";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
+import { setWysiwygVimStatusOwner } from "./extensions/plugins/vim/vim-status";
 import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useAutoSnapshot } from "./hooks/use-auto-snapshot";
@@ -61,7 +66,7 @@ import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { llmComplete, readFile, writeFile } from "./ipc/invoke";
+import { llmCancel, llmComplete, readFile, writeFile } from "./ipc/invoke";
 import { mergeTexts } from "./ipc/snapshot";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
@@ -80,6 +85,8 @@ import {
   startAppUpdateChecker,
   stopAppUpdateChecker,
 } from "./services/app-update";
+import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
+import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab, isGraphTab } from "./stores/editor/editor";
@@ -91,6 +98,7 @@ import {
   activePluginIdOf,
   editorSurfaceBlockReason,
 } from "./utils/editor/active-tab";
+import { registerEditorMutationTask } from "./utils/editor/mutation-tasks";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import {
   getLanguageForFile,
@@ -144,6 +152,16 @@ const AboutModal = lazy(() =>
   import("./components/settings/AboutModal").then((m) => ({
     default: m.AboutModal,
   })),
+);
+// §298 measurement spikes. Lazy so they stay out of the main bundle; neither
+// chunk is requested unless its VITE_*_PROBE flag is set in a dev build.
+const VimWysiwygProbe = lazy(() =>
+  import("./spike/vim-wysiwyg-probe/VimWysiwygProbe").then((m) => ({
+    default: m.VimWysiwygProbe,
+  })),
+);
+const ImeProbe = lazy(() =>
+  import("./spike/ime-probe/ImeProbe").then((m) => ({ default: m.ImeProbe })),
 );
 const UpdateDialog = lazy(() =>
   import("./components/settings/UpdateDialog").then((m) => ({
@@ -355,16 +373,29 @@ function App() {
   const [skillPreviewOpen, setSkillPreviewOpen] = useState(false);
   const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
+  // §298 vim §12-⑪: extensions MUST be referentially stable across renders.
+  // useEditor re-compares options every render (element-wise on extensions);
+  // a mismatch triggers setOptions({ ..., editable: editor.isEditable }),
+  // which would copy a vim-modal view.editable=false into options.editable
+  // permanently (no event fires — the editor bricks to read-only).
+  // The navigate refs are declared below (useNavigation) — safe: the arrows
+  // only dereference .current when invoked, same as createKeepaliveEditor.
+  const extensions = useMemo(
+    () =>
+      createBaramExtensions({
+        onNavigate: (target, heading, vaultAlias) =>
+          navigateRef.current(target, heading, vaultAlias),
+        onNavigateBlockRef: (target, blockId) =>
+          blockRefNavigateRef.current(target, blockId),
+        onNavigateLocal: (href) => localLinkNavigateRef.current(href),
+        onMentionNavigate: (type, value) =>
+          mentionNavigateRef.current(type, value),
+      }),
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const editor = useEditor({
-    extensions: createBaramExtensions({
-      onNavigate: (target, heading, vaultAlias) =>
-        navigateRef.current(target, heading, vaultAlias),
-      onNavigateBlockRef: (target, blockId) =>
-        blockRefNavigateRef.current(target, blockId),
-      onNavigateLocal: (href) => localLinkNavigateRef.current(href),
-      onMentionNavigate: (type, value) =>
-        mentionNavigateRef.current(type, value),
-    }),
+    extensions,
     autofocus: true,
     immediatelyRender: false,
     onCreate: () => {
@@ -526,6 +557,29 @@ function App() {
     sourceModeTabs,
     toggleSourceMode,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
+
+  // §298 vim §8 — ONE surface computation feeds both the StatusBar and the
+  // wysiwyg status owner. Only the wysiwyg surface appoints an owner: the
+  // source surface (markdown source mode AND non-markdown code tabs) has
+  // its own feeder, and graph/preview/plugin own no vim surface — a hidden
+  // Tiptap view update must never overwrite them (S5-a review). The chain
+  // mirrors the §286 surface chain below — read it top to bottom.
+  const statusBarMode: EditorMode = isGraphTabActive
+    ? "graph"
+    : activePluginId
+      ? "plugin"
+      : isPdfTab ||
+          isImageTab ||
+          ((isHtmlTab || isPluginPreviewTab) && !isHtmlSourceView)
+        ? "preview"
+        : isCodeFile || isSourceMode
+          ? "source"
+          : "wysiwyg";
+  useEffect(() => {
+    setWysiwygVimStatusOwner(
+      vimSurfaceForMode(statusBarMode) === "wysiwyg" ? activeEditor : null,
+    );
+  }, [activeEditor, statusBarMode]);
 
   // §285 유지 집합 — 마운트를 유지할 탭과 그 표면 종류.
   //
@@ -882,22 +936,7 @@ function App() {
       <AppLayout
         statusBar={
           rootPath ? (
-            <StatusBar
-              editor={activeEditor}
-              mode={
-                isGraphTabActive
-                  ? "graph"
-                  : activePluginId
-                    ? "plugin"
-                    : isPdfTab ||
-                        isImageTab ||
-                        ((isHtmlTab || isPluginPreviewTab) && !isHtmlSourceView)
-                      ? "preview"
-                      : isCodeFile || isSourceMode
-                        ? "source"
-                        : "wysiwyg"
-              }
-            />
+            <StatusBar editor={activeEditor} mode={statusBarMode} />
           ) : undefined
         }
       >
@@ -1117,6 +1156,23 @@ function App() {
 
 /** §89 Root component — routes between vault mode and file mode. */
 function AppRoot() {
+  // §298 IME probe spike — replaces the app UI entirely. Gate is off in every
+  // shipped build (see spike/ime-probe/ime-probe-enabled.ts).
+  if (isImeProbeEnabled()) {
+    return (
+      <Suspense fallback={null}>
+        <ImeProbe />
+      </Suspense>
+    );
+  }
+  // §298 Phase 1 mechanism probe — same never-in-production gate.
+  if (isVimWysiwygProbeEnabled()) {
+    return (
+      <Suspense fallback={null}>
+        <VimWysiwygProbe />
+      </Suspense>
+    );
+  }
   if (FILE_MODE_PATH) {
     return (
       <Suspense fallback={null}>
@@ -1196,12 +1252,15 @@ function SmartTemplateDialogWrapper({
       let accumulated = "";
 
       void (async () => {
+        // §298 §12-9b (design §5c): the insert lands when the stream ends —
+        // a dead task (state install / vim mode exit) must not dispatch.
+        const task = registerEditorMutationTask(editor.view);
         const cleanupFn = await createLLMStream(requestId, {
           onToken: (token) => {
             accumulated += token;
           },
           onDone: () => {
-            if (accumulated.trim()) {
+            if (accumulated.trim() && task.isLive()) {
               const doc = markdownToProsemirror(accumulated, editor.schema);
               const { from } = editor.state.selection;
               editor.view.dispatch(
@@ -1214,6 +1273,17 @@ function SmartTemplateDialogWrapper({
             logger.error("SmartTemplate error:", error);
           },
         });
+        task.addCleanup(() => {
+          llmCancel(requestId).catch(() => {});
+          cleanupFn();
+        });
+        // A task that died while createLLMStream was awaited has already had
+        // its listeners removed; firing the request anyway would bill an
+        // answer nobody can receive.
+        if (!task.isLive()) {
+          task.finish();
+          return;
+        }
         try {
           await llmComplete(
             prompt,
@@ -1229,6 +1299,7 @@ function SmartTemplateDialogWrapper({
           logger.error(e);
         } finally {
           cleanupFn();
+          task.finish();
         }
       })();
     },

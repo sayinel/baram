@@ -6,6 +6,8 @@ import { Captions, Maximize2, Sparkles } from "lucide-react";
 
 import { ImageOriginalView } from "../../components/editor/ImageOriginalView";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+// §3.3 Image NodeView — edge-drag resize, caption editing, AI menu
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { originalImageUrl, useImagePreview } from "./views/use-image-preview";
 import { useMediaResize } from "./views/use-media-resize";
@@ -46,10 +48,14 @@ export function ImageView({
   // figure is centered, so the same centre-distance maths apply; width persists
   // to the widthPercent attr (already serialized to `<img width="X%">`).
   const { dragPct, startResize } = useMediaResize(containerRef, (pct) => {
+    // §12-6: resize drag commit — tagged chrome (design §5b)
     // ‼️ widthPixel도 함께 지운다 (§294 I1). buildMediaHtmlTag는 픽셀 폭이 있으면
     // 그쪽을 먼저 쓰므로, 남겨 두면 방금 끝낸 드래그가 저장 시점에 조용히 버려진다 —
     // 파일은 `width="640"`을 그대로 들고 있고 다시 열면 원래 크기다.
-    updateAttributes({ widthPercent: pct, widthPixel: undefined });
+    updateNodeAttributesWithVim(editor, getPos, {
+      widthPercent: pct,
+      widthPixel: undefined,
+    });
   });
   const effectiveWidth = dragPct ?? widthPercent;
 
@@ -182,6 +188,7 @@ export function ImageView({
           <figcaption className="image-caption image-caption-editing">
             <input
               className="media-caption-input"
+              data-vim-suspend=""
               onBlur={handleCaptionSave}
               onChange={(e) => setCaptionText(e.target.value)}
               onKeyDown={handleCaptionKeyDown}

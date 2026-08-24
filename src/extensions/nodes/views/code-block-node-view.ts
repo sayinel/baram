@@ -2,34 +2,38 @@
 // Uses a plain ProseMirror NodeView (not React) to properly handle
 // setSelection(), which is critical for CM ↔ PM focus coordination.
 
+import type { ViewUpdate } from "@codemirror/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
 
-import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import {
-  bracketMatching,
-  indentUnit,
-  syntaxHighlighting,
-} from "@codemirror/language";
-import { EditorState as CMState } from "@codemirror/state";
-import {
-  EditorView as CMView,
-  drawSelection,
-  keymap,
-  lineNumbers,
-  ViewUpdate,
-} from "@codemirror/view";
+import { EditorState as CMState, Compartment, Prec } from "@codemirror/state";
+import { EditorView as CMView } from "@codemirror/view";
 import { redo, undo } from "@tiptap/pm/history";
-import { TextSelection } from "@tiptap/pm/state";
 
+import {
+  createVimController,
+  type VimController,
+} from "../../../components/editor/vim-controller";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
-import { getHighlightStyle } from "../code-block-highlight";
+import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
+import {
+  islandVimBlur,
+  islandVimDispose,
+  islandVimFocus,
+  islandVimMode,
+} from "../../plugins/vim/vim-status";
 import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
+import {
+  registerCodeBlockEditableSync,
+  registerCodeBlockVimSync,
+} from "./code-block-cm-registry";
+import { createCodeBlockEscape } from "./code-block-escape";
+import { buildCodeBlockExtensions } from "./code-block-extensions";
+import { buildCodeBlockKeymap } from "./code-block-keymap";
 import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
@@ -37,17 +41,37 @@ export class CodeBlockNodeView implements NodeView {
   private cmContainer: HTMLElement;
   private cmInitialized = false;
   private cmView: CMView | null = null;
+  private currentVimMode: null | string = null;
   private destroyed = false;
   private getPos: () => number | undefined;
   private initGeneration = 0;
+  private islandStatusDispose: (() => void) | null = null;
+  private langGeneration = 0;
   private langSelect: HTMLSelectElement;
+  // §298 Phase 0b R6: language switches reconfigure IN PLACE — recreation
+  // resets vim to normal mid-typing (a language undo while in insert).
+  private languageCompartment = new Compartment();
+  private latestEffectiveEditable: boolean | null = null;
+  private latestVimEnabled: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
+  private pendingFocusRestore: null | { head: number } = null;
   private pendingSelection: null | { anchor: number; head: number } = null;
+  private pendingVimModeRestore: "insert" | "replace" | null = null;
+  // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
+  // PM editable without triggering NodeView.update(), and broadcasts instead.
+  private readOnlyCompartment = new Compartment();
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
+  private unregisterEditableSync: (() => void) | null = null;
+  private unregisterVimSync: (() => void) | null = null;
   private updating = false;
   private view: PMView;
+  // §298 Phase 0b — per-island vim. Compartments outlive CM recreations;
+  // the controller is created per CM instance inside initCM.
+  private vimCompartment = new Compartment();
+  private vimController: null | VimController = null;
+  private vimEditableCompartment = new Compartment();
 
   constructor(
     node: PMNode,
@@ -63,6 +87,10 @@ export class CodeBlockNodeView implements NodeView {
     // Build DOM
     const wrapper = document.createElement("div");
     wrapper.classList.add("code-block-wrapper");
+    // §298 §12-3: wrapper marker covers the CM island AND the header
+    // language select / AI button (design §4 — no contentDOM here, so no
+    // [data-node-view-content] can shadow it).
+    wrapper.setAttribute("data-vim-suspend", "");
     const lang = (node.attrs.language as string) || "";
     wrapper.dataset.language = lang;
     wrapper.dataset.style = useSettingsStore.getState().codeBlockStyle;
@@ -99,7 +127,7 @@ export class CodeBlockNodeView implements NodeView {
         ...this.node.attrs,
         language: select.value || null,
       });
-      this.view.dispatch(tr);
+      this.view.dispatch(withVimExternalEdit(tr));
     });
 
     header.appendChild(select);
@@ -134,6 +162,26 @@ export class CodeBlockNodeView implements NodeView {
     wrapper.appendChild(cmContainer);
     this.dom = wrapper;
 
+    // §298 Phase 0b (PR 307 review) — a click must ENTER the island while
+    // vim is in normal mode, and nothing else in the chain delivers that.
+    // The barrier leaves contentDOM `contenteditable=false` with a negative
+    // tabindex, and WebKit does not focus such an element on click; the
+    // island meanwhile stays read-only until it is focused (suspension is
+    // driven by focusin), so the focus the click needed was exactly what the
+    // click was supposed to produce. Users had to press `i` first — vim's
+    // insert mode makes the PM view editable, which unlocked the island by a
+    // different route. Capture phase, because CodeMirror's own mousedown
+    // handling is what we are standing in for.
+    cmContainer.addEventListener(
+      "mousedown",
+      () => {
+        if (!this.latestVimEnabled || !this.cmView) return;
+        if (this.cmView.hasFocus) return;
+        this.cmView.focus();
+      },
+      true,
+    );
+
     // §perf-large-file: defer CodeMirror creation until the block is near the
     // viewport. Show the raw code as a lightweight placeholder until then.
     const placeholder = document.createElement("pre");
@@ -141,6 +189,36 @@ export class CodeBlockNodeView implements NodeView {
     placeholder.textContent = node.textContent;
     cmContainer.appendChild(placeholder);
     this.lazyDispose = onFirstVisible(wrapper, () => this.ensureCM());
+
+    // §298 §12-4: registry membership for editable broadcasts. Registration
+    // replays the cached EFFECTIVE state (suspension-aware — raw
+    // view.editable stays false through a vim suspension), the callback
+    // remembers it, and the deferred initCM consumes the memo so a lazy CM
+    // can never observe a stale value (vim review S5/S6-R5).
+    this.unregisterEditableSync = registerCodeBlockEditableSync(
+      view,
+      (editable) => {
+        this.latestEffectiveEditable = editable;
+        if (!this.cmView) return;
+        this.cmView.dispatch({
+          effects: this.readOnlyCompartment.reconfigure(
+            CMState.readOnly.of(!editable),
+          ),
+        });
+      },
+    );
+
+    // §298 Phase 0b: vim on/off broadcast — the memo is consumed by the
+    // deferred initCM, exactly like the editable memo above.
+    this.unregisterVimSync = registerCodeBlockVimSync(view, (enabled) => {
+      this.latestVimEnabled = enabled;
+      // An EXPLICIT off is a boundary: an unconfirmed restore memo from a
+      // recreate must not resurrect insert on a later re-enable (R8).
+      // Internal recreates never pass here, so the back-to-back
+      // preservation contract stays intact.
+      if (!enabled) this.pendingVimModeRestore = null;
+      this.applyVim(enabled);
+    });
 
     // Subscribe to settings changes for live updates
     this.settingsUnsub = useSettingsStore.subscribe((state, prev) => {
@@ -155,10 +233,8 @@ export class CodeBlockNodeView implements NodeView {
         // Only recreate CodeMirror if already initialized; otherwise the
         // deferred initCM will read current settings when it eventually runs.
         if (this.cmInitialized) {
-          if (this.cmView) {
-            this.cmView.destroy();
-            this.cmView = null;
-          }
+          this.snapshotFocusForRecreate();
+          this.teardownCM();
           const currentLang = (this.node.attrs.language as string) || "";
           void this.initCM(currentLang);
         }
@@ -172,6 +248,10 @@ export class CodeBlockNodeView implements NodeView {
 
   destroy() {
     this.destroyed = true;
+    if (this.unregisterEditableSync) {
+      this.unregisterEditableSync();
+      this.unregisterEditableSync = null;
+    }
     if (this.lazyDispose) {
       this.lazyDispose();
       this.lazyDispose = null;
@@ -180,10 +260,11 @@ export class CodeBlockNodeView implements NodeView {
       this.settingsUnsub();
       this.settingsUnsub = null;
     }
-    if (this.cmView) {
-      this.cmView.destroy();
-      this.cmView = null;
+    if (this.unregisterVimSync) {
+      this.unregisterVimSync();
+      this.unregisterVimSync = null;
     }
+    this.teardownCM();
   }
 
   /** Prevent PM from reacting to CM DOM mutations */
@@ -246,14 +327,14 @@ export class CodeBlockNodeView implements NodeView {
       return true;
     }
 
-    // Language changed → destroy and recreate CM with new language.
-    if (oldLang !== lang) {
-      if (this.cmView) {
-        this.cmView.destroy();
-        this.cmView = null;
-      }
-      void this.initCM(lang);
-      return true;
+    // Language changed → reconfigure IN PLACE: focus, cursor, vim mode and
+    // CM history all survive. A cold block needs nothing — the deferred
+    // initCM reads fresh attrs. NO early return: the same PM update can
+    // also carry a content change (an undo event grouping both, an
+    // external setContent) and skipping the sync below would fork the CM
+    // buffer from the document (R7).
+    if (oldLang !== lang && this.cmView) {
+      void this.reconfigureLanguage(lang);
     }
 
     // Sync PM → CM
@@ -274,6 +355,35 @@ export class CodeBlockNodeView implements NodeView {
     }
 
     return true;
+  }
+
+  /** §298 Phase 0b — vim enable/disable for THIS island (v3 contract 1).
+   *  Enabling raises a SYNCHRONOUS editing-host barrier before the async
+   *  module load: beforeinput fires ahead of keydown, so a suppressed-key
+   *  gate alone would still let IME text through while vim loads. */
+  private applyVim(enabled: boolean): void {
+    if (!this.cmView || !this.vimController) return;
+    if (enabled) {
+      // tabindex must land WITH the barrier: the controller only adds it
+      // after the async module load, and a host-less, tabindex-less
+      // contentDOM is unfocusable — an explicit PM entry (j/k into a cold
+      // block, empty-block autofocus) would silently lose focus.
+      this.cmView.contentDOM.setAttribute("tabindex", "-1");
+      // The editable facet does NOT gate key-bound API edits (installed
+      // cm-view :8818) and the suspension broadcast releases the island's
+      // readOnly on focus — so the loading barrier pins readOnly too.
+      // Prec.highest: the readOnly facet takes its highest-precedence
+      // value, and the broadcast compartment sits earlier in the config.
+      // The controller's first mode flip replaces this compartment, so
+      // the pin lifts exactly when vim takes over.
+      this.cmView.dispatch({
+        effects: this.vimEditableCompartment.reconfigure([
+          CMView.editable.of(false),
+          Prec.highest(CMState.readOnly.of(true)),
+        ]),
+      });
+    }
+    this.vimController.apply(enabled);
   }
 
   /** Create CodeMirror if not already created (idempotent). */
@@ -314,145 +424,58 @@ export class CodeBlockNodeView implements NodeView {
 
   private async initCM(language: string) {
     const gen = ++this.initGeneration;
-    const langExt = await getLanguageExtension(language);
+    // The language attr can change WHILE the extension loads (update()
+    // cannot reconfigure a CM that does not exist yet) — re-read until the
+    // resolved extension matches the current attr (R7).
+    let lang = language;
+    let langExt = await getLanguageExtension(lang);
     if (this.destroyed || gen !== this.initGeneration) return;
+    for (;;) {
+      const fresh = (this.node.attrs.language as string) || "";
+      if (fresh === lang) break;
+      lang = fresh;
+      langExt = await getLanguageExtension(lang);
+      if (this.destroyed || gen !== this.initGeneration) return;
+    }
 
     const settings = useSettingsStore.getState();
     const { tabSize, codeBlockLineNumbers, autoPairBrackets } = settings;
 
-    // Helper to exit CodeMirror → ProseMirror with proper direction bias.
-    // dir: -1 = up/backward, 1 = down/forward
-    const maybeEscape = (dir: -1 | 1) => {
-      const pos = this.getPos();
-      if (typeof pos !== "number") return;
-      const targetPos = pos + (dir < 0 ? 0 : this.node.nodeSize);
-      const selection = TextSelection.near(
-        this.view.state.doc.resolve(targetPos),
-        dir,
-      );
-      // Check if selection resolved back inside this code block
-      const selInside =
-        selection.from > pos && selection.from < pos + this.node.nodeSize;
-      if (selInside) {
-        // No valid position in escape direction — insert a new paragraph
-        const insertPos = dir < 0 ? pos : pos + this.node.nodeSize;
-        const paragraph = this.view.state.schema.nodes.paragraph.create();
-        const tr = this.view.state.tr.insert(insertPos, paragraph);
-        // After insert, positions shift — set selection into the new paragraph
-        const newCursorPos = dir < 0 ? insertPos + 1 : insertPos + 1;
-        tr.setSelection(TextSelection.near(tr.doc.resolve(newCursorPos), dir));
-        this.view.dispatch(tr.scrollIntoView());
-        this.view.focus();
-        return;
-      }
-      const tr = this.view.state.tr.setSelection(selection).scrollIntoView();
-      this.view.dispatch(tr);
-      this.view.focus();
-    };
+    // PM's view.focus() skips dom.focus() on a non-editable view
+    // (installed prosemirror-view :5711, if (this.editable) guard) — and
+    // vim modal IS non-editable, so an escape would move the selection
+    // while focus stayed in the island, keys still feeding CodeMirror.
+    // The vim-modal attributes supply tabindex="0"; focus the DOM directly.
+    const { focusPM, maybeEscape } = createCodeBlockEscape(
+      this.view,
+      this.getPos,
+      () => this.node,
+    );
 
     // Custom keymaps for PM ↔ CM navigation
-    const customKeys = keymap.of([
-      {
-        key: "ArrowUp",
-        run: (cmv) => {
-          const { head } = cmv.state.selection.main;
-          const line = cmv.state.doc.lineAt(head);
-          if (line.number === 1) {
-            maybeEscape(-1);
-            return true;
-          }
-          return false;
-        },
-      },
-      {
-        key: "ArrowDown",
-        run: (cmv) => {
-          const { head } = cmv.state.selection.main;
-          const line = cmv.state.doc.lineAt(head);
-          if (line.number === cmv.state.doc.lines) {
-            maybeEscape(1);
-            return true;
-          }
-          return false;
-        },
-      },
-      {
-        key: "Escape",
-        run: () => {
-          maybeEscape(-1);
-          return true;
-        },
-      },
-      {
-        key: "Backspace",
-        run: (cmv) => {
-          const { head } = cmv.state.selection.main;
-          if (head === 0 && cmv.state.doc.length === 0) {
-            // Empty code block → convert to paragraph
-            const pos = this.getPos();
-            if (typeof pos !== "number") return false;
-            const pmNode = this.view.state.doc.nodeAt(pos);
-            if (!pmNode) return false;
-            const paragraph = this.view.state.schema.nodes.paragraph.create();
-            const tr = this.view.state.tr.replaceWith(
-              pos,
-              pos + pmNode.nodeSize,
-              paragraph,
-            );
-            tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
-            this.view.dispatch(tr);
-            this.view.focus();
-            return true;
-          }
-          return false;
-        },
-      },
-      {
-        key: "Mod-z",
-        run: () => {
-          undo(this.view.state, this.view.dispatch);
-          return true;
-        },
-      },
-      {
-        key: "Mod-Shift-z",
-        run: () => {
-          redo(this.view.state, this.view.dispatch);
-          return true;
-        },
-      },
-      {
-        key: "Mod-y",
-        run: () => {
-          redo(this.view.state, this.view.dispatch);
-          return true;
-        },
-      },
-    ]);
+    const customKeys = buildCodeBlockKeymap({
+      escape: maybeEscape,
+      focusPM,
+      getPos: this.getPos,
+      view: this.view,
+    });
 
-    const extensions = [
-      customKeys,
-      keymap.of([
-        ...defaultKeymap,
-        ...(autoPairBrackets ? closeBracketsKeymap : []),
-        indentWithTab,
-      ]),
-      ...(codeBlockLineNumbers ? [lineNumbers()] : []),
-      drawSelection(),
-      bracketMatching(),
-      ...(autoPairBrackets ? [closeBrackets()] : []),
-      syntaxHighlighting(getHighlightStyle()),
-      CMView.lineWrapping,
-      CMState.tabSize.of(tabSize),
-      indentUnit.of(" ".repeat(tabSize)),
-      CMState.readOnly.of(!this.view.editable),
-      // Sync CodeMirror → ProseMirror
-      CMView.updateListener.of((update: ViewUpdate) => {
-        if (!update.docChanged || this.updating) return;
+    const extensions = buildCodeBlockExtensions({
+      autoPairBrackets,
+      keymapExtension: customKeys,
+      langExt,
+      languageCompartment: this.languageCompartment,
+      lineNumbers: codeBlockLineNumbers,
+      onDocChanged: (update) => {
+        if (this.updating) return;
         this.forwardUpdate(update);
-      }),
-      ...(langExt ? [langExt] : []),
-    ];
+      },
+      readOnly: !(this.latestEffectiveEditable ?? this.view.editable),
+      readOnlyCompartment: this.readOnlyCompartment,
+      tabSize,
+      vimCompartment: this.vimCompartment,
+      vimEditableCompartment: this.vimEditableCompartment,
+    });
 
     const state = CMState.create({
       doc: this.node.textContent,
@@ -464,6 +487,67 @@ export class CodeBlockNodeView implements NodeView {
       parent: this.cmContainer,
     });
 
+    // §298 Phase 0b — per-island vim controller (claimFocus false: a lazy
+    // load must never steal focus from PM). Consume the broadcast memo.
+    this.vimController = createVimController(this.cmView, this.vimCompartment, {
+      // §3 boundary contract: edge j/k/arrows leave the block through the
+      // SAME escape path as plain arrows; u/C-r go to PM — the island has
+      // no CM history, PM owns the document's undo (design v3).
+      boundaryHooks: {
+        escape: (dir) => maybeEscape(dir),
+        redo: () => {
+          redo(this.view.state, this.view.dispatch);
+        },
+        undo: () => {
+          undo(this.view.state, this.view.dispatch);
+        },
+      },
+      claimFocus: false,
+      restoreMode: () => this.pendingVimModeRestore,
+      editableCompartment: this.vimEditableCompartment,
+      onError: () => {
+        // failed → deterministic plain editing (v3 contract 1).
+        this.cmView?.dispatch({
+          effects: this.vimEditableCompartment.reconfigure([]),
+        });
+      },
+      onModeChange: (mode) => {
+        this.currentVimMode = mode;
+        // The restore memo clears only when the target mode is REACHED —
+        // consumption-on-read lost it when a second settings recreate
+        // arrived before the deferred handleKey ran (R7).
+        if (mode !== null && mode === this.pendingVimModeRestore) {
+          this.pendingVimModeRestore = null;
+        }
+        islandVimMode(island, mode, this.view);
+        // Cold-load race: the first mode arrives AFTER focus already sits
+        // in the island — claim the indicator now, not on the next focus.
+        if (mode !== null && island.hasFocus) islandVimFocus(island);
+      },
+    });
+    // §3-4 nested StatusBar ownership — the island claims the indicator on
+    // focus (snapshot replay) and releases it on blur/teardown.
+    const island = this.cmView;
+    // Ownership listens on the CM ROOT: vim mounts its `:`/`/` panels
+    // outside contentDOM, and moving focus into a panel is still the same
+    // island. focusout defers one microtask and releases only when focus
+    // truly left the whole root.
+    const onIslandFocus = () => islandVimFocus(island);
+    const onIslandBlur = () => {
+      queueMicrotask(() => {
+        const active = island.dom.ownerDocument.activeElement;
+        if (!island.dom.contains(active)) islandVimBlur(island);
+      });
+    };
+    island.dom.addEventListener("focusin", onIslandFocus);
+    island.dom.addEventListener("focusout", onIslandBlur);
+    this.islandStatusDispose = () => {
+      island.dom.removeEventListener("focusin", onIslandFocus);
+      island.dom.removeEventListener("focusout", onIslandBlur);
+      islandVimDispose(island);
+    };
+    if (this.latestVimEnabled) this.applyVim(true);
+
     // Auto-focus newly created (empty) code blocks and scroll into view
     if (!this.node.textContent) {
       requestAnimationFrame(() => {
@@ -474,12 +558,116 @@ export class CodeBlockNodeView implements NodeView {
       });
     }
 
-    if (this.pendingSelection && this.cmView) {
+    // A CM replacement (language/settings change) blurred the old view —
+    // installed CM destroy calls contentDOM.blur() — so a focused island
+    // must reclaim focus on its replacement (R5 C10).
+    if (this.pendingFocusRestore && this.cmView) {
+      // …but never steal focus from wherever the user went DURING the
+      // async recreation — restore only while focus is orphaned (body)
+      // or still somewhere inside this NodeView.
+      const active = this.dom.ownerDocument.activeElement;
+      if (
+        active &&
+        active !== this.dom.ownerDocument.body &&
+        !this.dom.contains(active)
+      ) {
+        this.pendingFocusRestore = null;
+        this.pendingVimModeRestore = null;
+      }
+    }
+    if (this.pendingFocusRestore && this.cmView) {
+      const head = Math.min(
+        this.pendingFocusRestore.head,
+        this.cmView.state.doc.length,
+      );
       this.cmView.focus();
       this.updating = true;
-      this.cmView.dispatch({ selection: this.pendingSelection });
+      this.cmView.dispatch({ selection: { anchor: head } });
       this.updating = false;
+      this.pendingFocusRestore = null;
+    }
+
+    if (this.pendingSelection && this.cmView) {
+      // Only when the PM selection STILL belongs to this block — a stale
+      // memo from a visit the user already left must not steal focus back
+      // (R5 C7).
+      const pos = this.getPos();
+      const { from, to } = this.view.state.selection;
+      // The WHOLE selection must live inside this block — a selection
+      // spanning from the block into the next paragraph passes a from-only
+      // check and would still steal focus (R6).
+      const stillHere =
+        typeof pos === "number" && from > pos && to < pos + this.node.nodeSize;
+      if (stillHere) {
+        this.cmView.focus();
+        this.updating = true;
+        this.cmView.dispatch({ selection: this.pendingSelection });
+        this.updating = false;
+      }
       this.pendingSelection = null;
+    }
+  }
+
+  private async reconfigureLanguage(language: string): Promise<void> {
+    const gen = ++this.langGeneration;
+    const target = this.cmView;
+    const ext = await getLanguageExtension(language);
+    if (this.destroyed || gen !== this.langGeneration) return;
+    // Only the CM this reconfigure started for — a settings recreate may
+    // have replaced the instance while the extension loaded (R7).
+    if (!target || this.cmView !== target) return;
+    target.dispatch({
+      effects: this.languageCompartment.reconfigure(ext ?? []),
+    });
+  }
+
+  /** Focus ownership survives a CM replacement: remember it (with the
+   *  cursor) so the recreated view can reclaim what destroy() blurs. */
+  private snapshotFocusForRecreate(): void {
+    // MID-RECREATE there is nothing to judge: the previous CM is gone and
+    // its replacement not built — both memos from the first snapshot are
+    // still the truth, so leave them alone (R7 back-to-back recreates).
+    if (!this.cmView) return;
+    // Containment, not cmView.hasFocus — the getter also requires
+    // document.hasFocus(), which drops out under context menus (Safari)
+    // and headless runs. Focus anywhere in the island (panels too) counts.
+    const active = this.dom.ownerDocument.activeElement;
+    const focused = this.cmView.dom.contains(active);
+    this.pendingFocusRestore = focused
+      ? { head: this.cmView.state.selection.main.head }
+      : null;
+    // Re-enter insert/replace after the rebuild — a recreation mid-typing
+    // (theme shortcut while inside a block) must not silently flip the
+    // user's keystrokes into normal-mode commands (R6). Visual dies with
+    // its old view and restores as normal.
+    // Preserve an UNCONFIRMED memo across back-to-back recreates: the new
+    // controller re-seeded normal before its deferred restore could run,
+    // so the live mode alone would erase the user's insert (R7).
+    if (
+      focused &&
+      (this.currentVimMode === "insert" || this.currentVimMode === "replace")
+    ) {
+      this.pendingVimModeRestore = this.currentVimMode;
+    } else if (!focused) {
+      this.pendingVimModeRestore = null;
+    }
+  }
+
+  /** ONE teardown path for every CM replacement — settings change, language
+   *  change and NodeView.destroy. Dispose BEFORE destroy: the controller's
+   *  deferred work checks its disposed flag before dispatching. */
+  private teardownCM(): void {
+    if (this.islandStatusDispose) {
+      this.islandStatusDispose();
+      this.islandStatusDispose = null;
+    }
+    if (this.vimController) {
+      this.vimController.dispose();
+      this.vimController = null;
+    }
+    if (this.cmView) {
+      this.cmView.destroy();
+      this.cmView = null;
     }
   }
 }

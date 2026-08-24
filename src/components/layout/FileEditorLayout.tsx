@@ -7,6 +7,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -54,22 +55,31 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const contentRef = useRef<string>("");
   const fileName = filePath.split("/").pop() ?? "Untitled";
 
+  // §298 vim §12-⑪: referentially stable extensions — see App.tsx. A fresh
+  // array per render makes useEditor's option sync copy view.editable into
+  // options.editable, bricking the editor to read-only during vim normal.
+  const extensions = useMemo(
+    () =>
+      createBaramExtensions({
+        onNavigate: () => {},
+        onNavigateBlockRef: () => {},
+        // §89 standalone window has no file tree and no tabs, so there is
+        // nothing to navigate to and every callback here is a no-op.
+        //
+        // ‼️ Not `() => false`. Declining would send a markdown href to the OS
+        // opener, and the pre-§278.1 predicate claimed markdown before any
+        // callback ran — so `[x](/other/note.md)` would newly hand an absolute
+        // path to the OS from a window that has no navigation at all. Claiming
+        // markdown and declining the rest reproduces that predicate exactly,
+        // which keeps scheme-less external addresses (www.example.com) opening.
+        onNavigateLocal: (href) => isMarkdownHref(href),
+        onMentionNavigate: () => {},
+      }),
+    [],
+  );
+
   const editor = useEditor({
-    extensions: createBaramExtensions({
-      onNavigate: () => {},
-      onNavigateBlockRef: () => {},
-      // §89 standalone window has no file tree and no tabs, so there is nothing
-      // to navigate to and every callback here is a no-op.
-      //
-      // ‼️ Not `() => false`. Declining would send a markdown href to the OS
-      // opener, and the pre-§278.1 predicate claimed markdown before any
-      // callback ran — so `[x](/other/note.md)` would newly hand an absolute
-      // path to the OS from a window that has no navigation at all. Claiming
-      // markdown and declining the rest reproduces that predicate exactly,
-      // which keeps scheme-less external addresses (www.example.com) opening.
-      onNavigateLocal: (href) => isMarkdownHref(href),
-      onMentionNavigate: () => {},
-    }),
+    extensions,
     autofocus: true,
     immediatelyRender: false,
   });

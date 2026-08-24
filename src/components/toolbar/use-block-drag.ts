@@ -1,8 +1,9 @@
-// §4.8 Block drag-to-reorder hook — mouse-event only (WKWebView HTML5 DnD broken)
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+// §4.8 Block drag-to-reorder hook — mouse-event only (WKWebView HTML5 DnD broken)
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import {
   hideDropIndicator,
   insertNodeAtPos,
@@ -80,7 +81,9 @@ export function useBlockDrag(editor: Editor): {
         $t.parent.type.name,
       );
       if (intoList) {
-        editor.chain().deleteRange({ from: s.blockPos, to: sourceEnd }).run();
+        chainWithVimExternalEdit(editor)
+          .deleteRange({ from: s.blockPos, to: sourceEnd })
+          .run();
         const after = resolveInsertTarget(editor, e.clientX, e.clientY);
         if (after) insertNodeAtPos(editor, after.pos, node);
       } else {

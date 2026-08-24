@@ -8,6 +8,7 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { executeAICommand, showPrompt } from "./ai-commands";
 import { executeBlockAIWithDiff } from "./block-ai-diff";
 import { getBlockRawContent, getBlockTextContent } from "./block-ai-utils";
+import { awaitBoundToEditor } from "./editor/mutation-tasks";
 
 /**
  * Dispatch an AI action for a specific block node.
@@ -46,13 +47,17 @@ export function dispatchCustomInstruction(
   const blockText = getBlockTextContent(node);
   if (!blockText.trim()) return;
 
-  void showPrompt("Custom instruction:").then((instruction) => {
-    if (!instruction) return;
-    const afterPos = targetPos + node.nodeSize;
-    executeAICommand(editor, blockText, instruction, {
-      insertAfterPos: afterPos,
-    });
-  });
+  // §12-9e (design §5c): blockText and targetPos below were read from THIS
+  // document — hold the prompt with a task bound to it.
+  void awaitBoundToEditor(editor.view, showPrompt("Custom instruction:")).then(
+    (instruction) => {
+      if (!instruction) return;
+      const afterPos = targetPos + node.nodeSize;
+      executeAICommand(editor, blockText, instruction, {
+        insertAfterPos: afterPos,
+      });
+    },
+  );
 }
 
 // ── Internal ────────────────────────────────────────────────────────
@@ -64,9 +69,15 @@ async function resolveAndExecute(
   node: PmNode,
   blockText: string,
 ): Promise<void> {
-  // Resolve placeholders in systemPrompt via user prompt
-  const systemPrompt = await resolveSystemPrompt(action);
-  if (!systemPrompt) return; // user cancelled
+  // Resolve placeholders in systemPrompt via user prompt. targetPos/node/
+  // blockText are bound to the CURRENT document, so a state install while
+  // the prompt is open must abandon the action rather than apply a stale
+  // position to the replacing document (§12-9e, design §5c).
+  const systemPrompt = await awaitBoundToEditor(
+    editor.view,
+    resolveSystemPrompt(action),
+  );
+  if (!systemPrompt) return; // user cancelled, or the document was replaced
 
   if (action.mode === "replace") {
     const rawContent = getBlockRawContent(node);

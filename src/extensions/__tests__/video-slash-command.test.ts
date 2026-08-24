@@ -21,6 +21,20 @@ function createMockEditor() {
 import { showFieldDialog } from "../../utils/field-dialog";
 import { buildSlashItems } from "../plugins/slash-command-items";
 
+// §298 vim wiring: the slash action routes through chainWithVimExternalEdit
+// (tagged chrome) and a §12-9b mutation task — pass both straight through so
+// this test keeps observing the insertContent shape it exists for.
+vi.mock("../plugins/vim/vim-keys", () => ({
+  chainWithVimExternalEdit: (editor: { chain: () => unknown }) =>
+    editor.chain(),
+}));
+vi.mock("../../utils/editor/mutation-tasks", () => ({
+  registerEditorMutationTask: () => ({
+    finish: () => {},
+    isLive: () => true,
+  }),
+}));
+
 vi.mock("../../utils/field-dialog", () => ({
   showFieldDialog: vi.fn(),
 }));

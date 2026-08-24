@@ -10,6 +10,15 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+// §12-6: the resize commit routes through updateNodeAttributesWithVim
+// (tagged chrome) instead of the updateAttributes prop — observe the same
+// attrs object there. The strictEqual intent (§294 I1: widthPixel must be
+// PRESENT and undefined) is unchanged.
+const updateWithVimSpy = vi.hoisted(() => vi.fn());
+vi.mock("../plugins/vim/vim-keys", () => ({
+  updateNodeAttributesWithVim: updateWithVimSpy,
+}));
+
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
   invoke: vi.fn(),
@@ -115,15 +124,16 @@ describe("ImageView width rendering (§294 I1)", () => {
 
     fireEvent.mouseUp(document);
 
-    expect(updateAttributes).toHaveBeenCalledTimes(1);
+    expect(updateWithVimSpy).toHaveBeenCalledTimes(1);
     // ‼️ toStrictEqual, not toHaveBeenCalledWith. The latter (and toEqual)
     // IGNORE a key whose value is undefined, so they cannot tell
     // `{widthPercent: 20}` from `{widthPercent: 20, widthPixel: undefined}` —
     // which is the entire difference this test exists to observe. Mutation
     // testing caught exactly that on the video side. The key must be PRESENT:
-    // updateAttributes spreads over node.attrs, so a missing key leaves the
+    // the attr update spreads over node.attrs, so a missing key leaves the
     // stale 640 while an explicit undefined resets it to the schema default.
-    expect(updateAttributes.mock.calls[0][0]).toStrictEqual({
+    // (attrs는 세 번째 인자 — updateNodeAttributesWithVim(editor, getPos, attrs).)
+    expect(updateWithVimSpy.mock.calls[0][2]).toStrictEqual({
       widthPercent: 20,
       widthPixel: undefined,
     });

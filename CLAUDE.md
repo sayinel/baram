@@ -56,10 +56,11 @@ baram/
 │   ├── pipeline/           # MD ↔ ProseMirror: md-to-pm.ts / pm-to-md.ts / transformers/
 │   ├── stores/             # Zustand: context/ editor/ file/ ui/ settings/ system/ zettelkasten/ ai/
 │   │                       #   RightPanelMode·SidebarPanel canonical = ui/ui.ts
-│   ├── styles/             # CSS 모듈(~19): index.css(@import) + base.css(토큰·유틸·다크모드)
+│   ├── styles/             # CSS 모듈(~23): index.css(@import) + base.css(토큰·유틸·다크모드)
 │   │                       #   generated/ = Style Dictionary 자동 생성 (DO NOT EDIT)
 │   ├── ipc/                # Tauri IPC 래퍼 (types.ts, invoke.ts)
-│   └── hooks/ contexts/ i18n/(en,ko) keybindings/ plugins/ services/ spaces/ utils/ types/
+│   ├── sandbox/            # 플러그인 샌드박스 호스트/브리지 (§260) — 신뢰 티어 경계
+│   └── hooks/ contexts/ i18n/(en,ko) keybindings/ plugins/ services/ spaces/ utils/ types/ spike/
 ├── tokens/                 # W3C DTCG 디자인 토큰: primitive/ semantic/ tokens-studio.json
 ├── scripts/                # audit-css-vars.ts, export-tokens-studio.ts
 ├── docs/                   # 공개 사용자 문서 — user-guide·keyboard-shortcuts·faq(앱 Help에 ?raw 번들), plugin-development
@@ -89,6 +90,7 @@ baram/
     useShallow((s) => ({ foo: s.foo, bar: s.bar })),
   );
   ```
+- **고빈도 경로의 store write는 동등성 관문 필수**: 값이 같으면 `set`을 호출하지 말 것 (partial은 새 root가 되어 모든 리스너를 깨운다)
 - **Tauri 이벤트 cleanup**: `createLLMStream()` 반환값은 반드시 `try/finally`로 호출할 것 (`.catch()` 단독 사용 금지)
   ```ts
   const cleanup = await createLLMStream(id, { ... });
@@ -99,6 +101,7 @@ baram/
   - Journal 날짜 regex → `src/utils/journal/journal.ts` (`JOURNAL_FILENAME_RE`, `JOURNAL_DATE_PARTS_RE`, `JOURNAL_FILENAME_COMPACT_RE`)
   - `fuzzyMatch()` → `src/utils/file-search.ts`
   - `RightPanelMode` / `SidebarPanel` 타입 → `src/stores/ui/ui.ts`
+  - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
 - **Shadow 토큰**: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-xl`
@@ -116,12 +119,19 @@ baram/
 - 반드시 라운드트립 테스트(`__tests__/{name}.test.ts`) + 파이프라인 변환기(`pipeline/transformers/{name}-transformer.ts`) 포함
 - `registry.json`에 메타데이터 등록 필수
 
+### 로컬 실행
+
+- **프로젝트 루트에서** `npm run dev`(백그라운드) + `./src-tauri/target/debug/baram` — `npm run tauri dev`는 cwd가 `src-tauri/`로 바뀐다
+- 프론트엔드는 dev 서버가 서빙하므로 TS/CSS 변경은 debug 바이너리 재빌드 없이 반영된다
+
 ### 테스트
 
 - **Vitest** (TypeScript 단위/통합) — `npm test` → `vitest run`. `npx jest` 사용 금지 (Babel 파싱 실패)
 - **게이트 exit code는 파이프 없이 캡처**: `cmd | tail`은 tail의 exit를 반환한다 — `cmd > /tmp/log; echo $?` 또는 zsh `pipestatus` 사용
 - cargo test (Rust 단위) · Playwright (E2E, 크로스 플랫폼)
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
+- **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
+- **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
 
 ### 의존성 관리
 
@@ -132,6 +142,7 @@ baram/
 
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - 커밋 메시지에 설계 문서 섹션 참조 포함 (예: `feat(§5.3): implement KaTeX math block`)
+- **커밋 메시지는 미리 검증**: `npx --no -- commitlint < msg.txt`. 본문에서 줄 시작 `단어:`는 footer로 오인되므로 줄바꿈 위치를 조정할 것
 - 브랜치: `feature/m2-basic-editing`, `fix/roundtrip-heading-whitespace`
 - **pre-push hook**: `cargo clippy --all-targets` + `npx knip` 실행 — base 변경 후 첫 push는 cargo cold라 5~7분 소요. push는 백그라운드로 실행할 것
 
@@ -140,7 +151,7 @@ baram/
 - **3-tier 계층**: Primitive (raw values) → Semantic (meaning) → Component CSS
 - **소스**: `tokens/*.json` (W3C DTCG) → **빌드** `npm run tokens:build` → `src/styles/generated/` 자동 생성
 - **감사** `npm run audit:css-vars` (미정의 CSS 변수 검출) · **Figma export** `npm run tokens:export` → `tokens/tokens-studio.json`
-- **Settings store version**: 17 — 실제 값은 `src/stores/settings/store.ts`의 `version:`이 유일한 출처다(이 줄은 참고용이고 실제로 12에서 멎어 있었다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
+- **Settings store version**: 18 — 실제 값은 `src/stores/settings/store.ts`의 `version:`이 유일한 출처다(이 줄은 참고용이고 실제로 12에서 멎어 있었다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
 
 ## 설계 문서 참조 규칙
 

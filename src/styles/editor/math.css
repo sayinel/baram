@@ -42,6 +42,20 @@
   border-color: var(--color-accent-default);
 }
 
+/* §12-⑩ standby — mounted so vim's `i` preflight has something to focus
+   while a traversal selection sits on the block; visually absent until its
+   focus event opens the edit session. */
+.tiptap .math-block-textarea-standby {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  opacity: 0;
+}
+
 .tiptap .math-block-row {
   display: flex;
   align-items: center;

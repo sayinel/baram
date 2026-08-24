@@ -7,6 +7,8 @@ import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { useShallow } from "zustand/shallow";
 
 import { dispatchSetSearchTerm } from "../extensions/plugins/find-replace";
+import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
+import { withVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { markdownToProsemirror } from "../pipeline/md-to-pm";
 import { isFileTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
@@ -63,7 +65,9 @@ export function useEditorEffects({
         const doc = markdownToProsemirror(content, editor.schema);
         const slice = doc.content;
         editor.view.dispatch(
-          editor.state.tr.insert(from, slice).scrollIntoView(),
+          withVimExternalEdit(
+            editor.state.tr.insert(from, slice).scrollIntoView(),
+          ),
         );
         editor.view.focus();
       }
@@ -147,7 +151,7 @@ export function useEditorEffects({
       selection: TextSelection.near(newDoc.resolve(selPos), -1),
       plugins: editor.state.plugins,
     });
-    editor.view.updateState(newState);
+    replaceEditorStateWithVim(editor.view, newState, "fresh-document");
     // Focus and scroll to new cursor position after dialog closes.
     // Use DOM scrollIntoView (not ProseMirror tr.scrollIntoView) because
     // updateState bypasses the normal transaction pipeline.
@@ -186,7 +190,7 @@ export function useEditorEffects({
       selection: TextSelection.near(newDoc.resolve(selPos), -1),
       plugins: editor.state.plugins,
     });
-    editor.view.updateState(newState);
+    replaceEditorStateWithVim(editor.view, newState, "fresh-document");
     // Intentionally only re-run on contentRefreshKey bump; editor and other
     // values are read from store state to avoid re-running on every edit.
   }, [contentRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps

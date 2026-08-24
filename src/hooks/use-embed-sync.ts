@@ -9,6 +9,10 @@ import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { findBlockContent, findBlockPosById } from "../utils/editor/block-nav";
 import { replaceBlockInContent } from "../utils/editor/block-replace";
+import {
+  type EditorMutationTask,
+  registerEditorMutationTask,
+} from "../utils/editor/mutation-tasks";
 import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
 
 type EmbedStatus =
@@ -43,6 +47,10 @@ export function useEmbedSync({
   const isEditingRef = useRef(false);
   const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const pendingTextRef = useRef<null | string>(null);
+  // §298 §12-9b (design §5c): the debounced same-file write-back dispatches
+  // into the editor after a timer gap — tracked as a mutation task. The
+  // different-file path only writes to disk and needs no guard.
+  const sameFileTaskRef = useRef<EditorMutationTask | null>(null);
 
   // Load block content
   useEffect(() => {
@@ -112,6 +120,8 @@ export function useEmbedSync({
       debounceRef.current = null;
     }
     pendingTextRef.current = null;
+    sameFileTaskRef.current?.finish();
+    sameFileTaskRef.current = null;
     isEditingRef.current = false;
     setIsEditing(false);
   }, []);
@@ -123,7 +133,16 @@ export function useEmbedSync({
   const syncToSource = useCallback(
     async (newText: string) => {
       if (!target) {
-        // Same file: update source node via ProseMirror transaction
+        // Same file: update source node via ProseMirror transaction.
+        // Consume the pending task — if it died (state install / vim mode
+        // exit), the edit must not land in whatever doc is installed now.
+        const task = sameFileTaskRef.current;
+        sameFileTaskRef.current = null;
+        if (task) {
+          const live = task.isLive();
+          task.finish();
+          if (!live) return;
+        }
         const pos = findBlockPosById(editor.state.doc, blockId);
         if (pos === null) return;
 
@@ -170,6 +189,12 @@ export function useEmbedSync({
       setContent(newText);
       pendingTextRef.current = newText;
 
+      if (!target) {
+        // One task per pending write-back; rescheduling replaces it.
+        sameFileTaskRef.current?.finish();
+        sameFileTaskRef.current = registerEditorMutationTask(editor.view);
+      }
+
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
@@ -181,7 +206,7 @@ export function useEmbedSync({
         }
       }, DEBOUNCE_MS);
     },
-    [syncToSource],
+    [syncToSource, target, editor],
   );
 
   const commitEdit = useCallback(async () => {

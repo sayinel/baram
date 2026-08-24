@@ -66,6 +66,20 @@ function toolbarWrapperClassSets(): ToolbarWrapper[] {
     )) {
       opens.push({ classes: match[1].split(/\s+/), index: match.index });
     }
+    // §298 entry-model wrappers switch their class with a ternary —
+    // `className={editing ? "x y" : "x z"}` — which the literal regex above
+    // cannot see (mermaid/svg dropped out of this scan when they adopted it).
+    // Both branches join one class set: the reveal rule must name at least
+    // one of them, which keeps the offender check exactly as strict.
+    for (const match of source.matchAll(
+      /<NodeViewWrapper\s+className=\{\s*\w+\s*\?\s*"([^"]+)"\s*:\s*"([^"]+)"\s*\}/g,
+    )) {
+      opens.push({
+        classes: [...match[1].split(/\s+/), ...match[2].split(/\s+/)],
+        index: match.index,
+      });
+    }
+    opens.sort((a, b) => a.index - b.index);
     opens.forEach((open, i) => {
       const end = opens[i + 1]?.index ?? source.length;
       if (source.slice(open.index, end).includes("<MediaToolbar")) {

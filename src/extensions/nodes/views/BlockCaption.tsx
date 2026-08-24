@@ -76,6 +76,8 @@ export function BlockCaption({
           // so this only closes the export gap without touching how SVG/
           // Mermaid captions look while editing.
           className="block-caption-input media-caption-input"
+          data-vim-suspend=""
+
           onBlur={commit}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

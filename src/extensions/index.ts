@@ -83,6 +83,7 @@ import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
 import { ViewportVirtualize } from "./plugins/viewport-virtualize";
+import { WysiwygVim } from "./plugins/vim";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
 interface BaramExtensionOptions {
@@ -111,6 +112,9 @@ export function createBaramExtensions(
     HardBreak,
     Dropcursor,
     Gapcursor,
+
+    // §298 vim — always installed, dormant until enabled (design §2/§7).
+    WysiwygVim,
 
     // Nodes — §5.1
     Paragraph,

@@ -32,6 +32,8 @@ function makeEditorStub(selectionText: string): Editor {
       selection: { from: 0, to: selectionText.length || 1 },
       doc: { textBetween: () => selectionText },
     },
+    // §12-9b: registerEditorMutationTask keys a WeakMap by editor.view
+    view: {},
   } as unknown as Editor;
 }
 
