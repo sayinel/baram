@@ -49,6 +49,42 @@ const schema = new Schema({
       code: true,
       attrs: { language: { default: null } },
     },
+    // 리뷰 M3 — 차단 목록이 새던 형태들. `hasNodeType`은 **파이프라인**이 형태를
+    // 못 만드는 헛돎만 막고, **스키마**에 그 노드가 없어 형태가 태어나지도 못하는
+    // 경우는 막지 못한다. 콜아웃·표·헤딩이 여기 없었기 때문에 "중첩 블록은
+    // 안전하다"가 네 개 노드 이름에 대해서만 증명된 채 전체로 단언됐다.
+    heading: {
+      content: "inline*",
+      group: "block",
+      attrs: { level: { default: 1 } },
+    },
+    callout: {
+      content: "block+",
+      group: "block",
+      attrs: {
+        type: { default: "info" },
+        title: { default: "" },
+        collapsed: { default: false },
+      },
+    },
+    table: { content: "tableRow+", group: "block" },
+    tableRow: { content: "(tableCell | tableHeader)+" },
+    tableCell: {
+      content: "paragraph+",
+      attrs: {
+        colspan: { default: 1 },
+        rowspan: { default: 1 },
+        alignment: { default: null },
+      },
+    },
+    tableHeader: {
+      content: "paragraph+",
+      attrs: {
+        colspan: { default: 1 },
+        rowspan: { default: 1 },
+        alignment: { default: null },
+      },
+    },
     hardBreak: { inline: true, group: "inline" },
     text: { group: "inline" },
     wikilink: {
@@ -75,7 +111,10 @@ const schema = new Schema({
       attrs: { tag: { default: "" } },
     },
   },
-  marks: { bold: {}, italic: {} },
+  // 리뷰 M1 — `code`가 **반드시** 있어야 한다: `md-to-pm.ts:631-636`이 인라인
+  // 코드를 `schema.marks.code?.create()`로 게이트하므로, 없으면 백틱 안이 그냥
+  // 텍스트로 남아 이 마크 경로를 한 번도 지나지 않는다.
+  marks: { bold: {}, code: { excludes: "_" }, italic: {} },
 });
 
 const TODAY = new Date(2026, 7, 25); // 2026-08-25
@@ -95,6 +134,21 @@ function covered(doc: PMNode, set: DecorationSet): string[] {
 
 function decoCount(md: string, selectionFrom = -1): number {
   return build(md, selectionFrom).find().length;
+}
+
+/**
+ * 문서에 그 마크가 실제로 붙은 텍스트가 있는지.
+ *
+ * `hasNodeType`과 같은 이유의 장치다 — 스키마에 `code` 마크가 없으면 백틱이
+ * 그냥 텍스트로 남아 "칩이 없다"가 저절로 통과한다.
+ */
+function hasMarkType(doc: PMNode, name: string): boolean {
+  let found = false;
+  doc.descendants((node) => {
+    if (node.marks.some((m) => m.type.name === name)) found = true;
+    return !found;
+  });
+  return found;
 }
 
 /**
@@ -270,6 +324,101 @@ describe("buildTaskFieldDecorations — 중첩된 비-태스크 블록", () => {
     expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([
       "📅2026-08-30",
     ]);
+  });
+
+  // 리뷰 M3 — 위의 네 케이스는 **차단 목록**에 이름이 적힌 것들이라 통과했다.
+  // 사용자가 메모를 적을 때 실제로 쓰는 문법(`> [!note]`)은 파이프라인이 콜아웃으로
+  // 바꾸므로 그 목록을 그대로 지나쳤다. 아래는 허용 목록(= 항목 자신의 태스크 줄만)이
+  // 아니면 통과할 수 없는 형태들이다.
+
+  it("태스크 안의 콜아웃에는 칩을 그리지 않는다", () => {
+    // 실패 모양: 메모에 적은 "원래 마감"이 그 태스크 **자신의** 마감처럼 보인다.
+    const md = [
+      "- [ ] 릴리스 준비",
+      "",
+      "  > [!note]",
+      "  > 원래 마감은 📅2026-08-30 이었다",
+    ].join("\n");
+    const doc = markdownToProsemirror(md, schema);
+    expect(hasNodeType(doc, "callout")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("태스크 안의 표 셀에는 칩을 그리지 않는다", () => {
+    const md = [
+      "- [ ] 할 일",
+      "",
+      "  | 메모 |",
+      "  | --- |",
+      "  | 참고 📅2026-08-30 |",
+    ].join("\n");
+    const doc = markdownToProsemirror(md, schema);
+    expect(hasNodeType(doc, "table")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("태스크 안의 헤딩에는 칩을 그리지 않는다", () => {
+    const md = ["- [ ] 할 일", "", "  # 제목 📅2026-08-30"].join("\n");
+    const doc = markdownToProsemirror(md, schema);
+    expect(hasNodeType(doc, "heading")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("항목의 두 번째 문단(이어 적은 메모)에도 칩을 그리지 않는다", () => {
+    // 태스크 **줄**은 항목의 첫 문단이다. Rust 인덱서(`task/parse.rs:8-9`)도
+    // `- [ ]`로 시작하는 그 한 줄만 파싱하므로, 이어 적은 문단의 날짜는 아젠다에
+    // 이 태스크의 마감으로 잡히지 않는다 — 칩을 그리면 에디터만 없는 사실을
+    // 말하게 된다.
+    const md = ["- [ ] 할 일", "", "  이어 적은 메모 📅2026-08-30"].join("\n");
+    const doc = markdownToProsemirror(md, schema);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+});
+
+// ── 인라인 코드 (리뷰 M1) ──────────────────────────────────────────────
+//
+// 인라인 코드는 **별도 노드가 아니라** `code` 마크가 붙은 텍스트 노드다
+// (`md-to-pm.ts:631-636`). 텍스트 런을 마크를 보지 않고 이어 붙이면 백틱 안의
+// 필드가 본문과 똑같이 스캔되고, 원문이 감춰진 자리에 코드가 아닌 칩이 나타난다.
+// 이 앱의 태스크 문법을 문서로 정리하는 사용자가 자기가 쓴 글자를 잃는 자리다.
+// `collectItem`이 **블록** 코드에 대해 이미 막아 둔 것과 같은 손실이다.
+
+describe("buildTaskFieldDecorations — 인라인 코드", () => {
+  it("백틱 안의 날짜 필드에는 칩을 그리지 않는다", () => {
+    const doc = markdownToProsemirror(
+      "- [ ] 할 일 `📅2026-08-30` 참고",
+      schema,
+    );
+    expect(hasMarkType(doc, "code")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("백틱 안의 우선순위 마커에도 칩을 그리지 않는다", () => {
+    const doc = markdownToProsemirror("- [ ] 문서에 `⏫` 를 쓰는 법", schema);
+    expect(hasMarkType(doc, "code")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("코드를 끼고도 앞뒤 필드의 구간은 정확하다", () => {
+    // 코드에서 런을 **끊는** 것이지 글자만 빼는 것이 아니다. 빼기만 하면 뒤
+    // 런의 오프셋이 코드 길이만큼 밀려 칩이 사용자가 쓴 글자를 덮는다.
+    const doc = markdownToProsemirror(
+      "- [ ] 초안 🛫2026-08-25 `📅2026-09-09` 📅2026-08-30",
+      schema,
+    );
+    expect(hasMarkType(doc, "code")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([
+      "🛫2026-08-25",
+      "📅2026-08-30",
+    ]);
+  });
+
+  it("필드가 코드 경계를 가로질러 이어지지 않는다", () => {
+    // hardBreak에서 이미 본 실패 모양의 마크 판이다: 이모지는 본문에, 날짜는
+    // 코드 안에 있는데 런이 이어지면 한 필드로 붙어 코드까지 통째로 덮는다.
+    const doc = markdownToProsemirror("- [ ] 초안 ⏳`2026-08-27`", schema);
+    expect(hasMarkType(doc, "code")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
   });
 });
 

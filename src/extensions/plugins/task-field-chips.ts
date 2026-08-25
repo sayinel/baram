@@ -29,17 +29,6 @@ export const taskFieldChipsKey = new PluginKey<TaskFieldChipsState>(
 const RAW_CLASS = "task-field-raw";
 
 /**
- * `taskItem` 안에 중첩될 수 있는 블록 컨테이너 중, 그 안의 텍스트가 태스크 줄이
- * **아닌** 것들. 여기서 내려가기를 멈춘다.
- */
-const NON_TASK_CONTAINERS = new Set([
-  "blockquote",
-  "bulletList",
-  "orderedList",
-  "taskList",
-]);
-
-/**
  * `selectionFrom`이 든 `taskItem`은 건너뛴다 — 원문이 보여야 고칠 수 있다.
  * `-1`이면 어떤 것도 건너뛰지 않는다(테스트용).
  */
@@ -120,28 +109,31 @@ export function renderTaskChip(
   return el;
 }
 
+/**
+ * 이 항목의 **태스크 줄** — 항목의 첫 문단 — 에서만 필드를 찾는다.
+ *
+ * 허용 목록인 것이 요점이다. `taskItem`의 content는 `paragraph block*`이라
+ * 콜아웃·표·헤딩·각주 정의·정의 목록·인용구·코드블록·중첩 목록이 전부 그 **안에**
+ * 들어올 수 있는데, "태스크 줄이 아닌 것"을 이름으로 열거하면 목록에 없는 블록이
+ * 조용히 새고 새 블록 타입이 생길 때마다 다시 샌다. 실제로 그렇게 샜다:
+ * `blockquote`는 막혔지만 사용자가 메모에 쓰는 `> [!note]`는 파이프라인이
+ * 콜아웃으로 바꾸므로 그대로 지나갔다.
+ *
+ * 이어 적은 두 번째 문단도 태스크 줄이 아니다 — Rust 인덱서(`task/parse.rs:8-9`)가
+ * `- [ ]`로 시작하는 그 한 줄만 파싱하므로, 그 아래 적은 날짜는 아젠다에서 이
+ * 태스크의 마감이 아니다. 거기에 칩을 그리면 에디터만 없는 사실을 말하게 된다.
+ * (§316 — 자리가 의미를 결정한다.)
+ */
 function collectItem(
   item: PMNode,
   itemFrom: number,
   today: Date,
   out: Decoration[],
 ): void {
-  item.descendants((child, childPos) => {
-    // `taskItem`의 content는 `paragraph block*`이라 코드블록·인용구·일반 목록이
-    // 그 **안에** 들어올 수 있다. 그것들은 태스크 줄이 아니므로 건드리지 않는다
-    // (§316 — 자리가 의미를 결정한다). `taskList`를 멈추는 이유는 조금 다르다:
-    // 중첩 태스크는 바깥 walk가 저마다 따로 방문하므로, 여기서 삼키면 커서 판정이
-    // 안쪽 줄까지 통째로 덮어버린다.
-    if (NON_TASK_CONTAINERS.has(child.type.name)) return false;
-    if (!child.isTextblock) return true;
-    // 코드블록·frontmatter의 내용은 정의상 리터럴이다. 칩이 얹히면 Task 3의 CSS가
-    // 원문을 감추는 순간 사용자가 쓴 코드 한 줄에서 글자가 사라진다.
-    if (child.type.spec.code) return false;
-    // `itemFrom + 1`이 taskItem 내용의 시작이고 `childPos`가 그로부터의
-    // 상대 위치이므로, 둘을 더하면 텍스트블록 노드의 절대 위치가 된다.
-    collectTextblock(child, itemFrom + 1 + childPos, today, out);
-    return false;
-  });
+  const line = item.firstChild;
+  if (line?.type.name !== "paragraph") return;
+  // `itemFrom + 1`이 taskItem 내용의 시작 = 첫 자식의 절대 위치다.
+  collectTextblock(line, itemFrom + 1, today, out);
 }
 
 /**
@@ -152,6 +144,11 @@ function collectItem(
  * 오프셋이 노드 수만큼 밀린다. 게다가 구분자가 없어 `⏳`와 다음 줄의 날짜가 한
  * 필드로 붙어버린다. 그래서 **인접한 텍스트 노드의 런** 단위로 훑는다 — 스캐너에
  * 넘기는 입력을 좁힐 뿐, 스캐너의 규칙은 건드리지 않는다.
+ *
+ * 인라인 코드도 런을 끊는다. `collectItem`이 블록 코드에 대해 막는 것과 같은
+ * 손실이 인라인에서 일어나기 때문이다 — 다만 인라인 코드는 별도 노드가 아니라
+ * `code` 마크가 붙은 텍스트 노드라(`src/pipeline/md-to-pm.ts:631-636`) 노드
+ * 종류만 보는 가드에는 닿지 않는다.
  */
 function collectTextblock(
   block: PMNode,
@@ -173,7 +170,10 @@ function collectTextblock(
   };
 
   block.forEach((child) => {
-    if (child.isText) {
+    // 코드 텍스트를 런에서 빼기만 하고 **끊지 않으면** 두 가지가 동시에 깨진다:
+    // 뒤 런의 오프셋이 코드 길이만큼 밀리고, 코드 밖의 이모지와 코드 안의 날짜가
+    // 한 필드로 이어져 코드까지 통째로 덮인다.
+    if (child.isText && !isInlineCode(child)) {
       if (runText === "") runStart = offset;
       runText += child.text ?? "";
     } else {
@@ -182,6 +182,14 @@ function collectTextblock(
     offset += child.nodeSize;
   });
   flush();
+}
+
+/** 인라인 코드 마크가 붙은 텍스트인지 — 그 안의 글자는 정의상 리터럴이다. */
+function isInlineCode(node: PMNode): boolean {
+  // 이름으로 본다. `MarkSpec`에는 `NodeSpec.code`에 해당하는 필드가 없고,
+  // 이 앱의 인라인 코드 마크 이름은 `code`로 고정돼 있다
+  // (`src/extensions/marks/code.ts:31`).
+  return node.marks.some((mark) => mark.type.name === "code");
 }
 
 function isOverdue(span: TaskFieldSpan, today: Date): boolean {
