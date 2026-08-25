@@ -138,10 +138,10 @@
   color: var(--color-status-warning);
 }
 
+/* §308 아웃라인·반경·색은 .task-chip과 공유한다(TaskBucketList가 두 클래스를
+   함께 붙인다) — 여기는 .task-row 안에서의 레이아웃(shrink 금지)만 맡는다. */
 .task-row-priority {
   flex-shrink: 0;
-  font-size: 11px;
-  line-height: 1;
 }
 
 /* §309 기한 초과 일괄 조정 — 기한 초과가 있을 때만 나타나므로 눈에 띄어야 한다 */

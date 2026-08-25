@@ -44,6 +44,17 @@ const PRIORITY_LABEL: Record<-2 | -1 | 1 | 2, string> = {
   2: "Highest priority",
 };
 
+/** §308 [[priorityBadge]]가 돌려주는 표시용 기호 — 에디터의 `.task-chip`과
+ * 같은 시각 언어를 아젠다 배지에도 주기 위한 텍스트 라벨이다. `PRIORITY_MARKER`의
+ * 이모지(원문 어휘, 문서 모델과 직결)와는 별개다 — 여기를 지우거나 바꿔도 라운드
+ * 트립에는 영향이 없다. `aria-label`은 여전히 PRIORITY_LABEL의 서술형을 쓴다. */
+const PRIORITY_SYMBOL: Record<-2 | -1 | 1 | 2, string> = {
+  "-2": "↓↓",
+  "-1": "↓",
+  1: "!!",
+  2: "!!!",
+};
+
 /** 설정된 필터를 전부 AND로 적용한다. 입력 배열은 변형하지 않는다. */
 export function applyTaskFilters(
   tasks: TaskEntry[],
@@ -78,7 +89,7 @@ export function priorityBadge(
   if (priority !== -2 && priority !== -1 && priority !== 1 && priority !== 2) {
     return null;
   }
-  return { label: PRIORITY_LABEL[priority], marker: PRIORITY_MARKER[priority] };
+  return { label: PRIORITY_LABEL[priority], marker: PRIORITY_SYMBOL[priority] };
 }
 
 function matchesPriority(task: TaskEntry, band: TaskPriorityFilter): boolean {

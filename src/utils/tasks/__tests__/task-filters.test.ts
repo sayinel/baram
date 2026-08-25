@@ -214,16 +214,19 @@ describe("#someday 기본 제외", () => {
 });
 
 describe("priorityBadge", () => {
+  // §308: the marker is a short text symbol, not the raw markdown emoji —
+  // it draws the agenda badge in the same visual language as the editor's
+  // .task-chip. aria-label keeps the word form for screen readers.
   it("returns a marker and a word label for each non-normal level", () => {
     expect(priorityBadge(2)).toEqual({
       label: "Highest priority",
-      marker: "🔺",
+      marker: "!!!",
     });
-    expect(priorityBadge(1)).toEqual({ label: "High priority", marker: "⏫" });
-    expect(priorityBadge(-1)).toEqual({ label: "Low priority", marker: "🔽" });
+    expect(priorityBadge(1)).toEqual({ label: "High priority", marker: "!!" });
+    expect(priorityBadge(-1)).toEqual({ label: "Low priority", marker: "↓" });
     expect(priorityBadge(-2)).toEqual({
       label: "Lowest priority",
-      marker: "⏬",
+      marker: "↓↓",
     });
   });
 

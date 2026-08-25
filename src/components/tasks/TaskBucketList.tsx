@@ -69,7 +69,10 @@ export function TaskBucketList({
               {priority && (
                 <span
                   aria-label={priority.label}
-                  className="task-row-priority"
+                  // §308 .task-chip을 공유해 에디터 칩과 같은 아웃라인·반경·
+                  // 색을 쓴다(같은 데이터가 두 표면에서 다르게 보이면 안 된다).
+                  // task-row-priority는 .task-row 안에서의 레이아웃(flex-shrink)만 맡는다.
+                  className="task-row-priority task-chip"
                   role="img"
                 >
                   {priority.marker}

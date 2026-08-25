@@ -143,7 +143,9 @@ describe("TaskAgendaPanel", () => {
     render(<TaskAgendaPanel />);
 
     const marker = screen.getByRole("img", { name: "Highest priority" });
-    expect(marker).toHaveTextContent("🔺");
+    // §308: the badge now shows the .task-chip visual language (a short
+    // text symbol), not the raw markdown emoji — see priorityBadge.
+    expect(marker).toHaveTextContent("!!!");
     // "plain" (priority 0) renders no marker at all, so there must be
     // exactly one img-role element on the page.
     expect(screen.getAllByRole("img")).toHaveLength(1);
