@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { listDir, readFile } from "../../ipc/invoke";
 import {
   formatKeyForDisplay,
   normalizeKeyEvent,
@@ -15,11 +14,11 @@ import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
-import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
-import { useCaptureTaskMode } from "./use-capture-task-mode";
+import { useCaptureTags } from "./use-capture-tags";
+import { captureErrorKey, useCaptureTaskMode } from "./use-capture-task-mode";
 
 // ⌘↩ on macOS, Ctrl+Enter elsewhere — shown on the Save button.
 const saveKeyLabel = formatKeyForDisplay(
@@ -50,67 +49,25 @@ export function QuickCaptureDialog() {
   const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
   const zettelReady = zettelkastenEnabled && !!zettelDir;
   const taskMode = useCaptureTaskMode();
+  const tags = useCaptureTags(quickCaptureOpen);
   const [body, setBody] = useState("");
   const [source, setSource] = useState("");
-  const [tags, setTags] = useState("");
   const [saveError, setSaveError] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Tag autocomplete state
-  const [tagIndex, setTagIndex] = useState<Map<string, number>>(
-    () => new Map(),
-  );
-  const [tagQuery, setTagQuery] = useState<null | string>(null);
-  const [tagSuggestVisible, setTagSuggestVisible] = useState(false);
-  const [tagActiveIndex, setTagActiveIndex] = useState(0);
-  const tagsInputRef = useRef<HTMLInputElement>(null);
-
-  // Build tag index when dialog opens
+  const { reset: resetTaskMode } = taskMode;
   useEffect(() => {
     if (!quickCaptureOpen) return;
 
     setBody("");
     setSource("");
-    setTags("");
-    setTagSuggestVisible(false);
-    setTagQuery(null);
-    setTagActiveIndex(0);
     setSaveError("");
+    // §307D 리뷰 Minor 6: 다이얼로그는 언마운트되지 않고 `null`을 반환하므로 태스크
+    // 모드가 살아남는다. 본문·출처·태그와 같이 매번 되돌린다 — 캡처는 매번 새 결정이고,
+    // 끈적이는 숨은 모드는 다음 메모를 소리 없이 수집함의 한 줄로 만든다.
+    resetTaskMode();
     setTimeout(() => inputRef.current?.focus(), 50);
-
-    // Scan the zettelkasten space for tag index — captures now land there.
-    (async () => {
-      try {
-        const { rootPath } = useFileStore.getState();
-        const { zettelkastenDirectory } = useSettingsStore.getState();
-        const tagScanDir = resolveZettelDir(rootPath, zettelkastenDirectory);
-        if (!tagScanDir) return;
-
-        const entries = await listDir(tagScanDir, true).catch(() => []);
-        const mdFiles = entries
-          .filter((e) => !e.isDir && e.name.endsWith(".md"))
-          .slice(0, 100); // Limit to 100 most recent files
-
-        const fileContents = await Promise.all(
-          mdFiles.map(async (e) => {
-            try {
-              const content = await readFile(e.path);
-              return { path: e.path, content };
-            } catch {
-              return null;
-            }
-          }),
-        );
-
-        const validFiles = fileContents.filter(
-          (f): f is { content: string; path: string } => f !== null,
-        );
-        setTagIndex(buildTagIndex(validFiles));
-      } catch (err) {
-        logger.error("[QuickCapture] Tag index build failed:", err);
-      }
-    })();
-  }, [quickCaptureOpen]);
+  }, [quickCaptureOpen, resetTaskMode]);
 
   const handleSave = useCallback(async () => {
     setSaveError("");
@@ -124,10 +81,13 @@ export function QuickCaptureDialog() {
     // 한 줄을 붙이는 것뿐이므로 아래 Zettel 가드보다 먼저 갈라진다.
     if (taskMode.enabled) {
       try {
-        await taskMode.save(body);
+        // 태그는 캡처 줄에 인라인으로 접힌다. 여기서 버리면 자동완성이 제안하는
+        // `#someday`가 아무 데도 닿지 않아, 정리 어휘가 캡처 지점에서 끊긴다.
+        await taskMode.save(body, tags.list);
       } catch (err) {
         logger.error("[QuickCapture] Task capture failed:", err);
-        setSaveError(t("journal.capture.error.taskSave"));
+        // 다이얼로그는 열린 채로 둔다 — 본문은 다른 어디에도 없다.
+        setSaveError(t(captureErrorKey(err)));
         return;
       }
       toggleQuickCapture();
@@ -150,15 +110,10 @@ export function QuickCaptureDialog() {
       // A localised key here would make the saved file's format depend on the app language.
       if (source) bodyLines.push(`Source: ${source}`, "");
 
-      const tagList = tags
-        .split(/\s+/)
-        .map((t) => t.replace(/^#/, "").trim())
-        .filter(Boolean);
-
       const result = await captureFleeting(
         zettelDir,
         bodyLines.join("\n").trim(),
-        tagList,
+        tags.list,
       );
       if (!result) {
         setSaveError(t("journal.capture.error.inbox"));
@@ -177,7 +132,7 @@ export function QuickCaptureDialog() {
   }, [
     body,
     source,
-    tags,
+    tags.list,
     zettelReady,
     zettelDir,
     taskMode,
@@ -185,90 +140,9 @@ export function QuickCaptureDialog() {
     t,
   ]);
 
-  // Handle tag input changes — detect #prefix for autocomplete
-  const handleTagsChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value;
-      setTags(value);
-
-      const cursor = e.target.selectionStart ?? value.length;
-      const query = getCurrentTagQuery(value, cursor);
-      if (query !== null) {
-        const suggestions = filterTags(query, tagIndex);
-        setTagQuery(query);
-        setTagSuggestVisible(suggestions.length > 0);
-        setTagActiveIndex(0);
-      } else {
-        setTagSuggestVisible(false);
-        setTagQuery(null);
-      }
-    },
-    [tagIndex],
-  );
-
-  // Insert selected tag into input, replacing the current #prefix
-  const handleTagSelect = useCallback(
-    (tag: string) => {
-      const input = tagsInputRef.current;
-      if (!input) return;
-
-      const cursor = input.selectionStart ?? tags.length;
-      const before = tags.slice(0, cursor);
-      const after = tags.slice(cursor);
-
-      // Replace the partial #prefix with the full tag
-      const prefixMatch = before.match(/#[\w가-힣]*$/);
-      const newBefore = prefixMatch
-        ? before.slice(0, before.length - prefixMatch[0].length) + `#${tag}`
-        : before + `#${tag}`;
-
-      const newValue =
-        newBefore + (after.startsWith(" ") ? after : " " + after);
-      setTags(newValue.trimEnd() + " ");
-      setTagSuggestVisible(false);
-      setTagQuery(null);
-      setTagActiveIndex(0);
-
-      setTimeout(() => {
-        if (tagsInputRef.current) {
-          const pos = newBefore.length + 1;
-          tagsInputRef.current.setSelectionRange(pos, pos);
-          tagsInputRef.current.focus();
-        }
-      }, 0);
-    },
-    [tags],
-  );
-
-  const handleTagsKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (!tagSuggestVisible) return;
-
-      const suggestions = filterTags(tagQuery ?? "", tagIndex);
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setTagActiveIndex((i) => Math.min(i + 1, suggestions.length - 1));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setTagActiveIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === "Enter" || e.key === "Tab") {
-        if (suggestions[tagActiveIndex]) {
-          e.preventDefault();
-          e.stopPropagation(); // Prevent dialog-level Enter from triggering save
-          handleTagSelect(suggestions[tagActiveIndex]);
-        }
-      } else if (e.key === "Escape") {
-        e.stopPropagation(); // Prevent dialog-level Escape from closing
-        setTagSuggestVisible(false);
-      }
-    },
-    [tagSuggestVisible, tagQuery, tagIndex, tagActiveIndex, handleTagSelect],
-  );
-
   // Data-loss guard: with anything typed, only the Cancel button (or a
   // successful save) may dismiss the dialog — not outside clicks or Escape.
-  const hasContent = !!(body.trim() || source.trim() || tags.trim());
+  const hasContent = !!(body.trim() || source.trim() || tags.value.trim());
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -346,36 +220,37 @@ export function QuickCaptureDialog() {
           value={body}
         />
 
-        {/* Optional source */}
-        <input
-          className="quick-capture-input"
-          onChange={(e) => setSource(e.target.value)}
-          placeholder={t("journal.capture.source.placeholder")}
-          type="text"
-          value={source}
-        />
+        {/* Optional source. §18.0: a task is a line and is never promoted to a
+            note, so it has nowhere to carry a source URL — the field would take
+            input and drop it. Tags do fold into the line, so they stay. */}
+        {!taskMode.enabled && (
+          <input
+            className="quick-capture-input"
+            onChange={(e) => setSource(e.target.value)}
+            placeholder={t("journal.capture.source.placeholder")}
+            type="text"
+            value={source}
+          />
+        )}
 
         {/* Tags with autocomplete */}
         <div className="quick-capture-tags-wrap">
           <input
             className="quick-capture-input"
-            onBlur={() => {
-              // Delay hide so onMouseDown on suggestion fires first
-              setTimeout(() => setTagSuggestVisible(false), 150);
-            }}
-            onChange={handleTagsChange}
-            onKeyDown={handleTagsKeyDown}
+            onBlur={tags.onBlur}
+            onChange={tags.onChange}
+            onKeyDown={tags.onKeyDown}
             placeholder={t("journal.capture.tags.placeholder")}
-            ref={tagsInputRef}
+            ref={tags.inputRef}
             type="text"
-            value={tags}
+            value={tags.value}
           />
           <TagSuggest
-            activeIndex={tagActiveIndex}
-            onSelect={handleTagSelect}
-            query={tagQuery ?? ""}
-            tags={tagIndex}
-            visible={tagSuggestVisible}
+            activeIndex={tags.activeIndex}
+            onSelect={tags.onSelect}
+            query={tags.query}
+            tags={tags.index}
+            visible={tags.visible}
           />
         </div>
 
@@ -407,11 +282,4 @@ export function QuickCaptureDialog() {
       </div>
     </div>
   );
-}
-
-/** Extract the current #tag prefix being typed at the cursor position */
-function getCurrentTagQuery(value: string, cursorPos: number): null | string {
-  const textBefore = value.slice(0, cursorPos);
-  const match = textBefore.match(/#([\w가-힣]*)$/);
-  return match ? match[1] : null;
 }
