@@ -104,8 +104,9 @@ export function renderTaskChip(
 ): HTMLElement {
   const el = document.createElement("span");
   el.className = "task-chip";
+  // 색을 갖는 상태는 기한 초과 하나뿐이다. 우선순위 칩도 기본 아웃라인을 쓴다 —
+  // 그래야 아젠다 배지(`.task-chip`을 그대로 공유한다)와 같아 보인다.
   if (overdue) el.classList.add("task-chip-overdue");
-  if (span.kind === "priority") el.classList.add("task-chip-priority");
   el.setAttribute("aria-hidden", "true");
   el.contentEditable = "false";
 

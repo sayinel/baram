@@ -195,12 +195,11 @@
   opacity: 0.62;
 }
 
+/* 색을 갖는 유일한 상태. 우선순위 칩에는 색이 없다 — "기한 초과만 소리친다"가
+   이 방향을 고른 이유 자체이고, 우선순위까지 색을 가지면 무엇이 급한지가
+   사라진다. 아젠다 배지도 같은 규칙을 공유하므로 그쪽에서도 회색 아웃라인이다
+   (급함은 그 행의 `−Nd`가 이미 danger로 말한다). */
 .task-chip-overdue {
   color: var(--color-status-danger);
   border-color: var(--color-status-danger);
-}
-
-.task-chip-priority {
-  color: var(--color-status-warning);
-  border-color: var(--color-status-warning);
 }

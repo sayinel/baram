@@ -152,6 +152,56 @@ describe("§308 감추기 관용구 (리뷰 M2)", () => {
   });
 });
 
+describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
+  // "아웃라인 기본, **기한 초과만** 색을 갖는다"는 CSS 주석·registry `_note`·
+  // 계획서가 모두 적어 둔 규칙인데 배포된 CSS는 우선순위 칩에도 색을 줬다.
+  // 이 방향을 고른 이유 자체가 "기한 초과만 소리친다"이므로, 산문이 규칙이다.
+  it("색을 갖는 칩 상태는 기한 초과 하나뿐이다", () => {
+    // ‼️ 열거로 잡는다. `.task-chip-priority`가 없다는 것만 보면 다음에 다른
+    // 상태(시작일·방치…)에 색을 더할 때 조용히 다시 어긋난다.
+    const coloured = [
+      ...tasksCss.matchAll(/(\.task-chip[\w-]*)\s*\{([^}]*)\}/g),
+    ]
+      .filter((m) => /--color-status-/.test(m[2]))
+      .map((m) => m[1]);
+    expect(coloured).toEqual([".task-chip-overdue"]);
+  });
+
+  it("기본 칩은 아웃라인뿐 — 채움이 없어야 `.wikilink-date`와 갈라진다(§316)", () => {
+    const body = /\.task-chip\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
+    expect(body, "no .task-chip rule").toBeDefined();
+    expect(body).toMatch(/border:/);
+    expect(body).not.toMatch(/background/);
+  });
+
+  it("우선순위 칩에는 색 전용 클래스를 붙이지 않는다", () => {
+    // 규칙이 사라졌으므로 클래스도 사라져야 한다 — 남겨 두면 CSS에 없는
+    // 클래스를 JS가 계속 뿌리게 된다.
+    const el = renderTaskChip(
+      { emoji: "⏫", from: 0, kind: "priority", to: 1, value: "⏫" },
+      false,
+    );
+    expect([...el.classList]).toEqual(["task-chip"]);
+  });
+});
+
+describe("§308 아젠다 배지와 에디터 칩의 정렬 (리뷰 m5)", () => {
+  // Task 4의 산출물은 "복사가 아닌 규칙 공유"였다. 공유가 절반만 이뤄져도
+  // (`.task-chip-priority` 누락) 잡히지 않았기에 두 표면이 다른 색으로 보였다.
+  it("에디터 전용 `vertical-align`이 사이드바 행을 밀지 못한다", () => {
+    // `.task-chip`의 `vertical-align: 1px`는 에디터의 인라인 흐름을 위한 것이다.
+    // 사이드바에서 무효인 이유는 단 하나 — `.task-row`가 flex 컨테이너라
+    // `.task-row-priority`가 flex item이 되기 때문이다. 그 전제가 깨지면
+    // 이 속성이 배지를 1px 밀기 시작하므로 여기에 못박는다.
+    const row = /\.task-row\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
+    expect(row, "no .task-row rule").toBeDefined();
+    expect(row).toMatch(/display:\s*flex/);
+    expect(/\.task-chip\s*\{([^}]*)\}/.exec(tasksCss)?.[1]).toMatch(
+      /vertical-align:/,
+    );
+  });
+});
+
 describe("§308 칩의 접근성 계약", () => {
   it("칩은 aria-hidden이다 — 원문이 남아 있으므로 두 번 읽히면 안 된다", () => {
     // `renderTaskChip`의 doc 주석이 하중을 싣고 있던 계약인데 단언이 없었다.

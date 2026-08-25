@@ -146,6 +146,13 @@ describe("TaskAgendaPanel", () => {
     // §308: the badge now shows the .task-chip visual language (a short
     // text symbol), not the raw markdown emoji — see priorityBadge.
     expect(marker).toHaveTextContent("!!!");
+    // ‼️ review m5/m8: the text symbol is only half of Task 4. Its actual
+    // deliverable was sharing the editor chip's *rules* rather than copying
+    // them, and nothing asserted that — so the sharing being only half done
+    // (the badge and the chip ending up different colours) went unnoticed.
+    // The shared class is what makes the same data look the same on both
+    // surfaces; task-row-priority only carries the row's own layout.
+    expect(marker).toHaveClass("task-chip", "task-row-priority");
     // "plain" (priority 0) renders no marker at all, so there must be
     // exactly one img-role element on the page.
     expect(screen.getAllByRole("img")).toHaveLength(1);

@@ -548,7 +548,9 @@ describe("renderTaskChip", () => {
       false,
     );
     expect(el.textContent).toBe("⏫");
-    expect(el.classList.contains("task-chip-priority")).toBe(true);
+    // 색 전용 클래스는 붙지 않는다 — 색을 갖는 상태는 기한 초과뿐이고,
+    // 그래야 아젠다 배지와 같아 보인다(`task-field-chips-render.test.ts`).
+    expect(el.classList.contains("task-chip-overdue")).toBe(false);
   });
 
   it("칩은 키를 받지 않는다 — data-vim-suspend를 붙이지 않는다", () => {
