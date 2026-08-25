@@ -19,20 +19,61 @@ import {
 // ── 테스트용 스키마 ───────────────────────────────────────────────────
 // `block-id-decoration.test.ts`와 같은 방식: 이 테스트가 실제로 쓰는 노드만
 // 담은 최소 스키마를 만들고 `markdownToProsemirror(md, schema)`에 넘긴다.
+//
+// `wikilink`·`tagNode`·`mention`이 **반드시** 있어야 한다: `md-to-pm.ts:603,615`가
+// 아톰 분리를 이 노드들의 존재로 게이트하므로, 없으면 `[[...]]`와 `#tag`가 그냥
+// 텍스트로 남아 이 기능이 존재하는 이유인 아톰 오프셋 경로를 한 번도 지나지 않는다.
+// 형태는 `src/pipeline/__tests__/md-to-pm-split.test.ts:16-99`를 그대로 따랐다.
 
 const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: { content: "inline*", group: "block", marks: "_" },
+    blockquote: { content: "block+", group: "block" },
     bulletList: { content: "listItem+", group: "block" },
+    orderedList: {
+      content: "listItem+",
+      group: "block",
+      attrs: { start: { default: 1 } },
+    },
     listItem: { content: "paragraph block*" },
     taskList: { content: "taskItem+", group: "block" },
     taskItem: {
       content: "paragraph block*",
       attrs: { checked: { default: false } },
     },
+    codeBlock: {
+      content: "text*",
+      group: "block",
+      marks: "",
+      code: true,
+      attrs: { language: { default: null } },
+    },
     hardBreak: { inline: true, group: "inline" },
     text: { group: "inline" },
+    wikilink: {
+      atom: true,
+      inline: true,
+      group: "inline",
+      attrs: {
+        target: { default: "" },
+        display: { default: null },
+        heading: { default: null },
+        blockId: { default: null },
+      },
+    },
+    mention: {
+      atom: true,
+      inline: true,
+      group: "inline",
+      attrs: { type: { default: "page" }, value: { default: "" } },
+    },
+    tagNode: {
+      atom: true,
+      inline: true,
+      group: "inline",
+      attrs: { tag: { default: "" } },
+    },
   },
   marks: { bold: {}, italic: {} },
 });
@@ -56,6 +97,21 @@ function decoCount(md: string, selectionFrom = -1): number {
   return build(md, selectionFrom).find().length;
 }
 
+/**
+ * 문서에 그 타입의 노드가 실제로 있는지.
+ *
+ * 중첩 블록·아톰 테스트가 **헛돌지 않게** 하는 장치다: 파이프라인이 그 형태를
+ * 만들어내지 못하면 "칩이 없다"는 단언은 저절로 통과해버린다.
+ */
+function hasNodeType(doc: PMNode, name: string): boolean {
+  let found = false;
+  doc.descendants((node) => {
+    if (node.type.name === name) found = true;
+    return !found;
+  });
+  return found;
+}
+
 /** 구간을 덮는 데코레이션(`from < to`)만. 위젯은 `from === to`다. */
 function inlineDecos(set: DecorationSet): Decoration[] {
   return set
@@ -72,6 +128,16 @@ function posInLastTaskItem(doc: PMNode): number {
     return true;
   });
   return last + 2;
+}
+
+/** 첫 `taskItem` **자신의** 위치 — NodeSelection이 앉는 자리. */
+function posOfFirstTaskItem(doc: PMNode): number {
+  let first = -1;
+  doc.descendants((node, pos) => {
+    if (first === -1 && node.type.name === "taskItem") first = pos;
+    return first === -1;
+  });
+  return first;
 }
 
 function widgetDecos(set: DecorationSet): Decoration[] {
@@ -165,6 +231,95 @@ describe("buildTaskFieldDecorations — 위치", () => {
   });
 });
 
+// ── 태스크 항목 **안**의 비-태스크 블록 (§316) ─────────────────────────
+//
+// `taskItem`의 content는 `paragraph block*`이라 코드블록·인용구·일반 불릿이
+// 그 안에 들어올 수 있다. 그것들은 태스크 **줄**이 아니므로 우리 것이 아니다.
+
+describe("buildTaskFieldDecorations — 중첩된 비-태스크 블록", () => {
+  it("태스크 안의 코드블록 리터럴에는 칩을 그리지 않는다", () => {
+    // 가장 나쁜 경우다: Task 3의 CSS가 원문을 감추는 순간 사용자가 쓴
+    // 코드 한 줄에서 글자가 사라지고 그 위에 칩이 얹힌다.
+    const md = ["- [ ] 할 일", "", "  ```", "  📅2026-08-30", "  ```"].join(
+      "\n",
+    );
+    const doc = markdownToProsemirror(md, schema);
+    expect(hasNodeType(doc, "codeBlock")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("태스크 안의 인용구에는 칩을 그리지 않는다", () => {
+    const md = ["- [ ] 할 일", "", "  > 인용 📅2026-08-30"].join("\n");
+    const doc = markdownToProsemirror(md, schema);
+    expect(hasNodeType(doc, "blockquote")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("태스크 안의 일반 불릿에는 칩을 그리지 않는다", () => {
+    const md = ["- [ ] 상위 할 일", "  - 메모 📅2026-08-30"].join("\n");
+    const doc = markdownToProsemirror(md, schema);
+    expect(hasNodeType(doc, "bulletList")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([]);
+  });
+
+  it("비-태스크 블록을 끼고도 태스크 줄 자신의 칩은 그대로다", () => {
+    const md = ["- [ ] 할 일 📅2026-08-30", "", "  > 인용 📅2026-09-01"].join(
+      "\n",
+    );
+    const doc = markdownToProsemirror(md, schema);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([
+      "📅2026-08-30",
+    ]);
+  });
+});
+
+// ── 인라인 아톰 (이 기능이 존재하는 형태) ──────────────────────────────
+
+describe("buildTaskFieldDecorations — 인라인 아톰", () => {
+  it("스펙 예시 줄에서 구간이 정확하다 — 위키링크 + 태그 + 필드 셋", () => {
+    // 아톰은 문자를 0개 내놓으면서 위치는 한 칸 차지한다. `textContent`를
+    // 훑으면 아톰 하나당 정확히 한 칸씩 밀린다.
+    const md =
+      "- [ ] 태스크 본문 [[202607051530]] #deep-work 🛫2026-08-25 📅2026-08-30 ⏫";
+    const doc = markdownToProsemirror(md, schema);
+    // 스키마에 노드가 없으면 파이프라인이 아톰을 만들지 않는다 — 그러면 이
+    // 테스트는 아톰 경로를 지나지 않은 채 통과해버린다.
+    expect(hasNodeType(doc, "wikilink")).toBe(true);
+    // 이 줄에서 `#deep-work`는 텍스트로 남는다: `md-to-pm.ts:602-620`의 분리기들이
+    // 하나가 노드를 만들면 곧바로 반환하므로, 위키링크가 걸린 텍스트에는 태그
+    // 분리가 아예 돌지 않는다. 태그 아톰 경로는 아래 "아톰이 필드 사이에" 테스트가
+    // 따로 지킨다.
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([
+      "🛫2026-08-25",
+      "📅2026-08-30",
+      "⏫",
+    ]);
+  });
+
+  it("멘션 아톰이 앞에 있어도 구간이 정확하다", () => {
+    const doc = markdownToProsemirror(
+      "- [ ] 초안 @[[홍길동]] 📅2026-08-30",
+      schema,
+    );
+    expect(hasNodeType(doc, "mention")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([
+      "📅2026-08-30",
+    ]);
+  });
+
+  it("아톰이 필드 **사이**에 있어도 각 구간이 정확하다", () => {
+    const doc = markdownToProsemirror(
+      "- [ ] 초안 🛫2026-08-25 #deep-work 📅2026-08-30",
+      schema,
+    );
+    expect(hasNodeType(doc, "tagNode")).toBe(true);
+    expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([
+      "🛫2026-08-25",
+      "📅2026-08-30",
+    ]);
+  });
+});
+
 // ── 커서 계약 ─────────────────────────────────────────────────────────
 
 describe("buildTaskFieldDecorations — 커서", () => {
@@ -178,6 +333,17 @@ describe("buildTaskFieldDecorations — 커서", () => {
     const doc = markdownToProsemirror(md, schema);
     const set = buildTaskFieldDecorations(doc, posInLastTaskItem(doc), TODAY);
     expect(covered(doc, set)).toEqual(["📅2026-08-30"]);
+  });
+
+  it("taskItem 자체를 노드 선택해도 데코레이션을 넣지 않는다", () => {
+    // NodeSelection은 `from`을 그 항목 **자신의** 위치에 둔다 — 그 위치를
+    // resolve한 조상 사슬에는 항목이 없으므로 조상 탐색만으로는 놓친다.
+    const doc = markdownToProsemirror("- [ ] 초안 📅2026-08-30", schema);
+    const itemPos = posOfFirstTaskItem(doc);
+    expect(doc.nodeAt(itemPos)?.type.name).toBe("taskItem");
+    expect(buildTaskFieldDecorations(doc, itemPos, TODAY).find()).toHaveLength(
+      0,
+    );
   });
 
   it("커서가 다른 태스크에 있으면 이 태스크의 칩은 남는다", () => {

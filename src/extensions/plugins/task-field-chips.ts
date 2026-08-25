@@ -29,6 +29,17 @@ export const taskFieldChipsKey = new PluginKey<TaskFieldChipsState>(
 const RAW_CLASS = "task-field-raw";
 
 /**
+ * `taskItem` 안에 중첩될 수 있는 블록 컨테이너 중, 그 안의 텍스트가 태스크 줄이
+ * **아닌** 것들. 여기서 내려가기를 멈춘다.
+ */
+const NON_TASK_CONTAINERS = new Set([
+  "blockquote",
+  "bulletList",
+  "orderedList",
+  "taskList",
+]);
+
+/**
  * `selectionFrom`이 든 `taskItem`은 건너뛴다 — 원문이 보여야 고칠 수 있다.
  * `-1`이면 어떤 것도 건너뛰지 않는다(테스트용).
  */
@@ -68,6 +79,9 @@ export function findEditingTaskItem(
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     if ($pos.node(depth).type.name === "taskItem") return $pos.before(depth);
   }
+  // `NodeSelection`으로 `taskItem` 자체를 고르면 `selection.from`이 그 항목
+  // **자신의** 위치라 조상 사슬에는 항목이 없다. 그 자리의 노드를 직접 본다.
+  if (doc.nodeAt(selectionFrom)?.type.name === "taskItem") return selectionFrom;
   return -1;
 }
 
@@ -113,10 +127,16 @@ function collectItem(
   out: Decoration[],
 ): void {
   item.descendants((child, childPos) => {
-    // 중첩 태스크 목록은 바깥 walk가 저마다 따로 방문한다 — 여기서 삼키면
-    // 커서 판정이 안쪽 줄까지 통째로 덮어버린다.
-    if (child.type.name === "taskList") return false;
+    // `taskItem`의 content는 `paragraph block*`이라 코드블록·인용구·일반 목록이
+    // 그 **안에** 들어올 수 있다. 그것들은 태스크 줄이 아니므로 건드리지 않는다
+    // (§316 — 자리가 의미를 결정한다). `taskList`를 멈추는 이유는 조금 다르다:
+    // 중첩 태스크는 바깥 walk가 저마다 따로 방문하므로, 여기서 삼키면 커서 판정이
+    // 안쪽 줄까지 통째로 덮어버린다.
+    if (NON_TASK_CONTAINERS.has(child.type.name)) return false;
     if (!child.isTextblock) return true;
+    // 코드블록·frontmatter의 내용은 정의상 리터럴이다. 칩이 얹히면 Task 3의 CSS가
+    // 원문을 감추는 순간 사용자가 쓴 코드 한 줄에서 글자가 사라진다.
+    if (child.type.spec.code) return false;
     // `itemFrom + 1`이 taskItem 내용의 시작이고 `childPos`가 그로부터의
     // 상대 위치이므로, 둘을 더하면 텍스트블록 노드의 절대 위치가 된다.
     collectTextblock(child, itemFrom + 1 + childPos, today, out);
