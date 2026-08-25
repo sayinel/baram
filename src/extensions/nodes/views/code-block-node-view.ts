@@ -29,6 +29,7 @@ import {
 } from "../code-block-languages";
 import {
   registerCodeBlockEditableSync,
+  registerCodeBlockEntry,
   registerCodeBlockVimSync,
 } from "./code-block-cm-registry";
 import { createCodeBlockEscape } from "./code-block-escape";
@@ -64,6 +65,7 @@ export class CodeBlockNodeView implements NodeView {
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
   private unregisterEditableSync: (() => void) | null = null;
+  private unregisterEntry: (() => void) | null = null;
   private unregisterVimSync: (() => void) | null = null;
   private updating = false;
   private view: PMView;
@@ -208,6 +210,37 @@ export class CodeBlockNodeView implements NodeView {
       },
     );
 
+    // §298 — explicit vim entry channel (registry note): while vim is modal
+    // PM's editorOwnsSelection gate usually fails, so selectionToDOM cannot
+    // be relied on to descend into setSelection here — the vim plugin
+    // drives it through this channel instead.
+    this.unregisterEntry = registerCodeBlockEntry(
+      view,
+      getPos,
+      (anchor, head) => {
+        // Dedup: when the gate DID pass, PM's own descent already delivered
+        // this exact selection inside the dispatch — and a second call is
+        // not a no-op (CM re-dispatches a selectionSet update). Skip only
+        // on an exact match with focus already held. Known limitation: an
+        // equal-valued LATER re-entry is indistinguishable and also skips
+        // CM-vim's selectionSet bookkeeping (review round 2, minor).
+        const cm = this.cmView;
+        if (
+          cm?.hasFocus &&
+          cm.state.selection.main.anchor === anchor &&
+          cm.state.selection.main.head === head
+        ) {
+          return true;
+        }
+        this.setSelection(anchor, head);
+        // A live CM was focused synchronously; a cold one only memoed the
+        // selection for its deferred init — report false so the caller
+        // keeps its focus fallback alive until the island claims focus on
+        // mount (pendingSelection consumption).
+        return this.cmView !== null;
+      },
+    );
+
     // §298 Phase 0b: vim on/off broadcast — the memo is consumed by the
     // deferred initCM, exactly like the editable memo above.
     this.unregisterVimSync = registerCodeBlockVimSync(view, (enabled) => {
@@ -263,6 +296,10 @@ export class CodeBlockNodeView implements NodeView {
     if (this.unregisterVimSync) {
       this.unregisterVimSync();
       this.unregisterVimSync = null;
+    }
+    if (this.unregisterEntry) {
+      this.unregisterEntry();
+      this.unregisterEntry = null;
     }
     this.teardownCM();
   }
@@ -599,9 +636,22 @@ export class CodeBlockNodeView implements NodeView {
       const stillHere =
         typeof pos === "number" && from > pos && to < pos + this.node.nodeSize;
       if (stillHere) {
+        // The memo predates the async init — an edit landing meanwhile
+        // would leave it in-range but STALE. `stillHere` just proved the
+        // CURRENT PM selection lives inside this block, so derive the
+        // local offsets from it instead of the memo, clamped like
+        // pendingFocusRestore above (review round 2).
+        const max = this.cmView.state.doc.length;
+        const sel = this.view.state.selection;
+        const base = (pos as number) + 1;
         this.cmView.focus();
         this.updating = true;
-        this.cmView.dispatch({ selection: this.pendingSelection });
+        this.cmView.dispatch({
+          selection: {
+            anchor: Math.min(Math.max(sel.anchor - base, 0), max),
+            head: Math.min(Math.max(sel.head - base, 0), max),
+          },
+        });
         this.updating = false;
       }
       this.pendingSelection = null;

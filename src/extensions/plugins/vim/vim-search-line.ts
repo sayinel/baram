@@ -18,6 +18,7 @@ import type { Editor } from "@tiptap/core";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { focusEditorView } from "../../../utils/editor/focus-editor-view";
+import { enterCodeBlockSelection } from "../../nodes/views/code-block-cm-registry";
 import { scrollCursorIntoView } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";
 import { vimPluginKey } from "./vim-keys";
@@ -82,6 +83,12 @@ export function submitSearchLine(editor: Editor): void {
     }
   ).domObserver?.suppressSelectionUpdates?.();
   if (target !== null) scrollCursorIntoView(view, target);
+  // A match inside a code block needs the explicit island handoff — this
+  // dispatch bypasses dispatchCursor, and PM's gated selectionToDOM will not
+  // call NodeView.setSelection on the modal view. When the island answers,
+  // IT owns focus; falling through to focusEditorView would immediately
+  // steal the focus back from CM.
+  if (target !== null && enterCodeBlockSelection(view)) return;
   focusEditorView(view);
 }
 

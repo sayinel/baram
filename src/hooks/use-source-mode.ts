@@ -8,8 +8,10 @@ import type { Editor } from "@tiptap/react";
 
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 
+import { enterCodeBlockSelection } from "../extensions/nodes/views/code-block-cm-registry";
 import { forceCollapseSyntaxReveal } from "../extensions/plugins/syntax-reveal";
 import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
+import { isWysiwygVimModal } from "../extensions/plugins/vim/vim-keys";
 import {
   markdownToProsemirror,
   mdastBlocksToPmNodes,
@@ -245,13 +247,31 @@ export function useSourceMode({
                     const doc = editor.view.state.doc;
                     const pos = Math.min(clampedPos, doc.content.size);
                     const sel = TextSelection.near(doc.resolve(pos));
+                    const domObserver = (
+                      editor.view as {
+                        domObserver?: { suppressSelectionUpdates?(): void };
+                      }
+                    ).domObserver;
                     editor.view.dispatch(
                       editor.view.state.tr.setSelection(sel).scrollIntoView(),
                     );
-                    // Not PM's own focus: it is gated on `editable`, and vim
-                    // normal runs the view non-editable — the caret would
-                    // land but every key after Cmd+/ would go nowhere.
-                    focusEditorView(editor.view);
+                    // Same churn suppression as the small-doc path below —
+                    // armed before any focus so the focus's own
+                    // selectionchange fallout is absorbed too.
+                    domObserver?.suppressSelectionUpdates?.();
+                    // §298: a cursor restored INSIDE a code block needs the
+                    // explicit island handoff while vim is modal (PM's gated
+                    // selectionToDOM will not deliver it) — and the island
+                    // then owns focus. Otherwise: not PM's own focus — it is
+                    // gated on `editable`, and vim normal runs the view
+                    // non-editable; the caret would land but every key after
+                    // Cmd+/ would go nowhere.
+                    if (!(
+                      isWysiwygVimModal(editor.view.state) &&
+                      enterCodeBlockSelection(editor.view)
+                    )) {
+                      focusEditorView(editor.view);
+                    }
                   } catch {
                     // ignore invalid position
                   }
@@ -345,10 +365,21 @@ export function useSourceMode({
             editor.view.dispatch(
               editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
             );
-            // See the progressive path above — the editable-gated focus is a
-            // silent no-op while vim owns the surface.
-            focusEditorView(editor.view);
+            // Suppression BEFORE focus (dispatchCursor precedent): the
+            // focus path re-asserts the DOM selection, and that fallout
+            // must land inside the armed window.
             domObserver?.suppressSelectionUpdates?.();
+            // §298: cursor restored inside a code block → explicit island
+            // handoff while vim is modal; the island then owns focus (see
+            // the progressive path above). The editable-gated PM focus is
+            // a silent no-op while vim owns the surface — focusEditorView
+            // covers the plain landings.
+            if (!(
+              isWysiwygVimModal(editor.view.state) &&
+              enterCodeBlockSelection(editor.view)
+            )) {
+              focusEditorView(editor.view);
+            }
 
             // DOM-level scroll fallback for .editor-area-scroll
             const domInfo = editor.view.domAtPos(resolvedSel.from);

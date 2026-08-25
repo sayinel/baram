@@ -10,6 +10,8 @@
 // module nor concrete NodeView classes — both sides import IT.
 import type { EditorView as PMView } from "@tiptap/pm/view";
 
+import { TextSelection } from "@tiptap/pm/state";
+
 type EditableSync = (editable: boolean) => void;
 
 const registries = new WeakMap<PMView, Set<EditableSync>>();
@@ -57,6 +59,31 @@ export function registerCodeBlockEditableSync(
 const vimRegistries = new WeakMap<PMView, Set<EditableSync>>();
 const lastVimBroadcast = new WeakMap<PMView, boolean>();
 
+/** Returns whether focus was delivered SYNCHRONOUSLY. A cold island (CM not
+ *  yet mounted) memos the selection for its deferred init and returns false —
+ *  the caller must keep its own focus fallback so keys stay alive until the
+ *  island claims focus on mount (adversarial review round 2, cold-island
+ *  false success). */
+type EntryHandoff = (anchor: number, head: number) => boolean;
+
+interface EntryRegistrant {
+  enter: EntryHandoff;
+  getPos: () => number | undefined;
+}
+
+// §298 — explicit code-block ENTRY channel. prosemirror-view's
+// selectionToDOM() is gated by editorOwnsSelection(view): on a NON-editable
+// view (vim normal mode) the gate additionally requires a DOM selection
+// whose anchor AND focus sit inside view.dom, plus an activeElement that
+// contains view.dom. While vim is modal those preconditions frequently do
+// not hold (ranged selections are wiped by the phantom-highlight defense,
+// a source-mode roundtrip relocates the DOM selection entirely) — so PM's
+// own descent into NodeView.setSelection (the one hook that focuses CM and
+// carries the cursor in) cannot be relied on; entry only "worked" when a
+// stale DOM range happened to be lying inside view.dom (device-measured).
+// A cursor write that lands inside a code block invokes the handoff HERE
+// instead, with the same node-LOCAL offsets PM's docView descent passes.
+
 /** Push the vim ENABLED flag to every live code block of this PM view. */
 export function broadcastCodeBlockVim(view: PMView, enabled: boolean): void {
   lastVimBroadcast.set(view, enabled);
@@ -80,5 +107,66 @@ export function registerCodeBlockVimSync(
   if (cached !== undefined) sync(cached);
   return () => {
     set.delete(sync);
+  };
+}
+
+const entryRegistries = new WeakMap<PMView, Set<EntryRegistrant>>();
+
+/**
+ * Invoke the entry handoff of the code block whose node starts at
+ * `blockPos`. Returns whether the island took focus SYNCHRONOUSLY — false
+ * (no registrant, or a cold island that only memoed the selection) leaves
+ * the caller's fallback (plain PM focus) in charge.
+ */
+export function enterCodeBlockAt(
+  view: PMView,
+  blockPos: number,
+  localAnchor: number,
+  localHead: number,
+): boolean {
+  const set = entryRegistries.get(view);
+  if (!set) return false;
+  for (const registrant of set) {
+    if (registrant.getPos() === blockPos) {
+      return registrant.enter(localAnchor, localHead);
+    }
+  }
+  return false;
+}
+
+/**
+ * Shared caller-side shape check: hand the CURRENT selection over when it is
+ * an empty text cursor inside a code block. Every programmatic landing path
+ * (vim dispatchCursor, search submit, source-mode cursor restore) funnels
+ * through this one predicate so the entry semantics cannot fork.
+ */
+export function enterCodeBlockSelection(view: PMView): boolean {
+  const sel = view.state.selection;
+  if (!sel.empty || !(sel instanceof TextSelection)) return false;
+  const $head = sel.$head;
+  if ($head.parent.type.name !== "codeBlock") return false;
+  return enterCodeBlockAt(
+    view,
+    $head.before(),
+    $head.parentOffset,
+    $head.parentOffset,
+  );
+}
+
+/** Register a code block's entry handoff; returns the unregister function. */
+export function registerCodeBlockEntry(
+  view: PMView,
+  getPos: () => number | undefined,
+  enter: EntryHandoff,
+): () => void {
+  let set = entryRegistries.get(view);
+  if (!set) {
+    set = new Set();
+    entryRegistries.set(view, set);
+  }
+  const registrant: EntryRegistrant = { enter, getPos };
+  set.add(registrant);
+  return () => {
+    set.delete(registrant);
   };
 }

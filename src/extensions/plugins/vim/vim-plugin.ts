@@ -36,6 +36,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import {
   broadcastCodeBlockEditable,
   broadcastCodeBlockVim,
+  enterCodeBlockSelection,
 } from "../../nodes/views/code-block-cm-registry";
 import { planAtomInsert } from "./adapters/atom-insert";
 import { cursorSelection } from "./adapters/cursor-selection";
@@ -513,6 +514,17 @@ function dispatchCursor(view: EditorView, tr: Transaction): void {
         : document.getSelection();
     if (sel && sel.rangeCount > 0 && !sel.isCollapsed) sel.removeAllRanges();
   }
+  // §298 explicit island handoff — PM's selectionToDOM is gated by
+  // editorOwnsSelection, whose non-editable preconditions (DOM selection
+  // fully inside view.dom + activeElement containing view.dom) usually do
+  // not hold while vim is modal — so PM's own descent into the code block
+  // NodeView's setSelection (CM focus + cursor) cannot be relied on. The
+  // landing would be invisible and the next j would sail past the block
+  // (device log: dispatchCursor parent=codeBlock, no setSelection). Runs
+  // AFTER the wipe so the DOM selection CodeMirror establishes on focus
+  // survives it; the suppression armed above covers the focus's own
+  // selectionchange fallout.
+  enterCodeBlockSelection(view);
 }
 
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
