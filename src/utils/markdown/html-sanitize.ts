@@ -3,7 +3,7 @@
 
 import DOMPurify from "dompurify";
 
-import { VIM_ISLAND_MARKERS } from "../../extensions/plugins/vim/adapters/suspension";
+import { VIM_ISLAND_MARKERS } from "../vim-island-markers";
 import { isSvgContent, sanitizeSvg } from "./svg-utils";
 
 const SANITIZE_CONFIG = {
