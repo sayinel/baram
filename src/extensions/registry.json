@@ -796,6 +796,15 @@
       "_note": "Word triggers (due:/sched:/start:/prio:, plus !1-!5) expand to Obsidian Tasks emoji fields so metadata is never typed as emoji. !3/prio:3 (normal priority) clears the trigger without inserting an emoji — only !1/!2/!4/!5 produce one. Triggers must be preceded by line-start or whitespace (a lookbehind), so e.g. \"overdue:\" does not misfire as \"due:\". Fires only inside taskItem; triggers and values are ASCII-only to avoid misfiring during Hangul IME composition."
     },
     {
+      "name": "taskFieldChips",
+      "file": "plugins/task-field-chips.ts",
+      "spec": "§308",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "_note": "Renders task metadata (🛫⏳📅➕✅❌ and priority markers) as outline chips via ProseMirror decorations — the document model and the serializer are never touched, so markdown round-trip is unaffected. The taskItem holding the cursor is skipped so the raw text stays editable (the innermost one only, so editing a nested task leaves the parent's chips in place). Fields are scanned per run of adjacent text nodes rather than over textContent, because inline leaves such as hardBreak yield no characters while still occupying a position — scanning textContent would shift every later field by one and let a field bridge a line break. Only overdue due-date chips take colour."
+    },
+    {
       "name": "wysiwygVim",
       "file": "plugins/vim/index.ts",
       "spec": "issue 298 / design .omc/research/vim-phase1-design.md",
