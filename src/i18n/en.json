@@ -816,5 +816,15 @@
   "editor.surfaceError.hint": "Only this tab failed. If retrying does not help, reload the app.",
   "editor.surfaceError.retry": "Retry",
   "editor.surfaceError.close": "Close tab",
-  "editor.surfaceError.reload": "Reload app"
+  "editor.surfaceError.reload": "Reload app",
+  "tasks.chip.start": "start {date}",
+  "tasks.chip.scheduled": "scheduled {date}",
+  "tasks.chip.due": "due {date}",
+  "tasks.chip.created": "added {date}",
+  "tasks.chip.done": "done {date}",
+  "tasks.chip.cancelled": "cancelled {date}",
+  "tasks.chip.priority.highest": "highest",
+  "tasks.chip.priority.high": "high",
+  "tasks.chip.priority.low": "low",
+  "tasks.chip.priority.lowest": "lowest"
 }

@@ -816,5 +816,15 @@
   "editor.surfaceError.hint": "이 탭만 실패했습니다. 다시 시도해도 안 되면 앱을 리로드해 주세요.",
   "editor.surfaceError.retry": "다시 시도",
   "editor.surfaceError.close": "탭 닫기",
-  "editor.surfaceError.reload": "앱 리로드"
+  "editor.surfaceError.reload": "앱 리로드",
+  "tasks.chip.start": "{date} 시작",
+  "tasks.chip.scheduled": "{date} 예정",
+  "tasks.chip.due": "{date} 기한",
+  "tasks.chip.created": "{date} 등록",
+  "tasks.chip.done": "{date} 완료",
+  "tasks.chip.cancelled": "{date} 취소",
+  "tasks.chip.priority.highest": "최고",
+  "tasks.chip.priority.high": "높음",
+  "tasks.chip.priority.low": "낮음",
+  "tasks.chip.priority.lowest": "최저"
 }
