@@ -6,7 +6,6 @@ import {
   applyTaskFilters,
   collectTags,
   EMPTY_FILTERS,
-  PRIORITY_MARKER,
   priorityBadge,
 } from "../task-filters";
 
@@ -137,16 +136,6 @@ describe("collectTags", () => {
   });
 });
 
-describe("PRIORITY_MARKER", () => {
-  it("maps every non-normal level and leaves normal blank", () => {
-    expect(PRIORITY_MARKER[2]).toBe("🔺");
-    expect(PRIORITY_MARKER[1]).toBe("⏫");
-    expect(PRIORITY_MARKER[0]).toBe("");
-    expect(PRIORITY_MARKER[-1]).toBe("🔽");
-    expect(PRIORITY_MARKER[-2]).toBe("⏬");
-  });
-});
-
 describe("#someday 기본 제외", () => {
   it("예정 없음 버킷의 someday는 기본으로 감춘다", () => {
     const tasks = [task({ due: null, scheduled: null, tags: ["someday"] })];
@@ -235,9 +224,10 @@ describe("priorityBadge", () => {
   });
 
   it("returns null for a priority value outside the known 5 levels (fix #6)", () => {
-    // The old `Record<number, string>` typed PRIORITY_MARKER[3] as `string`
-    // even though it is `undefined` at runtime. priorityBadge is the safe
-    // accessor callers now use instead of indexing PRIORITY_MARKER directly.
+    // A `Record<number, string>` lookup table types [3] as `string` even
+    // though it is `undefined` at runtime. priorityBadge is the safe accessor
+    // callers use instead of indexing a table directly, and the tables it
+    // reads narrow their keys to the four real levels.
     expect(priorityBadge(3)).toBeNull();
     expect(priorityBadge(-3)).toBeNull();
   });

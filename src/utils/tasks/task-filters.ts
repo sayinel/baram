@@ -23,19 +23,6 @@ export const EMPTY_FILTERS: TaskFilters = {
   text: "",
 };
 
-/** 우선순위 값(-2..2) → 표시 이모지. 0(보통)은 마커 없음이 §303의 규약이다.
- * `Record<number, string>`은 5단계 밖의 값(예: 3)도 "string"이라고 속여
- * `PRIORITY_MARKER[3]`이 `undefined`인데도 타입 체크를 통과시켰다 — 키를
- * 실제 5단계로 좁혀 임의의 number로 인덱싱하면 컴파일 타임에 걸린다
- * (호출부는 [[priorityBadge]] 사용). */
-export const PRIORITY_MARKER: Record<-2 | -1 | 0 | 1 | 2, string> = {
-  "-2": "⏬",
-  "-1": "🔽",
-  0: "",
-  1: "⏫",
-  2: "🔺",
-};
-
 /** 마커가 있는 4단계의 스크린 리더용 단어 라벨. 0(보통)은 마커 자체가 없다. */
 const PRIORITY_LABEL: Record<-2 | -1 | 1 | 2, string> = {
   "-2": "Lowest priority",
@@ -45,9 +32,14 @@ const PRIORITY_LABEL: Record<-2 | -1 | 1 | 2, string> = {
 };
 
 /** §308 [[priorityBadge]]가 돌려주는 표시용 기호 — 에디터의 `.task-chip`과
- * 같은 시각 언어를 아젠다 배지에도 주기 위한 텍스트 라벨이다. `PRIORITY_MARKER`의
- * 이모지(원문 어휘, 문서 모델과 직결)와는 별개다 — 여기를 지우거나 바꿔도 라운드
- * 트립에는 영향이 없다. `aria-label`은 여전히 PRIORITY_LABEL의 서술형을 쓴다. */
+ * 같은 시각 언어를 아젠다 배지에도 주기 위한 텍스트 라벨이다. 원문 어휘(문서
+ * 모델과 직결되는 이모지)는 `task-field-tokens.ts`의 `PRIORITY_EMOJI`가 유일한
+ * 출처이고, 여기는 그것과 무관하다 — 지우거나 바꿔도 라운드트립에 영향이 없다.
+ * `aria-label`은 여전히 PRIORITY_LABEL의 서술형을 쓴다.
+ *
+ * 키를 `number`가 아니라 실제 4단계로 좁혀 둔다. `Record<number, string>`이면
+ * 5단계 밖의 값(예: 3)도 "string"이라고 속여 런타임에 `undefined`인 인덱싱이
+ * 타입 체크를 통과한다 — 호출부는 [[priorityBadge]]를 쓸 것. */
 const PRIORITY_SYMBOL: Record<-2 | -1 | 1 | 2, string> = {
   "-2": "↓↓",
   "-1": "↓",

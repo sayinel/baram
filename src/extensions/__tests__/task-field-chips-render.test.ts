@@ -111,6 +111,23 @@ describe("§308 원문 구간의 렌더 계약", () => {
     expect(raw?.textContent).toBe("📅2026-08-30");
   });
 
+  it("본문 전체가 필드 하나인 줄에도 문단이 비지 않는다 (리뷰 m7)", () => {
+    // 이 슬라이스에서 "줄을 클릭해 원문을 드러낸다"는 탈출구에 클릭할 보이는
+    // 글자가 없는 유일한 형태다. `display: none`이었다면 문단의 인라인 내용이
+    // **통째로** 렌더되지 않고 `contenteditable=false` 위젯 하나만 남는다.
+    // 지금은 원문 span이 흐름 안에 남으므로(1px로 잘릴 뿐) 문단은 언제나
+    // 위치를 가진 요소를 갖는다.
+    const rendered = render("- [ ] 📅2026-08-30");
+    view = rendered.view;
+
+    const p = rendered.host.querySelector("p");
+    expect(p?.querySelector(`.${RAW_CLASS}`)).not.toBeNull();
+    expect(p?.querySelector(".task-chip")).not.toBeNull();
+    // 문서 모델은 그대로다 — 위·아래 줄에서 방향키로 들어오는 경로는 데코레이션과
+    // 무관하게 살아 있고, Home/End도 이 텍스트 안에서 움직인다.
+    expect(rendered.view.state.doc.textContent).toBe("📅2026-08-30");
+  });
+
   it("원문 텍스트가 문서에 그대로 남는다 — 칩은 시각적 중복일 뿐이다", () => {
     const rendered = render("- [ ] 보고서 초안 📅2026-08-30");
     view = rendered.view;
