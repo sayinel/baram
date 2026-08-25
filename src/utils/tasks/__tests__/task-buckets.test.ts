@@ -2,7 +2,12 @@ import type { TaskEntry } from "../../../ipc/types";
 
 import { describe, expect, it } from "vitest";
 
-import { classifyTask, groupIntoBuckets, overdueDays } from "../task-buckets";
+import {
+  classifyTask,
+  groupIntoBuckets,
+  overdueDays,
+  taskAgeDays,
+} from "../task-buckets";
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
   return {
@@ -147,6 +152,26 @@ describe("overdueDays", () => {
   it("returns 0 for a task that is not overdue", () => {
     expect(overdueDays(task({ due: "2026-08-23" }), SUN)).toBe(0);
     expect(overdueDays(task(), SUN)).toBe(0);
+  });
+});
+
+describe("taskAgeDays", () => {
+  const now = new Date(2026, 7, 24); // 2026-08-24
+
+  it("created가 없으면 0", () => {
+    expect(taskAgeDays(task({ created: null }), now)).toBe(0);
+  });
+
+  it("생성일로부터 지난 일수를 센다", () => {
+    expect(taskAgeDays(task({ created: "2026-07-25" }), now)).toBe(30);
+  });
+
+  it("미래 날짜는 0으로 죈다", () => {
+    expect(taskAgeDays(task({ created: "2026-09-01" }), now)).toBe(0);
+  });
+
+  it("형식이 틀린 값은 0", () => {
+    expect(taskAgeDays(task({ created: "어제" }), now)).toBe(0);
   });
 });
 

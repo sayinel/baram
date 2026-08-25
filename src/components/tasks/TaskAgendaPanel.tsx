@@ -261,6 +261,17 @@ export function TaskAgendaPanel() {
               ))}
             </select>
           )}
+
+          <label className="task-panel-someday">
+            <input
+              checked={filters.showSomeday}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, showSomeday: e.target.checked }))
+              }
+              type="checkbox"
+            />
+            Someday
+          </label>
         </div>
       </div>
 
@@ -273,6 +284,7 @@ export function TaskAgendaPanel() {
             now={now}
             onJump={onJump}
             onToggle={onToggle}
+            showAge={bucket === "noDate"}
             showOverdueAge={bucket === "overdue"}
             tasks={groups[bucket]}
             titleFor={titleFor}

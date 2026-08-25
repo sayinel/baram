@@ -2,7 +2,7 @@
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 
-import { overdueDays } from "../../utils/tasks/task-buckets";
+import { overdueDays, taskAgeDays } from "../../utils/tasks/task-buckets";
 import { priorityBadge } from "../../utils/tasks/task-filters";
 
 interface Props {
@@ -12,6 +12,8 @@ interface Props {
   now: Date;
   onJump: (task: TaskEntry) => void;
   onToggle: (task: TaskEntry) => void;
+  /** §312 방치 배지를 보일지 — "예정 없음" 버킷에서만 켠다. */
+  showAge: boolean;
   showOverdueAge: boolean;
   tasks: TaskEntry[];
   /** 링크 target → 노트 제목. 없으면 target을 그대로 보인다. */
@@ -20,12 +22,16 @@ interface Props {
 
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
 
+/** §312 이 일수 이상 방치된 항목에 배지를 붙인다. */
+const STALE_DAYS = 30;
+
 export function TaskBucketList({
   bucket,
   label,
   now,
   onJump,
   onToggle,
+  showAge,
   showOverdueAge,
   tasks,
   titleFor,
@@ -48,6 +54,7 @@ export function TaskBucketList({
       <ul className="task-bucket-list">
         {tasks.map((task) => {
           const age = showOverdueAge ? overdueDays(task, now) : 0;
+          const ageDays = showAge ? taskAgeDays(task, now) : 0;
           const shown = displayText(task.text, titleFor);
           const priority = priorityBadge(task.priority);
           return (
@@ -76,6 +83,11 @@ export function TaskBucketList({
                 {shown}
               </button>
               {age > 0 && <span className="task-row-age">−{age}d</span>}
+              {showAge && ageDays >= STALE_DAYS && (
+                <span className="task-row-age task-row-stale" title="Stale">
+                  {ageDays}d
+                </span>
+              )}
             </li>
           );
         })}

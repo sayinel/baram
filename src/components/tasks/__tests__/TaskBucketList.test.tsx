@@ -39,6 +39,7 @@ describe("TaskBucketList", () => {
         now={new Date()}
         onJump={noop}
         onToggle={noop}
+        showAge={false}
         showOverdueAge={false}
         tasks={[]}
         titleFor={(t) => t}
@@ -55,6 +56,7 @@ describe("TaskBucketList", () => {
         now={new Date()}
         onJump={noop}
         onToggle={noop}
+        showAge={false}
         showOverdueAge={false}
         tasks={[task({ state: "done" })]}
         titleFor={(t) => t}
@@ -73,6 +75,7 @@ describe("TaskBucketList", () => {
         now={new Date()}
         onJump={noop}
         onToggle={noop}
+        showAge={false}
         showOverdueAge={false}
         tasks={[task()]}
         titleFor={(t) => t}
@@ -90,6 +93,7 @@ describe("TaskBucketList", () => {
         now={new Date()}
         onJump={noop}
         onToggle={noop}
+        showAge={false}
         showOverdueAge={false}
         tasks={[task({ state: "done" }), task({ state: "done", line: 1 })]}
         titleFor={(t) => t}
@@ -107,6 +111,7 @@ describe("TaskBucketList", () => {
         now={new Date()}
         onJump={noop}
         onToggle={noop}
+        showAge={false}
         showOverdueAge={false}
         tasks={[task({ text: "회의 [[202607051530|팀 미팅]]" })]}
         titleFor={titleFor}
@@ -144,6 +149,7 @@ describe("TaskBucketList", () => {
         now={new Date()}
         onJump={noop}
         onToggle={noop}
+        showAge={false}
         showOverdueAge={false}
         tasks={[task({ priority: 2, state: "done", text: "urgent done" })]}
         titleFor={(t) => t}
@@ -164,6 +170,7 @@ describe("TaskBucketList", () => {
         now={new Date()}
         onJump={noop}
         onToggle={noop}
+        showAge={false}
         showOverdueAge={false}
         tasks={[task({ text: "회의 [[202607051530]]" })]}
         titleFor={() => "팀 미팅"}

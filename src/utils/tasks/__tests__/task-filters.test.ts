@@ -107,6 +107,7 @@ describe("applyTaskFilters", () => {
     ];
     const got = applyTaskFilters(all, {
       priority: "high",
+      showSomeday: false,
       state: "todo",
       tag: "work",
       text: "keep",
@@ -143,6 +144,37 @@ describe("PRIORITY_MARKER", () => {
     expect(PRIORITY_MARKER[0]).toBe("");
     expect(PRIORITY_MARKER[-1]).toBe("🔽");
     expect(PRIORITY_MARKER[-2]).toBe("⏬");
+  });
+});
+
+describe("#someday 기본 제외", () => {
+  it("예정 없음 버킷의 someday는 기본으로 감춘다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: ["someday"] })];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(0);
+  });
+
+  it("기한이 있는 someday는 감추지 않는다 — 날짜를 준 순간 someday가 아니다", () => {
+    const tasks = [task({ due: "2026-08-30", tags: ["someday"] })];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(1);
+  });
+
+  it("showSomeday를 켜면 보인다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: ["someday"] })];
+    expect(
+      applyTaskFilters(tasks, { ...EMPTY_FILTERS, showSomeday: true }),
+    ).toHaveLength(1);
+  });
+
+  it("태그 필터로 someday를 직접 고르면 기본 제외를 무시한다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: ["someday"] })];
+    expect(
+      applyTaskFilters(tasks, { ...EMPTY_FILTERS, tag: "someday" }),
+    ).toHaveLength(1);
+  });
+
+  it("someday가 아닌 예정 없음 태스크는 그대로 보인다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: [] })];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(1);
   });
 });
 

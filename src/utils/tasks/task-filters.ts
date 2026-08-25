@@ -3,6 +3,8 @@ import type { TaskEntry } from "../../ipc/types";
 
 export interface TaskFilters {
   priority: TaskPriorityFilter;
+  /** §312 "예정 없음"의 someday를 보일지. 기본 false — 그래야 그 버킷이 0이 될 수 있는 큐가 된다. */
+  showSomeday: boolean;
   state: TaskStateFilter;
   /** 정확 일치. "" = 전체 */
   tag: string;
@@ -15,6 +17,7 @@ export type TaskStateFilter = "all" | "done" | "todo";
 
 export const EMPTY_FILTERS: TaskFilters = {
   priority: "all",
+  showSomeday: false,
   state: "all",
   tag: "",
   text: "",
@@ -53,6 +56,7 @@ export function applyTaskFilters(
     // 접두 일치가 아니라 정확 일치 — #work가 #workout을 끌고 오면 안 된다.
     if (f.tag && !task.tags.includes(f.tag)) return false;
     if (q && !task.text.toLowerCase().includes(q)) return false;
+    if (!matchesSomeday(task, f)) return false;
     return true;
   });
 }
@@ -82,4 +86,18 @@ function matchesPriority(task: TaskEntry, band: TaskPriorityFilter): boolean {
   if (band === "high") return task.priority >= 1;
   if (band === "low") return task.priority <= -1;
   return task.priority === 0;
+}
+
+/**
+ * §312 `#someday`는 새 문법이 아니다 — 태그는 이미 인덱싱되므로 "예정 없음"에서
+ * 기본 제외하기만 하면 GTD의 someday/maybe 리스트가 생긴다. 이 제외가 있어야
+ * "예정 없음"이 실제로 0이 될 수 있는 큐가 된다.
+ */
+function matchesSomeday(task: TaskEntry, f: TaskFilters): boolean {
+  if (f.showSomeday) return true;
+  if (!task.tags.includes("someday")) return true;
+  // 사용자가 태그 필터로 someday를 직접 골랐다면 그건 명시적 요청이다.
+  if (f.tag === "someday") return true;
+  // 날짜를 준 순간 someday가 아니다 — 예정 없음 버킷에서만 감춘다.
+  return Boolean(task.due ?? task.scheduled);
 }

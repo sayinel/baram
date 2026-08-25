@@ -60,6 +60,20 @@ export function overdueDays(task: TaskEntry, now: Date): number {
   return diff > 0 ? Math.round(diff / MS_PER_DAY) : 0;
 }
 
+/**
+ * §312 방치 감지 — `created`(➕)로부터 지난 일수. 없거나 형식이 틀리면 0.
+ *
+ * 파일 mtime을 쓰지 않는 이유: Rust `TaskEntry`에 없고, 넣으면 스캔마다 파일당
+ * `metadata()` 호출이 늘어 10k 파일 예산(376ms)을 갉아먹는다. 캡처 경로가
+ * `➕`를 붙이므로 이 배지가 겨냥하는 수집함 항목에는 정확히 생긴다.
+ */
+export function taskAgeDays(task: TaskEntry, now: Date): number {
+  const created = parseLocalDate(task.created);
+  if (!created) return 0;
+  const diff = startOfDay(now).getTime() - created.getTime();
+  return diff > 0 ? Math.round(diff / MS_PER_DAY) : 0;
+}
+
 function compare(a: TaskEntry, b: TaskEntry): number {
   const da = effectiveDate(a);
   const db = effectiveDate(b);
