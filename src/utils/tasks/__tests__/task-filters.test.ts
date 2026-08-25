@@ -176,6 +176,41 @@ describe("#someday 기본 제외", () => {
     const tasks = [task({ due: null, scheduled: null, tags: [] })];
     expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(1);
   });
+
+  it("완료된 someday는 감추지 않는다 — Done 버킷까지 지워지면 안 된다", () => {
+    const tasks = [
+      task({
+        due: null,
+        scheduled: null,
+        state: "done",
+        tags: ["someday"],
+      }),
+    ];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(1);
+  });
+
+  it("완료되지 않은 예정 없음 someday는 여전히 감춘다", () => {
+    const tasks = [
+      task({ due: null, scheduled: null, state: "todo", tags: ["someday"] }),
+    ];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(0);
+  });
+
+  it("다른 태그로 필터해도 someday를 함께 가진 태스크는 보인다", () => {
+    const tasks = [
+      task({ due: null, scheduled: null, tags: ["someday", "work"] }),
+    ];
+    expect(
+      applyTaskFilters(tasks, { ...EMPTY_FILTERS, tag: "work" }),
+    ).toHaveLength(1);
+  });
+
+  it("태그 필터가 없으면 someday+work 태스크도 그대로 감춘다", () => {
+    const tasks = [
+      task({ due: null, scheduled: null, tags: ["someday", "work"] }),
+    ];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(0);
+  });
 });
 
 describe("priorityBadge", () => {

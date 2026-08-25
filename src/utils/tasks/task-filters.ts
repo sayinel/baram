@@ -92,12 +92,28 @@ function matchesPriority(task: TaskEntry, band: TaskPriorityFilter): boolean {
  * §312 `#someday`는 새 문법이 아니다 — 태그는 이미 인덱싱되므로 "예정 없음"에서
  * 기본 제외하기만 하면 GTD의 someday/maybe 리스트가 생긴다. 이 제외가 있어야
  * "예정 없음"이 실제로 0이 될 수 있는 큐가 된다.
+ *
+ * 이 필터는 버킷 분류(task-buckets.ts) 이전에 돌아가므로 "예정 없음 버킷에
+ * 있다"를 직접 볼 수 없다 — 아래 각 early return은 그 결여를 메우는 대리
+ * 판정이며, 대리가 실제와 어긋나는 지점을 주석으로 남긴다.
  */
 function matchesSomeday(task: TaskEntry, f: TaskFilters): boolean {
+  // 토글이 켜지면 모두 보인다 — 정리 중 보류한 것들을 훑는 경로.
   if (f.showSomeday) return true;
+  // someday 태그가 없으면 애초에 이 규칙과 무관하다.
   if (!task.tags.includes("someday")) return true;
-  // 사용자가 태그 필터로 someday를 직접 골랐다면 그건 명시적 요청이다.
-  if (f.tag === "someday") return true;
-  // 날짜를 준 순간 someday가 아니다 — 예정 없음 버킷에서만 감춘다.
+  // 완료된 태스크는 날짜 유무와 무관하게 "예정 없음"이 아니라 Done 버킷으로
+  // 간다(classifyTask가 state==="done"을 date 체크보다 먼저 본다) — 아래
+  // "날짜 없음 = 예정 없음" 대리 판정이 done에는 적용되지 않는다. 여기서
+  // 먼저 걸러내지 않으면 완료된 someday 캡처가 Done 버킷에서도 사라져,
+  // §315의 "이번 주 완료" 회고에서도 빠지게 된다.
+  if (task.state === "done") return true;
+  // 태그 필터를 걸었다면 사용자가 명시적으로 그 집합을 보겠다고 한 것이다
+  // — someday만 특별 취급하면 다른 태그(#work 등)와 someday를 함께 단
+  // 태스크가 그 필터 아래에서도 조용히 빠진다. "필터 없음"의 기본 제외를
+  // 지키는 게 목적이므로, 필터가 있으면(어떤 태그든) 전부 보인다.
+  if (f.tag) return true;
+  // 날짜를 준 순간 someday가 아니다 — 여기 도달했다면 열린 태스크이고 태그
+  // 필터도 없으므로, "날짜 없음"이 "예정 없음 버킷"의 정확한 대리가 된다.
   return Boolean(task.due ?? task.scheduled);
 }
