@@ -11,7 +11,15 @@ import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { resolveTaskWriteTarget } from "../../utils/tasks/apply-task-write";
-import { buildCaptureLine, captureTask } from "../task-capture";
+import { buildCaptureLine, CaptureError, captureTask } from "../task-capture";
+
+/** 코드까지 확인한다 — UI가 원인별 문구를 고르는 근거가 그 코드다. */
+async function rejectsWithCode(p: Promise<unknown>, code: string) {
+  await expect(p).rejects.toBeInstanceOf(CaptureError);
+  await p.catch((err: unknown) => {
+    expect((err as CaptureError).code).toBe(code);
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -81,17 +89,17 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     expect(raw).toBe("- [ ] 우유 사기 ➕2026-08-24");
   });
 
-  it("설정값이 이미 절대 경로면 rootPath를 덧붙이지 않는다", async () => {
+  it("볼트 안의 하위 디렉터리 경로도 그대로 쓴다", async () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "a",
-      captureFile: "/elsewhere/In.md",
+      captureFile: "inbox/In.md",
       editor: null,
       rootPath: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/elsewhere/In.md",
+      "/v/inbox/In.md",
       expect.any(String),
     );
   });
@@ -163,12 +171,17 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     });
     useEditorStore.setState({
       activeTabId: "t1",
+      contentRefreshKey: 0,
+      // ‼️ `isDirty: false`로 시작하는 것이 이 픽스처의 요점이다. 라우팅은 목한
+      // `resolveTaskWriteTarget`이 정하므로 이 값은 라우팅에 영향을 주지 않고,
+      // 아래 단언이 `markDirty` 호출 **자체**를 검증하게 된다 — `true`로 시작하면
+      // `markDirty`를 지워도 그 단언이 통과한다(리뷰 Minor 3).
       tabs: [
         {
           contextId: "c",
           filePath: "/v/Inbox.md",
           id: "t1",
-          isDirty: true,
+          isDirty: false,
           isPinned: false,
           title: "Inbox",
         },
@@ -190,7 +203,30 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     expect(useFileStore.getState().openFiles.get("/v/Inbox.md")).toBe(
       "- [ ] 먼저\n- [ ] 나중 ➕2026-08-24\n",
     );
+  });
+
+  it("탭을 더티로 표시한다 — 이게 없으면 붙인 줄이 저장되지 않는다", async () => {
+    const editor = { state: { doc: {} } } as never;
+    await captureTask({
+      body: "나중",
+      captureFile: "Inbox.md",
+      editor,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
     expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
+  });
+
+  it("내용 리프레시를 요청한다 — 이게 없으면 붙인 줄이 화면에 안 보인다", async () => {
+    const editor = { state: { doc: {} } } as never;
+    await captureTask({
+      body: "나중",
+      captureFile: "Inbox.md",
+      editor,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
+    expect(useEditorStore.getState().contentRefreshKey).toBe(1);
   });
 
   it("끝 개행이 없어도 마지막 줄에 이어붙이지 않는다", async () => {
@@ -206,5 +242,206 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     expect(useFileStore.getState().openFiles.get("/v/Inbox.md")).toBe(
       "- [ ] 먼저\n- [ ] 나중 ➕2026-08-24\n",
     );
+  });
+});
+
+// §312 리뷰 Major 3 — `resolveTaskWriteTarget`은 "활성 + 더티"가 아닌 모든 탭을
+// 디스크로 보낸다. 배경 더티 탭도 그렇고, 그 탭으로 돌아오면 캐시된 EditorState가
+// 복원돼 append된 줄이 사라진다. 잃는 것이 체크 토글이 아니라 사용자의 문장이므로
+// 쓰지 않고 실패한다.
+describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", () => {
+  function openTab(isDirty: boolean) {
+    useEditorStore.setState({
+      activeTabId: "other",
+      tabs: [
+        {
+          contextId: "c",
+          filePath: "/v/Inbox.md",
+          id: "inbox",
+          isDirty,
+          isPinned: false,
+          title: "Inbox",
+        },
+      ],
+    });
+  }
+
+  it("디스크에 쓰지 않고 dirtyTab으로 거절한다", async () => {
+    openTab(true);
+    await rejectsWithCode(
+      captureTask({
+        body: "은행 연락",
+        captureFile: "Inbox.md",
+        editor: null,
+        rootPath: "/v",
+        today: "2026-08-24",
+      }),
+      "dirtyTab",
+    );
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  it("그 탭이 깨끗하면 평소대로 append한다", async () => {
+    openTab(false);
+    vi.mocked(appendTaskLine).mockResolvedValue("x");
+    await captureTask({
+      body: "은행 연락",
+      captureFile: "Inbox.md",
+      editor: null,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
+    expect(appendTaskLine).toHaveBeenCalledWith(
+      "/v/Inbox.md",
+      expect.any(String),
+    );
+  });
+});
+
+// §312 리뷰 Major 5 — 아래 값들은 append 자체는 성공하지만 그 태스크가 어느
+// 버킷에도 영영 나타나지 않는다. `get_vault_tasks`는 볼트만 걷고, 워처는 감시
+// 루트 아래 마크다운 이벤트만 듣기 때문이다.
+describe("captureTask — 인덱싱될 수 없는 수집함 경로", () => {
+  async function capture(captureFile: string) {
+    return captureTask({
+      body: "a",
+      captureFile,
+      editor: null,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
+  }
+
+  it("볼트 밖 절대 경로를 거절한다", async () => {
+    await rejectsWithCode(capture("/elsewhere/In.md"), "outsideVault");
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  it("`..`로 볼트를 벗어나는 값을 거절한다", async () => {
+    await rejectsWithCode(capture("../In.md"), "outsideVault");
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  it("볼트 루트 자신을 거절한다", async () => {
+    await rejectsWithCode(capture("/v"), "outsideVault");
+  });
+
+  it("마크다운이 아닌 이름을 거절한다", async () => {
+    await rejectsWithCode(capture("Inbox.txt"), "notMarkdown");
+    await rejectsWithCode(capture("Inbox"), "notMarkdown");
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  it("디렉터리로 적은 값을 거절한다 — 그대로 두면 `notes`라는 이름의 파일이 생긴다", async () => {
+    await rejectsWithCode(capture("notes/"), "notMarkdown");
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  it("`.markdown`은 받는다 — 워처와 전체 스캔이 둘 다 걷는 확장자다", async () => {
+    vi.mocked(appendTaskLine).mockResolvedValue("x");
+    await capture("Inbox.markdown");
+    expect(appendTaskLine).toHaveBeenCalledWith(
+      "/v/Inbox.markdown",
+      expect.any(String),
+    );
+  });
+});
+
+// §307D — 에디터의 워드 트리거(`task-field-tokens.ts`)를 캡처도 그대로 받는다.
+// 같은 표기가 캡처에서만 문자로 남으면 사용자는 언어를 두 개 배우게 된다.
+describe("buildCaptureLine — 날짜·우선순위 워드 트리거", () => {
+  it("due:m을 내일의 📅로 바꾼다", () => {
+    expect(buildCaptureLine("장보기 due:m", "2026-08-24")).toBe(
+      "- [ ] 장보기 📅2026-08-25 ➕2026-08-24",
+    );
+  });
+
+  it("sched:·start:도 각자의 이모지로 바꾼다", () => {
+    expect(buildCaptureLine("작업 sched:t start:+2", "2026-08-24")).toBe(
+      "- [ ] 작업 🛫2026-08-26 ⏳2026-08-24 ➕2026-08-24",
+    );
+  });
+
+  it("!N과 prio:N을 우선순위 마커로 바꾼다", () => {
+    expect(buildCaptureLine("보고서 !1 due:2026-09-01", "2026-08-24")).toBe(
+      "- [ ] 보고서 🔺 📅2026-09-01 ➕2026-08-24",
+    );
+    expect(buildCaptureLine("메모 prio:5", "2026-08-24")).toBe(
+      "- [ ] 메모 ⏬ ➕2026-08-24",
+    );
+  });
+
+  it("prio:3(보통)은 트리거만 지우고 마커를 남기지 않는다", () => {
+    expect(buildCaptureLine("보통 prio:3", "2026-08-24")).toBe(
+      "- [ ] 보통 ➕2026-08-24",
+    );
+  });
+
+  it("해석할 수 없는 값은 그대로 둔다 — 사용자가 친 글자를 지우지 않는다", () => {
+    expect(buildCaptureLine("장보기 due:내일", "2026-08-24")).toBe(
+      "- [ ] 장보기 due:내일 ➕2026-08-24",
+    );
+  });
+
+  it("단어 중간의 트리거는 잡지 않는다 — overdue:는 due:가 아니다", () => {
+    expect(buildCaptureLine("overdue:8/30 확인", "2026-08-24")).toBe(
+      "- [ ] overdue:8/30 확인 ➕2026-08-24",
+    );
+  });
+
+  it("!123처럼 뒤가 이어지는 표기는 우선순위가 아니다", () => {
+    expect(buildCaptureLine("이슈 !123", "2026-08-24")).toBe(
+      "- [ ] 이슈 !123 ➕2026-08-24",
+    );
+  });
+});
+
+// §312 리뷰 Major 1 — 다이얼로그의 태그 칸은 `#someday`까지 자동완성해 준다.
+// 그 값이 줄에 닿지 않으면 이 슬라이스가 만든 정리 어휘가 캡처 지점에서 끊긴다.
+describe("buildCaptureLine — 태그", () => {
+  it("태그를 인라인 #토큰으로 접어 넣는다", () => {
+    expect(buildCaptureLine("Rust 배우기", "2026-08-24", ["someday"])).toBe(
+      "- [ ] Rust 배우기 #someday ➕2026-08-24",
+    );
+  });
+
+  it("입력의 앞 #과 빈 값을 정리한다", () => {
+    expect(buildCaptureLine("정리", "2026-08-24", ["#work", "", " "])).toBe(
+      "- [ ] 정리 #work ➕2026-08-24",
+    );
+  });
+
+  it("중복과 본문에 이미 있는 태그는 두 번 적지 않는다", () => {
+    expect(
+      buildCaptureLine("공부 #someday", "2026-08-24", ["someday", "someday"]),
+    ).toBe("- [ ] 공부 #someday ➕2026-08-24");
+  });
+});
+
+// §312 리뷰 Minor 1·2 — 둘 다 아무것도 실패하지 않고 조용히 잘못되는 종류다.
+describe("buildCaptureLine — 정규화 뒤에야 드러나는 것들", () => {
+  it("본문의 맨 ➕를 지운다 — 파서는 첫 ➕만 보고 재시도하지 않는다", () => {
+    expect(buildCaptureLine("add ➕ sign", "2026-08-25")).toBe(
+      "- [ ] add sign ➕2026-08-25",
+    );
+  });
+
+  it("정규화 후 본문이 비면 null — 지울 수 없는 빈 행을 만들지 않는다", () => {
+    expect(buildCaptureLine("- [ ] ➕2026-01-01", "2026-08-24")).toBeNull();
+    expect(buildCaptureLine("due:m", "2026-08-24")).toBeNull();
+  });
+
+  it("captureTask는 그 본문을 emptyBody로 거절한다", async () => {
+    await rejectsWithCode(
+      captureTask({
+        body: "➕2026-01-01",
+        captureFile: "Inbox.md",
+        editor: null,
+        rootPath: "/v",
+        today: "2026-08-24",
+      }),
+      "emptyBody",
+    );
+    expect(appendTaskLine).not.toHaveBeenCalled();
   });
 });
