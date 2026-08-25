@@ -46,6 +46,7 @@ export type CoreCommand =
   | { type: "deleteVisual" }
   | { type: "enterVisual" }
   | { type: "leaveVisual" }
+  | { type: "toggleTask" }
   | { type: "yankVisual" };
 
 /** f/F = to the char, t/T = till just before it; capitals go backward. */

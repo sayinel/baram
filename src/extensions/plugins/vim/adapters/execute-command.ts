@@ -163,6 +163,26 @@ export function executeCoreCommand(
       // Owned by the plugin's selection path (z. moves the cursor, both
       // variants scroll the view) — never reaches the executor.
       return {};
+    case "toggleTask": {
+      // §298 checklist toggle — nearest ancestor taskItem of the vim head
+      // (same ancestor walk as the checkbox mousedown in task-item.ts, so
+      // nested lists flip the INNERMOST item). Off a task line the key is
+      // consumed like vim, silently.
+      const $head = state.doc.resolve(head);
+      for (let d = $head.depth; d > 0; d--) {
+        const node = $head.node(d);
+        if (node.type.name === "taskItem") {
+          view.dispatch(
+            state.tr.setNodeMarkup($head.before(d), undefined, {
+              ...node.attrs,
+              checked: !node.attrs.checked,
+            }),
+          );
+          return { applied: true };
+        }
+      }
+      return { silent: true };
+    }
     case "undo":
       runHistory(view, undo, command.count);
       return {};

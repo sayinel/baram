@@ -170,6 +170,12 @@ function normalKey(
   const { count, next } = takeCount(state);
 
   switch (token.key) {
+    // §298 checklist toggle — deliberately NOT stock vim (which moves right
+    // on Space): normal mode had no way to complete a task item, and Space
+    // was a dead key (the default below swallows unmapped printables). The
+    // pending count is dropped, like the search-line open.
+    case " ":
+      return emit(next, { type: "toggleTask" });
     case "/":
       // A count before `/` multiplies the JUMP in vim; nothing here takes
       // it — drop it like `:` does rather than half-apply it.
