@@ -59,7 +59,12 @@ export function registerCodeBlockEditableSync(
 const vimRegistries = new WeakMap<PMView, Set<EditableSync>>();
 const lastVimBroadcast = new WeakMap<PMView, boolean>();
 
-type EntryHandoff = (anchor: number, head: number) => void;
+/** Returns whether focus was delivered SYNCHRONOUSLY. A cold island (CM not
+ *  yet mounted) memos the selection for its deferred init and returns false —
+ *  the caller must keep its own focus fallback so keys stay alive until the
+ *  island claims focus on mount (adversarial review round 2, cold-island
+ *  false success). */
+type EntryHandoff = (anchor: number, head: number) => boolean;
 
 interface EntryRegistrant {
   enter: EntryHandoff;
@@ -109,8 +114,9 @@ const entryRegistries = new WeakMap<PMView, Set<EntryRegistrant>>();
 
 /**
  * Invoke the entry handoff of the code block whose node starts at
- * `blockPos`. Returns whether a live registrant answered — false leaves the
- * caller's fallback (plain PM focus) in charge.
+ * `blockPos`. Returns whether the island took focus SYNCHRONOUSLY — false
+ * (no registrant, or a cold island that only memoed the selection) leaves
+ * the caller's fallback (plain PM focus) in charge.
  */
 export function enterCodeBlockAt(
   view: PMView,
@@ -122,8 +128,7 @@ export function enterCodeBlockAt(
   if (!set) return false;
   for (const registrant of set) {
     if (registrant.getPos() === blockPos) {
-      registrant.enter(localAnchor, localHead);
-      return true;
+      return registrant.enter(localAnchor, localHead);
     }
   }
   return false;

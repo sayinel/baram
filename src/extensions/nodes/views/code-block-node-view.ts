@@ -221,16 +221,23 @@ export class CodeBlockNodeView implements NodeView {
         // Dedup: when the gate DID pass, PM's own descent already delivered
         // this exact selection inside the dispatch — and a second call is
         // not a no-op (CM re-dispatches a selectionSet update). Skip only
-        // on an exact match with focus already held.
+        // on an exact match with focus already held. Known limitation: an
+        // equal-valued LATER re-entry is indistinguishable and also skips
+        // CM-vim's selectionSet bookkeeping (review round 2, minor).
         const cm = this.cmView;
         if (
           cm?.hasFocus &&
           cm.state.selection.main.anchor === anchor &&
           cm.state.selection.main.head === head
         ) {
-          return;
+          return true;
         }
         this.setSelection(anchor, head);
+        // A live CM was focused synchronously; a cold one only memoed the
+        // selection for its deferred init — report false so the caller
+        // keeps its focus fallback alive until the island claims focus on
+        // mount (pendingSelection consumption).
+        return this.cmView !== null;
       },
     );
 
@@ -629,16 +636,20 @@ export class CodeBlockNodeView implements NodeView {
       const stillHere =
         typeof pos === "number" && from > pos && to < pos + this.node.nodeSize;
       if (stillHere) {
-        // Clamp like pendingFocusRestore above: the memo predates the async
-        // init, and the block's text can have shrunk meanwhile — raw
-        // offsets past doc.length would make CM throw.
+        // The memo predates the async init — an edit landing meanwhile
+        // would leave it in-range but STALE. `stillHere` just proved the
+        // CURRENT PM selection lives inside this block, so derive the
+        // local offsets from it instead of the memo, clamped like
+        // pendingFocusRestore above (review round 2).
         const max = this.cmView.state.doc.length;
+        const sel = this.view.state.selection;
+        const base = (pos as number) + 1;
         this.cmView.focus();
         this.updating = true;
         this.cmView.dispatch({
           selection: {
-            anchor: Math.min(this.pendingSelection.anchor, max),
-            head: Math.min(this.pendingSelection.head, max),
+            anchor: Math.min(Math.max(sel.anchor - base, 0), max),
+            head: Math.min(Math.max(sel.head - base, 0), max),
           },
         });
         this.updating = false;

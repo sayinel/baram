@@ -2,11 +2,13 @@
 // EXPLICITLY.
 //
 // prosemirror-view's selectionToDOM() is gated by editorOwnsSelection(view):
-// on a NON-editable view (vim normal mode) the gate requires the DOM
-// selection to sit inside view.dom. Vim's phantom-highlight defense wipes
-// DOM ranges after every normal-mode cursor write, so the gate is usually
-// CLOSED and PM never descends into NodeView.setSelection — the one hook
-// that focuses CodeMirror and carries the cursor in. Device signature:
+// on a NON-editable view (vim normal mode) the gate requires a DOM selection
+// fully inside view.dom plus an activeElement containing view.dom. Vim modal
+// routinely breaks those preconditions (ranged selections are wiped by the
+// phantom-highlight defense; a source-mode roundtrip relocates the DOM
+// selection), so PM cannot be relied on to descend into
+// NodeView.setSelection — the one hook that focuses CodeMirror and carries
+// the cursor in. Device signature:
 // `dispatchCursor parent=codeBlock` with NO setSelection, invisible landing,
 // next j skips past the block (reviewer: "들어갈 때도 있고 안 들어가질 때도
 // 있음" — the flake is whether a STALE DOM range happens to sit inside
@@ -17,6 +19,14 @@ import type { VimPluginState } from "../vim-plugin";
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The cold-island protocol needs to observe the callers' focus FALLBACK:
+// a spy stands in for focusEditorView (a focus nicety that is a no-op on
+// jsdom's detached DOM anyway).
+const focusEditorViewSpy = vi.hoisted(() => vi.fn());
+vi.mock("../../../../utils/editor/focus-editor-view", () => ({
+  focusEditorView: focusEditorViewSpy,
+}));
 
 import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
 import { createBaramExtensions } from "../../../index";
@@ -101,8 +111,9 @@ describe("vim code block entry handoff (§298)", () => {
       editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)),
     );
 
-    // The wiped-range state every normal-mode cursor write leaves behind —
-    // exactly what closes PM's editorOwnsSelection gate.
+    // An empty DOM selection — one of the gate-closing states vim modal
+    // routinely produces (production wipes RANGED selections; a roundtrip
+    // relocates the selection entirely).
     window.getSelection()?.removeAllRanges();
 
     const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
@@ -119,7 +130,7 @@ describe("vim code block entry handoff (§298)", () => {
     expect(handoff).toHaveBeenCalledWith(local, local);
   });
 
-  it("search submit landing inside a code block calls the handoff (not focusEditorView)", () => {
+  it("search submit into a COLD code block: handoff memos AND the focus fallback stays alive", () => {
     const editor = createEditor(
       "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",
     );
@@ -144,6 +155,7 @@ describe("vim code block entry handoff (§298)", () => {
 
     window.getSelection()?.removeAllRanges();
     const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
+    focusEditorViewSpy.mockClear();
     submitSearchLine(editor);
 
     const $head = editor.state.selection.$head;
@@ -152,6 +164,11 @@ describe("vim code block entry handoff (§298)", () => {
       $head.parentOffset,
       $head.parentOffset,
     );
+    // The island is COLD here (lazy CM never mounted in jsdom): the enter
+    // must report false so the caller keeps PM focused until the island
+    // claims focus on mount — a true from a cold island would strand the
+    // keyboard (review round 2, major).
+    expect(focusEditorViewSpy).toHaveBeenCalled();
   });
 
   it("entry registry: per-view isolation, detached getPos, unregister", () => {
@@ -163,6 +180,7 @@ describe("vim code block entry handoff (§298)", () => {
       () => 5,
       (a, h) => {
         calls.push(`A:${a},${h}`);
+        return true;
       },
     );
     registerCodeBlockEntry(
@@ -170,6 +188,7 @@ describe("vim code block entry handoff (§298)", () => {
       () => 5,
       () => {
         calls.push("B");
+        return true;
       },
     );
     // A DETACHED NodeView's getPos() returns undefined (PM contract) — it
@@ -179,6 +198,7 @@ describe("vim code block entry handoff (§298)", () => {
       () => undefined,
       () => {
         calls.push("detached");
+        return true;
       },
     );
     expect(enterCodeBlockAt(viewA, 5, 1, 1)).toBe(true);
@@ -195,6 +215,7 @@ describe("vim code block entry handoff (§298)", () => {
       () => 5,
       () => {
         calls.push("old");
+        return true;
       },
     );
     offOld(); // NodeView.destroy() of the replaced instance
@@ -203,10 +224,21 @@ describe("vim code block entry handoff (§298)", () => {
       () => 5,
       () => {
         calls.push("new");
+        return true;
       },
     );
     expect(enterCodeBlockAt(view, 5, 0, 0)).toBe(true);
     expect(calls).toEqual(["new"]);
+  });
+
+  it("entry registry: a COLD registrant's false propagates to the caller", () => {
+    const view = {} as never;
+    registerCodeBlockEntry(
+      view,
+      () => 7,
+      () => false,
+    );
+    expect(enterCodeBlockAt(view, 7, 0, 0)).toBe(false);
   });
 
   it("CONTROL: the same j with a DOM selection parked inside view.dom still lands in the block", () => {
