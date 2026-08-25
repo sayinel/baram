@@ -11,23 +11,25 @@
 // 원문은 `display: none`이라 스크린리더에서 메타데이터가 **양쪽 다** 사라졌고,
 // 구조만 보는 테스트는 전부 초록이었다.
 
+import type { Node as PMNode } from "@tiptap/pm/model";
+
 import { Editor } from "@tiptap/core";
 import { Schema } from "@tiptap/pm/model";
 import { EditorState, Plugin, Selection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useSettingsStore } from "../../stores/settings/store";
 import { createBaramExtensions } from "../index";
+import { renderTaskChip } from "../plugins/task-chip-label";
 import {
   buildTaskFieldDecorations,
   createTaskFieldChipsPlugin,
   RAW_CLASS,
   RAW_HIDE_CLASS,
-  renderTaskChip,
 } from "../plugins/task-field-chips";
 
 // 렌더하려면 `toDOM`이 있어야 한다 — 위치 테스트의 스키마에는 없다.
@@ -239,8 +241,67 @@ describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
     const el = renderTaskChip(
       { emoji: "⏫", from: 0, kind: "priority", to: 1, value: "⏫" },
       false,
+      "en",
     );
     expect([...el.classList]).toEqual(["task-chip"]);
+  });
+});
+
+describe("§308 칩 대비 — 칩은 이 메타데이터의 유일한 시각 표현이다", () => {
+  // ‼️ 이 테스트를 지우거나 완화하기 전에 읽을 것.
+  //
+  // 원문(`.task-field-raw`)은 `visually-hidden`이고 칩은 `aria-hidden="true"`다.
+  // 두 사실을 합치면 **칩이 이 메타데이터의 유일한 시각 표현**이라는 뜻이 된다:
+  // 스크린리더는 원문으로 듣고, 눈으로 읽는 사람에게는 칩 말고 되짚을 것이 화면에
+  // 없다. 그래서 대비를 낮추는 것은 심미 조정이 아니라 **스크린리더를 쓰지 않는
+  // 저시력 사용자에게서 이 정보를 통째로 가져가는 일**이다 — 리뷰가 닫은 "칩과
+  // 원문을 동시에 지우지 말라"(감추기를 `display: none`으로 되돌리는 실패 양식)의
+  // 시각 버전이다. 한쪽 경로만 남겨 두는 설계라 남은 그 경로는 더 튼튼해야 한다.
+  //
+  // 그리고 `--color-text-muted`는 `--color-text-disabled`의 **별칭**이다
+  // (`src/styles/generated/semantic-light.css`) — 살아 있는 메타데이터에 disabled
+  // 색을 주는 셈이기도 하다.
+  //
+  // 왜 토큰 이름을 보는 얕은 테스트인가: jsdom에는 색 계산도 레이아웃도 없어 실제
+  // 대비를 여기서 잴 수 없다. 그런데 이 결함이 들어온 표면이 정확히 **토큰 한 개의
+  // 교체**였다(`secondary` → `muted`, 계획서의 지시였고 그것이 틀렸다). 재현 가능한
+  // 회귀 표면을 그대로 못박는다.
+  //
+  // 실측(4.5:1 = 13px 텍스트의 AA 기준):
+  //   라이트 에디터 #fff    muted 2.54:1 ❌ / secondary 4.83:1 ✅
+  //   다크  에디터 #1a1a2e  muted 3.58:1 ❌ / secondary 6.65:1 ✅
+  //   라이트 패널  #f1f3f5  muted 2.28:1 ❌ / secondary 4.35:1 (개선하되 여전히 AA 아래)
+  //   다크  패널  #0f172a  muted 3.75:1 ❌ / secondary 6.96:1 ✅
+
+  /** disabled 계층 토큰 — `--color-text-muted`는 `--color-text-disabled`의 별칭이다. */
+  const DISABLED_TIER = /--color-text-(muted|disabled)/;
+
+  /** 셀렉터 규칙의 `color:` 선언 값. `background-color:` 같은 접미 속성은 걸리지 않는다. */
+  function colourDecl(selector: string): string {
+    const body = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`).exec(
+      tasksCss,
+    )?.[1];
+    expect(body, `no ${selector} rule in tasks.css`).toBeDefined();
+    const decl = /(?:^|;)\s*color:\s*([^;]+)/.exec(body ?? "")?.[1];
+    expect(decl, `no color declaration on ${selector}`).toBeDefined();
+    return (decl ?? "").trim();
+  }
+
+  it("에디터 칩의 기본색이 disabled 계층 토큰이 아니다", () => {
+    expect(colourDecl(".task-chip")).not.toMatch(DISABLED_TIER);
+    // 값까지 못박는다 — 음수 단언만으로는 리터럴 `#9ca3af`로 같은 결함이 다시 들어온다.
+    expect(colourDecl(".task-chip")).toBe("var(--color-text-secondary)");
+  });
+
+  it("아젠다 배지도 같은 계층을 쓴다 — 같은 데이터의 다른 표면이다", () => {
+    // `.task-row-priority`도 이 커밋에서 함께 내려갔다: 방향 C 이전에는
+    // `.task-chip`을 공유해 secondary를 탔는데, 공유를 끊으면서 muted가 직접 적혔다.
+    // 배지 자신에는 `aria-label`이 있어 보조기술 경로는 살아 있지만(칩과 다른 점),
+    // 그 행에서 **우선순위를 보이는 것은 이 배지뿐**이라 시각 경로의 논리는 같다.
+    expect(colourDecl(".task-row-priority")).not.toMatch(DISABLED_TIER);
+    expect(colourDecl(".task-row-priority")).toBe(
+      "var(--color-text-secondary)",
+    );
   });
 });
 
@@ -249,9 +310,11 @@ describe("§308 방향 C — 아젠다 배지는 더 이상 .task-chip을 공유
   // 방향 C는 알약 자체를 없애므로 그 공유가 끝난다 — `TaskBucketList`는 이제
   // `task-row-priority` 하나만 붙이고, 조용한 타이포그래피를 스스로 갖는다.
   it(".task-row-priority가 .task-chip과 무관하게 자신의 색을 직접 선언한다", () => {
+    // 여기가 지키는 것은 "공유가 끝나도 배지가 색을 잃지 않는다"이고, 그 색이
+    // 어느 계층이어야 하는지는 위의 "§308 칩 대비" 스위트가 따로 지킨다.
     const row = /\.task-row-priority\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
     expect(row, "no .task-row-priority rule").toBeDefined();
-    expect(row).toMatch(/color:\s*var\(--color-text-muted\)/);
+    expect(row).toMatch(/color:\s*var\(--color-text-secondary\)/);
   });
 
   it(".task-chip의 `vertical-align`은 에디터 자신의 인라인 흐름을 위한 것으로 남는다", () => {
@@ -273,6 +336,7 @@ describe("§308 칩의 접근성 계약", () => {
     const el = renderTaskChip(
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
       false,
+      "en",
     );
     expect(el.getAttribute("aria-hidden")).toBe("true");
   });
@@ -387,5 +451,168 @@ describe("§308 로케일 구독 — destroy 시 실제로 구독이 끊긴다 (
     // EditorView에 raw `dispatch`를 시도한다 — `docView`가 null이라 이 지점에서
     // 실제로 예외가 난다(prosemirror-view `updateStateInner` → `docView.update`).
     expect(() => useSettingsStore.setState({ locale: "ko" })).not.toThrow();
+  });
+});
+
+// ── 위젯 key의 무효화 범위 (리뷰 Major 2) ────────────────────────────────
+//
+// `WidgetType.eq`는 `spec.key`가 같으면 `toDOM` 비교도 `compareObjs(spec)`도
+// **도달하지 않고** 곧바로 기존 DOM을 재사용한다(prosemirror-view). 그러니 key는
+// "이 칩이 무엇을 보이는가"를 결정하는 모든 입력을 담아야 한다. `from`·`kind`·
+// `locale`만 담고 있던 동안 **값**과 **기한 초과 여부**가 빠져 있었다.
+//
+// 두 테스트 모두 선택을 taskItem **밖**에 둔다 — 안에 있으면 그 항목의
+// 데코레이션이 통째로 사라져 재사용 여부를 볼 수 없다.
+
+function chip(host: HTMLElement): HTMLElement | null {
+  return host.querySelector<HTMLElement>(".task-chip");
+}
+
+/** 첫 텍스트 노드에서 `needle`이 시작하는 **절대** 위치. */
+function posOfText(doc: PMNode, needle: string): number {
+  let found = -1;
+  doc.descendants((node, pos) => {
+    if (found >= 0) return false;
+    const at = node.isText ? (node.text ?? "").indexOf(needle) : -1;
+    if (at >= 0) found = pos + at;
+    return found < 0;
+  });
+  expect(found, `"${needle}" not in doc`).toBeGreaterThanOrEqual(0);
+  return found;
+}
+
+/** 실제 플러그인을 raw `EditorView`에 꽂는다 — Tiptap Editor를 거치지 않는다. */
+function rawView(md: string): { host: HTMLElement; view: EditorView } {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const doc = markdownToProsemirror(md, schema);
+  return {
+    host,
+    view: new EditorView(host, {
+      state: EditorState.create({
+        doc,
+        plugins: [createTaskFieldChipsPlugin()],
+        schema,
+        // 문서 끝의 문단 = taskItem 밖. 여기 커서를 두어야 칩이 살아 있다.
+        selection: Selection.atEnd(doc),
+      }),
+    }),
+  };
+}
+
+describe("§308 위젯 key — 값이 바뀌면 칩도 바뀐다 (리뷰 Major 2)", () => {
+  let view: EditorView | null = null;
+
+  afterEach(() => {
+    view?.destroy();
+    view = null;
+  });
+
+  it("선택을 태스크 밖에 둔 채 같은 길이로 날짜를 바꾸면 칩이 새 값을 보인다", () => {
+    // ‼️ 도달 경로는 실재한다: `find-replace.ts`의 `dispatchReplaceAll`은 매치마다
+    // `tr.insertText`를 쌓아 **한 번** dispatch하고 선택을 전혀 설정하지 않는다.
+    // 찾기 바에 포커스가 있는 동안 PM 선택은 태스크 밖에 머무르므로,
+    // `2026-08-30` → `2026-09-15` 같은 **같은 길이** 일괄 치환이 정확히 이 형태다.
+    // (외부 파일 변경 리로드·`ai-diff.ts` 적용도 같은 형태를 만든다.)
+    const rendered = rawView("- [ ] 초안 📅2026-08-30\n\nx");
+    view = rendered.view;
+    expect(chip(rendered.host)?.textContent).toBe("due 8/30");
+
+    // 마지막 한 글자만 바꾼다 — 길이가 같아야 필드의 시작 위치(key의 `from`)가
+    // 그대로 남아 "key가 같아 보이는" 이 결함의 조건이 성립한다.
+    const at = posOfText(view.state.doc, "2026-08-30");
+    view.dispatch(view.state.tr.insertText("1", at + 9, at + 10));
+
+    // 문서는 확실히 바뀌었다 — 아래 단언이 헛돌지 않는다는 증거.
+    expect(view.state.doc.textContent).toContain("2026-08-31");
+    expect(chip(rendered.host)?.textContent).toBe("due 8/31");
+  });
+
+  it("자정을 넘겨 기한이 지나면 칩이 overdue 색을 얻는다", () => {
+    // `overdue`는 spec에는 있지만 key에 없으면 `compareObjs`까지 도달하지 못한다.
+    // 실패 모양: 밤새 열어 둔 창에서 계속 타이핑하는 동안 데코레이션은 매번 다시
+    // 만들어지는데(`docChanged`) 이미 그려진 칩만 어제 색으로 남는다 — §309가
+    // "기한 초과는 소리친다"로 세운 계약이 조용히 깨진다.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(2026, 7, 25)); // 기한(8/30) 전
+      const rendered = rawView("- [ ] 초안 📅2026-08-30\n\nx");
+      view = rendered.view;
+      expect(chip(rendered.host)?.classList.contains("task-chip-overdue")).toBe(
+        false,
+      );
+
+      vi.setSystemTime(new Date(2026, 8, 1)); // 기한 후
+      // 태스크 줄 **밖**을 고쳐 재구축만 유발한다. 태스크 줄 자체를 건드리면
+      // 필드의 위치나 값이 함께 바뀌어 무엇이 무효화를 일으켰는지 흐려진다.
+      const end = view.state.doc.content.size - 1;
+      view.dispatch(view.state.tr.insertText("y", end, end));
+
+      expect(view.state.doc.textContent).toContain("📅2026-08-30");
+      expect(chip(rendered.host)?.classList.contains("task-chip-overdue")).toBe(
+        true,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("§308 로케일 구독 — 동등성 관문 (리뷰 Minor 1)", () => {
+  // ‼️ `view()`의 `if (state.locale === prev.locale) return;` 한 줄을 지켜본다.
+  //
+  // Zustand의 `subscribe`는 **모든** `set()`에 발화한다 — partial이 새 root가
+  // 되므로 테마 토글·폰트 크기·태그 색 어느 것을 바꿔도 이 콜백이 불린다.
+  // 관문이 없으면 그 하나하나가 문서 전체 데코레이션 재구축 + 전 칩 DOM 재생성을
+  // 부른다. CLAUDE.md의 "고빈도 경로의 store write는 동등성 관문 필수"가
+  // 가리키는 자리가 정확히 여기다.
+  //
+  // 관문이 **동작한다는 것**은 리뷰가 확인했지만 아무 테스트도 그것을 고정하지
+  // 않았다(관문을 지워도 스위트 전체가 초록이었다). 그래서 타이밍이 아니라
+  // dispatch **횟수**를 센다 — 프로젝트 규약이 요구하는 카운트 기반 고정이다.
+  let view: EditorView | null = null;
+  const theme = useSettingsStore.getState().theme;
+
+  afterEach(() => {
+    view?.destroy();
+    view = null;
+    useSettingsStore.setState({ locale: "en", theme });
+  });
+
+  it("로케일이 실제로 바뀔 때만 dispatch한다 — 다른 설정 write는 0회", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const doc = markdownToProsemirror("- [ ] 초안 📅2026-08-30\n\nx", schema);
+    let dispatches = 0;
+    // `dispatchTransaction`은 뷰를 `this`로 받지만 타입에 그것이 없어 홀더로 잡는다.
+    const held: { view?: EditorView } = {};
+    held.view = new EditorView(host, {
+      dispatchTransaction(tr) {
+        dispatches += 1;
+        const v = held.view;
+        if (v) v.updateState(v.state.apply(tr));
+      },
+      state: EditorState.create({
+        doc,
+        plugins: [createTaskFieldChipsPlugin()],
+        schema,
+        selection: Selection.atEnd(doc),
+      }),
+    });
+    view = held.view;
+    expect(dispatches).toBe(0);
+
+    // 설정의 **다른** 키. 관문이 없으면 여기서 이미 1이 된다.
+    useSettingsStore.setState({ theme: "dark" });
+    expect(dispatches).toBe(0);
+
+    // 로케일이지만 **같은 값**. zustand는 그래도 구독을 깨우므로 값 비교가 필요하다.
+    useSettingsStore.setState({ locale: "en" });
+    expect(dispatches).toBe(0);
+
+    // 실제 전환에서만 딱 한 번.
+    useSettingsStore.setState({ locale: "ko" });
+    expect(dispatches).toBe(1);
+    expect(chip(host)?.textContent).toBe("8/30 기한");
   });
 });
