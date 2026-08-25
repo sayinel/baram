@@ -16,8 +16,8 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 
-import { VIM_ISLAND_MARKERS } from "../../extensions/plugins/vim/adapters/suspension";
 import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
+import { VIM_ISLAND_MARKERS } from "../../utils/vim-island-markers";
 import { safeImageSrc, safeLinkHref } from "./markdown-url";
 
 /**

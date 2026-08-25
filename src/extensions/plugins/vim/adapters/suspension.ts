@@ -13,19 +13,14 @@
 // that instant would steal the next key. The caller re-evaluates the active
 // element on a microtask instead (design §4), via `shouldSuspendFor`.
 
-const SUSPEND_MARKER = "data-vim-suspend";
-const BODY_MARKER = "data-node-view-content";
-
-/**
- * Island membership is an APP capability, never document content: these
- * attributes decide who owns the modal keyboard. DOMPurify keeps `data-*`
- * and `tabindex` by default, so sanitized HTML/SVG from a shared file could
- * otherwise grant itself suspension — or deny it inside a real island and
- * leave vim reading the user's keystrokes as commands. Sanitizers strip
- * them (dedicated security review); this module stays the single source of
- * the marker names.
- */
-export const VIM_ISLAND_MARKERS = [SUSPEND_MARKER, BODY_MARKER];
+// The marker NAMES live in a dependency-free leaf (utils/vim-island-markers):
+// they are a security constant the sanitizers must strip whether or not vim
+// is enabled, so they cannot be owned by this feature module — see the
+// leaf's own note.
+import {
+  BODY_MARKER,
+  SUSPEND_MARKER,
+} from "../../../../utils/vim-island-markers";
 
 /**
  * True when the event target sits inside an input island. Walks the

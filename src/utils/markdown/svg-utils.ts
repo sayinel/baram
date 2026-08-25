@@ -2,7 +2,7 @@
 // (raw `<svg>` markup) and the dedicated ```svg fenced block.
 import DOMPurify from "dompurify";
 
-import { VIM_ISLAND_MARKERS } from "../../extensions/plugins/vim/adapters/suspension";
+import { VIM_ISLAND_MARKERS } from "../vim-island-markers";
 
 /**
  * Inline HTML tags that may legitimately appear inside an SVG `<foreignObject>`
