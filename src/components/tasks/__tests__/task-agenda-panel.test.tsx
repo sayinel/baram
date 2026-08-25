@@ -445,3 +445,80 @@ describe("TaskAgendaPanel", () => {
     });
   });
 });
+
+// §312 소스 경로 — 활성 dirty 탭이 **소스 모드**일 때. 문서 경로와 같은 약속을
+// 지켜야 한다(디스크를 다시 읽지 않는다). 다만 고치는 대상이 숨어 있는 PM 문서가
+// 아니라 사용자가 보고 있는 소스 버퍼다.
+describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
+  let buffer = "";
+
+  beforeEach(() => {
+    buffer = "- [ ] 하나\n";
+    useTaskStore.getState().clear();
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceBufferAccess: {
+        getSourceBuffer: () => buffer,
+        setSourceBuffer: (_tabId, next) => {
+          buffer = next;
+        },
+      },
+      sourceModeTabs: ["t1"],
+      tabs: [
+        {
+          contextId: "c",
+          filePath: "a.md",
+          id: "t1",
+          isDirty: true,
+          isPinned: false,
+          title: "a",
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    useEditorStore.setState({
+      activeTabId: null,
+      sourceBufferAccess: null,
+      sourceModeTabs: [],
+      tabs: [],
+    });
+  });
+
+  it("보이는 소스 버퍼를 고친다 — PM 문서가 아니다", async () => {
+    // PM 문서에는 이 태스크의 줄이 아예 없다. 문서 경로로 샜다면 낙관적 잠금이
+    // stale로 거절해 버퍼가 그대로 남는다 — 단정이 두 경로를 실제로 가른다.
+    prosemirrorToMarkdown.mockReturnValue("- [ ] 전혀 다른 줄\n");
+    previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
+    useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(buffer).toBe("- [x] 하나 ✅2026-08-24\n");
+    expect(setTaskState).not.toHaveBeenCalled();
+  });
+
+  it("디스크를 다시 읽지 않고 스토어를 직접 패치한다", async () => {
+    previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
+    useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(getFileTasks).not.toHaveBeenCalled();
+    const patched = useTaskStore.getState().tasks[0];
+    expect(patched.state).toBe("done");
+    expect(patched.done).toBe("2026-08-24");
+    expect(patched.raw).toBe("- [x] 하나 ✅2026-08-24");
+  });
+});

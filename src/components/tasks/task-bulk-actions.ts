@@ -24,6 +24,7 @@ import { logger } from "../../utils/logger";
 import {
   applyTaskWrite,
   applyToContent,
+  isUnsavedWrite,
   resolveTaskWriteTarget,
 } from "../../utils/tasks/apply-task-write";
 
@@ -71,6 +72,10 @@ export async function rescheduleOverdueToToday(
   // 가는 태스크는 전부 **같은 한 파일**의 것이다.
   const docTasks: TaskEntry[] = [];
 
+  // §312 소스 경로는 여기서 모으지 않는다 — 모아야 했던 이유가 성립하지 않는다.
+  // 문서 경로는 `setFileContent` → React 커밋을 거쳐야 다음 읽기에 반영되지만,
+  // 소스 버퍼는 ref의 Map이라 쓰기가 **동기적으로** 보인다. 반복 N+1이 N의 결과를
+  // 그대로 읽으므로 한 건씩 라우터에 맡기면 된다.
   for (const task of tasks) {
     if (resolveTaskWriteTarget(task.path, editor).kind === "document") {
       docTasks.push(task);
@@ -179,9 +184,10 @@ async function rescheduleInOpenDocument(
 /**
  * 디스크 경로 한 건 — `counts`와 `diskPaths`를 제자리에서 갱신한다.
  *
- * 라우터가 그 사이 **다시** 문서 경로를 골랐다면(폴백 직전에 탭이 또 dirty가
- * 됐다) 그 파일은 `diskPaths`에 넣으면 안 된다 — 저장 전이라 다시 읽으면 방금
- * 만든 변경이 되돌아간다(Major 1). 그때는 스토어를 직접 패치한다.
+ * 이름과 달리 라우터가 문서·소스(§312) 경로를 고를 수도 있다 — 폴백 직전에 탭이
+ * 또 dirty가 됐거나 애초에 소스 모드였을 때다. 그 파일은 `diskPaths`에 넣으면 안
+ * 된다 — 저장 전이라 다시 읽으면 방금 만든 변경이 되돌아간다(Major 1). 그때는
+ * 스토어를 직접 패치한다.
  */
 async function writeOneToDisk(
   task: TaskEntry,
@@ -190,16 +196,21 @@ async function writeOneToDisk(
   diskPaths: Set<string>,
   counts: Counts,
 ): Promise<void> {
+  // §312 라우터가 소스 버퍼를 고를 수도 있다. 그 경로의 stale은 디스크와 무관하므로
+  // 그 파일을 다시 읽으면, 같은 배치가 **버퍼에** 이미 만들어 둔 다른 변경까지 옛
+  // 디스크 내용으로 되돌아간다 — `rescheduleInOpenDocument`의 stale이 `diskPaths`를
+  // 건드리지 않는 것과 같은 이유다.
+  const unsaved = resolveTaskWriteTarget(task.path, editor).kind !== "disk";
   try {
     const r = await applyTaskWrite(task, changeFor(task, today), editor);
     if (r.kind === "stale") {
       counts.stale += 1;
-      // stale도 그 파일을 다시 읽어야 옳은 상태가 보인다.
-      diskPaths.add(task.path);
+      // 디스크가 진실원인 경우에만 다시 읽는다.
+      if (!unsaved) diskPaths.add(task.path);
       return;
     }
     counts.updated += 1;
-    if (r.kind === "document") {
+    if (isUnsavedWrite(r)) {
       useTaskStore
         .getState()
         .patchTask(task.path, task.line, datePatch(task, today, r.raw));

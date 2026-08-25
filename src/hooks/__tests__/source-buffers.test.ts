@@ -11,7 +11,14 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useSourceMode } from "../use-source-mode";
 
 beforeEach(() => {
-  useEditorStore.setState({ activeTabId: null, mruOrder: [], tabs: [] });
+  // §312 소스 모드 집합은 이제 스토어에 산다 — 테스트 사이에 지우지 않으면 앞 테스트가
+  // 켜 둔 탭이 다음 테스트로 새어 나간다.
+  useEditorStore.setState({
+    activeTabId: null,
+    mruOrder: [],
+    sourceModeTabs: [],
+    tabs: [],
+  });
 });
 
 describe("per-tab source buffers", () => {

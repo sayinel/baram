@@ -21,7 +21,10 @@ import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";
-import { applyTaskWrite } from "../../utils/tasks/apply-task-write";
+import {
+  applyTaskWrite,
+  isUnsavedWrite,
+} from "../../utils/tasks/apply-task-write";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
 import {
   applyTaskFilters,
@@ -116,8 +119,9 @@ export function TaskAgendaPanel() {
           .showToast("Couldn't save the task change.", "error");
       }
 
-      if (result?.kind === "document") {
-        // 아직 저장되지 않았다 — 디스크를 읽으면 방금 만든 변경이 사라진다.
+      if (isUnsavedWrite(result)) {
+        // 아직 저장되지 않았다(열린 문서 또는 §312 소스 버퍼) — 디스크를 읽으면
+        // 방금 만든 변경이 사라진다.
         // done 날짜는 tasksRecordDoneDate로 다시 계산하지 않고 실제로 쓰인
         // 줄에서 읽는다 — apply_state는 그 설정이 꺼져 있으면 기존 ✅date를
         // 그대로 보존하므로(write.rs:143-145) 재계산은 그 값과 어긋난다.

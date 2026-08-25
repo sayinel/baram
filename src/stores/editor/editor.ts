@@ -27,6 +27,23 @@ export interface EditorTab {
 
 export type EditorTabType = "file" | "graph" | "plugin";
 
+/**
+ * §312 소스 모드 버퍼로 가는 통로 — `useSourceMode`가 마운트돼 있는 동안만 채워진다.
+ *
+ * 버퍼 **데이터**는 훅의 ref Map에 그대로 남는다(`use-source-mode.ts:104`의 이유:
+ * state로 두면 소스 모드에서 한 글자 칠 때마다 새 Map을 만든다). 스토어에 사는 것은
+ * 안정된 함수 참조 두 개뿐이라 리렌더를 만들지 않으면서, React 밖에서 도는 §305 태스크
+ * 쓰기 라우터가 **화면에 보이는** 텍스트에 닿게 해 준다.
+ *
+ * ‼️ 대가는 수명이다. 이 함수들은 훅의 ref를 닫고 있으므로 언마운트 때 반드시
+ * `registerSourceBufferAccess(null)`로 지워야 한다 — 안 그러면 죽은 탭의 버퍼를
+ * 가리키는 접근자에 태스크 쓰기가 흘러들어 아무도 읽지 않는 Map에 쓰게 된다.
+ */
+export interface SourceBufferAccess {
+  getSourceBuffer: (tabId: string) => string;
+  setSourceBuffer: (tabId: string, content: string) => void;
+}
+
 interface EditorState {
   activeTabId: null | string;
   /** Close all tabs (including pinned) */
@@ -56,6 +73,8 @@ interface EditorState {
   openTab: (tab: EditorTab) => void;
   /** §38 Pin a tab — moves to end of pinned group */
   pinTab: (tabId: string) => void;
+  /** §312 Publish (or clear with `null`) the mounted source surface's buffer accessors */
+  registerSourceBufferAccess: (access: null | SourceBufferAccess) => void;
   /** §61 Rename directory: update all tabs whose filePath starts with oldDir */
   renameDirInTabs: (oldDir: string, newDir: string) => void;
   /** §33 Rename tab: update filePath and title for a renamed file */
@@ -67,6 +86,8 @@ interface EditorState {
   setActiveTab: (tabId: string) => void;
   /** §44 Update current editor selection text */
   setCurrentSelection: (text: string) => void;
+  /** §287/§312 Turn source mode on or off for one tab */
+  setSourceModeForTab: (tabId: string, on: boolean) => void;
   /**
    * §69 Set a tab's display title.
    *
@@ -74,6 +95,16 @@ interface EditorState {
    * manifest's `name`, which can change under it on an update.
    */
   setTabTitle: (tabId: string, title: string) => void;
+  /** §312 Live source-buffer accessors, or `null` when no source surface is mounted */
+  sourceBufferAccess: null | SourceBufferAccess;
+  /**
+   * §287 Tabs showing raw markdown instead of WYSIWYG.
+   *
+   * ‼️ 훅의 `useState`가 아니라 여기 사는 이유: §305 태스크 쓰기 라우터가 React 밖에서
+   * 이 값을 읽어야 한다. 못 읽으면 소스 모드인 더티 탭의 쓰기가 **보이지 않는**
+   * ProseMirror 문서로 가고, 소스 모드를 끄거나 저장하는 순간 통째로 버려진다.
+   */
+  sourceModeTabs: string[];
   tabs: EditorTab[];
   /** §38 Toggle pin state */
   togglePinTab: (tabId: string) => void;
@@ -107,6 +138,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   mruOrder: [],
   currentSelection: "",
   contentRefreshKey: 0,
+  sourceModeTabs: [],
+  sourceBufferAccess: null,
 
   setActiveTab: (tabId) => {
     set({ activeTabId: tabId });
@@ -396,6 +429,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     })),
 
   setCurrentSelection: (text) => set({ currentSelection: text }),
+
+  // §287/§312 동등성 관문은 장식이 아니다. partial `set`은 값이 같아도 **새 root**를
+  // 만들어 스토어 구독자 전부를 깨운다(CLAUDE.md 규약). 탭을 전환할 때마다 도는
+  // "이 탭은 소스 모드가 아니다" 세팅이 그대로 앱 전역 리렌더가 된다.
+  setSourceModeForTab: (tabId, on) =>
+    set((state) => {
+      if (state.sourceModeTabs.includes(tabId) === on) return state;
+      return {
+        sourceModeTabs: on
+          ? [...state.sourceModeTabs, tabId]
+          : state.sourceModeTabs.filter((id) => id !== tabId),
+      };
+    }),
+
+  registerSourceBufferAccess: (access) =>
+    set((state) =>
+      state.sourceBufferAccess === access
+        ? state
+        : { sourceBufferAccess: access },
+    ),
 
   requestContentRefresh: () =>
     set((state) => ({ contentRefreshKey: state.contentRefreshKey + 1 })),

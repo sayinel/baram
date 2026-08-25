@@ -24,7 +24,11 @@ import {
 import { prosemirrorToMarkdown } from "../../../pipeline";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
-import { applyTaskWrite } from "../apply-task-write";
+import {
+  applyTaskWrite,
+  isUnsavedWrite,
+  resolveTaskWriteTarget,
+} from "../apply-task-write";
 
 const TASK: TaskEntry = {
   cancelled: null,
@@ -67,9 +71,32 @@ const OPEN_TAB: EditorTab = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useEditorStore.setState({ activeTabId: null, tabs: [] });
+  useEditorStore.setState({
+    activeTabId: null,
+    sourceBufferAccess: null,
+    sourceModeTabs: [],
+    tabs: [],
+  });
   useFileStore.setState({ openFiles: new Map() });
 });
+
+/**
+ * §312 소스 버퍼 접근자를 스토어에 등록한다 — 실앱에서는 `useSourceMode`가
+ * 마운트되는 동안 같은 자리를 채운다. 테스트는 그 자리에 Map 하나를 놓고
+ * 라우터가 실제로 **그 Map**을 고쳤는지 본다.
+ */
+function registerBuffers(initial: Record<string, string>): Map<string, string> {
+  const buffers = new Map(Object.entries(initial));
+  useEditorStore.setState({
+    sourceBufferAccess: {
+      getSourceBuffer: (tabId) => buffers.get(tabId) ?? "",
+      setSourceBuffer: (tabId, content) => {
+        buffers.set(tabId, content);
+      },
+    },
+  });
+  return buffers;
+}
 
 describe("applyTaskWrite — 디스크 경로", () => {
   it("탭이 없으면 디스크 IPC로 보낸다", async () => {
@@ -272,5 +299,226 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
       "3",
     );
     expect(r).toEqual({ kind: "document", raw: "- [ ] 초안 ⏫" });
+  });
+});
+
+// §312 소스 모드 라우팅.
+//
+// ‼️ 소스 모드인 더티 활성 탭은 **문서 경로의 부분집합**이다. 소스 검사를 document
+// 판정 뒤에 두면 영원히 도달하지 못하고, 눈에 보이는 소스 버퍼 대신 숨어 있는
+// ProseMirror 문서에 스플라이스된다 — 소스 모드를 끄거나 저장하는 순간 그 편집이
+// 통째로 버려진다. 아래 순서 테스트가 그 뒤집힘을 잡는다.
+describe("resolveTaskWriteTarget — §312 소스 모드", () => {
+  it("더티 활성 탭이 소스 모드면 문서가 아니라 소스 버퍼로 간다", () => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceModeTabs: ["t1"],
+      tabs: [OPEN_TAB],
+    });
+    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
+      kind: "source",
+      tabId: "t1",
+    });
+  });
+
+  it("소스 모드가 아니면 기존대로 문서로 간다", () => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceModeTabs: [],
+      tabs: [OPEN_TAB],
+    });
+    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
+      kind: "document",
+      tabId: "t1",
+    });
+  });
+
+  it("소스 모드여도 배경 탭이면 디스크다 — 활성 조건이 먼저다", () => {
+    useEditorStore.setState({
+      activeTabId: "other",
+      sourceModeTabs: ["t1"],
+      tabs: [OPEN_TAB],
+    });
+    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
+      kind: "disk",
+    });
+  });
+
+  it("소스 모드여도 clean이면 디스크다 — 버퍼와 디스크가 이미 같다", () => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceModeTabs: ["t1"],
+      tabs: [{ ...OPEN_TAB, isDirty: false }],
+    });
+    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
+      kind: "disk",
+    });
+  });
+
+  it("소스 모드여도 editor가 없으면 디스크다", () => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceModeTabs: ["t1"],
+      tabs: [OPEN_TAB],
+    });
+    expect(resolveTaskWriteTarget("/v/note.md", null)).toEqual({
+      kind: "disk",
+    });
+  });
+});
+
+describe("applyTaskWrite — 소스 경로 (소스 모드인 활성 + dirty 탭)", () => {
+  beforeEach(() => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceModeTabs: ["t1"],
+      tabs: [OPEN_TAB],
+    });
+  });
+
+  it("보이는 소스 버퍼를 고치고 PM 문서도 디스크도 건드리지 않는다", async () => {
+    const buffers = registerBuffers({
+      t1: "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n",
+    });
+    vi.mocked(previewTaskStateLine).mockResolvedValue(
+      "- [x] 초안 📅2026-08-30 ✅2026-08-24",
+    );
+
+    const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(buffers.get("t1")).toBe(
+      "머리말\n- [x] 초안 📅2026-08-30 ✅2026-08-24\n꼬리말\n",
+    );
+    expect(setTaskState).not.toHaveBeenCalled();
+    expect(prosemirrorToMarkdown).not.toHaveBeenCalled();
+    expect(r).toEqual({
+      kind: "source",
+      raw: "- [x] 초안 📅2026-08-30 ✅2026-08-24",
+    });
+  });
+
+  it("openFiles와 contentRefreshKey는 건드리지 않는다 — 보이는 표면은 PM이 아니다", async () => {
+    registerBuffers({ t1: "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n" });
+    vi.mocked(previewTaskStateLine).mockResolvedValue("- [x] 초안");
+    const before = useEditorStore.getState().contentRefreshKey;
+
+    await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(useFileStore.getState().openFiles.size).toBe(0);
+    expect(useEditorStore.getState().contentRefreshKey).toBe(before);
+  });
+
+  // §305 디스크 경로가 지키는 것과 **같은 행렬**이다(task_cmd.rs:130-186 참조):
+  // 줄바꿈 스타일과 끝 개행 유무는 같은 입력에 대해 바이트 단위로 같아야 한다.
+  // 소스 경로만 여기서 어긋나면 소스 모드로 한 번 편집한 파일의 EOL이 바뀐다.
+  it.each([
+    [
+      "LF + 끝 개행",
+      "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n",
+      "머리말\n- [x] 초안\n꼬리말\n",
+    ],
+    [
+      "CRLF + 끝 개행",
+      "머리말\r\n- [ ] 초안 📅2026-08-30\r\n꼬리말\r\n",
+      "머리말\r\n- [x] 초안\r\n꼬리말\r\n",
+    ],
+    [
+      "혼합 EOL — 건드리지 않은 줄의 종결자는 그대로",
+      "머리말\r\n- [ ] 초안 📅2026-08-30\n꼬리말\r\n",
+      "머리말\r\n- [x] 초안\n꼬리말\r\n",
+    ],
+    [
+      "끝 개행 없음 — 대상 줄이 마지막 줄",
+      "머리말\n- [ ] 초안 📅2026-08-30",
+      "머리말\n- [x] 초안",
+    ],
+  ])("바이트 보존: %s", async (_name, before, after) => {
+    const buffers = registerBuffers({ t1: before });
+    vi.mocked(previewTaskStateLine).mockResolvedValue("- [x] 초안");
+
+    await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(buffers.get("t1")).toBe(after);
+  });
+
+  it("CRLF 줄의 낙관적 잠금은 통과한다 — task.raw에는 \\r이 없다", async () => {
+    const buffers = registerBuffers({
+      t1: "머리말\r\n- [ ] 초안 📅2026-08-30\r\n",
+    });
+    vi.mocked(previewTaskStateLine).mockResolvedValue("- [x] 초안");
+
+    const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(r.kind).toBe("source");
+    expect(buffers.get("t1")).toBe("머리말\r\n- [x] 초안\r\n");
+  });
+
+  it("버퍼의 줄이 다르면 stale — 아무것도 쓰지 않는다", async () => {
+    const buffers = registerBuffers({ t1: "머리말\n- [ ] 다른 내용\n" });
+
+    const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(r).toEqual({ kind: "stale" });
+    expect(previewTaskStateLine).not.toHaveBeenCalled();
+    expect(buffers.get("t1")).toBe("머리말\n- [ ] 다른 내용\n");
+  });
+
+  it("await 도중 사용자가 소스 표면에 타이핑하면 재검사에서 stale로 잡는다", async () => {
+    const buffers = registerBuffers({
+      t1: "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n",
+    });
+    vi.mocked(previewTaskStateLine).mockImplementation(() => {
+      // preview IPC를 기다리는 사이 CodeMirror의 onChange가 버퍼를 통째로 갈아끼운다.
+      buffers.set("t1", "머리말\n- [ ] 사용자가 방금 고침\n꼬리말\n");
+      return Promise.resolve("- [x] 초안");
+    });
+
+    const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(r).toEqual({ kind: "stale" });
+    expect(buffers.get("t1")).toBe(
+      "머리말\n- [ ] 사용자가 방금 고침\n꼬리말\n",
+    );
+  });
+
+  it("접근자가 등록돼 있지 않으면 디스크로 폴백한다 — 소스 표면이 없으니 버퍼가 디스크를 덮을 일도 없다", async () => {
+    useEditorStore.setState({ sourceBufferAccess: null });
+    vi.mocked(setTaskState).mockResolvedValue("- [x] 초안");
+
+    const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(setTaskState).toHaveBeenCalled();
+    expect(r).toEqual({ kind: "disk", raw: "- [x] 초안" });
+  });
+
+  it("kind: field도 소스 버퍼를 고친다", async () => {
+    const buffers = registerBuffers({ t1: "- [ ] 초안 📅2026-08-30\n" });
+    vi.mocked(previewTaskFieldLine).mockResolvedValue("- [ ] 초안 ⏫");
+
+    const r = await applyTaskWrite(
+      { ...TASK, line: 0 },
+      { field: "priority", kind: "field", value: "3" },
+      FAKE_EDITOR,
+    );
+
+    expect(setTaskField).not.toHaveBeenCalled();
+    expect(buffers.get("t1")).toBe("- [ ] 초안 ⏫\n");
+    expect(r).toEqual({ kind: "source", raw: "- [ ] 초안 ⏫" });
+  });
+});
+
+describe("isUnsavedWrite", () => {
+  // 호출자가 "이 결과는 디스크에 있는가"를 묻는 **유일한** 자리. 새 in-memory 경로가
+  // 늘 때 호출자마다 `=== "document"`를 고쳐 다니면 하나를 빠뜨리는 순간 그 경로의
+  // 변경이 디스크 재읽기로 되돌아간다.
+  it("문서·소스는 아직 디스크에 없다", () => {
+    expect(isUnsavedWrite({ kind: "document", raw: "x" })).toBe(true);
+    expect(isUnsavedWrite({ kind: "source", raw: "x" })).toBe(true);
+  });
+
+  it("디스크·stale·null은 디스크가 진실원이다", () => {
+    expect(isUnsavedWrite({ kind: "disk", raw: "x" })).toBe(false);
+    expect(isUnsavedWrite({ kind: "stale" })).toBe(false);
+    expect(isUnsavedWrite(null)).toBe(false);
   });
 });

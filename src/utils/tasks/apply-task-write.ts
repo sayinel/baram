@@ -33,10 +33,13 @@ export type TaskChange =
 export type TaskWriteResult =
   | { kind: "disk"; raw: string }
   | { kind: "document"; raw: string }
+  | { kind: "source"; raw: string }
   | { kind: "stale" };
 
 export type TaskWriteTarget =
-  { kind: "disk" } | { kind: "document"; tabId: string };
+  | { kind: "disk" }
+  | { kind: "document"; tabId: string }
+  | { kind: "source"; tabId: string };
 
 /**
  * 태스크 한 줄을 고친다.
@@ -55,30 +58,25 @@ export async function applyTaskWrite(
   editor: Editor | null,
 ): Promise<TaskWriteResult> {
   const target = resolveTaskWriteTarget(task.path, editor);
-  // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다 — 런타임에는
-  // 도달 불가한 분기다.
-  if (target.kind === "disk" || !editor) {
-    try {
-      return { kind: "disk", raw: await writeToDisk(task, change) };
-    } catch (err) {
-      // §305 stale은 정상 경합이라 결과값으로 옮긴다. 그 밖의 오류는 호출자에게.
-      if (err === "stale") return { kind: "stale" };
-      throw err;
-    }
+
+  if (target.kind === "source") {
+    const result = await writeToSourceBuffer(task, change, target.tabId);
+    // `null`은 접근자 미등록이다 — 소스 표면이 마운트돼 있지 않다는 뜻이므로
+    // 그 버퍼가 나중에 디스크를 덮어쓸 일도 없다. 아래 디스크 경로로 흘린다.
+    if (result) return result;
+  } else if (target.kind === "document" && editor) {
+    // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다 — 런타임에는
+    // 거짓이 될 수 없는 조건이다.
+    return await writeToDocument(task, change, editor, target.tabId);
   }
 
-  const applied = await applyToContent(
-    prosemirrorToMarkdown(editor.state.doc),
-    task,
-    change,
-    () => prosemirrorToMarkdown(editor.state.doc),
-  );
-  if (applied === null) return { kind: "stale" };
-
-  useFileStore.getState().setFileContent(task.path, applied.content);
-  useEditorStore.getState().requestContentRefresh();
-  useEditorStore.getState().markDirty(target.tabId, true);
-  return { kind: "document", raw: applied.raw };
+  try {
+    return { kind: "disk", raw: await writeToDisk(task, change) };
+  } catch (err) {
+    // §305 stale은 정상 경합이라 결과값으로 옮긴다. 그 밖의 오류는 호출자에게.
+    if (err === "stale") return { kind: "stale" };
+    throw err;
+  }
 }
 
 /**
@@ -116,6 +114,21 @@ export async function applyToContent(
 }
 
 /**
+ * 이 결과가 **아직 디스크에 없는가**. 호출자는 그때 파일을 다시 읽으면 안 되고
+ * (읽으면 방금 만든 변경이 되돌아간다) 태스크 스토어를 직접 패치해야 한다.
+ *
+ * 술어로 뽑아 두는 이유: in-memory 경로가 하나(`document`)에서 둘(`source`)이 됐고,
+ * 호출자마다 `kind === "document"`를 손으로 늘려 가면 하나를 빠뜨리는 순간 그 경로의
+ * 변경이 조용히 사라진다.
+ */
+export function isUnsavedWrite(
+  result: null | TaskWriteResult,
+): result is
+  { kind: "document"; raw: string } | { kind: "source"; raw: string } {
+  return result?.kind === "document" || result?.kind === "source";
+}
+
+/**
  * 이 파일이 어디에 써야 하는지 판정한다 — 라우팅 규칙의 **유일한** 정의다.
  * §309 일괄 경로도 이것을 불러 태스크를 분류하므로, 규칙을 두 벌로 두면
  * 반드시 드리프트한다.
@@ -130,16 +143,22 @@ export async function applyToContent(
  *   없고, non-dirty 탭의 외부 변경 자동 리로드(use-file-operations.ts의
  *   triggerAutoReload)가 에디터를 알아서 갱신한다.
  * - editor가 없다 → 문서를 읽을 방법이 없다.
+ *
+ * §312 그 안에서 다시 갈린다: 탭이 소스 모드면 사용자가 보고 있는 권위 있는 텍스트는
+ * ProseMirror 문서가 아니라 소스 버퍼다. 그리로 보낸다.
  */
 export function resolveTaskWriteTarget(
   path: string,
   editor: Editor | null,
 ): TaskWriteTarget {
-  const { activeTabId, tabs } = useEditorStore.getState();
+  const { activeTabId, sourceModeTabs, tabs } = useEditorStore.getState();
   const tab = tabs.find((t) => t.filePath === path);
   if (!tab || tab.id !== activeTabId || !tab.isDirty || !editor) {
     return { kind: "disk" };
   }
+  // ‼️ 이 검사는 document 판정 **앞**에 있어야 한다. 소스 모드인 더티 활성 탭은
+  // document 조건을 전부 만족하는 부분집합이라, 뒤로 옮기면 영원히 도달하지 못한다.
+  if (sourceModeTabs.includes(tab.id)) return { kind: "source", tabId: tab.id };
   return { kind: "document", tabId: tab.id };
 }
 
@@ -169,4 +188,66 @@ async function writeToDisk(
         change.today,
       )
     : setTaskField(task.path, task.line, task.raw, change.field, change.value);
+}
+
+/** 라이브 ProseMirror 문서 경로 — 화면에 보이는 표면이 WYSIWYG일 때. */
+async function writeToDocument(
+  task: TaskEntry,
+  change: TaskChange,
+  editor: Editor,
+  tabId: string,
+): Promise<TaskWriteResult> {
+  const applied = await applyToContent(
+    prosemirrorToMarkdown(editor.state.doc),
+    task,
+    change,
+    () => prosemirrorToMarkdown(editor.state.doc),
+  );
+  if (applied === null) return { kind: "stale" };
+
+  useFileStore.getState().setFileContent(task.path, applied.content);
+  useEditorStore.getState().requestContentRefresh();
+  useEditorStore.getState().markDirty(tabId, true);
+  return { kind: "document", raw: applied.raw };
+}
+
+/**
+ * §312 소스 버퍼 경로 — 화면에 보이는 표면이 CodeMirror(원본 마크다운)일 때.
+ *
+ * 버퍼는 이미 마크다운 문자열이라 `applyToContent`/`spliceLine`을 그대로 재사용한다.
+ * 줄바꿈 스타일과 끝 개행 유무가 디스크 경로와 바이트 단위로 같은 것도 그 덕이다.
+ *
+ * `refresh`를 주는 이유는 단건 문서 경로와 같다 — preview IPC를 기다리는 사이
+ * CodeMirror의 `onChange`가 버퍼를 통째로 갈아끼울 수 있고, await 전에 잡아둔
+ * 문자열로 스플라이스하면 사용자가 방금 친 글자가 사라진다.
+ *
+ * `openFiles`도 `requestContentRefresh`도 건드리지 않는다. 그 둘은 ProseMirror 표면을
+ * 다시 채우는 통로인데 지금 보이는 것은 그 표면이 아니다 — 새로고침을 요청하면 숨어
+ * 있는 문서만 흔들고 정작 화면은 그대로다. 저장 경로(`use-file-operations.ts:169`)도
+ * 소스 모드 탭에서는 `openFiles`가 아니라 이 버퍼를 읽는다.
+ *
+ * `null`은 "접근자 미등록" — 소스 표면이 마운트돼 있지 않다는 뜻이라 호출자가
+ * 디스크로 폴백한다. `{kind:"stale"}`(경합)과는 다른 신호다.
+ */
+async function writeToSourceBuffer(
+  task: TaskEntry,
+  change: TaskChange,
+  tabId: string,
+): Promise<null | TaskWriteResult> {
+  const access = useEditorStore.getState().sourceBufferAccess;
+  if (!access) return null;
+
+  const applied = await applyToContent(
+    access.getSourceBuffer(tabId),
+    task,
+    change,
+    () => access.getSourceBuffer(tabId),
+  );
+  if (applied === null) return { kind: "stale" };
+
+  // markDirty를 부르지 않는다 — 이 경로에 오려면 탭이 이미 dirty여야 하고
+  // (resolveTaskWriteTarget의 전제), markDirty는 tabs 배열을 새로 만들어
+  // 모든 구독자를 깨우므로 순수한 낭비다.
+  access.setSourceBuffer(tabId, applied.content);
+  return { kind: "source", raw: applied.raw };
 }

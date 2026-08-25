@@ -65,7 +65,12 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useEditorStore.setState({ activeTabId: "t1", tabs: [OPEN_TAB] });
+  useEditorStore.setState({
+    activeTabId: "t1",
+    sourceBufferAccess: null,
+    sourceModeTabs: [],
+    tabs: [OPEN_TAB],
+  });
   useFileStore.setState({ openFiles: new Map() });
   useTaskStore.getState().clear();
   // Rust 대역 — 날짜 필드만 갈아끼운다(정규 포맷은 필드를 줄 끝에 모은다).
@@ -270,5 +275,76 @@ describe("rescheduleOverdueToToday — 분류와 커밋 사이에 라우팅이 �
     expect(
       useTaskStore.getState().tasks.find((t) => t.line === 1),
     ).toMatchObject({ due: "2026-08-24", raw: "- [ ] b 📅2026-08-24" });
+  });
+});
+
+// §312 소스 모드는 배치의 **세 번째** 경로다. 문서 경로처럼 아직 디스크에 없으므로
+// 호출자가 이 파일을 다시 읽으면 방금 만든 변경이 통째로 되돌아간다 — 회계가
+// `diskPaths`에 넣는지 `patchTask`로 반영하는지가 그 차이를 만든다.
+describe("rescheduleOverdueToToday — 소스 경로", () => {
+  function registerBuffer(initial: string): { read: () => string } {
+    let content = initial;
+    useEditorStore.setState({
+      sourceModeTabs: ["t1"],
+      sourceBufferAccess: {
+        getSourceBuffer: () => content,
+        setSourceBuffer: (_tabId, next) => {
+          content = next;
+        },
+      },
+    });
+    return { read: () => content };
+  }
+
+  it("여러 태스크를 한 버퍼에 누적한다 — 앞 반복의 결과 위에 다음이 얹힌다", async () => {
+    const buffer = registerBuffer(
+      "- [ ] a 📅2026-08-20\n- [ ] b 📅2026-08-20\n",
+    );
+    vi.mocked(previewTaskFieldLine)
+      .mockResolvedValueOnce("- [ ] a 📅2026-08-24")
+      .mockResolvedValueOnce("- [ ] b 📅2026-08-24");
+
+    const r = await rescheduleOverdueToToday(
+      [
+        task({ line: 0, raw: "- [ ] a 📅2026-08-20" }),
+        task({ line: 1, raw: "- [ ] b 📅2026-08-20" }),
+      ],
+      "2026-08-24",
+      FAKE_EDITOR,
+    );
+
+    expect(buffer.read()).toBe("- [ ] a 📅2026-08-24\n- [ ] b 📅2026-08-24\n");
+    expect(r.updated).toBe(2);
+    expect(setTaskField).not.toHaveBeenCalled();
+  });
+
+  it("디스크에 쓰지 않았으므로 diskPaths에 넣지 않고 태스크 스토어를 직접 패치한다", async () => {
+    registerBuffer("- [ ] a 📅2026-08-20\n");
+    useTaskStore.setState({
+      tasks: [task({ line: 0, raw: "- [ ] a 📅2026-08-20" })],
+    });
+    vi.mocked(previewTaskFieldLine).mockResolvedValue("- [ ] a 📅2026-08-24");
+
+    const r = await rescheduleOverdueToToday(
+      [task({ line: 0, raw: "- [ ] a 📅2026-08-20" })],
+      "2026-08-24",
+      FAKE_EDITOR,
+    );
+
+    expect(r.diskPaths).toEqual([]);
+    expect(useTaskStore.getState().tasks[0].due).toBe("2026-08-24");
+  });
+
+  it("소스 경로의 stale도 diskPaths에 넣지 않는다 — 같은 배치가 버퍼에 만든 변경이 되돌아간다", async () => {
+    registerBuffer("- [ ] 전혀 다른 줄\n");
+
+    const r = await rescheduleOverdueToToday(
+      [task({ line: 0, raw: "- [ ] a 📅2026-08-20" })],
+      "2026-08-24",
+      FAKE_EDITOR,
+    );
+
+    expect(r.stale).toBe(1);
+    expect(r.diskPaths).toEqual([]);
   });
 });

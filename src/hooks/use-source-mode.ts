@@ -1,5 +1,5 @@
 // §5.1 Source mode toggle — WYSIWYG ↔ raw markdown with cursor preservation
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject, RefObject } from "react";
 
 import type { SourceCodeEditorRef } from "../components/editor/SourceCodeEditor";
@@ -7,6 +7,7 @@ import type { EditorState as PmEditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 
 import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { useShallow } from "zustand/shallow";
 
 import { enterCodeBlockSelection } from "../extensions/nodes/views/code-block-cm-registry";
 import { forceCollapseSyntaxReveal } from "../extensions/plugins/syntax-reveal";
@@ -107,11 +108,27 @@ export function useSourceMode({
   const buffersRef = useRef(new Map<string, string>());
   const cursorOffsetsRef = useRef(new Map<string, number>());
   const [bufferVersion, setBufferVersion] = useState(0);
-  const [sourceModeTabs, setSourceModeTabs] = useState<ReadonlySet<string>>(
-    () => new Set(),
+
+  // §312 소스 모드 집합은 스토어가 소유한다 — 태스크 쓰기 라우터가 React 밖에서
+  // 읽어야 하기 때문이다(editor.ts의 `sourceModeTabs` 주석 참조). 여기서는 읽기만 한다.
+  const { activeTabId, setSourceModeForTab, sourceModeTabIds } = useEditorStore(
+    useShallow((s) => ({
+      activeTabId: s.activeTabId,
+      setSourceModeForTab: s.setSourceModeForTab,
+      sourceModeTabIds: s.sourceModeTabs,
+    })),
+  );
+  const registerSourceBufferAccess = useEditorStore(
+    (s) => s.registerSourceBufferAccess,
   );
 
-  const activeTabId = useEditorStore((s) => s.activeTabId);
+  // 반환 시그니처는 `ReadonlySet`으로 유지한다 — App·use-retained-tabs·
+  // use-file-operations·use-tab-switching이 전부 `.has()`로 쓴다. 매 렌더 새 Set을
+  // 만들면 그 소비자들의 memo가 전부 깨지므로 배열 참조에 물려 둔다.
+  const sourceModeTabs = useMemo<ReadonlySet<string>>(
+    () => new Set(sourceModeTabIds),
+    [sourceModeTabIds],
+  );
   const isSourceMode = !!activeTabId && sourceModeTabs.has(activeTabId);
 
   const getSourceBuffer = useCallback(
@@ -133,15 +150,22 @@ export function useSourceMode({
     (tabId: string): number => cursorOffsetsRef.current.get(tabId) ?? 0,
     [],
   );
-  const setSourceModeForTab = useCallback((tabId: string, on: boolean) => {
-    setSourceModeTabs((prev) => {
-      if (prev.has(tabId) === on) return prev;
-      const next = new Set(prev);
-      if (on) next.add(tabId);
-      else next.delete(tabId);
-      return next;
-    });
-  }, []);
+
+  // §312 버퍼 접근자를 스토어에 게시한다 — 값이 아니라 **안정된 함수 두 개**라
+  // 리렌더 비용이 없다(editor.ts의 SourceBufferAccess 주석 참조).
+  //
+  // ‼️ 정리에서 자기가 등록한 객체인지 확인하고 지운다. StrictMode의 이중 마운트나
+  // App 재마운트에서는 새 인스턴스의 등록이 옛 인스턴스의 정리보다 **먼저** 일어날 수
+  // 있고, 무조건 null을 쓰면 방금 살아난 접근자를 도로 지운다.
+  useEffect(() => {
+    const access = { getSourceBuffer, setSourceBuffer };
+    registerSourceBufferAccess(access);
+    return () => {
+      if (useEditorStore.getState().sourceBufferAccess === access) {
+        registerSourceBufferAccess(null);
+      }
+    };
+  }, [getSourceBuffer, setSourceBuffer, registerSourceBufferAccess]);
 
   // Stable onChange for the ACTIVE surface's SourceCodeEditor. 탭 id를 클로저가 아니라
   // 호출 시점에 읽는다 — 이 콜백은 안정된 참조로 여러 렌더를 살아남기 때문이다.
