@@ -266,6 +266,39 @@ describe("TaskAgendaPanel", () => {
     expect(screen.getByText("home item")).toBeInTheDocument();
   });
 
+  // §312 `applyTaskFilters`\u0027 showSomeday branch is covered by unit tests, but
+  // nothing rendered or clicked the checkbox that feeds it — the wiring in
+  // TaskAgendaPanel was unverified (review Major 4).
+  describe("Someday toggle", () => {
+    const someday = task({ tags: ["someday"], text: "언젠가 Rust" });
+
+    it("hides a #someday capture from No date by default", () => {
+      useTaskStore.getState().setAll([someday]);
+      render(<TaskAgendaPanel />);
+      expect(screen.queryByText("언젠가 Rust")).not.toBeInTheDocument();
+    });
+
+    it("shows it once the checkbox is ticked", async () => {
+      useTaskStore.getState().setAll([someday]);
+      render(<TaskAgendaPanel />);
+
+      await userEvent.click(screen.getByRole("checkbox", { name: "Someday" }));
+
+      expect(screen.getByText("언젠가 Rust")).toBeInTheDocument();
+    });
+
+    it("hides it again when the checkbox is unticked", async () => {
+      useTaskStore.getState().setAll([someday]);
+      render(<TaskAgendaPanel />);
+      const box = screen.getByRole("checkbox", { name: "Someday" });
+
+      await userEvent.click(box);
+      await userEvent.click(box);
+
+      expect(screen.queryByText("언젠가 Rust")).not.toBeInTheDocument();
+    });
+  });
+
   describe("midnight rollover (I4)", () => {
     beforeEach(() => {
       vi.useFakeTimers();
