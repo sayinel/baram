@@ -3,6 +3,13 @@
  * §settings: keybinding customization support
  */
 
+/**
+ * §307D QuickCaptureDialog가 자기 `handleKeyDown`에서 이 커맨드를 식별할 때 쓴다.
+ * 문자열을 그쪽에 직접 적으면 매직 스트링이 두 벌이 되고, `journal-i18n.test.tsx`가
+ * `"journal.*"` 리터럴을 전부 i18n 키로 간주하므로 그 스캐너에도 걸린다.
+ */
+export const CAPTURE_TASK_MODE_COMMAND = "journal.captureTaskMode";
+
 export interface KeybindingEntry {
   category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "zettelkasten" | "formatting"
   customizable: boolean; // true = global shortcut, false = Tiptap extension
@@ -267,10 +274,17 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     // §307D — 다이얼로그가 열려 있을 때만 의미가 있어 `registerAction`을 걸지
     // 않는다. QuickCaptureDialog의 handleKeyDown이 직접 처리하고, 레지스트리
     // 등록은 사용자가 조합을 바꾸고 충돌 검사에 잡히게 하기 위한 것이다.
-    id: "journal.captureTaskMode",
+    id: CAPTURE_TASK_MODE_COMMAND,
     label: "keybindings.journal.captureTaskMode",
     category: "journal",
-    defaultKey: "Mod+Shift+K",
+    // `Mod+Shift+*`는 남은 자리가 없다. 레지스트리와 `src-tauri/src/menu.rs`를
+    // 합치면 K·Q·Z만 비는데, 바로 아래 `zettelkasten.newNote`의 주석대로 그 셋은
+    // 전역 런처 충돌(K) 또는 시스템 예약(Q=macOS 로그아웃, Z=실행 취소)이다.
+    // 그래서 거의 비어 있는 `Mod+Alt` 네임스페이스를 쓴다 — 여기는 `Mod+Alt+C`와
+    // `Mod+Alt+1..4`뿐이라 T가 free이고, §307D가 의도한 T(=task) 니모닉도 지킨다.
+    // 새 바인딩을 넣을 때는 `zettelkasten.promote`의 주석대로 **두 파일 모두**
+    // 확인할 것. 레지스트리만 보면 menu.rs가 잡은 E·P를 놓친다.
+    defaultKey: "Mod+Alt+T",
     customizable: true,
   },
   {

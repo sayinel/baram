@@ -5,7 +5,12 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { listDir, readFile } from "../../ipc/invoke";
-import { formatKeyForDisplay } from "../../keybindings/key-utils";
+import {
+  formatKeyForDisplay,
+  normalizeKeyEvent,
+} from "../../keybindings/key-utils";
+import { CAPTURE_TASK_MODE_COMMAND } from "../../keybindings/keybinding-registry";
+import { findCommandByKey } from "../../keybindings/use-keybindings";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -34,6 +39,7 @@ export function QuickCaptureDialog() {
   );
   // §99 M4: reactive read so the "space not configured" hint / disabled Save
   // surface immediately on open/render, not only after a failed save attempt.
+  const keybindingOverrides = useSettingsStore((s) => s.keybindingOverrides);
   const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
     useShallow((s) => ({
       zettelkastenEnabled: s.zettelkastenEnabled,
@@ -275,22 +281,33 @@ export function QuickCaptureDialog() {
         handleSave();
       }
       // §307D 태스크 모드 토글 — IME 조합 중에는 같은 이유로 무시한다.
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        e.shiftKey &&
-        e.key.toLowerCase() === "k"
-      ) {
-        if (e.nativeEvent.isComposing) return;
-        e.preventDefault();
-        taskMode.toggle();
-        return;
+      //
+      // 수정자를 손으로 비교하지 않고 `normalizeKeyEvent`를 쓰는 이유 두 가지:
+      // (1) macOS에서 ⌥+문자는 특수문자를 만들어 `e.key`가 "t"가 아니라 "†"다.
+      //     이 헬퍼는 `e.code`(레이아웃 독립)로 판정한다.
+      // (2) 사용자가 설정에서 바꾼 조합이 실제로 동작한다 — 하드코딩하면
+      //     레지스트리에 등록해 놓고 핸들러가 그 값을 무시하게 된다.
+      if (!e.nativeEvent.isComposing) {
+        const notation = normalizeKeyEvent(
+          e.nativeEvent,
+          navigator.platform.includes("Mac"),
+        );
+        if (
+          notation &&
+          findCommandByKey(notation, keybindingOverrides)?.id ===
+            CAPTURE_TASK_MODE_COMMAND
+        ) {
+          e.preventDefault();
+          taskMode.toggle();
+          return;
+        }
       }
       if (e.key === "Escape") {
         if (hasContent) return;
         toggleQuickCapture();
       }
     },
-    [handleSave, toggleQuickCapture, hasContent, taskMode],
+    [handleSave, toggleQuickCapture, hasContent, taskMode, keybindingOverrides],
   );
 
   const handleOverlayClick = useCallback(() => {
