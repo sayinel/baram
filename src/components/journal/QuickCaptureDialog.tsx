@@ -14,6 +14,7 @@ import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
+import { useCaptureTaskMode } from "./use-capture-task-mode";
 
 // ⌘↩ on macOS, Ctrl+Enter elsewhere — shown on the Save button.
 const saveKeyLabel = formatKeyForDisplay(
@@ -42,6 +43,7 @@ export function QuickCaptureDialog() {
   const rootPath = useFileStore((s) => s.rootPath);
   const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
   const zettelReady = zettelkastenEnabled && !!zettelDir;
+  const taskMode = useCaptureTaskMode();
   const [body, setBody] = useState("");
   const [source, setSource] = useState("");
   const [tags, setTags] = useState("");
@@ -112,6 +114,20 @@ export function QuickCaptureDialog() {
       return;
     }
 
+    // §307D 태스크 모드는 Zettel 공간을 요구하지 않는다 — 수집함 파일에
+    // 한 줄을 붙이는 것뿐이므로 아래 Zettel 가드보다 먼저 갈라진다.
+    if (taskMode.enabled) {
+      try {
+        await taskMode.save(body);
+      } catch (err) {
+        logger.error("[QuickCapture] Task capture failed:", err);
+        setSaveError(t("journal.capture.error.taskSave"));
+        return;
+      }
+      toggleQuickCapture();
+      return;
+    }
+
     // §99 M4: the Save button is disabled while !zettelReady, but keep this
     // check as a defense-in-depth guard (e.g. Enter key submit).
     if (!zettelReady || !zettelDir) {
@@ -152,7 +168,16 @@ export function QuickCaptureDialog() {
         }),
       );
     }
-  }, [body, source, tags, zettelReady, zettelDir, toggleQuickCapture, t]);
+  }, [
+    body,
+    source,
+    tags,
+    zettelReady,
+    zettelDir,
+    taskMode,
+    toggleQuickCapture,
+    t,
+  ]);
 
   // Handle tag input changes — detect #prefix for autocomplete
   const handleTagsChange = useCallback(
@@ -249,12 +274,23 @@ export function QuickCaptureDialog() {
         e.preventDefault();
         handleSave();
       }
+      // §307D 태스크 모드 토글 — IME 조합 중에는 같은 이유로 무시한다.
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "k"
+      ) {
+        if (e.nativeEvent.isComposing) return;
+        e.preventDefault();
+        taskMode.toggle();
+        return;
+      }
       if (e.key === "Escape") {
         if (hasContent) return;
         toggleQuickCapture();
       }
     },
-    [handleSave, toggleQuickCapture, hasContent],
+    [handleSave, toggleQuickCapture, hasContent, taskMode],
   );
 
   const handleOverlayClick = useCallback(() => {
@@ -273,6 +309,14 @@ export function QuickCaptureDialog() {
       >
         <div className="quick-capture-header">
           <h3>{t("journal.capture.title")}</h3>
+          <label className="quick-capture-task-toggle">
+            <input
+              checked={taskMode.enabled}
+              onChange={taskMode.toggle}
+              type="checkbox"
+            />
+            {t("journal.capture.taskMode.label")}
+          </label>
         </div>
 
         {/* Body */}
@@ -319,8 +363,9 @@ export function QuickCaptureDialog() {
         </div>
 
         {/* §99 M4: surface the "space not configured" state immediately on
-            render, not only after a failed save attempt. */}
-        {!zettelReady && (
+            render, not only after a failed save attempt. §307D: task mode
+            doesn't use the Zettel space, so this hint doesn't apply to it. */}
+        {!zettelReady && !taskMode.enabled && (
           <div className="quick-capture-error">
             {t("journal.capture.error.noSpace")}
           </div>
@@ -336,7 +381,7 @@ export function QuickCaptureDialog() {
           </button>
           <button
             className="quick-capture-save"
-            disabled={!body.trim() || !zettelReady}
+            disabled={!body.trim() || (!zettelReady && !taskMode.enabled)}
             onClick={handleSave}
           >
             {t("journal.capture.save", { key: saveKeyLabel })}

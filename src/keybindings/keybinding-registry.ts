@@ -264,6 +264,16 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: true,
   },
   {
+    // §307D — 다이얼로그가 열려 있을 때만 의미가 있어 `registerAction`을 걸지
+    // 않는다. QuickCaptureDialog의 handleKeyDown이 직접 처리하고, 레지스트리
+    // 등록은 사용자가 조합을 바꾸고 충돌 검사에 잡히게 하기 위한 것이다.
+    id: "journal.captureTaskMode",
+    label: "keybindings.journal.captureTaskMode",
+    category: "journal",
+    defaultKey: "Mod+Shift+K",
+    customizable: true,
+  },
+  {
     id: "journal.openToday",
     label: "keybindings.journal.openToday",
     category: "journal",
