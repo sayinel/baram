@@ -65,6 +65,25 @@
   flex-direction: column;
 }
 
+/* Visually hidden — invisible on screen, still in the accessibility tree.
+   Use when the same information is already shown some other way (an icon, a
+   decoration) and that other way is `aria-hidden`: hiding with `display: none`
+   or `visibility: hidden` would remove it from *both*, leaving screen readers
+   with nothing.
+
+   Stays IN FLOW on purpose. The classic idiom is `position: absolute`, but
+   inside `contenteditable` an out-of-flow inline span leaves its line box and
+   the caret follows it out of the line. A clipped 1px inline-block keeps the
+   caret where the text is. */
+.visually-hidden {
+  display: inline-block;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 /* §4.1 디자인 원칙: 에디터 중심, 최소 크롬 */
 
 /* Base styles */

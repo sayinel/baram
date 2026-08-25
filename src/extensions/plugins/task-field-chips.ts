@@ -25,8 +25,21 @@ export const taskFieldChipsKey = new PluginKey<TaskFieldChipsState>(
   "taskFieldChips",
 );
 
-/** 원문 이모지 필드를 가리는 구간. 실제 스타일은 §308 Task 3의 CSS가 준다. */
-const RAW_CLASS = "task-field-raw";
+/**
+ * 원문 이모지 필드를 가리는 구간. **무엇**을 가리는지만 말한다 — 이름 그대로
+ * 의미 표지이고, 감추는 일은 아래 [[RAW_HIDE_CLASS]]가 맡는다.
+ */
+export const RAW_CLASS = "task-field-raw";
+
+/**
+ * 실제로 감추는 공용 유틸리티(`src/styles/base.css`).
+ *
+ * `display: none`이 **아니어야 한다**. 칩은 `aria-hidden`이라(원문이 문서에
+ * 남아 있다는 것이 그 근거다) 원문까지 접근성 트리에서 지우면 스크린리더
+ * 사용자에게 마감·우선순위·시작일이 통째로 사라진다. 커서가 그 항목에 들어간
+ * 동안에만 되살아나므로 화면을 훑어 읽는 방식으로는 영영 닿지 못한다.
+ */
+export const RAW_HIDE_CLASS = "visually-hidden";
 
 /**
  * `selectionFrom`이 든 `taskItem`은 건너뛴다 — 원문이 보여야 고칠 수 있다.
@@ -219,7 +232,9 @@ function pushSpan(
   const to = base + span.to;
   const overdue = isOverdue(span, today);
 
-  out.push(Decoration.inline(from, to, { class: RAW_CLASS }));
+  out.push(
+    Decoration.inline(from, to, { class: `${RAW_CLASS} ${RAW_HIDE_CLASS}` }),
+  );
   out.push(
     Decoration.widget(to, () => renderTaskChip(span, overdue), {
       key: `task-chip-${from}-${span.kind}`,

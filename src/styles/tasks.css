@@ -168,10 +168,13 @@
 /* §308 태스크 메타데이터 칩 — 아웃라인 기본, 기한 초과만 색을 갖는다.
    메타데이터는 본문의 주석이지 본문이 아니므로 평소엔 물러나 있고,
    기한 초과만 이 시스템에서 소리쳐야 하는 상태다. 채움이 없어야
-   이미 채워진 `.wikilink-date`(참조, 이동)와 확실히 갈라진다(§316). */
-.task-field-raw {
-  display: none;
-}
+   이미 채워진 `.wikilink-date`(참조, 이동)와 확실히 갈라진다(§316).
+
+   원문 구간(`.task-field-raw`)에는 여기서 규칙을 주지 않는다 — 감추는 일은
+   base.css의 공용 `.visually-hidden`이 맡고, 플러그인이 두 클래스를 함께 붙인다
+   (`TaskBucketList`가 `btn-unstyled task-row-text`를 붙이는 것과 같은 방식).
+   여기에 `display: none`을 되살리면 안 된다: 칩이 `aria-hidden`이므로 원문까지
+   지우면 스크린리더에서 메타데이터가 양쪽 다 사라진다. */
 
 .task-chip {
   display: inline-flex;
