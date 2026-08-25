@@ -71,7 +71,11 @@ function hideRule(): string {
   return match?.[1] ?? "";
 }
 
-function render(md: string): { host: HTMLElement; view: EditorView } {
+/** `selectionFrom`의 기본값 -1 = 어떤 항목도 건너뛰지 않는다(커서 없는 화면). */
+function render(
+  md: string,
+  selectionFrom = -1,
+): { host: HTMLElement; view: EditorView } {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const doc = markdownToProsemirror(md, schema);
@@ -80,8 +84,8 @@ function render(md: string): { host: HTMLElement; view: EditorView } {
     plugins: [
       new Plugin({
         props: {
-          // -1 = 어떤 항목도 건너뛰지 않는다(커서가 없는 상태의 화면).
-          decorations: (s) => buildTaskFieldDecorations(s.doc, -1, TODAY),
+          decorations: (s) =>
+            buildTaskFieldDecorations(s.doc, selectionFrom, TODAY),
         },
       }),
     ],
@@ -139,6 +143,13 @@ describe("§308 원문 구간의 렌더 계약", () => {
 });
 
 describe("§308 감추기 관용구 (리뷰 M2)", () => {
+  let view: EditorView | null = null;
+
+  afterEach(() => {
+    view?.destroy();
+    view = null;
+  });
+
   it("접근성 트리에서 지우는 방법으로 감추지 않는다", () => {
     // ‼️ 이 테스트의 요점. `display: none`(또는 `visibility: hidden`)이면 칩의
     // `aria-hidden="true"`와 합쳐져 메타데이터가 **양쪽 다** 사라진다 — 스크린
@@ -164,8 +175,29 @@ describe("§308 감추기 관용구 (리뷰 M2)", () => {
     // contenteditable 안의 인라인 span에 붙이면 그 span이 줄 상자를 떠나고,
     // 캐럿이 그 안으로 들어가는 순간 따라 나간다. 흐름에 남기는 대신 1px로
     // 잘라내는 이유가 이것이다.
+    //
+    // jsdom에는 레이아웃이 없어 캐럿의 실제 픽셀 위치는 여기서 볼 수 없다.
+    // 볼 수 있는 것은 그 위치를 **보장하는 성질** — 흐름을 벗어나지 않는다 —
+    // 이고, 그것이 이 단언이다.
     const body = hideRule();
     expect(body).not.toMatch(/position:\s*(absolute|fixed)/);
+  });
+
+  it("커서가 그 줄에 들어가면 감춤이 통째로 사라진다", () => {
+    // 캐럿이 감춰진 span **안**에 머무는 상태 자체가 없다는 것이 이 설계의
+    // 핵심이다: 항목에 커서가 들어가는 순간 그 항목의 데코레이션이 전부
+    // 사라지므로, 감추기 관용구가 캐럿에 영향을 줄 수 있는 창은 선택이 바뀌는
+    // 그 한 틱뿐이다. 위의 "흐름 안에 남는다"와 합쳐야 이 계약이 닫힌다.
+    const md = "- [ ] 보고서 초안 📅2026-08-30";
+    // 문단 안쪽 = taskList(0) > taskItem(1) > paragraph(2) > 첫 글자(3)
+    const rendered = render(md, 3);
+    view = rendered.view;
+
+    expect(rendered.host.querySelector(`.${RAW_CLASS}`)).toBeNull();
+    expect(rendered.host.querySelector(".task-chip")).toBeNull();
+    expect(rendered.host.querySelector("p")?.textContent).toBe(
+      "보고서 초안 📅2026-08-30",
+    );
   });
 });
 
