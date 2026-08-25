@@ -8,9 +8,10 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { Schema } from "@tiptap/pm/model";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   buildTaskFieldDecorations,
   renderTaskChip,
@@ -522,16 +523,33 @@ describe("buildTaskFieldDecorations — 마감 지남", () => {
   });
 });
 
-// ── 칩 DOM ────────────────────────────────────────────────────────────
+// ── 칩 DOM (방향 C — 점 + 텍스트, §308) ─────────────────────────────────
+//
+// 이모지는 더 이상 DOM에 나타나지 않는다. 라벨은 `useSettingsStore`의 현재
+// 로케일로 읽으므로(React 밖이라 훅을 못 쓴다 — `drop-handler.ts:401`과 같은
+// 관용구) 각 테스트가 끝나면 기본값 "en"으로 되돌린다.
 
 describe("renderTaskChip", () => {
-  it("이모지와 연도를 접은 날짜를 보인다", () => {
+  afterEach(() => {
+    useSettingsStore.setState({ locale: "en" });
+  });
+
+  it("날짜 라벨과 연도를 접은 날짜를 보인다 — 이모지는 사라진다", () => {
     const el = renderTaskChip(
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
       false,
     );
-    expect(el.textContent).toBe("📅8/30");
+    expect(el.textContent).toBe("due 8/30");
     expect(el.classList.contains("task-chip-overdue")).toBe(false);
+  });
+
+  it("로케일이 ko이면 어순이 바뀐다(날짜가 먼저, 라벨이 뒤)", () => {
+    useSettingsStore.setState({ locale: "ko" });
+    const el = renderTaskChip(
+      { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
+      false,
+    );
+    expect(el.textContent).toBe("8/30 기한");
   });
 
   it("마감이 지나면 overdue 클래스를 더한다", () => {
@@ -542,14 +560,14 @@ describe("renderTaskChip", () => {
     expect(el.classList.contains("task-chip-overdue")).toBe(true);
   });
 
-  it("우선순위 칩은 마커만 보인다", () => {
+  it("우선순위 칩은 텍스트 라벨을 보인다 — 마커 자체는 그려지지 않는다", () => {
     const el = renderTaskChip(
       { emoji: "⏫", from: 0, kind: "priority", to: 1, value: "⏫" },
       false,
     );
-    expect(el.textContent).toBe("⏫");
-    // 색 전용 클래스는 붙지 않는다 — 색을 갖는 상태는 기한 초과뿐이고,
-    // 그래야 아젠다 배지와 같아 보인다(`task-field-chips-render.test.ts`).
+    expect(el.textContent).toBe("high");
+    // 색 전용 클래스는 붙지 않는다 — 색을 갖는 상태는 기한 초과뿐이다
+    // (방향 A 때부터 이어진 원칙, `task-field-chips-render.test.ts`).
     expect(el.classList.contains("task-chip-overdue")).toBe(false);
   });
 
@@ -561,5 +579,33 @@ describe("renderTaskChip", () => {
     );
     expect(el.hasAttribute("data-vim-suspend")).toBe(false);
     expect(el.contentEditable).toBe("false");
+  });
+});
+
+describe("renderTaskChip — 우선순위 마커 → 라벨 매핑", () => {
+  afterEach(() => {
+    useSettingsStore.setState({ locale: "en" });
+  });
+
+  // PRIORITY_EMOJI("1"=🔺 최고 / "2"=⏫ 높음 / "4"=🔽 낮음 / "5"=⏬ 최저)의
+  // 네 마커가 각각 옳은 i18n 키로 간다. "3"(보통)은 마커가 없어 scanTaskFields가
+  // 애초에 span을 만들지 않으므로 여기 없다.
+  it.each([
+    ["🔺", "highest"],
+    ["⏫", "high"],
+    ["🔽", "low"],
+    ["⏬", "lowest"],
+  ])("%s 마커는 %s 라벨을 읽는다", (marker, label) => {
+    const el = renderTaskChip(
+      {
+        emoji: marker,
+        from: 0,
+        kind: "priority",
+        to: marker.length,
+        value: marker,
+      },
+      false,
+    );
+    expect(el.textContent).toBe(label);
   });
 });

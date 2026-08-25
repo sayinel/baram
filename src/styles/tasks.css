@@ -138,10 +138,14 @@
   color: var(--color-status-warning);
 }
 
-/* §308 아웃라인·반경·색은 .task-chip과 공유한다(TaskBucketList가 두 클래스를
-   함께 붙인다) — 여기는 .task-row 안에서의 레이아웃(shrink 금지)만 맡는다. */
+/* §308 방향 C — 알약 시절엔 .task-chip을 공유했지만(TaskBucketList가 두
+   클래스를 함께 붙였다), C에는 알약 자체가 없으므로 그 공유를 끊고 같은
+   조용한 타이포그래피를 직접 갖는다. PRIORITY_SYMBOL의 글리프(!!! !! ↓ ↓↓)는
+   바뀌지 않는다 — C가 없애는 것은 상자와 이모지이고, 이 배지에는 원래 둘 다
+   없었다. */
 .task-row-priority {
   flex-shrink: 0;
+  color: var(--color-text-muted);
 }
 
 /* §309 기한 초과 일괄 조정 — 기한 초과가 있을 때만 나타나므로 눈에 띄어야 한다 */
@@ -165,10 +169,13 @@
   color: var(--color-status-warning);
 }
 
-/* §308 태스크 메타데이터 칩 — 아웃라인 기본, 기한 초과만 색을 갖는다.
-   메타데이터는 본문의 주석이지 본문이 아니므로 평소엔 물러나 있고,
-   기한 초과만 이 시스템에서 소리쳐야 하는 상태다. 채움이 없어야
-   이미 채워진 `.wikilink-date`(참조, 이동)와 확실히 갈라진다(§316).
+/* §308 태스크 메타데이터 칩 — 방향 C: 점 + 텍스트. `.tag-node`와 같은
+   철학으로 상자(테두리·배경)를 없애고 `::before` 색점 하나만 남긴다. 이모지는
+   화면에서 사라지고 로케일별 어순의 텍스트 라벨로 읽힌다(renderTaskChip).
+   기본은 본문보다 한 단계 더 조용한 --color-text-muted다(알약 시절의
+   --color-text-secondary보다 낮다 — 상자가 없어졌으니 대비를 낮춰야 본문과
+   위계가 생긴다). 기한 초과만 --color-status-danger로 소리친다 — 우선순위까지
+   색을 가지면 무엇이 급한지가 사라진다는 것이 방향 A 때부터 이어진 원칙이다.
 
    원문 구간(`.task-field-raw`)에는 여기서 규칙을 주지 않는다 — 감추는 일은
    base.css의 공용 `.visually-hidden`이 맡고, 플러그인이 두 클래스를 함께 붙인다
@@ -180,26 +187,26 @@
   display: inline-flex;
   gap: 4px;
   align-items: center;
-  padding: 0 6px;
   font-size: 0.82em;
   line-height: 1.65;
   vertical-align: 1px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   white-space: nowrap;
-  border: 1px solid var(--color-border-default);
-  border-radius: 5px;
 }
 
-.task-chip-glyph {
-  font-size: 0.94em;
-  opacity: 0.62;
+.task-chip::before {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  content: "";
+  background: currentcolor;
+  border-radius: 50%;
 }
 
-/* 색을 갖는 유일한 상태. 우선순위 칩에는 색이 없다 — "기한 초과만 소리친다"가
+/* 색을 갖는 유일한 상태. 점(::before)과 글자 모두 currentcolor를 타므로 이
+   한 줄이면 충분하다. 우선순위 칩에는 색이 없다 — "기한 초과만 소리친다"가
    이 방향을 고른 이유 자체이고, 우선순위까지 색을 가지면 무엇이 급한지가
-   사라진다. 아젠다 배지도 같은 규칙을 공유하므로 그쪽에서도 회색 아웃라인이다
-   (급함은 그 행의 `−Nd`가 이미 danger로 말한다). */
+   사라진다. */
 .task-chip-overdue {
   color: var(--color-status-danger);
-  border-color: var(--color-status-danger);
 }

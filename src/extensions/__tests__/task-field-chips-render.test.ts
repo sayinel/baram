@@ -11,16 +11,20 @@
 // 원문은 `display: none`이라 스크린리더에서 메타데이터가 **양쪽 다** 사라졌고,
 // 구조만 보는 테스트는 전부 초록이었다.
 
+import { Editor } from "@tiptap/core";
 import { Schema } from "@tiptap/pm/model";
-import { EditorState, Plugin } from "@tiptap/pm/state";
+import { EditorState, Plugin, Selection } from "@tiptap/pm/state";
 import { EditorView } from "@tiptap/pm/view";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { useSettingsStore } from "../../stores/settings/store";
+import { createBaramExtensions } from "../index";
 import {
   buildTaskFieldDecorations,
+  createTaskFieldChipsPlugin,
   RAW_CLASS,
   RAW_HIDE_CLASS,
   renderTaskChip,
@@ -216,11 +220,17 @@ describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
     expect(coloured).toEqual([".task-chip-overdue"]);
   });
 
-  it("기본 칩은 아웃라인뿐 — 채움이 없어야 `.wikilink-date`와 갈라진다(§316)", () => {
+  it("기본 칩은 상자가 없다 — 점 하나뿐이라 채움도 `.wikilink-date`와 갈라진다(§316)", () => {
+    // 방향 C: 알약(테두리)이 사라지고 `::before` 색점만 남는다. `.tag-node`와
+    // 같은 철학 — 상자 없이 조용한 텍스트 + 점 하나.
     const body = /\.task-chip\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
     expect(body, "no .task-chip rule").toBeDefined();
-    expect(body).toMatch(/border:/);
+    expect(body).not.toMatch(/border:/);
     expect(body).not.toMatch(/background/);
+    const dot = /\.task-chip::before\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
+    expect(dot, "no .task-chip::before rule").toBeDefined();
+    expect(dot).toMatch(/content:\s*""/);
+    expect(dot).toMatch(/border-radius:\s*50%/);
   });
 
   it("우선순위 칩에는 색 전용 클래스를 붙이지 않는다", () => {
@@ -234,14 +244,20 @@ describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
   });
 });
 
-describe("§308 아젠다 배지와 에디터 칩의 정렬 (리뷰 m5)", () => {
-  // Task 4의 산출물은 "복사가 아닌 규칙 공유"였다. 공유가 절반만 이뤄져도
-  // (`.task-chip-priority` 누락) 잡히지 않았기에 두 표면이 다른 색으로 보였다.
-  it("에디터 전용 `vertical-align`이 사이드바 행을 밀지 못한다", () => {
-    // `.task-chip`의 `vertical-align: 1px`는 에디터의 인라인 흐름을 위한 것이다.
-    // 사이드바에서 무효인 이유는 단 하나 — `.task-row`가 flex 컨테이너라
-    // `.task-row-priority`가 flex item이 되기 때문이다. 그 전제가 깨지면
-    // 이 속성이 배지를 1px 밀기 시작하므로 여기에 못박는다.
+describe("§308 방향 C — 아젠다 배지는 더 이상 .task-chip을 공유하지 않는다 (리뷰 m5 뒤집기)", () => {
+  // 방향 A의 산출물은 "복사가 아닌 규칙 공유"(`.task-row-priority.task-chip`)였다.
+  // 방향 C는 알약 자체를 없애므로 그 공유가 끝난다 — `TaskBucketList`는 이제
+  // `task-row-priority` 하나만 붙이고, 조용한 타이포그래피를 스스로 갖는다.
+  it(".task-row-priority가 .task-chip과 무관하게 자신의 색을 직접 선언한다", () => {
+    const row = /\.task-row-priority\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
+    expect(row, "no .task-row-priority rule").toBeDefined();
+    expect(row).toMatch(/color:\s*var\(--color-text-muted\)/);
+  });
+
+  it(".task-chip의 `vertical-align`은 에디터 자신의 인라인 흐름을 위한 것으로 남는다", () => {
+    // 공유가 끝났다고 이 속성이 사라질 필요는 없다 — 에디터 프로즈 안에서
+    // 칩은 여전히 인라인 위젯이다. `.task-row`가 flex라서 무효라는 이전의
+    // "안전망" 서술은 더 이상 참이 아니다: 애초에 이 클래스를 안 쓴다.
     const row = /\.task-row\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
     expect(row, "no .task-row rule").toBeDefined();
     expect(row).toMatch(/display:\s*flex/);
@@ -278,5 +294,98 @@ describe("§308 플러그인 ↔ CSS 이름 계약", () => {
     const attrs = (inline[0] as unknown as { type: { attrs: DecorationAttrs } })
       .type.attrs;
     expect(attrs.class?.split(" ")).toEqual([RAW_CLASS, RAW_HIDE_CLASS]);
+  });
+});
+
+describe("§308 로케일 구독 — 이미 그려진 칩도 강제로 다시 그린다", () => {
+  // 데코레이션은 문서 변경·선택 변경에만 다시 만들어진다. 설정에서 언어를
+  // 바꾸는 것은 둘 중 어느 것도 아니므로, 이 구독이 없으면 문서 전체가 옛
+  // 언어로 남는다. `vim-lifecycle.ts:55`/`code-block-node-view.ts:224`와 같은
+  // 전례를 따라 실제 Editor(전체 Extension 세트)로 검증한다 — 위치 테스트의
+  // 손으로 만든 Plugin에는 이 lifecycle 자체가 없다.
+  let editor: Editor | null = null;
+
+  function makeTaskEditor(): Editor {
+    const e = new Editor({
+      content: {
+        content: [
+          {
+            content: [
+              {
+                attrs: { checked: false },
+                content: [
+                  {
+                    content: [{ text: "초안 📅2026-08-30", type: "text" }],
+                    type: "paragraph",
+                  },
+                ],
+                type: "taskItem",
+              },
+            ],
+            type: "taskList",
+          },
+          // taskItem 밖의 문단 — 커서를 여기로 옮겨야 taskItem 자신의 칩이
+          // "편집 중" 취급으로 숨지 않는다.
+          { content: [{ text: "x", type: "text" }], type: "paragraph" },
+        ],
+        type: "doc",
+      },
+      extensions: createBaramExtensions(),
+    });
+    e.commands.setTextSelection(e.state.doc.content.size - 1);
+    return e;
+  }
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+    useSettingsStore.setState({ locale: "en" });
+  });
+
+  it("설정 로케일이 바뀌면 문서를 안 건드려도 칩 텍스트가 새 언어로 바뀐다", () => {
+    editor = makeTaskEditor();
+    expect(editor.view.dom.textContent).toContain("due 8/30");
+
+    useSettingsStore.setState({ locale: "ko" });
+
+    expect(editor.view.dom.textContent).toContain("8/30 기한");
+    expect(editor.view.dom.textContent).not.toContain("due 8/30");
+  });
+});
+
+describe("§308 로케일 구독 — destroy 시 실제로 구독이 끊긴다 (raw EditorView)", () => {
+  // 위 테스트처럼 Tiptap의 `Editor`를 거치면 검증이 안 된다: `Editor.
+  // dispatchTransaction`(`@tiptap/core`)이 `view.isDestroyed`를 이미 가드하므로,
+  // destroy 이후 콜백이 여전히 살아있어도 dispatch가 조용히 no-op된다 — 구독
+  // 해제를 깜빡해도 이 경로로는 절대 들키지 않는다. 그래서 여기서는 그 가드가
+  // 없는 raw `EditorView`에 실제 Plugin(`createTaskFieldChipsPlugin`)을 직접
+  // 꽂아, destroy 이후의 dispatch가 진짜로 죽은 뷰에 닿게 만든다.
+  let view: EditorView | null = null;
+
+  afterEach(() => {
+    view?.destroy();
+    view = null;
+    useSettingsStore.setState({ locale: "en" });
+  });
+
+  it("destroy 이후에는 로케일 변경이 죽은 뷰에 dispatch되지 않는다", () => {
+    const doc = markdownToProsemirror("- [ ] 초안 📅2026-08-30\n\nx", schema);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const state = EditorState.create({
+      doc,
+      plugins: [createTaskFieldChipsPlugin()],
+      schema,
+      selection: Selection.atEnd(doc),
+    });
+    view = new EditorView(host, { state });
+
+    view.destroy();
+    view = null;
+
+    // 구독 해제가 빠지면 destroy 이후에도 콜백이 살아남아 이미 destroy()된
+    // EditorView에 raw `dispatch`를 시도한다 — `docView`가 null이라 이 지점에서
+    // 실제로 예외가 난다(prosemirror-view `updateStateInner` → `docView.update`).
+    expect(() => useSettingsStore.setState({ locale: "ko" })).not.toThrow();
   });
 });

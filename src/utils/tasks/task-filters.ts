@@ -31,9 +31,12 @@ const PRIORITY_LABEL: Record<-2 | -1 | 1 | 2, string> = {
   2: "Highest priority",
 };
 
-/** §308 [[priorityBadge]]가 돌려주는 표시용 기호 — 에디터의 `.task-chip`과
- * 같은 시각 언어를 아젠다 배지에도 주기 위한 텍스트 라벨이다. 원문 어휘(문서
- * 모델과 직결되는 이모지)는 `task-field-tokens.ts`의 `PRIORITY_EMOJI`가 유일한
+/** §308 [[priorityBadge]]가 돌려주는 표시용 기호. 방향 A 시절엔 에디터의
+ * `.task-chip`과 클래스를 공유해 같은 시각 언어를 썼지만, 방향 C가 그
+ * 알약(공유의 대상)을 없애면서 공유도 끝났다 — 지금은 이 기호(!!! !! ↓ ↓↓)와
+ * 에디터의 텍스트 라벨(높음 등)이 서로 다른 표기다. 둘의 글리프 통일은
+ * `dev/backlog.md` P4로 이미 기록된 별개 축이다. 원문 어휘(문서 모델과
+ * 직결되는 이모지)는 `task-field-tokens.ts`의 `PRIORITY_EMOJI`가 유일한
  * 출처이고, 여기는 그것과 무관하다 — 지우거나 바꿔도 라운드트립에 영향이 없다.
  * `aria-label`은 여전히 PRIORITY_LABEL의 서술형을 쓴다.
  *

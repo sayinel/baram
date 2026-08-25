@@ -203,9 +203,12 @@ describe("#someday 기본 제외", () => {
 });
 
 describe("priorityBadge", () => {
-  // §308: the marker is a short text symbol, not the raw markdown emoji —
-  // it draws the agenda badge in the same visual language as the editor's
-  // .task-chip. aria-label keeps the word form for screen readers.
+  // §308: the marker is a short text symbol, not the raw markdown emoji.
+  // Direction A shared this symbol's class with the editor's `.task-chip`;
+  // direction C dropped the shared pill, so the two surfaces now use
+  // independent visual languages (dot + i18n label in the editor, this
+  // symbol in the agenda) — PRIORITY_SYMBOL itself is unchanged either way.
+  // aria-label keeps the word form for screen readers.
   it("returns a marker and a word label for each non-normal level", () => {
     expect(priorityBadge(2)).toEqual({
       label: "Highest priority",

@@ -6,14 +6,21 @@
 // 라운드트립 정확 일치이므로 그 위험을 표시 기능 하나에 지불하지 않는다.
 // 속성 전환은 칩을 **눌러 편집**하게 되는 M3의 몫이다.
 
-import type { TaskFieldSpan } from "../../utils/tasks/task-field-scan";
+import type { Locale } from "../../i18n";
+import type {
+  TaskFieldKind,
+  TaskFieldSpan,
+} from "../../utils/tasks/task-field-scan";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { t } from "../../i18n";
+import { useSettingsStore } from "../../stores/settings/store";
 import { scanTaskFields } from "../../utils/tasks/task-field-scan";
+import { PRIORITY_EMOJI } from "../../utils/tasks/task-field-tokens";
 
 interface TaskFieldChipsState {
   /** 커서가 든 가장 안쪽 `taskItem`의 위치. 없으면 -1. */
@@ -87,6 +94,28 @@ export function findEditingTaskItem(
   return -1;
 }
 
+/** 날짜 필드 종류 → i18n 키. 우선순위는 별도 표(아래)로 간다. */
+const DATE_CHIP_KEY: Record<Exclude<TaskFieldKind, "priority">, string> = {
+  cancelled: "tasks.chip.cancelled",
+  created: "tasks.chip.created",
+  done: "tasks.chip.done",
+  due: "tasks.chip.due",
+  scheduled: "tasks.chip.scheduled",
+  start: "tasks.chip.start",
+};
+
+/**
+ * 우선순위 마커(`task-field-tokens.ts`의 `PRIORITY_EMOJI`) → i18n 키 접미사.
+ * "3"(보통)은 마커가 없어 `scanTaskFields`가 애초에 span을 만들지 않으므로
+ * 여기 없다.
+ */
+const PRIORITY_CHIP_KEY: Record<string, string> = {
+  [PRIORITY_EMOJI["1"]]: "highest",
+  [PRIORITY_EMOJI["2"]]: "high",
+  [PRIORITY_EMOJI["4"]]: "low",
+  [PRIORITY_EMOJI["5"]]: "lowest",
+};
+
 /**
  * 칩 하나를 그린다.
  *
@@ -104,23 +133,32 @@ export function renderTaskChip(
 ): HTMLElement {
   const el = document.createElement("span");
   el.className = "task-chip";
-  // 색을 갖는 상태는 기한 초과 하나뿐이다. 우선순위 칩도 기본 아웃라인을 쓴다 —
-  // 그래야 아젠다 배지(`.task-chip`을 그대로 공유한다)와 같아 보인다.
+  // 색을 갖는 상태는 기한 초과 하나뿐이다(방향 C, §308) — 점과 글자 모두
+  // `.task-chip-overdue`의 currentColor를 탄다(tasks.css).
   if (overdue) el.classList.add("task-chip-overdue");
   el.setAttribute("aria-hidden", "true");
   el.contentEditable = "false";
-
-  const glyph = document.createElement("span");
-  glyph.className = "task-chip-glyph";
-  // 이모지는 span이 들고 온 것을 쓴다 — UTF-16 길이가 제각각이라 텍스트에서
-  // 고정 길이로 잘라내면 틀린다.
-  glyph.textContent = span.emoji;
-  el.append(glyph);
-
-  if (span.kind !== "priority") {
-    el.append(document.createTextNode(shortDate(span.value)));
-  }
+  el.append(document.createTextNode(chipLabel(span)));
   return el;
+}
+
+/**
+ * 칩에 보일 라벨. 이모지를 그대로 보이는 대신 로케일별 어순의 텍스트로
+ * 읽는다(방향 C — ko `8/30 기한`, en `due 8/30`).
+ *
+ * ProseMirror 위젯이라 React 훅을 못 쓴다 — `useSettingsStore.getState()`로
+ * 직접 읽는다(`drop-handler.ts:401`과 같은 관용구).
+ */
+function chipLabel(span: TaskFieldSpan): string {
+  const { locale } = useSettingsStore.getState();
+  if (span.kind === "priority") {
+    // 마커 자체(span.value)로 매핑한다 — UTF-16 길이로 자르지 않는다.
+    const key = PRIORITY_CHIP_KEY[span.value];
+    return key ? t(`tasks.chip.priority.${key}`, locale as Locale) : "";
+  }
+  return t(DATE_CHIP_KEY[span.kind], locale as Locale, {
+    date: shortDate(span.value),
+  });
 }
 
 /**
@@ -236,9 +274,15 @@ function pushSpan(
   out.push(
     Decoration.inline(from, to, { class: `${RAW_CLASS} ${RAW_HIDE_CLASS}` }),
   );
+  // 로케일을 key에 넣는다. `WidgetType.eq`는 key가 같으면 새 toDOM을 아예
+  // 호출하지 않고 기존 DOM을 그대로 재사용한다(불필요한 문서 전역 리렌더를
+  // 막으려는 의도) — 그런데 그 재사용이 로케일 전환에도 그대로 적용되면
+  // 문서를 안 건드렸다는 이유로 옛 언어 라벨이 화면에 남는다. key에 로케일을
+  // 섞어야 언어가 바뀐 순간에만 실제로 다시 그린다.
+  const { locale } = useSettingsStore.getState();
   out.push(
     Decoration.widget(to, () => renderTaskChip(span, overdue), {
-      key: `task-chip-${from}-${span.kind}`,
+      key: `task-chip-${from}-${span.kind}-${locale}`,
       // 테스트가 DOM을 그리지 않고도 계약을 볼 수 있도록 spec에 남긴다.
       overdue,
       side: 1,
@@ -256,44 +300,79 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+/** `apply`의 tr meta — 로케일이 바뀌었으니 문서·선택이 그대로여도 다시 그려라. */
+const LOCALE_CHANGED_META = "localeChanged";
+
+/**
+ * 실제 Plugin을 만든다. `TaskFieldChips`(아래)의 `addProseMirrorPlugins`가
+ * 쓰는 것과 **같은** 함수를 테스트가 raw `EditorView`에 직접 꽂을 수 있도록
+ * 따로 내보낸다 — Tiptap의 `Editor`를 통하면 `dispatchTransaction`이 이미
+ * `view.isDestroyed`를 가드하므로(`@tiptap/core`), destroy 이후 구독이 실제로
+ * 끊겼는지를 그 경로로는 검증할 수 없다.
+ */
+export function createTaskFieldChipsPlugin(): Plugin<TaskFieldChipsState> {
+  return new Plugin<TaskFieldChipsState>({
+    key: taskFieldChipsKey,
+    props: {
+      decorations(state) {
+        return taskFieldChipsKey.getState(state)?.set;
+      },
+    },
+    state: {
+      init(_config, state) {
+        return nextState(
+          state.doc,
+          state.selection.from,
+          findEditingTaskItem(state.doc, state.selection.from),
+        );
+      },
+      // 문서가 그대로이고 편집 중인 항목도 그대로면 이전 집합을 그대로 쓴다.
+      // 태스크 밖에서 커서만 움직일 때 문서 전체를 다시 훑지 않기 위해서다.
+      // 로케일 변경(아래 view())은 둘 다 그대로여도 다시 그려야 하므로
+      // 그 경우만 별도로 뚫는다.
+      apply(tr, value, _oldState, newState) {
+        const editingItem = findEditingTaskItem(
+          newState.doc,
+          newState.selection.from,
+        );
+        const localeChanged =
+          tr.getMeta(taskFieldChipsKey) === LOCALE_CHANGED_META;
+        if (
+          !tr.docChanged &&
+          !localeChanged &&
+          editingItem === value.editingItem
+        ) {
+          return value;
+        }
+        return nextState(newState.doc, newState.selection.from, editingItem);
+      },
+    },
+    // 데코레이션은 문서·선택 변경에만 다시 만들어진다. 설정에서 언어를
+    // 바꾸는 것은 둘 중 어느 것도 아니므로, 이 구독이 없으면 이미 그려진
+    // 문서가 옛 언어로 남는다(`vim-lifecycle.ts:55`,
+    // `code-block-node-view.ts:224`와 같은 전례).
+    view(editorView) {
+      const unsubscribe = useSettingsStore.subscribe((state, prev) => {
+        if (state.locale === prev.locale) return;
+        const tr = editorView.state.tr.setMeta(
+          taskFieldChipsKey,
+          LOCALE_CHANGED_META,
+        );
+        editorView.dispatch(tr);
+      });
+      return {
+        destroy() {
+          unsubscribe();
+        },
+      };
+    },
+  });
+}
+
 export const TaskFieldChips = Extension.create({
   name: "taskFieldChips",
 
   addProseMirrorPlugins() {
-    return [
-      new Plugin<TaskFieldChipsState>({
-        key: taskFieldChipsKey,
-        props: {
-          decorations(state) {
-            return taskFieldChipsKey.getState(state)?.set;
-          },
-        },
-        state: {
-          init(_config, state) {
-            return nextState(
-              state.doc,
-              state.selection.from,
-              findEditingTaskItem(state.doc, state.selection.from),
-            );
-          },
-          // 문서가 그대로이고 편집 중인 항목도 그대로면 이전 집합을 그대로 쓴다.
-          // 태스크 밖에서 커서만 움직일 때 문서 전체를 다시 훑지 않기 위해서다.
-          apply(tr, value, _oldState, newState) {
-            const editingItem = findEditingTaskItem(
-              newState.doc,
-              newState.selection.from,
-            );
-            if (!tr.docChanged && editingItem === value.editingItem) {
-              return value;
-            }
-            return nextState(
-              newState.doc,
-              newState.selection.from,
-              editingItem,
-            );
-          },
-        },
-      }),
-    ];
+    return [createTaskFieldChipsPlugin()];
   },
 });
