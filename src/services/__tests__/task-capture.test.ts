@@ -332,6 +332,16 @@ describe("captureTask — 인덱싱될 수 없는 수집함 경로", () => {
     expect(appendTaskLine).not.toHaveBeenCalled();
   });
 
+  // 인덱싱하는 두 곳은 `ends_with(".md")`로 대소문자를 구분한다
+  // (`use-task-watcher.ts:51-53`, `fs/mod.rs:88`). 여기서만 관대해지면 줄은 파일에
+  // 적히는데 스캔도 워처도 그 파일을 걷지 않아, 태스크가 어느 버킷에도 영영
+  // 나타나지 않는다 — 이 게이트가 막으려던 실패 모드 그대로다.
+  it("대문자 확장자를 거절한다 — 인덱싱 경로가 대소문자를 구분한다", async () => {
+    await rejectsWithCode(capture("Inbox.MD"), "notMarkdown");
+    await rejectsWithCode(capture("Inbox.Markdown"), "notMarkdown");
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
   it("디렉터리로 적은 값을 거절한다 — 그대로 두면 `notes`라는 이름의 파일이 생긴다", async () => {
     await rejectsWithCode(capture("notes/"), "notMarkdown");
     expect(appendTaskLine).not.toHaveBeenCalled();

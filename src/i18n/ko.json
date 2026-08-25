@@ -99,7 +99,7 @@
   "settings.general.tasksRecordDoneDate": "완료일 기록",
   "settings.general.tasksRecordDoneDate.desc": "태스크를 체크하면 ✅와 오늘 날짜를 덧붙입니다",
   "settings.general.tasksCaptureFile": "수집함 파일",
-  "settings.general.tasksCaptureFile.desc": "빠른 캡처로 만든 태스크가 붙는 .md 파일. 볼트 안, 루트 기준 상대 경로입니다",
+  "settings.general.tasksCaptureFile.desc": "빠른 캡처로 만든 태스크가 붙는 .md 또는 .markdown 파일. 볼트 안, 루트 기준 상대 경로입니다",
   "settings.general.tasksCaptureFile.placeholder": "Inbox.md",
   "settings.general.tasksExcludePaths": "제외할 폴더",
   "settings.general.tasksExcludePaths.desc": "태스크 인덱싱에서 건너뛸 폴더를 쉼표로 구분해 적습니다",
@@ -652,7 +652,7 @@
   "journal.capture.error.taskNoVault": "볼트를 먼저 여세요 — 캡처한 태스크는 볼트 안의 파일에 쌓입니다.",
   "journal.capture.error.taskDirtyTab": "수집함 파일에 저장하지 않은 변경이 있습니다. 그 탭을 저장한 뒤 다시 시도해 주세요.",
   "journal.capture.error.taskOutsideVault": "수집함 파일은 볼트 안에 있어야 합니다. 볼트 밖의 태스크는 아젠다에 나타나지 않습니다 — 설정에서 바꿔 주세요.",
-  "journal.capture.error.taskNotMarkdown": "수집함 파일은 .md 파일이어야 합니다. 그 밖의 파일은 아젠다에 나타나지 않습니다 — 설정에서 바꿔 주세요.",
+  "journal.capture.error.taskNotMarkdown": "수집함 파일은 .md 또는 .markdown 파일이어야 합니다. 그 밖의 파일은 아젠다에 나타나지 않습니다 — 설정에서 바꿔 주세요.",
   "journal.tagSuggest.aria": "태그 제안",
   "journal.zettel.titlePlaceholder": "노트 제목",
 
