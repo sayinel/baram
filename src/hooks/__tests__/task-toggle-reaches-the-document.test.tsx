@@ -153,8 +153,8 @@ const tab = (id: string, filePath: string, isDirty = false): EditorTab => ({
 let editor: Editor;
 const editorStateCache = new Map<string, EditorState>();
 
-/** 워처가 실제로 올려 보내는 이벤트 한 건. */
-async function deliverFileChanged(path: string, origin: "app" | "external") {
+/** 워처가 실제로 올려 보내는 이벤트 한 건. `origin` 없이 도착하는 경우도 있다. */
+async function deliverFileChanged(path: string, origin?: "app" | "external") {
   await waitFor(() => expect(onFileChanged).not.toBeNull());
   onFileChanged!({
     payload: { mtime: disk.get(path)!.mtime, origin, path },
@@ -327,6 +327,18 @@ describe("진짜 외부 편집은 그대로 리로드된다", () => {
     await waitFor(() =>
       expect(docMarkdown()).toContain("다른 프로그램이 통째로 바꿔 놓았다."),
     );
+    expect(toastMessage()).toContain("Reloaded external changes");
+  });
+
+  it("출처를 모르는 이벤트는 외부 변경으로 다룬다", async () => {
+    // 판정에 실패했거나 옛 백엔드가 보낸 페이로드다. 모를 때 "우리 것"으로 넘겨짚으면
+    // 진짜 외부 편집이 조용히 처리돼 사용자가 그 사실을 영영 모른다.
+    mountApp();
+
+    writeToDisk(NOTE, "# 오늘\n\n출처를 모르는 변경.\n");
+    await deliverFileChanged(NOTE);
+
+    await waitFor(() => expect(docMarkdown()).toContain("출처를 모르는 변경."));
     expect(toastMessage()).toContain("Reloaded external changes");
   });
 });
