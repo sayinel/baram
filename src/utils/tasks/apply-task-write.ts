@@ -21,6 +21,7 @@ import {
 import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
 
 export type TaskChange =
@@ -51,24 +52,32 @@ export type TaskDeleteResult =
   | { kind: "disk" }
   | { kind: "document" }
   | { kind: "source" }
-  | { kind: "stale"; target: "disk" | "document" | "source" };
+  | { kind: "stale"; target: StaleTarget };
 
 export type TaskWriteResult =
   | { kind: "disk"; raw: string }
   | { kind: "document"; raw: string }
   | { kind: "source"; raw: string }
-  /**
-   * 낙관적 잠금 거절. `target`은 쓰기를 **실제로 시도한 곳**이다 — 라우터가 고른 곳이
-   * 아니다(접근자가 없으면 `source` 판정도 디스크로 흘러간다). 호출자의 회계는 이 값만
-   * 봐야 한다: 라우터에 다시 물으면 같은 사실에 두 개의 진실원이 생기고, 그것이 갈라지는
-   * 순간 쓰지도 않은 파일을 다시 읽어 같은 배치가 버퍼에 만들어 둔 변경을 되돌린다.
-   */
-  | { kind: "stale"; target: "disk" | "document" | "source" };
+  | { kind: "stale"; target: StaleTarget };
 
 export type TaskWriteTarget =
   | { kind: "disk" }
   | { kind: "document"; tabId: string }
   | { kind: "source"; tabId: string };
+
+/**
+ * 쓰기가 거절된 자리. `disk`·`document`·`source`는 쓰기를 **실제로 시도한 곳**이다 —
+ * 라우터가 고른 곳이 아니다(접근자가 없으면 `source` 판정도 디스크로 흘러간다). 호출자의
+ * 회계는 이 값만 봐야 한다: 라우터에 다시 물으면 같은 사실에 두 개의 진실원이 생기고,
+ * 그것이 갈라지는 순간 쓰지도 않은 파일을 다시 읽어 같은 배치가 버퍼에 만들어 둔 변경을
+ * 되돌린다.
+ *
+ * §312 `buffer`만 성질이 다르다: **아무 데도 시도하지 않았다.** 스토어의 줄 번호가 저장
+ * 전 삭제 때문에 버퍼를 가리키고 있어(`linesDescribeUnsavedBuffer`) 디스크 쓰기를 아예
+ * 거절한 경우다. 회계는 소스·문서의 stale과 같아야 한다 — 패치할 `raw`가 없고, 디스크를
+ * 다시 읽어서도 안 되며(지운 줄이 아젠다로 되살아난다), 침묵해서도 안 된다.
+ */
+type StaleTarget = "buffer" | "disk" | "document" | "source";
 
 /**
  * 태스크 한 줄을 고친다.
@@ -98,6 +107,19 @@ export async function applyTaskWrite(
     // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다 — 런타임에는
     // 거짓이 될 수 없는 조건이다.
     return await writeToDocument(task, change, editor, target.tabId);
+  }
+
+  // §312 저장 전 삭제가 이 파일의 스토어 줄 번호를 그 저장 전 표면 기준으로 옮겨
+  // 놓았다면 디스크에 쓰지 않는다. 그 번호로 쓰면 한 줄씩 어긋난 자리를 고치는데,
+  // 낙관적 잠금은 `(줄 번호, 원문)`만 보므로 바이트가 같은 이웃 줄이 하나라도 있으면
+  // **통과한다** — 사용자가 방금 지운 줄에 값이 찍히고, 알려 주는 신호는 없다.
+  //
+  // ‼️ 라우터가 아니라 **디스크에 쓰기 직전**에 묻는다. 라우터의 판정과 실제 쓰기 자리는
+  // 같지 않다(소스 접근자가 없으면 `source` 판정도 여기로 흘러온다). 라우터에 얹으면 그
+  // 폴백이 관문 밖으로 새고, `resolveTaskWriteTarget`을 함께 쓰는 §309 일괄 분류와
+  // §313 수집이 쓰지도 않을 새 판정값을 다뤄야 한다.
+  if (linesDescribeUnsavedBuffer(task.path)) {
+    return { kind: "stale", target: "buffer" };
   }
 
   try {
@@ -183,23 +205,55 @@ export function isUnsavedWrite<R extends TaskDeleteResult | TaskWriteResult>(
 }
 
 /**
+ * §312 소스 버퍼에 쓴 뒤 탭을 dirty로 세운다 — 이미 dirty면 아무것도 하지 않는다.
+ *
+ * 필요한 이유: 소스 분기가 clean 탭에도 열리게 되면서 "여기 오려면 이미 dirty였다"는
+ * 전제가 사라졌다. 표시가 없으면 버퍼에만 있는 이 변경은 사용자에게 흔적을 남기지
+ * 않는다 — 저장하지 않고 닫아도 확인을 받지 못하고, 외부 변경이 오면 충돌 모달 대신
+ * 조용한 자동 리로드 경로로 간다. 문서 분기가 이미 하는 일과 같다.
+ *
+ * ‼️ 이것은 **소스 모드 타이핑**을 dirty로 만드는 것이 아니다. 그 판정은 지금처럼
+ * use-auto-save가 Tiptap `update`에서 홀로 갖는다(tab-surface-renderers.tsx의 주석).
+ * 여기서 세우는 것은 아젠다가 만든 프로그램적 쓰기 하나뿐이다.
+ *
+ * `markDirty`는 동등성 관문이 없어 tabs 배열을 새로 만들고 모든 구독자를 깨운다 —
+ * 그래서 값이 이미 참이면 부르지 않는다.
+ */
+export function markSourceTabDirty(tabId: string): void {
+  const { markDirty, tabs } = useEditorStore.getState();
+  if (tabs.find((t) => t.id === tabId)?.isDirty) return;
+  markDirty(tabId, true);
+}
+
+/**
  * 이 파일이 어디에 써야 하는지 판정한다 — 라우팅 규칙의 **유일한** 정의다.
  * §309 일괄 경로도 이것을 불러 태스크를 분류하므로, 규칙을 두 벌로 두면
  * 반드시 드리프트한다.
  *
- * 문서 경로는 "활성 + dirty" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
+ * §312 **소스 분기가 먼저다.** 탭이 소스 모드면 사용자가 보고 있는 — 그리고 저장이
+ * 실제로 쓰는 — 권위 있는 텍스트는 ProseMirror 문서가 아니라 소스 버퍼다. 관문은
+ * `sourceModeTabs` 하나뿐이고, 문서 분기의 세 조건 중 어느 것도 여기 걸리지 않는다:
+ * - **dirty가 아니다.** 마크다운 소스 편집은 일부러 dirty를 세우지 않으므로
+ *   (tab-surface-renderers.tsx의 `if (!isMarkdownFile(filePath))`) 소스 모드 탭은 보통
+ *   clean이다. clean을 "버퍼와 디스크가 같다"로 읽으면 확인까지 받은 삭제가 디스크로
+ *   나가고, 화면의 버퍼가 그것을 다음 저장에서 되돌린다.
+ * - **활성이 아니다.** 배경 탭의 버퍼도 그대로 살아 있고(`syncSourceBuffers`는 갈라진
+ *   버퍼를 활성 여부와 무관하게 **보존한다**) 돌아와 저장하면 그것이 파일이 된다.
+ *   문서 분기가 배경 탭을 거부하는 이유(캐시된 EditorState가 openFiles를 덮어쓴다)는
+ *   버퍼에 해당하지 않는다 — 버퍼 Map 자체가 그 캐시다.
+ * - **editor가 아니다.** 이 경로는 라이브 문서를 한 줄도 읽지 않는다.
+ *
+ * 문서 경로는 그대로 "활성 + dirty" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
  * - 탭이 없다(닫힌 파일) → 디스크가 유일한 진실원.
  * - 배경 탭 → openFiles에 써도 나중에 그 탭으로 돌아오면 캐시된 PM 상태가
  *   덮어쓴다(use-tab-switching.ts:461-494는 openFiles가 아니라
  *   editorStateCache를 복원한다) — 방금 만든 변경이 사라지고 탭만 거짓으로
  *   dirty가 된다.
- * - 활성이지만 clean → 버퍼와 디스크가 이미 같으므로 디스크에 써도 잃는 게
- *   없고, non-dirty 탭의 외부 변경 자동 리로드(use-file-operations.ts의
+ * - 활성이지만 clean → WYSIWYG 표면의 clean은 소스 모드와 달리 진짜다(dirty를
+ *   Tiptap `update`에서 판정한다). 버퍼와 디스크가 이미 같으므로 디스크에 써도 잃는
+ *   게 없고, non-dirty 탭의 외부 변경 자동 리로드(use-file-operations.ts의
  *   triggerAutoReload)가 에디터를 알아서 갱신한다.
  * - editor가 없다 → 문서를 읽을 방법이 없다.
- *
- * §312 그 안에서 다시 갈린다: 탭이 소스 모드면 사용자가 보고 있는 권위 있는 텍스트는
- * ProseMirror 문서가 아니라 소스 버퍼다. 그리로 보낸다.
  */
 export function resolveTaskWriteTarget(
   path: string,
@@ -207,12 +261,13 @@ export function resolveTaskWriteTarget(
 ): TaskWriteTarget {
   const { activeTabId, sourceModeTabs, tabs } = useEditorStore.getState();
   const tab = tabs.find((t) => t.filePath === path);
-  if (!tab || tab.id !== activeTabId || !tab.isDirty || !editor) {
-    return { kind: "disk" };
-  }
+  if (!tab) return { kind: "disk" };
   // ‼️ 이 검사는 document 판정 **앞**에 있어야 한다. 소스 모드인 더티 활성 탭은
   // document 조건을 전부 만족하는 부분집합이라, 뒤로 옮기면 영원히 도달하지 못한다.
   if (sourceModeTabs.includes(tab.id)) return { kind: "source", tabId: tab.id };
+  if (tab.id !== activeTabId || !tab.isDirty || !editor) {
+    return { kind: "disk" };
+  }
   return { kind: "document", tabId: tab.id };
 }
 
@@ -316,9 +371,7 @@ async function writeToSourceBuffer(
   );
   if (applied === null) return { kind: "stale", target: "source" };
 
-  // markDirty를 부르지 않는다 — 이 경로에 오려면 탭이 이미 dirty여야 하고
-  // (resolveTaskWriteTarget의 전제), markDirty는 tabs 배열을 새로 만들어
-  // 모든 구독자를 깨우므로 순수한 낭비다.
   access.setSourceBuffer(tabId, applied.content);
+  markSourceTabDirty(tabId);
   return { kind: "source", raw: applied.raw };
 }

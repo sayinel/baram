@@ -19,7 +19,8 @@ import { deleteTaskLine } from "../../ipc/invoke";
 import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
-import { resolveTaskWriteTarget } from "./apply-task-write";
+import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
+import { markSourceTabDirty, resolveTaskWriteTarget } from "./apply-task-write";
 import { isSameLine, lineAt, removeLine } from "./line-splice";
 
 /**
@@ -48,6 +49,12 @@ export async function applyTaskDelete(
   } else if (target.kind === "document" && editor) {
     // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다.
     return deleteFromDocument(task, editor, target.tabId);
+  }
+
+  // §312 편집 쓰기와 같은 관문이다(`applyTaskWrite`의 주석에 이유가 있다). 여기서
+  // 어긋난 번호가 통과하면 결과는 잘못된 값이 아니라 **잘못 지워진 줄**이다.
+  if (linesDescribeUnsavedBuffer(task.path)) {
+    return { kind: "stale", target: "buffer" };
   }
 
   try {
@@ -96,7 +103,8 @@ function deleteFromDocument(
  *
  * `openFiles`도 `requestContentRefresh`도 건드리지 않는다(`writeToSourceBuffer`와 같은
  * 이유): 그 둘은 ProseMirror 표면을 다시 채우는 통로인데 지금 보이는 것은 그 표면이 아니다.
- * `markDirty`도 부르지 않는다 — 이 경로에 오려면 탭이 이미 dirty여야 한다.
+ * `markDirty`는 부른다 — 소스 분기가 clean 탭에도 열리므로, 표시하지 않으면 되돌릴 수 없는
+ * 이 변경이 저장하지 않고 닫는 사용자에게 아무 흔적도 남기지 않는다(`markSourceTabDirty`).
  */
 function deleteFromSourceBuffer(
   task: TaskEntry,
@@ -109,5 +117,6 @@ function deleteFromSourceBuffer(
   if (next === null) return { kind: "stale", target: "source" };
 
   access.setSourceBuffer(tabId, next);
+  markSourceTabDirty(tabId);
   return { kind: "source" };
 }

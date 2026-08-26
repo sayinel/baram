@@ -337,35 +337,57 @@ describe("resolveTaskWriteTarget — §312 소스 모드", () => {
     });
   });
 
-  it("소스 모드여도 배경 탭이면 디스크다 — 활성 조건이 먼저다", () => {
-    useEditorStore.setState({
-      activeTabId: "other",
-      sourceModeTabs: ["t1"],
-      tabs: [OPEN_TAB],
-    });
-    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
-      kind: "disk",
-    });
-  });
-
-  it("소스 모드여도 clean이면 디스크다 — 버퍼와 디스크가 이미 같다", () => {
+  // ‼️ 아래 세 계약은 뒤집힌 것이다. 예전에는 소스 분기가 문서 분기의 관문(활성 +
+  // dirty + editor)을 **전부 통과한 뒤에야** 열렸다. 그 셋 중 어느 하나라도 거짓이면
+  // 디스크로 갔는데, 그동안 화면의 버퍼는 옛 텍스트를 들고 있다가 저장 시점에 그 쓰기를
+  // 통째로 되돌린다. 소스 버퍼는 그 셋과 무관하게 존재하고, 무관하게 저장 대상이다
+  // (`handleSave`는 `sourceModeTabs`만 본다). 그러므로 소스 분기의 관문은 그 하나뿐이다.
+  it("clean이어도 소스 버퍼로 간다 — 마크다운 소스 편집은 dirty를 세우지 않는다", () => {
     useEditorStore.setState({
       activeTabId: "t1",
       sourceModeTabs: ["t1"],
       tabs: [{ ...OPEN_TAB, isDirty: false }],
     });
     expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
-      kind: "disk",
+      kind: "source",
+      tabId: "t1",
     });
   });
 
-  it("소스 모드여도 editor가 없으면 디스크다", () => {
+  it("editor가 없어도 소스 버퍼로 간다 — 이 경로는 라이브 문서를 읽지 않는다", () => {
     useEditorStore.setState({
       activeTabId: "t1",
       sourceModeTabs: ["t1"],
       tabs: [OPEN_TAB],
     });
     expect(resolveTaskWriteTarget("/v/note.md", null)).toEqual({
+      kind: "source",
+      tabId: "t1",
+    });
+  });
+
+  // 배경 탭의 버퍼도 그대로 살아 있다 — 외부 변경 자동 리로드는 갈라진 버퍼를 **보존하고**
+  // (`syncSourceBuffers`는 활성 탭만 보지 않는다), 사용자가 돌아와 저장하면 그것이 파일이
+  // 된다. 문서 분기가 배경 탭을 거부하는 이유(캐시된 EditorState가 덮어쓴다)는 여기에 없다.
+  it("배경 탭이어도 소스 버퍼로 간다 — 그 버퍼가 저장 대상으로 남는다", () => {
+    useEditorStore.setState({
+      activeTabId: "other",
+      sourceModeTabs: ["t1"],
+      tabs: [OPEN_TAB],
+    });
+    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
+      kind: "source",
+      tabId: "t1",
+    });
+  });
+
+  it("탭이 아예 없으면 디스크다", () => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceModeTabs: ["t1"],
+      tabs: [],
+    });
+    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
       kind: "disk",
     });
   });

@@ -114,7 +114,12 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
   const path = resolveCapturePath(rootPath, captureFile);
 
   const target = resolveTaskWriteTarget(path, editor);
-  if (target.kind === "disk" || !editor) {
+  // ‼️ `!== "document"`이지 `=== "disk"`가 아니다. §312 이후 소스 모드 탭은 dirty·활성과
+  // 무관하게 `source` 판정을 받는데, 그 탭에서 권위 있는 텍스트는 CodeMirror 버퍼다 —
+  // 아래 라이브 문서 경로로 붙이면 저장 시점에 버퍼가 그 줄을 통째로 지운다. 디스크로
+  // 보내면 `assertNoUnsavedTab`이 그 탭의 상태를 보고 판정한다: 저장된 탭이면 워처의
+  // 자동 리로드가 버퍼까지 갱신하고, 저장하지 않은 탭이면 붙이지 않고 던진다.
+  if (target.kind !== "document" || !editor) {
     assertNoUnsavedTab(path);
     return appendTaskLine(path, line);
   }

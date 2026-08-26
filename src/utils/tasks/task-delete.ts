@@ -28,6 +28,18 @@ import { writeAndReconcile } from "./task-triage-write";
  * 정보가 없으므로 그대로 잘라도 된다. 앞 공백을 남겨도 `.ai-prompt-label`이 기본
  * `white-space: normal`이면 렌더링 단계에서 다시 접힌다 — 그래서 `toolbar.css`가 같은
  * 클래스에 `white-space: pre-wrap`을 짝으로 둔다(§312).
+ *
+ * 저장 전 경로의 회계는 `dropLineFromBuffer`가 갖는다 — 지운 항목을 빼고 그 **아래 줄
+ * 번호를 하나씩 올린 뒤**, 그 파일의 번호가 이제 버퍼를 가리킨다고 표시한다.
+ *
+ * ‼️ 여기서 `refreshFileTasks`를 부르면 안 된다. 그 파일의 진실은 아직 저장되지 않은
+ * 버퍼인데 디스크를 다시 읽으면 지운 줄이 되살아나고, 같은 세션이 그 버퍼에 만들어 둔
+ * **다른 줄의** 변경까지 옛 내용으로 되돌아간다(`isDiskAuthoritative`가 존재하는 이유).
+ *
+ * `patchTask`로도 안 된다 — 그것은 `line`을 조인 키로 쓰는 **단건** 갱신이고 삭제가
+ * 무효화하는 것은 그 키 자체다. 지운 줄보다 아래에 있던 태스크의 번호를 바로잡지 않으면
+ * 그 다음 조작(체크·기한·태그)이 한 줄 아래에 쓴다. 디스크 경로는 이 계산을 하지 않는다:
+ * 그쪽은 파일을 다시 읽어 파서가 센 번호를 그대로 받는다(`writeAndReconcile`).
  */
 export async function confirmAndDeleteTaskLine(
   task: TaskEntry,
@@ -42,28 +54,6 @@ export async function confirmAndDeleteTaskLine(
     task,
     ctx,
     () => applyTaskDelete(task, ctx.editor),
-    () => dropTaskLine(task.path, task.line),
-  );
-}
-
-/**
- * 저장 전 경로의 회계 — 지운 항목을 빼고 그 **아래 줄 번호를 하나씩 올린다**.
- *
- * ‼️ 여기서 `refreshFileTasks`를 부르면 안 된다. 그 파일의 진실은 아직 저장되지 않은
- * 버퍼인데 디스크를 다시 읽으면 지운 줄이 되살아나고, 같은 세션이 그 버퍼에 만들어 둔
- * **다른 줄의** 변경까지 옛 내용으로 되돌아간다(`isDiskAuthoritative`가 존재하는 이유).
- *
- * `patchTask`로도 안 된다 — 그것은 `line`을 조인 키로 쓰는 **단건** 갱신이고 삭제가
- * 무효화하는 것은 그 키 자체다. 지운 줄보다 아래에 있던 태스크의 번호를 바로잡지 않으면
- * 그 다음 조작(체크·기한·태그)이 한 줄 아래에 쓴다. 디스크 경로는 이 계산을 하지 않는다:
- * 그쪽은 파일을 다시 읽어 파서가 센 번호를 그대로 받는다(`writeAndReconcile`).
- */
-function dropTaskLine(path: string, line: number): void {
-  const { replaceFile, tasks } = useTaskStore.getState();
-  replaceFile(
-    path,
-    tasks
-      .filter((x) => x.path === path && x.line !== line)
-      .map((x) => (x.line > line ? { ...x, line: x.line - 1 } : x)),
+    () => useTaskStore.getState().dropLineFromBuffer(task.path, task.line),
   );
 }
