@@ -100,6 +100,23 @@ describe("§312 회계 — 디스크가 진실원인 갈래", () => {
     expect(r.toast).toBeNull();
   });
 
+  // ‼️ 문구는 **넘겨받은 `t`에서** 와야 한다. 영어로만 확인하면 하드코딩된 사본과
+  // 키에서 온 값이 바이트가 같아 아무것도 가르지 못한다 — 이 슬라이스가 실제로 겪은
+  // 실패다(체크 판정의 영어 사본이 그 키의 영어와 같았다).
+  it("실패 문구는 컨텍스트의 t를 탄다 — 로케일을 바꾸면 함께 바뀐다", async () => {
+    const reconciled = vi.fn();
+    await writeAndReconcile(
+      TASK,
+      { ...CTX, t: (key, params) => t(key, "ko", params) },
+      () => Promise.reject(new Error("Permission denied (os error 13)")),
+      reconciled,
+    );
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("tasks.triage.writeFailed", "ko"),
+    );
+  });
+
   // ‼️ 예외로 실패했으면 무엇이 남았는지 알 수 없다 — 디스크를 읽어 사실과 맞춰야 한다.
   it("stale이 아닌 실패는 토스트로 알리고 그래도 다시 읽는다", async () => {
     const r = await run(new Error("Permission denied (os error 13)"));

@@ -573,6 +573,29 @@ describe("§312 triage menu on an agenda row", () => {
       expect(screen.getByRole("menu")).toBeInTheDocument();
     });
 
+    // 키보드 경로는 클릭과 따로 판정한다 — 한쪽만 막으면 다른 쪽으로 샌다.
+    it("해제할 수 없는 항목 위에서 Enter를 눌러도 쓰기가 나가지 않는다", async () => {
+      const row = renderRow({
+        raw: "- [ ] 여행 #someday-maybe",
+        tags: ["someday"],
+        text: "여행 #someday-maybe",
+      });
+      const menu = openMenu(row);
+
+      // 항목 순서: 오늘·내일·직접 선택·someday·삭제. 강조는 0에서 시작한다.
+      for (let i = 0; i < 3; i++) fireEvent.keyDown(menu, { key: "ArrowDown" });
+      expect(menu.getAttribute("aria-activedescendant")).toBe(
+        screen.getByRole("menuitem", {
+          name: EN_T("tasks.triage.somedayLocked"),
+        }).id,
+      );
+
+      fireEvent.keyDown(menu, { key: "Enter" });
+
+      await waitFor(() => expect(setTaskTag).not.toHaveBeenCalled());
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+    });
+
     it("이미 someday인 행은 해제 항목을 보이고, 누르면 태그를 끈다", async () => {
       setTaskTag.mockResolvedValue("- [ ] 하나");
       const row = renderRow({

@@ -123,7 +123,11 @@ describe("TaskAgendaPanel", () => {
   // ‼️ 체크 판정의 실패 문구가 정리 메뉴와 **같은 키**여야 한다. 예전에는 이 자리에
   // 하드코딩된 영어가 있었고 그 문자열은 `tasks.triage.writeFailed`의 영어와 바이트가
   // 같았다 — 한국어 사용자는 같은 실패에 메뉴에서 한국어, 체크박스에서 영어를 받았다.
+  //
+  // ‼️ **한국어 로케일로 확인해야 한다.** 영어로 보면 하드코딩된 사본과 키에서 온 값이
+  // 바이트가 같아 이 테스트가 아무것도 가르지 못한다 — 되살린 결함이 초록불로 지나간다.
   it("체크 판정의 실패 문구는 정리 조작과 같은 i18n 키를 쓴다 (MODERATE-3)", async () => {
+    useSettingsStore.setState({ locale: "ko" });
     setTaskState.mockRejectedValueOnce("Permission denied (os error 13)");
     useTaskStore.getState().setAll([task()]);
     render(<TaskAgendaPanel />);
@@ -131,11 +135,9 @@ describe("TaskAgendaPanel", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
 
     expect(useUIStore.getState().toast?.message).toBe(
-      t("tasks.triage.writeFailed", "en"),
-    );
-    expect(useUIStore.getState().toast?.message).not.toBe(
       t("tasks.triage.writeFailed", "ko"),
     );
+    useSettingsStore.setState({ locale: "en" });
   });
 
   it("re-scans exactly once per toggle regardless of outcome (I5)", async () => {
