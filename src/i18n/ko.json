@@ -826,5 +826,14 @@
   "tasks.chip.priority.highest": "최고",
   "tasks.chip.priority.high": "높음",
   "tasks.chip.priority.low": "낮음",
-  "tasks.chip.priority.lowest": "최저"
+  "tasks.chip.priority.lowest": "최저",
+  "tasks.triage.menu": "태스크 정리",
+  "tasks.triage.dueToday": "오늘 기한으로",
+  "tasks.triage.dueTomorrow": "내일 기한으로",
+  "tasks.triage.duePick": "날짜 선택…",
+  "tasks.triage.pickTitle": "기한 설정",
+  "tasks.triage.pickLabel": "날짜 (2026-08-30, t=오늘, m=내일, +3, 8/30)",
+  "tasks.triage.pickSubmit": "설정",
+  "tasks.triage.badDate": "“{value}”을(를) 날짜로 읽을 수 없습니다.",
+  "tasks.triage.writeFailed": "태스크 변경을 저장하지 못했습니다."
 }

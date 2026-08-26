@@ -1,9 +1,15 @@
-// §306 아젠다 버킷 하나 — 항목 렌더와 체크 토글
+// §306 아젠다 버킷 하나 — 항목 렌더와 체크 토글, §312 정리 메뉴
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
+import type { TaskMenuState } from "./TaskRowMenu";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { overdueDays, taskAgeDays } from "../../utils/tasks/task-buckets";
 import { priorityBadge } from "../../utils/tasks/task-filters";
+import { buildTriageItems } from "../../utils/tasks/task-triage";
+import { TaskRowMenu } from "./TaskRowMenu";
 
 interface Props {
   /** I3: "done"만 기본으로 접는다 — 그 외는 기본 펼침. */
@@ -12,6 +18,8 @@ interface Props {
   now: Date;
   onJump: (task: TaskEntry) => void;
   onToggle: (task: TaskEntry) => void;
+  /** §312 정리 메뉴에서 고른 항목 — 무엇을 할지는 `runTaskTriageAction`이 정한다. */
+  onTriage: (task: TaskEntry, action: string) => void;
   /** §312 방치 배지를 보일지 — "예정 없음" 버킷에서만 켠다. */
   showAge: boolean;
   showOverdueAge: boolean;
@@ -31,11 +39,74 @@ export function TaskBucketList({
   now,
   onJump,
   onToggle,
+  onTriage,
   showAge,
   showOverdueAge,
   tasks,
   titleFor,
 }: Props) {
+  const { t } = useTranslation();
+  const [menu, setMenu] = useState<null | TaskMenuState>(null);
+  // 메뉴를 연 행 — 닫을 때 포커스를 돌려줄 곳이다. 키보드 사용자가 `d`로 열고
+  // Escape로 닫았을 때 포커스가 body로 떨어지면 그 다음 `j`가 아무 데도 닿지 않는다.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const items = useMemo(() => buildTriageItems(t), [t]);
+
+  const closeMenu = useCallback(() => {
+    setMenu(null);
+    openerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    // ‼️ click이 아니라 mousedown이다. 우클릭은 click을 내지 않으므로, click으로
+    // 닫으면 다른 버킷의 행을 우클릭했을 때 메뉴가 둘 다 열린 채로 남는다.
+    // mousedown은 좌·우클릭 모두 contextmenu보다 먼저 오므로 "먼저 닫고 다시
+    // 연다"가 자연스럽게 성립한다. 여기서는 포커스를 돌려주지 않는다 — 사용자가
+    // 방금 누른 다른 곳에서 포커스를 뺏어 오게 된다.
+    const close = () => setMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menu, closeMenu]);
+
+  const openMenu = useCallback((row: HTMLElement, task: TaskEntry) => {
+    openerRef.current = row;
+    const rect = row.getBoundingClientRect();
+    setMenu({ task, x: rect.left, y: rect.bottom });
+  }, []);
+
+  const handleRowKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLLIElement>, task: TaskEntry) => {
+      switch (e.key) {
+        // 버킷 안에서만 움직인다 — 버킷을 가로지르는 이동은 그 목록 전체를 소유한
+        // §315(주간 리뷰)의 몫이지 버킷 하나인 이 컴포넌트가 판단할 일이 아니다.
+        case "ArrowDown":
+        case "j":
+          e.preventDefault();
+          moveRowFocus(e.currentTarget, 1);
+          break;
+        case "ArrowUp":
+        case "k":
+          e.preventDefault();
+          moveRowFocus(e.currentTarget, -1);
+          break;
+        // §315: 마우스 없이도 정리 조작에 닿아야 한다.
+        case "d":
+          e.preventDefault();
+          openMenu(e.currentTarget, task);
+          break;
+      }
+    },
+    [openMenu],
+  );
+
   if (tasks.length === 0) return null;
 
   return (
@@ -58,7 +129,16 @@ export function TaskBucketList({
           const shown = displayText(task.text, titleFor);
           const priority = priorityBadge(task.priority);
           return (
-            <li className="task-row" key={`${task.path}:${task.line}`}>
+            <li
+              className="task-row"
+              key={`${task.path}:${task.line}`}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                openMenu(e.currentTarget, task);
+              }}
+              onKeyDown={(e) => handleRowKeyDown(e, task)}
+              tabIndex={0}
+            >
               <input
                 aria-label={shown}
                 checked={task.state === "done"}
@@ -96,6 +176,19 @@ export function TaskBucketList({
           );
         })}
       </ul>
+      {menu && (
+        // <li> **밖**에 둔다 — 안에 두면 메뉴의 keydown이 행 핸들러로 올라가
+        // 같은 j/k가 항목과 행 포커스를 함께 옮긴다.
+        <TaskRowMenu
+          items={items}
+          menu={menu}
+          onAction={(action) => {
+            closeMenu();
+            onTriage(menu.task, action);
+          }}
+          onClose={closeMenu}
+        />
+      )}
     </details>
   );
 }
@@ -110,4 +203,12 @@ function displayText(text: string, titleFor: (t: string) => string): string {
     const [target, alias] = inner.split("|");
     return alias?.trim() || titleFor(target.trim());
   });
+}
+
+/** 같은 버킷 목록 안에서 이웃 행으로 포커스를 옮긴다. 끝에서는 멈춘다. */
+function moveRowFocus(from: HTMLElement, delta: number): void {
+  const list = from.closest(".task-bucket-list");
+  if (!list) return;
+  const rows = [...list.querySelectorAll<HTMLElement>("li.task-row")];
+  rows[rows.indexOf(from) + delta]?.focus();
 }

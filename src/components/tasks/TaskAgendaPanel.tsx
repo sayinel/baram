@@ -34,6 +34,7 @@ import {
 } from "../../utils/tasks/task-filters";
 import { TaskBucketList } from "./TaskBucketList";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
+import { useTaskTriage } from "./use-task-triage";
 
 // 사이드바 패널의 사용자 노출 문자열은 영어가 이 코드베이스의 관례다
 // ("Filter tags...", "File tree", "Label (optional)" 등). 코드 주석은 한국어 유지.
@@ -144,6 +145,13 @@ export function TaskAgendaPanel() {
     },
     [tasksRecordDoneDate, rootPath, tasksExcludePaths, now, editor],
   );
+
+  const onTriage = useTaskTriage({
+    editor,
+    exclude: tasksExcludePaths,
+    now,
+    rootPath,
+  });
 
   const onJump = useCallback((task: TaskEntry) => {
     // pendingScrollLine은 1-based(`mdLineToPmBlockStart`가 line-1을 쓴다),
@@ -293,6 +301,7 @@ export function TaskAgendaPanel() {
             now={now}
             onJump={onJump}
             onToggle={onToggle}
+            onTriage={onTriage}
             showAge={bucket === "noDate"}
             showOverdueAge={bucket === "overdue"}
             tasks={groups[bucket]}

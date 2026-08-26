@@ -826,5 +826,14 @@
   "tasks.chip.priority.highest": "highest",
   "tasks.chip.priority.high": "high",
   "tasks.chip.priority.low": "low",
-  "tasks.chip.priority.lowest": "lowest"
+  "tasks.chip.priority.lowest": "lowest",
+  "tasks.triage.menu": "Task triage",
+  "tasks.triage.dueToday": "Due today",
+  "tasks.triage.dueTomorrow": "Due tomorrow",
+  "tasks.triage.duePick": "Pick a date…",
+  "tasks.triage.pickTitle": "Set due date",
+  "tasks.triage.pickLabel": "Date (2026-08-30, t, m, +3, 8/30)",
+  "tasks.triage.pickSubmit": "Set",
+  "tasks.triage.badDate": "Couldn't read “{value}” as a date.",
+  "tasks.triage.writeFailed": "Couldn't save the task change."
 }
