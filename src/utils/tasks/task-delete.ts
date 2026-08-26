@@ -12,6 +12,29 @@ import { applyTaskDelete } from "./apply-task-delete";
 import { writeAndReconcile } from "./task-triage-write";
 
 /**
+ * 확인 중이거나 쓰는 중인 삭제가 있는가. 있으면 두 번째 요청은 **아무 일도 하지 않는다**.
+ *
+ * ‼️ 관문이 `await`이라 그 사이에 같은 조작이 한 번 더 들어올 수 있다. 그러면 대화상자가
+ * 둘 쌓이고, 둘 다 확인하면 같은 인자로 `deleteTaskLine`이 두 번 나간다 — 낙관적 잠금이
+ * 보는 것은 `(줄 번호, 원문)`뿐이므로 바이트가 같은 이웃 줄이 하나라도 있으면 **두 번째도
+ * 통과해 다른 줄을 지운다.** 사용자가 지우라고 한 적 없는 줄이고, 되돌릴 통로가 없다.
+ *
+ * ‼️ 이것을 지금까지 막아 온 것은 `showConfirm`이 `requestAnimationFrame`에서 취소 버튼에
+ * 주는 포커스뿐이었다 — 다른 네 호출부와 공유하는 대화상자 헬퍼의 **부수효과**이고, 이
+ * 파일에는 그 의존이 적혀 있지 않았다. 그쪽을 고치지 않고 여기에 두는 이유가 셋이다:
+ * - 포커스는 잠금이 아니다. 창이 숨으면 rAF는 지연되고, 행을 직접 겨냥한 dispatch는
+ *   포커스와 무관하게 도착한다.
+ * - 지켜야 할 불변식("되돌릴 수 없는 쓰기는 한 번에 하나")은 이 조작의 것이지 대화상자의
+ *   것이 아니다. 대화상자 쪽에 두면 파괴적이지 않은 네 호출부까지 같은 규칙을 진다.
+ * - 파일/폴더 삭제·Zettel 휴지통·하이라이트 삭제는 각자 다른 자리에서 확인을 띄운다.
+ *   공유 헬퍼의 포커스 시점을 바꾸면 그 넷의 Enter·Escape 동작까지 함께 흔든다.
+ *
+ * 모듈 전역인 것은 의도다. 서로 다른 두 행을 동시에 지우는 것도 막는다 — 먼저 끝난 삭제가
+ * 뒤 줄의 번호를 전부 하나씩 올리므로, 나중 삭제가 들고 있던 번호는 이미 다른 줄을 가리킨다.
+ */
+let deleteInFlight = false;
+
+/**
  * 확인을 받고 태스크 줄을 지운다.
  *
  * ‼️ **확인이 먼저다.** 쓰기를 먼저 하고 확인을 나중에 물으면 "취소"가 아무 의미도 없어
@@ -45,15 +68,23 @@ export async function confirmAndDeleteTaskLine(
   task: TaskEntry,
   ctx: TaskTriageContext,
 ): Promise<void> {
-  const confirmed = await showConfirm(
-    ctx.t("tasks.triage.deleteConfirm", { line: task.raw.trimEnd() }),
-  );
-  if (!confirmed) return;
+  if (deleteInFlight) return;
+  deleteInFlight = true;
+  // ‼️ `finally`다. 취소도, 권한 오류도 잠금을 풀어야 한다 — 풀지 않으면 한 번 취소하거나
+  // 한 번 실패한 사용자가 그 세션에서 다시는 지울 수 없다(조용히 먹지 않는 키).
+  try {
+    const confirmed = await showConfirm(
+      ctx.t("tasks.triage.deleteConfirm", { line: task.raw.trimEnd() }),
+    );
+    if (!confirmed) return;
 
-  await writeAndReconcile(
-    task,
-    ctx,
-    () => applyTaskDelete(task, ctx.editor),
-    () => useTaskStore.getState().dropLineFromBuffer(task.path, task.line),
-  );
+    await writeAndReconcile(
+      task,
+      ctx,
+      () => applyTaskDelete(task, ctx.editor),
+      () => useTaskStore.getState().dropLineFromBuffer(task.path, task.line),
+    );
+  } finally {
+    deleteInFlight = false;
+  }
 }

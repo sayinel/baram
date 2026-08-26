@@ -369,3 +369,106 @@ describe("§312 저장 전 버퍼에서의 삭제", () => {
     expect(deleteTaskLine).toHaveBeenCalledWith("a.md", 0, "- [ ] 하나");
   });
 });
+
+// §312 확인 관문의 **재진입**. 관문은 `await`이므로 그 사이에 같은 조작이 한 번 더 들어올
+// 수 있고, 그러면 대화상자가 둘 쌓인다. 둘 다 확인하면 같은 인자로 `deleteTaskLine`이 두
+// 번 나가는데 — 낙관적 잠금이 보는 것은 `(줄 번호, 원문)`뿐이라 **바이트가 같은 이웃 줄이
+// 하나라도 있으면 통과한다.** 결과는 잘못된 값이 아니라 사용자가 지우라고 한 적 없는
+// 줄이 함께 사라지는 것이고, 이 조작에는 되돌릴 통로가 없다.
+//
+// ‼️ 잠금을 조작 안에 두는 이유: 지금까지 이것을 막아 온 것은 `showConfirm`이 rAF에서
+// 취소 버튼에 주는 포커스뿐이었다 — 다른 네 호출부와 공유하는 대화상자 헬퍼의 부수효과이고,
+// 이 파일 어디에도 그 의존이 적혀 있지 않았다. 포커스는 잠금이 아니다(창이 숨으면 rAF는
+// 지연되고, 행을 직접 겨냥한 dispatch는 포커스와 무관하다).
+describe("§312 확인 관문은 재진입하지 않는다", () => {
+  /** 낙관적 잠금까지 흉내 내는 가짜 파일 — 무엇이 남는지를 바이트로 본다. */
+  function fakeDiskFile(initial: string): { read: () => string } {
+    let file = initial;
+    vi.mocked(deleteTaskLine).mockImplementation(
+      async (_path: string, line: number, raw: string) => {
+        const lines = file.split("\n");
+        // 실제 `delete_line`과 같은 판정 — 바이트가 같으면 다른 줄이어도 통과한다.
+        if (lines[line] !== raw) throw "stale";
+        lines.splice(line, 1);
+        file = lines.join("\n");
+      },
+    );
+    return { read: () => file };
+  }
+
+  it("한 프레임 안의 두 번째 삭제는 아무것도 지우지 않는다 — 바이트가 같은 이웃 줄이 함께 사라지지 않는다", async () => {
+    const disk = fakeDiskFile("- [ ] 둘\n- [ ] 둘\n- [ ] 셋\n");
+    const target = task({ line: 0, raw: "- [ ] 둘", text: "둘" });
+    useTaskStore
+      .getState()
+      .setAll([target, task({ line: 1, raw: "- [ ] 둘", text: "둘" })]);
+
+    await Promise.all([
+      runTaskTriageAction("delete", target, ctx()),
+      runTaskTriageAction("delete", target, ctx()),
+    ]);
+
+    // 잠금이 없으면 두 호출 모두 잠금을 통과해 두 줄이 사라진다("- [ ] 셋\n").
+    expect(disk.read()).toBe("- [ ] 둘\n- [ ] 셋\n");
+    expect(deleteTaskLine).toHaveBeenCalledTimes(1);
+    expect(showConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("앞선 삭제가 끝나면 다음 삭제는 정상으로 진행한다 — 잠금이 걸린 채 남지 않는다", async () => {
+    const disk = fakeDiskFile("- [ ] 둘\n- [ ] 셋\n");
+    useTaskStore.getState().setAll([task({ line: 0, raw: "- [ ] 둘" })]);
+
+    await runTaskTriageAction(
+      "delete",
+      task({ line: 0, raw: "- [ ] 둘" }),
+      ctx(),
+    );
+    await runTaskTriageAction(
+      "delete",
+      task({ line: 0, raw: "- [ ] 셋" }),
+      ctx(),
+    );
+
+    expect(disk.read()).toBe("");
+    expect(deleteTaskLine).toHaveBeenCalledTimes(2);
+  });
+
+  // 취소도 잠금을 풀어야 한다 — 풀지 않으면 한 번 취소한 사용자가 그 세션에서 다시는
+  // 지울 수 없다(조용히 먹지 않는 키).
+  it("취소한 뒤에도 다시 지울 수 있다", async () => {
+    const disk = fakeDiskFile("- [ ] 둘\n");
+    useTaskStore.getState().setAll([task({ line: 0, raw: "- [ ] 둘" })]);
+
+    vi.mocked(showConfirm).mockResolvedValueOnce(false);
+    await runTaskTriageAction(
+      "delete",
+      task({ line: 0, raw: "- [ ] 둘" }),
+      ctx(),
+    );
+    expect(disk.read()).toBe("- [ ] 둘\n");
+
+    await runTaskTriageAction(
+      "delete",
+      task({ line: 0, raw: "- [ ] 둘" }),
+      ctx(),
+    );
+    expect(disk.read()).toBe("");
+  });
+
+  // 쓰기가 예외로 끝나도 마찬가지다 — `finally`가 없으면 권한 오류 한 번이 삭제를 영구히
+  // 잠근다.
+  it("쓰기가 실패한 뒤에도 다시 지울 수 있다", async () => {
+    vi.mocked(deleteTaskLine).mockRejectedValueOnce(
+      "Permission denied (os error 13)",
+    );
+    useTaskStore.getState().setAll([task()]);
+
+    await runTaskTriageAction("delete", task(), ctx());
+    expect(useUIStore.getState().toast?.type).toBe("error");
+
+    vi.mocked(deleteTaskLine).mockResolvedValueOnce(undefined);
+    await runTaskTriageAction("delete", task(), ctx());
+
+    expect(deleteTaskLine).toHaveBeenCalledTimes(2);
+  });
+});

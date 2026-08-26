@@ -418,3 +418,18 @@ describe("§312 한글 배열에서도 네 판정 모두 닿는다", () => {
     expect(deleteTaskLine).not.toHaveBeenCalled();
   });
 });
+
+// §312 확인 관문의 재진입. 두 `Delete`가 한 프레임 안에 들어오면 대화상자가 둘 쌓이고,
+// 둘 다 확인하면 같은 인자로 `deleteTaskLine`이 두 번 나간다 — 낙관적 잠금은
+// `(줄 번호, 원문)`뿐이라 바이트가 같은 이웃 줄이 있으면 **다른 줄이 함께 사라진다**.
+describe("§312 두 번 눌러도 대화상자는 하나다", () => {
+  it("한 프레임 안의 두 번째 Delete는 대화상자를 쌓지 않는다", async () => {
+    const row = renderPanel();
+
+    fireEvent.keyDown(row, { key: "Delete" });
+    fireEvent.keyDown(row, { key: "Delete" });
+    await waitFor(() => expect(overlay()).not.toBeNull());
+
+    expect(document.querySelectorAll(".ai-prompt-overlay")).toHaveLength(1);
+  });
+});
