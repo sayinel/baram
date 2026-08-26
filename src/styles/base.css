@@ -1,4 +1,11 @@
-@import "tailwindcss";
+/* source("../") = 클래스 후보 스캔을 src/ 로 한정한다. 기본값(자동 감지)은
+   프로젝트 루트의 모든 비-gitignore 파일을 스캔하는데, 사용자 vault가 이
+   저장소일 때 아무 마크다운이나 저장만 해도 Tailwind가 CSS를 재생성하며
+   dev 세션 전체 리로드(열린 탭 소멸)로 번졌다 (2026-08-26 vite:hmr 디버그
+   실측: `[file change] text.md` → `[no modules matched]` → index.css 재변환
+   → full-reload). 클래스는 src/ 안의 코드에만 존재한다 — index.html에는
+   class 속성이 없다. */
+@import "tailwindcss" source("../");
 @import "katex/dist/katex.min.css";
 
 /* Generated design token imports */
