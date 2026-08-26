@@ -82,10 +82,10 @@ export interface VimPluginState {
 }
 
 type VimMeta =
+  | { boundary?: boolean; mode: VimMode; type: "setMode" }
   | { core: VimCoreState; type: "core" }
   | { enabled: boolean; type: "setEnabled" }
-  | { island?: null | string; suspended: boolean; type: "setSuspended" }
-  | { mode: VimMode; type: "setMode" };
+  | { island?: null | string; suspended: boolean; type: "setSuspended" };
 
 export function createVimPlugin(
   tiptapEditor: TiptapEditor,
@@ -595,12 +595,18 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         suspended: false,
       };
     case "setMode":
+      // issue 478 — a BOUNDARY handoff (mode following the cursor out of a
+      // code block island) needs a clean core: an outer `:`/`/` buffer left
+      // open before entering the island must not resurrect on exit. The
+      // ordinary setMode (change-refusal recovery) keeps them.
       return withCore(prev, {
         ...prev.core,
         count: null,
+        exLine: meta.boundary ? null : prev.core.exLine,
         mode: meta.mode,
         pending: null,
         pendingCount: null,
+        searchLine: meta.boundary ? null : prev.core.searchLine,
         visual: meta.mode === "visual" ? prev.core.visual : null,
       });
     case "setSuspended":

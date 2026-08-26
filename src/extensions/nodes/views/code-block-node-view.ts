@@ -16,7 +16,7 @@ import {
 } from "../../../components/editor/vim-controller";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
-import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
+import { vimPluginKey, withVimExternalEdit } from "../../plugins/vim/vim-keys";
 import {
   islandVimBlur,
   islandVimDispose,
@@ -473,6 +473,22 @@ export class CodeBlockNodeView implements NodeView {
     return sel.empty && sel.head - (pos + 1) === memo.head;
   }
 
+  /**
+   * Called by ProseMirror when selection enters this node.
+   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
+   * it allows us to properly focus CodeMirror and set its cursor position.
+   */
+  /** issue 478 — the PM mode the cursor carries out of this island:
+   *  insert/replace map to insert (PM has no replace), anything else to
+   *  normal. Null (no propagation) with vim off, or while the island's
+   *  vim never published a mode (loading, install failure). */
+  private exitPmMode(): "insert" | "normal" | null {
+    if (!this.latestVimEnabled) return null;
+    const mode = this.currentVimMode;
+    if (mode === null) return null;
+    return mode === "insert" || mode === "replace" ? "insert" : "normal";
+  }
+
   /** Sync CM changes → PM document */
   private forwardUpdate(update: ViewUpdate) {
     const pos = this.getPos();
@@ -527,17 +543,27 @@ export class CodeBlockNodeView implements NodeView {
     );
 
     // issue 475 — leaving the island IS the end of any insert/visual/pending
-    // ISLAND session; PM's own mode (normal, or insert after a body-side
-    // i/a) is untouched by this and stays whatever it was. The
-    // keymap's edge-arrow escape is mode-blind (vim passes insert-mode
-    // arrows through), so without this the island keeps insertMode=true and
-    // revives insert on the next entry. Best-effort by contract: a failed
-    // normalization reports through the controller's onError and the escape
-    // STILL proceeds — trapping focus in the island is worse than a stale
-    // mode. No-op with vim off or still loading (nothing to normalize).
+    // ISLAND session. The keymap's edge-arrow escape is mode-blind (vim
+    // passes insert-mode arrows through), so without the normalization the
+    // island keeps insertMode=true and revives insert on the next entry.
+    // Best-effort by contract: a failed normalization reports through the
+    // controller's onError and the escape STILL proceeds — trapping focus
+    // in the island is worse than a stale mode. No-op with vim off or
+    // still loading (nothing to normalize).
+    //
+    // issue 478 — the mode follows the cursor OUT: the island's exit-time
+    // mode (captured BEFORE the normalization erases it) rides the escape
+    // transaction as PM's new mode. And leaving ends ALL island intents:
+    // the entry/restore memos burn BEFORE exitToNormal, because its
+    // "normal" publish fires while the PM selection still sits inside the
+    // block — a leftover entry memo would pass the currency check there
+    // and queue an off-focus insert revival (adversarial review).
     const escapeToPM = (dir: -1 | 1) => {
+      const exitMode = this.exitPmMode();
+      this.pendingEntryInsert = null;
+      this.pendingVimModeRestore = null;
       this.vimController?.exitToNormal();
-      maybeEscape(dir);
+      maybeEscape(dir, exitMode);
     };
 
     // Custom keymaps for PM ↔ CM navigation
@@ -545,6 +571,15 @@ export class CodeBlockNodeView implements NodeView {
       escape: escapeToPM,
       focusPM,
       getPos: this.getPos,
+      // issue 478 — the empty-block conversion only fires from insert, and
+      // the island dies with the block: no normalization needed, but the
+      // outgoing mode still rides the SAME replacement transaction.
+      stampExitMode: (tr) => {
+        const mode = this.exitPmMode();
+        if (mode) {
+          tr.setMeta(vimPluginKey, { boundary: true, mode, type: "setMode" });
+        }
+      },
       view: this.view,
     });
 
@@ -743,11 +778,6 @@ export class CodeBlockNodeView implements NodeView {
     });
   }
 
-  /**
-   * Called by ProseMirror when selection enters this node.
-   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
-   * it allows us to properly focus CodeMirror and set its cursor position.
-   */
   /** issue 477 — arm the intent and attempt delivery. An island already in
    *  plain insert has nothing to deliver — arming there would let a later
    *  unrelated publish (the user's own Esc) yank them back into insert.

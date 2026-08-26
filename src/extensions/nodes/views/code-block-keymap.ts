@@ -4,6 +4,7 @@
 // state and can be pinned in isolation.
 
 import type { Extension } from "@codemirror/state";
+import type { Transaction } from "@tiptap/pm/state";
 import type { EditorView as PMView } from "@tiptap/pm/view";
 
 import { keymap } from "@codemirror/view";
@@ -16,6 +17,10 @@ export interface CodeBlockKeymapDeps {
   /** Focus PM even while non-editable — view.focus() is editable-gated. */
   focusPM(): void;
   getPos(): number | undefined;
+  /** issue 478 — the empty-block Backspace conversion is a boundary
+   *  crossing too: the owner stamps the outgoing mode onto the SAME
+   *  replacement transaction (the keymap itself stays vim-agnostic). */
+  stampExitMode?(tr: Transaction): void;
   view: PMView;
 }
 
@@ -70,6 +75,7 @@ export function buildCodeBlockKeymap(deps: CodeBlockKeymapDeps): Extension {
             paragraph,
           );
           tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
+          deps.stampExitMode?.(tr);
           deps.view.dispatch(tr);
           deps.focusPM(); // view.focus() alone is editable-gated (vim modal)
           return true;
