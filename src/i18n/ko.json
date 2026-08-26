@@ -840,5 +840,8 @@
   "tasks.triage.somedayOff": "#someday 해제",
   "tasks.triage.delete": "줄 삭제",
   "tasks.triage.deleteConfirm": "이 줄을 삭제할까요? 되돌릴 수 없습니다: {line}",
-  "tasks.triage.writeFailed": "태스크 변경을 저장하지 못했습니다."
+  "tasks.triage.writeFailed": "태스크 변경을 저장하지 못했습니다.",
+  "tasks.triage.somedayLocked": "#someday를 해제할 수 없습니다 — 더 긴 태그의 일부입니다",
+  "tasks.triage.tagUnchanged": "아무것도 바뀌지 않았습니다 — 그 줄에 지울 #{tag}가 없습니다.",
+  "tasks.triage.checkHint": "완료 토글 (X)"
 }

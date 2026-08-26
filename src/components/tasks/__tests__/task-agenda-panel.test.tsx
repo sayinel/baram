@@ -28,6 +28,7 @@ vi.mock("../../../pipeline", () => ({
 }));
 
 import { EditorProvider } from "../../../contexts/editor-context";
+import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useTaskStore } from "../../../stores/tasks/task-store";
@@ -117,6 +118,24 @@ describe("TaskAgendaPanel", () => {
 
     expect(useUIStore.getState().toast?.type).toBe("error");
     expect(getFileTasks).toHaveBeenCalledWith("a.md", null, []);
+  });
+
+  // ‼️ 체크 판정의 실패 문구가 정리 메뉴와 **같은 키**여야 한다. 예전에는 이 자리에
+  // 하드코딩된 영어가 있었고 그 문자열은 `tasks.triage.writeFailed`의 영어와 바이트가
+  // 같았다 — 한국어 사용자는 같은 실패에 메뉴에서 한국어, 체크박스에서 영어를 받았다.
+  it("체크 판정의 실패 문구는 정리 조작과 같은 i18n 키를 쓴다 (MODERATE-3)", async () => {
+    setTaskState.mockRejectedValueOnce("Permission denied (os error 13)");
+    useTaskStore.getState().setAll([task()]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("tasks.triage.writeFailed", "en"),
+    );
+    expect(useUIStore.getState().toast?.message).not.toBe(
+      t("tasks.triage.writeFailed", "ko"),
+    );
   });
 
   it("re-scans exactly once per toggle regardless of outcome (I5)", async () => {
@@ -400,7 +419,7 @@ describe("TaskAgendaPanel", () => {
     it("recordDoneDate가 꺼져 있으면 재계산 대신 실제로 쓰인 줄에서 done을 읽는다 (Minor 1)", async () => {
       useSettingsStore.getState().setTasksRecordDoneDate(false);
       // apply_state는 recordDoneDate=false일 때 기존 ✅date를 그대로 보존해
-      // 돌려준다(write.rs:143-145) — 패널이 설정값으로 재계산하면 이 값과 어긋난다.
+      // 돌려준다(write.rs:144-146) — 설정값으로 재계산하면 이 값과 어긋난다.
       prosemirrorToMarkdown.mockReturnValue("- [ ] 하나 ✅2026-01-01\n");
       previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-01-01");
       useTaskStore

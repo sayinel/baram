@@ -67,7 +67,9 @@ export function TaskRowMenu({
       case " ":
       case "Enter":
         e.preventDefault();
-        onAction(items[active].id);
+        // 비활성 항목은 실행하지 않되 **건너뛰지도 않는다** — 강조가 그 위에 설 수 있어야
+        // 라벨에 적힌 "왜 안 되는지"를 키보드로도 읽는다(WAI-ARIA menu).
+        if (!items[active].disabled) onAction(items[active].id);
         break;
       case "ArrowDown":
       case "j":
@@ -110,14 +112,27 @@ export function TaskRowMenu({
     >
       {items.map((item, index) => (
         <div
+          aria-disabled={item.disabled || undefined}
           className={itemClass(item, index === active)}
           id={itemId(index)}
           key={item.id}
-          onClick={() => onAction(item.id)}
+          onClick={() => {
+            if (!item.disabled) onAction(item.id);
+          }}
           onMouseEnter={() => setActive(index)}
           role="menuitem"
         >
-          {item.label}
+          <span>{item.label}</span>
+          {/* 키 힌트는 장식이 아니라 **발견 가능성**이다 — 이것이 없으면 t·s·Del은
+              아무도 찾을 수 없는 단축키가 되고, 그러면 affordance가 아니다.
+              ‼️ `aria-hidden`이다: 보조기술에는 행의 `aria-keyshortcuts`가 이미
+              같은 사실을 알린다. 여기서 한 번 더 읽히면 항목의 접근 가능한 이름이
+              "Due today T"가 되어 항목 이름이 키캡으로 오염된다. */}
+          {item.hint && (
+            <span aria-hidden="true" className="task-row-menu-hint">
+              {item.hint}
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -125,14 +140,15 @@ export function TaskRowMenu({
 }
 
 /**
- * 항목의 클래스 — 강조(active)와 파괴적(danger)은 **서로 독립**이다. 삼항 하나로 둘을
- * 함께 표현하려 들면 강조된 파괴적 항목에서 한쪽이 사라진다.
+ * 항목의 클래스 — 강조(active)·파괴적(danger)·비활성(disabled)은 **서로 독립**이다.
+ * 삼항 하나로 묶으려 들면 강조된 파괴적 항목에서 한쪽이 사라진다.
  */
 function itemClass(item: TaskMenuItem, active: boolean): string {
   return [
     "task-row-menu-item",
     active && "task-row-menu-item-active",
     item.danger && "task-row-menu-item-danger",
+    item.disabled && "task-row-menu-item-disabled",
   ]
     .filter(Boolean)
     .join(" ");

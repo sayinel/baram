@@ -8,6 +8,10 @@ import type { TaskMenuState } from "./TaskRowMenu";
 import { useTranslation } from "../../i18n/useTranslation";
 import { overdueDays, taskAgeDays } from "../../utils/tasks/task-buckets";
 import { priorityBadge } from "../../utils/tasks/task-filters";
+import {
+  resolveTaskRowKey,
+  TASK_ROW_KEYSHORTCUTS,
+} from "../../utils/tasks/task-row-keys";
 import { buildTriageItems } from "../../utils/tasks/task-triage";
 import { TaskRowMenu } from "./TaskRowMenu";
 
@@ -94,29 +98,31 @@ export function TaskBucketList({
     setMenu({ task, x: rect.left, y: rect.bottom });
   }, []);
 
+  // §312 "네 조작 모두 키 한 번으로". 어떤 키가 무엇인지는 `task-row-keys.ts`의 표가
+  // 정하고 — §315(주간 리뷰)가 그 표를 그대로 물려받는다 — 여기서는 그 판정을 **이 화면의
+  // 범위로** 실행한다: 이동은 버킷 안에서만 멈춘다(버킷을 가로지르는 이동은 목록 전체를
+  // 소유한 §315의 몫이다).
   const handleRowKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLLIElement>, task: TaskEntry) => {
-      switch (e.key) {
-        // 버킷 안에서만 움직인다 — 버킷을 가로지르는 이동은 그 목록 전체를 소유한
-        // §315(주간 리뷰)의 몫이지 버킷 하나인 이 컴포넌트가 판단할 일이 아니다.
-        case "ArrowDown":
-        case "j":
-          e.preventDefault();
-          moveRowFocus(e.currentTarget, 1);
+      const action = resolveTaskRowKey(e);
+      if (!action) return;
+      e.preventDefault();
+      switch (action.kind) {
+        case "focus":
+          moveRowFocus(e.currentTarget, action.delta);
           break;
-        case "ArrowUp":
-        case "k":
-          e.preventDefault();
-          moveRowFocus(e.currentTarget, -1);
-          break;
-        // §315: 마우스 없이도 정리 조작에 닿아야 한다.
-        case "d":
-          e.preventDefault();
+        case "menu":
           openMenu(e.currentTarget, task);
+          break;
+        case "triage":
+          // ‼️ 체크 판정은 체크박스와 **같은 콜백**을 탄다. 여기서 디스패처로 따로 보내면
+          // 같은 판정에 진입점이 둘이 되고, 그 둘이 갈라지는 순간 한쪽만 고쳐진다.
+          if (action.action === "check") onToggle(task);
+          else onTriage(task, action.action);
           break;
       }
     },
-    [openMenu],
+    [onToggle, onTriage, openMenu],
   );
 
   if (tasks.length === 0) return null;
@@ -148,6 +154,9 @@ export function TaskBucketList({
                 menu?.task.path === task.path && menu.task.line === task.line
               }
               aria-haspopup="menu"
+              // 키 경로가 있다는 사실 자체가 보조기술에 도달해야 한다 — 메뉴의 힌트는
+              // 메뉴를 연 사람만 본다.
+              aria-keyshortcuts={TASK_ROW_KEYSHORTCUTS}
               className="task-row"
               key={`${task.path}:${task.line}`}
               onContextMenu={(e) => {
@@ -162,6 +171,9 @@ export function TaskBucketList({
                 checked={task.state === "done"}
                 className="task-row-check"
                 onChange={() => onToggle(task)}
+                // 체크 판정의 키는 메뉴에 없다(체크박스는 메뉴 항목이 아니다) — 그래서
+                // 그 키를 알리는 자리가 여기다.
+                title={t("tasks.triage.checkHint")}
                 type="checkbox"
               />
               {priority && (

@@ -840,5 +840,8 @@
   "tasks.triage.somedayOff": "Remove #someday",
   "tasks.triage.delete": "Delete line",
   "tasks.triage.deleteConfirm": "Delete this line? This can't be undone: {line}",
-  "tasks.triage.writeFailed": "Couldn't save the task change."
+  "tasks.triage.writeFailed": "Couldn't save the task change.",
+  "tasks.triage.somedayLocked": "Can't remove #someday — it's inside a longer tag",
+  "tasks.triage.tagUnchanged": "Nothing changed — that line has no #{tag} to remove.",
+  "tasks.triage.checkHint": "Toggle done (X)"
 }

@@ -247,7 +247,8 @@ describe("§312 triage menu on an agenda row", () => {
         el.classList.contains("task-row-menu-item-danger"),
       );
       expect(danger).toHaveLength(1);
-      expect(danger[0].textContent).toBe(EN_T("tasks.triage.delete"));
+      // 라벨 뒤에 키 힌트(aria-hidden)가 붙으므로 부분 일치로 본다.
+      expect(danger[0].textContent).toContain(EN_T("tasks.triage.delete"));
     });
 
     // §315는 마우스 없이 네 조작에 닿아야 한다 — 우클릭만 있으면 다시 만들어야 한다.
@@ -548,6 +549,28 @@ describe("§312 triage menu on an agenda row", () => {
         ),
       );
       expect(menu).not.toBeInTheDocument();
+    });
+
+    // MODERATE-1: 파서가 `#someday-maybe`를 `someday`로 읽지만 쓰는 쪽은 그 줄에서
+    // `#someday`를 찾지 못한다 — 해제는 줄을 한 바이트도 바꾸지 못한다.
+    it("해제할 수 없는 행에서는 눌러도 쓰기가 나가지 않는다", async () => {
+      const row = renderRow({
+        raw: "- [ ] 여행 #someday-maybe",
+        tags: ["someday"],
+        text: "여행 #someday-maybe",
+      });
+      openMenu(row);
+
+      const item = screen.getByRole("menuitem", {
+        name: EN_T("tasks.triage.somedayLocked"),
+      });
+      expect(item).toHaveAttribute("aria-disabled", "true");
+
+      fireEvent.click(item);
+
+      await waitFor(() => expect(setTaskTag).not.toHaveBeenCalled());
+      // 항목이 사라지지 않으므로 메뉴도 그대로다 — 라벨을 다시 읽을 수 있어야 한다.
+      expect(screen.getByRole("menu")).toBeInTheDocument();
     });
 
     it("이미 someday인 행은 해제 항목을 보이고, 누르면 태그를 끈다", async () => {

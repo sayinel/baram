@@ -2,38 +2,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TaskEntry } from "../../ipc/types";
-import type { TaskWriteResult } from "../../utils/tasks/apply-task-write";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
 
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
-import { useTranslation } from "../../i18n/useTranslation";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
-import {
-  refreshAllTasks,
-  refreshFileTasks,
-  useTaskStore,
-} from "../../stores/tasks/task-store";
-import { useUIStore } from "../../stores/ui/ui";
+import { refreshAllTasks, useTaskStore } from "../../stores/tasks/task-store";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
-import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";
-import {
-  applyTaskWrite,
-  isDiskAuthoritative,
-  isUnsavedWrite,
-} from "../../utils/tasks/apply-task-write";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
 import {
   applyTaskFilters,
   collectTags,
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
-import { notifyUnsavedConflict } from "../../utils/tasks/task-write-feedback";
 import { TaskBucketList } from "./TaskBucketList";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
 import { useTaskTriage } from "./use-task-triage";
@@ -50,7 +36,6 @@ const BUCKET_LABEL: Record<TaskBucket, string> = {
 };
 
 export function TaskAgendaPanel() {
-  const { t } = useTranslation();
   const rootPath = useFileStore((s) => s.rootPath);
   const { tasks, loading } = useTaskStore(
     useShallow((s) => ({ tasks: s.tasks, loading: s.loading })),
@@ -98,66 +83,15 @@ export function TaskAgendaPanel() {
     [byId],
   );
 
-  const onToggle = useCallback(
-    async (task: TaskEntry) => {
-      const next = task.state === "done" ? "todo" : "done";
-      let result: null | TaskWriteResult = null;
-      try {
-        result = await applyTaskWrite(
-          task,
-          {
-            kind: "state",
-            newState: next,
-            recordDoneDate: tasksRecordDoneDate,
-            // `now`로 통일 — 라이브 new Date()를 쓰면 자정을 넘긴 직후 적히는 ✅
-            // 날짜가 사용자가 보고 있는 버킷 경계와 하루 어긋난다(I4).
-            today: todayIso(now),
-          },
-          editor,
-        );
-      } catch (err) {
-        // stale이 아닌 실패(권한·디스크 가득 참·파일 삭제)를 조용히 되돌리면
-        // 사용자에게는 원인 모를 죽은 체크박스로만 보인다(I5).
-        logger.warn("[tasks] write failed, re-scanning:", err);
-        useUIStore
-          .getState()
-          .showToast("Couldn't save the task change.", "error");
-      }
-
-      if (isUnsavedWrite(result)) {
-        // 아직 저장되지 않았다(열린 문서 또는 §312 소스 버퍼) — 디스크를 읽으면
-        // 방금 만든 변경이 사라진다.
-        // done 날짜는 tasksRecordDoneDate로 다시 계산하지 않고 실제로 쓰인
-        // 줄에서 읽는다 — apply_state는 그 설정이 꺼져 있으면 기존 ✅date를
-        // 그대로 보존하므로(write.rs:143-145) 재계산은 그 값과 어긋난다.
-        const doneMatch = /✅(\d{4}-\d{2}-\d{2})/.exec(result.raw);
-        useTaskStore.getState().patchTask(task.path, task.line, {
-          done: doneMatch ? doneMatch[1] : null,
-          raw: result.raw,
-          state: next,
-        });
-        return;
-      }
-      // ‼️ `stale`을 전부 "디스크가 진실원"으로 뭉뚱그리면 안 된다. 소스·문서 경로에서
-      // 거절된 것이면 그 파일의 진실은 여전히 저장되지 않은 버퍼이고, 다시 읽으면 같은
-      // 세션이 그 버퍼에 만들어 둔 다른 줄의 변경이 옛 디스크 내용으로 되돌아간다.
-      if (!isDiskAuthoritative(result)) {
-        // 스토어는 만지지 않되 침묵하지도 않는다 — 이 거절은 저장 전까지 영구적이라
-        // 알리지 않으면 정확히 I5가 막으려던 "원인 모를 죽은 체크박스"가 된다.
-        notifyUnsavedConflict(t);
-        return;
-      }
-      // 디스크에 썼거나(kind: "disk") 디스크에서 거절됐다(stale·target "disk") 또는
-      // 예외로 실패했다 — 전부 디스크가 진실원이므로 그 파일만 다시 읽는다.
-      await refreshFileTasks(task.path, rootPath, tasksExcludePaths);
-    },
-    [tasksRecordDoneDate, rootPath, tasksExcludePaths, now, editor, t],
-  );
-
-  const onTriage = useTaskTriage({
+  // §312 네 판정 전부가 여기서 배선된다 — 체크 판정도 나머지 셋과 **같은 회계**를 탄다
+  // (`writeAndReconcile`). 예전에는 이 패널이 그 회계를 손으로 한 벌 더 갖고 있었고, 그
+  // 사본의 실패 문구만 하드코딩된 영어여서 같은 실패에 메뉴와 체크박스가 다른 언어로
+  // 답했다(MODERATE-3).
+  const { onToggle, onTriage } = useTaskTriage({
     editor,
     exclude: tasksExcludePaths,
     now,
+    recordDoneDate: tasksRecordDoneDate,
     rootPath,
   });
 

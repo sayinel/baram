@@ -34,7 +34,11 @@ import { useEditorStore } from "../../../stores/editor/editor";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { SOMEDAY_TAG } from "../task-filters";
-import { buildTriageItems, runTaskTriageAction } from "../task-triage";
+import {
+  buildTriageItems,
+  runTaskTriageAction,
+  toggleTaskTag,
+} from "../task-triage";
 
 const EN_T = (key: string, params?: Record<string, string>) =>
   t(key, "en", params);
@@ -114,17 +118,24 @@ beforeEach(() => {
 });
 
 describe("§312 someday 메뉴 항목", () => {
+  // ‼️ `tags`와 `raw`가 어긋난 픽스처를 쓰지 말 것 — 파서는 둘을 **같은 줄**에서
+  // 뽑으므로 실물에서는 어긋날 수 없고, 라벨 판정이 이제 그 일관성에 기댄다.
+  const tagged = () =>
+    task({
+      raw: "- [ ] 하나 #someday",
+      tags: [SOMEDAY_TAG],
+      text: "하나 #someday",
+    });
+
   it("태그가 없는 행에는 미루기를, 있는 행에는 해제를 보인다", () => {
     expect(itemFor(task())?.label).toBe(EN_T("tasks.triage.someday"));
-    expect(itemFor(task({ tags: [SOMEDAY_TAG] }))?.label).toBe(
-      EN_T("tasks.triage.somedayOff"),
-    );
+    expect(itemFor(tagged())?.label).toBe(EN_T("tasks.triage.somedayOff"));
   });
 
   // 라벨이 갈리는데 항목 id가 갈리면 디스패처가 두 벌이 된다 — 토글은 하나다.
   it("두 상태가 같은 액션 id를 쓴다", () => {
     expect(itemFor(task())?.id).toBe("someday");
-    expect(itemFor(task({ tags: [SOMEDAY_TAG] }))?.id).toBe("someday");
+    expect(itemFor(tagged())?.id).toBe("someday");
   });
 });
 
@@ -259,5 +270,109 @@ describe("§312 저장 전 버퍼에서의 토글", () => {
     expect(useUIStore.getState().toast?.type).toBe("info");
     expect(getFileTasks).not.toHaveBeenCalled();
     expect(useTaskStore.getState().tasks[0].tags).toEqual([]);
+  });
+});
+
+// MODERATE-1: 읽는 쪽(파서)과 쓰는 쪽(`apply_tag`)의 태그 어휘가 갈리는 유일한 자리.
+// 파서는 하이픈에서 끊어 `#someday-maybe`를 `someday`로 읽지만 쓰는 쪽은 그 줄에서
+// `#someday`를 찾지 못한다 — 해제는 줄을 한 바이트도 바꾸지 못한다. 메뉴가 그 사실을
+// 숨기면 눌러도 아무 일이 없는 항목이 되고, 그 행은 아젠다에서 영원히 미뤄진 채 남는다.
+describe("§312 해제할 수 없는 #someday", () => {
+  const stuck = () =>
+    task({
+      raw: "- [ ] 여행 #someday-maybe",
+      tags: [SOMEDAY_TAG],
+      text: "여행 #someday-maybe",
+    });
+
+  it("항목을 비활성으로 그리고 라벨이 왜인지 말한다", () => {
+    const item = itemFor(stuck());
+    expect(item?.disabled).toBe(true);
+    expect(item?.label).toBe(EN_T("tasks.triage.somedayLocked"));
+  });
+
+  // 키 한 번 경로(`s`)는 메뉴를 지나가지 않는다 — 관문이 라벨에만 있으면 그리로 샌다.
+  it("실행해도 쓰기가 나가지 않고 이유를 알린다", async () => {
+    await runTaskTriageAction("someday", stuck(), ctx());
+
+    expect(setTaskTag).not.toHaveBeenCalled();
+    expect(previewTaskTagLine).not.toHaveBeenCalled();
+    expect(getFileTasks).not.toHaveBeenCalled();
+    expect(useUIStore.getState().toast?.message).toBe(
+      EN_T("tasks.triage.somedayLocked"),
+    );
+  });
+
+  // 파서가 통째로 읽는 형태는 멀쩡하다 — 여기까지 잠그면 멀쩡한 행에서 메뉴가 죽는다.
+  it("슬래시·밑줄 형태는 애초에 someday 행이 아니다", () => {
+    for (const tag of ["someday/maybe", "someday_maybe"]) {
+      const item = itemFor(
+        task({ raw: `- [ ] 여행 #${tag}`, tags: [tag], text: `여행 #${tag}` }),
+      );
+      expect(item?.disabled).toBeFalsy();
+      expect(item?.label).toBe(EN_T("tasks.triage.someday"));
+    }
+  });
+
+  it("같은 줄에 진짜 #someday도 있으면 해제할 수 있다", () => {
+    const item = itemFor(
+      task({
+        raw: "- [ ] 여행 #someday-maybe #someday",
+        tags: [SOMEDAY_TAG],
+        text: "여행 #someday-maybe #someday",
+      }),
+    );
+    expect(item?.disabled).toBeFalsy();
+    expect(item?.label).toBe(EN_T("tasks.triage.somedayOff"));
+  });
+});
+
+// 라벨의 판정과 실제 쓰기는 서로 다른 규칙을 본다(하나는 TS, 하나는 Rust). 그 둘이
+// 어긋나도 스토어가 거짓말을 하지 않게 하는 관문 — 쓰기가 원문과 같은 줄을 돌려주면
+// 아무 일도 일어나지 않은 것이다.
+describe("§312 아무것도 바꾸지 못한 쓰기", () => {
+  it("저장 전 경로에서 스토어를 패치하지 않고 알린다", async () => {
+    const entry = task({
+      raw: "- [ ] 여행 #someday",
+      tags: [SOMEDAY_TAG],
+      text: "여행 #someday",
+    });
+    openSourceTab("- [ ] 여행 #someday\n");
+    // Rust가 줄을 그대로 돌려준 상황을 그대로 재현한다.
+    vi.mocked(previewTaskTagLine).mockResolvedValue("- [ ] 여행 #someday");
+    useTaskStore.getState().setAll([entry]);
+
+    await toggleTaskTag(entry, SOMEDAY_TAG, false, ctx(FAKE_EDITOR));
+
+    const [after] = useTaskStore.getState().tasks;
+    expect(after.tags).toEqual([SOMEDAY_TAG]);
+    expect(after.text).toBe("여행 #someday");
+    expect(useUIStore.getState().toast?.message).toBe(
+      EN_T("tasks.triage.tagUnchanged", { tag: SOMEDAY_TAG }),
+    );
+  });
+
+  it("디스크 경로에서도 알린다", async () => {
+    const entry = task({
+      raw: "- [ ] 여행 #someday",
+      tags: [SOMEDAY_TAG],
+      text: "여행 #someday",
+    });
+    vi.mocked(setTaskTag).mockResolvedValue("- [ ] 여행 #someday");
+    useTaskStore.getState().setAll([entry]);
+
+    await toggleTaskTag(entry, SOMEDAY_TAG, false, ctx());
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      EN_T("tasks.triage.tagUnchanged", { tag: SOMEDAY_TAG }),
+    );
+  });
+
+  it("줄이 실제로 바뀐 보통의 쓰기는 조용하다", async () => {
+    vi.mocked(setTaskTag).mockResolvedValue("- [ ] 하나 #someday");
+
+    await runTaskTriageAction("someday", task(), ctx());
+
+    expect(useUIStore.getState().toast).toBeNull();
   });
 });

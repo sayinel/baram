@@ -12,7 +12,7 @@
 // 쓰므로 `task-triage-write.ts`에 산다(여기 두면 삭제와 순환 import가 된다).
 
 import type { Translate } from "../../i18n/useTranslation";
-import type { TaskEntry } from "../../ipc/types";
+import type { TaskEntry, TaskState } from "../../ipc/types";
 import type { TaskTriageContext } from "./task-triage-write";
 
 import { useTaskStore } from "../../stores/tasks/task-store";
@@ -20,9 +20,12 @@ import { useUIStore } from "../../stores/ui/ui";
 import { showFieldDialog } from "../field-dialog";
 import { logger } from "../logger";
 import { applyTaskWrite } from "./apply-task-write";
+import { isSameLine } from "./line-splice";
 import { resolveDateInput } from "./task-date-input";
 import { confirmAndDeleteTaskLine } from "./task-delete";
 import { SOMEDAY_TAG } from "./task-filters";
+import { TASK_ROW_KEY_HINT } from "./task-row-keys";
+import { lineHasTag } from "./task-tag-token";
 import { writeAndReconcile } from "./task-triage-write";
 
 // 정리 조작 전부가 이 컨텍스트를 받으므로 호출부(`use-task-triage.ts`·테스트)는 계속
@@ -32,6 +35,20 @@ export type { TaskTriageContext } from "./task-triage-write";
 /** `FIELD_EMOJI`(write.rs:5-12)의 날짜 필드 중 사용자가 손으로 정하는 셋. */
 export type TaskDateField = "due" | "scheduled" | "start";
 
+/**
+ * §312 `#someday` 토글이 이 행에서 할 수 있는 일. `locked`가 세 번째로 필요한 이유는
+ * `somedayVerdict`에 있다 — "붙일 수 있다"와 "뗄 수 있다"만으로는 **뗄 수 없는데 붙어
+ * 있는** 행을 표현할 수 없고, 그 행에서 라벨이 거짓말을 한다.
+ */
+type SomedayVerdict = "add" | "locked" | "remove";
+
+/** 판정 → 라벨 키. 라벨과 디스패처가 **같은 표**를 봐야 둘이 갈라지지 않는다. */
+const SOMEDAY_LABEL: Record<SomedayVerdict, string> = {
+  add: "tasks.triage.someday",
+  locked: "tasks.triage.somedayLocked",
+  remove: "tasks.triage.somedayOff",
+};
+
 export interface TaskMenuItem {
   /**
    * 파괴적 항목 — 위쪽 구분선과 경고색(`--color-status-danger`)을 함께 얻는다(tasks.css).
@@ -39,6 +56,18 @@ export interface TaskMenuItem {
    * 없는 조작에서 그 실패는 잘못 누른 항목으로 끝나지 않는다.
    */
   danger?: boolean;
+  /**
+   * §312 이 행에서는 실행할 수 없는 항목 — 눌러도 아무 일도 일어나지 않는다.
+   *
+   * 회색으로 만들되 **라벨이 이유까지 말한다**. 이유를 툴팁에만 두면 키보드 사용자에게는
+   * 도달할 방법이 없고, 아무 말도 하지 않으면 "왜 이 행만 안 되지"로 남는다.
+   */
+  disabled?: boolean;
+  /**
+   * 이 항목에 닿는 키(`TASK_ROW_KEY_HINT`). 메뉴가 이것을 함께 그려야 키 경로가
+   * 발견 가능해진다 — 아무도 찾을 수 없는 단축키는 affordance가 아니다.
+   */
+  hint?: string;
   /** 액션 식별자 — 아래 `runTaskTriageAction`이 이 문자열로 갈린다. */
   id: string;
   label: string;
@@ -83,27 +112,36 @@ export async function assignTaskDate(
  * 행에서는 `TaskEntry.due`가 거짓 음성이 된다(dev/backlog.md P2) — 그 값으로
  * 잠그면 멀쩡한 행에서 메뉴가 죽는다. 그래서 날짜 항목들은 태스크를 보지 않는다.
  *
- * `task.tags`는 사정이 다르다 — 태그 파싱에는 날짜와 달리 first/last 불일치가 없어서
- * `#someday` **토글**의 라벨을 그 값으로 가른다. 호출부는 메뉴가 열려 있는 동안에만
- * (`menu.task`로) 이 함수를 부른다.
+ * `task.tags`도 그대로 믿을 수는 없다 — `somedayVerdict`가 그 이유를 갖는다.
+ * 호출부는 메뉴가 열려 있는 동안에만 (`menu.task`로) 이 함수를 부른다.
  */
 export function buildTriageItems(
   t: Translate,
   task: TaskEntry,
 ): TaskMenuItem[] {
+  const someday = somedayVerdict(task);
   return [
-    { id: "dueToday", label: t("tasks.triage.dueToday") },
+    {
+      hint: TASK_ROW_KEY_HINT.dueToday,
+      id: "dueToday",
+      label: t("tasks.triage.dueToday"),
+    },
     { id: "dueTomorrow", label: t("tasks.triage.dueTomorrow") },
     { id: "duePick", label: t("tasks.triage.duePick") },
     {
       // 라벨은 갈려도 id는 하나다 — 켜기와 끄기가 서로 다른 액션이 되면 디스패처가
       // 두 벌이 되고, 그 둘이 갈라지는 순간 라벨과 실제 동작이 어긋난다.
+      disabled: someday === "locked",
+      hint: TASK_ROW_KEY_HINT.someday,
       id: "someday",
-      label: hasSomeday(task)
-        ? t("tasks.triage.somedayOff")
-        : t("tasks.triage.someday"),
+      label: t(SOMEDAY_LABEL[someday]),
     },
-    { danger: true, id: "delete", label: t("tasks.triage.delete") },
+    {
+      danger: true,
+      hint: TASK_ROW_KEY_HINT.delete,
+      id: "delete",
+      label: t("tasks.triage.delete"),
+    },
   ];
 }
 
@@ -127,14 +165,70 @@ export async function runTaskTriageAction(
       return assignTaskDate(task, "due", relativeIso("t", ctx.now), ctx);
     case "dueTomorrow":
       return assignTaskDate(task, "due", relativeIso("m", ctx.now), ctx);
-    case "someday":
+    case "someday": {
       // 켜기/끄기를 라벨과 **같은 값**에서 읽는다(`buildTriageItems`) — 두 곳이 갈리면
       // "해제"라고 적힌 항목이 태그를 하나 더 붙이는 일이 생긴다.
-      return toggleTaskTag(task, SOMEDAY_TAG, !hasSomeday(task), ctx);
+      const verdict = somedayVerdict(task);
+      if (verdict === "locked") {
+        // ‼️ 관문이 메뉴 라벨에만 있으면 키 한 번 경로(`s`)가 그리로 샌다. 여기서
+        // 막아야 쓸 수 없는 쓰기가 아예 나가지 않고, 사용자는 왜인지도 듣는다 —
+        // 비활성 항목을 볼 수 없는 경로이므로 침묵하면 "먹지 않는 키"가 된다.
+        useUIStore.getState().showToast(ctx.t(SOMEDAY_LABEL.locked), "info");
+        return;
+      }
+      return toggleTaskTag(task, SOMEDAY_TAG, verdict === "add", ctx);
+    }
     default:
       // 메뉴에 항목을 더하면서 case를 잊는 것이 이 파일에서 가장 있을 법한 실수다.
       logger.warn("[tasks] unknown triage action:", action);
   }
+}
+
+/**
+ * §312 체크 판정 — 네 번째 판정이고, 나머지 셋과 **같은 회계**를 탄다.
+ *
+ * 원래는 패널이 이 회계를 손으로 한 벌 더 갖고 있었다(같은 try/catch, 같은 세 갈래,
+ * 그리고 하드코딩된 영어 실패 문구). 같은 실패에 메뉴는 한국어로, 체크박스는 영어로
+ * 답하고 있었고, 회계가 두 벌이면 한쪽만 고쳐지는 것은 시간 문제였다.
+ *
+ * `today`는 `ctx.now`에서 푼다 — 라이브 `new Date()`를 쓰면 자정을 넘긴 직후 적히는 ✅
+ * 날짜가 사용자가 보고 있는 버킷 경계와 하루 어긋난다(I4).
+ *
+ * `recordDoneDate`가 컨텍스트가 아니라 인자인 이유: 이것은 이 판정 하나만 쓰는 설정이고,
+ * `TaskTriageContext`는 **모든** 조작이 필요로 하는 주변 값의 묶음이다.
+ */
+export async function toggleTaskState(
+  task: TaskEntry,
+  recordDoneDate: boolean,
+  ctx: TaskTriageContext,
+): Promise<void> {
+  const newState: TaskState = task.state === "done" ? "todo" : "done";
+  await writeAndReconcile(
+    task,
+    ctx,
+    () =>
+      applyTaskWrite(
+        task,
+        {
+          kind: "state",
+          newState,
+          recordDoneDate,
+          today: relativeIso("t", ctx.now),
+        },
+        ctx.editor,
+      ),
+    (written) => {
+      // done 날짜는 `recordDoneDate`로 다시 계산하지 않고 **실제로 쓰인 줄**에서 읽는다 —
+      // `apply_state`는 그 설정이 꺼져 있으면 기존 ✅date를 그대로 보존하므로
+      // (write.rs:144-146) 재계산은 그 값과 어긋난다.
+      const doneMatch = /✅(\d{4}-\d{2}-\d{2})/.exec(written.raw);
+      useTaskStore.getState().patchTask(task.path, task.line, {
+        done: doneMatch ? doneMatch[1] : null,
+        raw: written.raw,
+        state: newState,
+      });
+    },
+  );
 }
 
 /**
@@ -150,11 +244,28 @@ export async function toggleTaskTag(
   on: boolean,
   ctx: TaskTriageContext,
 ): Promise<void> {
+  // ‼️ 라벨의 판정(`somedayVerdict` — TS)과 실제 쓰기(`apply_tag` — Rust)는 서로 다른
+  // 구현이 같은 규칙을 보는 것이다. 그 둘이 어긋나면 쓰기는 성공했는데 줄이 **한 바이트도
+  // 바뀌지 않는다**. 그 결과로 스토어를 패치하면 행이 한 번 깜빡이고 다음 재스캔에서
+  // 원래대로 돌아온다 — 사용자에게는 "먹었다가 취소되는" 조작으로 보이고, 왜인지 알 방법이
+  // 없다. 성공의 정의를 "예외가 없었다"가 아니라 "줄이 달라졌다"로 두는 관문이다.
+  let unchanged = false;
   await writeAndReconcile(
     task,
     ctx,
-    () => applyTaskWrite(task, { kind: "tag", on, tag }, ctx.editor),
+    async () => {
+      const result = await applyTaskWrite(
+        task,
+        { kind: "tag", on, tag },
+        ctx.editor,
+      );
+      // 비교 기준은 낙관적 잠금과 같다(`isSameLine`) — 끝 공백만 다른 것을 "바뀌었다"고
+      // 세면 관문이 그 줄에서만 새어 나간다.
+      unchanged = result.kind !== "stale" && isSameLine(result.raw, task.raw);
+      return result;
+    },
     (written) => {
+      if (unchanged) return;
       useTaskStore.getState().patchTask(task.path, task.line, {
         raw: written.raw,
         tags: on ? [...task.tags, tag] : task.tags.filter((x) => x !== tag),
@@ -162,6 +273,13 @@ export async function toggleTaskTag(
       });
     },
   );
+  // 디스크 경로도 여기로 온다 — 그쪽은 `writeAndReconcile`이 파일을 다시 읽어 스토어를
+  // 사실과 맞추므로 남는 문제는 침묵뿐이다.
+  if (unchanged) {
+    useUIStore
+      .getState()
+      .showToast(ctx.t("tasks.triage.tagUnchanged", { tag }), "info");
+  }
 }
 
 /**
@@ -178,10 +296,6 @@ function applyTagToText(text: string, tag: string, on: boolean): string {
   const words = text.split(/\s+/).filter((w) => w !== "" && w !== token);
   if (on) words.push(token);
   return words.join(" ");
-}
-
-function hasSomeday(task: TaskEntry): boolean {
-  return task.tags.includes(SOMEDAY_TAG);
 }
 
 /**
@@ -230,4 +344,21 @@ function relativeIso(token: "m" | "t", now: Date): string {
   const iso = resolveDateInput(token, now);
   if (iso === null) throw new Error(`resolveDateInput rejected "${token}"`);
   return iso;
+}
+
+/**
+ * §312 이 행의 `#someday`를 지금 어떻게 할 수 있는가.
+ *
+ * `task.tags`만 보면 안 되는 이유(MODERATE-1): 파서는 하이픈에서 끊어
+ * `#someday-maybe`를 `someday`로 읽지만, 쓰는 쪽은 하이픈을 태그 글자로 쳐서 그 줄에서
+ * `#someday`를 찾지 못한다. 그래서 그 행은 필터에서 "미뤄진 것"으로 숨겨지는데 해제는
+ * 줄을 한 바이트도 바꾸지 못한다 — 아젠다에서 영원히 빠져나올 수 없는 행이 된다.
+ * 두 어휘 중 **쓰는 쪽**을 봐야 라벨과 동작이 같은 사실을 본다(`lineHasTag`).
+ *
+ * 근본 원인은 공유된 `INLINE_TAG_RE`이고 이 슬라이스 밖이다. 여기서 고치는 것은
+ * **정직함**이다: 할 수 없는 일을 약속하지 않는다.
+ */
+function somedayVerdict(task: TaskEntry): SomedayVerdict {
+  if (!task.tags.includes(SOMEDAY_TAG)) return "add";
+  return lineHasTag(task.raw, SOMEDAY_TAG) ? "remove" : "locked";
 }

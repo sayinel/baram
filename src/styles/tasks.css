@@ -236,7 +236,11 @@
 .task-row-menu {
   position: fixed;
   z-index: 60;
+
+  /* §312 비활성 항목의 라벨은 왜 안 되는지까지 말하므로 한 줄보다 길다 — 감싸도
+     좋지만 무한정 넓어지면 행 위를 덮는다. */
   min-width: 140px;
+  max-width: 280px;
   padding: 4px 0;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
@@ -245,10 +249,23 @@
 }
 
 .task-row-menu-item {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
   padding: 6px 12px;
   font-size: 0.8rem;
   color: var(--color-text-secondary);
   cursor: pointer;
+}
+
+/* §312 그 항목에 닿는 키. 위계는 **크기와 자리**로만 준다 — 색을 한 단계 더 내리면
+   --color-text-muted인데, 그것은 --color-text-disabled의 별칭이고 실측 대비가 라이트
+   2.54:1이라 이 크기의 글자에서 읽을 수 없다(위 .task-chip 주석의 같은 함정). 읽을 수
+   없는 힌트는 발견 가능성을 만들지 못하므로 색을 내리는 것이 목적을 지운다. */
+.task-row-menu-hint {
+  flex-shrink: 0;
+  font-size: 0.72rem;
 }
 
 /* 강조는 hover가 아니라 상태다 — 키보드로만 옮겨 다니는 §315에서 hover는
@@ -267,6 +284,17 @@
   margin-top: 4px;
   color: var(--color-status-danger);
   border-top: 1px solid var(--color-border-default);
+}
+
+/* §312 이 행에서는 실행할 수 없는 항목.
+   ‼️ **회색으로 만들지 않는다.** 비활성의 관례색은 --color-text-muted인데 그것은
+   --color-text-disabled의 별칭(라이트 2.54:1)이고, 이 항목의 라벨은 "왜 안 되는지"를
+   담은 **유일한 설명**이다 — 읽을 수 없게 만들면 정확히 이 수정이 없애려던 상태("왜
+   막혔는지 알 수 없는 행")로 되돌아간다. 대신 커서로 알리고, 못 한다는 사실은 라벨의
+   문장과 aria-disabled가 말한다. 강조(active)는 그대로 받는다 — 키보드로 그 위에 설 수
+   있어야 그 문장을 읽는다. */
+.task-row-menu-item-disabled {
+  cursor: default;
 }
 
 /* 행이 tabIndex를 갖게 됐으므로 키보드 포커스가 보여야 한다 — j/k 이동이
