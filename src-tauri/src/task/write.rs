@@ -2,7 +2,7 @@
 use crate::task::parse::is_valid_date;
 use crate::task::{normalize_line, TaskError, TaskState};
 
-const FIELD_EMOJI: &[(&str, &str)] = &[
+pub(super) const FIELD_EMOJI: &[(&str, &str)] = &[
     ("created", "➕"),
     ("start", "🛫"),
     ("scheduled", "⏳"),
@@ -12,7 +12,7 @@ const FIELD_EMOJI: &[(&str, &str)] = &[
 ];
 
 /// 줄바꿈 스타일과 마지막 개행 유무를 보존하며 한 줄만 바꾼다.
-async fn replace_line<F>(
+pub(super) async fn replace_line<F>(
     path: &str,
     line: u32,
     expected_raw: &str,

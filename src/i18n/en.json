@@ -836,5 +836,7 @@
   "tasks.triage.pickLabel": "Date (2026-08-30, t, m, +3, 8/30)",
   "tasks.triage.pickSubmit": "Set",
   "tasks.triage.badDate": "Couldn't read “{value}” as a date.",
+  "tasks.triage.someday": "Defer to #someday",
+  "tasks.triage.somedayOff": "Remove #someday",
   "tasks.triage.writeFailed": "Couldn't save the task change."
 }

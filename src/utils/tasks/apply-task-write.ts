@@ -13,8 +13,10 @@ import type { Editor } from "@tiptap/react";
 import {
   previewTaskFieldLine,
   previewTaskStateLine,
+  previewTaskTagLine,
   setTaskField,
   setTaskState,
+  setTaskTag,
 } from "../../ipc/invoke";
 import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -28,7 +30,13 @@ export type TaskChange =
       newState: TaskState;
       recordDoneDate: boolean;
       today: string;
-    };
+    }
+  /**
+   * §312 태그 토글. `set_task_field`에 끼워 넣을 수 없다 — `FIELD_EMOJI`는 날짜 여섯뿐이고
+   * `apply_field`는 모르는 이름을 파일을 건드리기 전에 거절한다(write.rs:194). 삽입 위치도
+   * 다르다: 필드는 줄 끝, 태그는 §303 순서상 이모지 필드 **앞**이다.
+   */
+  | { kind: "tag"; on: boolean; tag: string };
 
 export type TaskWriteResult =
   | { kind: "disk"; raw: string }
@@ -190,30 +198,46 @@ export function resolveTaskWriteTarget(
 
 /** 변환 결과 줄만 Rust에서 받아온다 — 변환 로직을 TS에 재구현하지 않는다. */
 async function previewLine(raw: string, change: TaskChange): Promise<string> {
-  return change.kind === "state"
-    ? previewTaskStateLine(
+  switch (change.kind) {
+    case "field":
+      return previewTaskFieldLine(raw, change.field, change.value);
+    case "state":
+      return previewTaskStateLine(
         raw,
         change.newState,
         change.recordDoneDate,
         change.today,
-      )
-    : previewTaskFieldLine(raw, change.field, change.value);
+      );
+    case "tag":
+      return previewTaskTagLine(raw, change.tag, change.on);
+  }
 }
 
 async function writeToDisk(
   task: TaskEntry,
   change: TaskChange,
 ): Promise<string> {
-  return change.kind === "state"
-    ? setTaskState(
+  switch (change.kind) {
+    case "field":
+      return setTaskField(
+        task.path,
+        task.line,
+        task.raw,
+        change.field,
+        change.value,
+      );
+    case "state":
+      return setTaskState(
         task.path,
         task.line,
         task.raw,
         change.newState,
         change.recordDoneDate,
         change.today,
-      )
-    : setTaskField(task.path, task.line, task.raw, change.field, change.value);
+      );
+    case "tag":
+      return setTaskTag(task.path, task.line, task.raw, change.tag, change.on);
+  }
 }
 
 /** 라이브 ProseMirror 문서 경로 — 화면에 보이는 표면이 WYSIWYG일 때. */

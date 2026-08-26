@@ -73,6 +73,18 @@ export async function previewTaskStateLine(
   });
 }
 
+/**
+ * §312 태그 토글 결과 줄만 받아온다 — 파일은 건드리지 않는다. `on=false`는 제거.
+ * §303 순서상 태그는 이모지 필드 **앞**에 들어간다.
+ */
+export async function previewTaskTagLine(
+  raw: string,
+  tag: string,
+  on: boolean,
+): Promise<string> {
+  return invoke<string>("preview_task_tag_line", { raw, tag, on });
+}
+
 /** 빈 `value`는 필드를 제거한다. 갱신된 줄 원문을 돌려준다. */
 export async function setTaskField(
   path: string,
@@ -109,5 +121,25 @@ export async function setTaskState(
     newState,
     recordDoneDate,
     today,
+  });
+}
+
+/**
+ * §312 태스크 줄의 태그를 켜고 끈다. `on=false`는 제거. 갱신된 줄 원문을 돌려준다.
+ * 파일이 그 사이 바뀌었으면 "stale"로 reject된다.
+ */
+export async function setTaskTag(
+  path: string,
+  line: number,
+  expectedRaw: string,
+  tag: string,
+  on: boolean,
+): Promise<string> {
+  return invoke<string>("set_task_tag", {
+    path,
+    line,
+    expectedRaw,
+    tag,
+    on,
   });
 }

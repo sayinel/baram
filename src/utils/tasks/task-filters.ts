@@ -15,6 +15,13 @@ export type TaskPriorityFilter = "all" | "high" | "low" | "normal";
 
 export type TaskStateFilter = "all" | "done" | "todo";
 
+/**
+ * §312 GTD의 "언젠가/아마도" 목록을 여는 태그. 읽는 쪽(이 파일의 기본 제외)과 쓰는 쪽
+ * (`task-triage.ts`의 토글)이 **같은 문자열**을 봐야 한다 — 한쪽만 바뀌면 메뉴가 붙인
+ * 태그를 필터가 못 알아보고 "미뤘는데 큐에 그대로 있는" 상태가 된다.
+ */
+export const SOMEDAY_TAG = "someday";
+
 export const EMPTY_FILTERS: TaskFilters = {
   priority: "all",
   showSomeday: false,
@@ -107,7 +114,7 @@ function matchesSomeday(task: TaskEntry, f: TaskFilters): boolean {
   // 토글이 켜지면 모두 보인다 — 정리 중 보류한 것들을 훑는 경로.
   if (f.showSomeday) return true;
   // someday 태그가 없으면 애초에 이 규칙과 무관하다.
-  if (!task.tags.includes("someday")) return true;
+  if (!task.tags.includes(SOMEDAY_TAG)) return true;
   // 완료된 태스크는 날짜 유무와 무관하게 "예정 없음"이 아니라 Done 버킷으로
   // 간다(classifyTask가 state==="done"을 date 체크보다 먼저 본다) — 아래
   // "날짜 없음 = 예정 없음" 대리 판정이 done에는 적용되지 않는다. 여기서

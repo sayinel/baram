@@ -1392,6 +1392,34 @@
       "description": "필드 설정 결과 줄만 계산한다(I/O 없음). 빈 value는 필드 제거"
     },
     {
+      "name": "set_task_tag",
+      "input": {
+        "path": "string",
+        "line": "number",
+        "expectedRaw": "string",
+        "tag": "string",
+        "on": "boolean"
+      },
+      "output": "string",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태스크 줄의 태그 토글. on=false는 제거. §303 순서상 이모지 필드 앞에 넣는다. expectedRaw 낙관적 잠금"
+    },
+    {
+      "name": "preview_task_tag_line",
+      "input": { "raw": "string", "tag": "string", "on": "boolean" },
+      "output": "string",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태그 토글 결과 줄만 계산한다(I/O 없음). 열린 파일은 디스크 대신 이 줄로 갈아끼운다"
+    },
+    {
       "name": "append_task_line",
       "input": { "path": "string", "line": "string" },
       "output": "string",

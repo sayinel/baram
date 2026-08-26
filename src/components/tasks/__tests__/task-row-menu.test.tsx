@@ -12,7 +12,9 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const setTaskField = vi.fn();
+const setTaskTag = vi.fn();
 const previewTaskFieldLine = vi.fn();
+const previewTaskTagLine = vi.fn();
 const getVaultTasks = vi.fn().mockResolvedValue([]);
 const getFileTasks = vi.fn().mockResolvedValue([]);
 const prosemirrorToMarkdown = vi.fn();
@@ -25,9 +27,11 @@ vi.mock("../../../ipc/invoke", () => ({
   listDir: vi.fn().mockResolvedValue([]),
   previewTaskFieldLine: (...a: unknown[]) => previewTaskFieldLine(...a),
   previewTaskStateLine: vi.fn(),
+  previewTaskTagLine: (...a: unknown[]) => previewTaskTagLine(...a),
   readFile: vi.fn().mockResolvedValue(""),
   setTaskField: (...a: unknown[]) => setTaskField(...a),
   setTaskState: vi.fn(),
+  setTaskTag: (...a: unknown[]) => setTaskTag(...a),
 }));
 
 vi.mock("../../../pipeline", () => ({
@@ -55,6 +59,8 @@ const EN_T = (key: string, params?: Record<string, string>) =>
 
 const LABEL = {
   pick: EN_T("tasks.triage.duePick"),
+  someday: EN_T("tasks.triage.someday"),
+  somedayOff: EN_T("tasks.triage.somedayOff"),
   today: EN_T("tasks.triage.dueToday"),
   tomorrow: EN_T("tasks.triage.dueTomorrow"),
 };
@@ -201,6 +207,7 @@ describe("§312 triage menu on an agenda row", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setTaskField.mockResolvedValue(`- [ ] 하나 📅${TODAY}`);
+    setTaskTag.mockResolvedValue("- [ ] 하나 #someday");
     getFileTasks.mockResolvedValue([]);
     getVaultTasks.mockResolvedValue([]);
     useTaskStore.getState().clear();
@@ -499,6 +506,55 @@ describe("§312 triage menu on an agenda row", () => {
           "- [ ] 하나 📅2026-01-01",
           "due",
           TODAY,
+        ),
+      );
+    });
+  });
+
+  // §312 `#someday`. 쓰기 회계 자체는 utils/tasks/__tests__/task-triage-tag.test.ts가
+  // 본다 — 여기서 보는 것은 그 항목이 **이 메뉴에** 있고, 라벨이 그 행의 태그 상태를
+  // 따르며, 눌렀을 때 그 행의 expected_raw로 쓰기가 나가는가다.
+  describe("#someday", () => {
+    it("태그가 없는 행은 미루기 항목을 보이고, 누르면 태그를 켠다", async () => {
+      const row = renderRow();
+      const menu = openMenu(row);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.someday }));
+
+      // ‼️ setTaskTag는 위치 인자다(src/ipc/task.ts) — 객체가 아니다.
+      await waitFor(() =>
+        expect(setTaskTag).toHaveBeenCalledWith(
+          "a.md",
+          0,
+          "- [ ] 하나",
+          "someday",
+          true,
+        ),
+      );
+      expect(menu).not.toBeInTheDocument();
+    });
+
+    it("이미 someday인 행은 해제 항목을 보이고, 누르면 태그를 끈다", async () => {
+      setTaskTag.mockResolvedValue("- [ ] 하나");
+      const row = renderRow({
+        raw: "- [ ] 하나 #someday",
+        tags: ["someday"],
+        text: "하나 #someday",
+      });
+      openMenu(row);
+
+      expect(
+        screen.queryByRole("menuitem", { name: LABEL.someday }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.somedayOff }));
+
+      await waitFor(() =>
+        expect(setTaskTag).toHaveBeenCalledWith(
+          "a.md",
+          0,
+          "- [ ] 하나 #someday",
+          "someday",
+          false,
         ),
       );
     });

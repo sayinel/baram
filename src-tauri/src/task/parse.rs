@@ -25,7 +25,7 @@ const DATE_MARKERS: &[(&str, &str)] = &[
     ("❌", "cancelled"),
 ];
 
-const PRIORITY_MARKERS: &[(&str, i8)] = &[("🔺", 2), ("⏫", 1), ("🔽", -1), ("⏬", -2)];
+pub(crate) const PRIORITY_MARKERS: &[(&str, i8)] = &[("🔺", 2), ("⏫", 1), ("🔽", -1), ("⏬", -2)];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

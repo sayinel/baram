@@ -102,6 +102,31 @@ pub fn preview_task_field_line(
         .ok_or_else(|| format!("unknown field: {}", field))
 }
 
+/// §312 태그 쓰기 — §303 canonical 순서상 태그는 이모지 필드 **앞**이다.
+/// `on=false`는 제거. 쓸 수 없는 태그 이름은 파일을 건드리기 전에 거절한다.
+#[tauri::command]
+pub async fn set_task_tag(
+    path: String,
+    line: u32,
+    expected_raw: String,
+    tag: String,
+    on: bool,
+) -> Result<String, String> {
+    crate::task::set_task_tag(&path, line, &expected_raw, &tag, on)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// §305 열린 파일 경로 — 태그 토글 결과 줄.
+///
+/// ‼️ `normalize_line`은 여기서도 필수다. 빼면 NBSP가 남고 이형태 선택자가 붙은
+/// 📅를 필드로 알아보지 못해 태그가 필드 **뒤**로 가 디스크 경로와 갈린다.
+#[tauri::command]
+pub fn preview_task_tag_line(raw: String, tag: String, on: bool) -> Result<String, String> {
+    crate::task::apply_tag(&crate::task::normalize_line(&raw), &tag, on)
+        .ok_or_else(|| format!("invalid tag: {}", tag))
+}
+
 /// §312 수집함 append — 파일이 없으면 만들고 끝에 한 줄 붙인다.
 #[tauri::command]
 pub async fn append_task_line(path: String, line: String) -> Result<String, String> {
@@ -182,5 +207,75 @@ mod tests {
 
         assert_eq!(disk, document);
         assert_eq!(disk, "- [ ] 회의 📅2026-08-24");
+    }
+
+    // §312 태그 쓰기도 같은 불변식 아래 있다. 태그는 **필드 앞**에 들어가므로
+    // 정규화를 빼면 위치까지 갈린다 — 값만 갈리는 필드 경로보다 눈에 띄게 어긋난다.
+
+    #[tokio::test]
+    async fn disk_and_preview_tag_paths_agree_byte_for_byte_on_a_non_breaking_space() {
+        let raw = "- [ ] 회의\u{00A0}준비 📅2026-08-30";
+        let d = TempDir::new().unwrap();
+        let p = write_temp(&d, &format!("{}\n", raw)).await;
+
+        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
+            .await
+            .unwrap();
+        let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
+
+        assert_eq!(disk, document);
+        assert_eq!(disk, "- [ ] 회의 준비 #someday 📅2026-08-30");
+    }
+
+    #[tokio::test]
+    async fn disk_and_preview_tag_paths_agree_byte_for_byte_on_a_variation_selector() {
+        // 정규화가 빠지면 `📅\u{FE0F}2026-08-30`을 필드로 알아보지 못해 태그가 줄 끝으로
+        // 밀려난다 — §303 순서를 어긴 줄이 문서 경로에서만 만들어진다.
+        let raw = "- [ ] 회의 📅\u{FE0F}2026-08-30";
+        let d = TempDir::new().unwrap();
+        let p = write_temp(&d, &format!("{}\n", raw)).await;
+
+        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
+            .await
+            .unwrap();
+        let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
+
+        assert_eq!(disk, document);
+        assert_eq!(disk, "- [ ] 회의 #someday 📅2026-08-30");
+    }
+
+    #[tokio::test]
+    async fn tag_removal_agrees_across_both_paths_on_a_nested_item() {
+        let raw = "    - [ ] 중첩 #someday 📅2026-08-30";
+        let d = TempDir::new().unwrap();
+        let p = write_temp(&d, &format!("{}\n", raw)).await;
+
+        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), false)
+            .await
+            .unwrap();
+        let document =
+            preview_task_tag_line(raw.to_string(), "someday".to_string(), false).unwrap();
+
+        assert_eq!(disk, document);
+        assert_eq!(disk, "    - [ ] 중첩 📅2026-08-30");
+    }
+
+    /// 파일 수준 속성(줄바꿈 스타일·끝 개행)은 preview가 볼 수 없는 절반이다 —
+    /// 디스크 경로가 그것을 보존하지 못하면 같은 줄을 내고도 파일이 망가진다.
+    #[tokio::test]
+    async fn writing_a_tag_preserves_crlf_and_a_missing_trailing_newline() {
+        let d = TempDir::new().unwrap();
+        let raw = "    - [ ] 중첩 📅2026-08-30";
+        let p = write_temp(&d, &format!("# T\r\n{}", raw)).await;
+
+        let updated = set_task_tag(p.clone(), 1, raw.to_string(), "someday".to_string(), true)
+            .await
+            .unwrap();
+
+        assert_eq!(updated, "    - [ ] 중첩 #someday 📅2026-08-30");
+        assert_eq!(
+            tokio::fs::read_to_string(&p).await.unwrap(),
+            "# T\r\n    - [ ] 중첩 #someday 📅2026-08-30"
+        );
     }
 }
