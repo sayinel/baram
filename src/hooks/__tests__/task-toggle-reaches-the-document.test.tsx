@@ -78,6 +78,10 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
     },
     updateFileIndex: () => Promise.resolve(),
     watchDir: () => Promise.resolve(),
+    writeFile: (path: string, content: string) => {
+      writeToDisk(path, content);
+      return Promise.resolve();
+    },
   };
 });
 
@@ -85,10 +89,12 @@ import { makeTestEditor } from "../../__tests__/helpers/make-test-editor";
 import { markdownToProsemirror, prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import { useTaskStore } from "../../stores/tasks/task-store";
 import { useUIStore } from "../../stores/ui/ui";
 import { clearOriginalDoc } from "../../utils/editor/programmatic-update";
 import { toggleTaskState } from "../../utils/tasks/task-triage";
+import { useAutoSave } from "../use-auto-save";
 import { useEditorEffects } from "../use-editor-effects";
 import { useFileWatcher } from "../use-file-watcher";
 import { createKeepalivePool } from "../use-large-doc-keepalive";
@@ -172,11 +178,16 @@ function isDirty(tabId: string): boolean {
   return useEditorStore.getState().tabs.find((t) => t.id === tabId)!.isDirty;
 }
 
-/** 워처가 등록돼 있고, `useEditorEffects`가 활성 탭을 지켜보는 상태로 만든다. */
+/**
+ * 워처·에디터 효과·자동 저장이 모두 살아 있는 상태. ‼️ `useAutoSave`가 반드시 붙어 있어야
+ * 한다 — dirty 판정은 그 훅의 `update` 리스너가 홀로 갖고 있으므로, 빼면 "탭이 dirty로
+ * 더럽혀지지 않는다"는 검사가 아무것도 검사하지 않는 채로 통과한다.
+ */
 function mountApp() {
   const result = renderHook(() => {
     const cacheRef = useRef(editorStateCache);
     useFileWatcher();
+    useAutoSave(editor);
     useEditorEffects({
       editor,
       editorStateCache: cacheRef,
@@ -205,6 +216,8 @@ beforeEach(() => {
   install(MD);
 
   useUIStore.getState().dismissToast();
+  // 자동 저장의 타이머는 끄되 훅은 붙여 둔다 — dirty 추적은 설정과 무관하게 돈다.
+  useSettingsStore.setState({ autoSave: false });
   useTaskStore.setState({ bufferRelativePaths: [] });
   useFileStore.setState({
     fileMtimes: new Map([
@@ -229,7 +242,11 @@ beforeEach(() => {
   CTX.editor = editor;
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // 탭 전환은 스크롤 복원을 `requestAnimationFrame`에 예약한다. 그 콜백은 `editor.view`를
+  // 읽으므로 프레임이 돌기 전에 에디터를 파괴하면 테스트 밖에서 예외가 터진다 —
+  // 프로덕션에서는 앱이 언마운트될 때뿐인 상황이라 여기서만 기다려 준다.
+  await new Promise((resolve) => setTimeout(resolve, 30));
   editor.destroy();
 });
 
@@ -364,5 +381,78 @@ describe("체크박스를 누르면 — 배경 clean 탭", () => {
     );
     // 그리고 이 문서가 곧 다음 저장이 쓸 바이트다.
     expect(docMarkdown()).not.toContain("- [ ] 원고 마감");
+  });
+
+  it("배경 탭에 온 진짜 외부 편집도 같은 이유로 살아남는다", async () => {
+    // 이 구멍은 태스크 기능보다 오래됐다: 배경 clean 탭의 파일을 다른 프로그램이 바꾸면
+    // 자동 리로드가 `openFiles`만 갱신하고, 탭 전환은 그것이 아니라 캐시된 PM 상태를
+    // 복원한다 — 외부 변경이 화면에서 사라지고 다음 저장이 파일에서도 지운다.
+    mountApp();
+    leaveNoteTabBehind();
+
+    writeToDisk(NOTE, "# 오늘\n\n다른 프로그램이 통째로 바꿔 놓았다.\n");
+    await deliverFileChanged(NOTE, "external");
+    await waitFor(() =>
+      expect(useFileStore.getState().openFiles.get(NOTE)).toContain(
+        "다른 프로그램이",
+      ),
+    );
+
+    const { rerender } = switchBackHarness();
+    useEditorStore.setState({ activeTabId: "t1", mruOrder: ["t1", "t2"] });
+    rerender();
+
+    await waitFor(() =>
+      expect(docMarkdown()).toContain("다른 프로그램이 통째로 바꿔 놓았다."),
+    );
+  });
+
+  it("저장되지 않은 편집을 들고 있는 배경 탭은 건드리지 않는다", async () => {
+    // ‼️ 낡음 표시는 캐시된 상태를 **버린다**. dirty 탭의 그 캐시는 아직 어디에도 없는
+    // 편집의 유일한 사본이므로, 표시를 달면 이 조작이 고치려던 것보다 큰 손실이 된다.
+    mountApp();
+    editor.commands.insertContentAt(
+      editor.state.doc.content.size,
+      "<p>아직 저장하지 않은 문장</p>",
+    );
+    useEditorStore.getState().markDirty("t1", true);
+    editorStateCache.set("t1", editor.state);
+    install("# 다른 파일\n");
+    useEditorStore.setState({ activeTabId: "t2", mruOrder: ["t2", "t1"] });
+
+    await toggleTaskState(TASK, true, CTX);
+    await deliverFileChanged(NOTE, "app");
+
+    const { rerender } = switchBackHarness();
+    useEditorStore.setState({ activeTabId: "t1", mruOrder: ["t1", "t2"] });
+    rerender();
+
+    await waitFor(() =>
+      expect(docMarkdown()).toContain("아직 저장하지 않은 문장"),
+    );
+  });
+});
+
+describe("다른 파일에 온 변경", () => {
+  it("지금 치고 있는 문서를 되돌리지 않는다", async () => {
+    // 새로고침 신호는 전역이고 소비자는 **활성 탭**을 openFiles로 다시 채운다. 어느
+    // 파일의 변경인지 말해 주지 않으면, 배경 파일 하나가 바뀔 때마다 활성 탭이 자기
+    // 스냅샷으로 되감긴다 — dirty 탭에서는 방금 친 글자가 사라진다는 뜻이다.
+    mountApp();
+    editor.commands.insertContentAt(
+      editor.state.doc.content.size,
+      "<p>지금 치는 중</p>",
+    );
+    useEditorStore.getState().markDirty("t1", true);
+
+    writeToDisk(OTHER, "# 다른 파일\n\n다른 파일이 바뀌었다.\n");
+    await deliverFileChanged(OTHER, "app");
+    await waitFor(() =>
+      expect(useFileStore.getState().openFiles.get(OTHER)).toContain(
+        "다른 파일이 바뀌었다.",
+      ),
+    );
+
+    expect(docMarkdown()).toContain("지금 치는 중");
   });
 });
