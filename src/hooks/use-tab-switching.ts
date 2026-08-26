@@ -24,15 +24,13 @@ import { notifyFileOpen } from "../plugins/plugin-lifecycle";
 import { isFileTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFoldStore } from "../stores/editor/fold";
-import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useNavigationStore } from "../stores/ui/navigation";
 import { useUIStore } from "../stores/ui/ui";
 import {
-  findBlockPosById,
-  findHeadingPosByText,
-} from "../utils/editor/block-nav";
-import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
+  scrollToTarget,
+  takePendingScroll,
+} from "../utils/editor/pending-scroll";
 import { logCacheEvent, timePhase } from "../utils/editor/perf-trace";
 import {
   isTabLoading,
@@ -322,43 +320,16 @@ export function useTabSwitching({
       const kaContent = incomingTab.filePath
         ? openFiles.get(incomingTab.filePath)
         : undefined;
-      const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
-      const pendingLine = useLinkStore.getState().pendingScrollLine;
-      const pendingHeading = useLinkStore.getState().pendingScrollHeading;
       const pendingHighlight = useUIStore.getState().pendingSearchHighlight;
-      let kaScrollPos: null | number = null;
-      const kaDoc = incomingKeepaliveEditor.view.state.doc;
-
-      if (pendingBlockId) {
-        useLinkStore.getState().setPendingScrollBlockId(null);
-        const bp = findBlockPosById(kaDoc, pendingBlockId);
-        if (bp !== null)
-          kaScrollPos = Math.min(Math.max(bp, 0), kaDoc.content.size);
-      } else if (pendingLine && kaContent) {
-        useLinkStore.getState().setPendingScrollLine(null);
-        const pp = mdLineToPmBlockStart(kaDoc, kaContent, pendingLine);
-        kaScrollPos = Math.min(Math.max(pp, 0), kaDoc.content.size);
-      } else if (pendingHeading) {
-        useLinkStore.getState().setPendingScrollHeading(null);
-        const hp = findHeadingPosByText(kaDoc, pendingHeading);
-        if (hp !== null)
-          kaScrollPos = Math.min(Math.max(hp + 1, 0), kaDoc.content.size);
-      }
-      if (kaScrollPos !== null) {
-        requestAnimationFrame(() => {
-          try {
-            const rp = incomingKeepaliveEditor.view.state.doc.resolve(
-              kaScrollPos!,
-            );
-            const tr = incomingKeepaliveEditor.view.state.tr
-              .setSelection(TextSelection.near(rp))
-              .scrollIntoView();
-            incomingKeepaliveEditor.view.dispatch(tr);
-            incomingKeepaliveEditor.view.focus();
-          } catch {
-            /* ignore invalid pos */
-          }
-        });
+      // §313 이 탭이 도착했으므로 이 파일 앞으로 온 요청만 소비한다 — 다른 파일을
+      // 향한 요청은 여기서 버려진다(`takePendingScroll`).
+      const kaTarget = takePendingScroll(incomingTab.filePath);
+      if (kaTarget) {
+        scrollToTarget(
+          incomingKeepaliveEditor.view,
+          kaContent ?? null,
+          kaTarget,
+        );
       }
       if (pendingHighlight) {
         useUIStore.getState().setPendingSearchHighlight(null);
@@ -401,54 +372,10 @@ export function useTabSwitching({
       // [MAJOR-7] Parameterized by `loadEditor` so keep-alive loads target the
       // correct editor instance (not the shared one).
       const afterDocLoad = (loadEditor: Editor) => {
-        // §29 Check if navigating from backlinks — compute scroll position
-        const pendingLine = useLinkStore.getState().pendingScrollLine;
-        const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
-        const pendingHeading = useLinkStore.getState().pendingScrollHeading;
-        let scrollPos: null | number = null;
-        const doc = loadEditor.view.state.doc;
-        if (pendingBlockId) {
-          useLinkStore.getState().setPendingScrollBlockId(null);
-          const blockPos = findBlockPosById(doc, pendingBlockId);
-          if (blockPos !== null) {
-            scrollPos = Math.min(Math.max(blockPos, 0), doc.content.size);
-          }
-        } else if (pendingLine) {
-          useLinkStore.getState().setPendingScrollLine(null);
-          const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
-          scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
-        } else if (pendingHeading) {
-          useLinkStore.getState().setPendingScrollHeading(null);
-          const headingPos = findHeadingPosByText(doc, pendingHeading);
-          if (headingPos !== null) {
-            scrollPos = Math.min(Math.max(headingPos + 1, 0), doc.content.size);
-          }
-        }
-
-        // Dispatch a proper transaction for selection + scroll, then
-        // use DOM scrollIntoView as fallback for the scroll container
-        if (scrollPos !== null) {
-          requestAnimationFrame(() => {
-            try {
-              const resolvedPos = loadEditor.view.state.doc.resolve(scrollPos);
-              const tr = loadEditor.view.state.tr
-                .setSelection(TextSelection.near(resolvedPos))
-                .scrollIntoView();
-              loadEditor.view.dispatch(tr);
-              loadEditor.view.focus();
-
-              // DOM-level scroll fallback — ensures .editor-area scrolls
-              const domInfo = loadEditor.view.domAtPos(scrollPos);
-              const el =
-                domInfo.node instanceof HTMLElement
-                  ? domInfo.node
-                  : domInfo.node.parentElement;
-              el?.scrollIntoView({ block: "center" });
-            } catch {
-              // ignore invalid position
-            }
-          });
-        }
+        // §29/§313 백링크·검색·아젠다가 건 스크롤 요청 — 이 파일 앞으로 온 것만
+        // 소비하고, 다른 파일을 향한 요청은 여기서 버린다(`takePendingScroll`).
+        const target = takePendingScroll(incomingTab.filePath);
+        if (target) scrollToTarget(loadEditor.view, content, target);
 
         // §5.11 Handle pending search highlight after document load
         const pendingHighlight = useUIStore.getState().pendingSearchHighlight;

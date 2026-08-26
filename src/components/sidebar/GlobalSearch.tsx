@@ -6,9 +6,9 @@ import type { SearchResult } from "../../ipc/types";
 import { readFile, searchFiles, writeFile } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
+import { requestScroll } from "../../utils/editor/pending-scroll";
 import { logger } from "../../utils/logger";
 import { extractFileNameFromPath } from "./backlink-utils";
 
@@ -166,7 +166,7 @@ export function GlobalSearch() {
   // Navigate to file + line + highlight search term
   const handleResultClick = useCallback(
     (filePath: string, line: number) => {
-      useLinkStore.getState().setPendingScrollLine(line);
+      requestScroll(filePath, { kind: "line", value: line });
       useUIStore.getState().setPendingSearchHighlight(query);
 
       const { tabs, openTab, setActiveTab } = useEditorStore.getState();

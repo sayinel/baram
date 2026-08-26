@@ -8,11 +8,11 @@ import type { TaskFilters } from "../../utils/tasks/task-filters";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
-import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { refreshAllTasks, useTaskStore } from "../../stores/tasks/task-store";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
+import { requestScroll } from "../../utils/editor/pending-scroll";
 import { openFileByPath } from "../../utils/open-file";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
 import {
@@ -96,9 +96,11 @@ export function TaskAgendaPanel() {
   });
 
   const onJump = useCallback((task: TaskEntry) => {
-    // pendingScrollLine은 1-based(`mdLineToPmBlockStart`가 line-1을 쓴다),
-    // TaskEntry.line은 0-based다. GlobalSearch가 쓰는 것과 같은 경로.
-    useLinkStore.getState().setPendingScrollLine(task.line + 1);
+    // §313 요청에 파일 주소를 붙여 건다 — 그 파일이 **이미 활성 탭**이어도 배달되고
+    // (누른 태스크의 대부분이 그 경우다), 배달되지 못하면 남지 않고 버려진다.
+    // 줄 번호는 1-based(`mdLineToPmBlockStart`가 line-1을 쓴다), `TaskEntry.line`은
+    // 0-based다.
+    requestScroll(task.path, { kind: "line", value: task.line + 1 });
     void openFileByPath(task.path);
   }, []);
 

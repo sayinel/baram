@@ -16,6 +16,10 @@ import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
+import {
+  scrollToTarget,
+  takeSameTabScroll,
+} from "../utils/editor/pending-scroll";
 
 interface UseEditorEffectsParams {
   editor: Editor | null;
@@ -127,6 +131,30 @@ export function useEditorEffects({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setFindReplaceOpen/setFindReplaceMode are stable store actions
   }, [pendingSearchHighlight, editor]);
+
+  // §313 이미 활성인 탭 앞으로 온 스크롤 요청을 배달한다.
+  //
+  // `openFileByPath`는 이미 열린 파일에 대해 `setActiveTab(같은 id)`로 단락되고
+  // (`open-file.ts:13-17`), `useTabSwitching`의 effect는 `[activeTabId]`에만 걸려 있어
+  // 다시 돌지 않는다. 그래서 열려 있는 노트의 태스크를 아젠다에서 누르거나 그 노트를
+  // 가리키는 백링크를 누르면 소비자가 하나도 실행되지 않았다 — 커서는 1행에 남고, 값은
+  // 남아서 **다음** 탭 전환이 엉뚱한 파일에 적용했다.
+  //
+  // 위 §5.11 하이라이트 effect가 이 일을 겸하고 있었지만 그것은 검색 하이라이트 신호에
+  // 걸려 있다("스크롤"을 뜻하려고 그 값을 세우는 것이 이 결함을 헷갈리게 만든 원인이다).
+  // 스크롤 요청은 자기 신호(`pendingScrollRequest`)로 배달한다.
+  const pendingScrollRequest = useLinkStore((s) => s.pendingScrollRequest);
+  useEffect(() => {
+    if (!pendingScrollRequest || !editor?.view) return;
+    const target = takeSameTabScroll();
+    if (!target) return;
+    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const tab = currentTabs.find((t) => t.id === tabId);
+    const content = tab?.filePath
+      ? useFileStore.getState().openFiles.get(tab.filePath)
+      : undefined;
+    scrollToTarget(editor.view, content ?? null, target);
+  }, [pendingScrollRequest, editor]);
 
   // §5.11 Reload editor content after Global Search Replace / Quick Capture
   const contentReloadVersion = useUIStore((s) => s.contentReloadVersion);

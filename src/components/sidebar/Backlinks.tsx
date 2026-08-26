@@ -15,6 +15,7 @@ import {
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
+import { requestScroll } from "../../utils/editor/pending-scroll";
 import { logger } from "../../utils/logger";
 import {
   extractFileNameFromPath,
@@ -116,11 +117,15 @@ export function Backlinks() {
   // Handle clicking a backlink entry → open that file and scroll to line
   const handleClick = useCallback(
     (sourcePath: string, line: number, blockId?: string) => {
-      if (blockId) {
-        useLinkStore.getState().setPendingScrollBlockId(blockId);
-      } else {
-        useLinkStore.getState().setPendingScrollLine(line);
-      }
+      // §313 파일 주소를 붙여 건다 — 백링크가 **지금 보고 있는 노트**를 가리키는 경우
+      // (같은 파일 안의 상호 참조) 탭 전환이 일어나지 않아 예전에는 아무 일도 하지
+      // 않았고, 소비되지 않은 값이 다음 탭 전환으로 흘러갔다.
+      requestScroll(
+        sourcePath,
+        blockId
+          ? { kind: "blockId", value: blockId }
+          : { kind: "line", value: line },
+      );
 
       const {
         tabs: currentTabs,

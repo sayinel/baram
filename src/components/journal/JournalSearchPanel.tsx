@@ -8,10 +8,10 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, searchFiles } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { requestScroll } from "../../utils/editor/pending-scroll";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import {
   CATEGORY_LABELS,
@@ -145,7 +145,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
 
   const handleResultClick = useCallback(
     (filePath: string, line: number) => {
-      useLinkStore.getState().setPendingScrollLine(line);
+      requestScroll(filePath, { kind: "line", value: line });
       useUIStore.getState().setPendingSearchHighlight(query);
 
       const { tabs, openTab, setActiveTab } = useEditorStore.getState();

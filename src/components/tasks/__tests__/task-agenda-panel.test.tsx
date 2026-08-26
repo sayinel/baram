@@ -30,6 +30,7 @@ vi.mock("../../../pipeline", () => ({
 import { EditorProvider } from "../../../contexts/editor-context";
 import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
+import { useLinkStore } from "../../../stores/editor/link";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
@@ -94,6 +95,35 @@ describe("TaskAgendaPanel", () => {
       true,
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     );
+  });
+
+  it("§313 addresses the scroll request at the task's own file", async () => {
+    // 결함: 예전에는 주소 없는 `setPendingScrollLine`만 세웠다. 그 파일이 이미 활성
+    // 탭이면(누르는 태스크의 대부분이 그렇다) 탭 전환이 없어 아무도 소비하지 않았고,
+    // 커서는 1행에 남은 채 값만 남아 **다음** 탭 전환이 엉뚱한 파일에 적용했다.
+    useEditorStore.setState({
+      activeTabId: "t1",
+      mruOrder: ["t1"],
+      tabs: [
+        {
+          contextId: "c",
+          filePath: "a.md",
+          id: "t1",
+          isDirty: false,
+          isPinned: false,
+          title: "a.md",
+        },
+      ],
+    });
+    useLinkStore.getState().clearPendingScroll();
+    useTaskStore.getState().setAll([task({ line: 41 })]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.click(screen.getByRole("button", { name: "하나" }));
+
+    // 0-based `TaskEntry.line` → 1-based 스크롤 요청.
+    expect(useLinkStore.getState().pendingScrollLine).toBe(42);
+    expect(useLinkStore.getState().pendingScrollPath).toBe("a.md");
   });
 
   it("silently re-scans the file when the write comes back stale", async () => {
