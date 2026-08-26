@@ -25,6 +25,7 @@ import {
   isUnsavedWrite,
 } from "./apply-task-write";
 import { resolveDateInput } from "./task-date-input";
+import { notifyUnsavedConflict } from "./task-write-feedback";
 
 /** `FIELD_EMOJI`(write.rs:5-12)의 날짜 필드 중 사용자가 손으로 정하는 셋. */
 export type TaskDateField = "due" | "scheduled" | "start";
@@ -83,7 +84,12 @@ export async function assignTaskDate(
   }
   // ‼️ `stale`을 전부 "디스크가 진실원"으로 뭉뚱그리면 안 된다 — 소스·문서 경로에서
   // 거절된 것이면 그 파일의 진실은 여전히 저장되지 않은 버퍼다(isDiskAuthoritative).
-  if (!isDiskAuthoritative(result)) return;
+  if (!isDiskAuthoritative(result)) {
+    // 스토어는 만지지 않되 침묵하지도 않는다 — 이 거절은 저장 전까지 영구적이라
+    // 알리지 않으면 그 항목이 영원히 죽은 것처럼 보인다.
+    notifyUnsavedConflict(ctx.t);
+    return;
+  }
   await refreshFileTasks(task.path, ctx.rootPath, ctx.exclude);
 }
 
@@ -92,13 +98,20 @@ export async function assignTaskDate(
  * 메뉴는 §312가 요구하지 않으므로 넣지 않는다(YAGNI). Task 3·4가 여기에 줄을
  * 더하고 아래 switch에 짝이 되는 case를 더한다.
  *
- * ‼️ `task.due`를 보고 항목을 회색으로 만들지 말 것. 파서는 날짜 이모지의 **첫**
+ * ‼️ `task.due`를 보고 날짜 항목을 회색으로 만들지 말 것. 파서는 날짜 이모지의 **첫**
  * 등장을 읽는데 writer는 **마지막 유효한** 것을 쓰므로, 본문에 장식용 📅가 있는
  * 행에서는 `TaskEntry.due`가 거짓 음성이 된다(dev/backlog.md P2) — 그 값으로
- * 잠그면 멀쩡한 행에서 메뉴가 죽는다. 항목이 태스크에 따라 달라지지 않는 것이
- * 이 함수가 `task`를 받지 않는 이유다.
+ * 잠그면 멀쩡한 행에서 메뉴가 죽는다. 그래서 지금 항목들은 태스크를 보지 않는다.
+ *
+ * 그래도 `task`를 받는다: Task 3의 `#someday`는 **토글**이라 라벨이
+ * `task.tags.includes("someday")`에 달려 있다. 그때 시그니처를 바꾸면 호출부의 memo와
+ * 이 주석까지 함께 되돌려야 하므로, 항목을 태스크에서 만드는 계약을 지금 세워 둔다.
+ * 호출부는 메뉴가 열려 있는 동안에만(`menu.task`로) 이 함수를 부른다.
  */
-export function buildTriageItems(t: Translate): TaskMenuItem[] {
+export function buildTriageItems(
+  t: Translate,
+  _task: TaskEntry,
+): TaskMenuItem[] {
   return [
     { id: "dueToday", label: t("tasks.triage.dueToday") },
     { id: "dueTomorrow", label: t("tasks.triage.dueTomorrow") },

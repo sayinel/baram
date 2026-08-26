@@ -2,7 +2,13 @@ import type { TaskEntry } from "../../../ipc/types";
 import type { TaskTriageContext } from "../../../utils/tasks/task-triage";
 import type { Editor } from "@tiptap/react";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const setTaskField = vi.fn();
@@ -31,6 +37,7 @@ vi.mock("../../../pipeline", () => ({
 import { EditorProvider } from "../../../contexts/editor-context";
 import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
+import { useFileStore } from "../../../stores/file/file";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { runTaskTriageAction } from "../../../utils/tasks/task-triage";
@@ -87,6 +94,17 @@ function dialogInput(): HTMLInputElement {
   return input;
 }
 
+/**
+ * 실제로 포커스를 옮긴다 — jsdom이 focusout을 내보내고 React의 onBlur가 그것을 본다.
+ * `fireEvent.blur`는 relatedTarget을 손으로 지어내야 하므로 "포커스가 어디로 갔는가"를
+ * 검증할 수 없다.
+ */
+function moveFocusTo(el: HTMLElement): void {
+  act(() => {
+    el.focus();
+  });
+}
+
 /** 행을 우클릭해 메뉴를 연다 — 포인터 경로의 표준 진입점. */
 function openMenu(row: HTMLElement): HTMLElement {
   fireEvent.mouseDown(row, { button: 2 });
@@ -124,6 +142,51 @@ function renderRow(
     />,
   );
   return screen.getByText(entry.text).closest("li")!;
+}
+
+/**
+ * 버킷을 **둘** 렌더한다.
+ *
+ * ‼️ 버킷 하나짜리 테스트는 "메뉴가 버킷을 넘어 둘 다 열린다"는 결함을 어떻게 써도
+ * 잡지 못한다 — `menu` state가 `TaskBucketList` 인스턴스마다 따로 있기 때문이다.
+ */
+function renderTwoBuckets(): { rowA: HTMLElement; rowB: HTMLElement } {
+  const a = task({ text: "A행" });
+  const b = task({ path: "b.md", text: "B행" });
+  useTaskStore.getState().setAll([a, b]);
+  const ctx: TaskTriageContext = {
+    editor: null,
+    exclude: [],
+    now: NOW,
+    rootPath: null,
+    t: EN_T,
+  };
+  const bucket = (label: string, tasks: TaskEntry[]) => (
+    <TaskBucketList
+      bucket="noDate"
+      label={label}
+      now={NOW}
+      onJump={noop}
+      onToggle={noop}
+      onTriage={(target, action) => {
+        void runTaskTriageAction(action, target, ctx);
+      }}
+      showAge={false}
+      showOverdueAge={false}
+      tasks={tasks}
+      titleFor={(x) => x}
+    />
+  );
+  render(
+    <>
+      {bucket("A", [a])}
+      {bucket("B", [b])}
+    </>,
+  );
+  return {
+    rowA: screen.getByText("A행").closest("li")!,
+    rowB: screen.getByText("B행").closest("li")!,
+  };
 }
 
 function submitDialog(value: string): void {
@@ -226,6 +289,118 @@ describe("§312 triage menu on an agenda row", () => {
 
       fireEvent.keyDown(rowB, { key: "k" });
       expect(document.activeElement).toBe(rowA);
+    });
+
+    // 메뉴 **자체**는 role="menu" + aria-activedescendant까지 갖췄지만, 진입점이
+    // 아무 말도 하지 않으면 스크린리더 사용자는 메뉴가 있다는 사실에 도달할 방법이 없다.
+    it("행이 메뉴의 존재와 자기 메뉴의 열림 여부를 알린다", () => {
+      // 행이 둘이어야 `aria-expanded`가 **그 행의** 상태인지 버킷 전체의 상태인지
+      // 갈린다 — 하나뿐이면 둘이 같은 값이라 아무것도 증명하지 못한다.
+      const first = task({ text: "첫째" });
+      const second = task({ line: 1, text: "둘째" });
+      render(
+        <TaskBucketList
+          bucket="noDate"
+          label="No date"
+          now={NOW}
+          onJump={noop}
+          onToggle={noop}
+          onTriage={noop}
+          showAge={false}
+          showOverdueAge={false}
+          tasks={[first, second]}
+          titleFor={(x) => x}
+        />,
+      );
+      const rowA = screen.getByText("첫째").closest("li")!;
+      const rowB = screen.getByText("둘째").closest("li")!;
+
+      expect(rowA).toHaveAttribute("aria-haspopup", "menu");
+      expect(rowA).toHaveAttribute("aria-expanded", "false");
+
+      openMenu(rowA);
+
+      expect(rowA).toHaveAttribute("aria-expanded", "true");
+      expect(rowB).toHaveAttribute("aria-expanded", "false");
+    });
+  });
+
+  // §315는 키보드 우선 표면이다. 아래 셋은 전부 **포인터를 한 번도 쓰지 않는**
+  // 경로에서만 드러나는 결함이다 — 바깥 mousedown 리스너가 덮지 못하는 절반.
+  describe("menu lifecycle", () => {
+    it("버킷을 넘어 키보드로 열어도 화면의 메뉴는 하나뿐이다", () => {
+      const { rowA, rowB } = renderTwoBuckets();
+
+      rowA.focus();
+      fireEvent.keyDown(rowA, { key: "d" });
+      expect(screen.getAllByRole("menu")).toHaveLength(1);
+
+      // Tab이든 클릭이든 — 포커스가 메뉴를 떠나는 모든 경로의 최소 재현이다.
+      moveFocusTo(rowB);
+      fireEvent.keyDown(rowB, { key: "d" });
+
+      expect(screen.getAllByRole("menu")).toHaveLength(1);
+    });
+
+    it("포커스가 메뉴를 떠나면 닫히고, 포커스를 도로 뺏지 않는다", () => {
+      const { rowA, rowB } = renderTwoBuckets();
+      rowA.focus();
+      fireEvent.keyDown(rowA, { key: "d" });
+
+      moveFocusTo(rowB);
+
+      expect(screen.queryByRole("menu")).toBeNull();
+      // ‼️ 여기서 opener(rowA)로 포커스를 돌려주면 Tab이 제자리를 맴돈다 —
+      // 사용자가 방금 옮겨 간 곳에서 포커스를 빼앗는 셈이다.
+      expect(document.activeElement).toBe(rowB);
+    });
+
+    // 포커스가 **아무 데로도** 가지 않을 때(relatedTarget이 null) 무엇을 하는가가
+    // "닫을 때 포커스를 옮기는가"를 가르는 유일한 관측점이다 — 행으로 옮겨 가는
+    // 경우에는 jsdom이 진행 중인 포커스 전환 안의 focus()를 삼켜 차이가 보이지 않는다.
+    it("포커스를 잃은 메뉴는 포커스를 되찾아 오지 않는다", () => {
+      const { rowA } = renderTwoBuckets();
+      rowA.focus();
+      fireEvent.keyDown(rowA, { key: "d" });
+      const menu = screen.getByRole("menu");
+
+      act(() => {
+        menu.blur();
+      });
+
+      expect(screen.queryByRole("menu")).toBeNull();
+      // ‼️ 여기서 opener로 focus()를 걸면 Tab으로 빠져나가려는 사용자를 매번 행으로
+      // 끌어당긴다. 포커스를 되돌리는 것은 Escape의 몫이지 blur의 몫이 아니다.
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    // 워처·다른 버킷의 토글·필터 입력이 전부 tasks를 갈아끼운다. 메뉴가 그보다
+    // 오래 살면 화면에 없는 행의 옛 좌표에 떠 있고, 그 항목을 실행하면 보이지 않는
+    // 태스크에 쓰기가 나간다.
+    it("행이 목록에서 사라지면 메뉴도 사라진다", () => {
+      const first = task({ text: "첫째" });
+      const second = task({ line: 1, text: "둘째" });
+      const view = (tasks: TaskEntry[]) => (
+        <TaskBucketList
+          bucket="noDate"
+          label="No date"
+          now={NOW}
+          onJump={noop}
+          onToggle={noop}
+          onTriage={noop}
+          showAge={false}
+          showOverdueAge={false}
+          tasks={tasks}
+          titleFor={(x) => x}
+        />
+      );
+      const { rerender } = render(view([first, second]));
+      openMenu(screen.getByText("첫째").closest("li")!);
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+
+      rerender(view([second]));
+
+      expect(screen.queryByRole("menu")).toBeNull();
     });
   });
 
@@ -511,6 +686,111 @@ describe("§312 triage menu on an agenda row", () => {
       await waitFor(() => expect(previewTaskFieldLine).toHaveBeenCalled());
       expect(getFileTasks).not.toHaveBeenCalled();
       expect(buffer).toBe("- [ ] 하나\n");
+    });
+
+    // 이 stale은 저장 전까지 **영구적**이다 — 태스크 스토어가 그 파일에 대해 계속
+    // 낡아 있으므로 사용자가 몇 번을 눌러도 영원히 아무 일도 일어나지 않는다.
+    // 스토어를 만지지 않는 것은 옳지만(다시 읽으면 같은 버퍼의 다른 줄 변경이
+    // 되돌아간다) 침묵까지 옳은 것은 아니다 — I5의 "원인 모를 죽은 체크박스"다.
+    it("거절됐다는 것을 사용자에게 알린다", async () => {
+      // 저장하지 않은 편집이 그 줄을 이미 바꿔 놨다 — 낙관적 잠금이 거절한다.
+      buffer = "- [ ] 사용자가 이미 고쳐 둔 줄\n";
+      const row = renderRow({}, FAKE_EDITOR);
+      openMenu(row);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.today }));
+
+      await waitFor(() =>
+        expect(useUIStore.getState().toast?.type).toBe("info"),
+      );
+      // 알리기만 한다 — 재스캔도 스토어 갱신도 없다.
+      expect(getFileTasks).not.toHaveBeenCalled();
+      expect(useTaskStore.getState().tasks[0].due).toBeNull();
+    });
+  });
+
+  // §305 문서 경로 — 화면에 보이는 것이 라이브 ProseMirror 문서일 때. 소스 경로와
+  // 대칭인 분기인데 이 커밋의 테스트에는 없었다. 이 슬라이스에서 데이터 손실 결함은
+  // 정확히 테스트가 없던 분기에 있었다.
+  describe("open document", () => {
+    let doc = "";
+
+    beforeEach(() => {
+      doc = "- [ ] 하나\n";
+      previewTaskFieldLine.mockResolvedValue(`- [ ] 하나 📅${TODAY}`);
+      prosemirrorToMarkdown.mockImplementation(() => doc);
+      useEditorStore.setState({
+        activeTabId: "t1",
+        // 소스 모드가 아니다 — 소스 판정이 document 판정 앞에 있으므로 이 목록이
+        // 비어 있어야 문서 경로에 닿는다.
+        sourceModeTabs: [],
+        tabs: [
+          {
+            contextId: "c",
+            filePath: "a.md",
+            id: "t1",
+            isDirty: true,
+            isPinned: false,
+            title: "a",
+          },
+        ],
+      });
+    });
+
+    afterEach(() => {
+      useEditorStore.setState({
+        activeTabId: null,
+        sourceModeTabs: [],
+        tabs: [],
+      });
+      useFileStore.setState({ openFiles: new Map() });
+    });
+
+    it("보이는 문서에 날짜를 쓰고 디스크는 건드리지 않는다", async () => {
+      const row = renderRow({}, FAKE_EDITOR);
+      openMenu(row);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.today }));
+
+      await waitFor(() =>
+        expect(useFileStore.getState().openFiles.get("a.md")).toBe(
+          `- [ ] 하나 📅${TODAY}\n`,
+        ),
+      );
+      expect(setTaskField).not.toHaveBeenCalled();
+      expect(getFileTasks).not.toHaveBeenCalled();
+    });
+
+    it("저장 전이므로 디스크를 다시 읽지 않고 스토어를 직접 패치한다", async () => {
+      const row = renderRow({}, FAKE_EDITOR);
+      openMenu(row);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.today }));
+
+      await waitFor(() =>
+        expect(useTaskStore.getState().tasks[0].due).toBe(TODAY),
+      );
+      expect(useTaskStore.getState().tasks[0].raw).toBe(
+        `- [ ] 하나 📅${TODAY}`,
+      );
+      expect(getFileTasks).not.toHaveBeenCalled();
+    });
+
+    // 소스 경로와 같은 이유로 디스크를 다시 읽으면 안 된다 — 문서의 진실은 아직
+    // 저장되지 않은 버퍼이고, 다시 읽으면 그 문서의 다른 변경까지 되돌아간다.
+    it("문서가 그 사이 바뀌어 거절되면 디스크를 다시 읽지 않고 알린다", async () => {
+      doc = "- [ ] 사용자가 방금 고친 줄\n";
+      const row = renderRow({}, FAKE_EDITOR);
+      openMenu(row);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.today }));
+
+      await waitFor(() =>
+        expect(useUIStore.getState().toast?.type).toBe("info"),
+      );
+      expect(getFileTasks).not.toHaveBeenCalled();
+      expect(useTaskStore.getState().tasks[0].due).toBeNull();
+      expect(useFileStore.getState().openFiles.get("a.md")).toBeUndefined();
     });
   });
 

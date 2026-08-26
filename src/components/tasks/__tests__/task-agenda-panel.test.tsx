@@ -554,4 +554,24 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
     expect(first?.due).toBe("2026-08-30");
     expect(first?.raw).toBe("- [ ] 하나 📅2026-08-30");
   });
+
+  // 스토어를 만지지 않는 것은 옳다. 침묵까지 옳은 것은 아니다 — 이 stale은 파일을
+  // 저장할 때까지 **영구적**이라, 알리지 않으면 사용자에게는 몇 번을 눌러도 아무 일도
+  // 일어나지 않는 원인 모를 죽은 체크박스로만 보인다(I5).
+  it("거절됐다는 것을 사용자에게 알린다", async () => {
+    // 저장하지 않은 편집이 그 줄을 이미 바꿔 놨다 — 낙관적 잠금이 거절한다.
+    buffer = "- [ ] 사용자가 이미 고쳐 둔 줄\n";
+    useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(useUIStore.getState().toast?.type).toBe("info");
+    expect(getFileTasks).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].state).toBe("todo");
+  });
 });

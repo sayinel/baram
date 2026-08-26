@@ -1,5 +1,5 @@
 // §306 아젠다 버킷 하나 — 항목 렌더와 체크 토글, §312 정리 메뉴
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
@@ -50,7 +50,6 @@ export function TaskBucketList({
   // 메뉴를 연 행 — 닫을 때 포커스를 돌려줄 곳이다. 키보드 사용자가 `d`로 열고
   // Escape로 닫았을 때 포커스가 body로 떨어지면 그 다음 `j`가 아무 데도 닿지 않는다.
   const openerRef = useRef<HTMLElement | null>(null);
-  const items = useMemo(() => buildTriageItems(t), [t]);
 
   const closeMenu = useCallback(() => {
     setMenu(null);
@@ -75,6 +74,19 @@ export function TaskBucketList({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [menu, closeMenu]);
+
+  // ‼️ 메뉴는 자기 행보다 오래 살면 안 된다. 워처의 자동 새로고침·다른 버킷의 체크박스
+  // 토글·필터 입력이 전부 `tasks`를 갈아끼우는데, 그때 메뉴를 그대로 두면 화면에 없는
+  // 행의 옛 좌표에 떠 있고 그 항목을 실행하면 보이지 않는 태스크에 쓰기가 나간다.
+  // 게다가 그 상태의 Escape는 이미 **분리된** opener에 focus()를 걸어 포커스를 body로
+  // 떨어뜨린다 — 그래서 여기서는 `closeMenu`가 아니라 `setMenu(null)`이다.
+  useEffect(() => {
+    if (!menu) return;
+    const alive = tasks.some(
+      (x) => x.path === menu.task.path && x.line === menu.task.line,
+    );
+    if (!alive) setMenu(null);
+  }, [tasks, menu]);
 
   const openMenu = useCallback((row: HTMLElement, task: TaskEntry) => {
     openerRef.current = row;
@@ -130,6 +142,12 @@ export function TaskBucketList({
           const priority = priorityBadge(task.priority);
           return (
             <li
+              // 메뉴 자체는 role="menu"까지 갖췄지만 진입점이 아무 말도 하지 않으면
+              // 보조기술 사용자는 메뉴가 있다는 사실에 도달할 방법이 없다.
+              aria-expanded={
+                menu?.task.path === task.path && menu.task.line === task.line
+              }
+              aria-haspopup="menu"
               className="task-row"
               key={`${task.path}:${task.line}`}
               onContextMenu={(e) => {
@@ -180,13 +198,17 @@ export function TaskBucketList({
         // <li> **밖**에 둔다 — 안에 두면 메뉴의 keydown이 행 핸들러로 올라가
         // 같은 j/k가 항목과 행 포커스를 함께 옮긴다.
         <TaskRowMenu
-          items={items}
+          // 항목은 메뉴가 열려 있는 동안에만 필요하다 — 3~5개짜리 배열이라 memo가
+          // 값어치를 하지 않고, 여기서 만들어야 항목이 `menu.task`를 볼 수 있다
+          // (Task 3의 `#someday`는 라벨이 그 태스크의 태그에 달린 토글이다).
+          items={buildTriageItems(t, menu.task)}
           menu={menu}
           onAction={(action) => {
             closeMenu();
             onTriage(menu.task, action);
           }}
           onClose={closeMenu}
+          onDismiss={() => setMenu(null)}
         />
       )}
     </details>

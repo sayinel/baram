@@ -23,7 +23,16 @@ export interface TaskRowMenuProps {
   items: TaskMenuItem[];
   menu: TaskMenuState;
   onAction: (action: string) => void;
+  /** Escape로 닫는다 — 포커스를 연 행으로 되돌린다. */
   onClose: () => void;
+  /**
+   * 포커스가 메뉴 밖으로 나갔다 — 닫되 포커스는 **건드리지 않는다**.
+   *
+   * `onClose`와 갈라져 있어야 하는 이유가 정확히 하나 있다: `onClose`는 포커스를 연
+   * 행으로 되돌리는데, 그것을 blur에도 쓰면 Tab이 제자리를 맴돈다 — 사용자가 방금
+   * 옮겨 간 곳에서 포커스를 도로 빼앗기 때문이다.
+   */
+  onDismiss: () => void;
 }
 
 export function TaskRowMenu({
@@ -31,6 +40,7 @@ export function TaskRowMenu({
   menu,
   onAction,
   onClose,
+  onDismiss,
 }: TaskRowMenuProps): React.JSX.Element {
   const { t } = useTranslation();
   const baseId = useId();
@@ -81,6 +91,14 @@ export function TaskRowMenu({
       aria-activedescendant={itemId(active)}
       aria-label={t("tasks.triage.menu")}
       className="task-row-menu"
+      // ‼️ 바깥 mousedown 리스너(TaskBucketList)는 **포인터 경로만** 덮는다. 키보드로
+      // 열어 Tab으로 빠져나가면 그 리스너는 한 번도 불리지 않아 메뉴가 열린 채 남고,
+      // 다른 버킷에서 하나 더 열면 화면에 메뉴가 둘이 된다. 포커스가 메뉴를 떠나는
+      // 것이 "닫아야 한다"의 정확한 조건이고, WAI-ARIA menu 패턴이 요구하는 조건이기도
+      // 하다. `relatedTarget`이 메뉴 안이면(항목 사이 이동) 닫지 않는다.
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) onDismiss();
+      }}
       // 바깥 mousedown이 메뉴를 닫는다(TaskBucketList). 메뉴 안에서 시작한
       // mousedown까지 거기로 새면 click이 항목에 닿기 전에 메뉴가 사라진다.
       onKeyDown={handleKeyDown}

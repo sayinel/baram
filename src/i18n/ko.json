@@ -827,6 +827,7 @@
   "tasks.chip.priority.high": "높음",
   "tasks.chip.priority.low": "낮음",
   "tasks.chip.priority.lowest": "최저",
+  "tasks.unsavedConflict": "저장하지 않은 편집에서 그 줄이 바뀌었습니다. 파일을 저장한 뒤 다시 시도하세요.",
   "tasks.triage.menu": "태스크 정리",
   "tasks.triage.dueToday": "오늘 기한으로",
   "tasks.triage.dueTomorrow": "내일 기한으로",

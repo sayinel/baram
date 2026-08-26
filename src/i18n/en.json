@@ -827,6 +827,7 @@
   "tasks.chip.priority.high": "high",
   "tasks.chip.priority.low": "low",
   "tasks.chip.priority.lowest": "lowest",
+  "tasks.unsavedConflict": "That line changed in your unsaved edits. Save the file and try again.",
   "tasks.triage.menu": "Task triage",
   "tasks.triage.dueToday": "Due today",
   "tasks.triage.dueTomorrow": "Due tomorrow",

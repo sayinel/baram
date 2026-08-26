@@ -9,6 +9,7 @@ import type { TaskFilters } from "../../utils/tasks/task-filters";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -32,6 +33,7 @@ import {
   collectTags,
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
+import { notifyUnsavedConflict } from "../../utils/tasks/task-write-feedback";
 import { TaskBucketList } from "./TaskBucketList";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
 import { useTaskTriage } from "./use-task-triage";
@@ -48,6 +50,7 @@ const BUCKET_LABEL: Record<TaskBucket, string> = {
 };
 
 export function TaskAgendaPanel() {
+  const { t } = useTranslation();
   const rootPath = useFileStore((s) => s.rootPath);
   const { tasks, loading } = useTaskStore(
     useShallow((s) => ({ tasks: s.tasks, loading: s.loading })),
@@ -138,12 +141,17 @@ export function TaskAgendaPanel() {
       // ‼️ `stale`을 전부 "디스크가 진실원"으로 뭉뚱그리면 안 된다. 소스·문서 경로에서
       // 거절된 것이면 그 파일의 진실은 여전히 저장되지 않은 버퍼이고, 다시 읽으면 같은
       // 세션이 그 버퍼에 만들어 둔 다른 줄의 변경이 옛 디스크 내용으로 되돌아간다.
-      if (!isDiskAuthoritative(result)) return;
+      if (!isDiskAuthoritative(result)) {
+        // 스토어는 만지지 않되 침묵하지도 않는다 — 이 거절은 저장 전까지 영구적이라
+        // 알리지 않으면 정확히 I5가 막으려던 "원인 모를 죽은 체크박스"가 된다.
+        notifyUnsavedConflict(t);
+        return;
+      }
       // 디스크에 썼거나(kind: "disk") 디스크에서 거절됐다(stale·target "disk") 또는
       // 예외로 실패했다 — 전부 디스크가 진실원이므로 그 파일만 다시 읽는다.
       await refreshFileTasks(task.path, rootPath, tasksExcludePaths);
     },
-    [tasksRecordDoneDate, rootPath, tasksExcludePaths, now, editor],
+    [tasksRecordDoneDate, rootPath, tasksExcludePaths, now, editor, t],
   );
 
   const onTriage = useTaskTriage({
