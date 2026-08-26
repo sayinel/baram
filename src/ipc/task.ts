@@ -12,6 +12,20 @@ export async function appendTaskLine(
 }
 
 /**
+ * §312 태스크 줄을 **지운다** — 종결자까지 함께. 되돌릴 수 없다(스냅샷 §71은 파일 단위이고
+ * 이 경로를 타지 않는다). 부르기 전에 확인을 받을 것 — 그 관문은
+ * `confirmAndDeleteTaskLine`(src/utils/tasks/task-delete.ts)이다.
+ * 파일이 그 사이 바뀌었으면 "stale"로 reject된다.
+ */
+export async function deleteTaskLine(
+  path: string,
+  line: number,
+  expectedRaw: string,
+): Promise<void> {
+  return invoke<void>("delete_task_line", { path, line, expectedRaw });
+}
+
+/**
  * `rootPath`/`exclude`가 주어지면 vault 전체 스캔과 같은 제외 규칙을 적용한다 —
  * 그러지 않으면 exclude 설정이 워처 기반 증분 갱신에서만 조용히 무시된다(I1).
  */

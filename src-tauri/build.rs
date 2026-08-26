@@ -19,6 +19,7 @@ fn main() {
         "delete_dir",
         "delete_file",
         "delete_snapshot",
+        "delete_task_line",
         "detect_pandoc",
         "diff_texts",
         "embed_text",

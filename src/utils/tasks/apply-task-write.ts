@@ -38,6 +38,21 @@ export type TaskChange =
    */
   | { kind: "tag"; on: boolean; tag: string };
 
+/**
+ * §312 삭제 결과. 편집 결과(`TaskWriteResult`)와 갈라지는 지점이 정확히 하나 있다:
+ * **"그 자리에 남은 줄"이 없다.** 그래서 `raw`를 갖지 않는다 — 빈 문자열이라도 넣어 두면
+ * 호출자가 그것을 새 줄인 줄 알고 스토어에 밀어 넣을 수 있고, 저장 전 분기가 하는 일이
+ * 정확히 그것이다(`writeAndReconcile`).
+ *
+ * `kind`의 어휘는 같으므로 `isUnsavedWrite`·`isDiskAuthoritative`가 두 타입을 함께 받는다 —
+ * 세 갈래 회계를 두 벌로 만들지 않으려면 그 술어가 하나여야 한다.
+ */
+export type TaskDeleteResult =
+  | { kind: "disk" }
+  | { kind: "document" }
+  | { kind: "source" }
+  | { kind: "stale"; target: "disk" | "document" | "source" };
+
 export type TaskWriteResult =
   | { kind: "disk"; raw: string }
   | { kind: "document"; raw: string }
@@ -141,7 +156,9 @@ export async function applyToContent(
  * `null`(쓰기가 예외로 실패)은 참이다 — 무엇이 남았는지 알 수 없으니 디스크를 다시 읽어
  * 스토어를 사실과 맞추는 것이 맞다.
  */
-export function isDiskAuthoritative(result: null | TaskWriteResult): boolean {
+export function isDiskAuthoritative(
+  result: null | TaskDeleteResult | TaskWriteResult,
+): boolean {
   if (result === null) return true;
   if (result.kind === "stale") return result.target === "disk";
   return result.kind === "disk";
@@ -154,11 +171,14 @@ export function isDiskAuthoritative(result: null | TaskWriteResult): boolean {
  * 술어로 뽑아 두는 이유: in-memory 경로가 하나(`document`)에서 둘(`source`)이 됐고,
  * 호출자마다 `kind === "document"`를 손으로 늘려 가면 하나를 빠뜨리는 순간 그 경로의
  * 변경이 조용히 사라진다.
+ *
+ * 제네릭인 이유: §312 삭제 결과에는 `raw`가 없다(`TaskDeleteResult`). 반환 타입을
+ * `raw`를 가진 형태로 고정해 두면 삭제는 이 술어를 쓸 수 없고, 그러면 세 갈래 회계가
+ * 두 벌이 된다. 넘긴 타입에서 그대로 좁혀 주므로 편집 경로는 여전히 `raw`를 본다.
  */
-export function isUnsavedWrite(
-  result: null | TaskWriteResult,
-): result is
-  { kind: "document"; raw: string } | { kind: "source"; raw: string } {
+export function isUnsavedWrite<R extends TaskDeleteResult | TaskWriteResult>(
+  result: null | R,
+): result is Extract<R, { kind: "document" | "source" }> {
   return result?.kind === "document" || result?.kind === "source";
 }
 

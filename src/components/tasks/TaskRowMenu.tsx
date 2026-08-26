@@ -110,11 +110,7 @@ export function TaskRowMenu({
     >
       {items.map((item, index) => (
         <div
-          className={
-            index === active
-              ? "task-row-menu-item task-row-menu-item-active"
-              : "task-row-menu-item"
-          }
+          className={itemClass(item, index === active)}
           id={itemId(index)}
           key={item.id}
           onClick={() => onAction(item.id)}
@@ -126,4 +122,18 @@ export function TaskRowMenu({
       ))}
     </div>
   );
+}
+
+/**
+ * 항목의 클래스 — 강조(active)와 파괴적(danger)은 **서로 독립**이다. 삼항 하나로 둘을
+ * 함께 표현하려 들면 강조된 파괴적 항목에서 한쪽이 사라진다.
+ */
+function itemClass(item: TaskMenuItem, active: boolean): string {
+  return [
+    "task-row-menu-item",
+    active && "task-row-menu-item-active",
+    item.danger && "task-row-menu-item-danger",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }

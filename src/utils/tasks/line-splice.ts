@@ -24,6 +24,29 @@ export function lineAt(content: string, line: number): null | string {
 }
 
 /**
+ * §312 `line`(0-based) 줄을 **없앤다** — 자기 종결자까지 함께. 손대지 않은 줄의 바이트는
+ * 원본 그대로이므로 줄바꿈 스타일과 끝 개행 유무가 저절로 보존된다.
+ *
+ * `spliceLine`의 "한 줄 → 한 줄" 불변식을 완화하는 대신 **형제 함수**로 두는 이유:
+ * 그 가드가 막으려던 것은 "모르고 줄 수를 바꾸는 것"이고 여기서 줄이 하나 사라지는 것은
+ * 의도다. 두 조작을 한 함수에 합치면 그 가드가 지키는 것이 무엇인지 알 수 없게 된다.
+ *
+ * 범위 밖이면 **던진다** — `spliceLine`이 `null`을 돌려주는 것과 갈리는 지점이다.
+ * 호출자는 이 함수를 부르기 전에 `lineAt`으로 그 줄의 존재와 내용을 이미 확인한다
+ * (`apply-task-delete.ts`, 그 사이에 `await`가 없어 끼어들 틈도 없다). 그러므로 이 시점의
+ * 범위 밖은 경합이 아니라 버그이고, `null`로 돌려주면 "지웠다"와 구별되지 않는 조용한
+ * 무작동이 된다 — 파괴적 조작에서 가장 나쁜 실패 양식이다.
+ */
+export function removeLine(content: string, line: number): string {
+  const parts = splitKeepingEol(content);
+  if (line < 0 || line >= parts.length) {
+    throw new Error(`removeLine: line ${line} is out of range`);
+  }
+  parts.splice(line, 1);
+  return parts.join("");
+}
+
+/**
  * `line`(0-based) 줄만 `newText`로 바꾼다. 그 줄의 원래 종결자를 그대로 재사용하므로
  * 혼합 EOL 파일에서도 건드리지 않은 줄은 바뀌지 않는다. 범위를 벗어나면 `null`.
  */

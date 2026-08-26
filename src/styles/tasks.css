@@ -259,6 +259,16 @@
   background: var(--color-bg-default);
 }
 
+/* §312 파괴적 항목(줄 삭제) — 되돌릴 수 없으므로 색과 구분선 **둘 다**로 갈린다.
+   색만으로 가르면 색각 이상에서 구분이 사라진다. `.task-row-menu-item-active` 뒤에
+   와야 강조된 상태에서도 경고색이 남는다(같은 특이도, 나중 규칙이 이긴다). */
+.task-row-menu-item-danger {
+  padding-top: 6px;
+  margin-top: 4px;
+  color: var(--color-status-danger);
+  border-top: 1px solid var(--color-border-default);
+}
+
 /* 행이 tabIndex를 갖게 됐으므로 키보드 포커스가 보여야 한다 — j/k 이동이
    어디에 있는지 알 수 없으면 키보드 경로 자체가 성립하지 않는다. */
 .task-row:focus-visible {

@@ -16,6 +16,7 @@
     "allow-delete-dir",
     "allow-delete-file",
     "allow-delete-snapshot",
+    "allow-delete-task-line",
     "allow-detect-pandoc",
     "allow-diff-texts",
     "allow-embed-text",

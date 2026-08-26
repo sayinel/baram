@@ -838,5 +838,7 @@
   "tasks.triage.badDate": "“{value}”을(를) 날짜로 읽을 수 없습니다.",
   "tasks.triage.someday": "#someday로 미루기",
   "tasks.triage.somedayOff": "#someday 해제",
+  "tasks.triage.delete": "줄 삭제",
+  "tasks.triage.deleteConfirm": "이 줄을 삭제할까요? 되돌릴 수 없습니다: {line}",
   "tasks.triage.writeFailed": "태스크 변경을 저장하지 못했습니다."
 }

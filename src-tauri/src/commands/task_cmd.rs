@@ -135,6 +135,21 @@ pub async fn append_task_line(path: String, line: String) -> Result<String, Stri
         .map_err(|e| e.to_string())
 }
 
+/// §312 줄 삭제 — 이 커맨드는 **파괴적이고 되돌릴 수 없다**. 스냅샷(§71)은 파일 단위이고
+/// 태스크 줄 쓰기 경로를 타지 않으므로 지운 줄을 되살릴 방법이 없다. 그래서:
+/// - 확인 관문은 프론트가 갖는다(`confirmAndDeleteTaskLine`, src/utils/tasks/task-delete.ts).
+/// - §260 샌드박스 티어(`plugin-*`)에는 **주지 않는다**(capabilities/plugin-sandbox.json).
+///
+/// preview 짝이 없는 유일한 쓰기 커맨드다 — 열린 문서·소스 버퍼 경로는 줄을 지우는 데
+/// 줄 문법 지식이 필요 없어 TypeScript가 직접 한다(`removeLine`). 두 구현의 바이트
+/// 동등성은 `write.rs`와 `line-splice.test.ts`가 **같은 행렬**을 검사해 지킨다.
+#[tauri::command]
+pub async fn delete_task_line(path: String, line: u32, expected_raw: String) -> Result<(), String> {
+    crate::task::delete_line(&path, line, &expected_raw)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +314,23 @@ mod tests {
 
         assert_eq!(disk, document);
         assert_eq!(disk, "    - [ ] 중첩 📅2026-08-30");
+    }
+
+    /// 프론트는 `err === "stale"`로 정상 경합과 진짜 실패를 가른다
+    /// (`applyTaskDelete`, src/utils/tasks/apply-task-delete.ts). 삭제에서 그 판정이
+    /// 어긋나면 stale이 오류 토스트로 새거나, 반대로 진짜 실패가 조용히 삼켜진다.
+    #[tokio::test]
+    async fn delete_surfaces_a_stale_line_as_the_string_the_front_end_branches_on() {
+        let d = TempDir::new().unwrap();
+        let original = "- [ ] 그 사이 바뀐 줄\n";
+        let p = write_temp(&d, original).await;
+
+        let err = delete_task_line(p.clone(), 0, "- [ ] 예전 내용".to_string())
+            .await
+            .unwrap_err();
+
+        assert_eq!(err, "stale");
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
     }
 
     /// 파일 수준 속성(줄바꿈 스타일·끝 개행)은 preview가 볼 수 없는 절반이다 —

@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const deleteTaskLine = vi.fn();
 const setTaskField = vi.fn();
 const setTaskTag = vi.fn();
 const previewTaskFieldLine = vi.fn();
@@ -22,6 +23,7 @@ const prosemirrorToMarkdown = vi.fn();
 // listDir/readFile 스텁이 필요한 이유는 task-agenda-panel.test.tsx와 같다 —
 // TaskAgendaPanel → useZettelIndexStore가 같은 모듈에서 그 둘을 import한다.
 vi.mock("../../../ipc/invoke", () => ({
+  deleteTaskLine: (...a: unknown[]) => deleteTaskLine(...a),
   getFileTasks: (...a: unknown[]) => getFileTasks(...a),
   getVaultTasks: (...a: unknown[]) => getVaultTasks(...a),
   listDir: vi.fn().mockResolvedValue([]),
@@ -232,6 +234,20 @@ describe("§312 triage menu on an agenda row", () => {
     it("메뉴를 열지 않은 행에는 메뉴가 없다", () => {
       renderRow();
       expect(screen.queryByRole("menu")).toBeNull();
+    });
+
+    // 파괴적 항목이라는 사실은 `buildTriageItems`의 `danger` 한 필드에서 나와 클래스로
+    // 도착해야 한다(tasks.css가 거기에 경고색과 구분선을 건다). 데이터에만 있고 DOM에
+    // 닿지 않으면 되돌릴 수 없는 항목이 나머지와 똑같아 보인다.
+    it("삭제 항목만 파괴적 항목으로 그려진다", () => {
+      const row = renderRow();
+      const items = [...openMenu(row).querySelectorAll(".task-row-menu-item")];
+
+      const danger = items.filter((el) =>
+        el.classList.contains("task-row-menu-item-danger"),
+      );
+      expect(danger).toHaveLength(1);
+      expect(danger[0].textContent).toBe(EN_T("tasks.triage.delete"));
     });
 
     // §315는 마우스 없이 네 조작에 닿아야 한다 — 우클릭만 있으면 다시 만들어야 한다.

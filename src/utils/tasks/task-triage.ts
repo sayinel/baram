@@ -1,50 +1,47 @@
-// §312 아젠다 행 정리 조작 — 날짜 부여와 `#someday` 토글.
+// §312 아젠다 행 정리 조작 — 날짜 부여, `#someday` 토글, 줄 삭제의 디스패처.
 //
 // `set_task_field`의 배관은 §309 일괄 조정이 이미 검증했다(디스크·문서 경로 바이트
 // 단위 동등성 테스트가 task_cmd.rs에 붙어 있다). 태그 쓰기는 그 배관을 재사용할 수
 // 없어 백엔드가 따로 있다(`set_task_tag`/`preview_task_tag_line`) — §303 순서상 태그는
-// 이모지 필드 **앞**인데 `append_field`는 항상 줄 끝에 붙이기 때문이다.
+// 이모지 필드 **앞**인데 `append_field`는 항상 줄 끝에 붙이기 때문이다. 삭제는 그 배관을
+// 아예 타지 않는다(`task-delete.ts`) — 줄을 지우는 데는 줄 문법 지식이 필요 없다.
 //
-// Task 4(줄 삭제)가 이 파일에 형제 함수를 더한다. 그래서 조작마다 필요한 주변 값
-// (라우팅용 editor, 재스캔용 rootPath/exclude, 다이얼로그용 t)을 `TaskTriageContext`
-// 한 덩어리로 받는다 — 형제가 생길 때마다 인자 목록을 다시 짜지 않게 하려는 것이고,
-// `runTaskTriageAction`이 그 한 덩어리를 그대로 넘겨주는 유일한 디스패처가 된다.
+// 조작마다 필요한 주변 값(라우팅용 editor, 재스캔용 rootPath/exclude, 다이얼로그용 t)은
+// `TaskTriageContext` 한 덩어리로 받는다 — `runTaskTriageAction`이 그 한 덩어리를 그대로
+// 넘겨주는 유일한 디스패처다. 그 타입과 쓰기 후 회계(`writeAndReconcile`)는 삭제도 함께
+// 쓰므로 `task-triage-write.ts`에 산다(여기 두면 삭제와 순환 import가 된다).
 
 import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry } from "../../ipc/types";
-import type { TaskChange, TaskWriteResult } from "./apply-task-write";
-import type { Editor } from "@tiptap/react";
+import type { TaskTriageContext } from "./task-triage-write";
 
-import { refreshFileTasks, useTaskStore } from "../../stores/tasks/task-store";
+import { useTaskStore } from "../../stores/tasks/task-store";
 import { useUIStore } from "../../stores/ui/ui";
 import { showFieldDialog } from "../field-dialog";
 import { logger } from "../logger";
-import {
-  applyTaskWrite,
-  isDiskAuthoritative,
-  isUnsavedWrite,
-} from "./apply-task-write";
+import { applyTaskWrite } from "./apply-task-write";
 import { resolveDateInput } from "./task-date-input";
+import { confirmAndDeleteTaskLine } from "./task-delete";
 import { SOMEDAY_TAG } from "./task-filters";
-import { notifyUnsavedConflict } from "./task-write-feedback";
+import { writeAndReconcile } from "./task-triage-write";
+
+// 정리 조작 전부가 이 컨텍스트를 받으므로 호출부(`use-task-triage.ts`·테스트)는 계속
+// 여기서 타입을 가져온다 — 배관을 아래로 내린 것이 호출부에 보일 이유가 없다.
+export type { TaskTriageContext } from "./task-triage-write";
 
 /** `FIELD_EMOJI`(write.rs:5-12)의 날짜 필드 중 사용자가 손으로 정하는 셋. */
 export type TaskDateField = "due" | "scheduled" | "start";
 
 export interface TaskMenuItem {
+  /**
+   * 파괴적 항목 — 위쪽 구분선과 경고색(`--color-status-danger`)을 함께 얻는다(tasks.css).
+   * 색만으로 가르면 색각 이상에서 구분이 사라지므로 구분선이 함께 있어야 하고, 되돌릴 수
+   * 없는 조작에서 그 실패는 잘못 누른 항목으로 끝나지 않는다.
+   */
+  danger?: boolean;
   /** 액션 식별자 — 아래 `runTaskTriageAction`이 이 문자열로 갈린다. */
   id: string;
   label: string;
-}
-
-export interface TaskTriageContext {
-  /** §305 라우터가 "활성 + dirty" 탭을 판정하고 라이브 문서를 읽는 데 쓴다. */
-  editor: Editor | null;
-  exclude: string[];
-  /** 상대 날짜("오늘"·"내일"·`+3`)의 기준 — 패널이 보고 있는 그 날이다(I4). */
-  now: Date;
-  rootPath: null | string;
-  t: Translate;
 }
 
 /**
@@ -63,19 +60,23 @@ export async function assignTaskDate(
 ): Promise<void> {
   await writeAndReconcile(
     task,
-    { field, kind: "field", value: iso },
     ctx,
-    () => {
-      const patch: Partial<TaskEntry> = {};
+    () =>
+      applyTaskWrite(task, { field, kind: "field", value: iso }, ctx.editor),
+    (written) => {
+      const patch: Partial<TaskEntry> = { raw: written.raw };
       patch[field] = iso;
-      return patch;
+      useTaskStore.getState().patchTask(task.path, task.line, patch);
     },
   );
 }
 
 /**
  * 정리 메뉴가 그릴 항목. `scheduled`/`start` 하위 메뉴는 §312가 요구하지 않으므로
- * 넣지 않는다(YAGNI). Task 4가 여기에 줄을 더하고 아래 switch에 짝이 되는 case를 더한다.
+ * 넣지 않는다(YAGNI). 항목을 더하면 아래 switch에 짝이 되는 case를 함께 더할 것.
+ *
+ * 삭제는 **마지막**이다 — 파괴적 항목이 목록 가운데 있으면 키보드로 지나가다 멈추는
+ * 자리가 되고, 그 자리에서 Enter는 되돌릴 수 없다.
  *
  * ‼️ `task.due`를 보고 날짜 항목을 회색으로 만들지 말 것. 파서는 날짜 이모지의 **첫**
  * 등장을 읽는데 writer는 **마지막 유효한** 것을 쓰므로, 본문에 장식용 📅가 있는
@@ -102,14 +103,13 @@ export function buildTriageItems(
         ? t("tasks.triage.somedayOff")
         : t("tasks.triage.someday"),
     },
+    { danger: true, id: "delete", label: t("tasks.triage.delete") },
   ];
 }
 
 /**
  * 메뉴 항목 id → 조작. `FileTree`의 `handleContextMenuAction`과 같은 모양이다 —
  * 메뉴는 id만 올려 보내고 무엇을 할지는 전부 여기서 갈린다.
- *
- * Task 4는 이 switch에 case를 더한다.
  */
 export async function runTaskTriageAction(
   action: string,
@@ -117,6 +117,10 @@ export async function runTaskTriageAction(
   ctx: TaskTriageContext,
 ): Promise<void> {
   switch (action) {
+    case "delete":
+      // 확인 관문은 이 안에 있다 — 디스패처가 아니라 조작이 갖는다. 여기서 물으면
+      // 확인 없이 지우는 두 번째 경로(단축키·일괄 조작)가 생기는 순간 관문이 새어 나간다.
+      return confirmAndDeleteTaskLine(task, ctx);
     case "duePick":
       return pickDueDate(task, ctx);
     case "dueToday":
@@ -146,10 +150,18 @@ export async function toggleTaskTag(
   on: boolean,
   ctx: TaskTriageContext,
 ): Promise<void> {
-  await writeAndReconcile(task, { kind: "tag", on, tag }, ctx, () => ({
-    tags: on ? [...task.tags, tag] : task.tags.filter((x) => x !== tag),
-    text: applyTagToText(task.text, tag, on),
-  }));
+  await writeAndReconcile(
+    task,
+    ctx,
+    () => applyTaskWrite(task, { kind: "tag", on, tag }, ctx.editor),
+    (written) => {
+      useTaskStore.getState().patchTask(task.path, task.line, {
+        raw: written.raw,
+        tags: on ? [...task.tags, tag] : task.tags.filter((x) => x !== tag),
+        text: applyTagToText(task.text, tag, on),
+      });
+    },
+  );
 }
 
 /**
@@ -218,48 +230,4 @@ function relativeIso(token: "m" | "t", now: Date): string {
   const iso = resolveDateInput(token, now);
   if (iso === null) throw new Error(`resolveDateInput rejected "${token}"`);
   return iso;
-}
-
-/**
- * 쓰고 나서 스토어를 사실과 맞춘다 — 정리 조작들이 공유하는 **유일한** 회계다.
- *
- * 세 갈래가 있고 셋 다 틀리기 쉽다:
- * - 저장 전 경로(문서·소스 버퍼)는 다시 읽으면 방금 만든 변경이 옛 디스크 내용으로
- *   되돌아간다. 실제로 쓰인 줄과 이 조작이 민 값만 제자리에서 갱신한다.
- * - ‼️ `stale`을 전부 "디스크가 진실원"으로 뭉뚱그리면 안 된다 — 소스·문서 경로에서
- *   거절된 것이면 그 파일의 진실은 여전히 저장되지 않은 버퍼다(`isDiskAuthoritative`).
- *   스토어는 만지지 않되 침묵하지도 않는다: 이 거절은 저장 전까지 영구적이라 알리지
- *   않으면 그 항목이 영원히 죽은 것처럼 보인다.
- * - stale이 아닌 실패(권한·디스크 가득 참·파일 삭제)를 조용히 삼키면 사용자에게는
- *   원인 모를 죽은 메뉴 항목으로만 보인다 — `onToggle`의 I5와 같은 실패 양식이다.
- *
- * `unsavedPatch`는 **저장 전 경로에서만** 불린다. `raw`는 여기서 공통으로 붙이므로
- * 조작마다 다른 값(날짜 필드·태그)만 돌려주면 된다.
- */
-async function writeAndReconcile(
-  task: TaskEntry,
-  change: TaskChange,
-  ctx: TaskTriageContext,
-  unsavedPatch: () => Partial<TaskEntry>,
-): Promise<void> {
-  let result: null | TaskWriteResult = null;
-  try {
-    result = await applyTaskWrite(task, change, ctx.editor);
-  } catch (err) {
-    logger.warn("[tasks] triage write failed, re-scanning:", err);
-    useUIStore.getState().showToast(ctx.t("tasks.triage.writeFailed"), "error");
-  }
-
-  if (isUnsavedWrite(result)) {
-    useTaskStore.getState().patchTask(task.path, task.line, {
-      ...unsavedPatch(),
-      raw: result.raw,
-    });
-    return;
-  }
-  if (!isDiskAuthoritative(result)) {
-    notifyUnsavedConflict(ctx.t);
-    return;
-  }
-  await refreshFileTasks(task.path, ctx.rootPath, ctx.exclude);
 }

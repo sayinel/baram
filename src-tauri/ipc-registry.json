@@ -1429,6 +1429,21 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "수집함 파일 끝에 한 줄 append. 없으면 생성, 줄바꿈 스타일 보존"
+    },
+    {
+      "name": "delete_task_line",
+      "input": {
+        "path": "string",
+        "line": "number",
+        "expectedRaw": "string"
+      },
+      "output": "void",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태스크 줄 삭제. 종결자까지 함께 지우고 줄바꿈 스타일·끝 개행 유무는 보존. expectedRaw 낙관적 잠금. 파괴적·되돌릴 수 없음(스냅샷 §71이 이 경로를 타지 않는다) — 확인 관문은 프론트, 샌드박스 티어에는 부여하지 않는다"
     }
   ],
   "events": [
