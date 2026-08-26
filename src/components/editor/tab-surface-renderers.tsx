@@ -78,9 +78,12 @@ export function createTabSurfaceRenderers(
     // 편집 영역이 코드 표면을 하나만 마운트한다는 사실에 기대고 있었다(§287).
     //
     // ‼️ 문서를 읽어 오기 전에는 아무것도 마운트하지 않는다. SourceCodeEditor는 마운트 때의
-    // `content`로 EditorState를 굳히고 이후 prop을 다시 읽지 않으며(그 파일의 useEffect([])
-    // 주석 참조), 2단계 init이 문서를 그 값으로 **되돌리기까지** 한다. 그래서 빈 버퍼로
-    // 마운트되면 영원히 빈 화면이다 — 실앱에서 .ts/.json/.py가 전부 그렇게 죽었다.
+    // `content`로 EditorState를 굳히고, 2단계 init이 문서를 그 값으로 **되돌리기까지** 한다.
+    // 빈 버퍼로 마운트되면 실앱에서 .ts/.json/.py가 전부 빈 화면으로 죽었다.
+    //
+    // §312가 뒤늦은 내용 변경을 뷰에 밀어 넣게 되면서 "영원히" 빈 화면은 아니게 됐지만
+    // 이 관문은 그대로 둔다 — 커서 초기 위치가 마운트 때 한 번만 읽히고, 빈 화면이
+    // 잠깐 번쩍이는 것도 그 자체로 결함이다.
     //
     // 예전 코드가 살아 있던 이유는 App이 이 컴포넌트를 lazy()로 불러서 **모듈 로딩이라는
     // 우연한 지연**이 마운트를 버퍼 채우기 뒤로 밀어줬기 때문이다. 그런 타이밍 의존을
@@ -90,6 +93,10 @@ export function createTabSurfaceRenderers(
         <Suspense fallback={null}>
           <SourceCodeEditor
             content={deps.getSourceBuffer(tabId)}
+            // §312 `content`는 렌더 시점의 스냅샷이라 "다시 봐라"는 신호로만 쓴다. 실제로
+            // 무엇을 보여줄지는 effect 시점에 이 접근자로 다시 묻는다 — 그 사이에 사용자가
+            // 친 글자를 낡은 스냅샷으로 지우지 않기 위해서다(SourceCodeEditor의 prop 주석).
+            getLatestContent={() => deps.getSourceBuffer(tabId)}
             initialCursorOffset={deps.sourceCursorOffsetFor(tabId)}
             language={deps.codeLanguageFor(filePath)}
             onChange={(next) => {

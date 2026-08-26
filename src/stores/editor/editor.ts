@@ -217,7 +217,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           : state.activeTabId;
       // §39 Remove closed tab from MRU
       const mruOrder = state.mruOrder.filter((id) => id !== tabId);
-      return { tabs, activeTabId, mruOrder };
+      // §312 죽은 id를 소스 모드 집합에 남기지 않는다 — 이 집합은 태스크 쓰기 라우터의
+      // 입력이다. ‼️ 들어 있지 않으면 **같은 참조**를 돌려준다: 새 배열을 만들면
+      // use-source-mode의 useMemo가 Set을 다시 만들어 그 소비자들의 memo가 전부 깨진다.
+      const sourceModeTabs = state.sourceModeTabs.includes(tabId)
+        ? state.sourceModeTabs.filter((id) => id !== tabId)
+        : state.sourceModeTabs;
+      return { tabs, activeTabId, mruOrder, sourceModeTabs };
     });
 
     // Clean up original doc tracking for dirty detection

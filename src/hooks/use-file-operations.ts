@@ -51,12 +51,15 @@ export async function triggerAutoReload(
 ): Promise<void> {
   // PDFs are binary — keep the "" cache sentinel; the mtime bump below
   // refreshes the viewer iframe instead.
-  const freshContent = isBinaryViewerFile(filePath)
-    ? ""
-    : await readFile(filePath);
+  const isBinary = isBinaryViewerFile(filePath);
+  const freshContent = isBinary ? "" : await readFile(filePath);
 
   // Update the in-memory content cache
   useFileStore.getState().setFileContent(filePath, freshContent);
+
+  // §312 그리고 그 파일을 보여주는 소스 표면들. ‼️ 바이너리의 "" 센티널은 내용이
+  // 아니라 자리 표시라 버퍼에 넣으면 남의 텍스트를 지운다.
+  if (!isBinary) syncSourceBuffers(filePath, freshContent);
 
   // Sync mtime so the next auto-save doesn't see a false conflict
   useFileStore.getState().updateLastSaveMtime(filePath, externalMtime);
@@ -369,4 +372,33 @@ export function useFileOperations({
     handleSave,
     handleSaveAs,
   };
+}
+
+/**
+ * §312 Push freshly-read disk content into the source buffers that show it.
+ *
+ * ‼️ `openFiles` + `contentRefreshKey`만 갱신하면 소스 표면은 낡은 채로 남는다. 그 탭의
+ * 저장 경로는 openFiles가 아니라 이 버퍼를 읽으므로(`handleSave`의 `isCode ||
+ * sourceModeTabs.has(...)` 갈래), 리로드 직후의 Cmd+S가 **낡은 버퍼로 디스크의 변경을
+ * 덮는다.**
+ *
+ * 조건이 `handleSave`의 읽기 조건과 **같아야** 한다 — 저장이 버퍼를 읽는 탭에서만
+ * 버퍼를 갱신한다. 두 조건이 갈라지면 한쪽이 반드시 낡는다.
+ *
+ * 버퍼가 아직 없는 탭(로딩 중인 코드 탭)에 키를 만드는 것은 무해하다: 그 값은 로더가
+ * 넣었을 것과 같은 디스크 내용이다.
+ */
+function syncSourceBuffers(filePath: string, freshContent: string): void {
+  const { sourceBufferAccess, sourceModeTabs, tabs } =
+    useEditorStore.getState();
+  if (!sourceBufferAccess) return;
+
+  // 비마크다운 탭은 항상 코드 표면이다 — 토글 집합에 들어가지 않는다.
+  const alwaysSource = !isMarkdownFile(filePath);
+  for (const tab of tabs) {
+    if (tab.filePath !== filePath) continue;
+    if (alwaysSource || sourceModeTabs.includes(tab.id)) {
+      sourceBufferAccess.setSourceBuffer(tab.id, freshContent);
+    }
+  }
 }

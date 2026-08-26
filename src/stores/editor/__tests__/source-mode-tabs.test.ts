@@ -52,4 +52,55 @@ describe("sourceModeTabs", () => {
     useEditorStore.getState().setSourceModeForTab("a", true);
     expect(useEditorStore.getState().sourceModeTabs).not.toBe(before);
   });
+
+  // §312 닫힌 탭의 id는 이 집합에서 나가야 한다.
+  //
+  // 훅의 useState였을 때는 수명이 그 훅과 같았지만, 스토어로 올리면서 앱 전체로 길어졌다.
+  // 탭 id가 UUID라 오늘은 충돌하지 않지만, 이 집합은 §305 태스크 쓰기 라우터가 읽는
+  // 라우팅 입력이다 — 죽은 id를 쌓아 두는 상태에 라우팅을 맡기지 않는다.
+  describe("closeTab", () => {
+    const tab = (id: string) => ({
+      contextId: "c",
+      filePath: `/v/${id}.md`,
+      id,
+      isDirty: false,
+      isPinned: false,
+      title: id,
+    });
+
+    beforeEach(() => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        mruOrder: ["a", "b"],
+        sourceModeTabs: [],
+        tabs: [tab("a"), tab("b")],
+      });
+    });
+
+    it("닫힌 탭을 집합에서 뺀다", () => {
+      useEditorStore.getState().setSourceModeForTab("a", true);
+      useEditorStore.getState().setSourceModeForTab("b", true);
+
+      useEditorStore.getState().closeTab("a");
+
+      expect(useEditorStore.getState().sourceModeTabs).toEqual(["b"]);
+    });
+
+    it("집합에 없는 탭을 닫으면 배열 참조를 새로 만들지 않는다", () => {
+      // partial `set`이 새 root를 만드는 것과 별개로, 이 배열의 참조가 바뀌면
+      // use-source-mode의 `useMemo`가 Set을 다시 만들고 그 소비자들의 memo가 깨진다.
+      const before = useEditorStore.getState().sourceModeTabs;
+      useEditorStore.getState().closeTab("a");
+      expect(useEditorStore.getState().sourceModeTabs).toBe(before);
+    });
+
+    it("고정된 탭은 닫히지 않으므로 집합도 그대로다", () => {
+      useEditorStore.setState({ tabs: [{ ...tab("a"), isPinned: true }] });
+      useEditorStore.getState().setSourceModeForTab("a", true);
+
+      useEditorStore.getState().closeTab("a");
+
+      expect(useEditorStore.getState().sourceModeTabs).toEqual(["a"]);
+    });
+  });
 });
