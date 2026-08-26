@@ -140,7 +140,77 @@ pub async fn write_file(path: &str, content: &str) -> Result<(), FsError> {
         // 실패 시 임시 파일 삭제 시도
         let _ = std::fs::remove_file(&tmp_path);
         FsError::ReadError(e)
-    })
+    })?;
+    // §313 방금 만든 mtime을 남긴다 — 이 자리가 "앱의 쓰기"와 "남의 쓰기"를 가르는
+    // 유일한 지점이다. 아래 `is_app_write` 주석 참조.
+    note_app_write(Path::new(path));
+    Ok(())
+}
+
+/// §313 앱이 마지막으로 만든 mtime — 경로별 한 칸.
+///
+/// 워처는 자기 프로세스가 쓴 파일도 남이 쓴 파일과 똑같은 `Modify(Data(Content))`로
+/// 본다. 그래서 판정을 **이벤트를 받는 자리가 아니라 쓰는 자리**에 둔다: 앱 안의 모든
+/// 문서 쓰기가 `write_file` 하나를 지나므로, 새 호출자가 스스로를 "이건 내 쓰기다"라고
+/// 신고할 필요가 없다 — 신고를 잊을 수 있는 자리를 아예 만들지 않는 것이 요점이다.
+fn app_writes() -> &'static std::sync::Mutex<std::collections::HashMap<String, u64>> {
+    static APP_WRITES: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, u64>>,
+    > = std::sync::OnceLock::new();
+    APP_WRITES.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// 파일의 mtime(밀리초). 읽을 수 없으면 `0` — `file:changed` 페이로드가 싣는 값과
+/// **같은 함수**여야 한다. 두 벌로 두면 단위나 반올림이 갈리는 순간 판정이 조용히 죽는다.
+pub fn mtime_ms(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// 이 `file:changed`가 **앱 자신의 쓰기**인가.
+///
+/// 판정 기준은 mtime 일치 하나다. 앱이 그 파일에 마지막으로 쓴 mtime과 워처가 보고한
+/// mtime이 같으면 그것은 우리가 만든 이벤트다. 그 뒤에 남이 쓰면 mtime이 앞으로
+/// 움직이므로 즉시 일치가 깨진다 — 외부 편집을 화면에 반영하는 경로는 그대로 산다.
+///
+/// 항목을 **소비하지 않는다**(peek). FSEvents는 한 번의 쓰기에 여러 이벤트를 올릴 수
+/// 있어서, 첫 이벤트가 항목을 가져가 버리면 뒤따르는 같은 쓰기의 이벤트가 외부 변경으로
+/// 둔갑한다. 다음 쓰기가 그 자리를 덮으므로 맵은 쓴 파일 수만큼만 자란다.
+///
+/// `mtime == 0`(워처가 metadata를 못 읽음)은 언제나 거짓이다 — 0을 일치로 읽으면
+/// metadata를 못 읽는 모든 이벤트가 앱의 쓰기로 둔갑한다.
+pub fn is_app_write(path: &Path, mtime: u64) -> bool {
+    if mtime == 0 {
+        return false;
+    }
+    app_writes()
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&app_write_key(path)).copied())
+        == Some(mtime)
+}
+
+fn note_app_write(path: &Path) {
+    let mtime = mtime_ms(path);
+    if mtime == 0 {
+        return;
+    }
+    if let Ok(mut map) = app_writes().lock() {
+        map.insert(app_write_key(path), mtime);
+    }
+}
+
+/// 쓰는 쪽은 프론트엔드가 준 경로를, 워처는 FSEvents가 준 경로를 들고 온다. macOS에서
+/// 그 둘은 심볼릭 링크(`/tmp` → `/private/tmp`) 때문에 다른 문자열일 수 있으므로 양쪽을
+/// 같은 방식으로 정규화한다. 정규화가 실패하면(파일이 사라진 뒤) 원문을 쓴다.
+fn app_write_key(path: &Path) -> String {
+    std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string_lossy().into_owned())
 }
 
 /// 디렉토리 목록 조회
@@ -417,15 +487,18 @@ pub fn start_watching(
                     }
                     EventKind::Modify(_) => {
                         // §Phase2: include mtime so frontend can detect external changes
-                        let mtime = std::fs::metadata(event_path)
-                            .and_then(|m| m.modified())
-                            .ok()
-                            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                            .map(|d| d.as_millis() as u64)
-                            .unwrap_or(0);
+                        let mtime = mtime_ms(event_path);
+                        // §313 앱 자신의 쓰기인지 여기서 답한다. 프론트엔드는 이 값으로
+                        // "외부 변경"과 "우리가 방금 한 일"을 가른다 — 토스트를 띄울지,
+                        // 실행 취소 스택을 버릴지가 여기서 갈린다.
+                        let origin = if is_app_write(event_path, mtime) {
+                            "app"
+                        } else {
+                            "external"
+                        };
                         let _ = app_handle.emit(
                             "file:changed",
-                            serde_json::json!({ "path": path_str, "mtime": mtime }),
+                            serde_json::json!({ "path": path_str, "mtime": mtime, "origin": origin }),
                         );
                     }
                     EventKind::Remove(_) => {
@@ -601,6 +674,122 @@ mod permission_tests {
         assert_eq!(
             err.to_string(),
             format!("PERMISSION_DENIED:{}", dir.to_str().unwrap())
+        );
+    }
+}
+
+/// §313 앱 자신의 쓰기와 남의 쓰기를 가르는 판정의 시험대.
+#[cfg(test)]
+mod app_write_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// mtime이 실제로 바뀔 때까지 앱 밖에서 다시 쓴다. 파일시스템의 mtime 해상도가
+    /// 거칠어도(HFS+는 1초) 결정적으로 끝나도록 한 번씩 기다리며 재시도한다.
+    fn foreign_write_until_mtime_changes(path: &Path, was: u64) -> u64 {
+        for _ in 0..120 {
+            std::fs::write(path, "외부 편집기가 쓴 내용\n").unwrap();
+            let now = mtime_ms(path);
+            if now != was {
+                return now;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("mtime이 바뀌지 않았다 — 파일시스템 해상도를 확인할 것");
+    }
+
+    #[tokio::test]
+    async fn a_write_through_write_file_is_recognised_as_the_apps_own() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("note.md");
+        write_file(p.to_str().unwrap(), "- [ ] 할 일\n")
+            .await
+            .unwrap();
+
+        let mtime = mtime_ms(&p);
+        assert!(mtime > 0, "쓰기 직후 mtime을 읽을 수 있어야 한다");
+        assert!(
+            is_app_write(&p, mtime),
+            "write_file이 만든 mtime은 앱 자신의 쓰기로 판정돼야 한다"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_edit_by_another_program_is_not_the_apps_own() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("note.md");
+        write_file(p.to_str().unwrap(), "- [ ] 할 일\n")
+            .await
+            .unwrap();
+        let ours = mtime_ms(&p);
+
+        let theirs = foreign_write_until_mtime_changes(&p, ours);
+
+        assert!(
+            !is_app_write(&p, theirs),
+            "앱을 거치지 않은 쓰기는 외부 변경으로 남아야 한다 — 여기서 참이 되면 \
+             외부 편집을 화면에 반영하는 경로 전체가 죽는다"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_file_the_app_never_wrote_is_not_the_apps_own() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("stranger.md");
+        std::fs::write(&p, "남이 만든 파일\n").unwrap();
+
+        assert!(!is_app_write(&p, mtime_ms(&p)));
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_mtime_is_never_the_apps_own() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("note.md");
+        write_file(p.to_str().unwrap(), "- [ ] 할 일\n")
+            .await
+            .unwrap();
+
+        // 워처가 metadata를 못 읽으면 0을 싣는다. 0을 "일치"로 읽으면 mtime을 못
+        // 읽는 모든 이벤트가 앱의 쓰기로 둔갑한다.
+        assert!(!is_app_write(&p, 0));
+    }
+
+    #[tokio::test]
+    async fn only_the_most_recent_app_write_matches() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("note.md");
+        write_file(p.to_str().unwrap(), "첫 번째\n").await.unwrap();
+        let first = mtime_ms(&p);
+
+        for _ in 0..120 {
+            write_file(p.to_str().unwrap(), "두 번째\n").await.unwrap();
+            if mtime_ms(&p) != first {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let second = mtime_ms(&p);
+        assert_ne!(first, second, "mtime이 바뀌지 않았다");
+
+        assert!(is_app_write(&p, second));
+        assert!(
+            !is_app_write(&p, first),
+            "지나간 쓰기의 mtime은 더 이상 일치하지 않아야 한다"
+        );
+    }
+
+    #[tokio::test]
+    async fn two_files_do_not_share_one_verdict() {
+        let d = TempDir::new().unwrap();
+        let a = d.path().join("a.md");
+        let b = d.path().join("b.md");
+        write_file(a.to_str().unwrap(), "A\n").await.unwrap();
+        std::fs::write(&b, "B\n").unwrap();
+
+        assert!(is_app_write(&a, mtime_ms(&a)));
+        assert!(
+            !is_app_write(&b, mtime_ms(&a)),
+            "판정은 경로별이어야 한다 — 한 파일의 쓰기가 다른 파일까지 덮으면 안 된다"
         );
     }
 }

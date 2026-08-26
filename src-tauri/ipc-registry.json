@@ -1449,12 +1449,12 @@
   "events": [
     {
       "name": "file:changed",
-      "payload": { "path": "string", "kind": "modified|created|deleted" },
+      "payload": { "path": "string", "mtime": "number (ms)", "origin": "app|external" },
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "description": "파일 변경 감지 (notify)"
+      "description": "파일 변경 감지 (notify). origin=app은 이 앱의 write_file이 만든 변경 — 외부 변경으로 취급하면 안 된다 (§313)"
     },
     {
       "name": "file:created",
