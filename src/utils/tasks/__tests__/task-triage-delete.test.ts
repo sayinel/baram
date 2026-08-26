@@ -200,6 +200,43 @@ describe("§312 확인 관문", () => {
       "- [ ] 회의 준비 📅2026-08-30",
     );
   });
+
+  // 들여쓰기만 다른 부모/하위 항목은 `text`로는 구별되지 않는다 — 문구에 들어가는 `raw`가
+  // 앞 공백을 그대로 지니고 있어야 사용자가 어느 쪽을 지우는지 알 수 있다. `.trim()`으로
+  // 되돌리면 이 테스트가 빨간불이 된다.
+  it("들여쓰기가 있는 줄은 확인 문구에서도 들여쓰기를 유지한다 — 부모/하위 항목을 구별하는 유일한 단서", async () => {
+    await runTaskTriageAction(
+      "delete",
+      task({ raw: "  - [ ] 하위 항목" }),
+      ctx(),
+    );
+
+    expect(vi.mocked(showConfirm).mock.calls[0][0]).toBe(
+      EN_T("tasks.triage.deleteConfirm", { line: "  - [ ] 하위 항목" }),
+    );
+  });
+
+  // 위 테스트가 "앞 공백을 지운다"만 잡아내지 못하게 막는 짝 — 들여쓰기가 없던 줄에
+  // 없던 공백이 새로 생기면 이 테스트가 빨간불이 된다.
+  it("들여쓰기가 없는 줄은 그대로 남는다 — 없던 공백이 새로 생기지 않는다", async () => {
+    await runTaskTriageAction("delete", task({ raw: "- [ ] 하나" }), ctx());
+
+    expect(vi.mocked(showConfirm).mock.calls[0][0]).toBe(
+      EN_T("tasks.triage.deleteConfirm", { line: "- [ ] 하나" }),
+    );
+  });
+
+  it("뒤 공백은 여전히 잘린다 — 앞 들여쓰기만 남긴다", async () => {
+    await runTaskTriageAction(
+      "delete",
+      task({ raw: "  - [ ] 하위 항목   " }),
+      ctx(),
+    );
+
+    expect(vi.mocked(showConfirm).mock.calls[0][0]).toBe(
+      EN_T("tasks.triage.deleteConfirm", { line: "  - [ ] 하위 항목" }),
+    );
+  });
 });
 
 describe("§312 디스크 경로", () => {

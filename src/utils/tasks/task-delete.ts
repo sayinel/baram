@@ -22,13 +22,19 @@ import { writeAndReconcile } from "./task-triage-write";
  * 문구에는 지울 줄의 **원문**을 담는다. 아젠다 행이 보여 주는 것은 파서가 접어 놓은
  * 본문(`text`)이라 그것만으로는 어떤 줄이 사라지는지 확정할 수 없다 — 파괴적 조작의
  * 확인에서 그 차이는 다른 줄을 지우게 만든다.
+ *
+ * ‼️ `trimEnd()`이지 `trim()`이 아니다. 들여쓰기만 다른 부모/하위 항목은 `raw`의
+ * **앞** 공백으로만 구별된다 — 여기서 지우면 두 줄이 문구에서 똑같아 보인다. 뒤 공백은
+ * 정보가 없으므로 그대로 잘라도 된다. 앞 공백을 남겨도 `.ai-prompt-label`이 기본
+ * `white-space: normal`이면 렌더링 단계에서 다시 접힌다 — 그래서 `toolbar.css`가 같은
+ * 클래스에 `white-space: pre-wrap`을 짝으로 둔다(§312).
  */
 export async function confirmAndDeleteTaskLine(
   task: TaskEntry,
   ctx: TaskTriageContext,
 ): Promise<void> {
   const confirmed = await showConfirm(
-    ctx.t("tasks.triage.deleteConfirm", { line: task.raw.trim() }),
+    ctx.t("tasks.triage.deleteConfirm", { line: task.raw.trimEnd() }),
   );
   if (!confirmed) return;
 
