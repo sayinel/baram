@@ -130,6 +130,63 @@ describe("vim code block entry handoff (§298)", () => {
     expect(handoff).toHaveBeenCalledWith(local, local);
   });
 
+  it("k from below hands off the LAST line's offsets (issue 472)", () => {
+    const editor = createEditor(
+      "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",
+    );
+    setVim(editor, true);
+    let end = -1;
+    let codeText = "";
+    editor.state.doc.forEach((node, offset) => {
+      if (node.type.name === "codeBlock") codeText = node.textContent;
+      if (end < 0 && node.isTextblock && node.textContent === "end") {
+        end = offset + 1;
+      }
+    });
+    expect(end).toBeGreaterThan(0);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end)),
+    );
+    window.getSelection()?.removeAllRanges();
+
+    const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
+    press(editor, "k");
+
+    const $head = editor.state.selection.$head;
+    expect($head.parent.type.name).toBe("codeBlock");
+    const lastLineLocal = codeText.lastIndexOf("\n") + 1;
+    expect($head.parentOffset).toBe(lastLineLocal);
+    // The non-zero offset must reach the island unchanged — the CM caret
+    // lands on ITS last line through the same contract PM's descent uses.
+    expect(handoff).toHaveBeenCalledWith(lastLineLocal, lastLineLocal);
+  });
+
+  it("visual k from below keeps the FIRST-line landing (no directional leak)", () => {
+    const editor = createEditor(
+      "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",
+    );
+    setVim(editor, true);
+    let end = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (end < 0 && node.isTextblock && node.textContent === "end") {
+        end = offset + 1;
+      }
+    });
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end)),
+    );
+
+    press(editor, "v");
+    press(editor, "k");
+
+    // A directional (last-line) visual head would break the next walk's
+    // column math and narrow d/y ranges (adversarial review HIGH) — the
+    // visual caller keeps the first-line default.
+    const $from = editor.state.doc.resolve(editor.state.selection.from);
+    expect($from.parent.type.name).toBe("codeBlock");
+    expect($from.parentOffset).toBe(0);
+  });
+
   it("search submit into a COLD code block: handoff memos AND the focus fallback stays alive", () => {
     const editor = createEditor(
       "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",

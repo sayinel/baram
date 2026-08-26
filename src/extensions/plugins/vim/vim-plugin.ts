@@ -491,7 +491,7 @@ function consumeClipboard(view: EditorView, event: Event): boolean {
  * started right after a vim keystroke is affected. use-source-mode.ts leans on
  * the same call for its source-mode return.
  */
-function dispatchCursor(view: EditorView, tr: Transaction): void {
+function dispatchCursor(view: EditorView, tr: Transaction): boolean {
   view.dispatch(tr);
   (
     view as unknown as {
@@ -523,8 +523,9 @@ function dispatchCursor(view: EditorView, tr: Transaction): void {
   // (device log: dispatchCursor parent=codeBlock, no setSelection). Runs
   // AFTER the wipe so the DOM selection CodeMirror establishes on focus
   // survives it; the suppression armed above covers the focus's own
-  // selectionchange fallout.
-  enterCodeBlockSelection(view);
+  // selectionchange fallout. Returns whether the island took focus, so
+  // the caller can leave the scroll follow to CM (issue 472).
+  return enterCodeBlockSelection(view);
 }
 
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
@@ -656,15 +657,21 @@ function runSelectionCommand(
       result.state.mode === "visual" && preVisual
         ? preVisual.headCursor
         : vimCursor(view.state);
+    const inVisual = result.state.mode === "visual" && preVisual !== null;
     const target = resolveMotion(
       view.state,
       base,
       command.motion,
       command.count,
+      // Issue 472: directional code-block landing is NORMAL-mode-only — a
+      // visual head parked mid-block breaks the next walk's column math
+      // and changes d/y ranges (adversarial review HIGH). Visual keeps the
+      // first-line default.
+      inVisual ? undefined : { codeBlockEntry: "directional" },
     );
     let core = result.state;
     const tr = view.state.tr;
-    if (result.state.mode === "visual" && preVisual) {
+    if (inVisual && preVisual) {
       const visual = moveVisualHead(preVisual, target);
       core = { ...result.state, visual };
       tr.setSelection(visualSelection(view.state, visual));
@@ -672,13 +679,20 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state.doc, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
-    dispatchCursor(view, tr);
+    const islandTookFocus = dispatchCursor(view, tr);
     // ONE follow, ours. PM's scrollToSelection bails when the DOM selection
     // sits outside a non-editable view (vim modal), but it does NOT bail
     // when the surface still owns the selection — flagging the transaction
     // too ran the whole geometry pass twice per keystroke (performance
     // review P4).
-    scrollCursorIntoView(view, target);
+    //
+    // Issue 472: when the CM island took the handoff, the follow is ITS
+    // job — the NodeView has no contentDOM, so PM's coordsAtPos maps every
+    // interior offset to the wrapper's TOP edge (adversarial review HIGH:
+    // a k-entry at the last line of a tall block would scroll the viewport
+    // toward the block top, away from the caret). setSelection dispatches
+    // with scrollIntoView, which follows the real CM caret line.
+    if (!islandTookFocus) scrollCursorIntoView(view, target);
     return true;
   }
 

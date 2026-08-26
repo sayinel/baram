@@ -330,7 +330,15 @@ export class CodeBlockNodeView implements NodeView {
     }
     this.cmView.focus();
     this.updating = true;
-    this.cmView.dispatch({ selection: { anchor, head } });
+    // scrollIntoView — CM walks ancestor scrollables to the real caret
+    // line. The PM-side follow cannot: this NodeView has no contentDOM, so
+    // coordsAtPos maps every interior offset to the wrapper's TOP edge
+    // (issue 472 — a k-entry at the last line of a tall block would
+    // otherwise scroll the viewport toward the block top).
+    this.cmView.dispatch({
+      scrollIntoView: true,
+      selection: { anchor, head },
+    });
     this.updating = false;
   }
 
@@ -647,6 +655,9 @@ export class CodeBlockNodeView implements NodeView {
         this.cmView.focus();
         this.updating = true;
         this.cmView.dispatch({
+          // Same reason as the live setSelection path: the caret line —
+          // not the wrapper top — must be what the viewport follows.
+          scrollIntoView: true,
           selection: {
             anchor: Math.min(Math.max(sel.anchor - base, 0), max),
             head: Math.min(Math.max(sel.head - base, 0), max),

@@ -14,10 +14,14 @@
 // offset into the block's source, which is why a caret further right dives
 // further down.
 //
-// The contract: entering a code block always lands at its FIRST line. The
-// CodeMirror island owns movement inside the block from then on (Phase 0b), so
-// PM vim has no business picking a line in there — and it certainly must not
-// pick one by accident of the previous paragraph's width.
+// The contract (issue 472): entry is DIRECTIONAL for the normal-mode caller
+// — `j` from above lands on the FIRST source line, `k` from below on the
+// LAST — and never a line picked by accident of the previous paragraph's
+// width. The directional landing is OPT-IN (`codeBlockEntry` option):
+// visual-head and operator callers keep the first-line default, because a
+// head parked mid-block breaks their column math and changes d/y ranges.
+// The CodeMirror island owns movement inside the block from then on
+// (Phase 0b).
 
 import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
@@ -88,7 +92,7 @@ describe("j into a code block ignores the starting column", () => {
     expect(landings).toEqual([1, 1, 1, 1, 1, 1]);
   });
 
-  it("the landing position is the block's content start", () => {
+  it("default caller lands at the content start; directional preserves the column into the FIRST line", () => {
     const editor = makeEditor(md);
     const code = findNode(editor, "codeBlock");
     let para = -1;
@@ -97,10 +101,158 @@ describe("j into a code block ignores the starting column", () => {
         para = offset + 1;
       }
     });
+    const firstLen = code.text.indexOf("\n"); // "x = 1" = 5
 
     // From the far right of the paragraph — the worst case on device.
+    // Default (visual/operator callers): content start, exactly as before.
     const target = resolveMotion(editor.state, para + 15, "lineDown", 1);
     expect(target).toBe(code.at + 1);
+
+    // Directional (normal-mode caller): column preserved into the first
+    // line, clamped to its last character — never a raw offset into the
+    // whole source (the original device bug).
+    const clamped = resolveMotion(editor.state, para + 15, "lineDown", 1, {
+      codeBlockEntry: "directional",
+    });
+    expect(clamped).toBe(code.at + 1 + firstLen - 1);
+    const col2 = resolveMotion(editor.state, para + 2, "lineDown", 1, {
+      codeBlockEntry: "directional",
+    });
+    expect(col2).toBe(code.at + 1 + 2);
+  });
+});
+
+describe("k INTO a code block lands on its LAST line (issue 472)", () => {
+  // Stock-vim spatial continuity: `k` means "the line just above", and from
+  // below a block the visually adjacent line is its LAST source line. The
+  // always-first-line landing was a v1 simplification, not a UX decision.
+  const md = "```python\nx = 1\ny = 2\nz = 3\n```\n\nbelowparagraph\n";
+
+  function belowStart(editor: Editor): number {
+    let below = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (
+        below < 0 &&
+        node.isTextblock &&
+        node.textContent.startsWith("below")
+      ) {
+        below = offset + 1;
+      }
+    });
+    expect(below).toBeGreaterThan(0);
+    return below;
+  }
+
+  it("lands on the LAST code line from every column", () => {
+    const editor = makeEditor(md);
+    const code = findNode(editor, "codeBlock");
+    const below = belowStart(editor);
+
+    const landings = [0, 3, 7, 13].map((col) => {
+      const target = resolveMotion(editor.state, below + col, "lineUp", 1, {
+        codeBlockEntry: "directional",
+      });
+      return codeLineOf(target, code.at, code.text);
+    });
+
+    expect(landings).toEqual([3, 3, 3, 3]);
+  });
+
+  it("carried column lands WITHIN the last line, clamped to its end (curswant)", () => {
+    const editor = makeEditor(md);
+    const code = findNode(editor, "codeBlock");
+    const below = belowStart(editor);
+    const lastStart = code.at + 1 + code.text.lastIndexOf("\n") + 1;
+    const lastLen = code.text.length - (code.text.lastIndexOf("\n") + 1); // "z = 3" = 5
+
+    const fromCol0 = resolveMotion(editor.state, below, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+    const fromCol2 = resolveMotion(editor.state, below + 2, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+    const fromCol13 = resolveMotion(editor.state, below + 13, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+
+    expect(fromCol0).toBe(lastStart); // column 0 preserved
+    expect(fromCol2).toBe(lastStart + 2); // column preserved
+    expect(fromCol13).toBe(lastStart + lastLen - 1); // clamped to `$`
+  });
+
+  it("directional is OPT-IN: the default caller still gets the first line", () => {
+    // Visual-head and operator callers pass no option — a head parked
+    // mid-block would break their column math and change d/y ranges.
+    const editor = makeEditor(md);
+    const code = findNode(editor, "codeBlock");
+    const below = belowStart(editor);
+
+    const target = resolveMotion(editor.state, below, "lineUp", 1);
+    expect(target).toBe(code.at + 1);
+  });
+
+  it("journal-* blocks are NOT CodeMirror islands: k keeps the first line", () => {
+    // journal-* languages render a widget NodeView with no CM caret to
+    // receive a hidden-source offset (code-block.ts addNodeView).
+    const editor = makeEditor(
+      "```journal-list\nitem a\nitem b\n```\n\nbelowparagraph\n",
+    );
+    const code = findNode(editor, "codeBlock");
+    expect(code.text.includes("\n")).toBe(true); // multi-line fixture guard
+    const below = belowStart(editor);
+
+    const target = resolveMotion(editor.state, below, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+    expect(target).toBe(code.at + 1);
+  });
+
+  it("single-line block: k lands at the content start", () => {
+    const editor = makeEditor("```py\nonly = 1\n```\n\nbelowparagraph\n");
+    const code = findNode(editor, "codeBlock");
+    const below = belowStart(editor);
+
+    const target = resolveMotion(editor.state, below, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+    expect(target).toBe(code.at + 1);
+  });
+
+  it("2k from below passes THROUGH the block to the paragraph above, column intact", () => {
+    // The block stays ONE vim line: entering mid-count must not consume
+    // extra steps, strand the walk inside the block, or poison the carried
+    // column with a source offset.
+    const editor = makeEditor(
+      "above\n\n```py\na = 1\nb = 2\n```\n\nbelowparagraph\n",
+    );
+    const below = belowStart(editor);
+    let above = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (above < 0 && node.isTextblock && node.textContent === "above") {
+        above = offset + 1;
+      }
+    });
+    expect(above).toBeGreaterThan(0);
+
+    const target = resolveMotion(editor.state, below, "lineUp", 2, {
+      codeBlockEntry: "directional",
+    });
+    expect(target).toBe(above); // column 0 carried exactly
+  });
+
+  it("content ending in a newline: k lands on the trailing empty line", () => {
+    const editor = makeEditor("```py\na = 1\n\n```\n\nbelowparagraph\n");
+    const code = findNode(editor, "codeBlock");
+    // Fixture-shape guard: the pipeline must have kept the trailing newline
+    // (an empty final source line). If this fails the fixture is wrong, not
+    // the walk — adjust the fixture, don't weaken the pin.
+    expect(code.text.endsWith("\n")).toBe(true);
+    const below = belowStart(editor);
+
+    const target = resolveMotion(editor.state, below, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+    expect(target).toBe(code.at + 1 + code.text.length);
   });
 });
 
