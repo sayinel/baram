@@ -147,15 +147,45 @@ pub async fn write_file(path: &str, content: &str) -> Result<(), FsError> {
     Ok(())
 }
 
-/// §313 앱이 마지막으로 만든 mtime — 경로별 한 칸.
+/// §313 앱이 방금 만든 mtime과 **그것을 기록한 시각**.
+struct AppWrite {
+    /// 단조 시계다(`Instant`). 벽시계를 쓰면 NTP 보정이나 사용자의 시계 변경이 기록을
+    /// 임의로 늙게/젊게 만든다. 맥이 잠든 동안 `Instant`가 멈추는 것은 기록을 실제보다
+    /// **젊게** 만들 뿐이라, 아래 두 방향 중 위험한 쪽(앱 자신의 쓰기가 외부 변경으로
+    /// 둔갑하는 쪽)으로는 절대 기울지 않는다.
+    at: std::time::Instant,
+    mtime: u64,
+}
+
+/// §313 기록이 유효한 시간.
+///
+/// **왜 시간 제한이 필요한가.** 판정 기준이 mtime 값 하나의 일치이므로, 기록을 영원히
+/// 두면 그 값에 대한 영구 주장이 된다. mtime을 **복원하는** 외부 쓰기 — `cp -p`,
+/// `rsync -t`, `tar -x`/`unzip`, Time Machine, 되돌린 버전을 내려받는 동기화 클라이언트
+/// — 는 정확히 그 값에 착지할 수 있고, 그러면 남의 편집이 "앱 자신의 쓰기"로 둔갑한다.
+/// 대가는 토스트가 사라지는 것에서 끝나지 않는다: 실행 취소 스택이 남의 편집 위로
+/// 살아남아(`patchEditorContent`는 `addToHistory: false`), Ctrl+Z 한 번이 화면을 그
+/// 편집 **너머로** 되돌리고 다음 저장이 그것을 파일에 쓴다.
+///
+/// **왜 하필 1분인가.** 좁히면 반대 방향이 깨진다 — 창을 넘긴 앱 자신의 쓰기는 "외부
+/// 변경"이 되어 토스트와 히스토리 폐기를 부른다. 창이 견뎌야 하는 것은 쓰기에 걸리는
+/// 시간이 아니라(쓰기는 기록 시점에 이미 끝나 있다) **워처 스레드가 밀린 시간**이다.
+/// 측정값: 조용할 때 FSEvents 팬아웃은 최악 25ms. 같은 디렉토리에 파일이 쏟아지고(git
+/// checkout·vault 임포트·압축 해제) 이벤트 소비가 느릴 때는 앱 자신의 이벤트가 처리되기
+/// 까지 **6.4~7.2초**가 걸렸다(flood 2,000~20,000개 × 이벤트당 0.1~1ms). 1분은 그
+/// 최악값의 8배로, 더 느린 기계와 디버그 빌드에도 여유를 둔다. 반대로 내주는 것은 "앱이
+/// 이 파일에 쓴 지 1분 안에, 하필 그 mtime을 복원하는 외부 쓰기가 온다"는 우연 하나뿐이다.
+const APP_WRITE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// §313 앱이 마지막으로 한 쓰기의 기록 — 경로별 한 칸.
 ///
 /// 워처는 자기 프로세스가 쓴 파일도 남이 쓴 파일과 똑같은 `Modify(Data(Content))`로
 /// 본다. 그래서 판정을 **이벤트를 받는 자리가 아니라 쓰는 자리**에 둔다: 앱 안의 모든
 /// 문서 쓰기가 `write_file` 하나를 지나므로, 새 호출자가 스스로를 "이건 내 쓰기다"라고
 /// 신고할 필요가 없다 — 신고를 잊을 수 있는 자리를 아예 만들지 않는 것이 요점이다.
-fn app_writes() -> &'static std::sync::Mutex<std::collections::HashMap<String, u64>> {
+fn app_writes() -> &'static std::sync::Mutex<std::collections::HashMap<String, AppWrite>> {
     static APP_WRITES: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<String, u64>>,
+        std::sync::Mutex<std::collections::HashMap<String, AppWrite>>,
     > = std::sync::OnceLock::new();
     APP_WRITES.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
@@ -173,13 +203,16 @@ pub fn mtime_ms(path: &Path) -> u64 {
 
 /// 이 `file:changed`가 **앱 자신의 쓰기**인가.
 ///
-/// 판정 기준은 mtime 일치 하나다. 앱이 그 파일에 마지막으로 쓴 mtime과 워처가 보고한
-/// mtime이 같으면 그것은 우리가 만든 이벤트다. 그 뒤에 남이 쓰면 mtime이 앞으로
-/// 움직이므로 즉시 일치가 깨진다 — 외부 편집을 화면에 반영하는 경로는 그대로 산다.
+/// 조건은 둘이고 둘 다 필요하다: 앱이 그 파일에 마지막으로 쓴 mtime과 워처가 보고한
+/// mtime이 같을 것, 그리고 그 기록이 `APP_WRITE_TTL` 안일 것. 앞의 조건만으로는 mtime을
+/// **복원하는** 외부 쓰기를 막지 못한다(`APP_WRITE_TTL` 주석 참조). 남이 평범하게 쓰면
+/// mtime이 앞으로 움직이므로 즉시 일치가 깨진다 — 외부 편집을 화면에 반영하는 경로는
+/// 그대로 산다.
 ///
 /// 항목을 **소비하지 않는다**(peek). FSEvents는 한 번의 쓰기에 여러 이벤트를 올릴 수
 /// 있어서, 첫 이벤트가 항목을 가져가 버리면 뒤따르는 같은 쓰기의 이벤트가 외부 변경으로
-/// 둔갑한다. 다음 쓰기가 그 자리를 덮으므로 맵은 쓴 파일 수만큼만 자란다.
+/// 둔갑한다. 이 자리는 워처 스레드가 이벤트마다 도는 뜨거운 경로라 읽기만 하고, 만료된
+/// 기록을 치우는 일은 `note_app_write`가 맡는다.
 ///
 /// `mtime == 0`(워처가 metadata를 못 읽음)은 언제나 거짓이다 — 0을 일치로 읽으면
 /// metadata를 못 읽는 모든 이벤트가 앱의 쓰기로 둔갑한다.
@@ -190,8 +223,11 @@ pub fn is_app_write(path: &Path, mtime: u64) -> bool {
     app_writes()
         .lock()
         .ok()
-        .and_then(|m| m.get(&app_write_key(path)).copied())
-        == Some(mtime)
+        .and_then(|m| {
+            m.get(&app_write_key(path))
+                .map(|w| w.mtime == mtime && w.at.elapsed() <= APP_WRITE_TTL)
+        })
+        .unwrap_or(false)
 }
 
 fn note_app_write(path: &Path) {
@@ -200,7 +236,16 @@ fn note_app_write(path: &Path) {
         return;
     }
     if let Ok(mut map) = app_writes().lock() {
-        map.insert(app_write_key(path), mtime);
+        // 만료된 기록은 여기서 쓸어낸다. 이 청소가 없으면 맵은 앱이 쓴 **서로 다른 파일
+        // 수**만큼 영구히 자란다 — 이제 상한은 "최근 1분 안에 쓴 파일 수"다.
+        map.retain(|_, w| w.at.elapsed() <= APP_WRITE_TTL);
+        map.insert(
+            app_write_key(path),
+            AppWrite {
+                at: std::time::Instant::now(),
+                mtime,
+            },
+        );
     }
 }
 
@@ -775,6 +820,127 @@ mod app_write_tests {
         assert!(
             !is_app_write(&p, first),
             "지나간 쓰기의 mtime은 더 이상 일치하지 않아야 한다"
+        );
+    }
+
+    /// 기록을 실제로 기다리지 않고 창 밖(또는 창 안의 특정 지점)으로 밀어 놓는다.
+    /// 프로덕션이 쓰는 바로 그 맵을 건드리므로, 기록의 모양이 바뀌면 여기도 같이 깨진다.
+    fn rewind_record(path: &Path, by: std::time::Duration) {
+        let mut map = app_writes().lock().unwrap();
+        let entry = map
+            .get_mut(&app_write_key(path))
+            .expect("방금 쓴 파일의 기록이 있어야 한다");
+        entry.at = entry
+            .at
+            .checked_sub(by)
+            .expect("Instant를 되감을 수 없다 — 부팅 직후인가?");
+    }
+
+    /// §313 mtime을 **복원하는** 외부 쓰기가 앱 자신의 쓰기로 둔갑하면 안 된다.
+    ///
+    /// 판정이 mtime 값 하나의 일치이므로 기록을 영원히 두면 그 값에 대한 영구 주장이
+    /// 된다. `cp -p`·`rsync -t`·`tar -x`·Time Machine·되돌린 버전을 내려받는 동기화
+    /// 클라이언트는 정확히 그 값에 착지할 수 있다. 여기서 참이 되면 남의 편집 위로
+    /// `patchEditorContent`가 돌아 실행 취소 스택이 살아남고, Ctrl+Z 한 번이 화면을 남의
+    /// 편집 **너머로** 되돌린 뒤 다음 저장이 그것을 파일에 쓴다 — 토스트도 없이 조용히.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_external_write_that_restores_our_mtime_is_not_the_apps_own() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("note.md");
+        write_file(p.to_str().unwrap(), "- [ ] 할 일\n")
+            .await
+            .unwrap();
+        let ours = mtime_ms(&p);
+
+        // mtime 도장을 떠 둔다 — `cp -p`가 타임스탬프를 함께 복사한다.
+        let stamp = d.path().join("stamp");
+        assert!(
+            std::process::Command::new("cp")
+                .args(["-p", p.to_str().unwrap(), stamp.to_str().unwrap()])
+                .status()
+                .unwrap()
+                .success(),
+            "cp -p 실패"
+        );
+
+        // 이 파일에 쓴 지 한참 지났다 — 백업이 만들어지고 복원되기까지의 시간.
+        rewind_record(&p, APP_WRITE_TTL + std::time::Duration::from_secs(1));
+
+        // 남이 쓴다. 그리고 그 도구가 원래 mtime을 되돌려 놓는다.
+        std::fs::write(&p, "복원된, 우리가 쓰지 않은 내용\n").unwrap();
+        assert!(
+            std::process::Command::new("touch")
+                .args(["-r", stamp.to_str().unwrap(), p.to_str().unwrap()])
+                .status()
+                .unwrap()
+                .success(),
+            "touch -r 실패"
+        );
+
+        let restored = mtime_ms(&p);
+        assert_eq!(
+            restored, ours,
+            "이 테스트의 전제 — 외부 도구가 mtime을 정확히 복원할 수 있어야 한다"
+        );
+        assert_ne!(
+            std::fs::read_to_string(&p).unwrap(),
+            "- [ ] 할 일\n",
+            "디스크의 내용은 앱이 쓴 것이 아니어야 한다"
+        );
+
+        assert!(
+            !is_app_write(&p, restored),
+            "mtime만 같을 뿐 남이 쓴 내용이다 — 앱의 쓰기로 판정되면 실행 취소 스택이 \
+             남의 편집 위로 살아남는다"
+        );
+    }
+
+    /// 반대 방향 — 창이 좁으면 앱 자신의 쓰기가 다시 "외부 변경"이 된다.
+    ///
+    /// 창이 견뎌야 하는 것은 쓰기 시간이 아니라 **워처 스레드가 밀린 시간**이다(쓰기는
+    /// 기록 시점에 이미 끝나 있다). 같은 디렉토리에 파일이 쏟아지고(git checkout·vault
+    /// 임포트) 이벤트 소비가 느릴 때를 측정한 최악값이 7.2초였다. 그만큼 늦게 처리된
+    /// 이벤트도 여전히 우리 것으로 읽혀야 한다 — 아니면 토스트가 뜨고 히스토리가 버려진다.
+    #[tokio::test]
+    async fn an_event_delayed_by_a_watcher_backlog_is_still_the_apps_own() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("note.md");
+        write_file(p.to_str().unwrap(), "- [ ] 할 일\n")
+            .await
+            .unwrap();
+        let ours = mtime_ms(&p);
+
+        rewind_record(&p, std::time::Duration::from_millis(7200));
+
+        assert!(
+            is_app_write(&p, ours),
+            "측정된 최악의 이벤트 지연(7.2초)보다 창이 좁다 — 파일 이벤트가 몰리는 동안 \
+             앱 자신의 저장이 외부 변경으로 둔갑한다"
+        );
+    }
+
+    /// 만료된 기록은 맵에 남지 않는다 — 예전에는 쓴 파일 수만큼 영구히 자랐다.
+    #[tokio::test]
+    async fn an_expired_record_is_swept_out_of_the_registry() {
+        let d = TempDir::new().unwrap();
+        let old = d.path().join("old.md");
+        let fresh = d.path().join("fresh.md");
+        write_file(old.to_str().unwrap(), "옛날 것\n")
+            .await
+            .unwrap();
+        let old_key = app_write_key(&old);
+        assert!(app_writes().lock().unwrap().contains_key(&old_key));
+
+        rewind_record(&old, APP_WRITE_TTL + std::time::Duration::from_secs(1));
+        // 다음 쓰기가 만료된 기록을 쓸어낸다.
+        write_file(fresh.to_str().unwrap(), "새 것\n")
+            .await
+            .unwrap();
+
+        assert!(
+            !app_writes().lock().unwrap().contains_key(&old_key),
+            "만료된 기록이 남으면 맵은 앱이 지금까지 쓴 파일 수만큼 자란다"
         );
     }
 
