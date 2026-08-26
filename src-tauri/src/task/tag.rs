@@ -478,4 +478,58 @@ mod tests {
         assert!(matches!(err, TaskError::Custom(ref m) if m.contains("some day")));
         assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
     }
+
+    /// §312 이 어휘의 **다른 절반**은 TypeScript에 있다.
+    ///
+    /// 아젠다 메뉴가 "#someday 해제"를 보일지 말지는 `src/utils/tasks/task-tag-token.ts`의
+    /// `lineHasTag`가 정하고, 그것은 위 `find_tag`/`is_tag_char`를 옮겨 적은 것이다.
+    /// 둘이 갈라지면 메뉴가 할 수 없는 일을 약속하거나(제거가 줄을 안 바꾼다) 멀쩡한
+    /// 행에서 항목이 죽는다. 언어가 달라 한 벌로 만들 수는 없으므로, **같은 표**를 양쪽에
+    /// 두고 어느 쪽을 고쳐도 다른 쪽이 빨간불이 되게 한다.
+    ///
+    /// 표를 바꿀 일이 생기면 `task-tag-token.test.ts`의 같은 표도 함께 바꿀 것.
+    #[test]
+    fn tag_boundary_table_is_shared_with_the_front_end() {
+        // (줄, 이 줄에 태그 `someday`가 있는가)
+        let cases: &[(&str, bool)] = &[
+            ("- [ ] 여행 #someday", true),
+            ("- [ ] #someday 여행", true),
+            ("- [ ] 여행 #someday 준비", true),
+            ("#someday", true),
+            ("- [ ] 여행 (#someday)", true),
+            ("- [ ] 여행 #someday.", true),
+            ("- [ ] 여행 #someday,", true),
+            ("- [ ] 여행 #someday-maybe #someday", true),
+            // ‼️ 인덱서(`md::INLINE_TAG_RE`)는 하이픈에서 끊어 이 줄들을 `someday`로
+            // 읽는다. 여기서는 아니다 — 그 어긋남이 MODERATE-1이었다.
+            ("- [ ] 여행 #someday-maybe", false),
+            ("- [ ] 여행 #someday-", false),
+            ("- [ ] 여행 #someday/maybe", false),
+            ("- [ ] 여행 #someday_maybe", false),
+            ("- [ ] 여행 #somedaymaybe", false),
+            ("- [ ] 여행 #someday언젠가", false),
+            ("- [ ] 여행 #someday2", false),
+            ("- [ ] a#someday", false),
+            ("- [ ] https://x/#someday", false),
+            ("- [ ] 여행", false),
+        ];
+        for (line, expected) in cases {
+            assert_eq!(
+                !find_tag(line, "someday").is_empty(),
+                *expected,
+                "find_tag disagrees on {:?}",
+                line
+            );
+            // 그리고 그것이 곧 "해제가 줄을 바꾸는가"와 같아야 한다 — 프론트가 라벨을
+            // 그 답에 걸기 때문이다.
+            let removed = apply_tag(line, "someday", false).unwrap();
+            assert_eq!(
+                removed != line.trim_end(),
+                *expected,
+                "apply_tag(off) disagrees on {:?} -> {:?}",
+                line,
+                removed
+            );
+        }
+    }
 }
