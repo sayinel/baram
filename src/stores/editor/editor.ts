@@ -175,20 +175,20 @@ export function isPluginTab(tab: EditorTab | undefined): boolean {
 }
 
 /**
- * §312 닫힌 탭 id를 소스 모드 집합에서 뺀다 — 탭을 닫는 **모든** 경로가 이것을 부른다.
- * 이 집합은 §305 태스크 쓰기 라우터의 입력이라, 죽은 id가 남으면 라우팅이 "그 탭은 소스
- * 모드"라고 계속 주장한다.
+ * §312 닫힌 탭 id를 탭별 집합에서 뺀다 — 탭을 닫는 **모든** 경로가 이것을 부른다.
+ *
+ * 이런 집합은 탭 밖에 살기 때문에 수명도 탭보다 길다. `sourceModeTabs`는 §305 태스크
+ * 쓰기 라우터의 입력이라, 죽은 id가 남으면 라우팅이 "그 탭은 소스 모드"라고 계속
+ * 주장한다. §313 `staleContentTabs`도 같은 이유로 같은 규율을 받는다.
  *
  * ‼️ 뺄 것이 없으면 **같은 참조**를 돌려준다: 새 배열은 use-source-mode의 `useMemo`가
  * Set을 다시 만들게 해 그 소비자들의 memo를 전부 깬다.
  */
 function withoutClosedTabs(
-  sourceModeTabs: string[],
+  tabIds: string[],
   isClosed: (id: string) => boolean,
 ): string[] {
-  return sourceModeTabs.some(isClosed)
-    ? sourceModeTabs.filter((id) => !isClosed(id))
-    : sourceModeTabs;
+  return tabIds.some(isClosed) ? tabIds.filter((id) => !isClosed(id)) : tabIds;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -279,11 +279,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           : state.activeTabId;
       // §39 Remove closed tab from MRU
       const mruOrder = state.mruOrder.filter((id) => id !== tabId);
-      const sourceModeTabs = withoutClosedTabs(
-        state.sourceModeTabs,
-        (id) => id === tabId,
+      const closed = (id: string) => id === tabId;
+      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
+      const staleContentTabs = withoutClosedTabs(
+        state.staleContentTabs,
+        closed,
       );
-      return { tabs, activeTabId, mruOrder, sourceModeTabs };
+      return { tabs, activeTabId, mruOrder, sourceModeTabs, staleContentTabs };
     });
 
     // Clean up original doc tracking for dirty detection
@@ -420,10 +422,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ? tabId
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
-      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, (id) =>
-        closedIds.has(id),
+      const closed = (id: string) => closedIds.has(id);
+      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
+      const staleContentTabs = withoutClosedTabs(
+        state.staleContentTabs,
+        closed,
       );
-      return { tabs, activeTabId, mruOrder, sourceModeTabs };
+      return { tabs, activeTabId, mruOrder, sourceModeTabs, staleContentTabs };
     }),
 
   closeTabsToRight: (tabId) =>
@@ -439,10 +444,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ? tabId
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
-      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, (id) =>
-        closedIds.has(id),
+      const closed = (id: string) => closedIds.has(id);
+      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
+      const staleContentTabs = withoutClosedTabs(
+        state.staleContentTabs,
+        closed,
       );
-      return { tabs, activeTabId, mruOrder, sourceModeTabs };
+      return { tabs, activeTabId, mruOrder, sourceModeTabs, staleContentTabs };
     }),
 
   closeAllTabs: () =>
@@ -451,6 +459,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       activeTabId: null,
       mruOrder: [],
       sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, () => true),
+      staleContentTabs: withoutClosedTabs(state.staleContentTabs, () => true),
     })),
 
   openGraphTab: () => {
