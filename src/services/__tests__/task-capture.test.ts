@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../ipc/invoke", () => ({ appendTaskLine: vi.fn() }));
-vi.mock("../../utils/tasks/apply-task-write", () => ({
+// ‼️ `resolveTaskWriteTarget`만 목한다. `markSourceTabDirty`는 진짜여야 그 탭이 실제로
+// dirty가 되는지를 **결과로** 볼 수 있다 — 목하면 "불렀다"만 남고, 저장하지 않고 닫는
+// 사용자가 확인을 받는지는 아무도 확인하지 않게 된다.
+vi.mock("../../utils/tasks/apply-task-write", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../utils/tasks/apply-task-write")
+  >()),
   resolveTaskWriteTarget: vi.fn(),
 }));
 vi.mock("../../pipeline", () => ({ prosemirrorToMarkdown: vi.fn() }));
@@ -23,7 +29,12 @@ async function rejectsWithCode(p: Promise<unknown>, code: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useEditorStore.setState({ activeTabId: null, tabs: [] });
+  useEditorStore.setState({
+    activeTabId: null,
+    sourceBufferAccess: null,
+    sourceModeTabs: [],
+    tabs: [],
+  });
   useFileStore.setState({ openFiles: new Map() });
   vi.mocked(resolveTaskWriteTarget).mockReturnValue({ kind: "disk" });
 });
@@ -299,13 +310,27 @@ describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", (
 });
 
 // §312 소스 모드 탭은 dirty·활성과 무관하게 `source` 판정을 받는다. 그 탭에서 권위 있는
-// 텍스트는 CodeMirror 버퍼이고 저장도 그 버퍼를 쓰므로(`handleSave`), 라이브 문서에 붙인
-// 줄은 저장 시점에 통째로 사라진다 — 잃는 것이 체크 토글이 아니라 사용자의 문장이다.
-// 라이브 문서 경로는 `document` 판정에서만 열려야 한다.
+// 텍스트는 CodeMirror 버퍼이고 저장도 그 버퍼를 쓰므로(`handleSave`,
+// use-file-operations.ts:231-232), 그 밖의 어디에 붙여도 다음 저장이 지운다:
+// 라이브 문서에 붙이면 저장이 버퍼로 덮어쓰고, **디스크에 붙여도 같다.**
+//
+// ‼️ 디스크 경로가 특히 함정이었다. `assertNoUnsavedTab`은 `tab.isDirty`로 판정하는데,
+// 마크다운 소스 모드 타이핑은 일부러 dirty를 세우지 않는다(`tab-surface-renderers.tsx:108`).
+// 즉 저장하지 않은 글을 들고 있는 소스 탭이 **clean으로 보이고**, 관문을 통과하고, 디스크에
+// 붙은 캡처가 다음 저장에 지워졌다. 잃는 것이 다시 누르면 되는 체크 토글이 아니라 다른
+// 어디에도 없는 사용자의 문장이다.
 describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
-  function openSourceTab(isDirty: boolean) {
+  function openSourceTab(isDirty: boolean, initial = "- [ ] 먼저\n") {
+    let buffer = initial;
     useEditorStore.setState({
       activeTabId: "t1",
+      sourceBufferAccess: {
+        getSourceBuffer: () => buffer,
+        setSourceBuffer: (_tabId, next) => {
+          buffer = next;
+        },
+      },
+      sourceModeTabs: ["t1"],
       tabs: [
         {
           contextId: "c",
@@ -317,7 +342,20 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
         },
       ],
     });
+    return { read: () => buffer };
   }
+
+  function capture(editor: unknown = { state: { doc: {} } }) {
+    return captureTask({
+      body: "은행 연락",
+      captureFile: "Inbox.md",
+      editor: editor as never,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
+  }
+
+  const LINE = "- [ ] 은행 연락 ➕2026-08-24";
 
   beforeEach(() => {
     vi.mocked(resolveTaskWriteTarget).mockReturnValue({
@@ -327,40 +365,89 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
     vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] 먼저\n");
   });
 
-  it("라이브 문서에 붙이지 않는다 — 저장이 버퍼를 쓰므로 그 줄이 사라진다", async () => {
-    openSourceTab(false);
-    vi.mocked(appendTaskLine).mockResolvedValue("x");
-    const editor = { state: { doc: {} } } as never;
+  it("보이는 버퍼에 붙인다 — 라이브 문서에도 디스크에도 붙이지 않는다", async () => {
+    const buffer = openSourceTab(false);
 
-    await captureTask({
-      body: "은행 연락",
-      captureFile: "Inbox.md",
-      editor,
-      rootPath: "/v",
-      today: "2026-08-24",
-    });
+    const raw = await capture();
 
+    expect(buffer.read()).toBe(`- [ ] 먼저\n${LINE}\n`);
+    expect(raw).toBe(LINE);
+    expect(appendTaskLine).not.toHaveBeenCalled();
+    // `openFiles`/`requestContentRefresh`는 ProseMirror 표면을 다시 채우는 통로인데
+    // 지금 보이는 것은 그 표면이 아니다(`writeToSourceBuffer`와 같은 이유).
     expect(useFileStore.getState().openFiles.size).toBe(0);
-    expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/Inbox.md",
-      expect.any(String),
-    );
   });
 
-  it("그 탭이 저장되지 않았으면 어디에도 붙이지 않는다", async () => {
-    openSourceTab(true);
-    const editor = { state: { doc: {} } } as never;
-
-    await rejectsWithCode(
-      captureTask({
-        body: "은행 연락",
-        captureFile: "Inbox.md",
-        editor,
-        rootPath: "/v",
-        today: "2026-08-24",
-      }),
-      "dirtyTab",
+  // ‼️ 이것이 정확히 잃던 문장이다. 버퍼에 저장하지 않은 글이 있는데도 탭은 clean이다.
+  // 디스크로 붙이면 이 두 줄은 다음 저장에서 통째로 되돌아가고 캡처만 사라진다.
+  it("clean으로 보이는 탭이 저장하지 않은 글을 들고 있어도 그 글과 캡처가 함께 남는다", async () => {
+    const buffer = openSourceTab(
+      false,
+      "- [ ] 먼저\n아직 저장하지 않은 문장\n",
     );
+
+    await capture();
+
+    // 저장(`handleSave`)이 파일에 쓰는 것이 바로 이 문자열이다.
+    expect(buffer.read()).toBe(
+      `- [ ] 먼저\n아직 저장하지 않은 문장\n${LINE}\n`,
+    );
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  // 표시가 없으면 버퍼에만 있는 이 줄은 사용자에게 흔적을 남기지 않는다 — 저장하지 않고
+  // 닫아도 확인을 받지 못하고, 외부 변경이 오면 충돌 모달 대신 조용한 자동 리로드로 간다.
+  it("그 탭을 dirty로 세운다", async () => {
+    openSourceTab(false);
+
+    await capture();
+
+    expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
+  });
+
+  it("이미 dirty인 탭도 같은 버퍼에 붙는다 — 더 이상 거절하지 않는다", async () => {
+    const buffer = openSourceTab(true);
+
+    await capture();
+
+    expect(buffer.read()).toBe(`- [ ] 먼저\n${LINE}\n`);
+    expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+
+  it("끝 개행이 없는 버퍼에는 줄바꿈을 먼저 넣는다 — 앞 줄에 이어 붙지 않는다", async () => {
+    const buffer = openSourceTab(false, "- [ ] 먼저");
+
+    await capture();
+
+    expect(buffer.read()).toBe(`- [ ] 먼저\n${LINE}\n`);
+  });
+
+  it("빈 버퍼에는 빈 줄을 만들지 않는다", async () => {
+    const buffer = openSourceTab(false, "");
+
+    await capture();
+
+    expect(buffer.read()).toBe(`${LINE}\n`);
+  });
+
+  // 접근자 미등록은 경합이 아니라 "쓸 버퍼가 존재하지 않는다"다 — 버퍼를 소유한
+  // `useSourceMode`(App 수명)가 마운트돼 있지 않다는 뜻이고, 그러면 나중에 디스크를
+  // 덮어쓸 버퍼도 없다. 정리 조작 셋과 같은 폴백이다(`applyTaskWrite`).
+  it("소스 버퍼 접근자가 없으면 디스크로 폴백한다", async () => {
+    openSourceTab(false);
+    useEditorStore.setState({ sourceBufferAccess: null });
+    vi.mocked(appendTaskLine).mockResolvedValue(LINE);
+
+    await capture();
+
+    expect(appendTaskLine).toHaveBeenCalledWith("/v/Inbox.md", LINE);
+  });
+
+  it("접근자도 없고 탭이 dirty면 어디에도 붙이지 않는다", async () => {
+    openSourceTab(true);
+    useEditorStore.setState({ sourceBufferAccess: null });
+
+    await rejectsWithCode(capture(), "dirtyTab");
 
     expect(appendTaskLine).not.toHaveBeenCalled();
     expect(useFileStore.getState().openFiles.size).toBe(0);

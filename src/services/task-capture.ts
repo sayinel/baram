@@ -19,7 +19,10 @@ import {
   normalizePath,
   stripTrailingSeparators,
 } from "../utils/path-utils";
-import { resolveTaskWriteTarget } from "../utils/tasks/apply-task-write";
+import {
+  markSourceTabDirty,
+  resolveTaskWriteTarget,
+} from "../utils/tasks/apply-task-write";
 import { resolveDateInput } from "../utils/tasks/task-date-input";
 import {
   DATE_FIELDS,
@@ -114,11 +117,31 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
   const path = resolveCapturePath(rootPath, captureFile);
 
   const target = resolveTaskWriteTarget(path, editor);
-  // ‼️ `!== "document"`이지 `=== "disk"`가 아니다. §312 이후 소스 모드 탭은 dirty·활성과
-  // 무관하게 `source` 판정을 받는데, 그 탭에서 권위 있는 텍스트는 CodeMirror 버퍼다 —
-  // 아래 라이브 문서 경로로 붙이면 저장 시점에 버퍼가 그 줄을 통째로 지운다. 디스크로
-  // 보내면 `assertNoUnsavedTab`이 그 탭의 상태를 보고 판정한다: 저장된 탭이면 워처의
-  // 자동 리로드가 버퍼까지 갱신하고, 저장하지 않은 탭이면 붙이지 않고 던진다.
+
+  // §312 소스 모드 탭 — 화면에 보이고 저장이 실제로 쓰는 권위 있는 텍스트는 CodeMirror
+  // 버퍼다(`handleSave`, use-file-operations.ts:231-232). 정리 조작 셋은 이미 그 버퍼에
+  // 쓴다(`writeToSourceBuffer`·`deleteFromSourceBuffer`); 캡처만 다른 곳으로 보내면 다음
+  // 저장이 붙인 줄을 덮어 지운다. 라이브 문서든 디스크든 결과는 같다.
+  //
+  // ‼️ 디스크로 보내는 것으로는 충분하지 않았다. 그 관문(`assertNoUnsavedTab`)은
+  // `tab.isDirty`로 판정하는데, 마크다운 소스 모드 타이핑은 일부러 dirty를 세우지
+  // 않으므로(`tab-surface-renderers.tsx:108`) 저장하지 않은 글을 들고 있는 탭이
+  // **clean으로 보이고** 그대로 통과했다.
+  if (target.kind === "source" && appendToSourceBuffer(target.tabId, line)) {
+    return line;
+  }
+
+  // ‼️ `!== "document"`이지 `=== "disk"`가 아니다. 위에서 버퍼에 붙이지 못한 `source`도
+  // 여기로 흘러야 한다 — 라이브 문서에 붙이면 저장 시점에 버퍼가 그 줄을 통째로 지운다.
+  //
+  // 여기 도달하는 경우는 셋이고, **그 셋 모두에서 `assertNoUnsavedTab`의 판정이 정직하다**:
+  // - 탭이 없는 파일 — 디스크가 유일한 진실원이다.
+  // - 소스 모드가 아닌 탭 — WYSIWYG 표면의 `isDirty`는 Tiptap `update`가 세우므로 참이다.
+  // - 소스 모드지만 접근자 미등록 — 버퍼를 소유한 `useSourceMode`(App 수명)가 마운트돼
+  //   있지 않다는 뜻이라 나중에 디스크를 덮어쓸 버퍼가 존재하지 않는다. 저장 경로도 같은
+  //   접근자를 쓰므로 그 상태에서는 저장 자체가 일어날 수 없다.
+  //
+  // `isDirty`가 거짓말하는 유일한 경우(마크다운 소스 모드 타이핑)는 위에서 갈라져 나갔다.
   if (target.kind !== "document" || !editor) {
     assertNoUnsavedTab(path);
     return appendTaskLine(path, line);
@@ -139,6 +162,31 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
 }
 
 /**
+ * §312 소스 버퍼 끝에 캡처 줄을 붙이고 그 탭을 dirty로 세운다.
+ *
+ * `false`는 "접근자 미등록" — 표면 하나가 아니라 버퍼를 소유한 `useSourceMode` 자체가
+ * 마운트돼 있지 않다는 뜻이다. 쓸 버퍼가 존재하지 않으므로 호출자가 디스크로 폴백한다
+ * (`applyTaskWrite`·`applyTaskDelete`가 쓰는 것과 같은 신호).
+ *
+ * 구분자 계산은 라이브 문서 경로와 같다 — 끝 개행이 없는 버퍼에 그냥 이으면 캡처가 앞
+ * 줄에 붙어 태스크가 아니라 그 줄의 꼬리가 된다.
+ *
+ * `markSourceTabDirty`를 부르는 이유는 정리 조작과 같다: 표시가 없으면 버퍼에만 있는 이
+ * 줄이 사용자에게 흔적을 남기지 않는다 — 저장하지 않고 닫아도 확인을 받지 못하고, 외부
+ * 변경이 오면 충돌 모달 대신 조용한 자동 리로드 경로로 간다.
+ */
+function appendToSourceBuffer(tabId: string, line: string): boolean {
+  const access = useEditorStore.getState().sourceBufferAccess;
+  if (!access) return false;
+
+  const content = access.getSourceBuffer(tabId);
+  const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+  access.setSourceBuffer(tabId, `${content}${sep}${line}\n`);
+  markSourceTabDirty(tabId);
+  return true;
+}
+
+/**
  * 디스크로 쓰기 직전의 마지막 확인 — 그 파일에 **저장하지 않은 탭**이 있으면
  * 쓰지 않고 던진다.
  *
@@ -151,6 +199,10 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
  * M2-a에서 이 규칙이 잃는 것은 다시 누르면 되는 체크 토글이었다. 여기서 잃는
  * 것은 다른 어디에도 없는 사용자의 문장이다. 그 탭의 캐시된 상태로 손을 뻗지
  * 않는 이유는 그것이 훅의 ref 안에 있어 여기서 닿을 수 없기 때문이다.
+ *
+ * ‼️ 이 관문은 소스 모드 탭을 판정하지 못한다 — `isDirty`는 마크다운 소스 타이핑에
+ * 세워지지 않으므로 그 탭에서는 거짓말이다. 그래서 소스 판정은 여기 오기 **전에**
+ * `appendToSourceBuffer`가 가져간다. 여기 남는 것은 `isDirty`가 참인 경우들뿐이다.
  */
 function assertNoUnsavedTab(path: string): void {
   const tab = useEditorStore.getState().tabs.find((t) => t.filePath === path);
