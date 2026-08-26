@@ -35,7 +35,12 @@ vi.mock("../../confirm-dialog", () => ({
 }));
 
 import { t } from "../../../i18n";
-import { deleteTaskLine, getFileTasks } from "../../../ipc/invoke";
+import {
+  deleteTaskLine,
+  getFileTasks,
+  previewTaskFieldLine,
+  setTaskField,
+} from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useTaskStore } from "../../../stores/tasks/task-store";
@@ -136,6 +141,9 @@ beforeEach(() => {
     disk = lines.join("\n");
     return Promise.resolve();
   });
+  vi.mocked(previewTaskFieldLine).mockImplementation((raw, _field, value) =>
+    Promise.resolve(`${raw} 📅${value}`),
+  );
   vi.mocked(getFileTasks).mockResolvedValue([]);
   vi.mocked(showConfirm).mockResolvedValue(true);
   useTaskStore.getState().clear();
@@ -208,6 +216,28 @@ describe("§312 소스 모드 탭에서 확인된 삭제", () => {
     expect(buffer).toBe("- [ ] 둘\n");
     expect(disk).toBe("- [ ] 둘\n");
     expect(deleteTaskLine).not.toHaveBeenCalled();
+  });
+
+  // 편집 조작도 같은 분기를 지난다 — 삭제만 덮으면 그 절반이 비어 있고, 날짜 부여의
+  // 손실은 조용하다(확인 대화상자도 없다).
+  it("날짜 부여도 clean 탭의 버퍼로 가고 저장에서 살아남는다", async () => {
+    openSourceTab();
+    useTaskStore.getState().setAll([task()]);
+
+    await runTaskTriageAction("dueToday", task(), ctx(FAKE_EDITOR));
+    save();
+
+    expect(disk).toBe("- [ ] 하나 📅2026-08-26\n- [ ] 둘\n");
+    expect(setTaskField).not.toHaveBeenCalled();
+  });
+
+  it("날짜 부여도 탭을 dirty로 표시한다", async () => {
+    openSourceTab();
+    useTaskStore.getState().setAll([task()]);
+
+    await runTaskTriageAction("dueToday", task(), ctx(FAKE_EDITOR));
+
+    expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
   });
 
   // 배경 탭의 버퍼도 살아 있고(`syncSourceBuffers`가 갈라진 버퍼를 **보존한다**),

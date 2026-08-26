@@ -298,6 +298,75 @@ describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", (
   });
 });
 
+// §312 소스 모드 탭은 dirty·활성과 무관하게 `source` 판정을 받는다. 그 탭에서 권위 있는
+// 텍스트는 CodeMirror 버퍼이고 저장도 그 버퍼를 쓰므로(`handleSave`), 라이브 문서에 붙인
+// 줄은 저장 시점에 통째로 사라진다 — 잃는 것이 체크 토글이 아니라 사용자의 문장이다.
+// 라이브 문서 경로는 `document` 판정에서만 열려야 한다.
+describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
+  function openSourceTab(isDirty: boolean) {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [
+        {
+          contextId: "c",
+          filePath: "/v/Inbox.md",
+          id: "t1",
+          isDirty,
+          isPinned: false,
+          title: "Inbox",
+        },
+      ],
+    });
+  }
+
+  beforeEach(() => {
+    vi.mocked(resolveTaskWriteTarget).mockReturnValue({
+      kind: "source",
+      tabId: "t1",
+    });
+    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] 먼저\n");
+  });
+
+  it("라이브 문서에 붙이지 않는다 — 저장이 버퍼를 쓰므로 그 줄이 사라진다", async () => {
+    openSourceTab(false);
+    vi.mocked(appendTaskLine).mockResolvedValue("x");
+    const editor = { state: { doc: {} } } as never;
+
+    await captureTask({
+      body: "은행 연락",
+      captureFile: "Inbox.md",
+      editor,
+      rootPath: "/v",
+      today: "2026-08-24",
+    });
+
+    expect(useFileStore.getState().openFiles.size).toBe(0);
+    expect(appendTaskLine).toHaveBeenCalledWith(
+      "/v/Inbox.md",
+      expect.any(String),
+    );
+  });
+
+  it("그 탭이 저장되지 않았으면 어디에도 붙이지 않는다", async () => {
+    openSourceTab(true);
+    const editor = { state: { doc: {} } } as never;
+
+    await rejectsWithCode(
+      captureTask({
+        body: "은행 연락",
+        captureFile: "Inbox.md",
+        editor,
+        rootPath: "/v",
+        today: "2026-08-24",
+      }),
+      "dirtyTab",
+    );
+
+    expect(appendTaskLine).not.toHaveBeenCalled();
+    expect(useFileStore.getState().openFiles.size).toBe(0);
+  });
+});
+
 // §312 리뷰 Major 5 — 아래 값들은 append 자체는 성공하지만 그 태스크가 어느
 // 버킷에도 영영 나타나지 않는다. `get_vault_tasks`는 볼트만 걷고, 워처는 감시
 // 루트 아래 마크다운 이벤트만 듣기 때문이다.
