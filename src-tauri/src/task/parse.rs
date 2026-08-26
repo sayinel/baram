@@ -25,7 +25,11 @@ const DATE_MARKERS: &[(&str, &str)] = &[
     ("❌", "cancelled"),
 ];
 
-pub(crate) const PRIORITY_MARKERS: &[(&str, i8)] = &[("🔺", 2), ("⏫", 1), ("🔽", -1), ("⏬", -2)];
+pub(super) const PRIORITY_MARKERS: &[(&str, i8)] = &[("🔺", 2), ("⏫", 1), ("🔽", -1), ("⏬", -2)];
+
+/// 반복 규칙 이모지. 값이 자유 텍스트라 **줄 끝까지**가 그 값이다(아래 `parse_task_line`).
+/// `tag.rs`가 필드 뭉치의 경계를 잴 때 같은 글자를 봐야 하므로 여기에 둔다.
+pub(super) const RECURRENCE_EMOJI: char = '🔁';
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -162,8 +166,8 @@ pub fn parse_task_line(line: &str) -> Option<ParsedTask> {
             text.replace_range(pos..pos + emoji.len(), "");
         }
     }
-    if let Some(pos) = text.find('🔁') {
-        let after = text[pos + '🔁'.len_utf8()..].trim().to_string();
+    if let Some(pos) = text.find(RECURRENCE_EMOJI) {
+        let after = text[pos + RECURRENCE_EMOJI.len_utf8()..].trim().to_string();
         if !after.is_empty() {
             task.recurrence = Some(after.clone());
         }

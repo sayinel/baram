@@ -244,6 +244,47 @@ mod tests {
         assert_eq!(disk, "- [ ] 회의 #someday 📅2026-08-30");
     }
 
+    /// 반복 줄은 태그 하나가 **옆 필드의 값**을 바꿀 수 있는 자리다 — 태그가 🔁 뒤로 가면
+    /// `recurrence`가 `"every week #someday"`가 된다. 두 경로가 같은 바이트를 내는 것뿐
+    /// 아니라 그 바이트를 파서가 어떻게 읽는지까지 여기서 못 박는다.
+    #[tokio::test]
+    async fn disk_and_preview_tag_paths_agree_byte_for_byte_on_a_recurrence_rule() {
+        let raw = "- [ ] draft 🔁 every week 📅2026-08-30";
+        let d = TempDir::new().unwrap();
+        let p = write_temp(&d, &format!("{}\n", raw)).await;
+
+        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
+            .await
+            .unwrap();
+        let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
+
+        assert_eq!(disk, document);
+        assert_eq!(disk, "- [ ] draft #someday 🔁 every week 📅2026-08-30");
+
+        let parsed = crate::task::parse_task_line(&disk).unwrap();
+        assert_eq!(parsed.recurrence.as_deref(), Some("every week"));
+        assert_eq!(parsed.due.as_deref(), Some("2026-08-30"));
+        assert_eq!(parsed.tags, vec!["someday".to_string()]);
+    }
+
+    /// 탭으로 구분된 줄도 `TASK_LINE_RE`(`\s+`)에는 정상적인 태스크다. 삽입 지점 탐색이
+    /// ASCII 공백만 보면 자리를 못 찾아 태그가 필드 **뒤**로 밀린다 — §303 순서를 어긴
+    /// 바이트가 두 경로 모두에서 만들어진다.
+    #[tokio::test]
+    async fn disk_and_preview_tag_paths_agree_byte_for_byte_on_a_tab_separator() {
+        let raw = "- [ ] 초안\t📅2026-08-30";
+        let d = TempDir::new().unwrap();
+        let p = write_temp(&d, &format!("{}\n", raw)).await;
+
+        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
+            .await
+            .unwrap();
+        let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
+
+        assert_eq!(disk, document);
+        assert_eq!(disk, "- [ ] 초안 #someday 📅2026-08-30");
+    }
+
     #[tokio::test]
     async fn tag_removal_agrees_across_both_paths_on_a_nested_item() {
         let raw = "    - [ ] 중첩 #someday 📅2026-08-30";

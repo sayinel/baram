@@ -3,7 +3,7 @@
 // `write.rs`의 `append_field`를 재사용할 수 없는 이유가 정확히 이것이다: 그것은 항상 줄
 // **끝**에 붙이므로 `- [ ] 초안 📅2026-08-30 ⏫ #someday`가 되어 순서를 어긴다. 캡처가
 // 새 줄을 짓는 순서(`buildCaptureLine`, src/services/task-capture.ts:101)와도 갈린다.
-use crate::task::parse::{is_valid_date, PRIORITY_MARKERS};
+use crate::task::parse::{is_valid_date, PRIORITY_MARKERS, RECURRENCE_EMOJI};
 use crate::task::write::{replace_line, FIELD_EMOJI};
 use crate::task::TaskError;
 
@@ -28,16 +28,23 @@ fn is_valid_tag(tag: &str) -> bool {
 
 /// 줄 맨 앞이 필드 하나면 그 바이트 길이. 아니면 `None`.
 ///
-/// 이모지 **뒤에 유효한 날짜가 와야** 필드다 — `strip_field`(write.rs)와 같은 기준이다.
-/// 본문 중간의 장식용 📅를 필드로 세면 그 앞에 태그를 끼워 사용자 문장을 갈라 놓는다.
-/// 이모지와 값 사이의 공백을 허용하는 것은 파서가 그 형태를 읽기 때문이다
+/// 날짜 이모지는 **뒤에 유효한 날짜가 와야** 필드다 — `strip_field`(write.rs)와 같은
+/// 기준이다. 본문 중간의 장식용 📅를 필드로 세면 그 앞에 태그를 끼워 사용자 문장을
+/// 갈라 놓는다. 이모지와 값 사이의 공백을 허용하는 것은 파서가 그 형태를 읽기 때문이다
 /// (Obsidian Tasks가 `📅 2026-08-30`으로 쓴다).
 ///
-/// 반복(🔁)은 값이 길이가 정해지지 않은 자유 텍스트("every week on Monday")라 여기서
-/// 끝을 잴 수 없다 — 필드로 세지 않으므로 반복이 있는 줄에서는 태그가 그 뒤에 붙는다.
+/// 반복(🔁)의 값은 자유 텍스트("every week on Monday")라 **줄 끝까지**가 그 값이다
+/// (`parse_task_line`이 그렇게 읽는다). 값의 끝을 잴 수 없다고 해서 필드에서 빼면 태그가
+/// 반복 텍스트 **뒤**에 붙어 값 자체를 오염시킨다 — 우리 파서는 `recurrence`를
+/// `"every week #someday"`로 읽고, Obsidian Tasks는 반복 문자 클래스(`[a-zA-Z0-9, !]`)에
+/// `#`이 없어 그 줄의 반복을 아예 읽지 못한다. 끝을 재지 못해도 이모지를 **경계로**
+/// 쓰는 데는 아무 문제가 없다: 여기부터 줄 끝까지가 통째로 반복 필드다.
 fn field_len(s: &str) -> Option<usize> {
     if let Some((marker, _)) = PRIORITY_MARKERS.iter().find(|(m, _)| s.starts_with(m)) {
         return Some(marker.len());
+    }
+    if s.starts_with(RECURRENCE_EMOJI) {
+        return Some(s.len());
     }
     for (_, emoji) in FIELD_EMOJI {
         let Some(after) = s.strip_prefix(emoji) else {
@@ -70,9 +77,16 @@ fn is_all_fields(s: &str) -> bool {
 ///
 /// "첫 번째 이모지 앞"이 아니라 "거기서 줄 끝까지가 전부 필드인 가장 이른 자리"다.
 /// 그래야 본문에 장식용 이모지가 있는 줄에서도 태그가 본문을 가르지 않는다.
+///
+/// 구분자는 ASCII 공백만이 아니라 **모든 공백**이다 — `is_all_fields`가 `trim`으로 전부
+/// 접고 `TASK_LINE_RE`도 `\s+`라 탭으로 구분된 줄이 정상 태스크로 인덱싱된다. 여기서만
+/// 어휘가 좁으면 그런 줄에서 자리를 못 찾아 태그가 필드 **뒤**, 줄 끝에 붙는다.
 fn field_run_start(trimmed: &str) -> usize {
-    for (i, _) in trimmed.match_indices(' ') {
-        let start = i + 1;
+    for (i, c) in trimmed.char_indices() {
+        if !c.is_whitespace() {
+            continue;
+        }
+        let start = i + c.len_utf8();
         if start < trimmed.len() && is_all_fields(&trimmed[start..]) {
             return start;
         }
@@ -135,15 +149,29 @@ pub fn apply_tag(current: &str, tag: &str, on: bool) -> Option<String> {
     let mut out = trimmed.to_string();
     // 뒤에서부터 지운다 — 앞에서 지우면 뒤 구간의 오프셋이 어긋난다. 하나만 지우고
     // "해제했다"고 말하면 거짓이므로 등장한 것을 모두 지운다.
-    for (mut start, end) in found.into_iter().rev() {
-        // 구분 공백 하나만 함께 흡수한다(`strip_field`와 같은 규칙) — 양쪽을 다 지우면
-        // 남은 글자가 서로 붙는다.
-        if start > 0 && out.as_bytes()[start - 1] == b' ' {
+    for (mut start, mut end) in found.into_iter().rev() {
+        // `(#someday)`처럼 태그 하나만 감싼 괄호는 짝째로 지운다. 여는 괄호를 태그 경계로
+        // 인정한 것이 `find_tag`(=`INLINE_TAG_RE`의 규칙)이므로 태그만 빼고 남는 `()`도
+        // 우리가 만든 쓰레기다. 안에 다른 글자가 더 있으면 사용자 괄호이므로 손대지 않는다.
+        if start > 0 && out.as_bytes()[start - 1] == b'(' && out.as_bytes().get(end) == Some(&b')')
+        {
             start -= 1;
+            end += 1;
+        }
+        // 앞의 공백을 **전부** 흡수한다. 뒤쪽 공백이 구분자로 남으므로 남은 글자가 서로
+        // 붙지 않고, 앞을 하나만 먹으면 `a  #someday  b`가 `a   b`로 **늘어난다** —
+        // 제거가 공백을 늘리면 붙였다 떼는 것이 제자리로 오지 않는다. 탭·U+3000처럼
+        // ASCII 공백이 아닌 구분자도 이 규칙 하나로 함께 사라진다.
+        while let Some(c) = out[..start].chars().next_back() {
+            if !c.is_whitespace() {
+                break;
+            }
+            start -= c.len_utf8();
         }
         out.replace_range(start..end, "");
     }
-    Some(out.trim_end().to_string())
+    // `trimmed`에 끝 공백이 없고 흡수가 앞쪽 공백을 남기지 않으므로 다시 다듬을 것이 없다.
+    Some(out)
 }
 
 pub async fn set_task_tag(
@@ -212,6 +240,87 @@ mod tests {
     fn removes_a_tab_separated_tag_without_leaving_trailing_whitespace() {
         let out = apply_tag("- [ ] 초안\t#someday", "someday", false).unwrap();
         assert_eq!(out, "- [ ] 초안");
+    }
+
+    /// F1: 반복(🔁)의 값은 줄 끝까지 이어지는 자유 텍스트다 — 그 **뒤**에 태그를 넣으면
+    /// 태그가 반복 값의 일부가 된다. 값의 끝을 잴 수 없어도 이모지를 **경계로** 쓰는 데는
+    /// 아무 문제가 없다: 필드 뭉치는 🔁 앞에서 시작한다.
+    #[test]
+    fn inserts_before_a_recurrence_rule() {
+        let out = apply_tag("- [ ] draft 🔁 every week 📅2026-08-30", "someday", true).unwrap();
+        assert_eq!(out, "- [ ] draft #someday 🔁 every week 📅2026-08-30");
+    }
+
+    /// 문자열이 아니라 **파서가 읽는 값**이 이 결함의 실체다. 태그를 켠 뒤에도 반복 규칙은
+    /// `"every week"`여야 한다 — `"every week #someday"`가 되면 Baram은 값이 오염되고
+    /// Obsidian Tasks는 반복 문자 클래스(`[a-zA-Z0-9, !]`)에 `#`이 없어 그 줄의 반복을
+    /// 아예 읽지 못한다. 한 번의 태그 토글이 옆 필드의 뜻을 두 앱에서 모두 바꾼다.
+    #[test]
+    fn tagging_a_recurring_task_leaves_the_recurrence_value_intact() {
+        let out = apply_tag("- [ ] draft 🔁 every week 📅2026-08-30", "someday", true).unwrap();
+        let parsed = crate::task::parse_task_line(&out).unwrap();
+
+        assert_eq!(parsed.recurrence.as_deref(), Some("every week"));
+        assert_eq!(parsed.due.as_deref(), Some("2026-08-30"));
+        assert_eq!(parsed.tags, vec!["someday".to_string()]);
+        assert_eq!(parsed.text, "draft #someday");
+    }
+
+    /// 반복만 있는 줄에서도 마찬가지다 — 뒤따르는 날짜 필드가 경계를 대신 그어 주지 않는다.
+    #[test]
+    fn inserts_before_a_recurrence_rule_that_ends_the_line() {
+        let out = apply_tag("- [ ] draft 🔁 every week", "someday", true).unwrap();
+        assert_eq!(out, "- [ ] draft #someday 🔁 every week");
+        assert_eq!(
+            crate::task::parse_task_line(&out).unwrap().recurrence,
+            Some("every week".to_string())
+        );
+    }
+
+    /// 🔁만은 "장식용 이모지"를 가려낼 수 없다 — 값이 자유 텍스트라 파서도 그 줄을 이미
+    /// 반복 태스크로 읽는다(`recurrence = "재확인 필요"`). 그러니 날짜 이모지와 달리
+    /// 본문처럼 취급할 수 없고, 취급하면 태그가 반복 값 안으로 들어간다. 의도된 차이다.
+    #[test]
+    fn treats_a_recurrence_emoji_as_a_boundary_even_when_it_reads_like_body_text() {
+        let out = apply_tag("- [ ] 회의 🔁 재확인 필요", "someday", true).unwrap();
+        assert_eq!(out, "- [ ] 회의 #someday 🔁 재확인 필요");
+
+        let parsed = crate::task::parse_task_line(&out).unwrap();
+        assert_eq!(parsed.recurrence.as_deref(), Some("재확인 필요"));
+        assert_eq!(parsed.tags, vec!["someday".to_string()]);
+    }
+
+    /// F2: `TASK_LINE_RE`가 `\s+`라 탭으로 구분된 줄도 정상적인 태스크로 인덱싱된다.
+    /// 삽입 지점 탐색이 ASCII 공백만 훑으면 그런 줄에서는 자리를 못 찾아 태그가 줄 **끝**,
+    /// 즉 필드 뒤에 붙는다 — §303 순서를 어긴 바이트가 사용자 vault에 쓰인다.
+    #[test]
+    fn inserts_before_a_tab_separated_field() {
+        let out = apply_tag("- [ ] 초안\t📅2026-08-30", "someday", true).unwrap();
+        assert_eq!(out, "- [ ] 초안 #someday 📅2026-08-30");
+    }
+
+    /// 필드 사이가 탭이어도 뭉치의 시작을 찾아야 한다. 삽입 지점의 구분자만 공백으로
+    /// 정규화되고 뒤쪽은 사용자가 쓴 그대로 둔다.
+    #[test]
+    fn inserts_before_a_run_of_tab_separated_fields() {
+        let out = apply_tag("- [ ] 초안\t📅2026-08-30\t⏫", "someday", true).unwrap();
+        assert_eq!(out, "- [ ] 초안 #someday 📅2026-08-30\t⏫");
+    }
+
+    /// F3: `find_tag`이 여는 괄호를 태그 경계로 인정하므로(`INLINE_TAG_RE`와 같은 규칙)
+    /// `(#someday)`도 태그다. 태그만 지우고 나면 남는 `()`는 우리가 만든 쓰레기다.
+    #[test]
+    fn removing_a_parenthesised_tag_does_not_leave_empty_parentheses() {
+        let out = apply_tag("- [ ] 초안 (#someday) 📅2026-08-30", "someday", false).unwrap();
+        assert_eq!(out, "- [ ] 초안 📅2026-08-30");
+    }
+
+    /// F4: 제거가 공백을 **늘리는** 일은 없어야 한다. 앞의 공백을 하나만 흡수하면
+    /// 둘이 셋이 되어 붙였다 떼는 것이 항등이 아니게 된다.
+    #[test]
+    fn removing_a_tag_never_grows_the_surrounding_whitespace() {
+        let out = apply_tag("- [ ] a  #someday  📅2026-08-30", "someday", false).unwrap();
+        assert_eq!(out, "- [ ] a  📅2026-08-30");
     }
 
     #[test]
