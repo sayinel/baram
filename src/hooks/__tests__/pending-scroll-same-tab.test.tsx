@@ -109,6 +109,40 @@ describe("이미 활성인 탭의 태스크를 누를 때", () => {
     expect(useLinkStore.getState().pendingScrollPath).toBeNull();
   });
 
+  // §313 §5.11 검색 하이라이트 소비자는 주소를 보지 않고 `pendingScrollLine`을 집어
+  // 갔다. 그래서 배경 탭의 검색 결과를 누르면 **나가는 문서**의 그 줄로 커서가 가고,
+  // 줄 번호는 삼켜진 채 주소만 남아 다음 요청(위키링크 블록 점프 등)까지 조용히
+  // 버려졌다. "다른 파일 앞으로 온 요청은 적용하지 않는다"는 이 메커니즘의 약속이
+  // 하이라이트 경로에서도 지켜져야 한다.
+  it("검색 하이라이트가 함께 걸려도 다른 파일을 향한 요청은 이 문서를 건드리지 않는다", async () => {
+    mountEffects();
+
+    requestScroll("/v/other.md", { kind: "line", value: TASK_LINE_1BASED });
+    useUIStore.getState().setPendingSearchHighlight("task");
+
+    // 하이라이트가 소비되기를 기다린다 — §5.11 소비자가 실제로 돌았다는 증거다.
+    await waitFor(() =>
+      expect(useUIStore.getState().pendingSearchHighlight).toBeNull(),
+    );
+
+    expect(caretBlockText()).toBe("Title");
+    expect(useLinkStore.getState().pendingScrollLine).toBe(TASK_LINE_1BASED);
+    expect(useLinkStore.getState().pendingScrollPath).toBe("/v/other.md");
+  });
+
+  // 반대 방향 — 이 탭 앞으로 온 요청은 하이라이트가 함께 걸려도 배달돼야 한다.
+  // (같은 탭의 전역 검색 결과 클릭이 정확히 이 모양이다.)
+  it("이 파일을 향한 요청은 하이라이트가 함께 걸려도 그 줄로 간다", async () => {
+    mountEffects();
+
+    requestScroll(NOTE, { kind: "line", value: TASK_LINE_1BASED });
+    useUIStore.getState().setPendingSearchHighlight("task");
+
+    await waitFor(() => expect(caretBlockText()).toContain("task one"));
+    expect(useUIStore.getState().pendingSearchHighlight).toBeNull();
+    expect(useLinkStore.getState().pendingScrollPath).toBeNull();
+  });
+
   it("다른 파일을 향한 요청에는 커서를 옮기지 않고, 요청도 남겨 둔다", async () => {
     // 아직 열리지 않은(또는 배경 탭인) 파일을 향한 요청은 탭 전환이 배달한다.
     // 여기서 소비하면 화면에 있는 다른 문서를 그 줄 번호로 스크롤한다.

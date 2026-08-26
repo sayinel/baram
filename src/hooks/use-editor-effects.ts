@@ -15,7 +15,6 @@ import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
-import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 import { patchEditorContent } from "../utils/editor/patch-editor-content";
 import {
   scrollToTarget,
@@ -82,50 +81,24 @@ export function useEditorEffects({
   }, [editor, inlineAI]);
 
   // §5.11 Activate Find highlights from Global Search result click (same-tab case)
+  //
+  // §313 ‼️ 하이라이트만 켠다. 예전에는 이 자리가 `pendingScrollLine`도 함께 집어
+  // 갔는데, 그 값은 **주소를 보지 않고** 읽혔다. 그래서 배경 탭의 검색 결과를 누르면
+  // 커서가 나가는 문서의 그 줄로 갔고(스크롤 요청은 들어오는 문서 앞으로 온 것이다),
+  // 줄 번호는 삼켜진 채 주소만 남아 다음 요청 — 위키링크 블록 점프 같은 — 까지 조용히
+  // 버려졌다. 스크롤은 주소를 아는 소비자 셋에게만 맡긴다: 아래 §313 effect(같은 탭),
+  // 그리고 `useTabSwitching`의 keep-alive·`afterDocLoad` 분기(탭 전환). 셋 다
+  // `takeSameTabScroll`/`takePendingScroll`을 지나므로 주소가 다른 요청은 적용되지도,
+  // 소비되지도 않는다.
   const pendingSearchHighlight = useUIStore((s) => s.pendingSearchHighlight);
   useEffect(() => {
     if (!pendingSearchHighlight || !editor?.view) return;
     // If already consumed by activeTabId effect (tab-switch case), skip
     if (!useUIStore.getState().pendingSearchHighlight) return;
     useUIStore.getState().setPendingSearchHighlight(null);
-    // Also consume pending scroll line for same-tab navigation
-    const pendingLine = useLinkStore.getState().pendingScrollLine;
-    if (pendingLine !== null) {
-      useLinkStore.getState().setPendingScrollLine(null);
-    }
     // Delay to ensure editor state is settled after tab switch
     requestAnimationFrame(() => {
       if (!editor?.view) return;
-      // Scroll to specific line if pending (same-tab search result click)
-      if (pendingLine !== null) {
-        const { activeTabId: tabId, tabs: currentTabs } =
-          useEditorStore.getState();
-        const incomingTab = currentTabs.find((t) => t.id === tabId);
-        const content = incomingTab?.filePath
-          ? useFileStore.getState().openFiles.get(incomingTab.filePath)
-          : useFileStore.getState().openFiles.get(incomingTab?.id ?? "");
-        if (content !== undefined) {
-          const doc = editor.view.state.doc;
-          const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
-          const scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
-          try {
-            const resolvedPos = editor.view.state.doc.resolve(scrollPos);
-            const tr = editor.view.state.tr
-              .setSelection(TextSelection.near(resolvedPos))
-              .scrollIntoView();
-            editor.view.dispatch(tr);
-            editor.view.focus();
-            const domInfo = editor.view.domAtPos(scrollPos);
-            const el =
-              domInfo.node instanceof HTMLElement
-                ? domInfo.node
-                : domInfo.node.parentElement;
-            el?.scrollIntoView({ block: "center" });
-          } catch {
-            // ignore invalid position
-          }
-        }
-      }
       dispatchSetSearchTerm(editor.view, pendingSearchHighlight);
       setFindReplaceOpen(true);
       setFindReplaceMode("find");
