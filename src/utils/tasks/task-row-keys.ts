@@ -12,17 +12,31 @@
 // 없는 조작에서 그 차이가 오타 하나와 잃어버린 줄 하나를 가른다. 어느 쪽이든 확인 관문은
 // 조작 안에 있으므로(`confirmAndDeleteTaskLine`) 키 경로가 관문을 우회하지 않는다.
 
+import { layoutKey } from "../../extensions/plugins/vim/core/keys";
+
 export type TaskRowKeyAction =
   | { action: string; kind: "triage" }
   | { delta: number; kind: "focus" }
   | { kind: "menu" };
 
-/** `resolveTaskRowKey`가 보는 것 — React 이벤트 전체가 아니라 이 네 필드뿐이다. */
+/**
+ * `resolveTaskRowKey`가 보는 것 — React 이벤트 전체가 아니라 이 필드들뿐이다.
+ *
+ * `code`/`keyCode`/`isComposing`이 선택인 이유는 서로 다르다:
+ * - `code`는 한글 배열 폴백에만 필요하고, 라틴 배열에서는 `key`만으로 충분하다.
+ * - `keyCode`는 폐기된 필드다 — 내지 않는 환경이 있어도 `isComposing`이 남는다.
+ * - `isComposing`은 **React 합성 이벤트에 없다.** 호출부가 `nativeEvent`에서 꺼내
+ *   넘긴다(다이얼로그 셋이 `e.nativeEvent.isComposing`을 쓰는 것과 같은 이유).
+ */
 export interface TaskRowKeyEvent {
   altKey: boolean;
+  code?: string;
   ctrlKey: boolean;
+  isComposing?: boolean;
   key: string;
+  keyCode?: number;
   metaKey: boolean;
+  shiftKey: boolean;
 }
 
 /**
@@ -32,7 +46,7 @@ export interface TaskRowKeyEvent {
  * ‼️ 이 문자열과 아래 표가 갈리면 이 목록은 거짓말이 된다. `task-row-keys.test.ts`가
  * 목록의 모든 키가 실제로 동작하는지 확인한다.
  */
-export const TASK_ROW_KEYSHORTCUTS = "X T S Delete D";
+export const TASK_ROW_KEYSHORTCUTS = "X T S Delete Backspace D";
 
 /**
  * 정리 액션 id → 키 라벨. 메뉴가 이것을 항목 옆에 그려 키 경로를 **발견 가능하게** 한다 —
@@ -55,7 +69,17 @@ export const TASK_ROW_KEY_HINT: Record<string, string> = {
  */
 export function resolveTaskRowKey(e: TaskRowKeyEvent): null | TaskRowKeyAction {
   if (e.altKey || e.ctrlKey || e.metaKey) return null;
-  switch (e.key) {
+  // ‼️ 조합 중 keydown은 IME의 것이지 이 행의 것이 아니다 — 조합을 확정하려고 누른 키가
+  // 판정으로 새면 사용자가 내리지 않은 판정이 나간다. `Delete`/`Backspace`도 예외가
+  // 아니다: 어떤 입력기도 그 둘을 가져가지 않아 조합 중에도 그대로 도착하므로, 여기서
+  // 걸러 내지 않으면 IME가 살아 있는 동안 **되돌릴 수 없는 조작만** 반응한다.
+  if (e.isComposing || e.keyCode === 229) return null;
+  // 한글 배열에서 `x`는 `ㅌ`로 도착한다(기기 확인: `vim-code-block-boundary.ts`). 위
+  // 관문만으로는 못 잡는다 — `src/spike/ime-probe`의 2026-07-26 raw 로그상 이 WKWebView의
+  // 한글 입력은 조합 이벤트를 하나도 내지 않기 때문이다(`cm-instance.ts:112`). 판정 규칙은
+  // §298 vim 코어의 `layoutKey`를 그대로 쓴다: "한글 문자 + 평범한 글자 물리 키"일 때만
+  // 라틴 글자로 되돌리므로 dvorak 재배치와 shift 기호는 손대지 않는다.
+  switch (layoutKey(e)) {
     case "ArrowDown":
     case "j":
       return { delta: 1, kind: "focus" };

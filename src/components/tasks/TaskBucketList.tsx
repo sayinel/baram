@@ -104,7 +104,19 @@ export function TaskBucketList({
   // 소유한 §315의 몫이다).
   const handleRowKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLLIElement>, task: TaskEntry) => {
-      const action = resolveTaskRowKey(e);
+      const action = resolveTaskRowKey({
+        altKey: e.altKey,
+        code: e.code,
+        ctrlKey: e.ctrlKey,
+        // ‼️ `isComposing`은 React 합성 이벤트에 **없다** — `nativeEvent`에서 꺼낸다.
+        // 합성 이벤트를 통째로 넘기면 그 필드가 선택이라 타입은 통과하고 IME 관문만
+        // 조용히 꺼진다(다이얼로그 셋이 `e.nativeEvent.isComposing`을 쓰는 이유).
+        isComposing: e.nativeEvent.isComposing,
+        key: e.key,
+        keyCode: e.keyCode,
+        metaKey: e.metaKey,
+        shiftKey: e.shiftKey,
+      });
       if (!action) return;
       e.preventDefault();
       switch (action.kind) {

@@ -95,9 +95,20 @@ beforeEach(() => {
   useUIStore.getState().dismissToast();
 });
 
-afterEach(() => {
+afterEach(async () => {
   // 확인 대화상자는 document.body에 직접 붙는다 — RTL cleanup은 자기 컨테이너만 치운다.
-  document.querySelectorAll(".ai-prompt-overlay").forEach((n) => n.remove());
+  //
+  // ‼️ 뜯어내지 않고 **취소로 닫는다.** `showConfirm`의 프로미스는 사용자가 답할 때만
+  // 풀린다(프로덕션에는 이 오버레이를 밖에서 지우는 코드가 없다 — 확인·취소·바깥 클릭·
+  // Enter·Escape가 전부다). DOM에서 그냥 지우면 그 프로미스가 영영 pending으로 남아
+  // `confirmAndDeleteTaskLine`의 재진입 잠금이 걸린 채 다음 테스트로 넘어가고, 그 테스트의
+  // 삭제는 조용히 아무 일도 하지 않는다.
+  for (const node of document.querySelectorAll(".ai-prompt-overlay")) {
+    node.querySelector<HTMLButtonElement>(".ai-prompt-btn-cancel")?.click();
+    node.remove();
+  }
+  // `finally`가 도는 마이크로태스크까지 흘린다.
+  await new Promise((resolve) => setTimeout(resolve, 0));
 });
 
 describe("§312 네 판정에 키 한 번으로 닿는다", () => {
@@ -299,5 +310,111 @@ describe("§312 입력란에서 친 글자는 판정이 아니다", () => {
 
     expect(setTaskField).not.toHaveBeenCalled();
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+});
+
+/** 모든 마이크로태스크를 흘린다 — "아직 부르지 않았다"를 믿을 수 있게 하는 조건. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// §312 IME. 표 자체는 `utils/tasks/__tests__/task-row-keys.test.ts`가 본다 — 여기서 보는
+// 것은 그 관문이 실제로 **배선돼 있는가**다. `isComposing`은 React 합성 이벤트에 없어서
+// `nativeEvent`에서 꺼내야 하는데, 필드가 선택이라 빠뜨려도 타입은 통과한다. 즉 순수
+// 테스트만으로는 관문이 꺼져 있어도 초록불이다.
+describe("§312 IME가 가져간 키는 행의 것이 아니다", () => {
+  it("조합 중인 키는 어떤 판정도 내지 않는다 — 화면도 파일도 그대로다", async () => {
+    const row = renderPanel();
+
+    for (const key of ["x", "t", "s", "d", "Delete", "Backspace"]) {
+      fireEvent.keyDown(row, { isComposing: true, key });
+    }
+    await flush();
+
+    expect(setTaskState).not.toHaveBeenCalled();
+    expect(setTaskField).not.toHaveBeenCalled();
+    expect(setTaskTag).not.toHaveBeenCalled();
+    expect(deleteTaskLine).not.toHaveBeenCalled();
+    // 화면에도 아무 일이 없어야 한다 — 메뉴도, 확인 대화상자도 열리지 않는다.
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(overlay()).toBeNull();
+    expect(useTaskStore.getState().tasks[0].raw).toBe("- [ ] 하나");
+  });
+
+  // ‼️ 파괴적 판정을 따로 못 박는다. 조합 중 `Delete`가 새면 확인 관문이 뜨긴 하지만,
+  // 사용자가 누른 것은 조합을 끝내려던 키다 — 지울 의사를 표시한 적이 없다.
+  it("조합 중 Delete는 확인조차 띄우지 않는다", async () => {
+    const row = renderPanel();
+
+    fireEvent.keyDown(row, { isComposing: true, key: "Delete" });
+    await flush();
+
+    expect(overlay()).toBeNull();
+    expect(deleteTaskLine).not.toHaveBeenCalled();
+  });
+});
+
+// 한글 입력 상태에서 글자키는 자모로 도착한다(`x` → `ㅌ`). 폴백이 없으면 세 안전한 판정과
+// 메뉴 키만 죽고, 어떤 입력기도 가져가지 않는 `Delete`/`Backspace`는 그대로 살아남는다 —
+// 한국어 사용자에게 **되돌릴 수 없는 조작만 닿는** 비대칭이다. 아래 넷이 그 비대칭이
+// 없다는 증거다.
+describe("§312 한글 배열에서도 네 판정 모두 닿는다", () => {
+  it("ㅌ(KeyX)는 그 줄을 완료로 바꾼다", async () => {
+    let file = "- [ ] 하나\n";
+    setTaskState.mockImplementation(async (_p, line, raw) => {
+      const lines = file.split("\n");
+      if (lines[line as number] !== raw) throw "stale";
+      lines[line as number] = raw.replace("- [ ]", "- [x]");
+      file = lines.join("\n");
+      return lines[line as number];
+    });
+    const row = renderPanel();
+
+    fireEvent.keyDown(row, { code: "KeyX", key: "ㅌ" });
+
+    await waitFor(() => expect(file).toBe("- [x] 하나\n"));
+  });
+
+  it("ㅅ(KeyT)는 그 줄에 오늘 기한을 적는다", async () => {
+    let file = "- [ ] 하나\n";
+    setTaskField.mockImplementation(async (_p, line, raw, _f, value) => {
+      const lines = file.split("\n");
+      if (lines[line as number] !== raw) throw "stale";
+      lines[line as number] = `${raw} 📅${value}`;
+      file = lines.join("\n");
+      return lines[line as number];
+    });
+    const row = renderPanel();
+
+    fireEvent.keyDown(row, { code: "KeyT", key: "ㅅ" });
+
+    await waitFor(() =>
+      expect(file).toMatch(/^- \[ \] 하나 📅\d{4}-\d{2}-\d{2}\n$/),
+    );
+  });
+
+  it("ㄴ(KeyS)는 그 줄에 #someday를 적는다", async () => {
+    let file = "- [ ] 하나\n";
+    setTaskTag.mockImplementation(async (_p, line, raw, tag) => {
+      const lines = file.split("\n");
+      if (lines[line as number] !== raw) throw "stale";
+      lines[line as number] = `${raw} #${tag}`;
+      file = lines.join("\n");
+      return lines[line as number];
+    });
+    const row = renderPanel();
+
+    fireEvent.keyDown(row, { code: "KeyS", key: "ㄴ" });
+
+    await waitFor(() => expect(file).toBe("- [ ] 하나 #someday\n"));
+  });
+
+  it("ㅇ(KeyD)는 메뉴를 연다", () => {
+    const row = renderPanel();
+
+    fireEvent.keyDown(row, { code: "KeyD", key: "ㅇ" });
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(deleteTaskLine).not.toHaveBeenCalled();
   });
 });
