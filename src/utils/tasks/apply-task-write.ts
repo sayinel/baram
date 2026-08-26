@@ -121,6 +121,25 @@ export async function applyToContent(
 }
 
 /**
+ * 이 파일을 **디스크에서 다시 읽어도 되는가**.
+ *
+ * `isUnsavedWrite`와 갈라지는 지점이 정확히 하나 있다: 소스·문서 경로의 `stale`이다.
+ * 아무것도 쓰이지 않았으니 스토어에 패치할 `raw`가 없고(그래서 `isUnsavedWrite`는 거짓이다),
+ * 그렇다고 디스크가 진실원인 것도 아니다 — 그 파일의 진실은 아직 저장되지 않은 버퍼이고,
+ * 다시 읽으면 같은 세션이 그 버퍼에 이미 만들어 둔 **다른 줄의 변경**까지 옛 디스크
+ * 내용으로 되돌아간다. 두 술어를 하나로 합칠 수 없는 이유가 이것이다: 하나는 "패치할
+ * 값을 들고 있는가", 다른 하나는 "다시 읽어도 되는가"이고 세 번째 경우에서 답이 다르다.
+ *
+ * `null`(쓰기가 예외로 실패)은 참이다 — 무엇이 남았는지 알 수 없으니 디스크를 다시 읽어
+ * 스토어를 사실과 맞추는 것이 맞다.
+ */
+export function isDiskAuthoritative(result: null | TaskWriteResult): boolean {
+  if (result === null) return true;
+  if (result.kind === "stale") return result.target === "disk";
+  return result.kind === "disk";
+}
+
+/**
  * 이 결과가 **아직 디스크에 없는가**. 호출자는 그때 파일을 다시 읽으면 안 되고
  * (읽으면 방금 만든 변경이 되돌아간다) 태스크 스토어를 직접 패치해야 한다.
  *

@@ -27,6 +27,17 @@ vi.mock("../../../utils/confirm-dialog", () => ({
 vi.mock("../../../utils/tasks/apply-task-write", () => ({
   applyTaskWrite: vi.fn(),
   applyToContent: vi.fn(),
+  // 술어는 vi.fn()으로 두지 않는다 — undefined를 부르면 TypeError가 나 회계가
+  // 전부 `failed`로 흘러가고, 이 파일의 보고 문구 단정이 조용히 다른 것을 재게 된다.
+  // 진짜와 같은 규칙을 적는다. 진짜 구현은 apply-task-write.test.ts가 핀한다.
+  isDiskAuthoritative: (r: null | { kind: string; target?: string }) =>
+    r === null
+      ? true
+      : r.kind === "stale"
+        ? r.target === "disk"
+        : r.kind === "disk",
+  isUnsavedWrite: (r: null | { kind: string }) =>
+    r?.kind === "document" || r?.kind === "source",
   resolveTaskWriteTarget: vi.fn(() => ({ kind: "disk" })),
 }));
 

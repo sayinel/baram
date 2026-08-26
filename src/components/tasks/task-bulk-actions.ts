@@ -24,6 +24,7 @@ import { logger } from "../../utils/logger";
 import {
   applyTaskWrite,
   applyToContent,
+  isDiskAuthoritative,
   isUnsavedWrite,
   resolveTaskWriteTarget,
 } from "../../utils/tasks/apply-task-write";
@@ -208,7 +209,7 @@ async function writeOneToDisk(
       // ‼️ 어디에 썼는지는 결과가 말한다. 라우터에 다시 물으면 같은 사실의 진실원이
       // 둘이 되고(접근자 미등록이면 `source` 판정도 디스크로 흘러간다) 그 둘이 갈라지는
       // 순간 이 회계가 거짓이 된다.
-      if (r.target === "disk") diskPaths.add(task.path);
+      if (isDiskAuthoritative(r)) diskPaths.add(task.path);
       return;
     }
     counts.updated += 1;

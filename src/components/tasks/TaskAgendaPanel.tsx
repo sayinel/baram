@@ -23,6 +23,7 @@ import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";
 import {
   applyTaskWrite,
+  isDiskAuthoritative,
   isUnsavedWrite,
 } from "../../utils/tasks/apply-task-write";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
@@ -133,8 +134,12 @@ export function TaskAgendaPanel() {
         });
         return;
       }
-      // 디스크에 썼거나(kind: "disk") 경합으로 거절됐다(kind: "stale") — 양쪽 다
-      // 디스크가 진실원이므로 그 파일만 다시 읽는다.
+      // ‼️ `stale`을 전부 "디스크가 진실원"으로 뭉뚱그리면 안 된다. 소스·문서 경로에서
+      // 거절된 것이면 그 파일의 진실은 여전히 저장되지 않은 버퍼이고, 다시 읽으면 같은
+      // 세션이 그 버퍼에 만들어 둔 다른 줄의 변경이 옛 디스크 내용으로 되돌아간다.
+      if (!isDiskAuthoritative(result)) return;
+      // 디스크에 썼거나(kind: "disk") 디스크에서 거절됐다(stale·target "disk") 또는
+      // 예외로 실패했다 — 전부 디스크가 진실원이므로 그 파일만 다시 읽는다.
       await refreshFileTasks(task.path, rootPath, tasksExcludePaths);
     },
     [tasksRecordDoneDate, rootPath, tasksExcludePaths, now, editor],

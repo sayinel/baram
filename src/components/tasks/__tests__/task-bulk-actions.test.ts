@@ -10,6 +10,12 @@ vi.mock("../../../utils/tasks/apply-task-write", () => ({
   applyToContent: vi.fn(),
   // 술어는 모킹하지 않고 진짜와 같은 규칙을 적는다 — vi.fn()으로 두면 이 파일의
   // 회계 단정이 "디스크였는가"를 묻지 못한다. 진짜 구현은 apply-task-write.test.ts가 핀한다.
+  isDiskAuthoritative: (r: null | { kind: string; target?: string }) =>
+    r === null
+      ? true
+      : r.kind === "stale"
+        ? r.target === "disk"
+        : r.kind === "disk",
   isUnsavedWrite: (r: null | { kind: string }) =>
     r?.kind === "document" || r?.kind === "source",
   resolveTaskWriteTarget: vi.fn(() => ({ kind: "disk" })),

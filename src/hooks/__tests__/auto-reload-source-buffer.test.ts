@@ -28,6 +28,7 @@ import type { EditorTab } from "../../stores/editor/editor";
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 import { triggerAutoReload } from "../use-file-operations";
 
 const FRESH = "- [x] alpha (from disk)\n";
@@ -53,6 +54,7 @@ beforeEach(() => {
   readFile.mockClear();
   readFile.mockResolvedValue(FRESH);
   useFileStore.setState({ openFiles: new Map() });
+  useUIStore.getState().dismissToast();
   useEditorStore.setState({
     activeTabId: null,
     mruOrder: [],
@@ -178,6 +180,21 @@ describe("triggerAutoReload — source buffer", () => {
     expect(buffers.get("b")).toBe("keep b");
   });
 
+  it("overwrites a diverged buffer when the user consented (force)", async () => {
+    // 충돌 모달의 "Reload External Changes". 모달은 dirty 탭에서만 뜨고 그 버퍼는 거의
+    // 정의상 갈라져 있으므로, force가 없으면 이 버튼은 소스 표면에서 아무 일도 하지 않는다.
+    cacheOnDisk("/v/a.md", "- [ ] alpha\n");
+    buffers.set("a", "- [ ] alpha\n\n버리기로 한 로컬 편집\n");
+    useEditorStore.setState({
+      sourceModeTabs: ["a"],
+      tabs: [tab("a", "/v/a.md")],
+    });
+
+    await triggerAutoReload("/v/a.md", 123, { force: true });
+
+    expect(buffers.get("a")).toBe(FRESH);
+  });
+
   it("is a no-op when no source surface is mounted", async () => {
     // 접근자가 없으면 버퍼를 쥔 훅 자체가 없다 — 나중에 디스크를 덮을 버퍼도 없다.
     useEditorStore.setState({
@@ -188,5 +205,56 @@ describe("triggerAutoReload — source buffer", () => {
 
     await expect(triggerAutoReload("/v/a.md", 123)).resolves.toBeUndefined();
     expect(buffers.size).toBe(0);
+  });
+});
+
+// ‼️ 토스트가 일어나지 않은 일을 말하면, 사용자는 화면에 남은 자기 텍스트를 "리로드된
+// 최신 내용"으로 읽는다. 관문이 무엇을 했든 그 문장이 사실이어야 한다.
+describe("triggerAutoReload — the toast tells the truth", () => {
+  it("says the unsaved edits were kept when a diverged surface was skipped", async () => {
+    cacheOnDisk("/v/a.md", "- [ ] alpha\n");
+    buffers.set("a", "- [ ] alpha\n\n방금 친 문단\n");
+    useEditorStore.setState({
+      sourceModeTabs: ["a"],
+      tabs: [tab("a", "/v/a.md")],
+    });
+
+    await triggerAutoReload("/v/a.md", 123);
+
+    const toast = useUIStore.getState().toast;
+    expect(toast?.message).toBe(
+      "a.md changed on disk — your unsaved edits were kept",
+    );
+    expect(toast?.message).not.toContain("Reloaded");
+  });
+
+  it("says it reloaded when every surface actually took the disk text", async () => {
+    cacheOnDisk("/v/a.md", "- [ ] alpha (stale)\n");
+    buffers.set("a", "- [ ] alpha (stale)\n");
+    useEditorStore.setState({
+      sourceModeTabs: ["a"],
+      tabs: [tab("a", "/v/a.md")],
+    });
+
+    await triggerAutoReload("/v/a.md", 123);
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      "Reloaded external changes: a.md",
+    );
+  });
+
+  it("says it reloaded after a consented reload — the discard really happened", async () => {
+    cacheOnDisk("/v/a.md", "- [ ] alpha\n");
+    buffers.set("a", "- [ ] alpha\n\n버리기로 한 로컬 편집\n");
+    useEditorStore.setState({
+      sourceModeTabs: ["a"],
+      tabs: [tab("a", "/v/a.md")],
+    });
+
+    await triggerAutoReload("/v/a.md", 123, { force: true });
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      "Reloaded external changes: a.md",
+    );
   });
 });

@@ -95,6 +95,13 @@ export function useAutoSave(editor: Editor | null) {
     try {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
       await writeFile(pending.filePath, markdown);
+      // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
+      // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
+      // 쓰는 자동 리로드의 갈라짐 판정(use-file-operations.ts의 `syncSourceBuffers`)이
+      // 멀쩡한 버퍼를 "갈라졌다"고 오판해 외부 변경을 화면에 반영하지 않는다 — 그러면서
+      // `lastSaveMtime`은 올라가므로 다음 저장이 그 외부 변경을 디스크에서 지운다.
+      // 그 캐시를 읽는 읽기 전용 패널들(PropertiesPanel·Skill 미리보기)도 함께 낫는다.
+      useFileStore.getState().setFileContent(pending.filePath, markdown);
       markDirty(pending.id, false);
       // After save, current doc becomes the new baseline for dirty detection
       updateOriginalDoc(pending.id, editor.state.doc);

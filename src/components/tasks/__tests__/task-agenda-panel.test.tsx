@@ -521,4 +521,37 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
     expect(patched.done).toBe("2026-08-24");
     expect(patched.raw).toBe("- [x] 하나 ✅2026-08-24");
   });
+
+  it("경합으로 거절돼도 같은 버퍼의 다른 변경을 되돌리지 않는다", async () => {
+    // ‼️ stale은 "아무 일도 없었다"가 아니다. 소스 경로에서 거절됐다는 것은 그 파일의
+    // 진실이 아직 **저장되지 않은 버퍼**라는 뜻이고, 그 파일을 디스크에서 다시 읽으면
+    // 같은 세션이 이미 버퍼에 만들어 둔 다른 줄의 변경까지 옛 내용으로 되돌아간다.
+    //
+    // 픽스처: 0번 줄은 조금 전에 이 패널에서 오늘로 옮겼고(버퍼에만 있다), 1번 줄은
+    // 그 사이 버퍼에서 다른 텍스트가 돼 낙관적 잠금이 거절한다.
+    buffer = "- [ ] 하나 📅2026-08-30\n- [ ] 둘 (버퍼에서 바뀐 뒤)\n";
+    // 디스크는 아직 저장 전이라 두 줄 모두 옛 내용이다.
+    getFileTasks.mockResolvedValue([
+      task({ line: 0, raw: "- [ ] 하나" }),
+      task({ line: 1, raw: "- [ ] 둘", text: "둘" }),
+    ]);
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ due: "2026-08-30", line: 0, raw: "- [ ] 하나 📅2026-08-30" }),
+        task({ line: 1, raw: "- [ ] 둘", text: "둘" }),
+      ]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /둘/ }));
+
+    // 단정은 "다시 읽지 않았다"가 아니라 **먼저 만든 변경이 살아 있다**이다.
+    const first = useTaskStore.getState().tasks.find((t) => t.line === 0);
+    expect(first?.due).toBe("2026-08-30");
+    expect(first?.raw).toBe("- [ ] 하나 📅2026-08-30");
+  });
 });

@@ -26,6 +26,7 @@ import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import {
   applyTaskWrite,
+  isDiskAuthoritative,
   isUnsavedWrite,
   resolveTaskWriteTarget,
 } from "../apply-task-write";
@@ -513,17 +514,45 @@ describe("applyTaskWrite — 소스 경로 (소스 모드인 활성 + dirty 탭)
 });
 
 describe("isUnsavedWrite", () => {
-  // 호출자가 "이 결과는 디스크에 있는가"를 묻는 **유일한** 자리. 새 in-memory 경로가
-  // 늘 때 호출자마다 `=== "document"`를 고쳐 다니면 하나를 빠뜨리는 순간 그 경로의
-  // 변경이 디스크 재읽기로 되돌아간다.
+  // 호출자가 "이 결과가 **스토어에 패치할 새 줄을 들고 있는가**"를 묻는 유일한 자리.
+  // 새 in-memory 경로가 늘 때 호출자마다 `=== "document"`를 고쳐 다니면 하나를 빠뜨리는
+  // 순간 그 경로의 변경이 디스크 재읽기로 되돌아간다.
   it("문서·소스는 아직 디스크에 없다", () => {
     expect(isUnsavedWrite({ kind: "document", raw: "x" })).toBe(true);
     expect(isUnsavedWrite({ kind: "source", raw: "x" })).toBe(true);
   });
 
-  it("디스크·stale·null은 디스크가 진실원이다", () => {
+  it("stale에는 패치할 raw가 없다 — 어느 경로에서 났든", () => {
+    // ‼️ 여기서 거짓이라는 것이 "그러니 디스크를 다시 읽어도 된다"는 뜻은 아니다.
+    // 그 질문의 답은 isDiskAuthoritative가 따로 들고 있다(바로 아래).
     expect(isUnsavedWrite({ kind: "disk", raw: "x" })).toBe(false);
     expect(isUnsavedWrite({ kind: "stale", target: "source" })).toBe(false);
+    expect(isUnsavedWrite({ kind: "stale", target: "document" })).toBe(false);
     expect(isUnsavedWrite(null)).toBe(false);
+  });
+});
+
+describe("isDiskAuthoritative", () => {
+  // 두 술어가 갈라지는 지점을 여기서 고정한다. 소스·문서 경로의 stale은 패치할 값도
+  // 없고(위) 디스크를 다시 읽어서도 안 된다 — 그 파일의 진실은 저장되지 않은 버퍼다.
+  it("소스·문서 경로의 stale은 디스크가 진실원이 아니다", () => {
+    expect(isDiskAuthoritative({ kind: "stale", target: "source" })).toBe(
+      false,
+    );
+    expect(isDiskAuthoritative({ kind: "stale", target: "document" })).toBe(
+      false,
+    );
+    expect(isDiskAuthoritative({ kind: "document", raw: "x" })).toBe(false);
+    expect(isDiskAuthoritative({ kind: "source", raw: "x" })).toBe(false);
+  });
+
+  it("디스크 경로는 성공이든 거절이든 디스크가 진실원이다", () => {
+    expect(isDiskAuthoritative({ kind: "disk", raw: "x" })).toBe(true);
+    expect(isDiskAuthoritative({ kind: "stale", target: "disk" })).toBe(true);
+  });
+
+  it("예외로 실패한 쓰기(null)는 디스크를 다시 읽는다", () => {
+    // 무엇이 남았는지 알 수 없다 — 스토어를 사실과 맞추는 유일한 방법이 재읽기다.
+    expect(isDiskAuthoritative(null)).toBe(true);
   });
 });

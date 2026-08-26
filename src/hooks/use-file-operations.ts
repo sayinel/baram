@@ -21,6 +21,21 @@ import { logger } from "../utils/logger";
 import { openFileByPath } from "../utils/open-file";
 import { basename } from "../utils/path-utils";
 
+export interface AutoReloadOptions {
+  /**
+   * §312 갈라진 소스 버퍼까지 디스크 내용으로 **덮는다**.
+   *
+   * ‼️ 이것은 "사용자가 로컬 편집을 버리기로 동의했다"는 사실을 실어 나르는 값이다. 관문은
+   * 그 사실을 알 수 없다 — 저장되지 않은 편집과 방금 버리기로 한 편집은 버퍼만 봐서는
+   * 똑같이 생겼다. dirty 같은 것으로 안에서 유추하려 들면 정확히 그 추론이 이 결함을
+   * 만든다(충돌 모달은 **dirty 탭에서만** 뜨므로 dirty를 동의로 읽으면 관문 자체가 죽는다).
+   *
+   * 유일한 호출자는 충돌 모달의 "Reload External Changes"(App.tsx)다. 워처와 탭 전환의
+   * 자동 리로드는 동의를 받은 적이 없으므로 절대 넘기지 않는다.
+   */
+  force?: boolean;
+}
+
 interface UseFileOperationsParams {
   editor: Editor | null;
   getSourceBuffer: (tabId: string) => string;
@@ -48,6 +63,7 @@ export function showConflictModal(
 export async function triggerAutoReload(
   filePath: string,
   externalMtime: number,
+  options: AutoReloadOptions = {},
 ): Promise<void> {
   // PDFs are binary — keep the "" cache sentinel; the mtime bump below
   // refreshes the viewer iframe instead.
@@ -63,7 +79,14 @@ export async function triggerAutoReload(
 
   // §312 그리고 그 파일을 보여주는 소스 표면들. ‼️ 바이너리의 "" 센티널은 내용이
   // 아니라 자리 표시라 버퍼에 넣으면 남의 텍스트를 지운다.
-  if (!isBinary) syncSourceBuffers(filePath, freshContent, cachedBefore);
+  const kept = isBinary
+    ? 0
+    : syncSourceBuffers(
+        filePath,
+        freshContent,
+        cachedBefore,
+        options.force ?? false,
+      );
 
   // Sync mtime so the next auto-save doesn't see a false conflict
   useFileStore.getState().updateLastSaveMtime(filePath, externalMtime);
@@ -72,11 +95,24 @@ export async function triggerAutoReload(
   useEditorStore.getState().requestContentRefresh();
 
   // Surface a transient toast so the reload isn't silent (esp. with auto-save on)
+  //
+  // ‼️ 건너뛴 표면이 있으면 "리로드했다"는 거짓말이다 — 사용자가 보고 있는 화면은 여전히
+  // 자기 텍스트다. 무엇이 실제로 일어났는지를 말한다.
   useUIStore
     .getState()
-    .showToast(`Reloaded external changes: ${basename(filePath)}`);
+    .showToast(
+      kept > 0
+        ? `${basename(filePath)} changed on disk — your unsaved edits were kept`
+        : `Reloaded external changes: ${basename(filePath)}`,
+      kept > 0 ? "warning" : undefined,
+    );
 
-  logger.info("[triggerAutoReload] auto-reloaded", filePath);
+  logger.info(
+    kept > 0
+      ? "[triggerAutoReload] disk change not shown — diverged source buffers kept"
+      : "[triggerAutoReload] auto-reloaded",
+    filePath,
+  );
 }
 
 export function useFileOperations({
@@ -396,24 +432,40 @@ export function useFileOperations({
  * 버퍼와 화면에서 함께 사라진다 — 충돌 모달조차 뜨지 않는다. 갈라진 버퍼는 그대로 두는
  * 것이 맞고, 그 상황을 사용자에게 알리는 일은 `showConflictModal` 경로의 몫이다.
  *
+ * ‼️ `force`는 그 규칙의 **유일한** 예외다. 충돌 모달에서 "Reload"를 누른 사용자는 로컬
+ * 편집을 버리기로 이미 말했으므로, 여기서 지켜 주는 것이 오히려 그 지시를 무시하는 것이
+ * 된다(그리고 `updateLastSaveMtime`이 mtime 가드까지 지우므로, 남겨 둔 버퍼가 다음 저장에
+ * 디스크의 외부 변경을 덮는다). 동의는 호출자만 아는 사실이라 값으로 받는다.
+ *
  * 버퍼가 아직 없는 탭(로딩 중인 코드 탭)도 같은 규칙에 걸려 건너뛴다 — 갱신하지 않아도
  * 그 표면은 마운트할 때 새 캐시에서 내용을 받는다.
+ *
+ * @returns 갈라져 있어 **그대로 둔** 표면의 수. 0이 아니면 이 리로드는 화면에 보이지 않는다.
  */
 function syncSourceBuffers(
   filePath: string,
   freshContent: string,
   cachedContent: string | undefined,
-): void {
+  force: boolean,
+): number {
   const { sourceBufferAccess, sourceModeTabs, tabs } =
     useEditorStore.getState();
-  if (!sourceBufferAccess) return;
+  if (!sourceBufferAccess) return 0;
 
   // 비마크다운 탭은 항상 코드 표면이다 — 토글 집합에 들어가지 않는다.
   const alwaysSource = !isMarkdownFile(filePath);
+  let kept = 0;
   for (const tab of tabs) {
     if (tab.filePath !== filePath) continue;
     if (!alwaysSource && !sourceModeTabs.includes(tab.id)) continue;
-    if (sourceBufferAccess.getSourceBuffer(tab.id) !== cachedContent) continue;
+    if (
+      !force &&
+      sourceBufferAccess.getSourceBuffer(tab.id) !== cachedContent
+    ) {
+      kept += 1;
+      continue;
+    }
     sourceBufferAccess.setSourceBuffer(tab.id, freshContent);
   }
+  return kept;
 }
