@@ -161,15 +161,41 @@
   color: var(--color-status-danger);
 }
 
-/* §312 someday 토글 — 다른 필터 select와 같은 줄에 놓인다 */
+/* §312 someday 토글 — 켜져 있으면 #someday 태스크를 보여주는 필터다. select
+   3개와 한 줄(.task-panel-selects)에 있지만 이 라벨만 flex 기본값(0 1 auto)이라
+   select들이 서로 접힐 때 혼자 다음 줄로 밀려나고, 그 결과 "체크박스 + 단어"만
+   맨 위 버킷 헤더 위에 홀로 남는다 — 태스크 행(.task-row)도 정확히 같은 모양
+   (체크박스 + 텍스트, 테두리도 배경도 없음)이라 고아 태스크로 오인된다.
+
+   그래서 줄바꿈 위치가 아니라 **모양 자체**를 고친다: select와 같은 상자 언어
+   (배경·테두리·라운드, .task-panel-select와 동일한 값)를 입혀 필터 줄의 일원으로
+   읽히게 하고, 이 프레임은 상시 유지된다 — .task-row는 hover에서만 배경이 붙고
+   테두리는 아예 없으므로(위 .task-row 규칙) 어떤 폭에서도 데이터 행과 혼동될
+   여지가 없다. 체크박스는 네이티브 그대로 두어 포커스·키보드·checked 상태 안내를
+   공짜로 유지한다. */
 .task-panel-someday {
   display: flex;
+  flex: 0 1 auto;
   gap: 4px;
   align-items: center;
+  padding: 4px 8px;
   font-size: 12px;
   color: var(--color-text-default);
+  white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+/* 필터가 실제로 켜졌을 때(체크됨)는 대기 상태와 갈려야 "걸려 있다"는 사실이
+   보인다 — 그렇지 않으면 상시 동일한 상자라 켜졌는지 확인할 시각 경로가 없다.
+   :has()는 이 앱의 WKWebView가 지원한다(blocks.css의 .toggle 규칙 참고). */
+.task-panel-someday:has(input:checked) {
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
+  border-color: var(--color-accent-default);
 }
 
 /* §312 방치 배지 — 기한 초과 배지와 구분되게 경고색을 쓴다 */
