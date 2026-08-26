@@ -6,10 +6,10 @@
 
 /**
  * 낙관적 잠금 비교. Rust `replace_line`이 양변에 `.trim_end()`를 걸므로
- * 여기서도 같은 기준을 쓴다(`src-tauri/src/task/write.rs:38-40`).
+ * 여기서도 같은 기준을 쓴다(`src-tauri/src/task/write.rs:40`).
  *
  * 유니코드 정규화는 필요 없다 — `TaskEntry.raw`는 원본 소스 줄이고
- * (`src-tauri/src/task/mod.rs:78`) `openFiles`의 내용도 같은 원본이라
+ * (`src-tauri/src/task/mod.rs:81`) `openFiles`의 내용도 같은 원본이라
  * 양쪽 모두 정규화 전 형태끼리 비교된다.
  */
 export function isSameLine(a: string, b: string): boolean {

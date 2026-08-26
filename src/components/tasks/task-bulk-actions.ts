@@ -1,7 +1,7 @@
 // §309 기한 초과 일괄 조정 — 텍스트를 옮기지 않고 기한 필드만 오늘로 민다.
 //
 // 이 코드베이스에는 트랜잭션 다중 파일 쓰기 원시가 없다. 기존 배치의 표준 형태
-// (use-file-tree-crud.ts:69-113의 handleDeleteMany)를 따른다: 항목별 try/catch,
+// (`handleDeleteMany`, src/components/sidebar/hooks/use-file-tree-crud.ts:69)를 따른다: 항목별 try/catch,
 // 누적, 루프가 끝난 뒤 한 번 보고. 항목마다 낙관적 잠금이 걸려 있으므로 부분
 // 실패가 파일을 손상시키지는 않는다.
 //
@@ -110,7 +110,8 @@ export async function rescheduleOverdueToToday(
 
 /**
  * §309 기한 초과를 만든 필드를 그대로 민다 — `due`가 있으면 `due`, 없으면
- * `scheduled`다. 버킷은 `due ?? scheduled`로 판정하므로(task-buckets.ts:78-80)
+ * `scheduled`다. 버킷은 `due ?? scheduled`로 판정하므로(`effectiveDate`,
+ * task-buckets.ts:90-92)
  * `⏳`만 가진 태스크도 Overdue에 들어오는데, 거기에 무조건 `📅`를 붙이면
  * 사용자가 정한 적 없는 마감이 생기고 한 줄에 모순되는 두 날짜가 남는다.
  */

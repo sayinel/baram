@@ -1,11 +1,14 @@
 // §305 태스크 쓰기 라우터 — 열린 문서와 디스크 중 어디에 쓸지 한 곳에서 정한다.
 //
 // 초판은 "탭이 열려 있으면 openFiles에 쓴다"였지만 openFiles는 라이브 문서의
-// 거울이 아니다 — 마크다운 자동 저장(use-auto-save.ts:96-101)은 writeFile +
-// markDirty(false)만 하고 setFileContent를 부르지 않으므로, 사용자가 타이핑을
-// 시작한 순간부터 openFiles는 영원히 낡는다. 거기에 스플라이스해 넣고
-// requestContentRefresh를 부르면 방금 친 내용을 화면과 디스크 양쪽에서
-// 지워버린다. 그래서 문서 경로는 라이브 ProseMirror 문서에서 직접 읽고 쓴다.
+// **거울이 아니라 스냅샷**이다. 마크다운 자동 저장이 저장할 때마다 그 스냅샷을
+// 갱신하지만(use-auto-save.ts:97-104의 writeFile → setFileContent), 그것은
+// 마지막 타이핑에서 `autoSaveDelay`(기본 2초, general-settings.ts:70)가 지난
+// **뒤**다. 즉 타이핑을 시작한 순간부터 그 디바운스가 끝날 때까지 openFiles는
+// 화면보다 낡아 있고, 자동 저장이 꺼져 있으면 저장할 때까지 계속 낡아 있다.
+// 그 상태에서 openFiles에 스플라이스해 넣고 requestContentRefresh를 부르면
+// 방금 친 내용을 화면과 디스크 양쪽에서 지워버린다. 그래서 문서 경로는 라이브
+// ProseMirror 문서에서 직접 읽고 쓴다.
 
 import type { TaskEntry, TaskState } from "../../ipc/types";
 import type { Editor } from "@tiptap/react";
@@ -34,7 +37,7 @@ export type TaskChange =
     }
   /**
    * §312 태그 토글. `set_task_field`에 끼워 넣을 수 없다 — `FIELD_EMOJI`는 날짜 여섯뿐이고
-   * `apply_field`는 모르는 이름을 파일을 건드리기 전에 거절한다(write.rs:194). 삽입 위치도
+   * `apply_field`는 모르는 이름을 파일을 건드리기 전에 거절한다(write.rs:158-160). 삽입 위치도
    * 다르다: 필드는 줄 끝, 태그는 §303 순서상 이모지 필드 **앞**이다.
    */
   | { kind: "tag"; on: boolean; tag: string };
@@ -246,7 +249,7 @@ export function markSourceTabDirty(tabId: string): void {
  * 문서 경로는 그대로 "활성 + dirty" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
  * - 탭이 없다(닫힌 파일) → 디스크가 유일한 진실원.
  * - 배경 탭 → openFiles에 써도 나중에 그 탭으로 돌아오면 캐시된 PM 상태가
- *   덮어쓴다(use-tab-switching.ts:461-494는 openFiles가 아니라
+ *   덮어쓴다(use-tab-switching.ts:466-482는 openFiles가 아니라
  *   editorStateCache를 복원한다) — 방금 만든 변경이 사라지고 탭만 거짓으로
  *   dirty가 된다.
  * - 활성이지만 clean → WYSIWYG 표면의 clean은 소스 모드와 달리 진짜다(dirty를
@@ -348,7 +351,8 @@ async function writeToDocument(
  *
  * `openFiles`도 `requestContentRefresh`도 건드리지 않는다. 그 둘은 ProseMirror 표면을
  * 다시 채우는 통로인데 지금 보이는 것은 그 표면이 아니다 — 새로고침을 요청하면 숨어
- * 있는 문서만 흔들고 정작 화면은 그대로다. 저장 경로(`use-file-operations.ts:169`)도
+ * 있는 문서만 흔들고 정작 화면은 그대로다. 저장 경로(`handleSave`,
+ * `use-file-operations.ts:231-232`)도
  * 소스 모드 탭에서는 `openFiles`가 아니라 이 버퍼를 읽는다.
  *
  * `null`은 "접근자 미등록" — 이 파일의 표면 하나가 아니라 버퍼를 소유한

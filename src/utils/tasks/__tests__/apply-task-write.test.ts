@@ -434,7 +434,8 @@ describe("applyTaskWrite — 소스 경로 (소스 모드인 활성 + dirty 탭)
     expect(useEditorStore.getState().contentRefreshKey).toBe(before);
   });
 
-  // §305 디스크 경로가 지키는 것과 **같은 행렬**이다(task_cmd.rs:130-186 참조):
+  // §305 디스크 경로가 지키는 것과 **같은 행렬**이다(task_cmd.rs의
+  // `disk_and_preview_*_paths_agree_byte_for_byte_*` 테스트들 참조):
   // 줄바꿈 스타일과 끝 개행 유무는 같은 입력에 대해 바이트 단위로 같아야 한다.
   // 소스 경로만 여기서 어긋나면 소스 모드로 한 번 편집한 파일의 EOL이 바뀐다.
   it.each([
