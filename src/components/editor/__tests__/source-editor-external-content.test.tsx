@@ -166,7 +166,16 @@ describe("source surface — external buffer changes", () => {
     expect(scrollRequests).toEqual([]);
   });
 
-  it("keeps the undo history — the view is never rebuilt", async () => {
+  // ‼️ 이 테스트의 계약은 한 번 뒤집혔다. 예전에는 "외부 푸시를 **지나서** undo하면
+  // ORIGINAL에 닿는다"였다 — 즉 동기화가 실행 취소 스택에 올라가 있다는 사실을 못 박고
+  // 있었다. 그 계약이 §312 정리 쓰기를 데이터 손실로 만든다: 아젠다에서 지운 줄이 Cmd+Z
+  // 한 번에 되살아나고, 그 undo 트랜잭션에는 `ExternalSync` 표시가 없으므로 `onChange`가
+  // 되살아난 텍스트를 공유 버퍼에 그대로 써 넣는다. 스토어는 그 항목을 이미 빼 놓았으므로
+  // 그 파일의 다음 조작은 한 줄 위에 쓴다.
+  //
+  // 새 계약: **실행 취소는 사용자 자신의 편집만 되돌린다.** 스택은 그대로 살아 있고
+  // (뷰를 다시 만들지 않는다는 원래의 요점), 바깥에서 온 동기화는 거기에 없다.
+  it("undo only reverts the user's own edits — an external sync is not on the stack", async () => {
     const { buffer, pushBuffer, view } = renderEditor();
     await flushInit();
     const cm = viewOf(view.container);
@@ -175,7 +184,9 @@ describe("source surface — external buffer changes", () => {
     const typed = buffer.current;
     expect(typed).not.toBe(ORIGINAL);
 
-    pushBuffer(typed.replace("- [ ] alpha", "- [x] alpha"));
+    // §312 정리 쓰기가 버퍼에 도착한다.
+    const SYNCED = typed.replace("- [ ] alpha", "- [x] alpha");
+    pushBuffer(SYNCED);
 
     // ‼️ 동기화 **후에** 다시 집는다. 마운트 effect의 deps에 content가 들어가면 뷰가
     // destroy 후 재생성되는데, 앞에서 잡아둔 참조로 단정하면 죽은 뷰를 보면서 초록이 된다.
@@ -186,7 +197,29 @@ describe("source surface — external buffer changes", () => {
     let steps = 0;
     while (steps < 10 && undo(live)) steps++;
     expect(steps).toBeGreaterThan(0);
-    expect(live.state.doc.toString()).toBe(ORIGINAL);
+
+    // 사용자가 친 gamma는 사라지고, 정리 쓰기가 만든 `[x]`는 남는다.
+    expect(live.state.doc.toString()).toBe("- [x] alpha\n- [ ] beta\n");
+  });
+
+  // 위 테스트가 지키는 것을 **버퍼 쪽에서** 한 번 더 못 박는다. 되돌아온 텍스트는 뷰에만
+  // 머무르지 않는다 — undo 트랜잭션은 `ExternalSync` 표시가 없어 `onChange`를 태우고,
+  // 그 값이 곧 저장 대상 버퍼가 되기 때문이다. 지운 줄이 거기 다시 나타나면 사용자는
+  // 되돌릴 수 없는 조작을 확인해 놓고도 그 줄을 파일에서 다시 만나게 된다.
+  it("never resurrects a triage-deleted line into the shared buffer", async () => {
+    const { buffer, pushBuffer, view } = renderEditor();
+    await flushInit();
+    const cm = viewOf(view.container);
+
+    // 사용자가 소스 뷰에서 한 줄을 친 뒤, 아젠다에서 alpha 줄을 지운다.
+    type(cm, ORIGINAL.length, "- [ ] gamma\n");
+    pushBuffer(buffer.current.replace("- [ ] alpha\n", ""));
+    expect(cm.state.doc.toString()).toBe("- [ ] beta\n- [ ] gamma\n");
+
+    undo(cm);
+
+    expect(cm.state.doc.toString()).not.toContain("alpha");
+    expect(buffer.current).not.toContain("alpha");
   });
 
   it("does not echo the user's own typing back into the view", async () => {

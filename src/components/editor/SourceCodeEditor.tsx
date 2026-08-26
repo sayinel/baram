@@ -20,6 +20,7 @@ import {
   EditorSelection,
   EditorState,
   Prec,
+  Transaction,
 } from "@codemirror/state";
 import {
   drawSelection,
@@ -44,6 +45,23 @@ import { createVimController } from "./vim-controller";
  * 방어(`hasUserEdited`)가 "사용자가 쳤다"고 착각한다.
  */
 const ExternalSync = Annotation.define<boolean>();
+
+/**
+ * §312 바깥 버퍼를 화면에 반영하는 트랜잭션이 달고 나가는 표시 한 벌.
+ *
+ * `ExternalSync`만으로는 부족하다. 그것은 `onChange` 되쏘기와 `userEditedRef`만 막고,
+ * 트랜잭션은 여전히 **실행 취소 스택에 쌓인다**(`history()`가 아래 확장 목록에 있다).
+ * 그러면 아젠다에서 지운 줄이 Cmd+Z 한 번에 되살아나고 — 그 undo 트랜잭션에는 표시가
+ * 없으므로 — `onChange`가 되살아난 텍스트를 공유 버퍼에 그대로 써 넣는다. 태스크 스토어는
+ * 그 항목을 이미 빼 놓았으므로 그 파일의 다음 조작은 한 줄 위에 쓴다.
+ *
+ * 실행 취소는 사용자 자신의 편집만 되돌려야 한다. 바깥에서 온 변경은 이 표면이 만든 것이
+ * 아니므로 이 표면의 실행 취소 스택에 있을 자리가 없다.
+ */
+const EXTERNAL_SYNC_ANNOTATIONS = [
+  ExternalSync.of(true),
+  Transaction.addToHistory.of(false),
+];
 
 export interface SourceCodeEditorRef {
   getContent(): string;
@@ -276,7 +294,7 @@ export function SourceCodeEditor({
         const currentContent = view.state.doc.toString();
         if (currentContent !== expected) {
           view.dispatch({
-            annotations: ExternalSync.of(true),
+            annotations: EXTERNAL_SYNC_ANNOTATIONS,
             changes: {
               from: 0,
               to: view.state.doc.length,
@@ -329,7 +347,7 @@ export function SourceCodeEditor({
     const next = readAuthoritative();
     const change = textReplaceRange(view.state.doc.toString(), next);
     if (!change) return;
-    view.dispatch({ annotations: ExternalSync.of(true), changes: change });
+    view.dispatch({ annotations: EXTERNAL_SYNC_ANNOTATIONS, changes: change });
     // deps는 `content` 하나다. `readAuthoritative`는 ref만 닫고 있어 렌더마다 새로
     // 만들어도 결과가 같고, deps에 넣으면 렌더마다 effect가 돌면서 큰 문서의
     // doc.toString()을 반복한다.
