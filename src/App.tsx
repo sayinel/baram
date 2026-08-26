@@ -44,7 +44,7 @@ import { useCloseGuard } from "./hooks/use-close-guard";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import {
-  triggerAutoReload,
+  reloadAfterConflictConsent,
   useFileOperations,
 } from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
@@ -1117,16 +1117,8 @@ function App() {
             const result = await mergeTexts(base, local, external);
             setMergeState({ filePath, segments: result.segments });
           }}
-          onReload={(filePath, externalMtime) => {
-            // §312 ‼️ `force`가 없으면 이 버튼은 소스 표면에서 아무 일도 하지 않는다.
-            // 모달은 **dirty 탭에서만** 뜨고 dirty 탭의 버퍼는 거의 정의상 갈라져 있어,
-            // 자동 리로드의 갈라짐 관문이 사용자가 방금 덮어써 달라고 말한 그 탭을 건너뛴다.
-            // 여기가 앱 안에서 "로컬 편집을 버려도 좋다"는 동의가 실제로 존재하는 유일한
-            // 지점이다 — 그래서 force를 넘기는 곳도 여기 하나뿐이다.
-            void triggerAutoReload(filePath, externalMtime, {
-              force: true,
-            }).catch(() => {});
-          }}
+          // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조.
+          onReload={reloadAfterConflictConsent}
         />
         <ToastHost />
         {mergeState && (
