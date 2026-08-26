@@ -16,6 +16,7 @@ import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
+import { patchEditorContent } from "../utils/editor/patch-editor-content";
 import {
   scrollToTarget,
   takeSameTabScroll,
@@ -205,11 +206,29 @@ export function useEditorEffects({
   const contentRefreshKey = useEditorStore((s) => s.contentRefreshKey);
   useEffect(() => {
     if (!contentRefreshKey || !editor?.view) return;
-    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const {
+      activeTabId: tabId,
+      contentRefreshMode,
+      contentRefreshPath,
+      tabs: currentTabs,
+    } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
     if (!tab?.filePath) return;
+    // §313 다른 파일에 온 변경이면 이 탭의 일이 아니다. 이 관문이 없으면 배경 파일의
+    // 변경 하나가 활성 탭을 그 탭의 (더 낡은) openFiles 스냅샷으로 되돌린다 — dirty
+    // 탭에서는 방금 친 글자가 사라진다는 뜻이다.
+    if (contentRefreshPath !== null && contentRefreshPath !== tab.filePath) {
+      return;
+    }
     const content = useFileStore.getState().openFiles.get(tab.filePath);
     if (content === undefined) return;
+    // §313 앱 자신이 만든 변경은 트랜잭션 하나로 맞춘다 — 실행 취소 스택도 커서도
+    // 노드 뷰도 그대로 둔다. 아래 전체 재구축은 **남의 편집**에만 쓴다: 그쪽은 되돌리기가
+    // 그 편집 너머로 걸어가지 못하게 히스토리를 끊는 것이 오히려 안전장치다.
+    if (contentRefreshMode === "patch") {
+      patchEditorContent(editor.view, content);
+      return;
+    }
     const newDoc = markdownToProsemirror(content, editor.schema);
     const prevPos = editor.state.selection.anchor;
     const selPos = Math.min(prevPos, newDoc.content.size);

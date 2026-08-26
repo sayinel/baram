@@ -46,6 +46,8 @@ export interface SourceBufferAccess {
 
 interface EditorState {
   activeTabId: null | string;
+  /** §313 The tab's cached state has been discarded (or was never stale). */
+  clearContentStale: (tabId: string) => void;
   /** Close all tabs (including pinned) */
   closeAllTabs: () => void;
   /** §38 Close all unpinned tabs except the given one */
@@ -55,7 +57,29 @@ interface EditorState {
   closeTabsToRight: (tabId: string) => void;
   /** §72 Bumped when external code (e.g. PropertiesPanel) updates file content in store */
   contentRefreshKey: number;
+  /**
+   * §313 How the refresh should reach the document.
+   *
+   * `"fresh"` throws the document away and builds a new one — right for a genuinely
+   * external change, where the undo stack must NOT be able to walk back past someone
+   * else's edit and have the next save write that walk-back to disk.
+   *
+   * `"patch"` replaces only the blocks that differ, in one transaction that stays out of
+   * the history — right for a change this app made itself, which is already on disk and
+   * has no business costing the user their undo stack, cursor, or node views.
+   */
+  contentRefreshMode: "fresh" | "patch";
 
+  /**
+   * §313 The file the refresh is about, or `null` for "whatever is active".
+   *
+   * The consumer rebuilds the ACTIVE tab from `openFiles`. A refresh caused by a write to
+   * a background file therefore rebuilt the active tab from its own cached snapshot — and
+   * for a dirty active tab that snapshot is older than the screen, so unsaved typing was
+   * reverted by a change to an entirely different file. Naming the path makes the consumer
+   * skip what is not its business.
+   */
+  contentRefreshPath: null | string;
   /** §44 Current editor selection text (for @selection reference) */
   currentSelection: string;
   /** §39 Get next/previous tab in MRU order (wraps around). Returns null if ≤1 tab. */
@@ -63,6 +87,19 @@ interface EditorState {
     currentId: string,
     direction: "backward" | "forward",
   ) => null | string;
+  /**
+   * §313 Forget a tab's cached ProseMirror state — its file changed underneath it.
+   *
+   * A background tab is restored from `editorStateCache`, not from `openFiles`, so a write
+   * to its file while it was away is invisible to it: switching back shows the pre-write
+   * document and the next save writes that back over the change. Nothing in the mtime
+   * bookkeeping catches it (an auto-reload leaves `canReloadMtime` and `lastSaveMtime`
+   * equal), and it is silent — no toast, no conflict modal.
+   *
+   * Marked by whoever replaced the file's content in `openFiles`, consumed by the tab
+   * switch, which then re-reads that fresh content instead of the cache.
+   */
+  markContentStale: (tabId: string) => void;
   markDirty: (tabId: string, dirty: boolean) => void;
   /** §39 MRU tab order — index 0 is most recently used */
   mruOrder: string[];
@@ -82,7 +119,10 @@ interface EditorState {
   /** Reorder tab from one index to another */
   reorderTab: (fromIndex: number, toIndex: number) => void;
   /** §72 Signal editor to re-read content from fileStore */
-  requestContentRefresh: () => void;
+  requestContentRefresh: (
+    mode?: "fresh" | "patch",
+    path?: null | string,
+  ) => void;
   setActiveTab: (tabId: string) => void;
   /** §44 Update current editor selection text */
   setCurrentSelection: (text: string) => void;
@@ -105,6 +145,8 @@ interface EditorState {
    * ProseMirror 문서로 가고, 소스 모드를 끄거나 저장하는 순간 통째로 버려진다.
    */
   sourceModeTabs: string[];
+  /** §313 Tabs whose cached ProseMirror state no longer matches `openFiles`. */
+  staleContentTabs: string[];
   tabs: EditorTab[];
   /** §38 Toggle pin state */
   togglePinTab: (tabId: string) => void;
@@ -155,6 +197,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   mruOrder: [],
   currentSelection: "",
   contentRefreshKey: 0,
+  contentRefreshMode: "fresh",
+  contentRefreshPath: null,
+  staleContentTabs: [],
   sourceModeTabs: [],
   sourceBufferAccess: null,
 
@@ -478,8 +523,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         : { sourceBufferAccess: access },
     ),
 
-  requestContentRefresh: () =>
-    set((state) => ({ contentRefreshKey: state.contentRefreshKey + 1 })),
+  requestContentRefresh: (mode = "fresh", path = null) =>
+    set((state) => ({
+      contentRefreshKey: state.contentRefreshKey + 1,
+      contentRefreshMode: mode,
+      contentRefreshPath: path,
+    })),
+
+  markContentStale: (tabId) =>
+    set((state) =>
+      state.staleContentTabs.includes(tabId)
+        ? state
+        : { staleContentTabs: [...state.staleContentTabs, tabId] },
+    ),
+
+  clearContentStale: (tabId) =>
+    set((state) =>
+      state.staleContentTabs.includes(tabId)
+        ? {
+            staleContentTabs: state.staleContentTabs.filter(
+              (id) => id !== tabId,
+            ),
+          }
+        : state,
+    ),
 
   getNextMruTab: (currentId, direction) => {
     const { mruOrder } = get();

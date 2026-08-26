@@ -23,6 +23,18 @@ import { basename } from "../utils/path-utils";
 
 export interface AutoReloadOptions {
   /**
+   * §313 이 변경을 **이 앱이 만들었는가**(`file:changed`의 `origin === "app"`).
+   *
+   * 앱이 연 파일에 스스로 쓴 것은 외부 변경이 아니다. 그런데 워처에게는 남의 쓰기와
+   * 똑같이 보여서, 지금까지 사이드바에서 체크박스 하나를 누른 대가로 "Reloaded external
+   * changes" 토스트가 뜨고 문서가 통째로 재구축되며 실행 취소 스택이 사라졌다.
+   *
+   * 참이면 알리지 않고(사용자가 방금 시킨 일이다), 문서는 히스토리를 보존하는 패치로
+   * 맞춘다. 판정 자체는 여기서 하지 않는다 — Rust의 `write_file`이 남긴 mtime과 워처가
+   * 본 mtime을 비교해 이미 끝났다(§313). 그래서 새 쓰기 경로가 스스로를 신고할 필요가 없다.
+   */
+  appOrigin?: boolean;
+  /**
    * §312 갈라진 소스 버퍼까지 디스크 내용으로 **덮는다**.
    *
    * ‼️ 이것은 "사용자가 로컬 편집을 버리기로 동의했다"는 사실을 실어 나르는 값이다. 관문은
@@ -110,21 +122,43 @@ export async function triggerAutoReload(
   // Sync mtime so the next auto-save doesn't see a false conflict
   useFileStore.getState().updateLastSaveMtime(filePath, externalMtime);
 
+  // §313 이 파일을 배경에 두고 있는 탭들의 캐시된 PM 상태를 무효로 만든다. 활성 탭은
+  // 바로 아래 `requestContentRefresh`가 맡고, 배경 탭은 돌아올 때 캐시가 아니라 방금
+  // 갱신한 `openFiles`를 다시 읽어야 한다 — 그러지 않으면 옛 문서가 복원되고 다음
+  // 저장이 이 변경을 파일에서 지운다.
+  //
+  // ‼️ dirty 탭은 건너뛴다 — 그 캐시는 아직 저장되지 않은 편집을 들고 있고, 표시를 달면
+  // 탭 전환이 그것을 버린다. `force`는 사용자가 "로컬 편집을 버려도 좋다"고 말한 경우다.
+  const { activeTabId, markContentStale, tabs } = useEditorStore.getState();
+  for (const t of tabs) {
+    if (t.filePath !== filePath || t.id === activeTabId) continue;
+    if (t.isDirty && !options.force) continue;
+    markContentStale(t.id);
+  }
+
   // Signal the editor to re-read from openFiles
-  useEditorStore.getState().requestContentRefresh();
+  useEditorStore
+    .getState()
+    .requestContentRefresh(options.appOrigin ? "patch" : "fresh", filePath);
 
   // Surface a transient toast so the reload isn't silent (esp. with auto-save on)
   //
   // ‼️ 건너뛴 표면이 있으면 "리로드했다"는 거짓말이다 — 사용자가 보고 있는 화면은 여전히
   // 자기 텍스트다. 무엇이 실제로 일어났는지를 말한다.
-  useUIStore
-    .getState()
-    .showToast(
-      kept > 0
-        ? `${basename(filePath)} changed on disk — your unsaved edits were kept`
-        : `Reloaded external changes: ${basename(filePath)}`,
-      kept > 0 ? "warning" : undefined,
-    );
+  //
+  // §313 앱 자신의 쓰기는 알리지 않는다. 사용자가 방금 누른 체크박스를 "외부 변경"이라고
+  // 되돌려 말하는 것은 정보가 아니라 오보다. 갈라진 버퍼를 건너뛴 경우는 예외다 — 그때는
+  // 화면이 파일과 다르다는 사실 자체를 알려야 한다.
+  if (!options.appOrigin || kept > 0) {
+    useUIStore
+      .getState()
+      .showToast(
+        kept > 0
+          ? `${basename(filePath)} changed on disk — your unsaved edits were kept`
+          : `Reloaded external changes: ${basename(filePath)}`,
+        kept > 0 ? "warning" : undefined,
+      );
+  }
 
   logger.info(
     kept > 0

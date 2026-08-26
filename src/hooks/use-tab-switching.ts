@@ -27,6 +27,7 @@ import { useFoldStore } from "../stores/editor/fold";
 import { useFileStore } from "../stores/file/file";
 import { useNavigationStore } from "../stores/ui/navigation";
 import { useUIStore } from "../stores/ui/ui";
+import { patchEditorContent } from "../utils/editor/patch-editor-content";
 import {
   scrollToTarget,
   takePendingScroll,
@@ -178,6 +179,8 @@ export function useTabSwitching({
         // Non-MD files don't use ProseMirror — skip caching
         if (!sourceModeTabs.has(prevTabId) && !prevIsCode && !prevMidLoad) {
           editorStateCache.current.set(prevTabId, prevEditor.state);
+          // §313 방금 쓴 상태가 이 탭의 사실이다 — 이전에 붙어 있던 낡음 표시를 지운다.
+          useEditorStore.getState().clearContentStale(prevTabId);
           logCacheEvent("set", prevTabId, prevEditor.state.doc.childCount);
           // Save fold state as content-based anchors
           if (prevTab?.filePath) {
@@ -286,6 +289,20 @@ export function useTabSwitching({
       markContentLoaded(activeTabId!);
       if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
 
+      // §313 유지 풀의 탭은 캐시가 아니라 **살아 있는 에디터**가 문서를 들고 있다. 그
+      // 문서도 배경에 있는 동안 파일이 바뀌면 낡는다 — 아래 mtime 판정은 자동 리로드가
+      // 이미 지나간 경우를 잡지 못하므로(두 mtime이 같아진다) 표시를 따로 본다.
+      if (
+        incomingTab.filePath &&
+        useEditorStore.getState().staleContentTabs.includes(activeTabId!)
+      ) {
+        const fresh = openFiles.get(incomingTab.filePath);
+        if (fresh !== undefined) {
+          patchEditorContent(incomingKeepaliveEditor.view, fresh);
+        }
+        useEditorStore.getState().clearContentStale(activeTabId!);
+      }
+
       // [MINOR-a] Consume pending scroll/search so backlink navigation to a
       // pooled tab scrolls correctly — not just pendingSearchHighlight.
       // §Phase5: Check for keep-alive tab staleness — if the file was modified
@@ -391,6 +408,17 @@ export function useTabSwitching({
       };
 
       // Try cached EditorState first (preserves undo/redo history)
+      //
+      // §313 ‼️ 단, 그 캐시가 아직 사실일 때만이다. 이 탭이 배경에 있는 동안 파일이
+      // 바뀌었으면(앱이 썼든 남이 썼든) 캐시된 문서는 그 변경 **이전**이고, 복원하면
+      // 화면이 조용히 과거로 돌아간 뒤 다음 저장이 그 과거를 파일에 되쓴다. mtime 회계는
+      // 이것을 잡지 못한다 — 자동 리로드가 `lastSaveMtime`을 `canReloadMtime`과 같은
+      // 값으로 올려 두기 때문이다. 버리고 아래의 로드 경로로 흘려보내면 방금 갱신된
+      // `openFiles`를 다시 읽는다.
+      if (useEditorStore.getState().staleContentTabs.includes(activeTabId!)) {
+        editorStateCache.current.delete(activeTabId!);
+        useEditorStore.getState().clearContentStale(activeTabId!);
+      }
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {

@@ -15,8 +15,10 @@ import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import {
   COLWIDTH_AUTO_INIT_META,
+  CONTENT_SYNC_META,
   JOURNAL_CURSOR_INIT_META,
   noteColwidthInit,
+  noteContentSync,
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
@@ -174,6 +176,16 @@ export function useAutoSave(editor: Editor | null) {
       // dirty baseline instead of marking the just-opened journal dirty.
       if (transaction?.getMeta(JOURNAL_CURSOR_INIT_META)) {
         noteColwidthInit(tab.id, editor.state.doc);
+        return;
+      }
+
+      // §313 A programmatic sync (patchEditorContent) brings the document in line with
+      // what the file ALREADY says — an in-app write the user made from a panel, or a
+      // reload of this app's own write. Marking it dirty would put an unsaved dot on a
+      // change that is saved and, with auto-save on, write the same bytes back. Fold it
+      // into the baseline instead, exactly as the two load-time inits above are.
+      if (transaction?.getMeta(CONTENT_SYNC_META)) {
+        noteContentSync(tab.id, editor.state.doc);
         return;
       }
 

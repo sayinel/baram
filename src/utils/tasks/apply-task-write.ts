@@ -26,6 +26,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
+import { syncOpenSurfacesAfterDiskWrite } from "./sync-open-surfaces";
 
 export type TaskChange =
   | { field: string; kind: "field"; value: string }
@@ -126,7 +127,16 @@ export async function applyTaskWrite(
   }
 
   try {
-    return { kind: "disk", raw: await writeToDisk(task, change) };
+    const raw = await writeToDisk(task, change);
+    // §313 파일은 바뀌었다 — 그 파일을 열어 둔 표면들도 지금 맞춘다.
+    //
+    // 예전 설계는 이 일을 OS 워처의 자동 리로드에 맡겼다("비-dirty 탭의 외부 변경
+    // 자동 리로드가 에디터를 알아서 갱신한다"). 그것은 사용자가 누른 체크박스를 남의
+    // 편집으로 되돌려 말하는 길이었고(토스트 + 실행 취소 스택을 버리는 재구축),
+    // 배경 탭에서는 캐시된 PM 상태가 돌아와 이 변경을 조용히 되돌렸다. 이제 워처
+    // 왕복은 안전망이다 — 앱-출처 이벤트는 이미 같은 내용을 보므로 아무 일도 하지 않는다.
+    syncOpenSurfacesAfterDiskWrite(task, raw, editor);
+    return { kind: "disk", raw };
   } catch (err) {
     // §305 stale은 정상 경합이라 결과값으로 옮긴다. 그 밖의 오류는 호출자에게.
     if (err === "stale") return { kind: "stale", target: "disk" };
@@ -254,8 +264,13 @@ export function markSourceTabDirty(tabId: string): void {
  *   dirty가 된다.
  * - 활성이지만 clean → WYSIWYG 표면의 clean은 소스 모드와 달리 진짜다(dirty를
  *   Tiptap `update`에서 판정한다). 버퍼와 디스크가 이미 같으므로 디스크에 써도 잃는
- *   게 없고, non-dirty 탭의 외부 변경 자동 리로드(use-file-operations.ts의
- *   triggerAutoReload)가 에디터를 알아서 갱신한다.
+ *   게 없다.
+ *
+ *   §313 ‼️ 예전에는 여기에 "non-dirty 탭의 외부 변경 자동 리로드가 에디터를 알아서
+ *   갱신한다"고 적혀 있었다. 그 문장이 결함이었다: 화면이 바뀌는 유일한 통로가 OS 워처
+ *   왕복이었고, 그렇게 돌아온 변경은 **남의 편집**으로 도착해 토스트를 띄우고 실행 취소
+ *   스택을 버렸으며, 배경 탭에서는 캐시된 PM 상태가 그것을 조용히 되돌렸다. 이제 쓰기가
+ *   성공한 자리에서 열린 표면을 직접 맞춘다(`syncOpenSurfacesAfterDiskWrite`).
  * - editor가 없다 → 문서를 읽을 방법이 없다.
  */
 export function resolveTaskWriteTarget(

@@ -27,6 +27,12 @@ const SKIP_DIRS = new Set([
 
 interface ChangedPayload {
   mtime: number;
+  /**
+   * §313 이 변경을 만든 쪽. `"app"`은 이 앱의 `write_file`이 만든 것이고, Rust가 쓰기
+   * 직후의 mtime과 대조해 판정한다 — 프론트엔드가 추측하지 않는다. 오래된 백엔드나
+   * 판정 실패는 `undefined`로 도착하며, 그때는 외부 변경으로 다룬다(안전한 쪽).
+   */
+  origin?: "app" | "external";
   path: string;
 }
 
@@ -157,7 +163,13 @@ export function useFileWatcher() {
             const isDirty = tab?.isDirty ?? false;
 
             if (!isDirty) {
-              triggerAutoReload(filePath, externalMtime).catch((err) =>
+              // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
+              // 버리는 재구축도 하지 않는다. dirty 탭은 아래 그대로다: 앱이 디스크에
+              // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
+              // 버릴 수 없고, 그 판단은 충돌 모달이 사용자에게 묻는다.
+              triggerAutoReload(filePath, externalMtime, {
+                appOrigin: event.payload.origin === "app",
+              }).catch((err) =>
                 logger.warn("useFileWatcher: triggerAutoReload failed", err),
               );
             } else {
