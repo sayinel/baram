@@ -8,6 +8,23 @@
   border-radius: 1px;
 }
 
+/* issue 473 동계열(잔상 커서 전수 진단, 표면 2) — 포커스가 앱 크롬
+   (사이드바·검색·패널 등)에 있는 동안 solid 블록 커서는 "여기에
+   타이핑된다"는 오신호다. vim의 비활성 창 관례대로 hollow(테두리만)로
+   전환한다 — 돌아올 자리는 계속 보이되 입력 소유는 주장하지 않는다.
+   suspended(섬 포커스) 상태는 decoration 자체가 비므로 이 규칙과
+   무관하다. */
+.tiptap.vim-modal:not(:focus-within) .vim-cursor {
+  color: inherit;
+  outline: 1px solid var(--color-accent-default);
+  outline-offset: -1px;
+  background: transparent;
+}
+
+.tiptap.vim-modal:not(:focus-within) .vim-cursor-eol {
+  opacity: 0.45;
+}
+
 /* Empty line / terminal boundary: a zero-width widget caret. */
 .vim-cursor-eol {
   display: inline-block;
