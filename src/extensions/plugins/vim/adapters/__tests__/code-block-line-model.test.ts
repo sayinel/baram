@@ -28,7 +28,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../../../../pipeline/md-to-pm";
 import { createBaramExtensions } from "../../../../index";
-import { resolveMotion } from "../motions";
+import { insertEntryTarget, resolveMotion } from "../motions";
 
 const editors: Editor[] = [];
 
@@ -312,5 +312,80 @@ describe("ordinary paragraphs keep their column (positive control)", () => {
     const target = resolveMotion(editor.state, first + 4, "lineDown", 1);
 
     expect(target).toBe(second + 4);
+  });
+});
+
+describe("insertEntryTarget (issue 477 — insert-mode arrow entry landing)", () => {
+  // 캐럿 모델 차이가 계약이다: insert 캐럿은 문자 사이에 서므로 라인
+  // END(length)까지 허용 — normal 워크는 length-1로 클램프한다.
+  const md = "abcdefgh\n\n```ts\nconst x = 1;\nyz\n```\n\nafter\n";
+
+  it("from above lands on the FIRST line, column preserved", () => {
+    const editor = makeEditor(md);
+    const block = findNode(editor, "codeBlock");
+    const para = 0; // 첫 문단 "abcdefgh"
+    const from = para + 1 + 3; // column 3
+    const target = insertEntryTarget(editor.state, from, block.at + 1, "first");
+    expect(target).toBe(block.at + 1 + 3);
+  });
+
+  it("from below lands on the LAST line, clamped to line END (not END-1)", () => {
+    const editor = makeEditor(md);
+    const block = findNode(editor, "codeBlock");
+    // "after" 문단은 블록 뒤 — column 5 (라인 "yz"는 길이 2 → insert 클램프 = 2)
+    let afterAt = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (offset > block.at && afterAt < 0 && node.type.name === "paragraph")
+        afterAt = offset;
+    });
+    const from = afterAt + 1 + 5;
+    const target = insertEntryTarget(editor.state, from, block.at + 1, "last");
+    const lastLineStart = block.at + 1 + block.text.lastIndexOf("\n") + 1;
+    expect(target).toBe(lastLineStart + 2); // "yz" END — normal이라면 1
+  });
+
+  it("CONTROL: the normal-mode walk still clamps the same line to END-1", () => {
+    const editor = makeEditor(md);
+    const block = findNode(editor, "codeBlock");
+    let afterAt = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (offset > block.at && afterAt < 0 && node.type.name === "paragraph")
+        afterAt = offset;
+    });
+    const from = afterAt + 1 + 5;
+    const target = resolveMotion(editor.state, from, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+    const lastLineStart = block.at + 1 + block.text.lastIndexOf("\n") + 1;
+    expect(target).toBe(lastLineStart + 1); // "yz"의 마지막 문자 위
+  });
+
+  it("unicode target line: the column resolves through GRAPHEME starts", () => {
+    // 캐리 column은 grapheme 인덱스다 — UTF-16 오프셋으로 더하면 서로게이트
+    // 쌍 한가운데 착지한다 (adversarial review). 이모지(2 code units) 뒤
+    // column 1은 start+2여야 한다.
+    const editor = makeEditor("abc\n\n```ts\n\u{1F600}xy\n```\n\nafter\n");
+    const block = findNode(editor, "codeBlock");
+    const from = 0 + 1 + 1; // 첫 문단 column 1
+    const target = insertEntryTarget(editor.state, from, block.at + 1, "first");
+    expect(target).toBe(block.at + 1 + 2); // 이모지 grapheme 뒤
+  });
+
+  it("unicode target line: past the last grapheme clamps to line END", () => {
+    const editor = makeEditor("abcdefgh\n\n```ts\n\u{1F600}x\n```\n\nafter\n");
+    const block = findNode(editor, "codeBlock");
+    const from = 0 + 1 + 7; // column 7 — 라인은 grapheme 2개(길이 3 units)
+    const target = insertEntryTarget(editor.state, from, block.at + 1, "first");
+    expect(target).toBe(block.at + 1 + 3); // 라인 END (units)
+  });
+
+  it("journal-* blocks have no CM caret: returns null", () => {
+    const editor = makeEditor(
+      "para\n\n```journal-recent\nquery\n```\n\nafter\n",
+    );
+    const block = findNode(editor, "codeBlock");
+    expect(insertEntryTarget(editor.state, 1, block.at + 1, "first")).toBe(
+      null,
+    );
   });
 });

@@ -477,4 +477,122 @@ describe("createVimController", () => {
     controller.dispose();
     expect(controller.exitToNormal()).toBe(true); // session died with dispose
   });
+
+  // issue 477 — ensureInsert contract: "ensure", not "send i". Replace and
+  // visual end first (upstream maps lowercase i only in bare normal),
+  // already-insert is idempotent, refusal reports, and the queued microtask
+  // obeys the session generation.
+
+  async function enabledWithVimKeys(
+    state: FakeVimState & { overwrite?: boolean },
+    onKey: (st: typeof state, key: string) => void,
+    onError?: (e: unknown) => void,
+  ) {
+    const f = makeFakes();
+    const { overwrite, ...vim } = state;
+    const cm = { state: { overwrite, vim } };
+    const handleKeySpy = vi.fn((_cm: unknown, key: string) => {
+      onKey(state, key);
+      // 뮤테이터가 바꾼 값을 cm.state에 반영 (vim 객체는 공유 참조)
+      Object.assign(vim, { ...state, overwrite: undefined });
+      cm.state.overwrite = state.overwrite;
+    });
+    const mod = {
+      getCM: vi.fn(() => cm),
+      vim: vi.fn(() => []),
+      Vim: { handleKey: handleKeySpy },
+    };
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: f.attachGuard,
+      loadModule: () => Promise.resolve(asModule(mod)),
+      onError,
+    });
+    controller.apply(true);
+    await flush();
+    return { controller, handleKeySpy };
+  }
+
+  const keysOf = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls.map((c) => c[1]);
+
+  it("ensureInsert: bare normal sends exactly one i", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      (st, key) => {
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(keysOf(handleKeySpy)).toEqual(["i"]);
+  });
+
+  it("ensureInsert: already plain insert is a no-op", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState({ insertMode: true }),
+      () => {},
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(handleKeySpy).not.toHaveBeenCalled();
+  });
+
+  it("ensureInsert: a REPLACE session ends first, then plain insert", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      { ...vimState({ insertMode: true }), overwrite: true },
+      (st, key) => {
+        if (key === "<Esc>") {
+          st.insertMode = false;
+          st.overwrite = false;
+        }
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(keysOf(handleKeySpy)).toEqual(["<Esc>", "i"]);
+  });
+
+  it("ensureInsert: a stale VISUAL session ends first", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState({ visualMode: true }),
+      (st, key) => {
+        if (key === "<Esc>") st.visualMode = false;
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(keysOf(handleKeySpy)).toEqual(["<Esc>", "i"]);
+  });
+
+  it("ensureInsert: a refusal is SILENT — delivery confirmation is the publish", async () => {
+    // 거부(readOnly 창)는 오류가 아니다: onError는 설치 실패 롤백 트리거라
+    // 여기 흘리면 normal 모드에서 IME 장벽을 여는 잘못된 복구가 발화한다.
+    // 재시도는 caller의 publish-주도 메모가 소유한다 (adversarial review).
+    const onError = vi.fn();
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      () => {}, // i가 무시됨 (readOnly 거부 시뮬레이션)
+      onError,
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(handleKeySpy).toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("ensureInsert: no session false; dispose before the microtask drops it", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      (st, key) => {
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    controller.dispose(); // 큐잉과 flush 사이에 세대가 죽음
+    await flush();
+    expect(handleKeySpy).not.toHaveBeenCalled();
+    expect(controller.ensureInsert()).toBe(false); // 세션 소멸 후
+  });
 });

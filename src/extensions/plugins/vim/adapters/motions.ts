@@ -62,6 +62,39 @@ interface TableWalk {
   tableStart: number;
 }
 
+/** The hard-break segment (or whole-textblock span) holding `pos`; null on
+ *  an atom boundary. */
+/** issue 477 — insert-mode arrow entry target: the directionally adjacent
+ *  source line of the code block whose CONTENT starts at `inside`, carrying
+ *  the column of the PM caret at `from`. The caret model differs from the
+ *  normal-mode walk: an insert caret sits BETWEEN characters and may
+ *  legally land at line END, where normal mode clamps to the last
+ *  character. Column policy is the shared one (file
+ *  header): logical lines — hard breaks split, soft wraps demoted — in
+ *  grapheme units, the v1 approximation whose full curswant treatment is
+ *  issue 372 tier 1. Returns null for a block with no CodeMirror caret to
+ *  receive the offset (journal-* widget NodeViews). */
+export function insertEntryTarget(
+  state: EditorState,
+  from: number,
+  inside: number,
+  edge: "first" | "last",
+): null | number {
+  if (!isCmBackedCodeBlock(state, inside)) return null;
+  const column = columnOf(lineUnitStarts(state, lineSpanAt(state, from)), from);
+  const line = codeLineSpan(state, inside, edge);
+  // The carried column is a GRAPHEME index — resolve it through the target
+  // line's own grapheme starts instead of adding it as a UTF-16 offset,
+  // which would land inside a surrogate pair or combining sequence
+  // (adversarial review). Past the last grapheme = line END, the insert
+  // caret's extra legal column.
+  const starts = lineUnitStarts(state, {
+    end: line.start + line.length,
+    start: line.start,
+  });
+  return column < starts.length ? starts[column] : line.start + line.length;
+}
+
 /**
  * f/F/t/T — the count-th occurrence of `char` in the CURRENT segment,
  * forward for f/t, backward for F/T; t/T stop one unit short. A miss keeps
@@ -205,8 +238,6 @@ export function resolveMotion(
   }
 }
 
-/** The hard-break segment (or whole-textblock span) holding `pos`; null on
- *  an atom boundary. */
 export function segmentSpanAt(
   state: EditorState,
   pos: number,

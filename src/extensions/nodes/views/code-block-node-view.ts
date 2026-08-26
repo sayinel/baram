@@ -56,6 +56,16 @@ export class CodeBlockNodeView implements NodeView {
   private latestVimEnabled: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
+  /** issue 477 — entry-mode intent, held until a mode publish CONFIRMS the
+   *  island reached insert ("queued" is not "delivered": the controller's
+   *  microtask drops on a generation change, and a readOnly window can
+   *  refuse the entry — the memo survives both and retries on the next
+   *  publish). Carries the entry's local head as its identity: consumption
+   *  requires the CURRENT PM selection to sit exactly there, so a departed-
+   *  and-returned selection cannot cash yesterday's ticket. SEPARATE from
+   *  pendingVimModeRestore (R7 recreate restoration, deliberately
+   *  surviving); an explicit vim OFF burns this one (adversarial review). */
+  private pendingEntryInsert: null | { head: number } = null;
   private pendingFocusRestore: null | { head: number } = null;
   private pendingSelection: null | { anchor: number; head: number } = null;
   private pendingVimModeRestore: "insert" | "replace" | null = null;
@@ -217,7 +227,13 @@ export class CodeBlockNodeView implements NodeView {
     this.unregisterEntry = registerCodeBlockEntry(
       view,
       getPos,
-      (anchor, head) => {
+      (anchor, head, opts) => {
+        // issue 477 — the mode intent applies on EVERY outcome, including
+        // the dedup early-return below: in editable PM (insert mode) the
+        // dispatch's own selectionToDOM descent often delivers the exact
+        // selection first, and skipping the mode there would silently drop
+        // the insert entry (adversarial review BLOCKER).
+        const wantInsert = opts?.vimMode === "insert";
         // Dedup: when the gate DID pass, PM's own descent already delivered
         // this exact selection inside the dispatch — and a second call is
         // not a no-op (CM re-dispatches a selectionSet update). Skip only
@@ -230,9 +246,11 @@ export class CodeBlockNodeView implements NodeView {
           cm.state.selection.main.anchor === anchor &&
           cm.state.selection.main.head === head
         ) {
+          if (wantInsert) this.requestEntryInsert(head);
           return true;
         }
         this.setSelection(anchor, head);
+        if (wantInsert) this.requestEntryInsert(head);
         // A live CM was focused synchronously; a cold one only memoed the
         // selection for its deferred init — report false so the caller
         // keeps its focus fallback alive until the island claims focus on
@@ -248,8 +266,12 @@ export class CodeBlockNodeView implements NodeView {
       // An EXPLICIT off is a boundary: an unconfirmed restore memo from a
       // recreate must not resurrect insert on a later re-enable (R8).
       // Internal recreates never pass here, so the back-to-back
-      // preservation contract stays intact.
-      if (!enabled) this.pendingVimModeRestore = null;
+      // preservation contract stays intact. The entry-insert intent dies
+      // at the same boundary — a pre-off arrow must not replay (issue 477).
+      if (!enabled) {
+        this.pendingVimModeRestore = null;
+        this.pendingEntryInsert = null;
+      }
       this.applyVim(enabled);
     });
 
@@ -317,11 +339,6 @@ export class CodeBlockNodeView implements NodeView {
     }
   }
 
-  /**
-   * Called by ProseMirror when selection enters this node.
-   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
-   * it allows us to properly focus CodeMirror and set its cursor position.
-   */
   setSelection(anchor: number, head: number) {
     this.ensureCM();
     if (!this.cmView) {
@@ -444,6 +461,18 @@ export class CodeBlockNodeView implements NodeView {
     void this.initCM(lang);
   }
 
+  /** The entry intent is CURRENT: the PM selection is a cursor sitting
+   *  exactly on the memoed local head inside this block. */
+  private entryInsertCurrent(): boolean {
+    const memo = this.pendingEntryInsert;
+    if (!memo) return false;
+    if (!this.selectionInsideBlock()) return false;
+    const pos = this.getPos();
+    if (typeof pos !== "number") return false;
+    const sel = this.view.state.selection;
+    return sel.empty && sel.head - (pos + 1) === memo.head;
+  }
+
   /** Sync CM changes → PM document */
   private forwardUpdate(update: ViewUpdate) {
     const pos = this.getPos();
@@ -498,7 +527,8 @@ export class CodeBlockNodeView implements NodeView {
     );
 
     // issue 475 — leaving the island IS the end of any insert/visual/pending
-    // vim session: outside, PM vim is normal by construction (3v). The
+    // ISLAND session; PM's own mode (normal, or insert after a body-side
+    // i/a) is untouched by this and stays whatever it was. The
     // keymap's edge-arrow escape is mode-blind (vim passes insert-mode
     // arrows through), so without this the island keeps insertMode=true and
     // revives insert on the next entry. Best-effort by contract: a failed
@@ -579,6 +609,21 @@ export class CodeBlockNodeView implements NodeView {
         if (mode !== null && mode === this.pendingVimModeRestore) {
           this.pendingVimModeRestore = null;
         }
+        // issue 477 — publish-driven entry delivery. Burn the memo when the
+        // publish CONFIRMS insert, or when the entry is no longer current
+        // (selection moved off the memoed head — yesterday's ticket must
+        // not match today's seat); otherwise keep retrying: this publish
+        // may be a fresh controller generation whose predecessor dropped
+        // the queued attempt, or a readOnly refusal that has since lifted.
+        if (mode !== null && this.pendingEntryInsert) {
+          if (!this.entryInsertCurrent()) {
+            this.pendingEntryInsert = null;
+          } else if (mode === "insert") {
+            this.pendingEntryInsert = null;
+          } else {
+            this.vimController?.ensureInsert();
+          }
+        }
         islandVimMode(island, mode, this.view);
         // Cold-load race: the first mode arrives AFTER focus already sits
         // in the island — claim the indicator now, not on the next focus.
@@ -652,12 +697,10 @@ export class CodeBlockNodeView implements NodeView {
       // memo from a visit the user already left must not steal focus back
       // (R5 C7).
       const pos = this.getPos();
-      const { from, to } = this.view.state.selection;
       // The WHOLE selection must live inside this block — a selection
       // spanning from the block into the next paragraph passes a from-only
       // check and would still steal focus (R6).
-      const stillHere =
-        typeof pos === "number" && from > pos && to < pos + this.node.nodeSize;
+      const stillHere = this.selectionInsideBlock();
       if (stillHere) {
         // The memo predates the async init — an edit landing meanwhile
         // would leave it in-range but STALE. `stillHere` just proved the
@@ -679,6 +722,9 @@ export class CodeBlockNodeView implements NodeView {
           },
         });
         this.updating = false;
+      } else {
+        // issue 477 — the entry that memoed insert died with its selection.
+        this.pendingEntryInsert = null;
       }
       this.pendingSelection = null;
     }
@@ -695,6 +741,31 @@ export class CodeBlockNodeView implements NodeView {
     target.dispatch({
       effects: this.languageCompartment.reconfigure(ext ?? []),
     });
+  }
+
+  /**
+   * Called by ProseMirror when selection enters this node.
+   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
+   * it allows us to properly focus CodeMirror and set its cursor position.
+   */
+  /** issue 477 — arm the intent and attempt delivery. An island already in
+   *  plain insert has nothing to deliver — arming there would let a later
+   *  unrelated publish (the user's own Esc) yank them back into insert.
+   *  Every other state arms the memo FIRST: the controller's acceptance is
+   *  only "queued", and the publish-driven consumer owns confirmation. */
+  private requestEntryInsert(head: number): void {
+    if (this.currentVimMode === "insert") return;
+    this.pendingEntryInsert = { head };
+    this.vimController?.ensureInsert();
+  }
+
+  /** The WHOLE current PM selection lives inside this block (R6 shape —
+   *  shared by the stale-cold-selection guard and the entry-insert memo). */
+  private selectionInsideBlock(): boolean {
+    const pos = this.getPos();
+    if (typeof pos !== "number") return false;
+    const { from, to } = this.view.state.selection;
+    return from > pos && to < pos + this.node.nodeSize;
   }
 
   /** Focus ownership survives a CM replacement: remember it (with the

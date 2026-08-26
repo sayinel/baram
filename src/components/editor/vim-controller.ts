@@ -27,6 +27,18 @@ export interface VimController {
   apply(enabled: boolean): void;
   /** Final teardown — detaches the guard and invalidates in-flight loads. */
   dispose(): void;
+  /** issue 477 — ATTEMPT plain INSERT on the island session for an
+   *  editing-continuity entry. Queued acceptance, not delivery: the queued
+   *  microtask drops on a generation change, and a readOnly island can
+   *  refuse the entry — so the CALLER owns the intent memo and burns it
+   *  only when a mode publish confirms "insert" (retrying on every earlier
+   *  publish). Returns false when vim is not attached yet. "Ensure", not
+   *  "send i": a stale visual/replace/pending session ends first (bounded
+   *  Esc, same convergence as exitToNormal) because upstream maps
+   *  lowercase i only in the bare-normal context. Throws report through
+   *  onError; a mere refusal is NOT an error — the publish-driven retry
+   *  owns it, and the install-failure rollback must not fire for it. */
+  ensureInsert(): boolean;
   /** issue 475 — end any insert/visual/pending vim session so the island
    *  sits in bare normal mode. Returns whether that state was reached;
    *  true when vim is not attached (nothing to normalize). Best-effort:
@@ -240,6 +252,38 @@ export function createVimController(
       revision++;
       detachGuard();
       handleMode(null);
+    },
+    /** issue 477 — deferred one microtask like the restoreMode consumer:
+     *  the adapter refuses insert entry while the loading barrier's
+     *  readOnly still holds, and that pin lifts with the deferred editable
+     *  flush. Generation-guarded: a re-apply, rollback, or dispose between
+     *  the request and the microtask drops it (`session` identity). Replace
+     *  counts as NOT plain insert (insertMode + adapter overwrite) — it is
+     *  ended and re-entered as ordinary insert. */
+    ensureInsert(): boolean {
+      const s = session;
+      if (!s) return false;
+      queueMicrotask(() => {
+        if (disposed || session !== s) return;
+        try {
+          const st = (
+            s.cm as unknown as {
+              state?: { overwrite?: boolean; vim?: { insertMode?: boolean } };
+            }
+          ).state;
+          if (st?.vim?.insertMode && !st.overwrite) return; // already editing
+          for (let i = 0; i < 3 && !isIdleNormal(s.cm); i++) {
+            s.mod.Vim.handleKey(s.cm, "<Esc>", "user");
+          }
+          s.mod.Vim.handleKey(s.cm, "i", "user");
+          // No postcondition here: reaching insert publishes a mode change,
+          // and THAT is the delivery confirmation the caller burns its memo
+          // on. A refusal (readOnly window) simply leaves the memo armed.
+        } catch (err) {
+          deps.onError?.(err);
+        }
+      });
+      return true;
     },
     /** issue 475 — bounded because one Esc is NOT idempotent: after `<C-o>`
      *  the first Esc runs as the pending normal command, and its

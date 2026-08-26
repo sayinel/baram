@@ -59,12 +59,23 @@ export function registerCodeBlockEditableSync(
 const vimRegistries = new WeakMap<PMView, Set<EditableSync>>();
 const lastVimBroadcast = new WeakMap<PMView, boolean>();
 
+/** issue 477 — entry-mode intent, owned by the registrant through its whole
+ *  lifecycle (live vim session, vim still loading, cold CM): "insert" lands
+ *  the island editing (continuity from a PM insert-mode arrow entry). */
+export interface EntryOptions {
+  vimMode?: "insert";
+}
+
 /** Returns whether focus was delivered SYNCHRONOUSLY. A cold island (CM not
  *  yet mounted) memos the selection for its deferred init and returns false —
  *  the caller must keep its own focus fallback so keys stay alive until the
  *  island claims focus on mount (adversarial review round 2, cold-island
  *  false success). */
-type EntryHandoff = (anchor: number, head: number) => boolean;
+type EntryHandoff = (
+  anchor: number,
+  head: number,
+  opts?: EntryOptions,
+) => boolean;
 
 interface EntryRegistrant {
   enter: EntryHandoff;
@@ -123,12 +134,13 @@ export function enterCodeBlockAt(
   blockPos: number,
   localAnchor: number,
   localHead: number,
+  opts?: EntryOptions,
 ): boolean {
   const set = entryRegistries.get(view);
   if (!set) return false;
   for (const registrant of set) {
     if (registrant.getPos() === blockPos) {
-      return registrant.enter(localAnchor, localHead);
+      return registrant.enter(localAnchor, localHead, opts);
     }
   }
   return false;
@@ -140,7 +152,10 @@ export function enterCodeBlockAt(
  * (vim dispatchCursor, search submit, source-mode cursor restore) funnels
  * through this one predicate so the entry semantics cannot fork.
  */
-export function enterCodeBlockSelection(view: PMView): boolean {
+export function enterCodeBlockSelection(
+  view: PMView,
+  opts?: EntryOptions,
+): boolean {
   const sel = view.state.selection;
   if (!sel.empty || !(sel instanceof TextSelection)) return false;
   const $head = sel.$head;
@@ -150,6 +165,7 @@ export function enterCodeBlockSelection(view: PMView): boolean {
     $head.before(),
     $head.parentOffset,
     $head.parentOffset,
+    opts,
   );
 }
 

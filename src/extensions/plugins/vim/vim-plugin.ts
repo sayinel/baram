@@ -43,6 +43,7 @@ import { cursorSelection } from "./adapters/cursor-selection";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
+import { insertArrowEntry } from "./adapters/insert-entry";
 import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
@@ -293,6 +294,27 @@ export function createVimPlugin(
         // first Esc — its handler runs after vim in the prop chain.
         if (event.key === "Escape" && hasAnyEditorTransient(view.state)) {
           return false;
+        }
+        // issue 477 — insert-mode arrows next to a code block: PM insert is
+        // an editable view, but a vim island keeps its 3v editing-host
+        // barrier, and the browser caret cannot step into a non-editable
+        // subtree — a plain arrow skipped the whole block (device log:
+        // sel 5→61). An edge arrow hands off explicitly and lands in
+        // INSERT (arrows while editing mean "keep editing"). Modifiers
+        // stay native — Shift starts a selection — and an active transient
+        // (slash/mention popup) owns its own arrows (adversarial review).
+        if (
+          (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          !event.ctrlKey &&
+          !hasAnyEditorTransient(view.state) &&
+          insertArrowEntry(view, event.key === "ArrowDown" ? 1 : -1)
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
         }
         const token = toKeyToken(event, isMacPlatform());
         const result = step(vim.core, token, {
