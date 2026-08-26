@@ -91,8 +91,12 @@ export default defineConfig(async () => ({
       //    워처 단계에서 끊는 것만이 두 계열 모두에 airtight하다. 대가는
       //    dev에서 md 변경이 Help 번들/Tailwind에 반영되지 않는 것뿐이고
       //    (클래스는 전부 src/ 코드에 있음), 프로덕션 빌드는 워처와 무관.
-      //    `.md.tmp.*`는 앱의 원자적 저장(tmp+rename)이 만드는 임시 파일.
-      ignored: ["**/src-tauri/**", "**/*.md", "**/*.md.tmp.*"],
+      //    `**/*.md.*.tmp`는 앱의 원자적 저장(tmp+rename)이 만드는 임시
+      //    파일이다 — 확장자가 뒤에 붙는다: `{경로}.{uuid}.tmp`로 쓰고
+      //    rename한다 (src-tauri/src/fs/mod.rs write_file,
+      //    src-tauri/src/commands/fs_cmd.rs). 순서를 뒤집은 패턴
+      //    (`*.md.tmp.*`)은 실재하지 않는 이름만 잡아 무효다.
+      ignored: ["**/src-tauri/**", "**/*.md", "**/*.md.*.tmp"],
     },
   },
 }));
