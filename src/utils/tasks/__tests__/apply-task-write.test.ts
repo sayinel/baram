@@ -160,8 +160,10 @@ describe("applyTaskWrite — 디스크 경로", () => {
 
   it("IPC가 stale을 던지면 stale로 옮긴다", async () => {
     vi.mocked(setTaskState).mockRejectedValue("stale");
+    // `target`은 회계용 사실이다 — 호출자가 이 파일을 다시 읽어도 되는지를 여기서 읽는다.
     expect(await applyTaskWrite(TASK, TO_DONE, null)).toEqual({
       kind: "stale",
+      target: "disk",
     });
   });
 
@@ -235,7 +237,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
 
     const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
 
-    expect(r).toEqual({ kind: "stale" });
+    expect(r).toEqual({ kind: "stale", target: "document" });
     expect(previewTaskStateLine).not.toHaveBeenCalled();
     expect(useFileStore.getState().openFiles.size).toBe(0);
   });
@@ -244,6 +246,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
     vi.mocked(prosemirrorToMarkdown).mockReturnValue("한 줄뿐\n");
     expect(await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR)).toEqual({
       kind: "stale",
+      target: "document",
     });
   });
 
@@ -257,7 +260,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
 
     const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
 
-    expect(r).toEqual({ kind: "stale" });
+    expect(r).toEqual({ kind: "stale", target: "document" });
     expect(useFileStore.getState().openFiles.size).toBe(0);
   });
 
@@ -458,7 +461,7 @@ describe("applyTaskWrite — 소스 경로 (소스 모드인 활성 + dirty 탭)
 
     const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
 
-    expect(r).toEqual({ kind: "stale" });
+    expect(r).toEqual({ kind: "stale", target: "source" });
     expect(previewTaskStateLine).not.toHaveBeenCalled();
     expect(buffers.get("t1")).toBe("머리말\n- [ ] 다른 내용\n");
   });
@@ -475,7 +478,9 @@ describe("applyTaskWrite — 소스 경로 (소스 모드인 활성 + dirty 탭)
 
     const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
 
-    expect(r).toEqual({ kind: "stale" });
+    // ‼️ `target: "source"`가 요점이다 — 이 stale은 디스크와 무관하므로 호출자가
+    // 그 파일을 다시 읽으면 같은 배치가 버퍼에 만들어 둔 변경까지 되돌아간다.
+    expect(r).toEqual({ kind: "stale", target: "source" });
     expect(buffers.get("t1")).toBe(
       "머리말\n- [ ] 사용자가 방금 고침\n꼬리말\n",
     );
@@ -518,7 +523,7 @@ describe("isUnsavedWrite", () => {
 
   it("디스크·stale·null은 디스크가 진실원이다", () => {
     expect(isUnsavedWrite({ kind: "disk", raw: "x" })).toBe(false);
-    expect(isUnsavedWrite({ kind: "stale" })).toBe(false);
+    expect(isUnsavedWrite({ kind: "stale", target: "source" })).toBe(false);
     expect(isUnsavedWrite(null)).toBe(false);
   });
 });

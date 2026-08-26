@@ -103,4 +103,69 @@ describe("sourceModeTabs", () => {
       expect(useEditorStore.getState().sourceModeTabs).toEqual(["a"]);
     });
   });
+
+  // §312 탭을 닫는 길은 하나가 아니다. `closeTab`만 집합을 정리하면 나머지 세 경로로
+  // 닫은 id가 그대로 남아, 라우팅 입력이 "이 탭은 소스 모드"라고 계속 주장한다.
+  describe("일괄 닫기 경로도 집합을 정리한다", () => {
+    const tab = (id: string, over: Record<string, unknown> = {}) => ({
+      contextId: "c",
+      filePath: `/v/${id}.md`,
+      id,
+      isDirty: false,
+      isPinned: false,
+      title: id,
+      ...over,
+    });
+
+    beforeEach(() => {
+      useEditorStore.setState({
+        activeTabId: "b",
+        mruOrder: ["a", "b", "c"],
+        sourceModeTabs: ["a", "b", "c"],
+        tabs: [tab("a"), tab("b"), tab("c")],
+      });
+    });
+
+    it("closeOtherTabs — 남는 탭과 고정 탭만 집합에 남는다", () => {
+      useEditorStore.setState({
+        tabs: [tab("a", { isPinned: true }), tab("b"), tab("c")],
+      });
+
+      useEditorStore.getState().closeOtherTabs("b");
+
+      expect(useEditorStore.getState().sourceModeTabs).toEqual(["a", "b"]);
+    });
+
+    it("closeTabsToRight — 오른쪽의 닫힌 탭만 빠진다", () => {
+      useEditorStore.getState().closeTabsToRight("a");
+
+      expect(useEditorStore.getState().sourceModeTabs).toEqual(["a"]);
+    });
+
+    it("closeAllTabs — 집합이 빈다", () => {
+      useEditorStore.getState().closeAllTabs();
+
+      expect(useEditorStore.getState().sourceModeTabs).toEqual([]);
+    });
+
+    it("닫힌 탭 중 집합에 든 것이 없으면 배열 참조를 새로 만들지 않는다", () => {
+      // `closeTab`과 같은 규율이다 — 새 배열은 use-source-mode의 `useMemo`가 Set을
+      // 다시 만들게 해 그 소비자들의 memo를 전부 깬다.
+      useEditorStore.setState({ sourceModeTabs: ["b"] });
+      const before = useEditorStore.getState().sourceModeTabs;
+
+      useEditorStore.getState().closeTabsToRight("b");
+
+      expect(useEditorStore.getState().sourceModeTabs).toBe(before);
+    });
+
+    it("closeAllTabs도 이미 비어 있으면 참조를 새로 만들지 않는다", () => {
+      useEditorStore.setState({ sourceModeTabs: [] });
+      const before = useEditorStore.getState().sourceModeTabs;
+
+      useEditorStore.getState().closeAllTabs();
+
+      expect(useEditorStore.getState().sourceModeTabs).toBe(before);
+    });
+  });
 });

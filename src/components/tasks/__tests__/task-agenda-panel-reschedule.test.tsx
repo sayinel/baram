@@ -171,7 +171,10 @@ describe("TaskAgendaPanel — reschedule overdue 확인 게이트 (§309)", () =
 
   it("전부 stale이어도 조용히 끝나지 않는다 — 그 실행은 확인까지 거치고 아무 일도 안 한 것처럼 보인다", async () => {
     vi.mocked(showConfirm).mockResolvedValue(true);
-    vi.mocked(applyTaskWrite).mockResolvedValue({ kind: "stale" });
+    vi.mocked(applyTaskWrite).mockResolvedValue({
+      kind: "stale",
+      target: "disk",
+    });
     useTaskStore.getState().setAll([task({ line: 0 }), task({ line: 1 })]);
     render(<TaskAgendaPanel />);
 

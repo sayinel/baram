@@ -70,8 +70,12 @@ interface SourceCodeEditorProps {
    * 사용자가 한 글자를 치면, 그 스냅샷은 이미 **뷰보다 낡았다**. 스냅샷을 그대로 밀어
    * 넣으면 방금 친 글자를 지우고 캐럿까지 옮긴다. 접근자로 다시 물으면 그 순간의 버퍼가
    * 나오고, 그것이 뷰와 같으면 아무 일도 일어나지 않는다.
+   *
+   * ‼️ optional이 아니다. 없을 때 `content`로 폴백하면 **바로 그 결함**이 조용히 돌아온다 —
+   * 배선을 하나 빠뜨린 새 호출자가 아무 신호 없이 사용자의 타이핑을 지우게 된다. 컴파일러가
+   * 대신 잡게 둔다.
    */
-  getLatestContent?: () => string;
+  getLatestContent: () => string;
   initialCursorOffset?: number;
   /** CodeMirror language name (e.g. "json", "python"). Omit or "markdown" for markdown. */
   language?: string;
@@ -97,9 +101,8 @@ export function SourceCodeEditor({
   // "가장 최근 값" ref의 표준 패턴이다 — 이 값을 읽는 쪽은 전부 effect 안이다.
   const latestContentRef = useRef(getLatestContent);
   latestContentRef.current = getLatestContent;
-  /** 지금 화면에 보여야 할 텍스트. 접근자가 없으면 스냅샷이 유일한 정보다. */
-  const readAuthoritative = (fallback: string) =>
-    latestContentRef.current?.() ?? fallback;
+  /** 지금 화면에 보여야 할 텍스트 — **호출 시점의** 진실원이다. */
+  const readAuthoritative = () => latestContentRef.current();
 
   useImperativeHandle(ref, () => ({
     getCursorOffset(): number {
@@ -132,7 +135,6 @@ export function SourceCodeEditor({
 
     // Guard: ignore spurious docChanged during initialization
     // WebKit injects "<!--  -->" into contenteditable on focus — must be cleaned up
-    const originalContent = content;
     let initialized = false;
 
     const updateListener = EditorView.updateListener.of((update) => {
@@ -270,7 +272,7 @@ export function SourceCodeEditor({
         // ‼️ §312 되돌릴 곳은 마운트 때의 스냅샷이 아니라 **지금의 버퍼**다. 소스 모드로
         // 들어간 직후 태스크 쓰기가 버퍼를 고치면 아래 동기화 effect가 그것을 뷰에 넣는데,
         // 여기서 옛 스냅샷으로 되돌리면 그 쓰기를 두 프레임 만에 지운다.
-        const expected = readAuthoritative(originalContent);
+        const expected = readAuthoritative();
         const currentContent = view.state.doc.toString();
         if (currentContent !== expected) {
           view.dispatch({
@@ -324,7 +326,7 @@ export function SourceCodeEditor({
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
-    const next = readAuthoritative(content);
+    const next = readAuthoritative();
     const change = textReplaceRange(view.state.doc.toString(), next);
     if (!change) return;
     view.dispatch({ annotations: ExternalSync.of(true), changes: change });

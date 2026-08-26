@@ -132,6 +132,23 @@ export function isPluginTab(tab: EditorTab | undefined): boolean {
   return tab?.type === "plugin";
 }
 
+/**
+ * §312 닫힌 탭 id를 소스 모드 집합에서 뺀다 — 탭을 닫는 **모든** 경로가 이것을 부른다.
+ * 이 집합은 §305 태스크 쓰기 라우터의 입력이라, 죽은 id가 남으면 라우팅이 "그 탭은 소스
+ * 모드"라고 계속 주장한다.
+ *
+ * ‼️ 뺄 것이 없으면 **같은 참조**를 돌려준다: 새 배열은 use-source-mode의 `useMemo`가
+ * Set을 다시 만들게 해 그 소비자들의 memo를 전부 깬다.
+ */
+function withoutClosedTabs(
+  sourceModeTabs: string[],
+  isClosed: (id: string) => boolean,
+): string[] {
+  return sourceModeTabs.some(isClosed)
+    ? sourceModeTabs.filter((id) => !isClosed(id))
+    : sourceModeTabs;
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   activeTabId: null,
   tabs: [],
@@ -217,12 +234,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           : state.activeTabId;
       // §39 Remove closed tab from MRU
       const mruOrder = state.mruOrder.filter((id) => id !== tabId);
-      // §312 죽은 id를 소스 모드 집합에 남기지 않는다 — 이 집합은 태스크 쓰기 라우터의
-      // 입력이다. ‼️ 들어 있지 않으면 **같은 참조**를 돌려준다: 새 배열을 만들면
-      // use-source-mode의 useMemo가 Set을 다시 만들어 그 소비자들의 memo가 전부 깨진다.
-      const sourceModeTabs = state.sourceModeTabs.includes(tabId)
-        ? state.sourceModeTabs.filter((id) => id !== tabId)
-        : state.sourceModeTabs;
+      const sourceModeTabs = withoutClosedTabs(
+        state.sourceModeTabs,
+        (id) => id === tabId,
+      );
       return { tabs, activeTabId, mruOrder, sourceModeTabs };
     });
 
@@ -360,7 +375,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ? tabId
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
-      return { tabs, activeTabId, mruOrder };
+      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, (id) =>
+        closedIds.has(id),
+      );
+      return { tabs, activeTabId, mruOrder, sourceModeTabs };
     }),
 
   closeTabsToRight: (tabId) =>
@@ -376,15 +394,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ? tabId
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
-      return { tabs, activeTabId, mruOrder };
+      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, (id) =>
+        closedIds.has(id),
+      );
+      return { tabs, activeTabId, mruOrder, sourceModeTabs };
     }),
 
   closeAllTabs: () =>
-    set({
+    set((state) => ({
       tabs: [],
       activeTabId: null,
       mruOrder: [],
-    }),
+      sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, () => true),
+    })),
 
   openGraphTab: () => {
     const { tabs, openTab: open, setActiveTab } = get();

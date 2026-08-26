@@ -34,7 +34,13 @@ export type TaskWriteResult =
   | { kind: "disk"; raw: string }
   | { kind: "document"; raw: string }
   | { kind: "source"; raw: string }
-  | { kind: "stale" };
+  /**
+   * 낙관적 잠금 거절. `target`은 쓰기를 **실제로 시도한 곳**이다 — 라우터가 고른 곳이
+   * 아니다(접근자가 없으면 `source` 판정도 디스크로 흘러간다). 호출자의 회계는 이 값만
+   * 봐야 한다: 라우터에 다시 물으면 같은 사실에 두 개의 진실원이 생기고, 그것이 갈라지는
+   * 순간 쓰지도 않은 파일을 다시 읽어 같은 배치가 버퍼에 만들어 둔 변경을 되돌린다.
+   */
+  | { kind: "stale"; target: "disk" | "document" | "source" };
 
 export type TaskWriteTarget =
   | { kind: "disk" }
@@ -61,8 +67,9 @@ export async function applyTaskWrite(
 
   if (target.kind === "source") {
     const result = await writeToSourceBuffer(task, change, target.tabId);
-    // `null`은 접근자 미등록이다 — 소스 표면이 마운트돼 있지 않다는 뜻이므로
-    // 그 버퍼가 나중에 디스크를 덮어쓸 일도 없다. 아래 디스크 경로로 흘린다.
+    // `null`은 접근자 미등록이다 — 표면 하나가 아니라 버퍼를 소유한 `useSourceMode`
+    // 자체가 마운트돼 있지 않다는 뜻이다(App 수명). 쓸 버퍼가 존재하지 않으므로 그것이
+    // 나중에 디스크를 덮어쓸 일도 없다. 아래 디스크 경로로 흘린다.
     if (result) return result;
   } else if (target.kind === "document" && editor) {
     // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다 — 런타임에는
@@ -74,7 +81,7 @@ export async function applyTaskWrite(
     return { kind: "disk", raw: await writeToDisk(task, change) };
   } catch (err) {
     // §305 stale은 정상 경합이라 결과값으로 옮긴다. 그 밖의 오류는 호출자에게.
-    if (err === "stale") return { kind: "stale" };
+    if (err === "stale") return { kind: "stale", target: "disk" };
     throw err;
   }
 }
@@ -203,7 +210,7 @@ async function writeToDocument(
     change,
     () => prosemirrorToMarkdown(editor.state.doc),
   );
-  if (applied === null) return { kind: "stale" };
+  if (applied === null) return { kind: "stale", target: "document" };
 
   useFileStore.getState().setFileContent(task.path, applied.content);
   useEditorStore.getState().requestContentRefresh();
@@ -226,8 +233,9 @@ async function writeToDocument(
  * 있는 문서만 흔들고 정작 화면은 그대로다. 저장 경로(`use-file-operations.ts:169`)도
  * 소스 모드 탭에서는 `openFiles`가 아니라 이 버퍼를 읽는다.
  *
- * `null`은 "접근자 미등록" — 소스 표면이 마운트돼 있지 않다는 뜻이라 호출자가
- * 디스크로 폴백한다. `{kind:"stale"}`(경합)과는 다른 신호다.
+ * `null`은 "접근자 미등록" — 이 파일의 표면 하나가 아니라 버퍼를 소유한
+ * `useSourceMode`(App 수명)가 통째로 마운트돼 있지 않다는 뜻이다. 쓸 버퍼가 아예 없으므로
+ * 호출자가 디스크로 폴백한다. `{kind:"stale"}`(경합)과는 다른 신호다.
  */
 async function writeToSourceBuffer(
   task: TaskEntry,
@@ -243,7 +251,7 @@ async function writeToSourceBuffer(
     change,
     () => access.getSourceBuffer(tabId),
   );
-  if (applied === null) return { kind: "stale" };
+  if (applied === null) return { kind: "stale", target: "source" };
 
   // markDirty를 부르지 않는다 — 이 경로에 오려면 탭이 이미 dirty여야 하고
   // (resolveTaskWriteTarget의 전제), markDirty는 tabs 배열을 새로 만들어

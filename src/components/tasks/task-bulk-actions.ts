@@ -196,17 +196,19 @@ async function writeOneToDisk(
   diskPaths: Set<string>,
   counts: Counts,
 ): Promise<void> {
-  // §312 라우터가 소스 버퍼를 고를 수도 있다. 그 경로의 stale은 디스크와 무관하므로
-  // 그 파일을 다시 읽으면, 같은 배치가 **버퍼에** 이미 만들어 둔 다른 변경까지 옛
-  // 디스크 내용으로 되돌아간다 — `rescheduleInOpenDocument`의 stale이 `diskPaths`를
-  // 건드리지 않는 것과 같은 이유다.
-  const unsaved = resolveTaskWriteTarget(task.path, editor).kind !== "disk";
   try {
     const r = await applyTaskWrite(task, changeFor(task, today), editor);
     if (r.kind === "stale") {
       counts.stale += 1;
-      // 디스크가 진실원인 경우에만 다시 읽는다.
-      if (!unsaved) diskPaths.add(task.path);
+      // §312 디스크가 진실원인 경우에만 다시 읽는다. 소스·문서 경로의 stale은 디스크와
+      // 무관하므로 그 파일을 다시 읽으면, 같은 배치가 **버퍼에** 이미 만들어 둔 다른
+      // 변경까지 옛 디스크 내용으로 되돌아간다 — `rescheduleInOpenDocument`의 stale이
+      // `diskPaths`를 건드리지 않는 것과 같은 이유다.
+      //
+      // ‼️ 어디에 썼는지는 결과가 말한다. 라우터에 다시 물으면 같은 사실의 진실원이
+      // 둘이 되고(접근자 미등록이면 `source` 판정도 디스크로 흘러간다) 그 둘이 갈라지는
+      // 순간 이 회계가 거짓이 된다.
+      if (r.target === "disk") diskPaths.add(task.path);
       return;
     }
     counts.updated += 1;

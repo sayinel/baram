@@ -101,9 +101,38 @@ describe("rescheduleOverdueToToday", () => {
   });
 
   it("stale은 실패와 따로 센다 — 정상 경합이지 오류가 아니다", async () => {
-    vi.mocked(applyTaskWrite).mockResolvedValue({ kind: "stale" });
+    vi.mocked(applyTaskWrite).mockResolvedValue({
+      kind: "stale",
+      target: "disk",
+    });
     const r = await rescheduleOverdueToToday([task()], "2026-08-24", null);
     expect(r).toMatchObject({ failed: 0, stale: 1, updated: 0 });
+  });
+
+  it("stale의 회계는 라우터의 예상이 아니라 **실제로 쓴 곳**을 따른다 — 소스 버퍼로 갔으면 그 파일을 다시 읽지 않는다", async () => {
+    // ‼️ 사전 판정과 실제 쓰기는 갈라질 수 있다(예: 접근자 미등록 → 디스크 폴백).
+    // 두 개의 진실원을 두면 그 순간 잘못된 파일을 다시 읽어, 같은 배치가 **버퍼에**
+    // 이미 만들어 둔 다른 변경까지 옛 디스크 내용으로 되돌린다.
+    vi.mocked(resolveTaskWriteTarget).mockReturnValue({ kind: "disk" });
+    vi.mocked(applyTaskWrite).mockResolvedValue({
+      kind: "stale",
+      target: "source",
+    });
+    const r = await rescheduleOverdueToToday([task()], "2026-08-24", null);
+    expect(r).toMatchObject({ diskPaths: [], stale: 1 });
+  });
+
+  it("반대 방향도 같다 — 라우터가 소스를 골랐어도 디스크에 썼다면 그 파일을 다시 읽는다", async () => {
+    vi.mocked(resolveTaskWriteTarget).mockReturnValue({
+      kind: "source",
+      tabId: "t",
+    });
+    vi.mocked(applyTaskWrite).mockResolvedValue({
+      kind: "stale",
+      target: "disk",
+    });
+    const r = await rescheduleOverdueToToday([task()], "2026-08-24", null);
+    expect(r.diskPaths).toEqual(["/v/a.md"]);
   });
 
   it("디스크에 쓴 파일 경로를 중복 없이 모은다 — 호출자가 그만큼만 다시 읽는다", async () => {
@@ -131,7 +160,7 @@ describe("rescheduleOverdueToToday", () => {
     // diskPaths를 채우면서도 중복 없이 한 번만 남는지 같은 호출에서 함께 본다.
     vi.mocked(applyTaskWrite)
       .mockResolvedValueOnce({ kind: "disk", raw: "" }) // 성공
-      .mockResolvedValueOnce({ kind: "stale" }) // 경합
+      .mockResolvedValueOnce({ kind: "stale", target: "disk" }) // 경합
       .mockRejectedValueOnce(new Error("disk full")); // 오류
 
     const tasks = [

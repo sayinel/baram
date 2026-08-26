@@ -138,6 +138,11 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   // §89 Source mode toggle (Cmd+/)
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceContent, setSourceContent] = useState("");
+  // §312 SourceCodeEditor의 동기화 effect는 **effect 시점의** 진실원을 다시 읽는다.
+  // 렌더 스냅샷(`sourceContent`)을 그대로 접근자로 넘기면, 렌더와 effect 사이에 사용자가
+  // 친 글자를 낡은 값으로 지운다 — 그 prop이 optional이 아닌 이유다.
+  const sourceContentRef = useRef(sourceContent);
+  sourceContentRef.current = sourceContent;
 
   // Track dirty state
   useEffect(() => {
@@ -358,6 +363,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
           <Suspense fallback={null}>
             <SourceCodeEditor
               content={sourceContent}
+              getLatestContent={() => sourceContentRef.current}
               onChange={setSourceContent}
             />
           </Suspense>

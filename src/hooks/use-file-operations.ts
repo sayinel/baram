@@ -54,12 +54,16 @@ export async function triggerAutoReload(
   const isBinary = isBinaryViewerFile(filePath);
   const freshContent = isBinary ? "" : await readFile(filePath);
 
+  // §312 ‼️ 캐시를 덮기 **전에** 잡는다. 이 값이 "버퍼가 갈라졌는가"의 유일한 기준선인데,
+  // setFileContent가 먼저 돌면 그 자리에 이미 새 내용이 들어와 모든 버퍼가 갈라져 보인다.
+  const cachedBefore = useFileStore.getState().openFiles.get(filePath);
+
   // Update the in-memory content cache
   useFileStore.getState().setFileContent(filePath, freshContent);
 
   // §312 그리고 그 파일을 보여주는 소스 표면들. ‼️ 바이너리의 "" 센티널은 내용이
   // 아니라 자리 표시라 버퍼에 넣으면 남의 텍스트를 지운다.
-  if (!isBinary) syncSourceBuffers(filePath, freshContent);
+  if (!isBinary) syncSourceBuffers(filePath, freshContent, cachedBefore);
 
   // Sync mtime so the next auto-save doesn't see a false conflict
   useFileStore.getState().updateLastSaveMtime(filePath, externalMtime);
@@ -385,10 +389,21 @@ export function useFileOperations({
  * 조건이 `handleSave`의 읽기 조건과 **같아야** 한다 — 저장이 버퍼를 읽는 탭에서만
  * 버퍼를 갱신한다. 두 조건이 갈라지면 한쪽이 반드시 낡는다.
  *
- * 버퍼가 아직 없는 탭(로딩 중인 코드 탭)에 키를 만드는 것은 무해하다: 그 값은 로더가
- * 넣었을 것과 같은 디스크 내용이다.
+ * ‼️ 그러나 **갈라진 버퍼는 건드리지 않는다.** 버퍼가 `cachedContent`(리로드 직전에 알고
+ * 있던 그 파일의 내용)와 다르면 그것은 아직 저장되지 않은 편집이다. 마크다운 소스 모드의
+ * 타이핑은 탭을 dirty로 만들지 않으므로(tab-surface-renderers.tsx:108) 워처의 "clean일
+ * 때만 리로드" 관문이 그 텍스트를 지켜 주지 못하고, 여기서 덮으면 사용자가 방금 친 글자가
+ * 버퍼와 화면에서 함께 사라진다 — 충돌 모달조차 뜨지 않는다. 갈라진 버퍼는 그대로 두는
+ * 것이 맞고, 그 상황을 사용자에게 알리는 일은 `showConflictModal` 경로의 몫이다.
+ *
+ * 버퍼가 아직 없는 탭(로딩 중인 코드 탭)도 같은 규칙에 걸려 건너뛴다 — 갱신하지 않아도
+ * 그 표면은 마운트할 때 새 캐시에서 내용을 받는다.
  */
-function syncSourceBuffers(filePath: string, freshContent: string): void {
+function syncSourceBuffers(
+  filePath: string,
+  freshContent: string,
+  cachedContent: string | undefined,
+): void {
   const { sourceBufferAccess, sourceModeTabs, tabs } =
     useEditorStore.getState();
   if (!sourceBufferAccess) return;
@@ -397,8 +412,8 @@ function syncSourceBuffers(filePath: string, freshContent: string): void {
   const alwaysSource = !isMarkdownFile(filePath);
   for (const tab of tabs) {
     if (tab.filePath !== filePath) continue;
-    if (alwaysSource || sourceModeTabs.includes(tab.id)) {
-      sourceBufferAccess.setSourceBuffer(tab.id, freshContent);
-    }
+    if (!alwaysSource && !sourceModeTabs.includes(tab.id)) continue;
+    if (sourceBufferAccess.getSourceBuffer(tab.id) !== cachedContent) continue;
+    sourceBufferAccess.setSourceBuffer(tab.id, freshContent);
   }
 }
