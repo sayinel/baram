@@ -43,6 +43,26 @@
   padding: 8px 12px;
 }
 
+/* issue 468 — tiptap core가 `.ProseMirror [contenteditable="false"]
+   { white-space: normal }`을 주입하는데, vim normal 모드는 IME 차단(3v)을
+   위해 island의 editing host를 제거하므로 cm-content가 그 규칙에 직접
+   매치되어 선행 공백이 표시에서 붕괴한다 (기기 실측: 모드에 따라 computed
+   white-space가 normal↔pre-wrap으로 플립). CM 자신의 .cm-lineWrapping
+   규칙은 이 캐스케이드에서 원래부터 지고 있었고(style-mod가 시트를 앞에
+   삽입), vim 이전에는 tiptap의 중첩 `[contenteditable="false"]
+   [contenteditable="true"] { white-space: pre-wrap }` 규칙이 가려주고
+   있었다 — 즉 island의 실효 렌더는 언제나 pre-wrap이었다.
+
+   값이 pre-wrap 단일 선언인 이유(적대 리뷰): normal 모드(ce=false)는
+   (0,3,0)이 tiptap 규칙 1의 (0,2,0)을 특이도로 이기지만, insert 모드
+   (ce=true)는 tiptap 규칙 2와 (0,3,0) 동률이라 시트 주입 순서가
+   승부를 가른다(tiptap은 Editor 생성 중 style을 나중에 append). 값을
+   tiptap 규칙 2와 같은 pre-wrap으로 두면 동률의 승자가 누구든 결과가
+   같아 순서에 면역이고, 양 모드가 동일하며, vim 이전 렌더와도 같다. */
+.tiptap .code-block-editor .cm-content {
+  white-space: pre-wrap;
+}
+
 .code-block-editor .cm-editor .cm-scroller {
   overflow: hidden !important;
 }
