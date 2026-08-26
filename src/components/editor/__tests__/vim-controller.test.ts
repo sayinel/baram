@@ -360,4 +360,121 @@ describe("createVimController", () => {
     controller.apply(true);
     expect(loadModule).not.toHaveBeenCalled();
   });
+
+  // issue 475 — exitToNormal contract: bare-normal convergence, the C-o
+  // spring (one Esc is NOT idempotent), best-effort failure policy, and the
+  // same generation contract as the guards (no session after dispose).
+
+  interface FakeVimState {
+    inputState: { keyBuffer: string[]; operator: null | string };
+    insertMode: boolean;
+    insertModeReturn: boolean;
+    visualMode: boolean;
+  }
+
+  function vimState(over: Partial<FakeVimState> = {}): FakeVimState {
+    return {
+      inputState: { keyBuffer: [], operator: null },
+      insertMode: false,
+      insertModeReturn: false,
+      visualMode: false,
+      ...over,
+    };
+  }
+
+  async function enabledWithVim(
+    state: FakeVimState,
+    handleKey: (state: FakeVimState) => void,
+    onError?: (e: unknown) => void,
+  ) {
+    const f = makeFakes();
+    const cm = { state: { vim: state } };
+    const handleKeySpy = vi.fn(() => handleKey(state));
+    const mod = {
+      getCM: vi.fn(() => cm),
+      vim: vi.fn(() => []),
+      Vim: { handleKey: handleKeySpy },
+    };
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: f.attachGuard,
+      loadModule: () => Promise.resolve(asModule(mod)),
+      onError,
+    });
+    controller.apply(true);
+    await flush();
+    return { controller, handleKeySpy };
+  }
+
+  it("exitToNormal: bare normal is a no-op true — no Esc injected", async () => {
+    const { controller, handleKeySpy } = await enabledWithVim(
+      vimState(),
+      () => {},
+    );
+    expect(controller.exitToNormal()).toBe(true);
+    expect(handleKeySpy).not.toHaveBeenCalled();
+  });
+
+  it("exitToNormal: one Esc ends a plain insert session", async () => {
+    const { controller, handleKeySpy } = await enabledWithVim(
+      vimState({ insertMode: true }),
+      (state) => {
+        state.insertMode = false;
+      },
+    );
+    expect(controller.exitToNormal()).toBe(true);
+    expect(handleKeySpy).toHaveBeenCalledTimes(1);
+    expect(handleKeySpy).toHaveBeenCalledWith(
+      expect.anything(),
+      "<Esc>",
+      "user",
+    );
+  });
+
+  it("exitToNormal: the C-o spring takes TWO Esc — first re-enters insert", async () => {
+    // Real vim: Esc during insertModeReturn runs as the pending normal
+    // command, and its vim-command-done fires the armed one-shot listener
+    // that re-enters insert; the second Esc ends that insert for good.
+    let presses = 0;
+    const { controller, handleKeySpy } = await enabledWithVim(
+      vimState({ insertModeReturn: true }),
+      (state) => {
+        presses += 1;
+        if (presses === 1) {
+          state.insertModeReturn = false;
+          state.insertMode = true; // the one-shot listener fired
+        } else {
+          state.insertMode = false;
+        }
+      },
+    );
+    expect(controller.exitToNormal()).toBe(true);
+    expect(handleKeySpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("exitToNormal: a throw reports through onError and returns false", async () => {
+    const boom = new Error("vim blew up");
+    const onError = vi.fn();
+    const { controller } = await enabledWithVim(
+      vimState({ insertMode: true }),
+      () => {
+        throw boom;
+      },
+      onError,
+    );
+    expect(controller.exitToNormal()).toBe(false);
+    expect(onError).toHaveBeenCalledWith(boom);
+  });
+
+  it("exitToNormal: no-op true before attach and after dispose", async () => {
+    const f = makeFakes();
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: f.attachGuard,
+      loadModule: () => Promise.resolve(asModule(f.mod)),
+    });
+    expect(controller.exitToNormal()).toBe(true); // still loading — nothing
+    controller.apply(true);
+    await flush();
+    controller.dispose();
+    expect(controller.exitToNormal()).toBe(true); // session died with dispose
+  });
 });

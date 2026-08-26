@@ -497,9 +497,22 @@ export class CodeBlockNodeView implements NodeView {
       () => this.node,
     );
 
+    // issue 475 — leaving the island IS the end of any insert/visual/pending
+    // vim session: outside, PM vim is normal by construction (3v). The
+    // keymap's edge-arrow escape is mode-blind (vim passes insert-mode
+    // arrows through), so without this the island keeps insertMode=true and
+    // revives insert on the next entry. Best-effort by contract: a failed
+    // normalization reports through the controller's onError and the escape
+    // STILL proceeds — trapping focus in the island is worse than a stale
+    // mode. No-op with vim off or still loading (nothing to normalize).
+    const escapeToPM = (dir: -1 | 1) => {
+      this.vimController?.exitToNormal();
+      maybeEscape(dir);
+    };
+
     // Custom keymaps for PM ↔ CM navigation
     const customKeys = buildCodeBlockKeymap({
-      escape: maybeEscape,
+      escape: escapeToPM,
       focusPM,
       getPos: this.getPos,
       view: this.view,
@@ -539,7 +552,9 @@ export class CodeBlockNodeView implements NodeView {
       // SAME escape path as plain arrows; u/C-r go to PM — the island has
       // no CM history, PM owns the document's undo (design v3).
       boundaryHooks: {
-        escape: (dir) => maybeEscape(dir),
+        // Same wrapper as the keymap: the boundary fires only from idle
+        // normal, where exitToNormal is a no-op — uniformity over cleverness.
+        escape: (dir) => escapeToPM(dir),
         redo: () => {
           redo(this.view.state, this.view.dispatch);
         },

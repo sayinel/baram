@@ -13,6 +13,7 @@ import { EditorView } from "@codemirror/view";
 import {
   attachVimBoundary,
   type BoundaryHooks,
+  isIdleNormal,
 } from "./vim-code-block-boundary";
 import {
   attachVimImeGuard,
@@ -26,6 +27,12 @@ export interface VimController {
   apply(enabled: boolean): void;
   /** Final teardown — detaches the guard and invalidates in-flight loads. */
   dispose(): void;
+  /** issue 475 — end any insert/visual/pending vim session so the island
+   *  sits in bare normal mode. Returns whether that state was reached;
+   *  true when vim is not attached (nothing to normalize). Best-effort:
+   *  a throw reports through onError and returns false — the caller
+   *  decides, it is never re-thrown. */
+  exitToNormal(): boolean;
 }
 
 export interface VimControllerDeps {
@@ -74,12 +81,20 @@ export function createVimController(
   let revision = 0;
   let guardDispose: (() => void) | null = null;
   let boundaryDispose: (() => void) | null = null;
+  /** Live vim handles for exitToNormal. Set only on a successful install,
+   *  cleared wherever the guards detach — so it obeys the same generation
+   *  contract (re-apply, rollback, dispose) and can never outlive its CM. */
+  let session: null | {
+    cm: NonNullable<ReturnType<VimModule["getCM"]>>;
+    mod: VimModule;
+  } = null;
 
   const detachGuard = () => {
     guardDispose?.();
     guardDispose = null;
     boundaryDispose?.();
     boundaryDispose = null;
+    session = null;
   };
 
   /** Latest requested editing-host state, applied on the next microtask. */
@@ -183,6 +198,7 @@ export function createVimController(
             rollbackInstall(new Error("vim plugin failed to initialize"));
             return;
           }
+          session = { cm, mod };
           try {
             guardDispose = attach(view, cm, handleMode);
             if (deps.boundaryHooks) {
@@ -224,6 +240,25 @@ export function createVimController(
       revision++;
       detachGuard();
       handleMode(null);
+    },
+    /** issue 475 — bounded because one Esc is NOT idempotent: after `<C-o>`
+     *  the first Esc runs as the pending normal command, and its
+     *  vim-command-done fires the armed one-shot listener that re-enters
+     *  insert — only the SECOND Esc ends that insert. Upstream itself
+     *  normalizes programmatically with this exact handleKey Esc idiom
+     *  (status-button handler in the installed dist). */
+    exitToNormal(): boolean {
+      const s = session;
+      if (!s) return true; // vim not attached — nothing to normalize
+      try {
+        for (let i = 0; i < 3 && !isIdleNormal(s.cm); i++) {
+          s.mod.Vim.handleKey(s.cm, "<Esc>", "user");
+        }
+        return isIdleNormal(s.cm);
+      } catch (err) {
+        deps.onError?.(err);
+        return false;
+      }
     },
   };
 }
