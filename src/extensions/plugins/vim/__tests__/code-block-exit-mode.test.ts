@@ -536,4 +536,46 @@ describe("exit-side mode propagation (issue 478)", () => {
     expect(content.getAttribute("contenteditable")).toBe("true"); // insert 유지
     chrome.remove();
   });
+
+  it("POINTER island→PM body: insert follows the click out (device report)", async () => {
+    // 바깥 normal + island insert에서 본문 클릭으로 나가면 PM이 normal로
+    // 남았다 — 모드는 포인터 이탈에서도 커서를 따라간다.
+    const editor = makeEditor("```ts\nconst a = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealIsland(editor);
+    await focusIsland(content);
+    await vi.waitFor(() => {
+      islandPress(content, "i");
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    expect(pmMode(editor)).toBe("normal"); // 바깥은 normal인 상태
+    // 본문 클릭: focusout(island, rt=PM root) → PM 포커스
+    const pmRoot = editor.view.dom as HTMLElement;
+    content.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: pmRoot }),
+    );
+    pmRoot.setAttribute("tabindex", "0");
+    pmRoot.focus();
+    pmRoot.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await vi.waitFor(() => {
+      expect(pmMode(editor)).toBe("insert"); // 모드가 따라나옴
+      expect(islandVimState(content)?.insertMode ?? false).toBe(false); // 세션 종료
+    });
+  });
+
+  it("POINTER island→PM body: a normal-mode exit keeps PM normal and closes transients", async () => {
+    const editor = makeEditor("before\n\n```ts\nconst a = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealIsland(editor);
+    await focusIsland(content); // island는 normal인 채
+    const pmRoot = editor.view.dom as HTMLElement;
+    content.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: pmRoot }),
+    );
+    pmRoot.setAttribute("tabindex", "0");
+    pmRoot.focus();
+    pmRoot.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(pmMode(editor)).toBe("normal");
+  });
 });

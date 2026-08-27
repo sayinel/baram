@@ -71,6 +71,9 @@ export class CodeBlockNodeView implements NodeView {
   private pendingFocusRestore: null | { head: number } = null;
   private pendingSelection: null | { anchor: number; head: number } = null;
   private pendingVimModeRestore: "insert" | "replace" | null = null;
+  /** 포인터 이탈의 전이당 1회 처리 latch — focusout이 한 전이에 겹쳐
+   *  발화해도(계측 실증) 정규화 이전의 첫 캡처만 전파된다. */
+  private pointerExitHandled = false;
   // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
   // PM editable without triggering NodeView.update(), and broadcasts instead.
   private readOnlyCompartment = new Compartment();
@@ -475,11 +478,6 @@ export class CodeBlockNodeView implements NodeView {
     return sel.empty && sel.head - (pos + 1) === memo.head;
   }
 
-  /**
-   * Called by ProseMirror when selection enters this node.
-   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
-   * it allows us to properly focus CodeMirror and set its cursor position.
-   */
   /** issue 478 — the PM mode the cursor carries out of this island:
    *  insert/replace map to insert (PM has no replace), anything else to
    *  normal. Null (no propagation) with vim off, or while the island's
@@ -562,6 +560,10 @@ export class CodeBlockNodeView implements NodeView {
     // and queue an off-focus insert revival (adversarial review).
     const escapeToPM = (dir: -1 | 1) => {
       const exitMode = this.exitPmMode();
+      // 이 이탈이 곧 유발할 focusout(포인터 이탈 감지)은 같은 전이다 —
+      // latch로 잠가서 정규화 뒤의 "normal" 재캡처가 방금 전파한 모드를
+      // 덮어쓰지 못하게 한다 (포인터 경로와 동일한 이중 발화 방어).
+      this.latchPointerExit();
       this.pendingEntryInsert = null;
       this.pendingVimModeRestore = null;
       this.vimController?.exitToNormal();
@@ -687,17 +689,47 @@ export class CodeBlockNodeView implements NodeView {
       // 동기 구간(focusout → 도착측 focusin 이전): 다른 island로의 포인터
       // 이동이면 지금 모드를 인계로 arm하고 이 세션을 끝낸다. 키보드
       // 이탈(escapeToPM)과 같은 의미론 — 이동 = 세션 종료 + 의도 소각.
-      const dest =
-        event.relatedTarget instanceof Element
-          ? event.relatedTarget.closest(".code-block-editor")
-          : null;
+      //
+      // 전이당 정확히 1회: 프로그램적 focus 연쇄는 한 전이에 focusout을
+      // 겹쳐 쏘고, 두 번째 실행은 정규화 뒤의 모드를 다시 캡처해 방금
+      // 전파한 모드를 "normal"로 덮어쓴다 (계측 실증). 포커스 전이는
+      // 동기이므로 microtask 해제가 정확히 한 전이를 묶는다.
+      if (this.pointerExitHandled) return;
+      const related =
+        event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      const dest = related?.closest(".code-block-editor") ?? null;
       if (dest && !island.dom.contains(dest) && !dest.contains(island.dom)) {
         const mode = this.exitPmMode();
         if (mode) {
+          this.latchPointerExit();
           armIslandPointerHandoff(this.view, mode);
           this.pendingEntryInsert = null;
           this.pendingVimModeRestore = null;
           this.vimController?.exitToNormal();
+        }
+      } else if (
+        !dest &&
+        related &&
+        this.view.dom.contains(related) &&
+        !related.closest("[data-vim-suspend]")
+      ) {
+        // island → PM 본문 포인터 이탈(기기 보고: island insert에서 본문
+        // 클릭 후 바깥이 normal로 남음): 키보드 이탈과 같은 의미론 —
+        // 정규화 전에 모드 캡처, 의도 소각, 세션 종료, boundary setMode로
+        // PM에 전파. 크롬(view.dom 밖)과 다른 suspend 섬(math 등)은 제외.
+        const mode = this.exitPmMode();
+        if (mode) {
+          this.latchPointerExit();
+          this.pendingEntryInsert = null;
+          this.pendingVimModeRestore = null;
+          this.vimController?.exitToNormal();
+          this.view.dispatch(
+            this.view.state.tr.setMeta(vimPluginKey, {
+              boundary: true,
+              mode,
+              type: "setMode",
+            }),
+          );
         }
       }
       queueMicrotask(() => {
@@ -805,6 +837,20 @@ export class CodeBlockNodeView implements NodeView {
       }
       this.pendingSelection = null;
     }
+  }
+
+  /**
+   * Called by ProseMirror when selection enters this node.
+   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
+   * it allows us to properly focus CodeMirror and set its cursor position.
+   */
+  /** 포인터 이탈 처리를 이 전이 동안 잠근다 (microtask에 해제 —
+   *  포커스 전이는 동기라 정확히 한 전이를 묶는다). */
+  private latchPointerExit(): void {
+    this.pointerExitHandled = true;
+    queueMicrotask(() => {
+      this.pointerExitHandled = false;
+    });
   }
 
   private async reconfigureLanguage(language: string): Promise<void> {
