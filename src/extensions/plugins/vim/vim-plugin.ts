@@ -44,7 +44,11 @@ import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
 import { insertArrowEntry } from "./adapters/insert-entry";
-import { resolveFindChar, resolveMotion } from "./adapters/motions";
+import {
+  cursorLineStart,
+  resolveFindChar,
+  resolveMotion,
+} from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
 import { resolveSearch } from "./adapters/search";
@@ -720,6 +724,26 @@ function runSelectionCommand(
     // a k-entry at the last line of a tall block would scroll the viewport
     // toward the block top, away from the caret). setSelection dispatches
     // with scrollIntoView, which follows the real CM caret line.
+    if (!islandTookFocus) scrollCursorIntoView(view, target);
+    return true;
+  }
+
+  if (command.type === "exCommand") {
+    // issue 487 — `:N`/`:$` 줄 이동은 SELECTION 명령이다: move와 같은
+    // 단일 트랜잭션(meta + 선택)으로 처리해 코드블록 착지의 진입
+    // 핸드오프·스크롤 위임까지 기존 채널을 그대로 탄다. 숫자가 아니면
+    // false — 실행부(:w/:q)가 이어받는다.
+    const m = /^(\d+|\$)$/.exec(command.name.trim());
+    if (!m) return false;
+    const target = cursorLineStart(
+      view.state,
+      m[1] === "$" ? "$" : Number.parseInt(m[1], 10),
+    );
+    if (target === null) return true; // 빈 문서 — 명령줄만 닫는다
+    const tr = view.state.tr;
+    tr.setSelection(cursorSelection(view.state.doc, target));
+    tr.setMeta(vimPluginKey, { core: result.state, type: "core" });
+    const islandTookFocus = dispatchCursor(view, tr);
     if (!islandTookFocus) scrollCursorIntoView(view, target);
     return true;
   }
