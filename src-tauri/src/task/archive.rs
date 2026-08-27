@@ -110,10 +110,28 @@ pub async fn archive_tasks(
         by_source.entry(norm(&item.path)).or_default().push(item);
     }
 
+    // 파일 여러 개를 한 번에 고치는 조작이라 무엇을 했는지 기록으로 남긴다. 프런트의
+    // `logger`는 브라우저 콘솔로만 가므로(§3.3) 사용자 손에 남는 유일한 기록이 여기다.
+    log::info!(
+        "[task] archive: {} item(s), root={}, capture={}, today={}, after_days={}",
+        items.len(),
+        root,
+        capture,
+        today,
+        after_days
+    );
+
     let mut outcome = ArchiveOutcome::default();
     for (source, group) in by_source {
         drain_one_file(&source, &group, &root, today, after_days, &mut outcome).await;
     }
+    log::info!(
+        "[task] archive: archived={} skipped={} stale={} failed={}",
+        outcome.archived,
+        outcome.skipped,
+        outcome.stale,
+        outcome.failed
+    );
     // 한 파일이 원본이면서 다른 파일의 대상일 수 있다(`Archive/*` 사이의 정리). 그대로
     // 두면 호출자가 같은 파일을 두 번 다시 읽는다 — 해롭지는 않지만 `paths`는 "바뀐 파일
     // 목록"이지 "쓰기 횟수"가 아니다.
@@ -146,6 +164,12 @@ async fn drain_one_file(
     for item in group {
         let idx = item.line as usize;
         let Some(part) = parts.get(idx) else {
+            log::info!(
+                "[task] archive: {}:{} is past the end of the file ({} lines)",
+                source,
+                idx,
+                parts.len()
+            );
             outcome.stale += 1;
             continue;
         };
@@ -153,10 +177,24 @@ async fn drain_one_file(
         // 잠금이 먼저다. 자격 판정보다 앞에 두어야 "그 사이 바뀐 줄"이 자격 판정에
         // 걸리는 일이 없다 — 지금 파일에 있는 다른 줄을 옮기게 된다.
         if !matches_expected(raw, &item.expected_raw) {
+            // 양쪽 원문을 남긴다 — 잠금이 왜 어긋났는지는 이 두 줄을 나란히 놓아야만 보인다.
+            log::info!(
+                "[task] archive: {}:{} changed underneath\n  on disk: {:?}\n  expected: {:?}",
+                source,
+                idx,
+                raw,
+                item.expected_raw
+            );
             outcome.stale += 1;
             continue;
         }
         let Verdict::Move { month } = archive_verdict(raw, today, after_days) else {
+            log::info!(
+                "[task] archive: {}:{} is not eligible: {:?}",
+                source,
+                idx,
+                raw
+            );
             outcome.skipped += 1;
             continue;
         };

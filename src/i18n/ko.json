@@ -849,6 +849,7 @@
   "tasks.archive.action": "완료 항목 정리",
   "tasks.archive.title": "완료 항목 {count}개 정리",
   "tasks.archive.confirm": "{days}일 이상 지난 완료 태스크 {count}개를 Archive/YYYY-MM.md로 옮길까요? 옮긴 뒤에도 인덱싱되고 검색됩니다.",
+  "tasks.archive.confirmButton": "정리",
   "tasks.archive.unsavedTab": "먼저 \"{file}\"을 저장하세요. 아카이브는 디스크에 쓰므로, 그 탭의 저장 전 내용이 옮긴 줄을 되살립니다.",
   "tasks.archive.error": "정리하지 못했습니다. 아무것도 옮기지 않았습니다 \u2014 로그를 확인하세요.",
   "tasks.archive.result": "{count}개를 정리했습니다.",

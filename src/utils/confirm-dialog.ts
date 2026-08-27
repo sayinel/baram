@@ -1,6 +1,22 @@
 // Custom confirm dialog — replaces window.confirm() which doesn't work in Tauri WKWebView
 // Pattern from showPrompt() in ai-commands.ts
 
+/**
+ * 확인 대화상자의 성격. 기본값은 **파괴적 조작**이다 — 이 헬퍼가 그것을 위해 태어났고
+ * 호출부 다섯이 여전히 그쪽이기 때문이다(파일/폴더 삭제, 태스크 줄 삭제, Zettel 휴지통,
+ * 하이라이트 삭제).
+ *
+ * ‼️ 기본값을 그대로 쓰면 확인 버튼에 **"Delete"**가 적힌다. "옮길까요?"·"조정할까요?"
+ * 처럼 지우지 않는 조작에서 그 문구는 단순한 오탈자가 아니라 **사용자가 취소를 누르게
+ * 만든다** — 실제로 §312 아카이브가 그렇게 아무것도 하지 못했다.
+ */
+export interface ConfirmOptions {
+  /** 확인 버튼 문구. 기본 "Delete" */
+  confirmLabel?: string;
+  /** 확인 버튼을 위험색으로 그릴지. 기본 true */
+  danger?: boolean;
+}
+
 /** 단일 확인 버튼 알림 — 일괄 작업 실패 보고용 (§4.3) */
 export function showAlert(message: string): Promise<void> {
   return new Promise((resolve) => {
@@ -50,7 +66,11 @@ export function showAlert(message: string): Promise<void> {
   });
 }
 
-export function showConfirm(message: string): Promise<boolean> {
+export function showConfirm(
+  message: string,
+  options: ConfirmOptions = {},
+): Promise<boolean> {
+  const { confirmLabel = "Delete", danger = true } = options;
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "ai-prompt-overlay";
@@ -69,12 +89,14 @@ export function showConfirm(message: string): Promise<boolean> {
     cancelBtn.className = "ai-prompt-btn ai-prompt-btn-cancel";
     cancelBtn.textContent = "Cancel";
 
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "ai-prompt-btn confirm-dialog-btn-danger";
-    deleteBtn.textContent = "Delete";
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = danger
+      ? "ai-prompt-btn confirm-dialog-btn-danger"
+      : "ai-prompt-btn";
+    confirmBtn.textContent = confirmLabel;
 
     btnRow.appendChild(cancelBtn);
-    btnRow.appendChild(deleteBtn);
+    btnRow.appendChild(confirmBtn);
     dialog.appendChild(label);
     dialog.appendChild(btnRow);
     overlay.appendChild(dialog);
@@ -89,7 +111,7 @@ export function showConfirm(message: string): Promise<boolean> {
     const handleKeydown = (e: KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        cleanup(document.activeElement === deleteBtn);
+        cleanup(document.activeElement === confirmBtn);
       }
       if (e.key === "Escape") {
         e.preventDefault();
@@ -103,7 +125,7 @@ export function showConfirm(message: string): Promise<boolean> {
       resolve(value);
     };
 
-    deleteBtn.addEventListener("click", () => cleanup(true));
+    confirmBtn.addEventListener("click", () => cleanup(true));
     cancelBtn.addEventListener("click", () => cleanup(false));
     overlay.addEventListener("mousedown", (e) => {
       if (e.target === overlay) cleanup(false);

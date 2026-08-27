@@ -101,11 +101,17 @@ export function useArchiveDone({
       }
 
       // §312 파일을 대량 수정하는 동작이므로 자동 실행하지 않는다.
+      //
+      // ‼️ 확인 버튼 문구를 반드시 준다. `showConfirm`의 기본값은 **"Delete"**이고
+      // (파일 삭제용으로 태어난 헬퍼다) 위험색까지 입는다 — "옮길까요?"라고 묻고
+      // Delete 버튼을 내밀면 사용자가 취소를 누른다. 실제로 그렇게 아카이브가
+      // 아무것도 하지 못했고, 파일이 손대지지 않으니 로그에도 흔적이 없었다.
       const ok = await showConfirm(
         t("tasks.archive.confirm", {
           count: String(candidates.length),
           days: String(afterDays),
         }),
+        { confirmLabel: t("tasks.archive.confirmButton"), danger: false },
       );
       if (!ok) return;
 

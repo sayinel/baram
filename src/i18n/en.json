@@ -849,6 +849,7 @@
   "tasks.archive.action": "Archive completed tasks",
   "tasks.archive.title": "Archive {count} completed task(s)",
   "tasks.archive.confirm": "Move {count} completed task(s) finished more than {days} days ago into Archive/YYYY-MM.md? They stay indexed and searchable.",
+  "tasks.archive.confirmButton": "Archive",
   "tasks.archive.unsavedTab": "Save \"{file}\" first. Archiving writes to disk, and the unsaved copy in that tab would bring the moved lines back.",
   "tasks.archive.error": "Couldn't archive. Nothing was moved \u2014 see the log.",
   "tasks.archive.result": "Archived {count} task(s).",

@@ -101,6 +101,8 @@ describe("TaskAgendaPanel — reschedule overdue 확인 게이트 (§309)", () =
 
     expect(showConfirm).toHaveBeenCalledWith(
       "Reschedule 3 overdue task(s) to today?",
+      // 버튼 문구를 함께 준다 — 기본값 "Delete"는 날짜만 미는 이 조작에 맞지 않는다.
+      expect.objectContaining({ confirmLabel: "Reschedule", danger: false }),
     );
   });
 

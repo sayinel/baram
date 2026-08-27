@@ -82,3 +82,43 @@ describe("showConfirm keyboard defaults", () => {
     expect(document.querySelector(".ai-prompt-overlay")).toBeNull();
   });
 });
+
+describe("showConfirm 확인 버튼 문구", () => {
+  // ‼️ 이 헬퍼는 삭제용으로 태어나 확인 버튼이 "Delete"로 굳어 있었다. 지우지 않는
+  // 조작(§309 기한 조정, §312 아카이브)이 호출부에 생겼을 때 그 문구는 오탈자가
+  // 아니라 **사용자가 취소를 누르게 만드는** 함정이 된다 — 실제로 아카이브가 그렇게
+  // 아무것도 하지 못했다.
+  it("기본값은 파괴적 조작 그대로다", async () => {
+    const answer = showConfirm("delete it?");
+    await afterInitialFocus();
+
+    const confirm = buttons()[1];
+    expect(confirm.textContent).toBe("Delete");
+    expect(confirm.className).toContain("confirm-dialog-btn-danger");
+    press("Escape");
+    await answer;
+  });
+
+  it("지우지 않는 조작은 제 문구와 제 색을 갖는다", async () => {
+    const answer = showConfirm("move them?", {
+      confirmLabel: "Archive",
+      danger: false,
+    });
+    await afterInitialFocus();
+
+    const confirm = buttons()[1];
+    expect(confirm.textContent).toBe("Archive");
+    expect(confirm.className).not.toContain("confirm-dialog-btn-danger");
+    press("Escape");
+    await answer;
+  });
+
+  it("문구를 바꿔도 안전한 기본값은 그대로다 — 포커스는 Cancel", async () => {
+    const answer = showConfirm("move them?", { confirmLabel: "Archive" });
+    await afterInitialFocus();
+
+    expect(document.activeElement).toBe(buttons()[0]);
+    press("Enter");
+    expect(await answer).toBe(false);
+  });
+});

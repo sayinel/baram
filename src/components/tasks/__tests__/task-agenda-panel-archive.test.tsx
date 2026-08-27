@@ -97,8 +97,29 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
 
     await userEvent.click(screen.getByLabelText("Archive completed tasks"));
 
-    expect(showConfirm).toHaveBeenCalledWith(expect.stringContaining("2"));
-    expect(showConfirm).toHaveBeenCalledWith(expect.stringContaining("45"));
+    expect(showConfirm).toHaveBeenCalledWith(
+      expect.stringContaining("2"),
+      expect.anything(),
+    );
+    expect(showConfirm).toHaveBeenCalledWith(
+      expect.stringContaining("45"),
+      expect.anything(),
+    );
+  });
+
+  it("확인 버튼이 삭제처럼 보이지 않는다", async () => {
+    // `showConfirm`의 기본 확인 문구는 "Delete"이고 위험색까지 입는다. "옮길까요?"에
+    // 그 버튼을 내밀면 사용자가 취소를 누른다 — 실제로 그렇게 아무것도 옮겨지지 않았다.
+    vi.mocked(showConfirm).mockResolvedValue(false);
+    seed([old_()]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.click(screen.getByLabelText("Archive completed tasks"));
+
+    expect(showConfirm).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ confirmLabel: "Archive", danger: false }),
+    );
   });
 
   it("확인하면 대상 전부를 한 번의 호출로 넘긴다", async () => {

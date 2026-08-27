@@ -41,8 +41,12 @@ export function useRescheduleOverdue({
     setBusy(true);
     try {
       // §309 파일을 대량 수정하는 동작이므로 자동 실행하지 않는다.
+      //
+      // ‼️ 아카이브(§312)와 같은 이유로 버튼 문구를 준다 — 기본값은 "Delete"다.
+      // 날짜만 미는 조작에 삭제 버튼을 내밀고 있었다.
       const ok = await showConfirm(
         `Reschedule ${tasks.length} overdue task(s) to today?`,
+        { confirmLabel: "Reschedule", danger: false },
       );
       if (!ok) return;
 
