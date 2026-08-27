@@ -345,6 +345,7 @@ pub fn run() {
             task_cmd::preview_task_tag_line,
             task_cmd::append_task_line,
             task_cmd::delete_task_line,
+            task_cmd::archive_task_lines,
             snapshot_cmd::create_snapshot,
             snapshot_cmd::list_snapshots,
             snapshot_cmd::get_snapshot_diff,

@@ -29,7 +29,7 @@ where
 
     let idx = line as usize;
     let current = lines.get(idx).ok_or(TaskError::Stale)?;
-    if normalize_line(current).trim_end() != normalize_line(expected_raw).trim_end() {
+    if !matches_expected(current, expected_raw) {
         return Err(TaskError::Stale);
     }
 
@@ -171,16 +171,11 @@ pub async fn delete_line(path: &str, line: u32, expected_raw: &str) -> Result<()
 
     let idx = line as usize;
     let part = parts.get(idx).ok_or(TaskError::Stale)?;
-    if normalize_line(strip_eol(part)).trim_end() != normalize_line(expected_raw).trim_end() {
+    if !matches_expected(strip_eol(part), expected_raw) {
         return Err(TaskError::Stale);
     }
 
-    let out: String = parts
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| *i != idx)
-        .map(|(_, p)| *p)
-        .collect();
+    let out = splice_out(&parts, &[idx]);
 
     // §3.6 원자적 쓰기(tmp → rename) — `replace_line`과 같은 이유이고, 삭제에서는 더
     // 무겁다: 반쯤 쓰인 파일로 죽으면 되돌릴 원본이 남지 않는다.
@@ -195,7 +190,7 @@ pub async fn delete_line(path: &str, line: u32, expected_raw: &str) -> Result<()
 ///
 /// TypeScript 쪽 `splitKeepingEol`(src/utils/tasks/line-splice.ts)과 같은 규칙이다 —
 /// 열린 문서 경로는 삭제를 그쪽에서 하므로 두 구현이 같은 바이트를 내야 한다.
-fn split_keeping_eol(content: &str) -> Vec<&str> {
+pub(super) fn split_keeping_eol(content: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     let mut start = 0;
     // '\n'은 1바이트이므로 i+1은 항상 문자 경계다.
@@ -210,11 +205,33 @@ fn split_keeping_eol(content: &str) -> Vec<&str> {
 }
 
 /// 조각에서 종결자를 뗀다 — `str::lines()`처럼 `\r`도 뗀다.
-fn strip_eol(part: &str) -> &str {
+pub(super) fn strip_eol(part: &str) -> &str {
     match part.strip_suffix('\n') {
         Some(rest) => rest.strip_suffix('\r').unwrap_or(rest),
         None => part,
     }
+}
+
+/// `split_keeping_eol`의 조각들에서 `drop`에 든 번호를 빼고 도로 붙인다. 남는 바이트는
+/// 손대지 않은 줄의 **원본 그대로**다 — 조각이 자기 종결자를 이미 들고 있으므로 EOL을
+/// 다시 짓지 않는다.
+///
+/// 삭제(§312)와 아카이브(`archive.rs`)가 같은 규칙으로 줄을 뺀다. 아카이브는 한 파일에서
+/// 여러 줄을 한 번에 빼는데, `delete_line`을 N번 부르는 것으로는 대신할 수 없다 —
+/// 첫 삭제가 그 아래 줄 번호를 전부 하나씩 당겨 두 번째 호출이 다른 줄을 지운다.
+pub(super) fn splice_out(parts: &[&str], drop: &[usize]) -> String {
+    parts
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| !drop.contains(i))
+        .map(|(_, p)| *p)
+        .collect()
+}
+
+/// §305 낙관적 잠금의 비교 — 양쪽을 정규화하고 뒤 공백을 떼고 견준다.
+/// 쓰기·삭제·아카이브가 **같은 기준**으로 잠그도록 한 곳에 둔다.
+pub(super) fn matches_expected(actual: &str, expected_raw: &str) -> bool {
+    normalize_line(actual).trim_end() == normalize_line(expected_raw).trim_end()
 }
 
 pub async fn set_task_state(

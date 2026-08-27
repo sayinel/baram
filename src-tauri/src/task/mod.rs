@@ -1,11 +1,13 @@
 // §304 Vault-wide task index
 mod append;
+mod archive;
 mod fields;
 mod parse;
 mod tag;
 mod write;
 
-pub use append::append_line;
+pub use append::{append_line, append_lines};
+pub use archive::{archive_tasks, ArchiveItem, ArchiveOutcome};
 pub use parse::normalize_line;
 pub use parse::{parse_task_line, TaskState};
 pub use tag::{apply_tag, set_task_tag};
