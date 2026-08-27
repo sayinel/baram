@@ -3,21 +3,10 @@
 // 자리를 재는 규칙은 `fields.rs`가 갖는다(`field_run_start`). 한때 이 파일이 그 규칙을
 // 혼자 갖고 있었고 `write.rs`는 필드를 줄 **끝**에 붙였는데, 그 둘이 같은 줄을 다르게
 // 읽은 것이 §303 순서 드리프트의 원인이었다. 이제 태그도 필드도 같은 자를 쓴다.
+use crate::md::is_tag_char;
 use crate::task::fields::field_run_start;
 use crate::task::write::replace_line;
 use crate::task::TaskError;
-
-/// 태그 이름에 쓸 수 있는 글자 — **경계 판정의 어휘**다.
-///
-/// `md::INLINE_TAG_RE`의 어휘(`\w` + 한글 + `/`)에 하이픈을 **더한다**. 그 정규식은
-/// 하이픈에서 잘려 `#deep-work`를 `#deep`으로 읽는 P2 결함이 있는데(dev/backlog.md),
-/// 여기서 그 어휘를 그대로 베끼면 `#someday`가 `#someday-maybe` 안에서 "이미 있다"로
-/// 읽히고 제거는 남의 태그를 `-maybe`로 잘라 놓는다. 경계는 **넓은 쪽이 안전하다** —
-/// 태그 글자로 인정하는 범위가 넓을수록 부분 일치를 더 많이 거절한다. 인덱서 쪽 결함은
-/// 태그 패널·태그 인덱스와 공유된 규칙이라 이 슬라이스 밖이다.
-fn is_tag_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
-}
 
 /// 프론트가 넘긴 태그 이름을 쓸 수 있는가. `"#someday"`처럼 `#`을 붙여 넘겼거나 공백이
 /// 섞였으면 거절한다 — `set_task_field`가 모르는 필드명을 파일을 건드리기 **전에**
