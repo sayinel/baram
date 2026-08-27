@@ -434,6 +434,12 @@ export function useTabSwitching({
           );
           markContentLoaded(activeTabId!);
           if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
+          // §313 ‼️ 복원 **뒤에** 부른다. 이 분기는 캐시된 상태를 이 setTimeout에 미뤄
+          // 두므로, 바깥에서 부르면 스크롤 요청이 아직 **나가는** 문서를 보고 좌표를
+          // 잡는다 — 들어오는 파일의 줄 번호를 남의 문서에 맞춰 재는 셈이라 커서가
+          // 문서 첫머리에 앉았다. 아래의 로드 경로(`finishLoad`)도 문서가 들어온 뒤에
+          // 부르므로, 이제 두 분기가 같은 규칙을 지킨다.
+          afterDocLoad(editor);
         });
         // Restore exact scroll position (not just cursor visibility)
         // §perf-large-file C3.4: scope via editor.view.dom.closest() so this
@@ -456,7 +462,6 @@ export function useTabSwitching({
             if (sc) sc.scrollTop = 0;
           });
         }
-        afterDocLoad(editor);
       } else {
         logCacheEvent("miss", activeTabId!);
         // §perf-large-file B1/C2: Parse in Worker, progressively render chunks

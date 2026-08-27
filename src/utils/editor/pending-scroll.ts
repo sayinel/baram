@@ -54,19 +54,26 @@ export function requestScroll(path: string, target: ScrollTarget): void {
  *
  * `content`는 그 파일의 마크다운 — 줄 번호 목적지에만 필요하므로 없으면 `null`을 준다.
  *
- * 실제 dispatch는 다음 프레임에 한다. 호출자들(탭 전환 직후·문서 로드 직후)이 전부
- * 상태가 아직 자리를 잡는 중인 시점이라, 지금 잡아 둔 좌표가 아니라 **그때의** 문서에서
- * 다시 해석해야 한다.
+ * 실제 dispatch는 다음 프레임에 하고, **좌표도 그때 잡는다**.
+ *
+ * ‼️ 예전에는 목적지를 지금 좌표로 바꾼 뒤 dispatch만 미뤘다. 호출자들은 전부 문서가 아직
+ * 자리를 잡는 중인 시점에 부른다 — 특히 `useTabSwitching`의 캐시 복원 분기는 캐시된
+ * EditorState를 `setTimeout`에 예약해 두고 `afterDocLoad`를 **그 자리에서** 부르므로, 그
+ * 순간 뷰가 들고 있는 것은 아직 **나가는** 문서다. 나가는 문서에 들어오는 파일의 마크다운을
+ * 맞춰 재면 좌표는 뜻 없는 숫자가 되고(짧은 문서에서는 대개 1), 커서는 문서 첫머리에
+ * 앉는다. 사용자가 본 "한 번 눌러선 열리기만 하고, 다시 눌러야 그 자리로 간다"가 그것이다 —
+ * 두 번째 클릭은 탭 전환이 없어 `takeSameTabScroll` 경로를 타고, 그쪽은 이미 들어온 문서를
+ * 본다.
  */
 export function scrollToTarget(
   view: EditorView,
   content: null | string,
   target: ScrollTarget,
 ): void {
-  const pos = resolveScrollPos(view.state.doc, content, target);
-  if (pos === null) return;
   requestAnimationFrame(() => {
     if (view.isDestroyed) return;
+    const pos = resolveScrollPos(view.state.doc, content, target);
+    if (pos === null) return;
     try {
       const clamped = Math.min(Math.max(pos, 0), view.state.doc.content.size);
       const tr = view.state.tr
