@@ -22,11 +22,19 @@ describe("lineHasTag — 쓰는 쪽 경계", () => {
     expect(lineHasTag("- [ ] 여행 (#someday)", "someday")).toBe(true);
   });
 
-  // ‼️ MODERATE-1의 정확한 줄. 파서는 하이픈에서 끊어 tags=["someday"]를 주지만
-  // 쓰는 쪽은 하이픈을 태그 글자로 치므로 이 줄에서 `#someday`를 **찾지 못한다**.
+  // MODERATE-1의 정확한 줄. 파서가 하이픈에서 끊어 tags=["someday"]를 주던 시절,
+  // 쓰는 쪽은 하이픈을 태그 글자로 쳐서 이 줄에서 `#someday`를 찾지 못했다. 파서는
+  // 고쳐졌고 이 판정은 그대로다 — 여기서 참을 돌려주면 남의 태그를 잘라내게 된다.
   it("하이픈으로 이어진 더 긴 태그는 그 태그가 아니다", () => {
     expect(lineHasTag("- [ ] 여행 #someday-maybe", "someday")).toBe(false);
     expect(lineHasTag("- [ ] 여행 #someday-", "someday")).toBe(false);
+  });
+
+  // ‼️ 읽는 쪽과 쓰는 쪽이 지금도 갈리는 유일한 부류 — `½`는 Rust `is_alphanumeric()`
+  // (그리고 여기 `\p{N}`)에는 들어가지만 인덱서의 `\w`에는 안 들어간다. 인덱서는 이
+  // 줄을 `["someday"]`로 읽고 여기서는 다른 태그로 본다. `tag.rs`의 표에 같은 줄이 있다.
+  it("숫자 기호로 이어진 것도 그 태그가 아니다", () => {
+    expect(lineHasTag("- [ ] 여행 #someday½", "someday")).toBe(false);
   });
 
   it("슬래시·밑줄·글자로 이어진 것도 그 태그가 아니다", () => {

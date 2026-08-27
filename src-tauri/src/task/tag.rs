@@ -267,9 +267,10 @@ mod tests {
         assert_eq!(apply_tag(line, "someday", false).unwrap(), line);
     }
 
-    /// `INLINE_TAG_RE`의 하이픈 결함(dev/backlog.md P2)을 복제하면 이 테스트가 죽는다 —
     /// 하이픈에서 잘리는 어휘로 경계를 재면 `#someday-maybe`가 "someday가 이미 있다"로
-    /// 읽히고, 제거는 남의 태그를 `-maybe`로 잘라 놓는다.
+    /// 읽히고, 제거는 남의 태그를 `-maybe`로 잘라 놓는다. 읽는 쪽이 한때 그랬고
+    /// (`INLINE_TAG_RE`), 이 파일은 그때도 자르지 않았다 — 그 어긋남이 MODERATE-1이었다.
+    /// 이제 둘이 같은 답을 내지만, 여기서 어휘를 좁히면 결함이 반대편에서 돌아온다.
     #[test]
     fn does_not_match_a_hyphenated_tag_with_the_same_prefix() {
         let line = "- [ ] 초안 #someday-maybe";
@@ -421,12 +422,17 @@ mod tests {
             ("- [ ] 여행 #someday.", true),
             ("- [ ] 여행 #someday,", true),
             ("- [ ] 여행 #someday-maybe #someday", true),
-            // ‼️ 인덱서(`md::INLINE_TAG_RE`)는 하이픈에서 끊어 이 줄들을 `someday`로
-            // 읽는다. 여기서는 아니다 — 그 어긋남이 MODERATE-1이었다.
+            // 인덱서(`md::INLINE_TAG_RE`)도 이제 이 줄들을 `someday`로 읽지 않는다.
+            // 한때 읽었고, 그 어긋남이 MODERATE-1이었다.
             ("- [ ] 여행 #someday-maybe", false),
             ("- [ ] 여행 #someday-", false),
             ("- [ ] 여행 #someday/maybe", false),
             ("- [ ] 여행 #someday_maybe", false),
+            // ‼️ 읽는 쪽과 쓰는 쪽이 **지금도** 갈리는 유일한 부류. `\p{No}`(`½`)는
+            // `is_alphanumeric()`에는 들어가고 `regex`의 `\w`에는 안 들어가므로,
+            // 인덱서는 이 줄을 `["someday"]`로 읽고 여기서는 다른 태그로 본다.
+            // 그래서 아젠다가 "해제"를 비활성으로 그린다(`somedayVerdict`).
+            ("- [ ] 여행 #someday½", false),
             ("- [ ] 여행 #somedaymaybe", false),
             ("- [ ] 여행 #someday언젠가", false),
             ("- [ ] 여행 #someday2", false),

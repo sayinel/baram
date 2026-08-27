@@ -273,16 +273,22 @@ describe("§312 저장 전 버퍼에서의 토글", () => {
   });
 });
 
-// MODERATE-1: 읽는 쪽(파서)과 쓰는 쪽(`apply_tag`)의 태그 어휘가 갈리는 유일한 자리.
-// 파서는 하이픈에서 끊어 `#someday-maybe`를 `someday`로 읽지만 쓰는 쪽은 그 줄에서
-// `#someday`를 찾지 못한다 — 해제는 줄을 한 바이트도 바꾸지 못한다. 메뉴가 그 사실을
-// 숨기면 눌러도 아무 일이 없는 항목이 되고, 그 행은 아젠다에서 영원히 미뤄진 채 남는다.
+// MODERATE-1: 읽는 쪽(파서)이 그 줄에서 읽어낸 이름을 쓰는 쪽(`apply_tag`)이 못 찾는
+// 상태. 해제는 줄을 한 바이트도 바꾸지 못하므로, 메뉴가 그 사실을 숨기면 눌러도 아무
+// 일이 없는 항목이 되고 그 행은 아젠다에서 영원히 미뤄진 채 남는다.
+//
+// ‼️ 픽스처가 `#someday-maybe`에서 `#someday½`로 바뀐 이유: 하이픈은 이제 양쪽 다
+// 태그 글자라 그 줄은 `tags: ["someday-maybe"]`로 읽혀 아예 someday 행이 아니다.
+// 남은 갈림은 유니코드 가장자리다 — 읽는 쪽 `\w`(Rust `regex`)의 숫자는 `\p{Nd}`뿐인데
+// 쓰는 쪽 `is_alphanumeric()`은 `\p{No}`(`½` 등)까지 센다. 실측: 인덱서는 이 줄을
+// `["someday"]`로 읽고 `is_tag_char('½')`는 참이다. 드물지만 0이 아니고, 관문을 지우면
+// 죽은 조작이 조용히 돌아온다.
 describe("§312 해제할 수 없는 #someday", () => {
   const stuck = () =>
     task({
-      raw: "- [ ] 여행 #someday-maybe",
+      raw: "- [ ] 여행 #someday½",
       tags: [SOMEDAY_TAG],
-      text: "여행 #someday-maybe",
+      text: "여행 #someday½",
     });
 
   it("항목을 비활성으로 그리고 라벨이 왜인지 말한다", () => {
@@ -304,8 +310,9 @@ describe("§312 해제할 수 없는 #someday", () => {
   });
 
   // 파서가 통째로 읽는 형태는 멀쩡하다 — 여기까지 잠그면 멀쩡한 행에서 메뉴가 죽는다.
-  it("슬래시·밑줄 형태는 애초에 someday 행이 아니다", () => {
-    for (const tag of ["someday/maybe", "someday_maybe"]) {
+  // `someday-maybe`가 이 목록에 들어온 것이 이번 슬라이스가 고친 것이다.
+  it("슬래시·밑줄·하이픈 형태는 애초에 someday 행이 아니다", () => {
+    for (const tag of ["someday/maybe", "someday_maybe", "someday-maybe"]) {
       const item = itemFor(
         task({ raw: `- [ ] 여행 #${tag}`, tags: [tag], text: `여행 #${tag}` }),
       );
@@ -317,9 +324,9 @@ describe("§312 해제할 수 없는 #someday", () => {
   it("같은 줄에 진짜 #someday도 있으면 해제할 수 있다", () => {
     const item = itemFor(
       task({
-        raw: "- [ ] 여행 #someday-maybe #someday",
+        raw: "- [ ] 여행 #someday½ #someday",
         tags: [SOMEDAY_TAG],
-        text: "여행 #someday-maybe #someday",
+        text: "여행 #someday½ #someday",
       }),
     );
     expect(item?.disabled).toBeFalsy();
