@@ -24,6 +24,7 @@ import {
   resolveTaskWriteTarget,
 } from "../utils/tasks/apply-task-write";
 import { resolveDateInput } from "../utils/tasks/task-date-input";
+import { orderFields } from "../utils/tasks/task-field-order";
 import {
   DATE_FIELDS,
   PRIORITY_DIGITS,
@@ -101,7 +102,14 @@ export function buildCaptureLine(
   const normalized = normalizeBody(body);
   const { fields, text } = extractFields(normalized, isoToLocalDate(today));
   if (!text) return null;
-  const parts = [text, ...inlineTags(tags, text), ...fields, `➕${today}`];
+  // §303 표 순서로 정렬한다. 이 줄이 없으면 `extractFields`가 우선순위를 먼저 담고
+  // `➕`가 맨 뒤에 붙어 canonical 순서를 어긴다 — 두 파서가 다 읽어내므로 손상은
+  // 아니지만, 같은 vault를 Obsidian과 함께 쓰는 사용자에게는 보이는 드리프트다.
+  const parts = [
+    text,
+    ...inlineTags(tags, text),
+    ...orderFields([...fields, `➕${today}`]),
+  ];
   return `- [ ] ${parts.join(" ")}`;
 }
 
