@@ -1,5 +1,6 @@
 // §304 Vault-wide task index
 mod append;
+mod fields;
 mod parse;
 mod tag;
 mod write;

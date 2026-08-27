@@ -268,13 +268,17 @@ mod tests {
     }
 
     #[test]
-    fn tags_stop_at_a_hyphen_just_like_the_tag_panel_does() {
-        // §304는 태그 추출을 §56m의 INLINE_TAG_RE와 **공유**하라고 못박는다. 그 정규식의
-        // `\w`는 하이픈(Pd)을 포함하지 않으므로 #deep-work는 "deep"이 된다. 아젠다와 태그
-        // 패널이 같은 답을 내는 것이, Obsidian과 같아지는 것보다 중요하다. 하이픈 지원은
-        // 두 인덱스를 함께 바꿔야 하는 별도 작업이다.
+    fn a_hyphen_is_part_of_the_tag_not_a_boundary() {
+        // §304는 태그 추출을 §56m의 `INLINE_TAG_RE`와 **공유**하라고 못박는다. 한때 그
+        // 정규식이 하이픈에서 끊어 `#deep-work`를 "deep"으로 읽었고, 쓰는 쪽
+        // (`task/tag.rs`의 `is_tag_char`)은 하이픈까지 태그로 보았다 — 아젠다가 보여주는
+        // 이름과 지울 수 있는 이름이 달라 "미룸 해제"가 조용히 무동작이 되는 원인이었다.
         let t = parse_task_line("- [ ] 본문 #deep-work").unwrap();
-        assert_eq!(t.tags, vec!["deep".to_string()]);
+        assert_eq!(t.tags, vec!["deep-work".to_string()]);
+
+        // 이 슬라이스가 겨냥한 바로 그 줄. 읽는 이름과 쓰는 이름이 같아야 조작이 산다.
+        let s = parse_task_line("- [ ] 초안 #someday-maybe").unwrap();
+        assert_eq!(s.tags, vec!["someday-maybe".to_string()]);
     }
 
     #[test]

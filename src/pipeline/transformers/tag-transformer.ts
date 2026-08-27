@@ -3,11 +3,14 @@ import type { NodeTransformerEntry } from "../types";
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode, Parent as MdastParent } from "mdast";
 
+import { TAG_BODY } from "../../utils/tags/tag-lexicon";
+
 /** Regex to detect #tag patterns in text.
  *  Matches #tag at start of string or after whitespace.
- *  Uses positive lookbehind (?<=[\s]) for whitespace boundary detection. */
-export const TAG_NODE_RE =
-  /(?:^|(?<=[\s]))#([\w\uAC00-\uD7A3]+(?:\/[\w\uAC00-\uD7A3]+)*)/g;
+ *  Uses positive lookbehind (?<=[\s]) for whitespace boundary detection.
+ *  글자 어휘는 `tag-lexicon.ts`가 갖는다 — 에디터 입력 규칙과 같은 출처여야
+ *  친 것과 연 것이 같은 태그가 된다. */
+export const TAG_NODE_RE = new RegExp(`(?:^|(?<=[\\s]))#(${TAG_BODY})`, "g");
 
 /** Serialize tag node back to #tag string */
 export function serializeTag(attrs: { tag: string }): string {

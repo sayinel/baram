@@ -1,15 +1,7 @@
 // §305 낙관적 잠금 쓰기 — expected_raw가 일치할 때만 그 줄을 고친다.
+use crate::task::fields::{insert_field, FIELD_EMOJI};
 use crate::task::parse::is_valid_date;
 use crate::task::{normalize_line, TaskError, TaskState};
-
-pub(super) const FIELD_EMOJI: &[(&str, &str)] = &[
-    ("created", "➕"),
-    ("start", "🛫"),
-    ("scheduled", "⏳"),
-    ("due", "📅"),
-    ("done", "✅"),
-    ("cancelled", "❌"),
-];
 
 /// 줄바꿈 스타일과 마지막 개행 유무를 보존하며 한 줄만 바꾼다.
 pub(super) async fn replace_line<F>(
@@ -104,13 +96,6 @@ fn strip_field(line: &str, field: &str) -> String {
     out.trim_end().to_string()
 }
 
-fn append_field(line: &str, field: &str, value: &str) -> String {
-    let Some((_, emoji)) = FIELD_EMOJI.iter().find(|(f, _)| *f == field) else {
-        return line.to_string();
-    };
-    format!("{} {}{}", line.trim_end(), emoji, value)
-}
-
 /// 상태 전이 결과 줄을 만든다 — I/O 없음.
 ///
 /// 디스크 경로(`set_task_state`)와 열린 파일 경로(`preview_task_state_line`)가
@@ -145,7 +130,7 @@ pub fn apply_state(
         return swapped;
     }
     match new_state {
-        TaskState::Done => append_field(&strip_field(&swapped, "done"), "done", today),
+        TaskState::Done => insert_field(&strip_field(&swapped, "done"), "done", today),
         TaskState::Todo => strip_field(&swapped, "done"),
     }
 }
@@ -162,7 +147,7 @@ pub fn apply_field(current: &str, field: &str, value: &str) -> Option<String> {
     Some(if value.is_empty() {
         stripped
     } else {
-        append_field(&stripped, field, value)
+        insert_field(&stripped, field, value)
     })
 }
 

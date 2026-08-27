@@ -349,14 +349,18 @@ function relativeIso(token: "m" | "t", now: Date): string {
 /**
  * §312 이 행의 `#someday`를 지금 어떻게 할 수 있는가.
  *
- * `task.tags`만 보면 안 되는 이유(MODERATE-1): 파서는 하이픈에서 끊어
- * `#someday-maybe`를 `someday`로 읽지만, 쓰는 쪽은 하이픈을 태그 글자로 쳐서 그 줄에서
- * `#someday`를 찾지 못한다. 그래서 그 행은 필터에서 "미뤄진 것"으로 숨겨지는데 해제는
- * 줄을 한 바이트도 바꾸지 못한다 — 아젠다에서 영원히 빠져나올 수 없는 행이 된다.
- * 두 어휘 중 **쓰는 쪽**을 봐야 라벨과 동작이 같은 사실을 본다(`lineHasTag`).
+ * `task.tags`만 보면 안 되는 이유(MODERATE-1): 읽는 쪽이 그 줄에서 읽어낸 이름과 쓰는
+ * 쪽이 그 줄에서 찾을 수 있는 이름이 다를 수 있다. 다르면 그 행은 필터에서 "미뤄진 것"으로
+ * 숨겨지는데 해제는 줄을 한 바이트도 바꾸지 못한다 — 아젠다에서 영원히 빠져나올 수 없는
+ * 행이 된다. 두 어휘 중 **쓰는 쪽**을 봐야 라벨과 동작이 같은 사실을 본다(`lineHasTag`).
  *
- * 근본 원인은 공유된 `INLINE_TAG_RE`이고 이 슬라이스 밖이다. 여기서 고치는 것은
- * **정직함**이다: 할 수 없는 일을 약속하지 않는다.
+ * ‼️ 이 결함을 만든 가장 흔한 형태(`#someday-maybe` — 읽는 쪽만 하이픈에서 끊었다)는
+ * 이제 닫혔다. 그래도 이 관문은 남는다: 두 어휘가 유니코드 가장자리에서 아직 다르다.
+ * `md::INLINE_TAG_RE`의 `\w`는 결합 문자(`\p{M}`)와 `\p{Pc}`를 포함하지만
+ * `is_tag_char`의 `is_alphanumeric()`은 포함하지 않고, 반대로 `\p{Nl}`·`\p{No}`는
+ * `is_alphanumeric()`만 포함한다. 실무에서 만날 일은 드물지만 **관문을 지우면 그때
+ * 죽은 조작이 조용히 돌아온다.** 여기서 지키는 것은 정직함이다: 할 수 없는 일을
+ * 약속하지 않는다.
  */
 function somedayVerdict(task: TaskEntry): SomedayVerdict {
   if (!task.tags.includes(SOMEDAY_TAG)) return "add";

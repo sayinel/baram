@@ -1,13 +1,16 @@
 // §308 표시 절반 — 한 줄에서 이모지 필드의 **구간**을 찾는다.
 //
 // 문서 모델을 바꾸지 않는다. 이 구간을 데코레이션이 숨기고 그 자리에 칩을 그린다.
-// 어휘(트리거·이모지)는 `task-field-tokens.ts`가 유일한 출처다 — 여기서 재정의하면
-// 에디터 입력 규칙·캡처·표시가 서로 다른 어휘를 갖게 된다.
+// 어휘는 재정의하지 않는다: 트리거는 `task-field-tokens.ts`, 이모지와 그 종류는
+// `task-field-order.ts`가 유일한 출처다 — 여기서 다시 적으면 에디터 입력 규칙·캡처·
+// 표시가 서로 다른 어휘를 갖게 된다.
 
-import { DATE_FIELDS, PRIORITY_EMOJI } from "./task-field-tokens";
+import type { TaskFieldKind } from "./task-field-order";
 
-export type TaskFieldKind =
-  "cancelled" | "created" | "done" | "due" | "priority" | "scheduled" | "start";
+import { CANONICAL_DATE_FIELDS } from "./task-field-order";
+import { PRIORITY_EMOJI } from "./task-field-tokens";
+
+export type { TaskFieldKind };
 
 export interface TaskFieldSpan {
   /**
@@ -23,20 +26,6 @@ export interface TaskFieldSpan {
   value: string;
 }
 
-/** `task-field-tokens.ts`가 다루지 않는 읽기 전용 필드까지 포함한 전체 표. */
-const DATE_EMOJI: { emoji: string; kind: TaskFieldKind }[] = [
-  ...DATE_FIELDS.map((f) => ({
-    emoji: f.emoji,
-    kind:
-      f.trigger === "sched"
-        ? ("scheduled" as const)
-        : (f.trigger as TaskFieldKind),
-  })),
-  { emoji: "➕", kind: "created" },
-  { emoji: "✅", kind: "done" },
-  { emoji: "❌", kind: "cancelled" },
-];
-
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
@@ -48,7 +37,7 @@ const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 export function scanTaskFields(text: string): TaskFieldSpan[] {
   const spans: TaskFieldSpan[] = [];
 
-  for (const { emoji, kind } of DATE_EMOJI) {
+  for (const { emoji, kind } of CANONICAL_DATE_FIELDS) {
     let at = text.indexOf(emoji);
     while (at !== -1) {
       const after = text.slice(at + emoji.length);

@@ -2,6 +2,7 @@
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { TAG_BODY } from "../../utils/tags/tag-lexicon";
 import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { TagNodeView } from "./tag-node-view";
 
@@ -62,11 +63,12 @@ export const TagNode = Node.create<TagNodeOptions>({
   },
 
   addInputRules() {
-    // Match #tag followed by space — convert typed #tag into atom node
-    // Regex: # then word chars (including Korean, /) then space at end
+    // Match #tag followed by space — convert typed #tag into atom node.
+    // 글자 어휘는 `tag-lexicon.ts`가 갖는다: 여기서 다시 적으면 친 것(입력 규칙)과
+    // 연 것(`TAG_NODE_RE`)이 서로 다른 태그를 만든다.
     return [
       new InputRule({
-        find: /#([\w\uAC00-\uD7A3]+(?:\/[\w\uAC00-\uD7A3]+)*)\s$/,
+        find: new RegExp(`#(${TAG_BODY})\\s$`),
         handler: ({ state, range, match }) => {
           const tag = match[1];
           const { tr } = state;
