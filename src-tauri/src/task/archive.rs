@@ -209,7 +209,7 @@ async fn drain_one_file(
 
 /// 이 줄을 옮겨도 되는가. 순수 함수 — I/O도 경로도 보지 않는다.
 ///
-/// TypeScript 쪽 `archiveVerdict`(src/utils/tasks/task-archive.ts)와 **같은 표**다.
+/// TypeScript 쪽 `isArchivable`(src/utils/tasks/task-archive.ts)과 **같은 표**다.
 /// 프런트는 개수를 세어 확인 문구를 짓고 여기는 그 판정을 다시 강제한다. 두 벌인 이유는
 /// 언어 경계뿐이므로, 양쪽 테스트가 같은 줄을 단정해 어느 쪽을 고쳐도 다른 쪽이 빨간불이 된다.
 pub(super) fn archive_verdict(line: &str, today: &str, after_days: u32) -> Verdict {
@@ -708,6 +708,13 @@ mod tests {
         assert_eq!(days_between("2100-02-28", "2100-03-01"), Some(1));
         assert_eq!(days_between("2026-08-27", "2026-08-26"), Some(-1));
         assert_eq!(days_between("2026-02-31", "2026-08-27"), None);
+    }
+
+    #[test]
+    fn the_archive_folder_name_is_shared_with_the_front_end() {
+        // TypeScript `ARCHIVE_DIR`(src/utils/tasks/task-archive.ts)에 같은 글자로
+        // 있다. 갈리면 프런트가 세는 대상과 여기가 쓰는 대상이 다른 폴더가 된다.
+        assert_eq!(ARCHIVE_DIR, "Archive");
     }
 
     #[test]

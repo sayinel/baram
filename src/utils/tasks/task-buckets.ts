@@ -61,6 +61,24 @@ export function overdueDays(task: TaskEntry, now: Date): number {
 }
 
 /**
+ * "YYYY-MM-DD" → 로컬 자정. 형식이 틀리거나 달력에 없는 날이면 null.
+ *
+ * 아카이브(`task-archive.ts`)도 이 함수를 쓴다. 사본을 두면 아젠다가 날짜를 읽는 방식과
+ * 배수구가 읽는 방식이 갈릴 수 있고, 그러면 화면의 완료 버킷과 옮길 목록이 어긋난다.
+ */
+export function parseLocalDate(s: null | string): Date | null {
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  // 2026-02-31 같은 값은 롤오버되므로 되돌려 확인한다
+  if (d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) {
+    return null;
+  }
+  return d;
+}
+
+/**
  * §312 방치 감지 — `created`(➕)로부터 지난 일수. 없거나 형식이 틀리면 0.
  *
  * 파일 mtime을 쓰지 않는 이유: Rust `TaskEntry`에 없고, 넣으면 스캔마다 파일당
@@ -99,19 +117,6 @@ function endOfWeek(now: Date, weekStart: "monday" | "sunday"): Date {
   const end = new Date(today);
   end.setDate(end.getDate() + (6 - offsetFromStart));
   return end;
-}
-
-/** "YYYY-MM-DD" → 로컬 자정. 형식이 틀리면 null. */
-function parseLocalDate(s: null | string): Date | null {
-  if (!s) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return null;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  // 2026-02-31 같은 값은 롤오버되므로 되돌려 확인한다
-  if (d.getMonth() !== Number(m[2]) - 1 || d.getDate() !== Number(m[3])) {
-    return null;
-  }
-  return d;
 }
 
 function startOfDay(d: Date): Date {

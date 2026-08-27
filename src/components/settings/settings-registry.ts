@@ -233,6 +233,15 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: NAVIGATE_CONTROL,
     },
     {
+      id: "tasksArchiveAfterDays",
+      label: "settings.general.tasksArchiveAfterDays",
+      description: "settings.general.tasksArchiveAfterDays.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "archive", "done", "cleanup", "정리", "아카이브"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
       id: "tasksExcludePaths",
       label: "settings.general.tasksExcludePaths",
       description: "settings.general.tasksExcludePaths.desc",

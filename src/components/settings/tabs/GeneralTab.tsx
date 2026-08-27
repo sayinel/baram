@@ -66,6 +66,8 @@ export function GeneralTab() {
     setTasksWeekStart,
     tasksRecordDoneDate,
     setTasksRecordDoneDate,
+    tasksArchiveAfterDays,
+    setTasksArchiveAfterDays,
     tasksCaptureFile,
     setTasksCaptureFile,
     tasksExcludePaths,
@@ -607,6 +609,23 @@ export function GeneralTab() {
               onChange={(e) => setTasksCaptureFile(e.target.value)}
               placeholder={t("settings.general.tasksCaptureFile.placeholder")}
               value={tasksCaptureFile}
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            description={t(
+              "settings.general.tasksArchiveAfterDays.desc",
+            ).replace("{value}", String(tasksArchiveAfterDays))}
+            label={t("settings.general.tasksArchiveAfterDays")}
+          >
+            <input
+              className="settings-range"
+              max={365}
+              min={1}
+              onChange={(e) => setTasksArchiveAfterDays(Number(e.target.value))}
+              step={1}
+              type="range"
+              value={tasksArchiveAfterDays}
             />
           </SettingsRow>
 

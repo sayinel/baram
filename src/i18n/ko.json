@@ -101,6 +101,8 @@
   "settings.general.tasksCaptureFile": "수집함 파일",
   "settings.general.tasksCaptureFile.desc": "빠른 캡처로 만든 태스크가 붙는 .md 또는 .markdown 파일. 볼트 안, 루트 기준 상대 경로입니다",
   "settings.general.tasksCaptureFile.placeholder": "Inbox.md",
+  "settings.general.tasksArchiveAfterDays": "정리 기준 경과일",
+  "settings.general.tasksArchiveAfterDays.desc": "\"완료 항목 정리\"가 완료 후 {value}일이 지난 항목을 대상으로 삼습니다. 자동으로 옮기지 않습니다.",
   "settings.general.tasksExcludePaths": "제외할 폴더",
   "settings.general.tasksExcludePaths.desc": "태스크 인덱싱에서 건너뛸 폴더를 쉼표로 구분해 적습니다",
   "settings.general.tasksExcludePaths.placeholder": "archive/, drafts/",
@@ -843,5 +845,13 @@
   "tasks.triage.writeFailed": "태스크 변경을 저장하지 못했습니다.",
   "tasks.triage.somedayLocked": "#someday를 해제할 수 없습니다 — 더 긴 태그의 일부입니다",
   "tasks.triage.tagUnchanged": "아무것도 바뀌지 않았습니다 — 그 줄에 지울 #{tag}가 없습니다.",
-  "tasks.triage.checkHint": "완료 토글 (X)"
+  "tasks.triage.checkHint": "완료 토글 (X)",
+  "tasks.archive.action": "완료 항목 정리",
+  "tasks.archive.title": "완료 항목 {count}개 정리",
+  "tasks.archive.confirm": "{days}일 이상 지난 완료 태스크 {count}개를 Archive/YYYY-MM.md로 옮길까요? 옮긴 뒤에도 인덱싱되고 검색됩니다.",
+  "tasks.archive.unsavedTab": "먼저 \"{file}\"을 저장하세요. 아카이브는 디스크에 쓰므로, 그 탭의 저장 전 내용이 옮긴 줄을 되살립니다.",
+  "tasks.archive.error": "정리하지 못했습니다. 아무것도 옮기지 않았습니다 \u2014 로그를 확인하세요.",
+  "tasks.archive.result": "{count}개를 정리했습니다.",
+  "tasks.archive.stale": "{count}개는 그 사이 파일이 바뀌어 건너뛰었습니다.",
+  "tasks.archive.failed": "{count}개를 정리하지 못했습니다. 로그를 확인하세요."
 }
