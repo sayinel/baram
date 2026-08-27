@@ -15,16 +15,17 @@ import { useCallback, useMemo, useState } from "react";
 
 import type { Translate } from "../../i18n/useTranslation";
 import type { ArchiveOutcome, TaskEntry } from "../../ipc/types";
+import type { Editor } from "@tiptap/react";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { archiveTaskLines, readFile } from "../../ipc/invoke";
 import { resolveCapturePath } from "../../services/task-capture";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useFileStore } from "../../stores/file/file";
 import { refreshFileTasks } from "../../stores/tasks/task-store";
 import { showAlert, showConfirm } from "../../utils/confirm-dialog";
 import { logger } from "../../utils/logger";
 import { basename, isUnderRoot } from "../../utils/path-utils";
+import { syncOpenSurfacesAfterFileRewrite } from "../../utils/tasks/sync-open-surfaces";
 import {
   archiveScope,
   selectArchivable,
@@ -45,6 +46,13 @@ export interface ArchiveDoneOptions {
   afterDays: number;
   /** 설정 `tasksCaptureFile` — 루트 기준 상대 경로일 수 있다 */
   captureFile: string;
+  /**
+   * 활성 탭의 라이브 Tiptap Editor(없으면 `null`).
+   *
+   * 아카이브는 **디스크에만** 쓴다 — 이 에디터로 문서를 고치지 않는다. 쓰기가 끝난 뒤
+   * 화면을 디스크에 맞추는 데만 쓴다(`syncOpenSurfacesAfterFileRewrite`).
+   */
+  editor: Editor | null;
   exclude: string[];
   /**
    * 자격 판정의 기준일. 패널이 보고 있는 그 날이어야 한다 — 라이브 `new Date()`를 쓰면
@@ -58,6 +66,7 @@ export interface ArchiveDoneOptions {
 export function useArchiveDone({
   afterDays,
   captureFile,
+  editor,
   exclude,
   now,
   rootPath,
@@ -141,14 +150,14 @@ export function useArchiveDone({
       // 바이트가 바뀐 파일만 다시 읽는다 — 원본과 대상 양쪽이다. 대상 파일은 이번에
       // 처음 생겼을 수도 있으므로 인덱스에 새로 들어간다.
       for (const path of outcome.paths) {
-        await reloadOpenSurfaces(path);
+        await reloadOpenSurfaces(path, editor);
         await refreshFileTasks(path, rootPath, exclude);
       }
       await report(outcome, t);
     } finally {
       setBusy(false);
     }
-  }, [afterDays, busy, candidates, exclude, now, rootPath, scope, t]);
+  }, [afterDays, busy, candidates, editor, exclude, now, rootPath, scope, t]);
 
   return { busy, count: candidates.length, run };
 }
@@ -204,32 +213,26 @@ function isoDate(now: Date): string {
 }
 
 /**
- * 디스크가 바뀐 파일을 열어 둔 탭들에 반영한다.
+ * 디스크가 바뀐 파일을 열어 둔 표면들에 반영한다.
  *
- * 여기 도달한 파일에는 저장 전 탭이 없다(`findBlockingTab`이 막았다). 그러니 캐시를
- * 버려도 잃을 편집이 없다 — 디스크를 다시 읽어 `openFiles`에 넣고, 활성 탭은 그것을 다시
- * 읽게 하고, 배경 탭은 낡음 표시를 달아 돌아왔을 때 캐시가 아니라 새 내용을 읽게 한다.
- *
- * 워처의 `file:changed`도 결국 도착하지만 그것은 안전망이지 통로가 아니다 —
- * `sync-open-surfaces.ts` 머리말이 그 대가를 적어 두었다.
+ * 동기화 자체는 §313의 공용 경로(`syncOpenSurfacesAfterFileRewrite`)가 한다 — 그쪽이
+ * `CONTENT_SYNC_META`를 달아 보내므로 자동 저장이 이 변경을 사용자 편집으로 오해하지
+ * 않는다. 여기서 하는 일은 디스크를 다시 읽어 그 함수에 넘기는 것뿐이다.
  */
-async function reloadOpenSurfaces(path: string): Promise<void> {
-  const { activeTabId, markContentStale, requestContentRefresh, tabs } =
-    useEditorStore.getState();
-  const open = tabs.filter((tab) => tab.filePath === path);
-  if (open.length === 0) return;
+async function reloadOpenSurfaces(
+  path: string,
+  editor: Editor | null,
+): Promise<void> {
+  const open = useEditorStore
+    .getState()
+    .tabs.some((tab) => tab.filePath === path);
+  if (!open) return;
 
   try {
-    useFileStore.getState().setFileContent(path, await readFile(path));
+    syncOpenSurfacesAfterFileRewrite(path, await readFile(path), editor);
   } catch (err) {
     // 다시 읽지 못해도 이동 자체는 끝났다. 워처가 뒤따라 갱신한다.
     logger.warn("[tasks] archive: could not reload", path, err);
-    return;
-  }
-  for (const tab of open) {
-    // 이 파일은 줄이 통째로 빠졌다 — 패치가 아니라 다시 읽어야 한다.
-    if (tab.id === activeTabId) requestContentRefresh("fresh", path);
-    else markContentStale(tab.id);
   }
 }
 

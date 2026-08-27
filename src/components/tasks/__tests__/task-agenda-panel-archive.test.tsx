@@ -28,7 +28,7 @@ vi.mock("../../../utils/confirm-dialog", () => ({
   showConfirm: vi.fn(),
 }));
 
-import { archiveTaskLines, getVaultTasks } from "../../../ipc/invoke";
+import { archiveTaskLines, getVaultTasks, readFile } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -193,6 +193,39 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
     await userEvent.click(screen.getByLabelText("Archive completed tasks"));
 
     await waitFor(() => expect(archiveTaskLines).toHaveBeenCalled());
+  });
+
+  it("옮긴 파일을 열어 둔 탭을 dirty로 만들지 않는다", async () => {
+    // ‼️ 여기서 dirty가 붙으면 자동 저장이 **방금 아카이브가 쓴 파일 위에** 에디터의
+    // 직렬화 결과를 덮어쓴다 — `use-auto-save.ts`의 `CONTENT_SYNC_META` 분기가 막으려고
+    // 존재하는 바로 그 일이고, `requestContentRefresh`를 쓰던 초판이 실제로 그랬다.
+    // 디스크가 이미 진실인 경로는 §313의 공용 동기화를 타야 한다.
+    vi.mocked(showConfirm).mockResolvedValue(true);
+    vi.mocked(readFile).mockResolvedValue("- [ ] 남은 것\n");
+    vi.mocked(archiveTaskLines).mockResolvedValue({
+      ...EMPTY,
+      archived: 1,
+      paths: [INBOX],
+    });
+    seed([old_()]);
+    openTab({ filePath: INBOX, id: "t1", isDirty: false });
+    const refresh = vi.spyOn(
+      useEditorStore.getState(),
+      "requestContentRefresh",
+    );
+    render(<TaskAgendaPanel />);
+
+    await userEvent.click(screen.getByLabelText("Archive completed tasks"));
+
+    await waitFor(() =>
+      expect(useFileStore.getState().openFiles.get(INBOX)).toBe(
+        "- [ ] 남은 것\n",
+      ),
+    );
+    expect(useEditorStore.getState().tabs[0]?.isDirty).toBe(false);
+    expect(refresh).not.toHaveBeenCalled();
+    // 활성 탭이 아니므로 낡음 표시로 처리된다 — 돌아왔을 때 캐시가 아니라 새 내용을 읽는다.
+    expect(useEditorStore.getState().staleContentTabs).toContain("t1");
   });
 
   it("커맨드가 거절하면 아무것도 옮기지 않았다고 말한다", async () => {

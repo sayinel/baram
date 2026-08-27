@@ -58,6 +58,47 @@ export function syncOpenSurfacesAfterDiskWrite(
   }
 }
 
+/**
+ * §312 파일 **전체**가 디스크에서 바뀌었다는 사실을 열린 표면들에 반영한다.
+ *
+ * 아카이브는 한 파일에서 여러 줄을 한 번에 빼내므로 위의 줄 단위 동기화로는 표현할 수
+ * 없다. 그러나 성질은 같다 — **디스크가 이미 진실이고 화면이 따라가는 것**이다. 그래서
+ * 같은 도구를 쓴다: `patchEditorContent`가 `CONTENT_SYNC_META`를 달아 보내므로 자동
+ * 저장이 이 변경을 사용자 편집으로 오해하지 않는다.
+ *
+ * ‼️ `requestContentRefresh`를 쓰면 안 된다. 그것은 "우리가 문서를 고쳤다"는 경로
+ * (`applyTaskWrite`의 문서 분기)의 도구라 그 보호가 없다. 아카이브가 그것을 쓰는 동안
+ * 탭에 저장 안 됨 표시가 붙고, 자동 저장이 방금 아카이브가 쓴 파일 위에 에디터의
+ * 직렬화 결과를 덮어썼다 — `use-auto-save.ts`의 `CONTENT_SYNC_META` 분기가 막으려고
+ * 존재하는 바로 그 일이다.
+ *
+ * dirty 탭은 건너뛴다. 그 캐시는 저장되지 않은 편집을 들고 있고, 낡음 표시를 달면 탭
+ * 전환이 그것을 버린다 — 위 함수와 같은 이유다. 아카이브는 애초에 dirty 탭이 있으면
+ * 시작하지 않지만(`findBlockingTab`), 판정과 쓰기 사이에 탭이 dirty가 될 수는 있다.
+ */
+export function syncOpenSurfacesAfterFileRewrite(
+  path: string,
+  content: string,
+  editor: Editor | null,
+): void {
+  const { activeTabId, markContentStale, sourceModeTabs, tabs } =
+    useEditorStore.getState();
+
+  useFileStore.getState().setFileContent(path, content);
+
+  for (const tab of tabs) {
+    if (tab.filePath !== path) continue;
+    // 소스 모드 탭의 권위 있는 텍스트는 CodeMirror 버퍼다 — 여기서 손댈 것이 없다.
+    if (sourceModeTabs.includes(tab.id)) continue;
+
+    if (tab.id === activeTabId && editor?.view) {
+      patchEditorContent(editor.view, content);
+    } else if (!tab.isDirty) {
+      markContentStale(tab.id);
+    }
+  }
+}
+
 /** `openFiles` 스냅샷의 그 줄만. 열려 있지 않거나 이야기가 다르면 손대지 않는다. */
 function patchCachedContent(task: TaskEntry, newRaw: string): void {
   const cached = useFileStore.getState().openFiles.get(task.path);

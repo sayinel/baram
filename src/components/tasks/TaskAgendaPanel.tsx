@@ -151,6 +151,7 @@ export function TaskAgendaPanel() {
   const archive = useArchiveDone({
     afterDays: tasksArchiveAfterDays,
     captureFile: tasksCaptureFile,
+    editor,
     exclude: tasksExcludePaths,
     now,
     rootPath,
