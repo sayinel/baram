@@ -11,40 +11,9 @@ import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { vimPluginKey } from "../../../plugins/vim/vim-keys";
 
-if (typeof window.matchMedia !== "function") {
-  window.matchMedia = () =>
-    ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-}
-
 declare const MockIntersectionObserver: {
   instances: { triggerIntersect: (v?: boolean) => void }[];
 };
-
-// jsdom lacks Range measurement — an ATTACHED CodeMirror schedules a rAF
-// measure pass that would otherwise throw asynchronously (same polyfill as
-// vim-markdown-enter.test.ts).
-const zeroRect = {
-  bottom: 0,
-  height: 0,
-  left: 0,
-  right: 0,
-  top: 0,
-  width: 0,
-  x: 0,
-  y: 0,
-};
-Range.prototype.getBoundingClientRect ??= () => zeroRect as DOMRect;
-Range.prototype.getClientRects ??= () =>
-  ({
-    item: () => null,
-    length: 0,
-    [Symbol.iterator]: [][Symbol.iterator],
-  }) as unknown as DOMRectList;
-HTMLElement.prototype.getClientRects ??= Range.prototype.getClientRects;
 
 function createEditor(md: string): Editor {
   const editor = new Editor({

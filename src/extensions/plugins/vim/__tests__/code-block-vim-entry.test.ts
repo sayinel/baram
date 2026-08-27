@@ -38,37 +38,6 @@ import { CodeBlockNodeView } from "../../../nodes/views/code-block-node-view";
 import { vimPluginKey } from "../vim-keys";
 import { submitSearchLine } from "../vim-search-line";
 
-if (typeof window.matchMedia !== "function") {
-  window.matchMedia = () =>
-    ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-}
-
-// jsdom lacks Range measurement — an attached CodeMirror schedules a rAF
-// measure pass that would otherwise throw asynchronously (same polyfill as
-// code-block-vim-wiring.test.ts).
-const zeroRect = {
-  bottom: 0,
-  height: 0,
-  left: 0,
-  right: 0,
-  top: 0,
-  width: 0,
-  x: 0,
-  y: 0,
-};
-Range.prototype.getBoundingClientRect ??= () => zeroRect as DOMRect;
-Range.prototype.getClientRects ??= () =>
-  ({
-    item: () => null,
-    length: 0,
-    [Symbol.iterator]: [][Symbol.iterator],
-  }) as unknown as DOMRectList;
-HTMLElement.prototype.getClientRects ??= Range.prototype.getClientRects;
-
 const editors: Editor[] = [];
 
 function createEditor(md: string): Editor {
