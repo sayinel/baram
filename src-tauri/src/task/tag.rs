@@ -1,10 +1,10 @@
 // §312 태그 쓰기 — §303 canonical 줄 형식에서 태그는 **이모지 필드 앞**이다.
 //
-// `write.rs`의 `append_field`를 재사용할 수 없는 이유가 정확히 이것이다: 그것은 항상 줄
-// **끝**에 붙이므로 `- [ ] 초안 📅2026-08-30 ⏫ #someday`가 되어 순서를 어긴다. 캡처가
-// 새 줄을 짓는 순서(`buildCaptureLine`, src/services/task-capture.ts:101)와도 갈린다.
-use crate::task::parse::{is_valid_date, PRIORITY_MARKERS, RECURRENCE_EMOJI};
-use crate::task::write::{replace_line, FIELD_EMOJI};
+// 자리를 재는 규칙은 `fields.rs`가 갖는다(`field_run_start`). 한때 이 파일이 그 규칙을
+// 혼자 갖고 있었고 `write.rs`는 필드를 줄 **끝**에 붙였는데, 그 둘이 같은 줄을 다르게
+// 읽은 것이 §303 순서 드리프트의 원인이었다. 이제 태그도 필드도 같은 자를 쓴다.
+use crate::task::fields::field_run_start;
+use crate::task::write::replace_line;
 use crate::task::TaskError;
 
 /// 태그 이름에 쓸 수 있는 글자 — **경계 판정의 어휘**다.
@@ -24,74 +24,6 @@ fn is_tag_char(c: char) -> bool {
 /// 거절하는 것과 같은 이유다(프론트 오타가 "성공"으로 보이면 안 된다).
 fn is_valid_tag(tag: &str) -> bool {
     !tag.is_empty() && tag.chars().all(is_tag_char)
-}
-
-/// 줄 맨 앞이 필드 하나면 그 바이트 길이. 아니면 `None`.
-///
-/// 날짜 이모지는 **뒤에 유효한 날짜가 와야** 필드다 — `strip_field`(write.rs)와 같은
-/// 기준이다. 본문 중간의 장식용 📅를 필드로 세면 그 앞에 태그를 끼워 사용자 문장을
-/// 갈라 놓는다. 이모지와 값 사이의 공백을 허용하는 것은 파서가 그 형태를 읽기 때문이다
-/// (Obsidian Tasks가 `📅 2026-08-30`으로 쓴다).
-///
-/// 반복(🔁)의 값은 자유 텍스트("every week on Monday")라 **줄 끝까지**가 그 값이다
-/// (`parse_task_line`이 그렇게 읽는다). 값의 끝을 잴 수 없다고 해서 필드에서 빼면 태그가
-/// 반복 텍스트 **뒤**에 붙어 값 자체를 오염시킨다 — 우리 파서는 `recurrence`를
-/// `"every week #someday"`로 읽고, Obsidian Tasks는 반복 문자 클래스(`[a-zA-Z0-9, !]`)에
-/// `#`이 없어 그 줄의 반복을 아예 읽지 못한다. 끝을 재지 못해도 이모지를 **경계로**
-/// 쓰는 데는 아무 문제가 없다: 여기부터 줄 끝까지가 통째로 반복 필드다.
-fn field_len(s: &str) -> Option<usize> {
-    if let Some((marker, _)) = PRIORITY_MARKERS.iter().find(|(m, _)| s.starts_with(m)) {
-        return Some(marker.len());
-    }
-    if s.starts_with(RECURRENCE_EMOJI) {
-        return Some(s.len());
-    }
-    for (_, emoji) in FIELD_EMOJI {
-        let Some(after) = s.strip_prefix(emoji) else {
-            continue;
-        };
-        let pad = after.len() - after.trim_start().len();
-        // 문자 수로 열 자를 세고 그 바이트 길이를 쓴다 — 바이트로 착각하면 한글처럼
-        // 3바이트짜리 문자 중간을 잘라 panic("char boundary")이 된다(write.rs의 C5).
-        let value: String = after[pad..].chars().take(10).collect();
-        if is_valid_date(&value) {
-            return Some(emoji.len() + pad + value.len());
-        }
-    }
-    None
-}
-
-/// `s`가 **전부** 필드 뭉치인가 — 필드 사이 공백만 허용한다.
-fn is_all_fields(s: &str) -> bool {
-    let mut rest = s.trim();
-    while !rest.is_empty() {
-        let Some(len) = field_len(rest) else {
-            return false;
-        };
-        rest = rest[len..].trim_start();
-    }
-    true
-}
-
-/// 태그를 끼울 자리 — 줄 끝의 **필드 뭉치가 시작하는** 바이트 위치. 필드가 없으면 줄 끝.
-///
-/// "첫 번째 이모지 앞"이 아니라 "거기서 줄 끝까지가 전부 필드인 가장 이른 자리"다.
-/// 그래야 본문에 장식용 이모지가 있는 줄에서도 태그가 본문을 가르지 않는다.
-///
-/// 구분자는 ASCII 공백만이 아니라 **모든 공백**이다 — `is_all_fields`가 `trim`으로 전부
-/// 접고 `TASK_LINE_RE`도 `\s+`라 탭으로 구분된 줄이 정상 태스크로 인덱싱된다. 여기서만
-/// 어휘가 좁으면 그런 줄에서 자리를 못 찾아 태그가 필드 **뒤**, 줄 끝에 붙는다.
-fn field_run_start(trimmed: &str) -> usize {
-    for (i, c) in trimmed.char_indices() {
-        if !c.is_whitespace() {
-            continue;
-        }
-        let start = i + c.len_utf8();
-        if start < trimmed.len() && is_all_fields(&trimmed[start..]) {
-            return start;
-        }
-    }
-    trimmed.len()
 }
 
 /// `line`에 있는 `#tag`의 구간들을 등장 순서로 찾는다 — **경계를 요구한다**.
