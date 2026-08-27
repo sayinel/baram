@@ -63,6 +63,19 @@ const DEPENDENCY_LEVEL: LevelFilter = LevelFilter::Warn;
 /// dependency level.
 const OUR_TARGETS: [&str; 2] = ["baram_lib", "baram"];
 
+/// Log target of the session banner (`lib.rs`'s "Baram <ver> starting"), given a
+/// name of its own so [`stdout_keeps`] can exclude it. The banner is written for the
+/// **file** — it separates sessions in an appended log and answers "which version?"
+/// on a bug report — and none of that needs a console line on every `tauri dev`
+/// launch.
+///
+/// ‼️ Must stay a `::`-child of an entry in [`OUR_TARGETS`]. fern resolves
+/// `level_for` over module segments, so renaming this to something that is not a
+/// child of `baram_lib` caps it at [`DEPENDENCY_LEVEL`] — an Info record then
+/// vanishes from the file too, which is the one place it was for.
+/// `the_session_target_inherits_our_level` pins that.
+pub(crate) const SESSION_TARGET: &str = "baram_lib::session";
+
 /// Bytes per log file before it rotates.
 const MAX_FILE_SIZE: u128 = 2 * 1024 * 1024;
 
@@ -255,12 +268,32 @@ fn needs_escape(ch: char) -> bool {
 /// escaper would be silently erased the day someone reorders those two calls,
 /// taking the UTC decision with it.
 fn escaping_target(kind: TargetKind) -> Target {
-    Target::new(kind).format(|out, message, _record| {
+    // Whether stdout is involved has to be read before `kind` moves into the target.
+    let is_stdout = matches!(kind, TargetKind::Stdout);
+    let target = Target::new(kind).format(|out, message, _record| {
         out.finish(format_args!(
             "{}",
             escape_control_chars(&message.to_string())
         ))
-    })
+    });
+    if is_stdout {
+        // `Target::filter` sees `log::Metadata`, which carries the level and the
+        // target and nothing else — so the record has to arrive already labelled.
+        // That is why the banner has its own target rather than being matched on
+        // its text, which is not available here at all.
+        target.filter(|metadata| stdout_keeps(metadata.target()))
+    } else {
+        target
+    }
+}
+
+/// Does the console draw a record with this target?
+///
+/// Everything except the session banner. Named rather than inlined into the closure
+/// so the rule is directly testable: a test cannot read the console, but it can ask
+/// this.
+fn stdout_keeps(target: &str) -> bool {
+    target != SESSION_TARGET
 }
 
 /// Where records go in a real run.
@@ -274,7 +307,8 @@ fn production_target_kinds() -> Vec<TargetKind> {
         TargetKind::LogDir {
             file_name: Some(LOG_FILE_NAME.to_string()),
         },
-        // Useful under `npm run tauri dev` only.
+        // Useful under `npm run tauri dev` only, and quieter than the file by
+        // exactly one record — see `stdout_keeps`.
         TargetKind::Stdout,
     ]
 }
@@ -414,6 +448,51 @@ mod tests {
         // The literal, not LOG_FILE_NAME: support docs and any future "reveal log
         // file" affordance name this file, so a rename has to be a decision.
         std::fs::read_to_string(dir.join("baram.log")).expect("baram.log must exist")
+    }
+
+    /// 배너가 파일에 남는가 — 그것이 이 레코드의 **유일한** 존재 이유다.
+    #[test]
+    fn the_session_banner_reaches_the_log_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, logger) = spawn_logger(dir.path());
+
+        emit(
+            &*logger,
+            Level::Info,
+            SESSION_TARGET,
+            "Baram 0.6.2 starting (macos, debug)",
+        );
+
+        assert!(read_log(dir.path()).contains("Baram 0.6.2 starting"));
+    }
+
+    /// ‼️ 배너 타깃이 `OUR_TARGETS`의 `::` 자식이어야 Info로 남는다. fern은
+    /// `level_for`를 모듈 세그먼트로 푼다 — 이름을 자식이 아닌 것으로 바꾸면 조용히
+    /// `DEPENDENCY_LEVEL`(Warn)로 떨어져 **파일에서도 사라진다.** 위 테스트는 그때
+    /// 함께 죽지만, 이 테스트가 이유를 말한다.
+    #[test]
+    fn the_session_target_inherits_our_level() {
+        assert!(
+            OUR_TARGETS
+                .iter()
+                .any(|t| SESSION_TARGET.starts_with(&format!("{t}::"))),
+            "{SESSION_TARGET} must be a ::-child of one of {OUR_TARGETS:?}"
+        );
+    }
+
+    /// 콘솔은 읽을 수 없으므로 규칙 자체에 묻는다.
+    #[test]
+    fn the_console_drops_the_banner_and_nothing_else() {
+        assert!(!stdout_keeps(SESSION_TARGET));
+        for target in [
+            "baram_lib",
+            "baram_lib::plugin",
+            "baram_lib::session_store",
+            "baram",
+            "tungstenite",
+        ] {
+            assert!(stdout_keeps(target), "{target} must still reach stdout");
+        }
     }
 
     #[test]

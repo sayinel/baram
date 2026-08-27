@@ -26,13 +26,26 @@ pub fn is_tag_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
 }
 
+/// 이 줄이 코드 펜스의 여닫이인가.
+///
+/// 읽는 쪽(`strip_code_blocks` → `get_vault_tags`)과 쓰는 쪽(`tag::rename_tag`)이 펜스를
+/// **같은 자리에서** 열고 닫아야 한다. 갈리면 인덱스가 세지도 않은 문자열을 rename이
+/// 고치게 된다 — 사용자의 코드 예제가 조용히 바뀐다.
+///
+/// ‼️ 여는 표시와 닫는 표시의 종류를 맞춰 보지 않는다(``` 로 연 것을 ~~~ 가 닫는다).
+/// 느슨하지만 **양쪽이 똑같이 느슨한 것**이 한쪽만 엄격한 것보다 안전하다. 들여쓴
+/// 코드 블록(스페이스 4칸)과 인라인 코드 스팬도 마찬가지로 둘 다 보지 않는다.
+pub fn is_fence_delimiter(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("```") || trimmed.starts_with("~~~")
+}
+
 /// Strip fenced code blocks from content so tags inside them are not extracted.
 pub fn strip_code_blocks(content: &str) -> String {
     let mut result = String::with_capacity(content.len());
     let mut in_fence = false;
     for line in content.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+        if is_fence_delimiter(line) {
             in_fence = !in_fence;
             result.push('\n'); // preserve line count
             continue;
