@@ -9,6 +9,7 @@ import { TextSelection } from "@tiptap/pm/state";
 
 import { focusEditorView } from "../../../utils/editor/focus-editor-view";
 import { type VimMode, vimPluginKey } from "../../plugins/vim/vim-keys";
+import { enterCodeBlockSelection } from "./code-block-cm-registry";
 
 export interface CodeBlockEscape {
   /** Focus PM even while non-editable (vim modal). */
@@ -67,6 +68,20 @@ export function createCodeBlockEscape(
     }
     const tr = view.state.tr.setSelection(selection).scrollIntoView();
     view.dispatch(stampMode(tr));
+    // Adjacent islands (review): at an A→B code-block boundary the
+    // selection resolves INTO B, and while vim is on the selectionToDOM
+    // descent cannot be relied on to deliver it — the same gap the explicit
+    // entry channel exists for. Hand off to B, carrying the insert intent
+    // on an insert exit; PM focus stays the fallback for a cold island or
+    // a widget block with no registrant. With vim off the native descent
+    // already handles adjacency — unchanged.
+    if (pmMode) {
+      const entered = enterCodeBlockSelection(
+        view,
+        pmMode === "insert" ? { vimMode: "insert" } : undefined,
+      );
+      if (entered) return;
+    }
     focusPM();
   };
 
