@@ -107,8 +107,10 @@ Session.vim
 Sessionx.vim
 # Temporary
 .netrwhist
-# Auto-generated tag files
-tags
+# Auto-generated tag files (ctags). ‼️ 루트로 한정한다 — 앵커가 없으면 이 패턴이
+# **어느 깊이의 `tags` 디렉터리든** 잡는다. 실제로 `src/utils/tags/`가 통째로
+# 무시되어 새 소스 파일이 커밋되지 않았고, CI에서야 드러났다(PR #481).
+/tags
 # Persistent undo
 [._]*.un~
 
