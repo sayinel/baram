@@ -20,7 +20,7 @@ import { afterEach, describe, expect, it } from "vitest";
 // vitest cwd = repo 루트.
 const APP_CSS = readFileSync("src/styles/editor/code-blocks.css", "utf8");
 const HIDE_RULE_RE =
-  /\.code-block-editor \.cm-editor:not\(:focus-within\) \.cm-fat-cursor,\n\.code-block-editor \.cm-editor:not\(:focus-within\) \.cm-selectionLayer \{[^}]*\}/;
+  /\.code-block-editor \.cm-editor:not\(:focus-within\) \.cm-fat-cursor,\n\.code-block-editor \.cm-editor:not\(:focus-within\) \.cm-vimMode \.cm-selectionLayer \{[^}]*\}/;
 
 const cleanups: (() => void)[] = [];
 
@@ -34,12 +34,18 @@ interface Island {
   selection: HTMLElement;
 }
 
-/** island 여부를 바꿔가며 fat-cursor·selectionLayer 조각과, island 루트
- *  안(contentDOM 밖 — vim `:`/`/` 패널 위치)의 포커스 대상 input을 만든다. */
-function buildIsland(opts: { island: boolean }): Island {
+/** island 여부·vim 여부를 바꿔가며 실제 CM DOM 형상(레이어는 scrollDOM의
+ *  자식, cm-vimMode는 scrollDOM에 부착 — 설치본 실측)대로 조각을 만들고,
+ *  island 루트 안(contentDOM 밖 — vim `:`/`/` 패널 위치)의 포커스 대상
+ *  input을 둔다. vim=false는 "vim 미사용 또는 plain insert" — codemirror-
+ *  vim이 cm-vimMode를 떼는 상태다. */
+function buildIsland(opts: { island: boolean; vim?: boolean }): Island {
   const root = document.createElement("div");
   const editor = document.createElement("div");
   editor.className = "cm-editor";
+  const scroller = document.createElement("div");
+  scroller.className =
+    (opts.vim ?? true) ? "cm-scroller cm-vimMode" : "cm-scroller";
   const cursorLayer = document.createElement("div");
   cursorLayer.className = "cm-cursorLayer cm-vimCursorLayer";
   const cursor = document.createElement("div");
@@ -48,7 +54,8 @@ function buildIsland(opts: { island: boolean }): Island {
   const selection = document.createElement("div");
   selection.className = "cm-selectionLayer";
   const panelInput = document.createElement("input");
-  editor.append(cursorLayer, selection, panelInput);
+  scroller.append(cursorLayer, selection);
+  editor.append(scroller, panelInput);
   if (opts.island) {
     const container = document.createElement("div");
     container.className = "code-block-editor";
@@ -95,6 +102,17 @@ describe("code block ghost artifacts (issue 473)", () => {
     injectStyle(APP_CSS);
     const island = buildIsland({ island: false });
     expect(getComputedStyle(island.cursor).display).not.toBe("none");
+    expect(getComputedStyle(island.selection).display).not.toBe("none");
+  });
+
+  it("NO VIM (or plain insert): an unfocused island keeps its ordinary selection", () => {
+    // drawSelection은 모든 island의 유일한 선택 렌더러다(네이티브
+    // ::selection은 무력화됨) — vim 스코프 없이 숨기면 코드 선택 후 헤더의
+    // 언어 드롭다운만 클릭해도 하이라이트가 통째로 사라진다 (리뷰 MAJOR).
+    // cm-vimMode가 없는 island(vim off / plain insert)는 건드리지 않는다.
+    injectStyle(APP_CSS);
+    const island = buildIsland({ island: true, vim: false });
+    expect(document.activeElement).not.toBe(island.panelInput);
     expect(getComputedStyle(island.selection).display).not.toBe("none");
   });
 
