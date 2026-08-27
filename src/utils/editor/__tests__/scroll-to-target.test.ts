@@ -7,7 +7,7 @@
 import type { Editor } from "@tiptap/core";
 
 import { EditorState } from "@tiptap/pm/state";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { makeTestEditor } from "../../../__tests__/helpers/make-test-editor";
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
@@ -75,5 +75,32 @@ describe("scrollToTarget", () => {
     editor.destroy();
 
     await expect(nextFrame()).resolves.toBeUndefined();
+  });
+
+  // ‼️ 이 단정이 결함 그 자체다. 예전 구현은 목적지 노드에
+  // `scrollIntoView({ block: "center" })`를 걸었고, 그 API는 어느 조상을 뜻했는지 말할 수
+  // 없어 **스크롤 가능한 조상을 전부** 가운데 맞춤 한다. 창이 작아 앱 셸이 스크롤 가능해지면
+  // 탭 바들이 화면 밖으로 밀려 잘렸다. jsdom에는 레이아웃이 없어 픽셀은 못 재지만, "이
+  // API를 아예 부르지 않는다"는 스파이로 정확히 관측된다.
+  it("어떤 요소에도 scrollIntoView를 걸지 않는다 — 조상까지 끌고 가는 API다", async () => {
+    // 실제 모양대로 세운다: 스크롤 가능한 바깥(작은 창의 앱 셸) 안에 에디터의 스크롤
+    // 컨테이너가 있고, 그 안에 뷰가 있다.
+    const outer = document.createElement("div");
+    const container = document.createElement("div");
+    container.setAttribute("data-editor-scroll", "");
+    outer.appendChild(container);
+    document.body.appendChild(outer);
+    container.appendChild(editor.view.dom.parentElement ?? editor.view.dom);
+
+    const spy = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      install(INCOMING);
+      scrollToTarget(editor.view, INCOMING, { kind: "line", value: 5 });
+      await nextFrame();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+      document.body.innerHTML = "";
+    }
   });
 });

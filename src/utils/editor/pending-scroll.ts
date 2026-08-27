@@ -25,6 +25,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { findBlockPosById, findHeadingPosByText } from "./block-nav";
+import { scrollContainerToPos } from "./container-scroll";
 import { mdLineToPmPos } from "./cursor-line-mapper";
 import { focusEditorView } from "./focus-editor-view";
 
@@ -76,21 +77,21 @@ export function scrollToTarget(
     if (pos === null) return;
     try {
       const clamped = Math.min(Math.max(pos, 0), view.state.doc.content.size);
-      const tr = view.state.tr
-        .setSelection(TextSelection.near(view.state.doc.resolve(clamped)))
-        .scrollIntoView();
+      const tr = view.state.tr.setSelection(
+        TextSelection.near(view.state.doc.resolve(clamped)),
+      );
       view.dispatch(tr);
       // 순수 selection 트랜잭션이라 Tiptap `update`가 뜨지 않는다 — 탭이 dirty로
       // 물들지 않는다.
       focusEditorView(view);
-      // PM의 scrollIntoView는 뷰 안에서만 스크롤한다 — 바깥 `.editor-area-scroll`
-      // 컨테이너까지 따라오게 하려면 DOM 쪽도 밀어 줘야 한다.
-      const domInfo = view.domAtPos(clamped);
-      const el =
-        domInfo.node instanceof HTMLElement
-          ? domInfo.node
-          : domInfo.node.parentElement;
-      el?.scrollIntoView({ block: "center" });
+      // 스크롤은 **여기 한 곳**에서만 한다.
+      //
+      // 트랜잭션의 `.scrollIntoView()`를 같이 걸지 않는 이유: PM의 scrollRectIntoView는
+      // 조상을 `document.body`까지 거슬러 올라가며(마지막엔 `window.scrollBy`까지) 각각을
+      // "가장자리에 겨우 걸치도록" 민다. 그러면 목적지가 뷰포트 맨 아랫줄에 붙은 채
+      // **이미 보이는** 상태가 되고, 아래의 착지 계산은 그것을 보고 "움직일 필요 없음"으로
+      // 물러난다 — 어디에 내려놓을지에 대한 결정이 통째로 무력해진다.
+      scrollContainerToPos(view, clamped);
     } catch {
       // 좌표가 더는 유효하지 않다 — 그 사이 문서가 바뀐 것이므로 스크롤을 포기한다.
     }
