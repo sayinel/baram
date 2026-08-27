@@ -1,6 +1,8 @@
 // §56m Vault-wide tag index — business logic
 
-use crate::md::{extract_inline_tags, is_tag_char, split_frontmatter, strip_code_blocks};
+use crate::md::{
+    extract_inline_tags, is_fence_delimiter, is_tag_char, split_frontmatter, strip_code_blocks,
+};
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -212,26 +214,60 @@ fn ends_tag(next: Option<char>) -> bool {
 
 /// 본문의 `#old`를 `#new`로. 바꾼 횟수를 함께 돌려준다.
 ///
+/// ‼️ 코드 펜스 안은 건드리지 않는다. 읽는 쪽(`get_vault_tags`)이 `strip_code_blocks`로
+/// 펜스를 걷어내므로, 여기서 걷어내지 않으면 **인덱스에 세지도 않은 문자열을 우리가
+/// 고치게 된다** — 태그 이름을 바꿨을 뿐인데 문서에 실린 셸 주석이나 CSS id가 망가진다.
+/// 펜스 판정은 `md::is_fence_delimiter` 하나를 양쪽이 쓴다.
+///
+/// 줄 종결자를 잘라내지 않고 조각에 포함시킨 채 다룬다(`lines()`가 아니다). rename은
+/// 파일 전체를 되쓰므로 CRLF와 마지막 개행 유무가 **바이트 그대로** 살아남아야 한다.
+fn rename_inline(body: &str, old: &str, new: &str) -> (String, usize) {
+    let mut out = String::with_capacity(body.len());
+    let mut count = 0usize;
+    let mut in_fence = false;
+    let mut rest = body;
+    while !rest.is_empty() {
+        let (line, tail) = match rest.find('\n') {
+            Some(i) => rest.split_at(i + 1),
+            None => (rest, ""),
+        };
+        if is_fence_delimiter(line) {
+            in_fence = !in_fence;
+            out.push_str(line);
+        } else if in_fence {
+            out.push_str(line);
+        } else {
+            let (replaced, n) = rename_inline_in_line(line, old, new);
+            out.push_str(&replaced);
+            count += n;
+        }
+        rest = tail;
+    }
+    (out, count)
+}
+
+/// 한 줄 안의 `#old`를 전부 `#new`로.
+///
 /// ‼️ 정규식이 아니라 손으로 훑는다. 원래 코드는 경계를 lookahead로 쟀는데 `regex`
 /// 크레이트는 lookaround를 **지원하지 않는다** — `Regex::new`가 컴파일 단계에서 실패해
 /// `rename_tag`이 어떤 입력에도 오류만 돌려주고 있었다(테스트가 하나도 없어 드러나지
 /// 않았다). 경계를 소비하는 방식으로 우회하면 `#a #a`처럼 붙어 나오는 두 번째를 놓치므로,
 /// 아예 `md::is_tag_char`를 직접 보는 훑기로 간다 — 태스크 줄의 태그 토글
 /// (`task::tag::find_tag`)과 **같은 자**다.
-fn rename_inline(body: &str, old: &str, new: &str) -> (String, usize) {
+fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     let needle = format!("#{}", old);
-    let mut out = String::with_capacity(body.len());
+    let mut out = String::with_capacity(line.len());
     let mut count = 0usize;
     let mut from = 0usize;
-    while let Some(rel) = body[from..].find(&needle) {
+    while let Some(rel) = line[from..].find(&needle) {
         let start = from + rel;
         let end = start + needle.len();
         // 앞: 줄 시작이거나 공백·여는 괄호. `INLINE_TAG_RE`와 같은 규칙 — 단어 안이나
         // URL 조각(`.../#anchor`)을 태그로 읽으면 남의 글자를 바꿔 놓는다.
         let before_ok =
-            start == 0 || body[..start].ends_with(|c: char| c.is_whitespace() || c == '(');
-        out.push_str(&body[from..start]);
-        if before_ok && ends_tag(body[end..].chars().next()) {
+            start == 0 || line[..start].ends_with(|c: char| c.is_whitespace() || c == '(');
+        out.push_str(&line[from..start]);
+        if before_ok && ends_tag(line[end..].chars().next()) {
             out.push('#');
             out.push_str(new);
             count += 1;
@@ -240,7 +276,7 @@ fn rename_inline(body: &str, old: &str, new: &str) -> (String, usize) {
         }
         from = end;
     }
-    out.push_str(&body[from..]);
+    out.push_str(&line[from..]);
     (out, count)
 }
 
@@ -437,6 +473,60 @@ mod tests {
         let r = rename_tag(&root, "work", "focus").await.unwrap();
         assert_eq!(r.occurrences_replaced, 0);
         assert_eq!(read(&d).await, body);
+    }
+
+    /// 읽는 쪽은 펜스를 걷어내고(`get_vault_tags` → `strip_code_blocks`) 쓰는 쪽은
+    /// 걷어내지 않던 시절, 태그 이름을 바꾸면 문서에 실린 코드 예제가 함께 바뀌었다.
+    /// 인덱스가 세지도 않은 문자열을 고치는 것이므로 사용자에게는 원인 없는 손상이다.
+    #[tokio::test]
+    async fn a_tag_inside_a_code_fence_is_not_renamed() {
+        let body = "메모 #work 끝\n\n```sh\n# 주석 안의 #work 는 코드다\ngrep '#work' .\n```\n\n뒤 #work\n";
+        let (d, root) = vault(body).await;
+        let r = rename_tag(&root, "work", "focus").await.unwrap();
+
+        // 펜스 밖 두 곳만.
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "메모 #focus 끝\n\n```sh\n# 주석 안의 #work 는 코드다\ngrep '#work' .\n```\n\n뒤 #focus\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_tilde_fence_closes_a_backtick_fence_just_like_the_indexer_thinks() {
+        // 느슨한 규칙이지만 **양쪽이 똑같이 느슨한 것**이 계약이다. 여기서만 엄격해지면
+        // 인덱스가 코드로 본 구간을 rename이 본문으로 보게 된다.
+        let body = "```\n#work\n~~~\n#work 밖\n";
+        let (d, root) = vault(body).await;
+        let r = rename_tag(&root, "work", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 1);
+        assert_eq!(read(&d).await, "```\n#work\n~~~\n#focus 밖\n");
+    }
+
+    /// rename은 파일 전체를 되쓴다 — 줄 단위로 다루기 시작했으므로 줄 종결자와 마지막
+    /// 개행 유무가 바이트 그대로 살아남는지 못박는다. `lines()`를 쓰면 여기서 깨진다.
+    #[tokio::test]
+    async fn line_endings_and_a_missing_final_newline_survive() {
+        for (input, want) in [
+            ("a\r\n#work\r\nb\r\n", "a\r\n#focus\r\nb\r\n"),
+            ("#work", "#focus"),
+            ("a\n#work", "a\n#focus"),
+            ("#work\n\n", "#focus\n\n"),
+        ] {
+            let (d, root) = vault(input).await;
+            rename_tag(&root, "work", "focus").await.unwrap();
+            assert_eq!(read(&d).await, want, "input {:?}", input);
+        }
+    }
+
+    /// 펜스가 닫히지 않은 파일에서 그 뒤가 통째로 코드로 남는가 — 인덱서도 그렇게 읽는다.
+    #[tokio::test]
+    async fn an_unclosed_fence_swallows_the_rest_of_the_file() {
+        let body = "앞 #work\n```\n#work\n#work\n";
+        let (d, root) = vault(body).await;
+        let r = rename_tag(&root, "work", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 1);
+        assert_eq!(read(&d).await, "앞 #focus\n```\n#work\n#work\n");
     }
 
     #[tokio::test]
