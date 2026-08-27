@@ -358,13 +358,17 @@ describe("exit-side mode propagation (issue 478)", () => {
   it("UNIT: a getPos-less escape is a full no-op — no transaction, no mode", () => {
     const editor = makeEditor("hello\n");
     const dispatch = vi.spyOn(editor.view, "dispatch");
+    const stamp = vi.fn();
+    const handoff = vi.fn(() => true);
     const { maybeEscape } = createCodeBlockEscape(
       editor.view,
       () => undefined, // NodeView가 죽은 뒤의 getPos
       () => editor.state.doc.firstChild as never,
     );
-    maybeEscape(1, "insert");
+    maybeEscape(1, { handoff, stamp });
     expect(dispatch).not.toHaveBeenCalled();
+    expect(stamp).not.toHaveBeenCalled();
+    expect(handoff).not.toHaveBeenCalled();
   });
 
   it("ADJACENT blocks: an insert exit from A hands off INTO B in insert", async () => {

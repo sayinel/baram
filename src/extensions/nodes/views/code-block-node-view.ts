@@ -3,6 +3,7 @@
 // setSelection(), which is critical for CM ↔ PM focus coordination.
 
 import type { ViewUpdate } from "@codemirror/view";
+import type { Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
 
@@ -36,6 +37,7 @@ import {
 import {
   armIslandPointerHandoff,
   ensurePointerDownRecorder,
+  enterCodeBlockSelection,
   isRegisteredIslandContainer,
   recentPointerTarget,
   registerCodeBlockEditableSync,
@@ -628,12 +630,26 @@ export class CodeBlockNodeView implements NodeView {
     // and queue an off-focus insert revival (adversarial review).
     const escapeToPM = (dir: -1 | 1) => {
       const exitMode = this.exitPmMode();
+      // 이탈 훅 구성(M1): 메타 스탬프는 same-transaction, 인접 island
+      // 인계는 post-dispatch — escape 모듈은 vim을 모른 채 둘 다 주입받는다.
+      const exit = exitMode
+        ? {
+            handoff: () =>
+              enterCodeBlockSelection(
+                this.view,
+                exitMode === "insert" ? { vimMode: "insert" } : undefined,
+              ),
+            stamp: (tr: Transaction) => {
+              tr.setMeta(vimPluginKey, boundaryModeMeta(exitMode));
+            },
+          }
+        : undefined;
       // 이 이탈이 곧 유발할 focusout(포인터 이탈 감지)은 같은 전이다 —
       // latch로 잠가서 정규화 뒤의 "normal" 재캡처가 방금 전파한 모드를
       // 덮어쓰지 못하게 한다. 메모 소각은 LIFECYCLE burn ②.
       this.latchPointerExit();
       this.endIslandSession();
-      maybeEscape(dir, exitMode);
+      maybeEscape(dir, exit);
     };
 
     // Custom keymaps for PM ↔ CM navigation
