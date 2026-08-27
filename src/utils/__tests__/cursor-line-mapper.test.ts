@@ -16,7 +16,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
-import { mdLineToPmPos } from "../editor/cursor-mapper";
+import { mdLineToPmPos } from "../editor/cursor-line-mapper";
 
 const editor = new Editor({ extensions: createBaramExtensions(), content: "" });
 afterAll(() => editor.destroy());

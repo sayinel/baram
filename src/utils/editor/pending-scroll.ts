@@ -25,7 +25,7 @@ import { TextSelection } from "@tiptap/pm/state";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { findBlockPosById, findHeadingPosByText } from "./block-nav";
-import { mdLineToPmPos } from "./cursor-mapper";
+import { mdLineToPmPos } from "./cursor-line-mapper";
 import { focusEditorView } from "./focus-editor-view";
 
 /** 문서 안의 목적지. 한 요청에 정확히 하나. */
