@@ -15,6 +15,7 @@ import {
   type VimController,
 } from "../../../components/editor/vim-controller";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { logger } from "../../../utils/logger";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { vimPluginKey, withVimExternalEdit } from "../../plugins/vim/vim-keys";
 import {
@@ -62,11 +63,22 @@ export class CodeBlockNodeView implements NodeView {
    *  island reached insert ("queued" is not "delivered": the controller's
    *  microtask drops on a generation change, and a readOnly window can
    *  refuse the entry — the memo survives both and retries on the next
-   *  publish). Carries the entry's local head as its identity: consumption
-   *  requires the CURRENT PM selection to sit exactly there, so a departed-
-   *  and-returned selection cannot cash yesterday's ticket. SEPARATE from
-   *  pendingVimModeRestore (R7 recreate restoration, deliberately
-   *  surviving); an explicit vim OFF burns this one (adversarial review). */
+   *  publish). Carries the entry's local head as its identity.
+   *
+   *  LIFECYCLE (전 지점 — 지역 주석은 이 표를 참조한다):
+   *  - armed    : requestEntryInsert() — 진입 핸드오프의 insert 의도
+   *               (이미 plain insert인 island에는 arm하지 않음)
+   *  - confirmed: onModeChange publish "insert" → 소각 (배달 완료)
+   *  - retried  : onModeChange 그 외 publish + 엔트리가 아직 current
+   *               (선택이 메모된 head 위) → ensureInsert 재시도
+   *  - burned   : ① 명시적 vim OFF ② escapeToPM 키보드 이탈
+   *               ③ 포인터 이탈(island→island arm / island→본문)
+   *               ④ focusout 확정(크롬 이탈 포함) ⑤ island 안 사용자
+   *               keydown(인수인계 종료) ⑥ stale cold(선택이 블록을 떠남)
+   *               ⑦ publish 시점에 not-current
+   *
+   *  pendingVimModeRestore(아래)와 반대 생존 정책: 그쪽은 설정 재생성을
+   *  살아남는 게 목적(R7), 이쪽은 전이 하나를 넘기지 않는 게 목적이다. */
   private pendingEntryInsert: null | { head: number } = null;
   private pendingFocusRestore: null | { head: number } = null;
   private pendingSelection: null | { anchor: number; head: number } = null;
@@ -270,9 +282,7 @@ export class CodeBlockNodeView implements NodeView {
       this.latestVimEnabled = enabled;
       // An EXPLICIT off is a boundary: an unconfirmed restore memo from a
       // recreate must not resurrect insert on a later re-enable (R8).
-      // Internal recreates never pass here, so the back-to-back
-      // preservation contract stays intact. The entry-insert intent dies
-      // at the same boundary — a pre-off arrow must not replay (issue 477).
+      // Internal recreates never pass here. Entry memo: LIFECYCLE burn ①.
       if (!enabled) {
         this.pendingVimModeRestore = null;
         this.pendingEntryInsert = null;
@@ -344,6 +354,11 @@ export class CodeBlockNodeView implements NodeView {
     }
   }
 
+  /**
+   * Called by ProseMirror when selection enters this node.
+   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
+   * it allows us to properly focus CodeMirror and set its cursor position.
+   */
   setSelection(anchor: number, head: number) {
     this.ensureCM();
     if (!this.cmView) {
@@ -562,7 +577,7 @@ export class CodeBlockNodeView implements NodeView {
       const exitMode = this.exitPmMode();
       // 이 이탈이 곧 유발할 focusout(포인터 이탈 감지)은 같은 전이다 —
       // latch로 잠가서 정규화 뒤의 "normal" 재캡처가 방금 전파한 모드를
-      // 덮어쓰지 못하게 한다 (포인터 경로와 동일한 이중 발화 방어).
+      // 덮어쓰지 못하게 한다. 메모 소각은 LIFECYCLE burn ②.
       this.latchPointerExit();
       this.pendingEntryInsert = null;
       this.pendingVimModeRestore = null;
@@ -634,11 +649,17 @@ export class CodeBlockNodeView implements NodeView {
       claimFocus: false,
       restoreMode: () => this.pendingVimModeRestore,
       editableCompartment: this.vimEditableCompartment,
-      onError: () => {
-        // failed → deterministic plain editing (v3 contract 1).
+      onError: (err) => {
+        // INSTALL failure → deterministic plain editing (v3 contract 1).
+        logger.error("[vim] island vim install failed:", err);
         this.cmView?.dispatch({
           effects: this.vimEditableCompartment.reconfigure([]),
         });
+      },
+      // Best-effort operation failures are report-only — the install
+      // rollback above must never fire for a transient handleKey throw.
+      onOperationError: (err) => {
+        logger.error("[vim] island vim operation failed:", err);
       },
       onModeChange: (mode) => {
         this.currentVimMode = mode;
@@ -648,12 +669,9 @@ export class CodeBlockNodeView implements NodeView {
         if (mode !== null && mode === this.pendingVimModeRestore) {
           this.pendingVimModeRestore = null;
         }
-        // issue 477 — publish-driven entry delivery. Burn the memo when the
-        // publish CONFIRMS insert, or when the entry is no longer current
-        // (selection moved off the memoed head — yesterday's ticket must
-        // not match today's seat); otherwise keep retrying: this publish
-        // may be a fresh controller generation whose predecessor dropped
-        // the queued attempt, or a readOnly refusal that has since lifted.
+        // issue 477 — publish 주도 배달 (LIFECYCLE confirmed/retried/burn ⑦):
+        // insert 확인 시 소각, not-current면 소각, 그 외엔 재시도 — 이
+        // publish는 큐를 떨어뜨린 새 세대이거나 걷힌 readOnly 거부일 수 있다.
         if (mode !== null && this.pendingEntryInsert) {
           if (!this.entryInsertCurrent()) {
             this.pendingEntryInsert = null;
@@ -736,18 +754,14 @@ export class CodeBlockNodeView implements NodeView {
         const active = island.dom.ownerDocument.activeElement;
         if (!island.dom.contains(active)) {
           islandVimBlur(island);
-          // The entry intent dies with the visit (review): a memo left
-          // armed by a refused delivery must not outlive a pointer exit —
-          // the keyboard exit burns in escapeToPM, this covers the rest.
+          // LIFECYCLE burn ④ — 방문이 끝나면 의도도 끝난다 (크롬 이탈 포함).
           this.pendingEntryInsert = null;
         }
       });
     };
-    // A real key from the user inside the island means they took over —
-    // an armed entry memo delivering AFTER that would hijack their session
-    // (review: refused delivery + `v` flipped visual into insert, the Esc
-    // convergence destroying the selection on the way). Capture phase so
-    // the burn lands before vim processes the key and publishes a mode.
+    // LIFECYCLE burn ⑤ — 사용자 키 = 인수인계 종료 (armed 메모가 이후
+    // publish에서 배달되면 세션 납치: 거부된 배달 + v가 insert로 뒤집힘).
+    // capture라 vim이 키를 처리해 publish하기 전에 소각이 앞선다.
     const onIslandKeydown = () => {
       this.pendingEntryInsert = null;
     };
@@ -832,18 +846,13 @@ export class CodeBlockNodeView implements NodeView {
         });
         this.updating = false;
       } else {
-        // issue 477 — the entry that memoed insert died with its selection.
+        // LIFECYCLE burn ⑥ — 메모의 엔트리가 선택과 함께 죽었다.
         this.pendingEntryInsert = null;
       }
       this.pendingSelection = null;
     }
   }
 
-  /**
-   * Called by ProseMirror when selection enters this node.
-   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
-   * it allows us to properly focus CodeMirror and set its cursor position.
-   */
   /** 포인터 이탈 처리를 이 전이 동안 잠근다 (microtask에 해제 —
    *  포커스 전이는 동기라 정확히 한 전이를 묶는다). */
   private latchPointerExit(): void {

@@ -385,7 +385,7 @@ describe("createVimController", () => {
   async function enabledWithVim(
     state: FakeVimState,
     handleKey: (state: FakeVimState) => void,
-    onError?: (e: unknown) => void,
+    onOperationError?: (e: unknown) => void,
   ) {
     const f = makeFakes();
     const cm = { state: { vim: state } };
@@ -398,7 +398,7 @@ describe("createVimController", () => {
     const controller = createVimController(asView(f.view), f.compartment, {
       attachGuard: f.attachGuard,
       loadModule: () => Promise.resolve(asModule(mod)),
-      onError,
+      onOperationError,
     });
     controller.apply(true);
     await flush();
@@ -451,18 +451,20 @@ describe("createVimController", () => {
     expect(handleKeySpy).toHaveBeenCalledTimes(2);
   });
 
-  it("exitToNormal: a throw reports through onError and returns false", async () => {
+  it("exitToNormal: a throw reports through onOperationError and returns false", async () => {
+    // onError는 설치 실패 롤백 트리거다 — 일시적 handleKey throw가 그리로
+    // 흐르면 정상 island의 editing host가 벗겨진다 (quality review M3).
     const boom = new Error("vim blew up");
-    const onError = vi.fn();
+    const onOperationError = vi.fn();
     const { controller } = await enabledWithVim(
       vimState({ insertMode: true }),
       () => {
         throw boom;
       },
-      onError,
+      onOperationError,
     );
     expect(controller.exitToNormal()).toBe(false);
-    expect(onError).toHaveBeenCalledWith(boom);
+    expect(onOperationError).toHaveBeenCalledWith(boom);
   });
 
   it("exitToNormal: no-op true before attach and after dispose", async () => {
@@ -486,7 +488,7 @@ describe("createVimController", () => {
   async function enabledWithVimKeys(
     state: FakeVimState & { overwrite?: boolean },
     onKey: (st: typeof state, key: string) => void,
-    onError?: (e: unknown) => void,
+    onOperationError?: (e: unknown) => void,
   ) {
     const f = makeFakes();
     const { overwrite, ...vim } = state;
@@ -505,7 +507,7 @@ describe("createVimController", () => {
     const controller = createVimController(asView(f.view), f.compartment, {
       attachGuard: f.attachGuard,
       loadModule: () => Promise.resolve(asModule(mod)),
-      onError,
+      onOperationError,
     });
     controller.apply(true);
     await flush();
@@ -570,16 +572,16 @@ describe("createVimController", () => {
     // 거부(readOnly 창)는 오류가 아니다: onError는 설치 실패 롤백 트리거라
     // 여기 흘리면 normal 모드에서 IME 장벽을 여는 잘못된 복구가 발화한다.
     // 재시도는 caller의 publish-주도 메모가 소유한다 (adversarial review).
-    const onError = vi.fn();
+    const onOperationError = vi.fn();
     const { controller, handleKeySpy } = await enabledWithVimKeys(
       vimState(),
       () => {}, // i가 무시됨 (readOnly 거부 시뮬레이션)
-      onError,
+      onOperationError,
     );
     expect(controller.ensureInsert()).toBe(true);
     await flush();
     expect(handleKeySpy).toHaveBeenCalled();
-    expect(onError).not.toHaveBeenCalled();
+    expect(onOperationError).not.toHaveBeenCalled();
   });
 
   it("ensureInsert: no session false; dispose before the microtask drops it", async () => {

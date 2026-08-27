@@ -260,6 +260,8 @@ export function SourceCodeEditor({
     const vimController = createVimController(view, vimCompartment, {
       editableCompartment: vimEditableCompartment,
       onError: (err) => logger.error("[vim] Failed to load vim:", err),
+      onOperationError: (err) =>
+        logger.error("[vim] vim operation failed:", err),
       // §298 S3 — StatusBar mode indicator. The controller emits null on
       // toggle-off and on dispose, so unmount resets the store too.
       onModeChange: (mode) =>

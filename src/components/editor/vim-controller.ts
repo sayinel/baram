@@ -36,13 +36,13 @@ export interface VimController {
    *  "send i": a stale visual/replace/pending session ends first (bounded
    *  Esc, same convergence as exitToNormal) because upstream maps
    *  lowercase i only in the bare-normal context. Throws report through
-   *  onError; a mere refusal is NOT an error — the publish-driven retry
+   *  onOperationError; a mere refusal is NOT an error — the publish-driven retry
    *  owns it, and the install-failure rollback must not fire for it. */
   ensureInsert(): boolean;
   /** issue 475 — end any insert/visual/pending vim session so the island
    *  sits in bare normal mode. Returns whether that state was reached;
    *  true when vim is not attached (nothing to normalize). Best-effort:
-   *  a throw reports through onError and returns false — the caller
+   *  a throw reports through onOperationError and returns false — the caller
    *  decides, it is never re-thrown. */
   exitToNormal(): boolean;
 }
@@ -70,9 +70,16 @@ export interface VimControllerDeps {
   editableCompartment?: Compartment;
   /** Test seam — defaults to the cached dynamic loader. */
   loadModule?: () => Promise<VimModule>;
+  /** INSTALL failures only (load rejection, plugin-init rollback) — the
+   *  caller may respond destructively (roll back to plain editing). */
   onError?: (err: unknown) => void;
   /** S3: StatusBar mode feed. Receives null whenever vim turns off. */
   onModeChange?: (mode: null | VimModeName) => void;
+  /** Best-effort OPERATION failures (ensureInsert / exitToNormal throws) —
+   *  report-only. Routing these through onError fired the install rollback
+   *  for a transient handleKey throw, stripping a working island's editing
+   *  host (quality review M3). */
+  onOperationError?: (err: unknown) => void;
   /** Phase 0b: a CM recreation (settings change) resets vim to normal —
    *  consumed ONCE after attach to re-enter the mode the user was in.
    *  Visual is not restorable (its range died with the old view). */
@@ -280,7 +287,7 @@ export function createVimController(
           // and THAT is the delivery confirmation the caller burns its memo
           // on. A refusal (readOnly window) simply leaves the memo armed.
         } catch (err) {
-          deps.onError?.(err);
+          deps.onOperationError?.(err);
         }
       });
       return true;
@@ -300,7 +307,7 @@ export function createVimController(
         }
         return isIdleNormal(s.cm);
       } catch (err) {
-        deps.onError?.(err);
+        deps.onOperationError?.(err);
         return false;
       }
     },
