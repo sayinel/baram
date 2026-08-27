@@ -110,6 +110,20 @@ async function revealIsland(editor: Editor): Promise<HTMLElement> {
   return editor.view.dom.querySelector(".cm-content") as HTMLElement;
 }
 
+/** 문서의 모든 island를 공개하고 cm-content들을 문서 순서로 돌려준다. */
+async function revealIslands(
+  editor: Editor,
+  count: number,
+): Promise<HTMLElement[]> {
+  for (const io of MockIntersectionObserver.instances) {
+    io.triggerIntersect(true);
+  }
+  await vi.waitFor(() => {
+    expect(editor.view.dom.querySelectorAll(".cm-editor").length).toBe(count);
+  });
+  return [...editor.view.dom.querySelectorAll(".cm-content")] as HTMLElement[];
+}
+
 function setVim(editor: Editor, enabled: boolean): void {
   editor.view.dispatch(
     editor.state.tr.setMeta(vimPluginKey, { enabled, type: "setEnabled" }),
@@ -357,5 +371,72 @@ describe("exit-side mode propagation (issue 478)", () => {
     );
     maybeEscape(1, "insert");
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("ADJACENT blocks: an insert exit from A hands off INTO B in insert", async () => {
+    // A→B 경계에서 TextSelection.near가 B 안으로 착지하는데, 핸드오프 없이
+    // PM만 포커스하면 소유자가 갈리고 캐럿이 실종된다 (리뷰 MAJOR).
+    const editor = makeEditor(
+      "```ts\nconst a = 1;\n```\n\n```ts\nconst b = 2;\n```\n",
+    );
+    setVim(editor, true);
+    const contents = await revealIslands(editor, 2);
+    const [contentA, contentB] = contents;
+    await focusIsland(contentA);
+    await vi.waitFor(() => {
+      islandPress(contentA, "i");
+      expect(contentA.getAttribute("contenteditable")).toBe("true");
+    });
+    islandPress(contentA, "ArrowDown"); // A 마지막 줄 → B로 이탈
+    await vi.waitFor(() => {
+      // B가 핸드오프를 받아 insert로 열린다 — PM insert 전파와 일치.
+      expect(pmMode(editor)).toBe("insert");
+      expect(contentB.getAttribute("contenteditable")).toBe("true");
+      expect(contentB.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it("ADJACENT blocks: a normal exit from A hands off INTO B in normal", async () => {
+    const editor = makeEditor(
+      "```ts\nconst a = 1;\n```\n\n```ts\nconst b = 2;\n```\n",
+    );
+    setVim(editor, true);
+    const contents = await revealIslands(editor, 2);
+    const [contentA, contentB] = contents;
+    await focusIsland(contentA);
+    islandPress(contentA, "j"); // idle normal 경계 j → B로 이탈
+    await vi.waitFor(() => {
+      expect(pmMode(editor)).toBe("normal");
+      expect(contentB.getAttribute("contenteditable")).toBe("false");
+      expect(contentB.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it("USER KEYDOWN burns an armed memo — v stays visual, not hijacked to insert", async () => {
+    // 거부로 남은 메모가 island 체류 중 currency 검사를 통과해, 사용자의
+    // v가 내는 publish에서 재시도가 발화해 visual을 insert로 납치했다
+    // (리뷰 MAJOR — 프로브 재현). 사용자 키 입력 = 인수인계 종료.
+    const editor = makeEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealIsland(editor);
+    await focusIsland(content);
+    let blockPos = -1;
+    editor.state.doc.descendants((n, pos) => {
+      if (blockPos < 0 && n.type.name === "codeBlock") blockPos = pos;
+      return blockPos < 0;
+    });
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, blockPos + 1),
+      ),
+    );
+    broadcastCodeBlockEditable(editor.view, false); // 배달 거부 유도
+    enterCodeBlockAt(editor.view, blockPos, 0, 0, { vimMode: "insert" });
+    await new Promise((r) => setTimeout(r, 30)); // 거부 소진 — 메모 잔존
+    broadcastCodeBlockEditable(editor.view, true);
+    islandPress(content, "v"); // 이탈 없이 island 안에서 visual
+    await new Promise((r) => setTimeout(r, 60));
+    // 납치됐다면 editing host가 열려 "true"가 된다 (3v: visual은 host 제거).
+    expect(content.getAttribute("contenteditable")).toBe("false");
   });
 });

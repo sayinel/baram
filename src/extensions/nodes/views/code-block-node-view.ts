@@ -676,14 +676,30 @@ export class CodeBlockNodeView implements NodeView {
     const onIslandBlur = () => {
       queueMicrotask(() => {
         const active = island.dom.ownerDocument.activeElement;
-        if (!island.dom.contains(active)) islandVimBlur(island);
+        if (!island.dom.contains(active)) {
+          islandVimBlur(island);
+          // The entry intent dies with the visit (review): a memo left
+          // armed by a refused delivery must not outlive a pointer exit —
+          // the keyboard exit burns in escapeToPM, this covers the rest.
+          this.pendingEntryInsert = null;
+        }
       });
+    };
+    // A real key from the user inside the island means they took over —
+    // an armed entry memo delivering AFTER that would hijack their session
+    // (review: refused delivery + `v` flipped visual into insert, the Esc
+    // convergence destroying the selection on the way). Capture phase so
+    // the burn lands before vim processes the key and publishes a mode.
+    const onIslandKeydown = () => {
+      this.pendingEntryInsert = null;
     };
     island.dom.addEventListener("focusin", onIslandFocus);
     island.dom.addEventListener("focusout", onIslandBlur);
+    island.dom.addEventListener("keydown", onIslandKeydown, true);
     this.islandStatusDispose = () => {
       island.dom.removeEventListener("focusin", onIslandFocus);
       island.dom.removeEventListener("focusout", onIslandBlur);
+      island.dom.removeEventListener("keydown", onIslandKeydown, true);
       islandVimDispose(island);
     };
     if (this.latestVimEnabled) this.applyVim(true);
