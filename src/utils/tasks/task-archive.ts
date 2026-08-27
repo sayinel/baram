@@ -46,8 +46,8 @@ export function archiveScope(
   capturePath: string,
 ): ArchiveScope {
   return {
-    archiveRoot: `${stripTrailingSeparators(normalizePath(rootPath))}/${ARCHIVE_DIR}`,
-    capturePath: normalizePath(capturePath),
+    archiveRoot: `${stripTrailingSeparators(toPosix(rootPath))}/${ARCHIVE_DIR}`,
+    capturePath: toPosix(capturePath),
   };
 }
 
@@ -76,6 +76,20 @@ export function toArchiveItems(tasks: TaskEntry[]): ArchiveItem[] {
     line: task.line,
     path: task.path,
   }));
+}
+
+/**
+ * 경로 비교용 정규화 — 구분자를 `/`로 맞추고 `.`·`..`를 접는다. Rust `norm`과 같은 규칙이다.
+ *
+ * ‼️ `normalizePath`만으로는 부족하다. 그 함수는 `/`로만 자르므로 Windows 경로
+ * `C:\\v\\Inbox.md`는 통째로 한 세그먼트로 남는다. 인덱스의 `TaskEntry.path`는 Rust가
+ * 준 **플랫폼 구분자** 경로이고 `capturePath`는 `resolveCapturePath`가 `/`로 이어 붙인
+ * 값이라, 변환하지 않으면 Windows에서 두 문자열이 영영 일치하지 않는다 — 대상이 0이 되어
+ * 버튼 자체가 뜨지 않는다. Rust는 자기 쪽에서 양쪽을 정규화하므로 이 결함은 프런트에만
+ * 있었다.
+ */
+export function toPosix(path: string): string {
+  return normalizePath(path.replace(/\\/g, "/"));
 }
 
 /** `Archive/YYYY-MM.md`의 `YYYY-MM` — 완료일에서 온다. 오늘이 아니다. */
@@ -114,12 +128,12 @@ function isArchivable(
 
   // `task.done`은 위에서 파싱에 성공했으므로 `YYYY-MM-DD` 그 자체다.
   const dest = `${scope.archiveRoot}/${archiveMonth(task.done ?? "")}.md`;
-  return normalizePath(task.path) !== dest;
+  return toPosix(task.path) !== dest;
 }
 
 /** 이 경로에서 줄을 뽑아도 되는가 — Rust `is_archive_source`와 같은 판정. */
 function isArchiveSource(path: string, scope: ArchiveScope): boolean {
-  const p = normalizePath(path);
+  const p = toPosix(path);
   return p === scope.capturePath || isUnderRoot(p, scope.archiveRoot);
 }
 

@@ -91,6 +91,37 @@ describe("§312 아카이브 자격", () => {
     expect(pick([t])).toHaveLength(0);
   });
 
+  it("Windows 구분자도 같은 경로로 본다", () => {
+    // Rust `windows_separators_compare_equal_to_forward_slashes`와 같은 계약.
+    // 인덱스의 `TaskEntry.path`는 플랫폼 구분자로 오고 `capturePath`는 `/`로 이어 붙여
+    // 만들어진다 — 여기서 맞추지 않으면 Windows에서 대상이 영영 0이라 버튼이 뜨지 않는다.
+    const scope = archiveScope("C:\\v", "C:\\v/Inbox.md");
+    expect(
+      selectArchivable(
+        [done("C:\\v\\Inbox.md", "2026-07-04")],
+        scope,
+        NOW,
+        AFTER_DAYS,
+      ),
+    ).toHaveLength(1);
+    expect(
+      selectArchivable(
+        [done("C:\\v\\Archive\\2026-08.md", "2026-07-04")],
+        scope,
+        NOW,
+        AFTER_DAYS,
+      ),
+    ).toHaveLength(1);
+    expect(
+      selectArchivable(
+        [done("C:\\v\\notes\\설계.md", "2026-07-04")],
+        scope,
+        NOW,
+        AFTER_DAYS,
+      ),
+    ).toHaveLength(0);
+  });
+
   it("문턱을 0으로 두면 오늘 끝낸 것도 고른다", () => {
     const t = done("/vault/Inbox.md", "2026-08-27");
     expect(selectArchivable([t], SCOPE, NOW, 0)).toEqual([t]);

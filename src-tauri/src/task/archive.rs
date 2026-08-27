@@ -114,6 +114,11 @@ pub async fn archive_tasks(
     for (source, group) in by_source {
         drain_one_file(&source, &group, &root, today, after_days, &mut outcome).await;
     }
+    // 한 파일이 원본이면서 다른 파일의 대상일 수 있다(`Archive/*` 사이의 정리). 그대로
+    // 두면 호출자가 같은 파일을 두 번 다시 읽는다 — 해롭지는 않지만 `paths`는 "바뀐 파일
+    // 목록"이지 "쓰기 횟수"가 아니다.
+    outcome.paths.sort();
+    outcome.paths.dedup();
     Ok(outcome)
 }
 
@@ -638,6 +643,33 @@ mod tests {
         let mut paths = out.paths.clone();
         paths.sort();
         assert_eq!(paths, vec![v.at("Archive/2026-07.md"), inbox]);
+    }
+
+    #[tokio::test]
+    async fn a_file_that_is_both_source_and_destination_is_listed_once() {
+        // 8월 파일에서 7월 것을 빼고, 9월 파일에서 8월 것을 빼면 8월 파일은 원본이면서
+        // 대상이다.
+        let v = Vault::new();
+        let july = "- [x] 7월 것 ✅2026-07-04";
+        let august = "- [x] 8월 것 ✅2026-08-04";
+        let aug_path = v.write("Archive/2026-08.md", &format!("{}\n", july));
+        let sep_path = v.write("Archive/2026-09.md", &format!("{}\n", august));
+
+        let out = archive_tasks(
+            &v.root,
+            &v.inbox(),
+            &[item(&aug_path, 0, july), item(&sep_path, 0, august)],
+            TODAY,
+            0,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out.archived, 2);
+        let mut unique = out.paths.clone();
+        unique.dedup();
+        assert_eq!(out.paths, unique);
+        assert!(out.paths.contains(&aug_path));
     }
 
     #[tokio::test]

@@ -24,11 +24,12 @@ import { useFileStore } from "../../stores/file/file";
 import { refreshFileTasks } from "../../stores/tasks/task-store";
 import { showAlert, showConfirm } from "../../utils/confirm-dialog";
 import { logger } from "../../utils/logger";
-import { basename, isUnderRoot, normalizePath } from "../../utils/path-utils";
+import { basename, isUnderRoot } from "../../utils/path-utils";
 import {
   archiveScope,
   selectArchivable,
   toArchiveItems,
+  toPosix,
 } from "../../utils/tasks/task-archive";
 
 export interface ArchiveDone {
@@ -159,14 +160,17 @@ function findBlockingTab(
   candidates: TaskEntry[],
   archiveRoot: string,
 ): null | string {
-  const sources = new Set(candidates.map((task) => normalizePath(task.path)));
+  // `toPosix`는 자격 판정이 쓰는 것과 같은 정규화다 — 여기만 다른 규칙을 쓰면 Windows에서
+  // 원본 집합과 탭 경로가 만나지 못해 이 관문이 통째로 새어 나간다.
+  const sources = new Set(candidates.map((task) => toPosix(task.path)));
   const { sourceModeTabs, tabs } = useEditorStore.getState();
 
   for (const tab of tabs) {
     if (!tab.filePath) continue;
-    const path = normalizePath(tab.filePath);
+    const path = toPosix(tab.filePath);
     if (!sources.has(path) && !isUnderRoot(path, archiveRoot)) continue;
-    if (tab.isDirty || sourceModeTabs.includes(tab.id)) return tab.filePath;
+    // `basename`도 `/`만 보므로 정규화한 경로를 넘긴다.
+    if (tab.isDirty || sourceModeTabs.includes(tab.id)) return path;
   }
   return null;
 }
