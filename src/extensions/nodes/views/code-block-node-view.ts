@@ -3,51 +3,24 @@
 // setSelection(), which is critical for CM ↔ PM focus coordination.
 
 import type { ViewUpdate } from "@codemirror/view";
-import type { Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
 
-import { EditorState as CMState, Compartment, Prec } from "@codemirror/state";
+import { EditorState as CMState, Compartment } from "@codemirror/state";
 import { EditorView as CMView } from "@codemirror/view";
-import { redo, undo } from "@tiptap/pm/history";
 
-import {
-  createVimController,
-  type VimController,
-} from "../../../components/editor/vim-controller";
 import { useSettingsStore } from "../../../stores/settings/store";
-import { focusEditorView } from "../../../utils/editor/focus-editor-view";
-import { logger } from "../../../utils/logger";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
-import {
-  boundaryModeMeta,
-  vimPluginKey,
-  withVimExternalEdit,
-} from "../../plugins/vim/vim-keys";
-import {
-  islandVimBlur,
-  islandVimDispose,
-  islandVimFocus,
-  islandVimMode,
-} from "../../plugins/vim/vim-status";
+import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
 import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
-import {
-  armIslandPointerHandoff,
-  ensurePointerDownRecorder,
-  enterCodeBlockSelection,
-  isRegisteredIslandContainer,
-  recentPointerTarget,
-  registerCodeBlockEditableSync,
-  registerCodeBlockEntry,
-  registerCodeBlockVimSync,
-  takeIslandPointerHandoff,
-} from "./code-block-cm-registry";
+import { registerCodeBlockEditableSync } from "./code-block-cm-registry";
 import { createCodeBlockEscape } from "./code-block-escape";
 import { buildCodeBlockExtensions } from "./code-block-extensions";
 import { buildCodeBlockKeymap } from "./code-block-keymap";
+import { CodeBlockVimIsland } from "./code-block-vim-island";
 import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
@@ -55,66 +28,35 @@ export class CodeBlockNodeView implements NodeView {
   private cmContainer: HTMLElement;
   private cmInitialized = false;
   private cmView: CMView | null = null;
-  private currentVimMode: null | string = null;
   private destroyed = false;
   private getPos: () => number | undefined;
   private initGeneration = 0;
-  private islandStatusDispose: (() => void) | null = null;
   private langGeneration = 0;
   private langSelect: HTMLSelectElement;
   // §298 Phase 0b R6: language switches reconfigure IN PLACE — recreation
   // resets vim to normal mid-typing (a language undo while in insert).
   private languageCompartment = new Compartment();
   private latestEffectiveEditable: boolean | null = null;
-  private latestVimEnabled: boolean | null = null;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
-  /** issue 477 — entry-mode intent, held until a mode publish CONFIRMS the
-   *  island reached insert ("queued" is not "delivered": the controller's
-   *  microtask drops on a generation change, and a readOnly window can
-   *  refuse the entry — the memo survives both and retries on the next
-   *  publish). Carries the entry's local head as its identity.
-   *
-   *  LIFECYCLE (전 지점 — 지역 주석은 이 표를 참조한다):
-   *  - armed    : requestEntryInsert() — 진입 핸드오프의 insert 의도
-   *               (이미 plain insert인 island에는 arm하지 않음)
-   *  - confirmed: onModeChange publish "insert" → 소각 (배달 완료)
-   *  - retried  : onModeChange 그 외 publish + 엔트리가 아직 current
-   *               (선택이 메모된 head 위) → ensureInsert 재시도
-   *  - burned   : ① 명시적 vim OFF ② escapeToPM 키보드 이탈
-   *               ③ 포인터 이탈(island→island arm / island→본문)
-   *               ④ focusout 확정(크롬 이탈 포함) ⑤ island 안 사용자
-   *               keydown(인수인계 종료) ⑥ stale cold(선택이 블록을 떠남)
-   *               ⑦ publish 시점에 not-current
-   *
-   *  pendingVimModeRestore(아래)와 반대 생존 정책: 그쪽은 설정 재생성을
-   *  살아남는 게 목적(R7), 이쪽은 전이 하나를 넘기지 않는 게 목적이다. */
-  private pendingEntryInsert: null | { head: number } = null;
   private pendingFocusRestore: null | { head: number } = null;
   private pendingSelection: null | {
     anchor: number;
     focusIntent: boolean;
     head: number;
   } = null;
-  private pendingVimModeRestore: "insert" | "replace" | null = null;
-  /** 포인터 이탈의 전이당 1회 처리 latch — focusout이 한 전이에 겹쳐
-   *  발화해도(계측 실증) 정규화 이전의 첫 캡처만 전파된다. */
-  private pointerExitHandled = false;
   // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
   // PM editable without triggering NodeView.update(), and broadcasts instead.
   private readOnlyCompartment = new Compartment();
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
   private unregisterEditableSync: (() => void) | null = null;
-  private unregisterEntry: (() => void) | null = null;
-  private unregisterVimSync: (() => void) | null = null;
   private updating = false;
   private view: PMView;
-  // §298 Phase 0b — per-island vim. Compartments outlive CM recreations;
-  // the controller is created per CM instance inside initCM.
-  private vimCompartment = new Compartment();
-  private vimController: null | VimController = null;
-  private vimEditableCompartment = new Compartment();
+  /** issue 372 split — vim 통합부 전체(controller 배선, entry/exit
+   *  핸드오프, 포인터 인계, focus-capability 판정, 메모 수명주기)는
+   *  binding이 소유한다. NodeView 수명으로 생성, CM은 attach/detach. */
+  private vimIsland: CodeBlockVimIsland;
 
   constructor(
     node: PMNode,
@@ -205,26 +147,6 @@ export class CodeBlockNodeView implements NodeView {
     wrapper.appendChild(cmContainer);
     this.dom = wrapper;
 
-    // §298 Phase 0b (PR 307 review) — a click must ENTER the island while
-    // vim is in normal mode, and nothing else in the chain delivers that.
-    // The barrier leaves contentDOM `contenteditable=false` with a negative
-    // tabindex, and WebKit does not focus such an element on click; the
-    // island meanwhile stays read-only until it is focused (suspension is
-    // driven by focusin), so the focus the click needed was exactly what the
-    // click was supposed to produce. Users had to press `i` first — vim's
-    // insert mode makes the PM view editable, which unlocked the island by a
-    // different route. Capture phase, because CodeMirror's own mousedown
-    // handling is what we are standing in for.
-    cmContainer.addEventListener(
-      "mousedown",
-      () => {
-        if (!this.latestVimEnabled || !this.cmView) return;
-        if (this.cmView.hasFocus) return;
-        this.cmView.focus();
-      },
-      true,
-    );
-
     // §perf-large-file: defer CodeMirror creation until the block is near the
     // viewport. Show the raw code as a lightweight placeholder until then.
     const placeholder = document.createElement("pre");
@@ -251,59 +173,14 @@ export class CodeBlockNodeView implements NodeView {
       },
     );
 
-    // §298 — explicit vim entry channel (registry note): while vim is modal
-    // PM's editorOwnsSelection gate usually fails, so selectionToDOM cannot
-    // be relied on to descend into setSelection here — the vim plugin
-    // drives it through this channel instead.
-    ensurePointerDownRecorder(view);
-    this.unregisterEntry = registerCodeBlockEntry(
-      view,
-      getPos,
+    // issue 372 split — vim 통합부는 binding으로 (mousedown 진입, 진입
+    // 채널, vim on/off 구독, pointerdown 기록기, 메모 수명주기 전부).
+    this.vimIsland = new CodeBlockVimIsland({
       cmContainer,
-      (anchor, head, opts) => {
-        // issue 477 — the mode intent applies on EVERY outcome, including
-        // the dedup early-return below: in editable PM (insert mode) the
-        // dispatch's own selectionToDOM descent often delivers the exact
-        // selection first, and skipping the mode there would silently drop
-        // the insert entry (adversarial review BLOCKER).
-        const wantInsert = opts?.vimMode === "insert";
-        // Dedup: when the gate DID pass, PM's own descent already delivered
-        // this exact selection inside the dispatch — and a second call is
-        // not a no-op (CM re-dispatches a selectionSet update). Skip only
-        // on an exact match with focus already held. Known limitation: an
-        // equal-valued LATER re-entry is indistinguishable and also skips
-        // CM-vim's selectionSet bookkeeping (review round 2, minor).
-        const cm = this.cmView;
-        if (
-          cm?.hasFocus &&
-          cm.state.selection.main.anchor === anchor &&
-          cm.state.selection.main.head === head
-        ) {
-          if (wantInsert) this.requestEntryInsert(head);
-          return true;
-        }
-        this.enterExplicitly(anchor, head);
-        if (wantInsert) this.requestEntryInsert(head);
-        // A live CM was focused synchronously; a cold one only memoed the
-        // selection for its deferred init — report false so the caller
-        // keeps its focus fallback alive until the island claims focus on
-        // mount (pendingSelection consumption).
-        return this.cmView !== null;
-      },
-    );
-
-    // §298 Phase 0b: vim on/off broadcast — the memo is consumed by the
-    // deferred initCM, exactly like the editable memo above.
-    this.unregisterVimSync = registerCodeBlockVimSync(view, (enabled) => {
-      this.latestVimEnabled = enabled;
-      // An EXPLICIT off is a boundary: an unconfirmed restore memo from a
-      // recreate must not resurrect insert on a later re-enable (R8).
-      // Internal recreates never pass here. Entry memo: LIFECYCLE burn ①.
-      if (!enabled) {
-        this.pendingVimModeRestore = null;
-        this.pendingEntryInsert = null;
-      }
-      this.applyVim(enabled);
+      enterExplicitly: (anchor, head) => this.enterExplicitly(anchor, head),
+      getPos: this.getPos,
+      selectionInsideBlock: () => this.selectionInsideBlock(),
+      view,
     });
 
     // Subscribe to settings changes for live updates
@@ -346,15 +223,8 @@ export class CodeBlockNodeView implements NodeView {
       this.settingsUnsub();
       this.settingsUnsub = null;
     }
-    if (this.unregisterVimSync) {
-      this.unregisterVimSync();
-      this.unregisterVimSync = null;
-    }
-    if (this.unregisterEntry) {
-      this.unregisterEntry();
-      this.unregisterEntry = null;
-    }
     this.teardownCM();
+    this.vimIsland.destroy();
   }
 
   /** Prevent PM from reacting to CM DOM mutations */
@@ -430,7 +300,7 @@ export class CodeBlockNodeView implements NodeView {
     // 하강은 선택 동기화만 하고, 포커스는 명시 진입 채널(enterExplicitly)
     // 만 가진다. vim off는 네이티브 진입 경로이므로 유지.
     this.applySelection(anchor, head, {
-      focus: !this.latestVimEnabled || this.cmView?.hasFocus === true,
+      focus: this.vimIsland.entryFocusAllowed(),
     });
   }
 
@@ -494,35 +364,6 @@ export class CodeBlockNodeView implements NodeView {
     return true;
   }
 
-  /** §298 Phase 0b — vim enable/disable for THIS island (v3 contract 1).
-   *  Enabling raises a SYNCHRONOUS editing-host barrier before the async
-   *  module load: beforeinput fires ahead of keydown, so a suppressed-key
-   *  gate alone would still let IME text through while vim loads. */
-  private applyVim(enabled: boolean): void {
-    if (!this.cmView || !this.vimController) return;
-    if (enabled) {
-      // tabindex must land WITH the barrier: the controller only adds it
-      // after the async module load, and a host-less, tabindex-less
-      // contentDOM is unfocusable — an explicit PM entry (j/k into a cold
-      // block, empty-block autofocus) would silently lose focus.
-      this.cmView.contentDOM.setAttribute("tabindex", "-1");
-      // The editable facet does NOT gate key-bound API edits (installed
-      // cm-view :8818) and the suspension broadcast releases the island's
-      // readOnly on focus — so the loading barrier pins readOnly too.
-      // Prec.highest: the readOnly facet takes its highest-precedence
-      // value, and the broadcast compartment sits earlier in the config.
-      // The controller's first mode flip replaces this compartment, so
-      // the pin lifts exactly when vim takes over.
-      this.cmView.dispatch({
-        effects: this.vimEditableCompartment.reconfigure([
-          CMView.editable.of(false),
-          Prec.highest(CMState.readOnly.of(true)),
-        ]),
-      });
-    }
-    this.vimController.apply(enabled);
-  }
-
   /** Create CodeMirror if not already created (idempotent). */
   private ensureCM() {
     if (this.cmInitialized || this.destroyed) return;
@@ -534,29 +375,6 @@ export class CodeBlockNodeView implements NodeView {
     this.cmContainer.replaceChildren();
     const lang = (this.node.attrs.language as string) || "";
     void this.initCM(lang);
-  }
-
-  /** The entry intent is CURRENT: the PM selection is a cursor sitting
-   *  exactly on the memoed local head inside this block. */
-  private entryInsertCurrent(): boolean {
-    const memo = this.pendingEntryInsert;
-    if (!memo) return false;
-    if (!this.selectionInsideBlock()) return false;
-    const pos = this.getPos();
-    if (typeof pos !== "number") return false;
-    const sel = this.view.state.selection;
-    return sel.empty && sel.head - (pos + 1) === memo.head;
-  }
-
-  /** issue 478 — the PM mode the cursor carries out of this island:
-   *  insert/replace map to insert (PM has no replace), anything else to
-   *  normal. Null (no propagation) with vim off, or while the island's
-   *  vim never published a mode (loading, install failure). */
-  private exitPmMode(): "insert" | "normal" | null {
-    if (!this.latestVimEnabled) return null;
-    const mode = this.currentVimMode;
-    if (mode === null) return null;
-    return mode === "insert" || mode === "replace" ? "insert" : "normal";
   }
 
   /** Sync CM changes → PM document */
@@ -612,60 +430,14 @@ export class CodeBlockNodeView implements NodeView {
       () => this.node,
     );
 
-    // issue 475 — leaving the island IS the end of any insert/visual/pending
-    // ISLAND session. The keymap's edge-arrow escape is mode-blind (vim
-    // passes insert-mode arrows through), so without the normalization the
-    // island keeps insertMode=true and revives insert on the next entry.
-    // Best-effort by contract: a failed normalization reports through the
-    // controller's onError and the escape STILL proceeds — trapping focus
-    // in the island is worse than a stale mode. No-op with vim off or
-    // still loading (nothing to normalize).
-    //
-    // issue 478 — the mode follows the cursor OUT: the island's exit-time
-    // mode (captured BEFORE the normalization erases it) rides the escape
-    // transaction as PM's new mode. And leaving ends ALL island intents:
-    // the entry/restore memos burn BEFORE exitToNormal, because its
-    // "normal" publish fires while the PM selection still sits inside the
-    // block — a leftover entry memo would pass the currency check there
-    // and queue an off-focus insert revival (adversarial review).
-    const escapeToPM = (dir: -1 | 1) => {
-      const exitMode = this.exitPmMode();
-      // 이탈 훅 구성(M1): 메타 스탬프는 same-transaction, 인접 island
-      // 인계는 post-dispatch — escape 모듈은 vim을 모른 채 둘 다 주입받는다.
-      const exit = exitMode
-        ? {
-            handoff: () =>
-              enterCodeBlockSelection(
-                this.view,
-                exitMode === "insert" ? { vimMode: "insert" } : undefined,
-              ),
-            stamp: (tr: Transaction) => {
-              tr.setMeta(vimPluginKey, boundaryModeMeta(exitMode));
-            },
-          }
-        : undefined;
-      // 이 이탈이 곧 유발할 focusout(포인터 이탈 감지)은 같은 전이다 —
-      // latch로 잠가서 정규화 뒤의 "normal" 재캡처가 방금 전파한 모드를
-      // 덮어쓰지 못하게 한다. 메모 소각은 LIFECYCLE burn ②.
-      this.latchPointerExit();
-      this.endIslandSession();
-      maybeEscape(dir, exit);
-    };
-
     // Custom keymaps for PM ↔ CM navigation
     const customKeys = buildCodeBlockKeymap({
-      escape: escapeToPM,
+      // issue 475/478 — 이탈 의미론(세션 종료·모드 전파·인접 인계)은
+      // binding이 소유한다; keymap과 boundary hook은 같은 위임을 쓴다.
+      escape: (dir) => this.vimIsland.escapeToPM(dir),
       focusPM,
       getPos: this.getPos,
-      // issue 478 — the empty-block conversion only fires from insert, and
-      // the island dies with the block: no normalization needed, but the
-      // outgoing mode still rides the SAME replacement transaction.
-      stampExitMode: (tr) => {
-        const mode = this.exitPmMode();
-        if (mode) {
-          tr.setMeta(vimPluginKey, boundaryModeMeta(mode));
-        }
-      },
+      stampExitMode: (tr) => this.vimIsland.stampExitMode(tr),
       view: this.view,
     });
 
@@ -682,8 +454,8 @@ export class CodeBlockNodeView implements NodeView {
       readOnly: !(this.latestEffectiveEditable ?? this.view.editable),
       readOnlyCompartment: this.readOnlyCompartment,
       tabSize,
-      vimCompartment: this.vimCompartment,
-      vimEditableCompartment: this.vimEditableCompartment,
+      vimCompartment: this.vimIsland.vimCompartment,
+      vimEditableCompartment: this.vimIsland.vimEditableCompartment,
     });
 
     const state = CMState.create({
@@ -696,195 +468,9 @@ export class CodeBlockNodeView implements NodeView {
       parent: this.cmContainer,
     });
 
-    // §298 Phase 0b — per-island vim controller (claimFocus false: a lazy
-    // load must never steal focus from PM). Consume the broadcast memo.
-    this.vimController = createVimController(this.cmView, this.vimCompartment, {
-      // §3 boundary contract: edge j/k/arrows leave the block through the
-      // SAME escape path as plain arrows; u/C-r go to PM — the island has
-      // no CM history, PM owns the document's undo (design v3).
-      boundaryHooks: {
-        // Same wrapper as the keymap: the boundary fires only from idle
-        // normal, where exitToNormal is a no-op — uniformity over cleverness.
-        escape: (dir) => escapeToPM(dir),
-        redo: () => {
-          redo(this.view.state, this.view.dispatch);
-        },
-        undo: () => {
-          undo(this.view.state, this.view.dispatch);
-        },
-      },
-      claimFocus: false,
-      restoreMode: () => this.pendingVimModeRestore,
-      editableCompartment: this.vimEditableCompartment,
-      onError: (err) => {
-        // INSTALL failure → deterministic plain editing (v3 contract 1).
-        logger.error("[vim] island vim install failed:", err);
-        this.cmView?.dispatch({
-          effects: this.vimEditableCompartment.reconfigure([]),
-        });
-      },
-      // Best-effort operation failures are report-only — the install
-      // rollback above must never fire for a transient handleKey throw.
-      onOperationError: (err) => {
-        logger.error("[vim] island vim operation failed:", err);
-      },
-      onModeChange: (mode) => {
-        this.currentVimMode = mode;
-        // The restore memo clears only when the target mode is REACHED —
-        // consumption-on-read lost it when a second settings recreate
-        // arrived before the deferred handleKey ran (R7).
-        if (mode !== null && mode === this.pendingVimModeRestore) {
-          this.pendingVimModeRestore = null;
-        }
-        // issue 477 — publish 주도 배달 (LIFECYCLE confirmed/retried/burn ⑦):
-        // insert 확인 시 소각, not-current면 소각, 그 외엔 재시도 — 이
-        // publish는 큐를 떨어뜨린 새 세대이거나 걷힌 readOnly 거부일 수 있다.
-        if (mode !== null && this.pendingEntryInsert) {
-          if (!this.entryInsertCurrent()) {
-            this.pendingEntryInsert = null;
-          } else if (mode === "insert") {
-            this.pendingEntryInsert = null;
-          } else {
-            this.vimController?.ensureInsert();
-          }
-        }
-        islandVimMode(island, mode, this.view);
-        // Cold-load race: the first mode arrives AFTER focus already sits
-        // in the island — claim the indicator now, not on the next focus.
-        if (mode !== null && island.hasFocus) islandVimFocus(island);
-      },
-    });
-    // §3-4 nested StatusBar ownership — the island claims the indicator on
-    // focus (snapshot replay) and releases it on blur/teardown.
-    const island = this.cmView;
-    // Ownership listens on the CM ROOT: vim mounts its `:`/`/` panels
-    // outside contentDOM, and moving focus into a panel is still the same
-    // island. focusout defers one microtask and releases only when focus
-    // truly left the whole root.
-    const onIslandFocus = (event: FocusEvent) => {
-      islandVimFocus(island);
-      // 포인터 인계(기기 보고: B insert → A 클릭이 A의 stale 모드로 열림):
-      // 다른 island에서 온 이동이면 그쪽 모드를 이어받는다.
-      const handoff = takeIslandPointerHandoff(this.view, this.cmContainer);
-      if (handoff === "insert") {
-        this.vimController?.ensureInsert();
-        return;
-      }
-      if (handoff === "normal") {
-        this.vimController?.exitToNormal();
-        return;
-      }
-      // 인계가 없을 때: 출발지가 PM 표면(본문)이면 PM 모드가 커서를 따라
-      // 들어온다 — 본문(insert)에서 클릭으로 island에 들어가는 방향이
-      // 마지막 구멍이었다 (기기 보고: i로 클릭 이동 중 어느 순간 n).
-      // 크롬/외부 출발(relatedTarget이 view 밖·null)은 세션 보존 —
-      // vim의 창 포커스 복귀 관례 그대로.
-      const from =
-        event.relatedTarget instanceof Element ? event.relatedTarget : null;
-      const fromPmSurface =
-        from !== null &&
-        this.view.dom.contains(from) &&
-        !from.closest("[data-vim-suspend]");
-      if (!fromPmSurface) return;
-      const pm = vimPluginKey.getState(this.view.state) as
-        undefined | { enabled: boolean; mode: string };
-      if (!pm?.enabled) return;
-      if (pm.mode === "insert") this.vimController?.ensureInsert();
-      else this.vimController?.exitToNormal();
-    };
-    const onIslandBlur = (event: FocusEvent) => {
-      // 동기 구간(focusout → 도착측 focusin 이전): 다른 island로의 포인터
-      // 이동이면 지금 모드를 인계로 arm하고 이 세션을 끝낸다. 키보드
-      // 이탈(escapeToPM)과 같은 의미론 — 이동 = 세션 종료 + 의도 소각.
-      //
-      // 전이당 정확히 1회: 프로그램적 focus 연쇄는 한 전이에 focusout을
-      // 겹쳐 쏘고, 두 번째 실행은 정규화 뒤의 모드를 다시 캡처해 방금
-      // 전파한 모드를 "normal"로 덮어쓴다 (계측 실증). 포커스 전이는
-      // 동기이므로 microtask 해제가 정확히 한 전이를 묶는다.
-      if (this.pointerExitHandled) return;
-      // relatedTarget이 null/BODY로 오는 전이(macOS WebKit이 비폼 요소를
-      // 클릭 포커스하지 않는 경우)는 직전 pointerdown 타깃으로 목적지를
-      // 보완한다 (적대 리뷰 HIGH: BODY/null 전이가 분기에 안 들어옴).
-      const rawRelated =
-        event.relatedTarget instanceof Element ? event.relatedTarget : null;
-      const related =
-        rawRelated && rawRelated !== this.view.dom.ownerDocument.body
-          ? rawRelated
-          : recentPointerTarget(this.view);
-      // 목적지 권한은 등록에서 나온다 (감사 MAJOR): 문서 HTML이 같은
-      // class를 그려도 등록된 island 컨테이너만 목적지다 — 가짜는 null로
-      // 떨어지고, sanitized island는 suspend 마커가 본문行 분기도 걸러
-      // "크롬과 동일 = 세션 보존"으로 안전 수렴한다.
-      const destCandidate = related?.closest(".code-block-editor") ?? null;
-      const dest =
-        destCandidate && isRegisteredIslandContainer(this.view, destCandidate)
-          ? destCandidate
-          : null;
-      let pmBodyExit = false;
-      if (dest && !island.dom.contains(dest) && !dest.contains(island.dom)) {
-        const mode = this.exitPmMode();
-        if (mode) {
-          this.latchPointerExit();
-          armIslandPointerHandoff(this.view, mode, dest);
-          this.endIslandSession();
-        }
-      } else if (
-        !dest &&
-        related &&
-        this.view.dom.contains(related) &&
-        !related.closest("[data-vim-suspend]")
-      ) {
-        // island → PM 본문 포인터 이탈(기기 보고: island insert에서 본문
-        // 클릭 후 바깥이 normal로 남음): 키보드 이탈과 같은 의미론 —
-        // 정규화 전에 모드 캡처, 의도 소각, 세션 종료, boundary setMode로
-        // PM에 전파. 크롬(view.dom 밖)과 다른 suspend 섬(math 등)은 제외.
-        const mode = this.exitPmMode();
-        if (mode) {
-          pmBodyExit = true;
-          this.latchPointerExit();
-          this.endIslandSession();
-          this.view.dispatch(
-            this.view.state.tr.setMeta(vimPluginKey, boundaryModeMeta(mode)),
-          );
-        }
-      }
-      queueMicrotask(() => {
-        // 세대 가드 (감사): detach/재부착·destroy 뒤에 도는 유령 blur가
-        // 새 세대의 메모를 태우거나 포커스를 배달하면 안 된다 —
-        // controller의 session 정체성 가드와 같은 패턴.
-        if (this.cmView !== island) return;
-        const active = island.dom.ownerDocument.activeElement;
-        if (!island.dom.contains(active)) {
-          islandVimBlur(island);
-          // LIFECYCLE burn ④ — 방문이 끝나면 의도도 끝난다 (크롬 이탈 포함).
-          this.pendingEntryInsert = null;
-          // 포커스 배달 (기기 실측): WebKit은 클릭으로 tabindex div(PM
-          // 루트)를 포커스하지 않아 전이가 BODY로 흘러 키보드가 죽는다.
-          // 본문行 이탈로 판정된 전이에서 포커스가 view 밖에 남았으면
-          // 명시 배달한다 — 하강의 포커스 강탈은 setSelection의 권한
-          // 분리가 차단하므로 이 focus는 안전하다 (CRITICAL 1 해소 전제).
-          if (pmBodyExit && !this.view.dom.contains(active)) {
-            focusEditorView(this.view);
-          }
-        }
-      });
-    };
-    // LIFECYCLE burn ⑤ — 사용자 키 = 인수인계 종료 (armed 메모가 이후
-    // publish에서 배달되면 세션 납치: 거부된 배달 + v가 insert로 뒤집힘).
-    // capture라 vim이 키를 처리해 publish하기 전에 소각이 앞선다.
-    const onIslandKeydown = () => {
-      this.pendingEntryInsert = null;
-    };
-    island.dom.addEventListener("focusin", onIslandFocus);
-    island.dom.addEventListener("focusout", onIslandBlur);
-    island.dom.addEventListener("keydown", onIslandKeydown, true);
-    this.islandStatusDispose = () => {
-      island.dom.removeEventListener("focusin", onIslandFocus);
-      island.dom.removeEventListener("focusout", onIslandBlur);
-      island.dom.removeEventListener("keydown", onIslandKeydown, true);
-      islandVimDispose(island);
-    };
-    if (this.latestVimEnabled) this.applyVim(true);
+    // issue 372 split — controller·status 리스너·memo replay는 binding의
+    // CM-인스턴스 수명 (per-CM 클로저가 정확히 이 cm을 캡처한다).
+    this.vimIsland.attachCM(this.cmView, maybeEscape);
 
     // Auto-focus newly created (empty) code blocks and scroll into view
     if (!this.node.textContent) {
@@ -905,7 +491,7 @@ export class CodeBlockNodeView implements NodeView {
       // or still somewhere inside this NodeView.
       if (this.userDepartedDuringInit()) {
         this.pendingFocusRestore = null;
-        this.pendingVimModeRestore = null;
+        this.vimIsland.cancelRestoreMemo();
       }
     }
     if (this.pendingFocusRestore && this.cmView) {
@@ -959,28 +545,10 @@ export class CodeBlockNodeView implements NodeView {
         this.updating = false;
       } else {
         // LIFECYCLE burn ⑥ — 메모의 엔트리가 선택과 함께 죽었다.
-        this.pendingEntryInsert = null;
+        this.vimIsland.onStaleColdEntry();
       }
       this.pendingSelection = null;
     }
-  }
-
-  /** 이탈의 공통 마무리: island의 모든 의도(entry/restore 메모)를 태우고
-   *  vim 세션을 종료한다 — 키보드 이탈·포인터 이탈(island간/본문行) 세
-   *  경로가 공유한다 (퀄리티 리뷰: 3중복 통합). */
-  private endIslandSession(): void {
-    this.pendingEntryInsert = null;
-    this.pendingVimModeRestore = null;
-    this.vimController?.exitToNormal();
-  }
-
-  /** 포인터 이탈 처리를 이 전이 동안 잠근다 (microtask에 해제 —
-   *  포커스 전이는 동기라 정확히 한 전이를 묶는다). */
-  private latchPointerExit(): void {
-    this.pointerExitHandled = true;
-    queueMicrotask(() => {
-      this.pointerExitHandled = false;
-    });
   }
 
   private async reconfigureLanguage(language: string): Promise<void> {
@@ -994,17 +562,6 @@ export class CodeBlockNodeView implements NodeView {
     target.dispatch({
       effects: this.languageCompartment.reconfigure(ext ?? []),
     });
-  }
-
-  /** issue 477 — arm the intent and attempt delivery. An island already in
-   *  plain insert has nothing to deliver — arming there would let a later
-   *  unrelated publish (the user's own Esc) yank them back into insert.
-   *  Every other state arms the memo FIRST: the controller's acceptance is
-   *  only "queued", and the publish-driven consumer owns confirmation. */
-  private requestEntryInsert(head: number): void {
-    if (this.currentVimMode === "insert") return;
-    this.pendingEntryInsert = { head };
-    this.vimController?.ensureInsert();
   }
 
   /** 사용자가 비동기 init 동안 이 NodeView 밖으로 떠났는가 — 포커스가
@@ -1044,35 +601,15 @@ export class CodeBlockNodeView implements NodeView {
     this.pendingFocusRestore = focused
       ? { head: this.cmView.state.selection.main.head }
       : null;
-    // Re-enter insert/replace after the rebuild — a recreation mid-typing
-    // (theme shortcut while inside a block) must not silently flip the
-    // user's keystrokes into normal-mode commands (R6). Visual dies with
-    // its old view and restores as normal.
-    // Preserve an UNCONFIRMED memo across back-to-back recreates: the new
-    // controller re-seeded normal before its deferred restore could run,
-    // so the live mode alone would erase the user's insert (R7).
-    if (
-      focused &&
-      (this.currentVimMode === "insert" || this.currentVimMode === "replace")
-    ) {
-      this.pendingVimModeRestore = this.currentVimMode;
-    } else if (!focused) {
-      this.pendingVimModeRestore = null;
-    }
+    // 모드 절반(R6/R7의 restore 메모)은 binding 소유다.
+    this.vimIsland.snapshotModeForRecreate(focused);
   }
 
   /** ONE teardown path for every CM replacement — settings change, language
    *  change and NodeView.destroy. Dispose BEFORE destroy: the controller's
    *  deferred work checks its disposed flag before dispatching. */
   private teardownCM(): void {
-    if (this.islandStatusDispose) {
-      this.islandStatusDispose();
-      this.islandStatusDispose = null;
-    }
-    if (this.vimController) {
-      this.vimController.dispose();
-      this.vimController = null;
-    }
+    this.vimIsland.detachCM();
     if (this.cmView) {
       this.cmView.destroy();
       this.cmView = null;
