@@ -379,6 +379,39 @@ describe("insertEntryTarget (issue 477 — insert-mode arrow entry landing)", ()
     expect(target).toBe(block.at + 1 + 3); // 라인 END (units)
   });
 
+  it("DIRECTIONAL walk: unicode landing resolves through grapheme starts too", () => {
+    // insertEntryTarget만 고치고 normal 워크(624행 계열)를 빠뜨렸던 결함의
+    // 핀: 이모지(2 code units) 선두 라인에 캐리 column 1로 j 진입하면
+    // grapheme 시작(start+2)이어야지 서로게이트 한가운데(start+1)면 안 된다.
+    const editor = makeEditor("abc\n\n```ts\n\u{1F600}xy\n```\n\nafter\n");
+    const block = findNode(editor, "codeBlock");
+    const from = 0 + 1 + 1; // 첫 문단 column 1
+    const target = resolveMotion(editor.state, from, "lineDown", 1, {
+      codeBlockEntry: "directional",
+    });
+    expect(target).toBe(block.at + 1 + 2); // 이모지 grapheme 뒤 == 'x'
+    const cut = editor.state.doc.textBetween(block.at + 1, target);
+    expect(cut).toBe("\u{1F600}"); // 온전한 grapheme 경계
+  });
+
+  it("DIRECTIONAL walk: unicode line clamps to the LAST grapheme start", () => {
+    const editor = makeEditor(
+      "abcdefgh\n\n```ts\nab\n\u{1F600}x\n```\n\nafter\n",
+    );
+    const block = findNode(editor, "codeBlock");
+    let afterAt = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (offset > block.at && afterAt < 0 && node.type.name === "paragraph")
+        afterAt = offset;
+    });
+    const from = afterAt + 1 + 5; // column 5("after" 끝) — 마지막 줄은 grapheme 2개
+    const target = resolveMotion(editor.state, from, "lineUp", 1, {
+      codeBlockEntry: "directional",
+    });
+    const lastLineStart = block.at + 1 + block.text.lastIndexOf("\n") + 1;
+    expect(target).toBe(lastLineStart + 2); // 'x'의 시작 (마지막 unit start)
+  });
+
   it("journal-* blocks have no CM caret: returns null", () => {
     const editor = makeEditor(
       "para\n\n```journal-recent\nquery\n```\n\nafter\n",

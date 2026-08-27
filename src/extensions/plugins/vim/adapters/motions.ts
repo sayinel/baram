@@ -613,15 +613,24 @@ function verticalTarget(
         // boundary): land on the directionally adjacent source line — the
         // FIRST from above, the LAST from below — at the carried column,
         // clamped to the line's last character like vim across short
-        // lines. The carried column counts grapheme units while code
-        // offsets are UTF-16 chars — identical for code in practice; the
-        // full curswant treatment is issue 372 tier 1.
+        // lines. The carried column is a GRAPHEME index, so it resolves
+        // through the target line's own grapheme starts — adding it as a
+        // UTF-16 offset landed the CM cursor inside a surrogate pair on
+        // emoji-bearing lines (review: the insert path got this fix and
+        // this sibling didn't). Persistent curswant is issue 372 tier 1.
         const line = codeLineSpan(
           state,
           landed,
           direction < 0 ? "last" : "first",
         );
-        p = line.start + Math.min(column, Math.max(0, line.length - 1));
+        const starts = lineUnitStarts(state, {
+          end: line.start + line.length,
+          start: line.start,
+        });
+        p =
+          starts.length === 0
+            ? line.start
+            : starts[Math.min(column, starts.length - 1)];
       } else {
         p = landed;
       }
