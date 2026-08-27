@@ -3,12 +3,17 @@
 // by vim's island boundary handler, so they are built once per CM instance.
 
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Transaction } from "@tiptap/pm/state";
 import type { EditorView as PMView } from "@tiptap/pm/view";
 
 import { TextSelection } from "@tiptap/pm/state";
 
 import { focusEditorView } from "../../../utils/editor/focus-editor-view";
-import { type VimMode, vimPluginKey } from "../../plugins/vim/vim-keys";
+import {
+  boundaryModeMeta,
+  type VimMode,
+  vimPluginKey,
+} from "../../plugins/vim/vim-keys";
 import { enterCodeBlockSelection } from "./code-block-cm-registry";
 
 export interface CodeBlockEscape {
@@ -36,14 +41,8 @@ export function createCodeBlockEscape(
   const maybeEscape = (dir: -1 | 1, pmMode: null | VimMode = null) => {
     const pos = getPos();
     if (typeof pos !== "number") return;
-    const stampMode = (tr: import("@tiptap/pm/state").Transaction) => {
-      if (pmMode) {
-        tr.setMeta(vimPluginKey, {
-          boundary: true,
-          mode: pmMode,
-          type: "setMode",
-        });
-      }
+    const stampMode = (tr: Transaction) => {
+      if (pmMode) tr.setMeta(vimPluginKey, boundaryModeMeta(pmMode));
       return tr;
     };
     const targetPos = pos + (dir < 0 ? 0 : node().nodeSize);

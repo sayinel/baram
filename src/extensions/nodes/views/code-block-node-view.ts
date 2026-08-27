@@ -18,7 +18,11 @@ import { useSettingsStore } from "../../../stores/settings/store";
 import { focusEditorView } from "../../../utils/editor/focus-editor-view";
 import { logger } from "../../../utils/logger";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
-import { vimPluginKey, withVimExternalEdit } from "../../plugins/vim/vim-keys";
+import {
+  boundaryModeMeta,
+  vimPluginKey,
+  withVimExternalEdit,
+} from "../../plugins/vim/vim-keys";
 import {
   islandVimBlur,
   islandVimDispose,
@@ -628,9 +632,7 @@ export class CodeBlockNodeView implements NodeView {
       // latch로 잠가서 정규화 뒤의 "normal" 재캡처가 방금 전파한 모드를
       // 덮어쓰지 못하게 한다. 메모 소각은 LIFECYCLE burn ②.
       this.latchPointerExit();
-      this.pendingEntryInsert = null;
-      this.pendingVimModeRestore = null;
-      this.vimController?.exitToNormal();
+      this.endIslandSession();
       maybeEscape(dir, exitMode);
     };
 
@@ -645,7 +647,7 @@ export class CodeBlockNodeView implements NodeView {
       stampExitMode: (tr) => {
         const mode = this.exitPmMode();
         if (mode) {
-          tr.setMeta(vimPluginKey, { boundary: true, mode, type: "setMode" });
+          tr.setMeta(vimPluginKey, boundaryModeMeta(mode));
         }
       },
       view: this.view,
@@ -808,9 +810,7 @@ export class CodeBlockNodeView implements NodeView {
         if (mode) {
           this.latchPointerExit();
           armIslandPointerHandoff(this.view, mode, dest);
-          this.pendingEntryInsert = null;
-          this.pendingVimModeRestore = null;
-          this.vimController?.exitToNormal();
+          this.endIslandSession();
         }
       } else if (
         !dest &&
@@ -826,15 +826,9 @@ export class CodeBlockNodeView implements NodeView {
         if (mode) {
           pmBodyExit = true;
           this.latchPointerExit();
-          this.pendingEntryInsert = null;
-          this.pendingVimModeRestore = null;
-          this.vimController?.exitToNormal();
+          this.endIslandSession();
           this.view.dispatch(
-            this.view.state.tr.setMeta(vimPluginKey, {
-              boundary: true,
-              mode,
-              type: "setMode",
-            }),
+            this.view.state.tr.setMeta(vimPluginKey, boundaryModeMeta(mode)),
           );
         }
       }
@@ -953,6 +947,15 @@ export class CodeBlockNodeView implements NodeView {
       }
       this.pendingSelection = null;
     }
+  }
+
+  /** 이탈의 공통 마무리: island의 모든 의도(entry/restore 메모)를 태우고
+   *  vim 세션을 종료한다 — 키보드 이탈·포인터 이탈(island간/본문行) 세
+   *  경로가 공유한다 (퀄리티 리뷰: 3중복 통합). */
+  private endIslandSession(): void {
+    this.pendingEntryInsert = null;
+    this.pendingVimModeRestore = null;
+    this.vimController?.exitToNormal();
   }
 
   /** 포인터 이탈 처리를 이 전이 동안 잠근다 (microtask에 해제 —
