@@ -6,17 +6,25 @@
 // Task 4(삭제)가 이 컴포넌트를 다시 쓰지 않고 `buildTriageItems`에 줄만 더하게
 // 하려는 것이다. 그 목록은 액션 id를 푸는 `task-triage.ts`에 산다 — 항목과
 // 디스패처의 case는 같은 계약이고, 떨어져 있으면 한쪽만 늘어난다.
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import type { TaskEntry } from "../../ipc/types";
+import type { MenuAnchor } from "../../utils/menu-placement";
 import type { TaskMenuItem } from "../../utils/tasks/task-triage";
 
+import { useMenuPlacement } from "../../hooks/use-menu-placement";
 import { useTranslation } from "../../i18n/useTranslation";
 
 export interface TaskMenuState {
+  /**
+   * 메뉴가 붙는 행의 사각형(뷰포트 좌표).
+   *
+   * ‼️ 좌표 한 쌍이 아니라 **사각형**인 이유: 창 아래쪽 행에서는 메뉴가 행 위로
+   * 뒤집혀야 하고, 그러려면 행의 아랫변만이 아니라 윗변도 알아야 한다. x/y만 넘기면
+   * 뒤집을 곳을 잃는다.
+   */
+  anchor: MenuAnchor;
   task: TaskEntry;
-  x: number;
-  y: number;
 }
 
 export interface TaskRowMenuProps {
@@ -44,15 +52,18 @@ export function TaskRowMenu({
 }: TaskRowMenuProps): React.JSX.Element {
   const { t } = useTranslation();
   const baseId = useId();
-  const ref = useRef<HTMLDivElement>(null);
+  // 같은 ref가 두 가지 일을 한다: 열리자마자 포커스를 받는 것과, 자기 크기를 재어
+  // 화면 안으로 들어오는 것. 둘 다 이 컨테이너 하나에 관한 일이다.
+  const { position, ref } = useMenuPlacement<HTMLDivElement>(menu.anchor);
   const [active, setActive] = useState(0);
 
   // §315가 요구하는 키보드 경로의 전제 — 열리자마자 메뉴가 키를 받는다. 항목마다
   // tabIndex를 돌리는 대신 컨테이너 하나가 포커스를 갖고 `aria-activedescendant`로
   // 강조를 알린다(WAI-ARIA menu 패턴).
+  // `ref`는 useMenuPlacement가 돌려주는 안정된 객체다 — 의존성에 두어도 한 번만 돈다.
   useEffect(() => {
     ref.current?.focus();
-  }, []);
+  }, [ref]);
 
   const itemId = (index: number) => `${baseId}-${index}`;
 
@@ -107,7 +118,9 @@ export function TaskRowMenu({
       onMouseDown={(e) => e.stopPropagation()}
       ref={ref}
       role="menu"
-      style={{ left: menu.x, top: menu.y }}
+      // ‼️ `menu.anchor`가 아니라 측정 뒤 고쳐진 좌표다 — 앵커를 그대로 쓰면 창
+      // 아래쪽 행에서 메뉴가 창 밖으로 잘린다(useMenuPlacement).
+      style={{ left: position.x, top: position.y }}
       tabIndex={-1}
     >
       {items.map((item, index) => (

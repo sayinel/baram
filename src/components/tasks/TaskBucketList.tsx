@@ -95,7 +95,14 @@ export function TaskBucketList({
   const openMenu = useCallback((row: HTMLElement, task: TaskEntry) => {
     openerRef.current = row;
     const rect = row.getBoundingClientRect();
-    setMenu({ task, x: rect.left, y: rect.bottom });
+    // ‼️ 여기서 최종 좌표를 정하지 않는다 — 이 시점에 메뉴는 아직 렌더되지 않아
+    // 높이를 알 수 없고, 그 높이는 항목 라벨이 감기는 정도에 따라 달라진다. 그래서
+    // 넘기는 것은 **행의 사각형**이고, 화면 안으로 끌어들이는 일은 메뉴가 자기를
+    // 재고 나서 한다(`useMenuPlacement`).
+    setMenu({
+      anchor: { bottom: rect.bottom, left: rect.left, top: rect.top },
+      task,
+    });
   }, []);
 
   // §312 "네 조작 모두 키 한 번으로". 어떤 키가 무엇인지는 `task-row-keys.ts`의 표가
