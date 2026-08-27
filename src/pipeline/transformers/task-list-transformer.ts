@@ -1,7 +1,44 @@
-import type { NodeTransformerEntry } from "../types";
+import type { NodeTransformerEntry, TaskCheckboxNode } from "../types";
 // task-list-transformer.ts — §5.1 Task List mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { List, ListItem, Node as MdastNode } from "mdast";
+import type {
+  List,
+  ListItem,
+  Node as MdastNode,
+  Paragraph,
+  RootContent,
+} from "mdast";
+
+/**
+ * §7.1: 첫 문단이 빈 task item이면 체크박스를 직접 써 넣는다.
+ *
+ * remark-gfm의 listItem 핸들러는 기본 핸들러가 만든 줄에
+ * `^(?:[*+-]|\d+\.)([\r\n]| {1,3})` 를 걸어 그 뒤에 `[ ] ` 를 끼워 넣는다.
+ * 불릿 뒤에 아무 글자도 없는 빈 항목에서는 이 정규식이 걸리지 않아
+ * 체크박스가 **통째로 사라지고**(`- [ ] a` + 빈 항목 → `- [ ] a\n-\n`),
+ * 뒤에 다른 블록이 있으면 체크박스가 열 0의 제 줄로 흘러
+ * 리스트 구조까지 깨진다(`-\n[ ] \n  more\n`).
+ *
+ * 그래서 그런 항목만 미리 직렬화한 `taskCheckbox` 노드로 체크박스를 넣고
+ * mdast의 `checked` 는 비운다 — 남겨두면 gfm이 한 번 더 손을 댄다.
+ * 파싱 쪽 대칭 처리는 `parse-mdast.ts` 의 `normalizeEmptyTaskItems` 다.
+ */
+function writeCheckboxIntoEmptyItem(
+  children: MdastNode[],
+  checked: boolean,
+): boolean {
+  const head = children[0] as Paragraph | undefined;
+  if (!head || head.type !== "paragraph" || head.children.length > 0) {
+    return false;
+  }
+  head.children = [
+    {
+      type: "taskCheckbox",
+      value: checked ? "[x]" : "[ ]",
+    } as TaskCheckboxNode,
+  ];
+  return true;
+}
 
 export const taskListTransformer: NodeTransformerEntry = {
   mdastType: "list",
@@ -31,11 +68,15 @@ export const taskListTransformer: NodeTransformerEntry = {
   pmToMdast(node: PmNode, convertChildren): MdastNode {
     const children: ListItem[] = [];
     node.forEach((child) => {
+      const checked = (child.attrs.checked as boolean) ?? false;
+      const itemChildren = convertChildren(child);
+      const written = writeCheckboxIntoEmptyItem(itemChildren, checked);
       children.push({
         type: "listItem",
-        checked: (child.attrs.checked as boolean) ?? false,
+        // 체크박스를 직접 써 넣었으면 gfm이 또 붙이지 않게 비워 둔다
+        ...(written ? {} : { checked }),
         spread: false,
-        children: convertChildren(child),
+        children: itemChildren as RootContent[],
       } as ListItem);
     });
 

@@ -43,6 +43,7 @@ function remarkWikiLink(this: any) {
     "subscript",
     "superscript",
     "tagNode",
+    "taskCheckbox",
     "wikiLink",
   ] as const;
 
