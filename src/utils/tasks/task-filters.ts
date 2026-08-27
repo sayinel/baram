@@ -35,7 +35,7 @@ const PRIORITY_LABEL: Record<-2 | -1 | 1 | 2, string> = {
   "-2": "Lowest priority",
   "-1": "Low priority",
   1: "High priority",
-  2: "Highest priority",
+  2: "Urgent priority",
 };
 
 /** §308 [[priorityBadge]]가 돌려주는 표시용 기호. 방향 A 시절엔 에디터의

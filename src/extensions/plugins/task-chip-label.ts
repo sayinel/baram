@@ -35,6 +35,11 @@ const DATE_CHIP_KEY: Record<Exclude<TaskFieldKind, "priority">, string> = {
  * 우선순위 마커(`task-field-tokens.ts`의 `PRIORITY_EMOJI`) → i18n 키 접미사.
  * "3"(보통)은 마커가 없어 `scanTaskFields`가 애초에 span을 만들지 않으므로
  * 여기 없다.
+ *
+ * `"highest"` 접미사가 가리키는 en/ko 값은 각각 "urgent"/"긴급"이다 — 표시 단어가
+ * 이 표 자체와 다르다. 키는 저장 레벨(§ PRIORITY_EMOJI의 "1")을 가리키는 이름이고
+ * Obsidian Tasks 호환 규약상 그대로 두기로 했으므로, 다음에 보는 사람이 "고쳐야 할
+ * 불일치"로 착각하지 않도록 남긴다.
  */
 const PRIORITY_CHIP_KEY: Record<string, string> = {
   [PRIORITY_EMOJI["1"]]: "highest",

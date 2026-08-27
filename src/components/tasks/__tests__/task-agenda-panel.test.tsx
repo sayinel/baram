@@ -193,7 +193,7 @@ describe("TaskAgendaPanel", () => {
       ]);
     render(<TaskAgendaPanel />);
 
-    const marker = screen.getByRole("img", { name: "Highest priority" });
+    const marker = screen.getByRole("img", { name: "Urgent priority" });
     // §308: the badge shows a short text symbol (PRIORITY_SYMBOL), not the
     // raw markdown emoji — see priorityBadge.
     expect(marker).toHaveTextContent("!!!");

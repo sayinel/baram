@@ -823,7 +823,7 @@
   "tasks.chip.created": "added {date}",
   "tasks.chip.done": "done {date}",
   "tasks.chip.cancelled": "cancelled {date}",
-  "tasks.chip.priority.highest": "highest",
+  "tasks.chip.priority.highest": "urgent",
   "tasks.chip.priority.high": "high",
   "tasks.chip.priority.low": "low",
   "tasks.chip.priority.lowest": "lowest",

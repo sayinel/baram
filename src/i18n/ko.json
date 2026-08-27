@@ -823,7 +823,7 @@
   "tasks.chip.created": "{date} 등록",
   "tasks.chip.done": "{date} 완료",
   "tasks.chip.cancelled": "{date} 취소",
-  "tasks.chip.priority.highest": "최고",
+  "tasks.chip.priority.highest": "긴급",
   "tasks.chip.priority.high": "높음",
   "tasks.chip.priority.low": "낮음",
   "tasks.chip.priority.lowest": "최저",

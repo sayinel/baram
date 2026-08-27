@@ -211,7 +211,7 @@ describe("priorityBadge", () => {
   // aria-label keeps the word form for screen readers.
   it("returns a marker and a word label for each non-normal level", () => {
     expect(priorityBadge(2)).toEqual({
-      label: "Highest priority",
+      label: "Urgent priority",
       marker: "!!!",
     });
     expect(priorityBadge(1)).toEqual({ label: "High priority", marker: "!!" });

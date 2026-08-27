@@ -585,7 +585,7 @@ describe("renderTaskChip — 우선순위 마커 → 라벨 매핑", () => {
   // 네 마커가 각각 옳은 i18n 키로 간다. "3"(보통)은 마커가 없어 scanTaskFields가
   // 애초에 span을 만들지 않으므로 여기 없다.
   it.each([
-    ["🔺", "highest"],
+    ["🔺", "urgent"],
     ["⏫", "high"],
     ["🔽", "low"],
     ["⏬", "lowest"],
