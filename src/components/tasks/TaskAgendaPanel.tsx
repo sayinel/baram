@@ -98,7 +98,7 @@ export function TaskAgendaPanel() {
   const onJump = useCallback((task: TaskEntry) => {
     // §313 요청에 파일 주소를 붙여 건다 — 그 파일이 **이미 활성 탭**이어도 배달되고
     // (누른 태스크의 대부분이 그 경우다), 배달되지 못하면 남지 않고 버려진다.
-    // 줄 번호는 1-based(`mdLineToPmBlockStart`가 line-1을 쓴다), `TaskEntry.line`은
+    // 줄 번호는 1-based(`mdLineToPmPos`가 line-1을 쓴다), `TaskEntry.line`은
     // 0-based다.
     requestScroll(task.path, { kind: "line", value: task.line + 1 });
     void openFileByPath(task.path);

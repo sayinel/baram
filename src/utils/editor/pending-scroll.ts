@@ -25,14 +25,14 @@ import { TextSelection } from "@tiptap/pm/state";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { findBlockPosById, findHeadingPosByText } from "./block-nav";
-import { mdLineToPmBlockStart } from "./cursor-mapper";
+import { mdLineToPmPos } from "./cursor-mapper";
 import { focusEditorView } from "./focus-editor-view";
 
 /** 문서 안의 목적지. 한 요청에 정확히 하나. */
 export type ScrollTarget =
   | { kind: "blockId"; value: string }
   | { kind: "heading"; value: string }
-  /** 1-based — `mdLineToPmBlockStart`가 `line - 1`을 쓴다. */
+  /** 1-based — `mdLineToPmPos`가 `line - 1`을 쓴다. */
   | { kind: "line"; value: number };
 
 /**
@@ -159,6 +159,6 @@ function resolveScrollPos(
     case "line":
       return content === null
         ? null
-        : mdLineToPmBlockStart(doc, content, target.value);
+        : mdLineToPmPos(doc, content, target.value);
   }
 }
