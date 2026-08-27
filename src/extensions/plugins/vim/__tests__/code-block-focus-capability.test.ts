@@ -180,4 +180,82 @@ describe("focus is a capability (issue 474 root)", () => {
     publishWysiwygVimStatus(editor.view);
     expect(useUIStore.getState().vimStatus?.surface).not.toBe("codeblock");
   });
+
+  it("CLICK entry from an INSERT body carries insert into the island", async () => {
+    // 모드는 커서를 따라간다 — 본문(insert)에서 클릭으로 island에 들어가는
+    // 방향이 마지막 구멍이었다 (기기 보고: i 상태로 클릭 이동 중 어느
+    // 순간 n으로). focusin의 relatedTarget이 PM 표면이면 PM 모드를
+    // 이어받는다.
+    const editor = makeEditor("before\n\n```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealIsland(editor);
+    content.setAttribute("tabindex", "0");
+    // PM을 insert로
+    const pmRoot = editor.view.dom as HTMLElement;
+    pmRoot.setAttribute("tabindex", "0");
+    pmRoot.focus();
+    editor.view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Escape",
+      }),
+    );
+    editor.view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "i",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(
+        (vimPluginKey.getState(editor.state) as { mode: string }).mode,
+      ).toBe("insert");
+    });
+    // 클릭 진입 시퀀스: mousedown(우리 capture가 cmView.focus) → focusin
+    // (relatedTarget = 직전 포커스였던 PM 루트)
+    content.focus();
+    content.dispatchEvent(
+      new FocusEvent("focusin", { bubbles: true, relatedTarget: pmRoot }),
+    );
+    await vi.waitFor(() => {
+      expect(content.getAttribute("contenteditable")).toBe("true"); // insert
+    });
+  });
+
+  it("CHROME return still preserves the island session (no PM-mode override)", async () => {
+    const editor = makeEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealIsland(editor);
+    content.setAttribute("tabindex", "0");
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await vi.waitFor(() => {
+      content.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "i",
+        }),
+      );
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    // 크롬으로 나갔다가 (relatedTarget=chrome) 복귀 — PM 모드(normal)로
+    // 덮어쓰지 않고 insert 세션 보존
+    const chrome = document.createElement("input");
+    document.body.appendChild(chrome);
+    content.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: chrome }),
+    );
+    chrome.focus();
+    await new Promise((r) => setTimeout(r, 30));
+    content.focus();
+    content.dispatchEvent(
+      new FocusEvent("focusin", { bubbles: true, relatedTarget: chrome }),
+    );
+    await new Promise((r) => setTimeout(r, 60));
+    expect(content.getAttribute("contenteditable")).toBe("true"); // insert 유지
+    chrome.remove();
+  });
 });

@@ -730,14 +730,36 @@ export class CodeBlockNodeView implements NodeView {
     // outside contentDOM, and moving focus into a panel is still the same
     // island. focusout defers one microtask and releases only when focus
     // truly left the whole root.
-    const onIslandFocus = () => {
+    const onIslandFocus = (event: FocusEvent) => {
       islandVimFocus(island);
       // 포인터 인계(기기 보고: B insert → A 클릭이 A의 stale 모드로 열림):
-      // 다른 island에서 온 이동이면 그쪽 모드를 이어받는다. 인계가 없으면
-      // (크롬 왕복, 최초 진입) 자기 세션 그대로 — vim의 창 복귀 관례.
+      // 다른 island에서 온 이동이면 그쪽 모드를 이어받는다.
       const handoff = takeIslandPointerHandoff(this.view, this.cmContainer);
-      if (handoff === "insert") this.vimController?.ensureInsert();
-      else if (handoff === "normal") this.vimController?.exitToNormal();
+      if (handoff === "insert") {
+        this.vimController?.ensureInsert();
+        return;
+      }
+      if (handoff === "normal") {
+        this.vimController?.exitToNormal();
+        return;
+      }
+      // 인계가 없을 때: 출발지가 PM 표면(본문)이면 PM 모드가 커서를 따라
+      // 들어온다 — 본문(insert)에서 클릭으로 island에 들어가는 방향이
+      // 마지막 구멍이었다 (기기 보고: i로 클릭 이동 중 어느 순간 n).
+      // 크롬/외부 출발(relatedTarget이 view 밖·null)은 세션 보존 —
+      // vim의 창 포커스 복귀 관례 그대로.
+      const from =
+        event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      const fromPmSurface =
+        from !== null &&
+        this.view.dom.contains(from) &&
+        !from.closest("[data-vim-suspend]");
+      if (!fromPmSurface) return;
+      const pm = vimPluginKey.getState(this.view.state) as
+        undefined | { enabled: boolean; mode: string };
+      if (!pm?.enabled) return;
+      if (pm.mode === "insert") this.vimController?.ensureInsert();
+      else this.vimController?.exitToNormal();
     };
     const onIslandBlur = (event: FocusEvent) => {
       // 동기 구간(focusout → 도착측 focusin 이전): 다른 island로의 포인터
