@@ -222,6 +222,7 @@ describe("vim code block entry handoff (§298)", () => {
     const offA = registerCodeBlockEntry(
       viewA,
       () => 5,
+      document.createElement("div"),
       (a, h) => {
         calls.push(`A:${a},${h}`);
         return true;
@@ -230,6 +231,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       viewB,
       () => 5,
+      document.createElement("div"),
       () => {
         calls.push("B");
         return true;
@@ -240,6 +242,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       viewA,
       () => undefined,
+      document.createElement("div"),
       () => {
         calls.push("detached");
         return true;
@@ -257,6 +260,7 @@ describe("vim code block entry handoff (§298)", () => {
     const offOld = registerCodeBlockEntry(
       view,
       () => 5,
+      document.createElement("div"),
       () => {
         calls.push("old");
         return true;
@@ -266,6 +270,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       view,
       () => 5,
+      document.createElement("div"),
       () => {
         calls.push("new");
         return true;
@@ -280,6 +285,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       view,
       () => 7,
+      document.createElement("div"),
       () => false,
     );
     expect(enterCodeBlockAt(view, 7, 0, 0)).toBe(false);

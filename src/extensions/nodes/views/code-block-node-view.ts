@@ -32,6 +32,7 @@ import {
 import {
   armIslandPointerHandoff,
   ensurePointerDownRecorder,
+  isRegisteredIslandContainer,
   recentPointerTarget,
   registerCodeBlockEditableSync,
   registerCodeBlockEntry,
@@ -252,6 +253,7 @@ export class CodeBlockNodeView implements NodeView {
     this.unregisterEntry = registerCodeBlockEntry(
       view,
       getPos,
+      cmContainer,
       (anchor, head, opts) => {
         // issue 477 — the mode intent applies on EVERY outcome, including
         // the dedup early-return below: in editable PM (insert mode) the
@@ -375,7 +377,18 @@ export class CodeBlockNodeView implements NodeView {
   ): void {
     this.ensureCM();
     if (!this.cmView) {
-      this.pendingSelection = { anchor, focusIntent: opts.focus, head };
+      // 단조 병합 (감사 BLOCKER): 같은 선택에 대한 비명시 재동기화(늦은
+      // PM 하강 — vim의 50ms selection 재주장 등)가 정당한 명시 grant를
+      // focus:false로 강등하면 안 된다. 같은 (anchor, head)면 grant는
+      // 보존되고, 다른 선택이면 통째 교체(새 방문 = 새 권한 판정).
+      const prev = this.pendingSelection;
+      const sameSelection =
+        prev !== null && prev.anchor === anchor && prev.head === head;
+      this.pendingSelection = {
+        anchor,
+        focusIntent: opts.focus || (sameSelection && prev.focusIntent),
+        head,
+      };
       return;
     }
     if (opts.focus) this.cmView.focus();
@@ -780,7 +793,15 @@ export class CodeBlockNodeView implements NodeView {
         rawRelated && rawRelated !== this.view.dom.ownerDocument.body
           ? rawRelated
           : recentPointerTarget(this.view);
-      const dest = related?.closest(".code-block-editor") ?? null;
+      // 목적지 권한은 등록에서 나온다 (감사 MAJOR): 문서 HTML이 같은
+      // class를 그려도 등록된 island 컨테이너만 목적지다 — 가짜는 null로
+      // 떨어지고, sanitized island는 suspend 마커가 본문行 분기도 걸러
+      // "크롬과 동일 = 세션 보존"으로 안전 수렴한다.
+      const destCandidate = related?.closest(".code-block-editor") ?? null;
+      const dest =
+        destCandidate && isRegisteredIslandContainer(this.view, destCandidate)
+          ? destCandidate
+          : null;
       let pmBodyExit = false;
       if (dest && !island.dom.contains(dest) && !dest.contains(island.dom)) {
         const mode = this.exitPmMode();
@@ -818,6 +839,10 @@ export class CodeBlockNodeView implements NodeView {
         }
       }
       queueMicrotask(() => {
+        // 세대 가드 (감사): detach/재부착·destroy 뒤에 도는 유령 blur가
+        // 새 세대의 메모를 태우거나 포커스를 배달하면 안 된다 —
+        // controller의 session 정체성 가드와 같은 패턴.
+        if (this.cmView !== island) return;
         const active = island.dom.ownerDocument.activeElement;
         if (!island.dom.contains(active)) {
           islandVimBlur(island);
@@ -868,12 +893,7 @@ export class CodeBlockNodeView implements NodeView {
       // …but never steal focus from wherever the user went DURING the
       // async recreation — restore only while focus is orphaned (body)
       // or still somewhere inside this NodeView.
-      const active = this.dom.ownerDocument.activeElement;
-      if (
-        active &&
-        active !== this.dom.ownerDocument.body &&
-        !this.dom.contains(active)
-      ) {
+      if (this.userDepartedDuringInit()) {
         this.pendingFocusRestore = null;
         this.pendingVimModeRestore = null;
       }
@@ -910,7 +930,11 @@ export class CodeBlockNodeView implements NodeView {
         const base = (pos as number) + 1;
         // 하강 유래 메모(focusIntent=false)는 cold 소비에서도 포커스를
         // 훔치지 않는다 — 명시 진입만 지연 포커스를 배달한다 (CRITICAL 2).
-        const wantFocus = this.pendingSelection.focusIntent;
+        // 그리고 grant는 방문과 함께 죽는다 (감사 BLOCKER): 사용자가 init
+        // 중 다른 곳으로 떠났으면 — pendingFocusRestore와 같은 술어 —
+        // 선택만 반영하고 stale grant로 포커스를 훔치지 않는다.
+        const wantFocus =
+          this.pendingSelection.focusIntent && !this.userDepartedDuringInit();
         if (wantFocus) this.cmView.focus();
         this.updating = true;
         this.cmView.dispatch({
@@ -962,6 +986,19 @@ export class CodeBlockNodeView implements NodeView {
     if (this.currentVimMode === "insert") return;
     this.pendingEntryInsert = { head };
     this.vimController?.ensureInsert();
+  }
+
+  /** 사용자가 비동기 init 동안 이 NodeView 밖으로 떠났는가 — 포커스가
+   *  body도 아니고 이 뷰 안도 아닌 상태. pendingFocusRestore(재생성)와
+   *  pendingSelection의 grant 소비(cold 진입)가 같은 술어를 공유한다
+   *  (감사: 두 번째 술어를 발명하지 않는다). */
+  private userDepartedDuringInit(): boolean {
+    const active = this.dom.ownerDocument.activeElement;
+    return (
+      active !== null &&
+      active !== this.dom.ownerDocument.body &&
+      !this.dom.contains(active)
+    );
   }
 
   /** The WHOLE current PM selection lives inside this block (R6 shape —

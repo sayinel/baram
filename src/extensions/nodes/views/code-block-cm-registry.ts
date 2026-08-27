@@ -78,8 +78,25 @@ type EntryHandoff = (
 ) => boolean;
 
 interface EntryRegistrant {
+  /** 이 island의 실제 DOM 컨테이너 — 포인터 목적지 판정의 권한 원천.
+   *  문서 HTML이 class="code-block-editor"를 그려도(sanitizer가 class를
+   *  보존한다) 등록되지 않은 컨테이너는 목적지가 될 수 없다 (감사 MAJOR:
+   *  콘텐츠 주도 focus/mode DoS 차단). */
+  container: Element;
   enter: EntryHandoff;
   getPos: () => number | undefined;
+}
+
+/** register/unregister에서 관리되는 O(1) 컨테이너 인덱스. */
+const islandContainers = new WeakMap<PMView, Set<Element>>();
+
+/** 후보가 실제 등록된 island 컨테이너인가 — DOM 모양이 아니라 등록이
+ *  권한이다 (entry 채널과 같은 원칙). */
+export function isRegisteredIslandContainer(
+  view: PMView,
+  el: Element,
+): boolean {
+  return islandContainers.get(view)?.has(el) ?? false;
 }
 
 // §298 — explicit code-block ENTRY channel. prosemirror-view's
@@ -182,7 +199,13 @@ export function ensurePointerDownRecorder(view: PMView): void {
 /** 직전(500ms 내) pointerdown 타깃 — 이탈 focusout의 목적지 보완용. */
 export function recentPointerTarget(view: PMView): Element | null {
   const rec = lastPointerDown.get(view);
-  if (!rec || Date.now() - rec.ts > 500) return null;
+  if (!rec) return null;
+  if (Date.now() - rec.ts > 500) {
+    // 만료 즉시 참조 해제 — 제거된(클릭했던) 서브트리를 다음 mousedown
+    // 까지 붙들지 않는다 (감사 MINOR).
+    lastPointerDown.delete(view);
+    return null;
+  }
   return rec.target;
 }
 
@@ -236,6 +259,7 @@ export function enterCodeBlockSelection(
 export function registerCodeBlockEntry(
   view: PMView,
   getPos: () => number | undefined,
+  container: Element,
   enter: EntryHandoff,
 ): () => void {
   let set = entryRegistries.get(view);
@@ -243,10 +267,17 @@ export function registerCodeBlockEntry(
     set = new Set();
     entryRegistries.set(view, set);
   }
-  const registrant: EntryRegistrant = { enter, getPos };
+  let containers = islandContainers.get(view);
+  if (!containers) {
+    containers = new Set();
+    islandContainers.set(view, containers);
+  }
+  const registrant: EntryRegistrant = { container, enter, getPos };
   set.add(registrant);
+  containers.add(container);
   return () => {
     set.delete(registrant);
+    containers.delete(container);
   };
 }
 

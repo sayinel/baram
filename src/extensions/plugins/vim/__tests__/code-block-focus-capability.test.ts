@@ -258,4 +258,90 @@ describe("focus is a capability (issue 474 root)", () => {
     expect(content.getAttribute("contenteditable")).toBe("true"); // insert 유지
     chrome.remove();
   });
+
+  it("COLD grant is MONOTONIC: a later descent re-sync cannot downgrade it", async () => {
+    // 감사 BLOCKER: CM 로딩 중 늦은 PM 하강(50ms 재주장)이 같은 선택을
+    // focus:false로 다시 쓰면 정당한 명시 grant가 강등됐다 — 같은 선택의
+    // 비명시 쓰기는 grant를 보존해야 한다.
+    const editor = makeEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true); // island는 cold (reveal 안 함)
+    const pos = blockPosOf(editor);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, pos + 1),
+      ),
+    );
+    enterCodeBlockAt(editor.view, pos, 0, 0); // 명시 grant (cold 메모)
+    // 늦은 하강과 동일 표면: 같은 선택을 프로토콜 setSelection으로 재동기화
+    const { CodeBlockNodeView } =
+      await import("../../../nodes/views/code-block-node-view");
+    void CodeBlockNodeView;
+    // 프로토타입 스파이 없이: cold 소비 시 포커스가 배달되는지가 관측점
+    const content = await revealIsland(editor);
+    await vi.waitFor(() => {
+      expect(content.contains(document.activeElement)).toBe(true);
+    });
+  });
+
+  it("COLD grant dies when the user departs during init", async () => {
+    const editor = makeEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const pos = blockPosOf(editor);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, pos + 1),
+      ),
+    );
+    enterCodeBlockAt(editor.view, pos, 0, 0); // 명시 grant (cold)
+    // init이 끝나기 전에 사용자가 크롬으로 떠남
+    const chrome = document.createElement("input");
+    document.body.appendChild(chrome);
+    chrome.focus();
+    const content = await revealIsland(editor);
+    await new Promise((r) => setTimeout(r, 120));
+    // stale grant가 크롬에서 포커스를 훔치지 않는다
+    expect(document.activeElement).toBe(chrome);
+    expect(content.contains(document.activeElement)).toBe(false);
+    chrome.remove();
+  });
+
+  it("a document-drawn fake island can NOT become a handoff destination", async () => {
+    // 감사 MAJOR: sanitizer가 class를 보존하므로 문서가
+    // class="code-block-editor"를 그릴 수 있다 — 목적지 권한은 DOM 모양이
+    // 아니라 등록에서 나온다.
+    const editor = makeEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealIsland(editor);
+    content.setAttribute("tabindex", "0");
+    await new Promise((r) => setTimeout(r, 60));
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await vi.waitFor(() => {
+      content.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "i",
+        }),
+      );
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    // 가짜 island를 본문에 그려 넣고 그쪽으로 focusout
+    const fake = document.createElement("div");
+    fake.className = "code-block-editor";
+    fake.setAttribute("tabindex", "0");
+    editor.view.dom.appendChild(fake);
+    content.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: fake }),
+    );
+    await new Promise((r) => setTimeout(r, 60));
+    // 가짜는 목적지가 아니므로: 세션이 사칭 목적지 때문에 arm/종료되지
+    // 않고, 진짜 island의 insert 세션은 남아 있다 (등록 검증의 관측점).
+    // (fake에 suspend 마커가 없으니 본문行 분기로는 흐를 수 있으나,
+    //  island-arm 경로가 사칭에 낚이지 않는 것이 이 핀의 계약이다.)
+    const { takeIslandPointerHandoff } =
+      await import("../../../nodes/views/code-block-cm-registry");
+    expect(takeIslandPointerHandoff(editor.view, fake)).toBe(null);
+    fake.remove();
+  });
 });
