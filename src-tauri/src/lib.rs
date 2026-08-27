@@ -202,7 +202,13 @@ pub fn run() {
             // necessarily the session's first line: the logger is installed earlier
             // still (see the plugin above), so tauri's own window-creation failures
             // are recorded ahead of it. That is the point.
+            //
+            // ‼️ The explicit target is what keeps this out of the console. Both
+            // reasons above are about the FILE, and a line printed on every
+            // `tauri dev` launch is noise there; `logging::stdout_keeps` drops
+            // exactly this target. Remove the `target:` and it comes back.
             log::info!(
+                target: logging::SESSION_TARGET,
                 "Baram {} starting ({}, {})",
                 app.package_info().version,
                 std::env::consts::OS,
