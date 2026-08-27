@@ -160,6 +160,18 @@ async fn drain_one_file(
             outcome.skipped += 1;
             continue;
         };
+        // ‼️ 이 판정만 파일을 봐야 해서 `archive_verdict` 밖에 있다. 들여쓴 항목을
+        // 제외하는 것으로는 절반밖에 못 막는다 — 그것은 **자식이 끌려 나가는** 것만
+        // 막고, 자식을 거느린 **부모가 나가는** 것은 그대로 둔다. 부모가 나가면 남는
+        // 것은 부모 없는 들여쓴 줄이고, 그것이 바로 이 규칙이 막으려던 훼손이다.
+        //
+        // 프런트는 이 판정을 못 한다. 인덱스에는 태스크 줄만 있어서 자식이 평범한
+        // 중첩 불릿이면 보이지 않는다. 그래서 여기만 안다 — 프런트가 세는 개수보다
+        // 적게 옮길 수 있고, 그 차이는 `skipped`로 돌아가 로그에 남는다.
+        if has_indented_child(&parts, idx) {
+            outcome.skipped += 1;
+            continue;
+        }
         let dest = format!("{}/{}/{}.md", root, ARCHIVE_DIR, month);
         // 이미 제자리인 줄은 옮기지 않는다. 자기 파일에 붙였다가 지우면 줄이 파일
         // 끝으로 이사만 하고, 실행할 때마다 순서가 바뀐다.
@@ -249,6 +261,30 @@ pub(super) fn is_archive_source(path: &str, capture: &str, archive_root: &str) -
 /// 두 ISO 날짜 사이의 일수(`to` − `from`). 어느 한쪽이 실재하지 않는 날짜면 `None`.
 pub(super) fn days_between(from: &str, to: &str) -> Option<i64> {
     Some(to_days(to)? - to_days(from)?)
+}
+
+/// `idx` 줄이 자기보다 더 들여쓴 줄을 거느리는가.
+///
+/// 빈 줄은 건너뛴다 — 마크다운에서 빈 줄 하나는 리스트 항목의 자식을 끝내지 않는다
+/// (loose list). 판단이 갈리는 쪽에서는 **옮기지 않는 쪽**으로 기운다: 잘못 건너뛴 항목은
+/// 다음에 다시 누르면 되지만, 잘못 뽑은 부모는 문서를 훼손한다.
+fn has_indented_child(parts: &[&str], idx: usize) -> bool {
+    let own = leading_width(strip_eol(parts[idx]));
+    for part in &parts[idx + 1..] {
+        let line = strip_eol(part);
+        if line.trim().is_empty() {
+            continue;
+        }
+        return leading_width(line) > own;
+    }
+    false
+}
+
+/// 앞 공백 문자 수 — `parse_task_line`의 `^(\s*)`가 세는 것과 같은 단위다.
+/// 탭과 스페이스를 섞어 쓴 파일에서는 이 값이 화면상의 들여쓰기와 다를 수 있지만,
+/// 파서가 `indent`를 그렇게 재므로 여기서도 같은 자로 잰다.
+fn leading_width(line: &str) -> usize {
+    line.len() - line.trim_start().len()
 }
 
 /// `path`가 `dir` **아래**인가. `dir` 자신은 포함하지 않는다.
@@ -458,6 +494,74 @@ mod tests {
 
         assert_eq!((out.archived, out.skipped), (0, 1));
         assert_eq!(v.read("Inbox.md"), before);
+    }
+
+    #[tokio::test]
+    async fn a_parent_that_still_has_children_is_not_moved() {
+        // 들여쓴 항목을 막는 것만으로는 절반이다 — 부모가 나가면 남는 것은 부모 없는
+        // 들여쓴 줄이고, 그것이 이 규칙이 막으려던 훼손 그 자체다.
+        let v = Vault::new();
+        let parent = "- [x] 부모 ✅2026-07-10";
+        let before = format!("{}\n  - [ ] 아직 안 한 자식\n", parent);
+        let inbox = v.write("Inbox.md", &before);
+
+        let out = run(&v, &[item(&inbox, 0, parent)]).await.unwrap();
+
+        assert_eq!((out.archived, out.skipped), (0, 1));
+        assert_eq!(v.read("Inbox.md"), before);
+    }
+
+    #[tokio::test]
+    async fn a_blank_line_does_not_separate_a_parent_from_its_child() {
+        // 마크다운에서 빈 줄 하나는 리스트 항목의 자식을 끝내지 않는다(loose list).
+        let v = Vault::new();
+        let parent = "- [x] 부모 ✅2026-07-10";
+        let before = format!("{}\n\n  - [ ] 자식\n", parent);
+        let inbox = v.write("Inbox.md", &before);
+
+        let out = run(&v, &[item(&inbox, 0, parent)]).await.unwrap();
+
+        assert_eq!((out.archived, out.skipped), (0, 1));
+        assert_eq!(v.read("Inbox.md"), before);
+    }
+
+    #[tokio::test]
+    async fn a_child_that_is_not_a_task_still_holds_its_parent() {
+        // 인덱스에는 태스크 줄만 있으므로 프런트는 이 자식을 못 본다. 여기서만 막힌다.
+        let v = Vault::new();
+        let parent = "- [x] 부모 ✅2026-07-10";
+        let before = format!("{}\n  - 그냥 메모\n", parent);
+        let inbox = v.write("Inbox.md", &before);
+
+        let out = run(&v, &[item(&inbox, 0, parent)]).await.unwrap();
+
+        assert_eq!((out.archived, out.skipped), (0, 1));
+        assert_eq!(v.read("Inbox.md"), before);
+    }
+
+    #[tokio::test]
+    async fn a_flat_sibling_does_not_hold_it_back() {
+        // 평평한 목록이 정상 상태다 — 여기서 막히면 배수구가 아무것도 못 옮긴다.
+        let v = Vault::new();
+        let first = "- [x] 하나 ✅2026-07-04";
+        let inbox = v.write("Inbox.md", &format!("{}\n- [ ] 둘\n", first));
+
+        let out = run(&v, &[item(&inbox, 0, first)]).await.unwrap();
+
+        assert_eq!(out.archived, 1);
+        assert_eq!(v.read("Inbox.md"), "- [ ] 둘\n");
+    }
+
+    #[tokio::test]
+    async fn the_last_line_of_a_file_has_no_children() {
+        let v = Vault::new();
+        let last = "- [x] 마지막 ✅2026-07-04";
+        let inbox = v.write("Inbox.md", &format!("- [ ] 먼저\n{}\n", last));
+
+        let out = run(&v, &[item(&inbox, 1, last)]).await.unwrap();
+
+        assert_eq!(out.archived, 1);
+        assert_eq!(v.read("Inbox.md"), "- [ ] 먼저\n");
     }
 
     #[tokio::test]

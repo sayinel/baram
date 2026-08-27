@@ -227,8 +227,10 @@ async function report(r: ArchiveOutcome, t: Translate): Promise<void> {
   if (r.failed > 0) {
     lines.push(t("tasks.archive.failed", { count: String(r.failed) }));
   }
-  // `skipped`는 말하지 않는다. 프런트가 같은 표로 고른 목록이라 정상 실행에서는 0이고,
-  // 0이 아니면 두 표가 갈렸다는 뜻이라 사용자가 아니라 로그가 받을 사실이다.
+  // `skipped`는 말하지 않는다. 대부분의 조건은 프런트도 같은 표로 걸렀으므로 보통 0이다.
+  // 0이 아닌 정당한 경우가 하나 있다: 자식을 거느린 부모는 파일을 봐야 알 수 있어 Rust만
+  // 막는다(`has_indented_child`). 나머지 경우라면 두 표가 갈렸다는 뜻이고, 어느 쪽이든
+  // 사용자가 아니라 로그가 받을 사실이다.
   if (r.skipped > 0) {
     logger.warn(
       `[tasks] archive: backend skipped ${r.skipped} task(s) the panel had counted`,
