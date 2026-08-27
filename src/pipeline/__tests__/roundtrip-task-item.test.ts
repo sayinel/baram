@@ -1,5 +1,6 @@
 import type { Node as PmNode } from "@tiptap/pm/model";
 
+import { Editor } from "@tiptap/core";
 import { Schema } from "@tiptap/pm/model";
 // §7.1/§303 빈 task item 라운드트립 — 체크박스가 저장에서 사라지면 안 된다.
 //
@@ -8,6 +9,7 @@ import { Schema } from "@tiptap/pm/model";
 // 남는다 — MD → PM → MD 정확 일치(§8.4)가 깨진다.
 import { describe, expect, it } from "vitest";
 
+import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 
@@ -167,5 +169,40 @@ describe("빈 task item 라운드트립", () => {
     expect(outline(markdownToProsemirror("1. [ ]\n", schema))).toBe(
       'doc>[orderedList>[listItem>[paragraph>["[ ]"]]]]',
     );
+  });
+});
+
+describe("실제 에디터에서 타이핑 중인 리스트를 저장할 때", () => {
+  // 위 테스트들이 최소 스키마로 파이프라인 양쪽 끝을 각각 못박는다면, 이
+  // 테스트는 사용자 자리에서 둘이 실제로 만나는지를 본다: 실제 Baram 확장
+  // 스택에서 Enter로 만들어진 문서를 그대로 직렬화한다.
+  // `tiptap-toggle.test.ts` 의 선례를 따른다.
+  it("끝의 빈 항목이 체크박스를 달고 저장된다", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "",
+    });
+    editor.commands.setContent(
+      markdownToProsemirror("- [ ] a\n", editor.schema).toJSON(),
+    );
+
+    // 항목 끝에서 Enter — 여기서부터 다음 글자를 치기 전까지 문서 끝에는 빈
+    // task item이 있다. 자동 저장이 떨어지는 창이 바로 이 구간이다.
+    editor.commands.focus("end");
+    editor.commands.splitListItem("taskItem");
+
+    const md = prosemirrorToMarkdown(editor.state.doc);
+    expect(md).toBe("- [ ] a\n- [ ]\n");
+
+    // 되읽었을 때도 여전히 task 두 개다
+    const items: PmNode[] = [];
+    markdownToProsemirror(md, editor.schema).descendants((node) => {
+      if (node.type.name === "taskItem") items.push(node);
+    });
+    expect(items).toHaveLength(2);
+    expect(items[1].textContent).toBe("");
+    expect(items[1].attrs.checked).toBe(false);
+
+    editor.destroy();
   });
 });
