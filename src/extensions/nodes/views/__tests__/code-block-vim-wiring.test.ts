@@ -2,6 +2,7 @@
 // loading barrier, broadcast memo replay, teardown on CM replacement,
 // and no focus steal from a lazy load.
 import { EditorView as CMEditorView } from "@codemirror/view";
+import { getCM } from "@replit/codemirror-vim";
 import { Editor } from "@tiptap/core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,40 +11,9 @@ import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { vimPluginKey } from "../../../plugins/vim/vim-keys";
 
-if (typeof window.matchMedia !== "function") {
-  window.matchMedia = () =>
-    ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-}
-
 declare const MockIntersectionObserver: {
   instances: { triggerIntersect: (v?: boolean) => void }[];
 };
-
-// jsdom lacks Range measurement — an ATTACHED CodeMirror schedules a rAF
-// measure pass that would otherwise throw asynchronously (same polyfill as
-// vim-markdown-enter.test.ts).
-const zeroRect = {
-  bottom: 0,
-  height: 0,
-  left: 0,
-  right: 0,
-  top: 0,
-  width: 0,
-  x: 0,
-  y: 0,
-};
-Range.prototype.getBoundingClientRect ??= () => zeroRect as DOMRect;
-Range.prototype.getClientRects ??= () =>
-  ({
-    item: () => null,
-    length: 0,
-    [Symbol.iterator]: [][Symbol.iterator],
-  }) as unknown as DOMRectList;
-HTMLElement.prototype.getClientRects ??= Range.prototype.getClientRects;
 
 function createEditor(md: string): Editor {
   const editor = new Editor({
@@ -53,6 +23,18 @@ function createEditor(md: string): Editor {
   const doc = markdownToProsemirror(md, editor.schema);
   editor.commands.setContent(doc.toJSON());
   return editor;
+}
+
+/** Read the island's live vim state through the CM view under `content`. */
+function islandVimState(
+  content: HTMLElement,
+): undefined | { insertMode?: boolean; insertModeReturn?: boolean } {
+  const cmv = CMEditorView.findFromDOM(content);
+  const cm = cmv ? getCM(cmv) : null;
+  return (
+    cm?.state as
+      undefined | { vim?: { insertMode?: boolean; insertModeReturn?: boolean } }
+  )?.vim;
 }
 
 async function revealCM(editor: Editor): Promise<HTMLElement> {
@@ -564,6 +546,85 @@ describe("code block vim wiring (S2)", () => {
     );
     document.removeEventListener("mousedown", swallow, true);
     await vi.waitFor(() => {
+      expect(document.activeElement).toBe(content);
+    });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
+  it("insert-mode ARROW exit normalizes the island back to NORMAL (issue 475)", async () => {
+    // The non-vim keymap's edge ArrowDown escape is mode-blind (insert-mode
+    // arrows pass through vim), so it can fire from INSERT — and outside the
+    // block PM vim is normal by construction. Leaving must therefore end the
+    // insert session; the stale island otherwise revives insert on re-entry.
+    const editor = createEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    document.body.appendChild(editor.view.dom);
+    content.setAttribute("tabindex", "0");
+    await vi.waitFor(() => {
+      expect(content.getAttribute("contenteditable")).toBe("false");
+    });
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    const press = (key: string, init: KeyboardEventInit = {}) =>
+      content.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key,
+          ...init,
+        }),
+      );
+    await vi.waitFor(() => {
+      press("i");
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    press("ArrowDown"); // single source line = last line: escape fires
+    await vi.waitFor(() => {
+      expect(islandVimState(content)?.insertMode ?? false).toBe(false);
+      expect(content.getAttribute("contenteditable")).toBe("false");
+      expect(document.activeElement).not.toBe(content);
+    });
+    editor.destroy();
+    document.body.innerHTML = "";
+  });
+
+  it("C-o pending state: edge k stays in the block and RETURNS to insert (issue 475)", async () => {
+    // <C-o> parks vim in normal mode with insertModeReturn set — NOT idle
+    // normal. The boundary must decline the edge key so vim can run the one
+    // normal command and re-enter insert (stock vim), instead of hijacking
+    // it into a block exit that strands the latent insert return.
+    const editor = createEditor("```ts\nconst x = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealCM(editor);
+    document.body.appendChild(editor.view.dom);
+    content.setAttribute("tabindex", "0");
+    await vi.waitFor(() => {
+      expect(content.getAttribute("contenteditable")).toBe("false");
+    });
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    const press = (key: string, init: KeyboardEventInit = {}) =>
+      content.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key,
+          ...init,
+        }),
+      );
+    await vi.waitFor(() => {
+      press("i");
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    press("o", { ctrlKey: true });
+    await vi.waitFor(() => {
+      expect(islandVimState(content)?.insertModeReturn).toBe(true);
+    });
+    press("k"); // line 1: an idle-normal boundary would consume and escape
+    await vi.waitFor(() => {
+      expect(content.getAttribute("contenteditable")).toBe("true");
       expect(document.activeElement).toBe(content);
     });
     editor.destroy();

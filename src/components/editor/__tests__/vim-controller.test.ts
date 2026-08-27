@@ -41,6 +41,9 @@ function makeFakes() {
   const view = {
     contentDOM: document.createElement("div"),
     dispatch: vi.fn(),
+    // ensureInsert의 포커스 epoch 가드가 dom containment를 본다 — body를
+    // 주면 항상 "포커스 안"으로 판정되어 유닛 계약이 그대로 돈다.
+    dom: document.body,
     // 3v focus fallback uses view.focus() (selection resync + prevent-scroll).
     focus: vi.fn(),
   };
@@ -359,5 +362,286 @@ describe("createVimController", () => {
     controller.dispose();
     controller.apply(true);
     expect(loadModule).not.toHaveBeenCalled();
+  });
+
+  // issue 475 — exitToNormal contract: bare-normal convergence, the C-o
+  // spring (one Esc is NOT idempotent), best-effort failure policy, and the
+  // same generation contract as the guards (no session after dispose).
+
+  interface FakeVimState {
+    inputState: { keyBuffer: string[]; operator: null | string };
+    insertMode: boolean;
+    insertModeReturn: boolean;
+    visualMode: boolean;
+  }
+
+  function vimState(over: Partial<FakeVimState> = {}): FakeVimState {
+    return {
+      inputState: { keyBuffer: [], operator: null },
+      insertMode: false,
+      insertModeReturn: false,
+      visualMode: false,
+      ...over,
+    };
+  }
+
+  async function enabledWithVim(
+    state: FakeVimState,
+    handleKey: (state: FakeVimState) => void,
+    onOperationError?: (e: unknown) => void,
+  ) {
+    const f = makeFakes();
+    const cm = { state: { vim: state } };
+    const handleKeySpy = vi.fn(() => handleKey(state));
+    const mod = {
+      getCM: vi.fn(() => cm),
+      vim: vi.fn(() => []),
+      Vim: { handleKey: handleKeySpy },
+    };
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: f.attachGuard,
+      loadModule: () => Promise.resolve(asModule(mod)),
+      onOperationError,
+    });
+    controller.apply(true);
+    await flush();
+    return { controller, handleKeySpy };
+  }
+
+  it("exitToNormal: bare normal is a no-op true — no Esc injected", async () => {
+    const { controller, handleKeySpy } = await enabledWithVim(
+      vimState(),
+      () => {},
+    );
+    expect(controller.exitToNormal()).toBe(true);
+    expect(handleKeySpy).not.toHaveBeenCalled();
+  });
+
+  it("exitToNormal: one Esc ends a plain insert session", async () => {
+    const { controller, handleKeySpy } = await enabledWithVim(
+      vimState({ insertMode: true }),
+      (state) => {
+        state.insertMode = false;
+      },
+    );
+    expect(controller.exitToNormal()).toBe(true);
+    expect(handleKeySpy).toHaveBeenCalledTimes(1);
+    expect(handleKeySpy).toHaveBeenCalledWith(
+      expect.anything(),
+      "<Esc>",
+      "user",
+    );
+  });
+
+  it("exitToNormal: the C-o spring takes TWO Esc — first re-enters insert", async () => {
+    // Real vim: Esc during insertModeReturn runs as the pending normal
+    // command, and its vim-command-done fires the armed one-shot listener
+    // that re-enters insert; the second Esc ends that insert for good.
+    let presses = 0;
+    const { controller, handleKeySpy } = await enabledWithVim(
+      vimState({ insertModeReturn: true }),
+      (state) => {
+        presses += 1;
+        if (presses === 1) {
+          state.insertModeReturn = false;
+          state.insertMode = true; // the one-shot listener fired
+        } else {
+          state.insertMode = false;
+        }
+      },
+    );
+    expect(controller.exitToNormal()).toBe(true);
+    expect(handleKeySpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("exitToNormal: a throw reports through onOperationError and returns false", async () => {
+    // onError는 설치 실패 롤백 트리거다 — 일시적 handleKey throw가 그리로
+    // 흐르면 정상 island의 editing host가 벗겨진다 (quality review M3).
+    const boom = new Error("vim blew up");
+    const onOperationError = vi.fn();
+    const { controller } = await enabledWithVim(
+      vimState({ insertMode: true }),
+      () => {
+        throw boom;
+      },
+      onOperationError,
+    );
+    expect(controller.exitToNormal()).toBe(false);
+    expect(onOperationError).toHaveBeenCalledWith(boom);
+  });
+
+  it("exitToNormal: no-op true before attach and after dispose", async () => {
+    const f = makeFakes();
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: f.attachGuard,
+      loadModule: () => Promise.resolve(asModule(f.mod)),
+    });
+    expect(controller.exitToNormal()).toBe(true); // still loading — nothing
+    controller.apply(true);
+    await flush();
+    controller.dispose();
+    expect(controller.exitToNormal()).toBe(true); // session died with dispose
+  });
+
+  // issue 477 — ensureInsert contract: "ensure", not "send i". Replace and
+  // visual end first (upstream maps lowercase i only in bare normal),
+  // already-insert is idempotent, refusal reports, and the queued microtask
+  // obeys the session generation.
+
+  async function enabledWithVimKeys(
+    state: FakeVimState & { overwrite?: boolean },
+    onKey: (st: typeof state, key: string) => void,
+    onOperationError?: (e: unknown) => void,
+  ) {
+    const f = makeFakes();
+    const { overwrite, ...vim } = state;
+    const cm = { state: { overwrite, vim } };
+    const handleKeySpy = vi.fn((_cm: unknown, key: string) => {
+      onKey(state, key);
+      // 뮤테이터가 바꾼 값을 cm.state에 반영 (vim 객체는 공유 참조)
+      Object.assign(vim, { ...state, overwrite: undefined });
+      cm.state.overwrite = state.overwrite;
+    });
+    const mod = {
+      getCM: vi.fn(() => cm),
+      vim: vi.fn(() => []),
+      Vim: { handleKey: handleKeySpy },
+    };
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard: f.attachGuard,
+      loadModule: () => Promise.resolve(asModule(mod)),
+      onOperationError,
+    });
+    controller.apply(true);
+    await flush();
+    return { controller, handleKeySpy };
+  }
+
+  const keysOf = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls.map((c) => c[1]);
+
+  it("ensureInsert: bare normal sends exactly one i", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      (st, key) => {
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(keysOf(handleKeySpy)).toEqual(["i"]);
+  });
+
+  it("ensureInsert: already plain insert is a no-op", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState({ insertMode: true }),
+      () => {},
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(handleKeySpy).not.toHaveBeenCalled();
+  });
+
+  it("ensureInsert: a REPLACE session ends first, then plain insert", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      { ...vimState({ insertMode: true }), overwrite: true },
+      (st, key) => {
+        if (key === "<Esc>") {
+          st.insertMode = false;
+          st.overwrite = false;
+        }
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(keysOf(handleKeySpy)).toEqual(["<Esc>", "i"]);
+  });
+
+  it("ensureInsert: a stale VISUAL session ends first", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState({ visualMode: true }),
+      (st, key) => {
+        if (key === "<Esc>") st.visualMode = false;
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(keysOf(handleKeySpy)).toEqual(["<Esc>", "i"]);
+  });
+
+  it("ensureInsert: a refusal is SILENT — delivery confirmation is the publish", async () => {
+    // 거부(readOnly 창)는 오류가 아니다: onError는 설치 실패 롤백 트리거라
+    // 여기 흘리면 normal 모드에서 IME 장벽을 여는 잘못된 복구가 발화한다.
+    // 재시도는 caller의 publish-주도 메모가 소유한다 (adversarial review).
+    const onOperationError = vi.fn();
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      () => {}, // i가 무시됨 (readOnly 거부 시뮬레이션)
+      onOperationError,
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    await flush();
+    expect(handleKeySpy).toHaveBeenCalled();
+    expect(onOperationError).not.toHaveBeenCalled();
+  });
+
+  it("ensureInsert: an island that LOST focus before the microtask is dropped", async () => {
+    // 포커스 epoch 가드 (적대 리뷰): 멀티홉 포커스 전이에서 예약된 insert가
+    // off-focus island를 되살리면 세션 납치다 — 실행 시점에 dom containment
+    // 로 판정한다.
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      (st, key) => {
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    // makeFakes의 view.dom은 body(항상 포커스 안) — off-focus 형상은
+    // dom을 분리 노드로 바꾼 별도 컨트롤러로 만든다.
+    const detached = document.createElement("div");
+    const f2 = makeFakes();
+    (f2.view as { dom: HTMLElement }).dom = detached;
+    const cm2 = {
+      state: {
+        vim: {
+          inputState: { keyBuffer: [], operator: null },
+          insertMode: false,
+          insertModeReturn: false,
+          visualMode: false,
+        },
+      },
+    };
+    const spy2 = vi.fn();
+    const mod2 = {
+      getCM: vi.fn(() => cm2),
+      vim: vi.fn(() => []),
+      Vim: { handleKey: spy2 },
+    };
+    const c2 = createVimController(asView(f2.view), f2.compartment, {
+      attachGuard: f2.attachGuard,
+      loadModule: () => Promise.resolve(asModule(mod2)),
+    });
+    c2.apply(true);
+    await flush();
+    expect(c2.ensureInsert()).toBe(true); // 수락(큐잉)은 되지만
+    await flush();
+    expect(spy2).not.toHaveBeenCalled(); // off-focus라 실행은 버려진다
+    void controller;
+    void handleKeySpy;
+  });
+
+  it("ensureInsert: no session false; dispose before the microtask drops it", async () => {
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      (st, key) => {
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    expect(controller.ensureInsert()).toBe(true);
+    controller.dispose(); // 큐잉과 flush 사이에 세대가 죽음
+    await flush();
+    expect(handleKeySpy).not.toHaveBeenCalled();
+    expect(controller.ensureInsert()).toBe(false); // 세션 소멸 후
   });
 });

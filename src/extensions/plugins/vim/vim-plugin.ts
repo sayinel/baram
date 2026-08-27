@@ -43,6 +43,7 @@ import { cursorSelection } from "./adapters/cursor-selection";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
 import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
+import { insertArrowEntry } from "./adapters/insert-entry";
 import { resolveFindChar, resolveMotion } from "./adapters/motions";
 import { visualBounds } from "./adapters/operations";
 import { scrollCursorIntoView, scrollCursorToCenter } from "./adapters/scroll";
@@ -81,10 +82,10 @@ export interface VimPluginState {
 }
 
 type VimMeta =
+  | { boundary?: boolean; mode: VimMode; type: "setMode" }
   | { core: VimCoreState; type: "core" }
   | { enabled: boolean; type: "setEnabled" }
-  | { island?: null | string; suspended: boolean; type: "setSuspended" }
-  | { mode: VimMode; type: "setMode" };
+  | { island?: null | string; suspended: boolean; type: "setSuspended" };
 
 export function createVimPlugin(
   tiptapEditor: TiptapEditor,
@@ -294,6 +295,27 @@ export function createVimPlugin(
         if (event.key === "Escape" && hasAnyEditorTransient(view.state)) {
           return false;
         }
+        // issue 477 — insert-mode arrows next to a code block: PM insert is
+        // an editable view, but a vim island keeps its 3v editing-host
+        // barrier, and the browser caret cannot step into a non-editable
+        // subtree — a plain arrow skipped the whole block (device log:
+        // sel 5→61). An edge arrow hands off explicitly and lands in
+        // INSERT (arrows while editing mean "keep editing"). Modifiers
+        // stay native — Shift starts a selection — and an active transient
+        // (slash/mention popup) owns its own arrows (adversarial review).
+        if (
+          (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          !event.ctrlKey &&
+          !hasAnyEditorTransient(view.state) &&
+          insertArrowEntry(view, event.key === "ArrowDown" ? 1 : -1)
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
         const token = toKeyToken(event, isMacPlatform());
         const result = step(vim.core, token, {
           cursor: view.state.selection.head,
@@ -491,7 +513,7 @@ function consumeClipboard(view: EditorView, event: Event): boolean {
  * started right after a vim keystroke is affected. use-source-mode.ts leans on
  * the same call for its source-mode return.
  */
-function dispatchCursor(view: EditorView, tr: Transaction): void {
+function dispatchCursor(view: EditorView, tr: Transaction): boolean {
   view.dispatch(tr);
   (
     view as unknown as {
@@ -523,8 +545,9 @@ function dispatchCursor(view: EditorView, tr: Transaction): void {
   // (device log: dispatchCursor parent=codeBlock, no setSelection). Runs
   // AFTER the wipe so the DOM selection CodeMirror establishes on focus
   // survives it; the suppression armed above covers the focus's own
-  // selectionchange fallout.
-  enterCodeBlockSelection(view);
+  // selectionchange fallout. Returns whether the island took focus, so
+  // the caller can leave the scroll follow to CM (issue 472).
+  return enterCodeBlockSelection(view);
 }
 
 function dispatchMeta(view: EditorView, meta: VimMeta): void {
@@ -572,12 +595,18 @@ function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
         suspended: false,
       };
     case "setMode":
+      // issue 478 — a BOUNDARY handoff (mode following the cursor out of a
+      // code block island) needs a clean core: an outer `:`/`/` buffer left
+      // open before entering the island must not resurrect on exit. The
+      // ordinary setMode (change-refusal recovery) keeps them.
       return withCore(prev, {
         ...prev.core,
         count: null,
+        exLine: meta.boundary ? null : prev.core.exLine,
         mode: meta.mode,
         pending: null,
         pendingCount: null,
+        searchLine: meta.boundary ? null : prev.core.searchLine,
         visual: meta.mode === "visual" ? prev.core.visual : null,
       });
     case "setSuspended":
@@ -656,15 +685,21 @@ function runSelectionCommand(
       result.state.mode === "visual" && preVisual
         ? preVisual.headCursor
         : vimCursor(view.state);
+    const inVisual = result.state.mode === "visual" && preVisual !== null;
     const target = resolveMotion(
       view.state,
       base,
       command.motion,
       command.count,
+      // Issue 472: directional code-block landing is NORMAL-mode-only — a
+      // visual head parked mid-block breaks the next walk's column math
+      // and changes d/y ranges (adversarial review HIGH). Visual keeps the
+      // first-line default.
+      inVisual ? undefined : { codeBlockEntry: "directional" },
     );
     let core = result.state;
     const tr = view.state.tr;
-    if (result.state.mode === "visual" && preVisual) {
+    if (inVisual && preVisual) {
       const visual = moveVisualHead(preVisual, target);
       core = { ...result.state, visual };
       tr.setSelection(visualSelection(view.state, visual));
@@ -672,13 +707,20 @@ function runSelectionCommand(
       tr.setSelection(cursorSelection(view.state.doc, target));
     }
     tr.setMeta(vimPluginKey, { core, type: "core" });
-    dispatchCursor(view, tr);
+    const islandTookFocus = dispatchCursor(view, tr);
     // ONE follow, ours. PM's scrollToSelection bails when the DOM selection
     // sits outside a non-editable view (vim modal), but it does NOT bail
     // when the surface still owns the selection — flagging the transaction
     // too ran the whole geometry pass twice per keystroke (performance
     // review P4).
-    scrollCursorIntoView(view, target);
+    //
+    // Issue 472: when the CM island took the handoff, the follow is ITS
+    // job — the NodeView has no contentDOM, so PM's coordsAtPos maps every
+    // interior offset to the wrapper's TOP edge (adversarial review HIGH:
+    // a k-entry at the last line of a tall block would scroll the viewport
+    // toward the block top, away from the caret). setSelection dispatches
+    // with scrollIntoView, which follows the real CM caret line.
+    if (!islandTookFocus) scrollCursorIntoView(view, target);
     return true;
   }
 

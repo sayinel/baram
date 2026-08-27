@@ -32,6 +32,9 @@ interface VimInputState {
 interface VimStateLike {
   inputState?: VimInputState;
   insertMode?: boolean;
+  /** `<C-o>`: normal for ONE command, then a vim-command-done listener
+   *  re-enters insert. Idle-looking flags, armed spring (issue 475). */
+  insertModeReturn?: boolean;
   visualMode?: boolean;
 }
 
@@ -115,12 +118,18 @@ export function attachVimBoundary(
  * The count of `2j` lives ONLY in inputState.keyBuffer before the `j`
  * arrives (prefixRepeat fills after a complete command), so keyBuffer
  * emptiness IS the pending-state contract; `g` of `gj` buffers the same
- * way. Any unreadable shape says "not idle" — never intervene on a race.
+ * way. `insertModeReturn` (`<C-o>`) also counts as pending — consuming
+ * its one normal command here would escape the block while the armed
+ * insert-return listener stays behind (issue 475). Any unreadable shape
+ * says "not idle" — never intervene on a race.
+ *
+ * Exported for the vim controller: exit-time normalization uses the same
+ * predicate as its "already bare normal" gate.
  */
-function isIdleNormal(cm: CodeMirror): boolean {
+export function isIdleNormal(cm: CodeMirror): boolean {
   const vim = (cm.state as { vim?: VimStateLike }).vim;
   if (!vim) return false;
-  if (vim.insertMode || vim.visualMode) return false;
+  if (vim.insertMode || vim.visualMode || vim.insertModeReturn) return false;
   const input = vim.inputState;
   if (!input) return false;
   if (input.operator) return false;

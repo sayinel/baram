@@ -67,6 +67,35 @@
   overflow: hidden !important;
 }
 
+/* issue 473 — codemirror-vim의 baseTheme은 비포커스 fat cursor를 실제
+   vim의 비활성 창처럼 hollow(`outline: solid 1px #ff9696`)로 유지한다.
+   source mode(화면 전체가 하나의 CM)에서는 자연스러운 관례지만, WYSIWYG
+   안의 코드블록 island는 비활성 vim 창이 아니다 — 포커스를 잃으면(= PM
+   vim이 키를 소유하면) 커서가 사라져야 하는데, 블록을 떠난 뒤에도 빨간
+   잔상 커서가 남아 커서가 두 개로 보였다. visual 모드의 선택
+   하이라이트(drawSelection의 selectionLayer)도 같은 잔상 계열이라 함께
+   숨긴다 — 상태는 지우지 않으므로 재진입하면 그대로 복원된다.
+
+   판정은 `.cm-focused`가 아니라 `:focus-within`이다(적대 리뷰): CM의
+   cm-focused는 contentDOM 포커스만 추적하고 10ms 지연까지 있어, island
+   안의 vim `:`/`/` 패널에 포커스가 있는 동안(여전히 island 소유) 커서를
+   숨겨버리고 재진입 첫 프레임을 깜빡이게 한다. display는 테마 규칙이
+   건드리지 않는 속성이라 충돌 없이 island 스코프에서만 숨긴다.
+
+   selectionLayer 쪽은 vim 스코프가 필수다(리뷰): drawSelection은 모든
+   island의 유일한 선택 렌더러라(네이티브 ::selection은 무력화됨) vim
+   없이 숨기면 일반 코드 선택이 헤더 클릭만으로 사라진다. codemirror-vim은
+   normal/visual/replace에서 scrollDOM에 cm-vimMode를 달고 plain insert와
+   vim off에서 떼므로, 정확히 "vim이 선택을 유령으로 만들 수 있는 상태"만
+   스코프된다. fat-cursor는 vim 전용 클래스라 스코프가 불필요하다. */
+.code-block-editor .cm-editor:not(:focus-within) .cm-fat-cursor,
+.code-block-editor
+  .cm-editor:not(:focus-within)
+  .cm-vimMode
+  .cm-selectionLayer {
+  display: none;
+}
+
 /* Code Block Style: Minimal — no background/border, bottom divider only */
 .code-block-wrapper[data-style="minimal"] .code-block-header {
   padding: 2px 4px;

@@ -14,15 +14,6 @@ import {
   registerCodeBlockEditableSync,
 } from "../code-block-cm-registry";
 
-if (typeof window.matchMedia !== "function") {
-  window.matchMedia = () =>
-    ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-}
-
 declare const MockIntersectionObserver: {
   instances: {
     elements: Set<Element>;

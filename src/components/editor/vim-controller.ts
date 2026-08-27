@@ -13,6 +13,7 @@ import { EditorView } from "@codemirror/view";
 import {
   attachVimBoundary,
   type BoundaryHooks,
+  isIdleNormal,
 } from "./vim-code-block-boundary";
 import {
   attachVimImeGuard,
@@ -26,6 +27,24 @@ export interface VimController {
   apply(enabled: boolean): void;
   /** Final teardown — detaches the guard and invalidates in-flight loads. */
   dispose(): void;
+  /** issue 477 — ATTEMPT plain INSERT on the island session for an
+   *  editing-continuity entry. Queued acceptance, not delivery: the queued
+   *  microtask drops on a generation change, and a readOnly island can
+   *  refuse the entry — so the CALLER owns the intent memo and burns it
+   *  only when a mode publish confirms "insert" (retrying on every earlier
+   *  publish). Returns false when vim is not attached yet. "Ensure", not
+   *  "send i": a stale visual/replace/pending session ends first (bounded
+   *  Esc, same convergence as exitToNormal) because upstream maps
+   *  lowercase i only in the bare-normal context. Throws report through
+   *  onOperationError; a mere refusal is NOT an error — the publish-driven retry
+   *  owns it, and the install-failure rollback must not fire for it. */
+  ensureInsert(): boolean;
+  /** issue 475 — end any insert/visual/pending vim session so the island
+   *  sits in bare normal mode. Returns whether that state was reached;
+   *  true when vim is not attached (nothing to normalize). Best-effort:
+   *  a throw reports through onOperationError and returns false — the caller
+   *  decides, it is never re-thrown. */
+  exitToNormal(): boolean;
 }
 
 export interface VimControllerDeps {
@@ -51,9 +70,16 @@ export interface VimControllerDeps {
   editableCompartment?: Compartment;
   /** Test seam — defaults to the cached dynamic loader. */
   loadModule?: () => Promise<VimModule>;
+  /** INSTALL failures only (load rejection, plugin-init rollback) — the
+   *  caller may respond destructively (roll back to plain editing). */
   onError?: (err: unknown) => void;
   /** S3: StatusBar mode feed. Receives null whenever vim turns off. */
   onModeChange?: (mode: null | VimModeName) => void;
+  /** Best-effort OPERATION failures (ensureInsert / exitToNormal throws) —
+   *  report-only. Routing these through onError fired the install rollback
+   *  for a transient handleKey throw, stripping a working island's editing
+   *  host (quality review M3). */
+  onOperationError?: (err: unknown) => void;
   /** Phase 0b: a CM recreation (settings change) resets vim to normal —
    *  consumed ONCE after attach to re-enter the mode the user was in.
    *  Visual is not restorable (its range died with the old view). */
@@ -74,12 +100,20 @@ export function createVimController(
   let revision = 0;
   let guardDispose: (() => void) | null = null;
   let boundaryDispose: (() => void) | null = null;
+  /** Live vim handles for exitToNormal. Set only on a successful install,
+   *  cleared wherever the guards detach — so it obeys the same generation
+   *  contract (re-apply, rollback, dispose) and can never outlive its CM. */
+  let session: null | {
+    cm: NonNullable<ReturnType<VimModule["getCM"]>>;
+    mod: VimModule;
+  } = null;
 
   const detachGuard = () => {
     guardDispose?.();
     guardDispose = null;
     boundaryDispose?.();
     boundaryDispose = null;
+    session = null;
   };
 
   /** Latest requested editing-host state, applied on the next microtask. */
@@ -183,6 +217,7 @@ export function createVimController(
             rollbackInstall(new Error("vim plugin failed to initialize"));
             return;
           }
+          session = { cm, mod };
           try {
             guardDispose = attach(view, cm, handleMode);
             if (deps.boundaryHooks) {
@@ -224,6 +259,63 @@ export function createVimController(
       revision++;
       detachGuard();
       handleMode(null);
+    },
+    /** issue 477 — deferred one microtask like the restoreMode consumer:
+     *  the adapter refuses insert entry while the loading barrier's
+     *  readOnly still holds, and that pin lifts with the deferred editable
+     *  flush. Generation-guarded: a re-apply, rollback, or dispose between
+     *  the request and the microtask drops it (`session` identity). Replace
+     *  counts as NOT plain insert (insertMode + adapter overwrite) — it is
+     *  ended and re-entered as ordinary insert. */
+    ensureInsert(): boolean {
+      const s = session;
+      if (!s) return false;
+      queueMicrotask(() => {
+        if (disposed || session !== s) return;
+        // 포커스 epoch 가드 (적대 리뷰 V4-now): 예약과 실행 사이에 이
+        // island가 포커스를 잃었다면 — 멀티홉 포커스 전이의 잔재다 —
+        // off-focus insert 부활은 세션 납치이므로 조용히 버린다. 정상
+        // 배달(웜 진입·cold attach·거부 재시도)은 전부 island가 포커스를
+        // 쥔 채 실행되므로 영향이 없다.
+        if (!view.dom.contains(view.dom.ownerDocument.activeElement)) return;
+        try {
+          const st = (
+            s.cm as unknown as {
+              state?: { overwrite?: boolean; vim?: { insertMode?: boolean } };
+            }
+          ).state;
+          if (st?.vim?.insertMode && !st.overwrite) return; // already editing
+          for (let i = 0; i < 3 && !isIdleNormal(s.cm); i++) {
+            s.mod.Vim.handleKey(s.cm, "<Esc>", "user");
+          }
+          s.mod.Vim.handleKey(s.cm, "i", "user");
+          // No postcondition here: reaching insert publishes a mode change,
+          // and THAT is the delivery confirmation the caller burns its memo
+          // on. A refusal (readOnly window) simply leaves the memo armed.
+        } catch (err) {
+          deps.onOperationError?.(err);
+        }
+      });
+      return true;
+    },
+    /** issue 475 — bounded because one Esc is NOT idempotent: after `<C-o>`
+     *  the first Esc runs as the pending normal command, and its
+     *  vim-command-done fires the armed one-shot listener that re-enters
+     *  insert — only the SECOND Esc ends that insert. Upstream itself
+     *  normalizes programmatically with this exact handleKey Esc idiom
+     *  (status-button handler in the installed dist). */
+    exitToNormal(): boolean {
+      const s = session;
+      if (!s) return true; // vim not attached — nothing to normalize
+      try {
+        for (let i = 0; i < 3 && !isIdleNormal(s.cm); i++) {
+          s.mod.Vim.handleKey(s.cm, "<Esc>", "user");
+        }
+        return isIdleNormal(s.cm);
+      } catch (err) {
+        deps.onOperationError?.(err);
+        return false;
+      }
     },
   };
 }

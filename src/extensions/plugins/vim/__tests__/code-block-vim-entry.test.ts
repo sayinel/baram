@@ -38,37 +38,6 @@ import { CodeBlockNodeView } from "../../../nodes/views/code-block-node-view";
 import { vimPluginKey } from "../vim-keys";
 import { submitSearchLine } from "../vim-search-line";
 
-if (typeof window.matchMedia !== "function") {
-  window.matchMedia = () =>
-    ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-}
-
-// jsdom lacks Range measurement — an attached CodeMirror schedules a rAF
-// measure pass that would otherwise throw asynchronously (same polyfill as
-// code-block-vim-wiring.test.ts).
-const zeroRect = {
-  bottom: 0,
-  height: 0,
-  left: 0,
-  right: 0,
-  top: 0,
-  width: 0,
-  x: 0,
-  y: 0,
-};
-Range.prototype.getBoundingClientRect ??= () => zeroRect as DOMRect;
-Range.prototype.getClientRects ??= () =>
-  ({
-    item: () => null,
-    length: 0,
-    [Symbol.iterator]: [][Symbol.iterator],
-  }) as unknown as DOMRectList;
-HTMLElement.prototype.getClientRects ??= Range.prototype.getClientRects;
-
 const editors: Editor[] = [];
 
 function createEditor(md: string): Editor {
@@ -100,7 +69,7 @@ afterEach(() => {
 });
 
 describe("vim code block entry handoff (§298)", () => {
-  it("j into a code block calls NodeView.setSelection even with an empty DOM selection", () => {
+  it("j into a code block delivers the entry handoff even with an empty DOM selection", () => {
     const editor = createEditor(
       "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",
     );
@@ -116,7 +85,12 @@ describe("vim code block entry handoff (§298)", () => {
     // relocates the selection entirely).
     window.getSelection()?.removeAllRanges();
 
-    const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
+    const handoff = vi.spyOn(
+      CodeBlockNodeView.prototype as unknown as {
+        applySelection(a: number, h: number, o: { focus: boolean }): void;
+      },
+      "applySelection",
+    );
     press(editor, "j");
 
     // Sanity: the vim line-model DID land inside the code block…
@@ -127,7 +101,71 @@ describe("vim code block entry handoff (§298)", () => {
     // gate (node-LOCAL offsets, same contract PM's docView descent uses).
     expect(handoff).toHaveBeenCalled();
     const local = $head.parentOffset;
-    expect(handoff).toHaveBeenCalledWith(local, local);
+    expect(handoff).toHaveBeenCalledWith(local, local, { focus: true });
+  });
+
+  it("k from below hands off the LAST line's offsets (issue 472)", () => {
+    const editor = createEditor(
+      "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",
+    );
+    setVim(editor, true);
+    let end = -1;
+    let codeText = "";
+    editor.state.doc.forEach((node, offset) => {
+      if (node.type.name === "codeBlock") codeText = node.textContent;
+      if (end < 0 && node.isTextblock && node.textContent === "end") {
+        end = offset + 1;
+      }
+    });
+    expect(end).toBeGreaterThan(0);
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end)),
+    );
+    window.getSelection()?.removeAllRanges();
+
+    const handoff = vi.spyOn(
+      CodeBlockNodeView.prototype as unknown as {
+        applySelection(a: number, h: number, o: { focus: boolean }): void;
+      },
+      "applySelection",
+    );
+    press(editor, "k");
+
+    const $head = editor.state.selection.$head;
+    expect($head.parent.type.name).toBe("codeBlock");
+    const lastLineLocal = codeText.lastIndexOf("\n") + 1;
+    expect($head.parentOffset).toBe(lastLineLocal);
+    // The non-zero offset must reach the island unchanged — the CM caret
+    // lands on ITS last line through the same contract PM's descent uses.
+    expect(handoff).toHaveBeenCalledWith(lastLineLocal, lastLineLocal, {
+      focus: true,
+    });
+  });
+
+  it("visual k from below keeps the FIRST-line landing (no directional leak)", () => {
+    const editor = createEditor(
+      "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",
+    );
+    setVim(editor, true);
+    let end = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (end < 0 && node.isTextblock && node.textContent === "end") {
+        end = offset + 1;
+      }
+    });
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end)),
+    );
+
+    press(editor, "v");
+    press(editor, "k");
+
+    // A directional (last-line) visual head would break the next walk's
+    // column math and narrow d/y ranges (adversarial review HIGH) — the
+    // visual caller keeps the first-line default.
+    const $from = editor.state.doc.resolve(editor.state.selection.from);
+    expect($from.parent.type.name).toBe("codeBlock");
+    expect($from.parentOffset).toBe(0);
   });
 
   it("search submit into a COLD code block: handoff memos AND the focus fallback stays alive", () => {
@@ -154,7 +192,12 @@ describe("vim code block entry handoff (§298)", () => {
     );
 
     window.getSelection()?.removeAllRanges();
-    const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
+    const handoff = vi.spyOn(
+      CodeBlockNodeView.prototype as unknown as {
+        applySelection(a: number, h: number, o: { focus: boolean }): void;
+      },
+      "applySelection",
+    );
     focusEditorViewSpy.mockClear();
     submitSearchLine(editor);
 
@@ -163,6 +206,7 @@ describe("vim code block entry handoff (§298)", () => {
     expect(handoff).toHaveBeenCalledWith(
       $head.parentOffset,
       $head.parentOffset,
+      { focus: true },
     );
     // The island is COLD here (lazy CM never mounted in jsdom): the enter
     // must report false so the caller keeps PM focused until the island
@@ -178,6 +222,7 @@ describe("vim code block entry handoff (§298)", () => {
     const offA = registerCodeBlockEntry(
       viewA,
       () => 5,
+      document.createElement("div"),
       (a, h) => {
         calls.push(`A:${a},${h}`);
         return true;
@@ -186,6 +231,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       viewB,
       () => 5,
+      document.createElement("div"),
       () => {
         calls.push("B");
         return true;
@@ -196,6 +242,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       viewA,
       () => undefined,
+      document.createElement("div"),
       () => {
         calls.push("detached");
         return true;
@@ -213,6 +260,7 @@ describe("vim code block entry handoff (§298)", () => {
     const offOld = registerCodeBlockEntry(
       view,
       () => 5,
+      document.createElement("div"),
       () => {
         calls.push("old");
         return true;
@@ -222,6 +270,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       view,
       () => 5,
+      document.createElement("div"),
       () => {
         calls.push("new");
         return true;
@@ -236,6 +285,7 @@ describe("vim code block entry handoff (§298)", () => {
     registerCodeBlockEntry(
       view,
       () => 7,
+      document.createElement("div"),
       () => false,
     );
     expect(enterCodeBlockAt(view, 7, 0, 0)).toBe(false);

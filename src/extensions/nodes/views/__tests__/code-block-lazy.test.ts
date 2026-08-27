@@ -8,14 +8,6 @@ import { createBaramExtensions } from "../../..";
 import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
 
 // jsdom does not implement window.matchMedia — polyfill for getHighlightStyle()
-if (typeof window.matchMedia !== "function") {
-  window.matchMedia = () =>
-    ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-}
 
 declare const MockIntersectionObserver: {
   instances: { triggerIntersect: (v?: boolean) => void }[];

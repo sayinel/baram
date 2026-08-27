@@ -35,6 +35,19 @@ const graphemeSegmenter = new Intl.Segmenter(undefined, {
 });
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
+/** Optional per-call motion policy (issue 472). */
+export interface MotionOptions {
+  /** Vertical landing INTO a CodeMirror-backed code block: "directional"
+   *  lands `k`-entry on the block's LAST source line (stock-vim spatial
+   *  continuity). The default "first-line" keeps every other caller —
+   *  visual head movement, operator ranges — exactly as before: a head
+   *  parked mid-block breaks the next walk's column math (the block's
+   *  source is one span, so the offset becomes a huge carried column) and
+   *  widens/narrows visual d/y ranges, neither of which issue 472
+   *  approved (adversarial review). */
+  codeBlockEntry?: "directional" | "first-line";
+}
+
 /** Carried table-walk state: one findCell at entry, local rect expansion
  *  per step afterwards. */
 interface TableWalk {
@@ -44,6 +57,37 @@ interface TableWalk {
 }
 
 // ── unit columns ───────────────────────────────────────────────────────────
+
+/** issue 477 — insert-mode arrow entry target: the directionally adjacent
+ *  source line of the code block whose CONTENT starts at `inside`, carrying
+ *  the column of the PM caret at `from`. The caret model differs from the
+ *  normal-mode walk: an insert caret sits BETWEEN characters and may
+ *  legally land at line END, where normal mode clamps to the last
+ *  character. Column policy is the shared one (file
+ *  header): logical lines — hard breaks split, soft wraps demoted — in
+ *  grapheme units, the v1 approximation whose full curswant treatment is
+ *  issue 372 tier 1. Returns null for a block with no CodeMirror caret to
+ *  receive the offset (journal-* widget NodeViews). */
+export function insertEntryTarget(
+  state: EditorState,
+  from: number,
+  inside: number,
+  edge: "first" | "last",
+): null | number {
+  if (!isCmBackedCodeBlock(state, inside)) return null;
+  const column = columnOf(lineUnitStarts(state, lineSpanAt(state, from)), from);
+  const line = codeLineSpan(state, inside, edge);
+  // The carried column is a GRAPHEME index — resolve it through the target
+  // line's own grapheme starts instead of adding it as a UTF-16 offset,
+  // which would land inside a surrogate pair or combining sequence
+  // (adversarial review). Past the last grapheme = line END, the insert
+  // caret's extra legal column.
+  const starts = lineUnitStarts(state, {
+    end: line.start + line.length,
+    start: line.start,
+  });
+  return column < starts.length ? starts[column] : line.start + line.length;
+}
 
 /**
  * f/F/t/T — the count-th occurrence of `char` in the CURRENT segment,
@@ -116,6 +160,7 @@ export function resolveMotion(
   pos: number,
   motion: Motion,
   count: number,
+  options?: MotionOptions,
 ): number {
   switch (motion) {
     case "charLeft": {
@@ -161,7 +206,7 @@ export function resolveMotion(
       return lines.length > 0 ? lines[0].start : pos;
     }
     case "lineDown":
-      return verticalTarget(state, pos, count);
+      return verticalTarget(state, pos, count, options);
     case "lineEnd": {
       const span = segmentSpanAt(state, pos);
       if (!span) return pos;
@@ -183,7 +228,7 @@ export function resolveMotion(
       return span ? span.from : pos;
     }
     case "lineUp":
-      return verticalTarget(state, pos, -count);
+      return verticalTarget(state, pos, -count, options);
     case "wordBack":
       return wordWalk(state, pos, count, -1);
     case "wordForward":
@@ -276,6 +321,27 @@ function cellHop(state: EditorState, pos: number, dir: -1 | 1): null | number {
   return null;
 }
 
+/** The first/last source line of the code block containing `pos`, as an
+ *  absolute start plus length (issue 472). The block's newlines are literal
+ *  characters in one text node, so lines are `\n`-delimited slices of the
+ *  parent text. parentOffset-derived so any in-block position is safe. */
+function codeLineSpan(
+  state: EditorState,
+  pos: number,
+  edge: "first" | "last",
+): { length: number; start: number } {
+  const $pos = state.doc.resolve(pos);
+  const text = $pos.parent.textContent;
+  const contentStart = pos - $pos.parentOffset;
+  if (edge === "first") {
+    const nl = text.indexOf("\n");
+    return { length: nl === -1 ? text.length : nl, start: contentStart };
+  }
+  const nl = text.lastIndexOf("\n");
+  const lineStart = nl === -1 ? 0 : nl + 1;
+  return { length: text.length - lineStart, start: contentStart + lineStart };
+}
+
 function collectLines(state: EditorState): CursorLine[] {
   const cached = lineIndex.get(state.doc);
   if (cached) return cached;
@@ -360,6 +426,15 @@ function initTableWalk(state: EditorState, pos: number): null | TableWalk {
     rect: { bottom: rect.bottom, left: rect.left, top: rect.top },
     tableStart,
   };
+}
+
+/** `journal-*` languages render a widget NodeView with no CodeMirror
+ *  island (code-block.ts addNodeView) — a hidden-source landing has no
+ *  caret to receive the offset, so directional entry applies only to
+ *  CM-backed blocks (adversarial review). */
+function isCmBackedCodeBlock(state: EditorState, pos: number): boolean {
+  const lang = String(state.doc.resolve(pos).parent.attrs.language ?? "");
+  return !lang.startsWith("journal-");
 }
 
 /** True when `pos` lands in a block whose own editor owns the caret.
@@ -480,9 +555,11 @@ function verticalTarget(
   state: EditorState,
   pos: number,
   delta: number,
+  options?: MotionOptions,
 ): number {
   const lines = collectLines(state);
   if (lines.length === 0) return pos;
+  const directionalEntry = options?.codeBlockEntry === "directional";
   const direction: -1 | 1 = delta > 0 ? 1 : -1;
 
   const originStarts = lineUnitStarts(state, lineSpanAt(state, pos));
@@ -526,10 +603,37 @@ function verticalTarget(
     // characters in a single text node — so the column walk would treat the
     // whole source as one long line and push the caret that many characters
     // INTO it. Measured on device: from column 12 above, `j` landed on the
-    // block's third line. Entering always means the first line; the
+    // block's third line. Entry is DIRECTIONAL (issue 472, stock-vim
+    // spatial continuity): `j` from above lands on the first source line,
+    // `k` from below on the LAST — the visually adjacent one. The
     // CodeMirror island owns movement inside from then on (Phase 0b).
     if (isCodeBlockLanding(state, landed)) {
-      p = landed;
+      if (directionalEntry && isCmBackedCodeBlock(state, landed)) {
+        // Column-preserving entry (vim's curswant semantics at the block
+        // boundary): land on the directionally adjacent source line — the
+        // FIRST from above, the LAST from below — at the carried column,
+        // clamped to the line's last character like vim across short
+        // lines. The carried column is a GRAPHEME index, so it resolves
+        // through the target line's own grapheme starts — adding it as a
+        // UTF-16 offset landed the CM cursor inside a surrogate pair on
+        // emoji-bearing lines (review: the insert path got this fix and
+        // this sibling didn't). Persistent curswant is issue 372 tier 1.
+        const line = codeLineSpan(
+          state,
+          landed,
+          direction < 0 ? "last" : "first",
+        );
+        const starts = lineUnitStarts(state, {
+          end: line.start + line.length,
+          start: line.start,
+        });
+        p =
+          starts.length === 0
+            ? line.start
+            : starts[Math.min(column, starts.length - 1)];
+      } else {
+        p = landed;
+      }
       // Keep the remembered column: leaving the block downward should return
       // to where the caret was horizontally, as vim does across short lines.
       continue;

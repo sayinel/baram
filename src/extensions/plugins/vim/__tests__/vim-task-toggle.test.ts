@@ -17,15 +17,6 @@ import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
 import { createBaramExtensions } from "../../../index";
 import { vimPluginKey } from "../vim-keys";
 
-if (typeof window.matchMedia !== "function") {
-  window.matchMedia = () =>
-    ({
-      matches: false,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }) as unknown as MediaQueryList;
-}
-
 const editors: Editor[] = [];
 
 function checkedStates(doc: PMNode): boolean[] {

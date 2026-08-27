@@ -92,3 +92,36 @@ globalThis.IntersectionObserver =
     MockIntersectionObserver: typeof MockIntersectionObserver;
   }
 ).MockIntersectionObserver = MockIntersectionObserver;
+
+// ── 공유 폴리필 (quality review M4에서 개별 테스트 파일들로부터 통합) ──
+
+// jsdom에는 matchMedia가 없다 — 시스템 다크모드 감지 등이 참조한다.
+if (typeof window.matchMedia !== "function") {
+  window.matchMedia = () =>
+    ({
+      addEventListener: () => {},
+      matches: false,
+      removeEventListener: () => {},
+    }) as unknown as MediaQueryList;
+}
+
+// jsdom에는 Range 측정이 없다 — attach된 CodeMirror가 rAF measure 패스를
+// 돌리다 비동기로 throw하는 것을 막는다 (모든 island 테스트의 공통 전제).
+const zeroRect = {
+  bottom: 0,
+  height: 0,
+  left: 0,
+  right: 0,
+  top: 0,
+  width: 0,
+  x: 0,
+  y: 0,
+};
+Range.prototype.getBoundingClientRect ??= () => zeroRect as DOMRect;
+Range.prototype.getClientRects ??= () =>
+  ({
+    item: () => null,
+    length: 0,
+    [Symbol.iterator]: [][Symbol.iterator],
+  }) as unknown as DOMRectList;
+HTMLElement.prototype.getClientRects ??= Range.prototype.getClientRects;

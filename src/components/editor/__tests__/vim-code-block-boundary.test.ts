@@ -217,4 +217,20 @@ describe("vim code block boundary (S3)", () => {
     press(view, "u");
     expect(h.calls).toEqual([]);
   });
+
+  it("C-o pending (insertModeReturn): the boundary declines edge keys (issue 475)", () => {
+    // <C-o> leaves normal mode flags idle-looking, but a vim-command-done
+    // listener is armed to re-enter insert. Consuming the edge key here
+    // would strand that latent return outside the block.
+    const view = makeView(1);
+    const h = hooks();
+    attachVimBoundary(
+      view,
+      fakeCM({ ...idle(), insertModeReturn: true }),
+      h.hooks,
+    );
+    const e = press(view, "k");
+    expect(h.calls).toEqual([]);
+    expect(e.defaultPrevented).toBe(false);
+  });
 });

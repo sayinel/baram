@@ -99,8 +99,21 @@ export function publishWysiwygVimStatus(view: EditorView): void {
   // view: another editor's publications must not be swallowed by a stale
   // island claim (keep-alive editors).
   if (activeIsland !== null) {
-    const entry = islandModes.get(activeIsland);
-    if (!entry || entry.parent === null || entry.parent === view) return;
+    // 자가 치유 (적대 리뷰 V1, REQUIRED): 소유권 해제는 blur microtask
+    // 하나에 의존하는데, 포커스 폭주·강탈 상황에서 그 한 경로를 놓치면
+    // stale claim이 PM 표시를 영구 동결시켰다 (기기 실증: -- NORMAL --
+    // 고착). claim의 전제 — 포커스가 그 island 안 — 이 관측상 깨져
+    // 있으면 claim을 버리고 PM 발행을 통과시킨다. O(1) containment.
+    const dom = (activeIsland as { dom?: unknown }).dom;
+    if (
+      dom instanceof Element &&
+      !dom.contains(dom.ownerDocument.activeElement)
+    ) {
+      activeIsland = null;
+    } else {
+      const entry = islandModes.get(activeIsland);
+      if (!entry || entry.parent === null || entry.parent === view) return;
+    }
   }
   if (ownerView() === view) publish();
 }
