@@ -74,6 +74,36 @@ describe("§312 아카이브 자격", () => {
     expect(pick([nested])).toHaveLength(0);
   });
 
+  it("자식을 거느린 부모는 개수에서 뺀다 — Rust가 어차피 막는다", () => {
+    // 이 줄이 없으면 확인 문구가 "4개"를 약속하고 3개만 옮긴다. 부모-자식은 수집함에서
+    // 드문 모양이 아니라 그 어긋남이 자주 보인다.
+    const parent = done("/vault/Inbox.md", "2026-07-10", { line: 0 });
+    const child: TaskEntry = {
+      ...done("/vault/Inbox.md", "2026-07-04", { line: 1 }),
+      indent: 2,
+      state: "todo",
+    };
+    expect(pick([parent, child])).toHaveLength(0);
+  });
+
+  it("바로 아래 줄이 들여쓴 게 아니면 부모가 아니다", () => {
+    const first = done("/vault/Inbox.md", "2026-07-10", { line: 0 });
+    const second = done("/vault/Inbox.md", "2026-07-04", { line: 1 });
+    expect(pick([first, second])).toHaveLength(2);
+  });
+
+  it("한 줄 건너뛴 들여쓴 항목은 부모로 보지 않는다 — 그 판정은 Rust만 한다", () => {
+    // 인덱스는 줄 번호만 알고 그 사이가 빈 줄인지 다른 문단인지 모른다. 여기서 세고
+    // Rust가 막으므로 `skipped`로 돌아온다 — 안전한 방향의 어긋남이다.
+    const parent = done("/vault/Inbox.md", "2026-07-10", { line: 0 });
+    const far: TaskEntry = {
+      ...done("/vault/Inbox.md", "2026-07-04", { line: 2 }),
+      indent: 2,
+      state: "todo",
+    };
+    expect(pick([parent, far])).toHaveLength(1);
+  });
+
   it("완료일이 없는 완료 태스크는 고르지 않는다", () => {
     // `tasksRecordDoneDate`가 꺼져 있으면 생기는 줄. 나이를 모르므로 오래됐다고
     // 가정하지 않는다.

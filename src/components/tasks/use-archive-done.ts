@@ -121,9 +121,14 @@ export function useArchiveDone({
       } catch (err) {
         // 화이트리스트 위반은 여기로 온다 — 파일을 하나도 건드리지 않았다는 뜻이므로
         // 그렇게 말한다. 프런트가 같은 화이트리스트로 걸렀으니 도달하면 두 표가 갈렸다는
-        // 신호이고, 그 사실이 로그에 남아야 한다.
+        // 신호다.
+        //
+        // ‼️ 원인을 **문구에 담는다**. "로그를 확인하세요"만 두었더니 실패를 진단할 방법이
+        // 없었다 — `logger.error`는 브라우저 콘솔로만 가고 앱 로그 파일(§3.3)에는 닿지
+        // 않으므로, DevTools를 열어 두지 않은 사용자에게 그 문장은 막다른 길이다. 백엔드가
+        // 내는 메시지는 거절한 경로를 이름으로 담고 있어 그대로 보여 줄 값어치가 있다.
         logger.error("[tasks] archive refused:", err);
-        await showAlert(t("tasks.archive.error"));
+        await showAlert(`${t("tasks.archive.error")}\n\n${errorText(err)}`);
         return;
       }
 
@@ -140,6 +145,17 @@ export function useArchiveDone({
   }, [afterDays, busy, candidates, exclude, now, rootPath, scope, t]);
 
   return { busy, count: candidates.length, run };
+}
+
+/**
+ * 사용자에게 보여 줄 실패 원인 한 줄.
+ *
+ * Tauri IPC의 거절은 `Error`가 아니라 **문자열**로 도착한다(커맨드가 `Result<_, String>`을
+ * 돌려주므로). `err.message`만 읽으면 백엔드가 보낸 이유가 통째로 `undefined`가 된다.
+ */
+function errorText(err: unknown): string {
+  if (typeof err === "string") return err;
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**

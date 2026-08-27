@@ -64,7 +64,12 @@ export function selectArchivable(
   now: Date,
   afterDays: number,
 ): TaskEntry[] {
-  return tasks.filter((task) => isArchivable(task, scope, now, afterDays));
+  const nested = nestedLines(tasks);
+  return tasks.filter(
+    (task) =>
+      isArchivable(task, scope, now, afterDays) &&
+      !nested.has(`${task.path}:${task.line + 1}`),
+  );
 }
 
 /**
@@ -142,6 +147,29 @@ function isArchivable(
 function isArchiveSource(path: string, scope: ArchiveScope): boolean {
   const p = toPosix(path);
   return p === scope.capturePath || isUnderRoot(p, scope.archiveRoot);
+}
+
+/**
+ * 자식이 있어 보이는 줄을 찾기 위한 색인 — `{경로}:{줄}` 중 **들여쓴 태스크**인 것.
+ *
+ * ‼️ 이것은 Rust `has_indented_child`의 **부분집합**이다. 목적은 강제가 아니라 개수
+ * 정확도다: 자식을 거느린 부모는 Rust가 막는데 여기서 세면 "4개를 옮길까요?"라고 묻고
+ * 3개만 옮기게 된다. 부모-자식은 수집함에서 드문 모양이 아니라 그 어긋남이 자주 보인다.
+ *
+ * 여기서 못 보는 경우가 둘 있고, 둘 다 Rust가 막아 `skipped`로 돌아온다:
+ * - 자식이 태스크가 아닌 평범한 중첩 불릿 — 인덱스에는 태스크 줄만 있다.
+ * - 부모와 자식 사이에 빈 줄이 있는 경우 — 인덱스는 줄 번호만 알고 그 사이가 비었는지
+ *   모른다(마크다운에서 빈 줄 하나는 자식을 끊지 않는다).
+ *
+ * 강제를 여기로 옮기지 않는 이유가 그 둘이다. 파일을 봐야만 정확해지고, 절반만 흉내 낸
+ * 규칙을 **권위**로 쓰면 두 표가 갈리는 순간 파일이 위험해진다. 개수를 세는 데만 쓴다.
+ */
+function nestedLines(tasks: TaskEntry[]): Set<string> {
+  const out = new Set<string>();
+  for (const task of tasks) {
+    if (task.indent > 0) out.add(`${task.path}:${task.line}`);
+  }
+  return out;
 }
 
 function startOfDay(d: Date): Date {
