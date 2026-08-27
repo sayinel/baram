@@ -80,11 +80,19 @@
   list-style: none;
 }
 
+/* §312 행은 내용이 아니라 컨트롤이다 — 클릭은 이동, 우클릭은 정리 메뉴, j/k/d/t/s는
+   키 경로다. 그래서 `.task-panel-someday`와 같은 관례로 선택을 끈다.
+   ‼️ `.task-row-text`에 `user-select: text`로 예외를 두지 말 것: 그 버튼은 `flex: 1`
+   이라 행의 남는 가로 공간을 전부 가져가므로, 사용자가 "글자 오른쪽 빈 자리"라고 부른
+   그 자리가 바로 버튼 안이다. 거기서 선택을 되살리면 우클릭이 다시 선택을 만들고,
+   그 선택 범위에 든 정리 메뉴가 다시 하이라이트로 칠해진다(사용자 스크린샷).
+   태스크 원문을 복사하는 경로는 그 태스크가 사는 문서다 — 클릭 한 번으로 간다. */
 .task-row {
   display: flex;
   gap: 6px;
   align-items: baseline;
   padding: 3px 4px;
+  user-select: none;
   border-radius: 4px;
 }
 
@@ -268,6 +276,14 @@
   min-width: 140px;
   max-width: 280px;
   padding: 4px 0;
+
+  /* §312 메뉴 글자는 어떤 경우에도 선택되지 않는다. 우클릭이 남긴 문서 선택 범위 안에
+     메뉴가 들어가 항목 전부가 선택색으로 칠해지던 결함의 처방이고, 위의 `.task-row`
+     처방과 나란히 있어야 하는 이유가 있다: 저쪽은 선택이 **생기지 않게** 하고 이쪽은
+     이미 있던 선택이 **칠할 것을 갖지 못하게** 한다. 에디터 등 다른 곳에 남아 있던
+     선택은 여기서 지우지 않는다 — 메뉴를 열었다고 사용자의 선택을 없애는 것은
+     이 결함보다 나쁜 부작용이다. */
+  user-select: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
