@@ -272,6 +272,12 @@ export function createVimController(
       if (!s) return false;
       queueMicrotask(() => {
         if (disposed || session !== s) return;
+        // 포커스 epoch 가드 (적대 리뷰 V4-now): 예약과 실행 사이에 이
+        // island가 포커스를 잃었다면 — 멀티홉 포커스 전이의 잔재다 —
+        // off-focus insert 부활은 세션 납치이므로 조용히 버린다. 정상
+        // 배달(웜 진입·cold attach·거부 재시도)은 전부 island가 포커스를
+        // 쥔 채 실행되므로 영향이 없다.
+        if (!view.dom.contains(view.dom.ownerDocument.activeElement)) return;
         try {
           const st = (
             s.cm as unknown as {

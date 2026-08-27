@@ -69,7 +69,7 @@ afterEach(() => {
 });
 
 describe("vim code block entry handoff (§298)", () => {
-  it("j into a code block calls NodeView.setSelection even with an empty DOM selection", () => {
+  it("j into a code block delivers the entry handoff even with an empty DOM selection", () => {
     const editor = createEditor(
       "start\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\nend\n",
     );
@@ -85,7 +85,12 @@ describe("vim code block entry handoff (§298)", () => {
     // relocates the selection entirely).
     window.getSelection()?.removeAllRanges();
 
-    const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
+    const handoff = vi.spyOn(
+      CodeBlockNodeView.prototype as unknown as {
+        applySelection(a: number, h: number, o: { focus: boolean }): void;
+      },
+      "applySelection",
+    );
     press(editor, "j");
 
     // Sanity: the vim line-model DID land inside the code block…
@@ -96,7 +101,7 @@ describe("vim code block entry handoff (§298)", () => {
     // gate (node-LOCAL offsets, same contract PM's docView descent uses).
     expect(handoff).toHaveBeenCalled();
     const local = $head.parentOffset;
-    expect(handoff).toHaveBeenCalledWith(local, local);
+    expect(handoff).toHaveBeenCalledWith(local, local, { focus: true });
   });
 
   it("k from below hands off the LAST line's offsets (issue 472)", () => {
@@ -118,7 +123,12 @@ describe("vim code block entry handoff (§298)", () => {
     );
     window.getSelection()?.removeAllRanges();
 
-    const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
+    const handoff = vi.spyOn(
+      CodeBlockNodeView.prototype as unknown as {
+        applySelection(a: number, h: number, o: { focus: boolean }): void;
+      },
+      "applySelection",
+    );
     press(editor, "k");
 
     const $head = editor.state.selection.$head;
@@ -127,7 +137,9 @@ describe("vim code block entry handoff (§298)", () => {
     expect($head.parentOffset).toBe(lastLineLocal);
     // The non-zero offset must reach the island unchanged — the CM caret
     // lands on ITS last line through the same contract PM's descent uses.
-    expect(handoff).toHaveBeenCalledWith(lastLineLocal, lastLineLocal);
+    expect(handoff).toHaveBeenCalledWith(lastLineLocal, lastLineLocal, {
+      focus: true,
+    });
   });
 
   it("visual k from below keeps the FIRST-line landing (no directional leak)", () => {
@@ -180,7 +192,12 @@ describe("vim code block entry handoff (§298)", () => {
     );
 
     window.getSelection()?.removeAllRanges();
-    const handoff = vi.spyOn(CodeBlockNodeView.prototype, "setSelection");
+    const handoff = vi.spyOn(
+      CodeBlockNodeView.prototype as unknown as {
+        applySelection(a: number, h: number, o: { focus: boolean }): void;
+      },
+      "applySelection",
+    );
     focusEditorViewSpy.mockClear();
     submitSearchLine(editor);
 
@@ -189,6 +206,7 @@ describe("vim code block entry handoff (§298)", () => {
     expect(handoff).toHaveBeenCalledWith(
       $head.parentOffset,
       $head.parentOffset,
+      { focus: true },
     );
     // The island is COLD here (lazy CM never mounted in jsdom): the enter
     // must report false so the caller keeps PM focused until the island

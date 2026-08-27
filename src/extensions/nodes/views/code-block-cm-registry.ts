@@ -128,7 +128,14 @@ const entryRegistries = new WeakMap<PMView, Set<EntryRegistrant>>();
 // 도착 island의 focusin이 소비한다: 포커스 전이는 동기(focusout → focusin)
 // 라 순서가 보장된다. 일회성이며 소비 즉시 사라진다 — 크롬(사이드바)
 // 왕복은 arm 자체가 없어 세션 보존 관례가 유지된다.
-const pointerHandoffs = new WeakMap<PMView, "insert" | "normal">();
+interface PointerHandoff {
+  /** 인계의 정당한 목적지(.code-block-editor 컨테이너) — 멀티홉 포커스
+   *  폭주에서 엉뚱한 island가 소비하는 오배송을 막는다 (적대 리뷰 V3). */
+  dest: Element;
+  mode: "insert" | "normal";
+}
+
+const pointerHandoffs = new WeakMap<PMView, PointerHandoff>();
 
 /** 떠나는 island가 도착 island로 나를 모드를 예고한다. FIRST-WINS:
  *  같은 전이에서 focusout이 겹쳐 발화해도(프로그램적 focus 연쇄) 최초
@@ -138,12 +145,45 @@ const pointerHandoffs = new WeakMap<PMView, "insert" | "normal">();
 export function armIslandPointerHandoff(
   view: PMView,
   mode: "insert" | "normal",
+  dest: Element,
 ): void {
   if (pointerHandoffs.has(view)) return;
-  pointerHandoffs.set(view, mode);
+  const entry: PointerHandoff = { dest, mode };
+  pointerHandoffs.set(view, entry);
   queueMicrotask(() => {
-    if (pointerHandoffs.get(view) === mode) pointerHandoffs.delete(view);
+    if (pointerHandoffs.get(view) === entry) pointerHandoffs.delete(view);
   });
+}
+
+// ── 포인터 다운 기록 (BODY/null relatedTarget 보완) ─────────────────────
+// macOS WebKit은 클릭으로 tabindex div·비폼 요소를 포커스하지 않아,
+// focusout의 relatedTarget이 null/BODY로 오는 전이가 있다 (기기 실측).
+// 마지막 pointerdown의 실제 타깃을 짧게 기억해 이탈 분기의 목적지 판정을
+// 보완한다. 뷰당 리스너 1개(capture), O(1) 기록.
+
+const lastPointerDown = new WeakMap<PMView, { target: Element; ts: number }>();
+const pointerRecorderInstalled = new WeakSet<PMView>();
+
+/** 뷰당 1회 pointerdown 기록기 설치 (등록자 수와 무관하게 단일). */
+export function ensurePointerDownRecorder(view: PMView): void {
+  if (pointerRecorderInstalled.has(view)) return;
+  pointerRecorderInstalled.add(view);
+  view.dom.addEventListener(
+    "mousedown",
+    (e) => {
+      if (e.target instanceof Element) {
+        lastPointerDown.set(view, { target: e.target, ts: Date.now() });
+      }
+    },
+    true,
+  );
+}
+
+/** 직전(500ms 내) pointerdown 타깃 — 이탈 focusout의 목적지 보완용. */
+export function recentPointerTarget(view: PMView): Element | null {
+  const rec = lastPointerDown.get(view);
+  if (!rec || Date.now() - rec.ts > 500) return null;
+  return rec.target;
 }
 
 /**
@@ -213,9 +253,11 @@ export function registerCodeBlockEntry(
 /** 도착 island가 인계 모드를 소비한다 — 없으면 null (세션 보존). */
 export function takeIslandPointerHandoff(
   view: PMView,
+  claimant: Element,
 ): "insert" | "normal" | null {
-  const mode = pointerHandoffs.get(view);
-  if (mode === undefined) return null;
+  const entry = pointerHandoffs.get(view);
+  if (entry === undefined) return null;
+  if (entry.dest !== claimant && !entry.dest.contains(claimant)) return null;
   pointerHandoffs.delete(view);
-  return mode;
+  return entry.mode;
 }

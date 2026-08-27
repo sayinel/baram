@@ -41,6 +41,9 @@ function makeFakes() {
   const view = {
     contentDOM: document.createElement("div"),
     dispatch: vi.fn(),
+    // ensureInsert의 포커스 epoch 가드가 dom containment를 본다 — body를
+    // 주면 항상 "포커스 안"으로 판정되어 유닛 계약이 그대로 돈다.
+    dom: document.body,
     // 3v focus fallback uses view.focus() (selection resync + prevent-scroll).
     focus: vi.fn(),
   };
@@ -582,6 +585,50 @@ describe("createVimController", () => {
     await flush();
     expect(handleKeySpy).toHaveBeenCalled();
     expect(onOperationError).not.toHaveBeenCalled();
+  });
+
+  it("ensureInsert: an island that LOST focus before the microtask is dropped", async () => {
+    // 포커스 epoch 가드 (적대 리뷰): 멀티홉 포커스 전이에서 예약된 insert가
+    // off-focus island를 되살리면 세션 납치다 — 실행 시점에 dom containment
+    // 로 판정한다.
+    const { controller, handleKeySpy } = await enabledWithVimKeys(
+      vimState(),
+      (st, key) => {
+        if (key === "i") st.insertMode = true;
+      },
+    );
+    // makeFakes의 view.dom은 body(항상 포커스 안) — off-focus 형상은
+    // dom을 분리 노드로 바꾼 별도 컨트롤러로 만든다.
+    const detached = document.createElement("div");
+    const f2 = makeFakes();
+    (f2.view as { dom: HTMLElement }).dom = detached;
+    const cm2 = {
+      state: {
+        vim: {
+          inputState: { keyBuffer: [], operator: null },
+          insertMode: false,
+          insertModeReturn: false,
+          visualMode: false,
+        },
+      },
+    };
+    const spy2 = vi.fn();
+    const mod2 = {
+      getCM: vi.fn(() => cm2),
+      vim: vi.fn(() => []),
+      Vim: { handleKey: spy2 },
+    };
+    const c2 = createVimController(asView(f2.view), f2.compartment, {
+      attachGuard: f2.attachGuard,
+      loadModule: () => Promise.resolve(asModule(mod2)),
+    });
+    c2.apply(true);
+    await flush();
+    expect(c2.ensureInsert()).toBe(true); // 수락(큐잉)은 되지만
+    await flush();
+    expect(spy2).not.toHaveBeenCalled(); // off-focus라 실행은 버려진다
+    void controller;
+    void handleKeySpy;
   });
 
   it("ensureInsert: no session false; dispose before the microtask drops it", async () => {

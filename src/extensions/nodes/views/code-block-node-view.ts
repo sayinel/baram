@@ -15,6 +15,7 @@ import {
   type VimController,
 } from "../../../components/editor/vim-controller";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { focusEditorView } from "../../../utils/editor/focus-editor-view";
 import { logger } from "../../../utils/logger";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { vimPluginKey, withVimExternalEdit } from "../../plugins/vim/vim-keys";
@@ -30,6 +31,8 @@ import {
 } from "../code-block-languages";
 import {
   armIslandPointerHandoff,
+  ensurePointerDownRecorder,
+  recentPointerTarget,
   registerCodeBlockEditableSync,
   registerCodeBlockEntry,
   registerCodeBlockVimSync,
@@ -81,7 +84,11 @@ export class CodeBlockNodeView implements NodeView {
    *  살아남는 게 목적(R7), 이쪽은 전이 하나를 넘기지 않는 게 목적이다. */
   private pendingEntryInsert: null | { head: number } = null;
   private pendingFocusRestore: null | { head: number } = null;
-  private pendingSelection: null | { anchor: number; head: number } = null;
+  private pendingSelection: null | {
+    anchor: number;
+    focusIntent: boolean;
+    head: number;
+  } = null;
   private pendingVimModeRestore: "insert" | "replace" | null = null;
   /** 포인터 이탈의 전이당 1회 처리 latch — focusout이 한 전이에 겹쳐
    *  발화해도(계측 실증) 정규화 이전의 첫 캡처만 전파된다. */
@@ -241,6 +248,7 @@ export class CodeBlockNodeView implements NodeView {
     // PM's editorOwnsSelection gate usually fails, so selectionToDOM cannot
     // be relied on to descend into setSelection here — the vim plugin
     // drives it through this channel instead.
+    ensurePointerDownRecorder(view);
     this.unregisterEntry = registerCodeBlockEntry(
       view,
       getPos,
@@ -266,7 +274,7 @@ export class CodeBlockNodeView implements NodeView {
           if (wantInsert) this.requestEntryInsert(head);
           return true;
         }
-        this.setSelection(anchor, head);
+        this.enterExplicitly(anchor, head);
         if (wantInsert) this.requestEntryInsert(head);
         // A live CM was focused synchronously; a cold one only memoed the
         // selection for its deferred init — report false so the caller
@@ -348,10 +356,44 @@ export class CodeBlockNodeView implements NodeView {
 
   /** Called when node is selected as a whole (NodeSelection) */
   selectNode() {
+    // NodeSelection은 사용자 제스처(블록 자체 선택)의 결과다 — 명시
+    // 의도로 취급한다. 이탈 전이는 TextSelection만 만들므로 이 경로가
+    // 강탈에 동원되지 않는다 (적대 리뷰 확인 사항).
     this.ensureCM();
     if (this.cmView) {
       this.cmView.focus();
     }
+  }
+
+  /** 선택 반영 본체 — focus는 옵션 권한. cold 메모에도 의도를 함께
+   *  저장해, 비동기 init의 소비가 하강 유래 선택으로 포커스를 훔치지
+   *  않게 한다 (적대 리뷰 CRITICAL 2). */
+  private applySelection(
+    anchor: number,
+    head: number,
+    opts: { focus: boolean },
+  ): void {
+    this.ensureCM();
+    if (!this.cmView) {
+      this.pendingSelection = { anchor, focusIntent: opts.focus, head };
+      return;
+    }
+    if (opts.focus) this.cmView.focus();
+    this.updating = true;
+    // scrollIntoView — CM walks ancestor scrollables to the real caret
+    // line. The PM-side follow cannot: this NodeView has no contentDOM, so
+    // coordsAtPos maps every interior offset to the wrapper's TOP edge
+    // (issue 472). 포커스 없는 동기화는 스크롤도 하지 않는다.
+    this.cmView.dispatch({
+      scrollIntoView: opts.focus,
+      selection: { anchor, head },
+    });
+    this.updating = false;
+  }
+
+  /** 명시 진입 채널(레지스트리) 전용 — 포커스 권한 보유. */
+  private enterExplicitly(anchor: number, head: number): void {
+    this.applySelection(anchor, head, { focus: true });
   }
 
   /**
@@ -360,23 +402,17 @@ export class CodeBlockNodeView implements NodeView {
    * it allows us to properly focus CodeMirror and set its cursor position.
    */
   setSelection(anchor: number, head: number) {
-    this.ensureCM();
-    if (!this.cmView) {
-      this.pendingSelection = { anchor, head };
-      return;
-    }
-    this.cmView.focus();
-    this.updating = true;
-    // scrollIntoView — CM walks ancestor scrollables to the real caret
-    // line. The PM-side follow cannot: this NodeView has no contentDOM, so
-    // coordsAtPos maps every interior offset to the wrapper's TOP edge
-    // (issue 472 — a k-entry at the last line of a tall block would
-    // otherwise scroll the viewport toward the block top).
-    this.cmView.dispatch({
-      scrollIntoView: true,
-      selection: { anchor, head },
+    // FOCUS는 권한이다 (적대 리뷰 CRITICAL, issue 474 근인): PM의
+    // selectionToDOM 하강은 dispatch·focus 핸들러의 20ms setTimeout·
+    // observer 복구 등 여러 시점에 이 프로토콜 메서드를 호출하고,
+    // editorOwnsSelection 게이트는 activeElement=BODY조차 통과시킨다 —
+    // 여기서 무조건 focus하면 떠나던 island가 포커스를 강탈해 "포커스
+    // 전쟁"(모드 워·StatusBar 동결)의 연료가 된다. vim이 켜진 동안 PM
+    // 하강은 선택 동기화만 하고, 포커스는 명시 진입 채널(enterExplicitly)
+    // 만 가진다. vim off는 네이티브 진입 경로이므로 유지.
+    this.applySelection(anchor, head, {
+      focus: !this.latestVimEnabled || this.cmView?.hasFocus === true,
     });
-    this.updating = false;
   }
 
   /** Prevent ProseMirror from handling events inside the code block */
@@ -699,7 +735,7 @@ export class CodeBlockNodeView implements NodeView {
       // 포인터 인계(기기 보고: B insert → A 클릭이 A의 stale 모드로 열림):
       // 다른 island에서 온 이동이면 그쪽 모드를 이어받는다. 인계가 없으면
       // (크롬 왕복, 최초 진입) 자기 세션 그대로 — vim의 창 복귀 관례.
-      const handoff = takeIslandPointerHandoff(this.view);
+      const handoff = takeIslandPointerHandoff(this.view, this.cmContainer);
       if (handoff === "insert") this.vimController?.ensureInsert();
       else if (handoff === "normal") this.vimController?.exitToNormal();
     };
@@ -713,14 +749,22 @@ export class CodeBlockNodeView implements NodeView {
       // 전파한 모드를 "normal"로 덮어쓴다 (계측 실증). 포커스 전이는
       // 동기이므로 microtask 해제가 정확히 한 전이를 묶는다.
       if (this.pointerExitHandled) return;
-      const related =
+      // relatedTarget이 null/BODY로 오는 전이(macOS WebKit이 비폼 요소를
+      // 클릭 포커스하지 않는 경우)는 직전 pointerdown 타깃으로 목적지를
+      // 보완한다 (적대 리뷰 HIGH: BODY/null 전이가 분기에 안 들어옴).
+      const rawRelated =
         event.relatedTarget instanceof Element ? event.relatedTarget : null;
+      const related =
+        rawRelated && rawRelated !== this.view.dom.ownerDocument.body
+          ? rawRelated
+          : recentPointerTarget(this.view);
       const dest = related?.closest(".code-block-editor") ?? null;
+      let pmBodyExit = false;
       if (dest && !island.dom.contains(dest) && !dest.contains(island.dom)) {
         const mode = this.exitPmMode();
         if (mode) {
           this.latchPointerExit();
-          armIslandPointerHandoff(this.view, mode);
+          armIslandPointerHandoff(this.view, mode, dest);
           this.pendingEntryInsert = null;
           this.pendingVimModeRestore = null;
           this.vimController?.exitToNormal();
@@ -737,6 +781,7 @@ export class CodeBlockNodeView implements NodeView {
         // PM에 전파. 크롬(view.dom 밖)과 다른 suspend 섬(math 등)은 제외.
         const mode = this.exitPmMode();
         if (mode) {
+          pmBodyExit = true;
           this.latchPointerExit();
           this.pendingEntryInsert = null;
           this.pendingVimModeRestore = null;
@@ -756,6 +801,14 @@ export class CodeBlockNodeView implements NodeView {
           islandVimBlur(island);
           // LIFECYCLE burn ④ — 방문이 끝나면 의도도 끝난다 (크롬 이탈 포함).
           this.pendingEntryInsert = null;
+          // 포커스 배달 (기기 실측): WebKit은 클릭으로 tabindex div(PM
+          // 루트)를 포커스하지 않아 전이가 BODY로 흘러 키보드가 죽는다.
+          // 본문行 이탈로 판정된 전이에서 포커스가 view 밖에 남았으면
+          // 명시 배달한다 — 하강의 포커스 강탈은 setSelection의 권한
+          // 분리가 차단하므로 이 focus는 안전하다 (CRITICAL 1 해소 전제).
+          if (pmBodyExit && !this.view.dom.contains(active)) {
+            focusEditorView(this.view);
+          }
         }
       });
     };
@@ -833,12 +886,15 @@ export class CodeBlockNodeView implements NodeView {
         const max = this.cmView.state.doc.length;
         const sel = this.view.state.selection;
         const base = (pos as number) + 1;
-        this.cmView.focus();
+        // 하강 유래 메모(focusIntent=false)는 cold 소비에서도 포커스를
+        // 훔치지 않는다 — 명시 진입만 지연 포커스를 배달한다 (CRITICAL 2).
+        const wantFocus = this.pendingSelection.focusIntent;
+        if (wantFocus) this.cmView.focus();
         this.updating = true;
         this.cmView.dispatch({
-          // Same reason as the live setSelection path: the caret line —
-          // not the wrapper top — must be what the viewport follows.
-          scrollIntoView: true,
+          // Same reason as the live entry path: the caret line — not the
+          // wrapper top — must be what the viewport follows.
+          scrollIntoView: wantFocus,
           selection: {
             anchor: Math.min(Math.max(sel.anchor - base, 0), max),
             head: Math.min(Math.max(sel.head - base, 0), max),
