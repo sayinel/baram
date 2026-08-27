@@ -66,6 +66,8 @@ export function GeneralTab() {
     setTasksWeekStart,
     tasksRecordDoneDate,
     setTasksRecordDoneDate,
+    tasksCaptureFile,
+    setTasksCaptureFile,
     tasksExcludePaths,
     setTasksExcludePaths,
     zettelkastenEnabled,
@@ -593,6 +595,18 @@ export function GeneralTab() {
             <ToggleSwitch
               checked={tasksRecordDoneDate}
               onChange={setTasksRecordDoneDate}
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.tasksCaptureFile.desc")}
+            label={t("settings.general.tasksCaptureFile")}
+          >
+            <input
+              className="settings-input"
+              onChange={(e) => setTasksCaptureFile(e.target.value)}
+              placeholder={t("settings.general.tasksCaptureFile.placeholder")}
+              value={tasksCaptureFile}
             />
           </SettingsRow>
 

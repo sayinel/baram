@@ -331,13 +331,34 @@
   left: 50%;
   width: calc(var(--checkbox-size) * 0.28);
   height: calc(var(--checkbox-size) * 0.52);
+
+  /* Decorative only — the stretched input below must stay the hit target (see the
+   * general rule below). Both this and the input are `z-index: auto`, so
+   * without this they'd paint in DOM order and the tick — generated as the label's
+   * LAST child — would sit on top of the input over roughly its middle quarter,
+   * including dead centre, on every checked box. A hit there reports the label as
+   * `event.target`, which `task-item.ts`'s handler ignores, so a click aimed at where
+   * the user looks would silently fail to un-check. Confirmed by a real-browser
+   * elementFromPoint sweep; jsdom has no layout and cannot reproduce or guard this. */
+  pointer-events: none;
   content: "";
   border: solid var(--color-accent-on-solid);
   border-width: 0 0.085em 0.085em 0;
   transform: translate(-62%, -66%) rotate(40deg);
 }
 
-/* Stretched over the label, INCLUDING its border. `inset` resolves against the padding
+/* GENERAL RULE for this control: the `<input>` must stay the topmost, frontmost box
+ * everywhere within the label, because `task-item.ts`'s mousedown handler only fires
+ * for an `HTMLInputElement` target — anything else (the label itself, or a
+ * decorative layer painted over the input) reports as `event.target` and the handler
+ * silently no-ops. This has bitten the control twice: the label's own border ring
+ * (fixed below, by stretching the input past the padding box) and the checked tick
+ * (fixed above, by excluding it from hit-testing). Any FUTURE pseudo-element,
+ * decoration, or overlay added to this label must either paint UNDER the input in
+ * DOM/paint order or carry `pointer-events: none` — checked visually is not enough,
+ * since the dead zone can be a fraction of the control that a manual click misses.
+ *
+ * Stretched over the label, INCLUDING its border. `inset` resolves against the padding
  * box, so `inset: 0` would leave the drawn border uncovered — and a click there reports
  * the label as the target, which `task-item.ts`'s handler ignores, so the outer ring of
  * the control would silently stop toggling. The negative inset is the border width, and

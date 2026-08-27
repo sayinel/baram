@@ -107,10 +107,28 @@
   border-color: var(--color-accent-solid);
 }
 
+.quick-capture-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .quick-capture-header h3 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* §307D 태스크 모드 토글 */
+.quick-capture-task-toggle {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .quick-capture-input {

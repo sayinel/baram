@@ -1,7 +1,7 @@
 import type { ContextMenuState } from "../file-tree-types";
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileTreeContextMenu } from "../file-tree-context-menu";
 
@@ -128,5 +128,71 @@ describe("FileTreeContextMenu (multi-selection)", () => {
     );
     fireEvent.click(screen.getByText("Duplicate"));
     expect(onAction).not.toHaveBeenCalledWith("duplicate");
+  });
+});
+
+// §312 창 밖으로 잘리던 컨텍스트 메뉴 — 태스크 정리 메뉴와 **같은 결함**이고 같은
+// 산술(`utils/menu-placement.ts`)을 탄다. 규칙을 두 벌 적어 두면 한쪽만 고쳐진다.
+//
+// 이 메뉴의 앵커는 행이 아니라 커서 점이므로 위/아래가 같은 값이다 — 뒤집으면 메뉴의
+// 아래끝이 커서에 온다(네이티브 컨텍스트 메뉴와 같은 동작). 좌표 산술 자체는
+// `utils/__tests__/menu-placement.test.ts`가 시험하고, 여기서는 **연결**만 본다.
+// jsdom에는 레이아웃이 없어 rect가 전부 0이므로 메뉴 크기를 스텁으로 지어낸다.
+describe("FileTreeContextMenu (viewport clamping, §312)", () => {
+  const MENU_HEIGHT = 150;
+  const MENU_WIDTH = 180;
+  const realRect = Element.prototype.getBoundingClientRect;
+
+  afterEach(() => {
+    Element.prototype.getBoundingClientRect = realRect;
+  });
+
+  beforeEach(() => {
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      if (this.classList.contains("file-tree-context-menu")) {
+        return {
+          bottom: 0,
+          height: MENU_HEIGHT,
+          left: 0,
+          right: 0,
+          toJSON: () => ({}),
+          top: 0,
+          width: MENU_WIDTH,
+          x: 0,
+          y: 0,
+        } as DOMRect;
+      }
+      return realRect.call(this);
+    };
+  });
+
+  function menuElement(menu: ContextMenuState): HTMLElement {
+    const { container } = render(
+      <FileTreeContextMenu menu={menu} onAction={vi.fn()} />,
+    );
+    return container.querySelector<HTMLElement>(".file-tree-context-menu")!;
+  }
+
+  it("창 아래쪽에서 눌리면 커서 위로 뒤집힌다", () => {
+    // 740 + 150 = 890 > 768(jsdom 기본 창 높이).
+    const el = menuElement({ ...base, targetPath: "/r/a.md", x: 10, y: 740 });
+    expect(el.style.top).toBe(`${740 - MENU_HEIGHT}px`);
+  });
+
+  it("오른쪽 끝에서 눌리면 왼쪽으로 민다", () => {
+    const el = menuElement({ ...base, targetPath: "/r/a.md", x: 1000, y: 10 });
+    expect(el.style.left).toBe(`${window.innerWidth - 4 - MENU_WIDTH}px`);
+  });
+
+  it("다중 선택 메뉴도 같은 배치를 받는다 — 분기가 둘이라 한쪽만 고쳐지기 쉽다", () => {
+    const el = menuElement({
+      ...base,
+      selectionCount: 3,
+      targetPath: "/r/a.md",
+      x: 10,
+      y: 740,
+    });
+    expect(screen.getByText("Move to…")).toBeInTheDocument();
+    expect(el.style.top).toBe(`${740 - MENU_HEIGHT}px`);
   });
 });

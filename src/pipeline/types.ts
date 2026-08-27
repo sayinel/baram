@@ -42,6 +42,18 @@ export interface TagNode extends MdastLiteral {
   type: "tagNode";
 }
 
+/**
+ * §7.1: 빈 task item의 체크박스 — `[ ]` / `[x]` (value-based, pre-serialized).
+ *
+ * 내용이 빈 항목에서만 쓰인다. remark-gfm의 listItem 핸들러는 불릿 뒤에 글자가
+ * 있어야 체크박스를 주입하므로(`^(?:[*+-]|\d+\.)([\r\n]| {1,3})`), 빈 항목에서는
+ * 체크박스를 통째로 잃거나 열 0의 제 줄로 흘린다. 미리 직렬화한 이 노드로
+ * 대신 넣는다 — text 노드로 넣으면 `\[ ]`로 이스케이프된다.
+ */
+export interface TaskCheckboxNode extends MdastLiteral {
+  type: "taskCheckbox";
+}
+
 /** §28: Wiki-link inline node — `[[target]]` or `[[target|display]]` */
 export interface WikiLinkNode extends MdastLiteral {
   type: "wikiLink";
@@ -57,6 +69,7 @@ declare module "mdast" {
     subscript: SubscriptNode;
     superscript: SuperscriptNode;
     tagNode: TagNode;
+    taskCheckbox: TaskCheckboxNode;
     wikiLink: WikiLinkNode;
   }
 
@@ -67,6 +80,7 @@ declare module "mdast" {
     subscript: SubscriptNode;
     superscript: SuperscriptNode;
     tagNode: TagNode;
+    taskCheckbox: TaskCheckboxNode;
     wikiLink: WikiLinkNode;
   }
 }

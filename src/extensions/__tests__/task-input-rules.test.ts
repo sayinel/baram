@@ -119,3 +119,109 @@ describe("TaskInputRules", () => {
     editor.destroy();
   });
 });
+
+/**
+ * 실제 Enter 키를 keymap/input-rule 플러그인 체인에 그대로 흘려보낸다.
+ *
+ * `view.someProp("handleKeyDown", ...)`는 ProseMirror가 keydown에서 쓰는 바로
+ * 그 순회다 — 플러그인 등록 순서까지 실제와 같다. 이 결함의 핵심이 "입력 규칙
+ * 플러그인이 keymap보다 먼저 Enter를 가져간다"는 순서 문제라서, 규칙 핸들러를
+ * 직접 호출해서는 재현되지 않는다.
+ *
+ * 반환값은 "누군가 Enter를 처리했는가"다.
+ */
+function pressEnter(editor: Editor): boolean {
+  const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+  return (
+    editor.view.someProp("handleKeyDown", (f) => f(editor.view, event)) === true
+  );
+}
+
+function taskDocWith(text: string): Editor {
+  return editorWith(
+    `<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>${text}</p></li></ul>`,
+  );
+}
+
+/** taskItem별 텍스트 — 문서 구조를 그대로 읽는다. */
+function taskItemTexts(editor: Editor): string[] {
+  const texts: string[] = [];
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "taskItem") texts.push(node.textContent);
+  });
+  return texts;
+}
+
+describe("TaskInputRules — 줄 끝 트리거에서의 Enter (§303)", () => {
+  it("Enter 한 번이 변환과 줄 나눔을 함께 한다", () => {
+    // 측정된 결함: 규칙이 `\s$`의 `\s`로 Enter의 `\n`을 먹으면서 변환만 하고
+    // 줄은 나누지 않았다 — 새 항목을 얻으려면 Enter를 두 번 쳐야 했다.
+    const editor = taskDocWith("a due:2026-08-30");
+    editor.commands.focus("end");
+
+    expect(pressEnter(editor)).toBe(true);
+
+    expect(taskItemTexts(editor)).toEqual(["a 📅2026-08-30", ""]);
+    editor.destroy();
+  });
+
+  it.each([
+    ["sched", "a sched:2026-08-30", "a ⏳2026-08-30"],
+    ["start", "a start:2026-08-30", "a 🛫2026-08-30"],
+    ["prio:N", "a prio:2", "a ⏫"],
+    ["!N", "a !2", "a ⏫"],
+  ])("같은 모양이 %s 에서도 고쳐져 있다", (_, typed, converted) => {
+    const editor = taskDocWith(typed);
+    editor.commands.focus("end");
+
+    expect(pressEnter(editor)).toBe(true);
+
+    expect(taskItemTexts(editor)).toEqual([converted, ""]);
+    editor.destroy();
+  });
+
+  it("이모지가 없는 prio:3 도 트리거만 지우고 줄을 나눈다", () => {
+    const editor = taskDocWith("a prio:3");
+    editor.commands.focus("end");
+
+    expect(pressEnter(editor)).toBe(true);
+
+    const texts = taskItemTexts(editor);
+    expect(texts).toHaveLength(2);
+    expect(texts[0].trimEnd()).toBe("a");
+    expect(texts[1]).toBe("");
+    editor.destroy();
+  });
+
+  it("트리거가 없으면 평소대로 항목만 나뉜다", () => {
+    const editor = taskDocWith("a");
+    editor.commands.focus("end");
+
+    expect(pressEnter(editor)).toBe(true);
+
+    expect(taskItemTexts(editor)).toEqual(["a", ""]);
+    editor.destroy();
+  });
+
+  it("해석되지 않는 값은 Enter를 삼키지 않는다", () => {
+    const editor = taskDocWith("a due:내일");
+    editor.commands.focus("end");
+
+    expect(pressEnter(editor)).toBe(true);
+
+    expect(taskItemTexts(editor)).toEqual(["a due:내일", ""]);
+    editor.destroy();
+  });
+
+  it("일반 문단의 Enter는 변환도 지연도 없이 그대로 나뉜다", () => {
+    const editor = editorWith("<p>회의 due:2026-08-30</p>");
+    editor.commands.focus("end");
+
+    expect(pressEnter(editor)).toBe(true);
+
+    const paragraphs: string[] = [];
+    editor.state.doc.forEach((node) => paragraphs.push(node.textContent));
+    expect(paragraphs).toEqual(["회의 due:2026-08-30", ""]);
+    editor.destroy();
+  });
+});

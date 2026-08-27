@@ -1,10 +1,14 @@
 // §304 Vault-wide task index
+mod append;
 mod parse;
+mod tag;
 mod write;
 
+pub use append::append_line;
 pub use parse::normalize_line;
 pub use parse::{parse_task_line, TaskState};
-pub use write::{set_task_field, set_task_state};
+pub use tag::{apply_tag, set_task_tag};
+pub use write::{apply_field, apply_state, delete_line, set_task_field, set_task_state};
 
 use serde::Serialize;
 use thiserror::Error;

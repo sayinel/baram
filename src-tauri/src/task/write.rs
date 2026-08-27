@@ -2,7 +2,7 @@
 use crate::task::parse::is_valid_date;
 use crate::task::{normalize_line, TaskError, TaskState};
 
-const FIELD_EMOJI: &[(&str, &str)] = &[
+pub(super) const FIELD_EMOJI: &[(&str, &str)] = &[
     ("created", "➕"),
     ("start", "🛫"),
     ("scheduled", "⏳"),
@@ -12,7 +12,7 @@ const FIELD_EMOJI: &[(&str, &str)] = &[
 ];
 
 /// 줄바꿈 스타일과 마지막 개행 유무를 보존하며 한 줄만 바꾼다.
-async fn replace_line<F>(
+pub(super) async fn replace_line<F>(
     path: &str,
     line: u32,
     expected_raw: &str,
@@ -111,6 +111,127 @@ fn append_field(line: &str, field: &str, value: &str) -> String {
     format!("{} {}{}", line.trim_end(), emoji, value)
 }
 
+/// 상태 전이 결과 줄을 만든다 — I/O 없음.
+///
+/// 디스크 경로(`set_task_state`)와 열린 파일 경로(`preview_task_state_line`)가
+/// **같은 구현**을 쓰게 하는 것이 이 함수의 존재 이유다. TypeScript에 재구현하면
+/// 두 벌이 되어 반드시 드리프트한다.
+///
+/// `current`는 이미 `normalize_line`을 거친 줄이어야 한다.
+pub fn apply_state(
+    current: &str,
+    new_state: TaskState,
+    record_done_date: bool,
+    today: &str,
+) -> String {
+    let marker = match new_state {
+        TaskState::Done => "[x]",
+        TaskState::Todo => "[ ]",
+    };
+    // 가장 **왼쪽** 마커만 바꾼다 — 본문에 "[x]"가 들어 있어도 체크박스를 놓치지 않는다.
+    let swapped = if let Some(p) = ["[ ]", "[x]", "[X]"]
+        .iter()
+        .filter_map(|pat| current.find(pat))
+        .min()
+    {
+        let mut s = current.to_string();
+        s.replace_range(p..p + 3, marker);
+        s
+    } else {
+        current.to_string()
+    };
+
+    if !record_done_date {
+        return swapped;
+    }
+    match new_state {
+        TaskState::Done => append_field(&strip_field(&swapped, "done"), "done", today),
+        TaskState::Todo => strip_field(&swapped, "done"),
+    }
+}
+
+/// 필드 설정 결과 줄 — I/O 없음. 빈 `value`는 필드를 제거한다.
+/// 알 수 없는 필드 이름이면 `None`.
+///
+/// `current`는 이미 `normalize_line`을 거친 줄이어야 한다.
+pub fn apply_field(current: &str, field: &str, value: &str) -> Option<String> {
+    if !FIELD_EMOJI.iter().any(|(f, _)| *f == field) {
+        return None;
+    }
+    let stripped = strip_field(current, field);
+    Some(if value.is_empty() {
+        stripped
+    } else {
+        append_field(&stripped, field, value)
+    })
+}
+
+/// 줄 하나를 **없앤다** — 자기 종결자까지 함께. 파괴적이고 되돌릴 수 없다(스냅샷 §71은
+/// 파일 단위이고 이 경로를 타지 않는다). 그래서 `expected_raw` 낙관적 잠금은
+/// `replace_line`과 **같은 기준**(정규화 + `trim_end`)으로 걸고, 불일치·범위 밖이면
+/// 파일에 손대지 않고 `Stale`을 돌려준다.
+///
+/// `replace_line`과 나란한 프리미티브이지만 재조립 방식이 다르다. 그쪽은 파일 전체에서
+/// 종결자 **하나**를 골라 split/join하는데, 삭제는 그 방식으로 구현할 수 없다:
+/// - 끝 개행이 없는 파일의 마지막 줄을 지우면 `join` 뒤의 무조건 push가 없던 개행을
+///   만들거나, push를 생략하면 그 앞 줄의 개행까지 사라진다.
+/// - 혼합 EOL 파일에서는 고른 종결자와 실제 종결자가 달라 **남은 줄의 EOL이 바뀌고**,
+///   줄 번호마저 파서(`str::lines()`)와 어긋난다.
+///
+/// 그래서 각 줄에 자기 종결자를 붙인 채 자르고 한 조각을 통째로 뺀다. 남는 바이트는
+/// 손대지 않은 줄의 **원본 바이트 그대로**다.
+pub async fn delete_line(path: &str, line: u32, expected_raw: &str) -> Result<(), TaskError> {
+    let content = tokio::fs::read_to_string(path).await?;
+    let parts = split_keeping_eol(&content);
+
+    let idx = line as usize;
+    let part = parts.get(idx).ok_or(TaskError::Stale)?;
+    if normalize_line(strip_eol(part)).trim_end() != normalize_line(expected_raw).trim_end() {
+        return Err(TaskError::Stale);
+    }
+
+    let out: String = parts
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != idx)
+        .map(|(_, p)| *p)
+        .collect();
+
+    // §3.6 원자적 쓰기(tmp → rename) — `replace_line`과 같은 이유이고, 삭제에서는 더
+    // 무겁다: 반쯤 쓰인 파일로 죽으면 되돌릴 원본이 남지 않는다.
+    crate::fs::write_file(path, &out)
+        .await
+        .map_err(|e| TaskError::Custom(e.to_string()))?;
+    Ok(())
+}
+
+/// 각 줄에 **자기 종결자를 붙인 채로** 자른다. 끝 개행 뒤의 빈 꼬리는 만들지 않으므로
+/// 조각 수 = 줄 수이고, 그 번호는 파서가 쓰는 `str::lines()`와 일치한다.
+///
+/// TypeScript 쪽 `splitKeepingEol`(src/utils/tasks/line-splice.ts)과 같은 규칙이다 —
+/// 열린 문서 경로는 삭제를 그쪽에서 하므로 두 구현이 같은 바이트를 내야 한다.
+fn split_keeping_eol(content: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    // '\n'은 1바이트이므로 i+1은 항상 문자 경계다.
+    for (i, _) in content.match_indices('\n') {
+        parts.push(&content[start..=i]);
+        start = i + 1;
+    }
+    if start < content.len() {
+        parts.push(&content[start..]);
+    }
+    parts
+}
+
+/// 조각에서 종결자를 뗀다 — `str::lines()`처럼 `\r`도 뗀다.
+fn strip_eol(part: &str) -> &str {
+    match part.strip_suffix('\n') {
+        Some(rest) => rest.strip_suffix('\r').unwrap_or(rest),
+        None => part,
+    }
+}
+
 pub async fn set_task_state(
     path: &str,
     line: u32,
@@ -121,33 +242,7 @@ pub async fn set_task_state(
 ) -> Result<String, TaskError> {
     let today = today.to_string();
     replace_line(path, line, expected_raw, move |current| {
-        let marker = match new_state {
-            TaskState::Done => "[x]",
-            TaskState::Todo => "[ ]",
-        };
-        // 줄에서 가장 왼쪽에 오는 "[ ]"/"[x]"/"[X]"만 바꾼다 — 체크박스는 항상 줄
-        // 맨 앞이므로 이거면 충분하고, 본문에 대괄호가 있어도 안전하다. 패턴별
-        // 우선순위(or_else)로 고르면 본문 쪽 "[ ]"가 실제 마커보다 먼저 걸릴 수
-        // 있으므로 반드시 바이트 위치 최솟값을 취해야 한다.
-        let swapped = if let Some(p) = ["[ ]", "[x]", "[X]"]
-            .iter()
-            .filter_map(|pat| current.find(pat))
-            .min()
-        {
-            let mut s = current.to_string();
-            s.replace_range(p..p + 3, marker);
-            s
-        } else {
-            current.to_string()
-        };
-
-        if !record_done_date {
-            return swapped;
-        }
-        match new_state {
-            TaskState::Done => append_field(&strip_field(&swapped, "done"), "done", &today),
-            TaskState::Todo => strip_field(&swapped, "done"),
-        }
+        apply_state(current, new_state, record_done_date, &today)
     })
     .await
 }
@@ -168,12 +263,8 @@ pub async fn set_task_field(
     let field = field.to_string();
     let value = value.to_string();
     replace_line(path, line, expected_raw, move |current| {
-        let stripped = strip_field(current, &field);
-        if value.is_empty() {
-            stripped
-        } else {
-            append_field(&stripped, &field, &value)
-        }
+        // 위에서 이름을 이미 검증했으므로 `None`은 도달 불가다.
+        apply_field(current, &field, &value).unwrap_or_else(|| current.to_string())
     })
     .await
 }
@@ -454,6 +545,227 @@ mod tests {
 
         assert!(matches!(err, TaskError::Custom(ref msg) if msg.contains("duee")));
         assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
+    }
+
+    #[test]
+    fn apply_state_swaps_marker_and_appends_done_date() {
+        let out = apply_state(
+            "- [ ] 초안 📅2026-08-30",
+            TaskState::Done,
+            true,
+            "2026-08-24",
+        );
+        assert_eq!(out, "- [x] 초안 📅2026-08-30 ✅2026-08-24");
+    }
+
+    #[test]
+    fn apply_state_strips_done_date_when_reverting() {
+        let out = apply_state(
+            "- [x] 초안 📅2026-08-30 ✅2026-08-24",
+            TaskState::Todo,
+            true,
+            "2026-08-24",
+        );
+        assert_eq!(out, "- [x] 초안 📅2026-08-30".replace("[x]", "[ ]"));
+    }
+
+    #[test]
+    fn apply_state_leaves_done_date_alone_when_recording_is_off() {
+        let out = apply_state("- [ ] 초안", TaskState::Done, false, "2026-08-24");
+        assert_eq!(out, "- [x] 초안");
+    }
+
+    #[test]
+    fn apply_state_preserves_indentation() {
+        let out = apply_state("    - [ ] 중첩", TaskState::Done, false, "2026-08-24");
+        assert_eq!(out, "    - [x] 중첩");
+    }
+
+    #[test]
+    fn apply_field_sets_and_clears() {
+        let set = apply_field("- [ ] 초안", "due", "2026-08-30").unwrap();
+        assert_eq!(set, "- [ ] 초안 📅2026-08-30");
+        let cleared = apply_field(&set, "due", "").unwrap();
+        assert_eq!(cleared, "- [ ] 초안");
+    }
+
+    #[test]
+    fn apply_field_rejects_unknown_field() {
+        assert!(apply_field("- [ ] 초안", "priority", "high").is_none());
+    }
+
+    // --- §312 줄 삭제 ---
+    //
+    // ‼️ 아래 일곱 케이스는 **언어를 건너 공유되는 행렬**이다. 열린 문서·소스 버퍼 경로는
+    // 삭제를 Rust에 묻지 않고 TypeScript(`removeLine`, src/utils/tasks/line-splice.ts)가
+    // 직접 한다 — 상태 전이·필드·태그와 달리 지우는 데는 줄 문법 지식이 필요 없기 때문이다.
+    // 그래서 두 경로의 바이트 동등성은 preview 커맨드로 확인할 수 없고, **같은 입력에 같은
+    // 기대값**을 양쪽에 적어 두는 것으로만 성립한다. 한쪽을 고치면 다른 쪽도 고칠 것:
+    // `src/utils/tasks/__tests__/line-splice.test.ts`의 "§312 removeLine" describe가 짝이다.
+
+    #[tokio::test]
+    async fn deletes_a_line_and_keeps_crlf() {
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "a\r\n- [ ] 지울 것\r\nb\r\n").await;
+
+        delete_line(&p, 1, "- [ ] 지울 것").await.unwrap();
+
+        // 남은 줄이 아니라 **파일 전체 바이트**를 본다 — 개행 처리 실수는 이음새에 숨는다.
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "a\r\nb\r\n");
+    }
+
+    #[tokio::test]
+    async fn deletes_the_last_line_without_a_trailing_newline() {
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "a\n- [ ] 지울 것").await;
+
+        delete_line(&p, 1, "- [ ] 지울 것").await.unwrap();
+
+        // 앞 줄의 개행은 그 줄의 것이므로 남는다. 여기서 "a"가 나오면 남의 종결자를 먹었다.
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "a\n");
+    }
+
+    #[tokio::test]
+    async fn deletes_a_middle_line_without_adding_a_trailing_newline() {
+        // 뮤테이션이 드러낸 구멍이다. 끝 개행을 "지운 뒤 다시 붙일지"로 다루면
+        // (`join` 뒤 무조건 push) 여기서 **없던 개행이 생긴다** — 다른 여섯 케이스는
+        // 전부 통과하면서. 짝은 line-splice.test.ts의 같은 이름 케이스다.
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "a\n- [ ] 지울 것\nb").await;
+
+        delete_line(&p, 1, "- [ ] 지울 것").await.unwrap();
+
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "a\nb");
+    }
+
+    #[tokio::test]
+    async fn deletes_the_first_line() {
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "- [ ] 지울 것\na\n").await;
+
+        delete_line(&p, 0, "- [ ] 지울 것").await.unwrap();
+
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "a\n");
+    }
+
+    #[tokio::test]
+    async fn deletes_the_last_line_with_a_trailing_newline() {
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "a\n- [ ] 지울 것\n").await;
+
+        delete_line(&p, 1, "- [ ] 지울 것").await.unwrap();
+
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "a\n");
+    }
+
+    #[tokio::test]
+    async fn deleting_the_only_line_leaves_an_empty_file() {
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "- [ ] 지울 것\n").await;
+
+        delete_line(&p, 0, "- [ ] 지울 것").await.unwrap();
+
+        // 빈 파일이다 — "\n"이 남으면 없던 빈 줄을 하나 만든 것이다.
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn deleting_the_only_line_without_a_newline_leaves_an_empty_file() {
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "- [ ] 지울 것").await;
+
+        delete_line(&p, 0, "- [ ] 지울 것").await.unwrap();
+
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn deletes_a_nested_item_without_touching_its_neighbours() {
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "- [ ] 부모\n    - [ ] 하위\n- [ ] 다음\n").await;
+
+        delete_line(&p, 1, "    - [ ] 하위").await.unwrap();
+
+        assert_eq!(
+            tokio::fs::read_to_string(&p).await.unwrap(),
+            "- [ ] 부모\n- [ ] 다음\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn deletes_one_line_of_a_file_whose_lines_end_inconsistently() {
+        // C1(replace_line)이 실제 데이터 손실을 낸 형태다. 파일 전체에서 종결자 **하나**를
+        // 골라 split/join하면 여기서 두 가지가 동시에 깨진다: 줄 번호가 파서(`str::lines()`)와
+        // 어긋나고, 남은 줄의 EOL이 고른 쪽으로 바뀐다.
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "- [ ] a\r\n- [ ] b\n- [ ] c\n").await;
+
+        delete_line(&p, 1, "- [ ] b").await.unwrap();
+
+        assert_eq!(
+            tokio::fs::read_to_string(&p).await.unwrap(),
+            "- [ ] a\r\n- [ ] c\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_a_stale_line_and_leaves_the_file_untouched() {
+        let d = TempDir::new().unwrap();
+        let original = "a\n- [ ] 바뀐 것\n";
+        let p = f(&d, original).await;
+
+        let err = delete_line(&p, 1, "- [ ] 옛 것").await.unwrap_err();
+
+        assert!(matches!(err, TaskError::Stale));
+        // 삭제는 되돌릴 수 없으므로 이 단언이 이 파일에서 가장 중요하다.
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
+    }
+
+    #[tokio::test]
+    async fn refuses_a_line_index_past_the_end_of_the_file() {
+        let d = TempDir::new().unwrap();
+        let original = "a\n";
+        let p = f(&d, original).await;
+
+        let err = delete_line(&p, 99, "- [ ] 없는 줄").await.unwrap_err();
+
+        assert!(matches!(err, TaskError::Stale));
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
+    }
+
+    #[tokio::test]
+    async fn matches_expected_raw_after_normalization_before_deleting() {
+        // 인덱스의 raw는 정규화돼 있고 파일에는 NBSP가 남아 있다 — `replace_line`과 같은
+        // 기준이 아니면 멀쩡한 줄이 영원히 stale이 되어 지울 수 없다.
+        let d = TempDir::new().unwrap();
+        let p = f(&d, "- [ ] 할\u{00A0}일\nb\n").await;
+
+        delete_line(&p, 0, "- [ ] 할 일").await.unwrap();
+
+        assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "b\n");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn deletes_through_a_rename_not_by_following_a_symlink() {
+        // §3.6 원자적 쓰기 — `replace_line`의 C1과 같은 판별식이다. 직접 tokio::fs::write는
+        // 링크를 따라가 원본을 고쳐 쓰지만 tmp+rename은 링크 자리를 새 파일로 교체한다.
+        let d = TempDir::new().unwrap();
+        let real = d.path().join("real.md");
+        let link = d.path().join("link.md");
+        tokio::fs::write(&real, "- [ ] 할 일\nb\n").await.unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        delete_line(&link.to_string_lossy(), 0, "- [ ] 할 일")
+            .await
+            .unwrap();
+
+        assert_eq!(tokio::fs::read_to_string(&link).await.unwrap(), "b\n");
+        assert_eq!(
+            tokio::fs::read_to_string(&real).await.unwrap(),
+            "- [ ] 할 일\nb\n",
+            "원본 파일이 심볼릭 링크를 통해 변경되면 안 된다"
+        );
     }
 
     #[cfg(unix)]

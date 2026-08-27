@@ -6,7 +6,6 @@ import {
   applyTaskFilters,
   collectTags,
   EMPTY_FILTERS,
-  PRIORITY_MARKER,
   priorityBadge,
 } from "../task-filters";
 
@@ -107,6 +106,7 @@ describe("applyTaskFilters", () => {
     ];
     const got = applyTaskFilters(all, {
       priority: "high",
+      showSomeday: false,
       state: "todo",
       tag: "work",
       text: "keep",
@@ -136,27 +136,89 @@ describe("collectTags", () => {
   });
 });
 
-describe("PRIORITY_MARKER", () => {
-  it("maps every non-normal level and leaves normal blank", () => {
-    expect(PRIORITY_MARKER[2]).toBe("🔺");
-    expect(PRIORITY_MARKER[1]).toBe("⏫");
-    expect(PRIORITY_MARKER[0]).toBe("");
-    expect(PRIORITY_MARKER[-1]).toBe("🔽");
-    expect(PRIORITY_MARKER[-2]).toBe("⏬");
+describe("#someday 기본 제외", () => {
+  it("예정 없음 버킷의 someday는 기본으로 감춘다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: ["someday"] })];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(0);
+  });
+
+  it("기한이 있는 someday는 감추지 않는다 — 날짜를 준 순간 someday가 아니다", () => {
+    const tasks = [task({ due: "2026-08-30", tags: ["someday"] })];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(1);
+  });
+
+  it("showSomeday를 켜면 보인다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: ["someday"] })];
+    expect(
+      applyTaskFilters(tasks, { ...EMPTY_FILTERS, showSomeday: true }),
+    ).toHaveLength(1);
+  });
+
+  it("태그 필터로 someday를 직접 고르면 기본 제외를 무시한다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: ["someday"] })];
+    expect(
+      applyTaskFilters(tasks, { ...EMPTY_FILTERS, tag: "someday" }),
+    ).toHaveLength(1);
+  });
+
+  it("someday가 아닌 예정 없음 태스크는 그대로 보인다", () => {
+    const tasks = [task({ due: null, scheduled: null, tags: [] })];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(1);
+  });
+
+  it("완료된 someday는 감추지 않는다 — Done 버킷까지 지워지면 안 된다", () => {
+    const tasks = [
+      task({
+        due: null,
+        scheduled: null,
+        state: "done",
+        tags: ["someday"],
+      }),
+    ];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(1);
+  });
+
+  it("완료되지 않은 예정 없음 someday는 여전히 감춘다", () => {
+    const tasks = [
+      task({ due: null, scheduled: null, state: "todo", tags: ["someday"] }),
+    ];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(0);
+  });
+
+  it("다른 태그로 필터해도 someday를 함께 가진 태스크는 보인다", () => {
+    const tasks = [
+      task({ due: null, scheduled: null, tags: ["someday", "work"] }),
+    ];
+    expect(
+      applyTaskFilters(tasks, { ...EMPTY_FILTERS, tag: "work" }),
+    ).toHaveLength(1);
+  });
+
+  it("태그 필터가 없으면 someday+work 태스크도 그대로 감춘다", () => {
+    const tasks = [
+      task({ due: null, scheduled: null, tags: ["someday", "work"] }),
+    ];
+    expect(applyTaskFilters(tasks, EMPTY_FILTERS)).toHaveLength(0);
   });
 });
 
 describe("priorityBadge", () => {
+  // §308: the marker is a short text symbol, not the raw markdown emoji.
+  // Direction A shared this symbol's class with the editor's `.task-chip`;
+  // direction C dropped the shared pill, so the two surfaces now use
+  // independent visual languages (dot + i18n label in the editor, this
+  // symbol in the agenda) — PRIORITY_SYMBOL itself is unchanged either way.
+  // aria-label keeps the word form for screen readers.
   it("returns a marker and a word label for each non-normal level", () => {
     expect(priorityBadge(2)).toEqual({
-      label: "Highest priority",
-      marker: "🔺",
+      label: "Urgent priority",
+      marker: "!!!",
     });
-    expect(priorityBadge(1)).toEqual({ label: "High priority", marker: "⏫" });
-    expect(priorityBadge(-1)).toEqual({ label: "Low priority", marker: "🔽" });
+    expect(priorityBadge(1)).toEqual({ label: "High priority", marker: "!!" });
+    expect(priorityBadge(-1)).toEqual({ label: "Low priority", marker: "↓" });
     expect(priorityBadge(-2)).toEqual({
       label: "Lowest priority",
-      marker: "⏬",
+      marker: "↓↓",
     });
   });
 
@@ -165,9 +227,10 @@ describe("priorityBadge", () => {
   });
 
   it("returns null for a priority value outside the known 5 levels (fix #6)", () => {
-    // The old `Record<number, string>` typed PRIORITY_MARKER[3] as `string`
-    // even though it is `undefined` at runtime. priorityBadge is the safe
-    // accessor callers now use instead of indexing PRIORITY_MARKER directly.
+    // A `Record<number, string>` lookup table types [3] as `string` even
+    // though it is `undefined` at runtime. priorityBadge is the safe accessor
+    // callers use instead of indexing a table directly, and the tables it
+    // reads narrow their keys to the four real levels.
     expect(priorityBadge(3)).toBeNull();
     expect(priorityBadge(-3)).toBeNull();
   });

@@ -80,11 +80,19 @@
   list-style: none;
 }
 
+/* §312 행은 내용이 아니라 컨트롤이다 — 클릭은 이동, 우클릭은 정리 메뉴, j/k/d/t/s는
+   키 경로다. 그래서 `.task-panel-someday`와 같은 관례로 선택을 끈다.
+   ‼️ `.task-row-text`에 `user-select: text`로 예외를 두지 말 것: 그 버튼은 `flex: 1`
+   이라 행의 남는 가로 공간을 전부 가져가므로, 사용자가 "글자 오른쪽 빈 자리"라고 부른
+   그 자리가 바로 버튼 안이다. 거기서 선택을 되살리면 우클릭이 다시 선택을 만들고,
+   그 선택 범위에 든 정리 메뉴가 다시 하이라이트로 칠해진다(사용자 스크린샷).
+   태스크 원문을 복사하는 경로는 그 태스크가 사는 문서다 — 클릭 한 번으로 간다. */
 .task-row {
   display: flex;
   gap: 6px;
   align-items: baseline;
   padding: 3px 4px;
+  user-select: none;
   border-radius: 4px;
 }
 
@@ -138,8 +146,202 @@
   color: var(--color-status-warning);
 }
 
+/* §308 방향 C — 알약 시절엔 .task-chip을 공유했지만(TaskBucketList가 두
+   클래스를 함께 붙였다), C에는 알약 자체가 없으므로 그 공유를 끊고 같은
+   조용한 타이포그래피를 직접 갖는다. PRIORITY_SYMBOL의 글리프(!!! !! ↓ ↓↓)는
+   바뀌지 않는다 — C가 없애는 것은 상자와 이모지이고, 이 배지에는 원래 둘 다
+   없었다.
+
+   공유를 끊는다고 **계층까지 내려서는 안 된다**: 공유하던 시절 이 배지가 타던
+   색이 바로 .task-chip의 --color-text-secondary였다. 이 행에서 우선순위를
+   보이는 것은 이 배지뿐이므로(체크박스·본문·나이 배지 어디에도 없다) 저시력
+   사용자에게 시각 경로가 하나뿐인 것은 에디터 칩과 같다. 사이드바 배경은
+   --color-bg-panel(라이트 #f1f3f5)이라 secondary도 4.35:1로 AA에 살짝 못
+   미치지만, muted의 2.28:1과 달리 role="img"에 걸리는 비-텍스트 3:1은 넘고
+   개선 폭이 크다. 더 올리려면 토큰이 아니라 패널 배경 쪽을 봐야 한다. */
 .task-row-priority {
   flex-shrink: 0;
-  font-size: 11px;
-  line-height: 1;
+  color: var(--color-text-secondary);
+}
+
+/* §309 기한 초과 일괄 조정 — 기한 초과가 있을 때만 나타나므로 눈에 띄어야 한다 */
+.task-panel-overdue-action {
+  color: var(--color-status-danger);
+}
+
+/* §312 someday 토글 — 켜져 있으면 #someday 태스크를 보여주는 필터다. select
+   3개와 한 줄(.task-panel-selects)에 있지만 이 라벨만 flex 기본값(0 1 auto)이라
+   select들이 서로 접힐 때 혼자 다음 줄로 밀려나고, 그 결과 "체크박스 + 단어"만
+   맨 위 버킷 헤더 위에 홀로 남는다 — 태스크 행(.task-row)도 정확히 같은 모양
+   (체크박스 + 텍스트, 테두리도 배경도 없음)이라 고아 태스크로 오인된다.
+
+   그래서 줄바꿈 위치가 아니라 **모양 자체**를 고친다: select와 같은 상자 언어
+   (배경·테두리·라운드, .task-panel-select와 동일한 값)를 입혀 필터 줄의 일원으로
+   읽히게 하고, 이 프레임은 상시 유지된다 — .task-row는 hover에서만 배경이 붙고
+   테두리는 아예 없으므로(위 .task-row 규칙) 어떤 폭에서도 데이터 행과 혼동될
+   여지가 없다. 체크박스는 네이티브 그대로 두어 포커스·키보드·checked 상태 안내를
+   공짜로 유지한다. */
+.task-panel-someday {
+  display: flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-default);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+/* 필터가 실제로 켜졌을 때(체크됨)는 대기 상태와 갈려야 "걸려 있다"는 사실이
+   보인다 — 그렇지 않으면 상시 동일한 상자라 켜졌는지 확인할 시각 경로가 없다.
+   :has()는 이 앱의 WKWebView가 지원한다(blocks.css의 .toggle 규칙 참고). */
+.task-panel-someday:has(input:checked) {
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
+  border-color: var(--color-accent-default);
+}
+
+/* §312 방치 배지 — 기한 초과 배지와 구분되게 경고색을 쓴다 */
+.task-row-stale {
+  color: var(--color-status-warning);
+}
+
+/* §308 태스크 메타데이터 칩 — 방향 C: 점 + 텍스트. `.tag-node`와 같은
+   철학으로 상자(테두리·배경)를 없애고 `::before` 색점 하나만 남긴다. 이모지는
+   화면에서 사라지고 로케일별 어순의 텍스트 라벨로 읽힌다(renderTaskChip).
+   기본색은 --color-text-secondary다. ‼️ **여기서 더 내리지 말 것** — 특히
+   --color-text-muted로. 그것은 --color-text-disabled의 별칭이고(generated/
+   semantic-light.css), 실측 대비가 라이트 2.54:1 / 다크 3.58:1이라 13px 텍스트의
+   AA 기준 4.5:1에 못 미친다(secondary는 4.83 / 6.65). 5px `::before` 점도 같은
+   색을 타므로 비-텍스트 대비 3:1(WCAG 1.4.11)까지 함께 떨어진다.
+   이것이 심미 조정이 아닌 이유: 원문은 `.visually-hidden`이고 칩은 `aria-hidden`
+   이라 **칩이 이 메타데이터의 유일한 시각 표현**이다. 대비가 낮아도 눈으로 되짚을
+   원문이 화면에 없고, 스크린리더를 쓰지 않는 저시력 사용자에게는 남는 경로가
+   아예 없다 — 아래의 "원문까지 display:none으로 지우지 말라"와 같은 실패 양식의
+   시각 버전이다.
+   상자를 잃은 것은 대비를 **지킬** 이유이지 낮출 이유가 아니다: 본문이 라이트
+   17.4:1이라 secondary로도 위계는 충분하고, 방향 C에는 이미 상자 제거·작은
+   글자·점이라는 위계 장치가 셋 있다.
+   기한 초과만 --color-status-danger로 소리친다 — 우선순위까지 색을 가지면
+   무엇이 급한지가 사라진다는 것이 방향 A 때부터 이어진 원칙이다.
+
+   원문 구간(`.task-field-raw`)에는 여기서 규칙을 주지 않는다 — 감추는 일은
+   base.css의 공용 `.visually-hidden`이 맡고, 플러그인이 두 클래스를 함께 붙인다
+   (`TaskBucketList`가 `btn-unstyled task-row-text`를 붙이는 것과 같은 방식).
+   여기에 `display: none`을 되살리면 안 된다: 칩이 `aria-hidden`이므로 원문까지
+   지우면 스크린리더에서 메타데이터가 양쪽 다 사라진다. */
+
+.task-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 0.82em;
+  line-height: 1.65;
+  vertical-align: 1px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.task-chip::before {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  content: "";
+  background: currentcolor;
+  border-radius: 50%;
+}
+
+/* 색을 갖는 유일한 상태. 점(::before)과 글자 모두 currentcolor를 타므로 이
+   한 줄이면 충분하다. 우선순위 칩에는 색이 없다 — "기한 초과만 소리친다"가
+   이 방향을 고른 이유 자체이고, 우선순위까지 색을 가지면 무엇이 급한지가
+   사라진다. */
+.task-chip-overdue {
+  color: var(--color-status-danger);
+}
+
+/* §312 정리 메뉴 — 파일 트리 컨텍스트 메뉴와 같은 형태이되 클래스를 공유하지
+   않는다. 사이드바 패널 하나가 다른 패널의 스타일시트에 얹히면 그쪽을 손볼 때
+   여기가 조용히 따라 움직인다. */
+.task-row-menu {
+  position: fixed;
+  z-index: 60;
+
+  /* §312 비활성 항목의 라벨은 왜 안 되는지까지 말하므로 한 줄보다 길다 — 감싸도
+     좋지만 무한정 넓어지면 행 위를 덮는다. */
+  min-width: 140px;
+  max-width: 280px;
+  padding: 4px 0;
+
+  /* §312 메뉴 글자는 어떤 경우에도 선택되지 않는다. 우클릭이 남긴 문서 선택 범위 안에
+     메뉴가 들어가 항목 전부가 선택색으로 칠해지던 결함의 처방이고, 위의 `.task-row`
+     처방과 나란히 있어야 하는 이유가 있다: 저쪽은 선택이 **생기지 않게** 하고 이쪽은
+     이미 있던 선택이 **칠할 것을 갖지 못하게** 한다. 에디터 등 다른 곳에 남아 있던
+     선택은 여기서 지우지 않는다 — 메뉴를 열었다고 사용자의 선택을 없애는 것은
+     이 결함보다 나쁜 부작용이다. */
+  user-select: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+}
+
+.task-row-menu-item {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+/* §312 그 항목에 닿는 키. 위계는 **크기와 자리**로만 준다 — 색을 한 단계 더 내리면
+   --color-text-muted인데, 그것은 --color-text-disabled의 별칭이고 실측 대비가 라이트
+   2.54:1이라 이 크기의 글자에서 읽을 수 없다(위 .task-chip 주석의 같은 함정). 읽을 수
+   없는 힌트는 발견 가능성을 만들지 못하므로 색을 내리는 것이 목적을 지운다. */
+.task-row-menu-hint {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+/* 강조는 hover가 아니라 상태다 — 키보드로만 옮겨 다니는 §315에서 hover는
+   영원히 걸리지 않는다. onMouseEnter가 같은 상태를 갱신하므로 두 경로가 한
+   가지 표시를 공유한다. */
+.task-row-menu-item-active {
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
+}
+
+/* §312 파괴적 항목(줄 삭제) — 되돌릴 수 없으므로 색과 구분선 **둘 다**로 갈린다.
+   색만으로 가르면 색각 이상에서 구분이 사라진다. `.task-row-menu-item-active` 뒤에
+   와야 강조된 상태에서도 경고색이 남는다(같은 특이도, 나중 규칙이 이긴다). */
+.task-row-menu-item-danger {
+  padding-top: 6px;
+  margin-top: 4px;
+  color: var(--color-status-danger);
+  border-top: 1px solid var(--color-border-default);
+}
+
+/* §312 이 행에서는 실행할 수 없는 항목.
+   ‼️ **회색으로 만들지 않는다.** 비활성의 관례색은 --color-text-muted인데 그것은
+   --color-text-disabled의 별칭(라이트 2.54:1)이고, 이 항목의 라벨은 "왜 안 되는지"를
+   담은 **유일한 설명**이다 — 읽을 수 없게 만들면 정확히 이 수정이 없애려던 상태("왜
+   막혔는지 알 수 없는 행")로 되돌아간다. 대신 커서로 알리고, 못 한다는 사실은 라벨의
+   문장과 aria-disabled가 말한다. 강조(active)는 그대로 받는다 — 키보드로 그 위에 설 수
+   있어야 그 문장을 읽는다. */
+.task-row-menu-item-disabled {
+  cursor: default;
+}
+
+/* 행이 tabIndex를 갖게 됐으므로 키보드 포커스가 보여야 한다 — j/k 이동이
+   어디에 있는지 알 수 없으면 키보드 경로 자체가 성립하지 않는다. */
+.task-row:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: -2px;
 }

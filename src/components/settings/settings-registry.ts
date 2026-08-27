@@ -224,6 +224,15 @@ export function useSettingsRegistry(): SearchableSetting[] {
       ),
     },
     {
+      id: "tasksCaptureFile",
+      label: "settings.general.tasksCaptureFile",
+      description: "settings.general.tasksCaptureFile.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "capture", "inbox", "수집함"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
       id: "tasksExcludePaths",
       label: "settings.general.tasksExcludePaths",
       description: "settings.general.tasksExcludePaths.desc",

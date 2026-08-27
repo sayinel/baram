@@ -77,6 +77,17 @@ export const COLWIDTH_AUTO_INIT_META = "colwidthAutoInit";
  */
 export const JOURNAL_CURSOR_INIT_META = "journalCursorInit";
 
+/**
+ * §313 Transaction meta key set by `patchEditorContent` — a programmatic sync that
+ * brings the open document in line with what is ALREADY on disk (an in-app write the
+ * user made from a panel, or a reload of the app's own write). It is not a user edit:
+ * the file already says this, so marking the tab dirty would show an unsaved dot for a
+ * change that is saved, and — with auto-save on — write the same bytes back.
+ *
+ * Folded into the dirty baseline the same way the colwidth/journal-caret inits are.
+ */
+export const CONTENT_SYNC_META = "contentSync";
+
 /** Clean up when tab is closed */
 export function clearOriginalDoc(tabId: string): void {
   originalDocs.delete(tabId);
@@ -130,6 +141,18 @@ export function markContentLoaded(tabId: string): void {
  * baseline is captured at finishLoad time via markContentLoaded().
  */
 export function noteColwidthInit(tabId: string, doc: Node): void {
+  noteContentSync(tabId, doc);
+}
+
+/**
+ * Fold a programmatic, already-persisted document change into the dirty baseline so it
+ * never marks the tab dirty. Consumes any pending baseline capture, exactly as
+ * `noteColwidthInit` does — the two differ only in what produced the transaction.
+ *
+ * Ignored while the tab is still loading: the doc is partial then, and the full
+ * baseline is captured at finishLoad time via markContentLoaded().
+ */
+export function noteContentSync(tabId: string, doc: Node): void {
   if (loadingTabs.has(tabId)) return;
   pendingTabs.delete(tabId);
   originalDocs.set(tabId, doc);

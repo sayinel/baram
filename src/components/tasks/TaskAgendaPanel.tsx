@@ -7,18 +7,12 @@ import type { TaskFilters } from "../../utils/tasks/task-filters";
 
 import { useShallow } from "zustand/shallow";
 
-import { setTaskState } from "../../ipc/invoke";
-import { useLinkStore } from "../../stores/editor/link";
+import { useEditorContext } from "../../contexts/editor-context";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
-import {
-  refreshAllTasks,
-  refreshFileTasks,
-  useTaskStore,
-} from "../../stores/tasks/task-store";
-import { useUIStore } from "../../stores/ui/ui";
+import { refreshAllTasks, useTaskStore } from "../../stores/tasks/task-store";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
-import { logger } from "../../utils/logger";
+import { requestScroll } from "../../utils/editor/pending-scroll";
 import { openFileByPath } from "../../utils/open-file";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
 import {
@@ -27,6 +21,8 @@ import {
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
 import { TaskBucketList } from "./TaskBucketList";
+import { useRescheduleOverdue } from "./use-reschedule-overdue";
+import { useTaskTriage } from "./use-task-triage";
 
 // 사이드바 패널의 사용자 노출 문자열은 영어가 이 코드베이스의 관례다
 // ("Filter tags...", "File tree", "Label (optional)" 등). 코드 주석은 한국어 유지.
@@ -53,6 +49,9 @@ export function TaskAgendaPanel() {
       })),
     );
   const byId = useZettelIndexStore((s) => s.byId);
+  // §305 문서 경로 판정에 필요한 라이브 Editor — 활성 탭이 없으면 null이고,
+  // 라우터는 그 경우 디스크로 폴백한다.
+  const editor = useEditorContext();
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
 
   // I4: 밤새 패널을 열어 둬도 버킷 경계가 어제로 굳어버리지 않도록 state로
@@ -84,46 +83,24 @@ export function TaskAgendaPanel() {
     [byId],
   );
 
-  const onToggle = useCallback(
-    async (task: TaskEntry) => {
-      const next = task.state === "done" ? "todo" : "done";
-      try {
-        await setTaskState(
-          task.path,
-          task.line,
-          task.raw,
-          next,
-          tasksRecordDoneDate,
-          // `now`로 통일 — 라이브 new Date()를 쓰면 자정을 넘긴 직후 디스크에
-          // 적히는 ✅ 날짜가 사용자가 보고 있는 버킷 경계와 하루 어긋난다(I4).
-          todayIso(now),
-        );
-      } catch (err) {
-        if (err === "stale") {
-          // §305 stale — 사이에 파일이 바뀐 정상적인 경합이다. 토스트 없이
-          // 조용히 재인덱싱한다.
-          logger.warn("[tasks] write rejected (stale), re-scanning:", err);
-        } else {
-          // I5: stale이 아닌 실패(권한 오류, 디스크 가득 참, 파일 삭제 등)를
-          // 똑같이 조용히 되돌리면 사용자에게는 원인 모를 죽은 체크박스로만
-          // 보인다 — 알려야 한다.
-          logger.warn("[tasks] write failed, re-scanning:", err);
-          useUIStore
-            .getState()
-            .showToast("Couldn't save the task change.", "error");
-        }
-      } finally {
-        // 성공/실패 각 분기에 있던 동일한 호출을 하나로 모았다.
-        await refreshFileTasks(task.path, rootPath, tasksExcludePaths);
-      }
-    },
-    [tasksRecordDoneDate, rootPath, tasksExcludePaths, now],
-  );
+  // §312 네 판정 전부가 여기서 배선된다 — 체크 판정도 나머지 셋과 **같은 회계**를 탄다
+  // (`writeAndReconcile`). 예전에는 이 패널이 그 회계를 손으로 한 벌 더 갖고 있었고, 그
+  // 사본의 실패 문구만 하드코딩된 영어여서 같은 실패에 메뉴와 체크박스가 다른 언어로
+  // 답했다(MODERATE-3).
+  const { onToggle, onTriage } = useTaskTriage({
+    editor,
+    exclude: tasksExcludePaths,
+    now,
+    recordDoneDate: tasksRecordDoneDate,
+    rootPath,
+  });
 
   const onJump = useCallback((task: TaskEntry) => {
-    // pendingScrollLine은 1-based(`mdLineToPmBlockStart`가 line-1을 쓴다),
-    // TaskEntry.line은 0-based다. GlobalSearch가 쓰는 것과 같은 경로.
-    useLinkStore.getState().setPendingScrollLine(task.line + 1);
+    // §313 요청에 파일 주소를 붙여 건다 — 그 파일이 **이미 활성 탭**이어도 배달되고
+    // (누른 태스크의 대부분이 그 경우다), 배달되지 못하면 남지 않고 버려진다.
+    // 줄 번호는 1-based(`mdLineToPmPos`가 line-1을 쓴다), `TaskEntry.line`은
+    // 0-based다.
+    requestScroll(task.path, { kind: "line", value: task.line + 1 });
     void openFileByPath(task.path);
   }, []);
 
@@ -150,6 +127,14 @@ export function TaskAgendaPanel() {
     [visible, now, tasksWeekStart],
   );
 
+  const reschedule = useRescheduleOverdue({
+    editor,
+    exclude: tasksExcludePaths,
+    rootPath,
+    tasks: groups.overdue,
+    today: todayIso(now),
+  });
+
   return (
     <div className="task-panel">
       <div className="task-panel-header">
@@ -164,6 +149,17 @@ export function TaskAgendaPanel() {
             type="search"
             value={filters.text}
           />
+          {groups.overdue.length > 0 && (
+            <button
+              className="icon-btn task-panel-overdue-action"
+              disabled={loading || reschedule.busy}
+              onClick={() => void reschedule.run()}
+              title={`Reschedule ${groups.overdue.length} overdue task(s) to today`}
+              type="button"
+            >
+              ⏩
+            </button>
+          )}
           <button
             className="icon-btn"
             disabled={!rootPath || loading}
@@ -226,6 +222,17 @@ export function TaskAgendaPanel() {
               ))}
             </select>
           )}
+
+          <label className="task-panel-someday">
+            <input
+              checked={filters.showSomeday}
+              onChange={(e) =>
+                setFilters((f) => ({ ...f, showSomeday: e.target.checked }))
+              }
+              type="checkbox"
+            />
+            Someday
+          </label>
         </div>
       </div>
 
@@ -238,6 +245,8 @@ export function TaskAgendaPanel() {
             now={now}
             onJump={onJump}
             onToggle={onToggle}
+            onTriage={onTriage}
+            showAge={bucket === "noDate"}
             showOverdueAge={bucket === "overdue"}
             tasks={groups[bucket]}
             titleFor={titleFor}

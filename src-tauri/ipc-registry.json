@@ -1363,17 +1363,98 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "태스크 메타데이터 필드 설정. 빈 value는 필드 제거. expectedRaw 낙관적 잠금"
+    },
+    {
+      "name": "preview_task_state_line",
+      "input": {
+        "raw": "string",
+        "newState": "string",
+        "recordDoneDate": "boolean",
+        "today": "string"
+      },
+      "output": "string",
+      "module": "task",
+      "spec": "§305",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "상태 전이 결과 줄만 계산한다(I/O 없음). 열린 파일은 디스크 대신 이 줄로 갈아끼운다"
+    },
+    {
+      "name": "preview_task_field_line",
+      "input": { "raw": "string", "field": "string", "value": "string" },
+      "output": "string",
+      "module": "task",
+      "spec": "§305",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "필드 설정 결과 줄만 계산한다(I/O 없음). 빈 value는 필드 제거"
+    },
+    {
+      "name": "set_task_tag",
+      "input": {
+        "path": "string",
+        "line": "number",
+        "expectedRaw": "string",
+        "tag": "string",
+        "on": "boolean"
+      },
+      "output": "string",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태스크 줄의 태그 토글. on=false는 제거. §303 순서상 이모지 필드 앞에 넣는다. expectedRaw 낙관적 잠금"
+    },
+    {
+      "name": "preview_task_tag_line",
+      "input": { "raw": "string", "tag": "string", "on": "boolean" },
+      "output": "string",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태그 토글 결과 줄만 계산한다(I/O 없음). 열린 파일은 디스크 대신 이 줄로 갈아끼운다"
+    },
+    {
+      "name": "append_task_line",
+      "input": { "path": "string", "line": "string" },
+      "output": "string",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "수집함 파일 끝에 한 줄 append. 없으면 생성, 줄바꿈 스타일 보존"
+    },
+    {
+      "name": "delete_task_line",
+      "input": {
+        "path": "string",
+        "line": "number",
+        "expectedRaw": "string"
+      },
+      "output": "void",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "태스크 줄 삭제. 종결자까지 함께 지우고 줄바꿈 스타일·끝 개행 유무는 보존. expectedRaw 낙관적 잠금. 파괴적·되돌릴 수 없음(스냅샷 §71이 이 경로를 타지 않는다) — 확인 관문은 프론트, 샌드박스 티어에는 부여하지 않는다"
     }
   ],
   "events": [
     {
       "name": "file:changed",
-      "payload": { "path": "string", "kind": "modified|created|deleted" },
+      "payload": { "path": "string", "mtime": "number (ms)", "origin": "app|external" },
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "description": "파일 변경 감지 (notify)"
+      "description": "파일 변경 감지 (notify). origin=app은 이 앱의 write_file이 만든 변경 — 외부 변경으로 취급하면 안 된다 (§313)"
     },
     {
       "name": "file:created",

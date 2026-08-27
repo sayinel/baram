@@ -27,6 +27,7 @@ beforeEach(() => {
   useEditorStore.setState({
     activeTabId: "a",
     mruOrder: ["a", "b"],
+    sourceModeTabs: [],
     tabs: [tab("a", "/v/a.md"), tab("b", "/v/b.md")],
   });
 });

@@ -299,6 +299,13 @@
   font-size: 14px;
   line-height: 1.4;
   color: var(--color-text-primary);
+
+  /* §312 delete confirmation is the first caller to put arbitrary-length, arbitrary-
+     whitespace user text (a raw task line) in here. `anywhere` stops a long unbroken
+     token (a URL, an id) from pushing the dialog wider; `pre-wrap` keeps the leading
+     indentation that's the only thing telling a parent and its sub-item apart. */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .ai-prompt-presets {

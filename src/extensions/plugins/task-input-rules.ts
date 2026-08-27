@@ -8,21 +8,32 @@ import type { EditorState } from "@tiptap/pm/state";
 import { Extension, InputRule } from "@tiptap/core";
 
 import { resolveDateInput } from "../../utils/tasks/task-date-input";
+import {
+  DATE_FIELDS,
+  PRIORITY_DIGITS,
+  PRIORITY_EMOJI,
+  TRIGGER_BOUNDARY,
+} from "../../utils/tasks/task-field-tokens";
 
-const DATE_FIELDS: { emoji: string; trigger: string }[] = [
-  { trigger: "start", emoji: "🛫" },
-  { trigger: "sched", emoji: "⏳" },
-  { trigger: "due", emoji: "📅" },
-];
-
-// "3" = normal priority → no emoji, but the trigger must still clear (small fix #3).
-const PRIORITY_EMOJI: Record<string, string> = {
-  "1": "🔺",
-  "2": "⏫",
-  "3": "",
-  "4": "🔽",
-  "5": "⏬",
-};
+/**
+ * 이 매치를 발화시킨 문자가 Enter였는가.
+ *
+ * Tiptap의 입력 규칙 플러그인은 Enter에서도 규칙을 돌리는데, 이때 커서 앞
+ * 텍스트에 `\n`을 붙여서 먹인다(`@tiptap/core` `inputRulesPlugin`의
+ * `handleKeyDown`). 그래서 줄 끝 트리거는 `\s$`의 `\s`로 그 `\n`에 걸린다.
+ *
+ * 그 자체는 바라던 바다 — 트리거를 다 쓰고 Enter를 친 사용자도 변환을
+ * 원한다. 문제는 규칙이 발화하면 플러그인이 keydown을 **가져가 버려서**
+ * (`run()`이 true를 돌려주면 `handleKeyDown`도 true) 정작 항목이 나뉘지
+ * 않는다는 것이다. 입력 규칙 플러그인이 keymap보다 앞에 있어 taskItem의
+ * `Enter: splitListItem`은 아예 호출되지 않는다.
+ *
+ * 그래서 Enter로 발화했을 때는 변환과 함께 줄 나눔까지 이 체인이 직접
+ * 한다. 한 트랜잭션이라 되돌리기도 한 번이다.
+ */
+function firedByEnter(match: RegExpMatchArray): boolean {
+  return match[0].endsWith("\n");
+}
 
 /** 커서가 taskItem 안에 있을 때만 true. */
 function insideTaskItem(state: EditorState): boolean {
@@ -37,18 +48,25 @@ export const TaskInputRules = Extension.create({
   name: "taskInputRules",
 
   addInputRules() {
-    // (?<=^|\s) — 트리거 앞이 줄 시작이거나 공백이어야 한다. 폭 0 lookbehind라
-    // range/match에 그 경계 문자가 섞이지 않는다. 이게 없으면 "overdue:8/30 "의
-    // "due:"가 "over" 중간에서 걸려 "over📅2026-08-30 "이 돼버린다(small fix #1).
+    // 경계(`TRIGGER_BOUNDARY`)와 어휘는 캡처 저장 경로와 공유한다. 끝의 `\s$`만
+    // 여기 고유다 — 입력 규칙은 스페이스를 치는 순간 발화한다(small fix #1).
+    // 그 `\s`에는 Enter의 `\n`도 걸린다(`firedByEnter`).
     const rules: InputRule[] = DATE_FIELDS.map(
       ({ trigger, emoji }) =>
         new InputRule({
-          find: new RegExp(`(?<=^|\\s)${trigger}:(\\S+)\\s$`),
+          find: new RegExp(`${TRIGGER_BOUNDARY}${trigger}:(\\S+)\\s$`),
           handler: ({ state, range, match, chain }) => {
             if (!insideTaskItem(state)) return null;
             const iso = resolveDateInput(match[1], new Date());
             if (!iso) return null;
-            chain().deleteRange(range).insertContent(`${emoji}${iso} `).run();
+            // 스페이스로 발화했으면 다음 낱말과 붙지 않게 공백을 남기고,
+            // Enter로 발화했으면 줄이 여기서 끝나므로 남기지 않는다.
+            const enter = firedByEnter(match);
+            const commands = chain()
+              .deleteRange(range)
+              .insertContent(`${emoji}${iso}${enter ? "" : " "}`);
+            if (enter) commands.splitListItem("taskItem");
+            commands.run();
             return undefined;
           },
         }),
@@ -56,28 +74,26 @@ export const TaskInputRules = Extension.create({
 
     // prio:N 과 !N 두 표기를 같은 결과로 받는다. 3(보통)은 이모지가 없을
     // 뿐 트리거는 지워져야 한다 — `!emoji`가 아니라 매핑 존재 여부로 판정한다.
-    for (const find of [
-      /(?<=^|\s)prio:([12345])\s$/,
-      /(?<=^|\s)!([12345])\s$/,
-    ]) {
-      rules.push(
-        new InputRule({
-          find,
-          handler: ({ state, range, match, chain }) => {
-            if (!insideTaskItem(state)) return null;
-            const emoji = PRIORITY_EMOJI[match[1]];
-            if (emoji === undefined) return null;
-            // 3(보통)은 이모지가 없다 — 트리거 앞의 구분 공백은 이미 있으므로
-            // 여기서 또 공백을 남기면 이중 공백이 된다. 그냥 지운다.
-            chain()
-              .deleteRange(range)
-              .insertContent(emoji ? `${emoji} ` : "")
-              .run();
-            return undefined;
-          },
-        }),
-      );
-    }
+    rules.push(
+      new InputRule({
+        find: new RegExp(`${TRIGGER_BOUNDARY}${PRIORITY_DIGITS}\\s$`),
+        handler: ({ state, range, match, chain }) => {
+          if (!insideTaskItem(state)) return null;
+          const emoji = PRIORITY_EMOJI[match[1]];
+          if (emoji === undefined) return null;
+          // 3(보통)은 이모지가 없다 — 트리거 앞의 구분 공백은 이미 있으므로
+          // 여기서 또 공백을 남기면 이중 공백이 된다. 그냥 지운다.
+          const enter = firedByEnter(match);
+          const suffix = enter ? "" : " ";
+          const commands = chain()
+            .deleteRange(range)
+            .insertContent(emoji ? `${emoji}${suffix}` : "");
+          if (enter) commands.splitListItem("taskItem");
+          commands.run();
+          return undefined;
+        },
+      }),
+    );
 
     return rules;
   },

@@ -44,7 +44,7 @@ import { useCloseGuard } from "./hooks/use-close-guard";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import {
-  triggerAutoReload,
+  reloadAfterConflictConsent,
   useFileOperations,
 } from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
@@ -1117,9 +1117,8 @@ function App() {
             const result = await mergeTexts(base, local, external);
             setMergeState({ filePath, segments: result.segments });
           }}
-          onReload={(filePath, externalMtime) => {
-            void triggerAutoReload(filePath, externalMtime).catch(() => {});
-          }}
+          // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조.
+          onReload={reloadAfterConflictConsent}
         />
         <ToastHost />
         {mergeState && (

@@ -1,4 +1,5 @@
 import type { TaskEntry } from "../../../ipc/types";
+import type { Editor } from "@tiptap/react";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -7,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const setTaskState = vi.fn().mockResolvedValue("- [x] 하나");
 const getVaultTasks = vi.fn().mockResolvedValue([]);
 const getFileTasks = vi.fn().mockResolvedValue([]);
+// §305 문서 경로(활성 + dirty 탭)가 라이브 문서를 읽고 쓰는 데 쓴다.
+const previewTaskStateLine = vi.fn();
+const prosemirrorToMarkdown = vi.fn();
 
 // listDir/readFile 스텁이 필요한 이유: TaskAgendaPanel → useZettelIndexStore →
 // 같은 모듈에서 listDir/readFile을 import한다. 3개만 목하면 그 import가 깨진다.
@@ -14,13 +18,26 @@ vi.mock("../../../ipc/invoke", () => ({
   getFileTasks: (...a: unknown[]) => getFileTasks(...a),
   getVaultTasks: (...a: unknown[]) => getVaultTasks(...a),
   listDir: vi.fn().mockResolvedValue([]),
+  previewTaskStateLine: (...a: unknown[]) => previewTaskStateLine(...a),
   readFile: vi.fn().mockResolvedValue(""),
   setTaskState: (...a: unknown[]) => setTaskState(...a),
 }));
 
+vi.mock("../../../pipeline", () => ({
+  prosemirrorToMarkdown: (...a: unknown[]) => prosemirrorToMarkdown(...a),
+}));
+
+import { EditorProvider } from "../../../contexts/editor-context";
+import { t } from "../../../i18n";
+import { useEditorStore } from "../../../stores/editor/editor";
+import { useLinkStore } from "../../../stores/editor/link";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { TaskAgendaPanel } from "../TaskAgendaPanel";
+
+// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
+const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
   return {
@@ -80,6 +97,35 @@ describe("TaskAgendaPanel", () => {
     );
   });
 
+  it("§313 addresses the scroll request at the task's own file", async () => {
+    // 결함: 예전에는 주소 없는 `setPendingScrollLine`만 세웠다. 그 파일이 이미 활성
+    // 탭이면(누르는 태스크의 대부분이 그렇다) 탭 전환이 없어 아무도 소비하지 않았고,
+    // 커서는 1행에 남은 채 값만 남아 **다음** 탭 전환이 엉뚱한 파일에 적용했다.
+    useEditorStore.setState({
+      activeTabId: "t1",
+      mruOrder: ["t1"],
+      tabs: [
+        {
+          contextId: "c",
+          filePath: "a.md",
+          id: "t1",
+          isDirty: false,
+          isPinned: false,
+          title: "a.md",
+        },
+      ],
+    });
+    useLinkStore.getState().clearPendingScroll();
+    useTaskStore.getState().setAll([task({ line: 41 })]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.click(screen.getByRole("button", { name: "하나" }));
+
+    // 0-based `TaskEntry.line` → 1-based 스크롤 요청.
+    expect(useLinkStore.getState().pendingScrollLine).toBe(42);
+    expect(useLinkStore.getState().pendingScrollPath).toBe("a.md");
+  });
+
   it("silently re-scans the file when the write comes back stale", async () => {
     // I1: rootPath/exclude가 증분 재스캔에도 실려야 exclude 설정이 지켜진다 —
     // rootPath가 없는 이 렌더에서는 null/[]로 넘어간다.
@@ -102,6 +148,26 @@ describe("TaskAgendaPanel", () => {
 
     expect(useUIStore.getState().toast?.type).toBe("error");
     expect(getFileTasks).toHaveBeenCalledWith("a.md", null, []);
+  });
+
+  // ‼️ 체크 판정의 실패 문구가 정리 메뉴와 **같은 키**여야 한다. 예전에는 이 자리에
+  // 하드코딩된 영어가 있었고 그 문자열은 `tasks.triage.writeFailed`의 영어와 바이트가
+  // 같았다 — 한국어 사용자는 같은 실패에 메뉴에서 한국어, 체크박스에서 영어를 받았다.
+  //
+  // ‼️ **한국어 로케일로 확인해야 한다.** 영어로 보면 하드코딩된 사본과 키에서 온 값이
+  // 바이트가 같아 이 테스트가 아무것도 가르지 못한다 — 되살린 결함이 초록불로 지나간다.
+  it("체크 판정의 실패 문구는 정리 조작과 같은 i18n 키를 쓴다 (MODERATE-3)", async () => {
+    useSettingsStore.setState({ locale: "ko" });
+    setTaskState.mockRejectedValueOnce("Permission denied (os error 13)");
+    useTaskStore.getState().setAll([task()]);
+    render(<TaskAgendaPanel />);
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("tasks.triage.writeFailed", "ko"),
+    );
+    useSettingsStore.setState({ locale: "en" });
   });
 
   it("re-scans exactly once per toggle regardless of outcome (I5)", async () => {
@@ -127,8 +193,17 @@ describe("TaskAgendaPanel", () => {
       ]);
     render(<TaskAgendaPanel />);
 
-    const marker = screen.getByRole("img", { name: "Highest priority" });
-    expect(marker).toHaveTextContent("🔺");
+    const marker = screen.getByRole("img", { name: "Urgent priority" });
+    // §308: the badge shows a short text symbol (PRIORITY_SYMBOL), not the
+    // raw markdown emoji — see priorityBadge.
+    expect(marker).toHaveTextContent("!!!");
+    // §308 direction C — the pill is gone, and with it the class sharing
+    // this test used to pin (`.task-chip` + `.task-row-priority`). The
+    // editor's chip is now a dot-and-label widget with its own DOM shape
+    // (see renderTaskChip), so the agenda badge no longer rides its class;
+    // task-row-priority carries its own muted colour directly (tasks.css).
+    expect(marker).toHaveClass("task-row-priority");
+    expect(marker).not.toHaveClass("task-chip");
     // "plain" (priority 0) renders no marker at all, so there must be
     // exactly one img-role element on the page.
     expect(screen.getAllByRole("img")).toHaveLength(1);
@@ -251,6 +326,39 @@ describe("TaskAgendaPanel", () => {
     expect(screen.getByText("home item")).toBeInTheDocument();
   });
 
+  // §312 `applyTaskFilters`\u0027 showSomeday branch is covered by unit tests, but
+  // nothing rendered or clicked the checkbox that feeds it — the wiring in
+  // TaskAgendaPanel was unverified (review Major 4).
+  describe("Someday toggle", () => {
+    const someday = task({ tags: ["someday"], text: "언젠가 Rust" });
+
+    it("hides a #someday capture from No date by default", () => {
+      useTaskStore.getState().setAll([someday]);
+      render(<TaskAgendaPanel />);
+      expect(screen.queryByText("언젠가 Rust")).not.toBeInTheDocument();
+    });
+
+    it("shows it once the checkbox is ticked", async () => {
+      useTaskStore.getState().setAll([someday]);
+      render(<TaskAgendaPanel />);
+
+      await userEvent.click(screen.getByRole("checkbox", { name: "Someday" }));
+
+      expect(screen.getByText("언젠가 Rust")).toBeInTheDocument();
+    });
+
+    it("hides it again when the checkbox is unticked", async () => {
+      useTaskStore.getState().setAll([someday]);
+      render(<TaskAgendaPanel />);
+      const box = screen.getByRole("checkbox", { name: "Someday" });
+
+      await userEvent.click(box);
+      await userEvent.click(box);
+
+      expect(screen.queryByText("언젠가 Rust")).not.toBeInTheDocument();
+    });
+  });
+
   describe("midnight rollover (I4)", () => {
     beforeEach(() => {
       vi.useFakeTimers();
@@ -297,5 +405,224 @@ describe("TaskAgendaPanel", () => {
         "2026-08-23",
       );
     });
+  });
+
+  // §305 문서 경로 — 활성 탭이 dirty일 때만 들어간다. 이 스위트가 이 태스크가
+  // 존재하는 이유(디스크를 다시 읽지 않는다)와 Minor 1(recordDoneDate가
+  // 꺼져 있을 때의 done 날짜)을 검증한다.
+  describe("document branch (§305 activeTab && dirty)", () => {
+    beforeEach(() => {
+      useEditorStore.setState({
+        activeTabId: "t1",
+        tabs: [
+          {
+            contextId: "c",
+            filePath: "a.md",
+            id: "t1",
+            isDirty: true,
+            isPinned: false,
+            title: "a",
+          },
+        ],
+      });
+    });
+
+    afterEach(() => {
+      useEditorStore.setState({ activeTabId: null, tabs: [] });
+      useSettingsStore.getState().setTasksRecordDoneDate(true);
+    });
+
+    it("디스크를 다시 읽지 않는다 — 이 태스크가 존재하는 이유", async () => {
+      prosemirrorToMarkdown.mockReturnValue("- [ ] 하나\n");
+      previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
+      useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+      render(
+        <EditorProvider value={FAKE_EDITOR}>
+          <TaskAgendaPanel />
+        </EditorProvider>,
+      );
+
+      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+      expect(setTaskState).not.toHaveBeenCalled();
+      expect(getFileTasks).not.toHaveBeenCalled();
+    });
+
+    it("recordDoneDate가 꺼져 있으면 재계산 대신 실제로 쓰인 줄에서 done을 읽는다 (Minor 1)", async () => {
+      useSettingsStore.getState().setTasksRecordDoneDate(false);
+      // apply_state는 recordDoneDate=false일 때 기존 ✅date를 그대로 보존해
+      // 돌려준다(write.rs:144-146) — 설정값으로 재계산하면 이 값과 어긋난다.
+      prosemirrorToMarkdown.mockReturnValue("- [ ] 하나 ✅2026-01-01\n");
+      previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-01-01");
+      useTaskStore
+        .getState()
+        .setAll([task({ raw: "- [ ] 하나 ✅2026-01-01" })]);
+      render(
+        <EditorProvider value={FAKE_EDITOR}>
+          <TaskAgendaPanel />
+        </EditorProvider>,
+      );
+
+      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+      const patched = useTaskStore.getState().tasks[0];
+      expect(patched.done).toBe("2026-01-01");
+      expect(patched.raw).toBe("- [x] 하나 ✅2026-01-01");
+      expect(patched.state).toBe("done");
+    });
+
+    it("완료된 태스크를 체크 해제하면 done을 null로 patch한다", async () => {
+      prosemirrorToMarkdown.mockReturnValue("- [x] 하나 ✅2026-08-01\n");
+      previewTaskStateLine.mockResolvedValue("- [ ] 하나");
+      useTaskStore.getState().setAll([
+        task({
+          done: "2026-08-01",
+          raw: "- [x] 하나 ✅2026-08-01",
+          state: "done",
+        }),
+      ]);
+      render(
+        <EditorProvider value={FAKE_EDITOR}>
+          <TaskAgendaPanel />
+        </EditorProvider>,
+      );
+
+      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+      const patched = useTaskStore.getState().tasks[0];
+      expect(patched.done).toBeNull();
+      expect(patched.state).toBe("todo");
+      expect(getFileTasks).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// §312 소스 경로 — 활성 dirty 탭이 **소스 모드**일 때. 문서 경로와 같은 약속을
+// 지켜야 한다(디스크를 다시 읽지 않는다). 다만 고치는 대상이 숨어 있는 PM 문서가
+// 아니라 사용자가 보고 있는 소스 버퍼다.
+describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
+  let buffer = "";
+
+  beforeEach(() => {
+    buffer = "- [ ] 하나\n";
+    useTaskStore.getState().clear();
+    useEditorStore.setState({
+      activeTabId: "t1",
+      sourceBufferAccess: {
+        getSourceBuffer: () => buffer,
+        setSourceBuffer: (_tabId, next) => {
+          buffer = next;
+        },
+      },
+      sourceModeTabs: ["t1"],
+      tabs: [
+        {
+          contextId: "c",
+          filePath: "a.md",
+          id: "t1",
+          isDirty: true,
+          isPinned: false,
+          title: "a",
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    useEditorStore.setState({
+      activeTabId: null,
+      sourceBufferAccess: null,
+      sourceModeTabs: [],
+      tabs: [],
+    });
+  });
+
+  it("보이는 소스 버퍼를 고친다 — PM 문서가 아니다", async () => {
+    // PM 문서에는 이 태스크의 줄이 아예 없다. 문서 경로로 샜다면 낙관적 잠금이
+    // stale로 거절해 버퍼가 그대로 남는다 — 단정이 두 경로를 실제로 가른다.
+    prosemirrorToMarkdown.mockReturnValue("- [ ] 전혀 다른 줄\n");
+    previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
+    useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(buffer).toBe("- [x] 하나 ✅2026-08-24\n");
+    expect(setTaskState).not.toHaveBeenCalled();
+  });
+
+  it("디스크를 다시 읽지 않고 스토어를 직접 패치한다", async () => {
+    previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
+    useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(getFileTasks).not.toHaveBeenCalled();
+    const patched = useTaskStore.getState().tasks[0];
+    expect(patched.state).toBe("done");
+    expect(patched.done).toBe("2026-08-24");
+    expect(patched.raw).toBe("- [x] 하나 ✅2026-08-24");
+  });
+
+  it("경합으로 거절돼도 같은 버퍼의 다른 변경을 되돌리지 않는다", async () => {
+    // ‼️ stale은 "아무 일도 없었다"가 아니다. 소스 경로에서 거절됐다는 것은 그 파일의
+    // 진실이 아직 **저장되지 않은 버퍼**라는 뜻이고, 그 파일을 디스크에서 다시 읽으면
+    // 같은 세션이 이미 버퍼에 만들어 둔 다른 줄의 변경까지 옛 내용으로 되돌아간다.
+    //
+    // 픽스처: 0번 줄은 조금 전에 이 패널에서 오늘로 옮겼고(버퍼에만 있다), 1번 줄은
+    // 그 사이 버퍼에서 다른 텍스트가 돼 낙관적 잠금이 거절한다.
+    buffer = "- [ ] 하나 📅2026-08-30\n- [ ] 둘 (버퍼에서 바뀐 뒤)\n";
+    // 디스크는 아직 저장 전이라 두 줄 모두 옛 내용이다.
+    getFileTasks.mockResolvedValue([
+      task({ line: 0, raw: "- [ ] 하나" }),
+      task({ line: 1, raw: "- [ ] 둘", text: "둘" }),
+    ]);
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ due: "2026-08-30", line: 0, raw: "- [ ] 하나 📅2026-08-30" }),
+        task({ line: 1, raw: "- [ ] 둘", text: "둘" }),
+      ]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /둘/ }));
+
+    // 단정은 "다시 읽지 않았다"가 아니라 **먼저 만든 변경이 살아 있다**이다.
+    const first = useTaskStore.getState().tasks.find((t) => t.line === 0);
+    expect(first?.due).toBe("2026-08-30");
+    expect(first?.raw).toBe("- [ ] 하나 📅2026-08-30");
+  });
+
+  // 스토어를 만지지 않는 것은 옳다. 침묵까지 옳은 것은 아니다 — 이 stale은 파일을
+  // 저장할 때까지 **영구적**이라, 알리지 않으면 사용자에게는 몇 번을 눌러도 아무 일도
+  // 일어나지 않는 원인 모를 죽은 체크박스로만 보인다(I5).
+  it("거절됐다는 것을 사용자에게 알린다", async () => {
+    // 저장하지 않은 편집이 그 줄을 이미 바꿔 놨다 — 낙관적 잠금이 거절한다.
+    buffer = "- [ ] 사용자가 이미 고쳐 둔 줄\n";
+    useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+    render(
+      <EditorProvider value={FAKE_EDITOR}>
+        <TaskAgendaPanel />
+      </EditorProvider>,
+    );
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+
+    expect(useUIStore.getState().toast?.type).toBe("info");
+    expect(getFileTasks).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].state).toBe("todo");
   });
 });

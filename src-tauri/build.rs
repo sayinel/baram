@@ -11,6 +11,7 @@
 fn main() {
     let app_manifest = tauri_build::AppManifest::new().commands(&[
         "add_context",
+        "append_task_line",
         "confirm_quit",
         "copy_file",
         "create_dir",
@@ -18,6 +19,7 @@ fn main() {
         "delete_dir",
         "delete_file",
         "delete_snapshot",
+        "delete_task_line",
         "detect_pandoc",
         "diff_texts",
         "embed_text",
@@ -102,6 +104,9 @@ fn main() {
         "plugin_storage_remove",
         "plugin_storage_write",
         "plugin_uninstall",
+        "preview_task_field_line",
+        "preview_task_state_line",
+        "preview_task_tag_line",
         "read_file",
         "refresh_index",
         "remove_config",
@@ -121,6 +126,7 @@ fn main() {
         "set_config",
         "set_task_field",
         "set_task_state",
+        "set_task_tag",
         "set_vault_config",
         "set_vault_config_by_path",
         "set_vault_root",

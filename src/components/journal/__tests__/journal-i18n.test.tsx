@@ -61,6 +61,8 @@ describe("the journal's keys resolve in both locales", () => {
   for (const file of [
     ...files,
     "src/utils/journal/journal-search.ts", // CATEGORY_LABELS holds keys, not labels
+    // §307D ERROR_KEY maps a capture failure code to the key the dialog renders.
+    "src/components/journal/use-capture-task-mode.ts",
   ]) {
     for (const match of readFileSync(file, "utf8").matchAll(
       /"(journal\.[a-zA-Z.]+)"/g,
