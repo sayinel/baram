@@ -155,6 +155,23 @@ export function resolveFindChar(
  * Resolve a motion to its target position. `count` repeats the unit motion;
  * targets clamp at document edges (vim: excess counts stop at the edge).
  */
+/** issue 487 — ex `:N` 줄 이동의 대상: N번째 커서 줄의 시작. 줄 모델은
+ *  j/k와 동일(collectLines)이라 hard-break 분절·테이블 행·"코드블록 =
+ *  한 줄" 카운트가 자동 일치한다. 본가 vim처럼 범위 밖은 마지막 줄로
+ *  클램프, `"$"`는 마지막 줄. 빈 문서면 null. */
+export function cursorLineStart(
+  state: EditorState,
+  line: "$" | number,
+): null | number {
+  const lines = collectLines(state);
+  if (lines.length === 0) return null;
+  const index =
+    line === "$"
+      ? lines.length - 1
+      : Math.min(Math.max(line, 1), lines.length) - 1;
+  return lines[index].start;
+}
+
 export function resolveMotion(
   state: EditorState,
   pos: number,
