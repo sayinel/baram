@@ -35,10 +35,6 @@ const graphemeSegmenter = new Intl.Segmenter(undefined, {
 });
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
-/**
- * Resolve a motion to its target position. `count` repeats the unit motion;
- * targets clamp at document edges (vim: excess counts stop at the edge).
- */
 /** Optional per-call motion policy (issue 472). */
 export interface MotionOptions {
   /** Vertical landing INTO a CodeMirror-backed code block: "directional"
@@ -52,8 +48,6 @@ export interface MotionOptions {
   codeBlockEntry?: "directional" | "first-line";
 }
 
-// ── unit columns ───────────────────────────────────────────────────────────
-
 /** Carried table-walk state: one findCell at entry, local rect expansion
  *  per step afterwards. */
 interface TableWalk {
@@ -62,8 +56,8 @@ interface TableWalk {
   tableStart: number;
 }
 
-/** The hard-break segment (or whole-textblock span) holding `pos`; null on
- *  an atom boundary. */
+// ── unit columns ───────────────────────────────────────────────────────────
+
 /** issue 477 — insert-mode arrow entry target: the directionally adjacent
  *  source line of the code block whose CONTENT starts at `inside`, carrying
  *  the column of the PM caret at `from`. The caret model differs from the
@@ -157,6 +151,10 @@ export function resolveFindChar(
   return target !== undefined && target < pos ? target : pos;
 }
 
+/**
+ * Resolve a motion to its target position. `count` repeats the unit motion;
+ * targets clamp at document edges (vim: excess counts stop at the edge).
+ */
 export function resolveMotion(
   state: EditorState,
   pos: number,
@@ -238,6 +236,8 @@ export function resolveMotion(
   }
 }
 
+/** The hard-break segment (or whole-textblock span) holding `pos`; null on
+ *  an atom boundary. */
 export function segmentSpanAt(
   state: EditorState,
   pos: number,

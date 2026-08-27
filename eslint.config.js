@@ -62,6 +62,18 @@ export default tseslint.config(
         },
       ],
       "perfectionist/sort-objects": "off",
+      // 정렬이 선언만 옮기고 주석을 두고 가면 독스트링이 엉뚱한 심볼을
+      // 문서화한다 (실사고: resolveMotion 설명이 MotionOptions 위에,
+      // setSelection 설명이 latchPointerExit 위에 붙었음). 주석을 파티션
+      // 경계로 삼아 주석을 가로지르는 재정렬을 금지한다.
+      "perfectionist/sort-classes": [
+        "error",
+        { partitionByComment: true, type: "natural" },
+      ],
+      "perfectionist/sort-modules": [
+        "error",
+        { partitionByComment: true, type: "natural" },
+      ],
     },
   },
   {
