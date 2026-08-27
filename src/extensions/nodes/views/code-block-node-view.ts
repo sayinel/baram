@@ -28,9 +28,11 @@ import {
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
 import {
+  armIslandPointerHandoff,
   registerCodeBlockEditableSync,
   registerCodeBlockEntry,
   registerCodeBlockVimSync,
+  takeIslandPointerHandoff,
 } from "./code-block-cm-registry";
 import { createCodeBlockEscape } from "./code-block-escape";
 import { buildCodeBlockExtensions } from "./code-block-extensions";
@@ -672,8 +674,32 @@ export class CodeBlockNodeView implements NodeView {
     // outside contentDOM, and moving focus into a panel is still the same
     // island. focusout defers one microtask and releases only when focus
     // truly left the whole root.
-    const onIslandFocus = () => islandVimFocus(island);
-    const onIslandBlur = () => {
+    const onIslandFocus = () => {
+      islandVimFocus(island);
+      // 포인터 인계(기기 보고: B insert → A 클릭이 A의 stale 모드로 열림):
+      // 다른 island에서 온 이동이면 그쪽 모드를 이어받는다. 인계가 없으면
+      // (크롬 왕복, 최초 진입) 자기 세션 그대로 — vim의 창 복귀 관례.
+      const handoff = takeIslandPointerHandoff(this.view);
+      if (handoff === "insert") this.vimController?.ensureInsert();
+      else if (handoff === "normal") this.vimController?.exitToNormal();
+    };
+    const onIslandBlur = (event: FocusEvent) => {
+      // 동기 구간(focusout → 도착측 focusin 이전): 다른 island로의 포인터
+      // 이동이면 지금 모드를 인계로 arm하고 이 세션을 끝낸다. 키보드
+      // 이탈(escapeToPM)과 같은 의미론 — 이동 = 세션 종료 + 의도 소각.
+      const dest =
+        event.relatedTarget instanceof Element
+          ? event.relatedTarget.closest(".code-block-editor")
+          : null;
+      if (dest && !island.dom.contains(dest) && !dest.contains(island.dom)) {
+        const mode = this.exitPmMode();
+        if (mode) {
+          armIslandPointerHandoff(this.view, mode);
+          this.pendingEntryInsert = null;
+          this.pendingVimModeRestore = null;
+          this.vimController?.exitToNormal();
+        }
+      }
       queueMicrotask(() => {
         const active = island.dom.ownerDocument.activeElement;
         if (!island.dom.contains(active)) {

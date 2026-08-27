@@ -19,8 +19,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 // vitest cwd = repo 루트.
 const APP_CSS = readFileSync("src/styles/editor/code-blocks.css", "utf8");
+// prettier가 긴 셀렉터를 줄바꿈하므로 토큰 사이는 공백 유연 매칭.
 const HIDE_RULE_RE =
-  /\.code-block-editor \.cm-editor:not\(:focus-within\) \.cm-fat-cursor,\n\.code-block-editor \.cm-editor:not\(:focus-within\) \.cm-vimMode \.cm-selectionLayer \{[^}]*\}/;
+  /\.code-block-editor \.cm-editor:not\(:focus-within\) \.cm-fat-cursor,\s+\.code-block-editor\s+\.cm-editor:not\(:focus-within\)\s+\.cm-vimMode\s+\.cm-selectionLayer \{[^}]*\}/;
 
 const cleanups: (() => void)[] = [];
 

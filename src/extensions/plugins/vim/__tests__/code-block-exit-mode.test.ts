@@ -7,6 +7,8 @@
 // 들어가는 사고 케이스. 이탈 시점의 island 모드가 PM 모드가 된다:
 // insert/replace → insert (PM에 replace 없음), 그 외 → normal.
 
+import { EditorView as CMEditorView } from "@codemirror/view";
+import { getCM } from "@replit/codemirror-vim";
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -85,6 +87,15 @@ function islandPress(
   );
 }
 
+/** content 아래 CM 뷰의 live vim 상태. */
+function islandVimState(
+  content: HTMLElement,
+): undefined | { insertMode?: boolean } {
+  const cmv = CMEditorView.findFromDOM(content);
+  const cm = cmv ? getCM(cmv) : null;
+  return (cm?.state as undefined | { vim?: { insertMode?: boolean } })?.vim;
+}
+
 function makeEditor(md: string): Editor {
   const editor = new Editor({
     content: "",
@@ -98,6 +109,17 @@ function makeEditor(md: string): Editor {
 
 function pmMode(editor: Editor): VimMode {
   return (vimPluginKey.getState(editor.state) as { mode: VimMode }).mode;
+}
+
+/** island 간 포인터 이동의 포커스 시퀀스: focusout(from, relatedTarget=to)
+ *  → to.focus() → focusin(to). 실 브라우저의 동기 순서 그대로다. */
+function pointerMove(from: HTMLElement, to: HTMLElement): void {
+  from.dispatchEvent(
+    new FocusEvent("focusout", { bubbles: true, relatedTarget: to }),
+  );
+  to.setAttribute("tabindex", "0");
+  to.focus();
+  to.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
 }
 
 async function revealIsland(editor: Editor): Promise<HTMLElement> {
@@ -438,5 +460,80 @@ describe("exit-side mode propagation (issue 478)", () => {
     await new Promise((r) => setTimeout(r, 60));
     // 납치됐다면 editing host가 열려 "true"가 된다 (3v: visual은 host 제거).
     expect(content.getAttribute("contenteditable")).toBe("false");
+  });
+
+  it("POINTER island→island: insert follows the click from B into A", async () => {
+    // A normal, B insert에서 B→A 마우스 이동 시 A가 자기 stale 모드로
+    // 열렸다 (기기 보고). 모드는 커서를 따라간다 — 포인터 경로 포함.
+    const editor = makeEditor(
+      "```ts\nconst a = 1;\n```\n\n```ts\nconst b = 2;\n```\n",
+    );
+    setVim(editor, true);
+    const [contentA, contentB] = await revealIslands(editor, 2);
+    await focusIsland(contentB);
+    await vi.waitFor(() => {
+      islandPress(contentB, "i");
+      expect(contentB.getAttribute("contenteditable")).toBe("true");
+    });
+    pointerMove(contentB, contentA);
+    await vi.waitFor(() => {
+      expect(contentA.getAttribute("contenteditable")).toBe("true"); // A insert
+      expect(islandVimState(contentB)?.insertMode ?? false).toBe(false); // B 정규화
+    });
+  });
+
+  it("POINTER island→island: a normal-mode click NORMALIZES a stale-insert target", async () => {
+    const editor = makeEditor(
+      "```ts\nconst a = 1;\n```\n\n```ts\nconst b = 2;\n```\n",
+    );
+    setVim(editor, true);
+    const [contentA, contentB] = await revealIslands(editor, 2);
+    // A를 insert로 만들어 두고 (stale), 크롬으로 나갔다가
+    await focusIsland(contentA);
+    await vi.waitFor(() => {
+      islandPress(contentA, "i");
+      expect(contentA.getAttribute("contenteditable")).toBe("true");
+    });
+    // B로 포인터 이동: B는 insert(A에서 인계) — 여기서 Esc로 normal
+    pointerMove(contentA, contentB);
+    await vi.waitFor(() => {
+      expect(contentB.getAttribute("contenteditable")).toBe("true");
+    });
+    islandPress(contentB, "Escape");
+    await vi.waitFor(() => {
+      expect(contentB.getAttribute("contenteditable")).toBe("false");
+    });
+    // normal인 B에서 A로 포인터 복귀: A는 stale insert가 아니라 normal
+    pointerMove(contentB, contentA);
+    await vi.waitFor(() => {
+      expect(contentA.getAttribute("contenteditable")).toBe("false");
+      expect(islandVimState(contentA)?.insertMode ?? false).toBe(false);
+    });
+  });
+
+  it("POINTER to app chrome and back: the island session is PRESERVED", async () => {
+    // 사이드바/검색으로 나갔다 오는 왕복은 vim의 창 포커스 복귀 관례대로
+    // 세션을 보존한다 — island 간 이동과 달리 커서가 옮겨간 게 아니다.
+    const editor = makeEditor("```ts\nconst a = 1;\n```\n\nafter\n");
+    setVim(editor, true);
+    const content = await revealIsland(editor);
+    await focusIsland(content);
+    await vi.waitFor(() => {
+      islandPress(content, "i");
+      expect(content.getAttribute("contenteditable")).toBe("true");
+    });
+    const chrome = document.createElement("input");
+    document.body.appendChild(chrome);
+    content.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: chrome }),
+    );
+    chrome.focus();
+    await new Promise((r) => setTimeout(r, 30));
+    // 복귀
+    content.focus();
+    content.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(content.getAttribute("contenteditable")).toBe("true"); // insert 유지
+    chrome.remove();
   });
 });

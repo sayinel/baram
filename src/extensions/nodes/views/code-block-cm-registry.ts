@@ -123,6 +123,29 @@ export function registerCodeBlockVimSync(
 
 const entryRegistries = new WeakMap<PMView, Set<EntryRegistrant>>();
 
+// issue 478 후속(기기 보고) — island 간 POINTER 이동의 모드 인계. 떠나는
+// island가 focusout(relatedTarget=다른 island)에서 자기 모드를 arm하고,
+// 도착 island의 focusin이 소비한다: 포커스 전이는 동기(focusout → focusin)
+// 라 순서가 보장된다. 일회성이며 소비 즉시 사라진다 — 크롬(사이드바)
+// 왕복은 arm 자체가 없어 세션 보존 관례가 유지된다.
+const pointerHandoffs = new WeakMap<PMView, "insert" | "normal">();
+
+/** 떠나는 island가 도착 island로 나를 모드를 예고한다. FIRST-WINS:
+ *  같은 전이에서 focusout이 겹쳐 발화해도(프로그램적 focus 연쇄) 최초
+ *  캡처 — 정규화 이전의 진짜 모드 — 가 이긴다. 소비되지 않은 arm은
+ *  microtask에서 만료된다: 포커스 전이는 동기라 정상 소비는 그 전에
+ *  끝나고, 남는 것은 도착지가 island가 아니었던 잔재뿐이다. */
+export function armIslandPointerHandoff(
+  view: PMView,
+  mode: "insert" | "normal",
+): void {
+  if (pointerHandoffs.has(view)) return;
+  pointerHandoffs.set(view, mode);
+  queueMicrotask(() => {
+    if (pointerHandoffs.get(view) === mode) pointerHandoffs.delete(view);
+  });
+}
+
 /**
  * Invoke the entry handoff of the code block whose node starts at
  * `blockPos`. Returns whether the island took focus SYNCHRONOUSLY — false
@@ -185,4 +208,14 @@ export function registerCodeBlockEntry(
   return () => {
     set.delete(registrant);
   };
+}
+
+/** 도착 island가 인계 모드를 소비한다 — 없으면 null (세션 보존). */
+export function takeIslandPointerHandoff(
+  view: PMView,
+): "insert" | "normal" | null {
+  const mode = pointerHandoffs.get(view);
+  if (mode === undefined) return null;
+  pointerHandoffs.delete(view);
+  return mode;
 }
