@@ -152,6 +152,37 @@ describe("mdLineToPmPos — 여러 줄짜리 블록 안으로 내려간다", () 
     expect(landedIn(md, 8)).toBe("End.");
   });
 
+  // 셀이 비어 있으면 표의 PM 텍스트는 머리글뿐이다 — 글자 맞추기는 첫 줄에서 끝나므로
+  // 나머지 줄은 바닥(행 수 + 구분자 줄 하나)만이 붙잡는다.
+  it("셀이 빈 표에서도 각 줄이 자기 행에 내린다", () => {
+    const md = "Intro\n\n| a | b |\n| --- | --- |\n|  |  |\n|  |  |\n\nEnd.\n";
+    expect(landedRow(md, 5)).not.toContain("no row");
+    expect(landedRow(md, 6)).not.toContain("no row");
+    expect(landedIn(md, 8)).toBe("End.");
+  });
+
+  // 앞 블록의 글자 맞추기가 **줄 중간**에서 끝나는 경우(제목 끝의 태그처럼 PM 텍스트가
+  // 없는 꼬리가 남는다). 그 줄은 다음 블록의 것이 아니므로 바닥 계산에서 세면 안 된다 —
+  // 세면 목록이 자기 줄을 하나 덜 먹고 마지막 항목이 다음 블록으로 샌다.
+  it("앞 블록이 줄 중간에서 끝나도 목록이 자기 줄을 다 먹는다", () => {
+    const md =
+      "# Today #work\n\n- [ ] #a\n- [ ] #b\n- [ ] #c\n\nAfter the list.\n";
+    const d = doc(md);
+    const inTaskItem = (line: number) => {
+      const $p = d.resolve(
+        Math.min(mdLineToPmPos(d, md, line), d.content.size),
+      );
+      for (let depth = $p.depth; depth > 0; depth--) {
+        if ($p.node(depth).type.name === "taskItem") return true;
+      }
+      return false;
+    };
+    expect(inTaskItem(3)).toBe(true);
+    expect(inTaskItem(4)).toBe(true);
+    expect(inTaskItem(5)).toBe(true);
+    expect(landedIn(md, 7)).toBe("After the list.");
+  });
+
   it("빈 문서와 범위 밖 줄 번호에서도 유효한 위치를 준다", () => {
     const md = "Only line.\n";
     const d = doc(md);

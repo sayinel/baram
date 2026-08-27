@@ -480,18 +480,14 @@ function lineOwningLeaves(node: PMNode): number {
 /**
  * `start`에서 시작해 빈 줄을 건너뛰고 내용 줄 `count`개를 지난 지점(그 마지막 줄의 끝).
  *
- * `start`가 줄 중간이면(앞 블록의 글자 맞추기가 그 줄 안에서 끝났다) 그 줄은 이 노드의
- * 것이 아니므로 다음 줄부터 센다.
+ * `start`가 줄 중간일 걱정은 하지 않는다. 앞 형제의 구간 끝도 같은 바닥을 지나 왔고
+ * (줄을 가진 노드는 자기 마지막 줄 끝까지 먹는다), 줄을 하나도 갖지 않는 노드는 커서를
+ * 움직이지 않는다 — 그래서 `start`는 늘 줄 경계이거나 그 줄의 "\n" 위다.
  */
 function nthLineEnd(markdown: string, start: number, count: number): number {
   if (count <= 0) return start;
 
   let i = start;
-  if (i > 0 && markdown[i - 1] !== "\n") {
-    while (i < markdown.length && markdown[i] !== "\n") i++;
-    if (i < markdown.length) i++;
-  }
-
   let seen = 0;
   let end = start;
   while (i <= markdown.length && seen < count) {
