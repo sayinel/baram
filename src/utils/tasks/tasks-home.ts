@@ -18,8 +18,15 @@ import { resolveAbsoluteDirSetting } from "../path-utils";
  */
 export const ARCHIVE_DIR = "archive";
 
-/** 설정값이 비었을 때(입력창을 지우는 중일 수 있다) 쓸 기본 수집함 — 태스크 홈 기준 상대 경로. */
-export const DEFAULT_CAPTURE_FILE = "tasks/inbox.md";
+/**
+ * 설정값이 비었을 때(입력창을 지우는 중일 수 있다) 쓸 기본 수집함 파일 이름.
+ *
+ * ‼️ 이것은 `{tasksHome}/tasks/` **안**의 이름이지 홈 기준 경로가 아니다. 폴더까지 설정에
+ * 적게 두면 그 값이 서브트리 밖을 가리킬 수 있고, 그러면 §312 불가침 규칙의 화이트리스트에
+ * "수집함 파일은 예외" 조항이 영영 남는다 — 결정 3이 없애려던 두 갈래가 이름만 바꿔
+ * 되살아난다. 규칙이 `tasks/`라면 설정이 그 폴더를 되풀이할 이유가 없다.
+ */
+export const DEFAULT_CAPTURE_FILE = "inbox.md";
 
 /**
  * 태스크 전용 서브트리 — 태스크 홈 기준. Rust `TASKS_DIR`(task/archive.rs)과 **같은 글자**여야

@@ -19,7 +19,6 @@ import type { Editor } from "@tiptap/react";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { archiveTaskLines, readFile } from "../../ipc/invoke";
-import { resolveCapturePath } from "../../services/task-capture";
 import { useEditorStore } from "../../stores/editor/editor";
 import { refreshFileTasks } from "../../stores/tasks/task-store";
 import { showAlert, showConfirm } from "../../utils/confirm-dialog";
@@ -43,8 +42,6 @@ export interface ArchiveDone {
 export interface ArchiveDoneOptions {
   /** 설정 `tasksArchiveAfterDays` */
   afterDays: number;
-  /** 설정 `tasksCaptureFile` — 태스크 홈 기준 상대 경로일 수 있다 */
-  captureFile: string;
   /**
    * 활성 탭의 라이브 Tiptap Editor(없으면 `null`).
    *
@@ -73,7 +70,6 @@ export interface ArchiveDoneOptions {
 
 export function useArchiveDone({
   afterDays,
-  captureFile,
   editor,
   enabled,
   exclude,
@@ -84,21 +80,13 @@ export function useArchiveDone({
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
 
-  // 수집함 파일 설정이 태스크 홈 밖이거나 마크다운이 아니면 `resolveCapturePath`가 던진다.
-  // 그때는 옮길 자리를 알 수 없으므로 대상이 0이고 호출자가 버튼을 감춘다 — 설정이
-  // 잘못됐다는 사실은 캡처 다이얼로그가 이미 원인별 문구로 알린다.
-  const scope = useMemo(() => {
-    if (!enabled || !tasksHome) return null;
-    try {
-      return archiveScope(
-        tasksHome,
-        resolveCapturePath(tasksHome, captureFile),
-      );
-    } catch (err) {
-      logger.warn("[tasks] archive: unusable capture file setting:", err);
-      return null;
-    }
-  }, [captureFile, enabled, tasksHome]);
+  // §312.1 범위는 태스크 홈 하나로 정해진다 — 수집함 설정을 볼 필요가 없다. 그 설정은
+  // `tasks/` 안의 이름이라 서브트리를 벗어날 수 없으므로, 화이트리스트가 이미 그것을
+  // 덮는다.
+  const scope = useMemo(
+    () => (enabled && tasksHome ? archiveScope(tasksHome) : null),
+    [enabled, tasksHome],
+  );
 
   const candidates = useMemo(
     () => (scope ? selectArchivable(tasks, scope, now, afterDays) : []),
@@ -140,7 +128,6 @@ export function useArchiveDone({
       try {
         outcome = await archiveTaskLines(
           tasksHome,
-          scope.capturePath,
           toArchiveItems(candidates),
           isoDate(now),
           afterDays,

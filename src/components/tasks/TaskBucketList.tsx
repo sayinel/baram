@@ -177,6 +177,9 @@ export function TaskBucketList({
               // 메뉴를 연 사람만 본다.
               aria-keyshortcuts={TASK_ROW_KEYSHORTCUTS}
               className="task-row"
+              // §306 우선순위는 이 속성 하나로 표현된다 — 행 왼쪽 거터의 세로 레일을
+              // CSS가 그린다(tasks.css). 값의 글자는 `TaskPriorityLevel`과 같아야 한다.
+              data-priority={priority?.level}
               key={`${task.path}:${task.line}`}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -196,17 +199,14 @@ export function TaskBucketList({
                 type="checkbox"
               />
               {priority && (
-                <span
-                  aria-label={priority.label}
-                  // §308 방향 C — 알약이 사라지며 에디터의 .task-chip과의 클래스
-                  // 공유도 끝났다. task-row-priority가 조용한 타이포그래피
-                  // (--color-text-muted)와 .task-row 안 레이아웃(flex-shrink)을
-                  // 스스로 갖는다(tasks.css).
-                  className="task-row-priority"
-                  role="img"
-                >
-                  {priority.marker}
-                </span>
+                // 레일은 `::before`라 보조기술에 존재하지 않는다 — 낱말 라벨이 여기
+                // 남아야 스크린 리더가 우선순위를 읽는다.
+                //
+                // ‼️ `aria-label`을 단 빈 `<span>`이 아니라 **감춘 텍스트**다. 이름을
+                // 붙일 내용이 없는 요소의 `aria-label`은 브라우저가 무시할 수 있고
+                // (이 패널이 이미 한 번 겪었다 — 그래서 종전 코드에 `role="img"`가
+                // 있었다), 그 우회 자체가 "그릴 것이 없으면 텍스트로 두라"는 신호였다.
+                <span className="visually-hidden">{priority.label}</span>
               )}
               <button
                 className="btn-unstyled task-row-text"

@@ -20,9 +20,7 @@ import { archiveRootOf, tasksRootOf } from "./tasks-home";
 export interface ArchiveScope {
   /** `{tasksHome}/tasks/archive` — 대상 파일이 사는 곳. 원본이기도 하다(잘못 든 달의 정리) */
   archiveRoot: string;
-  /** 수집함 파일의 **절대** 경로 (`resolveCapturePath`가 만든 값) */
-  capturePath: string;
-  /** `{tasksHome}/tasks` — §312.1 이후 화이트리스트는 이 서브트리 전체다 */
+  /** `{tasksHome}/tasks` — §312.1 이후 화이트리스트는 이 서브트리 전체, 그 한 줄이다 */
   tasksRoot: string;
 }
 
@@ -31,14 +29,13 @@ export interface ArchiveScope {
  * 손으로 이어 붙이면 홈의 트레일링 슬래시가 `//`를 만들어 문자열 비교가 조용히 어긋나기
  * 때문이다(§260 Phase 4a LOW-4와 같은 종류).
  *
- * `home`은 §312.1의 **태스크 홈**이다 — 활성 컨텍스트 루트가 아니다. `capturePath`는 이미
- * 해석된 **절대** 경로여야 한다(`resolveCapturePath`가 그 일을 하고 홈 밖·비마크다운을
- * 거기서 거절한다).
+ * `home`은 §312.1의 **태스크 홈**이다 — 활성 컨텍스트 루트가 아니다. 수집함 경로를 받지
+ * 않는 것이 이 단순함의 값어치다: 설정(`tasksCaptureFile`)은 `tasks/` **안**의 이름이라
+ * 밖을 가리킬 수 없으므로, 예외 조항도 그것을 여기까지 실어 나를 배선도 필요 없다.
  */
-export function archiveScope(home: string, capturePath: string): ArchiveScope {
+export function archiveScope(home: string): ArchiveScope {
   return {
     archiveRoot: toPosixPath(archiveRootOf(home)),
-    capturePath: toPosixPath(capturePath),
     tasksRoot: toPosixPath(tasksRootOf(home)),
   };
 }
@@ -90,7 +87,7 @@ function daysBetween(from: Date, to: Date): number {
  *
  * | 조건 | 이유 |
  * |---|---|
- * | `{tasksHome}/tasks/` 아래 또는 수집함일 것 | §312 불가침 규칙 — 일반 문서는 태스크가 문맥의 일부다 |
+ * | `{tasksHome}/tasks/` 아래일 것 | §312 불가침 규칙 — 일반 문서는 태스크가 문맥의 일부다 |
  * | 들여쓰지 않았을 것 | 부모를 뽑으면 자식이 고아가 되고, 자식을 뽑으면 부모 목록이 끊긴다 |
  * | 완료 상태일 것 | 미완료는 주간 리뷰(§315)의 몫이지 배수구의 몫이 아니다 |
  * | `✅` 날짜가 있을 것 | 없으면 며칠 지났는지 알 방법이 없다(`TaskEntry`에 mtime이 없다 — §18.7) |
@@ -124,13 +121,11 @@ function isArchivable(
 /**
  * 이 경로에서 줄을 뽑아도 되는가 — Rust `is_archive_source`와 같은 판정.
  *
- * §312.1 이후 이것은 **`{tasksHome}/tasks/` 아래 전부**다. 종전의 "수집함 파일 +
- * `Archive/*`" 두 갈래보다 단순하다. `capturePath`가 따로 남아 있는 이유는 사용자가
- * `tasksCaptureFile`을 그 서브트리 밖으로 옮겨 둘 수 있기 때문이다.
+ * §312.1 이후 이것은 **`{tasksHome}/tasks/` 아래 전부**, 그 한 줄이다. 종전의
+ * "수집함 파일 + `Archive/*`" 두 갈래를 대신한다.
  */
 function isArchiveSource(path: string, scope: ArchiveScope): boolean {
-  const p = toPosixPath(path);
-  return p === scope.capturePath || isUnderRoot(p, scope.tasksRoot);
+  return isUnderRoot(toPosixPath(path), scope.tasksRoot);
 }
 
 /**

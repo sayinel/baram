@@ -179,7 +179,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 19,
+      version: 20,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -415,6 +415,34 @@ export const useSettingsStore = create<SettingsState>()(
           backfillMissingActivityBarItems(
             state.activityBarConfig as ActivityBarItemConfig[] | undefined,
           );
+        }
+
+        // v19 → v20: §312.1 `tasksCaptureFile` is now relative to the **tasks
+        // home**, and its default moved into the `tasks/` subtree so that
+        // §312's inviolable-rule whitelist is one line ("everything under
+        // `tasks/`") instead of two.
+        //
+        // ‼️ Without this the new default never reaches anyone who has already
+        // run the app: persist restores the stored `"Inbox.md"`, capture keeps
+        // landing at the tasks-home root, and the subtree this slice exists to
+        // create stays empty forever. §312.1 recorded "no existing users, no
+        // backfill needed" — the developer's own install disproved that within
+        // a day, which is the usual fate of that claim.
+        //
+        // The setting is now a **name inside** `{tasksHome}/tasks/`, not a path
+        // relative to the home — repeating the folder in a setting is what let a
+        // value point outside the subtree, and that possibility is the only
+        // reason the whitelist ever needed a second clause.
+        //
+        // Both prior defaults are rewritten: `"Inbox.md"` (pre-§312.1) and
+        // `"tasks/inbox.md"` (§312.1's first shape, which shipped for a day).
+        // A value the user actually typed is left alone.
+        if (
+          version < 20 &&
+          (state.tasksCaptureFile === "Inbox.md" ||
+            state.tasksCaptureFile === "tasks/inbox.md")
+        ) {
+          state.tasksCaptureFile = "inbox.md";
         }
 
         return state;

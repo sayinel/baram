@@ -59,8 +59,11 @@ describe("서브트리 배치", () => {
     expect(ARCHIVE_DIR).toBe("archive");
   });
 
-  it("기본 수집함은 서브트리 안이다 — 그래야 화이트리스트가 한 줄이 된다", () => {
-    expect(DEFAULT_CAPTURE_FILE).toBe(`${TASKS_DIR}/inbox.md`);
+  it("기본 수집함은 폴더 없는 **이름**이다 — 규칙이 이미 `tasks/`다", () => {
+    // 설정이 폴더를 되풀이하면 그 값이 서브트리 밖을 가리킬 수 있고, 그러면
+    // 화이트리스트에 "수집함은 예외" 조항이 영영 남는다.
+    expect(DEFAULT_CAPTURE_FILE).toBe("inbox.md");
+    expect(DEFAULT_CAPTURE_FILE).not.toContain("/");
   });
 
   it("아카이브는 서브트리 아래다 — 홈 바로 아래가 아니다", () => {

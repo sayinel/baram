@@ -1,6 +1,7 @@
 // §306 아젠다 패널 — vault 전역 태스크를 기한 버킷으로 모아 보고 그 자리에서 완료한다.
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
@@ -50,7 +51,6 @@ export function TaskAgendaPanel() {
   const {
     setTasksScanScope,
     tasksArchiveAfterDays,
-    tasksCaptureFile,
     tasksExcludePaths,
     tasksHomeSetting,
     tasksRecordDoneDate,
@@ -61,7 +61,6 @@ export function TaskAgendaPanel() {
     useShallow((s) => ({
       setTasksScanScope: s.setTasksScanScope,
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
-      tasksCaptureFile: s.tasksCaptureFile,
       tasksExcludePaths: s.tasksExcludePaths,
       tasksHomeSetting: s.tasksHome,
       tasksRecordDoneDate: s.tasksRecordDoneDate,
@@ -187,7 +186,6 @@ export function TaskAgendaPanel() {
   // 펼쳐 둔 사용자가 같은 버튼에서 다른 개수를 본다.
   const archive = useArchiveDone({
     afterDays: tasksArchiveAfterDays,
-    captureFile: tasksCaptureFile,
     editor,
     // §312.1 배수구는 단일 루트 조작이라 범위가 "태스크 홈"일 때만 켠다 — 화면에 세
     // vault가 보이는데 버튼이 그중 하나만 건드리면 숨은 규칙이 된다.
@@ -223,15 +221,24 @@ export function TaskAgendaPanel() {
               ⏩
             </button>
           )}
-          {archive.count > 0 && (
+          {/* §312.1 배수구는 범위가 "태스크 홈"일 때만 나타난다 — 그 규칙을 UI에
+              드러내는 것이 그 결정의 절반이다.
+              ‼️ 대상이 0이어도 **감추지 않고 흐리게 둔다.** 감추면 "대상이 없다"와
+              "기능이 고장났다"가 화면에서 구별되지 않는다 — M2-b3 수동 테스트에서
+              세 라운드를 먹은 실패가 정확히 그 모양이었고, 범위 게이트가 생기면서
+              버튼이 사라질 이유가 하나 더 늘었다. 이유는 title이 말한다. */}
+          {tasksScanScope === "tasksHome" && (
             <button
               aria-label={t("tasks.archive.action")}
               className="icon-btn"
-              disabled={loading || archive.busy}
+              disabled={loading || archive.busy || archive.count === 0}
               onClick={() => void archive.run()}
-              title={t("tasks.archive.title", {
-                count: String(archive.count),
-              })}
+              title={archiveHint(
+                t,
+                tasksHome,
+                archive.count,
+                tasksArchiveAfterDays,
+              )}
               type="button"
             >
               🗄️
@@ -346,6 +353,23 @@ export function TaskAgendaPanel() {
       </div>
     </div>
   );
+}
+
+/**
+ * 배수구 버튼이 스스로를 설명하는 한 문장.
+ *
+ * 셋을 가른다: 홈이 없어 옮길 자리를 모른다 / 자리는 아는데 문턱을 넘긴 항목이 없다 /
+ * N개가 기다린다. 하나로 뭉뚱그리면 흐린 버튼 앞에서 사용자가 할 수 있는 일이 없다.
+ */
+function archiveHint(
+  t: Translate,
+  tasksHome: null | string,
+  count: number,
+  afterDays: number,
+): string {
+  if (!tasksHome) return t("tasks.archive.noHome");
+  if (count === 0) return t("tasks.archive.none", { days: String(afterDays) });
+  return t("tasks.archive.title", { count: String(count) });
 }
 
 /** `d`가 속한 날의 다음 날 자정(로컬 시간) — 자정 롤오버 타이머의 목표 시각. */

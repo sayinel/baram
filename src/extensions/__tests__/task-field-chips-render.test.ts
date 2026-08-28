@@ -68,6 +68,26 @@ const tasksCss = readFileSync(
   "utf8",
 );
 
+/** §306 우선순위 레일의 네 단계 — `TaskPriorityLevel`과 **같은 글자**여야 한다. */
+const RAIL_LEVELS = ["urgent", "high", "low", "lowest"] as const;
+
+/**
+ * `.task-row[data-priority="…"]::before` 규칙에서 한 속성의 선언 값.
+ *
+ * 레일은 의사 요소라 jsdom 렌더로는 보이지 않는다 — 이 스위트가 CSS 파일을 읽는
+ * 이유와 같다(파일 머리 주석 참조).
+ */
+function railDecl(level: string, prop: string): string {
+  const body = new RegExp(
+    `\\.task-row\\[data-priority="${level}"\\]::before\\s*\\{([^}]*)\\}`,
+  ).exec(tasksCss)?.[1];
+  expect(body, `no rail rule for ${level}`).toBeDefined();
+  const decl = new RegExp(`(?:^|;)\\s*${prop}:\\s*([^;]+)`).exec(
+    body ?? "",
+  )?.[1];
+  return (decl ?? "").trim();
+}
+
 /** `.visually-hidden` 규칙 본문. */
 function hideRule(): string {
   const match = new RegExp(`\\.${RAW_HIDE_CLASS}\\s*\\{([^}]*)\\}`).exec(
@@ -293,28 +313,51 @@ describe("§308 칩 대비 — 칩은 이 메타데이터의 유일한 시각 �
     expect(colourDecl(".task-chip")).toBe("var(--color-text-secondary)");
   });
 
-  it("아젠다 배지도 같은 계층을 쓴다 — 같은 데이터의 다른 표면이다", () => {
-    // `.task-row-priority`도 이 커밋에서 함께 내려갔다: 방향 C 이전에는
-    // `.task-chip`을 공유해 secondary를 탔는데, 공유를 끊으면서 muted가 직접 적혔다.
-    // 배지 자신에는 `aria-label`이 있어 보조기술 경로는 살아 있지만(칩과 다른 점),
-    // 그 행에서 **우선순위를 보이는 것은 이 배지뿐**이라 시각 경로의 논리는 같다.
-    expect(colourDecl(".task-row-priority")).not.toMatch(DISABLED_TIER);
-    expect(colourDecl(".task-row-priority")).toBe(
-      "var(--color-text-secondary)",
+  it("아젠다 우선순위 레일은 네 단계가 서로 다른 색이다", () => {
+    // §306 아젠다는 더 이상 텍스트 배지가 아니라 행 왼쪽의 세로 레일이다. 그래서 이
+    // 스위트의 대비 논증이 그대로 옮겨 오지 않는다: 4px 배경 막대에는 13px 본문의 AA
+    // 기준이 적용되지 않는다.
+    //
+    // 길이가 모두 같으므로(디자인 결정) **색이 유일한 시각 채널**이다. 그러면 네 값이
+    // 서로 달라야 한다는 것이 최소 요건이고, 둘이 겹치는 순간 그 두 단계는 화면에서
+    // 구별되지 않는다.
+    const colours = RAIL_LEVELS.map((lvl) => railDecl(lvl, "background"));
+    expect(new Set(colours).size).toBe(RAIL_LEVELS.length);
+
+    // 그리고 시끄러운 두 단계는 disabled 계층으로 내려가지 않는다 — 그 계층은 "꺼져
+    // 있음"을 뜻하므로 긴급이 그 톤으로 그려지면 뜻이 뒤집힌다.
+    expect(railDecl("urgent", "background")).not.toMatch(DISABLED_TIER);
+    expect(railDecl("high", "background")).not.toMatch(DISABLED_TIER);
+  });
+
+  it("레일은 색이 유일한 채널이므로 낱말 라벨이 반드시 남는다", () => {
+    // 높이 채널을 포기한 대가다. `::before`는 접근성 트리에 없으므로, 감춘 텍스트가
+    // 사라지면 스크린 리더 사용자에게 우선순위가 **통째로** 없는 것이 된다.
+    const list = readFileSync(
+      join(process.cwd(), "src/components/tasks/TaskBucketList.tsx"),
+      "utf8",
     );
+    expect(list).toMatch(/className="visually-hidden">\{priority\.label\}/);
   });
 });
 
-describe("§308 방향 C — 아젠다 배지는 더 이상 .task-chip을 공유하지 않는다 (리뷰 m5 뒤집기)", () => {
+describe("§308 방향 C — 아젠다 우선순위는 .task-chip을 공유하지 않는다 (리뷰 m5 뒤집기)", () => {
   // 방향 A의 산출물은 "복사가 아닌 규칙 공유"(`.task-row-priority.task-chip`)였다.
-  // 방향 C는 알약 자체를 없애므로 그 공유가 끝난다 — `TaskBucketList`는 이제
-  // `task-row-priority` 하나만 붙이고, 조용한 타이포그래피를 스스로 갖는다.
-  it(".task-row-priority가 .task-chip과 무관하게 자신의 색을 직접 선언한다", () => {
-    // 여기가 지키는 것은 "공유가 끝나도 배지가 색을 잃지 않는다"이고, 그 색이
-    // 어느 계층이어야 하는지는 위의 "§308 칩 대비" 스위트가 따로 지킨다.
-    const row = /\.task-row-priority\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
-    expect(row, "no .task-row-priority rule").toBeDefined();
-    expect(row).toMatch(/color:\s*var\(--color-text-secondary\)/);
+  // 방향 C가 알약을 없애며 그 공유가 끝났고, §306 레일은 아예 텍스트가 아니다 —
+  // `TaskBucketList`는 행에 `data-priority`만 붙이고 CSS가 막대를 그린다.
+  it("네 단계가 모두 자기 배경을 선언한다 — 하나라도 빠지면 그 단계가 안 보인다", () => {
+    for (const lvl of RAIL_LEVELS) {
+      expect(railDecl(lvl, "background"), lvl).toMatch(/^var\(--color-/);
+    }
+  });
+
+  it("네 레일의 길이가 같다 — 왼쪽 가장자리가 행마다 흔들리지 않는다", () => {
+    // 높이로 단계를 나르던 초판을 되돌린 결정이다(사용자 피드백). 되살아나면 목록의
+    // 왼쪽 선이 다시 들쭉날쭉해지므로, 단계별 규칙에 세로 크기가 없다는 것을 고정한다.
+    for (const lvl of RAIL_LEVELS) {
+      expect(railDecl(lvl, "height"), lvl).toBe("");
+      expect(railDecl(lvl, "top"), lvl).toBe("");
+    }
   });
 
   it(".task-chip의 `vertical-align`은 에디터 자신의 인라인 흐름을 위한 것으로 남는다", () => {

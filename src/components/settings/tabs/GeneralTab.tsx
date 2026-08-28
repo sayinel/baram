@@ -609,12 +609,27 @@ export function GeneralTab() {
             description={t("settings.general.tasksHome.desc")}
             label={t("settings.general.tasksHome")}
           >
-            <input
-              className="settings-input"
-              onChange={(e) => setTasksHome(e.target.value)}
-              placeholder={t("settings.general.tasksHome.placeholder")}
-              value={tasksHome}
-            />
+            {/* Zettel 디렉터리와 같은 폼이되 **읽기 전용이 아니다**: 여기서는 빈 값이
+                뜻을 가진다(= Zettel 디렉터리를 쓴다). 저쪽처럼 readOnly로 두면 한 번
+                고른 뒤에는 그 기본값으로 돌아갈 방법이 없어진다. */}
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                onChange={(e) => setTasksHome(e.target.value)}
+                placeholder={t("settings.general.tasksHome.placeholder")}
+                type="text"
+                value={tasksHome}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({ directory: true });
+                  if (typeof selected === "string") setTasksHome(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+            </div>
           </SettingsRow>
 
           <SettingsRow

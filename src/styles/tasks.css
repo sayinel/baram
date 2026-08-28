@@ -88,10 +88,16 @@
    그 선택 범위에 든 정리 메뉴가 다시 하이라이트로 칠해진다(사용자 스크린샷).
    태스크 원문을 복사하는 경로는 그 태스크가 사는 문서다 — 클릭 한 번으로 간다. */
 .task-row {
+  position: relative;
   display: flex;
   gap: 6px;
   align-items: baseline;
-  padding: 3px 4px;
+
+  /* 왼쪽 7px는 우선순위 레일의 거터다(레일 4px + 체크박스까지 3px). 우선순위가
+     **없는** 행에도 똑같이 두어 제목의 왼쪽 선이 흔들리지 않게 한다 — 레일 유무로
+     들여쓰기가 달라지면 목록이 지그재그로 읽힌다. 그래서 거터는 남기되 레일이 그
+     폭을 거의 다 채우도록 좁혀 두었다. */
+  padding: 3px 4px 3px 7px;
   user-select: none;
   border-radius: 4px;
 }
@@ -111,8 +117,8 @@
   white-space: nowrap;
 }
 
-/* I1: task-row-priority가 체크박스와 텍스트 버튼 사이에 끼어들 수 있어 인접
-   형제(+)로는 우선순위가 있는 행에서 매치가 끊긴다 — 일반 형제(~)로 완료
+/* I1: 우선순위 라벨 스팬(.visually-hidden)이 체크박스와 텍스트 버튼 사이에 끼어들 수
+   있어 인접 형제(+)로는 우선순위가 있는 행에서 매치가 끊긴다 — 일반 형제(~)로 완료
    스타일이 우선순위 유무와 무관하게 적용되게 한다. */
 .task-row-check:checked ~ .task-row-text {
   color: var(--color-text-muted);
@@ -159,9 +165,43 @@
    --color-bg-panel(라이트 #f1f3f5)이라 secondary도 4.35:1로 AA에 살짝 못
    미치지만, muted의 2.28:1과 달리 role="img"에 걸리는 비-텍스트 3:1은 넘고
    개선 폭이 크다. 더 올리려면 토큰이 아니라 패널 배경 쪽을 봐야 한다. */
-.task-row-priority {
-  flex-shrink: 0;
-  color: var(--color-text-secondary);
+
+/* §306 우선순위 레일 — 행 왼쪽 거터의 세로 막대 하나.
+   종전에는 기호였다(`!!! !! ↓ ↓↓`). 한 축의 단계를 두 은유(세기/방향)로 적고 있었고,
+   글리프가 행 폭을 먹어 제목이 밀렸다.
+
+   길이는 네 단계가 **모두 같다**. 높이로 단계를 나르면 목록의 왼쪽 가장자리가 행마다
+   들쭉날쭉해져, 정보를 얻는 대신 리듬을 잃는다. 대신 막대를 굵게(4px) 두고 네 개의
+   **다른 색상 계열**로 가른다 — 빨강(긴급) · 주황(높음) · 파랑(낮음) · 회색(가장 낮음).
+   같은 회색 두 톤이 아니라 서로 다른 색상이라 명도만으로도 갈린다.
+
+   낱말 라벨은 `.visually-hidden`으로 DOM에 남아 있다(TaskBucketList) — `::before`는
+   보조기술에 존재하지 않으므로 그 스팬이 없으면 우선순위가 통째로 사라진다. 색이
+   유일한 시각 채널이므로 그 스팬은 선택이 아니라 요건이다. */
+.task-row[data-priority]::before {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 4px;
+  content: "";
+  border-radius: 2px;
+}
+
+.task-row[data-priority="urgent"]::before {
+  background: var(--color-status-danger);
+}
+
+.task-row[data-priority="high"]::before {
+  background: var(--color-status-warning);
+}
+
+.task-row[data-priority="low"]::before {
+  background: var(--color-status-info);
+}
+
+.task-row[data-priority="lowest"]::before {
+  background: var(--color-text-muted);
 }
 
 /* §309 기한 초과 일괄 조정 — 기한 초과가 있을 때만 나타나므로 눈에 띄어야 한다 */

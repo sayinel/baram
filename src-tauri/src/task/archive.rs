@@ -77,7 +77,6 @@ pub(super) enum Verdict {
 /// 한 파일의 권한 문제가 나머지 전부를 막지 않는다.
 pub async fn archive_tasks(
     home: &str,
-    capture_path: &str,
     items: &[ArchiveItem],
     today: &str,
     after_days: u32,
@@ -89,24 +88,14 @@ pub async fn archive_tasks(
         )));
     }
     let home = norm(home);
-    let capture = norm(capture_path);
-    // 프런트가 이미 `resolveCapturePath`로 만든 경로다. 여기서 다시 만들지 않고
-    // **검증만** 한다 — 해석기를 두 벌 두면 갈라지지만, 부분집합 단정은 갈라질 수 없다.
-    if !is_under(&capture, &home) || !capture.ends_with(".md") {
-        return Err(TaskError::Custom(format!(
-            "archive: capture file is not a markdown file inside the tasks home: {}",
-            capture
-        )));
-    }
-    // §312.1 화이트리스트는 이 한 줄이다 — `{tasksHome}/tasks/` 아래 전부. 수집함이 그
-    // 서브트리 안에 있는 것이 기본 배치이므로 아래 `capture`는 사용자가 수집함을 다른
-    // 자리로 옮겨 두었을 때만 무언가를 더한다.
+    // §312.1 화이트리스트는 이 한 줄이다 — `{tasksHome}/tasks/` 아래 전부. 수집함도
+    // 아카이브도 그 안에 살기 때문에 예외 조항이 없다.
     let tasks_root = format!("{}/{}", home, TASKS_DIR);
     let archive_root = format!("{}/{}", tasks_root, ARCHIVE_DIR);
 
     // ‼️ 쓰기 **전에** 전부 본다. 한 항목이라도 밖이면 파일을 하나도 건드리지 않는다.
     for item in items {
-        if !is_archive_source(&item.path, &capture, &tasks_root) {
+        if !is_archive_source(&item.path, &tasks_root) {
             return Err(TaskError::Custom(format!(
                 "archive: refusing to move a line out of a regular document: {}",
                 item.path
@@ -124,10 +113,9 @@ pub async fn archive_tasks(
     // 파일 여러 개를 한 번에 고치는 조작이라 무엇을 했는지 기록으로 남긴다. 프런트의
     // `logger`는 브라우저 콘솔로만 가므로(§3.3) 사용자 손에 남는 유일한 기록이 여기다.
     log::info!(
-        "[task] archive: {} item(s), home={}, capture={}, today={}, after_days={}",
+        "[task] archive: {} item(s), home={}, today={}, after_days={}",
         items.len(),
         home,
-        capture,
         today,
         after_days
     );
@@ -311,14 +299,15 @@ pub(super) fn archive_verdict(line: &str, today: &str, after_days: u32) -> Verdi
 
 /// 이 경로에서 줄을 뽑아도 되는가 — §312 불가침 규칙의 화이트리스트.
 ///
-/// §312.1 이후 이것은 **`{tasksHome}/tasks/` 아래 전부**다. 종전의 "수집함 파일 +
-/// `Archive/*`" 두 갈래보다 단순하고, 태스크 전용 파일이 한 서브트리에 모여 있다는
-/// 사실 그 자체를 규칙으로 쓴다. `capture`가 따로 남아 있는 이유는 사용자가
-/// `tasksCaptureFile`을 그 서브트리 밖으로 옮겨 둘 수 있기 때문이다 — 그때도 자기
-/// 수집함은 비울 수 있어야 한다.
-pub(super) fn is_archive_source(path: &str, capture: &str, tasks_root: &str) -> bool {
-    let p = norm(path);
-    p == capture || is_under(&p, tasks_root)
+/// §312.1 이후 이것은 **`{tasksHome}/tasks/` 아래 전부**, 그 한 줄이다. 종전의 "수집함
+/// 파일 + `Archive/*`" 두 갈래를 대신하며, 태스크 전용 파일이 한 서브트리에 모여 있다는
+/// 사실 그 자체를 규칙으로 쓴다.
+///
+/// 수집함 경로를 따로 받지 않는 것이 그 단순함의 값어치다. 설정
+/// (`tasksCaptureFile`)은 이 서브트리 **안의** 이름이므로 밖을 가리킬 수가 없고, 따라서
+/// 예외 조항도 필요 없다 — 프런트가 그 경로를 만들어 보낼 이유도 사라졌다.
+pub(super) fn is_archive_source(path: &str, tasks_root: &str) -> bool {
+    is_under(&norm(path), tasks_root)
 }
 
 /// 두 ISO 날짜 사이의 일수(`to` − `from`). 어느 한쪽이 실재하지 않는 날짜면 `None`.
@@ -413,11 +402,6 @@ mod tests {
             format!("{}/{}", self.root, rel)
         }
 
-        /// §312.1 기본 배치의 수집함 — `{tasksHome}/tasks/inbox.md`.
-        fn inbox(&self) -> String {
-            self.at("tasks/inbox.md")
-        }
-
         fn read(&self, rel: &str) -> String {
             std::fs::read_to_string(self.at(rel)).unwrap()
         }
@@ -441,7 +425,7 @@ mod tests {
     }
 
     async fn run(v: &Vault, items: &[ArchiveItem]) -> Result<ArchiveOutcome, TaskError> {
-        archive_tasks(&v.root, &v.inbox(), items, TODAY, 30).await
+        archive_tasks(&v.root, items, TODAY, 30).await
     }
 
     // ── §312 불가침 규칙 (설계 문서 18.16의 네 테스트) ────────────────────────
@@ -830,7 +814,6 @@ mod tests {
 
         let out = archive_tasks(
             &v.root,
-            &v.inbox(),
             &[item(&aug_path, 0, july), item(&sep_path, 0, august)],
             TODAY,
             0,
@@ -876,18 +859,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_capture_file_outside_the_tasks_home_is_refused() {
-        let v = Vault::new();
-        let err = archive_tasks(&v.root, "/tmp/Inbox.md", &[], TODAY, 30)
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("capture file"), "{}", err);
-    }
-
-    #[tokio::test]
     async fn an_invalid_today_is_refused() {
         let v = Vault::new();
-        let err = archive_tasks(&v.root, &v.inbox(), &[], "2026-02-31", 30)
+        let err = archive_tasks(&v.root, &[], "2026-02-31", 30)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("invalid today"), "{}", err);
@@ -957,42 +931,23 @@ mod tests {
     fn a_sibling_directory_with_the_same_prefix_is_not_the_tasks_subtree() {
         // 기준은 `tasksHome`이 아니라 `{tasksHome}/tasks`다 — `tasks-old/`가 걸리면
         // 불가침 규칙이 조용히 새어 나간다.
-        let capture = "/v/tasks/inbox.md";
         let tasks = "/v/tasks";
-        assert!(is_archive_source(
-            "/v/tasks/archive/2026-07.md",
-            capture,
-            tasks
-        ));
-        assert!(is_archive_source("/v/tasks/inbox.md", capture, tasks));
+        assert!(is_archive_source("/v/tasks/archive/2026-07.md", tasks));
+        assert!(is_archive_source("/v/tasks/inbox.md", tasks));
         // §312.1 화이트리스트는 서브트리 전체다 — 수집함과 아카이브만이 아니다.
-        assert!(is_archive_source("/v/tasks/someday.md", capture, tasks));
-        assert!(!is_archive_source(
-            "/v/tasks-old/2026-07.md",
-            capture,
-            tasks
-        ));
-        assert!(!is_archive_source("/v/tasks", capture, tasks));
-        assert!(!is_archive_source("/v/notes/설계.md", capture, tasks));
-        // 태스크 홈 **바로 아래**라도 `tasks/` 밖이면 일반 문서다.
-        assert!(!is_archive_source("/v/inbox.md", capture, tasks));
-    }
-
-    #[test]
-    fn a_capture_file_outside_the_subtree_is_still_its_own_source() {
-        // 사용자가 `tasksCaptureFile`을 서브트리 밖으로 옮겨 두면 그 파일만 예외로
-        // 허용된다. 그러지 않으면 자기 수집함을 비울 방법이 없어진다.
-        let capture = "/v/기타/모아둠.md";
-        let tasks = "/v/tasks";
-        assert!(is_archive_source(capture, capture, tasks));
-        assert!(!is_archive_source("/v/기타/다른것.md", capture, tasks));
+        assert!(is_archive_source("/v/tasks/someday.md", tasks));
+        assert!(!is_archive_source("/v/tasks-old/2026-07.md", tasks));
+        assert!(!is_archive_source("/v/tasks", tasks));
+        assert!(!is_archive_source("/v/notes/설계.md", tasks));
+        // 태스크 홈 **바로 아래**라도 `tasks/` 밖이면 일반 문서다. 수집함 설정은 이
+        // 서브트리 안의 이름이므로 밖을 가리킬 수 없고, 그래서 예외 조항이 없다.
+        assert!(!is_archive_source("/v/inbox.md", tasks));
     }
 
     #[test]
     fn windows_separators_compare_equal_to_forward_slashes() {
         assert!(is_archive_source(
             r"C:\v\tasks\archive\2026-07.md",
-            "C:/v/tasks/inbox.md",
             "C:/v/tasks"
         ));
     }

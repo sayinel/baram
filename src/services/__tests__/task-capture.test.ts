@@ -94,7 +94,7 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     vi.mocked(appendTaskLine).mockResolvedValue("- [ ] 우유 사기 ➕2026-08-24");
     const raw = await captureTask({
       body: "우유 사기",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor: null,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -106,17 +106,17 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     expect(raw).toBe("- [ ] 우유 사기 ➕2026-08-24");
   });
 
-  it("태스크 홈 안의 하위 디렉터리 경로도 그대로 쓴다", async () => {
+  it("`tasks/` 안의 하위 폴더도 받는다 — 서브트리를 벗어나지만 않으면 된다", async () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "a",
-      captureFile: "inbox/In.md",
+      captureFile: "work/In.md",
       editor: null,
       tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/inbox/In.md",
+      "/v/tasks/work/In.md",
       expect.any(String),
     );
   });
@@ -125,7 +125,7 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     await expect(
       captureTask({
         body: "   ",
-        captureFile: "tasks/inbox.md",
+        captureFile: "inbox.md",
         editor: null,
         tasksHome: "/v",
         today: "2026-08-24",
@@ -138,7 +138,7 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "a",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor: null,
       tasksHome: "/v/",
       today: "2026-08-24",
@@ -153,7 +153,7 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "a",
-      captureFile: "./tasks/inbox.md",
+      captureFile: "./inbox.md",
       editor: null,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -211,7 +211,7 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -226,7 +226,7 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -238,7 +238,7 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -251,7 +251,7 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -288,7 +288,7 @@ describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", (
     await rejectsWithCode(
       captureTask({
         body: "은행 연락",
-        captureFile: "tasks/inbox.md",
+        captureFile: "inbox.md",
         editor: null,
         tasksHome: "/v",
         today: "2026-08-24",
@@ -303,7 +303,7 @@ describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", (
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "은행 연락",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor: null,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -354,7 +354,7 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
   function capture(editor: unknown = { state: { doc: {} } }) {
     return captureTask({
       body: "은행 연락",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor: editor as never,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -474,18 +474,24 @@ describe("captureTask — 인덱싱될 수 없는 수집함 경로", () => {
     });
   }
 
-  it("태스크 홈 밖 절대 경로를 거절한다", async () => {
+  it("절대 경로를 거절한다 — 상대 경로로 다시 읽어 조용히 옮기지 않는다", async () => {
+    // ‼️ 이어 붙이면 `{tasks}/elsewhere/In.md`가 되어 값이 통과한다. 그러면 사용자가
+    // 적은 자리도 아니고 적었다는 사실을 알 방법도 없는 파일이 생긴다.
     await rejectsWithCode(capture("/elsewhere/In.md"), "outsideHome");
+    await rejectsWithCode(capture("C:\\other\\In.md"), "outsideHome");
     expect(appendTaskLine).not.toHaveBeenCalled();
   });
 
-  it("`..`로 볼트를 벗어나는 값을 거절한다", async () => {
+  it("`..`로 서브트리를 벗어나는 값을 거절한다", async () => {
     await rejectsWithCode(capture("../In.md"), "outsideHome");
     expect(appendTaskLine).not.toHaveBeenCalled();
   });
 
-  it("볼트 루트 자신을 거절한다", async () => {
+  it("서브트리 자신을 가리키는 값을 거절한다", async () => {
     await rejectsWithCode(capture("/v"), "outsideHome");
+    // `.`은 정규화하면 서브트리 루트 자신이 된다 — `isUnderRoot`는 자기 자신을
+    // 포함하지 않으므로 여기서 걸린다.
+    await rejectsWithCode(capture("."), "outsideHome");
   });
 
   it("마크다운이 아닌 이름을 거절한다", async () => {
@@ -513,7 +519,7 @@ describe("captureTask — 인덱싱될 수 없는 수집함 경로", () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await capture("Inbox.markdown");
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/Inbox.markdown",
+      "/v/tasks/Inbox.markdown",
       expect.any(String),
     );
   });
@@ -607,7 +613,7 @@ describe("buildCaptureLine — 정규화 뒤에야 드러나는 것들", () => {
     await rejectsWithCode(
       captureTask({
         body: "➕2026-01-01",
-        captureFile: "tasks/inbox.md",
+        captureFile: "inbox.md",
         editor: null,
         tasksHome: "/v",
         today: "2026-08-24",
@@ -633,7 +639,7 @@ describe("captureTask — 붙인 뒤 목록에 반영", () => {
     useTaskStore.getState().setRoots(["/v"]);
     await captureTask({
       body: "우유",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor: null,
       tasksHome: "/v",
       today: "2026-08-24",
@@ -647,7 +653,7 @@ describe("captureTask — 붙인 뒤 목록에 반영", () => {
     useTaskStore.getState().setRoots(["/elsewhere"]);
     await captureTask({
       body: "우유",
-      captureFile: "tasks/inbox.md",
+      captureFile: "inbox.md",
       editor: null,
       tasksHome: "/v",
       today: "2026-08-24",

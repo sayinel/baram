@@ -15,7 +15,7 @@ import { ARCHIVE_DIR, TASKS_DIR } from "../tasks-home";
 const NOW = new Date(2026, 7, 27);
 const AFTER_DAYS = 30;
 /** §312.1 기본 배치 — 태스크 홈 `/home`, 수집함 `{home}/tasks/inbox.md`. */
-const SCOPE = archiveScope("/home", "/home/tasks/inbox.md");
+const SCOPE = archiveScope("/home");
 
 describe("§312 아카이브 자격", () => {
   it("서브트리 이름은 Rust와 같은 글자다", () => {
@@ -27,7 +27,7 @@ describe("§312 아카이브 자격", () => {
   });
 
   it("홈의 트레일링 슬래시가 `//`를 만들지 않는다", () => {
-    const scope = archiveScope("/home/", "/home/tasks/inbox.md");
+    const scope = archiveScope("/home/");
     expect(scope.tasksRoot).toBe("/home/tasks");
     expect(scope.archiveRoot).toBe("/home/tasks/archive");
   });
@@ -54,8 +54,10 @@ describe("§312 아카이브 자격", () => {
 
   it("태스크 홈 바로 아래라도 `tasks/` 밖이면 일반 문서다", () => {
     // 홈의 기본값은 Zettel 디렉터리이므로 홈 바로 아래에는 사용자의 노트가 산다.
-    // 여기서 경계가 새면 불가침 규칙이 통째로 무너진다.
+    // 여기서 경계가 새면 불가침 규칙이 통째로 무너진다. 수집함 설정은 `tasks/` 안의
+    // 이름이라 밖을 가리킬 수 없으므로 예외 조항도 없다(§312.1).
     expect(pick([done("/home/생각.md", "2026-07-04")])).toHaveLength(0);
+    expect(pick([done("/home/Inbox.md", "2026-07-04")])).toHaveLength(0);
   });
 
   it("`tasks/` 아래는 수집함도 아카이브도 아니어도 원본이다", () => {
@@ -70,15 +72,6 @@ describe("§312 아카이브 자격", () => {
       pick([done("/home/tasks-old/2026-07.md", "2026-07-04")]),
     ).toHaveLength(0);
     expect(pick([done("/home/tasksfoo.md", "2026-07-04")])).toHaveLength(0);
-  });
-
-  it("서브트리 밖에 둔 수집함은 그 파일만 예외로 허용된다", () => {
-    // 사용자가 `tasksCaptureFile`을 옮겨 두어도 자기 수집함은 비울 수 있어야 한다.
-    const scope = archiveScope("/home", "/home/기타/모아둠.md");
-    const inbox = done("/home/기타/모아둠.md", "2026-07-04");
-    const sibling = done("/home/기타/다른것.md", "2026-07-04");
-    expect(selectArchivable([inbox], scope, NOW, AFTER_DAYS)).toHaveLength(1);
-    expect(selectArchivable([sibling], scope, NOW, AFTER_DAYS)).toHaveLength(0);
   });
 
   it("archive/ 안의 잘못 든 줄은 고르고, 제 달에 있는 줄은 고르지 않는다", () => {
@@ -151,7 +144,7 @@ describe("§312 아카이브 자격", () => {
     // Rust `windows_separators_compare_equal_to_forward_slashes`와 같은 계약.
     // 인덱스의 `TaskEntry.path`는 플랫폼 구분자로 오고 `capturePath`는 `/`로 이어 붙여
     // 만들어진다 — 여기서 맞추지 않으면 Windows에서 대상이 영영 0이라 버튼이 뜨지 않는다.
-    const scope = archiveScope("C:\\h", "C:\\h/tasks/inbox.md");
+    const scope = archiveScope("C:\\h");
     expect(
       selectArchivable(
         [done("C:\\h\\tasks\\inbox.md", "2026-07-04")],

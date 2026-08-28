@@ -13,6 +13,9 @@ export interface TaskFilters {
 }
 export type TaskPriorityFilter = "all" | "high" | "low" | "normal";
 
+/** 레일의 단계 이름 — `.task-row[data-priority=…]`의 값과 **같은 글자**여야 한다. */
+export type TaskPriorityLevel = "high" | "low" | "lowest" | "urgent";
+
 export type TaskStateFilter = "all" | "done" | "todo";
 
 /**
@@ -38,23 +41,30 @@ const PRIORITY_LABEL: Record<-2 | -1 | 1 | 2, string> = {
   2: "Urgent priority",
 };
 
-/** §308 [[priorityBadge]]가 돌려주는 표시용 기호. 방향 A 시절엔 에디터의
- * `.task-chip`과 클래스를 공유해 같은 시각 언어를 썼지만, 방향 C가 그
- * 알약(공유의 대상)을 없애면서 공유도 끝났다 — 지금은 이 기호(!!! !! ↓ ↓↓)와
- * 에디터의 텍스트 라벨(높음 등)이 서로 다른 표기다. 둘의 글리프 통일은
- * `dev/backlog.md` P4로 이미 기록된 별개 축이다. 원문 어휘(문서 모델과
- * 직결되는 이모지)는 `task-field-tokens.ts`의 `PRIORITY_EMOJI`가 유일한
- * 출처이고, 여기는 그것과 무관하다 — 지우거나 바꿔도 라운드트립에 영향이 없다.
- * `aria-label`은 여전히 PRIORITY_LABEL의 서술형을 쓴다.
+/**
+ * §306 아젠다 행의 우선순위 단계 — CSS가 그릴 레일의 이름이다.
  *
- * 키를 `number`가 아니라 실제 4단계로 좁혀 둔다. `Record<number, string>`이면
- * 5단계 밖의 값(예: 3)도 "string"이라고 속여 런타임에 `undefined`인 인덱싱이
- * 타입 체크를 통과한다 — 호출부는 [[priorityBadge]]를 쓸 것. */
-const PRIORITY_SYMBOL: Record<-2 | -1 | 1 | 2, string> = {
-  "-2": "↓↓",
-  "-1": "↓",
-  1: "!!",
-  2: "!!!",
+ * 종전에는 표시용 **기호**(`!!! !! ↓ ↓↓`)였다. 은유가 둘이었다: 위쪽 둘은 세기(느낌표),
+ * 아래쪽 둘은 방향(화살표). 한 축의 다섯 단계를 두 언어로 적으면 어느 쪽도 한눈에 읽히지
+ * 않고, 글리프가 행 폭을 먹어 제목이 밀린다. 지금은 기호를 그리지 않고 행 왼쪽 거터에
+ * 세로 레일 하나를 세운다(tasks.css) — 색과 **높이**가 함께 단계를 나른다.
+ *
+ * 높이를 함께 쓰는 이유: 색만으로 네 단계를 가르면 색맹·저대비 환경에서 통째로 무너진다.
+ * 레일은 글리프가 아니라 도형이라 높이를 공짜로 얻을 수 있으므로, 색을 못 보아도 단조
+ * 증가하는 막대로 읽힌다. 낱말 라벨은 `.visually-hidden`으로 남아 스크린 리더가 읽는다.
+ *
+ * 원문 어휘(문서 모델과 직결되는 이모지)는 `task-field-tokens.ts`의 `PRIORITY_EMOJI`가
+ * 유일한 출처이고 여기는 그것과 무관하다 — 바꿔도 라운드트립에 영향이 없다.
+ *
+ * 키를 `number`가 아니라 실제 4단계로 좁혀 둔다. `Record<number, …>`이면 5단계 밖의
+ * 값(예: 3)도 타입 체크를 통과한 뒤 런타임에 `undefined`가 된다 — 호출부는
+ * [[priorityBadge]]를 쓸 것.
+ */
+const PRIORITY_LEVEL: Record<-2 | -1 | 1 | 2, TaskPriorityLevel> = {
+  "-2": "lowest",
+  "-1": "low",
+  1: "high",
+  2: "urgent",
 };
 
 /** 설정된 필터를 전부 AND로 적용한다. 입력 배열은 변형하지 않는다. */
@@ -82,16 +92,16 @@ export function collectTags(tasks: TaskEntry[]): string[] {
 }
 
 /**
- * 임의의 `number` 우선순위를 안전하게 표시 정보로 바꾼다. 0이거나 알려진
- * 5단계 밖의 값이면 `null` — 호출부가 마커를 그리지 않아야 함을 뜻한다.
+ * 임의의 `number` 우선순위를 안전하게 표시 정보로 바꾼다. 0이거나 알려진 5단계 밖의
+ * 값이면 `null` — 호출부가 레일도 라벨도 그리지 않아야 함을 뜻한다.
  */
 export function priorityBadge(
   priority: number,
-): null | { label: string; marker: string } {
+): null | { label: string; level: TaskPriorityLevel } {
   if (priority !== -2 && priority !== -1 && priority !== 1 && priority !== 2) {
     return null;
   }
-  return { label: PRIORITY_LABEL[priority], marker: PRIORITY_SYMBOL[priority] };
+  return { label: PRIORITY_LABEL[priority], level: PRIORITY_LEVEL[priority] };
 }
 
 function matchesPriority(task: TaskEntry, band: TaskPriorityFilter): boolean {
