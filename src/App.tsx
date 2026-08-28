@@ -372,6 +372,12 @@ function App() {
 
   // §72 Skill Preview Panel state
   const [skillPreviewOpen, setSkillPreviewOpen] = useState(false);
+  // Stable identity: this is a CommandPalette `commands` useMemo dep, so an
+  // inline arrow here would rebuild the palette's 476-line buildCommands()
+  // on every App re-render, even while the palette is closed.
+  const handleSkillPreviewToggle = useCallback(() => {
+    setSkillPreviewOpen((v) => !v);
+  }, []);
   const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
   // §298 vim §12-⑪: extensions MUST be referentially stable across renders.
@@ -677,7 +683,7 @@ function App() {
       autoSaveDelay: s.autoSaveDelay,
     })),
   );
-  const { setFileContent } = useFileStore();
+  const setFileContent = useFileStore((s) => s.setFileContent);
   const codeAutoSaveTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
     // ‼️ isEditableTextFile, not isCodeFile — the write below must never target a
@@ -1081,7 +1087,7 @@ function App() {
           onOpenFile={handleOpenFile}
           onOpenFolder={handleOpenFolder}
           onSave={handleSave}
-          onSkillPreview={() => setSkillPreviewOpen((v) => !v)}
+          onSkillPreview={handleSkillPreviewToggle}
           onToggleSourceMode={handleToggleSourceMode}
         />
         <ExportDialog editor={activeEditor} />

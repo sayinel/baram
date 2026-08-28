@@ -170,7 +170,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         const BTN_HEIGHT = 24; // .block-handle-btn height (toolbar.css)
         const lineCenterOffset =
           (paddingTop + lineHeight / 2 - BTN_HEIGHT / 2) * zoom;
-        setHandle({ top: domRect.top + lineCenterOffset, pos: blockPos });
+        setHandle((prev) =>
+          nextHandleState(prev, domRect.top + lineCenterOffset, blockPos),
+        );
       } catch {
         setHandle(null);
       }
@@ -671,4 +673,19 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       )}
     </>
   );
+}
+
+// Perf: mousemove fires ~60/s, so a naive `setHandle({ pos, top })` allocates
+// a fresh object every call even when the cursor is still over the same
+// block — React can't bail out on an unchanged *reference*, so the whole
+// component (menu-closed included) re-renders on every mouse tick. Return
+// `prev` unchanged when pos/top match so the updater form of setState lets
+// React skip the re-render.
+// eslint-disable-next-line react-refresh/only-export-components
+export function nextHandleState(
+  prev: HandlePosition | null,
+  top: number,
+  pos: number,
+): HandlePosition {
+  return prev && prev.pos === pos && prev.top === top ? prev : { pos, top };
 }
