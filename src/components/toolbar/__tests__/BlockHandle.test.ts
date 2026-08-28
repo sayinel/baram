@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nextHandleState } from "../BlockHandle";
+import { nextHandleState } from "../use-block-handle-position";
 
 // Pin: mousemove fires ~60/s and calls nextHandleState on every tick. If it
 // always returned a fresh object, React couldn't bail out of re-rendering
