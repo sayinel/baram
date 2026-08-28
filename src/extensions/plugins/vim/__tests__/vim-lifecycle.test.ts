@@ -12,7 +12,7 @@ import { setEditorEditable } from "../../../../utils/editor/editor-editable";
 import { createBaramExtensions } from "../../../index";
 import { registerCodeBlockEditableSync } from "../../../nodes/views/code-block-cm-registry";
 import { vimPluginKey } from "../vim-keys";
-import { type VimPluginState } from "../vim-plugin";
+import { type VimPluginState } from "../vim-plugin-state";
 
 const editors: Editor[] = [];
 

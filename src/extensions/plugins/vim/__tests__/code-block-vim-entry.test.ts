@@ -14,7 +14,7 @@
 // 있음" — the flake is whether a STALE DOM range happens to sit inside
 // view.dom at dispatch time).
 
-import type { VimPluginState } from "../vim-plugin";
+import type { VimPluginState } from "../vim-plugin-state";
 
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
