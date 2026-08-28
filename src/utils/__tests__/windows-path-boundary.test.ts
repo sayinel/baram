@@ -11,7 +11,6 @@
 // works on one platform fails here.
 import { describe, expect, it } from "vitest";
 
-import { filterByJournalPrefix } from "../../components/command/QuickSwitcher";
 import { flattenFileTree } from "../file-search";
 import { isJournalPath } from "../journal/journal";
 import {
@@ -19,6 +18,7 @@ import {
   relativeToRoot,
   stripTrailingSeparators,
 } from "../path-utils";
+import { filterByJournalPrefix } from "../quick-switcher-query";
 
 const file = (path: string, name: string) => ({
   name,

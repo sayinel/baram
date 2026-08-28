@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
@@ -10,6 +10,8 @@ import { usePluginUIStore } from "../../plugins/plugin-ui-store";
 import { useUIStore } from "../../stores/ui/ui";
 import { fuzzyMatch } from "../../utils/file-search";
 import { buildCommands } from "./command-registry";
+import { PaletteOverlay } from "./PaletteOverlay";
+import { usePaletteListNav } from "./use-palette-list-nav";
 
 export interface CommandItem {
   action: (editor: Editor | null) => void;
@@ -49,7 +51,6 @@ export function CommandPalette({
       })),
     );
   const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const pluginPaletteCommands = usePluginUIStore(
     useShallow((s) => s.paletteCommands),
@@ -96,22 +97,6 @@ export function CommandPalette({
     );
   }, [query, commands]);
 
-  // Reset on open
-  useEffect(() => {
-    if (commandPaletteOpen) {
-      setQuery("");
-      setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
-  }, [commandPaletteOpen]);
-
-  // Clamp selectedIndex
-  useEffect(() => {
-    if (selectedIndex >= filtered.length) {
-      setSelectedIndex(Math.max(0, filtered.length - 1));
-    }
-  }, [filtered.length, selectedIndex]);
-
   const executeCommand = useCallback(
     (cmd: CommandItem) => {
       toggleCommandPalette();
@@ -120,31 +105,25 @@ export function CommandPalette({
     [editor, toggleCommandPalette],
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        toggleCommandPalette();
-        return;
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (filtered[selectedIndex]) {
-          executeCommand(filtered[selectedIndex]);
-        }
-      }
+  const handleOpen = useCallback(() => {
+    setQuery("");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
+  const handleEnter = useCallback(
+    (index: number) => {
+      executeCommand(filtered[index]);
     },
-    [filtered, selectedIndex, executeCommand, toggleCommandPalette],
+    [filtered, executeCommand],
   );
+
+  const { handleKeyDown, selectedIndex, setSelectedIndex } = usePaletteListNav({
+    isOpen: commandPaletteOpen,
+    itemCount: filtered.length,
+    onEnter: handleEnter,
+    onEscape: toggleCommandPalette,
+    onOpen: handleOpen,
+  });
 
   // Group by category and assign stable flat indices — outside render body to avoid
   // mutation during React Strict Mode double-render.
@@ -162,49 +141,46 @@ export function CommandPalette({
   if (!commandPaletteOpen) return null;
 
   return (
-    <div className="command-palette-overlay" onClick={toggleCommandPalette}>
-      <div
-        className="command-palette"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-      >
-        <input
-          className="command-palette-input"
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelectedIndex(0);
-          }}
-          placeholder="Type a command..."
-          ref={inputRef}
-          type="text"
-          value={query}
-        />
-        <div className="command-palette-list">
-          {flatItems.length === 0 && (
-            <div className="command-palette-empty">No commands found</div>
-          )}
-          {Array.from(groups.entries()).map(([category, items]) => (
-            <div className="command-palette-group" key={category}>
-              <div className="command-palette-category">{category}</div>
-              {items.map(({ cmd, idx }) => (
-                <div
-                  className={`command-palette-item ${idx === selectedIndex ? "command-palette-item-selected" : ""}`}
-                  key={cmd.id}
-                  onClick={() => executeCommand(cmd)}
-                  onMouseEnter={() => setSelectedIndex(idx)}
-                >
-                  <span className="command-item-label">{cmd.label}</span>
-                  {cmd.shortcut && (
-                    <span className="command-item-shortcut">
-                      {cmd.shortcut}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
+    <PaletteOverlay
+      onClose={toggleCommandPalette}
+      onKeyDown={handleKeyDown}
+      overlayClassName="command-palette-overlay"
+      paletteClassName="command-palette"
+    >
+      <input
+        className="command-palette-input"
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setSelectedIndex(0);
+        }}
+        placeholder="Type a command..."
+        ref={inputRef}
+        type="text"
+        value={query}
+      />
+      <div className="command-palette-list">
+        {flatItems.length === 0 && (
+          <div className="command-palette-empty">No commands found</div>
+        )}
+        {Array.from(groups.entries()).map(([category, items]) => (
+          <div className="command-palette-group" key={category}>
+            <div className="command-palette-category">{category}</div>
+            {items.map(({ cmd, idx }) => (
+              <div
+                className={`command-palette-item ${idx === selectedIndex ? "command-palette-item-selected" : ""}`}
+                key={cmd.id}
+                onClick={() => executeCommand(cmd)}
+                onMouseEnter={() => setSelectedIndex(idx)}
+              >
+                <span className="command-item-label">{cmd.label}</span>
+                {cmd.shortcut && (
+                  <span className="command-item-shortcut">{cmd.shortcut}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
-    </div>
+    </PaletteOverlay>
   );
 }
