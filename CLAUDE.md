@@ -83,6 +83,7 @@ baram/
 - export: PascalCase for 컴포넌트/Extension (`MathBlock`), camelCase for 함수/훅
 - 타입: 인터페이스 우선, `I` 접두사 사용하지 않음
 - **파일 크기**: 단일 파일 ~300줄 이하 유지. ~500줄 초과 시 집중 서브모듈로 분리
+  - 단, Rust in-file `#[cfg(test)]`·사고 이력 주석은 카운트 제외하고 판단. **분리 금지 판정 파일**(응집이 본질): FileTree.tsx, viewport-virtualize.ts, vim/adapters/operations.ts, plugins/types.ts(공개 .d.ts 계약), plugin-loader.ts 동시성 클래스, Rust authorizer/task/write/logging
 - **Zustand 셀렉터**: 컴포넌트에서 `useStore()` bare call 금지. 반드시 `useShallow((s) => ({...}))` 셀렉터 사용
   ```ts
   import { useShallow } from "zustand/shallow";
@@ -102,6 +103,8 @@ baram/
   - `fuzzyMatch()` → `src/utils/file-search.ts`
   - `RightPanelMode` / `SidebarPanel` 타입 → `src/stores/ui/ui.ts`
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
+- **perfectionist/sort-modules autofix는 주석을 안 옮긴다** — 정렬 후 doc 주석-함수 짝이 맞는지 확인 (배너 오배치 사고 다발)
+- **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
 - **Shadow 토큰**: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-xl`
@@ -110,6 +113,7 @@ baram/
 ### Rust
 
 - 모듈 구조: `mod.rs` 패턴 사용
+- zip 추출은 `fs/archive.rs`의 `ExtractBounds` 공용 코어 경유 (6종 폭탄 방어 — fs·plugin 공유; 경로 봉쇄는 호출자 책임)
 - 에러 처리: `thiserror` crate으로 커스텀 에러 타입 정의
 - IPC 커맨드: `Result<T, String>` 반환 (Tauri 직렬화 제약)
 
@@ -132,6 +136,7 @@ baram/
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
 - **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
 - **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
+- **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신
 
 ### 의존성 관리
 
@@ -145,6 +150,7 @@ baram/
 - **커밋 메시지는 미리 검증**: `npx --no -- commitlint < msg.txt`. 본문에서 줄 시작 `단어:`는 footer로 오인되므로 줄바꿈 위치를 조정할 것
 - 브랜치: `feature/m2-basic-editing`, `fix/roundtrip-heading-whitespace`
 - **pre-push hook**: `cargo clippy --all-targets` + `npx knip` 실행 — base 변경 후 첫 push는 cargo cold라 5~7분 소요. push는 백그라운드로 실행할 것
+- **push 전 `npm run lint` 필수**: CI lint 잡은 pre-push hook보다 넓다 — `lint:doc-comments`(doc 주석 바로 뒤 doc 주석 금지, 함수 이동·cherry-pick 시 잘 깨짐)·stylelint·audit까지. "테스트 그린 ≠ CI 그린"
 
 ### 디자인 토큰
 
