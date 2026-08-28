@@ -7,7 +7,10 @@ import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "..";
-import { invalidateEditorMutationTasks } from "../../utils/editor/mutation-tasks";
+import {
+  countLiveEditorMutationTasks,
+  invalidateEditorMutationTasks,
+} from "../../utils/editor/mutation-tasks";
 import { buildSlashItems } from "../plugins/slash-command-items";
 import { isVimExternalEdit } from "../plugins/vim/vim-keys";
 
@@ -106,4 +109,27 @@ describe("§298 /video slash action — vim external-edit tagging (design §5b)"
     // 3 fallback instead of the priority 2 explicit-command matrix.
     expect(tagged).toBe(true);
   });
+});
+
+describe("§298 Codex TS review — dialog rejection must not leak a mutation task", () => {
+  // The /image, /video and /link items each registered their §12-9b task
+  // manually (register → await dialog → isLive() → finish()). When the
+  // dialog promise rejects, control never reaches isLive()/finish(), so the
+  // task stayed in the view's live registry forever. awaitBoundToEditor
+  // fixes this with a finally-guaranteed finish().
+  it.each(["image", "video", "link"] as const)(
+    "the /%s item finishes its task even when the dialog promise rejects",
+    async (id) => {
+      const editor = makeEditor();
+      const before = countLiveEditorMutationTasks(editor.view);
+      vi.mocked(showFieldDialog).mockRejectedValueOnce(
+        new Error("dialog boom"),
+      );
+
+      const item = buildSlashItems(editor).find((i) => i.id === id);
+      await expect(item!.action()).rejects.toThrow("dialog boom");
+
+      expect(countLiveEditorMutationTasks(editor.view)).toBe(before);
+    },
+  );
 });

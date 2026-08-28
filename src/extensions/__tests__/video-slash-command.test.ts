@@ -33,6 +33,11 @@ vi.mock("../../utils/editor/mutation-tasks", () => ({
     finish: () => {},
     isLive: () => true,
   }),
+  // This fixture's task is always live, so awaitBoundToEditor just passes
+  // the dialog's resolved value straight through (mirrors the real
+  // implementation's behavior for that case).
+  awaitBoundToEditor: async (_view: unknown, pending: Promise<unknown>) =>
+    pending,
 }));
 
 vi.mock("../../utils/field-dialog", () => ({
