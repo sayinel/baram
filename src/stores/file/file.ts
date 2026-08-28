@@ -1,5 +1,3 @@
-import type { FileEntry as IpcFileEntry } from "../../ipc/types";
-
 // §3.5 파일 시스템 스토어
 import { create } from "zustand";
 
@@ -18,7 +16,14 @@ import { useLinkStore } from "../editor/link";
 import { useSettingsStore } from "../settings/store";
 import { useUIStore } from "../ui/ui";
 import {
-  compareEntries,
+  addToTree,
+  buildFileTree,
+  moveInTree,
+  rekeyOpenFilesPrefix,
+  removeFromTree,
+  renameInTree,
+} from "./file-tree-ops";
+import {
   DEFAULT_SORT_ORDER,
   type SortOrder,
   sortTreeNodes,
@@ -141,49 +146,9 @@ export async function addFolder(path: string): Promise<void> {
   useSettingsStore.getState().addRecentFolder(path, isVault);
 }
 
-/**
- * Convert flat IPC FileEntry[] into nested tree structure.
- * Groups entries by parent directory, then recursively attaches children.
- * Directories sorted first, then per `order` (§4.5).
- */
-export function buildFileTree(
-  flatEntries: IpcFileEntry[],
-  rootPath: string,
-  order: SortOrder = DEFAULT_SORT_ORDER,
-): FileEntry[] {
-  // Group by parent path
-  const childrenMap = new Map<string, IpcFileEntry[]>();
-  for (const entry of flatEntries) {
-    const parentPath = entry.path.substring(
-      0,
-      entry.path.length - entry.name.length - 1,
-    );
-    const list = childrenMap.get(parentPath) || [];
-    list.push(entry);
-    childrenMap.set(parentPath, list);
-  }
-
-  function buildChildren(parentPath: string): FileEntry[] {
-    const entries = childrenMap.get(parentPath) || [];
-
-    return entries
-      .map((e) => {
-        const node: FileEntry = {
-          name: e.name,
-          path: e.path,
-          isDir: e.isDir,
-          modifiedAt: e.modifiedAt,
-        };
-        if (e.isDir) {
-          node.children = buildChildren(e.path);
-        }
-        return node;
-      })
-      .sort((a, b) => compareEntries(a, b, order));
-  }
-
-  return buildChildren(rootPath);
-}
+// buildFileTree lives in ./file-tree-ops (pure tree algebra); re-exported
+// below for existing callers (work-log.ts, wikilink-suggest.ts, use-navigation.ts).
+export { buildFileTree };
 
 /**
  * Open a folder: list its contents recursively, build tree, update store.
@@ -459,48 +424,10 @@ export const useFileStore = create<FileState>((set, get) => ({
     }),
 
   renameFileEntry: (oldPath, newPath, newName) =>
-    set((state) => {
-      // Update openFiles cache: move content from old key to new key
-      const openFiles = new Map(state.openFiles);
-      // For directories, update all keys with the old prefix
-      for (const [key, value] of openFiles) {
-        if (key === oldPath || key.startsWith(oldPath + "/")) {
-          openFiles.delete(key);
-          const newKey = newPath + key.slice(oldPath.length);
-          openFiles.set(newKey, value);
-        }
-      }
-
-      // Update file tree: recursively find and rename the entry + children
-      function updateTree(entries: FileEntry[]): FileEntry[] {
-        return entries.map((e) => {
-          if (e.path === oldPath) {
-            // Rename this entry and recursively update children paths
-            function updateChildren(children: FileEntry[]): FileEntry[] {
-              return children.map((c) => {
-                const childNewPath = newPath + c.path.slice(oldPath.length);
-                const updated = { ...c, path: childNewPath };
-                if (c.isDir && c.children) {
-                  updated.children = updateChildren(c.children);
-                }
-                return updated;
-              });
-            }
-            const result: FileEntry = { ...e, name: newName, path: newPath };
-            if (e.isDir && e.children) {
-              result.children = updateChildren(e.children);
-            }
-            return result;
-          }
-          if (e.isDir && e.children) {
-            return { ...e, children: updateTree(e.children) };
-          }
-          return e;
-        });
-      }
-
-      return { openFiles, fileTree: updateTree(state.fileTree) };
-    }),
+    set((state) => ({
+      openFiles: rekeyOpenFilesPrefix(state.openFiles, oldPath, newPath),
+      fileTree: renameInTree(state.fileTree, oldPath, newPath, newName),
+    })),
 
   addFileEntry: (parentPath, entry) =>
     set((state) => {
@@ -514,39 +441,15 @@ export const useFileStore = create<FileState>((set, get) => ({
           ? { ...entry, modifiedAt: Math.floor(Date.now() / 1000) }
           : entry;
 
-      function insertSorted(
-        entries: FileEntry[],
-        newEntry: FileEntry,
-      ): FileEntry[] {
-        // Skip if already exists (idempotent)
-        if (entries.some((e) => e.path === newEntry.path)) return entries;
-        const result = [...entries, newEntry];
-        result.sort((a, b) => compareEntries(a, b, get().fileTreeSortOrder));
-        return result;
-      }
-
-      // If parentPath is rootPath, insert at top level
-      if (parentPath === state.rootPath) {
-        return { fileTree: insertSorted(state.fileTree, normalizedEntry) };
-      }
-
-      // Otherwise, find parent dir and insert there
-      function addToTree(entries: FileEntry[]): FileEntry[] {
-        return entries.map((e) => {
-          if (e.path === parentPath && e.isDir) {
-            return {
-              ...e,
-              children: insertSorted(e.children || [], normalizedEntry),
-            };
-          }
-          if (e.isDir && e.children) {
-            return { ...e, children: addToTree(e.children) };
-          }
-          return e;
-        });
-      }
-
-      return { fileTree: addToTree(state.fileTree) };
+      return {
+        fileTree: addToTree(
+          state.fileTree,
+          parentPath,
+          state.rootPath,
+          normalizedEntry,
+          state.fileTreeSortOrder,
+        ),
+      };
     }),
 
   removeFileEntry: (path) =>
@@ -559,109 +462,28 @@ export const useFileStore = create<FileState>((set, get) => ({
         }
       }
 
-      function removeFromTree(entries: FileEntry[]): FileEntry[] {
-        return entries
-          .filter((e) => e.path !== path)
-          .map((e) => {
-            if (e.isDir && e.children) {
-              return { ...e, children: removeFromTree(e.children) };
-            }
-            return e;
-          });
-      }
-
-      return { openFiles, fileTree: removeFromTree(state.fileTree) };
+      return { openFiles, fileTree: removeFromTree(state.fileTree, path) };
     }),
 
   moveFileEntry: (oldPath, newParentPath) =>
     set((state) => {
-      // Find the entry to move
-      function findEntry(entries: FileEntry[]): FileEntry | null {
-        for (const e of entries) {
-          if (e.path === oldPath) return e;
-          if (e.isDir && e.children) {
-            const found = findEntry(e.children);
-            if (found) return found;
-          }
-        }
-        return null;
-      }
+      const moved = moveInTree(
+        state.fileTree,
+        oldPath,
+        newParentPath,
+        state.rootPath,
+        state.fileTreeSortOrder,
+      );
+      if (!moved) return state;
 
-      const entry = findEntry(state.fileTree);
-      if (!entry) return state;
-
-      const newPath = newParentPath + "/" + entry.name;
-
-      // Dir move: recursively update children paths (mirrors renameFileEntry)
-      function updateChildren(children: FileEntry[]): FileEntry[] {
-        return children.map((c) => {
-          const childNewPath = newPath + c.path.slice(oldPath.length);
-          const updated = { ...c, path: childNewPath };
-          if (c.isDir && c.children) {
-            updated.children = updateChildren(c.children);
-          }
-          return updated;
-        });
-      }
-      const movedEntry: FileEntry = { ...entry, path: newPath };
-      if (entry.isDir && entry.children) {
-        movedEntry.children = updateChildren(entry.children);
-      }
-
-      // Update openFiles keys (dir move includes children keys)
-      const openFiles = new Map(state.openFiles);
-      for (const [key, value] of state.openFiles) {
-        if (key === oldPath || key.startsWith(oldPath + "/")) {
-          openFiles.delete(key);
-          openFiles.set(newPath + key.slice(oldPath.length), value);
-        }
-      }
-
-      // Remove from old location
-      function removeFromTree(entries: FileEntry[]): FileEntry[] {
-        return entries
-          .filter((e) => e.path !== oldPath)
-          .map((e) => {
-            if (e.isDir && e.children) {
-              return { ...e, children: removeFromTree(e.children) };
-            }
-            return e;
-          });
-      }
-
-      // Insert into new location (sorted)
-      function insertSorted(
-        entries: FileEntry[],
-        newEntry: FileEntry,
-      ): FileEntry[] {
-        const result = [...entries, newEntry];
-        result.sort((a, b) => compareEntries(a, b, get().fileTreeSortOrder));
-        return result;
-      }
-
-      let newTree = removeFromTree(state.fileTree);
-
-      if (newParentPath === state.rootPath) {
-        newTree = insertSorted(newTree, movedEntry);
-      } else {
-        function addToTree(entries: FileEntry[]): FileEntry[] {
-          return entries.map((e) => {
-            if (e.path === newParentPath && e.isDir) {
-              return {
-                ...e,
-                children: insertSorted(e.children || [], movedEntry),
-              };
-            }
-            if (e.isDir && e.children) {
-              return { ...e, children: addToTree(e.children) };
-            }
-            return e;
-          });
-        }
-        newTree = addToTree(newTree);
-      }
-
-      return { openFiles, fileTree: newTree };
+      return {
+        openFiles: rekeyOpenFilesPrefix(
+          state.openFiles,
+          oldPath,
+          moved.newPath,
+        ),
+        fileTree: moved.entries,
+      };
     }),
 
   tagFilter: null,
