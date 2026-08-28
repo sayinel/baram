@@ -100,6 +100,7 @@ interface EditorState {
    * switch, which then re-reads that fresh content instead of the cache.
    */
   markContentStale: (tabId: string) => void;
+  /** Gated: no-op (same state reference) if the tab is already at `dirty` or doesn't exist */
   markDirty: (tabId: string, dirty: boolean) => void;
   /** §39 MRU tab order — index 0 is most recently used */
   mruOrder: string[];
@@ -124,7 +125,7 @@ interface EditorState {
     path?: null | string,
   ) => void;
   setActiveTab: (tabId: string) => void;
-  /** §44 Update current editor selection text */
+  /** §44 Update current editor selection text. Gated: no-op if unchanged */
   setCurrentSelection: (text: string) => void;
   /** §287/§312 Turn source mode on or off for one tab */
   setSourceModeForTab: (tabId: string, on: boolean) => void;
@@ -315,12 +316,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
+  // 동등성 관문(CLAUDE.md 규약) — 매 keystroke마다 도는 auto-save가
+  // 이미 dirty인 탭에 같은 값을 계속 밀어넣으므로, 값이 그대로면 새 배열을
+  // 만들지 않고 기존 state를 그대로 돌려준다.
   markDirty: (tabId, dirty) =>
-    set((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.id === tabId ? { ...t, isDirty: dirty } : t,
-      ),
-    })),
+    set((state) => {
+      const tab = state.tabs.find((t) => t.id === tabId);
+      if (!tab || tab.isDirty === dirty) return state;
+      return {
+        tabs: state.tabs.map((t) =>
+          t.id === tabId ? { ...t, isDirty: dirty } : t,
+        ),
+      };
+    }),
 
   touchMru: (tabId) =>
     set((state) => {
@@ -510,7 +518,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       tabs: state.tabs.map((t) => (t.id === tabId ? { ...t, title } : t)),
     })),
 
-  setCurrentSelection: (text) => set({ currentSelection: text }),
+  // 동등성 관문(CLAUDE.md 규약) — ProseMirror selectionUpdate가 모든
+  // 키 입력·커서 이동마다 이걸 부르고, 커서가 collapsed면 text는 항상 ""라
+  // 값이 그대로일 때 새 root를 만들지 않는다.
+  setCurrentSelection: (text) =>
+    set((s) => (s.currentSelection === text ? s : { currentSelection: text })),
 
   // §287/§312 동등성 관문은 장식이 아니다. partial `set`은 값이 같아도 **새 root**를
   // 만들어 스토어 구독자 전부를 깨운다(CLAUDE.md 규약). 탭을 전환할 때마다 도는
