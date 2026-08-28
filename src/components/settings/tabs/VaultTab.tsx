@@ -12,8 +12,8 @@ import {
   getVaultConfigByPath,
   setVaultConfigByPath,
 } from "../../../ipc/context";
+import { addFolder } from "../../../services/vault-context-loader";
 import { useContextStore } from "../../../stores/context/context";
-import { addFolder } from "../../../stores/file/file";
 import { logger } from "../../../utils/logger";
 
 const PRESET_COLORS = [
@@ -118,13 +118,11 @@ export function VaultTab() {
                           });
                         if (wasActive) {
                           const { switchContext } =
-                            await import("../../../stores/file/file");
+                            await import("../../../services/vault-context-loader");
                           await switchContext(added.id);
                         }
                       } else {
                         // Vault → Folder: remove .baram/config.json vault section
-                        const { setVaultConfigByPath } =
-                          await import("../../../ipc/context");
                         await setVaultConfigByPath(ctx.path, {});
                         await removeContext(ctx.id);
                         const added = await useContextStore
@@ -135,7 +133,7 @@ export function VaultTab() {
                           });
                         if (wasActive) {
                           const { switchContext } =
-                            await import("../../../stores/file/file");
+                            await import("../../../services/vault-context-loader");
                           await switchContext(added.id);
                         }
                       }
@@ -151,7 +149,7 @@ export function VaultTab() {
                   const newActive = useContextStore.getState().activeContextId;
                   if (newActive) {
                     const { switchContext } =
-                      await import("../../../stores/file/file");
+                      await import("../../../services/vault-context-loader");
                     await switchContext(newActive);
                   } else {
                     // No contexts left — clear FileTree

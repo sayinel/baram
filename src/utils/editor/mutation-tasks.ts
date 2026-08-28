@@ -56,6 +56,16 @@ interface ViewRegistry {
 
 const registries = new WeakMap<PMView, ViewRegistry>();
 
+/**
+ * Diagnostic-only: how many tasks are currently registered as live for this
+ * view. Exists so tests can assert a flow doesn't leak a task past its own
+ * async boundary (e.g. a rejected promise skipping `finish()`) — regular
+ * call sites have no legitimate reason to read this.
+ */
+export function countLiveEditorMutationTasks(view: PMView): number {
+  return registries.get(view)?.live.size ?? 0;
+}
+
 /** Best-effort source cancellation of previously invalidated tasks. */
 export function abortEditorMutationTasks(view: PMView): void {
   const reg = registries.get(view);

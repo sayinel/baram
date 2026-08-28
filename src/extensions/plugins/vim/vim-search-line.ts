@@ -12,7 +12,7 @@
 // 하네스)에서는 그 경로가 동작을 보존한다.
 
 import type { SearchDirection } from "./core/types";
-import type { VimPluginState } from "./vim-plugin";
+import type { VimPluginState } from "./vim-plugin-state";
 import type { Editor } from "@tiptap/core";
 
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";

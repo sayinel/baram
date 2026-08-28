@@ -67,8 +67,9 @@ baram/
 ├── dev/                    # 내부 개발 문서 (public 배포 제외) — design/ plans/ impl-notes/
 │                           #   superpowers/ features/ backlog.md next-steps.md progress.json
 ├── tests/                  # E2E (Playwright)
-├── skills/                 # Claude Code Skills
-└── .claude/commands/       # 슬래시 커맨드
+├── skills/                 # Claude Code Skills (원주인 로컬 전용 — 의도적 추적 해제, 이 머신에 없어도 정상)
+├── .claude/commands/       # 슬래시 커맨드 (동상 — dev/와 같은 부류)
+└── .claude/docs/           # 상황별 지침 (CI 계약·성능 기준·설계 § 지도 — 해당 작업 전 필독)
 ```
 
 ## 코딩 컨벤션
@@ -83,6 +84,7 @@ baram/
 - export: PascalCase for 컴포넌트/Extension (`MathBlock`), camelCase for 함수/훅
 - 타입: 인터페이스 우선, `I` 접두사 사용하지 않음
 - **파일 크기**: 단일 파일 ~300줄 이하 유지. ~500줄 초과 시 집중 서브모듈로 분리
+  - 단, Rust in-file `#[cfg(test)]`·사고 이력 주석은 카운트 제외하고 판단. **분리 금지 판정 파일**(응집이 본질): FileTree.tsx, viewport-virtualize.ts, vim/adapters/operations.ts, plugins/types.ts(공개 .d.ts 계약), plugin-loader.ts 동시성 클래스, Rust authorizer/task/write/logging
 - **Zustand 셀렉터**: 컴포넌트에서 `useStore()` bare call 금지. 반드시 `useShallow((s) => ({...}))` 셀렉터 사용
   ```ts
   import { useShallow } from "zustand/shallow";
@@ -102,6 +104,8 @@ baram/
   - `fuzzyMatch()` → `src/utils/file-search.ts`
   - `RightPanelMode` / `SidebarPanel` 타입 → `src/stores/ui/ui.ts`
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
+- **perfectionist/sort-modules autofix는 주석을 안 옮긴다** — 정렬 후 doc 주석-함수 짝이 맞는지 확인 (배너 오배치 사고 다발)
+- **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
 - **Shadow 토큰**: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-xl`
@@ -110,6 +114,7 @@ baram/
 ### Rust
 
 - 모듈 구조: `mod.rs` 패턴 사용
+- zip 추출은 `fs/archive.rs`의 `ExtractBounds` 공용 코어 경유 (6종 폭탄 방어 — fs·plugin 공유; 경로 봉쇄는 호출자 책임)
 - 에러 처리: `thiserror` crate으로 커스텀 에러 타입 정의
 - IPC 커맨드: `Result<T, String>` 반환 (Tauri 직렬화 제약)
 
@@ -132,6 +137,7 @@ baram/
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
 - **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
 - **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
+- **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신
 
 ### 의존성 관리
 
@@ -145,6 +151,7 @@ baram/
 - **커밋 메시지는 미리 검증**: `npx --no -- commitlint < msg.txt`. 본문에서 줄 시작 `단어:`는 footer로 오인되므로 줄바꿈 위치를 조정할 것
 - 브랜치: `feature/m2-basic-editing`, `fix/roundtrip-heading-whitespace`
 - **pre-push hook**: `cargo clippy --all-targets` + `npx knip` 실행 — base 변경 후 첫 push는 cargo cold라 5~7분 소요. push는 백그라운드로 실행할 것
+- **push 전 `npm run lint` 필수**: CI lint 잡은 pre-push hook보다 넓다 — `lint:doc-comments`(doc 주석 바로 뒤 doc 주석 금지, 함수 이동·cherry-pick 시 잘 깨짐)·stylelint·audit까지. "테스트 그린 ≠ CI 그린"
 
 ### 디자인 토큰
 
@@ -156,40 +163,16 @@ baram/
 ## 설계 문서 참조 규칙
 
 구현 시 반드시 해당 설계 문서 섹션을 참조할 것. `§` 번호를 코드 주석과 커밋에 유지한다.
-
-| 영역        | 설계 문서                                  | 핵심 참조                                                                                                                                     |
-| --------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 아키텍처      | `dev/design/part3-architecture.md`    | §3.1 스택, §3.2 IPC, §3.3 엔진, §3.4 Extension, §3.5 상태, §3.6 파일                                                                              |
-| UI/UX     | `dev/design/part4-uiux.md`            | §4.1 원칙, §4.2 레이아웃, §4.3~§4.8 각 요소                                                                                                        |
-| 기능 상세     | `dev/design/part5-core-features.md`   | §5.1~§5.15 각 기능 상세 스펙                                                                                                                     |
-| AI 통합     | `dev/design/part6-ai-integration.md`  | §6.1 전략, §6.2 5-Level, §6.3 Provider                                                                                                      |
-| 데이터 모델    | `dev/design/part7-data-models.md`     | §7.1 MD 규격, §7.2 PM 스키마, §7.3~§7.5 DB                                                                                                     |
-| 로드맵       | `dev/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                                  |
-| AI 고도화    | `dev/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
-| Vault 시스템 | `dev/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작                     |
+어떤 §가 어느 문서(part3~part12)에 있는지는 **`.claude/docs/design-doc-map.md`** 참조.
 
 ## 성능 기준 (Part 8 §8.4)
 
-| 지표            | 목표                      |
-| ------------- | ----------------------- |
-| 앱 시작 → 에디터 준비 | < 1.5초 (콜드), < 0.5초 (웜) |
-| 1,000줄 파일 열기  | < 200ms                 |
-| 10,000줄 파일 열기 | < 1초                    |
-| 타이핑 레이턴시      | < 16ms (60fps)          |
-| KaTeX 렌더링     | < 50ms                  |
-| 파일 저장         | < 100ms                 |
-| 앱 바이너리 크기     | < 15MB                  |
-| 유휴 메모리        | < 100MB                 |
+핵심: **타이핑 레이턴시 < 16ms** · 10,000줄 파일 열기 < 1초. 전체 지표 표는 **`.claude/docs/performance-budgets.md`** 참조 — 성능 작업·회귀 판단 시 먼저 읽을 것.
 
 ## CI/CD 계약 (이슈 207 / PR 208)
 
-- **push CI는 main만** 돈다 — feature 브랜치는 PR CI가 검증 (이중 실행 제거). main push는 test·rust까지 전체 스위트 실행
-- **ci-pass 게이트**: rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 안 건드린 PR". 그 외 모든 skip/실패는 빨간불
-- **릴리스 태그 규칙**: `v*` 태그는 package.json 버전과 일치하고 **main에 포함된 커밋**이어야 함 — verify-tag 잡이 불일치 시 즉시 실패
-- **reusable workflow 함정**: called workflow 안에서 `github.event_name`은 호출자의 이벤트 — 절대 `'workflow_call'`이 아님. 릴리스 여부는 `inputs.release`로 판별
-- **액션은 커밋 SHA 핀** (+`# vN` 주석, dependabot이 갱신). dtolnay/rust-toolchain만 예외: master 히스토리 SHA + `toolchain:` 입력 (ref명이 툴체인을 선택, release 브랜치 SHA는 GC됨)
-- **release Linux 러너는 ubuntu-22.04 고정** — 오래된 glibc에서 빌드해야 배포 호환이 넓어짐. "현대화" 금지
-- **gitleaks는 curl 설치** — dependabot 사각지대라 버전+체크섬을 손으로 함께 갱신
+PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 안 건드린 PR" — 그 외 모든 skip/실패는 빨간불.
+릴리스·워크플로(.github/) 작업 전에는 반드시 **`.claude/docs/ci-contract.md`** 를 읽을 것 (reusable workflow 함정, SHA 핀 규칙, 러너 고정 등).
 
 ## 현재 Phase 및 마일스톤
 

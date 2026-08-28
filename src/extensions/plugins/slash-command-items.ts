@@ -256,15 +256,13 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         // Get cursor position for picker placement
         const { from } = editor.state.selection;
         const coords = editor.view.coordsAtPos(from);
-        // §12-9b: picker resolution is an unbounded async gap (design §5c)
-        const task = registerEditorMutationTask(editor.view);
-        const result = await showTableGridPicker(
-          coords.left,
-          coords.bottom + 4,
+        // §12-9b: picker resolution is an unbounded async gap (design §5c) —
+        // awaitBoundToEditor guarantees finish() even if the picker rejects
+        const result = await awaitBoundToEditor(
+          editor.view,
+          showTableGridPicker(coords.left, coords.bottom + 4),
         );
-        const live = task.isLive();
-        task.finish();
-        if (!result || !live) return;
+        if (!result) return;
         chainWithVimExternalEdit(editor)
           .focus()
           .insertTable({
@@ -283,21 +281,27 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert an image",
       mdHint: "![](url)",
       action: async () => {
-        const task = registerEditorMutationTask(editor.view); // §12-9b dialog gap
-        const result = await showFieldDialog({
-          title: "Insert Image",
-          fields: [
-            { key: "alt", label: "Alt text", placeholder: "Image description" },
-            {
-              key: "src",
-              label: "Image URL",
-              placeholder: "https://... or ./path.png",
-            },
-          ],
-        });
-        const live = task.isLive();
-        task.finish();
-        if (!result?.src || !live) return;
+        // §12-9b dialog gap — awaitBoundToEditor guarantees finish() even if
+        // the dialog promise rejects (design §5c).
+        const result = await awaitBoundToEditor(
+          editor.view,
+          showFieldDialog({
+            title: "Insert Image",
+            fields: [
+              {
+                key: "alt",
+                label: "Alt text",
+                placeholder: "Image description",
+              },
+              {
+                key: "src",
+                label: "Image URL",
+                placeholder: "https://... or ./path.png",
+              },
+            ],
+          }),
+        );
+        if (!result?.src) return;
         // §297 fix (I-4): the dialog is titled "Insert Image", but the node
         // type must be whatever classifyMediaSrc (§293, the one enumeration)
         // says — every other insertion point in this app (drop, paste, both
@@ -321,23 +325,27 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert a video",
       mdHint: "![](video.mp4)",
       action: async () => {
-        const result = await showFieldDialog({
-          title: "Insert Video",
-          fields: [
-            { key: "alt", label: "Caption", placeholder: "Video caption" },
-            {
-              key: "src",
-              label: "Video URL or path",
-              placeholder: "https://youtu.be/... or ./clip.mp4",
-            },
-          ],
-        });
+        // §12-9b dialog gap — awaitBoundToEditor guarantees finish() even if
+        // the dialog promise rejects (design §5c).
+        const result = await awaitBoundToEditor(
+          editor.view,
+          showFieldDialog({
+            title: "Insert Video",
+            fields: [
+              { key: "alt", label: "Caption", placeholder: "Video caption" },
+              {
+                key: "src",
+                label: "Video URL or path",
+                placeholder: "https://youtu.be/... or ./clip.mp4",
+              },
+            ],
+          }),
+        );
         if (!result?.src) return;
         // §297 fix (I-4): mirror of the /image fix above — a src that
         // classifies as `image` (e.g. a .png typed into this dialog) must
         // become an `image` node, or it silently flips to one on reload.
-        editor
-          .chain()
+        chainWithVimExternalEdit(editor)
           .focus()
           .insertContent({
             type: classifyMediaSrc(result.src) === "image" ? "image" : "video",
@@ -353,17 +361,19 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert a hyperlink",
       mdHint: "[text](url)",
       action: async () => {
-        const task = registerEditorMutationTask(editor.view); // §12-9b dialog gap
-        const result = await showFieldDialog({
-          title: "Insert Link",
-          fields: [
-            { key: "text", label: "Text", placeholder: "Display text" },
-            { key: "url", label: "URL", placeholder: "https://..." },
-          ],
-        });
-        const live = task.isLive();
-        task.finish();
-        if (!result?.url || !live) return;
+        // §12-9b dialog gap — awaitBoundToEditor guarantees finish() even if
+        // the dialog promise rejects (design §5c).
+        const result = await awaitBoundToEditor(
+          editor.view,
+          showFieldDialog({
+            title: "Insert Link",
+            fields: [
+              { key: "text", label: "Text", placeholder: "Display text" },
+              { key: "url", label: "URL", placeholder: "https://..." },
+            ],
+          }),
+        );
+        if (!result?.url) return;
         const text = result.text || result.url;
         chainWithVimExternalEdit(editor)
           .focus()

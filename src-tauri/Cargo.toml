@@ -43,10 +43,10 @@ git2 = { version = "0.20", features = ["vendored-openssl"] }
 # LZMA decoder builds itself on the first read of an entry and sizes its dictionary
 # from a number in the archive, clamped only to ~4 GiB — so a 114-byte archive drove a
 # 512 MiB allocation, ahead of every byte limit `extract_zip_bounded` enforces, and a
-# failed alloc aborts the process rather than unwinding. The plugin path also refuses
-# unknown methods at runtime (`ALLOWED_COMPRESSION`); this removes the decoders from
-# the binary so `fs::extract_zip` (§53), which has no such gate, cannot reach them
-# either — and so a future caller cannot.
+# failed alloc aborts the process rather than unwinding. Both `plugin::extract_zip_bounded`
+# and `fs::extract_zip` (§53, §D6) refuse unknown methods at runtime through the shared
+# `crate::fs::archive::extract_entry` allowlist; this removes the decoders from the binary
+# too, so a future caller that skips that allowlist still cannot reach them.
 #
 # `deflate` pulls the flate2 reader and the zopfli writer, which is everything both
 # call sites need: `plugin-release.yml` packs with `zip -r` (Deflated) and Notion

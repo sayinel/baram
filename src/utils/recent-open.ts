@@ -3,7 +3,7 @@
 import type { Locale } from "../i18n";
 
 import { t } from "../i18n";
-import { addFolder } from "../stores/file/file";
+import { addFolder } from "../services/vault-context-loader";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { openFileByPath } from "./open-file";

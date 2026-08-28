@@ -17,7 +17,7 @@
 // the meta alone leaves normal mode sitting on a range the user can no longer
 // see, and the next edit would act on it.
 
-import type { VimPluginState } from "./vim-plugin";
+import type { VimPluginState } from "./vim-plugin-state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { cursorSelection } from "./adapters/cursor-selection";

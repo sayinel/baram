@@ -1,0 +1,27 @@
+/* Split from components.css */
+
+/* §a11y: Visible focus indicator for keyboard navigation */
+*:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 2px;
+}
+
+/* Exclude editor areas that have their own focus indicators */
+.ProseMirror:focus-visible,
+.cm-editor:focus-visible,
+.source-code-editor:focus-visible,
+.cm-content:focus-visible {
+  outline: none;
+}
+
+/* §a11y: Respect OS motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

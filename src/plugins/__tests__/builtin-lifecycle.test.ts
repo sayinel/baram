@@ -56,10 +56,11 @@ const h = vi.hoisted(() => {
 
 vi.mock("../builtin", () => ({ BUILTIN_PLUGINS: h.FIXTURES }));
 
-// ‼️ `plugin-lifecycle.ts` 자신은 이 모듈에서 정확히 셋만 가져오지만, `./plugin-loader`가
-// 물고 들어오는 `sandbox/host-ai-bridge.ts`가 같은 모듈의 `createAIAPI`를 쓴다(둘 다
-// `../extension-context`로 같은 파일을 resolve). 팩토리를 리터럴로 두면 그 이름이 없어
-// import 시점에 깨진다 — `importOriginal`로 나머지를 그대로 두고 이 셋만 덮는다.
+// ‼️ `plugin-lifecycle.ts` 자신은 이 모듈에서 정확히 셋만 가져오지만, `./plugin-loader`도
+// 같은 barrel(`./extension-context`)에서 `setEditorSurfaceBlocked`/`registerHostCommandHandler`/
+// `setEditorInstance`를 가져온다(§298 분리 이후 정의는 `plugin-host-registry.ts`에 있고
+// `extension-context.ts`는 그 이름들을 re-export만 한다). 팩토리를 리터럴로 두면 그 이름들이
+// 없어 import 시점에 깨진다 — `importOriginal`로 나머지를 그대로 두고 이 셋만 덮는다.
 vi.mock("../extension-context", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../extension-context")>()),
   // 각 내장의 `subscriptions`를 id별 고정 배열로 돌려준다 — teardown이 disposable을

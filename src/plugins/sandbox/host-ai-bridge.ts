@@ -17,7 +17,7 @@ import type { SandboxHostRequest } from "./protocol";
 
 import { pluginSandboxStage } from "../../ipc/plugin-invoke";
 import { withTimeout } from "../../utils/with-timeout";
-import { createAIAPI } from "../extension-context";
+import { createAIAPI } from "../plugin-ai-policy";
 
 /**
  * The trusted tier's own AI factory, named so a test can pin the identity rather

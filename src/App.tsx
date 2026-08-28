@@ -28,6 +28,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
 import {
   type EditorMode,
+  editorModeForSurfaceKind,
   StatusBar,
   vimSurfaceForMode,
 } from "./components/layout/StatusBar";
@@ -49,13 +50,11 @@ import {
 } from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useGhostText } from "./hooks/use-ghost-text";
+import { useGlobalKeyboard } from "./hooks/use-global-keyboard";
 import { useInlineAI } from "./hooks/use-inline-ai";
 import { useJournal } from "./hooks/use-journal";
 import { useJournalInitialCursor } from "./hooks/use-journal-initial-cursor";
-import {
-  useGlobalKeyboard,
-  useKeybindingActions,
-} from "./hooks/use-keybinding-actions";
+import { useKeybindingActions } from "./hooks/use-keybinding-actions";
 import { useLargeDocKeepalive } from "./hooks/use-large-doc-keepalive";
 import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
@@ -90,17 +89,18 @@ import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
-import { isFileTab, isGraphTab } from "./stores/editor/editor";
+import { isFileTab } from "./stores/editor/editor";
 import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
-import {
-  activePluginIdOf,
-  editorSurfaceBlockReason,
-} from "./utils/editor/active-tab";
+import { editorSurfaceBlockReason } from "./utils/editor/active-tab";
 import { registerEditorMutationTask } from "./utils/editor/mutation-tasks";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
+import {
+  resolveSurfaceKind,
+  type SurfaceKind,
+} from "./utils/editor/surface-kind";
 import {
   getLanguageForFile,
   isBinaryViewerFile,
@@ -262,13 +262,6 @@ function App() {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
     return tab && isFileTab(tab) ? tab.filePath : null;
   });
-  const isGraphTabActive = useEditorStore((s) =>
-    isGraphTab(s.tabs.find((t) => t.id === s.activeTabId)),
-  );
-  // §69 Derived in `utils/editor/active-tab` so it can be asserted — nothing imports `App`.
-  const activePluginId = useEditorStore((s) =>
-    activePluginIdOf(s.tabs, s.activeTabId),
-  );
   // The whole tab, not a boolean: `editorSurfaceBlockReason` asks `isFileTab` itself, which is
   // what makes "a tab kind that does not exist yet is blocked" a property of the tested
   // function rather than of this untested component.
@@ -352,13 +345,17 @@ function App() {
       }
       setFindReplaceOpen(value);
     },
-    [isPdfTab],
+    // §286 setState 세터는 항상 안정 참조라 재생성 빈도에 영향을 주지 않지만, React
+    // Compiler가 이 함수 아래쪽에 `surfaceKind`(§286 표면 판정, `isHtmlSourceView`를
+    // 읽는다)가 생기면서 추론한 의존성이 `isPdfTab` 단독과 달라져 수동 메모이제이션을
+    // 보존하지 못한다고 보고했다 — 추론한 세터를 그대로 적어 둘 일치시킨다.
+    [isPdfTab, setFindReplaceOpen, setPdfFindOpen],
   );
   // §276.1 PdfToolbar의 찾기 토글 — 같은 pdfFindOpen을 뒤집는다. 인라인
   // 화살표를 그대로 prop으로 넘기면 PdfPreview(memo)가 매 렌더 다시 그려진다.
   const handleTogglePdfFind = useCallback(() => {
     setPdfFindOpen((v) => !v);
-  }, []);
+  }, [setPdfFindOpen]);
   // §perf-large-file B2/C2: Loading state for async parse
   const [isParsing, setIsParsing] = useState(false);
 
@@ -372,6 +369,12 @@ function App() {
 
   // §72 Skill Preview Panel state
   const [skillPreviewOpen, setSkillPreviewOpen] = useState(false);
+  // Stable identity: this is a CommandPalette `commands` useMemo dep, so an
+  // inline arrow here would rebuild the palette's 476-line buildCommands()
+  // on every App re-render, even while the palette is closed.
+  const handleSkillPreviewToggle = useCallback(() => {
+    setSkillPreviewOpen((v) => !v);
+  }, [setSkillPreviewOpen]);
   const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
   // §298 vim §12-⑪: extensions MUST be referentially stable across renders.
@@ -562,23 +565,22 @@ function App() {
     toggleSourceMode,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
-  // §298 vim §8 — ONE surface computation feeds both the StatusBar and the
-  // wysiwyg status owner. Only the wysiwyg surface appoints an owner: the
-  // source surface (markdown source mode AND non-markdown code tabs) has
-  // its own feeder, and graph/preview/plugin own no vim surface — a hidden
-  // Tiptap view update must never overwrite them (S5-a review). The chain
-  // mirrors the §286 surface chain below — read it top to bottom.
-  const statusBarMode: EditorMode = isGraphTabActive
-    ? "graph"
-    : activePluginId
-      ? "plugin"
-      : isPdfTab ||
-          isImageTab ||
-          ((isHtmlTab || isPluginPreviewTab) && !isHtmlSourceView)
-        ? "preview"
-        : isCodeFile || isSourceMode
-          ? "source"
-          : "wysiwyg";
+  // §286/§298 vim §8 — ONE surface computation (`resolveSurfaceKind`, `utils/editor/
+  // surface-kind.ts`) now feeds the StatusBar, the wysiwyg status owner below, the
+  // `isMarkdownSurfaceActive` gate, and the render chain further down — a single answer to
+  // "what is the active tab showing" instead of four hand-written chains that had to agree.
+  const surfaceKind: SurfaceKind = resolveSurfaceKind({
+    activeTabId,
+    fileViewers,
+    isHtmlSourceView,
+    isSourceMode,
+    rootPath,
+    tab: activeTab,
+  });
+  // Only the wysiwyg surface appoints an owner: the source surface (markdown source mode
+  // AND non-markdown code tabs) has its own feeder, and graph/preview/plugin own no vim
+  // surface — a hidden Tiptap view update must never overwrite them (S5-a review).
+  const statusBarMode: EditorMode = editorModeForSurfaceKind(surfaceKind);
   useEffect(() => {
     setWysiwygVimStatusOwner(
       vimSurfaceForMode(statusBarMode) === "wysiwyg" ? activeEditor : null,
@@ -642,20 +644,10 @@ function App() {
 
   // §286 마크다운 표면이 지금 보여야 하는가.
   //
-  // ‼️ 이 값은 아래 삼항 사슬의 **마지막 else에 도달하는 조건과 정확히 같아야 한다.** 새 갈래를
-  // 사슬에 추가하면 여기에도 부정을 더해야 하고, 안 그러면 두 표면이 동시에 보인다. 조건을
-  // 새로 발명하지 말고 사슬을 위에서 아래로 읽어 그대로 부정할 것 — 순서가 곧 정의다.
-  //
-  // 사슬 순서: HomeScreen(!rootPath && !activeTabId) → empty(!activeTabId) → graph →
-  // plugin → pdf → image → code → source → **markdown**.
-  const isMarkdownSurfaceActive =
-    !!activeTabId &&
-    !isGraphTabActive &&
-    !activePluginId &&
-    !(isPdfTab && activeTabFilePath) &&
-    !(isImageTab && activeTabFilePath) &&
-    !isCodeFile &&
-    !isSourceMode;
+  // 예전엔 아래 render 삼항 사슬의 마지막 else 조건을 손으로 그대로 부정한 별도 식이었다 —
+  // "새 갈래를 추가하면 여기도 고쳐야 한다"는 사람이 지켜야 하는 계약이었던 것을,
+  // `surfaceKind`가 단일 판정으로 대체했다(우선순위·이력은 `resolveSurfaceKind` docblock 참조).
+  const isMarkdownSurfaceActive = surfaceKind === "markdown";
 
   // §260 Phase 4b — the policy and its rationale now live in `editorSurfaceBlockReason`, with
   // tests. It moved out because nothing imports `App`, so this gate was unverified.
@@ -677,7 +669,7 @@ function App() {
       autoSaveDelay: s.autoSaveDelay,
     })),
   );
-  const { setFileContent } = useFileStore();
+  const setFileContent = useFileStore((s) => s.setFileContent);
   const codeAutoSaveTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
     // ‼️ isEditableTextFile, not isCodeFile — the write below must never target a
@@ -946,7 +938,7 @@ function App() {
       >
         {!!rootPath && <TabBar />}
         <div className="editor-area">
-          {!rootPath && !activeTabId ? (
+          {surfaceKind === "home" ? (
             <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
                 <HomeScreen
@@ -967,7 +959,7 @@ function App() {
                       .getState()
                       .addContext("vault", path, { alias });
                     const { switchContext } =
-                      await import("./stores/file/file");
+                      await import("./services/vault-context-loader");
                     const activeId = ctxStore.getState().activeContextId;
                     if (activeId) await switchContext(activeId);
                   }}
@@ -978,13 +970,13 @@ function App() {
                 />
               </Suspense>
             </div>
-          ) : !activeTabId ? (
+          ) : surfaceKind === "empty" ? (
             <div className="editor-area-scroll" data-editor-scroll>
               <div className="empty-workspace">
                 <p>{t("home.emptyWorkspace")}</p>
               </div>
             </div>
-          ) : isGraphTabActive ? (
+          ) : surfaceKind === "graph" ? (
             // §286 그래프는 유지 대상이 아니다 — cytoscape가 0×0 컨테이너에서 자기 카메라를
             // 흔들어, 세 번의 수정에도 실앱에서 계속 깨졌다(use-retained-tabs.ts 참조).
             <div className="editor-area-scroll" data-editor-scroll>
@@ -992,7 +984,7 @@ function App() {
                 <GraphViewLazy />
               </Suspense>
             </div>
-          ) : isImageTab && activeTabFilePath ? (
+          ) : surfaceKind === "image" && activeTabFilePath ? (
             <div
               className="editor-area-scroll plugin-viewer-scroll"
               data-editor-scroll
@@ -1007,10 +999,12 @@ function App() {
                 <div className="viewer-missing">{t("viewer.noPlugin")}</div>
               )}
             </div>
-          ) : isPluginPreviewTab && !isHtmlSourceView && pluginViewer ? (
+          ) : surfaceKind === "preview" && pluginViewer ? (
             // §290 플러그인이 그리는 프리뷰는 유지하지 않는다 — 공개 viewer 계약에
             // 가시성 신호가 없어, 마운트를 유지하면 미디어 뷰어가 숨은 탭에서 계속
-            // 재생된다(dev/backlog.md 참조). 활성일 때만 렌더한다.
+            // 재생된다(dev/backlog.md 참조). 활성일 때만 렌더한다. (HTML 프리뷰는
+            // `surfaceKind === "preview"`에도 속하지만 `pluginViewer`가 없으므로 여기서
+            // 걸러지고 유지 풀의 HtmlPreview가 그린다 — retainedKindForTab 참조.)
             <div
               className="editor-area-scroll plugin-viewer-scroll"
               data-editor-scroll
@@ -1025,7 +1019,7 @@ function App() {
           ) : null}
           {/* §272 활성 PDF의 찾기 바 — 표면 바깥(FindReplaceBar와 같은 자리)에 그린다.
               유지 집합에는 PDF가 여러 개 있을 수 있으므로 여기 하나만 존재해야 한다. */}
-          {isPdfTab && pdfFindOpen && pdfFindApi && (
+          {surfaceKind === "pdf" && pdfFindOpen && pdfFindApi && (
             <PdfFindBar
               currentIdx={pdfFindApi.currentIdx}
               matchCount={pdfFindApi.matchCount}
@@ -1081,7 +1075,7 @@ function App() {
           onOpenFile={handleOpenFile}
           onOpenFolder={handleOpenFolder}
           onSave={handleSave}
-          onSkillPreview={() => setSkillPreviewOpen((v) => !v)}
+          onSkillPreview={handleSkillPreviewToggle}
           onToggleSourceMode={handleToggleSourceMode}
         />
         <ExportDialog editor={activeEditor} />

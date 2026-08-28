@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { switchContext } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
-import { switchContext } from "../../stores/file/file";
 import { useWorkspaceStore } from "../../stores/file/workspace";
 import "../../styles/context-tab-bar.css";
 import { ContextAddMenu } from "./ContextAddMenu";

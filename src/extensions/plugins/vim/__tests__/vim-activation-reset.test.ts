@@ -10,7 +10,7 @@
 // too: visual mode's actual range lives in the selection, not in core, so
 // clearing only the meta leaves "normal mode with a range still selected".
 
-import type { VimPluginState } from "../vim-plugin";
+import type { VimPluginState } from "../vim-plugin-state";
 
 import { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";

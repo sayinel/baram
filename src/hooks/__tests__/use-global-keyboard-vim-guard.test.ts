@@ -17,7 +17,7 @@ import {
   registerAction,
 } from "../../keybindings/keybinding-actions";
 import { useUIStore } from "../../stores/ui/ui";
-import { useGlobalKeyboard } from "../use-keybinding-actions";
+import { useGlobalKeyboard } from "../use-global-keyboard";
 
 /** jsdom platform is not Mac, so Mod = ctrlKey in normalizeKeyEvent. */
 function fireKeyFrom(
