@@ -484,9 +484,10 @@ fn reject_escaping_entry(name: &str, enclosed: Option<PathBuf>) -> Result<PathBu
 ///   `create_dir_all`ing through an existing file, fails as a plain I/O error with whatever
 ///   earlier siblings already moved left in place.
 ///
-/// Once PREFLIGHT passes clean, every failure COMMIT can still hit is — by construction — one
-/// PREFLIGHT could not have predicted: the disk filled up mid-write, or something outside this
-/// app changed `output_dir` in the (short) window between the two passes. A COMMIT-stage
+/// Once PREFLIGHT passes clean, the failures COMMIT can still hit are ones a read-only pass
+/// cannot rule out: any commit-stage I/O error — a read-only or full filesystem, quota or
+/// inode exhaustion, a file lock, a parent whose ACL allows stat but not write — or something
+/// outside this app changing `output_dir` in the window between the two passes. A COMMIT-stage
 /// failure can therefore still leave a partial write behind; this is the one gap the "refused
 /// ⇒ untouched" guarantee does not close, and is accepted for this app's threat model (a local
 /// desktop user extracting an archive they just chose to import, not a multi-tenant server
@@ -510,16 +511,24 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
         let mut probe = output_dir.to_path_buf();
         for component in relative.components() {
             probe.push(component);
-            if let Ok(meta) = std::fs::symlink_metadata(&probe) {
-                if meta.file_type().is_symlink() {
-                    return Err(FsError::ReadError(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        format!(
-                            "refusing to extract through an existing symlink at {}",
-                            probe.display()
-                        ),
-                    )));
+            // Fail closed: only a clean NotFound means "nothing there". Any other
+            // metadata error (permission, I/O) must abort PREFLIGHT — treating it as
+            // absence would wave the path through and let COMMIT discover the problem
+            // mid-walk, after earlier siblings already moved (§review, MAJOR).
+            match std::fs::symlink_metadata(&probe) {
+                Ok(meta) => {
+                    if meta.file_type().is_symlink() {
+                        return Err(FsError::ReadError(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            format!(
+                                "refusing to extract through an existing symlink at {}",
+                                probe.display()
+                            ),
+                        )));
+                    }
                 }
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => return Err(FsError::ReadError(err)),
             }
         }
         Ok(())
@@ -531,8 +540,11 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
     /// match); the first path that cannot be committed aborts the whole preflight via `?`,
     /// before COMMIT ever runs.
     fn preflight(staged_root: &Path, dir: &Path, output_dir: &Path) -> Result<(), FsError> {
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
+        // Deterministic order: `read_dir` order is filesystem-specific, which would make
+        // both the walk and its regression pins depend on where the test happens to run.
+        let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_unstable_by_key(|e| e.file_name());
+        for entry in entries {
             let path = entry.path();
             let relative = path
                 .strip_prefix(staged_root)
@@ -543,11 +555,13 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
             let staged_is_dir = entry.file_type()?.is_dir();
             // `reject_symlink_ancestors` above already ruled out `target` being a symlink, so
             // if `symlink_metadata` finds something here it is a plain file or directory.
-            if let Ok(existing) = std::fs::symlink_metadata(&target) {
-                if existing.is_dir() != staged_is_dir {
-                    return Err(FsError::ReadError(std::io::Error::new(
-                        std::io::ErrorKind::AlreadyExists,
-                        format!(
+            // Fail closed on metadata errors — only NotFound means the path is free.
+            match std::fs::symlink_metadata(&target) {
+                Ok(existing) => {
+                    if existing.is_dir() != staged_is_dir {
+                        return Err(FsError::ReadError(std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            format!(
                             "refusing to extract {} over an existing {} of a different kind at {}",
                             relative.display(),
                             if existing.is_dir() {
@@ -557,8 +571,11 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
                             },
                             target.display()
                         ),
-                    )));
+                        )));
+                    }
                 }
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                Err(err) => return Err(FsError::ReadError(err)),
             }
 
             if staged_is_dir {
@@ -572,8 +589,9 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
     /// here on is, by construction, one preflight could not have predicted — see the doc
     /// comment on `commit_staged_extraction`.
     fn commit(staged_root: &Path, dir: &Path, output_dir: &Path) -> Result<(), FsError> {
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
+        let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_unstable_by_key(|e| e.file_name());
+        for entry in entries {
             let path = entry.path();
             let relative = path
                 .strip_prefix(staged_root)
@@ -1200,9 +1218,11 @@ mod extract_zip_bomb_tests {
     /// returned `Err`, but `output_dir` was left partially rewritten — contradicting every
     /// other test in this module, which all assume a refusal leaves `output_dir` untouched.
     /// Reproduced directly against the unpatched single-pass `commit_staged_extraction` before
-    /// this fix (`alpha.md` sorts before `sub` in this filesystem's `read_dir` order, which is
-    /// what makes the leak observable): the rename for `alpha.md` had already landed in
-    /// `output_dir` by the time the walk reached `sub/pwned.txt` and errored out.
+    /// this fix: the rename for `alpha.md` had already landed in `output_dir` by the time the
+    /// walk reached `sub/pwned.txt` and errored out. Both walks now sort entries by file
+    /// name, so `alpha.md` deterministically precedes `sub` — this pin no longer depends on
+    /// whatever order the filesystem happens to return `read_dir` entries in, and would catch
+    /// a regression to the single-pass walk on any platform.
     ///
     /// The fix splits the function into a read-only PREFLIGHT pass that walks the whole staged
     /// tree and rejects every predictable failure — including this one — before COMMIT renames
@@ -1277,6 +1297,30 @@ mod extract_zip_bomb_tests {
             std::fs::read_to_string(out.join("x/keep.txt")).unwrap(),
             "already here",
             "content inside the existing directory must be untouched"
+        );
+    }
+
+    /// The mirror rejection: a staged DIRECTORY over an existing FILE. `create_dir_all`
+    /// through the existing file would otherwise fail mid-COMMIT as a plain I/O error.
+    #[tokio::test]
+    async fn refuses_a_staged_directory_over_an_existing_file_of_the_same_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("y"), "a plain file").unwrap();
+
+        let bytes = zip_bytes(&[("y/inner.txt", b"nested")]);
+        let zip_path = write_zip(dir.path(), "kind-conflict-dir.zip", &bytes);
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("a staged directory must not silently replace an existing file");
+        assert!(err.to_string().contains("different kind"), "{err}");
+
+        assert_eq!(
+            std::fs::read_to_string(out.join("y")).unwrap(),
+            "a plain file",
+            "the existing file must survive the refusal"
         );
     }
 }
