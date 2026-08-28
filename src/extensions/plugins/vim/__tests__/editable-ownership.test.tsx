@@ -161,7 +161,7 @@ const SRC_DIR = join(import.meta.dirname, "..", "..", "..", "..");
 /** Any .registerPlugin/.unregisterPlugin — silent reconfigure path. */
 const REGISTER_RE = /\.(un)?registerPlugin\s*\(/;
 /** Baram's plugin-UI store shares the method name; not Tiptap's editor. */
-const REGISTER_ALLOW = [join("plugins", "extension-context.ts")];
+const REGISTER_ALLOW = [join("plugins", "trusted", "ui-api.ts")];
 /** Direct view.setProps — bypasses every signal. */
 const SET_PROPS_RE = /\.setProps\s*\(/;
 /** Direct setEditable — silent with emitUpdate=false; the wrapper notifies. */
