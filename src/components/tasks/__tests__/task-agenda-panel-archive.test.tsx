@@ -36,8 +36,11 @@ import { useTaskStore } from "../../../stores/tasks/task-store";
 import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
 import { TaskAgendaPanel } from "../TaskAgendaPanel";
 
+// ‼️ 태스크 홈은 활성 컨텍스트 루트와 **다른 값**으로 둔다(§312.1). 같게 두면 배수구가
+// 어느 쪽을 기준으로 삼는지 테스트가 구별하지 못한다 — 종전 결함이 정확히 그것이었다.
 const ROOT = "/vault";
-const INBOX = "/vault/Inbox.md";
+const HOME = "/home";
+const INBOX = "/home/tasks/inbox.md";
 
 const EMPTY: ArchiveOutcome = {
   archived: 0,
@@ -55,7 +58,11 @@ beforeEach(() => {
   useSettingsStore.setState({
     locale: "en",
     tasksArchiveAfterDays: 30,
-    tasksCaptureFile: "Inbox.md",
+    tasksCaptureFile: "tasks/inbox.md",
+    tasksHome: HOME,
+    // §312.1 배수구는 이 범위에서만 켜진다 — 아래 게이트 테스트가 그 규칙을 고정한다.
+    tasksScanScope: "tasksHome",
+    zettelkastenDirectory: "",
   });
 });
 
@@ -72,7 +79,26 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
   it("일반 문서의 완료 태스크는 개수에 들어가지 않는다", () => {
     // §312 불가침 규칙 — 프런트도 같은 화이트리스트로 센다. Rust가 다시 강제하지만
     // 여기서 새면 확인 문구가 옮기지도 못할 개수를 약속한다.
-    seed([old_({ path: "/vault/notes/설계.md" })]);
+    seed([old_({ path: "/home/notes/설계.md" })]);
+    render(<TaskAgendaPanel />);
+
+    expect(screen.queryByLabelText("Archive completed tasks")).toBeNull();
+  });
+
+  it("스캔 범위가 '태스크 홈'이 아니면 버튼이 없다", async () => {
+    // §312.1 배수구는 단일 루트 조작이다. 화면에 여러 vault의 태스크가 보이는데 버튼이
+    // 그중 하나만 건드리면 숨은 규칙이 된다 — 보이는 것과 건드리는 것을 일치시킨다.
+    useSettingsStore.setState({ tasksScanScope: "allVaults" });
+    seed([old_()]);
+    render(<TaskAgendaPanel />);
+
+    expect(screen.queryByLabelText("Archive completed tasks")).toBeNull();
+  });
+
+  it("태스크 홈이 설정되지 않으면 버튼이 없다", () => {
+    // 옮길 자리를 모르는 채로 누를 수 있게 두면 실패가 클릭 이후로 미뤄진다.
+    useSettingsStore.setState({ tasksHome: "", zettelkastenDirectory: "" });
+    seed([old_()]);
     render(<TaskAgendaPanel />);
 
     expect(screen.queryByLabelText("Archive completed tasks")).toBeNull();
@@ -131,8 +157,9 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
     await userEvent.click(screen.getByLabelText("Archive completed tasks"));
 
     await waitFor(() => expect(archiveTaskLines).toHaveBeenCalledTimes(1));
+    // 첫 인자는 **태스크 홈**이다 — `rootPath`(/vault)가 아니다.
     expect(archiveTaskLines).toHaveBeenCalledWith(
-      ROOT,
+      HOME,
       INBOX,
       [
         { expectedRaw: expect.any(String), line: 0, path: INBOX },
@@ -154,7 +181,7 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
 
     expect(archiveTaskLines).not.toHaveBeenCalled();
     expect(showConfirm).not.toHaveBeenCalled();
-    expect(showAlert).toHaveBeenCalledWith(expect.stringContaining("Inbox.md"));
+    expect(showAlert).toHaveBeenCalledWith(expect.stringContaining("inbox.md"));
   });
 
   it("소스 모드 탭은 clean으로 보여도 막는다", async () => {
@@ -171,11 +198,15 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
     expect(archiveTaskLines).not.toHaveBeenCalled();
   });
 
-  it("Archive/ 아래의 저장되지 않은 탭도 막는다 — 대상 파일일 수 있다", async () => {
+  it("tasks/archive/ 아래의 저장되지 않은 탭도 막는다 — 대상 파일일 수 있다", async () => {
     // 어느 달 파일에 붙을지는 Rust가 정한다. 여기서 달을 다시 계산하면 같은 사실의
     // 진실원이 둘이 되므로 폴더 단위로 막는다.
     seed([old_()]);
-    openTab({ filePath: "/vault/Archive/2026-07.md", id: "t9", isDirty: true });
+    openTab({
+      filePath: "/home/tasks/archive/2026-07.md",
+      id: "t9",
+      isDirty: true,
+    });
     render(<TaskAgendaPanel />);
 
     await userEvent.click(screen.getByLabelText("Archive completed tasks"));

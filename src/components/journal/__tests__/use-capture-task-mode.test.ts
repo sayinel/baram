@@ -2,21 +2,25 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../services/task-capture", async (orig) => ({
-  // `CaptureError`는 실물을 쓴다 — 훅이 `noVault`를 그것으로 던지고, UI가
+  // `CaptureError`는 실물을 쓴다 — 훅이 `noTasksHome`을 그것으로 던지고, UI가
   // `instanceof`로 문구를 고른다.
   ...(await orig<typeof import("../../../services/task-capture")>()),
   captureTask: vi.fn(),
 }));
 
 import { CaptureError, captureTask } from "../../../services/task-capture";
-import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { captureErrorKey, useCaptureTaskMode } from "../use-capture-task-mode";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useFileStore.setState({ rootPath: "/v" });
-  useSettingsStore.setState({ tasksCaptureFile: "Inbox.md" });
+  // §312.1 착지점은 태스크 홈이다 — 열린 vault가 아니다. `rootPath`를 여기서 세우지
+  // 않는 것이 그 계약이고, 아래 "vault와 무관하다" 테스트가 그것을 고정한다.
+  useSettingsStore.setState({
+    tasksCaptureFile: "tasks/inbox.md",
+    tasksHome: "/home",
+    zettelkastenDirectory: "",
+  });
 });
 
 describe("useCaptureTaskMode", () => {
@@ -50,8 +54,8 @@ describe("useCaptureTaskMode", () => {
     expect(captureTask).toHaveBeenCalledWith(
       expect.objectContaining({
         body: "우유",
-        captureFile: "Inbox.md",
-        rootPath: "/v",
+        captureFile: "tasks/inbox.md",
+        tasksHome: "/home",
       }),
     );
   });
@@ -67,8 +71,37 @@ describe("useCaptureTaskMode", () => {
     );
   });
 
-  it("볼트가 없으면 캡처하지 않고 noVault로 던진다", async () => {
-    useFileStore.setState({ rootPath: null });
+  it("태스크 홈이 비면 Zettel 디렉터리로 떨어진다 — 기본값이 그것이다", async () => {
+    useSettingsStore.setState({
+      tasksHome: "",
+      zettelkastenDirectory: "/zettel",
+    });
+    vi.mocked(captureTask).mockResolvedValue("x");
+    const { result } = renderHook(() => useCaptureTaskMode());
+    await act(async () => {
+      await result.current.save("우유", []);
+    });
+    expect(captureTask).toHaveBeenCalledWith(
+      expect.objectContaining({ tasksHome: "/zettel" }),
+    );
+  });
+
+  it("둘 다 없으면 캡처하지 않고 noTasksHome으로 던진다", async () => {
+    // ‼️ 열린 vault로 폴백하지 않는다. 폴백을 두면 설정하지 않은 사용자에게는 §312.1이
+    // 없애려던 "컨텍스트 따라 떠다니는 수집함"이 그대로 남는다.
+    useSettingsStore.setState({ tasksHome: "", zettelkastenDirectory: "" });
+    const { result } = renderHook(() => useCaptureTaskMode());
+    await expect(result.current.save("우유", [])).rejects.toBeInstanceOf(
+      CaptureError,
+    );
+    expect(captureTask).not.toHaveBeenCalled();
+  });
+
+  it("상대 경로 설정은 태스크 홈이 되지 못한다 — 절대 경로만 받는다", async () => {
+    useSettingsStore.setState({
+      tasksHome: "zettel",
+      zettelkastenDirectory: "",
+    });
     const { result } = renderHook(() => useCaptureTaskMode());
     await expect(result.current.save("우유", [])).rejects.toBeInstanceOf(
       CaptureError,
@@ -78,9 +111,9 @@ describe("useCaptureTaskMode", () => {
 });
 
 describe("captureErrorKey", () => {
-  it("원인별로 다른 키를 준다 — 볼트가 없는데 수집함 얘기를 하지 않는다", () => {
-    expect(captureErrorKey(new CaptureError("noVault", "x"))).toBe(
-      "journal.capture.error.taskNoVault",
+  it("원인별로 다른 키를 준다 — 홈이 없는데 수집함 얘기를 하지 않는다", () => {
+    expect(captureErrorKey(new CaptureError("noTasksHome", "x"))).toBe(
+      "journal.capture.error.taskNoHome",
     );
     expect(captureErrorKey(new CaptureError("dirtyTab", "x"))).toBe(
       "journal.capture.error.taskDirtyTab",
@@ -88,8 +121,8 @@ describe("captureErrorKey", () => {
     expect(captureErrorKey(new CaptureError("notMarkdown", "x"))).toBe(
       "journal.capture.error.taskNotMarkdown",
     );
-    expect(captureErrorKey(new CaptureError("outsideVault", "x"))).toBe(
-      "journal.capture.error.taskOutsideVault",
+    expect(captureErrorKey(new CaptureError("outsideHome", "x"))).toBe(
+      "journal.capture.error.taskOutsideHome",
     );
   });
 

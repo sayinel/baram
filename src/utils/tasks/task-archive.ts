@@ -12,42 +12,34 @@
 
 import type { ArchiveItem, TaskEntry } from "../../ipc/types";
 
-import {
-  isUnderRoot,
-  normalizePath,
-  stripTrailingSeparators,
-} from "../path-utils";
+import { isUnderRoot, toPosixPath } from "../path-utils";
 import { parseLocalDate } from "./task-buckets";
-
-/**
- * 아카이브 폴더 이름 — 활성 컨텍스트 루트 기준. §312가 `Archive/YYYY-MM.md`로 고정한다.
- * Rust `ARCHIVE_DIR`(task/archive.rs)과 **같은 글자**여야 한다.
- */
-export const ARCHIVE_DIR = "Archive";
+import { archiveRootOf, tasksRootOf } from "./tasks-home";
 
 /** 한 번의 아카이브가 손댈 수 있는 경로의 범위 — §312 불가침 규칙의 화이트리스트. */
 export interface ArchiveScope {
-  /** `{root}/Archive` — 이 아래는 원본이자 대상이다 */
+  /** `{tasksHome}/tasks/archive` — 대상 파일이 사는 곳. 원본이기도 하다(잘못 든 달의 정리) */
   archiveRoot: string;
   /** 수집함 파일의 **절대** 경로 (`resolveCapturePath`가 만든 값) */
   capturePath: string;
+  /** `{tasksHome}/tasks` — §312.1 이후 화이트리스트는 이 서브트리 전체다 */
+  tasksRoot: string;
 }
 
 /**
- * 이번 실행이 손댈 수 있는 경로의 범위. 경로 정규화를 한 곳에 모아 둔 이유는, 호출부가
- * 손으로 이어 붙이면 루트의 트레일링 슬래시가 `//`를 만들어 문자열 비교가 조용히 어긋나기
+ * 이번 실행이 손댈 수 있는 경로의 범위. 경로 조립을 한 곳에 모아 둔 이유는, 호출부가
+ * 손으로 이어 붙이면 홈의 트레일링 슬래시가 `//`를 만들어 문자열 비교가 조용히 어긋나기
  * 때문이다(§260 Phase 4a LOW-4와 같은 종류).
  *
- * `capturePath`는 이미 해석된 **절대** 경로여야 한다 — `resolveCapturePath`가 그 일을 하고,
- * 볼트 밖·비마크다운을 거기서 거절한다.
+ * `home`은 §312.1의 **태스크 홈**이다 — 활성 컨텍스트 루트가 아니다. `capturePath`는 이미
+ * 해석된 **절대** 경로여야 한다(`resolveCapturePath`가 그 일을 하고 홈 밖·비마크다운을
+ * 거기서 거절한다).
  */
-export function archiveScope(
-  rootPath: string,
-  capturePath: string,
-): ArchiveScope {
+export function archiveScope(home: string, capturePath: string): ArchiveScope {
   return {
-    archiveRoot: `${stripTrailingSeparators(toPosix(rootPath))}/${ARCHIVE_DIR}`,
-    capturePath: toPosix(capturePath),
+    archiveRoot: toPosixPath(archiveRootOf(home)),
+    capturePath: toPosixPath(capturePath),
+    tasksRoot: toPosixPath(tasksRootOf(home)),
   };
 }
 
@@ -83,21 +75,7 @@ export function toArchiveItems(tasks: TaskEntry[]): ArchiveItem[] {
   }));
 }
 
-/**
- * 경로 비교용 정규화 — 구분자를 `/`로 맞추고 `.`·`..`를 접는다. Rust `norm`과 같은 규칙이다.
- *
- * ‼️ `normalizePath`만으로는 부족하다. 그 함수는 `/`로만 자르므로 Windows 경로
- * `C:\\v\\Inbox.md`는 통째로 한 세그먼트로 남는다. 인덱스의 `TaskEntry.path`는 Rust가
- * 준 **플랫폼 구분자** 경로이고 `capturePath`는 `resolveCapturePath`가 `/`로 이어 붙인
- * 값이라, 변환하지 않으면 Windows에서 두 문자열이 영영 일치하지 않는다 — 대상이 0이 되어
- * 버튼 자체가 뜨지 않는다. Rust는 자기 쪽에서 양쪽을 정규화하므로 이 결함은 프런트에만
- * 있었다.
- */
-export function toPosix(path: string): string {
-  return normalizePath(path.replace(/\\/g, "/"));
-}
-
-/** `Archive/YYYY-MM.md`의 `YYYY-MM` — 완료일에서 온다. 오늘이 아니다. */
+/** `archive/YYYY-MM.md`의 `YYYY-MM` — 완료일에서 온다. 오늘이 아니다. */
 function archiveMonth(done: string): string {
   return done.slice(0, 7);
 }
@@ -112,7 +90,7 @@ function daysBetween(from: Date, to: Date): number {
  *
  * | 조건 | 이유 |
  * |---|---|
- * | 수집함 · `Archive/*` 안에 있을 것 | §312 불가침 규칙 — 일반 문서는 태스크가 문맥의 일부다 |
+ * | `{tasksHome}/tasks/` 아래 또는 수집함일 것 | §312 불가침 규칙 — 일반 문서는 태스크가 문맥의 일부다 |
  * | 들여쓰지 않았을 것 | 부모를 뽑으면 자식이 고아가 되고, 자식을 뽑으면 부모 목록이 끊긴다 |
  * | 완료 상태일 것 | 미완료는 주간 리뷰(§315)의 몫이지 배수구의 몫이 아니다 |
  * | `✅` 날짜가 있을 것 | 없으면 며칠 지났는지 알 방법이 없다(`TaskEntry`에 mtime이 없다 — §18.7) |
@@ -140,13 +118,19 @@ function isArchivable(
 
   // `task.done`은 위에서 파싱에 성공했으므로 `YYYY-MM-DD` 그 자체다.
   const dest = `${scope.archiveRoot}/${archiveMonth(task.done ?? "")}.md`;
-  return toPosix(task.path) !== dest;
+  return toPosixPath(task.path) !== dest;
 }
 
-/** 이 경로에서 줄을 뽑아도 되는가 — Rust `is_archive_source`와 같은 판정. */
+/**
+ * 이 경로에서 줄을 뽑아도 되는가 — Rust `is_archive_source`와 같은 판정.
+ *
+ * §312.1 이후 이것은 **`{tasksHome}/tasks/` 아래 전부**다. 종전의 "수집함 파일 +
+ * `Archive/*`" 두 갈래보다 단순하다. `capturePath`가 따로 남아 있는 이유는 사용자가
+ * `tasksCaptureFile`을 그 서브트리 밖으로 옮겨 둘 수 있기 때문이다.
+ */
 function isArchiveSource(path: string, scope: ArchiveScope): boolean {
-  const p = toPosix(path);
-  return p === scope.capturePath || isUnderRoot(p, scope.archiveRoot);
+  const p = toPosixPath(path);
+  return p === scope.capturePath || isUnderRoot(p, scope.tasksRoot);
 }
 
 /**

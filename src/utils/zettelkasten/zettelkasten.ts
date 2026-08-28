@@ -2,6 +2,7 @@
  * §92 Zettelkasten space — scaffold utility functions
  */
 import { createDir } from "../../ipc/invoke";
+import { resolveAbsoluteDirSetting } from "../path-utils";
 
 /** Create inbox/ and notes/ under the zettelkasten root (idempotent). */
 export async function ensureZettelkastenScaffold(
@@ -21,10 +22,8 @@ export function resolveZettelDir(
   _rootPath: null | string,
   zettelDir: string,
 ): null | string {
-  if (!zettelDir) return null;
-  if (zettelDir.startsWith("/") || /^[A-Z]:\\/.test(zettelDir)) {
-    // Strip trailing slash(es) so joins like `${dir}/inbox` don't double up.
-    return zettelDir.replace(/[/\\]+$/, "");
-  }
-  return null; // relative path not supported
+  // §312.1: the rule itself now lives in `path-utils` — the tasks home needed a
+  // third copy of it, and two of the existing three already said "mirror of the
+  // other" in their doc comments.
+  return resolveAbsoluteDirSetting(zettelDir);
 }

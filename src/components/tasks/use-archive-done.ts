@@ -24,13 +24,12 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { refreshFileTasks } from "../../stores/tasks/task-store";
 import { showAlert, showConfirm } from "../../utils/confirm-dialog";
 import { logger } from "../../utils/logger";
-import { basename, isUnderRoot } from "../../utils/path-utils";
+import { basename, isUnderRoot, toPosixPath } from "../../utils/path-utils";
 import { syncOpenSurfacesAfterFileRewrite } from "../../utils/tasks/sync-open-surfaces";
 import {
   archiveScope,
   selectArchivable,
   toArchiveItems,
-  toPosix,
 } from "../../utils/tasks/task-archive";
 
 export interface ArchiveDone {
@@ -44,7 +43,7 @@ export interface ArchiveDone {
 export interface ArchiveDoneOptions {
   /** 설정 `tasksArchiveAfterDays` */
   afterDays: number;
-  /** 설정 `tasksCaptureFile` — 루트 기준 상대 경로일 수 있다 */
+  /** 설정 `tasksCaptureFile` — 태스크 홈 기준 상대 경로일 수 있다 */
   captureFile: string;
   /**
    * 활성 탭의 라이브 Tiptap Editor(없으면 `null`).
@@ -53,40 +52,53 @@ export interface ArchiveDoneOptions {
    * 화면을 디스크에 맞추는 데만 쓴다(`syncOpenSurfacesAfterFileRewrite`).
    */
   editor: Editor | null;
+  /**
+   * 배수구를 켤 수 있는가 — §312.1은 스캔 범위가 "태스크 홈"일 때만 켠다.
+   *
+   * 배수구는 단일 루트 조작이다. 화면에 세 vault의 태스크가 보이는데 버튼이 그중 하나만
+   * 건드리면 숨은 규칙이 된다. 범위를 좁혔을 때만 켜면 **보이는 것과 건드리는 것이 항상
+   * 일치**하고, 그 규칙이 UI에 드러난다.
+   */
+  enabled: boolean;
   exclude: string[];
   /**
    * 자격 판정의 기준일. 패널이 보고 있는 그 날이어야 한다 — 라이브 `new Date()`를 쓰면
    * 밤새 열어 둔 패널에서 확인 다이얼로그가 약속한 개수와 실제 대상이 어긋난다(I4).
    */
   now: Date;
-  rootPath: null | string;
   tasks: TaskEntry[];
+  /** §312.1 해석된 태스크 홈. `null`이면 옮길 자리를 모르므로 대상이 0이다 */
+  tasksHome: null | string;
 }
 
 export function useArchiveDone({
   afterDays,
   captureFile,
   editor,
+  enabled,
   exclude,
   now,
-  rootPath,
   tasks,
+  tasksHome,
 }: ArchiveDoneOptions): ArchiveDone {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
 
-  // 수집함 파일 설정이 볼트 밖이거나 마크다운이 아니면 `resolveCapturePath`가 던진다.
+  // 수집함 파일 설정이 태스크 홈 밖이거나 마크다운이 아니면 `resolveCapturePath`가 던진다.
   // 그때는 옮길 자리를 알 수 없으므로 대상이 0이고 호출자가 버튼을 감춘다 — 설정이
   // 잘못됐다는 사실은 캡처 다이얼로그가 이미 원인별 문구로 알린다.
   const scope = useMemo(() => {
-    if (!rootPath) return null;
+    if (!enabled || !tasksHome) return null;
     try {
-      return archiveScope(rootPath, resolveCapturePath(rootPath, captureFile));
+      return archiveScope(
+        tasksHome,
+        resolveCapturePath(tasksHome, captureFile),
+      );
     } catch (err) {
       logger.warn("[tasks] archive: unusable capture file setting:", err);
       return null;
     }
-  }, [captureFile, rootPath]);
+  }, [captureFile, enabled, tasksHome]);
 
   const candidates = useMemo(
     () => (scope ? selectArchivable(tasks, scope, now, afterDays) : []),
@@ -97,7 +109,7 @@ export function useArchiveDone({
     // 실행 중 재클릭을 버튼의 `disabled`에만 맡기지 않는다 — 두 배치가 같은 줄 번호로
     // 겹쳐 돌면 뒤엣것이 이미 옮겨진 자리를 가리킨다. 낙관적 잠금이 막아 주지만
     // (`stale`) 사용자에게는 "절반만 옮겨졌다"로 보인다.
-    if (!rootPath || !scope || candidates.length === 0 || busy) return;
+    if (!tasksHome || !scope || candidates.length === 0 || busy) return;
 
     setBusy(true);
     try {
@@ -127,7 +139,7 @@ export function useArchiveDone({
       let outcome: ArchiveOutcome;
       try {
         outcome = await archiveTaskLines(
-          rootPath,
+          tasksHome,
           scope.capturePath,
           toArchiveItems(candidates),
           isoDate(now),
@@ -151,13 +163,13 @@ export function useArchiveDone({
       // 처음 생겼을 수도 있으므로 인덱스에 새로 들어간다.
       for (const path of outcome.paths) {
         await reloadOpenSurfaces(path, editor);
-        await refreshFileTasks(path, rootPath, exclude);
+        await refreshFileTasks(path, exclude);
       }
       await report(outcome, t);
     } finally {
       setBusy(false);
     }
-  }, [afterDays, busy, candidates, editor, exclude, now, rootPath, scope, t]);
+  }, [afterDays, busy, candidates, editor, exclude, now, scope, t, tasksHome]);
 
   return { busy, count: candidates.length, run };
 }
@@ -191,14 +203,14 @@ function findBlockingTab(
   candidates: TaskEntry[],
   archiveRoot: string,
 ): null | string {
-  // `toPosix`는 자격 판정이 쓰는 것과 같은 정규화다 — 여기만 다른 규칙을 쓰면 Windows에서
-  // 원본 집합과 탭 경로가 만나지 못해 이 관문이 통째로 새어 나간다.
-  const sources = new Set(candidates.map((task) => toPosix(task.path)));
+  // `toPosixPath`는 자격 판정이 쓰는 것과 같은 정규화다 — 여기만 다른 규칙을 쓰면
+  // Windows에서 원본 집합과 탭 경로가 만나지 못해 이 관문이 통째로 새어 나간다.
+  const sources = new Set(candidates.map((task) => toPosixPath(task.path)));
   const { sourceModeTabs, tabs } = useEditorStore.getState();
 
   for (const tab of tabs) {
     if (!tab.filePath) continue;
-    const path = toPosix(tab.filePath);
+    const path = toPosixPath(tab.filePath);
     if (!sources.has(path) && !isUnderRoot(path, archiveRoot)) continue;
     // `basename`도 `/`만 보므로 정규화한 경로를 넘긴다.
     if (tab.isDirty || sourceModeTabs.includes(tab.id)) return path;

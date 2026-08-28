@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 
+import type { TaskScanScope } from "../../../utils/tasks/task-scan-scope";
 import type { MigrationDirection } from "../../journal/MigrationDialog";
 
 import { useShallow } from "zustand/shallow";
@@ -68,6 +69,10 @@ export function GeneralTab() {
     setTasksRecordDoneDate,
     tasksArchiveAfterDays,
     setTasksArchiveAfterDays,
+    tasksHome,
+    setTasksHome,
+    tasksScanScope,
+    setTasksScanScope,
     tasksCaptureFile,
     setTasksCaptureFile,
     tasksExcludePaths,
@@ -598,6 +603,41 @@ export function GeneralTab() {
               checked={tasksRecordDoneDate}
               onChange={setTasksRecordDoneDate}
             />
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.tasksHome.desc")}
+            label={t("settings.general.tasksHome")}
+          >
+            <input
+              className="settings-input"
+              onChange={(e) => setTasksHome(e.target.value)}
+              placeholder={t("settings.general.tasksHome.placeholder")}
+              value={tasksHome}
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.tasksScanScope.desc")}
+            label={t("settings.general.tasksScanScope")}
+          >
+            <select
+              className="settings-select"
+              onChange={(e) =>
+                setTasksScanScope(e.target.value as TaskScanScope)
+              }
+              value={tasksScanScope}
+            >
+              <option value="allVaults">
+                {t("settings.general.tasksScanScope.allVaults")}
+              </option>
+              <option value="currentVault">
+                {t("settings.general.tasksScanScope.currentVault")}
+              </option>
+              <option value="tasksHome">
+                {t("settings.general.tasksScanScope.tasksHome")}
+              </option>
+            </select>
           </SettingsRow>
 
           <SettingsRow

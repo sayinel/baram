@@ -1448,7 +1448,7 @@
     {
       "name": "archive_task_lines",
       "input": {
-        "rootPath": "string",
+        "tasksHome": "string (§312.1 태스크 홈의 절대 경로)",
         "capturePath": "string",
         "items": "Array<{ path: string; line: number; expectedRaw: string }>",
         "today": "string (YYYY-MM-DD, 프론트가 로컬 시간대로 계산)",

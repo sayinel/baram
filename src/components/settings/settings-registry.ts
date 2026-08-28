@@ -3,6 +3,7 @@
 import type React from "react";
 
 import type { Locale } from "../../i18n";
+import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
@@ -220,6 +221,41 @@ export function useSettingsRegistry(): SearchableSetting[] {
         [
           { value: "monday", label: "settings.general.tasksWeekStart.monday" },
           { value: "sunday", label: "settings.general.tasksWeekStart.sunday" },
+        ],
+      ),
+    },
+    {
+      id: "tasksHome",
+      label: "settings.general.tasksHome",
+      description: "settings.general.tasksHome.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "home", "inbox", "capture", "태스크 홈"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "tasksScanScope",
+      label: "settings.general.tasksScanScope",
+      description: "settings.general.tasksScanScope.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "scope", "agenda", "vault", "범위"],
+      control: makeSelectControl(
+        () => settings.tasksScanScope,
+        (v) => settings.setTasksScanScope(v as TaskScanScope),
+        [
+          {
+            value: "allVaults",
+            label: "settings.general.tasksScanScope.allVaults",
+          },
+          {
+            value: "currentVault",
+            label: "settings.general.tasksScanScope.currentVault",
+          },
+          {
+            value: "tasksHome",
+            label: "settings.general.tasksScanScope.tasksHome",
+          },
         ],
       ),
     },

@@ -17,24 +17,25 @@ export async function appendTaskLine(
 }
 
 /**
- * §312 완료 태스크를 `Archive/YYYY-MM.md`로 **옮긴다** — 붙이고 나서 지운다.
+ * §312 완료 태스크를 `{tasksHome}/tasks/archive/YYYY-MM.md`로 **옮긴다** — 붙이고 나서 지운다.
  *
  * 파일 여러 개를 한 번에 고치므로 자동 실행하지 않는다. 확인 관문은
  * `useArchiveDone`(src/components/tasks/use-archive-done.ts)이다.
  *
- * `capturePath`는 **절대 경로**다(`resolveCapturePath`가 만든 값). 백엔드는 그것을 다시
- * 만들지 않고 볼트 안·마크다운인지만 확인한다. `items`에 수집함·`Archive/*` 밖의 경로가
+ * `tasksHome`은 §312.1의 태스크 홈이다 — 활성 컨텍스트 루트가 아니다. `capturePath`는
+ * **절대 경로**다(`resolveCapturePath`가 만든 값). 백엔드는 그것을 다시 만들지 않고 홈 안·
+ * 마크다운인지만 확인한다. `items`에 `{tasksHome}/tasks/` 밖(그리고 수집함이 아닌) 경로가
  * 하나라도 있으면 파일을 하나도 건드리지 않고 reject된다(§312 불가침 규칙).
  */
 export async function archiveTaskLines(
-  rootPath: string,
+  tasksHome: string,
   capturePath: string,
   items: ArchiveItem[],
   today: string,
   afterDays: number,
 ): Promise<ArchiveOutcome> {
   return invoke<ArchiveOutcome>("archive_task_lines", {
-    rootPath,
+    tasksHome,
     capturePath,
     items,
     today,

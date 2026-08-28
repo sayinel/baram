@@ -20,7 +20,6 @@ export interface TaskTriageContext {
   exclude: string[];
   /** 상대 날짜("오늘"·"내일"·`+3`)의 기준 — 패널이 보고 있는 그 날이다(I4). */
   now: Date;
-  rootPath: null | string;
   t: Translate;
 }
 
@@ -71,5 +70,5 @@ export async function writeAndReconcile<
     notifyUnsavedConflict(ctx.t);
     return;
   }
-  await refreshFileTasks(task.path, ctx.rootPath, ctx.exclude);
+  await refreshFileTasks(task.path, ctx.exclude);
 }

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../ipc/invoke", () => ({ appendTaskLine: vi.fn() }));
+// `getFileTasks`는 §312.1 캡처 후 재스캔(`refreshFileTasksInScope`)이 쓴다 — 이 테스트의
+// 스캔 범위는 비어 있어 실제로 불리지 않지만, 이름이 빠지면 import 자체가 깨진다.
+vi.mock("../../ipc/invoke", () => ({
+  appendTaskLine: vi.fn(),
+  getFileTasks: vi.fn().mockResolvedValue([]),
+}));
 // ‼️ `resolveTaskWriteTarget`만 목한다. `markSourceTabDirty`는 진짜여야 그 탭이 실제로
 // dirty가 되는지를 **결과로** 볼 수 있다 — 목하면 "불렀다"만 남고, 저장하지 않고 닫는
 // 사용자가 확인을 받는지는 아무도 확인하지 않게 된다.
@@ -12,10 +17,11 @@ vi.mock("../../utils/tasks/apply-task-write", async (importOriginal) => ({
 }));
 vi.mock("../../pipeline", () => ({ prosemirrorToMarkdown: vi.fn() }));
 
-import { appendTaskLine } from "../../ipc/invoke";
+import { appendTaskLine, getFileTasks } from "../../ipc/invoke";
 import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useTaskStore } from "../../stores/tasks/task-store";
 import { resolveTaskWriteTarget } from "../../utils/tasks/apply-task-write";
 import { buildCaptureLine, CaptureError, captureTask } from "../task-capture";
 
@@ -88,25 +94,25 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     vi.mocked(appendTaskLine).mockResolvedValue("- [ ] 우유 사기 ➕2026-08-24");
     const raw = await captureTask({
       body: "우유 사기",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor: null,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/Inbox.md",
+      "/v/tasks/inbox.md",
       "- [ ] 우유 사기 ➕2026-08-24",
     );
     expect(raw).toBe("- [ ] 우유 사기 ➕2026-08-24");
   });
 
-  it("볼트 안의 하위 디렉터리 경로도 그대로 쓴다", async () => {
+  it("태스크 홈 안의 하위 디렉터리 경로도 그대로 쓴다", async () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "a",
       captureFile: "inbox/In.md",
       editor: null,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
@@ -119,26 +125,26 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     await expect(
       captureTask({
         body: "   ",
-        captureFile: "Inbox.md",
+        captureFile: "tasks/inbox.md",
         editor: null,
-        rootPath: "/v",
+        tasksHome: "/v",
         today: "2026-08-24",
       }),
     ).rejects.toThrow();
     expect(appendTaskLine).not.toHaveBeenCalled();
   });
 
-  it("rootPath에 트레일링 슬래시가 있어도 이중 슬래시를 만들지 않는다", async () => {
+  it("태스크 홈에 트레일링 슬래시가 있어도 이중 슬래시를 만들지 않는다", async () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "a",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor: null,
-      rootPath: "/v/",
+      tasksHome: "/v/",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/Inbox.md",
+      "/v/tasks/inbox.md",
       expect.any(String),
     );
   });
@@ -147,13 +153,13 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "a",
-      captureFile: "./Inbox.md",
+      captureFile: "./tasks/inbox.md",
       editor: null,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/Inbox.md",
+      "/v/tasks/inbox.md",
       expect.any(String),
     );
   });
@@ -164,11 +170,11 @@ describe("captureTask — 수집함이 닫혀 있을 때", () => {
       body: "a",
       captureFile: "",
       editor: null,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/Inbox.md",
+      "/v/tasks/inbox.md",
       expect.any(String),
     );
   });
@@ -190,7 +196,7 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
       tabs: [
         {
           contextId: "c",
-          filePath: "/v/Inbox.md",
+          filePath: "/v/tasks/inbox.md",
           id: "t1",
           isDirty: false,
           isPinned: false,
@@ -205,13 +211,13 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).not.toHaveBeenCalled();
-    expect(useFileStore.getState().openFiles.get("/v/Inbox.md")).toBe(
+    expect(useFileStore.getState().openFiles.get("/v/tasks/inbox.md")).toBe(
       "- [ ] 먼저\n- [ ] 나중 ➕2026-08-24\n",
     );
   });
@@ -220,9 +226,9 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
@@ -232,9 +238,9 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(useEditorStore.getState().contentRefreshKey).toBe(1);
@@ -245,12 +251,12 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
-    expect(useFileStore.getState().openFiles.get("/v/Inbox.md")).toBe(
+    expect(useFileStore.getState().openFiles.get("/v/tasks/inbox.md")).toBe(
       "- [ ] 먼저\n- [ ] 나중 ➕2026-08-24\n",
     );
   });
@@ -267,7 +273,7 @@ describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", (
       tabs: [
         {
           contextId: "c",
-          filePath: "/v/Inbox.md",
+          filePath: "/v/tasks/inbox.md",
           id: "inbox",
           isDirty,
           isPinned: false,
@@ -282,9 +288,9 @@ describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", (
     await rejectsWithCode(
       captureTask({
         body: "은행 연락",
-        captureFile: "Inbox.md",
+        captureFile: "tasks/inbox.md",
         editor: null,
-        rootPath: "/v",
+        tasksHome: "/v",
         today: "2026-08-24",
       }),
       "dirtyTab",
@@ -297,13 +303,13 @@ describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", (
     vi.mocked(appendTaskLine).mockResolvedValue("x");
     await captureTask({
       body: "은행 연락",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor: null,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
     expect(appendTaskLine).toHaveBeenCalledWith(
-      "/v/Inbox.md",
+      "/v/tasks/inbox.md",
       expect.any(String),
     );
   });
@@ -334,7 +340,7 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
       tabs: [
         {
           contextId: "c",
-          filePath: "/v/Inbox.md",
+          filePath: "/v/tasks/inbox.md",
           id: "t1",
           isDirty,
           isPinned: false,
@@ -348,9 +354,9 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
   function capture(editor: unknown = { state: { doc: {} } }) {
     return captureTask({
       body: "은행 연락",
-      captureFile: "Inbox.md",
+      captureFile: "tasks/inbox.md",
       editor: editor as never,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
   }
@@ -440,7 +446,7 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
 
     await capture();
 
-    expect(appendTaskLine).toHaveBeenCalledWith("/v/Inbox.md", LINE);
+    expect(appendTaskLine).toHaveBeenCalledWith("/v/tasks/inbox.md", LINE);
   });
 
   it("접근자도 없고 탭이 dirty면 어디에도 붙이지 않는다", async () => {
@@ -455,31 +461,31 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
 });
 
 // §312 리뷰 Major 5 — 아래 값들은 append 자체는 성공하지만 그 태스크가 어느
-// 버킷에도 영영 나타나지 않는다. `get_vault_tasks`는 볼트만 걷고, 워처는 감시
-// 루트 아래 마크다운 이벤트만 듣기 때문이다.
+// 버킷에도 영영 나타나지 않는다. 스캔은 루트 아래만 걷고, 워처는 감시 루트 아래
+// 마크다운 이벤트만 듣기 때문이다. §312.1로 그 기준이 **태스크 홈**이 되었다.
 describe("captureTask — 인덱싱될 수 없는 수집함 경로", () => {
   async function capture(captureFile: string) {
     return captureTask({
       body: "a",
       captureFile,
       editor: null,
-      rootPath: "/v",
+      tasksHome: "/v",
       today: "2026-08-24",
     });
   }
 
-  it("볼트 밖 절대 경로를 거절한다", async () => {
-    await rejectsWithCode(capture("/elsewhere/In.md"), "outsideVault");
+  it("태스크 홈 밖 절대 경로를 거절한다", async () => {
+    await rejectsWithCode(capture("/elsewhere/In.md"), "outsideHome");
     expect(appendTaskLine).not.toHaveBeenCalled();
   });
 
   it("`..`로 볼트를 벗어나는 값을 거절한다", async () => {
-    await rejectsWithCode(capture("../In.md"), "outsideVault");
+    await rejectsWithCode(capture("../In.md"), "outsideHome");
     expect(appendTaskLine).not.toHaveBeenCalled();
   });
 
   it("볼트 루트 자신을 거절한다", async () => {
-    await rejectsWithCode(capture("/v"), "outsideVault");
+    await rejectsWithCode(capture("/v"), "outsideHome");
   });
 
   it("마크다운이 아닌 이름을 거절한다", async () => {
@@ -601,13 +607,52 @@ describe("buildCaptureLine — 정규화 뒤에야 드러나는 것들", () => {
     await rejectsWithCode(
       captureTask({
         body: "➕2026-01-01",
-        captureFile: "Inbox.md",
+        captureFile: "tasks/inbox.md",
         editor: null,
-        rootPath: "/v",
+        tasksHome: "/v",
         today: "2026-08-24",
       }),
       "emptyBody",
     );
     expect(appendTaskLine).not.toHaveBeenCalled();
+  });
+});
+
+// §312.1 수집함이 태스크 홈으로 옮겨가면서 생긴 요구. 종전에는 캡처가 언제나 활성 vault
+// 안에 썼으므로 파일 워처가 곧바로 그 파일을 다시 읽었다 — 태스크 홈은 컨텍스트로 열려
+// 있지 않을 수 있고, 그러면 감시 루트 밖이라 `file:changed`가 오지 않는다.
+describe("captureTask — 붙인 뒤 목록에 반영", () => {
+  beforeEach(() => {
+    useTaskStore.getState().clear();
+    vi.mocked(appendTaskLine).mockResolvedValue("- [ ] x");
+    vi.mocked(getFileTasks).mockResolvedValue([]);
+    vi.mocked(resolveTaskWriteTarget).mockReturnValue({ kind: "disk" });
+  });
+
+  it("디스크에 붙였으면 그 파일을 다시 읽는다 — 잡은 태스크가 곧바로 뜬다", async () => {
+    useTaskStore.getState().setRoots(["/v"]);
+    await captureTask({
+      body: "우유",
+      captureFile: "tasks/inbox.md",
+      editor: null,
+      tasksHome: "/v",
+      today: "2026-08-24",
+    });
+    expect(getFileTasks).toHaveBeenCalledWith("/v/tasks/inbox.md", "/v", []);
+  });
+
+  it("스캔 범위 밖이면 읽지 않는다 — 범위를 좁힌 화면에 끼워 넣지 않는다", async () => {
+    // 사용자가 아젠다를 좁혀 두었다면 수집함이 그 범위 밖일 수 있다. 캡처는 성공하되
+    // 지금 보고 있는 목록에는 들어가지 않는 것이 맞다.
+    useTaskStore.getState().setRoots(["/elsewhere"]);
+    await captureTask({
+      body: "우유",
+      captureFile: "tasks/inbox.md",
+      editor: null,
+      tasksHome: "/v",
+      today: "2026-08-24",
+    });
+    expect(appendTaskLine).toHaveBeenCalled();
+    expect(getFileTasks).not.toHaveBeenCalled();
   });
 });

@@ -77,7 +77,7 @@ function closeTab(): void {
 }
 
 function ctx(editor: Editor | null = null): TaskTriageContext {
-  return { editor, exclude: [], now: NOW, rootPath: null, t: EN_T };
+  return { editor, exclude: [], now: NOW, t: EN_T };
 }
 
 /**
@@ -366,7 +366,7 @@ describe("§312 저장 전 삭제 뒤의 디스크 라우팅", () => {
     vi.mocked(getFileTasks).mockResolvedValue([
       task({ line: 0, raw: "- [ ] b", text: "b" }),
     ]);
-    await refreshFileTasks("a.md", null, []);
+    await refreshFileTasks("a.md", []);
 
     await runTaskTriageAction(
       "dueToday",

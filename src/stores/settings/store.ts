@@ -164,6 +164,10 @@ export const useSettingsStore = create<SettingsState>()(
         tasksRecordDoneDate: state.tasksRecordDoneDate,
         tasksWeekStart: state.tasksWeekStart,
         tasksArchiveAfterDays: state.tasksArchiveAfterDays,
+        // §312.1 태스크 홈과 스캔 범위 — 둘 다 persist다. 범위는 "바꾸기 전까지
+        // 유지된다"가 요구사항이고, 홈은 캡처 착지점이라 세션마다 흔들리면 안 된다.
+        tasksHome: state.tasksHome,
+        tasksScanScope: state.tasksScanScope,
         tasksCaptureFile: state.tasksCaptureFile,
         snapshotInterval: state.snapshotInterval,
         snapshotMaxCount: state.snapshotMaxCount,
