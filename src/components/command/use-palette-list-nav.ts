@@ -58,17 +58,19 @@ export function usePaletteListNav({
       }
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIndex((i) => Math.min(i + 1, itemCount - 1));
+        setSelectedIndex((i) =>
+          itemCount === 0 ? 0 : Math.min(i + 1, itemCount - 1),
+        );
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((i) => Math.max(i - 1, 0));
+        setSelectedIndex((i) => (itemCount === 0 ? 0 : Math.max(i - 1, 0)));
         return;
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        if (selectedIndex < itemCount) {
+        if (selectedIndex >= 0 && selectedIndex < itemCount) {
           onEnter(selectedIndex);
         }
       }
