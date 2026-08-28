@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use thiserror::Error;
@@ -1998,6 +1997,17 @@ impl ExtractBounds {
     };
 }
 
+/// Maps the shared core's error back onto `PluginError`, so callers see exactly what they
+/// did before this delegated to `crate::fs::archive` — `Refused` carries the same message
+/// text the inline loop used to format itself (`kind` below is `"plugin archive"`, matching
+/// the wording every in-file test still asserts on).
+fn archive_error_to_plugin_error(e: crate::fs::archive::ArchiveError) -> PluginError {
+    match e {
+        crate::fs::archive::ArchiveError::Io(io) => PluginError::Io(io),
+        crate::fs::archive::ArchiveError::Refused(msg) => PluginError::Refused(msg),
+    }
+}
+
 fn extract_zip_bounded(
     data: &[u8],
     output_dir: &Path,
@@ -2005,6 +2015,16 @@ fn extract_zip_bounded(
 ) -> Result<(), PluginError> {
     let cursor = std::io::Cursor::new(data);
     let mut archive = zip::ZipArchive::new(cursor)?;
+
+    let core_bounds = crate::fs::archive::ExtractBounds {
+        max_entries: bounds.max_entries,
+        max_entry_bytes: bounds.max_entry_bytes,
+        max_total_bytes: bounds.max_total_bytes,
+        max_ratio: bounds.max_ratio,
+        ratio_floor_bytes: bounds.ratio_floor_bytes,
+        max_path_depth: bounds.max_path_depth,
+        allowed_compression: &ALLOWED_COMPRESSION,
+    };
 
     // First of OUR checks, and safe to read from the central directory: an archive claiming
     // fewer entries than it holds simply gets fewer extracted.
@@ -2016,13 +2036,8 @@ fn extract_zip_bounded(
     // the download cap and transient, but it is upstream of every limit below. Backlogged;
     // the only real fix is a streaming central-directory reader the `zip` crate does not
     // expose.
-    if archive.len() > bounds.max_entries {
-        return Err(PluginError::Refused(format!(
-            "plugin archive declares {} entries, over the {} limit",
-            archive.len(),
-            bounds.max_entries
-        )));
-    }
+    crate::fs::archive::check_entry_count(archive.len(), &core_bounds, "plugin archive")
+        .map_err(archive_error_to_plugin_error)?;
 
     let compressed_len = data.len() as u64;
     let mut total_written: u64 = 0;
@@ -2032,106 +2047,32 @@ fn extract_zip_bounded(
         let Some(enclosed_name) = file.enclosed_name() else {
             continue; // skip invalid paths (path traversal protection)
         };
-
-        // ‼️ Checked BEFORE any `create_dir_all`, because directories are the one thing the
-        // byte ceilings below cannot see: parents cost no expanded bytes, so depth is free
-        // to the attacker and expensive to us (review M2).
-        // ‼️ BEFORE the first read of this entry, which is where a decoder gets built and
-        // where LZMA would allocate from a number in the payload. `compression()` reads
-        // metadata only, so asking costs nothing. See `ALLOWED_COMPRESSION`.
         let method = file.compression();
-        if !ALLOWED_COMPRESSION.contains(&method) {
-            return Err(PluginError::Refused(format!(
-                "plugin archive entry {} uses compression method {method}; only {} are allowed",
-                file.name(),
-                ALLOWED_COMPRESSION
-                    .iter()
-                    .map(|m| m.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" and ")
-            )));
-        }
-
-        // COMPONENTS, including the filename — `a/b/c.txt` is 3. The limit and its doc count
-        // the same way, so the arithmetic was never wrong, but the message used to say
-        // "directories deep" and there are only two of those here (review round 2).
+        let is_dir = file.is_dir();
         let depth = enclosed_name.components().count();
-        if depth > bounds.max_path_depth {
-            return Err(PluginError::Refused(format!(
-                "plugin archive entry {} has {depth} path components, over the {} limit",
-                enclosed_name.display(),
-                bounds.max_path_depth
-            )));
-        }
-        let out_path = output_dir.join(enclosed_name);
+        let out_path = output_dir.join(&enclosed_name);
+        let raw_name = file.name().to_string();
 
-        if file.is_dir() {
-            std::fs::create_dir_all(&out_path)?;
-            continue;
-        }
-        if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        // ‼️ ALL THREE ceilings fold into the read, so none can be overshot even by one
-        // entry.
-        //
-        // The ratio used to be checked AFTER writing, which made it a limit on what
-        // survived rather than on what the archive could make us do. Measured (review M1):
-        // a 64 KiB archive holding one 64 MiB entry cleared the per-file and total
-        // ceilings, wrote all 64 MiB to disk, and only then hit the "100:1" refusal — 1027:1
-        // of transient amplification against a documented 100:1. The comment here used to
-        // say the refusal came "while unpacking rather than after"; for a single-entry
-        // archive, the canonical bomb shape and the one this module's own bomb test uses,
-        // it was entirely after.
-        let by_entry = bounds.max_entry_bytes;
-        let by_total = bounds.max_total_bytes.saturating_sub(total_written);
-        // `max(floor)` is what the ratio floor means now: an archive may always produce at
-        // least this much before the ratio can say anything, so a small archive of ordinary
-        // compressible text is not refused over a statistic computed on too little data.
-        // Same intent as the old post-hoc floor, moved to where it can actually act.
-        let ratio_allowance = compressed_len
-            .saturating_mul(bounds.max_ratio)
-            .max(bounds.ratio_floor_bytes);
-        let by_ratio = ratio_allowance.saturating_sub(total_written);
-        let cap = by_entry.min(by_total).min(by_ratio);
-
-        let mut out = std::fs::File::create(&out_path)?;
-        // `cap + 1`: reading exactly `cap` is legal, so the extra byte is what distinguishes
-        // "filled the budget" from "would have gone past it".
-        let mut limited = (&mut file).take(cap + 1);
-        let written = std::io::copy(&mut limited, &mut out)?;
-        if written > cap {
-            // Which ceiling bound this entry, so the message names the limit to raise.
-            // Ratio first: where it ties with another it is the more useful answer, because
-            // it is the one that says "this is shaped like a bomb".
-            return Err(PluginError::Refused(if cap == by_ratio {
-                // ‼️ Names the COMPUTED allowance, not `max_ratio`. The allowance is
-                // `max(wire × ratio, floor)`, so whenever the floor is the binding term the
-                // ratio is not the number being enforced — for a 2 KiB archive the real
-                // limit is 476:1, and a message saying "100:1" sends the operator to compute
-                // 220 KB when 1 MiB was allowed. That is the COMMON case, not the exotic
-                // one: every archive under `floor / ratio` on the wire is floor-bound, which
-                // is most real plugins (review round 2). This module's rule is that a
-                // refusal names the limit to raise.
-                format!(
-                    "plugin archive expands past the {ratio_allowance} bytes allowed for its \
-                     {compressed_len} bytes on the wire ({}:1, minimum {})",
-                    bounds.max_ratio, bounds.ratio_floor_bytes
-                )
-            } else if cap == by_total {
-                format!(
-                    "plugin archive expands past the {} byte total limit",
-                    bounds.max_total_bytes
-                )
-            } else {
-                format!(
-                    "plugin archive entry {} exceeds the {} byte per-file limit",
-                    out_path.display(),
-                    bounds.max_entry_bytes
-                )
-            }));
-        }
+        // Remaining five defenses (method allowlist, path depth, per-entry/total/ratio caps)
+        // and the actual bounded copy live in the shared core — see `crate::fs::archive` for
+        // why each check runs where it does (method and depth BEFORE any `create_dir_all`,
+        // the byte ceilings folded into a single capped read).
+        let written = crate::fs::archive::extract_entry(
+            &mut file,
+            crate::fs::archive::EntryContext {
+                method,
+                is_dir,
+                depth,
+                raw_name: &raw_name,
+                relative_path: &enclosed_name,
+                out_path: &out_path,
+                compressed_len,
+                total_written,
+            },
+            &core_bounds,
+            "plugin archive",
+        )
+        .map_err(archive_error_to_plugin_error)?;
         total_written += written;
     }
     Ok(())
@@ -4521,9 +4462,13 @@ mod tests {
     /// something elsewhere in the file.
     #[test]
     fn extraction_never_consults_the_declared_size() {
-        const SOURCE: &str = include_str!("mod.rs");
+        // #D6 moved the bounded copy itself into `crate::fs::archive::extract_entry`, shared
+        // with `fs::extract_zip` (Notion import) — `extract_zip_bounded` above is now a thin
+        // wrapper that delegates to it, so this pin follows the real implementation there
+        // rather than scanning a wrapper that no longer contains the read it is pinning.
+        const SOURCE: &str = include_str!("../fs/archive.rs");
         let start = SOURCE
-            .find("fn extract_zip_bounded(")
+            .find("fn extract_entry<")
             .expect("the function must still exist under this name");
         let body = &SOURCE[start..];
         let end = body.find("\n}\n").expect("the function must end");

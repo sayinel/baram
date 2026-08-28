@@ -1,5 +1,6 @@
 // §3.6 파일 시스템 모듈 — 읽기/쓰기/디렉토리 목록/이름변경/삭제/감시
 
+pub(crate) mod archive;
 mod copy_dir;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
@@ -382,7 +383,53 @@ async fn move_to_trash(path: &str) -> Result<(), FsError> {
         .map_err(|e| FsError::TrashError(e.to_string()))
 }
 
-/// §53 ZIP 파일 추출 — Notion 내보내기 호환
+/// §D6 `extract_zip`이 적용하는 zip bomb 방어 한계.
+///
+/// `plugin::extract_zip_bounded`(§69)보다 전반적으로 넉넉하다 — Notion vault export는
+/// 설치되는 코드가 아니라 사용자가 직접 고른 자신의 데이터이고, 페이지마다 마크다운·이미지·
+/// PDF·비디오 첨부가 딸려 수천 개 엔트리와 수백 메가바이트급 단일 파일이 정상적으로 발생한다.
+///
+/// - `max_entries = 10_000`: 플러그인의 2,000(§69, "ESM 번들 하나"라는 다른 성격)의 5배.
+///   대형 Notion 워크스페이스는 페이지 수천 개 + 페이지마다 딸린 자산까지 합쳐 이 자릿수에
+///   실제로 닿는다.
+/// - `max_entry_bytes = 512 MiB`: 내보내기에 흔한 단일 비디오/PDF 첨부 하나가 걸릴 수 있는
+///   현실적 상한. 플러그인의 64 MiB(ESM 청크 기준)와 자릿수가 다른 이유가 바로 이것이다.
+/// - `max_total_bytes = 2 GiB`: 전체 워크스페이스 export 하나의 현실적 상한. 폭탄은 이 값의
+///   수십~수백 배를 목표로 만들어지므로, 이 정도로 넉넉해도 방어력은 그대로 유지된다.
+/// - `max_ratio = 100`, `ratio_floor_bytes = 1 MiB`: 플러그인과 동일한 값을 그대로 가져온다
+///   — 텍스트/마크다운의 실제 압축비(3~10:1)와 폭탄에 필요한 압축비(수백~수천:1) 사이의
+///   간극은 콘텐츠의 출처와 무관하게 같다. 바꿀 근거가 없다.
+/// - `max_path_depth = 16`: 플러그인과 동일. Notion의 페이지 계층이 이보다 깊게 중첩된
+///   사례가 없고, 동일하게 유지하면 entries × depth 최악값이 플러그인 측정치(2,000 × 16 =
+///   32,000 mkdir)의 5배(≈160,000)로만 늘어난다 — 두 한계를 독립적으로 함께 풀어
+///   최악값을 곱절로 키우지 않기 위함이다.
+const EXTRACT_BOUNDS: archive::ExtractBounds = archive::ExtractBounds {
+    max_entries: 10_000,
+    max_entry_bytes: 512 * 1024 * 1024,
+    max_total_bytes: 2 * 1024 * 1024 * 1024,
+    max_ratio: 100,
+    ratio_floor_bytes: 1024 * 1024,
+    max_path_depth: 16,
+    allowed_compression: &[
+        zip::CompressionMethod::Stored,
+        zip::CompressionMethod::Deflated,
+    ],
+};
+
+/// `archive::ArchiveError`를 이 모듈의 에러 관례로 접는다. `Refused`는 이미 이 함수가 Zip
+/// Slip 거부에 쓰던 것과 같은 모양(`ReadError(InvalidInput)`)으로 맞춘다.
+fn archive_error_to_fs_error(e: archive::ArchiveError) -> FsError {
+    match e {
+        archive::ArchiveError::Io(io) => FsError::ReadError(io),
+        archive::ArchiveError::Refused(msg) => {
+            FsError::ReadError(std::io::Error::new(std::io::ErrorKind::InvalidInput, msg))
+        }
+    }
+}
+
+/// §53 ZIP 파일 추출 — Notion 내보내기 호환. §D6부터 zip bomb 방어(entry 수 · per-entry ·
+/// total · ratio · path depth · compression method)가 걸린다 — 자세한 근거는
+/// `EXTRACT_BOUNDS`.
 pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>, FsError> {
     let zip_path = zip_path.to_string();
     let output_dir = output_dir.to_string();
@@ -395,6 +442,9 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                 FsError::ReadError(e)
             }
         })?;
+        // 아카이브가 스스로 주장하는 크기가 아니라, wire 위에 실제로 있는 바이트 수 — ratio
+        // 계산의 분모다. `ZipArchive::new`가 `file`을 소유해 버리기 전에 읽어 둔다.
+        let compressed_len = file.metadata().map(|m| m.len()).unwrap_or(0);
         let mut archive = zip::ZipArchive::new(file).map_err(|e| {
             FsError::ReadError(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -402,7 +452,11 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
             ))
         })?;
 
+        archive::check_entry_count(archive.len(), &EXTRACT_BOUNDS, "zip archive")
+            .map_err(archive_error_to_fs_error)?;
+
         let mut extracted_paths = Vec::new();
+        let mut total_written: u64 = 0;
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).map_err(|e| {
@@ -444,15 +498,31 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                 )));
             }
 
-            if file.is_dir() {
-                std::fs::create_dir_all(&outpath).map_err(FsError::ReadError)?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    std::fs::create_dir_all(parent).map_err(FsError::ReadError)?;
-                }
-                let mut outfile = std::fs::File::create(&outpath).map_err(FsError::ReadError)?;
-                std::io::copy(&mut file, &mut outfile).map_err(FsError::ReadError)?;
+            let is_dir = file.is_dir();
+            let method = file.compression();
+            let relative_path = std::path::Path::new(file.name()).to_path_buf();
+            let depth = relative_path.components().count();
+            let raw_name = file.name().to_string();
 
+            let written = archive::extract_entry(
+                &mut file,
+                archive::EntryContext {
+                    method,
+                    is_dir,
+                    depth,
+                    raw_name: &raw_name,
+                    relative_path: &relative_path,
+                    out_path: &outpath,
+                    compressed_len,
+                    total_written,
+                },
+                &EXTRACT_BOUNDS,
+                "zip archive",
+            )
+            .map_err(archive_error_to_fs_error)?;
+            total_written += written;
+
+            if !is_dir {
                 extracted_paths.push(outpath.to_string_lossy().into_owned());
             }
         }
@@ -688,6 +758,150 @@ mod tests {
             std::fs::read_dir(&out).unwrap().next().is_none(),
             "nothing should have been extracted"
         );
+    }
+}
+
+/// §D6 zip bomb 방어 — `plugin::extract_zip_bounded`(§69)가 이미 갖췄던 여섯 방어 중
+/// `extract_zip`에는 없었던 나머지를 `crate::fs::archive`를 통해 채웠는지 검증한다.
+///
+/// 값을 축소해 주입할 파라미터가 없으므로(§53 IPC 표면은 경로 문자열 두 개뿐, `EXTRACT_BOUNDS`는
+/// 상수) 실제 운영 한계 그대로 검사한다 — plugin의 `refuses_a_real_bomb_through_the_production_bounds`
+/// 와 같은 방식: entry 수는 정확히 한계 + 1개의 빈 엔트리로, ratio는 2 MiB 제로가 수 킬로바이트로
+/// 압축되는 모양으로 값싸게 트리거한다.
+#[cfg(test)]
+mod extract_zip_bomb_tests {
+    use super::*;
+
+    fn zip_bytes(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+        {
+            let mut writer = zip::write::ZipWriter::new(&mut buf);
+            let opts = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            for (name, body) in entries {
+                writer.start_file(*name, opts).unwrap();
+                writer.write_all(body).unwrap();
+            }
+            writer.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    fn write_zip(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    /// 이전에는 이 검사 자체가 없었다 — `probe_entry_count_currently_unbounded`(임시 검증,
+    /// 이 커밋에서 이미 제거됨)로 지금 이 한계가 없으면 10,001개짜리 아카이브가 그대로
+    /// 성공한다는 것을 먼저 확인한 뒤에 이 한계를 추가했다.
+    #[tokio::test]
+    async fn refuses_more_entries_than_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let names: Vec<String> = (0..=EXTRACT_BOUNDS.max_entries)
+            .map(|i| format!("f{i}"))
+            .collect();
+        let entries: Vec<(&str, &[u8])> =
+            names.iter().map(|n| (n.as_str(), b"" as &[u8])).collect();
+        let zip_path = write_zip(dir.path(), "bomb-entries.zip", &zip_bytes(&entries));
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("an archive declaring more entries than the limit must be refused");
+
+        assert!(
+            err.to_string()
+                .contains(&format!("over the {} limit", EXTRACT_BOUNDS.max_entries)),
+            "{err}"
+        );
+        assert!(
+            std::fs::read_dir(&out).unwrap().next().is_none(),
+            "the entry-count check must run before any entry is touched"
+        );
+    }
+
+    /// The canonical zip-bomb shape — `plugin::a_bomb_is_refused_before_it_can_fill_the_disk`
+    /// pins the same property for the plugin installer.
+    #[tokio::test]
+    async fn refuses_a_high_ratio_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let bomb_body = vec![0u8; 2 * 1024 * 1024];
+        let bytes = zip_bytes(&[("bomb.bin", &bomb_body)]);
+        assert!(
+            bytes.len() < 64 * 1024,
+            "fixture must actually be a bomb: {} bytes on the wire",
+            bytes.len()
+        );
+        let zip_path = write_zip(dir.path(), "bomb-ratio.zip", &bytes);
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("a high compression-ratio entry must be refused");
+
+        assert!(err.to_string().contains("bytes allowed for its"), "{err}");
+        // Nothing past the allowance should have reached disk either — the cap folds into
+        // the read itself rather than being checked only after writing (see
+        // `archive::extract_entry`'s doc comment for why that distinction matters).
+        let written = std::fs::metadata(out.join("bomb.bin"))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        assert!(
+            written < bomb_body.len() as u64,
+            "the full bomb reached disk: {written} bytes written"
+        );
+    }
+
+    /// The control — every refusal above only means something if ordinary Notion exports
+    /// still extract untouched.
+    #[tokio::test]
+    async fn extracts_a_normal_archive_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = zip_bytes(&[("note.md", b"# hello"), ("sub/child.md", b"world")]);
+        let zip_path = write_zip(dir.path(), "normal.zip", &bytes);
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let paths = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect("an ordinary archive within every bound must extract");
+
+        assert_eq!(paths.len(), 2);
+        assert_eq!(
+            std::fs::read_to_string(out.join("note.md")).unwrap(),
+            "# hello"
+        );
+        assert_eq!(
+            std::fs::read_to_string(out.join("sub/child.md")).unwrap(),
+            "world"
+        );
+    }
+
+    /// Regression — the bomb bounds must not have loosened the pre-existing Zip Slip check
+    /// (`normalized.starts_with(&canonical_output)` above), which predates this change and
+    /// runs before any of the new bounds are even reached.
+    #[tokio::test]
+    async fn refuses_a_path_that_escapes_the_output_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = zip_bytes(&[("../escape.txt", b"pwned")]);
+        let zip_path = write_zip(dir.path(), "slip.zip", &bytes);
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("an entry that escapes the output dir must still be refused");
+
+        assert!(
+            err.to_string().contains("escapes output directory"),
+            "{err}"
+        );
+        assert!(!dir.path().join("escape.txt").exists());
     }
 }
 
