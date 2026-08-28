@@ -49,13 +49,11 @@ import {
 } from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useGhostText } from "./hooks/use-ghost-text";
+import { useGlobalKeyboard } from "./hooks/use-global-keyboard";
 import { useInlineAI } from "./hooks/use-inline-ai";
 import { useJournal } from "./hooks/use-journal";
 import { useJournalInitialCursor } from "./hooks/use-journal-initial-cursor";
-import {
-  useGlobalKeyboard,
-  useKeybindingActions,
-} from "./hooks/use-keybinding-actions";
+import { useKeybindingActions } from "./hooks/use-keybinding-actions";
 import { useLargeDocKeepalive } from "./hooks/use-large-doc-keepalive";
 import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
