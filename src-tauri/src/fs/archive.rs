@@ -175,7 +175,7 @@ pub fn extract_entry<R: Read>(
         } else {
             format!(
                 "{kind} entry {} exceeds the {} byte per-file limit",
-                ctx.out_path.display(),
+                ctx.relative_path.display(),
                 bounds.max_entry_bytes
             )
         }));

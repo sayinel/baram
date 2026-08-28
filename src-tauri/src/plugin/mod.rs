@@ -3988,6 +3988,31 @@ mod tests {
                  bounds must be enforced on bytes actually read"
                 );
             }
+
+            // §D6 security review, MINOR — the check above only ever looks at the shared
+            // core, so a "fast path" added to THIS wrapper that consults the declared size
+            // before ever calling `extract_entry` would bypass it invisibly. Window on the
+            // wrapper itself, in this same file, to close that gap.
+            const WRAPPER_SOURCE: &str = include_str!("mod.rs");
+            let wrapper_start = WRAPPER_SOURCE
+                .find("fn extract_zip_bounded(")
+                .expect("the wrapper must still exist under this name");
+            let wrapper_body = &WRAPPER_SOURCE[wrapper_start..];
+            let wrapper_end = wrapper_body.find("\n}\n").expect("the wrapper must end");
+            let wrapper_body = &wrapper_body[..wrapper_end];
+
+            assert!(
+                wrapper_body.contains("total_written += written;"),
+                "the window no longer reaches the end of extract_zip_bounded, so the absence \
+             checks below would be vacuous"
+            );
+            for header_field in [".size()", ".compressed_size()"] {
+                assert!(
+                    !wrapper_body.contains(header_field),
+                    "extract_zip_bounded's own body reads `{header_field}` before delegating \
+                 to the shared core — a declared-size precheck here would bypass it entirely"
+                );
+            }
         }
     }
 

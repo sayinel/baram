@@ -427,9 +427,116 @@ fn archive_error_to_fs_error(e: archive::ArchiveError) -> FsError {
     }
 }
 
+/// A relative path an entry may safely extract to, given what `ZipFile::enclosed_name()`
+/// (called by the caller — it needs the open entry, not just its name) made of it. Used both
+/// as a display name (error messages, the returned path list) and, joined onto a directory,
+/// as the write target itself.
+///
+/// §D6 security review, BLOCKER fix — replaces a hand-rolled lexical normalize-then-
+/// `starts_with` check whose `_ => {}` arm silently dropped `RootDir`/`Prefix` components, so
+/// an absolute entry name (e.g. `/tmp/owned`) replaced `output_dir` outright in the old
+/// `Path::join` and then passed containment trivially because the check compared against an
+/// unrelated synthetic path it built beneath `canonical_output`. `enclosed_name()` operates
+/// purely on the entry's own components: a leading root/prefix is re-rooted into a relative
+/// path rather than rejected (the same safe behaviour `plugin::extract_zip_bounded` already
+/// relies on), and any `..` that would climb above the top yields `None`, which is a hard
+/// error here — fs's contract (unlike plugin's silent skip) has always been to refuse a Zip
+/// Slip attempt loudly.
+fn reject_escaping_entry(name: &str, enclosed: Option<PathBuf>) -> Result<PathBuf, FsError> {
+    let escapes = || {
+        FsError::ReadError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("Zip entry escapes output directory: {name}"),
+        ))
+    };
+    // `enclosed_name()` can also legally return an empty path (an entry literally named `/`
+    // or `.`) — joining that onto a directory yields the directory itself, and creating that
+    // as a "file" fails confusingly rather than safely. Treat it the same as an escape.
+    match enclosed {
+        Some(relative) if !relative.as_os_str().is_empty() => Ok(relative),
+        _ => Err(escapes()),
+    }
+}
+
+/// After every entry has passed every bound, move the staged tree into `output_dir` in one
+/// pass. Reached ONLY once the whole archive is known-good — nothing here can leave a
+/// truncated or partial file behind, because the byte-bound checks that could still fail
+/// already ran, against `staged`, not against `output_dir`.
+///
+/// Directories are `create_dir_all`'d (merging into whatever already exists, so a repeat
+/// extraction into a non-empty vault folder still succeeds); files are `fs::rename`'d, which
+/// atomically replaces an existing file of the same name — preserving the extractor's
+/// pre-existing overwrite behaviour — and, being on the same filesystem (`staged` is a
+/// `tempdir_in(output_dir)`), cannot fail with a cross-device error partway through.
+///
+/// ‼️ Guards against a pre-existing symlink inside `output_dir`: before creating or renaming
+/// into any path, every already-existing ancestor component is checked with
+/// `symlink_metadata` (which does not follow) and rejected if it is a symlink — otherwise
+/// `create_dir_all`/`rename` would transparently follow it and land the write somewhere
+/// outside `output_dir` (§D6 security review, BLOCKER). This still has a TOCTOU window
+/// between that check and the syscall that follows it: closing it fully needs `openat`-style
+/// no-follow-by-directory-handle primitives that Rust's std does not expose portably. The
+/// threat model here is a local desktop attacker racing the app's own extraction of an
+/// archive the user just chose to import — not a multi-tenant server — so that residual
+/// window is accepted rather than addressed with platform-specific unsafe code.
+fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(), FsError> {
+    fn reject_symlink_ancestors(output_dir: &Path, relative: &Path) -> Result<(), FsError> {
+        let mut probe = output_dir.to_path_buf();
+        for component in relative.components() {
+            probe.push(component);
+            if let Ok(meta) = std::fs::symlink_metadata(&probe) {
+                if meta.file_type().is_symlink() {
+                    return Err(FsError::ReadError(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!(
+                            "refusing to extract through an existing symlink at {}",
+                            probe.display()
+                        ),
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn walk(staged_root: &Path, dir: &Path, output_dir: &Path) -> Result<(), FsError> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(staged_root)
+                .expect("walked path is always under staged_root");
+            reject_symlink_ancestors(output_dir, relative)?;
+            let target = output_dir.join(relative);
+            if entry.file_type()?.is_dir() {
+                std::fs::create_dir_all(&target)?;
+                walk(staged_root, &path, output_dir)?;
+            } else {
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::rename(&path, &target)?;
+            }
+        }
+        Ok(())
+    }
+
+    walk(staged_root, staged_root, output_dir)
+}
+
 /// §53 ZIP 파일 추출 — Notion 내보내기 호환. §D6부터 zip bomb 방어(entry 수 · per-entry ·
 /// total · ratio · path depth · compression method)가 걸린다 — 자세한 근거는
 /// `EXTRACT_BOUNDS`.
+///
+/// §D6 security review, MAJOR fix — every entry extracts into a scratch directory staged
+/// beneath `output_dir` (same filesystem, so the final commit can `rename` rather than copy)
+/// and is only moved into `output_dir` once the ENTIRE archive has passed every bound. Before
+/// this, `File::create` truncated the real destination — possibly an existing vault file —
+/// before the per-entry cap was even checked, so a rejected archive could leave that file
+/// overwritten with `cap + 1` attacker bytes and every earlier entry already extracted. A
+/// refusal now leaves `output_dir` exactly as it was: the staging `TempDir` is dropped
+/// (removing everything written so far) the moment this function returns an `Err`, on every
+/// return path, including a panic unwind.
 pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>, FsError> {
     let zip_path = zip_path.to_string();
     let output_dir = output_dir.to_string();
@@ -455,7 +562,18 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
         archive::check_entry_count(archive.len(), &EXTRACT_BOUNDS, "zip archive")
             .map_err(archive_error_to_fs_error)?;
 
-        let mut extracted_paths = Vec::new();
+        let output_dir_path = Path::new(&output_dir);
+        // Same filesystem as `output_dir` (a *sibling* tempdir under the OS temp root would
+        // not be, defeating the atomic `rename` in `commit_staged_extraction`), and fresh —
+        // nothing an attacker placed inside `output_dir` earlier (a symlink, say) is anywhere
+        // on the path an entry writes to until the commit step, which checks for exactly
+        // that.
+        let staged = tempfile::Builder::new()
+            .prefix(".baram-extract-")
+            .tempdir_in(output_dir_path)
+            .map_err(FsError::ReadError)?;
+
+        let mut extracted_relative_paths: Vec<PathBuf> = Vec::new();
         let mut total_written: u64 = 0;
 
         for i in 0..archive.len() {
@@ -471,38 +589,13 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                 continue;
             }
 
-            let outpath = std::path::Path::new(&output_dir).join(file.name());
-
-            // Zip Slip prevention: normalize path and check containment
-            // BEFORE creating any directories or files.
-            let canonical_output =
-                std::fs::canonicalize(&output_dir).map_err(FsError::ReadError)?;
-
-            // Build a normalized check path without touching the filesystem.
-            // Iterate components and resolve ".." manually.
-            let mut normalized = canonical_output.clone();
-            for component in std::path::Path::new(file.name()).components() {
-                match component {
-                    std::path::Component::Normal(c) => normalized.push(c),
-                    std::path::Component::ParentDir => {
-                        normalized.pop();
-                    }
-                    std::path::Component::CurDir => {}
-                    _ => {}
-                }
-            }
-            if !normalized.starts_with(&canonical_output) {
-                return Err(FsError::ReadError(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("Zip entry escapes output directory: {}", file.name()),
-                )));
-            }
+            let raw_name = file.name().to_string();
+            let relative_path = reject_escaping_entry(&raw_name, file.enclosed_name())?;
+            let out_path = staged.path().join(&relative_path);
 
             let is_dir = file.is_dir();
             let method = file.compression();
-            let relative_path = std::path::Path::new(file.name()).to_path_buf();
             let depth = relative_path.components().count();
-            let raw_name = file.name().to_string();
 
             let written = archive::extract_entry(
                 &mut file,
@@ -512,7 +605,7 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                     depth,
                     raw_name: &raw_name,
                     relative_path: &relative_path,
-                    out_path: &outpath,
+                    out_path: &out_path,
                     compressed_len,
                     total_written,
                 },
@@ -523,11 +616,23 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
             total_written += written;
 
             if !is_dir {
-                extracted_paths.push(outpath.to_string_lossy().into_owned());
+                extracted_relative_paths.push(relative_path);
             }
         }
 
-        Ok(extracted_paths)
+        // Every entry passed every bound: commit the staged tree in one pass. `staged` is
+        // dropped (deleting whatever remains of it) when this function returns either way.
+        commit_staged_extraction(staged.path(), output_dir_path)?;
+
+        Ok(extracted_relative_paths
+            .into_iter()
+            .map(|relative| {
+                output_dir_path
+                    .join(relative)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect())
     })
     .await
     .map_err(|e| FsError::ReadError(std::io::Error::other(e.to_string())))?
@@ -845,15 +950,15 @@ mod extract_zip_bomb_tests {
             .expect_err("a high compression-ratio entry must be refused");
 
         assert!(err.to_string().contains("bytes allowed for its"), "{err}");
-        // Nothing past the allowance should have reached disk either — the cap folds into
-        // the read itself rather than being checked only after writing (see
-        // `archive::extract_entry`'s doc comment for why that distinction matters).
-        let written = std::fs::metadata(out.join("bomb.bin"))
-            .map(|m| m.len())
-            .unwrap_or(0);
+        // §D6 MAJOR fix — every entry now extracts into a staged `TempDir` and is only
+        // moved into `output_dir` once the whole archive has passed every bound, so a
+        // refusal must leave `output_dir` with nothing at all: not the `cap + 1` bytes the
+        // bounded read let through, not the staging directory that briefly held them
+        // (dropped on the way out). Before that fix this only asserted `written <
+        // bomb_body.len()`, which a decoder writing almost the entire bomb would still pass.
         assert!(
-            written < bomb_body.len() as u64,
-            "the full bomb reached disk: {written} bytes written"
+            std::fs::read_dir(&out).unwrap().next().is_none(),
+            "a refused archive must leave output_dir exactly as it was"
         );
     }
 
@@ -902,6 +1007,112 @@ mod extract_zip_bomb_tests {
             "{err}"
         );
         assert!(!dir.path().join("escape.txt").exists());
+    }
+
+    /// §D6 security review, BLOCKER — an absolute entry name must never land outside
+    /// `output_dir`. `zip::ZipEntry::enclosed_name()` (used below in place of the old manual
+    /// lexical loop) does not error on an absolute name; it re-roots it as a relative path
+    /// (`/tmp/owned` → `tmp/owned`), which is the crate's documented-safe behaviour and the
+    /// same one `plugin::extract_zip_bounded` already relies on. So the assertion that
+    /// matters is CONTAINMENT, not refusal: regardless of whether the call succeeds, the
+    /// absolute target must not have been touched.
+    ///
+    /// Before this fix, `probe_absolute_entry_writes_outside_output_dir` (removed once this
+    /// landed) reproduced the escape against the unpatched code: the entry's absolute name
+    /// replaced `output_dir` in `Path::join` outright, and the old lexical check's `_ => {}`
+    /// arm ignored the leading `RootDir` component, so the file was written straight to the
+    /// absolute path with `Ok(..)` returned.
+    #[tokio::test]
+    async fn refuses_to_let_an_absolute_entry_escape_output_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim");
+        std::fs::create_dir_all(&victim).unwrap();
+        let victim_target = victim.join("owned.txt");
+
+        let absolute_name = victim_target.to_str().unwrap().to_string();
+        let bytes = zip_bytes(&[(absolute_name.as_str(), b"pwned")]);
+        let zip_path = write_zip(dir.path(), "absolute.zip", &bytes);
+
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let _ = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap()).await;
+
+        assert!(
+            !victim_target.exists(),
+            "an absolute entry name must never write outside output_dir"
+        );
+    }
+
+    /// §D6 security review, BLOCKER — a symlink an attacker (or an earlier, unrelated
+    /// operation) left inside `output_dir` before this extraction runs must not be followed.
+    /// Every entry stages into a FRESH `TempDir` first, so the symlink is never on the path
+    /// anything writes to until the final commit — which is exactly where this is checked,
+    /// in `commit_staged_extraction`'s `reject_symlink_ancestors`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn refuses_to_extract_through_an_existing_symlink_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        // A directory OUTSIDE `out` that `out/sub` will point at.
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, out.join("sub")).unwrap();
+
+        let bytes = zip_bytes(&[("sub/pwned.txt", b"pwned")]);
+        let zip_path = write_zip(dir.path(), "symlink-escape.zip", &bytes);
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("writing beneath an existing symlink directory must be refused");
+
+        assert!(err.to_string().contains("existing symlink"), "{err}");
+        assert!(
+            !elsewhere.join("pwned.txt").exists(),
+            "the entry must not have been written through the symlink"
+        );
+        assert!(
+            std::fs::symlink_metadata(out.join("sub"))
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the pre-existing symlink itself must be left alone, not replaced"
+        );
+    }
+
+    /// §D6 security review, MAJOR — a refused archive must leave what was already at
+    /// `output_dir` untouched. Before staging, `File::create` opened (and so truncated) the
+    /// FINAL destination before the per-entry bound was even checked, so a bomb entry
+    /// sharing a name with an existing vault file overwrote it with `cap + 1` attacker bytes
+    /// and left it that way even though the call returned `Err`.
+    #[tokio::test]
+    async fn refusal_leaves_an_existing_file_at_the_same_name_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(out.join("bomb.bin"), b"the user's actual file").unwrap();
+
+        let bomb_body = vec![0u8; 2 * 1024 * 1024];
+        let bytes = zip_bytes(&[("bomb.bin", &bomb_body)]);
+        let zip_path = write_zip(dir.path(), "bomb-overwrite.zip", &bytes);
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("a bomb sharing a name with an existing file must still be refused");
+        assert!(err.to_string().contains("bytes allowed for its"), "{err}");
+
+        assert_eq!(
+            std::fs::read_to_string(out.join("bomb.bin")).unwrap(),
+            "the user's actual file",
+            "a refused archive must not have touched the file it tried to overwrite"
+        );
+        let residue: Vec<_> = std::fs::read_dir(&out).unwrap().collect();
+        assert_eq!(
+            residue.len(),
+            1,
+            "no partial extraction residue may remain alongside it: {residue:?}"
+        );
     }
 }
 
