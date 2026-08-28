@@ -7,14 +7,12 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.1 SVG Block NodeView — selected: textarea + preview, unselected: render +
 // hover toolbar (AI / copy / download PNG / fullscreen) + right-click menu.
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { useUIStore } from "../../stores/ui/ui";
-import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { logger } from "../../utils/logger";
 import {
   copySvgAsPng,
@@ -30,15 +28,12 @@ import {
   setSvgRootWidth,
 } from "../../utils/markdown/svg-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
-import {
-  isWysiwygVimModal,
-  updateNodeAttributesWithVim,
-  vimPluginKey,
-} from "../plugins/vim/vim-keys";
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { svgBlockEntryKey } from "./svg-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useMediaResize } from "./views/use-media-resize";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -72,33 +67,39 @@ export function SvgBlockView({
   codeRef.current = code;
   const updateAttributesRef = useRef(updateAttributes);
   updateAttributesRef.current = updateAttributes;
-  const editorRef = useRef(editor);
-  editorRef.current = editor;
 
-  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
-  const vimGateEditorRef = useRef(editor);
-  vimGateEditorRef.current = editor;
-  // A CLICK is an explicit request to edit and bypasses the modal gate;
-  // keyboard traversal does not. Consumed on entry, cleared on deselect.
-  const enterByClickRef = useRef(false);
-  // §12-⑩ — the editing UI follows ENTRY, not selection (the math block's
-  // model, f12e2af0). Traversal renders the PREVIEW plus a standby textarea;
-  // the session opens when that textarea gains focus. Ref mirror so event
-  // handlers see the current value.
-  const [isEditing, setIsEditing] = useState(false);
-  const isEditingRef = useRef(false);
-  // Save-on-deselect fires only after REAL typing in an edit session — a
-  // bare attrs-vs-local comparison writes a stale baseline back over attrs
-  // updated while unselected (S5/S6 review R2).
-  const editDirtyRef = useRef(false);
+  const onSaveBeforeExit = useCallback(() => {
+    if (localCode !== code) updateAttributes({ code: localCode });
+  }, [localCode, code, updateAttributes]);
 
-  // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection.
-  // Computed BEFORE the hooks and render-time values that key on it.
-  const editing =
-    selected &&
-    (isEditing ||
-      enterByClickRef.current ||
-      !isWysiwygVimModal(vimGateEditorRef.current.state));
+  const isEmpty = useCallback(() => !localCode, [localCode]);
+  const { deleteBlock, handleKeyDown } = useAtomBlockBehavior({
+    editor,
+    getPos,
+    nodeSize: node.nodeSize,
+    textareaRef,
+    onSaveBeforeExit,
+    keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
+    isEmpty,
+  });
+
+  // §298 vim entry-session state machine (entry latches, dirty tracking,
+  // editing derivation, Esc stair, preview click) — shared with mermaid/math
+  // block views, see use-atom-edit-session.ts.
+  const { editing, textareaProps, handlePreviewClick, markDirty, clearDirty } =
+    useAtomEditSession({
+      editor,
+      getPos,
+      selected,
+      textareaRef,
+      entryKey: svgBlockEntryKey,
+      localValueRef: localCodeRef,
+      committedValueRef: codeRef,
+      setLocalValue: setLocalCode,
+      commitValue: (value) => updateAttributes({ code: value }),
+      onSaveBeforeExit,
+      onKeyDown: handleKeyDown,
+    });
 
   // Sanitized SVG for the current source (cheap — pure string op).
   // localCode belongs to an edit SESSION — a traversal selection never opened
@@ -112,49 +113,6 @@ export function SvgBlockView({
     () => (fullscreenCode.trim() ? sanitizeSvg(fullscreenCode) : ""),
     [fullscreenCode],
   );
-
-  useEffect(() => {
-    if (!selected) {
-      // Save on DESELECT only — a modal (vim-cursor) selection must neither
-      // enter editing nor run this branch, which would restore a stale
-      // local value over fresh attrs (S5/S6 review).
-      // CONSUME dirty at every deselect — a completed session's flag must
-      // not survive into the next one (S5/S6 review R3).
-      const wasDirty = editDirtyRef.current;
-      editDirtyRef.current = false;
-      if (wasDirty && localCodeRef.current !== codeRef.current) {
-        updateAttributesRef.current({ code: localCodeRef.current });
-      }
-      enterByClickRef.current = false;
-      isEditingRef.current = false;
-      setIsEditing(false);
-    } else if (
-      enterByClickRef.current ||
-      !isWysiwygVimModal(vimGateEditorRef.current.state)
-    ) {
-      // §298 §12-⑩ — selection ALONE must not open the block while vim is
-      // modal (the math block's contract, pinned per block). A click sets the
-      // latch below; vim's `i` preflight focuses the STANDBY textarea and its
-      // focus event opens the session.
-      enterByClickRef.current = false;
-      editDirtyRef.current = false;
-      isEditingRef.current = true;
-      setIsEditing(true);
-      setLocalCode(codeRef.current);
-      const entryState = svgBlockEntryKey.getState(editorRef.current.state);
-      const enteredFromBelow = entryState?.direction === "below";
-      setTimeout(() => {
-        const ta = textareaRef.current;
-        if (!ta) return;
-        ta.focus();
-        const end = ta.value.length;
-        ta.setSelectionRange(
-          enteredFromBelow ? end : 0,
-          enteredFromBelow ? end : 0,
-        );
-      }, 0);
-    }
-  }, [selected]);
 
   // Auto-resize textarea — keyed on `editing`, NOT `selected`: the standby
   // element is 1px wide, and a measurement there writes an inflated inline
@@ -185,83 +143,6 @@ export function SvgBlockView({
     }
   }, [fullscreenCode, fullscreen]);
 
-  const onSaveBeforeExit = useCallback(() => {
-    if (localCode !== code) updateAttributes({ code: localCode });
-  }, [localCode, code, updateAttributes]);
-
-  const isEmpty = useCallback(() => !localCode, [localCode]);
-  const { deleteBlock, handleKeyDown } = useAtomBlockBehavior({
-    editor,
-    getPos,
-    nodeSize: node.nodeSize,
-    textareaRef,
-    onSaveBeforeExit,
-    keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
-    isEmpty,
-  });
-
-  // §12-⑩ entry signal — vim's `i` preflight focuses the standby textarea;
-  // the click path's scheduled focus arrives here too. Opens the session once.
-  const handleTextareaFocus = useCallback(() => {
-    if (isEditingRef.current) return;
-    isEditingRef.current = true;
-    editDirtyRef.current = false;
-    setLocalCode(codeRef.current);
-    setIsEditing(true);
-  }, []);
-
-  // §298 Esc stair — while vim owns the surface, Esc lands normal mode and
-  // the block's NodeSelection in ONE transaction, then hands focus back (see
-  // math-block-view for the surface-insert entry that makes atomicity
-  // necessary). Without vim, exitBlock("down") stays as it was.
-  const handleTextareaKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-      if (
-        e.key === "Escape" &&
-        vimPluginKey.getState(editorRef.current.state)?.enabled
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        onSaveBeforeExit();
-        enterByClickRef.current = false;
-        editDirtyRef.current = false;
-        isEditingRef.current = false;
-        setIsEditing(false);
-        const editorNow = editorRef.current;
-        const pos = getPos();
-        const tr = editorNow.state.tr;
-        if (typeof pos === "number") {
-          tr.setSelection(NodeSelection.create(tr.doc, pos));
-        }
-        tr.setMeta(vimPluginKey, { mode: "normal", type: "setMode" });
-        editorNow.view.dispatch(tr);
-        focusEditorView(editorNow.view);
-        return;
-      }
-      handleKeyDown(e);
-    },
-    [getPos, handleKeyDown, onSaveBeforeExit],
-  );
-
-  const handlePreviewClick = useCallback(() => {
-    const pos = getPos();
-    if (typeof pos !== "number") return;
-    // §12-⑩ modal click = NAVIGATION (issue 408, UX decision): land the
-    // outline exactly like j/k and stop — `i` is the entry. Non-modal (insert
-    // mode, vim off) keeps the click entry below.
-    if (isWysiwygVimModal(editorRef.current.state)) {
-      editorRef.current.commands.setNodeSelection(pos);
-      return;
-    }
-    // Set BEFORE the selection change: the entry effect consumes the latch on
-    // the render this dispatch causes.
-    enterByClickRef.current = true;
-    editor.commands.setNodeSelection(pos);
-    // Already-selected standby block: the selection does not change, so no
-    // effect will run — the standby textarea is the entry instead.
-    textareaRef.current?.focus();
-  }, [editor, getPos]);
-
   const openEditFullscreen = useCallback((seed: string) => {
     setFullscreenCode(seed);
     setFullscreen(true);
@@ -274,9 +155,9 @@ export function SvgBlockView({
     // The direct commit ENDS the textarea session — a leftover dirty flag
     // would make the next deselect re-save this (by then possibly stale)
     // local value over an Undo or external update (review S5/S6-R4).
-    editDirtyRef.current = false;
+    clearDirty();
     setFullscreen(false);
-  }, [fullscreenCode, editor, getPos]);
+  }, [fullscreenCode, editor, getPos, clearDirty]);
 
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
@@ -474,7 +355,7 @@ export function SvgBlockView({
         <textarea
           // Standby must not be a Tab stop nor AT-visible; programmatic
           // .focus() (vim's preflight) works regardless of tabIndex -1.
-          aria-hidden={editing ? undefined : true}
+          {...textareaProps}
           autoCapitalize="off"
           autoCorrect="off"
           className={
@@ -485,16 +366,13 @@ export function SvgBlockView({
           data-gramm="false"
           data-vim-suspend=""
           onChange={(e) => {
-            editDirtyRef.current = true;
+            markDirty();
             setLocalCode(e.target.value);
           }}
-          onFocus={handleTextareaFocus}
-          onKeyDown={handleTextareaKeyDown}
           placeholder='<svg viewBox="0 0 100 100">...</svg>'
           ref={textareaRef}
           rows={1}
           spellCheck={false}
-          tabIndex={editing ? 0 : -1}
           value={localCode}
         />
       )}

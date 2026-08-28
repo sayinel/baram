@@ -1,13 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
-import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import {
   copyMermaidPng,
   copyMermaidSource,
@@ -21,16 +19,13 @@ import {
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
-import {
-  isWysiwygVimModal,
-  updateNodeAttributesWithVim,
-  vimPluginKey,
-} from "../plugins/vim/vim-keys";
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { onFirstVisible } from "./views/lazy-visible";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useMediaResize } from "./views/use-media-resize";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -69,22 +64,6 @@ export function MermaidBlockView({
 
   // Defer rendering until the block is near the viewport (§perf-large-file)
   const [isVisible, setIsVisible] = useState(false);
-  // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
-  const vimGateEditorRef = useRef(editor);
-  vimGateEditorRef.current = editor;
-  // A CLICK is an explicit request to edit and bypasses the modal gate;
-  // keyboard traversal does not. Consumed on entry, cleared on deselect.
-  const enterByClickRef = useRef(false);
-  // §12-⑩ — the editing UI follows ENTRY, not selection (the math block's
-  // model, f12e2af0). Traversal renders the PREVIEW plus a standby textarea;
-  // the session opens when that textarea gains focus. Ref mirror so event
-  // handlers see the current value.
-  const [isEditing, setIsEditing] = useState(false);
-  const isEditingRef = useRef(false);
-  // Save-on-deselect fires only after REAL typing in an edit session — a
-  // bare attrs-vs-local comparison writes a stale baseline back over attrs
-  // updated while unselected (S5/S6 review R2).
-  const editDirtyRef = useRef(false);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -99,10 +78,6 @@ export function MermaidBlockView({
   localCodeRef.current = localCode;
   const codeRef = useRef(code);
   codeRef.current = code;
-  const updateAttributesRef = useRef(updateAttributes);
-  updateAttributesRef.current = updateAttributes;
-  const editorRef = useRef(editor);
-  editorRef.current = editor;
 
   // Render Mermaid SVG (async — dynamic import)
   useEffect(() => {
@@ -111,7 +86,10 @@ export function MermaidBlockView({
     // opened one, so its preview keeps rendering the attribute. Ref read, not
     // a dep: at session start localCode === code, and the divergence (typing)
     // already re-runs this via the localCode dep (see math-block-view).
-    const sessionOpen = selected && isEditingRef.current;
+    // sessionOpenRef comes from useAtomEditSession below — the closure only
+    // reads it once this effect actually runs (after render), by which time
+    // the hook call has already assigned it.
+    const sessionOpen = selected && sessionOpenRef.current;
     const source = sessionOpen ? localCode : code;
     if (!source.trim()) {
       setSvgHtml("");
@@ -148,61 +126,56 @@ export function MermaidBlockView({
       cancelled = true;
       clearTimeout(timer);
     };
+    // sessionOpenRef can't be listed: useAtomEditSession (which returns it)
+    // is called further down, after this effect, to keep this render effect
+    // registered before the hook's own entry effect (see use-atom-edit-session.ts
+    // JSDoc) — the exact ordering the original inline "selected" effect had.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVisible, localCode, code, selected]);
 
-  // Sync local code and focus textarea when entering edit mode
-  useEffect(() => {
-    if (!selected) {
-      // Save on deselect
-      // CONSUME dirty at every deselect — a completed session's flag must
-      // not survive into the next one (S5/S6 review R3).
-      const wasDirty = editDirtyRef.current;
-      editDirtyRef.current = false;
-      if (wasDirty && localCodeRef.current !== codeRef.current) {
-        updateAttributesRef.current({ code: localCodeRef.current });
-      }
-      setShowTemplates(false);
-      enterByClickRef.current = false;
-      isEditingRef.current = false;
-      setIsEditing(false);
-    } else if (
-      enterByClickRef.current ||
-      !isWysiwygVimModal(vimGateEditorRef.current.state)
-    ) {
-      // §298 §12-⑩ — selection ALONE must not open the block while vim is
-      // modal (the math block's contract, pinned per block). A click sets the
-      // latch below; vim's `i` preflight focuses the STANDBY textarea and its
-      // focus event opens the session.
-      enterByClickRef.current = false;
-      editDirtyRef.current = false;
-      isEditingRef.current = true;
-      setIsEditing(true);
-      setLocalCode(codeRef.current);
-      const entryState = mermaidBlockEntryKey.getState(editorRef.current.state);
-      const enteredFromBelow = entryState?.direction === "below";
-
-      setTimeout(() => {
-        const ta = textareaRef.current;
-        if (!ta) return;
-        ta.focus();
-        if (enteredFromBelow) {
-          ta.setSelectionRange(ta.value.length, ta.value.length);
-        } else {
-          ta.setSelectionRange(0, 0);
-        }
-      }, 0);
+  // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
+  const onSaveBeforeExit = useCallback(() => {
+    if (localCode !== code) {
+      updateAttributes({ code: localCode });
     }
-  }, [selected]);
+  }, [localCode, code, updateAttributes]);
 
-  // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection.
-  // Computed BEFORE the hooks that key on it. Single path keeps the textarea
-  // element alive across the flip, so a preflight focus never lands on a node
-  // React is about to replace (see math-block-view for the full story).
-  const editing =
-    selected &&
-    (isEditing ||
-      enterByClickRef.current ||
-      !isWysiwygVimModal(vimGateEditorRef.current.state));
+  const isEmpty = useCallback(() => !localCode, [localCode]);
+  const { deleteBlock, handleKeyDown } = useAtomBlockBehavior({
+    editor,
+    getPos,
+    nodeSize: node.nodeSize,
+    textareaRef,
+    onSaveBeforeExit,
+    keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
+    isEmpty,
+  });
+
+  // §298 vim entry-session state machine (entry latches, dirty tracking,
+  // editing derivation, Esc stair, preview click) — shared with svg/math
+  // block views, see use-atom-edit-session.ts. onDeselect closes the
+  // template dropdown, the one real per-view difference found in review.
+  const {
+    editing,
+    sessionOpenRef,
+    textareaProps,
+    handlePreviewClick,
+    markDirty,
+    clearDirty,
+  } = useAtomEditSession({
+    editor,
+    getPos,
+    selected,
+    textareaRef,
+    entryKey: mermaidBlockEntryKey,
+    localValueRef: localCodeRef,
+    committedValueRef: codeRef,
+    setLocalValue: setLocalCode,
+    commitValue: (value) => updateAttributes({ code: value }),
+    onSaveBeforeExit,
+    onKeyDown: handleKeyDown,
+    onDeselect: () => setShowTemplates(false),
+  });
 
   // Auto-resize textarea — keyed on `editing`, NOT `selected`: the standby
   // element is 1px wide, and a measurement there writes an inflated inline
@@ -289,88 +262,6 @@ export function MermaidBlockView({
     }
   }, [fullscreenCode, fullscreen]);
 
-  // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
-  const onSaveBeforeExit = useCallback(() => {
-    if (localCode !== code) {
-      updateAttributes({ code: localCode });
-    }
-  }, [localCode, code, updateAttributes]);
-
-  const isEmpty = useCallback(() => !localCode, [localCode]);
-  const { deleteBlock, handleKeyDown } = useAtomBlockBehavior({
-    editor,
-    getPos,
-    nodeSize: node.nodeSize,
-    textareaRef,
-    onSaveBeforeExit,
-    keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
-    isEmpty,
-  });
-
-  // §12-⑩ entry signal — vim's `i` preflight focuses the standby textarea;
-  // the click path's scheduled focus arrives here too. Opens the session once.
-  const handleTextareaFocus = useCallback(() => {
-    if (isEditingRef.current) return;
-    isEditingRef.current = true;
-    editDirtyRef.current = false;
-    setLocalCode(codeRef.current);
-    setIsEditing(true);
-  }, []);
-
-  // §298 Esc stair — while vim owns the surface, Esc lands normal mode and
-  // the block's NodeSelection in ONE transaction, then hands focus back
-  // (entering from surface insert mode leaves vim in insert, and a latch-only
-  // exit would leave an editable view over a live NodeSelection — the state
-  // where the next keystroke replaces the block). Without vim,
-  // exitBlock("down") stays as it was.
-  const handleTextareaKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-      if (
-        e.key === "Escape" &&
-        vimPluginKey.getState(editorRef.current.state)?.enabled
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        onSaveBeforeExit();
-        enterByClickRef.current = false;
-        editDirtyRef.current = false;
-        isEditingRef.current = false;
-        setIsEditing(false);
-        const editorNow = editorRef.current;
-        const pos = getPos();
-        const tr = editorNow.state.tr;
-        if (typeof pos === "number") {
-          tr.setSelection(NodeSelection.create(tr.doc, pos));
-        }
-        tr.setMeta(vimPluginKey, { mode: "normal", type: "setMode" });
-        editorNow.view.dispatch(tr);
-        focusEditorView(editorNow.view);
-        return;
-      }
-      handleKeyDown(e);
-    },
-    [getPos, handleKeyDown, onSaveBeforeExit],
-  );
-
-  const handlePreviewClick = useCallback(() => {
-    const pos = getPos();
-    if (typeof pos !== "number") return;
-    // §12-⑩ modal click = NAVIGATION (issue 408, UX decision): land the
-    // outline exactly like j/k and stop — `i` is the entry. Non-modal (insert
-    // mode, vim off) keeps the click entry below.
-    if (isWysiwygVimModal(editorRef.current.state)) {
-      editorRef.current.commands.setNodeSelection(pos);
-      return;
-    }
-    // Set BEFORE the selection change: the entry effect consumes the latch on
-    // the render this dispatch causes.
-    enterByClickRef.current = true;
-    editor.commands.setNodeSelection(pos);
-    // Already-selected standby block: the selection does not change, so no
-    // effect will run — the standby textarea is the entry instead.
-    textareaRef.current?.focus();
-  }, [editor, getPos]);
-
   // §5.5 resize + caption — stored as node attrs; the transformer serializes them
   // into a `%% baram-meta` comment line in the fence (mermaid ignores it) so they
   // round-trip while the editable `code` stays a pure diagram.
@@ -388,15 +279,18 @@ export function MermaidBlockView({
     [updateAttributes],
   );
 
-  const applyTemplate = useCallback((key: string) => {
-    // Template application IS an edit — it must survive deselect (R3).
-    editDirtyRef.current = true;
-    const template = MERMAID_TEMPLATES[key];
-    if (!template) return;
-    setLocalCode(template.code);
-    setShowTemplates(false);
-    setTimeout(() => textareaRef.current?.focus(), 0);
-  }, []);
+  const applyTemplate = useCallback(
+    (key: string) => {
+      // Template application IS an edit — it must survive deselect (R3).
+      markDirty();
+      const template = MERMAID_TEMPLATES[key];
+      if (!template) return;
+      setLocalCode(template.code);
+      setShowTemplates(false);
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    },
+    [markDirty],
+  );
 
   const closeFullscreen = useCallback(() => {
     // Save fullscreen changes back
@@ -406,9 +300,9 @@ export function MermaidBlockView({
     // The direct commit ENDS the textarea session — a leftover dirty flag
     // would make the next deselect re-save this (by then possibly stale)
     // local value over an Undo or external update (review S5/S6-R4).
-    editDirtyRef.current = false;
+    clearDirty();
     setFullscreen(false);
-  }, [fullscreenCode, editor, getPos]);
+  }, [fullscreenCode, editor, getPos, clearDirty]);
 
   const detectedType = detectMermaidType(localCode);
 
@@ -633,7 +527,7 @@ export function MermaidBlockView({
         <textarea
           // Standby must not be a Tab stop nor AT-visible; programmatic
           // .focus() (vim's preflight) works regardless of tabIndex -1.
-          aria-hidden={editing ? undefined : true}
+          {...textareaProps}
           autoCapitalize="off"
           autoCorrect="off"
           className={
@@ -644,16 +538,13 @@ export function MermaidBlockView({
           data-gramm="false"
           data-vim-suspend=""
           onChange={(e) => {
-            editDirtyRef.current = true;
+            markDirty();
             setLocalCode(e.target.value);
           }}
-          onFocus={handleTextareaFocus}
-          onKeyDown={handleTextareaKeyDown}
           placeholder="flowchart LR&#10;  A --> B"
           ref={textareaRef}
           rows={1}
           spellCheck={false}
-          tabIndex={editing ? 0 : -1}
           value={localCode}
         />
       )}
