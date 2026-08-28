@@ -351,6 +351,27 @@ describe("§308 방향 C — 아젠다 우선순위는 .task-chip을 공유하�
     }
   });
 
+  it("감춘 우선순위 라벨이 행의 flex 흐름에서 빠져 있다", () => {
+    // ‼️ `.visually-hidden`은 1px로 잘릴 뿐 **흐름에 남는** 관용구다(contenteditable
+    // 캐럿 때문에 base.css가 일부러 그렇게 둔다). 그 스팬이 `.task-row`의 flex 아이템이
+    // 되면 1px + `gap`이 제목 앞에 붙고, 우선순위가 있는 행에서만 붙으므로 목록의 왼쪽
+    // 선이 행마다 어긋난다 — 실제로 사용자가 잡아낸 결함이다.
+    const row = /\.task-row\s*\{([^}]*)\}/.exec(tasksCss)?.[1] ?? "";
+    expect(row, "행이 flex가 아니면 이 규칙의 전제가 사라진다").toMatch(
+      /display:\s*flex/,
+    );
+    expect(
+      row,
+      "gap이 없으면 비용이 1px뿐이라 이 테스트가 무의미해진다",
+    ).toMatch(/gap:/);
+
+    const hidden = /\.task-row\s*>\s*\.visually-hidden\s*\{([^}]*)\}/.exec(
+      tasksCss,
+    )?.[1];
+    expect(hidden, "no .task-row > .visually-hidden rule").toBeDefined();
+    expect(hidden).toMatch(/position:\s*absolute/);
+  });
+
   it("네 레일의 길이가 같다 — 왼쪽 가장자리가 행마다 흔들리지 않는다", () => {
     // 높이로 단계를 나르던 초판을 되돌린 결정이다(사용자 피드백). 되살아나면 목록의
     // 왼쪽 선이 다시 들쭉날쭉해지므로, 단계별 규칙에 세로 크기가 없다는 것을 고정한다.

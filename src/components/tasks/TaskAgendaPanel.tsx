@@ -7,6 +7,7 @@ import type { TaskBucket } from "../../utils/tasks/task-buckets";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
+import { Archive, CalendarArrowUp, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
@@ -218,7 +219,7 @@ export function TaskAgendaPanel() {
               title={`Reschedule ${groups.overdue.length} overdue task(s) to today`}
               type="button"
             >
-              ⏩
+              <CalendarArrowUp size={14} strokeWidth={1.5} />
             </button>
           )}
           {/* §312.1 배수구는 범위가 "태스크 홈"일 때만 나타난다 — 그 규칙을 UI에
@@ -241,7 +242,7 @@ export function TaskAgendaPanel() {
               )}
               type="button"
             >
-              🗄️
+              <Archive size={14} strokeWidth={1.5} />
             </button>
           )}
           <button
@@ -251,7 +252,7 @@ export function TaskAgendaPanel() {
             title="Refresh"
             type="button"
           >
-            ⟳
+            <RefreshCw size={14} strokeWidth={1.5} />
           </button>
         </div>
 

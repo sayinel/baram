@@ -8,6 +8,8 @@ import type { EditorTab } from "../../../stores/editor/editor";
 
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // listDir/readFile 스텁이 필요한 이유: TaskAgendaPanel → useZettelIndexStore →
@@ -98,6 +100,24 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
     render(<TaskAgendaPanel />);
 
     expect(screen.queryByLabelText("Archive completed tasks")).toBeNull();
+  });
+
+  it("꺼진 버튼은 꺼져 보인다 — 이 결정 전체가 그 한 줄에 걸려 있다", () => {
+    // 대상이 0일 때 감추는 대신 흐리게 두기로 한 것이 §312.1 결정 7인데, `disabled`가
+    // 클릭만 막고 화면이 그대로면 사용자에게는 "눌러도 아무 일이 없는 버튼"이 된다 —
+    // 감췄을 때와 똑같이 고장과 구별되지 않는다.
+    //
+    // jsdom에는 스타일시트가 없어 계산된 스타일을 볼 수 없으므로 규칙 자체를 읽는다
+    // (`task-field-chips-render.test.ts`와 같은 이유).
+    const base = readFileSync(
+      join(process.cwd(), "src/styles/base.css"),
+      "utf8",
+    );
+    const rule = /\.icon-btn:disabled\s*\{([^}]*)\}/.exec(base)?.[1];
+    expect(rule, "no .icon-btn:disabled rule in base.css").toBeDefined();
+    // ‼️ `color`가 아니라 `opacity`여야 한다. 아이콘이 이모지였을 때 글자색이 듣지
+    // 않아 꺼진 상태가 드러나지 않았고, 그것이 이 결함의 원래 모양이었다.
+    expect(rule).toMatch(/opacity:\s*0?\.\d+/);
   });
 
   it("태스크 홈이 없으면 버튼이 그 사실을 말한다", () => {

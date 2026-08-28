@@ -18,6 +18,25 @@
   gap: 4px;
 }
 
+/* 헤더의 액션 아이콘은 앱의 아이콘 언어(lucide SVG)를 쓴다 — 종전에는 이모지(🗄️ ⏩)와
+   텍스트 글리프(⟳)가 한 줄에 섞여 있었고, 이모지만 유일하게 색과 무게를 스스로 가져
+   나머지와 어울리지 않았다. 크기·획 두께는 사이드바·Zettel 패널과 같은 값이다.
+
+   ‼️ 아이콘이 SVG가 되면서 `.icon-btn:disabled`의 `opacity`가 실제로 눈에 보인다.
+   이모지는 `color`를 무시해 꺼진 상태가 거의 드러나지 않았고, 그 탓에 §312.1 배수구가
+   "눌러도 되는 것처럼 보이는 꺼진 버튼"이 되어 있었다. */
+.task-panel-search .icon-btn {
+  flex-shrink: 0;
+  padding: 3px;
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+}
+
+.task-panel-search .icon-btn:not(:disabled):hover {
+  color: var(--color-text-default);
+  background: var(--color-bg-hover);
+}
+
 .task-panel-filter {
   flex: 1;
   min-width: 0;
@@ -178,6 +197,18 @@
    낱말 라벨은 `.visually-hidden`으로 DOM에 남아 있다(TaskBucketList) — `::before`는
    보조기술에 존재하지 않으므로 그 스팬이 없으면 우선순위가 통째로 사라진다. 색이
    유일한 시각 채널이므로 그 스팬은 선택이 아니라 요건이다. */
+
+/* ‼️ 우선순위 낱말 라벨은 **흐름에서 뺀다.** `.visually-hidden`은 1px로 잘릴 뿐 흐름에
+   남는 관용구이고(contenteditable 캐럿 때문에 base.css가 일부러 그렇게 둔다), 그 스팬이
+   `.task-row`의 flex 아이템이 되면 1px + `gap` 6px = 7px가 제목 앞에 붙는다. 우선순위가
+   있는 행에서만 붙으므로 목록의 왼쪽 선이 행마다 어긋난다 — 사용자가 본 그 빈 공간이다.
+
+   여기서는 절대 위치가 안전하다: 이 스팬은 contenteditable 밖에 있고 캐럿이 들어갈 수
+   없다. `.task-row`가 이미 `position: relative`(레일 때문에)라 기준도 있다. */
+.task-row > .visually-hidden {
+  position: absolute;
+}
+
 .task-row[data-priority]::before {
   position: absolute;
   top: 2px;
