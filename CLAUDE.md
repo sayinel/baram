@@ -67,8 +67,9 @@ baram/
 ├── dev/                    # 내부 개발 문서 (public 배포 제외) — design/ plans/ impl-notes/
 │                           #   superpowers/ features/ backlog.md next-steps.md progress.json
 ├── tests/                  # E2E (Playwright)
-├── skills/                 # Claude Code Skills
-└── .claude/commands/       # 슬래시 커맨드
+├── skills/                 # Claude Code Skills (원주인 로컬 전용 — 의도적 추적 해제, 이 머신에 없어도 정상)
+├── .claude/commands/       # 슬래시 커맨드 (동상 — dev/와 같은 부류)
+└── .claude/docs/           # 상황별 지침 (CI 계약·성능 기준·설계 § 지도 — 해당 작업 전 필독)
 ```
 
 ## 코딩 컨벤션
