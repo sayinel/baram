@@ -92,6 +92,10 @@ mod channels;
 mod label_map;
 mod rate_limit;
 mod staging;
+// `pub` (not `mod`) — unlike the sibling submodules above, commands::plugin_cmd
+// (outside this module's descendant tree) needs to reach vault_path's pub(crate)
+// items directly (§1 split review).
+pub mod vault_path;
 // Re-exported for the `plugin_call` broker + sandbox register/deregister
 // commands (Phase 3a Task 2, src-tauri/src/commands/plugin_cmd.rs).
 pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
@@ -2171,871 +2175,889 @@ pub fn read_manifest_at(folder: &Path) -> Result<PluginManifest, PluginError> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-    use std::time::Instant;
+    // §2 test grouping (P1): the flat mod tests below was one 2,866-line file with
+    // ~130 functions. Grouped into submodules by what each cluster actually exercises;
+    // production code and pub surface are unchanged — this is a pure test reorganization.
 
-    use super::*;
+    mod validation_tests {
+        use super::super::*;
 
-    /// §260 3c-2b — the bundle read backing `SourceRead`. `main` is manifest-supplied
-    /// and therefore untrusted: it must not be able to name a file outside the
-    /// plugin's own directory, or the op would become the file-read capability that
-    /// dropping `asset:` exists to remove.
-    #[tokio::test]
-    async fn read_bundle_in_reads_own_entry_and_refuses_escapes() {
-        let base = std::env::temp_dir().join(format!("baram-src-{}", std::process::id()));
-        let plugin = base.join("plugin-a");
-        std::fs::create_dir_all(plugin.join("nested")).unwrap();
-        std::fs::write(
-            plugin.join("index.mjs"),
-            "export const activate = () => {};",
-        )
-        .unwrap();
-        std::fs::write(plugin.join("nested").join("deep.mjs"), "// deep").unwrap();
-        std::fs::write(base.join("secret.mjs"), "// another plugin's code").unwrap();
+        /// §260 3c-2b — the bundle read backing `SourceRead`. `main` is manifest-supplied
+        /// and therefore untrusted: it must not be able to name a file outside the
+        /// plugin's own directory, or the op would become the file-read capability that
+        /// dropping `asset:` exists to remove.
+        #[tokio::test]
+        async fn read_bundle_in_reads_own_entry_and_refuses_escapes() {
+            let base = std::env::temp_dir().join(format!("baram-src-{}", std::process::id()));
+            let plugin = base.join("plugin-a");
+            std::fs::create_dir_all(plugin.join("nested")).unwrap();
+            std::fs::write(
+                plugin.join("index.mjs"),
+                "export const activate = () => {};",
+            )
+            .unwrap();
+            std::fs::write(plugin.join("nested").join("deep.mjs"), "// deep").unwrap();
+            std::fs::write(base.join("secret.mjs"), "// another plugin's code").unwrap();
 
-        // The declared entry, and a nested file inside the plugin, are both fine.
-        assert!(read_bundle_in(&plugin, "index.mjs")
-            .await
-            .unwrap()
-            .contains("activate"));
-        assert!(read_bundle_in(&plugin, "nested/deep.mjs").await.is_ok());
+            // The declared entry, and a nested file inside the plugin, are both fine.
+            assert!(read_bundle_in(&plugin, "index.mjs")
+                .await
+                .unwrap()
+                .contains("activate"));
+            assert!(read_bundle_in(&plugin, "nested/deep.mjs").await.is_ok());
 
-        // Traversal out of the plugin dir is refused, as is a missing entry.
-        let escaped = read_bundle_in(&plugin, "../secret.mjs").await;
-        assert!(escaped.is_err(), "traversal must be refused: {escaped:?}");
-        assert!(read_bundle_in(&plugin, "nope.mjs").await.is_err());
+            // Traversal out of the plugin dir is refused, as is a missing entry.
+            let escaped = read_bundle_in(&plugin, "../secret.mjs").await;
+            assert!(escaped.is_err(), "traversal must be refused: {escaped:?}");
+            assert!(read_bundle_in(&plugin, "nope.mjs").await.is_err());
 
-        std::fs::remove_dir_all(&base).ok();
+            std::fs::remove_dir_all(&base).ok();
+        }
+
+        /// §260 3c-2b security review (F2) — the bundle is attacker-shipped and crosses
+        /// IPC into the sandbox's heap on every activate, so an oversized entry must be
+        /// refused. Checked by metadata, so the refusal never allocates the file.
+        #[tokio::test]
+        async fn read_bundle_in_refuses_an_oversized_entry() {
+            let base = std::env::temp_dir().join(format!("baram-big-{}", std::process::id()));
+            std::fs::create_dir_all(&base).unwrap();
+            let big = vec![b'x'; (MAX_BUNDLE_BYTES + 1) as usize];
+            std::fs::write(base.join("big.mjs"), &big).unwrap();
+            std::fs::write(base.join("ok.mjs"), "// small").unwrap();
+
+            let err = read_bundle_in(&base, "big.mjs")
+                .await
+                .expect_err("oversized must be refused");
+            assert!(err.contains("over the"), "unexpected error: {err}");
+            assert!(read_bundle_in(&base, "ok.mjs").await.is_ok());
+
+            std::fs::remove_dir_all(&base).ok();
+        }
+
+        /// §260 3c-3 — the live smoke fixture is loaded through `plugin_add_dev_folder`,
+        /// which calls `read_manifest_at`, which applies the RUST validator (a separate
+        /// list from the TS one: its own capability allowlist and id rules). The TS test
+        /// beside the fixture cannot see those, so a fixture that passes there could still
+        /// fail at "Add dev folder" — during a scarce user-run smoke.
+        #[test]
+        fn the_smoke_fixture_loads_through_the_rust_dev_folder_path() {
+            let dir = Path::new(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../examples/plugins/sandbox-smoke"
+            ));
+            let manifest = read_manifest_at(dir).expect("the smoke fixture must load");
+            assert_eq!(manifest.id, "baram-sandbox-smoke");
+            assert_eq!(manifest.trust, Some(PluginTrust::Sandboxed));
+            // The entry must exist on disk too: the manifest naming a missing file is the
+            // other way this fails, and it fails later — inside the sandbox, at activate.
+            assert!(
+                dir.join(&manifest.main).is_file(),
+                "manifest.main must point at a real file"
+            );
+        }
+
+        /// §260 3c-2c — the extracted helper keeps the stat-before-read rule for the
+        /// brokered `files` read too, and reports the size it refused (so a plugin author
+        /// can tell "too big" from "unreadable").
+        #[tokio::test]
+        async fn read_text_capped_refuses_over_cap_and_admits_at_cap() {
+            let base = std::env::temp_dir().join(format!("baram-capped-{}", std::process::id()));
+            std::fs::create_dir_all(&base).unwrap();
+            let exact = base.join("exact.md");
+            std::fs::write(&exact, "12345").unwrap();
+
+            assert_eq!(read_text_capped(&exact, 5).await.unwrap(), "12345"); // == cap → admitted
+            let err = read_text_capped(&exact, 4)
+                .await
+                .expect_err("one over the cap must be refused");
+            assert!(err.contains("is 5 bytes"), "unexpected error: {err}");
+            assert!(
+                err.contains("over the 4-byte limit"),
+                "unexpected error: {err}"
+            );
+            // A missing file is a distinct failure, not "too large".
+            let missing = read_text_capped(&base.join("nope.md"), 5)
+                .await
+                .expect_err("missing must fail");
+            assert!(
+                missing.contains("cannot be measured"),
+                "unexpected: {missing}"
+            );
+
+            std::fs::remove_dir_all(&base).ok();
+        }
+
+        /// §260 3c-2a final pass (Q3) — two callers want OPPOSITE comparisons off this
+        /// helper (`>` for the report cap, `>=` for the 8 KiB channel-queue threshold,
+        /// hence its `threshold - 1`), so pin the boundary here rather than leaving the
+        /// `-1` safe only by careful reading. A JSON string is `len + 2` bytes.
+        #[test]
+        fn serialized_len_capped_admits_exactly_cap_and_refuses_one_over() {
+            let five = serde_json::Value::String("xyz".to_string()); // "xyz" → 5 bytes
+            assert_eq!(serialized_len_capped(&five, 5), Some(5)); // == cap → admitted
+            assert_eq!(serialized_len_capped(&five, 6), Some(5)); // under cap
+            assert_eq!(serialized_len_capped(&five, 4), None); // one over → refused
+        }
+
+        #[test]
+        fn test_validate_manifest_valid() {
+            let manifest = PluginManifest {
+                id: "baram-word-count".to_string(),
+                name: "Word Count".to_string(),
+                description: "Counts words".to_string(),
+                version: "1.0.0".to_string(),
+                author: "Test".to_string(),
+                license: "MIT".to_string(),
+                main: "index.mjs".to_string(),
+                engines: EngineRequirement {
+                    baram: ">=0.2.0".to_string(),
+                },
+                capabilities: vec!["editor:readonly".to_string(), "statusbar".to_string()],
+                dependencies: vec![],
+                tiptap_extensions: vec![],
+                repository: None,
+                homepage: None,
+                icon: None,
+                keywords: vec![],
+                trust: None,
+                contributions: None,
+            };
+            assert!(validate_manifest(&manifest).is_ok());
+        }
+
+        #[test]
+        fn test_validate_manifest_empty_id() {
+            let manifest = PluginManifest {
+                id: "".to_string(),
+                name: "Test".to_string(),
+                description: "".to_string(),
+                version: "1.0.0".to_string(),
+                author: "".to_string(),
+                license: "MIT".to_string(),
+                main: "index.mjs".to_string(),
+                engines: EngineRequirement {
+                    baram: ">=0.2.0".to_string(),
+                },
+                capabilities: vec![],
+                dependencies: vec![],
+                tiptap_extensions: vec![],
+                repository: None,
+                homepage: None,
+                icon: None,
+                keywords: vec![],
+                trust: None,
+                contributions: None,
+            };
+            assert!(validate_manifest(&manifest).is_err());
+        }
+
+        #[test]
+        fn test_validate_manifest_invalid_capability() {
+            let manifest = PluginManifest {
+                id: "test-plugin".to_string(),
+                name: "Test".to_string(),
+                description: "".to_string(),
+                version: "1.0.0".to_string(),
+                author: "".to_string(),
+                license: "MIT".to_string(),
+                main: "index.mjs".to_string(),
+                engines: EngineRequirement {
+                    baram: ">=0.2.0".to_string(),
+                },
+                capabilities: vec!["dangerous-capability".to_string()],
+                dependencies: vec![],
+                tiptap_extensions: vec![],
+                repository: None,
+                homepage: None,
+                icon: None,
+                keywords: vec![],
+                trust: None,
+                contributions: None,
+            };
+            assert!(validate_manifest(&manifest).is_err());
+        }
+
+        #[test]
+        fn test_validate_manifest_invalid_id_format() {
+            let manifest = PluginManifest {
+                id: "Test_Plugin".to_string(),
+                name: "Test".to_string(),
+                description: "".to_string(),
+                version: "1.0.0".to_string(),
+                author: "".to_string(),
+                license: "MIT".to_string(),
+                main: "index.mjs".to_string(),
+                engines: EngineRequirement {
+                    baram: ">=0.2.0".to_string(),
+                },
+                capabilities: vec![],
+                dependencies: vec![],
+                tiptap_extensions: vec![],
+                repository: None,
+                homepage: None,
+                icon: None,
+                keywords: vec![],
+                trust: None,
+                contributions: None,
+            };
+            assert!(validate_manifest(&manifest).is_err());
+        }
+
+        #[test]
+        fn test_hex_sha256() {
+            let hash = hex_sha256(b"hello");
+            assert_eq!(
+                hash,
+                "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+            );
+        }
+
+        #[test]
+        fn test_normalize_dev_list_add_dedups() {
+            let list = vec!["/a".to_string(), "/b".to_string()];
+            let out = normalize_dev_list(&list, Some("/a"), None);
+            assert_eq!(out, vec!["/a".to_string(), "/b".to_string()]); // no dupe
+            let out2 = normalize_dev_list(&list, Some("/c"), None);
+            assert_eq!(
+                out2,
+                vec!["/a".to_string(), "/b".to_string(), "/c".to_string()]
+            );
+        }
+
+        #[test]
+        fn test_normalize_dev_list_remove() {
+            let list = vec!["/a".to_string(), "/b".to_string()];
+            let out = normalize_dev_list(&list, None, Some("/a"));
+            assert_eq!(out, vec!["/b".to_string()]);
+        }
+
+        #[test]
+        fn test_read_manifest_at_missing() {
+            let tmp = tempfile::tempdir().unwrap();
+            assert!(read_manifest_at(tmp.path()).is_err());
+        }
+
+        #[test]
+        fn test_read_manifest_at_valid() {
+            let tmp = tempfile::tempdir().unwrap();
+            let json = r#"{"id":"dev-x","name":"Dev X","description":"","version":"1.0.0","author":"","license":"MIT","main":"index.mjs","engines":{"baram":">=0.2.0"},"capabilities":["statusbar"]}"#;
+            std::fs::write(tmp.path().join("baram-plugin.json"), json).unwrap();
+            let m = read_manifest_at(tmp.path()).unwrap();
+            assert_eq!(m.id, "dev-x");
+        }
+
+        #[test]
+        fn test_parse_dev_folders_none() {
+            assert_eq!(parse_dev_folders(None), Vec::<String>::new());
+        }
+
+        #[test]
+        fn test_parse_dev_folders_corrupt_degrades() {
+            assert_eq!(
+                parse_dev_folders(Some("not json".to_string())),
+                Vec::<String>::new()
+            );
+        }
+
+        #[test]
+        fn test_parse_dev_folders_valid() {
+            assert_eq!(
+                parse_dev_folders(Some(r#"["/a","/b"]"#.to_string())),
+                vec!["/a".to_string(), "/b".to_string()]
+            );
+        }
+
+        #[test]
+        fn test_validate_http_url_allows_http_and_https() {
+            assert!(validate_http_url("http://localhost:11434/api").is_ok()); // loopback NOT blocked
+            assert!(validate_http_url("https://api.example.com/x").is_ok());
+            assert!(validate_http_url("HTTP://example.com").is_ok()); // scheme matching is case-insensitive
+        }
+
+        #[test]
+        fn test_validate_http_url_rejects_non_http_schemes() {
+            assert!(validate_http_url("file:///etc/passwd").is_err());
+            assert!(validate_http_url("data:text/plain,hi").is_err());
+            assert!(validate_http_url("ftp://host/x").is_err());
+            assert!(validate_http_url("not a url").is_err());
+            assert!(validate_http_url("javascript:alert(1)").is_err());
+        }
     }
 
-    /// §260 3c-2b security review (F2) — the bundle is attacker-shipped and crosses
-    /// IPC into the sandbox's heap on every activate, so an oversized entry must be
-    /// refused. Checked by metadata, so the refusal never allocates the file.
-    #[tokio::test]
-    async fn read_bundle_in_refuses_an_oversized_entry() {
-        let base = std::env::temp_dir().join(format!("baram-big-{}", std::process::id()));
-        std::fs::create_dir_all(&base).unwrap();
-        let big = vec![b'x'; (MAX_BUNDLE_BYTES + 1) as usize];
-        std::fs::write(base.join("big.mjs"), &big).unwrap();
-        std::fs::write(base.join("ok.mjs"), "// small").unwrap();
-
-        let err = read_bundle_in(&base, "big.mjs")
-            .await
-            .expect_err("oversized must be refused");
-        assert!(err.contains("over the"), "unexpected error: {err}");
-        assert!(read_bundle_in(&base, "ok.mjs").await.is_ok());
-
-        std::fs::remove_dir_all(&base).ok();
-    }
-
-    /// §260 3c-3 — the live smoke fixture is loaded through `plugin_add_dev_folder`,
-    /// which calls `read_manifest_at`, which applies the RUST validator (a separate
-    /// list from the TS one: its own capability allowlist and id rules). The TS test
-    /// beside the fixture cannot see those, so a fixture that passes there could still
-    /// fail at "Add dev folder" — during a scarce user-run smoke.
-    #[test]
-    fn the_smoke_fixture_loads_through_the_rust_dev_folder_path() {
-        let dir = Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../examples/plugins/sandbox-smoke"
-        ));
-        let manifest = read_manifest_at(dir).expect("the smoke fixture must load");
-        assert_eq!(manifest.id, "baram-sandbox-smoke");
-        assert_eq!(manifest.trust, Some(PluginTrust::Sandboxed));
-        // The entry must exist on disk too: the manifest naming a missing file is the
-        // other way this fails, and it fails later — inside the sandbox, at activate.
-        assert!(
-            dir.join(&manifest.main).is_file(),
-            "manifest.main must point at a real file"
-        );
-    }
-
-    /// §260 3c-2c — the extracted helper keeps the stat-before-read rule for the
-    /// brokered `files` read too, and reports the size it refused (so a plugin author
-    /// can tell "too big" from "unreadable").
-    #[tokio::test]
-    async fn read_text_capped_refuses_over_cap_and_admits_at_cap() {
-        let base = std::env::temp_dir().join(format!("baram-capped-{}", std::process::id()));
-        std::fs::create_dir_all(&base).unwrap();
-        let exact = base.join("exact.md");
-        std::fs::write(&exact, "12345").unwrap();
-
-        assert_eq!(read_text_capped(&exact, 5).await.unwrap(), "12345"); // == cap → admitted
-        let err = read_text_capped(&exact, 4)
-            .await
-            .expect_err("one over the cap must be refused");
-        assert!(err.contains("is 5 bytes"), "unexpected error: {err}");
-        assert!(
-            err.contains("over the 4-byte limit"),
-            "unexpected error: {err}"
-        );
-        // A missing file is a distinct failure, not "too large".
-        let missing = read_text_capped(&base.join("nope.md"), 5)
-            .await
-            .expect_err("missing must fail");
-        assert!(
-            missing.contains("cannot be measured"),
-            "unexpected: {missing}"
-        );
-
-        std::fs::remove_dir_all(&base).ok();
-    }
-
-    /// §260 3c-2a final pass (Q3) — two callers want OPPOSITE comparisons off this
-    /// helper (`>` for the report cap, `>=` for the 8 KiB channel-queue threshold,
-    /// hence its `threshold - 1`), so pin the boundary here rather than leaving the
-    /// `-1` safe only by careful reading. A JSON string is `len + 2` bytes.
-    #[test]
-    fn serialized_len_capped_admits_exactly_cap_and_refuses_one_over() {
-        let five = serde_json::Value::String("xyz".to_string()); // "xyz" → 5 bytes
-        assert_eq!(serialized_len_capped(&five, 5), Some(5)); // == cap → admitted
-        assert_eq!(serialized_len_capped(&five, 6), Some(5)); // under cap
-        assert_eq!(serialized_len_capped(&five, 4), None); // one over → refused
-    }
-
-    #[test]
-    fn test_validate_manifest_valid() {
-        let manifest = PluginManifest {
-            id: "baram-word-count".to_string(),
-            name: "Word Count".to_string(),
-            description: "Counts words".to_string(),
-            version: "1.0.0".to_string(),
-            author: "Test".to_string(),
-            license: "MIT".to_string(),
-            main: "index.mjs".to_string(),
-            engines: EngineRequirement {
-                baram: ">=0.2.0".to_string(),
-            },
-            capabilities: vec!["editor:readonly".to_string(), "statusbar".to_string()],
-            dependencies: vec![],
-            tiptap_extensions: vec![],
-            repository: None,
-            homepage: None,
-            icon: None,
-            keywords: vec![],
-            trust: None,
-            contributions: None,
-        };
-        assert!(validate_manifest(&manifest).is_ok());
-    }
-
-    #[test]
-    fn test_validate_manifest_empty_id() {
-        let manifest = PluginManifest {
-            id: "".to_string(),
-            name: "Test".to_string(),
-            description: "".to_string(),
-            version: "1.0.0".to_string(),
-            author: "".to_string(),
-            license: "MIT".to_string(),
-            main: "index.mjs".to_string(),
-            engines: EngineRequirement {
-                baram: ">=0.2.0".to_string(),
-            },
-            capabilities: vec![],
-            dependencies: vec![],
-            tiptap_extensions: vec![],
-            repository: None,
-            homepage: None,
-            icon: None,
-            keywords: vec![],
-            trust: None,
-            contributions: None,
-        };
-        assert!(validate_manifest(&manifest).is_err());
-    }
-
-    #[test]
-    fn test_validate_manifest_invalid_capability() {
-        let manifest = PluginManifest {
-            id: "test-plugin".to_string(),
-            name: "Test".to_string(),
-            description: "".to_string(),
-            version: "1.0.0".to_string(),
-            author: "".to_string(),
-            license: "MIT".to_string(),
-            main: "index.mjs".to_string(),
-            engines: EngineRequirement {
-                baram: ">=0.2.0".to_string(),
-            },
-            capabilities: vec!["dangerous-capability".to_string()],
-            dependencies: vec![],
-            tiptap_extensions: vec![],
-            repository: None,
-            homepage: None,
-            icon: None,
-            keywords: vec![],
-            trust: None,
-            contributions: None,
-        };
-        assert!(validate_manifest(&manifest).is_err());
-    }
-
-    #[test]
-    fn test_validate_manifest_invalid_id_format() {
-        let manifest = PluginManifest {
-            id: "Test_Plugin".to_string(),
-            name: "Test".to_string(),
-            description: "".to_string(),
-            version: "1.0.0".to_string(),
-            author: "".to_string(),
-            license: "MIT".to_string(),
-            main: "index.mjs".to_string(),
-            engines: EngineRequirement {
-                baram: ">=0.2.0".to_string(),
-            },
-            capabilities: vec![],
-            dependencies: vec![],
-            tiptap_extensions: vec![],
-            repository: None,
-            homepage: None,
-            icon: None,
-            keywords: vec![],
-            trust: None,
-            contributions: None,
-        };
-        assert!(validate_manifest(&manifest).is_err());
-    }
-
-    #[test]
-    fn test_hex_sha256() {
-        let hash = hex_sha256(b"hello");
-        assert_eq!(
-            hash,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-        );
-    }
-
-    #[test]
-    fn test_normalize_dev_list_add_dedups() {
-        let list = vec!["/a".to_string(), "/b".to_string()];
-        let out = normalize_dev_list(&list, Some("/a"), None);
-        assert_eq!(out, vec!["/a".to_string(), "/b".to_string()]); // no dupe
-        let out2 = normalize_dev_list(&list, Some("/c"), None);
-        assert_eq!(
-            out2,
-            vec!["/a".to_string(), "/b".to_string(), "/c".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_normalize_dev_list_remove() {
-        let list = vec!["/a".to_string(), "/b".to_string()];
-        let out = normalize_dev_list(&list, None, Some("/a"));
-        assert_eq!(out, vec!["/b".to_string()]);
-    }
-
-    #[test]
-    fn test_read_manifest_at_missing() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert!(read_manifest_at(tmp.path()).is_err());
-    }
-
-    #[test]
-    fn test_read_manifest_at_valid() {
-        let tmp = tempfile::tempdir().unwrap();
-        let json = r#"{"id":"dev-x","name":"Dev X","description":"","version":"1.0.0","author":"","license":"MIT","main":"index.mjs","engines":{"baram":">=0.2.0"},"capabilities":["statusbar"]}"#;
-        std::fs::write(tmp.path().join("baram-plugin.json"), json).unwrap();
-        let m = read_manifest_at(tmp.path()).unwrap();
-        assert_eq!(m.id, "dev-x");
-    }
-
-    #[test]
-    fn test_parse_dev_folders_none() {
-        assert_eq!(parse_dev_folders(None), Vec::<String>::new());
-    }
-
-    #[test]
-    fn test_parse_dev_folders_corrupt_degrades() {
-        assert_eq!(
-            parse_dev_folders(Some("not json".to_string())),
-            Vec::<String>::new()
-        );
-    }
-
-    #[test]
-    fn test_parse_dev_folders_valid() {
-        assert_eq!(
-            parse_dev_folders(Some(r#"["/a","/b"]"#.to_string())),
-            vec!["/a".to_string(), "/b".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_validate_http_url_allows_http_and_https() {
-        assert!(validate_http_url("http://localhost:11434/api").is_ok()); // loopback NOT blocked
-        assert!(validate_http_url("https://api.example.com/x").is_ok());
-        assert!(validate_http_url("HTTP://example.com").is_ok()); // scheme matching is case-insensitive
-    }
-
-    #[test]
-    fn test_validate_http_url_rejects_non_http_schemes() {
-        assert!(validate_http_url("file:///etc/passwd").is_err());
-        assert!(validate_http_url("data:text/plain,hi").is_err());
-        assert!(validate_http_url("ftp://host/x").is_err());
-        assert!(validate_http_url("not a url").is_err());
-        assert!(validate_http_url("javascript:alert(1)").is_err());
-    }
-
+    /// The live registry index URL. Shared between `origin_tests` and `fetch_tests`,
+    /// so it lives at the `tests` level rather than nested in either group.
     const LIVE_INDEX: &str = "https://sayinel.github.io/baram-plugins/index.json";
 
-    fn within(archive: &str) -> bool {
-        is_within_registry(
-            &validate_http_url(archive).unwrap(),
-            &registry_base(LIVE_INDEX).unwrap(),
-        )
-    }
+    mod origin_tests {
+        use super::super::*;
+        use super::LIVE_INDEX;
 
-    #[test]
-    fn the_registry_base_is_the_index_s_directory_not_the_index() {
-        assert_eq!(
-            registry_base(LIVE_INDEX).unwrap().as_str(),
-            "https://sayinel.github.io/baram-plugins/"
-        );
-        // Idempotent for a URL already naming a directory, and for one at the root.
-        assert_eq!(
-            registry_base("https://h/dir/").unwrap().as_str(),
-            "https://h/dir/"
-        );
-        assert_eq!(
-            registry_base("https://h/index.json").unwrap().as_str(),
-            "https://h/"
-        );
-        // A query or fragment on the index must not end up in the prefix.
-        assert_eq!(
-            registry_base("https://h/r/index.json?v=2#x")
+        fn within(archive: &str) -> bool {
+            is_within_registry(
+                &validate_http_url(archive).unwrap(),
+                &registry_base(LIVE_INDEX).unwrap(),
+            )
+        }
+
+        #[test]
+        fn the_registry_base_is_the_index_s_directory_not_the_index() {
+            assert_eq!(
+                registry_base(LIVE_INDEX).unwrap().as_str(),
+                "https://sayinel.github.io/baram-plugins/"
+            );
+            // Idempotent for a URL already naming a directory, and for one at the root.
+            assert_eq!(
+                registry_base("https://h/dir/").unwrap().as_str(),
+                "https://h/dir/"
+            );
+            assert_eq!(
+                registry_base("https://h/index.json").unwrap().as_str(),
+                "https://h/"
+            );
+            // A query or fragment on the index must not end up in the prefix.
+            assert_eq!(
+                registry_base("https://h/r/index.json?v=2#x")
+                    .unwrap()
+                    .as_str(),
+                "https://h/r/"
+            );
+        }
+
+        #[test]
+        fn an_archive_served_by_the_registry_is_accepted() {
+            assert!(within(
+                "https://sayinel.github.io/baram-plugins/plugins/baram-word-count-2.0.0.zip"
+            ));
+        }
+
+        #[test]
+        fn a_sibling_pages_site_on_the_same_origin_is_refused() {
+            // ‼️ THE CASE THAT MAKES THIS RULE NON-VACUOUS, and the reason an origin check would
+            // not have been one. GitHub Pages serves every repo of an account from one origin, so
+            // this URL is SAME-ORIGIN with the live index — and it is a repository anyone can
+            // create under their own account.
+            assert!(!within(
+                "https://sayinel.github.io/evil/plugins/x-1.0.0.zip"
+            ));
+            // The trailing slash in the base is what stops a prefix-sibling too.
+            assert!(!within(
+                "https://sayinel.github.io/baram-plugins-evil/x-1.0.0.zip"
+            ));
+            // ‼️ The base must appear at the START of the path, not anywhere in it (code review
+            // HIGH-3). Every other input in this module is refused by `starts_with` AND by
+            // `contains`, so mutating the predicate to `contains` survived all ten of them — while
+            // admitting exactly this: someone else's repo with our registry's name buried inside.
+            assert!(!within(
+                "https://sayinel.github.io/evil/baram-plugins/x-1.0.0.zip"
+            ));
+        }
+
+        #[test]
+        fn another_host_is_refused_however_plausible() {
+            assert!(!within("https://evil.example/plugins/x-1.0.0.zip"));
+            // Same path, different host: the path is not what is being trusted.
+            assert!(!within(
+                "https://evil.example/baram-plugins/plugins/x-1.0.0.zip"
+            ));
+            // A host that merely ENDS with ours — the classic suffix mistake.
+            assert!(!within(
+                "https://sayinel.github.io.evil.example/baram-plugins/x.zip"
+            ));
+        }
+
+        #[test]
+        fn traversal_is_refused_because_the_url_parser_normalises_it_first() {
+            // No `..` check anywhere: `Url` resolves it while parsing, so this arrives as
+            // `/evil/x-1.0.0.zip` and fails the prefix test. Same property the TypeScript
+            // validator leans on.
+            assert!(!within(
+                "https://sayinel.github.io/baram-plugins/../evil/x-1.0.0.zip"
+            ));
+        }
+
+        #[test]
+        fn an_encoded_path_separator_is_refused_rather_than_interpreted() {
+            // ‼️ `Url` keeps `%2f` literal inside a segment, so this DOES start with the base path
+            // and would pass a plain prefix test — while a server that decodes it before resolving
+            // `..` lands outside the registry. Same class as the publish-time `%2e` bypass: refuse
+            // the spelling instead of predicting the server.
+            assert!(!within(
+                "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip"
+            ));
+            assert!(!within(
+                "https://sayinel.github.io/baram-plugins/%2F..%2Fevil/x-1.0.0.zip"
+            ));
+            // Backslash too — WHATWG treats a raw `\` as `/`, so its encoded form is the same trick.
+            assert!(!within(
+                "https://sayinel.github.io/baram-plugins/%5c..%5cevil/x-1.0.0.zip"
+            ));
+            // ‼️ And NOT a ban on percent-encoding: an encoded byte that cannot change the path
+            // structure is still fine, or a registry could not serve a file with a space in it.
+            assert!(within(
+                "https://sayinel.github.io/baram-plugins/plugins/my%20plugin-1.0.0.zip"
+            ));
+        }
+
+        #[test]
+        fn a_scheme_downgrade_is_refused_even_on_the_same_host() {
+            // `origin()` includes the scheme, so http is not https. Worth pinning: the archive is
+            // executable code, and the checksum comes from the same index an attacker on the wire
+            // would be rewriting.
+            assert!(!within(
+                "http://sayinel.github.io/baram-plugins/plugins/x-1.0.0.zip"
+            ));
+        }
+
+        /// A throwaway key pair, generated with `tauri signer generate` exactly as the real one
+        /// was, and a signature it produced over `SIGNED_BODY`. Static fixtures rather than
+        /// signing at test time: `minisign-verify` only verifies, which is the whole point —
+        /// nothing in the app can mint a signature, so nothing in the tests should either.
+        const TEST_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5MkMwMTZFMUZDQkEwNTEKUldSUm9Nc2ZiZ0VzbVRBMUFCSWpaeUZhNW45amZTMk93d0VNZkMwUVVlWCtIdDBKRnF4eEUyV24K";
+        const TEST_SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUm9Nc2ZiZ0VzbVZsTlRWaTNzQ09CaEdZOW8zZXVwV21laDlWcGg3V1lZNW9OT3RMT1JUZ3UrdWwvckFaaVJKMmovaVdNeE5seVJlYlcwaU1LdUZ6dEN2OEo3ODdJR0F3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzMyODI3CWZpbGU6cmV2b2tlZC5qc29uCmxldG9xTmFJSmJ5cDh4NklhdkpSOU00ZEE2MWZDcUtSdHVpK0JsT0hubFBEOExyL0Mxem9ENm9ab0xEL01VK0dFRFlJT0w2dmUwcWdMQ0F0bndkMUJ3PT0K";
+        const SIGNED_BODY: &[u8] = br#"{"version":1,"sequence":1,"revoked":[]}"#;
+
+        /// The updater's public key, READ FROM THE CONFIG WE SHIP rather than pasted here.
+        ///
+        /// ‼️ The literal that used to sit in `a_signature_from_another_key_does_not_verify` was
+        /// commented "the updater's own public key" and was not: it is key `692264F724C7676D` while
+        /// the app ships `69226B6FEED27B3`. Harmless for that test — any other real key proves the
+        /// point — but fatal for the paste guard below, which has to compare against the key a
+        /// mistaken paste would actually reach for.
+        /// The raw bytes inside a base64-wrapped minisign public key: 2 alg + 8 key id + 32 key.
+        ///
+        /// ‼️ THE GUARDS BELOW USED TO COMPARE THE WRAPPER (security review MEDIUM-4). Two base64
+        /// strings that differ only in whitespace — a trailing newline inside the wrapped text, say —
+        /// decode to the SAME key, so `assert_ne!` on the wrapper passed for a re-encoding of a
+        /// known-bad key. Reviewer demonstrated it: the updater key re-wrapped with an extra newline
+        /// slipped both guards, 106/106 green. Comparing what minisign would actually load removes
+        /// the whole class rather than the one encoding.
+        fn key_material(wrapped: &str) -> Vec<u8> {
+            use base64::Engine as _;
+            let text = decode_b64_text(wrapped, "public key").expect("wrapped key must be base64");
+            let line = text
+                .trim()
+                .lines()
+                .nth(1)
+                .expect("a minisign public key has a comment line and a key line");
+            base64::engine::general_purpose::STANDARD
+                .decode(line.trim())
+                .expect("the key line must be base64")
+        }
+
+        fn updater_public_key() -> String {
+            const CONF: &str = include_str!("../../tauri.conf.json");
+            serde_json::from_str::<serde_json::Value>(CONF).expect("tauri.conf.json must parse")
+                ["plugins"]["updater"]["pubkey"]
+                .as_str()
+                .expect("the updater pubkey must be a string")
+                .to_string()
+        }
+
+        #[test]
+        fn the_shipped_key_is_never_another_key_this_repo_already_holds() {
+            // ‼️ The failure this exists for is a paste, not an algorithm. The test private key
+            // sits in a scratch directory and in this file's git history; shipping its public half
+            // would mean anyone holding it can sign a revocation list for every user. Cheap guard
+            // against the one mistake that turns this whole feature inside out.
+            assert_ne!(
+                key_material(REVOCATION_PUBLIC_KEY),
+                key_material(TEST_PUBLIC_KEY),
+                "the test key must never be the shipped key"
+            );
+            // ‼️ And never the UPDATER's key either. Two base64 minisign keys of identical shape
+            // live in this repo, the workflow that signs revocations reads tauri's own
+            // `TAURI_SIGNING_PRIVATE_KEY` variable names, and the arming step is a one-line paste
+            // into the constant below — every condition for grabbing the wrong one. The cost is not
+            // symmetric with the other paste: the updater key signs installers, so trading it for a
+            // forged revocation list would buy arbitrary code on every user's machine.
+            assert_ne!(
+                key_material(REVOCATION_PUBLIC_KEY),
+                key_material(&updater_public_key()),
+                "the revocation key must never be the updater key"
+            );
+        }
+
+        #[test]
+        fn the_first_party_prefix_is_a_directory_under_the_registry_we_ship() {
+            // A prefix without the trailing slash would match `…/baram-plugins-evil/` too — the
+            // same defect the archive rule was fixed for, and worth pinning separately because
+            // this constant decides WHICH registry gets verified at all.
+            assert!(FIRST_PARTY_REVOCATION_PREFIX.ends_with('/'));
+            assert!(registry_base(LIVE_INDEX)
                 .unwrap()
-                .as_str(),
-            "https://h/r/"
-        );
-    }
+                .as_str()
+                .starts_with(FIRST_PARTY_REVOCATION_PREFIX));
+        }
 
-    #[test]
-    fn an_archive_served_by_the_registry_is_accepted() {
-        assert!(within(
-            "https://sayinel.github.io/baram-plugins/plugins/baram-word-count-2.0.0.zip"
-        ));
-    }
+        #[test]
+        fn the_signature_our_own_tooling_produces_verifies() {
+            // ‼️ The point of using a REAL signature from `tauri signer` rather than a hand-built
+            // fixture: it pins the format and the `allow_legacy` flag against the tool that will
+            // actually sign the published list. A hand-rolled vector would pin my assumptions.
+            verify_revocation_signature(SIGNED_BODY, TEST_SIGNATURE, TEST_PUBLIC_KEY)
+                .expect("a signature from `tauri signer` must verify");
+        }
 
-    #[test]
-    fn a_sibling_pages_site_on_the_same_origin_is_refused() {
-        // ‼️ THE CASE THAT MAKES THIS RULE NON-VACUOUS, and the reason an origin check would
-        // not have been one. GitHub Pages serves every repo of an account from one origin, so
-        // this URL is SAME-ORIGIN with the live index — and it is a repository anyone can
-        // create under their own account.
-        assert!(!within(
-            "https://sayinel.github.io/evil/plugins/x-1.0.0.zip"
-        ));
-        // The trailing slash in the base is what stops a prefix-sibling too.
-        assert!(!within(
-            "https://sayinel.github.io/baram-plugins-evil/x-1.0.0.zip"
-        ));
-        // ‼️ The base must appear at the START of the path, not anywhere in it (code review
-        // HIGH-3). Every other input in this module is refused by `starts_with` AND by
-        // `contains`, so mutating the predicate to `contains` survived all ten of them — while
-        // admitting exactly this: someone else's repo with our registry's name buried inside.
-        assert!(!within(
-            "https://sayinel.github.io/evil/baram-plugins/x-1.0.0.zip"
-        ));
-    }
+        #[test]
+        fn a_tampered_body_does_not_verify() {
+            // One byte. This is the whole feature: the empty list and a list with entries differ
+            // by bytes, and the signature is what makes them distinguishable.
+            let tampered = br#"{"version":1,"sequence":9,"revoked":[]}"#;
+            assert!(
+                verify_revocation_signature(tampered, TEST_SIGNATURE, TEST_PUBLIC_KEY).is_err(),
+                "a modified body must not verify"
+            );
+        }
 
-    #[test]
-    fn another_host_is_refused_however_plausible() {
-        assert!(!within("https://evil.example/plugins/x-1.0.0.zip"));
-        // Same path, different host: the path is not what is being trusted.
-        assert!(!within(
-            "https://evil.example/baram-plugins/plugins/x-1.0.0.zip"
-        ));
-        // A host that merely ENDS with ours — the classic suffix mistake.
-        assert!(!within(
-            "https://sayinel.github.io.evil.example/baram-plugins/x.zip"
-        ));
-    }
+        #[test]
+        fn an_armed_key_must_actually_be_a_minisign_public_key() {
+            // ‼️ THE PASTE FAILURES THE `assert_ne!` GUARDS DO NOT COVER (code review HIGH-2).
+            // Arming is one line, and the likely slips are not "the wrong key" but a truncated
+            // paste, the PRIVATE half, or newline mangling. Any of those makes every fetch fail
+            // once armed — every client stops receiving revocations, permanently — so this catches
+            // it in CI at the moment the constant is filled in rather than on user machines.
+            //
+            // ‼️ NO LONGER CONDITIONAL (security review LOW-1). While the constant was empty this
+            // test was vacuous by design, and the comment here said so — but that comment outlived
+            // its truth the moment this build shipped ARMED. Wrapped in `is_empty()`, a revert or a
+            // bad merge that emptied the constant was caught by nothing: the fetch path just logs
+            // "NOT ARMED" and accepts whatever it is handed. Users would eventually see the
+            // unverified notice; CI should not need them as its detector.
+            assert!(
+                !REVOCATION_PUBLIC_KEY.is_empty(),
+                "this build must stay ARMED — an empty key silently accepts any list"
+            );
+            let text = decode_b64_text(REVOCATION_PUBLIC_KEY, "public key")
+                .expect("the armed key must be base64");
+            minisign_verify::PublicKey::decode(text.trim())
+                .expect("the armed key must be a minisign PUBLIC key");
+        }
 
-    #[test]
-    fn traversal_is_refused_because_the_url_parser_normalises_it_first() {
-        // No `..` check anywhere: `Url` resolves it while parsing, so this arrives as
-        // `/evil/x-1.0.0.zip` and fails the prefix test. Same property the TypeScript
-        // validator leans on.
-        assert!(!within(
-            "https://sayinel.github.io/baram-plugins/../evil/x-1.0.0.zip"
-        ));
-    }
+        #[test]
+        fn the_shipped_key_verifies_what_our_signing_secret_actually_produced() {
+            // ‼️ THE PROPERTY ARMING RESTS ON, AND UNTIL NOW ITS ONLY CHECK WAS A HUMAN (security and
+            // code review MEDIUM-4). Every other guard asks whether the constant PARSES or whether it
+            // differs from a known-bad key. None can catch a well-formed but WRONG key — another valid
+            // minisign key, or the right key after a rotation whose private half is not the CI secret.
+            // That paste compiles, passes everything, and makes every client fail verification on
+            // every fetch, forever, recoverable only by another release.
+            //
+            // The fixtures are the pair published at arming time, FROZEN. Deliberately not
+            // `registry/revoked.json`: pointing at the live file would make every future revocation
+            // publish break this test until someone regenerated the signature, and the property worth
+            // pinning is not "the current list verifies" but "the compiled public half matches the
+            // private half our workflow signs with".
+            const BODY: &[u8] = include_bytes!("testdata/revoked-at-arming.json");
+            const SIG: &str = include_str!("testdata/revoked-at-arming.json.sig");
+            verify_revocation_signature(BODY, SIG, REVOCATION_PUBLIC_KEY)
+                .expect("the shipped key must verify the list our signing secret produced");
+            // And prove the check is not vacuous — the same discipline the live verification used.
+            let mut tampered = BODY.to_vec();
+            tampered.push(b' ');
+            assert!(
+                verify_revocation_signature(&tampered, SIG, REVOCATION_PUBLIC_KEY).is_err(),
+                "a tampered body must not verify, or the assertion above proves nothing"
+            );
+        }
 
-    #[test]
-    fn an_encoded_path_separator_is_refused_rather_than_interpreted() {
-        // ‼️ `Url` keeps `%2f` literal inside a segment, so this DOES start with the base path
-        // and would pass a plain prefix test — while a server that decodes it before resolving
-        // `..` lands outside the registry. Same class as the publish-time `%2e` bypass: refuse
-        // the spelling instead of predicting the server.
-        assert!(!within(
-            "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip"
-        ));
-        assert!(!within(
-            "https://sayinel.github.io/baram-plugins/%2F..%2Fevil/x-1.0.0.zip"
-        ));
-        // Backslash too — WHATWG treats a raw `\` as `/`, so its encoded form is the same trick.
-        assert!(!within(
-            "https://sayinel.github.io/baram-plugins/%5c..%5cevil/x-1.0.0.zip"
-        ));
-        // ‼️ And NOT a ban on percent-encoding: an encoded byte that cannot change the path
-        // structure is still fine, or a registry could not serve a file with a space in it.
-        assert!(within(
-            "https://sayinel.github.io/baram-plugins/plugins/my%20plugin-1.0.0.zip"
-        ));
-    }
-
-    #[test]
-    fn a_scheme_downgrade_is_refused_even_on_the_same_host() {
-        // `origin()` includes the scheme, so http is not https. Worth pinning: the archive is
-        // executable code, and the checksum comes from the same index an attacker on the wire
-        // would be rewriting.
-        assert!(!within(
-            "http://sayinel.github.io/baram-plugins/plugins/x-1.0.0.zip"
-        ));
-    }
-
-    /// A throwaway key pair, generated with `tauri signer generate` exactly as the real one
-    /// was, and a signature it produced over `SIGNED_BODY`. Static fixtures rather than
-    /// signing at test time: `minisign-verify` only verifies, which is the whole point —
-    /// nothing in the app can mint a signature, so nothing in the tests should either.
-    const TEST_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk5MkMwMTZFMUZDQkEwNTEKUldSUm9Nc2ZiZ0VzbVRBMUFCSWpaeUZhNW45amZTMk93d0VNZkMwUVVlWCtIdDBKRnF4eEUyV24K";
-    const TEST_SIGNATURE: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUm9Nc2ZiZ0VzbVZsTlRWaTNzQ09CaEdZOW8zZXVwV21laDlWcGg3V1lZNW9OT3RMT1JUZ3UrdWwvckFaaVJKMmovaVdNeE5seVJlYlcwaU1LdUZ6dEN2OEo3ODdJR0F3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzMyODI3CWZpbGU6cmV2b2tlZC5qc29uCmxldG9xTmFJSmJ5cDh4NklhdkpSOU00ZEE2MWZDcUtSdHVpK0JsT0hubFBEOExyL0Mxem9ENm9ab0xEL01VK0dFRFlJT0w2dmUwcWdMQ0F0bndkMUJ3PT0K";
-    const SIGNED_BODY: &[u8] = br#"{"version":1,"sequence":1,"revoked":[]}"#;
-
-    /// The updater's public key, READ FROM THE CONFIG WE SHIP rather than pasted here.
-    ///
-    /// ‼️ The literal that used to sit in `a_signature_from_another_key_does_not_verify` was
-    /// commented "the updater's own public key" and was not: it is key `692264F724C7676D` while
-    /// the app ships `69226B6FEED27B3`. Harmless for that test — any other real key proves the
-    /// point — but fatal for the paste guard below, which has to compare against the key a
-    /// mistaken paste would actually reach for.
-    /// The raw bytes inside a base64-wrapped minisign public key: 2 alg + 8 key id + 32 key.
-    ///
-    /// ‼️ THE GUARDS BELOW USED TO COMPARE THE WRAPPER (security review MEDIUM-4). Two base64
-    /// strings that differ only in whitespace — a trailing newline inside the wrapped text, say —
-    /// decode to the SAME key, so `assert_ne!` on the wrapper passed for a re-encoding of a
-    /// known-bad key. Reviewer demonstrated it: the updater key re-wrapped with an extra newline
-    /// slipped both guards, 106/106 green. Comparing what minisign would actually load removes
-    /// the whole class rather than the one encoding.
-    fn key_material(wrapped: &str) -> Vec<u8> {
-        use base64::Engine as _;
-        let text = decode_b64_text(wrapped, "public key").expect("wrapped key must be base64");
-        let line = text
-            .trim()
-            .lines()
-            .nth(1)
-            .expect("a minisign public key has a comment line and a key line");
-        base64::engine::general_purpose::STANDARD
-            .decode(line.trim())
-            .expect("the key line must be base64")
-    }
-
-    fn updater_public_key() -> String {
-        const CONF: &str = include_str!("../../tauri.conf.json");
-        serde_json::from_str::<serde_json::Value>(CONF).expect("tauri.conf.json must parse")
-            ["plugins"]["updater"]["pubkey"]
-            .as_str()
-            .expect("the updater pubkey must be a string")
-            .to_string()
-    }
-
-    #[test]
-    fn the_shipped_key_is_never_another_key_this_repo_already_holds() {
-        // ‼️ The failure this exists for is a paste, not an algorithm. The test private key
-        // sits in a scratch directory and in this file's git history; shipping its public half
-        // would mean anyone holding it can sign a revocation list for every user. Cheap guard
-        // against the one mistake that turns this whole feature inside out.
-        assert_ne!(
-            key_material(REVOCATION_PUBLIC_KEY),
-            key_material(TEST_PUBLIC_KEY),
-            "the test key must never be the shipped key"
-        );
-        // ‼️ And never the UPDATER's key either. Two base64 minisign keys of identical shape
-        // live in this repo, the workflow that signs revocations reads tauri's own
-        // `TAURI_SIGNING_PRIVATE_KEY` variable names, and the arming step is a one-line paste
-        // into the constant below — every condition for grabbing the wrong one. The cost is not
-        // symmetric with the other paste: the updater key signs installers, so trading it for a
-        // forged revocation list would buy arbitrary code on every user's machine.
-        assert_ne!(
-            key_material(REVOCATION_PUBLIC_KEY),
-            key_material(&updater_public_key()),
-            "the revocation key must never be the updater key"
-        );
-    }
-
-    #[test]
-    fn the_first_party_prefix_is_a_directory_under_the_registry_we_ship() {
-        // A prefix without the trailing slash would match `…/baram-plugins-evil/` too — the
-        // same defect the archive rule was fixed for, and worth pinning separately because
-        // this constant decides WHICH registry gets verified at all.
-        assert!(FIRST_PARTY_REVOCATION_PREFIX.ends_with('/'));
-        assert!(registry_base(LIVE_INDEX)
-            .unwrap()
-            .as_str()
-            .starts_with(FIRST_PARTY_REVOCATION_PREFIX));
-    }
-
-    #[test]
-    fn the_signature_our_own_tooling_produces_verifies() {
-        // ‼️ The point of using a REAL signature from `tauri signer` rather than a hand-built
-        // fixture: it pins the format and the `allow_legacy` flag against the tool that will
-        // actually sign the published list. A hand-rolled vector would pin my assumptions.
-        verify_revocation_signature(SIGNED_BODY, TEST_SIGNATURE, TEST_PUBLIC_KEY)
-            .expect("a signature from `tauri signer` must verify");
-    }
-
-    #[test]
-    fn a_tampered_body_does_not_verify() {
-        // One byte. This is the whole feature: the empty list and a list with entries differ
-        // by bytes, and the signature is what makes them distinguishable.
-        let tampered = br#"{"version":1,"sequence":9,"revoked":[]}"#;
-        assert!(
-            verify_revocation_signature(tampered, TEST_SIGNATURE, TEST_PUBLIC_KEY).is_err(),
-            "a modified body must not verify"
-        );
-    }
-
-    #[test]
-    fn an_armed_key_must_actually_be_a_minisign_public_key() {
-        // ‼️ THE PASTE FAILURES THE `assert_ne!` GUARDS DO NOT COVER (code review HIGH-2).
-        // Arming is one line, and the likely slips are not "the wrong key" but a truncated
-        // paste, the PRIVATE half, or newline mangling. Any of those makes every fetch fail
-        // once armed — every client stops receiving revocations, permanently — so this catches
-        // it in CI at the moment the constant is filled in rather than on user machines.
-        //
-        // ‼️ NO LONGER CONDITIONAL (security review LOW-1). While the constant was empty this
-        // test was vacuous by design, and the comment here said so — but that comment outlived
-        // its truth the moment this build shipped ARMED. Wrapped in `is_empty()`, a revert or a
-        // bad merge that emptied the constant was caught by nothing: the fetch path just logs
-        // "NOT ARMED" and accepts whatever it is handed. Users would eventually see the
-        // unverified notice; CI should not need them as its detector.
-        assert!(
-            !REVOCATION_PUBLIC_KEY.is_empty(),
-            "this build must stay ARMED — an empty key silently accepts any list"
-        );
-        let text = decode_b64_text(REVOCATION_PUBLIC_KEY, "public key")
-            .expect("the armed key must be base64");
-        minisign_verify::PublicKey::decode(text.trim())
-            .expect("the armed key must be a minisign PUBLIC key");
-    }
-
-    #[test]
-    fn the_shipped_key_verifies_what_our_signing_secret_actually_produced() {
-        // ‼️ THE PROPERTY ARMING RESTS ON, AND UNTIL NOW ITS ONLY CHECK WAS A HUMAN (security and
-        // code review MEDIUM-4). Every other guard asks whether the constant PARSES or whether it
-        // differs from a known-bad key. None can catch a well-formed but WRONG key — another valid
-        // minisign key, or the right key after a rotation whose private half is not the CI secret.
-        // That paste compiles, passes everything, and makes every client fail verification on
-        // every fetch, forever, recoverable only by another release.
-        //
-        // The fixtures are the pair published at arming time, FROZEN. Deliberately not
-        // `registry/revoked.json`: pointing at the live file would make every future revocation
-        // publish break this test until someone regenerated the signature, and the property worth
-        // pinning is not "the current list verifies" but "the compiled public half matches the
-        // private half our workflow signs with".
-        const BODY: &[u8] = include_bytes!("testdata/revoked-at-arming.json");
-        const SIG: &str = include_str!("testdata/revoked-at-arming.json.sig");
-        verify_revocation_signature(BODY, SIG, REVOCATION_PUBLIC_KEY)
-            .expect("the shipped key must verify the list our signing secret produced");
-        // And prove the check is not vacuous — the same discipline the live verification used.
-        let mut tampered = BODY.to_vec();
-        tampered.push(b' ');
-        assert!(
-            verify_revocation_signature(&tampered, SIG, REVOCATION_PUBLIC_KEY).is_err(),
-            "a tampered body must not verify, or the assertion above proves nothing"
-        );
-    }
-
-    #[test]
-    fn the_fetch_cap_is_the_number_the_publish_gate_scrapes() {
-        // ‼️ A CROSS-LANGUAGE ANCHOR, and without it the publish gate can be lied to (security
-        // re-review NEW-2). `scripts/rust-constants.ts` reads this constant out of THIS FILE'S TEXT
-        // so `validate-revocations.ts` can refuse a list larger than any client will fetch. Its scan
-        // asserts exactly one match, which stops a declaration being ADDED — and does nothing about
-        // the real one being respelled past the pattern while a decoy keeps the count at 1:
-        //
-        //     /// Historically `MAX_REVOCATION_BYTES: usize = 1024 * 1024`  ← a decoy in this form
-        //     const ONE_MIB: usize = 4096;
-        //     const MAX_REVOCATION_BYTES: usize = ONE_MIB;                  ← letters are not [0-9_ *]
-        //
-        // ‼️ The decoy above is written WITHOUT its semicolon on purpose: with one, this comment is
-        // itself a second match and the scrape refuses to guess. That is not a footnote — it is the
-        // mechanism, and writing this test demonstrated it by accident.
-        //
-        // The gate would then keep publishing lists up to 1 MiB while every client refused anything
-        // over 4 KiB at fetch — no revocation ever landing again, and nothing red. The key scrape
-        // was already anchored this way (the frozen at-arming pair binds the compiled key and the
-        // scraped one to the same signature). ‼️ THIS ANCHOR IS WEAKER THAN THAT ONE, and saying
-        // otherwise flattens the difference: a signature cannot be forged, whereas this is a number,
-        // and defeating it costs the decoy plus ONE literal edit right here. What it buys is a diff
-        // no reviewer reads past, which is enough for a drift guard and is the honest claim. The
-        // literal is
-        // duplicated in `revocation-signature-verify.test.ts` deliberately: two assertions on the
-        // same number in two languages is what makes a respelling contradictory rather than silent.
-        assert_eq!(
+        #[test]
+        fn the_fetch_cap_is_the_number_the_publish_gate_scrapes() {
+            // ‼️ A CROSS-LANGUAGE ANCHOR, and without it the publish gate can be lied to (security
+            // re-review NEW-2). `scripts/rust-constants.ts` reads this constant out of THIS FILE'S TEXT
+            // so `validate-revocations.ts` can refuse a list larger than any client will fetch. Its scan
+            // asserts exactly one match, which stops a declaration being ADDED — and does nothing about
+            // the real one being respelled past the pattern while a decoy keeps the count at 1:
+            //
+            //     /// Historically `MAX_REVOCATION_BYTES: usize = 1024 * 1024`  ← a decoy in this form
+            //     const ONE_MIB: usize = 4096;
+            //     const MAX_REVOCATION_BYTES: usize = ONE_MIB;                  ← letters are not [0-9_ *]
+            //
+            // ‼️ The decoy above is written WITHOUT its semicolon on purpose: with one, this comment is
+            // itself a second match and the scrape refuses to guess. That is not a footnote — it is the
+            // mechanism, and writing this test demonstrated it by accident.
+            //
+            // The gate would then keep publishing lists up to 1 MiB while every client refused anything
+            // over 4 KiB at fetch — no revocation ever landing again, and nothing red. The key scrape
+            // was already anchored this way (the frozen at-arming pair binds the compiled key and the
+            // scraped one to the same signature). ‼️ THIS ANCHOR IS WEAKER THAN THAT ONE, and saying
+            // otherwise flattens the difference: a signature cannot be forged, whereas this is a number,
+            // and defeating it costs the decoy plus ONE literal edit right here. What it buys is a diff
+            // no reviewer reads past, which is enough for a drift guard and is the honest claim. The
+            // literal is
+            // duplicated in `revocation-signature-verify.test.ts` deliberately: two assertions on the
+            // same number in two languages is what makes a respelling contradictory rather than silent.
+            assert_eq!(
             MAX_REVOCATION_BYTES,
             1024 * 1024,
             "the publish gate scrapes this literal; changing it needs the TypeScript assertion changed too"
         );
-    }
+        }
 
-    #[test]
-    fn a_signature_from_another_key_does_not_verify() {
-        // The updater's own public key — a real, valid minisign key that simply is not ours.
-        // Verifying against it must fail, or "signed" would mean "signed by anyone". Read from
-        // the config, so this is the key the app actually ships rather than a stale paste.
-        assert!(
-            verify_revocation_signature(SIGNED_BODY, TEST_SIGNATURE, &updater_public_key())
-                .is_err(),
-            "a signature must not verify under a different key"
-        );
-    }
+        #[test]
+        fn a_signature_from_another_key_does_not_verify() {
+            // The updater's own public key — a real, valid minisign key that simply is not ours.
+            // Verifying against it must fail, or "signed" would mean "signed by anyone". Read from
+            // the config, so this is the key the app actually ships rather than a stale paste.
+            assert!(
+                verify_revocation_signature(SIGNED_BODY, TEST_SIGNATURE, &updater_public_key())
+                    .is_err(),
+                "a signature must not verify under a different key"
+            );
+        }
 
-    #[test]
-    fn a_body_is_labelled_verified_only_after_its_signature_checks_out() {
-        // ‼️ THE CALL SITE HAD NO TEST. `verify_revocation_signature` was well covered, but the
-        // one place that turns a checked body into `verified: true` sat inside `fetch_revocations`
-        // behind two network calls — so deleting the verification line was a mutation nothing
-        // caught, and it would have shipped a build that labelled ANY body verified. Extracting
-        // the decision is what makes it reachable from a test.
-        let ok = verified_revocations(
-            String::from_utf8(SIGNED_BODY.to_vec()).unwrap(),
-            TEST_SIGNATURE,
-            TEST_PUBLIC_KEY,
-        )
-        .expect("a signature from `tauri signer` must verify");
-        assert!(ok.verified, "a checked body must be labelled verified");
-        assert_eq!(
-            ok.body.as_bytes(),
-            SIGNED_BODY,
-            "the body must be handed on unaltered"
-        );
-        // The half that kills the mutation: without the verification call this returns Ok.
-        assert!(
-            verified_revocations(
-                r#"{"version":1,"sequence":9,"revoked":[]}"#.to_string(),
+        #[test]
+        fn a_body_is_labelled_verified_only_after_its_signature_checks_out() {
+            // ‼️ THE CALL SITE HAD NO TEST. `verify_revocation_signature` was well covered, but the
+            // one place that turns a checked body into `verified: true` sat inside `fetch_revocations`
+            // behind two network calls — so deleting the verification line was a mutation nothing
+            // caught, and it would have shipped a build that labelled ANY body verified. Extracting
+            // the decision is what makes it reachable from a test.
+            let ok = verified_revocations(
+                String::from_utf8(SIGNED_BODY.to_vec()).unwrap(),
                 TEST_SIGNATURE,
                 TEST_PUBLIC_KEY,
             )
-            .is_err(),
-            "a body the signature does not cover must never be labelled verified"
-        );
-        // And the skip paths must label the opposite. `verified` is a bool the TypeScript side
-        // trusts a counter on, so a constructor that got it backwards would be a silent disarm.
-        assert!(!FetchedRevocations::unverified("anything".to_string()).verified);
-    }
-
-    #[test]
-    fn a_malformed_signature_or_key_is_an_error_rather_than_a_pass() {
-        // Every failure path must be an Err. A verifier that returns Ok on garbage is worse
-        // than no verifier, because everything downstream then reports success.
-        for (sig, key, what) in [
-            ("not base64!!", TEST_PUBLIC_KEY, "signature not base64"),
-            (TEST_SIGNATURE, "not base64!!", "key not base64"),
-            ("", TEST_PUBLIC_KEY, "empty signature"),
-            (TEST_SIGNATURE, "", "empty key"),
-            // Valid base64, but of something that is not a minisign block.
-            (
-                "aGVsbG8gd29ybGQK",
-                TEST_PUBLIC_KEY,
-                "signature is not minisign",
-            ),
-            (TEST_SIGNATURE, "aGVsbG8gd29ybGQK", "key is not minisign"),
-        ] {
+            .expect("a signature from `tauri signer` must verify");
+            assert!(ok.verified, "a checked body must be labelled verified");
+            assert_eq!(
+                ok.body.as_bytes(),
+                SIGNED_BODY,
+                "the body must be handed on unaltered"
+            );
+            // The half that kills the mutation: without the verification call this returns Ok.
             assert!(
-                verify_revocation_signature(SIGNED_BODY, sig, key).is_err(),
-                "{what} must be refused"
+                verified_revocations(
+                    r#"{"version":1,"sequence":9,"revoked":[]}"#.to_string(),
+                    TEST_SIGNATURE,
+                    TEST_PUBLIC_KEY,
+                )
+                .is_err(),
+                "a body the signature does not cover must never be labelled verified"
+            );
+            // And the skip paths must label the opposite. `verified` is a bool the TypeScript side
+            // trusts a counter on, so a constructor that got it backwards would be a silent disarm.
+            assert!(!FetchedRevocations::unverified("anything".to_string()).verified);
+        }
+
+        #[test]
+        fn a_malformed_signature_or_key_is_an_error_rather_than_a_pass() {
+            // Every failure path must be an Err. A verifier that returns Ok on garbage is worse
+            // than no verifier, because everything downstream then reports success.
+            for (sig, key, what) in [
+                ("not base64!!", TEST_PUBLIC_KEY, "signature not base64"),
+                (TEST_SIGNATURE, "not base64!!", "key not base64"),
+                ("", TEST_PUBLIC_KEY, "empty signature"),
+                (TEST_SIGNATURE, "", "empty key"),
+                // Valid base64, but of something that is not a minisign block.
+                (
+                    "aGVsbG8gd29ybGQK",
+                    TEST_PUBLIC_KEY,
+                    "signature is not minisign",
+                ),
+                (TEST_SIGNATURE, "aGVsbG8gd29ybGQK", "key is not minisign"),
+            ] {
+                assert!(
+                    verify_revocation_signature(SIGNED_BODY, sig, key).is_err(),
+                    "{what} must be refused"
+                );
+            }
+            // ‼️ And the refusal has to SAY which layer rejected it. Dropping the base64 error
+            // and defaulting to an empty string still ends in Err — the minisign decoder refuses
+            // it one step later — so the accept/reject behaviour cannot tell the two apart, and a
+            // mutation that swallowed it survived. What it destroys is the operator's ability to
+            // tell "the file is not base64" from "the file is not a signature".
+            let err = verify_revocation_signature(SIGNED_BODY, "not base64!!", TEST_PUBLIC_KEY)
+                .expect_err("must refuse");
+            assert!(err.contains("not base64"), "unhelpful refusal: {err}");
+        }
+
+        #[test]
+        fn a_registry_url_the_scheme_guard_rejects_never_yields_a_base() {
+            // ‼️ Renamed: this does NOT reach the cannot-be-a-base arm (code review LOW-1). Both
+            // inputs die in `validate_http_url`, and for http/https `path_segments_mut()` never
+            // returns Err at all — a special scheme always has a path — so that arm is unreachable
+            // today and kept only so a future scheme cannot turn it into a panic. What IS worth
+            // pinning is that a rejected URL produces an Err rather than a base matching everything.
+            assert!(registry_base("data:text/plain,hi").is_err());
+            assert!(registry_base("not a url").is_err());
+        }
+
+        #[test]
+        fn a_registry_url_naming_a_directory_is_refused_rather_than_collapsing_to_the_origin() {
+            // ‼️ FAILS OPEN IF ACCEPTED (code review MEDIUM-3). `https://h/baram-plugins` — what a
+            // browser address bar leaves you — pops to an empty path, so the base becomes the ORIGIN
+            // ROOT and the path half of the rule silently disappears. On Pages that makes every
+            // repository of the account installable, which is the whole thing this rule exists to
+            // stop.
+            let err = registry_base("https://sayinel.github.io/baram-plugins")
+                .expect_err("a directory-shaped registry URL must be refused");
+            assert!(err.contains("names a directory"), "{err}");
+            assert!(registry_base("https://sayinel.github.io").is_err());
+
+            // ...but an index genuinely AT the root is legitimate: then the whole origin is the
+            // registry, and `/` is the correct base rather than a collapse.
+            assert_eq!(
+                registry_base("https://registry.example/index.json")
+                    .unwrap()
+                    .as_str(),
+                "https://registry.example/"
+            );
+            // And a subdirectory URL is untouched by any of this.
+            assert_eq!(
+                registry_base("https://h/r/index.json").unwrap().as_str(),
+                "https://h/r/"
             );
         }
-        // ‼️ And the refusal has to SAY which layer rejected it. Dropping the base64 error
-        // and defaulting to an empty string still ends in Err — the minisign decoder refuses
-        // it one step later — so the accept/reject behaviour cannot tell the two apart, and a
-        // mutation that swallowed it survived. What it destroys is the operator's ability to
-        // tell "the file is not base64" from "the file is not a signature".
-        let err = verify_revocation_signature(SIGNED_BODY, "not base64!!", TEST_PUBLIC_KEY)
-            .expect_err("must refuse");
-        assert!(err.contains("not base64"), "unhelpful refusal: {err}");
-    }
 
-    #[test]
-    fn a_registry_url_the_scheme_guard_rejects_never_yields_a_base() {
-        // ‼️ Renamed: this does NOT reach the cannot-be-a-base arm (code review LOW-1). Both
-        // inputs die in `validate_http_url`, and for http/https `path_segments_mut()` never
-        // returns Err at all — a special scheme always has a path — so that arm is unreachable
-        // today and kept only so a future scheme cannot turn it into a panic. What IS worth
-        // pinning is that a rejected URL produces an Err rather than a base matching everything.
-        assert!(registry_base("data:text/plain,hi").is_err());
-        assert!(registry_base("not a url").is_err());
-    }
+        #[test]
+        fn a_message_never_carries_the_registry_url_s_credentials() {
+            // `Display` on a `Url` serialises userinfo, password included (code review LOW-3), and
+            // these strings reach a toast.
+            let err = registry_base("https://user:hunter2@h/notadoc")
+                .expect_err("directory-shaped, so it refuses and formats the base");
+            assert!(!err.contains("hunter2"), "credentials leaked: {err}");
+            assert!(!err.contains("user:"), "credentials leaked: {err}");
+        }
 
-    #[test]
-    fn a_registry_url_naming_a_directory_is_refused_rather_than_collapsing_to_the_origin() {
-        // ‼️ FAILS OPEN IF ACCEPTED (code review MEDIUM-3). `https://h/baram-plugins` — what a
-        // browser address bar leaves you — pops to an empty path, so the base becomes the ORIGIN
-        // ROOT and the path half of the rule silently disappears. On Pages that makes every
-        // repository of the account installable, which is the whole thing this rule exists to
-        // stop.
-        let err = registry_base("https://sayinel.github.io/baram-plugins")
-            .expect_err("a directory-shaped registry URL must be refused");
-        assert!(err.contains("names a directory"), "{err}");
-        assert!(registry_base("https://sayinel.github.io").is_err());
-
-        // ...but an index genuinely AT the root is legitimate: then the whole origin is the
-        // registry, and `/` is the correct base rather than a collapse.
-        assert_eq!(
-            registry_base("https://registry.example/index.json")
-                .unwrap()
-                .as_str(),
-            "https://registry.example/"
-        );
-        // And a subdirectory URL is untouched by any of this.
-        assert_eq!(
-            registry_base("https://h/r/index.json").unwrap().as_str(),
-            "https://h/r/"
-        );
-    }
-
-    #[test]
-    fn a_message_never_carries_the_registry_url_s_credentials() {
-        // `Display` on a `Url` serialises userinfo, password included (code review LOW-3), and
-        // these strings reach a toast.
-        let err = registry_base("https://user:hunter2@h/notadoc")
-            .expect_err("directory-shaped, so it refuses and formats the base");
-        assert!(!err.contains("hunter2"), "credentials leaked: {err}");
-        assert!(!err.contains("user:"), "credentials leaked: {err}");
-    }
-
-    #[tokio::test]
-    async fn stage_plugin_refuses_an_encoded_separator_before_it_downloads_anything() {
-        // ‼️ WIRING for the `%2f` guard: its other test drives the predicate directly, which
-        // says nothing about whether the download path consults it. Nothing here reaches the
-        // network — the refusal precedes the request.
-        let err = stage_plugin(
-            "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip",
-            LIVE_INDEX,
-            None,
-            None,
-        )
-        .await
-        .expect_err("an encoded separator must be refused");
-        assert!(
-            err.to_string()
-                .contains("is not under the registry that listed it"),
-            "{err}"
-        );
-    }
-
-    /// §69 — the scheme guard is WIRED INTO `fetch_registry`, not merely available.
-    ///
-    /// Asserting `is_err()` here would prove nothing: reqwest rejects a `file:` URL on its
-    /// own, so a `fetch_registry` with the guard deleted still fails this input — with a
-    /// builder error, after constructing a client. The assertion is therefore on the
-    /// guard's OWN words, which is what breaks when the call goes away. Nothing here
-    /// touches the network: both paths refuse before any request is sent.
-    /// §69 — the same guard on the path that downloads third-party CODE.
-    ///
-    /// Asserted on the guard's own words for the reason given below: reqwest refuses a
-    /// `file:` URL by itself, so `is_err()` holds with or without the guard. Nothing here
-    /// reaches the network.
-    #[tokio::test]
-    async fn test_stage_plugin_refuses_non_http_schemes() {
-        let err = stage_plugin("file:///etc/passwd", LIVE_INDEX, None, None)
+        #[tokio::test]
+        async fn stage_plugin_refuses_an_encoded_separator_before_it_downloads_anything() {
+            // ‼️ WIRING for the `%2f` guard: its other test drives the predicate directly, which
+            // says nothing about whether the download path consults it. Nothing here reaches the
+            // network — the refusal precedes the request.
+            let err = stage_plugin(
+                "https://sayinel.github.io/baram-plugins/%2f..%2f..%2fevil/x-1.0.0.zip",
+                LIVE_INDEX,
+                None,
+                None,
+            )
             .await
-            .expect_err("a file:// download URL must be refused");
-        assert!(
-            err.to_string().contains("blocked URL scheme 'file'"),
-            "expected the scheme guard's refusal, got: {err}"
-        );
+            .expect_err("an encoded separator must be refused");
+            assert!(
+                err.to_string()
+                    .contains("is not under the registry that listed it"),
+                "{err}"
+            );
+        }
+
+        /// §69 — the scheme guard is WIRED INTO `fetch_registry`, not merely available.
+        ///
+        /// Asserting `is_err()` here would prove nothing: reqwest rejects a `file:` URL on its
+        /// own, so a `fetch_registry` with the guard deleted still fails this input — with a
+        /// builder error, after constructing a client. The assertion is therefore on the
+        /// guard's OWN words, which is what breaks when the call goes away. Nothing here
+        /// touches the network: both paths refuse before any request is sent.
+        /// §69 — the same guard on the path that downloads third-party CODE.
+        ///
+        /// Asserted on the guard's own words for the reason given below: reqwest refuses a
+        /// `file:` URL by itself, so `is_err()` holds with or without the guard. Nothing here
+        /// reaches the network.
+        #[tokio::test]
+        async fn test_stage_plugin_refuses_non_http_schemes() {
+            let err = stage_plugin("file:///etc/passwd", LIVE_INDEX, None, None)
+                .await
+                .expect_err("a file:// download URL must be refused");
+            assert!(
+                err.to_string().contains("blocked URL scheme 'file'"),
+                "expected the scheme guard's refusal, got: {err}"
+            );
+        }
+
+        #[tokio::test]
+        async fn test_fetch_registry_refuses_non_http_schemes() {
+            let err = fetch_registry("file:///etc/passwd")
+                .await
+                .expect_err("a file:// registry URL must be refused");
+            assert!(
+                err.to_string().contains("blocked URL scheme 'file'"),
+                "expected the scheme guard's refusal, got: {err}"
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn test_fetch_registry_refuses_non_http_schemes() {
-        let err = fetch_registry("file:///etc/passwd")
-            .await
-            .expect_err("a file:// registry URL must be refused");
-        assert!(
-            err.to_string().contains("blocked URL scheme 'file'"),
-            "expected the scheme guard's refusal, got: {err}"
-        );
+    mod storage_tests {
+        use super::super::*;
+
+        #[test]
+        fn test_single_segment_accepts_plain_key() {
+            assert!(single_segment("notes.json").is_some());
+            assert!(single_segment("my-key_1").is_some());
+        }
+
+        #[test]
+        fn test_single_segment_rejects_traversal_and_separators() {
+            assert!(single_segment("").is_none());
+            assert!(single_segment("..").is_none());
+            assert!(single_segment(".").is_none());
+            assert!(single_segment("../secret").is_none());
+            assert!(single_segment("/etc/passwd").is_none());
+            assert!(single_segment("a/b").is_none());
+            assert!(single_segment("a\\b").is_none());
+            assert!(single_segment("~evil").is_none());
+        }
+
+        #[test]
+        fn test_resolve_key_path_cannot_escape_plugin_dir() {
+            let base = std::path::Path::new("/tmp/.baram/plugin-data/p1");
+            // safe key resolves inside base
+            let ok = resolve_key_path(base, "data.json").unwrap();
+            assert!(ok.starts_with(base));
+            // traversal key is rejected outright
+            assert!(resolve_key_path(base, "../../escape").is_err());
+        }
+
+        #[test]
+        fn test_resolve_key_path_write_read_roundtrip() {
+            let tmp = tempfile::tempdir().unwrap();
+            let path = resolve_key_path(tmp.path(), "data.json").unwrap();
+            std::fs::write(&path, "hello").unwrap();
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
+        }
+
+        #[test]
+        fn test_storage_list_filters_tmp_intermediates() {
+            let tmp = tempfile::tempdir().unwrap();
+            std::fs::write(tmp.path().join("foo"), "value").unwrap();
+            // Orphaned/in-flight atomic-write intermediate — must never be listed.
+            std::fs::write(tmp.path().join("foo.9c1f2b3a4e5d6789.tmp"), "partial").unwrap();
+
+            let out = list_storage_keys(tmp.path()).unwrap();
+            assert_eq!(out, vec!["foo".to_string()]);
+        }
+
+        #[test]
+        fn test_validate_manifest_accepts_storage_capability() {
+            let manifest = PluginManifest {
+                id: "test-plugin".to_string(),
+                name: "Test".to_string(),
+                description: "".to_string(),
+                version: "1.0.0".to_string(),
+                author: "".to_string(),
+                license: "MIT".to_string(),
+                main: "index.mjs".to_string(),
+                engines: EngineRequirement {
+                    baram: ">=0.2.0".to_string(),
+                },
+                capabilities: vec!["storage".to_string()],
+                dependencies: vec![],
+                tiptap_extensions: vec![],
+                repository: None,
+                homepage: None,
+                icon: None,
+                keywords: vec![],
+                trust: None,
+                contributions: None,
+            };
+            assert!(validate_manifest(&manifest).is_ok());
+        }
     }
 
-    #[test]
-    fn test_single_segment_accepts_plain_key() {
-        assert!(single_segment("notes.json").is_some());
-        assert!(single_segment("my-key_1").is_some());
-    }
+    mod registry_tests {
+        use super::super::*;
+        use std::sync::Mutex;
 
-    #[test]
-    fn test_single_segment_rejects_traversal_and_separators() {
-        assert!(single_segment("").is_none());
-        assert!(single_segment("..").is_none());
-        assert!(single_segment(".").is_none());
-        assert!(single_segment("../secret").is_none());
-        assert!(single_segment("/etc/passwd").is_none());
-        assert!(single_segment("a/b").is_none());
-        assert!(single_segment("a\\b").is_none());
-        assert!(single_segment("~evil").is_none());
-    }
-
-    #[test]
-    fn test_resolve_key_path_cannot_escape_plugin_dir() {
-        let base = std::path::Path::new("/tmp/.baram/plugin-data/p1");
-        // safe key resolves inside base
-        let ok = resolve_key_path(base, "data.json").unwrap();
-        assert!(ok.starts_with(base));
-        // traversal key is rejected outright
-        assert!(resolve_key_path(base, "../../escape").is_err());
-    }
-
-    #[test]
-    fn test_resolve_key_path_write_read_roundtrip() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = resolve_key_path(tmp.path(), "data.json").unwrap();
-        std::fs::write(&path, "hello").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
-    }
-
-    #[test]
-    fn test_storage_list_filters_tmp_intermediates() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("foo"), "value").unwrap();
-        // Orphaned/in-flight atomic-write intermediate — must never be listed.
-        std::fs::write(tmp.path().join("foo.9c1f2b3a4e5d6789.tmp"), "partial").unwrap();
-
-        let out = list_storage_keys(tmp.path()).unwrap();
-        assert_eq!(out, vec!["foo".to_string()]);
-    }
-
-    #[test]
-    fn test_validate_manifest_accepts_storage_capability() {
-        let manifest = PluginManifest {
-            id: "test-plugin".to_string(),
-            name: "Test".to_string(),
-            description: "".to_string(),
-            version: "1.0.0".to_string(),
-            author: "".to_string(),
-            license: "MIT".to_string(),
-            main: "index.mjs".to_string(),
-            engines: EngineRequirement {
-                baram: ">=0.2.0".to_string(),
-            },
-            capabilities: vec!["storage".to_string()],
-            dependencies: vec![],
-            tiptap_extensions: vec![],
-            repository: None,
-            homepage: None,
-            icon: None,
-            keywords: vec![],
-            trust: None,
-            contributions: None,
-        };
-        assert!(validate_manifest(&manifest).is_ok());
-    }
-
-    #[test]
-    fn test_registry_index_deserializes_camelcase() {
-        const JSON: &str = r#"{
+        #[test]
+        fn test_registry_index_deserializes_camelcase() {
+            const JSON: &str = r#"{
             "plugins": [
                 {
                     "id": "test-plugin",
@@ -3052,424 +3074,422 @@ mod tests {
             ],
             "updatedAt": "2026-01-01"
         }"#;
-        let idx: RegistryIndex = serde_json::from_str(JSON).unwrap();
-        assert_eq!(idx.plugins[0].download_url, "https://x/p.zip");
-        assert_eq!(idx.updated_at, Some("2026-01-01".to_string()));
-    }
-
-    #[test]
-    fn manifest_parses_trust_sandboxed() {
-        let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[],"trust":"sandboxed"}"#;
-        let m: PluginManifest = serde_json::from_str(json).unwrap();
-        assert_eq!(m.trust, Some(PluginTrust::Sandboxed));
-    }
-
-    #[test]
-    fn manifest_without_trust_is_none_for_legacy() {
-        let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[]}"#;
-        let m: PluginManifest = serde_json::from_str(json).unwrap();
-        assert_eq!(m.trust, None);
-    }
-
-    #[test]
-    fn test_committed_registry_seed_deserializes() {
-        const SEED: &str = include_str!("../../../registry/index.json");
-        let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
-        // §260 Phase 6 — one entry: `baram-ai-summary` was withdrawn from the index because
-        // it needs a declarative `sidebar` contribution that does not exist yet, so it
-        // cannot be a sandboxed plugin and must not be published as a trusted one.
-        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, vec!["baram-word-count"]);
-        for entry in &idx.plugins {
-            assert!(
-                entry
-                    .download_url
-                    .starts_with("https://sayinel.github.io/baram-plugins/plugins/"),
-                "downloadUrl should point at the live registry: {}",
-                entry.download_url
-            );
-            // ‼️ SHAPE ONLY — 64 zeros satisfy this, deliberately, because a seed may name a
-            // release whose ZIP does not exist yet (§260 Phase 6 code review, M4).
-            //
-            // The hazard this comment used to describe as uncatchable — the placeholder
-            // becoming PERMANENT — is now caught, and it had in fact happened: word-count
-            // 2.0.0 shipped on 2026-07-30 and this file still carried all zeros three days
-            // later, because the release workflow writes only the registry repo's index and a
-            // maintainer pastes the real checksum here by hand. `scripts/validate-index.ts`
-            // WARNS on an all-zero checksum every time it runs, which is now every
-            // `npm run lint` — it found this on its first run. Still a warning rather than an
-            // error, so seeding an unreleased entry stays possible.
-            assert_eq!(entry.checksum.len(), 64, "checksum must be sha256 hex");
-            assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
-            // §260 Phase 6 — an entry without a tier is one the app refuses to install
-            // (Phase 5 reads it as legacy), so a seed missing it would model a dead registry.
-            assert_eq!(
-                entry.trust.as_deref(),
-                Some("sandboxed"),
-                "{} must declare its tier",
-                entry.id
-            );
+            let idx: RegistryIndex = serde_json::from_str(JSON).unwrap();
+            assert_eq!(idx.plugins[0].download_url, "https://x/p.zip");
+            assert_eq!(idx.updated_at, Some("2026-01-01".to_string()));
         }
-    }
 
-    /// §260 Phase 6 — `trust` must survive the round trip through this struct.
-    ///
-    /// THE DEFECT THIS PINS: `fetch_registry` deserializes the live index into
-    /// `RegistryEntry` and Tauri re-serializes it to the frontend. `trust` was not a field,
-    /// so serde dropped it silently — every entry reached the marketplace as `trust:
-    /// undefined`, i.e. legacy, i.e. Install disabled. Publishing the field in `index.json`
-    /// fixed nothing on its own. Asserting deserialization alone would NOT have caught it
-    /// (unknown fields are ignored, so the old struct parsed the new JSON happily); it is
-    /// the re-serialize half that carries the bug.
-    #[test]
-    fn registry_entry_carries_trust_back_out() {
-        let json = r#"{"id":"p","name":"P","description":"d","version":"1.0.0",
+        #[test]
+        fn manifest_parses_trust_sandboxed() {
+            let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[],"trust":"sandboxed"}"#;
+            let m: PluginManifest = serde_json::from_str(json).unwrap();
+            assert_eq!(m.trust, Some(PluginTrust::Sandboxed));
+        }
+
+        #[test]
+        fn manifest_without_trust_is_none_for_legacy() {
+            let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[]}"#;
+            let m: PluginManifest = serde_json::from_str(json).unwrap();
+            assert_eq!(m.trust, None);
+        }
+
+        #[test]
+        fn test_committed_registry_seed_deserializes() {
+            const SEED: &str = include_str!("../../../registry/index.json");
+            let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
+            // §260 Phase 6 — one entry: `baram-ai-summary` was withdrawn from the index because
+            // it needs a declarative `sidebar` contribution that does not exist yet, so it
+            // cannot be a sandboxed plugin and must not be published as a trusted one.
+            let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+            assert_eq!(ids, vec!["baram-word-count"]);
+            for entry in &idx.plugins {
+                assert!(
+                    entry
+                        .download_url
+                        .starts_with("https://sayinel.github.io/baram-plugins/plugins/"),
+                    "downloadUrl should point at the live registry: {}",
+                    entry.download_url
+                );
+                // ‼️ SHAPE ONLY — 64 zeros satisfy this, deliberately, because a seed may name a
+                // release whose ZIP does not exist yet (§260 Phase 6 code review, M4).
+                //
+                // The hazard this comment used to describe as uncatchable — the placeholder
+                // becoming PERMANENT — is now caught, and it had in fact happened: word-count
+                // 2.0.0 shipped on 2026-07-30 and this file still carried all zeros three days
+                // later, because the release workflow writes only the registry repo's index and a
+                // maintainer pastes the real checksum here by hand. `scripts/validate-index.ts`
+                // WARNS on an all-zero checksum every time it runs, which is now every
+                // `npm run lint` — it found this on its first run. Still a warning rather than an
+                // error, so seeding an unreleased entry stays possible.
+                assert_eq!(entry.checksum.len(), 64, "checksum must be sha256 hex");
+                assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
+                // §260 Phase 6 — an entry without a tier is one the app refuses to install
+                // (Phase 5 reads it as legacy), so a seed missing it would model a dead registry.
+                assert_eq!(
+                    entry.trust.as_deref(),
+                    Some("sandboxed"),
+                    "{} must declare its tier",
+                    entry.id
+                );
+            }
+        }
+
+        /// §260 Phase 6 — `trust` must survive the round trip through this struct.
+        ///
+        /// THE DEFECT THIS PINS: `fetch_registry` deserializes the live index into
+        /// `RegistryEntry` and Tauri re-serializes it to the frontend. `trust` was not a field,
+        /// so serde dropped it silently — every entry reached the marketplace as `trust:
+        /// undefined`, i.e. legacy, i.e. Install disabled. Publishing the field in `index.json`
+        /// fixed nothing on its own. Asserting deserialization alone would NOT have caught it
+        /// (unknown fields are ignored, so the old struct parsed the new JSON happily); it is
+        /// the re-serialize half that carries the bug.
+        #[test]
+        fn registry_entry_carries_trust_back_out() {
+            let json = r#"{"id":"p","name":"P","description":"d","version":"1.0.0",
             "author":"a","license":"MIT","downloadUrl":"https://example.test/p.zip",
             "checksum":"ab","capabilities":["events"],"trust":"sandboxed",
             "engines":{"baram":">=0.4.0"}}"#;
-        let entry: RegistryEntry = serde_json::from_str(json).unwrap();
-        assert_eq!(entry.trust.as_deref(), Some("sandboxed"));
+            let entry: RegistryEntry = serde_json::from_str(json).unwrap();
+            assert_eq!(entry.trust.as_deref(), Some("sandboxed"));
 
-        let back = serde_json::to_value(&entry).unwrap();
-        assert_eq!(back["trust"], "sandboxed", "the frontend must see the tier");
+            let back = serde_json::to_value(&entry).unwrap();
+            assert_eq!(back["trust"], "sandboxed", "the frontend must see the tier");
 
-        // A legacy entry stays legacy rather than acquiring a default tier: the key is
-        // absent, not `null`, so `!entry.trust` in the frontend is the whole test.
-        let legacy: RegistryEntry =
-            serde_json::from_str(&json.replace(r#""trust":"sandboxed","#, "")).unwrap();
-        assert_eq!(legacy.trust, None);
-        assert!(
-            serde_json::to_value(&legacy)
-                .unwrap()
-                .get("trust")
-                .is_none(),
-            "an absent tier must not be serialized as null"
-        );
-    }
-
-    /// A `RegistryEntry` template with every field this struct requires.
-    ///
-    /// Built as a `Value` so a test can REMOVE a field, which is the mutation that matters
-    /// here — a literal with one field edited proves nothing about the missing-field path.
-    fn entry_json(id: &str) -> serde_json::Value {
-        serde_json::json!({
-            "id": id,
-            "name": "P",
-            "description": "d",
-            "version": "1.0.0",
-            "author": "a",
-            "license": "MIT",
-            "downloadUrl": "https://example.test/p.zip",
-            "checksum": "ab",
-            "capabilities": ["events"],
-            "trust": "sandboxed",
-            "engines": { "baram": ">=0.4.0" }
-        })
-    }
-
-    /// THE DEFECT THIS PINS: one unreadable entry emptied the marketplace for everyone.
-    ///
-    /// `plugins` was a plain `Vec<RegistryEntry>`, so serde failed the WHOLE document on the
-    /// first entry missing a required field — `fetch_registry` returned `Err`, and every
-    /// user's Browse tab went blank until the registry operator noticed. The index is shared,
-    /// so the cost of one contributor's typo was borne by all of them.
-    #[test]
-    fn registry_index_drops_only_the_unreadable_entry() {
-        let mut broken = entry_json("broken");
-        broken.as_object_mut().unwrap().remove("license");
-        let doc = serde_json::json!({
-            "plugins": [entry_json("first"), broken, entry_json("last")],
-        });
-
-        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
-
-        // By ID, not by count. A comparator that dropped everything, or kept the broken entry
-        // and dropped a good one, would satisfy `len() == 2`.
-        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, vec!["first", "last"]);
-    }
-
-    /// Collects every record the `log` facade emits, so a test can assert on log VOLUME.
-    struct Capture(Mutex<Vec<String>>);
-
-    impl log::Log for Capture {
-        fn enabled(&self, _: &log::Metadata) -> bool {
-            true
-        }
-        fn log(&self, record: &log::Record) {
-            self.0.lock().unwrap().push(record.args().to_string());
-        }
-        fn flush(&self) {}
-    }
-
-    static CAPTURE: Capture = Capture(Mutex::new(Vec::new()));
-
-    /// ‼️ The ONE global logger installation in this test binary.
-    ///
-    /// `log::set_boxed_logger` is process-wide and one-shot, so a second call anywhere in
-    /// the lib tests fails. `logging::tests` deliberately never installs one — it drives
-    /// `Box<dyn Log>` directly — precisely so this assertion, which needs the real
-    /// `log::warn!` macro path, can have it. If this `expect` ever fires, some other test
-    /// took the global slot and the two need to be reconciled, not worked around.
-    /// Named for what it proves. It counts records, never bytes on disk, so it is not
-    /// evidence that the log cannot be evicted — one line big enough would do that, and
-    /// what stops it is `logging::MAX_LINE_BYTES`. The two bounds are separate
-    /// properties and each needs its own test.
-    #[test]
-    fn the_number_of_named_registry_drops_is_bounded() {
-        log::set_logger(&CAPTURE).expect("no other lib test may install a global logger");
-        log::set_max_level(log::LevelFilter::Warn);
-
-        // 500 entries that each fail on a missing field. Unbounded, this is one warning per
-        // entry; the 4 MiB input cap allows ~380k of them, enough to overwrite a 2 MiB log
-        // and both of its archives ~21 times over and take every real diagnostic with it.
-        let junk: Vec<serde_json::Value> = (0..500)
-            .map(|i| serde_json::json!({ "id": format!("junk-{i}") }))
-            .collect();
-        let doc = serde_json::json!({ "plugins": junk });
-
-        let err = serde_json::from_value::<RegistryIndex>(doc).unwrap_err();
-        assert!(
-            err.to_string().contains("every one of the 500"),
-            "an all-junk index is still a hard error: {err}"
-        );
-
-        // Count only what THIS test provoked. `CAPTURE` is process-global and
-        // `set_max_level` above turns the facade on for the rest of the binary, so a
-        // bare `records.len()` is coupled to every other test that reaches this same
-        // `log::warn!` — three of them do. With zero headroom, that made a green run
-        // depend on libtest sorting this name ahead of `registry_index_*`.
-        let records = CAPTURE.0.lock().unwrap();
-        let mine: Vec<&String> = records
-            .iter()
-            .filter(|r| r.contains("junk-") || r.contains("further unreadable"))
-            .collect();
-        assert!(
-            mine.len() <= MAX_NAMED_DROPS + 1,
-            "at most {MAX_NAMED_DROPS} named entries plus one summary, got {}",
-            mine.len()
-        );
-        // Not just "few records": the summary has to account for the rest, or the bound
-        // would be silence about 490 dropped entries.
-        assert!(
-            records.iter().any(|r| r.contains("490 further unreadable")),
-            "the entries that were not named must still be counted: {records:?}"
-        );
-    }
-
-    /// An absent `engines` costs the entry nothing, because it costs the app nothing.
-    ///
-    /// The frontend's floor gate reads a missing or unparseable range as "no opinion" and
-    /// installs (`src/plugins/engines.ts`), so refusing to deserialize the entry would have
-    /// been the one layer with a stronger view than the layer that decides. Absence must also
-    /// survive re-serialization as ABSENCE — same argument as `trust` above: the frontend
-    /// tests `engines?.baram`, and a `null` would reach it as a present-but-broken field.
-    #[test]
-    fn registry_entry_without_engines_keeps_the_entry() {
-        let mut json = entry_json("no-floor");
-        json.as_object_mut().unwrap().remove("engines");
-
-        // Deliberately NOT `assert!(entry.engines.is_none())`. That reads on the field's
-        // type, so reverting the field to a required `EngineRequirement` breaks this test at
-        // COMPILE time — and a module that will not compile cannot demonstrate what its
-        // assertions catch. Without that line the mutation runs, and what it produces is the
-        // failure worth pinning: `from_value` returns Err, so at index level `tolerant_entries`
-        // PRUNES the entry instead of raising anything. Absence is proved by the serialized
-        // form below, which is the half the frontend actually reads.
-        let entry: RegistryEntry = serde_json::from_value(json).unwrap();
-        assert!(
-            serde_json::to_value(&entry)
-                .unwrap()
-                .get("engines")
-                .is_none(),
-            "an absent floor must not be serialized as null"
-        );
-
-        // And the floor still round-trips when it IS declared — the tolerance must not have
-        // been bought by dropping the field on the way back out (the `trust` defect, again).
-        let declared: RegistryEntry = serde_json::from_value(entry_json("has-floor")).unwrap();
-        assert_eq!(
-            serde_json::to_value(&declared).unwrap()["engines"]["baram"],
-            ">=0.4.0"
-        );
-    }
-
-    /// The two changes MEET here, and the meeting point is where the silent loss would be.
-    ///
-    /// Per-entry tolerance is what makes a required `engines` dangerous rather than loud: if
-    /// the field goes back to mandatory, nothing errors and nothing fails to compile — the
-    /// entry is simply pruned on the way in, and a perfectly installable plugin disappears
-    /// from every user's marketplace with a line in a log nobody reads. Asserted at INDEX
-    /// level for exactly that reason; the entry-level test cannot see a pruning decision.
-    #[test]
-    fn registry_index_keeps_an_entry_that_declares_no_floor() {
-        let mut no_floor = entry_json("no-floor");
-        no_floor.as_object_mut().unwrap().remove("engines");
-        let doc = serde_json::json!({ "plugins": [entry_json("has-floor"), no_floor] });
-
-        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
-
-        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            vec!["has-floor", "no-floor"],
-            "an entry that declares no floor is still installable, so it must still be listed"
-        );
-    }
-
-    /// Keeps `scripts/validate-index.ts` honest about what this struct actually requires.
-    ///
-    /// That script's `REQUIRED_FIELDS` is a hand-copy of the fields below that carry no
-    /// `#[serde(default)]`, and it is the list the publish gate refuses on. The dangerous
-    /// drift is this struct growing a required field the script does not know about: the
-    /// gate would pass an entry that `tolerant_entries` then silently prunes, which is
-    /// precisely the invisible-plugin failure both were written to prevent. This entry holds
-    /// EXACTLY the script's list, so that addition fails here.
-    ///
-    /// The reverse drift is deliberately not caught — a script asking for more than the
-    /// struct needs costs a publish, not a user.
-    #[test]
-    fn registry_entry_minimal_required_fields_deserializes() {
-        let minimal = serde_json::json!({
-            "id": "m",
-            "name": "M",
-            "description": "d",
-            "version": "1.0.0",
-            "author": "a",
-            "license": "MIT",
-            "downloadUrl": "https://example.test/m.zip",
-            "checksum": "ab",
-            "capabilities": []
-        });
-        let entry = serde_json::from_value::<RegistryEntry>(minimal);
-        assert!(
-            entry.is_ok(),
-            "a field became required without being added to REQUIRED_FIELDS in \
-             scripts/validate-index.ts — entries missing it would be pruned, not reported: {:?}",
-            entry.err()
-        );
-    }
-
-    /// THE DEFECT THIS PINS (code review HIGH-1): tolerance that swallows TOTAL loss.
-    ///
-    /// Dropping bad entries makes "the whole document is unreadable" indistinguishable from
-    /// "the registry is empty" — and the empty answer is the more dangerous one, because
-    /// `fetchRegistryIndex` caches a successful result for 24 hours and only falls back to
-    /// the stale cache on a throw. A schema mismatch would therefore replace every user's
-    /// working listing with a silent empty Browse tab, for a day, with no error anywhere.
-    #[test]
-    fn registry_index_errors_when_no_entry_survives() {
-        let doc = serde_json::json!({ "plugins": [{ "id": "a" }, { "id": "b" }] });
-        let err = serde_json::from_value::<RegistryIndex>(doc).unwrap_err();
-        // Names the count, so the message distinguishes this from a genuinely empty registry.
-        assert!(
-            err.to_string().contains("every one of the 2 entries"),
-            "unexpected message: {err}"
-        );
-
-        // An index that is genuinely empty is NOT an error — nothing was lost.
-        let empty: RegistryIndex =
-            serde_json::from_value(serde_json::json!({ "plugins": [] })).unwrap();
-        assert!(empty.plugins.is_empty());
-        assert_eq!(empty.dropped_count, 0);
-    }
-
-    /// Partial loss is survivable but must not be silent, and the log alone cannot carry
-    /// it: `src/logging` now gives `log::warn!` an implementation, but only the first
-    /// `MAX_NAMED_DROPS` entries are named there, and a log file is not something the
-    /// user sees. The count over the wire is what reaches them.
-    #[test]
-    fn registry_index_reports_how_many_entries_it_dropped() {
-        let mut broken = entry_json("broken");
-        broken.as_object_mut().unwrap().remove("license");
-        let doc = serde_json::json!({ "plugins": [entry_json("kept"), broken] });
-
-        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
-
-        assert_eq!(idx.dropped_count, 1);
-        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, vec!["kept"]);
-        assert_eq!(
-            serde_json::to_value(&idx).unwrap()["droppedCount"],
-            1,
-            "the frontend is the only layer that can report this"
-        );
-    }
-
-    /// `droppedCount` is a diagnostic this app produces, so the registry must not be able to
-    /// assert one — the same rule `normalizeIndex` enforces for `demotedBecause`.
-    #[test]
-    fn registry_index_ignores_a_registry_supplied_dropped_count() {
-        let doc = serde_json::json!({
-            "plugins": [entry_json("fine")],
-            "droppedCount": 99
-        });
-        let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
-        assert_eq!(idx.dropped_count, 0);
-    }
-
-    /// Backs the claim `scripts/validate-index.ts` makes in its own error text.
-    ///
-    /// That script tells the operator a wrong-typed field means the app "DROPS an entry it
-    /// cannot deserialize". Worth pinning, because the intuition for the `#[serde(default)]`
-    /// fields runs the other way — `default` looks like it should absorb anything. It does
-    /// not: it applies only when the key is ABSENT. A key that is present with the wrong type
-    /// is a hard deserialization error, so an optional field is every bit as fatal as a
-    /// required one once someone actually writes it.
-    #[test]
-    fn a_wrong_typed_field_drops_the_entry_even_when_optional() {
-        for (field, bad) in [
-            ("license", serde_json::Value::Null),
-            ("version", serde_json::json!(123)),
-            ("name", serde_json::json!(["N"])),
-            ("capabilities", serde_json::json!([1, 2])),
-            // …and the `#[serde(default)]` ones, which is the counter-intuitive half.
-            ("downloads", serde_json::json!("many")),
-            ("keywords", serde_json::json!("word")),
-            ("repository", serde_json::json!(5)),
-            ("icon", serde_json::json!(true)),
-            // ‼️ `downloads` is `u64`, and JS has ONE numeric type — so "is it a number?"
-            // is not the same question on the two sides. Review round 3 found these three
-            // still passing the publish gate after the presence-vs-type fix. It is also the
-            // likeliest field to hold a computed value rather than a typed one: a rate
-            // arrives as a float, "unknown" arrives as -1.
-            ("downloads", serde_json::json!(1.5)),
-            ("downloads", serde_json::json!(-1)),
-            ("downloads", serde_json::json!(1e20)),
-        ] {
-            let mut json = entry_json("x");
-            json.as_object_mut().unwrap().insert(field.into(), bad);
+            // A legacy entry stays legacy rather than acquiring a default tier: the key is
+            // absent, not `null`, so `!entry.trust` in the frontend is the whole test.
+            let legacy: RegistryEntry =
+                serde_json::from_str(&json.replace(r#""trust":"sandboxed","#, "")).unwrap();
+            assert_eq!(legacy.trust, None);
             assert!(
-                serde_json::from_value::<RegistryEntry>(json).is_err(),
-                "a wrong-typed `{field}` must fail to deserialize — validate-index.ts tells \
-                 operators it does"
+                serde_json::to_value(&legacy)
+                    .unwrap()
+                    .get("trust")
+                    .is_none(),
+                "an absent tier must not be serialized as null"
             );
         }
 
-        // The contrast that makes the point: OMITTING the same optional fields is fine.
-        let mut json = entry_json("x");
-        for field in ["downloads", "keywords", "repository", "icon"] {
-            json.as_object_mut().unwrap().remove(field);
+        /// A `RegistryEntry` template with every field this struct requires.
+        ///
+        /// Built as a `Value` so a test can REMOVE a field, which is the mutation that matters
+        /// here — a literal with one field edited proves nothing about the missing-field path.
+        fn entry_json(id: &str) -> serde_json::Value {
+            serde_json::json!({
+                "id": id,
+                "name": "P",
+                "description": "d",
+                "version": "1.0.0",
+                "author": "a",
+                "license": "MIT",
+                "downloadUrl": "https://example.test/p.zip",
+                "checksum": "ab",
+                "capabilities": ["events"],
+                "trust": "sandboxed",
+                "engines": { "baram": ">=0.4.0" }
+            })
         }
-        assert!(serde_json::from_value::<RegistryEntry>(json).is_ok());
+
+        /// THE DEFECT THIS PINS: one unreadable entry emptied the marketplace for everyone.
+        ///
+        /// `plugins` was a plain `Vec<RegistryEntry>`, so serde failed the WHOLE document on the
+        /// first entry missing a required field — `fetch_registry` returned `Err`, and every
+        /// user's Browse tab went blank until the registry operator noticed. The index is shared,
+        /// so the cost of one contributor's typo was borne by all of them.
+        #[test]
+        fn registry_index_drops_only_the_unreadable_entry() {
+            let mut broken = entry_json("broken");
+            broken.as_object_mut().unwrap().remove("license");
+            let doc = serde_json::json!({
+                "plugins": [entry_json("first"), broken, entry_json("last")],
+            });
+
+            let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+
+            // By ID, not by count. A comparator that dropped everything, or kept the broken entry
+            // and dropped a good one, would satisfy `len() == 2`.
+            let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+            assert_eq!(ids, vec!["first", "last"]);
+        }
+
+        /// Collects every record the `log` facade emits, so a test can assert on log VOLUME.
+        struct Capture(Mutex<Vec<String>>);
+
+        impl log::Log for Capture {
+            fn enabled(&self, _: &log::Metadata) -> bool {
+                true
+            }
+            fn log(&self, record: &log::Record) {
+                self.0.lock().unwrap().push(record.args().to_string());
+            }
+            fn flush(&self) {}
+        }
+
+        static CAPTURE: Capture = Capture(Mutex::new(Vec::new()));
+
+        /// ‼️ The ONE global logger installation in this test binary.
+        ///
+        /// `log::set_boxed_logger` is process-wide and one-shot, so a second call anywhere in
+        /// the lib tests fails. `logging::tests` deliberately never installs one — it drives
+        /// `Box<dyn Log>` directly — precisely so this assertion, which needs the real
+        /// `log::warn!` macro path, can have it. If this `expect` ever fires, some other test
+        /// took the global slot and the two need to be reconciled, not worked around.
+        /// Named for what it proves. It counts records, never bytes on disk, so it is not
+        /// evidence that the log cannot be evicted — one line big enough would do that, and
+        /// what stops it is `logging::MAX_LINE_BYTES`. The two bounds are separate
+        /// properties and each needs its own test.
+        #[test]
+        fn the_number_of_named_registry_drops_is_bounded() {
+            log::set_logger(&CAPTURE).expect("no other lib test may install a global logger");
+            log::set_max_level(log::LevelFilter::Warn);
+
+            // 500 entries that each fail on a missing field. Unbounded, this is one warning per
+            // entry; the 4 MiB input cap allows ~380k of them, enough to overwrite a 2 MiB log
+            // and both of its archives ~21 times over and take every real diagnostic with it.
+            let junk: Vec<serde_json::Value> = (0..500)
+                .map(|i| serde_json::json!({ "id": format!("junk-{i}") }))
+                .collect();
+            let doc = serde_json::json!({ "plugins": junk });
+
+            let err = serde_json::from_value::<RegistryIndex>(doc).unwrap_err();
+            assert!(
+                err.to_string().contains("every one of the 500"),
+                "an all-junk index is still a hard error: {err}"
+            );
+
+            // Count only what THIS test provoked. `CAPTURE` is process-global and
+            // `set_max_level` above turns the facade on for the rest of the binary, so a
+            // bare `records.len()` is coupled to every other test that reaches this same
+            // `log::warn!` — three of them do. With zero headroom, that made a green run
+            // depend on libtest sorting this name ahead of `registry_index_*`.
+            let records = CAPTURE.0.lock().unwrap();
+            let mine: Vec<&String> = records
+                .iter()
+                .filter(|r| r.contains("junk-") || r.contains("further unreadable"))
+                .collect();
+            assert!(
+                mine.len() <= MAX_NAMED_DROPS + 1,
+                "at most {MAX_NAMED_DROPS} named entries plus one summary, got {}",
+                mine.len()
+            );
+            // Not just "few records": the summary has to account for the rest, or the bound
+            // would be silence about 490 dropped entries.
+            assert!(
+                records.iter().any(|r| r.contains("490 further unreadable")),
+                "the entries that were not named must still be counted: {records:?}"
+            );
+        }
+
+        /// An absent `engines` costs the entry nothing, because it costs the app nothing.
+        ///
+        /// The frontend's floor gate reads a missing or unparseable range as "no opinion" and
+        /// installs (`src/plugins/engines.ts`), so refusing to deserialize the entry would have
+        /// been the one layer with a stronger view than the layer that decides. Absence must also
+        /// survive re-serialization as ABSENCE — same argument as `trust` above: the frontend
+        /// tests `engines?.baram`, and a `null` would reach it as a present-but-broken field.
+        #[test]
+        fn registry_entry_without_engines_keeps_the_entry() {
+            let mut json = entry_json("no-floor");
+            json.as_object_mut().unwrap().remove("engines");
+
+            // Deliberately NOT `assert!(entry.engines.is_none())`. That reads on the field's
+            // type, so reverting the field to a required `EngineRequirement` breaks this test at
+            // COMPILE time — and a module that will not compile cannot demonstrate what its
+            // assertions catch. Without that line the mutation runs, and what it produces is the
+            // failure worth pinning: `from_value` returns Err, so at index level `tolerant_entries`
+            // PRUNES the entry instead of raising anything. Absence is proved by the serialized
+            // form below, which is the half the frontend actually reads.
+            let entry: RegistryEntry = serde_json::from_value(json).unwrap();
+            assert!(
+                serde_json::to_value(&entry)
+                    .unwrap()
+                    .get("engines")
+                    .is_none(),
+                "an absent floor must not be serialized as null"
+            );
+
+            // And the floor still round-trips when it IS declared — the tolerance must not have
+            // been bought by dropping the field on the way back out (the `trust` defect, again).
+            let declared: RegistryEntry = serde_json::from_value(entry_json("has-floor")).unwrap();
+            assert_eq!(
+                serde_json::to_value(&declared).unwrap()["engines"]["baram"],
+                ">=0.4.0"
+            );
+        }
+
+        /// The two changes MEET here, and the meeting point is where the silent loss would be.
+        ///
+        /// Per-entry tolerance is what makes a required `engines` dangerous rather than loud: if
+        /// the field goes back to mandatory, nothing errors and nothing fails to compile — the
+        /// entry is simply pruned on the way in, and a perfectly installable plugin disappears
+        /// from every user's marketplace with a line in a log nobody reads. Asserted at INDEX
+        /// level for exactly that reason; the entry-level test cannot see a pruning decision.
+        #[test]
+        fn registry_index_keeps_an_entry_that_declares_no_floor() {
+            let mut no_floor = entry_json("no-floor");
+            no_floor.as_object_mut().unwrap().remove("engines");
+            let doc = serde_json::json!({ "plugins": [entry_json("has-floor"), no_floor] });
+
+            let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+
+            let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+            assert_eq!(
+                ids,
+                vec!["has-floor", "no-floor"],
+                "an entry that declares no floor is still installable, so it must still be listed"
+            );
+        }
+
+        /// Keeps `scripts/validate-index.ts` honest about what this struct actually requires.
+        ///
+        /// That script's `REQUIRED_FIELDS` is a hand-copy of the fields below that carry no
+        /// `#[serde(default)]`, and it is the list the publish gate refuses on. The dangerous
+        /// drift is this struct growing a required field the script does not know about: the
+        /// gate would pass an entry that `tolerant_entries` then silently prunes, which is
+        /// precisely the invisible-plugin failure both were written to prevent. This entry holds
+        /// EXACTLY the script's list, so that addition fails here.
+        ///
+        /// The reverse drift is deliberately not caught — a script asking for more than the
+        /// struct needs costs a publish, not a user.
+        #[test]
+        fn registry_entry_minimal_required_fields_deserializes() {
+            let minimal = serde_json::json!({
+                "id": "m",
+                "name": "M",
+                "description": "d",
+                "version": "1.0.0",
+                "author": "a",
+                "license": "MIT",
+                "downloadUrl": "https://example.test/m.zip",
+                "checksum": "ab",
+                "capabilities": []
+            });
+            let entry = serde_json::from_value::<RegistryEntry>(minimal);
+            assert!(
+                entry.is_ok(),
+                "a field became required without being added to REQUIRED_FIELDS in \
+             scripts/validate-index.ts — entries missing it would be pruned, not reported: {:?}",
+                entry.err()
+            );
+        }
+
+        /// THE DEFECT THIS PINS (code review HIGH-1): tolerance that swallows TOTAL loss.
+        ///
+        /// Dropping bad entries makes "the whole document is unreadable" indistinguishable from
+        /// "the registry is empty" — and the empty answer is the more dangerous one, because
+        /// `fetchRegistryIndex` caches a successful result for 24 hours and only falls back to
+        /// the stale cache on a throw. A schema mismatch would therefore replace every user's
+        /// working listing with a silent empty Browse tab, for a day, with no error anywhere.
+        #[test]
+        fn registry_index_errors_when_no_entry_survives() {
+            let doc = serde_json::json!({ "plugins": [{ "id": "a" }, { "id": "b" }] });
+            let err = serde_json::from_value::<RegistryIndex>(doc).unwrap_err();
+            // Names the count, so the message distinguishes this from a genuinely empty registry.
+            assert!(
+                err.to_string().contains("every one of the 2 entries"),
+                "unexpected message: {err}"
+            );
+
+            // An index that is genuinely empty is NOT an error — nothing was lost.
+            let empty: RegistryIndex =
+                serde_json::from_value(serde_json::json!({ "plugins": [] })).unwrap();
+            assert!(empty.plugins.is_empty());
+            assert_eq!(empty.dropped_count, 0);
+        }
+
+        /// Partial loss is survivable but must not be silent, and the log alone cannot carry
+        /// it: `src/logging` now gives `log::warn!` an implementation, but only the first
+        /// `MAX_NAMED_DROPS` entries are named there, and a log file is not something the
+        /// user sees. The count over the wire is what reaches them.
+        #[test]
+        fn registry_index_reports_how_many_entries_it_dropped() {
+            let mut broken = entry_json("broken");
+            broken.as_object_mut().unwrap().remove("license");
+            let doc = serde_json::json!({ "plugins": [entry_json("kept"), broken] });
+
+            let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+
+            assert_eq!(idx.dropped_count, 1);
+            let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+            assert_eq!(ids, vec!["kept"]);
+            assert_eq!(
+                serde_json::to_value(&idx).unwrap()["droppedCount"],
+                1,
+                "the frontend is the only layer that can report this"
+            );
+        }
+
+        /// `droppedCount` is a diagnostic this app produces, so the registry must not be able to
+        /// assert one — the same rule `normalizeIndex` enforces for `demotedBecause`.
+        #[test]
+        fn registry_index_ignores_a_registry_supplied_dropped_count() {
+            let doc = serde_json::json!({
+                "plugins": [entry_json("fine")],
+                "droppedCount": 99
+            });
+            let idx: RegistryIndex = serde_json::from_value(doc).unwrap();
+            assert_eq!(idx.dropped_count, 0);
+        }
+
+        /// Backs the claim `scripts/validate-index.ts` makes in its own error text.
+        ///
+        /// That script tells the operator a wrong-typed field means the app "DROPS an entry it
+        /// cannot deserialize". Worth pinning, because the intuition for the `#[serde(default)]`
+        /// fields runs the other way — `default` looks like it should absorb anything. It does
+        /// not: it applies only when the key is ABSENT. A key that is present with the wrong type
+        /// is a hard deserialization error, so an optional field is every bit as fatal as a
+        /// required one once someone actually writes it.
+        #[test]
+        fn a_wrong_typed_field_drops_the_entry_even_when_optional() {
+            for (field, bad) in [
+                ("license", serde_json::Value::Null),
+                ("version", serde_json::json!(123)),
+                ("name", serde_json::json!(["N"])),
+                ("capabilities", serde_json::json!([1, 2])),
+                // …and the `#[serde(default)]` ones, which is the counter-intuitive half.
+                ("downloads", serde_json::json!("many")),
+                ("keywords", serde_json::json!("word")),
+                ("repository", serde_json::json!(5)),
+                ("icon", serde_json::json!(true)),
+                // ‼️ `downloads` is `u64`, and JS has ONE numeric type — so "is it a number?"
+                // is not the same question on the two sides. Review round 3 found these three
+                // still passing the publish gate after the presence-vs-type fix. It is also the
+                // likeliest field to hold a computed value rather than a typed one: a rate
+                // arrives as a float, "unknown" arrives as -1.
+                ("downloads", serde_json::json!(1.5)),
+                ("downloads", serde_json::json!(-1)),
+                ("downloads", serde_json::json!(1e20)),
+            ] {
+                let mut json = entry_json("x");
+                json.as_object_mut().unwrap().insert(field.into(), bad);
+                assert!(
+                    serde_json::from_value::<RegistryEntry>(json).is_err(),
+                    "a wrong-typed `{field}` must fail to deserialize — validate-index.ts tells \
+                 operators it does"
+                );
+            }
+
+            // The contrast that makes the point: OMITTING the same optional fields is fine.
+            let mut json = entry_json("x");
+            for field in ["downloads", "keywords", "repository", "icon"] {
+                json.as_object_mut().unwrap().remove(field);
+            }
+            assert!(serde_json::from_value::<RegistryEntry>(json).is_ok());
+        }
+
+        /// Tolerance is per-ENTRY, not per-document. A payload with no `plugins` array is not a
+        /// partly-broken index, and answering it with an empty marketplace would hide a registry
+        /// that is serving the wrong file entirely.
+        #[test]
+        fn registry_index_without_plugins_array_is_an_error() {
+            let err = serde_json::from_str::<RegistryIndex>(r#"{"updatedAt":"2026-01-01"}"#);
+            assert!(err.is_err());
+        }
     }
 
-    /// Tolerance is per-ENTRY, not per-document. A payload with no `plugins` array is not a
-    /// partly-broken index, and answering it with an empty marketplace would hide a registry
-    /// that is serving the wrong file entirely.
-    #[test]
-    fn registry_index_without_plugins_array_is_an_error() {
-        let err = serde_json::from_str::<RegistryIndex>(r#"{"updatedAt":"2026-01-01"}"#);
-        assert!(err.is_err());
-    }
-
-    // ── #261 archive expansion bounds ────────────────────────────────────────────────
-    //
-    // The download cap (32 MiB) never bounded the extraction. DEFLATE tops out around
-    // 1032:1, so that archive could expand to roughly 33 GB, and `read_to_end` into an
-    // unbounded `Vec` meant memory went before disk did.
-
-    /// A deflated archive of `entries`, built in memory.
+    /// A deflated archive of `entries`, built in memory. Shared across `archive_tests`,
+    /// `fetch_tests`, and `staging_tests` (via `plugin_zip`), so it lives at the `tests`
+    /// level rather than nested in any one group — a private item is visible to its
+    /// defining module's descendants only, not to siblings.
     fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
         use std::io::Write;
         let mut buf = std::io::Cursor::new(Vec::<u8>::new());
@@ -3486,623 +3506,683 @@ mod tests {
         buf.into_inner()
     }
 
-    /// Kilobyte-scale limits, so the arithmetic can be tested without writing a quarter of
-    /// a gigabyte. `refuses_a_real_bomb_through_the_production_bounds` covers the shipped
-    /// constants; these cover the branches.
-    ///
-    /// ‼️ The ratio has to be small (3:1) for a different reason than the others: at these
-    /// sizes the ZIP container's own headers are a large fraction of the archive, so a
-    /// realistic 10:1 is unreachable inside a 8 KiB total budget no matter how compressible
-    /// the payload. The first draft of these tests set 10 and two of them silently could not
-    /// trip the limit they were named after.
-    fn tiny_bounds() -> ExtractBounds {
-        ExtractBounds {
-            max_entries: 4,
-            max_entry_bytes: 4096,
-            max_path_depth: 3,
-            max_ratio: 3,
-            max_total_bytes: 8192,
-            ratio_floor_bytes: 2000,
-        }
-    }
+    mod archive_tests {
+        use super::super::*;
+        use super::zip_of;
 
-    /// Rewrites the compression-method field of every header in `data`.
-    ///
-    /// The method lives at offset 8 of a local file header (`PK\x03\x04`) and offset 10 of a
-    /// central-directory header (`PK\x01\x02`); both must agree or the reader disagrees with
-    /// itself. Lets a test produce an archive claiming a codec this build does not compile,
-    /// which is exactly what the allowlist has to refuse.
-    fn with_compression_method(mut data: Vec<u8>, method: u16) -> Vec<u8> {
-        let bytes = method.to_le_bytes();
-        let mut patched = 0;
-        for i in 0..data.len().saturating_sub(4) {
-            let offset = match &data[i..i + 4] {
-                b"PK\x03\x04" => 8,
-                b"PK\x01\x02" => 10,
-                _ => continue,
-            };
-            if i + offset + 2 <= data.len() {
-                data[i + offset..i + offset + 2].copy_from_slice(&bytes);
-                patched += 1;
+        // ── #261 archive expansion bounds ────────────────────────────────────────────────
+        //
+        // The download cap (32 MiB) never bounded the extraction. DEFLATE tops out around
+        // 1032:1, so that archive could expand to roughly 33 GB, and `read_to_end` into an
+        // unbounded `Vec` meant memory went before disk did.
+
+        /// Kilobyte-scale limits, so the arithmetic can be tested without writing a quarter of
+        /// a gigabyte. `refuses_a_real_bomb_through_the_production_bounds` covers the shipped
+        /// constants; these cover the branches.
+        ///
+        /// ‼️ The ratio has to be small (3:1) for a different reason than the others: at these
+        /// sizes the ZIP container's own headers are a large fraction of the archive, so a
+        /// realistic 10:1 is unreachable inside a 8 KiB total budget no matter how compressible
+        /// the payload. The first draft of these tests set 10 and two of them silently could not
+        /// trip the limit they were named after.
+        fn tiny_bounds() -> ExtractBounds {
+            ExtractBounds {
+                max_entries: 4,
+                max_entry_bytes: 4096,
+                max_path_depth: 3,
+                max_ratio: 3,
+                max_total_bytes: 8192,
+                ratio_floor_bytes: 2000,
             }
         }
-        // One local header + one central-directory header for a single-entry archive. Without
-        // this the test could pass while patching nothing, which is the hollow-guard shape.
-        assert_eq!(patched, 2, "expected to patch both headers");
-        data
-    }
 
-    /// Bytes deflate cannot shrink, so the ratio limit stays out of the way.
-    ///
-    /// The total- and per-file-limit tests need this: zeros compress so well that the RATIO
-    /// refusal fires first and the test passes while proving the wrong thing.
-    fn incompressible(n: usize) -> Vec<u8> {
-        let mut x: u32 = 0x1234_5678;
-        (0..n)
-            .map(|_| {
-                x ^= x << 13;
-                x ^= x >> 17;
-                x ^= x << 5;
-                (x & 0xff) as u8
-            })
-            .collect()
-    }
-
-    #[test]
-    fn extracts_a_normal_archive_unchanged() {
-        // The control. Every refusal below is only meaningful if the ordinary case still
-        // works, byte for byte.
-        let data = zip_of(&[
-            ("baram-plugin.json", b"{}"),
-            ("dist/index.mjs", b"export {}"),
-        ]);
-        let dir = tempfile::tempdir().unwrap();
-        extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap();
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join("dist/index.mjs")).unwrap(),
-            "export {}"
-        );
-    }
-
-    #[test]
-    fn refuses_more_entries_than_the_limit() {
-        let names: Vec<String> = (0..5).map(|i| format!("f{i}.txt")).collect();
-        let entries: Vec<(&str, &[u8])> =
-            names.iter().map(|n| (n.as_str(), b"x" as &[u8])).collect();
-        let dir = tempfile::tempdir().unwrap();
-
-        let err = extract_zip_bounded(&zip_of(&entries), dir.path(), tiny_bounds()).unwrap_err();
-
-        // Names the limit, not just "refused" — five different bounds live in this function
-        // and "it errored" would not tell them apart.
-        assert!(err.to_string().contains("over the 4 limit"), "{err}");
-    }
-
-    #[test]
-    fn refuses_an_entry_over_the_per_file_limit() {
-        let dir = tempfile::tempdir().unwrap();
-        let data = zip_of(&[("big.bin", &incompressible(5000))]);
-
-        let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
-
-        assert!(err.to_string().contains("per-file limit"), "{err}");
-    }
-
-    #[test]
-    fn refuses_an_archive_over_the_total_limit() {
-        // Each entry is under the 4096 per-file limit; together they pass 8192. The
-        // distinction matters because the message tells the operator which limit to raise.
-        let body = incompressible(3000);
-        let dir = tempfile::tempdir().unwrap();
-        let data = zip_of(&[("a", &body), ("b", &body), ("c", &body)]);
-
-        let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
-
-        assert!(err.to_string().contains("total limit"), "{err}");
-        assert!(
-            !err.to_string().contains("per-file"),
-            "the total is what bound this, and the message must say so: {err}"
-        );
-    }
-
-    #[test]
-    fn does_not_apply_the_ratio_below_its_floor() {
-        // Compressible enough to blow past 3:1, but under the 2000-byte floor — where the
-        // ratio is a statistic computed on too little output to mean anything. Refusing here
-        // would reject ordinary small archives of text.
-        let dir = tempfile::tempdir().unwrap();
-        let expanded = 1500;
-        let data = zip_of(&[("small.txt", &vec![0u8; expanded])]);
-        let bounds = tiny_bounds();
-        assert!(
-            expanded as u64 > data.len() as u64 * bounds.max_ratio,
-            "the fixture must exceed the ratio, or the floor is not what let it through: \
-             {expanded} expanded from {} on the wire",
-            data.len()
-        );
-        assert!((expanded as u64) < bounds.ratio_floor_bytes);
-
-        extract_zip_bounded(&data, dir.path(), bounds).unwrap();
-    }
-
-    #[test]
-    fn refuses_a_high_ratio_archive_once_past_the_floor() {
-        let dir = tempfile::tempdir().unwrap();
-        // Two entries of zeros: together they clear the 2000-byte floor and pass 3:1, while
-        // each stays under the per-file limit and the pair stays under the total.
-        let data = zip_of(&[("a.bin", &vec![0u8; 1500]), ("b.bin", &vec![0u8; 1500])]);
-
-        let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
-
-        // Names the computed ALLOWANCE, not the bare ratio: `max(wire × ratio, floor)`
-        // means the ratio is often not the binding number, and a message that says otherwise
-        // sends the operator to the wrong arithmetic (review round 2).
-        assert!(err.to_string().contains("bytes allowed for its"), "{err}");
-    }
-
-    /// Total bytes sitting under `dir` after a refusal.
-    fn bytes_on_disk(dir: &Path) -> u64 {
-        fn walk(dir: &Path, total: &mut u64) {
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                return;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    walk(&path, total);
-                } else if let Ok(meta) = entry.metadata() {
-                    *total += meta.len();
+        /// Rewrites the compression-method field of every header in `data`.
+        ///
+        /// The method lives at offset 8 of a local file header (`PK\x03\x04`) and offset 10 of a
+        /// central-directory header (`PK\x01\x02`); both must agree or the reader disagrees with
+        /// itself. Lets a test produce an archive claiming a codec this build does not compile,
+        /// which is exactly what the allowlist has to refuse.
+        fn with_compression_method(mut data: Vec<u8>, method: u16) -> Vec<u8> {
+            let bytes = method.to_le_bytes();
+            let mut patched = 0;
+            for i in 0..data.len().saturating_sub(4) {
+                let offset = match &data[i..i + 4] {
+                    b"PK\x03\x04" => 8,
+                    b"PK\x01\x02" => 10,
+                    _ => continue,
+                };
+                if i + offset + 2 <= data.len() {
+                    data[i + offset..i + offset + 2].copy_from_slice(&bytes);
+                    patched += 1;
                 }
             }
+            // One local header + one central-directory header for a single-entry archive. Without
+            // this the test could pass while patching nothing, which is the hollow-guard shape.
+            assert_eq!(patched, 2, "expected to patch both headers");
+            data
         }
-        let mut total = 0;
-        walk(dir, &mut total);
-        total
-    }
 
-    /// THE DEFECT THIS PINS (review M1): the ratio limit bounded what SURVIVED, not what the
-    /// archive could make us write.
-    ///
-    /// Measured before the fix: a 64 KiB archive holding one 64 MiB entry cleared the
-    /// per-file and total ceilings, put all 64 MiB on disk, and only then hit the "100:1"
-    /// refusal — 1027:1 of transient amplification against a documented 100:1. Asserting the
-    /// message alone could not see it; the refusal fired either way. This asserts the BYTES.
-    #[test]
-    fn a_bomb_is_refused_before_it_can_fill_the_disk() {
-        let dir = tempfile::tempdir().unwrap();
-        let data = zip_of(&[("bomb.bin", &vec![0u8; 64 * 1024 * 1024])]);
-        let wire = data.len() as u64;
+        /// Bytes deflate cannot shrink, so the ratio limit stays out of the way.
+        ///
+        /// The total- and per-file-limit tests need this: zeros compress so well that the RATIO
+        /// refusal fires first and the test passes while proving the wrong thing.
+        fn incompressible(n: usize) -> Vec<u8> {
+            let mut x: u32 = 0x1234_5678;
+            (0..n)
+                .map(|_| {
+                    x ^= x << 13;
+                    x ^= x >> 17;
+                    x ^= x << 5;
+                    (x & 0xff) as u8
+                })
+                .collect()
+        }
 
-        let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
-        // The mirror of the test above: this fixture is RATIO-bound (64 KiB × 100 clears
-        // the floor), so here the ratio genuinely is the enforced number.
-        let allowance = (wire * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
-        assert_eq!(
-            allowance,
-            wire * MAX_COMPRESSION_RATIO,
-            "fixture must be ratio-bound"
-        );
-        assert!(
-            err.to_string()
-                .contains(&format!("{allowance} bytes allowed")),
-            "{err}"
-        );
+        #[test]
+        fn extracts_a_normal_archive_unchanged() {
+            // The control. Every refusal below is only meaningful if the ordinary case still
+            // works, byte for byte.
+            let data = zip_of(&[
+                ("baram-plugin.json", b"{}"),
+                ("dist/index.mjs", b"export {}"),
+            ]);
+            let dir = tempfile::tempdir().unwrap();
+            extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap();
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("dist/index.mjs")).unwrap(),
+                "export {}"
+            );
+        }
 
-        // The allowance is `max(wire × 100, 1 MiB)`, and one byte over it is what triggers
-        // the refusal — so anything materially past that means the cap is not in the read.
-        let written = bytes_on_disk(dir.path());
-        let allowance = (wire * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
-        assert!(
+        #[test]
+        fn refuses_more_entries_than_the_limit() {
+            let names: Vec<String> = (0..5).map(|i| format!("f{i}.txt")).collect();
+            let entries: Vec<(&str, &[u8])> =
+                names.iter().map(|n| (n.as_str(), b"x" as &[u8])).collect();
+            let dir = tempfile::tempdir().unwrap();
+
+            let err =
+                extract_zip_bounded(&zip_of(&entries), dir.path(), tiny_bounds()).unwrap_err();
+
+            // Names the limit, not just "refused" — five different bounds live in this function
+            // and "it errored" would not tell them apart.
+            assert!(err.to_string().contains("over the 4 limit"), "{err}");
+        }
+
+        #[test]
+        fn refuses_an_entry_over_the_per_file_limit() {
+            let dir = tempfile::tempdir().unwrap();
+            let data = zip_of(&[("big.bin", &incompressible(5000))]);
+
+            let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
+
+            assert!(err.to_string().contains("per-file limit"), "{err}");
+        }
+
+        #[test]
+        fn refuses_an_archive_over_the_total_limit() {
+            // Each entry is under the 4096 per-file limit; together they pass 8192. The
+            // distinction matters because the message tells the operator which limit to raise.
+            let body = incompressible(3000);
+            let dir = tempfile::tempdir().unwrap();
+            let data = zip_of(&[("a", &body), ("b", &body), ("c", &body)]);
+
+            let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
+
+            assert!(err.to_string().contains("total limit"), "{err}");
+            assert!(
+                !err.to_string().contains("per-file"),
+                "the total is what bound this, and the message must say so: {err}"
+            );
+        }
+
+        #[test]
+        fn does_not_apply_the_ratio_below_its_floor() {
+            // Compressible enough to blow past 3:1, but under the 2000-byte floor — where the
+            // ratio is a statistic computed on too little output to mean anything. Refusing here
+            // would reject ordinary small archives of text.
+            let dir = tempfile::tempdir().unwrap();
+            let expanded = 1500;
+            let data = zip_of(&[("small.txt", &vec![0u8; expanded])]);
+            let bounds = tiny_bounds();
+            assert!(
+                expanded as u64 > data.len() as u64 * bounds.max_ratio,
+                "the fixture must exceed the ratio, or the floor is not what let it through: \
+             {expanded} expanded from {} on the wire",
+                data.len()
+            );
+            assert!((expanded as u64) < bounds.ratio_floor_bytes);
+
+            extract_zip_bounded(&data, dir.path(), bounds).unwrap();
+        }
+
+        #[test]
+        fn refuses_a_high_ratio_archive_once_past_the_floor() {
+            let dir = tempfile::tempdir().unwrap();
+            // Two entries of zeros: together they clear the 2000-byte floor and pass 3:1, while
+            // each stays under the per-file limit and the pair stays under the total.
+            let data = zip_of(&[("a.bin", &vec![0u8; 1500]), ("b.bin", &vec![0u8; 1500])]);
+
+            let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
+
+            // Names the computed ALLOWANCE, not the bare ratio: `max(wire × ratio, floor)`
+            // means the ratio is often not the binding number, and a message that says otherwise
+            // sends the operator to the wrong arithmetic (review round 2).
+            assert!(err.to_string().contains("bytes allowed for its"), "{err}");
+        }
+
+        /// Total bytes sitting under `dir` after a refusal.
+        fn bytes_on_disk(dir: &Path) -> u64 {
+            fn walk(dir: &Path, total: &mut u64) {
+                let Ok(entries) = std::fs::read_dir(dir) else {
+                    return;
+                };
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        walk(&path, total);
+                    } else if let Ok(meta) = entry.metadata() {
+                        *total += meta.len();
+                    }
+                }
+            }
+            let mut total = 0;
+            walk(dir, &mut total);
+            total
+        }
+
+        /// THE DEFECT THIS PINS (review M1): the ratio limit bounded what SURVIVED, not what the
+        /// archive could make us write.
+        ///
+        /// Measured before the fix: a 64 KiB archive holding one 64 MiB entry cleared the
+        /// per-file and total ceilings, put all 64 MiB on disk, and only then hit the "100:1"
+        /// refusal — 1027:1 of transient amplification against a documented 100:1. Asserting the
+        /// message alone could not see it; the refusal fired either way. This asserts the BYTES.
+        #[test]
+        fn a_bomb_is_refused_before_it_can_fill_the_disk() {
+            let dir = tempfile::tempdir().unwrap();
+            let data = zip_of(&[("bomb.bin", &vec![0u8; 64 * 1024 * 1024])]);
+            let wire = data.len() as u64;
+
+            let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
+            // The mirror of the test above: this fixture is RATIO-bound (64 KiB × 100 clears
+            // the floor), so here the ratio genuinely is the enforced number.
+            let allowance = (wire * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
+            assert_eq!(
+                allowance,
+                wire * MAX_COMPRESSION_RATIO,
+                "fixture must be ratio-bound"
+            );
+            assert!(
+                err.to_string()
+                    .contains(&format!("{allowance} bytes allowed")),
+                "{err}"
+            );
+
+            // The allowance is `max(wire × 100, 1 MiB)`, and one byte over it is what triggers
+            // the refusal — so anything materially past that means the cap is not in the read.
+            let written = bytes_on_disk(dir.path());
+            let allowance = (wire * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
+            assert!(
             written <= allowance + 1,
             "{written} bytes reached disk from a {wire} byte archive; the {MAX_COMPRESSION_RATIO}:1 \
              ratio allows {allowance}"
         );
-    }
+        }
 
-    /// The shipped constants, end to end — the others drive injected limits.
-    ///
-    /// Reachable cheaply only through the ratio: 2 MiB of zeros deflates to a couple of
-    /// kilobytes, which clears the 1 MiB floor at roughly 1000:1 while staying far under
-    /// the 64 MiB per-file and 256 MiB total ceilings. Those two are covered above with
-    /// injected bounds precisely so this test does not have to write 256 MiB.
-    #[test]
-    fn refuses_a_real_bomb_through_the_production_bounds() {
-        let dir = tempfile::tempdir().unwrap();
-        let data = zip_of(&[("bomb.bin", &vec![0u8; 2 * 1024 * 1024])]);
-        assert!(
-            data.len() < 64 * 1024,
-            "the fixture must actually be a bomb: {} bytes on the wire",
-            data.len()
-        );
+        /// The shipped constants, end to end — the others drive injected limits.
+        ///
+        /// Reachable cheaply only through the ratio: 2 MiB of zeros deflates to a couple of
+        /// kilobytes, which clears the 1 MiB floor at roughly 1000:1 while staying far under
+        /// the 64 MiB per-file and 256 MiB total ceilings. Those two are covered above with
+        /// injected bounds precisely so this test does not have to write 256 MiB.
+        #[test]
+        fn refuses_a_real_bomb_through_the_production_bounds() {
+            let dir = tempfile::tempdir().unwrap();
+            let data = zip_of(&[("bomb.bin", &vec![0u8; 2 * 1024 * 1024])]);
+            assert!(
+                data.len() < 64 * 1024,
+                "the fixture must actually be a bomb: {} bytes on the wire",
+                data.len()
+            );
 
-        let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
+            let err = extract_zip_bytes(&data, dir.path()).unwrap_err();
 
-        // ‼️ This fixture is FLOOR-bound, not ratio-bound: 2 KiB on the wire × 100 is well
-        // under 1 MiB, so the allowance is the floor and the ratio actually enforced is
-        // ~476:1. The message must say 1048576, not "100:1" — this assertion is the one that
-        // would have caught it claiming the latter.
-        let allowance = (data.len() as u64 * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
-        assert_eq!(
-            allowance, RATIO_FLOOR_BYTES,
-            "fixture must be floor-bound to be the point"
-        );
-        assert!(
-            err.to_string()
-                .contains(&format!("{allowance} bytes allowed")),
-            "{err}"
-        );
-    }
+            // ‼️ This fixture is FLOOR-bound, not ratio-bound: 2 KiB on the wire × 100 is well
+            // under 1 MiB, so the allowance is the floor and the ratio actually enforced is
+            // ~476:1. The message must say 1048576, not "100:1" — this assertion is the one that
+            // would have caught it claiming the latter.
+            let allowance = (data.len() as u64 * MAX_COMPRESSION_RATIO).max(RATIO_FLOOR_BYTES);
+            assert_eq!(
+                allowance, RATIO_FLOOR_BYTES,
+                "fixture must be floor-bound to be the point"
+            );
+            assert!(
+                err.to_string()
+                    .contains(&format!("{allowance} bytes allowed")),
+                "{err}"
+            );
+        }
 
-    // ── At the boundary ──────────────────────────────────────────────────────────────
-    //
-    // ‼️ Every fixture above sits comfortably on one side of its limit, so `>` → `>=` on any
-    // of these comparisons is invisible: a mutation that spuriously refuses an entry of
-    // EXACTLY the ceiling passes the whole suite. Ten mutations were run on the first draft
-    // and every one was a removal — the same blind spot as [[mutation-removal-vs-substitution]],
-    // recurring in the phase that recorded it. These three fixtures land on the value.
+        // ── At the boundary ──────────────────────────────────────────────────────────────
+        //
+        // ‼️ Every fixture above sits comfortably on one side of its limit, so `>` → `>=` on any
+        // of these comparisons is invisible: a mutation that spuriously refuses an entry of
+        // EXACTLY the ceiling passes the whole suite. Ten mutations were run on the first draft
+        // and every one was a removal — the same blind spot as [[mutation-removal-vs-substitution]],
+        // recurring in the phase that recorded it. These three fixtures land on the value.
 
-    #[test]
-    fn admits_an_entry_of_exactly_the_per_file_limit() {
-        let bounds = tiny_bounds();
-        let dir = tempfile::tempdir().unwrap();
-        let data = zip_of(&[(
-            "exact.bin",
-            &incompressible(bounds.max_entry_bytes as usize),
-        )]);
+        #[test]
+        fn admits_an_entry_of_exactly_the_per_file_limit() {
+            let bounds = tiny_bounds();
+            let dir = tempfile::tempdir().unwrap();
+            let data = zip_of(&[(
+                "exact.bin",
+                &incompressible(bounds.max_entry_bytes as usize),
+            )]);
 
-        extract_zip_bounded(&data, dir.path(), bounds).expect("exactly the limit is legal");
-    }
+            extract_zip_bounded(&data, dir.path(), bounds).expect("exactly the limit is legal");
+        }
 
-    #[test]
-    fn admits_an_archive_of_exactly_the_total_limit() {
-        let bounds = tiny_bounds();
-        let half = (bounds.max_total_bytes / 2) as usize;
-        let dir = tempfile::tempdir().unwrap();
-        let data = zip_of(&[("a", &incompressible(half)), ("b", &incompressible(half))]);
+        #[test]
+        fn admits_an_archive_of_exactly_the_total_limit() {
+            let bounds = tiny_bounds();
+            let half = (bounds.max_total_bytes / 2) as usize;
+            let dir = tempfile::tempdir().unwrap();
+            let data = zip_of(&[("a", &incompressible(half)), ("b", &incompressible(half))]);
 
-        extract_zip_bounded(&data, dir.path(), bounds).expect("exactly the limit is legal");
-    }
+            extract_zip_bounded(&data, dir.path(), bounds).expect("exactly the limit is legal");
+        }
 
-    #[test]
-    fn admits_exactly_the_entry_count_limit() {
-        let bounds = tiny_bounds();
-        let names: Vec<String> = (0..bounds.max_entries).map(|i| format!("f{i}")).collect();
-        let entries: Vec<(&str, &[u8])> =
-            names.iter().map(|n| (n.as_str(), b"x" as &[u8])).collect();
-        let dir = tempfile::tempdir().unwrap();
+        #[test]
+        fn admits_exactly_the_entry_count_limit() {
+            let bounds = tiny_bounds();
+            let names: Vec<String> = (0..bounds.max_entries).map(|i| format!("f{i}")).collect();
+            let entries: Vec<(&str, &[u8])> =
+                names.iter().map(|n| (n.as_str(), b"x" as &[u8])).collect();
+            let dir = tempfile::tempdir().unwrap();
 
-        extract_zip_bounded(&zip_of(&entries), dir.path(), bounds)
-            .expect("exactly the limit is legal");
-    }
+            extract_zip_bounded(&zip_of(&entries), dir.path(), bounds)
+                .expect("exactly the limit is legal");
+        }
 
-    /// THE DEFECT THIS PINS (§69 security review, HIGH): a decoder that allocates from a
-    /// number in the archive, before any byte the ceilings can count.
-    ///
-    /// `zip = "8"` compiles LZMA, PPMd, zstd, xz and bzip2 by default. LZMA builds its
-    /// decoder on the FIRST READ — inside the very `read` that `take` wraps — and sizes its
-    /// dictionary from the payload, clamped only to ~4 GiB. Measured: a 114-byte archive
-    /// drove a single 512 MiB allocation through `take(64 MiB + 1)`, and a failed
-    /// `alloc_zeroed` aborts rather than unwinding, so `spawn_blocking` cannot even report
-    /// it. Every byte bound in this module is downstream of that.
-    ///
-    /// ‼️ Built by BYTE-PATCHING a Deflated archive to method 14, not by asking the writer.
-    ///
-    /// `CompressionMethod`'s variants are feature-gated, so once `lzma` is not compiled the
-    /// name does not exist to write with — and the earlier version of this test, which used
-    /// `Bzip2`, stopped compiling the moment the decoders were removed. Patching the header
-    /// is also the better test: it produces the shape an attacker actually sends, and it
-    /// keeps working whichever codecs are enabled. The refusal must come from
-    /// `ALLOWED_COMPRESSION`, not from the crate happening to lack a decoder.
-    #[test]
-    fn refuses_a_compression_method_outside_the_allowlist() {
-        const LZMA: u16 = 14;
-        let data = with_compression_method(zip_of(&[("payload.bin", b"harmless content")]), LZMA);
-        let dir = tempfile::tempdir().unwrap();
+        /// THE DEFECT THIS PINS (§69 security review, HIGH): a decoder that allocates from a
+        /// number in the archive, before any byte the ceilings can count.
+        ///
+        /// `zip = "8"` compiles LZMA, PPMd, zstd, xz and bzip2 by default. LZMA builds its
+        /// decoder on the FIRST READ — inside the very `read` that `take` wraps — and sizes its
+        /// dictionary from the payload, clamped only to ~4 GiB. Measured: a 114-byte archive
+        /// drove a single 512 MiB allocation through `take(64 MiB + 1)`, and a failed
+        /// `alloc_zeroed` aborts rather than unwinding, so `spawn_blocking` cannot even report
+        /// it. Every byte bound in this module is downstream of that.
+        ///
+        /// ‼️ Built by BYTE-PATCHING a Deflated archive to method 14, not by asking the writer.
+        ///
+        /// `CompressionMethod`'s variants are feature-gated, so once `lzma` is not compiled the
+        /// name does not exist to write with — and the earlier version of this test, which used
+        /// `Bzip2`, stopped compiling the moment the decoders were removed. Patching the header
+        /// is also the better test: it produces the shape an attacker actually sends, and it
+        /// keeps working whichever codecs are enabled. The refusal must come from
+        /// `ALLOWED_COMPRESSION`, not from the crate happening to lack a decoder.
+        #[test]
+        fn refuses_a_compression_method_outside_the_allowlist() {
+            const LZMA: u16 = 14;
+            let data =
+                with_compression_method(zip_of(&[("payload.bin", b"harmless content")]), LZMA);
+            let dir = tempfile::tempdir().unwrap();
 
-        let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
+            let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
 
-        assert!(err.to_string().contains("compression method"), "{err}");
-        // ‼️ Refused before the entry was touched. If the check ran after the first read the
-        // decoder would already have been constructed, which is the whole exposure.
-        assert!(
-            !dir.path().join("payload.bin").exists(),
-            "the entry must be refused before anything is created for it"
-        );
-    }
+            assert!(err.to_string().contains("compression method"), "{err}");
+            // ‼️ Refused before the entry was touched. If the check ran after the first read the
+            // decoder would already have been constructed, which is the whole exposure.
+            assert!(
+                !dir.path().join("payload.bin").exists(),
+                "the entry must be refused before anything is created for it"
+            );
+        }
 
-    #[test]
-    fn admits_both_allowed_compression_methods() {
-        // The allowlist must not break what the release pipeline actually produces: `zip -r`
-        // emits Deflated, and Stored covers entries too small to gain from compression.
-        use std::io::Write;
-        for method in ALLOWED_COMPRESSION {
+        #[test]
+        fn admits_both_allowed_compression_methods() {
+            // The allowlist must not break what the release pipeline actually produces: `zip -r`
+            // emits Deflated, and Stored covers entries too small to gain from compression.
+            use std::io::Write;
+            for method in ALLOWED_COMPRESSION {
+                let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+                {
+                    let mut writer = zip::write::ZipWriter::new(&mut buf);
+                    let opts = zip::write::SimpleFileOptions::default().compression_method(method);
+                    writer.start_file("a.txt", opts).unwrap();
+                    writer.write_all(b"content").unwrap();
+                    writer.finish().unwrap();
+                }
+                let dir = tempfile::tempdir().unwrap();
+
+                extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds())
+                    .unwrap_or_else(|e| panic!("{method} must be accepted: {e}"));
+
+                assert_eq!(
+                    std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+                    "content"
+                );
+            }
+        }
+
+        /// ‼️ A symlink entry must not become a symlink.
+        ///
+        /// ZIP can carry them, and the `zip` crate's own `ZipArchive::extract` materialises them
+        /// (`make_symlink`, zip-8.6.0 `read.rs:419`). This loop never consults `is_symlink()`, so
+        /// such an entry takes the ordinary file path and its CONTENT — the target string — is
+        /// written as text. Nothing links anywhere.
+        ///
+        /// ‼️ #261 made this matter MORE, not less. The staged tree used to be COPIED into place,
+        /// and `copy_dir_recursive` would have dereferenced a link on the way; it is now
+        /// `rename`d, which preserves one verbatim into the installed tree for the loader — or
+        /// any later copy — to follow. Either way the defence is the same and it is upstream of
+        /// both: no link is ever created.
+        ///
+        /// That safety is currently a consequence of what this loop does NOT do, which is
+        /// exactly the kind of property a refactor toward the crate's `extract()` would delete
+        /// silently. `enclosed_name` would not save us there: it constrains the entry's own path,
+        /// not where a link it creates may point.
+        #[test]
+        fn a_symlink_entry_becomes_a_regular_file() {
             let mut buf = std::io::Cursor::new(Vec::<u8>::new());
             {
                 let mut writer = zip::write::ZipWriter::new(&mut buf);
-                let opts = zip::write::SimpleFileOptions::default().compression_method(method);
-                writer.start_file("a.txt", opts).unwrap();
-                writer.write_all(b"content").unwrap();
+                writer
+                    .add_symlink(
+                        "escape",
+                        "../../../../etc/passwd",
+                        zip::write::SimpleFileOptions::default(),
+                    )
+                    .unwrap();
                 writer.finish().unwrap();
             }
             let dir = tempfile::tempdir().unwrap();
 
-            extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds())
-                .unwrap_or_else(|e| panic!("{method} must be accepted: {e}"));
+            extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds()).unwrap();
 
+            let made = dir.path().join("escape");
+            // `symlink_metadata` does not follow, so this sees what was actually created.
+            let kind = std::fs::symlink_metadata(&made).unwrap().file_type();
+            assert!(
+                !kind.is_symlink(),
+                "a symlink entry was materialised as a link; the swap would rename it straight \
+             into the installed tree"
+            );
             assert_eq!(
-                std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
-                "content"
+                std::fs::read_to_string(&made).unwrap(),
+                "../../../../etc/passwd",
+                "the target should have landed as inert text"
             );
         }
-    }
 
-    /// ‼️ A symlink entry must not become a symlink.
-    ///
-    /// ZIP can carry them, and the `zip` crate's own `ZipArchive::extract` materialises them
-    /// (`make_symlink`, zip-8.6.0 `read.rs:419`). This loop never consults `is_symlink()`, so
-    /// such an entry takes the ordinary file path and its CONTENT — the target string — is
-    /// written as text. Nothing links anywhere.
-    ///
-    /// ‼️ #261 made this matter MORE, not less. The staged tree used to be COPIED into place,
-    /// and `copy_dir_recursive` would have dereferenced a link on the way; it is now
-    /// `rename`d, which preserves one verbatim into the installed tree for the loader — or
-    /// any later copy — to follow. Either way the defence is the same and it is upstream of
-    /// both: no link is ever created.
-    ///
-    /// That safety is currently a consequence of what this loop does NOT do, which is
-    /// exactly the kind of property a refactor toward the crate's `extract()` would delete
-    /// silently. `enclosed_name` would not save us there: it constrains the entry's own path,
-    /// not where a link it creates may point.
-    #[test]
-    fn a_symlink_entry_becomes_a_regular_file() {
-        let mut buf = std::io::Cursor::new(Vec::<u8>::new());
-        {
-            let mut writer = zip::write::ZipWriter::new(&mut buf);
-            writer
-                .add_symlink(
-                    "escape",
-                    "../../../../etc/passwd",
-                    zip::write::SimpleFileOptions::default(),
-                )
-                .unwrap();
-            writer.finish().unwrap();
+        #[test]
+        fn refuses_a_path_deeper_than_the_limit() {
+            // Directories are free to the byte ceilings — an entry's parents contribute no
+            // expanded bytes — so depth is the one dimension they cannot bound (review M2).
+            let dir = tempfile::tempdir().unwrap();
+            let deep = "a/b/c/d/e/f.txt";
+            let data = zip_of(&[(deep, b"x")]);
+
+            let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
+
+            assert!(err.to_string().contains("path components"), "{err}");
+            assert!(
+                !dir.path().join("a").exists(),
+                "the depth check must run BEFORE create_dir_all, or it charges nothing"
+            );
         }
-        let dir = tempfile::tempdir().unwrap();
 
-        extract_zip_bounded(&buf.into_inner(), dir.path(), tiny_bounds()).unwrap();
+        #[test]
+        fn admits_a_path_at_the_depth_limit() {
+            // `dist/chunks/x.mjs` is depth 3 and must keep working; the production limit is 16.
+            let dir = tempfile::tempdir().unwrap();
+            let data = zip_of(&[("a/b/c.txt", b"x")]);
 
-        let made = dir.path().join("escape");
-        // `symlink_metadata` does not follow, so this sees what was actually created.
-        let kind = std::fs::symlink_metadata(&made).unwrap().file_type();
-        assert!(
-            !kind.is_symlink(),
-            "a symlink entry was materialised as a link; the swap would rename it straight \
-             into the installed tree"
-        );
-        assert_eq!(
-            std::fs::read_to_string(&made).unwrap(),
-            "../../../../etc/passwd",
-            "the target should have landed as inert text"
-        );
+            extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap();
+
+            assert_eq!(
+                std::fs::read_to_string(dir.path().join("a/b/c.txt")).unwrap(),
+                "x"
+            );
+        }
+
+        /// ‼️ The bounds must never be computed from what the archive says about itself.
+        ///
+        /// `file.size()` and `file.compressed_size()` are read out of the archive's own headers,
+        /// so a check against them asks the attacker whether the attack is allowed: a header can
+        /// claim 4 KiB and the stream can deliver gigabytes. The code reads through `take`
+        /// instead, and this asserts it stays that way — the plausible regression is someone
+        /// adding a "fast path" that skips an entry whose declared size looks small.
+        ///
+        /// Windowed to the function body and asserting ABSENCE, so it cannot pass by matching
+        /// something elsewhere in the file.
+        #[test]
+        fn extraction_never_consults_the_declared_size() {
+            // #D6 moved the bounded copy itself into `crate::fs::archive::extract_entry`, shared
+            // with `fs::extract_zip` (Notion import) — `extract_zip_bounded` above is now a thin
+            // wrapper that delegates to it, so this pin follows the real implementation there
+            // rather than scanning a wrapper that no longer contains the read it is pinning.
+            const SOURCE: &str = include_str!("../fs/archive.rs");
+            let start = SOURCE
+                .find("fn extract_entry<")
+                .expect("the function must still exist under this name");
+            let body = &SOURCE[start..];
+            let end = body.find("\n}\n").expect("the function must end");
+            let body = &body[..end];
+
+            // ‼️ A positive anchor FIRST. The window ends at the next column-0 `}`, so a future
+            // edit that shortens the function — or a rename — leaves an absence assertion that
+            // passes over nothing at all (review L4). This line fails loudly instead.
+            assert!(
+                body.contains("take(cap + 1)"),
+                "the window no longer contains the bounded read, so the absence checks below \
+             would be vacuous"
+            );
+            for header_field in [".size()", ".compressed_size()"] {
+                assert!(
+                    !body.contains(header_field),
+                    "extract_zip_bounded reads `{header_field}` from the archive header — the \
+                 bounds must be enforced on bytes actually read"
+                );
+            }
+        }
     }
 
-    #[test]
-    fn refuses_a_path_deeper_than_the_limit() {
-        // Directories are free to the byte ceilings — an entry's parents contribute no
-        // expanded bytes — so depth is the one dimension they cannot bound (review M2).
-        let dir = tempfile::tempdir().unwrap();
-        let deep = "a/b/c/d/e/f.txt";
-        let data = zip_of(&[(deep, b"x")]);
+    mod fetch_tests {
+        use super::super::*;
+        use super::{zip_of, LIVE_INDEX};
+        use std::sync::{Arc, Mutex};
+        use std::time::Instant;
 
-        let err = extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap_err();
+        // ── Network caps, over a real socket ─────────────────────────────────────────────
+        //
+        // Four streaming caps and three timeouts shipped with no test of any kind, because the
+        // scheme guard refuses before a request is made and everything past it needs a real
+        // response. One loopback server covers THREE of the four caps — `MAX_FETCH_BYTES` is on
+        // the plugin `http_fetch` path, reached through `ExtensionContext` rather than a bare
+        // function, so it needs its own wiring. The SIX timeouts in this module remain untested
+        // and are recorded in the backlog: the shortest is 30s, and a suite nobody will wait for
+        // is worse than an honest gap.
 
-        assert!(err.to_string().contains("path components"), "{err}");
-        assert!(
-            !dir.path().join("a").exists(),
-            "the depth check must run BEFORE create_dir_all, or it charges nothing"
-        );
-    }
-
-    #[test]
-    fn admits_a_path_at_the_depth_limit() {
-        // `dist/chunks/x.mjs` is depth 3 and must keep working; the production limit is 16.
-        let dir = tempfile::tempdir().unwrap();
-        let data = zip_of(&[("a/b/c.txt", b"x")]);
-
-        extract_zip_bounded(&data, dir.path(), tiny_bounds()).unwrap();
-
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join("a/b/c.txt")).unwrap(),
-            "x"
-        );
-    }
-
-    // ── Network caps, over a real socket ─────────────────────────────────────────────
-    //
-    // Four streaming caps and three timeouts shipped with no test of any kind, because the
-    // scheme guard refuses before a request is made and everything past it needs a real
-    // response. One loopback server covers THREE of the four caps — `MAX_FETCH_BYTES` is on
-    // the plugin `http_fetch` path, reached through `ExtensionContext` rather than a bare
-    // function, so it needs its own wiring. The SIX timeouts in this module remain untested
-    // and are recorded in the backlog: the shortest is 30s, and a suite nobody will wait for
-    // is worse than an honest gap.
-
-    /// A one-shot HTTP server on loopback that will send more than it should.
-    ///
-    /// Hand-rolled on `std::net::TcpListener` rather than pulling in a test HTTP crate:
-    /// what these caps need is a server that OVERSHOOTS, which well-behaved libraries make
-    /// awkward, and a dev-dependency would have to earn its place in the `deny` job for a
-    /// handful of assertions.
-    fn serve_once(status: &str, body: Vec<u8>) -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let header = format!(
-            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            body.len()
-        );
-        std::thread::spawn(move || {
-            let Ok((mut stream, _)) = listener.accept() else {
-                return;
-            };
-            use std::io::{Read, Write};
-            // Drain the request line and headers first; writing a response to a peer that is
-            // still sending can deadlock on a full socket buffer.
-            let mut scratch = [0u8; 2048];
-            let _ = stream.read(&mut scratch);
-            // Errors ignored throughout: the client ABORTING mid-body is the pass condition
-            // for the cap tests, and it reaches this thread as EPIPE.
-            let _ = stream.write_all(header.as_bytes());
-            let _ = stream.write_all(&body);
-            let _ = stream.flush();
-        });
-        format!("http://{addr}/doc.json")
-    }
-
-    /// A server on ONE port that answers two requests, stalling each and recording when it was
-    /// accepted.
-    ///
-    /// ‼️ ONE PORT, BECAUSE THE PRODUCTION ENTRY POINT DERIVES THE SIGNATURE URL. `fetch_signed_pair`
-    /// appends `.sig` to the list URL, so two separate servers cannot be reached by it — and a test
-    /// that instead calls `try_join!` itself proves that tokio works, not that our code is
-    /// concurrent. The first version of this test did exactly that and would have passed against a
-    /// fully sequential implementation.
-    ///
-    /// ‼️ THE ACCEPT INSTANTS ARE THE EVIDENCE, not the total elapsed time. Two requests that overlap
-    /// are accepted at almost the same moment; two that queue are accepted `delay` apart. Each
-    /// connection is handled on its own thread so the stall cannot serialise the accepts.
-    fn serve_pair_slow(
-        body: (&'static str, Vec<u8>, Duration),
-        signature: (&'static str, Vec<u8>, Duration),
-    ) -> (String, Arc<Mutex<Vec<Instant>>>) {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let accepted: Arc<Mutex<Vec<Instant>>> = Arc::new(Mutex::new(Vec::new()));
-        let slots = Arc::clone(&accepted);
-        std::thread::spawn(move || {
-            for _ in 0..2 {
+        /// A one-shot HTTP server on loopback that will send more than it should.
+        ///
+        /// Hand-rolled on `std::net::TcpListener` rather than pulling in a test HTTP crate:
+        /// what these caps need is a server that OVERSHOOTS, which well-behaved libraries make
+        /// awkward, and a dev-dependency would have to earn its place in the `deny` job for a
+        /// handful of assertions.
+        fn serve_once(status: &str, body: Vec<u8>) -> String {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let header = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            std::thread::spawn(move || {
                 let Ok((mut stream, _)) = listener.accept() else {
                     return;
                 };
-                slots.lock().unwrap().push(Instant::now());
-                let body = body.clone();
-                let signature = signature.clone();
-                std::thread::spawn(move || {
-                    use std::io::{Read, Write};
-                    let mut scratch = [0u8; 2048];
-                    let read = stream.read(&mut scratch).unwrap_or(0);
-                    let request = String::from_utf8_lossy(&scratch[..read]).to_string();
-                    // Which document was asked for decides the body; the `.sig` suffix is what
-                    // `fetch_signed_pair` appends.
-                    // ‼️ A STATUS PER PATH, so a case can make EXACTLY ONE side fail. Pointing both
-                    // at a closed port made both futures fail and left the assertion to a race.
-                    let (status, payload, delay) = if request.contains(".sig") {
-                        signature
-                    } else {
-                        body
+                use std::io::{Read, Write};
+                // Drain the request line and headers first; writing a response to a peer that is
+                // still sending can deadlock on a full socket buffer.
+                let mut scratch = [0u8; 2048];
+                let _ = stream.read(&mut scratch);
+                // Errors ignored throughout: the client ABORTING mid-body is the pass condition
+                // for the cap tests, and it reaches this thread as EPIPE.
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(&body);
+                let _ = stream.flush();
+            });
+            format!("http://{addr}/doc.json")
+        }
+
+        /// A server on ONE port that answers two requests, stalling each and recording when it was
+        /// accepted.
+        ///
+        /// ‼️ ONE PORT, BECAUSE THE PRODUCTION ENTRY POINT DERIVES THE SIGNATURE URL. `fetch_signed_pair`
+        /// appends `.sig` to the list URL, so two separate servers cannot be reached by it — and a test
+        /// that instead calls `try_join!` itself proves that tokio works, not that our code is
+        /// concurrent. The first version of this test did exactly that and would have passed against a
+        /// fully sequential implementation.
+        ///
+        /// ‼️ THE ACCEPT INSTANTS ARE THE EVIDENCE, not the total elapsed time. Two requests that overlap
+        /// are accepted at almost the same moment; two that queue are accepted `delay` apart. Each
+        /// connection is handled on its own thread so the stall cannot serialise the accepts.
+        fn serve_pair_slow(
+            body: (&'static str, Vec<u8>, Duration),
+            signature: (&'static str, Vec<u8>, Duration),
+        ) -> (String, Arc<Mutex<Vec<Instant>>>) {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let accepted: Arc<Mutex<Vec<Instant>>> = Arc::new(Mutex::new(Vec::new()));
+            let slots = Arc::clone(&accepted);
+            std::thread::spawn(move || {
+                for _ in 0..2 {
+                    let Ok((mut stream, _)) = listener.accept() else {
+                        return;
                     };
-                    let header = format!(
-                        "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                        payload.len()
-                    );
-                    std::thread::sleep(delay);
-                    let _ = stream.write_all(header.as_bytes());
-                    let _ = stream.write_all(&payload);
-                    let _ = stream.flush();
-                });
-            }
-        });
-        (format!("http://{addr}/doc.json"), accepted)
-    }
+                    slots.lock().unwrap().push(Instant::now());
+                    let body = body.clone();
+                    let signature = signature.clone();
+                    std::thread::spawn(move || {
+                        use std::io::{Read, Write};
+                        let mut scratch = [0u8; 2048];
+                        let read = stream.read(&mut scratch).unwrap_or(0);
+                        let request = String::from_utf8_lossy(&scratch[..read]).to_string();
+                        // Which document was asked for decides the body; the `.sig` suffix is what
+                        // `fetch_signed_pair` appends.
+                        // ‼️ A STATUS PER PATH, so a case can make EXACTLY ONE side fail. Pointing both
+                        // at a closed port made both futures fail and left the assertion to a race.
+                        let (status, payload, delay) = if request.contains(".sig") {
+                            signature
+                        } else {
+                            body
+                        };
+                        let header = format!(
+                            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            payload.len()
+                        );
+                        std::thread::sleep(delay);
+                        let _ = stream.write_all(header.as_bytes());
+                        let _ = stream.write_all(&payload);
+                        let _ = stream.flush();
+                    });
+                }
+            });
+            (format!("http://{addr}/doc.json"), accepted)
+        }
 
-    /// A one-shot 302 to `location`, for the redirect policy.
-    ///
-    /// Its own helper because `serve_once` sends no headers beyond `Content-Length`, and a
-    /// redirect is exactly a header. Without this the origin check would be untestable at the
-    /// hop that matters: reqwest follows up to 10 redirects by default, so a compliant URL
-    /// could hand the download to any host and the check would look enforced while not being.
-    fn serve_redirect(location: &str) -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let header =
+        /// A one-shot 302 to `location`, for the redirect policy.
+        ///
+        /// Its own helper because `serve_once` sends no headers beyond `Content-Length`, and a
+        /// redirect is exactly a header. Without this the origin check would be untestable at the
+        /// hop that matters: reqwest follows up to 10 redirects by default, so a compliant URL
+        /// could hand the download to any host and the check would look enforced while not being.
+        fn serve_redirect(location: &str) -> String {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let header =
             format!("HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-        std::thread::spawn(move || {
-            let Ok((mut stream, _)) = listener.accept() else {
-                return;
-            };
-            use std::io::{Read, Write};
-            let mut scratch = [0u8; 2048];
-            let _ = stream.read(&mut scratch);
-            let _ = stream.write_all(header.as_bytes());
-            let _ = stream.flush();
-        });
-        format!("http://{addr}/doc.json")
-    }
+            std::thread::spawn(move || {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                use std::io::{Read, Write};
+                let mut scratch = [0u8; 2048];
+                let _ = stream.read(&mut scratch);
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.flush();
+            });
+            format!("http://{addr}/doc.json")
+        }
 
-    #[tokio::test]
-    async fn stage_plugin_refuses_an_archive_outside_the_registry_that_listed_it() {
-        // ‼️ WIRED IN, not merely available. `is_within_registry` having the right answer is
-        // worth nothing if the download path never asks it — the same reason the scheme guard
-        // has its own wiring test next door. Nothing here reaches the network: the refusal
-        // happens before the request.
-        let err = stage_plugin(
-            "https://evil.example/plugins/x-1.0.0.zip",
-            LIVE_INDEX,
-            None,
-            None,
-        )
-        .await
-        .expect_err("an off-registry archive must be refused");
-        assert!(
-            err.to_string()
-                .contains("is not under the registry that listed it"),
-            "expected the containment refusal, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn stage_plugin_refuses_a_redirect_that_leaves_the_registry() {
-        // The first hop is in-registry and compliant; the redirect is where it leaves. Served
-        // over loopback so the policy really runs, rather than being reasoned about.
-        let url = serve_redirect("https://evil.example/x-1.0.0.zip");
-        let err = stage_plugin(&url, &url, None, None)
+        #[tokio::test]
+        async fn stage_plugin_refuses_an_archive_outside_the_registry_that_listed_it() {
+            // ‼️ WIRED IN, not merely available. `is_within_registry` having the right answer is
+            // worth nothing if the download path never asks it — the same reason the scheme guard
+            // has its own wiring test next door. Nothing here reaches the network: the refusal
+            // happens before the request.
+            let err = stage_plugin(
+                "https://evil.example/plugins/x-1.0.0.zip",
+                LIVE_INDEX,
+                None,
+                None,
+            )
             .await
-            .expect_err("a redirect off the registry must be refused");
-        let msg = err.to_string();
-        // ‼️ No `|| contains("redirect")` (code review MEDIUM-2). That disjunct matched
-        // reqwest's own wrapper text for ANY custom-policy error, so the test pinned "reqwest
-        // raised a redirect error" rather than "the policy refused this hop" — and it was the
-        // reason the follow-half mutant above could survive. The policy's own words, or nothing.
-        assert!(
-            msg.contains("outside the registry that listed it"),
-            "expected the policy's own refusal, got: {msg}"
-        );
-        // The hop it refused, not the URL we started from — `to_string()` on the reqwest error
-        // names the original, which reads like connectivity.
-        assert!(
-            msg.contains("evil.example"),
-            "the refusal must name the hop it refused: {msg}"
-        );
-        // ‼️ And NOT the symptom message: `Policy::stop()` would have yielded the 302 itself,
-        // reported downstream as "plugin download returned HTTP 302", which describes what
-        // happened and hides why it was refused.
-        assert!(
-            !msg.contains("returned HTTP 302"),
-            "the refusal must carry its reason, not surface as a bare 302: {msg}"
-        );
-    }
+            .expect_err("an off-registry archive must be refused");
+            assert!(
+                err.to_string()
+                    .contains("is not under the registry that listed it"),
+                "expected the containment refusal, got: {err}"
+            );
+        }
 
-    /// One server, two connections: a 302 to another PATH on itself, then a real body.
-    ///
-    /// ‼️ Needed because two `serve_once` servers get different loopback PORTS, so a redirect
-    /// between them is never same-origin — a test built that way could only ever show the
-    /// refusal, never the follow. Self-redirect is the only shape that exercises the
-    /// permissive half on one origin.
-    fn serve_self_redirect(body: Vec<u8>) -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        std::thread::spawn(move || {
-            use std::io::{Read, Write};
-            let responses = [
+        #[tokio::test]
+        async fn stage_plugin_refuses_a_redirect_that_leaves_the_registry() {
+            // The first hop is in-registry and compliant; the redirect is where it leaves. Served
+            // over loopback so the policy really runs, rather than being reasoned about.
+            let url = serve_redirect("https://evil.example/x-1.0.0.zip");
+            let err = stage_plugin(&url, &url, None, None)
+                .await
+                .expect_err("a redirect off the registry must be refused");
+            let msg = err.to_string();
+            // ‼️ No `|| contains("redirect")` (code review MEDIUM-2). That disjunct matched
+            // reqwest's own wrapper text for ANY custom-policy error, so the test pinned "reqwest
+            // raised a redirect error" rather than "the policy refused this hop" — and it was the
+            // reason the follow-half mutant above could survive. The policy's own words, or nothing.
+            assert!(
+                msg.contains("outside the registry that listed it"),
+                "expected the policy's own refusal, got: {msg}"
+            );
+            // The hop it refused, not the URL we started from — `to_string()` on the reqwest error
+            // names the original, which reads like connectivity.
+            assert!(
+                msg.contains("evil.example"),
+                "the refusal must name the hop it refused: {msg}"
+            );
+            // ‼️ And NOT the symptom message: `Policy::stop()` would have yielded the 302 itself,
+            // reported downstream as "plugin download returned HTTP 302", which describes what
+            // happened and hides why it was refused.
+            assert!(
+                !msg.contains("returned HTTP 302"),
+                "the refusal must carry its reason, not surface as a bare 302: {msg}"
+            );
+        }
+
+        /// One server, two connections: a 302 to another PATH on itself, then a real body.
+        ///
+        /// ‼️ Needed because two `serve_once` servers get different loopback PORTS, so a redirect
+        /// between them is never same-origin — a test built that way could only ever show the
+        /// refusal, never the follow. Self-redirect is the only shape that exercises the
+        /// permissive half on one origin.
+        fn serve_self_redirect(body: Vec<u8>) -> String {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let responses = [
                 format!("HTTP/1.1 302 Found\r\nLocation: http://{addr}/plugins/real.zip\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").into_bytes(),
                 {
                     let mut r = format!(
@@ -4114,928 +4194,897 @@ mod tests {
                     r
                 },
             ];
-            for response in responses {
-                let Ok((mut stream, _)) = listener.accept() else {
-                    return;
-                };
-                let mut scratch = [0u8; 2048];
-                let _ = stream.read(&mut scratch);
-                let _ = stream.write_all(&response);
-                let _ = stream.flush();
-            }
-        });
-        format!("http://{addr}/plugins/start.zip")
-    }
+                for response in responses {
+                    let Ok((mut stream, _)) = listener.accept() else {
+                        return;
+                    };
+                    let mut scratch = [0u8; 2048];
+                    let _ = stream.read(&mut scratch);
+                    let _ = stream.write_all(&response);
+                    let _ = stream.flush();
+                }
+            });
+            format!("http://{addr}/plugins/start.zip")
+        }
 
-    /// A server that answers every connection with a 302 to a path on itself.
-    ///
-    /// For the hop cap: `Policy::custom` REPLACES reqwest's default `limited(10)`, so the
-    /// `> 5` bound is the only thing standing between an in-registry redirect loop and the
-    /// 600-second total timeout (code review LOW-2).
-    fn serve_redirect_loop() -> String {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        std::thread::spawn(move || {
-            use std::io::{Read, Write};
-            let response = format!(
+        /// A server that answers every connection with a 302 to a path on itself.
+        ///
+        /// For the hop cap: `Policy::custom` REPLACES reqwest's default `limited(10)`, so the
+        /// `> 5` bound is the only thing standing between an in-registry redirect loop and the
+        /// 600-second total timeout (code review LOW-2).
+        fn serve_redirect_loop() -> String {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let response = format!(
                 "HTTP/1.1 302 Found\r\nLocation: http://{addr}/plugins/again.zip\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             );
-            while let Ok((mut stream, _)) = listener.accept() {
-                let mut scratch = [0u8; 2048];
-                let _ = stream.read(&mut scratch);
-                let _ = stream.write_all(response.as_bytes());
-                let _ = stream.flush();
-            }
-        });
-        format!("http://{addr}/plugins/start.zip")
-    }
+                while let Ok((mut stream, _)) = listener.accept() {
+                    let mut scratch = [0u8; 2048];
+                    let _ = stream.read(&mut scratch);
+                    let _ = stream.write_all(response.as_bytes());
+                    let _ = stream.flush();
+                }
+            });
+            format!("http://{addr}/plugins/start.zip")
+        }
 
-    #[tokio::test]
-    async fn stage_plugin_gives_up_on_an_in_registry_redirect_loop() {
-        // Every hop is same-origin and under the base, so containment never refuses it — the hop
-        // COUNT is the only bound, and without it this spins until the total timeout.
-        let url = serve_redirect_loop();
-        let err = stage_plugin(&url, &url, None, None)
-            .await
-            .expect_err("a redirect loop must be given up on");
-        assert!(
-            err.to_string().contains("redirected too many times"),
-            "expected the hop cap, got: {err}"
-        );
-    }
+        #[tokio::test]
+        async fn stage_plugin_gives_up_on_an_in_registry_redirect_loop() {
+            // Every hop is same-origin and under the base, so containment never refuses it — the hop
+            // COUNT is the only bound, and without it this spins until the total timeout.
+            let url = serve_redirect_loop();
+            let err = stage_plugin(&url, &url, None, None)
+                .await
+                .expect_err("a redirect loop must be given up on");
+            assert!(
+                err.to_string().contains("redirected too many times"),
+                "expected the hop cap, got: {err}"
+            );
+        }
 
-    #[tokio::test]
-    async fn stage_plugin_follows_a_redirect_that_stays_inside_the_registry() {
-        // The permissive half: pinning must not break a registry that redirects internally,
-        // or the rule stops being "same registry" and becomes "no redirects", which would
-        // refuse legitimate hosting without saying so.
-        //
-        // The proof that the hop was FOLLOWED is which error comes back: the second response
-        // is not a ZIP, so it fails in extraction. A refused redirect could not reach that.
-        let url = serve_self_redirect(b"not a zip".to_vec());
-        let err = stage_plugin(&url, &url, None, None)
-            .await
-            .expect_err("a non-zip body cannot install");
-        let msg = err.to_string();
-        // ‼️ A POSITIVE assertion (code review HIGH-2). The three `!contains` checks this
-        // replaces were all satisfied by "error following redirect", so mutating
-        // `attempt.follow()` into a refusal — deleting the permissive half of the policy
-        // outright — left every test in this module passing. Naming the error that can ONLY be
-        // reached by taking the hop is what makes the test about following.
-        assert!(
-            msg.contains("ZIP extraction"),
-            "the second response must have been reached, i.e. the hop taken: {msg}"
-        );
-        assert!(
-            !msg.contains("outside the registry") && !msg.contains("returned HTTP 302"),
-            "an in-registry redirect must be followed, not refused: {msg}"
-        );
-    }
+        #[tokio::test]
+        async fn stage_plugin_follows_a_redirect_that_stays_inside_the_registry() {
+            // The permissive half: pinning must not break a registry that redirects internally,
+            // or the rule stops being "same registry" and becomes "no redirects", which would
+            // refuse legitimate hosting without saying so.
+            //
+            // The proof that the hop was FOLLOWED is which error comes back: the second response
+            // is not a ZIP, so it fails in extraction. A refused redirect could not reach that.
+            let url = serve_self_redirect(b"not a zip".to_vec());
+            let err = stage_plugin(&url, &url, None, None)
+                .await
+                .expect_err("a non-zip body cannot install");
+            let msg = err.to_string();
+            // ‼️ A POSITIVE assertion (code review HIGH-2). The three `!contains` checks this
+            // replaces were all satisfied by "error following redirect", so mutating
+            // `attempt.follow()` into a refusal — deleting the permissive half of the policy
+            // outright — left every test in this module passing. Naming the error that can ONLY be
+            // reached by taking the hop is what makes the test about following.
+            assert!(
+                msg.contains("ZIP extraction"),
+                "the second response must have been reached, i.e. the hop taken: {msg}"
+            );
+            assert!(
+                !msg.contains("outside the registry") && !msg.contains("returned HTTP 302"),
+                "an in-registry redirect must be followed, not refused: {msg}"
+            );
+        }
 
-    #[tokio::test]
-    async fn fetch_registry_refuses_a_body_over_its_cap() {
-        let url = serve_once("200 OK", vec![b' '; MAX_REGISTRY_BYTES + 1]);
-        let err = fetch_registry(&url).await.expect_err("over the cap");
-        assert!(
-            err.to_string().contains("registry index too large"),
-            "{err}"
-        );
-    }
+        #[tokio::test]
+        async fn fetch_registry_refuses_a_body_over_its_cap() {
+            let url = serve_once("200 OK", vec![b' '; MAX_REGISTRY_BYTES + 1]);
+            let err = fetch_registry(&url).await.expect_err("over the cap");
+            assert!(
+                err.to_string().contains("registry index too large"),
+                "{err}"
+            );
+        }
 
-    #[tokio::test]
-    async fn the_signed_pair_is_fetched_concurrently_not_in_sequence() {
-        // ‼️ THE PROPERTY IS A STARTUP BUDGET, NOT AN OPTIMISATION (security review MEDIUM-3).
-        // `plugin-lifecycle.ts` waits `REVOCATION_REFRESH_BUDGET_MS` = 1500 ms and then loads plugins
-        // with whatever is STORED — and a fresh install has nothing stored, so a launch that loses
-        // that race runs with no revocations at all, `malicious` entries included. Two serial round
-        // trips against a slow link is how it gets lost, and that cost is what arming added.
-        //
-        // Driven through `fetch_signed_pair`, which is the function the armed path uses.
-        let delay = Duration::from_millis(600);
-        let (url, accepted) = serve_pair_slow(
-            ("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec(), delay),
-            ("200 OK", b"not a real signature".to_vec(), delay),
-        );
-        // ‼️ NO STOPWATCH. There was a second assertion here — `elapsed < delay * 2` — introduced as
-        // a guard against "a future change that starts both requests and then serialises the
-        // bodies". It cannot catch that, measured rather than argued: with `fetch_signed_pair`
-        // mutated to `join!` the two `send()`s and then await the two bodies one after the other,
-        // this test PASSED. `serve_pair_slow` sleeps per connection on its own thread and before
-        // writing anything, so both stalls overlap no matter when the client reads, and the payload
-        // is already buffered by the time a serial reader gets to it. Total elapsed is ~one stall
-        // either way. Catching serialised reads would need a server that withholds the body until
-        // the client reads it — this fixture cannot, so do not re-add a wall-clock assertion
-        // believing that it covers the case.
-        //
-        // What it did catch was a fully sequential implementation, which the accept gap below
-        // already kills ("602.218ms apart", verified). And it cost real breakage: in a DEBUG build
-        // the first HTTP client in a process takes ~1.08 s (10.5 ms in release — see
-        // `fetch_capped_text_with`), test binaries are debug, and that landed inside the timing
-        // window. The test therefore failed 3/3 when run alone and passed only when a sibling
-        // network test warmed the process first — red under `cargo test --exact` and under any
-        // runner that gives each test its own process (nextest). The accept gap is immune to that
-        // by construction: both accepts happen after the client exists.
-        let (body, signature) = fetch_signed_pair(&url).await.expect("both fetches succeed");
-        assert!(body.contains("revoked"), "{body}");
-        assert_eq!(signature, "not a real signature");
-        let instants = accepted.lock().unwrap().clone();
-        assert_eq!(instants.len(), 2, "both requests must have been accepted");
-        let gap = instants[1] - instants[0];
-        assert!(
+        #[tokio::test]
+        async fn the_signed_pair_is_fetched_concurrently_not_in_sequence() {
+            // ‼️ THE PROPERTY IS A STARTUP BUDGET, NOT AN OPTIMISATION (security review MEDIUM-3).
+            // `plugin-lifecycle.ts` waits `REVOCATION_REFRESH_BUDGET_MS` = 1500 ms and then loads plugins
+            // with whatever is STORED — and a fresh install has nothing stored, so a launch that loses
+            // that race runs with no revocations at all, `malicious` entries included. Two serial round
+            // trips against a slow link is how it gets lost, and that cost is what arming added.
+            //
+            // Driven through `fetch_signed_pair`, which is the function the armed path uses.
+            let delay = Duration::from_millis(600);
+            let (url, accepted) = serve_pair_slow(
+                ("200 OK", br#"{"version":1,"revoked":[]}"#.to_vec(), delay),
+                ("200 OK", b"not a real signature".to_vec(), delay),
+            );
+            // ‼️ NO STOPWATCH. There was a second assertion here — `elapsed < delay * 2` — introduced as
+            // a guard against "a future change that starts both requests and then serialises the
+            // bodies". It cannot catch that, measured rather than argued: with `fetch_signed_pair`
+            // mutated to `join!` the two `send()`s and then await the two bodies one after the other,
+            // this test PASSED. `serve_pair_slow` sleeps per connection on its own thread and before
+            // writing anything, so both stalls overlap no matter when the client reads, and the payload
+            // is already buffered by the time a serial reader gets to it. Total elapsed is ~one stall
+            // either way. Catching serialised reads would need a server that withholds the body until
+            // the client reads it — this fixture cannot, so do not re-add a wall-clock assertion
+            // believing that it covers the case.
+            //
+            // What it did catch was a fully sequential implementation, which the accept gap below
+            // already kills ("602.218ms apart", verified). And it cost real breakage: in a DEBUG build
+            // the first HTTP client in a process takes ~1.08 s (10.5 ms in release — see
+            // `fetch_capped_text_with`), test binaries are debug, and that landed inside the timing
+            // window. The test therefore failed 3/3 when run alone and passed only when a sibling
+            // network test warmed the process first — red under `cargo test --exact` and under any
+            // runner that gives each test its own process (nextest). The accept gap is immune to that
+            // by construction: both accepts happen after the client exists.
+            let (body, signature) = fetch_signed_pair(&url).await.expect("both fetches succeed");
+            assert!(body.contains("revoked"), "{body}");
+            assert_eq!(signature, "not a real signature");
+            let instants = accepted.lock().unwrap().clone();
+            assert_eq!(instants.len(), 2, "both requests must have been accepted");
+            let gap = instants[1] - instants[0];
+            assert!(
             gap < delay,
             "the two requests were {gap:?} apart with a {delay:?} stall each — that is serial, \
              not concurrent"
         );
-    }
+        }
 
-    #[tokio::test]
-    async fn a_failing_signature_fetch_still_says_it_was_the_signature() {
-        // ‼️ THE MESSAGE IS LOAD-BEARING. `revocation-client.ts` matches /signature|unsigned/ to log a
-        // refresh failure LOUDLY as structural rather than quietly as offline — the distinction that
-        // hid a missing ACL grant for a whole review cycle.
-        //
-        // ‼️ EXACTLY ONE SIDE FAILS. The first version of this pair pointed BOTH urls at a closed
-        // port, so both futures failed and the assertion depended on which lost the race: it passed
-        // locally and failed on CI, which is the definition of a test that proves nothing.
-        let (url, _) = serve_pair_slow(
-            (
-                "200 OK",
-                br#"{"version":1,"revoked":[]}"#.to_vec(),
-                Duration::ZERO,
-            ),
-            (
-                "404 Not Found",
-                b"no signature here".to_vec(),
-                Duration::ZERO,
-            ),
-        );
-        let err = fetch_signed_pair(&url)
-            .await
-            .expect_err("the signature is a 404");
-        assert!(
-            err.contains("unsigned or its signature is unreachable"),
-            "{err}"
-        );
-    }
+        #[tokio::test]
+        async fn a_failing_signature_fetch_still_says_it_was_the_signature() {
+            // ‼️ THE MESSAGE IS LOAD-BEARING. `revocation-client.ts` matches /signature|unsigned/ to log a
+            // refresh failure LOUDLY as structural rather than quietly as offline — the distinction that
+            // hid a missing ACL grant for a whole review cycle.
+            //
+            // ‼️ EXACTLY ONE SIDE FAILS. The first version of this pair pointed BOTH urls at a closed
+            // port, so both futures failed and the assertion depended on which lost the race: it passed
+            // locally and failed on CI, which is the definition of a test that proves nothing.
+            let (url, _) = serve_pair_slow(
+                (
+                    "200 OK",
+                    br#"{"version":1,"revoked":[]}"#.to_vec(),
+                    Duration::ZERO,
+                ),
+                (
+                    "404 Not Found",
+                    b"no signature here".to_vec(),
+                    Duration::ZERO,
+                ),
+            );
+            let err = fetch_signed_pair(&url)
+                .await
+                .expect_err("the signature is a 404");
+            assert!(
+                err.contains("unsigned or its signature is unreachable"),
+                "{err}"
+            );
+        }
 
-    #[tokio::test]
-    async fn a_failing_body_fetch_is_not_reported_as_a_signature_problem() {
-        // The mirror: the list's own failure must be named, or an operator is sent to look at a
-        // signature that was never the problem.
-        let (url, _) = serve_pair_slow(
-            (
-                "500 Internal Server Error",
-                b"broken".to_vec(),
-                Duration::ZERO,
-            ),
-            ("200 OK", b"not a real signature".to_vec(), Duration::ZERO),
-        );
-        let err = fetch_signed_pair(&url)
-            .await
-            .expect_err("the list is a 500");
-        assert!(
-            err.contains("revocation list returned HTTP 500"),
-            "the list's own failure must be named: {err}"
-        );
-        assert!(
-            !err.contains("unsigned or its signature is unreachable"),
-            "a body failure must not be labelled a signature failure: {err}"
-        );
-    }
+        #[tokio::test]
+        async fn a_failing_body_fetch_is_not_reported_as_a_signature_problem() {
+            // The mirror: the list's own failure must be named, or an operator is sent to look at a
+            // signature that was never the problem.
+            let (url, _) = serve_pair_slow(
+                (
+                    "500 Internal Server Error",
+                    b"broken".to_vec(),
+                    Duration::ZERO,
+                ),
+                ("200 OK", b"not a real signature".to_vec(), Duration::ZERO),
+            );
+            let err = fetch_signed_pair(&url)
+                .await
+                .expect_err("the list is a 500");
+            assert!(
+                err.contains("revocation list returned HTTP 500"),
+                "the list's own failure must be named: {err}"
+            );
+            assert!(
+                !err.contains("unsigned or its signature is unreachable"),
+                "a body failure must not be labelled a signature failure: {err}"
+            );
+        }
 
-    #[tokio::test]
-    async fn when_both_fetches_fail_the_body_error_wins() {
-        // ‼️ PRECEDENCE, AND ONLY PRECEDENCE — see the sibling case below for the classification
-        // itself (third-round code review MEDIUM). Both candidate messages here contain "HTTP 500",
-        // which the classifier matches either way, so this case cannot fail if the offline
-        // classification breaks. It pins that the BODY's error is the one returned, which is what
-        // kills the implementation that shipped in `053b75d1`.
-        //
-        // `logger.warn` is suppressed outside dev by a runtime `if (isDev)` in `utils/logger.ts` —
-        // not compiled out, as an earlier version of this comment said; the user-visible effect is
-        // the same and the mechanism was misstated.
-        //
-        // ‼️ THE SIGNATURE FAILS FIRST, ON PURPOSE. Pointing both at a closed port makes both fail
-        // "at once" and leaves the winner to the executor — which is how the FIRST version of this
-        // suite passed locally and failed on CI. Stalling the body's failure by 400 ms means
-        // `try_join!` would deterministically return the signature's error, so this case kills that
-        // implementation instead of merely disagreeing with it sometimes.
-        let (url, _) = serve_pair_slow(
-            (
-                "500 Internal Server Error",
-                b"broken".to_vec(),
-                Duration::from_millis(400),
-            ),
-            (
-                "500 Internal Server Error",
-                b"also broken".to_vec(),
-                Duration::ZERO,
-            ),
-        );
-        let err = fetch_signed_pair(&url).await.expect_err("both fail");
-        assert!(
+        #[tokio::test]
+        async fn when_both_fetches_fail_the_body_error_wins() {
+            // ‼️ PRECEDENCE, AND ONLY PRECEDENCE — see the sibling case below for the classification
+            // itself (third-round code review MEDIUM). Both candidate messages here contain "HTTP 500",
+            // which the classifier matches either way, so this case cannot fail if the offline
+            // classification breaks. It pins that the BODY's error is the one returned, which is what
+            // kills the implementation that shipped in `053b75d1`.
+            //
+            // `logger.warn` is suppressed outside dev by a runtime `if (isDev)` in `utils/logger.ts` —
+            // not compiled out, as an earlier version of this comment said; the user-visible effect is
+            // the same and the mechanism was misstated.
+            //
+            // ‼️ THE SIGNATURE FAILS FIRST, ON PURPOSE. Pointing both at a closed port makes both fail
+            // "at once" and leaves the winner to the executor — which is how the FIRST version of this
+            // suite passed locally and failed on CI. Stalling the body's failure by 400 ms means
+            // `try_join!` would deterministically return the signature's error, so this case kills that
+            // implementation instead of merely disagreeing with it sometimes.
+            let (url, _) = serve_pair_slow(
+                (
+                    "500 Internal Server Error",
+                    b"broken".to_vec(),
+                    Duration::from_millis(400),
+                ),
+                (
+                    "500 Internal Server Error",
+                    b"also broken".to_vec(),
+                    Duration::ZERO,
+                ),
+            );
+            let err = fetch_signed_pair(&url).await.expect_err("both fail");
+            assert!(
             !err.contains("unsigned or its signature is unreachable"),
             "the body's failure must win, or offline reads as a structural signature break: {err}"
         );
-        assert!(err.contains("revocation list returned HTTP 500"), "{err}");
-    }
+            assert!(err.contains("revocation list returned HTTP 500"), "{err}");
+        }
 
-    #[tokio::test]
-    async fn offline_stays_quiet_across_the_ipc_boundary() {
-        // ‼️ THE PROPERTY THE PRECEDENCE EXISTS FOR, ASSERTED AGAINST THE REAL CONSUMER (third-round
-        // code review MEDIUM). The sibling case above pins that the BODY's error is returned, but it
-        // uses HTTP 500 on both sides — and BOTH candidate messages contain "HTTP 500", which the
-        // classifier matches either way. So it cannot fail if the classification breaks. This one
-        // makes both fetches fail at the TRANSPORT level, which is what offline is, and then checks
-        // the message against the pattern that actually decides the log level.
-        //
-        // ‼️ THE PATTERN IS READ OUT OF THE TYPESCRIPT, not paraphrased. The classifier is nine
-        // alternatives and the earlier comments in this file described two of them; a copy here would
-        // drift the same way. Asserting the literal appears exactly once in the consumer makes a
-        // change over there fail HERE, which is the only way a cross-boundary property stays true.
-        const CLIENT_TS: &str = include_str!("../../../src/plugins/revocation-client.ts");
-        const LOUD: &str = "not allowed|forbidden|denied|HTTP \\d|signature|public key|unsigned|too large|not UTF-8";
-        assert_eq!(
-            CLIENT_TS.matches(LOUD).count(),
-            1,
-            "the structural-failure classifier moved or changed — update this test with it"
-        );
+        #[tokio::test]
+        async fn offline_stays_quiet_across_the_ipc_boundary() {
+            // ‼️ THE PROPERTY THE PRECEDENCE EXISTS FOR, ASSERTED AGAINST THE REAL CONSUMER (third-round
+            // code review MEDIUM). The sibling case above pins that the BODY's error is returned, but it
+            // uses HTTP 500 on both sides — and BOTH candidate messages contain "HTTP 500", which the
+            // classifier matches either way. So it cannot fail if the classification breaks. This one
+            // makes both fetches fail at the TRANSPORT level, which is what offline is, and then checks
+            // the message against the pattern that actually decides the log level.
+            //
+            // ‼️ THE PATTERN IS READ OUT OF THE TYPESCRIPT, not paraphrased. The classifier is nine
+            // alternatives and the earlier comments in this file described two of them; a copy here would
+            // drift the same way. Asserting the literal appears exactly once in the consumer makes a
+            // change over there fail HERE, which is the only way a cross-boundary property stays true.
+            const CLIENT_TS: &str = include_str!("../../../src/plugins/revocation-client.ts");
+            const LOUD: &str = "not allowed|forbidden|denied|HTTP \\d|signature|public key|unsigned|too large|not UTF-8";
+            assert_eq!(
+                CLIENT_TS.matches(LOUD).count(),
+                1,
+                "the structural-failure classifier moved or changed — update this test with it"
+            );
 
-        // Bind, take the address, drop the listener: both requests are refused at connect, which is
-        // deterministic under `join!` because it waits for both and returns the body's error.
-        let addr = {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            listener.local_addr().unwrap()
-        };
-        let err = fetch_signed_pair(&format!("http://{addr}/doc.json"))
-            .await
-            .expect_err("nothing is listening");
+            // Bind, take the address, drop the listener: both requests are refused at connect, which is
+            // deterministic under `join!` because it waits for both and returns the body's error.
+            let addr = {
+                let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                listener.local_addr().unwrap()
+            };
+            let err = fetch_signed_pair(&format!("http://{addr}/doc.json"))
+                .await
+                .expect_err("nothing is listening");
 
-        let lowered = err.to_lowercase();
-        for alternative in LOUD.split('|') {
-            if alternative == "HTTP \\d" {
-                assert!(
-                    !lowered
-                        .split("http ")
-                        .skip(1)
-                        .any(|rest| rest.starts_with(|c: char| c.is_ascii_digit())),
-                    "offline must not look like an HTTP status failure: {err}"
-                );
-            } else {
-                assert!(
-                    !lowered.contains(&alternative.to_lowercase()),
-                    "offline must not match the structural alternative `{alternative}`: {err}"
-                );
+            let lowered = err.to_lowercase();
+            for alternative in LOUD.split('|') {
+                if alternative == "HTTP \\d" {
+                    assert!(
+                        !lowered
+                            .split("http ")
+                            .skip(1)
+                            .any(|rest| rest.starts_with(|c: char| c.is_ascii_digit())),
+                        "offline must not look like an HTTP status failure: {err}"
+                    );
+                } else {
+                    assert!(
+                        !lowered.contains(&alternative.to_lowercase()),
+                        "offline must not match the structural alternative `{alternative}`: {err}"
+                    );
+                }
             }
         }
-    }
 
-    #[tokio::test]
-    async fn fetch_registry_admits_a_body_at_the_cap() {
-        // The other side of the boundary. Without this the cap could be off by a whole
-        // document and every "refuses" test above would still pass.
-        let mut body = vec![b' '; MAX_REGISTRY_BYTES];
-        body[..14].copy_from_slice(br#"{"plugins":[]}"#);
-        let url = serve_once("200 OK", body);
-        let index = fetch_registry(&url)
-            .await
-            .expect("exactly at the cap is legal");
-        assert!(index.plugins.is_empty());
-    }
+        #[tokio::test]
+        async fn fetch_registry_admits_a_body_at_the_cap() {
+            // The other side of the boundary. Without this the cap could be off by a whole
+            // document and every "refuses" test above would still pass.
+            let mut body = vec![b' '; MAX_REGISTRY_BYTES];
+            body[..14].copy_from_slice(br#"{"plugins":[]}"#);
+            let url = serve_once("200 OK", body);
+            let index = fetch_registry(&url)
+                .await
+                .expect("exactly at the cap is legal");
+            assert!(index.plugins.is_empty());
+        }
 
-    #[tokio::test]
-    async fn fetch_registry_refuses_a_non_success_status() {
-        let url = serve_once("404 Not Found", b"nope".to_vec());
-        let err = fetch_registry(&url).await.expect_err("404 is not an index");
-        // `Refused`, not `InvalidManifest` — a 404 must not be reported as a broken document,
-        // because no document was received.
-        assert!(
-            err.to_string().contains("registry returned HTTP 404"),
-            "{err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn fetch_revocations_refuses_a_body_over_its_cap() {
-        let url = serve_once("200 OK", vec![b' '; MAX_REVOCATION_BYTES + 1]);
-        let err = fetch_revocations(&url).await.expect_err("over the cap");
-        assert!(err.contains("revocation list too large"), "{err}");
-    }
-
-    #[tokio::test]
-    async fn stage_plugin_refuses_an_archive_over_its_cap() {
-        // 32 MiB over loopback, which is the whole point: this cap is reached before the
-        // checksum, the manifest or the tier can say anything, so nothing downstream would
-        // ever catch an unbounded download.
-        let url = serve_once("200 OK", vec![0u8; MAX_PLUGIN_ARCHIVE_BYTES + 1]);
-        let err = stage_plugin(&url, &url, None, None)
-            .await
-            .expect_err("over the cap");
-        assert!(
-            err.to_string().contains("plugin archive too large"),
-            "{err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn stage_plugin_refuses_a_non_success_status() {
-        let url = serve_once("503 Service Unavailable", b"down".to_vec());
-        let err = stage_plugin(&url, &url, None, None)
-            .await
-            .expect_err("503 is not an archive");
-        assert!(
-            err.to_string()
-                .contains("plugin download returned HTTP 503"),
-            "{err}"
-        );
-    }
-
-    /// ‼️ The bounds must never be computed from what the archive says about itself.
-    ///
-    /// `file.size()` and `file.compressed_size()` are read out of the archive's own headers,
-    /// so a check against them asks the attacker whether the attack is allowed: a header can
-    /// claim 4 KiB and the stream can deliver gigabytes. The code reads through `take`
-    /// instead, and this asserts it stays that way — the plausible regression is someone
-    /// adding a "fast path" that skips an entry whose declared size looks small.
-    ///
-    /// Windowed to the function body and asserting ABSENCE, so it cannot pass by matching
-    /// something elsewhere in the file.
-    #[test]
-    fn extraction_never_consults_the_declared_size() {
-        // #D6 moved the bounded copy itself into `crate::fs::archive::extract_entry`, shared
-        // with `fs::extract_zip` (Notion import) — `extract_zip_bounded` above is now a thin
-        // wrapper that delegates to it, so this pin follows the real implementation there
-        // rather than scanning a wrapper that no longer contains the read it is pinning.
-        const SOURCE: &str = include_str!("../fs/archive.rs");
-        let start = SOURCE
-            .find("fn extract_entry<")
-            .expect("the function must still exist under this name");
-        let body = &SOURCE[start..];
-        let end = body.find("\n}\n").expect("the function must end");
-        let body = &body[..end];
-
-        // ‼️ A positive anchor FIRST. The window ends at the next column-0 `}`, so a future
-        // edit that shortens the function — or a rename — leaves an absence assertion that
-        // passes over nothing at all (review L4). This line fails loudly instead.
-        assert!(
-            body.contains("take(cap + 1)"),
-            "the window no longer contains the bounded read, so the absence checks below \
-             would be vacuous"
-        );
-        for header_field in [".size()", ".compressed_size()"] {
+        #[tokio::test]
+        async fn fetch_registry_refuses_a_non_success_status() {
+            let url = serve_once("404 Not Found", b"nope".to_vec());
+            let err = fetch_registry(&url).await.expect_err("404 is not an index");
+            // `Refused`, not `InvalidManifest` — a 404 must not be reported as a broken document,
+            // because no document was received.
             assert!(
-                !body.contains(header_field),
-                "extract_zip_bounded reads `{header_field}` from the archive header — the \
-                 bounds must be enforced on bytes actually read"
+                err.to_string().contains("registry returned HTTP 404"),
+                "{err}"
+            );
+        }
+
+        #[tokio::test]
+        async fn fetch_revocations_refuses_a_body_over_its_cap() {
+            let url = serve_once("200 OK", vec![b' '; MAX_REVOCATION_BYTES + 1]);
+            let err = fetch_revocations(&url).await.expect_err("over the cap");
+            assert!(err.contains("revocation list too large"), "{err}");
+        }
+
+        #[tokio::test]
+        async fn stage_plugin_refuses_an_archive_over_its_cap() {
+            // 32 MiB over loopback, which is the whole point: this cap is reached before the
+            // checksum, the manifest or the tier can say anything, so nothing downstream would
+            // ever catch an unbounded download.
+            let url = serve_once("200 OK", vec![0u8; MAX_PLUGIN_ARCHIVE_BYTES + 1]);
+            let err = stage_plugin(&url, &url, None, None)
+                .await
+                .expect_err("over the cap");
+            assert!(
+                err.to_string().contains("plugin archive too large"),
+                "{err}"
+            );
+        }
+
+        #[tokio::test]
+        async fn stage_plugin_refuses_a_non_success_status() {
+            let url = serve_once("503 Service Unavailable", b"down".to_vec());
+            let err = stage_plugin(&url, &url, None, None)
+                .await
+                .expect_err("503 is not an archive");
+            assert!(
+                err.to_string()
+                    .contains("plugin download returned HTTP 503"),
+                "{err}"
+            );
+        }
+
+        /// M5 — something has to execute the `spawn_blocking` closure.
+        ///
+        /// Both install tests above refuse during the DOWNLOAD, so nothing reached the relocated
+        /// steps 3–6 at all: not the extraction, not the manifest checks, not the `JoinError`
+        /// mapping. This serves a real, well-formed ZIP that simply has no `baram-plugin.json`,
+        /// which gets past the download and the checksum and stops inside the closure — before
+        /// anything writes to the user's real plugin directory, which a fully successful install
+        /// would do.
+        #[tokio::test]
+        async fn stage_plugin_reaches_the_blocking_stage_and_reports_from_inside_it() {
+            let archive = zip_of(&[("not-a-manifest.txt", b"hello")]);
+            let url = serve_once("200 OK", archive);
+
+            let err = stage_plugin(&url, &url, None, None)
+                .await
+                .expect_err("an archive with no manifest cannot install");
+
+            assert!(
+                err.to_string().contains("baram-plugin.json not found"),
+                "expected the refusal raised inside the blocking closure, got: {err}"
             );
         }
     }
 
-    /// M5 — something has to execute the `spawn_blocking` closure.
-    ///
-    /// Both install tests above refuse during the DOWNLOAD, so nothing reached the relocated
-    /// steps 3–6 at all: not the extraction, not the manifest checks, not the `JoinError`
-    /// mapping. This serves a real, well-formed ZIP that simply has no `baram-plugin.json`,
-    /// which gets past the download and the checksum and stops inside the closure — before
-    /// anything writes to the user's real plugin directory, which a fully successful install
-    /// would do.
-    #[tokio::test]
-    async fn stage_plugin_reaches_the_blocking_stage_and_reports_from_inside_it() {
-        let archive = zip_of(&[("not-a-manifest.txt", b"hello")]);
-        let url = serve_once("200 OK", archive);
+    mod staging_tests {
+        use super::super::*;
+        use super::zip_of;
 
-        let err = stage_plugin(&url, &url, None, None)
-            .await
-            .expect_err("an archive with no manifest cannot install");
+        // --- #261: staging, atomic commit, rollback -------------------------------------
+        //
+        // Every test below drives the `*_in` cores against a temporary plugin root, so none of
+        // them reads `$HOME` or touches a real installation. That is the reason those cores
+        // exist: the property under test is "what is on disk after a failure", which a mocked
+        // filesystem cannot answer.
 
-        assert!(
-            err.to_string().contains("baram-plugin.json not found"),
-            "expected the refusal raised inside the blocking closure, got: {err}"
-        );
-    }
-
-    // --- #261: staging, atomic commit, rollback -------------------------------------
-    //
-    // Every test below drives the `*_in` cores against a temporary plugin root, so none of
-    // them reads `$HOME` or touches a real installation. That is the reason those cores
-    // exist: the property under test is "what is on disk after a failure", which a mocked
-    // filesystem cannot answer.
-
-    /// A manifest that passes `validate_manifest`, plus one payload file to move around.
-    fn plugin_zip(id: &str, version: &str, payload: &str) -> Vec<u8> {
-        let manifest = format!(
-            r#"{{"id":"{id}","name":"N","description":"d","version":"{version}",
+        /// A manifest that passes `validate_manifest`, plus one payload file to move around.
+        fn plugin_zip(id: &str, version: &str, payload: &str) -> Vec<u8> {
+            let manifest = format!(
+                r#"{{"id":"{id}","name":"N","description":"d","version":"{version}",
                  "author":"a","license":"MIT","main":"main.js",
                  "engines":{{"baram":">=0.1.0"}},"capabilities":[]}}"#
-        );
-        zip_of(&[
-            ("baram-plugin.json", manifest.as_bytes()),
-            ("main.js", payload.as_bytes()),
-        ])
-    }
+            );
+            zip_of(&[
+                ("baram-plugin.json", manifest.as_bytes()),
+                ("main.js", payload.as_bytes()),
+            ])
+        }
 
-    /// An already-installed plugin, written the way a previous install would have left it.
-    fn install_by_hand(plugin_root: &Path, id: &str, payload: &str) -> PathBuf {
-        let dir = plugin_root.join(id);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("main.js"), payload).unwrap();
-        std::fs::write(dir.join("baram-plugin.json"), format!(r#"{{"id":"{id}"}}"#)).unwrap();
-        dir
-    }
+        /// An already-installed plugin, written the way a previous install would have left it.
+        fn install_by_hand(plugin_root: &Path, id: &str, payload: &str) -> PathBuf {
+            let dir = plugin_root.join(id);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("main.js"), payload).unwrap();
+            std::fs::write(dir.join("baram-plugin.json"), format!(r#"{{"id":"{id}"}}"#)).unwrap();
+            dir
+        }
 
-    fn stage_dirs(plugin_root: &Path) -> Vec<String> {
-        let root = plugin_root.join(STAGING_DIR);
-        let Ok(entries) = std::fs::read_dir(root) else {
-            return Vec::new();
-        };
-        let mut names: Vec<String> = entries
-            .flatten()
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
-        names.sort();
-        names
-    }
+        fn stage_dirs(plugin_root: &Path) -> Vec<String> {
+            let root = plugin_root.join(STAGING_DIR);
+            let Ok(entries) = std::fs::read_dir(root) else {
+                return Vec::new();
+            };
+            let mut names: Vec<String> = entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        }
 
-    /// ‼️ THE POINT OF #261, stated as one assertion: staging writes nothing into the
-    /// installed tree.
-    ///
-    /// This is what the old install could not do. It ran `remove_dir_all(&target_dir)`
-    /// before the copy, so by the time any post-download check could refuse the archive the
-    /// working version was already gone.
-    #[test]
-    fn staging_leaves_the_installed_version_untouched() {
-        let root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(root.path(), "demo", "v1");
+        /// ‼️ THE POINT OF #261, stated as one assertion: staging writes nothing into the
+        /// installed tree.
+        ///
+        /// This is what the old install could not do. It ran `remove_dir_all(&target_dir)`
+        /// before the copy, so by the time any post-download check could refuse the archive the
+        /// working version was already gone.
+        #[test]
+        fn staging_leaves_the_installed_version_untouched() {
+            let root = tempfile::tempdir().unwrap();
+            let installed = install_by_hand(root.path(), "demo", "v1");
 
-        let (stage_id, manifest, _digest) = stage_archive_in(
-            root.path(),
-            &plugin_zip("demo", "2.0.0", "v2"),
-            Some("demo"),
-        )
-        .unwrap();
+            let (stage_id, manifest, _digest) = stage_archive_in(
+                root.path(),
+                &plugin_zip("demo", "2.0.0", "v2"),
+                Some("demo"),
+            )
+            .unwrap();
 
-        assert_eq!(manifest.version, "2.0.0");
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v1",
-            "staging must not touch the installed version"
-        );
-        assert!(stage_id.starts_with(STAGE_PREFIX));
-        assert!(root.path().join(STAGING_DIR).join(&stage_id).is_dir());
-    }
+            assert_eq!(manifest.version, "2.0.0");
+            assert_eq!(
+                std::fs::read_to_string(installed.join("main.js")).unwrap(),
+                "v1",
+                "staging must not touch the installed version"
+            );
+            assert!(stage_id.starts_with(STAGE_PREFIX));
+            assert!(root.path().join(STAGING_DIR).join(&stage_id).is_dir());
+        }
 
-    /// The other half: commit swaps, and leaves no backup behind.
-    #[test]
-    fn commit_replaces_the_installed_version_and_cleans_up() {
-        let root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(root.path(), "demo", "v1");
+        /// The other half: commit swaps, and leaves no backup behind.
+        #[test]
+        fn commit_replaces_the_installed_version_and_cleans_up() {
+            let root = tempfile::tempdir().unwrap();
+            let installed = install_by_hand(root.path(), "demo", "v1");
 
-        let (stage_id, _, digest) = stage_archive_in(
-            root.path(),
-            &plugin_zip("demo", "2.0.0", "v2"),
-            Some("demo"),
-        )
-        .unwrap();
-        let committed = commit_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
+            let (stage_id, _, digest) = stage_archive_in(
+                root.path(),
+                &plugin_zip("demo", "2.0.0", "v2"),
+                Some("demo"),
+            )
+            .unwrap();
+            let committed = commit_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
 
-        assert_eq!(committed.install_path, installed.to_string_lossy());
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v2"
-        );
-        assert_eq!(
-            stage_dirs(root.path()),
-            Vec::<String>::new(),
-            "the staged tree and its backup must both be gone after a successful commit"
-        );
-    }
-
-    /// A first install: nothing to back up, nothing to restore.
-    #[test]
-    fn commit_installs_when_no_previous_version_exists() {
-        let root = tempfile::tempdir().unwrap();
-
-        let (stage_id, _, digest) =
-            stage_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
-        commit_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
-
-        assert_eq!(
-            std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
-            "v1"
-        );
-    }
-
-    /// ‼️ THE ROLLBACK. The second rename fails, and the previous version comes back.
-    ///
-    /// Injected by handing `swap_into_place` a `staged` path that does not exist, so
-    /// `rename(staged, target)` fails with `ENOENT` after `target` has already been moved
-    /// aside — precisely the window the old code could not survive.
-    ///
-    /// The both-renames-failed branch below it is not exercised here. Restoring renames into
-    /// a name this function has just vacated, so within one process nothing short of a
-    /// filesystem fault reaches it — but it is NOT unreachable: two installs of the same
-    /// plugin can interleave so the second occupies `target` before the first restores
-    /// (#261 review, LOW-1). The frontend's in-flight guard is what makes that unreachable
-    /// in practice, so this stays a message-only path rather than a tested one.
-    #[test]
-    fn a_failed_swap_restores_the_previous_version() {
-        let root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(root.path(), "demo", "v1");
-        let backup = root.path().join(STAGING_DIR).join("backup-demo-test");
-        std::fs::create_dir_all(root.path().join(STAGING_DIR)).unwrap();
-
-        let err = swap_into_place(&root.path().join("nonexistent"), &installed, &backup)
-            .expect_err("renaming a nonexistent staged tree must fail");
-
-        assert!(
-            matches!(err, PluginError::Io(_)),
-            "the caller must see the rename's own error, got: {err}"
-        );
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v1",
-            "the previous version must be back where the app looks for it"
-        );
-        assert!(!backup.exists(), "the backup must not be left behind");
-    }
-
-    /// A stale backup from a previous run must not wedge the next install.
-    ///
-    /// `unique_suffix` repeats across a restart (pid + a counter that resets), and `rename`
-    /// onto a NON-EMPTY directory fails with `ENOTEMPTY` instead of overwriting — so without
-    /// the pre-clear a crashed install could make every later one fail.
-    #[test]
-    fn a_leftover_backup_name_does_not_block_the_swap() {
-        let root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(root.path(), "demo", "v1");
-        let backup = root.path().join(STAGING_DIR).join("backup-demo-test");
-        std::fs::create_dir_all(&backup).unwrap();
-        std::fs::write(backup.join("junk.txt"), "from a crashed run").unwrap();
-
-        let staged = root.path().join(STAGING_DIR).join("stage-x");
-        std::fs::create_dir_all(&staged).unwrap();
-        std::fs::write(staged.join("main.js"), "v2").unwrap();
-
-        swap_into_place(&staged, &installed, &backup).unwrap();
-
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v2"
-        );
-    }
-
-    /// The install directory is named by the id, so committing under the wrong one would
-    /// overwrite an unrelated plugin. Refused — and refused BEFORE the swap.
-    #[test]
-    fn commit_refuses_a_stage_whose_manifest_names_another_plugin() {
-        let root = tempfile::tempdir().unwrap();
-        let victim = install_by_hand(root.path(), "victim", "untouched");
-
-        let (stage_id, _, digest) =
-            stage_archive_in(root.path(), &plugin_zip("attacker", "1.0.0", "evil"), None).unwrap();
-        let err = commit_staged_in(root.path(), &stage_id, "victim", &digest)
-            .expect_err("a stage declaring another id must not install as that id");
-
-        assert!(err.to_string().contains("was requested"), "{err}");
-        assert_eq!(
-            std::fs::read_to_string(victim.join("main.js")).unwrap(),
-            "untouched"
-        );
-        assert!(
-            !root.path().join("attacker").exists(),
-            "a refused commit must not install under the archive's own id either"
-        );
-    }
-
-    /// The same check one step earlier: staging already refuses the mismatch, so the
-    /// frontend never sees a stage id it could commit by accident.
-    #[test]
-    fn staging_refuses_an_archive_declaring_another_plugins_id() {
-        let root = tempfile::tempdir().unwrap();
-
-        let err = stage_archive_in(
-            root.path(),
-            &plugin_zip("attacker", "1.0.0", "evil"),
-            Some("victim"),
-        )
-        .expect_err("the archive is not the plugin that was asked for");
-
-        assert!(err.to_string().contains("was requested"), "{err}");
-        assert_eq!(
-            stage_dirs(root.path()),
-            Vec::<String>::new(),
-            "a refused stage must remove its own extracted tree"
-        );
-    }
-
-    #[test]
-    fn discard_removes_the_stage_and_leaves_installs_alone() {
-        let root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(root.path(), "demo", "v1");
-        let (stage_id, _, _digest) = stage_archive_in(
-            root.path(),
-            &plugin_zip("demo", "2.0.0", "v2"),
-            Some("demo"),
-        )
-        .unwrap();
-
-        discard_staged_in(root.path(), &stage_id).unwrap();
-
-        assert_eq!(stage_dirs(root.path()), Vec::<String>::new());
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v1"
-        );
-        assert!(
-            discard_staged_in(root.path(), &stage_id).is_err(),
-            "discarding twice must report the second one as unknown, not succeed silently"
-        );
-    }
-
-    /// ‼️ A stage id crosses the IPC boundary, so it is checked, not trusted.
-    ///
-    /// Each of these names something a caller might want to delete or overwrite; all of them
-    /// must fail to RESOLVE, which is what keeps `commit`/`discard` pointed inside the
-    /// staging directory.
-    ///
-    /// `backup-demo-1` is the case the `stage-` prefix check exists for, and the only one it
-    /// alone catches: it is a real directory in the staging root, so `single_segment` and
-    /// the `is_dir` check both pass. Committing or discarding a backup mid-swap is the
-    /// damage. The traversal cases are `single_segment`'s, and the installed-plugin id fails
-    /// for a third reason — the join is relative to the staging directory, not to the
-    /// plugin root — which is worth pinning precisely because it is easy to lose.
-    #[test]
-    fn a_stage_id_cannot_name_anything_outside_the_staging_directory() {
-        let root = tempfile::tempdir().unwrap();
-        install_by_hand(root.path(), "demo", "v1");
-        // A real staged tree, so the failures below are about the ID and not about an
-        // empty staging directory.
-        let (real, _, _) = stage_archive_in(
-            root.path(),
-            &plugin_zip("demo", "2.0.0", "v2"),
-            Some("demo"),
-        )
-        .unwrap();
-        std::fs::create_dir_all(root.path().join(STAGING_DIR).join("backup-999-0-demo")).unwrap();
-
-        // ‼️ THE FIRST TWO ARE THE ONLY INPUTS `single_segment` CATCHES, and without them
-        // this test did not exercise it at all (#261 code review, MEDIUM-3). Every other
-        // entry below fails for a DIFFERENT reason — the `stage-` prefix, or a path that
-        // simply does not exist — so deleting `single_segment` left the whole array green,
-        // while `discard_staged_plugin("<a real stage>/../../demo")` would resolve to an
-        // INSTALLED plugin and `remove_dir_all` it. A traversal only reaches the `is_dir`
-        // check if it is rooted at a stage that exists, and the loop never used the one the
-        // test had just created.
-        let rooted = format!("{real}/../../demo");
-        let rooted_backslash = format!("{real}\\..\\..\\demo");
-        for hostile in [
-            rooted.as_str(),
-            rooted_backslash.as_str(),
-            "../demo",
-            "../../.baram",
-            "stage-../demo",
-            "backup-999-0-demo",
-            "demo",
-            ".",
-            "..",
-            "",
-            "stage-a/b",
-        ] {
-            assert!(
-                resolve_stage_in(root.path(), hostile).is_err(),
-                "stage id {hostile:?} must not resolve"
+            assert_eq!(committed.install_path, installed.to_string_lossy());
+            assert_eq!(
+                std::fs::read_to_string(installed.join("main.js")).unwrap(),
+                "v2"
+            );
+            assert_eq!(
+                stage_dirs(root.path()),
+                Vec::<String>::new(),
+                "the staged tree and its backup must both be gone after a successful commit"
             );
         }
-        assert!(
-            std::fs::read_to_string(root.path().join("demo").join("main.js")).is_ok(),
-            "nothing above may have deleted the installed plugin"
-        );
-    }
 
-    /// ‼️ A HARD KILL BETWEEN THE TWO RENAMES MUST NOT COST THE USER THEIR PLUGIN.
-    ///
-    /// Simulated exactly: `swap_into_place` with a nonexistent `staged` leaves the backup
-    /// written and the target missing after its restore is skipped — so the state below is
-    /// built by hand to be the one a SIGKILL produces, and the next stage must undo it.
-    #[test]
-    fn an_interrupted_swap_is_recovered_by_the_next_stage() {
-        let root = tempfile::tempdir().unwrap();
-        let staging = staging_root_in(root.path()).unwrap();
-        // What a kill between rename #1 and rename #2 leaves behind.
-        let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
-        std::fs::create_dir_all(&backup).unwrap();
-        std::fs::write(backup.join("main.js"), "v1").unwrap();
-        assert!(!root.path().join("demo").exists());
+        /// A first install: nothing to back up, nothing to restore.
+        #[test]
+        fn commit_installs_when_no_previous_version_exists() {
+            let root = tempfile::tempdir().unwrap();
 
-        stage_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
+            let (stage_id, _, digest) =
+                stage_archive_in(root.path(), &plugin_zip("demo", "1.0.0", "v1"), None).unwrap();
+            commit_staged_in(root.path(), &stage_id, "demo", &digest).unwrap();
 
-        assert_eq!(
-            std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
-            "v1",
-            "the only copy of demo must be back where the app looks for it"
-        );
-        assert!(!backup.exists());
-    }
-
-    /// ‼️ THE BUG THAT MADE THAT NECESSARY (#261 security review).
-    ///
-    /// `std::fs::rename` PRESERVES mtime, so a backup inherits the mtime of the plugin
-    /// directory it displaced. For any plugin installed more than `STALE_STAGE_AFTER` ago
-    /// the backup is stale the moment it exists — and an age-based sweep over the whole
-    /// staging root would delete the user's only copy.
-    ///
-    /// Both halves are asserted: that rename really does preserve the mtime (otherwise this
-    /// test proves nothing), and that the sweep leaves the backup alone anyway.
-    #[test]
-    fn the_sweep_never_touches_a_backup_however_old_it_looks() {
-        let root = tempfile::tempdir().unwrap();
-        let staging = staging_root_in(root.path()).unwrap();
-        let installed = install_by_hand(root.path(), "demo", "v1");
-        let before = std::fs::metadata(&installed).unwrap().modified().unwrap();
-
-        let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
-        std::fs::rename(&installed, &backup).unwrap();
-        assert_eq!(
-            std::fs::metadata(&backup).unwrap().modified().unwrap(),
-            before,
-            "rename must preserve mtime, or this test is about nothing"
-        );
-
-        // The harshest cutoff there is. A backup must survive it regardless.
-        sweep_stale_stages(&staging, Duration::ZERO);
-
-        assert!(
-            backup.exists(),
-            "the sweep deleted a backup — this is the user's only copy of the plugin"
-        );
-    }
-
-    /// …but an uninstall must not leave one for the recovery to resurrect.
-    ///
-    /// ‼️ Driven through `uninstall_in`, NOT through `drop_backups_for`. The first version of
-    /// this test called the helper directly and mutation testing walked straight past it:
-    /// deleting the call from `uninstall_plugin` left it green, because a test of a helper
-    /// says nothing about whether anything invokes the helper.
-    #[test]
-    fn uninstalling_drops_a_backup_so_it_cannot_come_back() {
-        let root = tempfile::tempdir().unwrap();
-        let staging = staging_root_in(root.path()).unwrap();
-        install_by_hand(root.path(), "demo", "v2");
-        // A backup that survived a crash during an earlier update of the same plugin.
-        let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
-        std::fs::create_dir_all(&backup).unwrap();
-        std::fs::write(backup.join("main.js"), "v1").unwrap();
-
-        uninstall_in(root.path(), "demo").unwrap();
-        assert!(!root.path().join("demo").exists());
-
-        // The next install must NOT bring the plugin back from that backup.
-        stage_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
-        assert!(
-            !root.path().join("demo").exists(),
-            "an uninstalled plugin was resurrected by backup recovery"
-        );
-    }
-
-    /// A completed swap whose cleanup was lost leaves a backup that is simply garbage.
-    #[test]
-    fn recovery_discards_a_backup_whose_plugin_is_already_installed() {
-        let root = tempfile::tempdir().unwrap();
-        let staging = staging_root_in(root.path()).unwrap();
-        install_by_hand(root.path(), "demo", "v2");
-        let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
-        std::fs::create_dir_all(&backup).unwrap();
-        std::fs::write(backup.join("main.js"), "v1").unwrap();
-
-        recover_orphaned_backups(&staging, root.path());
-
-        assert!(!backup.exists(), "a superseded backup must be reclaimed");
-        assert_eq!(
-            std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
-            "v2",
-            "and it must not overwrite the version that won"
-        );
-    }
-
-    /// ‼️ THE ROUND TRIP, through the PRODUCER — not a name written by hand.
-    ///
-    /// The recovery tests above build `backup-999-0-demo` themselves, so they say nothing
-    /// about whether `commit_staged_in` produces a name recovery can parse. Mutation testing
-    /// caught that: swapping the id and the counter in the producer left every one of them
-    /// green. `backup_name` is the shared definition and this drives it end to end with an id
-    /// that contains hyphens, which is the case the field order exists for — the live
-    /// registry's only plugin is `baram-word-count`.
-    #[test]
-    fn a_hyphenated_plugin_id_survives_the_backup_name_round_trip() {
-        let root = tempfile::tempdir().unwrap();
-        let staging = staging_root_in(root.path()).unwrap();
-        let backup = staging.join(backup_name("my-word-count"));
-        std::fs::create_dir_all(&backup).unwrap();
-        std::fs::write(backup.join("main.js"), "v1").unwrap();
-
-        recover_orphaned_backups(&staging, root.path());
-
-        assert_eq!(
-            std::fs::read_to_string(root.path().join("my-word-count").join("main.js")).unwrap(),
-            "v1",
-            "the name the commit path writes must be the name recovery reads"
-        );
-    }
-
-    /// ‼️ THE MANIFEST MAY NOT CHANGE BETWEEN THE CHECKS AND THE COMMIT.
-    ///
-    /// Everything the caller decides — tier, capabilities, version floor — is decided
-    /// against the STAGED manifest, and the commit re-reads from disk. Anything with write
-    /// access to the staging directory during that gap could otherwise install a plugin
-    /// nothing had judged. `"trust": "trusted"` is the escalation that matters.
-    #[test]
-    fn commit_refuses_a_manifest_edited_after_it_was_staged() {
-        let root = tempfile::tempdir().unwrap();
-        let installed = install_by_hand(root.path(), "demo", "v1");
-        let (stage_id, manifest, digest) = stage_archive_in(
-            root.path(),
-            &plugin_zip("demo", "2.0.0", "v2"),
-            Some("demo"),
-        )
-        .unwrap();
-        assert_eq!(manifest.trust, None);
-
-        // The attacker rewrites the staged manifest, keeping the id so the id check passes.
-        let staged = root.path().join(STAGING_DIR).join(&stage_id);
-        let tampered = std::fs::read_to_string(staged.join("baram-plugin.json"))
-            .unwrap()
-            .replace(
-                r#""capabilities":[]"#,
-                r#""capabilities":["files"],"trust":"trusted""#,
+            assert_eq!(
+                std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
+                "v1"
             );
-        std::fs::write(staged.join("baram-plugin.json"), &tampered).unwrap();
+        }
 
-        let err = commit_staged_in(root.path(), &stage_id, "demo", &digest)
-            .expect_err("a manifest that changed after it was checked must not install");
+        /// ‼️ THE ROLLBACK. The second rename fails, and the previous version comes back.
+        ///
+        /// Injected by handing `swap_into_place` a `staged` path that does not exist, so
+        /// `rename(staged, target)` fails with `ENOENT` after `target` has already been moved
+        /// aside — precisely the window the old code could not survive.
+        ///
+        /// The both-renames-failed branch below it is not exercised here. Restoring renames into
+        /// a name this function has just vacated, so within one process nothing short of a
+        /// filesystem fault reaches it — but it is NOT unreachable: two installs of the same
+        /// plugin can interleave so the second occupies `target` before the first restores
+        /// (#261 review, LOW-1). The frontend's in-flight guard is what makes that unreachable
+        /// in practice, so this stays a message-only path rather than a tested one.
+        #[test]
+        fn a_failed_swap_restores_the_previous_version() {
+            let root = tempfile::tempdir().unwrap();
+            let installed = install_by_hand(root.path(), "demo", "v1");
+            let backup = root.path().join(STAGING_DIR).join("backup-demo-test");
+            std::fs::create_dir_all(root.path().join(STAGING_DIR)).unwrap();
 
-        assert!(
-            err.to_string().contains("changed after it was checked"),
-            "{err}"
-        );
-        assert_eq!(
-            std::fs::read_to_string(installed.join("main.js")).unwrap(),
-            "v1",
-            "and the refusal must not have disturbed the installed version"
-        );
-    }
+            let err = swap_into_place(&root.path().join("nonexistent"), &installed, &backup)
+                .expect_err("renaming a nonexistent staged tree must fail");
 
-    /// The sweep must reclaim orphans without touching an install that is staging right now.
-    #[test]
-    fn the_sweep_reclaims_by_age_only() {
-        let root = tempfile::tempdir().unwrap();
-        let staging = staging_root_in(root.path()).unwrap();
-        let orphan = staging.join("stage-orphan");
-        std::fs::create_dir_all(&orphan).unwrap();
+            assert!(
+                matches!(err, PluginError::Io(_)),
+                "the caller must see the rename's own error, got: {err}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(installed.join("main.js")).unwrap(),
+                "v1",
+                "the previous version must be back where the app looks for it"
+            );
+            assert!(!backup.exists(), "the backup must not be left behind");
+        }
 
-        // The real cutoff: a directory created a moment ago is not stale.
-        sweep_stale_stages(&staging, STALE_STAGE_AFTER);
-        assert!(
-            orphan.exists(),
-            "a fresh stage must survive the real cutoff"
-        );
+        /// A stale backup from a previous run must not wedge the next install.
+        ///
+        /// `unique_suffix` repeats across a restart (pid + a counter that resets), and `rename`
+        /// onto a NON-EMPTY directory fails with `ENOTEMPTY` instead of overwriting — so without
+        /// the pre-clear a crashed install could make every later one fail.
+        #[test]
+        fn a_leftover_backup_name_does_not_block_the_swap() {
+            let root = tempfile::tempdir().unwrap();
+            let installed = install_by_hand(root.path(), "demo", "v1");
+            let backup = root.path().join(STAGING_DIR).join("backup-demo-test");
+            std::fs::create_dir_all(&backup).unwrap();
+            std::fs::write(backup.join("junk.txt"), "from a crashed run").unwrap();
 
-        // Everything is older than nothing.
-        sweep_stale_stages(&staging, Duration::ZERO);
-        assert!(!orphan.exists(), "an aged-out stage must be reclaimed");
-    }
+            let staged = root.path().join(STAGING_DIR).join("stage-x");
+            std::fs::create_dir_all(&staged).unwrap();
+            std::fs::write(staged.join("main.js"), "v2").unwrap();
 
-    /// …and the production path calls it, without eating a concurrent stage.
-    #[test]
-    fn staging_does_not_sweep_another_install_in_flight() {
-        let root = tempfile::tempdir().unwrap();
-        let (first, _, _) =
-            stage_archive_in(root.path(), &plugin_zip("one", "1.0.0", "a"), Some("one")).unwrap();
-        let (second, _, _) =
-            stage_archive_in(root.path(), &plugin_zip("two", "1.0.0", "b"), Some("two")).unwrap();
+            swap_into_place(&staged, &installed, &backup).unwrap();
 
-        assert_ne!(first, second);
-        assert_eq!(stage_dirs(root.path()), {
-            let mut both = vec![first, second];
-            both.sort();
-            both
-        });
-    }
+            assert_eq!(
+                std::fs::read_to_string(installed.join("main.js")).unwrap(),
+                "v2"
+            );
+        }
 
-    /// `.staging` must not look like an installed plugin.
-    ///
-    /// `list_installed` reports every child of the plugin directory holding a manifest at
-    /// its root. A stage holds one — one level deeper — so the staging directory itself is
-    /// skipped, and no id can ever collide with the name because `validate_manifest` admits
-    /// only `[a-z0-9-]`.
-    #[test]
-    fn the_staging_directory_can_never_be_mistaken_for_a_plugin() {
-        let root = tempfile::tempdir().unwrap();
-        let err = stage_archive_in(root.path(), &plugin_zip(STAGING_DIR, "1.0.0", "x"), None)
-            .expect_err("a plugin claiming the staging directory's name must be refused");
+        /// The install directory is named by the id, so committing under the wrong one would
+        /// overwrite an unrelated plugin. Refused — and refused BEFORE the swap.
+        #[test]
+        fn commit_refuses_a_stage_whose_manifest_names_another_plugin() {
+            let root = tempfile::tempdir().unwrap();
+            let victim = install_by_hand(root.path(), "victim", "untouched");
 
-        assert!(
-            err.to_string().contains("lowercase letters"),
-            "expected the id-charset refusal, got: {err}"
-        );
+            let (stage_id, _, digest) =
+                stage_archive_in(root.path(), &plugin_zip("attacker", "1.0.0", "evil"), None)
+                    .unwrap();
+            let err = commit_staged_in(root.path(), &stage_id, "victim", &digest)
+                .expect_err("a stage declaring another id must not install as that id");
+
+            assert!(err.to_string().contains("was requested"), "{err}");
+            assert_eq!(
+                std::fs::read_to_string(victim.join("main.js")).unwrap(),
+                "untouched"
+            );
+            assert!(
+                !root.path().join("attacker").exists(),
+                "a refused commit must not install under the archive's own id either"
+            );
+        }
+
+        /// The same check one step earlier: staging already refuses the mismatch, so the
+        /// frontend never sees a stage id it could commit by accident.
+        #[test]
+        fn staging_refuses_an_archive_declaring_another_plugins_id() {
+            let root = tempfile::tempdir().unwrap();
+
+            let err = stage_archive_in(
+                root.path(),
+                &plugin_zip("attacker", "1.0.0", "evil"),
+                Some("victim"),
+            )
+            .expect_err("the archive is not the plugin that was asked for");
+
+            assert!(err.to_string().contains("was requested"), "{err}");
+            assert_eq!(
+                stage_dirs(root.path()),
+                Vec::<String>::new(),
+                "a refused stage must remove its own extracted tree"
+            );
+        }
+
+        #[test]
+        fn discard_removes_the_stage_and_leaves_installs_alone() {
+            let root = tempfile::tempdir().unwrap();
+            let installed = install_by_hand(root.path(), "demo", "v1");
+            let (stage_id, _, _digest) = stage_archive_in(
+                root.path(),
+                &plugin_zip("demo", "2.0.0", "v2"),
+                Some("demo"),
+            )
+            .unwrap();
+
+            discard_staged_in(root.path(), &stage_id).unwrap();
+
+            assert_eq!(stage_dirs(root.path()), Vec::<String>::new());
+            assert_eq!(
+                std::fs::read_to_string(installed.join("main.js")).unwrap(),
+                "v1"
+            );
+            assert!(
+                discard_staged_in(root.path(), &stage_id).is_err(),
+                "discarding twice must report the second one as unknown, not succeed silently"
+            );
+        }
+
+        /// ‼️ A stage id crosses the IPC boundary, so it is checked, not trusted.
+        ///
+        /// Each of these names something a caller might want to delete or overwrite; all of them
+        /// must fail to RESOLVE, which is what keeps `commit`/`discard` pointed inside the
+        /// staging directory.
+        ///
+        /// `backup-demo-1` is the case the `stage-` prefix check exists for, and the only one it
+        /// alone catches: it is a real directory in the staging root, so `single_segment` and
+        /// the `is_dir` check both pass. Committing or discarding a backup mid-swap is the
+        /// damage. The traversal cases are `single_segment`'s, and the installed-plugin id fails
+        /// for a third reason — the join is relative to the staging directory, not to the
+        /// plugin root — which is worth pinning precisely because it is easy to lose.
+        #[test]
+        fn a_stage_id_cannot_name_anything_outside_the_staging_directory() {
+            let root = tempfile::tempdir().unwrap();
+            install_by_hand(root.path(), "demo", "v1");
+            // A real staged tree, so the failures below are about the ID and not about an
+            // empty staging directory.
+            let (real, _, _) = stage_archive_in(
+                root.path(),
+                &plugin_zip("demo", "2.0.0", "v2"),
+                Some("demo"),
+            )
+            .unwrap();
+            std::fs::create_dir_all(root.path().join(STAGING_DIR).join("backup-999-0-demo"))
+                .unwrap();
+
+            // ‼️ THE FIRST TWO ARE THE ONLY INPUTS `single_segment` CATCHES, and without them
+            // this test did not exercise it at all (#261 code review, MEDIUM-3). Every other
+            // entry below fails for a DIFFERENT reason — the `stage-` prefix, or a path that
+            // simply does not exist — so deleting `single_segment` left the whole array green,
+            // while `discard_staged_plugin("<a real stage>/../../demo")` would resolve to an
+            // INSTALLED plugin and `remove_dir_all` it. A traversal only reaches the `is_dir`
+            // check if it is rooted at a stage that exists, and the loop never used the one the
+            // test had just created.
+            let rooted = format!("{real}/../../demo");
+            let rooted_backslash = format!("{real}\\..\\..\\demo");
+            for hostile in [
+                rooted.as_str(),
+                rooted_backslash.as_str(),
+                "../demo",
+                "../../.baram",
+                "stage-../demo",
+                "backup-999-0-demo",
+                "demo",
+                ".",
+                "..",
+                "",
+                "stage-a/b",
+            ] {
+                assert!(
+                    resolve_stage_in(root.path(), hostile).is_err(),
+                    "stage id {hostile:?} must not resolve"
+                );
+            }
+            assert!(
+                std::fs::read_to_string(root.path().join("demo").join("main.js")).is_ok(),
+                "nothing above may have deleted the installed plugin"
+            );
+        }
+
+        /// ‼️ A HARD KILL BETWEEN THE TWO RENAMES MUST NOT COST THE USER THEIR PLUGIN.
+        ///
+        /// Simulated exactly: `swap_into_place` with a nonexistent `staged` leaves the backup
+        /// written and the target missing after its restore is skipped — so the state below is
+        /// built by hand to be the one a SIGKILL produces, and the next stage must undo it.
+        #[test]
+        fn an_interrupted_swap_is_recovered_by_the_next_stage() {
+            let root = tempfile::tempdir().unwrap();
+            let staging = staging_root_in(root.path()).unwrap();
+            // What a kill between rename #1 and rename #2 leaves behind.
+            let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
+            std::fs::create_dir_all(&backup).unwrap();
+            std::fs::write(backup.join("main.js"), "v1").unwrap();
+            assert!(!root.path().join("demo").exists());
+
+            stage_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
+
+            assert_eq!(
+                std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
+                "v1",
+                "the only copy of demo must be back where the app looks for it"
+            );
+            assert!(!backup.exists());
+        }
+
+        /// ‼️ THE BUG THAT MADE THAT NECESSARY (#261 security review).
+        ///
+        /// `std::fs::rename` PRESERVES mtime, so a backup inherits the mtime of the plugin
+        /// directory it displaced. For any plugin installed more than `STALE_STAGE_AFTER` ago
+        /// the backup is stale the moment it exists — and an age-based sweep over the whole
+        /// staging root would delete the user's only copy.
+        ///
+        /// Both halves are asserted: that rename really does preserve the mtime (otherwise this
+        /// test proves nothing), and that the sweep leaves the backup alone anyway.
+        #[test]
+        fn the_sweep_never_touches_a_backup_however_old_it_looks() {
+            let root = tempfile::tempdir().unwrap();
+            let staging = staging_root_in(root.path()).unwrap();
+            let installed = install_by_hand(root.path(), "demo", "v1");
+            let before = std::fs::metadata(&installed).unwrap().modified().unwrap();
+
+            let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
+            std::fs::rename(&installed, &backup).unwrap();
+            assert_eq!(
+                std::fs::metadata(&backup).unwrap().modified().unwrap(),
+                before,
+                "rename must preserve mtime, or this test is about nothing"
+            );
+
+            // The harshest cutoff there is. A backup must survive it regardless.
+            sweep_stale_stages(&staging, Duration::ZERO);
+
+            assert!(
+                backup.exists(),
+                "the sweep deleted a backup — this is the user's only copy of the plugin"
+            );
+        }
+
+        /// …but an uninstall must not leave one for the recovery to resurrect.
+        ///
+        /// ‼️ Driven through `uninstall_in`, NOT through `drop_backups_for`. The first version of
+        /// this test called the helper directly and mutation testing walked straight past it:
+        /// deleting the call from `uninstall_plugin` left it green, because a test of a helper
+        /// says nothing about whether anything invokes the helper.
+        #[test]
+        fn uninstalling_drops_a_backup_so_it_cannot_come_back() {
+            let root = tempfile::tempdir().unwrap();
+            let staging = staging_root_in(root.path()).unwrap();
+            install_by_hand(root.path(), "demo", "v2");
+            // A backup that survived a crash during an earlier update of the same plugin.
+            let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
+            std::fs::create_dir_all(&backup).unwrap();
+            std::fs::write(backup.join("main.js"), "v1").unwrap();
+
+            uninstall_in(root.path(), "demo").unwrap();
+            assert!(!root.path().join("demo").exists());
+
+            // The next install must NOT bring the plugin back from that backup.
+            stage_archive_in(root.path(), &plugin_zip("other", "1.0.0", "x"), None).unwrap();
+            assert!(
+                !root.path().join("demo").exists(),
+                "an uninstalled plugin was resurrected by backup recovery"
+            );
+        }
+
+        /// A completed swap whose cleanup was lost leaves a backup that is simply garbage.
+        #[test]
+        fn recovery_discards_a_backup_whose_plugin_is_already_installed() {
+            let root = tempfile::tempdir().unwrap();
+            let staging = staging_root_in(root.path()).unwrap();
+            install_by_hand(root.path(), "demo", "v2");
+            let backup = staging.join(format!("{BACKUP_PREFIX}999-0-demo"));
+            std::fs::create_dir_all(&backup).unwrap();
+            std::fs::write(backup.join("main.js"), "v1").unwrap();
+
+            recover_orphaned_backups(&staging, root.path());
+
+            assert!(!backup.exists(), "a superseded backup must be reclaimed");
+            assert_eq!(
+                std::fs::read_to_string(root.path().join("demo").join("main.js")).unwrap(),
+                "v2",
+                "and it must not overwrite the version that won"
+            );
+        }
+
+        /// ‼️ THE ROUND TRIP, through the PRODUCER — not a name written by hand.
+        ///
+        /// The recovery tests above build `backup-999-0-demo` themselves, so they say nothing
+        /// about whether `commit_staged_in` produces a name recovery can parse. Mutation testing
+        /// caught that: swapping the id and the counter in the producer left every one of them
+        /// green. `backup_name` is the shared definition and this drives it end to end with an id
+        /// that contains hyphens, which is the case the field order exists for — the live
+        /// registry's only plugin is `baram-word-count`.
+        #[test]
+        fn a_hyphenated_plugin_id_survives_the_backup_name_round_trip() {
+            let root = tempfile::tempdir().unwrap();
+            let staging = staging_root_in(root.path()).unwrap();
+            let backup = staging.join(backup_name("my-word-count"));
+            std::fs::create_dir_all(&backup).unwrap();
+            std::fs::write(backup.join("main.js"), "v1").unwrap();
+
+            recover_orphaned_backups(&staging, root.path());
+
+            assert_eq!(
+                std::fs::read_to_string(root.path().join("my-word-count").join("main.js")).unwrap(),
+                "v1",
+                "the name the commit path writes must be the name recovery reads"
+            );
+        }
+
+        /// ‼️ THE MANIFEST MAY NOT CHANGE BETWEEN THE CHECKS AND THE COMMIT.
+        ///
+        /// Everything the caller decides — tier, capabilities, version floor — is decided
+        /// against the STAGED manifest, and the commit re-reads from disk. Anything with write
+        /// access to the staging directory during that gap could otherwise install a plugin
+        /// nothing had judged. `"trust": "trusted"` is the escalation that matters.
+        #[test]
+        fn commit_refuses_a_manifest_edited_after_it_was_staged() {
+            let root = tempfile::tempdir().unwrap();
+            let installed = install_by_hand(root.path(), "demo", "v1");
+            let (stage_id, manifest, digest) = stage_archive_in(
+                root.path(),
+                &plugin_zip("demo", "2.0.0", "v2"),
+                Some("demo"),
+            )
+            .unwrap();
+            assert_eq!(manifest.trust, None);
+
+            // The attacker rewrites the staged manifest, keeping the id so the id check passes.
+            let staged = root.path().join(STAGING_DIR).join(&stage_id);
+            let tampered = std::fs::read_to_string(staged.join("baram-plugin.json"))
+                .unwrap()
+                .replace(
+                    r#""capabilities":[]"#,
+                    r#""capabilities":["files"],"trust":"trusted""#,
+                );
+            std::fs::write(staged.join("baram-plugin.json"), &tampered).unwrap();
+
+            let err = commit_staged_in(root.path(), &stage_id, "demo", &digest)
+                .expect_err("a manifest that changed after it was checked must not install");
+
+            assert!(
+                err.to_string().contains("changed after it was checked"),
+                "{err}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(installed.join("main.js")).unwrap(),
+                "v1",
+                "and the refusal must not have disturbed the installed version"
+            );
+        }
+
+        /// The sweep must reclaim orphans without touching an install that is staging right now.
+        #[test]
+        fn the_sweep_reclaims_by_age_only() {
+            let root = tempfile::tempdir().unwrap();
+            let staging = staging_root_in(root.path()).unwrap();
+            let orphan = staging.join("stage-orphan");
+            std::fs::create_dir_all(&orphan).unwrap();
+
+            // The real cutoff: a directory created a moment ago is not stale.
+            sweep_stale_stages(&staging, STALE_STAGE_AFTER);
+            assert!(
+                orphan.exists(),
+                "a fresh stage must survive the real cutoff"
+            );
+
+            // Everything is older than nothing.
+            sweep_stale_stages(&staging, Duration::ZERO);
+            assert!(!orphan.exists(), "an aged-out stage must be reclaimed");
+        }
+
+        /// …and the production path calls it, without eating a concurrent stage.
+        #[test]
+        fn staging_does_not_sweep_another_install_in_flight() {
+            let root = tempfile::tempdir().unwrap();
+            let (first, _, _) =
+                stage_archive_in(root.path(), &plugin_zip("one", "1.0.0", "a"), Some("one"))
+                    .unwrap();
+            let (second, _, _) =
+                stage_archive_in(root.path(), &plugin_zip("two", "1.0.0", "b"), Some("two"))
+                    .unwrap();
+
+            assert_ne!(first, second);
+            assert_eq!(stage_dirs(root.path()), {
+                let mut both = vec![first, second];
+                both.sort();
+                both
+            });
+        }
+
+        /// `.staging` must not look like an installed plugin.
+        ///
+        /// `list_installed` reports every child of the plugin directory holding a manifest at
+        /// its root. A stage holds one — one level deeper — so the staging directory itself is
+        /// skipped, and no id can ever collide with the name because `validate_manifest` admits
+        /// only `[a-z0-9-]`.
+        #[test]
+        fn the_staging_directory_can_never_be_mistaken_for_a_plugin() {
+            let root = tempfile::tempdir().unwrap();
+            let err = stage_archive_in(root.path(), &plugin_zip(STAGING_DIR, "1.0.0", "x"), None)
+                .expect_err("a plugin claiming the staging directory's name must be refused");
+
+            assert!(
+                err.to_string().contains("lowercase letters"),
+                "expected the id-charset refusal, got: {err}"
+            );
+        }
     }
 }
