@@ -170,6 +170,49 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
 }
 
 /**
+ * 캡처 파일의 절대 경로.
+ *
+ * `stripTrailingSeparators`/`normalizePath`로 합치고 정리한다 — 손으로 문자열을 이어
+ * 붙이면 `rootPath`의 트레일링 슬래시가 `//`를 만들고(§260 Phase 4a LOW-4와 같은
+ * 종류의 결함 — `resolveTaskWriteTarget`은 경로를 문자열로 정확히 비교한다),
+ * `./`처럼 정리되지 않은 세그먼트도 그대로 남는다. 설정값이 빈 문자열이면(입력창을
+ * 지우는 중일 수 있다) 디렉터리 경로로 미끄러지는 대신 기본 파일명으로 대체한다.
+ *
+ * 볼트 밖과 비마크다운은 **거절한다**(리뷰 Major 5). 둘 다 append 자체는 성공하고
+ * 다이얼로그는 오류 없이 닫히지만, `get_vault_tasks`는 볼트만 걷고 워처는 감시 루트
+ * 아래 마크다운 이벤트만 들으므로 그 태스크는 어느 버킷에도 영영 나타나지 않는다.
+ * `notes/`처럼 디렉터리로 적은 값도 여기서 걸린다 — 트레일링 슬래시를 뗀 `notes`는
+ * `.md`가 아니고, 그대로 두면 `append_line`이 **`notes`라는 이름의 파일**을 만든다.
+ *
+ * §312 아카이브도 이 함수를 쓴다(`useArchiveDone`). 수집함이 어디인지는 캡처와 배수구가
+ * 반드시 같은 답을 내야 하는 사실이다 — 갈라지면 아카이브의 화이트리스트가 캡처가 쓰는
+ * 파일을 알아보지 못해 조용히 아무것도 옮기지 못한다.
+ */
+export function resolveCapturePath(
+  rootPath: string,
+  captureFile: string,
+): string {
+  const file = captureFile.trim() === "" ? DEFAULT_CAPTURE_FILE : captureFile;
+  const joined = file.startsWith("/")
+    ? file
+    : `${stripTrailingSeparators(rootPath)}/${file}`;
+  const path = normalizePath(joined);
+  if (!isUnderRoot(path, normalizePath(rootPath))) {
+    throw new CaptureError(
+      "outsideVault",
+      `capture file is outside the vault: ${path}`,
+    );
+  }
+  if (!MARKDOWN_RE.test(path)) {
+    throw new CaptureError(
+      "notMarkdown",
+      `capture file is not a markdown file: ${path}`,
+    );
+  }
+  return path;
+}
+
+/**
  * §312 소스 버퍼 끝에 캡처 줄을 붙이고 그 탭을 dirty로 세운다.
  *
  * `false`는 "접근자 미등록" — 표면 하나가 아니라 버퍼를 소유한 `useSourceMode` 자체가
@@ -286,42 +329,6 @@ function normalizeBody(body: string): string {
       .replace(CREATED_DATE_RE, "")
       .replace(BARE_CREATED_RE, ""),
   );
-}
-
-/**
- * 캡처 파일의 절대 경로.
- *
- * `stripTrailingSeparators`/`normalizePath`로 합치고 정리한다 — 손으로 문자열을 이어
- * 붙이면 `rootPath`의 트레일링 슬래시가 `//`를 만들고(§260 Phase 4a LOW-4와 같은
- * 종류의 결함 — `resolveTaskWriteTarget`은 경로를 문자열로 정확히 비교한다),
- * `./`처럼 정리되지 않은 세그먼트도 그대로 남는다. 설정값이 빈 문자열이면(입력창을
- * 지우는 중일 수 있다) 디렉터리 경로로 미끄러지는 대신 기본 파일명으로 대체한다.
- *
- * 볼트 밖과 비마크다운은 **거절한다**(리뷰 Major 5). 둘 다 append 자체는 성공하고
- * 다이얼로그는 오류 없이 닫히지만, `get_vault_tasks`는 볼트만 걷고 워처는 감시 루트
- * 아래 마크다운 이벤트만 들으므로 그 태스크는 어느 버킷에도 영영 나타나지 않는다.
- * `notes/`처럼 디렉터리로 적은 값도 여기서 걸린다 — 트레일링 슬래시를 뗀 `notes`는
- * `.md`가 아니고, 그대로 두면 `append_line`이 **`notes`라는 이름의 파일**을 만든다.
- */
-function resolveCapturePath(rootPath: string, captureFile: string): string {
-  const file = captureFile.trim() === "" ? DEFAULT_CAPTURE_FILE : captureFile;
-  const joined = file.startsWith("/")
-    ? file
-    : `${stripTrailingSeparators(rootPath)}/${file}`;
-  const path = normalizePath(joined);
-  if (!isUnderRoot(path, normalizePath(rootPath))) {
-    throw new CaptureError(
-      "outsideVault",
-      `capture file is outside the vault: ${path}`,
-    );
-  }
-  if (!MARKDOWN_RE.test(path)) {
-    throw new CaptureError(
-      "notMarkdown",
-      `capture file is not a markdown file: ${path}`,
-    );
-  }
-  return path;
 }
 
 /**

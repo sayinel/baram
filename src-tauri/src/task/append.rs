@@ -11,10 +11,24 @@ use crate::task::TaskError;
 /// 생성한다. 그 파일의 줄바꿈 스타일과 끝 개행 유무를 보존한다.
 /// 붙인 줄의 원문을 돌려준다.
 pub async fn append_line(path: &str, line: &str) -> Result<String, TaskError> {
-    if line.contains('\n') || line.contains('\r') {
+    append_lines(path, std::slice::from_ref(&line)).await?;
+    Ok(line.to_string())
+}
+
+/// 여러 줄을 **한 번의 쓰기로** 붙인다. 아카이브(§312)가 한 대상 파일에 그 달의 줄을
+/// 통째로 옮길 때 쓴다 — 줄마다 read/write를 반복하면 실패 창이 줄 수만큼 늘어나고,
+/// 그 창 하나하나가 "붙었는데 못 지운" 중복을 만들 수 있다.
+///
+/// 빈 목록은 파일을 만들지도 건드리지도 않는다 — 그래야 옮길 것이 없는 달의 빈
+/// `Archive/YYYY-MM.md`가 생기지 않는다.
+pub async fn append_lines(path: &str, lines: &[&str]) -> Result<(), TaskError> {
+    if lines.iter().any(|l| l.contains('\n') || l.contains('\r')) {
         return Err(TaskError::Custom(
-            "append_line: line must not contain a newline".to_string(),
+            "append_lines: a line must not contain a newline".to_string(),
         ));
+    }
+    if lines.is_empty() {
+        return Ok(());
     }
 
     let existing = match tokio::fs::read_to_string(path).await {
@@ -37,21 +51,24 @@ pub async fn append_line(path: &str, line: &str) -> Result<String, TaskError> {
         "\n"
     };
 
-    let mut out = String::with_capacity(content.len() + line.len() + 2);
+    let added: usize = lines.iter().map(|l| l.len() + 2).sum();
+    let mut out = String::with_capacity(content.len() + added);
     out.push_str(&content);
     // 빈 파일에 앞 개행을 넣으면 첫 줄이 빈 줄이 된다. 내용이 있는데 끝 개행이
     // 없을 때만 넣는다.
     if !content.is_empty() && !content.ends_with('\n') {
         out.push_str(newline);
     }
-    out.push_str(line);
-    out.push_str(newline);
+    for line in lines {
+        out.push_str(line);
+        out.push_str(newline);
+    }
 
     crate::fs::write_file(path, &out)
         .await
         .map_err(|e| TaskError::Custom(e.to_string()))?;
 
-    Ok(line.to_string())
+    Ok(())
 }
 
 #[cfg(test)]
@@ -125,6 +142,39 @@ mod tests {
         let got = append_line(&p, "- [ ] 반환값").await.unwrap();
         assert_eq!(got, "- [ ] 반환값");
         let _ = std::fs::remove_file(&p);
+    }
+
+    #[tokio::test]
+    async fn appends_several_lines_in_order_with_one_write() {
+        let p = tmp("many");
+        std::fs::write(&p, "머리말\n").unwrap();
+        append_lines(&p, &["- [x] 하나", "- [x] 둘"]).await.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "머리말\n- [x] 하나\n- [x] 둘\n"
+        );
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[tokio::test]
+    async fn appends_several_lines_with_the_files_crlf() {
+        let p = tmp("many-crlf");
+        std::fs::write(&p, "머리말\r\n").unwrap();
+        append_lines(&p, &["- [x] 하나", "- [x] 둘"]).await.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "머리말\r\n- [x] 하나\r\n- [x] 둘\r\n"
+        );
+        let _ = std::fs::remove_file(&p);
+    }
+
+    #[tokio::test]
+    async fn an_empty_list_does_not_create_the_file() {
+        // 옮길 것이 없는 달에 빈 `Archive/YYYY-MM.md`를 만들지 않기 위한 계약.
+        let p = tmp("emptylist");
+        let _ = std::fs::remove_file(&p);
+        append_lines(&p, &[]).await.unwrap();
+        assert!(!std::path::Path::new(&p).exists());
     }
 
     #[tokio::test]

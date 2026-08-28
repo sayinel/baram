@@ -8,6 +8,7 @@ import type { TaskFilters } from "../../utils/tasks/task-filters";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { refreshAllTasks, useTaskStore } from "../../stores/tasks/task-store";
@@ -21,6 +22,7 @@ import {
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
 import { TaskBucketList } from "./TaskBucketList";
+import { useArchiveDone } from "./use-archive-done";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
 import { useTaskTriage } from "./use-task-triage";
 
@@ -36,18 +38,26 @@ const BUCKET_LABEL: Record<TaskBucket, string> = {
 };
 
 export function TaskAgendaPanel() {
+  const { t } = useTranslation();
   const rootPath = useFileStore((s) => s.rootPath);
   const { tasks, loading } = useTaskStore(
     useShallow((s) => ({ tasks: s.tasks, loading: s.loading })),
   );
-  const { tasksExcludePaths, tasksRecordDoneDate, tasksWeekStart } =
-    useSettingsStore(
-      useShallow((s) => ({
-        tasksExcludePaths: s.tasksExcludePaths,
-        tasksRecordDoneDate: s.tasksRecordDoneDate,
-        tasksWeekStart: s.tasksWeekStart,
-      })),
-    );
+  const {
+    tasksArchiveAfterDays,
+    tasksCaptureFile,
+    tasksExcludePaths,
+    tasksRecordDoneDate,
+    tasksWeekStart,
+  } = useSettingsStore(
+    useShallow((s) => ({
+      tasksArchiveAfterDays: s.tasksArchiveAfterDays,
+      tasksCaptureFile: s.tasksCaptureFile,
+      tasksExcludePaths: s.tasksExcludePaths,
+      tasksRecordDoneDate: s.tasksRecordDoneDate,
+      tasksWeekStart: s.tasksWeekStart,
+    })),
+  );
   const byId = useZettelIndexStore((s) => s.byId);
   // §305 문서 경로 판정에 필요한 라이브 Editor — 활성 탭이 없으면 null이고,
   // 라우터는 그 경우 디스크로 폴백한다.
@@ -135,6 +145,19 @@ export function TaskAgendaPanel() {
     today: todayIso(now),
   });
 
+  // §312 배수구. 후보는 **필터 적용 전** 전체에서 고른다 — 화면에 무엇을 걸어 두었든
+  // 정리 대상은 같아야 한다. 필터로 좁힌 목록에서 고르면 "완료" 버킷을 접어 둔 사용자와
+  // 펼쳐 둔 사용자가 같은 버튼에서 다른 개수를 본다.
+  const archive = useArchiveDone({
+    afterDays: tasksArchiveAfterDays,
+    captureFile: tasksCaptureFile,
+    editor,
+    exclude: tasksExcludePaths,
+    now,
+    rootPath,
+    tasks,
+  });
+
   return (
     <div className="task-panel">
       <div className="task-panel-header">
@@ -158,6 +181,20 @@ export function TaskAgendaPanel() {
               type="button"
             >
               ⏩
+            </button>
+          )}
+          {archive.count > 0 && (
+            <button
+              aria-label={t("tasks.archive.action")}
+              className="icon-btn"
+              disabled={loading || archive.busy}
+              onClick={() => void archive.run()}
+              title={t("tasks.archive.title", {
+                count: String(archive.count),
+              })}
+              type="button"
+            >
+              🗄️
             </button>
           )}
           <button

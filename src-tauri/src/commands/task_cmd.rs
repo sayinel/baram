@@ -150,6 +150,31 @@ pub async fn delete_task_line(path: String, line: u32, expected_raw: String) -> 
         .map_err(|e| e.to_string())
 }
 
+/// §312 아카이브 — 완료 태스크를 `Archive/YYYY-MM.md`로 **옮긴다**(붙이고 나서 지운다).
+///
+/// 이 커맨드는 파일 여러 개를 한 번에 고친다. 그래서:
+/// - 자동 실행하지 않는다 — 확인 관문은 프런트가 갖는다(`useArchiveDone`).
+/// - §260 샌드박스 티어(`plugin-*`)에는 **주지 않는다**(capabilities/plugin-sandbox.json).
+///   `delete_task_line`과 같은 이유다 — 지우는 절반이 되돌릴 수 없다.
+///
+/// `capture_path`는 프런트가 이미 해석한 **절대 경로**다(`resolveCapturePath`). Rust는 그것을
+/// 다시 만들지 않고 볼트 안·마크다운인지만 확인한다 — 해석기를 두 벌 두면 갈라지지만
+/// 부분집합 단정은 갈라질 수 없다.
+///
+/// `today`는 프런트가 로컬 시간대로 계산해 넘긴다(`set_task_state`와 같은 계약).
+#[tauri::command]
+pub async fn archive_task_lines(
+    root_path: String,
+    capture_path: String,
+    items: Vec<crate::task::ArchiveItem>,
+    today: String,
+    after_days: u32,
+) -> Result<crate::task::ArchiveOutcome, String> {
+    crate::task::archive_tasks(&root_path, &capture_path, &items, &today, after_days)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

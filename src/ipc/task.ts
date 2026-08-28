@@ -1,7 +1,12 @@
 // §304 §305 Task IPC commands
 import { invoke } from "@tauri-apps/api/core";
 
-import type { TaskEntry, TaskState } from "./types";
+import type {
+  ArchiveItem,
+  ArchiveOutcome,
+  TaskEntry,
+  TaskState,
+} from "./types";
 
 /** §312 수집함 파일 끝에 한 줄 붙인다. 파일이 없으면 만든다. */
 export async function appendTaskLine(
@@ -9,6 +14,32 @@ export async function appendTaskLine(
   line: string,
 ): Promise<string> {
   return invoke<string>("append_task_line", { path, line });
+}
+
+/**
+ * §312 완료 태스크를 `Archive/YYYY-MM.md`로 **옮긴다** — 붙이고 나서 지운다.
+ *
+ * 파일 여러 개를 한 번에 고치므로 자동 실행하지 않는다. 확인 관문은
+ * `useArchiveDone`(src/components/tasks/use-archive-done.ts)이다.
+ *
+ * `capturePath`는 **절대 경로**다(`resolveCapturePath`가 만든 값). 백엔드는 그것을 다시
+ * 만들지 않고 볼트 안·마크다운인지만 확인한다. `items`에 수집함·`Archive/*` 밖의 경로가
+ * 하나라도 있으면 파일을 하나도 건드리지 않고 reject된다(§312 불가침 규칙).
+ */
+export async function archiveTaskLines(
+  rootPath: string,
+  capturePath: string,
+  items: ArchiveItem[],
+  today: string,
+  afterDays: number,
+): Promise<ArchiveOutcome> {
+  return invoke<ArchiveOutcome>("archive_task_lines", {
+    rootPath,
+    capturePath,
+    items,
+    today,
+    afterDays,
+  });
 }
 
 /**

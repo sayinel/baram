@@ -1,5 +1,29 @@
 // IPC 타입 정의 — ipc-registry.json과 동기화 유지 필수
 
+/** §312 아카이브로 옮길 줄 하나 — 인덱스의 `TaskEntry`에서 그대로 뽑는다. */
+export interface ArchiveItem {
+  expectedRaw: string;
+  line: number;
+  path: string;
+}
+
+/**
+ * §312 아카이브 실행 회계. 넷을 합치지 않는 이유는 §309 배치와 같다 — `stale`은 정상
+ * 경합이고 `failed`는 사고다.
+ */
+export interface ArchiveOutcome {
+  /** 실제로 옮겨진 줄 수 */
+  archived: number;
+  /** I/O 실패로 옮기지 못한 줄 */
+  failed: number;
+  /** 바이트가 바뀐 파일 전부(원본 + 대상) — 호출자가 이만큼만 다시 읽는다 */
+  paths: string[];
+  /** 자격 미달로 그냥 둔 줄 — 경과일 미달, `✅` 없음, 들여쓴 항목, 이미 제자리 */
+  skipped: number;
+  /** 그 사이 파일이 바뀌어 건너뛴 줄 */
+  stale: number;
+}
+
 // §3.2 Index types
 export interface BacklinkEntry {
   blockId?: string; // ^blockId for block refs/embeds
@@ -238,6 +262,18 @@ export interface PandocInfo {
   version: string;
 }
 
+// §69 — this file used to declare its own `RegistryEntry`, `RegistryIndex`,
+// `PluginManifest`, `EngineRequirement` and `TiptapExtensionDef`, all imported by nobody:
+// `plugin-invoke.ts` and the plugin code have always taken them from
+// `src/plugins/types.ts`. Removed rather than updated alongside the optional `engines`,
+// because a second copy left behind is worse than no copy — the next person to relax a
+// registry field would have had two plausible declarations and no way to tell which one
+// runs. They had ALREADY drifted: this `PluginManifest` never gained `trust`, the field
+// §260's whole tier model turns on.
+//
+// `knip.json` ignores `src/ipc/**`, so nothing was ever going to report any of it. That
+// ignore rule is the reason five dead types accumulated here; it deserves its own pass.
+
 // §5.10 PDF export options (headless Chrome backend)
 export interface PdfOptions {
   landscape?: boolean;
@@ -257,18 +293,6 @@ export interface RecentMenuEntry {
   kind: "item" | "separator";
   label?: string; // present for kind:"item"
 }
-
-// §69 — this file used to declare its own `RegistryEntry`, `RegistryIndex`,
-// `PluginManifest`, `EngineRequirement` and `TiptapExtensionDef`, all imported by nobody:
-// `plugin-invoke.ts` and the plugin code have always taken them from
-// `src/plugins/types.ts`. Removed rather than updated alongside the optional `engines`,
-// because a second copy left behind is worse than no copy — the next person to relax a
-// registry field would have had two plausible declarations and no way to tell which one
-// runs. They had ALREADY drifted: this `PluginManifest` never gained `trust`, the field
-// §260's whole tier model turns on.
-//
-// `knip.json` ignores `src/ipc/**`, so nothing was ever going to report any of it. That
-// ignore rule is the reason five dead types accumulated here; it deserves its own pass.
 
 // §33 Rename result
 export interface RenameResult {
@@ -316,7 +340,6 @@ export interface SearchResult {
   line: number;
   snippet: string;
 }
-
 export interface SnapshotEntry {
   files: SnapshotFileEntry[];
   id: string;
@@ -332,6 +355,7 @@ export interface SnapshotFileEntry {
   path: string;
   sizeBytes: number;
 }
+
 // §56m Tag types
 export interface TagEntry {
   count: number;

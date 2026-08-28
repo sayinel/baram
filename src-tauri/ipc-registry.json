@@ -1444,6 +1444,23 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "태스크 줄 삭제. 종결자까지 함께 지우고 줄바꿈 스타일·끝 개행 유무는 보존. expectedRaw 낙관적 잠금. 파괴적·되돌릴 수 없음(스냅샷 §71이 이 경로를 타지 않는다) — 확인 관문은 프론트, 샌드박스 티어에는 부여하지 않는다"
+    },
+    {
+      "name": "archive_task_lines",
+      "input": {
+        "rootPath": "string",
+        "capturePath": "string",
+        "items": "Array<{ path: string; line: number; expectedRaw: string }>",
+        "today": "string (YYYY-MM-DD, 프론트가 로컬 시간대로 계산)",
+        "afterDays": "number"
+      },
+      "output": "{ archived: number; skipped: number; stale: number; failed: number; paths: string[] }",
+      "module": "task",
+      "spec": "§312",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "완료 태스크를 Archive/YYYY-MM.md로 이동. 붙인 뒤 지우므로 중간 실패의 최악은 중복(소실 아님). 원본은 수집함·Archive/* 화이트리스트로 강제 — 밖의 경로가 하나라도 있으면 파일을 건드리지 않고 거절(§312 불가침 규칙). 확인 관문은 프론트, 샌드박스 티어에는 부여하지 않는다"
     }
   ],
   "events": [

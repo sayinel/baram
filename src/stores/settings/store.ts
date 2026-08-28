@@ -163,6 +163,7 @@ export const useSettingsStore = create<SettingsState>()(
         tasksExcludePaths: state.tasksExcludePaths,
         tasksRecordDoneDate: state.tasksRecordDoneDate,
         tasksWeekStart: state.tasksWeekStart,
+        tasksArchiveAfterDays: state.tasksArchiveAfterDays,
         tasksCaptureFile: state.tasksCaptureFile,
         snapshotInterval: state.snapshotInterval,
         snapshotMaxCount: state.snapshotMaxCount,

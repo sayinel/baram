@@ -9,6 +9,7 @@
   "permissions": [
     "allow-add-context",
     "allow-append-task-line",
+    "allow-archive-task-lines",
     "allow-confirm-quit",
     "allow-copy-file",
     "allow-create-dir",
