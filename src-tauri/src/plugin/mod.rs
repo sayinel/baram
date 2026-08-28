@@ -92,10 +92,10 @@ mod channels;
 mod label_map;
 mod rate_limit;
 mod staging;
-// `pub` (not `mod`) — unlike the sibling submodules above, commands::plugin_cmd
-// (outside this module's descendant tree) needs to reach vault_path's pub(crate)
-// items directly (§1 split review).
-pub mod vault_path;
+// `pub(crate)` (not bare `mod`) — unlike the sibling submodules above,
+// commands::plugin_cmd (outside this module's descendant tree) reaches
+// vault_path's pub(crate) items directly.
+pub(crate) mod vault_path;
 // Re-exported for the `plugin_call` broker + sandbox register/deregister
 // commands (Phase 3a Task 2, src-tauri/src/commands/plugin_cmd.rs).
 pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
