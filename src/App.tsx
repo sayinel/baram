@@ -959,7 +959,7 @@ function App() {
                       .getState()
                       .addContext("vault", path, { alias });
                     const { switchContext } =
-                      await import("./stores/file/file");
+                      await import("./services/vault-context-loader");
                     const activeId = ctxStore.getState().activeContextId;
                     if (activeId) await switchContext(activeId);
                   }}

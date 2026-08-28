@@ -1,9 +1,10 @@
 // §89 Open a file by absolute path — shared by the file-op hook, the "+" menu,
 // and recent-item reopening. Throws on failure so callers can self-heal.
 import { readFile } from "../ipc/fs";
+import { switchContext } from "../services/vault-context-loader";
 import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
-import { switchContext, useFileStore } from "../stores/file/file";
+import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { isBinaryViewerFile } from "./file-type";
 import { basename } from "./path-utils";

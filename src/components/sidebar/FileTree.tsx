@@ -12,12 +12,9 @@ import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
 import { readFile } from "../../ipc/invoke";
+import { openFolder } from "../../services/vault-context-loader";
 import { useEditorStore } from "../../stores/editor/editor";
-import {
-  type FileEntry,
-  openFolder,
-  useFileStore,
-} from "../../stores/file/file";
+import { type FileEntry, useFileStore } from "../../stores/file/file";
 import { isBinaryViewerFile } from "../../utils/file-type";
 import { logger } from "../../utils/logger";
 import { getFileIcon } from "./file-icon";

@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { switchContext } from "../../services/vault-context-loader";
 import { openFileByPath } from "../../utils/open-file";
 import { useContextStore } from "../context/context";
 import { useEditorStore } from "../editor/editor";
-import { switchContext, useFileStore } from "../file/file";
+import { useFileStore } from "../file/file";
 import { useSettingsStore } from "../settings/store";
 
 // §89 Regression: opening a standalone external file while one or more vaults

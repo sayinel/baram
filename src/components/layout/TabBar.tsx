@@ -5,9 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Pin } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { switchContext } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
-import { switchContext } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 
 const DRAG_THRESHOLD = 3; // px before drag activates

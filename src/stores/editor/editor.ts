@@ -228,10 +228,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         if (tabCtx && activeCtx && tabCtx.path === activeCtx.path) {
           return; // Same vault, different ID — no need to switch
         }
-        // Lazy import to avoid circular dependency at module load
-        import("../file/file").then(({ switchContext }) => {
-          switchContext(tab.contextId);
-        });
+        // Dynamic import, deliberately: a static import of the service here would close
+        // file.ts → editor.ts → vault-context-loader.ts → file.ts into a real, fully-static
+        // 3-node cycle (the service needs useFileStore; closeFolder needs useEditorStore). This
+        // edge is the one place we break that cycle — the fire-and-forget timing is unchanged
+        // either way, since switchContext was never awaited here.
+        import("../../services/vault-context-loader").then(
+          ({ switchContext }) => {
+            switchContext(tab.contextId);
+          },
+        );
       }
     }
   },

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { addFolder } from "../../stores/file/file";
+import { addFolder } from "../../services/vault-context-loader";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { openFileByPath } from "../open-file";
 import { openRecentFile, openRecentFolder } from "../recent-open";
 
-vi.mock("../../stores/file/file", () => ({ addFolder: vi.fn() }));
+vi.mock("../../services/vault-context-loader", () => ({ addFolder: vi.fn() }));
 vi.mock("../open-file", () => ({ openFileByPath: vi.fn() }));
 
 const mockAddFolder = vi.mocked(addFolder);

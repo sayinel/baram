@@ -8,9 +8,9 @@ import {
   addContext as reRegisterInRust,
 } from "../ipc/context";
 import { getOpenedUrls } from "../ipc/invoke";
+import { openFolder } from "../services/vault-context-loader";
 import { getSpace } from "../spaces";
 import { useContextStore } from "../stores/context/context";
-import { openFolder } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { logger } from "../utils/logger";
 
