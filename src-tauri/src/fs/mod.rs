@@ -458,10 +458,14 @@ fn reject_escaping_entry(name: &str, enclosed: Option<PathBuf>) -> Result<PathBu
     }
 }
 
-/// After every entry has passed every bound, move the staged tree into `output_dir` in one
-/// pass. Reached ONLY once the whole archive is known-good — nothing here can leave a
-/// truncated or partial file behind, because the byte-bound checks that could still fail
-/// already ran, against `staged`, not against `output_dir`.
+/// After every entry has passed every bound, move the staged tree into `output_dir` in TWO
+/// passes: PREFLIGHT walks the staged tree read-only and rejects every failure condition that
+/// can be determined ahead of time; only once the entire tree preflights clean does COMMIT
+/// walk it again to actually `create_dir_all`/`rename`. A single combined "check this entry,
+/// then move it" pass (the previous shape of this function) could reject entry N *after*
+/// entries `1..N-1` had already been renamed into `output_dir` — a refusal that still left the
+/// vault partially rewritten, contradicting the "refused ⇒ untouched" contract the rest of
+/// this module relies on.
 ///
 /// Directories are `create_dir_all`'d (merging into whatever already exists, so a repeat
 /// extraction into a non-empty vault folder still succeeds); files are `fs::rename`'d, which
@@ -469,16 +473,38 @@ fn reject_escaping_entry(name: &str, enclosed: Option<PathBuf>) -> Result<PathBu
 /// pre-existing overwrite behaviour — and, being on the same filesystem (`staged` is a
 /// `tempdir_in(output_dir)`), cannot fail with a cross-device error partway through.
 ///
+/// PREFLIGHT rejects, for every path in the staged tree, before a single directory is created
+/// or file renamed:
+/// - a symlink anywhere on the path an entry would land on or pass through in `output_dir`
+///   (`reject_symlink_ancestors`, using `symlink_metadata` so it is never followed) — §D6
+///   security review, BLOCKER, see below;
+/// - a file/directory kind conflict: the staged entry is a directory but `output_dir` already
+///   has a plain file at that path, or vice versa. `create_dir_all`/`rename` would otherwise
+///   only discover this mid-walk — `rename`ing a file onto an existing directory, or
+///   `create_dir_all`ing through an existing file, fails as a plain I/O error with whatever
+///   earlier siblings already moved left in place.
+///
+/// Once PREFLIGHT passes clean, every failure COMMIT can still hit is — by construction — one
+/// PREFLIGHT could not have predicted: the disk filled up mid-write, or something outside this
+/// app changed `output_dir` in the (short) window between the two passes. A COMMIT-stage
+/// failure can therefore still leave a partial write behind; this is the one gap the "refused
+/// ⇒ untouched" guarantee does not close, and is accepted for this app's threat model (a local
+/// desktop user extracting an archive they just chose to import, not a multi-tenant server
+/// under adversarial load). Building and tearing down the staging `TempDir` itself also
+/// touches `output_dir`'s mtime — accepted as harmless, since nothing here reads that
+/// timestamp as a content signal.
+///
 /// ‼️ Guards against a pre-existing symlink inside `output_dir`: before creating or renaming
-/// into any path, every already-existing ancestor component is checked with
-/// `symlink_metadata` (which does not follow) and rejected if it is a symlink — otherwise
-/// `create_dir_all`/`rename` would transparently follow it and land the write somewhere
-/// outside `output_dir` (§D6 security review, BLOCKER). This still has a TOCTOU window
-/// between that check and the syscall that follows it: closing it fully needs `openat`-style
-/// no-follow-by-directory-handle primitives that Rust's std does not expose portably. The
-/// threat model here is a local desktop attacker racing the app's own extraction of an
-/// archive the user just chose to import — not a multi-tenant server — so that residual
-/// window is accepted rather than addressed with platform-specific unsafe code.
+/// into any path, every already-existing ancestor component (PREFLIGHT) — and, defensively,
+/// again right before the syscall (COMMIT) — is checked with `symlink_metadata` (which does
+/// not follow) and rejected if it is a symlink — otherwise `create_dir_all`/`rename` would
+/// transparently follow it and land the write somewhere outside `output_dir` (§D6 security
+/// review, BLOCKER). This still has a TOCTOU window between each check and the syscall that
+/// follows it: closing it fully needs `openat`-style no-follow-by-directory-handle primitives
+/// that Rust's std does not expose portably. The threat model here is a local desktop attacker
+/// racing the app's own extraction of an archive the user just chose to import — not a
+/// multi-tenant server — so that residual window is accepted rather than addressed with
+/// platform-specific unsafe code.
 fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(), FsError> {
     fn reject_symlink_ancestors(output_dir: &Path, relative: &Path) -> Result<(), FsError> {
         let mut probe = output_dir.to_path_buf();
@@ -499,7 +525,53 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
         Ok(())
     }
 
-    fn walk(staged_root: &Path, dir: &Path, output_dir: &Path) -> Result<(), FsError> {
+    /// Read-only: verifies every path in the staged tree can be committed, without creating
+    /// or renaming anything. Recurses into staged directories regardless of whether
+    /// `output_dir` already has something at that path (merge is fine as long as the kinds
+    /// match); the first path that cannot be committed aborts the whole preflight via `?`,
+    /// before COMMIT ever runs.
+    fn preflight(staged_root: &Path, dir: &Path, output_dir: &Path) -> Result<(), FsError> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(staged_root)
+                .expect("walked path is always under staged_root");
+            reject_symlink_ancestors(output_dir, relative)?;
+
+            let target = output_dir.join(relative);
+            let staged_is_dir = entry.file_type()?.is_dir();
+            // `reject_symlink_ancestors` above already ruled out `target` being a symlink, so
+            // if `symlink_metadata` finds something here it is a plain file or directory.
+            if let Ok(existing) = std::fs::symlink_metadata(&target) {
+                if existing.is_dir() != staged_is_dir {
+                    return Err(FsError::ReadError(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        format!(
+                            "refusing to extract {} over an existing {} of a different kind at {}",
+                            relative.display(),
+                            if existing.is_dir() {
+                                "directory"
+                            } else {
+                                "file"
+                            },
+                            target.display()
+                        ),
+                    )));
+                }
+            }
+
+            if staged_is_dir {
+                preflight(staged_root, &path, output_dir)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Only reached once `preflight` has cleared the entire staged tree. Every failure from
+    /// here on is, by construction, one preflight could not have predicted — see the doc
+    /// comment on `commit_staged_extraction`.
+    fn commit(staged_root: &Path, dir: &Path, output_dir: &Path) -> Result<(), FsError> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -510,7 +582,7 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
             let target = output_dir.join(relative);
             if entry.file_type()?.is_dir() {
                 std::fs::create_dir_all(&target)?;
-                walk(staged_root, &path, output_dir)?;
+                commit(staged_root, &path, output_dir)?;
             } else {
                 if let Some(parent) = target.parent() {
                     std::fs::create_dir_all(parent)?;
@@ -521,7 +593,8 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
         Ok(())
     }
 
-    walk(staged_root, staged_root, output_dir)
+    preflight(staged_root, staged_root, output_dir)?;
+    commit(staged_root, staged_root, output_dir)
 }
 
 /// §53 ZIP 파일 추출 — Notion 내보내기 호환. §D6부터 zip bomb 방어(entry 수 · per-entry ·
@@ -533,10 +606,15 @@ fn commit_staged_extraction(staged_root: &Path, output_dir: &Path) -> Result<(),
 /// and is only moved into `output_dir` once the ENTIRE archive has passed every bound. Before
 /// this, `File::create` truncated the real destination — possibly an existing vault file —
 /// before the per-entry cap was even checked, so a rejected archive could leave that file
-/// overwritten with `cap + 1` attacker bytes and every earlier entry already extracted. A
-/// refusal now leaves `output_dir` exactly as it was: the staging `TempDir` is dropped
-/// (removing everything written so far) the moment this function returns an `Err`, on every
-/// return path, including a panic unwind.
+/// overwritten with `cap + 1` attacker bytes and every earlier entry already extracted.
+///
+/// A refusal from any per-entry bound check in the loop below never touches `output_dir` at
+/// all — nothing has been written anywhere but `staged` yet — and the staging `TempDir` is
+/// dropped (removing everything written so far) the moment this function returns an `Err`, on
+/// every return path, including a panic unwind. A refusal from the commit step that follows
+/// (`commit_staged_extraction`) carries its own, narrower guarantee: see that function's doc
+/// comment for exactly which failures it still leaves `output_dir` untouched against, and
+/// which residual class it does not.
 pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>, FsError> {
     let zip_path = zip_path.to_string();
     let output_dir = output_dir.to_string();
@@ -1112,6 +1190,93 @@ mod extract_zip_bomb_tests {
             residue.len(),
             1,
             "no partial extraction residue may remain alongside it: {residue:?}"
+        );
+    }
+
+    /// §D6 follow-up, MAJOR — `commit_staged_extraction` used to walk the staged tree and
+    /// `rename` each entry into place as it went, so a later entry's rejection (here: a
+    /// symlink `output_dir` already has at `sub`) could be discovered only after an earlier,
+    /// wholly unrelated entry (`alpha.md`) had already been renamed in. The call still
+    /// returned `Err`, but `output_dir` was left partially rewritten — contradicting every
+    /// other test in this module, which all assume a refusal leaves `output_dir` untouched.
+    /// Reproduced directly against the unpatched single-pass `commit_staged_extraction` before
+    /// this fix (`alpha.md` sorts before `sub` in this filesystem's `read_dir` order, which is
+    /// what makes the leak observable): the rename for `alpha.md` had already landed in
+    /// `output_dir` by the time the walk reached `sub/pwned.txt` and errored out.
+    ///
+    /// The fix splits the function into a read-only PREFLIGHT pass that walks the whole staged
+    /// tree and rejects every predictable failure — including this one — before COMMIT renames
+    /// a single thing, so this now holds regardless of which order the filesystem happens to
+    /// return entries in.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn refusal_partway_through_leaves_earlier_entries_uncommitted() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, out.join("sub")).unwrap();
+
+        let bytes = zip_bytes(&[("alpha.md", b"hello A"), ("sub/pwned.txt", b"pwned")]);
+        let zip_path = write_zip(dir.path(), "partial-reflection.zip", &bytes);
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("the symlink ancestor must still refuse the whole archive");
+        assert!(err.to_string().contains("existing symlink"), "{err}");
+
+        assert!(
+            !out.join("alpha.md").exists(),
+            "a normal entry earlier in the walk must not have been committed \
+             once a later entry in the same archive was refused"
+        );
+        assert!(
+            !elsewhere.join("pwned.txt").exists(),
+            "the rejected entry itself must not have been written through the symlink"
+        );
+        assert!(
+            std::fs::symlink_metadata(out.join("sub"))
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the pre-existing symlink itself must be left alone, not replaced"
+        );
+        let residue: Vec<_> = std::fs::read_dir(&out).unwrap().collect();
+        assert_eq!(
+            residue.len(),
+            1,
+            "output_dir must have nothing beyond what was already there: {residue:?}"
+        );
+    }
+
+    /// PREFLIGHT's second rejection: a staged entry and an existing entry at the same path
+    /// disagree on file vs. directory. Before PREFLIGHT existed, this surfaced only when
+    /// `commit_staged_extraction`'s single pass reached that entry and `fs::rename`/
+    /// `create_dir_all` failed on it directly — after any earlier siblings had already moved.
+    #[tokio::test]
+    async fn refuses_a_staged_file_over_an_existing_directory_of_the_same_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(out.join("x")).unwrap();
+        std::fs::write(out.join("x/keep.txt"), "already here").unwrap();
+
+        let bytes = zip_bytes(&[("x", b"pwned")]);
+        let zip_path = write_zip(dir.path(), "kind-conflict.zip", &bytes);
+
+        let err = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect_err("a staged file must not silently replace an existing directory");
+        assert!(err.to_string().contains("different kind"), "{err}");
+
+        assert!(
+            out.join("x").is_dir(),
+            "the existing directory must survive the refusal"
+        );
+        assert_eq!(
+            std::fs::read_to_string(out.join("x/keep.txt")).unwrap(),
+            "already here",
+            "content inside the existing directory must be untouched"
         );
     }
 }
