@@ -120,16 +120,16 @@ export function loadTabContent(
         }
 
         afterDocLoad(ctx, targetEditor, incomingTab.filePath, content);
-        // ‼️ §298 split-review §2 리스크 2: re-fetch, don't close over the `tabs`
-        // array from effect start. Progressive append for a large doc can take a
-        // while (multiple rAF-scheduled chunks); by the time `finishLoad` runs here,
-        // that snapshot can be stale (e.g. the tab was renamed) even though the
-        // `activeTabId` liveness check above already passed right after parsing.
-        const inTab = useEditorStore
-          .getState()
-          .tabs.find((t) => t.id === activeTabId);
-        if (inTab?.filePath) {
-          const savedAnchors = useFoldStore.getState().getFolds(inTab.filePath);
+        // ‼️ One identity for the whole load: install, notify, post-load work, and
+        // this fold lookup all use the path this load STARTED with. Re-reading the
+        // live tab here would mix identities — a rename during a long progressive
+        // append changes `EditorTab.filePath`, but the fold store is still keyed by
+        // the old path (nothing rekeys it), so a live read finds no anchors while
+        // everything else in this load still ran under the old path.
+        if (incomingTab.filePath) {
+          const savedAnchors = useFoldStore
+            .getState()
+            .getFolds(incomingTab.filePath);
           if (savedAnchors.length > 0) {
             const positions = anchorsToPositions(
               targetEditor.view.state.doc,

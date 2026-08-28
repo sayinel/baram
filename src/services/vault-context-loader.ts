@@ -4,12 +4,14 @@
 // i18n (t), toast (useUIStore), four IPC calls (setVaultRoot, listDir,
 // refreshIndex, vault-config get/set), and four other stores (context,
 // settings, ui, editor/link) to open/switch a vault context and load its
-// file tree. It lives outside stores/file/file.ts specifically so that
-// stores/editor/editor.ts can import switchContext() statically — before
-// this module existed, editor.ts had to reach switchContext through a lazy
-// `import()` to avoid a stores/file/file.ts ↔ stores/editor/editor.ts cycle
-// (file.ts imports useEditorStore for closeFolder; editor.ts needed
-// switchContext for setActiveTab's cross-vault auto-switch).
+// file tree. It lives outside stores/file/file.ts so the orchestration no
+// longer shares a module with the state it orchestrates. Note that
+// stores/editor/editor.ts still reaches switchContext through a lazy
+// `import()` ON PURPOSE: a static import there would close a real
+// three-module cycle — file.ts → editor.ts (closeFolder needs
+// useEditorStore) → this service (setActiveTab's cross-vault auto-switch)
+// → file.ts (useFileStore) — and the dynamic edge is what keeps the static
+// module graph acyclic.
 import { type Locale, t } from "../i18n";
 import { getVaultConfigByPath, setVaultConfigByPath } from "../ipc/context";
 import {
