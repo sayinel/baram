@@ -45,5 +45,11 @@
 @import "./plugins.css";
 
 /* 13. Remaining components */
-@import "./components.css";
+@import "./global-search.css";
+@import "./bookmarks.css";
+@import "./frontmatter.css";
+@import "./table.css";
+@import "./query-block.css";
+@import "./snapshot.css";
+@import "./a11y.css";
 @import "./vim.css";

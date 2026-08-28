@@ -1,0 +1,255 @@
+/* Split from components.css */
+
+/* ============================================
+   §5.11 Global Search
+   ============================================ */
+
+.global-search {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.global-search-header {
+  padding: 4px 12px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.global-search-input-row {
+  padding: 0 8px 4px;
+}
+
+.global-search-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  outline: none;
+  background: var(--color-bg-input, var(--color-bg-default));
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.global-search-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.global-search-toggles {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px 6px;
+}
+
+.global-search-toggle {
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.global-search-toggle:hover {
+  background: var(--color-bg-subtle);
+}
+
+.global-search-toggle-active {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
+}
+
+.global-search-status {
+  padding: 2px 12px 6px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.global-search-error {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  color: var(--color-status-danger);
+}
+
+.global-search-empty {
+  padding: 16px 12px;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.global-search-results {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.global-search-group {
+  margin-bottom: 2px;
+}
+
+.global-search-file {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.global-search-file:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.global-search-chevron {
+  flex-shrink: 0;
+  width: 10px;
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+}
+
+.global-search-file-name {
+  flex: 1;
+}
+
+.global-search-file-count {
+  flex-shrink: 0;
+  padding: 0 5px;
+  font-size: 0.7rem;
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 15%, transparent);
+  border-radius: 8px;
+}
+
+.global-search-match {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 12px 3px 28px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.global-search-match:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.global-search-line {
+  flex-shrink: 0;
+  min-width: 28px;
+  font-size: 0.7rem;
+  color: var(--color-text-muted, var(--color-text-secondary));
+}
+
+.global-search-replace-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 4px;
+}
+
+.global-search-replace-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.global-search-replace-btn {
+  flex: 1;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-bg-subtle, var(--color-bg-default));
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.global-search-replace-btn:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+}
+
+.global-search-replace-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.global-search-replace-one {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.global-search-replace-one:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+.global-search-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 8px 4px;
+}
+
+.global-search-filter-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  outline: none;
+  background: var(--color-bg-input, var(--color-bg-default));
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.global-search-filter-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.global-search-scope {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px 6px;
+}
+
+.global-search-scope__btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.global-search-scope__btn:hover {
+  background: var(--color-bg-subtle);
+}
+
+.global-search-scope__btn--active {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
+}
