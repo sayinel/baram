@@ -123,8 +123,6 @@ export function VaultTab() {
                         }
                       } else {
                         // Vault → Folder: remove .baram/config.json vault section
-                        const { setVaultConfigByPath } =
-                          await import("../../../ipc/context");
                         await setVaultConfigByPath(ctx.path, {});
                         await removeContext(ctx.id);
                         const added = await useContextStore
