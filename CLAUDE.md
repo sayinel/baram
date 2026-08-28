@@ -162,40 +162,16 @@ baram/
 ## 설계 문서 참조 규칙
 
 구현 시 반드시 해당 설계 문서 섹션을 참조할 것. `§` 번호를 코드 주석과 커밋에 유지한다.
-
-| 영역        | 설계 문서                                  | 핵심 참조                                                                                                                                     |
-| --------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 아키텍처      | `dev/design/part3-architecture.md`    | §3.1 스택, §3.2 IPC, §3.3 엔진, §3.4 Extension, §3.5 상태, §3.6 파일                                                                              |
-| UI/UX     | `dev/design/part4-uiux.md`            | §4.1 원칙, §4.2 레이아웃, §4.3~§4.8 각 요소                                                                                                        |
-| 기능 상세     | `dev/design/part5-core-features.md`   | §5.1~§5.15 각 기능 상세 스펙                                                                                                                     |
-| AI 통합     | `dev/design/part6-ai-integration.md`  | §6.1 전략, §6.2 5-Level, §6.3 Provider                                                                                                      |
-| 데이터 모델    | `dev/design/part7-data-models.md`     | §7.1 MD 규격, §7.2 PM 스키마, §7.3~§7.5 DB                                                                                                     |
-| 로드맵       | `dev/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                                  |
-| AI 고도화    | `dev/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
-| Vault 시스템 | `dev/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작                     |
+어떤 §가 어느 문서(part3~part12)에 있는지는 **`.claude/docs/design-doc-map.md`** 참조.
 
 ## 성능 기준 (Part 8 §8.4)
 
-| 지표            | 목표                      |
-| ------------- | ----------------------- |
-| 앱 시작 → 에디터 준비 | < 1.5초 (콜드), < 0.5초 (웜) |
-| 1,000줄 파일 열기  | < 200ms                 |
-| 10,000줄 파일 열기 | < 1초                    |
-| 타이핑 레이턴시      | < 16ms (60fps)          |
-| KaTeX 렌더링     | < 50ms                  |
-| 파일 저장         | < 100ms                 |
-| 앱 바이너리 크기     | < 15MB                  |
-| 유휴 메모리        | < 100MB                 |
+핵심: **타이핑 레이턴시 < 16ms** · 10,000줄 파일 열기 < 1초. 전체 지표 표는 **`.claude/docs/performance-budgets.md`** 참조 — 성능 작업·회귀 판단 시 먼저 읽을 것.
 
 ## CI/CD 계약 (이슈 207 / PR 208)
 
-- **push CI는 main만** 돈다 — feature 브랜치는 PR CI가 검증 (이중 실행 제거). main push는 test·rust까지 전체 스위트 실행
-- **ci-pass 게이트**: rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 안 건드린 PR". 그 외 모든 skip/실패는 빨간불
-- **릴리스 태그 규칙**: `v*` 태그는 package.json 버전과 일치하고 **main에 포함된 커밋**이어야 함 — verify-tag 잡이 불일치 시 즉시 실패
-- **reusable workflow 함정**: called workflow 안에서 `github.event_name`은 호출자의 이벤트 — 절대 `'workflow_call'`이 아님. 릴리스 여부는 `inputs.release`로 판별
-- **액션은 커밋 SHA 핀** (+`# vN` 주석, dependabot이 갱신). dtolnay/rust-toolchain만 예외: master 히스토리 SHA + `toolchain:` 입력 (ref명이 툴체인을 선택, release 브랜치 SHA는 GC됨)
-- **release Linux 러너는 ubuntu-22.04 고정** — 오래된 glibc에서 빌드해야 배포 호환이 넓어짐. "현대화" 금지
-- **gitleaks는 curl 설치** — dependabot 사각지대라 버전+체크섬을 손으로 함께 갱신
+PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 안 건드린 PR" — 그 외 모든 skip/실패는 빨간불.
+릴리스·워크플로(.github/) 작업 전에는 반드시 **`.claude/docs/ci-contract.md`** 를 읽을 것 (reusable workflow 함정, SHA 핀 규칙, 러너 고정 등).
 
 ## 현재 Phase 및 마일스톤
 
