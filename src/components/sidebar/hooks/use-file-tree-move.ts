@@ -5,6 +5,7 @@ import { renameFile } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
+import { findEntryByPath } from "../../../stores/file/file-tree-ops";
 import { showAlert } from "../../../utils/confirm-dialog";
 import { logger } from "../../../utils/logger";
 import { planMultiMove, pruneNestedPaths } from "../file-tree-multi-ops";
@@ -25,6 +26,19 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
       const { renameTab } = useEditorStore.getState();
       const failed: string[] = [];
       for (const { from, to } of moves) {
+        // Reject a move onto an already-occupied destination path before the
+        // rename IPC call — a file-onto-file collision otherwise leaves disk
+        // (rename overwrites), the tree (moveInTree's idempotent insert keeps
+        // the pre-existing node), openFiles, and open tabs in mutually
+        // inconsistent states. This check is a frontend-only guard: a TOCTOU
+        // race with the filesystem between this check and the rename call is
+        // an accepted gap for this local-desktop threat model.
+        if (findEntryByPath(useFileStore.getState().fileTree, to)) {
+          failed.push(
+            `${from.split("/").pop() ?? from} (destination already exists)`,
+          );
+          continue;
+        }
         try {
           await renameFile(from, to);
           moveFileEntry(from, targetPath);

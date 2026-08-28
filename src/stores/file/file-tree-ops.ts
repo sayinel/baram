@@ -157,11 +157,15 @@ export function renameInTree(
   });
 }
 
-function findEntry(entries: FileEntry[], path: string): FileEntry | null {
+/** Find the tree node at `path`, searching directories recursively. */
+export function findEntryByPath(
+  entries: FileEntry[],
+  path: string,
+): FileEntry | null {
   for (const e of entries) {
     if (e.path === path) return e;
     if (e.isDir && e.children) {
-      const found = findEntry(e.children, path);
+      const found = findEntryByPath(e.children, path);
       if (found) return found;
     }
   }
@@ -191,7 +195,7 @@ export function moveInTree(
   rootPath: null | string,
   order: SortOrder,
 ): null | { entries: FileEntry[]; newPath: string } {
-  const entry = findEntry(entries, oldPath);
+  const entry = findEntryByPath(entries, oldPath);
   if (!entry) return null;
 
   const newPath = newParentPath + "/" + entry.name;
