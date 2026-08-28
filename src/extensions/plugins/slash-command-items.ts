@@ -321,6 +321,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert a video",
       mdHint: "![](video.mp4)",
       action: async () => {
+        const task = registerEditorMutationTask(editor.view); // §12-9b dialog gap
         const result = await showFieldDialog({
           title: "Insert Video",
           fields: [
@@ -332,12 +333,13 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
             },
           ],
         });
-        if (!result?.src) return;
+        const live = task.isLive();
+        task.finish();
+        if (!result?.src || !live) return;
         // §297 fix (I-4): mirror of the /image fix above — a src that
         // classifies as `image` (e.g. a .png typed into this dialog) must
         // become an `image` node, or it silently flips to one on reload.
-        editor
-          .chain()
+        chainWithVimExternalEdit(editor)
           .focus()
           .insertContent({
             type: classifyMediaSrc(result.src) === "image" ? "image" : "video",
