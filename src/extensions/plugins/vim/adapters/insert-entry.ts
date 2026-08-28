@@ -18,7 +18,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { Selection, TextSelection } from "@tiptap/pm/state";
 
 import { enterCodeBlockSelection } from "../../../nodes/views/code-block-cm-registry";
-import { insertEntryTarget } from "./motions";
+import { insertEntryTarget } from "./code-block-landing";
 
 /**
  * True when the arrow was fully handled: the PM selection was dispatched to

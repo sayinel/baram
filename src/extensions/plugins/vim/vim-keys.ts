@@ -12,6 +12,18 @@ import { PluginKey } from "@tiptap/pm/state";
 
 export type VimMode = "insert" | "normal" | "visual";
 
+/** issue 478 — 코드블록 경계 핸드오프의 setMode 메타. `boundary: true`가
+ *  PM의 열린 `:`/`/` 버퍼(exLine/searchLine)를 함께 닫는다 — 이 플래그를
+ *  빠뜨린 채 모드만 보내면 이탈 후 stale 명령줄이 부활하는 무음 버그가
+ *  되므로(퀄리티 리뷰 M2), 경계 전파는 반드시 이 헬퍼를 쓴다. */
+export function boundaryModeMeta(mode: VimMode): {
+  boundary: true;
+  mode: VimMode;
+  type: "setMode";
+} {
+  return { boundary: true, mode, type: "setMode" };
+}
+
 /** The subset of vim plugin state that outside consumers may read. */
 export interface VimStateSnapshot {
   enabled: boolean;
