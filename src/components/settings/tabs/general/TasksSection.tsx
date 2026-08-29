@@ -1,10 +1,15 @@
 // §5 Tasks settings section, split out of GeneralTab.
 import { useEffect, useRef, useState } from "react";
 
+import { open } from "@tauri-apps/plugin-dialog";
+
+import type { TaskScanScope } from "../../../../utils/tasks/task-scan-scope";
+
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../../i18n/useTranslation";
 import { useSettingsStore } from "../../../../stores/settings/store";
+import { TASK_SCAN_SCOPES } from "../../../../utils/tasks/task-scan-scope";
 import {
   SettingsRow,
   SettingsSectionHeader,
@@ -22,6 +27,10 @@ export function TasksSection() {
     setTasksRecordDoneDate,
     tasksArchiveAfterDays,
     setTasksArchiveAfterDays,
+    tasksHome,
+    setTasksHome,
+    tasksScanScope,
+    setTasksScanScope,
     tasksCaptureFile,
     setTasksCaptureFile,
     tasksExcludePaths,
@@ -36,6 +45,10 @@ export function TasksSection() {
       setTasksRecordDoneDate: s.setTasksRecordDoneDate,
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
       setTasksArchiveAfterDays: s.setTasksArchiveAfterDays,
+      tasksHome: s.tasksHome,
+      setTasksHome: s.setTasksHome,
+      tasksScanScope: s.tasksScanScope,
+      setTasksScanScope: s.setTasksScanScope,
       tasksCaptureFile: s.tasksCaptureFile,
       setTasksCaptureFile: s.setTasksCaptureFile,
       tasksExcludePaths: s.tasksExcludePaths,
@@ -114,6 +127,54 @@ export function TasksSection() {
               checked={tasksRecordDoneDate}
               onChange={setTasksRecordDoneDate}
             />
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.tasksHome.desc")}
+            label={t("settings.general.tasksHome")}
+          >
+            {/* Zettel 디렉터리와 같은 폼이되 **읽기 전용이 아니다**: 여기서는 빈 값이
+                뜻을 가진다(= Zettel 디렉터리를 쓴다). 저쪽처럼 readOnly로 두면 한 번
+                고른 뒤에는 그 기본값으로 돌아갈 방법이 없어진다. */}
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                onChange={(e) => setTasksHome(e.target.value)}
+                placeholder={t("settings.general.tasksHome.placeholder")}
+                type="text"
+                value={tasksHome}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({ directory: true });
+                  if (typeof selected === "string") setTasksHome(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.tasksScanScope.desc")}
+            label={t("settings.general.tasksScanScope")}
+          >
+            <select
+              className="settings-select"
+              onChange={(e) =>
+                setTasksScanScope(e.target.value as TaskScanScope)
+              }
+              value={tasksScanScope}
+            >
+              {/* 목록을 여기 다시 적지 않는다 — 범위가 늘면 `TaskScanScope`에
+                  더한 값이 설정 UI와 검색 패널 양쪽에 함께 나타나야 한다. */}
+              {TASK_SCAN_SCOPES.map((scope) => (
+                <option key={scope} value={scope}>
+                  {t(`settings.general.tasksScanScope.${scope}`)}
+                </option>
+              ))}
+            </select>
           </SettingsRow>
 
           <SettingsRow

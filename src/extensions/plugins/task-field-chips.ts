@@ -225,7 +225,7 @@ function pushSpan(
   //   `locale`  — 문서를 안 건드렸다는 이유로 옛 언어 라벨이 남는다.
   // churn은 늘지 않는다: 셋 다 그 필드가 실제로 바뀔 때만 바뀐다.
   out.push(
-    Decoration.widget(to, () => renderTaskChip(span, overdue, locale), {
+    Decoration.widget(to, () => renderTaskChip(span, overdue, locale, today), {
       key: `task-chip-${from}-${span.kind}-${span.value}-${overdue}-${locale}`,
       // 테스트가 DOM을 그리지 않고도 계약을 볼 수 있도록 spec에 남긴다.
       overdue,

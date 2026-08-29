@@ -527,15 +527,55 @@ describe("buildTaskFieldDecorations — 마감 지남", () => {
 // (`task-chip-label.ts`), 이 층은 store를 전혀 모른다. store에서 라벨까지
 // 실제로 이어지는지는 렌더 테스트의 로케일 구독·동등성 관문 스위트가 지킨다.
 
+/** 칩의 기준일 — 픽스처 날짜(2026-08-*)와 같은 해라 연도는 접힌다. */
+const CHIP_TODAY = new Date(2026, 7, 25);
+
 describe("renderTaskChip", () => {
   it("날짜 라벨과 연도를 접은 날짜를 보인다 — 이모지는 사라진다", () => {
     const el = renderTaskChip(
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
       false,
       "en",
+      CHIP_TODAY,
     );
     expect(el.textContent).toBe("due 8/30");
     expect(el.classList.contains("task-chip-overdue")).toBe(false);
+  });
+
+  it("올해가 아니면 연도를 보인다 — 감추면 날짜가 거짓말을 한다", () => {
+    // ‼️ 실제로 겪은 오해다: `📅2027-08-25`가 `8/25 기한`으로 보여 사용자가 그것을 기한
+    // 초과로 읽었고, 아젠다가 "나중"에 넣은 것을 버킷 분류의 결함으로 의심했다. 화면이
+    // 감춘 그 한 조각이 어느 버킷인지를 정하는 값이었다.
+    const el = renderTaskChip(
+      { emoji: "📅", from: 0, kind: "due", to: 12, value: "2027-08-25" },
+      false,
+      "en",
+      CHIP_TODAY,
+    );
+    expect(el.textContent).toBe("due 2027/8/25");
+  });
+
+  it("지난 해도 연도를 보인다 — 미래만의 문제가 아니다", () => {
+    const el = renderTaskChip(
+      { emoji: "📅", from: 0, kind: "due", to: 12, value: "2025-12-31" },
+      true,
+      "ko",
+      CHIP_TODAY,
+    );
+    expect(el.textContent).toBe("2025/12/31 기한");
+  });
+
+  it("연도 표시와 기한 초과 색이 같은 시계를 본다", () => {
+    // 둘 다 `today`에서 온다. 각자 다른 시계를 보면 "빨간데 연도가 없다"처럼 서로를
+    // 배반하는 칩이 생긴다 — 그 조합은 사용자가 무엇을 믿어야 할지 알 수 없게 만든다.
+    const el = renderTaskChip(
+      { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-20" },
+      true,
+      "en",
+      CHIP_TODAY,
+    );
+    expect(el.textContent).toBe("due 8/20");
+    expect(el.classList.contains("task-chip-overdue")).toBe(true);
   });
 
   it("로케일이 ko이면 어순이 바뀐다(날짜가 먼저, 라벨이 뒤)", () => {
@@ -543,6 +583,7 @@ describe("renderTaskChip", () => {
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
       false,
       "ko",
+      CHIP_TODAY,
     );
     expect(el.textContent).toBe("8/30 기한");
   });
@@ -552,6 +593,7 @@ describe("renderTaskChip", () => {
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-20" },
       true,
       "en",
+      CHIP_TODAY,
     );
     expect(el.classList.contains("task-chip-overdue")).toBe(true);
   });
@@ -561,6 +603,7 @@ describe("renderTaskChip", () => {
       { emoji: "⏫", from: 0, kind: "priority", to: 1, value: "⏫" },
       false,
       "en",
+      CHIP_TODAY,
     );
     expect(el.textContent).toBe("high");
     // 색 전용 클래스는 붙지 않는다 — 색을 갖는 상태는 기한 초과뿐이다
@@ -574,6 +617,7 @@ describe("renderTaskChip", () => {
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
       false,
       "en",
+      CHIP_TODAY,
     );
     expect(el.hasAttribute("data-vim-suspend")).toBe(false);
     expect(el.contentEditable).toBe("false");
@@ -600,6 +644,7 @@ describe("renderTaskChip — 우선순위 마커 → 라벨 매핑", () => {
       },
       false,
       "en",
+      CHIP_TODAY,
     );
     expect(el.textContent).toBe(label);
   });

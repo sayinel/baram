@@ -189,6 +189,12 @@ const SkillPreviewPanel = lazy(() =>
     default: m.SkillPreviewPanel,
   })),
 );
+const WeeklyReviewDialog = lazy(() =>
+  import("./components/tasks/WeeklyReviewDialog").then((m) => ({
+    default: m.WeeklyReviewDialog,
+  })),
+);
+
 const QuickCaptureDialog = lazy(() =>
   import("./components/journal/QuickCaptureDialog").then((m) => ({
     default: m.QuickCaptureDialog,
@@ -1089,6 +1095,7 @@ function App() {
         <SkillTestDialogWrapper />
         <SmartTemplateDialogWrapper editor={activeEditor} />
         <QuickCaptureDialog />
+        <WeeklyReviewDialog />
         <ZettelTitleDialog />
         <ConflictModalWrapper
           onKeepLocal={(filePath) => {

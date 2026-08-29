@@ -1,17 +1,22 @@
 // §306 아젠다 패널 — vault 전역 태스크를 기한 버킷으로 모아 보고 그 자리에서 완료한다.
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskBucket } from "../../utils/tasks/task-buckets";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
+import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
+import { Archive, CalendarArrowUp, ListChecks, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
 import { useTranslation } from "../../i18n/useTranslation";
+import { useContextStore } from "../../stores/context/context";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { refreshAllTasks, useTaskStore } from "../../stores/tasks/task-store";
+import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { requestScroll } from "../../utils/editor/pending-scroll";
 import { openFileByPath } from "../../utils/open-file";
@@ -21,6 +26,8 @@ import {
   collectTags,
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
+import { resolveScanRoots } from "../../utils/tasks/task-scan-scope";
+import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 import { TaskBucketList } from "./TaskBucketList";
 import { useArchiveDone } from "./use-archive-done";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
@@ -44,20 +51,51 @@ export function TaskAgendaPanel() {
     useShallow((s) => ({ tasks: s.tasks, loading: s.loading })),
   );
   const {
+    setTasksScanScope,
     tasksArchiveAfterDays,
-    tasksCaptureFile,
     tasksExcludePaths,
+    tasksHomeSetting,
     tasksRecordDoneDate,
+    tasksScanScope,
     tasksWeekStart,
+    zettelkastenDirectory,
   } = useSettingsStore(
     useShallow((s) => ({
+      setTasksScanScope: s.setTasksScanScope,
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
-      tasksCaptureFile: s.tasksCaptureFile,
       tasksExcludePaths: s.tasksExcludePaths,
+      tasksHomeSetting: s.tasksHome,
       tasksRecordDoneDate: s.tasksRecordDoneDate,
+      tasksScanScope: s.tasksScanScope,
       tasksWeekStart: s.tasksWeekStart,
+      zettelkastenDirectory: s.zettelkastenDirectory,
     })),
   );
+  // §312.1 "전체" 범위는 볼트탭에 열려 있는 vault를 본다. `folder` 컨텍스트는 상위
+  // vault와 중복 스캔이 되므로 제외한다(같은 태스크가 두 번 뜬다).
+  const contexts = useContextStore((s) => s.contexts);
+  const tasksHome = useMemo(
+    () => resolveTasksHome(tasksHomeSetting, zettelkastenDirectory),
+    [tasksHomeSetting, zettelkastenDirectory],
+  );
+
+  // 겹치는 루트는 여기서 걸린다 — Zettel 디렉터리를 vault 안에 두는 흔한 배치에서
+  // 그대로 두면 같은 태스크가 두 번 뜨고, 체크하면 한 줄만 사라져 나머지가 유령이 된다.
+  const roots = useMemo(
+    () =>
+      resolveScanRoots(tasksScanScope, {
+        rootPath,
+        tasksHome,
+        vaultPaths: contexts
+          .filter((c) => c.contextType === "vault")
+          .map((c) => c.path),
+      }),
+    [contexts, rootPath, tasksHome, tasksScanScope],
+  );
+  // 배열 자체는 매 렌더 새 객체이므로 effect의 의존성으로는 내용을 쓴다 — 그러지 않으면
+  // 컨텍스트 스토어가 무엇을 갱신하든 전체 스캔이 다시 돈다.
+  const rootsKey = roots.join("\u0000");
+
   const byId = useZettelIndexStore((s) => s.byId);
   // §305 문서 경로 판정에 필요한 라이브 Editor — 활성 탭이 없으면 null이고,
   // 라우터는 그 경우 디스크로 폴백한다.
@@ -69,13 +107,15 @@ export function TaskAgendaPanel() {
   // 아래 자정 타이머와 refresh()가 그 고정값을 새로고침한다.
   const [now, setNow] = useState(() => new Date());
 
-  // rootPath/exclude 변경(vault 전환) 시점과 수동 새로고침 버튼 양쪽에서 호출된다
-  // — 두 경로 모두 "지금"을 다시 고정해야 밤새 열어 둔 패널이 자정을 넘겨도
+  // 스캔 루트/exclude 변경(vault 전환·범위 변경) 시점과 수동 새로고침 버튼 양쪽에서
+  // 호출된다 — 두 경로 모두 "지금"을 다시 고정해야 밤새 열어 둔 패널이 자정을 넘겨도
   // 어제 기준으로 버킷을 나누지 않는다.
   const refresh = useCallback(() => {
     setNow(new Date());
-    if (rootPath) void refreshAllTasks(rootPath, tasksExcludePaths);
-  }, [rootPath, tasksExcludePaths]);
+    if (roots.length > 0) void refreshAllTasks(roots, tasksExcludePaths);
+    // `roots`는 `rootsKey`로 고정된다 — 배열 참조를 의존성에 넣으면 매 렌더 재스캔이다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootsKey, tasksExcludePaths]);
 
   useEffect(() => {
     refresh();
@@ -102,7 +142,6 @@ export function TaskAgendaPanel() {
     exclude: tasksExcludePaths,
     now,
     recordDoneDate: tasksRecordDoneDate,
-    rootPath,
   });
 
   const onJump = useCallback((task: TaskEntry) => {
@@ -140,7 +179,6 @@ export function TaskAgendaPanel() {
   const reschedule = useRescheduleOverdue({
     editor,
     exclude: tasksExcludePaths,
-    rootPath,
     tasks: groups.overdue,
     today: todayIso(now),
   });
@@ -150,12 +188,14 @@ export function TaskAgendaPanel() {
   // 펼쳐 둔 사용자가 같은 버튼에서 다른 개수를 본다.
   const archive = useArchiveDone({
     afterDays: tasksArchiveAfterDays,
-    captureFile: tasksCaptureFile,
     editor,
+    // §312.1 배수구는 단일 루트 조작이라 범위가 "태스크 홈"일 때만 켠다 — 화면에 세
+    // vault가 보이는데 버튼이 그중 하나만 건드리면 숨은 규칙이 된다.
+    enabled: tasksScanScope === "tasksHome",
     exclude: tasksExcludePaths,
     now,
-    rootPath,
     tasks,
+    tasksHome,
   });
 
   return (
@@ -180,35 +220,70 @@ export function TaskAgendaPanel() {
               title={`Reschedule ${groups.overdue.length} overdue task(s) to today`}
               type="button"
             >
-              ⏩
+              <CalendarArrowUp size={14} strokeWidth={1.5} />
             </button>
           )}
-          {archive.count > 0 && (
+          {/* §312.1 배수구는 범위가 "태스크 홈"일 때만 나타난다 — 그 규칙을 UI에
+              드러내는 것이 그 결정의 절반이다.
+              ‼️ 대상이 0이어도 **감추지 않고 흐리게 둔다.** 감추면 "대상이 없다"와
+              "기능이 고장났다"가 화면에서 구별되지 않는다 — M2-b3 수동 테스트에서
+              세 라운드를 먹은 실패가 정확히 그 모양이었고, 범위 게이트가 생기면서
+              버튼이 사라질 이유가 하나 더 늘었다. 이유는 title이 말한다. */}
+          {tasksScanScope === "tasksHome" && (
             <button
               aria-label={t("tasks.archive.action")}
               className="icon-btn"
-              disabled={loading || archive.busy}
+              disabled={loading || archive.busy || archive.count === 0}
               onClick={() => void archive.run()}
-              title={t("tasks.archive.title", {
-                count: String(archive.count),
-              })}
+              title={archiveHint(
+                t,
+                tasksHome,
+                archive.count,
+                tasksArchiveAfterDays,
+              )}
               type="button"
             >
-              🗄️
+              <Archive size={14} strokeWidth={1.5} />
             </button>
           )}
+          {/* §315 주간 리뷰의 두 진입점 중 하나(다른 하나는 커맨드 팔레트). 범위·대상과
+              무관하게 언제나 열 수 있다 — 리뷰는 목록을 처리하는 화면이지 목록이 있을 때만
+              쓰는 화면이 아니고, 비어 있다는 사실 자체가 리뷰의 결과다. */}
+          <button
+            aria-label={t("tasks.review.action")}
+            className="icon-btn"
+            onClick={() => useUIStore.getState().toggleWeeklyReview()}
+            title={t("tasks.review.action")}
+            type="button"
+          >
+            <ListChecks size={14} strokeWidth={1.5} />
+          </button>
           <button
             className="icon-btn"
-            disabled={!rootPath || loading}
+            disabled={roots.length === 0 || loading}
             onClick={refresh}
             title="Refresh"
             type="button"
           >
-            ⟳
+            <RefreshCw size={14} strokeWidth={1.5} />
           </button>
         </div>
 
         <div className="task-panel-selects">
+          <select
+            aria-label={t("tasks.scope.label")}
+            className="task-panel-select"
+            onChange={(e) => setTasksScanScope(e.target.value as TaskScanScope)}
+            title={t("tasks.scope.label")}
+            value={tasksScanScope}
+          >
+            <option value="allVaults">{t("tasks.scope.allVaults")}</option>
+            <option value="currentVault">
+              {t("tasks.scope.currentVault")}
+            </option>
+            <option value="tasksHome">{t("tasks.scope.tasksHome")}</option>
+          </select>
+
           <select
             aria-label="Filter by state"
             className="task-panel-select"
@@ -292,6 +367,23 @@ export function TaskAgendaPanel() {
       </div>
     </div>
   );
+}
+
+/**
+ * 배수구 버튼이 스스로를 설명하는 한 문장.
+ *
+ * 셋을 가른다: 홈이 없어 옮길 자리를 모른다 / 자리는 아는데 문턱을 넘긴 항목이 없다 /
+ * N개가 기다린다. 하나로 뭉뚱그리면 흐린 버튼 앞에서 사용자가 할 수 있는 일이 없다.
+ */
+function archiveHint(
+  t: Translate,
+  tasksHome: null | string,
+  count: number,
+  afterDays: number,
+): string {
+  if (!tasksHome) return t("tasks.archive.noHome");
+  if (count === 0) return t("tasks.archive.none", { days: String(afterDays) });
+  return t("tasks.archive.title", { count: String(count) });
 }
 
 /** `d`가 속한 날의 다음 날 자정(로컬 시간) — 자정 롤오버 타이머의 목표 시각. */

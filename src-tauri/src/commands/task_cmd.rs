@@ -157,20 +157,19 @@ pub async fn delete_task_line(path: String, line: u32, expected_raw: String) -> 
 /// - §260 샌드박스 티어(`plugin-*`)에는 **주지 않는다**(capabilities/plugin-sandbox.json).
 ///   `delete_task_line`과 같은 이유다 — 지우는 절반이 되돌릴 수 없다.
 ///
-/// `capture_path`는 프런트가 이미 해석한 **절대 경로**다(`resolveCapturePath`). Rust는 그것을
-/// 다시 만들지 않고 볼트 안·마크다운인지만 확인한다 — 해석기를 두 벌 두면 갈라지지만
-/// 부분집합 단정은 갈라질 수 없다.
+/// `tasks_home`은 §312.1의 **태스크 홈** 절대 경로다 — 활성 컨텍스트 루트가 아니다.
+/// 대상은 `{tasks_home}/tasks/archive/YYYY-MM.md`이고, 원본으로 허용되는 것은
+/// `{tasks_home}/tasks/` 아래뿐이다. 수집함도 그 안에 살기 때문에 경로를 따로 받지 않는다.
 ///
 /// `today`는 프런트가 로컬 시간대로 계산해 넘긴다(`set_task_state`와 같은 계약).
 #[tauri::command]
 pub async fn archive_task_lines(
-    root_path: String,
-    capture_path: String,
+    tasks_home: String,
     items: Vec<crate::task::ArchiveItem>,
     today: String,
     after_days: u32,
 ) -> Result<crate::task::ArchiveOutcome, String> {
-    crate::task::archive_tasks(&root_path, &capture_path, &items, &today, after_days)
+    crate::task::archive_tasks(&tasks_home, &items, &today, after_days)
         .await
         .map_err(|e| e.to_string())
 }

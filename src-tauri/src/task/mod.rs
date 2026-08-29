@@ -376,4 +376,83 @@ mod scan_tests {
         println!("scanned {} tasks in {:?}", tasks.len(), elapsed);
         assert_eq!(tasks.len(), 20_000);
     }
+
+    /// §312.1 측정용 — 아젠다 스캔 범위 "전체"(열려 있는 vault 모두)의 비용.
+    ///
+    /// 기본 범위를 "전체"로 정했으므로(§18.7.1) 이 숫자가 그 기본값이 예산 안인지를
+    /// 답한다. `collect`는 파일을 하나씩 `await`로 읽는 **완전 순차** 구현이라 루트가
+    /// N개면 그대로 N배가 예상값이고, 그 예상이 맞는지와 **동시 실행이 그것을 깎는지**를
+    /// 함께 잰다. 프런트가 `Promise.all`로 부르면 IPC 호출 N개가 동시에 뜨므로
+    /// concurrent 쪽이 실제로 벌어질 일이다.
+    ///
+    /// ‼️ 반드시 릴리스로 잴 것 — 디버그 프로파일은 정규식·문자열 처리가 한 자릿수 배
+    /// 느려 판단을 뒤집는다(리스크 2와 같은 이유).
+    /// 실행: cargo test --release --manifest-path src-tauri/Cargo.toml \
+    ///         -- --ignored --nocapture scan_multi_root
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore]
+    async fn scan_multi_root_timing() {
+        const ROOTS: usize = 3;
+        const FILES_PER_ROOT: usize = 10_000;
+
+        let dirs: Vec<TempDir> = (0..ROOTS).map(|_| TempDir::new().unwrap()).collect();
+        for d in &dirs {
+            for i in 0..FILES_PER_ROOT {
+                let body = format!(
+                    "---\ntags: [t{}]\n---\n# 문서 {}\n\n본문 한 줄.\n\n- [ ] 할 일 {} 📅2026-08-30 ⏫\n- [x] 끝난 것 {} ✅2026-08-01\n",
+                    i % 50, i, i, i
+                );
+                write(d, &format!("d{}/f{}.md", i % 100, i), &body).await;
+            }
+        }
+        let roots: Vec<String> = dirs
+            .iter()
+            .map(|d| d.path().to_string_lossy().to_string())
+            .collect();
+
+        // ── 기준선: 루트 하나 ────────────────────────────────────────────
+        let started = std::time::Instant::now();
+        let one = get_vault_tasks(&roots[0], &[]).await.unwrap();
+        let single = started.elapsed();
+        println!("[1 root ] {} tasks in {:?}", one.len(), single);
+
+        // ── 순차: 프런트가 for-await로 부를 때 ───────────────────────────
+        let started = std::time::Instant::now();
+        let mut total = 0usize;
+        for root in &roots {
+            total += get_vault_tasks(root, &[]).await.unwrap().len();
+        }
+        let sequential = started.elapsed();
+        println!("[{} seq ] {} tasks in {:?}", ROOTS, total, sequential);
+
+        // ── 동시: 프런트가 Promise.all로 부를 때 ─────────────────────────
+        let started = std::time::Instant::now();
+        let handles: Vec<_> = roots
+            .iter()
+            .map(|root| {
+                let root = root.clone();
+                tokio::spawn(async move { get_vault_tasks(&root, &[]).await.unwrap().len() })
+            })
+            .collect();
+        let mut total_concurrent = 0usize;
+        for h in handles {
+            total_concurrent += h.await.unwrap();
+        }
+        let concurrent = started.elapsed();
+        println!(
+            "[{} conc] {} tasks in {:?}",
+            ROOTS, total_concurrent, concurrent
+        );
+
+        println!(
+            "--- 순차/기준선 = {:.2}배, 동시/기준선 = {:.2}배, 동시가 순차 대비 {:.2}배",
+            sequential.as_secs_f64() / single.as_secs_f64(),
+            concurrent.as_secs_f64() / single.as_secs_f64(),
+            sequential.as_secs_f64() / concurrent.as_secs_f64(),
+        );
+
+        assert_eq!(one.len(), FILES_PER_ROOT * 2);
+        assert_eq!(total, ROOTS * FILES_PER_ROOT * 2);
+        assert_eq!(total_concurrent, total);
+    }
 }

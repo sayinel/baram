@@ -16,7 +16,6 @@ vi.mock("../../ipc/invoke", () => ({
 
 import { listen } from "@tauri-apps/api/event";
 
-import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useTaskStore } from "../../stores/tasks/task-store";
 import { useTaskWatcher } from "../use-task-watcher";
@@ -70,7 +69,10 @@ describe("useTaskWatcher exclude wiring (I1)", () => {
       return () => handlers.delete(event);
     });
     useTaskStore.getState().clear();
-    useFileStore.setState({ rootPath: "/vault" });
+    // §312.1 워처는 **마지막 전체 스캔이 실제로 걷은 루트**를 읽는다 — 설정과 컨텍스트를
+    // 다시 조합하지 않는다. 두 벌이 갈리면 워처가 목록에 없는 파일을 넣거나 있는 파일을
+    // 빠뜨린다.
+    useTaskStore.getState().setRoots(["/vault"]);
     useSettingsStore.setState({
       tasksEnabled: true,
       tasksExcludePaths: ["archive"],
@@ -93,6 +95,60 @@ describe("useTaskWatcher exclude wiring (I1)", () => {
       "/vault",
       ["archive"],
     );
+    expect(useTaskStore.getState().tasks).toEqual([]);
+  });
+
+  it("ignores a file outside every scan root — it is not in the list", async () => {
+    // §312.1 범위 밖 파일의 태스크는 지금 목록에 있으면 안 된다. 종전에는 언제나
+    // `rootPath`를 대고 인덱싱했으므로, 범위를 좁혀 둔 사용자에게 방금 저장한 다른
+    // vault의 태스크가 목록에 되살아났다.
+    renderHook(() => useTaskWatcher());
+    await flush();
+
+    act(() => {
+      handlers.get("file:changed")?.({ payload: { path: "/elsewhere/x.md" } });
+    });
+    await flush();
+
+    expect(getFileTasks).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks).toEqual([]);
+  });
+
+  it("uses the root that actually covers the file, not the active vault", async () => {
+    // 여러 루트를 스캔하는 범위에서 엉뚱한 루트를 대면 `exclude`가 그 파일에만 다르게
+    // 적용된다 — I1이 막으려던 것과 같은 어긋남이 증분 경로에서만 되살아난다.
+    useTaskStore.getState().setRoots(["/vault", "/other"]);
+    renderHook(() => useTaskWatcher());
+    await flush();
+
+    act(() => {
+      handlers.get("file:changed")?.({
+        payload: { path: "/other/archive/old.md" },
+      });
+    });
+    await flush();
+
+    expect(getFileTasks).toHaveBeenCalledWith(
+      "/other/archive/old.md",
+      "/other",
+      ["archive"],
+    );
+    expect(useTaskStore.getState().tasks).toEqual([]);
+  });
+
+  it("does not let a same-prefix neighbour root claim the file", async () => {
+    // `/vaults`가 `/vault`에 걸리면 이웃 볼트의 파일이 남의 루트 기준으로 판정되어,
+    // `exclude`가 엉뚱한 상대 경로에 적용된다(`dedupeScanRoots`가 막는 것과 같은 결함).
+    useTaskStore.getState().setRoots(["/vault"]);
+    renderHook(() => useTaskWatcher());
+    await flush();
+
+    act(() => {
+      handlers.get("file:changed")?.({ payload: { path: "/vaults/x.md" } });
+    });
+    await flush();
+
+    expect(getFileTasks).not.toHaveBeenCalled();
     expect(useTaskStore.getState().tasks).toEqual([]);
   });
 

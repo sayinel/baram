@@ -229,7 +229,10 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(captureTask).mockResolvedValue("- [ ] x ➕2026-08-25");
-    useSettingsStore.setState({ locale: LOCALE, tasksCaptureFile: "Inbox.md" });
+    useSettingsStore.setState({
+      locale: LOCALE,
+      tasksCaptureFile: "tasks/inbox.md",
+    });
     useSettingsStore.getState().setZettelkastenEnabled(true);
     useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
     useFileStore.getState().setRootPath("/vault");
@@ -246,7 +249,10 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
 
     await vi.waitFor(() => {
       expect(captureTask).toHaveBeenCalledWith(
-        expect.objectContaining({ body: "은행 연락", captureFile: "Inbox.md" }),
+        expect.objectContaining({
+          body: "은행 연락",
+          captureFile: "tasks/inbox.md",
+        }),
       );
     });
     expect(captureFleeting).not.toHaveBeenCalled();
@@ -320,7 +326,7 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
 
   it("names the actual cause instead of blaming the capture file", async () => {
     vi.mocked(captureTask).mockRejectedValue(
-      new CaptureError("noVault", "no vault"),
+      new CaptureError("noTasksHome", "no tasks home"),
     );
     render(<QuickCaptureDialog />);
     fireEvent.click(taskToggle());
@@ -329,7 +335,7 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
     });
     fireEvent.click(saveButton());
 
-    await screen.findByText(t("journal.capture.error.taskNoVault", LOCALE));
+    await screen.findByText(t("journal.capture.error.taskNoHome", LOCALE));
     expect(
       screen.queryByText(t("journal.capture.error.taskSave", LOCALE)),
     ).not.toBeInTheDocument();

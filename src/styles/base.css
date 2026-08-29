@@ -59,6 +59,17 @@
   cursor: pointer;
 }
 
+/* 꺼진 아이콘 버튼은 **꺼져 보여야 한다.** 이 규칙이 없으면 `disabled`가 클릭만 막고
+   화면은 그대로라, 누를 수 있어 보이는 버튼이 아무 반응도 하지 않는다 — 사용자에게는
+   고장과 구별되지 않는다(§312.1 배수구가 정확히 그 자리였다).
+
+   `color`가 아니라 `opacity`인 이유: 이 버튼들의 내용은 대부분 이모지라 글자색이 듣지
+   않는다. 이유는 `title`이 말하므로 여기서는 상태만 보인다. */
+.icon-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
 /* Flex column stack */
 .flex-col {
   display: flex;

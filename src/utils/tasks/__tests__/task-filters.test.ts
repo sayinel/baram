@@ -203,22 +203,22 @@ describe("#someday 기본 제외", () => {
 });
 
 describe("priorityBadge", () => {
-  // §308: the marker is a short text symbol, not the raw markdown emoji.
-  // Direction A shared this symbol's class with the editor's `.task-chip`;
-  // direction C dropped the shared pill, so the two surfaces now use
-  // independent visual languages (dot + i18n label in the editor, this
-  // symbol in the agenda) — PRIORITY_SYMBOL itself is unchanged either way.
-  // aria-label keeps the word form for screen readers.
-  it("returns a marker and a word label for each non-normal level", () => {
+  // §306: the agenda no longer draws a glyph. The row gets a level name that
+  // CSS turns into a coloured rail in the left gutter, and the word label
+  // stays for screen readers — the rail is a `::before`, invisible to them.
+  //
+  // ‼️ 이 네 글자는 `tasks.css`의 `[data-priority="…"]` 셀렉터와 **같은 글자**다.
+  // 갈리면 그 단계만 레일이 그려지지 않고, 타입도 테스트도 아무 말을 하지 않는다.
+  it("returns a rail level and a word label for each non-normal level", () => {
     expect(priorityBadge(2)).toEqual({
       label: "Urgent priority",
-      marker: "!!!",
+      level: "urgent",
     });
-    expect(priorityBadge(1)).toEqual({ label: "High priority", marker: "!!" });
-    expect(priorityBadge(-1)).toEqual({ label: "Low priority", marker: "↓" });
+    expect(priorityBadge(1)).toEqual({ label: "High priority", level: "high" });
+    expect(priorityBadge(-1)).toEqual({ label: "Low priority", level: "low" });
     expect(priorityBadge(-2)).toEqual({
       label: "Lowest priority",
-      marker: "↓↓",
+      level: "lowest",
     });
   });
 

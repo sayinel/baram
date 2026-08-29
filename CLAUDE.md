@@ -19,22 +19,22 @@ Typora의 WYSIWYG 품질 + Obsidian의 확장성 + AI 네이티브 통합을 목
 
 ## 기술 스택
 
-| 영역                | 기술                          | 버전            |
-| ----------------- | --------------------------- | ------------- |
-| Desktop Framework | Tauri                       | 2.0           |
-| Backend           | Rust                        | latest stable |
-| Dev Runtime       | Node.js                     | 24 LTS        |
-| Frontend          | React                       | 19            |
-| Language          | TypeScript                  | 6.0           |
-| Bundler           | Vite (rolldown)             | 8             |
-| Styling           | Tailwind CSS                | 4             |
-| Editor Engine     | Tiptap (ProseMirror)        | v3            |
-| Math / Code / Diagram | KaTeX / CodeMirror 6 / Mermaid.js | latest    |
-| State Management  | Zustand                     | latest        |
-| Search / Link Index | regex 검색 · 인메모리 HashMap (Rust) | —          |
-| PDF Export        | chromiumoxide (headless)    | 0.9           |
-| File Watcher      | notify (Rust)               | 8             |
-| Design Tokens     | Style Dictionary + W3C DTCG | 5.x           |
+| 영역                  | 기술                                 | 버전          |
+| --------------------- | ------------------------------------ | ------------- |
+| Desktop Framework     | Tauri                                | 2.0           |
+| Backend               | Rust                                 | latest stable |
+| Dev Runtime           | Node.js                              | 24 LTS        |
+| Frontend              | React                                | 19            |
+| Language              | TypeScript                           | 6.0           |
+| Bundler               | Vite (rolldown)                      | 8             |
+| Styling               | Tailwind CSS                         | 4             |
+| Editor Engine         | Tiptap (ProseMirror)                 | v3            |
+| Math / Code / Diagram | KaTeX / CodeMirror 6 / Mermaid.js    | latest        |
+| State Management      | Zustand                              | latest        |
+| Search / Link Index   | regex 검색 · 인메모리 HashMap (Rust) | —             |
+| PDF Export            | chromiumoxide (headless)             | 0.9           |
+| File Watcher          | notify (Rust)                        | 8             |
+| Design Tokens         | Style Dictionary + W3C DTCG          | 5.x           |
 
 ## 디렉토리 구조
 
@@ -127,7 +127,10 @@ baram/
 ### 로컬 실행
 
 - **프로젝트 루트에서** `npm run dev`(백그라운드) + `./src-tauri/target/debug/baram` — `npm run tauri dev`는 cwd가 `src-tauri/`로 바뀐다
-- 프론트엔드는 dev 서버가 서빙하므로 TS/CSS 변경은 debug 바이너리 재빌드 없이 반영된다
+- **프런트엔드 출처는 실행법이 아니라 빌드법이 정한다** — `tauri-build`가 `cfg(dev)`를 붙였는지로 갈리고, 바이너리에 고정된다
+  - `npm run tauri dev`로 빌드한 바이너리: dev 서버가 서빙 → TS/CSS 변경이 재빌드 없이 반영
+  - 맨 `cargo build`로 빌드한 바이너리: 컴파일 시점의 `dist/`를 **내장** → dev 서버가 떠 있어도 무시한다. 프런트 변경을 보려면 `npm run build && (cd src-tauri && cargo build)` 후 재실행
+  - 증상: 고친 게 화면에 안 나온다. 확인법은 `lsof -nP -p $(pgrep -f target/debug/baram) | grep 1420` — 연결이 없으면 내장 자산을 쓰는 바이너리다
 
 ### 테스트
 

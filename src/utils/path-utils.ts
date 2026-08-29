@@ -166,3 +166,43 @@ export function resolveNameConflict(
 export function stripTrailingSeparators(path: string): string {
   return path.replace(/[/\\]+$/, "");
 }
+
+/**
+ * A directory *setting* resolved to an absolute path, or `null` when the value
+ * cannot name one.
+ *
+ * Absolute-only is deliberate and predates this helper: a relative directory
+ * setting has no single root to resolve against — the active context moves —
+ * so a value like `zettel` would name a different folder every time the user
+ * switched vaults. Returning `null` makes that a visible refusal instead of a
+ * silent relocation.
+ *
+ * ‼️ This rule had three copies (`resolveJournalDir`, `resolveZettelDir`, and
+ * §312.1's tasks home). Two of them already carried "mirror of the other" in
+ * their doc comments, which is the shape this codebase has repeatedly paid for.
+ * New callers delegate here.
+ */
+export function resolveAbsoluteDirSetting(dir: string): null | string {
+  if (!dir) return null;
+  // A Windows drive letter is the other way a path can be absolute; without it
+  // every Windows setting reads as relative and resolves to `null`.
+  if (!dir.startsWith("/") && !/^[A-Z]:\\/.test(dir)) return null;
+  // Strip trailing separators so joins like `${dir}/tasks` don't double up.
+  return stripTrailingSeparators(dir);
+}
+
+/**
+ * A path normalized for *comparison* — separators folded to `/`, then `.`/`..`
+ * collapsed. Not for display and not for I/O; two strings that name the same
+ * file must produce the same value here.
+ *
+ * ‼️ `normalizePath` alone is not enough. It splits on `/` only, so a Windows
+ * path like `C:\v\tasks\inbox.md` stays one segment and never matches a path
+ * that was joined with `/`. The task index hands out **platform-separator**
+ * paths from Rust while every setting-derived path is joined with `/`, so
+ * without this the two sides never met on Windows — the archive's candidate
+ * set silently became empty and the button never appeared (§312 M2-b3).
+ */
+export function toPosixPath(path: string): string {
+  return normalizePath(path.replace(/\\/g, "/"));
+}

@@ -1,4 +1,4 @@
-// §312 아카이브 — 완료 태스크를 **태스크 전용 파일에서만** `Archive/YYYY-MM.md`로 옮긴다.
+// §312 아카이브 — 완료 태스크를 **태스크 전용 파일에서만** `tasks/archive/YYYY-MM.md`로 옮긴다.
 //
 // 이 모듈은 이 코드베이스에서 **줄을 파일 사이로 옮기는 첫 조작**이다. 지금까지의 태스크
 // 쓰기는 전부 한 파일 안이었고 `expected_raw` 낙관적 잠금 하나로 충분했다. 이동은 "붙이기 +
@@ -12,9 +12,10 @@
 // **중복**이고, 중복은 눈에 보이고 사용자가 지울 수 있다. 태스크 줄 삭제는 되돌릴 통로가
 // 없으므로(스냅샷 §71은 파일 단위이고 이 경로를 타지 않는다) 그 비대칭이 순서를 정한다.
 //
-// ‼️ 불가침 규칙(§312): 이동은 수집함·`Archive/*`에서만 일어난다. 일반 문서 안의 완료
-// 태스크는 문맥의 일부라 뽑아 가면 문서가 훼손된다. 화이트리스트 **밖의 경로가 하나라도
-// 인자에 있으면 파일을 하나도 건드리지 않고 거절한다** — 블랙리스트가 아니라 화이트리스트다.
+// ‼️ 불가침 규칙(§312): 이동은 **`{tasksHome}/tasks/` 아래에서만** 일어난다(§312.1). 일반
+// 문서 안의 완료 태스크는 문맥의 일부라 뽑아 가면 문서가 훼손된다. 화이트리스트 **밖의
+// 경로가 하나라도 인자에 있으면 파일을 하나도 건드리지 않고 거절한다** — 블랙리스트가
+// 아니라 화이트리스트다.
 
 use std::collections::BTreeMap;
 
@@ -24,9 +25,15 @@ use crate::task::parse::{is_valid_date, parse_task_line};
 use crate::task::write::{matches_expected, splice_out, split_keeping_eol, strip_eol};
 use crate::task::{append_lines, TaskError, TaskState};
 
-/// 아카이브 대상 폴더 — 활성 컨텍스트 루트 기준. §312가 `Archive/YYYY-MM.md`로 고정한다.
-/// TypeScript 쪽 `ARCHIVE_DIR`(src/utils/tasks/task-archive.ts)과 **같은 글자**여야 한다.
-pub const ARCHIVE_DIR: &str = "Archive";
+/// 태스크 전용 서브트리 — **태스크 홈** 기준. §312.1이 `{tasksHome}/tasks/`로 고정한다.
+/// 수집함도 아카이브도 이 아래 살고, 그래서 §312 불가침 규칙의 화이트리스트가 한 줄이 된다.
+/// TypeScript 쪽 `TASKS_DIR`(src/utils/tasks/tasks-home.ts)과 **같은 글자**여야 한다.
+pub const TASKS_DIR: &str = "tasks";
+
+/// 아카이브 대상 폴더 — `{tasksHome}/tasks/` 기준. `archive/YYYY-MM.md`로 고정한다.
+/// `inbox/`·`notes/`와 나란히 읽히도록 소문자다. TypeScript 쪽 `ARCHIVE_DIR`
+/// (src/utils/tasks/tasks-home.ts)과 **같은 글자**여야 한다.
+pub const ARCHIVE_DIR: &str = "archive";
 
 /// 옮길 줄 하나 — 프런트가 인덱스에서 그대로 집어 보낸다.
 #[derive(Clone, Debug, Deserialize)]
@@ -69,8 +76,7 @@ pub(super) enum Verdict {
 /// 화이트리스트 위반은 `Err`다. 그 밖의 실패는 항목별로 회계에 담아 계속 진행한다 —
 /// 한 파일의 권한 문제가 나머지 전부를 막지 않는다.
 pub async fn archive_tasks(
-    root: &str,
-    capture_path: &str,
+    home: &str,
     items: &[ArchiveItem],
     today: &str,
     after_days: u32,
@@ -81,21 +87,15 @@ pub async fn archive_tasks(
             today
         )));
     }
-    let root = norm(root);
-    let capture = norm(capture_path);
-    // 프런트가 이미 `resolveCapturePath`로 만든 경로다. 여기서 다시 만들지 않고
-    // **검증만** 한다 — 해석기를 두 벌 두면 갈라지지만, 부분집합 단정은 갈라질 수 없다.
-    if !is_under(&capture, &root) || !capture.ends_with(".md") {
-        return Err(TaskError::Custom(format!(
-            "archive: capture file is not a markdown file inside the vault: {}",
-            capture
-        )));
-    }
-    let archive_root = format!("{}/{}", root, ARCHIVE_DIR);
+    let home = norm(home);
+    // §312.1 화이트리스트는 이 한 줄이다 — `{tasksHome}/tasks/` 아래 전부. 수집함도
+    // 아카이브도 그 안에 살기 때문에 예외 조항이 없다.
+    let tasks_root = format!("{}/{}", home, TASKS_DIR);
+    let archive_root = format!("{}/{}", tasks_root, ARCHIVE_DIR);
 
     // ‼️ 쓰기 **전에** 전부 본다. 한 항목이라도 밖이면 파일을 하나도 건드리지 않는다.
     for item in items {
-        if !is_archive_source(&item.path, &capture, &archive_root) {
+        if !is_archive_source(&item.path, &tasks_root) {
             return Err(TaskError::Custom(format!(
                 "archive: refusing to move a line out of a regular document: {}",
                 item.path
@@ -113,17 +113,24 @@ pub async fn archive_tasks(
     // 파일 여러 개를 한 번에 고치는 조작이라 무엇을 했는지 기록으로 남긴다. 프런트의
     // `logger`는 브라우저 콘솔로만 가므로(§3.3) 사용자 손에 남는 유일한 기록이 여기다.
     log::info!(
-        "[task] archive: {} item(s), root={}, capture={}, today={}, after_days={}",
+        "[task] archive: {} item(s), home={}, today={}, after_days={}",
         items.len(),
-        root,
-        capture,
+        home,
         today,
         after_days
     );
 
     let mut outcome = ArchiveOutcome::default();
     for (source, group) in by_source {
-        drain_one_file(&source, &group, &root, today, after_days, &mut outcome).await;
+        drain_one_file(
+            &source,
+            &group,
+            &archive_root,
+            today,
+            after_days,
+            &mut outcome,
+        )
+        .await;
     }
     log::info!(
         "[task] archive: archived={} skipped={} stale={} failed={}",
@@ -144,7 +151,7 @@ pub async fn archive_tasks(
 async fn drain_one_file(
     source: &str,
     group: &[&ArchiveItem],
-    root: &str,
+    archive_root: &str,
     today: &str,
     after_days: u32,
     outcome: &mut ArchiveOutcome,
@@ -210,7 +217,7 @@ async fn drain_one_file(
             outcome.skipped += 1;
             continue;
         }
-        let dest = format!("{}/{}/{}.md", root, ARCHIVE_DIR, month);
+        let dest = format!("{}/{}.md", archive_root, month);
         // 이미 제자리인 줄은 옮기지 않는다. 자기 파일에 붙였다가 지우면 줄이 파일
         // 끝으로 이사만 하고, 실행할 때마다 순서가 바뀐다.
         if dest == source {
@@ -291,9 +298,16 @@ pub(super) fn archive_verdict(line: &str, today: &str, after_days: u32) -> Verdi
 }
 
 /// 이 경로에서 줄을 뽑아도 되는가 — §312 불가침 규칙의 화이트리스트.
-pub(super) fn is_archive_source(path: &str, capture: &str, archive_root: &str) -> bool {
-    let p = norm(path);
-    p == capture || is_under(&p, archive_root)
+///
+/// §312.1 이후 이것은 **`{tasksHome}/tasks/` 아래 전부**, 그 한 줄이다. 종전의 "수집함
+/// 파일 + `Archive/*`" 두 갈래를 대신하며, 태스크 전용 파일이 한 서브트리에 모여 있다는
+/// 사실 그 자체를 규칙으로 쓴다.
+///
+/// 수집함 경로를 따로 받지 않는 것이 그 단순함의 값어치다. 설정
+/// (`tasksCaptureFile`)은 이 서브트리 **안의** 이름이므로 밖을 가리킬 수가 없고, 따라서
+/// 예외 조항도 필요 없다 — 프런트가 그 경로를 만들어 보낼 이유도 사라졌다.
+pub(super) fn is_archive_source(path: &str, tasks_root: &str) -> bool {
+    is_under(&norm(path), tasks_root)
 }
 
 /// 두 ISO 날짜 사이의 일수(`to` − `from`). 어느 한쪽이 실재하지 않는 날짜면 `None`.
@@ -370,6 +384,8 @@ mod tests {
 
     const TODAY: &str = "2026-08-27";
 
+    /// 여기서 `root`는 vault가 아니라 **태스크 홈**이다(§312.1) — 아카이브가 기준으로
+    /// 삼는 것이 그것으로 바뀌었다.
     struct Vault {
         _dir: TempDir,
         root: String,
@@ -384,10 +400,6 @@ mod tests {
 
         fn at(&self, rel: &str) -> String {
             format!("{}/{}", self.root, rel)
-        }
-
-        fn inbox(&self) -> String {
-            self.at("Inbox.md")
         }
 
         fn read(&self, rel: &str) -> String {
@@ -413,7 +425,7 @@ mod tests {
     }
 
     async fn run(v: &Vault, items: &[ArchiveItem]) -> Result<ArchiveOutcome, TaskError> {
-        archive_tasks(&v.root, &v.inbox(), items, TODAY, 30).await
+        archive_tasks(&v.root, items, TODAY, 30).await
     }
 
     // ── §312 불가침 규칙 (설계 문서 18.16의 네 테스트) ────────────────────────
@@ -422,13 +434,13 @@ mod tests {
     async fn moves_an_aged_done_task_out_of_the_inbox() {
         let v = Vault::new();
         let raw = "- [x] 세금 신고 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("- [ ] 남을 것\n{}\n", raw));
+        let inbox = v.write("tasks/inbox.md", &format!("- [ ] 남을 것\n{}\n", raw));
 
         let out = run(&v, &[item(&inbox, 1, raw)]).await.unwrap();
 
         assert_eq!(out.archived, 1);
-        assert_eq!(v.read("Inbox.md"), "- [ ] 남을 것\n");
-        assert_eq!(v.read("Archive/2026-07.md"), format!("{}\n", raw));
+        assert_eq!(v.read("tasks/inbox.md"), "- [ ] 남을 것\n");
+        assert_eq!(v.read("tasks/archive/2026-07.md"), format!("{}\n", raw));
     }
 
     #[tokio::test]
@@ -444,7 +456,7 @@ mod tests {
 
         assert!(err.to_string().contains("regular document"), "{}", err);
         assert_eq!(v.read("notes/설계.md"), before);
-        assert!(!std::path::Path::new(&v.at("Archive")).exists());
+        assert!(!std::path::Path::new(&v.at("tasks/archive")).exists());
     }
 
     #[tokio::test]
@@ -452,13 +464,13 @@ mod tests {
         let v = Vault::new();
         // 29일 전 — 문턱이 30이므로 아직 아니다.
         let raw = "- [x] 어제 일 ✅2026-07-29";
-        let inbox = v.write("Inbox.md", &format!("{}\n", raw));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", raw));
 
         let out = run(&v, &[item(&inbox, 0, raw)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", raw));
-        assert!(!std::path::Path::new(&v.at("Archive")).exists());
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", raw));
+        assert!(!std::path::Path::new(&v.at("tasks/archive")).exists());
     }
 
     #[tokio::test]
@@ -468,7 +480,7 @@ mod tests {
         let v = Vault::new();
         let good = "- [x] 수집함 것 ✅2026-07-04";
         let bad = "- [x] 문서 것 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n", good));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", good));
         let doc = v.write("notes/설계.md", &format!("{}\n", bad));
 
         let err = run(&v, &[item(&inbox, 0, good), item(&doc, 0, bad)])
@@ -476,7 +488,7 @@ mod tests {
             .unwrap_err();
 
         assert!(err.to_string().contains("regular document"), "{}", err);
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", good));
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", good));
         assert_eq!(v.read("notes/설계.md"), format!("{}\n", bad));
     }
 
@@ -489,13 +501,13 @@ mod tests {
         // 이 줄은 어디에도 남지 않는다.
         let v = Vault::new();
         let raw = "- [x] 세금 신고 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n", raw));
-        v.write("Archive", "여기는 폴더가 아니라 파일이다\n");
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", raw));
+        v.write("tasks/archive", "여기는 폴더가 아니라 파일이다\n");
 
         let out = run(&v, &[item(&inbox, 0, raw)]).await.unwrap();
 
         assert_eq!((out.archived, out.failed), (0, 1));
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", raw));
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", raw));
         assert!(out.paths.is_empty());
     }
 
@@ -505,17 +517,17 @@ mod tests {
         let v = Vault::new();
         let july = "- [x] 7월 것 ✅2026-07-04";
         let june = "- [x] 6월 것 ✅2026-06-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n{}\n", june, july));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n{}\n", june, july));
         // 7월 대상 자리에 **디렉터리**를 두면 그 파일 쓰기만 실패한다.
-        std::fs::create_dir_all(v.at("Archive/2026-07.md")).unwrap();
+        std::fs::create_dir_all(v.at("tasks/archive/2026-07.md")).unwrap();
 
         let out = run(&v, &[item(&inbox, 0, june), item(&inbox, 1, july)])
             .await
             .unwrap();
 
         assert_eq!((out.archived, out.failed), (1, 1));
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", july));
-        assert_eq!(v.read("Archive/2026-06.md"), format!("{}\n", june));
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", july));
+        assert_eq!(v.read("tasks/archive/2026-06.md"), format!("{}\n", june));
     }
 
     // ── 자격 판정 ─────────────────────────────────────────────────────────
@@ -526,12 +538,12 @@ mod tests {
         let v = Vault::new();
         let child = "  - [x] 하위 항목 ✅2026-07-04";
         let before = format!("- [ ] 부모\n{}\n", child);
-        let inbox = v.write("Inbox.md", &before);
+        let inbox = v.write("tasks/inbox.md", &before);
 
         let out = run(&v, &[item(&inbox, 1, child)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Inbox.md"), before);
+        assert_eq!(v.read("tasks/inbox.md"), before);
     }
 
     #[tokio::test]
@@ -541,12 +553,12 @@ mod tests {
         let v = Vault::new();
         let parent = "- [x] 부모 ✅2026-07-10";
         let before = format!("{}\n  - [ ] 아직 안 한 자식\n", parent);
-        let inbox = v.write("Inbox.md", &before);
+        let inbox = v.write("tasks/inbox.md", &before);
 
         let out = run(&v, &[item(&inbox, 0, parent)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Inbox.md"), before);
+        assert_eq!(v.read("tasks/inbox.md"), before);
     }
 
     #[tokio::test]
@@ -555,12 +567,12 @@ mod tests {
         let v = Vault::new();
         let parent = "- [x] 부모 ✅2026-07-10";
         let before = format!("{}\n\n  - [ ] 자식\n", parent);
-        let inbox = v.write("Inbox.md", &before);
+        let inbox = v.write("tasks/inbox.md", &before);
 
         let out = run(&v, &[item(&inbox, 0, parent)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Inbox.md"), before);
+        assert_eq!(v.read("tasks/inbox.md"), before);
     }
 
     #[tokio::test]
@@ -569,12 +581,12 @@ mod tests {
         let v = Vault::new();
         let parent = "- [x] 부모 ✅2026-07-10";
         let before = format!("{}\n  - 그냥 메모\n", parent);
-        let inbox = v.write("Inbox.md", &before);
+        let inbox = v.write("tasks/inbox.md", &before);
 
         let out = run(&v, &[item(&inbox, 0, parent)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Inbox.md"), before);
+        assert_eq!(v.read("tasks/inbox.md"), before);
     }
 
     #[tokio::test]
@@ -582,24 +594,24 @@ mod tests {
         // 평평한 목록이 정상 상태다 — 여기서 막히면 배수구가 아무것도 못 옮긴다.
         let v = Vault::new();
         let first = "- [x] 하나 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n- [ ] 둘\n", first));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n- [ ] 둘\n", first));
 
         let out = run(&v, &[item(&inbox, 0, first)]).await.unwrap();
 
         assert_eq!(out.archived, 1);
-        assert_eq!(v.read("Inbox.md"), "- [ ] 둘\n");
+        assert_eq!(v.read("tasks/inbox.md"), "- [ ] 둘\n");
     }
 
     #[tokio::test]
     async fn the_last_line_of_a_file_has_no_children() {
         let v = Vault::new();
         let last = "- [x] 마지막 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("- [ ] 먼저\n{}\n", last));
+        let inbox = v.write("tasks/inbox.md", &format!("- [ ] 먼저\n{}\n", last));
 
         let out = run(&v, &[item(&inbox, 1, last)]).await.unwrap();
 
         assert_eq!(out.archived, 1);
-        assert_eq!(v.read("Inbox.md"), "- [ ] 먼저\n");
+        assert_eq!(v.read("tasks/inbox.md"), "- [ ] 먼저\n");
     }
 
     #[tokio::test]
@@ -608,24 +620,24 @@ mod tests {
         // "충분히 오래됐다"고 가정하지 않는다.
         let v = Vault::new();
         let raw = "- [x] 날짜 없는 완료";
-        let inbox = v.write("Inbox.md", &format!("{}\n", raw));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", raw));
 
         let out = run(&v, &[item(&inbox, 0, raw)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", raw));
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", raw));
     }
 
     #[tokio::test]
     async fn an_unfinished_task_is_not_moved_even_when_it_is_old() {
         let v = Vault::new();
         let raw = "- [ ] 미룬 일 ➕2026-01-01";
-        let inbox = v.write("Inbox.md", &format!("{}\n", raw));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", raw));
 
         let out = run(&v, &[item(&inbox, 0, raw)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", raw));
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", raw));
     }
 
     #[tokio::test]
@@ -635,25 +647,25 @@ mod tests {
         let v = Vault::new();
         let raw = "- [x] 이미 제자리 ✅2026-07-04";
         let before = format!("- [x] 먼저 ✅2026-07-01\n{}\n", raw);
-        let path = v.write("Archive/2026-07.md", &before);
+        let path = v.write("tasks/archive/2026-07.md", &before);
 
         let out = run(&v, &[item(&path, 1, raw)]).await.unwrap();
 
         assert_eq!((out.archived, out.skipped), (0, 1));
-        assert_eq!(v.read("Archive/2026-07.md"), before);
+        assert_eq!(v.read("tasks/archive/2026-07.md"), before);
     }
 
     #[tokio::test]
     async fn a_misfiled_line_moves_between_archive_files() {
         let v = Vault::new();
         let raw = "- [x] 6월 것인데 8월 파일에 있다 ✅2026-06-04";
-        let path = v.write("Archive/2026-08.md", &format!("{}\n", raw));
+        let path = v.write("tasks/archive/2026-08.md", &format!("{}\n", raw));
 
         let out = run(&v, &[item(&path, 0, raw)]).await.unwrap();
 
         assert_eq!(out.archived, 1);
-        assert_eq!(v.read("Archive/2026-08.md"), "");
-        assert_eq!(v.read("Archive/2026-06.md"), format!("{}\n", raw));
+        assert_eq!(v.read("tasks/archive/2026-08.md"), "");
+        assert_eq!(v.read("tasks/archive/2026-06.md"), format!("{}\n", raw));
     }
 
     // ── 잠금 · 바이트 보존 ────────────────────────────────────────────────
@@ -662,27 +674,27 @@ mod tests {
     async fn a_line_that_changed_underneath_is_skipped_and_nothing_moves() {
         let v = Vault::new();
         let now_on_disk = "- [x] 세금 신고 ✅2026-07-05";
-        let inbox = v.write("Inbox.md", &format!("{}\n", now_on_disk));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", now_on_disk));
 
         let out = run(&v, &[item(&inbox, 0, "- [x] 세금 신고 ✅2026-07-04")])
             .await
             .unwrap();
 
         assert_eq!((out.archived, out.stale), (0, 1));
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", now_on_disk));
-        assert!(!std::path::Path::new(&v.at("Archive")).exists());
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", now_on_disk));
+        assert!(!std::path::Path::new(&v.at("tasks/archive")).exists());
     }
 
     #[tokio::test]
     async fn a_line_number_past_the_end_is_stale_not_a_panic() {
         let v = Vault::new();
         let raw = "- [x] 세금 신고 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n", raw));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", raw));
 
         let out = run(&v, &[item(&inbox, 9, raw)]).await.unwrap();
 
         assert_eq!((out.archived, out.stale), (0, 1));
-        assert_eq!(v.read("Inbox.md"), format!("{}\n", raw));
+        assert_eq!(v.read("tasks/inbox.md"), format!("{}\n", raw));
     }
 
     #[tokio::test]
@@ -691,31 +703,31 @@ mod tests {
         // 기준으로 견주지 않으면 아카이브만 조용히 아무것도 못 옮긴다.
         let v = Vault::new();
         let on_disk = "- [x] 회의\u{00A0}준비 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n", on_disk));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", on_disk));
 
         let out = run(&v, &[item(&inbox, 0, "- [x] 회의 준비 ✅2026-07-04")])
             .await
             .unwrap();
 
         assert_eq!(out.archived, 1);
-        assert_eq!(v.read("Inbox.md"), "");
+        assert_eq!(v.read("tasks/inbox.md"), "");
         // 옮겨 붙는 것은 **파일의 원본 바이트**다 — 정규화된 사본이 아니다.
-        assert_eq!(v.read("Archive/2026-07.md"), format!("{}\n", on_disk));
+        assert_eq!(v.read("tasks/archive/2026-07.md"), format!("{}\n", on_disk));
     }
 
     #[tokio::test]
     async fn crlf_survives_on_both_sides() {
         let v = Vault::new();
         let raw = "- [x] 세금 신고 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("- [ ] 남을 것\r\n{}\r\n", raw));
-        v.write("Archive/2026-07.md", "- [x] 먼저 ✅2026-07-01\r\n");
+        let inbox = v.write("tasks/inbox.md", &format!("- [ ] 남을 것\r\n{}\r\n", raw));
+        v.write("tasks/archive/2026-07.md", "- [x] 먼저 ✅2026-07-01\r\n");
 
         let out = run(&v, &[item(&inbox, 1, raw)]).await.unwrap();
 
         assert_eq!(out.archived, 1);
-        assert_eq!(v.read("Inbox.md"), "- [ ] 남을 것\r\n");
+        assert_eq!(v.read("tasks/inbox.md"), "- [ ] 남을 것\r\n");
         assert_eq!(
-            v.read("Archive/2026-07.md"),
+            v.read("tasks/archive/2026-07.md"),
             format!("- [x] 먼저 ✅2026-07-01\r\n{}\r\n", raw)
         );
     }
@@ -724,12 +736,12 @@ mod tests {
     async fn a_source_without_a_trailing_newline_does_not_grow_one() {
         let v = Vault::new();
         let raw = "- [x] 세금 신고 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n- [ ] 남을 것", raw));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n- [ ] 남을 것", raw));
 
         let out = run(&v, &[item(&inbox, 0, raw)]).await.unwrap();
 
         assert_eq!(out.archived, 1);
-        assert_eq!(v.read("Inbox.md"), "- [ ] 남을 것");
+        assert_eq!(v.read("tasks/inbox.md"), "- [ ] 남을 것");
     }
 
     #[tokio::test]
@@ -740,7 +752,10 @@ mod tests {
         let a = "- [x] 하나 ✅2026-07-01";
         let b = "- [x] 둘 ✅2026-07-02";
         let c = "- [x] 셋 ✅2026-07-03";
-        let inbox = v.write("Inbox.md", &format!("{}\n- [ ] 남을 것\n{}\n{}\n", a, b, c));
+        let inbox = v.write(
+            "tasks/inbox.md",
+            &format!("{}\n- [ ] 남을 것\n{}\n{}\n", a, b, c),
+        );
 
         let out = run(
             &v,
@@ -750,9 +765,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(out.archived, 3);
-        assert_eq!(v.read("Inbox.md"), "- [ ] 남을 것\n");
+        assert_eq!(v.read("tasks/inbox.md"), "- [ ] 남을 것\n");
         assert_eq!(
-            v.read("Archive/2026-07.md"),
+            v.read("tasks/archive/2026-07.md"),
             format!("{}\n{}\n{}\n", a, b, c)
         );
     }
@@ -762,29 +777,29 @@ mod tests {
         let v = Vault::new();
         let june = "- [x] 6월 것 ✅2026-06-04";
         let july = "- [x] 7월 것 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n{}\n", june, july));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n{}\n", june, july));
 
         let out = run(&v, &[item(&inbox, 0, june), item(&inbox, 1, july)])
             .await
             .unwrap();
 
         assert_eq!(out.archived, 2);
-        assert_eq!(v.read("Inbox.md"), "");
-        assert_eq!(v.read("Archive/2026-06.md"), format!("{}\n", june));
-        assert_eq!(v.read("Archive/2026-07.md"), format!("{}\n", july));
+        assert_eq!(v.read("tasks/inbox.md"), "");
+        assert_eq!(v.read("tasks/archive/2026-06.md"), format!("{}\n", june));
+        assert_eq!(v.read("tasks/archive/2026-07.md"), format!("{}\n", july));
     }
 
     #[tokio::test]
     async fn every_touched_file_is_reported_for_reindexing() {
         let v = Vault::new();
         let raw = "- [x] 세금 신고 ✅2026-07-04";
-        let inbox = v.write("Inbox.md", &format!("{}\n", raw));
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", raw));
 
         let out = run(&v, &[item(&inbox, 0, raw)]).await.unwrap();
 
         let mut paths = out.paths.clone();
         paths.sort();
-        assert_eq!(paths, vec![v.at("Archive/2026-07.md"), inbox]);
+        assert_eq!(paths, vec![v.at("tasks/archive/2026-07.md"), inbox]);
     }
 
     #[tokio::test]
@@ -794,12 +809,11 @@ mod tests {
         let v = Vault::new();
         let july = "- [x] 7월 것 ✅2026-07-04";
         let august = "- [x] 8월 것 ✅2026-08-04";
-        let aug_path = v.write("Archive/2026-08.md", &format!("{}\n", july));
-        let sep_path = v.write("Archive/2026-09.md", &format!("{}\n", august));
+        let aug_path = v.write("tasks/archive/2026-08.md", &format!("{}\n", july));
+        let sep_path = v.write("tasks/archive/2026-09.md", &format!("{}\n", august));
 
         let out = archive_tasks(
             &v.root,
-            &v.inbox(),
             &[item(&aug_path, 0, july), item(&sep_path, 0, august)],
             TODAY,
             0,
@@ -815,18 +829,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_capture_file_outside_the_vault_is_refused() {
+    async fn any_file_under_the_tasks_subtree_is_a_legal_source() {
+        // §312.1이 화이트리스트를 "`tasks/` 아래 전부"로 넓혔다 — 수집함도 아카이브도
+        // 아닌 파일(예: 손으로 나눠 둔 목록)에서도 배수구가 돈다.
         let v = Vault::new();
-        let err = archive_tasks(&v.root, "/tmp/Inbox.md", &[], TODAY, 30)
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("capture file"), "{}", err);
+        let raw = "- [x] 나눠 둔 목록의 것 ✅2026-07-04";
+        let other = v.write("tasks/프로젝트.md", &format!("{}\n", raw));
+
+        let out = run(&v, &[item(&other, 0, raw)]).await.unwrap();
+
+        assert_eq!(out.archived, 1);
+        assert_eq!(v.read("tasks/프로젝트.md"), "");
+        assert_eq!(v.read("tasks/archive/2026-07.md"), format!("{}\n", raw));
+    }
+
+    #[tokio::test]
+    async fn a_file_directly_under_the_tasks_home_is_a_regular_document() {
+        // 태스크 홈이 Zettel 디렉터리인 것이 기본값이므로 홈 바로 아래에는 사용자의
+        // 노트가 산다. 서브트리 경계가 여기서 새면 불가침 규칙이 통째로 무너진다.
+        let v = Vault::new();
+        let raw = "- [x] 노트 안의 것 ✅2026-07-04";
+        let before = format!("# 노트\n\n{}\n", raw);
+        let note = v.write("생각.md", &before);
+
+        let err = run(&v, &[item(&note, 2, raw)]).await.unwrap_err();
+
+        assert!(err.to_string().contains("regular document"), "{}", err);
+        assert_eq!(v.read("생각.md"), before);
     }
 
     #[tokio::test]
     async fn an_invalid_today_is_refused() {
         let v = Vault::new();
-        let err = archive_tasks(&v.root, &v.inbox(), &[], "2026-02-31", 30)
+        let err = archive_tasks(&v.root, &[], "2026-02-31", 30)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("invalid today"), "{}", err);
@@ -885,35 +920,35 @@ mod tests {
     }
 
     #[test]
-    fn the_archive_folder_name_is_shared_with_the_front_end() {
-        // TypeScript `ARCHIVE_DIR`(src/utils/tasks/task-archive.ts)에 같은 글자로
-        // 있다. 갈리면 프런트가 세는 대상과 여기가 쓰는 대상이 다른 폴더가 된다.
-        assert_eq!(ARCHIVE_DIR, "Archive");
+    fn the_subtree_names_are_shared_with_the_front_end() {
+        // TypeScript `TASKS_DIR`·`ARCHIVE_DIR`(src/utils/tasks/tasks-home.ts)에 같은
+        // 글자로 있다. 갈리면 프런트가 세는 대상과 여기가 쓰는 대상이 다른 폴더가 된다.
+        assert_eq!(TASKS_DIR, "tasks");
+        assert_eq!(ARCHIVE_DIR, "archive");
     }
 
     #[test]
-    fn a_sibling_directory_with_the_same_prefix_is_not_the_archive() {
-        // `Archived/`가 `Archive`에 걸리면 불가침 규칙이 조용히 새어 나간다.
-        let capture = "/v/Inbox.md";
-        let archive = "/v/Archive";
-        assert!(is_archive_source("/v/Archive/2026-07.md", capture, archive));
-        assert!(is_archive_source("/v/Inbox.md", capture, archive));
-        assert!(!is_archive_source(
-            "/v/Archived/2026-07.md",
-            capture,
-            archive
-        ));
-        assert!(!is_archive_source("/v/Archive", capture, archive));
-        assert!(!is_archive_source("/v/notes/설계.md", capture, archive));
-        assert!(!is_archive_source("/v/Inbox.md.bak", capture, archive));
+    fn a_sibling_directory_with_the_same_prefix_is_not_the_tasks_subtree() {
+        // 기준은 `tasksHome`이 아니라 `{tasksHome}/tasks`다 — `tasks-old/`가 걸리면
+        // 불가침 규칙이 조용히 새어 나간다.
+        let tasks = "/v/tasks";
+        assert!(is_archive_source("/v/tasks/archive/2026-07.md", tasks));
+        assert!(is_archive_source("/v/tasks/inbox.md", tasks));
+        // §312.1 화이트리스트는 서브트리 전체다 — 수집함과 아카이브만이 아니다.
+        assert!(is_archive_source("/v/tasks/someday.md", tasks));
+        assert!(!is_archive_source("/v/tasks-old/2026-07.md", tasks));
+        assert!(!is_archive_source("/v/tasks", tasks));
+        assert!(!is_archive_source("/v/notes/설계.md", tasks));
+        // 태스크 홈 **바로 아래**라도 `tasks/` 밖이면 일반 문서다. 수집함 설정은 이
+        // 서브트리 안의 이름이므로 밖을 가리킬 수 없고, 그래서 예외 조항이 없다.
+        assert!(!is_archive_source("/v/inbox.md", tasks));
     }
 
     #[test]
     fn windows_separators_compare_equal_to_forward_slashes() {
         assert!(is_archive_source(
-            r"C:\v\Archive\2026-07.md",
-            "C:/v/Inbox.md",
-            "C:/v/Archive"
+            r"C:\v\tasks\archive\2026-07.md",
+            "C:/v/tasks"
         ));
     }
 }

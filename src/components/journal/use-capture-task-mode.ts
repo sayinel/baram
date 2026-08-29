@@ -11,8 +11,8 @@ import type { CaptureErrorCode } from "../../services/task-capture";
 
 import { useEditorContext } from "../../contexts/editor-context";
 import { CaptureError, captureTask } from "../../services/task-capture";
-import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 
 interface CaptureTaskMode {
   enabled: boolean;
@@ -32,9 +32,9 @@ interface CaptureTaskMode {
 const ERROR_KEY: Record<CaptureErrorCode, string> = {
   dirtyTab: "journal.capture.error.taskDirtyTab",
   emptyBody: "journal.capture.error.empty",
+  noTasksHome: "journal.capture.error.taskNoHome",
   notMarkdown: "journal.capture.error.taskNotMarkdown",
-  noVault: "journal.capture.error.taskNoVault",
-  outsideVault: "journal.capture.error.taskOutsideVault",
+  outsideHome: "journal.capture.error.taskOutsideHome",
 };
 
 export function captureErrorKey(err: unknown): string {
@@ -52,17 +52,27 @@ export function useCaptureTaskMode(): CaptureTaskMode {
 
   const save = useCallback(
     async (body: string, tags: string[]) => {
-      const { rootPath } = useFileStore.getState();
-      if (!rootPath) {
-        throw new CaptureError("noVault", "captureTask: no vault is open");
+      // §312.1 착지점은 **태스크 홈**이지 활성 컨텍스트 루트가 아니다. ⌘⇧N의 정체성은
+      // "아이디어를 Zettel에 모은다"인데 태스크 모드만 거기서 벗어나 컨텍스트를 따라
+      // 떠다니고 있었다 — 같은 다이얼로그가 체크박스 하나로 목적지 *계열*을 바꿨다.
+      const { tasksCaptureFile, tasksHome, zettelkastenDirectory } =
+        useSettingsStore.getState();
+      const home = resolveTasksHome(tasksHome, zettelkastenDirectory);
+      if (!home) {
+        // 열린 vault로 폴백하지 않는다 — 그것이 §312.1이 없애려던 결함 그 자체다.
+        // 설정되지 않았다는 사실은 문구로 말한다(§312: 보이지 않는 곳에 쓰고 성공을
+        // 보고하지 않는다).
+        throw new CaptureError(
+          "noTasksHome",
+          "captureTask: no tasks home is configured",
+        );
       }
-      const { tasksCaptureFile } = useSettingsStore.getState();
       await captureTask({
         body,
         captureFile: tasksCaptureFile,
         editor,
-        rootPath,
         tags,
+        tasksHome: home,
         today: todayIso(),
       });
     },

@@ -49,7 +49,7 @@ const NOW = new Date(2026, 7, 26);
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function ctx(editor: Editor | null = null): TaskTriageContext {
-  return { editor, exclude: [], now: NOW, rootPath: null, t: EN_T };
+  return { editor, exclude: [], now: NOW, t: EN_T };
 }
 
 function itemFor(entry: TaskEntry) {

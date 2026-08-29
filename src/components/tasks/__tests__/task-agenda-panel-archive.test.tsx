@@ -8,6 +8,8 @@ import type { EditorTab } from "../../../stores/editor/editor";
 
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // listDir/readFile 스텁이 필요한 이유: TaskAgendaPanel → useZettelIndexStore →
@@ -36,8 +38,11 @@ import { useTaskStore } from "../../../stores/tasks/task-store";
 import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
 import { TaskAgendaPanel } from "../TaskAgendaPanel";
 
+// ‼️ 태스크 홈은 활성 컨텍스트 루트와 **다른 값**으로 둔다(§312.1). 같게 두면 배수구가
+// 어느 쪽을 기준으로 삼는지 테스트가 구별하지 못한다 — 종전 결함이 정확히 그것이었다.
 const ROOT = "/vault";
-const INBOX = "/vault/Inbox.md";
+const HOME = "/home";
+const INBOX = "/home/tasks/inbox.md";
 
 const EMPTY: ArchiveOutcome = {
   archived: 0,
@@ -55,27 +60,79 @@ beforeEach(() => {
   useSettingsStore.setState({
     locale: "en",
     tasksArchiveAfterDays: 30,
-    tasksCaptureFile: "Inbox.md",
+    tasksCaptureFile: "inbox.md",
+    tasksHome: HOME,
+    // §312.1 배수구는 이 범위에서만 켜진다 — 아래 게이트 테스트가 그 규칙을 고정한다.
+    tasksScanScope: "tasksHome",
+    zettelkastenDirectory: "",
   });
 });
 
 describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
-  it("옮길 것이 없으면 버튼 자체가 없다", () => {
-    // 완료됐지만 아직 30일이 안 지난 항목. 눌러도 아무 일도 안 하는 버튼을 두면
-    // 사용자는 그것이 고장인지 대상이 없는 것인지 알 수 없다.
+  it("옮길 것이 없으면 버튼이 흐려지고 이유를 말한다 — 사라지지 않는다", () => {
+    // ‼️ 초판은 감췄다. 그러면 "대상이 없다"와 "기능이 고장났다"가 화면에서 구별되지
+    // 않는다 — M2-b3 수동 테스트가 세 라운드를 그렇게 잃었고, §312.1의 범위 게이트가
+    // 생기면서 버튼이 사라질 이유가 하나 더 늘어 같은 혼동이 실제로 다시 일어났다.
     seed([recent()]);
     render(<TaskAgendaPanel />);
 
-    expect(screen.queryByLabelText("Archive completed tasks")).toBeNull();
+    const button = screen.getByLabelText("Archive completed tasks");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", expect.stringContaining("Nothing"));
   });
 
   it("일반 문서의 완료 태스크는 개수에 들어가지 않는다", () => {
     // §312 불가침 규칙 — 프런트도 같은 화이트리스트로 센다. Rust가 다시 강제하지만
     // 여기서 새면 확인 문구가 옮기지도 못할 개수를 약속한다.
-    seed([old_({ path: "/vault/notes/설계.md" })]);
+    seed([old_({ path: "/home/notes/설계.md" })]);
+    render(<TaskAgendaPanel />);
+
+    expect(screen.getByLabelText("Archive completed tasks")).toBeDisabled();
+  });
+
+  it("스캔 범위가 '태스크 홈'이 아니면 버튼 자체가 없다", () => {
+    // 여기서는 **감추는 것이 맞다**. 대상이 0인 것과 달리 이것은 "이 화면에서는 제공하지
+    // 않는 조작"이라는 뜻이고, 그 규칙이 UI에 드러나는 것이 §312.1 결정 4의 절반이다.
+    // §312.1 배수구는 단일 루트 조작이다 — 화면에 여러 vault의 태스크가 보이는데 버튼이
+    // 그중 하나만 건드리면 숨은 규칙이 된다.
+    useSettingsStore.setState({ tasksScanScope: "allVaults" });
+    seed([old_()]);
     render(<TaskAgendaPanel />);
 
     expect(screen.queryByLabelText("Archive completed tasks")).toBeNull();
+  });
+
+  it("꺼진 버튼은 꺼져 보인다 — 이 결정 전체가 그 한 줄에 걸려 있다", () => {
+    // 대상이 0일 때 감추는 대신 흐리게 두기로 한 것이 §312.1 결정 7인데, `disabled`가
+    // 클릭만 막고 화면이 그대로면 사용자에게는 "눌러도 아무 일이 없는 버튼"이 된다 —
+    // 감췄을 때와 똑같이 고장과 구별되지 않는다.
+    //
+    // jsdom에는 스타일시트가 없어 계산된 스타일을 볼 수 없으므로 규칙 자체를 읽는다
+    // (`task-field-chips-render.test.ts`와 같은 이유).
+    const base = readFileSync(
+      join(process.cwd(), "src/styles/base.css"),
+      "utf8",
+    );
+    const rule = /\.icon-btn:disabled\s*\{([^}]*)\}/.exec(base)?.[1];
+    expect(rule, "no .icon-btn:disabled rule in base.css").toBeDefined();
+    // ‼️ `color`가 아니라 `opacity`여야 한다. 아이콘이 이모지였을 때 글자색이 듣지
+    // 않아 꺼진 상태가 드러나지 않았고, 그것이 이 결함의 원래 모양이었다.
+    expect(rule).toMatch(/opacity:\s*0?\.\d+/);
+  });
+
+  it("태스크 홈이 없으면 버튼이 그 사실을 말한다", () => {
+    // 옮길 자리를 모르는 채로 누를 수 있게 두면 실패가 클릭 이후로 미뤄진다. 그렇다고
+    // 감추면 사용자는 무엇을 고쳐야 하는지 알 방법이 없다 — 흐리게 두고 이유를 준다.
+    useSettingsStore.setState({ tasksHome: "", zettelkastenDirectory: "" });
+    seed([old_()]);
+    render(<TaskAgendaPanel />);
+
+    const button = screen.getByLabelText("Archive completed tasks");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
+      "title",
+      expect.stringContaining("tasks home"),
+    );
   });
 
   it("취소하면 커맨드에 아예 도달하지 않는다", async () => {
@@ -131,9 +188,10 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
     await userEvent.click(screen.getByLabelText("Archive completed tasks"));
 
     await waitFor(() => expect(archiveTaskLines).toHaveBeenCalledTimes(1));
+    // 첫 인자는 **태스크 홈**이다 — `rootPath`(/vault)가 아니다. 수집함 경로는 넘기지
+    // 않는다: 화이트리스트가 `{home}/tasks/` 한 줄이라 백엔드가 그것을 알 필요가 없다.
     expect(archiveTaskLines).toHaveBeenCalledWith(
-      ROOT,
-      INBOX,
+      HOME,
       [
         { expectedRaw: expect.any(String), line: 0, path: INBOX },
         { expectedRaw: expect.any(String), line: 3, path: INBOX },
@@ -154,7 +212,7 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
 
     expect(archiveTaskLines).not.toHaveBeenCalled();
     expect(showConfirm).not.toHaveBeenCalled();
-    expect(showAlert).toHaveBeenCalledWith(expect.stringContaining("Inbox.md"));
+    expect(showAlert).toHaveBeenCalledWith(expect.stringContaining("inbox.md"));
   });
 
   it("소스 모드 탭은 clean으로 보여도 막는다", async () => {
@@ -171,11 +229,15 @@ describe("TaskAgendaPanel — 완료 항목 정리 (§312)", () => {
     expect(archiveTaskLines).not.toHaveBeenCalled();
   });
 
-  it("Archive/ 아래의 저장되지 않은 탭도 막는다 — 대상 파일일 수 있다", async () => {
+  it("tasks/archive/ 아래의 저장되지 않은 탭도 막는다 — 대상 파일일 수 있다", async () => {
     // 어느 달 파일에 붙을지는 Rust가 정한다. 여기서 달을 다시 계산하면 같은 사실의
     // 진실원이 둘이 되므로 폴더 단위로 막는다.
     seed([old_()]);
-    openTab({ filePath: "/vault/Archive/2026-07.md", id: "t9", isDirty: true });
+    openTab({
+      filePath: "/home/tasks/archive/2026-07.md",
+      id: "t9",
+      isDirty: true,
+    });
     render(<TaskAgendaPanel />);
 
     await userEvent.click(screen.getByLabelText("Archive completed tasks"));

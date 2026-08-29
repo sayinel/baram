@@ -18,6 +18,25 @@
   gap: 4px;
 }
 
+/* 헤더의 액션 아이콘은 앱의 아이콘 언어(lucide SVG)를 쓴다 — 종전에는 이모지(🗄️ ⏩)와
+   텍스트 글리프(⟳)가 한 줄에 섞여 있었고, 이모지만 유일하게 색과 무게를 스스로 가져
+   나머지와 어울리지 않았다. 크기·획 두께는 사이드바·Zettel 패널과 같은 값이다.
+
+   ‼️ 아이콘이 SVG가 되면서 `.icon-btn:disabled`의 `opacity`가 실제로 눈에 보인다.
+   이모지는 `color`를 무시해 꺼진 상태가 거의 드러나지 않았고, 그 탓에 §312.1 배수구가
+   "눌러도 되는 것처럼 보이는 꺼진 버튼"이 되어 있었다. */
+.task-panel-search .icon-btn {
+  flex-shrink: 0;
+  padding: 3px;
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+}
+
+.task-panel-search .icon-btn:not(:disabled):hover {
+  color: var(--color-text-default);
+  background: var(--color-bg-hover);
+}
+
 .task-panel-filter {
   flex: 1;
   min-width: 0;
@@ -88,10 +107,16 @@
    그 선택 범위에 든 정리 메뉴가 다시 하이라이트로 칠해진다(사용자 스크린샷).
    태스크 원문을 복사하는 경로는 그 태스크가 사는 문서다 — 클릭 한 번으로 간다. */
 .task-row {
+  position: relative;
   display: flex;
   gap: 6px;
   align-items: baseline;
-  padding: 3px 4px;
+
+  /* 왼쪽 7px는 우선순위 레일의 거터다(레일 4px + 체크박스까지 3px). 우선순위가
+     **없는** 행에도 똑같이 두어 제목의 왼쪽 선이 흔들리지 않게 한다 — 레일 유무로
+     들여쓰기가 달라지면 목록이 지그재그로 읽힌다. 그래서 거터는 남기되 레일이 그
+     폭을 거의 다 채우도록 좁혀 두었다. */
+  padding: 3px 4px 3px 7px;
   user-select: none;
   border-radius: 4px;
 }
@@ -111,8 +136,8 @@
   white-space: nowrap;
 }
 
-/* I1: task-row-priority가 체크박스와 텍스트 버튼 사이에 끼어들 수 있어 인접
-   형제(+)로는 우선순위가 있는 행에서 매치가 끊긴다 — 일반 형제(~)로 완료
+/* I1: 우선순위 라벨 스팬(.visually-hidden)이 체크박스와 텍스트 버튼 사이에 끼어들 수
+   있어 인접 형제(+)로는 우선순위가 있는 행에서 매치가 끊긴다 — 일반 형제(~)로 완료
    스타일이 우선순위 유무와 무관하게 적용되게 한다. */
 .task-row-check:checked ~ .task-row-text {
   color: var(--color-text-muted);
@@ -159,9 +184,55 @@
    --color-bg-panel(라이트 #f1f3f5)이라 secondary도 4.35:1로 AA에 살짝 못
    미치지만, muted의 2.28:1과 달리 role="img"에 걸리는 비-텍스트 3:1은 넘고
    개선 폭이 크다. 더 올리려면 토큰이 아니라 패널 배경 쪽을 봐야 한다. */
-.task-row-priority {
-  flex-shrink: 0;
-  color: var(--color-text-secondary);
+
+/* §306 우선순위 레일 — 행 왼쪽 거터의 세로 막대 하나.
+   종전에는 기호였다(`!!! !! ↓ ↓↓`). 한 축의 단계를 두 은유(세기/방향)로 적고 있었고,
+   글리프가 행 폭을 먹어 제목이 밀렸다.
+
+   길이는 네 단계가 **모두 같다**. 높이로 단계를 나르면 목록의 왼쪽 가장자리가 행마다
+   들쭉날쭉해져, 정보를 얻는 대신 리듬을 잃는다. 대신 막대를 굵게(4px) 두고 네 개의
+   **다른 색상 계열**로 가른다 — 빨강(긴급) · 주황(높음) · 파랑(낮음) · 회색(가장 낮음).
+   같은 회색 두 톤이 아니라 서로 다른 색상이라 명도만으로도 갈린다.
+
+   낱말 라벨은 `.visually-hidden`으로 DOM에 남아 있다(TaskBucketList) — `::before`는
+   보조기술에 존재하지 않으므로 그 스팬이 없으면 우선순위가 통째로 사라진다. 색이
+   유일한 시각 채널이므로 그 스팬은 선택이 아니라 요건이다. */
+
+/* ‼️ 우선순위 낱말 라벨은 **흐름에서 뺀다.** `.visually-hidden`은 1px로 잘릴 뿐 흐름에
+   남는 관용구이고(contenteditable 캐럿 때문에 base.css가 일부러 그렇게 둔다), 그 스팬이
+   `.task-row`의 flex 아이템이 되면 1px + `gap` 6px = 7px가 제목 앞에 붙는다. 우선순위가
+   있는 행에서만 붙으므로 목록의 왼쪽 선이 행마다 어긋난다 — 사용자가 본 그 빈 공간이다.
+
+   여기서는 절대 위치가 안전하다: 이 스팬은 contenteditable 밖에 있고 캐럿이 들어갈 수
+   없다. `.task-row`가 이미 `position: relative`(레일 때문에)라 기준도 있다. */
+.task-row > .visually-hidden {
+  position: absolute;
+}
+
+.task-row[data-priority]::before {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 4px;
+  content: "";
+  border-radius: 2px;
+}
+
+.task-row[data-priority="urgent"]::before {
+  background: var(--color-status-danger);
+}
+
+.task-row[data-priority="high"]::before {
+  background: var(--color-status-warning);
+}
+
+.task-row[data-priority="low"]::before {
+  background: var(--color-status-info);
+}
+
+.task-row[data-priority="lowest"]::before {
+  background: var(--color-text-muted);
 }
 
 /* §309 기한 초과 일괄 조정 — 기한 초과가 있을 때만 나타나므로 눈에 띄어야 한다 */
@@ -340,8 +411,145 @@
 }
 
 /* 행이 tabIndex를 갖게 됐으므로 키보드 포커스가 보여야 한다 — j/k 이동이
-   어디에 있는지 알 수 없으면 키보드 경로 자체가 성립하지 않는다. */
-.task-row:focus-visible {
+   어디에 있는지 알 수 없으면 키보드 경로 자체가 성립하지 않는다.
+
+   ‼️ `:focus-visible`이 아니라 `:focus`다. 브라우저는 **프로그램이 건 포커스**를 대개
+   `:focus-visible`로 치지 않는데, §315 주간 리뷰는 열자마자 첫 행에 포커스를 건다 —
+   그러면 포커스는 실제로 거기 있는데 화면에는 아무 표시가 없고, 사용자에게는 "포커스가
+   안 잡힌다"로 보인다(실제 보고). 이 행은 마우스로 눌러도 j/k의 출발점이 되므로 그때
+   테두리가 보이는 것도 소음이 아니라 정보다. */
+.task-row:focus {
   outline: 2px solid var(--color-accent-default);
   outline-offset: -2px;
+}
+
+/* ============================================
+   §315 주간 리뷰 — 아젠다의 프리셋 필터 + 전용 레이아웃
+   ============================================ */
+
+/* 사이드바 패널이 아니라 화면 가운데의 모드다. 세 묶음을 한 흐름으로 훑는 것이 목적이라
+   좁은 사이드바에서는 성립하지 않는다 — `j`로 내려가는 동안 항목과 묶음 제목이 함께
+   보여야 지금 어디를 처리하는지 알 수 있다. */
+.weekly-review-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  padding-top: 8vh;
+  background: rgb(0 0 0 / 40%);
+}
+
+.weekly-review-dialog {
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  max-height: 78vh;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 10px;
+  box-shadow: var(--shadow-xl);
+}
+
+.weekly-review-header {
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.weekly-review-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+/* 진행 상황은 세는 것이 아니라 **줄어드는 것**을 보인다 — 남은 수가 0으로 가는 것이
+   이 화면의 완료 조건이다(§18.7 "수집함은 단조 증가하지 않는다"). */
+.weekly-review-progress {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.weekly-review-body {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.weekly-review-section + .weekly-review-section {
+  margin-top: 14px;
+}
+
+.weekly-review-section-title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* 기한 초과 묶음만 제목에 색을 준다 — 아젠다의 `today`/`overdue` 규칙과 같은 어휘다.
+   셋 다 칠하면 무엇이 급한지가 다시 사라진다. */
+.weekly-review-section[data-group="overdue"] > .weekly-review-section-title {
+  color: var(--color-status-danger);
+}
+
+.weekly-review-empty {
+  margin: 24px 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.weekly-review-footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* §312.1 배수구. 아젠다에서는 스캔 범위가 "태스크 홈"일 때만 나타나므로 기본 범위에서는
+   보이지 않는다 — 그 대가를 갚는 자리가 여기라, 이 버튼은 **언제나 있다**.
+
+   ‼️ `flex-shrink: 0`와 `text-align: left`가 함께 필요하다. 버튼의 기본 정렬은 가운데라,
+   라벨이 두 줄로 감기면 왼쪽 버튼만 가운데 정렬이고 오른쪽 힌트는 왼쪽 정렬인 상태가
+   된다 — 두 덩어리가 서로 다른 축으로 읽힌다. 늘어나지 않게 두는 것도 같은 이유다. */
+.weekly-review-archive {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-default);
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.weekly-review-archive:not(:disabled):hover {
+  background: var(--color-bg-hover);
+}
+
+.weekly-review-archive:disabled {
+  color: var(--color-text-secondary);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.weekly-review-hint {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-align: right;
 }

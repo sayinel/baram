@@ -32,7 +32,6 @@ export interface TaskTriageOptions {
   now: Date;
   /** §303 완료 시 ✅날짜를 남길지 — 체크 판정만 쓴다. */
   recordDoneDate: boolean;
-  rootPath: null | string;
 }
 
 export interface TaskTriageWiring {
@@ -47,13 +46,12 @@ export function useTaskTriage({
   exclude,
   now,
   recordDoneDate,
-  rootPath,
 }: TaskTriageOptions): TaskTriageWiring {
   const { t } = useTranslation();
 
   const context: TaskTriageContext = useMemo(
-    () => ({ editor, exclude, now, rootPath, t }),
-    [editor, exclude, now, rootPath, t],
+    () => ({ editor, exclude, now, t }),
+    [editor, exclude, now, t],
   );
 
   const onToggle = useCallback(

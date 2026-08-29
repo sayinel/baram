@@ -3,10 +3,12 @@
 import type React from "react";
 
 import type { Locale } from "../../i18n";
+import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import { useAIStore } from "../../stores/ai/ai";
 import { useSettingsStore } from "../../stores/settings/store";
+import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 
 export interface SearchableSetting {
   category: SettingsTab;
@@ -221,6 +223,33 @@ export function useSettingsRegistry(): SearchableSetting[] {
           { value: "monday", label: "settings.general.tasksWeekStart.monday" },
           { value: "sunday", label: "settings.general.tasksWeekStart.sunday" },
         ],
+      ),
+    },
+    {
+      id: "tasksHome",
+      label: "settings.general.tasksHome",
+      description: "settings.general.tasksHome.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "home", "inbox", "capture", "태스크 홈"],
+      control: NAVIGATE_CONTROL,
+    },
+    {
+      id: "tasksScanScope",
+      label: "settings.general.tasksScanScope",
+      description: "settings.general.tasksScanScope.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "scope", "agenda", "vault", "범위"],
+      control: makeSelectControl(
+        () => settings.tasksScanScope,
+        (v) => settings.setTasksScanScope(v as TaskScanScope),
+        // 설정 탭의 <select>와 같은 목록을 본다 — 범위가 늘면 한쪽에만 나타나서
+        // 검색으로는 고를 수 없는 값이 생기는 일이 없도록.
+        TASK_SCAN_SCOPES.map((scope) => ({
+          value: scope,
+          label: `settings.general.tasksScanScope.${scope}`,
+        })),
       ),
     },
     {

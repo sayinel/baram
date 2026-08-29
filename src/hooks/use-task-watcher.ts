@@ -4,9 +4,11 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
-import { refreshFileTasks, useTaskStore } from "../stores/tasks/task-store";
+import {
+  refreshFileTasksInScope,
+  useTaskStore,
+} from "../stores/tasks/task-store";
 
 /**
  * 파일트리 스토어와 결합하지 않고 같은 Tauri 이벤트를 독립적으로 구독한다.
@@ -52,10 +54,7 @@ function isMarkdown(path: string): boolean {
   return path.endsWith(".md") || path.endsWith(".markdown");
 }
 
-/** 최신 rootPath/exclude로 증분 재스캔한다 — vault가 없으면 스킵. */
+/** 증분 재스캔 — 범위 판정도 루트 선택도 스토어가 한다(§312.1). */
 function refreshChangedFile(path: string): void {
-  const { rootPath } = useFileStore.getState();
-  if (!rootPath) return;
-  const { tasksExcludePaths } = useSettingsStore.getState();
-  void refreshFileTasks(path, rootPath, tasksExcludePaths);
+  void refreshFileTasksInScope(path);
 }

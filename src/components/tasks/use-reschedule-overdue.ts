@@ -19,7 +19,6 @@ export interface RescheduleOverdue {
 export interface RescheduleOverdueOptions {
   editor: Editor | null;
   exclude: string[];
-  rootPath: null | string;
   tasks: TaskEntry[];
   today: string;
 }
@@ -27,7 +26,6 @@ export interface RescheduleOverdueOptions {
 export function useRescheduleOverdue({
   editor,
   exclude,
-  rootPath,
   tasks,
   today,
 }: RescheduleOverdueOptions): RescheduleOverdue {
@@ -55,13 +53,13 @@ export function useRescheduleOverdue({
       // 방금 만든 변경이 옛 디스크 내용으로 되돌아간다(onToggle의 문서 경로와
       // 같은 이유). 그 파일의 태스크는 rescheduleOverdueToToday가 직접 패치한다.
       for (const path of r.diskPaths) {
-        await refreshFileTasks(path, rootPath, exclude);
+        await refreshFileTasks(path, exclude);
       }
       await report(r);
     } finally {
       setBusy(false);
     }
-  }, [busy, editor, exclude, rootPath, tasks, today]);
+  }, [busy, editor, exclude, tasks, today]);
 
   return { busy, run };
 }

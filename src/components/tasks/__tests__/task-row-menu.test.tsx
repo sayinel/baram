@@ -130,7 +130,6 @@ function renderRow(
     editor,
     exclude: [],
     now: NOW,
-    rootPath: null,
     t: EN_T,
   };
   render(
@@ -166,7 +165,6 @@ function renderTwoBuckets(): { rowA: HTMLElement; rowB: HTMLElement } {
     editor: null,
     exclude: [],
     now: NOW,
-    rootPath: null,
     t: EN_T,
   };
   const bucket = (label: string, tasks: TaskEntry[]) => (

@@ -33,7 +33,6 @@ const CTX: TaskTriageContext = {
   editor: null,
   exclude: ["archive"],
   now: NOW,
-  rootPath: "/vault",
   t: EN_T,
 };
 
@@ -45,7 +44,7 @@ const TASK: TaskEntry = {
   indent: 0,
   line: 3,
   links: [],
-  path: "a.md",
+  path: "/vault/a.md",
   priority: 0,
   raw: "- [ ] 하나",
   recurrence: null,
@@ -79,14 +78,17 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getFileTasks).mockResolvedValue([]);
   useTaskStore.getState().clear();
+  // §312.1 재스캔이 `exclude`를 판정할 루트는 **마지막 전체 스캔이 걷은 목록**에서 온다 —
+  // 호출자가 넘기지 않는다. 세우지 않으면 이 파일은 어느 루트에도 속하지 않는다.
+  useTaskStore.getState().setRoots(["/vault"]);
   useUIStore.getState().dismissToast();
 });
 
 describe("§312 회계 — 디스크가 진실원인 갈래", () => {
-  it("디스크에 썼으면 그 파일만, rootPath·exclude를 실어 다시 읽는다", async () => {
+  it("디스크에 썼으면 그 파일만, 그 파일을 덮는 루트와 exclude를 실어 다시 읽는다", async () => {
     const r = await run({ kind: "disk", raw: "- [x] 하나" });
 
-    expect(r.rescan).toEqual([["a.md", "/vault", ["archive"]]]);
+    expect(r.rescan).toEqual([["/vault/a.md", "/vault", ["archive"]]]);
     expect(r.reconciled).not.toHaveBeenCalled();
     expect(r.toast).toBeNull();
   });

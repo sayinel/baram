@@ -180,11 +180,11 @@ describe("TaskAgendaPanel", () => {
     expect(getFileTasks).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a priority marker on a prioritised row and none on a normal one", () => {
-    // fix #5: a role-less <span aria-label="priority 2"> is ignored by
-    // several screen readers, and the number alone is not meaningful. The
-    // marker now uses role="img" with a word label instead — assert that
-    // real accessibility tree shape rather than the old bare aria-label.
+  it("marks a prioritised row with a rail level and leaves a normal one bare", () => {
+    // §306: priority is no longer a glyph in the row. The row carries
+    // `data-priority` and CSS draws a coloured rail in the left gutter — the
+    // symbol pair (`!!!` / `↓↓`) mixed two metaphors on one axis and ate the
+    // width the title needed.
     useTaskStore
       .getState()
       .setAll([
@@ -193,20 +193,15 @@ describe("TaskAgendaPanel", () => {
       ]);
     render(<TaskAgendaPanel />);
 
-    const marker = screen.getByRole("img", { name: "Urgent priority" });
-    // §308: the badge shows a short text symbol (PRIORITY_SYMBOL), not the
-    // raw markdown emoji — see priorityBadge.
-    expect(marker).toHaveTextContent("!!!");
-    // §308 direction C — the pill is gone, and with it the class sharing
-    // this test used to pin (`.task-chip` + `.task-row-priority`). The
-    // editor's chip is now a dot-and-label widget with its own DOM shape
-    // (see renderTaskChip), so the agenda badge no longer rides its class;
-    // task-row-priority carries its own muted colour directly (tasks.css).
-    expect(marker).toHaveClass("task-row-priority");
-    expect(marker).not.toHaveClass("task-chip");
-    // "plain" (priority 0) renders no marker at all, so there must be
-    // exactly one img-role element on the page.
-    expect(screen.getAllByRole("img")).toHaveLength(1);
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveAttribute("data-priority", "urgent");
+    // 보통(0)은 레일이 없다 — 속성 자체가 붙지 않아야 CSS 규칙이 매치되지 않는다.
+    expect(rows[1]).not.toHaveAttribute("data-priority");
+
+    // ‼️ 레일은 `::before`라 접근성 트리에 없다. 감춘 낱말 라벨이 유일한 경로이므로
+    // 그것이 사라지면 스크린 리더 사용자에게 우선순위가 통째로 없는 것이 된다.
+    expect(rows[0]).toHaveTextContent("Urgent priority");
+    expect(rows[1]).not.toHaveTextContent("priority");
   });
 
   it("filters rows by state", async () => {

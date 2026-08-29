@@ -20,7 +20,7 @@ pub async fn append_line(path: &str, line: &str) -> Result<String, TaskError> {
 /// 그 창 하나하나가 "붙었는데 못 지운" 중복을 만들 수 있다.
 ///
 /// 빈 목록은 파일을 만들지도 건드리지도 않는다 — 그래야 옮길 것이 없는 달의 빈
-/// `Archive/YYYY-MM.md`가 생기지 않는다.
+/// `tasks/archive/YYYY-MM.md`가 생기지 않는다.
 pub async fn append_lines(path: &str, lines: &[&str]) -> Result<(), TaskError> {
     if lines.iter().any(|l| l.contains('\n') || l.contains('\r')) {
         return Err(TaskError::Custom(

@@ -14,11 +14,8 @@ import { appendTaskLine } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
-import {
-  isUnderRoot,
-  normalizePath,
-  stripTrailingSeparators,
-} from "../utils/path-utils";
+import { refreshFileTasksInScope } from "../stores/tasks/task-store";
+import { isUnderRoot, normalizePath } from "../utils/path-utils";
 import {
   markSourceTabDirty,
   resolveTaskWriteTarget,
@@ -32,19 +29,21 @@ import {
   TRIGGER_BOUNDARY,
   TRIGGER_END,
 } from "../utils/tasks/task-field-tokens";
+import { DEFAULT_CAPTURE_FILE, tasksRootOf } from "../utils/tasks/tasks-home";
 
 /** UI가 원인별 문구를 고를 수 있게 하는 코드 — 문구 자체는 i18n이 갖는다. */
 export type CaptureErrorCode =
-  "dirtyTab" | "emptyBody" | "notMarkdown" | "noVault" | "outsideVault";
+  "dirtyTab" | "emptyBody" | "noTasksHome" | "notMarkdown" | "outsideHome";
 
 interface CaptureOptions {
   body: string;
-  /** 설정 `tasksCaptureFile` — 상대 경로면 `rootPath` 기준 */
+  /** 설정 `tasksCaptureFile` — `{tasksHome}/tasks/` **안**의 이름이다 */
   captureFile: string;
   editor: Editor | null;
-  rootPath: string;
   /** 다이얼로그 태그 칸의 값 — `#` 없이. 캡처 줄에 인라인 태그로 접어 넣는다. */
   tags?: string[];
+  /** §312.1 해석된 태스크 홈(`resolveTasksHome`). 활성 컨텍스트 루트가 **아니다** */
+  tasksHome: string;
   today: string;
 }
 
@@ -57,9 +56,6 @@ export class CaptureError extends Error {
     this.code = code;
   }
 }
-
-/** 설정값이 비었을 때(사용자가 입력창을 비우는 중일 수 있다) 쓸 기본 파일명. */
-const DEFAULT_CAPTURE_FILE = "Inbox.md";
 
 // 실제 마크다운 체크박스는 대시/별표/플러스 뒤에 공백이 없어도 성립한다(GFM은 요구하지만
 // 사람이 손으로 치면 자주 빠진다) — `\s*`로 느슨하게 잡는다. 대괄호 안은 ` `/`x`/`X`만
@@ -82,6 +78,8 @@ const BARE_CREATED_RE = /➕/g;
 // 걷지 않는다 — 이 게이트가 막으려던 실패 모드 그대로다. 파일 시스템의 대소문자 구분 여부와는
 // 무관하다. 걸리는 것은 문자열 비교다.
 const MARKDOWN_RE = /\.(?:markdown|md)$/;
+/** POSIX 절대 경로와 Windows 드라이브 문자 — 수집함 설정에는 둘 다 올 수 없다. */
+const ABSOLUTE_RE = /^(?:\/|[A-Za-z]:[/\\])/;
 
 /**
  * 캡처 본문을 태스크 한 줄로 만든다. 정규화 후 본문이 비면 `null`.
@@ -115,14 +113,14 @@ export function buildCaptureLine(
 
 /** 한 줄을 수집함에 붙이고 그 줄의 원문을 돌려준다. */
 export async function captureTask(opts: CaptureOptions): Promise<string> {
-  const { body, captureFile, editor, rootPath, tags, today } = opts;
+  const { body, captureFile, editor, tags, tasksHome, today } = opts;
   const line = buildCaptureLine(body, today, tags);
   if (line === null) {
     // `body.trim()`만 보면 "➕2026-01-01"처럼 정규화 뒤에야 비는 본문을 놓쳐,
     // 수집함에 지울 수 없는 빈 행이 생긴다(리뷰 Minor 2).
     throw new CaptureError("emptyBody", "captureTask: body is empty");
   }
-  const path = resolveCapturePath(rootPath, captureFile);
+  const path = resolveCapturePath(tasksHome, captureFile);
 
   const target = resolveTaskWriteTarget(path, editor);
 
@@ -152,7 +150,16 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
   // `isDirty`가 거짓말하는 유일한 경우(마크다운 소스 모드 타이핑)는 위에서 갈라져 나갔다.
   if (target.kind !== "document" || !editor) {
     assertNoUnsavedTab(path);
-    return appendTaskLine(path, line);
+    const raw = await appendTaskLine(path, line);
+    // §312.1 수집함이 **태스크 홈**으로 옮겨가면서 이 줄이 필요해졌다. 종전에는 캡처가
+    // 언제나 활성 vault 안에 썼으므로 파일 워처가 곧바로 그 파일을 다시 읽었다. 태스크
+    // 홈은 컨텍스트로 열려 있지 않을 수 있고, 그러면 감시 루트 밖이라 `file:changed`가
+    // 오지 않는다 — 방금 잡은 태스크가 아젠다에 뜨지 않는다.
+    //
+    // 위 관문들을 통과한 갈래이므로 이 파일에는 저장되지 않은 표면이 없다. 디스크를 다시
+    // 읽어도 잃을 것이 없다.
+    await refreshFileTasksInScope(path);
+    return raw;
   }
 
   // 열린 문서 경로 — 소스는 라이브 문서다. `openFiles`는 사용자의 첫 타이핑
@@ -172,35 +179,51 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
 /**
  * 캡처 파일의 절대 경로.
  *
- * `stripTrailingSeparators`/`normalizePath`로 합치고 정리한다 — 손으로 문자열을 이어
- * 붙이면 `rootPath`의 트레일링 슬래시가 `//`를 만들고(§260 Phase 4a LOW-4와 같은
- * 종류의 결함 — `resolveTaskWriteTarget`은 경로를 문자열로 정확히 비교한다),
- * `./`처럼 정리되지 않은 세그먼트도 그대로 남는다. 설정값이 빈 문자열이면(입력창을
- * 지우는 중일 수 있다) 디렉터리 경로로 미끄러지는 대신 기본 파일명으로 대체한다.
+ * `normalizePath`로 합치고 정리한다 — 손으로 문자열을 이어 붙이면 홈의 트레일링 슬래시가
+ * `//`를 만들고(§260 Phase 4a LOW-4와 같은 종류의 결함 — `resolveTaskWriteTarget`은 경로를
+ * 문자열로 정확히 비교한다), `./`처럼 정리되지 않은 세그먼트도 그대로 남는다. 설정값이 빈
+ * 문자열이면(입력창을 지우는 중일 수 있다) 디렉터리 경로로 미끄러지는 대신 기본 파일명으로
+ * 대체한다.
  *
- * 볼트 밖과 비마크다운은 **거절한다**(리뷰 Major 5). 둘 다 append 자체는 성공하고
- * 다이얼로그는 오류 없이 닫히지만, `get_vault_tasks`는 볼트만 걷고 워처는 감시 루트
- * 아래 마크다운 이벤트만 들으므로 그 태스크는 어느 버킷에도 영영 나타나지 않는다.
+ * ‼️ 설정값은 `tasks/` **안의 이름**이지 홈 기준 경로가 아니다(§312.1). 규칙이 이미
+ * `tasks/`인데 설정이 그 폴더를 되풀이하게 두면 값이 서브트리 밖을 가리킬 수 있고, 그러면
+ * §312 불가침 규칙의 화이트리스트에 "수집함은 예외" 조항이 영영 남는다. 절대 경로도 `..`로
+ * 빠져나가는 값도 여기서 걸린다 — 아래 `isUnderRoot`가 그 판정이다.
+ *
+ * 서브트리 밖과 비마크다운은 **거절한다**(리뷰 Major 5). 둘 다 append 자체는 성공하고
+ * 다이얼로그는 오류 없이 닫히지만, 스캔은 루트 아래만 걷고 워처는 감시 루트 아래 마크다운
+ * 이벤트만 들으므로 그 태스크는 어느 버킷에도 영영 나타나지 않는다.
  * `notes/`처럼 디렉터리로 적은 값도 여기서 걸린다 — 트레일링 슬래시를 뗀 `notes`는
  * `.md`가 아니고, 그대로 두면 `append_line`이 **`notes`라는 이름의 파일**을 만든다.
  *
  * §312 아카이브도 이 함수를 쓴다(`useArchiveDone`). 수집함이 어디인지는 캡처와 배수구가
  * 반드시 같은 답을 내야 하는 사실이다 — 갈라지면 아카이브의 화이트리스트가 캡처가 쓰는
  * 파일을 알아보지 못해 조용히 아무것도 옮기지 못한다.
+ *
+ * §312.1: 기준이 활성 컨텍스트 루트에서 **태스크 홈**으로 바뀌었다. 그래서 컨텍스트를
+ * 바꿔도 수집함은 같은 자리다.
  */
 export function resolveCapturePath(
-  rootPath: string,
+  tasksHome: string,
   captureFile: string,
 ): string {
   const file = captureFile.trim() === "" ? DEFAULT_CAPTURE_FILE : captureFile;
-  const joined = file.startsWith("/")
-    ? file
-    : `${stripTrailingSeparators(rootPath)}/${file}`;
-  const path = normalizePath(joined);
-  if (!isUnderRoot(path, normalizePath(rootPath))) {
+  const root = normalizePath(tasksRootOf(tasksHome));
+  // ‼️ 절대 경로는 **거절한다**, 상대 경로로 다시 읽지 않는다. 이어 붙이면 `/elsewhere/x.md`가
+  // 조용히 `{tasks}/elsewhere/x.md`가 되어, 사용자가 적은 자리도 아니고 적었다는 사실을 알
+  // 방법도 없는 파일이 생긴다. 이 설정은 `tasks/` 안의 이름이라고 말했으므로, 아닌 값에는
+  // 그렇게 답한다.
+  if (ABSOLUTE_RE.test(file)) {
     throw new CaptureError(
-      "outsideVault",
-      `capture file is outside the vault: ${path}`,
+      "outsideHome",
+      `capture file must be a name inside the tasks subtree, not an absolute path: ${file}`,
+    );
+  }
+  const path = normalizePath(`${root}/${file}`);
+  if (!isUnderRoot(path, root)) {
+    throw new CaptureError(
+      "outsideHome",
+      `capture file escapes the tasks subtree: ${path}`,
     );
   }
   if (!MARKDOWN_RE.test(path)) {
