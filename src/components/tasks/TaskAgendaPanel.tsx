@@ -178,8 +178,9 @@ export function TaskAgendaPanel() {
   );
 
   // ‼️ "예정 밀림"은 여기 넣지 않는다. 이 버튼이 하는 일은 **기한(📅)을 오늘로 미는**
-  // 것이라(`rescheduleOverdueToToday`), 예정일만 있던 태스크에 적용하면 없던 마감을
-  // 만들어 낸다. 그 항목들은 행 단위 정리(`t`)로 옮긴다.
+  // 것이라(`rescheduleOverdueToToday`), 기한이 없던 태스크에는 없던 마감을 만들고
+  // 기한이 아직 남은 태스크에는 사용자가 정한 마감을 앞당긴다. 둘 다 이 버튼이 약속한
+  // 일이 아니다 — 그 항목들은 행 단위 정리(`t`)로 옮긴다.
   const reschedule = useRescheduleOverdue({
     editor,
     exclude: tasksExcludePaths,

@@ -92,16 +92,32 @@ describe("classifyTask", () => {
     ).toBe("overdue");
   });
 
-  it("does not call a task slipped while its due date is still ahead", () => {
-    // 예정일은 넘겼지만 마감은 남았다 — 아직 아무것도 어기지 않았으므로 기한이 정한
-    // 자리에 그대로 둔다. 여기서 slipped로 끌어오면 마감이 멀쩡한 일이 밀린 것으로 보인다.
+  it("calls a task slipped even when its due date is still ahead", () => {
+    // 사용자 보고: `⏳어제 📅다음주`인 줄이 "나중"에 앉아 있었다. 한때 "기한이 있으면
+    // 기한이 정한다"로 두었기 때문인데, 그러면 "예정 밀림"이라는 이름이 약속한 것과
+    // 화면이 어긋난다 — 하려던 날을 넘긴 것은 마감이 남았다고 없던 일이 되지 않는다.
     expect(
       classifyTask(
         task({ due: "2026-08-29", scheduled: "2026-08-20" }),
         SUN,
         "sunday",
       ),
-    ).toBe("thisWeek");
+    ).toBe("slipped");
+  });
+
+  it("보고된 줄 그대로 — ➕오늘 ⏳어제 📅다음주는 예정 밀림이다", () => {
+    // `- [ ] 7th task ➕2026-08-30 ⏳2026-08-29 📅2026-09-01 ⏫`
+    const now = new Date(2026, 7, 30, 12, 0, 0);
+    const entry = task({
+      created: "2026-08-30",
+      due: "2026-09-01",
+      priority: 1,
+      scheduled: "2026-08-29",
+    });
+    expect(classifyTask(entry, now, "monday")).toBe("slipped");
+    // 주 시작 요일이 바꾸는 것은 "이번 주"의 경계뿐이다 — 밀린 것은 어느 쪽에서도 밀렸다.
+    expect(classifyTask(entry, now, "sunday")).toBe("slipped");
+    expect(lateDays(entry, now)).toBe(1);
   });
 
   it("prefers due over scheduled when both are present", () => {
@@ -201,6 +217,14 @@ describe("lateDays", () => {
     // "예정 밀림" 행의 배지가 이 숫자다. 기한 전용으로 만들면 그 버킷의 배지가 통째로
     // 0이 되어 사라진다 — 며칠 밀렸는지가 그 버킷을 훑는 유일한 단서인데도.
     expect(lateDays(task({ scheduled: "2026-08-20" }), SUN)).toBe(3);
+  });
+
+  it("counts from the scheduled date when only it is past", () => {
+    // 기한이 남은 "예정 밀림" 행. 기한 기준으로 세면 0이 되어 배지가 통째로 사라지는데,
+    // 며칠 밀렸는지가 그 버킷을 훑는 유일한 단서다.
+    expect(
+      lateDays(task({ due: "2026-12-01", scheduled: "2026-08-20" }), SUN),
+    ).toBe(3);
   });
 
   it("counts from the due date when both dates are past", () => {
