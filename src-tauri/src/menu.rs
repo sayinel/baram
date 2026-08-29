@@ -22,6 +22,11 @@ use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, Submen
 /// ‼️ Do not give a menu item an accelerator whose key is `-`, `=` or `0` with only Cmd/Ctrl:
 /// those three belong to editor zoom (`use-zoom.ts`), which listens in the CAPTURE phase and
 /// does not stop propagation, so the two fire together rather than one winning.
+///
+/// ‼️ Same class, different owner: a bare `Ctrl+R` (i.e. `CmdOrCtrl+R` on Windows/Linux, where
+/// `CmdOrCtrl` resolves to `Ctrl`) belongs to vim mode's redo — `state-machine.ts`'s
+/// `normalOrVisualStep` and `vim-code-block-boundary.ts` both bind it. See `view_reload` below
+/// for how that collision was avoided rather than reintroduced.
 const GO_BACK_ACCELERATOR: &str = "CmdOrCtrl+BracketLeft";
 const GO_FORWARD_ACCELERATOR: &str = "CmdOrCtrl+BracketRight";
 
@@ -113,6 +118,27 @@ pub fn build_menu(
         .build()?;
 
     // --- View menu ---
+    //
+    // `view_reload` (§479) is platform-conditional on its accelerator, not its existence: the
+    // item is always in the menu, but only macOS gets `CmdOrCtrl+R` bound to it — see the
+    // `Ctrl+R` ‼️ note on `GO_BACK_ACCELERATOR` above for which key it collides with and why.
+    // Per the `Ctrl+-` fix (commit history: "stop Ctrl+- firing Back and Zoom Out together"), a
+    // native accelerator firing does NOT stop the same keystroke's DOM keydown from also
+    // reaching JS — both fire. On Windows/Linux that means every vim redo would additionally
+    // trigger reload, including a silent full-app reload when there is nothing to redo and no
+    // tab is dirty. macOS has no such collision (`CmdOrCtrl` → `Cmd` only there, and both vim
+    // handlers gate on `ctrlKey`), so it keeps the platform convention. Picking a Windows/Linux
+    // key is left open deliberately — same treatment as Paragraph's still-open `Cmd+0` collision
+    // with editor zoom, a product decision rather than a defect with one correct answer.
+    #[cfg(target_os = "macos")]
+    let view_reload = MenuItemBuilder::new("Reload")
+        .id("view_reload")
+        .accelerator("CmdOrCtrl+R")
+        .build(app)?;
+    #[cfg(not(target_os = "macos"))]
+    let view_reload = MenuItemBuilder::new("Reload")
+        .id("view_reload")
+        .build(app)?;
     let view_source = MenuItemBuilder::new("Toggle Source Mode")
         .id("view_source")
         .accelerator("CmdOrCtrl+/")
@@ -172,6 +198,8 @@ pub fn build_menu(
     let view_fullscreen = PredefinedMenuItem::fullscreen(app, None)?;
 
     let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&view_reload)
+        .separator()
         .item(&view_source)
         .item(&view_sidebar)
         .separator()
@@ -488,6 +516,7 @@ pub fn build_menu(
     menu_items.insert("file_close_folder".into(), file_close_folder);
     menu_items.insert("export_doc".into(), export_doc);
     menu_items.insert("edit_find_replace".into(), edit_find_replace);
+    menu_items.insert("view_reload".into(), view_reload);
     menu_items.insert("view_source".into(), view_source);
     menu_items.insert("view_sidebar".into(), view_sidebar);
     menu_items.insert("view_palette".into(), view_palette);

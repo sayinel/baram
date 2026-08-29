@@ -1,6 +1,7 @@
-// §close-guard: Shared 3-button confirmation for unsaved changes. Used for both
-// closing a single tab (X button / Cmd+W on an Untitled tab) and quitting the
-// app. Identical look and buttons in every case: Cancel / Don't Save / Save.
+// §close-guard: Shared 3-button confirmation for unsaved changes. Used for
+// closing a single tab (X button / Cmd+W on an Untitled tab), quitting the
+// app, and reloading (§479, View > Reload / CmdOrCtrl+R). Identical look and
+// buttons in every case: Cancel / Don't Save / Save.
 import { useState } from "react";
 
 import type { CloseGuardDeps } from "../../hooks/use-close-guard";
@@ -28,7 +29,10 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
 
   if (!unsavedModal) return null;
 
-  const isQuit = unsavedModal.intent === "quit";
+  // Reload discards the whole window, so it saves every dirty tab exactly
+  // like quit rather than just the active one (§479).
+  const saveAll =
+    unsavedModal.intent === "quit" || unsavedModal.intent === "reload";
   const tab =
     unsavedModal.intent === "closeTab"
       ? useEditorStore
@@ -36,24 +40,32 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
           .tabs.find((tb) => tb.id === unsavedModal.tabId)
       : undefined;
 
-  const message = isQuit
-    ? t("unsavedChanges.quitMessage", { count: String(dirtyCount) })
-    : t("unsavedChanges.closeMessage", { name: tab?.title ?? "" });
-  const primaryLabel = isQuit
-    ? t("unsavedChanges.saveAndQuit")
-    : t("unsavedChanges.saveAndClose");
+  const message =
+    unsavedModal.intent === "quit"
+      ? t("unsavedChanges.quitMessage", { count: String(dirtyCount) })
+      : unsavedModal.intent === "reload"
+        ? t("unsavedChanges.reloadMessage", { count: String(dirtyCount) })
+        : t("unsavedChanges.closeMessage", { name: tab?.title ?? "" });
+  const primaryLabel =
+    unsavedModal.intent === "quit"
+      ? t("unsavedChanges.saveAndQuit")
+      : unsavedModal.intent === "reload"
+        ? t("unsavedChanges.saveAndReload")
+        : t("unsavedChanges.saveAndClose");
 
-  // The terminal action once the decision is resolved: quit or close the tab.
+  // The terminal action once the decision is resolved: quit, reload, or close the tab.
   const proceed = async () => {
     if (unsavedModal.intent === "quit") {
       await confirmQuit();
+    } else if (unsavedModal.intent === "reload") {
+      window.location.reload();
     } else {
       useEditorStore.getState().closeTab(unsavedModal.tabId);
     }
   };
 
   const runSave = async (): Promise<boolean> => {
-    if (isQuit) return saveAllDirtyForQuit(deps);
+    if (saveAll) return saveAllDirtyForQuit(deps);
     if (!tab) return true;
     return saveDirtyTab(
       tab,

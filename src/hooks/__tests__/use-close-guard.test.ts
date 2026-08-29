@@ -1,6 +1,6 @@
 // §close-guard: unit tests for the unsaved-changes quit/close guard helpers.
 import { renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../ipc/invoke", () => ({
   confirmQuit: vi.fn().mockResolvedValue(undefined),
@@ -23,6 +23,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import {
+  requestReload,
   saveAllDirtyForQuit,
   saveDirtyTab,
   useCloseGuard,
@@ -233,5 +234,53 @@ describe("useCloseGuard", () => {
       expect(useUIStore.getState().unsavedModal).toEqual({ intent: "quit" }),
     );
     expect(confirmQuit).not.toHaveBeenCalled();
+  });
+});
+
+// ── requestReload (§479) ─────────────────────────────────────────────────────
+
+describe("requestReload", () => {
+  const originalLocation = window.location;
+  let reload: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    reload = vi.fn();
+    // jsdom's `window.location.reload` is non-configurable, so the property itself
+    // must be replaced rather than spied on.
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, reload },
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
+  it("reloads immediately when no file tab is dirty", () => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [fileTab({ isDirty: false })],
+    });
+
+    requestReload();
+
+    expect(reload).toHaveBeenCalledOnce();
+    expect(useUIStore.getState().unsavedModal).toBeNull();
+  });
+
+  it("opens the unsaved-changes modal (intent reload) when a file tab is dirty", () => {
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [fileTab({ isDirty: true })],
+    });
+
+    requestReload();
+
+    expect(useUIStore.getState().unsavedModal).toEqual({ intent: "reload" });
+    expect(reload).not.toHaveBeenCalled();
   });
 });

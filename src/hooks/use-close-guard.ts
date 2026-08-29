@@ -124,6 +124,23 @@ export async function saveDirtyTab(
 }
 
 /**
+ * §close-guard §479: View > Reload / CmdOrCtrl+R. Reload discards the whole
+ * window (no tab state survives `window.location.reload()` — `editor.ts` has
+ * no persist middleware), so it checks every tab exactly like quit rather
+ * than just the active one. No dirty tab → reload immediately; otherwise
+ * open the shared modal (intent "reload") so the user can save first.
+ */
+export function requestReload(): void {
+  const { tabs } = useEditorStore.getState();
+  const dirty = tabs.filter((t) => t.isDirty && isFileTab(t));
+  if (dirty.length === 0) {
+    window.location.reload();
+    return;
+  }
+  useUIStore.getState().openUnsavedModal({ intent: "reload" });
+}
+
+/**
  * §close-guard: Listen for the Rust close/quit interception. If no file tab is
  * dirty, confirm the quit immediately; otherwise open the shared modal.
  */

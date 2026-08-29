@@ -85,6 +85,7 @@ Complete list of keyboard shortcuts available in Baram.
 
 | Action              | macOS         | Windows / Linux |
 | ------------------- | ------------- | --------------- |
+| Reload              | `Cmd+R`       | —               |
 | Source Mode Toggle  | `Cmd+/`       | `Ctrl+/`        |
 | Toggle Left Sidebar | `Cmd+Shift+L` | `Ctrl+Shift+L`  |
 | Zoom In             | `Cmd+=`       | `Ctrl+=`        |
@@ -93,6 +94,10 @@ Complete list of keyboard shortcuts available in Baram.
 
 Zoom scales the editor content, not the whole window. Trackpad pinch works too, and the level is
 shared with the built-in image/SVG viewer and the PDF reader.
+
+Reload is macOS-only for now: `Ctrl+R` is already vim mode's redo shortcut on Windows/Linux, so
+binding it there would fire both actions on every redo. Use the View menu's Reload item on
+Windows/Linux instead — it has no keyboard shortcut yet.
 
 ## Navigation
 

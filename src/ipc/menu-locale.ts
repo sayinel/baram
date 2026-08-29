@@ -43,6 +43,7 @@ const MENU_I18N_MAP: Record<string, string> = {
   edit_find_replace: "menu.edit.findReplace",
 
   // View menu
+  view_reload: "menu.view.reload",
   view_source: "menu.view.sourceMode",
   view_sidebar: "menu.view.sidebar",
   view_palette: "menu.view.palette",
