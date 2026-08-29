@@ -10,7 +10,6 @@
   "settings.search.placeholder": "Search settings...",
   "settings.search.empty": "No settings found for \"{query}\"",
   "settings.search.open": "Open...",
-
   "settings.tab.general": "General",
   "settings.tab.editor": "Editor",
   "settings.tab.appearance": "Appearance",
@@ -21,7 +20,6 @@
   "settings.tab.keybindings": "Keybindings",
   "settings.tab.plugins": "Plugins",
   "settings.tab.vault": "Vault",
-
   "settings.general.startup": "Startup",
   "settings.general.onLaunch": "On Launch",
   "settings.general.onLaunch.desc": "What to do when Baram starts",
@@ -154,7 +152,6 @@
   "space.zettel.disabled": "Enable Zettel in Settings › General to use the Zettel space.",
   "space.zettel.noDirectory": "Set the Zettel directory in Settings › General first.",
   "statusbar.perspective": "Perspective",
-
   "settings.editor.font": "Font",
   "settings.editor.fontFamily": "Font Family",
   "settings.editor.fontFamily.desc": "Typeface used in the editor",
@@ -182,7 +179,6 @@
   "settings.editor.fontPicker.placeholder": "Type or select a font...",
   "settings.editor.fontPicker.useCustom": "Use \"{font}\"",
   "settings.editor.fontPicker.systemDefault": "System Default",
-
   "settings.appearance.theme": "Theme",
   "settings.appearance.customize": "Customize...",
   "settings.appearance.import": "Import Theme...",
@@ -191,7 +187,6 @@
   "settings.appearance.saveCurrentLayout": "Save Current Layout...",
   "settings.appearance.customBadge": "Custom",
   "settings.appearance.deleteTheme": "Delete theme",
-
   "settings.workspace.presetName": "Perspective name...",
   "settings.workspace.deletePreset": "Delete perspective",
   "settings.workspace.builtIn": "Built-in",
@@ -202,7 +197,6 @@
   "settings.workspace.preset.journal.desc": "Open calendar, today's journal, and Memories view together.",
   "settings.workspace.preset.skills": "Skills",
   "settings.workspace.preset.skills.desc": "Layout optimized for editing LLM Skills files.",
-
   "settings.panels.files": "Files",
   "settings.panels.outline": "Outline",
   "settings.panels.search": "Search",
@@ -213,7 +207,6 @@
   "settings.panels.chat": "AI Chat",
   "settings.panels.help": "Help",
   "settings.panels.none": "None",
-
   "settings.markdown.extendedSyntax": "Extended Syntax",
   "settings.markdown.inlineMath": "Inline Math",
   "settings.markdown.inlineMath.desc": "Enable $...$ and $$...$$ math expressions",
@@ -224,7 +217,6 @@
   "settings.markdown.typography": "Typography",
   "settings.markdown.smartPunctuation": "Smart Punctuation",
   "settings.markdown.smartPunctuation.desc": "Convert straight quotes and dashes to typographic equivalents",
-
   "settings.ext.codeBlock": "Code Block",
   "settings.ext.codeBlockLineNumbers": "Code Block Line Numbers",
   "settings.ext.codeBlockLineNumbers.desc": "Show line numbers inside code blocks",
@@ -237,7 +229,6 @@
   "settings.ext.mermaidBlock": "Mermaid Block",
   "settings.ext.diagrams": "Enable Diagrams",
   "settings.ext.diagrams.desc": "Render Mermaid diagrams in code blocks",
-
   "settings.ai.provider": "Provider",
   "settings.ai.aiProvider": "AI Provider",
   "settings.ai.aiProvider.desc": "Choose the AI service for completions",
@@ -291,7 +282,6 @@
   "settings.ai.customCommands.addNew": "+ Add Custom Command",
   "settings.ai.customCommands.edit": "Edit",
   "settings.ai.customCommands.del": "Del",
-
   "settings.activitybar.desc": "Show, hide, and reorder Activity Bar icons. Use arrows to change order.",
   "settings.activitybar.sidebarPanels": "Sidebar Panels",
   "settings.activitybar.rightPanels": "Right Panels",
@@ -313,17 +303,14 @@
   "settings.activitybar.item.photo-gallery": "Photo Gallery",
   "settings.activitybar.item.snapshots": "Version History",
   "settings.activitybar.item.help": "Help",
-
   "settings.language.title": "Language",
   "settings.language.interface": "Interface Language",
   "settings.language.interface.desc": "Language for menus and interface elements",
   "settings.language.reloadNotice": "Language changes will be applied immediately.",
-
   "settings.theme.namePlaceholder": "Theme name...",
   "settings.theme.light": "Light",
   "settings.theme.dark": "Dark",
   "settings.theme.export": "Export",
-
   "menu.app": "Baram",
   "menu.app.about": "About Baram",
   "menu.app.settings": "Settings...",
@@ -413,14 +400,11 @@
   "menu.help.shortcuts": "Keyboard Shortcuts",
   "menu.help.faq": "FAQ",
   "menu.help.report": "Report Issue...",
-
   "settings.search.navigateHint": "Click to navigate to setting",
-
   "followUp.ask": "Get follow-up questions",
   "followUp.insert": "Write answer",
   "followUp.dismiss": "Dismiss",
   "followUp.loading": "Thinking...",
-
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.close": "Close",
@@ -429,7 +413,6 @@
   "common.clear": "Clear",
   "common.delete": "Delete",
   "common.custom": "Custom",
-
   "keybindings.search.placeholder": "Filter keybindings...",
   "keybindings.search.empty": "No keybindings found for \"{query}\"",
   "keybindings.edit": "Edit",
@@ -441,7 +424,6 @@
   "keybindings.conflict": "Already used by \"{command}\"",
   "keybindings.conflict.swap": "Swap",
   "keybindings.readOnly": "Extension shortcut (read-only)",
-
   "keybindings.category.file": "File",
   "keybindings.category.edit": "Edit",
   "keybindings.category.view": "View",
@@ -452,7 +434,6 @@
   "keybindings.category.journal": "Journal",
   "keybindings.category.zettelkasten": "Zettel",
   "keybindings.category.formatting": "Formatting",
-
   "keybindings.file.new": "New File",
   "keybindings.file.open": "Open File",
   "keybindings.file.openFolder": "Open Folder",
@@ -483,7 +464,6 @@
   "keybindings.workspace.zettelkasten": "Zettel Perspective",
   "keybindings.workspace.skills": "Skills Perspective",
   "keybindings.journal.quickCapture": "Quick Capture",
-  "keybindings.journal.captureTaskMode": "Toggle task mode in Quick Capture",
   "keybindings.journal.openToday": "Open Today's Journal",
   "keybindings.journal.memories": "Memories Panel",
   "keybindings.journal.photoGallery": "Photo Gallery",
@@ -509,13 +489,11 @@
   "keybindings.formatting.blockquote": "Blockquote",
   "keybindings.formatting.tableMerge": "Merge Table Cells",
   "keybindings.formatting.toggleBlock": "Toggle Block",
-
   "about.version": "Version {version}",
   "about.description": "Lightweight WYSIWYG Markdown Editor",
   "about.license": "License",
   "about.stack": "Stack",
   "about.copyright": "Copyright © 2026 Baram Team",
-
   "home.tagline": "A lightweight, beautiful, and connected Markdown editor",
   "home.openFolder": "Open Folder",
   "home.openFile": "Open File",
@@ -531,19 +509,15 @@
   "home.shortcut.newFile": "New file",
   "home.shortcut.commandPalette": "Command palette",
   "home.emptyWorkspace": "Select a file from the sidebar or press ⌘N to create a new file",
-
   "recent.folders": "Recent Folders",
   "recent.files": "Recent Files",
   "recent.clear": "Clear Recent",
   "recent.vaultBadge": "Vault",
   "recent.notFound": "Path not found — removed from recents: {name}",
-
   "command.closeFolder": "Close Folder",
-
   "help.tab.guide": "User Guide",
   "help.tab.shortcuts": "Shortcuts",
   "help.tab.faq": "FAQ",
-
   "fileTree.accessDenied.title": "Folder access denied",
   "fileTree.accessDenied.bodyMac": "macOS blocked Baram from reading this folder. Grant access in System Settings, then retry.",
   "fileTree.accessDenied.bodyGeneric": "Baram doesn't have permission to read this folder. Check the folder's permissions, then retry.",
@@ -560,13 +534,10 @@
   "fileTree.drop.folderCopied": "Copied “{name}” ({count} files).",
   "fileTree.drop.folderCopiedWithSkips": "Copied “{name}” ({count} files, skipped {skipped} symlinks).",
   "fileTree.drop.folderFailed": "Could not copy the folder “{name}”.",
-
   "htmlPreview.showPreview": "Preview",
   "htmlPreview.showSource": "Source",
   "htmlPreview.toggleTitle": "Toggle HTML preview / source",
-
   "viewer.noPlugin": "No viewer plugin is enabled for this file type. You can turn one on in Settings → Plugins.",
-
   "video.loadError": "Cannot load the video — the file is missing or this platform does not support the format: {src}",
   "video.caption": "Caption",
   "video.fullscreen": "Fullscreen",
@@ -574,7 +545,6 @@
   "video.saveFailed": "Could not save the video “{name}”.",
   "video.noDocumentPath": "Save the document before adding “{name}”.",
   "journal.mediaSaveFailed": "Could not save “{name}” to this journal entry.",
-
   "journal.loading": "Loading…",
   "journal.searching": "Searching…",
   "journal.today": "Today",
@@ -665,13 +635,11 @@
   "journal.capture.error.taskNotMarkdown": "The capture file must be a .md or .markdown file, or its tasks never appear in the agenda. Change it in Settings.",
   "journal.tagSuggest.aria": "Tag suggestions",
   "journal.zettel.titlePlaceholder": "Note title",
-
   "pdfFind.placeholder": "Find in PDF",
   "pdfFind.matchCase": "Match case",
   "pdfFind.previous": "Previous match",
   "pdfFind.next": "Next match",
   "pdfFind.close": "Close find",
-
   "pdfHighlight.copyRef": "Copy reference",
   "pdfHighlight.copyText": "Copy text",
   "pdfHighlight.delete": "Delete",
@@ -684,7 +652,6 @@
   "pdfHighlight.purge": "Delete permanently",
   "pdfHighlight.purgeConfirm": "Delete this highlight permanently? This can't be undone. Any reference to it will lose its preview. The quoted text stays in the companion note.",
   "pdfHighlight.purgeConfirmWithRefs": "Delete this highlight permanently? {count} reference(s) point to it and will lose their preview. This can't be undone. The quoted text stays in the companion note.",
-
   "pdfToolbar.prevPage": "Previous page",
   "pdfToolbar.nextPage": "Next page",
   "pdfToolbar.find": "Find in PDF",
@@ -700,7 +667,6 @@
   "pdfSidePanel.noDeletedHighlights": "No deleted highlights",
   "pdfSidePanel.pageLabel": "p. {page}",
   "pdfSidePanel.resize": "Resize the panel",
-
   "plugin.consent.title.install": "Install \"{name}\"?",
   "plugin.consent.title.update": "Update \"{name}\"?",
   "plugin.consent.fullTrust.title": "This plugin asks for full trust.",
@@ -712,7 +678,6 @@
   "plugin.consent.cancel": "Cancel",
   "plugin.consent.confirm.install": "Install",
   "plugin.consent.confirm.update": "Update and install",
-
   "plugin.capability.editor": "Read and edit the document",
   "plugin.capability.editor:readonly": "Read the document's content (cannot edit)",
   "plugin.capability.files": "Read and write files in the vault",
@@ -858,9 +823,9 @@
   "tasks.archive.title": "Archive {count} completed task(s)",
   "tasks.review.title": "Weekly review",
   "tasks.review.action": "Weekly review",
-  "tasks.review.progress": "{done} handled \u00b7 {left} to go",
+  "tasks.review.progress": "{done} handled · {left} to go",
   "tasks.review.allClear": "Nothing left to sort. {count} handled this session.",
-  "tasks.review.keyHint": "j/k to move \u00b7 x done \u00b7 t today \u00b7 s someday \u00b7 \u232b delete",
+  "tasks.review.keyHint": "j/k to move · x done · t today · s someday · ⌫ delete",
   "tasks.review.group.overdue": "Overdue",
   "tasks.review.group.noDate": "No date",
   "tasks.review.group.doneThisWeek": "Finished this week",
@@ -869,13 +834,41 @@
   "tasks.scope.currentVault": "Current vault",
   "tasks.scope.tasksHome": "Tasks home",
   "tasks.archive.confirm": "Move {count} completed task(s) finished more than {days} days ago into tasks/archive/YYYY-MM.md? They stay indexed and searchable.",
-  "tasks.archive.none": "Nothing to archive \u2014 no completed task is older than {days} days.",
+  "tasks.archive.none": "Nothing to archive — no completed task is older than {days} days.",
   "tasks.archive.noneShort": "Nothing to archive",
-  "tasks.archive.noHome": "Set a tasks home first \u2014 archiving needs a place to move things to. Settings \u2192 General \u2192 Tasks.",
+  "tasks.archive.noHome": "Set a tasks home first — archiving needs a place to move things to. Settings → General → Tasks.",
   "tasks.archive.confirmButton": "Archive",
   "tasks.archive.unsavedTab": "Save \"{file}\" first. Archiving writes to disk, and the unsaved copy in that tab would bring the moved lines back.",
-  "tasks.archive.error": "Couldn't archive. Nothing was moved \u2014 see the log.",
+  "tasks.archive.error": "Couldn't archive. Nothing was moved — see the log.",
   "tasks.archive.result": "Archived {count} task(s).",
   "tasks.archive.stale": "{count} task(s) changed elsewhere and were skipped.",
-  "tasks.archive.failed": "Couldn't archive {count} task(s). See the log."
+  "tasks.archive.failed": "Couldn't archive {count} task(s). See the log.",
+  "settings.general.tasksGlobalCapture": "Global capture shortcut",
+  "settings.general.tasksGlobalCapture.desc": "Opens Quick Capture in task mode even when Baram is in the background. Not set by default — a global shortcut is intercepted system-wide.",
+  "settings.general.tasksGlobalCapture.none": "Not set",
+  "settings.general.tasksGlobalCapture.capturing": "Press keys…",
+  "settings.general.tasksGlobalCapture.record": "Change",
+  "settings.general.tasksGlobalCapture.clear": "Clear",
+  "settings.general.tasksGlobalCapture.registered": "Registered as {value}.",
+  "settings.general.tasksGlobalCapture.unavailable": "Another app is already using this combination, so it was not registered. Pick a different one.",
+  "settings.general.tasksGlobalCapture.invalid": "A global shortcut must include a modifier key (⌘ or ⌥).",
+  "keybindings.category.tasks": "Tasks",
+  "keybindings.tasks.taskInput": "Task input — task mode in Quick Capture, edit form in the editor",
+  "tasks.edit.title": "Edit task",
+  "tasks.edit.create": "New task",
+  "tasks.edit.body": "Task",
+  "tasks.edit.date.created": "Created ➕",
+  "tasks.edit.date.start": "Start 🛫",
+  "tasks.edit.date.scheduled": "Scheduled ⏳",
+  "tasks.edit.date.due": "Due 📅",
+  "tasks.edit.date.placeholder": "2026-08-30, t, m, +3, 8/30",
+  "tasks.edit.priority": "Priority",
+  "tasks.edit.priority.urgent": "Urgent 🔺",
+  "tasks.edit.priority.high": "High ⏫",
+  "tasks.edit.priority.normal": "Normal",
+  "tasks.edit.priority.low": "Low 🔽",
+  "tasks.edit.priority.lowest": "Lowest ⏬",
+  "tasks.edit.tags": "Tags",
+  "tasks.edit.tags.placeholder": "deep-work, someday",
+  "tasks.edit.preview": "Resulting line"
 }

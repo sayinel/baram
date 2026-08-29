@@ -50,6 +50,7 @@ import {
 } from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useGhostText } from "./hooks/use-ghost-text";
+import { useGlobalCaptureShortcut } from "./hooks/use-global-capture-shortcut";
 import { useGlobalKeyboard } from "./hooks/use-global-keyboard";
 import { useInlineAI } from "./hooks/use-inline-ai";
 import { useJournal } from "./hooks/use-journal";
@@ -189,6 +190,12 @@ const SkillPreviewPanel = lazy(() =>
     default: m.SkillPreviewPanel,
   })),
 );
+const TaskEditDialog = lazy(() =>
+  import("./components/tasks/TaskEditDialog").then((m) => ({
+    default: m.TaskEditDialog,
+  })),
+);
+
 const WeeklyReviewDialog = lazy(() =>
   import("./components/tasks/WeeklyReviewDialog").then((m) => ({
     default: m.WeeklyReviewDialog,
@@ -521,6 +528,10 @@ function App() {
 
   // §304 태스크 캐시 증분 갱신 — file:* 이벤트로 변경된 파일만 재스캔
   useTaskWatcher();
+
+  // §313 전역 캡처 단축키 — 설정된 조합 하나를 OS에 등록해 둔다. 앱에서 **한 번만**
+  // 마운트한다(두 번이면 같은 조합을 두 번 등록하려다 실패 상태가 남는다).
+  useGlobalCaptureShortcut();
 
   // §71 Periodic auto-snapshot — fires performAutoSnapshot on the configured interval
   useAutoSnapshot();
@@ -1096,6 +1107,7 @@ function App() {
         <SmartTemplateDialogWrapper editor={activeEditor} />
         <QuickCaptureDialog />
         <WeeklyReviewDialog />
+        <TaskEditDialog />
         <ZettelTitleDialog />
         <ConflictModalWrapper
           onKeepLocal={(filePath) => {

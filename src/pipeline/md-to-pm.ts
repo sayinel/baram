@@ -582,50 +582,72 @@ function convertInlineChildren(
   return result;
 }
 
+/**
+ * 인라인 분리기들 — **순서가 뜻을 가진다.** 멘션(`@[[...]]`)은 위키링크의 상위집합이라
+ * 반드시 먼저다.
+ *
+ * 각 항목은 못 찾으면 빈 배열을 돌려준다(분리기들의 기존 규약).
+ */
+const INLINE_SPLITTERS: ((
+  text: string,
+  schema: Schema,
+  marks: readonly Mark[],
+) => PmNode[])[] = [
+  (t, s, m) =>
+    s.nodes.mention && t.includes("@[[")
+      ? splitTextWithMentions(t, s, [...m])
+      : [],
+  (t, s, m) =>
+    s.nodes.wikilink && t.includes("[[")
+      ? splitTextWithWikilinks(t, s, [...m])
+      : [],
+  (t, s, m) =>
+    s.nodes.blockReference && t.includes("((")
+      ? splitTextWithBlockRefs(t, s, [...m])
+      : [],
+  (t, s, m) =>
+    s.nodes.tagNode && t.includes("#") ? splitTextWithTags(t, s, [...m]) : [],
+  (t, s, m) => splitTextWithCustomInlineMarks(t, s, [...m]),
+];
+
+/**
+ * 텍스트 하나를 인라인 구성요소로 쪼갠다 — 분리기를 **차례로 겹쳐** 돌린다.
+ *
+ * ‼️ 종전에는 먼저 걸린 분리기 하나만 돌고 early return 했다. 그래서 한 텍스트에 두
+ * 구성요소가 함께 있으면 뒤엣것이 평문으로 남았다: `[[노트]] 절 쓰기 #태그`의 태그가
+ * 그랬고, 링크+블록참조·링크+하이라이트도 같았다.
+ *
+ * 화면에서는 입력 규칙이 만든 노드가 살아 있어 멀쩡해 보이다가, 파일을 다시 열면
+ * 사라진다 — 사용자에게는 "가끔 태그가 안 잡힌다"로 보이는 종류의 손실이다.
+ */
+function splitInlineText(
+  value: string,
+  schema: Schema,
+  parentMarks: Mark[],
+): PmNode[] {
+  let nodes: PmNode[] = [schema.text(value, parentMarks)];
+  for (const split of INLINE_SPLITTERS) {
+    nodes = nodes.flatMap((node) => {
+      // 이미 노드가 된 조각은 건드리지 않는다 — 그 안의 글자는 값이지 본문이 아니다.
+      if (!node.isText || !node.text) return [node];
+      const out = split(node.text, schema, node.marks);
+      return out.length > 0 ? out : [node];
+    });
+  }
+  return nodes;
+}
+
 /** Convert a single inline mdast node to PM node(s) */
 function convertInlineNode(
   node: PhrasingContent,
   schema: Schema,
   parentMarks: Mark[],
 ): PmNode[] {
-  // Text node — split on @[[mention]] and [[wikilink]] patterns
+  // Text node — 인라인 구성요소로 쪼갠다(멘션·위키링크·블록참조·태그·커스텀 마크)
   if (node.type === "text") {
     const text = node as Text;
     if (!text.value) return [];
-
-    // §57: Check for mention patterns @[[...]] BEFORE wikilinks (superset of [[]])
-    if (schema.nodes.mention && text.value.includes("@[[")) {
-      const nodes = splitTextWithMentions(text.value, schema, parentMarks);
-      if (nodes.length > 0) return nodes;
-    }
-
-    // Check for wikilink patterns and split if schema supports it
-    if (schema.nodes.wikilink && text.value.includes("[[")) {
-      const nodes = splitTextWithWikilinks(text.value, schema, parentMarks);
-      if (nodes.length > 0) return nodes;
-    }
-
-    // §30b: Check for block reference patterns and split if schema supports it
-    if (schema.nodes.blockReference && text.value.includes("((")) {
-      const nodes = splitTextWithBlockRefs(text.value, schema, parentMarks);
-      if (nodes.length > 0) return nodes;
-    }
-
-    // §56m: Check for #tag patterns and split if schema supports it
-    if (schema.nodes.tagNode && text.value.includes("#")) {
-      const nodes = splitTextWithTags(text.value, schema, parentMarks);
-      if (nodes.length > 0) return nodes;
-    }
-
-    // Custom inline marks: ==highlight==, ^superscript^, ~subscript~
-    const customMarkNodes = splitTextWithCustomInlineMarks(
-      text.value,
-      schema,
-      parentMarks,
-    );
-    if (customMarkNodes.length > 0) return customMarkNodes;
-
-    return [schema.text(text.value, parentMarks)];
+    return splitInlineText(text.value, schema, parentMarks);
   }
 
   // Inline code (leaf node in mdast, text with code mark in PM)

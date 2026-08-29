@@ -187,6 +187,12 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // §313 전역 캡처 단축키. 핸들러를 여기서 달지 않는다 — 등록도 해제도 프런트가
+        // 설정 값에 맞춰 하고(기본값 `null` = 아무것도 등록하지 않음), 조합이 이미
+        // 점유되어 있으면 `register`가 거절한다. 그 거절을 설정 화면이 받아 보여 주는
+        // 것이 §313의 필수 요건이라, 등록 주체는 실패를 사용자에게 말할 수 있는 쪽에
+        // 있어야 한다.
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         // §5.1 The HTML preview loads through this rather than asset:, so that relative
         // references inside a previewed document resolve — see protocol/html_preview.rs
         // for why asset: cannot serve them. Access is governed by the asset scope all

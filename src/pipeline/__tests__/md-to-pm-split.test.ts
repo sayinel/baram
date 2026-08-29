@@ -442,3 +442,48 @@ describe("splitTextWithCustomInlineMarks", () => {
     expect(nodes).toEqual([]);
   });
 });
+
+describe("한 텍스트에 두 구성요소가 함께 있을 때", () => {
+  /** 문단 안 인라인 노드의 종류를 등장 순서로. */
+  function inlineTypes(markdown: string): string[] {
+    const doc = markdownToProsemirror(markdown, schema);
+    const out: string[] = [];
+    doc.descendants((node) => {
+      if (!node.isBlock) out.push(node.type.name);
+      return true;
+    });
+    return out;
+  }
+
+  it("위키링크 뒤의 태그도 노드가 된다", () => {
+    // ‼️ 종전에는 먼저 걸린 분리기 하나만 돌고 early return 했다. 그래서 이 줄의
+    // `#tag`는 평문으로 남았고, 화면에서는 입력 규칙이 만든 노드가 살아 있어 멀쩡해
+    // 보이다가 **파일을 다시 열면 사라졌다** — "가끔 태그가 안 잡힌다"로 보이는 손실.
+    expect(inlineTypes("[[note]] 절 쓰기 #deep-work")).toEqual([
+      "wikilink",
+      "text",
+      "tagNode",
+    ]);
+  });
+
+  it("태그 뒤의 위키링크도 노드가 된다 — 순서가 반대여도 같다", () => {
+    expect(inlineTypes("#deep-work 절 쓰기 [[note]]")).toEqual([
+      "tagNode",
+      "text",
+      "wikilink",
+    ]);
+  });
+
+  it("위키링크와 블록참조가 함께 있어도 둘 다 산다", () => {
+    expect(inlineTypes("[[note]] 참고 ((page#^abc123))")).toEqual([
+      "wikilink",
+      "text",
+      "blockReference",
+    ]);
+  });
+
+  it("이미 노드가 된 조각 안은 다시 쪼개지 않는다", () => {
+    // 링크 **안의** `#`은 링크 대상의 일부다. 값 안을 다시 쪼개면 링크가 깨진다.
+    expect(inlineTypes("[[note#heading]] 뒤")).toEqual(["wikilink", "text"]);
+  });
+});

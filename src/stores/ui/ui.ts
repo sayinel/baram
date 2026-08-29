@@ -88,6 +88,7 @@ interface UIState {
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
   closeConflictModal: () => void;
   closeExportDialog: () => void;
+  closeTaskEdit: () => void;
   /** §close-guard: Close the shared unsaved-changes modal */
   closeUnsavedModal: () => void;
   closeWeeklyReview: () => void;
@@ -111,6 +112,10 @@ interface UIState {
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: () => void;
+  /** §313 전역 단축키로 여는 길 — 캡처창을 **태스크 모드로** 연다 */
+  openQuickCaptureForTask: () => void;
+  /** M2-b4 태스크 편집 모달 */
+  openTaskEdit: () => void;
   /** §close-guard: Open the shared unsaved-changes modal (quit or single tab) */
   openUnsavedModal: (req: UnsavedModalRequest) => void;
   openZettelTitleDialog: (opts: {
@@ -127,6 +132,8 @@ interface UIState {
   pendingApplyContent: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
+  /** §313 이번 열기가 태스크를 잡으려는 것인가 — 여는 쪽이 정하고, 닫히면 사라진다 */
+  quickCaptureTaskIntent: boolean;
   quickSwitcherOpen: boolean;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
@@ -138,8 +145,8 @@ interface UIState {
   setRightPanelWidth: (width: number) => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
-
   settingsOpen: boolean;
+
   /** §298 vim S3 — fed by SourceCodeEditor's vim controller */
   setVimStatus: (status: null | VimStatus) => void;
   /** Show a transient toast (auto-dismisses after a few seconds) */
@@ -154,6 +161,8 @@ interface UIState {
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
   smartTemplateDialogOpen: boolean;
+  /** M2-b4 태스크 편집 모달이 열려 있는가 */
+  taskEditOpen: boolean;
   /** Transient toast notification (null = hidden) */
   toast: null | ToastState;
   toggleAbout: () => void;
@@ -210,6 +219,8 @@ export const useUIStore = create<UIState>((set) => ({
   pdfRailTab: "pages" as const,
   pendingApplyContent: null,
   quickCaptureOpen: false,
+  quickCaptureTaskIntent: false,
+  taskEditOpen: false,
   weeklyReviewOpen: false,
   unsavedModal: null,
   vimStatus: null,
@@ -284,10 +295,29 @@ export const useUIStore = create<UIState>((set) => ({
       smartTemplateDialogOpen: !state.smartTemplateDialogOpen,
     })),
 
+  // ‼️ 두 경로 모두 intent를 **명시적으로 끈다.** 켜고 끄는 곳이 갈리면 전역 단축키로
+  // 한 번 연 뒤의 평범한 ⌘⇧N이 태스크 모드로 열린다 — §307D가 없애려던 "끈적이는 숨은
+  // 모드"가 다른 문으로 돌아오는 셈이다.
   toggleQuickCapture: () =>
-    set((state) => ({ quickCaptureOpen: !state.quickCaptureOpen })),
+    set((state) => ({
+      quickCaptureOpen: !state.quickCaptureOpen,
+      quickCaptureTaskIntent: false,
+    })),
 
-  openQuickCapture: () => set({ quickCaptureOpen: true }),
+  openQuickCapture: () =>
+    set({ quickCaptureOpen: true, quickCaptureTaskIntent: false }),
+
+  // §313 전역 캡처는 태스크를 잡으려고 누르는 키다 — 설정이 태스크 항목이고 이름이
+  // 그렇게 말한다. 여기서 모드를 켜 주지 않으면 사용자는 백그라운드에서 불러낸 창에서
+  // 체크박스를 한 번 더 눌러야 하고, 잊으면 fleeting note가 하나 생긴다.
+  openQuickCaptureForTask: () =>
+    set({ quickCaptureOpen: true, quickCaptureTaskIntent: true }),
+
+  // 토글이 아니다 — 이 모달은 커서가 있는 블록을 대상으로 열리므로, 열려 있는 동안
+  // 같은 키를 다시 눌러 "다른 블록으로 옮겨 여는" 일이 있을 수 없다(포커스가 모달에
+  // 있어 커서가 움직이지 않는다).
+  openTaskEdit: () => set({ taskEditOpen: true }),
+  closeTaskEdit: () => set({ taskEditOpen: false }),
 
   // §315 토글이다 — 커맨드 팔레트에서 같은 커맨드를 다시 실행하면 닫힌다. 리뷰는
   // 훑는 화면이라 "열려 있는데 또 열기"가 자연스러운 조작이 아니다.

@@ -90,6 +90,11 @@ tauri-plugin-clipboard-manager = "2"
 trash = "5"
 tauri-plugin-log = "2.9.0"
 
+# §313 전역 캡처 단축키. 데스크톱 전용 — 모바일 타깃에는 이 플러그인이 없다.
+# 기본 바인딩은 두지 않는다: 등록은 사용자가 설정에서 조합을 지정할 때만 일어난다.
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-global-shortcut = "2"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

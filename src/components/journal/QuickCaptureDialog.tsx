@@ -8,7 +8,7 @@ import {
   formatKeyForDisplay,
   normalizeKeyEvent,
 } from "../../keybindings/key-utils";
-import { CAPTURE_TASK_MODE_COMMAND } from "../../keybindings/keybinding-registry";
+import { TASK_INPUT_COMMAND } from "../../keybindings/keybinding-registry";
 import { findCommandByKey } from "../../keybindings/use-keybindings";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
@@ -30,12 +30,14 @@ export function QuickCaptureDialog() {
   const { t } = useTranslation();
   // ‼️ bare `useUIStore()` subscribes to the whole store, so an unrelated UI change re-renders
   // the dialog — and re-renders it while the user is typing into it.
-  const { quickCaptureOpen, toggleQuickCapture } = useUIStore(
-    useShallow((s) => ({
-      quickCaptureOpen: s.quickCaptureOpen,
-      toggleQuickCapture: s.toggleQuickCapture,
-    })),
-  );
+  const { quickCaptureOpen, quickCaptureTaskIntent, toggleQuickCapture } =
+    useUIStore(
+      useShallow((s) => ({
+        quickCaptureOpen: s.quickCaptureOpen,
+        quickCaptureTaskIntent: s.quickCaptureTaskIntent,
+        toggleQuickCapture: s.toggleQuickCapture,
+      })),
+    );
   // §99 M4: reactive read so the "space not configured" hint / disabled Save
   // surface immediately on open/render, not only after a failed save attempt.
   const keybindingOverrides = useSettingsStore((s) => s.keybindingOverrides);
@@ -65,9 +67,10 @@ export function QuickCaptureDialog() {
     // §307D 리뷰 Minor 6: 다이얼로그는 언마운트되지 않고 `null`을 반환하므로 태스크
     // 모드가 살아남는다. 본문·출처·태그와 같이 매번 되돌린다 — 캡처는 매번 새 결정이고,
     // 끈적이는 숨은 모드는 다음 메모를 소리 없이 수집함의 한 줄로 만든다.
-    resetTaskMode();
+    // §313 전역 캡처로 열렸으면 태스크 모드로 시작한다. 그 외에는 꺼진 상태다.
+    resetTaskMode(quickCaptureTaskIntent);
     setTimeout(() => inputRef.current?.focus(), 50);
-  }, [quickCaptureOpen, resetTaskMode]);
+  }, [quickCaptureOpen, quickCaptureTaskIntent, resetTaskMode]);
 
   const handleSave = useCallback(async () => {
     setSaveError("");
@@ -169,7 +172,7 @@ export function QuickCaptureDialog() {
         if (
           notation &&
           findCommandByKey(notation, keybindingOverrides)?.id ===
-            CAPTURE_TASK_MODE_COMMAND
+            TASK_INPUT_COMMAND
         ) {
           e.preventDefault();
           taskMode.toggle();

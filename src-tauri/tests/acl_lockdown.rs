@@ -1121,6 +1121,13 @@ const HOST_PLUGIN_COMMANDS: &[&str] = &[
     "dialog:message",
     "dialog:open",
     "dialog:save",
+    // §313 전역 캡처 단축키. 이 둘은 **OS 전역에서 키를 가로채는** 권한이라, 표면을
+    // 넓히는 값어치를 적어 둔다: `register`가 없으면 기능 자체가 없고, `unregister`가
+    // 없으면 사용자가 조합을 바꿔도 예전 조합이 계속 앱을 불러낸다(해제할 방법이 없다).
+    // `is_registered`는 **일부러 주지 않았다** — 부르는 곳이 없다. 등록 성공 여부는
+    // `register`의 반환으로 알 수 있고, 그것이 §313이 요구하는 실패 표시의 근거다.
+    "global-shortcut:register",
+    "global-shortcut:unregister",
     "opener:open_url",
     "opener:reveal_item_in_dir",
     "process:restart",

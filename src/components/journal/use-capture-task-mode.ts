@@ -16,8 +16,12 @@ import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 
 interface CaptureTaskMode {
   enabled: boolean;
-  /** 다이얼로그가 열릴 때마다 꺼진 상태로 되돌린다(§307D 리뷰 Minor 6). */
-  reset: () => void;
+  /**
+   * 다이얼로그가 열릴 때마다 **여는 쪽이 정한 상태**로 되돌린다(§307D 리뷰 Minor 6).
+   * 인자가 없으면 꺼진 상태 — 지난 캡처의 모드가 넘어오지 않는다. §313 전역 캡처만
+   * 켜진 상태로 연다.
+   */
+  reset: (initial?: boolean) => void;
   save: (body: string, tags: string[]) => Promise<void>;
   toggle: () => void;
 }
@@ -47,7 +51,7 @@ export function useCaptureTaskMode(): CaptureTaskMode {
   const [enabled, setEnabled] = useState(false);
   const editor = useEditorContext();
 
-  const reset = useCallback(() => setEnabled(false), []);
+  const reset = useCallback((initial = false) => setEnabled(initial), []);
   const toggle = useCallback(() => setEnabled((v) => !v), []);
 
   const save = useCallback(

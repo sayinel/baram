@@ -262,6 +262,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: NAVIGATE_CONTROL,
     },
     {
+      id: "tasksGlobalCaptureShortcut",
+      label: "settings.general.tasksGlobalCapture",
+      description: "settings.general.tasksGlobalCapture.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "capture", "shortcut", "global", "hotkey", "단축키"],
+      // 검색 패널에서 직접 녹음시키지 않는다 — 키를 누르는 순간 그 키가 검색창의
+      // 입력으로도 들어간다. 설정 탭으로 보낸다.
+      control: NAVIGATE_CONTROL,
+    },
+    {
       id: "tasksArchiveAfterDays",
       label: "settings.general.tasksArchiveAfterDays",
       description: "settings.general.tasksArchiveAfterDays.desc",

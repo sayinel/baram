@@ -16,6 +16,7 @@ import {
   clearActions,
   registerAction,
 } from "../keybindings/keybinding-actions";
+import { TASK_INPUT_COMMAND } from "../keybindings/keybinding-registry";
 import {
   ensureJournalFile,
   openFileInTab,
@@ -284,6 +285,23 @@ export function useKeybindingActions({
         ui.setRightPanelMode("photo-gallery");
         if (!ui.rightPanelOpen) ui.toggleRightPanel();
       }
+    });
+
+    // M2-b4 같은 명령의 두 갈래 — 캡처창이면 태스크 모드 토글, 아니면 편집 모달.
+    registerAction(TASK_INPUT_COMMAND, () => {
+      const ui = useUIStore.getState();
+      // ‼️ 캡처창의 핸들러는 `preventDefault`만 하고 전파를 막지 않는다. 이벤트는
+      // window 리스너까지 그대로 올라오므로, 이 갈래를 여기서 명시하지 않으면 한 번
+      // 누를 때 **둘 다** 일어난다 — 태스크 모드가 켜지는 동시에 모달이 뜨고, 거기서
+      // 저장한 태스크는 캡처와 무관한 현재 문서에 생긴다.
+      //
+      // 전파를 막는 쪽으로 고치지 않는 이유: 그러면 이 명령이 두 갈래라는 사실이
+      // 코드 어디에도 남지 않고, 다음 사람이 캡처창의 `stopPropagation` 한 줄을
+      // 지우는 순간 같은 결함이 조용히 돌아온다.
+      if (ui.quickCaptureOpen) return;
+      // 대상이 될 수 없는 자리(코드블록·제목·표)에서는 모달이 스스로 닫는다. 여는
+      // 판정을 여기서 한 번, 모달에서 또 한 번 하면 두 규칙이 갈라진다.
+      ui.openTaskEdit();
     });
 
     // §94 Zettelkasten

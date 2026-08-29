@@ -141,6 +141,8 @@
     "core:window:allow-close",
     "core:window:allow-create",
     "dialog:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
     "opener:allow-reveal-item-in-dir",
     "opener:default",
     "process:allow-restart",
