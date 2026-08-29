@@ -15,6 +15,7 @@ import {
   SettingsSectionHeader,
   ToggleSwitch,
 } from "../../settings-shared";
+import { GlobalCaptureRow } from "./GlobalCaptureRow";
 
 export function TasksSection() {
   const { t } = useTranslation();
@@ -188,6 +189,8 @@ export function TasksSection() {
               value={tasksCaptureFile}
             />
           </SettingsRow>
+
+          <GlobalCaptureRow />
 
           <SettingsRow
             description={t(

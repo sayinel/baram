@@ -553,3 +553,30 @@
   color: var(--color-text-secondary);
   text-align: right;
 }
+
+/* §313 전역 캡처 단축키 설정 행 — 값 한 줄, 그 아래 OS가 답한 상태 한 줄. */
+.global-capture-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.global-capture-kbd {
+  min-width: 5rem;
+  text-align: center;
+}
+
+/* 상태줄은 값보다 작고 조용하다 — 등록에 성공한 흔한 경우에 시선을 뺏지 않는다. */
+.global-capture-status {
+  max-width: 22rem;
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+/* 실패는 조용하면 안 된다(§313) — 색으로 한 번, `role="alert"`로 한 번 말한다. */
+.global-capture-status.is-warn {
+  color: var(--color-status-danger);
+}
