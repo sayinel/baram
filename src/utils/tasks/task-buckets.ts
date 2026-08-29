@@ -2,11 +2,12 @@
 import type { TaskEntry } from "../../ipc/types";
 
 export type TaskBucket =
-  "done" | "later" | "noDate" | "overdue" | "thisWeek" | "today";
+  "done" | "later" | "noDate" | "overdue" | "slipped" | "thisWeek" | "today";
 
 /** 패널에 그리는 순서 */
 export const BUCKET_ORDER: TaskBucket[] = [
   "overdue",
+  "slipped",
   "today",
   "thisWeek",
   "later",
@@ -23,13 +24,22 @@ export function classifyTask(
 ): TaskBucket {
   if (task.state === "done") return "done";
 
-  const date = effectiveDate(task);
-  if (!date) return "noDate";
+  const eff = effectiveDate(task);
+  if (!eff) return "noDate";
 
   const today = startOfDay(now);
-  if (date.getTime() < today.getTime()) return "overdue";
-  if (date.getTime() === today.getTime()) return "today";
-  return date.getTime() <= endOfWeek(now, weekStart).getTime()
+  // ‼️ 기한(📅)과 예정일(⏳)은 **지난 뒤에** 뜻이 갈린다. 기한은 약속을 어긴 것이고,
+  // 예정일은 내가 하려던 날을 넘긴 것이다 — 뒤는 아직 아무것도 어기지 않았다.
+  // 둘을 한 버킷에 담으면 예정일만 적은 캡처가 전부 빨간 "기한 초과"로 떠서, 이 화면의
+  // 빨강이 뜻을 잃는다(사용자 보고). 에디터 칩이 `due`만 붉히는 것과 같은 자다
+  // (`extensions/plugins/task-field-chips.ts`의 `isOverdue`).
+  //
+  // 지나기 **전**에는 가르지 않는다: 둘 다 "그날 볼 것"이라 버킷이 같아야 한다.
+  if (eff.date.getTime() < today.getTime()) {
+    return eff.kind === "due" ? "overdue" : "slipped";
+  }
+  if (eff.date.getTime() === today.getTime()) return "today";
+  return eff.date.getTime() <= endOfWeek(now, weekStart).getTime()
     ? "thisWeek"
     : "later";
 }
@@ -52,11 +62,17 @@ export function groupIntoBuckets(
   return groups;
 }
 
-/** 기한이 며칠 지났는지. 지나지 않았거나 날짜가 없으면 0. */
-export function overdueDays(task: TaskEntry, now: Date): number {
-  const date = effectiveDate(task);
-  if (!date) return 0;
-  const diff = startOfDay(now).getTime() - date.getTime();
+/**
+ * 날짜가 며칠 지났는지. 지나지 않았거나 날짜가 없으면 0.
+ *
+ * 어느 날짜인지는 `effectiveDate`가 정한다 — "기한 초과"에서는 기한, "예정 밀림"에서는
+ * 예정일이고, 이 값을 보여 주는 쪽은 자기가 어느 버킷인지 이미 안다. 그래서 한 함수로
+ * 족하다: 두 개로 나누면 같은 뺄셈을 두 곳에서 하게 되고, 그중 하나만 자정을 놓친다.
+ */
+export function lateDays(task: TaskEntry, now: Date): number {
+  const eff = effectiveDate(task);
+  if (!eff) return 0;
+  const diff = startOfDay(now).getTime() - eff.date.getTime();
   return diff > 0 ? Math.round(diff / MS_PER_DAY) : 0;
 }
 
@@ -113,9 +129,15 @@ export function weekRange(
   return { end, start };
 }
 
+/** 이 태스크의 버킷을 정하는 날짜와, 그것을 정한 필드. */
+interface EffectiveDate {
+  date: Date;
+  kind: "due" | "scheduled";
+}
+
 function compare(a: TaskEntry, b: TaskEntry): number {
-  const da = effectiveDate(a);
-  const db = effectiveDate(b);
+  const da = effectiveDate(a)?.date;
+  const db = effectiveDate(b)?.date;
   if (da && db && da.getTime() !== db.getTime()) {
     return da.getTime() - db.getTime();
   }
@@ -125,9 +147,19 @@ function compare(a: TaskEntry, b: TaskEntry): number {
   return a.text.localeCompare(b.text);
 }
 
-/** 기한이 없으면 예정일로 대체한다. */
-function effectiveDate(task: TaskEntry): Date | null {
-  return parseLocalDate(task.due) ?? parseLocalDate(task.scheduled);
+/**
+ * 기한이 없으면 예정일로 대체한다.
+ *
+ * `kind`를 함께 돌려주는 이유는 "지난 날짜"의 이름이 그것으로 갈리기 때문이다
+ * (기한 초과 / 예정 밀림). 호출부가 `task.due`를 한 번 더 읽어 판정하면 그 순간
+ * "어느 날짜가 이 태스크를 지배하는가"를 두 곳이 각자 답하게 된다.
+ */
+function effectiveDate(task: TaskEntry): EffectiveDate | null {
+  const due = parseLocalDate(task.due);
+  if (due) return { date: due, kind: "due" };
+  const scheduled = parseLocalDate(task.scheduled);
+  if (scheduled) return { date: scheduled, kind: "scheduled" };
+  return null;
 }
 
 /** `now`가 속한 주의 마지막 날(자정). */

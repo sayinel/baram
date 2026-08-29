@@ -827,6 +827,7 @@
   "tasks.review.allClear": "정리할 것이 남지 않았습니다. 이번에 {count}건 처리했습니다.",
   "tasks.review.keyHint": "j/k 이동 · x 완료 · t 오늘 · s 나중에 · ⌫ 삭제",
   "tasks.review.group.overdue": "기한 초과",
+  "tasks.review.group.slipped": "예정 밀림",
   "tasks.review.group.noDate": "예정 없음",
   "tasks.review.group.doneThisWeek": "이번 주 완료",
   "tasks.scope.label": "아젠다 범위",

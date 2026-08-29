@@ -34,7 +34,7 @@ function openMenuOnRow(): HTMLElement {
       onToggle={noop}
       onTriage={noop}
       showAge={false}
-      showOverdueAge={false}
+      showLateDays={false}
       tasks={[task()]}
       titleFor={(x) => x}
     />,

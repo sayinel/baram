@@ -43,7 +43,7 @@ describe("TaskBucketList", () => {
         onToggle={noop}
         onTriage={noop}
         showAge={false}
-        showOverdueAge={false}
+        showLateDays={false}
         tasks={[]}
         titleFor={(t) => t}
       />,
@@ -61,7 +61,7 @@ describe("TaskBucketList", () => {
         onToggle={noop}
         onTriage={noop}
         showAge={false}
-        showOverdueAge={false}
+        showLateDays={false}
         tasks={[task({ state: "done" })]}
         titleFor={(t) => t}
       />,
@@ -81,7 +81,7 @@ describe("TaskBucketList", () => {
         onToggle={noop}
         onTriage={noop}
         showAge={false}
-        showOverdueAge={false}
+        showLateDays={false}
         tasks={[task()]}
         titleFor={(t) => t}
       />,
@@ -100,7 +100,7 @@ describe("TaskBucketList", () => {
         onToggle={noop}
         onTriage={noop}
         showAge={false}
-        showOverdueAge={false}
+        showLateDays={false}
         tasks={[task({ state: "done" }), task({ state: "done", line: 1 })]}
         titleFor={(t) => t}
       />,
@@ -119,7 +119,7 @@ describe("TaskBucketList", () => {
         onToggle={noop}
         onTriage={noop}
         showAge={false}
-        showOverdueAge={false}
+        showLateDays={false}
         tasks={[task({ text: "회의 [[202607051530|팀 미팅]]" })]}
         titleFor={titleFor}
       />,
@@ -158,7 +158,7 @@ describe("TaskBucketList", () => {
         onToggle={noop}
         onTriage={noop}
         showAge={false}
-        showOverdueAge={false}
+        showLateDays={false}
         tasks={[task({ priority: 2, state: "done", text: "urgent done" })]}
         titleFor={(t) => t}
       />,
@@ -198,7 +198,7 @@ describe("TaskBucketList", () => {
           onToggle={noop}
           onTriage={noop}
           showAge
-          showOverdueAge={false}
+          showLateDays={false}
           tasks={[task(over)]}
           titleFor={(t) => t}
           {...props}
@@ -228,7 +228,7 @@ describe("TaskBucketList", () => {
       // showAge gate rather than "no badges rendered at all".
       const { container } = renderBucket(
         { created: ago(60), due: "2026-08-20" },
-        { bucket: "overdue", showAge: false, showOverdueAge: true },
+        { bucket: "overdue", showAge: false, showLateDays: true },
       );
       expect(container.querySelector(".task-row-stale")).toBeNull();
       expect(container.querySelector(".task-row-age")).toHaveTextContent("−5d");
@@ -245,7 +245,7 @@ describe("TaskBucketList", () => {
         onToggle={noop}
         onTriage={noop}
         showAge={false}
-        showOverdueAge={false}
+        showLateDays={false}
         tasks={[task({ text: "회의 [[202607051530]]" })]}
         titleFor={() => "팀 미팅"}
       />,

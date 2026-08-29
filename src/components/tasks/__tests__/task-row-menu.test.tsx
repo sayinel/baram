@@ -143,7 +143,7 @@ function renderRow(
         void runTaskTriageAction(action, target, ctx);
       }}
       showAge={false}
-      showOverdueAge={false}
+      showLateDays={false}
       tasks={[entry]}
       titleFor={(x) => x}
     />,
@@ -178,7 +178,7 @@ function renderTwoBuckets(): { rowA: HTMLElement; rowB: HTMLElement } {
         void runTaskTriageAction(action, target, ctx);
       }}
       showAge={false}
-      showOverdueAge={false}
+      showLateDays={false}
       tasks={tasks}
       titleFor={(x) => x}
     />
@@ -297,7 +297,7 @@ describe("§312 triage menu on an agenda row", () => {
           onToggle={noop}
           onTriage={noop}
           showAge={false}
-          showOverdueAge={false}
+          showLateDays={false}
           tasks={[first, second]}
           titleFor={(x) => x}
         />,
@@ -329,7 +329,7 @@ describe("§312 triage menu on an agenda row", () => {
           onToggle={noop}
           onTriage={noop}
           showAge={false}
-          showOverdueAge={false}
+          showLateDays={false}
           tasks={[first, second]}
           titleFor={(x) => x}
         />,
@@ -411,7 +411,7 @@ describe("§312 triage menu on an agenda row", () => {
           onToggle={noop}
           onTriage={noop}
           showAge={false}
-          showOverdueAge={false}
+          showLateDays={false}
           tasks={tasks}
           titleFor={(x) => x}
         />

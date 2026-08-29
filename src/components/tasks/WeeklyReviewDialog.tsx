@@ -29,6 +29,7 @@ import {
 } from "../../utils/tasks/task-filters";
 import {
   groupForReview,
+  isActionableGroup,
   REVIEW_GROUP_ORDER,
 } from "../../utils/tasks/task-review";
 import {
@@ -104,7 +105,8 @@ function ReviewSection({
             onToggle={onToggle}
             // 방치 배지는 "예정 없음"에서만 — 이 화면이 그 묶음을 위에 두는 이유가 그것이다.
             showAge={group === "noDate"}
-            showOverdueAge={group === "overdue"}
+            // 아젠다와 같은 규칙 — 밀린 것 둘 다 지남 일수를 보인다.
+            showLateDays={group === "overdue" || group === "slipped"}
             task={task}
             titleFor={titleFor}
           />
@@ -158,7 +160,13 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
   );
 
   // 훑어서 처리할 것 — 회고(이번 주 완료)는 세지 않는다.
-  const remaining = groups.overdue.length + groups.noDate.length;
+  //
+  // ‼️ 묶음을 손으로 더하지 않는다. 묶음이 하나 늘 때 여기를 잊으면 진행률이 "3 남음"이라
+  // 말하는 화면에 항목이 다섯 개 떠 있게 되고, 다 비워도 "끝났다"가 뜨지 않는다.
+  const remaining = REVIEW_GROUP_ORDER.filter(isActionableGroup).reduce(
+    (n, group) => n + groups[group].length,
+    0,
+  );
   const startedWith = useRef<null | number>(null);
   // 스캔이 끝나기 전에 0으로 굳으면 진행률이 영영 0이 된다 — 처음으로 대상이 보인 순간을
   // 시작점으로 삼는다.
@@ -173,8 +181,11 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
     recordDoneDate: tasksRecordDoneDate,
   });
 
+  // ‼️ 순서가 **화면과 같아야** 한다 — `j`/`k`의 자동 전진이 이 배열의 인덱스로 자리를
+  // 되찾으므로(아래 advanceTo), 여기서 한 줄이라도 어긋나면 항목을 처리한 뒤 포커스가
+  // 엉뚱한 행으로 뛴다. 그래서 화면을 그리는 그 상수에서 그대로 편다.
   const allRows = useMemo(
-    () => [...groups.overdue, ...groups.noDate, ...groups.doneThisWeek],
+    () => REVIEW_GROUP_ORDER.flatMap((group) => groups[group]),
     [groups],
   );
   const { closeMenu, dismissMenu, menu, openMenu } = useTaskRowMenu(allRows);

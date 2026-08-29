@@ -26,7 +26,7 @@ interface Props {
   onTriage: (task: TaskEntry, action: string) => void;
   /** §312 방치 배지를 보일지 — "예정 없음" 버킷에서만 켠다. */
   showAge: boolean;
-  showOverdueAge: boolean;
+  showLateDays: boolean;
   tasks: TaskEntry[];
   /** 링크 target → 노트 제목. 없으면 target을 그대로 보인다. */
   titleFor: (target: string) => string;
@@ -40,7 +40,7 @@ export function TaskBucketList({
   onToggle,
   onTriage,
   showAge,
-  showOverdueAge,
+  showLateDays,
   tasks,
   titleFor,
 }: Props) {
@@ -115,7 +115,7 @@ export function TaskBucketList({
             onOpenMenu={openMenu}
             onToggle={onToggle}
             showAge={showAge}
-            showOverdueAge={showOverdueAge}
+            showLateDays={showLateDays}
             task={task}
             titleFor={titleFor}
           />

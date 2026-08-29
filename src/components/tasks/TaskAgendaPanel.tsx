@@ -40,6 +40,7 @@ const BUCKET_LABEL: Record<TaskBucket, string> = {
   later: "Later",
   noDate: "No date",
   overdue: "Overdue",
+  slipped: "Past scheduled",
   thisWeek: "This week",
   today: "Today",
 };
@@ -176,6 +177,9 @@ export function TaskAgendaPanel() {
     [visible, now, tasksWeekStart],
   );
 
+  // ‼️ "예정 밀림"은 여기 넣지 않는다. 이 버튼이 하는 일은 **기한(📅)을 오늘로 미는**
+  // 것이라(`rescheduleOverdueToToday`), 예정일만 있던 태스크에 적용하면 없던 마감을
+  // 만들어 낸다. 그 항목들은 행 단위 정리(`t`)로 옮긴다.
   const reschedule = useRescheduleOverdue({
     editor,
     exclude: tasksExcludePaths,
@@ -359,7 +363,9 @@ export function TaskAgendaPanel() {
             onToggle={onToggle}
             onTriage={onTriage}
             showAge={bucket === "noDate"}
-            showOverdueAge={bucket === "overdue"}
+            // 지남 일수는 "밀린 것" 둘 다에서 뜻이 있다 — 앞은 기한을, 뒤는 예정일을
+            // 넘긴 일수다. 색은 다르다(tasks.css): 빨강은 기한 초과만 갖는다.
+            showLateDays={bucket === "overdue" || bucket === "slipped"}
             tasks={groups[bucket]}
             titleFor={titleFor}
           />

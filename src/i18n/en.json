@@ -827,6 +827,7 @@
   "tasks.review.allClear": "Nothing left to sort. {count} handled this session.",
   "tasks.review.keyHint": "j/k to move · x done · t today · s someday · ⌫ delete",
   "tasks.review.group.overdue": "Overdue",
+  "tasks.review.group.slipped": "Past scheduled",
   "tasks.review.group.noDate": "No date",
   "tasks.review.group.doneThisWeek": "Finished this week",
   "tasks.scope.label": "Agenda scope",

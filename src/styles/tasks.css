@@ -150,6 +150,17 @@
   color: var(--color-status-danger);
 }
 
+/* §306 "예정 밀림"의 지남 일수는 빨강이 아니다.
+
+   빨강은 기한(📅)을 넘긴 것만 갖는다 — 에디터 칩도 같은 규칙이고(`isOverdue`가 `due`만
+   본다), 그 규칙이 이 버킷을 따로 만든 이유다. 둘 다 빨강이면 갈라 놓은 뜻이 화면에서
+   다시 합쳐져, 예정일만 적은 캡처가 전부 위급해 보이던 종전 상태로 돌아간다.
+   `.task-row-stale`과 같은 warning을 쓴다 — 둘 다 "봐야 한다"이지 "어겼다"가 아니다. */
+.task-bucket[data-bucket="slipped"] .task-row-age,
+.weekly-review-section[data-group="slipped"] .task-row-age {
+  color: var(--color-status-warning);
+}
+
 .task-bucket-header::-webkit-details-marker {
   display: none;
 }
