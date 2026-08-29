@@ -455,6 +455,7 @@
   "keybindings.edit.toggleFold": "접기/펼치기",
   "keybindings.edit.foldAll": "모두 접기",
   "keybindings.edit.unfoldAll": "모두 펼치기",
+  "keybindings.view.reload": "새로고침",
   "keybindings.view.sourceMode": "소스 모드",
   "keybindings.view.toggleSidebar": "사이드바 토글",
   "keybindings.view.commandPalette": "명령 팔레트",

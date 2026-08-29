@@ -124,12 +124,21 @@ pub fn build_menu(
     // `Ctrl+R` ‼️ note on `GO_BACK_ACCELERATOR` above for which key it collides with and why.
     // Per the `Ctrl+-` fix (commit history: "stop Ctrl+- firing Back and Zoom Out together"), a
     // native accelerator firing does NOT stop the same keystroke's DOM keydown from also
-    // reaching JS — both fire. On Windows/Linux that means every vim redo would additionally
-    // trigger reload, including a silent full-app reload when there is nothing to redo and no
-    // tab is dirty. macOS has no such collision (`CmdOrCtrl` → `Cmd` only there, and both vim
-    // handlers gate on `ctrlKey`), so it keeps the platform convention. Picking a Windows/Linux
-    // key is left open deliberately — same treatment as Paragraph's still-open `Cmd+0` collision
-    // with editor zoom, a product decision rather than a defect with one correct answer.
+    // reaching JS — both fire. On Windows/Linux that would mean every vim redo also triggering
+    // reload, including a silent full-app reload when there is nothing to redo and no tab is
+    // dirty. macOS has no such collision (`CmdOrCtrl` → `Cmd` only there, and both vim handlers
+    // gate on `ctrlKey`), so it keeps the platform convention.
+    //
+    // Windows/Linux is NOT left keyboard-inaccessible, though: `keybinding-registry.ts`'s
+    // `view.reload` entry (`Mod+R`, customizable) is the app's OWN global keydown dispatch
+    // (`use-keybinding-actions.ts`), independent of this native menu. Every handler that
+    // actually claims `Ctrl+R` for vim redo — the WYSIWYG state machine, the code-block
+    // boundary handler, and `@replit/codemirror-vim` — calls both `preventDefault` and
+    // `stopPropagation`, which stops the keystroke from ever reaching that dispatcher (verified:
+    // `use-global-keyboard-reload-vim-defer.test.ts`). So on Windows/Linux, `Ctrl+R` reloads
+    // whenever vim isn't actively consuming it, and defers cleanly when it is — no double-fire,
+    // no dead key. Nothing here needed to change to get that; it falls out of the two systems
+    // already being independent.
     #[cfg(target_os = "macos")]
     let view_reload = MenuItemBuilder::new("Reload")
         .id("view_reload")

@@ -17,12 +17,17 @@ vi.mock("../../services/journal-file-service", () => ({
   openFileInTab: vi.fn(async () => {}),
 }));
 
+vi.mock("../use-close-guard", () => ({
+  requestReload: vi.fn(),
+}));
+
 import { t } from "../../i18n";
 import { getAction } from "../../keybindings/keybinding-actions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { requestReload } from "../use-close-guard";
 import { useKeybindingActions } from "../use-keybinding-actions";
 
 /** Minimal Editor stub satisfying getSelectionMarkdown()'s usage. */
@@ -60,6 +65,17 @@ function renderActionsHook(editor: Editor | null) {
     }),
   );
 }
+
+describe("view.reload — registry action wiring (§479)", () => {
+  it("registers view.reload and dispatches to requestReload", () => {
+    vi.mocked(requestReload).mockClear();
+    renderActionsHook(null);
+
+    getAction("view.reload")?.();
+
+    expect(requestReload).toHaveBeenCalledOnce();
+  });
+});
 
 describe("zettelkasten.newFromSelection — gated to the zettel space (§95/§99 M5)", () => {
   beforeEach(() => {
