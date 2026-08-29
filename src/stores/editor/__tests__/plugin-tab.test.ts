@@ -3,7 +3,7 @@
 // flag, a file path, a save path) as about the payload it carries.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../file/file", () => ({
+vi.mock("../../../services/vault-context-loader", () => ({
   switchContext: (...a: unknown[]) => switchContext(...a),
 }));
 

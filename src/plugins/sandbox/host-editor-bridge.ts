@@ -24,7 +24,7 @@ import {
   NO_EDITOR_OPEN,
   type PluginEditorHandle,
   readSelection,
-} from "../extension-context";
+} from "../plugin-host-registry";
 import { EDITOR_READ_CAPABILITIES, EDITOR_WRITE_CAPABILITIES } from "../types";
 import { createCapabilityGate } from "./capability-gate";
 

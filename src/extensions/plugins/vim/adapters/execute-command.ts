@@ -20,9 +20,10 @@ import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { getAction } from "../../../../keybindings/keybinding-actions";
+import { segmentSpanAt } from "./cursor-line-columns";
 import { cursorSelection } from "./cursor-selection";
 import { nextUnitBoundary } from "./graphemes";
-import { resolveFindChar, segmentSpanAt, wordEndAt } from "./motions";
+import { resolveFindChar, wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
 import {
   changeLines,

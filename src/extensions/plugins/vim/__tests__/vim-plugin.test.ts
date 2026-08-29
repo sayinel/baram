@@ -15,7 +15,7 @@ import { syntaxRevealKey } from "../../syntax-reveal-state";
 import { executeCoreCommand } from "../adapters/execute-command";
 import { readVimRegister, resetVimRegister } from "../adapters/register";
 import { vimPluginKey, withVimExternalEdit } from "../vim-keys";
-import { type VimPluginState } from "../vim-plugin";
+import { type VimPluginState } from "../vim-plugin-state";
 
 const editors: Editor[] = [];
 

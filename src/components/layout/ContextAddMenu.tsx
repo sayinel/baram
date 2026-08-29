@@ -8,8 +8,8 @@ import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { initVault } from "../../ipc/context";
+import { addFolder } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
-import { addFolder } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";

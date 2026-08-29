@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { type Locale, t } from "../../i18n";
+import { switchContext } from "../../services/vault-context-loader";
 import { getSpace } from "../../spaces";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
@@ -17,7 +18,7 @@ import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
 import { type RightPanelMode, type SidebarPanel, useUIStore } from "../ui/ui";
 import { refreshZettelIndex } from "../zettelkasten/zettel-index";
-import { switchContext, useFileStore } from "./file";
+import { useFileStore } from "./file";
 
 // --- Types ---
 

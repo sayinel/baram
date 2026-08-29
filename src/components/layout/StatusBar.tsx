@@ -1,6 +1,7 @@
 // §4.8 Status bar — word count, cursor position, mode indicator, git branch
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { SurfaceKind } from "../../utils/editor/surface-kind";
 import type { Editor } from "@tiptap/react";
 
 import {
@@ -41,6 +42,31 @@ import "../../styles/zettelkasten.css";
 import { VimSearchInput } from "./VimSearchInput";
 
 export type EditorMode = "graph" | "plugin" | "preview" | "source" | "wysiwyg";
+
+/**
+ * §298 vim §8 / §286 — `resolveSurfaceKind` (`utils/editor/surface-kind.ts`) answers a finer
+ * question than the status bar needs to show: it tells "pdf" from "image" from a plugin/HTML
+ * preview, all of which read the same "Preview" here, and it has no tab open at all as two
+ * kinds ("home"/"empty") the status bar doesn't even render for (App only mounts `StatusBar`
+ * when a vault is open, and hides itself entirely otherwise). This is a total function so
+ * adding a `SurfaceKind` without extending it is a type error, not a silent "Preview".
+ */
+const SURFACE_KIND_TO_EDITOR_MODE: Record<SurfaceKind, EditorMode> = {
+  empty: "wysiwyg",
+  graph: "graph",
+  home: "wysiwyg",
+  image: "preview",
+  markdown: "wysiwyg",
+  pdf: "preview",
+  plugin: "plugin",
+  preview: "preview",
+  source: "source",
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function editorModeForSurfaceKind(kind: SurfaceKind): EditorMode {
+  return SURFACE_KIND_TO_EDITOR_MODE[kind];
+}
 
 /** §298 vim §8 — which vim surface a StatusBar mode belongs to. The SAME
  *  mapping appoints the wysiwyg status owner (App) and arbitrates the

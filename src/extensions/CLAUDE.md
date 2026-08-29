@@ -150,6 +150,14 @@ NodeView 안에 **PM 본문이 아닌 입력 요소**(input/textarea/select/CM �
   `VIM_ISLAND_MARKERS`를 제거할 것 (DOMPurify는 `data-*`·`tabindex`를 기본 허용하므로 공유 문서가
   suspension을 자칭하거나 실제 island에서 거부해 사용자 타이핑을 vim 명령으로 실행시킬 수 있다).
 
+## atom 블록의 vim 편집 세션 (§298)
+
+textarea 기반 atom 블록(수식·mermaid·svg류)의 vim 진입/이탈 세션(진입 래치, 선택 해제 시 저장,
+Esc 계단, 대기 textarea 배선)은 **`nodes/views/use-atom-edit-session.ts` 공유 훅을 쓸 것** —
+entryKey는 인자로 주입(노드 모듈 import 금지, 순환). 과거 세 뷰가 이 기계를 복사해 갖고 있다가
+수정이 한 곳에만 착지하는 사고가 있어 통일했다. 새 atom 블록은 네 번째 복사본을 만들지 말 것.
+훅 호출 위치는 기존 effect 순서를 바꾸지 않는 자리에 둘 것 (렌더 디바운스가 effect 등록 순서에 의존).
+
 ## registry.json 유지 규칙
 
 Extension을 추가/수정할 때 반드시 `registry.json`도 함께 업데이트할 것.

@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBaramExtensions } from "../../../index";
 import { scrollCursorIntoView } from "../adapters/scroll";
 import { vimPluginKey } from "../vim-keys";
-import { type VimPluginState } from "../vim-plugin";
+import { type VimPluginState } from "../vim-plugin-state";
 
 vi.mock("../adapters/scroll", async (importOriginal) => {
   const actual = await importOriginal<object>();

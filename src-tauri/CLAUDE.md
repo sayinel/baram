@@ -91,6 +91,12 @@ app_handle.emit("file:changed", FileChangedPayload {
 3. `fs::rename()`으로 원본 파일을 교체 (OS 수준 원자적 보장)
 4. 실패 시 임시 파일 삭제
 
+## zip 추출 규칙
+
+- 모든 zip 추출은 `fs/archive.rs`의 `ExtractBounds` 공용 코어 경유 (6종 폭탄 방어; 경로 봉쇄는 호출자가 `enclosed_name` 기반으로).
+- `fs::extract_zip`은 스테이징 2단계: 출력 폴더 내 tempdir에 전량 추출 → 읽기 전용 PREFLIGHT 전수 검사 → 통과 시에만 COMMIT(rename). 거부는 출력 폴더 무손상 — 계약 상세는 `commit_staged_extraction` doc.
+- **`plugin/mod.rs`의 REVOCATION 상수 3개는 이동 금지** — 프론트 테스트 2개와 `scripts/rust-constants.ts`가 그 파일을 리터럴 경로로 스캔한다 (옮기면 컴파일은 통과, 검증은 무음 사망).
+
 ## Cargo.toml 의존성
 
 **`Cargo.toml`이 canonical이다** — 이 문서에 버전 목록을 중복 기재하지 않는다 (과거 목록이 실제와 크게 어긋난 전례가 있음).

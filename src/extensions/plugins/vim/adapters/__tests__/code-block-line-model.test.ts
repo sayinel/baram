@@ -28,7 +28,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../../../../pipeline/md-to-pm";
 import { createBaramExtensions } from "../../../../index";
-import { insertEntryTarget, resolveMotion } from "../motions";
+import { insertEntryTarget } from "../code-block-landing";
+import { resolveMotion } from "../motions";
 
 const editors: Editor[] = [];
 
@@ -410,6 +411,25 @@ describe("insertEntryTarget (issue 477 — insert-mode arrow entry landing)", ()
     });
     const lastLineStart = block.at + 1 + block.text.lastIndexOf("\n") + 1;
     expect(target).toBe(lastLineStart + 2); // 'x'의 시작 (마지막 unit start)
+  });
+
+  it("counted 2k passes THROUGH a short block with the column INTACT", () => {
+    // 착지 분기는 캐리 칼럼을 갱신하지 않고 continue한다는 계약의 핀
+    // (적대 리뷰: 기존 관통 핀은 column 0만 검사했다). column 6에서 2k로
+    // 짧은 블록을 관통하면 위 문단의 column 6에 도착해야 한다 — 착지
+    // 클램프(블록 줄은 2 grapheme)가 칼럼을 오염시키면 실패한다.
+    const editor = makeEditor("abcdefgh\n\n```ts\nab\n```\n\nafter-line\n");
+    const block = findNode(editor, "codeBlock");
+    let afterAt = -1;
+    editor.state.doc.forEach((node, offset) => {
+      if (offset > block.at && afterAt < 0 && node.type.name === "paragraph")
+        afterAt = offset;
+    });
+    const from = afterAt + 1 + 6; // "after-line" column 6
+    const target = resolveMotion(editor.state, from, "lineUp", 2, {
+      codeBlockEntry: "directional",
+    });
+    expect(target).toBe(0 + 1 + 6); // "abcdefgh" column 6 — 칼럼 생존
   });
 
   it("journal-* blocks have no CM caret: returns null", () => {

@@ -1,0 +1,287 @@
+/* Split from components.css */
+
+/* §5.13 Query Block */
+.tiptap .query-block-wrapper {
+  margin: 0.5rem 0;
+}
+
+.tiptap .qb-container {
+  position: relative; /* anchors the standby input (§12-⑩) */
+  overflow: hidden;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+}
+
+/* §12-⑩ standby — mounted so vim's `i` preflight has something to focus
+   while a traversal selection sits on the block; focusing it opens the
+   builder and forwards into its first control. */
+.qb-standby {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  opacity: 0;
+}
+
+.tiptap .qb-container.qb-editing {
+  border-color: var(--color-accent-default);
+  box-shadow: 0 0 0 1px var(--color-accent-default);
+}
+
+.tiptap .qb-header {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.tiptap .qb-title {
+  color: var(--color-text-secondary);
+}
+
+.tiptap .qb-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* Builder */
+.tiptap .qb-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.tiptap .qb-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tiptap .qb-section.qb-row {
+  flex-flow: row wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.tiptap .qb-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tiptap .qb-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.tiptap .qb-select,
+.tiptap .qb-input {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.tiptap .qb-select:focus,
+.tiptap .qb-input:focus {
+  outline: none;
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .qb-combinator {
+  width: 60px;
+}
+
+.tiptap .qb-field {
+  width: 100px;
+}
+
+.tiptap .qb-operator {
+  width: 90px;
+}
+
+.tiptap .qb-value {
+  flex: 1;
+  min-width: 100px;
+}
+
+.tiptap .qb-limit {
+  width: 60px;
+}
+
+.tiptap .qb-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.tiptap .qb-btn:hover {
+  background: var(--color-bg-subtle);
+}
+
+.tiptap .qb-add {
+  align-self: flex-start;
+  color: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .qb-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--color-text-muted);
+  border: none;
+}
+
+.tiptap .qb-remove:hover {
+  color: var(--color-status-danger);
+}
+
+.tiptap .qb-run {
+  align-self: flex-start;
+  font-weight: 500;
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border: none;
+}
+
+.tiptap .qb-run:hover {
+  background: var(--color-accent-solid-hover);
+}
+
+/* Results */
+.tiptap .qb-results {
+  padding: 8px 12px;
+}
+
+.tiptap .qb-empty {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.tiptap .qb-error {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-status-danger);
+  background: var(--color-status-error-bg);
+}
+
+/* List display */
+.tiptap .qb-list-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tiptap .qb-list-item:hover {
+  background: var(--color-bg-subtle);
+}
+
+.tiptap .qb-list-name {
+  font-weight: 500;
+}
+
+.tiptap .qb-list-path {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* Table display */
+.tiptap .qb-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.tiptap .qb-table th,
+.tiptap .qb-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border: 1px solid var(--color-border-default);
+}
+
+.tiptap .qb-table th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: var(--color-bg-elevated);
+}
+
+.tiptap .qb-path {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+/* Card display */
+.tiptap .qb-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.tiptap .qb-card {
+  padding: 8px;
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.tiptap .qb-card:hover {
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .qb-card-name {
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tiptap .qb-card-path {
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.tiptap .qb-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tiptap .qb-tag {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+  border-radius: 3px;
+}

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { openFolder } from "../../services/vault-context-loader";
 import { useContextStore } from "../context/context";
-import { openFolder } from "../file/file";
 import { useSettingsStore } from "../settings/store";
 
 // §82 Fix 1 regression: openFolder must not downgrade an already-open vault

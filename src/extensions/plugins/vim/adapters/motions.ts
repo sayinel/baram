@@ -21,18 +21,17 @@ import type { EditorState } from "@tiptap/pm/state";
 import { TableMap } from "@tiptap/pm/tables";
 
 import { findTargetMatches } from "../core/hangul";
+import { codeBlockLandingAt } from "./code-block-landing";
+import {
+  columnOf,
+  type CursorLine,
+  lineSpanAt,
+  lineUnitStarts,
+  segmentSpanAt,
+} from "./cursor-line-columns";
 import { nextUnitBoundary, prevUnitBoundary } from "./graphemes";
 import { splitSegments } from "./line-units";
 
-/** One cursor line: a segment's content span, or an atom block boundary. */
-interface CursorLine {
-  end: number;
-  start: number;
-}
-
-const graphemeSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "grapheme",
-});
 const wordSegmenter = new Intl.Segmenter(undefined, { granularity: "word" });
 
 /** Optional per-call motion policy (issue 472). */
@@ -57,37 +56,6 @@ interface TableWalk {
 }
 
 // ── unit columns ───────────────────────────────────────────────────────────
-
-/** issue 477 — insert-mode arrow entry target: the directionally adjacent
- *  source line of the code block whose CONTENT starts at `inside`, carrying
- *  the column of the PM caret at `from`. The caret model differs from the
- *  normal-mode walk: an insert caret sits BETWEEN characters and may
- *  legally land at line END, where normal mode clamps to the last
- *  character. Column policy is the shared one (file
- *  header): logical lines — hard breaks split, soft wraps demoted — in
- *  grapheme units, the v1 approximation whose full curswant treatment is
- *  issue 372 tier 1. Returns null for a block with no CodeMirror caret to
- *  receive the offset (journal-* widget NodeViews). */
-export function insertEntryTarget(
-  state: EditorState,
-  from: number,
-  inside: number,
-  edge: "first" | "last",
-): null | number {
-  if (!isCmBackedCodeBlock(state, inside)) return null;
-  const column = columnOf(lineUnitStarts(state, lineSpanAt(state, from)), from);
-  const line = codeLineSpan(state, inside, edge);
-  // The carried column is a GRAPHEME index — resolve it through the target
-  // line's own grapheme starts instead of adding it as a UTF-16 offset,
-  // which would land inside a surrogate pair or combining sequence
-  // (adversarial review). Past the last grapheme = line END, the insert
-  // caret's extra legal column.
-  const starts = lineUnitStarts(state, {
-    end: line.start + line.length,
-    start: line.start,
-  });
-  return column < starts.length ? starts[column] : line.start + line.length;
-}
 
 /**
  * f/F/t/T — the count-th occurrence of `char` in the CURRENT segment,
@@ -149,6 +117,23 @@ export function resolveFindChar(
   if (matchIndex < 0) return pos;
   const target = till ? starts[matchIndex + 1] : starts[matchIndex];
   return target !== undefined && target < pos ? target : pos;
+}
+
+/** issue 487 — ex `:N` 줄 이동의 대상: N번째 커서 줄의 시작. 줄 모델은
+ *  j/k와 동일(collectLines)이라 hard-break 분절·테이블 행·"코드블록 =
+ *  한 줄" 카운트가 자동 일치한다. 본가 vim처럼 범위 밖은 마지막 줄로
+ *  클램프, `"$"`는 마지막 줄. 빈 문서면 null. */
+export function cursorLineStart(
+  state: EditorState,
+  line: "$" | number,
+): null | number {
+  const lines = collectLines(state);
+  if (lines.length === 0) return null;
+  const index =
+    line === "$"
+      ? lines.length - 1
+      : Math.min(Math.max(line, 1), lines.length) - 1;
+  return lines[index].start;
 }
 
 /**
@@ -236,22 +221,6 @@ export function resolveMotion(
   }
 }
 
-/** The hard-break segment (or whole-textblock span) holding `pos`; null on
- *  an atom boundary. */
-export function segmentSpanAt(
-  state: EditorState,
-  pos: number,
-): null | { from: number; to: number } {
-  const $pos = state.doc.resolve(pos);
-  if (!$pos.parent.isTextblock) return null;
-  const textblockPos = $pos.before($pos.depth);
-  const segments = splitSegments($pos.parent, textblockPos);
-  return (
-    segments.find((s) => pos >= s.from && pos <= s.to) ??
-    segments[segments.length - 1]
-  );
-}
-
 /**
  * End position (exclusive) of the word-like segment containing `pos`, or
  * null when the cursor is not on a word character — vim's cw-acts-as-ce
@@ -321,27 +290,6 @@ function cellHop(state: EditorState, pos: number, dir: -1 | 1): null | number {
   return null;
 }
 
-/** The first/last source line of the code block containing `pos`, as an
- *  absolute start plus length (issue 472). The block's newlines are literal
- *  characters in one text node, so lines are `\n`-delimited slices of the
- *  parent text. parentOffset-derived so any in-block position is safe. */
-function codeLineSpan(
-  state: EditorState,
-  pos: number,
-  edge: "first" | "last",
-): { length: number; start: number } {
-  const $pos = state.doc.resolve(pos);
-  const text = $pos.parent.textContent;
-  const contentStart = pos - $pos.parentOffset;
-  if (edge === "first") {
-    const nl = text.indexOf("\n");
-    return { length: nl === -1 ? text.length : nl, start: contentStart };
-  }
-  const nl = text.lastIndexOf("\n");
-  const lineStart = nl === -1 ? 0 : nl + 1;
-  return { length: text.length - lineStart, start: contentStart + lineStart };
-}
-
 function collectLines(state: EditorState): CursorLine[] {
   const cached = lineIndex.get(state.doc);
   if (cached) return cached;
@@ -377,19 +325,6 @@ function collectLines(state: EditorState): CursorLine[] {
   });
   lineIndex.set(state.doc, lines);
   return lines;
-}
-
-/** Units strictly BELOW pos — matching the old walking count: a cursor ON
- *  a unit start is at that unit's index, and the terminal boundary (insert
- *  Esc keeps the head there) counts the FULL line, not the last index
- *  (review S3-R6). */
-function columnOf(starts: number[], pos: number): number {
-  let column = 0;
-  for (const start of starts) {
-    if (start < pos) column++;
-    else break;
-  }
-  return column;
 }
 
 /** Content start of the first textblock inside the node at `pos`. */
@@ -428,29 +363,6 @@ function initTableWalk(state: EditorState, pos: number): null | TableWalk {
   };
 }
 
-/** `journal-*` languages render a widget NodeView with no CodeMirror
- *  island (code-block.ts addNodeView) — a hidden-source landing has no
- *  caret to receive the offset, so directional entry applies only to
- *  CM-backed blocks (adversarial review). */
-function isCmBackedCodeBlock(state: EditorState, pos: number): boolean {
-  const lang = String(state.doc.resolve(pos).parent.attrs.language ?? "");
-  return !lang.startsWith("journal-");
-}
-
-/** True when `pos` lands in a block whose own editor owns the caret.
- *
- *  `codeBlock` declares `content: "text*"`, so it reads as a textblock and
- *  collectLines records it as ONE line — correct for j/k, wrong for the column
- *  walk, whose unit list would span the block's entire source.
- *
- *  Matched by NAME, not by `spec.code`: `frontmatter` is also `code: true` but
- *  renders through NodeViewContent, so ProseMirror keeps managing the caret
- *  inside it and the column walk is right there. Using the flag made `k` into
- *  frontmatter jump to its first YAML character from any column. */
-function isCodeBlockLanding(state: EditorState, pos: number): boolean {
-  return state.doc.resolve(pos).parent.type.name === "codeBlock";
-}
-
 /** The END of the last textblock in the node at `pos` — where a leftward
  *  cell hop arrives (cellHop then backs up to the last unit start). */
 function lastTextblockIn(state: EditorState, pos: number): null | number {
@@ -473,44 +385,6 @@ function lineIndexAround(lines: CursorLine[], pos: number): number {
     if (pos < lines[i].start) return Math.max(0, i - 1);
   }
   return lines.length - 1;
-}
-/** The current line's span for column math: a hard-break segment (works
- *  inside table cells too) or an atom boundary. */
-function lineSpanAt(state: EditorState, pos: number): CursorLine {
-  const span = segmentSpanAt(state, pos);
-  return span ? { end: span.to, start: span.from } : { end: pos, start: pos };
-}
-
-/** Absolute start positions of every cursor unit in a line, one line-local
- *  pass. Each TEXT NODE is segmented independently and every non-text
- *  inline leaf contributes exactly one start — whole-line segmentation
- *  JOINed clusters across mark boundaries and after atom placeholders,
- *  diverging from the node-local §6 units (review S3-R6). */
-function lineUnitStarts(state: EditorState, line: CursorLine): number[] {
-  if (line.end <= line.start) return [];
-  const starts: number[] = [];
-  state.doc.nodesBetween(line.start, line.end, (node, pos) => {
-    if (node.isText) {
-      const from = Math.max(line.start, pos);
-      const to = Math.min(line.end, pos + node.nodeSize);
-      const text = (node.text ?? "").slice(from - pos, to - pos);
-      let offset = 0;
-      for (const seg of graphemeSegmenter.segment(text)) {
-        starts.push(from + offset);
-        offset += seg.segment.length;
-      }
-      return false;
-    }
-    if (node.isInline) {
-      // ANY non-text inline child is one unit — nextUnitBoundary skips it
-      // whole, leaf or not; descending into an inline atom's content made
-      // j landings that h/l could not leave (review S3-R7).
-      if (pos >= line.start && pos < line.end) starts.push(pos);
-      return false;
-    }
-    return true; // the textblock container — descend
-  });
-  return starts;
 }
 
 /** The landed cell's rect, expanded from a known slot — O(span), where
@@ -599,43 +473,18 @@ function verticalTarget(
       walkResolved = false; // the landing may have entered a table
     }
 
-    // A code block is one cursor line here, but its newlines are literal
-    // characters in a single text node — so the column walk would treat the
-    // whole source as one long line and push the caret that many characters
-    // INTO it. Measured on device: from column 12 above, `j` landed on the
-    // block's third line. Entry is DIRECTIONAL (issue 472, stock-vim
-    // spatial continuity): `j` from above lands on the first source line,
-    // `k` from below on the LAST — the visually adjacent one. The
-    // CodeMirror island owns movement inside from then on (Phase 0b).
-    if (isCodeBlockLanding(state, landed)) {
-      if (directionalEntry && isCmBackedCodeBlock(state, landed)) {
-        // Column-preserving entry (vim's curswant semantics at the block
-        // boundary): land on the directionally adjacent source line — the
-        // FIRST from above, the LAST from below — at the carried column,
-        // clamped to the line's last character like vim across short
-        // lines. The carried column is a GRAPHEME index, so it resolves
-        // through the target line's own grapheme starts — adding it as a
-        // UTF-16 offset landed the CM cursor inside a surrogate pair on
-        // emoji-bearing lines (review: the insert path got this fix and
-        // this sibling didn't). Persistent curswant is issue 372 tier 1.
-        const line = codeLineSpan(
-          state,
-          landed,
-          direction < 0 ? "last" : "first",
-        );
-        const starts = lineUnitStarts(state, {
-          end: line.start + line.length,
-          start: line.start,
-        });
-        p =
-          starts.length === 0
-            ? line.start
-            : starts[Math.min(column, starts.length - 1)];
-      } else {
-        p = landed;
-      }
-      // Keep the remembered column: leaving the block downward should return
-      // to where the caret was horizontally, as vim does across short lines.
+    // Code block landing — 정책은 code-block-landing.ts. 반환이 non-null
+    // 이면 착지 확정: 캐리 칼럼을 갱신하지 않고 다음 스텝으로 (counted
+    // j/k가 짧은 블록을 관통할 때 칼럼이 살아남는 계약).
+    const landing = codeBlockLandingAt(
+      state,
+      landed,
+      direction,
+      column,
+      directionalEntry,
+    );
+    if (landing !== null) {
+      p = landing;
       continue;
     }
 

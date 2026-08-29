@@ -1,24 +1,18 @@
-import type { FileEntry as IpcFileEntry } from "../../ipc/types";
-
 // §3.5 파일 시스템 스토어
 import { create } from "zustand";
 
-import { type Locale, t } from "../../i18n";
-import { getVaultConfigByPath, setVaultConfigByPath } from "../../ipc/context";
-import {
-  isFolderAccessDeniedError,
-  listDir,
-  refreshIndex,
-  setVaultRoot,
-} from "../../ipc/invoke";
-import { logger } from "../../utils/logger";
 import { useContextStore } from "../context/context";
 import { useEditorStore } from "../editor/editor";
-import { useLinkStore } from "../editor/link";
 import { useSettingsStore } from "../settings/store";
-import { useUIStore } from "../ui/ui";
 import {
-  compareEntries,
+  addToTree,
+  buildFileTree,
+  moveInTree,
+  rekeyOpenFilesPrefix,
+  removeFromTree,
+  renameInTree,
+} from "./file-tree-ops";
+import {
   DEFAULT_SORT_ORDER,
   type SortOrder,
   sortTreeNodes,
@@ -96,267 +90,17 @@ interface FileState {
   updateLastSaveMtime: (path: string, mtime: number) => void;
 }
 
-/**
- * §81 Open an additional folder as a new context without replacing the current one.
- * Used by the "+" button in ContextTabBar.
- */
-export async function addFolder(path: string): Promise<void> {
-  const contextStore = useContextStore.getState();
+// buildFileTree lives in ./file-tree-ops (pure tree algebra); re-exported
+// below for existing callers (work-log.ts, wikilink-suggest.ts, use-navigation.ts).
+export { buildFileTree };
 
-  // Check if already open — just switch to it
-  const existing = contextStore.contexts.find((c) => c.path === path);
-  if (existing) {
-    await switchContext(existing.id);
-    return;
-  }
-
-  // Detect vault by loading .baram/config.json (bypasses check_vault).
-  // Must run BEFORE setVaultRoot — setVaultRoot registers a legacy "folder"
-  // context in Rust, and addContext's dedup would return it with wrong type.
-  const { getVaultConfigByPath } = await import("../../ipc/context");
-  let isVault = false;
-  try {
-    const cfg = await getVaultConfigByPath(path);
-    isVault = cfg.vault !== undefined && cfg.vault !== null;
-  } catch {
-    // No .baram/config.json or parse error → folder
-  }
-
-  // Register context in frontend + Rust FIRST (with correct type)
-  const added = await contextStore.addContext(
-    isVault ? "vault" : "folder",
-    path,
-  );
-
-  // §81 Update legacy VaultRootState AFTER addContext (so Rust dedup
-  // finds the correctly-typed context we just registered)
-  await setVaultRoot(path);
-
-  // Explicitly activate the new context (addContext only auto-activates the first)
-  contextStore._setActiveContextLocal(added.id);
-
-  await _loadContextFileTree(path);
-
-  // Update settings (§81 tag the recent entry with vault-ness detected above)
-  useSettingsStore.getState().addRecentFolder(path, isVault);
-}
-
-/**
- * Convert flat IPC FileEntry[] into nested tree structure.
- * Groups entries by parent directory, then recursively attaches children.
- * Directories sorted first, then per `order` (§4.5).
- */
-export function buildFileTree(
-  flatEntries: IpcFileEntry[],
-  rootPath: string,
-  order: SortOrder = DEFAULT_SORT_ORDER,
-): FileEntry[] {
-  // Group by parent path
-  const childrenMap = new Map<string, IpcFileEntry[]>();
-  for (const entry of flatEntries) {
-    const parentPath = entry.path.substring(
-      0,
-      entry.path.length - entry.name.length - 1,
-    );
-    const list = childrenMap.get(parentPath) || [];
-    list.push(entry);
-    childrenMap.set(parentPath, list);
-  }
-
-  function buildChildren(parentPath: string): FileEntry[] {
-    const entries = childrenMap.get(parentPath) || [];
-
-    return entries
-      .map((e) => {
-        const node: FileEntry = {
-          name: e.name,
-          path: e.path,
-          isDir: e.isDir,
-          modifiedAt: e.modifiedAt,
-        };
-        if (e.isDir) {
-          node.children = buildChildren(e.path);
-        }
-        return node;
-      })
-      .sort((a, b) => compareEntries(a, b, order));
-  }
-
-  return buildChildren(rootPath);
-}
-
-/**
- * Open a folder: list its contents recursively, build tree, update store.
- * §81 M2: Does NOT remove existing contexts — supports multi-context.
- */
-export async function openFolder(path: string): Promise<void> {
-  const contextStore = useContextStore.getState();
-
-  // Check if already open as a context
-  const existing = contextStore.contexts.find((c) => c.path === path);
-  // §82 Fix: for an already-open context (e.g. startup restore of the active
-  // vault via use-app-startup.ts), derive isVault from the known context type
-  // instead of defaulting to false — otherwise addRecentFolder(path, false)
-  // below would clobber a previously-stored isVault: true (nullish
-  // coalescing does not treat `false` as absent).
-  let isVault = existing?.contextType === "vault";
-  if (!existing) {
-    // Detect vault via .baram/config.json (bypasses check_vault).
-    // Must run BEFORE setVaultRoot to avoid Rust legacy "folder" dedup.
-    const { getVaultConfigByPath } = await import("../../ipc/context");
-    try {
-      const cfg = await getVaultConfigByPath(path);
-      isVault = cfg.vault !== undefined && cfg.vault !== null;
-    } catch {
-      // No .baram/config.json or parse error → folder
-    }
-
-    // Register context with correct type FIRST
-    await contextStore
-      .addContext(isVault ? "vault" : "folder", path)
-      .catch((err) => {
-        logger.warn("§81 openFolder: context registration failed", err);
-      });
-  } else {
-    // Existing context (possibly persisted from previous session)
-    // Use local-only activation to avoid IPC failure for stale IDs
-    contextStore._setActiveContextLocal(existing.id);
-  }
-
-  // §81 Update legacy VaultRootState AFTER context registration
-  await setVaultRoot(path);
-
-  await _loadContextFileTree(path);
-
-  // Update settings
-  useSettingsStore.getState().addRecentFolder(path, isVault);
-}
-
-/**
- * §81 Switch the active context — updates VaultRootState, reloads file tree + index.
- * Called directly from ContextTabBar click handler (not via subscription).
- */
-export async function switchContext(contextId: string): Promise<void> {
-  const contextStore = useContextStore.getState();
-  const ctx = contextStore.contexts.find((c) => c.id === contextId);
-  if (!ctx) return;
-
-  // 1. Update frontend active context (no IPC — avoid potential failures)
-  contextStore._setActiveContextLocal(contextId);
-
-  // 2. Update Rust VaultRootState
-  if (ctx.contextType !== "file") {
-    try {
-      await setVaultRoot(ctx.path);
-    } catch (err) {
-      logger.warn("§81 switchContext: setVaultRoot failed", err);
-    }
-
-    // 3. Reload file tree + rebuild link index
-    await _loadContextFileTree(ctx.path);
-  } else {
-    // FileContext: clear file tree
-    useFileStore.getState().setRootPath(null as unknown as string);
-    useFileStore.getState().setFileTree([]);
-    useFileStore.getState().setLoadError(null);
-  }
-}
-
-/**
- * §81 Internal: Load file tree and index for a context path.
- * Shared by openFolder, addFolder, and switchContext.
- */
-let _loadingPath: null | string = null;
-
-async function _loadContextFileTree(path: string): Promise<void> {
-  // §81 Prevent concurrent loads for the same path only
-  if (_loadingPath === path) return;
-  _loadingPath = path;
-
-  try {
-    // §4.5 Load the persisted sort order before building the tree; fall back
-    // to the DEFAULT order (not the previous vault's in-memory value) if the
-    // config read fails or has no saved order, so each vault without its own
-    // saved order renders with the default rather than inheriting whatever
-    // the last-opened vault happened to use.
-    let order: SortOrder = DEFAULT_SORT_ORDER;
-    try {
-      const cfg = await getVaultConfigByPath(path);
-      const saved = cfg.fileTree?.sortOrder;
-      if (
-        saved === "name-asc" ||
-        saved === "name-desc" ||
-        saved === "mtime-asc" ||
-        saved === "mtime-desc"
-      ) {
-        order = saved;
-      }
-    } catch (err) {
-      // vault config unreadable → keep default order; tree load must not fail on this
-      logger.debug(
-        "§4.5 _loadContextFileTree: vault config read failed, using default sort",
-        err,
-      );
-    }
-    useFileStore.setState({ fileTreeSortOrder: order });
-
-    const entries = await listDir(path, true);
-    const tree = buildFileTree(entries, path, order);
-    useFileStore.getState().setRootPath(path);
-    useFileStore.getState().setFileTree(tree);
-    useFileStore.getState().setLoadError(null); // §4.3 clear prior error on success
-
-    // Build link index in background
-    refreshIndex(path)
-      .then(() => useLinkStore.getState().invalidate())
-      .catch((err) =>
-        logger.warn("§81 _loadContextFileTree: refreshIndex failed", err),
-      );
-  } catch (err) {
-    // §4.3 Surface the failure instead of silently leaving an empty tree.
-    useFileStore.getState().setRootPath(path); // keep context so the panel renders in place
-    useFileStore.getState().setFileTree([]);
-    const { locale } = useSettingsStore.getState();
-    if (isFolderAccessDeniedError(err)) {
-      useFileStore.getState().setLoadError({ kind: "permission-denied", path });
-      useUIStore
-        .getState()
-        .showToast(t("fileTree.accessDenied.toast", locale as Locale), "error");
-    } else {
-      const message = err instanceof Error ? err.message : String(err);
-      useFileStore.getState().setLoadError({ kind: "generic", path, message });
-      useUIStore
-        .getState()
-        .showToast(
-          t("fileTree.accessDenied.toastGeneric", locale as Locale),
-          "error",
-        );
-    }
-    logger.warn("§4.3 _loadContextFileTree: load failed", err);
-    throw err; // §4.3 preserve original resolve/reject contract for openFolder/addFolder/switchContext
-  } finally {
-    _loadingPath = null;
-  }
-}
-
-/**
- * §4.5 Persist the active sort order to `.baram/config.json` (read-merge-write).
- * Fire-and-forget: failures are non-fatal since the sort still applies in-session.
- */
-async function persistSortOrder(
-  vaultPath: string,
-  order: SortOrder,
-): Promise<void> {
-  try {
-    const current = await getVaultConfigByPath(vaultPath);
-    await setVaultConfigByPath(vaultPath, {
-      ...current,
-      fileTree: { ...current.fileTree, sortOrder: order },
-    });
-  } catch {
-    // non-fatal: sort still applies in-session
-  }
-}
+// §81/§4.5 addFolder, openFolder, switchContext, _loadContextFileTree, and
+// persistSortOrder moved to services/vault-context-loader.ts — they are
+// application-level orchestration (i18n, toast, IPC, four other stores), not
+// store state. Import them from there. `retryLoadFileTree` and
+// `setFileTreeSortOrder` below reach that module through a dynamic `import()`
+// deliberately: the service imports `useFileStore` from THIS file, so a
+// static import here would recreate a two-file cycle.
 
 export const useFileStore = create<FileState>((set, get) => ({
   rootPath: null,
@@ -377,8 +121,11 @@ export const useFileStore = create<FileState>((set, get) => ({
     }));
     const { rootPath } = get();
     if (!rootPath) return;
-    // persist to vault config (fire-and-forget; merge with existing config)
-    void persistSortOrder(rootPath, order);
+    // persist to vault config (fire-and-forget; merge with existing config).
+    // Dynamic import: see the note above useFileStore for why this can't be static.
+    void import("../../services/vault-context-loader").then(
+      ({ persistSortOrder }) => persistSortOrder(rootPath, order),
+    );
   },
 
   collapseAllDirs: () => set({ expandedDirs: new Set() }),
@@ -404,6 +151,9 @@ export const useFileStore = create<FileState>((set, get) => ({
     const path = get().rootPath;
     if (!path) return;
     try {
+      // Dynamic import: see the note above useFileStore for why this can't be static.
+      const { _loadContextFileTree } =
+        await import("../../services/vault-context-loader");
       await _loadContextFileTree(path);
     } catch {
       // §4.3 loadError state already reflects the failure; the retry button is
@@ -459,48 +209,10 @@ export const useFileStore = create<FileState>((set, get) => ({
     }),
 
   renameFileEntry: (oldPath, newPath, newName) =>
-    set((state) => {
-      // Update openFiles cache: move content from old key to new key
-      const openFiles = new Map(state.openFiles);
-      // For directories, update all keys with the old prefix
-      for (const [key, value] of openFiles) {
-        if (key === oldPath || key.startsWith(oldPath + "/")) {
-          openFiles.delete(key);
-          const newKey = newPath + key.slice(oldPath.length);
-          openFiles.set(newKey, value);
-        }
-      }
-
-      // Update file tree: recursively find and rename the entry + children
-      function updateTree(entries: FileEntry[]): FileEntry[] {
-        return entries.map((e) => {
-          if (e.path === oldPath) {
-            // Rename this entry and recursively update children paths
-            function updateChildren(children: FileEntry[]): FileEntry[] {
-              return children.map((c) => {
-                const childNewPath = newPath + c.path.slice(oldPath.length);
-                const updated = { ...c, path: childNewPath };
-                if (c.isDir && c.children) {
-                  updated.children = updateChildren(c.children);
-                }
-                return updated;
-              });
-            }
-            const result: FileEntry = { ...e, name: newName, path: newPath };
-            if (e.isDir && e.children) {
-              result.children = updateChildren(e.children);
-            }
-            return result;
-          }
-          if (e.isDir && e.children) {
-            return { ...e, children: updateTree(e.children) };
-          }
-          return e;
-        });
-      }
-
-      return { openFiles, fileTree: updateTree(state.fileTree) };
-    }),
+    set((state) => ({
+      openFiles: rekeyOpenFilesPrefix(state.openFiles, oldPath, newPath),
+      fileTree: renameInTree(state.fileTree, oldPath, newPath, newName),
+    })),
 
   addFileEntry: (parentPath, entry) =>
     set((state) => {
@@ -514,39 +226,15 @@ export const useFileStore = create<FileState>((set, get) => ({
           ? { ...entry, modifiedAt: Math.floor(Date.now() / 1000) }
           : entry;
 
-      function insertSorted(
-        entries: FileEntry[],
-        newEntry: FileEntry,
-      ): FileEntry[] {
-        // Skip if already exists (idempotent)
-        if (entries.some((e) => e.path === newEntry.path)) return entries;
-        const result = [...entries, newEntry];
-        result.sort((a, b) => compareEntries(a, b, get().fileTreeSortOrder));
-        return result;
-      }
-
-      // If parentPath is rootPath, insert at top level
-      if (parentPath === state.rootPath) {
-        return { fileTree: insertSorted(state.fileTree, normalizedEntry) };
-      }
-
-      // Otherwise, find parent dir and insert there
-      function addToTree(entries: FileEntry[]): FileEntry[] {
-        return entries.map((e) => {
-          if (e.path === parentPath && e.isDir) {
-            return {
-              ...e,
-              children: insertSorted(e.children || [], normalizedEntry),
-            };
-          }
-          if (e.isDir && e.children) {
-            return { ...e, children: addToTree(e.children) };
-          }
-          return e;
-        });
-      }
-
-      return { fileTree: addToTree(state.fileTree) };
+      return {
+        fileTree: addToTree(
+          state.fileTree,
+          parentPath,
+          state.rootPath,
+          normalizedEntry,
+          state.fileTreeSortOrder,
+        ),
+      };
     }),
 
   removeFileEntry: (path) =>
@@ -559,109 +247,28 @@ export const useFileStore = create<FileState>((set, get) => ({
         }
       }
 
-      function removeFromTree(entries: FileEntry[]): FileEntry[] {
-        return entries
-          .filter((e) => e.path !== path)
-          .map((e) => {
-            if (e.isDir && e.children) {
-              return { ...e, children: removeFromTree(e.children) };
-            }
-            return e;
-          });
-      }
-
-      return { openFiles, fileTree: removeFromTree(state.fileTree) };
+      return { openFiles, fileTree: removeFromTree(state.fileTree, path) };
     }),
 
   moveFileEntry: (oldPath, newParentPath) =>
     set((state) => {
-      // Find the entry to move
-      function findEntry(entries: FileEntry[]): FileEntry | null {
-        for (const e of entries) {
-          if (e.path === oldPath) return e;
-          if (e.isDir && e.children) {
-            const found = findEntry(e.children);
-            if (found) return found;
-          }
-        }
-        return null;
-      }
+      const moved = moveInTree(
+        state.fileTree,
+        oldPath,
+        newParentPath,
+        state.rootPath,
+        state.fileTreeSortOrder,
+      );
+      if (!moved) return state;
 
-      const entry = findEntry(state.fileTree);
-      if (!entry) return state;
-
-      const newPath = newParentPath + "/" + entry.name;
-
-      // Dir move: recursively update children paths (mirrors renameFileEntry)
-      function updateChildren(children: FileEntry[]): FileEntry[] {
-        return children.map((c) => {
-          const childNewPath = newPath + c.path.slice(oldPath.length);
-          const updated = { ...c, path: childNewPath };
-          if (c.isDir && c.children) {
-            updated.children = updateChildren(c.children);
-          }
-          return updated;
-        });
-      }
-      const movedEntry: FileEntry = { ...entry, path: newPath };
-      if (entry.isDir && entry.children) {
-        movedEntry.children = updateChildren(entry.children);
-      }
-
-      // Update openFiles keys (dir move includes children keys)
-      const openFiles = new Map(state.openFiles);
-      for (const [key, value] of state.openFiles) {
-        if (key === oldPath || key.startsWith(oldPath + "/")) {
-          openFiles.delete(key);
-          openFiles.set(newPath + key.slice(oldPath.length), value);
-        }
-      }
-
-      // Remove from old location
-      function removeFromTree(entries: FileEntry[]): FileEntry[] {
-        return entries
-          .filter((e) => e.path !== oldPath)
-          .map((e) => {
-            if (e.isDir && e.children) {
-              return { ...e, children: removeFromTree(e.children) };
-            }
-            return e;
-          });
-      }
-
-      // Insert into new location (sorted)
-      function insertSorted(
-        entries: FileEntry[],
-        newEntry: FileEntry,
-      ): FileEntry[] {
-        const result = [...entries, newEntry];
-        result.sort((a, b) => compareEntries(a, b, get().fileTreeSortOrder));
-        return result;
-      }
-
-      let newTree = removeFromTree(state.fileTree);
-
-      if (newParentPath === state.rootPath) {
-        newTree = insertSorted(newTree, movedEntry);
-      } else {
-        function addToTree(entries: FileEntry[]): FileEntry[] {
-          return entries.map((e) => {
-            if (e.path === newParentPath && e.isDir) {
-              return {
-                ...e,
-                children: insertSorted(e.children || [], movedEntry),
-              };
-            }
-            if (e.isDir && e.children) {
-              return { ...e, children: addToTree(e.children) };
-            }
-            return e;
-          });
-        }
-        newTree = addToTree(newTree);
-      }
-
-      return { openFiles, fileTree: newTree };
+      return {
+        openFiles: rekeyOpenFilesPrefix(
+          state.openFiles,
+          oldPath,
+          moved.newPath,
+        ),
+        fileTree: moved.entries,
+      };
     }),
 
   tagFilter: null,

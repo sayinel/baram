@@ -3,7 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ContextInfo } from "../../ipc/types";
 import type { FlatFile } from "../../utils/file-search";
+import type { HeadingResult } from "../../utils/quick-switcher-headings";
+import type { JournalPrefix } from "../../utils/quick-switcher-query";
 import type { Editor } from "@tiptap/react";
+
+import { useShallow } from "zustand/shallow";
 
 import { revealBlockInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
 import { readFile } from "../../ipc/invoke";
@@ -20,71 +24,23 @@ import {
 } from "../../utils/file-search";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
+import { extractNamespace } from "../../utils/path-utils";
 import {
-  extractNamespace,
-  isUnderRoot,
-  relativeToRoot,
-} from "../../utils/path-utils";
-
-/** §56l Journal prefix filter prefixes */
-export type JournalPrefix = "d" | "j" | "n" | null;
-
-/** Filter a file list by journal prefix against resolvedDir. */
-// eslint-disable-next-line react-refresh/only-export-components
-export function filterByJournalPrefix(
-  files: FlatFile[],
-  prefix: JournalPrefix,
-  resolvedDir: string,
-): FlatFile[] {
-  if (!prefix || !resolvedDir) return files;
-  if (prefix === "j") {
-    return files.filter((f) => isUnderRoot(f.path, resolvedDir));
-  }
-  // #306: these were `base + "daily/"` / `base + "notes/"`, broken TWICE on Windows — the
-  // appended base separator matched nothing, and even past that a literal `daily/` cannot match
-  // `daily\`. Comparing against the normalised relative path removes both. The `n` case is a
-  // FOURTH site of this defect, in the same function; the issue listed three.
-  const inSubdirectory = (files: FlatFile[], name: string) =>
-    files.filter((f) => {
-      const relative = relativeToRoot(f.path, resolvedDir);
-      return relative !== null && relative.startsWith(`${name}/`);
-    });
-  if (prefix === "d") return inSubdirectory(files, "daily");
-  if (prefix === "n") return inSubdirectory(files, "notes");
-  return files;
-}
-
-/** Parse a query for journal prefix (n:, d:, j:). Returns prefix and stripped query. */
-// eslint-disable-next-line react-refresh/only-export-components
-export function parseJournalPrefix(query: string): {
-  prefix: JournalPrefix;
-  strippedQuery: string;
-} {
-  if (/^n:/i.test(query)) {
-    return { prefix: "n", strippedQuery: query.slice(2) };
-  }
-  if (/^d:/i.test(query)) {
-    return { prefix: "d", strippedQuery: query.slice(2) };
-  }
-  if (/^j:/i.test(query)) {
-    return { prefix: "j", strippedQuery: query.slice(2) };
-  }
-  return { prefix: null, strippedQuery: query };
-}
+  extractHeadingsFromDoc,
+  findHeadingPos,
+} from "../../utils/quick-switcher-headings";
+import {
+  filterByJournalPrefix,
+  parseQuickSwitcherQuery,
+} from "../../utils/quick-switcher-query";
+import { PaletteOverlay } from "./PaletteOverlay";
+import { usePaletteListNav } from "./use-palette-list-nav";
 
 const PREFIX_BADGE_LABELS: Record<NonNullable<JournalPrefix>, string> = {
   n: "Notes",
   d: "Daily",
   j: "Journal",
 };
-
-/** Heading with ProseMirror position for direct navigation. */
-interface HeadingResult {
-  level: number;
-  /** ProseMirror doc position (start of heading content) */
-  pmPos: number;
-  text: string;
-}
 
 interface QuickSwitcherProps {
   editor: Editor | null;
@@ -100,14 +56,39 @@ interface ResultItem {
 }
 
 export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
-  const { quickSwitcherOpen, toggleQuickSwitcher } = useUIStore();
-  const { fileTree, rootPath, setFileContent } = useFileStore();
-  const { tabs, openTab } = useEditorStore();
-  const { journalEnabled, journalDirectory } = useSettingsStore();
-  const { contexts, getContextForPath } = useContextStore();
+  const { quickSwitcherOpen, toggleQuickSwitcher } = useUIStore(
+    useShallow((s) => ({
+      quickSwitcherOpen: s.quickSwitcherOpen,
+      toggleQuickSwitcher: s.toggleQuickSwitcher,
+    })),
+  );
+  const { fileTree, rootPath, setFileContent } = useFileStore(
+    useShallow((s) => ({
+      fileTree: s.fileTree,
+      rootPath: s.rootPath,
+      setFileContent: s.setFileContent,
+    })),
+  );
+  const { tabs, openTab } = useEditorStore(
+    useShallow((s) => ({
+      tabs: s.tabs,
+      openTab: s.openTab,
+    })),
+  );
+  const { journalEnabled, journalDirectory } = useSettingsStore(
+    useShallow((s) => ({
+      journalEnabled: s.journalEnabled,
+      journalDirectory: s.journalDirectory,
+    })),
+  );
+  const { contexts, getContextForPath } = useContextStore(
+    useShallow((s) => ({
+      contexts: s.contexts,
+      getContextForPath: s.getContextForPath,
+    })),
+  );
   const showContextBadge = contexts.length > 1;
   const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const [currentFileHeadings, setCurrentFileHeadings] = useState<
     HeadingResult[]
   >([]);
@@ -148,34 +129,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
   );
 
   // §56l Parse journal prefix first, then §61 namespace filter, then heading mode
-  const parsedQuery = useMemo(() => {
-    const { prefix, strippedQuery } = parseJournalPrefix(query);
-
-    // §61 Namespace filter: ns:path/to/ns query
-    let nsFilter = "";
-    let remainingQuery = strippedQuery;
-    const nsMatch = strippedQuery.match(/^ns:(\S*)\s*(.*)/i);
-    if (nsMatch) {
-      nsFilter = nsMatch[1]; // e.g. "notes/ai"
-      remainingQuery = nsMatch[2]; // remaining file query
-    }
-
-    const hashIdx = remainingQuery.indexOf("#");
-    if (hashIdx === -1) {
-      return {
-        prefix,
-        nsFilter,
-        fileQuery: remainingQuery,
-        headingQuery: null,
-      };
-    }
-    return {
-      prefix,
-      nsFilter,
-      fileQuery: remainingQuery.slice(0, hashIdx),
-      headingQuery: remainingQuery.slice(hashIdx + 1),
-    };
-  }, [query]);
+  const parsedQuery = useMemo(() => parseQuickSwitcherQuery(query), [query]);
 
   // Load headings when entering heading mode
   useEffect(() => {
@@ -313,30 +267,6 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     return items;
   }, [parsedQuery, allFiles, activeHeadings, headingFile, resolvedJournalDir]);
 
-  // Reset on open
-  useEffect(() => {
-    if (quickSwitcherOpen) {
-      setQuery("");
-      setSelectedIndex(0);
-      setCurrentFileHeadings([]);
-      setOtherFileHeadings([]);
-      setHeadingFile(null);
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
-  }, [quickSwitcherOpen]);
-
-  // Clamp selectedIndex
-  useEffect(() => {
-    if (selectedIndex >= results.length) {
-      setSelectedIndex(Math.max(0, results.length - 1));
-    }
-  }, [results.length, selectedIndex]);
-
-  // Auto-scroll selected item
-  useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex]);
-
   const openFile = useCallback(
     async (file: FlatFile) => {
       const existing = tabs.find(
@@ -427,122 +357,108 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     [toggleQuickSwitcher, openFile, onNewFile, editor],
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        toggleQuickSwitcher();
-        return;
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.min(i + 1, results.length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (results[selectedIndex]) {
-          executeResult(results[selectedIndex]);
-        }
-      }
+  const handleOpen = useCallback(() => {
+    setQuery("");
+    setCurrentFileHeadings([]);
+    setOtherFileHeadings([]);
+    setHeadingFile(null);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
+
+  const handleEnter = useCallback(
+    (index: number) => {
+      executeResult(results[index]);
     },
-    [results, selectedIndex, executeResult, toggleQuickSwitcher],
+    [results, executeResult],
   );
+
+  const { handleKeyDown, selectedIndex, setSelectedIndex } = usePaletteListNav({
+    isOpen: quickSwitcherOpen,
+    itemCount: results.length,
+    onEnter: handleEnter,
+    onEscape: toggleQuickSwitcher,
+    onOpen: handleOpen,
+  });
+
+  // Auto-scroll selected item
+  useEffect(() => {
+    selectedRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex]);
 
   if (!quickSwitcherOpen) return null;
 
   return (
-    <div className="quick-switcher-overlay" onClick={toggleQuickSwitcher}>
-      <div
-        className="quick-switcher"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-      >
-        <div className="quick-switcher-input-row">
-          {parsedQuery.prefix && (
-            <span className="quick-switcher-prefix-badge">
-              {PREFIX_BADGE_LABELS[parsedQuery.prefix]}
-            </span>
-          )}
-          {parsedQuery.nsFilter && (
-            <span className="quick-switcher-prefix-badge">
-              ns:{parsedQuery.nsFilter}
-            </span>
-          )}
-          <input
-            className="quick-switcher-input"
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIndex(0);
-            }}
-            placeholder="Type a file name, # for headings, n:/d:/j: for journal, ns: for namespace..."
-            ref={inputRef}
-            type="text"
-            value={query}
-          />
-        </div>
-        <div className="quick-switcher-list">
-          {results.length === 0 && (
-            <div className="quick-switcher-empty">No results found</div>
-          )}
-          {results.map((item, idx) => (
-            <div
-              className={`quick-switcher-item ${idx === selectedIndex ? "quick-switcher-item-selected" : ""}`}
-              key={
-                item.type === "create"
-                  ? "create"
-                  : item.type === "heading"
-                    ? `h-${item.heading?.pmPos}`
-                    : (item.file?.path ?? idx)
-              }
-              onClick={() => executeResult(item)}
-              onMouseEnter={() => setSelectedIndex(idx)}
-              ref={idx === selectedIndex ? selectedRef : null}
-            >
-              <span className="quick-switcher-icon">
-                {item.type === "heading"
-                  ? "#"
-                  : item.type === "create"
-                    ? "+"
-                    : "\u{1F4C4}"}
-              </span>
-              <span className="quick-switcher-label">{item.label}</span>
-              {(item.detail || (showContextBadge && item.type === "file")) && (
-                <span className="quick-switcher-detail">
-                  {showContextBadge && item.type === "file" && item.file && (
-                    <FileContextBadge
-                      filePath={item.file.path}
-                      getContextForPath={getContextForPath}
-                    />
-                  )}
-                  {item.detail && <span>{item.detail}</span>}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+    <PaletteOverlay
+      onClose={toggleQuickSwitcher}
+      onKeyDown={handleKeyDown}
+      overlayClassName="quick-switcher-overlay"
+      paletteClassName="quick-switcher"
+    >
+      <div className="quick-switcher-input-row">
+        {parsedQuery.prefix && (
+          <span className="quick-switcher-prefix-badge">
+            {PREFIX_BADGE_LABELS[parsedQuery.prefix]}
+          </span>
+        )}
+        {parsedQuery.nsFilter && (
+          <span className="quick-switcher-prefix-badge">
+            ns:{parsedQuery.nsFilter}
+          </span>
+        )}
+        <input
+          className="quick-switcher-input"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelectedIndex(0);
+          }}
+          placeholder="Type a file name, # for headings, n:/d:/j: for journal, ns: for namespace..."
+          ref={inputRef}
+          type="text"
+          value={query}
+        />
       </div>
-    </div>
+      <div className="quick-switcher-list">
+        {results.length === 0 && (
+          <div className="quick-switcher-empty">No results found</div>
+        )}
+        {results.map((item, idx) => (
+          <div
+            className={`quick-switcher-item ${idx === selectedIndex ? "quick-switcher-item-selected" : ""}`}
+            key={
+              item.type === "create"
+                ? "create"
+                : item.type === "heading"
+                  ? `h-${item.heading?.pmPos}`
+                  : (item.file?.path ?? idx)
+            }
+            onClick={() => executeResult(item)}
+            onMouseEnter={() => setSelectedIndex(idx)}
+            ref={idx === selectedIndex ? selectedRef : null}
+          >
+            <span className="quick-switcher-icon">
+              {item.type === "heading"
+                ? "#"
+                : item.type === "create"
+                  ? "+"
+                  : "\u{1F4C4}"}
+            </span>
+            <span className="quick-switcher-label">{item.label}</span>
+            {(item.detail || (showContextBadge && item.type === "file")) && (
+              <span className="quick-switcher-detail">
+                {showContextBadge && item.type === "file" && item.file && (
+                  <FileContextBadge
+                    filePath={item.file.path}
+                    getContextForPath={getContextForPath}
+                  />
+                )}
+                {item.detail && <span>{item.detail}</span>}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </PaletteOverlay>
   );
-}
-
-/** Extract headings directly from ProseMirror doc with positions. */
-function extractHeadingsFromDoc(editor: Editor): HeadingResult[] {
-  const headings: HeadingResult[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "heading") {
-      headings.push({
-        level: node.attrs.level,
-        text: node.textContent,
-        pmPos: pos + 1, // inside the heading (after opening tag)
-      });
-    }
-  });
-  return headings;
 }
 
 /** §84 Per-file context badge — looks up context for each file path. */
@@ -560,31 +476,4 @@ function FileContextBadge({
       {ctx.label}
     </span>
   );
-}
-
-/** Find the Nth heading in ProseMirror doc matching level + text. */
-function findHeadingPos(
-  editor: Editor,
-  level: number,
-  text: string,
-  targetIndex: number,
-): null | number {
-  let matchCount = 0;
-  let found: null | number = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (node.type.name === "heading" && node.attrs.level === level) {
-      // For markdown-extracted headings, text may include formatting markers.
-      // Use textContent (plain) for comparison — strip markdown from search text too.
-      const nodeText = node.textContent;
-      if (nodeText === text || text.includes(nodeText)) {
-        if (matchCount === targetIndex) {
-          found = pos + 1;
-          return false;
-        }
-        matchCount++;
-      }
-    }
-  });
-  return found;
 }
