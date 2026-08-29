@@ -58,6 +58,9 @@ interface DecorationAttrs {
   class?: string;
 }
 
+/** 칩의 기준일 — 픽스처 날짜(2026-08-*)와 같은 해라 연도는 접힌다. */
+const CHIP_TODAY = new Date(2026, 7, 25);
+
 const baseCss = readFileSync(
   join(process.cwd(), "src/styles/base.css"),
   "utf8",
@@ -262,6 +265,7 @@ describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
       { emoji: "⏫", from: 0, kind: "priority", to: 1, value: "⏫" },
       false,
       "en",
+      CHIP_TODAY,
     );
     expect([...el.classList]).toEqual(["task-chip"]);
   });
@@ -373,6 +377,15 @@ describe("§308 방향 C — 아젠다 우선순위는 .task-chip을 공유하�
     expect(hidden).toMatch(/position:\s*absolute/);
   });
 
+  it("행의 포커스 표시는 `:focus`다 — `:focus-visible`이면 보이지 않는다", () => {
+    // ‼️ §315는 열자마자 첫 행에 **프로그램으로** 포커스를 건다. 브라우저는 그런 포커스를
+    // 대개 `:focus-visible`로 치지 않으므로, 그 셀렉터를 쓰면 포커스는 실제로 거기 있는데
+    // 화면에는 아무 표시가 없다 — 사용자에게는 "포커스가 안 잡힌다"로 보이고, 실제로
+    // 그렇게 보고됐다.
+    expect(tasksCss).toMatch(/\.task-row:focus\s*\{/);
+    expect(tasksCss).not.toMatch(/\.task-row:focus-visible\s*\{/);
+  });
+
   it("네 레일의 길이가 같다 — 왼쪽 가장자리가 행마다 흔들리지 않는다", () => {
     // 높이로 단계를 나르던 초판을 되돌린 결정이다(사용자 피드백). 되살아나면 목록의
     // 왼쪽 선이 다시 들쭉날쭉해지므로, 단계별 규칙에 세로 크기가 없다는 것을 고정한다.
@@ -402,6 +415,7 @@ describe("§308 칩의 접근성 계약", () => {
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
       false,
       "en",
+      CHIP_TODAY,
     );
     expect(el.getAttribute("aria-hidden")).toBe("true");
   });

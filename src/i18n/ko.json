@@ -870,6 +870,7 @@
   "tasks.scope.tasksHome": "태스크 홈",
   "tasks.archive.confirm": "{days}일 이상 지난 완료 태스크 {count}개를 tasks/archive/YYYY-MM.md로 옮길까요? 옮긴 뒤에도 인덱싱되고 검색됩니다.",
   "tasks.archive.none": "정리할 항목이 없습니다 — 완료 후 {days}일이 지난 태스크가 없습니다.",
+  "tasks.archive.noneShort": "정리할 항목 없음",
   "tasks.archive.noHome": "태스크 홈을 먼저 지정하세요 — 옮길 자리가 있어야 정리할 수 있습니다. 설정 → 일반 → 태스크.",
   "tasks.archive.confirmButton": "정리",
   "tasks.archive.unsavedTab": "먼저 \"{file}\"을 저장하세요. 아카이브는 디스크에 쓰므로, 그 탭의 저장 전 내용이 옮긴 줄을 되살립니다.",

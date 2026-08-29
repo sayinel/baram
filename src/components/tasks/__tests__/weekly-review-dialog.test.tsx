@@ -7,6 +7,8 @@ import type { TaskEntry } from "../../../ipc/types";
 
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getVaultTasks = vi.fn().mockResolvedValue([]);
@@ -190,8 +192,34 @@ describe("WeeklyReviewDialog — §315", () => {
     render(<WeeklyReviewDialog />);
 
     await waitFor(() =>
-      expect(screen.getByText(/Nothing to archive/)).toBeInTheDocument(),
+      expect(screen.getByText("Nothing to archive")).toBeInTheDocument(),
     );
+  });
+
+  it("긴 사유는 버튼이 아니라 title이 갖는다 — 두 줄로 감기면 푸터가 무너진다", async () => {
+    seed([noDate("아무거나")]);
+    render(<WeeklyReviewDialog />);
+
+    const button = await screen.findByText("Nothing to archive");
+    expect(button.closest("button")).toHaveAttribute(
+      "title",
+      expect.stringContaining("older than"),
+    );
+  });
+
+  it("푸터의 두 덩어리가 같은 축으로 읽힌다", () => {
+    // 버튼의 기본 정렬은 가운데다. 라벨이 두 줄로 감기면 왼쪽 버튼만 가운데 정렬이고
+    // 오른쪽 힌트는 왼쪽 정렬인 상태가 되어 서로 다른 축으로 읽힌다(사용자 보고).
+    // jsdom에는 레이아웃이 없으므로 규칙 자체를 읽는다.
+    const css = readFileSync(
+      join(process.cwd(), "src/styles/tasks.css"),
+      "utf8",
+    );
+    const rule = /\.weekly-review-archive\s*\{([^}]*)\}/.exec(css)?.[1];
+    expect(rule, "no .weekly-review-archive rule").toBeDefined();
+    expect(rule).toMatch(/text-align:\s*left/);
+    // 늘어나면 라벨이 짧아도 푸터가 다시 한쪽으로 쏠린다.
+    expect(rule).toMatch(/flex-shrink:\s*0/);
   });
 
   it("범위 밖에 쌓인 완료 항목도 배수구가 센다", async () => {

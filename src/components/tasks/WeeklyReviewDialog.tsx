@@ -337,14 +337,21 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
             className="btn-unstyled weekly-review-archive"
             disabled={archive.busy || archive.count === 0}
             onClick={() => void archive.run().then(home.reload)}
+            title={
+              archive.count > 0
+                ? t("tasks.archive.title", { count: String(archive.count) })
+                : t("tasks.archive.none", {
+                    days: String(tasksArchiveAfterDays),
+                  })
+            }
             type="button"
           >
             <Archive size={14} strokeWidth={1.5} />
+            {/* 짧은 라벨만 버튼에 둔다 — 긴 사유는 `title`이 갖는다. 문장을 통째로
+                버튼에 넣었더니 두 줄로 감기며 푸터가 무너졌다(사용자 보고). */}
             {archive.count > 0
               ? t("tasks.archive.title", { count: String(archive.count) })
-              : t("tasks.archive.none", {
-                  days: String(tasksArchiveAfterDays),
-                })}
+              : t("tasks.archive.noneShort")}
           </button>
           <span className="weekly-review-hint">
             {t("tasks.review.keyHint")}

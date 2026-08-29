@@ -65,6 +65,7 @@ export function renderTaskChip(
   span: TaskFieldSpan,
   overdue: boolean,
   locale: Locale,
+  today: Date,
 ): HTMLElement {
   const el = document.createElement("span");
   el.className = "task-chip";
@@ -73,7 +74,7 @@ export function renderTaskChip(
   if (overdue) el.classList.add("task-chip-overdue");
   el.setAttribute("aria-hidden", "true");
   el.contentEditable = "false";
-  el.append(document.createTextNode(chipLabel(span, locale)));
+  el.append(document.createTextNode(chipLabel(span, locale, today)));
   return el;
 }
 
@@ -81,7 +82,7 @@ export function renderTaskChip(
  * 칩에 보일 라벨. 이모지를 그대로 보이는 대신 로케일별 어순의 텍스트로
  * 읽는다(방향 C — ko `8/30 기한`, en `due 8/30`).
  */
-function chipLabel(span: TaskFieldSpan, locale: Locale): string {
+function chipLabel(span: TaskFieldSpan, locale: Locale, today: Date): string {
   if (span.kind === "priority") {
     // 마커 자체(span.value)로 매핑한다 — UTF-16 길이로 자르지 않는다.
     const key = PRIORITY_CHIP_KEY[span.value];
@@ -89,11 +90,23 @@ function chipLabel(span: TaskFieldSpan, locale: Locale): string {
     // 거르고 `PRIORITY_CHIP_KEY`가 나머지 넷을 정확히 덮는다). 방어로 남긴다.
     return key ? t(`tasks.chip.priority.${key}`, locale) : "";
   }
-  return t(DATE_CHIP_KEY[span.kind], locale, { date: shortDate(span.value) });
+  return t(DATE_CHIP_KEY[span.kind], locale, {
+    date: shortDate(span.value, today),
+  });
 }
 
-/** `2026-08-30` → `8/30`. 연도는 접는다 — 줄이 길어지고 대개 같은 해다. */
-function shortDate(iso: string): string {
-  const [, month, day] = iso.split("-");
-  return `${Number(month)}/${Number(day)}`;
+/**
+ * `2026-08-30` → `8/30`. 올해가 아니면 연도를 붙인다 → `2027/8/25`.
+ *
+ * ‼️ 연도를 늘 접었더니 **날짜가 거짓말을 했다.** `📅2027-08-25`가 `8/25 기한`으로 보여
+ * 사용자가 그것을 기한 초과로 읽었고, 아젠다가 "나중"에 넣은 것을 버킷 분류의 결함으로
+ * 의심했다 — 화면이 감춘 바로 그 한 조각이 어느 버킷인지를 정하는 값이었다.
+ *
+ * 기준일을 인자로 받는 것도 그래서다. 기한 초과 색과 연도 표시가 **같은 시계**를 봐야
+ * "빨간데 연도가 없다"와 "연도가 있는데 색이 없다"가 서로를 배반하지 않는다.
+ */
+function shortDate(iso: string, today: Date): string {
+  const [year, month, day] = iso.split("-");
+  const md = `${Number(month)}/${Number(day)}`;
+  return Number(year) === today.getFullYear() ? md : `${year}/${md}`;
 }

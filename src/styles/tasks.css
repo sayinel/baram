@@ -411,8 +411,14 @@
 }
 
 /* 행이 tabIndex를 갖게 됐으므로 키보드 포커스가 보여야 한다 — j/k 이동이
-   어디에 있는지 알 수 없으면 키보드 경로 자체가 성립하지 않는다. */
-.task-row:focus-visible {
+   어디에 있는지 알 수 없으면 키보드 경로 자체가 성립하지 않는다.
+
+   ‼️ `:focus-visible`이 아니라 `:focus`다. 브라우저는 **프로그램이 건 포커스**를 대개
+   `:focus-visible`로 치지 않는데, §315 주간 리뷰는 열자마자 첫 행에 포커스를 건다 —
+   그러면 포커스는 실제로 거기 있는데 화면에는 아무 표시가 없고, 사용자에게는 "포커스가
+   안 잡힌다"로 보인다(실제 보고). 이 행은 마우스로 눌러도 j/k의 출발점이 되므로 그때
+   테두리가 보이는 것도 소음이 아니라 정보다. */
+.task-row:focus {
   outline: 2px solid var(--color-accent-default);
   outline-offset: -2px;
 }
@@ -513,14 +519,20 @@
 }
 
 /* §312.1 배수구. 아젠다에서는 스캔 범위가 "태스크 홈"일 때만 나타나므로 기본 범위에서는
-   보이지 않는다 — 그 대가를 갚는 자리가 여기라, 이 버튼은 **언제나 있다**. */
+   보이지 않는다 — 그 대가를 갚는 자리가 여기라, 이 버튼은 **언제나 있다**.
+
+   ‼️ `flex-shrink: 0`와 `text-align: left`가 함께 필요하다. 버튼의 기본 정렬은 가운데라,
+   라벨이 두 줄로 감기면 왼쪽 버튼만 가운데 정렬이고 오른쪽 힌트는 왼쪽 정렬인 상태가
+   된다 — 두 덩어리가 서로 다른 축으로 읽힌다. 늘어나지 않게 두는 것도 같은 이유다. */
 .weekly-review-archive {
   display: flex;
+  flex-shrink: 0;
   gap: 6px;
   align-items: center;
   padding: 4px 8px;
   font-size: 12px;
   color: var(--color-text-default);
+  text-align: left;
   cursor: pointer;
   border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
@@ -539,4 +551,5 @@
 .weekly-review-hint {
   font-size: 11px;
   color: var(--color-text-secondary);
+  text-align: right;
 }
