@@ -67,7 +67,25 @@ export function orderFields(tokens: string[]): string[] {
 }
 
 /**
- * 마커가 있는 우선순위 네 개. "보통"(0)은 마커 자체가 없으므로 여기 없다 —
- * Rust `parse.rs`의 `PRIORITY_MARKERS`와 같은 집합이다.
+ * 우선순위 **가중치** → 마커. Rust `parse.rs`의 `PRIORITY_MARKERS`와 같은 눈금이다:
+ * 🔺=+2 · ⏫=+1 · (없음)=0 · 🔽=−1 · ⏬=−2.
+ *
+ * ‼️ 입력 트리거의 `prio:1..5`와 **다른 축이다.** 저쪽은 P1~P5 관례를 따르는 순번이고
+ * (`PRIORITY_EMOJI`), 이쪽은 `TaskEntry.priority`가 실제로 들고 다니는 부호 있는
+ * 가중치다. 필터(`priority >= 1`)와 배지가 이 축을 본다. 둘을 섞으면 `prio:4`(낮음)가
+ * 가중치 4로 읽혀 "가장 높음"보다 위에 서게 된다.
  */
-const PRIORITY_MARKERS = ["🔺", "⏫", "🔽", "⏬"];
+export const PRIORITY_MARKER_BY_WEIGHT: Record<number, string> = {
+  "-1": "🔽",
+  "-2": "⏬",
+  1: "⏫",
+  2: "🔺",
+};
+
+/** 마커 → 가중치. 위 표의 역방향이며, 표가 유일한 출처다. */
+export const PRIORITY_WEIGHT_BY_MARKER: Record<string, number> =
+  Object.fromEntries(
+    Object.entries(PRIORITY_MARKER_BY_WEIGHT).map(([w, m]) => [m, Number(w)]),
+  );
+
+const PRIORITY_MARKERS = Object.values(PRIORITY_MARKER_BY_WEIGHT);
