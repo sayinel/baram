@@ -97,6 +97,8 @@
   "settings.general.tasksWeekStart.sunday": "Sunday",
   "settings.general.tasksRecordDoneDate": "Record completion date",
   "settings.general.tasksRecordDoneDate.desc": "Append ✅ with today's date when a task is checked",
+  "settings.general.tasksStampCreatedDate": "Record created date",
+  "settings.general.tasksStampCreatedDate.desc": "Add ➕ with today's date to a task line you finish typing in the editor",
   "settings.general.tasksHome": "Tasks home",
   "settings.general.tasksHome.desc": "Absolute path to the folder that holds captured tasks. They live in a tasks/ subfolder inside it, with their archive. Leave empty to use the Zettel directory.",
   "settings.general.tasksHome.placeholder": "/Users/you/Notes/zettel",

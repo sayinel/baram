@@ -12,6 +12,7 @@ export interface TaskSettingsSlice {
   setTasksHome: (v: string) => void;
   setTasksRecordDoneDate: (v: boolean) => void;
   setTasksScanScope: (v: TaskScanScope) => void;
+  setTasksStampCreatedDate: (v: boolean) => void;
   setTasksWeekStart: (v: TaskWeekStart) => void;
   tasksArchiveAfterDays: number;
   tasksCaptureFile: string;
@@ -22,6 +23,8 @@ export interface TaskSettingsSlice {
   tasksHome: string;
   tasksRecordDoneDate: boolean;
   tasksScanScope: TaskScanScope;
+  /** §312 문서에 직접 친 태스크 줄에도 `➕` 등록일을 붙일지 */
+  tasksStampCreatedDate: boolean;
   tasksWeekStart: TaskWeekStart;
 }
 type TaskWeekStart = "monday" | "sunday";
@@ -54,6 +57,11 @@ export const createTaskSettingsSlice: StateCreator<
   // 가로채므로, 우리가 고른 조합이 사용자가 이미 다른 앱에 쓰는 조합일 수 있다.
   // 등록은 사용자가 지정할 때만 일어난다.
   tasksGlobalCaptureShortcut: null,
+  // §312 문서에 직접 친 태스크의 `➕`. **기본은 켬**이다 — 방치 배지(30일+)와 주간
+  // 리뷰의 정렬이 이 날짜에만 기댄다(`TaskEntry`에 파일 mtime이 없다, §18.7). 캡처
+  // 경로는 이미 붙이고 있었으므로, 꺼져 있으면 "어디서 만들었는가"에 따라 같은
+  // 태스크가 배지를 받기도 하고 못 받기도 하는 상태가 남는다.
+  tasksStampCreatedDate: true,
 
   // Setters
   setTasksEnabled: (tasksEnabled) => set({ tasksEnabled }),
@@ -67,4 +75,6 @@ export const createTaskSettingsSlice: StateCreator<
     set({ tasksArchiveAfterDays }),
   setTasksGlobalCaptureShortcut: (tasksGlobalCaptureShortcut) =>
     set({ tasksGlobalCaptureShortcut }),
+  setTasksStampCreatedDate: (tasksStampCreatedDate) =>
+    set({ tasksStampCreatedDate }),
 });

@@ -96,6 +96,8 @@
   "settings.general.tasksWeekStart.sunday": "일요일",
   "settings.general.tasksRecordDoneDate": "완료일 기록",
   "settings.general.tasksRecordDoneDate.desc": "태스크를 체크하면 ✅와 오늘 날짜를 덧붙입니다",
+  "settings.general.tasksStampCreatedDate": "등록일 기록",
+  "settings.general.tasksStampCreatedDate.desc": "에디터에서 새로 쓴 태스크 줄을 떠날 때 ➕와 오늘 날짜를 붙입니다",
   "settings.general.tasksHome": "태스크 홈",
   "settings.general.tasksHome.desc": "캡처한 태스크가 사는 폴더의 절대 경로. 그 안의 tasks/ 하위 폴더에 수집함과 아카이브가 놓입니다. 비워 두면 Zettel 디렉터리를 씁니다.",
   "settings.general.tasksHome.placeholder": "/Users/you/Notes/zettel",

@@ -26,6 +26,8 @@ export function TasksSection() {
     setTasksWeekStart,
     tasksRecordDoneDate,
     setTasksRecordDoneDate,
+    tasksStampCreatedDate,
+    setTasksStampCreatedDate,
     tasksArchiveAfterDays,
     setTasksArchiveAfterDays,
     tasksHome,
@@ -44,6 +46,8 @@ export function TasksSection() {
       setTasksWeekStart: s.setTasksWeekStart,
       tasksRecordDoneDate: s.tasksRecordDoneDate,
       setTasksRecordDoneDate: s.setTasksRecordDoneDate,
+      tasksStampCreatedDate: s.tasksStampCreatedDate,
+      setTasksStampCreatedDate: s.setTasksStampCreatedDate,
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
       setTasksArchiveAfterDays: s.setTasksArchiveAfterDays,
       tasksHome: s.tasksHome,
@@ -127,6 +131,17 @@ export function TasksSection() {
             <ToggleSwitch
               checked={tasksRecordDoneDate}
               onChange={setTasksRecordDoneDate}
+            />
+          </SettingsRow>
+
+          {/* 완료일(✅)의 짝 — 둘 다 "날짜를 자동으로 적을까"이므로 나란히 둔다. */}
+          <SettingsRow
+            description={t("settings.general.tasksStampCreatedDate.desc")}
+            label={t("settings.general.tasksStampCreatedDate")}
+          >
+            <ToggleSwitch
+              checked={tasksStampCreatedDate}
+              onChange={setTasksStampCreatedDate}
             />
           </SettingsRow>
 
