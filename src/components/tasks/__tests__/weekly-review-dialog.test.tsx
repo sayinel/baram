@@ -281,11 +281,6 @@ function seed(tasks: TaskEntry[]): void {
   useTaskStore.getState().setAll(tasks);
 }
 
-/**
- * 두 항목을 **서로 다른 파일**에 심는다. 정리 조작은 그 파일 하나만 다시 읽어 통째로
- * 갈아끼우므로(`replaceFile`), 한 파일에 둘을 두면 하나를 처리했을 때 나머지까지 사라져
- * 자동 전진이 검증하려던 상황 자체가 만들어지지 않는다.
- */
 /** 문턱을 넘긴 완료 태스크 — 수집함 안이라 §312 화이트리스트에 든다. */
 function archivable(): TaskEntry {
   return task({
@@ -304,6 +299,11 @@ function seedHome(tasks: TaskEntry[]): void {
   );
 }
 
+/**
+ * 두 항목을 **서로 다른 파일**에 심는다. 정리 조작은 그 파일 하나만 다시 읽어 통째로
+ * 갈아끼우므로(`replaceFile`), 한 파일에 둘을 두면 하나를 처리했을 때 나머지까지 사라져
+ * 자동 전진이 검증하려던 상황 자체가 만들어지지 않는다.
+ */
 function seedTwoFiles(): void {
   const first = noDate("첫째", { path: `${HOME}/tasks/a.md` });
   const second = noDate("둘째", { path: `${HOME}/tasks/b.md` });
