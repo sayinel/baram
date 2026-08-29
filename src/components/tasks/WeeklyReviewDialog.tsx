@@ -133,6 +133,7 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
   );
   const byId = useZettelIndexStore((s) => s.byId);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   // 기준일은 열 때 고정한다 — 아젠다와 같은 이유(I4). 자정을 넘겨도 묶음 경계가 흔들리지
   // 않아야 방금 처리한 항목이 다시 나타나지 않는다.
@@ -177,6 +178,22 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
     [groups],
   );
   const { closeMenu, dismissMenu, menu, openMenu } = useTaskRowMenu(allRows);
+
+  // 열자마자 키를 받을 수 있어야 한다. 커맨드 팔레트로 열면 포커스가 이 화면 밖에 있어
+  // `j`도 `x`도 Escape도 닿지 않는다 — 키보드로 훑는 화면에서 첫 조작이 마우스 클릭이면
+  // 그 화면의 목적이 첫걸음부터 사라진다.
+  //
+  // 목록은 비동기로 온다(열 때 한 번 걷는다). 그래서 마운트가 아니라 **행이 처음 생긴
+  // 순간**에 잡고, 한 번만 한다 — 그 뒤로는 사용자와 자동 전진의 몫이다.
+  const didFocus = useRef(false);
+  useEffect(() => {
+    if (didFocus.current) return;
+    // 처리할 것이 없는 리뷰도 Escape로 닫혀야 하므로, 행이 없으면 다이얼로그를 잡는다.
+    const target = focusRowAt(bodyRef.current, 0) ?? dialogRef.current;
+    if (!target) return;
+    didFocus.current = true;
+    if (target !== document.activeElement) target.focus();
+  }, [allRows]);
 
   // 자동 전진: 조작 직전의 **행 위치**를 적어 두고, 목록이 갱신된 뒤 그 자리에 포커스를
   // 돌려준다. 처리한 항목이 빠지므로 같은 인덱스가 곧 다음 항목이다.
@@ -270,7 +287,10 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
           if (e.key === "Escape") onClose();
         }}
         onMouseDown={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
+        // 행이 하나도 없을 때 포커스를 받을 자리 — 그래야 빈 리뷰도 Escape로 닫힌다.
+        tabIndex={-1}
       >
         <header className="flex-header weekly-review-header">
           <h3>{t("tasks.review.title")}</h3>

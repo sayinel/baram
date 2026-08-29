@@ -99,6 +99,28 @@ describe("WeeklyReviewDialog — §315", () => {
     expect(screen.getByText("남음")).toBeInTheDocument();
   });
 
+  it("열자마자 첫 행에 포커스가 간다 — 첫 조작이 마우스 클릭이면 안 된다", async () => {
+    // 커맨드 팔레트로 열면 포커스가 이 화면 밖에 있다. 그대로 두면 `j`도 `x`도 Escape도
+    // 닿지 않아, 키보드로 훑는 화면의 목적이 첫걸음부터 사라진다.
+    seed([overdue("첫째"), noDate("둘째")]);
+    render(<WeeklyReviewDialog />);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getAllByRole("listitem")[0]),
+    );
+  });
+
+  it("처리할 것이 없어도 Escape가 닿는다 — 다이얼로그가 포커스를 받는다", async () => {
+    seed([]);
+    render(<WeeklyReviewDialog />);
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("dialog")),
+    );
+    await userEvent.keyboard("{Escape}");
+    expect(useUIStore.getState().weeklyReviewOpen).toBe(false);
+  });
+
   it("j는 묶음 경계를 넘는다 — 아젠다는 여기서 멈춘다", async () => {
     // 이 화면이 아젠다와 다른 두 가지 중 하나다. 경계에서 멈추면 세 묶음을 한 흐름으로
     // 훑는다는 전제가 깨지고, 사용자는 묶음마다 마우스로 다시 진입해야 한다.
