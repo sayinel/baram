@@ -52,6 +52,7 @@ const SHARED_VALUES = new Set<string>([
   "settings.panels.git", // Git
   "settings.tab.ai", // AI
   "settings.workspace.preset.skills", // Skills
+  "tasks.edit.tags.placeholder", // deep-work, someday — `#someday`는 §312가 쓰는 기능 태그다
   "update.dialog.versionChange", // {current} → {available}
 ]);
 

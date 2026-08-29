@@ -19,6 +19,7 @@ vi.mock("../../services/journal-file-service", () => ({
 
 import { t } from "../../i18n";
 import { getAction } from "../../keybindings/keybinding-actions";
+import { TASK_INPUT_COMMAND } from "../../keybindings/keybinding-registry";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -193,5 +194,27 @@ describe("journal.openToday — unconfigured feedback", () => {
     expect(message).toContain("Could not open");
     expect(message).not.toContain("/Volumes/private");
     expect(logger.error).toHaveBeenCalled();
+  });
+});
+
+describe("tasks.taskInput — 한 명령의 두 갈래", () => {
+  beforeEach(() => {
+    useUIStore.setState({ quickCaptureOpen: false, taskEditOpen: false });
+  });
+
+  it("캡처창이 닫혀 있으면 편집 모달을 연다", () => {
+    renderActionsHook(null);
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+    expect(useUIStore.getState().taskEditOpen).toBe(true);
+  });
+
+  it("캡처창이 열려 있으면 모달을 열지 않는다", () => {
+    // ‼️ 캡처창의 핸들러는 `preventDefault`만 하고 전파를 막지 않아, 이 액션은 같은
+    // 키 하나에 **함께** 불린다. 이 갈래가 없으면 태스크 모드가 켜지는 동시에 모달이
+    // 뜨고, 거기서 저장한 태스크는 캡처와 무관한 현재 문서에 생긴다.
+    useUIStore.setState({ quickCaptureOpen: true });
+    renderActionsHook(null);
+    act(() => getAction(TASK_INPUT_COMMAND)?.());
+    expect(useUIStore.getState().taskEditOpen).toBe(false);
   });
 });

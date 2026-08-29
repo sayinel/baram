@@ -88,6 +88,7 @@ interface UIState {
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
   closeConflictModal: () => void;
   closeExportDialog: () => void;
+  closeTaskEdit: () => void;
   /** §close-guard: Close the shared unsaved-changes modal */
   closeUnsavedModal: () => void;
   closeWeeklyReview: () => void;
@@ -113,6 +114,8 @@ interface UIState {
   openQuickCapture: () => void;
   /** §313 전역 단축키로 여는 길 — 캡처창을 **태스크 모드로** 연다 */
   openQuickCaptureForTask: () => void;
+  /** M2-b4 태스크 편집 모달 */
+  openTaskEdit: () => void;
   /** §close-guard: Open the shared unsaved-changes modal (quit or single tab) */
   openUnsavedModal: (req: UnsavedModalRequest) => void;
   openZettelTitleDialog: (opts: {
@@ -142,8 +145,8 @@ interface UIState {
   setRightPanelWidth: (width: number) => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
-
   settingsOpen: boolean;
+
   /** §298 vim S3 — fed by SourceCodeEditor's vim controller */
   setVimStatus: (status: null | VimStatus) => void;
   /** Show a transient toast (auto-dismisses after a few seconds) */
@@ -158,6 +161,8 @@ interface UIState {
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
   smartTemplateDialogOpen: boolean;
+  /** M2-b4 태스크 편집 모달이 열려 있는가 */
+  taskEditOpen: boolean;
   /** Transient toast notification (null = hidden) */
   toast: null | ToastState;
   toggleAbout: () => void;
@@ -215,6 +220,7 @@ export const useUIStore = create<UIState>((set) => ({
   pendingApplyContent: null,
   quickCaptureOpen: false,
   quickCaptureTaskIntent: false,
+  taskEditOpen: false,
   weeklyReviewOpen: false,
   unsavedModal: null,
   vimStatus: null,
@@ -306,6 +312,12 @@ export const useUIStore = create<UIState>((set) => ({
   // 체크박스를 한 번 더 눌러야 하고, 잊으면 fleeting note가 하나 생긴다.
   openQuickCaptureForTask: () =>
     set({ quickCaptureOpen: true, quickCaptureTaskIntent: true }),
+
+  // 토글이 아니다 — 이 모달은 커서가 있는 블록을 대상으로 열리므로, 열려 있는 동안
+  // 같은 키를 다시 눌러 "다른 블록으로 옮겨 여는" 일이 있을 수 없다(포커스가 모달에
+  // 있어 커서가 움직이지 않는다).
+  openTaskEdit: () => set({ taskEditOpen: true }),
+  closeTaskEdit: () => set({ taskEditOpen: false }),
 
   // §315 토글이다 — 커맨드 팔레트에서 같은 커맨드를 다시 실행하면 닫힌다. 리뷰는
   // 훑는 화면이라 "열려 있는데 또 열기"가 자연스러운 조작이 아니다.

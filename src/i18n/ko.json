@@ -853,5 +853,22 @@
   "settings.general.tasksGlobalCapture.unavailable": "다른 앱이 이미 쓰고 있는 조합이라 등록하지 못했습니다. 다른 조합을 지정해 주세요.",
   "settings.general.tasksGlobalCapture.invalid": "전역 단축키에는 수식키(⌘ 또는 ⌥)가 있어야 합니다.",
   "keybindings.category.tasks": "태스크",
-  "keybindings.tasks.taskInput": "태스크 입력 — 빠른 캡처에서는 태스크 모드, 에디터에서는 편집 폼"
+  "keybindings.tasks.taskInput": "태스크 입력 — 빠른 캡처에서는 태스크 모드, 에디터에서는 편집 폼",
+  "tasks.edit.title": "태스크 편집",
+  "tasks.edit.create": "태스크 만들기",
+  "tasks.edit.body": "내용",
+  "tasks.edit.date.created": "등록일 ➕",
+  "tasks.edit.date.start": "시작일 🛫",
+  "tasks.edit.date.scheduled": "예정일 ⏳",
+  "tasks.edit.date.due": "기한 📅",
+  "tasks.edit.date.placeholder": "2026-08-30, t=오늘, m=내일, +3, 8/30",
+  "tasks.edit.priority": "우선순위",
+  "tasks.edit.priority.urgent": "긴급 🔺",
+  "tasks.edit.priority.high": "높음 ⏫",
+  "tasks.edit.priority.normal": "보통",
+  "tasks.edit.priority.low": "낮음 🔽",
+  "tasks.edit.priority.lowest": "가장 낮음 ⏬",
+  "tasks.edit.tags": "태그",
+  "tasks.edit.tags.placeholder": "deep-work, someday",
+  "tasks.edit.preview": "결과 줄"
 }

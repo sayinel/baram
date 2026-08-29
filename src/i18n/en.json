@@ -853,5 +853,22 @@
   "settings.general.tasksGlobalCapture.unavailable": "Another app is already using this combination, so it was not registered. Pick a different one.",
   "settings.general.tasksGlobalCapture.invalid": "A global shortcut must include a modifier key (⌘ or ⌥).",
   "keybindings.category.tasks": "Tasks",
-  "keybindings.tasks.taskInput": "Task input — task mode in Quick Capture, edit form in the editor"
+  "keybindings.tasks.taskInput": "Task input — task mode in Quick Capture, edit form in the editor",
+  "tasks.edit.title": "Edit task",
+  "tasks.edit.create": "New task",
+  "tasks.edit.body": "Task",
+  "tasks.edit.date.created": "Created ➕",
+  "tasks.edit.date.start": "Start 🛫",
+  "tasks.edit.date.scheduled": "Scheduled ⏳",
+  "tasks.edit.date.due": "Due 📅",
+  "tasks.edit.date.placeholder": "2026-08-30, t, m, +3, 8/30",
+  "tasks.edit.priority": "Priority",
+  "tasks.edit.priority.urgent": "Urgent 🔺",
+  "tasks.edit.priority.high": "High ⏫",
+  "tasks.edit.priority.normal": "Normal",
+  "tasks.edit.priority.low": "Low 🔽",
+  "tasks.edit.priority.lowest": "Lowest ⏬",
+  "tasks.edit.tags": "Tags",
+  "tasks.edit.tags.placeholder": "deep-work, someday",
+  "tasks.edit.preview": "Resulting line"
 }
