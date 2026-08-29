@@ -1,2 +1,4 @@
+# CI lint 잡과 동일한 게이트 — "테스트 그린 ≠ CI 그린" 사고(PR 490) 재발 방지.
+# knip은 npm run lint 안의 knip:ci로 돌므로 별도 실행하지 않는다.
+npm run lint
 (cd src-tauri && cargo clippy --all-targets -- -D warnings)
-npx knip
