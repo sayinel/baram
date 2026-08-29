@@ -23,6 +23,7 @@ import {
   expandMediaAtom,
   expandWikilink,
 } from "./syntax-reveal-expand";
+import { parseRevealResource } from "./syntax-reveal-resource-codec";
 import {
   computeContentLen,
   type ExpandedRange,
@@ -153,8 +154,16 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       }
 
       // Cursor moved outside → build collapse transaction with explicit cursor
-      const { from, to, kind, openCheck, closeCheck, markName, mediaAttrs } =
-        es.expanded;
+      const {
+        from,
+        to,
+        kind,
+        openCheck,
+        closeCheck,
+        markName,
+        mediaAttrs,
+        linkAttrs,
+      } = es.expanded;
       const tr = newState.tr;
 
       // Validate open delimiter
@@ -206,23 +215,20 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       } else if (kind === "link") {
         const fullText = newState.doc.textBetween(from, to);
-        const linkMatch = fullText.match(
-          /^\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
-        );
-        if (!linkMatch) {
+        const parsed = parseRevealResource(fullText);
+        if (!parsed || parsed.kind !== "link") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
         }
 
-        const [, , href, title] = linkMatch;
+        const { destination: href, title } = parsed;
         const bracketIdx = fullText.indexOf("](");
-        if (bracketIdx < 0) {
-          tr.setMeta(syntaxRevealKey, INACTIVE);
-          return tr;
-        }
 
         const contentLen = bracketIdx - 1;
+        // §384 fix (B): merge stashed non-href/title attrs (e.g. `target`)
+        // back in — see ExpandedRange.linkAttrs.
         const linkMark = newState.schema.marks.link.create({
+          ...linkAttrs,
           href,
           title: title || null,
         });
@@ -239,15 +245,13 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       } else if (kind === "image") {
         const fullText = newState.doc.textBetween(from, to);
-        const imgMatch = fullText.match(
-          /^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
-        );
-        if (!imgMatch) {
+        const parsed = parseRevealResource(fullText);
+        if (!parsed || parsed.kind !== "image") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
         }
 
-        const [, alt, src, title2] = imgMatch;
+        const { label: alt, destination: src, title: title2 } = parsed;
         // §295 src가 노드 타입을 정한다 — 노출된 원문에서 파일명을 고치면
         // image ↔ video가 따라온다.
         // §294 fix (C1): mediaAttrs restores width, which `![alt](src)` cannot

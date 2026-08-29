@@ -5,6 +5,7 @@ import type { EditorView } from "@tiptap/pm/view";
 
 import { TextSelection } from "@tiptap/pm/state";
 
+import { serializeRevealResource } from "./syntax-reveal-resource-codec";
 import { MARK_DELIMITERS, syntaxRevealKey } from "./syntax-reveal-state";
 
 // ── Link expansion ────────────────────────────────────────────────────
@@ -19,8 +20,28 @@ export function expandLink(
   const title = mark.attrs.title as null | string;
   const cursorPos = state.selection.from;
 
+  // §384 fix (B): stash every non-href/title attr (e.g. `target`) so both
+  // collapse implementations can restore it — see ExpandedRange.linkAttrs.
+  const linkAttrs: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(mark.attrs)) {
+    if (key === "href" || key === "title") continue;
+    linkAttrs[key] = value;
+  }
+
   const openDelim = "[";
-  const closeDelim = title ? `](${href} "${title}")` : `](${href})`;
+  // §384 fix (B2): route the destination/title through the shared reveal
+  // codec (angle-bracket form + escaping) so a destination containing
+  // whitespace — e.g. href="a b" parsed from `[x](<a b>)` — round-trips
+  // through collapse instead of being left as literal, uncollapsible text.
+  // label is left empty and the leading "[" sliced off: the real label is
+  // live doc text (kept, with its own marks, untouched) between openDelim
+  // and closeDelim — not a plain string we serialize ourselves.
+  const closeDelim = serializeRevealResource({
+    kind: "link",
+    label: "",
+    destination: href,
+    title,
+  }).slice(1);
 
   const { tr } = state;
 
@@ -46,6 +67,7 @@ export function expandLink(
       from: range.from,
       to: newTo,
       openCheck: "[",
+      linkAttrs,
     },
   });
 
@@ -120,7 +142,13 @@ export function expandMediaAtom(
   const alt = (node.attrs.alt as string) || "";
   const title = node.attrs.title as null | string;
 
-  const text = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
+  // §384 fix (B2): route through the shared reveal codec — see expandLink.
+  const text = serializeRevealResource({
+    kind: "image",
+    label: alt,
+    destination: src,
+    title,
+  });
 
   const { tr } = view.state;
 

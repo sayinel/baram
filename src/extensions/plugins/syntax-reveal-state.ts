@@ -11,6 +11,12 @@ export interface ExpandedRange {
   closeCheck?: string; // closing delimiter to validate (marks only)
   from: number; // start of expanded text (for images: inside paragraph)
   kind: "image" | "link" | "mark" | "wikilink";
+  // §384 fix (B): non-href/title link mark attrs (e.g. `target`) that
+  // `[text](href)` cannot represent. Stashed here on expand so both collapse
+  // sites (syntax-reveal.ts's appendTransaction and
+  // syntax-reveal-collapse.ts) can merge them back into the recreated mark
+  // instead of silently dropping them — see expandLink.
+  linkAttrs?: Record<string, unknown>;
   markName?: string; // for marks: "bold", "italic", etc.
   // §294 fix (C1): non-src/alt/title attrs (image/video widthPercent, video
   // widthPixel) that `![alt](src)` cannot represent. Stashed here on expand so

@@ -2,7 +2,15 @@ import { Editor } from "@tiptap/core";
 // §5.1 + §3.3 Syntax Reveal — expansion / collapse integration tests
 // Tests that the SyntaxReveal plugin inserts/removes markdown delimiters
 // when the cursor enters/exits a mark or link range.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// link.ts's Cmd+click "Strategy 3" navigates a scheme-less href straight to
+// the OS opener when onNavigateLocal declines it (the default here, since
+// createBaramExtensions() isn't given one) — mock it so that call is inert.
+const { openUrl } = vi.hoisted(() => ({
+  openUrl: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
@@ -162,6 +170,268 @@ describe("Syntax Reveal (§5.1)", () => {
       moveCursorTo(editor, 2, 5);
 
       expect(editor.state.doc.textContent).toBe("Hello world");
+      editor.destroy();
+    });
+  });
+
+  // §384 fix (B): expansion stashed only href/title, and both collapse
+  // implementations recreated the mark from those two alone — so entering
+  // and leaving a link erased any other mark attr (e.g. `target`). The doc
+  // is built directly (not via markdown) because the markdown pipeline never
+  // sets `target` on a link mark in the first place; this test needs one to
+  // already exist on the mark to prove it survives the round trip.
+  describe("Link attrs preserved through expand/collapse (§384 B)", () => {
+    function loadLinkWithTarget(editor: Editor): void {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "world",
+                marks: [
+                  {
+                    type: "link",
+                    attrs: {
+                      href: "https://example.com",
+                      title: null,
+                      target: "_blank",
+                    },
+                  },
+                ],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+    }
+
+    it("survives forceCollapseSyntaxReveal", () => {
+      const editor = createEditor();
+      loadLinkWithTarget(editor);
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain(
+        "[world](https://example.com)",
+      );
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("https://example.com");
+      expect(linkMark?.attrs.target).toBe("_blank");
+      editor.destroy();
+    });
+
+    it("survives the appendTransaction cursor-exit collapse path", () => {
+      const editor = createEditor();
+      loadLinkWithTarget(editor);
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain(
+        "[world](https://example.com)",
+      );
+
+      // Cursor leaves the expanded range → appendTransaction's own,
+      // independent collapse branch runs (not forceCollapseSyntaxReveal).
+      editor.commands.setTextSelection(2);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("https://example.com");
+      expect(linkMark?.attrs.target).toBe("_blank");
+      editor.destroy();
+    });
+  });
+
+  // §384 fix (B2): expansion printed the href raw and both collapse
+  // implementations matched destinations with `\S+?` — a destination
+  // containing whitespace (e.g. href="a b", exactly what `[x](<a b>)` parses
+  // to) printed as `[world](a b)` on expand and then could never collapse
+  // back: `\S+?` doesn't match "a b", so the literal delimiters were left
+  // behind permanently. The reveal resource codec fixes both sides: expand
+  // now emits the angle-bracket form, and collapse can parse it back.
+  describe("Link destination with whitespace round-trips (§384 B2)", () => {
+    function loadLinkWithSpaceHref(editor: Editor): void {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "world",
+                marks: [{ type: "link", attrs: { href: "a b", title: null } }],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+    }
+
+    it("expands to the angle-bracket form and collapses back via forceCollapseSyntaxReveal", () => {
+      const editor = createEditor();
+      loadLinkWithSpaceHref(editor);
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("[world](<a b>)");
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("a b");
+      editor.destroy();
+    });
+
+    it("expands to the angle-bracket form and collapses back via the appendTransaction cursor-exit path", () => {
+      const editor = createEditor();
+      loadLinkWithSpaceHref(editor);
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("[world](<a b>)");
+
+      editor.commands.setTextSelection(2);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("a b");
+      editor.destroy();
+    });
+
+    it("escapes a literal < inside the angle-bracket destination and round-trips it", () => {
+      const editor = createEditor();
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "world",
+                marks: [
+                  { type: "link", attrs: { href: "a < b", title: null } },
+                ],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("[world](<a \\< b>)");
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("a < b");
+      editor.destroy();
+    });
+
+    it("round-trips an empty destination with a title", () => {
+      const editor = createEditor();
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "world",
+                marks: [{ type: "link", attrs: { href: "", title: "t" } }],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain('[world](<> "t")');
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("");
+      expect(linkMark?.attrs.title).toBe("t");
+      editor.destroy();
+    });
+  });
+
+  // §384 fix (B2, follow-on): link.ts's Cmd+click handler is a THIRD parser
+  // of this same expanded text (its own hand-rolled regex, "Strategy 3"),
+  // used to navigate without waiting for collapse. It already handled the
+  // angle-bracket form, but didn't unescape it — so once expansion started
+  // emitting `<a \< b>` for an escaped destination, that regex captured the
+  // escape backslash literally and navigated to the wrong place. Routed
+  // through parseRevealResource so all three parsers agree.
+  describe("Cmd+click navigation on an expanded link unescapes the destination (§384 B2)", () => {
+    it("navigates to the unescaped destination, not the raw escape sequence", () => {
+      const editor = createEditor();
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "world",
+                marks: [
+                  { type: "link", attrs: { href: "a < b", title: null } },
+                ],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("[world](<a \\< b>)");
+
+      // Real DOM dispatch: link.ts's mousedown handler is registered via
+      // ProseMirror's handleDOMEvents, not reachable by calling a plugin
+      // prop function directly (several plugins register their own
+      // mousedown handler — e.g. image.ts's click guard — and only a real
+      // dispatch runs ProseMirror's actual per-plugin iteration order).
+      editor.view.dom.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          metaKey: true,
+        }),
+      );
+
+      expect(openUrl).toHaveBeenCalledWith("a < b");
       editor.destroy();
     });
   });

@@ -6,6 +6,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 import { logger } from "../../utils/logger";
 import { syntaxRevealKey } from "../plugins/syntax-reveal";
+import { parseRevealResource } from "../plugins/syntax-reveal-resource-codec";
 
 export interface LinkOptions {
   autolink: boolean;
@@ -213,14 +214,19 @@ export const Link = Mark.create<LinkOptions>({
               }
 
               // Strategy 3: SyntaxReveal expanded link — text is [text](url)
+              //
+              // §384 fix (B2): route through the shared reveal codec instead
+              // of a hand-rolled regex. Once expansion started emitting the
+              // angle-bracket form for a destination with escaped `<`/`>`
+              // (e.g. href="a < b" → `[x](<a \< b>)`), the old regex's angle
+              // branch (`<([^>]+)>`) captured the escape backslash literally
+              // — navigating to "a \< b" instead of "a < b". parseRevealResource
+              // unescapes it the same way collapse does.
               const srState = syntaxRevealKey.getState(view.state);
               if (srState?.expanded?.kind === "link") {
                 const { from, to } = srState.expanded;
                 const expandedText = view.state.doc.textBetween(from, to);
-                const m = expandedText.match(
-                  /\[.*?\]\((?:<([^>]+)>|([^)]+?))(?:\s+"[^"]*")?\)/,
-                );
-                const href = m?.[1] || m?.[2];
+                const href = parseRevealResource(expandedText)?.destination;
                 if (href) {
                   event.preventDefault();
                   navigateHref(href.trim());
