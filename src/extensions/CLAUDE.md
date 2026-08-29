@@ -158,6 +158,8 @@ entryKey는 인자로 주입(노드 모듈 import 금지, 순환). 과거 세 �
 수정이 한 곳에만 착지하는 사고가 있어 통일했다. 새 atom 블록은 네 번째 복사본을 만들지 말 것.
 훅 호출 위치는 기존 effect 순서를 바꾸지 않는 자리에 둘 것 (렌더 디바운스가 effect 등록 순서에 의존).
 
+codemirror-vim의 keymap·엔진 본체는 `@replit/codemirror-vim`이 아니라 의존성 `@replit/codemirror-vim-core/vim.js`에 있다 (dist에는 keymap이 없다 — 키 바인딩을 찾을 때 헛걸음 주의).
+
 ## registry.json 유지 규칙
 
 Extension을 추가/수정할 때 반드시 `registry.json`도 함께 업데이트할 것.
