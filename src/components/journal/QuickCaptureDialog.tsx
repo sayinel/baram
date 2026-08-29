@@ -8,7 +8,7 @@ import {
   formatKeyForDisplay,
   normalizeKeyEvent,
 } from "../../keybindings/key-utils";
-import { CAPTURE_TASK_MODE_COMMAND } from "../../keybindings/keybinding-registry";
+import { TASK_INPUT_COMMAND } from "../../keybindings/keybinding-registry";
 import { findCommandByKey } from "../../keybindings/use-keybindings";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
@@ -172,7 +172,7 @@ export function QuickCaptureDialog() {
         if (
           notation &&
           findCommandByKey(notation, keybindingOverrides)?.id ===
-            CAPTURE_TASK_MODE_COMMAND
+            TASK_INPUT_COMMAND
         ) {
           e.preventDefault();
           taskMode.toggle();

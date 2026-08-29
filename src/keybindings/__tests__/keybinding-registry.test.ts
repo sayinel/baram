@@ -7,7 +7,7 @@ import {
 } from "../keybinding-registry";
 
 describe("KEYBINDING_CATEGORIES", () => {
-  it("contains all 10 expected categories in order", () => {
+  it("contains all 11 expected categories in order", () => {
     expect(KEYBINDING_CATEGORIES).toEqual([
       "file",
       "edit",
@@ -18,6 +18,9 @@ describe("KEYBINDING_CATEGORIES", () => {
       "workspace",
       "journal",
       "zettelkasten",
+      // M2-b4 — 태스크 명령은 저널이 아니다. `tasks.taskInput`은 에디터에서도 동작하고,
+      // 앞으로 아젠다·리뷰의 키가 붙을 자리이기도 하다.
+      "tasks",
       "formatting",
     ]);
   });

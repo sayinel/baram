@@ -182,7 +182,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 20,
+      version: 21,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -446,6 +446,27 @@ export const useSettingsStore = create<SettingsState>()(
             state.tasksCaptureFile === "tasks/inbox.md")
         ) {
           state.tasksCaptureFile = "inbox.md";
+        }
+
+        // v20 → v21: M2-b4 — `journal.captureTaskMode`가 `tasks.taskInput`이 됐다.
+        // 캡처창의 토글과 에디터의 편집 모달은 "지금 입력하는 것을 태스크로 다룬다"는
+        // **한 개념**이라 명령도 하나여야 하고, 둘로 두면 같은 `Mod+Alt+T`를 두 항목이
+        // 노려 충돌 검사에 걸린다.
+        //
+        // ‼️ `keybindingOverrides`는 **명령 id로 키잉된다.** 이 줄이 없으면 그 키를
+        // 이미 바꿔 둔 사용자의 조합이 조용히 사라지고 기본값으로 돌아간다 — 사용자는
+        // 자기가 고른 키가 어느 날 안 먹는 것으로 겪는다. (§312.1에서 "기존 사용자
+        // 없음"으로 넘겼다가 개발자 본인 설치에서 걸린 적이 있다.)
+        if (version < 21) {
+          const overrides = state.keybindingOverrides as
+            Record<string, string> | undefined;
+          const old = overrides?.["journal.captureTaskMode"];
+          if (overrides && old !== undefined) {
+            // 새 id에 이미 값이 있으면 그쪽을 이긴 것으로 둔다 — 사용자가 새 이름으로
+            // 직접 고른 값이므로 옛 이름이 덮어써서는 안 된다.
+            overrides["tasks.taskInput"] ??= old;
+            delete overrides["journal.captureTaskMode"];
+          }
         }
 
         return state;

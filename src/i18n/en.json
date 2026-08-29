@@ -464,7 +464,6 @@
   "keybindings.workspace.zettelkasten": "Zettel Perspective",
   "keybindings.workspace.skills": "Skills Perspective",
   "keybindings.journal.quickCapture": "Quick Capture",
-  "keybindings.journal.captureTaskMode": "Toggle task mode in Quick Capture",
   "keybindings.journal.openToday": "Open Today's Journal",
   "keybindings.journal.memories": "Memories Panel",
   "keybindings.journal.photoGallery": "Photo Gallery",
@@ -852,5 +851,7 @@
   "settings.general.tasksGlobalCapture.clear": "Clear",
   "settings.general.tasksGlobalCapture.registered": "Registered as {value}.",
   "settings.general.tasksGlobalCapture.unavailable": "Another app is already using this combination, so it was not registered. Pick a different one.",
-  "settings.general.tasksGlobalCapture.invalid": "A global shortcut must include a modifier key (⌘ or ⌥)."
+  "settings.general.tasksGlobalCapture.invalid": "A global shortcut must include a modifier key (⌘ or ⌥).",
+  "keybindings.category.tasks": "Tasks",
+  "keybindings.tasks.taskInput": "Task input — task mode in Quick Capture, edit form in the editor"
 }

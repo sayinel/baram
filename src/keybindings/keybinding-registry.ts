@@ -8,7 +8,13 @@
  * 문자열을 그쪽에 직접 적으면 매직 스트링이 두 벌이 되고, `journal-i18n.test.tsx`가
  * `"journal.*"` 리터럴을 전부 i18n 키로 간주하므로 그 스캐너에도 걸린다.
  */
-export const CAPTURE_TASK_MODE_COMMAND = "journal.captureTaskMode";
+/**
+ * §307D + M2-b4 — "지금 입력하는 것을 태스크로 다룬다"는 **하나의 개념**이라 명령도
+ * 하나다. 문맥이 무엇을 하는지 정한다: 캡처창이 열려 있으면 태스크 모드 토글,
+ * 에디터면 편집 모달. 명령을 둘로 두면 같은 키를 두 항목이 노려 충돌 검사에 걸리고,
+ * 사용자가 한쪽만 리바인딩해 두 곳의 뜻이 갈라질 수 있다.
+ */
+export const TASK_INPUT_COMMAND = "tasks.taskInput";
 
 export interface KeybindingEntry {
   category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "zettelkasten" | "formatting"
@@ -28,6 +34,7 @@ export const KEYBINDING_CATEGORIES: string[] = [
   "workspace",
   "journal",
   "zettelkasten",
+  "tasks",
   "formatting",
 ];
 
@@ -41,6 +48,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   workspace: "keybindings.category.workspace",
   journal: "keybindings.category.journal",
   zettelkasten: "keybindings.category.zettelkasten",
+  tasks: "keybindings.category.tasks",
   formatting: "keybindings.category.formatting",
 };
 
@@ -271,12 +279,12 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: true,
   },
   {
-    // §307D — 다이얼로그가 열려 있을 때만 의미가 있어 `registerAction`을 걸지
-    // 않는다. QuickCaptureDialog의 handleKeyDown이 직접 처리하고, 레지스트리
-    // 등록은 사용자가 조합을 바꾸고 충돌 검사에 잡히게 하기 위한 것이다.
-    id: CAPTURE_TASK_MODE_COMMAND,
-    label: "keybindings.journal.captureTaskMode",
-    category: "journal",
+    // 캡처창이 열려 있을 때는 `registerAction`을 걸지 않는다 — QuickCaptureDialog의
+    // handleKeyDown이 직접 처리한다(§307D). 레지스트리 등록은 사용자가 조합을 바꾸고
+    // 충돌 검사에 잡히게 하기 위한 것이다. 에디터 쪽 갈래는 전역 액션으로 건다.
+    id: TASK_INPUT_COMMAND,
+    label: "keybindings.tasks.taskInput",
+    category: "tasks",
     // `Mod+Shift+*`는 남은 자리가 없다. 레지스트리와 `src-tauri/src/menu.rs`를
     // 합치면 K·Q·Z만 비는데, 바로 아래 `zettelkasten.newNote`의 주석대로 그 셋은
     // 전역 런처 충돌(K) 또는 시스템 예약(Q=macOS 로그아웃, Z=실행 취소)이다.
