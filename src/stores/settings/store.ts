@@ -169,6 +169,9 @@ export const useSettingsStore = create<SettingsState>()(
         tasksHome: state.tasksHome,
         tasksScanScope: state.tasksScanScope,
         tasksCaptureFile: state.tasksCaptureFile,
+        // §313 partialize는 whitelist다 — 빠뜨리면 재시작마다 단축키가 사라지고,
+        // 사용자는 "가끔 안 먹는다"로 겪는다.
+        tasksGlobalCaptureShortcut: state.tasksGlobalCaptureShortcut,
         snapshotInterval: state.snapshotInterval,
         snapshotMaxCount: state.snapshotMaxCount,
         activityBarConfig: state.activityBarConfig,

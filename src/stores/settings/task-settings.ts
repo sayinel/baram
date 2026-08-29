@@ -8,6 +8,7 @@ export interface TaskSettingsSlice {
   setTasksCaptureFile: (v: string) => void;
   setTasksEnabled: (v: boolean) => void;
   setTasksExcludePaths: (v: string[]) => void;
+  setTasksGlobalCaptureShortcut: (v: null | string) => void;
   setTasksHome: (v: string) => void;
   setTasksRecordDoneDate: (v: boolean) => void;
   setTasksScanScope: (v: TaskScanScope) => void;
@@ -16,6 +17,8 @@ export interface TaskSettingsSlice {
   tasksCaptureFile: string;
   tasksEnabled: boolean;
   tasksExcludePaths: string[];
+  /** §313 전역 캡처 단축키. 앱 표기(`Mod+Shift+N`). `null` = 등록하지 않음 */
+  tasksGlobalCaptureShortcut: null | string;
   tasksHome: string;
   tasksRecordDoneDate: boolean;
   tasksScanScope: TaskScanScope;
@@ -47,6 +50,10 @@ export const createTaskSettingsSlice: StateCreator<
   // §312 "완료 항목 정리"가 대상으로 삼는 경과일. 자동 실행하지 않으므로 이 값이 커도
   // 아무 일도 일어나지 않는다 — 무엇을 옮길지 고르는 기준일 뿐이다.
   tasksArchiveAfterDays: 30,
+  // §313 전역 캡처 단축키. **기본값은 없음**이다 — 전역 단축키는 OS 전체에서 키를
+  // 가로채므로, 우리가 고른 조합이 사용자가 이미 다른 앱에 쓰는 조합일 수 있다.
+  // 등록은 사용자가 지정할 때만 일어난다.
+  tasksGlobalCaptureShortcut: null,
 
   // Setters
   setTasksEnabled: (tasksEnabled) => set({ tasksEnabled }),
@@ -58,4 +65,6 @@ export const createTaskSettingsSlice: StateCreator<
   setTasksScanScope: (tasksScanScope) => set({ tasksScanScope }),
   setTasksArchiveAfterDays: (tasksArchiveAfterDays) =>
     set({ tasksArchiveAfterDays }),
+  setTasksGlobalCaptureShortcut: (tasksGlobalCaptureShortcut) =>
+    set({ tasksGlobalCaptureShortcut }),
 });
