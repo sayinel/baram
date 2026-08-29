@@ -11,8 +11,8 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskState: vi.fn(),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: vi.fn(),
+vi.mock("../../editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
 }));
 
 import {
@@ -21,9 +21,9 @@ import {
   setTaskField,
   setTaskState,
 } from "../../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../../pipeline";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { serializeLiveDoc } from "../../editor/serialize-live-doc";
 import {
   applyTaskWrite,
   isDiskAuthoritative,
@@ -57,7 +57,7 @@ const TO_DONE = {
   today: "2026-08-24",
 } as const;
 
-// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다 —
+// serializeLiveDoc이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다 —
 // 라우터는 `editor`를 truthy 마커와 `.state.doc`을 넘기는 통로로만 쓴다.
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
@@ -130,7 +130,7 @@ describe("applyTaskWrite — 디스크 경로", () => {
     const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
 
     expect(setTaskState).toHaveBeenCalled();
-    expect(prosemirrorToMarkdown).not.toHaveBeenCalled();
+    expect(serializeLiveDoc).not.toHaveBeenCalled();
     expect(useEditorStore.getState().contentRefreshKey).toBe(before);
     expect(r).toEqual({ kind: "disk", raw: "- [x] 초안" });
   });
@@ -145,7 +145,7 @@ describe("applyTaskWrite — 디스크 경로", () => {
     const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
 
     expect(setTaskState).toHaveBeenCalled();
-    expect(prosemirrorToMarkdown).not.toHaveBeenCalled();
+    expect(serializeLiveDoc).not.toHaveBeenCalled();
     expect(r).toEqual({ kind: "disk", raw: "- [x] 초안" });
   });
 
@@ -199,7 +199,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
   });
 
   it("라이브 문서에서 읽어 디스크를 건드리지 않고 고친다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue(
+    vi.mocked(serializeLiveDoc).mockReturnValue(
       "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n",
     );
     vi.mocked(previewTaskStateLine).mockResolvedValue(
@@ -219,7 +219,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
   });
 
   it("탭을 dirty로 표시하고 새로고침을 요청한다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue(
+    vi.mocked(serializeLiveDoc).mockReturnValue(
       "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n",
     );
     vi.mocked(previewTaskStateLine).mockResolvedValue("- [x] 초안");
@@ -232,7 +232,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
   });
 
   it("줄이 라이브 문서와 다르면 stale — 아무것도 쓰지 않는다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue(
+    vi.mocked(serializeLiveDoc).mockReturnValue(
       "머리말\n- [ ] 다른 내용\n꼬리말\n",
     );
 
@@ -244,7 +244,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
   });
 
   it("줄 번호가 문서 밖이면 stale", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("한 줄뿐\n");
+    vi.mocked(serializeLiveDoc).mockReturnValue("한 줄뿐\n");
     expect(await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR)).toEqual({
       kind: "stale",
       target: "document",
@@ -254,7 +254,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
   it("await 도중 라이브 문서가 바뀌면(경합) 재검사에서 stale로 잡는다", async () => {
     // 첫 호출(사전 검사)은 task.raw와 일치, 두 번째 호출(사후 재검사)에서는
     // 그 사이 다른 편집이 끼어든 것처럼 달라진 문서를 돌려준다.
-    vi.mocked(prosemirrorToMarkdown)
+    vi.mocked(serializeLiveDoc)
       .mockReturnValueOnce("머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n")
       .mockReturnValueOnce("머리말\n- [ ] 다른 사람이 바꿈\n꼬리말\n");
     vi.mocked(previewTaskStateLine).mockResolvedValue("- [x] 초안");
@@ -269,7 +269,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
     // 태스크 자신의 줄은 await 전후로 똑같다(재검사를 통과시켜 스플라이스까지
     // 도달해야 한다) — 대신 **다른** 줄이 그 사이 바뀐다. 사전에 잡아둔
     // 문서를 스플라이스하면 이 다른 줄의 편집이 조용히 사라진다.
-    vi.mocked(prosemirrorToMarkdown)
+    vi.mocked(serializeLiveDoc)
       .mockReturnValueOnce("머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n")
       .mockReturnValueOnce("머리말\n- [ ] 초안 📅2026-08-30\n꼬리말 수정됨\n");
     vi.mocked(previewTaskStateLine).mockResolvedValue(
@@ -285,7 +285,7 @@ describe("applyTaskWrite — 문서 경로 (활성 + dirty 탭)", () => {
   });
 
   it("kind: field도 문서 경로에서 라이브 문서를 고친다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue(
+    vi.mocked(serializeLiveDoc).mockReturnValue(
       "머리말\n- [ ] 초안 📅2026-08-30\n꼬리말\n",
     );
     vi.mocked(previewTaskFieldLine).mockResolvedValue("- [ ] 초안 ⏫");
@@ -416,7 +416,7 @@ describe("applyTaskWrite — 소스 경로 (소스 모드인 활성 + dirty 탭)
       "머리말\n- [x] 초안 📅2026-08-30 ✅2026-08-24\n꼬리말\n",
     );
     expect(setTaskState).not.toHaveBeenCalled();
-    expect(prosemirrorToMarkdown).not.toHaveBeenCalled();
+    expect(serializeLiveDoc).not.toHaveBeenCalled();
     expect(r).toEqual({
       kind: "source",
       raw: "- [x] 초안 📅2026-08-30 ✅2026-08-24",

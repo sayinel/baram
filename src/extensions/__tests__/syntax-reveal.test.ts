@@ -14,6 +14,8 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { forceCollapseSyntaxReveal } from "../plugins/syntax-reveal";
 
 function createEditor(): Editor {
@@ -478,6 +480,30 @@ describe("Syntax Reveal (§5.1)", () => {
       expect(editor.state.doc.textContent).toBe("Hello world end");
       // Bold "world" ends at 12 — caret should land right after it (12), not inside.
       expect(editor.state.selection.from).toBe(12);
+      editor.destroy();
+    });
+  });
+
+  // §384 roundtrip: the app's own save path (serializeLiveDoc) must reproduce the
+  // original bytes even while a link is actively expanded — the corruption this
+  // fix closes only shows up with the caret still inside the expansion, so a
+  // roundtrip test needs this file's Editor + caret harness, not the bare-schema
+  // fixtures the pipeline `roundtrip*.test.ts` suite uses (no caret to place there).
+  describe("Save roundtrip with the caret inside an expanded link (§384)", () => {
+    it("serializeLiveDoc reproduces the original markdown byte-for-byte", () => {
+      const editor = createEditor();
+      const original = "Hello [world](https://example.com) end\n";
+      loadMarkdown(editor, original);
+      moveCursorTo(editor, 2, 9);
+
+      expect(editor.state.doc.textContent).toContain(
+        "[world](https://example.com)",
+      );
+      // The naive read every pre-§384 save/dirty-check call site used — shown here
+      // as the roundtrip failure this fix closes, not as an assertion to keep.
+      expect(prosemirrorToMarkdown(editor.state.doc)).not.toBe(original);
+
+      expect(serializeLiveDoc(editor)).toBe(original);
       editor.destroy();
     });
   });

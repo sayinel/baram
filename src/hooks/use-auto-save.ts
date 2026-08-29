@@ -7,7 +7,6 @@ import type { Transaction } from "@tiptap/pm/state";
 import { useShallow } from "zustand/shallow";
 
 import { updateFileIndex, writeFile } from "../ipc/invoke";
-import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
@@ -22,6 +21,10 @@ import {
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
+import {
+  serializeDetachedDoc,
+  serializeLiveDoc,
+} from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
 import { notifyJournalChanged } from "../utils/journal/journal-events";
@@ -95,7 +98,7 @@ export function useAutoSave(editor: Editor | null) {
     }
 
     try {
-      const markdown = prosemirrorToMarkdown(editor.state.doc);
+      const markdown = serializeLiveDoc(editor);
       await writeFile(pending.filePath, markdown);
       // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
       // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
@@ -199,7 +202,7 @@ export function useAutoSave(editor: Editor | null) {
         shouldSkipDirty(tab.id, editor.state.doc, {
           beforeDoc: transaction.before,
           markdownEqual: (before, after) =>
-            prosemirrorToMarkdown(before) === prosemirrorToMarkdown(after),
+            serializeDetachedDoc(before) === serializeDetachedDoc(after),
         })
       )
         return;

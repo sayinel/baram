@@ -61,7 +61,7 @@ export function TaskEditDialog() {
       closeTaskEdit();
       return;
     }
-    const line = readTargetLine(editor.state.schema, found);
+    const line = readTargetLine(editor.state, found);
     const read = readTaskLine(line);
     setTarget(found);
     setDraft(read);

@@ -16,10 +16,10 @@ import type { TaskDeleteResult } from "./apply-task-write";
 import type { Editor } from "@tiptap/react";
 
 import { deleteTaskLine } from "../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
+import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { markSourceTabDirty, resolveTaskWriteTarget } from "./apply-task-write";
 import { isSameLine, lineAt, removeLine } from "./line-splice";
 
@@ -86,10 +86,7 @@ function deleteFromDocument(
   editor: Editor,
   tabId: string,
 ): TaskDeleteResult {
-  const next = contentWithoutLine(
-    prosemirrorToMarkdown(editor.state.doc),
-    task,
-  );
+  const next = contentWithoutLine(serializeLiveDoc(editor), task);
   if (next === null) return { kind: "stale", target: "document" };
 
   useFileStore.getState().setFileContent(task.path, next);

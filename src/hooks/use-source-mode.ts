@@ -18,7 +18,6 @@ import {
   mdastBlocksToPmNodes,
 } from "../pipeline/md-to-pm";
 import { parseMdastAsync } from "../pipeline/parse-async";
-import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import {
   mdOffsetToPmPos,
@@ -36,6 +35,7 @@ import {
   type ProgressiveLoadHandle,
   REST_CHUNK_BLOCKS,
 } from "../utils/editor/progressive-load";
+import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isMarkdownFile } from "../utils/file-type";
 import { LARGE_DOC_BLOCK_THRESHOLD } from "./use-large-doc-keepalive";
 
@@ -194,7 +194,7 @@ export function useSourceMode({
       // (SyntaxReveal replaces marks with literal delimiter text, which would
       // cause remark-stringify to escape angle brackets like \<u>)
       forceCollapseSyntaxReveal(editor.view);
-      const md = prosemirrorToMarkdown(editor.state.doc);
+      const md = serializeLiveDoc(editor);
       const pmPos = editor.state.selection.from;
       const mdOffset = pmPosToMdOffset(editor.state.doc, pmPos, md);
 
