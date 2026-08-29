@@ -85,11 +85,32 @@ export function parseLocalDate(s: null | string): Date | null {
  * `metadata()` 호출이 늘어 10k 파일 예산(376ms)을 갉아먹는다. 캡처 경로가
  * `➕`를 붙이므로 이 배지가 겨냥하는 수집함 항목에는 정확히 생긴다.
  */
+/**
+ * `now`가 속한 주의 첫날과 마지막 날(둘 다 자정).
+ *
+ * 버킷 분류("이번 주"의 경계)와 §315 주간 리뷰의 "이번 주 완료"가 **같은 주**를 봐야 한다.
+ * 두 곳이 각자 요일 계산을 하면 `tasksWeekStart`를 일요일로 바꾼 사용자에게 목록과 회고가
+ * 하루씩 어긋난 주를 보여 준다.
+ */
 export function taskAgeDays(task: TaskEntry, now: Date): number {
   const created = parseLocalDate(task.created);
   if (!created) return 0;
   const diff = startOfDay(now).getTime() - created.getTime();
   return diff > 0 ? Math.round(diff / MS_PER_DAY) : 0;
+}
+
+export function weekRange(
+  now: Date,
+  weekStart: "monday" | "sunday",
+): { end: Date; start: Date } {
+  const today = startOfDay(now);
+  const dow = today.getDay(); // 0=일
+  const offsetFromStart = weekStart === "monday" ? (dow + 6) % 7 : dow;
+  const start = new Date(today);
+  start.setDate(start.getDate() - offsetFromStart);
+  const end = new Date(today);
+  end.setDate(end.getDate() + (6 - offsetFromStart));
+  return { end, start };
 }
 
 function compare(a: TaskEntry, b: TaskEntry): number {
@@ -111,12 +132,7 @@ function effectiveDate(task: TaskEntry): Date | null {
 
 /** `now`가 속한 주의 마지막 날(자정). */
 function endOfWeek(now: Date, weekStart: "monday" | "sunday"): Date {
-  const today = startOfDay(now);
-  const dow = today.getDay(); // 0=일
-  const offsetFromStart = weekStart === "monday" ? (dow + 6) % 7 : dow;
-  const end = new Date(today);
-  end.setDate(end.getDate() + (6 - offsetFromStart));
-  return end;
+  return weekRange(now, weekStart).end;
 }
 
 function startOfDay(d: Date): Date {

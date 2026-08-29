@@ -333,8 +333,9 @@ describe("§308 칩 대비 — 칩은 이 메타데이터의 유일한 시각 �
   it("레일은 색이 유일한 채널이므로 낱말 라벨이 반드시 남는다", () => {
     // 높이 채널을 포기한 대가다. `::before`는 접근성 트리에 없으므로, 감춘 텍스트가
     // 사라지면 스크린 리더 사용자에게 우선순위가 **통째로** 없는 것이 된다.
+    // 행 마크업은 `TaskRow`에 있다 — 아젠다와 §315 주간 리뷰가 **같은 행**을 쓴다.
     const list = readFileSync(
-      join(process.cwd(), "src/components/tasks/TaskBucketList.tsx"),
+      join(process.cwd(), "src/components/tasks/TaskRow.tsx"),
       "utf8",
     );
     expect(list).toMatch(/className="visually-hidden">\{priority\.label\}/);

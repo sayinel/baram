@@ -416,3 +416,127 @@
   outline: 2px solid var(--color-accent-default);
   outline-offset: -2px;
 }
+
+/* ============================================
+   §315 주간 리뷰 — 아젠다의 프리셋 필터 + 전용 레이아웃
+   ============================================ */
+
+/* 사이드바 패널이 아니라 화면 가운데의 모드다. 세 묶음을 한 흐름으로 훑는 것이 목적이라
+   좁은 사이드바에서는 성립하지 않는다 — `j`로 내려가는 동안 항목과 묶음 제목이 함께
+   보여야 지금 어디를 처리하는지 알 수 있다. */
+.weekly-review-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  padding-top: 8vh;
+  background: rgb(0 0 0 / 40%);
+}
+
+.weekly-review-dialog {
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  max-height: 78vh;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 10px;
+  box-shadow: var(--shadow-xl);
+}
+
+.weekly-review-header {
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.weekly-review-header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+/* 진행 상황은 세는 것이 아니라 **줄어드는 것**을 보인다 — 남은 수가 0으로 가는 것이
+   이 화면의 완료 조건이다(§18.7 "수집함은 단조 증가하지 않는다"). */
+.weekly-review-progress {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.weekly-review-body {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.weekly-review-section + .weekly-review-section {
+  margin-top: 14px;
+}
+
+.weekly-review-section-title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* 기한 초과 묶음만 제목에 색을 준다 — 아젠다의 `today`/`overdue` 규칙과 같은 어휘다.
+   셋 다 칠하면 무엇이 급한지가 다시 사라진다. */
+.weekly-review-section[data-group="overdue"] > .weekly-review-section-title {
+  color: var(--color-status-danger);
+}
+
+.weekly-review-empty {
+  margin: 24px 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.weekly-review-footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* §312.1 배수구. 아젠다에서는 스캔 범위가 "태스크 홈"일 때만 나타나므로 기본 범위에서는
+   보이지 않는다 — 그 대가를 갚는 자리가 여기라, 이 버튼은 **언제나 있다**. */
+.weekly-review-archive {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--color-text-default);
+  cursor: pointer;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.weekly-review-archive:not(:disabled):hover {
+  background: var(--color-bg-hover);
+}
+
+.weekly-review-archive:disabled {
+  color: var(--color-text-secondary);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.weekly-review-hint {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}

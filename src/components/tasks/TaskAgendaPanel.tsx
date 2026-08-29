@@ -7,7 +7,7 @@ import type { TaskBucket } from "../../utils/tasks/task-buckets";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
-import { Archive, CalendarArrowUp, RefreshCw } from "lucide-react";
+import { Archive, CalendarArrowUp, ListChecks, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
@@ -16,6 +16,7 @@ import { useContextStore } from "../../stores/context/context";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { refreshAllTasks, useTaskStore } from "../../stores/tasks/task-store";
+import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { requestScroll } from "../../utils/editor/pending-scroll";
 import { openFileByPath } from "../../utils/open-file";
@@ -245,6 +246,18 @@ export function TaskAgendaPanel() {
               <Archive size={14} strokeWidth={1.5} />
             </button>
           )}
+          {/* §315 주간 리뷰의 두 진입점 중 하나(다른 하나는 커맨드 팔레트). 범위·대상과
+              무관하게 언제나 열 수 있다 — 리뷰는 목록을 처리하는 화면이지 목록이 있을 때만
+              쓰는 화면이 아니고, 비어 있다는 사실 자체가 리뷰의 결과다. */}
+          <button
+            aria-label={t("tasks.review.action")}
+            className="icon-btn"
+            onClick={() => useUIStore.getState().toggleWeeklyReview()}
+            title={t("tasks.review.action")}
+            type="button"
+          >
+            <ListChecks size={14} strokeWidth={1.5} />
+          </button>
           <button
             className="icon-btn"
             disabled={roots.length === 0 || loading}

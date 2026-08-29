@@ -464,6 +464,14 @@ function buildCommands(
         }
       },
     },
+    // §315 주간 리뷰 — 아젠다 헤더 버튼과 함께 이 화면의 두 진입점 중 하나다.
+    // 기본 단축키를 두지 않았으므로(주에 한 번 여는 화면) 여기가 사실상의 주 경로다.
+    {
+      id: "tasks:weekly-review",
+      label: "Tasks: Weekly Review",
+      category: "Tasks",
+      action: () => useUIStore.getState().toggleWeeklyReview(),
+    },
     // §57b Git commands
     {
       id: "git:commit",

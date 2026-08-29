@@ -90,6 +90,7 @@ interface UIState {
   closeExportDialog: () => void;
   /** §close-guard: Close the shared unsaved-changes modal */
   closeUnsavedModal: () => void;
+  closeWeeklyReview: () => void;
   closeZettelTitleDialog: () => void;
   commandPaletteOpen: boolean;
   /** §Phase5: External file change conflict modal state (null = closed) */
@@ -135,9 +136,9 @@ interface UIState {
   setPendingSearchHighlight: (term: null | string) => void;
   setRightPanelMode: (mode: RightPanelMode) => void;
   setRightPanelWidth: (width: number) => void;
-
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
+
   settingsOpen: boolean;
   /** §298 vim S3 — fed by SourceCodeEditor's vim controller */
   setVimStatus: (status: null | VimStatus) => void;
@@ -166,10 +167,13 @@ interface UIState {
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
   toggleSmartTemplateDialog: () => void;
+  /** §315 주간 리뷰 화면 — 아젠다 헤더 버튼과 커맨드 팔레트가 연다 */
+  toggleWeeklyReview: () => void;
   triggerContentReload: (cursorEnd?: boolean) => void;
   /** §close-guard: Shared unsaved-changes modal request (null = closed) */
   unsavedModal: null | UnsavedModalRequest;
   vimStatus: null | VimStatus;
+  weeklyReviewOpen: boolean;
   /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
   zettelTitleDialog: {
     /** Confirm-button label (e.g. "Create" | "Promote") */
@@ -206,6 +210,7 @@ export const useUIStore = create<UIState>((set) => ({
   pdfRailTab: "pages" as const,
   pendingApplyContent: null,
   quickCaptureOpen: false,
+  weeklyReviewOpen: false,
   unsavedModal: null,
   vimStatus: null,
   pendingSearchHighlight: null,
@@ -283,6 +288,13 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ quickCaptureOpen: !state.quickCaptureOpen })),
 
   openQuickCapture: () => set({ quickCaptureOpen: true }),
+
+  // §315 토글이다 — 커맨드 팔레트에서 같은 커맨드를 다시 실행하면 닫힌다. 리뷰는
+  // 훑는 화면이라 "열려 있는데 또 열기"가 자연스러운 조작이 아니다.
+  toggleWeeklyReview: () =>
+    set((state) => ({ weeklyReviewOpen: !state.weeklyReviewOpen })),
+
+  closeWeeklyReview: () => set({ weeklyReviewOpen: false }),
 
   openUnsavedModal: (req) => set({ unsavedModal: req }),
 
