@@ -109,6 +109,14 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         // Bias -1 for to: inserts AT to don't grow the range (typing at right boundary).
         const from = tr.mapping.map(value.expanded.from, 1);
         const to = tr.mapping.map(value.expanded.to, -1);
+        // §384 fix (F1 round 2): labelEnd is an INTERIOR boundary (the `]`
+        // right after the label) — bias 1 so typing exactly at this position
+        // joins the label (pushes the `]` right), same reasoning as `from`.
+        // See ExpandedRange.labelEnd.
+        const labelEnd =
+          value.expanded.labelEnd !== undefined
+            ? tr.mapping.map(value.expanded.labelEnd, 1)
+            : undefined;
 
         // Validate open delimiter
         try {
@@ -135,7 +143,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
 
         return {
-          expanded: { ...value.expanded, from, to },
+          expanded: { ...value.expanded, from, to, labelEnd },
         };
       },
     },
@@ -164,6 +172,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         markName,
         mediaAttrs,
         linkAttrs,
+        labelEnd: expandedLabelEnd,
       } = es.expanded;
       const tr = newState.tr;
 
@@ -216,7 +225,15 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       } else if (kind === "link") {
         const fullText = newState.doc.textBetween(from, to);
-        const parsed = parseRevealResource(fullText);
+        // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative
+        // to fullText) so the split is resolved exactly — see
+        // ExpandedRange.labelEnd.
+        const parsed = parseRevealResource(
+          fullText,
+          expandedLabelEnd !== undefined
+            ? { labelEnd: expandedLabelEnd - from }
+            : undefined,
+        );
         if (!parsed || parsed.kind !== "link") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
@@ -242,7 +259,13 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       } else if (kind === "image") {
         const fullText = newState.doc.textBetween(from, to);
-        const parsed = parseRevealResource(fullText);
+        // §384 fix (F1 round 2): see the link branch above.
+        const parsed = parseRevealResource(
+          fullText,
+          expandedLabelEnd !== undefined
+            ? { labelEnd: expandedLabelEnd - from }
+            : undefined,
+        );
         if (!parsed || parsed.kind !== "image") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;

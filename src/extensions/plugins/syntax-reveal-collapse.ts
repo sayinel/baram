@@ -42,6 +42,7 @@ export function buildCollapseTr(
     markName,
     mediaAttrs,
     linkAttrs,
+    labelEnd: expandedLabelEnd,
   } = expanded;
 
   // Validate open delimiter still exists
@@ -76,7 +77,14 @@ export function buildCollapseTr(
     }
   } else if (kind === "link") {
     const fullText = state.doc.textBetween(from, to);
-    const parsed = parseRevealResource(fullText);
+    // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative to
+    // fullText) so the split is resolved exactly — see ExpandedRange.labelEnd.
+    const parsed = parseRevealResource(
+      fullText,
+      expandedLabelEnd !== undefined
+        ? { labelEnd: expandedLabelEnd - from }
+        : undefined,
+    );
     if (!parsed || parsed.kind !== "link") return null;
 
     const { destination: href, title, labelEnd } = parsed;
@@ -102,7 +110,13 @@ export function buildCollapseTr(
     }
   } else if (kind === "image") {
     const fullText = state.doc.textBetween(from, to);
-    const parsed = parseRevealResource(fullText);
+    // §384 fix (F1 round 2): see the link branch above.
+    const parsed = parseRevealResource(
+      fullText,
+      expandedLabelEnd !== undefined
+        ? { labelEnd: expandedLabelEnd - from }
+        : undefined,
+    );
     if (!parsed || parsed.kind !== "image") return null;
 
     const { label: alt, destination: src, title } = parsed;

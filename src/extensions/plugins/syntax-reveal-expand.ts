@@ -5,7 +5,10 @@ import type { EditorView } from "@tiptap/pm/view";
 
 import { TextSelection } from "@tiptap/pm/state";
 
-import { serializeRevealResource } from "./syntax-reveal-resource-codec";
+import {
+  escapedLabelLength,
+  serializeRevealResource,
+} from "./syntax-reveal-resource-codec";
 import {
   MARK_DELIMITERS,
   syntaxRevealKey,
@@ -72,6 +75,12 @@ export function expandLink(
       to: newTo,
       openCheck: "[",
       linkAttrs,
+      // §384 fix (F1 round 2): doc-absolute position of the `]` that opens
+      // `](destination…)` — the label is the untouched, still-live
+      // [range.from, range.to) content, now shifted right by openDelim's
+      // insertion, so its close sits exactly one "[" past the original
+      // range.to. See ExpandedRange.labelEnd.
+      labelEnd: range.to + openDelim.length,
     },
   });
   tagSyntaxRevealEphemeral(tr);
@@ -191,6 +200,11 @@ export function expandMediaAtom(
       to: contentStart + text.length,
       openCheck: "![",
       mediaAttrs,
+      // §384 fix (F1 round 2): doc-absolute position of the `]` that opens
+      // `](destination…)`. Unlike a link label, alt is written into `text`
+      // literally (escaped, per serializeRevealResource) rather than kept as
+      // live doc content — see ExpandedRange.labelEnd, escapedLabelLength.
+      labelEnd: contentStart + 2 + escapedLabelLength(alt),
     },
   });
   tagSyntaxRevealEphemeral(tr);

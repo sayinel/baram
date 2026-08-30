@@ -13,6 +13,17 @@ export interface ExpandedRange {
   closeCheck?: string; // closing delimiter to validate (marks only)
   from: number; // start of expanded text (for images: inside paragraph)
   kind: "image" | "link" | "mark" | "wikilink";
+  // §384 fix (F1 round 2): for kind "link"/"image" — doc-absolute position of
+  // the `]` that opens `](destination…)`, stashed at expand time (see
+  // expandLink, expandMediaAtom) instead of asked to be re-derived from text
+  // alone by parseRevealResource's search (see syntax-reveal-resource-codec.ts
+  // for why that search is resolvable but WRONG whenever the destination
+  // itself contains a literal `](`). Mapped through edits in `apply()` below
+  // exactly like `from`/`to`, so it stays correct while the label is actively
+  // being typed into — assoc 1, same reasoning as `from`: an insertion AT this
+  // position joins the label (pushes the `]` right) rather than the
+  // destination.
+  labelEnd?: number;
   // §384 fix (B): non-href/title link mark attrs (e.g. `target`) that
   // `[text](href)` cannot represent. Stashed here on expand so both collapse
   // sites (syntax-reveal.ts's appendTransaction and
@@ -82,7 +93,7 @@ export function computeContentLen(
   state: EditorState,
   expanded: ExpandedRange,
 ): number {
-  const { from, to, kind, openCheck, closeCheck } = expanded;
+  const { from, to, kind, openCheck, closeCheck, labelEnd } = expanded;
   if (kind === "mark" && closeCheck) {
     return to - closeCheck.length - (from + openCheck.length);
   }
@@ -91,7 +102,13 @@ export function computeContentLen(
       const fullText = state.doc.textBetween(from, to);
       // §384 fix (F1): read the split from the shared parser instead of a
       // local `indexOf("](")` — see ParsedRevealResource.labelEnd.
-      const parsed = parseRevealResource(fullText);
+      // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative to
+      // `fullText`) so the split is resolved exactly — see
+      // ExpandedRange.labelEnd.
+      const parsed = parseRevealResource(
+        fullText,
+        labelEnd !== undefined ? { labelEnd: labelEnd - from } : undefined,
+      );
       return parsed?.kind === "link" ? parsed.labelEnd - 1 : 0;
     } catch {
       return 0;

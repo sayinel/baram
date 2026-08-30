@@ -695,6 +695,139 @@ describe("Syntax Reveal (§5.1)", () => {
     });
   });
 
+  // §384 fix (F1 round 2) — BLOCKER: the label/destination split was found by
+  // a greedy-then-backtrack search over TEXT ALONE, trying the LONGEST label
+  // first. That search cannot tell "the label legitimately contains `](`"
+  // apart from "the destination does" — an angle-form destination may itself
+  // contain a literal `](` (angle form only escapes `<`/`>`), so the search
+  // can back off PAST the real label boundary and swallow part of the
+  // destination into the label. Review counterexample: href " a](b" (or,
+  // without the leading space, "a](b") serializes to `[x](< a](b>)` /
+  // `[x](<a](b>)`, and the old text-only search resolves that as label
+  // "x](< a" / destination "b>" instead of the real label "x" / destination
+  // " a](b". Built via `setContent` with an explicit link mark (not markdown
+  // source) so this pins the codec split itself, independent of whether the
+  // destination also round-trips through the markdown parser.
+  describe("Link destination containing a literal ]( does not corrupt the label split (§384 F1 round 2)", () => {
+    function loadLinkWithHref(editor: Editor, href: string): void {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "xy",
+                marks: [{ type: "link", attrs: { href, title: null } }],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+    }
+
+    for (const href of [" a](b", "a]( b"]) {
+      describe(`destination ${JSON.stringify(href)}`, () => {
+        it("caret-in: serializeLiveDoc still reproduces the original", () => {
+          const editor = createEditor();
+          loadLinkWithHref(editor, href);
+          const original = serializeLiveDoc(editor);
+
+          moveCursorTo(editor, 2, 8);
+          expect(editor.state.doc.textContent).toContain("[xy](");
+
+          expect(serializeLiveDoc(editor)).toBe(original);
+          editor.destroy();
+        });
+
+        it("forceCollapseSyntaxReveal restores the original href", () => {
+          const editor = createEditor();
+          loadLinkWithHref(editor, href);
+          moveCursorTo(editor, 2, 8);
+
+          forceCollapseSyntaxReveal(editor.view);
+
+          const linkMark = editor.state.doc
+            .nodeAt(7)
+            ?.marks.find((m) => m.type.name === "link");
+          expect(linkMark?.attrs.href).toBe(href);
+          editor.destroy();
+        });
+
+        it("the appendTransaction cursor-exit path restores the original href", () => {
+          const editor = createEditor();
+          loadLinkWithHref(editor, href);
+          moveCursorTo(editor, 2, 8);
+
+          editor.commands.setTextSelection(2);
+
+          const linkMark = editor.state.doc
+            .nodeAt(7)
+            ?.marks.find((m) => m.type.name === "link");
+          expect(linkMark?.attrs.href).toBe(href);
+          editor.destroy();
+        });
+      });
+    }
+  });
+
+  // §384 fix (F1 round 2): the stashed label boundary (`ExpandedRange.labelEnd`)
+  // must be TRACKED through live edits inside the label — not just captured
+  // once at expand time — via the same `tr.mapping.map` that already keeps
+  // `from`/`to` correct in `apply()`. Uses the SAME ambiguous angle
+  // destination as the tests above so the only way to resolve the split
+  // correctly after the label's length changes is via a boundary that moved
+  // WITH the edit, not one re-derived from the (still ambiguous) text alone.
+  describe("Editing the label text while expanded keeps the stashed boundary correct (§384 F1 round 2)", () => {
+    it("typing inside the expanded label collapses with the NEW label and the correct href", () => {
+      const editor = createEditor();
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "xy",
+                marks: [
+                  { type: "link", attrs: { href: " a](b", title: null } },
+                ],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+      moveCursorTo(editor, 2, 8);
+      expect(editor.state.doc.textContent).toContain("[xy](< a](b>)");
+
+      // Move the cursor to just before the closing "]" (end of the label,
+      // still inside the expanded range) and type there.
+      // "Hello " (1-7) + "[" (7) + "xy" (8-10) + "]" at 10.
+      editor.commands.setTextSelection(10);
+      editor.commands.insertContent("!!!");
+      expect(editor.state.doc.textContent).toContain("[xy!!!](< a](b>)");
+
+      // Cursor still inside the expanded range → still active, not stale.
+      expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
+
+      editor.commands.setTextSelection(2);
+
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark).toBeDefined();
+      expect(editor.state.doc.textBetween(7, 7 + "xy!!!".length)).toBe("xy!!!");
+      expect(linkMark?.attrs.href).toBe(" a](b");
+      editor.destroy();
+    });
+  });
+
   // §384 (C): `collapseExpanded` (the interactive wrapper around the pure
   // `buildCollapseTr`) must fall back to a meta-only INACTIVE dispatch —
   // touching neither doc nor selection — when the expansion is stale (its
@@ -717,6 +850,37 @@ describe("Syntax Reveal (§5.1)", () => {
         to: 6,
         openCheck: "**",
         closeCheck: "**",
+      };
+
+      const docBefore = editor.state.doc;
+      const selectionBefore = editor.state.selection;
+
+      collapseExpanded(editor.view, staleExpanded);
+
+      expect(editor.state.doc).toBe(docBefore);
+      expect(editor.state.selection.from).toBe(selectionBefore.from);
+      expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
+      editor.destroy();
+    });
+
+    // §384 fix (F1 round 2): a `labelEnd` that no longer points at a real
+    // `](` (e.g. the label's length changed since it was stashed, and the
+    // caller failed to remap it — see ExpandedRange.labelEnd) must degrade
+    // through this SAME contract, not corrupt the doc or silently reuse the
+    // ambiguous legacy search.
+    it("a labelEnd that no longer points at ]( falls back to INACTIVE without corrupting the doc", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, "Hello [world](https://example.com) end\n");
+      moveCursorTo(editor, 2, 9);
+      const realExpanded = getSyntaxRevealExpanded(editor.state);
+      expect(realExpanded?.kind).toBe("link");
+      expect(realExpanded?.labelEnd).toBeDefined();
+
+      // Simulate drift: the stashed labelEnd is off by one, so it no longer
+      // lands on the real "]".
+      const staleExpanded: ExpandedRange = {
+        ...(realExpanded as ExpandedRange),
+        labelEnd: (realExpanded as ExpandedRange).labelEnd! + 1,
       };
 
       const docBefore = editor.state.doc;

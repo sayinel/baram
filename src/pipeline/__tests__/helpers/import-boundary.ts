@@ -66,7 +66,12 @@ export function resolveModuleId(
 
 // ── file tree scan ──────────────────────────────────────────────────────
 
-/** All production `.ts`/`.tsx` files under `dir` — no `__tests__`, no `.test.`. */
+/**
+ * All production `.ts`/`.tsx`/`.mts`/`.cts` files under `dir` — no
+ * `__tests__`, no `.test.`. §384 (F3 caveat): the repository currently has no
+ * `.mts`/`.cts` pipeline siblings, but a future one would otherwise be
+ * invisible to this scanner and silently escape the import-boundary audit.
+ */
 export function productionSourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -74,7 +79,10 @@ export function productionSourceFiles(dir: string): string[] {
     if (entry.isDirectory()) {
       if (entry.name === "__tests__") continue;
       out.push(...productionSourceFiles(path));
-    } else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\./.test(entry.name)) {
+    } else if (
+      /\.(ts|tsx|mts|cts)$/.test(entry.name) &&
+      !/\.test\./.test(entry.name)
+    ) {
       out.push(path);
     }
   }

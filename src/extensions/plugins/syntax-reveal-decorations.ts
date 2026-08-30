@@ -13,7 +13,7 @@ export function buildExpandedDecorations(
   state: EditorState,
   expanded: ExpandedRange,
 ): Decoration[] {
-  const { from, to, kind, openCheck, closeCheck } = expanded;
+  const { from, to, kind, openCheck, closeCheck, labelEnd } = expanded;
   const decos: Decoration[] = [];
 
   try {
@@ -36,7 +36,13 @@ export function buildExpandedDecorations(
       // local `indexOf("](")` — see ParsedRevealResource.labelEnd. Falls
       // back to -1 (no decoration) on a stale/invalid expansion, same as the
       // previous "not found" behavior below.
-      const closeBracket = parseRevealResource(text)?.labelEnd ?? -1;
+      // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative to
+      // `text`) so the split is resolved exactly — see ExpandedRange.labelEnd.
+      const closeBracket =
+        parseRevealResource(
+          text,
+          labelEnd !== undefined ? { labelEnd: labelEnd - from } : undefined,
+        )?.labelEnd ?? -1;
       const openLen = kind === "image" ? 2 : 1;
 
       if (closeBracket >= 0) {

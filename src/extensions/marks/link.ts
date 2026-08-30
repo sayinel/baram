@@ -224,9 +224,17 @@ export const Link = Mark.create<LinkOptions>({
               // unescapes it the same way collapse does.
               const srState = syntaxRevealKey.getState(view.state);
               if (srState?.expanded?.kind === "link") {
-                const { from, to } = srState.expanded;
+                const { from, to, labelEnd } = srState.expanded;
                 const expandedText = view.state.doc.textBetween(from, to);
-                const href = parseRevealResource(expandedText)?.destination;
+                // §384 fix (F1 round 2): pass the stashed, mapped boundary
+                // (relative to expandedText) so the split is resolved exactly
+                // — see ExpandedRange.labelEnd.
+                const href = parseRevealResource(
+                  expandedText,
+                  labelEnd !== undefined
+                    ? { labelEnd: labelEnd - from }
+                    : undefined,
+                )?.destination;
                 if (href) {
                   event.preventDefault();
                   navigateHref(href.trim());

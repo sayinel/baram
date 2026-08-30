@@ -327,6 +327,139 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
       });
     });
 
+    // §384 fix (F1 round 2) — BLOCKER: the greedy-then-backtrack search above
+    // resolves "the label legitimately contains `](`" and "the destination
+    // does" the SAME way — longest label with a valid tail — which is simply
+    // WRONG when it's the destination. Reviewer counterexample: destination
+    // " a](b" needs angle form (leading space) and serializes to
+    // `[x](< a](b>)`; backtracking finds the destination's OWN embedded `](`
+    // first and mis-splits it as label "x](< a" / destination "b>". A caller
+    // holding the TRUE label boundary (as every production caller does — see
+    // ExpandedRange.labelEnd) passes it as `labelEnd` to resolve the split
+    // exactly instead of searching for it.
+    describe("known label boundary resolves the split exactly (labelEnd option, §384 F1 round 2)", () => {
+      it("the legacy (no labelEnd) search mis-splits the reviewer counterexample — documenting the bug this option closes", () => {
+        expect(parseRevealResource("[x](< a](b>)")).toEqual(
+          expect.objectContaining({ label: "x](< a", destination: "b>" }),
+        );
+      });
+
+      it("with the TRUE labelEnd, resolves the destination's embedded ]( correctly", () => {
+        expect(parseRevealResource("[x](< a](b>)", { labelEnd: 2 })).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "x",
+            destination: " a](b",
+            title: null,
+            labelEnd: 2,
+          }),
+        );
+      });
+
+      it("resolves the same shape for media (image)", () => {
+        expect(parseRevealResource("![x](< a](b>)", { labelEnd: 3 })).toEqual(
+          expect.objectContaining({
+            kind: "image",
+            label: "x",
+            destination: " a](b",
+            title: null,
+            labelEnd: 3,
+          }),
+        );
+      });
+
+      it("resolves the no-leading-space variant (destination itself starts with the embedded ]()", () => {
+        // Same family, no leading space forcing a visually different shape —
+        // the destination "a](b" would need something ELSE to force angle
+        // form in a real round trip, but the parser must resolve this exact
+        // text correctly regardless of how it was produced.
+        expect(parseRevealResource("[x](<a](b>)", { labelEnd: 2 })).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "x",
+            destination: "a](b",
+            title: null,
+            labelEnd: 2,
+          }),
+        );
+      });
+
+      it("returns null — never falls back to the ambiguous legacy search — when labelEnd doesn't point at a ](", () => {
+        // Simulates a stale stash (e.g. the label shrank/grew since labelEnd
+        // was captured, and the caller failed to remap it): text[5] is " ",
+        // not "]", so this must reject outright rather than silently reusing
+        // REVEAL_RESOURCE_RE's search (which succeeds, but at the WRONG
+        // split — see the "legacy search mis-splits" test above).
+        expect(parseRevealResource("[x](< a](b>)", { labelEnd: 5 })).toBeNull();
+      });
+
+      it("returns null when labelEnd lands past the end of the text", () => {
+        expect(parseRevealResource("[x](u)", { labelEnd: 99 })).toBeNull();
+      });
+
+      it("returns null when labelEnd is before the opening [", () => {
+        expect(parseRevealResource("[x](u)", { labelEnd: 0 })).toBeNull();
+      });
+
+      // §384 fix (F1 round 2): round-trip family exercising the option
+      // directly — mirrors the plain "round trip" describe below, but each
+      // case passes the TRUE labelEnd instead of relying on search.
+      describe("round trip with a known labelEnd", () => {
+        const cases: { labelEnd: number; resource: RevealResource }[] = [
+          {
+            resource: {
+              kind: "link",
+              label: "x",
+              destination: " a](b",
+              title: null,
+            },
+            labelEnd: 2,
+          },
+          {
+            resource: {
+              kind: "image",
+              label: "x",
+              destination: " a](b",
+              title: null,
+            },
+            labelEnd: 3,
+          },
+          {
+            resource: {
+              kind: "link",
+              label: "xy",
+              destination: "a]( b",
+              title: null,
+            },
+            labelEnd: 3,
+          },
+          {
+            // label "a]b" escapes to "a\]b" (4 chars) in the serialized
+            // text — labelEnd counts the SERIALIZED (escaped) length, not
+            // the raw label's own length.
+            resource: {
+              kind: "link",
+              label: "a]b",
+              destination: "u",
+              title: null,
+            },
+            labelEnd: 5,
+          },
+        ];
+
+        for (const { resource, labelEnd } of cases) {
+          it(`round-trips ${JSON.stringify(resource)} given labelEnd=${labelEnd}`, () => {
+            const text = serializeRevealResource(resource);
+            const parsed = parseRevealResource(text, { labelEnd });
+            expect(parsed).toEqual(expect.objectContaining(resource));
+            // The invariant every `from + labelEnd` consumer downstream
+            // depends on: what you pass in is what you get back.
+            expect(parsed?.labelEnd).toBe(labelEnd);
+          });
+        }
+      });
+    });
+
     // §384 fix (F2): destinations containing Unicode whitespace (not just
     // ASCII) that end up in the RAW (non-angle) form must still parse — see
     // NEEDS_ANGLE_RE (ASCII-only) vs. the old RAW_DEST_CONTENT (JS `\s`,

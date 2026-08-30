@@ -38,6 +38,19 @@ export interface ParsedRevealResource extends RevealResource {
   labelEnd: number;
 }
 
+/**
+ * §384 fix (F1 round 2): callers that stashed the true label boundary at
+ * expand time (see `ExpandedRange.labelEnd`) pass it back in here as
+ * `labelEnd` — the index, in `text`, of the `]` that opens
+ * `](destination…)`. When given, the label is exactly `text.slice(prefixLen,
+ * labelEnd)` and only the destination/title grammar is matched against the
+ * remaining tail — no searching. This is what makes the split unambiguous:
+ * see `parseRevealResource`'s doc comment for why text-only search cannot be.
+ */
+export interface ParseRevealResourceOptions {
+  labelEnd?: number;
+}
+
 export type RevealResourceKind = "image" | "link";
 
 // Characters escaped per construct, per mdast-util-to-markdown/lib/unsafe.js:
@@ -75,6 +88,19 @@ export function serializeRevealResource(resource: RevealResource): string {
   const titleText =
     title !== null ? ` "${escapeSpecials(title, TITLE_SPECIALS)}"` : "";
   return `${prefix}[${labelText}](${destText}${titleText})`;
+}
+
+/**
+ * §384 fix (F1 round 2): the length `label` occupies once escaped exactly as
+ * `serializeRevealResource` writes it (see `escapeSpecials`/`LABEL_SPECIALS`
+ * above). `expandMediaAtom` uses this to compute the media alt's doc-absolute
+ * `ExpandedRange.labelEnd` — the alt text is written into the inserted text
+ * node literally (unlike a link label, which stays live, unescaped doc text —
+ * see expandLink), so its escaped length is exactly what's needed to locate
+ * the `]` that follows it.
+ */
+export function escapedLabelLength(label: string): number {
+  return escapeSpecials(label, LABEL_SPECIALS).length;
 }
 
 function serializeDestination(
@@ -134,6 +160,21 @@ function unescapeSpecials(text: string): string {
 // be the split a human intended. That ambiguity predates this fix (the old
 // strict grammar simply failed such labels outright instead); this fix does
 // not resolve it, only the far more common bare-`]`-with-no-following-`(` case.
+//
+// §384 fix (F1 round 2): that "longest label with a valid tail" heuristic is
+// not just imprecise for a label that self-embeds `](destination)` — it is
+// WRONG whenever the DESTINATION itself contains a literal `](` and would
+// also complete the destination/title/`)` grammar starting from THAT split.
+// Angle form only escapes `<`/`>`, so a destination like " a](b" (needs angle
+// because of the leading space) serializes to `[x](< a](b>)`, and backtracking
+// finds the destination's OWN embedded `](` first — it's the LONGEST label
+// with a tail that validates — misreading it as label "x](< a" / destination
+// "b>" instead of the real label "x" / destination " a](b". Every current
+// production caller sidesteps this: they hold the stashed, doc-position-
+// mapped label length from expand time (`ExpandedRange.labelEnd`) and pass it
+// as `labelEnd` below, which resolves the split exactly instead of searching
+// for it. `REVEAL_RESOURCE_RE`'s search remains only for callers with no such
+// stash (documented on `parseRevealResource` below).
 const LABEL_CONTENT_LENIENT = String.raw`[\s\S]*`;
 const ANGLE_DEST_CONTENT = String.raw`(?:\\.|[^<>\\])*`;
 // §384 fix (F2): exclude only the ASCII whitespace/control set that actually
@@ -146,13 +187,88 @@ const ANGLE_DEST_CONTENT = String.raw`(?:\\.|[^<>\\])*`;
 const RAW_DEST_CONTENT = String.raw`(?:\\.|[^\0-\x20\x7f()\\])*`;
 const TITLE_CONTENT = String.raw`(?:\\.|[^"\\])*`;
 
+// The `](destination "title")` grammar, shared verbatim by both regexes
+// below so there's exactly one place that defines it — see this file's
+// opening comment on why expansion and both collapse implementations must
+// agree on a single grammar. Capture groups: 1 = angle destination, 2 = raw
+// destination, 3 = title.
+const RESOURCE_TAIL = String.raw`\]\((?:<(${ANGLE_DEST_CONTENT})>|(${RAW_DEST_CONTENT}))(?:\s+"(${TITLE_CONTENT})")?\)$`;
+
 const REVEAL_RESOURCE_RE = new RegExp(
-  `^(!?)\\[(${LABEL_CONTENT_LENIENT})\\]\\(` +
-    `(?:<(${ANGLE_DEST_CONTENT})>|(${RAW_DEST_CONTENT}))` +
-    `(?:\\s+"(${TITLE_CONTENT})")?\\)$`,
+  `^(!?)\\[(${LABEL_CONTENT_LENIENT})${RESOURCE_TAIL}`,
 );
 
-export function parseRevealResource(text: string): null | ParsedRevealResource {
+// §384 fix (F1 round 2): the same tail grammar, anchored to start right at a
+// KNOWN `](` — used by the `labelEnd`-aware path below, which already knows
+// exactly where the label ends and only needs to validate what follows it.
+// No label group, no search: `parseWithLabelEnd` slices the label itself
+// directly from `labelEnd`.
+const RESOURCE_TAIL_RE = new RegExp(`^${RESOURCE_TAIL}`);
+
+/**
+ * §384 fix (F1 round 2): resolve the split from a KNOWN label boundary
+ * instead of searching for one — see `ParseRevealResourceOptions.labelEnd`.
+ * `labelEnd` must be the exact index (in `text`) of the `]` that opens
+ * `](destination…)`; anything else — including a `labelEnd` that WOULD have
+ * been a valid split for a different (e.g. stale, since-edited) text — is
+ * rejected outright with `null`. This never falls back to the ambiguous
+ * `REVEAL_RESOURCE_RE` search: a bad stash must fail loudly, not silently
+ * reopen the exact corruption this fix closes.
+ */
+function parseWithLabelEnd(
+  text: string,
+  labelEnd: number,
+): null | ParsedRevealResource {
+  const bang = text.startsWith("!") ? "!" : "";
+  const prefixLen = bang.length + 1; // "[" or "!["
+  if (
+    labelEnd < prefixLen ||
+    text[prefixLen - 1] !== "[" ||
+    labelEnd + 1 >= text.length
+  ) {
+    return null;
+  }
+
+  const tail = text.slice(labelEnd);
+  const tailMatch = RESOURCE_TAIL_RE.exec(tail);
+  if (!tailMatch) return null;
+
+  const [, angleDest, rawDest, title] = tailMatch;
+  const label = text.slice(prefixLen, labelEnd);
+
+  return {
+    kind: bang ? "image" : "link",
+    label: unescapeSpecials(label),
+    destination: unescapeSpecials(angleDest ?? rawDest ?? ""),
+    title: title !== undefined ? unescapeSpecials(title) : null,
+    labelEnd,
+  };
+}
+
+/**
+ * Parse `[label](destination "title")` / `![label](destination "title")`
+ * reveal text — the inverse of `serializeRevealResource`.
+ *
+ * Pass `opts.labelEnd` whenever the caller already knows the true label
+ * boundary (every current production call site does — see
+ * `ExpandedRange.labelEnd`, stashed at expand time and mapped through edits).
+ * That resolves the split exactly instead of searching for it — see the
+ * comment above `LABEL_CONTENT_LENIENT` for why a destination containing a
+ * literal `](` otherwise makes the search resolvable but WRONG, not just
+ * ambiguous.
+ *
+ * Without `opts.labelEnd` (legacy path — e.g. an external caller with no
+ * stashed boundary), falls back to `REVEAL_RESOURCE_RE`'s greedy-then-
+ * backtrack search, which keeps its pre-existing, documented ambiguity.
+ */
+export function parseRevealResource(
+  text: string,
+  opts?: ParseRevealResourceOptions,
+): null | ParsedRevealResource {
+  if (opts?.labelEnd !== undefined) {
+    return parseWithLabelEnd(text, opts.labelEnd);
+  }
+
   const match = REVEAL_RESOURCE_RE.exec(text);
   if (!match) return null;
 

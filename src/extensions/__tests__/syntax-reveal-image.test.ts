@@ -219,6 +219,60 @@ describe("image syntax reveal (§300-3 regression guard)", () => {
     editor.destroy();
   });
 
+  // §384 fix (F1 round 2) — BLOCKER: same label/destination-split bug as the
+  // link side (syntax-reveal.test.ts), reproduced through the media path.
+  // Reviewer counterexample: src " a](b" serializes to `![x](< a](b>)`, and
+  // the old text-only greedy search resolves that as alt "x](< a" /
+  // src "b>" instead of the real alt "x" / src " a](b". Built via `setContent`
+  // with an explicit image node (not markdown source) so this pins the codec
+  // split itself, independent of whether the src also round-trips through
+  // the markdown parser.
+  describe("Media src containing a literal ]( does not corrupt the alt split (§384 F1 round 2)", () => {
+    function loadImageWithSrc(editor: Editor, src: string): void {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Hello" }] },
+          { type: "image", attrs: { src, alt: "x" } },
+        ],
+      });
+    }
+
+    for (const src of [" a](b", "a]( b"]) {
+      describe(`src ${JSON.stringify(src)}`, () => {
+        it("expands to the literal angle-bracket form and collapses back via forceCollapseSyntaxReveal", async () => {
+          const editor = createEditor();
+          loadImageWithSrc(editor, src);
+
+          await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+          expect(editor.state.doc.textContent).toContain(`![x](<${src}>)`);
+
+          forceCollapseSyntaxReveal(editor.view);
+
+          expect(nodeTypeNames(editor)).toContain("image");
+          expect(findNode(editor, "image")?.attrs.src).toBe(src);
+          expect(findNode(editor, "image")?.attrs.alt).toBe("x");
+          editor.destroy();
+        });
+
+        it("collapses back via the appendTransaction cursor-exit path", async () => {
+          const editor = createEditor();
+          loadImageWithSrc(editor, src);
+
+          await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+          expect(editor.state.doc.textContent).toContain(`![x](<${src}>)`);
+
+          editor.commands.setTextSelection(2);
+
+          expect(nodeTypeNames(editor)).toContain("image");
+          expect(findNode(editor, "image")?.attrs.src).toBe(src);
+          expect(findNode(editor, "image")?.attrs.alt).toBe("x");
+          editor.destroy();
+        });
+      });
+    }
+  });
+
   // ── Click handler path ──────────────────────────────────────────────
   //
   // syntax-reveal.ts registers a SECOND, independent expansion trigger on
