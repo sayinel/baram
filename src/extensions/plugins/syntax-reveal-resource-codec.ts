@@ -59,24 +59,37 @@ export interface ParsedRevealResource extends RevealResource {
  * labelEnd)` and only the destination/title grammar is matched against the
  * remaining tail — no searching. This is what makes the split unambiguous:
  * see `parseRevealResource`'s doc comment for why text-only search cannot be.
+ *
+ * §384 (design review M3): `labelEnd` and `labelGrammar` are mutually
+ * exclusive — passing both used to silently ignore `labelGrammar` (the
+ * `labelEnd` branch returns before `labelGrammar` is ever read). This union
+ * makes that exclusivity a compile-time property instead of a runtime
+ * footgun: a caller can supply the exact stashed boundary, OR declare which
+ * label grammar to search with, never both at once.
  */
-export interface ParseRevealResourceOptions {
-  /** Exact label boundary stashed at expand time — resolves the split
-   *  without any search (the only path production uses). */
-  labelEnd?: number;
-  /**
-   * §384 (impl review r5): which label grammar the text was written in. The
-   * same bytes can be BOTH the serializer's output for one resource and live
-   * unescaped label text for another (`[x](< a](b>)` is label "x" /
-   * destination " a](b" when serialized, but label "x](< a" / destination
-   * "b>" as live text) — no parser can recover that provenance from the
-   * string, so the caller states it. `"serialized"` (default) uses the
-   * escaped-label grammar `serializeRevealResource` emits, making
-   * `parse(serialize(x)) === x` for every resource; `"live"` uses the
-   * lenient greedy search for text whose label is unescaped document text.
-   */
-  labelGrammar?: "live" | "serialized";
-}
+export type ParseRevealResourceOptions =
+  | {
+      /** Exact label boundary stashed at expand time — resolves the split
+       *  without any search (the only path production uses). */
+      labelEnd: number;
+      labelGrammar?: never;
+    }
+  | {
+      labelEnd?: never;
+      /**
+       * §384 (impl review r5): which label grammar the text was written in.
+       * The same bytes can be BOTH the serializer's output for one resource
+       * and live unescaped label text for another (`[x](< a](b>)` is label
+       * "x" / destination " a](b" when serialized, but label "x](< a" /
+       * destination "b>" as live text) — no parser can recover that
+       * provenance from the string, so the caller states it. `"serialized"`
+       * (default) uses the escaped-label grammar `serializeRevealResource`
+       * emits, making `parse(serialize(x)) === x` for every resource;
+       * `"live"` uses the lenient greedy search for text whose label is
+       * unescaped document text.
+       */
+      labelGrammar?: "live" | "serialized";
+    };
 
 export type RevealResourceKind = "image" | "link";
 
@@ -322,8 +335,9 @@ export function parseRevealResource(
   text: string,
   opts?: ParseRevealResourceOptions,
 ): null | ParsedRevealResource {
-  if (opts?.labelEnd !== undefined) {
-    return parseWithLabelEnd(text, opts.labelEnd);
+  const stashedLabelEnd = opts?.labelEnd;
+  if (stashedLabelEnd !== undefined) {
+    return parseWithLabelEnd(text, stashedLabelEnd);
   }
 
   const match =

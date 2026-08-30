@@ -38,10 +38,14 @@ export function buildExpandedDecorations(
       // previous "not found" behavior below.
       // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative to
       // `text`) so the split is resolved exactly — see ExpandedRange.labelEnd.
+      // §384 (design review M2): missing stash falls back to the LIVE label
+      // grammar, not strict — see syntax-reveal-collapse.ts's link branch.
       const closeBracket =
         parseRevealResource(
           text,
-          labelEnd !== undefined ? { labelEnd: labelEnd - from } : undefined,
+          labelEnd !== undefined
+            ? { labelEnd: labelEnd - from }
+            : { labelGrammar: "live" },
         )?.labelEnd ?? -1;
       const openLen = kind === "image" ? 2 : 1;
 

@@ -27,6 +27,7 @@ import {
   buildForwardedBans,
   buildPipelineClosure,
   buildPipelineInternalSet,
+  type FileRefs,
   findViolations,
   loadRealEntries,
   MD_TO_PM_ROUTE_FILES,
@@ -38,6 +39,56 @@ import {
   SERIALIZE_LIVE_DOC,
   SRC_DIR,
 } from "./helpers/import-boundary";
+
+// §384 (design review M6): is `name` from `module` actually consumed anywhere in the real
+// tree — directly, or through a barrel that re-exports it? Reused by the "no dead allowlist
+// entries" check below: an allowlist entry with no real consumer is exactly as much a defect
+// as a missing one — it's an audited exception for an import nothing makes anymore.
+//
+// The direct-consumer leg is checked against `checked` (files OUTSIDE pipeline, i.e. the same
+// set the real scan runs `findViolations` against) — NOT the full `allEntries` — because the
+// allowlist sanctions imports crossing OUT of pipeline. A pipeline-internal file importing its
+// own sibling's export would satisfy a naive "any consumer anywhere" check while proving
+// nothing about whether the allowlist entry is still needed by anyone outside. The barrel-
+// forwarding leg still needs `allEntries`, since that's where a re-exporting barrel's own
+// `export { X } from "./module"` statement lives (pipeline/index.ts is pipeline-internal, and
+// so excluded from `checked`).
+function isExportConsumed(
+  module: string,
+  name: string,
+  checked: readonly FileRefs[],
+  allEntries: readonly FileRefs[],
+  visited: Set<string> = new Set(),
+): boolean {
+  const key = `${module}\0${name}`;
+  if (visited.has(key)) return false; // guard against a barrel re-export cycle
+  visited.add(key);
+
+  const consumedDirectly = checked.some(({ refs }) =>
+    refs.some(
+      (ref) =>
+        ref.module === module &&
+        (ref.form === "named-import" || ref.form === "default-import") &&
+        ref.pairs.some((p) => p.original === name),
+    ),
+  );
+  if (consumedDirectly) return true;
+
+  for (const { file: barrelFile, refs } of allEntries) {
+    for (const ref of refs) {
+      if (ref.module !== module || ref.form !== "export-named") continue;
+      for (const { original, local } of ref.pairs) {
+        if (
+          original === name &&
+          isExportConsumed(barrelFile, local, checked, allEntries, visited)
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 
 const ZETTEL_LINK_RESOLVE = join(
   SRC_DIR,
@@ -228,6 +279,26 @@ describe("pm→markdown import boundary — real production scan (§384 commit 3
     expect(violations.map((v) => `${v.file}:${v.line} — ${v.message}`)).toEqual(
       [],
     );
+  });
+
+  // §384 (design review M6): the allowlist is an audit trail, not just a checklist — every
+  // entry claims "a real production import outside pipeline needs this". Nothing enforced
+  // that claim: a name whose only consumer got deleted or refactored away stays allowlisted
+  // forever, silently widening the boundary for no reason. This fails loudly instead, naming
+  // exactly which (module, export) pair has gone dead so it can be removed from
+  // `buildAllowlist()`.
+  it("every allowlisted (module, export) pair has at least one real production consumer — no dead entries", () => {
+    const deadEntries: string[] = [];
+    for (const [module, names] of allowlist) {
+      for (const name of names) {
+        if (!isExportConsumed(module, name, checked, allEntries)) {
+          deadEntries.push(
+            `"${name}" from ${module} — remove from buildAllowlist()`,
+          );
+        }
+      }
+    }
+    expect(deadEntries).toEqual([]);
   });
 
   it("serialize-live-doc.ts is the one sanctioned direct consumer of prosemirrorToMarkdown", () => {

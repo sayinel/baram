@@ -21,6 +21,7 @@ import type { Mapping } from "@tiptap/pm/transform";
 import { getSyntaxRevealExpanded } from "../../extensions/plugins/syntax-reveal";
 import { buildCollapseTr } from "../../extensions/plugins/syntax-reveal-collapse";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { logger } from "../logger";
 
 /**
  * The doc this state WOULD have if any active SyntaxReveal expansion collapsed right now,
@@ -28,10 +29,21 @@ import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
  *
  * §384: this is the one place that decides "what does this editor's document actually
  * say" for read-only purposes (serialize, compare, extract). No expansion → the mapping is
- * `null` and the doc is `state.doc` unchanged. An expansion whose delimiters no longer
- * validate against the live doc (stale — `buildCollapseTr` returns `null`) falls back to
- * `state.doc` as-is rather than guessing; the expanded text still exists in the document,
- * which is a display artifact, not a positions/serialization one.
+ * `null` and the doc is `state.doc` unchanged.
+ *
+ * §384 (design review M4): `buildCollapseTr` returning `null` means the expanded range's
+ * delimiters no longer validate against the live doc — but that single signal covers two
+ * situations this function cannot tell apart: (a) the user genuinely edited the expanded,
+ * literal text (the delimiters legitimately changed underneath the stash — the literal text
+ * IS the content now, and falling back to `state.doc` as-is is the correct read), or (b) a
+ * codec gap failed to parse an expansion that was actually still well-formed, silently
+ * corrupting what gets serialized (this is exactly the bug class §384's own fixes — F1, F2,
+ * R3-1 — closed one instance of at a time). Every known case of (b) is pinned by a
+ * regression test; falling back here instead of guessing is still the right call for both,
+ * but a NEW case of (b) must not go unnoticed the way the original bug did — hence the
+ * warning below on this path. It is expected-noisy for case (a) (this is a hot read path:
+ * save timers, dirty-compares, exports all funnel through it) and is a dev-only breadcrumb
+ * for someone investigating a report, not itself a defect signal.
  */
 export function canonicalDoc(state: EditorState): {
   doc: PMNode;
@@ -41,7 +53,12 @@ export function canonicalDoc(state: EditorState): {
   if (!expanded) return { doc: state.doc, mapping: null };
 
   const tr = buildCollapseTr(state, expanded);
-  if (!tr) return { doc: state.doc, mapping: null };
+  if (!tr) {
+    logger.warn(
+      "[canonicalDoc] stale/unparseable syntax-reveal expansion — falling back to the live doc as-is",
+    );
+    return { doc: state.doc, mapping: null };
+  }
 
   return { doc: tr.doc, mapping: tr.mapping };
 }
@@ -62,9 +79,15 @@ export function serializeLiveDoc(editor: Editor): string {
 /**
  * Markdown for a doc that was never part of a live `EditorState` — one built for a
  * detached comparison (e.g. a pre/post snapshot) or constructed for a scoped export (e.g.
- * a single table wrapped in a fresh `doc` node). Same entry point as the other two, kept
- * separate because there is no `EditorState` here to canonicalize — the doc handed in is
- * already what should be serialized.
+ * a single table wrapped in a fresh `doc` node).
+ *
+ * §384 (design review L2): this function exists not because "there's no EditorState to
+ * canonicalize" — the pm→markdown import boundary (`pm-to-md-import-boundary.test.ts`)
+ * blocks every other production file from calling `prosemirrorToMarkdown` directly, so a
+ * detached/composed doc with no expansion to collapse still needs a named, sanctioned way
+ * through the gate. `serializeDetachedDoc` is that gate for this legitimate case: it lets a
+ * caller declare "this doc is not live, canonicalization does not apply" instead of reaching
+ * around the boundary with its own direct import.
  */
 export function serializeDetachedDoc(doc: PMNode): string {
   return prosemirrorToMarkdown(doc);

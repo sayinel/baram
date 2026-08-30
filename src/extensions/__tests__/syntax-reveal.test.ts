@@ -22,7 +22,10 @@ import {
   forceCollapseSyntaxReveal,
   getSyntaxRevealExpanded,
 } from "../plugins/syntax-reveal";
-import { collapseExpanded } from "../plugins/syntax-reveal-collapse";
+import {
+  buildCollapseTr,
+  collapseExpanded,
+} from "../plugins/syntax-reveal-collapse";
 
 function createEditor(): Editor {
   return new Editor({
@@ -611,6 +614,40 @@ describe("Syntax Reveal (§5.1)", () => {
         ?.marks.find((m) => m.type.name === "link");
       expect(linkMark?.attrs.href).toBe("u");
       expect(serializeLiveDoc(editor)).toBe(original);
+      editor.destroy();
+    });
+
+    // §384 (design review M2): every production call site derives its
+    // parseRevealResource `labelEnd` option from the stashed
+    // `ExpandedRange.labelEnd` — but the field is optional (`labelEnd?:
+    // number`), and if that stash is ever absent, the fallback used to be
+    // `undefined` (the STRICT/serialized grammar). Strict cannot parse a
+    // bare, unescaped `]` in the label — the exact F1 corruption this
+    // describe block is named for — so an emergency path with no stash would
+    // silently reopen it. Simulates the stash going missing by deleting
+    // `labelEnd` from a real, otherwise-valid `ExpandedRange` and driving
+    // `buildCollapseTr` directly (the collapse-path entry point every other
+    // caller in this fix routes through).
+    it("buildCollapseTr still collapses via the live label grammar when the labelEnd stash is missing", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, original);
+      moveCursorTo(editor, 2, 8);
+      const expanded = getSyntaxRevealExpanded(editor.state);
+      expect(expanded).not.toBeNull();
+      expect(expanded!.labelEnd).toBeDefined();
+
+      const withoutStash: ExpandedRange = {
+        ...expanded!,
+        labelEnd: undefined,
+      };
+      const tr = buildCollapseTr(editor.state, withoutStash);
+
+      expect(tr).not.toBeNull();
+      expect(tr!.doc.textContent).toBe("Hello a]b end");
+      const linkMark = tr!.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("u");
       editor.destroy();
     });
   });

@@ -33,6 +33,7 @@ import {
   syntaxRevealKey,
   type SyntaxRevealState,
   tagSyntaxRevealEphemeral,
+  WIKILINK_REGEX,
 } from "./syntax-reveal-state";
 
 // ── Public API re-exports ─────────────────────────────────────────────
@@ -228,11 +229,14 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative
         // to fullText) so the split is resolved exactly — see
         // ExpandedRange.labelEnd.
+        // §384 (design review M2): missing stash falls back to the LIVE label
+        // grammar — see syntax-reveal-collapse.ts's link branch for why
+        // strict would silently reopen the F1 bare-`]` corruption here.
         const parsed = parseRevealResource(
           fullText,
           expandedLabelEnd !== undefined
             ? { labelEnd: expandedLabelEnd - from }
-            : undefined,
+            : { labelGrammar: "live" },
         );
         if (!parsed || parsed.kind !== "link") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
@@ -259,12 +263,13 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       } else if (kind === "image") {
         const fullText = newState.doc.textBetween(from, to);
-        // §384 fix (F1 round 2): see the link branch above.
+        // §384 fix (F1 round 2) / §384 (design review M2): see the link
+        // branch above.
         const parsed = parseRevealResource(
           fullText,
           expandedLabelEnd !== undefined
             ? { labelEnd: expandedLabelEnd - from }
-            : undefined,
+            : { labelGrammar: "live" },
         );
         if (!parsed || parsed.kind !== "image") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
@@ -291,9 +296,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       } else if (kind === "wikilink") {
         const fullText = newState.doc.textBetween(from, to);
         // §87 Regex includes optional alias:: prefix for cross-vault wikilinks
-        const wlMatch = fullText.match(
-          /^\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/,
-        );
+        const wlMatch = fullText.match(WIKILINK_REGEX);
         if (!wlMatch) {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;

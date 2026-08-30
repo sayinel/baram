@@ -79,11 +79,21 @@ export function buildCollapseTr(
     const fullText = state.doc.textBetween(from, to);
     // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative to
     // fullText) so the split is resolved exactly — see ExpandedRange.labelEnd.
+    // §384 (design review M2): if the stash is ever absent, fall back to the
+    // LIVE label grammar, not the default (strict/serialized) one — this text
+    // came from expandLink, which writes the label as unescaped live doc
+    // text (see its own comment), so strict's escape-aware label pattern
+    // cannot consume a bare `]` in it. Falling back to strict here would
+    // silently reopen the exact §384 F1 corruption this file's collapse path
+    // exists to fix. Pinned by "buildCollapseTr still collapses via the live
+    // label grammar when the labelEnd stash is missing" in
+    // __tests__/syntax-reveal.test.ts (failing-first against a `: undefined`
+    // fallback before this fix).
     const parsed = parseRevealResource(
       fullText,
       expandedLabelEnd !== undefined
         ? { labelEnd: expandedLabelEnd - from }
-        : undefined,
+        : { labelGrammar: "live" },
     );
     if (!parsed || parsed.kind !== "link") return null;
 
@@ -110,12 +120,18 @@ export function buildCollapseTr(
     }
   } else if (kind === "image") {
     const fullText = state.doc.textBetween(from, to);
-    // §384 fix (F1 round 2): see the link branch above.
+    // §384 fix (F1 round 2) / §384 (design review M2): see the link branch
+    // above. (Media alt text is actually written escaped by expandMediaAtom
+    // — see escapedLabelLength — so strict would be the more precise
+    // fallback here specifically; kept identical to the link branch anyway
+    // since this is an emergency path, not a normal one, and one shared rule
+    // across all seven call sites is easier to keep correct than a
+    // kind-specific exception.)
     const parsed = parseRevealResource(
       fullText,
       expandedLabelEnd !== undefined
         ? { labelEnd: expandedLabelEnd - from }
-        : undefined,
+        : { labelGrammar: "live" },
     );
     if (!parsed || parsed.kind !== "image") return null;
 
