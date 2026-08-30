@@ -246,7 +246,7 @@ async function report(r: ArchiveOutcome, t: Translate): Promise<void> {
     lines.push(t("tasks.archive.result", { count: String(r.archived) }));
   }
   if (r.stale > 0) {
-    lines.push(t("tasks.archive.stale", { count: String(r.stale) }));
+    lines.push(t("tasks.bulk.stale", { count: String(r.stale) }));
   }
   if (r.failed > 0) {
     lines.push(t("tasks.archive.failed", { count: String(r.failed) }));

@@ -7,7 +7,7 @@
 import type { TaskEntry } from "../../ipc/types";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { overdueDays, taskAgeDays } from "../../utils/tasks/task-buckets";
+import { lateDays, taskAgeDays } from "../../utils/tasks/task-buckets";
 import { priorityBadge } from "../../utils/tasks/task-filters";
 import { displayText } from "../../utils/tasks/task-row-display";
 import { TASK_ROW_KEYSHORTCUTS } from "../../utils/tasks/task-row-keys";
@@ -25,7 +25,7 @@ interface Props {
   onToggle: (task: TaskEntry) => void;
   /** §312 방치 배지를 보일지 — "예정 없음"에서만 켠다 */
   showAge: boolean;
-  showOverdueAge: boolean;
+  showLateDays: boolean;
   task: TaskEntry;
   /** 링크 target → 노트 제목. 없으면 target을 그대로 보인다 */
   titleFor: (target: string) => string;
@@ -39,12 +39,12 @@ export function TaskRow({
   onOpenMenu,
   onToggle,
   showAge,
-  showOverdueAge,
+  showLateDays,
   task,
   titleFor,
 }: Props) {
   const { t } = useTranslation();
-  const age = showOverdueAge ? overdueDays(task, now) : 0;
+  const age = showLateDays ? lateDays(task, now) : 0;
   const ageDays = showAge ? taskAgeDays(task, now) : 0;
   const shown = displayText(task.text, titleFor);
   const priority = priorityBadge(task.priority);
@@ -98,7 +98,10 @@ export function TaskRow({
       </button>
       {age > 0 && <span className="task-row-age">−{age}d</span>}
       {showAge && ageDays >= STALE_DAYS && (
-        <span className="task-row-age task-row-stale" title="Stale">
+        <span
+          className="task-row-age task-row-stale"
+          title={t("tasks.row.stale")}
+        >
           {ageDays}d
         </span>
       )}

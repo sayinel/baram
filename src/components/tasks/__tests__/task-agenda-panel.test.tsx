@@ -75,6 +75,15 @@ describe("TaskAgendaPanel", () => {
     expect(screen.getByText("하나")).toBeInTheDocument();
   });
 
+  it("예정일만 지난 태스크는 '기한 초과'가 아니라 '예정 밀림'에 놓는다", () => {
+    // 사용자 보고: 기한(📅)을 건 적도 없는 캡처가 전부 빨간 "기한 초과"로 떴다. 예정일은
+    // 하려던 날이지 약속한 날이 아니므로, 넘겼다고 어긴 것이 되지 않는다.
+    useTaskStore.getState().setAll([task({ scheduled: "2000-01-01" })]);
+    render(<TaskAgendaPanel />);
+    expect(screen.getByText(/Past scheduled/)).toBeInTheDocument();
+    expect(screen.queryByText(/Overdue/)).not.toBeInTheDocument();
+  });
+
   it("hides an empty bucket", () => {
     useTaskStore.getState().setAll([]);
     render(<TaskAgendaPanel />);

@@ -1,26 +1,66 @@
-// §315 주간 리뷰의 세 묶음.
+// §315 주간 리뷰의 묶음들.
 import type { TaskEntry } from "../../../ipc/types";
 
 import { describe, expect, it } from "vitest";
 
-import { groupForReview, REVIEW_GROUP_ORDER } from "../task-review";
+import {
+  groupForReview,
+  isActionableGroup,
+  REVIEW_GROUP_ORDER,
+} from "../task-review";
 
 /** 수요일 — 주 경계가 어느 쪽으로도 넉넉하다. */
 const NOW = new Date(2026, 7, 26); // 2026-08-26 (수)
 
 describe("groupForReview", () => {
-  it("훑는 순서는 처리할 것 둘 다음에 회고다", () => {
+  it("훑는 순서는 처리할 것 다음에 회고다", () => {
     // 화면의 세로 순서이자 `j`가 지나가는 순서다. 회고가 가운데 끼면 훑던 손이 거기서
     // 멈춘다 — 처리할 것이 아직 아래에 남아 있는데.
-    expect(REVIEW_GROUP_ORDER).toEqual(["overdue", "noDate", "doneThisWeek"]);
+    //
+    // "예정 밀림"이 "기한 초과" 바로 다음인 것은 아젠다의 `BUCKET_ORDER`와 같은 이유다:
+    // 둘 다 밀린 것이라 붙어 있어야 한 번에 훑인다.
+    expect(REVIEW_GROUP_ORDER).toEqual([
+      "overdue",
+      "slipped",
+      "noDate",
+      "doneThisWeek",
+    ]);
   });
 
-  it("기한 초과와 예정 없음을 갈라 담는다", () => {
+  it("회고만 처리 대상이 아니다", () => {
+    // 진행률의 분모이자 "끝났다"를 말할 근거. 새 묶음이 여기서 빠지면 화면에 항목이
+    // 남았는데도 "정리할 것이 남지 않았습니다"가 뜬다.
+    expect(REVIEW_GROUP_ORDER.filter(isActionableGroup)).toEqual([
+      "overdue",
+      "slipped",
+      "noDate",
+    ]);
+  });
+
+  it("기한 초과·예정 밀림·예정 없음을 갈라 담는다", () => {
     const late = task({ due: "2026-08-01", text: "늦음" });
+    const slipped = task({ scheduled: "2026-08-01", text: "밀림" });
     const bare = task({ text: "날짜 없음" });
-    const g = groupForReview([late, bare], NOW, "monday");
+    const g = groupForReview([late, slipped, bare], NOW, "monday");
     expect(g.overdue.map((x) => x.text)).toEqual(["늦음"]);
+    // 예정일만 지난 것은 기한을 어긴 것이 아니다 — 리뷰에는 들어오되 묶음이 다르다.
+    expect(g.slipped.map((x) => x.text)).toEqual(["밀림"]);
     expect(g.noDate.map((x) => x.text)).toEqual(["날짜 없음"]);
+  });
+
+  it("예정 밀림도 오래 방치된 것이 위다", () => {
+    const old = task({
+      created: "2026-01-01",
+      scheduled: "2026-08-01",
+      text: "오래됨",
+    });
+    const fresh = task({
+      created: "2026-08-25",
+      scheduled: "2026-08-25",
+      text: "어제",
+    });
+    const g = groupForReview([fresh, old], NOW, "monday");
+    expect(g.slipped.map((x) => x.text)).toEqual(["오래됨", "어제"]);
   });
 
   it("오늘·이번 주·나중은 어느 묶음에도 넣지 않는다", () => {
@@ -36,6 +76,7 @@ describe("groupForReview", () => {
       "monday",
     );
     expect(g.overdue).toEqual([]);
+    expect(g.slipped).toEqual([]);
     expect(g.noDate).toEqual([]);
     expect(g.doneThisWeek).toEqual([]);
   });

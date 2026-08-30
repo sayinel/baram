@@ -82,6 +82,7 @@ import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
+import { TaskCreatedStamp } from "./plugins/task-created-stamp";
 import { TaskFieldChips } from "./plugins/task-field-chips";
 import { TaskInputRules } from "./plugins/task-input-rules";
 import { ViewportVirtualize } from "./plugins/viewport-virtualize";
@@ -269,6 +270,9 @@ export function createBaramExtensions(
 
     // Plugins — §308 Task metadata chips (decoration-only, never touches the doc)
     TaskFieldChips,
+
+    // Plugins — §312 ➕ stamp on a task line the cursor just left
+    TaskCreatedStamp,
 
     // §perf-large-file C4: true windowing — registered ONLY on the large
     // keep-alive editor (small docs never get the NodeViews). isEnabled is the

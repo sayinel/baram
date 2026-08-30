@@ -76,16 +76,32 @@ describe("WeeklyReviewDialog — §315", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("세 묶음을 훑는 순서대로 놓는다 — 회고가 맨 아래다", () => {
-    seed([overdue("늦음"), noDate("예정 없음"), doneToday("끝냄")]);
+  it("네 묶음을 훑는 순서대로 놓는다 — 회고가 맨 아래다", () => {
+    seed([
+      overdue("늦음"),
+      slipped("밀림"),
+      noDate("예정 없음"),
+      doneToday("끝냄"),
+    ]);
     render(<WeeklyReviewDialog />);
 
     const titles = screen
       .getAllByRole("heading", { level: 4 })
       .map((h) => h.textContent);
     expect(titles[0]).toContain("Overdue");
-    expect(titles[1]).toContain("No date");
-    expect(titles[2]).toContain("Finished this week");
+    // 밀린 것 둘이 붙어 있다 — 사이에 다른 묶음이 끼면 두 번에 나눠 훑게 된다.
+    expect(titles[1]).toContain("Past scheduled");
+    expect(titles[2]).toContain("No date");
+    expect(titles[3]).toContain("Finished this week");
+  });
+
+  it("예정 밀림도 처리 대상으로 센다", () => {
+    // 진행률은 묶음을 손으로 더하던 식이었다. 새 묶음을 거기 넣지 않으면 화면에 항목이
+    // 떠 있는데도 "정리할 것이 남지 않았습니다"가 함께 뜬다 — 사용자가 볼 수 있는 모순이다.
+    seed([slipped("밀림")]);
+    render(<WeeklyReviewDialog />);
+    expect(screen.getByText("0 handled · 1 to go")).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing left to sort/)).toBeNull();
   });
 
   it("예정대로 가는 항목은 어느 묶음에도 없다", () => {
@@ -222,6 +238,24 @@ describe("WeeklyReviewDialog — §315", () => {
     expect(rule).toMatch(/flex-shrink:\s*0/);
   });
 
+  it("예정 밀림의 지남 일수는 빨강이 아니다 — 빨강은 기한 초과만 갖는다", () => {
+    // 버킷을 가른 이유의 절반이 색이다. 규칙이 사라지면 `.task-row-age`의 danger가 그대로
+    // 내려와, 화면상으로는 두 묶음이 다시 하나가 된다 — 분류만 고치고 색을 놓치면 사용자가
+    // 보고했던 그 화면으로 되돌아간다. jsdom에는 레이아웃이 없으므로 규칙 자체를 읽는다.
+    const css = readFileSync(
+      join(process.cwd(), "src/styles/tasks.css"),
+      "utf8",
+    );
+    const rule = /\[data-group="slipped"\]\s+\.task-row-age\s*\{([^}]*)\}/.exec(
+      css,
+    )?.[1];
+    expect(rule, "no slipped .task-row-age rule").toBeDefined();
+    expect(rule).toContain("--color-status-warning");
+    // 아젠다 쪽도 같은 규칙을 타야 한다 — 두 화면이 같은 행을 쓰는데 색만 갈리면
+    // 사용자는 어느 쪽을 믿을지 알 수 없다.
+    expect(css).toContain('.task-bucket[data-bucket="slipped"] .task-row-age');
+  });
+
   it("범위 밖에 쌓인 완료 항목도 배수구가 센다", async () => {
     // 여기가 이 화면이 §312.1의 빚을 실제로 갚는 지점이다. 범위를 "현재 볼트"로 좁혀 두면
     // 태스크 홈이 스토어에 없다 — 그래도 정리할 것이 몇 개인지 말할 수 있어야 한다.
@@ -310,6 +344,11 @@ function seedTwoFiles(): void {
   seed([first, second]);
   // `s` 뒤의 재스캔 — 돌아온 줄에 태그가 붙어 있어야 그 항목이 큐에서 빠진다.
   getFileTasks.mockResolvedValue([{ ...first, tags: ["someday"] }]);
+}
+
+/** 예정일만 지난 것 — 기한은 걸린 적이 없다. */
+function slipped(text: string): TaskEntry {
+  return task({ scheduled: "2000-01-01", text });
 }
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {

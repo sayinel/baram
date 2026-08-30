@@ -210,6 +210,18 @@ export function useSettingsRegistry(): SearchableSetting[] {
       ),
     },
     {
+      id: "tasksStampCreatedDate",
+      label: "settings.general.tasksStampCreatedDate",
+      description: "settings.general.tasksStampCreatedDate.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "created", "date", "stamp"],
+      control: makeToggleControl(
+        () => settings.tasksStampCreatedDate,
+        settings.setTasksStampCreatedDate,
+      ),
+    },
+    {
       id: "tasksWeekStart",
       label: "settings.general.tasksWeekStart",
       description: "settings.general.tasksWeekStart.desc",

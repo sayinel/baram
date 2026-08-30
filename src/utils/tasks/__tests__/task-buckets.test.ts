@@ -3,9 +3,10 @@ import type { TaskEntry } from "../../../ipc/types";
 import { describe, expect, it } from "vitest";
 
 import {
+  BUCKET_ORDER,
   classifyTask,
   groupIntoBuckets,
-  overdueDays,
+  lateDays,
   taskAgeDays,
 } from "../task-buckets";
 
@@ -70,6 +71,53 @@ describe("classifyTask", () => {
     expect(classifyTask(task({ scheduled: "2026-08-23" }), SUN, "monday")).toBe(
       "today",
     );
+  });
+
+  it("puts a past scheduled date in slipped, not overdue", () => {
+    // 사용자 보고: 예정일만 적은 캡처가 전부 빨간 "기한 초과"로 떴다. 아무 기한도 걸지
+    // 않았는데 어겼다고 말하는 화면이라, 이 화면의 빨강이 뜻을 잃는다.
+    expect(classifyTask(task({ scheduled: "2026-08-20" }), SUN, "monday")).toBe(
+      "slipped",
+    );
+  });
+
+  it("keeps a task with a past due date in overdue even if its scheduled date also slipped", () => {
+    // 기한이 있으면 그것이 이 태스크를 지배한다 — 둘 다 지났다고 해서 덜 급해지지 않는다.
+    expect(
+      classifyTask(
+        task({ due: "2026-08-20", scheduled: "2026-08-18" }),
+        SUN,
+        "monday",
+      ),
+    ).toBe("overdue");
+  });
+
+  it("calls a task slipped even when its due date is still ahead", () => {
+    // 사용자 보고: `⏳어제 📅다음주`인 줄이 "나중"에 앉아 있었다. 한때 "기한이 있으면
+    // 기한이 정한다"로 두었기 때문인데, 그러면 "예정 밀림"이라는 이름이 약속한 것과
+    // 화면이 어긋난다 — 하려던 날을 넘긴 것은 마감이 남았다고 없던 일이 되지 않는다.
+    expect(
+      classifyTask(
+        task({ due: "2026-08-29", scheduled: "2026-08-20" }),
+        SUN,
+        "sunday",
+      ),
+    ).toBe("slipped");
+  });
+
+  it("보고된 줄 그대로 — ➕오늘 ⏳어제 📅다음주는 예정 밀림이다", () => {
+    // `- [ ] 7th task ➕2026-08-30 ⏳2026-08-29 📅2026-09-01 ⏫`
+    const now = new Date(2026, 7, 30, 12, 0, 0);
+    const entry = task({
+      created: "2026-08-30",
+      due: "2026-09-01",
+      priority: 1,
+      scheduled: "2026-08-29",
+    });
+    expect(classifyTask(entry, now, "monday")).toBe("slipped");
+    // 주 시작 요일이 바꾸는 것은 "이번 주"의 경계뿐이다 — 밀린 것은 어느 쪽에서도 밀렸다.
+    expect(classifyTask(entry, now, "sunday")).toBe("slipped");
+    expect(lateDays(entry, now)).toBe(1);
   });
 
   it("prefers due over scheduled when both are present", () => {
@@ -144,14 +192,52 @@ describe("classifyTask", () => {
   });
 });
 
-describe("overdueDays", () => {
+describe("BUCKET_ORDER", () => {
+  it("밀린 것 둘이 맨 위에 붙어 있다", () => {
+    // 패널의 세로 순서다. "예정 밀림"이 "기한 초과" 바로 다음인 것이 이 순서의 핵심 —
+    // 둘 사이에 "오늘"이 끼면 밀린 것을 두 번에 나눠 훑게 된다.
+    expect(BUCKET_ORDER).toEqual([
+      "overdue",
+      "slipped",
+      "today",
+      "thisWeek",
+      "later",
+      "noDate",
+      "done",
+    ]);
+  });
+});
+
+describe("lateDays", () => {
   it("counts whole days past the due date", () => {
-    expect(overdueDays(task({ due: "2026-08-20" }), SUN)).toBe(3);
+    expect(lateDays(task({ due: "2026-08-20" }), SUN)).toBe(3);
+  });
+
+  it("counts days past the scheduled date when there is no due date", () => {
+    // "예정 밀림" 행의 배지가 이 숫자다. 기한 전용으로 만들면 그 버킷의 배지가 통째로
+    // 0이 되어 사라진다 — 며칠 밀렸는지가 그 버킷을 훑는 유일한 단서인데도.
+    expect(lateDays(task({ scheduled: "2026-08-20" }), SUN)).toBe(3);
+  });
+
+  it("counts from the scheduled date when only it is past", () => {
+    // 기한이 남은 "예정 밀림" 행. 기한 기준으로 세면 0이 되어 배지가 통째로 사라지는데,
+    // 며칠 밀렸는지가 그 버킷을 훑는 유일한 단서다.
+    expect(
+      lateDays(task({ due: "2026-12-01", scheduled: "2026-08-20" }), SUN),
+    ).toBe(3);
+  });
+
+  it("counts from the due date when both dates are past", () => {
+    // 버킷을 정한 날짜와 배지가 세는 날짜가 같아야 한다. 어긋나면 "기한 초과" 행에
+    // 기한이 아닌 예정일 기준의 일수가 뜬다.
+    expect(
+      lateDays(task({ due: "2026-08-20", scheduled: "2026-08-10" }), SUN),
+    ).toBe(3);
   });
 
   it("returns 0 for a task that is not overdue", () => {
-    expect(overdueDays(task({ due: "2026-08-23" }), SUN)).toBe(0);
-    expect(overdueDays(task(), SUN)).toBe(0);
+    expect(lateDays(task({ due: "2026-08-23" }), SUN)).toBe(0);
+    expect(lateDays(task(), SUN)).toBe(0);
   });
 });
 
@@ -179,7 +265,15 @@ describe("groupIntoBuckets", () => {
   it("returns every bucket key even when empty", () => {
     const groups = groupIntoBuckets([], SUN, "monday");
     expect(Object.keys(groups).sort()).toEqual(
-      ["done", "later", "noDate", "overdue", "thisWeek", "today"].sort(),
+      [
+        "done",
+        "later",
+        "noDate",
+        "overdue",
+        "slipped",
+        "thisWeek",
+        "today",
+      ].sort(),
     );
   });
 

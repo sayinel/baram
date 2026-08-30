@@ -2,11 +2,12 @@
 import type { TaskEntry } from "../../ipc/types";
 
 export type TaskBucket =
-  "done" | "later" | "noDate" | "overdue" | "thisWeek" | "today";
+  "done" | "later" | "noDate" | "overdue" | "slipped" | "thisWeek" | "today";
 
 /** 패널에 그리는 순서 */
 export const BUCKET_ORDER: TaskBucket[] = [
   "overdue",
+  "slipped",
   "today",
   "thisWeek",
   "later",
@@ -23,11 +24,23 @@ export function classifyTask(
 ): TaskBucket {
   if (task.state === "done") return "done";
 
+  const today = startOfDay(now);
+  // ‼️ **지난 날짜가 먼저 말한다.** 기한(📅)과 예정일(⏳)은 지난 뒤에 뜻이 갈린다 —
+  // 기한은 약속을 어긴 것이고, 예정일은 내가 하려던 날을 넘긴 것이다. 둘을 한 버킷에
+  // 담으면 기한을 건 적도 없는 캡처가 전부 빨간 "기한 초과"로 떠서 이 화면의 빨강이
+  // 뜻을 잃는다(사용자 보고). 에디터 칩이 `due`만 붉히는 것과 같은 자다
+  // (`extensions/plugins/task-field-chips.ts`의 `isOverdue`).
+  //
+  // ‼️ 예정일이 지났으면 **기한이 남았어도** 밀린 것이다. 한때 "기한이 있으면 기한이
+  // 정한다"로 두었더니 `⏳어제 📅다음주`인 줄이 "나중"에 앉아, "예정 밀림"이라는 이름이
+  // 약속한 것과 화면이 어긋났다(사용자 보고). 하려던 날을 넘긴 것은 마감이 남았다고
+  // 없던 일이 되지 않는다.
+  const past = pastDate(task, today);
+  if (past) return past.kind === "due" ? "overdue" : "slipped";
+
+  // 지나기 **전**에는 가르지 않는다: 둘 다 "그날 볼 것"이라 버킷이 같아야 한다.
   const date = effectiveDate(task);
   if (!date) return "noDate";
-
-  const today = startOfDay(now);
-  if (date.getTime() < today.getTime()) return "overdue";
   if (date.getTime() === today.getTime()) return "today";
   return date.getTime() <= endOfWeek(now, weekStart).getTime()
     ? "thisWeek"
@@ -52,12 +65,18 @@ export function groupIntoBuckets(
   return groups;
 }
 
-/** 기한이 며칠 지났는지. 지나지 않았거나 날짜가 없으면 0. */
-export function overdueDays(task: TaskEntry, now: Date): number {
-  const date = effectiveDate(task);
-  if (!date) return 0;
-  const diff = startOfDay(now).getTime() - date.getTime();
-  return diff > 0 ? Math.round(diff / MS_PER_DAY) : 0;
+/**
+ * 밀린 날짜가 며칠 지났는지. 밀리지 않았으면 0.
+ *
+ * **버킷 이름을 정한 그 날짜**를 센다 — `pastDate`가 둘의 유일한 출처다. 여기서 따로
+ * 고르면 "기한 초과" 행에 예정일 기준 일수가 뜨거나, 기한이 남은 "예정 밀림" 행의
+ * 배지가 통째로 0이 되어 사라진다(며칠 밀렸는지가 그 버킷을 훑는 유일한 단서인데도).
+ */
+export function lateDays(task: TaskEntry, now: Date): number {
+  const today = startOfDay(now);
+  const past = pastDate(task, today);
+  if (!past) return 0;
+  return Math.round((today.getTime() - past.date.getTime()) / MS_PER_DAY);
 }
 
 /**
@@ -113,6 +132,12 @@ export function weekRange(
   return { end, start };
 }
 
+/** 지난 날짜 하나와, 그것을 적어 둔 필드 — 버킷 이름이 이 `kind`로 갈린다. */
+interface PastDate {
+  date: Date;
+  kind: "due" | "scheduled";
+}
+
 function compare(a: TaskEntry, b: TaskEntry): number {
   const da = effectiveDate(a);
   const db = effectiveDate(b);
@@ -125,7 +150,13 @@ function compare(a: TaskEntry, b: TaskEntry): number {
   return a.text.localeCompare(b.text);
 }
 
-/** 기한이 없으면 예정일로 대체한다. */
+/**
+ * 아직 오지 않은 날을 볼 때 쓰는 날짜 — 기한이 없으면 예정일로 대체한다.
+ *
+ * 여기서는 기한이 이긴다: `⏳내일 📅모레`라면 "언제 볼 것인가"는 결국 마감이 정한다.
+ * 지난 날짜의 규칙은 정반대이므로(`pastDate`) 두 함수를 따로 둔다 — 하나로 합치면
+ * "기한 우선"과 "밀린 것 우선"이 한 몸에 들어가 어느 쪽도 읽히지 않는다.
+ */
 function effectiveDate(task: TaskEntry): Date | null {
   return parseLocalDate(task.due) ?? parseLocalDate(task.scheduled);
 }
@@ -133,6 +164,23 @@ function effectiveDate(task: TaskEntry): Date | null {
 /** `now`가 속한 주의 마지막 날(자정). */
 function endOfWeek(now: Date, weekStart: "monday" | "sunday"): Date {
   return weekRange(now, weekStart).end;
+}
+
+/**
+ * 오늘보다 이른 날짜 중 이 태스크의 버킷 이름을 정하는 것. 밀린 것이 없으면 null.
+ *
+ * 기한이 예정일을 이긴다 — 둘 다 지났으면 어긴 쪽이 하려던 날보다 나쁘다. 그러나
+ * **하나만** 지났으면 지난 쪽이 말한다: 기한이 남았다고 넘긴 예정일이 없던 일이 되지
+ * 않는다. 버킷 분류와 지남 일수 배지가 이 한 함수를 공유해야 같은 날짜를 센다.
+ */
+function pastDate(task: TaskEntry, today: Date): null | PastDate {
+  const due = parseLocalDate(task.due);
+  if (due && due.getTime() < today.getTime()) return { date: due, kind: "due" };
+  const scheduled = parseLocalDate(task.scheduled);
+  if (scheduled && scheduled.getTime() < today.getTime()) {
+    return { date: scheduled, kind: "scheduled" };
+  }
+  return null;
 }
 
 function startOfDay(d: Date): Date {
