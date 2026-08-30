@@ -86,7 +86,8 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
 });
 
 import { makeTestEditor } from "../../__tests__/helpers/make-test-editor";
-import { markdownToProsemirror, prosemirrorToMarkdown } from "../../pipeline";
+import { markdownToProsemirror } from "../../pipeline";
+import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";

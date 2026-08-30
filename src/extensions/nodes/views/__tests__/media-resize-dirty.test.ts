@@ -7,10 +7,8 @@ import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../..";
-import {
-  markdownToProsemirror,
-  prosemirrorToMarkdown,
-} from "../../../../pipeline";
+import { markdownToProsemirror } from "../../../../pipeline";
+import { prosemirrorToMarkdown } from "../../../../pipeline/pm-to-md";
 import {
   clearOriginalDoc,
   markContentLoaded,
