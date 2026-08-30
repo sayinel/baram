@@ -1,6 +1,6 @@
 // §close-guard: tests for the shared unsaved-changes confirmation modal.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../hooks/use-close-guard", () => ({
   saveAllDirtyForQuit: vi.fn(),
@@ -205,5 +205,106 @@ describe("UnsavedChangesModal", () => {
     expect(saveDirtyTab).not.toHaveBeenCalled();
     expect(useUIStore.getState().unsavedModal).toBeNull();
     closeSpy.mockRestore();
+  });
+
+  // ── reload flow (§479) ───────────────────────────────────────────────────
+
+  describe("reload intent", () => {
+    const originalLocation = window.location;
+    let reload: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      reload = vi.fn();
+      // jsdom's `window.location.reload` is non-configurable, so the property
+      // itself must be replaced rather than spied on.
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { ...originalLocation, reload },
+      });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    });
+
+    it("reload intent → shows the dirty count and a Save & Reload action", () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a"), dirtyFileTab("b")],
+      });
+      useUIStore.setState({ unsavedModal: { intent: "reload" } });
+
+      render(<UnsavedChangesModal {...deps} />);
+
+      expect(
+        screen.getByText(
+          containing("unsavedChanges.reloadMessage", '"count":"2"'),
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "unsavedChanges.saveAndReload" }),
+      ).toBeInTheDocument();
+    });
+
+    it("Save & Reload → saves all dirty tabs, reloads, and closes the modal", async () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "reload" } });
+      vi.mocked(saveAllDirtyForQuit).mockResolvedValue(true);
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.saveAndReload" }),
+      );
+
+      await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+      expect(saveAllDirtyForQuit).toHaveBeenCalledOnce();
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+    });
+
+    it("Save & Reload → stays open and does not reload when a Save As is cancelled", async () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "reload" } });
+      vi.mocked(saveAllDirtyForQuit).mockResolvedValue(false);
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.saveAndReload" }),
+      );
+
+      await waitFor(() => expect(saveAllDirtyForQuit).toHaveBeenCalledOnce());
+      expect(reload).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toEqual({ intent: "reload" });
+    });
+
+    it("Don't Save (reload) → reloads without saving", async () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "reload" } });
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.dontSave" }),
+      );
+
+      await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+      expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+    });
+
+    it("Cancel (reload) → closes the modal and takes no action", () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "reload" } });
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.cancel" }),
+      );
+
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+      expect(reload).not.toHaveBeenCalled();
+      expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+    });
   });
 });

@@ -61,9 +61,13 @@ export interface ToastState {
 }
 
 /** §close-guard: What triggered the shared unsaved-changes modal. `quit` = app
- *  close/quit (all dirty tabs); `closeTab` = closing a single tab. */
+ *  close/quit (all dirty tabs); `closeTab` = closing a single tab; `reload` =
+ *  View > Reload / CmdOrCtrl+R (§479, all dirty tabs — reload discards every
+ *  open tab, not just the active one, so it saves the same set as quit). */
 export type UnsavedModalRequest =
-  { intent: "closeTab"; tabId: string } | { intent: "quit" };
+  | { intent: "closeTab"; tabId: string }
+  | { intent: "quit" }
+  | { intent: "reload" };
 
 /** §298 vim §8 — one atomic status: which SURFACE owns the indicator. */
 export interface VimStatus {

@@ -104,6 +104,7 @@ baram/
   - `fuzzyMatch()` → `src/utils/file-search.ts`
   - `RightPanelMode` / `SidebarPanel` 타입 → `src/stores/ui/ui.ts`
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
+- **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
 - **perfectionist/sort-modules autofix는 주석을 안 옮긴다** — 정렬 후 doc 주석-함수 짝이 맞는지 확인 (배너 오배치 사고 다발)
 - **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
@@ -153,8 +154,9 @@ baram/
 - 커밋 메시지에 설계 문서 섹션 참조 포함 (예: `feat(§5.3): implement KaTeX math block`)
 - **커밋 메시지는 미리 검증**: `npx --no -- commitlint < msg.txt`. 본문에서 줄 시작 `단어:`는 footer로 오인되므로 줄바꿈 위치를 조정할 것
 - 브랜치: `feature/m2-basic-editing`, `fix/roundtrip-heading-whitespace`
-- **pre-push hook**: `cargo clippy --all-targets` + `npx knip` 실행 — base 변경 후 첫 push는 cargo cold라 5~7분 소요. push는 백그라운드로 실행할 것
+- **pre-push hook**: `npm run lint`(CI lint 잡 전체, knip 포함) + `cargo clippy --all-targets` 실행 — push당 ~2분+, cargo cold면 5~7분. push는 백그라운드로 실행할 것
 - **push 전 `npm run lint` 필수**: CI lint 잡은 pre-push hook보다 넓다 — `lint:doc-comments`(doc 주석 바로 뒤 doc 주석 금지, 함수 이동·cherry-pick 시 잘 깨짐)·stylelint·audit까지. "테스트 그린 ≠ CI 그린"
+- **PR CI는 브랜치가 아니라 "브랜치+최신 main 머지 트리"를 검증한다** — base가 낡으면 로컬 전부 그린이어도 CI만 깨질 수 있다(옮겨진 심볼 import 등). origin/main 전진을 발견하면 rebase 여부를 논의할 것
 
 ### 디자인 토큰
 

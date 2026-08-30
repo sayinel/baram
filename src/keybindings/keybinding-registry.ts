@@ -140,6 +140,22 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
 
   // ── view ──────────────────────────────────────────────────────────────────
   {
+    // §479 — the native menu accelerator for this (`menu.rs`'s `view_reload`)
+    // is macOS-only: `Mod+R` is literal `Ctrl+R` on Windows/Linux, which vim
+    // mode's redo already owns there (`state-machine.ts`'s `normalOrVisualStep`,
+    // `vim-code-block-boundary.ts`, and `@replit/codemirror-vim` all call both
+    // `preventDefault`/`stopPropagation` when they handle it, so this entry's
+    // global-keydown dispatch — the ONLY delivery path on Windows/Linux, since
+    // menu.rs binds no accelerator there — never fires while vim is actively
+    // consuming the key; it only fires when vim isn't, e.g. vim mode is off).
+    // See the `view_reload` comment in `menu.rs` for the full collision history.
+    id: "view.reload",
+    label: "keybindings.view.reload",
+    category: "view",
+    defaultKey: "Mod+R",
+    customizable: true,
+  },
+  {
     id: "view.sourceMode",
     label: "keybindings.view.sourceMode",
     category: "view",

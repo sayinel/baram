@@ -14,8 +14,9 @@ import { useWorkspaceStore } from "../stores/file/workspace";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
+import { requestReload } from "./use-close-guard";
 
-interface MenuEventHandlerDeps {
+export interface MenuEventHandlerDeps {
   editor: Editor | null;
   handleCloseFolder: () => void;
   handleCloseTab: () => void;
@@ -347,6 +348,9 @@ export function useMenuEventHandler({
           uiOL.setSidebarPanel("outline");
           break;
         }
+        case "view_reload":
+          requestReload();
+          break;
 
         case "view_sidebar":
           toggleSidebar();

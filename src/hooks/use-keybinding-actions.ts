@@ -43,6 +43,7 @@ import {
   getSelectionMarkdown,
 } from "../utils/zettelkasten/selection-markdown";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
+import { requestReload } from "./use-close-guard";
 
 interface UseKeybindingActionsParams {
   editor: Editor | null;
@@ -119,6 +120,7 @@ export function useKeybindingActions({
     });
 
     // View
+    registerAction("view.reload", () => requestReload());
     registerAction("view.sourceMode", () => toggleSourceMode());
     registerAction("view.toggleSidebar", () => toggleSidebar());
     registerAction("view.commandPalette", () => toggleCommandPalette());
