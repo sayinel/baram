@@ -5,6 +5,8 @@ import type { EditorState, Transaction } from "@tiptap/pm/state";
 
 import { PluginKey } from "@tiptap/pm/state";
 
+import { parseRevealResource } from "./syntax-reveal-resource-codec";
+
 // ── Plugin state ──────────────────────────────────────────────────────
 
 export interface ExpandedRange {
@@ -87,8 +89,10 @@ export function computeContentLen(
   if (kind === "link") {
     try {
       const fullText = state.doc.textBetween(from, to);
-      const bracketIdx = fullText.indexOf("](");
-      return bracketIdx >= 0 ? bracketIdx - 1 : 0;
+      // §384 fix (F1): read the split from the shared parser instead of a
+      // local `indexOf("](")` — see ParsedRevealResource.labelEnd.
+      const parsed = parseRevealResource(fullText);
+      return parsed?.kind === "link" ? parsed.labelEnd - 1 : 0;
     } catch {
       return 0;
     }

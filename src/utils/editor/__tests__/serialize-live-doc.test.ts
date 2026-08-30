@@ -18,6 +18,7 @@ import { createBaramExtensions } from "../../../extensions";
 import { getSyntaxRevealExpanded } from "../../../extensions/plugins/syntax-reveal";
 import { expandMediaAtom } from "../../../extensions/plugins/syntax-reveal-expand";
 import { MARK_DELIMITERS } from "../../../extensions/plugins/syntax-reveal-state";
+import { vimPluginKey } from "../../../extensions/plugins/vim/vim-keys";
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
 import {
@@ -342,6 +343,53 @@ describe("§384 purity — canonicalizing for serialization never mutates the li
     // that nothing was pushed onto the undo stack — a stray collapse transaction
     // would show up here even if selection/doc identity checks somehow missed it.
     expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+    editor.destroy();
+  });
+
+  // §384 (C) commit audit follow-up: the purity claim above was only ever
+  // exercised with the vim plugin disabled (its default state). Vim mode
+  // maintains its own plugin state (mode, ex/search line buffers, …)
+  // alongside the ordinary EditorState — canonicalDoc's undispatched
+  // `buildCollapseTr` must leave THAT untouched too, not just doc/selection.
+  it("vim enabled in visual mode: vim plugin state is unchanged too, alongside doc/selection (no update event)", () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello [world](https://example.com) end\n");
+    moveCursorTo(editor, 2, 9);
+    expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
+
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        enabled: true,
+        type: "setEnabled",
+      }),
+    );
+    editor.view.dispatch(
+      editor.state.tr.setMeta(vimPluginKey, {
+        mode: "visual",
+        type: "setMode",
+      }),
+    );
+    // Setting vim mode via meta alone (no real vim keymap handling ran) does
+    // not itself turn the caret into a range — confirms this fixture still
+    // exercises the same caret-inside-a-link expansion as the test above,
+    // just with vim's plugin state now populated alongside it.
+    expect(editor.state.selection.empty).toBe(true);
+    expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
+
+    const vimStateBefore = vimPluginKey.getState(editor.state);
+    const docBefore = editor.state.doc;
+    const selectionBefore = editor.state.selection;
+    const updateSpy = vi.fn();
+    editor.on("update", updateSpy);
+
+    expect(serializeLiveDoc(editor)).toBe(
+      "Hello [world](https://example.com) end\n",
+    );
+
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(editor.state.doc).toBe(docBefore);
+    expect(editor.state.selection).toBe(selectionBefore);
+    expect(vimPluginKey.getState(editor.state)).toBe(vimStateBefore);
     editor.destroy();
   });
 });

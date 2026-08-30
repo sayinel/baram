@@ -5,6 +5,8 @@ import type { EditorState } from "@tiptap/pm/state";
 
 import { Decoration } from "@tiptap/pm/view";
 
+import { parseRevealResource } from "./syntax-reveal-resource-codec";
+
 // ── Build delimiter decorations for expanded range ────────────────────
 
 export function buildExpandedDecorations(
@@ -30,7 +32,11 @@ export function buildExpandedDecorations(
       );
     } else if (kind === "link" || kind === "image") {
       const text = state.doc.textBetween(from, to);
-      const closeBracket = text.indexOf("](");
+      // §384 fix (F1): read the split from the shared parser instead of a
+      // local `indexOf("](")` — see ParsedRevealResource.labelEnd. Falls
+      // back to -1 (no decoration) on a stale/invalid expansion, same as the
+      // previous "not found" behavior below.
+      const closeBracket = parseRevealResource(text)?.labelEnd ?? -1;
       const openLen = kind === "image" ? 2 : 1;
 
       if (closeBracket >= 0) {

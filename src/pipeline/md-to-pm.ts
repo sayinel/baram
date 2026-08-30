@@ -26,11 +26,7 @@ import {
 import { convertListNode } from "./convert-list";
 import { parseMdastAsync } from "./parse-async";
 import { enrichWithEmptyParagraphs, parseMdast } from "./parse-mdast";
-import {
-  markTransformers,
-  nodeTransformers,
-  pmNodeTransformers,
-} from "./transformers";
+import { markTransformers, nodeTransformers } from "./transformers";
 import { parseCalloutHeader } from "./transformers/callout-transformer";
 import {
   isStandaloneImage,
@@ -431,7 +427,14 @@ function convertBlockNode(
         )?.value || "";
       const firstLine = firstText.split("\n")[0];
       if (parseCalloutHeader(firstLine)) {
-        const calloutT = pmNodeTransformers.get("callout");
+        // §384 impl-review-1 (F3): read from `nodeTransformers` (the mdastType
+        // → transformer map, this file's own registry for its actual MD→PM
+        // direction), not `pmNodeTransformers` (the PM→mdast reverse map —
+        // no legitimate MD→PM use needs it). Both key calloutTransformer
+        // under the identical string "callout" (its mdastType AND pmType —
+        // no other transformer claims mdastType "callout"), so this returns
+        // the exact same object; only which map grants access changes.
+        const calloutT = nodeTransformers.get("callout");
         if (calloutT) {
           return calloutT.mdastToPm(node, schema, (parent) => {
             const children = (parent as { children?: Content[] }).children;

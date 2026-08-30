@@ -222,10 +222,9 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           return tr;
         }
 
-        const { destination: href, title } = parsed;
-        const bracketIdx = fullText.indexOf("](");
+        const { destination: href, title, labelEnd } = parsed;
 
-        const contentLen = bracketIdx - 1;
+        const contentLen = labelEnd - 1;
         // §384 fix (B): merge stashed non-href/title attrs (e.g. `target`)
         // back in — see ExpandedRange.linkAttrs.
         const linkMark = newState.schema.marks.link.create({
@@ -237,10 +236,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         if (contentLen <= 0) {
           tr.delete(from, to);
         } else {
-          const content = newState.doc.slice(
-            from + 1,
-            from + bracketIdx,
-          ).content;
+          const content = newState.doc.slice(from + 1, from + labelEnd).content;
           tr.replaceWith(from, to, content);
           tr.addMark(from, from + contentLen, linkMark);
         }

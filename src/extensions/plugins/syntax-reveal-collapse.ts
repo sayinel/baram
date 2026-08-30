@@ -79,12 +79,11 @@ export function buildCollapseTr(
     const parsed = parseRevealResource(fullText);
     if (!parsed || parsed.kind !== "link") return null;
 
-    const { destination: href, title } = parsed;
-    const bracketIdx = fullText.indexOf("](");
+    const { destination: href, title, labelEnd } = parsed;
 
     const contentFrom = from + 1;
-    const contentTo = from + bracketIdx;
-    const contentLen = bracketIdx - 1;
+    const contentTo = from + labelEnd;
+    const contentLen = labelEnd - 1;
 
     // §384 fix (B): merge stashed non-href/title attrs (e.g. `target`) back
     // in — see ExpandedRange.linkAttrs.

@@ -155,92 +155,230 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
     });
 
     it("parses an angle-bracket link destination with whitespace", () => {
-      expect(parseRevealResource("[x](<a b>)")).toEqual({
-        kind: "link",
-        label: "x",
-        destination: "a b",
-        title: null,
-      });
+      expect(parseRevealResource("[x](<a b>)")).toEqual(
+        expect.objectContaining({
+          kind: "link",
+          label: "x",
+          destination: "a b",
+          title: null,
+        }),
+      );
     });
 
     it("parses an angle-bracket image destination with whitespace", () => {
-      expect(parseRevealResource("![x](<a b>)")).toEqual({
-        kind: "image",
-        label: "x",
-        destination: "a b",
-        title: null,
-      });
+      expect(parseRevealResource("![x](<a b>)")).toEqual(
+        expect.objectContaining({
+          kind: "image",
+          label: "x",
+          destination: "a b",
+          title: null,
+        }),
+      );
     });
 
     it("parses a whitespace-containing video filename", () => {
-      expect(parseRevealResource("![x](<clip one.mp4>)")).toEqual({
-        kind: "image",
-        label: "x",
-        destination: "clip one.mp4",
-        title: null,
-      });
+      expect(parseRevealResource("![x](<clip one.mp4>)")).toEqual(
+        expect.objectContaining({
+          kind: "image",
+          label: "x",
+          destination: "clip one.mp4",
+          title: null,
+        }),
+      );
     });
 
     it("parses an empty destination with no title", () => {
-      expect(parseRevealResource("[x]()")).toEqual({
-        kind: "link",
-        label: "x",
-        destination: "",
-        title: null,
-      });
+      expect(parseRevealResource("[x]()")).toEqual(
+        expect.objectContaining({
+          kind: "link",
+          label: "x",
+          destination: "",
+          title: null,
+        }),
+      );
     });
 
     it("parses an empty destination with a title", () => {
-      expect(parseRevealResource('[x](<> "t")')).toEqual({
-        kind: "link",
-        label: "x",
-        destination: "",
-        title: "t",
-      });
+      expect(parseRevealResource('[x](<> "t")')).toEqual(
+        expect.objectContaining({
+          kind: "link",
+          label: "x",
+          destination: "",
+          title: "t",
+        }),
+      );
     });
 
     it("unescapes an escaped ] in the label back to a literal ]", () => {
-      expect(parseRevealResource("[a\\]b](u)")).toEqual({
-        kind: "link",
-        label: "a]b",
-        destination: "u",
-        title: null,
-      });
+      expect(parseRevealResource("[a\\]b](u)")).toEqual(
+        expect.objectContaining({
+          kind: "link",
+          label: "a]b",
+          destination: "u",
+          title: null,
+        }),
+      );
     });
 
     it("unescapes an escaped ] in the alt back to a literal ] (media)", () => {
-      expect(parseRevealResource("![a\\]b](x.png)")).toEqual({
-        kind: "image",
-        label: "a]b",
-        destination: "x.png",
-        title: null,
-      });
+      expect(parseRevealResource("![a\\]b](x.png)")).toEqual(
+        expect.objectContaining({
+          kind: "image",
+          label: "a]b",
+          destination: "x.png",
+          title: null,
+        }),
+      );
     });
 
     it("unescapes an escaped title quote", () => {
-      expect(parseRevealResource('[x](u "say \\"hi\\"")')).toEqual({
-        kind: "link",
-        label: "x",
-        destination: "u",
-        title: 'say "hi"',
-      });
+      expect(parseRevealResource('[x](u "say \\"hi\\"")')).toEqual(
+        expect.objectContaining({
+          kind: "link",
+          label: "x",
+          destination: "u",
+          title: 'say "hi"',
+        }),
+      );
     });
 
     it("unescapes < inside an angle-bracket link destination", () => {
-      expect(parseRevealResource("[x](<a \\< b>)")).toEqual({
-        kind: "link",
-        label: "x",
-        destination: "a < b",
-        title: null,
-      });
+      expect(parseRevealResource("[x](<a \\< b>)")).toEqual(
+        expect.objectContaining({
+          kind: "link",
+          label: "x",
+          destination: "a < b",
+          title: null,
+        }),
+      );
     });
 
     it("unescapes < inside an angle-bracket media destination", () => {
-      expect(parseRevealResource("![x](<a \\< b>)")).toEqual({
-        kind: "image",
-        label: "x",
-        destination: "a < b",
-        title: null,
+      expect(parseRevealResource("![x](<a \\< b>)")).toEqual(
+        expect.objectContaining({
+          kind: "image",
+          label: "x",
+          destination: "a < b",
+          title: null,
+        }),
+      );
+    });
+
+    // §384 fix (F1): a link label is live doc text that expandLink never
+    // escapes (see expandLink) — so a label containing a BARE, unescaped `]`
+    // not immediately followed by `(` must still parse. Before this fix the
+    // label grammar structurally excluded `]`, so `REVEAL_RESOURCE_RE` never
+    // matched at all and this returned null.
+    describe("lenient label grammar (§384 F1)", () => {
+      it("parses a label containing a bare, unescaped ]", () => {
+        const parsed = parseRevealResource("[a]b](u)");
+        expect(parsed).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "a]b",
+            destination: "u",
+            title: null,
+          }),
+        );
+      });
+
+      it("labelEnd points at the `]` that actually opens the destination group", () => {
+        // "[a]b](u)" — labelEnd = index of the SECOND `]` (position 4), not
+        // the first bare `]` inside the label (position 2).
+        expect(parseRevealResource("[a]b](u)")?.labelEnd).toBe(4);
+      });
+
+      it("an ambiguous label resolves to the LAST split whose tail validates — documented, not a null-reject", () => {
+        // "[a](b](u)" has two candidate `](` splits: after "a" (index 1) and
+        // after "a](b" (index 4). The FIRST candidate's tail ("b](u)") is not
+        // a valid destination — a raw destination cannot contain an
+        // unescaped `(`, so "b]" is as much as RAW_DEST_CONTENT can consume,
+        // leaving "(u)" unmatched before the required closing `)`. Greedy
+        // backtracking tries the LONGER label first anyway and it succeeds
+        // outright, so this never even reaches the shorter candidate — label
+        // "a](b", destination "u". A label containing its own
+        // syntactically-complete `](destination)` is genuinely ambiguous
+        // with the real one; this is that case resolved one specific way
+        // (longest label wins when both could parse), not a rejection.
+        expect(parseRevealResource("[a](b](u)")).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "a](b",
+            destination: "u",
+            title: null,
+          }),
+        );
+      });
+
+      it("an angle-form destination containing a literal ](  still parses at the real label boundary", () => {
+        // Guards the failure mode a blind `lastIndexOf("](")` would introduce:
+        // the destination itself contains "](" (angle form permits it — only
+        // `<`/`>` are escaped there), and backtracking must still land on the
+        // FIRST `](` because the second candidate's tail (" b>)") does not
+        // complete a valid destination/title/`)` grammar.
+        expect(parseRevealResource("[x](<a]( b>)")).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "x",
+            destination: "a]( b",
+            title: null,
+          }),
+        );
+      });
+    });
+
+    // §384 fix (F2): destinations containing Unicode whitespace (not just
+    // ASCII) that end up in the RAW (non-angle) form must still parse — see
+    // NEEDS_ANGLE_RE (ASCII-only) vs. the old RAW_DEST_CONTENT (JS `\s`,
+    // Unicode-inclusive) asymmetry.
+    describe("Unicode whitespace in a raw destination (§384 F2)", () => {
+      it("parses a raw destination containing U+00A0 (NBSP)", () => {
+        expect(parseRevealResource("[x](a b)")).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "x",
+            destination: "a b",
+            title: null,
+          }),
+        );
+      });
+
+      it("parses a raw destination containing U+00A0 alongside a title", () => {
+        expect(parseRevealResource('[x](a b "t")')).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "x",
+            destination: "a b",
+            title: "t",
+          }),
+        );
+      });
+    });
+
+    // §384 fix (F4): `title: ""` (present, empty) must parse back as `""`,
+    // not `null` — that distinction is what `title !== null` (vs. truthiness)
+    // in serializeRevealResource now preserves on the way in.
+    describe("empty-but-present title (§384 F4)", () => {
+      it("parses an empty destination with an empty title as present, not null", () => {
+        expect(parseRevealResource('[x](<> "")')).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "x",
+            destination: "",
+            title: "",
+          }),
+        );
+      });
+
+      it("parses a non-empty destination with an empty title as present, not null", () => {
+        expect(parseRevealResource('[x](u "")')).toEqual(
+          expect.objectContaining({
+            kind: "link",
+            label: "x",
+            destination: "u",
+            title: "",
+          }),
+        );
       });
     });
   });
@@ -269,12 +407,24 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
       { kind: "link", label: "x", destination: "a < b", title: null },
       { kind: "image", label: "x", destination: "a < b", title: null },
       { kind: "link", label: "x", destination: "a(b)c", title: null },
+      // §384 fix (F2): Unicode (non-ASCII) whitespace in a raw destination —
+      // with and without a title, since the title branch exercises a
+      // different suffix of the grammar.
+      { kind: "link", label: "x", destination: "a b", title: null },
+      { kind: "link", label: "x", destination: "a b", title: "t" },
+      // §384 fix (F4): an empty-but-PRESENT title, distinct from no title
+      // (`title: null`, already covered above) — with both an empty and a
+      // non-empty destination.
+      { kind: "link", label: "x", destination: "", title: "" },
+      { kind: "link", label: "x", destination: "u", title: "" },
     ];
 
     for (const resource of cases) {
       it(`round-trips ${JSON.stringify(resource)}`, () => {
         const text = serializeRevealResource(resource);
-        expect(parseRevealResource(text)).toEqual(resource);
+        expect(parseRevealResource(text)).toEqual(
+          expect.objectContaining(resource),
+        );
       });
     }
   });

@@ -25,9 +25,11 @@ import {
   buildAllowlist,
   buildForwardedBans,
   buildPipelineClosure,
+  buildPipelineInternalSet,
   findViolations,
-  isInside,
   loadRealEntries,
+  MD_TO_PM_ROUTE_FILES,
+  PIPELINE_BARREL_FILE,
   PIPELINE_DIR,
   PM_TO_MD,
   productionSourceFiles,
@@ -127,20 +129,49 @@ describe("pm→markdown import boundary — real production scan (§384 commit 3
   const allFiles = productionSourceFiles(SRC_DIR);
   const allEntries = loadRealEntries(allFiles);
   const forwarded = buildForwardedBans(closure, allowlist, allEntries);
+  // §384 impl-review-1 (F3): SET membership, not `!isInside(PIPELINE_DIR,
+  // file)` — the old directory-prefix exemption covered every file under
+  // `src/pipeline/`, not merely the 45-module closure, so a pipeline SIBLING
+  // (e.g. md-to-pm.ts, outside the closure by design — see the "md→pm
+  // modules are unreachable" assertion above) reaching into the closure was
+  // invisible to this scan. `buildPipelineInternalSet()` is the closure plus
+  // a named, audited list of the actual non-closure pipeline files — see
+  // the guard test below for what keeps that list honest.
+  const internal = buildPipelineInternalSet();
   const checked = allEntries.filter(
-    ({ file }) => !isInside(PIPELINE_DIR, file) && file !== SERIALIZE_LIVE_DOC,
+    ({ file }) => !internal.has(file) && file !== SERIALIZE_LIVE_DOC,
   );
 
   it("scans a real tree (guards against an empty-glob false pass)", () => {
     expect(allFiles.length).toBeGreaterThan(300);
   });
 
+  it("the pipeline-internal exemption is a named set that accounts for every real pipeline file — not a directory prefix that would also cover a brand-new file (§384 F3)", () => {
+    const allPipelineFiles = productionSourceFiles(PIPELINE_DIR);
+    // Every file under src/pipeline/ today is EITHER in the closure OR one
+    // of the named MD→PM route files OR the barrel — nothing is silently
+    // unaccounted for by this test itself (that would just mean the
+    // production scan below checks it, which is fine) but a mismatch here
+    // means the named list drifted from the real tree and needs a look.
+    for (const file of allPipelineFiles) {
+      expect(internal.has(file)).toBe(true);
+    }
+    // ...and nothing in the set points at a file that doesn't exist anymore.
+    expect(internal.size).toBe(allPipelineFiles.length);
+    // The named list itself, spot-checked against the specific files this
+    // boundary's own commit history calls out as "the md→pm route".
+    for (const file of MD_TO_PM_ROUTE_FILES) {
+      expect(closure.has(file)).toBe(false);
+    }
+    expect(closure.has(PIPELINE_BARREL_FILE)).toBe(false);
+  });
+
   it("the checked set is non-empty and excludes the sanctioned/pipeline-internal paths — NOT a vacuous pass", () => {
     // The violation assertion below runs on `checked`, not `allFiles` — if the
-    // exclusion filter ever over-matched (or `isInside` inverted), `checked`
-    // could silently go empty and the gate would pass with zero coverage.
-    // Pin both directions: real external consumers of the closure ARE in the
-    // checked set, and the two excluded paths are NOT.
+    // exclusion filter ever over-matched, `checked` could silently go empty
+    // and the gate would pass with zero coverage. Pin both directions: real
+    // external consumers of the closure ARE in the checked set, and the
+    // sanctioned/pipeline-internal paths are NOT.
     const checkedFiles = checked.map(({ file }) => file);
     expect(checkedFiles.length).toBeGreaterThan(300);
     expect(checkedFiles).toContain(ZETTEL_LINK_RESOLVE); // allowlisted wikilink import
@@ -148,6 +179,7 @@ describe("pm→markdown import boundary — real production scan (§384 commit 3
     expect(checkedFiles).not.toContain(SERIALIZE_LIVE_DOC);
     expect(checkedFiles).not.toContain(PIPELINE_BARREL);
     expect(checkedFiles).not.toContain(PM_TO_MD);
+    expect(checkedFiles).not.toContain(MD_TO_PM); // named md→pm route file, not the whole directory
   });
 
   it("no production file outside pipeline reaches into the closure except the audited allowlist", () => {

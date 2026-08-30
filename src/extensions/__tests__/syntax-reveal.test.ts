@@ -12,11 +12,17 @@ const { openUrl } = vi.hoisted(() => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
+import type { ExpandedRange } from "../plugins/syntax-reveal-state";
+
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
-import { forceCollapseSyntaxReveal } from "../plugins/syntax-reveal";
+import {
+  forceCollapseSyntaxReveal,
+  getSyntaxRevealExpanded,
+} from "../plugins/syntax-reveal";
+import { collapseExpanded } from "../plugins/syntax-reveal-collapse";
 
 function createEditor(): Editor {
   return new Editor({
@@ -385,6 +391,51 @@ describe("Syntax Reveal (§5.1)", () => {
       expect(linkMark?.attrs.title).toBe("t");
       editor.destroy();
     });
+
+    // §384 fix (F4): the codec must not conflate "no title" (`null`) with
+    // "an empty, present title" (`""`) — see syntax-reveal-resource-codec's
+    // `title !== null` check. The expanded text itself must carry a
+    // present-but-empty title section (`<> ""`), not silently drop it the
+    // way the pre-fix truthiness check did (`[x]()`, indistinguishable from
+    // no title at all).
+    it("expands an empty-but-present title distinctly from no title (§384 F4)", () => {
+      const editor = createEditor();
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "world",
+                marks: [{ type: "link", attrs: { href: "", title: "" } }],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain('[world](<> "")');
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("");
+      // Both collapse implementations build the link MARK with
+      // `title: title || null` — a separate, existing normalization at the
+      // mark-attrs layer (an empty title and no title read the same in the
+      // UI), independent of the codec's own `title: "" !== null` inverse
+      // contract this fix restores. Documented here, not changed by F4.
+      expect(linkMark?.attrs.title).toBeNull();
+      editor.destroy();
+    });
   });
 
   // §384 fix (B2, follow-on): link.ts's Cmd+click handler is a THIRD parser
@@ -504,6 +555,178 @@ describe("Syntax Reveal (§5.1)", () => {
       expect(prosemirrorToMarkdown(editor.state.doc)).not.toBe(original);
 
       expect(serializeLiveDoc(editor)).toBe(original);
+      editor.destroy();
+    });
+  });
+
+  // §384 fix (F1) — BLOCKER: expandLink inserts the link's LIVE doc text
+  // as-is between `[` and `](href)` (it can't escape it — that would corrupt
+  // the label's own marks, see expandLink), so a label containing a bare `]`
+  // (e.g. from source markdown `[a\]b](u)`, which parses to live text `a]b`)
+  // produced literal, unparseable expanded text (`[a]b](u)`) that BOTH
+  // collapse paths rejected — falling back to canonicalDoc's stale-doc branch
+  // and corrupting the save. Reproduced here through a real Editor, matching
+  // the exact repro in the review verdict.
+  describe("Link label containing an unescaped ] round-trips (§384 F1)", () => {
+    const original = "Hello [a\\]b](u) end\n";
+
+    it("caret-in: expands to the literal (unescaped) label and serializeLiveDoc still reproduces the original", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, original);
+      moveCursorTo(editor, 2, 8);
+
+      expect(editor.state.doc.textContent).toContain("[a]b](u)");
+      expect(serializeLiveDoc(editor)).toBe(original);
+      editor.destroy();
+    });
+
+    it("forceCollapseSyntaxReveal restores the link mark with the original label and href", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, original);
+      moveCursorTo(editor, 2, 8);
+      expect(editor.state.doc.textContent).toContain("[a]b](u)");
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello a]b end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("u");
+      expect(serializeLiveDoc(editor)).toBe(original);
+      editor.destroy();
+    });
+
+    it("the appendTransaction cursor-exit path restores the link mark with the original label and href", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, original);
+      moveCursorTo(editor, 2, 8);
+      expect(editor.state.doc.textContent).toContain("[a]b](u)");
+
+      editor.commands.setTextSelection(2);
+
+      expect(editor.state.doc.textContent).toBe("Hello a]b end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("u");
+      expect(serializeLiveDoc(editor)).toBe(original);
+      editor.destroy();
+    });
+  });
+
+  // §384 fix (F2): a destination containing Unicode (non-ASCII) whitespace —
+  // e.g. U+00A0 NBSP — serializes to the RAW (non-angle) form (NEEDS_ANGLE_RE
+  // is ASCII-only), but the old RAW_DEST_CONTENT pattern excluded ALL JS `\s`
+  // (Unicode-inclusive), so parsing that exact raw form failed. Broke both
+  // collapse paths and Cmd+click Strategy 3 identically to F1's label bug.
+  describe("Link destination with Unicode whitespace round-trips (§384 F2)", () => {
+    function loadLinkWithNbspHref(editor: Editor): void {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "world",
+                marks: [{ type: "link", attrs: { href: "a b", title: null } }],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+    }
+
+    it("expands to the raw (non-angle) form and collapses back via forceCollapseSyntaxReveal", () => {
+      const editor = createEditor();
+      loadLinkWithNbspHref(editor);
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("[world](a b)");
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("a b");
+      editor.destroy();
+    });
+
+    it("expands and collapses back via the appendTransaction cursor-exit path", () => {
+      const editor = createEditor();
+      loadLinkWithNbspHref(editor);
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("[world](a b)");
+
+      editor.commands.setTextSelection(2);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const linkMark = editor.state.doc
+        .nodeAt(7)
+        ?.marks.find((m) => m.type.name === "link");
+      expect(linkMark?.attrs.href).toBe("a b");
+      editor.destroy();
+    });
+
+    it("Cmd+click navigates to the Unicode-whitespace destination instead of declining (link.ts Strategy 3)", () => {
+      const editor = createEditor();
+      loadLinkWithNbspHref(editor);
+
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("[world](a b)");
+
+      editor.view.dom.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          metaKey: true,
+        }),
+      );
+
+      expect(openUrl).toHaveBeenCalledWith("a b");
+      editor.destroy();
+    });
+  });
+
+  // §384 (C): `collapseExpanded` (the interactive wrapper around the pure
+  // `buildCollapseTr`) must fall back to a meta-only INACTIVE dispatch —
+  // touching neither doc nor selection — when the expansion is stale (its
+  // delimiters no longer validate against the live doc), instead of
+  // corrupting the doc or throwing. The extraction in commit `a3c1f304`
+  // preserved this path but no test pinned it directly.
+  describe("Stale expansion falls back to a meta-only INACTIVE dispatch (§384 C)", () => {
+    it("collapseExpanded leaves doc and selection untouched and clears the expanded state", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, "Hello world end\n");
+      editor.commands.setTextSelection(3);
+
+      // Fabricated stale range: the doc has no "**" at position 1 at all —
+      // this never came from a real expansion, simulating a caller holding
+      // an ExpandedRange captured before some other edit invalidated it.
+      const staleExpanded: ExpandedRange = {
+        kind: "mark",
+        markName: "bold",
+        from: 1,
+        to: 6,
+        openCheck: "**",
+        closeCheck: "**",
+      };
+
+      const docBefore = editor.state.doc;
+      const selectionBefore = editor.state.selection;
+
+      collapseExpanded(editor.view, staleExpanded);
+
+      expect(editor.state.doc).toBe(docBefore);
+      expect(editor.state.selection.from).toBe(selectionBefore.from);
+      expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
       editor.destroy();
     });
   });

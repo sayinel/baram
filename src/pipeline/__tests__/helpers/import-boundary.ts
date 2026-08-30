@@ -276,6 +276,59 @@ export function buildPipelineClosure(): Set<string> {
   return closure;
 }
 
+// ── the pipeline-internal exemption — a named set, not a directory prefix ──
+//
+// §384 impl-review-1 (F3): the real scan below used to exempt every file
+// under `src/pipeline/` wholesale (`!isInside(PIPELINE_DIR, file)`), not just
+// the 45-module closure. That is a mechanical blind spot: ANY new file later
+// dropped into `src/pipeline/` — including one the closure's BFS never
+// reaches — silently inherited the exemption too, so a PM→mdast call added
+// to it would pass this gate undetected. Set membership does not grow on its
+// own the way a path-prefix test does: a new file is either not in this set
+// (and gets checked exactly like an external consumer, closing that gap) or
+// someone deliberately adds it here, next to this audit trail — the same way
+// `buildAllowlist()`'s entries are added.
+
+/**
+ * The seven production files that make up the OTHER side of this pipeline —
+ * the actual MD→PM ("parse") route (`md-to-pm.ts` and its own helper
+ * modules) — audited 2026-08-30 as exactly `productionSourceFiles(PIPELINE_DIR)`
+ * minus `buildPipelineClosure()` minus the barrel (tracked separately below,
+ * since it carries no conversion logic of its own). They need the SAME
+ * dynamic-dispatch registries (`nodeTransformers`/`markTransformers`, keyed
+ * by mdastType) the closure's own modules provide — for the harmless MD→PM
+ * direction. The risk this boundary defends against is specifically PM→MD
+ * (serialize) leaving pipeline unescorted, not the reverse.
+ */
+export const MD_TO_PM_ROUTE_FILES: ReadonlySet<string> = new Set([
+  join(PIPELINE_DIR, "convert-block-special.ts"),
+  join(PIPELINE_DIR, "convert-inline-text.ts"),
+  join(PIPELINE_DIR, "convert-list.ts"),
+  join(PIPELINE_DIR, "md-to-pm.ts"),
+  join(PIPELINE_DIR, "parse-async.ts"),
+  join(PIPELINE_DIR, "parse-mdast.ts"),
+  join(PIPELINE_DIR, "parse-worker.ts"),
+]);
+
+/** The pipeline's public barrel — re-exports only, no conversion logic of its
+ *  own. Exempted for the same "pipeline-internal wiring" reason, tracked
+ *  separately from `MD_TO_PM_ROUTE_FILES` since it belongs to neither
+ *  direction's actual machinery. */
+export const PIPELINE_BARREL_FILE = join(PIPELINE_DIR, "index.ts");
+
+/**
+ * The full pipeline-internal exemption: the pm→markdown closure plus the
+ * named md→pm route files plus the barrel — SET membership, checked by the
+ * real scan below instead of a `src/pipeline/` path-prefix test.
+ */
+export function buildPipelineInternalSet(): Set<string> {
+  return new Set<string>([
+    ...buildPipelineClosure(),
+    ...MD_TO_PM_ROUTE_FILES,
+    PIPELINE_BARREL_FILE,
+  ]);
+}
+
 // ── the allowlist — seeded by an implementation-time audit, not a guess ────
 
 /**
