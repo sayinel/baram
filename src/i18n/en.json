@@ -821,6 +821,8 @@
   "tasks.panel.priority.low": "🔽 Low−",
   "tasks.panel.tag": "Filter by tag",
   "tasks.panel.tag.all": "Any tag",
+  "tasks.panel.link": "Filter by linked note",
+  "tasks.panel.link.all": "Any linked note",
   "tasks.row.stale": "Stale",
   "tasks.reschedule.action": "Reschedule {count} overdue task(s) to today",
   "tasks.reschedule.confirm": "Reschedule {count} overdue task(s) to today?",

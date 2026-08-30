@@ -1,7 +1,15 @@
 // §306 아젠다 필터 — 순수 함수. React 없이 검증한다(task-buckets.ts와 같은 이유).
 import type { TaskEntry } from "../../ipc/types";
 
+import { linkTarget } from "./task-links";
+
 export interface TaskFilters {
+  /**
+   * §306 링크 대상 — `linkTarget`으로 벗긴 값과 **정확히** 일치하는 태스크만 남긴다.
+   * "" = 전체. 노트별 섹션(§307 A)과 짝이다: 저기서 노트를 열고 여기서 아젠다를 그
+   * 프로젝트에 고정한다.
+   */
+  link: string;
   priority: TaskPriorityFilter;
   /** §312 "예정 없음"의 someday를 보일지. 기본 false — 그래야 그 버킷이 0이 될 수 있는 큐가 된다. */
   showSomeday: boolean;
@@ -26,6 +34,7 @@ export type TaskStateFilter = "all" | "done" | "todo";
 export const SOMEDAY_TAG = "someday";
 
 export const EMPTY_FILTERS: TaskFilters = {
+  link: "",
   priority: "all",
   showSomeday: false,
   state: "all",
@@ -78,10 +87,30 @@ export function applyTaskFilters(
     if (!matchesPriority(task, f.priority)) return false;
     // 접두 일치가 아니라 정확 일치 — #work가 #workout을 끌고 오면 안 된다.
     if (f.tag && !task.tags.includes(f.tag)) return false;
+    if (f.link && !task.links.some((raw) => linkTarget(raw) === f.link)) {
+      return false;
+    }
     if (q && !task.text.toLowerCase().includes(q)) return false;
     if (!matchesSomeday(task, f)) return false;
     return true;
   });
+}
+
+/**
+ * 주어진 태스크들에 등장하는 **링크 대상**을 중복 없이 정렬해 돌려준다.
+ *
+ * 원문이 아니라 벗긴 대상이다 — `[[202607051530]]`과 `[[202607051530|원자성]]`은
+ * 같은 노트를 가리키므로 목록에 두 번 나오면 안 된다.
+ */
+export function collectLinks(tasks: TaskEntry[]): string[] {
+  const seen = new Set<string>();
+  for (const task of tasks) {
+    for (const raw of task.links) {
+      const target = linkTarget(raw);
+      if (target !== "") seen.add(target);
+    }
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b));
 }
 
 /** 주어진 태스크들에 등장하는 태그를 중복 없이 정렬해 돌려준다. */
@@ -137,12 +166,16 @@ function matchesSomeday(task: TaskEntry, f: TaskFilters): boolean {
   // `#work` 필터 아래에서도 조용히 빠진다. 태그를 고르는 것은 "이 집합을 보여 달라"는
   // 명시적 요청이고, 그 집합의 일부를 말없이 빼는 쪽이 규칙의 불일치보다 나쁘다.
   //
+  // 링크 대상 필터(§306)가 같은 완화를 받는 이유도 같다 — `[[프로젝트]]`를 고르는 것은
+  // 그 프로젝트의 **전부**를 보겠다는 뜻이고, 미뤄 둔 것이야말로 프로젝트를 훑을 때
+  // 다시 보려는 것이다.
+  //
   // ‼️ 텍스트·우선순위·상태 필터는 이 완화를 **공유하지 않는다** — `#work`를 고르면
   // someday가 보이지만 텍스트 칸에 "work"를 치면 여전히 숨는다. 의도된 비대칭이다:
-  // 태그만이 태스크가 속한 집합을 직접 지목한다. 텍스트 검색은 본문을 훑는 것이지
-  // 집합을 고르는 것이 아니므로, 우연히 someday 캡처와 겹쳤다고 해서 그것을 보겠다는
-  // 요청으로 읽지 않는다.
-  if (f.tag) return true;
+  // 태그와 링크만이 태스크가 속한 집합을 직접 지목한다. 텍스트 검색은 본문을 훑는
+  // 것이지 집합을 고르는 것이 아니므로, 우연히 someday 캡처와 겹쳤다고 해서 그것을
+  // 보겠다는 요청으로 읽지 않는다.
+  if (f.tag || f.link) return true;
   // 날짜를 준 순간 someday가 아니다 — 여기 도달했다면 열린 태스크이고 태그
   // 필터도 없으므로, "날짜 없음"이 "예정 없음 버킷"의 정확한 대리가 된다.
   return Boolean(task.due ?? task.scheduled);

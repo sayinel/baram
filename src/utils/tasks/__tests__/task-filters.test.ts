@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyTaskFilters,
+  collectLinks,
   collectTags,
   EMPTY_FILTERS,
   priorityBadge,
+  SOMEDAY_TAG,
 } from "../task-filters";
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
@@ -96,15 +98,31 @@ describe("applyTaskFilters", () => {
     ).toHaveLength(1);
   });
 
+  // 필터 객체를 통째로 적는다 — 새 필터를 더하면서 여기 한 줄을 잊으면 타입 검사가
+  // 먼저 잡는다. 그것이 이 테스트가 `EMPTY_FILTERS`를 펴지 않는 이유다.
   it("combines every filter with AND", () => {
+    const link = ["202607051530"];
     const all = [
-      task({ priority: 2, tags: ["work"], text: "keep me" }),
-      task({ priority: 2, tags: ["work"], state: "done", text: "wrong state" }),
-      task({ priority: 0, tags: ["work"], text: "wrong priority" }),
-      task({ priority: 2, tags: ["home"], text: "wrong tag" }),
-      task({ priority: 2, tags: ["work"], text: "wrong text" }),
+      task({ links: link, priority: 2, tags: ["work"], text: "keep me" }),
+      task({
+        links: link,
+        priority: 2,
+        state: "done",
+        tags: ["work"],
+        text: "wrong state",
+      }),
+      task({
+        links: link,
+        priority: 0,
+        tags: ["work"],
+        text: "wrong priority",
+      }),
+      task({ links: link, priority: 2, tags: ["home"], text: "wrong tag" }),
+      task({ links: link, priority: 2, tags: ["work"], text: "wrong text" }),
+      task({ links: [], priority: 2, tags: ["work"], text: "keep no link" }),
     ];
     const got = applyTaskFilters(all, {
+      link: "202607051530",
       priority: "high",
       showSomeday: false,
       state: "todo",
@@ -112,6 +130,70 @@ describe("applyTaskFilters", () => {
       text: "keep",
     });
     expect(got.map((t) => t.text)).toEqual(["keep me"]);
+  });
+
+  describe("§306 링크 대상 필터", () => {
+    it("그 대상을 가리키는 태스크만 남긴다", () => {
+      const all = [
+        task({ links: ["202607051530"], text: "이 프로젝트" }),
+        task({ links: ["202607051531"], text: "다른 프로젝트" }),
+        task({ links: [], text: "링크 없음" }),
+      ];
+      expect(
+        applyTaskFilters(all, {
+          ...EMPTY_FILTERS,
+          link: "202607051530",
+        }).map((t) => t.text),
+      ).toEqual(["이 프로젝트"]);
+    });
+
+    it("별칭·앵커가 붙어도 같은 대상으로 본다", () => {
+      // 목록에 뜬 것을 골랐는데 걸리지 않으면 필터가 고장 난 것으로 읽힌다.
+      const all = [
+        task({ links: ["202607051530|원자성"], text: "별칭" }),
+        task({ links: ["202607051530#정의"], text: "앵커" }),
+      ];
+      expect(
+        applyTaskFilters(all, { ...EMPTY_FILTERS, link: "202607051530" }),
+      ).toHaveLength(2);
+    });
+
+    it('""는 전체다', () => {
+      const all = [task({ links: [] }), task({ links: ["202607051530"] })];
+      expect(applyTaskFilters(all, EMPTY_FILTERS)).toHaveLength(2);
+    });
+
+    it("‼️ 링크를 고르면 #someday도 함께 보인다", () => {
+      // 태그 필터와 같은 논거다: 프로젝트를 지목하는 것은 그 프로젝트의 **전부**를
+      // 보겠다는 뜻이고, 미뤄 둔 것이야말로 프로젝트를 훑을 때 다시 보려는 것이다.
+      const all = [
+        task({
+          links: ["202607051530"],
+          tags: [SOMEDAY_TAG],
+          text: "미뤄 둔 것",
+        }),
+      ];
+      expect(applyTaskFilters(all, EMPTY_FILTERS)).toHaveLength(0);
+      expect(
+        applyTaskFilters(all, { ...EMPTY_FILTERS, link: "202607051530" }),
+      ).toHaveLength(1);
+    });
+  });
+
+  describe("collectLinks", () => {
+    it("벗긴 대상을 중복 없이 정렬해 돌려준다", () => {
+      const all = [
+        task({ links: ["202607051530|원자성", "notes/프로젝트.md"] }),
+        task({ links: ["202607051530"] }),
+      ];
+      expect(collectLinks(all)).toEqual(["202607051530", "프로젝트"]);
+    });
+
+    it("가리키는 것이 없는 링크는 목록에 넣지 않는다", () => {
+      // `[[#제목]]`은 같은 파일 안 앵커다. 빈 항목이 옵션으로 뜨면 고를 수는 있는데
+      // 아무것도 걸리지 않는 선택지가 된다.
+      expect(collectLinks([task({ links: ["#정의"] })])).toEqual([]);
+    });
   });
 
   it("does not mutate the input array", () => {

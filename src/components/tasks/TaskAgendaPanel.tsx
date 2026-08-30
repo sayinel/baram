@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState } from "react";
 import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
-import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { Archive, CalendarArrowUp, ListChecks, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
@@ -20,10 +19,12 @@ import { openFileByPath } from "../../utils/open-file";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
 import {
   applyTaskFilters,
+  collectLinks,
   collectTags,
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
 import { TaskBucketList } from "./TaskBucketList";
+import { TaskFilterBar } from "./TaskFilterBar";
 import { useArchiveDone } from "./use-archive-done";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
 import { useTaskScan } from "./use-task-scan";
@@ -104,9 +105,15 @@ export function TaskAgendaPanel() {
   // 값 하나로 충분하다. state/priority는 닫힌 옵션 집합이라 같은 문제가 없다.
   const tag = tagOptions.includes(filters.tag) ? filters.tag : "";
 
+  // §306 링크 대상도 태그와 같다 — 목록은 **필터 적용 전** 전체에서 뽑고, 고른 대상이
+  // 사라지면(그 태스크가 지워졌거나 범위가 좁아졌거나) "전체"로 되돌린다. 되돌리지
+  // 않으면 <select>는 빈 선택으로 보이는데 목록은 계속 걸러진 채로 남는다.
+  const linkOptions = useMemo(() => collectLinks(tasks), [tasks]);
+  const link = linkOptions.includes(filters.link) ? filters.link : "";
+
   const visible = useMemo(
-    () => applyTaskFilters(tasks, { ...filters, tag }),
-    [tasks, filters, tag],
+    () => applyTaskFilters(tasks, { ...filters, link, tag }),
+    [tasks, filters, link, tag],
   );
 
   const groups = useMemo(
@@ -213,83 +220,15 @@ export function TaskAgendaPanel() {
           </button>
         </div>
 
-        <div className="task-panel-selects">
-          <select
-            aria-label={t("tasks.scope.label")}
-            className="task-panel-select"
-            onChange={(e) => setTasksScanScope(e.target.value as TaskScanScope)}
-            title={t("tasks.scope.label")}
-            value={tasksScanScope}
-          >
-            <option value="allVaults">{t("tasks.scope.allVaults")}</option>
-            <option value="currentVault">
-              {t("tasks.scope.currentVault")}
-            </option>
-            <option value="tasksHome">{t("tasks.scope.tasksHome")}</option>
-          </select>
-
-          <select
-            aria-label={t("tasks.panel.state")}
-            className="task-panel-select"
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                state: e.target.value as TaskFilters["state"],
-              }))
-            }
-            value={filters.state}
-          >
-            <option value="all">{t("tasks.panel.state.all")}</option>
-            <option value="todo">{t("tasks.panel.state.todo")}</option>
-            <option value="done">{t("tasks.panel.state.done")}</option>
-          </select>
-
-          <select
-            aria-label={t("tasks.panel.priority")}
-            className="task-panel-select"
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                priority: e.target.value as TaskFilters["priority"],
-              }))
-            }
-            value={filters.priority}
-          >
-            <option value="all">{t("tasks.panel.priority.all")}</option>
-            <option value="high">{t("tasks.panel.priority.high")}</option>
-            <option value="normal">{t("tasks.panel.priority.normal")}</option>
-            <option value="low">{t("tasks.panel.priority.low")}</option>
-          </select>
-
-          {tagOptions.length > 0 && (
-            <select
-              aria-label={t("tasks.panel.tag")}
-              className="task-panel-select"
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, tag: e.target.value }))
-              }
-              value={tag}
-            >
-              <option value="">{t("tasks.panel.tag.all")}</option>
-              {tagOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  #{opt}
-                </option>
-              ))}
-            </select>
-          )}
-
-          <label className="task-panel-someday">
-            <input
-              checked={filters.showSomeday}
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, showSomeday: e.target.checked }))
-              }
-              type="checkbox"
-            />
-            {t("tasks.panel.someday")}
-          </label>
-        </div>
+        <TaskFilterBar
+          filters={{ ...filters, link, tag }}
+          linkOptions={linkOptions}
+          onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
+          onScopeChange={setTasksScanScope}
+          scope={tasksScanScope}
+          tagOptions={tagOptions}
+          titleFor={titleFor}
+        />
       </div>
 
       <div className="task-panel-body">

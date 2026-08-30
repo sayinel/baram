@@ -10,6 +10,7 @@ import type { TaskEntry } from "../../ipc/types";
 
 import { basename, toPosixPath } from "../path-utils";
 import { extractLeadingId } from "../zettelkasten/parse-note-title";
+import { linkTarget } from "./task-links";
 
 /** 이 노트를 가리키는 세 가지 방법 — 경로 · Zettel ID · 파일명. */
 export interface NoteIdentity {
@@ -75,14 +76,11 @@ function compare(a: TaskEntry, b: TaskEntry): number {
 /**
  * `[[대상]]` 원문 하나가 이 노트를 가리키는가.
  *
- * 인덱스는 `[[…]]` 안쪽을 **원문 그대로** 담는다(§18.18-5). Zettel vault에서는 그것이
- * ID이고 일반 vault에서는 파일명이므로 둘 다 본다. 별칭(`|`)·앵커(`#` `^`)·폴더 경로가
- * 붙을 수 있어 먼저 벗긴다.
+ * Zettel vault에서 대상은 ID이고 일반 vault에서는 파일명이므로 둘 다 본다(§18.18-5).
+ * 벗기는 일은 `linkTarget`이 한다 — 아젠다의 링크 필터와 같은 자여야 한다.
  */
 function targetsNote(raw: string, note: NoteIdentity): boolean {
-  const target = basename(
-    raw.split("|")[0].split("#")[0].split("^")[0].trim(),
-  ).replace(/\.(md|markdown)$/i, "");
+  const target = linkTarget(raw);
   if (target === "") return false;
   if (note.id !== null && target === note.id) return true;
   // 파일명은 대소문자를 가리지 않는다 — macOS·Windows 파일 시스템이 그렇고, 링크를 적는

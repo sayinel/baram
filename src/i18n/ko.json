@@ -821,6 +821,8 @@
   "tasks.panel.priority.low": "🔽 낮음 이하",
   "tasks.panel.tag": "태그로 거르기",
   "tasks.panel.tag.all": "모든 태그",
+  "tasks.panel.link": "링크된 노트로 거르기",
+  "tasks.panel.link.all": "모든 노트",
   "tasks.row.stale": "오래 방치됨",
   "tasks.reschedule.action": "기한 초과 {count}개를 오늘로 미루기",
   "tasks.reschedule.confirm": "기한 초과 {count}개를 오늘로 미룰까요?",
