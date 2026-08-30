@@ -2,10 +2,12 @@
 // TaskAgendaPanel에서 뽑아 뒀다(패널이 ~300줄 가이드라인 위에 있었다).
 import { useCallback, useState } from "react";
 
+import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry } from "../../ipc/types";
 import type { BulkResult } from "./task-bulk-actions";
 import type { Editor } from "@tiptap/react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { refreshFileTasks } from "../../stores/tasks/task-store";
 import { showAlert, showConfirm } from "../../utils/confirm-dialog";
 import { rescheduleOverdueToToday } from "./task-bulk-actions";
@@ -29,6 +31,7 @@ export function useRescheduleOverdue({
   tasks,
   today,
 }: RescheduleOverdueOptions): RescheduleOverdue {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
 
   const run = useCallback(async () => {
@@ -43,8 +46,8 @@ export function useRescheduleOverdue({
       // ‼️ 아카이브(§312)와 같은 이유로 버튼 문구를 준다 — 기본값은 "Delete"다.
       // 날짜만 미는 조작에 삭제 버튼을 내밀고 있었다.
       const ok = await showConfirm(
-        `Reschedule ${tasks.length} overdue task(s) to today?`,
-        { confirmLabel: "Reschedule", danger: false },
+        t("tasks.reschedule.confirm", { count: String(tasks.length) }),
+        { confirmLabel: t("tasks.reschedule.confirmButton"), danger: false },
       );
       if (!ok) return;
 
@@ -55,11 +58,11 @@ export function useRescheduleOverdue({
       for (const path of r.diskPaths) {
         await refreshFileTasks(path, exclude);
       }
-      await report(r);
+      await report(r, t);
     } finally {
       setBusy(false);
     }
-  }, [busy, editor, exclude, tasks, today]);
+  }, [busy, editor, exclude, t, tasks, today]);
 
   return { busy, run };
 }
@@ -69,13 +72,13 @@ export function useRescheduleOverdue({
  * 경합이 사고처럼 보인다. 다만 전부 stale인 실행이 아무 말 없이 끝나면
  * 사용자에게는 버튼이 죽은 것으로 보이므로 그 경우에도 반드시 알린다.
  */
-async function report(r: BulkResult): Promise<void> {
+async function report(r: BulkResult, t: Translate): Promise<void> {
   const skipped =
-    r.stale > 0 ? `${r.stale} task(s) changed elsewhere and were skipped.` : "";
+    r.stale > 0 ? t("tasks.bulk.stale", { count: String(r.stale) }) : "";
   if (r.failed > 0) {
     const tail = skipped ? ` ${skipped}` : "";
     await showAlert(
-      `Couldn't reschedule ${r.failed} task(s). See the log.${tail}`,
+      `${t("tasks.reschedule.failed", { count: String(r.failed) })}${tail}`,
     );
   } else if (skipped) {
     await showAlert(skipped);

@@ -32,12 +32,13 @@ const NOT_PROSE: RegExp[] = [
   /^[a-z][a-z0-9]*(?:[-_]+[a-z0-9]+)*(?:\s+[a-z][a-z0-9]*(?:[-_]+[a-z0-9]+)*)*$/, // class list
   /^[a-z]+:[a-z]+$/, // capability id
   /[/@]/, // module path
-  /^\[[A-Z][\w ]*\]/, // "[Marketplace] …" — logger, not UI
+  /^\[[A-Za-z][\w ]*\]/, // "[Marketplace] …", "[tasks] …" — logger, not UI
   /^translate[XY]?\(/, // transform value
   /^[A-Z][a-z]+[A-Z]\w+$/, // DOM key name: ArrowLeft, PageDown
   /^M-?[\d.]+[, ]-?[\d.]+/, // SVG path data
   /^[a-z]{2}-[A-Z]{2}$/, // BCP-47 tag
   /^\{[a-z]+\}$/, // interpolation placeholder: {count}, {s}
+  /^[a-z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+\.$/, // i18n key prefix: `tasks.bucket.${…}`
   /^\.[a-z][a-z0-9-]*$/, // file extension or class selector: .md, .tag-suggest-item
   /^[a-z][a-z0-9]*-$/, // React key prefix fragment: `pad-${i}`
   /^(Alt|Cmd|Ctrl|Meta|Mod|Shift)\+/, // keybinding chord

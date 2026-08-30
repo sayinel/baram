@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry } from "../../ipc/types";
-import type { TaskBucket } from "../../utils/tasks/task-buckets";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
@@ -32,18 +31,6 @@ import { TaskBucketList } from "./TaskBucketList";
 import { useArchiveDone } from "./use-archive-done";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
 import { useTaskTriage } from "./use-task-triage";
-
-// 사이드바 패널의 사용자 노출 문자열은 영어가 이 코드베이스의 관례다
-// ("Filter tags...", "File tree", "Label (optional)" 등). 코드 주석은 한국어 유지.
-const BUCKET_LABEL: Record<TaskBucket, string> = {
-  done: "Done",
-  later: "Later",
-  noDate: "No date",
-  overdue: "Overdue",
-  slipped: "Past scheduled",
-  thisWeek: "This week",
-  today: "Today",
-};
 
 export function TaskAgendaPanel() {
   const { t } = useTranslation();
@@ -208,12 +195,12 @@ export function TaskAgendaPanel() {
       <div className="task-panel-header">
         <div className="flex-header task-panel-search">
           <input
-            aria-label="Filter tasks"
+            aria-label={t("tasks.panel.filter")}
             className="task-panel-filter"
             onChange={(e) =>
               setFilters((f) => ({ ...f, text: e.target.value }))
             }
-            placeholder="Filter tasks…"
+            placeholder={t("tasks.panel.filterPlaceholder")}
             type="search"
             value={filters.text}
           />
@@ -222,7 +209,9 @@ export function TaskAgendaPanel() {
               className="icon-btn task-panel-overdue-action"
               disabled={loading || reschedule.busy}
               onClick={() => void reschedule.run()}
-              title={`Reschedule ${groups.overdue.length} overdue task(s) to today`}
+              title={t("tasks.reschedule.action", {
+                count: String(groups.overdue.length),
+              })}
               type="button"
             >
               <CalendarArrowUp size={14} strokeWidth={1.5} />
@@ -267,7 +256,7 @@ export function TaskAgendaPanel() {
             className="icon-btn"
             disabled={roots.length === 0 || loading}
             onClick={refresh}
-            title="Refresh"
+            title={t("tasks.panel.refresh")}
             type="button"
           >
             <RefreshCw size={14} strokeWidth={1.5} />
@@ -290,7 +279,7 @@ export function TaskAgendaPanel() {
           </select>
 
           <select
-            aria-label="Filter by state"
+            aria-label={t("tasks.panel.state")}
             className="task-panel-select"
             onChange={(e) =>
               setFilters((f) => ({
@@ -300,13 +289,13 @@ export function TaskAgendaPanel() {
             }
             value={filters.state}
           >
-            <option value="all">All</option>
-            <option value="todo">To do</option>
-            <option value="done">Done</option>
+            <option value="all">{t("tasks.panel.state.all")}</option>
+            <option value="todo">{t("tasks.panel.state.todo")}</option>
+            <option value="done">{t("tasks.panel.state.done")}</option>
           </select>
 
           <select
-            aria-label="Filter by priority"
+            aria-label={t("tasks.panel.priority")}
             className="task-panel-select"
             onChange={(e) =>
               setFilters((f) => ({
@@ -316,22 +305,22 @@ export function TaskAgendaPanel() {
             }
             value={filters.priority}
           >
-            <option value="all">Any priority</option>
-            <option value="high">⏫ High+</option>
-            <option value="normal">Normal</option>
-            <option value="low">🔽 Low−</option>
+            <option value="all">{t("tasks.panel.priority.all")}</option>
+            <option value="high">{t("tasks.panel.priority.high")}</option>
+            <option value="normal">{t("tasks.panel.priority.normal")}</option>
+            <option value="low">{t("tasks.panel.priority.low")}</option>
           </select>
 
           {tagOptions.length > 0 && (
             <select
-              aria-label="Filter by tag"
+              aria-label={t("tasks.panel.tag")}
               className="task-panel-select"
               onChange={(e) =>
                 setFilters((f) => ({ ...f, tag: e.target.value }))
               }
               value={tag}
             >
-              <option value="">Any tag</option>
+              <option value="">{t("tasks.panel.tag.all")}</option>
               {tagOptions.map((opt) => (
                 <option key={opt} value={opt}>
                   #{opt}
@@ -348,7 +337,7 @@ export function TaskAgendaPanel() {
               }
               type="checkbox"
             />
-            Someday
+            {t("tasks.panel.someday")}
           </label>
         </div>
       </div>
@@ -358,7 +347,9 @@ export function TaskAgendaPanel() {
           <TaskBucketList
             bucket={bucket}
             key={bucket}
-            label={BUCKET_LABEL[bucket]}
+            // ‼️ 주간 리뷰와 **같은 키**를 쓴다. 두 화면이 같은 버킷을 그리므로 이름이
+            // 갈리면 사용자는 그것을 서로 다른 두 묶음으로 읽는다.
+            label={t(`tasks.bucket.${bucket}`)}
             now={now}
             onJump={onJump}
             onToggle={onToggle}

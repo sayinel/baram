@@ -98,7 +98,10 @@ export function TaskRow({
       </button>
       {age > 0 && <span className="task-row-age">−{age}d</span>}
       {showAge && ageDays >= STALE_DAYS && (
-        <span className="task-row-age task-row-stale" title="Stale">
+        <span
+          className="task-row-age task-row-stale"
+          title={t("tasks.row.stale")}
+        >
           {ageDays}d
         </span>
       )}

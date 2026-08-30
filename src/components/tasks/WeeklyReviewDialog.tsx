@@ -88,7 +88,7 @@ function ReviewSection({
   return (
     <section className="weekly-review-section" data-group={group}>
       <h4 className="weekly-review-section-title">
-        {t(`tasks.review.group.${group}`)}{" "}
+        {t(`tasks.bucket.${group}`)}{" "}
         <span className="task-bucket-count">({tasks.length})</span>
       </h4>
       <ul className="task-bucket-list">
