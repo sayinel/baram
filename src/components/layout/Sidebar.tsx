@@ -60,6 +60,11 @@ const TagPanel = lazy(() =>
     default: m.TagPanel,
   })),
 );
+const NoteTasksSection = lazy(() =>
+  import("../tasks/NoteTasksSection").then((m) => ({
+    default: m.NoteTasksSection,
+  })),
+);
 const TaskAgendaPanel = lazy(() =>
   import("../tasks/TaskAgendaPanel").then((m) => ({
     default: m.TaskAgendaPanel,
@@ -89,7 +94,14 @@ export function Sidebar() {
           {sidebarPanel === "files" && <FileTree />}
           {sidebarPanel === "search" && <GlobalSearch />}
           {sidebarPanel === "outline" && <Outline />}
-          {sidebarPanel === "backlinks" && <Backlinks />}
+          {sidebarPanel === "backlinks" && (
+            <>
+              <Backlinks />
+              {/* §307 A 백링크 **아래**에 붙는다. Backlinks가 로딩·오류로 일찍 반환해도
+                  이 섹션은 남아야 하므로 그 안이 아니라 형제로 둔다. */}
+              <NoteTasksSection />
+            </>
+          )}
           {sidebarPanel === "bookmarks" && <BookmarkPanel />}
           {sidebarPanel === "graph" && <GraphView />}
           {sidebarPanel === "git" && <GitPanel />}
