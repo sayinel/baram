@@ -402,11 +402,11 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
     // ExpandedRange.labelEnd) passes it as `labelEnd` to resolve the split
     // exactly instead of searching for it.
     describe("known label boundary resolves the split exactly (labelEnd option, §384 F1 round 2)", () => {
-      it("without labelEnd, the strict-first grammar (§384 r4) resolves the serializer's own spelling correctly", () => {
+      it("without labelEnd, the default serialized grammar (§384 r4/r5) resolves the serializer's own spelling correctly", () => {
         // The lenient search alone mis-split this as label "x](< a" /
-        // destination "b>". The strict escaped-label grammar is tried first
-        // now, so an escaped label (here: "x", no `]`) plus a valid tail wins
-        // before the greedy search ever runs.
+        // destination "b>". The default (serialized) grammar is the strict
+        // escaped-label grammar only — no lenient retry — so an escaped label
+        // (here: "x", no `]`) plus a valid tail is the one parse.
         expect(parseRevealResource("[x](< a](b>)")).toEqual(
           expect.objectContaining({ label: "x", destination: " a](b" }),
         );
@@ -648,11 +648,11 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
     });
   });
 
-  describe("optionless parse prefers the strict escaped-label grammar (§384 r4)", () => {
+  describe("optionless parse uses only the strict escaped-label grammar (§384 r4/r5)", () => {
     // A destination that itself contains `](` AND starts with `<` takes the
     // angle form, where the lenient greedy label search would mis-split at
     // the destination's own `](`. The strict grammar (labels always escape
-    // `]`) is tried first, so the serializer's own output always round-trips
+    // `]`) is the only grammar used, so the serializer's own output always round-trips
     // without a stashed boundary.
     for (const kind of ["link", "image"] as const) {
       it(`${kind}: destination "<a](b" round-trips without labelEnd`, () => {

@@ -312,9 +312,11 @@ function parseWithLabelEnd(
  * literal `](` otherwise makes the search resolvable but WRONG, not just
  * ambiguous.
  *
- * Without `opts.labelEnd` (legacy path — e.g. an external caller with no
- * stashed boundary), falls back to `REVEAL_RESOURCE_RE`'s greedy-then-
- * backtrack search, which keeps its pre-existing, documented ambiguity.
+ * Without `opts.labelEnd`, the caller's declared `labelGrammar` selects
+ * exactly one grammar — no retry, no fallback: omitted/`"serialized"` uses
+ * only the strict escaped-label grammar (the serializer's own emission);
+ * `"live"` uses only the lenient greedy search for unescaped document text,
+ * which keeps its pre-existing, documented ambiguity.
  */
 export function parseRevealResource(
   text: string,
