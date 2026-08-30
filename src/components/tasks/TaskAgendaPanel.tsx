@@ -1,20 +1,17 @@
 // §306 아젠다 패널 — vault 전역 태스크를 기한 버킷으로 모아 보고 그 자리에서 완료한다.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry } from "../../ipc/types";
 import type { TaskFilters } from "../../utils/tasks/task-filters";
-import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { Archive, CalendarArrowUp, ListChecks, RefreshCw } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
 import { useTranslation } from "../../i18n/useTranslation";
-import { useContextStore } from "../../stores/context/context";
-import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
-import { refreshAllTasks, useTaskStore } from "../../stores/tasks/task-store";
+import { useTaskStore } from "../../stores/tasks/task-store";
 import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { requestScroll } from "../../utils/editor/pending-scroll";
@@ -22,99 +19,53 @@ import { openFileByPath } from "../../utils/open-file";
 import { BUCKET_ORDER, groupIntoBuckets } from "../../utils/tasks/task-buckets";
 import {
   applyTaskFilters,
+  collectLinks,
   collectTags,
   EMPTY_FILTERS,
 } from "../../utils/tasks/task-filters";
-import { resolveScanRoots } from "../../utils/tasks/task-scan-scope";
-import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 import { TaskBucketList } from "./TaskBucketList";
+import { TaskFilterBar } from "./TaskFilterBar";
 import { useArchiveDone } from "./use-archive-done";
 import { useRescheduleOverdue } from "./use-reschedule-overdue";
+import { useTaskScan } from "./use-task-scan";
 import { useTaskTriage } from "./use-task-triage";
 
 export function TaskAgendaPanel() {
   const { t } = useTranslation();
-  const rootPath = useFileStore((s) => s.rootPath);
   const { tasks, loading } = useTaskStore(
     useShallow((s) => ({ tasks: s.tasks, loading: s.loading })),
   );
   const {
     setTasksScanScope,
     tasksArchiveAfterDays,
-    tasksExcludePaths,
-    tasksHomeSetting,
     tasksRecordDoneDate,
     tasksScanScope,
     tasksWeekStart,
-    zettelkastenDirectory,
   } = useSettingsStore(
     useShallow((s) => ({
       setTasksScanScope: s.setTasksScanScope,
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
-      tasksExcludePaths: s.tasksExcludePaths,
-      tasksHomeSetting: s.tasksHome,
       tasksRecordDoneDate: s.tasksRecordDoneDate,
       tasksScanScope: s.tasksScanScope,
       tasksWeekStart: s.tasksWeekStart,
-      zettelkastenDirectory: s.zettelkastenDirectory,
     })),
   );
-  // §312.1 "전체" 범위는 볼트탭에 열려 있는 vault를 본다. `folder` 컨텍스트는 상위
-  // vault와 중복 스캔이 되므로 제외한다(같은 태스크가 두 번 뜬다).
-  const contexts = useContextStore((s) => s.contexts);
-  const tasksHome = useMemo(
-    () => resolveTasksHome(tasksHomeSetting, zettelkastenDirectory),
-    [tasksHomeSetting, zettelkastenDirectory],
-  );
-
-  // 겹치는 루트는 여기서 걸린다 — Zettel 디렉터리를 vault 안에 두는 흔한 배치에서
-  // 그대로 두면 같은 태스크가 두 번 뜨고, 체크하면 한 줄만 사라져 나머지가 유령이 된다.
-  const roots = useMemo(
-    () =>
-      resolveScanRoots(tasksScanScope, {
-        rootPath,
-        tasksHome,
-        vaultPaths: contexts
-          .filter((c) => c.contextType === "vault")
-          .map((c) => c.path),
-      }),
-    [contexts, rootPath, tasksHome, tasksScanScope],
-  );
-  // 배열 자체는 매 렌더 새 객체이므로 effect의 의존성으로는 내용을 쓴다 — 그러지 않으면
-  // 컨텍스트 스토어가 무엇을 갱신하든 전체 스캔이 다시 돈다.
-  const rootsKey = roots.join("\u0000");
+  // §312.1 루트 해석·스캔·자정 롤오버는 이 패널의 것이 아니다 — 스토어를 읽는 다른
+  // 표면들(§307 A·C)이 같은 훅을 쓴다. 이 패널은 `tasksEnabled`가 켜져 있을 때만
+  // 마운트되므로(Sidebar) 여기서는 언제나 켠다.
+  const {
+    exclude: tasksExcludePaths,
+    now,
+    refresh,
+    roots,
+    tasksHome,
+  } = useTaskScan(true);
 
   const byId = useZettelIndexStore((s) => s.byId);
   // §305 문서 경로 판정에 필요한 라이브 Editor — 활성 탭이 없으면 null이고,
   // 라우터는 그 경우 디스크로 폴백한다.
   const editor = useEditorContext();
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
-
-  // I4: 밤새 패널을 열어 둬도 버킷 경계가 어제로 굳어버리지 않도록 state로
-  // 관리한다 — 렌더마다 새로 만들면 버킷 경계가 흔들리므로 여전히 고정값이되,
-  // 아래 자정 타이머와 refresh()가 그 고정값을 새로고침한다.
-  const [now, setNow] = useState(() => new Date());
-
-  // 스캔 루트/exclude 변경(vault 전환·범위 변경) 시점과 수동 새로고침 버튼 양쪽에서
-  // 호출된다 — 두 경로 모두 "지금"을 다시 고정해야 밤새 열어 둔 패널이 자정을 넘겨도
-  // 어제 기준으로 버킷을 나누지 않는다.
-  const refresh = useCallback(() => {
-    setNow(new Date());
-    if (roots.length > 0) void refreshAllTasks(roots, tasksExcludePaths);
-    // `roots`는 `rootsKey`로 고정된다 — 배열 참조를 의존성에 넣으면 매 렌더 재스캔이다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootsKey, tasksExcludePaths]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  // 패널이 자정을 넘겨 열려 있어도 다음 로컬 자정에 자동으로 버킷 경계를 옮긴다.
-  useEffect(() => {
-    const msUntilMidnight = startOfNextDay(now).getTime() - now.getTime();
-    const timer = window.setTimeout(() => setNow(new Date()), msUntilMidnight);
-    return () => window.clearTimeout(timer);
-  }, [now]);
 
   const titleFor = useCallback(
     (target: string) => byId[target]?.title ?? target,
@@ -154,9 +105,15 @@ export function TaskAgendaPanel() {
   // 값 하나로 충분하다. state/priority는 닫힌 옵션 집합이라 같은 문제가 없다.
   const tag = tagOptions.includes(filters.tag) ? filters.tag : "";
 
+  // §306 링크 대상도 태그와 같다 — 목록은 **필터 적용 전** 전체에서 뽑고, 고른 대상이
+  // 사라지면(그 태스크가 지워졌거나 범위가 좁아졌거나) "전체"로 되돌린다. 되돌리지
+  // 않으면 <select>는 빈 선택으로 보이는데 목록은 계속 걸러진 채로 남는다.
+  const linkOptions = useMemo(() => collectLinks(tasks), [tasks]);
+  const link = linkOptions.includes(filters.link) ? filters.link : "";
+
   const visible = useMemo(
-    () => applyTaskFilters(tasks, { ...filters, tag }),
-    [tasks, filters, tag],
+    () => applyTaskFilters(tasks, { ...filters, link, tag }),
+    [tasks, filters, link, tag],
   );
 
   const groups = useMemo(
@@ -263,83 +220,15 @@ export function TaskAgendaPanel() {
           </button>
         </div>
 
-        <div className="task-panel-selects">
-          <select
-            aria-label={t("tasks.scope.label")}
-            className="task-panel-select"
-            onChange={(e) => setTasksScanScope(e.target.value as TaskScanScope)}
-            title={t("tasks.scope.label")}
-            value={tasksScanScope}
-          >
-            <option value="allVaults">{t("tasks.scope.allVaults")}</option>
-            <option value="currentVault">
-              {t("tasks.scope.currentVault")}
-            </option>
-            <option value="tasksHome">{t("tasks.scope.tasksHome")}</option>
-          </select>
-
-          <select
-            aria-label={t("tasks.panel.state")}
-            className="task-panel-select"
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                state: e.target.value as TaskFilters["state"],
-              }))
-            }
-            value={filters.state}
-          >
-            <option value="all">{t("tasks.panel.state.all")}</option>
-            <option value="todo">{t("tasks.panel.state.todo")}</option>
-            <option value="done">{t("tasks.panel.state.done")}</option>
-          </select>
-
-          <select
-            aria-label={t("tasks.panel.priority")}
-            className="task-panel-select"
-            onChange={(e) =>
-              setFilters((f) => ({
-                ...f,
-                priority: e.target.value as TaskFilters["priority"],
-              }))
-            }
-            value={filters.priority}
-          >
-            <option value="all">{t("tasks.panel.priority.all")}</option>
-            <option value="high">{t("tasks.panel.priority.high")}</option>
-            <option value="normal">{t("tasks.panel.priority.normal")}</option>
-            <option value="low">{t("tasks.panel.priority.low")}</option>
-          </select>
-
-          {tagOptions.length > 0 && (
-            <select
-              aria-label={t("tasks.panel.tag")}
-              className="task-panel-select"
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, tag: e.target.value }))
-              }
-              value={tag}
-            >
-              <option value="">{t("tasks.panel.tag.all")}</option>
-              {tagOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  #{opt}
-                </option>
-              ))}
-            </select>
-          )}
-
-          <label className="task-panel-someday">
-            <input
-              checked={filters.showSomeday}
-              onChange={(e) =>
-                setFilters((f) => ({ ...f, showSomeday: e.target.checked }))
-              }
-              type="checkbox"
-            />
-            {t("tasks.panel.someday")}
-          </label>
-        </div>
+        <TaskFilterBar
+          filters={{ ...filters, link, tag }}
+          linkOptions={linkOptions}
+          onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
+          onScopeChange={setTasksScanScope}
+          scope={tasksScanScope}
+          tagOptions={tagOptions}
+          titleFor={titleFor}
+        />
       </div>
 
       <div className="task-panel-body">
@@ -382,11 +271,6 @@ function archiveHint(
   if (!tasksHome) return t("tasks.archive.noHome");
   if (count === 0) return t("tasks.archive.none", { days: String(afterDays) });
   return t("tasks.archive.title", { count: String(count) });
-}
-
-/** `d`가 속한 날의 다음 날 자정(로컬 시간) — 자정 롤오버 타이머의 목표 시각. */
-function startOfNextDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
 }
 
 function todayIso(now: Date): string {

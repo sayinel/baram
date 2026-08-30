@@ -32,16 +32,12 @@ import {
   isActionableGroup,
   REVIEW_GROUP_ORDER,
 } from "../../utils/tasks/task-review";
-import {
-  focusRowAt,
-  moveRowFocus,
-  rowIndexOf,
-} from "../../utils/tasks/task-row-focus";
-import { resolveTaskRowKey } from "../../utils/tasks/task-row-keys";
+import { focusRowAt, rowIndexOf } from "../../utils/tasks/task-row-focus";
 import { buildTriageItems } from "../../utils/tasks/task-triage";
 import { TaskRow } from "./TaskRow";
 import { TaskRowMenu } from "./TaskRowMenu";
 import { useArchiveDone } from "./use-archive-done";
+import { useTaskRowKeys } from "./use-task-row-keys";
 import { useTaskRowMenu } from "./use-task-row-menu";
 import { useTaskTriage } from "./use-task-triage";
 import { useTasksHomeTasks } from "./use-tasks-home-tasks";
@@ -229,37 +225,18 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
     focusRowAt(bodyRef.current, index);
   }, [allRows]);
 
-  const handleRowKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLLIElement>, task: TaskEntry) => {
-      const action = resolveTaskRowKey({
-        altKey: e.altKey,
-        code: e.code,
-        ctrlKey: e.ctrlKey,
-        isComposing: e.nativeEvent.isComposing,
-        key: e.key,
-        keyCode: e.keyCode,
-        metaKey: e.metaKey,
-        shiftKey: e.shiftKey,
-      });
-      if (!action) return;
-      e.preventDefault();
-      switch (action.kind) {
-        case "focus":
-          // 아젠다와 달리 묶음 경계에서 멈추지 않는다 — 세 묶음이 한 흐름이다.
-          moveRowFocus(e.currentTarget, action.delta, REVIEW_SCOPE);
-          break;
-        case "menu":
-          openMenu(e.currentTarget, task);
-          break;
-        case "triage":
-          advanceTo.current = rowIndexOf(bodyRef.current, e.currentTarget);
-          if (action.action === "check") onToggle(task);
-          else onTriage(task, action.action);
-          break;
-      }
+  // 아젠다와 달리 묶음 경계에서 멈추지 않는다(`REVIEW_SCOPE`) — 세 묶음이 한 흐름이다.
+  // 조작 직전에는 행 위치를 적어 둔다: 처리한 항목이 목록에서 빠지므로 같은 인덱스가
+  // 곧 다음 항목이 되고, 위 effect가 그 자리로 포커스를 돌려준다.
+  const handleRowKeyDown = useTaskRowKeys({
+    onBeforeTriage: (row) => {
+      advanceTo.current = rowIndexOf(bodyRef.current, row);
     },
-    [onToggle, onTriage, openMenu],
-  );
+    onOpenMenu: openMenu,
+    onToggle,
+    onTriage,
+    scope: REVIEW_SCOPE,
+  });
 
   const onJump = useCallback(
     (task: TaskEntry) => {

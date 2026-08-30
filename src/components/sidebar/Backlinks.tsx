@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { UnlinkedMention } from "../../ipc/types";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import {
   getBacklinks,
   getUnlinkedMentions,
@@ -24,6 +25,7 @@ import {
 } from "./backlink-utils";
 
 export function Backlinks() {
+  const { t } = useTranslation();
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const rootPath = useFileStore((s) => s.rootPath);
@@ -216,11 +218,11 @@ export function Backlinks() {
   const [wrapUnlinked, setWrapUnlinked] = useState(false);
 
   if (!filePath) {
-    return <div className="backlinks-empty">No file open</div>;
+    return <div className="backlinks-empty">{t("backlinks.noFile")}</div>;
   }
 
   if (loading) {
-    return <div className="backlinks-empty">Loading backlinks…</div>;
+    return <div className="backlinks-empty">{t("backlinks.loading")}</div>;
   }
 
   if (error) {
@@ -236,18 +238,18 @@ export function Backlinks() {
     <div className="backlinks">
       {/* §29 Linked backlinks */}
       <div className="backlinks-header">
-        Backlinks ({backlinks.length})
+        {t("backlinks.title")} ({backlinks.length})
         <button
           className="backlinks-wrap-toggle"
           onClick={() => setWrapBacklinks((v) => !v)}
-          title={wrapBacklinks ? "Single line" : "Wrap text"}
+          title={t(wrapBacklinks ? "backlinks.singleLine" : "backlinks.wrap")}
         >
           {wrapBacklinks ? "⏤" : "≡"}
         </button>
       </div>
       {nsGroups.every((g) => g.fileGroups.length === 0) ? (
         <div className="backlinks-empty-inline">
-          No backlinks to <strong>{extractFileNameFromPath(filePath)}</strong>
+          {t("backlinks.none", { name: extractFileNameFromPath(filePath) })}
         </div>
       ) : (
         nsGroups.map((nsGroup) => (
@@ -258,7 +260,7 @@ export function Backlinks() {
             {/* Only show namespace header when there are multiple namespaces */}
             {nsGroups.length > 1 && (
               <div className="backlinks-ns-header">
-                {nsGroup.namespace || "(root)"}
+                {nsGroup.namespace || t("backlinks.root")}
               </div>
             )}
             {nsGroup.fileGroups.map((group) => (
@@ -310,17 +312,19 @@ export function Backlinks() {
 
       {/* §34 Unlinked mentions */}
       <div className="backlinks-header backlinks-header-unlinked">
-        Unlinked Mentions ({unlinkedMentions.length})
+        {t("backlinks.unlinked")} ({unlinkedMentions.length})
         <button
           className="backlinks-wrap-toggle"
           onClick={() => setWrapUnlinked((v) => !v)}
-          title={wrapUnlinked ? "Single line" : "Wrap text"}
+          title={t(wrapUnlinked ? "backlinks.singleLine" : "backlinks.wrap")}
         >
           {wrapUnlinked ? "⏤" : "≡"}
         </button>
       </div>
       {unlinkedGroups.length === 0 ? (
-        <div className="backlinks-empty-inline">No unlinked mentions found</div>
+        <div className="backlinks-empty-inline">
+          {t("backlinks.unlinked.none")}
+        </div>
       ) : (
         unlinkedGroups.map((group) => (
           <div className="backlinks-group" key={group.sourcePath}>
@@ -346,9 +350,9 @@ export function Backlinks() {
                     e.stopPropagation();
                     handleLinkify(entry);
                   }}
-                  title="Convert to wikilink"
+                  title={t("backlinks.linkify.title")}
                 >
-                  Link
+                  {t("backlinks.linkify")}
                 </button>
               </div>
             ))}

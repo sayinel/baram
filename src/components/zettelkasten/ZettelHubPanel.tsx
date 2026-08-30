@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Clock, FileText, Map as MapIcon, Star, Zap } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { getAction } from "../../keybindings/keybinding-actions";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -16,6 +17,7 @@ import {
 import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import "../../styles/zettelkasten.css";
+import { HubTasksSection } from "../tasks/HubTasksSection";
 import { useZettelHubData } from "./use-zettel-hub-data";
 import { ZettelInboxList } from "./ZettelInboxList";
 import { ZettelSectionList } from "./ZettelSectionList";
@@ -23,6 +25,7 @@ import { ZettelSectionList } from "./ZettelSectionList";
 type CollapseKey = "favorites" | "inbox" | "mocs" | "recent";
 
 export function ZettelHubPanel() {
+  const { t } = useTranslation();
   const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
     useShallow((s) => ({
       zettelkastenEnabled: s.zettelkastenEnabled,
@@ -60,31 +63,31 @@ export function ZettelHubPanel() {
     <div className="zettel-hub">
       <div className="zettel-hub-actions">
         <button
-          aria-label="New Zettel"
+          aria-label={t("zettel.hub.new.aria")}
           className="zettel-hub-action"
           onClick={() => getAction("zettelkasten.newNote")?.()}
-          title="New Zettel (⇧⌘V)"
+          title={t("zettel.hub.new.title")}
         >
           <FileText size={14} strokeWidth={1.5} />
-          New
+          {t("zettel.hub.new")}
         </button>
         <button
-          aria-label="Quick Capture"
+          aria-label={t("zettel.hub.capture.aria")}
           className="zettel-hub-action"
           onClick={() => useUIStore.getState().openQuickCapture()}
-          title="Quick Capture (⇧⌘N)"
+          title={t("zettel.hub.capture.title")}
         >
           <Zap size={14} strokeWidth={1.5} />
-          Capture
+          {t("zettel.hub.capture")}
         </button>
         <button
-          aria-label="New MOC"
+          aria-label={t("zettel.hub.moc.aria")}
           className="zettel-hub-action"
           onClick={() => getAction("zettelkasten.newMoc")?.()}
-          title="New MOC (⇧⌘C)"
+          title={t("zettel.hub.moc.title")}
         >
           <MapIcon size={14} strokeWidth={1.5} />
-          MOC
+          {t("zettel.hub.moc")}
         </button>
       </div>
 
@@ -100,46 +103,49 @@ export function ZettelHubPanel() {
           />
           <ZettelSectionList
             collapsed={collapsed.mocs}
-            emptyHint="No MOCs yet — tag a note #moc to create one."
+            emptyHint={t("zettel.hub.mocs.empty")}
             favoriteIds={favoriteIds}
             icon={<MapIcon size={14} strokeWidth={1.5} />}
             items={mocs}
-            label="MOCs"
+            label={t("zettel.hub.mocs")}
             loading={loading}
             onToggleCollapse={() => toggle("mocs")}
             onToggleFavorite={onToggleFavorite}
           />
           <ZettelSectionList
             collapsed={collapsed.favorites}
-            emptyHint="No favorites yet — star a note to pin it here."
+            emptyHint={t("zettel.hub.favorites.empty")}
             favoriteIds={favoriteIds}
             icon={<Star size={14} strokeWidth={1.5} />}
             items={favorites}
-            label="FAVORITES"
+            label={t("zettel.hub.favorites")}
             loading={loading}
             onToggleCollapse={() => toggle("favorites")}
             onToggleFavorite={onToggleFavorite}
           />
           <ZettelSectionList
             collapsed={collapsed.recent}
-            emptyHint="No notes yet."
+            emptyHint={t("zettel.hub.recent.empty")}
             favoriteIds={favoriteIds}
             icon={<Clock size={14} strokeWidth={1.5} />}
             items={recent}
-            label="RECENT"
+            label={t("zettel.hub.recent")}
             loading={loading}
             onToggleCollapse={() => toggle("recent")}
             onToggleFavorite={onToggleFavorite}
           />
+          {/* §307 C 태스크는 노트가 아니라 조작이라 목록 셋 아래에 둔다 — 위에 두면
+              허브를 여는 목적(노트로 들어가기)이 한 칸 밀린다. */}
+          <HubTasksSection />
         </>
       ) : (
         <div className="zettel-hub-hint">
-          <p>Set up the Zettel space to start capturing notes.</p>
+          <p>{t("zettel.hub.setup")}</p>
           <button
             className="zettel-hub-hint-link btn-unstyled"
             onClick={() => useUIStore.getState().toggleSettings()}
           >
-            Open Settings
+            {t("zettel.hub.openSettings")}
           </button>
         </div>
       )}
