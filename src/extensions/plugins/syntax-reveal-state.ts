@@ -1,7 +1,7 @@
 // §5.1 + §3.3 Syntax Reveal — state types, PluginKey, and shared helpers
 
 import type { Node as PmNode } from "@tiptap/pm/model";
-import type { EditorState } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 
 import { PluginKey } from "@tiptap/pm/state";
 
@@ -34,6 +34,28 @@ export interface SyntaxRevealState {
 
 export const INACTIVE: SyntaxRevealState = { expanded: null };
 export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
+
+// ── Ephemeral provenance (§384 C) ─────────────────────────────────────
+
+/**
+ * Transaction meta key marking an expand/collapse transaction as ephemeral:
+ * it changes the doc's REPRESENTATION (delimiters ⇄ marks/nodes) without
+ * changing what the doc serializes to. Consumed by `isEphemeralOnlyUpdate`
+ * (utils/editor/syntax-reveal-ephemeral.ts) so auto-save and the dirty
+ * indicator can tell "the caret walked through a link" apart from a real
+ * edit, instead of flickering dirty and scheduling a save on every reveal.
+ *
+ * Provenance only — deliberately NOT paired with `addToHistory: false`.
+ * De-historifying expansion would make undo-after-Backspace restore the
+ * literal delimiter text instead of the mark it replaced; history stays
+ * exactly as it behaves today (§384 design descope 2).
+ */
+export const SYNTAX_REVEAL_EPHEMERAL_META = "syntaxRevealEphemeral";
+
+/** Tag a transaction as an ephemeral expand/collapse (see the meta key above). */
+export function tagSyntaxRevealEphemeral(tr: Transaction): void {
+  tr.setMeta(SYNTAX_REVEAL_EPHEMERAL_META, true);
+}
 
 // ── Mark delimiter definitions ────────────────────────────────────────
 

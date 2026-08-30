@@ -6,7 +6,11 @@ import type { EditorView } from "@tiptap/pm/view";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { serializeRevealResource } from "./syntax-reveal-resource-codec";
-import { MARK_DELIMITERS, syntaxRevealKey } from "./syntax-reveal-state";
+import {
+  MARK_DELIMITERS,
+  syntaxRevealKey,
+  tagSyntaxRevealEphemeral,
+} from "./syntax-reveal-state";
 
 // ── Link expansion ────────────────────────────────────────────────────
 
@@ -70,6 +74,7 @@ export function expandLink(
       linkAttrs,
     },
   });
+  tagSyntaxRevealEphemeral(tr);
 
   view.dispatch(tr);
 }
@@ -127,6 +132,7 @@ export function expandMark(
       closeCheck: delim.close,
     },
   });
+  tagSyntaxRevealEphemeral(tr);
 
   view.dispatch(tr);
 }
@@ -187,6 +193,7 @@ export function expandMediaAtom(
       mediaAttrs,
     },
   });
+  tagSyntaxRevealEphemeral(tr);
 
   view.dispatch(tr);
 }
@@ -236,6 +243,7 @@ export function expandWikilink(
       closeCheck: "]]",
     },
   });
+  tagSyntaxRevealEphemeral(tr);
 
   view.dispatch(tr);
 }

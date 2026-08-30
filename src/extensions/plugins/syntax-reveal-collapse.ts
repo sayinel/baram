@@ -11,6 +11,7 @@ import { parseRevealResource } from "./syntax-reveal-resource-codec";
 import {
   INACTIVE,
   syntaxRevealKey,
+  tagSyntaxRevealEphemeral,
   WIKILINK_REGEX,
 } from "./syntax-reveal-state";
 
@@ -155,6 +156,10 @@ export function buildCollapseTr(
     }
   }
 
+  // §384 (C): this point is only reached by a successful collapse — every
+  // early exit above returns `null` instead. Tag it ephemeral so
+  // isEphemeralOnlyUpdate can tell this apart from a real edit.
+  tagSyntaxRevealEphemeral(tr);
   tr.setMeta(syntaxRevealKey, INACTIVE);
   return tr;
 }

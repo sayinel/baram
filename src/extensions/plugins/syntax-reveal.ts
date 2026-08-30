@@ -32,6 +32,7 @@ import {
   MARK_DELIMITERS,
   syntaxRevealKey,
   type SyntaxRevealState,
+  tagSyntaxRevealEphemeral,
 } from "./syntax-reveal-state";
 
 // ── Public API re-exports ─────────────────────────────────────────────
@@ -300,6 +301,11 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         // fallback: let ProseMirror's default mapping handle it
       }
 
+      // §384 (C): reached only by the 4 successful collapse branches above —
+      // every stale/invalid sub-path returns early with a meta-only INACTIVE
+      // transaction instead. Tag it ephemeral so isEphemeralOnlyUpdate can
+      // tell a cursor-out collapse apart from a real edit.
+      tagSyntaxRevealEphemeral(tr);
       tr.setMeta(syntaxRevealKey, INACTIVE);
       return tr;
     },

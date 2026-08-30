@@ -16,6 +16,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 import type { MergeSegment } from "../../ipc/types";
+import type { Transaction } from "@tiptap/pm/state";
 
 import { EditorContent, useEditor } from "@tiptap/react";
 
@@ -29,6 +30,7 @@ import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { isMarkdownHref } from "../../utils/editor/local-link-nav";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
+import { isEphemeralOnlyUpdate } from "../../utils/editor/syntax-reveal-ephemeral";
 import { logger } from "../../utils/logger";
 import { dirname } from "../../utils/path-utils";
 import { MergeView } from "../editor/MergeView";
@@ -147,7 +149,21 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   // Track dirty state
   useEffect(() => {
     if (!editor) return;
-    const handler = () => setIsDirty(true);
+    const handler = ({
+      transaction,
+      appendedTransactions,
+    }: {
+      appendedTransactions: Transaction[];
+      transaction: Transaction;
+    }) => {
+      // §384 (C): a syntax-reveal expand/collapse (the caret walking into or
+      // out of a link/mark/media/wikilink) changes the doc's representation
+      // without changing what it serializes to — see use-auto-save.ts, which
+      // applies the identical gate for the tabbed editor. Without it, this
+      // standalone window's unsaved dot lit up on caret movement alone.
+      if (isEphemeralOnlyUpdate({ transaction, appendedTransactions })) return;
+      setIsDirty(true);
+    };
     editor.on("update", handler);
     return () => {
       editor.off("update", handler);

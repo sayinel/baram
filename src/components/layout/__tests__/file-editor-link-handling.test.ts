@@ -35,3 +35,55 @@ describe("§278.1 §89 standalone window link handling", () => {
     expect(isMarkdownHref("Paper.pdf")).toBe(false);
   });
 });
+
+// §384 (C) — same reasoning as above: mounting FileEditorLayout to prove the
+// dirty listener ignores ephemeral syntax-reveal transactions would require
+// faking readFile/watchDir/listen AND simulating a real ProseMirror caret
+// move in jsdom (no reliable selection API — see CLAUDE.md's jsdom fixture
+// notes), which tests the mocks, not the property. That property IS already
+// proven end to end with a real Editor + real cursor movement, against the
+// identical Tiptap "update" event shape, at use-auto-save.ts's twin call
+// site (see use-auto-save.test.ts's §384 (C) suite — verified red both with
+// the gate removed and with an over-eager gate). What's left here is
+// call-site risk only: did this SECOND wiring drop `appendedTransactions`
+// from the destructure (silently missing every cursor-out collapse, whose
+// doc change always arrives appended — the root transaction it hitchhikes on
+// never changes the doc) or move the gate below `setIsDirty(true)`. Both
+// still compile and typecheck, so only a source read catches them.
+describe("§384 (C) FileEditorLayout's dirty listener gates on isEphemeralOnlyUpdate", () => {
+  // Isolate the "Track dirty state" effect specifically, so a stray, unrelated
+  // occurrence of these names elsewhere in the file can't satisfy the pin.
+  const dirtyEffectSource = SOURCE.slice(
+    SOURCE.indexOf("// Track dirty state"),
+    SOURCE.indexOf('editor.on("update", handler)'),
+  );
+
+  it("imports isEphemeralOnlyUpdate", () => {
+    const calls = SOURCE.match(/isEphemeralOnlyUpdate/g) ?? [];
+    // import statement + the one call site below — exactly two occurrences.
+    expect(calls).toHaveLength(2);
+  });
+
+  it("destructures both transaction and appendedTransactions in the handler", () => {
+    expect(dirtyEffectSource).toContain("transaction");
+    expect(dirtyEffectSource).toContain("appendedTransactions");
+  });
+
+  it("checks isEphemeralOnlyUpdate BEFORE calling setIsDirty(true)", () => {
+    const gateIdx = dirtyEffectSource.indexOf("isEphemeralOnlyUpdate(");
+    const setDirtyIdx = dirtyEffectSource.indexOf("setIsDirty(true)");
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(setDirtyIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(setDirtyIdx);
+  });
+
+  it("returns early from the gate instead of falling through to setIsDirty", () => {
+    // Guards against `if (isEphemeralOnlyUpdate(...)) { /* no return */ }`
+    // followed unconditionally by setIsDirty(true) a few lines down, which
+    // would satisfy the ordering check above while doing nothing.
+    const gateLine = dirtyEffectSource
+      .split("\n")
+      .find((line) => line.includes("isEphemeralOnlyUpdate("));
+    expect(gateLine).toMatch(/return;\s*$/);
+  });
+});
