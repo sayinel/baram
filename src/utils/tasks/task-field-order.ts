@@ -88,4 +88,5 @@ export const PRIORITY_WEIGHT_BY_MARKER: Record<string, number> =
     Object.entries(PRIORITY_MARKER_BY_WEIGHT).map(([w, m]) => [m, Number(w)]),
   );
 
-const PRIORITY_MARKERS = Object.values(PRIORITY_MARKER_BY_WEIGHT);
+/** 마커 글자만. `fieldRank`와 토큰 스캐너가 "이것이 우선순위인가"를 물을 때 쓴다. */
+export const PRIORITY_MARKERS = Object.values(PRIORITY_MARKER_BY_WEIGHT);
