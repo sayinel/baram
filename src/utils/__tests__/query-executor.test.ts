@@ -299,6 +299,7 @@ describe("executeQuery — full pipeline", () => {
       sort: { field: "updated_at", direction: "desc" },
       display: "list",
       limit: 1,
+      source: "files",
     };
     const result = executeQuery(files, query);
     expect(result).toHaveLength(1);
@@ -314,6 +315,7 @@ describe("executeQuery — empty filters", () => {
       sort: { field: "updated_at", direction: "asc" },
       display: "table",
       limit: 2,
+      source: "files",
     };
     const result = executeQuery(files, query);
     expect(result).toHaveLength(2);
