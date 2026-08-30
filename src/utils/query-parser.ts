@@ -5,6 +5,11 @@ export interface QueryDef {
   filters: QueryFilter[];
   limit: number;
   sort: null | QuerySort;
+  /**
+   * §310 무엇을 질의하는가. 생략하면 `files` — **기존 쿼리 블록은 한 글자도 바뀌지
+   * 않는다**는 것이 이 축의 조건이었다.
+   */
+  source: QuerySource;
 }
 
 export type QueryDisplay = "card" | "list" | "table";
@@ -21,11 +26,14 @@ export interface QuerySort {
   field: string;
 }
 
+export type QuerySource = "files" | "tasks";
+
 const DEFAULTS: QueryDef = {
   filters: [],
   sort: null,
   display: "list",
   limit: 20,
+  source: "files",
 };
 
 // Operators that carry no value
@@ -73,6 +81,12 @@ export function parseQueryDSL(dsl: string): QueryDef {
         break;
       }
 
+      case "source":
+        // `display`와 같은 규칙 — 아는 값일 때만 대입한다. 오타를 태스크 소스로
+        // 읽어 주는 쪽이 파일 목록을 조용히 비우는 것보다 나쁘다.
+        if (value === "files" || value === "tasks") result.source = value;
+        break;
+
       default:
         // Unknown key — ignore
         break;
@@ -88,6 +102,13 @@ export function parseQueryDSL(dsl: string): QueryDef {
  */
 export function serializeQueryDSL(def: QueryDef): string {
   const lines: string[] = [];
+
+  // ‼️ `files`면 쓰지 않는다. 빌더는 편집할 때마다 이 함수의 결과로 블록 본문을
+  // 갈아 끼우므로, 기본값을 뱉으면 **손대지도 않은 기존 블록 전부**에 `source: files`
+  // 한 줄이 생긴다. `display`·`limit`이 같은 규칙을 따르는 이유도 같다.
+  if (def.source !== "files") {
+    lines.push(`source: ${def.source}`);
+  }
 
   if (def.filters.length > 0) {
     lines.push(`filter: ${serializeFilters(def.filters)}`);

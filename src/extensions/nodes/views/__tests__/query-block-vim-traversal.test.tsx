@@ -27,12 +27,15 @@ import { vimPluginKey } from "../../../plugins/vim/vim-keys";
 
 // Observe query execution without the vault IPC round-trip.
 const { executeSpy } = vi.hoisted(() => ({ executeSpy: vi.fn() }));
+// §310 결과가 소스로 판별되면서 훅이 `resultCount`도 내보낸다 — 뷰가 그것을 부르므로
+// 모의에도 있어야 한다(없으면 렌더 자체가 던진다).
 vi.mock("../../../../hooks/use-query-block", () => ({
+  resultCount: () => 0,
   useQueryBlock: () => ({
     error: null,
     execute: executeSpy,
     loading: false,
-    results: [],
+    results: { files: [], source: "files" },
     vaultPath: "/",
   }),
 }));

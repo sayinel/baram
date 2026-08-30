@@ -42,3 +42,36 @@ describe("resolveDateInput", () => {
     expect(resolveDateInput("내일", TODAY)).toBeNull();
   });
 });
+
+describe("§310 쿼리가 쓰는 긴 이름과 부호 붙은 오프셋", () => {
+  // 쿼리 값(`today` `+7d` `-3d`)과 에디터 입력 규칙 값(`t` `+3`)이 **한 어휘**여야
+  // 한다. 쿼리 전용 날짜 파서를 따로 두면 같은 것을 두 이름으로 부르게 되고, 한쪽만
+  // 고쳐지는 날이 온다.
+  const TODAY = new Date(2026, 7, 30);
+
+  it.each([
+    ["today", "2026-08-30"],
+    ["tomorrow", "2026-08-31"],
+    ["yesterday", "2026-08-29"],
+    ["+7d", "2026-09-06"],
+    ["-3d", "2026-08-27"],
+    ["+7", "2026-09-06"],
+    ["-3", "2026-08-27"],
+  ])("%s → %s", (input, expected) => {
+    expect(resolveDateInput(input, TODAY)).toBe(expected);
+  });
+
+  it("한 글자 별칭은 그대로 산다", () => {
+    expect(resolveDateInput("t", TODAY)).toBe("2026-08-30");
+    expect(resolveDateInput("m", TODAY)).toBe("2026-08-31");
+  });
+
+  it("오프셋이 달을 넘어간다", () => {
+    expect(resolveDateInput("-30d", TODAY)).toBe("2026-07-31");
+  });
+
+  it("숫자 없는 부호는 날짜가 아니다", () => {
+    expect(resolveDateInput("+", TODAY)).toBeNull();
+    expect(resolveDateInput("-d", TODAY)).toBeNull();
+  });
+});

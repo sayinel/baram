@@ -9,6 +9,7 @@ const defaults: QueryDef = {
   sort: null,
   display: "list",
   limit: 20,
+  source: "files",
 };
 
 describe("parseQueryDSL", () => {
@@ -105,6 +106,7 @@ describe("parseQueryDSL", () => {
       sort: { field: "updated_at", direction: "desc" },
       display: "table",
       limit: 20,
+      source: "files",
     });
   });
 
@@ -154,6 +156,46 @@ describe("parseQueryDSL", () => {
       value: "^TODO",
       combinator: "AND",
     });
+  });
+});
+
+// §310 source 축 — 태스크 쿼리(§307 B)가 이 위에 선다.
+describe("source", () => {
+  it("생략하면 files다", () => {
+    expect(parseQueryDSL('filter: tags contains "a"').source).toBe("files");
+  });
+
+  it("source: tasks를 읽는다", () => {
+    expect(parseQueryDSL("source: tasks").source).toBe("tasks");
+  });
+
+  it("아는 값이 아니면 기본값으로 떨어진다", () => {
+    // `display`와 같은 규칙. 오타를 태스크 소스로 읽어 주는 쪽이 파일 목록을 조용히
+    // 비우는 것보다 나쁘다.
+    expect(parseQueryDSL("source: taks").source).toBe("files");
+    expect(parseQueryDSL("source:").source).toBe("files");
+  });
+
+  it("‼️ files는 직렬화되지 않는다 — 기존 블록이 한 글자도 바뀌지 않아야 한다", () => {
+    // 빌더는 편집할 때마다 이 함수의 결과로 블록 본문을 갈아 끼운다. 기본값을 뱉으면
+    // 손대지도 않은 기존 블록 전부에 `source: files` 한 줄이 생긴다.
+    const existing = 'filter: tags contains "skills"\nsort: updated_at desc';
+    expect(serializeQueryDSL(parseQueryDSL(existing))).toBe(existing);
+    expect(serializeQueryDSL(parseQueryDSL(existing))).not.toContain("source");
+  });
+
+  it("tasks는 맨 앞 줄로 직렬화된다", () => {
+    const dsl = serializeQueryDSL(
+      parseQueryDSL('source: tasks\nfilter: state = "todo"'),
+    );
+    expect(dsl.split("\n")[0]).toBe("source: tasks");
+  });
+
+  it("왕복", () => {
+    const original = parseQueryDSL(
+      'source: tasks\nfilter: state = "todo"\nsort: due asc',
+    );
+    expect(parseQueryDSL(serializeQueryDSL(original))).toEqual(original);
   });
 });
 
@@ -260,6 +302,7 @@ describe("serializeQueryDSL", () => {
       sort: { field: "updated_at", direction: "desc" },
       display: "table",
       limit: 10,
+      source: "files",
     };
     const serialized = serializeQueryDSL(original);
     const parsed = parseQueryDSL(serialized);
@@ -272,6 +315,7 @@ describe("serializeQueryDSL", () => {
       sort: null,
       display: "list",
       limit: 20,
+      source: "files",
     });
     expect(result).toBe("");
   });

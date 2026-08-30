@@ -20,6 +20,17 @@ export interface TaskTriageContext {
   exclude: string[];
   /** 상대 날짜("오늘"·"내일"·`+3`)의 기준 — 패널이 보고 있는 그 날이다(I4). */
   now: Date;
+  /**
+   * §310 이 태스크의 **진실이 다시 맞춰진 뒤** 한 번. 스토어를 구독하지 않는 표면이
+   * 자기 목록을 다시 읽는 자리다 — 쿼리 블록은 결과를 로컬 state로 들고 있어서, 이
+   * 신호가 없으면 디스크에는 써졌는데 제어 체크박스만 원래대로 돌아간다.
+   *
+   * ‼️ "썼다"가 아니라 "맞췄다"이다. 쓰기가 **실패해도** 이 경로는 그 파일을 다시 읽어
+   * 스토어를 고치므로(그것이 stale 자가 교정이다), 그때도 부른다 — 부르지 않으면 방금
+   * 재스캔이 드러낸 사실을 이 표면만 모른 채 남는다. 거절(저장 안 된 충돌)에서는
+   * 아무것도 다시 읽지 않으므로 부르지 않는다.
+   */
+  onReconciled?: () => void;
   t: Translate;
 }
 
@@ -64,6 +75,7 @@ export async function writeAndReconcile<
 
   if (isUnsavedWrite(result)) {
     reconcileUnsaved(result);
+    ctx.onReconciled?.();
     return;
   }
   if (!isDiskAuthoritative(result)) {
@@ -71,4 +83,5 @@ export async function writeAndReconcile<
     return;
   }
   await refreshFileTasks(task.path, ctx.exclude);
+  ctx.onReconciled?.();
 }

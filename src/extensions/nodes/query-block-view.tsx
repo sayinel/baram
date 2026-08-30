@@ -7,11 +7,14 @@ import {
 } from "react";
 
 import type { VaultFile } from "../../utils/query-executor";
+import type { QuerySource } from "../../utils/query-parser";
 
 import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
-import { useQueryBlock } from "../../hooks/use-query-block";
+import { TaskQueryResults } from "../../components/tasks/TaskQueryResults";
+import { resultCount, useQueryBlock } from "../../hooks/use-query-block";
+import { useTranslation } from "../../i18n/useTranslation";
 import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import {
   parseQueryDSL,
@@ -26,26 +29,28 @@ import {
   updateNodeAttributesWithVim,
   vimPluginKey,
 } from "../plugins/vim/vim-keys";
+import {
+  fieldsFor,
+  operatorsFor,
+  retargetQuery,
+} from "./query-builder-options";
 
-const FIELD_OPTIONS = [
-  "tags",
-  "status",
-  "path",
-  "body",
-  "updated_at",
-  "created_at",
-  "name",
-];
-const OPERATOR_OPTIONS: Record<string, string[]> = {
-  tags: ["contains", "not_contains"],
-  status: ["=", "!=", "contains", "empty"],
-  path: ["starts", "contains", "regex"],
-  body: ["contains"],
-  updated_at: ["before", "after"],
-  created_at: ["before", "after"],
-  name: ["contains", "starts", "="],
-};
 const DISPLAY_OPTIONS: QueryDisplay[] = ["list", "table", "card"];
+
+/**
+ * 훅이 올려 보내는 **아는 실패**의 문구 키. 나머지 `error`는 예외 메시지 원문이라
+ * 번역할 것이 없다 — 훅이 문장을 만들지 않고 센티널만 올리는 이유다.
+ */
+const ERROR_KEYS: Record<string, string> = {
+  "no-vault": "query.noVault",
+  "tasks-disabled": "query.tasksDisabled",
+};
+
+/** 정렬할 수 있는 필드 — 필터 필드와 다르다(본문 검색으로는 정렬할 수 없다). */
+const SORT_FIELDS: Record<QuerySource, string[]> = {
+  files: ["updated_at", "created_at", "name", "path"],
+  tasks: ["due", "scheduled", "start", "created", "priority", "text", "path"],
+};
 
 export function QueryBlockView({
   node,
@@ -53,6 +58,7 @@ export function QueryBlockView({
   editor,
   getPos,
 }: NodeViewProps) {
+  const { t } = useTranslation();
   const queryStr = (node.attrs.query as string) || "";
   const [def, setDef] = useState<QueryDef>(() => parseQueryDSL(queryStr));
   const { results, loading, error, execute } = useQueryBlock();
@@ -185,6 +191,10 @@ export function QueryBlockView({
   // and deselecting an open builder double-fired (the deselection render,
   // then the lifecycle effect's isEditing flip). sessionOpen collapses both
   // states, so closed-to-closed selection changes never re-run the effect.
+  // §310 태스크 결과가 쓰는 "지금". 렌더마다 새로 만들면 그 값에 매달린 콜백이 매번
+  // 새로 생긴다 — 아젠다가 `now`를 state로 잡아 두는 것과 같은 이유다.
+  const [ranAt, setRanAt] = useState(() => new Date());
+  const count = resultCount(results);
   const sessionOpen = selected && isEditing;
   const prevSessionOpenRef = useRef(false);
   const prevQueryRef = useRef<null | string>(null);
@@ -194,7 +204,10 @@ export function QueryBlockView({
     const queryChanged = prevQueryRef.current !== queryStr;
     prevQueryRef.current = queryStr;
     if (!queryStr || sessionOpen) return;
-    if (wasOpen || queryChanged) execute(queryStr);
+    if (wasOpen || queryChanged) {
+      setRanAt(new Date());
+      execute(queryStr);
+    }
   }, [sessionOpen, queryStr, execute]);
 
   const updateDef = useCallback(
@@ -225,16 +238,36 @@ export function QueryBlockView({
   );
 
   const handleAddFilter = useCallback(() => {
+    // 새 필터의 기본 필드·연산자도 소스를 따른다. `tags`로 굳어 있으면 태스크 소스에서
+    // 새 필터를 더할 때마다 파일 필드가 하나씩 생긴다.
+    const field = fieldsFor(def.source)[0];
     const newFilter: QueryFilter = {
-      field: "tags",
-      operator: "contains",
+      field,
+      operator: operatorsFor(def.source, field)[0],
       value: "",
       combinator: "AND",
     };
     updateDef({ ...def, filters: [...def.filters, newFilter] });
   }, [def, updateDef]);
 
+  // ‼️ 소스를 바꾸면 남아 있는 필터의 필드가 새 소스에 없을 수 있다. 그대로 두면 결과가
+  // 언제나 0인데 화면은 아무 말도 하지 않는다 — 사용자는 데이터가 없다고 읽는다.
+  // 정렬도 같다.
+  const handleSourceChange = useCallback(
+    (source: QuerySource) => updateDef(retargetQuery(def, source)),
+    [def, updateDef],
+  );
+
+  // §310 결과의 한 줄이 바뀌면 질의를 다시 돌린다. 편집 세션과 무관하게 도는 경로라
+  // `handleRun`(빌더의 버튼)과 따로 둔다 — 저쪽은 편집 중인 `def`를 쓰고 이쪽은
+  // **문서에 적힌** 질의를 쓴다.
+  const rerun = useCallback(() => {
+    setRanAt(new Date());
+    execute(queryStr);
+  }, [execute, queryStr]);
+
   const handleRun = useCallback(() => {
+    setRanAt(new Date());
     execute(serializeQueryDSL(def));
   }, [def, execute]);
 
@@ -248,9 +281,11 @@ export function QueryBlockView({
     >
       <div className={`qb-container ${editing ? "qb-editing" : ""}`}>
         <div className="qb-header">
-          <span className="qb-title">Query</span>
-          {!selected && results.length > 0 && (
-            <span className="qb-count">{results.length} results</span>
+          <span className="qb-title">{t("query.title")}</span>
+          {!selected && count > 0 && (
+            <span className="qb-count">
+              {t("query.count", { count: String(count) })}
+            </span>
           )}
         </div>
 
@@ -278,9 +313,25 @@ export function QueryBlockView({
             data-vim-suspend=""
             onKeyDown={handleBuilderKeyDown}
           >
+            {/* §310 소스 */}
+            <div className="qb-section qb-row">
+              <label className="qb-section-label">{t("query.source")}</label>
+              <select
+                aria-label={t("query.source")}
+                className="qb-select"
+                onChange={(e) =>
+                  handleSourceChange(e.target.value as QuerySource)
+                }
+                value={def.source}
+              >
+                <option value="files">{t("query.source.files")}</option>
+                <option value="tasks">{t("query.source.tasks")}</option>
+              </select>
+            </div>
+
             {/* Filters */}
             <div className="qb-section">
-              <div className="qb-section-label">Filters</div>
+              <div className="qb-section-label">{t("query.filters")}</div>
               {def.filters.map((filter, i) => (
                 <FilterRow
                   filter={filter}
@@ -288,16 +339,17 @@ export function QueryBlockView({
                   key={i}
                   onChange={handleFilterChange}
                   onRemove={handleFilterRemove}
+                  source={def.source}
                 />
               ))}
               <button className="qb-btn qb-add" onClick={handleAddFilter}>
-                + Add filter
+                {t("query.addFilter")}
               </button>
             </div>
 
             {/* Sort */}
             <div className="qb-section qb-row">
-              <label className="qb-section-label">Sort</label>
+              <label className="qb-section-label">{t("query.sort")}</label>
               <select
                 className="qb-select"
                 onChange={(e) => {
@@ -311,8 +363,8 @@ export function QueryBlockView({
                 }}
                 value={def.sort?.field || ""}
               >
-                <option value="">None</option>
-                {["updated_at", "created_at", "name", "path"].map((f) => (
+                <option value="">{t("query.sort.none")}</option>
+                {SORT_FIELDS[def.source].map((f) => (
                   <option key={f} value={f}>
                     {f}
                   </option>
@@ -332,15 +384,15 @@ export function QueryBlockView({
                   }
                   value={def.sort.direction}
                 >
-                  <option value="desc">Descending</option>
-                  <option value="asc">Ascending</option>
+                  <option value="desc">{t("query.sort.desc")}</option>
+                  <option value="asc">{t("query.sort.asc")}</option>
                 </select>
               )}
             </div>
 
             {/* Display + Limit */}
             <div className="qb-section qb-row">
-              <label className="qb-section-label">Display</label>
+              <label className="qb-section-label">{t("query.display")}</label>
               <select
                 className="qb-select"
                 onChange={(e) =>
@@ -357,7 +409,7 @@ export function QueryBlockView({
                   </option>
                 ))}
               </select>
-              <label className="qb-section-label">Limit</label>
+              <label className="qb-section-label">{t("query.limit")}</label>
               <input
                 className="qb-input qb-limit"
                 max={200}
@@ -374,26 +426,39 @@ export function QueryBlockView({
             </div>
 
             <button className="qb-btn qb-run" onClick={handleRun}>
-              {loading ? "Running..." : "Run Query"}
+              {t(loading ? "query.running" : "query.run")}
             </button>
           </div>
         )}
 
-        {error && <div className="qb-error">{error}</div>}
-
-        {/* Results */}
-        {results.length > 0 && (
-          <div className="qb-results">
-            <ResultsList display={def.display} results={results} />
+        {error && (
+          <div className="qb-error">
+            {ERROR_KEYS[error] ? t(ERROR_KEYS[error]) : error}
           </div>
         )}
 
-        {!selected && results.length === 0 && !loading && queryStr && (
-          <div className="qb-empty">Click to edit query</div>
+        {/* Results */}
+        {count > 0 && (
+          <div className="qb-results">
+            {results.source === "tasks" ? (
+              <TaskQueryResults
+                display={def.display}
+                now={ranAt}
+                onChanged={rerun}
+                tasks={results.tasks}
+              />
+            ) : (
+              <ResultsList display={def.display} results={results.files} />
+            )}
+          </div>
+        )}
+
+        {!selected && count === 0 && !loading && queryStr && (
+          <div className="qb-empty">{t("query.clickToEdit")}</div>
         )}
 
         {!selected && !queryStr && (
-          <div className="qb-empty">Click to create a query</div>
+          <div className="qb-empty">{t("query.clickToCreate")}</div>
         )}
       </div>
     </NodeViewWrapper>
@@ -405,13 +470,16 @@ function FilterRow({
   index,
   onChange,
   onRemove,
+  source,
 }: {
   filter: QueryFilter;
   index: number;
   onChange: (index: number, updated: QueryFilter) => void;
   onRemove: (index: number) => void;
+  source: QuerySource;
 }) {
-  const operators = OPERATOR_OPTIONS[filter.field] || ["=", "!=", "contains"];
+  const { t } = useTranslation();
+  const operators = operatorsFor(source, filter.field);
 
   return (
     <div className="qb-filter-row">
@@ -434,12 +502,14 @@ function FilterRow({
         className="qb-select qb-field"
         onChange={(e) => {
           const newField = e.target.value;
-          const ops = OPERATOR_OPTIONS[newField] || ["="];
+          // 필드를 바꾸면 연산자도 그 필드에서 뜻이 있는 것으로 옮긴다 — 안 그러면
+          // `state regex`처럼 실행기가 통과시키지 않는 조합이 화면에 남는다.
+          const ops = operatorsFor(source, newField);
           onChange(index, { ...filter, field: newField, operator: ops[0] });
         }}
         value={filter.field}
       >
-        {FIELD_OPTIONS.map((f) => (
+        {fieldsFor(source).map((f) => (
           <option key={f} value={f}>
             {f}
           </option>
@@ -472,7 +542,7 @@ function FilterRow({
       <button
         className="qb-btn qb-remove"
         onClick={() => onRemove(index)}
-        title="Remove filter"
+        title={t("query.removeFilter")}
       >
         ×
       </button>
@@ -487,8 +557,10 @@ function ResultsList({
   display: QueryDisplay;
   results: VaultFile[];
 }) {
+  const { t } = useTranslation();
+
   if (results.length === 0) {
-    return <div className="qb-empty">No results</div>;
+    return <div className="qb-empty">{t("query.empty")}</div>;
   }
 
   if (display === "table") {
