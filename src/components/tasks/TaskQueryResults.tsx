@@ -27,10 +27,19 @@ interface Props {
   display: QueryDisplay;
   /** 블록이 실행된 시각 — 버킷 경계가 아니라 ✅날짜의 기준이다. */
   now: Date;
+  /**
+   * ‼️ 이 목록의 한 줄에 대한 진실이 다시 맞춰졌다 — 블록이 질의를 **다시 돌려야** 한다.
+   *
+   * 이 표면은 스토어를 구독하지 않는다(결과는 블록이 한 번 걷어 온 로컬 state다).
+   * 그래서 체크가 디스크에 착지해도 여기 `tasks`는 그대로이고, 제어 체크박스는 다음
+   * 렌더에서 원래대로 돌아간다 — 사용자에게는 "체크가 안 먹었다"로 보이는데 파일은
+   * 이미 바뀌어 있다. 아젠다·노트 섹션은 스토어를 읽으므로 이 문제가 없다.
+   */
+  onChanged: () => void;
   tasks: TaskEntry[];
 }
 
-export function TaskQueryResults({ display, now, tasks }: Props) {
+export function TaskQueryResults({ display, now, onChanged, tasks }: Props) {
   const { t } = useTranslation();
   const { tasksExcludePaths, tasksRecordDoneDate } = useSettingsStore(
     useShallow((s) => ({
@@ -45,6 +54,7 @@ export function TaskQueryResults({ display, now, tasks }: Props) {
     editor,
     exclude: tasksExcludePaths,
     now,
+    onReconciled: onChanged,
     recordDoneDate: tasksRecordDoneDate,
   });
 

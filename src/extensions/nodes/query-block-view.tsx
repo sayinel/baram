@@ -258,6 +258,14 @@ export function QueryBlockView({
     [def, updateDef],
   );
 
+  // §310 결과의 한 줄이 바뀌면 질의를 다시 돌린다. 편집 세션과 무관하게 도는 경로라
+  // `handleRun`(빌더의 버튼)과 따로 둔다 — 저쪽은 편집 중인 `def`를 쓰고 이쪽은
+  // **문서에 적힌** 질의를 쓴다.
+  const rerun = useCallback(() => {
+    setRanAt(new Date());
+    execute(queryStr);
+  }, [execute, queryStr]);
+
   const handleRun = useCallback(() => {
     setRanAt(new Date());
     execute(serializeQueryDSL(def));
@@ -436,6 +444,7 @@ export function QueryBlockView({
               <TaskQueryResults
                 display={def.display}
                 now={ranAt}
+                onChanged={rerun}
                 tasks={results.tasks}
               />
             ) : (

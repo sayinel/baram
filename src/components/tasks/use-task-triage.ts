@@ -30,6 +30,12 @@ export interface TaskTriageOptions {
    * 적는 것이 I4가 막은 바로 그 실패다. 체크 판정의 ✅ 날짜도 같은 값을 쓴다.
    */
   now: Date;
+  /**
+   * §310 이 태스크의 진실이 다시 맞춰진 뒤 한 번. 스토어에서 목록을 다시 읽지 **않는**
+   * 표면(쿼리 블록)이 자기 결과를 세우는 자리다. 스토어를 구독하는 표면(아젠다·노트
+   * 섹션·허브)은 필요 없다.
+   */
+  onReconciled?: () => void;
   /** §303 완료 시 ✅날짜를 남길지 — 체크 판정만 쓴다. */
   recordDoneDate: boolean;
 }
@@ -45,13 +51,14 @@ export function useTaskTriage({
   editor,
   exclude,
   now,
+  onReconciled,
   recordDoneDate,
 }: TaskTriageOptions): TaskTriageWiring {
   const { t } = useTranslation();
 
   const context: TaskTriageContext = useMemo(
-    () => ({ editor, exclude, now, t }),
-    [editor, exclude, now, t],
+    () => ({ editor, exclude, now, onReconciled, t }),
+    [editor, exclude, now, onReconciled, t],
   );
 
   const onToggle = useCallback(
