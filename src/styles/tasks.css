@@ -708,3 +708,19 @@
   padding: 0;
   margin: 0;
 }
+
+/* §308 M3-a 칩은 누를 수 있는 조작이다 — 그렇게 보여야 한다. 상자는 여전히 없다
+   (방향 C): 커서와 hover 밑줄만으로 말하고, 색은 기한 초과에만 남긴다. */
+.task-chip {
+  cursor: pointer;
+}
+
+.task-chip:hover {
+  text-decoration: underline;
+}
+
+.task-chip:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
