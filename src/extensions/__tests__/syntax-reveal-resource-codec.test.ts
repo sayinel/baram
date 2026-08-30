@@ -126,6 +126,21 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
       ).toBe("[x](<a \\< b>)");
     });
 
+    // §384 fix (R3-1): the test above never supplies a literal `>` — angle
+    // form needs BOTH escaped, and a destination containing a space forces
+    // angle form regardless, so this is the first pin that actually exercises
+    // the `>` half of ANGLE_DEST_SPECIALS.
+    it("escapes a literal > (not just <) inside an angle-bracket link destination", () => {
+      expect(
+        serializeRevealResource({
+          kind: "link",
+          label: "x",
+          destination: "a > b",
+          title: null,
+        }),
+      ).toBe("[x](<a \\> b>)");
+    });
+
     it("escapes < and > inside an angle-bracket media destination", () => {
       expect(
         serializeRevealResource({
@@ -146,6 +161,49 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
           title: null,
         }),
       ).toBe("[x](a\\(b\\)c)");
+    });
+
+    // §384 fix (R3-1) — CRITICAL: a destination starting with `<` has no
+    // ASCII whitespace/control char, so before this fix it took the RAW
+    // path — which only escapes `(`/`)`, leaving the leading `<` (and any
+    // `>`) untouched. `serializeRevealResource` then produced text
+    // indistinguishable from actual angle-bracket wrapping, and
+    // `parseRevealResource` read it back as the WRONG (shorter) destination.
+    // See serializeDestination's own comment in the codec for the full
+    // mechanism and the probe that found it.
+    describe("a destination beginning with < always takes angle form (§384 R3-1)", () => {
+      it('serializes destination "<a>" with its own <> escaped, not left raw', () => {
+        expect(
+          serializeRevealResource({
+            kind: "link",
+            label: "x",
+            destination: "<a>",
+            title: null,
+          }),
+        ).toBe("[x](<\\<a\\>>)");
+      });
+
+      it('serializes destination "<>" with its own <> escaped, not as bare <>', () => {
+        expect(
+          serializeRevealResource({
+            kind: "link",
+            label: "x",
+            destination: "<>",
+            title: null,
+          }),
+        ).toBe("[x](<\\<\\>>)");
+      });
+
+      it("the same rule applies to an image (media) destination", () => {
+        expect(
+          serializeRevealResource({
+            kind: "image",
+            label: "x",
+            destination: "<a>",
+            title: null,
+          }),
+        ).toBe("![x](<\\<a\\>>)");
+      });
     });
   });
 
@@ -488,6 +546,70 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
       });
     });
 
+    // §384 fix (R3-1) — CRITICAL: full serialize→parse round trip for a
+    // destination beginning with `<`. Before the fix, each of these silently
+    // lost data: `"<a>"` came back as `"a"`, `"<>"` came back as `""` (the
+    // review's exact repro). The third case is the SECOND ambiguity the
+    // review found — a raw destination containing its own `<...>` shape
+    // FOLLOWED by Unicode whitespace (U+00A0, which JS `\s` — and therefore
+    // the title-separator pattern — matches, unlike NEEDS_ANGLE_RE's
+    // ASCII-only check) and a quoted-looking tail: old code emitted this raw,
+    // and the parser misread the leading `<a>` as the wrapper and the
+    // trailing `"b"` as a title, splitting one destination into a shorter
+    // destination plus a fabricated title.
+    describe("a destination beginning with < round-trips exactly (§384 R3-1)", () => {
+      it('destination "<a>" is not corrupted into "a"', () => {
+        const text = serializeRevealResource({
+          kind: "link",
+          label: "x",
+          destination: "<a>",
+          title: null,
+        });
+        expect(parseRevealResource(text)).toEqual(
+          expect.objectContaining({ destination: "<a>", title: null }),
+        );
+      });
+
+      it('destination "<>" is not corrupted into ""', () => {
+        const text = serializeRevealResource({
+          kind: "link",
+          label: "x",
+          destination: "<>",
+          title: null,
+        });
+        expect(parseRevealResource(text)).toEqual(
+          expect.objectContaining({ destination: "<>", title: null }),
+        );
+      });
+
+      it('destination "<a>\u00A0\\"b\\"" is not split into destination "a" + a fabricated title "b"', () => {
+        const destination = '<a>\u00A0"b"';
+        const text = serializeRevealResource({
+          kind: "link",
+          label: "x",
+          destination,
+          title: null,
+        });
+        expect(parseRevealResource(text)).toEqual(
+          expect.objectContaining({ destination, title: null }),
+        );
+      });
+
+      it("the same three destinations round-trip for an image (media)", () => {
+        for (const destination of ["<a>", "<>", '<a>\u00A0"b"']) {
+          const text = serializeRevealResource({
+            kind: "image",
+            label: "x",
+            destination,
+            title: null,
+          });
+          expect(parseRevealResource(text)).toEqual(
+            expect.objectContaining({ destination, title: null }),
+          );
+        }
+      });
+    });
+
     // §384 fix (F4): `title: ""` (present, empty) must parse back as `""`,
     // not `null` — that distinction is what `title !== null` (vs. truthiness)
     // in serializeRevealResource now preserves on the way in.
@@ -550,6 +672,17 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
       // non-empty destination.
       { kind: "link", label: "x", destination: "", title: "" },
       { kind: "link", label: "x", destination: "u", title: "" },
+      // §384 fix (R3-1): a destination beginning with `<` — see the dedicated
+      // describe block above for the failing-before-fix repro; these are the
+      // same destinations run through the generic round-trip harness too.
+      { kind: "link", label: "x", destination: "<a>", title: null },
+      { kind: "link", label: "x", destination: "<>", title: null },
+      { kind: "image", label: "x", destination: "<a>", title: null },
+      // NBSP (U+00A0) between "<a>" and the quote — not an ASCII space, which
+      // would already force angle form via NEEDS_ANGLE_RE regardless of the
+      // R3-1 fix and wouldn't exercise it. See the dedicated describe block
+      // above for why this exact shape matters.
+      { kind: "link", label: "x", destination: '<a> "b"', title: null },
     ];
 
     for (const resource of cases) {

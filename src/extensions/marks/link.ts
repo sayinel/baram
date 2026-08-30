@@ -237,7 +237,15 @@ export const Link = Mark.create<LinkOptions>({
                 )?.destination;
                 if (href) {
                   event.preventDefault();
-                  navigateHref(href.trim());
+                  // §384 fix (R3-2): NOT `href.trim()` — Strategy 1 (rendered
+                  // `<a>`) and Strategy 2 (ProseMirror mark) both navigate the
+                  // href verbatim, so a destination with leading/trailing
+                  // whitespace (a real, if unusual, href — e.g. `" a](b"`)
+                  // must navigate identically regardless of WHICH strategy
+                  // caught the click. Trimming only here made Strategy 3 the
+                  // odd one out: the exact same expanded link would navigate
+                  // to a DIFFERENT destination depending on click timing.
+                  navigateHref(href);
                   return true;
                 }
               }

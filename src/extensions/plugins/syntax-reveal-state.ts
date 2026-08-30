@@ -9,6 +9,15 @@ import { parseRevealResource } from "./syntax-reveal-resource-codec";
 
 // ── Plugin state ──────────────────────────────────────────────────────
 
+// §384 fix (R3 follow-up, not done here): this stays a flat interface with
+// every kind-specific field optional, rather than a discriminated union that
+// requires `labelEnd` for `kind: "link" | "image"`. A real union would catch
+// a future caller constructing a link/image range without it at compile time
+// instead of relying on every parseRevealResource call site to pass it
+// correctly — but `ExpandedRange` is threaded through link.ts,
+// syntax-reveal(-decorations|-collapse|-expand|.ts) and their tests, so
+// narrowing the type is a multi-file refactor of its own, deliberately left
+// for a separate change rather than folded into this fix.
 export interface ExpandedRange {
   closeCheck?: string; // closing delimiter to validate (marks only)
   from: number; // start of expanded text (for images: inside paragraph)

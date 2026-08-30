@@ -17,7 +17,8 @@
 //     production file. Each CONTROL is the reintroduce → confirm red/green →
 //     the fixture is deleted in `afterAll` → evidence step this gate's PR
 //     description points back to.
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -120,6 +121,46 @@ describe("resolveModuleId — relative and `@/` alias specifiers land on one id"
     expect(
       resolveModuleId(SERIALIZE_LIVE_DOC, "../../pipeline/does-not-exist"),
     ).toBeNull();
+  });
+});
+
+// §384 fix (F3 caveat, R3 fixture): `productionSourceFiles`'s doc comment
+// notes the repo currently has no `.mts`/`.cts` pipeline sibling, so its
+// `/\.(ts|tsx|mts|cts)$/` extension match was never actually exercised for
+// those two extensions — a regex typo there (e.g. `mjs` instead of `mts`)
+// would have passed every existing test silently. This scratch directory
+// lives OUTSIDE `src/pipeline/__tests__/` entirely (a real temp dir, not a
+// `__control_fixtures__` subtree) because `productionSourceFiles` skips any
+// directory literally named `__tests__` — a fixture nested under one would
+// never reach the scanner at all, proving nothing about extension matching.
+describe("productionSourceFiles includes .mts/.cts siblings (§384 F3 fixture)", () => {
+  let scratchDir: string;
+
+  beforeAll(() => {
+    scratchDir = mkdtempSync(join(tmpdir(), "baram-mts-scanner-"));
+    writeFileSync(join(scratchDir, "a.ts"), "export {};\n", "utf8");
+    writeFileSync(join(scratchDir, "b.mts"), "export {};\n", "utf8");
+    writeFileSync(join(scratchDir, "c.cts"), "export {};\n", "utf8");
+    // Excluded: `.test.` in the name, regardless of extension.
+    writeFileSync(join(scratchDir, "d.test.mts"), "export {};\n", "utf8");
+    // Excluded: lives inside a directory literally named `__tests__`.
+    mkdirSync(join(scratchDir, "__tests__"));
+    writeFileSync(
+      join(scratchDir, "__tests__", "e.mts"),
+      "export {};\n",
+      "utf8",
+    );
+  });
+
+  afterAll(() => {
+    rmSync(scratchDir, { force: true, recursive: true });
+  });
+
+  it("scans .mts and .cts files as production source, alongside .ts", () => {
+    const files = productionSourceFiles(scratchDir).map((f) =>
+      f.slice(scratchDir.length + 1),
+    );
+    expect(files.sort()).toEqual(["a.ts", "b.mts", "c.cts"]);
   });
 });
 

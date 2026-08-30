@@ -695,6 +695,120 @@ describe("Syntax Reveal (§5.1)", () => {
     });
   });
 
+  // §384 fix (R3-1) — CRITICAL: a destination beginning with `<` has no ASCII
+  // whitespace/control char, so `serializeDestination` used to emit it RAW
+  // (only `(`/`)` escaped) — indistinguishable from real angle-bracket
+  // wrapping. Expand-then-collapse alone (no markdown save/reload involved)
+  // therefore silently rewrote the href: `"<a>"` collapsed back as `"a"`,
+  // `"<>"` collapsed back as `""`. Built via `setContent` with an explicit
+  // link mark (not markdown source), same reasoning as the block below: pins
+  // the reveal codec's own round trip, independent of the canonical markdown
+  // serializer (which has a separate, pre-existing issue with this same
+  // family of destinations — see the codec's file-header comment; not this
+  // commit's scope).
+  describe("Link destination beginning with < is not corrupted by expand+collapse (§384 R3-1)", () => {
+    function loadLinkWithHref(editor: Editor, href: string): void {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "xy",
+                marks: [{ type: "link", attrs: { href, title: null } }],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+    }
+
+    for (const href of ["<a>", "<>", '<a> "b"']) {
+      describe(`destination ${JSON.stringify(href)}`, () => {
+        it("forceCollapseSyntaxReveal restores the original href", () => {
+          const editor = createEditor();
+          loadLinkWithHref(editor, href);
+          moveCursorTo(editor, 2, 8);
+          expect(editor.state.doc.textContent).toContain("[xy](");
+
+          forceCollapseSyntaxReveal(editor.view);
+
+          const linkMark = editor.state.doc
+            .nodeAt(7)
+            ?.marks.find((m) => m.type.name === "link");
+          expect(linkMark?.attrs.href).toBe(href);
+          editor.destroy();
+        });
+
+        it("the appendTransaction cursor-exit path restores the original href", () => {
+          const editor = createEditor();
+          loadLinkWithHref(editor, href);
+          moveCursorTo(editor, 2, 8);
+
+          editor.commands.setTextSelection(2);
+
+          const linkMark = editor.state.doc
+            .nodeAt(7)
+            ?.marks.find((m) => m.type.name === "link");
+          expect(linkMark?.attrs.href).toBe(href);
+          editor.destroy();
+        });
+      });
+    }
+  });
+
+  // §384 fix (R3-2): Strategy 1 (rendered `<a>`) and Strategy 2 (ProseMirror
+  // mark, resolved from DOM coords) both navigate the href VERBATIM. Strategy
+  // 3 (SyntaxReveal expanded text, this describe block) used to call
+  // `navigateHref(href.trim())` — the ONLY one of the three that trimmed —
+  // so the exact same link navigated to a DIFFERENT destination depending on
+  // which strategy's click handler happened to catch the event. A leading
+  // space is an unusual but real href (e.g. paired with the R3-1/F1-round-2
+  // family above, where the destination legitimately isn't trimmed anywhere
+  // else in the pipeline).
+  describe("Cmd+click preserves leading whitespace in the destination, same as the other strategies (§384 R3-2)", () => {
+    it("navigates to the destination with its leading space intact, not trimmed", () => {
+      const editor = createEditor();
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Hello " },
+              {
+                type: "text",
+                text: "xy",
+                marks: [
+                  { type: "link", attrs: { href: " a](b", title: null } },
+                ],
+              },
+              { type: "text", text: " end" },
+            ],
+          },
+        ],
+      });
+
+      moveCursorTo(editor, 2, 8);
+      expect(editor.state.doc.textContent).toContain("[xy](< a](b>)");
+
+      editor.view.dom.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          metaKey: true,
+        }),
+      );
+
+      expect(openUrl).toHaveBeenCalledWith(" a](b");
+      editor.destroy();
+    });
+  });
+
   // §384 fix (F1 round 2) — BLOCKER: the label/destination split was found by
   // a greedy-then-backtrack search over TEXT ALONE, trying the LONGEST label
   // first. That search cannot tell "the label legitimately contains `](`"
@@ -729,7 +843,14 @@ describe("Syntax Reveal (§5.1)", () => {
       });
     }
 
-    for (const href of [" a](b", "a]( b"]) {
+    // "a](b" (no leading/inner space) is the no-space variant this file's own
+    // comment above claims is part of the same family — it wasn't actually in
+    // this loop until this fix. It takes the RAW (non-angle) destination
+    // form (no ASCII whitespace to force angle — see serializeDestination),
+    // so it round-trips unambiguously even via the legacy search; kept here
+    // for parity with the comment and as a guard against future regressions
+    // narrowing this loop's coverage.
+    for (const href of [" a](b", "a]( b", "a](b"]) {
       describe(`destination ${JSON.stringify(href)}`, () => {
         it("caret-in: serializeLiveDoc still reproduces the original", () => {
           const editor = createEditor();

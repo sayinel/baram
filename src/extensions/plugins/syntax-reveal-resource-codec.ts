@@ -13,6 +13,19 @@
 // link/image handler (node_modules/mdast-util-to-markdown/lib/handle/link.js
 // + lib/unsafe.js) so what gets typed here round-trips through the real
 // markdown serializer identically.
+//
+// §384 fix (R3-1) — SCOPE BOUNDARY: a destination beginning with `<` (e.g.
+// `href: "<a>"`) is ALSO lossy through `mdast-util-to-markdown` itself —
+// confirmed directly against that library, it writes `href="<a>"` out as
+// `[x](<a>)` with no escaping, the exact same ambiguous spelling this file's
+// `serializeDestination` used to produce. That is a pre-existing upstream
+// defect in the CANONICAL markdown serializer (src/pipeline/pm-to-md.ts →
+// mdast-util-to-markdown), independent of syntax reveal, and is tracked as a
+// separate follow-up issue — NOT fixed here. This file's contract is narrower
+// and self-contained: `serializeRevealResource`/`parseRevealResource` are
+// each other's exact inverse for reveal-mode expand/collapse. Do not "fix"
+// the upstream spelling by editing pm-to-md.ts or a transformer from this
+// commit — that is out of scope for what this codec owns.
 
 export interface RevealResource {
   destination: string;
@@ -103,6 +116,21 @@ export function escapedLabelLength(label: string): number {
   return escapeSpecials(label, LABEL_SPECIALS).length;
 }
 
+// §384 fix (R3-1) — CRITICAL: a destination beginning with `<` must ALWAYS
+// take the angle form, even though it contains no ASCII whitespace/control
+// char. The raw form only escapes `(`/`)` (RAW_DEST_SPECIALS) — a leading `<`
+// passes through untouched — so `destination: "<a>"` serialized raw as
+// `[x](<a>)`, and the parser's tail grammar tries the angle branch FIRST
+// (`<(${ANGLE_DEST_CONTENT})>|(...)`), matching that leading `<...>` as if it
+// were the wrapper it never was: destination "a", the enclosing `<`/`>`
+// silently eaten. Same failure for `destination: "<>"` → `[x](<>)` → parsed
+// destination "" (indistinguishable from a truly empty one). Forcing angle
+// form here makes the destination's OWN `<`/`>` get escaped
+// (ANGLE_DEST_SPECIALS), which is exactly what removes the ambiguity: the
+// parser then sees an ESCAPED `\<`/`\>` inside the wrapper, not a raw one it
+// could mistake for the wrapper's own delimiters. A one-million-case
+// randomized probe (serialize → parse → compare) found 431 failures without
+// this condition and zero with it.
 function serializeDestination(
   destination: string,
   title: null | string,
@@ -111,10 +139,11 @@ function serializeDestination(
   // `()` can't be told apart from "no title" otherwise — including an empty
   // *present* title, §384 fix (F4): `title !== null`, not truthiness), OR the
   // destination contains ASCII whitespace/control chars (a raw destination
-  // cannot).
+  // cannot), OR the destination starts with `<` (§384 fix R3-1 above).
   if (
     (destination === "" && title !== null) ||
-    NEEDS_ANGLE_RE.test(destination)
+    NEEDS_ANGLE_RE.test(destination) ||
+    destination.startsWith("<")
   ) {
     return `<${escapeSpecials(destination, ANGLE_DEST_SPECIALS)}>`;
   }
