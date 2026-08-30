@@ -327,9 +327,11 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
     // not immediately followed by `(` must still parse. Before this fix the
     // label grammar structurally excluded `]`, so `REVEAL_RESOURCE_RE` never
     // matched at all and this returned null.
-    describe("lenient label grammar (§384 F1)", () => {
+    describe("lenient label grammar (§384 F1 — live provenance, r5)", () => {
       it("parses a label containing a bare, unescaped ]", () => {
-        const parsed = parseRevealResource("[a]b](u)");
+        const parsed = parseRevealResource("[a]b](u)", {
+          labelGrammar: "live",
+        });
         expect(parsed).toEqual(
           expect.objectContaining({
             kind: "link",
@@ -343,7 +345,9 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
       it("labelEnd points at the `]` that actually opens the destination group", () => {
         // "[a]b](u)" — labelEnd = index of the SECOND `]` (position 4), not
         // the first bare `]` inside the label (position 2).
-        expect(parseRevealResource("[a]b](u)")?.labelEnd).toBe(4);
+        expect(
+          parseRevealResource("[a]b](u)", { labelGrammar: "live" })?.labelEnd,
+        ).toBe(4);
       });
 
       it("an ambiguous label resolves to the LAST split whose tail validates — documented, not a null-reject", () => {
@@ -358,7 +362,9 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
         // syntactically-complete `](destination)` is genuinely ambiguous
         // with the real one; this is that case resolved one specific way
         // (longest label wins when both could parse), not a rejection.
-        expect(parseRevealResource("[a](b](u)")).toEqual(
+        expect(
+          parseRevealResource("[a](b](u)", { labelGrammar: "live" }),
+        ).toEqual(
           expect.objectContaining({
             kind: "link",
             label: "a](b",
@@ -661,11 +667,27 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
       });
     }
 
-    it("still parses live bare-] labels via the lenient fallback", () => {
-      expect(parseRevealResource("[a]b](u)")).toMatchObject({
-        label: "a]b",
-        destination: "u",
+    it("live text must declare its grammar — the bare-] label parses only as live", () => {
+      expect(parseRevealResource("[a]b](u)")).toBeNull();
+      expect(
+        parseRevealResource("[a]b](u)", { labelGrammar: "live" }),
+      ).toMatchObject({ label: "a]b", destination: "u" });
+    });
+
+    it("the same bytes parse differently under each declared grammar (§384 r5)", () => {
+      const text = "[x](< a](b>)";
+      expect(parseRevealResource(text)).toMatchObject({
+        label: "x",
+        destination: " a](b",
+        labelEnd: 2,
       });
+      expect(parseRevealResource(text, { labelGrammar: "live" })).toMatchObject(
+        {
+          label: "x](< a",
+          destination: "b>",
+          labelEnd: 7,
+        },
+      );
     });
   });
 

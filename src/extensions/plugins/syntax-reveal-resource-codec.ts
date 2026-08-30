@@ -61,7 +61,21 @@ export interface ParsedRevealResource extends RevealResource {
  * see `parseRevealResource`'s doc comment for why text-only search cannot be.
  */
 export interface ParseRevealResourceOptions {
+  /** Exact label boundary stashed at expand time — resolves the split
+   *  without any search (the only path production uses). */
   labelEnd?: number;
+  /**
+   * §384 (impl review r5): which label grammar the text was written in. The
+   * same bytes can be BOTH the serializer's output for one resource and live
+   * unescaped label text for another (`[x](< a](b>)` is label "x" /
+   * destination " a](b" when serialized, but label "x](< a" / destination
+   * "b>" as live text) — no parser can recover that provenance from the
+   * string, so the caller states it. `"serialized"` (default) uses the
+   * escaped-label grammar `serializeRevealResource` emits, making
+   * `parse(serialize(x)) === x` for every resource; `"live"` uses the
+   * lenient greedy search for text whose label is unescaped document text.
+   */
+  labelGrammar?: "live" | "serialized";
 }
 
 export type RevealResourceKind = "image" | "link";
@@ -223,14 +237,14 @@ const TITLE_CONTENT = String.raw`(?:\\.|[^"\\])*`;
 // destination, 3 = title.
 const RESOURCE_TAIL = String.raw`\]\((?:<(${ANGLE_DEST_CONTENT})>|(${RAW_DEST_CONTENT}))(?:\s+"(${TITLE_CONTENT})")?\)$`;
 
-// §384 (impl review r4): the optionless parse tries the STRICT escaped-label
-// grammar first — the grammar `serializeRevealResource` actually emits, in
-// which a label's own `]` is always backslash-escaped, so the label/tail
-// split is unambiguous and `parse(serialize(x))` holds for every resource
-// the serializer can produce (e.g. destination "<a](b" → `[x](<\<a](b>)`,
-// which the lenient search would mis-split at the destination's `](`). Only
-// when the strict grammar does not match (live, unescaped label text from a
-// caller with no stashed boundary) does it fall back to the lenient search.
+// §384 (impl review r4/r5): two label grammars, chosen by the caller's
+// declared provenance (`labelGrammar`), never by trying one then the other —
+// the same bytes can satisfy both with different splits, so a fallback
+// order would silently pick a wrong interpretation. STRICT is the grammar
+// `serializeRevealResource` emits (a label's own `]` is always escaped), so
+// the split is unambiguous and `parse(serialize(x))` holds for every
+// resource the serializer can produce. LENIENT is the greedy search for live
+// unescaped label text, with its documented ambiguity.
 const LABEL_CONTENT_STRICT = String.raw`(?:\\.|[^\]\\])*`;
 const REVEAL_RESOURCE_STRICT_RE = new RegExp(
   `^(!?)\\[(${LABEL_CONTENT_STRICT})${RESOURCE_TAIL}`,
@@ -311,7 +325,9 @@ export function parseRevealResource(
   }
 
   const match =
-    REVEAL_RESOURCE_STRICT_RE.exec(text) ?? REVEAL_RESOURCE_RE.exec(text);
+    opts?.labelGrammar === "live"
+      ? REVEAL_RESOURCE_RE.exec(text)
+      : REVEAL_RESOURCE_STRICT_RE.exec(text);
   if (!match) return null;
 
   const [, bang, label, angleDest, rawDest, title] = match;
