@@ -13,7 +13,15 @@ function createMockEditor() {
     commands: {},
     state: {
       selection: { from: 0, to: 0, $from: { parent: { textContent: "" } } },
-      doc: { textBetween: () => "", textContent: "" },
+      // §308 M3-b `/due`·`/priority`가 커서 자리를 보므로 빈 문서를 흉내 낸다 —
+      // 태스크 줄이 아니면 그 둘은 메뉴에 들어오지 않는다.
+      doc: {
+        content: { size: 0 },
+        nodeAt: () => null,
+        resolve: () => ({ depth: 0 }),
+        textBetween: () => "",
+        textContent: "",
+      },
     },
   } as never;
 }

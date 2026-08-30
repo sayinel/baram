@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type { SlashMenuItem } from "../../components/command/SlashMenu";
+import type { TaskFieldKind } from "../../utils/tasks/task-field-order";
 import type { Editor } from "@tiptap/core";
 
 import { createDir, importFile } from "../../ipc/invoke";
@@ -37,6 +38,12 @@ import {
 } from "../../utils/journal/journal-photo";
 import { classifyMediaSrc } from "../../utils/media-src";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
+import {
+  askTaskField,
+  commitTaskField,
+  currentTaskField,
+  taskLineTarget,
+} from "./task-field-edit";
 import { chainWithVimExternalEdit } from "./vim/vim-keys";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
@@ -407,6 +414,36 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
     },
   ];
 
+  // §308 M3-b 태스크 줄의 필드 — 커서가 태스크 줄에 있을 때만 보인다.
+  //
+  // 조건부인 것이 요점이다. 언제나 보이면 문단 한가운데서 고른 사용자에게 아무 일도
+  // 일어나지 않는 항목이 둘 생기고, 그것은 "눌렀는데 안 된다"로 읽힌다. `buildSlashItems`는
+  // 질의마다 다시 불리므로 여기서 지금의 선택을 보면 된다.
+  //
+  // 여기서 잡은 대상을 **들고 있지 않는** 것도 의도다. 아래 action이 그것을 닫아 쓰면
+  // Suggestion이 그 사이에 `/due` 글자를 지우므로 원문이 낡는다(`setTaskFieldFromSlash`
+  // 주석). 값을 남기지 않으면 그 실수를 할 자리가 없다.
+  if (taskLineTarget(editor.state)) {
+    items.push(
+      {
+        id: "due",
+        label: "Due Date",
+        category: "Tasks",
+        description: "Set this task's due date",
+        mdHint: "📅",
+        action: () => setTaskFieldFromSlash(editor, "due"),
+      },
+      {
+        id: "priority",
+        label: "Priority",
+        category: "Tasks",
+        description: "Set this task's priority",
+        mdHint: "⏫",
+        action: () => setTaskFieldFromSlash(editor, "priority"),
+      },
+    );
+  }
+
   // §6.2 Built-in AI slash commands
   items.push(
     {
@@ -689,4 +726,27 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   }
 
   return items;
+}
+
+/**
+ * §308 M3-b `/due`·`/priority`의 몸통.
+ *
+ * ‼️ 대상은 **여기서** 다시 잡는다. 메뉴를 지을 때 잡아 두면 그 사이에 Suggestion이
+ * `/due` 글자를 지우므로(`slash-command.ts`의 `command`) 캡처한 원문이 낡고, 낙관적
+ * 잠금이 매번 걸려 아무것도 쓰이지 않는다.
+ */
+async function setTaskFieldFromSlash(
+  editor: Editor,
+  kind: TaskFieldKind,
+): Promise<void> {
+  const view = editor.view;
+  const line = taskLineTarget(view.state);
+  if (!line) return;
+  // §12-9b dialog gap — 문서가 바뀌었으면 `null`로 돌아온다(design §5c).
+  const next = await awaitBoundToEditor(
+    view,
+    askTaskField(kind, currentTaskField(line.paragraphText, kind)),
+  );
+  if (next === null) return;
+  commitTaskField(view, line, kind, next);
 }
