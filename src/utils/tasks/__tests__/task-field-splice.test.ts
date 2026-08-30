@@ -179,6 +179,39 @@ describe("빈 값은 제거", () => {
   });
 });
 
+describe("‼️ 인라인 노드가 차지한 자리는 편집이 넘지 않는다", () => {
+  // 에디터 층은 `#tag`·`[[위키링크]]` 같은 인라인 노드를 U+FFFC 한 글자로 채워 오프셋과
+  // 위치를 1:1로 맞춘다(`task-field-edit.ts`의 `taskLineText`). 그 채움 문자를 편집이
+  // 덮으면 문서에서 그 노드가 사라진다 — 사용자의 태그나 링크가 조용히 없어진다는 뜻이다.
+  //
+  // 여기서 그 성질을 직접 단정하므로 쓰기 경로에 가드를 두지 않는다: 채움 문자는 공백이
+  // 아니라 `cutSpan`도 `trimEnd`도 그것을 넘어가지 못한다.
+  const O = "\uFFFC";
+  const cases: [string, "due" | "priority" | "scheduled", string][] = [
+    [`보고서 ${O}`, "due", "2026-09-01"],
+    [`보고서 ${O} 📅2026-08-30`, "due", "2026-09-15"],
+    [`보고서 ${O} 📅2026-08-30`, "due", ""],
+    [`보고서 ${O}📅2026-08-30`, "due", ""],
+    [`${O} 📅2026-08-30`, "due", ""],
+    [`${O}`, "priority", "⏫"],
+    [`보고서 ${O}   `, "due", "2026-09-01"],
+    [`보고서 📅2026-08-30 ${O} ⏫`, "scheduled", "2026-08-20"],
+    [`보고서 ${O} ⏫`, "due", "2026-09-01"],
+  ];
+
+  it.each(cases)("%s ← %s=%s", (body, kind, value) => {
+    const edit = minimalEdit(body, applyTaskField(body, kind, value));
+    if (!edit) return;
+    expect(body.slice(edit.at, edit.at + edit.remove)).not.toContain(O);
+    // 채움 문자의 개수도 그대로여야 한다 — 편집이 그것을 지우지도, 늘리지도 않는다.
+    const after =
+      body.slice(0, edit.at) + edit.insert + body.slice(edit.at + edit.remove);
+    expect([...after].filter((c) => c === O)).toHaveLength(
+      [...body].filter((c) => c === O).length,
+    );
+  });
+});
+
 describe("minimalEdit", () => {
   it("같으면 편집이 없다", () => {
     expect(minimalEdit("같다", "같다")).toBeNull();

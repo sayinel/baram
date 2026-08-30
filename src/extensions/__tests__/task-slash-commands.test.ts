@@ -14,7 +14,7 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { showFieldDialog } from "../../utils/field-dialog";
 import { SLASH_TRIGGER } from "../plugins/slash-command";
 import { buildSlashItems } from "../plugins/slash-command-items";
-import { taskLineTarget } from "../plugins/task-field-edit";
+import { taskLineTarget, taskLineText } from "../plugins/task-field-edit";
 import { isVimExternalEdit } from "../plugins/vim/vim-keys";
 
 vi.mock("../../utils/field-dialog", () => ({ showFieldDialog: vi.fn() }));
@@ -23,6 +23,23 @@ const schema = new Schema({
   marks: { strong: { toDOM: () => ["strong", 0] } },
   nodes: {
     doc: { content: "block+" },
+    // `#tag`는 인라인 **노드**다(`tag-node.ts`가 `atom: true`) — 글자를 내놓지 않으면서
+    // 위치는 차지한다. 태스크 줄에 태그를 다는 것은 이 앱에서 흔한 모양이다.
+    tagNode: {
+      atom: true,
+      attrs: { name: {} },
+      group: "inline",
+      inline: true,
+      toDOM: () => ["span", { class: "tag" }],
+    },
+    // 내용을 가진 인라인 노드 — 자리를 **두 칸 넘게** 차지한다. 지금 앱의 인라인 노드는
+    // 전부 atom(한 칸)이지만, `taskLineText`가 지키는 것은 "한 칸"이 아니라 "제 크기만큼"이다.
+    wrapper: {
+      content: "text*",
+      group: "inline",
+      inline: true,
+      toDOM: () => ["em", 0],
+    },
     paragraph: { content: "inline*", group: "block", toDOM: () => ["p", 0] },
     taskItem: {
       attrs: { checked: { default: false } },
@@ -297,6 +314,72 @@ describe("문서에 닿는 방식", () => {
     const field = line.lastChild!;
     expect(field.text).toContain("📅2026-09-15");
     expect(field.marks).toHaveLength(0);
+  });
+});
+
+describe("‼️ 인라인 노드가 섞인 줄 — 오프셋과 위치가 갈리는 자리", () => {
+  /** `보고서 #deep-work 📅…` 모양. 태그는 노드라 `textContent`에서 사라진다. */
+  function mountTagged(tail: string): EditorView {
+    const line = [
+      schema.text("보고서 "),
+      schema.node("tagNode", { name: "deep-work" }),
+    ];
+    if (tail) line.push(schema.text(tail));
+    const doc = schema.node("doc", null, [
+      schema.node("taskList", null, [
+        schema.node("taskItem", null, [schema.node("paragraph", null, line)]),
+      ]),
+    ]);
+    const place = document.createElement("div");
+    document.body.appendChild(place);
+    return new EditorView(place, {
+      state: EditorState.create({ doc, schema }),
+    });
+  }
+
+  it("‼️ 자리를 여러 칸 차지하는 인라인 노드도 제 크기만큼 센다", () => {
+    const line = schema.node("paragraph", null, [
+      schema.text("보고서 "),
+      schema.node("wrapper", null, [schema.text("강조")]),
+      schema.text(" 📅2026-08-30"),
+    ]);
+    expect(taskLineText(line)).toHaveLength(line.content.size);
+  });
+
+  it("줄 텍스트의 길이가 문단의 위치 크기와 같다", () => {
+    view = mountTagged(" 📅2026-08-30");
+    const line = view.state.doc.firstChild!.firstChild!.firstChild!;
+    // 이것이 이 모듈이 기대는 불변식이다 — 오프셋을 그대로 위치로 쓸 수 있는 근거.
+    expect(taskLineText(line)).toHaveLength(line.content.size);
+    expect(line.textContent).not.toHaveLength(line.content.size);
+  });
+
+  it("‼️ 태그 뒤의 필드를 제자리에 갈아끼운다", async () => {
+    // `textContent`로 재면 태그가 먹은 한 칸만큼 쓰기가 앞으로 밀려, 필드가 아니라
+    // 그 앞 공백부터 덮어써진다.
+    view = mountTagged(" 📅2026-08-30");
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({ date: "2026-09-15" });
+    itemsAt(3)
+      .find((i) => i.id === "due")
+      ?.action();
+    await vi.waitFor(() => expect(text()).toContain("📅2026-09-15"));
+
+    const line = view.state.doc.firstChild!.firstChild!.firstChild!;
+    expect(taskLineText(line)).toBe("보고서 \uFFFC 📅2026-09-15");
+  });
+
+  it("태그로 끝나는 줄에도 필드를 붙인다", async () => {
+    view = mountTagged("");
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({ date: "2026-09-15" });
+    itemsAt(3)
+      .find((i) => i.id === "due")
+      ?.action();
+    await vi.waitFor(() => expect(text()).toContain("📅2026-09-15"));
+
+    const line = view.state.doc.firstChild!.firstChild!.firstChild!;
+    expect(taskLineText(line)).toBe("보고서 \uFFFC 📅2026-09-15");
+    // 태그 노드가 살아 있어야 한다 — 편집이 그 자리를 덮지 않았다는 뜻이다.
+    expect(line.child(1).type.name).toBe("tagNode");
   });
 });
 

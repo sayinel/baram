@@ -17,6 +17,7 @@
 
 import type { Locale } from "../../i18n";
 import type { TaskFieldKind } from "../../utils/tasks/task-field-order";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -41,7 +42,7 @@ import { withVimExternalEdit } from "./vim/vim-keys";
 export interface TaskLineTarget {
   /** 문단 **내용**의 시작 위치. 필드 오프셋을 그대로 더하는 기준이다. */
   paragraphFrom: number;
-  /** 낙관적 잠금 — 확정 시 다시 읽어 같아야 한다. */
+  /** 낙관적 잠금 — 확정 시 다시 읽어 같아야 한다. `taskLineText`가 만든 것이다. */
   paragraphText: string;
 }
 
@@ -81,7 +82,7 @@ export function captureParagraphAt(
     if (node.type.name === "paragraph") {
       return {
         paragraphFrom: $pos.start(depth),
-        paragraphText: node.textContent,
+        paragraphText: taskLineText(node),
       };
     }
   }
@@ -110,7 +111,7 @@ export function commitTaskField(
   // 위치만 믿고 쓰면 사용자가 그 사이에 친 글자를 덮는다.
   if (
     paragraph.type.name !== "paragraph" ||
-    paragraph.textContent !== target.paragraphText
+    taskLineText(paragraph) !== target.paragraphText
   ) {
     const locale = useSettingsStore.getState().locale as Locale;
     useUIStore
@@ -137,6 +138,9 @@ export function commitTaskField(
   );
   if (!patch) return false;
 
+  // 이 편집은 인라인 노드를 건드리지 않는다. `applyTaskField`가 바꾸는 것은 필드 뭉치
+  // 안쪽과 그 앞의 공백 하나뿐이고, 채움 문자는 공백이 아니라 `cutSpan`도 `trimEnd`도
+  // 그것을 넘어가지 못한다 — `task-field-splice.test.ts`가 그 성질을 직접 단정한다.
   const at = from + patch.at;
   const end = at + patch.remove;
   // ‼️ UI 크롬이 만든 트랜잭션임을 표시한다(§12-6). 없으면 vim이 이것을 사용자의 편집으로
@@ -155,6 +159,29 @@ export function commitTaskField(
   }
   view.dispatch(tr);
   return true;
+}
+
+/**
+ * 태스크 줄의 텍스트 — **오프셋이 곧 위치**가 되도록 인라인 노드를 자리만큼 채운다.
+ *
+ * ‼️ `node.textContent`를 쓰면 안 된다. `#tag`·`[[위키링크]]`·`$수식$`은 인라인 **노드**라
+ * 글자를 하나도 내놓지 않으면서 위치는 차지한다(`tag-node.ts`가 `atom: true`). 그래서
+ * `textContent`로 잰 필드 오프셋에 문단 시작 위치를 그냥 더하면, 태그가 하나 앞에 있는
+ * 줄에서 쓰기가 한 칸 앞에 떨어져 **사용자 글자를 먹는다.** `#deep-work`가 붙은 태스크는
+ * 이 앱에서 흔한 모양이라 드문 경우도 아니다.
+ *
+ * 채움 문자는 U+FFFC(OBJECT REPLACEMENT CHARACTER)다. 공백도 이모지도 아니므로 필드
+ * 스캐너에게는 그냥 본문 한 글자이고, 그 자리에서 필드 뭉치가 끊긴다 — Rust가 같은 줄에서
+ * `#tag`를 만났을 때 하는 것과 같은 판단이다.
+ */
+export function taskLineText(paragraph: PMNode): string {
+  let out = "";
+  paragraph.forEach((child) => {
+    out += child.isText
+      ? (child.text ?? "")
+      : INLINE_PLACEHOLDER.repeat(child.nodeSize);
+  });
+  return out;
 }
 
 /** 이 줄에 이미 있는 그 필드의 값. 없으면 빈 문자열 — 다이얼로그가 그대로 초기값으로 쓴다. */
@@ -182,7 +209,7 @@ export function taskLineTarget(state: EditorState): null | TaskLineTarget {
   const contentFrom = itemFrom + 2;
   const contentTo = contentFrom + line.content.size;
   if (pos < contentFrom || pos > contentTo) return null;
-  return { paragraphFrom: contentFrom, paragraphText: line.textContent };
+  return { paragraphFrom: contentFrom, paragraphText: taskLineText(line) };
 }
 
 /** 날짜를 묻는다. 돌려주는 것은 **ISO 날짜**(빈 문자열 = 필드 제거). */
@@ -257,3 +284,6 @@ const PRIORITY_LABEL_KEY: Record<string, string> = {
 
 /** 우선순위 선택지 — 저장 레벨 문자열이 값이다. "3"(보통)은 마커가 없어 빈 값이다. */
 const PRIORITY_LEVELS = ["1", "2", "3", "4", "5"] as const;
+
+/** 인라인 노드가 차지한 자리. 이 글자는 문서에 쓰이지 않는다 — 자리만 센다. */
+const INLINE_PLACEHOLDER = "\uFFFC";
