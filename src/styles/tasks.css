@@ -700,3 +700,11 @@
   margin-top: 8px;
   border-top: 1px solid var(--color-border-default);
 }
+
+/* §310 쿼리 블록 안의 태스크 목록. 블록은 이미 자기 여백을 갖고 있으므로 행 목록은
+   그 안에서 다시 들여쓰지 않는다 — 아젠다의 버킷 들여쓰기가 여기서는 블록 테두리와
+   겹쳐 보인다. */
+.qb-task-list .task-bucket-list {
+  padding: 0;
+  margin: 0;
+}
