@@ -396,9 +396,13 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
     // ExpandedRange.labelEnd) passes it as `labelEnd` to resolve the split
     // exactly instead of searching for it.
     describe("known label boundary resolves the split exactly (labelEnd option, §384 F1 round 2)", () => {
-      it("the legacy (no labelEnd) search mis-splits the reviewer counterexample — documenting the bug this option closes", () => {
+      it("without labelEnd, the strict-first grammar (§384 r4) resolves the serializer's own spelling correctly", () => {
+        // The lenient search alone mis-split this as label "x](< a" /
+        // destination "b>". The strict escaped-label grammar is tried first
+        // now, so an escaped label (here: "x", no `]`) plus a valid tail wins
+        // before the greedy search ever runs.
         expect(parseRevealResource("[x](< a](b>)")).toEqual(
-          expect.objectContaining({ label: "x](< a", destination: "b>" }),
+          expect.objectContaining({ label: "x", destination: " a](b" }),
         );
       });
 
@@ -634,6 +638,33 @@ describe("syntax-reveal-resource-codec (§384 B2)", () => {
             title: "",
           }),
         );
+      });
+    });
+  });
+
+  describe("optionless parse prefers the strict escaped-label grammar (§384 r4)", () => {
+    // A destination that itself contains `](` AND starts with `<` takes the
+    // angle form, where the lenient greedy label search would mis-split at
+    // the destination's own `](`. The strict grammar (labels always escape
+    // `]`) is tried first, so the serializer's own output always round-trips
+    // without a stashed boundary.
+    for (const kind of ["link", "image"] as const) {
+      it(`${kind}: destination "<a](b" round-trips without labelEnd`, () => {
+        const input = { kind, label: "x", destination: "<a](b", title: null };
+        const parsed = parseRevealResource(serializeRevealResource(input));
+        expect(parsed).toMatchObject({
+          kind,
+          label: "x",
+          destination: "<a](b",
+          title: null,
+        });
+      });
+    }
+
+    it("still parses live bare-] labels via the lenient fallback", () => {
+      expect(parseRevealResource("[a]b](u)")).toMatchObject({
+        label: "a]b",
+        destination: "u",
       });
     });
   });

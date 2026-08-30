@@ -223,6 +223,18 @@ const TITLE_CONTENT = String.raw`(?:\\.|[^"\\])*`;
 // destination, 3 = title.
 const RESOURCE_TAIL = String.raw`\]\((?:<(${ANGLE_DEST_CONTENT})>|(${RAW_DEST_CONTENT}))(?:\s+"(${TITLE_CONTENT})")?\)$`;
 
+// §384 (impl review r4): the optionless parse tries the STRICT escaped-label
+// grammar first — the grammar `serializeRevealResource` actually emits, in
+// which a label's own `]` is always backslash-escaped, so the label/tail
+// split is unambiguous and `parse(serialize(x))` holds for every resource
+// the serializer can produce (e.g. destination "<a](b" → `[x](<\<a](b>)`,
+// which the lenient search would mis-split at the destination's `](`). Only
+// when the strict grammar does not match (live, unescaped label text from a
+// caller with no stashed boundary) does it fall back to the lenient search.
+const LABEL_CONTENT_STRICT = String.raw`(?:\\.|[^\]\\])*`;
+const REVEAL_RESOURCE_STRICT_RE = new RegExp(
+  `^(!?)\\[(${LABEL_CONTENT_STRICT})${RESOURCE_TAIL}`,
+);
 const REVEAL_RESOURCE_RE = new RegExp(
   `^(!?)\\[(${LABEL_CONTENT_LENIENT})${RESOURCE_TAIL}`,
 );
@@ -298,7 +310,8 @@ export function parseRevealResource(
     return parseWithLabelEnd(text, opts.labelEnd);
   }
 
-  const match = REVEAL_RESOURCE_RE.exec(text);
+  const match =
+    REVEAL_RESOURCE_STRICT_RE.exec(text) ?? REVEAL_RESOURCE_RE.exec(text);
   if (!match) return null;
 
   const [, bang, label, angleDest, rawDest, title] = match;
