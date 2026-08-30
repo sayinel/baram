@@ -880,6 +880,7 @@
   "tasks.chip.edit.done": "Completion date",
   "tasks.chip.edit.cancelled": "Cancelled date",
   "tasks.chip.priority.normal": "normal",
+  "tasks.dateHint.title": "Tab to set due {date}",
   "tasks.unsavedConflict": "That line changed in your unsaved edits. Save the file and try again.",
   "tasks.triage.menu": "Task triage",
   "tasks.triage.dueToday": "Due today",

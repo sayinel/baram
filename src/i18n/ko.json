@@ -880,6 +880,7 @@
   "tasks.chip.edit.done": "완료일",
   "tasks.chip.edit.cancelled": "취소일",
   "tasks.chip.priority.normal": "보통",
+  "tasks.dateHint.title": "Tab을 누르면 마감 {date}",
   "tasks.unsavedConflict": "저장하지 않은 편집에서 그 줄이 바뀌었습니다. 파일을 저장한 뒤 다시 시도하세요.",
   "tasks.triage.menu": "태스크 정리",
   "tasks.triage.dueToday": "오늘 기한으로",

@@ -724,3 +724,12 @@
   outline-offset: 2px;
   border-radius: 3px;
 }
+
+/* §308 M3-c 태스크 줄에서 알아본 날짜 표현.
+   확정되지 않은 **제안**이므로 칩처럼 자기 색을 갖지 않는다 — 점선 밑줄만 둔다.
+   확정(Tab)되면 이 자리는 칩이 되고, 그때 비로소 색을 얻는다. */
+.task-date-hint {
+  text-decoration: underline dotted var(--color-accent-default);
+  text-underline-offset: 3px;
+  cursor: help;
+}
