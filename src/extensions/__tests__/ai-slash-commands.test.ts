@@ -130,7 +130,8 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
     // 7 built-in AI + 1 AI Template + 1 custom (category "AI")
     // + "Mermaid Diagram" (label "mermaid" contains "ai")
     // + "Toggle" (description "Collapsible details block" — "details" contains "ai")
-    expect(filtered.length).toBe(11);
+    // + §314 "Extract Action Items" (description ends with "with AI")
+    expect(filtered.length).toBe(12);
   });
 
   test("custom AI commands are still included", () => {

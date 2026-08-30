@@ -36,21 +36,31 @@ export function guessTrailingDate(
   at: number,
   today: Date,
 ): DateGuess | null {
-  const head = text.slice(0, Math.max(0, Math.min(at, text.length)));
+  const full = text.slice(0, Math.max(0, Math.min(at, text.length)));
+  // `금요일까지`처럼 마감 표지가 뒤에 붙은 형태. 한국어에서 기한을 말하는 가장 흔한
+  // 모양이라 이것을 못 읽으면 알아보는 것이 거의 없다. 표지를 떼고 날짜만 맞춰 본 뒤,
+  // 구간에는 표지까지 넣는다 — 확정할 때 `까지`가 홀로 남으면 안 되기 때문이다.
+  const suffix = SUFFIX_RE.exec(full);
+  const head = suffix ? full.slice(0, suffix.index) : full;
 
   for (const { re, value } of PATTERNS) {
     const m = re.exec(head);
     if (!m) continue;
-    const from = head.length - m[0].length;
+    let from = head.length - m[0].length;
     // 앞이 공백이거나 줄 처음이어야 한다 — `xtoday`의 꼬리를 알아보면 안 된다.
     if (from > 0 && !/\s/.test(head[from - 1])) continue;
 
     const iso = resolveDateInput(value(m, today), today);
     if (iso === null) continue;
 
+    // `by friday`의 `by`도 함께 가져간다 — 남기면 `보고서 by 📅2026-09-18`이 된다.
+    const prefix = PREFIX_RE.exec(head.slice(0, from));
+    // 앞의 공백은 표현이 아니라 구분자다 — 캡처한 `by ` 만큼만 앞으로 늘린다.
+    if (prefix) from = prefix.index + prefix[0].length - prefix[1].length;
+
     // 이미 필드인 자리는 건드리지 않는다. `📅 2026-08-30`의 날짜 부분이 여기 걸리면
     // 확정이 `📅 📅2026-08-30`을 만든다.
-    const guess = { from, iso, to: head.length };
+    const guess = { from, iso, to: full.length };
     if (overlapsField(text, guess)) continue;
     return guess;
   }
@@ -69,6 +79,12 @@ function overlapsField(text: string, guess: DateGuess): boolean {
     (span) => guess.from < span.to && span.from < guess.to,
   );
 }
+
+/** 날짜 앞에 붙는 마감 표지 — 표현의 일부로 함께 가져간다. */
+const PREFIX_RE = /(?:^|\s)(by\s+)$/i;
+
+/** 날짜 뒤에 붙는 마감 표지. */
+const SUFFIX_RE = /까지$/;
 
 /** 요일 이름 → `Date.getDay()` 값. 배열 인덱스가 곧 그 값이다. */
 const EN_WEEKDAYS = [

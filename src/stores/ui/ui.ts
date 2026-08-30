@@ -134,6 +134,12 @@ interface UIState {
   /** §282 레일에서 보고 있는 목록. */
   pdfRailTab: PdfRailTab;
   pendingApplyContent: null | string;
+  /**
+   * §314 AI가 뽑은 액션 아이템. `pendingApplyContent`와 나란한 통로이지만 뜻이 다르다 —
+   * 저쪽은 선택을 **대체**하고 이쪽은 선택 **아래에 덧붙인다**. 회의록에서 할 일을 뽑는
+   * 일이라 원문이 살아 있어야 한다.
+   */
+  pendingInsertTasks: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
   /** §313 이번 열기가 태스크를 잡으려는 것인가 — 여는 쪽이 정하고, 닫히면 사라진다 */
@@ -144,6 +150,7 @@ interface UIState {
   rightPanelWidth: number;
   setPdfRailTab: (tab: PdfRailTab) => void;
   setPendingApplyContent: (content: null | string) => void;
+  setPendingInsertTasks: (tasks: null | string) => void;
   setPendingSearchHighlight: (term: null | string) => void;
   setRightPanelMode: (mode: RightPanelMode) => void;
   setRightPanelWidth: (width: number) => void;
@@ -222,6 +229,7 @@ export const useUIStore = create<UIState>((set) => ({
   pdfRailOpen: false,
   pdfRailTab: "pages" as const,
   pendingApplyContent: null,
+  pendingInsertTasks: null,
   quickCaptureOpen: false,
   quickCaptureTaskIntent: false,
   taskEditOpen: false,
@@ -358,6 +366,7 @@ export const useUIStore = create<UIState>((set) => ({
     }),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
+  setPendingInsertTasks: (pendingInsertTasks) => set({ pendingInsertTasks }),
 
   setPendingSearchHighlight: (pendingSearchHighlight) =>
     set({ pendingSearchHighlight }),

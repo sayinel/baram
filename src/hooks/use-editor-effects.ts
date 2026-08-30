@@ -24,7 +24,10 @@ import {
 interface UseEditorEffectsParams {
   editor: Editor | null;
   editorStateCache: React.MutableRefObject<Map<string, EditorState>>;
-  inlineAI: { applyContent: (content: string) => void };
+  inlineAI: {
+    applyContent: (content: string) => void;
+    previewInsertAfterSelection: (content: string) => void;
+  };
   setFindReplaceMode: (mode: "find" | "replace") => void;
   setFindReplaceOpen: (open: boolean) => void;
 }
@@ -76,6 +79,22 @@ export function useEditorEffects({
         editor.view.focus();
       }
       useUIStore.getState().setPendingApplyContent(null);
+    });
+    return unsub;
+  }, [editor, inlineAI]);
+
+  // §314 AI가 뽑은 액션 아이템 — **언제나** diff 미리보기를 지난다.
+  //
+  // `pendingApplyContent`와 나란한 통로이지만 분기가 없다. 저쪽은 선택이 없으면 문서에
+  // 곧바로 넣지만, 태스크에는 그 지름길이 없어야 한다(§18.20 위험 8) — 뽑힌 줄은 문서에
+  // 들어가는 순간 아젠다·쿼리 블록·태그 인덱스에도 나타나므로, 확인 없이 쓰면 사용자가
+  // 쓰지 않은 할 일이 앱 전체에 퍼진다.
+  useEffect(() => {
+    const unsub = useUIStore.subscribe((state) => {
+      const tasks = state.pendingInsertTasks;
+      if (!tasks || !editor) return;
+      inlineAI.previewInsertAfterSelection(tasks);
+      useUIStore.getState().setPendingInsertTasks(null);
     });
     return unsub;
   }, [editor, inlineAI]);

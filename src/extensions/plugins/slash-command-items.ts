@@ -38,6 +38,7 @@ import {
 } from "../../utils/journal/journal-photo";
 import { classifyMediaSrc } from "../../utils/media-src";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
+import { extractActionItems } from "../../utils/tasks/extract-action-items";
 import {
   askTaskField,
   commitTaskField,
@@ -443,6 +444,19 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       },
     );
   }
+
+  // §314 회의록에서 할 일 뽑기. 태스크 줄 위가 아니라 **어디서나** 쓸 수 있어야 한다 —
+  // 뽑는 대상이 태스크가 아니라 그 위의 산문이기 때문이다.
+  items.push({
+    id: "extract-tasks",
+    label: "Extract Action Items",
+    category: "Tasks",
+    description: "Pull to-dos out of the selection with AI",
+    mdHint: "AI",
+    action: () => {
+      void extractActionItems(editor);
+    },
+  });
 
   // §6.2 Built-in AI slash commands
   items.push(

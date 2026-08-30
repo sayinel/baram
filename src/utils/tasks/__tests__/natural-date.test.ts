@@ -69,6 +69,40 @@ describe("절대 날짜 — `resolveDateInput`의 어휘 그대로", () => {
   });
 });
 
+describe("‼️ 마감 표지 — 이것이 없으면 한국어에서 알아보는 것이 거의 없다", () => {
+  it.each([
+    ["금요일까지", "2026-09-18"],
+    ["내일까지", "2026-09-17"],
+    ["9월 30일까지", "2026-09-30"],
+    ["3일 후까지", "2026-09-19"],
+  ])("`보고서 %s` → %s", (phrase, iso) => {
+    expect(atEnd(`보고서 ${phrase}`)?.iso).toBe(iso);
+  });
+
+  it("‼️ 표지까지가 한 구간이다 — `까지`가 홀로 남으면 안 된다", () => {
+    const guess = atEnd("보고서 금요일까지");
+    expect(guess).toMatchObject({ from: 4, to: 9 });
+    expect("보고서 금요일까지".slice(4, 9)).toBe("금요일까지");
+  });
+
+  it("`by friday`의 `by`도 구간에 든다", () => {
+    const guess = atEnd("report by friday");
+    expect(guess?.iso).toBe("2026-09-18");
+    expect("report by friday".slice(guess!.from, guess!.to)).toBe("by friday");
+  });
+
+  it("`by`가 낱말의 꼬리면 가져가지 않는다", () => {
+    const guess = atEnd("standby friday");
+    expect(guess?.iso).toBe("2026-09-18");
+    expect("standby friday".slice(guess!.from, guess!.to)).toBe("friday");
+  });
+
+  it("표지만 있고 날짜가 없으면 아무것도 아니다", () => {
+    expect(atEnd("보고서 까지")).toBeNull();
+    expect(atEnd("report by")).toBeNull();
+  });
+});
+
 describe("‼️ 커서에서 끝나는 것만 본다", () => {
   it("줄 가운데의 표현은 알아보지 않는다", () => {
     // 알아보면 `오늘의 할 일 정리` 같은 줄에 밑줄이 서고, 그 줄에서 Tab을 눌러

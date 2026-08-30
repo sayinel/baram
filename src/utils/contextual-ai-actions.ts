@@ -4,10 +4,31 @@ import type { ContentMode } from "./content-type-detector";
 export interface AIAction {
   id: string;
   label: string;
-  /** 'replace' → diff preview & replace block content; 'generate' → insert after block */
-  mode: "generate" | "replace";
+  /**
+   * 'replace' → diff preview & replace block content; 'generate' → insert after block;
+   * 'tasks' → §314 extraction, which runs its own flow and lands in the diff preview.
+   *
+   * ‼️ 'tasks' exists as its own mode because the other two stream straight into the
+   * document. §18.20 risk 8 forbids that for extracted tasks: a task line is not confined
+   * to the document — the moment it lands it shows up in the agenda, in query blocks and
+   * in the tag index, so anything unreviewed spreads across the app. Folding extraction
+   * into 'generate' would be exactly the bypass that note rules out.
+   */
+  mode: "generate" | "replace" | "tasks";
   systemPrompt: string;
 }
+
+/**
+ * §314 액션 아이템 추출. `systemPrompt`가 비어 있는 것은 이 모드만 자기 프롬프트를
+ * 밖에 두기 때문이다 — `extractActionItems`가 `ACTION_ITEM_SYSTEM_PROMPT`를 들고 있고,
+ * 여기 한 벌 더 적으면 둘이 갈린다.
+ */
+export const EXTRACT_TASKS_ACTION: AIAction = {
+  id: "extract-tasks",
+  label: "Extract Action Items",
+  mode: "tasks",
+  systemPrompt: "",
+};
 
 const TEXT_ACTIONS: AIAction[] = [
   {
@@ -284,6 +305,15 @@ const MODE_ACTIONS: Record<ContentMode, AIAction[]> = {
   text: TEXT_ACTIONS,
 };
 
+/**
+ * §314 추출을 붙이는 모드. 회의록·논의 메모는 산문이므로 산문 모드에만 둔다 — 수식이나
+ * 이미지를 고르고 "할 일 뽑기"를 권하는 것은 그 자리에서 뜻이 없는 항목이다.
+ */
+const EXTRACTABLE: ContentMode[] = ["structure", "text"];
+
 export function getActionsForMode(mode: ContentMode): AIAction[] {
-  return MODE_ACTIONS[mode];
+  const actions = MODE_ACTIONS[mode];
+  return EXTRACTABLE.includes(mode)
+    ? [...actions, EXTRACT_TASKS_ACTION]
+    : actions;
 }

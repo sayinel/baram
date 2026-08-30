@@ -55,7 +55,7 @@ function mountEffects() {
     useEditorEffects({
       editor,
       editorStateCache,
-      inlineAI: { applyContent: vi.fn() },
+      inlineAI: { applyContent: vi.fn(), previewInsertAfterSelection: vi.fn() },
       setFindReplaceMode: vi.fn(),
       setFindReplaceOpen: vi.fn(),
     });
