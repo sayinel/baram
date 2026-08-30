@@ -5,6 +5,7 @@ import type { ZettelHubInboxItem } from "./use-zettel-hub-data";
 // reachable) actions promote or delete it.
 import { ArrowUp, Inbox, StickyNote, X } from "lucide-react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { deleteFile } from "../../ipc/invoke";
 import { promoteFleeting } from "../../services/zettelkasten-service";
 import { useUIStore } from "../../stores/ui/ui";
@@ -31,21 +32,25 @@ export function ZettelInboxList({
   onToggleCollapse,
   zettelDir,
 }: ZettelInboxListProps) {
+  const { t } = useTranslation();
+
   const handlePromote = (item: ZettelHubInboxItem) => {
     useUIStore.getState().openZettelTitleDialog({
       onSubmit: (title) =>
         promoteFleeting(zettelDir, item.path, title)
           .then(() => onRefresh())
           .catch((err) => logger.error("[Zettel] promote failed:", err)),
-      title: "Promote to Permanent Note",
-      description: "Move this fleeting note from inbox/ to notes/.",
-      confirmLabel: "Promote",
+      title: t("zettel.hub.promote"),
+      description: t("zettel.hub.promote.desc"),
+      confirmLabel: t("zettel.hub.promote.confirm"),
       initialTitle: item.title.slice(0, 80),
     });
   };
 
   const handleDelete = async (item: ZettelHubInboxItem) => {
-    const ok = await showConfirm(`Move "${item.title}" to Trash?`);
+    const ok = await showConfirm(
+      t("zettel.hub.delete.confirm", { title: item.title }),
+    );
     if (!ok) return;
     try {
       await deleteFile(item.path);
@@ -61,7 +66,7 @@ export function ZettelInboxList({
       <ZettelHubSectionHeader
         collapsed={collapsed}
         icon={<Inbox size={14} strokeWidth={1.5} />}
-        label={`INBOX (${items.length})`}
+        label={t("zettel.hub.inbox", { count: String(items.length) })}
         onToggle={onToggleCollapse}
       />
       {!collapsed && (
@@ -69,7 +74,7 @@ export function ZettelInboxList({
           {items.length === 0
             ? !loading && (
                 <div className="zettel-hub-empty-hint">
-                  Inbox is empty — press ⇧⌘N to capture a thought.
+                  {t("zettel.hub.inbox.empty")}
                 </div>
               )
             : items.map((item) => (
@@ -99,24 +104,28 @@ export function ZettelInboxList({
                   </span>
                   <div className="zettel-hub-inbox-actions">
                     <button
-                      aria-label={`Promote "${item.title}"`}
+                      aria-label={t("zettel.hub.promote.aria", {
+                        title: item.title,
+                      })}
                       className="zettel-hub-inbox-action btn-unstyled icon-btn"
                       onClick={(e) => {
                         e.stopPropagation();
                         handlePromote(item);
                       }}
-                      title="Promote to Permanent Note"
+                      title={t("zettel.hub.promote")}
                     >
                       <ArrowUp size={12} strokeWidth={1.5} />
                     </button>
                     <button
-                      aria-label={`Delete "${item.title}"`}
+                      aria-label={t("zettel.hub.delete.aria", {
+                        title: item.title,
+                      })}
                       className="zettel-hub-inbox-action btn-unstyled icon-btn"
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleDelete(item);
                       }}
-                      title="Delete"
+                      title={t("zettel.hub.delete")}
                     >
                       <X size={12} strokeWidth={1.5} />
                     </button>

@@ -1,10 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// §307 C 허브가 태스크 섹션을 품으면서 이 패널도 스캔을 띄운다 — 두 이름이 빠지면
+// 목록이 아니라 **마운트 자체**가 던진다.
 vi.mock("../../../ipc/invoke", () => ({
   listDir: vi.fn().mockResolvedValue([]),
   readFile: vi.fn().mockResolvedValue(""),
   deleteFile: vi.fn().mockResolvedValue(undefined),
+  getFileTasks: vi.fn().mockResolvedValue([]),
+  getVaultTasks: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("../../../ipc/tag", () => ({
   getFilesByTag: vi.fn().mockResolvedValue([]),
@@ -274,7 +278,7 @@ describe("ZettelHubPanel", () => {
 
     render(<ZettelHubPanel />);
     fireEvent.click(
-      screen.getByRole("button", { name: `Promote "${longTitle}"` }),
+      screen.getByRole("button", { name: `Promote “${longTitle}”` }),
     );
 
     const dialog = useUIStore.getState().zettelTitleDialog;
@@ -320,7 +324,7 @@ describe("ZettelHubPanel", () => {
 
     render(<ZettelHubPanel />);
     fireEvent.click(
-      screen.getByRole("button", { name: /promote "first idea"/i }),
+      screen.getByRole("button", { name: /promote “first idea”/i }),
     );
 
     const dialog = useUIStore.getState().zettelTitleDialog;
@@ -361,7 +365,7 @@ describe("ZettelHubPanel", () => {
 
     render(<ZettelHubPanel />);
     fireEvent.click(
-      screen.getByRole("button", { name: /delete "first idea"/i }),
+      screen.getByRole("button", { name: /delete “first idea”/i }),
     );
 
     await waitFor(() => {
@@ -392,21 +396,29 @@ describe("ZettelHubPanel", () => {
 
     render(<ZettelHubPanel />);
     fireEvent.click(
-      screen.getByRole("button", { name: /delete "first idea"/i }),
+      screen.getByRole("button", { name: /delete “first idea”/i }),
     );
 
     await waitFor(() => expect(showConfirm).toHaveBeenCalled());
     expect(deleteFile).not.toHaveBeenCalled();
   });
 
-  it("renders sections in order: Inbox, MOCs, FAVORITES, RECENT", () => {
+  it("renders sections in order: Inbox, MOCs, FAVORITES, RECENT, TASKS", () => {
     render(<ZettelHubPanel />);
 
     const headers = Array.from(
       document.querySelectorAll(".zettel-hub-section-title"),
     ).map((el) => el.textContent);
 
-    expect(headers).toEqual(["INBOX (0)", "MOCs", "FAVORITES", "RECENT"]);
+    // §307 C 태스크는 맨 아래다 — 노트가 아니라 조작이라, 위에 두면 허브를 여는
+    // 목적(노트로 들어가기)이 한 칸 밀린다.
+    expect(headers).toEqual([
+      "INBOX (0)",
+      "MOCs",
+      "FAVORITES",
+      "RECENT",
+      "TASKS (0)",
+    ]);
   });
 
   it("shows the empty hint when there are no favorites", () => {

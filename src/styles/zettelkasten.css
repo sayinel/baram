@@ -240,3 +240,16 @@
 .zettel-hub-hint-link:hover {
   background: var(--color-bg-subtle);
 }
+
+/* §307 C 허브의 태스크 섹션 — "전체 보기". 형제 섹션에는 없는 조작이라 링크처럼 읽히되
+   목록 항목으로는 읽히지 않도록 들여쓰기와 크기를 빈 문구와 맞춘다. */
+.zettel-hub-more {
+  padding: 4px 8px 2px 26px;
+  font-size: 0.75rem;
+  color: var(--color-accent-default);
+  cursor: pointer;
+}
+
+.zettel-hub-more:hover {
+  text-decoration: underline;
+}

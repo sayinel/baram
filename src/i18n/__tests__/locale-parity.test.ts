@@ -54,6 +54,7 @@ const SHARED_VALUES = new Set<string>([
   "settings.workspace.preset.skills", // Skills
   "tasks.edit.tags.placeholder", // deep-work, someday — `#someday`는 §312가 쓰는 기능 태그다
   "update.dialog.versionChange", // {current} → {available}
+  "zettel.hub.moc", // MOC — Zettelkasten 용어 그대로 쓴다
 ]);
 
 describe("locale files are one-to-one", () => {

@@ -7,6 +7,7 @@ import type { ZettelHubListItem } from "./use-zettel-hub-data";
 
 import { ChevronDown, ChevronRight, Star, StickyNote } from "lucide-react";
 
+import { useTranslation } from "../../i18n/useTranslation";
 import { openZettelHubNote } from "./open-hub-note";
 
 interface ZettelHubSectionHeaderProps {
@@ -66,6 +67,8 @@ export function ZettelSectionList({
   onToggleCollapse,
   onToggleFavorite,
 }: ZettelSectionListProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="zettel-hub-section">
       <ZettelHubSectionHeader
@@ -124,7 +127,11 @@ export function ZettelSectionList({
                     />
                     <span className="text-truncate">{item.title}</span>
                     <button
-                      aria-label={active ? "Unfavorite" : "Favorite"}
+                      aria-label={t(
+                        active
+                          ? "zettel.hub.unfavorite"
+                          : "zettel.hub.favorite",
+                      )}
                       className={[
                         "zettel-hub-fav-btn",
                         "btn-unstyled",
