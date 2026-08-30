@@ -907,6 +907,8 @@
   "tasks.archive.error": "Couldn't archive. Nothing was moved — see the log.",
   "tasks.archive.result": "Archived {count} task(s).",
   "tasks.archive.failed": "Couldn't archive {count} task(s). See the log.",
+  "dialog.cancel": "Cancel",
+  "dialog.insert": "Insert",
   "query.title": "Query",
   "query.count": "{count} results",
   "query.source": "Source",

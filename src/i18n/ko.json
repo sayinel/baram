@@ -907,6 +907,8 @@
   "tasks.archive.error": "정리하지 못했습니다. 아무것도 옮기지 않았습니다 — 로그를 확인하세요.",
   "tasks.archive.result": "{count}개를 정리했습니다.",
   "tasks.archive.failed": "{count}개를 정리하지 못했습니다. 로그를 확인하세요.",
+  "dialog.cancel": "취소",
+  "dialog.insert": "삽입",
   "query.title": "쿼리",
   "query.count": "결과 {count}건",
   "query.source": "대상",
