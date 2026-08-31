@@ -11,6 +11,7 @@ import { findSuggestionMatch } from "@tiptap/suggestion";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { showFieldDialog } from "../../utils/field-dialog";
 import { SLASH_TRIGGER } from "../plugins/slash-command";
 import { buildSlashItems } from "../plugins/slash-command-items";
@@ -140,6 +141,16 @@ describe("항목은 태스크 줄에서만 보인다", () => {
     expect(ids).toContain("priority");
   });
 
+  it("‼️ 날짜 셋이 함께 있다", () => {
+    // `/due`만 두면 `⏳`·`🛫`는 `sched:`·`start:` 입력 규칙을 아는 사람만 쓸 수 있는데,
+    // 그 규칙을 몰라서 메뉴를 여는 사람이 바로 이 메뉴의 사용자다.
+    view = mount("보고서 쓰기");
+    const ids = itemsAt(3).map((i) => i.id);
+    expect(ids).toContain("due");
+    expect(ids).toContain("sched");
+    expect(ids).toContain("start");
+  });
+
   it("바깥 문단에서는 둘 다 없다", () => {
     view = mount("보고서 쓰기");
     const outside = view.state.doc.content.size - 2;
@@ -224,6 +235,94 @@ describe("/due", () => {
     view = mount("보고서 📅2026-08-30");
     await pick(null);
     expect(text()).toContain("보고서 📅2026-08-30");
+  });
+});
+
+describe("/sched · /start", () => {
+  it.each([
+    ["sched", "⏳"],
+    ["start", "🛫"],
+  ])("`/%s` → %s 필드", async (id, emoji) => {
+    view = mount("보고서 📅2026-08-30");
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({ date: "2026-09-15" });
+    itemsAt(3)
+      .find((i) => i.id === id)
+      ?.action();
+    await vi.waitFor(() => expect(text()).toContain(emoji));
+  });
+
+  it("‼️ §303 자리를 지킨다 — 예정일은 마감 앞이다", async () => {
+    view = mount("보고서 📅2026-08-30");
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({ date: "2026-08-20" });
+    itemsAt(3)
+      .find((i) => i.id === "sched")
+      ?.action();
+    await vi.waitFor(() =>
+      expect(text()).toContain("보고서 ⏳2026-08-20 📅2026-08-30"),
+    );
+  });
+});
+
+describe("‼️ 고친 뒤 커서가 그 줄로 돌아온다", () => {
+  it("모달이 닫히면 포커스와 커서가 태스크 줄 끝에 선다", async () => {
+    // 모달이 포커스를 가져갔다가 닫히면 포커스는 `body`로 떨어진다. 슬래시 커맨드는
+    // **타이핑 중에** 부르는 것이라, 이어 쓰려고 다시 눌러야 하는 순간이 곧 이 명령을
+    // 쓰지 않을 이유가 된다.
+    view = mount("보고서");
+    view.dom.blur();
+    vi.mocked(showFieldDialog).mockResolvedValueOnce({ date: "2026-09-15" });
+    itemsAt(3)
+      .find((i) => i.id === "due")
+      ?.action();
+    await vi.waitFor(() => expect(text()).toContain("📅2026-09-15"));
+
+    const line = view.state.doc.firstChild!.firstChild!.firstChild!;
+    // 문단 내용은 3에서 시작하므로 끝은 3 + 길이다.
+    expect(view.state.selection.from).toBe(3 + line.content.size);
+    expect(view.hasFocus()).toBe(true);
+  });
+
+  it("취소하면 커서를 빼앗지 않는다", async () => {
+    view = mount("보고서 내용");
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 5)),
+    );
+    vi.mocked(showFieldDialog).mockResolvedValueOnce(null);
+    itemsAt(5)
+      .find((i) => i.id === "due")
+      ?.action();
+    await vi.waitFor(() => expect(showFieldDialog).toHaveBeenCalled());
+    expect(view.state.selection.from).toBe(5);
+  });
+
+  it("‼️ 낙관적 잠금에 걸려 쓰지 못했으면 커서도 옮기지 않는다", async () => {
+    // 취소 경로는 확정에 닿기도 전에 돌아서므로 이 분기를 지나지 않는다. 쓰기가
+    // **거절된** 경우에만 갈린다 — 아무것도 안 바뀐 문서에서 커서만 튀면 사용자는
+    // 무슨 일이 일어났는지 알 수 없다.
+    view = mount("보고서");
+    let release!: (v: null | Record<string, string>) => void;
+    vi.mocked(showFieldDialog).mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    itemsAt(3)
+      .find((i) => i.id === "due")
+      ?.action();
+    await vi.waitFor(() => expect(showFieldDialog).toHaveBeenCalled());
+
+    // 모달이 열린 사이 그 줄이 바뀐다 → 확정이 거절된다.
+    view.dispatch(view.state.tr.insertText("!", 3));
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 4)),
+    );
+
+    release({ date: "2026-09-15" });
+    await vi.waitFor(() =>
+      expect(useUIStore.getState().toast?.type).toBe("error"),
+    );
+    expect(view.state.selection.from).toBe(4);
+    expect(text()).not.toContain("📅");
   });
 });
 

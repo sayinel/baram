@@ -7,6 +7,7 @@ import type { Locale } from "../i18n";
 
 import { t } from "../i18n";
 import { useSettingsStore } from "../stores/settings/store";
+import { buildDateField } from "./date-picker";
 
 export interface FieldDialogOptions {
   fields: FieldSpec[];
@@ -25,6 +26,12 @@ export interface FieldSpec {
   /** 있으면 `<select>`, 없으면 텍스트 입력. 빈 배열은 선택지가 없다는 뜻이 아니라 실수다. */
   options?: FieldOption[];
   placeholder?: string;
+  /**
+   * `"date"`면 텍스트 입력 **아래에 달력**이 붙는다. 값을 들고 있는 것은 여전히 입력이라
+   * `+3`·`t`·`9/30` 같은 빠른 표기가 그대로 살아 있다 — 달력은 찾아보는 손잡이를 하나 더
+   * 두는 것이지, 아는 사람의 길을 막는 것이 아니다.
+   */
+  type?: "date";
   /** 초기값 — 고치는 다이얼로그는 현재 값이 들어 있어야 한다. */
   value?: string;
 }
@@ -71,6 +78,14 @@ export function showFieldDialog(
       fieldLabel.appendChild(control);
       dialog.appendChild(fieldLabel);
       inputs.push(control);
+
+      // 달력은 라벨 **밖에** 둔다. 안에 넣으면 날짜 칸을 누를 때마다 라벨이 자기
+      // 컨트롤로 포커스를 되돌려, 방향키로 옮기던 자리를 매번 잃는다.
+      if (field.type === "date" && control instanceof HTMLInputElement) {
+        dialog.appendChild(
+          buildDateField(control, new Date(), locale).calendar,
+        );
+      }
     }
 
     const btnRow = document.createElement("div");

@@ -3,6 +3,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { SlashMenuItem } from "../../components/command/SlashMenu";
 import type { TaskFieldKind } from "../../utils/tasks/task-field-order";
 import type { Editor } from "@tiptap/core";
+import type { EditorView } from "@tiptap/pm/view";
+
+import { TextSelection } from "@tiptap/pm/state";
 
 import { createDir, importFile } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai/ai";
@@ -27,6 +30,7 @@ import {
   substituteInput,
   substituteVariables,
 } from "../../utils/custom-ai-commands";
+import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import {
   awaitBoundToEditor,
   registerEditorMutationTask,
@@ -45,7 +49,7 @@ import {
   currentTaskField,
   taskLineTarget,
 } from "./task-field-edit";
-import { chainWithVimExternalEdit } from "./vim/vim-keys";
+import { chainWithVimExternalEdit, withVimExternalEdit } from "./vim/vim-keys";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   const items: SlashMenuItem[] = [
@@ -425,15 +429,18 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   // Suggestion이 그 사이에 `/due` 글자를 지우므로 원문이 낡는다(`setTaskFieldFromSlash`
   // 주석). 값을 남기지 않으면 그 실수를 할 자리가 없다.
   if (taskLineTarget(editor.state)) {
+    // ‼️ 날짜 셋이 함께 있다. `/due`만 두면 나머지 둘은 `sched:`·`start:` 입력 규칙을
+    // 아는 사람만 쓸 수 있는데, 그 규칙을 몰라서 메뉴를 여는 사람이 바로 이 메뉴의
+    // 사용자다 — 세 필드가 §303 표에서 같은 자리에 있는 이상 메뉴에서도 같이 있어야 한다.
     items.push(
-      {
-        id: "due",
-        label: "Due Date",
+      ...DATE_FIELDS.map(({ hint, id, kind, label }) => ({
+        id,
+        label,
         category: "Tasks",
-        description: "Set this task's due date",
-        mdHint: "📅",
-        action: () => setTaskFieldFromSlash(editor, "due"),
-      },
+        description: `Pick this task's ${label.toLowerCase()}`,
+        mdHint: hint,
+        action: () => setTaskFieldFromSlash(editor, kind),
+      })),
       {
         id: "priority",
         label: "Priority",
@@ -743,7 +750,23 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
 }
 
 /**
- * §308 M3-b `/due`·`/priority`의 몸통.
+ * §303 표의 날짜 필드 셋. `id`가 곧 사용자가 치는 말이다(`/due`·`/sched`·`/start`) —
+ * 입력 규칙의 트리거(`due:`·`sched:`·`start:`)와 같은 말이라, 메뉴에서 배운 이름을
+ * 그대로 빠른 길에 쓸 수 있다.
+ */
+const DATE_FIELDS: {
+  hint: string;
+  id: string;
+  kind: TaskFieldKind;
+  label: string;
+}[] = [
+  { hint: "📅", id: "due", kind: "due", label: "Due Date" },
+  { hint: "⏳", id: "sched", kind: "scheduled", label: "Scheduled Date" },
+  { hint: "🛫", id: "start", kind: "start", label: "Start Date" },
+];
+
+/**
+ * §308 M3-b `/due`·`/sched`·`/start`·`/priority`의 몸통.
  *
  * ‼️ 대상은 **여기서** 다시 잡는다. 메뉴를 지을 때 잡아 두면 그 사이에 Suggestion이
  * `/due` 글자를 지우므로(`slash-command.ts`의 `command`) 캡처한 원문이 낡고, 낙관적
@@ -762,5 +785,27 @@ async function setTaskFieldFromSlash(
     askTaskField(kind, currentTaskField(line.paragraphText, kind)),
   );
   if (next === null) return;
-  commitTaskField(view, line, kind, next);
+  if (!commitTaskField(view, line, kind, next)) return;
+
+  // ‼️ 커서를 그 줄로 돌려놓는다. 모달이 포커스를 가져갔다가 닫히면 포커스는 `body`로
+  // 떨어지고, 사용자는 방금 고친 줄에서 이어 쓰려다 다시 눌러야 한다 — 슬래시 커맨드는
+  // **타이핑 중에** 부르는 것이라 그 끊김이 곧 이 명령을 쓰지 않을 이유가 된다.
+  // 칩 클릭은 이것을 하지 않는다: 거기서는 커서가 애초에 다른 곳에 있었고, 그 줄로
+  // 옮기는 순간 방금 고친 칩이 원문으로 돌아간다.
+  focusTaskLineEnd(view, line.paragraphFrom);
+}
+
+/** 문단 끝에 커서를 놓고 에디터에 포커스를 준다. */
+function focusTaskLineEnd(view: EditorView, paragraphFrom: number): void {
+  const { doc } = view.state;
+  if (paragraphFrom < 0 || paragraphFrom > doc.content.size) return;
+  const $at = doc.resolve(paragraphFrom);
+  const end = Math.min($at.end(), doc.content.size);
+  view.dispatch(
+    withVimExternalEdit(
+      view.state.tr.setSelection(TextSelection.create(doc, end)),
+    ),
+  );
+  // bare `view.focus()`는 non-editable 뷰에서 no-op다(CLAUDE.md).
+  focusEditorView(view);
 }

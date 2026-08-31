@@ -225,6 +225,7 @@ async function askDate(
         // 받아들이는 표기를 라벨이 직접 말한다 — `resolveDateInput`이 아는 어휘다.
         label: t("tasks.triage.pickLabel", locale),
         placeholder: "2026-08-30",
+        type: "date",
         value: current,
       },
     ],

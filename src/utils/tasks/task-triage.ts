@@ -313,6 +313,7 @@ async function pickDueDate(
         key: "date",
         label: ctx.t("tasks.triage.pickLabel"),
         placeholder: "2026-08-30",
+        type: "date",
       },
     ],
     submitLabel: ctx.t("tasks.triage.pickSubmit"),

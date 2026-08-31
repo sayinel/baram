@@ -141,3 +141,55 @@ describe("버튼 문구", () => {
     await promise;
   });
 });
+
+describe("‼️ 날짜 필드에는 달력이 붙는다", () => {
+  it('`type: "date"`면 입력 아래에 달력이 선다', () => {
+    // 이것이 없으면 `/due`는 텍스트 입력만 열고, 그건 `due:m `보다 느리다.
+    const promise = showFieldDialog({
+      fields: [{ key: "date", label: "Date", type: "date" }],
+      title: "기한",
+    });
+
+    expect(dialog().querySelector(".date-picker")).not.toBeNull();
+    click("Cancel");
+    return promise;
+  });
+
+  it("달력에서 고른 값이 그대로 돌아온다", async () => {
+    const promise = showFieldDialog({
+      fields: [
+        { key: "date", label: "Date", type: "date", value: "2026-09-16" },
+      ],
+      title: "기한",
+    });
+
+    dialog().querySelector<HTMLElement>('[data-iso="2026-09-20"]')!.click();
+    click("Insert");
+    await expect(promise).resolves.toEqual({ date: "2026-09-20" });
+  });
+
+  it("‼️ 달력은 라벨 밖에 있다", () => {
+    // 라벨 안에 넣으면 날짜 칸을 누를 때마다 라벨이 자기 컨트롤로 포커스를 되돌려,
+    // 방향키로 옮기던 자리를 매번 잃는다.
+    const promise = showFieldDialog({
+      fields: [{ key: "date", label: "Date", type: "date" }],
+      title: "기한",
+    });
+
+    expect(dialog().querySelector("label .date-picker")).toBeNull();
+    expect(dialog().querySelector(".date-picker")).not.toBeNull();
+    click("Cancel");
+    return promise;
+  });
+
+  it("날짜 필드가 아니면 달력이 없다 — 링크·이미지 삽입은 그대로다", () => {
+    const promise = showFieldDialog({
+      fields: [{ key: "url", label: "URL" }],
+      title: "삽입",
+    });
+
+    expect(dialog().querySelector(".date-picker")).toBeNull();
+    click("Cancel");
+    return promise;
+  });
+});

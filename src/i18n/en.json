@@ -926,6 +926,8 @@
   "tasks.archive.failed": "Couldn't archive {count} task(s). See the log.",
   "dialog.cancel": "Cancel",
   "dialog.insert": "Insert",
+  "datePicker.prevMonth": "Previous month",
+  "datePicker.nextMonth": "Next month",
   "query.title": "Query",
   "query.count": "{count} results",
   "query.source": "Source",
