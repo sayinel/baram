@@ -8,6 +8,7 @@ import type { Locale } from "../i18n";
 import { t } from "../i18n";
 import { useSettingsStore } from "../stores/settings/store";
 import { buildDateField } from "./date-picker";
+import { restoreFocus } from "./restore-focus";
 
 export interface FieldDialogOptions {
   fields: FieldSpec[];
@@ -51,6 +52,14 @@ export function showFieldDialog(
   const { title, fields, submitLabel = t("dialog.insert", locale) } = options;
 
   return new Promise((resolve) => {
+    // ‼️ A modal must hand focus back to whatever it took it from. Without
+    // this the dialog removes itself, focus falls to <body>, and the editor's
+    // caret is simply gone — on EVERY exit: cancel, Escape, Enter, or a value
+    // actually picked. Callers were papering over it one at a time (the slash
+    // commands re-place the caret afterwards); the dialog owes it to all of
+    // them, including the ones that only read a value and change nothing.
+    const returnFocusTo = document.activeElement;
+
     const overlay = document.createElement("div");
     overlay.className = "ai-prompt-overlay";
 
@@ -115,6 +124,7 @@ export function showFieldDialog(
 
     const cleanup = (value: null | Record<string, string>) => {
       overlay.remove();
+      restoreFocus(returnFocusTo);
       resolve(value);
     };
 

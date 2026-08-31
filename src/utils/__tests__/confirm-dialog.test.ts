@@ -122,3 +122,51 @@ describe("showConfirm 확인 버튼 문구", () => {
     expect(await answer).toBe(false);
   });
 });
+
+// ‼️ A modal must hand focus back to whatever it took it from. §317 put these
+// confirms directly in the editor's click path (creating a journal entry, or a
+// note named after a date), so leaving focus on <body> afterwards reads to the
+// user as the caret disappearing.
+describe("focus goes back where it came from", () => {
+  function opener(): HTMLElement {
+    const el = document.createElement("div");
+    el.tabIndex = 0;
+    document.body.append(el);
+    el.focus();
+    return el;
+  }
+
+  it("restores it when confirmed", async () => {
+    const before = opener();
+    const answer = showConfirm("Create it?");
+    await afterInitialFocus();
+    expect(document.activeElement).not.toBe(before);
+
+    buttons()[1].click();
+    await answer;
+
+    expect(document.activeElement).toBe(before);
+  });
+
+  it("restores it when cancelled", async () => {
+    const before = opener();
+    const answer = showConfirm("Create it?");
+    await afterInitialFocus();
+
+    buttons()[0].click();
+    await answer;
+
+    expect(document.activeElement).toBe(before);
+  });
+
+  it("restores it when Escape closes it", async () => {
+    const before = opener();
+    const answer = showConfirm("Create it?");
+    await afterInitialFocus();
+
+    press("Escape");
+    await answer;
+
+    expect(document.activeElement).toBe(before);
+  });
+});
