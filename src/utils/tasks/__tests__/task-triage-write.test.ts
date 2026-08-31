@@ -33,6 +33,7 @@ const CTX: TaskTriageContext = {
   editor: null,
   exclude: ["archive"],
   now: NOW,
+  recordDoneDate: true,
   t: EN_T,
 };
 

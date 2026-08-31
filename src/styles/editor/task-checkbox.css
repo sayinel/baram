@@ -1,0 +1,144 @@
+/* §5.1 / §18.18 M4 — the four-state task control's APPEARANCE, in one place.
+ *
+ * THREE surfaces draw this control and only their PLACEMENT differs: the editor
+ * line hangs it in the marker gutter (editor/lists.css), the agenda row lays it
+ * out in flow (tasks.css), and the Memories view drops it inline into rendered
+ * markdown (journal-memories.ts). The glyphs live here rather than in any of
+ * them, so a fifth state — or a fix to the tick — cannot land on one surface
+ * and miss the others, leaving two screens disagreeing about the same file.
+ *
+ * ‼️ Selected by CLASS, never by tag. The control is a `<button>` where it is
+ * pressable and a `<span>` where it is not — the HTML export retags it so it
+ * survives the
+ * blanket "remove every pressable thing" rule (export-html-chrome.ts). Written
+ * as `button.task-checkbox`, every rule below would stop matching in an export
+ * and every printed task would lose its box — with nothing wrong on screen.
+ *
+ * A `<button>`, not `<label>` + a stretched invisible `<input type=checkbox>`,
+ * for two reasons. A checkbox has two states and a third only as
+ * `indeterminate`, so it cannot tell `doing` from `cancelled`. And the pair had
+ * a seam: the label's border ring, and later the checked tick, each ended up on
+ * top of the input, where a press reported the LABEL as `event.target` and the
+ * handler silently did nothing — twice, years apart. One element has nowhere
+ * for that to happen: its pseudo-elements originate on itself.
+ *
+ * Colours come through two local custom properties so each surface can hand in
+ * its own ground and ink (the editor's canvas is not the panel's).
+ */
+.task-checkbox {
+  --checkbox-size: 0.85em;
+  --checkbox-border: 0.09em;
+  --checkbox-ground: var(--color-bg-default);
+  --checkbox-ink: var(--color-text-default);
+
+  position: relative;
+
+  /* ‼️ Load-bearing for the THIRD surface. The editor line places this
+     absolutely and the agenda row makes it a flex item — both blockify it — but
+     the Memories view drops it inline into rendered markdown, and an inline
+     element ignores `width`/`height`, so the box would vanish there alone. */
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--checkbox-size);
+  height: var(--checkbox-size);
+  padding: 0;
+  vertical-align: middle;
+  appearance: none;
+  cursor: pointer;
+  user-select: none;
+  background: var(--checkbox-ground);
+  border: var(--checkbox-border) solid
+    color-mix(in srgb, var(--checkbox-ink) 38%, var(--checkbox-ground));
+  border-radius: 0.2em;
+  transition:
+    background-color 0.12s,
+    border-color 0.12s;
+}
+
+.task-checkbox:hover {
+  border-color: var(--color-accent-default);
+}
+
+/* The control is the focusable element, so it draws its own ring. The old
+ * two-element version needed `:has(input:focus-visible)` because the focusable
+ * part was not the drawn part. */
+.task-checkbox:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 0.1em;
+}
+
+/* ── done: filled box + tick ────────────────────────────────────────────────
+ * The tick is two borders of a rotated box, so it scales with the control and
+ * needs no glyph, mask or SVG. Sized from the control rather than from the
+ * font, so it stays centred if the control's size changes.
+ *
+ * `--color-accent-on-solid` is derived from `--color-accent-default` by
+ * `theme-vars.ts`, so the tick stays legible on the fill in every theme. */
+.task-checkbox[data-state="done"] {
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.task-checkbox[data-state="done"]::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--checkbox-size) * 0.28);
+  height: calc(var(--checkbox-size) * 0.52);
+  content: "";
+  border: solid var(--color-accent-on-solid);
+  border-width: 0 0.085em 0.085em 0;
+  transform: translate(-62%, -66%) rotate(40deg);
+}
+
+/* ── doing: the marker itself, a slash across an open box ───────────────────
+ * Deliberately not a half-filled box. A half fill reads as "half done", which
+ * is a claim about progress the file never makes — `[/]` says only that the
+ * task has been started. The stroke echoes the character it round-trips as. */
+.task-checkbox[data-state="doing"] {
+  border-color: var(--color-accent-default);
+}
+
+.task-checkbox[data-state="doing"]::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.1em;
+  height: calc(var(--checkbox-size) * 0.82);
+  content: "";
+  background: var(--color-accent-default);
+  border-radius: 0.05em;
+  transform: translate(-50%, -50%) rotate(28deg);
+}
+
+/* ── cancelled: the box is crossed out ──────────────────────────────────────
+ * Muted rather than accented: a cancelled task is not an achievement, and
+ * painting it in the accent colour would make abandoned work compete with
+ * finished work for attention. */
+.task-checkbox[data-state="cancelled"] {
+  border-color: color-mix(
+    in srgb,
+    var(--checkbox-ink) 30%,
+    var(--checkbox-ground)
+  );
+}
+
+.task-checkbox[data-state="cancelled"]::before,
+.task-checkbox[data-state="cancelled"]::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.09em;
+  height: calc(var(--checkbox-size) * 0.86);
+  content: "";
+  background: color-mix(
+    in srgb,
+    var(--checkbox-ink) 45%,
+    var(--checkbox-ground)
+  );
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.task-checkbox[data-state="cancelled"]::before {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}

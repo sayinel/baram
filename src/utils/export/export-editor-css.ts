@@ -38,6 +38,7 @@ import mediaCSS from "../../styles/editor/media.css?raw";
 import mermaidCSS from "../../styles/editor/mermaid.css?raw";
 import svgBlockCSS from "../../styles/editor/svg-block.css?raw";
 import tablesCSS from "../../styles/editor/tables.css?raw";
+import taskCheckboxCSS from "../../styles/editor/task-checkbox.css?raw";
 import videoCSS from "../../styles/editor/video.css?raw";
 import primitivesCSS from "../../styles/generated/primitives.css?raw";
 import semanticLightCSS from "../../styles/generated/semantic-light.css?raw";
@@ -126,6 +127,10 @@ function dropDeclarations(css: string): string {
 const EDITOR_STYLESHEETS = [
   blocksCSS,
   listsCSS,
+  // ‼️ Unscoped on purpose — the control is drawn in the agenda too, so its
+  // rules carry no `.tiptap`. `rescopeEditorCSS` only rewrites that prefix, so
+  // they pass through and keep painting the exported boxes.
+  taskCheckboxCSS,
   mediaCSS,
   mathCSS,
   tablesCSS,

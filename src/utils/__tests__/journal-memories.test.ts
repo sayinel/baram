@@ -262,6 +262,28 @@ describe("§56c renderSimpleMarkdown", () => {
     expect(renderSimpleMarkdown("### Title")).toContain("<h3>Title</h3>");
   });
 
+  // §18.18 M4 — the Memories view is the THIRD surface that draws a task
+  // control, and it drops it inline into rendered markdown. It emits the same
+  // `.task-checkbox` markup as the editor and the agenda so one stylesheet
+  // paints all three; an `<input type=checkbox>` could only ever show two of
+  // the four states, and `[/]`/`[-]` lines were not even recognised as tasks.
+  it("renders all four task states with the shared control", () => {
+    const html = renderSimpleMarkdown(
+      "- [ ] open\n- [/] started\n- [x] closed\n- [-] dropped",
+    );
+    expect(html).not.toContain("<input");
+    for (const [state, text] of [
+      ["todo", "open"],
+      ["doing", "started"],
+      ["done", "closed"],
+      ["cancelled", "dropped"],
+    ]) {
+      expect(html).toContain(
+        `<li><span class="task-checkbox" data-state="${state}"></span> ${text}</li>`,
+      );
+    }
+  });
+
   it("renders unordered lists", () => {
     const html = renderSimpleMarkdown("- item 1\n- item 2");
     expect(html).toContain("<ul>");

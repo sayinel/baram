@@ -136,10 +136,24 @@
   white-space: nowrap;
 }
 
+/* §18.18 M4 — 컨트롤의 모양과 네 상태는 styles/editor/task-checkbox.css에 있다(에디터
+   줄과 공유). 여기 남는 것은 이 행에서의 자리뿐이다.
+
+   `align-items: baseline`인 행에서 버튼은 베이스라인이 없어 아래로 처진다 — 글자 크기가
+   아니라 첫 줄 상자에 맞춰야 체크박스가 제목과 나란히 앉는다. */
+.task-row-check {
+  align-self: center;
+}
+
 /* I1: 우선순위 라벨 스팬(.visually-hidden)이 체크박스와 텍스트 버튼 사이에 끼어들 수
-   있어 인접 형제(+)로는 우선순위가 있는 행에서 매치가 끊긴다 — 일반 형제(~)로 완료
-   스타일이 우선순위 유무와 무관하게 적용되게 한다. */
-.task-row-check:checked ~ .task-row-text {
+   있어 인접 형제(+)로는 우선순위가 있는 행에서 매치가 끊긴다 — 일반 형제(~)로 종료
+   스타일이 우선순위 유무와 무관하게 적용되게 한다.
+
+   ‼️ `:checked`가 아니라 `[data-state]`다. 컨트롤이 `<input>`이 아니게 되면서 `:checked`는
+   **어느 행에도 맞지 않게** 됐고, 그대로 두면 완료 행의 취소선이 조용히 사라진다.
+   취소도 같은 대접을 받는다 — 둘 다 끝난 줄이고, 더 볼 것이 없다는 표시가 필요하다. */
+.task-row-check[data-state="done"] ~ .task-row-text,
+.task-row-check[data-state="cancelled"] ~ .task-row-text {
   color: var(--color-text-muted);
   text-decoration: line-through;
 }

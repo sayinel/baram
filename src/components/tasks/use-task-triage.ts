@@ -16,8 +16,8 @@ import type { Editor } from "@tiptap/react";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import {
+  advanceTaskState,
   runTaskTriageAction,
-  toggleTaskState,
 } from "../../utils/tasks/task-triage";
 
 export interface TaskTriageOptions {
@@ -41,7 +41,13 @@ export interface TaskTriageOptions {
 }
 
 export interface TaskTriageWiring {
-  /** 체크 판정 — 체크박스와 `x` 키가 함께 부른다. */
+  /**
+   * 상태 한 걸음 — 체크박스와 `x` 키가 함께 부른다.
+   *
+   * §18.18 M4부터 토글이 아니라 **고리**다(할 일 → 진행 중 → 완료). 에디터의
+   * 체크박스·vim의 Space와 같은 `nextTaskState`를 돈다 — 같은 파일이 어느 화면에서
+   * 눌렀는지에 따라 다르게 반응하면 안 된다.
+   */
   onToggle: (task: TaskEntry) => void;
   /** 나머지 세 판정 — 메뉴 항목과 t·s·Del 키가 id를 올려 보낸다. */
   onTriage: (task: TaskEntry, action: string) => void;
@@ -57,15 +63,15 @@ export function useTaskTriage({
   const { t } = useTranslation();
 
   const context: TaskTriageContext = useMemo(
-    () => ({ editor, exclude, now, onReconciled, t }),
-    [editor, exclude, now, onReconciled, t],
+    () => ({ editor, exclude, now, onReconciled, recordDoneDate, t }),
+    [editor, exclude, now, onReconciled, recordDoneDate, t],
   );
 
   const onToggle = useCallback(
     (task: TaskEntry) => {
-      void toggleTaskState(task, recordDoneDate, context);
+      void advanceTaskState(task, context);
     },
-    [context, recordDoneDate],
+    [context],
   );
 
   const onTriage = useCallback(

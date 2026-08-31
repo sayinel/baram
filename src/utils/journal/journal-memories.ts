@@ -2,6 +2,8 @@
  * §56c — Memories View utility: One Line extraction + Memories data grouping
  */
 
+import { TASK_STATE_BY_MARKER } from "../tasks/task-state";
+
 /** Memory entry for grouping */
 export interface MemoryEntry {
   content: string;
@@ -231,6 +233,31 @@ export function renderSimpleMarkdown(md: string): string {
       continue;
     }
 
+    // Task list item — ‼️ **불릿보다 먼저**다. 태스크 줄은 불릿 줄의 특수한 경우라
+    // `/^[-*+]\s+(.+)$/`가 먼저 보면 통째로 삼킨다. 실제로 그랬다: 이 분기가 아래에
+    // 있던 동안 **한 번도 실행되지 않아** 저널의 체크박스가 `<li>[x] 한 일</li>`이라는
+    // 맨 글자로 나왔다(§18.18 M4 테스트가 드러냈다). 두 분기의 순서가 곧 계약이다.
+    //
+    // 마커는 넷 전부. `[ xX]`만 알던 시절엔 `- [/] 하는 중`이 태스크로 보이지도 않았다.
+    const taskMatch = trimmed.match(/^[-*+]\s+\[([ xX/-])\]\s+(.+)$/);
+    if (taskMatch) {
+      flushParagraph();
+      closeBlockquote();
+      if (inList !== "ul") {
+        closeList();
+        html.push("<ul>");
+        inList = "ul";
+      }
+      // 에디터·아젠다와 **같은 컨트롤 마크업**이다(`.task-checkbox`) — 이 HTML은
+      // 앱 안에서 렌더되므로 같은 스타일시트가 네 상태를 그대로 그린다. `<input>`은
+      // 두 상태밖에 없어 진행 중과 취소를 표현할 수 없었다.
+      const state = TASK_STATE_BY_MARKER[taskMatch[1]] ?? "todo";
+      html.push(
+        `<li><span class="task-checkbox" data-state="${state}"></span> ${inlineMarkdown(taskMatch[2])}</li>`,
+      );
+      continue;
+    }
+
     // Unordered list
     const ulMatch = trimmed.match(/^[-*+]\s+(.+)$/);
     if (ulMatch) {
@@ -256,23 +283,6 @@ export function renderSimpleMarkdown(md: string): string {
         inList = "ol";
       }
       html.push(`<li>${inlineMarkdown(olMatch[1])}</li>`);
-      continue;
-    }
-
-    // Task list item
-    const taskMatch = trimmed.match(/^[-*+]\s+\[([ xX])\]\s+(.+)$/);
-    if (taskMatch) {
-      flushParagraph();
-      closeBlockquote();
-      if (inList !== "ul") {
-        closeList();
-        html.push("<ul>");
-        inList = "ul";
-      }
-      const checked = taskMatch[1] !== " " ? " checked disabled" : " disabled";
-      html.push(
-        `<li><input type="checkbox"${checked}/> ${inlineMarkdown(taskMatch[2])}</li>`,
-      );
       continue;
     }
 

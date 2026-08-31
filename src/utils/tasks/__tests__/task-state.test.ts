@@ -9,7 +9,12 @@ import type { TaskState } from "../../../ipc/types";
 import { describe, expect, it } from "vitest";
 
 import { TASK_STATE_MARKER } from "../../../ipc/types";
-import { asTaskState, nextTaskState } from "../task-state";
+import {
+  asTaskState,
+  nextTaskState,
+  TASK_STATE_BY_MARKER,
+  TASK_STATES,
+} from "../task-state";
 
 const ALL = Object.keys(TASK_STATE_MARKER) as TaskState[];
 
@@ -67,5 +72,29 @@ describe("asTaskState — reading an attribute back", () => {
     ["a marker rather than a name", "x"],
   ])("falls back to `todo` for %s", (_label, value) => {
     expect(asTaskState(value)).toBe("todo");
+  });
+});
+
+describe("the two derived tables stay in step with the enum", () => {
+  // ‼️ `TASK_STATES` is hand-ordered (a dropdown reading "cancelled, doing,
+  // done, todo" is nonsense), which is exactly why it needs a guard: nothing
+  // in the type system notices a fifth state added to the marker table and
+  // forgotten here. The symptom would be a state that exists in files and in
+  // the editor but can never be selected in the filter.
+  it("lists every state exactly once", () => {
+    expect([...TASK_STATES].sort()).toEqual(ALL.sort());
+  });
+
+  it("maps every marker back to its own state", () => {
+    for (const state of ALL) {
+      expect(TASK_STATE_BY_MARKER[TASK_STATE_MARKER[state]]).toBe(state);
+    }
+  });
+
+  // GFM accepts either case, and a file written by another editor routinely
+  // uses the capital. Without this the line parses as `todo` and the user's
+  // finished work reappears as unfinished.
+  it("accepts the capital X that GFM allows", () => {
+    expect(TASK_STATE_BY_MARKER.X).toBe("done");
   });
 });

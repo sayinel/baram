@@ -77,7 +77,7 @@ describe("TaskQueryResults", () => {
       />,
     );
 
-    expect(screen.getByRole("checkbox", { name: /하나/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /하나 — / })).toBeInTheDocument();
   });
 
   it("체크가 아젠다와 같은 쓰기 경로를 탄다", async () => {
@@ -90,13 +90,14 @@ describe("TaskQueryResults", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(setTaskState).toHaveBeenCalledWith(
       "projects/alpha.md",
       0,
       "- [ ] 하나",
-      "done",
+      // §18.18 M4 — 한 번 누르면 고리를 한 걸음 돈다(할 일 → 진행 중).
+      "doing",
       true,
       "2026-08-30",
     );
@@ -115,7 +116,7 @@ describe("TaskQueryResults", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
   });
@@ -133,7 +134,7 @@ describe("TaskQueryResults", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
   });

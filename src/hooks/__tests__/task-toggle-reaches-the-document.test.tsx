@@ -93,7 +93,7 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { useTaskStore } from "../../stores/tasks/task-store";
 import { useUIStore } from "../../stores/ui/ui";
 import { clearOriginalDoc } from "../../utils/editor/programmatic-update";
-import { toggleTaskState } from "../../utils/tasks/task-triage";
+import { advanceTaskState } from "../../utils/tasks/task-triage";
 import { useAutoSave } from "../use-auto-save";
 import { useEditorEffects } from "../use-editor-effects";
 import { useFileWatcher } from "../use-file-watcher";
@@ -137,6 +137,7 @@ const CTX = {
   editor: null as Editor | null,
   exclude: [] as string[],
   now: new Date("2026-08-26T09:00:00Z"),
+  recordDoneDate: true,
   rootPath: "/v",
   t: ((k: string) => k) as never,
 };
@@ -254,7 +255,7 @@ describe("체크박스를 누르면 — 활성 clean WYSIWYG 탭", () => {
   it("워처를 기다리지 않고 화면의 문서가 바뀐다", async () => {
     mountApp();
 
-    await toggleTaskState(TASK, true, CTX);
+    await advanceTaskState(TASK, CTX);
 
     // 사용자가 보고 있는 것.
     expect(docMarkdown()).toContain("- [x] 원고 마감 ✅2026-08-26");
@@ -265,7 +266,7 @@ describe("체크박스를 누르면 — 활성 clean WYSIWYG 탭", () => {
   it("남의 편집인 척하지 않는다 — 토스트가 없다", async () => {
     mountApp();
 
-    await toggleTaskState(TASK, true, CTX);
+    await advanceTaskState(TASK, CTX);
     await deliverFileChanged(NOTE, "app");
     await waitFor(() => expect(docMarkdown()).toContain("- [x]"));
 
@@ -284,7 +285,7 @@ describe("체크박스를 누르면 — 활성 clean WYSIWYG 탭", () => {
     useFileStore.getState().setFileContent(NOTE, saved);
     useEditorStore.getState().markDirty("t1", false);
 
-    await toggleTaskState(TASK, true, CTX);
+    await advanceTaskState(TASK, CTX);
     await deliverFileChanged(NOTE, "app");
     await waitFor(() => expect(docMarkdown()).toContain("- [x]"));
 
@@ -297,7 +298,7 @@ describe("체크박스를 누르면 — 활성 clean WYSIWYG 탭", () => {
   it("이미 저장된 변경을 저장되지 않은 것처럼 보이게 하지 않는다", async () => {
     mountApp();
 
-    await toggleTaskState(TASK, true, CTX);
+    await advanceTaskState(TASK, CTX);
     await deliverFileChanged(NOTE, "app");
     await waitFor(() => expect(docMarkdown()).toContain("- [x]"));
 
@@ -309,7 +310,7 @@ describe("체크박스를 누르면 — 활성 clean WYSIWYG 탭", () => {
   it("openFiles 캐시도 함께 맞는다 — 저장 경로가 읽는 것이 그것이다", async () => {
     mountApp();
 
-    await toggleTaskState(TASK, true, CTX);
+    await advanceTaskState(TASK, CTX);
 
     expect(useFileStore.getState().openFiles.get(NOTE)).toContain(
       "- [x] 원고 마감 ✅2026-08-26",
@@ -380,7 +381,7 @@ describe("체크박스를 누르면 — 배경 clean 탭", () => {
     mountApp();
     leaveNoteTabBehind();
 
-    await toggleTaskState(TASK, true, CTX);
+    await advanceTaskState(TASK, CTX);
     await deliverFileChanged(NOTE, "app");
 
     // 사용자가 그 탭으로 돌아온다.
@@ -432,7 +433,7 @@ describe("체크박스를 누르면 — 배경 clean 탭", () => {
     install("# 다른 파일\n");
     useEditorStore.setState({ activeTabId: "t2", mruOrder: ["t2", "t1"] });
 
-    await toggleTaskState(TASK, true, CTX);
+    await advanceTaskState(TASK, CTX);
     await deliverFileChanged(NOTE, "app");
 
     const { rerender } = switchBackHarness();

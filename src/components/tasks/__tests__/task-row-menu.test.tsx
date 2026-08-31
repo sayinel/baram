@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const deleteTaskLine = vi.fn();
 const setTaskField = vi.fn();
+const setTaskState = vi.fn();
 const setTaskTag = vi.fn();
 const previewTaskFieldLine = vi.fn();
 const previewTaskTagLine = vi.fn();
@@ -32,7 +33,7 @@ vi.mock("../../../ipc/invoke", () => ({
   previewTaskTagLine: (...a: unknown[]) => previewTaskTagLine(...a),
   readFile: vi.fn().mockResolvedValue(""),
   setTaskField: (...a: unknown[]) => setTaskField(...a),
-  setTaskState: vi.fn(),
+  setTaskState: (...a: unknown[]) => setTaskState(...a),
   setTaskTag: (...a: unknown[]) => setTaskTag(...a),
 }));
 
@@ -60,9 +61,11 @@ const EN_T = (key: string, params?: Record<string, string>) =>
   t(key, "en", params);
 
 const LABEL = {
+  cancel: EN_T("tasks.triage.cancel"),
   pick: EN_T("tasks.triage.duePick"),
   someday: EN_T("tasks.triage.someday"),
   somedayOff: EN_T("tasks.triage.somedayOff"),
+  uncancel: EN_T("tasks.triage.uncancel"),
   today: EN_T("tasks.triage.dueToday"),
   tomorrow: EN_T("tasks.triage.dueTomorrow"),
 };
@@ -130,6 +133,7 @@ function renderRow(
     editor,
     exclude: [],
     now: NOW,
+    recordDoneDate: true,
     t: EN_T,
   };
   render(
@@ -165,6 +169,7 @@ function renderTwoBuckets(): { rowA: HTMLElement; rowB: HTMLElement } {
     editor: null,
     exclude: [],
     now: NOW,
+    recordDoneDate: true,
     t: EN_T,
   };
   const bucket = (label: string, tasks: TaskEntry[]) => (
@@ -423,6 +428,52 @@ describe("§312 triage menu on an agenda row", () => {
       rerender(view([second]));
 
       expect(screen.queryByRole("menu")).toBeNull();
+    });
+  });
+
+  // §18.18 M4 — 이 메뉴 항목이 아젠다에서 `[-]`에 닿는 **유일한** 길이다. 체크박스는
+  // 할 일 → 진행 중 → 완료만 돌기 때문이다(취소는 결정이지 마무리로 가는 걸음이 아니다).
+  describe("cancel", () => {
+    it("취소는 상태 전이를 그 행의 expected_raw로 낸다", async () => {
+      const row = renderRow();
+      const menu = openMenu(row);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.cancel }));
+
+      await waitFor(() =>
+        expect(setTaskState).toHaveBeenCalledWith(
+          "a.md",
+          0,
+          "- [ ] 하나",
+          "cancelled",
+          true,
+          expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        ),
+      );
+      expect(menu).not.toBeInTheDocument();
+    });
+
+    // ‼️ 라벨과 동작이 **같은 값**에서 갈린다. 둘이 갈라지면 "되살리기"라고 적힌
+    // 항목이 다시 취소하는 일이 생긴다 — `someday`가 같은 이유로 같은 모양이다.
+    it("이미 취소된 행에서는 되살리기라고 적히고 실제로 되살린다", async () => {
+      const row = renderRow({ raw: "- [-] 하나", state: "cancelled" });
+      openMenu(row);
+
+      expect(
+        screen.queryByRole("menuitem", { name: LABEL.cancel }),
+      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.uncancel }));
+
+      await waitFor(() =>
+        expect(setTaskState).toHaveBeenCalledWith(
+          "a.md",
+          0,
+          "- [-] 하나",
+          "todo",
+          true,
+          expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        ),
+      );
     });
   });
 

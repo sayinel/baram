@@ -1,5 +1,5 @@
 // §306 아젠다 필터 — 순수 함수. React 없이 검증한다(task-buckets.ts와 같은 이유).
-import type { TaskEntry } from "../../ipc/types";
+import type { TaskEntry, TaskState } from "../../ipc/types";
 
 import { linkTarget } from "./task-links";
 
@@ -24,7 +24,12 @@ export type TaskPriorityFilter = "all" | "high" | "low" | "normal";
 /** 레일의 단계 이름 — `.task-row[data-priority=…]`의 값과 **같은 글자**여야 한다. */
 export type TaskPriorityLevel = "high" | "low" | "lowest" | "urgent";
 
-export type TaskStateFilter = "all" | "done" | "todo";
+/**
+ * §18.18 M4 — `"all"`에 상태 넷이 붙는다. 예전에는 `"done" | "todo"`뿐이라
+ * "할 일"이 진행 중을 **가렸다**: `task.state !== f.state`가 `doing`을 걸러 내므로,
+ * 시작해 둔 일이 목록에서 통째로 사라졌다.
+ */
+export type TaskStateFilter = "all" | TaskState;
 
 /**
  * §312 GTD의 "언젠가/아마도" 목록을 여는 태그. 읽는 쪽(이 파일의 기본 제외)과 쓰는 쪽

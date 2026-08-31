@@ -57,7 +57,7 @@ export function normalizeActionItems(raw: string, today: Date): string {
  * 어기고, 그때 결과가 통째로 비면 사용자에게는 "아무것도 못 찾았다"로 보인다 —
  * 형식을 어긴 것과 찾은 것이 없는 것은 다른 사실이다.
  */
-const LIST_ITEM_RE = /^(\s*)(?:[-*+]\s*(?:\[[ xX]\]\s*)?|\d+[.)]\s+)(.*)$/;
+const LIST_ITEM_RE = /^(\s*)(?:[-*+]\s*(?:\[[ xX/-]\]\s*)?|\d+[.)]\s+)(.*)$/;
 
 /** 모델이 즐겨 붙이는 `**굵게**`·`__밑줄__` 껍데기를 벗긴다. */
 function stripEmphasis(body: string): string {

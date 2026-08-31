@@ -10,6 +10,38 @@ import type { TaskState } from "../../ipc/types";
 import { TASK_STATE_MARKER } from "../../ipc/types";
 
 /**
+ * The four states in the order a person thinks about them, for anything that
+ * LISTS them to a human — a filter dropdown, a menu.
+ *
+ * ‼️ Not `Object.keys(TASK_STATE_MARKER)`. That order is alphabetical
+ * (cancelled first), which reads as nonsense in a dropdown. A test pins this
+ * array against that record so a fifth state cannot be added to one and
+ * forgotten in the other.
+ */
+export const TASK_STATES: readonly TaskState[] = [
+  "todo",
+  "doing",
+  "done",
+  "cancelled",
+];
+
+/**
+ * Marker character → state, DERIVED from `TASK_STATE_MARKER` so the two
+ * directions cannot drift. `X` is folded in because GFM accepts either case.
+ *
+ * ‼️ Not for `convert-list`. That reader deliberately knows only `/` and `-`,
+ * because GFM has already turned `[ ]` and `[x]` into task items by the time it
+ * runs — handing it this table would make it re-read markers it must leave
+ * alone. This is for surfaces reading a RAW line, where all four are its job.
+ */
+export const TASK_STATE_BY_MARKER: Readonly<Record<string, TaskState>> = {
+  ...(Object.fromEntries(
+    Object.entries(TASK_STATE_MARKER).map(([state, marker]) => [marker, state]),
+  ) as Record<string, TaskState>),
+  X: "done",
+};
+
+/**
  * Coerce a stored attribute into a state.
  *
  * Documents outlive code. A `data-state` can arrive from pasted HTML, from an

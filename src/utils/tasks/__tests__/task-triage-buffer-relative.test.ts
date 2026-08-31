@@ -77,7 +77,7 @@ function closeTab(): void {
 }
 
 function ctx(editor: Editor | null = null): TaskTriageContext {
-  return { editor, exclude: [], now: NOW, t: EN_T };
+  return { editor, exclude: [], now: NOW, recordDoneDate: true, t: EN_T };
 }
 
 /**
