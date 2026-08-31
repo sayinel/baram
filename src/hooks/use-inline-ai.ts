@@ -43,6 +43,7 @@ export interface UseInlineAIReturn {
   hunks: Hunk[];
   isActive: boolean;
   phase: "idle" | InlineAIPhase;
+  previewInsertAfterSelection: (content: string) => void;
   regenerate: () => void;
   reject: () => void;
   rejectHunk: (index: number) => void;
@@ -288,6 +289,34 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     [editor],
   );
 
+  /**
+   * §314 이미 만들어진 내용을 **선택 아래에** 미리보기로 붙인다.
+   *
+   * `applyContent`와 나란하되 대상이 다르다. 저쪽은 선택 범위를 diff의 원본으로 삼아
+   * **대체**를 보이고, 이쪽은 선택이 끝나는 블록 **뒤의 빈 자리**를 원본 없는 구간으로
+   * 잡아 **삽입**을 보인다 — 회의록에서 할 일을 뽑는 일이라 원문이 살아 있어야 한다.
+   * (원본이 빈 구간은 이 훅이 이미 쓰는 모양이다: 선택 없이 부른 `submitPrompt`가 같다.)
+   */
+  const previewInsertAfterSelection = useCallback(
+    (content: string) => {
+      if (!editor) return;
+      const { to } = editor.state.selection;
+      // 선택이 걸친 최상위 블록의 바로 뒤. 블록 가운데에 끼우면 문단이 갈린다.
+      const at = editor.state.doc.resolve(to).after(1);
+
+      setSelectionFrom(at);
+      setSelectionTo(at);
+      setHasSelection(false);
+      setIsActive(true);
+
+      dispatchAIDiffStart(editor.view, at, at, "");
+      dispatchAIDiffChunk(editor.view, content);
+      dispatchAIDiffDone(editor.view);
+      setPhase("completed");
+    },
+    [editor],
+  );
+
   const accept = useCallback(() => {
     if (!editor) return;
 
@@ -381,6 +410,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     activate,
     submitPrompt,
     applyContent,
+    previewInsertAfterSelection,
     accept,
     reject,
     regenerate,

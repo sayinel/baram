@@ -27,6 +27,7 @@ import {
   registerEditorMutationTask,
 } from "../../utils/editor/mutation-tasks";
 import { showFieldDialog } from "../../utils/field-dialog";
+import { extractActionItems } from "../../utils/tasks/extract-action-items";
 
 interface FloatingToolbarProps {
   editor: Editor;
@@ -143,6 +144,13 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         return;
       }
       setAiOpen(false);
+
+      // §314 추출은 자기 흐름을 갖는다 — 프롬프트도, 삽입 방식도 다르다. 무엇보다
+      // 결과가 문서로 곧장 가지 않고 diff 미리보기를 지난다(§18.20 위험 8).
+      if (action.mode === "tasks") {
+        void extractActionItems(editor);
+        return;
+      }
 
       const spec = CONTEXTUAL_PROMPTS[action.id];
       if (!spec) {

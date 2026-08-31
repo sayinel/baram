@@ -75,7 +75,7 @@ export function scanTaskFields(text: string): TaskFieldSpan[] {
 }
 
 /** 달력상 실재하는 날짜인지 — Rust `is_valid_date`와 같은 기준. */
-function isValidDate(v: string): boolean {
+export function isValidDate(v: string): boolean {
   const m = ISO_RE.exec(v);
   if (!m) return false;
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];

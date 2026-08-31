@@ -83,6 +83,7 @@ import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
 import { TaskCreatedStamp } from "./plugins/task-created-stamp";
+import { TaskDateHint } from "./plugins/task-date-hint";
 import { TaskFieldChips } from "./plugins/task-field-chips";
 import { TaskInputRules } from "./plugins/task-input-rules";
 import { ViewportVirtualize } from "./plugins/viewport-virtualize";
@@ -273,6 +274,12 @@ export function createBaramExtensions(
 
     // Plugins — §312 ➕ stamp on a task line the cursor just left
     TaskCreatedStamp,
+
+    // Plugins — §308 M3-c natural-language date in a task line, Tab confirms.
+    // ‼️ Must stay AFTER TaskItem in this array: Tiptap reverses the extension
+    // list when stacking plugins, so a later entry sees keys first — which is
+    // what lets this yield Tab back to list indenting when nothing is matched.
+    TaskDateHint,
 
     // §perf-large-file C4: true windowing — registered ONLY on the large
     // keep-alive editor (small docs never get the NodeViews). isEnabled is the
