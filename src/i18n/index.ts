@@ -37,7 +37,12 @@ export function t(
   let value = translations[locale]?.[key] ?? translations.en?.[key] ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      value = value.replace(`{${k}}`, v);
+      // ‼️ replaceAll, not replace: a string pattern substitutes only the FIRST
+      // match, so a message naming the same param twice ("… {date} … {date} …")
+      // silently shipped the second one as a literal brace. Word order differs
+      // per language, so repeating a param is a normal thing for a translator
+      // to do — this must not depend on how often the token appears.
+      value = value.replaceAll(`{${k}}`, v);
     }
   }
   return value;
