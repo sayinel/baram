@@ -289,7 +289,7 @@ describe("list geometry", () => {
     // points at the marker, and the checkbox shares the marker's column.
     const CENTRED_ON_A_LINE_BOX = [
       ".tiptap ul > li::before", // drawn bullet
-      "> label", // task checkbox
+      "> .task-checkbox", // task checkbox (a <button> since §18.18 M4)
       ".tiptap li > .fold-arrow", // fold arrow
     ];
     const missing = CENTRED_ON_A_LINE_BOX.filter(

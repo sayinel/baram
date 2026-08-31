@@ -7,18 +7,21 @@
 // 팔레트의 `Insert ▸ Task List`가 이미 같은 규칙이다 — `toggleTaskList()`는 커서가
 // 문단 어디에 있든 그 문단을 통째로 태스크로 바꾼다.
 
+import type { TaskState } from "../../ipc/types";
 import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/react";
 
+import { asTaskState } from "./task-state";
+
 export interface TaskEditTarget {
-  /** 태스크면 체크 상태 — 저장할 때 그대로 되돌려 준다(상태 전이는 이 모달의 일이 아니다) */
-  checked: boolean;
   /** 이 블록이 이미 태스크인가 — 아니면 저장할 때 태스크로 바꾼다 */
   isTask: boolean;
   /** 갈아끼울 블록 노드 — `taskItem` 또는 문단 */
   node: PMNode;
   /** 그 노드 **앞**의 문서 좌표. 교체 범위는 `pos ~ pos + node.nodeSize` */
   pos: number;
+  /** 태스크면 지금 상태 — 저장할 때 그대로 되돌려 준다(상태 전이는 이 모달의 일이 아니다) */
+  state: TaskState;
 }
 
 /**
@@ -74,18 +77,18 @@ export function resolveTaskEditTarget(
   if (taskDepth !== null) {
     const node = $from.node(taskDepth);
     return {
-      checked: node.attrs.checked === true,
       isTask: true,
       node,
       pos: $from.before(taskDepth),
+      state: asTaskState(node.attrs.state),
     };
   }
 
   return {
-    checked: false,
     isTask: false,
     node: $from.parent,
     pos: $from.before($from.depth),
+    state: "todo",
   };
 }
 

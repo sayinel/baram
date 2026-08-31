@@ -25,6 +25,7 @@ import { Fragment, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import { TableMap } from "@tiptap/pm/tables";
 
+import { asTaskState } from "../../../../utils/tasks/task-state";
 import { nextUnitBoundary } from "./graphemes";
 import { resolveLineUnit } from "./line-units";
 
@@ -67,9 +68,11 @@ function adaptToAnchor(
       if (isItem) {
         if (node.type === anchorItemType) {
           blocks.push(node);
-        } else if (node.attrs.checked === true) {
-          // Converting would silently drop the completion state (impl
-          // review R2) — refuse instead of lying about the data.
+        } else if (asTaskState(node.attrs.state) !== "todo") {
+          // Converting would silently drop the state (impl review R2) —
+          // refuse instead of lying about the data. §18.18 M4 widened the
+          // test from "checked" to "not todo": `[/]` and `[-]` are just as
+          // unrepresentable in a plain list item as `[x]` is.
           return { reason: "a checked task line cannot convert here" };
         } else {
           blocks.push(anchorItemType.create(null, node.content));

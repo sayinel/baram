@@ -47,7 +47,7 @@ const schema = new Schema({
     },
     taskItem: {
       content: "paragraph block*",
-      attrs: { checked: { default: false } },
+      attrs: { state: { default: "todo" } },
       toDOM: () => ["li", 0],
     },
   },
@@ -488,7 +488,7 @@ describe("§308 로케일 구독 — 이미 그려진 칩도 강제로 다시 �
           {
             content: [
               {
-                attrs: { checked: false },
+                attrs: { state: "todo" },
                 content: [
                   {
                     content: [{ text: "초안 📅2026-08-30", type: "text" }],

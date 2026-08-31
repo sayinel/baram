@@ -300,10 +300,23 @@ describe("editing chrome never reaches the export", () => {
   });
 
   it("keeps the task checkbox, which is content, not chrome", async () => {
-    const doc = await capture(await mountEditor("- [x] done\n- [ ] todo"));
-    const boxes = doc.querySelectorAll('input[type="checkbox"]');
-    expect(boxes).toHaveLength(2);
-    expect((boxes[0] as HTMLInputElement).checked).toBe(true);
+    // §18.18 M4: the control is a `<button data-state>`, so the blanket
+    // "remove every pressable thing" rule would delete it. It is retagged to a
+    // `<span>` instead — and the retag has to carry `data-state` across, since
+    // that attribute is the whole content: the stylesheet paints the tick, the
+    // slash and the cross from it. A span that arrived without it would export
+    // four identical empty boxes and nobody would see an error.
+    const doc = await capture(
+      await mountEditor("- [x] done\n- [ ] todo\n- [/] doing\n- [-] dropped"),
+    );
+    expect(doc.querySelectorAll("button.task-checkbox")).toHaveLength(0);
+    const boxes = [...doc.querySelectorAll("span.task-checkbox")];
+    expect(boxes.map((b) => b.getAttribute("data-state"))).toEqual([
+      "done",
+      "todo",
+      "doing",
+      "cancelled",
+    ]);
   });
 
   it("keeps a button the AUTHOR wrote inside an HTML block", async () => {

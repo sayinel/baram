@@ -63,7 +63,7 @@ export function createTestSchema(): Schema {
       taskList: { content: "taskItem+", group: "block" },
       taskItem: {
         content: "paragraph block*",
-        attrs: { checked: { default: false } },
+        attrs: { state: { default: "todo" } },
       },
       horizontalRule: { group: "block" },
       image: {

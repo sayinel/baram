@@ -267,17 +267,30 @@
   display: block;
 }
 
-/* The LABEL draws the control and the INPUT is a transparent hit target stretched over
- * it. Not `input { appearance: none }` with a `::after` tick: pseudo-elements on form
- * controls are not reliably rendered in WebKit, and the tick would be the one part of
- * the control that silently vanished. The input keeps its native semantics and stays the
- * topmost element, which `task-item.ts` requires — its mousedown handler only fires for
- * an `HTMLInputElement` target.
+/* §18.18 M4 — ONE element draws the control AND takes the click.
  *
- * `--color-accent-default` is a theme key, so the checked fill follows the theme, and
+ * This was a `<label>` drawing the box with an invisible `<input
+ * type="checkbox">` stretched over it as the hit target, and that seam cost the
+ * control two separate bugs: first the label's own border ring, then the
+ * checked tick, ended up on top of the input, where a press reported the LABEL
+ * as `event.target` and the handler — which only accepted an
+ * `HTMLInputElement` — silently did nothing. A `<button>` has no seam. Its
+ * pseudo-elements originate on it, so a hit anywhere inside the control still
+ * reports the button, and `task-item.ts` resolves the press with
+ * `closest(".task-checkbox")` rather than an exact-element test. The whole
+ * class of bug is gone rather than guarded.
+ *
+ * A checkbox could not have made this trip anyway: it has two states and a
+ * third only as `indeterminate`, and M4 needs four.
+ *
+ * Selected by CLASS, not by tag: the export retags this to a `<span>`
+ * (export-html-chrome.ts strips pressable things), and the printed page has to
+ * keep painting the state.
+ *
+ * `--color-accent-default` is a theme key, so the done fill follows the theme, and
  * `--color-accent-on-solid` is derived from it by `theme-vars.ts` — the tick is legible
  * on the fill whatever the theme's accent is. */
-.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label {
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > .task-checkbox {
   --checkbox-size: 0.85em;
   --checkbox-border: 0.09em;
 
@@ -286,7 +299,9 @@
   right: 100%;
   width: var(--checkbox-size);
   height: var(--checkbox-size);
+  padding: 0;
   margin-right: calc((1em - var(--checkbox-size)) / 2);
+  appearance: none;
   cursor: pointer;
   user-select: none;
   background: var(--color-editor-bg);
@@ -298,94 +313,135 @@
     border-color 0.12s;
 }
 
-.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label:hover {
-  border-color: var(--color-accent-default);
-}
-
-/* The input is invisible, so the focus ring has to be drawn by the box the user sees. */
 .tiptap
   ul[data-type="taskList"]
   li[data-type="taskItem"]
-  > label:has(input:focus-visible) {
+  > .task-checkbox:hover {
+  border-color: var(--color-accent-default);
+}
+
+/* The control is the focusable element now, so it draws its own ring — the old
+ * `:has(input:focus-visible)` indirection existed only because the focusable
+ * part was a different element from the drawn one. */
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > .task-checkbox:focus-visible {
   outline: 2px solid var(--color-accent-default);
   outline-offset: 0.1em;
 }
 
+/* ── done: filled box + tick ──────────────────────────────────────────────
+ * The tick is two borders of a rotated box, so it scales with the control and
+ * needs no glyph, mask or SVG. Sized from the control rather than from the
+ * font, so it stays centred if the control's size changes. */
 .tiptap
   ul[data-type="taskList"]
-  li[data-type="taskItem"][data-checked="true"]
-  > label {
+  li[data-type="taskItem"]
+  > .task-checkbox[data-state="done"] {
   background: var(--color-accent-default);
   border-color: var(--color-accent-default);
 }
 
-/* The tick: two borders of a rotated box, so it scales with the control and needs no
- * glyph, mask or SVG. Sized from the control rather than from the font, so it stays
- * centred if the control's size changes. */
 .tiptap
   ul[data-type="taskList"]
-  li[data-type="taskItem"][data-checked="true"]
-  > label::after {
+  li[data-type="taskItem"]
+  > .task-checkbox[data-state="done"]::after {
   position: absolute;
   top: 50%;
   left: 50%;
   width: calc(var(--checkbox-size) * 0.28);
   height: calc(var(--checkbox-size) * 0.52);
-
-  /* Decorative only — the stretched input below must stay the hit target (see the
-   * general rule below). Both this and the input are `z-index: auto`, so
-   * without this they'd paint in DOM order and the tick — generated as the label's
-   * LAST child — would sit on top of the input over roughly its middle quarter,
-   * including dead centre, on every checked box. A hit there reports the label as
-   * `event.target`, which `task-item.ts`'s handler ignores, so a click aimed at where
-   * the user looks would silently fail to un-check. Confirmed by a real-browser
-   * elementFromPoint sweep; jsdom has no layout and cannot reproduce or guard this. */
-  pointer-events: none;
   content: "";
   border: solid var(--color-accent-on-solid);
   border-width: 0 0.085em 0.085em 0;
   transform: translate(-62%, -66%) rotate(40deg);
 }
 
-/* GENERAL RULE for this control: the `<input>` must stay the topmost, frontmost box
- * everywhere within the label, because `task-item.ts`'s mousedown handler only fires
- * for an `HTMLInputElement` target — anything else (the label itself, or a
- * decorative layer painted over the input) reports as `event.target` and the handler
- * silently no-ops. This has bitten the control twice: the label's own border ring
- * (fixed below, by stretching the input past the padding box) and the checked tick
- * (fixed above, by excluding it from hit-testing). Any FUTURE pseudo-element,
- * decoration, or overlay added to this label must either paint UNDER the input in
- * DOM/paint order or carry `pointer-events: none` — checked visually is not enough,
- * since the dead zone can be a fraction of the control that a manual click misses.
- *
- * Stretched over the label, INCLUDING its border. `inset` resolves against the padding
- * box, so `inset: 0` would leave the drawn border uncovered — and a click there reports
- * the label as the target, which `task-item.ts`'s handler ignores, so the outer ring of
- * the control would silently stop toggling. The negative inset is the border width, and
- * the size is explicit because an absolutely positioned replaced element does not stretch
- * to its containing block from `inset` alone. */
+/* ── doing: the marker itself, a slash across an open box ─────────────────
+ * Deliberately not a half-filled box. A half fill reads as "half done", which
+ * is a claim about progress the file never makes — `[/]` says only that the
+ * task has been started. The stroke echoes the character it round-trips as. */
 .tiptap
   ul[data-type="taskList"]
   li[data-type="taskItem"]
-  > label
-  input[type="checkbox"] {
+  > .task-checkbox[data-state="doing"] {
+  border-color: var(--color-accent-default);
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > .task-checkbox[data-state="doing"]::after {
   position: absolute;
-  inset: calc(-1 * var(--checkbox-border));
-  width: calc(100% + 2 * var(--checkbox-border));
-  height: calc(100% + 2 * var(--checkbox-border));
-  margin: 0;
-  appearance: none;
-  cursor: pointer;
-  opacity: 0;
+  top: 50%;
+  left: 50%;
+  width: 0.1em;
+  height: calc(var(--checkbox-size) * 0.82);
+  content: "";
+  background: var(--color-accent-default);
+  border-radius: 0.05em;
+  transform: translate(-50%, -50%) rotate(28deg);
+}
+
+/* ── cancelled: the box is crossed out ────────────────────────────────────
+ * Muted rather than accented: a cancelled task is not an achievement, and
+ * painting it in the accent colour would make abandoned work compete with
+ * finished work for attention. */
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > .task-checkbox[data-state="cancelled"] {
+  border-color: color-mix(
+    in srgb,
+    var(--color-editor-text) 30%,
+    var(--color-editor-bg)
+  );
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > .task-checkbox[data-state="cancelled"]::before,
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > .task-checkbox[data-state="cancelled"]::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.09em;
+  height: calc(var(--checkbox-size) * 0.86);
+  content: "";
+  background: color-mix(
+    in srgb,
+    var(--color-editor-text) 45%,
+    var(--color-editor-bg)
+  );
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > .task-checkbox[data-state="cancelled"]::before {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div {
   min-width: 0;
 }
 
+/* Struck through in both terminal states, for the same reason: the line is
+ * settled and no longer asks anything of the reader. `doing` is deliberately
+ * left alone — it is the one state that still wants attention. */
 .tiptap
   ul[data-type="taskList"]
-  li[data-type="taskItem"][data-checked="true"]
+  li[data-type="taskItem"][data-state="done"]
+  > div,
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"][data-state="cancelled"]
   > div {
   color: color-mix(
     in srgb,

@@ -37,7 +37,7 @@ const schema = new Schema({
       toDOM: () => ["span", { class: "tag" }],
     },
     taskItem: {
-      attrs: { checked: { default: false } },
+      attrs: { state: { default: "todo" } },
       content: "paragraph block*",
       toDOM: () => ["li", 0],
     },

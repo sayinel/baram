@@ -41,7 +41,7 @@ const schema = new Schema({
     taskList: { content: "taskItem+", group: "block" },
     taskItem: {
       content: "paragraph block*",
-      attrs: { checked: { default: false } },
+      attrs: { state: { default: "todo" } },
     },
     blockquote: { content: "block+", group: "block" },
     horizontalRule: { group: "block" },

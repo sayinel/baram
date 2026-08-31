@@ -2,7 +2,14 @@
 import type { TaskEntry } from "../../ipc/types";
 
 export type TaskBucket =
-  "done" | "later" | "noDate" | "overdue" | "slipped" | "thisWeek" | "today";
+  | "cancelled"
+  | "done"
+  | "later"
+  | "noDate"
+  | "overdue"
+  | "slipped"
+  | "thisWeek"
+  | "today";
 
 /** 패널에 그리는 순서 */
 export const BUCKET_ORDER: TaskBucket[] = [
@@ -13,6 +20,7 @@ export const BUCKET_ORDER: TaskBucket[] = [
   "later",
   "noDate",
   "done",
+  "cancelled",
 ];
 
 const MS_PER_DAY = 86_400_000;
@@ -23,6 +31,15 @@ export function classifyTask(
   weekStart: "monday" | "sunday",
 ): TaskBucket {
   if (task.state === "done") return "done";
+  // §18.18 M4 — cancelled is neither actionable nor completed. Folding it into
+  // `done` would inflate finished work; dropping it would make the cancellation
+  // invisible. Its own bucket, last.
+  if (task.state === "cancelled") return "cancelled";
+
+  // ‼️ `doing` deliberately falls through to the date buckets below. These
+  // buckets answer "when", and a task being held still has a when — pulling it
+  // into a bucket of its own would hide that the thing you are holding is
+  // overdue. The state is shown on the row instead.
 
   const today = startOfDay(now);
   // ‼️ **지난 날짜가 먼저 말한다.** 기한(📅)과 예정일(⏳)은 지난 뒤에 뜻이 갈린다 —

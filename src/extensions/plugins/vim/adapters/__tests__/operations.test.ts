@@ -501,7 +501,7 @@ describe("paste structure pins (impl review R1)", () => {
     })();
     const editor = makeEditor("<p>seed</p>");
     const item = (text: string) => ({
-      attrs: { checked: false },
+      attrs: { state: "todo" },
       content: [{ content: [{ text, type: "text" }], type: "paragraph" }],
       type: "taskItem",
     });
@@ -556,7 +556,7 @@ describe("impl review R2 pins", () => {
     extra: JSONContent[] = [],
   ): JSONContent {
     return {
-      attrs: { checked },
+      attrs: { state: checked ? "done" : "todo" },
       content: [
         { content: [{ text, type: "text" }], type: "paragraph" },
         ...extra,
@@ -602,7 +602,7 @@ describe("impl review R2 pins", () => {
     expect(doc.textContent).toBe("sib");
   });
 
-  it("a checked task line refuses a lossy conversion into a bullet list", () => {
+  it("a done task line refuses a lossy conversion into a bullet list", () => {
     const src = makeTaskListEditor([taskItemJSON("done", true)]);
     const reg = yankLine(src.state, posOfText(src, "done"), 1).register!;
     const editor = makeEditor("<ul><li><p>a</p></li></ul>");
@@ -668,7 +668,7 @@ describe("impl review R3 pins", () => {
                 {
                   content: [
                     {
-                      attrs: { checked: true },
+                      attrs: { state: "done" },
                       content: [
                         {
                           content: [{ text: "child", type: "text" }],
@@ -698,14 +698,14 @@ describe("impl review R3 pins", () => {
     const out = deleteLine(editor.state, posOfText(editor, "parent"), 1);
     const doc = applied(editor, out.tr);
     expect(doc.textContent).toBe("childsib");
-    let checkedSurvived = false;
+    let doneSurvived = false;
     doc.descendants((node) => {
-      if (node.type.name === "taskItem" && node.attrs.checked === true) {
-        checkedSurvived = true;
+      if (node.type.name === "taskItem" && node.attrs.state === "done") {
+        doneSurvived = true;
       }
       return true;
     });
-    expect(checkedSurvived).toBe(true);
+    expect(doneSurvived).toBe(true);
   });
 
   it("refuses paste into a HEADERLESS or mixed-first-row table", () => {
@@ -736,7 +736,7 @@ describe("impl review R4 pins", () => {
   const nestedTask = {
     content: [
       {
-        attrs: { checked: false },
+        attrs: { state: "todo" },
         content: [
           { content: [{ text: "child", type: "text" }], type: "paragraph" },
         ],

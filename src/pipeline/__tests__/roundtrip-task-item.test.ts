@@ -27,7 +27,7 @@ const schema = new Schema({
     taskList: { content: "taskItem+", group: "block" },
     taskItem: {
       content: "paragraph block*",
-      attrs: { checked: { default: false } },
+      attrs: { state: { default: "todo" } },
     },
     text: { group: "inline" },
   },
@@ -35,7 +35,7 @@ const schema = new Schema({
 });
 
 function emptyItem(checked: boolean): PmNode {
-  return schema.nodes.taskItem.create({ checked }, [
+  return schema.nodes.taskItem.create({ state: checked ? "done" : "todo" }, [
     schema.nodes.paragraph.create(),
   ]);
 }
@@ -44,7 +44,7 @@ function emptyItem(checked: boolean): PmNode {
 function outline(node: PmNode): string {
   const label =
     node.type.name === "taskItem"
-      ? `taskItem(${node.attrs.checked ? "x" : " "})`
+      ? `taskItem(${node.attrs.state === "done" ? "x" : " "})`
       : node.type.name;
   const kids: string[] = [];
   node.forEach((child) => {
@@ -58,7 +58,7 @@ function roundtrip(md: string): string {
 }
 
 function textItem(text: string, checked = false): PmNode {
-  return schema.nodes.taskItem.create({ checked }, [
+  return schema.nodes.taskItem.create({ state: checked ? "done" : "todo" }, [
     schema.nodes.paragraph.create(null, schema.text(text)),
   ]);
 }
@@ -137,7 +137,7 @@ describe("빈 task item 라운드트립", () => {
     // 리스트 구조 자체가 깨졌다.
     const doc = schema.nodes.doc.create(null, [
       schema.nodes.taskList.create(null, [
-        schema.nodes.taskItem.create({ checked: false }, [
+        schema.nodes.taskItem.create({ state: "todo" }, [
           schema.nodes.paragraph.create(),
           schema.nodes.paragraph.create(null, schema.text("more")),
         ]),
@@ -201,7 +201,7 @@ describe("실제 에디터에서 타이핑 중인 리스트를 저장할 때", (
     });
     expect(items).toHaveLength(2);
     expect(items[1].textContent).toBe("");
-    expect(items[1].attrs.checked).toBe(false);
+    expect(items[1].attrs.state).toBe("todo");
 
     editor.destroy();
   });

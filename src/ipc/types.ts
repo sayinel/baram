@@ -383,7 +383,23 @@ export interface TaskEntry {
 }
 
 // §304 Task types
-export type TaskState = "done" | "todo";
+//
+// §18.18 M4 widened this from `todo | done`. `doing` and `cancelled` are not
+// GFM — a viewer that does not know them shows `[/]` and `[-]` as text rather
+// than a checkbox, which the design accepted as the price of having them.
+//
+// ‼️ Neither new state is a kind of "done". Anything asking "is this finished"
+// must test `=== "done"`, never `!== "todo"`, or a cancelled task starts
+// counting as completed work.
+export type TaskState = "cancelled" | "doing" | "done" | "todo";
+
+/** The marker each state is written as, and read back from. */
+export const TASK_STATE_MARKER: Record<TaskState, string> = {
+  cancelled: "-",
+  doing: "/",
+  done: "x",
+  todo: " ",
+};
 
 // §34 Unlinked Mentions
 export interface UnlinkedMention {
