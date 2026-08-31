@@ -278,20 +278,15 @@ describe("§317 a date outside the journal asks before creating a note", () => {
   });
 });
 
-describe("§317 mention type is no longer discarded", () => {
-  it("lets a date mention reach the journal", async () => {
-    setUp(JOURNAL);
-    const { result } = renderNav();
-
-    result.current.mentionNavigateRef.current("date", DATE);
-
-    await waitFor(() => expect(ensureJournalFile).toHaveBeenCalled());
-  });
-
-  it("keeps a PAGE mention named like a date out of the journal", async () => {
-    // `_type` used to be dropped, so a file genuinely called 2026-08-30.md was
-    // indistinguishable from a date link and got dragged to the journal
-    // whenever the reader happened to be standing in it.
+describe("§316 a mention never takes the journal route", () => {
+  // Only page mentions reach this ref at all now: a date mention is a value,
+  // and clicking one opens the calendar instead of navigating (mention-view).
+  // §317 decided this from `type` here; deciding it at the mention settles it
+  // earlier, so this path closes the journal route outright.
+  it("opens a file named like a date as itself, even inside the journal", async () => {
+    // The case that motivated §317's plumbing: a file genuinely called
+    // 2026-08-30.md used to be dragged to the journal whenever the reader
+    // happened to be standing in it.
     setUp(JOURNAL);
     resolveWikilinkTarget.mockReturnValue({
       name: `${DATE}.md`,
@@ -304,6 +299,21 @@ describe("§317 mention type is no longer discarded", () => {
     await waitFor(() =>
       expect(handleOpenFilePath).toHaveBeenCalledWith(`/v/일기/${DATE}.md`),
     );
+    expect(ensureJournalFile).not.toHaveBeenCalled();
+  });
+
+  it("does not reach the journal even when told the mention is a date", async () => {
+    // Defence in depth: the ref closes the route regardless of what it is
+    // handed, so a future caller cannot reopen it by passing "date".
+    setUp(JOURNAL);
+    const { result } = renderNav();
+
+    result.current.mentionNavigateRef.current("date", DATE);
+
+    // Inside the journal the ordinary create path runs (no "outside" prompt),
+    // which is exactly the point: it is treated as a plain wikilink target,
+    // not as the day's entry.
+    await waitFor(() => expect(writeFile).toHaveBeenCalled());
     expect(ensureJournalFile).not.toHaveBeenCalled();
   });
 });

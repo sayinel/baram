@@ -9,11 +9,9 @@ import { Suggestion } from "@tiptap/suggestion";
 
 import { MentionMenuList } from "../../components/command/MentionMenu";
 import { t } from "../../i18n";
-import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { askDateValue } from "../../utils/editor/ask-date";
 import { awaitBoundToEditor } from "../../utils/editor/mutation-tasks";
-import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { resolveDateAlias } from "../../utils/journal/journal";
 import { mentionSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
@@ -24,26 +22,6 @@ export interface MentionSuggestionItem {
   label: string;
   type: "date" | "page";
   value: string;
-}
-
-/** Build page items from the file store */
-function getPageItems(): MentionSuggestionItem[] {
-  const { rootPath, fileTree } = useFileStore.getState();
-  if (!rootPath || fileTree.length === 0) return [];
-
-  const flat = flattenFileTree(fileTree, rootPath);
-  return flat
-    .filter((f) => f.name.endsWith(".md") || f.name.endsWith(".markdown"))
-    .map((f, idx) => {
-      const name = f.name.replace(/\.(md|markdown)$/, "");
-      return {
-        id: `page-${idx}`,
-        type: "page" as const,
-        value: name,
-        label: name,
-        category: "page" as const,
-      };
-    });
 }
 
 /**
@@ -141,10 +119,19 @@ async function pickDateMention(
 /**
  * Build the `@` menu for a query. Exported so a test can read the menu the
  * user would actually see, rather than asserting against a copy of it.
+ *
+ * ‼️ Dates only. `@` used to offer workspace pages as well, but `@[[Note]]`
+ * pointed at exactly what `[[Note]]` points at while NOT being collected by the
+ * link indexer (`extractor.rs` reads `[[…]]` alone) — so it was a reference
+ * that never showed up in backlinks or the graph, bought with a badge. `[[`
+ * already fuzzy-searches the same pages, so nothing is lost by dropping the
+ * half, and `@` gets one job: a date VALUE, which `[[…]]` cannot express.
+ *
+ * Mentions already written as `@[[Some Page]]` still parse and render — see
+ * mention-view. Only the way to author new ones is gone.
  */
 export function buildMentionItems(query: string): MentionSuggestionItem[] {
   const quickDates = getQuickDates();
-  const pages = getPageItems();
   const q = query.toLowerCase();
 
   // Check if query matches a date pattern (YYYY-MM-DD)
@@ -161,27 +148,13 @@ export function buildMentionItems(query: string): MentionSuggestionItem[] {
       ]
     : [];
 
-  if (!q) {
-    return [...quickDates, ...pages.slice(0, 10)];
-  }
+  if (!q) return quickDates;
 
-  // Filter quick dates
   const filteredDates = quickDates.filter(
     (d) => d.label.toLowerCase().includes(q) || d.value.includes(q),
   );
 
-  // Filter pages by fuzzy score
-  const filteredPages = pages
-    .map((item) => ({
-      item,
-      score: fuzzyScore(q, item.value),
-    }))
-    .filter(({ score }) => score < Infinity)
-    .sort((a, b) => a.score - b.score)
-    .slice(0, 15)
-    .map(({ item }) => item);
-
-  return [...customDateItems, ...filteredDates, ...filteredPages];
+  return [...customDateItems, ...filteredDates];
 }
 
 /**

@@ -78,6 +78,28 @@ describe("§316 the `@` menu offers a calendar", () => {
   });
 });
 
+describe("§316 `@` offers dates and nothing else", () => {
+  // `@[[Note]]` pointed at exactly what `[[Note]]` points at, while the link
+  // indexer collected only `[[…]]` — so it was a reference that never appeared
+  // in backlinks or the graph. `[[` fuzzy-searches the same pages, so the half
+  // was dropped rather than fixed, leaving `@` one job: a date value.
+  it("never offers a page, whatever is typed", () => {
+    const queries = ["", "note", "readme", "a", "2026-08-30"];
+
+    for (const q of queries) {
+      const items = buildMentionItems(q);
+      expect(items.every((i) => i.type === "date")).toBe(true);
+      expect(items.every((i) => i.category === "date")).toBe(true);
+    }
+  });
+
+  it("still resolves a fully typed ISO date", () => {
+    const items = buildMentionItems("2026-08-30");
+
+    expect(items.find((i) => i.id === "date-custom")?.value).toBe("2026-08-30");
+  });
+});
+
 describe("§316 choosing it opens the calendar rather than inserting", () => {
   it("does not insert anything before the calendar answers", async () => {
     let settle: (v: null | string) => void = () => {};
