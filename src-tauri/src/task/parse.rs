@@ -236,10 +236,7 @@ pub fn parse_task_line(line: &str) -> Option<ParsedTask> {
     // 뒤에 있으면 기록한 시간이 반복 규칙 안으로 삼켜져 인덱스에서 사라진다.
     if let Some(pos) = text.find(TIMER_EMOJI) {
         let after = &text[pos + TIMER_EMOJI.len_utf8()..];
-        let value: String = after
-            .chars()
-            .take_while(|c| !c.is_whitespace())
-            .collect();
+        let value: String = after.chars().take_while(|c| !c.is_whitespace()).collect();
         if !value.is_empty() {
             task.timer = Some(value.clone());
             text.replace_range(pos..pos + TIMER_EMOJI.len_utf8() + value.len(), "");
@@ -405,7 +402,10 @@ mod tests {
     /// 아닌 것이 되어 인덱스에서 조용히 사라진다.
     #[test]
     fn reads_all_four_states() {
-        assert_eq!(parse_task_line("- [ ] 할 일").unwrap().state, TaskState::Todo);
+        assert_eq!(
+            parse_task_line("- [ ] 할 일").unwrap().state,
+            TaskState::Todo
+        );
         assert_eq!(
             parse_task_line("- [/] 하는 중").unwrap().state,
             TaskState::Doing

@@ -40,6 +40,9 @@ pub async fn get_tasks_linking_to(
 /// 않고(기록 끔), `Some("")`는 제거, 그 밖은 그 값으로 맞춘다. 규칙 자체는 프런트
 /// `task-timer.ts`의 `timerForState` 하나뿐이다 — 에디터 경로가 이미 그것을 쓰므로
 /// 여기 옮겨 적으면 같은 규칙이 두 벌이 되고, 그중 하나는 시계를 잘못 읽게 된다.
+// IPC 경계라 인자가 곧 JS가 보내는 페이로드다 — `commands/*_cmd.rs`의 다른 커맨드들과
+// 같은 판단이다(`embedding_cmd`·`export_cmd`·`llm_cmd`).
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn set_task_state(
     path: String,

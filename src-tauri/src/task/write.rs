@@ -249,6 +249,8 @@ pub(super) fn matches_expected(actual: &str, expected_raw: &str) -> bool {
     normalize_line(actual).trim_end() == normalize_line(expected_raw).trim_end()
 }
 
+// 위 IPC 커맨드의 인자를 그대로 받는다 — 한 겹 아래에서 다르게 묶으면 두 모양이 된다.
+#[allow(clippy::too_many_arguments)]
 pub async fn set_task_state(
     path: &str,
     line: u32,
@@ -261,7 +263,13 @@ pub async fn set_task_state(
     let today = today.to_string();
     let timer = timer.map(str::to_string);
     replace_line(path, line, expected_raw, move |current| {
-        apply_state(current, new_state, record_done_date, &today, timer.as_deref())
+        apply_state(
+            current,
+            new_state,
+            record_done_date,
+            &today,
+            timer.as_deref(),
+        )
     })
     .await
 }
@@ -370,9 +378,17 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 한 줄\n").await;
 
-        let err = set_task_state(&p, 99, "- [ ] 한 줄", TaskState::Done, true, "2026-08-23", None)
-            .await
-            .unwrap_err();
+        let err = set_task_state(
+            &p,
+            99,
+            "- [ ] 한 줄",
+            TaskState::Done,
+            true,
+            "2026-08-23",
+            None,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, TaskError::Stale));
     }
 
@@ -381,9 +397,17 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "# T\r\n- [ ] 할 일\r\n").await;
 
-        set_task_state(&p, 1, "- [ ] 할 일", TaskState::Done, false, "2026-08-23", None)
-            .await
-            .unwrap();
+        set_task_state(
+            &p,
+            1,
+            "- [ ] 할 일",
+            TaskState::Done,
+            false,
+            "2026-08-23",
+            None,
+        )
+        .await
+        .unwrap();
 
         let after = tokio::fs::read_to_string(&p).await.unwrap();
         assert_eq!(after, "# T\r\n- [x] 할 일\r\n");
@@ -415,9 +439,17 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 할 일").await;
 
-        set_task_state(&p, 0, "- [ ] 할 일", TaskState::Done, false, "2026-08-23", None)
-            .await
-            .unwrap();
+        set_task_state(
+            &p,
+            0,
+            "- [ ] 할 일",
+            TaskState::Done,
+            false,
+            "2026-08-23",
+            None,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), "- [x] 할 일");
     }
@@ -428,9 +460,17 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 할\u{00A0}일\n").await;
 
-        let updated = set_task_state(&p, 0, "- [ ] 할 일", TaskState::Done, false, "2026-08-23", None)
-            .await
-            .unwrap();
+        let updated = set_task_state(
+            &p,
+            0,
+            "- [ ] 할 일",
+            TaskState::Done,
+            false,
+            "2026-08-23",
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(updated, "- [x] 할 일");
     }
 
@@ -616,7 +656,13 @@ mod tests {
             "- [/] 초안"
         );
         assert_eq!(
-            apply_state("- [/] 초안", TaskState::Cancelled, false, "2026-08-24", None),
+            apply_state(
+                "- [/] 초안",
+                TaskState::Cancelled,
+                false,
+                "2026-08-24",
+                None
+            ),
             "- [-] 초안"
         );
         assert_eq!(
@@ -649,7 +695,13 @@ mod tests {
 
     #[test]
     fn apply_state_swaps_only_the_leftmost_marker() {
-        let out = apply_state("- [ ] 본문에 [-] 가 있다", TaskState::Doing, false, "2026-08-24", None);
+        let out = apply_state(
+            "- [ ] 본문에 [-] 가 있다",
+            TaskState::Doing,
+            false,
+            "2026-08-24",
+            None,
+        );
         assert_eq!(out, "- [/] 본문에 [-] 가 있다");
     }
 
