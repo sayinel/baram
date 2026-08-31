@@ -220,8 +220,12 @@ export function useNavigation({
         // defect B describes, one level down. Ask, and let the question teach
         // the crossing syntax. Only when a journal space exists to point at,
         // and only for dates: ordinary wikilinks keep creating silently.
+        // ‼️ Deliberately NOT gated on `dateRoute`. That flag says whether the
+        // journal route was open; this guard is about what the TARGET looks
+        // like. Tying the two let a caller that had closed the route create a
+        // date-named note with no prompt at all — which is how a stale click
+        // handler on date mentions came to write files silently.
         const dateNeedsRoute =
-          dateRoute &&
           isDateString(target) &&
           !isJournalScoped &&
           useContextStore.getState().journalContext() !== null;

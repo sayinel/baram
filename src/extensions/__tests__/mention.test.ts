@@ -9,6 +9,7 @@ import {
   parseMentionMatch,
   serializeMention,
 } from "../../pipeline/transformers/mention-transformer";
+import { Mention } from "../nodes/mention";
 
 // Schema with mention + wikilink nodes
 const schema = new Schema({
@@ -253,5 +254,22 @@ describe("Mention PM structure", () => {
     expect(para.child(0).attrs.value).toBe("Page");
     expect(para.child(2).type.name).toBe("wikilink");
     expect(para.child(2).attrs.target).toBe("Link");
+  });
+});
+
+describe("§316 the extension registers no click handler of its own", () => {
+  // ‼️ It used to carry a `handleClick` plugin holding a SECOND copy of the
+  // click rule. ProseMirror listens on `view.dom`, inside React's root
+  // container, so that copy ran BEFORE the NodeView's onClick and the
+  // NodeView's stopPropagation could not recall it. When §316 made a date
+  // mention open the calendar instead of navigating, the copy kept navigating:
+  // every click on a date chip resolved it as a wikilink target and, finding no
+  // such file, silently wrote `2026-08-30.md` into the vault.
+  //
+  // Clicks live in mention-view alone (mention-view.test.tsx covers them).
+  it("adds no ProseMirror plugins", () => {
+    const plugins = Mention.config.addProseMirrorPlugins;
+
+    expect(plugins).toBeUndefined();
   });
 });

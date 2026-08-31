@@ -316,4 +316,19 @@ describe("§316 a mention never takes the journal route", () => {
     await waitFor(() => expect(writeFile).toHaveBeenCalled());
     expect(ensureJournalFile).not.toHaveBeenCalled();
   });
+
+  it("still asks before creating a date-named note with the route closed", async () => {
+    // ‼️ The prompt guards what the TARGET looks like, not whether the journal
+    // route was open. Tying it to the route meant a caller that had closed the
+    // route wrote `2026-08-30.md` with no prompt — which is exactly how a stale
+    // click handler on date mentions came to create files silently.
+    setUp(PLAIN, [PLAIN, JOURNAL]);
+    showConfirm.mockResolvedValue(false);
+    const { result } = renderNav();
+
+    result.current.mentionNavigateRef.current("page", DATE);
+
+    await waitFor(() => expect(showConfirm).toHaveBeenCalled());
+    expect(writeFile).not.toHaveBeenCalled();
+  });
 });
