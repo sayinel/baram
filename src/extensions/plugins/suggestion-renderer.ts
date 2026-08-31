@@ -178,6 +178,12 @@ export function positionPopup(
   // the entries were cut off — exactly where a caret at the END of a line
   // tends to be. Vertically the same: `coords.top - menuHeight` goes negative
   // for a caret near the top, pushing the first entries off-screen.
+  //
+  // ‼️ Measuring the popup only works because its stylesheet pins the width to
+  // its content (`width: max-content`). Left to `auto`, a fixed element shrinks
+  // to whatever room remains to the viewport edge — so its width would depend
+  // on the position this function is computing FROM that width. That loop is
+  // what made the menu collapse near the right edge instead of moving left.
   const width = popup.getBoundingClientRect().width || FALLBACK_MENU_WIDTH;
   const maxLeft = window.innerWidth - width - VIEWPORT_MARGIN;
   popup.style.left = `${Math.max(VIEWPORT_MARGIN, Math.min(coords.left, maxLeft))}px`;

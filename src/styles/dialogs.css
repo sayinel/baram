@@ -802,9 +802,17 @@
 
 /* §57 Mention Menu */
 
+/* ‼️ `max-content` is load-bearing, not cosmetic. With `width: auto` a fixed
+   popup shrinks to the space left of the viewport edge, so its width depends on
+   where it was placed — and positionPopup places it by measuring that width.
+   Position fed width fed position: near the right edge the box collapsed to
+   ~109px, and because `.mention-menu` sets `overflow-y: auto` (which makes
+   overflow-x compute to `auto` too) the entries were clipped inside it rather
+   than simply overflowing. Pinning the width to the content breaks the loop. */
 .mention-menu-popup {
   position: fixed;
   z-index: 50;
+  width: max-content;
 }
 
 .mention-menu {

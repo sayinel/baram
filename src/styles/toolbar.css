@@ -99,9 +99,12 @@
    §4.6 Slash Menu
    ============================================ */
 
+/* ‼️ See .mention-menu-popup — `max-content` keeps the popup's width from
+   depending on where it was placed, which positionPopup measures to place it. */
 .slash-menu-popup {
   position: fixed;
   z-index: 50;
+  width: max-content;
 }
 
 .slash-menu {
