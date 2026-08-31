@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const deleteTaskLine = vi.fn();
 const setTaskField = vi.fn();
 const setTaskState = vi.fn();
+const dropSelectionInside = vi.fn();
 const setTaskTag = vi.fn();
 const previewTaskFieldLine = vi.fn();
 const previewTaskTagLine = vi.fn();
@@ -35,6 +36,10 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskField: (...a: unknown[]) => setTaskField(...a),
   setTaskState: (...a: unknown[]) => setTaskState(...a),
   setTaskTag: (...a: unknown[]) => setTaskTag(...a),
+}));
+
+vi.mock("../../../utils/tasks/task-row-selection", () => ({
+  dropSelectionInside: (...a: unknown[]) => dropSelectionInside(...a),
 }));
 
 vi.mock("../../../pipeline", () => ({
@@ -225,6 +230,25 @@ describe("§312 triage menu on an agenda row", () => {
     document
       .querySelectorAll(".ai-prompt-overlay")
       .forEach((node) => node.remove());
+  });
+
+  // ‼️ `user-select: none` does NOT stop this — `.task-row` has carried it for
+  // as long as the panel has existed. WebKit selects the word under the cursor
+  // when it opens a context menu regardless, and by the time `contextmenu`
+  // fires the selection is already made, so the row undoes it rather than
+  // preventing it. Symptom: a word stays painted blue behind the open menu.
+  //
+  // ‼️ A SPY, not the real selection. Opening the menu sets state, React
+  // re-renders the row, and the selection's anchor node is replaced — so jsdom
+  // reports the selection collapsed afterwards WHETHER OR NOT the row cleared
+  // it. Written against `window.getSelection()` this test passed with the call
+  // deleted. The guard's own rule is `task-row-selection.test.ts`.
+  it("우클릭에서 행 안의 선택을 걷어내라고 시킨다", () => {
+    const row = renderRow();
+
+    fireEvent.contextMenu(row);
+
+    expect(dropSelectionInside).toHaveBeenCalledWith(row);
   });
 
   describe("affordance", () => {

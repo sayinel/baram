@@ -11,6 +11,7 @@ import { lateDays, taskAgeDays } from "../../utils/tasks/task-buckets";
 import { priorityBadge } from "../../utils/tasks/task-filters";
 import { displayText } from "../../utils/tasks/task-row-display";
 import { TASK_ROW_KEYSHORTCUTS } from "../../utils/tasks/task-row-keys";
+import { dropSelectionInside } from "../../utils/tasks/task-row-selection";
 
 /** §312 이 일수 이상 방치된 항목에 배지를 붙인다. */
 const STALE_DAYS = 30;
@@ -64,6 +65,7 @@ export function TaskRow({
       data-priority={priority?.level}
       onContextMenu={(e) => {
         e.preventDefault();
+        dropSelectionInside(e.currentTarget);
         onOpenMenu(e.currentTarget, task);
       }}
       onKeyDown={(e) => onKeyDown(e, task)}

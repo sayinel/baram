@@ -194,9 +194,18 @@ export function expandCollapsedContent(clone: HTMLElement): void {
  *     or an older pasted document can still contain one, and a checkbox is a
  *     checkbox — removing it would drop a visible mark from the page.
  *
- * Widget decorations go too: every `Decoration.widget` in this codebase is an
- * editing affordance (fold arrows and their ellipsis, the AI diff controls, the
- * list atom fix, block-id hints) — none of them is document content.
+ * Widget decorations go too, with ONE exception. Nearly every
+ * `Decoration.widget` in this codebase is an editing affordance (fold arrows
+ * and their ellipsis, the AI diff controls, the list atom fix, block-id hints).
+ * The §308 task chip is not: it RENDERS a piece of the document — the raw
+ * `📅2026-08-29` stays in the text and is hidden from sight — exactly the way a
+ * KaTeX render stands in for `$x$` and a Mermaid SVG for its code fence, both
+ * of which an export keeps. Removing it left the reader looking at raw emoji
+ * where the screen showed `8/29 due`.
+ *
+ * The chip is stripped of its interactivity instead: an exported chip is text,
+ * and `role="button"` on something nothing can press is a lie told to a screen
+ * reader.
  *
  * `isAuthoredMarkup` is injected rather than imported from export-html.ts: it
  * has to stay co-located there with the two code-block loops it keeps aligned
@@ -235,7 +244,20 @@ export function stripEditingChrome(
     el.remove();
   }
 
-  for (const el of clone.querySelectorAll(".ProseMirror-widget")) el.remove();
+  // §308 the chip keeps its label and loses its controls. `contenteditable`
+  // goes with them — it means nothing outside an editor and confuses some
+  // readers into offering an editing affordance of their own.
+  for (const el of clone.querySelectorAll(".task-chip")) {
+    el.removeAttribute("role");
+    el.removeAttribute("tabindex");
+    el.removeAttribute("contenteditable");
+  }
+
+  for (const el of clone.querySelectorAll(
+    ".ProseMirror-widget:not(.task-chip)",
+  )) {
+    el.remove();
+  }
 
   // Tiptap writes `white-space: pre-wrap` inline onto every NodeViewContent
   // host so ProseMirror's own whitespace handling survives inside a React

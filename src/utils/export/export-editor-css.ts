@@ -39,6 +39,7 @@ import mermaidCSS from "../../styles/editor/mermaid.css?raw";
 import svgBlockCSS from "../../styles/editor/svg-block.css?raw";
 import tablesCSS from "../../styles/editor/tables.css?raw";
 import taskCheckboxCSS from "../../styles/editor/task-checkbox.css?raw";
+import taskChipCSS from "../../styles/editor/task-chip.css?raw";
 import videoCSS from "../../styles/editor/video.css?raw";
 import primitivesCSS from "../../styles/generated/primitives.css?raw";
 import semanticLightCSS from "../../styles/generated/semantic-light.css?raw";
@@ -131,6 +132,10 @@ const EDITOR_STYLESHEETS = [
   // rules carry no `.tiptap`. `rescopeEditorCSS` only rewrites that prefix, so
   // they pass through and keep painting the exported boxes.
   taskCheckboxCSS,
+  // Also unscoped, and for a related reason: the chip REPLACES the raw
+  // `📅2026-08-29` on screen, so an export without these rules shows the raw
+  // text where the reader saw a label.
+  taskChipCSS,
   mediaCSS,
   mathCSS,
   tablesCSS,
@@ -159,6 +164,20 @@ ${EXPORT_SCOPE} h3,
 ${EXPORT_SCOPE} h4,
 ${EXPORT_SCOPE} h5,
 ${EXPORT_SCOPE} h6 { position: relative; }
+
+/* Load-bearing for the §308 task chips. The chip and the raw 📅2026-08-29 text
+ * it renders BOTH stay in the document — the raw text is what a screen reader
+ * announces, and this class alone is what hides it from sight. Without the rule
+ * an export prints the same field twice: once as a label, once as raw emoji.
+ * (No backticks in here: this block lives inside a template literal.) */
+${EXPORT_SCOPE} .visually-hidden {
+  display: inline-block;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
 `;
 
 /** The editor's appearance, rescoped for the exported document. */

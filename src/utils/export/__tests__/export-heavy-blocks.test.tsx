@@ -110,6 +110,15 @@ async function flush(): Promise<void> {
   });
 }
 
+/**
+ * A task line whose chips are actually drawn.
+ *
+ * ‼️ The caret matters. `task-field-chips` skips the item the selection is in —
+ * the raw text has to be visible to be edited — so a freshly `setContent`
+ * editor, whose selection lands at the top of the doc, renders NO chip on the
+ * first line. A test that forgot this would assert against an editor that never
+ * had a chip to lose.
+ */
 async function mountEditor(markdown: string): Promise<Editor> {
   const editor = new Editor({
     content: "<p>seed</p>",
@@ -121,6 +130,15 @@ async function mountEditor(markdown: string): Promise<Editor> {
     editor.commands.setContent(
       markdownToProsemirror(markdown, editor.schema).toJSON(),
     );
+  });
+  await flush();
+  return editor;
+}
+
+async function mountEditorWithChips(): Promise<Editor> {
+  const editor = await mountEditor("- [ ] pay rent 📅2026-08-29\n\nafter");
+  act(() => {
+    editor.commands.focus("end");
   });
   await flush();
   return editor;
@@ -317,6 +335,35 @@ describe("editing chrome never reaches the export", () => {
       "doing",
       "cancelled",
     ]);
+  });
+
+  // §308 — the chip is a Decoration.widget, and the blanket widget sweep used
+  // to take it. It is the one widget in this codebase that RENDERS content
+  // rather than offering an editing affordance: the raw `📅2026-08-29` stays in
+  // the text, hidden, and the chip is what the reader sees. Removing it printed
+  // raw emoji where the screen showed a label — the user reported exactly that.
+  it("keeps the task field chip, and hides the raw text it renders", async () => {
+    const doc = await capture(await mountEditorWithChips());
+
+    const chip = doc.querySelector(".task-chip");
+    expect(chip?.textContent).toContain("8/29");
+
+    // Both halves have to be right at once. The chip surviving while the raw
+    // text also shows would print the same field twice.
+    const raw = doc.querySelector(".task-field-raw");
+    expect(raw?.textContent).toContain("2026-08-29");
+    expect(raw?.classList.contains("visually-hidden")).toBe(true);
+  });
+
+  // An exported chip cannot be pressed. Announcing it as a button promises a
+  // control that is not there — the same reason `.callout-icon-btn` is retagged
+  // and `<button>` is swept.
+  it("strips the chip's interactivity, keeping only its label", async () => {
+    const doc = await capture(await mountEditorWithChips());
+    const chip = doc.querySelector(".task-chip")!;
+    expect(chip.getAttribute("role")).toBeNull();
+    expect(chip.getAttribute("tabindex")).toBeNull();
+    expect(chip.getAttribute("contenteditable")).toBeNull();
   });
 
   it("keeps a button the AUTHOR wrote inside an HTML block", async () => {
