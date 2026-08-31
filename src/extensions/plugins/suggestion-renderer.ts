@@ -100,6 +100,7 @@ export function createSuggestionRenderer<TItem>(
 
         state.popup = document.createElement("div");
         state.popup.className = popupClass;
+        keepCaretOnMouseDown(state.popup);
         document.body.appendChild(state.popup);
         state.popup.appendChild(state.component.element);
 
@@ -168,4 +169,30 @@ export function positionPopup(
   } else {
     popup.style.top = `${coords.bottom + 4}px`;
   }
+}
+
+/**
+ * Keep the editor's caret while the mouse is pressed on a floating menu.
+ *
+ * ‼️ These popups live on `document.body`, so pressing the mouse on one blurs
+ * the editor and drops the selection — while choosing the same entry with the
+ * arrow keys never leaves the editor at all. Users report that asymmetry as
+ * "the cursor disappears when I click, but not when I use the keyboard".
+ *
+ * Cancelling mousedown keeps the selection put, so the command that runs on
+ * click applies at the caret the user was looking at. FloatingToolbar and
+ * TagSuggest already depended on this; the suggestion menus did not.
+ *
+ * Safe to cancel wholesale: every menu that uses this is a list of options,
+ * with no text to select and no field to focus. Give a popup an input and this
+ * has to become per-element instead.
+ *
+ * Exported because the slash menu builds its popup directly rather than through
+ * the renderer above — one implementation, two call sites, so `/` and `@` can
+ * never drift apart on it.
+ */
+export function keepCaretOnMouseDown(popup: HTMLElement): void {
+  popup.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
 }

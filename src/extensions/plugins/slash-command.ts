@@ -16,6 +16,7 @@ import {
 } from "../../components/command/SlashMenu";
 import { buildSlashItems } from "./slash-command-items";
 import { slashCommandPluginKey } from "./suggestion-keys";
+import { keepCaretOnMouseDown } from "./suggestion-renderer";
 
 export { buildSlashItems } from "./slash-command-items";
 
@@ -106,6 +107,9 @@ export const SlashCommands = Extension.create({
 
               popup = document.createElement("div");
               popup.className = "slash-menu-popup";
+              // This menu builds its own popup instead of going through
+              // createSuggestionRenderer, so it calls the shared guard itself.
+              keepCaretOnMouseDown(popup);
               document.body.appendChild(popup);
               popup.appendChild(component.element);
 
