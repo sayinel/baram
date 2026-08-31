@@ -459,7 +459,7 @@
       "hasNodeView": true,
       "inputRules": ["@"],
       "shortcuts": {},
-      "_note": "Inline atom node (not a mark). Listed under nodes because implementation is nodes/mention.ts."
+      "_note": "Inline atom node (not a mark). Listed under nodes because implementation is nodes/mention.ts. §316: `@` authors DATES ONLY — clicking a date chip opens the calendar and rewrites the day in place, it does not navigate. Reaching a journal entry is `[[2026-08-30]]`'s job, and `[[…]]` is also the only form extractor.rs collects into the link index. The page half was dropped because `@[[Note]]` pointed at exactly what `[[Note]]` does while never appearing in backlinks; page mentions already written still parse, render, and Cmd+click-navigate, so existing documents do not change."
     }
   ],
   "marks": [

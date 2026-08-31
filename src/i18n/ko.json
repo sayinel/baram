@@ -931,6 +931,8 @@
   "tasks.archive.failed": "{count}개를 정리하지 못했습니다. 로그를 확인하세요.",
   "dialog.cancel": "취소",
   "dialog.insert": "삽입",
+  "mention.pickDate": "날짜 고르기…",
+  "mention.changeDate": "날짜 바꾸기",
   "datePicker.prevMonth": "이전 달",
   "datePicker.nextMonth": "다음 달",
   "datePicker.zoomOut": "월·연도 고르기",

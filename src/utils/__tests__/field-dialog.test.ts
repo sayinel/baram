@@ -193,3 +193,103 @@ describe("‼️ 날짜 필드에는 달력이 붙는다", () => {
     return promise;
   });
 });
+
+// ‼️ A modal must hand focus back to whatever it took it from. Without this the
+// dialog removes itself, focus falls to <body>, and when it was opened from the
+// editor that reads as "the caret disappeared". It happens on EVERY exit, which
+// is why a caller cannot fix it by re-placing the caret on success alone.
+describe("focus goes back where it came from", () => {
+  /** Stand in for the editor: something focusable and attached. */
+  function opener(): HTMLElement {
+    const el = document.createElement("div");
+    el.tabIndex = 0;
+    document.body.append(el);
+    el.focus();
+    return el;
+  }
+
+  /**
+   * Open a dialog and put focus INSIDE it, the way the real one does through a
+   * requestAnimationFrame that jsdom never runs here. Without this the tests
+   * would pass on a dialog that restores nothing, because focus never left.
+   */
+  function openFocused(spec: Parameters<typeof showFieldDialog>[0]) {
+    const promise = showFieldDialog(spec);
+    control<HTMLInputElement>("a").focus();
+    return promise;
+  }
+
+  it("restores it when the dialog is cancelled", async () => {
+    const before = opener();
+    const promise = openFocused({
+      fields: [{ key: "a", label: "A" }],
+      title: "T",
+    });
+    expect(document.activeElement).not.toBe(before);
+
+    click("Cancel");
+    await promise;
+
+    expect(document.activeElement).toBe(before);
+  });
+
+  it("restores it when a value is submitted", async () => {
+    const before = opener();
+    const promise = openFocused({
+      fields: [{ key: "a", label: "A" }],
+      title: "T",
+    });
+    control<HTMLInputElement>("a").value = "x";
+
+    click("Insert");
+    await promise;
+
+    expect(document.activeElement).toBe(before);
+  });
+
+  it("restores it when submitted with nothing filled in", async () => {
+    // Reported case: open the calendar from `@`, press Enter without picking.
+    // The value is empty so the caller does nothing — and doing nothing must
+    // still leave the caret where it was.
+    const before = opener();
+    const promise = openFocused({
+      fields: [{ key: "a", label: "A", type: "date" }],
+      title: "T",
+    });
+
+    click("Insert");
+    await promise;
+
+    expect(document.activeElement).toBe(before);
+  });
+
+  it("restores it when Escape closes the dialog", async () => {
+    const before = opener();
+    const promise = openFocused({
+      fields: [{ key: "a", label: "A" }],
+      title: "T",
+    });
+
+    control<HTMLInputElement>("a").dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+    );
+    await promise;
+
+    expect(document.activeElement).toBe(before);
+  });
+
+  it("survives an opener that vanished while the dialog was open", async () => {
+    // A widget or NodeView rebuilt underneath: focusing a detached node is a
+    // no-op, and must not throw on the way out.
+    const before = opener();
+    const promise = showFieldDialog({
+      fields: [{ key: "a", label: "A" }],
+      title: "T",
+    });
+    before.remove();
+
+    click("Cancel");
+
+    await expect(promise).resolves.toBeNull();
+  });
+});

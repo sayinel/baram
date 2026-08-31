@@ -220,8 +220,12 @@ export function useNavigation({
         // defect B describes, one level down. Ask, and let the question teach
         // the crossing syntax. Only when a journal space exists to point at,
         // and only for dates: ordinary wikilinks keep creating silently.
+        // ‼️ Deliberately NOT gated on `dateRoute`. That flag says whether the
+        // journal route was open; this guard is about what the TARGET looks
+        // like. Tying the two let a caller that had closed the route create a
+        // date-named note with no prompt at all — which is how a stale click
+        // handler on date mentions came to write files silently.
         const dateNeedsRoute =
-          dateRoute &&
           isDateString(target) &&
           !isJournalScoped &&
           useContextStore.getState().journalContext() !== null;
@@ -504,17 +508,18 @@ export function useNavigation({
 
   // §57 Keep mentionNavigateRef in sync — delegates to wikilink navigate
   //
-  // §317 `type` used to be dropped on the floor here (`_type`). A mention
-  // carries no `alias::` prefix, so its only route to the journal is the
-  // implicit one — which means a PAGE mention that merely looks like a date
-  // (a file actually named `2026-08-30.md`) would be dragged to the journal
-  // whenever the reader happened to be standing in it. The suggestion menu
-  // already knows which of the two the user picked; now the navigator does too.
+  // §316 Only PAGE mentions arrive here. A date mention is a value, not a
+  // pointer — clicking one opens the calendar (see mention-view) and never
+  // navigates, so the journal route is closed unconditionally rather than
+  // decided from `type`.
+  //
+  // §317 had made that decision from `type`, because a date mention could
+  // otherwise drag a reader into the journal. Deciding it at the mention itself
+  // settles the same question earlier and harder: a file genuinely named
+  // `2026-08-30.md` opens as itself even from inside the journal.
   useEffect(() => {
-    mentionNavigateRef.current = (type: string, value: string) => {
-      handleWikilinkNavigate(value, null, null, {
-        dateRoute: type === "date",
-      });
+    mentionNavigateRef.current = (_type: string, value: string) => {
+      handleWikilinkNavigate(value, null, null, { dateRoute: false });
     };
   }, [handleWikilinkNavigate]);
 

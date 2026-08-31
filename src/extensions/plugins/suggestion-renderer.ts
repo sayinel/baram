@@ -42,6 +42,7 @@ export interface SuggestionRendererState<TItem> {
   component: null | ReactRenderer<SuggestionMenuRef>;
   items: TItem[];
   popup: HTMLDivElement | null;
+  position: null | ReturnType<typeof trackPopupPosition>;
   range: null | { from: number; to: number };
 }
 
@@ -75,6 +76,7 @@ export function createSuggestionRenderer<TItem>(
     const state: SuggestionRendererState<TItem> = {
       component: null,
       popup: null,
+      position: null,
       items: [],
       range: null,
     };
@@ -83,6 +85,7 @@ export function createSuggestionRenderer<TItem>(
       onStart: (props: SuggestionProps) => {
         // Clean up any leftover popup/component from a previous cycle
         // (e.g. if onExit was skipped due to a rapid re-trigger)
+        state.position?.stop();
         state.popup?.remove();
         state.component?.destroy();
 
@@ -100,13 +103,12 @@ export function createSuggestionRenderer<TItem>(
 
         state.popup = document.createElement("div");
         state.popup.className = popupClass;
+        keepCaretOnMouseDown(state.popup);
         document.body.appendChild(state.popup);
         state.popup.appendChild(state.component.element);
 
-        const coords = props.clientRect?.();
-        if (coords && state.popup) {
-          positionPopup(state.popup, coords, menuHeight);
-        }
+        state.position = trackPopupPosition(state.popup, menuHeight);
+        state.position.update(props.clientRect?.() ?? undefined);
       },
       onUpdate: (props: SuggestionProps) => {
         state.items = props.items as TItem[];
@@ -118,10 +120,7 @@ export function createSuggestionRenderer<TItem>(
           command: props.command,
         });
 
-        const coords = props.clientRect?.();
-        if (coords && state.popup) {
-          positionPopup(state.popup, coords, menuHeight);
-        }
+        state.position?.update(props.clientRect?.() ?? undefined);
       },
       onKeyDown: (props: SuggestionKeyDownProps) => {
         if (props.event.key === "Escape") {
@@ -141,6 +140,7 @@ export function createSuggestionRenderer<TItem>(
         return state.component?.ref?.onKeyDown(props.event) ?? false;
       },
       onExit: () => {
+        state.position?.stop();
         state.popup?.remove();
         state.component?.destroy();
         state.popup = null;
@@ -152,20 +152,112 @@ export function createSuggestionRenderer<TItem>(
   };
 }
 
+/** Gap kept between the popup and the viewport edge. */
+const VIEWPORT_MARGIN = 8;
+
+/**
+ * Width to clamp by when the popup has not been laid out yet (jsdom always,
+ * and the very first frame in a browser). Every menu that uses this is 280px
+ * wide — `.slash-menu` and `.mention-menu` alike.
+ */
+const FALLBACK_MENU_WIDTH = 280;
+
 /**
  * Position a popup element relative to cursor coordinates.
- * Places below if space permits, otherwise above.
+ * Places below if space permits, otherwise above — and never outside the
+ * viewport in either axis.
  */
 export function positionPopup(
   popup: HTMLDivElement,
   coords: DOMRect,
   menuHeight: number,
 ): void {
+  // ‼️ Clamp horizontally. The caret's x was used as the left edge directly, so
+  // typing `@` near the right edge of the window put a 280px menu past it and
+  // the entries were cut off — exactly where a caret at the END of a line
+  // tends to be. Vertically the same: `coords.top - menuHeight` goes negative
+  // for a caret near the top, pushing the first entries off-screen.
+  //
+  // ‼️ Measuring the popup only works because its stylesheet pins the width to
+  // its content (`width: max-content`). Left to `auto`, a fixed element shrinks
+  // to whatever room remains to the viewport edge — so its width would depend
+  // on the position this function is computing FROM that width. That loop is
+  // what made the menu collapse near the right edge instead of moving left.
+  const width = popup.getBoundingClientRect().width || FALLBACK_MENU_WIDTH;
+  const maxLeft = window.innerWidth - width - VIEWPORT_MARGIN;
+  popup.style.left = `${Math.max(VIEWPORT_MARGIN, Math.min(coords.left, maxLeft))}px`;
+
   const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < menuHeight) {
-    popup.style.top = `${coords.top - menuHeight - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
+  const top =
+    spaceBelow < menuHeight ? coords.top - menuHeight - 4 : coords.bottom + 4;
+  popup.style.top = `${Math.max(VIEWPORT_MARGIN, top)}px`;
+}
+
+/**
+ * Keep the editor's caret while the mouse is pressed on a floating menu.
+ *
+ * ‼️ These popups live on `document.body`, so pressing the mouse on one blurs
+ * the editor and drops the selection — while choosing the same entry with the
+ * arrow keys never leaves the editor at all. Users report that asymmetry as
+ * "the cursor disappears when I click, but not when I use the keyboard".
+ *
+ * Cancelling mousedown keeps the selection put, so the command that runs on
+ * click applies at the caret the user was looking at. FloatingToolbar and
+ * TagSuggest already depended on this; the suggestion menus did not.
+ *
+ * Safe to cancel wholesale: every menu that uses this is a list of options,
+ * with no text to select and no field to focus. Give a popup an input and this
+ * has to become per-element instead.
+ *
+ * Exported because the slash menu builds its popup directly rather than through
+ * the renderer above — one implementation, two call sites, so `/` and `@` can
+ * never drift apart on it.
+ */
+export function keepCaretOnMouseDown(popup: HTMLElement): void {
+  popup.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+}
+
+/**
+ * Keep a popup positioned as its size becomes known.
+ *
+ * ‼️ These menus render through a React portal, which commits on a LATER tick
+ * than the `onStart` that creates the popup. Measuring the popup during
+ * `onStart` therefore measures an EMPTY box — and positioning clamps against
+ * that width, deciding a 280px menu fits where only 109px did. The menu then
+ * arrives at full width and runs off the screen, where `overflow-y: auto` on
+ * the list (which makes overflow-x compute to `auto`) clips it.
+ *
+ * Nothing recomputed the position afterwards, which is why clamping the left
+ * edge and pinning the popup's width both failed to fix it: the arithmetic was
+ * right, the width it ran on was not.
+ *
+ * So watch the box instead of guessing when it is ready. Repositioning moves
+ * the popup without resizing it, so this does not feed itself.
+ */
+export function trackPopupPosition(
+  popup: HTMLDivElement,
+  menuHeight: number,
+): { stop: () => void; update: (coords: DOMRect | undefined) => void } {
+  let last: DOMRect | null = null;
+
+  const place = (): void => {
+    if (last) positionPopup(popup, last, menuHeight);
+  };
+
+  // Guarded: jsdom has no ResizeObserver, and a missing one must degrade to
+  // "position once" rather than throw.
+  const observer =
+    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+  observer?.observe(popup);
+
+  return {
+    stop: () => observer?.disconnect(),
+    update: (coords) => {
+      if (!coords) return;
+      last = coords;
+      place();
+    },
+  };
 }

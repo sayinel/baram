@@ -147,7 +147,7 @@ Drag any editor tab outside the tab bar to detach it into a separate window. The
 
 ### Journal and Vaults
 
-The Journal feature integrates with vaults. Each vault can have its own journal directory configured in **Settings > Vault > Journal Directory**. When you switch to a vault context, the Calendar sidebar and @mention date chips create journal entries in that vault's journal directory.
+The Journal feature integrates with vaults. Each vault can have its own journal directory configured in **Settings > Vault > Journal Directory**. When you switch to a vault context, the Calendar sidebar and date links (`[[2026-02-27]]`) create journal entries in that vault's journal directory.
 
 ---
 
@@ -616,31 +616,36 @@ backlinks and as a node in the Graph View.
 
 **Hover Preview:** Hover over any wikilink to see a preview of the target document's content without navigating away.
 
-### @Mentions (Pages & Dates)
+### @Dates
 
-Mention pages and dates using the `@` trigger, which inserts styled inline chips:
+`@` writes a **date** — a day named in your prose, as a styled inline chip:
 
-1. **Type&#x20;**`@` — A suggestion popup appears with Quick Dates and workspace pages
-2. **Quick Dates** — Today, Yesterday, Tomorrow are always at the top (with resolved dates shown)
-3. **Type to filter** — Fuzzy matching narrows the page list as you type
-4. **Select an item** — A mention chip is inserted: 📅 for dates, 📄 for pages
+1. **Type&#x20;**`@` — A suggestion popup appears with Quick Dates
+2. **Quick Dates** — Today, Yesterday, Tomorrow (with resolved dates shown)
+3. **Pick a date…** — Opens a calendar for any other day
+4. **Or type it** — A full `YYYY-MM-DD` is accepted directly
 
-**Mention syntax in markdown:**
+**Syntax in markdown:**
 
-| Syntax            | Type | Description                                |
-| ----------------- | ---- | ------------------------------------------ |
-| `@[[My Note]]`    | Page | Mention a workspace page                   |
-| `@[[2026-02-27]]` | Date | Mention a specific date (links to journal) |
+| Syntax            | Description         |
+| ----------------- | ------------------- |
+| `@[[2026-02-27]]` | A specific date     |
 
-**Navigation:**
+**Clicking a date chip opens the calendar and changes the date in place.** It does not navigate — a date mention names a day, it does not point at a document.
 
-- **Date mentions** — Click to open/create that day's journal entry (single-click)
-- **Page mentions** — Cmd+click (macOS) / Ctrl+click (Windows/Linux) to navigate to the page
+**To open that day's journal entry, link it instead:** `[[2026-02-27]]`. See [Journal](#journal) for how date links resolve.
 
-**Difference from wikilinks:**
+**Dates vs. wikilinks:**
 
-- Wikilinks (`[[page]]`) render as styled inline text links
-- Mentions (`@[[page]]`) render as chip badges with icons — visually distinct for quick scanning
+| | Means | Click |
+| --- | --- | --- |
+| `@[[2026-02-27]]` | a date **value** | opens the calendar to change it |
+| `[[2026-02-27]]` | a **reference** to that day's entry | opens it |
+| `[[My Note]]` | a **reference** to a page | opens it |
+
+Only `[[…]]` links are collected into the link index, so only they appear in backlinks and the Graph View.
+
+> **Page mentions.** Earlier versions also offered `@[[My Note]]` for pages. That pointed at the same file `[[My Note]]` does while never appearing in backlinks, so `@` is now dates only. Page mentions already written keep rendering and still navigate on Cmd+click (Ctrl+click on Windows/Linux); use `[[…]]` for new ones.
 
 ### Tags
 
@@ -1194,12 +1199,13 @@ There are three ways to create or open a daily note:
 2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
 3. Dates with existing entries are marked with a dot
 
-**@Mentions for dates:**
+**Date links:**
 
-1. Type `@` in the editor — the mention autocomplete popup appears
-2. Select **Today**, **Yesterday**, or **Tomorrow** from the Quick Dates section
-3. A 📅 date mention chip is inserted (e.g., `@[[2026-02-27]]`)
-4. Click the chip to open/create that day's journal (single-click, no Cmd/Ctrl needed)
+1. Write `[[2026-02-27]]` — a wikilink whose target is a date
+2. Click it to open that day's entry; if none exists yet, Baram asks before creating it
+3. From **inside** the journal a bare date link resolves to the entry directly. From another vault, name the space: `[[Journal::2026-02-27]]`
+
+To write a date *without* linking to its entry, use `@` — see [@Dates](#dates). Clicking an `@` chip opens a calendar to change the date, not the journal.
 
 **Auto-creation on startup:**
 When "Open today's journal" is enabled in settings, Baram automatically creates and opens today's entry every time you launch the app.

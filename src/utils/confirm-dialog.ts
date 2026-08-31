@@ -1,6 +1,8 @@
 // Custom confirm dialog — replaces window.confirm() which doesn't work in Tauri WKWebView
 // Pattern from showPrompt() in ai-commands.ts
 
+import { restoreFocus } from "./restore-focus";
+
 /**
  * 확인 대화상자의 성격. 기본값은 **파괴적 조작**이다 — 이 헬퍼가 그것을 위해 태어났고
  * 호출부 다섯이 여전히 그쪽이기 때문이다(파일/폴더 삭제, 태스크 줄 삭제, Zettel 휴지통,
@@ -20,6 +22,7 @@ export interface ConfirmOptions {
 /** 단일 확인 버튼 알림 — 일괄 작업 실패 보고용 (§4.3) */
 export function showAlert(message: string): Promise<void> {
   return new Promise((resolve) => {
+    const returnFocusTo = document.activeElement;
     const overlay = document.createElement("div");
     overlay.className = "ai-prompt-overlay";
 
@@ -53,6 +56,7 @@ export function showAlert(message: string): Promise<void> {
     const cleanup = (): void => {
       document.removeEventListener("keydown", handleKeydown);
       overlay.remove();
+      restoreFocus(returnFocusTo);
       resolve();
     };
 
@@ -72,6 +76,7 @@ export function showConfirm(
 ): Promise<boolean> {
   const { confirmLabel = "Delete", danger = true } = options;
   return new Promise((resolve) => {
+    const returnFocusTo = document.activeElement;
     const overlay = document.createElement("div");
     overlay.className = "ai-prompt-overlay";
 
@@ -122,6 +127,7 @@ export function showConfirm(
     const cleanup = (value: boolean) => {
       document.removeEventListener("keydown", handleKeydown);
       overlay.remove();
+      restoreFocus(returnFocusTo);
       resolve(value);
     };
 

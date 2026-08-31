@@ -1,9 +1,7 @@
 // §57 Mention Node Extension — @[[page]], @[[2026-02-27]]
 import { mergeAttributes, Node } from "@tiptap/core";
-import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
-import { isDateString } from "../../utils/journal/journal";
 import { MentionView } from "./mention-view";
 
 export interface MentionOptions {
@@ -72,39 +70,18 @@ export const Mention = Node.create<MentionOptions>({
     };
   },
 
-  // Click navigates to the mention target
-  addProseMirrorPlugins() {
-    const { onNavigate } = this.options;
-    return [
-      new Plugin({
-        props: {
-          handleClick(view, pos, event) {
-            const { state } = view;
-            const resolved = state.doc.resolve(pos);
-            const node = state.doc.nodeAt(pos);
-
-            const mentionNode =
-              node?.type.name === "mention"
-                ? node
-                : resolved.parent?.type.name === "mention"
-                  ? resolved.parent
-                  : null;
-
-            if (!mentionNode) return false;
-
-            const mentionType = mentionNode.attrs.type as string;
-            const value = mentionNode.attrs.value as string;
-
-            // Date mentions navigate on single click; page mentions require Cmd/Ctrl+click
-            if (mentionType !== "date" && isDateString(value) === false) {
-              if (!(event.metaKey || event.ctrlKey)) return false;
-            }
-
-            onNavigate(mentionType, value);
-            return true;
-          },
-        },
-      }),
-    ];
-  },
+  // ‼️ §316 Clicks belong to the NodeView (mention-view), and to it alone.
+  //
+  // There used to be a `handleClick` plugin here as well, holding its own copy
+  // of the rule — and ProseMirror listens on `view.dom`, INSIDE React's root
+  // container, so it ran BEFORE the NodeView's onClick and the NodeView's
+  // stopPropagation could not call it back. When §316 made a date mention open
+  // the calendar instead of navigating, this copy went on navigating: every
+  // click on a date chip also resolved it as a wikilink target and, finding no
+  // such file, silently wrote `2026-08-30.md` into the vault.
+  //
+  // The NodeView is the only place that can own this anyway — changing the date
+  // needs `updateAttributes`, and skipping a read-only view needs
+  // `editor.isEditable`. Two handlers for one gesture is what made this a bug
+  // rather than a decision.
 });

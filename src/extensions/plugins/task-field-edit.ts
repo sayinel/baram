@@ -24,8 +24,8 @@ import type { EditorView } from "@tiptap/pm/view";
 import { t } from "../../i18n";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { askDateValue } from "../../utils/editor/ask-date";
 import { showFieldDialog } from "../../utils/field-dialog";
-import { resolveDateInput } from "../../utils/tasks/task-date-input";
 import { scanTaskFields } from "../../utils/tasks/task-field-scan";
 import {
   applyTaskField,
@@ -212,40 +212,26 @@ export function taskLineTarget(state: EditorState): null | TaskLineTarget {
   return { paragraphFrom: contentFrom, paragraphText: taskLineText(line) };
 }
 
-/** 날짜를 묻는다. 돌려주는 것은 **ISO 날짜**(빈 문자열 = 필드 제거). */
+/**
+ * 날짜를 묻는다. 돌려주는 것은 **ISO 날짜**(빈 문자열 = 필드 제거).
+ *
+ * §316 달력·어휘·오류 보고는 `askDateValue` 한 자에 있다 — `@`의 날짜 선택이
+ * 같은 것을 쓴다. 여기 남는 것은 태스크 쪽 문구와 "비운 것 = 필드 제거" 계약뿐.
+ */
 async function askDate(
   kind: TaskFieldKind,
   current: string,
   locale: Locale,
 ): Promise<null | string> {
-  const values = await showFieldDialog({
-    fields: [
-      {
-        key: "date",
-        // 받아들이는 표기를 라벨이 직접 말한다 — `resolveDateInput`이 아는 어휘다.
-        label: t("tasks.triage.pickLabel", locale),
-        placeholder: "2026-08-30",
-        type: "date",
-        value: current,
-      },
-    ],
+  return askDateValue({
+    // 비운 것은 "이 필드를 지운다"는 뜻이다 — `setTaskField`의 계약과 같다.
+    allowEmpty: true,
+    // 받아들이는 표기를 라벨이 직접 말한다 — `resolveDateInput`이 아는 어휘다.
+    label: t("tasks.triage.pickLabel", locale),
     submitLabel: t("tasks.chip.edit.submit", locale),
     title: t(`tasks.chip.edit.${kind}`, locale),
+    value: current,
   });
-  if (values === null) return null;
-
-  const raw = (values.date ?? "").trim();
-  // 비운 것은 "이 필드를 지운다"는 뜻이다 — `setTaskField`의 계약과 같다.
-  if (raw === "") return "";
-
-  const iso = resolveDateInput(raw, new Date());
-  if (iso === null) {
-    useUIStore
-      .getState()
-      .showToast(t("tasks.triage.badDate", locale, { value: raw }), "error");
-    return null;
-  }
-  return iso;
 }
 
 /** 우선순위를 묻는다. 돌려주는 것은 **마커**(빈 문자열 = 보통 = 제거). */
