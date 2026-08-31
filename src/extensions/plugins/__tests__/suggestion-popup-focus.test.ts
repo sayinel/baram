@@ -17,6 +17,7 @@ vi.mock("@tiptap/react", () => ({
 import {
   createSuggestionRenderer,
   keepCaretOnMouseDown,
+  positionPopup,
 } from "../suggestion-renderer";
 
 /** Press the mouse on an element and report whether the default was cancelled. */
@@ -84,5 +85,64 @@ describe("the shared suggestion renderer applies it", () => {
     expect(mousedownCancelled(popup)).toBe(true);
 
     popup.remove();
+  });
+});
+
+// ‼️ The caret's x was used as the popup's left edge directly, so typing `@`
+// near the right edge of the window put a 280px menu past it and the entries
+// were cut off — and a caret at the END of a line is exactly where that
+// happens. The same for a caret near the top, where `top - menuHeight` goes
+// negative and the first entries land off-screen.
+describe("positionPopup keeps the menu inside the viewport", () => {
+  const WIDTH = 280;
+  const MARGIN = 8;
+
+  function rect(over: Partial<DOMRect>): DOMRect {
+    return { bottom: 100, left: 0, top: 80, ...over } as DOMRect;
+  }
+
+  function place(coords: DOMRect, menuHeight = 300): HTMLDivElement {
+    const popup = document.createElement("div");
+    positionPopup(popup, coords, menuHeight);
+    return popup;
+  }
+
+  it("pulls the menu back when the caret is near the right edge", () => {
+    const popup = place(rect({ left: window.innerWidth - 20 }));
+
+    const left = Number.parseInt(popup.style.left, 10);
+    expect(left + WIDTH).toBeLessThanOrEqual(window.innerWidth);
+  });
+
+  it("leaves the menu at the caret when there is room", () => {
+    const popup = place(rect({ left: 40 }));
+
+    expect(popup.style.left).toBe("40px");
+  });
+
+  it("never pushes the menu off the left edge", () => {
+    // A narrow window, where even the clamped position would go negative.
+    const popup = place(rect({ left: 4 }));
+
+    expect(Number.parseInt(popup.style.left, 10)).toBeGreaterThanOrEqual(
+      MARGIN,
+    );
+  });
+
+  it("keeps the menu on screen when it has to open upward", () => {
+    // No room below and a caret near the top: the old maths produced a
+    // negative top and clipped the entries the user most wants to see.
+    const popup = place(
+      rect({ bottom: window.innerHeight - 10, top: 20 }),
+      300,
+    );
+
+    expect(Number.parseInt(popup.style.top, 10)).toBeGreaterThanOrEqual(MARGIN);
+  });
+
+  it("opens below the caret when there is room", () => {
+    const popup = place(rect({ bottom: 100, top: 80 }), 50);
+
+    expect(popup.style.top).toBe("104px");
   });
 });

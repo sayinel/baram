@@ -16,7 +16,10 @@ import {
 } from "../../components/command/SlashMenu";
 import { buildSlashItems } from "./slash-command-items";
 import { slashCommandPluginKey } from "./suggestion-keys";
-import { keepCaretOnMouseDown } from "./suggestion-renderer";
+import {
+  keepCaretOnMouseDown,
+  positionPopup as positionSuggestionPopup,
+} from "./suggestion-renderer";
 
 export { buildSlashItems } from "./slash-command-items";
 
@@ -42,15 +45,13 @@ export const SLASH_TRIGGER = {
 
 const SLASH_MENU_HEIGHT = 320; // approximate max popup height
 
+/**
+ * This menu used to carry its own copy of the positioning maths, which is why
+ * clamping the popup to the viewport had to be fixed twice to reach both `/`
+ * and `@`. One implementation, called with this menu's height.
+ */
 function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
-  const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < SLASH_MENU_HEIGHT) {
-    // Not enough room below — position above the cursor
-    popup.style.top = `${coords.top - SLASH_MENU_HEIGHT - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
+  positionSuggestionPopup(popup, coords, SLASH_MENU_HEIGHT);
 }
 
 export const SlashCommands = Extension.create({

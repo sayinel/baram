@@ -153,22 +153,39 @@ export function createSuggestionRenderer<TItem>(
   };
 }
 
+/** Gap kept between the popup and the viewport edge. */
+const VIEWPORT_MARGIN = 8;
+
+/**
+ * Width to clamp by when the popup has not been laid out yet (jsdom always,
+ * and the very first frame in a browser). Every menu that uses this is 280px
+ * wide — `.slash-menu` and `.mention-menu` alike.
+ */
+const FALLBACK_MENU_WIDTH = 280;
+
 /**
  * Position a popup element relative to cursor coordinates.
- * Places below if space permits, otherwise above.
+ * Places below if space permits, otherwise above — and never outside the
+ * viewport in either axis.
  */
 export function positionPopup(
   popup: HTMLDivElement,
   coords: DOMRect,
   menuHeight: number,
 ): void {
+  // ‼️ Clamp horizontally. The caret's x was used as the left edge directly, so
+  // typing `@` near the right edge of the window put a 280px menu past it and
+  // the entries were cut off — exactly where a caret at the END of a line
+  // tends to be. Vertically the same: `coords.top - menuHeight` goes negative
+  // for a caret near the top, pushing the first entries off-screen.
+  const width = popup.getBoundingClientRect().width || FALLBACK_MENU_WIDTH;
+  const maxLeft = window.innerWidth - width - VIEWPORT_MARGIN;
+  popup.style.left = `${Math.max(VIEWPORT_MARGIN, Math.min(coords.left, maxLeft))}px`;
+
   const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < menuHeight) {
-    popup.style.top = `${coords.top - menuHeight - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
+  const top =
+    spaceBelow < menuHeight ? coords.top - menuHeight - 4 : coords.bottom + 4;
+  popup.style.top = `${Math.max(VIEWPORT_MARGIN, top)}px`;
 }
 
 /**
