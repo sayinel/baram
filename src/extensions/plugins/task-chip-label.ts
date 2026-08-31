@@ -22,8 +22,11 @@ import { t } from "../../i18n";
 import { PRIORITY_EMOJI } from "../../utils/tasks/task-field-tokens";
 import { CHIP_KIND_ATTR, CHIP_VALUE_ATTR } from "./task-chip-edit";
 
-/** 날짜 필드 종류 → i18n 키. 우선순위는 별도 표(아래)로 간다. */
-const DATE_CHIP_KEY: Record<Exclude<TaskFieldKind, "priority">, string> = {
+/** 날짜 필드 종류 → i18n 키. 우선순위와 반복은 값이 날짜가 아니라 따로 간다. */
+const DATE_CHIP_KEY: Record<
+  Exclude<TaskFieldKind, "priority" | "recurrence">,
+  string
+> = {
   cancelled: "tasks.chip.cancelled",
   created: "tasks.chip.created",
   done: "tasks.chip.done",
@@ -97,6 +100,12 @@ export function renderTaskChip(
  * 읽는다(방향 C — ko `8/30 기한`, en `due 8/30`).
  */
 function chipLabel(span: TaskFieldSpan, locale: Locale, today: Date): string {
+  // §18.18 M4 — 반복은 셋째 갈래다. 값이 날짜가 아니라 사용자가 적은 자유 텍스트
+  // ("every week")라 `shortDate`에 넣을 수 없고, 번역할 수도 없다. 라벨은 그 텍스트를
+  // 그대로 감싸기만 한다 — 어순만 로케일이 정한다.
+  if (span.kind === "recurrence") {
+    return t("tasks.chip.recurrence", locale, { rule: span.value });
+  }
   if (span.kind === "priority") {
     // 마커 자체(span.value)로 매핑한다 — UTF-16 길이로 자르지 않는다.
     const key = PRIORITY_CHIP_KEY[span.value];

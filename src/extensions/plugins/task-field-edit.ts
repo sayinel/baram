@@ -55,9 +55,9 @@ export async function askTaskField(
   current: string,
 ): Promise<null | string> {
   const locale = useSettingsStore.getState().locale as Locale;
-  return kind === "priority"
-    ? askPriority(current, locale)
-    : askDate(kind, current, locale);
+  if (kind === "priority") return askPriority(current, locale);
+  if (kind === "recurrence") return askRecurrence(current, locale);
+  return askDate(kind, current, locale);
 }
 
 /**
@@ -232,6 +232,36 @@ async function askDate(
     title: t(`tasks.chip.edit.${kind}`, locale),
     value: current,
   });
+}
+
+/**
+ * §18.18 M4 반복 규칙을 묻는다. 돌려주는 것은 **적은 그대로**(빈 문자열 = 제거).
+ *
+ * 날짜처럼 해석하지 않는다 — 값이 자유 텍스트이고, 그것을 읽는 것은 Obsidian Tasks
+ * 호환 표기를 아는 다른 도구들이지 우리가 아니다. 여기서 어휘를 좁히면 그 도구들이
+ * 쓰던 규칙을 우리가 지우게 된다. `trim`만 한다.
+ *
+ * ‼️ 자리 표시자가 `every week`인 것은 문서가 아니라 **문법 안내**다 — 이 필드를 처음
+ * 여는 사람에게 어떤 어휘가 통하는지 알려 줄 자리가 여기밖에 없다.
+ */
+async function askRecurrence(
+  current: string,
+  locale: Locale,
+): Promise<null | string> {
+  const values = await showFieldDialog({
+    fields: [
+      {
+        key: "rule",
+        label: t("tasks.chip.edit.recurrenceLabel", locale),
+        placeholder: "every week",
+        value: current,
+      },
+    ],
+    submitLabel: t("tasks.chip.edit.submit", locale),
+    title: t("tasks.chip.edit.recurrence", locale),
+  });
+  if (values === null) return null;
+  return (values.rule ?? "").trim();
 }
 
 /** 우선순위를 묻는다. 돌려주는 것은 **마커**(빈 문자열 = 보통 = 제거). */

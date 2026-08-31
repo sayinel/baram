@@ -11,7 +11,17 @@
 
 /** 이모지 필드의 종류. §303 표에 있는 것 전부. */
 export type TaskFieldKind =
-  "cancelled" | "created" | "done" | "due" | "priority" | "scheduled" | "start";
+  | "cancelled"
+  | "created"
+  | "done"
+  | "due"
+  | "priority"
+  // §18.18 M4. 값이 자유 텍스트("every week")라 날짜 여섯과 나란히 설 수 없어
+  // `CANONICAL_DATE_FIELDS`에는 들어가지 않지만, **고칠 수 있는 필드**라는 점에서는
+  // 같다 — 칩을 누르면 열리고, 지우면 사라진다.
+  | "recurrence"
+  | "scheduled"
+  | "start";
 
 /**
  * §18.2 표 순서 그대로의 날짜 필드. **배열 인덱스가 곧 canonical 순위**이므로

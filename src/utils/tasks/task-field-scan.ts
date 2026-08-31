@@ -7,7 +7,7 @@
 
 import type { TaskFieldKind } from "./task-field-order";
 
-import { CANONICAL_DATE_FIELDS } from "./task-field-order";
+import { CANONICAL_DATE_FIELDS, RECURRENCE_EMOJI } from "./task-field-order";
 import { PRIORITY_EMOJI } from "./task-field-tokens";
 
 export type { TaskFieldKind };
@@ -71,6 +71,37 @@ export function scanTaskFields(text: string): TaskFieldSpan[] {
     }
   }
 
+  spans.sort((a, b) => a.from - b.from);
+
+  // §18.18 M4 반복은 **맨 뒤에서** 결정된다. 값이 자유 텍스트라 끝을 잴 규칙이 없고,
+  // 남는 것이 곧 값이기 때문이다.
+  //
+  // ‼️ 값의 끝은 **줄 끝이 아니라 다음 필드 앞**이다. Rust `parse_task_line`이 날짜와
+  // 우선순위를 **먼저** 떼어내고 남은 텍스트를 반복으로 읽으므로,
+  // `🔁every week 📅2026-09-01`에서 인덱서가 보는 것은 `due=2026-09-01`과
+  // `recurrence="every week"` **둘 다**다. 줄 끝까지를 반복으로 삼으면 화면에서 기한
+  // 칩이 사라지고, 그 칩을 눌러 고치면 반복 규칙 한가운데를 덮어쓴다.
+  //
+  // 알려진 어긋남 하나: 날짜를 반복 텍스트 **안**에 적으면(`🔁 📅x every week`)
+  // Rust는 날짜를 뽑아내고 `"every week"`를 반복으로 읽지만, 구간은 이어져 있어야
+  // 그릴 수 있으므로 여기서는 값이 비어 칩이 서지 않는다. canonical 순서로 쓰는 한
+  // 나올 수 없는 줄이고, 인덱스는 어느 쪽이든 옳다.
+  const at = text.indexOf(RECURRENCE_EMOJI);
+  if (at === -1) return spans;
+
+  const stop = spans.find((span) => span.from > at)?.from ?? text.length;
+  const rule = text.slice(at + RECURRENCE_EMOJI.length, stop).trim();
+  // 값이 없는 맨 🔁는 필드가 아니다 — 본문에 장식으로 적은 이모지를 삼키면 안 된다는
+  // 날짜 쪽 규칙과 같다. Rust도 그 줄의 `recurrence`를 `None`으로 둔다.
+  if (rule === "") return spans;
+
+  spans.push({
+    emoji: RECURRENCE_EMOJI,
+    from: at,
+    kind: "recurrence",
+    to: stop,
+    value: rule,
+  });
   return spans.sort((a, b) => a.from - b.from);
 }
 

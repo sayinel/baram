@@ -250,6 +250,43 @@ describe("§308 감추기 관용구 (리뷰 M2)", () => {
   });
 });
 
+// §18.18 M4 — 반복 칩. 값이 날짜도 마커도 아닌 **사용자가 적은 자유 텍스트**라,
+// 라벨 경로가 셋째 갈래로 갈린다.
+describe("§18.18 반복 칩의 라벨", () => {
+  function recurrenceChip(locale: "en" | "ko"): HTMLElement {
+    return renderTaskChip(
+      { emoji: "🔁", from: 0, kind: "recurrence", to: 12, value: "every week" },
+      false,
+      locale,
+      CHIP_TODAY,
+    );
+  }
+
+  // ‼️ 규칙 텍스트를 **그대로** 실어야 한다. 번역할 수 있는 어휘가 아니고(사용자가
+  // 적은 그대로가 다른 도구들이 읽는 값이다), 잘라내면 `every 2 weeks`와
+  // `every 2 days`가 화면에서 같은 칩이 된다.
+  it.each(["en", "ko"] as const)(
+    "%s: 규칙 텍스트를 그대로 보인다",
+    (locale) => {
+      expect(recurrenceChip(locale).textContent).toContain("every week");
+    },
+  );
+
+  it("어순만 로케일이 정한다", () => {
+    // 같은 값, 다른 문장. 한쪽이 키를 잃으면 라벨이 키 문자열로 렌더된다.
+    expect(recurrenceChip("en").textContent).not.toBe(
+      recurrenceChip("ko").textContent,
+    );
+    expect(recurrenceChip("en").textContent).not.toContain("tasks.chip");
+    expect(recurrenceChip("ko").textContent).not.toContain("tasks.chip");
+  });
+
+  // 색을 갖는 상태는 기한 초과 하나뿐이라는 방향 C의 규칙을 반복도 따른다.
+  it("색을 갖지 않는다", () => {
+    expect([...recurrenceChip("en").classList]).toEqual(["task-chip"]);
+  });
+});
+
 describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
   // "아웃라인 기본, **기한 초과만** 색을 갖는다"는 CSS 주석·registry `_note`·
   // 계획서가 모두 적어 둔 규칙인데 배포된 CSS는 우선순위 칩에도 색을 줬다.

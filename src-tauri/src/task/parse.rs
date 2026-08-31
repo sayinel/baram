@@ -425,6 +425,34 @@ mod tests {
         }
     }
 
+    /// §18.18 M4 — 반복 값의 **경계**. 프런트 스캐너(`src/utils/tasks/task-field-scan.ts`)가
+    /// 칩을 그릴 때 같은 줄을 같게 읽어야 한다: 저기서 줄 끝까지를 반복으로 삼으면
+    /// 화면에서 기한 칩이 사라지고, 그 자리를 눌러 고치면 반복 규칙 한가운데를 덮는다.
+    /// 두 언어의 테스트가 **같은 줄**을 든다 — 한쪽을 고치면 다른 쪽이 빨간불이 된다.
+    #[test]
+    fn recurrence_value_stops_where_a_date_field_starts() {
+        let t = parse_task_line("- [ ] 회고 🔁every week 📅2026-09-01").unwrap();
+        assert_eq!(t.due.as_deref(), Some("2026-09-01"));
+        assert_eq!(t.recurrence.as_deref(), Some("every week"));
+    }
+
+    /// 값이 없는 맨 🔁는 필드가 아니다 — 뒤의 날짜는 그대로 기한이다.
+    #[test]
+    fn a_bare_recurrence_emoji_is_not_a_field() {
+        let t = parse_task_line("- [ ] 주간 회고 🔁 📅2026-08-30").unwrap();
+        assert_eq!(t.recurrence, None);
+        assert_eq!(t.due.as_deref(), Some("2026-08-30"));
+    }
+
+    /// canonical 순서(반복이 맨 뒤)에서는 줄 끝까지가 값이다.
+    #[test]
+    fn recurrence_last_takes_the_rest_of_the_line() {
+        let t = parse_task_line("- [ ] 회고 📅2026-09-01 ⏫ 🔁every week").unwrap();
+        assert_eq!(t.recurrence.as_deref(), Some("every week"));
+        assert_eq!(t.due.as_deref(), Some("2026-09-01"));
+        assert_eq!(t.priority, 1);
+    }
+
     #[test]
     fn ignores_a_malformed_date_value() {
         let t = parse_task_line("- [ ] 본문 📅2026-13-99").unwrap();

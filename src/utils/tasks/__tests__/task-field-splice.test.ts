@@ -267,3 +267,31 @@ describe("minimalEdit", () => {
     }
   });
 });
+
+// §18.18 M4 — 반복은 값이 자유 텍스트인 유일한 필드라, 넣고 고치고 지우는 세 갈래가
+// 날짜와 같은 자리로 떨어지는지 따로 본다.
+describe("applyTaskField — 반복(🔁)", () => {
+  it("없던 반복은 §303 순서상 **맨 뒤**에 붙는다", () => {
+    expect(
+      applyTaskField("회고 📅2026-09-01 ⏫", "recurrence", "every week"),
+    ).toBe("회고 📅2026-09-01 ⏫ 🔁every week");
+  });
+
+  it("이미 있으면 값만 갈아끼운다", () => {
+    expect(
+      applyTaskField("회고 🔁every week", "recurrence", "every 2 weeks"),
+    ).toBe("회고 🔁every 2 weeks");
+  });
+
+  it("빈 값은 필드를 지운다 — 구분 공백까지", () => {
+    expect(applyTaskField("회고 🔁every week", "recurrence", "")).toBe("회고");
+  });
+
+  // ‼️ 반복이 이미 줄 끝에 있을 때 날짜를 주면 그 **앞**으로 들어가야 한다. 뒤로 가면
+  // 인덱서가 그 날짜를 반복 규칙의 일부로 읽어(`parse_task_line`) 기한이 통째로 사라진다.
+  it("새 날짜는 이미 있는 반복 앞으로 들어간다", () => {
+    expect(applyTaskField("회고 🔁every week", "due", "2026-09-01")).toBe(
+      "회고 📅2026-09-01 🔁every week",
+    );
+  });
+});

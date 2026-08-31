@@ -55,3 +55,46 @@ describe("scanTaskFields", () => {
     expect(scanTaskFields("그냥 할 일")).toEqual([]);
   });
 });
+
+// §18.18 M4 — 반복은 값의 끝을 잴 규칙이 없는 유일한 필드다. 그래서 이 스위트는
+// "무엇이 값인가"를 Rust 인덱서(`task/parse.rs`의 `parse_task_line`)와 **한 글자씩
+// 맞춘다**: 저쪽이 날짜·우선순위를 먼저 떼어내고 남은 것을 반복으로 읽으므로,
+// 여기서 줄 끝까지를 통째로 삼키면 화면과 아젠다가 같은 줄을 다르게 말한다.
+describe("scanTaskFields — 반복(🔁)", () => {
+  it("자유 텍스트 값을 구간으로 잡는다", () => {
+    const t = "주간 회고 🔁every week";
+    const [f] = scanTaskFields(t);
+    expect(f).toMatchObject({ kind: "recurrence", value: "every week" });
+    expect(t.slice(f.from, f.to)).toBe("🔁every week");
+  });
+
+  it("이모지와 값 사이의 공백을 허용한다", () => {
+    expect(scanTaskFields("회고 🔁 every 2 days")[0]).toMatchObject({
+      kind: "recurrence",
+      value: "every 2 days",
+    });
+  });
+
+  // ‼️ 이것이 이 스위트의 요점이다. Rust는 📅를 **먼저** 뽑아 `due`로 읽고 남은
+  // `every week`를 반복으로 읽는다. 줄 끝까지를 반복으로 삼으면 기한 칩이 화면에서
+  // 사라지고, 그 자리를 눌러 고치면 반복 규칙 한가운데를 덮어쓴다.
+  it("값은 줄 끝이 아니라 **다음 필드 앞**에서 끝난다", () => {
+    const spans = scanTaskFields("회고 🔁every week 📅2026-09-01");
+    expect(spans.map((s) => s.kind)).toEqual(["recurrence", "due"]);
+    expect(spans[0].value).toBe("every week");
+    expect(spans[1].value).toBe("2026-09-01");
+  });
+
+  it("값이 없는 맨 🔁는 구간이 아니다 — 인덱서도 `None`으로 둔다", () => {
+    // 장식으로 적은 이모지를 삼키면 사용자 글자가 화면에서 사라진다는, 날짜 쪽과
+    // 같은 규칙이다. 뒤의 날짜는 그대로 기한으로 남는다.
+    const spans = scanTaskFields("주간 회고 🔁 📅2026-08-30");
+    expect(spans.map((s) => s.kind)).toEqual(["due"]);
+  });
+
+  it("canonical 순서(반복이 맨 뒤)에서는 줄 끝까지가 값이다", () => {
+    const spans = scanTaskFields("회고 📅2026-09-01 ⏫ 🔁every week");
+    expect(spans.map((s) => s.kind)).toEqual(["due", "priority", "recurrence"]);
+    expect(spans[2].value).toBe("every week");
+  });
+});

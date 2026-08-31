@@ -110,8 +110,9 @@ function cutSpan(body: string, from: number, to: number): string {
   return body.slice(0, start) + body.slice(end);
 }
 
-/** 날짜 필드의 이모지. 우선순위는 마커가 곧 값이라 여기 오지 않는다. */
+/** 필드의 이모지. 우선순위는 마커가 곧 값이라 여기 오지 않는다. */
 function emojiFor(kind: TaskFieldKind): string {
+  if (kind === "recurrence") return RECURRENCE_EMOJI;
   return CANONICAL_DATE_FIELDS.find((f) => f.kind === kind)?.emoji ?? "";
 }
 
