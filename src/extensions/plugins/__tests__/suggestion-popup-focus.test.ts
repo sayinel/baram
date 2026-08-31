@@ -18,6 +18,7 @@ import {
   createSuggestionRenderer,
   keepCaretOnMouseDown,
   positionPopup,
+  trackPopupPosition,
 } from "../suggestion-renderer";
 
 /** Press the mouse on an element and report whether the default was cancelled. */
@@ -144,5 +145,97 @@ describe("positionPopup keeps the menu inside the viewport", () => {
     const popup = place(rect({ bottom: 100, top: 80 }), 50);
 
     expect(popup.style.top).toBe("104px");
+  });
+});
+
+// ‼️ These menus render through a React portal, which commits on a LATER tick
+// than the onStart that creates the popup. Measuring during onStart measures an
+// EMPTY box, so the clamp concluded a 280px menu fitted where only ~109px did —
+// and nothing recomputed the position once the real menu arrived. That is why
+// clamping the left edge and pinning the popup width both failed on their own:
+// the arithmetic was right, the width it ran on was not.
+describe("trackPopupPosition re-places the popup when its size arrives", () => {
+  const observed: (() => void)[] = [];
+
+  class FakeResizeObserver {
+    constructor(private cb: () => void) {}
+    disconnect() {
+      const i = observed.indexOf(this.cb);
+      if (i >= 0) observed.splice(i, 1);
+    }
+    observe() {
+      observed.push(this.cb);
+    }
+  }
+
+  function withObserver<T>(run: () => T): T {
+    const original = (globalThis as { ResizeObserver?: unknown })
+      .ResizeObserver;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+      FakeResizeObserver;
+    try {
+      return run();
+    } finally {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = original;
+    }
+  }
+
+  function caretRect(left: number): DOMRect {
+    return { bottom: 100, left, top: 80 } as DOMRect;
+  }
+
+  it("repositions when the menu's real size lands after onStart", () => {
+    withObserver(() => {
+      const popup = document.createElement("div");
+      const tracker = trackPopupPosition(popup, 300);
+      // Caret near the right edge: with the empty-box fallback the clamp
+      // already pulls it back, and it must STAY pulled back afterwards.
+      tracker.update(caretRect(window.innerWidth - 20));
+      const afterStart = popup.style.left;
+
+      // The portal commits; the observer fires.
+      observed.forEach((cb) => cb());
+
+      expect(popup.style.left).toBe(afterStart);
+      expect(Number.parseInt(popup.style.left, 10) + 280).toBeLessThanOrEqual(
+        window.innerWidth,
+      );
+      tracker.stop();
+    });
+  });
+
+  it("does nothing before it has been given a caret position", () => {
+    withObserver(() => {
+      const popup = document.createElement("div");
+      const tracker = trackPopupPosition(popup, 300);
+
+      observed.forEach((cb) => cb());
+
+      expect(popup.style.left).toBe("");
+      tracker.stop();
+    });
+  });
+
+  it("stops observing when the menu closes", () => {
+    withObserver(() => {
+      const popup = document.createElement("div");
+      const tracker = trackPopupPosition(popup, 300);
+      tracker.update(caretRect(40));
+      expect(observed).toHaveLength(1);
+
+      tracker.stop();
+
+      expect(observed).toHaveLength(0);
+    });
+  });
+
+  it("works where ResizeObserver does not exist", () => {
+    // jsdom has none; a missing one must degrade to "position once", not throw.
+    const popup = document.createElement("div");
+    const tracker = trackPopupPosition(popup, 300);
+
+    expect(() => tracker.update(caretRect(40))).not.toThrow();
+    expect(popup.style.left).toBe("40px");
+    tracker.stop();
   });
 });

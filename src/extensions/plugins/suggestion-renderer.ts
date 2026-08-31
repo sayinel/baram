@@ -42,6 +42,7 @@ export interface SuggestionRendererState<TItem> {
   component: null | ReactRenderer<SuggestionMenuRef>;
   items: TItem[];
   popup: HTMLDivElement | null;
+  position: null | ReturnType<typeof trackPopupPosition>;
   range: null | { from: number; to: number };
 }
 
@@ -75,6 +76,7 @@ export function createSuggestionRenderer<TItem>(
     const state: SuggestionRendererState<TItem> = {
       component: null,
       popup: null,
+      position: null,
       items: [],
       range: null,
     };
@@ -83,6 +85,7 @@ export function createSuggestionRenderer<TItem>(
       onStart: (props: SuggestionProps) => {
         // Clean up any leftover popup/component from a previous cycle
         // (e.g. if onExit was skipped due to a rapid re-trigger)
+        state.position?.stop();
         state.popup?.remove();
         state.component?.destroy();
 
@@ -104,10 +107,8 @@ export function createSuggestionRenderer<TItem>(
         document.body.appendChild(state.popup);
         state.popup.appendChild(state.component.element);
 
-        const coords = props.clientRect?.();
-        if (coords && state.popup) {
-          positionPopup(state.popup, coords, menuHeight);
-        }
+        state.position = trackPopupPosition(state.popup, menuHeight);
+        state.position.update(props.clientRect?.() ?? undefined);
       },
       onUpdate: (props: SuggestionProps) => {
         state.items = props.items as TItem[];
@@ -119,10 +120,7 @@ export function createSuggestionRenderer<TItem>(
           command: props.command,
         });
 
-        const coords = props.clientRect?.();
-        if (coords && state.popup) {
-          positionPopup(state.popup, coords, menuHeight);
-        }
+        state.position?.update(props.clientRect?.() ?? undefined);
       },
       onKeyDown: (props: SuggestionKeyDownProps) => {
         if (props.event.key === "Escape") {
@@ -142,6 +140,7 @@ export function createSuggestionRenderer<TItem>(
         return state.component?.ref?.onKeyDown(props.event) ?? false;
       },
       onExit: () => {
+        state.position?.stop();
         state.popup?.remove();
         state.component?.destroy();
         state.popup = null;
@@ -218,4 +217,47 @@ export function keepCaretOnMouseDown(popup: HTMLElement): void {
   popup.addEventListener("mousedown", (event) => {
     event.preventDefault();
   });
+}
+
+/**
+ * Keep a popup positioned as its size becomes known.
+ *
+ * ‼️ These menus render through a React portal, which commits on a LATER tick
+ * than the `onStart` that creates the popup. Measuring the popup during
+ * `onStart` therefore measures an EMPTY box — and positioning clamps against
+ * that width, deciding a 280px menu fits where only 109px did. The menu then
+ * arrives at full width and runs off the screen, where `overflow-y: auto` on
+ * the list (which makes overflow-x compute to `auto`) clips it.
+ *
+ * Nothing recomputed the position afterwards, which is why clamping the left
+ * edge and pinning the popup's width both failed to fix it: the arithmetic was
+ * right, the width it ran on was not.
+ *
+ * So watch the box instead of guessing when it is ready. Repositioning moves
+ * the popup without resizing it, so this does not feed itself.
+ */
+export function trackPopupPosition(
+  popup: HTMLDivElement,
+  menuHeight: number,
+): { stop: () => void; update: (coords: DOMRect | undefined) => void } {
+  let last: DOMRect | null = null;
+
+  const place = (): void => {
+    if (last) positionPopup(popup, last, menuHeight);
+  };
+
+  // Guarded: jsdom has no ResizeObserver, and a missing one must degrade to
+  // "position once" rather than throw.
+  const observer =
+    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
+  observer?.observe(popup);
+
+  return {
+    stop: () => observer?.disconnect(),
+    update: (coords) => {
+      if (!coords) return;
+      last = coords;
+      place();
+    },
+  };
 }

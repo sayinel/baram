@@ -18,7 +18,7 @@ import { buildSlashItems } from "./slash-command-items";
 import { slashCommandPluginKey } from "./suggestion-keys";
 import {
   keepCaretOnMouseDown,
-  positionPopup as positionSuggestionPopup,
+  trackPopupPosition,
 } from "./suggestion-renderer";
 
 export { buildSlashItems } from "./slash-command-items";
@@ -44,15 +44,6 @@ export const SLASH_TRIGGER = {
 };
 
 const SLASH_MENU_HEIGHT = 320; // approximate max popup height
-
-/**
- * This menu used to carry its own copy of the positioning maths, which is why
- * clamping the popup to the viewport had to be fixed twice to reach both `/`
- * and `@`. One implementation, called with this menu's height.
- */
-function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
-  positionSuggestionPopup(popup, coords, SLASH_MENU_HEIGHT);
-}
 
 export const SlashCommands = Extension.create({
   name: "slashCommands",
@@ -95,6 +86,7 @@ export const SlashCommands = Extension.create({
         render: () => {
           let component: null | ReactRenderer<SlashMenuRef> = null;
           let popup: HTMLDivElement | null = null;
+          let position: null | ReturnType<typeof trackPopupPosition> = null;
 
           return {
             onStart: (props: SuggestionProps) => {
@@ -114,10 +106,8 @@ export const SlashCommands = Extension.create({
               document.body.appendChild(popup);
               popup.appendChild(component.element);
 
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
+              position = trackPopupPosition(popup, SLASH_MENU_HEIGHT);
+              position.update(props.clientRect?.() ?? undefined);
             },
             onUpdate: (props: SuggestionProps) => {
               component?.updateProps({
@@ -125,10 +115,7 @@ export const SlashCommands = Extension.create({
                 command: props.command,
               });
 
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
+              position?.update(props.clientRect?.() ?? undefined);
             },
             onKeyDown: (props: SuggestionKeyDownProps) => {
               if (props.event.key === "Escape") {
@@ -141,6 +128,7 @@ export const SlashCommands = Extension.create({
               return component?.ref?.onKeyDown(props.event) ?? false;
             },
             onExit: () => {
+              position?.stop();
               popup?.remove();
               component?.destroy();
               popup = null;
