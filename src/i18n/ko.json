@@ -928,6 +928,7 @@
   "dialog.insert": "삽입",
   "datePicker.prevMonth": "이전 달",
   "datePicker.nextMonth": "다음 달",
+  "datePicker.zoomOut": "월·연도 고르기",
   "query.title": "쿼리",
   "query.count": "결과 {count}건",
   "query.source": "대상",

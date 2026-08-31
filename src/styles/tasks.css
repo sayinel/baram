@@ -745,17 +745,36 @@
   border-radius: var(--radius-md);
 }
 
+/* ‼️ 셋을 한 덩어리로 가운데 모은다. `space-between`으로 양 끝에 밀면 화살표가 눈에
+   들어오지 않고, 다음에 무엇을 누를지 매번 찾게 된다. */
 .date-picker-header {
   display: flex;
+  gap: var(--space-1);
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   margin-bottom: var(--space-2);
 }
 
+/* 가운데 라벨은 버튼이다 — 누르면 달·해를 고르는 층으로 넓어진다. */
 .date-picker-month {
+  min-width: 8ch;
+  padding: 2px var(--space-2);
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--color-text-primary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.date-picker-month:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+/* 가장 넓은 층이라 더 열 곳이 없다. 흐리게 두지 않는다 — 읽어야 하는 글자다. */
+.date-picker-month-flat {
+  cursor: default;
 }
 
 .date-picker-nav {

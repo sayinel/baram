@@ -928,6 +928,7 @@
   "dialog.insert": "Insert",
   "datePicker.prevMonth": "Previous month",
   "datePicker.nextMonth": "Next month",
+  "datePicker.zoomOut": "Pick a month or year",
   "query.title": "Query",
   "query.count": "{count} results",
   "query.source": "Source",
