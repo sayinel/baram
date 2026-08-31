@@ -1,4 +1,6 @@
+import { act, render } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
+import { EditorContent } from "@tiptap/react";
 // §32 Hover Preview — unit + DOM contract + integration tests
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -21,6 +23,27 @@ function createEditor(): Editor {
 function loadMarkdown(editor: Editor, md: string): void {
   const doc = markdownToProsemirror(md, editor.schema);
   editor.commands.setContent(doc.toJSON());
+}
+
+// ‼️ The wikilink's `.wikilink` class and `data-target` come from the React
+// NodeView's <NodeViewWrapper>, NOT from the node's renderHTML — so they only
+// exist once the React portal has mounted. React NodeViews mount solely through
+// an <EditorContent> Portals host (a bare `new Editor` never renders them — see
+// wikilink-view.test.tsx), and @tiptap/react ≥3.28 mounts the portal on the tick
+// AFTER the transaction. A headless editor therefore yields a bare <span>, which
+// is exactly the DOM the app never ships. These tests mount for real and drain
+// the microtask queue so they assert against the DOM HoverPreview actually sees.
+async function mountEditorWithMarkdown(md: string): Promise<Editor> {
+  const editor = createEditor();
+  render(<EditorContent editor={editor} />);
+  act(() => {
+    loadMarkdown(editor, md);
+  });
+  await act(async () => {
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  return editor;
 }
 
 // ── Unit tests: pure utility functions ──
@@ -169,38 +192,35 @@ describe("§32 Hover Preview", () => {
       editor.destroy();
     });
 
-    test("wikilink DOM element has data-target attribute", () => {
-      const editor = createEditor();
-      loadMarkdown(editor, "Hello [[my-page]] world\n");
+    test("wikilink DOM element has data-target attribute", async () => {
+      const editor = await mountEditorWithMarkdown("Hello [[my-page]] world\n");
 
-      // The editor renders into a DOM element via NodeView
-      const el = editor.view.dom;
-      const wikilinkEl = el.querySelector(".wikilink");
+      const wikilinkEl = editor.view.dom.querySelector(".wikilink");
 
       expect(wikilinkEl).not.toBeNull();
       expect(wikilinkEl!.getAttribute("data-target")).toBe("my-page");
       editor.destroy();
     });
 
-    test("HoverPreview selector [data-target].wikilink matches rendered wikilink", () => {
-      const editor = createEditor();
-      loadMarkdown(editor, "Check [[notes]] here\n");
+    test("HoverPreview selector [data-target].wikilink matches rendered wikilink", async () => {
+      const editor = await mountEditorWithMarkdown("Check [[notes]] here\n");
 
-      const el = editor.view.dom;
       // This is the exact selector used by HoverPreview.tsx
-      const match = el.querySelector("[data-target].wikilink");
+      const match = editor.view.dom.querySelector("[data-target].wikilink");
 
       expect(match).not.toBeNull();
       expect(match!.getAttribute("data-target")).toBe("notes");
       editor.destroy();
     });
 
-    test("multiple wikilinks each have distinct data-target", () => {
-      const editor = createEditor();
-      loadMarkdown(editor, "See [[alpha]] and [[beta]] here\n");
+    test("multiple wikilinks each have distinct data-target", async () => {
+      const editor = await mountEditorWithMarkdown(
+        "See [[alpha]] and [[beta]] here\n",
+      );
 
-      const el = editor.view.dom;
-      const wikilinks = el.querySelectorAll("[data-target].wikilink");
+      const wikilinks = editor.view.dom.querySelectorAll(
+        "[data-target].wikilink",
+      );
 
       expect(wikilinks).toHaveLength(2);
       const targets = Array.from(wikilinks).map((w) =>
