@@ -103,11 +103,16 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0.1em;
+  width: 0;
   height: calc(var(--checkbox-size) * 0.82);
   content: "";
-  background: var(--color-accent-default);
-  border-radius: 0.05em;
+
+  /* ‼️ A BORDER, not a `background`. A printer treats a background as a
+     background graphic and drops it whenever that is switched off — which is
+     how a `doing` task printed as an empty box while its `done` neighbour kept
+     its tick (that tick is a border too). The state is content; it must not
+     depend on a "print backgrounds" setting to exist. */
+  border-left: 0.1em solid var(--color-accent-default);
   transform: translate(-50%, -50%) rotate(28deg);
 }
 
@@ -123,19 +128,17 @@
   );
 }
 
+/* Borders rather than backgrounds, for the reason given on the slash above. */
 .task-checkbox[data-state="cancelled"]::before,
 .task-checkbox[data-state="cancelled"]::after {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0.09em;
+  width: 0;
   height: calc(var(--checkbox-size) * 0.86);
   content: "";
-  background: color-mix(
-    in srgb,
-    var(--checkbox-ink) 45%,
-    var(--checkbox-ground)
-  );
+  border-left: 0.09em solid
+    color-mix(in srgb, var(--checkbox-ink) 45%, var(--checkbox-ground));
   transform: translate(-50%, -50%) rotate(45deg);
 }
 

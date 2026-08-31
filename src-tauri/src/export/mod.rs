@@ -44,8 +44,17 @@ pub enum ExportError {
 
 /// PDF export options matching frontend PdfOptions interface.
 /// Uses camelCase for JSON deserialization from TypeScript.
+///
+/// ‼️ `#[serde(default)]` is load-bearing, not tidiness. Without it a MISSING
+/// field deserialized to `None`, the builder below skipped it with `if let
+/// Some`, and Chrome's own default won — so `Default::default()` right here
+/// only ever applied when the frontend passed no options object AT ALL. It
+/// never does: `ExportDialog` sends `{paperSize, scale}`, which meant every PDF
+/// this app has produced was printed with `printBackground: false` (CDP's
+/// default), silently dropping every background in the document. The declared
+/// default said `true` the whole time.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct PdfOptions {
     /// Paper size: "a4" or "letter"
     pub paper_size: Option<String>,
@@ -225,6 +234,26 @@ mod tests {
         assert_eq!(opts.print_background, Some(true));
         assert_eq!(opts.scale, Some(1.0));
         assert_eq!(opts.margin_top, Some(0.4));
+    }
+
+    /// ‼️ 이 결함의 형태가 이 테스트의 전부다: **일부만 담긴** 옵션 객체.
+    /// 전부 담긴 객체(`test_pdf_options_camel_case_deserialize`)도, 아예 없는
+    /// 경우(`Default::default()`)도 언제나 옳았고, 그 사이의 실제 호출 형태
+    /// (`ExportDialog`가 보내는 `{paperSize, scale}`)만 조용히 틀렸다.
+    #[test]
+    fn partial_options_still_take_the_declared_defaults() {
+        let opts: PdfOptions =
+            serde_json::from_str(r#"{"paperSize":"letter","scale":0.8}"#).unwrap();
+
+        // 빠진 필드가 선언된 기본값을 받는다 — 특히 이것: 없으면 아래 빌더가
+        // 건너뛰고 Chrome이 `false`로 인쇄해 문서의 배경이 통째로 사라진다.
+        assert_eq!(opts.print_background, Some(true));
+        assert_eq!(opts.landscape, Some(false));
+        assert_eq!(opts.margin_top, Some(0.4));
+
+        // 담긴 필드는 그대로 이긴다.
+        assert_eq!(opts.paper_size.as_deref(), Some("letter"));
+        assert_eq!(opts.scale, Some(0.8));
     }
 
     #[test]
