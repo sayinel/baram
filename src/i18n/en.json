@@ -931,6 +931,7 @@
   "tasks.archive.failed": "Couldn't archive {count} task(s). See the log.",
   "dialog.cancel": "Cancel",
   "dialog.insert": "Insert",
+  "mention.pickDate": "Pick a date…",
   "datePicker.prevMonth": "Previous month",
   "datePicker.nextMonth": "Next month",
   "datePicker.zoomOut": "Pick a month or year",
