@@ -1,3 +1,5 @@
+import type { ContextInfo, VaultType } from "../../ipc/types";
+
 import { unescapeBlockRefTarget } from "../../pipeline/block-id";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -201,6 +203,53 @@ function resolveByExactFileName(
 }
 
 /**
+ * §317 Stable aliases for the special space contexts.
+ *
+ * A space context's `alias` is derived from its DIRECTORY NAME —
+ * `ensureSpaceContext` passes no alias, so `addContext` falls back to
+ * `labelFromPath(path)` (`context.ts:334`). A journal kept in `일기/` is
+ * therefore reachable as `[[일기::2026-08-30]]` but NOT as `[[Journal::…]]`,
+ * which is the syntax §317 makes the official route to the journal.
+ *
+ * These names are matched IN ADDITION to the folder-derived alias — the alias
+ * field is never overwritten, so `[[일기::…]]` keeps working. `general` has no
+ * canonical name: an empty string here would make every plain vault answer to
+ * `[[::…]]`.
+ */
+const SPACE_ALIASES: Partial<Record<VaultType, string>> = {
+  journal: "Journal",
+  zettelkasten: "Zettel",
+};
+
+/**
+ * §317 Find the context an `alias::` prefix refers to.
+ *
+ * ‼️ This lookup lives here as ONE ruler because it has two callers: the
+ * synchronous path below, and `use-navigation.ts`'s §87 async fallback. When
+ * they were two copies, widening one would have made `[[Journal::x]]` resolve
+ * on the sync path only — i.e. only for files in the currently open vault.
+ */
+export function findAliasContext(alias: string): ContextInfo | null {
+  const aliasLower = alias.toLowerCase();
+  const contexts = useContextStore.getState().contexts;
+
+  // ‼️ Two passes, not one predicate. An explicit alias always outranks a
+  // canonical space name: a vault the user actually named "Journal" is what
+  // `[[Journal::…]]` should mean, whatever order the contexts happen to sit in.
+  // One `find` over an OR would decide that by array position instead.
+  const explicit = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
+  if (explicit) return explicit;
+
+  return (
+    contexts.find(
+      (c) =>
+        c.vaultType !== undefined &&
+        SPACE_ALIASES[c.vaultType]?.toLowerCase() === aliasLower,
+    ) ?? null
+  );
+}
+
+/**
  * §87 Resolve a cross-vault wikilink target synchronously.
  * Looks up the alias in the context store and tries to find the file
  * in that context's file tree (only works if the context is active).
@@ -209,9 +258,7 @@ function resolveCrossVaultTarget(
   alias: string,
   target: string,
 ): null | { name: string; path: string } {
-  const contexts = useContextStore.getState().contexts;
-  const aliasLower = alias.toLowerCase();
-  const ctx = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
+  const ctx = findAliasContext(alias);
   if (!ctx) return null; // Vault not registered — dangling
 
   const { rootPath, fileTree } = useFileStore.getState();

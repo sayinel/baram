@@ -20,6 +20,20 @@ import { logger } from "../utils/logger";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
 
 export interface JournalFileOptions {
+  /**
+   * §317 Asked ONLY when the entry does not exist yet and is about to be
+   * created. Return false to leave the disk untouched (the call then resolves
+   * to null, exactly as an unresolvable directory does).
+   *
+   * ‼️ A callback, not a flag, so this service never imports a dialog — the
+   * confirm UI stays in the caller's layer.
+   *
+   * Omitted (the default) means create without asking, which is what the three
+   * existing callers want: the journal space's startup, the calendar's day
+   * click, and the command palette all express "make today's entry" as an
+   * explicit intent. Only a *link click* is a reference that should not create.
+   */
+  confirmCreate?: () => Promise<boolean>;
   journalDirectory: string;
   journalFilenameFormat: string;
   journalTemplatePath: null | string | undefined;
@@ -87,6 +101,7 @@ export async function ensureJournalFile(
   options: JournalFileOptions,
 ): Promise<null | { content: string; path: string }> {
   const {
+    confirmCreate,
     journalDirectory,
     journalFilenameFormat,
     journalTemplatePath,
@@ -113,7 +128,12 @@ export async function ensureJournalFile(
   try {
     content = await readFile(journalPath);
   } catch {
-    // File doesn't exist — create it
+    // File doesn't exist — create it.
+    // §317 …unless the caller wants to ask first. The gate sits HERE, after the
+    // read failed, so an entry that already exists is opened without a prompt:
+    // following a reference must never interrogate the user.
+    if (confirmCreate && !(await confirmCreate())) return null;
+
     const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
     await createDir(parentDir);
 

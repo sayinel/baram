@@ -194,3 +194,72 @@ describe("ensureJournalFile — journal directory registration", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 });
+
+// §317 defect B — following a reference must not silently author a diary entry.
+//
+// The gate sits AFTER the read fails, which is what separates "reference" from
+// "create": an entry that already exists opens with no prompt at all.
+describe("ensureJournalFile — confirmCreate (§317)", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    ipcAddContext.mockClear();
+    readFile.mockClear();
+    writeFile.mockClear();
+    createDir.mockClear();
+    useContextStore.setState({
+      activeContextId: "ctx-journal",
+      contexts: [journalContext()],
+    });
+    useFileStore.setState({ fileMtimes: new Map(), openFiles: new Map() });
+  });
+
+  it("creates without asking when no callback is given", async () => {
+    // The invariant that keeps the three existing callers untouched: the
+    // journal space's startup, the calendar, and the command palette all mean
+    // "make today's entry" and must not grow a dialog.
+    readFile.mockRejectedValueOnce(new Error("ENOENT (mock)"));
+
+    const result = await ensureJournalFile(DATE, OPTIONS);
+
+    expect(calls).toContain("writeFile");
+    expect(result).not.toBeNull();
+  });
+
+  it("does not touch the disk when the callback declines", async () => {
+    readFile.mockRejectedValueOnce(new Error("ENOENT (mock)"));
+    const confirmCreate = vi.fn(async () => false);
+
+    const result = await ensureJournalFile(DATE, { ...OPTIONS, confirmCreate });
+
+    expect(confirmCreate).toHaveBeenCalledTimes(1);
+    expect(result).toBeNull();
+    // Both, not just writeFile: createDir would leave an empty journal folder
+    // behind for a date the user explicitly refused to create.
+    expect(calls).not.toContain("writeFile");
+    expect(calls).not.toContain("createDir");
+  });
+
+  it("creates when the callback accepts", async () => {
+    readFile.mockRejectedValueOnce(new Error("ENOENT (mock)"));
+    const confirmCreate = vi.fn(async () => true);
+
+    const result = await ensureJournalFile(DATE, { ...OPTIONS, confirmCreate });
+
+    expect(confirmCreate).toHaveBeenCalledTimes(1);
+    expect(calls).toContain("writeFile");
+    expect(result).not.toBeNull();
+  });
+
+  it("never asks for an entry that already exists", async () => {
+    // ‼️ The whole point of §317's wording — 참조와 생성을 분리한다. Prompting
+    // on every visit to an existing day would be worse than the defect.
+    readFile.mockResolvedValueOnce("# 2026-08-08\n");
+    const confirmCreate = vi.fn(async () => true);
+
+    const result = await ensureJournalFile(DATE, { ...OPTIONS, confirmCreate });
+
+    expect(confirmCreate).not.toHaveBeenCalled();
+    expect(result?.content).toBe("# 2026-08-08\n");
+    expect(calls).not.toContain("writeFile");
+  });
+});
