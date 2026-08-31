@@ -1,5 +1,5 @@
 // §305 낙관적 잠금 쓰기 — expected_raw가 일치할 때만 그 줄을 고친다.
-use crate::task::fields::{insert_field, FIELD_EMOJI};
+use crate::task::fields::{insert_field, set_timer, FIELD_EMOJI};
 use crate::task::parse::is_valid_date;
 use crate::task::{normalize_line, TaskError, TaskState};
 
@@ -108,6 +108,7 @@ pub fn apply_state(
     new_state: TaskState,
     record_done_date: bool,
     today: &str,
+    timer: Option<&str>,
 ) -> String {
     let marker = new_state.marker();
     // 가장 **왼쪽** 마커만 바꾼다 — 본문에 "[x]"가 들어 있어도 체크박스를 놓치지 않는다.
@@ -121,6 +122,18 @@ pub fn apply_state(
         s
     } else {
         current.to_string()
+    };
+
+    // §18.18 M4 — 시간 기록. **값은 프런트가 계산해 온다**(`task-timer.ts`의
+    // `timerForState`). 여기서 다시 계산하지 않는 이유가 둘 있다: 이 규칙은 시계를
+    // 읽는데 이 코드베이스는 "Rust가 시간대를 추측하지 않는다"를 지키고, 무엇보다
+    // 에디터 경로(디스크를 타지 않는다)가 이미 그 함수를 쓰므로 여기 옮겨 적으면
+    // **같은 규칙이 두 벌**이 된다. Rust가 아는 것은 "어디에 놓는가"뿐이다.
+    //
+    // `None`은 "건드리지 말라"(기록 끔), `Some("")`는 제거다.
+    let swapped = match timer {
+        None => swapped,
+        Some(value) => set_timer(&swapped, value),
     };
 
     if !record_done_date {
@@ -243,10 +256,12 @@ pub async fn set_task_state(
     new_state: TaskState,
     record_done_date: bool,
     today: &str,
+    timer: Option<&str>,
 ) -> Result<String, TaskError> {
     let today = today.to_string();
+    let timer = timer.map(str::to_string);
     replace_line(path, line, expected_raw, move |current| {
-        apply_state(current, new_state, record_done_date, &today)
+        apply_state(current, new_state, record_done_date, &today, timer.as_deref())
     })
     .await
 }
@@ -296,6 +311,7 @@ mod tests {
             TaskState::Done,
             true,
             "2026-08-23",
+            None,
         )
         .await
         .unwrap();
@@ -318,6 +334,7 @@ mod tests {
             TaskState::Todo,
             true,
             "2026-08-24",
+            None,
         )
         .await
         .unwrap();
@@ -338,6 +355,7 @@ mod tests {
             TaskState::Done,
             true,
             "2026-08-23",
+            None,
         )
         .await
         .unwrap_err();
@@ -352,7 +370,7 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 한 줄\n").await;
 
-        let err = set_task_state(&p, 99, "- [ ] 한 줄", TaskState::Done, true, "2026-08-23")
+        let err = set_task_state(&p, 99, "- [ ] 한 줄", TaskState::Done, true, "2026-08-23", None)
             .await
             .unwrap_err();
         assert!(matches!(err, TaskError::Stale));
@@ -363,7 +381,7 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "# T\r\n- [ ] 할 일\r\n").await;
 
-        set_task_state(&p, 1, "- [ ] 할 일", TaskState::Done, false, "2026-08-23")
+        set_task_state(&p, 1, "- [ ] 할 일", TaskState::Done, false, "2026-08-23", None)
             .await
             .unwrap();
 
@@ -382,7 +400,7 @@ mod tests {
         let original = "- [ ] a\r\n- [ ] b\n- [ ] c\n";
         let p = f(&d, original).await;
 
-        let updated = set_task_state(&p, 0, "- [ ] a", TaskState::Done, false, "2026-08-23")
+        let updated = set_task_state(&p, 0, "- [ ] a", TaskState::Done, false, "2026-08-23", None)
             .await
             .unwrap();
         assert_eq!(updated, "- [x] a");
@@ -397,7 +415,7 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 할 일").await;
 
-        set_task_state(&p, 0, "- [ ] 할 일", TaskState::Done, false, "2026-08-23")
+        set_task_state(&p, 0, "- [ ] 할 일", TaskState::Done, false, "2026-08-23", None)
             .await
             .unwrap();
 
@@ -410,7 +428,7 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 할\u{00A0}일\n").await;
 
-        let updated = set_task_state(&p, 0, "- [ ] 할 일", TaskState::Done, false, "2026-08-23")
+        let updated = set_task_state(&p, 0, "- [ ] 할 일", TaskState::Done, false, "2026-08-23", None)
             .await
             .unwrap();
         assert_eq!(updated, "- [x] 할 일");
@@ -467,6 +485,7 @@ mod tests {
             TaskState::Todo,
             false,
             "2026-08-23",
+            None,
         )
         .await
         .unwrap();
@@ -512,6 +531,7 @@ mod tests {
             TaskState::Todo,
             true,
             "2026-08-24",
+            None,
         )
         .await
         .unwrap();
@@ -558,6 +578,7 @@ mod tests {
             TaskState::Done,
             true,
             "2026-08-24",
+            None,
         );
         assert_eq!(out, "- [x] 초안 📅2026-08-30 ✅2026-08-24");
     }
@@ -569,19 +590,20 @@ mod tests {
             TaskState::Todo,
             true,
             "2026-08-24",
+            None,
         );
         assert_eq!(out, "- [x] 초안 📅2026-08-30".replace("[x]", "[ ]"));
     }
 
     #[test]
     fn apply_state_leaves_done_date_alone_when_recording_is_off() {
-        let out = apply_state("- [ ] 초안", TaskState::Done, false, "2026-08-24");
+        let out = apply_state("- [ ] 초안", TaskState::Done, false, "2026-08-24", None);
         assert_eq!(out, "- [x] 초안");
     }
 
     #[test]
     fn apply_state_preserves_indentation() {
-        let out = apply_state("    - [ ] 중첩", TaskState::Done, false, "2026-08-24");
+        let out = apply_state("    - [ ] 중첩", TaskState::Done, false, "2026-08-24", None);
         assert_eq!(out, "    - [x] 중첩");
     }
 
@@ -590,22 +612,22 @@ mod tests {
     #[test]
     fn apply_state_writes_every_marker() {
         assert_eq!(
-            apply_state("- [ ] 초안", TaskState::Doing, false, "2026-08-24"),
+            apply_state("- [ ] 초안", TaskState::Doing, false, "2026-08-24", None),
             "- [/] 초안"
         );
         assert_eq!(
-            apply_state("- [/] 초안", TaskState::Cancelled, false, "2026-08-24"),
+            apply_state("- [/] 초안", TaskState::Cancelled, false, "2026-08-24", None),
             "- [-] 초안"
         );
         assert_eq!(
-            apply_state("- [-] 초안", TaskState::Todo, false, "2026-08-24"),
+            apply_state("- [-] 초안", TaskState::Todo, false, "2026-08-24", None),
             "- [ ] 초안"
         );
     }
 
     #[test]
     fn apply_state_stamps_a_cancelled_line_with_the_cancel_date() {
-        let out = apply_state("- [ ] 초안", TaskState::Cancelled, true, "2026-08-24");
+        let out = apply_state("- [ ] 초안", TaskState::Cancelled, true, "2026-08-24", None);
         assert_eq!(out, "- [-] 초안 ❌2026-08-24");
     }
 
@@ -614,20 +636,20 @@ mod tests {
     /// 나란히 남아 어느 쪽이 참인지 알 방법이 없어진다.
     #[test]
     fn apply_state_never_leaves_two_terminal_stamps() {
-        let done = apply_state("- [ ] 초안", TaskState::Done, true, "2026-08-24");
+        let done = apply_state("- [ ] 초안", TaskState::Done, true, "2026-08-24", None);
         assert_eq!(done, "- [x] 초안 ✅2026-08-24");
 
-        let cancelled = apply_state(&done, TaskState::Cancelled, true, "2026-08-25");
+        let cancelled = apply_state(&done, TaskState::Cancelled, true, "2026-08-25", None);
         assert_eq!(cancelled, "- [-] 초안 ❌2026-08-25");
 
         // 되살리면 스탬프가 남지 않는다 — 끝나지 않은 일에 끝난 날짜는 없다.
-        let reopened = apply_state(&cancelled, TaskState::Doing, true, "2026-08-26");
+        let reopened = apply_state(&cancelled, TaskState::Doing, true, "2026-08-26", None);
         assert_eq!(reopened, "- [/] 초안");
     }
 
     #[test]
     fn apply_state_swaps_only_the_leftmost_marker() {
-        let out = apply_state("- [ ] 본문에 [-] 가 있다", TaskState::Doing, false, "2026-08-24");
+        let out = apply_state("- [ ] 본문에 [-] 가 있다", TaskState::Doing, false, "2026-08-24", None);
         assert_eq!(out, "- [/] 본문에 [-] 가 있다");
     }
 
@@ -839,6 +861,7 @@ mod tests {
             TaskState::Done,
             false,
             "2026-08-23",
+            None,
         )
         .await
         .unwrap();

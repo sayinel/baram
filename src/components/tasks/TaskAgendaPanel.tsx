@@ -39,6 +39,7 @@ export function TaskAgendaPanel() {
     setTasksScanScope,
     tasksArchiveAfterDays,
     tasksRecordDoneDate,
+    tasksTrackTime,
     tasksScanScope,
     tasksWeekStart,
   } = useSettingsStore(
@@ -46,6 +47,7 @@ export function TaskAgendaPanel() {
       setTasksScanScope: s.setTasksScanScope,
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
       tasksRecordDoneDate: s.tasksRecordDoneDate,
+      tasksTrackTime: s.tasksTrackTime,
       tasksScanScope: s.tasksScanScope,
       tasksWeekStart: s.tasksWeekStart,
     })),
@@ -81,6 +83,7 @@ export function TaskAgendaPanel() {
     exclude: tasksExcludePaths,
     now,
     recordDoneDate: tasksRecordDoneDate,
+    trackTime: tasksTrackTime,
   });
 
   const onJump = useCallback((task: TaskEntry) => {

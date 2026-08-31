@@ -48,12 +48,14 @@ const TASK: TaskEntry = {
   state: "todo",
   tags: [],
   text: "초안",
+  timer: null,
 };
 
 const TO_DONE = {
   kind: "state",
   newState: "done",
   recordDoneDate: true,
+  timer: null,
   today: "2026-08-24",
 } as const;
 
@@ -112,6 +114,8 @@ describe("applyTaskWrite — 디스크 경로", () => {
       "done",
       true,
       "2026-08-24",
+      // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+      null,
     );
     expect(r).toEqual({
       kind: "disk",

@@ -30,6 +30,7 @@ function task(path: string, text: string): TaskEntry {
     state: "todo",
     tags: [],
     text,
+    timer: null,
   };
 }
 

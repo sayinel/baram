@@ -93,6 +93,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }

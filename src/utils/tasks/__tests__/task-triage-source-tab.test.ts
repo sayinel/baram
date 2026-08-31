@@ -64,7 +64,14 @@ let disk = INITIAL;
 let buffer = INITIAL;
 
 function ctx(editor: Editor | null = null): TaskTriageContext {
-  return { editor, exclude: [], now: NOW, recordDoneDate: true, t: EN_T };
+  return {
+    editor,
+    exclude: [],
+    now: NOW,
+    recordDoneDate: true,
+    t: EN_T,
+    trackTime: false,
+  };
 }
 
 /**
@@ -125,6 +132,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }

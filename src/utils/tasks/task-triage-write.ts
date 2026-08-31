@@ -40,6 +40,8 @@ export interface TaskTriageContext {
    */
   recordDoneDate: boolean;
   t: Translate;
+  /** §18.18 M4 `[/]`인 동안 `⏱`로 시간을 잴지 — 기본 끔(`task-settings.ts`). */
+  trackTime: boolean;
 }
 
 /**

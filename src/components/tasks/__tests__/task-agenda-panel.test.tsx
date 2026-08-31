@@ -57,6 +57,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }
@@ -106,6 +107,8 @@ describe("TaskAgendaPanel", () => {
       "doing",
       true,
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+      null,
     );
   });
 
@@ -441,6 +444,8 @@ describe("TaskAgendaPanel", () => {
         "done",
         true,
         "2026-08-23",
+        // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+        null,
       );
     });
   });

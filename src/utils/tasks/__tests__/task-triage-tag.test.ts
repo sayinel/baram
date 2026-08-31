@@ -49,7 +49,14 @@ const NOW = new Date(2026, 7, 26);
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function ctx(editor: Editor | null = null): TaskTriageContext {
-  return { editor, exclude: [], now: NOW, recordDoneDate: true, t: EN_T };
+  return {
+    editor,
+    exclude: [],
+    now: NOW,
+    recordDoneDate: true,
+    t: EN_T,
+    trackTime: false,
+  };
 }
 
 function itemFor(entry: TaskEntry) {
@@ -100,6 +107,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }

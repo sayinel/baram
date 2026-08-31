@@ -108,12 +108,14 @@ export async function previewTaskStateLine(
   newState: TaskState,
   recordDoneDate: boolean,
   today: string,
+  timer?: null | string,
 ): Promise<string> {
   return invoke<string>("preview_task_state_line", {
     raw,
     newState,
     recordDoneDate,
     today,
+    timer,
   });
 }
 
@@ -149,6 +151,11 @@ export async function setTaskField(
 /**
  * `today`는 호출자가 로컬 시간대로 계산해 넘긴다 — 백엔드가 시간대를 추측하지
  * 않게 하기 위해서다. 파일이 그 사이 바뀌었으면 "stale"로 reject된다.
+ *
+ * §18.18 M4 `timer`도 **계산된 값**이다: 넘기지 않으면(`undefined`/`null`) 백엔드는
+ * `⏱` 필드를 건드리지 않고, `""`는 제거, 그 밖은 그 값으로 맞춘다. 규칙은
+ * `utils/tasks/task-timer.ts`의 `timerForState` 하나뿐이다 — 에디터 경로가 이미
+ * 그것을 쓰므로 백엔드에 옮겨 적으면 같은 규칙이 두 벌이 된다.
  */
 export async function setTaskState(
   path: string,
@@ -157,6 +164,7 @@ export async function setTaskState(
   newState: TaskState,
   recordDoneDate: boolean,
   today: string,
+  timer?: null | string,
 ): Promise<string> {
   return invoke<string>("set_task_state", {
     path,
@@ -165,6 +173,7 @@ export async function setTaskState(
     newState,
     recordDoneDate,
     today,
+    timer,
   });
 }
 

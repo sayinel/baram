@@ -9,6 +9,7 @@ import type { TaskFieldKind } from "./task-field-order";
 
 import { CANONICAL_DATE_FIELDS, RECURRENCE_EMOJI } from "./task-field-order";
 import { PRIORITY_EMOJI } from "./task-field-tokens";
+import { parseTimer, TIMER_EMOJI_RE } from "./task-timer";
 
 export type { TaskFieldKind };
 
@@ -69,6 +70,27 @@ export function scanTaskFields(text: string): TaskFieldSpan[] {
       });
       at = text.indexOf(marker, at + marker.length);
     }
+  }
+
+  // §18.18 M4 시간 기록. 값은 공백을 담지 않으므로 다음 공백까지가 그 값이고, 그 값이
+  // `task-timer.ts`의 문법에 맞을 때만 필드다 — 뒤에 유효한 날짜가 와야 날짜 필드인 것과
+  // 같은 규칙이다. 읽지 못하는 값에 칩을 씌우면, 그 칩을 눌러 고칠 때 남의 표기를 덮는다.
+  //
+  // ‼️ `TIMER_EMOJI_RE`는 variation selector가 붙은 `⏱️`도 받는다. 파일에 쓰는 것은 짧은
+  // 쪽뿐이지만(Rust `normalize_line`이 U+FE0F를 지운다), 다른 도구가 적어 넣은 줄은
+  // 긴 쪽으로 온다.
+  for (const match of text.matchAll(new RegExp(TIMER_EMOJI_RE, "g"))) {
+    const at = match.index;
+    const rest = text.slice(at + match[0].length);
+    const value = rest.split(/\s/)[0] ?? "";
+    if (parseTimer(value) === null) continue;
+    spans.push({
+      emoji: match[0],
+      from: at,
+      kind: "timer",
+      to: at + match[0].length + value.length,
+      value,
+    });
   }
 
   spans.sort((a, b) => a.from - b.from);

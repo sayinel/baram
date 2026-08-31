@@ -38,6 +38,7 @@ export interface TaskTriageOptions {
   onReconciled?: () => void;
   /** §303 완료 시 ✅날짜를 남길지 — 체크 판정만 쓴다. */
   recordDoneDate: boolean;
+  trackTime: boolean;
 }
 
 export interface TaskTriageWiring {
@@ -59,12 +60,21 @@ export function useTaskTriage({
   now,
   onReconciled,
   recordDoneDate,
+  trackTime,
 }: TaskTriageOptions): TaskTriageWiring {
   const { t } = useTranslation();
 
   const context: TaskTriageContext = useMemo(
-    () => ({ editor, exclude, now, onReconciled, recordDoneDate, t }),
-    [editor, exclude, now, onReconciled, recordDoneDate, t],
+    () => ({
+      editor,
+      exclude,
+      now,
+      onReconciled,
+      recordDoneDate,
+      t,
+      trackTime,
+    }),
+    [editor, exclude, now, onReconciled, recordDoneDate, t, trackTime],
   );
 
   const onToggle = useCallback(

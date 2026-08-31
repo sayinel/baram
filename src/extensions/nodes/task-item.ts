@@ -9,6 +9,7 @@
 import type { Locale } from "../../i18n";
 import type { TaskState } from "../../ipc/types";
 import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
+import type { Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { mergeAttributes, Node } from "@tiptap/core";
@@ -16,7 +17,11 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 import { t } from "../../i18n";
 import { useSettingsStore } from "../../stores/settings/store";
+import { scanTaskFields } from "../../utils/tasks/task-field-scan";
+import { applyTaskField } from "../../utils/tasks/task-field-splice";
 import { asTaskState, nextTaskState } from "../../utils/tasks/task-state";
+import { timerForState } from "../../utils/tasks/task-timer";
+import { spliceFieldText, taskLineText } from "../plugins/task-field-edit";
 
 export interface TaskItemOptions {
   HTMLAttributes: Record<string, string>;
@@ -121,12 +126,7 @@ export const TaskItem = Node.create<TaskItemOptions>({
         ({ dispatch, state, tr }) => {
           const found = taskItemAt(state.selection.$from);
           if (!found) return false;
-          if (dispatch) {
-            tr.setNodeMarkup(found.pos, undefined, {
-              ...found.node.attrs,
-              state: next,
-            });
-          }
+          if (dispatch) writeState(tr, found, next);
           return true;
         },
     };
@@ -153,12 +153,13 @@ export const TaskItem = Node.create<TaskItemOptions>({
               const found = taskItemAtDOM(view, li);
               if (!found) return false;
 
-              view.dispatch(
-                view.state.tr.setNodeMarkup(found.pos, undefined, {
-                  ...found.node.attrs,
-                  state: nextTaskState(asTaskState(found.node.attrs.state)),
-                }),
+              const tr = view.state.tr;
+              writeState(
+                tr,
+                found,
+                nextTaskState(asTaskState(found.node.attrs.state)),
               );
+              view.dispatch(tr);
               return true;
             },
 
@@ -230,4 +231,35 @@ function taskItemAt($pos: ResolvedPos): FoundItem | null {
 /** The same lookup, starting from the item's DOM element. */
 function taskItemAtDOM(view: EditorView, li: HTMLElement): FoundItem | null {
   return taskItemAt(view.state.doc.resolve(view.posAtDOM(li, 0)));
+}
+
+/**
+ * Put a state change into `tr` — the attribute AND the `⏱` field it moves.
+ *
+ * ‼️ ONE transaction, deliberately. §18.18 M4 made a single press do two things,
+ * and two transactions would let one Ctrl+Z undo half of it: a `[/]` line whose
+ * clock has already been banked, or a `[x]` line still running one.
+ *
+ * The attribute change does not shift any position (attrs only), so the text
+ * edit that follows can use positions read from the pre-change document.
+ */
+function writeState(tr: Transaction, found: FoundItem, next: TaskState): void {
+  tr.setNodeMarkup(found.pos, undefined, { ...found.node.attrs, state: next });
+
+  if (!useSettingsStore.getState().tasksTrackTime) return;
+  const line = found.node.firstChild;
+  if (line?.type.name !== "paragraph") return;
+
+  const before = taskLineText(line);
+  const current =
+    scanTaskFields(before).find((span) => span.kind === "timer")?.value ?? "0m";
+  const value = timerForState(current, next, new Date());
+  // `found.pos + 2`가 첫 문단 **내용**의 시작이다(항목 +1 = 문단, +1 = 그 내용) —
+  // `taskLineTarget`이 쓰는 것과 같은 산술.
+  spliceFieldText(
+    tr,
+    found.pos + 2,
+    before,
+    applyTaskField(before, "timer", value),
+  );
 }

@@ -120,12 +120,14 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
     tasksArchiveAfterDays,
     tasksExcludePaths,
     tasksRecordDoneDate,
+    tasksTrackTime,
     tasksWeekStart,
   } = useSettingsStore(
     useShallow((s) => ({
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
       tasksExcludePaths: s.tasksExcludePaths,
       tasksRecordDoneDate: s.tasksRecordDoneDate,
+      tasksTrackTime: s.tasksTrackTime,
       tasksWeekStart: s.tasksWeekStart,
     })),
   );
@@ -175,6 +177,7 @@ function WeeklyReview({ onClose }: { onClose: () => void }) {
     exclude: tasksExcludePaths,
     now,
     recordDoneDate: tasksRecordDoneDate,
+    trackTime: tasksTrackTime,
   });
 
   // ‼️ 순서가 **화면과 같아야** 한다 — `j`/`k`의 자동 전진이 이 배열의 인덱스로 자리를

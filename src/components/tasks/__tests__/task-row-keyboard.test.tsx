@@ -80,6 +80,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }
@@ -159,6 +160,8 @@ describe("§312 네 판정에 키 한 번으로 닿는다", () => {
         "doing",
         true,
         expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+        null,
       ),
     );
   });

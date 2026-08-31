@@ -41,12 +41,14 @@ interface Props {
 
 export function TaskQueryResults({ display, now, onChanged, tasks }: Props) {
   const { t } = useTranslation();
-  const { tasksExcludePaths, tasksRecordDoneDate } = useSettingsStore(
-    useShallow((s) => ({
-      tasksExcludePaths: s.tasksExcludePaths,
-      tasksRecordDoneDate: s.tasksRecordDoneDate,
-    })),
-  );
+  const { tasksExcludePaths, tasksRecordDoneDate, tasksTrackTime } =
+    useSettingsStore(
+      useShallow((s) => ({
+        tasksExcludePaths: s.tasksExcludePaths,
+        tasksRecordDoneDate: s.tasksRecordDoneDate,
+        tasksTrackTime: s.tasksTrackTime,
+      })),
+    );
   const byId = useZettelIndexStore((s) => s.byId);
   const editor = useEditorContext();
 
@@ -56,6 +58,7 @@ export function TaskQueryResults({ display, now, onChanged, tasks }: Props) {
     now,
     onReconciled: onChanged,
     recordDoneDate: tasksRecordDoneDate,
+    trackTime: tasksTrackTime,
   });
 
   const titleFor = useCallback(

@@ -9,6 +9,8 @@
 // 그러나 캡처는 줄을 **처음 짓는다** — 그 순간 Rust는 관여하지 않으므로 순서를 아는 곳이
 // 여기밖에 없다. M2-b1이 이 표 없이 지어서 `⏫`를 맨 앞에, `➕`를 맨 뒤에 두었다.
 
+import { TIMER_EMOJI_RE } from "./task-timer";
+
 /** 이모지 필드의 종류. §303 표에 있는 것 전부. */
 export type TaskFieldKind =
   | "cancelled"
@@ -21,7 +23,9 @@ export type TaskFieldKind =
   // 같다 — 칩을 누르면 열리고, 지우면 사라진다.
   | "recurrence"
   | "scheduled"
-  | "start";
+  | "start"
+  // §18.18 M4 시간 기록. 값 문법과 상태 연동은 `task-timer.ts`에 있다.
+  | "timer";
 
 /**
  * §18.2 표 순서 그대로의 날짜 필드. **배열 인덱스가 곧 canonical 순위**이므로
@@ -45,8 +49,16 @@ export const CANONICAL_DATE_FIELDS: readonly {
  */
 export const PRIORITY_RANK = 6;
 
-/** 반복은 마지막 — 값이 줄 끝까지라 뒤에 아무것도 놓을 수 없기도 하다. */
-export const RECURRENCE_RANK = 7;
+/** 시간 기록은 우선순위 뒤, 반복 앞. */
+export const TIMER_RANK = 7;
+
+/**
+ * 반복은 마지막 — 값이 줄 끝까지라 뒤에 아무것도 놓을 수 없기도 하다.
+ *
+ * ‼️ M4에서 7 → 8이 됐다(`⏱`가 사이에 들어왔다). Rust `fields.rs`의 같은 상수와
+ * 함께 움직여야 한다 — 두 쪽이 다른 숫자를 들면 같은 조작이 표면에 따라 다른 줄을 만든다.
+ */
+export const RECURRENCE_RANK = 8;
 
 /** 반복 규칙 이모지. Rust `parse.rs`의 `RECURRENCE_EMOJI`와 같은 글자. */
 export const RECURRENCE_EMOJI = "🔁";
@@ -61,6 +73,7 @@ export function fieldRank(token: string): number {
   const i = CANONICAL_DATE_FIELDS.findIndex((f) => token.startsWith(f.emoji));
   if (i !== -1) return i;
   if (PRIORITY_MARKERS.some((m) => token.startsWith(m))) return PRIORITY_RANK;
+  if (TIMER_EMOJI_RE.test(token.slice(0, 2))) return TIMER_RANK;
   if (token.startsWith(RECURRENCE_EMOJI)) return RECURRENCE_RANK;
   return RECURRENCE_RANK + 1;
 }

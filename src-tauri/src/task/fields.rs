@@ -5,7 +5,7 @@
 // 둘이 같은 줄을 다르게 읽었으므로 `📅`를 다시 주면 그것이 `⏫`를 지나가 §303 표 순서가
 // 깨졌다(dev/backlog.md의 "§303 canonical 순서가 날짜 부여에서 깨진다"). 이제 경계 판정도
 // 삽입 위치도 여기 하나뿐이고, 두 호출자는 그것을 **쓰기만** 한다.
-use crate::task::parse::{is_valid_date, PRIORITY_MARKERS, RECURRENCE_EMOJI};
+use crate::task::parse::{is_valid_date, PRIORITY_MARKERS, RECURRENCE_EMOJI, TIMER_EMOJI};
 
 /// 날짜 필드 — §18.2 표와 **같은 순서**다. 이 배열의 인덱스가 그대로 canonical 순위이므로
 /// 순서를 바꾸면 파일에 쓰이는 순서가 바뀐다. 필드를 더할 때는 표를 먼저 고칠 것.
@@ -21,8 +21,13 @@ pub(super) const FIELD_EMOJI: &[(&str, &str)] = &[
 /// 우선순위는 날짜 여섯 뒤. `FIELD_EMOJI.len()`으로 쓰지 않고 상수로 둔 것은 이 두 값이
 /// **날짜 배열의 길이가 아니라 §18.2 표의 자리**라는 뜻이기 때문이다.
 pub(super) const PRIORITY_RANK: u8 = 6;
+/// §18.18 M4 시간 기록은 우선순위 뒤, 반복 앞.
+pub(super) const TIMER_RANK: u8 = 7;
 /// 반복은 마지막 — 값이 줄 끝까지라 뒤에 아무것도 놓을 수 없기도 하다.
-pub(super) const RECURRENCE_RANK: u8 = 7;
+///
+/// ‼️ M4에서 7 → 8이 됐다(`⏱`가 사이에 들어왔다). 프런트 `task-field-order.ts`의 같은
+/// 상수와 **함께** 움직여야 한다 — 양쪽 테스트가 이 숫자를 그대로 단정하는 이유다.
+pub(super) const RECURRENCE_RANK: u8 = 8;
 
 /// 필드 이름의 canonical 순위. 모르는 이름이면 `None`.
 pub(super) fn field_rank(field: &str) -> Option<u8> {
@@ -51,6 +56,18 @@ pub(super) fn field_token(s: &str) -> Option<(usize, u8)> {
     }
     if s.starts_with(RECURRENCE_EMOJI) {
         return Some((s.len(), RECURRENCE_RANK));
+    }
+    // 시간 기록의 값은 공백을 담지 않으므로 다음 공백까지가 그 값이다. 반복과 달리
+    // 끝을 잴 수 있어서 뒤에 다른 필드가 설 수 있고, 그래서 반복 **앞** 순위다.
+    if let Some(after) = s.strip_prefix(TIMER_EMOJI) {
+        let value: usize = after
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .map(char::len_utf8)
+            .sum();
+        if value > 0 {
+            return Some((TIMER_EMOJI.len_utf8() + value, TIMER_RANK));
+        }
     }
     for (rank, (_, emoji)) in FIELD_EMOJI.iter().enumerate() {
         let Some(after) = s.strip_prefix(emoji) else {
@@ -137,6 +154,47 @@ pub(super) fn insert_field(line: &str, field: &str, value: &str) -> String {
         return line.to_string();
     };
     let (_, emoji) = FIELD_EMOJI[rank as usize];
+    insert_at_rank(line, emoji, value, rank)
+}
+
+/// §18.18 M4 — `⏱` 필드를 `value`로 맞춘다. 빈 `value`는 제거다.
+///
+/// 날짜 필드의 `insert_field`/`strip_field`를 쓸 수 없는 이유는 그 둘이 `FIELD_EMOJI`
+/// **이름 표**를 도는데, 그 표의 인덱스가 곧 순위라 여섯 날짜 말고는 들어갈 자리가
+/// 없기 때문이다. 자리 계산(`insertion_point`)은 그대로 공유한다 — 갈라지면 안 되는
+/// 것은 "어디에 놓는가"이고, 그것은 한 자에 남았다.
+pub(super) fn set_timer(line: &str, value: &str) -> String {
+    let stripped = match timer_span(line) {
+        Some((mut start, end)) => {
+            if start > 0 && line.as_bytes()[start - 1] == b' ' {
+                start -= 1;
+            }
+            let mut out = line.to_string();
+            out.replace_range(start..end, "");
+            out.trim_end().to_string()
+        }
+        None => line.trim_end().to_string(),
+    };
+    if value.is_empty() {
+        return stripped;
+    }
+    insert_at_rank(&stripped, &TIMER_EMOJI.to_string(), value, TIMER_RANK)
+}
+
+/// 줄 안의 `⏱<값>` 구간(바이트). 값이 없는 맨 이모지는 필드가 아니다.
+fn timer_span(line: &str) -> Option<(usize, usize)> {
+    let at = line.find(TIMER_EMOJI)?;
+    let after = &line[at + TIMER_EMOJI.len_utf8()..];
+    let value: usize = after
+        .chars()
+        .take_while(|c| !c.is_whitespace())
+        .map(char::len_utf8)
+        .sum();
+    (value > 0).then_some((at, at + TIMER_EMOJI.len_utf8() + value))
+}
+
+/// 순위 `rank`의 자리에 `emoji + value`를 끼운 줄.
+fn insert_at_rank(line: &str, emoji: &str, value: &str, rank: u8) -> String {
     let trimmed = line.trim_end();
     let at = insertion_point(trimmed, rank);
     let head = trimmed[..at].trim_end();
@@ -162,9 +220,36 @@ mod tests {
     fn canonical_field_order_is_the_section_303_table() {
         let glyphs: Vec<&str> = FIELD_EMOJI.iter().map(|(_, e)| *e).collect();
         assert_eq!(glyphs.join(" "), "➕ 🛫 ⏳ 📅 ✅ ❌");
-        // 우선순위와 반복은 날짜 뒤, 그 순서로.
+        // 우선순위 · 시간 기록 · 반복은 날짜 뒤, 그 순서로.
         assert_eq!(PRIORITY_RANK, 6);
-        assert_eq!(RECURRENCE_RANK, 7);
+        assert_eq!(TIMER_RANK, 7);
+        assert_eq!(RECURRENCE_RANK, 8);
+    }
+
+    /// §18.18 M4 — `⏱`는 반복 **앞**이다. 뒤로 가면 반복이 남은 텍스트를 통째로
+    /// 값으로 삼으므로(`parse_task_line`) 기록한 시간이 인덱스에서 사라진다.
+    /// 프런트 `task-field-order.test.ts`가 같은 두 줄을 단정한다.
+    #[test]
+    fn the_timer_goes_before_the_repeat_rule() {
+        assert_eq!(
+            set_timer("- [/] 초안 ⏫ 🔁every week", "1h27m"),
+            "- [/] 초안 ⏫ ⏱1h27m 🔁every week"
+        );
+    }
+
+    #[test]
+    fn set_timer_replaces_and_removes() {
+        let set = set_timer("- [/] 초안 📅2026-09-01", "0m@2026-08-31T14:03");
+        assert_eq!(set, "- [/] 초안 📅2026-09-01 ⏱0m@2026-08-31T14:03");
+        assert_eq!(set_timer(&set, "30m"), "- [/] 초안 📅2026-09-01 ⏱30m");
+        // 빈 값은 제거 — 구분 공백까지 함께 가져간다.
+        assert_eq!(set_timer(&set, ""), "- [/] 초안 📅2026-09-01");
+    }
+
+    /// 값이 없는 맨 이모지는 필드가 아니다 — 본문에 장식으로 적은 것을 삼키면 안 된다.
+    #[test]
+    fn a_bare_timer_emoji_is_not_a_field() {
+        assert_eq!(set_timer("- [ ] ⏱ 재기 시작", ""), "- [ ] ⏱ 재기 시작");
     }
 
     #[test]

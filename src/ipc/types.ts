@@ -380,6 +380,11 @@ export interface TaskEntry {
   state: TaskState;
   tags: string[];
   text: string;
+  /**
+   * §18.18 M4 `⏱` 값 그대로 — `1h27m` 또는 `1h27m@2026-08-31T14:03`.
+   * 해석은 `utils/tasks/task-timer.ts`가 한다(Rust는 경계만 안다).
+   */
+  timer: null | string;
 }
 
 // §304 Task types

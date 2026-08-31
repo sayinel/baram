@@ -25,12 +25,14 @@ import { useTaskTriage } from "./use-task-triage";
 
 export function NoteTasksSection() {
   const { t } = useTranslation();
-  const { tasksEnabled, tasksRecordDoneDate } = useSettingsStore(
-    useShallow((s) => ({
-      tasksEnabled: s.tasksEnabled,
-      tasksRecordDoneDate: s.tasksRecordDoneDate,
-    })),
-  );
+  const { tasksEnabled, tasksRecordDoneDate, tasksTrackTime } =
+    useSettingsStore(
+      useShallow((s) => ({
+        tasksEnabled: s.tasksEnabled,
+        tasksRecordDoneDate: s.tasksRecordDoneDate,
+        tasksTrackTime: s.tasksTrackTime,
+      })),
+    );
   const { activeTabId, tabs } = useEditorStore(
     useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
   );
@@ -54,6 +56,7 @@ export function NoteTasksSection() {
     exclude,
     now,
     recordDoneDate: tasksRecordDoneDate,
+    trackTime: tasksTrackTime,
   });
 
   const titleFor = useCallback(

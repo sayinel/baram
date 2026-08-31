@@ -23,10 +23,12 @@ import { applyTaskWrite } from "./apply-task-write";
 import { isSameLine } from "./line-splice";
 import { resolveDateInput } from "./task-date-input";
 import { confirmAndDeleteTaskLine } from "./task-delete";
+import { scanTaskFields } from "./task-field-scan";
 import { SOMEDAY_TAG } from "./task-filters";
 import { TASK_ROW_KEY_HINT } from "./task-row-keys";
 import { nextTaskState } from "./task-state";
 import { lineHasTag } from "./task-tag-token";
+import { timerForState } from "./task-timer";
 import { writeAndReconcile } from "./task-triage-write";
 
 // 정리 조작 전부가 이 컨텍스트를 받으므로 호출부(`use-task-triage.ts`·테스트)는 계속
@@ -235,6 +237,17 @@ export async function writeTaskState(
   ctx: TaskTriageContext,
 ): Promise<void> {
   const recordDoneDate = ctx.recordDoneDate;
+  // §18.18 M4 `⏱`의 다음 값은 **여기서** 계산한다. 규칙(`timerForState`)이 시계를
+  // 읽으므로 시간대를 아는 쪽이 해야 하고, 에디터 경로가 이미 같은 함수를 쓴다.
+  // 지금 값은 스토어가 든 줄 원문에서 읽는다 — 낙관적 잠금이 대조하는 바로 그 문자열이라
+  // 이 값과 실제로 고쳐질 줄이 어긋날 수 없다.
+  const timer = ctx.trackTime
+    ? timerForState(
+        scanTaskFields(task.raw).find((s) => s.kind === "timer")?.value ?? "0m",
+        newState,
+        ctx.now,
+      )
+    : null;
   await writeAndReconcile(
     task,
     ctx,
@@ -245,6 +258,7 @@ export async function writeTaskState(
           kind: "state",
           newState,
           recordDoneDate,
+          timer,
           today: relativeIso("t", ctx.now),
         },
         ctx.editor,
@@ -260,6 +274,11 @@ export async function writeTaskState(
         done: doneMatch ? doneMatch[1] : null,
         raw: written.raw,
         state: newState,
+        // 스탬프와 같은 이유로 **쓰인 줄에서** 읽는다 — 위에서 계산한 값은 기록이
+        // 꺼져 있으면 `null`이고, 그때 줄에 남아 있는 옛 값과 어긋난다.
+        timer:
+          scanTaskFields(written.raw).find((s) => s.kind === "timer")?.value ??
+          null,
       });
     },
   );

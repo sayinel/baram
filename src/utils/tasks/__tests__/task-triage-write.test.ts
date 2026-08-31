@@ -35,6 +35,7 @@ const CTX: TaskTriageContext = {
   now: NOW,
   recordDoneDate: true,
   t: EN_T,
+  trackTime: false,
 };
 
 const TASK: TaskEntry = {
@@ -54,6 +55,7 @@ const TASK: TaskEntry = {
   state: "todo",
   tags: [],
   text: "하나",
+  timer: null,
 };
 
 /** 한 갈래를 돌리고 무엇이 일어났는지 한 덩어리로 돌려준다. */

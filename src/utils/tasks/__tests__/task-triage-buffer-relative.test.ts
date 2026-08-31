@@ -77,7 +77,14 @@ function closeTab(): void {
 }
 
 function ctx(editor: Editor | null = null): TaskTriageContext {
-  return { editor, exclude: [], now: NOW, recordDoneDate: true, t: EN_T };
+  return {
+    editor,
+    exclude: [],
+    now: NOW,
+    recordDoneDate: true,
+    t: EN_T,
+    trackTime: false,
+  };
 }
 
 /**
@@ -152,6 +159,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "a",
+    timer: null,
     ...over,
   };
 }

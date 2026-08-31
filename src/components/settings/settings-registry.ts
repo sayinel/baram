@@ -210,6 +210,18 @@ export function useSettingsRegistry(): SearchableSetting[] {
       ),
     },
     {
+      id: "tasksTrackTime",
+      label: "settings.general.tasksTrackTime",
+      description: "settings.general.tasksTrackTime.desc",
+      category: "general",
+      section: "settings.general.tasks",
+      keywords: ["task", "time", "timer", "tracking", "duration"],
+      control: makeToggleControl(
+        () => settings.tasksTrackTime,
+        settings.setTasksTrackTime,
+      ),
+    },
+    {
       id: "tasksStampCreatedDate",
       label: "settings.general.tasksStampCreatedDate",
       description: "settings.general.tasksStampCreatedDate.desc",

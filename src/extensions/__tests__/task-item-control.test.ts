@@ -7,10 +7,12 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 import { Editor } from "@tiptap/core";
+import { closeHistory } from "@tiptap/pm/history";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { useSettingsStore } from "../../stores/settings/store";
 import { createBaramExtensions } from "../index";
 
 const editors: Editor[] = [];
@@ -166,5 +168,73 @@ describe("the cancel path", () => {
     const editor = createEditor("plain line\n");
     editor.commands.focus("end");
     expect(editor.commands.setTaskState("cancelled")).toBe(false);
+  });
+});
+
+// §18.18 M4 시간 기록 — 사용자가 고른 것은 "상태와 연동"이다(2026-08-31). 그래서 이
+// 스위트는 **체크박스 한 번**이 상태와 `⏱`를 함께 옮기는지, 그 결과가 파일에 그대로
+// 적히는지를 본다. 값 문법 자체는 `task-timer.test.ts`가 따로 못박는다.
+describe("the state ring moves the clock", () => {
+  function trackTime(on: boolean): void {
+    useSettingsStore.getState().setTasksTrackTime(on);
+  }
+
+  afterEach(() => trackTime(false));
+
+  // ‼️ 기본은 꺼져 있다. `➕`·`✅`와 갈리는 자리다 — 그 둘에 기대는 기능이 있지만
+  // `⏱`에 기대는 것은 아직 없고, 켜져 있으면 태스크를 진행 중으로 옮기는 것만으로
+  // 사용자 파일에 새 필드가 적힌다.
+  it("writes nothing while tracking is off", () => {
+    const editor = createEditor("- [ ] a\n");
+    press(boxes(editor)[0], "click");
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe("- [/] a\n");
+  });
+
+  it("starts the clock when the task becomes `doing`", () => {
+    trackTime(true);
+    const editor = createEditor("- [ ] a\n");
+    press(boxes(editor)[0], "click");
+
+    const md = prosemirrorToMarkdown(editor.state.doc);
+    expect(md).toMatch(/^- \[\/\] a ⏱0m\+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}\n$/);
+  });
+
+  it("banks the stretch when it leaves `doing`", () => {
+    trackTime(true);
+    const editor = createEditor("- [/] a ⏱1h27m+2026-08-31T14:03\n");
+    // 두 번째 걸음: 진행 중 → 완료.
+    press(boxes(editor)[0], "click");
+
+    const md = prosemirrorToMarkdown(editor.state.doc);
+    expect(md).toContain("- [x] a ⏱");
+    expect(md).not.toContain("+2026");
+  });
+
+  // ‼️ 한 번의 누름이 두 가지를 바꾸므로, 되돌리기도 한 번이어야 한다. 트랜잭션이
+  // 둘이면 Ctrl+Z가 절반만 되돌려 상태와 타이머가 어긋난 줄이 남는다.
+  it("undoes the state and the clock together", () => {
+    trackTime(true);
+    const editor = createEditor("- [ ] a\n");
+    editor.commands.focus("end");
+    // 하네스 인공물 가드: `setContent`와 이 누름이 하나의 history 그룹에 들어가면
+    // (`newGroupDelay`) `u` 한 번이 문서를 통째로 비운다.
+    editor.view.dispatch(closeHistory(editor.state.tr));
+    press(boxes(editor)[0], "click");
+    expect(prosemirrorToMarkdown(editor.state.doc)).toContain("⏱");
+
+    editor.commands.undo();
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe("- [ ] a\n");
+  });
+
+  it("keeps the clock out of the way of the other fields", () => {
+    trackTime(true);
+    const editor = createEditor("- [ ] a 📅2026-09-01 ⏫ 🔁every week\n");
+    press(boxes(editor)[0], "click");
+
+    // §303 순서: 날짜 → 우선순위 → 시간 → 반복. 반복은 값이 줄 끝까지라 반드시 마지막이고,
+    // ⏱가 그 뒤로 가면 인덱서가 그것을 반복 규칙의 일부로 읽는다.
+    expect(prosemirrorToMarkdown(editor.state.doc)).toMatch(
+      /^- \[\/\] a 📅2026-09-01 ⏫ ⏱0m\+[\d-]+T[\d:]+ 🔁every week\n$/,
+    );
   });
 });

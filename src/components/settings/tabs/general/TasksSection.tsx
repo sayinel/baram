@@ -28,6 +28,8 @@ export function TasksSection() {
     setTasksRecordDoneDate,
     tasksStampCreatedDate,
     setTasksStampCreatedDate,
+    tasksTrackTime,
+    setTasksTrackTime,
     tasksArchiveAfterDays,
     setTasksArchiveAfterDays,
     tasksHome,
@@ -48,6 +50,8 @@ export function TasksSection() {
       setTasksRecordDoneDate: s.setTasksRecordDoneDate,
       tasksStampCreatedDate: s.tasksStampCreatedDate,
       setTasksStampCreatedDate: s.setTasksStampCreatedDate,
+      tasksTrackTime: s.tasksTrackTime,
+      setTasksTrackTime: s.setTasksTrackTime,
       tasksArchiveAfterDays: s.tasksArchiveAfterDays,
       setTasksArchiveAfterDays: s.setTasksArchiveAfterDays,
       tasksHome: s.tasksHome,
@@ -135,6 +139,16 @@ export function TasksSection() {
           </SettingsRow>
 
           {/* 완료일(✅)의 짝 — 둘 다 "날짜를 자동으로 적을까"이므로 나란히 둔다. */}
+          <SettingsRow
+            description={t("settings.general.tasksTrackTime.desc")}
+            label={t("settings.general.tasksTrackTime")}
+          >
+            <ToggleSwitch
+              checked={tasksTrackTime}
+              onChange={setTasksTrackTime}
+            />
+          </SettingsRow>
+
           <SettingsRow
             description={t("settings.general.tasksStampCreatedDate.desc")}
             label={t("settings.general.tasksStampCreatedDate")}

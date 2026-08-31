@@ -36,6 +36,13 @@ pub(super) const PRIORITY_MARKERS: &[(&str, i8)] = &[("🔺", 2), ("⏫", 1), ("
 /// `tag.rs`가 필드 뭉치의 경계를 잴 때 같은 글자를 봐야 하므로 여기에 둔다.
 pub(super) const RECURRENCE_EMOJI: char = '🔁';
 
+/// §18.18 M4 시간 기록 이모지 — **U+23F1 하나**다.
+///
+/// ‼️ `⏱️`(U+23F1 U+FE0F)로 쓰는 것이 더 흔하지만, `normalize_line`이 파싱 전에
+/// U+FE0F를 지우고 쓰기 경로가 그 정규화된 줄을 되쓰므로 파일에 남는 것은 짧은 쪽뿐이다.
+/// 여기서 짧은 쪽만 보는 것은 그래서 옳다 — 이 상수를 쓰는 코드는 전부 정규화 뒤에 있다.
+pub(super) const TIMER_EMOJI: char = '⏱';
+
 /// §18.18 M4 — 네 상태.
 ///
 /// ‼️ `Doing`도 `Cancelled`도 "완료의 일종"이 아니다. "이 일이 끝났는가"를 묻는
@@ -104,6 +111,10 @@ pub struct ParsedTask {
     pub cancelled: Option<String>,
     pub priority: i8,
     pub recurrence: Option<String>,
+    /// §18.18 M4 `⏱` 값 그대로 — `1h27m` 또는 `1h27m@2026-08-31T14:03`.
+    /// 해석은 프런트(`src/utils/tasks/task-timer.ts`)가 한다. Rust가 아는 것은
+    /// "이만큼이 이 필드다"뿐이고, 그것이 태그 삽입 자리와 상태 전이에 필요한 전부다.
+    pub timer: Option<String>,
     pub links: Vec<String>,
     pub tags: Vec<String>,
 }
@@ -185,6 +196,7 @@ pub fn parse_task_line(line: &str) -> Option<ParsedTask> {
         cancelled: None,
         priority: 0,
         recurrence: None,
+        timer: None,
         links: Vec::new(),
         tags: Vec::new(),
     };
@@ -218,6 +230,19 @@ pub fn parse_task_line(line: &str) -> Option<ParsedTask> {
         if let Some(pos) = text.find(emoji) {
             task.priority = *weight;
             text.replace_range(pos..pos + emoji.len(), "");
+        }
+    }
+    // ‼️ 반복보다 **먼저** 떼어낸다. 반복은 남은 텍스트를 통째로 값으로 삼으므로,
+    // 뒤에 있으면 기록한 시간이 반복 규칙 안으로 삼켜져 인덱스에서 사라진다.
+    if let Some(pos) = text.find(TIMER_EMOJI) {
+        let after = &text[pos + TIMER_EMOJI.len_utf8()..];
+        let value: String = after
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .collect();
+        if !value.is_empty() {
+            task.timer = Some(value.clone());
+            text.replace_range(pos..pos + TIMER_EMOJI.len_utf8() + value.len(), "");
         }
     }
     if let Some(pos) = text.find(RECURRENCE_EMOJI) {

@@ -131,6 +131,7 @@ const TASK: TaskEntry = {
   state: "todo",
   tags: [],
   text: "원고 마감",
+  timer: null,
 };
 
 const CTX = {
@@ -140,6 +141,7 @@ const CTX = {
   recordDoneDate: true,
   rootPath: "/v",
   t: ((k: string) => k) as never,
+  trackTime: false,
 };
 
 const tab = (id: string, filePath: string, isDirty = false): EditorTab => ({

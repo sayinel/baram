@@ -35,6 +35,11 @@ pub async fn get_tasks_linking_to(
 }
 
 /// `today`는 프론트가 로컬 시간대로 계산해 넘긴다 — Rust가 시간대를 추측하지 않는다.
+///
+/// §18.18 M4 `timer`도 같은 이유로 **계산된 값**이 온다: `None`이면 `⏱` 필드를 건드리지
+/// 않고(기록 끔), `Some("")`는 제거, 그 밖은 그 값으로 맞춘다. 규칙 자체는 프런트
+/// `task-timer.ts`의 `timerForState` 하나뿐이다 — 에디터 경로가 이미 그것을 쓰므로
+/// 여기 옮겨 적으면 같은 규칙이 두 벌이 되고, 그중 하나는 시계를 잘못 읽게 된다.
 #[tauri::command]
 pub async fn set_task_state(
     path: String,
@@ -43,11 +48,20 @@ pub async fn set_task_state(
     new_state: String,
     record_done_date: bool,
     today: String,
+    timer: Option<String>,
 ) -> Result<String, String> {
     let state: crate::task::TaskState = new_state.parse()?;
-    crate::task::set_task_state(&path, line, &expected_raw, state, record_done_date, &today)
-        .await
-        .map_err(|e| e.to_string())
+    crate::task::set_task_state(
+        &path,
+        line,
+        &expected_raw,
+        state,
+        record_done_date,
+        &today,
+        timer.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -71,6 +85,7 @@ pub fn preview_task_state_line(
     new_state: String,
     record_done_date: bool,
     today: String,
+    timer: Option<String>,
 ) -> Result<String, String> {
     // 이름 → 상태는 `TaskState::from_str` 한 곳에만 있다. 예전에는 이 두 커맨드가
     // 같은 match를 한 벌씩 갖고 있었고, M4가 상태를 넷으로 넓히는 순간 한쪽만 고치면
@@ -83,6 +98,7 @@ pub fn preview_task_state_line(
         state,
         record_done_date,
         &today,
+        timer.as_deref(),
     ))
 }
 
@@ -202,6 +218,7 @@ mod tests {
             "done".to_string(),
             true,
             "2026-08-24".to_string(),
+            None,
         )
         .await
         .unwrap();
@@ -210,6 +227,7 @@ mod tests {
             "done".to_string(),
             true,
             "2026-08-24".to_string(),
+            None,
         )
         .unwrap();
 

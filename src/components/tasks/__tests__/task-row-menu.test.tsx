@@ -96,6 +96,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }
@@ -140,6 +141,7 @@ function renderRow(
     now: NOW,
     recordDoneDate: true,
     t: EN_T,
+    trackTime: false,
   };
   render(
     <TaskBucketList
@@ -176,6 +178,7 @@ function renderTwoBuckets(): { rowA: HTMLElement; rowB: HTMLElement } {
     now: NOW,
     recordDoneDate: true,
     t: EN_T,
+    trackTime: false,
   };
   const bucket = (label: string, tasks: TaskEntry[]) => (
     <TaskBucketList
@@ -472,6 +475,8 @@ describe("§312 triage menu on an agenda row", () => {
           "cancelled",
           true,
           expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+          null,
         ),
       );
       expect(menu).not.toBeInTheDocument();
@@ -496,6 +501,8 @@ describe("§312 triage menu on an agenda row", () => {
           "todo",
           true,
           expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+          null,
         ),
       );
     });

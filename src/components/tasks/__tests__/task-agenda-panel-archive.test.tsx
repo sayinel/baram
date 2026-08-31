@@ -400,6 +400,7 @@ function task(doneDate: string, over: Partial<TaskEntry>): TaskEntry {
     state: "done",
     tags: [],
     text: "끝난 일",
+    timer: null,
     ...over,
   };
 }
