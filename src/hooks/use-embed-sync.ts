@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { NodeViewProps } from "@tiptap/react";
 
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
-import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { findBlockContent, findBlockPosById } from "../utils/editor/block-nav";
@@ -13,6 +12,7 @@ import {
   type EditorMutationTask,
   registerEditorMutationTask,
 } from "../utils/editor/mutation-tasks";
+import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
 
 type EmbedStatus =
@@ -263,7 +263,7 @@ async function getSameFileContent(
   }
 
   try {
-    return prosemirrorToMarkdown(editor.state.doc);
+    return serializeLiveDoc(editor);
   } catch {
     return null;
   }

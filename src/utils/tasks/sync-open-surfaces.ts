@@ -17,10 +17,10 @@
 import type { TaskEntry } from "../../ipc/types";
 import type { Editor } from "@tiptap/react";
 
-import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { patchEditorContent } from "../editor/patch-editor-content";
+import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
 
 /**
@@ -114,11 +114,7 @@ function patchLiveDocument(
   newRaw: string,
   editor: Editor,
 ): void {
-  const next = spliceMatchingLine(
-    prosemirrorToMarkdown(editor.state.doc),
-    task,
-    newRaw,
-  );
+  const next = spliceMatchingLine(serializeLiveDoc(editor), task, newRaw);
   if (next === null) return;
   patchEditorContent(editor.view, next);
 }

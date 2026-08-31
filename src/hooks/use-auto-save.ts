@@ -7,7 +7,6 @@ import type { Transaction } from "@tiptap/pm/state";
 import { useShallow } from "zustand/shallow";
 
 import { updateFileIndex, writeFile } from "../ipc/invoke";
-import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
@@ -22,6 +21,11 @@ import {
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
+import {
+  serializeDetachedDoc,
+  serializeLiveDoc,
+} from "../utils/editor/serialize-live-doc";
+import { isEphemeralOnlyUpdate } from "../utils/editor/syntax-reveal-ephemeral";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
 import { notifyJournalChanged } from "../utils/journal/journal-events";
@@ -95,7 +99,7 @@ export function useAutoSave(editor: Editor | null) {
     }
 
     try {
-      const markdown = prosemirrorToMarkdown(editor.state.doc);
+      const markdown = serializeLiveDoc(editor);
       await writeFile(pending.filePath, markdown);
       // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
       // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
@@ -137,7 +141,13 @@ export function useAutoSave(editor: Editor | null) {
     // external-change conflict detection silently break when auto-save is off.
     if (!editor) return;
 
-    const handleUpdate = ({ transaction }: { transaction: Transaction }) => {
+    const handleUpdate = ({
+      transaction,
+      appendedTransactions,
+    }: {
+      appendedTransactions: Transaction[];
+      transaction: Transaction;
+    }) => {
       // Read current tab at event time — avoids stale closure
       const { activeTabId, tabs, markDirty } = useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
@@ -158,6 +168,18 @@ export function useAutoSave(editor: Editor | null) {
       // to one is spurious by construction. This is the rule file-type.ts already states:
       // every text path must skip these files.
       if (isBinaryViewerFile(tab.filePath)) return;
+
+      // §384 (C): syntax-reveal expand/collapse changes the doc's
+      // REPRESENTATION (delimiters ⇄ marks/nodes) without changing what it
+      // serializes to — e.g. the caret walking into then back out of a link.
+      // Treat an update whose every doc-changing transaction (primary +
+      // appended, see isEphemeralOnlyUpdate) is ephemeral-tagged as a no-op
+      // for dirty/auto-save, same intent as the load-time/programmatic folds
+      // below — but WITHOUT touching the baseline: a completed
+      // expand→collapse round trip restores the identical doc structure the
+      // baseline already holds (the link/media attr-stash fix keeps it
+      // lossless), so there is nothing to fold in.
+      if (isEphemeralOnlyUpdate({ transaction, appendedTransactions })) return;
 
       // Auto-measured table colwidth init (createColResizePlugin) is load-time
       // normalization, not a user edit, and is never serialized (userResized:
@@ -199,7 +221,7 @@ export function useAutoSave(editor: Editor | null) {
         shouldSkipDirty(tab.id, editor.state.doc, {
           beforeDoc: transaction.before,
           markdownEqual: (before, after) =>
-            prosemirrorToMarkdown(before) === prosemirrorToMarkdown(after),
+            serializeDetachedDoc(before) === serializeDetachedDoc(after),
         })
       )
         return;

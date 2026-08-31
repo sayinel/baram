@@ -163,6 +163,116 @@ describe("image syntax reveal (§300-3 regression guard)", () => {
     editor.destroy();
   });
 
+  // §384 fix (B2): expansion printed the src raw and both collapse
+  // implementations matched destinations with `\S+?` — a src containing
+  // whitespace (e.g. src="a b.png", exactly what `![x](<a b.png>)` parses
+  // to) printed as `![alt](a b.png)` on expand and then could never collapse
+  // back: `\S+?` doesn't match "a b.png", so the literal delimiters were
+  // left behind permanently. The reveal resource codec fixes both sides.
+  describe("whitespace destination round-trips (§384 B2)", () => {
+    it("expands to the angle-bracket form and collapses back via forceCollapseSyntaxReveal", async () => {
+      const editor = createEditor();
+      loadMarkdown(editor, "Hello\n\n![alt text](<a b.png>)\n");
+      expect(findNode(editor, "image")?.attrs.src).toBe("a b.png");
+
+      await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+      expect(editor.state.doc.textContent).toContain("![alt text](<a b.png>)");
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(nodeTypeNames(editor)).toContain("image");
+      expect(findNode(editor, "image")?.attrs.src).toBe("a b.png");
+      editor.destroy();
+    });
+
+    it("expands to the angle-bracket form and collapses back via the appendTransaction cursor-exit path", async () => {
+      const editor = createEditor();
+      loadMarkdown(editor, "Hello\n\n![alt text](<a b.png>)\n");
+
+      await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+      expect(editor.state.doc.textContent).toContain("![alt text](<a b.png>)");
+
+      // Cursor leaves the expanded range (into the leading "Hello" paragraph)
+      // → appendTransaction's own, independent collapse branch runs.
+      editor.commands.setTextSelection(2);
+
+      expect(nodeTypeNames(editor)).toContain("image");
+      expect(findNode(editor, "image")?.attrs.src).toBe("a b.png");
+      editor.destroy();
+    });
+  });
+
+  // §384 fix (B2): the alt/label side of the same codec — a literal `]`
+  // inside the alt text is escaped on expand (`a\]b`) so the delimiter
+  // regex doesn't terminate early, and unescaped back on collapse.
+  it("preserves alt text containing a literal ] through expand/collapse (§384 B2)", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![a\\]b](photo.png)\n");
+    expect(findNode(editor, "image")?.attrs.alt).toBe("a]b");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+    expect(editor.state.doc.textContent).toContain("![a\\]b](photo.png)");
+
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(findNode(editor, "image")?.attrs.alt).toBe("a]b");
+    editor.destroy();
+  });
+
+  // §384 fix (F1 round 2) — BLOCKER: same label/destination-split bug as the
+  // link side (syntax-reveal.test.ts), reproduced through the media path.
+  // Reviewer counterexample: src " a](b" serializes to `![x](< a](b>)`, and
+  // the old text-only greedy search resolves that as alt "x](< a" /
+  // src "b>" instead of the real alt "x" / src " a](b". Built via `setContent`
+  // with an explicit image node (not markdown source) so this pins the codec
+  // split itself, independent of whether the src also round-trips through
+  // the markdown parser.
+  describe("Media src containing a literal ]( does not corrupt the alt split (§384 F1 round 2)", () => {
+    function loadImageWithSrc(editor: Editor, src: string): void {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Hello" }] },
+          { type: "image", attrs: { src, alt: "x" } },
+        ],
+      });
+    }
+
+    for (const src of [" a](b", "a]( b"]) {
+      describe(`src ${JSON.stringify(src)}`, () => {
+        it("expands to the literal angle-bracket form and collapses back via forceCollapseSyntaxReveal", async () => {
+          const editor = createEditor();
+          loadImageWithSrc(editor, src);
+
+          await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+          expect(editor.state.doc.textContent).toContain(`![x](<${src}>)`);
+
+          forceCollapseSyntaxReveal(editor.view);
+
+          expect(nodeTypeNames(editor)).toContain("image");
+          expect(findNode(editor, "image")?.attrs.src).toBe(src);
+          expect(findNode(editor, "image")?.attrs.alt).toBe("x");
+          editor.destroy();
+        });
+
+        it("collapses back via the appendTransaction cursor-exit path", async () => {
+          const editor = createEditor();
+          loadImageWithSrc(editor, src);
+
+          await selectNodeAndAwaitExpand(editor, findNodePos(editor, "image"));
+          expect(editor.state.doc.textContent).toContain(`![x](<${src}>)`);
+
+          editor.commands.setTextSelection(2);
+
+          expect(nodeTypeNames(editor)).toContain("image");
+          expect(findNode(editor, "image")?.attrs.src).toBe(src);
+          expect(findNode(editor, "image")?.attrs.alt).toBe("x");
+          editor.destroy();
+        });
+      });
+    }
+  });
+
   // ── Click handler path ──────────────────────────────────────────────
   //
   // syntax-reveal.ts registers a SECOND, independent expansion trigger on
@@ -329,6 +439,39 @@ describe("video syntax reveal (§295)", () => {
 
     expect(nodeTypeNames(editor)).toContain("image");
     expect(nodeTypeNames(editor)).not.toContain("video");
+    editor.destroy();
+  });
+
+  // §384 fix (B2): r7 reproduced the identical whitespace-destination
+  // corruption chain through the video classifier specifically — a video src
+  // containing whitespace printed raw on expand and could never collapse
+  // back with the old `\S+?` destination regex.
+  it("collapses a whitespace video filename via forceCollapseSyntaxReveal (§384 B2)", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![캡션](<clip one.mp4>)\n");
+    expect(findNode(editor, "video")?.attrs.src).toBe("clip one.mp4");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+    expect(editor.state.doc.textContent).toContain("![캡션](<clip one.mp4>)");
+
+    forceCollapseSyntaxReveal(editor.view);
+
+    expect(nodeTypeNames(editor)).toContain("video");
+    expect(findNode(editor, "video")?.attrs.src).toBe("clip one.mp4");
+    editor.destroy();
+  });
+
+  it("collapses a whitespace video filename via the appendTransaction cursor-exit path (§384 B2)", async () => {
+    const editor = createEditor();
+    loadMarkdown(editor, "Hello\n\n![캡션](<clip one.mp4>)\n");
+
+    await selectNodeAndAwaitExpand(editor, findNodePos(editor, "video"));
+    expect(editor.state.doc.textContent).toContain("![캡션](<clip one.mp4>)");
+
+    editor.commands.setTextSelection(2);
+
+    expect(nodeTypeNames(editor)).toContain("video");
+    expect(findNode(editor, "video")?.attrs.src).toBe("clip one.mp4");
     editor.destroy();
   });
 });

@@ -16,10 +16,10 @@ import type { TaskEntry } from "../../ipc/types";
 import type { TaskChange } from "../../utils/tasks/apply-task-write";
 import type { Editor } from "@tiptap/react";
 
-import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useTaskStore } from "../../stores/tasks/task-store";
+import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { logger } from "../../utils/logger";
 import {
   applyTaskWrite,
@@ -147,7 +147,7 @@ async function rescheduleInOpenDocument(
   if (target.kind !== "document") return { counts, fallback: tasks };
 
   const path = first.path;
-  let content = prosemirrorToMarkdown(editor.state.doc);
+  let content = serializeLiveDoc(editor);
   const applied: { raw: string; task: TaskEntry }[] = [];
 
   for (const task of tasks) {

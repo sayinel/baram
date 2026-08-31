@@ -16,20 +16,20 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskState: vi.fn(),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: vi.fn(),
+vi.mock("../../../utils/editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
 }));
 
 import { previewTaskFieldLine, setTaskField } from "../../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../../pipeline";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useTaskStore } from "../../../stores/tasks/task-store";
+import { serializeLiveDoc } from "../../../utils/editor/serialize-live-doc";
 import { rescheduleOverdueToToday } from "../task-bulk-actions";
 
 const PATH = "/v/note.md";
 
-// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
+// serializeLiveDoc이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 const OPEN_TAB: EditorTab = {
@@ -88,7 +88,7 @@ describe("rescheduleOverdueToToday — 열린 문서 배치 (§305 라우터 실
   it("같은 문서의 태스크 여럿이 서로를 덮어쓰지 않는다 — 문서를 한 번만 커밋한다", async () => {
     // 에디터의 doc은 반복 사이에 **갱신되지 않는다**(React가 커밋해야 따라온다).
     // 반복마다 라이브 문서를 다시 읽어 통째로 덮으면 앞의 변경이 사라진다.
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue(
+    vi.mocked(serializeLiveDoc).mockReturnValue(
       "- [ ] a 📅2026-08-20\n- [ ] b 📅2026-08-21\n",
     );
     const before = useEditorStore.getState().contentRefreshKey;
@@ -113,7 +113,7 @@ describe("rescheduleOverdueToToday — 열린 문서 배치 (§305 라우터 실
   });
 
   it("문서에 쓴 파일은 diskPaths에 넣지 않고 스토어를 직접 패치한다 — 다시 읽으면 되돌아간다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] a 📅2026-08-20\n");
+    vi.mocked(serializeLiveDoc).mockReturnValue("- [ ] a 📅2026-08-20\n");
     const entry = task();
     useTaskStore.getState().setAll([entry]);
 
@@ -134,7 +134,7 @@ describe("rescheduleOverdueToToday — 열린 문서 배치 (§305 라우터 실
   });
 
   it("`⏳`만 있는 태스크는 문서 경로에서도 scheduled를 밀고 스토어에도 그 필드만 반영한다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] a ⏳2026-08-01\n");
+    vi.mocked(serializeLiveDoc).mockReturnValue("- [ ] a ⏳2026-08-01\n");
     const entry = task({
       due: null,
       raw: "- [ ] a ⏳2026-08-01",
@@ -155,7 +155,7 @@ describe("rescheduleOverdueToToday — 열린 문서 배치 (§305 라우터 실
   });
 
   it("열린 파일과 닫힌 파일이 섞이면 닫힌 쪽만 디스크로 가고 diskPaths에 남는다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] a 📅2026-08-20\n");
+    vi.mocked(serializeLiveDoc).mockReturnValue("- [ ] a 📅2026-08-20\n");
     vi.mocked(setTaskField).mockResolvedValue("- [ ] c 📅2026-08-24");
 
     const r = await rescheduleOverdueToToday(
@@ -180,7 +180,7 @@ describe("rescheduleOverdueToToday — 열린 문서 배치 (§305 라우터 실
   });
 
   it("문서의 줄이 인덱스와 어긋나면 stale로 세고 아무것도 쓰지 않는다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] 그 사이 바뀐 줄\n");
+    vi.mocked(serializeLiveDoc).mockReturnValue("- [ ] 그 사이 바뀐 줄\n");
 
     const r = await rescheduleOverdueToToday(
       [task()],
@@ -201,7 +201,7 @@ describe("rescheduleOverdueToToday — 분류와 커밋 사이에 라우팅이 �
     // 디스크 태스크의 IPC 왕복 동안 자동 저장 디바운스가 만료되거나 사용자가
     // Cmd+S를 눌러 탭이 clean해지면 커밋 시점의 재판정이 `disk`를 돌려준다 —
     // 예전에는 그 두 태스크가 아무 카운터에도 잡히지 않은 채 사라졌다.
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue(
+    vi.mocked(serializeLiveDoc).mockReturnValue(
       "- [ ] a 📅2026-08-20\n- [ ] b 📅2026-08-21\n",
     );
     let writes = 0;
@@ -238,7 +238,7 @@ describe("rescheduleOverdueToToday — 분류와 커밋 사이에 라우팅이 �
     // 폴백 루프의 두 번째 태스크는 첫 번째의 IPC 왕복 **뒤에** 라우팅을 다시
     // 판정한다 — 그 사이 사용자가 다시 타이핑하면 문서 경로로 돌아간다. 그
     // 파일을 `diskPaths`에 넣으면 저장 전 내용을 다시 읽어 Major 1이 되살아난다.
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue(
+    vi.mocked(serializeLiveDoc).mockReturnValue(
       "- [ ] a 📅2026-08-20\n- [ ] b 📅2026-08-21\n",
     );
     let writes = 0;

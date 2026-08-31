@@ -6,6 +6,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 import { logger } from "../../utils/logger";
 import { syntaxRevealKey } from "../plugins/syntax-reveal";
+import { parseRevealResource } from "../plugins/syntax-reveal-resource-codec";
 
 export interface LinkOptions {
   autolink: boolean;
@@ -213,17 +214,41 @@ export const Link = Mark.create<LinkOptions>({
               }
 
               // Strategy 3: SyntaxReveal expanded link — text is [text](url)
+              //
+              // §384 fix (B2): route through the shared reveal codec instead
+              // of a hand-rolled regex. Once expansion started emitting the
+              // angle-bracket form for a destination with escaped `<`/`>`
+              // (e.g. href="a < b" → `[x](<a \< b>)`), the old regex's angle
+              // branch (`<([^>]+)>`) captured the escape backslash literally
+              // — navigating to "a \< b" instead of "a < b". parseRevealResource
+              // unescapes it the same way collapse does.
               const srState = syntaxRevealKey.getState(view.state);
               if (srState?.expanded?.kind === "link") {
-                const { from, to } = srState.expanded;
+                const { from, to, labelEnd } = srState.expanded;
                 const expandedText = view.state.doc.textBetween(from, to);
-                const m = expandedText.match(
-                  /\[.*?\]\((?:<([^>]+)>|([^)]+?))(?:\s+"[^"]*")?\)/,
-                );
-                const href = m?.[1] || m?.[2];
+                // §384 fix (F1 round 2): pass the stashed, mapped boundary
+                // (relative to expandedText) so the split is resolved exactly
+                // — see ExpandedRange.labelEnd.
+                // §384 (design review M2): missing stash falls back to the
+                // LIVE label grammar, not strict — see
+                // syntax-reveal-collapse.ts's link branch.
+                const href = parseRevealResource(
+                  expandedText,
+                  labelEnd !== undefined
+                    ? { labelEnd: labelEnd - from }
+                    : { labelGrammar: "live" },
+                )?.destination;
                 if (href) {
                   event.preventDefault();
-                  navigateHref(href.trim());
+                  // §384 fix (R3-2): NOT `href.trim()` — Strategy 1 (rendered
+                  // `<a>`) and Strategy 2 (ProseMirror mark) both navigate the
+                  // href verbatim, so a destination with leading/trailing
+                  // whitespace (a real, if unusual, href — e.g. `" a](b"`)
+                  // must navigate identically regardless of WHICH strategy
+                  // caught the click. Trimming only here made Strategy 3 the
+                  // odd one out: the exact same expanded link would navigate
+                  // to a DIFFERENT destination depending on click timing.
+                  navigateHref(href);
                   return true;
                 }
               }

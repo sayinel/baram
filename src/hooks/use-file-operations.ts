@@ -6,7 +6,6 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import type { Editor } from "@tiptap/core";
 
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
-import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
 import { openFolder } from "../services/vault-context-loader";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
@@ -15,6 +14,7 @@ import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
+import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
 import { notifyJournalChanged } from "../utils/journal/journal-events";
@@ -265,7 +265,7 @@ export function useFileOperations({
     const md =
       isCode || sourceModeTabs.has(saveTab.id)
         ? getSourceBuffer(saveTab.id)
-        : prosemirrorToMarkdown(editor.state.doc);
+        : serializeLiveDoc(editor);
 
     if (saveTab.filePath) {
       // Existing file — save directly
@@ -349,7 +349,7 @@ export function useFileOperations({
     const md =
       isCode || sourceModeTabs.has(saveAsTab.id)
         ? getSourceBuffer(saveAsTab.id)
-        : prosemirrorToMarkdown(editor.state.doc);
+        : serializeLiveDoc(editor);
     const savePath = await save({
       filters: [
         { name: "Markdown", extensions: ["md"] },

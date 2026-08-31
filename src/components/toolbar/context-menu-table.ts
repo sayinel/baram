@@ -3,7 +3,10 @@ import type { MenuItem } from "./context-menu-types";
 import type { Editor } from "@tiptap/react";
 
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import {
+  canonicalNodeAt,
+  serializeDetachedDoc,
+} from "../../utils/editor/serialize-live-doc";
 
 /**
  * Build context menu items for a table cell, prepended with `baseItems`.
@@ -135,8 +138,16 @@ export function buildTableMenu(
       action: () => {
         const table = findTableAtCursor(editor);
         if (!table || !table.node) return;
-        const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
-        const md = prosemirrorToMarkdown(tempDoc);
+        // §384: canonicalize first — a mid-expansion mark/link/wikilink inside a
+        // cell would otherwise copy its literal delimiter text.
+        const canonicalTable = canonicalNodeAt(
+          editor.state,
+          table.pos,
+          "table",
+        );
+        if (!canonicalTable) return;
+        const tempDoc = editor.schema.nodes.doc.create(null, [canonicalTable]);
+        const md = serializeDetachedDoc(tempDoc);
         navigator.clipboard.writeText(md.trim());
       },
     },
@@ -177,8 +188,15 @@ export function buildTableOverflowItems(editor: Editor): MenuItem[] {
       action: () => {
         const table = findTableAtCursor(editor);
         if (!table || !table.node) return;
-        const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
-        navigator.clipboard.writeText(prosemirrorToMarkdown(tempDoc).trim());
+        // §384: same canonicalization as the context-menu "Copy as Markdown".
+        const canonicalTable = canonicalNodeAt(
+          editor.state,
+          table.pos,
+          "table",
+        );
+        if (!canonicalTable) return;
+        const tempDoc = editor.schema.nodes.doc.create(null, [canonicalTable]);
+        navigator.clipboard.writeText(serializeDetachedDoc(tempDoc).trim());
       },
     },
     {

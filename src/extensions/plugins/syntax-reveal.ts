@@ -23,6 +23,7 @@ import {
   expandMediaAtom,
   expandWikilink,
 } from "./syntax-reveal-expand";
+import { parseRevealResource } from "./syntax-reveal-resource-codec";
 import {
   computeContentLen,
   type ExpandedRange,
@@ -31,6 +32,8 @@ import {
   MARK_DELIMITERS,
   syntaxRevealKey,
   type SyntaxRevealState,
+  tagSyntaxRevealEphemeral,
+  WIKILINK_REGEX,
 } from "./syntax-reveal-state";
 
 // ── Public API re-exports ─────────────────────────────────────────────
@@ -107,6 +110,14 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         // Bias -1 for to: inserts AT to don't grow the range (typing at right boundary).
         const from = tr.mapping.map(value.expanded.from, 1);
         const to = tr.mapping.map(value.expanded.to, -1);
+        // §384 fix (F1 round 2): labelEnd is an INTERIOR boundary (the `]`
+        // right after the label) — bias 1 so typing exactly at this position
+        // joins the label (pushes the `]` right), same reasoning as `from`.
+        // See ExpandedRange.labelEnd.
+        const labelEnd =
+          value.expanded.labelEnd !== undefined
+            ? tr.mapping.map(value.expanded.labelEnd, 1)
+            : undefined;
 
         // Validate open delimiter
         try {
@@ -133,7 +144,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
 
         return {
-          expanded: { ...value.expanded, from, to },
+          expanded: { ...value.expanded, from, to, labelEnd },
         };
       },
     },
@@ -153,8 +164,17 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       }
 
       // Cursor moved outside → build collapse transaction with explicit cursor
-      const { from, to, kind, openCheck, closeCheck, markName, mediaAttrs } =
-        es.expanded;
+      const {
+        from,
+        to,
+        kind,
+        openCheck,
+        closeCheck,
+        markName,
+        mediaAttrs,
+        linkAttrs,
+        labelEnd: expandedLabelEnd,
+      } = es.expanded;
       const tr = newState.tr;
 
       // Validate open delimiter
@@ -206,23 +226,30 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       } else if (kind === "link") {
         const fullText = newState.doc.textBetween(from, to);
-        const linkMatch = fullText.match(
-          /^\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
+        // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative
+        // to fullText) so the split is resolved exactly — see
+        // ExpandedRange.labelEnd.
+        // §384 (design review M2): missing stash falls back to the LIVE label
+        // grammar — see syntax-reveal-collapse.ts's link branch for why
+        // strict would silently reopen the F1 bare-`]` corruption here.
+        const parsed = parseRevealResource(
+          fullText,
+          expandedLabelEnd !== undefined
+            ? { labelEnd: expandedLabelEnd - from }
+            : { labelGrammar: "live" },
         );
-        if (!linkMatch) {
+        if (!parsed || parsed.kind !== "link") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
         }
 
-        const [, , href, title] = linkMatch;
-        const bracketIdx = fullText.indexOf("](");
-        if (bracketIdx < 0) {
-          tr.setMeta(syntaxRevealKey, INACTIVE);
-          return tr;
-        }
+        const { destination: href, title, labelEnd } = parsed;
 
-        const contentLen = bracketIdx - 1;
+        const contentLen = labelEnd - 1;
+        // §384 fix (B): merge stashed non-href/title attrs (e.g. `target`)
+        // back in — see ExpandedRange.linkAttrs.
         const linkMark = newState.schema.marks.link.create({
+          ...linkAttrs,
           href,
           title: title || null,
         });
@@ -230,24 +257,26 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         if (contentLen <= 0) {
           tr.delete(from, to);
         } else {
-          const content = newState.doc.slice(
-            from + 1,
-            from + bracketIdx,
-          ).content;
+          const content = newState.doc.slice(from + 1, from + labelEnd).content;
           tr.replaceWith(from, to, content);
           tr.addMark(from, from + contentLen, linkMark);
         }
       } else if (kind === "image") {
         const fullText = newState.doc.textBetween(from, to);
-        const imgMatch = fullText.match(
-          /^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
+        // §384 fix (F1 round 2) / §384 (design review M2): see the link
+        // branch above.
+        const parsed = parseRevealResource(
+          fullText,
+          expandedLabelEnd !== undefined
+            ? { labelEnd: expandedLabelEnd - from }
+            : { labelGrammar: "live" },
         );
-        if (!imgMatch) {
+        if (!parsed || parsed.kind !== "image") {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
         }
 
-        const [, alt, src, title2] = imgMatch;
+        const { label: alt, destination: src, title: title2 } = parsed;
         // §295 src가 노드 타입을 정한다 — 노출된 원문에서 파일명을 고치면
         // image ↔ video가 따라온다.
         // §294 fix (C1): mediaAttrs restores width, which `![alt](src)` cannot
@@ -267,9 +296,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       } else if (kind === "wikilink") {
         const fullText = newState.doc.textBetween(from, to);
         // §87 Regex includes optional alias:: prefix for cross-vault wikilinks
-        const wlMatch = fullText.match(
-          /^\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/,
-        );
+        const wlMatch = fullText.match(WIKILINK_REGEX);
         if (!wlMatch) {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
@@ -296,6 +323,11 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         // fallback: let ProseMirror's default mapping handle it
       }
 
+      // §384 (C): reached only by the 4 successful collapse branches above —
+      // every stale/invalid sub-path returns early with a meta-only INACTIVE
+      // transaction instead. Tag it ephemeral so isEphemeralOnlyUpdate can
+      // tell a cursor-out collapse apart from a real edit.
+      tagSyntaxRevealEphemeral(tr);
       tr.setMeta(syntaxRevealKey, INACTIVE);
       return tr;
     },

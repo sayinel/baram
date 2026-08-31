@@ -15,7 +15,7 @@ import type { SandboxHostRequest } from "./protocol";
 
 import { pluginSandboxStage } from "../../ipc/plugin-invoke";
 import { markdownToProsemirrorAsync } from "../../pipeline/md-to-pm";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { serializeEditorState } from "../../utils/editor/serialize-live-doc";
 import { documentProseText } from "../../utils/word-count";
 import {
   editorRefusalMessage,
@@ -177,7 +177,7 @@ export function createEditorRequestHandler(
         // would count the cost this exists to refuse. `content.size` is the document's own
         // measure and tracks the serialized length closely enough to price it.
         budget.spend(instance.state.doc.content.size, "getMarkdown");
-        const markdown = prosemirrorToMarkdown(instance.state.doc);
+        const markdown = serializeEditorState(instance.state);
         // Staged, never returned inline (see `plugin/staging.rs`). AWAITED before this
         // handler resolves, because resolving is what sends the response frame that tells
         // the sandbox to pull — answering first would race the sandbox to an empty slot.
