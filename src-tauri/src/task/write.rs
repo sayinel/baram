@@ -109,12 +109,9 @@ pub fn apply_state(
     record_done_date: bool,
     today: &str,
 ) -> String {
-    let marker = match new_state {
-        TaskState::Done => "[x]",
-        TaskState::Todo => "[ ]",
-    };
+    let marker = new_state.marker();
     // 가장 **왼쪽** 마커만 바꾼다 — 본문에 "[x]"가 들어 있어도 체크박스를 놓치지 않는다.
-    let swapped = if let Some(p) = ["[ ]", "[x]", "[X]"]
+    let swapped = if let Some(p) = ["[ ]", "[x]", "[X]", "[/]", "[-]"]
         .iter()
         .filter_map(|pat| current.find(pat))
         .min()
@@ -129,9 +126,14 @@ pub fn apply_state(
     if !record_done_date {
         return swapped;
     }
-    match new_state {
-        TaskState::Done => insert_field(&strip_field(&swapped, "done"), "done", today),
-        TaskState::Todo => strip_field(&swapped, "done"),
+    // ‼️ 종료 스탬프는 상태마다 **최대 하나**다. 새 스탬프를 붙이기 전에 둘 다 떼는
+    // 이유가 여기 있다 — 완료였다가 취소된 줄에 `✅`과 `❌`이 나란히 남으면 그 줄은
+    // 언제 끝났는지에 대해 서로 다른 두 가지를 말하게 되고, 어느 쪽이 참인지 알 방법이
+    // 없다. §18.18 M4가 상태를 넷으로 넓히면서 처음 가능해진 전이다.
+    let cleared = strip_field(&strip_field(&swapped, "done"), "cancelled");
+    match new_state.stamp_field() {
+        Some(field) => insert_field(&cleared, field, today),
+        None => cleared,
     }
 }
 
@@ -581,6 +583,52 @@ mod tests {
     fn apply_state_preserves_indentation() {
         let out = apply_state("    - [ ] 중첩", TaskState::Done, false, "2026-08-24");
         assert_eq!(out, "    - [x] 중첩");
+    }
+
+    // --- §18.18 M4 상태 넷 ---
+
+    #[test]
+    fn apply_state_writes_every_marker() {
+        assert_eq!(
+            apply_state("- [ ] 초안", TaskState::Doing, false, "2026-08-24"),
+            "- [/] 초안"
+        );
+        assert_eq!(
+            apply_state("- [/] 초안", TaskState::Cancelled, false, "2026-08-24"),
+            "- [-] 초안"
+        );
+        assert_eq!(
+            apply_state("- [-] 초안", TaskState::Todo, false, "2026-08-24"),
+            "- [ ] 초안"
+        );
+    }
+
+    #[test]
+    fn apply_state_stamps_a_cancelled_line_with_the_cancel_date() {
+        let out = apply_state("- [ ] 초안", TaskState::Cancelled, true, "2026-08-24");
+        assert_eq!(out, "- [-] 초안 ❌2026-08-24");
+    }
+
+    /// ‼️ 한 줄이 끝난 날짜에 대해 두 가지를 말하면 안 된다. 상태가 넷이 되면서
+    /// 처음 가능해진 전이(완료 → 취소)이고, 스탬프를 떼지 않으면 `✅`과 `❌`이
+    /// 나란히 남아 어느 쪽이 참인지 알 방법이 없어진다.
+    #[test]
+    fn apply_state_never_leaves_two_terminal_stamps() {
+        let done = apply_state("- [ ] 초안", TaskState::Done, true, "2026-08-24");
+        assert_eq!(done, "- [x] 초안 ✅2026-08-24");
+
+        let cancelled = apply_state(&done, TaskState::Cancelled, true, "2026-08-25");
+        assert_eq!(cancelled, "- [-] 초안 ❌2026-08-25");
+
+        // 되살리면 스탬프가 남지 않는다 — 끝나지 않은 일에 끝난 날짜는 없다.
+        let reopened = apply_state(&cancelled, TaskState::Doing, true, "2026-08-26");
+        assert_eq!(reopened, "- [/] 초안");
+    }
+
+    #[test]
+    fn apply_state_swaps_only_the_leftmost_marker() {
+        let out = apply_state("- [ ] 본문에 [-] 가 있다", TaskState::Doing, false, "2026-08-24");
+        assert_eq!(out, "- [/] 본문에 [-] 가 있다");
     }
 
     #[test]

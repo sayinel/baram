@@ -44,11 +44,7 @@ pub async fn set_task_state(
     record_done_date: bool,
     today: String,
 ) -> Result<String, String> {
-    let state = match new_state.as_str() {
-        "done" => crate::task::TaskState::Done,
-        "todo" => crate::task::TaskState::Todo,
-        other => return Err(format!("unknown state: {}", other)),
-    };
+    let state: crate::task::TaskState = new_state.parse()?;
     crate::task::set_task_state(&path, line, &expected_raw, state, record_done_date, &today)
         .await
         .map_err(|e| e.to_string())
@@ -76,11 +72,10 @@ pub fn preview_task_state_line(
     record_done_date: bool,
     today: String,
 ) -> Result<String, String> {
-    let state = match new_state.as_str() {
-        "done" => crate::task::TaskState::Done,
-        "todo" => crate::task::TaskState::Todo,
-        other => return Err(format!("unknown state: {}", other)),
-    };
+    // 이름 → 상태는 `TaskState::from_str` 한 곳에만 있다. 예전에는 이 두 커맨드가
+    // 같은 match를 한 벌씩 갖고 있었고, M4가 상태를 넷으로 넓히는 순간 한쪽만 고치면
+    // "저장은 되는데 미리보기만 실패하는" 상태가 생길 자리였다.
+    let state: crate::task::TaskState = new_state.parse()?;
     // `replace_line`이 transform에 정규화된 줄을 넘기므로(write.rs) 여기서도 같아야
     // 디스크 경로와 열린 파일 경로의 결과가 바이트 단위로 일치한다.
     Ok(crate::task::apply_state(
