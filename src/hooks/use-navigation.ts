@@ -9,6 +9,7 @@ import {
   sidecarPathFor,
 } from "../components/editor/pdf/pdf-highlight-sidecar";
 import { readSidecar } from "../components/editor/pdf/pdf-highlight-store";
+import { type Locale, t } from "../i18n";
 import { writeFile } from "../ipc/invoke";
 import { ensureJournalFile } from "../services/journal-file-service";
 import { useContextStore } from "../stores/context/context";
@@ -17,13 +18,18 @@ import { useLinkStore } from "../stores/editor/link";
 import { isActiveContextJournal, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useNavigationStore } from "../stores/ui/navigation";
+import { useUIStore } from "../stores/ui/ui";
 import { useZettelIndexStore } from "../stores/zettelkasten/zettel-index";
+import { showConfirm } from "../utils/confirm-dialog";
 import {
   findBlockPosById,
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
 import { planLocalLinkNavigation } from "../utils/editor/local-link-nav";
-import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
+import {
+  findAliasContext,
+  resolveWikilinkTarget,
+} from "../utils/editor/wikilink-nav";
 import { flattenFileTree } from "../utils/file-search";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
@@ -63,35 +69,79 @@ export function useNavigation({
   // §28 Wikilink Cmd+Click navigation
   // §87 Cross-vault: vaultAlias passed through from wikilink node attrs
   const handleWikilinkNavigate = useCallback(
-    (target: string, heading?: null | string, vaultAlias?: null | string) => {
-      // §56 Date wikilink → open/create journal file
-      if (isDateString(target)) {
-        const {
-          journalEnabled,
-          journalDirectory,
-          journalFilenameFormat,
-          journalTemplatePath,
-          journalUseHierarchy,
-        } = useSettingsStore.getState();
-        if (!journalEnabled) return;
-        const { rootPath } = useFileStore.getState();
-        const date = new Date(target + "T00:00:00");
-        (async () => {
-          try {
-            const result = await ensureJournalFile(date, {
-              journalDirectory,
-              journalFilenameFormat,
-              journalTemplatePath,
-              journalUseHierarchy,
-              rootPath,
-            });
-            if (!result) return;
-            await handleOpenFilePath(result.path);
-          } catch (err) {
-            logger.error("[App] Failed to open journal:", err);
+    (
+      target: string,
+      heading?: null | string,
+      vaultAlias?: null | string,
+      /**
+       * §317 Whether a date-shaped target may take the journal route at all.
+       * Wikilinks default to true (`[[2026-08-30]]` is §56's date link); a
+       * mention passes `type === "date"` so a page mention named like a date
+       * stays an ordinary link.
+       */
+      opts?: { dateRoute?: boolean },
+    ) => {
+      const dateRoute = opts?.dateRoute ?? true;
+      // §56 · §317 Date wikilink → open/create journal file.
+      //
+      // ‼️ The date branch is gated on JOURNAL INTENT, not merely on the target
+      // looking like a date. Before §317 any date string opened (and created)
+      // the journal from anywhere, so a reference inside an unrelated vault
+      // silently threw the reader into a different context — and the alias was
+      // never even consulted, because this branch ran ahead of it.
+      //
+      // Intent is explicit when the link names the space (`[[Journal::…]]`) and
+      // implicit when the reader is already inside it. Everywhere else a date is
+      // just a wikilink, and `[[Journal::2026-08-30]]` is the way across.
+      if (dateRoute && isDateString(target)) {
+        const aliasCtx = vaultAlias ? findAliasContext(vaultAlias) : null;
+        const journalIntent = vaultAlias
+          ? aliasCtx?.vaultType === "journal"
+          : isActiveContextJournal();
+
+        if (journalIntent) {
+          const {
+            journalEnabled,
+            journalDirectory,
+            journalFilenameFormat,
+            journalTemplatePath,
+            journalUseHierarchy,
+          } = useSettingsStore.getState();
+          // §317 defect A: a silent return left the click looking broken with
+          // no way to learn why.
+          if (!journalEnabled) {
+            useUIStore
+              .getState()
+              .showToast(tr("journal.disabledHint"), "warning");
+            return;
           }
-        })();
-        return;
+          const { rootPath } = useFileStore.getState();
+          const date = new Date(target + "T00:00:00");
+          (async () => {
+            try {
+              const result = await ensureJournalFile(date, {
+                // §317 defect B: following a reference must not silently author
+                // a diary entry. Existing entries still open without a prompt.
+                confirmCreate: () =>
+                  showConfirm(tr("journal.createConfirm", { date: target }), {
+                    confirmLabel: tr("journal.createConfirmAction"),
+                    danger: false,
+                  }),
+                journalDirectory,
+                journalFilenameFormat,
+                journalTemplatePath,
+                journalUseHierarchy,
+                rootPath,
+              });
+              if (!result) return;
+              await handleOpenFilePath(result.path);
+            } catch (err) {
+              logger.error("[App] Failed to open journal:", err);
+            }
+          })();
+          return;
+        }
+        // No journal intent → fall through to ordinary wikilink resolution.
       }
 
       const resolved = resolveWikilinkTarget(target, vaultAlias);
@@ -112,9 +162,10 @@ export function useNavigation({
       // §87 Cross-vault async fallback: if sync resolution failed but alias exists,
       // try to find the file in the other vault via IPC
       if (!resolved && vaultAlias) {
-        const contexts = useContextStore.getState().contexts;
-        const aliasLower = vaultAlias.toLowerCase();
-        const ctx = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
+        // §317 Same alias ruler as the sync path (`findAliasContext`) — when
+        // this was a second copy, widening one left `[[Journal::x]]` resolving
+        // on only one of the two paths.
+        const ctx = findAliasContext(vaultAlias);
         if (ctx) {
           (async () => {
             try {
@@ -163,8 +214,32 @@ export function useNavigation({
           newPath = `${rootPath}/${target}.md`;
         }
 
+        // §317 A date outside the journal now lands here rather than in the
+        // journal branch, so the ordinary "create the note" path would author
+        // `2026-08-30.md` in the open vault without a word — the same surprise
+        // defect B describes, one level down. Ask, and let the question teach
+        // the crossing syntax. Only when a journal space exists to point at,
+        // and only for dates: ordinary wikilinks keep creating silently.
+        const dateNeedsRoute =
+          dateRoute &&
+          isDateString(target) &&
+          !isJournalScoped &&
+          useContextStore.getState().journalContext() !== null;
+
         (async () => {
           try {
+            if (
+              dateNeedsRoute &&
+              !(await showConfirm(
+                tr("journal.outsideCreate", { date: target }),
+                {
+                  confirmLabel: tr("journal.outsideCreateAction"),
+                  danger: false,
+                },
+              ))
+            ) {
+              return;
+            }
             // Ensure parent directory exists
             const parentDir = newPath.substring(0, newPath.lastIndexOf("/"));
             const { createDir } = await import("../ipc/invoke");
@@ -428,9 +503,18 @@ export function useNavigation({
   }, [handleLocalLinkNavigate]);
 
   // §57 Keep mentionNavigateRef in sync — delegates to wikilink navigate
+  //
+  // §317 `type` used to be dropped on the floor here (`_type`). A mention
+  // carries no `alias::` prefix, so its only route to the journal is the
+  // implicit one — which means a PAGE mention that merely looks like a date
+  // (a file actually named `2026-08-30.md`) would be dragged to the journal
+  // whenever the reader happened to be standing in it. The suggestion menu
+  // already knows which of the two the user picked; now the navigator does too.
   useEffect(() => {
-    mentionNavigateRef.current = (_type: string, value: string) => {
-      handleWikilinkNavigate(value);
+    mentionNavigateRef.current = (type: string, value: string) => {
+      handleWikilinkNavigate(value, null, null, {
+        dateRoute: type === "date",
+      });
     };
   }, [handleWikilinkNavigate]);
 
@@ -478,4 +562,16 @@ export function useNavigation({
     mentionNavigateRef,
     navigateRef,
   };
+}
+
+/**
+ * §317 Translate in the user's current locale.
+ *
+ * Read at call time rather than through the React `useTranslation` context: the
+ * navigate callbacks run from ProseMirror event handlers held in refs, which
+ * outlive the render that created them.
+ */
+function tr(key: string, params?: Record<string, string>): string {
+  const { locale } = useSettingsStore.getState();
+  return t(key, locale as Locale, params);
 }
