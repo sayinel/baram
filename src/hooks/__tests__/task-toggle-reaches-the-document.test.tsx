@@ -191,7 +191,7 @@ function mountApp() {
     useEditorEffects({
       editor,
       editorStateCache: cacheRef,
-      inlineAI: { applyContent: vi.fn() },
+      inlineAI: { applyContent: vi.fn(), previewInsertAfterSelection: vi.fn() },
       setFindReplaceMode: vi.fn(),
       setFindReplaceOpen: vi.fn(),
     });

@@ -83,7 +83,7 @@ function mountApp() {
     useEditorEffects({
       editor,
       editorStateCache,
-      inlineAI: { applyContent: vi.fn() },
+      inlineAI: { applyContent: vi.fn(), previewInsertAfterSelection: vi.fn() },
       setFindReplaceMode: vi.fn(),
       setFindReplaceOpen: vi.fn(),
     });
@@ -184,7 +184,10 @@ describe("캐시된 탭으로 돌아가는 경로", () => {
       useEditorEffects({
         editor,
         editorStateCache,
-        inlineAI: { applyContent: vi.fn() },
+        inlineAI: {
+          applyContent: vi.fn(),
+          previewInsertAfterSelection: vi.fn(),
+        },
         setFindReplaceMode: vi.fn(),
         setFindReplaceOpen: vi.fn(),
       });

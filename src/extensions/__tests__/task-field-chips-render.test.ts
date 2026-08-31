@@ -9,7 +9,9 @@
 // 계산된 스타일을 볼 수 없다(`pdf-highlight-swatch-css.test.ts`와 같은 이유).
 // 그런데 이 기능이 빠진 구멍이 정확히 그 층이었다 — 칩은 `aria-hidden="true"`,
 // 원문은 `display: none`이라 스크린리더에서 메타데이터가 **양쪽 다** 사라졌고,
-// 구조만 보는 테스트는 전부 초록이었다.
+// 구조만 보는 테스트는 전부 초록이었다. (M3-a에서 `aria-hidden`은 칩에서 원문으로
+// 옮겨갔다 — 칩이 조작이 되었기 때문이다. 감추기가 `display: none`이면 안 된다는
+// 규칙은 그대로다.)
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 
@@ -274,7 +276,8 @@ describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
 describe("§308 칩 대비 — 칩은 이 메타데이터의 유일한 시각 표현이다", () => {
   // ‼️ 이 테스트를 지우거나 완화하기 전에 읽을 것.
   //
-  // 원문(`.task-field-raw`)은 `visually-hidden`이고 칩은 `aria-hidden="true"`다.
+  // 원문(`.task-field-raw`)은 `visually-hidden`이고 이제 `aria-hidden="true"`이며,
+  // 칩이 접근성 트리에 남는다(M3-a에서 뒤집혔다 — 위 "칩의 접근성 계약" 참조).
   // 두 사실을 합치면 **칩이 이 메타데이터의 유일한 시각 표현**이라는 뜻이 된다:
   // 스크린리더는 원문으로 듣고, 눈으로 읽는 사람에게는 칩 말고 되짚을 것이 화면에
   // 없다. 그래서 대비를 낮추는 것은 심미 조정이 아니라 **스크린리더를 쓰지 않는
@@ -409,15 +412,45 @@ describe("§308 방향 C — 아젠다 우선순위는 .task-chip을 공유하�
 });
 
 describe("§308 칩의 접근성 계약", () => {
-  it("칩은 aria-hidden이다 — 원문이 남아 있으므로 두 번 읽히면 안 된다", () => {
-    // `renderTaskChip`의 doc 주석이 하중을 싣고 있던 계약인데 단언이 없었다.
-    const el = renderTaskChip(
+  // ‼️ M3-a에서 **뒤집혔다.** M2-e의 칩은 보이기만 했으므로 `aria-hidden="true"`가
+  // 옳았다 — 같은 정보가 원문으로 이미 트리에 있었다. 이제 칩은 **누를 수 있는
+  // 조작**이라, 감춰 두면 보조기술에서 도달할 방법이 없는 버튼이 된다.
+  //
+  // 그래서 표식이 자리를 바꿨다: 조작이 있는 쪽(칩)이 트리에 남고, 중복인 쪽(원문)이
+  // `aria-hidden`을 받는다. 정보는 여전히 한 번만 읽힌다.
+  const chip = () =>
+    renderTaskChip(
       { emoji: "📅", from: 0, kind: "due", to: 12, value: "2026-08-30" },
       false,
       "en",
       CHIP_TODAY,
     );
-    expect(el.getAttribute("aria-hidden")).toBe("true");
+
+  it("칩은 접근성 트리에 남는다 — 누를 수 있는 것은 도달할 수 있어야 한다", () => {
+    expect(chip().getAttribute("aria-hidden")).toBeNull();
+  });
+
+  it("버튼으로 보이고, 이름이 눈에 보이는 라벨과 같다", () => {
+    const el = chip();
+    expect(el.getAttribute("role")).toBe("button");
+    expect(el.tabIndex).toBe(0);
+    expect(el.getAttribute("aria-label")).toBe(el.textContent);
+  });
+
+  it("‼️ `data-vim-suspend`를 붙이지 않는다", () => {
+    // 그 마커는 "이 섬이 키를 소유한다"는 선언이다(§298 규약). 피커는 에디터 밖
+    // 모달이라 키가 `view.dom`에 도달하지 않으므로 칩은 키를 소유하지 않는다 —
+    // 붙이면 vim 사용자가 그 줄에서 타이핑을 잃는다.
+    expect(chip().hasAttribute("data-vim-suspend")).toBe(false);
+  });
+
+  it("정체를 위치가 아니라 종류·값으로 말한다", () => {
+    // 위치를 DOM에 구우면 문서가 바뀌는 순간 낡고, 그 낡은 값으로 쓰면 엉뚱한 글자를
+    // 덮는다. 확정 시점의 위치는 `posAtDOM`이 그때 다시 구한다.
+    const el = chip();
+    expect(el.getAttribute("data-chip-kind")).toBe("due");
+    expect(el.getAttribute("data-chip-value")).toBe("2026-08-30");
+    expect(el.outerHTML).not.toMatch(/data-chip-(from|to|pos)/);
   });
 });
 

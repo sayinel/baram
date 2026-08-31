@@ -708,3 +708,136 @@
   padding: 0;
   margin: 0;
 }
+
+/* §308 M3-a 칩은 누를 수 있는 조작이다 — 그렇게 보여야 한다. 상자는 여전히 없다
+   (방향 C): 커서와 hover 밑줄만으로 말하고, 색은 기한 초과에만 남긴다. */
+.task-chip {
+  cursor: pointer;
+}
+
+.task-chip:hover {
+  text-decoration: underline;
+}
+
+.task-chip:focus-visible {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* §308 M3-c 태스크 줄에서 알아본 날짜 표현.
+   확정되지 않은 **제안**이므로 칩처럼 자기 색을 갖지 않는다 — 점선 밑줄만 둔다.
+   확정(Tab)되면 이 자리는 칩이 되고, 그때 비로소 색을 얻는다. */
+.task-date-hint {
+  text-decoration: underline dotted var(--color-accent-default);
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+/* §308 날짜 피커 — 필드 다이얼로그의 텍스트 입력 아래에 붙는 달력.
+   값은 입력이 들고 있고 이 격자는 그것을 쓸 뿐이므로, 여기서 선택 상태를
+   `aria-current="date"`로만 말한다(색은 시각적 보강이다). */
+.date-picker {
+  padding: var(--space-2);
+  margin-top: var(--space-2);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+
+/* ‼️ 셋을 한 덩어리로 가운데 모은다. `space-between`으로 양 끝에 밀면 화살표가 눈에
+   들어오지 않고, 다음에 무엇을 누를지 매번 찾게 된다. */
+.date-picker-header {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+}
+
+/* 가운데 라벨은 버튼이다 — 누르면 달·해를 고르는 층으로 넓어진다. */
+.date-picker-month {
+  min-width: 8ch;
+  padding: 2px var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.date-picker-month:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+/* 가장 넓은 층이라 더 열 곳이 없다. 흐리게 두지 않는다 — 읽어야 하는 글자다. */
+.date-picker-month-flat {
+  cursor: default;
+}
+
+.date-picker-nav {
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-md);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.date-picker-nav:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+
+.date-picker-weekdays,
+.date-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.date-picker-weekdays span {
+  padding: 2px 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.date-picker-day {
+  padding: var(--space-1) 0;
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+.date-picker-day:hover {
+  background: var(--color-bg-hover);
+}
+
+/* 이 달이 아닌 날. 격자를 6주로 고정한 대가라 흐리게 두되 지우지는 않는다 —
+   월말·월초를 넘나드는 마감을 여기서 바로 고를 수 있다. */
+.date-picker-day-outside {
+  color: var(--color-text-secondary);
+  opacity: 0.55;
+}
+
+.date-picker-day-today {
+  box-shadow: inset 0 0 0 1px var(--color-accent-default);
+}
+
+.date-picker-day-selected {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+}
+
+.date-picker-day-selected:hover {
+  background: var(--color-accent-solid-hover);
+}

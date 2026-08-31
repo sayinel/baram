@@ -16,6 +16,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { useSettingsStore } from "../../stores/settings/store";
 import { scanTaskFields } from "../../utils/tasks/task-field-scan";
+import { handleChipMouseDown } from "./task-chip-edit";
 import { renderTaskChip } from "./task-chip-label";
 
 interface TaskFieldChipsState {
@@ -210,7 +211,14 @@ function pushSpan(
   const overdue = isOverdue(span, today);
 
   out.push(
-    Decoration.inline(from, to, { class: `${RAW_CLASS} ${RAW_HIDE_CLASS}` }),
+    // §308 M3-a `aria-hidden`이 칩에서 이쪽으로 넘어왔다 — 칩이 조작이 되면서
+    // 접근성 트리에 남아야 하는 쪽이 뒤바뀌었다. 원문은 여전히 문서에 있고
+    // `RAW_HIDE_CLASS`가 시각적으로만 감춘다(커서가 들어오면 데코레이션이 사라져
+    // 원문이 그대로 보이고, 그때 트리에도 돌아온다).
+    Decoration.inline(from, to, {
+      "aria-hidden": "true",
+      class: `${RAW_CLASS} ${RAW_HIDE_CLASS}`,
+    }),
   );
   // ‼️ key는 **이 칩이 보이는 것을 결정하는 모든 입력**을 담아야 한다.
   // `WidgetType.eq`는 `spec.key`가 같으면 새 `toDOM`을 아예 호출하지 않고
@@ -254,6 +262,12 @@ export function createTaskFieldChipsPlugin(): Plugin<TaskFieldChipsState> {
     props: {
       decorations(state) {
         return taskFieldChipsKey.getState(state)?.set;
+      },
+      // §308 M3-a 칩 클릭 → 값 편집. `mousedown`인 것이 요건이다: `click`까지 기다리면
+      // 그 사이에 캐럿이 옮겨가고, 캐럿이 이 줄에 들어오는 순간 데코레이션이 통째로
+      // 사라져 누른 칩이 없어진다.
+      handleDOMEvents: {
+        mousedown: handleChipMouseDown,
       },
     },
     state: {

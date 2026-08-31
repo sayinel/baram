@@ -55,7 +55,15 @@ function createMockEditor() {
     },
     state: {
       selection: { from: 0, to: 0, $from: { parent: { textContent: "" } } },
-      doc: { textBetween: () => "", textContent: "" },
+      // §308 M3-b `/due`·`/priority`가 커서 자리를 보므로 빈 문서를 흉내 낸다 —
+      // 태스크 줄이 아니면 그 둘은 메뉴에 들어오지 않는다.
+      doc: {
+        content: { size: 0 },
+        nodeAt: () => null,
+        resolve: () => ({ depth: 0 }),
+        textBetween: () => "",
+        textContent: "",
+      },
     },
   } as never;
 }
@@ -122,7 +130,8 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
     // 7 built-in AI + 1 AI Template + 1 custom (category "AI")
     // + "Mermaid Diagram" (label "mermaid" contains "ai")
     // + "Toggle" (description "Collapsible details block" — "details" contains "ai")
-    expect(filtered.length).toBe(11);
+    // + §314 "Extract Action Items" (description ends with "with AI")
+    expect(filtered.length).toBe(12);
   });
 
   test("custom AI commands are still included", () => {

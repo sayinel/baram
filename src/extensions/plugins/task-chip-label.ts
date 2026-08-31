@@ -20,6 +20,7 @@ import type {
 
 import { t } from "../../i18n";
 import { PRIORITY_EMOJI } from "../../utils/tasks/task-field-tokens";
+import { CHIP_KIND_ATTR, CHIP_VALUE_ATTR } from "./task-chip-edit";
 
 /** 날짜 필드 종류 → i18n 키. 우선순위는 별도 표(아래)로 간다. */
 const DATE_CHIP_KEY: Record<Exclude<TaskFieldKind, "priority">, string> = {
@@ -72,9 +73,22 @@ export function renderTaskChip(
   // 색을 갖는 상태는 기한 초과 하나뿐이다(방향 C, §308) — 점과 글자 모두
   // `.task-chip-overdue`의 currentColor를 탄다(tasks.css).
   if (overdue) el.classList.add("task-chip-overdue");
-  el.setAttribute("aria-hidden", "true");
   el.contentEditable = "false";
-  el.append(document.createTextNode(chipLabel(span, locale, today)));
+  // §308 M3-a 이 칩은 누를 수 있는 조작이다. 그래서 **`aria-hidden`을 벗었다** —
+  // 감춰 두면 보조기술에서 도달할 방법이 없는 버튼이 된다. 정보가 두 번 읽히지 않도록
+  // 그 표식은 원문 쪽(`.task-field-raw`)으로 옮겼다: 조작이 있는 쪽이 트리에 남는다.
+  //
+  // `data-vim-suspend`는 붙이지 않는다. 피커가 에디터 밖 모달이라 키가 `view.dom`에
+  // 도달하지 않고(§298 규약의 portal 예외), 칩 자체는 여전히 키를 소유하지 않는다.
+  el.setAttribute("role", "button");
+  el.tabIndex = 0;
+  // ‼️ 정체는 **위치가 아니라 이것**으로 말한다. 위치를 DOM에 구우면 문서가 바뀌는 순간
+  // 낡고, 그 낡은 값으로 쓰면 엉뚱한 글자를 덮는다.
+  el.setAttribute(CHIP_KIND_ATTR, span.kind);
+  el.setAttribute(CHIP_VALUE_ATTR, span.value);
+  const label = chipLabel(span, locale, today);
+  el.setAttribute("aria-label", label);
+  el.append(document.createTextNode(label));
   return el;
 }
 
