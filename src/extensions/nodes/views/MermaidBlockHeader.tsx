@@ -11,29 +11,17 @@ import { MERMAID_TEMPLATES } from "../../../utils/markdown/mermaid-utils";
 interface MermaidBlockHeaderProps {
   applyTemplate: (key: string) => void;
   detectedType: null | string;
-  error: null | string;
-  localCode: string;
-  setFullscreen: (value: boolean) => void;
-  setFullscreenCode: (value: string) => void;
-  setFullscreenError: (value: null | string) => void;
-  setFullscreenSvg: (value: string) => void;
+  onOpenEditFullscreen: () => void;
   setShowTemplates: (value: boolean) => void;
   showTemplates: boolean;
-  svgHtml: string;
 }
 
 export function MermaidBlockHeader({
   applyTemplate,
   detectedType,
-  error,
-  localCode,
-  setFullscreen,
-  setFullscreenCode,
-  setFullscreenError,
-  setFullscreenSvg,
+  onOpenEditFullscreen,
   setShowTemplates,
   showTemplates,
-  svgHtml,
 }: MermaidBlockHeaderProps): React.ReactElement {
   return (
     <div className="mermaid-block-header">
@@ -73,12 +61,7 @@ export function MermaidBlockHeader({
         </div>
         <button
           className="mermaid-fullscreen-btn"
-          onClick={() => {
-            setFullscreenCode(localCode);
-            setFullscreenSvg(svgHtml);
-            setFullscreenError(error);
-            setFullscreen(true);
-          }}
+          onClick={onOpenEditFullscreen}
           title="Edit full-screen"
         >
           Expand

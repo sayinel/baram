@@ -215,19 +215,32 @@ export function MermaidBlockView({
     };
   }, [contextMenu]);
 
+  // Seed the fullscreen editor and open it. Three call sites used to repeat
+  // this code→svg→error→open sequence (this view's custom-event listener,
+  // the header's Expand button, the context menu's Edit Fullscreen item) —
+  // collapsed into one action. The sites differ only in WHICH code string
+  // they seed (this listener falls back to the committed `code` when the
+  // local edit buffer is empty; the header always has an open edit session
+  // so it seeds `localCode`; the context menu only ever renders outside an
+  // edit session so it seeds the committed `code`), so that stays a param.
+  const openEditFullscreen = useCallback(
+    (source: string) => {
+      setFullscreenCode(source);
+      setFullscreenSvg(svgHtml);
+      setFullscreenError(error);
+      setFullscreen(true);
+    },
+    [svgHtml, error],
+  );
+
   // Listen for fullscreen custom event from context menu
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-    const handler = () => {
-      setFullscreenCode(localCode || code);
-      setFullscreenSvg(svgHtml);
-      setFullscreenError(error);
-      setFullscreen(true);
-    };
+    const handler = () => openEditFullscreen(localCode || code);
     wrapper.addEventListener("mermaid-fullscreen", handler);
     return () => wrapper.removeEventListener("mermaid-fullscreen", handler);
-  }, [localCode, code, svgHtml, error]);
+  }, [localCode, code, openEditFullscreen]);
 
   // Fullscreen rendering
   useEffect(() => {
@@ -381,15 +394,9 @@ export function MermaidBlockView({
         <MermaidBlockHeader
           applyTemplate={applyTemplate}
           detectedType={detectedType}
-          error={error}
-          localCode={localCode}
-          setFullscreen={setFullscreen}
-          setFullscreenCode={setFullscreenCode}
-          setFullscreenError={setFullscreenError}
-          setFullscreenSvg={setFullscreenSvg}
+          onOpenEditFullscreen={() => openEditFullscreen(localCode)}
           setShowTemplates={setShowTemplates}
           showTemplates={showTemplates}
-          svgHtml={svgHtml}
         />
       )}
       {selected && (
@@ -533,13 +540,9 @@ export function MermaidBlockView({
             <MermaidBlockContextMenu
               code={code}
               contextMenu={contextMenu}
-              error={error}
               onClose={() => setContextMenu(null)}
               onDelete={deleteBlock}
-              setFullscreen={setFullscreen}
-              setFullscreenCode={setFullscreenCode}
-              setFullscreenError={setFullscreenError}
-              setFullscreenSvg={setFullscreenSvg}
+              onOpenEditFullscreen={() => openEditFullscreen(code)}
               setViewFullscreen={setViewFullscreen}
               svgHtml={svgHtml}
             />

@@ -15,13 +15,9 @@ import {
 interface MermaidBlockContextMenuProps {
   code: string;
   contextMenu: { x: number; y: number };
-  error: null | string;
   onClose: () => void;
   onDelete: () => void;
-  setFullscreen: (value: boolean) => void;
-  setFullscreenCode: (value: string) => void;
-  setFullscreenError: (value: null | string) => void;
-  setFullscreenSvg: (value: string) => void;
+  onOpenEditFullscreen: () => void;
   setViewFullscreen: (value: boolean) => void;
   svgHtml: string;
 }
@@ -29,13 +25,9 @@ interface MermaidBlockContextMenuProps {
 export function MermaidBlockContextMenu({
   code,
   contextMenu,
-  error,
   onClose,
   onDelete,
-  setFullscreen,
-  setFullscreenCode,
-  setFullscreenError,
-  setFullscreenSvg,
+  onOpenEditFullscreen,
   setViewFullscreen,
   svgHtml,
 }: MermaidBlockContextMenuProps): React.ReactPortal {
@@ -106,10 +98,7 @@ export function MermaidBlockContextMenu({
       <button
         className="mermaid-context-menu-item"
         onClick={() => {
-          setFullscreenCode(code);
-          setFullscreenSvg(svgHtml);
-          setFullscreenError(error);
-          setFullscreen(true);
+          onOpenEditFullscreen();
           onClose();
         }}
       >

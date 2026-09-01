@@ -2,7 +2,9 @@
 // LLM response into the active editor
 import { lazy, useCallback } from "react";
 
-import type { useEditor } from "@tiptap/react";
+import type { Editor } from "@tiptap/core";
+
+import { useShallow } from "zustand/shallow";
 
 import { llmCancel, llmComplete } from "../../ipc/invoke";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
@@ -23,9 +25,14 @@ const SmartTemplateDialog = lazy(() =>
 export function SmartTemplateDialogWrapper({
   editor,
 }: {
-  editor: null | ReturnType<typeof useEditor>;
+  editor: Editor | null;
 }) {
-  const { smartTemplateDialogOpen, toggleSmartTemplateDialog } = useUIStore();
+  const { smartTemplateDialogOpen, toggleSmartTemplateDialog } = useUIStore(
+    useShallow((s) => ({
+      smartTemplateDialogOpen: s.smartTemplateDialogOpen,
+      toggleSmartTemplateDialog: s.toggleSmartTemplateDialog,
+    })),
+  );
   const handleGenerate = useCallback(
     (templateId: string) => {
       if (!editor) return;
