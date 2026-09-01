@@ -13,6 +13,7 @@
 // 같은 이유다. 화면 표시(칩·툴팁)만 로케일을 탄다.
 
 import type { TaskState } from "../../ipc/types";
+import type { TaskFieldSpan } from "./task-field-scan";
 
 import { makeCalendarDate, toIsoDate } from "./task-date-input";
 import { scanTaskFields } from "./task-field-scan";
@@ -30,11 +31,32 @@ export interface Recurrence {
 /** 굴릴 때 함께 움직이는 날짜 필드. `➕` 생성일은 일정이 아니라 기록이라 빠진다. */
 export type RollableDateField = "due" | "scheduled" | "start";
 
+/** 반복 규칙이 있는데도 굴러가지 않는 두 이유. */
+export type RecurrenceInertReason = "noDate" | "unreadable";
+
 export interface TaskRoll {
   /** 밀린 날짜들. 줄에 있던 것만 담긴다. */
   dates: Partial<Record<RollableDateField, string>>;
   /** 기준 필드의 새 값 — 토스트가 사용자에게 보여 주는 날짜다. */
   next: string;
+}
+
+/**
+ * 이 줄의 `🔁`가 **놀고 있는 이유**. 굴러가면(또는 반복이 없으면) `null`.
+ *
+ * ‼️ 굴리지 않는 경우는 둘 다 **조용한 무동작**이다 — 사용자는 체크를 눌렀는데 아무 일도
+ * 일어나지 않은 것만 보고 고장으로 읽는다. 칩이 그 이유를 말하게 하려고 판정을 여기
+ * 둔다: `rollForState`와 같은 파일에 있어야 두 답이 갈리지 않는다
+ * (`task-recurrence.test.ts`가 그 일치를 단정한다).
+ */
+export function recurrenceInertReason(
+  spans: readonly TaskFieldSpan[],
+): null | RecurrenceInertReason {
+  const rule = spans.find((span) => span.kind === "recurrence")?.value;
+  if (rule === undefined) return null;
+  if (parseRecurrence(rule) === null) return "unreadable";
+  const rollable: readonly string[] = ROLLABLE;
+  return spans.some((span) => rollable.includes(span.kind)) ? null : "noDate";
 }
 
 /**

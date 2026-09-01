@@ -11,6 +11,7 @@ import { Schema } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { useSettingsStore } from "../../stores/settings/store";
 import { renderTaskChip } from "../plugins/task-chip-label";
 import { buildTaskFieldDecorations } from "../plugins/task-field-chips";
 
@@ -647,5 +648,74 @@ describe("renderTaskChip — 우선순위 마커 → 라벨 매핑", () => {
       CHIP_TODAY,
     );
     expect(el.textContent).toBe(label);
+  });
+});
+
+
+/** 위젯 데코레이션이 그리는 칩의 글자 — 실제 `toDOM`을 부른다. */
+function chipLabels(md: string): string[] {
+  return widgetDecos(build(md)).map((d) => {
+    // `Decoration.type`은 공개 타이핑에 없다(prosemirror-view 내부 `WidgetType`).
+    // 위젯이 **실제로 그리는 것**을 보려면 여기를 지나야 한다 — spec만 보면 라벨을
+    // 만드는 코드를 한 번도 지나지 않은 채 통과하는 테스트가 된다.
+    const { toDOM } = (d as unknown as { type: { toDOM: () => HTMLElement } })
+      .type;
+    return toDOM().textContent ?? "";
+  });
+}
+
+/** 그 줄 반복 칩의 위젯 key. 없으면 빈 문자열. */
+function chipKey(set: DecorationSet): string {
+  const found = widgetDecos(set).find(
+    (d) => typeof d.spec.key === "string" && d.spec.key.includes("recurrence"),
+  );
+  return (found?.spec.key as string | undefined) ?? "";
+}
+
+// §318 반복 칩은 그 반복이 **놀고 있는지**를 말한다. 굴러가지 않는 두 경우는 둘 다
+// 조용한 무동작이라(완료가 그냥 완료로 끝난다) 아무 표시가 없으면 고장으로 읽힌다.
+describe("반복 칩이 무동작을 말한다 (§318)", () => {
+  const SPAN = {
+    emoji: "🔁",
+    from: 0,
+    kind: "recurrence" as const,
+    to: 13,
+    value: "every week",
+  };
+
+  it.each([
+    [null, "repeats every week"],
+    ["unreadable" as const, "repeats every week (not understood)"],
+    ["noDate" as const, "repeats every week (no date to move)"],
+  ])("%s → %s", (inert, expected) => {
+    expect(
+      renderTaskChip(SPAN, false, "en", CHIP_TODAY, inert).textContent,
+    ).toBe(expected);
+  });
+
+  // ‼️ 그리는 경로가 실제로 그 값을 넘기는지 — 넘기지 않으면 기본값 때문에 언제나
+  // 평범한 라벨이 나오고, 위 테스트는 통과한 채로 화면만 조용히 틀린다.
+  it.each([
+    ["- [ ] a 🔁every fortnight", "repeats every fortnight (not understood)"],
+    ["- [ ] a 🔁every week", "repeats every week (no date to move)"],
+    ["- [ ] a 📅2026-09-01 🔁every week", "repeats every week"],
+  ])("문서를 그리는 경로가 그 판정을 넘긴다: %s", (md, expected) => {
+    useSettingsStore.setState({ locale: "en" });
+
+    expect(chipLabels(md)).toContain(expected);
+  });
+
+  // ‼️ key에 판정이 들어 있지 않으면, 기한을 붙여 반복이 살아나도 칩이 옛 말을 그대로
+  // 들고 있다 — `WidgetType.eq`가 같은 key에서는 `toDOM`을 아예 부르지 않는다.
+  //
+  // 두 줄은 기한을 **반복 뒤에** 둔다. 그래야 반복 칩의 위치도 값도 그대로이고
+  // (반복 값은 다음 필드 앞에서 끝난다), key가 갈리는 이유가 판정 하나만 남는다 —
+  // 앞에 두면 위치가 밀려 `${inert}`가 없어도 key가 달라지고 이 테스트는 헛돈다.
+  it("반복 칩의 key가 그 판정을 담는다", () => {
+    const inert = chipKey(build("- [ ] a 🔁every week"));
+    const active = chipKey(build("- [ ] a 🔁every week 📅2026-09-01"));
+
+    expect(inert).not.toBe("");
+    expect(inert).not.toBe(active);
   });
 });

@@ -6,9 +6,11 @@
 //   3. 굴린 날짜들은 **상대 간격을 보존한다** — 시작·예정·기한이 같은 delta로 움직인다.
 import { describe, expect, it } from "vitest";
 
+import { scanTaskFields } from "../task-field-scan";
 import {
   nextDate,
   parseRecurrence,
+  recurrenceInertReason,
   rollForState,
 } from "../task-recurrence";
 
@@ -271,5 +273,37 @@ describe("§318 rollForState", () => {
       line = `a 🔁every week 📅${roll!.next}`;
     }
     expect(walked).toEqual(["2026-09-08", "2026-09-15", "2026-09-22"]);
+  });
+});
+
+describe("§318 recurrenceInertReason", () => {
+  const reason = (line: string) => recurrenceInertReason(scanTaskFields(line));
+
+  it.each([
+    ["반복이 없다", "a 📅2026-09-01", null],
+    ["굴러간다", "a 📅2026-09-01 🔁every week", null],
+    ["규칙을 못 읽는다", "a 📅2026-09-01 🔁every fortnight", "unreadable"],
+    ["밀 날짜가 없다", "a 🔁every week", "noDate"],
+    ["생성일은 밀 날짜가 아니다", "a ➕2026-08-01 🔁every week", "noDate"],
+    ["예정일이면 충분하다", "a ⏳2026-09-01 🔁every week", null],
+  ])("%s", (_label, line, expected) => {
+    expect(reason(line)).toBe(expected);
+  });
+
+  // ‼️ 칩이 "굴러간다"고 말하는 줄은 실제로 굴러가야 하고, "놀고 있다"고 말하는 줄은
+  // 실제로 굴러가지 않아야 한다. 두 판정이 같은 파일에 있어도 갈릴 수 있으므로 —
+  // 갈리면 사용자는 화면과 다른 동작을 본다 — 여기서 짝을 맞춰 둔다.
+  it.each([
+    "a 📅2026-09-01 🔁every week",
+    "a 📅2026-09-01 🔁every fortnight",
+    "a 🔁every week",
+    "a 📅2026-09-01",
+    "a ➕2026-08-01 🔁every 2 weeks on monday",
+    "a ⏳2026-09-01 🛫2026-08-30 🔁every weekday",
+  ])("칩의 말과 실제 동작이 일치한다: %s", (line) => {
+    const hasRule = scanTaskFields(line).some((s) => s.kind === "recurrence");
+    const rolls = rollForState("done", line) !== null;
+
+    expect(rolls).toBe(hasRule && reason(line) === null);
   });
 });

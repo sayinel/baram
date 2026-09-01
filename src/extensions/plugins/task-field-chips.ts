@@ -8,6 +8,7 @@
 
 import type { Locale } from "../../i18n";
 import type { TaskFieldSpan } from "../../utils/tasks/task-field-scan";
+import type { RecurrenceInertReason } from "../../utils/tasks/task-recurrence";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 import { Extension } from "@tiptap/core";
@@ -16,6 +17,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { useSettingsStore } from "../../stores/settings/store";
 import { scanTaskFields } from "../../utils/tasks/task-field-scan";
+import { recurrenceInertReason } from "../../utils/tasks/task-recurrence";
 import { handleChipMouseDown } from "./task-chip-edit";
 import { renderTaskChip } from "./task-chip-label";
 
@@ -153,8 +155,11 @@ function collectTextblock(
 
   const flush = (): void => {
     if (runText === "") return;
-    for (const span of scanTaskFields(runText)) {
-      pushSpan(span, base + runStart, today, locale, out);
+    const spans = scanTaskFields(runText);
+    // §318 런마다 한 번만 판정한다 — 반복 칩 하나가 그 줄의 다른 필드를 봐야 한다.
+    const inert = recurrenceInertReason(spans);
+    for (const span of spans) {
+      pushSpan(span, base + runStart, today, locale, out, inert);
     }
     runText = "";
   };
@@ -205,6 +210,7 @@ function pushSpan(
   today: Date,
   locale: Locale,
   out: Decoration[],
+  inert: null | RecurrenceInertReason,
 ): void {
   const from = base + span.from;
   const to = base + span.to;
@@ -231,14 +237,20 @@ function pushSpan(
   //   `overdue` — spec에는 있지만 key가 단락하므로 도달하지 못한다. 자정을
   //     넘겨도 기한 초과 칩이 빨개지지 않는다(§309).
   //   `locale`  — 문서를 안 건드렸다는 이유로 옛 언어 라벨이 남는다.
-  // churn은 늘지 않는다: 셋 다 그 필드가 실제로 바뀔 때만 바뀐다.
+  //   `inert`   — §318 기한을 붙여 반복이 살아나도 반복 칩이 "기준 날짜 없음"을
+  //     그대로 들고 있다. 이 값만은 **그 칩의 span이 아닌 것**이 바뀔 때 바뀐다.
+  // churn은 늘지 않는다: 넷 다 그 줄이 실제로 바뀔 때만 바뀐다.
   out.push(
-    Decoration.widget(to, () => renderTaskChip(span, overdue, locale, today), {
-      key: `task-chip-${from}-${span.kind}-${span.value}-${overdue}-${locale}`,
-      // 테스트가 DOM을 그리지 않고도 계약을 볼 수 있도록 spec에 남긴다.
-      overdue,
-      side: 1,
-    }),
+    Decoration.widget(
+      to,
+      () => renderTaskChip(span, overdue, locale, today, inert),
+      {
+        key: `task-chip-${from}-${span.kind}-${span.value}-${overdue}-${locale}-${inert}`,
+        // 테스트가 DOM을 그리지 않고도 계약을 볼 수 있도록 spec에 남긴다.
+        overdue,
+        side: 1,
+      },
+    ),
   );
 }
 

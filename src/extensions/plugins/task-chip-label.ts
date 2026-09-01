@@ -17,6 +17,7 @@ import type {
   TaskFieldKind,
   TaskFieldSpan,
 } from "../../utils/tasks/task-field-scan";
+import type { RecurrenceInertReason } from "../../utils/tasks/task-recurrence";
 
 import { t } from "../../i18n";
 import { PRIORITY_EMOJI } from "../../utils/tasks/task-field-tokens";
@@ -71,6 +72,12 @@ export function renderTaskChip(
   overdue: boolean,
   locale: Locale,
   today: Date,
+  /**
+   * §318 그 줄의 반복이 놀고 있는 이유(`recurrenceInertReason`). 반복 칩에만 쓰인다.
+   * 기본값이 "놀고 있지 않다"인 것은 이 값을 모르는 호출자(테스트)가 평범한 라벨을
+   * 보게 하기 위해서다 — 실제 화면을 그리는 경로는 `task-field-chips.ts` 하나뿐이다.
+   */
+  inert: null | RecurrenceInertReason = null,
 ): HTMLElement {
   const el = document.createElement("span");
   el.className = "task-chip";
@@ -90,7 +97,7 @@ export function renderTaskChip(
   // 낡고, 그 낡은 값으로 쓰면 엉뚱한 글자를 덮는다.
   el.setAttribute(CHIP_KIND_ATTR, span.kind);
   el.setAttribute(CHIP_VALUE_ATTR, span.value);
-  const label = chipLabel(span, locale, today);
+  const label = chipLabel(span, locale, today, inert);
   el.setAttribute("aria-label", label);
   el.append(document.createTextNode(label));
   return el;
@@ -100,12 +107,19 @@ export function renderTaskChip(
  * 칩에 보일 라벨. 이모지를 그대로 보이는 대신 로케일별 어순의 텍스트로
  * 읽는다(방향 C — ko `8/30 기한`, en `due 8/30`).
  */
-function chipLabel(span: TaskFieldSpan, locale: Locale, today: Date): string {
+function chipLabel(
+  span: TaskFieldSpan,
+  locale: Locale,
+  today: Date,
+  inert: null | RecurrenceInertReason,
+): string {
   // §18.18 M4 — 반복은 셋째 갈래다. 값이 날짜가 아니라 사용자가 적은 자유 텍스트
   // ("every week")라 `shortDate`에 넣을 수 없고, 번역할 수도 없다. 라벨은 그 텍스트를
   // 그대로 감싸기만 한다 — 어순만 로케일이 정한다.
   if (span.kind === "recurrence") {
-    return t("tasks.chip.recurrence", locale, { rule: span.value });
+    // §318 굴러가지 않는 반복은 그렇다고 말한다. 규칙을 못 읽거나 밀 날짜가 없으면
+    // 완료가 그냥 완료로 끝나는데, 아무 표시가 없으면 사용자는 고장으로 읽는다.
+    return t(INERT_CHIP_KEY[inert ?? "active"], locale, { rule: span.value });
   }
   if (span.kind === "timer") return timerLabel(span.value, locale);
   if (span.kind === "priority") {
@@ -155,3 +169,10 @@ function timerLabel(value: string, locale: Locale): string {
   }
   return t("tasks.chip.timer", locale, { duration: formatTimer(timer) });
 }
+
+/** §318 반복 칩의 i18n 키 — 놀고 있는 이유마다 다른 말을 한다. */
+const INERT_CHIP_KEY: Record<"active" | RecurrenceInertReason, string> = {
+  active: "tasks.chip.recurrence",
+  noDate: "tasks.chip.recurrenceNoDate",
+  unreadable: "tasks.chip.recurrenceUnreadable",
+};
