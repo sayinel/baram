@@ -7,6 +7,20 @@
 import fs from "fs";
 import path from "path";
 
+/**
+ * CSS 주석을 제거한다 — 정의·사용 수집 양쪽에 적용한다.
+ *
+ * 이슈 515: 생성 CSS의 설명 주석은 과거 이름을 "(was --color-bg-secondary: #f8f9fa)"
+ * 형태로 남기는데, raw 정규식이 그 텍스트까지 정의로 수집해 **어디에도 선언되지 않은
+ * 변수를 "정의됨"으로 분류**했다. 그 뒤에서 죽은 사용 10건이 이 감사를 통과했고,
+ * 감사가 침묵하는 동안 새 위반이 계속 유입됐다. 토큰 이름이 바뀔 때마다 재발하는
+ * 구조이므로, 매칭 전에 주석을 벗기는 것이 근본 수정이다. (사용 수집도 같이 벗긴다 —
+ * 주석 속 var()가 사용으로 집계되면 이후 역방향 감사가 죽은 정의를 놓치게 된다.)
+ */
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
 function findFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
   function walk(d: string) {
@@ -27,7 +41,7 @@ const usedVars = new Map<string, string[]>();
 // 1. Scan CSS files for definitions and usages
 const cssFiles = findFiles("src/styles", [".css"]);
 for (const file of cssFiles) {
-  const content = fs.readFileSync(file, "utf-8");
+  const content = stripCssComments(fs.readFileSync(file, "utf-8"));
   const relPath = path.relative(".", file);
 
   for (const match of content.matchAll(/--([\w-]+)\s*:/g)) {

@@ -628,11 +628,7 @@
   font-weight: 600;
   color: var(--color-text-muted);
   cursor: pointer;
-  background: var(--color-bg-secondary, #f8f9fa);
-}
-
-[data-theme="dark"] .wikilink-menu-folder-header {
-  background: var(--color-bg-secondary, #252526);
+  background: var(--color-bg-subtle);
 }
 
 .wikilink-menu-folder-header:hover {
