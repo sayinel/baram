@@ -144,7 +144,7 @@
   background: var(--color-editor-find-match-current);
 }
 
-/* §272 PDF 내 찾기 바 — find-replace-bar(§5.6, dialogs.css)와 같은 배치/스타일 관례 */
+/* §272 PDF 내 찾기 바 — find-replace-bar(§5.6, dialogs/find-replace.css)와 같은 배치/스타일 관례 */
 .pdf-find-bar {
   position: absolute;
   top: 8px;

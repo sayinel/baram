@@ -1,0 +1,166 @@
+/* ============================================
+   §56a Journal Migration Dialog
+   ============================================ */
+
+.migration-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 40%);
+}
+
+.migration-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 480px;
+  max-width: 92vw;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.migration-dialog-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.migration-dialog-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.migration-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.migration-dialog-description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+}
+
+.migration-dialog-description code {
+  padding: 1px 4px;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 12px;
+  background: var(--color-bg-subtle, rgb(128 128 128 / 10%));
+  border-radius: 3px;
+}
+
+.migration-dialog-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.migration-dialog-error {
+  color: var(--color-status-danger);
+}
+
+.migration-dialog-success {
+  color: var(--color-status-success);
+}
+
+.migration-dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.migration-dialog-list-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 8px;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle, rgb(128 128 128 / 5%));
+  border-radius: 4px;
+}
+
+.migration-dialog-from {
+  flex-shrink: 0;
+  color: var(--color-text-primary);
+}
+
+.migration-dialog-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-muted, var(--color-text-secondary));
+}
+
+.migration-dialog-to {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-dialog-list-more {
+  padding: 2px 8px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-text-muted, var(--color-text-secondary));
+}
+
+.migration-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--color-border-default);
+}
+
+.migration-dialog-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  transition:
+    background-color 0.15s,
+    filter 0.15s;
+}
+
+.migration-dialog-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.migration-dialog-btn-secondary {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+}
+
+.migration-dialog-btn-secondary:not(:disabled):hover {
+  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
+}
+
+.migration-dialog-btn-primary {
+  color: var(--color-accent-on-solid);
+  background: var(--color-accent-solid);
+  border: none;
+}
+
+.migration-dialog-btn-primary:not(:disabled):hover {
+  background: var(--color-accent-solid-hover);
+}

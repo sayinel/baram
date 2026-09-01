@@ -1,7 +1,8 @@
 /* §260 Phase 5 — plugin install consent.
  *
- * A new file rather than an addition to dialogs.css, which is already past the
- * ~1500-line ceiling this project keeps. The rest of the plugin UI styles itself
+ * A new file rather than an addition to dialogs.css, which was already past the
+ * ~1500-line ceiling this project keeps and is now split into ./dialogs/
+ * submodules for that reason. The rest of the plugin UI styles itself
  * inline; a modal is the one part that needs an overlay and a dark-mode-aware
  * surface, so it belongs in a stylesheet.
  */
