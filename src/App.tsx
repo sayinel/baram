@@ -148,6 +148,12 @@ function App() {
     onActiveEditorChange: handleActiveEditorChange,
   } = useKeepaliveEditors(editor);
 
+  // ‼️ CAUSAL ORDER: instrumentation must bind the editor BEFORE
+  // useEditorFeatures runs — its subsystems (useAutoSave first) attach
+  // `editor.on("update")`, and a handler firing against an editor
+  // instrumentation hasn't seen yet would go unmeasured. The order test in
+  // use-editor-features-order.test.ts is only a migration guard for the list
+  // below this edge; THIS call-site order is the actual contract.
   usePerfInstrumentation(activeEditor);
   usePluginLifecycle(editor);
 
@@ -184,7 +190,6 @@ function App() {
     useRetainedSurfaces({
       activeEditor,
       activeSurface,
-      isSourceMode,
       pdfFind: {
         onToggle: handleTogglePdfFind,
         open: pdfFindOpen,

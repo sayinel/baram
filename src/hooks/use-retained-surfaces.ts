@@ -35,10 +35,13 @@ import { type RetainedEntry, useRetainedTabs } from "./use-retained-tabs";
  * - `activeEditor`, `scrollOffsets` — instances/refs App.tsx owns.
  * - `sourceBuffers`, `pdfFind` — callbacks from sibling hooks (`useSourceMode`,
  *   `useFindReplaceRouting`) this hook has no way to read itself.
- * - `isSourceMode`, `sourceModeTabs` — also `useSourceMode` output, NOT
- *   store-owned, so (unlike the fields below) there is no selector this hook
- *   could read internally instead; `useSourceMode` cannot be called a second
- *   time here without creating a second, diverging instance of its state.
+ * - `sourceModeTabs` — the underlying tab-id array IS store-owned, but the
+ *   `ReadonlySet` handed out by `useSourceMode` is a memoized view of it whose
+ *   reference stability its consumers' memos depend on (see the Set memo's
+ *   comment in use-source-mode.ts); building a second Set here would fork that
+ *   identity, so the one view travels as a parameter. `isSourceMode` is NOT a
+ *   parameter — it is derived below from this set and the snapshot's
+ *   `activeTabId`, so the two can never disagree.
  *
  * Everything else the old param list carried (`activeTab`, `activeTabId`,
  * `fileViewers`, `htmlSourceTabs`, `isCodeFile`, `isHtmlSourceView`, `isPdfTab`,
@@ -52,7 +55,6 @@ import { type RetainedEntry, useRetainedTabs } from "./use-retained-tabs";
 interface UseRetainedSurfacesParams {
   activeEditor: Editor | null;
   activeSurface: ActiveSurfaceSnapshot;
-  isSourceMode: boolean;
   pdfFind: {
     onToggle: () => void;
     open: boolean;
@@ -78,12 +80,17 @@ interface UseRetainedSurfacesReturn {
 export function useRetainedSurfaces({
   activeEditor,
   activeSurface,
-  isSourceMode,
   pdfFind,
   scrollOffsets,
   sourceBuffers,
   sourceModeTabs,
 }: UseRetainedSurfacesParams): UseRetainedSurfacesReturn {
+  // Derived, not passed: mirrors useSourceMode's own derivation exactly, so a
+  // caller can never hand this hook an `isSourceMode` that disagrees with the
+  // set it came from (quality review LOW).
+  const isSourceMode =
+    activeSurface.activeTabId !== null &&
+    sourceModeTabs.has(activeSurface.activeTabId);
   // Field-level locals, not `activeSurface` itself, feed the memo/effect deps
   // below — an object-identity dep would re-fire every render, since App.tsx
   // rebuilds the snapshot object fresh each render even though these

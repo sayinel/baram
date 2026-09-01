@@ -10,21 +10,16 @@
 // module-mocked with a spy that records its name into a shared array.
 //
 // MIGRATION GUARD: this array is the historical total order carried over from
-// the App.tsx split campaign, not a claim that every position is load-bearing.
+// the App.tsx split campaign, not a claim that any position is load-bearing.
 // An intentional reordering of these 13 hooks is fine — update the expected
-// array to match. The one exception is `useAutoSave`, which must stay the
-// FIRST hook after `useSkillsMode` (i.e. immediately after entry) because of a
-// causal edge this test cannot see by itself: in App.tsx, `usePerfInstrumentation
-// (activeEditor)` runs and binds the active editor to the instrumentation
-// layer BEFORE `useEditorFeatures(activeEditor)` is called at all. `useAutoSave`
-// is the first subsystem hook here to attach `editor.on("update")` — if it ran
-// before instrumentation had bound the editor (i.e. if App.tsx called
-// `useEditorFeatures` before `usePerfInstrumentation`, or if `useAutoSave` moved
-// later behind another hook that swaps `editor` first), the update handler
-// could fire against an editor instrumentation hasn't seen yet. Moving
-// `useAutoSave` within this list is safe as long as App.tsx's own call-site
-// ordering (`usePerfInstrumentation` before `useEditorFeatures`) is preserved;
-// moving it relative to instrumentation's own binding is not.
+// array to match. The one CAUSAL ordering edge in this area lives OUTSIDE this
+// hook and this test cannot see it: App.tsx must call
+// `usePerfInstrumentation(activeEditor)` before `useEditorFeatures(activeEditor)`,
+// so that instrumentation has bound the editor before `useAutoSave` (or any
+// other subsystem here) attaches `editor.on("update")`. Every hook in this
+// list runs after that binding as long as App.tsx keeps that call order —
+// which is why moving hooks WITHIN this list never violates the edge, and why
+// the edge itself is pinned by a comment at the App.tsx call site, not here.
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
