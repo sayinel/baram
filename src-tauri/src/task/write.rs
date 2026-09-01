@@ -200,14 +200,11 @@ pub fn apply_state(current: &str, write: &StateWrite) -> String {
 
     // §318 굴린 날짜. 상태·타이머와 **같은 줄 계산 안에서** 놓는다 — 이 셋이 한
     // 트랜잭션이어야 한다는 것이 `StateWrite`가 존재하는 이유다.
-    let swapped = write
-        .dates
-        .entries()
-        .fold(swapped, |line, (field, value)| {
-            // `entries()`가 `RolledDates`의 세 필드만 내므로 `None`은 도달 불가다.
-            // `unwrap_or(line)`은 그 사실이 깨지는 날의 방어다 — 그때도 줄은 성한다.
-            apply_field(&line, field, value).unwrap_or(line)
-        });
+    let swapped = write.dates.entries().fold(swapped, |line, (field, value)| {
+        // `entries()`가 `RolledDates`의 세 필드만 내므로 `None`은 도달 불가다.
+        // `unwrap_or(line)`은 그 사실이 깨지는 날의 방어다 — 그때도 줄은 성한다.
+        apply_field(&line, field, value).unwrap_or(line)
+    });
 
     if !write.record_done_date {
         return swapped;
@@ -374,7 +371,12 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "# T\n- [ ] 할 일 📅2026-08-30\n").await;
 
-        let updated = set_task_state(&p, 1, "- [ ] 할 일 📅2026-08-30", sw(TaskState::Done, true, "2026-08-23", None))
+        let updated = set_task_state(
+            &p,
+            1,
+            "- [ ] 할 일 📅2026-08-30",
+            sw(TaskState::Done, true, "2026-08-23", None),
+        )
         .await
         .unwrap();
 
@@ -389,7 +391,12 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [x] 할 일 ✅2026-08-23\n").await;
 
-        let updated = set_task_state(&p, 0, "- [x] 할 일 ✅2026-08-23", sw(TaskState::Todo, true, "2026-08-24", None))
+        let updated = set_task_state(
+            &p,
+            0,
+            "- [x] 할 일 ✅2026-08-23",
+            sw(TaskState::Todo, true, "2026-08-24", None),
+        )
         .await
         .unwrap();
 
@@ -402,7 +409,12 @@ mod tests {
         let original = "- [ ] 그 사이 바뀐 줄\n";
         let p = f(&d, original).await;
 
-        let err = set_task_state(&p, 0, "- [ ] 예전 내용", sw(TaskState::Done, true, "2026-08-23", None))
+        let err = set_task_state(
+            &p,
+            0,
+            "- [ ] 예전 내용",
+            sw(TaskState::Done, true, "2026-08-23", None),
+        )
         .await
         .unwrap_err();
 
@@ -416,7 +428,12 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 한 줄\n").await;
 
-        let err = set_task_state(&p, 99, "- [ ] 한 줄", sw(TaskState::Done, true, "2026-08-23", None))
+        let err = set_task_state(
+            &p,
+            99,
+            "- [ ] 한 줄",
+            sw(TaskState::Done, true, "2026-08-23", None),
+        )
         .await
         .unwrap_err();
         assert!(matches!(err, TaskError::Stale));
@@ -427,7 +444,12 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "# T\r\n- [ ] 할 일\r\n").await;
 
-        set_task_state(&p, 1, "- [ ] 할 일", sw(TaskState::Done, false, "2026-08-23", None))
+        set_task_state(
+            &p,
+            1,
+            "- [ ] 할 일",
+            sw(TaskState::Done, false, "2026-08-23", None),
+        )
         .await
         .unwrap();
 
@@ -446,9 +468,14 @@ mod tests {
         let original = "- [ ] a\r\n- [ ] b\n- [ ] c\n";
         let p = f(&d, original).await;
 
-        let updated = set_task_state(&p, 0, "- [ ] a", sw(TaskState::Done, false, "2026-08-23", None))
-            .await
-            .unwrap();
+        let updated = set_task_state(
+            &p,
+            0,
+            "- [ ] a",
+            sw(TaskState::Done, false, "2026-08-23", None),
+        )
+        .await
+        .unwrap();
         assert_eq!(updated, "- [x] a");
 
         // 가장 중요한 단언: 반환된 한 줄이 아니라 파일 전체가 온전해야 한다.
@@ -461,7 +488,12 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 할 일").await;
 
-        set_task_state(&p, 0, "- [ ] 할 일", sw(TaskState::Done, false, "2026-08-23", None))
+        set_task_state(
+            &p,
+            0,
+            "- [ ] 할 일",
+            sw(TaskState::Done, false, "2026-08-23", None),
+        )
         .await
         .unwrap();
 
@@ -474,7 +506,12 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = f(&d, "- [ ] 할\u{00A0}일\n").await;
 
-        let updated = set_task_state(&p, 0, "- [ ] 할 일", sw(TaskState::Done, false, "2026-08-23", None))
+        let updated = set_task_state(
+            &p,
+            0,
+            "- [ ] 할 일",
+            sw(TaskState::Done, false, "2026-08-23", None),
+        )
         .await
         .unwrap();
         assert_eq!(updated, "- [x] 할 일");
@@ -524,7 +561,12 @@ mod tests {
         let original = "- [x] 완료: 예시로 [ ] 형식 사용\n";
         let p = f(&d, original).await;
 
-        let updated = set_task_state(&p, 0, "- [x] 완료: 예시로 [ ] 형식 사용", sw(TaskState::Todo, false, "2026-08-23", None))
+        let updated = set_task_state(
+            &p,
+            0,
+            "- [x] 완료: 예시로 [ ] 형식 사용",
+            sw(TaskState::Todo, false, "2026-08-23", None),
+        )
         .await
         .unwrap();
 
@@ -562,7 +604,12 @@ mod tests {
         let original = "    - [x] 완료된 하위 항목 ✅2026-08-20\n";
         let p = f(&d, original).await;
 
-        let updated = set_task_state(&p, 0, "    - [x] 완료된 하위 항목 ✅2026-08-20", sw(TaskState::Todo, true, "2026-08-24", None))
+        let updated = set_task_state(
+            &p,
+            0,
+            "    - [x] 완료된 하위 항목 ✅2026-08-20",
+            sw(TaskState::Todo, true, "2026-08-24", None),
+        )
         .await
         .unwrap();
 
@@ -601,7 +648,6 @@ mod tests {
         assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
     }
 
-
     /// 테스트용 `StateWrite`. §318 날짜를 쓰는 테스트만 이 결과의 `dates`를 채운다 —
     /// 나머지 전부에게 굴리기는 "일어나지 않는 일"이어야 하고, 기본값이 그 사실이다.
     fn sw(
@@ -621,25 +667,37 @@ mod tests {
 
     #[test]
     fn apply_state_swaps_marker_and_appends_done_date() {
-        let out = apply_state("- [ ] 초안 📅2026-08-30", &sw(TaskState::Done, true, "2026-08-24", None));
+        let out = apply_state(
+            "- [ ] 초안 📅2026-08-30",
+            &sw(TaskState::Done, true, "2026-08-24", None),
+        );
         assert_eq!(out, "- [x] 초안 📅2026-08-30 ✅2026-08-24");
     }
 
     #[test]
     fn apply_state_strips_done_date_when_reverting() {
-        let out = apply_state("- [x] 초안 📅2026-08-30 ✅2026-08-24", &sw(TaskState::Todo, true, "2026-08-24", None));
+        let out = apply_state(
+            "- [x] 초안 📅2026-08-30 ✅2026-08-24",
+            &sw(TaskState::Todo, true, "2026-08-24", None),
+        );
         assert_eq!(out, "- [x] 초안 📅2026-08-30".replace("[x]", "[ ]"));
     }
 
     #[test]
     fn apply_state_leaves_done_date_alone_when_recording_is_off() {
-        let out = apply_state("- [ ] 초안", &sw(TaskState::Done, false, "2026-08-24", None));
+        let out = apply_state(
+            "- [ ] 초안",
+            &sw(TaskState::Done, false, "2026-08-24", None),
+        );
         assert_eq!(out, "- [x] 초안");
     }
 
     #[test]
     fn apply_state_preserves_indentation() {
-        let out = apply_state("    - [ ] 중첩", &sw(TaskState::Done, false, "2026-08-24", None));
+        let out = apply_state(
+            "    - [ ] 중첩",
+            &sw(TaskState::Done, false, "2026-08-24", None),
+        );
         assert_eq!(out, "    - [x] 중첩");
     }
 
@@ -648,22 +706,34 @@ mod tests {
     #[test]
     fn apply_state_writes_every_marker() {
         assert_eq!(
-            apply_state("- [ ] 초안", &sw(TaskState::Doing, false, "2026-08-24", None)),
+            apply_state(
+                "- [ ] 초안",
+                &sw(TaskState::Doing, false, "2026-08-24", None)
+            ),
             "- [/] 초안"
         );
         assert_eq!(
-            apply_state("- [/] 초안", &sw(TaskState::Cancelled, false, "2026-08-24", None)),
+            apply_state(
+                "- [/] 초안",
+                &sw(TaskState::Cancelled, false, "2026-08-24", None)
+            ),
             "- [-] 초안"
         );
         assert_eq!(
-            apply_state("- [-] 초안", &sw(TaskState::Todo, false, "2026-08-24", None)),
+            apply_state(
+                "- [-] 초안",
+                &sw(TaskState::Todo, false, "2026-08-24", None)
+            ),
             "- [ ] 초안"
         );
     }
 
     #[test]
     fn apply_state_stamps_a_cancelled_line_with_the_cancel_date() {
-        let out = apply_state("- [ ] 초안", &sw(TaskState::Cancelled, true, "2026-08-24", None));
+        let out = apply_state(
+            "- [ ] 초안",
+            &sw(TaskState::Cancelled, true, "2026-08-24", None),
+        );
         assert_eq!(out, "- [-] 초안 ❌2026-08-24");
     }
 
@@ -685,7 +755,10 @@ mod tests {
 
     #[test]
     fn apply_state_swaps_only_the_leftmost_marker() {
-        let out = apply_state("- [ ] 본문에 [-] 가 있다", &sw(TaskState::Doing, false, "2026-08-24", None));
+        let out = apply_state(
+            "- [ ] 본문에 [-] 가 있다",
+            &sw(TaskState::Doing, false, "2026-08-24", None),
+        );
         assert_eq!(out, "- [/] 본문에 [-] 가 있다");
     }
 
@@ -723,7 +796,10 @@ mod tests {
             ),
         );
 
-        assert_eq!(out, "- [ ] 주간 회고 🛫2026-09-06 📅2026-09-08 🔁every week");
+        assert_eq!(
+            out,
+            "- [ ] 주간 회고 🛫2026-09-06 📅2026-09-08 🔁every week"
+        );
     }
 
     /// ‼️ 굴린 줄은 완료가 **아니다**. `[ ]`인데 ✅이 붙어 있으면 그 줄은 자기가
@@ -773,7 +849,11 @@ mod tests {
             },
         );
 
-        assert!(out.contains("✅2026-09-05"), "이것이 피하려는 줄이다: {}", out);
+        assert!(
+            out.contains("✅2026-09-05"),
+            "이것이 피하려는 줄이다: {}",
+            out
+        );
     }
 
     /// 굴린 날짜가 없으면 날짜를 건드리지 않는다 — 평범한 상태 전이와 바이트가 같다.
@@ -1084,7 +1164,12 @@ mod tests {
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
         let link_path = link.to_string_lossy().to_string();
-        set_task_state(&link_path, 0, "- [ ] 할 일", sw(TaskState::Done, false, "2026-08-23", None))
+        set_task_state(
+            &link_path,
+            0,
+            "- [ ] 할 일",
+            sw(TaskState::Done, false, "2026-08-23", None),
+        )
         .await
         .unwrap();
 

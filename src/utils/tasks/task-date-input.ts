@@ -65,7 +65,11 @@ function shift(today: Date, days: number): string {
  * §318 반복 계산(`task-recurrence.ts`)이 같은 판정을 필요로 해 export한다. 사본을
  * 만들면 "2월 30일"을 한쪽만 거르는 날이 온다.
  */
-export function makeCalendarDate(year: number, month: number, day: number): Date | null {
+export function makeCalendarDate(
+  year: number,
+  month: number,
+  day: number,
+): Date | null {
   const d = new Date(year, month - 1, day);
   return d.getMonth() === month - 1 && d.getDate() === day ? d : null;
 }

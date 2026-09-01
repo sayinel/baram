@@ -65,10 +65,9 @@ const TASK: TaskEntry = {
 function useRealRouter(): void {
   vi.mocked(applyModule.applyTaskWrite).mockImplementation(
     async (task, change, editor) => {
-      const actual =
-        await vi.importActual<typeof import("../apply-task-write")>(
-          "../apply-task-write",
-        );
+      const actual = await vi.importActual<
+        typeof import("../apply-task-write")
+      >("../apply-task-write");
       return actual.applyTaskWrite(task, change, editor);
     },
   );

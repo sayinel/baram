@@ -16,7 +16,10 @@ import {
 
 describe("§318 parseRecurrence", () => {
   it.each([
-    ["every day", { dayOfMonth: null, interval: 1, unit: "day", weekday: null }],
+    [
+      "every day",
+      { dayOfMonth: null, interval: 1, unit: "day", weekday: null },
+    ],
     [
       "every 3 days",
       { dayOfMonth: null, interval: 3, unit: "day", weekday: null },
@@ -185,7 +188,12 @@ describe("§318 nextDate", () => {
     "every month on the 31st",
     "every year",
   ])("always moves forward: %s", (rule) => {
-    for (const from of ["2026-01-31", "2026-02-28", "2026-09-04", "2028-02-29"]) {
+    for (const from of [
+      "2026-01-31",
+      "2026-02-28",
+      "2026-09-04",
+      "2028-02-29",
+    ]) {
       const out = next(rule, from);
       expect(out).not.toBeNull();
       expect(out! > from).toBe(true);

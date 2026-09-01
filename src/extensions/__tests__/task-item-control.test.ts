@@ -296,9 +296,17 @@ describe("a recurring task rolls instead of completing (§318)", () => {
   });
 
   it.each([
-    ["a rule it cannot read", "- [/] a 📅2026-09-01 🔁every fortnight\n", "- [x] a 📅2026-09-01 🔁every fortnight\n"],
+    [
+      "a rule it cannot read",
+      "- [/] a 📅2026-09-01 🔁every fortnight\n",
+      "- [x] a 📅2026-09-01 🔁every fortnight\n",
+    ],
     ["no date to move", "- [/] a 🔁every 3 days\n", "- [x] a 🔁every 3 days\n"],
-    ["no recurrence at all", "- [/] a 📅2026-09-01\n", "- [x] a 📅2026-09-01\n"],
+    [
+      "no recurrence at all",
+      "- [/] a 📅2026-09-01\n",
+      "- [x] a 📅2026-09-01\n",
+    ],
   ])("completes normally with %s", (_label, md, expected) => {
     const editor = createEditor(md);
 

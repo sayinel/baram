@@ -23,7 +23,9 @@ describe("§318 굴리는 전이", () => {
   });
 
   it("취소도 굴린다 — 이번 회차를 건너뛰는 것이지 반복을 끝내는 것이 아니다", () => {
-    expect(resolveStateWrite("cancelled", RECURRING, OFF).newState).toBe("todo");
+    expect(resolveStateWrite("cancelled", RECURRING, OFF).newState).toBe(
+      "todo",
+    );
   });
 
   // ‼️ 이것이 이 파일에서 가장 중요한 단정이다. `recordDoneDate`가 거짓이면 Rust
@@ -60,9 +62,12 @@ describe("§318 굴리지 않는 경우", () => {
     expect(write.dates).toBeUndefined();
   });
 
-  it.each(["todo", "doing"] as const)("%s로 가는 전이는 굴리지 않는다", (to) => {
-    expect(resolveStateWrite(to, RECURRING, OFF).roll).toBeNull();
-  });
+  it.each(["todo", "doing"] as const)(
+    "%s로 가는 전이는 굴리지 않는다",
+    (to) => {
+      expect(resolveStateWrite(to, RECURRING, OFF).roll).toBeNull();
+    },
+  );
 });
 
 describe("§318 굴릴 때의 시계", () => {

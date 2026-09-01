@@ -304,11 +304,6 @@ export function resolveTaskWriteTarget(
 }
 
 /** 변환 결과 줄만 Rust에서 받아온다 — 변환 로직을 TS에 재구현하지 않는다. */
-/**
- * 상태 변경 → IPC 페이로드. 두 경로(디스크·미리보기)가 **같은 함수**로 만든다 —
- * 손으로 두 번 적으면 한쪽만 필드를 빠뜨리는 날이 오고, 그때 미리보기와 디스크가
- * 서로 다른 줄을 만든다(§305가 서 있는 불변식이 바로 그 둘의 일치다).
- */
 async function previewLine(raw: string, change: TaskChange): Promise<string> {
   switch (change.kind) {
     case "field":
@@ -320,6 +315,11 @@ async function previewLine(raw: string, change: TaskChange): Promise<string> {
   }
 }
 
+/**
+ * 상태 변경 → IPC 페이로드. 두 경로(디스크·미리보기)가 **같은 함수**로 만든다 —
+ * 손으로 두 번 적으면 한쪽만 필드를 빠뜨리는 날이 오고, 그때 미리보기와 디스크가
+ * 서로 다른 줄을 만든다(§305가 서 있는 불변식이 바로 그 둘의 일치다).
+ */
 function stateWrite(change: Extract<TaskChange, { kind: "state" }>) {
   return {
     dates: change.dates,

@@ -651,7 +651,6 @@ describe("renderTaskChip — 우선순위 마커 → 라벨 매핑", () => {
   });
 });
 
-
 /** 위젯 데코레이션이 그리는 칩의 글자 — 실제 `toDOM`을 부른다. */
 function chipLabels(md: string): string[] {
   return widgetDecos(build(md)).map((d) => {

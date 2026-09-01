@@ -209,8 +209,7 @@ mod tests {
         let disk = set_task_state(p, 0, raw.to_string(), done_on("2026-08-24"))
             .await
             .unwrap();
-        let document =
-            preview_task_state_line(raw.to_string(), done_on("2026-08-24")).unwrap();
+        let document = preview_task_state_line(raw.to_string(), done_on("2026-08-24")).unwrap();
 
         assert_eq!(disk, document);
         assert_eq!(disk, "- [x] 회의 준비 ✅2026-08-24");
