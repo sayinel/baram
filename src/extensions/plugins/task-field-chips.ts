@@ -138,8 +138,8 @@ function collectItem(
  *
  * 인라인 코드도 런을 끊는다. `collectItem`이 블록 코드에 대해 막는 것과 같은
  * 손실이 인라인에서 일어나기 때문이다 — 다만 인라인 코드는 별도 노드가 아니라
- * `code` 마크가 붙은 텍스트 노드라(`src/pipeline/md-to-pm.ts:631-636`) 노드
- * 종류만 보는 가드에는 닿지 않는다.
+ * `code` 마크가 붙은 텍스트 노드라(`src/pipeline/convert-inline.ts`의
+ * `convertInlineNode` inlineCode 분기) 노드 종류만 보는 가드에는 닿지 않는다.
  */
 function collectTextblock(
   block: PMNode,

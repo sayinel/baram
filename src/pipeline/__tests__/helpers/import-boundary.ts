@@ -298,20 +298,26 @@ export function buildPipelineClosure(): Set<string> {
 // `buildAllowlist()`'s entries are added.
 
 /**
- * The seven production files that make up the OTHER side of this pipeline —
+ * The nine production files that make up the OTHER side of this pipeline —
  * the actual MD→PM ("parse") route (`md-to-pm.ts` and its own helper
- * modules) — audited 2026-08-30 as exactly `productionSourceFiles(PIPELINE_DIR)`
+ * modules) — audited 2026-09-02 as exactly `productionSourceFiles(PIPELINE_DIR)`
  * minus `buildPipelineClosure()` minus the barrel (tracked separately below,
  * since it carries no conversion logic of its own). They need the SAME
  * dynamic-dispatch registries (`nodeTransformers`/`markTransformers`, keyed
  * by mdastType) the closure's own modules provide — for the harmless MD→PM
  * direction. The risk this boundary defends against is specifically PM→MD
  * (serialize) leaving pipeline unescorted, not the reverse.
+ *
+ * `convert-inline.ts` and `convert-table-colwidths.ts` were added by the
+ * pure-move split of `md-to-pm.ts` (2026-09-02, seven → nine) — a pure
+ * relocation of existing MD→PM code, not new production surface.
  */
 export const MD_TO_PM_ROUTE_FILES: ReadonlySet<string> = new Set([
   join(PIPELINE_DIR, "convert-block-special.ts"),
   join(PIPELINE_DIR, "convert-inline-text.ts"),
+  join(PIPELINE_DIR, "convert-inline.ts"),
   join(PIPELINE_DIR, "convert-list.ts"),
+  join(PIPELINE_DIR, "convert-table-colwidths.ts"),
   join(PIPELINE_DIR, "md-to-pm.ts"),
   join(PIPELINE_DIR, "parse-async.ts"),
   join(PIPELINE_DIR, "parse-mdast.ts"),

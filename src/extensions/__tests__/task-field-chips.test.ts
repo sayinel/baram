@@ -19,9 +19,10 @@ import { buildTaskFieldDecorations } from "../plugins/task-field-chips";
 // `block-id-decoration.test.ts`와 같은 방식: 이 테스트가 실제로 쓰는 노드만
 // 담은 최소 스키마를 만들고 `markdownToProsemirror(md, schema)`에 넘긴다.
 //
-// `wikilink`·`tagNode`·`mention`이 **반드시** 있어야 한다: `md-to-pm.ts:603,615`가
-// 아톰 분리를 이 노드들의 존재로 게이트하므로, 없으면 `[[...]]`와 `#tag`가 그냥
-// 텍스트로 남아 이 기능이 존재하는 이유인 아톰 오프셋 경로를 한 번도 지나지 않는다.
+// `wikilink`·`tagNode`·`mention`이 **반드시** 있어야 한다: `convert-inline.ts`의
+// `INLINE_SPLITTERS`가 아톰 분리를 이 노드들의 존재로 게이트하므로, 없으면
+// `[[...]]`와 `#tag`가 그냥 텍스트로 남아 이 기능이 존재하는 이유인 아톰 오프셋
+// 경로를 한 번도 지나지 않는다.
 // 형태는 `src/pipeline/__tests__/md-to-pm-split.test.ts:16-99`를 그대로 따랐다.
 
 const schema = new Schema({
@@ -110,8 +111,9 @@ const schema = new Schema({
       attrs: { tag: { default: "" } },
     },
   },
-  // 리뷰 M1 — `code`가 **반드시** 있어야 한다: `md-to-pm.ts:631-636`이 인라인
-  // 코드를 `schema.marks.code?.create()`로 게이트하므로, 없으면 백틱 안이 그냥
+  // 리뷰 M1 — `code`가 **반드시** 있어야 한다: `convert-inline.ts`의
+  // `convertInlineNode` inlineCode 분기가 인라인 코드를
+  // `schema.marks.code?.create()`로 게이트하므로, 없으면 백틱 안이 그냥
   // 텍스트로 남아 이 마크 경로를 한 번도 지나지 않는다.
   marks: { bold: {}, code: { excludes: "_" }, italic: {} },
 });
@@ -377,7 +379,8 @@ describe("buildTaskFieldDecorations — 중첩된 비-태스크 블록", () => {
 // ── 인라인 코드 (리뷰 M1) ──────────────────────────────────────────────
 //
 // 인라인 코드는 **별도 노드가 아니라** `code` 마크가 붙은 텍스트 노드다
-// (`md-to-pm.ts:631-636`). 텍스트 런을 마크를 보지 않고 이어 붙이면 백틱 안의
+// (`convert-inline.ts`의 `convertInlineNode` inlineCode 분기). 텍스트 런을
+// 마크를 보지 않고 이어 붙이면 백틱 안의
 // 필드가 본문과 똑같이 스캔되고, 원문이 감춰진 자리에 코드가 아닌 칩이 나타난다.
 // 이 앱의 태스크 문법을 문서로 정리하는 사용자가 자기가 쓴 글자를 잃는 자리다.
 // `collectItem`이 **블록** 코드에 대해 이미 막아 둔 것과 같은 손실이다.
@@ -433,10 +436,10 @@ describe("buildTaskFieldDecorations — 인라인 아톰", () => {
     // 스키마에 노드가 없으면 파이프라인이 아톰을 만들지 않는다 — 그러면 이
     // 테스트는 아톰 경로를 지나지 않은 채 통과해버린다.
     expect(hasNodeType(doc, "wikilink")).toBe(true);
-    // 이 줄에서 `#deep-work`는 텍스트로 남는다: `md-to-pm.ts:602-620`의 분리기들이
-    // 하나가 노드를 만들면 곧바로 반환하므로, 위키링크가 걸린 텍스트에는 태그
-    // 분리가 아예 돌지 않는다. 태그 아톰 경로는 아래 "아톰이 필드 사이에" 테스트가
-    // 따로 지킨다.
+    // 이 줄에서 `#deep-work`는 텍스트로 남는다: `convert-inline.ts`의
+    // `splitInlineText`가 이미 노드로 바뀐 조각은 다시 건드리지 않으므로,
+    // 위키링크가 걸린 텍스트에는 태그 분리가 아예 돌지 않는다. 태그 아톰 경로는
+    // 아래 "아톰이 필드 사이에" 테스트가 따로 지킨다.
     expect(covered(doc, buildTaskFieldDecorations(doc, -1, TODAY))).toEqual([
       "🛫2026-08-25",
       "📅2026-08-30",

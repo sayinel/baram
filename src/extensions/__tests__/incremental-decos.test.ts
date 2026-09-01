@@ -16,8 +16,8 @@ import { blockIdDecoKey } from "../plugins/block-id-decoration";
 import {
   _findFoldableHeadingsCallCount,
   _resetFindFoldableHeadingsCallCount,
-  foldPluginKey,
-} from "../plugins/fold";
+} from "../plugins/fold-ranges";
+import { foldPluginKey } from "../plugins/fold-state";
 import { listAtomFixKey } from "../plugins/list-atom-fix";
 import { promptHighlightKey } from "../plugins/prompt-highlight";
 

@@ -7,7 +7,7 @@ import {
   dispatchFoldAll,
   dispatchUnfoldAll,
   toggleFoldAtCursor,
-} from "../extensions/plugins/fold";
+} from "../extensions/plugins/fold-commands";
 // §settings Keybinding actions hook — register command handlers
 import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { type Locale, t } from "../i18n";

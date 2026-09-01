@@ -4,7 +4,7 @@ import type { TabSwitchContext } from "./types";
 import {
   foldPluginKey,
   positionsToAnchors,
-} from "../../extensions/plugins/fold";
+} from "../../extensions/plugins/fold-state";
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { useFoldStore } from "../../stores/editor/fold";
 import { useFileStore } from "../../stores/file/file";

@@ -141,8 +141,9 @@ export function useTabScrollMemory(
     // 내용을 기다리는 경로가 두 번째 활성화부터 통째로 죽는다.
     //
     // MarkdownSurface가 이 함정에 정확히 걸린다: App은 그것을 **앱 수명 동안 한 인스턴스**로
-    // 렌더하고 `tabId={activeTabId}`만 갈아 끼우므로(App.tsx:1007), 이 ref가 탭도 에피소드도
-    // 넘나들며 살아남는다. TabSurface는 `${entry.kind}-${entry.tabId}`로 키가 갈려 있어(App.tsx:1000)
+    // 렌더하고 `tabId={activeTabId}`만 갈아 끼우므로(App.tsx의 MarkdownSurface 렌더),
+    // 이 ref가 탭도 에피소드도 넘나들며 살아남는다. TabSurface는
+    // `${entry.kind}-${entry.tabId}`로 키가 갈려 있어(App.tsx의 retained-tab 맵 렌더)
     // 우연히 무사했다.
     lastWritten.current = null;
     // ‼️ 조건부로 **덮어쓴다.** 저장된 값이 없을 때 예전 대기를 그대로 두면, 아래 관찰자가
