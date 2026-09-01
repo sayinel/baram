@@ -53,49 +53,63 @@ export function JournalTab({
    */
   const emptyRender = `<p>${t("journal.memories.emptyEntry")}</p>`;
 
-  const loadMemories = useCallback(async () => {
-    if (!rootPath || !journalDirectory) return;
-    setLoading(true);
+  /**
+   * Re-read every year's entry for the selected month/day.
+   *
+   * `silent` decides whether the loading placeholder takes the panel over while the reads are in
+   * flight, and it must be set for a refresh that a save triggered. `.memories-loading` is a
+   * block with 32px of padding above and below, so swapping the already-drawn year cards for it
+   * and back — once per auto-save, while the user is typing — pushes the cards down ~90px and
+   * back, which reads as the panel blinking. §56's real-time refresh reused this first-load path,
+   * placeholder and all. On the first load and on date navigation there is nothing on screen
+   * worth keeping, so the placeholder stays there.
+   */
+  const loadMemories = useCallback(
+    async (silent = false) => {
+      if (!rootPath || !journalDirectory) return;
+      if (!silent) setLoading(true);
 
-    try {
-      const base = resolveJournalBase(rootPath, journalDirectory);
-      const dailyDir = `${base}/daily`;
-      const { listDir } = await import("../../ipc/invoke");
-      const yearDirs = await listDir(dailyDir);
-      const currentYear = new Date().getFullYear();
-      const mm = String(month).padStart(2, "0");
-      const dd = String(day).padStart(2, "0");
-      const entries: MemoryEntry[] = [];
+      try {
+        const base = resolveJournalBase(rootPath, journalDirectory);
+        const dailyDir = `${base}/daily`;
+        const { listDir } = await import("../../ipc/invoke");
+        const yearDirs = await listDir(dailyDir);
+        const currentYear = new Date().getFullYear();
+        const mm = String(month).padStart(2, "0");
+        const dd = String(day).padStart(2, "0");
+        const entries: MemoryEntry[] = [];
 
-      for (const yearDir of yearDirs) {
-        if (!yearDir.isDir) continue;
-        const year = parseInt(yearDir.name, 10);
-        if (isNaN(year)) continue;
+        for (const yearDir of yearDirs) {
+          if (!yearDir.isDir) continue;
+          const year = parseInt(yearDir.name, 10);
+          if (isNaN(year)) continue;
 
-        const filePath = `${dailyDir}/${year}/${mm}/${year}-${mm}-${dd}.md`;
-        try {
-          const content = await readFile(filePath);
-          entries.push({
-            year,
-            path: filePath,
-            oneLine: extractOneLine(content),
-            diaryContent: extractDiarySection(content),
-            fullContent: content,
-            isCurrentYear: year === currentYear,
-          });
-        } catch {
-          // File doesn't exist for this year — skip
+          const filePath = `${dailyDir}/${year}/${mm}/${year}-${mm}-${dd}.md`;
+          try {
+            const content = await readFile(filePath);
+            entries.push({
+              year,
+              path: filePath,
+              oneLine: extractOneLine(content),
+              diaryContent: extractDiarySection(content),
+              fullContent: content,
+              isCurrentYear: year === currentYear,
+            });
+          } catch {
+            // File doesn't exist for this year — skip
+          }
         }
-      }
 
-      entries.sort((a, b) => b.year - a.year);
-      setMemories(entries);
-    } catch {
-      // IPC not available or dir doesn't exist
-    } finally {
-      setLoading(false);
-    }
-  }, [rootPath, journalDirectory, month, day, setMemories, setLoading]);
+        entries.sort((a, b) => b.year - a.year);
+        setMemories(entries);
+      } catch {
+        // IPC not available or dir doesn't exist
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [rootPath, journalDirectory, month, day, setMemories, setLoading],
+  );
 
   useEffect(() => {
     loadMemories();
@@ -104,7 +118,7 @@ export function JournalTab({
   // §56 Refresh in real time when a journal entry is created/saved elsewhere
   // (e.g. editing today's entry in the main editor) instead of only on remount.
   useEffect(
-    () => subscribeJournalChanged(() => void loadMemories()),
+    () => subscribeJournalChanged(() => void loadMemories(true)),
     [loadMemories],
   );
 
