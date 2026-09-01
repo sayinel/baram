@@ -72,13 +72,21 @@ export function TaskEditDialog() {
       setBlocked(null);
       return;
     }
-    if (ownerRef.current && ownerRef.current !== editor) {
-      // 열려 있는 동안 활성 에디터 인스턴스가 바뀌었다. 여기서 draft를 다시 읽으면
-      // 지켜야 할 입력이 다른 문서의 블록으로 갈아치워진다 — 그대로 두고 거부만 알린다.
-      // ‼️ 이 검사가 소스 모드 게이트보다 먼저다: 스왑 대상 탭이 마침 소스 모드면
+    if (ownerRef.current) {
+      // 이 open 사이클은 이미 초기화됐다 — 아래 초기화를 다시 돌리면 사용자가 입력한
+      // draft가 블록의 현재 내용으로 조용히 덮인다(왕복 스왑 A→B→A가 정확히 이 경로).
+      // 초기화는 open 사이클당 한 번뿐이다.
+      // ‼️ 이 분기가 소스 모드 게이트보다 먼저다: 스왑 대상 탭이 마침 소스 모드면
       // 아래 게이트가 closeTaskEdit()으로 draft를 조용히 폐기해 버린다 — 남의 에디터
       // 상태가 내 draft의 생사를 정해서는 안 된다.
-      setBlocked("stale");
+      if (ownerRef.current !== editor) {
+        // 다른 에디터로 스왑됐다. draft는 그대로 두고 거부만 알린다.
+        setBlocked("stale");
+      } else {
+        // 소유한 에디터로 되돌아왔다 — "다른 에디터" 사유가 소멸했으니 알림을 끈다.
+        // 문서가 그새 바뀌었다면 save의 identity 가드가 다시 거른다.
+        setBlocked(null);
+      }
       return;
     }
     if (isActiveTabSourceMode()) {

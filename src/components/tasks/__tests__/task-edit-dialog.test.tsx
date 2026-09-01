@@ -211,6 +211,75 @@ describe("TaskEditDialog", () => {
     editorB.destroy();
   });
 
+  // 이슈 498 (자체 검토 후속): 편도 스왑만 막으면 반쪽이다 — 되돌아오면(A→B→A)
+  // owner 검사가 통과되면서 open-effect의 초기화가 다시 돌아, 보존하겠다던 draft를
+  // 블록의 현재 내용으로 조용히 덮어썼다. 초기화는 open 사이클당 한 번뿐이어야 한다.
+  it("왕복 스왑(A→B→A) 후에도 입력한 draft가 살아 있다", () => {
+    const hostA = document.createElement("div");
+    document.body.appendChild(hostA);
+    editor = new Editor({
+      element: hostA,
+      extensions: createBaramExtensions(),
+    });
+    editor.commands.setContent(
+      markdownToProsemirror(
+        "- [ ] 원래 초안",
+        editor.state.schema,
+      ).toJSON() as never,
+    );
+    let at = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (at === -1 && node.isText) at = pos + 1;
+      return at === -1;
+    });
+    editor.commands.setTextSelection(at);
+    useUIStore.setState({ taskEditOpen: true });
+    const view = render(
+      <EditorProvider value={editor}>
+        <TaskEditDialog />
+      </EditorProvider>,
+    );
+    fireEvent.change(screen.getByDisplayValue("원래 초안"), {
+      target: { value: "지켜야 할 draft" },
+    });
+
+    const hostB = document.createElement("div");
+    document.body.appendChild(hostB);
+    const editorB = new Editor({
+      element: hostB,
+      extensions: createBaramExtensions(),
+    });
+    editorB.commands.setContent(
+      markdownToProsemirror(
+        "- [ ] 다른 문서",
+        editorB.state.schema,
+      ).toJSON() as never,
+    );
+    editorB.commands.setTextSelection(2);
+
+    // 스왑 갔다가 —
+    view.rerender(
+      <EditorProvider value={editorB}>
+        <TaskEditDialog />
+      </EditorProvider>,
+    );
+    // — 되돌아온다.
+    view.rerender(
+      <EditorProvider value={editor}>
+        <TaskEditDialog />
+      </EditorProvider>,
+    );
+
+    // draft가 재초기화로 덮이지 않았고, 스왑 사유가 소멸했으니 경고도 없다.
+    expect(screen.getByDisplayValue("지켜야 할 draft")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    // 문서가 그대로면 저장도 다시 된다 — 거부 상태가 눌어붙지 않는다.
+    fireEvent.click(screen.getByText("Save"));
+    expect(markdown(editor!)).toBe("- [ ] 지켜야 할 draft");
+    editorB.destroy();
+  });
+
   // 이슈 498 (감사 MAJOR 후속): 위 두 결함의 조합 — 소스 모드가 켜진 다른 에디터로
   // 스왑되면, 소스 모드 게이트가 owner 검사보다 먼저 닫아 버려 draft가 증발한다.
   // owner 검사가 항상 먼저여야 한다: 남의 에디터 상태로 내 draft를 폐기하지 않는다.
