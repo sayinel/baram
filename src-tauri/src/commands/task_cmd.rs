@@ -42,29 +42,16 @@ pub async fn get_tasks_linking_to(
 /// 여기 옮겨 적으면 같은 규칙이 두 벌이 되고, 그중 하나는 시계를 잘못 읽게 된다.
 // IPC 경계라 인자가 곧 JS가 보내는 페이로드다 — `commands/*_cmd.rs`의 다른 커맨드들과
 // 같은 판단이다(`embedding_cmd`·`export_cmd`·`llm_cmd`).
-#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn set_task_state(
     path: String,
     line: u32,
     expected_raw: String,
-    new_state: String,
-    record_done_date: bool,
-    today: String,
-    timer: Option<String>,
+    write: crate::task::StateWrite,
 ) -> Result<String, String> {
-    let state: crate::task::TaskState = new_state.parse()?;
-    crate::task::set_task_state(
-        &path,
-        line,
-        &expected_raw,
-        state,
-        record_done_date,
-        &today,
-        timer.as_deref(),
-    )
-    .await
-    .map_err(|e| e.to_string())
+    crate::task::set_task_state(&path, line, &expected_raw, write)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -85,23 +72,16 @@ pub async fn set_task_field(
 #[tauri::command]
 pub fn preview_task_state_line(
     raw: String,
-    new_state: String,
-    record_done_date: bool,
-    today: String,
-    timer: Option<String>,
+    write: crate::task::StateWrite,
 ) -> Result<String, String> {
-    // 이름 → 상태는 `TaskState::from_str` 한 곳에만 있다. 예전에는 이 두 커맨드가
-    // 같은 match를 한 벌씩 갖고 있었고, M4가 상태를 넷으로 넓히는 순간 한쪽만 고치면
-    // "저장은 되는데 미리보기만 실패하는" 상태가 생길 자리였다.
-    let state: crate::task::TaskState = new_state.parse()?;
+    // 디스크 경로와 **같은 검사**를 같은 순서로 한다 — 미리보기만 통과하는 값이
+    // 있으면 열린 문서와 파일이 갈린다.
+    write.validate().map_err(|e| e.to_string())?;
     // `replace_line`이 transform에 정규화된 줄을 넘기므로(write.rs) 여기서도 같아야
     // 디스크 경로와 열린 파일 경로의 결과가 바이트 단위로 일치한다.
     Ok(crate::task::apply_state(
         &crate::task::normalize_line(&raw),
-        state,
-        record_done_date,
-        &today,
-        timer.as_deref(),
+        &write,
     ))
 }
 
@@ -199,6 +179,18 @@ mod tests {
         p.to_string_lossy().to_string()
     }
 
+    /// 두 경로에 **같은 값**을 넣기 위한 테스트 헬퍼. 아래 불변식이 재는 것은
+    /// 정규화 차이뿐이므로, 인자가 조금이라도 갈리면 그 테스트가 다른 것을 재게 된다.
+    fn done_on(today: &str) -> crate::task::StateWrite {
+        crate::task::StateWrite {
+            dates: Default::default(),
+            new_state: crate::task::TaskState::Done,
+            record_done_date: true,
+            timer: None,
+            today: today.to_string(),
+        }
+    }
+
     // §305 이 설계 전체가 서 있는 불변식: 디스크 경로(`set_task_state`/`set_task_field`)와
     // 열린 문서 경로(`preview_*_line`)가 **같은 바이트**를 낸다. 성립하는 유일한 이유는
     // 양쪽 모두 변환 전에 `normalize_line`을 거치기 때문이다 — 커맨드에서 그 호출을
@@ -214,25 +206,11 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
-        let disk = set_task_state(
-            p,
-            0,
-            raw.to_string(),
-            "done".to_string(),
-            true,
-            "2026-08-24".to_string(),
-            None,
-        )
-        .await
-        .unwrap();
-        let document = preview_task_state_line(
-            raw.to_string(),
-            "done".to_string(),
-            true,
-            "2026-08-24".to_string(),
-            None,
-        )
-        .unwrap();
+        let disk = set_task_state(p, 0, raw.to_string(), done_on("2026-08-24"))
+            .await
+            .unwrap();
+        let document =
+            preview_task_state_line(raw.to_string(), done_on("2026-08-24")).unwrap();
 
         assert_eq!(disk, document);
         assert_eq!(disk, "- [x] 회의 준비 ✅2026-08-24");

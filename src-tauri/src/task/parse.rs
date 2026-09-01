@@ -1,7 +1,7 @@
 // §303 태스크 줄 파서 — 순수 함수. IO 없음.
 use crate::md::extract_inline_tags;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 /// §18.18 M4 — 네 상태. `[/]`(진행 중)·`[-]`(취소)는 GFM이 아니므로 GitHub 등 다른
@@ -50,9 +50,10 @@ pub(super) const TIMER_EMOJI: char = '⏱';
 /// 일로 집계된다. (`archive.rs`가 이미 `== Done` 쪽이다.)
 ///
 /// serde의 camelCase가 TypeScript `TaskState`의 문자열과 정확히 같은 네 낱말을
-/// 만든다 — 아래 `FromStr`이 그 역방향이고, 두 방향이 어긋나면 IPC가 조용히
-/// 상태를 잃는다.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// 만든다. 두 방향 모두 **같은 `rename_all`에서 파생**되므로 어긋날 수 없다 —
+/// 예전에는 역방향이 손으로 적은 `FromStr` 표였고, 상태가 넷으로 늘던 M4에
+/// 한쪽만 고치면 "저장은 되는데 미리보기만 실패하는" 자리였다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TaskState {
     Todo,
@@ -79,21 +80,6 @@ impl TaskState {
             TaskState::Doing => "[/]",
             TaskState::Done => "[x]",
             TaskState::Todo => "[ ]",
-        }
-    }
-}
-
-impl std::str::FromStr for TaskState {
-    type Err = String;
-
-    /// IPC에서 오는 이름 → 상태. `Serialize`의 camelCase와 짝이다.
-    fn from_str(name: &str) -> Result<Self, Self::Err> {
-        match name {
-            "cancelled" => Ok(TaskState::Cancelled),
-            "doing" => Ok(TaskState::Doing),
-            "done" => Ok(TaskState::Done),
-            "todo" => Ok(TaskState::Todo),
-            other => Err(format!("unknown state: {}", other)),
         }
     }
 }
@@ -420,7 +406,8 @@ mod tests {
 
     /// IPC의 두 방향이 같은 낱말을 쓰는지 — `Serialize`(camelCase)와 `FromStr`.
     /// 어긋나면 프론트가 보낸 상태가 조용히 거절되거나, 받은 상태가 알 수 없는
-    /// 문자열이 된다.
+    /// 문자열이 된다. 두 방향이 같은 `rename_all`에서 파생된 지금은 깨지기 어렵지만,
+    /// 누군가 한쪽에만 `#[serde(rename)]`을 달면 이 테스트가 잡는다.
     #[test]
     fn state_names_round_trip_through_ipc() {
         for state in [
@@ -430,8 +417,8 @@ mod tests {
             TaskState::Cancelled,
         ] {
             let json = serde_json::to_string(&state).unwrap();
-            let name = json.trim_matches('"');
-            assert_eq!(name.parse::<TaskState>().unwrap(), state, "name: {}", name);
+            let back: TaskState = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, state, "json: {}", json);
         }
     }
 

@@ -100,23 +100,43 @@ export async function previewTaskFieldLine(
 }
 
 /**
+ * 한 상태 전이의 서술 — Rust `task::write::StateWrite`와 같은 모양이다.
+ *
+ * ‼️ `today`·`timer`·`dates`는 전부 **프런트가 계산해 온 값**이고 백엔드는 자리만
+ * 정한다. 셋 다 달력이나 시계를 읽는데, 이 코드베이스는 Rust가 시간대를 추측하지
+ * 않게 한다 — 그리고 에디터 경로(디스크를 타지 않는다)가 이미 같은 규칙 함수를
+ * 쓰므로, 백엔드에 옮겨 적으면 같은 규칙이 두 벌이 되고 두 표면이 갈린다.
+ *
+ * 넷이 한 객체인 것은 인자 수 때문이 아니다: **한 전이 안에서 함께 일어나야** 한다.
+ * 굴리기를 별도 쓰기로 내면 그 사이에 낀 stale이 "상태는 굴렀는데 날짜는 안 굴린"
+ * 줄을 만든다.
+ */
+export interface TaskStateWrite {
+  /**
+   * §318 굴린 날짜. 빈 객체면 날짜를 건드리지 않는다. 계산은
+   * `utils/tasks/task-recurrence.ts` 한 곳이다.
+   */
+  dates?: Partial<Record<"due" | "scheduled" | "start", string>>;
+  newState: TaskState;
+  recordDoneDate: boolean;
+  /**
+   * §18.18 M4 `⏱`의 다음 값. `undefined`/`null`은 "건드리지 말라"(기록 끔),
+   * `""`는 제거, 그 밖은 그 값으로 맞춘다.
+   */
+  timer?: null | string;
+  /** 호출자가 로컬 시간대로 계산한 오늘. */
+  today: string;
+}
+
+/**
  * §305 파일을 건드리지 않고 상태 전이 결과 줄만 받아온다. 열린 문서를 고칠 때
  * 쓴다 — 변환 로직을 TS에 재구현하지 않기 위한 경로다.
  */
 export async function previewTaskStateLine(
   raw: string,
-  newState: TaskState,
-  recordDoneDate: boolean,
-  today: string,
-  timer?: null | string,
+  write: TaskStateWrite,
 ): Promise<string> {
-  return invoke<string>("preview_task_state_line", {
-    raw,
-    newState,
-    recordDoneDate,
-    today,
-    timer,
-  });
+  return invoke<string>("preview_task_state_line", { raw, write });
 }
 
 /**
@@ -149,32 +169,15 @@ export async function setTaskField(
 }
 
 /**
- * `today`는 호출자가 로컬 시간대로 계산해 넘긴다 — 백엔드가 시간대를 추측하지
- * 않게 하기 위해서다. 파일이 그 사이 바뀌었으면 "stale"로 reject된다.
- *
- * §18.18 M4 `timer`도 **계산된 값**이다: 넘기지 않으면(`undefined`/`null`) 백엔드는
- * `⏱` 필드를 건드리지 않고, `""`는 제거, 그 밖은 그 값으로 맞춘다. 규칙은
- * `utils/tasks/task-timer.ts`의 `timerForState` 하나뿐이다 — 에디터 경로가 이미
- * 그것을 쓰므로 백엔드에 옮겨 적으면 같은 규칙이 두 벌이 된다.
+ * 파일이 그 사이 바뀌었으면 "stale"로 reject된다.
  */
 export async function setTaskState(
   path: string,
   line: number,
   expectedRaw: string,
-  newState: TaskState,
-  recordDoneDate: boolean,
-  today: string,
-  timer?: null | string,
+  write: TaskStateWrite,
 ): Promise<string> {
-  return invoke<string>("set_task_state", {
-    path,
-    line,
-    expectedRaw,
-    newState,
-    recordDoneDate,
-    today,
-    timer,
-  });
+  return invoke<string>("set_task_state", { expectedRaw, line, path, write });
 }
 
 /**

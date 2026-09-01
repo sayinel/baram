@@ -472,11 +472,15 @@ describe("§312 triage menu on an agenda row", () => {
           "a.md",
           0,
           "- [ ] 하나",
-          "cancelled",
-          true,
-          expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-          // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-          null,
+          {
+            // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+            dates: undefined,
+            newState: "cancelled",
+            recordDoneDate: true,
+            // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+            timer: null,
+            today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          },
         ),
       );
       expect(menu).not.toBeInTheDocument();
@@ -498,11 +502,15 @@ describe("§312 triage menu on an agenda row", () => {
           "a.md",
           0,
           "- [-] 하나",
-          "todo",
-          true,
-          expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-          // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-          null,
+          {
+            // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+            dates: undefined,
+            newState: "todo",
+            recordDoneDate: true,
+            // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+            timer: null,
+            today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          },
         ),
       );
     });

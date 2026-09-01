@@ -162,12 +162,16 @@ describe("NoteTasksSection", () => {
       "/v/other.md",
       0,
       "- [ ] 하나",
-      // §18.18 M4 — 한 번 누르면 고리를 한 걸음 돈다(할 일 → 진행 중).
-      "doing",
-      true,
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-      // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-      null,
+      {
+        // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+        dates: undefined,
+        // §18.18 M4 — 한 번 누르면 고리를 한 걸음 돈다(할 일 → 진행 중).
+        newState: "doing",
+        recordDoneDate: true,
+        // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+        timer: null,
+        today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      },
     );
   });
 

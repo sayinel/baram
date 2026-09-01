@@ -13,6 +13,7 @@
 
 import type { Translate } from "../../i18n/useTranslation";
 import type { TaskEntry, TaskState } from "../../ipc/types";
+import type { TaskWriteResult } from "./apply-task-write";
 import type { TaskTriageContext } from "./task-triage-write";
 
 import { useTaskStore } from "../../stores/tasks/task-store";
@@ -27,8 +28,8 @@ import { scanTaskFields } from "./task-field-scan";
 import { SOMEDAY_TAG } from "./task-filters";
 import { TASK_ROW_KEY_HINT } from "./task-row-keys";
 import { nextTaskState } from "./task-state";
+import { resolveStateWrite } from "./task-state-write";
 import { lineHasTag } from "./task-tag-token";
-import { timerForState } from "./task-timer";
 import { writeAndReconcile } from "./task-triage-write";
 
 // 정리 조작 전부가 이 컨텍스트를 받으므로 호출부(`use-task-triage.ts`·테스트)는 계속
@@ -236,44 +237,59 @@ export async function writeTaskState(
   newState: TaskState,
   ctx: TaskTriageContext,
 ): Promise<void> {
-  const recordDoneDate = ctx.recordDoneDate;
-  // §18.18 M4 `⏱`의 다음 값은 **여기서** 계산한다. 규칙(`timerForState`)이 시계를
+  // §18.18 M4 `⏱`와 §318 굴린 날짜는 **여기서** 계산한다. 두 규칙 다 시계·달력을
   // 읽으므로 시간대를 아는 쪽이 해야 하고, 에디터 경로가 이미 같은 함수를 쓴다.
-  // 지금 값은 스토어가 든 줄 원문에서 읽는다 — 낙관적 잠금이 대조하는 바로 그 문자열이라
-  // 이 값과 실제로 고쳐질 줄이 어긋날 수 없다.
-  const timer = ctx.trackTime
-    ? timerForState(
-        scanTaskFields(task.raw).find((s) => s.kind === "timer")?.value ?? "0m",
-        newState,
-        ctx.now,
-      )
-    : null;
+  // 입력은 스토어가 든 줄 원문이다 — 낙관적 잠금이 대조하는 바로 그 문자열이라
+  // 계산의 근거와 실제로 고쳐질 줄이 어긋날 수 없다.
+  const write = resolveStateWrite(newState, task.raw, {
+    now: ctx.now,
+    recordDoneDate: ctx.recordDoneDate,
+    trackTime: ctx.trackTime,
+  });
+  // ‼️ 결과를 여기서 붙잡는다. `writeAndReconcile`은 실패를 삼키고 `void`를 돌려주므로
+  // (그것이 네 판정이 공유하는 회계의 요점이다) 굴렸다는 토스트를 그 안에서 띄울 수가
+  // 없다 — 저장 전 콜백은 디스크 쓰기에서 아예 실행되지 않고, 바깥에서 무조건 띄우면
+  // stale로 거절된 쓰기에도 "다음 회차"라고 말하게 된다.
+  // 홀더 객체인 것은 취향이 아니다: 평범한 `let`이면 TypeScript가 클로저 안의 대입을
+  // 보지 못해 읽는 자리에서 타입을 `null`로 좁힌다(그리고 `.kind`가 `never`가 된다).
+  const captured: { result: null | TaskWriteResult } = { result: null };
   await writeAndReconcile(
     task,
     ctx,
-    () =>
-      applyTaskWrite(
+    async () => {
+      captured.result = await applyTaskWrite(
         task,
         {
+          dates: write.dates,
           kind: "state",
-          newState,
-          recordDoneDate,
-          timer,
+          newState: write.newState,
+          recordDoneDate: write.recordDoneDate,
+          timer: write.timer,
           today: relativeIso("t", ctx.now),
         },
         ctx.editor,
-      ),
+      );
+      return captured.result;
+    },
     (written) => {
       // 종료 스탬프는 `recordDoneDate`로 다시 계산하지 않고 **실제로 쓰인 줄**에서
       // 읽는다 — `apply_state`는 그 설정이 꺼져 있으면 기존 날짜를 그대로 보존하므로
       // 재계산은 그 값과 어긋난다. §18.18 M4부터 `❌`도 같은 이유로 여기서 읽는다.
       const doneMatch = /✅(\d{4}-\d{2}-\d{2})/.exec(written.raw);
       const cancelMatch = /❌(\d{4}-\d{2}-\d{2})/.exec(written.raw);
+      // §318 굴렸다면 화면에 남는 것은 **다음 회차**다. 스토어의 날짜도 함께 옮기지
+      // 않으면 행이 옛 버킷에 남아 방금 굴린 태스크가 오늘 다시 보인다.
+      const rolled = write.roll?.dates;
       useTaskStore.getState().patchTask(task.path, task.line, {
         cancelled: cancelMatch ? cancelMatch[1] : null,
         done: doneMatch ? doneMatch[1] : null,
         raw: written.raw,
-        state: newState,
+        state: write.newState,
+        ...(rolled && {
+          due: rolled.due ?? task.due,
+          scheduled: rolled.scheduled ?? task.scheduled,
+          start: rolled.start ?? task.start,
+        }),
         // 스탬프와 같은 이유로 **쓰인 줄에서** 읽는다 — 위에서 계산한 값은 기록이
         // 꺼져 있으면 `null`이고, 그때 줄에 남아 있는 옛 값과 어긋난다.
         timer:
@@ -282,6 +298,21 @@ export async function writeTaskState(
       });
     },
   );
+
+  // §318 굴렸다는 것을 말해 주는 유일한 신호다. 아젠다에서는 이 행이 버킷을 옮겨
+  // 시야에서 사라지고, 에디터에서는 완료 상태가 한순간도 보이지 않는다.
+  if (
+    write.roll &&
+    captured.result !== null &&
+    captured.result.kind !== "stale"
+  ) {
+    useUIStore
+      .getState()
+      .showToast(
+        ctx.t("tasks.recurrence.rolled", { date: write.roll.next }),
+        "info",
+      );
+  }
 }
 
 /**

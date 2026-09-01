@@ -107,16 +107,15 @@ describe("applyTaskWrite — 디스크 경로", () => {
       "- [x] 초안 📅2026-08-30 ✅2026-08-24",
     );
     const r = await applyTaskWrite(TASK, TO_DONE, null);
-    expect(setTaskState).toHaveBeenCalledWith(
-      "/v/note.md",
-      1,
-      "- [ ] 초안 📅2026-08-30",
-      "done",
-      true,
-      "2026-08-24",
+    expect(setTaskState).toHaveBeenCalledWith("/v/note.md", 1, "- [ ] 초안 📅2026-08-30", {
+      // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+      dates: undefined,
+      newState: "done",
+      recordDoneDate: true,
       // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-      null,
-    );
+      timer: null,
+      today: "2026-08-24",
+    });
     expect(r).toEqual({
       kind: "disk",
       raw: "- [x] 초안 📅2026-08-30 ✅2026-08-24",
