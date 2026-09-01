@@ -41,12 +41,14 @@ interface Props {
 
 export function TaskQueryResults({ display, now, onChanged, tasks }: Props) {
   const { t } = useTranslation();
-  const { tasksExcludePaths, tasksRecordDoneDate } = useSettingsStore(
-    useShallow((s) => ({
-      tasksExcludePaths: s.tasksExcludePaths,
-      tasksRecordDoneDate: s.tasksRecordDoneDate,
-    })),
-  );
+  const { tasksExcludePaths, tasksRecordDoneDate, tasksTrackTime } =
+    useSettingsStore(
+      useShallow((s) => ({
+        tasksExcludePaths: s.tasksExcludePaths,
+        tasksRecordDoneDate: s.tasksRecordDoneDate,
+        tasksTrackTime: s.tasksTrackTime,
+      })),
+    );
   const byId = useZettelIndexStore((s) => s.byId);
   const editor = useEditorContext();
 
@@ -56,6 +58,7 @@ export function TaskQueryResults({ display, now, onChanged, tasks }: Props) {
     now,
     onReconciled: onChanged,
     recordDoneDate: tasksRecordDoneDate,
+    trackTime: tasksTrackTime,
   });
 
   const titleFor = useCallback(
@@ -83,13 +86,10 @@ export function TaskQueryResults({ display, now, onChanged, tasks }: Props) {
         <tbody>
           {tasks.map((task) => (
             <tr key={`${task.path}:${task.line}`}>
-              <td>
-                {t(
-                  task.state === "done"
-                    ? "tasks.panel.state.done"
-                    : "tasks.panel.state.todo",
-                )}
-              </td>
+              {/* §18.18 M4 — 네 상태 전부. 예전에는 `done`이냐 아니냐만 물어
+                  진행 중과 취소가 둘 다 "할 일"로 보였다. 라벨은 필터·에디터와
+                  같은 `tasks.state.*` 한 집합에서 온다. */}
+              <td>{t(`tasks.state.${task.state}`)}</td>
               <td>{displayText(task.text, titleFor)}</td>
               <td>{task.due ?? ""}</td>
               <td>{priorityBadge(task.priority)?.label ?? ""}</td>

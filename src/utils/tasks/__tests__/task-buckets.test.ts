@@ -28,6 +28,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "x",
+    timer: null,
     ...over,
   };
 }
@@ -193,6 +194,22 @@ describe("classifyTask", () => {
 });
 
 describe("BUCKET_ORDER", () => {
+  // §18.18 M4 — the two state decisions, pinned because both are judgement
+  // calls that a later reader would otherwise have to re-derive.
+  it("keeps a cancelled task out of the actionable buckets", () => {
+    // Not "done": counting it as finished work would inflate what was achieved.
+    expect(classifyTask({ ...task(), state: "cancelled" }, SUN, "monday")).toBe(
+      "cancelled",
+    );
+  });
+
+  it("still classifies a task in progress by its date", () => {
+    // ‼️ A bucket of its own would hide that the thing being held is overdue.
+    // The buckets answer "when", and a task being held still has a when.
+    const overdueDoing = { ...task(), due: "2026-01-01", state: "doing" };
+    expect(classifyTask(overdueDoing as never, SUN, "monday")).toBe("overdue");
+  });
+
   it("밀린 것 둘이 맨 위에 붙어 있다", () => {
     // 패널의 세로 순서다. "예정 밀림"이 "기한 초과" 바로 다음인 것이 이 순서의 핵심 —
     // 둘 사이에 "오늘"이 끼면 밀린 것을 두 번에 나눠 훑게 된다.
@@ -204,6 +221,10 @@ describe("BUCKET_ORDER", () => {
       "later",
       "noDate",
       "done",
+      // §18.18 M4 — cancelled sits after done: neither is actionable, and a
+      // cancelled task is not finished work, so it must not be read as part of
+      // what was completed.
+      "cancelled",
     ]);
   });
 });
@@ -266,6 +287,7 @@ describe("groupIntoBuckets", () => {
     const groups = groupIntoBuckets([], SUN, "monday");
     expect(Object.keys(groups).sort()).toEqual(
       [
+        "cancelled",
         "done",
         "later",
         "noDate",

@@ -20,10 +20,14 @@ import type {
 
 import { t } from "../../i18n";
 import { PRIORITY_EMOJI } from "../../utils/tasks/task-field-tokens";
+import { formatTimer, parseTimer } from "../../utils/tasks/task-timer";
 import { CHIP_KIND_ATTR, CHIP_VALUE_ATTR } from "./task-chip-edit";
 
-/** 날짜 필드 종류 → i18n 키. 우선순위는 별도 표(아래)로 간다. */
-const DATE_CHIP_KEY: Record<Exclude<TaskFieldKind, "priority">, string> = {
+/** 날짜 필드 종류 → i18n 키. 우선순위와 반복은 값이 날짜가 아니라 따로 간다. */
+const DATE_CHIP_KEY: Record<
+  Exclude<TaskFieldKind, "priority" | "recurrence" | "timer">,
+  string
+> = {
   cancelled: "tasks.chip.cancelled",
   created: "tasks.chip.created",
   done: "tasks.chip.done",
@@ -97,6 +101,13 @@ export function renderTaskChip(
  * 읽는다(방향 C — ko `8/30 기한`, en `due 8/30`).
  */
 function chipLabel(span: TaskFieldSpan, locale: Locale, today: Date): string {
+  // §18.18 M4 — 반복은 셋째 갈래다. 값이 날짜가 아니라 사용자가 적은 자유 텍스트
+  // ("every week")라 `shortDate`에 넣을 수 없고, 번역할 수도 없다. 라벨은 그 텍스트를
+  // 그대로 감싸기만 한다 — 어순만 로케일이 정한다.
+  if (span.kind === "recurrence") {
+    return t("tasks.chip.recurrence", locale, { rule: span.value });
+  }
+  if (span.kind === "timer") return timerLabel(span.value, locale);
   if (span.kind === "priority") {
     // 마커 자체(span.value)로 매핑한다 — UTF-16 길이로 자르지 않는다.
     const key = PRIORITY_CHIP_KEY[span.value];
@@ -123,4 +134,24 @@ function shortDate(iso: string, today: Date): string {
   const [year, month, day] = iso.split("-");
   const md = `${Number(month)}/${Number(day)}`;
   return Number(year) === today.getFullYear() ? md : `${year}/${md}`;
+}
+
+/**
+ * §18.18 M4 시간 기록의 라벨.
+ *
+ * ‼️ **돌고 있을 때는 숫자를 보이지 않는다.** 칩은 문서나 선택이 바뀔 때만 다시 그려지므로
+ * 경과 시간을 적으면 그 숫자가 그 자리에서 얼어붙는다 — 세 시간 뒤에도 "1h27m 기록 중"이라
+ * 적혀 있으면 그것은 표시가 아니라 거짓말이다. 대신 **언제부터**인지를 보인다: 시각은 늙지
+ * 않는다. 총합은 멈춘 뒤에 보면 된다.
+ */
+function timerLabel(value: string, locale: Locale): string {
+  const timer = parseTimer(value);
+  // 읽지 못하는 값은 적힌 그대로 보인다 — 우리가 못 읽는다고 사용자 글자를 숨기지 않는다.
+  if (timer === null) return value;
+  if (timer.startedAt !== null) {
+    return t("tasks.chip.timerRunning", locale, {
+      time: timer.startedAt.slice(11),
+    });
+  }
+  return t("tasks.chip.timer", locale, { duration: formatTimer(timer) });
 }

@@ -821,7 +821,7 @@ describe("ops-R2 pins", () => {
                 {
                   content: [
                     {
-                      attrs: { checked: true },
+                      attrs: { state: "done" },
                       content: [
                         {
                           content: [{ text: "kid", type: "text" }],

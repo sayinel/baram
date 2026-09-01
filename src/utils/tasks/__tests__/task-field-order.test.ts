@@ -12,6 +12,7 @@ import {
   orderFields,
   PRIORITY_RANK,
   RECURRENCE_RANK,
+  TIMER_RANK,
 } from "../task-field-order";
 import { DATE_FIELDS } from "../task-field-tokens";
 
@@ -20,9 +21,25 @@ describe("§303 canonical 필드 순서", () => {
     expect(CANONICAL_DATE_FIELDS.map((f) => f.emoji).join(" ")).toBe(
       "➕ 🛫 ⏳ 📅 ✅ ❌",
     );
-    // 우선순위와 반복은 날짜 뒤, 그 순서로.
+    // 우선순위 · 시간 기록 · 반복은 날짜 뒤, 그 순서로.
+    //
+    // ‼️ 숫자를 그대로 못박는다. Rust `fields.rs`가 같은 숫자를 들고 있고, 두 쪽이
+    // 갈리면 같은 조작이 **어느 표면에서 했느냐에 따라 다른 줄**을 만든다 — 그래서
+    // 상수 사이의 관계(`< RECURRENCE_RANK`)가 아니라 값 자체가 계약이다.
     expect(PRIORITY_RANK).toBe(6);
-    expect(RECURRENCE_RANK).toBe(7);
+    expect(TIMER_RANK).toBe(7);
+    expect(RECURRENCE_RANK).toBe(8);
+  });
+
+  // §18.18 M4 — 반복은 값이 줄 끝까지라 **반드시 마지막**이다. 시간 기록이 그 뒤로
+  // 가면 Rust 파서가 그것을 반복 규칙의 일부로 읽어(`parse_task_line`), 기록한 시간이
+  // 아젠다에서 통째로 사라진다.
+  it("시간 기록은 반복 **앞**이다", () => {
+    expect(TIMER_RANK).toBeLessThan(RECURRENCE_RANK);
+    expect(orderFields(["🔁every week", "⏱1h27m"])).toEqual([
+      "⏱1h27m",
+      "🔁every week",
+    ]);
   });
 
   it("입력 트리거의 이모지는 전부 canonical 표 안에 있다", () => {

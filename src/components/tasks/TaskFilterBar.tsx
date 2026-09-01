@@ -7,6 +7,7 @@ import type { TaskFilters } from "../../utils/tasks/task-filters";
 import type { TaskScanScope } from "../../utils/tasks/task-scan-scope";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { TASK_STATES } from "../../utils/tasks/task-state";
 
 interface Props {
   filters: TaskFilters;
@@ -55,8 +56,14 @@ export function TaskFilterBar({
         value={filters.state}
       >
         <option value="all">{t("tasks.panel.state.all")}</option>
-        <option value="todo">{t("tasks.panel.state.todo")}</option>
-        <option value="done">{t("tasks.panel.state.done")}</option>
+        {/* §18.18 M4 — 상태가 넷이므로 고를 것도 넷이다. 셋을 두 개로 남겨 두면
+            "할 일"을 골랐을 때 진행 중인 것이 조용히 사라진다. `TASK_STATES`가
+            순서의 유일한 출처라 다섯 번째가 생겨도 여기는 저절로 따라온다. */}
+        {TASK_STATES.map((state) => (
+          <option key={state} value={state}>
+            {t(`tasks.state.${state}`)}
+          </option>
+        ))}
       </select>
 
       <select

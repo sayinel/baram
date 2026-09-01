@@ -44,6 +44,8 @@ pub struct TaskEntry {
     pub cancelled: Option<String>,
     pub priority: i8,
     pub recurrence: Option<String>,
+    /// §18.18 M4 `⏱` 값 그대로 — 해석은 프런트 `task-timer.ts`가 한다.
+    pub timer: Option<String>,
     pub links: Vec<String>,
     pub tags: Vec<String>,
 }
@@ -90,6 +92,7 @@ fn tasks_in_content(path: &str, content: &str) -> Vec<TaskEntry> {
                 cancelled: p.cancelled,
                 priority: p.priority,
                 recurrence: p.recurrence,
+                timer: p.timer,
                 links: p.links,
                 tags: p.tags,
             })

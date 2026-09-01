@@ -43,7 +43,7 @@ const schema = new Schema({
     },
     paragraph: { content: "inline*", group: "block", toDOM: () => ["p", 0] },
     taskItem: {
-      attrs: { checked: { default: false } },
+      attrs: { state: { default: "todo" } },
       content: "paragraph block*",
       toDOM: () => ["li", 0],
     },

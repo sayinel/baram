@@ -174,21 +174,38 @@ export function expandCollapsedContent(clone: HTMLElement): void {
  * can press, so "remove the pressable things" is the rule the destination
  * actually implies — and it covers the next control automatically.
  *
- * Two exceptions, each with a reason a new control will not accidentally
+ * Three exceptions, each with a reason a new control will not accidentally
  * inherit:
  *
- *   - A task checkbox is CONTENT. `- [x]` is part of the document, and a
- *     printed checklist has to show which items are ticked. It stays (disabled;
- *     `checked` still paints).
+ *   - `.task-checkbox` is CONTENT. `- [x]` is part of the document, and a
+ *     printed checklist has to show which items are ticked — and, since
+ *     §18.18 M4, which are in progress or cancelled. It is a `<button>` only
+ *     so the state can be cycled by clicking it, so it is retagged to a
+ *     `<span>` keeping its class and its `data-state`: the editor stylesheet
+ *     paints the box and its glyph from that attribute, so the exported state
+ *     looks exactly like the one on screen.
  *   - `.callout-icon-btn` is a button only so the type can be changed by
  *     clicking it — the icon inside it is content, and it is what makes a
  *     warning callout legible as a warning. It is downgraded to a `<span>`
  *     keeping the same class, so the callout's own stylesheet still lays the
  *     header out with the icon, the title and nothing else on one line.
+ *   - An `<input type="checkbox">` anywhere in the clone is treated as content
+ *     too. The app's own task control no longer is one, but a plugin NodeView
+ *     or an older pasted document can still contain one, and a checkbox is a
+ *     checkbox — removing it would drop a visible mark from the page.
  *
- * Widget decorations go too: every `Decoration.widget` in this codebase is an
- * editing affordance (fold arrows and their ellipsis, the AI diff controls, the
- * list atom fix, block-id hints) — none of them is document content.
+ * Widget decorations go too, with ONE exception. Nearly every
+ * `Decoration.widget` in this codebase is an editing affordance (fold arrows
+ * and their ellipsis, the AI diff controls, the list atom fix, block-id hints).
+ * The §308 task chip is not: it RENDERS a piece of the document — the raw
+ * `📅2026-08-29` stays in the text and is hidden from sight — exactly the way a
+ * KaTeX render stands in for `$x$` and a Mermaid SVG for its code fence, both
+ * of which an export keeps. Removing it left the reader looking at raw emoji
+ * where the screen showed `8/29 due`.
+ *
+ * The chip is stripped of its interactivity instead: an exported chip is text,
+ * and `role="button"` on something nothing can press is a lie told to a screen
+ * reader.
  *
  * `isAuthoredMarkup` is injected rather than imported from export-html.ts: it
  * has to stay co-located there with the two code-block loops it keeps aligned
@@ -200,8 +217,12 @@ export function stripEditingChrome(
   isAuthoredMarkup: (el: Element) => boolean,
 ): void {
   // `retag`, not a hand-rolled span: copying only `className` silently dropped
-  // `title`, `aria-*` and every `data-*` the control carried.
-  for (const el of clone.querySelectorAll(".callout-icon-btn")) {
+  // `title`, `aria-*` and every `data-*` the control carried — and for the task
+  // checkbox `data-state` IS the content, so a hand-rolled span would export
+  // every task as an empty box.
+  for (const el of clone.querySelectorAll(
+    ".callout-icon-btn, .task-checkbox",
+  )) {
     retag(el, "span").removeAttribute("type");
   }
 
@@ -223,7 +244,20 @@ export function stripEditingChrome(
     el.remove();
   }
 
-  for (const el of clone.querySelectorAll(".ProseMirror-widget")) el.remove();
+  // §308 the chip keeps its label and loses its controls. `contenteditable`
+  // goes with them — it means nothing outside an editor and confuses some
+  // readers into offering an editing affordance of their own.
+  for (const el of clone.querySelectorAll(".task-chip")) {
+    el.removeAttribute("role");
+    el.removeAttribute("tabindex");
+    el.removeAttribute("contenteditable");
+  }
+
+  for (const el of clone.querySelectorAll(
+    ".ProseMirror-widget:not(.task-chip)",
+  )) {
+    el.remove();
+  }
 
   // Tiptap writes `white-space: pre-wrap` inline onto every NodeViewContent
   // host so ProseMirror's own whitespace handling survives inside a React

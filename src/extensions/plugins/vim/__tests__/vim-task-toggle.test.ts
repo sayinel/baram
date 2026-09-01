@@ -3,8 +3,13 @@
 // checklist item while vim owns the surface — normal mode swallows every
 // unmapped printable, so Space was a dead key).
 //
-// Semantics: nearest ancestor taskItem of the vim head toggles; a plain
-// line consumes the key silently (vim-like); visual mode is untouched.
+// Semantics: nearest ancestor taskItem of the vim head advances one step; a
+// plain line consumes the key silently (vim-like); visual mode is untouched.
+//
+// ‼️ §18.18 M4 made the step a 3-state CYCLE (todo → doing → done → todo), not
+// a flip. The key deliberately walks the same `nextTaskState` ring as the
+// checkbox click — if the two ever disagree about what one press means, the
+// same document reacts differently to the mouse and to the keyboard.
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 
@@ -19,15 +24,6 @@ import { vimPluginKey } from "../vim-keys";
 
 const editors: Editor[] = [];
 
-function checkedStates(doc: PMNode): boolean[] {
-  const out: boolean[] = [];
-  doc.descendants((node) => {
-    if (node.type.name === "taskItem") out.push(Boolean(node.attrs.checked));
-    return true;
-  });
-  return out;
-}
-
 function createEditor(md: string): Editor {
   const editor = new Editor({
     content: "",
@@ -37,6 +33,15 @@ function createEditor(md: string): Editor {
   editor.commands.setContent(doc.toJSON());
   editors.push(editor);
   return editor;
+}
+
+function states(doc: PMNode): string[] {
+  const out: string[] = [];
+  doc.descendants((node) => {
+    if (node.type.name === "taskItem") out.push(node.attrs.state as string);
+    return true;
+  });
+  return out;
 }
 
 /** Doc position of the first occurrence of `text` (start of the match). */
@@ -78,16 +83,20 @@ afterEach(() => {
 });
 
 describe("vim normal-mode Space toggles task items (§298)", () => {
-  it("toggles the item under the cursor, both directions", () => {
+  it("walks the item under the cursor all the way round the ring", () => {
     const editor = createEditor("- [ ] alpha\n- [x] beta\n");
     setVim(editor, true);
     putCursorAt(editor, "alpha");
 
     press(editor, " ");
-    expect(checkedStates(editor.state.doc)).toEqual([true, true]);
+    expect(states(editor.state.doc)).toEqual(["doing", "done"]);
 
     press(editor, " ");
-    expect(checkedStates(editor.state.doc)).toEqual([false, true]);
+    expect(states(editor.state.doc)).toEqual(["done", "done"]);
+
+    // Back to the start — the ring closes, so no state is a dead end.
+    press(editor, " ");
+    expect(states(editor.state.doc)).toEqual(["todo", "done"]);
   });
 
   it("only the item under the cursor changes", () => {
@@ -95,7 +104,7 @@ describe("vim normal-mode Space toggles task items (§298)", () => {
     setVim(editor, true);
     putCursorAt(editor, "beta");
     press(editor, " ");
-    expect(checkedStates(editor.state.doc)).toEqual([false, false]);
+    expect(states(editor.state.doc)).toEqual(["todo", "todo"]);
   });
 
   it("nested lists: the INNERMOST task item toggles", () => {
@@ -104,7 +113,7 @@ describe("vim normal-mode Space toggles task items (§298)", () => {
     putCursorAt(editor, "inner");
     press(editor, " ");
     // Document order: outer first, inner second.
-    expect(checkedStates(editor.state.doc)).toEqual([false, true]);
+    expect(states(editor.state.doc)).toEqual(["todo", "doing"]);
   });
 
   it("a plain paragraph consumes Space without changing the document", () => {
@@ -122,7 +131,7 @@ describe("vim normal-mode Space toggles task items (§298)", () => {
     putCursorAt(editor, "alpha");
     press(editor, "v");
     press(editor, " ");
-    expect(checkedStates(editor.state.doc)).toEqual([false]);
+    expect(states(editor.state.doc)).toEqual(["todo"]);
   });
 
   it("vim `u` undoes the toggle", () => {
@@ -133,8 +142,8 @@ describe("vim normal-mode Space toggles task items (§298)", () => {
     // land in ONE history group (newGroupDelay), making `u` wipe both.
     editor.view.dispatch(closeHistory(editor.state.tr));
     press(editor, " ");
-    expect(checkedStates(editor.state.doc)).toEqual([true]);
+    expect(states(editor.state.doc)).toEqual(["doing"]);
     press(editor, "u");
-    expect(checkedStates(editor.state.doc)).toEqual([false]);
+    expect(states(editor.state.doc)).toEqual(["todo"]);
   });
 });

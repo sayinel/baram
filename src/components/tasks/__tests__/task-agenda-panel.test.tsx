@@ -57,6 +57,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }
@@ -90,19 +91,24 @@ describe("TaskAgendaPanel", () => {
     expect(screen.queryByText(/Overdue/)).not.toBeInTheDocument();
   });
 
-  it("sends expectedRaw when a checkbox is clicked", async () => {
+  it("sends expectedRaw when the state control is pressed", async () => {
     useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
     render(<TaskAgendaPanel />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
+    // §18.18 M4 — one press is one step around the ring, so a to-do goes to
+    // `doing`, not straight to `done`. The editor's checkbox and vim's Space
+    // walk the same ring.
     expect(setTaskState).toHaveBeenCalledWith(
       "a.md",
       0,
       "- [ ] 하나",
-      "done",
+      "doing",
       true,
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+      null,
     );
   });
 
@@ -142,7 +148,7 @@ describe("TaskAgendaPanel", () => {
     useTaskStore.getState().setAll([task()]);
     render(<TaskAgendaPanel />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(getFileTasks).toHaveBeenCalledWith("a.md", null, []);
     expect(useUIStore.getState().toast).toBeNull();
@@ -153,7 +159,7 @@ describe("TaskAgendaPanel", () => {
     useTaskStore.getState().setAll([task()]);
     render(<TaskAgendaPanel />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(useUIStore.getState().toast?.type).toBe("error");
     expect(getFileTasks).toHaveBeenCalledWith("a.md", null, []);
@@ -171,7 +177,7 @@ describe("TaskAgendaPanel", () => {
     useTaskStore.getState().setAll([task()]);
     render(<TaskAgendaPanel />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(useUIStore.getState().toast?.message).toBe(
       t("tasks.triage.writeFailed", "ko"),
@@ -184,7 +190,7 @@ describe("TaskAgendaPanel", () => {
     useTaskStore.getState().setAll([task()]);
     render(<TaskAgendaPanel />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(getFileTasks).toHaveBeenCalledTimes(1);
   });
@@ -229,6 +235,33 @@ describe("TaskAgendaPanel", () => {
 
     expect(screen.getByText("open one")).toBeInTheDocument();
     expect(screen.queryByText("closed one")).not.toBeInTheDocument();
+  });
+
+  // §18.18 M4 — 상태가 넷이면 고를 것도 넷이다. 셋이 둘로 남아 있던 동안 "할 일"은
+  // 진행 중인 것을 **가렸다**: `state !== filter`가 `doing`을 걸러 내므로, 시작해 둔
+  // 일이 목록에서 통째로 사라지고 사용자에게는 태스크를 잃은 것으로 보인다.
+  it("offers every state, and each one filters to itself", async () => {
+    useTaskStore
+      .getState()
+      .setAll([
+        task({ text: "open one" }),
+        task({ line: 1, state: "doing", text: "started one" }),
+        task({ line: 2, state: "done", text: "closed one" }),
+        task({ line: 3, state: "cancelled", text: "dropped one" }),
+      ]);
+    render(<TaskAgendaPanel />);
+    const select = screen.getByLabelText("Filter by state");
+
+    for (const [value, kept, hidden] of [
+      ["todo", "open one", "started one"],
+      ["doing", "started one", "open one"],
+      ["done", "closed one", "dropped one"],
+      ["cancelled", "dropped one", "closed one"],
+    ]) {
+      await userEvent.selectOptions(select, value);
+      expect(screen.getByText(kept)).toBeInTheDocument();
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument();
+    }
   });
 
   it("filters rows by tag without prefix-matching a longer tag", async () => {
@@ -392,21 +425,27 @@ describe("TaskAgendaPanel", () => {
       // 자정을 넘긴 뒤에도 롤오버 타이머가 아직 안 돌았다면(=아직 리렌더 전),
       // 화면의 버킷 경계와 디스크에 적히는 ✅ 날짜가 같은 날이어야 한다.
       vi.setSystemTime(new Date(2026, 7, 23, 23, 59, 0));
-      useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+      // 진행 중에서 시작한다 — 완료 날짜를 적는 것은 고리의 **그 걸음**이고,
+      // 할 일에서 한 번 누르면 진행 중이 되어 스탬프가 없다(§18.18 M4).
+      useTaskStore
+        .getState()
+        .setAll([task({ raw: "- [/] 하나", state: "doing" })]);
       render(<TaskAgendaPanel />);
 
       vi.setSystemTime(new Date(2026, 7, 24, 0, 0, 30));
       // userEvent는 내부적으로 실시간 delay에 의존해 fake timers와 함께 걸리므로
       // 여기서는 fireEvent로 클릭만 합성한다.
-      fireEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+      fireEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
       expect(setTaskState).toHaveBeenCalledWith(
         "a.md",
         0,
-        "- [ ] 하나",
+        "- [/] 하나",
         "done",
         true,
         "2026-08-23",
+        // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+        null,
       );
     });
   });
@@ -446,7 +485,7 @@ describe("TaskAgendaPanel", () => {
         </EditorProvider>,
       );
 
-      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+      await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
       expect(setTaskState).not.toHaveBeenCalled();
       expect(getFileTasks).not.toHaveBeenCalled();
@@ -456,18 +495,22 @@ describe("TaskAgendaPanel", () => {
       useSettingsStore.getState().setTasksRecordDoneDate(false);
       // apply_state는 recordDoneDate=false일 때 기존 ✅date를 그대로 보존해
       // 돌려준다(write.rs:144-146) — 설정값으로 재계산하면 이 값과 어긋난다.
-      serializeLiveDoc.mockReturnValue("- [ ] 하나 ✅2026-01-01\n");
+      // ‼️ 스토어의 `raw`와 **같은 줄**이어야 한다 — 낙관적 잠금이 그 둘을 대조하고,
+      // 어긋나면 stale로 거절돼 아래 단정이 "패치 안 됨"을 "잘못 패치됨"으로 읽는다.
+      // §18.18 M4가 고리를 3상태로 넓히면서 `[ ]`에서 `[/]`로 바뀐 자리다: 완료 날짜를
+      // 적는 것은 고리의 **그 걸음**이므로, 진행 중에서 시작해야 이 테스트의 주제가 산다.
+      serializeLiveDoc.mockReturnValue("- [/] 하나 ✅2026-01-01\n");
       previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-01-01");
       useTaskStore
         .getState()
-        .setAll([task({ raw: "- [ ] 하나 ✅2026-01-01" })]);
+        .setAll([task({ raw: "- [/] 하나 ✅2026-01-01", state: "doing" })]);
       render(
         <EditorProvider value={FAKE_EDITOR}>
           <TaskAgendaPanel />
         </EditorProvider>,
       );
 
-      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+      await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
       const patched = useTaskStore.getState().tasks[0];
       expect(patched.done).toBe("2026-01-01");
@@ -491,7 +534,7 @@ describe("TaskAgendaPanel", () => {
         </EditorProvider>,
       );
 
-      await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+      await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
       const patched = useTaskStore.getState().tasks[0];
       expect(patched.done).toBeNull();
@@ -553,22 +596,28 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
       </EditorProvider>,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(buffer).toBe("- [x] 하나 ✅2026-08-24\n");
     expect(setTaskState).not.toHaveBeenCalled();
   });
 
   it("디스크를 다시 읽지 않고 스토어를 직접 패치한다", async () => {
+    // ‼️ 버퍼와 스토어의 `raw`가 **같아야** 한다 — 낙관적 잠금이 그 둘을 비교하고,
+    // 어긋나면 stale로 거절돼 스토어를 아예 건드리지 않는다(그러면 이 테스트는
+    // "패치되지 않았다"를 "잘못 패치됐다"로 잘못 읽는다).
+    buffer = "- [/] 하나\n";
     previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
-    useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
+    useTaskStore
+      .getState()
+      .setAll([task({ raw: "- [/] 하나", state: "doing" })]);
     render(
       <EditorProvider value={FAKE_EDITOR}>
         <TaskAgendaPanel />
       </EditorProvider>,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(getFileTasks).not.toHaveBeenCalled();
     const patched = useTaskStore.getState().tasks[0];
@@ -602,7 +651,7 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
       </EditorProvider>,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /둘/ }));
+    await userEvent.click(screen.getByRole("button", { name: /둘 — / }));
 
     // 단정은 "다시 읽지 않았다"가 아니라 **먼저 만든 변경이 살아 있다**이다.
     const first = useTaskStore.getState().tasks.find((t) => t.line === 0);
@@ -623,7 +672,7 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
       </EditorProvider>,
     );
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(useUIStore.getState().toast?.type).toBe("info");
     expect(getFileTasks).not.toHaveBeenCalled();

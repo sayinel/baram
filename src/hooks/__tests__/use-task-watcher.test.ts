@@ -40,6 +40,7 @@ function entry(path: string): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
   };
 }
 

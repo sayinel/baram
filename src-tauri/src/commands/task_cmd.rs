@@ -35,6 +35,14 @@ pub async fn get_tasks_linking_to(
 }
 
 /// `today`는 프론트가 로컬 시간대로 계산해 넘긴다 — Rust가 시간대를 추측하지 않는다.
+///
+/// §18.18 M4 `timer`도 같은 이유로 **계산된 값**이 온다: `None`이면 `⏱` 필드를 건드리지
+/// 않고(기록 끔), `Some("")`는 제거, 그 밖은 그 값으로 맞춘다. 규칙 자체는 프런트
+/// `task-timer.ts`의 `timerForState` 하나뿐이다 — 에디터 경로가 이미 그것을 쓰므로
+/// 여기 옮겨 적으면 같은 규칙이 두 벌이 되고, 그중 하나는 시계를 잘못 읽게 된다.
+// IPC 경계라 인자가 곧 JS가 보내는 페이로드다 — `commands/*_cmd.rs`의 다른 커맨드들과
+// 같은 판단이다(`embedding_cmd`·`export_cmd`·`llm_cmd`).
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn set_task_state(
     path: String,
@@ -43,15 +51,20 @@ pub async fn set_task_state(
     new_state: String,
     record_done_date: bool,
     today: String,
+    timer: Option<String>,
 ) -> Result<String, String> {
-    let state = match new_state.as_str() {
-        "done" => crate::task::TaskState::Done,
-        "todo" => crate::task::TaskState::Todo,
-        other => return Err(format!("unknown state: {}", other)),
-    };
-    crate::task::set_task_state(&path, line, &expected_raw, state, record_done_date, &today)
-        .await
-        .map_err(|e| e.to_string())
+    let state: crate::task::TaskState = new_state.parse()?;
+    crate::task::set_task_state(
+        &path,
+        line,
+        &expected_raw,
+        state,
+        record_done_date,
+        &today,
+        timer.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -75,12 +88,12 @@ pub fn preview_task_state_line(
     new_state: String,
     record_done_date: bool,
     today: String,
+    timer: Option<String>,
 ) -> Result<String, String> {
-    let state = match new_state.as_str() {
-        "done" => crate::task::TaskState::Done,
-        "todo" => crate::task::TaskState::Todo,
-        other => return Err(format!("unknown state: {}", other)),
-    };
+    // 이름 → 상태는 `TaskState::from_str` 한 곳에만 있다. 예전에는 이 두 커맨드가
+    // 같은 match를 한 벌씩 갖고 있었고, M4가 상태를 넷으로 넓히는 순간 한쪽만 고치면
+    // "저장은 되는데 미리보기만 실패하는" 상태가 생길 자리였다.
+    let state: crate::task::TaskState = new_state.parse()?;
     // `replace_line`이 transform에 정규화된 줄을 넘기므로(write.rs) 여기서도 같아야
     // 디스크 경로와 열린 파일 경로의 결과가 바이트 단위로 일치한다.
     Ok(crate::task::apply_state(
@@ -88,6 +101,7 @@ pub fn preview_task_state_line(
         state,
         record_done_date,
         &today,
+        timer.as_deref(),
     ))
 }
 
@@ -207,6 +221,7 @@ mod tests {
             "done".to_string(),
             true,
             "2026-08-24".to_string(),
+            None,
         )
         .await
         .unwrap();
@@ -215,6 +230,7 @@ mod tests {
             "done".to_string(),
             true,
             "2026-08-24".to_string(),
+            None,
         )
         .unwrap();
 

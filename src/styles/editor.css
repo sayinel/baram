@@ -3,6 +3,8 @@
 @import "./editor/base.css"; /* base, windowing spacers, placeholder, gapcursor, mode, source editor, fold */
 @import "./editor/blocks.css"; /* headings, paragraph, blockquote, callout, footnote, definition list, toggle, hr */
 @import "./editor/lists.css"; /* §5.1 bullet/ordered/task lists — markers, indent guides, gutters */
+@import "./editor/task-checkbox.css"; /* §18.18 the four-state task control — shared by the editor line and the agenda row */
+@import "./editor/task-chip.css"; /* §308 task metadata chips — document rendering, so exports carry it */
 @import "./editor/media.css"; /* code block, inline code, image, inline marks */
 @import "./editor/math.css"; /* §5.3 math block + inline */
 @import "./editor/tables.css"; /* §5.5 table, virtual scroll, content-visibility, frontmatter */

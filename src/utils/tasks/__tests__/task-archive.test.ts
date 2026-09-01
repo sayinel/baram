@@ -199,6 +199,7 @@ function done(
     state: "done",
     tags: [],
     text: "끝난 일",
+    timer: null,
     ...over,
   };
 }

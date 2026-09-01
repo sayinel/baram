@@ -26,6 +26,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }
@@ -141,10 +142,16 @@ describe("TaskBucketList", () => {
     // match it against the real rendered DOM. With the old adjacent-sibling
     // `+` selector this returns null for a prioritised row (the priority
     // span breaks adjacency); with `~` it finds the text button.
+    //
+    // ‼️ `[data-state="done"]`, not `:checked`. §18.18 M4 made the control a
+    // `<button>` — four states do not fit a checkbox — and `:checked` then
+    // matched NOTHING, silently dropping the strike-through from every
+    // completed row. Reading the shipped selector rather than restating it is
+    // what turned that into a failing test instead of a visual regression.
     const rule = cssRules().find(
       (r) =>
         r.file.endsWith("tasks.css") &&
-        r.selector.includes(".task-row-check:checked") &&
+        r.selector.includes('.task-row-check[data-state="done"]') &&
         r.selector.includes(".task-row-text"),
     );
     expect(rule).toBeDefined();

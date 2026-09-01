@@ -11,6 +11,7 @@ import { lateDays, taskAgeDays } from "../../utils/tasks/task-buckets";
 import { priorityBadge } from "../../utils/tasks/task-filters";
 import { displayText } from "../../utils/tasks/task-row-display";
 import { TASK_ROW_KEYSHORTCUTS } from "../../utils/tasks/task-row-keys";
+import { dropSelectionInside } from "../../utils/tasks/task-row-selection";
 
 /** §312 이 일수 이상 방치된 항목에 배지를 붙인다. */
 const STALE_DAYS = 30;
@@ -64,20 +65,27 @@ export function TaskRow({
       data-priority={priority?.level}
       onContextMenu={(e) => {
         e.preventDefault();
+        dropSelectionInside(e.currentTarget);
         onOpenMenu(e.currentTarget, task);
       }}
       onKeyDown={(e) => onKeyDown(e, task)}
       tabIndex={0}
     >
-      <input
-        aria-label={shown}
-        checked={task.state === "done"}
-        className="task-row-check"
-        onChange={() => onToggle(task)}
-        // 체크 판정의 키는 메뉴에 없다(체크박스는 메뉴 항목이 아니다) — 그래서
+      {/* §18.18 M4 — 에디터 줄과 **같은 컨트롤**이다(`.task-checkbox`,
+          styles/editor/task-checkbox.css). 체크박스로는 네 상태를 그릴 수 없고,
+          두 화면이 각자 글리프를 그리면 같은 파일이 서로 다르게 보인다.
+
+          접근 이름이 두 가지를 함께 말한다: 무엇인지(태스크 본문)와 지금 어떤
+          상태인지. 상태를 빼면 스크린 리더에게는 네 상태가 전부 같은 버튼이다. */}
+      <button
+        aria-label={`${shown} — ${t(`tasks.state.${task.state}`)}`}
+        className="task-row-check task-checkbox"
+        data-state={task.state}
+        onClick={() => onToggle(task)}
+        // 상태 판정의 키는 메뉴에 없다(체크박스는 메뉴 항목이 아니다) — 그래서
         // 그 키를 알리는 자리가 여기다.
         title={t("tasks.triage.checkHint")}
-        type="checkbox"
+        type="button"
       />
       {priority && (
         // 레일은 `::before`라 보조기술에 존재하지 않는다 — 낱말 라벨이 여기

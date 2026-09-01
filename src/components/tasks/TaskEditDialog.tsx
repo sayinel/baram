@@ -14,6 +14,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
 import { useTranslation } from "../../i18n/useTranslation";
+import { TASK_STATE_MARKER } from "../../ipc/types";
 import { useUIStore } from "../../stores/ui/ui";
 import { resolveDateInput } from "../../utils/tasks/task-date-input";
 import {
@@ -200,7 +201,7 @@ export function TaskEditDialog() {
           <span className="task-edit-preview-label">
             {t("tasks.edit.preview")}
           </span>
-          <code>{`- [${target?.checked ? "x" : " "}] ${preview}`}</code>
+          <code>{`- [${TASK_STATE_MARKER[target?.state ?? "todo"]}] ${preview}`}</code>
         </div>
 
         <div className="task-edit-actions">

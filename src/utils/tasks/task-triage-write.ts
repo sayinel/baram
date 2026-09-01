@@ -31,7 +31,17 @@ export interface TaskTriageContext {
    * 아무것도 다시 읽지 않으므로 부르지 않는다.
    */
   onReconciled?: () => void;
+  /**
+   * §312 종료 스탬프(`✅`/`❌`)를 함께 적을지 — 사용자 설정.
+   *
+   * 한때 상태 판정 하나만 쓰는 값이라 인자로 받았다. §18.18 M4가 취소를 상태로
+   * 들이면서 **두 조작**이 이것을 필요로 하고, 인자로 두면 메뉴 경로에만 전달을
+   * 잊는 자리가 생긴다 — 그러면 체크박스는 날짜를 적고 메뉴는 적지 않는다.
+   */
+  recordDoneDate: boolean;
   t: Translate;
+  /** §18.18 M4 `[/]`인 동안 `⏱`로 시간을 잴지 — 기본 끔(`task-settings.ts`). */
+  trackTime: boolean;
 }
 
 /**

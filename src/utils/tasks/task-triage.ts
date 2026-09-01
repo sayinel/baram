@@ -23,9 +23,12 @@ import { applyTaskWrite } from "./apply-task-write";
 import { isSameLine } from "./line-splice";
 import { resolveDateInput } from "./task-date-input";
 import { confirmAndDeleteTaskLine } from "./task-delete";
+import { scanTaskFields } from "./task-field-scan";
 import { SOMEDAY_TAG } from "./task-filters";
 import { TASK_ROW_KEY_HINT } from "./task-row-keys";
+import { nextTaskState } from "./task-state";
 import { lineHasTag } from "./task-tag-token";
+import { timerForState } from "./task-timer";
 import { writeAndReconcile } from "./task-triage-write";
 
 // 정리 조작 전부가 이 컨텍스트를 받으므로 호출부(`use-task-triage.ts`·테스트)는 계속
@@ -137,6 +140,18 @@ export function buildTriageItems(
       label: t(SOMEDAY_LABEL[someday]),
     },
     {
+      // §18.18 M4 — 취소는 고리 밖이다. 체크박스는 할 일 → 진행 중 → 완료만 돌고,
+      // 이 항목이 아젠다에서 `[-]`에 닿는 유일한 길이다. `someday`와 같은 모양으로
+      // 라벨만 갈리고 id는 하나다 — 켜기와 끄기가 서로 다른 액션이 되면 디스패처가
+      // 두 벌이 되고, 그 둘이 갈라지는 순간 라벨과 실제 동작이 어긋난다.
+      id: "cancel",
+      label: t(
+        task.state === "cancelled"
+          ? "tasks.triage.uncancel"
+          : "tasks.triage.cancel",
+      ),
+    },
+    {
       danger: true,
       hint: TASK_ROW_KEY_HINT.delete,
       id: "delete",
@@ -155,6 +170,14 @@ export async function runTaskTriageAction(
   ctx: TaskTriageContext,
 ): Promise<void> {
   switch (action) {
+    case "cancel":
+      // 라벨과 **같은 값**에서 읽는다(`buildTriageItems`) — 두 곳이 갈리면 "취소
+      // 해제"라고 적힌 항목이 다시 취소하는 일이 생긴다.
+      return writeTaskState(
+        task,
+        task.state === "cancelled" ? "todo" : "cancelled",
+        ctx,
+      );
     case "delete":
       // 확인 관문은 이 안에 있다 — 디스패처가 아니라 조작이 갖는다. 여기서 물으면
       // 확인 없이 지우는 두 번째 경로(단축키·일괄 조작)가 생기는 순간 관문이 새어 나간다.
@@ -197,12 +220,34 @@ export async function runTaskTriageAction(
  * `recordDoneDate`가 컨텍스트가 아니라 인자인 이유: 이것은 이 판정 하나만 쓰는 설정이고,
  * `TaskTriageContext`는 **모든** 조작이 필요로 하는 주변 값의 묶음이다.
  */
-export async function toggleTaskState(
+export async function advanceTaskState(
   task: TaskEntry,
-  recordDoneDate: boolean,
   ctx: TaskTriageContext,
 ): Promise<void> {
-  const newState: TaskState = task.state === "done" ? "todo" : "done";
+  await writeTaskState(task, nextTaskState(task.state), ctx);
+}
+
+/**
+ * §312/§18.18 상태를 **정확히** 그 값으로 쓴다 — 고리를 도는 체크박스와, 취소처럼
+ * 고리 밖의 값을 지목하는 메뉴가 같은 회계를 타게 하는 한 자리.
+ */
+export async function writeTaskState(
+  task: TaskEntry,
+  newState: TaskState,
+  ctx: TaskTriageContext,
+): Promise<void> {
+  const recordDoneDate = ctx.recordDoneDate;
+  // §18.18 M4 `⏱`의 다음 값은 **여기서** 계산한다. 규칙(`timerForState`)이 시계를
+  // 읽으므로 시간대를 아는 쪽이 해야 하고, 에디터 경로가 이미 같은 함수를 쓴다.
+  // 지금 값은 스토어가 든 줄 원문에서 읽는다 — 낙관적 잠금이 대조하는 바로 그 문자열이라
+  // 이 값과 실제로 고쳐질 줄이 어긋날 수 없다.
+  const timer = ctx.trackTime
+    ? timerForState(
+        scanTaskFields(task.raw).find((s) => s.kind === "timer")?.value ?? "0m",
+        newState,
+        ctx.now,
+      )
+    : null;
   await writeAndReconcile(
     task,
     ctx,
@@ -213,19 +258,27 @@ export async function toggleTaskState(
           kind: "state",
           newState,
           recordDoneDate,
+          timer,
           today: relativeIso("t", ctx.now),
         },
         ctx.editor,
       ),
     (written) => {
-      // done 날짜는 `recordDoneDate`로 다시 계산하지 않고 **실제로 쓰인 줄**에서 읽는다 —
-      // `apply_state`는 그 설정이 꺼져 있으면 기존 ✅date를 그대로 보존하므로
-      // (write.rs:144-146) 재계산은 그 값과 어긋난다.
+      // 종료 스탬프는 `recordDoneDate`로 다시 계산하지 않고 **실제로 쓰인 줄**에서
+      // 읽는다 — `apply_state`는 그 설정이 꺼져 있으면 기존 날짜를 그대로 보존하므로
+      // 재계산은 그 값과 어긋난다. §18.18 M4부터 `❌`도 같은 이유로 여기서 읽는다.
       const doneMatch = /✅(\d{4}-\d{2}-\d{2})/.exec(written.raw);
+      const cancelMatch = /❌(\d{4}-\d{2}-\d{2})/.exec(written.raw);
       useTaskStore.getState().patchTask(task.path, task.line, {
+        cancelled: cancelMatch ? cancelMatch[1] : null,
         done: doneMatch ? doneMatch[1] : null,
         raw: written.raw,
         state: newState,
+        // 스탬프와 같은 이유로 **쓰인 줄에서** 읽는다 — 위에서 계산한 값은 기록이
+        // 꺼져 있으면 `null`이고, 그때 줄에 남아 있는 옛 값과 어긋난다.
+        timer:
+          scanTaskFields(written.raw).find((s) => s.kind === "timer")?.value ??
+          null,
       });
     },
   );

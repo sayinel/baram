@@ -1,3 +1,4 @@
+import type { TaskState } from "../../ipc/types";
 import type { NodeTransformerEntry, TaskCheckboxNode } from "../types";
 // task-list-transformer.ts — §5.1 Task List mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
@@ -8,6 +9,9 @@ import type {
   Paragraph,
   RootContent,
 } from "mdast";
+
+import { TASK_STATE_MARKER } from "../../ipc/types";
+import { asTaskState } from "../../utils/tasks/task-state";
 
 /**
  * §7.1: 첫 문단이 빈 task item이면 체크박스를 직접 써 넣는다.
@@ -40,6 +44,31 @@ function writeCheckboxIntoEmptyItem(
   return true;
 }
 
+/**
+ * §18.18 M4 — put `[/] ` (or `[-] `) at the head of an extended task item.
+ *
+ * Prepends rather than replacing: unlike the empty-item case above, this line
+ * has content, and the marker is a prefix to it. The trailing space is part of
+ * the marker — it is what `convert-list`'s reader requires to tell a state from
+ * an ordinary bracketed word like `[TODO]`.
+ *
+ * Returns whether it wrote, so the caller knows to leave `checked` off.
+ */
+function writeStateMarker(children: MdastNode[], state: TaskState): boolean {
+  const head = children[0] as Paragraph | undefined;
+  if (!head || head.type !== "paragraph") return false;
+
+  head.children = [
+    {
+      type: "taskCheckbox",
+      value: `[${TASK_STATE_MARKER[state]}]`,
+    } as TaskCheckboxNode,
+    { type: "text", value: " " } as MdastNode,
+    ...head.children,
+  ] as Paragraph["children"];
+  return true;
+}
+
 export const taskListTransformer: NodeTransformerEntry = {
   mdastType: "list",
   pmType: "taskList",
@@ -57,7 +86,7 @@ export const taskListTransformer: NodeTransformerEntry = {
         itemChildren = [schema.nodes.paragraph.create()];
       }
       return schema.nodes.taskItem.create(
-        { checked: child.checked ?? false },
+        { state: child.checked ? "done" : "todo" },
         itemChildren,
       );
     });
@@ -68,13 +97,24 @@ export const taskListTransformer: NodeTransformerEntry = {
   pmToMdast(node: PmNode, convertChildren): MdastNode {
     const children: ListItem[] = [];
     node.forEach((child) => {
-      const checked = (child.attrs.checked as boolean) ?? false;
+      const state = asTaskState(child.attrs.state);
       const itemChildren = convertChildren(child);
-      const written = writeCheckboxIntoEmptyItem(itemChildren, checked);
+
+      // §18.18 M4: `[/]` and `[-]` are not GFM, so `checked` cannot carry them
+      // and remark would escape a literal `[` at the head of a list item into
+      // `\[/]` — the design measured exactly that. Write the marker as a
+      // verbatim `taskCheckbox` node instead (the serializer passes those
+      // through untouched) and leave `checked` off so gfm adds nothing of its
+      // own. The same escape hatch already existed for empty task items.
+      const gfm = state === "done" || state === "todo";
+      const written = gfm
+        ? writeCheckboxIntoEmptyItem(itemChildren, state === "done")
+        : writeStateMarker(itemChildren, state);
+
       children.push({
         type: "listItem",
         // 체크박스를 직접 써 넣었으면 gfm이 또 붙이지 않게 비워 둔다
-        ...(written ? {} : { checked }),
+        ...(written ? {} : { checked: state === "done" }),
         spread: false,
         children: itemChildren as RootContent[],
       } as ListItem);

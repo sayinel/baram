@@ -151,6 +151,32 @@ describe("what the exported page actually looks like", () => {
     expect(getComputedStyle(bug).borderLeftColor).not.toBe(tipColor);
   });
 
+  // §308 — the chip and the raw text it renders BOTH reach the export, and the
+  // stylesheet is the only thing that decides which one the reader sees. The
+  // markup half of this is pinned in export-heavy-blocks.test.tsx; without
+  // these two rules the page prints the field twice — once as `8/29 due`, once
+  // as raw `📅2026-08-29` — and nothing in the DOM would look wrong.
+  it("hides the raw text a task chip stands in for", () => {
+    const raw = mount(
+      `<p><span class="task-field-raw visually-hidden">📅2026-08-29</span></p>`,
+    ).querySelector(".task-field-raw") as HTMLElement;
+
+    expect(getComputedStyle(raw).width).toBe("1px");
+    expect(getComputedStyle(raw).overflow).toBe("hidden");
+  });
+
+  it("styles the chip that replaced it", () => {
+    const chip = mount(
+      `<p><span class="task-chip">8/29 due</span></p>`,
+    ).querySelector(".task-chip") as HTMLElement;
+
+    expect(getComputedStyle(chip).display).toBe("inline-flex");
+    // ‼️ Not `--color-text-muted`. That token is the disabled alias and its
+    // measured contrast (2.54:1 light) fails AA at this size — and the chip is
+    // the ONLY visual form of this metadata, since the raw text is hidden.
+    expect(getComputedStyle(chip).color).not.toBe("");
+  });
+
   it("uses the editor's drawn list markers, not the browser's glyphs", () => {
     // §5.1 lists draw every marker with `::before` and set `list-style: none`
     // (lists.css). The export used to declare `list-style-type: disc`, which is

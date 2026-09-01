@@ -162,6 +162,7 @@ export const useSettingsStore = create<SettingsState>()(
         tasksEnabled: state.tasksEnabled,
         tasksExcludePaths: state.tasksExcludePaths,
         tasksRecordDoneDate: state.tasksRecordDoneDate,
+        tasksTrackTime: state.tasksTrackTime,
         tasksWeekStart: state.tasksWeekStart,
         tasksArchiveAfterDays: state.tasksArchiveAfterDays,
         // §312.1 태스크 홈과 스캔 범위 — 둘 다 persist다. 범위는 "바꾸기 전까지

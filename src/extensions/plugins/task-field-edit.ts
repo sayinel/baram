@@ -18,7 +18,7 @@
 import type { Locale } from "../../i18n";
 import type { TaskFieldKind } from "../../utils/tasks/task-field-order";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import type { EditorState } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { t } from "../../i18n";
@@ -32,6 +32,7 @@ import {
   minimalEdit,
 } from "../../utils/tasks/task-field-splice";
 import { PRIORITY_EMOJI } from "../../utils/tasks/task-field-tokens";
+import { parseTimer } from "../../utils/tasks/task-timer";
 import { findEditingTaskItem } from "./task-field-chips";
 import { withVimExternalEdit } from "./vim/vim-keys";
 
@@ -55,9 +56,10 @@ export async function askTaskField(
   current: string,
 ): Promise<null | string> {
   const locale = useSettingsStore.getState().locale as Locale;
-  return kind === "priority"
-    ? askPriority(current, locale)
-    : askDate(kind, current, locale);
+  if (kind === "priority") return askPriority(current, locale);
+  if (kind === "recurrence") return askRecurrence(current, locale);
+  if (kind === "timer") return askTimer(current, locale);
+  return askDate(kind, current, locale);
 }
 
 /**
@@ -132,32 +134,57 @@ export function commitTaskField(
         );
   if (matchValue !== undefined && !span) return false;
 
-  const patch = minimalEdit(
-    target.paragraphText,
-    applyTaskField(target.paragraphText, kind, next, span),
-  );
-  if (!patch) return false;
-
-  // 이 편집은 인라인 노드를 건드리지 않는다. `applyTaskField`가 바꾸는 것은 필드 뭉치
-  // 안쪽과 그 앞의 공백 하나뿐이고, 채움 문자는 공백이 아니라 `cutSpan`도 `trimEnd`도
-  // 그것을 넘어가지 못한다 — `task-field-splice.test.ts`가 그 성질을 직접 단정한다.
-  const at = from + patch.at;
-  const end = at + patch.remove;
   // ‼️ UI 크롬이 만든 트랜잭션임을 표시한다(§12-6). 없으면 vim이 이것을 사용자의 편집으로
   // 읽어 visual 선택을 normal로 접는다 — 툴바·팔레트·NodeView 피커가 모두 다는 표시다.
   const tr = withVimExternalEdit(view.state.tr);
-  if (patch.insert === "") {
-    tr.delete(at, end);
-  } else {
-    // ‼️ `tr.insertText`를 쓰지 않는다. 그것은 `to` 위치의 마크를 물려주므로, 굵은
-    // 글씨로 끝나는 줄에 필드를 붙이면 필드까지 굵어지고 그대로 파일에 쓰인다
-    // (`**급함📅2026-09-15**`). 새로 넣는 필드는 마크를 갖지 않고, 기존 구간을
-    // **고치는** 경우에만 그 구간이 걸치고 있던 마크를 그대로 잇는다.
-    const marks =
-      patch.remove > 0 ? doc.resolve(at).marksAcross(doc.resolve(end)) : null;
-    tr.replaceWith(at, end, view.state.schema.text(patch.insert, marks));
+  if (
+    !spliceFieldText(
+      tr,
+      from,
+      target.paragraphText,
+      applyTaskField(target.paragraphText, kind, next, span),
+    )
+  ) {
+    return false;
   }
   view.dispatch(tr);
+  return true;
+}
+
+/**
+ * 바뀐 문단 텍스트를 **트랜잭션에 담는다**(dispatch하지 않는다). 바뀔 것이 없으면 `false`.
+ *
+ * ‼️ dispatch를 하지 않는 것이 이 함수의 존재 이유다. §18.18 M4에서 체크박스 한 번이
+ * 두 가지를 함께 한다 — 상태 속성과 `⏱` 필드. 두 트랜잭션으로 보내면 Ctrl+Z 한 번이
+ * 그중 하나만 되돌려, 상태와 타이머가 어긋난 줄이 남는다.
+ *
+ * 이 편집은 인라인 노드를 건드리지 않는다. `applyTaskField`가 바꾸는 것은 필드 뭉치
+ * 안쪽과 그 앞의 공백 하나뿐이고, 채움 문자는 공백이 아니라 `cutSpan`도 `trimEnd`도
+ * 그것을 넘어가지 못한다 — `task-field-splice.test.ts`가 그 성질을 직접 단정한다.
+ */
+export function spliceFieldText(
+  tr: Transaction,
+  paragraphFrom: number,
+  before: string,
+  after: string,
+): boolean {
+  const patch = minimalEdit(before, after);
+  if (!patch) return false;
+
+  const { doc } = tr;
+  const at = paragraphFrom + patch.at;
+  const end = at + patch.remove;
+  if (patch.insert === "") {
+    tr.delete(at, end);
+    return true;
+  }
+  // ‼️ `tr.insertText`를 쓰지 않는다. 그것은 `to` 위치의 마크를 물려주므로, 굵은
+  // 글씨로 끝나는 줄에 필드를 붙이면 필드까지 굵어지고 그대로 파일에 쓰인다
+  // (`**급함📅2026-09-15**`). 새로 넣는 필드는 마크를 갖지 않고, 기존 구간을
+  // **고치는** 경우에만 그 구간이 걸치고 있던 마크를 그대로 잇는다.
+  const marks =
+    patch.remove > 0 ? doc.resolve(at).marksAcross(doc.resolve(end)) : null;
+  tr.replaceWith(at, end, doc.type.schema.text(patch.insert, marks));
   return true;
 }
 
@@ -232,6 +259,78 @@ async function askDate(
     title: t(`tasks.chip.edit.${kind}`, locale),
     value: current,
   });
+}
+
+/**
+ * §18.18 M4 반복 규칙을 묻는다. 돌려주는 것은 **적은 그대로**(빈 문자열 = 제거).
+ *
+ * 날짜처럼 해석하지 않는다 — 값이 자유 텍스트이고, 그것을 읽는 것은 Obsidian Tasks
+ * 호환 표기를 아는 다른 도구들이지 우리가 아니다. 여기서 어휘를 좁히면 그 도구들이
+ * 쓰던 규칙을 우리가 지우게 된다. `trim`만 한다.
+ *
+ * ‼️ 자리 표시자가 `every week`인 것은 문서가 아니라 **문법 안내**다 — 이 필드를 처음
+ * 여는 사람에게 어떤 어휘가 통하는지 알려 줄 자리가 여기밖에 없다.
+ */
+async function askRecurrence(
+  current: string,
+  locale: Locale,
+): Promise<null | string> {
+  const values = await showFieldDialog({
+    fields: [
+      {
+        key: "rule",
+        label: t("tasks.chip.edit.recurrenceLabel", locale),
+        placeholder: "every week",
+        value: current,
+      },
+    ],
+    submitLabel: t("tasks.chip.edit.submit", locale),
+    title: t("tasks.chip.edit.recurrence", locale),
+  });
+  if (values === null) return null;
+  return (values.rule ?? "").trim();
+}
+
+/**
+ * §18.18 M4 기록된 시간을 묻는다. 돌려주는 것은 `⏱` 값 그대로(빈 문자열 = 제거).
+ *
+ * 상태와 연동돼 자동으로 움직이는 값이지만, 고칠 길이 있어야 한다 — 회의가 끝나고
+ * 멈추는 것을 잊었거나, 앱 밖에서 한 일을 적어 넣는 경우가 이 기능의 절반이다.
+ *
+ * ‼️ 해석하지 않고 **문법 검사만** 한다(`parseTimer`). 사용자가 적은 것을 우리가
+ * 반올림하거나 다시 써 주면, 다른 도구가 읽던 표기를 소리 없이 갈아치우게 된다.
+ * 읽지 못하는 값은 토스트로 알리고 아무것도 쓰지 않는다.
+ */
+async function askTimer(
+  current: string,
+  locale: Locale,
+): Promise<null | string> {
+  const values = await showFieldDialog({
+    fields: [
+      {
+        key: "timer",
+        label: t("tasks.chip.edit.timerLabel", locale),
+        placeholder: "1h27m",
+        value: current,
+      },
+    ],
+    submitLabel: t("tasks.chip.edit.submit", locale),
+    title: t("tasks.chip.edit.timer", locale),
+  });
+  if (values === null) return null;
+
+  const next = (values.timer ?? "").trim();
+  if (next === "") return "";
+  if (parseTimer(next) === null) {
+    useUIStore
+      .getState()
+      .showToast(
+        t("tasks.chip.edit.timerBad", locale, { value: next }),
+        "error",
+      );
+    return null;
+  }
+  return next;
 }
 
 /** 우선순위를 묻는다. 돌려주는 것은 **마커**(빈 문자열 = 보통 = 제거). */

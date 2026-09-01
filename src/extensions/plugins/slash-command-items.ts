@@ -449,6 +449,33 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         mdHint: "⏫",
         action: () => setTaskFieldFromSlash(editor, "priority"),
       },
+      // §18.18 M4 — 반복만 입력 규칙(`due:`·`!2`)으로 넣을 수 없다. 그쪽 패턴이
+      // `(\S+)`이라 공백을 못 받는데 이 필드의 값은 `every week on Monday`처럼
+      // 띄어쓰기가 본질이다. 그래서 메뉴가 유일한 입력 경로다.
+      {
+        id: "repeat",
+        label: "Repeat",
+        category: "Tasks",
+        description: "Set how often this task repeats",
+        mdHint: "🔁",
+        action: () => setTaskFieldFromSlash(editor, "recurrence"),
+      },
+      // §18.18 M4 — the ONLY way to reach `cancelled` from the editor. The
+      // checkbox cycles todo → doing → done, deliberately leaving cancelled
+      // off the ring (utils/tasks/task-state.ts), so without this entry the
+      // state would be writable by hand and by nothing else.
+      {
+        id: "cancel-task",
+        label: "Cancel Task",
+        category: "Tasks",
+        description: "Mark this task cancelled, keeping the line",
+        mdHint: "[-]",
+        action: () =>
+          chainWithVimExternalEdit(editor)
+            .focus()
+            .setTaskState("cancelled")
+            .run(),
+      },
     );
   }
 

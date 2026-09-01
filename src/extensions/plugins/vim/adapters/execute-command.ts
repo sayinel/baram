@@ -20,6 +20,7 @@ import { redo, undo } from "@tiptap/pm/history";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 
 import { getAction } from "../../../../keybindings/keybinding-actions";
+import { asTaskState, nextTaskState } from "../../../../utils/tasks/task-state";
 import { segmentSpanAt } from "./cursor-line-columns";
 import { cursorSelection } from "./cursor-selection";
 import { nextUnitBoundary } from "./graphemes";
@@ -166,9 +167,15 @@ export function executeCoreCommand(
       return {};
     case "toggleTask": {
       // §298 checklist toggle — nearest ancestor taskItem of the vim head
-      // (same ancestor walk as the checkbox mousedown in task-item.ts, so
-      // nested lists flip the INNERMOST item). Off a task line the key is
-      // consumed like vim, silently.
+      // (same ancestor walk as the checkbox click in task-item.ts, so nested
+      // lists flip the INNERMOST item). Off a task line the key is consumed
+      // like vim, silently.
+      //
+      // ‼️ §18.18 M4: this walks the same ring as the checkbox
+      // (`nextTaskState`), so it is a 3-state cycle now, not a flip — the key
+      // and the control must not disagree about what one press means. The
+      // command keeps its `toggleTask` id because that id is what the keymap
+      // and its tests bind; only the step it takes has widened.
       const $head = state.doc.resolve(head);
       for (let d = $head.depth; d > 0; d--) {
         const node = $head.node(d);
@@ -176,7 +183,7 @@ export function executeCoreCommand(
           view.dispatch(
             state.tr.setNodeMarkup($head.before(d), undefined, {
               ...node.attrs,
-              checked: !node.attrs.checked,
+              state: nextTaskState(asTaskState(node.attrs.state)),
             }),
           );
           return { applied: true };

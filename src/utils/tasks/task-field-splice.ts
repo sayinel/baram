@@ -24,8 +24,10 @@ import {
   PRIORITY_RANK,
   RECURRENCE_EMOJI,
   RECURRENCE_RANK,
+  TIMER_RANK,
 } from "./task-field-order";
 import { isValidDate, scanTaskFields } from "./task-field-scan";
+import { parseTimer, TIMER_EMOJI, TIMER_EMOJI_RE } from "./task-timer";
 
 /** 텍스트 편집 하나. `insert`가 빈 문자열이면 제거다. */
 export interface TextEdit {
@@ -110,8 +112,10 @@ function cutSpan(body: string, from: number, to: number): string {
   return body.slice(0, start) + body.slice(end);
 }
 
-/** 날짜 필드의 이모지. 우선순위는 마커가 곧 값이라 여기 오지 않는다. */
+/** 필드의 이모지. 우선순위는 마커가 곧 값이라 여기 오지 않는다. */
 function emojiFor(kind: TaskFieldKind): string {
+  if (kind === "recurrence") return RECURRENCE_EMOJI;
+  if (kind === "timer") return TIMER_EMOJI;
   return CANONICAL_DATE_FIELDS.find((f) => f.kind === kind)?.emoji ?? "";
 }
 
@@ -132,6 +136,13 @@ function fieldTokenAt(s: string): null | { length: number; rank: number } {
   }
   if (s.startsWith(RECURRENCE_EMOJI)) {
     return { length: s.length, rank: RECURRENCE_RANK };
+  }
+  const timer = TIMER_EMOJI_RE.exec(s.slice(0, 2));
+  if (timer?.index === 0) {
+    const value = s.slice(timer[0].length).split(/\s/)[0] ?? "";
+    if (parseTimer(value) !== null) {
+      return { length: timer[0].length + value.length, rank: TIMER_RANK };
+    }
   }
   for (const [rank, { emoji }] of CANONICAL_DATE_FIELDS.entries()) {
     if (!s.startsWith(emoji)) continue;

@@ -11,8 +11,8 @@ import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
-/** 내용 없는 체크박스 한 짝 — `- [ ]` / `- [x]` / `- [X]` */
-const EMPTY_CHECKBOX_RE = /^\[([ xX])\]$/;
+/** 내용 없는 체크박스 한 짝 — `- [ ]` / `- [x]` / `- [X]` / `- [/]` / `- [-]` */
+const EMPTY_CHECKBOX_RE = /^\[([ xX/-])\]$/;
 
 /** remark parser — markdown string → mdast */
 const parser = unified()
@@ -81,6 +81,13 @@ export function parseMdast(markdown: string): Root {
  * 문단인 listItem은 checked를 세우고 그 문단을 비운다. `pm-to-md` 쪽 대칭
  * 처리는 `task-list-transformer.ts` 에 있다.
  *
+ * §18.18 M4의 `[/]`·`[-]`는 **다른 자리로 넘긴다.** `checked`는 불리언이라 네
+ * 상태를 담을 수 없고, 여기서 두 번째 신호를 만들면 상태를 읽는 곳이 둘이 된다.
+ * 대신 마커 뒤의 공백만 되살려 `convert-list`의 접두 판독기가 이미 아는 모양
+ * (`[/] `)으로 만들어 준다 — 직렬화가 줄 끝 공백을 떼면서 잃어버린 바로 그 한 글자다.
+ * 이것을 하지 않으면 내용을 지운 진행 중 항목이 저장 → 재열기 한 번에 체크박스를
+ * 잃고 리터럴 `[/]` 글자가 된다(§7.1과 똑같은 사고, 다른 마커).
+ *
  * 건드리지 않는 것:
  * - 순서 있는 리스트 — taskList는 불릿 전용이라 승격하면 번호를 잃는다.
  * - `- [ ]x` 처럼 체크박스 뒤에 공백 없이 글자가 붙는 줄 (GFM도 task가 아니다).
@@ -105,6 +112,10 @@ function normalizeEmptyTaskItems(node: Content | Root): void {
       const match = EMPTY_CHECKBOX_RE.exec(only.value);
       if (!match) continue;
 
+      if (match[1] === "/" || match[1] === "-") {
+        only.value = `${match[0]} `;
+        continue;
+      }
       item.checked = match[1] !== " ";
       head.children = [];
     }

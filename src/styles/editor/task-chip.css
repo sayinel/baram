@@ -1,0 +1,61 @@
+/* §308 태스크 메타데이터 칩 — **문서의 렌더링**이다. 그래서 여기 있다.
+ *
+ * 이 파일이 tasks.css에서 갈라져 나온 이유 하나: export가 읽는 목록은
+ * `editor/*.css`뿐이고(export-editor-css.ts), tasks.css는 아젠다 패널의 크롬이라
+ * 거기 없다. 칩 규칙이 그 안에 있는 동안 내보낸 문서는 원문 `📅2026-08-29`를
+ * 날것으로 보였다 — 화면에서는 `8/29 기한`인데.
+ *
+ * ‼️ 여기 있는 것은 **모양**뿐이다. 누를 수 있다는 신호(cursor·hover 밑줄·포커스
+ * 링)는 tasks.css에 남겨 둔다. 내보낸 문서에서 칩은 누를 수 없고, 눌리는 것처럼
+ * 보이는 것은 거짓말이다.
+ *
+ * 방향 C: `.tag-node`와 같은 철학으로 상자(테두리·배경)를 없애고 `::before` 색점
+ * 하나만 남긴다. 이모지는 화면에서 사라지고 로케일별 어순의 텍스트 라벨로
+ * 읽힌다(renderTaskChip).
+ *
+ * 기본색은 --color-text-secondary다. ‼️ **여기서 더 내리지 말 것** — 특히
+ * --color-text-muted로. 그것은 --color-text-disabled의 별칭이고(generated/
+ * semantic-light.css), 실측 대비가 라이트 2.54:1 / 다크 3.58:1이라 13px 텍스트의
+ * AA 기준 4.5:1에 못 미친다(secondary는 4.83 / 6.65). 5px `::before` 점도 같은
+ * 색을 타므로 비-텍스트 대비 3:1(WCAG 1.4.11)까지 함께 떨어진다.
+ * 이것이 심미 조정이 아닌 이유: 원문은 `.visually-hidden`이고 칩은 `aria-hidden`
+ * 이라 **칩이 이 메타데이터의 유일한 시각 표현**이다. 대비가 낮아도 눈으로 되짚을
+ * 원문이 화면에 없고, 스크린리더를 쓰지 않는 저시력 사용자에게는 남는 경로가
+ * 아예 없다.
+ * 상자를 잃은 것은 대비를 **지킬** 이유이지 낮출 이유가 아니다: 본문이 라이트
+ * 17.4:1이라 secondary로도 위계는 충분하고, 방향 C에는 이미 상자 제거·작은
+ * 글자·점이라는 위계 장치가 셋 있다.
+ * 기한 초과만 --color-status-danger로 소리친다 — 우선순위까지 색을 가지면
+ * 무엇이 급한지가 사라진다는 것이 방향 A 때부터 이어진 원칙이다.
+ *
+ * 원문 구간(`.task-field-raw`)에는 여기서 규칙을 주지 않는다 — 감추는 일은
+ * base.css의 공용 `.visually-hidden`이 맡고, 플러그인이 두 클래스를 함께 붙인다.
+ * 여기에 `display: none`을 되살리면 안 된다: 칩이 `aria-hidden`이므로 원문까지
+ * 지우면 스크린리더에서 메타데이터가 양쪽 다 사라진다. */
+.task-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 0.82em;
+  line-height: 1.65;
+  vertical-align: 1px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.task-chip::before {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  content: "";
+  background: currentcolor;
+  border-radius: 50%;
+}
+
+/* 색을 갖는 유일한 상태. 점(::before)과 글자 모두 currentcolor를 타므로 이
+   한 줄이면 충분하다. 우선순위 칩에는 색이 없다 — "기한 초과만 소리친다"가
+   이 방향을 고른 이유 자체이고, 우선순위까지 색을 가지면 무엇이 급한지가
+   사라진다. */
+.task-chip-overdue {
+  color: var(--color-status-danger);
+}

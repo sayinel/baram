@@ -13,6 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const deleteTaskLine = vi.fn();
 const setTaskField = vi.fn();
+const setTaskState = vi.fn();
+const dropSelectionInside = vi.fn();
 const setTaskTag = vi.fn();
 const previewTaskFieldLine = vi.fn();
 const previewTaskTagLine = vi.fn();
@@ -32,8 +34,12 @@ vi.mock("../../../ipc/invoke", () => ({
   previewTaskTagLine: (...a: unknown[]) => previewTaskTagLine(...a),
   readFile: vi.fn().mockResolvedValue(""),
   setTaskField: (...a: unknown[]) => setTaskField(...a),
-  setTaskState: vi.fn(),
+  setTaskState: (...a: unknown[]) => setTaskState(...a),
   setTaskTag: (...a: unknown[]) => setTaskTag(...a),
+}));
+
+vi.mock("../../../utils/tasks/task-row-selection", () => ({
+  dropSelectionInside: (...a: unknown[]) => dropSelectionInside(...a),
 }));
 
 vi.mock("../../../utils/editor/serialize-live-doc", () => ({
@@ -60,9 +66,11 @@ const EN_T = (key: string, params?: Record<string, string>) =>
   t(key, "en", params);
 
 const LABEL = {
+  cancel: EN_T("tasks.triage.cancel"),
   pick: EN_T("tasks.triage.duePick"),
   someday: EN_T("tasks.triage.someday"),
   somedayOff: EN_T("tasks.triage.somedayOff"),
+  uncancel: EN_T("tasks.triage.uncancel"),
   today: EN_T("tasks.triage.dueToday"),
   tomorrow: EN_T("tasks.triage.dueTomorrow"),
 };
@@ -88,6 +96,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }
@@ -130,7 +139,9 @@ function renderRow(
     editor,
     exclude: [],
     now: NOW,
+    recordDoneDate: true,
     t: EN_T,
+    trackTime: false,
   };
   render(
     <TaskBucketList
@@ -165,7 +176,9 @@ function renderTwoBuckets(): { rowA: HTMLElement; rowB: HTMLElement } {
     editor: null,
     exclude: [],
     now: NOW,
+    recordDoneDate: true,
     t: EN_T,
+    trackTime: false,
   };
   const bucket = (label: string, tasks: TaskEntry[]) => (
     <TaskBucketList
@@ -220,6 +233,25 @@ describe("§312 triage menu on an agenda row", () => {
     document
       .querySelectorAll(".ai-prompt-overlay")
       .forEach((node) => node.remove());
+  });
+
+  // ‼️ `user-select: none` does NOT stop this — `.task-row` has carried it for
+  // as long as the panel has existed. WebKit selects the word under the cursor
+  // when it opens a context menu regardless, and by the time `contextmenu`
+  // fires the selection is already made, so the row undoes it rather than
+  // preventing it. Symptom: a word stays painted blue behind the open menu.
+  //
+  // ‼️ A SPY, not the real selection. Opening the menu sets state, React
+  // re-renders the row, and the selection's anchor node is replaced — so jsdom
+  // reports the selection collapsed afterwards WHETHER OR NOT the row cleared
+  // it. Written against `window.getSelection()` this test passed with the call
+  // deleted. The guard's own rule is `task-row-selection.test.ts`.
+  it("우클릭에서 행 안의 선택을 걷어내라고 시킨다", () => {
+    const row = renderRow();
+
+    fireEvent.contextMenu(row);
+
+    expect(dropSelectionInside).toHaveBeenCalledWith(row);
   });
 
   describe("affordance", () => {
@@ -423,6 +455,56 @@ describe("§312 triage menu on an agenda row", () => {
       rerender(view([second]));
 
       expect(screen.queryByRole("menu")).toBeNull();
+    });
+  });
+
+  // §18.18 M4 — 이 메뉴 항목이 아젠다에서 `[-]`에 닿는 **유일한** 길이다. 체크박스는
+  // 할 일 → 진행 중 → 완료만 돌기 때문이다(취소는 결정이지 마무리로 가는 걸음이 아니다).
+  describe("cancel", () => {
+    it("취소는 상태 전이를 그 행의 expected_raw로 낸다", async () => {
+      const row = renderRow();
+      const menu = openMenu(row);
+
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.cancel }));
+
+      await waitFor(() =>
+        expect(setTaskState).toHaveBeenCalledWith(
+          "a.md",
+          0,
+          "- [ ] 하나",
+          "cancelled",
+          true,
+          expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+          null,
+        ),
+      );
+      expect(menu).not.toBeInTheDocument();
+    });
+
+    // ‼️ 라벨과 동작이 **같은 값**에서 갈린다. 둘이 갈라지면 "되살리기"라고 적힌
+    // 항목이 다시 취소하는 일이 생긴다 — `someday`가 같은 이유로 같은 모양이다.
+    it("이미 취소된 행에서는 되살리기라고 적히고 실제로 되살린다", async () => {
+      const row = renderRow({ raw: "- [-] 하나", state: "cancelled" });
+      openMenu(row);
+
+      expect(
+        screen.queryByRole("menuitem", { name: LABEL.cancel }),
+      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("menuitem", { name: LABEL.uncancel }));
+
+      await waitFor(() =>
+        expect(setTaskState).toHaveBeenCalledWith(
+          "a.md",
+          0,
+          "- [-] 하나",
+          "todo",
+          true,
+          expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+          null,
+        ),
+      );
     });
   });
 

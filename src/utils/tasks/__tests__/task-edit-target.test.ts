@@ -82,13 +82,23 @@ describe("resolveTaskEditTarget", () => {
     expect(resolveTaskEditTarget(ed)?.pos).toBe(first);
   });
 
-  it("태스크 항목이면 항목 전체를 가리키고 체크 상태를 읽는다", () => {
+  it("태스크 항목이면 항목 전체를 가리키고 상태를 읽는다", () => {
     const ed = withMarkdown("- [x] 끝난 것 ✅2026-08-22");
     caretAtFirstText(ed);
     const t = resolveTaskEditTarget(ed);
     expect(t?.isTask).toBe(true);
-    expect(t?.checked).toBe(true);
+    expect(t?.state).toBe("done");
     expect(t?.node.type.name).toBe("taskItem");
+  });
+
+  // §18.18 M4 — 확장 상태도 그대로 읽혀야 한다. `checked` 불리언이던 시절에는
+  // `[/]`가 "완료 아님"으로 뭉개져 저장할 때 `- [ ]`로 되돌아갔다.
+  it("진행 중 항목의 상태를 잃지 않는다", () => {
+    const ed = withMarkdown("- [/] 하는 중");
+    caretAtFirstText(ed);
+    const t = resolveTaskEditTarget(ed);
+    expect(t?.isTask).toBe(true);
+    expect(t?.state).toBe("doing");
   });
 });
 

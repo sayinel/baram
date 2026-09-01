@@ -34,6 +34,11 @@ export type TaskChange =
       kind: "state";
       newState: TaskState;
       recordDoneDate: boolean;
+      /**
+       * §18.18 M4 `⏱`의 다음 값. `null`이면 그 필드를 건드리지 않는다(기록 끔),
+       * `""`는 제거. 계산은 `task-timer.ts`가 한다.
+       */
+      timer: null | string;
       today: string;
     }
   /**
@@ -300,6 +305,7 @@ async function previewLine(raw: string, change: TaskChange): Promise<string> {
         change.newState,
         change.recordDoneDate,
         change.today,
+        change.timer,
       );
     case "tag":
       return previewTaskTagLine(raw, change.tag, change.on);
@@ -327,6 +333,7 @@ async function writeToDisk(
         change.newState,
         change.recordDoneDate,
         change.today,
+        change.timer,
       );
     case "tag":
       return setTaskTag(task.path, task.line, task.raw, change.tag, change.on);

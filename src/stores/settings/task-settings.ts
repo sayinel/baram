@@ -13,6 +13,7 @@ export interface TaskSettingsSlice {
   setTasksRecordDoneDate: (v: boolean) => void;
   setTasksScanScope: (v: TaskScanScope) => void;
   setTasksStampCreatedDate: (v: boolean) => void;
+  setTasksTrackTime: (v: boolean) => void;
   setTasksWeekStart: (v: TaskWeekStart) => void;
   tasksArchiveAfterDays: number;
   tasksCaptureFile: string;
@@ -25,6 +26,8 @@ export interface TaskSettingsSlice {
   tasksScanScope: TaskScanScope;
   /** §312 문서에 직접 친 태스크 줄에도 `➕` 등록일을 붙일지 */
   tasksStampCreatedDate: boolean;
+  /** §18.18 M4 `[/]`인 동안 `⏱`로 시간을 재고, 벗어날 때 누적할지 */
+  tasksTrackTime: boolean;
   tasksWeekStart: TaskWeekStart;
 }
 type TaskWeekStart = "monday" | "sunday";
@@ -62,6 +65,12 @@ export const createTaskSettingsSlice: StateCreator<
   // 경로는 이미 붙이고 있었으므로, 꺼져 있으면 "어디서 만들었는가"에 따라 같은
   // 태스크가 배지를 받기도 하고 못 받기도 하는 상태가 남는다.
   tasksStampCreatedDate: true,
+  // §18.18 M4 시간 기록. ‼️ **기본은 끔** — 위의 두 날짜 설정과 갈리는 자리다. `➕`·`✅`는
+  // 다른 기능(방치 배지·주간 리뷰)이 그 값에 기대므로 켜져 있어야 하지만, `⏱`에 기대는
+  // 것은 아직 없다. 그런데 켜져 있으면 태스크를 진행 중으로 옮기는 것만으로 사용자 파일에
+  // 새 필드가 적히고, 그 파일은 이 앱만 읽는 것이 아니다. 요청하지 않은 필드를 남의 노트에
+  // 적는 쪽이 발견되지 않는 쪽보다 나쁘다.
+  tasksTrackTime: false,
 
   // Setters
   setTasksEnabled: (tasksEnabled) => set({ tasksEnabled }),
@@ -77,4 +86,5 @@ export const createTaskSettingsSlice: StateCreator<
     set({ tasksGlobalCaptureShortcut }),
   setTasksStampCreatedDate: (tasksStampCreatedDate) =>
     set({ tasksStampCreatedDate }),
+  setTasksTrackTime: (tasksTrackTime) => set({ tasksTrackTime }),
 });

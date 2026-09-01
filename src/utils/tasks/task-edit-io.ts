@@ -9,6 +9,7 @@ import type { TaskEditTarget } from "./task-edit-target";
 import type { EditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 
+import { TASK_STATE_MARKER } from "../../ipc/types";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import {
   canonicalNodeAt,
@@ -55,7 +56,7 @@ export function applyTargetLine(
   line: string,
 ): boolean {
   const { schema } = editor.state;
-  const marker = target.checked ? "- [x] " : "- [ ] ";
+  const marker = `- [${TASK_STATE_MARKER[target.state]}] `;
   const parsed = markdownToProsemirror(`${marker}${line}`, schema);
 
   // 파서는 `taskList > taskItem`을 돌려준다. 태스크 항목을 바꾸는 경우에는 항목만
@@ -80,5 +81,11 @@ export function applyTargetLine(
     .run();
 }
 
-/** `- [ ] ` / `- [x] ` / `* [ ] ` … 어느 표기로 직렬화되든 뗀다. */
-const TASK_PREFIX_RE = /^[-*+]\s+\[[ xX]\]\s*/;
+/**
+ * `- [ ] ` / `- [x] ` / `- [/] ` / `* [-] ` … 어느 표기로 직렬화되든 뗀다.
+ *
+ * ‼️ 네 상태를 모두 알아야 한다. `[ xX]`만 알던 시절 `- [/] 진행 중`은 접두가 떨어지지
+ * 않아 모달 입력칸에 `[/] `가 글자로 남았고, 저장하면 `- [/] [/] 진행 중`이 됐다.
+ * (클래스 안 맨 뒤의 `-`는 리터럴 하이픈이다 — 범위가 아니다.)
+ */
+const TASK_PREFIX_RE = /^[-*+]\s+\[[ xX/-]\]\s*/;

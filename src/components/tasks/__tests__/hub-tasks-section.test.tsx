@@ -48,6 +48,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "x",
+    timer: null,
     ...over,
   };
 }
@@ -108,7 +109,7 @@ describe("HubTasksSection", () => {
     );
     render(<HubTasksSection />);
 
-    expect(screen.getAllByRole("checkbox")).toHaveLength(7);
+    expect(screen.getAllByTitle(/Next state/)).toHaveLength(7);
     expect(screen.getByText("See all — 3 more")).toBeInTheDocument();
     // 머리 숫자는 자른 뒤가 아니라 **전체**다 — 7로 굳으면 그 위로는 늘어난 걸 알 수 없다.
     expect(screen.getByText("TASKS (10)")).toBeInTheDocument();

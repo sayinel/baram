@@ -47,7 +47,7 @@ const schema = new Schema({
     },
     taskItem: {
       content: "paragraph block*",
-      attrs: { checked: { default: false } },
+      attrs: { state: { default: "todo" } },
       toDOM: () => ["li", 0],
     },
   },
@@ -72,6 +72,24 @@ const tasksCss = readFileSync(
   join(process.cwd(), "src/styles/tasks.css"),
   "utf8",
 );
+
+/**
+ * 칩 규칙은 **두 파일에 갈라져** 산다. 모양은 `editor/task-chip.css`(내보낸 문서도
+ * 읽는 목록에 든다), "누를 수 있다"는 신호는 `tasks.css`(에디터 전용)에 있다.
+ *
+ * ‼️ 그래서 아래 조회는 둘을 이어 붙인 문자열을 보고, 셀렉터 하나에 **여러 규칙이**
+ * 있을 수 있다고 전제한다. `.task-chip`은 실제로 양쪽에 하나씩 있어서, 첫 매치만
+ * 보는 정규식은 파일 순서에 따라 조용히 엉뚱한 몸통을 집는다.
+ */
+const chipCss = `${readFileSync(join(process.cwd(), "src/styles/editor/task-chip.css"), "utf8")}\n${tasksCss}`;
+
+/** 이 셀렉터의 규칙 몸통 전부 — 두 파일에 걸쳐. */
+function chipRuleBodies(selector: string): string[] {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [
+    ...chipCss.matchAll(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, "g")),
+  ].map((m) => m[1]);
+}
 
 /** §306 우선순위 레일의 네 단계 — `TaskPriorityLevel`과 **같은 글자**여야 한다. */
 const RAIL_LEVELS = ["urgent", "high", "low", "lowest"] as const;
@@ -232,6 +250,43 @@ describe("§308 감추기 관용구 (리뷰 M2)", () => {
   });
 });
 
+// §18.18 M4 — 반복 칩. 값이 날짜도 마커도 아닌 **사용자가 적은 자유 텍스트**라,
+// 라벨 경로가 셋째 갈래로 갈린다.
+describe("§18.18 반복 칩의 라벨", () => {
+  function recurrenceChip(locale: "en" | "ko"): HTMLElement {
+    return renderTaskChip(
+      { emoji: "🔁", from: 0, kind: "recurrence", to: 12, value: "every week" },
+      false,
+      locale,
+      CHIP_TODAY,
+    );
+  }
+
+  // ‼️ 규칙 텍스트를 **그대로** 실어야 한다. 번역할 수 있는 어휘가 아니고(사용자가
+  // 적은 그대로가 다른 도구들이 읽는 값이다), 잘라내면 `every 2 weeks`와
+  // `every 2 days`가 화면에서 같은 칩이 된다.
+  it.each(["en", "ko"] as const)(
+    "%s: 규칙 텍스트를 그대로 보인다",
+    (locale) => {
+      expect(recurrenceChip(locale).textContent).toContain("every week");
+    },
+  );
+
+  it("어순만 로케일이 정한다", () => {
+    // 같은 값, 다른 문장. 한쪽이 키를 잃으면 라벨이 키 문자열로 렌더된다.
+    expect(recurrenceChip("en").textContent).not.toBe(
+      recurrenceChip("ko").textContent,
+    );
+    expect(recurrenceChip("en").textContent).not.toContain("tasks.chip");
+    expect(recurrenceChip("ko").textContent).not.toContain("tasks.chip");
+  });
+
+  // 색을 갖는 상태는 기한 초과 하나뿐이라는 방향 C의 규칙을 반복도 따른다.
+  it("색을 갖지 않는다", () => {
+    expect([...recurrenceChip("en").classList]).toEqual(["task-chip"]);
+  });
+});
+
 describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
   // "아웃라인 기본, **기한 초과만** 색을 갖는다"는 CSS 주석·registry `_note`·
   // 계획서가 모두 적어 둔 규칙인데 배포된 CSS는 우선순위 칩에도 색을 줬다.
@@ -239,9 +294,7 @@ describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
   it("색을 갖는 칩 상태는 기한 초과 하나뿐이다", () => {
     // ‼️ 열거로 잡는다. `.task-chip-priority`가 없다는 것만 보면 다음에 다른
     // 상태(시작일·방치…)에 색을 더할 때 조용히 다시 어긋난다.
-    const coloured = [
-      ...tasksCss.matchAll(/(\.task-chip[\w-]*)\s*\{([^}]*)\}/g),
-    ]
+    const coloured = [...chipCss.matchAll(/(\.task-chip[\w-]*)\s*\{([^}]*)\}/g)]
       .filter((m) => /--color-status-/.test(m[2]))
       .map((m) => m[1]);
     expect(coloured).toEqual([".task-chip-overdue"]);
@@ -250,11 +303,14 @@ describe("§308 칩의 색 규칙 (리뷰 m4)", () => {
   it("기본 칩은 상자가 없다 — 점 하나뿐이라 채움도 `.wikilink-date`와 갈라진다(§316)", () => {
     // 방향 C: 알약(테두리)이 사라지고 `::before` 색점만 남는다. `.tag-node`와
     // 같은 철학 — 상자 없이 조용한 텍스트 + 점 하나.
-    const body = /\.task-chip\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
-    expect(body, "no .task-chip rule").toBeDefined();
-    expect(body).not.toMatch(/border:/);
-    expect(body).not.toMatch(/background/);
-    const dot = /\.task-chip::before\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
+    // 몸통 **전부**를 본다 — 하나만 보면 나머지 파일에 상자가 되살아나도 통과한다.
+    const bodies = chipRuleBodies(".task-chip");
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const body of bodies) {
+      expect(body).not.toMatch(/border:/);
+      expect(body).not.toMatch(/background/);
+    }
+    const dot = /\.task-chip::before\s*\{([^}]*)\}/.exec(chipCss)?.[1];
     expect(dot, "no .task-chip::before rule").toBeDefined();
     expect(dot).toMatch(/content:\s*""/);
     expect(dot).toMatch(/border-radius:\s*50%/);
@@ -305,10 +361,10 @@ describe("§308 칩 대비 — 칩은 이 메타데이터의 유일한 시각 �
 
   /** 셀렉터 규칙의 `color:` 선언 값. `background-color:` 같은 접미 속성은 걸리지 않는다. */
   function colourDecl(selector: string): string {
-    const body = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`).exec(
-      tasksCss,
-    )?.[1];
-    expect(body, `no ${selector} rule in tasks.css`).toBeDefined();
+    const body = chipRuleBodies(selector).find((b) =>
+      /(?:^|;)\s*color:\s*/.test(b),
+    );
+    expect(body, `no ${selector} rule declaring a colour`).toBeDefined();
     const decl = /(?:^|;)\s*color:\s*([^;]+)/.exec(body ?? "")?.[1];
     expect(decl, `no color declaration on ${selector}`).toBeDefined();
     return (decl ?? "").trim();
@@ -405,9 +461,9 @@ describe("§308 방향 C — 아젠다 우선순위는 .task-chip을 공유하�
     const row = /\.task-row\s*\{([^}]*)\}/.exec(tasksCss)?.[1];
     expect(row, "no .task-row rule").toBeDefined();
     expect(row).toMatch(/display:\s*flex/);
-    expect(/\.task-chip\s*\{([^}]*)\}/.exec(tasksCss)?.[1]).toMatch(
-      /vertical-align:/,
-    );
+    expect(
+      chipRuleBodies(".task-chip").some((b) => /vertical-align:/.test(b)),
+    ).toBe(true);
   });
 });
 
@@ -488,7 +544,7 @@ describe("§308 로케일 구독 — 이미 그려진 칩도 강제로 다시 �
           {
             content: [
               {
-                attrs: { checked: false },
+                attrs: { state: "todo" },
                 content: [
                   {
                     content: [{ text: "초안 📅2026-08-30", type: "text" }],

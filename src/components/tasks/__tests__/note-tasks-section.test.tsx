@@ -57,6 +57,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
     state: "todo",
     tags: [],
     text: "하나",
+    timer: null,
     ...over,
   };
 }
@@ -155,15 +156,18 @@ describe("NoteTasksSection", () => {
     seed([task({ links: ["202607051530"], path: "/v/other.md" })]);
     render(<NoteTasksSection />);
 
-    await userEvent.click(screen.getByRole("checkbox", { name: /하나/ }));
+    await userEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
     expect(setTaskState).toHaveBeenCalledWith(
       "/v/other.md",
       0,
       "- [ ] 하나",
-      "done",
+      // §18.18 M4 — 한 번 누르면 고리를 한 걸음 돈다(할 일 → 진행 중).
+      "doing",
       true,
       expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+      null,
     );
   });
 

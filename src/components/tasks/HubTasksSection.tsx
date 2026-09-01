@@ -29,11 +29,12 @@ const LIMIT = 7;
 
 export function HubTasksSection() {
   const { t } = useTranslation();
-  const { tasksEnabled, tasksRecordDoneDate, tasksWeekStart } =
+  const { tasksEnabled, tasksRecordDoneDate, tasksTrackTime, tasksWeekStart } =
     useSettingsStore(
       useShallow((s) => ({
         tasksEnabled: s.tasksEnabled,
         tasksRecordDoneDate: s.tasksRecordDoneDate,
+        tasksTrackTime: s.tasksTrackTime,
         tasksWeekStart: s.tasksWeekStart,
       })),
     );
@@ -60,6 +61,7 @@ export function HubTasksSection() {
     exclude,
     now,
     recordDoneDate: tasksRecordDoneDate,
+    trackTime: tasksTrackTime,
   });
 
   const titleFor = useCallback(
