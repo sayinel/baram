@@ -10,14 +10,16 @@ import { DecorationSet } from "@tiptap/pm/view";
 import { describe, expect, test } from "vitest";
 
 import {
-  anchorsToPositions,
   findAllFoldables,
   findFoldableHeadings,
   findFoldableListItems,
+} from "../plugins/fold-ranges";
+import {
+  anchorsToPositions,
   type FoldMeta,
   foldPluginKey,
   positionsToAnchors,
-} from "../plugins/fold";
+} from "../plugins/fold-state";
 
 // ── Minimal schema for unit tests ────────────────────────────────────
 

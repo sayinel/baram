@@ -4,10 +4,8 @@ import type { TabSwitchContext } from "./types";
 // §298 split-review §2 — original use-tab-switching.ts:465-621.
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 
-import {
-  anchorsToPositions,
-  dispatchRestoreFolds,
-} from "../../extensions/plugins/fold";
+import { dispatchRestoreFolds } from "../../extensions/plugins/fold-commands";
+import { anchorsToPositions } from "../../extensions/plugins/fold-state";
 import { replaceEditorStateWithVim } from "../../extensions/plugins/vim/replace-editor-state";
 import { mdastBlocksToPmNodes } from "../../pipeline/md-to-pm";
 import { parseMdastAsync } from "../../pipeline/parse-async";

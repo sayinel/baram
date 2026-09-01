@@ -1,7 +1,7 @@
 // Fold state persistence — content-based anchors per file
 // Pattern: settings-store.ts (Zustand + persist middleware)
 
-import type { FoldAnchor } from "../../extensions/plugins/fold";
+import type { FoldAnchor } from "../../extensions/plugins/fold-state";
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
