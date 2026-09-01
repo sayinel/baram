@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
@@ -7,16 +6,10 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import {
-  copyMermaidPng,
   copyMermaidSource,
-  copyMermaidSvg,
   detectMermaidType,
   downloadMermaidPng,
   MERMAID_TEMPLATES,
-  MERMAID_THEME,
-  MERMAID_THEME_VARIABLES,
-  normalizeMermaidSvgSize,
-  sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
@@ -24,6 +17,13 @@ import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { onFirstVisible } from "./views/lazy-visible";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
+import { renderMermaid } from "./views/mermaid-render";
+import { MermaidBlockContextMenu } from "./views/MermaidBlockContextMenu";
+import { MermaidBlockHeader } from "./views/MermaidBlockHeader";
+import {
+  MermaidEditFullscreenModal,
+  MermaidViewFullscreenModal,
+} from "./views/MermaidFullscreenModals";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useMediaResize } from "./views/use-media-resize";
@@ -315,122 +315,27 @@ export function MermaidBlockView({
     });
   }, [editor]);
 
-  const viewFullscreenModal = viewFullscreen
-    ? createPortal(
-        <div
-          className="mermaid-fullscreen-overlay"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") closeViewFullscreen();
-          }}
-          onMouseDown={(e) => {
-            e.stopPropagation(); // Prevent React event from reaching NodeViewWrapper
-            if (e.target === e.currentTarget) {
-              e.preventDefault();
-              closeViewFullscreen();
-            }
-          }}
-        >
-          <div className="mermaid-view-fullscreen-modal">
-            <div className="mermaid-fullscreen-header">
-              <span className="mermaid-block-label">mermaid</span>
-              {detectedType && (
-                <span className="mermaid-fullscreen-type">
-                  {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
-                </span>
-              )}
-              <button
-                className="mermaid-fullscreen-close"
-                onClick={closeViewFullscreen}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                Close
-              </button>
-            </div>
-            <div className="mermaid-view-fullscreen-body">
-              {svgHtml ? (
-                <div
-                  className="mermaid-block-svg"
-                  dangerouslySetInnerHTML={{ __html: svgHtml }}
-                />
-              ) : error ? (
-                <div className="mermaid-block-error">{error}</div>
-              ) : (
-                <div className="mermaid-block-empty">Empty diagram</div>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )
-    : null;
+  const viewFullscreenModal = viewFullscreen ? (
+    <MermaidViewFullscreenModal
+      detectedType={detectedType}
+      error={error}
+      onClose={closeViewFullscreen}
+      svgHtml={svgHtml}
+    />
+  ) : null;
 
   // Fullscreen edit modal
-  const fullscreenModal = fullscreen
-    ? createPortal(
-        <div
-          className="mermaid-fullscreen-overlay"
-          onClick={(e) => {
-            // Don't let clicks bubble through the portal to the block's onClick.
-            e.stopPropagation();
-            if (e.target === e.currentTarget) closeFullscreen();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") closeFullscreen();
-          }}
-        >
-          <div className="mermaid-fullscreen-modal">
-            <div className="mermaid-fullscreen-header">
-              <span className="mermaid-block-label">mermaid</span>
-              {detectedType && (
-                <span className="mermaid-fullscreen-type">
-                  {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
-                </span>
-              )}
-              <button
-                className="mermaid-fullscreen-close"
-                onClick={closeFullscreen}
-              >
-                Close
-              </button>
-            </div>
-            <div className="mermaid-fullscreen-body">
-              <div className="mermaid-fullscreen-editor">
-                <textarea
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  autoFocus
-                  className="mermaid-block-textarea"
-                  data-gramm="false"
-                  data-vim-suspend=""
-                  onChange={(e) => setFullscreenCode(e.target.value)}
-                  ref={fullscreenTextareaRef}
-                  spellCheck={false}
-                  value={fullscreenCode}
-                />
-              </div>
-              <div className="mermaid-fullscreen-preview">
-                {fullscreenSvg ? (
-                  <div
-                    className={[
-                      "mermaid-block-svg",
-                      fullscreenError && "mermaid-block-svg-faded",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    dangerouslySetInnerHTML={{ __html: fullscreenSvg }}
-                  />
-                ) : null}
-                {fullscreenError && (
-                  <div className="mermaid-block-error">{fullscreenError}</div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )
-    : null;
+  const fullscreenModal = fullscreen ? (
+    <MermaidEditFullscreenModal
+      detectedType={detectedType}
+      fullscreenCode={fullscreenCode}
+      fullscreenError={fullscreenError}
+      fullscreenSvg={fullscreenSvg}
+      fullscreenTextareaRef={fullscreenTextareaRef}
+      onChangeCode={setFullscreenCode}
+      onClose={closeFullscreen}
+    />
+  ) : null;
 
   // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
   // traversal NodeSelection keeps the preview (plus PM's selectednode
@@ -473,55 +378,19 @@ export function MermaidBlockView({
       spellCheck={false}
     >
       {editing && (
-        <div className="mermaid-block-header">
-          <span className="mermaid-block-label">mermaid</span>
-          {detectedType && (
-            <span className="mermaid-block-type-badge">
-              {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
-            </span>
-          )}
-          <div className="mermaid-block-actions">
-            <div className="mermaid-template-wrapper">
-              <button
-                className="mermaid-template-btn"
-                onClick={() => setShowTemplates(!showTemplates)}
-                title="Diagram templates"
-              >
-                Template ▾
-              </button>
-              {showTemplates && (
-                <div className="mermaid-template-dropdown">
-                  {Object.entries(MERMAID_TEMPLATES).map(([key, tmpl]) => (
-                    <button
-                      className={[
-                        "mermaid-template-dropdown-item",
-                        detectedType === key && "mermaid-template-active",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      key={key}
-                      onClick={() => applyTemplate(key)}
-                    >
-                      {tmpl.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button
-              className="mermaid-fullscreen-btn"
-              onClick={() => {
-                setFullscreenCode(localCode);
-                setFullscreenSvg(svgHtml);
-                setFullscreenError(error);
-                setFullscreen(true);
-              }}
-              title="Edit full-screen"
-            >
-              Expand
-            </button>
-          </div>
-        </div>
+        <MermaidBlockHeader
+          applyTemplate={applyTemplate}
+          detectedType={detectedType}
+          error={error}
+          localCode={localCode}
+          setFullscreen={setFullscreen}
+          setFullscreenCode={setFullscreenCode}
+          setFullscreenError={setFullscreenError}
+          setFullscreenSvg={setFullscreenSvg}
+          setShowTemplates={setShowTemplates}
+          showTemplates={showTemplates}
+          svgHtml={svgHtml}
+        />
       )}
       {selected && (
         <textarea
@@ -660,143 +529,25 @@ export function MermaidBlockView({
               </MediaToolbarButton>
             </MediaToolbar>
           )}
-          {contextMenu &&
-            createPortal(
-              <div
-                className="mermaid-context-menu"
-                // Stop click from bubbling through the React portal tree to the
-                // NodeViewWrapper's onClick (which would select the block → edit mode).
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                style={{
-                  position: "fixed",
-                  left: contextMenu.x,
-                  top: contextMenu.y,
-                  zIndex: 9999,
-                }}
-              >
-                {svgHtml && (
-                  <>
-                    <button
-                      className="mermaid-context-menu-item"
-                      onClick={() => {
-                        copyMermaidSvg(svgHtml);
-                        setContextMenu(null);
-                      }}
-                    >
-                      Copy as SVG
-                    </button>
-                    <button
-                      className="mermaid-context-menu-item"
-                      onClick={() => {
-                        copyMermaidPng(code);
-                        setContextMenu(null);
-                      }}
-                    >
-                      Copy as PNG
-                    </button>
-                    <button
-                      className="mermaid-context-menu-item"
-                      onClick={() => {
-                        void downloadMermaidPng(code);
-                        setContextMenu(null);
-                      }}
-                    >
-                      Download PNG
-                    </button>
-                  </>
-                )}
-                <button
-                  className="mermaid-context-menu-item"
-                  onClick={() => {
-                    copyMermaidSource(code);
-                    setContextMenu(null);
-                  }}
-                >
-                  Copy Source
-                </button>
-                <div className="mermaid-context-menu-divider" />
-                <button
-                  className="mermaid-context-menu-item"
-                  onClick={() => {
-                    setViewFullscreen(true);
-                    setContextMenu(null);
-                  }}
-                >
-                  View Fullscreen
-                </button>
-                <button
-                  className="mermaid-context-menu-item"
-                  onClick={() => {
-                    setFullscreenCode(code);
-                    setFullscreenSvg(svgHtml);
-                    setFullscreenError(error);
-                    setFullscreen(true);
-                    setContextMenu(null);
-                  }}
-                >
-                  Edit Fullscreen
-                </button>
-                <button
-                  className="mermaid-context-menu-item mermaid-context-menu-danger"
-                  onClick={() => {
-                    deleteBlock();
-                    setContextMenu(null);
-                  }}
-                >
-                  Delete
-                </button>
-              </div>,
-              document.body,
-            )}
+          {contextMenu && (
+            <MermaidBlockContextMenu
+              code={code}
+              contextMenu={contextMenu}
+              error={error}
+              onClose={() => setContextMenu(null)}
+              onDelete={deleteBlock}
+              setFullscreen={setFullscreen}
+              setFullscreenCode={setFullscreenCode}
+              setFullscreenError={setFullscreenError}
+              setFullscreenSvg={setFullscreenSvg}
+              setViewFullscreen={setViewFullscreen}
+              svgHtml={svgHtml}
+            />
+          )}
         </>
       )}
       {viewFullscreenModal}
       {fullscreenModal}
     </NodeViewWrapper>
   );
-}
-
-// §perf-large-file C3.4: use randomUUID so concurrent editor instances never
-// share an ID. The old module-level counter would generate colliding IDs when
-// two MermaidBlockView instances across two editors rendered simultaneously.
-function newMermaidId(): string {
-  // crypto.randomUUID() is available in all modern browsers and WKWebView.
-  // Mermaid requires IDs starting with a letter.
-  return `mermaid-${crypto.randomUUID()}`;
-}
-
-/** Shared rendering logic */
-async function renderMermaid(
-  source: string,
-  onSuccess: (svg: string) => void,
-  onError: (msg: string) => void,
-): Promise<void> {
-  if (!source.trim()) {
-    onSuccess("");
-    return;
-  }
-  try {
-    const mermaid = (await import("mermaid")).default;
-    mermaid.initialize({
-      startOnLoad: false,
-      // One palette for every render path — see MERMAID_THEME's note for why
-      // this deliberately ignores the app theme.
-      theme: MERMAID_THEME,
-      themeVariables: MERMAID_THEME_VARIABLES,
-      // "antiscript" allows inline HTML in labels (e.g. <br>, <b>, <i>) while
-      // stripping <script>. "strict" would HTML-encode every tag, breaking <br>.
-      securityLevel: "antiscript",
-    });
-    const id = newMermaidId();
-    const { svg } = await mermaid.render(id, source);
-    // foreignObject hosts HTML labels (flowchart node text). DOMPurify must
-    // treat it as an HTML integration point or the label markup is stripped —
-    // see sanitizeMermaidSvg. <script>/event handlers stay forbidden.
-    // normalizeMermaidSvgSize strips Mermaid's `width="100%"` + inline
-    // `max-width` cap so the resize frame controls the size (§5.5).
-    onSuccess(normalizeMermaidSvgSize(sanitizeMermaidSvg(svg)));
-  } catch (err) {
-    onError(err instanceof Error ? err.message : "Mermaid rendering error");
-  }
 }
