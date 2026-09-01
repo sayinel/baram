@@ -114,4 +114,26 @@ describe("TaskEditDialog", () => {
     fireEvent.click(screen.getByText("Cancel"));
     expect(markdown(ed)).toBe("- [ ] 초안 📅2026-08-30");
   });
+
+  // 이슈 498: 모달이 떠 있는 동안 문서가 밖에서 바뀌면(전역 단축키·외부 리로드)
+  // 캡처된 target이 stale이 된다. 저장은 거부돼야 하고(인접 내용 훼손 금지),
+  // 그때 조용히 닫으면 입력한 내용이 통째로 증발하므로 모달은 열린 채 남아야 한다.
+  it("문서가 밖에서 바뀌면 저장을 거부하고, 입력을 잃지 않도록 열린 채 알린다", () => {
+    const ed = open("- [ ] 초안 쓰기");
+    fireEvent.change(screen.getByDisplayValue("초안 쓰기"), {
+      target: { value: "고친 초안" },
+    });
+    // 모달 밖에서 문서가 리로드된다 — 내용이 같아도 모든 노드가 새 객체라
+    // 캡처된 target의 identity가 깨진다(외부 파일 변경과 같은 모양).
+    const reloaded = markdownToProsemirror("- [ ] 초안 쓰기", ed.state.schema);
+    ed.commands.setContent(reloaded.toJSON() as never);
+    const before = markdown(ed);
+
+    fireEvent.click(screen.getByText("Save"));
+
+    expect(markdown(ed)).toBe(before); // 문서 무변경 — 인접 내용을 잘라먹지 않았다
+    expect(useUIStore.getState().taskEditOpen).toBe(true); // 닫히지 않았다
+    expect(screen.getByDisplayValue("고친 초안")).toBeTruthy(); // 입력이 살아 있다
+    expect(screen.getByRole("alert")).toBeTruthy(); // 이유가 보인다
+  });
 });

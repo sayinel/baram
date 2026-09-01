@@ -48,13 +48,22 @@ export function TaskEditDialog() {
 
   const [target, setTarget] = useState<null | TaskEditTarget>(null);
   const [draft, setDraft] = useState<null | TaskLineDraft>(null);
+  // 이슈 498: 저장이 stale target으로 거부됐음을 알리는 플래그. 문서가 모달 밖에서
+  // 바뀌면 캡처된 target이 무효가 되는데, 그때 조용히 닫으면 사용자가 입력한 내용이
+  // 통째로 증발한다 — 닫지 않고 이 메시지를 띄워 내용을 복사할 기회를 준다.
+  const [stale, setStale] = useState(false);
   // 날짜는 입력 중인 글자를 그대로 들고 있는다 — `t`/`+3`을 치는 동안 ISO로 바꿔 버리면
   // 두 글자를 칠 수 없다. 확정은 blur와 저장 시점에 한다.
   const [dateText, setDateText] = useState<Record<string, string>>({});
   const [tagText, setTagText] = useState("");
 
   useEffect(() => {
-    if (!taskEditOpen) return;
+    if (!taskEditOpen) {
+      // 닫힐 때 stale을 지운다 — 재오픈 첫 render가 지난번의 stale=true로 커밋되면
+      // role="alert"가 잘못된 경고를 한 프레임 다시 발표한다.
+      setStale(false);
+      return;
+    }
     const found = resolveTaskEditTarget(editor);
     if (!found || !editor) {
       // 변환이 말이 되지 않는 자리다(코드블록·제목·표). 조용히 닫는다 — 아무 일도
@@ -66,6 +75,7 @@ export function TaskEditDialog() {
     const read = readTaskLine(line);
     setTarget(found);
     setDraft(read);
+    setStale(false);
     setDateText(
       Object.fromEntries(DATE_KINDS.map((k) => [k, read.dates[k] ?? ""])),
     );
@@ -88,7 +98,13 @@ export function TaskEditDialog() {
 
   const save = useCallback(() => {
     if (!editor || !target || !draft) return;
-    applyTargetLine(editor, target, writeTaskLine(draft));
+    // 이슈 498: 문서가 모달 밖에서 바뀌었으면 applyTargetLine이 stale 가드로
+    // false를 돌려준다. 그때 닫아 버리면 입력이 조용히 증발하므로, 열어 둔 채
+    // 메시지를 띄운다.
+    if (!applyTargetLine(editor, target, writeTaskLine(draft))) {
+      setStale(true);
+      return;
+    }
     closeTaskEdit();
   }, [editor, target, draft, closeTaskEdit]);
 
@@ -195,6 +211,12 @@ export function TaskEditDialog() {
             value={tagText}
           />
         </label>
+
+        {stale && (
+          <div className="task-edit-stale" role="alert">
+            {t("tasks.edit.staleDoc")}
+          </div>
+        )}
 
         {/* 이 줄이 이 모달의 절반이다 — 사용자는 여기서 이모지 문법을 배운다. */}
         <div className="task-edit-preview">

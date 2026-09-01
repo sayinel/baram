@@ -629,6 +629,18 @@
   white-space: pre-wrap;
 }
 
+/* 이슈 498: 문서가 모달 밖에서 바뀌어 저장이 거부됐을 때. 입력을 잃기 직전의
+   마지막 안내라 error 배경으로 확실히 띄운다 — 12px에서 danger 전경색은 대비가
+   4.5:1에 못 미쳐(3.76:1), 본문색 + error 배경/테두리 조합을 쓴다. */
+.task-edit-stale {
+  padding: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-default);
+  background: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 6px;
+}
+
 .task-edit-actions {
   display: flex;
   gap: var(--space-2);
