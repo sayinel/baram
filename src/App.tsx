@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import type { PdfFindApi } from "./components/editor/pdf/use-pdf-find";
-import type { MergeSegment } from "./ipc/types";
 import type { EditorTab } from "./stores/editor/editor";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
@@ -23,8 +22,8 @@ import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
 import { PluginViewerHost } from "./components/editor/PluginViewerHost";
 import { createTabSurfaceRenderers } from "./components/editor/tab-surface-renderers";
 import { TabSurface } from "./components/editor/TabSurface";
-import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AppDialogs } from "./components/layout/AppDialogs";
 import { AppLayout } from "./components/layout/AppLayout";
 import {
   type EditorMode,
@@ -42,12 +41,10 @@ import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useAutoSnapshot } from "./hooks/use-auto-snapshot";
 import { useCloseGuard } from "./hooks/use-close-guard";
+import { useCodeAutoSave } from "./hooks/use-code-auto-save";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
-import {
-  reloadAfterConflictConsent,
-  useFileOperations,
-} from "./hooks/use-file-operations";
+import { useFileOperations } from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useGhostText } from "./hooks/use-ghost-text";
 import { useGlobalCaptureShortcut } from "./hooks/use-global-capture-shortcut";
@@ -67,9 +64,7 @@ import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useTaskWatcher } from "./hooks/use-task-watcher";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { llmCancel, llmComplete, readFile, writeFile } from "./ipc/invoke";
-import { mergeTexts } from "./ipc/snapshot";
-import { markdownToProsemirror } from "./pipeline/md-to-pm";
+import { writeFile } from "./ipc/invoke";
 import {
   initializePlugins,
   notifyEditorReady,
@@ -87,17 +82,13 @@ import {
 } from "./services/app-update";
 import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
-import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab } from "./stores/editor/editor";
 import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
-import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
 import { editorSurfaceBlockReason } from "./utils/editor/active-tab";
-import { registerEditorMutationTask } from "./utils/editor/mutation-tasks";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
-import { serializeLiveDoc } from "./utils/editor/serialize-live-doc";
 import {
   resolveSurfaceKind,
   type SurfaceKind,
@@ -110,49 +101,16 @@ import {
   isMarkdownFile,
   isPdfFile,
 } from "./utils/file-type";
-import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
-import { getConfigForTask } from "./utils/model-selection";
 import { logAppReady } from "./utils/perf";
-import { buildTemplatePrompt } from "./utils/smart-templates";
 // Stylesheet moved to `main.tsx` (§260 Phase 5 re-review, R3): App is dynamically
 // imported, so a stylesheet imported here is bound to that chunk and never reaches
 // index.html's <head> — a blank window on cold start.
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
-const CommandPalette = lazy(() =>
-  import("./components/command/CommandPalette").then((m) => ({
-    default: m.CommandPalette,
-  })),
-);
-const ExportDialog = lazy(() =>
-  import("./components/export/ExportDialog").then((m) => ({
-    default: m.ExportDialog,
-  })),
-);
 const HomeScreen = lazy(() =>
   import("./components/onboarding/HomeScreen").then((m) => ({
     default: m.HomeScreen,
-  })),
-);
-const QuickSwitcher = lazy(() =>
-  import("./components/command/QuickSwitcher").then((m) => ({
-    default: m.QuickSwitcher,
-  })),
-);
-const HoverPreview = lazy(() =>
-  import("./components/editor/HoverPreview").then((m) => ({
-    default: m.HoverPreview,
-  })),
-);
-const SettingsModal = lazy(() =>
-  import("./components/settings/SettingsModal").then((m) => ({
-    default: m.SettingsModal,
-  })),
-);
-const AboutModal = lazy(() =>
-  import("./components/settings/AboutModal").then((m) => ({
-    default: m.AboutModal,
   })),
 );
 // §298 measurement spikes. Lazy so they stay out of the main bundle; neither
@@ -165,66 +123,9 @@ const VimWysiwygProbe = lazy(() =>
 const ImeProbe = lazy(() =>
   import("./spike/ime-probe/ImeProbe").then((m) => ({ default: m.ImeProbe })),
 );
-const UpdateDialog = lazy(() =>
-  import("./components/settings/UpdateDialog").then((m) => ({
-    default: m.UpdateDialog,
-  })),
-);
-const SkillGeneratorDialog = lazy(() =>
-  import("./components/ai/SkillGeneratorDialog").then((m) => ({
-    default: m.SkillGeneratorDialog,
-  })),
-);
-const SmartTemplateDialog = lazy(() =>
-  import("./components/ai/SmartTemplateDialog").then((m) => ({
-    default: m.SmartTemplateDialog,
-  })),
-);
-const SkillTestDialog = lazy(() =>
-  import("./components/ai/SkillTestDialog").then((m) => ({
-    default: m.SkillTestDialog,
-  })),
-);
 const SkillPreviewPanel = lazy(() =>
   import("./components/ai/SkillPreviewPanel").then((m) => ({
     default: m.SkillPreviewPanel,
-  })),
-);
-const TaskEditDialog = lazy(() =>
-  import("./components/tasks/TaskEditDialog").then((m) => ({
-    default: m.TaskEditDialog,
-  })),
-);
-
-const WeeklyReviewDialog = lazy(() =>
-  import("./components/tasks/WeeklyReviewDialog").then((m) => ({
-    default: m.WeeklyReviewDialog,
-  })),
-);
-
-const QuickCaptureDialog = lazy(() =>
-  import("./components/journal/QuickCaptureDialog").then((m) => ({
-    default: m.QuickCaptureDialog,
-  })),
-);
-const ZettelTitleDialog = lazy(() =>
-  import("./components/journal/ZettelTitleDialog").then((m) => ({
-    default: m.ZettelTitleDialog,
-  })),
-);
-const ConflictModalWrapper = lazy(() =>
-  import("./components/editor/ConflictModal").then((m) => ({
-    default: m.ConflictModalWrapper,
-  })),
-);
-const ToastHost = lazy(() =>
-  import("./components/editor/Toast").then((m) => ({
-    default: m.ToastHost,
-  })),
-);
-const MergeView = lazy(() =>
-  import("./components/editor/MergeView").then((m) => ({
-    default: m.MergeView,
   })),
 );
 
@@ -374,10 +275,6 @@ function App() {
 
   // §39 Tab switcher state
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
-  const [mergeState, setMergeState] = useState<null | {
-    filePath: string;
-    segments: MergeSegment[];
-  }>(null);
   const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
 
   // §72 Skill Preview Panel state
@@ -680,49 +577,12 @@ function App() {
   }, [activeTab, isCodeFile, isPdfTab, isSourceMode]);
 
   // Auto-save for non-MD code files (debounced write when dirty)
-  const { autoSave, autoSaveDelay } = useSettingsStore(
-    useShallow((s) => ({
-      autoSave: s.autoSave,
-      autoSaveDelay: s.autoSaveDelay,
-    })),
-  );
-  const setFileContent = useFileStore((s) => s.setFileContent);
-  const codeAutoSaveTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
-  useEffect(() => {
-    // ‼️ isEditableTextFile, not isCodeFile — the write below must never target a
-    // binary file. See the definition for what went wrong when it did.
-    if (!isEditableTextFile || !autoSave) return;
-    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
-    const tab = currentTabs.find((t) => t.id === tabId);
-    if (!tab?.isDirty || !tab.filePath) return;
-
-    if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
-    codeAutoSaveTimer.current = setTimeout(async () => {
-      try {
-        const content = getSourceBuffer(tab.id);
-        await writeFile(tab.filePath!, content);
-        useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
-        setFileContent(tab.filePath!, content);
-        markDirty(tab.id, false);
-        // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
-        useSnapshotStore.getState().markPendingAutoSnapshot();
-      } catch {
-        // Save failed — keep dirty state
-      }
-    }, autoSaveDelay);
-
-    return () => {
-      if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
-    };
-  }, [
-    isEditableTextFile,
-    autoSave,
-    autoSaveDelay,
+  useCodeAutoSave({
     bufferVersion,
-    markDirty,
-    setFileContent,
     getSourceBuffer,
-  ]);
+    isEditableTextFile,
+    markDirty,
+  });
 
   // --- File operations ---
   // [CRITICAL-2 fix] Pass activeEditor so Cmd+S serializes the correct
@@ -1084,82 +944,17 @@ function App() {
           </Suspense>
         )}
       </AppLayout>
-      <Suspense fallback={null}>
-        <CommandPalette
-          editor={activeEditor}
-          onCloseFolder={handleCloseFolder}
-          onNewFile={handleNewFile}
-          onOpenFile={handleOpenFile}
-          onOpenFolder={handleOpenFolder}
-          onSave={handleSave}
-          onSkillPreview={handleSkillPreviewToggle}
-          onToggleSourceMode={handleToggleSourceMode}
-        />
-        <ExportDialog editor={activeEditor} />
-        <QuickSwitcher editor={activeEditor} onNewFile={handleNewFile} />
-        <SettingsModal />
-        <AboutModal />
-        <UpdateDialog />
-        <UnsavedChangesModal handleSave={handleSave} />
-        <HoverPreview />
-        <SkillGeneratorDialogWrapper />
-        <SkillTestDialogWrapper />
-        <SmartTemplateDialogWrapper editor={activeEditor} />
-        <QuickCaptureDialog />
-        <WeeklyReviewDialog />
-        <TaskEditDialog />
-        <ZettelTitleDialog />
-        <ConflictModalWrapper
-          onKeepLocal={(filePath) => {
-            // Keep local edits: clear the mtime guard so the next save (and the
-            // immediate save below) overwrites the external change on disk.
-            const entry = useFileStore.getState().getFileMtime(filePath);
-            useFileStore
-              .getState()
-              .updateLastSaveMtime(filePath, entry?.canReloadMtime ?? 0);
-            // If the conflicted file is the active tab, persist local edits now so
-            // they aren't lost if the user doesn't edit again before quitting.
-            const { activeTabId, tabs } = useEditorStore.getState();
-            const activeTab = tabs.find((t) => t.id === activeTabId);
-            if (activeTab?.filePath === filePath) void handleSave();
-          }}
-          onMerge={async (filePath, base) => {
-            if (!activeEditor || activeEditor.isDestroyed) return;
-            const local = serializeLiveDoc(activeEditor);
-            const external = await readFile(filePath);
-            const result = await mergeTexts(base, local, external);
-            setMergeState({ filePath, segments: result.segments });
-          }}
-          // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조.
-          onReload={reloadAfterConflictConsent}
-        />
-        <ToastHost />
-        {mergeState && (
-          <MergeView
-            filePath={mergeState.filePath}
-            onApply={(merged) => {
-              const fp = mergeState.filePath;
-              void (async () => {
-                try {
-                  await writeFile(fp, merged);
-                  useFileStore.getState().setFileContent(fp, merged);
-                  useFileStore.getState().updateLastSaveMtime(fp, Date.now());
-                  useEditorStore.getState().requestContentRefresh();
-                  const { activeTabId: tid } = useEditorStore.getState();
-                  if (tid) markDirty(tid, false);
-                  // §71 A conflict-merge write is a real content change.
-                  useSnapshotStore.getState().markPendingAutoSnapshot();
-                } catch (err) {
-                  logger.error("[App] merge apply failed", err);
-                }
-              })();
-              setMergeState(null);
-            }}
-            onCancel={() => setMergeState(null)}
-            segments={mergeState.segments}
-          />
-        )}
-      </Suspense>
+      <AppDialogs
+        activeEditor={activeEditor}
+        handleCloseFolder={handleCloseFolder}
+        handleNewFile={handleNewFile}
+        handleOpenFile={handleOpenFile}
+        handleOpenFolder={handleOpenFolder}
+        handleSave={handleSave}
+        handleSkillPreviewToggle={handleSkillPreviewToggle}
+        handleToggleSourceMode={handleToggleSourceMode}
+        markDirty={markDirty}
+      />
       {tabSwitcherOpen && (
         <TabSwitcher
           mruTabs={tabSwitcherMruRef.current}
@@ -1206,127 +1001,6 @@ function AppWithErrorBoundary() {
     <ErrorBoundary>
       <AppRoot />
     </ErrorBoundary>
-  );
-}
-
-function SkillGeneratorDialogWrapper() {
-  const { skillGeneratorDialogOpen, toggleSkillGeneratorDialog } = useUIStore(
-    useShallow((s) => ({
-      skillGeneratorDialogOpen: s.skillGeneratorDialogOpen,
-      toggleSkillGeneratorDialog: s.toggleSkillGeneratorDialog,
-    })),
-  );
-  return (
-    <SkillGeneratorDialog
-      onClose={toggleSkillGeneratorDialog}
-      open={skillGeneratorDialogOpen}
-    />
-  );
-}
-
-function SkillTestDialogWrapper() {
-  const { skillTestDialogOpen, toggleSkillTestDialog } = useUIStore(
-    useShallow((s) => ({
-      skillTestDialogOpen: s.skillTestDialogOpen,
-      toggleSkillTestDialog: s.toggleSkillTestDialog,
-    })),
-  );
-  return (
-    <SkillTestDialog
-      onClose={toggleSkillTestDialog}
-      open={skillTestDialogOpen}
-    />
-  );
-}
-
-function SmartTemplateDialogWrapper({
-  editor,
-}: {
-  editor: null | ReturnType<typeof useEditor>;
-}) {
-  const { smartTemplateDialogOpen, toggleSmartTemplateDialog } = useUIStore();
-  const handleGenerate = useCallback(
-    (templateId: string) => {
-      if (!editor) return;
-      toggleSmartTemplateDialog();
-      const isCustom = templateId.startsWith("custom:");
-      const prompt = isCustom
-        ? templateId.slice("custom:".length)
-        : buildTemplatePrompt(templateId);
-      const systemPrompt = isCustom
-        ? "Generate a well-structured markdown document based on the user's description. Include headings, sections, and placeholder content."
-        : "Generate a complete markdown document based on the template structure. Fill each section with relevant placeholder content.";
-
-      // Accumulate all tokens, then insert parsed markdown (not raw text)
-      const inlineCfg = getConfigForTask("inline-edit");
-      if (!inlineCfg.configured && inlineCfg.provider !== "ollama") {
-        logger.error("SmartTemplate: no API key configured");
-        return;
-      }
-      const store = useAIStore.getState();
-      const requestId = `ai_template_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      let accumulated = "";
-
-      void (async () => {
-        // §298 §12-9b (design §5c): the insert lands when the stream ends —
-        // a dead task (state install / vim mode exit) must not dispatch.
-        const task = registerEditorMutationTask(editor.view);
-        const cleanupFn = await createLLMStream(requestId, {
-          onToken: (token) => {
-            accumulated += token;
-          },
-          onDone: () => {
-            if (accumulated.trim() && task.isLive()) {
-              const doc = markdownToProsemirror(accumulated, editor.schema);
-              const { from } = editor.state.selection;
-              editor.view.dispatch(
-                editor.state.tr.insert(from, doc.content).scrollIntoView(),
-              );
-              editor.view.focus();
-            }
-          },
-          onError: (error) => {
-            logger.error("SmartTemplate error:", error);
-          },
-        });
-        task.addCleanup(() => {
-          llmCancel(requestId).catch(() => {});
-          cleanupFn();
-        });
-        // A task that died while createLLMStream was awaited has already had
-        // its listeners removed; firing the request anyway would bill an
-        // answer nobody can receive.
-        if (!task.isLive()) {
-          task.finish();
-          return;
-        }
-        try {
-          await llmComplete(
-            prompt,
-            inlineCfg.model,
-            requestId,
-            systemPrompt,
-            undefined,
-            inlineCfg.provider,
-            inlineCfg.baseUrl,
-            store.privacyMode,
-          );
-        } catch (e) {
-          logger.error(e);
-        } finally {
-          cleanupFn();
-          task.finish();
-        }
-      })();
-    },
-    [editor, toggleSmartTemplateDialog],
-  );
-  return (
-    <SmartTemplateDialog
-      isOpen={smartTemplateDialogOpen}
-      onClose={toggleSmartTemplateDialog}
-      onGenerate={handleGenerate}
-    />
   );
 }
 
