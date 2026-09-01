@@ -1,4 +1,5 @@
 // §4.6 Slash Commands — Tiptap Extension using Suggestion API
+import type { SlashMenuItem } from "../../components/command/slash-menu-item";
 import type { Editor } from "@tiptap/core";
 import type {
   SuggestionKeyDownProps,
@@ -10,7 +11,6 @@ import { ReactRenderer } from "@tiptap/react";
 import { Suggestion } from "@tiptap/suggestion";
 
 import {
-  type SlashMenuItem,
   SlashMenuList,
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";

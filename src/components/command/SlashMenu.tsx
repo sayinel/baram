@@ -8,14 +8,7 @@ import {
   useState,
 } from "react";
 
-export interface SlashMenuItem {
-  action: () => void;
-  category: string;
-  description: string;
-  id: string;
-  label: string;
-  mdHint?: string;
-}
+import type { SlashMenuItem } from "./slash-menu-item";
 
 export interface SlashMenuRef {
   onKeyDown: (event: KeyboardEvent) => boolean;

@@ -1,6 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { SlashMenuItem } from "../../components/command/SlashMenu";
+import type { SlashMenuItem } from "../../components/command/slash-menu-item";
 import type { Editor } from "@tiptap/core";
 
 import { createDir, importFile } from "../../ipc/invoke";

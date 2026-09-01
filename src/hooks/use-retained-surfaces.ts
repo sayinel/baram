@@ -15,16 +15,16 @@ import {
   createTabSurfaceRenderers,
   type TabSurfaceRenderers,
 } from "../components/editor/tab-surface-renderers";
-import {
-  type EditorMode,
-  editorModeForSurfaceKind,
-  vimSurfaceForMode,
-} from "../components/layout/StatusBar";
 import { setWysiwygVimStatusOwner } from "../extensions/plugins/vim/vim-status";
 import { pluginLoader } from "../plugins/plugin-loader";
 import { matchFileViewer } from "../plugins/plugin-ui-store";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { editorSurfaceBlockReason } from "../utils/editor/active-tab";
+import {
+  type EditorMode,
+  editorModeForSurfaceKind,
+  vimSurfaceForMode,
+} from "../utils/editor/editor-mode";
 import { resolveSurfaceKind } from "../utils/editor/surface-kind";
 import { getLanguageForFile } from "../utils/file-type";
 import { type RetainedEntry, useRetainedTabs } from "./use-retained-tabs";

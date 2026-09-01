@@ -1,4 +1,4 @@
-import type { SlashMenuItem } from "../../components/command/SlashMenu";
+import type { SlashMenuItem } from "../../components/command/slash-menu-item";
 import type { TaskFieldKind } from "../../utils/tasks/task-field-order";
 import type { Editor } from "@tiptap/core";
 import type { EditorView } from "@tiptap/pm/view";

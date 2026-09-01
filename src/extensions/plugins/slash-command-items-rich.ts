@@ -1,4 +1,4 @@
-import type { SlashMenuItem } from "../../components/command/SlashMenu";
+import type { SlashMenuItem } from "../../components/command/slash-menu-item";
 import type { Editor } from "@tiptap/core";
 
 import { awaitBoundToEditor } from "../../utils/editor/mutation-tasks";
