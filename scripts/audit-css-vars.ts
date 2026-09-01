@@ -21,6 +21,16 @@ function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
+/**
+ * TS/TSX 주석을 벗긴다 — 블록 주석 전체와, 줄 머리가 주석인 줄만. 코드 뒤에 붙는
+ * `// …` 트레일링 주석은 건드리지 않는다: 문자열 속 URL(`https://…`)을 주석으로
+ * 오인하는 위양성이 실제 코드 손실보다 나쁘고, 지금까지의 오탐(svg-utils의 주석 속
+ * `var(--x)` 예시)은 전부 줄 머리 주석이었다.
+ */
+function stripTsComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+}
+
 function findFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
   function walk(d: string) {
@@ -36,6 +46,9 @@ function findFiles(dir: string, extensions: string[]): string[] {
 }
 
 const definedVars = new Set<string>();
+// 역방향 advisory 대상 — semantic 계층에서 정의된 이름만. primitive 팔레트의
+// 미참조 계단(yellow-50…800 등)은 의도된 여분이라 advisory에 실으면 노이즈가 된다.
+const semanticDefined = new Set<string>();
 const usedVars = new Map<string, string[]>();
 
 // 1. Scan CSS files for definitions and usages
@@ -46,6 +59,12 @@ for (const file of cssFiles) {
 
   for (const match of content.matchAll(/--([\w-]+)\s*:/g)) {
     definedVars.add(`--${match[1]}`);
+    if (
+      relPath.includes("generated/semantic") ||
+      relPath.includes("generated/system")
+    ) {
+      semanticDefined.add(`--${match[1]}`);
+    }
   }
 
   for (const match of content.matchAll(/var\(\s*--([\w-]+)/g)) {
@@ -55,20 +74,34 @@ for (const file of cssFiles) {
   }
 }
 
-// 2. Scan TSX/TS files for inline var() references (usages only, no definitions)
-const tsxFiles = [
-  ...findFiles("src/components", [".tsx", ".ts"]),
-  ...findFiles("src/extensions", [".tsx", ".ts"]),
-  ...findFiles("src/hooks", [".ts"]),
-];
+// 2. Scan TSX/TS files for inline var() references (usages only, no definitions).
+// 이슈 515 후속: components/extensions/hooks 3곳만 보던 범위를 src 전체로 넓힌다 —
+// 종전 범위는 standalone export CSS(utils/export/export-html-styles.ts)의 var()
+// 16건을 통째로 놓쳤다. 테스트 픽스처의 가짜 변수는 위양성이므로 제외하고,
+// spike는 제품 표면이 아니므로 함께 제외한다.
+const tsxFiles = findFiles("src", [".tsx", ".ts"]).filter(
+  (f) =>
+    !f.includes("__tests__") &&
+    !/\.test\./.test(f) &&
+    !f.includes(`${path.sep}spike${path.sep}`),
+);
+// 역방향(정의-미소비) advisory의 소비원. var() 외에 TS가 문자열 리터럴로 다루는
+// 변수 이름("--x" — setProperty/getPropertyValue/색 테이블)을 전부 소비로 세어,
+// graph-colors 같은 합법 간접 소비를 죽은 정의로 오탐하지 않는다. 이 집합은
+// advisory에만 쓴다 — 미정의 검출의 사용 집계에 넣으면 정의 참조 문자열까지
+// "사용"이 되어 검출이 무뎌진다.
+const literalMentions = new Set<string>();
 for (const file of tsxFiles) {
-  const content = fs.readFileSync(file, "utf-8");
+  const content = stripTsComments(fs.readFileSync(file, "utf-8"));
   const relPath = path.relative(".", file);
 
   for (const match of content.matchAll(/var\(\s*--([\w-]+)/g)) {
     const varName = `--${match[1]}`;
     if (!usedVars.has(varName)) usedVars.set(varName, []);
     usedVars.get(varName)!.push(relPath);
+  }
+  for (const match of content.matchAll(/"(--[\w-]+)"/g)) {
+    literalMentions.add(match[1]);
   }
 }
 
@@ -141,4 +174,26 @@ if (undefinedVars.length > 0) {
   process.exit(1);
 } else {
   console.log(`  All CSS variables are defined (or allowlisted).`);
+}
+
+// 4. Reverse advisory — 정의됐지만 아무도 소비하지 않는 색 토큰.
+// 소비로 인정하는 것: CSS/TS의 var() 사용, 그리고 TS가 문자열 리터럴로 든 변수
+// 이름(setProperty·getPropertyValue·색 테이블 — graph-colors의 간접 소비가 이렇게
+// 잡힌다). 게이트가 아니라 advisory다: 죽은 정의는 즉시 버그가 아니고, 합법
+// 소비 경로가 하나 늘 때마다 여기가 빨간불이 되면 아무도 안 읽게 된다. 이 목록이
+// 자라면 토큰을 지우거나 소비를 붙이라는 신호다. (이 감사를 넣은 시점의 기준선:
+// editor-line-highlight — 사용자가 편집까지 하는데 효과가 없다, git-staged,
+// status-warning-solid-hover 3개.)
+const unusedColorTokens: string[] = [];
+for (const name of semanticDefined) {
+  if (!name.startsWith("--color-")) continue;
+  if (usedVars.has(name)) continue;
+  if (literalMentions.has(name)) continue;
+  unusedColorTokens.push(name);
+}
+if (unusedColorTokens.length > 0) {
+  console.log(
+    `\n  ADVISORY — defined but unconsumed color tokens (${unusedColorTokens.length}):`,
+  );
+  for (const name of unusedColorTokens.sort()) console.log(`    ${name}`);
 }
