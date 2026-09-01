@@ -20,6 +20,7 @@ import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { MarkdownSurface } from "./components/editor/MarkdownSurface";
 import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
 import { PluginViewerHost } from "./components/editor/PluginViewerHost";
+import { PreviewToggleButton } from "./components/editor/PreviewToggleButton";
 import { createTabSurfaceRenderers } from "./components/editor/tab-surface-renderers";
 import { TabSurface } from "./components/editor/TabSurface";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -33,6 +34,7 @@ import {
 } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
+import { HomeSurface } from "./components/onboarding/HomeSurface";
 import { GraphViewLazy } from "./components/sidebar/GraphViewLazy";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
@@ -52,10 +54,11 @@ import { useGlobalKeyboard } from "./hooks/use-global-keyboard";
 import { useInlineAI } from "./hooks/use-inline-ai";
 import { useJournal } from "./hooks/use-journal";
 import { useJournalInitialCursor } from "./hooks/use-journal-initial-cursor";
+import { useKeepaliveEditors } from "./hooks/use-keepalive-editors";
 import { useKeybindingActions } from "./hooks/use-keybinding-actions";
-import { useLargeDocKeepalive } from "./hooks/use-large-doc-keepalive";
 import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
+import { usePreviewSourceView } from "./hooks/use-preview-source-view";
 import { useRetainedTabs } from "./hooks/use-retained-tabs";
 import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
@@ -64,7 +67,6 @@ import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useTaskWatcher } from "./hooks/use-task-watcher";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { writeFile } from "./ipc/invoke";
 import {
   initializePlugins,
   notifyEditorReady,
@@ -84,7 +86,6 @@ import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab } from "./stores/editor/editor";
-import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
 import { useUIStore } from "./stores/ui/ui";
 import { editorSurfaceBlockReason } from "./utils/editor/active-tab";
@@ -108,11 +109,6 @@ import { logAppReady } from "./utils/perf";
 // index.html's <head> — a blank window on cold start.
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
-const HomeScreen = lazy(() =>
-  import("./components/onboarding/HomeScreen").then((m) => ({
-    default: m.HomeScreen,
-  })),
-);
 // §298 measurement spikes. Lazy so they stay out of the main bundle; neither
 // chunk is requested unless its VITE_*_PROBE flag is set in a dev build.
 const VimWysiwygProbe = lazy(() =>
@@ -135,19 +131,6 @@ const FileEditorLayout = lazy(() =>
     default: m.FileEditorLayout,
   })),
 );
-
-// A tab that toggles between rendered preview and raw source: HTML (built-in
-// iframe preview) or any TEXT file a viewer plugin claims (e.g. SVG via the
-// built-in media-viewer). Binary files never toggle — they have no source
-// view. Reads the plugin registry non-reactively: callers are user-action
-// callbacks, and the render path derives the same answer reactively.
-function isPreviewToggleFile(filePath: string | undefined): boolean {
-  if (!filePath || isMarkdownFile(filePath) || isBinaryViewerFile(filePath)) {
-    return false;
-  }
-  if (isHtmlFile(filePath)) return true;
-  return !!matchFileViewer(usePluginUIStore.getState().fileViewers, filePath);
-}
 
 // §89 File mode detection — resolved once at module load (URL params don't change)
 const _fileModeParams = new URLSearchParams(window.location.search);
@@ -319,47 +302,13 @@ function App() {
   });
 
   // §perf-large-file C3.5: keep-alive editor pool for large documents
-  // mountedKeepaliveEditor: the editor whose EditorContent is mounted (stays
-  // mounted as long as it's in the pool — this is the "keep-alive" part).
-  // activeKeepaliveEditor: non-null only when the active tab uses a keep-alive
-  // editor (controls visibility and hook binding).
-  const [mountedKeepaliveEditor, setMountedKeepaliveEditor] = useState<
-    import("@tiptap/react").Editor | null
-  >(null);
-  const [activeKeepaliveEditor, setActiveKeepaliveEditor] = useState<
-    import("@tiptap/react").Editor | null
-  >(null);
-  // [MODERATE-9] On eviction, unmount EditorContent BEFORE editor.destroy().
-  const handleEviction = useCallback(() => {
-    setMountedKeepaliveEditor(null);
-    setActiveKeepaliveEditor(null);
-  }, []);
-  const keepalive = useLargeDocKeepalive(handleEviction);
-  const activeEditor = activeKeepaliveEditor ?? editor;
-  // Stable callback for useTabSwitching to notify us of editor changes.
-  // null = use shared editor; non-null = use this keep-alive editor.
-  const handleActiveEditorChange = useCallback(
-    (e: import("@tiptap/react").Editor | null) => {
-      setActiveKeepaliveEditor(e);
-      // Keep the EditorContent mounted as long as the editor exists
-      if (e) setMountedKeepaliveEditor(e);
-      // When switching away (e=null), do NOT unmount — the pool keeps it alive.
-      // mountedKeepaliveEditor stays set so the DOM is preserved (hidden).
-      // Keep plugin editor API pointed at the ACTIVE editor (keep-alive or shared)
-      // synchronously — the tab-switch effect emits file:open in the same tick.
-      pluginLoader.setEditor(e ?? editor);
-    },
-    [editor],
-  );
-
-  // [MINOR-11] Destroy pooled editors on App unmount / HMR cleanup.
-  // [NEW-CRITICAL-A fix] Empty deps — true unmount-only. Pool identity is
-  // now stable (ref-based) but we still read from a ref for belt-and-suspenders.
-  const keepaliveRef = useRef(keepalive);
-  keepaliveRef.current = keepalive;
-  useEffect(() => {
-    return () => keepaliveRef.current.destroyAll();
-  }, []);
+  const {
+    activeEditor,
+    activeKeepaliveEditor,
+    keepalive,
+    mountedKeepaliveEditor,
+    onActiveEditorChange: handleActiveEditorChange,
+  } = useKeepaliveEditors(editor);
 
   // §perf-large-file C3.0: Install dev-only performance instrumentation
   useEffect(() => {
@@ -665,65 +614,25 @@ function App() {
     setFindReplaceOpen: routeFindReplaceOpen,
   });
 
-  // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed
-  // text tab. The preview loads the file from disk (asset: protocol), so when
-  // leaving source view with unsaved edits, flush them first — the mtime bump
-  // then reloads the preview with the fresh content.
-  const toggleHtmlView = useCallback(() => {
-    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
-    const tab = currentTabs.find((t) => t.id === tabId);
-    if (!tab || !isFileTab(tab) || !isPreviewToggleFile(tab.filePath)) return;
-    const leavingSourceView = htmlSourceTabs.has(tab.id);
-    if (leavingSourceView && tab.isDirty && tab.filePath) {
-      const filePath = tab.filePath;
-      const content = getSourceBuffer(tab.id);
-      void writeFile(filePath, content)
-        .then(() => {
-          useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
-          useFileStore.getState().setFileContent(filePath, content);
-          markDirty(tab.id, false);
-          useSnapshotStore.getState().markPendingAutoSnapshot();
-        })
-        .catch(() => {
-          // Save failed — keep dirty state; preview shows last saved version
-        });
-    }
-    setHtmlSourceTabs((prev) => {
-      const next = new Set(prev);
-      if (next.has(tab.id)) next.delete(tab.id);
-      else next.add(tab.id);
-      return next;
-    });
-  }, [htmlSourceTabs, markDirty, getSourceBuffer]);
+  // Preview ↔ source toggle for HTML / plugin-previewed text tabs, and the
+  // Cmd+/ router that falls through to the markdown source-mode toggle.
+  const { handleToggleSourceMode, toggleHtmlView } = usePreviewSourceView({
+    getSourceBuffer,
+    htmlSourceTabs,
+    markDirty,
+    setHtmlSourceTabs,
+    toggleSourceMode,
+  });
 
   // §5.1 HTML·플러그인 프리뷰 파일의 프리뷰 ↔ 원본 토글 버튼. 활성 표면 안에 겹쳐 그린다
   // (TabSurface의 `overlay` prop 주석 참조 — `.editor-area-scroll`의 CSS zoom 때문이다).
   const previewToggleButton =
     isHtmlTab || isPluginPreviewTab ? (
-      <button
-        className="mode-toggle-btn html-view-toggle"
+      <PreviewToggleButton
+        isSourceView={isHtmlSourceView}
         onClick={toggleHtmlView}
-        title={t("htmlPreview.toggleTitle")}
-        type="button"
-      >
-        {isHtmlSourceView
-          ? t("htmlPreview.showPreview")
-          : t("htmlPreview.showSource")}
-      </button>
+      />
     ) : null;
-
-  // Cmd+/ — route to the preview/source toggle when an HTML or plugin-viewed
-  // text tab is active; otherwise fall through to the markdown source-mode
-  // toggle.
-  const handleToggleSourceMode = useCallback(() => {
-    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
-    const tab = currentTabs.find((t) => t.id === tabId);
-    if (tab && isFileTab(tab) && isPreviewToggleFile(tab.filePath)) {
-      toggleHtmlView();
-      return;
-    }
-    toggleSourceMode();
-  }, [toggleHtmlView, toggleSourceMode]);
 
   // §56 Journal — auto-create today's journal on startup
   useJournal(handleOpenFilePath);
@@ -816,37 +725,13 @@ function App() {
         {!!rootPath && <TabBar />}
         <div className="editor-area">
           {surfaceKind === "home" ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              <Suspense fallback={null}>
-                <HomeScreen
-                  onNewFile={handleNewFile}
-                  onNewVault={async () => {
-                    const { open } = await import("@tauri-apps/plugin-dialog");
-                    const selected = await open({ directory: true });
-                    if (!selected) return;
-                    const path =
-                      typeof selected === "string" ? selected : selected[0];
-                    if (!path) return;
-                    const { initVault } = await import("./ipc/context");
-                    const { useContextStore: ctxStore } =
-                      await import("./stores/context/context");
-                    const alias = path.split("/").pop() ?? "vault";
-                    await initVault(path, alias);
-                    await ctxStore
-                      .getState()
-                      .addContext("vault", path, { alias });
-                    const { switchContext } =
-                      await import("./services/vault-context-loader");
-                    const activeId = ctxStore.getState().activeContextId;
-                    if (activeId) await switchContext(activeId);
-                  }}
-                  onOpenFile={handleOpenFile}
-                  onOpenFolder={handleOpenFolder}
-                  onOpenRecentFile={handleOpenRecentFile}
-                  onOpenRecentFolder={handleOpenRecentFolder}
-                />
-              </Suspense>
-            </div>
+            <HomeSurface
+              onNewFile={handleNewFile}
+              onOpenFile={handleOpenFile}
+              onOpenFolder={handleOpenFolder}
+              onOpenRecentFile={handleOpenRecentFile}
+              onOpenRecentFolder={handleOpenRecentFolder}
+            />
           ) : surfaceKind === "empty" ? (
             <div className="editor-area-scroll" data-editor-scroll>
               <div className="empty-workspace">

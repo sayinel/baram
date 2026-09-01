@@ -127,8 +127,10 @@ describe.each([
 
 describe("refuses in the three states computed live from the editor store", () => {
   it("no tabs open — closing the last tab leaves the handle alive", () => {
-    // `setEditor` is never called with null (both `App.tsx` call sites fall back to the shared
-    // editor), so without this the plugin gets the document the user just closed.
+    // `setEditor` is never called with null: the `?? editor` fallback in
+    // `use-keepalive-editors.ts`'s `handleActiveEditorChange` falls back to the shared editor
+    // explicitly, and the remaining `App.tsx` call site only calls `setEditor` when `editor` is
+    // truthy — so without this the plugin gets the document the user just closed.
     useEditorStore.setState({ activeTabId: null });
     expect(() => ctx().editor.getContent()).toThrow(/no document is open/);
     expect(editor.calls).toEqual([]);
