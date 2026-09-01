@@ -205,3 +205,30 @@ describe("clearThemeVars", () => {
     expect(root.style.getPropertyValue("--color-status-danger")).toBe("");
   });
 });
+
+// 감사 BLOCKER — 테마 colors의 여분 키가 inline style로 주입되면, import한 JSON
+// 한 장이 `display: none` 같은 속성을 <html>에 영구히 박을 수 있다(clearThemeVars는
+// 알려진 키만 지운다). applyThemeVars가 최후 방어선으로 whitelist만 쓴다.
+describe("applyThemeVars — 여분 키 주입 차단 (감사 BLOCKER)", () => {
+  beforeEach(() => {
+    clearThemeVars(document.documentElement);
+  });
+
+  it("colors에 끼어든 알 수 없는 키는 inline style에 쓰이지 않는다", () => {
+    const root = document.documentElement;
+    const poisoned = {
+      ...NORD.colors,
+      display: "none",
+      "pointer-events": "none",
+      "--evil-custom": "1",
+    } as unknown as ThemeColors;
+
+    applyThemeVars(root, poisoned, "dark");
+
+    expect(root.style.getPropertyValue("display")).toBe("");
+    expect(root.style.getPropertyValue("pointer-events")).toBe("");
+    expect(root.style.getPropertyValue("--evil-custom")).toBe("");
+    // 정상 키는 그대로 적용된다.
+    expect(root.style.getPropertyValue("--color-accent-default")).not.toBe("");
+  });
+});

@@ -2,7 +2,11 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { findThemeById, migrateThemeColors } from "../../types/theme";
+import {
+  findThemeById,
+  migrateThemeColors,
+  THEME_COLOR_KEYS,
+} from "../../types/theme";
 import { tauriStorage } from "../system/tauri-storage";
 import {
   type ActivityBarItemConfig,
@@ -183,7 +187,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 21,
+      version: 22,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -467,6 +471,32 @@ export const useSettingsStore = create<SettingsState>()(
             // 직접 고른 값이므로 옛 이름이 덮어써서는 안 된다.
             overrides["tasks.taskInput"] ??= old;
             delete overrides["journal.captureTaskMode"];
+          }
+        }
+
+        // v21 → v22: 감사 BLOCKER — 저장된 custom theme의 colors를 whitelist로
+        // 재구성한다. v22 이전의 테마 import는 여분 키를 거르지 않았으므로, 이미
+        // 저장된 테마 안에 임의 CSS 속성명이 끼어 있을 수 있다(그대로 두면
+        // applyThemeVars 이전 버전이 <html>에 주입했고, 지금도 데이터로 남는다).
+        // 알려진 편집 키만 남긴다 — 값 형식은 여기서 따지지 않는다(없는 키를
+        // 지어낼 수는 없고, 잘못된 색 값은 화면에서 무해하게 무시된다).
+        if (version < 22) {
+          const themes = state.customThemes as Array<{
+            [k: string]: unknown;
+            colors: Record<string, string>;
+          }>;
+          if (Array.isArray(themes)) {
+            const allowed = new Set(
+              THEME_COLOR_KEYS.map((entry) => entry.key as string),
+            );
+            state.customThemes = themes.map((theme) => ({
+              ...theme,
+              colors: Object.fromEntries(
+                Object.entries(theme.colors ?? {}).filter(([key]) =>
+                  allowed.has(key),
+                ),
+              ),
+            }));
           }
         }
 

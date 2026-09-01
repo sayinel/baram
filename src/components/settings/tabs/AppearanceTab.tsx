@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type { WorkspacePreset } from "../../../stores/file/workspace";
-import type { ThemeDef } from "../../../types/theme";
+import type { ThemeColors, ThemeDef } from "../../../types/theme";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { readFile } from "../../../ipc/invoke";
@@ -56,18 +56,28 @@ export function AppearanceTab() {
       }
       // Migrate old key names (pre-v10) to current names
       data.colors = migrateThemeColors(data.colors);
-      // Validate all 16 color keys are present
-      const requiredKeys = THEME_COLOR_KEYS.map((k) => k.key);
-      for (const key of requiredKeys) {
-        if (typeof data.colors[key] !== "string") {
+      // 감사 BLOCKER: 필수 키 존재만 검사하고 객체를 그대로 저장하면, JSON에 끼어든
+      // 여분 키(진짜 CSS 속성명 포함)가 applyThemeVars까지 흘러가 <html>의 inline
+      // style에 영구 주입된다. 존재·형식을 검사한 뒤 whitelist 키만으로 객체를
+      // **재구성**해 여분 키를 여기서 떨어뜨린다. 값은 color picker 계약(#rrggbb,
+      // 짧은 #rgb 허용)에 맞는 hex만 받는다 — built-in 팔레트 전체가 이 형식이다.
+      const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+      const sanitized = {} as ThemeColors;
+      for (const { key } of THEME_COLOR_KEYS) {
+        const value = data.colors[key];
+        if (typeof value !== "string") {
           throw new Error(`Missing color key: ${key}`);
         }
+        if (!HEX_RE.test(value)) {
+          throw new Error(`Color '${key}' must be a hex value, got: ${value}`);
+        }
+        sanitized[key] = value;
       }
       const newTheme: ThemeDef = {
         id: "custom-" + Date.now(),
         name: data.name,
         base: data.base,
-        colors: data.colors,
+        colors: sanitized,
         builtIn: false,
       };
       saveCustomTheme(newTheme);
