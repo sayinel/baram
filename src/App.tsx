@@ -67,24 +67,14 @@ const FileEditorLayout = lazy(() =>
 );
 
 function App() {
+  const activeSurface = useActiveTabSurface();
   const {
-    activeTab,
-    activeTabFilePath,
-    activeTabId,
-    fileViewers,
-    htmlSourceTabs,
-    isCodeFile,
     isEditableTextFile,
-    isHtmlSourceView,
     isHtmlTab,
-    isPdfTab,
     isPluginPreviewTab,
     markDirty,
-    pluginViewer,
-    previewFileMtime,
     rootPath,
-    setHtmlSourceTabs,
-  } = useActiveTabSurface();
+  } = activeSurface;
 
   const {
     findReplaceMode,
@@ -97,7 +87,7 @@ function App() {
     setFindReplaceOpen,
     setPdfFindApi,
     setPdfFindOpen,
-  } = useFindReplaceRouting(isPdfTab);
+  } = useFindReplaceRouting(activeSurface.isPdfTab);
   // §perf-large-file B2/C2: Loading state for async parse
   const [isParsing, setIsParsing] = useState(false);
 
@@ -190,34 +180,25 @@ function App() {
     toggleSourceMode,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
-  const {
-    isMarkdownSurfaceActive,
-    retainedTabs,
-    statusBarMode,
-    surfaceKind,
-    tabSurfaceRenderers,
-  } = useRetainedSurfaces({
-    activeEditor,
-    activeTab,
-    activeTabId,
-    fileViewers,
-    getSourceBuffer,
-    handleTogglePdfFind,
-    hasSourceBuffer,
-    htmlSourceTabs,
-    isCodeFile,
-    isHtmlSourceView,
-    isPdfTab,
-    isSourceMode,
-    markDirty,
-    pdfFindOpen,
-    rootPath,
-    scrollOffsets,
-    setPdfFindApi,
-    setSourceBuffer,
-    sourceCursorOffsetFor,
-    sourceModeTabs,
-  });
+  const { retainedTabs, statusBarMode, surfaceKind, tabSurfaceRenderers } =
+    useRetainedSurfaces({
+      activeEditor,
+      activeSurface,
+      isSourceMode,
+      pdfFind: {
+        onToggle: handleTogglePdfFind,
+        open: pdfFindOpen,
+        setApi: setPdfFindApi,
+      },
+      scrollOffsets,
+      sourceBuffers: {
+        cursorOffsetFor: sourceCursorOffsetFor,
+        get: getSourceBuffer,
+        has: hasSourceBuffer,
+        set: setSourceBuffer,
+      },
+      sourceModeTabs,
+    });
 
   // Auto-save for non-MD code files (debounced write when dirty)
   useCodeAutoSave({
@@ -312,9 +293,9 @@ function App() {
   // Cmd+/ router that falls through to the markdown source-mode toggle.
   const { handleToggleSourceMode, toggleHtmlView } = usePreviewSourceView({
     getSourceBuffer,
-    htmlSourceTabs,
+    htmlSourceTabs: activeSurface.htmlSourceTabs,
     markDirty,
-    setHtmlSourceTabs,
+    setHtmlSourceTabs: activeSurface.setHtmlSourceTabs,
     toggleSourceMode,
   });
 
@@ -323,7 +304,7 @@ function App() {
   const previewToggleButton =
     isHtmlTab || isPluginPreviewTab ? (
       <PreviewToggleButton
-        isSourceView={isHtmlSourceView}
+        isSourceView={activeSurface.isHtmlSourceView}
         onClick={toggleHtmlView}
       />
     ) : null;
@@ -337,26 +318,34 @@ function App() {
   // --- Keybindings, global keyboard shortcuts, native menu ---
   useAppCommands({
     activeEditor,
-    findReplaceOpen,
-    handleCloseFolder,
-    handleCloseTab,
-    handleGoBack,
-    handleGoForward,
-    handleNewFile,
-    handleOpenFile,
-    handleOpenFilePath,
-    handleOpenFolder,
-    handleSave,
-    handleSaveAs,
+    fileOps: {
+      handleCloseFolder,
+      handleCloseTab,
+      handleNewFile,
+      handleOpenFile,
+      handleOpenFilePath,
+      handleOpenFolder,
+      handleSave,
+      handleSaveAs,
+    },
+    find: {
+      findReplaceOpen,
+      routeFindReplaceOpen,
+      setFindReplaceMode,
+    },
     handleToggleSourceMode,
     inlineAI,
     isSourceMode,
-    routeFindReplaceOpen,
-    setFindReplaceMode,
-    setTabSwitcherIndex,
-    setTabSwitcherOpen,
-    tabSwitcherMruRef,
-    tabSwitcherOpen,
+    navigation: {
+      handleGoBack,
+      handleGoForward,
+    },
+    tabSwitcher: {
+      setTabSwitcherIndex,
+      setTabSwitcherOpen,
+      tabSwitcherMruRef,
+      tabSwitcherOpen,
+    },
   });
 
   return (
@@ -370,35 +359,39 @@ function App() {
       >
         {!!rootPath && <TabBar />}
         <EditorArea
-          activeEditor={activeEditor}
-          activeKeepaliveEditor={activeKeepaliveEditor}
-          activeTabFilePath={activeTabFilePath}
-          activeTabId={activeTabId}
-          editor={editor}
-          findReplaceMode={findReplaceMode}
-          findReplaceOpen={findReplaceOpen}
-          handleNewFile={handleNewFile}
-          handleOpenFile={handleOpenFile}
-          handleOpenFolder={handleOpenFolder}
-          handleOpenRecentFile={handleOpenRecentFile}
-          handleOpenRecentFolder={handleOpenRecentFolder}
-          inlineAI={inlineAI}
-          isMarkdownSurfaceActive={isMarkdownSurfaceActive}
-          isParsing={isParsing}
-          mountedKeepaliveEditor={mountedKeepaliveEditor}
-          pdfFindApi={pdfFindApi}
-          pdfFindOpen={pdfFindOpen}
-          pluginViewer={pluginViewer}
-          previewFileMtime={previewFileMtime}
+          find={{
+            findReplaceMode,
+            findReplaceOpen,
+            pdfFindApi,
+            pdfFindOpen,
+            setFindReplaceMode,
+            setFindReplaceOpen,
+            setPdfFindOpen,
+          }}
+          home={{
+            handleNewFile,
+            handleOpenFile,
+            handleOpenFolder,
+            handleOpenRecentFile,
+            handleOpenRecentFolder,
+          }}
+          markdown={{
+            activeEditor,
+            activeKeepaliveEditor,
+            editor,
+            inlineAI,
+            isParsing,
+            mountedKeepaliveEditor,
+            scrollOffsets,
+          }}
           previewToggleButton={previewToggleButton}
-          retainedTabs={retainedTabs}
-          scrollOffsets={scrollOffsets}
-          setFindReplaceMode={setFindReplaceMode}
-          setFindReplaceOpen={setFindReplaceOpen}
-          setPdfFindOpen={setPdfFindOpen}
-          sourceEditorRef={sourceEditorRef}
-          surfaceKind={surfaceKind}
-          tabSurfaceRenderers={tabSurfaceRenderers}
+          surface={{
+            activeSurface,
+            retainedTabs,
+            sourceEditorRef,
+            surfaceKind,
+            tabSurfaceRenderers,
+          }}
         />
         <PromptLintPanel editor={activeEditor} />
         {isSkill && (

@@ -10,9 +10,9 @@ import type {
 } from "react";
 
 import type { SourceCodeEditorRef } from "../../components/editor/SourceCodeEditor";
+import type { ActiveSurfaceSnapshot } from "../../hooks/use-active-tab-surface";
 import type { UseInlineAIReturn } from "../../hooks/use-inline-ai";
 import type { RetainedEntry } from "../../hooks/use-retained-tabs";
-import type { PluginFileViewer } from "../../plugins/plugin-ui-store";
 import type { SurfaceKind } from "../../utils/editor/surface-kind";
 import type { PdfFindApi } from "../editor/pdf/use-pdf-find";
 import type { TabSurfaceRenderers } from "../editor/tab-surface-renderers";
@@ -26,80 +26,82 @@ import { TabSurface } from "../editor/TabSurface";
 import { HomeSurface } from "../onboarding/HomeSurface";
 import { GraphViewLazy } from "../sidebar/GraphViewLazy";
 
-interface EditorAreaProps {
-  activeEditor: Editor | null;
-  activeKeepaliveEditor: Editor | null;
-  activeTabFilePath: null | string;
-  activeTabId: null | string;
-  editor: Editor | null;
-  findReplaceMode: "find" | "replace";
-  findReplaceOpen: boolean;
-  handleNewFile: () => void;
-  handleOpenFile: () => void;
-  handleOpenFolder: () => void;
-  handleOpenRecentFile: (path: string) => void;
-  handleOpenRecentFolder: (path: string) => void;
-  inlineAI: UseInlineAIReturn;
-  isMarkdownSurfaceActive: boolean;
-  isParsing: boolean;
-  mountedKeepaliveEditor: Editor | null;
-  pdfFindApi: null | PdfFindApi;
-  pdfFindOpen: boolean;
-  pluginViewer: null | PluginFileViewer;
-  previewFileMtime: number;
-  previewToggleButton: ReactNode;
+/** What surface is showing, and everything the retained-tabs render loop needs. */
+interface EditorAreaSurfaceProps {
+  activeSurface: ActiveSurfaceSnapshot;
   retainedTabs: RetainedEntry[];
-  scrollOffsets: MutableRefObject<Map<string, number>>;
-  setFindReplaceMode: Dispatch<SetStateAction<"find" | "replace">>;
-  setFindReplaceOpen: Dispatch<SetStateAction<boolean>>;
-  setPdfFindOpen: Dispatch<SetStateAction<boolean>>;
   sourceEditorRef: React.RefObject<null | SourceCodeEditorRef>;
   surfaceKind: SurfaceKind;
   tabSurfaceRenderers: TabSurfaceRenderers;
 }
 
+/** Everything the always-mounted `MarkdownSurface` needs. */
+interface EditorAreaMarkdownProps {
+  activeEditor: Editor | null;
+  activeKeepaliveEditor: Editor | null;
+  editor: Editor | null;
+  inlineAI: UseInlineAIReturn;
+  isParsing: boolean;
+  mountedKeepaliveEditor: Editor | null;
+  scrollOffsets: MutableRefObject<Map<string, number>>;
+}
+
+/** Find/replace state plus the PDF find-controller pieces EditorArea itself renders. */
+interface EditorAreaFindProps {
+  findReplaceMode: "find" | "replace";
+  findReplaceOpen: boolean;
+  pdfFindApi: null | PdfFindApi;
+  pdfFindOpen: boolean;
+  setFindReplaceMode: Dispatch<SetStateAction<"find" | "replace">>;
+  setFindReplaceOpen: Dispatch<SetStateAction<boolean>>;
+  setPdfFindOpen: Dispatch<SetStateAction<boolean>>;
+}
+
+/** The home-surface's file/vault actions. */
+interface EditorAreaHomeProps {
+  handleNewFile: () => void;
+  handleOpenFile: () => void;
+  handleOpenFolder: () => void;
+  handleOpenRecentFile: (path: string) => void;
+  handleOpenRecentFolder: (path: string) => void;
+}
+
+interface EditorAreaProps {
+  find: EditorAreaFindProps;
+  home: EditorAreaHomeProps;
+  markdown: EditorAreaMarkdownProps;
+  previewToggleButton: ReactNode;
+  surface: EditorAreaSurfaceProps;
+}
+
 export function EditorArea({
-  activeEditor,
-  activeKeepaliveEditor,
-  activeTabFilePath,
-  activeTabId,
-  editor,
-  findReplaceMode,
-  findReplaceOpen,
-  handleNewFile,
-  handleOpenFile,
-  handleOpenFolder,
-  handleOpenRecentFile,
-  handleOpenRecentFolder,
-  inlineAI,
-  isMarkdownSurfaceActive,
-  isParsing,
-  mountedKeepaliveEditor,
-  pdfFindApi,
-  pdfFindOpen,
-  pluginViewer,
-  previewFileMtime,
+  find,
+  home,
+  markdown,
   previewToggleButton,
-  retainedTabs,
-  scrollOffsets,
-  setFindReplaceMode,
-  setFindReplaceOpen,
-  setPdfFindOpen,
-  sourceEditorRef,
-  surfaceKind,
-  tabSurfaceRenderers,
+  surface,
 }: EditorAreaProps) {
   const { t } = useTranslation();
+  const {
+    activeSurface,
+    retainedTabs,
+    sourceEditorRef,
+    surfaceKind,
+    tabSurfaceRenderers,
+  } = surface;
+  // §286 마크다운 표면이 지금 보여야 하는가 — `surfaceKind`의 순수 함수다. 별도 prop으로
+  // 받으면 두 값이 어긋날 수 있다(quality review HIGH) — 여기서 한 줄로 유도한다.
+  const isMarkdownSurfaceActive = surfaceKind === "markdown";
 
   return (
     <div className="editor-area">
       {surfaceKind === "home" ? (
         <HomeSurface
-          onNewFile={handleNewFile}
-          onOpenFile={handleOpenFile}
-          onOpenFolder={handleOpenFolder}
-          onOpenRecentFile={handleOpenRecentFile}
-          onOpenRecentFolder={handleOpenRecentFolder}
+          onNewFile={home.handleNewFile}
+          onOpenFile={home.handleOpenFile}
+          onOpenFolder={home.handleOpenFolder}
+          onOpenRecentFile={home.handleOpenRecentFile}
+          onOpenRecentFolder={home.handleOpenRecentFolder}
         />
       ) : surfaceKind === "empty" ? (
         <div className="editor-area-scroll" data-editor-scroll>
@@ -115,22 +117,22 @@ export function EditorArea({
             <GraphViewLazy />
           </Suspense>
         </div>
-      ) : surfaceKind === "image" && activeTabFilePath ? (
+      ) : surfaceKind === "image" && activeSurface.activeTabFilePath ? (
         <div
           className="editor-area-scroll plugin-viewer-scroll"
           data-editor-scroll
         >
-          {pluginViewer ? (
+          {activeSurface.pluginViewer ? (
             <PluginViewerHost
-              filePath={activeTabFilePath}
-              refreshKey={previewFileMtime}
-              viewer={pluginViewer}
+              filePath={activeSurface.activeTabFilePath}
+              refreshKey={activeSurface.previewFileMtime}
+              viewer={activeSurface.pluginViewer}
             />
           ) : (
             <div className="viewer-missing">{t("viewer.noPlugin")}</div>
           )}
         </div>
-      ) : surfaceKind === "preview" && pluginViewer ? (
+      ) : surfaceKind === "preview" && activeSurface.pluginViewer ? (
         // §290 플러그인이 그리는 프리뷰는 유지하지 않는다 — 공개 viewer 계약에
         // 가시성 신호가 없어, 마운트를 유지하면 미디어 뷰어가 숨은 탭에서 계속
         // 재생된다(dev/backlog.md 참조). 활성일 때만 렌더한다. (HTML 프리뷰는
@@ -142,50 +144,50 @@ export function EditorArea({
         >
           {previewToggleButton}
           <PluginViewerHost
-            filePath={activeTabFilePath!}
-            refreshKey={previewFileMtime}
-            viewer={pluginViewer}
+            filePath={activeSurface.activeTabFilePath!}
+            refreshKey={activeSurface.previewFileMtime}
+            viewer={activeSurface.pluginViewer}
           />
         </div>
       ) : null}
       {/* §272 활성 PDF의 찾기 바 — 표면 바깥(FindReplaceBar와 같은 자리)에 그린다.
           유지 집합에는 PDF가 여러 개 있을 수 있으므로 여기 하나만 존재해야 한다. */}
-      {surfaceKind === "pdf" && pdfFindOpen && pdfFindApi && (
+      {surfaceKind === "pdf" && find.pdfFindOpen && find.pdfFindApi && (
         <PdfFindBar
-          currentIdx={pdfFindApi.currentIdx}
-          matchCount={pdfFindApi.matchCount}
-          onClose={() => setPdfFindOpen(false)}
-          onNext={pdfFindApi.onNext}
-          onPrev={pdfFindApi.onPrev}
-          onQueryChange={pdfFindApi.onQueryChange}
+          currentIdx={find.pdfFindApi.currentIdx}
+          matchCount={find.pdfFindApi.matchCount}
+          onClose={() => find.setPdfFindOpen(false)}
+          onNext={find.pdfFindApi.onNext}
+          onPrev={find.pdfFindApi.onPrev}
+          onQueryChange={find.pdfFindApi.onQueryChange}
         />
       )}
       {/* §286 유지 집합 — 활성만 보이고 나머지는 마운트된 채 숨는다. */}
       {retainedTabs.map((entry) => (
         <TabSurface
-          active={entry.tabId === activeTabId}
+          active={entry.tabId === activeSurface.activeTabId}
           entry={entry}
           key={`${entry.kind}-${entry.tabId}`}
           overlay={previewToggleButton}
           renderers={tabSurfaceRenderers}
-          scrollOffsets={scrollOffsets}
+          scrollOffsets={markdown.scrollOffsets}
           sourceEditorRef={sourceEditorRef}
         />
       ))}
       <MarkdownSurface
         active={isMarkdownSurfaceActive}
-        activeEditor={activeEditor}
-        activeKeepaliveEditor={activeKeepaliveEditor}
-        editor={editor}
-        findReplaceMode={findReplaceMode}
-        findReplaceOpen={findReplaceOpen}
-        inlineAI={inlineAI}
-        isParsing={isParsing}
-        mountedKeepaliveEditor={mountedKeepaliveEditor}
-        onFindReplaceClose={() => setFindReplaceOpen(false)}
-        onFindReplaceModeChange={setFindReplaceMode}
-        scrollOffsets={scrollOffsets}
-        tabId={activeTabId}
+        activeEditor={markdown.activeEditor}
+        activeKeepaliveEditor={markdown.activeKeepaliveEditor}
+        editor={markdown.editor}
+        findReplaceMode={find.findReplaceMode}
+        findReplaceOpen={find.findReplaceOpen}
+        inlineAI={markdown.inlineAI}
+        isParsing={markdown.isParsing}
+        mountedKeepaliveEditor={markdown.mountedKeepaliveEditor}
+        onFindReplaceClose={() => find.setFindReplaceOpen(false)}
+        onFindReplaceModeChange={find.setFindReplaceMode}
+        scrollOffsets={markdown.scrollOffsets}
+        tabId={activeSurface.activeTabId}
       />
     </div>
   );

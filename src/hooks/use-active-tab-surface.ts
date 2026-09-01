@@ -20,7 +20,19 @@ import {
   isPdfFile,
 } from "../utils/file-type";
 
-interface UseActiveTabSurfaceReturn {
+/**
+ * The active tab's identity plus every file-type/surface flag derived from it —
+ * ONE object instead of the ~16 loose fields this hook used to return. Downstream
+ * consumers (`useRetainedSurfaces`, `EditorArea`) take this whole snapshot as a
+ * single parameter rather than threading each field through separately, so a
+ * future file-type flag added here doesn't also require touching every
+ * consumer's parameter list.
+ *
+ * `isImageTab` intentionally does NOT appear here: it feeds only the two derived
+ * flags below (`isPluginPreviewTab`, `previewFileMtime`'s viewer check), and
+ * nothing outside this hook consumes it.
+ */
+export interface ActiveSurfaceSnapshot {
   activeTab: EditorTab | undefined;
   activeTabFilePath: null | string;
   activeTabId: null | string;
@@ -30,7 +42,6 @@ interface UseActiveTabSurfaceReturn {
   isEditableTextFile: boolean;
   isHtmlSourceView: boolean;
   isHtmlTab: boolean;
-  isImageTab: boolean;
   isPdfTab: boolean;
   isPluginPreviewTab: boolean;
   markDirty: (tabId: string, dirty: boolean) => void;
@@ -40,7 +51,7 @@ interface UseActiveTabSurfaceReturn {
   setHtmlSourceTabs: Dispatch<SetStateAction<Set<string>>>;
 }
 
-export function useActiveTabSurface(): UseActiveTabSurfaceReturn {
+export function useActiveTabSurface(): ActiveSurfaceSnapshot {
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const activeTabFilePath = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -113,7 +124,6 @@ export function useActiveTabSurface(): UseActiveTabSurfaceReturn {
     isEditableTextFile,
     isHtmlSourceView,
     isHtmlTab,
-    isImageTab,
     isPdfTab,
     isPluginPreviewTab,
     markDirty,

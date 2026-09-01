@@ -6,9 +6,8 @@ import { useEffect, useMemo } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 
 import type { PdfFindApi } from "../components/editor/pdf/use-pdf-find";
-import type { PluginFileViewer } from "../plugins/plugin-ui-store";
-import type { EditorTab } from "../stores/editor/editor";
 import type { SurfaceKind } from "../utils/editor/surface-kind";
+import type { ActiveSurfaceSnapshot } from "./use-active-tab-surface";
 import type { Editor } from "@tiptap/react";
 
 import {
@@ -29,31 +28,47 @@ import { resolveSurfaceKind } from "../utils/editor/surface-kind";
 import { getLanguageForFile } from "../utils/file-type";
 import { type RetainedEntry, useRetainedTabs } from "./use-retained-tabs";
 
+/**
+ * Params, regrouped around origin rather than the old monolith's flat call site
+ * (quality review HIGH finding — this hook used to take 20 loose fields). Only
+ * genuinely EPHEMERAL cross-hook state travels as a parameter now:
+ * - `activeEditor`, `scrollOffsets` — instances/refs App.tsx owns.
+ * - `sourceBuffers`, `pdfFind` — callbacks from sibling hooks (`useSourceMode`,
+ *   `useFindReplaceRouting`) this hook has no way to read itself.
+ * - `isSourceMode`, `sourceModeTabs` — also `useSourceMode` output, NOT
+ *   store-owned, so (unlike the fields below) there is no selector this hook
+ *   could read internally instead; `useSourceMode` cannot be called a second
+ *   time here without creating a second, diverging instance of its state.
+ *
+ * Everything else the old param list carried (`activeTab`, `activeTabId`,
+ * `fileViewers`, `htmlSourceTabs`, `isCodeFile`, `isHtmlSourceView`, `isPdfTab`,
+ * `markDirty`, `rootPath`) is `useActiveTabSurface`'s own derived state, not
+ * this hook's or the store's — it arrives as the one `activeSurface` snapshot
+ * instead of nine more loose fields. `isCodeFile`/`isPdfTab`/`isHtmlSourceView`
+ * are formulas (not raw store fields), so re-deriving them here from scratch
+ * would risk the exact "two call sites quietly disagree" defect the
+ * `isCodeFile` doc comment in `use-active-tab-surface.ts` already warns about.
+ */
 interface UseRetainedSurfacesParams {
   activeEditor: Editor | null;
-  activeTab: EditorTab | undefined;
-  activeTabId: null | string;
-  fileViewers: PluginFileViewer[];
-  getSourceBuffer: (tabId: string) => string;
-  handleTogglePdfFind: () => void;
-  hasSourceBuffer: (tabId: string) => boolean;
-  htmlSourceTabs: ReadonlySet<string>;
-  isCodeFile: boolean;
-  isHtmlSourceView: boolean;
-  isPdfTab: boolean;
+  activeSurface: ActiveSurfaceSnapshot;
   isSourceMode: boolean;
-  markDirty: (tabId: string, dirty: boolean) => void;
-  pdfFindOpen: boolean;
-  rootPath: null | string;
+  pdfFind: {
+    onToggle: () => void;
+    open: boolean;
+    setApi: Dispatch<SetStateAction<null | PdfFindApi>>;
+  };
   scrollOffsets: MutableRefObject<Map<string, number>>;
-  setPdfFindApi: Dispatch<SetStateAction<null | PdfFindApi>>;
-  setSourceBuffer: (tabId: string, content: string) => void;
-  sourceCursorOffsetFor: (tabId: string) => number;
+  sourceBuffers: {
+    cursorOffsetFor: (tabId: string) => number;
+    get: (tabId: string) => string;
+    has: (tabId: string) => boolean;
+    set: (tabId: string, content: string) => void;
+  };
   sourceModeTabs: ReadonlySet<string>;
 }
 
 interface UseRetainedSurfacesReturn {
-  isMarkdownSurfaceActive: boolean;
   retainedTabs: RetainedEntry[];
   statusBarMode: EditorMode;
   surfaceKind: SurfaceKind;
@@ -62,26 +77,29 @@ interface UseRetainedSurfacesReturn {
 
 export function useRetainedSurfaces({
   activeEditor,
-  activeTab,
-  activeTabId,
-  fileViewers,
-  getSourceBuffer,
-  handleTogglePdfFind,
-  hasSourceBuffer,
-  htmlSourceTabs,
-  isCodeFile,
-  isHtmlSourceView,
-  isPdfTab,
+  activeSurface,
   isSourceMode,
-  markDirty,
-  pdfFindOpen,
-  rootPath,
+  pdfFind,
   scrollOffsets,
-  setPdfFindApi,
-  setSourceBuffer,
-  sourceCursorOffsetFor,
+  sourceBuffers,
   sourceModeTabs,
 }: UseRetainedSurfacesParams): UseRetainedSurfacesReturn {
+  // Field-level locals, not `activeSurface` itself, feed the memo/effect deps
+  // below — an object-identity dep would re-fire every render, since App.tsx
+  // rebuilds the snapshot object fresh each render even though these
+  // individual fields are themselves stable/equality-gated.
+  const {
+    activeTab,
+    activeTabId,
+    fileViewers,
+    htmlSourceTabs,
+    isCodeFile,
+    isHtmlSourceView,
+    isPdfTab,
+    markDirty,
+    rootPath,
+  } = activeSurface;
+
   // §286/§298 vim §8 — ONE surface computation (`resolveSurfaceKind`, `utils/editor/
   // surface-kind.ts`) now feeds the StatusBar, the wysiwyg status owner below, the
   // `isMarkdownSurfaceActive` gate, and the render chain further down — a single answer to
@@ -124,29 +142,29 @@ export function useRetainedSurfaces({
       createTabSurfaceRenderers({
         codeLanguageFor: (filePath) =>
           getLanguageForFile(filePath) ?? undefined,
-        getSourceBuffer,
-        hasSourceBuffer,
+        getSourceBuffer: sourceBuffers.get,
+        hasSourceBuffer: sourceBuffers.has,
         markDirty,
-        onPdfFindApiChange: setPdfFindApi,
-        onTogglePdfFind: handleTogglePdfFind,
-        pdfFindOpen,
+        onPdfFindApiChange: pdfFind.setApi,
+        onTogglePdfFind: pdfFind.onToggle,
+        pdfFindOpen: pdfFind.open,
         scrollOffsets,
         pluginIdFor: (tabId) =>
           useEditorStore.getState().tabs.find((t) => t.id === tabId)
             ?.pluginId ?? "",
-        setSourceBuffer,
-        sourceCursorOffsetFor,
+        setSourceBuffer: sourceBuffers.set,
+        sourceCursorOffsetFor: sourceBuffers.cursorOffsetFor,
       }),
     [
-      getSourceBuffer,
-      hasSourceBuffer,
-      handleTogglePdfFind,
+      sourceBuffers.get,
+      sourceBuffers.has,
+      sourceBuffers.set,
+      sourceBuffers.cursorOffsetFor,
       markDirty,
-      pdfFindOpen,
+      pdfFind.onToggle,
+      pdfFind.open,
+      pdfFind.setApi,
       scrollOffsets,
-      setPdfFindApi,
-      setSourceBuffer,
-      sourceCursorOffsetFor,
     ],
   );
 
@@ -160,13 +178,6 @@ export function useRetainedSurfaces({
     htmlSourceTabs,
     pluginPreviewTabs,
   );
-
-  // §286 마크다운 표면이 지금 보여야 하는가.
-  //
-  // 예전엔 아래 render 삼항 사슬의 마지막 else 조건을 손으로 그대로 부정한 별도 식이었다 —
-  // "새 갈래를 추가하면 여기도 고쳐야 한다"는 사람이 지켜야 하는 계약이었던 것을,
-  // `surfaceKind`가 단일 판정으로 대체했다(우선순위·이력은 `resolveSurfaceKind` docblock 참조).
-  const isMarkdownSurfaceActive = surfaceKind === "markdown";
 
   // §260 Phase 4b — the policy and its rationale now live in `editorSurfaceBlockReason`, with
   // tests. It moved out because nothing imports `App`, so this gate was unverified.
@@ -182,7 +193,6 @@ export function useRetainedSurfaces({
   }, [activeTab, isCodeFile, isPdfTab, isSourceMode]);
 
   return {
-    isMarkdownSurfaceActive,
     retainedTabs,
     statusBarMode,
     surfaceKind,

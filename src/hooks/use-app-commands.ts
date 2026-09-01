@@ -15,24 +15,44 @@ import { useGlobalKeyboard } from "./use-global-keyboard";
 import { useKeybindingActions } from "./use-keybinding-actions";
 import { useMenuEventHandler } from "./use-menu-event-handler";
 
-interface UseAppCommandsParams {
-  activeEditor: Editor | null;
-  findReplaceOpen: boolean;
+/** File lifecycle actions — shared verbatim by keybindings and the native menu. */
+interface UseAppCommandsFileOps {
   handleCloseFolder: () => void;
   handleCloseTab: () => void;
-  handleGoBack: () => void;
-  handleGoForward: () => void;
   handleNewFile: (name?: string) => void;
   handleOpenFile: () => Promise<void>;
   handleOpenFilePath: (filePath: string) => Promise<void>;
   handleOpenFolder: () => Promise<void>;
   handleSave: () => Promise<void>;
   handleSaveAs: () => Promise<void>;
+}
+
+/** Back/forward history — global keyboard and the native menu's Go entries. */
+interface UseAppCommandsNavigation {
+  handleGoBack: () => void;
+  handleGoForward: () => void;
+}
+
+/** Find/replace routing state each of the three inner hooks touches a slice of. */
+interface UseAppCommandsFind {
+  findReplaceOpen: boolean;
+  routeFindReplaceOpen: Dispatch<SetStateAction<boolean>>;
+  setFindReplaceMode: Dispatch<SetStateAction<"find" | "replace">>;
+}
+
+interface UseAppCommandsParams {
+  activeEditor: Editor | null;
+  fileOps: UseAppCommandsFileOps;
+  find: UseAppCommandsFind;
   handleToggleSourceMode: () => void;
   inlineAI: UseInlineAIReturn;
   isSourceMode: boolean;
-  routeFindReplaceOpen: Dispatch<SetStateAction<boolean>>;
-  setFindReplaceMode: Dispatch<SetStateAction<"find" | "replace">>;
+  navigation: UseAppCommandsNavigation;
+  tabSwitcher: UseAppCommandsTabSwitcher;
+}
+
+/** Cmd+Tab-style MRU switcher state — global keyboard owns this exclusively. */
+interface UseAppCommandsTabSwitcher {
   setTabSwitcherIndex: Dispatch<SetStateAction<number>>;
   setTabSwitcherOpen: Dispatch<SetStateAction<boolean>>;
   tabSwitcherMruRef: React.MutableRefObject<EditorTab[]>;
@@ -41,26 +61,13 @@ interface UseAppCommandsParams {
 
 export function useAppCommands({
   activeEditor,
-  findReplaceOpen,
-  handleCloseFolder,
-  handleCloseTab,
-  handleGoBack,
-  handleGoForward,
-  handleNewFile,
-  handleOpenFile,
-  handleOpenFilePath,
-  handleOpenFolder,
-  handleSave,
-  handleSaveAs,
+  fileOps,
+  find,
   handleToggleSourceMode,
   inlineAI,
   isSourceMode,
-  routeFindReplaceOpen,
-  setFindReplaceMode,
-  setTabSwitcherIndex,
-  setTabSwitcherOpen,
-  tabSwitcherMruRef,
-  tabSwitcherOpen,
+  navigation,
+  tabSwitcher,
 }: UseAppCommandsParams): void {
   const {
     toggleSidebar,
@@ -81,16 +88,16 @@ export function useAppCommands({
   // --- Keybinding actions registration ---
   useKeybindingActions({
     editor: activeEditor,
-    handleCloseFolder,
-    handleCloseTab,
-    handleNewFile,
-    handleOpenFile,
-    handleOpenFolder,
-    handleSave,
-    handleSaveAs,
+    handleCloseFolder: fileOps.handleCloseFolder,
+    handleCloseTab: fileOps.handleCloseTab,
+    handleNewFile: fileOps.handleNewFile,
+    handleOpenFile: fileOps.handleOpenFile,
+    handleOpenFolder: fileOps.handleOpenFolder,
+    handleSave: fileOps.handleSave,
+    handleSaveAs: fileOps.handleSaveAs,
     inlineAI,
-    setFindReplaceMode,
-    setFindReplaceOpen: routeFindReplaceOpen,
+    setFindReplaceMode: find.setFindReplaceMode,
+    setFindReplaceOpen: find.routeFindReplaceOpen,
     setSidebarPanel,
     toggleCommandPalette,
     toggleQuickSwitcher,
@@ -102,30 +109,30 @@ export function useAppCommands({
   // --- Global keyboard shortcuts ---
   useGlobalKeyboard({
     editor: activeEditor,
-    findReplaceOpen,
-    handleGoBack,
-    handleGoForward,
+    findReplaceOpen: find.findReplaceOpen,
+    handleGoBack: navigation.handleGoBack,
+    handleGoForward: navigation.handleGoForward,
     isSourceMode,
-    setTabSwitcherIndex,
-    setTabSwitcherOpen,
-    tabSwitcherMruRef,
-    tabSwitcherOpen,
+    setTabSwitcherIndex: tabSwitcher.setTabSwitcherIndex,
+    setTabSwitcherOpen: tabSwitcher.setTabSwitcherOpen,
+    tabSwitcherMruRef: tabSwitcher.tabSwitcherMruRef,
+    tabSwitcherOpen: tabSwitcher.tabSwitcherOpen,
   });
 
   // Native menu event listener (Tauri menu bar → frontend dispatch)
   useMenuEventHandler({
     editor: activeEditor,
-    handleCloseFolder,
-    handleCloseTab,
-    handleGoBack,
-    handleGoForward,
-    handleNewFile,
-    handleOpenFile,
-    handleOpenFilePath,
-    handleOpenFolder,
-    handleSave,
-    handleSaveAs,
-    setFindReplaceOpen: routeFindReplaceOpen,
+    handleCloseFolder: fileOps.handleCloseFolder,
+    handleCloseTab: fileOps.handleCloseTab,
+    handleGoBack: navigation.handleGoBack,
+    handleGoForward: navigation.handleGoForward,
+    handleNewFile: fileOps.handleNewFile,
+    handleOpenFile: fileOps.handleOpenFile,
+    handleOpenFilePath: fileOps.handleOpenFilePath,
+    handleOpenFolder: fileOps.handleOpenFolder,
+    handleSave: fileOps.handleSave,
+    handleSaveAs: fileOps.handleSaveAs,
+    setFindReplaceOpen: find.routeFindReplaceOpen,
     toggleCommandPalette,
     toggleQuickSwitcher,
     toggleSettings,
