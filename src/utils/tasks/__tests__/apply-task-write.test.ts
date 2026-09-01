@@ -111,11 +111,15 @@ describe("applyTaskWrite — 디스크 경로", () => {
       "/v/note.md",
       1,
       "- [ ] 초안 📅2026-08-30",
-      "done",
-      true,
-      "2026-08-24",
-      // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-      null,
+      {
+        // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+        dates: undefined,
+        newState: "done",
+        recordDoneDate: true,
+        // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
+        timer: null,
+        today: "2026-08-24",
+      },
     );
     expect(r).toEqual({
       kind: "disk",

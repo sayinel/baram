@@ -4,7 +4,9 @@
   "commands": [
     {
       "name": "read_file",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "string",
       "module": "fs",
       "spec": "§3.2",
@@ -15,7 +17,10 @@
     },
     {
       "name": "write_file",
-      "input": { "path": "string", "content": "string" },
+      "input": {
+        "path": "string",
+        "content": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -26,7 +31,10 @@
     },
     {
       "name": "list_dir",
-      "input": { "path": "string", "recursive": "boolean?" },
+      "input": {
+        "path": "string",
+        "recursive": "boolean?"
+      },
       "output": "FileEntry[]",
       "module": "fs",
       "spec": "§3.2",
@@ -37,7 +45,10 @@
     },
     {
       "name": "rename_file",
-      "input": { "from": "string", "to": "string" },
+      "input": {
+        "from": "string",
+        "to": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -48,7 +59,9 @@
     },
     {
       "name": "delete_file",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -59,7 +72,9 @@
     },
     {
       "name": "watch_dir",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -70,7 +85,9 @@
     },
     {
       "name": "get_config",
-      "input": { "key": "string" },
+      "input": {
+        "key": "string"
+      },
       "output": "string | null",
       "module": "config",
       "spec": "§3.2",
@@ -81,7 +98,10 @@
     },
     {
       "name": "set_config",
-      "input": { "key": "string", "value": "string" },
+      "input": {
+        "key": "string",
+        "value": "string"
+      },
       "output": "void",
       "module": "config",
       "spec": "§3.2",
@@ -92,7 +112,9 @@
     },
     {
       "name": "remove_config",
-      "input": { "key": "string" },
+      "input": {
+        "key": "string"
+      },
       "output": "void",
       "module": "config",
       "spec": "§3.2",
@@ -103,7 +125,11 @@
     },
     {
       "name": "search_files",
-      "input": { "root_path": "string", "query": "string", "options": "SearchOptions?" },
+      "input": {
+        "root_path": "string",
+        "query": "string",
+        "options": "SearchOptions?"
+      },
       "output": "SearchResult[]",
       "module": "search",
       "spec": "§3.2",
@@ -114,7 +140,9 @@
     },
     {
       "name": "get_backlinks",
-      "input": { "filePath": "string" },
+      "input": {
+        "filePath": "string"
+      },
       "output": "BacklinkEntry[]",
       "module": "index",
       "spec": "§29",
@@ -136,7 +164,9 @@
     },
     {
       "name": "refresh_index",
-      "input": { "rootPath": "string" },
+      "input": {
+        "rootPath": "string"
+      },
       "output": "IndexStats",
       "module": "index",
       "spec": "§29",
@@ -147,7 +177,9 @@
     },
     {
       "name": "update_file_index",
-      "input": { "filePath": "string" },
+      "input": {
+        "filePath": "string"
+      },
       "output": "void",
       "module": "index",
       "spec": "§29",
@@ -158,7 +190,10 @@
     },
     {
       "name": "rename_file_with_links",
-      "input": { "oldPath": "string", "newPath": "string" },
+      "input": {
+        "oldPath": "string",
+        "newPath": "string"
+      },
       "output": "RenameResult",
       "module": "index",
       "spec": "§33",
@@ -169,7 +204,10 @@
     },
     {
       "name": "get_unlinked_mentions",
-      "input": { "filePath": "string", "rootPath": "string" },
+      "input": {
+        "filePath": "string",
+        "rootPath": "string"
+      },
       "output": "UnlinkedMention[]",
       "module": "index",
       "spec": "§34",
@@ -180,7 +218,10 @@
     },
     {
       "name": "llm_list_models",
-      "input": { "provider": "string", "baseUrl": "string?" },
+      "input": {
+        "provider": "string",
+        "baseUrl": "string?"
+      },
       "output": "ModelInfo[]",
       "module": "llm",
       "spec": "§6.3",
@@ -191,7 +232,16 @@
     },
     {
       "name": "llm_complete",
-      "input": { "prompt": "string", "model": "string", "requestId": "string", "systemPrompt": "string?", "maxTokens": "number?", "provider": "string?", "baseUrl": "string?", "privacyMode": "boolean?" },
+      "input": {
+        "prompt": "string",
+        "model": "string",
+        "requestId": "string",
+        "systemPrompt": "string?",
+        "maxTokens": "number?",
+        "provider": "string?",
+        "baseUrl": "string?",
+        "privacyMode": "boolean?"
+      },
       "output": "stream",
       "module": "llm",
       "spec": "§6.3",
@@ -202,7 +252,9 @@
     },
     {
       "name": "create_dir",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -213,7 +265,9 @@
     },
     {
       "name": "delete_dir",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -224,7 +278,12 @@
     },
     {
       "name": "export_document",
-      "input": { "html_content": "string", "output_path": "string", "format": "string", "options": "JsonValue?" },
+      "input": {
+        "html_content": "string",
+        "output_path": "string",
+        "format": "string",
+        "options": "JsonValue?"
+      },
       "output": "void",
       "module": "export",
       "spec": "§5.10",
@@ -235,7 +294,11 @@
     },
     {
       "name": "export_pdf",
-      "input": { "htmlContent": "string", "outputPath": "string", "options": "PdfOptions?" },
+      "input": {
+        "htmlContent": "string",
+        "outputPath": "string",
+        "options": "PdfOptions?"
+      },
       "output": "void",
       "module": "export",
       "spec": "§5.10",
@@ -257,7 +320,9 @@
     },
     {
       "name": "update_menu_locale",
-      "input": { "labels": "Record<string, string>" },
+      "input": {
+        "labels": "Record<string, string>"
+      },
       "output": "void",
       "module": "app",
       "spec": "i18n",
@@ -269,7 +334,9 @@
     },
     {
       "name": "update_recent_menu",
-      "input": { "entries": "RecentMenuEntry[]" },
+      "input": {
+        "entries": "RecentMenuEntry[]"
+      },
       "output": "void",
       "module": "app",
       "spec": "§82",
@@ -293,7 +360,11 @@
     },
     {
       "name": "rename_block_id",
-      "input": { "file_path": "string", "old_id": "string", "new_id": "string" },
+      "input": {
+        "file_path": "string",
+        "old_id": "string",
+        "new_id": "string"
+      },
       "output": "RenameResult",
       "module": "index",
       "spec": "§30a",
@@ -304,7 +375,11 @@
     },
     {
       "name": "rename_namespace",
-      "input": { "oldDir": "string", "newDir": "string", "rootPath": "string" },
+      "input": {
+        "oldDir": "string",
+        "newDir": "string",
+        "rootPath": "string"
+      },
       "output": "NamespaceRenameResult",
       "module": "index",
       "spec": "§61",
@@ -315,7 +390,9 @@
     },
     {
       "name": "git_status",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "GitStatus",
       "module": "git",
       "spec": "§3.2",
@@ -326,7 +403,10 @@
     },
     {
       "name": "git_commit",
-      "input": { "path": "string", "message": "string" },
+      "input": {
+        "path": "string",
+        "message": "string"
+      },
       "output": "string",
       "module": "git",
       "spec": "§3.2",
@@ -337,7 +417,10 @@
     },
     {
       "name": "copy_file",
-      "input": { "from": "string", "to": "string" },
+      "input": {
+        "from": "string",
+        "to": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -348,7 +431,10 @@
     },
     {
       "name": "extract_zip",
-      "input": { "zipPath": "string", "outputDir": "string" },
+      "input": {
+        "zipPath": "string",
+        "outputDir": "string"
+      },
       "output": "string[]",
       "module": "fs",
       "spec": "§53",
@@ -359,7 +445,9 @@
     },
     {
       "name": "detect_pandoc",
-      "input": { "pandocPath": "string?" },
+      "input": {
+        "pandocPath": "string?"
+      },
       "output": "PandocInfo",
       "module": "export",
       "spec": "§55",
@@ -370,7 +458,15 @@
     },
     {
       "name": "export_pandoc",
-      "input": { "markdownContent": "string", "outputPath": "string", "format": "string", "pandocPath": "string?", "referenceDoc": "string?", "extraArgs": "string[]?", "assets": "PandocAsset[]?" },
+      "input": {
+        "markdownContent": "string",
+        "outputPath": "string",
+        "format": "string",
+        "pandocPath": "string?",
+        "referenceDoc": "string?",
+        "extraArgs": "string[]?",
+        "assets": "PandocAsset[]?"
+      },
       "output": "void",
       "module": "export",
       "spec": "§55",
@@ -381,7 +477,12 @@
     },
     {
       "name": "run_custom_export",
-      "input": { "command": "string", "filePath": "string", "outputPath": "string", "vaultDir": "string?" },
+      "input": {
+        "command": "string",
+        "filePath": "string",
+        "outputPath": "string",
+        "vaultDir": "string?"
+      },
       "output": "void",
       "module": "export",
       "spec": "§55",
@@ -392,7 +493,10 @@
     },
     {
       "name": "git_stage",
-      "input": { "path": "string", "files": "string[]" },
+      "input": {
+        "path": "string",
+        "files": "string[]"
+      },
       "output": "void",
       "module": "git",
       "spec": "§57b",
@@ -403,7 +507,10 @@
     },
     {
       "name": "git_unstage",
-      "input": { "path": "string", "files": "string[]" },
+      "input": {
+        "path": "string",
+        "files": "string[]"
+      },
       "output": "void",
       "module": "git",
       "spec": "§57b",
@@ -414,7 +521,10 @@
     },
     {
       "name": "git_diff_file",
-      "input": { "path": "string", "filePath": "string" },
+      "input": {
+        "path": "string",
+        "filePath": "string"
+      },
       "output": "GitFileDiff",
       "module": "git",
       "spec": "§57b",
@@ -425,7 +535,9 @@
     },
     {
       "name": "git_branches",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "GitBranchInfo[]",
       "module": "git",
       "spec": "§57b",
@@ -436,7 +548,10 @@
     },
     {
       "name": "git_switch_branch",
-      "input": { "path": "string", "branchName": "string" },
+      "input": {
+        "path": "string",
+        "branchName": "string"
+      },
       "output": "void",
       "module": "git",
       "spec": "§57b",
@@ -447,7 +562,10 @@
     },
     {
       "name": "git_discard",
-      "input": { "path": "string", "files": "string[]" },
+      "input": {
+        "path": "string",
+        "files": "string[]"
+      },
       "output": "void",
       "module": "git",
       "spec": "§57b",
@@ -458,7 +576,10 @@
     },
     {
       "name": "git_create_branch",
-      "input": { "path": "string", "branchName": "string" },
+      "input": {
+        "path": "string",
+        "branchName": "string"
+      },
       "output": "void",
       "module": "git",
       "spec": "§57b",
@@ -469,7 +590,10 @@
     },
     {
       "name": "git_log",
-      "input": { "path": "string", "maxCount": "number?" },
+      "input": {
+        "path": "string",
+        "maxCount": "number?"
+      },
       "output": "GitLogEntry[]",
       "module": "git",
       "spec": "§67",
@@ -480,7 +604,11 @@
     },
     {
       "name": "git_stash_save",
-      "input": { "path": "string", "message": "string", "includeUntracked": "boolean?" },
+      "input": {
+        "path": "string",
+        "message": "string",
+        "includeUntracked": "boolean?"
+      },
       "output": "string",
       "module": "git",
       "spec": "§67",
@@ -491,7 +619,9 @@
     },
     {
       "name": "git_stash_list",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "GitStashEntry[]",
       "module": "git",
       "spec": "§67",
@@ -502,7 +632,10 @@
     },
     {
       "name": "git_stash_pop",
-      "input": { "path": "string", "index": "number?" },
+      "input": {
+        "path": "string",
+        "index": "number?"
+      },
       "output": "void",
       "module": "git",
       "spec": "§67",
@@ -513,7 +646,10 @@
     },
     {
       "name": "git_stash_drop",
-      "input": { "path": "string", "index": "number?" },
+      "input": {
+        "path": "string",
+        "index": "number?"
+      },
       "output": "void",
       "module": "git",
       "spec": "§67",
@@ -524,7 +660,9 @@
     },
     {
       "name": "git_remotes",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "GitRemoteInfo[]",
       "module": "git",
       "spec": "§67",
@@ -535,7 +673,10 @@
     },
     {
       "name": "git_fetch",
-      "input": { "path": "string", "remote": "string?" },
+      "input": {
+        "path": "string",
+        "remote": "string?"
+      },
       "output": "void",
       "module": "git",
       "spec": "§67",
@@ -546,7 +687,11 @@
     },
     {
       "name": "git_pull",
-      "input": { "path": "string", "remote": "string?", "branch": "string?" },
+      "input": {
+        "path": "string",
+        "remote": "string?",
+        "branch": "string?"
+      },
       "output": "string",
       "module": "git",
       "spec": "§67",
@@ -557,7 +702,11 @@
     },
     {
       "name": "git_push",
-      "input": { "path": "string", "remote": "string?", "branch": "string?" },
+      "input": {
+        "path": "string",
+        "remote": "string?",
+        "branch": "string?"
+      },
       "output": "void",
       "module": "git",
       "spec": "§67",
@@ -568,7 +717,11 @@
     },
     {
       "name": "git_ahead_behind",
-      "input": { "path": "string", "branch": "string?", "remote": "string?" },
+      "input": {
+        "path": "string",
+        "branch": "string?",
+        "remote": "string?"
+      },
       "output": "GitAheadBehind",
       "module": "git",
       "spec": "§67",
@@ -579,7 +732,10 @@
     },
     {
       "name": "git_delete_branch",
-      "input": { "path": "string", "branchName": "string" },
+      "input": {
+        "path": "string",
+        "branchName": "string"
+      },
       "output": "void",
       "module": "git",
       "spec": "§67",
@@ -590,7 +746,10 @@
     },
     {
       "name": "keyring_set_provider_key",
-      "input": { "provider": "\"claude\" | \"gemini\" | \"openai\"", "value": "string" },
+      "input": {
+        "provider": "\"claude\" | \"gemini\" | \"openai\"",
+        "value": "string"
+      },
       "output": "void",
       "module": "keyring",
       "spec": "§6.3/§259",
@@ -601,7 +760,9 @@
     },
     {
       "name": "keyring_provider_configured",
-      "input": { "provider": "\"claude\" | \"gemini\" | \"openai\"" },
+      "input": {
+        "provider": "\"claude\" | \"gemini\" | \"openai\""
+      },
       "output": "boolean",
       "module": "keyring",
       "spec": "§6.3/§259",
@@ -612,7 +773,9 @@
     },
     {
       "name": "keyring_delete_provider_key",
-      "input": { "provider": "\"claude\" | \"gemini\" | \"openai\"" },
+      "input": {
+        "provider": "\"claude\" | \"gemini\" | \"openai\""
+      },
       "output": "void",
       "module": "keyring",
       "spec": "§6.3/§259",
@@ -623,7 +786,9 @@
     },
     {
       "name": "llm_cancel",
-      "input": { "requestId": "string" },
+      "input": {
+        "requestId": "string"
+      },
       "output": "boolean",
       "module": "llm",
       "spec": "§6.3",
@@ -634,7 +799,9 @@
     },
     {
       "name": "get_vault_tags",
-      "input": { "root_path": "string" },
+      "input": {
+        "root_path": "string"
+      },
       "output": "TagEntry[]",
       "module": "tag",
       "spec": "§56m",
@@ -645,7 +812,10 @@
     },
     {
       "name": "get_files_by_tag",
-      "input": { "root_path": "string", "tag": "string" },
+      "input": {
+        "root_path": "string",
+        "tag": "string"
+      },
       "output": "string[]",
       "module": "tag",
       "spec": "§56m",
@@ -656,7 +826,11 @@
     },
     {
       "name": "rename_tag",
-      "input": { "root_path": "string", "old_tag": "string", "new_tag": "string" },
+      "input": {
+        "root_path": "string",
+        "old_tag": "string",
+        "new_tag": "string"
+      },
       "output": "RenameTagResult",
       "module": "tag",
       "spec": "§56m",
@@ -667,7 +841,10 @@
     },
     {
       "name": "write_binary_file",
-      "input": { "path": "string", "data": "Vec<u8>" },
+      "input": {
+        "path": "string",
+        "data": "Vec<u8>"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§56d",
@@ -678,7 +855,10 @@
     },
     {
       "name": "export_binary_file",
-      "input": { "path": "string", "data": "Vec<u8>" },
+      "input": {
+        "path": "string",
+        "data": "Vec<u8>"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§5.1",
@@ -689,7 +869,11 @@
     },
     {
       "name": "create_snapshot",
-      "input": { "vaultPath": "string", "snapshotType": "string", "label": "string?" },
+      "input": {
+        "vaultPath": "string",
+        "snapshotType": "string",
+        "label": "string?"
+      },
       "output": "string",
       "module": "snapshot",
       "spec": "§71",
@@ -700,7 +884,9 @@
     },
     {
       "name": "list_snapshots",
-      "input": { "vaultPath": "string" },
+      "input": {
+        "vaultPath": "string"
+      },
       "output": "SnapshotEntry[]",
       "module": "snapshot",
       "spec": "§71",
@@ -711,7 +897,11 @@
     },
     {
       "name": "get_snapshot_diff",
-      "input": { "vaultPath": "string", "snapshotId": "string", "filePath": "string" },
+      "input": {
+        "vaultPath": "string",
+        "snapshotId": "string",
+        "filePath": "string"
+      },
       "output": "DiffResult",
       "module": "snapshot",
       "spec": "§71",
@@ -722,7 +912,10 @@
     },
     {
       "name": "diff_texts",
-      "input": { "oldText": "string", "newText": "string" },
+      "input": {
+        "oldText": "string",
+        "newText": "string"
+      },
       "output": "DiffResult",
       "module": "snapshot",
       "spec": "§3.6",
@@ -733,7 +926,11 @@
     },
     {
       "name": "merge_texts",
-      "input": { "base": "string", "local": "string", "external": "string" },
+      "input": {
+        "base": "string",
+        "local": "string",
+        "external": "string"
+      },
       "output": "MergeResult",
       "module": "snapshot",
       "spec": "§3.6",
@@ -744,7 +941,11 @@
     },
     {
       "name": "restore_snapshot",
-      "input": { "vaultPath": "string", "snapshotId": "string", "files": "string[]?" },
+      "input": {
+        "vaultPath": "string",
+        "snapshotId": "string",
+        "files": "string[]?"
+      },
       "output": "void",
       "module": "snapshot",
       "spec": "§71",
@@ -755,7 +956,10 @@
     },
     {
       "name": "delete_snapshot",
-      "input": { "vaultPath": "string", "snapshotId": "string" },
+      "input": {
+        "vaultPath": "string",
+        "snapshotId": "string"
+      },
       "output": "void",
       "module": "snapshot",
       "spec": "§71",
@@ -766,7 +970,10 @@
     },
     {
       "name": "get_file_history",
-      "input": { "vaultPath": "string", "filePath": "string" },
+      "input": {
+        "vaultPath": "string",
+        "filePath": "string"
+      },
       "output": "SnapshotEntry[]",
       "module": "snapshot",
       "spec": "§71",
@@ -793,7 +1000,10 @@
     },
     {
       "name": "plugin_install_commit",
-      "input": { "stageId": "string", "expectedId": "string" },
+      "input": {
+        "stageId": "string",
+        "expectedId": "string"
+      },
       "output": "CommittedPluginInfo",
       "module": "plugin",
       "spec": "§69",
@@ -804,7 +1014,9 @@
     },
     {
       "name": "plugin_install_discard",
-      "input": { "stageId": "string" },
+      "input": {
+        "stageId": "string"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§69",
@@ -815,7 +1027,9 @@
     },
     {
       "name": "plugin_uninstall",
-      "input": { "pluginId": "string" },
+      "input": {
+        "pluginId": "string"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§69",
@@ -837,7 +1051,9 @@
     },
     {
       "name": "plugin_read_manifest",
-      "input": { "pluginId": "string" },
+      "input": {
+        "pluginId": "string"
+      },
       "output": "PluginManifest",
       "module": "plugin",
       "spec": "§69",
@@ -848,7 +1064,9 @@
     },
     {
       "name": "plugin_fetch_registry",
-      "input": { "url": "string" },
+      "input": {
+        "url": "string"
+      },
       "output": "RegistryIndex",
       "module": "plugin",
       "spec": "§69",
@@ -859,7 +1077,9 @@
     },
     {
       "name": "plugin_fetch_revocations",
-      "input": { "url": "string" },
+      "input": {
+        "url": "string"
+      },
       "output": "{ body: string, verified: boolean }",
       "module": "plugin",
       "spec": "§69",
@@ -892,7 +1112,9 @@
     },
     {
       "name": "plugin_add_dev_folder",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "InstalledPluginInfo",
       "module": "plugin",
       "spec": "§69",
@@ -903,7 +1125,9 @@
     },
     {
       "name": "plugin_remove_dev_folder",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§69",
@@ -925,7 +1149,10 @@
     },
     {
       "name": "plugin_http_fetch",
-      "input": { "url": "string", "init": "PluginFetchInit?" },
+      "input": {
+        "url": "string",
+        "init": "PluginFetchInit?"
+      },
       "output": "PluginFetchResponse",
       "module": "plugin",
       "spec": "§69",
@@ -936,7 +1163,10 @@
     },
     {
       "name": "plugin_storage_read",
-      "input": { "pluginId": "string", "key": "string" },
+      "input": {
+        "pluginId": "string",
+        "key": "string"
+      },
       "output": "string?",
       "module": "plugin",
       "spec": "§69",
@@ -947,7 +1177,11 @@
     },
     {
       "name": "plugin_storage_write",
-      "input": { "pluginId": "string", "key": "string", "value": "string" },
+      "input": {
+        "pluginId": "string",
+        "key": "string",
+        "value": "string"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§69",
@@ -958,7 +1192,9 @@
     },
     {
       "name": "plugin_storage_list",
-      "input": { "pluginId": "string" },
+      "input": {
+        "pluginId": "string"
+      },
       "output": "string[]",
       "module": "plugin",
       "spec": "§69",
@@ -969,7 +1205,10 @@
     },
     {
       "name": "plugin_storage_remove",
-      "input": { "pluginId": "string", "key": "string" },
+      "input": {
+        "pluginId": "string",
+        "key": "string"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§69",
@@ -980,7 +1219,9 @@
     },
     {
       "name": "plugin_call",
-      "input": { "op": "PluginOp (internally-tagged on \"kind\")" },
+      "input": {
+        "op": "PluginOp (internally-tagged on \"kind\")"
+      },
       "output": "string | null (op-specific; a list/object result is JSON-encoded into the string — see BrokerResult)",
       "module": "plugin",
       "spec": "§260",
@@ -989,7 +1230,10 @@
     },
     {
       "name": "plugin_sandbox_register",
-      "input": { "plugin_id": "string", "capabilities": "string[]" },
+      "input": {
+        "plugin_id": "string",
+        "capabilities": "string[]"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§260",
@@ -998,7 +1242,9 @@
     },
     {
       "name": "plugin_sandbox_deregister",
-      "input": { "plugin_id": "string" },
+      "input": {
+        "plugin_id": "string"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§260",
@@ -1007,7 +1253,9 @@
     },
     {
       "name": "plugin_sandbox_connect",
-      "input": { "channel": "Channel<HostToSandbox>" },
+      "input": {
+        "channel": "Channel<HostToSandbox>"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§260",
@@ -1016,7 +1264,9 @@
     },
     {
       "name": "plugin_sandbox_report",
-      "input": { "msg": "SandboxToHost" },
+      "input": {
+        "msg": "SandboxToHost"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§260",
@@ -1025,7 +1275,10 @@
     },
     {
       "name": "plugin_sandbox_send",
-      "input": { "plugin_id": "string", "msg": "HostToSandbox" },
+      "input": {
+        "plugin_id": "string",
+        "msg": "HostToSandbox"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§260",
@@ -1034,7 +1287,10 @@
     },
     {
       "name": "plugin_sandbox_stage",
-      "input": { "plugin_id": "string", "payload": "string" },
+      "input": {
+        "plugin_id": "string",
+        "payload": "string"
+      },
       "output": "void",
       "module": "plugin",
       "spec": "§260",
@@ -1043,7 +1299,12 @@
     },
     {
       "name": "embed_text",
-      "input": { "text": "string", "provider": "string", "model": "string", "base_url": "string?" },
+      "input": {
+        "text": "string",
+        "provider": "string",
+        "model": "string",
+        "base_url": "string?"
+      },
       "output": "number[]",
       "module": "embedding",
       "spec": "§11.4",
@@ -1054,7 +1315,14 @@
     },
     {
       "name": "search_knowledge",
-      "input": { "query": "string", "top_k": "number?", "current_file": "string?", "provider": "string", "model": "string", "base_url": "string?" },
+      "input": {
+        "query": "string",
+        "top_k": "number?",
+        "current_file": "string?",
+        "provider": "string",
+        "model": "string",
+        "base_url": "string?"
+      },
       "output": "SearchResultPayload[]",
       "module": "embedding",
       "spec": "§11.4",
@@ -1065,7 +1333,12 @@
     },
     {
       "name": "index_vault",
-      "input": { "vault_path": "string", "provider": "string", "model": "string", "base_url": "string?" },
+      "input": {
+        "vault_path": "string",
+        "provider": "string",
+        "model": "string",
+        "base_url": "string?"
+      },
       "output": "IndexStatus",
       "module": "embedding",
       "spec": "§11.4",
@@ -1087,7 +1360,13 @@
     },
     {
       "name": "index_file",
-      "input": { "file_path": "string", "relative_path": "string", "provider": "string", "model": "string", "base_url": "string?" },
+      "input": {
+        "file_path": "string",
+        "relative_path": "string",
+        "provider": "string",
+        "model": "string",
+        "base_url": "string?"
+      },
       "output": "number",
       "module": "embedding",
       "spec": "§11.4",
@@ -1098,7 +1377,9 @@
     },
     {
       "name": "add_context",
-      "input": { "info": "ContextInfo" },
+      "input": {
+        "info": "ContextInfo"
+      },
       "output": "ContextInfo",
       "module": "context",
       "spec": "§80",
@@ -1109,7 +1390,9 @@
     },
     {
       "name": "remove_context",
-      "input": { "contextId": "string" },
+      "input": {
+        "contextId": "string"
+      },
       "output": "void",
       "module": "context",
       "spec": "§80",
@@ -1120,7 +1403,9 @@
     },
     {
       "name": "set_active_context",
-      "input": { "contextId": "string" },
+      "input": {
+        "contextId": "string"
+      },
       "output": "void",
       "module": "context",
       "spec": "§81",
@@ -1142,7 +1427,9 @@
     },
     {
       "name": "get_vault_config",
-      "input": { "contextId": "string" },
+      "input": {
+        "contextId": "string"
+      },
       "output": "VaultConfig?",
       "module": "context",
       "spec": "§86",
@@ -1153,7 +1440,10 @@
     },
     {
       "name": "set_vault_config",
-      "input": { "contextId": "string", "config": "VaultConfig" },
+      "input": {
+        "contextId": "string",
+        "config": "VaultConfig"
+      },
       "output": "void",
       "module": "context",
       "spec": "§86",
@@ -1164,7 +1454,9 @@
     },
     {
       "name": "get_vault_config_by_path",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "VaultConfig",
       "module": "context",
       "spec": "§86",
@@ -1175,7 +1467,10 @@
     },
     {
       "name": "set_vault_config_by_path",
-      "input": { "path": "string", "config": "VaultConfig" },
+      "input": {
+        "path": "string",
+        "config": "VaultConfig"
+      },
       "output": "void",
       "module": "context",
       "spec": "§86",
@@ -1186,7 +1481,10 @@
     },
     {
       "name": "init_vault",
-      "input": { "path": "string", "alias": "string" },
+      "input": {
+        "path": "string",
+        "alias": "string"
+      },
       "output": "VaultConfig",
       "module": "context",
       "spec": "§88",
@@ -1197,7 +1495,10 @@
     },
     {
       "name": "update_context_alias",
-      "input": { "contextId": "string", "alias": "string" },
+      "input": {
+        "contextId": "string",
+        "alias": "string"
+      },
       "output": "void",
       "module": "context",
       "spec": "§88",
@@ -1208,7 +1509,10 @@
     },
     {
       "name": "update_context_label",
-      "input": { "contextId": "string", "label": "string" },
+      "input": {
+        "contextId": "string",
+        "label": "string"
+      },
       "output": "void",
       "module": "context",
       "spec": "§88",
@@ -1219,7 +1523,10 @@
     },
     {
       "name": "update_context_color",
-      "input": { "contextId": "string", "color": "string" },
+      "input": {
+        "contextId": "string",
+        "color": "string"
+      },
       "output": "void",
       "module": "context",
       "spec": "§88",
@@ -1230,7 +1537,10 @@
     },
     {
       "name": "resolve_cross_vault_link",
-      "input": { "alias": "string", "target": "string" },
+      "input": {
+        "alias": "string",
+        "target": "string"
+      },
       "output": "string?",
       "module": "context",
       "spec": "§87",
@@ -1241,7 +1551,10 @@
     },
     {
       "name": "import_dir",
-      "input": { "from": "string", "to": "string" },
+      "input": {
+        "from": "string",
+        "to": "string"
+      },
       "output": "CopyDirReport | null",
       "module": "fs",
       "spec": "§4.3",
@@ -1252,7 +1565,10 @@
     },
     {
       "name": "import_file",
-      "input": { "from": "string", "to": "string" },
+      "input": {
+        "from": "string",
+        "to": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§3.2",
@@ -1263,7 +1579,9 @@
     },
     {
       "name": "set_vault_root",
-      "input": { "path": "string" },
+      "input": {
+        "path": "string"
+      },
       "output": "void",
       "module": "fs",
       "spec": "§88",
@@ -1275,7 +1593,10 @@
     },
     {
       "name": "photo_thumbnail",
-      "input": { "path": "string", "maxPx": "u32" },
+      "input": {
+        "path": "string",
+        "maxPx": "u32"
+      },
       "output": "string",
       "module": "thumbnail",
       "spec": "§56d",
@@ -1286,7 +1607,9 @@
     },
     {
       "name": "resolve_settings",
-      "input": { "contextId": "string" },
+      "input": {
+        "contextId": "string"
+      },
       "output": "ResolvedSettings",
       "module": "context",
       "spec": "§86",
@@ -1298,7 +1621,10 @@
     },
     {
       "name": "get_vault_tasks",
-      "input": { "rootPath": "string", "exclude": "string[]" },
+      "input": {
+        "rootPath": "string",
+        "exclude": "string[]"
+      },
       "output": "TaskEntry[]",
       "module": "task",
       "spec": "§304",
@@ -1309,7 +1635,11 @@
     },
     {
       "name": "get_file_tasks",
-      "input": { "path": "string", "rootPath": "string | null", "exclude": "string[]" },
+      "input": {
+        "path": "string",
+        "rootPath": "string | null",
+        "exclude": "string[]"
+      },
       "output": "TaskEntry[]",
       "module": "task",
       "spec": "§304 §I1",
@@ -1320,7 +1650,11 @@
     },
     {
       "name": "get_tasks_linking_to",
-      "input": { "rootPath": "string", "target": "string", "exclude": "string[]" },
+      "input": {
+        "rootPath": "string",
+        "target": "string",
+        "exclude": "string[]"
+      },
       "output": "TaskEntry[]",
       "module": "task",
       "spec": "§304",
@@ -1335,9 +1669,13 @@
         "path": "string",
         "line": "number",
         "expectedRaw": "string",
-        "newState": "string",
-        "recordDoneDate": "boolean",
-        "today": "string"
+        "write": {
+          "newState": "string",
+          "recordDoneDate": "boolean",
+          "today": "string",
+          "timer": "string | null",
+          "dates": "{ due?: string; scheduled?: string; start?: string }"
+        }
       },
       "output": "string",
       "module": "task",
@@ -1368,9 +1706,13 @@
       "name": "preview_task_state_line",
       "input": {
         "raw": "string",
-        "newState": "string",
-        "recordDoneDate": "boolean",
-        "today": "string"
+        "write": {
+          "newState": "string",
+          "recordDoneDate": "boolean",
+          "today": "string",
+          "timer": "string | null",
+          "dates": "{ due?: string; scheduled?: string; start?: string }"
+        }
       },
       "output": "string",
       "module": "task",
@@ -1382,7 +1724,11 @@
     },
     {
       "name": "preview_task_field_line",
-      "input": { "raw": "string", "field": "string", "value": "string" },
+      "input": {
+        "raw": "string",
+        "field": "string",
+        "value": "string"
+      },
       "output": "string",
       "module": "task",
       "spec": "§305",
@@ -1410,7 +1756,11 @@
     },
     {
       "name": "preview_task_tag_line",
-      "input": { "raw": "string", "tag": "string", "on": "boolean" },
+      "input": {
+        "raw": "string",
+        "tag": "string",
+        "on": "boolean"
+      },
       "output": "string",
       "module": "task",
       "spec": "§312",
@@ -1421,7 +1771,10 @@
     },
     {
       "name": "append_task_line",
-      "input": { "path": "string", "line": "string" },
+      "input": {
+        "path": "string",
+        "line": "string"
+      },
       "output": "string",
       "module": "task",
       "spec": "§312",
@@ -1465,7 +1818,11 @@
   "events": [
     {
       "name": "file:changed",
-      "payload": { "path": "string", "mtime": "number (ms)", "origin": "app|external" },
+      "payload": {
+        "path": "string",
+        "mtime": "number (ms)",
+        "origin": "app|external"
+      },
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
@@ -1474,7 +1831,9 @@
     },
     {
       "name": "file:created",
-      "payload": { "path": "string" },
+      "payload": {
+        "path": "string"
+      },
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
@@ -1483,7 +1842,9 @@
     },
     {
       "name": "file:deleted",
-      "payload": { "path": "string" },
+      "payload": {
+        "path": "string"
+      },
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
@@ -1510,7 +1871,10 @@
     },
     {
       "name": "llm:token",
-      "payload": { "requestId": "string", "token": "string" },
+      "payload": {
+        "requestId": "string",
+        "token": "string"
+      },
       "module": "llm",
       "spec": "§6.3",
       "phase": 1,
@@ -1519,7 +1883,10 @@
     },
     {
       "name": "llm:done",
-      "payload": { "requestId": "string", "totalTokens": "number" },
+      "payload": {
+        "requestId": "string",
+        "totalTokens": "number"
+      },
       "module": "llm",
       "spec": "§6.3",
       "phase": 1,
@@ -1528,7 +1895,10 @@
     },
     {
       "name": "llm:error",
-      "payload": { "requestId": "string", "error": "string" },
+      "payload": {
+        "requestId": "string",
+        "error": "string"
+      },
       "module": "llm",
       "spec": "§6.3",
       "phase": 1,
@@ -1537,7 +1907,10 @@
     },
     {
       "name": "index:updated",
-      "payload": { "filesIndexed": "number", "duration": "number" },
+      "payload": {
+        "filesIndexed": "number",
+        "duration": "number"
+      },
       "module": "index",
       "spec": "§29",
       "phase": 2,
@@ -1546,7 +1919,10 @@
     },
     {
       "name": "plugin:s2h",
-      "payload": { "pluginId": "string", "msg": "SandboxToHost" },
+      "payload": {
+        "pluginId": "string",
+        "msg": "SandboxToHost"
+      },
       "module": "plugin",
       "spec": "§260",
       "phase": 3,

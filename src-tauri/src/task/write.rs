@@ -96,6 +96,74 @@ fn strip_field(line: &str, field: &str) -> String {
     out.trim_end().to_string()
 }
 
+/// §318 굴린 날짜 — 반복 태스크가 다음 회차로 넘어갈 때 함께 움직이는 세 필드.
+///
+/// 값은 전부 **프런트가 계산해 온 것**이다(`utils/tasks/task-recurrence.ts`).
+/// `➕` 생성일이 없는 것은 실수가 아니다 — 그것은 일정이 아니라 기록이라 굴려도
+/// 제자리에 남는다.
+///
+/// 세 필드를 `HashMap<String, String>`이 아니라 이름 있는 구조체로 둔 이유: 그래야
+/// 모르는 필드 이름이라는 것이 **존재할 수 없다**. 맵이면 `apply_field`가 `None`을
+/// 돌려주는 경로가 생기고, 그것을 조용히 무시하면 프런트 오타가 "성공"으로 보인다.
+#[derive(Debug, Default, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RolledDates {
+    pub due: Option<String>,
+    pub scheduled: Option<String>,
+    pub start: Option<String>,
+}
+
+impl RolledDates {
+    /// 있는 것만, §303 canonical 순서로. `insert_field`가 자리를 정하므로 이 순서가
+    /// 결과 줄을 바꾸지는 않지만, 읽는 사람이 표와 같은 순서를 보게 된다.
+    fn entries(&self) -> impl Iterator<Item = (&'static str, &str)> {
+        [
+            ("start", self.start.as_deref()),
+            ("scheduled", self.scheduled.as_deref()),
+            ("due", self.due.as_deref()),
+        ]
+        .into_iter()
+        .filter_map(|(field, value)| value.map(|v| (field, v)))
+    }
+}
+
+/// §305/§318 한 상태 전이의 서술 — 그때 찍는 스탬프, 그때 멈추는 시계, 그때 미는 날짜.
+///
+/// ‼️ 묶은 이유는 인자 개수가 아니라 **넷이 따로 일어날 수 없다**는 것이다. 굴리기를
+/// 별도 쓰기로 내면 상태 전이와 날짜 이동 사이에 낀 stale이 "상태는 굴렀는데 날짜는
+/// 안 굴린" 줄을 만들고, 그 줄은 자기가 몇 회차인지 말하지 못한다.
+/// (M4가 달았던 `#[allow(clippy::too_many_arguments)]` 둘이 이것으로 없어졌다.)
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateWrite {
+    /// §318 굴린 날짜. 전부 `None`이면 날짜를 건드리지 않는다.
+    #[serde(default)]
+    pub dates: RolledDates,
+    pub new_state: TaskState,
+    pub record_done_date: bool,
+    /// §18.18 M4 `⏱`의 다음 값. `None`은 "건드리지 말라"(기록 끔), `Some("")`는 제거.
+    #[serde(default)]
+    pub timer: Option<String>,
+    pub today: String,
+}
+
+impl StateWrite {
+    /// 파일을 건드리기 전에 값을 본다. `set_task_field`가 모르는 필드명을 미리 거르는
+    /// 것과 같은 판단이다 — 프런트의 잘못된 값이 "성공"으로 보이면 안 되고, 무엇보다
+    /// 달력에 없는 날짜가 사용자 파일에 적히면 안 된다.
+    pub fn validate(&self) -> Result<(), TaskError> {
+        for (field, value) in self.dates.entries() {
+            if !is_valid_date(value) {
+                return Err(TaskError::Custom(format!(
+                    "invalid {} date: {}",
+                    field, value
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// 상태 전이 결과 줄을 만든다 — I/O 없음.
 ///
 /// 디스크 경로(`set_task_state`)와 열린 파일 경로(`preview_task_state_line`)가
@@ -103,14 +171,8 @@ fn strip_field(line: &str, field: &str) -> String {
 /// 두 벌이 되어 반드시 드리프트한다.
 ///
 /// `current`는 이미 `normalize_line`을 거친 줄이어야 한다.
-pub fn apply_state(
-    current: &str,
-    new_state: TaskState,
-    record_done_date: bool,
-    today: &str,
-    timer: Option<&str>,
-) -> String {
-    let marker = new_state.marker();
+pub fn apply_state(current: &str, write: &StateWrite) -> String {
+    let marker = write.new_state.marker();
     // 가장 **왼쪽** 마커만 바꾼다 — 본문에 "[x]"가 들어 있어도 체크박스를 놓치지 않는다.
     let swapped = if let Some(p) = ["[ ]", "[x]", "[X]", "[/]", "[-]"]
         .iter()
@@ -131,12 +193,20 @@ pub fn apply_state(
     // **같은 규칙이 두 벌**이 된다. Rust가 아는 것은 "어디에 놓는가"뿐이다.
     //
     // `None`은 "건드리지 말라"(기록 끔), `Some("")`는 제거다.
-    let swapped = match timer {
+    let swapped = match write.timer.as_deref() {
         None => swapped,
         Some(value) => set_timer(&swapped, value),
     };
 
-    if !record_done_date {
+    // §318 굴린 날짜. 상태·타이머와 **같은 줄 계산 안에서** 놓는다 — 이 셋이 한
+    // 트랜잭션이어야 한다는 것이 `StateWrite`가 존재하는 이유다.
+    let swapped = write.dates.entries().fold(swapped, |line, (field, value)| {
+        // `entries()`가 `RolledDates`의 세 필드만 내므로 `None`은 도달 불가다.
+        // `unwrap_or(line)`은 그 사실이 깨지는 날의 방어다 — 그때도 줄은 성한다.
+        apply_field(&line, field, value).unwrap_or(line)
+    });
+
+    if !write.record_done_date {
         return swapped;
     }
     // ‼️ 종료 스탬프는 상태마다 **최대 하나**다. 새 스탬프를 붙이기 전에 둘 다 떼는
@@ -144,8 +214,8 @@ pub fn apply_state(
     // 언제 끝났는지에 대해 서로 다른 두 가지를 말하게 되고, 어느 쪽이 참인지 알 방법이
     // 없다. §18.18 M4가 상태를 넷으로 넓히면서 처음 가능해진 전이다.
     let cleared = strip_field(&strip_field(&swapped, "done"), "cancelled");
-    match new_state.stamp_field() {
-        Some(field) => insert_field(&cleared, field, today),
+    match write.new_state.stamp_field() {
+        Some(field) => insert_field(&cleared, field, &write.today),
         None => cleared,
     }
 }
@@ -249,27 +319,16 @@ pub(super) fn matches_expected(actual: &str, expected_raw: &str) -> bool {
     normalize_line(actual).trim_end() == normalize_line(expected_raw).trim_end()
 }
 
-// 위 IPC 커맨드의 인자를 그대로 받는다 — 한 겹 아래에서 다르게 묶으면 두 모양이 된다.
-#[allow(clippy::too_many_arguments)]
 pub async fn set_task_state(
     path: &str,
     line: u32,
     expected_raw: &str,
-    new_state: TaskState,
-    record_done_date: bool,
-    today: &str,
-    timer: Option<&str>,
+    write: StateWrite,
 ) -> Result<String, TaskError> {
-    let today = today.to_string();
-    let timer = timer.map(str::to_string);
+    // 파일을 열기 **전에** 본다 — 값이 틀렸으면 아무것도 건드리지 않고 돌아간다.
+    write.validate()?;
     replace_line(path, line, expected_raw, move |current| {
-        apply_state(
-            current,
-            new_state,
-            record_done_date,
-            &today,
-            timer.as_deref(),
-        )
+        apply_state(current, &write)
     })
     .await
 }
@@ -316,10 +375,7 @@ mod tests {
             &p,
             1,
             "- [ ] 할 일 📅2026-08-30",
-            TaskState::Done,
-            true,
-            "2026-08-23",
-            None,
+            sw(TaskState::Done, true, "2026-08-23", None),
         )
         .await
         .unwrap();
@@ -339,10 +395,7 @@ mod tests {
             &p,
             0,
             "- [x] 할 일 ✅2026-08-23",
-            TaskState::Todo,
-            true,
-            "2026-08-24",
-            None,
+            sw(TaskState::Todo, true, "2026-08-24", None),
         )
         .await
         .unwrap();
@@ -360,10 +413,7 @@ mod tests {
             &p,
             0,
             "- [ ] 예전 내용",
-            TaskState::Done,
-            true,
-            "2026-08-23",
-            None,
+            sw(TaskState::Done, true, "2026-08-23", None),
         )
         .await
         .unwrap_err();
@@ -382,10 +432,7 @@ mod tests {
             &p,
             99,
             "- [ ] 한 줄",
-            TaskState::Done,
-            true,
-            "2026-08-23",
-            None,
+            sw(TaskState::Done, true, "2026-08-23", None),
         )
         .await
         .unwrap_err();
@@ -401,10 +448,7 @@ mod tests {
             &p,
             1,
             "- [ ] 할 일",
-            TaskState::Done,
-            false,
-            "2026-08-23",
-            None,
+            sw(TaskState::Done, false, "2026-08-23", None),
         )
         .await
         .unwrap();
@@ -424,9 +468,14 @@ mod tests {
         let original = "- [ ] a\r\n- [ ] b\n- [ ] c\n";
         let p = f(&d, original).await;
 
-        let updated = set_task_state(&p, 0, "- [ ] a", TaskState::Done, false, "2026-08-23", None)
-            .await
-            .unwrap();
+        let updated = set_task_state(
+            &p,
+            0,
+            "- [ ] a",
+            sw(TaskState::Done, false, "2026-08-23", None),
+        )
+        .await
+        .unwrap();
         assert_eq!(updated, "- [x] a");
 
         // 가장 중요한 단언: 반환된 한 줄이 아니라 파일 전체가 온전해야 한다.
@@ -443,10 +492,7 @@ mod tests {
             &p,
             0,
             "- [ ] 할 일",
-            TaskState::Done,
-            false,
-            "2026-08-23",
-            None,
+            sw(TaskState::Done, false, "2026-08-23", None),
         )
         .await
         .unwrap();
@@ -464,10 +510,7 @@ mod tests {
             &p,
             0,
             "- [ ] 할 일",
-            TaskState::Done,
-            false,
-            "2026-08-23",
-            None,
+            sw(TaskState::Done, false, "2026-08-23", None),
         )
         .await
         .unwrap();
@@ -522,10 +565,7 @@ mod tests {
             &p,
             0,
             "- [x] 완료: 예시로 [ ] 형식 사용",
-            TaskState::Todo,
-            false,
-            "2026-08-23",
-            None,
+            sw(TaskState::Todo, false, "2026-08-23", None),
         )
         .await
         .unwrap();
@@ -568,10 +608,7 @@ mod tests {
             &p,
             0,
             "    - [x] 완료된 하위 항목 ✅2026-08-20",
-            TaskState::Todo,
-            true,
-            "2026-08-24",
-            None,
+            sw(TaskState::Todo, true, "2026-08-24", None),
         )
         .await
         .unwrap();
@@ -611,14 +648,28 @@ mod tests {
         assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
     }
 
+    /// 테스트용 `StateWrite`. §318 날짜를 쓰는 테스트만 이 결과의 `dates`를 채운다 —
+    /// 나머지 전부에게 굴리기는 "일어나지 않는 일"이어야 하고, 기본값이 그 사실이다.
+    fn sw(
+        new_state: TaskState,
+        record_done_date: bool,
+        today: &str,
+        timer: Option<&str>,
+    ) -> StateWrite {
+        StateWrite {
+            dates: RolledDates::default(),
+            new_state,
+            record_done_date,
+            timer: timer.map(str::to_string),
+            today: today.to_string(),
+        }
+    }
+
     #[test]
     fn apply_state_swaps_marker_and_appends_done_date() {
         let out = apply_state(
             "- [ ] 초안 📅2026-08-30",
-            TaskState::Done,
-            true,
-            "2026-08-24",
-            None,
+            &sw(TaskState::Done, true, "2026-08-24", None),
         );
         assert_eq!(out, "- [x] 초안 📅2026-08-30 ✅2026-08-24");
     }
@@ -627,23 +678,26 @@ mod tests {
     fn apply_state_strips_done_date_when_reverting() {
         let out = apply_state(
             "- [x] 초안 📅2026-08-30 ✅2026-08-24",
-            TaskState::Todo,
-            true,
-            "2026-08-24",
-            None,
+            &sw(TaskState::Todo, true, "2026-08-24", None),
         );
         assert_eq!(out, "- [x] 초안 📅2026-08-30".replace("[x]", "[ ]"));
     }
 
     #[test]
     fn apply_state_leaves_done_date_alone_when_recording_is_off() {
-        let out = apply_state("- [ ] 초안", TaskState::Done, false, "2026-08-24", None);
+        let out = apply_state(
+            "- [ ] 초안",
+            &sw(TaskState::Done, false, "2026-08-24", None),
+        );
         assert_eq!(out, "- [x] 초안");
     }
 
     #[test]
     fn apply_state_preserves_indentation() {
-        let out = apply_state("    - [ ] 중첩", TaskState::Done, false, "2026-08-24", None);
+        let out = apply_state(
+            "    - [ ] 중첩",
+            &sw(TaskState::Done, false, "2026-08-24", None),
+        );
         assert_eq!(out, "    - [x] 중첩");
     }
 
@@ -652,28 +706,34 @@ mod tests {
     #[test]
     fn apply_state_writes_every_marker() {
         assert_eq!(
-            apply_state("- [ ] 초안", TaskState::Doing, false, "2026-08-24", None),
+            apply_state(
+                "- [ ] 초안",
+                &sw(TaskState::Doing, false, "2026-08-24", None)
+            ),
             "- [/] 초안"
         );
         assert_eq!(
             apply_state(
                 "- [/] 초안",
-                TaskState::Cancelled,
-                false,
-                "2026-08-24",
-                None
+                &sw(TaskState::Cancelled, false, "2026-08-24", None)
             ),
             "- [-] 초안"
         );
         assert_eq!(
-            apply_state("- [-] 초안", TaskState::Todo, false, "2026-08-24", None),
+            apply_state(
+                "- [-] 초안",
+                &sw(TaskState::Todo, false, "2026-08-24", None)
+            ),
             "- [ ] 초안"
         );
     }
 
     #[test]
     fn apply_state_stamps_a_cancelled_line_with_the_cancel_date() {
-        let out = apply_state("- [ ] 초안", TaskState::Cancelled, true, "2026-08-24", None);
+        let out = apply_state(
+            "- [ ] 초안",
+            &sw(TaskState::Cancelled, true, "2026-08-24", None),
+        );
         assert_eq!(out, "- [-] 초안 ❌2026-08-24");
     }
 
@@ -682,14 +742,14 @@ mod tests {
     /// 나란히 남아 어느 쪽이 참인지 알 방법이 없어진다.
     #[test]
     fn apply_state_never_leaves_two_terminal_stamps() {
-        let done = apply_state("- [ ] 초안", TaskState::Done, true, "2026-08-24", None);
+        let done = apply_state("- [ ] 초안", &sw(TaskState::Done, true, "2026-08-24", None));
         assert_eq!(done, "- [x] 초안 ✅2026-08-24");
 
-        let cancelled = apply_state(&done, TaskState::Cancelled, true, "2026-08-25", None);
+        let cancelled = apply_state(&done, &sw(TaskState::Cancelled, true, "2026-08-25", None));
         assert_eq!(cancelled, "- [-] 초안 ❌2026-08-25");
 
         // 되살리면 스탬프가 남지 않는다 — 끝나지 않은 일에 끝난 날짜는 없다.
-        let reopened = apply_state(&cancelled, TaskState::Doing, true, "2026-08-26", None);
+        let reopened = apply_state(&cancelled, &sw(TaskState::Doing, true, "2026-08-26", None));
         assert_eq!(reopened, "- [/] 초안");
     }
 
@@ -697,12 +757,210 @@ mod tests {
     fn apply_state_swaps_only_the_leftmost_marker() {
         let out = apply_state(
             "- [ ] 본문에 [-] 가 있다",
-            TaskState::Doing,
-            false,
-            "2026-08-24",
-            None,
+            &sw(TaskState::Doing, false, "2026-08-24", None),
         );
         assert_eq!(out, "- [/] 본문에 [-] 가 있다");
+    }
+
+    /// §318 굴리기 — 프런트가 계산한 날짜가 줄에 놓인다.
+    ///
+    /// Rust가 아는 것은 "어디에 놓는가"뿐이다. 계산은 `task-recurrence.ts` 한 곳이고,
+    /// 그 규칙이 달력을 읽으므로 시간대를 아는 쪽이 갖는다(M4 `⏱`와 같은 분담).
+    ///
+    /// ‼️ 아래 `a_roll_moves_every_date_it_is_given`의 두 줄은 TypeScript
+    /// `task-item-control.test.ts`의 "moves the dates and comes back to todo in one
+    /// press"가 **같은 문자열로** 단정한다. 상태 전이는 이 코드베이스에서 두 번
+    /// 구현돼 있고(에디터는 PM 트랜잭션, 아젠다는 디스크) 어느 한쪽만 고치면 같은
+    /// 조작이 표면에 따라 다른 줄을 만든다 — 두 언어의 테스트가 그것을 막는다.
+    fn rolled(new_state: TaskState, dates: RolledDates) -> StateWrite {
+        StateWrite {
+            dates,
+            new_state,
+            record_done_date: true,
+            timer: None,
+            today: "2026-09-05".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_roll_moves_every_date_it_is_given() {
+        let out = apply_state(
+            "- [/] 주간 회고 🛫2026-08-30 📅2026-09-01 🔁every week",
+            &rolled(
+                TaskState::Todo,
+                RolledDates {
+                    due: Some("2026-09-08".to_string()),
+                    scheduled: None,
+                    start: Some("2026-09-06".to_string()),
+                },
+            ),
+        );
+
+        assert_eq!(
+            out,
+            "- [ ] 주간 회고 🛫2026-09-06 📅2026-09-08 🔁every week"
+        );
+    }
+
+    /// ‼️ 굴린 줄은 완료가 **아니다**. `[ ]`인데 ✅이 붙어 있으면 그 줄은 자기가
+    /// 끝났는지에 대해 두 가지를 말한다. `Todo::stamp_field()`가 `None`이라 스탬프를
+    /// 떼기만 하고 새로 찍지 않는 것이 이 성질의 구현이다.
+    #[test]
+    fn a_rolled_line_carries_no_completion_stamp() {
+        let done = apply_state(
+            "- [ ] 주간 회고 📅2026-09-01 🔁every week",
+            &sw(TaskState::Done, true, "2026-09-05", None),
+        );
+        assert!(done.contains("✅2026-09-05"));
+
+        let out = apply_state(
+            &done,
+            &rolled(
+                TaskState::Todo,
+                RolledDates {
+                    due: Some("2026-09-08".to_string()),
+                    scheduled: None,
+                    start: None,
+                },
+            ),
+        );
+
+        assert_eq!(out, "- [ ] 주간 회고 📅2026-09-08 🔁every week");
+    }
+
+    /// ‼️ 굴리기가 `record_done_date`를 **항상 참으로** 넘겨야 하는 이유. 거짓이면
+    /// `apply_state`가 일찍 돌아가 남의 도구가 적어 둔 ✅을 떼지 못하고, `[ ]`인데
+    /// 완료일이 붙은 줄이 남는다. 이 테스트는 그 잘못된 호출이 무엇을 만드는지를 고정해
+    /// 둔다 — 호출자(`task-triage.ts`·`task-item.ts`)가 지켜야 할 계약의 근거다.
+    #[test]
+    fn recording_off_would_leave_the_old_stamp_behind() {
+        let out = apply_state(
+            "- [x] 주간 회고 📅2026-09-01 🔁every week ✅2026-09-05",
+            &StateWrite {
+                dates: RolledDates {
+                    due: Some("2026-09-08".to_string()),
+                    scheduled: None,
+                    start: None,
+                },
+                new_state: TaskState::Todo,
+                record_done_date: false,
+                timer: None,
+                today: "2026-09-05".to_string(),
+            },
+        );
+
+        assert!(
+            out.contains("✅2026-09-05"),
+            "이것이 피하려는 줄이다: {}",
+            out
+        );
+    }
+
+    /// 굴린 날짜가 없으면 날짜를 건드리지 않는다 — 평범한 상태 전이와 바이트가 같다.
+    #[test]
+    fn no_rolled_dates_means_no_date_is_touched() {
+        let line = "- [ ] 주간 회고 📅2026-09-01 🔁every week";
+        assert_eq!(
+            apply_state(line, &rolled(TaskState::Done, RolledDates::default())),
+            apply_state(line, &sw(TaskState::Done, true, "2026-09-05", None)),
+        );
+    }
+
+    /// 달력에 없는 날짜는 **파일을 열기 전에** 거절한다. `set_task_field`가 모르는
+    /// 필드명을 미리 거르는 것과 같은 판단이다.
+    #[test]
+    fn an_impossible_rolled_date_is_refused() {
+        let write = rolled(
+            TaskState::Todo,
+            RolledDates {
+                due: Some("2026-02-30".to_string()),
+                scheduled: None,
+                start: None,
+            },
+        );
+
+        assert!(write.validate().is_err());
+        assert!(rolled(TaskState::Todo, RolledDates::default())
+            .validate()
+            .is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_refused_roll_leaves_the_file_alone() {
+        let d = TempDir::new().unwrap();
+        let raw = "- [ ] 주간 회고 📅2026-09-01 🔁every week";
+        let p = f(&d, &format!("{}\n", raw)).await;
+
+        let err = set_task_state(
+            &p,
+            0,
+            raw,
+            rolled(
+                TaskState::Todo,
+                RolledDates {
+                    due: Some("2026-13-01".to_string()),
+                    scheduled: None,
+                    start: None,
+                },
+            ),
+        )
+        .await;
+
+        assert!(err.is_err());
+        assert_eq!(
+            tokio::fs::read_to_string(&p).await.unwrap(),
+            format!("{}\n", raw)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_roll_reaches_the_file_in_one_write() {
+        let d = TempDir::new().unwrap();
+        let raw = "- [x] 주간 회고 📅2026-09-01 🔁every week ✅2026-09-05";
+        let p = f(&d, &format!("{}\n다음 줄\n", raw)).await;
+
+        let updated = set_task_state(
+            &p,
+            0,
+            raw,
+            rolled(
+                TaskState::Todo,
+                RolledDates {
+                    due: Some("2026-09-08".to_string()),
+                    scheduled: None,
+                    start: None,
+                },
+            ),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated, "- [ ] 주간 회고 📅2026-09-08 🔁every week");
+        assert_eq!(
+            tokio::fs::read_to_string(&p).await.unwrap(),
+            "- [ ] 주간 회고 📅2026-09-08 🔁every week\n다음 줄\n"
+        );
+    }
+
+    /// ‼️ `🔁`를 날짜보다 **먼저** 적은 줄은 굴리면서 §303 canonical 순서로 재정렬된다.
+    /// 굴리기가 만든 성질이 아니라 `apply_field`(strip + insert)의 오래된 동작이고,
+    /// 그 줄의 기한 칩을 눌러 고쳐도 오늘 같은 일이 일어난다. 다만 굴리기는 그 재정렬을
+    /// **사용자 손 없이** 일으키는 첫 조작이라 여기 못박아 둔다.
+    #[test]
+    fn a_roll_normalises_a_line_that_put_the_rule_first() {
+        let out = apply_state(
+            "- [ ] 주간 회고 🔁every week 📅2026-09-01",
+            &rolled(
+                TaskState::Todo,
+                RolledDates {
+                    due: Some("2026-09-08".to_string()),
+                    scheduled: None,
+                    start: None,
+                },
+            ),
+        );
+
+        assert_eq!(out, "- [ ] 주간 회고 📅2026-09-08 🔁every week");
     }
 
     #[test]
@@ -910,10 +1168,7 @@ mod tests {
             &link_path,
             0,
             "- [ ] 할 일",
-            TaskState::Done,
-            false,
-            "2026-08-23",
-            None,
+            sw(TaskState::Done, false, "2026-08-23", None),
         )
         .await
         .unwrap();

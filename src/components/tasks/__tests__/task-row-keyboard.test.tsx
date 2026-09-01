@@ -151,18 +151,17 @@ describe("§312 네 판정에 키 한 번으로 닿는다", () => {
     fireEvent.keyDown(row, { key: "x" });
 
     await waitFor(() =>
-      expect(setTaskState).toHaveBeenCalledWith(
-        "a.md",
-        0,
-        "- [ ] 하나",
+      expect(setTaskState).toHaveBeenCalledWith("a.md", 0, "- [ ] 하나", {
+        // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+        dates: undefined,
         // §18.18 M4 — 키도 컨트롤과 **같은 고리**를 돈다. 여기만 `done`이면
         // 화면의 체크박스와 키가 같은 줄에 서로 다른 일을 하게 된다.
-        "doing",
-        true,
-        expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        newState: "doing",
+        recordDoneDate: true,
         // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-        null,
-      ),
+        timer: null,
+        today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      }),
     );
   });
 

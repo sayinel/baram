@@ -59,10 +59,9 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
       path: string,
       line: number,
       expectedRaw: string,
-      _state: string,
-      recordDoneDate: boolean,
-      today: string,
+      write: { recordDoneDate: boolean; today: string },
     ) => {
+      const { recordDoneDate, today } = write;
       const entry = disk.get(path);
       if (!entry) return Promise.reject("stale");
       const lines = entry.content.split("\n");

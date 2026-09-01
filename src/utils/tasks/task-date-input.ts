@@ -17,13 +17,13 @@ export function resolveDateInput(raw: string, today: Date): null | string {
 
   const iso = ISO_RE.exec(s);
   if (iso) {
-    const d = makeDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-    return d ? toIso(d) : null;
+    const d = makeCalendarDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+    return d ? toIsoDate(d) : null;
   }
 
   // 긴 이름은 §310 쿼리 값이 쓰고, 한 글자는 에디터 입력 규칙이 쓴다. 두 표면이 같은
   // 것을 다른 이름으로 부르지 않도록 별칭으로 둔다.
-  if (s === "t" || s === "today") return toIso(today);
+  if (s === "t" || s === "today") return toIsoDate(today);
   if (s === "m" || s === "tomorrow") return shift(today, 1);
   if (s === "y" || s === "yesterday") return shift(today, -1);
 
@@ -37,16 +37,16 @@ export function resolveDateInput(raw: string, today: Date): null | string {
   if (md) {
     const month = Number(md[1]);
     const day = Number(md[2]);
-    const thisYear = makeDate(today.getFullYear(), month, day);
+    const thisYear = makeCalendarDate(today.getFullYear(), month, day);
     if (!thisYear) return null;
     const base = new Date(
       today.getFullYear(),
       today.getMonth(),
       today.getDate(),
     );
-    if (thisYear.getTime() >= base.getTime()) return toIso(thisYear);
-    const nextYear = makeDate(today.getFullYear() + 1, month, day);
-    return nextYear ? toIso(nextYear) : null;
+    if (thisYear.getTime() >= base.getTime()) return toIsoDate(thisYear);
+    const nextYear = makeCalendarDate(today.getFullYear() + 1, month, day);
+    return nextYear ? toIsoDate(nextYear) : null;
   }
 
   return null;
@@ -56,11 +56,20 @@ export function resolveDateInput(raw: string, today: Date): null | string {
 function shift(today: Date, days: number): string {
   const d = new Date(today);
   d.setDate(d.getDate() + days);
-  return toIso(d);
+  return toIsoDate(d);
 }
 
-/** 달력상 실재하는 날짜인지 — Date의 롤오버로 검증한다. */
-function makeDate(year: number, month: number, day: number): Date | null {
+/**
+ * 달력상 실재하는 날짜인지 — Date의 롤오버로 검증한다.
+ *
+ * §318 반복 계산(`task-recurrence.ts`)이 같은 판정을 필요로 해 export한다. 사본을
+ * 만들면 "2월 30일"을 한쪽만 거르는 날이 온다.
+ */
+export function makeCalendarDate(
+  year: number,
+  month: number,
+  day: number,
+): Date | null {
   const d = new Date(year, month - 1, day);
   return d.getMonth() === month - 1 && d.getDate() === day ? d : null;
 }
@@ -69,6 +78,7 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function toIso(d: Date): string {
+/** `Date` → `YYYY-MM-DD`. 로컬 달력 기준 — UTC로 바꾸면 자정 근처에서 하루 어긋난다. */
+export function toIsoDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

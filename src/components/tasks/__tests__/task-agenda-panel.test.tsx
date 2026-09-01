@@ -100,16 +100,15 @@ describe("TaskAgendaPanel", () => {
     // §18.18 M4 — one press is one step around the ring, so a to-do goes to
     // `doing`, not straight to `done`. The editor's checkbox and vim's Space
     // walk the same ring.
-    expect(setTaskState).toHaveBeenCalledWith(
-      "a.md",
-      0,
-      "- [ ] 하나",
-      "doing",
-      true,
-      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    expect(setTaskState).toHaveBeenCalledWith("a.md", 0, "- [ ] 하나", {
+      // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+      dates: undefined,
+      newState: "doing",
+      recordDoneDate: true,
       // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-      null,
-    );
+      timer: null,
+      today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
   });
 
   it("§313 addresses the scroll request at the task's own file", async () => {
@@ -437,16 +436,15 @@ describe("TaskAgendaPanel", () => {
       // 여기서는 fireEvent로 클릭만 합성한다.
       fireEvent.click(screen.getByRole("button", { name: /하나 — / }));
 
-      expect(setTaskState).toHaveBeenCalledWith(
-        "a.md",
-        0,
-        "- [/] 하나",
-        "done",
-        true,
-        "2026-08-23",
+      expect(setTaskState).toHaveBeenCalledWith("a.md", 0, "- [/] 하나", {
+        // §318 — 굴리지 않는 전이라 밀 날짜가 없다.
+        dates: undefined,
+        newState: "done",
+        recordDoneDate: true,
         // §18.18 M4 — 시간 기록이 꺼져 있으면 `⏱`를 건드리지 말라는 뜻이다.
-        null,
-      );
+        timer: null,
+        today: "2026-08-23",
+      });
     });
   });
 

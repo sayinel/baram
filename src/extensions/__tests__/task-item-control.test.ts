@@ -238,3 +238,80 @@ describe("the state ring moves the clock", () => {
     );
   });
 });
+
+// §318 — 반복 태스크를 완료로 넘기면 그 자리에서 다음 회차가 된다.
+//
+// ‼️ 여기 적힌 두 줄(입력·기대)은 Rust `write.rs`의
+// `a_roll_moves_every_date_it_is_given`가 **같은 문자열로** 단정한다. 두 진입점이
+// 갈라져 있으므로(에디터는 PM 트랜잭션, 아젠다는 디스크) 어느 한쪽만 고치면 같은
+// 조작이 표면에 따라 다른 줄을 만든다 — 그 사고를 두 언어의 테스트가 막는다.
+describe("a recurring task rolls instead of completing (§318)", () => {
+  it("moves the dates and comes back to todo in one press", () => {
+    const editor = createEditor(
+      "- [/] 주간 회고 🛫2026-08-30 📅2026-09-01 🔁every week\n",
+    );
+
+    press(boxes(editor)[0], "click");
+
+    expect(states(editor.state.doc)).toEqual(["todo"]);
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe(
+      "- [ ] 주간 회고 🛫2026-09-06 📅2026-09-08 🔁every week\n",
+    );
+  });
+
+  // 취소는 "이번 회차를 건너뛴다"이지 "반복을 끝낸다"가 아니다.
+  it("rolls on cancel as well", () => {
+    const editor = createEditor("- [ ] 주간 회고 📅2026-09-01 🔁every week\n");
+
+    editor.commands.setTaskState("cancelled");
+
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe(
+      "- [ ] 주간 회고 📅2026-09-08 🔁every week\n",
+    );
+  });
+
+  // ‼️ 굴린 줄에 ✅이 남으면 그 줄은 자기가 끝났는지에 대해 두 가지를 말한다.
+  it("strips a completion stamp the line was carrying", () => {
+    const editor = createEditor(
+      "- [/] 주간 회고 📅2026-09-01 🔁every week ✅2026-08-25\n",
+    );
+
+    press(boxes(editor)[0], "click");
+
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe(
+      "- [ ] 주간 회고 📅2026-09-08 🔁every week\n",
+    );
+  });
+
+  // 한 번의 Ctrl+Z가 절반만 되돌리면 안 된다 — 상태는 굴렀는데 날짜는 안 굴린 줄.
+  it("undoes as a single step", () => {
+    const md = "- [/] 주간 회고 📅2026-09-01 🔁every week\n";
+    const editor = createEditor(md);
+    editor.view.dispatch(closeHistory(editor.state.tr));
+
+    press(boxes(editor)[0], "click");
+    editor.commands.undo();
+
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe(md);
+  });
+
+  it.each([
+    [
+      "a rule it cannot read",
+      "- [/] a 📅2026-09-01 🔁every fortnight\n",
+      "- [x] a 📅2026-09-01 🔁every fortnight\n",
+    ],
+    ["no date to move", "- [/] a 🔁every 3 days\n", "- [x] a 🔁every 3 days\n"],
+    [
+      "no recurrence at all",
+      "- [/] a 📅2026-09-01\n",
+      "- [x] a 📅2026-09-01\n",
+    ],
+  ])("completes normally with %s", (_label, md, expected) => {
+    const editor = createEditor(md);
+
+    press(boxes(editor)[0], "click");
+
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe(expected);
+  });
+});

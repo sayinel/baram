@@ -29,8 +29,16 @@ import { isSameLine, lineAt, spliceLine } from "./line-splice";
 import { syncOpenSurfacesAfterDiskWrite } from "./sync-open-surfaces";
 
 export type TaskChange =
-  | { field: string; kind: "field"; value: string }
   | {
+      /**
+       * §318 굴린 날짜 — 반복 태스크가 다음 회차로 넘어갈 때 함께 미는 세 필드.
+       * 계산은 `task-recurrence.ts`의 `rollForState`가 한다. 굴리지 않으면 없다.
+       *
+       * ‼️ 상태와 **같은 변경 안에** 있는 것이 요점이다. 굴리기를 별도 쓰기로 내면
+       * 상태 전이와 날짜 이동 사이에 낀 stale이 "상태는 굴렀는데 날짜는 안 굴린"
+       * 줄을 만들고, 그 줄은 자기가 몇 회차인지 말하지 못한다.
+       */
+      dates?: Partial<Record<"due" | "scheduled" | "start", string>>;
       kind: "state";
       newState: TaskState;
       recordDoneDate: boolean;
@@ -41,6 +49,7 @@ export type TaskChange =
       timer: null | string;
       today: string;
     }
+  | { field: string; kind: "field"; value: string }
   /**
    * §312 태그 토글. `set_task_field`에 끼워 넣을 수 없다 — `FIELD_EMOJI`는 날짜 여섯뿐이고
    * `apply_field`는 모르는 이름을 파일을 건드리기 전에 거절한다(write.rs:158-160). 삽입 위치도
@@ -300,16 +309,25 @@ async function previewLine(raw: string, change: TaskChange): Promise<string> {
     case "field":
       return previewTaskFieldLine(raw, change.field, change.value);
     case "state":
-      return previewTaskStateLine(
-        raw,
-        change.newState,
-        change.recordDoneDate,
-        change.today,
-        change.timer,
-      );
+      return previewTaskStateLine(raw, stateWrite(change));
     case "tag":
       return previewTaskTagLine(raw, change.tag, change.on);
   }
+}
+
+/**
+ * 상태 변경 → IPC 페이로드. 두 경로(디스크·미리보기)가 **같은 함수**로 만든다 —
+ * 손으로 두 번 적으면 한쪽만 필드를 빠뜨리는 날이 오고, 그때 미리보기와 디스크가
+ * 서로 다른 줄을 만든다(§305가 서 있는 불변식이 바로 그 둘의 일치다).
+ */
+function stateWrite(change: Extract<TaskChange, { kind: "state" }>) {
+  return {
+    dates: change.dates,
+    newState: change.newState,
+    recordDoneDate: change.recordDoneDate,
+    timer: change.timer,
+    today: change.today,
+  };
 }
 
 async function writeToDisk(
@@ -326,15 +344,7 @@ async function writeToDisk(
         change.value,
       );
     case "state":
-      return setTaskState(
-        task.path,
-        task.line,
-        task.raw,
-        change.newState,
-        change.recordDoneDate,
-        change.today,
-        change.timer,
-      );
+      return setTaskState(task.path, task.line, task.raw, stateWrite(change));
     case "tag":
       return setTaskTag(task.path, task.line, task.raw, change.tag, change.on);
   }

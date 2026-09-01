@@ -11,7 +11,9 @@ pub use archive::{archive_tasks, ArchiveItem, ArchiveOutcome};
 pub use parse::normalize_line;
 pub use parse::{parse_task_line, TaskState};
 pub use tag::{apply_tag, set_task_tag};
-pub use write::{apply_field, apply_state, delete_line, set_task_field, set_task_state};
+pub use write::{
+    apply_field, apply_state, delete_line, set_task_field, set_task_state, StateWrite,
+};
 
 use serde::Serialize;
 use thiserror::Error;
