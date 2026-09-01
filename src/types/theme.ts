@@ -198,8 +198,8 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-line-highlight": "#f8f9fa",
 
       "--color-status-danger": "#ef4444",
-      "--color-status-warning": "#eab308",
-      "--color-status-success": "#22c55e",
+      "--color-status-warning": "#f59e0b",
+      "--color-status-success": "#10b981",
       "--color-accent-subtle": "#eff6ff",
       "--color-accent-ai": "#8b5cf6",
       "--color-bg-input": "#ffffff",
@@ -238,9 +238,9 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-line-highlight": "#16213e",
 
       "--color-status-danger": "#ef4444",
-      "--color-status-warning": "#eab308",
-      "--color-status-success": "#22c55e",
-      "--color-accent-subtle": "#1e3a5f",
+      "--color-status-warning": "#f59e0b",
+      "--color-status-success": "#10b981",
+      "--color-accent-subtle": "#172554",
       "--color-accent-ai": "#a78bfa",
       "--color-bg-input": "#1e293b",
       "--color-graph-node": "#6b7280",
