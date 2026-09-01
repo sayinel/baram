@@ -236,6 +236,15 @@
   background: var(--color-bg-elevated);
 }
 
+/* 결과 행은 눌러서 문서를 연다 — 목록·카드는 이미 그렇게 보였고 표만 빠져 있었다. */
+.tiptap .qb-table tbody tr {
+  cursor: pointer;
+}
+
+.tiptap .qb-table tbody tr:hover {
+  background: var(--color-bg-subtle);
+}
+
 .tiptap .qb-path {
   font-size: 11px;
   color: var(--color-text-muted);

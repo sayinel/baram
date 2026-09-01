@@ -13,6 +13,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
 import { TaskQueryResults } from "../../components/tasks/TaskQueryResults";
+import { openZettelHubNote } from "../../components/zettelkasten/open-hub-note";
 import { resultCount, useQueryBlock } from "../../hooks/use-query-block";
 import { useTranslation } from "../../i18n/useTranslation";
 import { focusEditorView } from "../../utils/editor/focus-editor-view";
@@ -61,7 +62,7 @@ export function QueryBlockView({
   const { t } = useTranslation();
   const queryStr = (node.attrs.query as string) || "";
   const [def, setDef] = useState<QueryDef>(() => parseQueryDSL(queryStr));
-  const { results, loading, error, execute } = useQueryBlock();
+  const { results, loading, error, execute, vaultPath } = useQueryBlock();
 
   // §12-⑩ vim modal gate — event-time read via ref (not a reactive dep)
   const vimGateEditorRef = useRef(editor);
@@ -448,7 +449,11 @@ export function QueryBlockView({
                 tasks={results.tasks}
               />
             ) : (
-              <ResultsList display={def.display} results={results.files} />
+              <ResultsList
+                display={def.display}
+                results={results.files}
+                vaultPath={vaultPath}
+              />
             )}
           </div>
         )}
@@ -553,11 +558,43 @@ function FilterRow({
 function ResultsList({
   results,
   display,
+  vaultPath,
 }: {
   display: QueryDisplay;
   results: VaultFile[];
+  vaultPath: null | string;
 }) {
   const { t } = useTranslation();
+
+  // §5.13 결과 행을 눌러 그 문서를 연다.
+  //
+  // ‼️ `VaultFile.path`는 **vault 상대경로**다 — `use-query-block.ts`가 결과를 만들 때
+  // rootPath를 떼어 낸 값이라 그대로 열면 파일을 못 찾는다. 읽는 쪽은 절대경로만 받는다
+  // (`fs/mod.rs`의 `validate_path`가 상대경로를 거부한다). 그래서 여기서 다시 붙인다.
+  //
+  // ‼️ preventDefault/stopPropagation이 없으면 이 클릭이 NodeView 밖으로 새어 나가
+  // ProseMirror가 블록을 NodeSelection으로 잡고 빌더를 연다 — 이동이 묻힌다.
+  const openRow = (
+    e: React.KeyboardEvent | React.MouseEvent,
+    relPath: string,
+  ): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    // vault가 열려 있지 않으면 상대경로를 붙일 기준이 없다. 그 상태에서는 결과 자체가
+    // 비어 있으므로 조용히 무시한다.
+    if (!vaultPath) return;
+    void openZettelHubNote(`${vaultPath}/${relPath}`);
+  };
+
+  /** 클릭과 키보드 양쪽에서 열리는 행 — 사이드바 노트 행(ZettelSectionList)과 같은 형태. */
+  const rowProps = (relPath: string) => ({
+    onClick: (e: React.MouseEvent) => openRow(e, relPath),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") openRow(e, relPath);
+    },
+    role: "button",
+    tabIndex: 0,
+  });
 
   if (results.length === 0) {
     return <div className="qb-empty">{t("query.empty")}</div>;
@@ -582,7 +619,7 @@ function ResultsList({
         </thead>
         <tbody>
           {results.map((file) => (
-            <tr key={file.path}>
+            <tr key={file.path} {...rowProps(file.path)}>
               <td>{file.name}</td>
               <td className="qb-path">{file.path}</td>
               {Array.from(keys).map((k) => (
@@ -599,7 +636,7 @@ function ResultsList({
     return (
       <div className="qb-cards">
         {results.map((file) => (
-          <div className="qb-card" key={file.path}>
+          <div className="qb-card" key={file.path} {...rowProps(file.path)}>
             <div className="qb-card-name">{file.name}</div>
             <div className="qb-card-path">{file.path}</div>
             {file.tags.length > 0 && (
@@ -621,7 +658,7 @@ function ResultsList({
   return (
     <div className="qb-list">
       {results.map((file) => (
-        <div className="qb-list-item" key={file.path}>
+        <div className="qb-list-item" key={file.path} {...rowProps(file.path)}>
           <span className="qb-list-name">{file.name}</span>
           <span className="qb-list-path">{file.path}</span>
         </div>
