@@ -4,33 +4,13 @@
 // 1. ThemeColors — 25 CSS custom property keys
 // ---------------------------------------------------------------------------
 
-export interface ThemeColors {
-  "--color-accent-ai": string;
-  "--color-accent-default": string;
-  "--color-accent-hover": string;
-  "--color-accent-subtle": string;
-  "--color-bg-default": string;
-  "--color-bg-elevated": string;
-  "--color-bg-input": string;
-  "--color-bg-panel": string;
-  "--color-bg-subtle": string;
-  "--color-border-default": string;
-  "--color-border-subtle": string;
-  "--color-editor-bg": string;
-  "--color-editor-cursor": string;
-  "--color-editor-line-highlight": string;
-  "--color-editor-selection": string;
-  "--color-editor-text": string;
-  "--color-graph-active": string;
-  "--color-graph-edge": string;
-  "--color-graph-node": string;
-  "--color-status-danger": string;
-  "--color-status-success": string;
-  "--color-status-warning": string;
-  "--color-text-disabled": string;
-  "--color-text-primary": string;
-  "--color-text-secondary": string;
-}
+// 감사 순서 6: 25키를 손으로 두 번 적지 않는다 — 아래 THEME_COLOR_KEYS(값,
+// 색 피커 메타데이터)가 단일 출처이고, 이 타입은 그 배열에서 파생된다. 키를
+// 추가/삭제하려면 배열 한 곳만 고치면 타입·에디터 UI·clearThemeVars의 제거
+// 목록이 함께 따라온다. (배열은 3번 섹션에 있다 — 타입 공간의 typeof 참조는
+// 선언 순서를 타지 않는다.)
+export type ThemeColorKey = (typeof THEME_COLOR_KEYS)[number]["key"];
+export type ThemeColors = Record<ThemeColorKey, string>;
 
 // ---------------------------------------------------------------------------
 // 2. ThemeDef — A complete theme definition
@@ -48,11 +28,7 @@ export interface ThemeDef {
 // 3. THEME_COLOR_KEYS — metadata for rendering color pickers in ThemeEditor
 // ---------------------------------------------------------------------------
 
-export const THEME_COLOR_KEYS: {
-  category: string;
-  key: keyof ThemeColors;
-  label: string;
-}[] = [
+export const THEME_COLOR_KEYS = [
   // Background
   {
     key: "--color-bg-default",
@@ -119,7 +95,11 @@ export const THEME_COLOR_KEYS: {
   { key: "--color-graph-node", label: "Graph Node", category: "Graph" },
   { key: "--color-graph-active", label: "Graph Active", category: "Graph" },
   { key: "--color-graph-edge", label: "Graph Edge", category: "Graph" },
-];
+] as const satisfies readonly {
+  category: string;
+  key: `--color-${string}`;
+  label: string;
+}[];
 
 // ---------------------------------------------------------------------------
 // 4. Theme key migration map (v9 → v10)
@@ -165,7 +145,7 @@ export function migrateThemeColors(
 }
 
 // ---------------------------------------------------------------------------
-// 5. BUILT_IN_THEMES — 6 shipped themes
+// 5. BUILT_IN_THEMES — 8 shipped themes
 // ---------------------------------------------------------------------------
 
 export const BUILT_IN_THEMES: ThemeDef[] = [

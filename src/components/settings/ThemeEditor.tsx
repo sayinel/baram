@@ -71,7 +71,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // Group color keys by category
   const categories = useMemo(() => {
-    const map = new Map<string, typeof THEME_COLOR_KEYS>();
+    const map = new Map<string, (typeof THEME_COLOR_KEYS)[number][]>();
     for (const entry of THEME_COLOR_KEYS) {
       const list = map.get(entry.category) ?? [];
       list.push(entry);
