@@ -1,16 +1,5 @@
 // §4.2 Baram App — 3-Column layout with editor
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
-import type { PdfFindApi } from "./components/editor/pdf/use-pdf-find";
-import type { EditorTab } from "./stores/editor/editor";
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
 import { useEditor } from "@tiptap/react";
@@ -21,24 +10,18 @@ import { MarkdownSurface } from "./components/editor/MarkdownSurface";
 import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
 import { PluginViewerHost } from "./components/editor/PluginViewerHost";
 import { PreviewToggleButton } from "./components/editor/PreviewToggleButton";
-import { createTabSurfaceRenderers } from "./components/editor/tab-surface-renderers";
 import { TabSurface } from "./components/editor/TabSurface";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppDialogs } from "./components/layout/AppDialogs";
 import { AppLayout } from "./components/layout/AppLayout";
-import {
-  type EditorMode,
-  editorModeForSurfaceKind,
-  StatusBar,
-  vimSurfaceForMode,
-} from "./components/layout/StatusBar";
+import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
 import { HomeSurface } from "./components/onboarding/HomeSurface";
 import { GraphViewLazy } from "./components/sidebar/GraphViewLazy";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
-import { setWysiwygVimStatusOwner } from "./extensions/plugins/vim/vim-status";
+import { useActiveTabSurface } from "./hooks/use-active-tab-surface";
 import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useAutoSnapshot } from "./hooks/use-auto-snapshot";
@@ -48,6 +31,7 @@ import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import { useFileOperations } from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
+import { useFindReplaceRouting } from "./hooks/use-find-replace-routing";
 import { useGhostText } from "./hooks/use-ghost-text";
 import { useGlobalCaptureShortcut } from "./hooks/use-global-capture-shortcut";
 import { useGlobalKeyboard } from "./hooks/use-global-keyboard";
@@ -58,51 +42,23 @@ import { useKeepaliveEditors } from "./hooks/use-keepalive-editors";
 import { useKeybindingActions } from "./hooks/use-keybinding-actions";
 import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
+import { usePerfInstrumentation } from "./hooks/use-perf-instrumentation";
+import { usePluginLifecycle } from "./hooks/use-plugin-lifecycle";
 import { usePreviewSourceView } from "./hooks/use-preview-source-view";
-import { useRetainedTabs } from "./hooks/use-retained-tabs";
+import { useRetainedSurfaces } from "./hooks/use-retained-surfaces";
 import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
 import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
+import { useTabSwitcherOverlay } from "./hooks/use-tab-switcher-overlay";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useTaskWatcher } from "./hooks/use-task-watcher";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import {
-  initializePlugins,
-  notifyEditorReady,
-  shutdownPlugins,
-} from "./plugins/plugin-lifecycle";
-import { pluginLoader } from "./plugins/plugin-loader";
-import { matchFileViewer, usePluginUIStore } from "./plugins/plugin-ui-store";
-import {
-  startUpdateChecker,
-  stopUpdateChecker,
-} from "./plugins/update-checker";
-import {
-  startAppUpdateChecker,
-  stopAppUpdateChecker,
-} from "./services/app-update";
+import { notifyEditorReady } from "./plugins/plugin-lifecycle";
 import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
-import { useEditorStore } from "./stores/editor/editor";
-import { isFileTab } from "./stores/editor/editor";
-import { useFileStore } from "./stores/file/file";
 import { useUIStore } from "./stores/ui/ui";
-import { editorSurfaceBlockReason } from "./utils/editor/active-tab";
-import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
-import {
-  resolveSurfaceKind,
-  type SurfaceKind,
-} from "./utils/editor/surface-kind";
-import {
-  getLanguageForFile,
-  isBinaryViewerFile,
-  isHtmlFile,
-  isImageFile,
-  isMarkdownFile,
-  isPdfFile,
-} from "./utils/file-type";
-import { logger } from "./utils/logger";
+import { FILE_MODE_PATH } from "./utils/file-mode";
 import { logAppReady } from "./utils/perf";
 // Stylesheet moved to `main.tsx` (§260 Phase 5 re-review, R3): App is dynamically
 // imported, so a stylesheet imported here is bound to that chunk and never reaches
@@ -132,11 +88,6 @@ const FileEditorLayout = lazy(() =>
   })),
 );
 
-// §89 File mode detection — resolved once at module load (URL params don't change)
-const _fileModeParams = new URLSearchParams(window.location.search);
-const FILE_MODE_PATH =
-  _fileModeParams.get("mode") === "file" ? _fileModeParams.get("path") : null;
-
 function App() {
   const { t } = useTranslation();
   const {
@@ -154,111 +105,47 @@ function App() {
       setSidebarPanel: s.setSidebarPanel,
     })),
   );
-  const activeTabId = useEditorStore((s) => s.activeTabId);
-  const activeTabFilePath = useEditorStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    return tab && isFileTab(tab) ? tab.filePath : null;
-  });
-  // The whole tab, not a boolean: `editorSurfaceBlockReason` asks `isFileTab` itself, which is
-  // what makes "a tab kind that does not exist yet is blocked" a property of the tested
-  // function rather than of this untested component.
-  const activeTab = useEditorStore(
-    useShallow((s) => s.tabs.find((t) => t.id === s.activeTabId)),
-  );
-  const markDirty = useEditorStore((s) => s.markDirty);
-  const rootPath = useFileStore((s) => s.rootPath);
-
-  // Derived: non-markdown code file detection for rendering branch
-  const isCodeFile = !!activeTabFilePath && !isMarkdownFile(activeTabFilePath);
-  // ‼️ "Not markdown" is NOT the same question as "may the text editor write this".
-  // `isCodeFile` answers the first — a PDF passes it, because a PDF is not markdown —
-  // and the non-markdown auto-save effect below used it as if it answered the second,
-  // so a PDF that went dirty was a PDF about to be overwritten with
-  // `sourceContentRef.current`. `autoSave` defaults to true, so that path was live.
-  //
-  // Named rather than inlined at the one call site on purpose: the next effect that
-  // writes files must be able to ask this question by name instead of rediscovering it.
-  // Guarding call sites one by one is what leaves the following one exposed.
-  const isEditableTextFile =
-    isCodeFile && !isBinaryViewerFile(activeTabFilePath);
-
-  // PDF file viewer — read-only, built-in (PDF.js)
-  const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
-  // Raster images — binary, rendered by a "viewer" plugin (built-in
-  // media-viewer). The binary guards hold with or without a plugin.
-  const isImageTab = !!activeTabFilePath && isImageFile(activeTabFilePath);
-
-  // Plugin-registered file viewer matching the active tab (§69 "viewer")
-  const fileViewers = usePluginUIStore((s) => s.fileViewers);
-  const pluginViewer = matchFileViewer(
+  const {
+    activeTab,
+    activeTabFilePath,
+    activeTabId,
     fileViewers,
-    activeTabFilePath ?? undefined,
-  );
-  // Text files a plugin claims (e.g. SVG) get the same preview ↔ source
-  // toggle as HTML; binary files (images) are preview-only.
-  const isPluginPreviewTab =
-    !!pluginViewer && isCodeFile && !isPdfTab && !isImageTab;
+    htmlSourceTabs,
+    isCodeFile,
+    isEditableTextFile,
+    isHtmlSourceView,
+    isHtmlTab,
+    isPdfTab,
+    isPluginPreviewTab,
+    markDirty,
+    pluginViewer,
+    previewFileMtime,
+    rootPath,
+    setHtmlSourceTabs,
+  } = useActiveTabSurface();
 
-  // HTML file viewer — rendered preview (default) vs raw source, tracked
-  // per tab so toggling one tab doesn't affect others.
-  const isHtmlTab = !!activeTabFilePath && isHtmlFile(activeTabFilePath);
-  const [htmlSourceTabs, setHtmlSourceTabs] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
-
-  // Viewers reload whenever the file's saved/reloaded mtime bumps
-  // (manual save, auto-save, toggle-flush, or external auto-reload)
-  const previewFileMtime = useFileStore((s) =>
-    (isHtmlTab || isPdfTab || isImageTab || isPluginPreviewTab) &&
-    activeTabFilePath
-      ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
-      : 0,
-  );
-
-  // §5.6 Find/Replace state
-  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
-  const [findReplaceMode, setFindReplaceMode] = useState<"find" | "replace">(
-    "find",
-  );
-  // §272 PDF 찾기 상태 — PdfPreview가 소유한 usePdfFind의 live API를 여기로
-  // 끌어올려 PdfFindBar를 PdfPreview 바깥(FindReplaceBar와 같은 자리)에서
-  // 그린다.
-  const [pdfFindOpen, setPdfFindOpen] = useState(false);
-  const [pdfFindApi, setPdfFindApi] = useState<null | PdfFindApi>(null);
-  // Cmd+F/네이티브 메뉴가 부르는 setFindReplaceOpen을 여기 한 곳에서만
-  // PDF 탭이면 PDF 찾기로, 아니면 원래 마크다운 찾기로 분기한다 — 키바인딩,
-  // 네이티브 메뉴, 탭 전환 복원까지 4개 호출부가 각자 분기하면 어긋나기
-  // 쉽다(§272 Task 5 corrections). value는 boolean이거나 함수형 업데이터일
-  // 수 있다(네이티브 메뉴 edit_find_replace가 함수형을 쓴다) — 두 setState
-  // setter 모두 SetStateAction을 그대로 받으므로 그대로 위임한다.
-  const routeFindReplaceOpen = useCallback<
-    React.Dispatch<React.SetStateAction<boolean>>
-  >(
-    (value) => {
-      if (isPdfTab) {
-        setPdfFindOpen(value);
-        return;
-      }
-      setFindReplaceOpen(value);
-    },
-    // §286 setState 세터는 항상 안정 참조라 재생성 빈도에 영향을 주지 않지만, React
-    // Compiler가 이 함수 아래쪽에 `surfaceKind`(§286 표면 판정, `isHtmlSourceView`를
-    // 읽는다)가 생기면서 추론한 의존성이 `isPdfTab` 단독과 달라져 수동 메모이제이션을
-    // 보존하지 못한다고 보고했다 — 추론한 세터를 그대로 적어 둘 일치시킨다.
-    [isPdfTab, setFindReplaceOpen, setPdfFindOpen],
-  );
-  // §276.1 PdfToolbar의 찾기 토글 — 같은 pdfFindOpen을 뒤집는다. 인라인
-  // 화살표를 그대로 prop으로 넘기면 PdfPreview(memo)가 매 렌더 다시 그려진다.
-  const handleTogglePdfFind = useCallback(() => {
-    setPdfFindOpen((v) => !v);
-  }, [setPdfFindOpen]);
+  const {
+    findReplaceMode,
+    findReplaceOpen,
+    handleTogglePdfFind,
+    pdfFindApi,
+    pdfFindOpen,
+    routeFindReplaceOpen,
+    setFindReplaceMode,
+    setFindReplaceOpen,
+    setPdfFindApi,
+    setPdfFindOpen,
+  } = useFindReplaceRouting(isPdfTab);
   // §perf-large-file B2/C2: Loading state for async parse
   const [isParsing, setIsParsing] = useState(false);
 
-  // §39 Tab switcher state
-  const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
-  const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
+  const {
+    setTabSwitcherIndex,
+    setTabSwitcherOpen,
+    tabSwitcherIndex,
+    tabSwitcherMruRef,
+    tabSwitcherOpen,
+  } = useTabSwitcherOverlay();
 
   // §72 Skill Preview Panel state
   const [skillPreviewOpen, setSkillPreviewOpen] = useState(false);
@@ -268,7 +155,6 @@ function App() {
   const handleSkillPreviewToggle = useCallback(() => {
     setSkillPreviewOpen((v) => !v);
   }, [setSkillPreviewOpen]);
-  const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
   // §298 vim §12-⑪: extensions MUST be referentially stable across renders.
   // useEditor re-compares options every render (element-wise on extensions);
@@ -310,53 +196,8 @@ function App() {
     onActiveEditorChange: handleActiveEditorChange,
   } = useKeepaliveEditors(editor);
 
-  // §perf-large-file C3.0: Install dev-only performance instrumentation
-  useEffect(() => {
-    if (import.meta.env.DEV) initPerfTrace();
-  }, []);
-
-  // §69 Plugin system — initialize plugins and update checker on mount
-  useEffect(() => {
-    // §260 3c-3 — the plugin runtime belongs to ONE host realm. A §89 file-mode
-    // window is a second one: this effect runs before the `FILE_MODE_PATH` branch in
-    // the render below, so a file window used to load plugins too. Nothing about the
-    // design supports that — the Rust authorizer is keyed on `plugin-<id>` with no
-    // realm dimension, so both realms fight over the same label, the same grant and
-    // (since this phase) the same startup sweep, which would close and revoke the
-    // MAIN window's live sandboxes the moment the user opens a file in a new window.
-    if (!FILE_MODE_PATH) {
-      initializePlugins().catch((err) =>
-        logger.error("[App] Plugin initialization failed:", err),
-      );
-    }
-    startUpdateChecker();
-    startAppUpdateChecker();
-    return () => {
-      stopUpdateChecker();
-      stopAppUpdateChecker();
-      if (!FILE_MODE_PATH) shutdownPlugins().catch((e) => logger.error(e));
-    };
-  }, []);
-
-  // §69 Plugin system — provide editor instance to plugin loader
-  useEffect(() => {
-    if (editor) pluginLoader.setEditor(editor);
-  }, [editor]);
-
-  // §perf-large-file C3.1/C4: Install per-plugin transaction cost instrumentation
-  // on the ACTIVE editor — the keep-alive editor that renders large docs is a
-  // separate instance, so instrumenting only the shared `editor` left its
-  // txBreakdown reading 0. instrumentEditor is idempotent per instance (WeakSet),
-  // so re-binding on activeEditor change instruments each editor exactly once.
-  useEffect(() => {
-    if (activeEditor) instrumentEditor(activeEditor);
-    // §perf-large-file C4: expose the ACTIVE editor on window in DEV so perf
-    // experiments can be driven from the DevTools console (e.g. fold-all to
-    // simulate windowing, read doc size, dispatch commands).
-    if (import.meta.env.DEV) {
-      (globalThis as { __baramEditor?: unknown }).__baramEditor = activeEditor;
-    }
-  }, [activeEditor]);
+  usePerfInstrumentation(activeEditor);
+  usePluginLifecycle(editor);
 
   // §72 Skills mode — auto-detect skill files and switch right panel
   const { isSkill } = useSkillsMode();
@@ -428,102 +269,34 @@ function App() {
     toggleSourceMode,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
-  // §286/§298 vim §8 — ONE surface computation (`resolveSurfaceKind`, `utils/editor/
-  // surface-kind.ts`) now feeds the StatusBar, the wysiwyg status owner below, the
-  // `isMarkdownSurfaceActive` gate, and the render chain further down — a single answer to
-  // "what is the active tab showing" instead of four hand-written chains that had to agree.
-  const surfaceKind: SurfaceKind = resolveSurfaceKind({
+  const {
+    isMarkdownSurfaceActive,
+    retainedTabs,
+    statusBarMode,
+    surfaceKind,
+    tabSurfaceRenderers,
+  } = useRetainedSurfaces({
+    activeEditor,
+    activeTab,
     activeTabId,
     fileViewers,
-    isHtmlSourceView,
-    isSourceMode,
-    rootPath,
-    tab: activeTab,
-  });
-  // Only the wysiwyg surface appoints an owner: the source surface (markdown source mode
-  // AND non-markdown code tabs) has its own feeder, and graph/preview/plugin own no vim
-  // surface — a hidden Tiptap view update must never overwrite them (S5-a review).
-  const statusBarMode: EditorMode = editorModeForSurfaceKind(surfaceKind);
-  useEffect(() => {
-    setWysiwygVimStatusOwner(
-      vimSurfaceForMode(statusBarMode) === "wysiwyg" ? activeEditor : null,
-    );
-  }, [activeEditor, statusBarMode]);
-
-  // §285 유지 집합 — 마운트를 유지할 탭과 그 표면 종류.
-  //
-  // `pluginPreviewTabs`를 여기서 만드는 이유: 뷰어 레지스트리를 아는 것은 App뿐이다.
-  // SVG처럼 **텍스트인데 플러그인이 그리는** 파일은 판정 함수만 보면 `code`로 떨어지는데,
-  // 프리뷰 상태에서는 유지 대상이 아니다(§290에서 플러그인 뷰어를 제외했다).
-  const tabs = useEditorStore((s) => s.tabs);
-  const pluginPreviewTabs = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of tabs) {
-      if (isFileTab(t) && matchFileViewer(fileViewers, t.filePath)) {
-        set.add(t.id);
-      }
-    }
-    return set;
-  }, [tabs, fileViewers]);
-  const tabSurfaceRenderers = useMemo(
-    () =>
-      createTabSurfaceRenderers({
-        codeLanguageFor: (filePath) =>
-          getLanguageForFile(filePath) ?? undefined,
-        getSourceBuffer,
-        hasSourceBuffer,
-        markDirty,
-        onPdfFindApiChange: setPdfFindApi,
-        onTogglePdfFind: handleTogglePdfFind,
-        pdfFindOpen,
-        scrollOffsets,
-        pluginIdFor: (tabId) =>
-          useEditorStore.getState().tabs.find((t) => t.id === tabId)
-            ?.pluginId ?? "",
-        setSourceBuffer,
-        sourceCursorOffsetFor,
-      }),
-    [
-      getSourceBuffer,
-      hasSourceBuffer,
-      handleTogglePdfFind,
-      markDirty,
-      pdfFindOpen,
-      setSourceBuffer,
-      sourceCursorOffsetFor,
-    ],
-  );
-
-  // §286 MRU는 스토어가 관리한다(touchMru). 유지 집합은 그 순서의 순수 함수여야 한다 —
-  // 렌더 도중 직전 결과를 기억하던 구현이 표면을 반복 재마운트했다(use-retained-tabs.ts).
-  const mruOrder = useEditorStore((s) => s.mruOrder);
-  const retainedTabs = useRetainedTabs(
-    mruOrder,
-    tabs,
-    sourceModeTabs,
+    getSourceBuffer,
+    handleTogglePdfFind,
+    hasSourceBuffer,
     htmlSourceTabs,
-    pluginPreviewTabs,
-  );
-
-  // §286 마크다운 표면이 지금 보여야 하는가.
-  //
-  // 예전엔 아래 render 삼항 사슬의 마지막 else 조건을 손으로 그대로 부정한 별도 식이었다 —
-  // "새 갈래를 추가하면 여기도 고쳐야 한다"는 사람이 지켜야 하는 계약이었던 것을,
-  // `surfaceKind`가 단일 판정으로 대체했다(우선순위·이력은 `resolveSurfaceKind` docblock 참조).
-  const isMarkdownSurfaceActive = surfaceKind === "markdown";
-
-  // §260 Phase 4b — the policy and its rationale now live in `editorSurfaceBlockReason`, with
-  // tests. It moved out because nothing imports `App`, so this gate was unverified.
-  useEffect(() => {
-    pluginLoader.setEditorSurfaceBlocked(
-      editorSurfaceBlockReason({
-        activeTab,
-        isCodeFile,
-        isPdfTab,
-        isSourceMode,
-      }),
-    );
-  }, [activeTab, isCodeFile, isPdfTab, isSourceMode]);
+    isCodeFile,
+    isHtmlSourceView,
+    isPdfTab,
+    isSourceMode,
+    markDirty,
+    pdfFindOpen,
+    rootPath,
+    scrollOffsets,
+    setPdfFindApi,
+    setSourceBuffer,
+    sourceCursorOffsetFor,
+    sourceModeTabs,
+  });
 
   // Auto-save for non-MD code files (debounced write when dirty)
   useCodeAutoSave({
@@ -639,24 +412,6 @@ function App() {
 
   // App startup side effects — migration, onLaunch restore, file open events
   useAppStartup({ handleOpenFilePath, handleNewFile });
-
-  // §39 Ctrl keyup — commit tab switcher selection
-  useEffect(() => {
-    if (!tabSwitcherOpen) return;
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Control") {
-        const selectedTab = tabSwitcherMruRef.current[tabSwitcherIndex];
-        if (selectedTab) {
-          useEditorStore.getState().setActiveTab(selectedTab.id);
-        }
-        setTabSwitcherOpen(false);
-      }
-    };
-
-    window.addEventListener("keyup", handleKeyUp);
-    return () => window.removeEventListener("keyup", handleKeyUp);
-  }, [tabSwitcherOpen, tabSwitcherIndex]);
 
   // --- Keybinding actions registration ---
   useKeybindingActions({
