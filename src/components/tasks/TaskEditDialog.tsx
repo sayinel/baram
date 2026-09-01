@@ -4,10 +4,11 @@
 // 그대로 보여 주므로, 사용자는 `📅2026-08-30`이 어디서 오는지 보면서 배운다. 그래서
 // 미리보기는 장식이 아니라 이 모달이 존재하는 이유의 절반이다(§18.15).
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { TaskEditTarget } from "../../utils/tasks/task-edit-target";
 import type { DateKind, TaskLineDraft } from "../../utils/tasks/task-line-edit";
+import type { Editor } from "@tiptap/react";
 
 import { X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
@@ -15,6 +16,7 @@ import { useShallow } from "zustand/shallow";
 import { useEditorContext } from "../../contexts/editor-context";
 import { useTranslation } from "../../i18n/useTranslation";
 import { TASK_STATE_MARKER } from "../../ipc/types";
+import { useEditorStore } from "../../stores/editor/editor";
 import { useUIStore } from "../../stores/ui/ui";
 import { resolveDateInput } from "../../utils/tasks/task-date-input";
 import {
@@ -48,10 +50,15 @@ export function TaskEditDialog() {
 
   const [target, setTarget] = useState<null | TaskEditTarget>(null);
   const [draft, setDraft] = useState<null | TaskLineDraft>(null);
-  // 이슈 498: 저장이 stale target으로 거부됐음을 알리는 플래그. 문서가 모달 밖에서
-  // 바뀌면 캡처된 target이 무효가 되는데, 그때 조용히 닫으면 사용자가 입력한 내용이
-  // 통째로 증발한다 — 닫지 않고 이 메시지를 띄워 내용을 복사할 기회를 준다.
-  const [stale, setStale] = useState(false);
+  // 이슈 498: 저장이 거부됐음을 알리는 플래그와 그 이유. 문서가 모달 밖에서 바뀌면
+  // (stale) 캡처된 target이 무효가 되고, 소스 모드가 켜져 있으면(sourceMode) PM에만
+  // 닿는 이 저장이 소스 버퍼와 갈라져 복귀·Cmd+S에서 소실된다. 어느 쪽이든 조용히
+  // 닫으면 입력한 내용이 통째로 증발한다 — 닫지 않고 이유를 띄워 복사할 기회를 준다.
+  const [blocked, setBlocked] = useState<"sourceMode" | "stale" | null>(null);
+  // 이슈 498 (감사 MAJOR): 이 모달이 소유한 에디터. Ctrl+Tab 등으로 활성 에디터
+  // 인스턴스가 바뀌어도(keepalive 스왑) 열려 있는 draft를 새 에디터의 커서 블록으로
+  // 갈아치우지 않고, 저장이 다른 문서에 닿지 않게 한다.
+  const ownerRef = useRef<Editor | null>(null);
   // 날짜는 입력 중인 글자를 그대로 들고 있는다 — `t`/`+3`을 치는 동안 ISO로 바꿔 버리면
   // 두 글자를 칠 수 없다. 확정은 blur와 저장 시점에 한다.
   const [dateText, setDateText] = useState<Record<string, string>>({});
@@ -59,9 +66,25 @@ export function TaskEditDialog() {
 
   useEffect(() => {
     if (!taskEditOpen) {
-      // 닫힐 때 stale을 지운다 — 재오픈 첫 render가 지난번의 stale=true로 커밋되면
+      // 닫힐 때 거부 상태를 지운다 — 재오픈 첫 render가 지난번의 blocked로 커밋되면
       // role="alert"가 잘못된 경고를 한 프레임 다시 발표한다.
-      setStale(false);
+      ownerRef.current = null;
+      setBlocked(null);
+      return;
+    }
+    if (ownerRef.current && ownerRef.current !== editor) {
+      // 열려 있는 동안 활성 에디터 인스턴스가 바뀌었다. 여기서 draft를 다시 읽으면
+      // 지켜야 할 입력이 다른 문서의 블록으로 갈아치워진다 — 그대로 두고 거부만 알린다.
+      // ‼️ 이 검사가 소스 모드 게이트보다 먼저다: 스왑 대상 탭이 마침 소스 모드면
+      // 아래 게이트가 closeTaskEdit()으로 draft를 조용히 폐기해 버린다 — 남의 에디터
+      // 상태가 내 draft의 생사를 정해서는 안 된다.
+      setBlocked("stale");
+      return;
+    }
+    if (isActiveTabSourceMode()) {
+      // 소스 모드에서는 이 모달의 저장이 화면 밖 PM에만 닿아 소스 버퍼와 갈라진다 —
+      // 변환이 말이 되지 않는 자리(코드블록·제목·표)와 같은 계약으로, 열지 않는다.
+      closeTaskEdit();
       return;
     }
     const found = resolveTaskEditTarget(editor);
@@ -73,9 +96,10 @@ export function TaskEditDialog() {
     }
     const line = readTargetLine(editor.state, found);
     const read = readTaskLine(line);
+    ownerRef.current = editor;
     setTarget(found);
     setDraft(read);
-    setStale(false);
+    setBlocked(null);
     setDateText(
       Object.fromEntries(DATE_KINDS.map((k) => [k, read.dates[k] ?? ""])),
     );
@@ -98,11 +122,26 @@ export function TaskEditDialog() {
 
   const save = useCallback(() => {
     if (!editor || !target || !draft) return;
+    // 이슈 498 (감사 MAJOR): 활성 에디터 인스턴스가 캡처 때와 다르면 이 target은
+    // 다른 문서의 좌표다 — identity 가드가 잡기 전에 여기서 먼저 거른다. 소스 모드
+    // 게이트보다도 먼저다: 스왑 대상 탭이 소스 모드면 사유가 "sourceMode"로 잘못
+    // 표시된다(진짜 사유는 에디터가 바뀐 것이다).
+    if (ownerRef.current !== editor) {
+      setBlocked("stale");
+      return;
+    }
+    // 이슈 498 (감사 BLOCKER): 모달이 열린 뒤 소스 모드가 켜졌다. 지금 저장하면
+    // 화면 밖 PM에만 적용되고, 소스 버퍼는 옛것이라 복귀 시 덮어써 소실되며
+    // 소스 모드 중 Cmd+S는 옛 버퍼를 디스크에 쓴다 — 거부가 유일하게 안전하다.
+    if (isActiveTabSourceMode()) {
+      setBlocked("sourceMode");
+      return;
+    }
     // 이슈 498: 문서가 모달 밖에서 바뀌었으면 applyTargetLine이 stale 가드로
     // false를 돌려준다. 그때 닫아 버리면 입력이 조용히 증발하므로, 열어 둔 채
     // 메시지를 띄운다.
     if (!applyTargetLine(editor, target, writeTaskLine(draft))) {
-      setStale(true);
+      setBlocked("stale");
       return;
     }
     closeTaskEdit();
@@ -212,9 +251,13 @@ export function TaskEditDialog() {
           />
         </label>
 
-        {stale && (
+        {blocked && (
           <div className="task-edit-stale" role="alert">
-            {t("tasks.edit.staleDoc")}
+            {t(
+              blocked === "sourceMode"
+                ? "tasks.edit.sourceModeDoc"
+                : "tasks.edit.staleDoc",
+            )}
           </div>
         )}
 
@@ -237,4 +280,10 @@ export function TaskEditDialog() {
       </div>
     </div>
   );
+}
+
+/** 이슈 498: 활성 탭이 소스 모드인가 — 여는 게이트와 저장 게이트가 같은 판정을 본다. */
+function isActiveTabSourceMode(): boolean {
+  const { activeTabId, sourceModeTabs } = useEditorStore.getState();
+  return activeTabId !== null && sourceModeTabs.includes(activeTabId);
 }
