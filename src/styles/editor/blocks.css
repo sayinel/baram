@@ -245,173 +245,119 @@
   display: none;
 }
 
-/* Callout type colors */
+/* Callout type colors — §5.7 callout 토큰이 단일 출처다(라이트/다크 각각 조정된
+   13색). 종전에는 셋은 hex, 나머지는 status/accent/text 토큰에 임의 매핑돼 있어
+   토큰 13개가 통째로 죽어 있었다(감사 순서 4에서 소생). */
 .tiptap .callout-tip {
-  border-left-color: #10b981; /* TODO: tokenize --color-callout-tip */
+  border-left-color: var(--color-callout-tip);
 }
 
 .tiptap .callout-info {
-  border-left-color: var(--color-status-info);
+  border-left-color: var(--color-callout-info);
 }
 
 .tiptap .callout-warning {
-  border-left-color: var(--color-status-warning);
+  border-left-color: var(--color-callout-warning);
 }
 
 .tiptap .callout-danger {
-  border-left-color: var(--color-status-danger);
+  border-left-color: var(--color-callout-danger);
 }
 
 .tiptap .callout-note {
-  border-left-color: var(--color-text-secondary);
+  border-left-color: var(--color-callout-note);
 }
 
 .tiptap .callout-abstract {
-  border-left-color: var(--color-accent-ai);
+  border-left-color: var(--color-callout-abstract);
 }
 
 .tiptap .callout-todo {
-  border-left-color: #06b6d4; /* TODO: tokenize --color-callout-todo */
+  border-left-color: var(--color-callout-todo);
 }
 
 .tiptap .callout-example {
-  border-left-color: #14b8a6; /* TODO: tokenize --color-callout-example */
+  border-left-color: var(--color-callout-example);
 }
 
 .tiptap .callout-quote {
-  border-left-color: var(--color-text-muted);
+  border-left-color: var(--color-callout-quote);
 }
 
 .tiptap .callout-bug {
-  border-left-color: var(--color-status-danger);
+  border-left-color: var(--color-callout-bug);
 }
 
 .tiptap .callout-success {
-  border-left-color: var(--color-status-success);
+  border-left-color: var(--color-callout-success);
 }
 
 .tiptap .callout-failure {
-  border-left-color: var(--color-status-danger);
+  border-left-color: var(--color-callout-failure);
 }
 
 .tiptap .callout-question {
-  border-left-color: var(--color-status-warning);
+  border-left-color: var(--color-callout-question);
 }
 
-/* Callout type backgrounds (subtle tint) */
+/* Callout type backgrounds (subtle tint) — 같은 callout 토큰의 8% mix. 다크에서는
+   토큰의 다크 변형이 mix에 그대로 들어오므로 별도 override가 필요 없다. */
 .tiptap .callout-tip {
-  background: color-mix(in srgb, #10b981 8%, transparent); /* TODO: tokenize */
+  background: color-mix(in srgb, var(--color-callout-tip) 8%, transparent);
 }
 
 .tiptap .callout-info {
-  background: color-mix(in srgb, var(--color-status-info) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-info) 8%, transparent);
 }
 
 .tiptap .callout-warning {
-  background: color-mix(in srgb, var(--color-status-warning) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-warning) 8%, transparent);
 }
 
 .tiptap .callout-danger {
-  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-danger) 8%, transparent);
 }
 
 .tiptap .callout-note {
-  background: var(--color-bg-subtle);
+  background: color-mix(in srgb, var(--color-callout-note) 8%, transparent);
 }
 
 .tiptap .callout-abstract {
-  background: color-mix(in srgb, var(--color-accent-ai) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-abstract) 8%, transparent);
 }
 
 .tiptap .callout-todo {
-  background: color-mix(in srgb, #06b6d4 8%, transparent); /* TODO: tokenize */
+  background: color-mix(in srgb, var(--color-callout-todo) 8%, transparent);
 }
 
 .tiptap .callout-example {
-  background: color-mix(in srgb, #14b8a6 8%, transparent); /* TODO: tokenize */
+  background: color-mix(in srgb, var(--color-callout-example) 8%, transparent);
 }
 
 .tiptap .callout-quote {
-  background: var(--color-bg-subtle);
+  background: color-mix(in srgb, var(--color-callout-quote) 8%, transparent);
 }
 
 .tiptap .callout-bug {
-  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-bug) 8%, transparent);
 }
 
 .tiptap .callout-success {
-  background: color-mix(in srgb, var(--color-status-success) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-success) 8%, transparent);
 }
 
 .tiptap .callout-failure {
-  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-failure) 8%, transparent);
 }
 
 .tiptap .callout-question {
-  background: color-mix(in srgb, var(--color-status-warning) 8%, transparent);
+  background: color-mix(in srgb, var(--color-callout-question) 8%, transparent);
 }
 
-/* Dark mode callout overrides */
+/* Dark mode callout overrides — 타입 색은 callout 다크 토큰이 처리한다. 남는 것은
+   타입 미지정 callout의 중립 배경뿐이다. */
 [data-theme="dark"] .tiptap .callout {
   background: rgb(255 255 255 / 5%);
-}
-
-[data-theme="dark"] .tiptap .callout-tip {
-  background: rgb(16 185 129 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-info {
-  background: rgb(59 130 246 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-warning {
-  background: rgb(245 158 11 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-danger {
-  background: rgb(239 68 68 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-note {
-  background: rgb(107 114 128 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-abstract {
-  background: rgb(139 92 246 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-todo {
-  background: rgb(6 182 212 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-example {
-  background: rgb(20 184 166 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-quote {
-  background: rgb(156 163 175 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-bug {
-  background: rgb(239 68 68 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-success {
-  background: rgb(34 197 94 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-failure {
-  background: rgb(239 68 68 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-question {
-  background: rgb(234 179 8 / 10%);
-}
-
-[data-theme="dark"] .tiptap .callout-title-input {
-  color: var(--color-text-primary);
-  background: var(--color-bg-default);
-  border-color: var(--color-border-default);
 }
 
 /* §footnote Footnote reference — inline superscript */
