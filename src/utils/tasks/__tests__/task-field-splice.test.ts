@@ -295,3 +295,22 @@ describe("applyTaskField — 반복(🔁)", () => {
     );
   });
 });
+
+// ‼️ 반복 구간의 끝이 "다음 필드의 시작"이던 시절, 이 둘은 필드를 붙여 버렸다.
+// `task-field-scan.test.ts`가 구간을 재고, 여기서는 그 구간으로 실제로 쓴 결과를 본다 —
+// 사용자가 파일에서 보게 되는 것이 이쪽이다.
+describe("§303 반복을 고치거나 지워도 뒤 필드가 붙지 않는다", () => {
+  const LINE = "a ➕2026-09-01 🔁every week on Monday 📅2026-09-03";
+
+  it("고쳐도 구분 공백이 남는다", () => {
+    expect(applyTaskField(LINE, "recurrence", "every 2 weeks")).toBe(
+      "a ➕2026-09-01 🔁every 2 weeks 📅2026-09-03",
+    );
+  });
+
+  it("지워도 구분 공백이 남는다", () => {
+    expect(applyTaskField(LINE, "recurrence", "")).toBe(
+      "a ➕2026-09-01 📅2026-09-03",
+    );
+  });
+});

@@ -1,3 +1,5 @@
+import type { TaskFieldSpan } from "../task-field-scan";
+
 import { describe, expect, it } from "vitest";
 
 import { scanTaskFields } from "../task-field-scan";
@@ -96,5 +98,42 @@ describe("scanTaskFields — 반복(🔁)", () => {
     const spans = scanTaskFields("회고 📅2026-09-01 ⏫ 🔁every week");
     expect(spans.map((s) => s.kind)).toEqual(["due", "priority", "recurrence"]);
     expect(spans[2].value).toBe("every week");
+  });
+});
+
+// ‼️ 반복 구간의 **끝**. M4가 `to`를 "다음 필드의 시작"으로 뒀는데, 그러면 그 사이의
+// 구분 공백이 구간 안에 들어간다. 사용자가 앱에서 먼저 본 것은 셋 중 가장 가벼운 것
+// (칩 표시)이었지만, 나머지 둘은 파일을 망가뜨린다 — 이 세 줄이 그 셋을 함께 잡는다.
+describe("§303 반복 구간은 값의 끝에서 멈춘다", () => {
+  const LINE = "a ➕2026-09-01 🔁every week on Monday 📅2026-09-03";
+
+  function recurrence(text: string): TaskFieldSpan {
+    const found = scanTaskFields(text).find((s) => s.kind === "recurrence");
+    if (!found) throw new Error(`no recurrence span in ${text}`);
+    return found;
+  }
+
+  it("뒤따르는 구분 공백을 삼키지 않는다", () => {
+    const span = recurrence(LINE);
+    expect(LINE.slice(span.from, span.to)).toBe("🔁every week on Monday");
+  });
+
+  // 값 **앞**의 공백은 필드의 일부다 — Obsidian Tasks가 `🔁 every week`으로 쓴다.
+  it("값 앞의 공백은 구간 안에 남긴다", () => {
+    const text = "a 🔁 every week 📅2026-09-03";
+    const span = recurrence(text);
+    expect(text.slice(span.from, span.to)).toBe("🔁 every week");
+    expect(span.value).toBe("every week");
+  });
+
+  it("줄 끝에서 끝나는 반복도 그대로다", () => {
+    const text = "a 🔁every week";
+    expect(text.slice(recurrence(text).to)).toBe("");
+  });
+
+  // 뒤에 여러 필드가 와도 첫 번째 앞에서 멈춘다.
+  it("다음 필드가 여럿이어도 첫 번째 앞에서 멈춘다", () => {
+    const text = "a 🔁every week ⏫ 📅2026-09-03";
+    expect(recurrence(text).value).toBe("every week");
   });
 });

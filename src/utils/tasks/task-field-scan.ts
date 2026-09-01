@@ -111,8 +111,10 @@ export function scanTaskFields(text: string): TaskFieldSpan[] {
   const at = text.indexOf(RECURRENCE_EMOJI);
   if (at === -1) return spans;
 
+  const head = at + RECURRENCE_EMOJI.length;
   const stop = spans.find((span) => span.from > at)?.from ?? text.length;
-  const rule = text.slice(at + RECURRENCE_EMOJI.length, stop).trim();
+  const raw = text.slice(head, stop);
+  const rule = raw.trim();
   // 값이 없는 맨 🔁는 필드가 아니다 — 본문에 장식으로 적은 이모지를 삼키면 안 된다는
   // 날짜 쪽 규칙과 같다. Rust도 그 줄의 `recurrence`를 `None`으로 둔다.
   if (rule === "") return spans;
@@ -121,7 +123,13 @@ export function scanTaskFields(text: string): TaskFieldSpan[] {
     emoji: RECURRENCE_EMOJI,
     from: at,
     kind: "recurrence",
-    to: stop,
+    // ‼️ 구간은 **값의 끝**까지다. `stop`(다음 필드의 시작)까지 잡으면 그 사이의 구분
+    // 공백이 구간 안에 들어가고, 그 하나가 셋을 한꺼번에 망가뜨린다:
+    //   표시 — 원문과 함께 감춰져 다음 칩의 점이 이 칩 글자에 붙는다.
+    //   편집 — `🔁every 2 weeks📅2026-09-03`으로 두 필드가 붙어 버린다.
+    //   삭제 — `➕2026-09-01📅2026-09-03`으로 같은 일이 일어난다.
+    // 값 앞의 공백은 구간 안에 남긴다(`🔁 every week`) — 그쪽은 필드의 일부다.
+    to: head + raw.trimEnd().length,
     value: rule,
   });
   return spans.sort((a, b) => a.from - b.from);
