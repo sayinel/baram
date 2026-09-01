@@ -893,6 +893,8 @@
   "tasks.edit.priority.lowest": "Lowest ⏬",
   "tasks.edit.priority.normal": "Normal",
   "tasks.edit.priority.urgent": "Urgent 🔺",
+  "tasks.edit.sourceModeDoc": "Source mode is active, so this dialog cannot reach the document. Copy your text, close, leave Source mode, and try again.",
+  "tasks.edit.staleDoc": "The document changed while this dialog was open, so the line could not be saved. Copy your text, close, and try again.",
   "tasks.edit.tags": "Tags",
   "tasks.edit.tags.placeholder": "deep-work, someday",
   "tasks.edit.title": "Edit task",

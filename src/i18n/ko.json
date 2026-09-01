@@ -893,6 +893,8 @@
   "tasks.edit.priority.lowest": "가장 낮음 ⏬",
   "tasks.edit.priority.normal": "보통",
   "tasks.edit.priority.urgent": "긴급 🔺",
+  "tasks.edit.sourceModeDoc": "소스 모드가 켜져 있어 이 창의 저장이 문서에 닿지 않습니다. 내용을 복사한 뒤 닫고, 소스 모드를 끄고 다시 시도하세요.",
+  "tasks.edit.staleDoc": "이 창이 열려 있는 동안 문서가 바뀌어 저장할 수 없습니다. 내용을 복사한 뒤 닫고 다시 시도하세요.",
   "tasks.edit.tags": "태그",
   "tasks.edit.tags.placeholder": "deep-work, someday",
   "tasks.edit.title": "태스크 편집",

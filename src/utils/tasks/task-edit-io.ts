@@ -32,8 +32,8 @@ export function readTargetLine(
   // resting inside a mark/link/wikilink expansion within the target block, the
   // live `target.node` still holds literal delimiter text. This swap is LOCAL
   // to this read; `applyTargetLine` below still replaces using the LIVE
-  // `target.node`'s `nodeSize`, since that is the range that actually exists
-  // in the document right now.
+  // `target.node`'s range — and validates at apply time that this range still
+  // exists, since the document can change while the modal is open (이슈 498).
   const canonicalNode =
     canonicalNodeAt(state, target.pos, target.node.type.name) ?? target.node;
   const wrapped = target.isTask
@@ -55,7 +55,26 @@ export function applyTargetLine(
   target: TaskEditTarget,
   line: string,
 ): boolean {
-  const { schema } = editor.state;
+  const { doc, schema } = editor.state;
+
+  // 이슈 498: target은 모달이 **열릴 때** 캡처된 좌표다. 모달이 떠 있는 동안에도
+  // 전역 키보드 dispatch·외부 리로드·§384 reveal collapse가 문서를 바꿀 수 있어,
+  // 캡처된 `pos ~ pos + node.nodeSize`가 지금도 유효하다는 보장이 없다 — stale
+  // 범위로 splice하면 다음 블록 머리를 잘라먹거나(silent data loss) 문서 끝에서
+  // RangeError를 던진다. ProseMirror 노드는 불변·구조 공유라 `===`가 정확한
+  // 판정이다: target 뒤쪽만 바뀐 문서는 같은 객체를 그대로 들고 있어 통과하고,
+  // target을 건드렸거나 좌표가 밀렸거나 재파싱됐으면 실패한다. (한계: `===`는
+  // 같은 노드 **객체**가 문서에 두 번 꽂히는 경우 occurrence를 구별하지 못한다 —
+  // 현재 이 모달에 닿는 경로는 전부 toJSON 직렬화를 거쳐 새 객체를 만들므로
+  // 도달 불가지만, 노드 객체를 직접 재사용하는 미래 코드는 이 가드를 재검토할 것.)
+  // 음수 pos와 content.size 초과는 nodeAt이 RangeError를 던지므로 먼저 거른다.
+  if (
+    target.pos < 0 ||
+    target.pos > doc.content.size ||
+    doc.nodeAt(target.pos) !== target.node
+  ) {
+    return false;
+  }
   const marker = `- [${TASK_STATE_MARKER[target.state]}] `;
   const parsed = markdownToProsemirror(`${marker}${line}`, schema);
 
@@ -67,9 +86,12 @@ export function applyTargetLine(
   const replacement = target.isTask ? list.firstChild : list;
   if (!replacement) return false;
 
-  return editor
+  // focus를 chain에 넣지 않는다 — chain().run()은 모든 command 반환값의 합산이라,
+  // focus만 실패해도 문서는 이미 바뀌었는데 false가 돌아온다. "false면 no-op"이라는
+  // 이 함수의 계약(위 stale 가드가 기대는 그 계약)이 깨지므로, 교체 성공 후에
+  // 별도로 포커스한다.
+  const applied = editor
     .chain()
-    .focus()
     .command(({ tr }) => {
       tr.replaceWith(
         target.pos,
@@ -79,6 +101,8 @@ export function applyTargetLine(
       return true;
     })
     .run();
+  if (applied) editor.commands.focus();
+  return applied;
 }
 
 /**
