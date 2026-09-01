@@ -20,8 +20,8 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskTag: vi.fn(),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: vi.fn(),
+vi.mock("../../editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
 }));
 
 import { t } from "../../../i18n";
@@ -45,7 +45,7 @@ const EN_T = (key: string, params?: Record<string, string>) =>
 
 const NOW = new Date(2026, 7, 26);
 
-// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
+// serializeLiveDoc이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function ctx(editor: Editor | null = null): TaskTriageContext {

@@ -6,12 +6,15 @@
 // 그 경로에 걸려 있으므로, 여기서 새 보장을 만들 필요가 없다.
 
 import type { TaskEditTarget } from "./task-edit-target";
-import type { Schema } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 
 import { TASK_STATE_MARKER } from "../../ipc/types";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import {
+  canonicalNodeAt,
+  serializeDetachedDoc,
+} from "../editor/serialize-live-doc";
 
 /**
  * 대상 블록의 본문을 마크다운 한 줄로 읽는다 — 태스크면 `- [ ] ` 접두를 뗀 나머지.
@@ -20,12 +23,24 @@ import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
  * 이미 갖고 있고(완료일 `✅` 규칙이 거기 붙어 있다), 두 곳이 마커를 쓰면 그 규칙이
  * 갈라진다.
  */
-export function readTargetLine(schema: Schema, target: TaskEditTarget): string {
+export function readTargetLine(
+  state: EditorState,
+  target: TaskEditTarget,
+): string {
+  const { schema } = state;
+  // §384: serialize the CANONICAL node — if the caret opened this modal while
+  // resting inside a mark/link/wikilink expansion within the target block, the
+  // live `target.node` still holds literal delimiter text. This swap is LOCAL
+  // to this read; `applyTargetLine` below still replaces using the LIVE
+  // `target.node`'s `nodeSize`, since that is the range that actually exists
+  // in the document right now.
+  const canonicalNode =
+    canonicalNodeAt(state, target.pos, target.node.type.name) ?? target.node;
   const wrapped = target.isTask
-    ? schema.nodes.taskList.create(null, [target.node])
-    : target.node;
+    ? schema.nodes.taskList.create(null, [canonicalNode])
+    : canonicalNode;
   const doc = schema.topNodeType.create(null, [wrapped]);
-  const md = prosemirrorToMarkdown(doc).trim();
+  const md = serializeDetachedDoc(doc).trim();
   return target.isTask ? md.replace(TASK_PREFIX_RE, "") : md;
 }
 

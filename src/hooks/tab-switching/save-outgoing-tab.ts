@@ -5,12 +5,12 @@ import {
   foldPluginKey,
   positionsToAnchors,
 } from "../../extensions/plugins/fold";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { useFoldStore } from "../../stores/editor/fold";
 import { useFileStore } from "../../stores/file/file";
 import { logCacheEvent, timePhase } from "../../utils/editor/perf-trace";
 import { isTabLoading } from "../../utils/editor/programmatic-update";
+import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../../utils/file-type";
 import { logger } from "../../utils/logger";
 
@@ -85,7 +85,7 @@ export function saveOutgoingTab(
         prevIsCode || ctx.sourceModeTabs.has(prevTabId)
           ? ctx.getSourceBuffer(prevTabId)
           : timePhase("tabSwitch:serializeOutgoing", () =>
-              prosemirrorToMarkdown(prevEditor.state.doc),
+              serializeLiveDoc(prevEditor),
             );
       useFileStore.getState().setFileContent(prevTab.filePath, md);
     } catch (err) {

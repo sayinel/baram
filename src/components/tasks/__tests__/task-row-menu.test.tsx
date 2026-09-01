@@ -20,7 +20,7 @@ const previewTaskFieldLine = vi.fn();
 const previewTaskTagLine = vi.fn();
 const getVaultTasks = vi.fn().mockResolvedValue([]);
 const getFileTasks = vi.fn().mockResolvedValue([]);
-const prosemirrorToMarkdown = vi.fn();
+const serializeLiveDoc = vi.fn();
 
 // listDir/readFile 스텁이 필요한 이유는 task-agenda-panel.test.tsx와 같다 —
 // TaskAgendaPanel → useZettelIndexStore가 같은 모듈에서 그 둘을 import한다.
@@ -42,8 +42,8 @@ vi.mock("../../../utils/tasks/task-row-selection", () => ({
   dropSelectionInside: (...a: unknown[]) => dropSelectionInside(...a),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: (...a: unknown[]) => prosemirrorToMarkdown(...a),
+vi.mock("../../../utils/editor/serialize-live-doc", () => ({
+  serializeLiveDoc: (...a: unknown[]) => serializeLiveDoc(...a),
 }));
 
 import { EditorProvider } from "../../../contexts/editor-context";
@@ -75,7 +75,7 @@ const LABEL = {
   tomorrow: EN_T("tasks.triage.dueTomorrow"),
 };
 
-// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
+// serializeLiveDoc이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
@@ -916,7 +916,7 @@ describe("§312 triage menu on an agenda row", () => {
     beforeEach(() => {
       doc = "- [ ] 하나\n";
       previewTaskFieldLine.mockResolvedValue(`- [ ] 하나 📅${TODAY}`);
-      prosemirrorToMarkdown.mockImplementation(() => doc);
+      serializeLiveDoc.mockImplementation(() => doc);
       useEditorStore.setState({
         activeTabId: "t1",
         // 소스 모드가 아니다 — 소스 판정이 document 판정 앞에 있으므로 이 목록이

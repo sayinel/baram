@@ -1,6 +1,7 @@
 // §3.6 Phase 4: unit tests for shouldDeferSave mtime guard
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as ipcInvoke from "../../ipc/invoke";
 import { shouldDeferSave } from "../use-auto-save";
 
 describe("shouldDeferSave", () => {
@@ -149,5 +150,236 @@ describe("§278.1 a binary viewer tab must never be marked dirty", () => {
       activeTabId: store.activeTabId,
       tabs: store.tabs,
     });
+  });
+});
+
+// ── §384 (C): ephemeral syntax-reveal transactions must not mark dirty ─────
+//
+// Wiring-level, not a pure-predicate test — same reasoning as the PDF guard
+// above: asserting isEphemeralOnlyUpdate() in isolation would prove the
+// classifier is correct without proving handleUpdate actually consults it.
+describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("moving the caret into a link leaves the tab clean and schedules no auto-save (red before the ephemeral gate)", async () => {
+    const { Editor } = await import("@tiptap/core");
+    const { renderHook } = await import("@testing-library/react");
+    const { createBaramExtensions } = await import("../../extensions");
+    const { markdownToProsemirror } = await import("../../pipeline/md-to-pm");
+    const { useEditorStore } = await import("../../stores/editor/editor");
+    const { useSettingsStore } = await import("../../stores/settings/store");
+    const { useAutoSave } = await import("../use-auto-save");
+
+    const writeFileSpy = vi
+      .spyOn(ipcInvoke, "writeFile")
+      .mockResolvedValue(undefined);
+    vi.spyOn(ipcInvoke, "updateFileIndex").mockResolvedValue(undefined);
+
+    const editorStoreBaseline = useEditorStore.getState();
+    const settingsBaseline = useSettingsStore.getState();
+    useSettingsStore.setState({ autoSave: true, autoSaveDelay: 2000 });
+
+    vi.useFakeTimers();
+
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "",
+    });
+    const doc = markdownToProsemirror(
+      "Hello [world](https://example.com) end\n",
+      editor.schema,
+    );
+    editor.commands.setContent(doc.toJSON());
+
+    renderHook(() => useAutoSave(editor));
+
+    const tab = {
+      filePath: "/vault/note.md",
+      id: "link-ephemeral-tab",
+      isDirty: false,
+      isPinned: false,
+      title: "note.md",
+    };
+    useEditorStore.setState({ activeTabId: tab.id, tabs: [tab] } as never);
+
+    // Two-step move clears the plugin's cursorAtDocChange guard so the
+    // expansion check actually runs (see syntax-reveal.test.ts's moveCursorTo).
+    editor.commands.setTextSelection(2);
+    editor.commands.setTextSelection(9);
+
+    expect(editor.state.doc.textContent).toContain(
+      "[world](https://example.com)",
+    );
+
+    const afterExpand = useEditorStore
+      .getState()
+      .tabs.find((t) => t.id === tab.id);
+    expect(afterExpand?.isDirty).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(writeFileSpy).not.toHaveBeenCalled();
+
+    editor.destroy();
+    useEditorStore.setState({
+      activeTabId: editorStoreBaseline.activeTabId,
+      tabs: editorStoreBaseline.tabs,
+    });
+    useSettingsStore.setState(settingsBaseline);
+  });
+
+  it("Backspace on the opening delimiter of an expanded link marks the tab dirty and schedules an auto-save", async () => {
+    const { Editor } = await import("@tiptap/core");
+    const { renderHook } = await import("@testing-library/react");
+    const { createBaramExtensions } = await import("../../extensions");
+    const { markdownToProsemirror } = await import("../../pipeline/md-to-pm");
+    const { useEditorStore } = await import("../../stores/editor/editor");
+    const { useSettingsStore } = await import("../../stores/settings/store");
+    const { useAutoSave } = await import("../use-auto-save");
+
+    const writeFileSpy = vi
+      .spyOn(ipcInvoke, "writeFile")
+      .mockResolvedValue(undefined);
+    vi.spyOn(ipcInvoke, "updateFileIndex").mockResolvedValue(undefined);
+
+    const editorStoreBaseline = useEditorStore.getState();
+    const settingsBaseline = useSettingsStore.getState();
+    useSettingsStore.setState({ autoSave: true, autoSaveDelay: 2000 });
+
+    vi.useFakeTimers();
+
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "",
+    });
+    const doc = markdownToProsemirror(
+      "Hello [world](https://example.com) end\n",
+      editor.schema,
+    );
+    editor.commands.setContent(doc.toJSON());
+
+    renderHook(() => useAutoSave(editor));
+
+    const tab = {
+      filePath: "/vault/backspace-tab.md",
+      id: "backspace-delim-tab",
+      isDirty: false,
+      isPinned: false,
+      title: "backspace-tab.md",
+    };
+    useEditorStore.setState({ activeTabId: tab.id, tabs: [tab] } as never);
+
+    // Expand the link, then place the caret right after the opening "[" —
+    // the exact position handleKeyDown's Backspace branch checks for.
+    editor.commands.setTextSelection(2);
+    editor.commands.setTextSelection(9);
+    expect(editor.state.doc.textContent).toContain(
+      "[world](https://example.com)",
+    );
+    const openBracketPos = editor.state.doc.textContent.indexOf("[world");
+    // textContent index 0 → doc pos 1 (paragraph start); +1 more to land
+    // right after the "[" itself.
+    editor.commands.setTextSelection(openBracketPos + 1 + 1);
+
+    editor.view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: "Backspace",
+      }),
+    );
+
+    // The whole expanded range was deleted — a real edit, not a reveal.
+    expect(editor.state.doc.textContent).not.toContain("world");
+
+    const afterBackspace = useEditorStore
+      .getState()
+      .tabs.find((t) => t.id === tab.id);
+    expect(afterBackspace?.isDirty).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(writeFileSpy).toHaveBeenCalledTimes(1);
+
+    editor.destroy();
+    useEditorStore.setState({
+      activeTabId: editorStoreBaseline.activeTabId,
+      tabs: editorStoreBaseline.tabs,
+    });
+    useSettingsStore.setState(settingsBaseline);
+  });
+
+  it("a real edit that also pushes the caret out of an expansion (real + appended collapse) marks the tab dirty", async () => {
+    const { Editor } = await import("@tiptap/core");
+    const { renderHook } = await import("@testing-library/react");
+    const { createBaramExtensions } = await import("../../extensions");
+    const { markdownToProsemirror } = await import("../../pipeline/md-to-pm");
+    const { useEditorStore } = await import("../../stores/editor/editor");
+    const { useSettingsStore } = await import("../../stores/settings/store");
+    const { useAutoSave } = await import("../use-auto-save");
+
+    const writeFileSpy = vi
+      .spyOn(ipcInvoke, "writeFile")
+      .mockResolvedValue(undefined);
+    vi.spyOn(ipcInvoke, "updateFileIndex").mockResolvedValue(undefined);
+
+    const editorStoreBaseline = useEditorStore.getState();
+    const settingsBaseline = useSettingsStore.getState();
+    useSettingsStore.setState({ autoSave: true, autoSaveDelay: 2000 });
+
+    vi.useFakeTimers();
+
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "",
+    });
+    const doc = markdownToProsemirror("Hello **world** end\n", editor.schema);
+    editor.commands.setContent(doc.toJSON());
+
+    renderHook(() => useAutoSave(editor));
+
+    const tab = {
+      filePath: "/vault/real-plus-appended.md",
+      id: "real-plus-appended-tab",
+      isDirty: false,
+      isPinned: false,
+      title: "real-plus-appended.md",
+    };
+    useEditorStore.setState({ activeTabId: tab.id, tabs: [tab] } as never);
+
+    // "Hello " = 1-7, "world" bold = 7-12, " end" = 12-16.
+    editor.commands.setTextSelection(2);
+    editor.commands.setTextSelection(9);
+    expect(editor.state.doc.textContent).toContain("**world**");
+
+    // A single real transaction that both edits content elsewhere (position
+    // 1, well outside the bold range) AND moves the caret outside the
+    // expanded range as part of that SAME dispatch: syntax-reveal's
+    // appendTransaction sees the post-edit selection and appends its own
+    // (ephemeral) collapse transaction on top. The batch this produces is
+    // [real, ephemeral-appended] — the "real-root + appended-collapse"
+    // combination — and must not be swallowed as ephemeral-only.
+    const { TextSelection } = await import("@tiptap/pm/state");
+    const combinedTr = editor.state.tr.insertText("X", 1);
+    combinedTr.setSelection(
+      TextSelection.create(combinedTr.doc, combinedTr.doc.content.size),
+    );
+    editor.view.dispatch(combinedTr);
+
+    const afterCombo = useEditorStore
+      .getState()
+      .tabs.find((t) => t.id === tab.id);
+    expect(afterCombo?.isDirty).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(writeFileSpy).toHaveBeenCalledTimes(1);
+
+    editor.destroy();
+    useEditorStore.setState({
+      activeTabId: editorStoreBaseline.activeTabId,
+      tabs: editorStoreBaseline.tabs,
+    });
+    useSettingsStore.setState(settingsBaseline);
   });
 });

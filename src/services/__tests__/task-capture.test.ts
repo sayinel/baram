@@ -15,13 +15,15 @@ vi.mock("../../utils/tasks/apply-task-write", async (importOriginal) => ({
   >()),
   resolveTaskWriteTarget: vi.fn(),
 }));
-vi.mock("../../pipeline", () => ({ prosemirrorToMarkdown: vi.fn() }));
+vi.mock("../../utils/editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
+}));
 
 import { appendTaskLine, getFileTasks } from "../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useTaskStore } from "../../stores/tasks/task-store";
+import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { resolveTaskWriteTarget } from "../../utils/tasks/apply-task-write";
 import { buildCaptureLine, CaptureError, captureTask } from "../task-capture";
 
@@ -204,7 +206,7 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
         },
       ],
     });
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] 먼저\n");
+    vi.mocked(serializeLiveDoc).mockReturnValue("- [ ] 먼저\n");
   });
 
   it("디스크를 건드리지 않고 열린 문서 끝에 붙인다", async () => {
@@ -247,7 +249,7 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
   });
 
   it("끝 개행이 없어도 마지막 줄에 이어붙이지 않는다", async () => {
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] 먼저");
+    vi.mocked(serializeLiveDoc).mockReturnValue("- [ ] 먼저");
     const editor = { state: { doc: {} } } as never;
     await captureTask({
       body: "나중",
@@ -368,7 +370,7 @@ describe("captureTask — 수집함이 소스 모드 탭일 때", () => {
       kind: "source",
       tabId: "t1",
     });
-    vi.mocked(prosemirrorToMarkdown).mockReturnValue("- [ ] 먼저\n");
+    vi.mocked(serializeLiveDoc).mockReturnValue("- [ ] 먼저\n");
   });
 
   it("보이는 버퍼에 붙인다 — 라이브 문서에도 디스크에도 붙이지 않는다", async () => {

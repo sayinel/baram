@@ -35,8 +35,8 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskTag: (...a: unknown[]) => setTaskTag(...a),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: vi.fn(),
+vi.mock("../../../utils/editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
 }));
 
 import { EditorProvider } from "../../../contexts/editor-context";

@@ -14,7 +14,10 @@ import { AlignCenter, AlignLeft, AlignRight, Sparkles } from "lucide-react";
 
 // §5.5 Table Toolbar — floating toolbar shown when cursor is in a table cell
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import {
+  canonicalNodeAt,
+  serializeDetachedDoc,
+} from "../../utils/editor/serialize-live-doc";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { buildTableOverflowItems } from "./context-menu-table";
 import { MenuList } from "./MenuList";
@@ -349,8 +352,19 @@ export function TableToolbar({ editor }: TableToolbarProps) {
           onClick={(e) => {
             const table = findTable(editor);
             if (!table || !table.node) return;
-            const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
-            const md = prosemirrorToMarkdown(tempDoc).trim();
+            // §384: read the CANONICAL table node — if a mark/link/wikilink is
+            // mid-expansion inside a cell, the raw `table.node` still holds the
+            // literal delimiter text and would corrupt this copy.
+            const canonicalTable = canonicalNodeAt(
+              editor.state,
+              table.pos,
+              "table",
+            );
+            if (!canonicalTable) return;
+            const tempDoc = editor.schema.nodes.doc.create(null, [
+              canonicalTable,
+            ]);
+            const md = serializeDetachedDoc(tempDoc).trim();
             if (!md) return;
             showNodeViewAIMenu(e.currentTarget, "table", md, editor, table.pos);
           }}

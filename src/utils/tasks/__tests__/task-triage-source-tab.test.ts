@@ -26,8 +26,8 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskTag: vi.fn(),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: vi.fn(),
+vi.mock("../../editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
 }));
 
 vi.mock("../../confirm-dialog", () => ({

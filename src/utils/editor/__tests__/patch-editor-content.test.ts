@@ -10,10 +10,8 @@ import { EditorState } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { makeTestEditor } from "../../../__tests__/helpers/make-test-editor";
-import {
-  markdownToProsemirror,
-  prosemirrorToMarkdown,
-} from "../../../pipeline";
+import { markdownToProsemirror } from "../../../pipeline";
+import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
 import { patchEditorContent } from "../patch-editor-content";
 
 let editor: Editor | null = null;

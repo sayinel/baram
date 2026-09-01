@@ -11,10 +11,10 @@
 import type { Editor } from "@tiptap/react";
 
 import { appendTaskLine } from "../ipc/invoke";
-import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { refreshFileTasksInScope } from "../stores/tasks/task-store";
+import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isUnderRoot, normalizePath } from "../utils/path-utils";
 import {
   markSourceTabDirty,
@@ -165,7 +165,7 @@ export async function captureTask(opts: CaptureOptions): Promise<string> {
 
   // 열린 문서 경로 — 소스는 라이브 문서다. `openFiles`는 사용자의 첫 타이핑
   // 이후 영구히 낡으므로 읽으면 안 된다(M2-a Critical 1).
-  const content = prosemirrorToMarkdown(editor.state.doc);
+  const content = serializeLiveDoc(editor);
   const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
   const next = `${content}${sep}${line}\n`;
 

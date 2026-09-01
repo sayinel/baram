@@ -5,7 +5,7 @@ import type { PandocFormat, PdfOptions } from "../../ipc/types";
 import type { Editor } from "@tiptap/core";
 
 import { exportBinaryFile, exportPandoc, exportPdf } from "../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
@@ -67,7 +67,7 @@ export async function exportForNotion(
   editor: Editor,
   title: string,
 ): Promise<void> {
-  const md = prosemirrorToMarkdown(editor.state.doc);
+  const md = serializeLiveDoc(editor);
   // §95: resolve bare [[id]] zettel links to [[id|title]] for export output
   // only — the .md round-trip save (pm-to-md.ts) is untouched by this.
   const notionMd = convertForNotion(resolveZettelLinksForExport(md));
@@ -92,7 +92,7 @@ export async function exportWithPandoc(
   format: PandocFormat,
   options?: { pandocPath?: string; referenceDoc?: string },
 ): Promise<void> {
-  const md = prosemirrorToMarkdown(editor.state.doc);
+  const md = serializeLiveDoc(editor);
   // §95: resolve bare [[id]] zettel links to [[id|title]] for export output
   // only — the .md round-trip save (pm-to-md.ts) is untouched by this.
   const pandocMd = convertForPandoc(resolveZettelLinksForExport(md));

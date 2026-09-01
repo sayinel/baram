@@ -70,7 +70,6 @@ import { useTranslation } from "./i18n/useTranslation";
 import { llmCancel, llmComplete, readFile, writeFile } from "./ipc/invoke";
 import { mergeTexts } from "./ipc/snapshot";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
-import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
   initializePlugins,
   notifyEditorReady,
@@ -98,6 +97,7 @@ import { useUIStore } from "./stores/ui/ui";
 import { editorSurfaceBlockReason } from "./utils/editor/active-tab";
 import { registerEditorMutationTask } from "./utils/editor/mutation-tasks";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
+import { serializeLiveDoc } from "./utils/editor/serialize-live-doc";
 import {
   resolveSurfaceKind,
   type SurfaceKind,
@@ -1125,7 +1125,7 @@ function App() {
           }}
           onMerge={async (filePath, base) => {
             if (!activeEditor || activeEditor.isDestroyed) return;
-            const local = prosemirrorToMarkdown(activeEditor.state.doc);
+            const local = serializeLiveDoc(activeEditor);
             const external = await readFile(filePath);
             const result = await mergeTexts(base, local, external);
             setMergeState({ filePath, segments: result.segments });

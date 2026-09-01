@@ -21,10 +21,10 @@ import {
   setTaskState,
   setTaskTag,
 } from "../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../pipeline";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
+import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
 import { syncOpenSurfacesAfterDiskWrite } from "./sync-open-surfaces";
 
@@ -348,10 +348,10 @@ async function writeToDocument(
   tabId: string,
 ): Promise<TaskWriteResult> {
   const applied = await applyToContent(
-    prosemirrorToMarkdown(editor.state.doc),
+    serializeLiveDoc(editor),
     task,
     change,
-    () => prosemirrorToMarkdown(editor.state.doc),
+    () => serializeLiveDoc(editor),
   );
   if (applied === null) return { kind: "stale", target: "document" };
 

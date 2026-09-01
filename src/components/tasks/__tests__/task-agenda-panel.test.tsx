@@ -10,7 +10,7 @@ const getVaultTasks = vi.fn().mockResolvedValue([]);
 const getFileTasks = vi.fn().mockResolvedValue([]);
 // §305 문서 경로(활성 + dirty 탭)가 라이브 문서를 읽고 쓰는 데 쓴다.
 const previewTaskStateLine = vi.fn();
-const prosemirrorToMarkdown = vi.fn();
+const serializeLiveDoc = vi.fn();
 
 // listDir/readFile 스텁이 필요한 이유: TaskAgendaPanel → useZettelIndexStore →
 // 같은 모듈에서 listDir/readFile을 import한다. 3개만 목하면 그 import가 깨진다.
@@ -23,8 +23,8 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskState: (...a: unknown[]) => setTaskState(...a),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: (...a: unknown[]) => prosemirrorToMarkdown(...a),
+vi.mock("../../../utils/editor/serialize-live-doc", () => ({
+  serializeLiveDoc: (...a: unknown[]) => serializeLiveDoc(...a),
 }));
 
 import { EditorProvider } from "../../../contexts/editor-context";
@@ -36,7 +36,7 @@ import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { TaskAgendaPanel } from "../TaskAgendaPanel";
 
-// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
+// serializeLiveDoc이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function task(over: Partial<TaskEntry> = {}): TaskEntry {
@@ -476,7 +476,7 @@ describe("TaskAgendaPanel", () => {
     });
 
     it("디스크를 다시 읽지 않는다 — 이 태스크가 존재하는 이유", async () => {
-      prosemirrorToMarkdown.mockReturnValue("- [ ] 하나\n");
+      serializeLiveDoc.mockReturnValue("- [ ] 하나\n");
       previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
       useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
       render(
@@ -495,7 +495,11 @@ describe("TaskAgendaPanel", () => {
       useSettingsStore.getState().setTasksRecordDoneDate(false);
       // apply_state는 recordDoneDate=false일 때 기존 ✅date를 그대로 보존해
       // 돌려준다(write.rs:144-146) — 설정값으로 재계산하면 이 값과 어긋난다.
-      prosemirrorToMarkdown.mockReturnValue("- [/] 하나 ✅2026-01-01\n");
+      // ‼️ 스토어의 `raw`와 **같은 줄**이어야 한다 — 낙관적 잠금이 그 둘을 대조하고,
+      // 어긋나면 stale로 거절돼 아래 단정이 "패치 안 됨"을 "잘못 패치됨"으로 읽는다.
+      // §18.18 M4가 고리를 3상태로 넓히면서 `[ ]`에서 `[/]`로 바뀐 자리다: 완료 날짜를
+      // 적는 것은 고리의 **그 걸음**이므로, 진행 중에서 시작해야 이 테스트의 주제가 산다.
+      serializeLiveDoc.mockReturnValue("- [/] 하나 ✅2026-01-01\n");
       previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-01-01");
       useTaskStore
         .getState()
@@ -515,7 +519,7 @@ describe("TaskAgendaPanel", () => {
     });
 
     it("완료된 태스크를 체크 해제하면 done을 null로 patch한다", async () => {
-      prosemirrorToMarkdown.mockReturnValue("- [x] 하나 ✅2026-08-01\n");
+      serializeLiveDoc.mockReturnValue("- [x] 하나 ✅2026-08-01\n");
       previewTaskStateLine.mockResolvedValue("- [ ] 하나");
       useTaskStore.getState().setAll([
         task({
@@ -583,7 +587,7 @@ describe("TaskAgendaPanel — 소스 경로 (§312)", () => {
   it("보이는 소스 버퍼를 고친다 — PM 문서가 아니다", async () => {
     // PM 문서에는 이 태스크의 줄이 아예 없다. 문서 경로로 샜다면 낙관적 잠금이
     // stale로 거절해 버퍼가 그대로 남는다 — 단정이 두 경로를 실제로 가른다.
-    prosemirrorToMarkdown.mockReturnValue("- [ ] 전혀 다른 줄\n");
+    serializeLiveDoc.mockReturnValue("- [ ] 전혀 다른 줄\n");
     previewTaskStateLine.mockResolvedValue("- [x] 하나 ✅2026-08-24");
     useTaskStore.getState().setAll([task({ raw: "- [ ] 하나" })]);
     render(

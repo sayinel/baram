@@ -25,8 +25,8 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskTag: vi.fn(),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: vi.fn(),
+vi.mock("../../editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
 }));
 
 vi.mock("../../confirm-dialog", () => ({
@@ -35,12 +35,12 @@ vi.mock("../../confirm-dialog", () => ({
 
 import { t } from "../../../i18n";
 import { deleteTaskLine, getFileTasks } from "../../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../../pipeline";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { showConfirm } from "../../confirm-dialog";
+import { serializeLiveDoc } from "../../editor/serialize-live-doc";
 import { buildTriageItems, runTaskTriageAction } from "../task-triage";
 
 const EN_T = (key: string, params?: Record<string, string>) =>
@@ -48,7 +48,7 @@ const EN_T = (key: string, params?: Record<string, string>) =>
 
 const NOW = new Date(2026, 7, 26);
 
-// prosemirrorToMarkdown이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
+// serializeLiveDoc이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
 const FAKE_EDITOR = { state: { doc: {} } } as unknown as Editor;
 
 function ctx(editor: Editor | null = null): TaskTriageContext {
@@ -69,7 +69,7 @@ function flush(): Promise<void> {
 
 /** WYSIWYG 탭 하나 — 라이브 ProseMirror 문서가 권위 있는 텍스트인 상태. */
 function openDocumentTab(markdown: string): void {
-  vi.mocked(prosemirrorToMarkdown).mockReturnValue(markdown);
+  vi.mocked(serializeLiveDoc).mockReturnValue(markdown);
   useEditorStore.setState({
     activeTabId: "t1",
     sourceBufferAccess: null,

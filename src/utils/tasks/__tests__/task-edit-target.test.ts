@@ -7,6 +7,7 @@ import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../extensions";
+import { getSyntaxRevealExpanded } from "../../../extensions/plugins/syntax-reveal";
 import { applyTargetLine, readTargetLine } from "../task-edit-io";
 import { resolveTaskEditTarget } from "../task-edit-target";
 
@@ -106,7 +107,7 @@ describe("readTargetLine", () => {
     const ed = withMarkdown("- [ ] 초안 📅2026-08-30 ⏫");
     caretAtFirstText(ed);
     const t = resolveTaskEditTarget(ed)!;
-    expect(readTargetLine(ed.state.schema, t)).toBe("초안 📅2026-08-30 ⏫");
+    expect(readTargetLine(ed.state, t)).toBe("초안 📅2026-08-30 ⏫");
   });
 
   it("위키링크가 살아남는다", () => {
@@ -115,7 +116,7 @@ describe("readTargetLine", () => {
     const ed = withMarkdown("- [ ] [[202607051530]] 절 쓰기 📅2026-08-30");
     caretAtFirstText(ed);
     const t = resolveTaskEditTarget(ed)!;
-    expect(readTargetLine(ed.state.schema, t)).toBe(
+    expect(readTargetLine(ed.state, t)).toBe(
       "[[202607051530]] 절 쓰기 📅2026-08-30",
     );
   });
@@ -124,7 +125,32 @@ describe("readTargetLine", () => {
     const ed = withMarkdown("초안 쓰기");
     caretAtFirstText(ed);
     const t = resolveTaskEditTarget(ed)!;
-    expect(readTargetLine(ed.state.schema, t)).toBe("초안 쓰기");
+    expect(readTargetLine(ed.state, t)).toBe("초안 쓰기");
+  });
+
+  // §384: opening the modal while the caret rests inside a mark that SyntaxReveal
+  // has expanded to literal delimiter text (e.g. **bold**) must still read the
+  // COLLAPSED line — not the literal text, which the pipeline would otherwise
+  // escape a second time.
+  it("§384: caret inside an expanded mark reads the collapsed line, not literal delimiters", () => {
+    const ed = withMarkdown("- [ ] **bold** work 📅2026-08-30");
+    caretAtFirstText(ed);
+
+    let boldPos = -1;
+    ed.state.doc.descendants((node, pos) => {
+      if (boldPos === -1 && node.isText && node.text?.includes("bold")) {
+        boldPos = pos + 1;
+      }
+      return boldPos === -1;
+    });
+    expect(boldPos).toBeGreaterThan(-1);
+    ed.commands.setTextSelection(boldPos);
+
+    // Expansion actually happened — otherwise this test proves nothing.
+    expect(getSyntaxRevealExpanded(ed.state)).not.toBeNull();
+
+    const t = resolveTaskEditTarget(ed)!;
+    expect(readTargetLine(ed.state, t)).toBe("**bold** work 📅2026-08-30");
   });
 });
 
@@ -160,7 +186,7 @@ describe("applyTargetLine", () => {
     const ed = withMarkdown(source);
     caretAtFirstText(ed);
     const t = resolveTaskEditTarget(ed)!;
-    applyTargetLine(ed, t, readTargetLine(ed.state.schema, t));
+    applyTargetLine(ed, t, readTargetLine(ed.state, t));
     expect(toMarkdown(ed)).toBe(source);
   });
 });

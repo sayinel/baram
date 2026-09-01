@@ -16,6 +16,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 import type { MergeSegment } from "../../ipc/types";
+import type { Transaction } from "@tiptap/pm/state";
 
 import { EditorContent, useEditor } from "@tiptap/react";
 
@@ -25,10 +26,11 @@ import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { readFile, watchDir, writeFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { isMarkdownHref } from "../../utils/editor/local-link-nav";
+import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
+import { isEphemeralOnlyUpdate } from "../../utils/editor/syntax-reveal-ephemeral";
 import { logger } from "../../utils/logger";
 import { dirname } from "../../utils/path-utils";
 import { MergeView } from "../editor/MergeView";
@@ -147,7 +149,21 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   // Track dirty state
   useEffect(() => {
     if (!editor) return;
-    const handler = () => setIsDirty(true);
+    const handler = ({
+      transaction,
+      appendedTransactions,
+    }: {
+      appendedTransactions: Transaction[];
+      transaction: Transaction;
+    }) => {
+      // §384 (C): a syntax-reveal expand/collapse (the caret walking into or
+      // out of a link/mark/media/wikilink) changes the doc's representation
+      // without changing what it serializes to — see use-auto-save.ts, which
+      // applies the identical gate for the tabbed editor. Without it, this
+      // standalone window's unsaved dot lit up on caret movement alone.
+      if (isEphemeralOnlyUpdate({ transaction, appendedTransactions })) return;
+      setIsDirty(true);
+    };
     editor.on("update", handler);
     return () => {
       editor.off("update", handler);
@@ -181,7 +197,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
             return;
           }
           // Ignore if the disk already matches the editor (self-write / no-op).
-          if (diskContent === prosemirrorToMarkdown(editor.state.doc)) return;
+          if (diskContent === serializeLiveDoc(editor)) return;
           if (isDirtyRef.current) {
             setExternalChange(diskContent);
           } else {
@@ -206,7 +222,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const handleSave = useCallback(async () => {
     if (!editor) return;
     try {
-      const md = prosemirrorToMarkdown(editor.state.doc);
+      const md = serializeLiveDoc(editor);
       await writeFile(filePath, md);
       contentRef.current = md;
       setIsDirty(false);
@@ -234,7 +250,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const handleMerge = useCallback(async () => {
     if (!editor || externalChange === null) return;
     try {
-      const local = prosemirrorToMarkdown(editor.state.doc);
+      const local = serializeLiveDoc(editor);
       const result = await mergeTexts(
         contentRef.current,
         local,
@@ -275,7 +291,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
         setIsSourceMode((prev) => {
           if (!prev) {
             // WYSIWYG → Source: serialize current doc
-            setSourceContent(prosemirrorToMarkdown(editor.state.doc));
+            setSourceContent(serializeLiveDoc(editor));
           } else {
             // Source → WYSIWYG: parse source back into editor
             const doc = markdownToProsemirror(sourceContent, editor.schema);

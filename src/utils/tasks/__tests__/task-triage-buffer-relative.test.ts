@@ -26,8 +26,8 @@ vi.mock("../../../ipc/invoke", () => ({
   setTaskTag: vi.fn(),
 }));
 
-vi.mock("../../../pipeline", () => ({
-  prosemirrorToMarkdown: vi.fn(),
+vi.mock("../../editor/serialize-live-doc", () => ({
+  serializeLiveDoc: vi.fn(),
 }));
 
 vi.mock("../../confirm-dialog", () => ({
@@ -41,7 +41,6 @@ import {
   previewTaskFieldLine,
   setTaskField,
 } from "../../../ipc/invoke";
-import { prosemirrorToMarkdown } from "../../../pipeline";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import {
@@ -50,6 +49,7 @@ import {
 } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { showConfirm } from "../../confirm-dialog";
+import { serializeLiveDoc } from "../../editor/serialize-live-doc";
 import { runTaskTriageAction } from "../task-triage";
 
 const EN_T = (key: string, params?: Record<string, string>) =>
@@ -97,7 +97,7 @@ function ctx(editor: Editor | null = null): TaskTriageContext {
 function openDocumentTab(initial: string): void {
   disk = initial;
   useFileStore.setState({ openFiles: new Map([["a.md", initial]]) });
-  vi.mocked(prosemirrorToMarkdown).mockImplementation(
+  vi.mocked(serializeLiveDoc).mockImplementation(
     () => useFileStore.getState().openFiles.get("a.md") ?? "",
   );
   useEditorStore.setState({

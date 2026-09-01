@@ -5,13 +5,15 @@ import type { EditorState } from "@tiptap/pm/state";
 
 import { Decoration } from "@tiptap/pm/view";
 
+import { parseRevealResource } from "./syntax-reveal-resource-codec";
+
 // ── Build delimiter decorations for expanded range ────────────────────
 
 export function buildExpandedDecorations(
   state: EditorState,
   expanded: ExpandedRange,
 ): Decoration[] {
-  const { from, to, kind, openCheck, closeCheck } = expanded;
+  const { from, to, kind, openCheck, closeCheck, labelEnd } = expanded;
   const decos: Decoration[] = [];
 
   try {
@@ -30,7 +32,21 @@ export function buildExpandedDecorations(
       );
     } else if (kind === "link" || kind === "image") {
       const text = state.doc.textBetween(from, to);
-      const closeBracket = text.indexOf("](");
+      // §384 fix (F1): read the split from the shared parser instead of a
+      // local `indexOf("](")` — see ParsedRevealResource.labelEnd. Falls
+      // back to -1 (no decoration) on a stale/invalid expansion, same as the
+      // previous "not found" behavior below.
+      // §384 fix (F1 round 2): pass the stashed, mapped boundary (relative to
+      // `text`) so the split is resolved exactly — see ExpandedRange.labelEnd.
+      // §384 (design review M2): missing stash falls back to the LIVE label
+      // grammar, not strict — see syntax-reveal-collapse.ts's link branch.
+      const closeBracket =
+        parseRevealResource(
+          text,
+          labelEnd !== undefined
+            ? { labelEnd: labelEnd - from }
+            : { labelGrammar: "live" },
+        )?.labelEnd ?? -1;
       const openLen = kind === "image" ? 2 : 1;
 
       if (closeBracket >= 0) {
