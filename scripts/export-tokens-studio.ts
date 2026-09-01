@@ -42,14 +42,21 @@ function dtcgToTokensStudio(
 // Read all token files
 const tokensDir = path.resolve("tokens");
 
-const primitiveColor = JSON.parse(
-  fs.readFileSync(path.join(tokensDir, "primitive/color.json"), "utf-8"),
-);
-const primitiveSpacing = JSON.parse(
-  fs.readFileSync(path.join(tokensDir, "primitive/spacing.json"), "utf-8"),
-);
-const primitiveTypography = JSON.parse(
-  fs.readFileSync(path.join(tokensDir, "primitive/typography.json"), "utf-8"),
+// 감사 순서 7: primitive 파일 목록을 하드코딩하지 않는다 — Style Dictionary 빌드는
+// tokens/primitive/**/*.json 전체를 읽는데 여기만 세 파일을 이름으로 집으면, 새
+// primitive 파일(예: shadow.json)이 CSS에는 들어가고 Tokens Studio export에서는
+// 조용히 빠진다. tokens:check는 양쪽이 각자 결정적이면 그 드리프트를 못 잡는다.
+// 빌드와 같은 표면을 정렬된 순서로 재귀 수집해 병합한다.
+const primitiveFiles = fs
+  .readdirSync(path.join(tokensDir, "primitive"), { recursive: true })
+  .map(String)
+  .filter((f) => f.endsWith(".json"))
+  .sort();
+const primitives = primitiveFiles.map(
+  (f) =>
+    JSON.parse(
+      fs.readFileSync(path.join(tokensDir, "primitive", f), "utf-8"),
+    ) as DtcgGroup,
 );
 const semanticLight = JSON.parse(
   fs.readFileSync(path.join(tokensDir, "semantic/color-light.json"), "utf-8"),
@@ -61,9 +68,7 @@ const semanticDark = JSON.parse(
 // Build Tokens Studio structure
 const tokensStudio = {
   primitive: {
-    ...dtcgToTokensStudio(primitiveColor),
-    ...dtcgToTokensStudio(primitiveSpacing),
-    ...dtcgToTokensStudio(primitiveTypography),
+    ...Object.assign({}, ...primitives.map((file) => dtcgToTokensStudio(file))),
   },
   "semantic/light": dtcgToTokensStudio(semanticLight),
   "semantic/dark": dtcgToTokensStudio(semanticDark),
