@@ -3,61 +3,39 @@ import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
 import { useEditor } from "@tiptap/react";
-import { useShallow } from "zustand/shallow";
 
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
-import { MarkdownSurface } from "./components/editor/MarkdownSurface";
-import { PdfFindBar } from "./components/editor/pdf/PdfFindBar";
-import { PluginViewerHost } from "./components/editor/PluginViewerHost";
 import { PreviewToggleButton } from "./components/editor/PreviewToggleButton";
-import { TabSurface } from "./components/editor/TabSurface";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppDialogs } from "./components/layout/AppDialogs";
 import { AppLayout } from "./components/layout/AppLayout";
+import { EditorArea } from "./components/layout/EditorArea";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
-import { HomeSurface } from "./components/onboarding/HomeSurface";
-import { GraphViewLazy } from "./components/sidebar/GraphViewLazy";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useActiveTabSurface } from "./hooks/use-active-tab-surface";
+import { useAppCommands } from "./hooks/use-app-commands";
 import { useAppStartup } from "./hooks/use-app-startup";
-import { useAutoSave } from "./hooks/use-auto-save";
-import { useAutoSnapshot } from "./hooks/use-auto-snapshot";
-import { useCloseGuard } from "./hooks/use-close-guard";
 import { useCodeAutoSave } from "./hooks/use-code-auto-save";
 import { useEditorEffects } from "./hooks/use-editor-effects";
-import { useExternalDrop } from "./hooks/use-external-drop";
+import { useEditorFeatures } from "./hooks/use-editor-features";
 import { useFileOperations } from "./hooks/use-file-operations";
-import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useFindReplaceRouting } from "./hooks/use-find-replace-routing";
-import { useGhostText } from "./hooks/use-ghost-text";
-import { useGlobalCaptureShortcut } from "./hooks/use-global-capture-shortcut";
-import { useGlobalKeyboard } from "./hooks/use-global-keyboard";
-import { useInlineAI } from "./hooks/use-inline-ai";
 import { useJournal } from "./hooks/use-journal";
-import { useJournalInitialCursor } from "./hooks/use-journal-initial-cursor";
 import { useKeepaliveEditors } from "./hooks/use-keepalive-editors";
-import { useKeybindingActions } from "./hooks/use-keybinding-actions";
-import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
 import { usePerfInstrumentation } from "./hooks/use-perf-instrumentation";
 import { usePluginLifecycle } from "./hooks/use-plugin-lifecycle";
 import { usePreviewSourceView } from "./hooks/use-preview-source-view";
 import { useRetainedSurfaces } from "./hooks/use-retained-surfaces";
-import { useSettingsEffects } from "./hooks/use-settings-effects";
-import { useSkillsMode } from "./hooks/use-skills-mode";
 import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitcherOverlay } from "./hooks/use-tab-switcher-overlay";
 import { useTabSwitching } from "./hooks/use-tab-switching";
-import { useTaskWatcher } from "./hooks/use-task-watcher";
-import { useZoom } from "./hooks/use-zoom";
-import { useTranslation } from "./i18n/useTranslation";
 import { notifyEditorReady } from "./plugins/plugin-lifecycle";
 import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
-import { useUIStore } from "./stores/ui/ui";
 import { FILE_MODE_PATH } from "./utils/file-mode";
 import { logAppReady } from "./utils/perf";
 // Stylesheet moved to `main.tsx` (§260 Phase 5 re-review, R3): App is dynamically
@@ -89,22 +67,6 @@ const FileEditorLayout = lazy(() =>
 );
 
 function App() {
-  const { t } = useTranslation();
-  const {
-    toggleSidebar,
-    toggleCommandPalette,
-    toggleQuickSwitcher,
-    toggleSettings,
-    setSidebarPanel,
-  } = useUIStore(
-    useShallow((s) => ({
-      toggleSidebar: s.toggleSidebar,
-      toggleCommandPalette: s.toggleCommandPalette,
-      toggleQuickSwitcher: s.toggleQuickSwitcher,
-      toggleSettings: s.toggleSettings,
-      setSidebarPanel: s.setSidebarPanel,
-    })),
-  );
   const {
     activeTab,
     activeTabFilePath,
@@ -199,48 +161,7 @@ function App() {
   usePerfInstrumentation(activeEditor);
   usePluginLifecycle(editor);
 
-  // §72 Skills mode — auto-detect skill files and switch right panel
-  const { isSkill } = useSkillsMode();
-
-  // Auto-save hook (markdown files — Tiptap editor.on("update") based)
-  // §perf-large-file C3.5: use activeEditor so keep-alive tabs auto-save correctly
-  useAutoSave(activeEditor);
-
-  // §56 Place the caret on a body line below the date title when a freshly
-  // created journal template loads (instead of at the end of the title).
-  useJournalInitialCursor(activeEditor);
-
-  // File system watcher — auto-refresh FileTree on external changes
-  useFileWatcher();
-
-  // §304 태스크 캐시 증분 갱신 — file:* 이벤트로 변경된 파일만 재스캔
-  useTaskWatcher();
-
-  // §313 전역 캡처 단축키 — 설정된 조합 하나를 OS에 등록해 둔다. 앱에서 **한 번만**
-  // 마운트한다(두 번이면 같은 조합을 두 번 등록하려다 실패 상태가 남는다).
-  useGlobalCaptureShortcut();
-
-  // §71 Periodic auto-snapshot — fires performAutoSnapshot on the configured interval
-  useAutoSnapshot();
-
-  // Page zoom — trackpad pinch + Cmd+/Cmd-/Cmd+0
-  // §perf-large-file C3.5: zoom against activeEditor's DOM
-  useZoom(activeEditor);
-
-  // External file drag & drop — Tauri OS-level file drop (Feature 1 & 2)
-  useExternalDrop({ editor: activeEditor });
-
-  // §43 Ghost Text — inline AI completion
-  useGhostText(activeEditor);
-
-  // §6.2 Inline AI — Cmd+J editing
-  const inlineAI = useInlineAI(activeEditor);
-
-  // Apply settings to DOM (theme, font, spellcheck, locale)
-  useSettingsEffects(activeEditor);
-
-  // §close-guard: intercept app close (red X) / quit (Cmd+Q) when tabs are dirty
-  useCloseGuard();
+  const { inlineAI, isSkill } = useEditorFeatures(activeEditor);
 
   // [NEW-MODERATE-C] Shared ref for progressive append handles — owned here,
   // passed to both useSourceMode and useTabSwitching so cancelInflightAppend
@@ -413,43 +334,10 @@ function App() {
   // App startup side effects — migration, onLaunch restore, file open events
   useAppStartup({ handleOpenFilePath, handleNewFile });
 
-  // --- Keybinding actions registration ---
-  useKeybindingActions({
-    editor: activeEditor,
-    handleCloseFolder,
-    handleCloseTab,
-    handleNewFile,
-    handleOpenFile,
-    handleOpenFolder,
-    handleSave,
-    handleSaveAs,
-    inlineAI,
-    setFindReplaceMode,
-    setFindReplaceOpen: routeFindReplaceOpen,
-    setSidebarPanel,
-    toggleCommandPalette,
-    toggleQuickSwitcher,
-    toggleSettings,
-    toggleSidebar,
-    toggleSourceMode: handleToggleSourceMode,
-  });
-
-  // --- Global keyboard shortcuts ---
-  useGlobalKeyboard({
-    editor: activeEditor,
+  // --- Keybindings, global keyboard shortcuts, native menu ---
+  useAppCommands({
+    activeEditor,
     findReplaceOpen,
-    handleGoBack,
-    handleGoForward,
-    isSourceMode,
-    setTabSwitcherIndex,
-    setTabSwitcherOpen,
-    tabSwitcherMruRef,
-    tabSwitcherOpen,
-  });
-
-  // Native menu event listener (Tauri menu bar → frontend dispatch)
-  useMenuEventHandler({
-    editor: activeEditor,
     handleCloseFolder,
     handleCloseTab,
     handleGoBack,
@@ -460,12 +348,15 @@ function App() {
     handleOpenFolder,
     handleSave,
     handleSaveAs,
-    setFindReplaceOpen: routeFindReplaceOpen,
-    toggleCommandPalette,
-    toggleQuickSwitcher,
-    toggleSettings,
-    toggleSidebar,
-    toggleSourceMode: handleToggleSourceMode,
+    handleToggleSourceMode,
+    inlineAI,
+    isSourceMode,
+    routeFindReplaceOpen,
+    setFindReplaceMode,
+    setTabSwitcherIndex,
+    setTabSwitcherOpen,
+    tabSwitcherMruRef,
+    tabSwitcherOpen,
   });
 
   return (
@@ -478,102 +369,37 @@ function App() {
         }
       >
         {!!rootPath && <TabBar />}
-        <div className="editor-area">
-          {surfaceKind === "home" ? (
-            <HomeSurface
-              onNewFile={handleNewFile}
-              onOpenFile={handleOpenFile}
-              onOpenFolder={handleOpenFolder}
-              onOpenRecentFile={handleOpenRecentFile}
-              onOpenRecentFolder={handleOpenRecentFolder}
-            />
-          ) : surfaceKind === "empty" ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              <div className="empty-workspace">
-                <p>{t("home.emptyWorkspace")}</p>
-              </div>
-            </div>
-          ) : surfaceKind === "graph" ? (
-            // §286 그래프는 유지 대상이 아니다 — cytoscape가 0×0 컨테이너에서 자기 카메라를
-            // 흔들어, 세 번의 수정에도 실앱에서 계속 깨졌다(use-retained-tabs.ts 참조).
-            <div className="editor-area-scroll" data-editor-scroll>
-              <Suspense fallback={null}>
-                <GraphViewLazy />
-              </Suspense>
-            </div>
-          ) : surfaceKind === "image" && activeTabFilePath ? (
-            <div
-              className="editor-area-scroll plugin-viewer-scroll"
-              data-editor-scroll
-            >
-              {pluginViewer ? (
-                <PluginViewerHost
-                  filePath={activeTabFilePath}
-                  refreshKey={previewFileMtime}
-                  viewer={pluginViewer}
-                />
-              ) : (
-                <div className="viewer-missing">{t("viewer.noPlugin")}</div>
-              )}
-            </div>
-          ) : surfaceKind === "preview" && pluginViewer ? (
-            // §290 플러그인이 그리는 프리뷰는 유지하지 않는다 — 공개 viewer 계약에
-            // 가시성 신호가 없어, 마운트를 유지하면 미디어 뷰어가 숨은 탭에서 계속
-            // 재생된다(dev/backlog.md 참조). 활성일 때만 렌더한다. (HTML 프리뷰는
-            // `surfaceKind === "preview"`에도 속하지만 `pluginViewer`가 없으므로 여기서
-            // 걸러지고 유지 풀의 HtmlPreview가 그린다 — retainedKindForTab 참조.)
-            <div
-              className="editor-area-scroll plugin-viewer-scroll"
-              data-editor-scroll
-            >
-              {previewToggleButton}
-              <PluginViewerHost
-                filePath={activeTabFilePath!}
-                refreshKey={previewFileMtime}
-                viewer={pluginViewer}
-              />
-            </div>
-          ) : null}
-          {/* §272 활성 PDF의 찾기 바 — 표면 바깥(FindReplaceBar와 같은 자리)에 그린다.
-              유지 집합에는 PDF가 여러 개 있을 수 있으므로 여기 하나만 존재해야 한다. */}
-          {surfaceKind === "pdf" && pdfFindOpen && pdfFindApi && (
-            <PdfFindBar
-              currentIdx={pdfFindApi.currentIdx}
-              matchCount={pdfFindApi.matchCount}
-              onClose={() => setPdfFindOpen(false)}
-              onNext={pdfFindApi.onNext}
-              onPrev={pdfFindApi.onPrev}
-              onQueryChange={pdfFindApi.onQueryChange}
-            />
-          )}
-          {/* §286 유지 집합 — 활성만 보이고 나머지는 마운트된 채 숨는다. */}
-          {retainedTabs.map((entry) => (
-            <TabSurface
-              active={entry.tabId === activeTabId}
-              entry={entry}
-              key={`${entry.kind}-${entry.tabId}`}
-              overlay={previewToggleButton}
-              renderers={tabSurfaceRenderers}
-              scrollOffsets={scrollOffsets}
-              sourceEditorRef={sourceEditorRef}
-            />
-          ))}
-          <MarkdownSurface
-            active={isMarkdownSurfaceActive}
-            activeEditor={activeEditor}
-            activeKeepaliveEditor={activeKeepaliveEditor}
-            editor={editor}
-            findReplaceMode={findReplaceMode}
-            findReplaceOpen={findReplaceOpen}
-            inlineAI={inlineAI}
-            isParsing={isParsing}
-            mountedKeepaliveEditor={mountedKeepaliveEditor}
-            onFindReplaceClose={() => setFindReplaceOpen(false)}
-            onFindReplaceModeChange={setFindReplaceMode}
-            scrollOffsets={scrollOffsets}
-            tabId={activeTabId}
-          />
-        </div>
+        <EditorArea
+          activeEditor={activeEditor}
+          activeKeepaliveEditor={activeKeepaliveEditor}
+          activeTabFilePath={activeTabFilePath}
+          activeTabId={activeTabId}
+          editor={editor}
+          findReplaceMode={findReplaceMode}
+          findReplaceOpen={findReplaceOpen}
+          handleNewFile={handleNewFile}
+          handleOpenFile={handleOpenFile}
+          handleOpenFolder={handleOpenFolder}
+          handleOpenRecentFile={handleOpenRecentFile}
+          handleOpenRecentFolder={handleOpenRecentFolder}
+          inlineAI={inlineAI}
+          isMarkdownSurfaceActive={isMarkdownSurfaceActive}
+          isParsing={isParsing}
+          mountedKeepaliveEditor={mountedKeepaliveEditor}
+          pdfFindApi={pdfFindApi}
+          pdfFindOpen={pdfFindOpen}
+          pluginViewer={pluginViewer}
+          previewFileMtime={previewFileMtime}
+          previewToggleButton={previewToggleButton}
+          retainedTabs={retainedTabs}
+          scrollOffsets={scrollOffsets}
+          setFindReplaceMode={setFindReplaceMode}
+          setFindReplaceOpen={setFindReplaceOpen}
+          setPdfFindOpen={setPdfFindOpen}
+          sourceEditorRef={sourceEditorRef}
+          surfaceKind={surfaceKind}
+          tabSurfaceRenderers={tabSurfaceRenderers}
+        />
         <PromptLintPanel editor={activeEditor} />
         {isSkill && (
           <Suspense fallback={null}>
