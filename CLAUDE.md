@@ -72,6 +72,8 @@ baram/
 └── .claude/docs/           # 상황별 지침 (CI 계약·성능 기준·설계 § 지도 — 해당 작업 전 필독)
 ```
 
+- **AGENTS.md는 gitignore된 per-machine 생성물**(OMC deepinit) — 갱신은 이 머신의 문서 정확성용일 뿐, 커밋/PR에 포함하려 하지 말 것
+
 ## 코딩 컨벤션
 
 ### TypeScript
@@ -85,6 +87,7 @@ baram/
 - 타입: 인터페이스 우선, `I` 접두사 사용하지 않음
 - **파일 크기**: 단일 파일 ~300줄 이하 유지. ~500줄 초과 시 집중 서브모듈로 분리
   - 단, Rust in-file `#[cfg(test)]`·사고 이력 주석은 카운트 제외하고 판단. **분리 금지 판정 파일**(응집이 본질): FileTree.tsx, viewport-virtualize.ts, vim/adapters/operations.ts, plugins/types.ts(공개 .d.ts 계약), plugin-loader.ts 동시성 클래스, Rust authorizer/task/write/logging
+  - **부분 분리 완료·잔여는 응집 판정**(PR 519): mermaid-block-view.tsx(13-state 코어+훅 순서 계약), md-to-pm.ts(상호 재귀 블록 워커+공유 루프 카운터), App.tsx(useEditor 안정성 계약+keepalive/fileOps/navigation 순환 매듭) — 추가 분리는 시그니처 변경이 필요한 재설계
 - **Zustand 셀렉터**: 컴포넌트에서 `useStore()` bare call 금지. 반드시 `useShallow((s) => ({...}))` 셀렉터 사용
   ```ts
   import { useShallow } from "zustand/shallow";
@@ -104,8 +107,9 @@ baram/
   - `fuzzyMatch()` → `src/utils/file-search.ts`
   - `RightPanelMode` / `SidebarPanel` 타입 → `src/stores/ui/ui.ts`
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
+- **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
-- **perfectionist/sort-modules autofix는 주석을 안 옮긴다** — 정렬 후 doc 주석-함수 짝이 맞는지 확인 (배너 오배치 사고 다발)
+- **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건)
 - **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
@@ -142,6 +146,8 @@ baram/
 - **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
 - **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
 - **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신
+  - media-toolbar-reveal.test.ts는 소스 텍스트를 스캔해 NodeViewWrapper+MediaToolbar 파일 수 ≥4를 요구 — 뷰에서 toolbar 블록을 다른 파일로 빼면 깨진다
+  - pipeline/에 프로덕션 파일을 추가하면 import-boundary의 `MD_TO_PM_ROUTE_FILES` Set(+감사 주석의 개수·날짜)을 갱신해야 한다 — allowlist를 넓히는 우회는 금지
 
 ### 의존성 관리
 
@@ -152,6 +158,7 @@ baram/
 
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - 커밋 메시지에 설계 문서 섹션 참조 포함 (예: `feat(§5.3): implement KaTeX math block`)
+- **§ 번호는 추측 금지** — 커밋 전 대상 파일 헤더 주석 또는 `git log --format=%s -- <파일>`로 실측 (fold=§4.2, slash=§4.6처럼 직관과 다른 경우 다수)
 - **커밋 메시지는 미리 검증**: `npx --no -- commitlint < msg.txt`. 본문에서 줄 시작 `단어:`는 footer로 오인되므로 줄바꿈 위치를 조정할 것
 - 브랜치: `feature/m2-basic-editing`, `fix/roundtrip-heading-whitespace`
 - **pre-push hook**: `npm run lint`(CI lint 잡 전체, knip 포함) + `cargo clippy --all-targets` 실행 — push당 ~2분+, cargo cold면 5~7분. push는 백그라운드로 실행할 것
