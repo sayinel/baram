@@ -9,7 +9,7 @@
 .vault-tab-empty {
   padding: 12px 0;
   font-size: 13px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 .vault-tab-item {
@@ -19,18 +19,18 @@
   align-items: center;
   padding: 8px 12px;
   cursor: pointer;
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   transition: border-color 0.15s;
 }
 
 .vault-tab-item:hover {
-  border-color: var(--color-text-muted, #9ca3af);
+  border-color: var(--color-text-muted);
 }
 
 .vault-tab-item--selected {
   background: rgb(59 130 246 / 5%);
-  border-color: var(--color-accent-default, #3b82f6);
+  border-color: var(--color-accent-default);
 }
 
 .vault-tab-item__color {
@@ -44,7 +44,7 @@
 }
 
 .vault-tab-item__color:hover {
-  border-color: var(--color-text-default, #1a1a1a);
+  border-color: var(--color-text-default);
 }
 
 .vault-tab-item__info {
@@ -66,14 +66,14 @@
   padding: 2px 6px;
   font-size: 13px;
   outline: none;
-  border: 1px solid var(--color-accent-default, #3b82f6);
+  border: 1px solid var(--color-accent-default);
   border-radius: 4px;
 }
 
 .vault-tab-item__alias {
   display: block;
   font-size: 11px;
-  color: var(--color-text-secondary, #9ca3af);
+  color: var(--color-text-secondary);
 }
 
 .vault-tab-item__alias-value {
@@ -88,10 +88,10 @@
   width: 120px;
   padding: 1px 4px;
   font-size: 11px;
-  color: var(--color-text-primary, #e5e7eb);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-subtle, #1f2937);
-  border: 1px solid var(--color-accent-default, #3b82f6);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-accent-default);
   border-radius: 4px;
 }
 
@@ -99,7 +99,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 11px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
@@ -113,25 +113,25 @@
 .vault-tab-item__convert {
   padding: 2px 8px;
   font-size: 11px;
-  color: var(--color-accent-default, #3b82f6);
+  color: var(--color-accent-default);
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--color-accent-default, #3b82f6);
+  border: 1px solid var(--color-accent-default);
   border-radius: 4px;
 }
 
 .vault-tab-item__convert:hover {
   color: var(--color-accent-on-solid);
-  background: var(--color-accent-solid-hover, #2563eb);
+  background: var(--color-accent-solid-hover);
 }
 
 .vault-tab-item__remove {
   flex-shrink: 0;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
 }
 
 .vault-tab-item__remove:hover {
-  color: var(--color-status-danger, #ef4444);
+  color: var(--color-status-danger);
 }
 
 .vault-tab-item__color-picker {
@@ -143,14 +143,14 @@
   gap: 4px;
   padding: 6px;
   margin-top: 4px;
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  box-shadow: var(--shadow-md, 0 4px 6px rgb(0 0 0 / 7%));
+  box-shadow: var(--shadow-md);
 }
 
 [data-theme="dark"] .vault-tab-item__color-picker {
-  background: var(--color-bg-elevated, #333);
+  background: var(--color-bg-elevated);
 }
 
 .vault-tab-item__color-swatch {
@@ -162,7 +162,7 @@
 }
 
 .vault-tab-item__color-swatch:hover {
-  border-color: var(--color-text-default, #1a1a1a);
+  border-color: var(--color-text-default);
   transform: scale(1.15);
 }
 
@@ -176,26 +176,26 @@
   align-items: center;
   padding: 6px 14px;
   font-size: 13px;
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   transition: background 0.15s;
 }
 
 .vault-tab-add-btn:hover {
-  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  background: var(--color-bg-hover);
 }
 
 [data-theme="dark"] .vault-tab-add-btn {
-  color: var(--color-text-default, #e0e0e0);
+  color: var(--color-text-default);
 }
 
 .settings-section-desc {
   margin-bottom: 8px;
   font-size: 13px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 /* ─── §86 Vault Settings Override ─── */
@@ -203,13 +203,13 @@
 .vault-settings-loading {
   padding: 8px 0;
   font-size: 13px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 .vault-settings-group {
   padding: 12px;
   margin: 16px 0;
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  border: 1px solid var(--color-border-default);
   border-radius: 8px;
 }
 
@@ -217,7 +217,7 @@
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-text-primary, #111827);
+  color: var(--color-text-primary);
 }
 
 .vault-settings-row {
@@ -229,7 +229,7 @@
 
 .vault-settings-row__label {
   font-size: 13px;
-  color: var(--color-text-default, #374151);
+  color: var(--color-text-default);
 }
 
 .vault-settings-row__control {
@@ -240,34 +240,34 @@
 .vault-three-state-btn {
   padding: 2px 8px;
   font-size: 11px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
   cursor: pointer;
   background: transparent;
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
 
 .vault-three-state-btn--active {
   color: var(--color-accent-on-solid);
-  background: var(--color-accent-solid, #2563eb);
-  border-color: var(--color-accent-solid, #2563eb);
+  background: var(--color-accent-solid);
+  border-color: var(--color-accent-solid);
 }
 
 .vault-settings-input {
   width: 180px;
   padding: 4px 8px;
   font-size: 13px;
-  color: var(--color-text-default, #374151);
+  color: var(--color-text-default);
   background: transparent;
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
 
 .vault-settings-select {
   padding: 4px 8px;
   font-size: 13px;
-  color: var(--color-text-default, #374151);
+  color: var(--color-text-default);
   background: transparent;
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }

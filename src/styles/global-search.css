@@ -32,7 +32,7 @@
   font-size: 0.85rem;
   color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-input, var(--color-bg-default));
+  background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -149,7 +149,7 @@
   flex-shrink: 0;
   min-width: 28px;
   font-size: 0.7rem;
-  color: var(--color-text-muted, var(--color-text-secondary));
+  color: var(--color-text-muted);
 }
 
 .global-search-replace-row {
@@ -170,7 +170,7 @@
   font-size: 12px;
   color: var(--color-text-primary);
   cursor: pointer;
-  background: var(--color-bg-subtle, var(--color-bg-default));
+  background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -219,7 +219,7 @@
   font-size: 12px;
   color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-input, var(--color-bg-default));
+  background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }

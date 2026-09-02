@@ -242,7 +242,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 <a
                   href="https://pandoc.org/installing.html"
                   rel="noreferrer"
-                  style={{ color: "var(--color-accent-default, #4a9eff)" }}
+                  style={{ color: "var(--color-accent-default)" }}
                   target="_blank"
                 >
                   pandoc.org

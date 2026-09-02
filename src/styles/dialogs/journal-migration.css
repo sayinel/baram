@@ -58,7 +58,7 @@
   padding: 1px 4px;
   font-family: var(--font-family-mono, monospace);
   font-size: 12px;
-  background: var(--color-bg-subtle, rgb(128 128 128 / 10%));
+  background: var(--color-bg-subtle);
   border-radius: 3px;
 }
 
@@ -94,7 +94,7 @@
   font-family: var(--font-family-mono, monospace);
   font-size: 12px;
   color: var(--color-text-secondary);
-  background: var(--color-bg-subtle, rgb(128 128 128 / 5%));
+  background: var(--color-bg-subtle);
   border-radius: 4px;
 }
 
@@ -105,7 +105,7 @@
 
 .migration-dialog-arrow {
   flex-shrink: 0;
-  color: var(--color-text-muted, var(--color-text-secondary));
+  color: var(--color-text-muted);
 }
 
 .migration-dialog-to {
@@ -118,7 +118,7 @@
   padding: 2px 8px;
   font-size: 12px;
   font-style: italic;
-  color: var(--color-text-muted, var(--color-text-secondary));
+  color: var(--color-text-muted);
 }
 
 .migration-dialog-actions {
@@ -152,7 +152,7 @@
 }
 
 .migration-dialog-btn-secondary:not(:disabled):hover {
-  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
+  background: var(--color-bg-subtle);
 }
 
 .migration-dialog-btn-primary {

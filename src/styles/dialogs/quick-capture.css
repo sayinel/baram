@@ -138,7 +138,7 @@
   font-size: 13px;
   color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-subtle, var(--color-bg-default));
+  background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
@@ -156,7 +156,7 @@
   color: var(--color-text-primary);
   resize: vertical;
   outline: none;
-  background: var(--color-bg-subtle, var(--color-bg-default));
+  background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
@@ -189,7 +189,7 @@
 }
 
 .quick-capture-cancel:hover {
-  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
+  background: var(--color-bg-subtle);
 }
 
 .quick-capture-save {

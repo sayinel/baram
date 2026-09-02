@@ -472,7 +472,7 @@
 }
 
 .prompt-lint-item:hover {
-  background: var(--color-bg-subtle, rgb(0 0 0 / 4%));
+  background: var(--color-bg-subtle);
 }
 
 [data-theme="dark"] .prompt-lint-item:hover {
