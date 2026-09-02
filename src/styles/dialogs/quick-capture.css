@@ -191,6 +191,32 @@
   border-color: var(--color-accent-default);
 }
 
+/* ‼️ §323 리뷰 Important 2 — 캡처 편집기는 문서창의 "페이지" 여백을 물려받지
+   않는다.
+   `@tiptap/core`는 모든 편집기의 편집 영역에 `class="tiptap"`을 붙이고,
+   `editor/base.css`의 `.tiptap`은 문서창을 종이처럼 보이게 하는 페이지 여백을
+   갖는다 — `padding: 2rem var(--editor-padding)`, 전역 `--editor-padding: 4rem`.
+   460px 폭 다이얼로그의 192px짜리 상자 안에서 그 여백은 위아래 32px, 좌우
+   128px을 먹어 실제 작성 폭을 ~272px로 만들었고, 같은 규칙의 `font-size: 1rem`이
+   위에서 정한 13px까지 덮었다. 종이 여백은 문서 표면의 성질이지 편집기 엔진의
+   성질이 아니다 — 캡처 상자의 여백은 컨테이너의 `padding: 8px 10px`이 이미
+   담당한다. `.tiptap` 자체는 손대지 않으므로 문서창의 모습은 그대로다. */
+.quick-capture-editor .tiptap {
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ‼️ §323 리뷰 Important 3 — 캡처 편집기의 빈 문서 안내 문구.
+   `editor/base.css`의 `.tiptap p.is-editor-empty:first-child::before`는 문구를
+   `content:`에 한국어로 박아 둔다 — 그래서 영어 사용자가 캡처 창을 열면 한국어
+   문장이 떴다. 여기서만 `attr(data-placeholder)`로 되돌려, Placeholder
+   Extension이 심어 준 값(= `journal.capture.body.placeholder`의 현재 로케일
+   번역, `extensions/index.ts`)이 그대로 보이게 한다. 선택자가 원본보다 클래스
+   하나만큼 더 구체적이라 문서창의 문구는 건드리지 않는다. */
+.quick-capture-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+}
+
 /* §324-g 편집기 아래 리사이즈 핸들 — 6px 클릭 영역 안에 2px 그립을 그린다.
    Splitter(layout.css)와 같은 형태: 평소엔 투명, hover에서만 악센트가 보인다. */
 .quick-capture-resize {

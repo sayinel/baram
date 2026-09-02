@@ -491,6 +491,29 @@ describe("§323 WYSIWYG 본문", () => {
     ).not.toBeNull();
   });
 
+  // ‼️ §323 리뷰 Important 3 회귀 핀. `journal.capture.body.placeholder`가
+  // 아무 데서도 참조되지 않는 채로 남고, `editor/base.css`가 한국어 문장을
+  // `content:`에 박아 두어 영어 사용자가 한국어 안내를 봤다. CSS 쪽 절반은
+  // `styles/__tests__/capture-editor-surface.test.ts`가 고정한다 — 여기서는
+  // 실제로 어떤 문자열이 DOM에 실리는지, 즉 로케일 분기를 본다.
+  it.each(["en", "ko"] as const)(
+    "빈 본문 안내 문구가 %s 로케일을 따른다",
+    async (locale) => {
+      useSettingsStore.setState({ locale });
+      render(<QuickCaptureDialog />);
+      await act(async () => {});
+      const empty = document.querySelector(
+        ".quick-capture-editor [data-placeholder]",
+      );
+      expect(empty).not.toBeNull();
+      // 두 로케일의 값이 서로 다르므로, 어느 한쪽을 하드코딩한 구현은 반드시
+      // 한쪽에서 실패한다 — 로케일을 아예 안 읽는 구현도 마찬가지다.
+      expect(empty!.getAttribute("data-placeholder")).toBe(
+        t("journal.capture.body.placeholder", locale),
+      );
+    },
+  );
+
   it("서식 있는 본문이 마크다운으로 저장된다", async () => {
     render(<QuickCaptureDialog />);
     await act(async () => {});

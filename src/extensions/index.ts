@@ -1,6 +1,7 @@
 // Baram Extension 번들 — M2 기본 편집 세트
 // StarterKit 대신 커스텀 Extension 조합 사용
 
+import type { Locale } from "../i18n";
 import type { Extensions } from "@tiptap/core";
 
 import Document from "@tiptap/extension-document";
@@ -11,6 +12,7 @@ import History from "@tiptap/extension-history";
 import Placeholder from "@tiptap/extension-placeholder";
 import Text from "@tiptap/extension-text";
 
+import { t } from "../i18n";
 import { useSettingsStore } from "../stores/settings/store";
 import { logger } from "../utils/logger";
 // Mark Extensions
@@ -333,7 +335,23 @@ export function createBaramExtensions(
       ? []
       : [
           Placeholder.configure({
-            placeholder: "Start writing…",
+            // §323 리뷰 Important 3: 문서창의 문구는 `editor/base.css`가
+            // `content:`에 박아 두므로 이 문자열은 그쪽에선 보이지 않는다.
+            // 캡처 창은 그 CSS를 `attr(data-placeholder)`로 되돌려 여기 값을
+            // 실제로 쓰므로, 로케일에 맞는 문구를 줘야 한다 — 그러지 않으면
+            // 영어 사용자가 한국어 안내 문장을 본다(그것이 이 결함이었다).
+            // 문자열이 아니라 함수인 이유: Extension 배열은 편집기 인스턴스마다
+            // 한 번만 만들어지는데(`use-capture-editor.ts`), Placeholder는
+            // 데코레이션을 매 state마다 다시 계산하므로 언어를 바꾼 뒤에도
+            // 다음 계산에서 현재 로케일을 읽는다.
+            placeholder:
+              options?.profile === "capture"
+                ? () =>
+                    t(
+                      "journal.capture.body.placeholder",
+                      useSettingsStore.getState().locale as Locale,
+                    )
+                : "Start writing…",
           }),
         ]),
   ];
