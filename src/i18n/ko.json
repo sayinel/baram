@@ -597,7 +597,6 @@
   "settings.ai.useDefault": "기본",
   "settings.appearance.customBadge": "커스텀",
   "settings.appearance.customize": "커스터마이즈...",
-  "settings.appearance.deleteTheme": "테마 삭제",
   "settings.appearance.deleteThemeNamed": "'{name}' 테마 삭제",
   "settings.appearance.import": "테마 가져오기...",
   "settings.appearance.importError.invalidBase": "'base'는 'light' 또는 'dark'여야 합니다",

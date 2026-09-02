@@ -78,6 +78,12 @@ function deepMergeTokens(
   trail: string[] = [],
 ): Record<string, unknown> {
   for (const [key, value] of Object.entries(source)) {
+    // JSON 키가 "__proto__"면 target[key] 접근·대입이 프로토타입을 타서
+    // Object.prototype 오염이 실제로 재현됐다(입력이 저장소 내 파일뿐이라
+    // 도달 경로는 없지만, 한 줄로 닫히는 구멍이다).
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      throw new Error(`primitive token file uses a forbidden key: ${key}`);
+    }
     const existing = target[key];
     if (
       existing &&
@@ -95,7 +101,7 @@ function deepMergeTokens(
     } else if (existing !== undefined) {
       throw new Error(
         `primitive token collision at '${[...trail, key].join(".")}' — ` +
-          `two primitive files define the same leaf with different shapes/values`,
+          `two primitive files define the same leaf (identical values are rejected too - a duplicate belongs in one file)`,
       );
     } else {
       target[key] = value;

@@ -79,7 +79,11 @@
   align-items: center;
   padding: 6px 16px;
   font-size: 13px;
-  color: var(--color-text-default);
+
+  /* 배경이 고정이면 잉크도 고정이어야 한다(적대 리뷰): 종전의 테마 추종
+     var(--color-text-default)는 다크에서 #e2e8f0이 되어 크림 위 판독 불가였다.
+     amber-950 계열 잉크는 크림 위 대비 ~13:1로 양쪽 테마에서 동일하다. */
+  color: #451a03;
 
   /* 의도된 고정 경고색 — warning 계열 bg 토큰이 아직 없다(감사 후속에서 신설 검토).
      종전의 var(--color-bg-secondary, #fff7ed)는 죽은 토큰이라 fallback이 실색이었다. */
