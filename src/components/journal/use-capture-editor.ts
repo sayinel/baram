@@ -5,11 +5,13 @@
 // `App.tsx`의 방식을 그대로 따른다.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { CaptureDropAccess } from "../../stores/editor/editor";
 import type { Editor } from "@tiptap/react";
 
 import { isNodeEmpty, Editor as TiptapEditor } from "@tiptap/core";
 
 import { createBaramExtensions } from "../../extensions";
+import { useEditorStore } from "../../stores/editor/editor";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 
 // ‼️ Finding 1 (§323 리뷰): `Editor.isEmpty`는 `isNodeEmpty(doc)`를
@@ -83,11 +85,39 @@ export function useCaptureEditor(
     instance.on("update", sync);
     setEditor(instance);
     setIsEmpty(true);
+
+    // §324-e OS 파일 드래그(Finder에서 끌어다 놓기)는 위 `extensions`의
+    // ProseMirror `handleDrop`에 **도달하지 않는다** — Tauri 네이티브가 먼저
+    // 가로채고 `use-external-drop.ts`가 처리한다. 그 훅은 App 수준에서 메인
+    // 편집기만 들고 도므로, 이 인스턴스와 목적지 리졸버를 스토어에 게시해야
+    // 캡처 창 위로 끌어다 놓은 이미지가 갈 곳을 안다. 리졸버는 위 `extensions`가
+    // 쓰는 것과 **같은 ref**를 통과하므로, 붙여넣기와 드랍이 하나의 판단을
+    // 공유한다(재계산 없음 — §324-e round 1의 결함).
+    //
+    // ‼️ 등록은 인스턴스와 수명이 같다: 아래 cleanup에서 지운다. 남겨 두면
+    // 다음 **문서** 드랍이 파기된 이 편집기로 흘러들어 조용히 사라진다
+    // (`CaptureDropAccess` 주석). 스토어 액션은 `getState()`로 집는다 —
+    // 셀렉터로 받아 deps에 넣으면 이 effect의 재실행 조건이 늘어나고, 그
+    // 재실행은 타이핑 중인 편집기를 통째로 재생성한다(위 deps 주석).
+    const access: CaptureDropAccess = {
+      editor: instance,
+      resolveDestinationPath: () =>
+        resolveDropDestinationRef.current?.() ?? null,
+    };
+    useEditorStore.getState().registerCaptureDropAccess(access);
+
     return () => {
       instance.off("update", sync);
       instance.destroy();
       setEditor(null);
       setIsEmpty(true);
+      // 자기가 등록한 것일 때만 지운다 — StrictMode의 이중 마운트에서는 새
+      // 인스턴스의 등록이 옛 인스턴스의 cleanup보다 먼저 일어날 수 있고,
+      // 무조건 null을 쓰면 방금 살아난 접근자를 도로 지운다
+      // (`use-source-mode.ts`의 같은 가드).
+      if (useEditorStore.getState().captureDropAccess === access) {
+        useEditorStore.getState().registerCaptureDropAccess(null);
+      }
     };
   }, [open, extensions]);
 

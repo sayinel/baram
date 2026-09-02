@@ -39,10 +39,21 @@ const TOKEN = "--z-editor-popup";
  * that also get classes, and those are inside the overlay's own stacking
  * context — asking the stylesheet for a `z-index` they must not have would
  * fail this guard for a rule that is perfectly correct.
+ *
+ * §324-e `src/utils/editor` joined the scan. `drop-indicator.ts` mounts the
+ * external-drop insertion bar on `document.body` in exactly the second shape
+ * and had the exact defect this file was written about — `z-index: 50`, so
+ * dragging a file over the Quick Capture dialog painted the bar UNDER the
+ * dialog's opaque background and the drop target looked dead. Widening the
+ * scanned roots (rather than adding `.drop-indicator-bar` to a list) is the
+ * point: the guard has to find the member nobody remembered to enumerate.
  */
 function bodyMountedPopupClasses(): string[] {
   const found = new Set<string>();
-  for (const file of walk("src/extensions", ".ts")) {
+  for (const file of [
+    ...walk("src/extensions", ".ts"),
+    ...walk("src/utils/editor", ".ts"),
+  ]) {
     if (file.includes("__tests__")) continue;
     const source = readFileSync(file, "utf8");
     for (const match of source.matchAll(/popupClass:\s*"([\w-]+)"/gu)) {
@@ -92,11 +103,14 @@ describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
     // below vacuous — `expect([]).toEqual([])` passes forever. Pin both the
     // count floor and the two menus the defect was actually about.
     const classes = bodyMountedPopupClasses();
-    expect(classes.length).toBeGreaterThanOrEqual(5);
+    expect(classes.length).toBeGreaterThanOrEqual(6);
     // One from each of the two shapes, so neither branch can quietly stop
     // matching and leave the other carrying the whole guard.
     expect(classes).toContain("mention-menu-popup"); // popupClass:
     expect(classes).toContain("slash-menu-popup"); // appendChild + className
+    // §324-e the second scanned root — drop `src/utils/editor` from the walk
+    // above and this is what stops being checked.
+    expect(classes).toContain("drop-indicator-bar");
   });
 
   it.each(bodyMountedPopupClasses())(

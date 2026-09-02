@@ -462,3 +462,73 @@ describe("§323 useCaptureEditor", () => {
     });
   });
 });
+
+// §324-e OS 파일 드래그는 ProseMirror에 도달하지 않는다(Tauri 네이티브가 먼저
+// 가로챈다) — 그것을 받는 훅은 App 수준에서 메인 편집기만 들고 돈다. 그래서 이
+// 훅이 자기 인스턴스와 목적지 리졸버를 스토어에 게시하고, 그 게시물의 수명이 곧
+// 인스턴스의 수명이어야 한다.
+describe("§324-e 캡처 편집기의 드랍 접근자 등록", () => {
+  afterEach(() => {
+    useEditorStore.getState().registerCaptureDropAccess(null);
+  });
+
+  it("열려 있는 동안 살아 있는 인스턴스를 게시한다", async () => {
+    const { result } = renderHook(() => useCaptureEditor(true));
+    await act(async () => {});
+
+    const access = useEditorStore.getState().captureDropAccess;
+    expect(access).not.toBeNull();
+    // 다른 편집기가 아니라 **이** 인스턴스여야 한다 — 아니면 드랍이 화면에
+    // 보이지 않는 문서로 들어간다.
+    expect(access?.editor).toBe(result.current.editor);
+    expect(access?.editor.isDestroyed).toBe(false);
+  });
+
+  it("호출부의 리졸버를 그대로 통과시킨다 — 재계산하지 않는다", async () => {
+    // 붙여넣기 경로와 같은 함수여야 한다. 훅이 설정에서 목적지를 다시 유도하려
+    // 한 것이 애초에 붙여넣기를 태스크 모드에 눈멀게 한 결함이었다(§324-e r1).
+    const resolve = vi.fn(() => "/vault/zettel/inbox/__capture__.md");
+    renderHook(() => useCaptureEditor(true, resolve));
+    await act(async () => {});
+
+    expect(
+      useEditorStore.getState().captureDropAccess?.resolveDestinationPath(),
+    ).toBe("/vault/zettel/inbox/__capture__.md");
+    expect(resolve).toHaveBeenCalled();
+  });
+
+  it("닫히면 게시물을 지운다", async () => {
+    // ‼️ 남겨 두면 파기된 편집기를 가리키는 접근자가 스토어에 남는다 —
+    // `SourceBufferAccess`가 같은 이유로 같은 경고를 달고 있다.
+    const { rerender } = renderHook(({ open }) => useCaptureEditor(open), {
+      initialProps: { open: true },
+    });
+    await act(async () => {});
+    expect(useEditorStore.getState().captureDropAccess).not.toBeNull();
+
+    rerender({ open: false });
+    await act(async () => {});
+
+    expect(useEditorStore.getState().captureDropAccess).toBeNull();
+  });
+
+  it("다시 열면 새 인스턴스로 갱신된다 — 죽은 것을 가리키지 않는다", async () => {
+    const { rerender, result } = renderHook(
+      ({ open }) => useCaptureEditor(open),
+      { initialProps: { open: true } },
+    );
+    await act(async () => {});
+    const first = result.current.editor;
+
+    rerender({ open: false });
+    await act(async () => {});
+    rerender({ open: true });
+    await act(async () => {});
+
+    const access = useEditorStore.getState().captureDropAccess;
+    expect(access?.editor).toBe(result.current.editor);
+    expect(access?.editor).not.toBe(first);
+    expect(first?.isDestroyed).toBe(true);
+    expect(access?.editor.isDestroyed).toBe(false);
+  });
+});

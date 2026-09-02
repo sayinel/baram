@@ -191,6 +191,15 @@
   border-color: var(--color-accent-default);
 }
 
+/* §324-e OS 파일 드래그가 캡처 창 위에 있는 동안의 표시(`use-external-drop.ts`가
+   붙였다 뗀다). 파일 트리의 `.file-tree-ext-drop-target`과 같은 역할이다.
+   `outline`인 이유: `border`를 바꾸면 위 focus-within 강조와 서로를 지우고,
+   1px 테두리가 굵어지며 편집기 내용이 미세하게 흔들린다. */
+.quick-capture-editor.capture-ext-drop-target {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 1px;
+}
+
 /* ‼️ §323 리뷰 Important 2 — 캡처 편집기는 문서창의 "페이지" 여백을 물려받지
    않는다.
    `@tiptap/core`는 모든 편집기의 편집 영역에 `class="tiptap"`을 붙이고,

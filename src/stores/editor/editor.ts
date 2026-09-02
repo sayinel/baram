@@ -1,7 +1,37 @@
 // §3.5 에디터 상태 스토어
+import type { Editor } from "@tiptap/core";
+
 import { create } from "zustand";
 
 import { useContextStore } from "../context/context";
+
+/**
+ * §324-e 캡처 창의 편집기로 가는 통로 — 다이얼로그가 열려 있는 동안만 채워진다.
+ *
+ * 왜 스토어인가: OS에서 끌어온 파일 드래그는 ProseMirror가 아니라 Tauri 네이티브가
+ * 가로채고(`use-external-drop.ts`의 `isExternalFileDrag`), 그것을 받는 훅은 App
+ * 수준에서 **메인** 편집기 하나만 손에 들고 돌아간다. 캡처 편집기는 다이얼로그
+ * 안에서 태어나 죽으므로, 그 훅이 볼 수 있는 유일한 방법이 이 게시판이다.
+ * `sourceBufferAccess`(§312)와 같은 형태이고 같은 이유다 — 리렌더를 만들지 않는
+ * 안정된 참조만 스토어에 산다.
+ *
+ * ‼️ 대가도 같다: 수명이다. 편집기 인스턴스를 닫고 있으므로 다이얼로그가 닫힐 때
+ * 반드시 `registerCaptureDropAccess(null)`로 지워야 한다 — 안 그러면 그다음
+ * **문서** 드랍이 파기된 캡처 편집기로 흘러들어 아무 데도 닿지 않는다.
+ */
+export interface CaptureDropAccess {
+  /** 캡처 다이얼로그 자신의 편집기 인스턴스. */
+  editor: Editor;
+  /**
+   * 이 캡처가 저장될 파일의 경로, 또는 지금 목적지가 없으면 `null`.
+   *
+   * ‼️ 다이얼로그의 `resolveDropDestination`을 **그대로** 실어 보낸다(재계산 금지).
+   * 붙여넣기 경로가 쓰는 `DropHandler`의 `resolveDestinationPath`와 같은 함수여야
+   * 한다 — 태스크 모드 여부는 다이얼로그만 알고, 설정에서 다시 유도하려 한 것이
+   * 애초에 붙여넣기 경로를 태스크 모드에 눈멀게 한 결함이었다(§324-e round 1).
+   */
+  resolveDestinationPath: () => null | string;
+}
 
 export interface EditorTab {
   /** §83 The context this tab belongs to */
@@ -46,6 +76,8 @@ export interface SourceBufferAccess {
 
 interface EditorState {
   activeTabId: null | string;
+  /** §324-e Live capture-dialog editor access, or `null` when it is closed */
+  captureDropAccess: CaptureDropAccess | null;
   /** §313 The tab's cached state has been discarded (or was never stale). */
   clearContentStale: (tabId: string) => void;
   /** Close all tabs (including pinned) */
@@ -111,6 +143,8 @@ interface EditorState {
   openTab: (tab: EditorTab) => void;
   /** §38 Pin a tab — moves to end of pinned group */
   pinTab: (tabId: string) => void;
+  /** §324-e Publish (or clear with `null`) the open capture dialog's editor access */
+  registerCaptureDropAccess: (access: CaptureDropAccess | null) => void;
   /** §312 Publish (or clear with `null`) the mounted source surface's buffer accessors */
   registerSourceBufferAccess: (access: null | SourceBufferAccess) => void;
   /** §61 Rename directory: update all tabs whose filePath starts with oldDir */
@@ -203,6 +237,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   staleContentTabs: [],
   sourceModeTabs: [],
   sourceBufferAccess: null,
+  captureDropAccess: null,
 
   setActiveTab: (tabId) => {
     set({ activeTabId: tabId });
@@ -542,6 +577,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           : state.sourceModeTabs.filter((id) => id !== tabId),
       };
     }),
+
+  registerCaptureDropAccess: (access) =>
+    set((state) =>
+      state.captureDropAccess === access
+        ? state
+        : { captureDropAccess: access },
+    ),
 
   registerSourceBufferAccess: (access) =>
     set((state) =>

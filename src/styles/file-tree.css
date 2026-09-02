@@ -320,7 +320,16 @@
 /* Editor drop indicator bar — shows the exact insertion line */
 .drop-indicator-bar {
   position: fixed;
-  z-index: 50;
+
+  /* ‼️ §324-e 이것도 `document.body`에 붙는 편집기 오버레이다
+     (`utils/editor/drop-indicator.ts`) — 그래서 편집기가 아니라 그 편집기를
+     담고 있는 **다이얼로그 오버레이**와 레이어를 다툰다. `z-index: 50`이던
+     동안에는 캡처 창(`.quick-capture-overlay`, 200) 위로 파일을 끌어도
+     삽입 지점 표시줄이 그 불투명한 배경 아래에 그려져 보이지 않았다 —
+     §323이 제안 메뉴들에서 고친 것과 같은 결함이고, base.css의 규칙("다음
+     body-mounted 편집기 팝업은 맨 숫자가 아니라 이 변수를 쓸 것")이 정확히
+     이 경우를 위한 것이다. */
+  z-index: var(--z-editor-popup);
   display: none;
   height: 2px;
   pointer-events: none;

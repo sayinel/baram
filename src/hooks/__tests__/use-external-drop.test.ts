@@ -456,3 +456,86 @@ describe("source guard — .file-tree must fill its scroll container", () => {
     expect(rules[0]).toMatch(/min-height:\s*100%/);
   });
 });
+
+// §324-e 목적지 계약. 붙여넣기 경로(`DropHandler`의 `resolveDestinationPath`,
+// drop-handler.ts의 `getJournalContext`)와 **세 상태가 같아야** 한다 — 같은
+// 이미지를 같은 상자에 넣는 두 표면이 서로 다른 디렉터리를 고르면 안 된다.
+describe("handleEditorDrop — 목적지를 누가 정하는가 (§324-e)", () => {
+  const DOC_PATH = "/vault/notes/today.md";
+  const HOST_PATH = "/vault/zettel/inbox/__capture__.md";
+
+  function createTestEditor(): Editor {
+    return new Editor({ extensions: createBaramExtensions(), content: "" });
+  }
+
+  beforeEach(() => {
+    createDirMock.mockReset().mockResolvedValue(undefined);
+    importFileMock.mockReset().mockResolvedValue(undefined);
+    listDirMock.mockReset().mockResolvedValue([]);
+    showToastMock.mockReset();
+    // 오염원: 캡처와 아무 상관 없는 문서가 메인 창에 열려 있다.
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: DOC_PATH }],
+    } as never);
+  });
+
+  it("리졸버가 없으면 활성 탭 옆에 저장한다 (문서 편집기 — 종전과 동일)", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(["/Users/x/Desktop/photo.png"], editor, 0);
+    expect(importFileMock).toHaveBeenCalledWith(
+      "/Users/x/Desktop/photo.png",
+      "/vault/notes/assets/photo.png",
+    );
+    editor.destroy();
+  });
+
+  it("리졸버가 경로를 주면 그 경로 옆에 저장한다 — 활성 탭이 열려 있어도", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(
+      ["/Users/x/Desktop/photo.png"],
+      editor,
+      0,
+      () => HOST_PATH,
+    );
+    expect(importFileMock).toHaveBeenCalledWith(
+      "/Users/x/Desktop/photo.png",
+      "/vault/zettel/inbox/assets/photo.png",
+    );
+    expect(importFileMock).not.toHaveBeenCalledWith(
+      "/Users/x/Desktop/photo.png",
+      "/vault/notes/assets/photo.png",
+    );
+    editor.destroy();
+  });
+
+  it("리졸버가 null을 주면 활성 탭으로 폴백하지 않고 알린다", async () => {
+    // ‼️ 이 폴백이 정확히 이 매개변수가 막으려는 결함이다: 캡처 노트는 수집함에
+    // 저장되는데 이미지만 열려 있던 남의 문서 옆으로 가면, 남는 것은 어디서도
+    // 풀리지 않는 상대경로다.
+    const editor = createTestEditor();
+    await handleEditorDrop(
+      ["/Users/x/Desktop/photo.png"],
+      editor,
+      0,
+      () => null,
+    );
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(createDirMock).not.toHaveBeenCalled();
+    expect(showToastMock).toHaveBeenCalledWith(expect.any(String), "error");
+    editor.destroy();
+  });
+
+  it("목적지가 없어도 미디어가 아닌 파일은 조용히 무시한다 (M1 동치)", async () => {
+    const editor = createTestEditor();
+    await handleEditorDrop(
+      ["/Users/x/Desktop/report.pdf"],
+      editor,
+      0,
+      () => null,
+    );
+    expect(showToastMock).not.toHaveBeenCalled();
+    expect(importFileMock).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+});
