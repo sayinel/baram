@@ -1250,7 +1250,7 @@ In Source Mode, you edit raw markdown text in a CodeMirror 6 editor with:
 - Full markdown source visibility
 - Undo/Redo (`Cmd+Z` / `Cmd+Shift+Z`)
 - Line numbers (configurable in Settings > Editor)
-- Optional **Vim keybindings** (Settings > Editor > Vim Keybindings) — one switch enables modal editing in Source Mode, in the WYSIWYG editor, and inside code blocks, with `:w`/`:q` and Korean-IME support (verified on macOS; Windows/Linux not yet validated); see [Keyboard Shortcuts](keyboard-shortcuts.md#vim-mode)
+- Optional **Vim keybindings** (Settings > Editor > Vim Keybindings) — one switch enables modal editing in Source Mode, in the WYSIWYG editor, and inside code blocks, with `/` search, `:w`/`:q`/`:N` ex commands and Korean-IME support (verified on macOS; Windows/Linux not yet validated); see [Keyboard Shortcuts](keyboard-shortcuts.md#vim-mode)
 - All changes sync back to WYSIWYG mode when you switch
 
 This is useful for precise markdown editing or debugging formatting issues.
@@ -1809,10 +1809,11 @@ The app defaults to the system language if supported, otherwise English.
 Turn on **Settings > Editor > Vim Keybindings** (off by default) for modal editing. One switch covers three surfaces:
 
 - **Source Mode** and **code files** — full vim, including text objects, `.` repeat, `/` search, macros and registers
-- **WYSIWYG** — modal editing on the rendered document: motions, operators with counts, `f`/`t` find, visual mode, marks, and `:w` / `:q`
-- **Code blocks inside a document** — full vim, with `Esc` and edge `j`/`k` crossing back out to the document
+- **WYSIWYG** — modal editing on the rendered document: motions, operators with counts, `f`/`t` find, `/` search, visual and visual-line mode, `zz`, `Space` to toggle a task, and `:w` / `:q` / `:N` line jumps. Text objects, `.` repeat and marks are not there yet
+- **Code blocks inside a document** — full vim; `j`/`k` and the arrows cross in and out of the block, `Esc` in normal mode returns to the document, and your mode (normal or insert) follows the cursor across the boundary whether you move by keyboard or mouse
+- **Math, Mermaid, SVG, HTML and query blocks** — `i` on a selected block opens its editor, `Esc` returns to the block
 
-The status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`) and doubles as the `:` command line. Vim commands work with the Korean IME active — in normal mode keys resolve by physical position, so `j` moves down even when it would type `ㅓ`.
+The status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`, or `-- INSERT (math) --` while a block editor holds the keys) and doubles as the `:` and `/` command line. Vim commands work with the Korean IME active — in normal mode keys resolve by physical position, so `j` moves down even when it would type `ㅓ`.
 
 Vim key sequences are a separate layer from app shortcuts and are not remappable in Settings > Keybindings.
 
