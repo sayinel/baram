@@ -204,10 +204,7 @@ fn label(path: &str) -> String {
 /// The MIME for `path`'s extension, or `None` when the extension is not in the
 /// allowlist above. Case-insensitive: macOS hands over `IMG_0001.PNG` verbatim.
 fn media_mime(path: &str) -> Option<&'static str> {
-    let ext = Path::new(path)
-        .extension()?
-        .to_str()?
-        .to_ascii_lowercase();
+    let ext = Path::new(path).extension()?.to_str()?.to_ascii_lowercase();
     MEDIA_MIME_TYPES
         .iter()
         .find(|(name, _)| *name == ext)
