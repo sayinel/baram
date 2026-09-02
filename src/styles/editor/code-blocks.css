@@ -114,7 +114,7 @@
    같은 계약이라 semantic 토큰으로 승격하지 않는다(테마를 따라가면 안 된다).
    규칙마다 흩어져 있던 리터럴을 wrapper 스코프 컴포넌트 변수로 한 번만 적는다.
    ‼️ standalone HTML export가 같은 팔레트를 JS 상수로 다시 든다
-   (utils/export/export-html-styles.ts CODE_STYLES.contrast) — 값을 바꾸면
+   (utils/export/export-html-styles.ts CODE_STYLE_MAP.contrast) — 값을 바꾸면
    거기도 같이 바꿀 것. */
 .code-block-wrapper[data-style="contrast"] {
   --code-contrast-text: #cdd6f4; /* mocha text */

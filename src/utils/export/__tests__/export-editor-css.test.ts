@@ -196,8 +196,10 @@ describe("what the exported page actually looks like", () => {
     // 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개지는 결함이 실제로 있었다.
     // bare `.callout`을 매치하는 다크 규칙이 시트에 다시 들어오면 여기서 잡는다.
     // (.callout-icon-btn 같은 하위 요소의 다크 규칙은 정당하므로 통과한다.)
+    // 인용부호 표기(", ', 무인용)에 무관하게 잡는다 — 핀이 표기에 민감하면
+    // 같은 결함이 다른 표기로 재유입될 수 있다(적대 리뷰).
     expect(buildExportStylesheet()).not.toMatch(
-      /\[data-theme="dark"\][^{]*\.callout\s*[,{]/,
+      /\[data-theme=["']?dark["']?\][^{]*\.callout\s*[,{]/,
     );
   });
 
