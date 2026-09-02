@@ -2,6 +2,7 @@ import type { Editor } from "@tiptap/react";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Slice } from "@tiptap/pm/model";
+import { EditorView } from "@tiptap/pm/view";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../ipc/invoke", () => ({
@@ -35,7 +36,10 @@ import { CaptureError, captureTask } from "../../../services/task-capture";
 import { captureFleeting } from "../../../services/zettelkasten-service";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
-import { CAPTURE_DIALOG_MIN_HEIGHT } from "../../../stores/settings/journal-settings";
+import {
+  CAPTURE_DIALOG_MAX_HEIGHT,
+  CAPTURE_DIALOG_MIN_HEIGHT,
+} from "../../../stores/settings/journal-settings";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { QuickCaptureDialog } from "../QuickCaptureDialog";
@@ -524,6 +528,37 @@ describe("§323 WYSIWYG 본문", () => {
     },
   );
 
+  // ‼️ §323 autofocus 회귀 핀. 이 effect(`QuickCaptureDialog.tsx`의
+  // `captureEditorInstance?.commands.focus()`)는 브리프 밖 범위로 승인된 코드이고,
+  // 없으면 창을 열 때마다 클릭을 한 번 해야 타이핑이 시작된다 — textarea 시절의
+  // 자동 포커스 계약이 깨진다. 승인까지 받아 넣은 회귀 방지 코드에 핀이 없었다.
+  //
+  // `document.activeElement`로는 못 본다: jsdom은 tabindex 없는 contenteditable을
+  // 포커스 대상으로 치지 않아, effect가 정상 동작해도 activeElement가 BODY로
+  // 남는다(실측). 그래서 결과가 아니라 기계를 단정한다 — Tiptap의 `focus()`
+  // 커맨드는 `requestAnimationFrame` 안에서 `EditorView.prototype.focus()`를
+  // 부른다(@tiptap/core의 `delayedFocus`). rAF를 기다려야 하는 이유도 그것이다.
+  it("창이 열리면 캡처 편집기로 포커스가 간다", async () => {
+    const focusSpy = vi.spyOn(EditorView.prototype, "focus");
+    try {
+      render(<QuickCaptureDialog />);
+      await act(async () => {});
+
+      await vi.waitFor(() => {
+        expect(focusSpy).toHaveBeenCalled();
+      });
+      // 아무 뷰나가 아니라 캡처 편집기의 뷰여야 한다.
+      const editor = (
+        document.querySelector(".quick-capture-editor") as HTMLElement & {
+          _editor?: Editor;
+        }
+      )._editor!;
+      expect(focusSpy.mock.instances).toContain(editor.view);
+    } finally {
+      focusSpy.mockRestore();
+    }
+  });
+
   it("서식 있는 본문이 마크다운으로 저장된다", async () => {
     render(<QuickCaptureDialog />);
     await act(async () => {});
@@ -651,6 +686,47 @@ describe("§324-g 캡처 창 크기", () => {
   // 규칙이 서로를 덮어 주었기 때문에 어느 하나를 지워도 초록이었다.
   // 정확한 값으로 바꾸면 공용 클램프가 사라지는 순간(원값은 300-500 = -200)
   // 이 단정이 무너진다.
+  // ‼️ §323 리뷰 E 회귀 핀. 설정 쓰기는 드래그가 끝날 때 한 번뿐이다.
+  // `setCaptureDialogHeight`를 `onUp`에서 `onMove`로 옮겨도 최종 저장값은 같아
+  // 기존 테스트가 전부 통과했다 — `use-capture-resize.ts`의 주석이 경고하는
+  // "이동마다 쓰면 persist가 매 프레임 직렬화한다"를 지키는 것이 아무것도
+  // 없었다. 값이 아니라 **횟수**를 세야 이 회귀가 잡힌다.
+  it("드래그 중에는 설정에 쓰지 않는다 — mouseup에서 한 번만", async () => {
+    useSettingsStore.getState().setCaptureDialogHeight(300);
+    const real = useSettingsStore.getState().setCaptureDialogHeight;
+    const writes = vi.fn(real);
+    // 훅은 셀렉터로 스토어에서 setter를 읽으므로, 렌더 전에 갈아 끼우면
+    // 실물 대신 이 spy를 쥔다(그 뒤 실물로 위임하므로 동작은 그대로다).
+    useSettingsStore.setState({ setCaptureDialogHeight: writes });
+    try {
+      render(<QuickCaptureDialog />);
+      await act(async () => {});
+      const handle = document.querySelector(
+        ".quick-capture-resize",
+      ) as HTMLElement;
+
+      fireEvent.mouseDown(handle, { clientY: 100 });
+      fireEvent.mouseMove(window, { clientY: 140 });
+      fireEvent.mouseMove(window, { clientY: 180 });
+      fireEvent.mouseMove(window, { clientY: 220 });
+      await act(async () => {});
+
+      // 세 번 움직이는 동안 저장은 한 번도 일어나지 않았다.
+      expect(writes).not.toHaveBeenCalled();
+      expect(useSettingsStore.getState().captureDialogHeight).toBe(300);
+
+      fireEvent.mouseUp(window);
+      await act(async () => {});
+
+      // 그리고 끝날 때 정확히 한 번. 값까지 같이 보는 이유는, 횟수만 보면
+      // "아무 데서도 안 쓴다"는 반대쪽 결함이 통과하기 때문이다.
+      expect(writes).toHaveBeenCalledTimes(1);
+      expect(useSettingsStore.getState().captureDialogHeight).toBe(420);
+    } finally {
+      useSettingsStore.setState({ setCaptureDialogHeight: real });
+    }
+  });
+
   // ‼️ §323 리뷰 Minor 9 회귀 핀. 리사이즈 핸들을 잡고 다이얼로그 밖에서 손을
   // 떼면 브라우저가 mousedown/mouseup의 최근접 공통 조상 — 오버레이 — 에
   // click을 쏘고, 다이얼로그의 `stopPropagation`은 그 경로 위에 없다. 비어 있는
@@ -680,7 +756,45 @@ describe("§324-g 캡처 창 크기", () => {
     );
   });
 
-  it("높이 하한은 CSS가 실제로 보여줄 수 있는 최솟값이다", async () => {
+  // ‼️ 단정 지점이 mouseup **앞**인 것이 이 테스트의 전부다.
+  //
+  // 첫 판은 mouseup 뒤에 인라인 height를 읽었고, 그래서 훅 쪽 클램프만 지워도
+  // 통과했다: 드래그가 끝나면 `use-capture-resize.ts`의 동기화 effect가
+  // (`if (!dragFrom) setLiveHeight(captureDialogHeight)`) 스토어의 이미 클램프된
+  // 값으로 liveHeight를 덮어써서, 화면과 상태가 어긋났던 사실 자체가 지워진다.
+  // 어긋남은 드래그 도중에만 보인다 — 사용자가 그것을 보는 시점도 바로 그때다.
+  it("드래그 중 화면 높이는 CSS가 보여줄 수 있는 범위를 벗어나지 않는다", async () => {
+    useSettingsStore.getState().setCaptureDialogHeight(300);
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const handle = document.querySelector(
+      ".quick-capture-resize",
+    ) as HTMLElement;
+    const editor = document.querySelector(
+      ".quick-capture-editor",
+    ) as HTMLElement;
+
+    fireEvent.mouseDown(handle, { clientY: 500 });
+
+    // 바닥 아래로 한참 끌어올린다(원값 -200px).
+    fireEvent.mouseMove(window, { clientY: 0 });
+    await act(async () => {});
+    expect(editor.style.height).toBe(`${CAPTURE_DIALOG_MIN_HEIGHT}px`);
+
+    // 같은 드래그에서 천장 위로 한참 끌어내린다(원값 2300px). 훅에는 원래
+    // 상한이 아예 없어서 상자가 마음껏 커졌다가 mouseup에서 되튕겼다.
+    fireEvent.mouseMove(window, { clientY: 2500 });
+    await act(async () => {});
+    expect(editor.style.height).toBe(`${CAPTURE_DIALOG_MAX_HEIGHT}px`);
+
+    fireEvent.mouseUp(window);
+    await act(async () => {});
+    expect(useSettingsStore.getState().captureDialogHeight).toBe(
+      CAPTURE_DIALOG_MAX_HEIGHT,
+    );
+  });
+
+  it("저장되는 높이의 하한은 CSS가 실제로 보여줄 수 있는 최솟값이다", async () => {
     useSettingsStore.getState().setCaptureDialogHeight(300);
     render(<QuickCaptureDialog />);
     await act(async () => {});
@@ -694,11 +808,5 @@ describe("§324-g 캡처 창 크기", () => {
     expect(useSettingsStore.getState().captureDialogHeight).toBe(
       CAPTURE_DIALOG_MIN_HEIGHT,
     );
-    // 드래그 중 화면에 그려지는 값도 같은 규칙을 지났다 — 저장된 값과 인라인
-    // height가 어긋나면 그것이 이 결함의 원래 모양이다.
-    const editor = document.querySelector(
-      ".quick-capture-editor",
-    ) as HTMLElement;
-    expect(editor.style.height).toBe(`${CAPTURE_DIALOG_MIN_HEIGHT}px`);
   });
 });

@@ -32,6 +32,14 @@ async function type(editor: Editor, text: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** 파일 하나를 담은 붙여넣기 이벤트 — 여러 describe가 함께 쓴다. */
+function makePasteEvent(file: File): ClipboardEvent {
+  return {
+    clipboardData: { files: [file], getData: () => "" },
+    preventDefault: vi.fn(),
+  } as unknown as ClipboardEvent;
+}
+
 describe("§323 useCaptureEditor", () => {
   it("닫혀 있으면 편집기를 만들지 않는다", () => {
     const { result } = renderHook(() => useCaptureEditor(false));
@@ -116,6 +124,74 @@ describe("§323 useCaptureEditor", () => {
     expect(md).toContain("## 제목");
   });
 
+  // ‼️ §298 불변식 핀 — Extension 배열의 identity 안정성.
+  //
+  // `use-capture-editor.ts`의 effect deps가 `[open, extensions]`인 것 자체는
+  // 밖에서 관측할 수 없다: `extensions`가 `useMemo(..., [])`로 고정돼 있어
+  // identity가 절대 바뀌지 않으므로, deps에서 그것을 빼도 effect가 도는 시점이
+  // 달라지지 않는다(리뷰 D의 뮤테이션이 살아남은 이유). 관측 가능하고 실제로
+  // 지킬 값어치가 있는 것은 그 **전제** 쪽이다 — 배열이 정말 안정적인가.
+  //
+  // 깨지면 나는 사고: 다이얼로그는 리렌더될 때마다 새 `resolveDropDestination`
+  // 함수를 만든다(태스크 모드 토글 등). 그것이 `extensions`의 identity를 바꾸면
+  // effect가 다시 돌아 편집기를 파기·재생성하고, 타이핑 중이던 본문이 사라진다.
+  describe("§298 리렌더가 편집기를 재생성하지 않는다", () => {
+    it("리졸버 identity가 바뀌어도 같은 인스턴스와 본문이 유지된다", async () => {
+      const { rerender, result } = renderHook(
+        ({ resolve }: { resolve: () => null | string }) =>
+          useCaptureEditor(true, resolve),
+        { initialProps: { resolve: () => "/vault/zettel/inbox/a.md" } },
+      );
+      await act(async () => {});
+      const first = result.current.editor!;
+      await act(async () => {
+        first.commands.setContent("<p>쓰던 글</p>");
+      });
+
+      // 다이얼로그 리렌더가 만드는 것과 같은, 새 함수 identity.
+      rerender({ resolve: () => "/vault/zettel/inbox/b.md" });
+      await act(async () => {});
+
+      expect(result.current.editor).toBe(first);
+      expect(first.isDestroyed).toBe(false);
+      expect(result.current.getMarkdown()).toBe("쓰던 글");
+    });
+
+    // 안정성만으로는 부족하다 — 배열을 고정한 대가로 낡은 리졸버를 붙들고
+    // 있으면 그것대로 §324-e를 되돌리는 결함이다. ref 우회가 실제로 최신 값을
+    // 읽는지까지 같이 본다.
+    it("그러면서도 최신 리졸버를 쓴다 — 낡은 목적지로 저장하지 않는다", async () => {
+      savePhotoToAssets.mockClear();
+      const { rerender, result } = renderHook(
+        ({ resolve }: { resolve: () => null | string }) =>
+          useCaptureEditor(true, resolve),
+        { initialProps: { resolve: () => "/vault/zettel/inbox/OLD.md" } },
+      );
+      await act(async () => {});
+      rerender({ resolve: () => "/vault/zettel/inbox/NEW.md" });
+      await act(async () => {});
+
+      const editor = result.current.editor!;
+      const event = makePasteEvent(
+        new File(["x"], "shot.png", { type: "image/png" }),
+      );
+      editor.view.someProp("handlePaste", (f) =>
+        f(editor.view, event, Slice.empty),
+      );
+
+      await vi.waitFor(() => {
+        expect(savePhotoToAssets).toHaveBeenCalled();
+      });
+      expect(savePhotoToAssets).toHaveBeenCalledWith(
+        expect.any(Uint8Array),
+        "shot.png",
+        expect.anything(),
+        expect.anything(),
+        "/vault/zettel/inbox/NEW.md",
+      );
+    });
+  });
+
   // §324-e — 브리프의 두 테스트는 dropHandler가 실려 있는지·이미지 노드가
   // 마크다운으로 직렬화되는지만 본다. 둘 다 캡처와 무관한 메인 창 문서로
   // 오염되는 버그를 못 잡는다 — 아래 세 번째 테스트가 그 간극을 메운다.
@@ -140,13 +216,6 @@ describe("§323 useCaptureEditor", () => {
       expect(result.current.getMarkdown()).toContain("![그림](assets/x.png)");
     });
 
-    function makePasteEvent(file: File): ClipboardEvent {
-      return {
-        clipboardData: { files: [file], getData: () => "" },
-        preventDefault: vi.fn(),
-      } as unknown as ClipboardEvent;
-    }
-
     // ‼️ 이 테스트가 실제로 재현하는 회귀: 메인 창에 문서 탭이 열려 있으면
     // (드롭 핸들러가 `useEditorStore`의 활성 탭을 읽으므로) 캡처 다이얼로그에
     // 붙여넣은 이미지가 그 무관한 문서 옆에 저장되고, 캡처 노트에 남는
@@ -163,11 +232,22 @@ describe("§323 useCaptureEditor", () => {
 
       beforeEach(() => {
         savePhotoToAssets.mockClear();
-        // 메인 창에 "저널"이 아닌, 캡처와 전혀 무관한 문서가 열려 있다 —
-        // 저널 여부와 무관하게 캡처는 항상 자기 목적지를 알아야 한다.
+        // ‼️ 탭의 경로 모양이 이 describe 전체의 구분력을 정한다 — 장식이 아니다.
+        //
+        // 예전 픽스처는 `/vault/notes/unrelated.md`, 즉 `journalDirectory`
+        // (`/vault/daily`) 밑이 아닌 경로였다. 그러면 폴스루 버그가 되살아나도
+        // `getJournalContext`가 그 탭을 `isJournal: false`로 판정하고, 이미지는
+        // 고친 코드와 **똑같이** data URL로 떨어진다 — 두 경로의 결과가 같아서
+        // 단정이 둘을 구별할 수 없었다(그래서 이 파일의 핀이 장식이었다).
+        //
+        // 저널처럼 생긴 경로를 쓰면 폴스루가 `isJournal: true`로 갈라져
+        // `savePhotoToAssets`를 부르므로, 아래 `not.toHaveBeenCalled()`가 비로소
+        // 무언가를 말한다. 동영상은 `isJournal`과 무관하게 `ctx.filePath` 옆에
+        // 저장하므로 어느 모양에서도 새지만, 이미지가 구별되는 모양을 고르면
+        // 둘 다 한 픽스처로 잡힌다.
         useEditorStore.setState({
           activeTabId: "t1",
-          tabs: [{ id: "t1", filePath: "/vault/notes/unrelated.md" }],
+          tabs: [{ id: "t1", filePath: "/vault/daily/2026-09-02.md" }],
         } as never);
         useFileStore.setState({ rootPath: "/vault" } as never);
         useSettingsStore.setState({
@@ -208,6 +288,32 @@ describe("§323 useCaptureEditor", () => {
         expect(result.current.getMarkdown()).toMatch(
           /^!\[shot\.png\]\(data:image\/png;base64,/,
         );
+      });
+
+      // 동영상은 이미지와 다른 가지로 샌다: `insertVideoFromBytes`는
+      // `isJournal`을 보지 않고 `ctx.filePath`만 있으면 그 옆에 저장한다. 즉
+      // 폴스루가 되살아나면 탭이 저널이든 아니든 새므로, 이미지 쪽과 별도로
+      // 고정할 값어치가 있다. 목적지가 없을 때의 올바른 결말은 "저장하지 않고
+      // 거절" — 캡처 노트는 실존하지만 그 노트의 목적지를 모르는 상태다.
+      it("리졸버 없이 동영상을 넣어도 활성 탭 옆에 저장하지 않는다", async () => {
+        const { result } = renderHook(() => useCaptureEditor(true));
+        await act(async () => {});
+        const editor = result.current.editor!;
+
+        const event = makePasteEvent(
+          new File(["x"], "clip.mp4", { type: "video/mp4" }),
+        );
+        editor.view.someProp("handlePaste", (f) =>
+          f(editor.view, event, Slice.empty),
+        );
+
+        // 비동기 저장 경로가 끝날 시간을 준다 — 통과가 "아직 아무것도 안 일어남"
+        // 때문이 아니어야 한다.
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(savePhotoToAssets).not.toHaveBeenCalled();
+        expect(result.current.getMarkdown()).toBe("");
       });
 
       it("리졸버가 경로를 주면 그 경로 아래에 저장한다 — 무관한 탭 옆이 아니라", async () => {
