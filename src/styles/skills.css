@@ -801,7 +801,9 @@
 /* §72c — Skill Variable Suggestion ({{variable}} autocomplete) */
 .skill-var-popup {
   position: fixed;
-  z-index: 1000;
+
+  /* Mounted on `document.body` (suggestion-renderer.ts) — see `--z-editor-popup`. */
+  z-index: var(--z-editor-popup);
 }
 
 .skill-var-list {

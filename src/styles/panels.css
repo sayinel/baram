@@ -802,7 +802,11 @@
 /* §56l — Editor inline #tag autocomplete popup */
 .tag-menu-popup {
   position: fixed;
-  z-index: 1000;
+
+  /* Mounted on `document.body` (suggestion-renderer.ts) — see `--z-editor-popup`.
+     This one's hard-coded 1000 already cleared the capture dialog, which is why
+     it alone kept working there; the number is now the shared rule, not luck. */
+  z-index: var(--z-editor-popup);
 }
 
 .tag-menu {

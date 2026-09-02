@@ -138,7 +138,9 @@
 /* §5.3 Math Inline Preview Popover */
 .math-inline-preview-popover {
   position: fixed;
-  z-index: 50;
+
+  /* Mounted on `document.body` (math-inline-edit.ts) — see `--z-editor-popup`. */
+  z-index: var(--z-editor-popup);
   max-width: 400px;
   padding: 6px 10px;
   overflow-x: auto;

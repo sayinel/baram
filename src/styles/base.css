@@ -24,6 +24,32 @@
   --shadow-md: 0 4px 12px rgb(0 0 0 / 15%);
   --shadow-lg: 0 8px 24px rgb(0 0 0 / 20%);
   --shadow-xl: 0 8px 32px rgb(0 0 0 / 30%);
+
+  /* ‼️ Editor popups that mount to `document.body` — the suggestion menus
+     (slash `/`, wikilink `[[`, mention `@`, `#tag`, skill variable) and the
+     inline-math preview. Every one of them ESCAPES the editor's own stacking
+     context, so it does not layer against the editor: it layers against
+     whatever dialog overlay the editor happens to live inside.
+
+     That is not hypothetical. §323 put a full editor inside the Quick Capture
+     dialog, whose `.quick-capture-overlay` is `z-index: 200`, and `#root`
+     establishes no stacking context — so the three menus still sitting at
+     `z-index: 50` painted UNDERNEATH the dialog's opaque background while
+     their `onKeyDown` kept swallowing arrows and Enter. A menu you cannot see
+     that still eats your keystrokes. `.tag-menu-popup` was already at 1000,
+     which is the only reason `#tag` autocomplete worked there and the bug went
+     unnoticed for a whole branch.
+
+     THE RULE, for the next body-mounted editor popup: use this variable, never
+     a bare number. Its value clears the entire ordinary dialog-overlay band in
+     this stylesheet (the highest is `.plugin-consent-overlay` at 1100), so a
+     popup opted into it stays visible above any dialog that grows an editor
+     later — nobody has to re-audit "which dialogs host an editor" first.
+     A popup that lives INSIDE the editor DOM (`.tiptap .callout-type-picker`,
+     `.tiptap .footnote-ref-tooltip`) is not one of these and must not use it:
+     it is already inside the dialog's stacking context, where a value this
+     large would only let it escape its own container. */
+  --z-editor-popup: 1200;
 }
 
 /* ============================================
