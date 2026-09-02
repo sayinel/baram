@@ -974,46 +974,6 @@
   border-radius: 4px;
 }
 
-.jsf-mood-dots {
-  display: flex;
-  gap: 6px;
-}
-
-.jsf-mood-dot {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  cursor: pointer;
-  border: 1.5px solid var(--color-border-default);
-  border-radius: 50%;
-}
-
-.jsf-mood-dot.active {
-  border-width: 2.5px;
-  box-shadow: 0 0 4px rgb(0 0 0 / 25%);
-}
-
-.jsf-mood-dot[data-mood="deep"] {
-  background: var(--mood-deep, #64748b);
-}
-
-.jsf-mood-dot[data-mood="calm"] {
-  background: var(--mood-calm, #94a3b8);
-}
-
-.jsf-mood-dot[data-mood="neutral"] {
-  background: var(--mood-neutral, #cbd5e1);
-}
-
-.jsf-mood-dot[data-mood="warm"] {
-  background: var(--mood-warm, #f59e0b);
-}
-
-.jsf-mood-dot[data-mood="bright"] {
-  background: var(--mood-bright, #fbbf24);
-}
-
 .jsf-checkbox-label {
   display: flex;
   gap: 4px;

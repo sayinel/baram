@@ -106,14 +106,10 @@ for (const file of tsxFiles) {
 }
 
 // 3. Check for undefined references
-// Allowlist: Journal runtime variables injected by JS (not in CSS token source)
+// Allowlist: runtime variables injected by JS (not in CSS token source).
+// 감사 순서 8: mood 6종은 제거됐다 — 무드 UI는 slim-journal(03797e3f)에서 내려갔고
+// writer 없는 fallback-전용 잔재만 남아 있었다(CSS 규칙도 함께 삭제).
 const ALLOWLIST = new Set([
-  "--mood-deep",
-  "--mood-calm",
-  "--mood-neutral",
-  "--mood-warm",
-  "--mood-bright",
-  "--mood-accent-rgb",
   "--journal-font-family",
   "--journal-line-height",
   "--journal-header-bg",
