@@ -81,6 +81,9 @@ const tsxFiles = findFiles("src", [".tsx", ".ts"]).filter(
 // (utils/theme-vars.ts의 setProperty·DERIVED_KEYS)는 쓰는 쪽 이름을 언급한다.
 // 이들을 소비로 세면 "사용자가 편집까지 하는데 아무 효과 없는" 죽은 editable
 // 토큰(editor-line-highlight가 실사례)이 advisory에서 구조적으로 숨는다.
+// 알려진 한계(적대 리뷰): 트레일링 주석 속 "--x" 리터럴은 소비로 오집계될 수
+// 있다 — stripTsComments가 URL 오탐을 피하려고 줄 머리 주석만 벗기기 때문.
+// advisory 전용 경로라 게이트 우회는 아니며, 정밀화는 AST 스캐너가 필요하다.
 const LITERAL_NON_CONSUMERS = new Set([
   "src/types/theme.ts",
   "src/utils/theme-vars.ts",

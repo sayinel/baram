@@ -22,6 +22,13 @@ function dtcgToTokensStudio(
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(tokens)) {
     if (key.startsWith("$")) continue; // skip $type, $description at group level
+    // 변환 단계에서도 금지 — "__proto__" 그룹은 result[key] 대입이 own property를
+    // 만들지 않아 출력에서 조용히 사라지고(무결성 훼손), "constructor"는 상속
+    // 함수를 읽어 가짜 collision을 만든다(적대 리뷰). merge 쪽 가드만으로는
+    // 이 단계의 mangling을 못 막는다.
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      throw new Error(`token file uses a forbidden key: ${key}`);
+    }
     if (value && typeof value === "object" && "$value" in value) {
       const token = value as DtcgToken;
       const type = token.$type ?? parentType ?? "other";
@@ -84,7 +91,7 @@ function deepMergeTokens(
     if (key === "__proto__" || key === "constructor" || key === "prototype") {
       throw new Error(`primitive token file uses a forbidden key: ${key}`);
     }
-    const existing = target[key];
+    const existing = Object.hasOwn(target, key) ? target[key] : undefined;
     if (
       existing &&
       typeof existing === "object" &&
