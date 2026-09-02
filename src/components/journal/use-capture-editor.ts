@@ -7,10 +7,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { Editor as TiptapEditor } from "@tiptap/core";
+import { isNodeEmpty, Editor as TiptapEditor } from "@tiptap/core";
 
 import { createBaramExtensions } from "../../extensions";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+
+// ‼️ Finding 1 (§323 리뷰): `Editor.isEmpty`는 `isNodeEmpty(doc)`를
+// `ignoreWhitespace` 기본값(false)으로 호출해, 공백만 있는 텍스트 노드를
+// "비어 있지 않다"고 본다 — Save 활성화·이탈 가드가 뚫리고 `getMarkdown()`은
+// `&#x20;` 같은 HTML 엔티티를 반환해 `.trim()`으로도 지워지지 않는다.
+// `isEmpty`와 `getMarkdown()`이 항상 같은 결론(비어 있음)을 내리도록 이
+// 판정 하나로 통일한다.
+const isDocEmpty = (doc: Parameters<typeof isNodeEmpty>[0]) =>
+  isNodeEmpty(doc, { ignoreWhitespace: true });
 
 export interface CaptureEditor {
   editor: Editor | null;
@@ -34,7 +43,7 @@ export function useCaptureEditor(open: boolean): CaptureEditor {
   useEffect(() => {
     if (!open) return;
     const instance = new TiptapEditor({ extensions }) as unknown as Editor;
-    const sync = () => setIsEmpty(instance.isEmpty);
+    const sync = () => setIsEmpty(isDocEmpty(instance.state.doc));
     instance.on("update", sync);
     setEditor(instance);
     setIsEmpty(true);
@@ -47,7 +56,8 @@ export function useCaptureEditor(open: boolean): CaptureEditor {
   }, [open, extensions]);
 
   const getMarkdown = useCallback(() => {
-    if (!editor || editor.isDestroyed || editor.isEmpty) return "";
+    if (!editor || editor.isDestroyed || isDocEmpty(editor.state.doc))
+      return "";
     return prosemirrorToMarkdown(editor.state.doc).trim();
   }, [editor]);
 
