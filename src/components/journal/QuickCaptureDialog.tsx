@@ -1,6 +1,7 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { EditorContent } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -17,6 +18,7 @@ import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
+import { useCaptureEditor } from "./use-capture-editor";
 import { useCaptureTags } from "./use-capture-tags";
 import { captureErrorKey, useCaptureTaskMode } from "./use-capture-task-mode";
 
@@ -52,33 +54,42 @@ export function QuickCaptureDialog() {
   const zettelReady = zettelkastenEnabled && !!zettelDir;
   const taskMode = useCaptureTaskMode();
   const tags = useCaptureTags(quickCaptureOpen);
-  const [body, setBody] = useState("");
+  // §323 본문은 이제 문서창과 같은 엔진의 편집기가 들고 있다 — `body` state는 없다.
+  const capture = useCaptureEditor(quickCaptureOpen);
   const [source, setSource] = useState("");
   const [saveError, setSaveError] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const { reset: resetTaskMode } = taskMode;
   useEffect(() => {
     if (!quickCaptureOpen) return;
 
-    setBody("");
     setSource("");
     setSaveError("");
     // §307D 리뷰 Minor 6: 다이얼로그는 언마운트되지 않고 `null`을 반환하므로 태스크
-    // 모드가 살아남는다. 본문·출처·태그와 같이 매번 되돌린다 — 캡처는 매번 새 결정이고,
-    // 끈적이는 숨은 모드는 다음 메모를 소리 없이 수집함의 한 줄로 만든다.
+    // 모드가 살아남는다. 출처·태그와 같이 매번 되돌린다 — 캡처는 매번 새 결정이고,
+    // 끈적이는 숨은 모드는 다음 메모를 소리 없이 수집함의 한 줄로 만든다. 본문은
+    // `useCaptureEditor`가 open 전환마다 새 인스턴스를 만들어 스스로 비운다.
     // §313 전역 캡처로 열렸으면 태스크 모드로 시작한다. 그 외에는 꺼진 상태다.
     resetTaskMode(quickCaptureTaskIntent);
-    setTimeout(() => inputRef.current?.focus(), 50);
   }, [quickCaptureOpen, quickCaptureTaskIntent, resetTaskMode]);
+
+  // 다이얼로그가 열릴 때 편집기로 포커스를 옮긴다 — 예전 textarea의 자동 포커스와
+  // 같은 계약. 편집기 인스턴스는 `useCaptureEditor`의 effect 안에서 비동기로(다음
+  // 렌더에) 만들어지므로, 인스턴스 자체를 의존성으로 삼아야 준비된 시점에 잡힌다.
+  const { editor: captureEditorInstance } = capture;
+  useEffect(() => {
+    captureEditorInstance?.commands.focus();
+  }, [captureEditorInstance]);
 
   const handleSave = useCallback(async () => {
     setSaveError("");
 
-    if (!body.trim()) {
+    if (capture.isEmpty) {
       setSaveError(t("journal.capture.error.empty"));
       return;
     }
+
+    const body = capture.getMarkdown();
 
     // §307D 태스크 모드는 Zettel 공간을 요구하지 않는다 — 수집함 파일에
     // 한 줄을 붙이는 것뿐이므로 아래 Zettel 가드보다 먼저 갈라진다.
@@ -133,7 +144,7 @@ export function QuickCaptureDialog() {
       );
     }
   }, [
-    body,
+    capture,
     source,
     tags.list,
     zettelReady,
@@ -145,11 +156,13 @@ export function QuickCaptureDialog() {
 
   // Data-loss guard: with anything typed, only the Cancel button (or a
   // successful save) may dismiss the dialog — not outside clicks or Escape.
-  const hasContent = !!(body.trim() || source.trim() || tags.value.trim());
+  const hasContent = !!(!capture.isEmpty || source.trim() || tags.value.trim());
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // Plain Enter inserts a newline in the memo textarea; save is Mod+Enter.
+      // Plain Enter inserts a new line/paragraph in the memo editor; save is
+      // Mod+Enter. This handler sits on the dialog container, and keys typed
+      // into the editor still reach it by bubbling — §323 kept that wiring.
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         // Korean IME: Enter during composition commits the syllable.
         // Do NOT preventDefault or save — let the IME finish naturally.
@@ -213,15 +226,19 @@ export function QuickCaptureDialog() {
           </label>
         </div>
 
-        {/* Body */}
-        <textarea
-          className="quick-capture-textarea"
-          onChange={(e) => setBody(e.target.value)}
-          placeholder={t("journal.capture.body.placeholder")}
-          ref={inputRef}
-          rows={3}
-          value={body}
-        />
+        {/* Body — §323 문서창과 같은 엔진. `_editor` 핸들은 테스트가 jsdom에서
+            내용을 직접 넣기 위한 통로다(contenteditable 타이핑은 신뢰할 수 없다). */}
+        <div
+          className="quick-capture-editor"
+          ref={(el) => {
+            if (el) {
+              (el as HTMLElement & { _editor?: unknown })._editor =
+                capture.editor;
+            }
+          }}
+        >
+          <EditorContent editor={capture.editor} />
+        </div>
 
         {/* Optional source. §18.0: a task is a line and is never promoted to a
             note, so it has nowhere to carry a source URL — the field would take
@@ -276,7 +293,7 @@ export function QuickCaptureDialog() {
           </button>
           <button
             className="quick-capture-save"
-            disabled={!body.trim() || (!zettelReady && !taskMode.enabled)}
+            disabled={capture.isEmpty || (!zettelReady && !taskMode.enabled)}
             onClick={handleSave}
           >
             {t("journal.capture.save", { key: saveKeyLabel })}

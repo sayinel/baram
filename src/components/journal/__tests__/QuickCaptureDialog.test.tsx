@@ -30,7 +30,6 @@ import { QuickCaptureDialog } from "../QuickCaptureDialog";
 // label used to be Korean on an English default install, which is the defect this now guards.
 const LOCALE = "en";
 const noSpaceHint = t("journal.capture.error.noSpace", LOCALE);
-const bodyPlaceholder = t("journal.capture.body.placeholder", LOCALE);
 const sourcePlaceholder = t("journal.capture.source.placeholder", LOCALE);
 const tagsPlaceholder = t("journal.capture.tags.placeholder", LOCALE);
 const SAVE_PREFIX = t("journal.capture.save", LOCALE).split("{")[0].trim();
@@ -40,6 +39,23 @@ const saveButton = () =>
   screen.getByRole("button", {
     name: (name: string) => name.startsWith(SAVE_PREFIX),
   });
+
+// §323 본문은 이제 Tiptap contenteditable이다 — placeholder 속성으로도, jsdom
+// 타이핑으로도 찾거나 채울 수 없다. 다이얼로그가 심어 둔 `_editor` 핸들로 직접
+// 내용을 넣고, DOM 텍스트로 읽는다.
+const captureEditable = () =>
+  document.querySelector(
+    ".quick-capture-editor [contenteditable]",
+  ) as HTMLElement;
+const setCaptureBody = (text: string) => {
+  act(() => {
+    (
+      document.querySelector(".quick-capture-editor") as HTMLElement & {
+        _editor?: { commands: { setContent: (value: string) => void } };
+      }
+    )._editor?.commands.setContent(text ? `<p>${text}</p>` : "");
+  });
+};
 
 describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
   beforeEach(() => {
@@ -64,9 +80,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useFileStore.getState().setRootPath("/vault");
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "hello" },
-    });
+    setCaptureBody("hello");
 
     expect(screen.queryByText(noSpaceHint)).not.toBeInTheDocument();
     expect(saveButton()).not.toBeDisabled();
@@ -79,9 +93,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useUIStore.setState({ quickCaptureOpen: true });
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "a fleeting thought" },
-    });
+    setCaptureBody("a fleeting thought");
     fireEvent.click(saveButton());
 
     await vi.waitFor(() => {
@@ -101,9 +113,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useUIStore.setState({ quickCaptureOpen: true });
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "note body" },
-    });
+    setCaptureBody("note body");
     fireEvent.change(screen.getByPlaceholderText(sourcePlaceholder), {
       target: { value: "https://example.com" },
     });
@@ -125,9 +135,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useUIStore.setState({ quickCaptureOpen: true });
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "note body" },
-    });
+    setCaptureBody("note body");
     fireEvent.change(screen.getByPlaceholderText(tagsPlaceholder), {
       target: { value: "#idea #todo" },
     });
@@ -146,7 +154,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
   });
 });
 
-describe("QuickCaptureDialog — multiline memo & dismissal guard", () => {
+describe("QuickCaptureDialog — memo editor & dismissal guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useSettingsStore.setState({ locale: LOCALE });
@@ -156,13 +164,12 @@ describe("QuickCaptureDialog — multiline memo & dismissal guard", () => {
     useUIStore.setState({ quickCaptureOpen: true });
   });
 
-  const memoInput = () => screen.getByPlaceholderText(bodyPlaceholder);
   const overlay = () => document.querySelector(".quick-capture-overlay")!;
 
-  it("does NOT save on plain Enter — newline stays in the memo textarea", () => {
+  it("does NOT save on plain Enter", () => {
     render(<QuickCaptureDialog />);
-    fireEvent.change(memoInput(), { target: { value: "line one" } });
-    fireEvent.keyDown(memoInput(), { key: "Enter" });
+    setCaptureBody("line one");
+    fireEvent.keyDown(captureEditable(), { key: "Enter" });
 
     expect(captureFleeting).not.toHaveBeenCalled();
     expect(useUIStore.getState().quickCaptureOpen).toBe(true);
@@ -170,13 +177,13 @@ describe("QuickCaptureDialog — multiline memo & dismissal guard", () => {
 
   it("saves on Mod+Enter", async () => {
     render(<QuickCaptureDialog />);
-    fireEvent.change(memoInput(), { target: { value: "line one\nline two" } });
-    fireEvent.keyDown(memoInput(), { key: "Enter", metaKey: true });
+    setCaptureBody("a captured line");
+    fireEvent.keyDown(captureEditable(), { key: "Enter", metaKey: true });
 
     await vi.waitFor(() => {
       expect(captureFleeting).toHaveBeenCalledWith(
         "/vault/zettel",
-        expect.stringContaining("line one\nline two"),
+        expect.stringContaining("a captured line"),
         [],
       );
     });
@@ -185,7 +192,7 @@ describe("QuickCaptureDialog — multiline memo & dismissal guard", () => {
 
   it("ignores outside clicks while any content is typed", () => {
     render(<QuickCaptureDialog />);
-    fireEvent.change(memoInput(), { target: { value: "x" } });
+    setCaptureBody("x");
     fireEvent.click(overlay());
 
     expect(useUIStore.getState().quickCaptureOpen).toBe(true);
@@ -200,18 +207,18 @@ describe("QuickCaptureDialog — multiline memo & dismissal guard", () => {
 
   it("ignores Escape while content is typed, closes when empty", () => {
     render(<QuickCaptureDialog />);
-    fireEvent.change(memoInput(), { target: { value: "x" } });
-    fireEvent.keyDown(memoInput(), { key: "Escape" });
+    setCaptureBody("x");
+    fireEvent.keyDown(captureEditable(), { key: "Escape" });
     expect(useUIStore.getState().quickCaptureOpen).toBe(true);
 
-    fireEvent.change(memoInput(), { target: { value: "" } });
-    fireEvent.keyDown(memoInput(), { key: "Escape" });
+    setCaptureBody("");
+    fireEvent.keyDown(captureEditable(), { key: "Escape" });
     expect(useUIStore.getState().quickCaptureOpen).toBe(false);
   });
 
   it("Cancel button closes even with content typed", () => {
     render(<QuickCaptureDialog />);
-    fireEvent.change(memoInput(), { target: { value: "precious note" } });
+    setCaptureBody("precious note");
     fireEvent.click(screen.getByText(t("common.cancel", "en")));
 
     expect(useUIStore.getState().quickCaptureOpen).toBe(false);
@@ -242,9 +249,7 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
   it("appends to the capture file instead of creating a fleeting note", async () => {
     render(<QuickCaptureDialog />);
     fireEvent.click(taskToggle());
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "은행 연락" },
-    });
+    setCaptureBody("은행 연락");
     fireEvent.click(saveButton());
 
     await vi.waitFor(() => {
@@ -266,9 +271,7 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
     // slice built. Dropping it here breaks that vocabulary at the capture point.
     render(<QuickCaptureDialog />);
     fireEvent.click(taskToggle());
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "Rust 배우기" },
-    });
+    setCaptureBody("Rust 배우기");
     fireEvent.change(screen.getByPlaceholderText(tagsPlaceholder), {
       target: { value: "#someday" },
     });
@@ -295,9 +298,7 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
   it("keeps Save enabled without a zettel space — task mode does not use one", () => {
     useSettingsStore.getState().setZettelkastenEnabled(false);
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "은행 연락" },
-    });
+    setCaptureBody("은행 연락");
     expect(saveButton()).toBeDisabled();
 
     fireEvent.click(taskToggle());
@@ -312,16 +313,12 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
     );
     render(<QuickCaptureDialog />);
     fireEvent.click(taskToggle());
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "은행 연락" },
-    });
+    setCaptureBody("은행 연락");
     fireEvent.click(saveButton());
 
     await screen.findByText(t("journal.capture.error.taskDirtyTab", LOCALE));
     expect(useUIStore.getState().quickCaptureOpen).toBe(true);
-    expect(screen.getByPlaceholderText(bodyPlaceholder)).toHaveValue(
-      "은행 연락",
-    );
+    expect(captureEditable().textContent).toBe("은행 연락");
   });
 
   it("names the actual cause instead of blaming the capture file", async () => {
@@ -330,9 +327,7 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
     );
     render(<QuickCaptureDialog />);
     fireEvent.click(taskToggle());
-    fireEvent.change(screen.getByPlaceholderText(bodyPlaceholder), {
-      target: { value: "은행 연락" },
-    });
+    setCaptureBody("은행 연락");
     fireEvent.click(saveButton());
 
     await screen.findByText(t("journal.capture.error.taskNoHome", LOCALE));
@@ -352,5 +347,91 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
     act(() => useUIStore.setState({ quickCaptureOpen: true }));
 
     expect(taskToggle()).not.toBeChecked();
+  });
+});
+
+describe("§323 WYSIWYG 본문", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useSettingsStore.setState({ locale: LOCALE });
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/z");
+    useUIStore.setState({
+      quickCaptureOpen: true,
+      quickCaptureTaskIntent: false,
+    });
+  });
+
+  it("textarea가 아니라 contenteditable을 보여준다", async () => {
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    expect(document.querySelector(".quick-capture-textarea")).toBeNull();
+    expect(
+      document.querySelector(".quick-capture-editor [contenteditable]"),
+    ).not.toBeNull();
+  });
+
+  it("서식 있는 본문이 마크다운으로 저장된다", async () => {
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const view = document.querySelector(".quick-capture-editor");
+    // 편집기 인스턴스에 직접 넣는다 — jsdom에서 contenteditable 타이핑은 신뢰할 수 없다.
+    await act(async () => {
+      (
+        view as HTMLElement & {
+          _editor?: { commands: { setContent: (v: string) => void } };
+        }
+      )._editor?.commands.setContent("<p><strong>굵게</strong> 보통</p>");
+    });
+    fireEvent.click(saveButton());
+    await act(async () => {});
+    expect(captureFleeting).toHaveBeenCalled();
+    const body = (captureFleeting as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(body).toContain("**굵게**");
+  });
+
+  // ‼️ 한글 IME 회귀 핀. 조합 중 Mod+Enter는 음절을 확정할 뿐 저장이 아니다.
+  it("IME 조합 중 Mod+Enter는 저장하지 않는다", async () => {
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const editable = document.querySelector(
+      ".quick-capture-editor [contenteditable]",
+    ) as HTMLElement;
+    fireEvent.keyDown(editable, {
+      key: "Enter",
+      metaKey: true,
+      ctrlKey: true,
+      isComposing: true,
+    });
+    await act(async () => {});
+    expect(captureFleeting).not.toHaveBeenCalled();
+  });
+
+  it("본문이 있으면 Escape로 닫히지 않는다", async () => {
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const view = document.querySelector(".quick-capture-editor");
+    await act(async () => {
+      (
+        view as HTMLElement & {
+          _editor?: { commands: { setContent: (v: string) => void } };
+        }
+      )._editor?.commands.setContent("<p>쓰던 글</p>");
+    });
+    fireEvent.keyDown(document.querySelector(".quick-capture-dialog")!, {
+      key: "Escape",
+    });
+    await act(async () => {});
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+  });
+
+  it("본문이 비어 있으면 Escape로 닫힌다", async () => {
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    fireEvent.keyDown(document.querySelector(".quick-capture-dialog")!, {
+      key: "Escape",
+    });
+    await act(async () => {});
+    expect(useUIStore.getState().quickCaptureOpen).toBe(false);
   });
 });
