@@ -604,6 +604,7 @@
   "settings.appearance.importError.invalidColors": "Missing or invalid 'colors' object",
   "settings.appearance.importError.invalidName": "Missing or invalid 'name' field",
   "settings.appearance.importError.readFailed": "Could not read or parse the file",
+  "settings.appearance.importError.tooLarge": "File is too large to be a theme",
   "settings.appearance.importFailed": "Theme import failed",
   "settings.appearance.saveCurrentLayout": "Save Current Layout...",
   "settings.appearance.systemAuto": "System (Auto)",

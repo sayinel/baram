@@ -604,6 +604,7 @@
   "settings.appearance.importError.invalidColors": "'colors' 객체가 없거나 잘못되었습니다",
   "settings.appearance.importError.invalidName": "'name' 필드가 없거나 잘못되었습니다",
   "settings.appearance.importError.readFailed": "파일을 읽거나 해석할 수 없습니다",
+  "settings.appearance.importError.tooLarge": "테마 파일로 보기에 너무 큽니다",
   "settings.appearance.importFailed": "테마 import 실패",
   "settings.appearance.saveCurrentLayout": "현재 레이아웃 저장...",
   "settings.appearance.systemAuto": "시스템 (자동)",

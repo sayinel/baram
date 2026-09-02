@@ -29,7 +29,8 @@ type ImportErrorCode =
   | "invalidColors"
   | "invalidColorValue"
   | "invalidName"
-  | "readFailed";
+  | "readFailed"
+  | "tooLarge";
 
 class ThemeImportError extends Error {
   constructor(
@@ -65,14 +66,32 @@ export function useThemeImport(): {
       });
       if (!selected) return;
       const content = await readFile(selected);
+      // 테마 JSON은 이름+base+색 24개다 — 그보다 세 자릿수 큰 파일은 테마가
+      // 아니다. name이 무제한 문자열로 customThemes에 영구 저장되면 설정
+      // hydration·카드 렌더·aria-label이 매번 그 비용을 치른다(적대 리뷰).
+      if (content.length > 64 * 1024) {
+        throw new ThemeImportError("tooLarge");
+      }
       const data = JSON.parse(content);
-      if (typeof data.name !== "string" || !data.name) {
+      const name = typeof data.name === "string" ? data.name.trim() : "";
+      // 길이 상한과 제어·bidi 문자 거부 — 카드/삭제 라벨을 속이는 표기 방지.
+      if (
+        !name ||
+        name.length > 100 ||
+        // eslint-disable-next-line no-control-regex -- 제어문자 거부가 목적이다
+        /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(name)
+      ) {
         throw new ThemeImportError("invalidName");
       }
       if (data.base !== "light" && data.base !== "dark") {
         throw new ThemeImportError("invalidBase");
       }
-      if (!data.colors || typeof data.colors !== "object") {
+      // 배열도 typeof === "object"다 — plain object만 색 지도로 받는다.
+      if (
+        !data.colors ||
+        typeof data.colors !== "object" ||
+        Array.isArray(data.colors)
+      ) {
         throw new ThemeImportError("invalidColors");
       }
       // Migrate old key names (pre-v10) to current names. fill은 테마의 base에
@@ -86,8 +105,7 @@ export function useThemeImport(): {
       // 끼어든 여분 키(진짜 CSS 속성명 포함)가 applyThemeVars까지 흘러가
       // <html>의 inline style에 영구 주입된다. 존재·형식을 검사한 뒤 whitelist
       // 키만으로 객체를 **재구성**해 여분 키를 여기서 떨어뜨린다. 값 계약은
-      // THEME_COLOR_VALUE_RE — alpha hex(4·8자리)도 color-contrast 계층과
-      // 같은 폭으로 받는다.
+      // THEME_COLOR_VALUE_RE — 불투명 3·6자리 hex만(alpha 거부 근거는 그쪽 주석).
       const sanitized = {} as ThemeColors;
       for (const { key } of THEME_COLOR_KEYS) {
         const value = data.colors[key];
@@ -98,7 +116,7 @@ export function useThemeImport(): {
       }
       const newTheme: ThemeDef = {
         id: "custom-" + Date.now(),
-        name: data.name,
+        name,
         base: data.base,
         colors: sanitized,
         builtIn: false,
