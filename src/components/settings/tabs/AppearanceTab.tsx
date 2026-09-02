@@ -33,6 +33,9 @@ export function AppearanceTab() {
     deleteCustomTheme,
   } = useSettingsStore();
   const [editingTheme, setEditingTheme] = useState(false);
+  // 감사 순서 10: import 실패는 logger에만 남고 화면은 무반응이었다 — 사용자
+  // 입장에선 버튼이 조용히 죽은 것. 검증이 던진 이유를 그대로 보여준다.
+  const [importError, setImportError] = useState<null | string>(null);
 
   const allThemes = [...BUILT_IN_THEMES, ...customThemes];
 
@@ -41,6 +44,7 @@ export function AppearanceTab() {
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
     if (!selected) return;
+    setImportError(null);
     try {
       const content = await readFile(selected);
       const data = JSON.parse(content);
@@ -84,6 +88,7 @@ export function AppearanceTab() {
       setActiveTheme(newTheme.id);
     } catch (err) {
       logger.error("Theme import failed:", err);
+      setImportError(err instanceof Error ? err.message : String(err));
     }
   }, [saveCustomTheme, setActiveTheme]);
 
@@ -172,38 +177,40 @@ export function AppearanceTab() {
           </span>
         </button>
 
-        {/* All themes */}
+        {/* All themes. \uCE74\uB4DC\uC640 \uC0AD\uC81C \uBC84\uD2BC\uC740 \uD615\uC81C\uB2E4 \u2014 button \uC548\uC5D0 button\uC740 HTML\uC774
+            \uAE08\uC9C0\uD558\uB294 \uC911\uCCA9(interactive content)\uC774\uB77C \uBE0C\uB77C\uC6B0\uC800\uAC00 \uD2B8\uB9AC\uB97C \uC7AC\uAD6C\uC131\uD560 \uC218
+            \uC788\uACE0, \uBCF4\uC870\uAE30\uAE30\uC5D0\uB294 \uC0AD\uC81C \uBC84\uD2BC\uC774 \uCE74\uB4DC \uB808\uC774\uBE14\uC758 \uC77C\uBD80\uB85C \uC77D\uD78C\uB2E4. \uACB9\uCCD0
+            \uBCF4\uC774\uB294 \uBC30\uCE58\uB294 wrapper\uC758 position: relative\uAC00 \uB9E1\uB294\uB2E4. */}
         {allThemes.map((theme) => (
-          <button
-            className={`theme-card ${activeThemeId === theme.id ? "theme-card-active" : ""}`}
-            key={theme.id}
-            onClick={() => setActiveTheme(theme.id)}
-            style={
-              activeThemeId === theme.id
-                ? { borderColor: theme.colors["--color-accent-default"] }
-                : undefined
-            }
-          >
-            <ThemeMiniPreview theme={theme} />
-            <span className="theme-card-name">{theme.name}</span>
-            {!theme.builtIn && (
-              <span className="theme-card-badge">
-                {t("settings.appearance.customBadge")}
-              </span>
-            )}
+          <div className="theme-card-wrap" key={theme.id}>
+            <button
+              className={`theme-card ${activeThemeId === theme.id ? "theme-card-active" : ""}`}
+              onClick={() => setActiveTheme(theme.id)}
+              style={
+                activeThemeId === theme.id
+                  ? { borderColor: theme.colors["--color-accent-default"] }
+                  : undefined
+              }
+            >
+              <ThemeMiniPreview theme={theme} />
+              <span className="theme-card-name">{theme.name}</span>
+              {!theme.builtIn && (
+                <span className="theme-card-badge">
+                  {t("settings.appearance.customBadge")}
+                </span>
+              )}
+            </button>
             {!theme.builtIn && (
               <button
+                aria-label={t("settings.appearance.deleteTheme")}
                 className="theme-card-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteCustomTheme(theme.id);
-                }}
+                onClick={() => deleteCustomTheme(theme.id)}
                 title={t("settings.appearance.deleteTheme")}
               >
                 {"\u00D7"}
               </button>
             )}
-          </button>
+          </div>
         ))}
       </div>
 
@@ -218,6 +225,11 @@ export function AppearanceTab() {
           {t("settings.appearance.import")}
         </button>
       </div>
+      {importError !== null && (
+        <div className="theme-import-error" role="alert">
+          {t("settings.appearance.importFailed")}: {importError}
+        </div>
+      )}
 
       <SettingsSectionHeader
         title={t("settings.appearance.workspacePresets")}

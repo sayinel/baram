@@ -599,6 +599,7 @@
   "settings.appearance.customize": "Customize...",
   "settings.appearance.deleteTheme": "Delete theme",
   "settings.appearance.import": "Import Theme...",
+  "settings.appearance.importFailed": "Theme import failed",
   "settings.appearance.saveCurrentLayout": "Save Current Layout...",
   "settings.appearance.systemAuto": "System (Auto)",
   "settings.appearance.theme": "Theme",

@@ -599,6 +599,7 @@
   "settings.appearance.customize": "커스터마이즈...",
   "settings.appearance.deleteTheme": "테마 삭제",
   "settings.appearance.import": "테마 가져오기...",
+  "settings.appearance.importFailed": "테마 import 실패",
   "settings.appearance.saveCurrentLayout": "현재 레이아웃 저장...",
   "settings.appearance.systemAuto": "시스템 (자동)",
   "settings.appearance.theme": "테마",

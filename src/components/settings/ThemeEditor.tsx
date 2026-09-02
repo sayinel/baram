@@ -152,6 +152,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     <div className="theme-editor">
       <div className="theme-editor-header">
         <input
+          aria-label={t("settings.theme.namePlaceholder")}
           className="theme-editor-name"
           onChange={(e) => setName(e.target.value)}
           placeholder={t("settings.theme.namePlaceholder")}
@@ -180,7 +181,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           {entries.map((entry) => (
             <div className="theme-editor-row" key={entry.key}>
               <span className="theme-editor-label">{entry.label}</span>
+              {/* 옆의 span은 시각 라벨일 뿐 input과 연결돼 있지 않다 — 스크린
+                  리더에는 25개가 전부 무명의 color picker로 읽힌다. */}
               <input
+                aria-label={entry.label}
                 className="theme-editor-color"
                 onChange={(e) => handleColorChange(entry.key, e.target.value)}
                 type="color"
