@@ -12,6 +12,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Formatting](#formatting)
 - [Rich Content](#rich-content)
 - [Linking & Navigation](#linking--navigation)
+- [Tasks](#tasks)
 - [PDF Reading & Highlights](#pdf-reading--highlights)
 - [Source Mode](#source-mode)
 - [Find & Replace](#find--replace)
@@ -20,6 +21,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Version History (File Snapshots)](#version-history-file-snapshots)
 - [Export](#export)
 - [Journal / Daily Notes](#journal--daily-notes)
+- [Zettel (Zettelkasten Notes)](#zettel-zettelkasten-notes)
 - [Workspace Presets](#workspace-presets)
 - [Customization](#customization)
 - [Plugins](#plugins)
@@ -565,11 +567,191 @@ In the editor, `[^einstein]` displays as `1` and `[^physics]` as `2`.
 
 ### Query Blocks
 
-Query blocks embed dynamic, always-current content that reflects the state of your vault:
+A query block is a saved search that lives **inside a note** and renders its results in place. Point it at your notes or at your tasks, and the block shows a live list every time it runs — a project note can carry its own open-tasks list, and a Map of Content can list every note tagged `#reference` without you maintaining the list by hand.
 
-1. Insert a query block using the ` ```query ` fenced code block
-2. Build filters with the visual query builder
-3. Matching results (files, tasks, or notes) render inline and refresh automatically as your vault changes
+#### Inserting one
+
+- Type `/query` in the slash menu, or use **Insert > Query Block**
+- Or write the fenced block by hand in Source mode:
+
+  ````markdown
+  ```query
+  source: tasks
+  filter: state = "todo" AND due before "+7d"
+  sort: due asc
+  limit: 10
+  ```
+  ````
+
+On disk a query block is nothing but a fenced code block with the `query` info string, so any other markdown tool shows it as a code block rather than losing it.
+
+#### The visual builder
+
+Click a query block to open its builder. There is no save step — every change is written into the block as you make it, and the query re-runs when you click away (or press `Esc` in vim mode).
+
+| Control     | What it sets                                                                  |
+| ----------- | ----------------------------------------------------------------------------- |
+| **Source**  | `Notes` or `Tasks` — what the query searches                                  |
+| **Filters** | One or more `field · operator · value` rows, joined by `AND` / `OR`           |
+| **Sort**    | A field and a direction (Ascending / Descending)                              |
+| **Display** | `list`, `table`, or `card`                                                    |
+| **Limit**   | Maximum number of results (default `20`)                                      |
+| **Run query** | Runs it immediately without leaving the builder                             |
+
+The header shows `{n} results`. Clicking a result opens that document.
+
+> **Changing the source discards filters that no longer apply.** `tags` means something for notes but nothing for tasks, so switching from Notes to Tasks drops any filter or sort whose field does not exist on the new source. This is deliberate: a filter the executor can never match would leave the block permanently empty with nothing on screen explaining why.
+
+#### When a query runs
+
+A query block does **not** watch your vault. It runs when:
+
+- you close its builder (click away, or `Esc`),
+- the query text changes while the builder is closed,
+- you press **Run query**,
+- you check off a task in its own results.
+
+Opening a note therefore shows the results from its last run until one of those happens. This is a deliberate trade — `source: notes` reads every markdown file in the vault, so re-running on every keystroke or every cursor move would scan the vault continuously.
+
+---
+
+#### The query language
+
+Each line is `key: value`. Every line is optional, unknown keys are ignored, and lines left at their default are not written to the file at all.
+
+| Key       | Values                              | Default |
+| --------- | ----------------------------------- | ------- |
+| `source`  | `files` (notes) or `tasks`          | `files` |
+| `filter`  | filter expression (see below)       | none    |
+| `sort`    | `<field> asc` or `<field> desc`     | none    |
+| `display` | `list`, `table`, `card`             | `list`  |
+| `limit`   | a number                            | `20`    |
+
+**Filter grammar.** Segments are `field operator "value"`, joined by `AND` or `OR`. Values are quoted; the `empty` operator takes no value.
+
+```query
+filter: tags contains "project" AND state != "done"
+```
+
+`AND` binds tighter than `OR`. The expression is read as OR-separated groups, and a result matches if **every** condition in **any one** group holds:
+
+```query
+filter: priority > "0" AND due before "t" OR tags contains "urgent"
+```
+
+reads as `(priority > 0 AND due before today) OR (tags contains urgent)`.
+
+---
+
+#### Querying notes (`source: files`)
+
+| Field        | Operators                              | Notes                                              |
+| ------------ | -------------------------------------- | -------------------------------------------------- |
+| `tags`       | `contains`, `not_contains`             | `#tag` anywhere in the file, without the `#`        |
+| `path`       | `starts`, `contains`, `regex`          | Vault-relative path                                 |
+| `name`       | `contains`, `starts`, `=`              | File name                                           |
+| `body`       | `contains`                             | Full-text, case-insensitive                         |
+| `status`     | `=`, `!=`, `contains`, `empty`         | A frontmatter key                                   |
+| `updated_at` | `before`, `after`                      | Value is a date the builder shows as a date picker  |
+| `created_at` | `before`, `after`                      | Same                                                |
+
+Any **other** field name is read as a frontmatter key, compared as text, and supports `=`, `!=`, `contains`, and `empty`. So `filter: author = "Kim"` matches `author: Kim` in the frontmatter.
+
+Sortable fields: `updated_at`, `created_at`, `name`, `path`. (You cannot sort by `body`.)
+
+**Example — recently touched project notes**
+
+```query
+source: files
+filter: tags contains "project" AND updated_at after "2026-01-01"
+sort: updated_at desc
+display: table
+limit: 15
+```
+
+`display: table` gives a column per frontmatter key found in the results, plus `name` and `path`. `display: card` shows name, path, and up to five tags per card.
+
+> `body contains` has to read every file in the vault, so keep it paired with a narrower filter, or with a small `limit`.
+
+---
+
+#### Querying tasks (`source: tasks`)
+
+Task queries search every task Baram has indexed **in the vault the note lives in** — not the scope the Tasks sidebar is set to. A note shows the same list to everyone who opens it, whatever their sidebar happens to be filtered to.
+
+Tasks must be enabled (**Settings > General > Tasks**); if they are off the block says so instead of showing an empty list.
+
+| Field        | Operators                              | Values                                              |
+| ------------ | -------------------------------------- | --------------------------------------------------- |
+| `state`      | `=`, `!=`                              | `todo`, `doing`, `done`, `cancelled`                |
+| `due`        | `before`, `after`, `=`, `empty`        | a date (see below)                                  |
+| `scheduled`  | `before`, `after`, `=`, `empty`        | a date                                              |
+| `start`      | `before`, `after`, `=`, `empty`        | a date                                              |
+| `created`    | `before`, `after`, `=`, `empty`        | a date                                              |
+| `done`       | `before`, `after`, `=`, `empty`        | a date                                              |
+| `priority`   | `=`, `!=`, `>`, `<`                    | a signed weight — see the warning below             |
+| `text`       | `contains`                             | the task's text, case-insensitive                    |
+| `tags`       | `contains`, `not_contains`             | a tag on the task line, without the `#`             |
+| `links`      | `contains`                             | a `[[wikilink]]` target on the task line            |
+| `path`       | `starts`, `contains`, `regex`          | the file the task lives in                          |
+| `recurrence` | `empty`, `contains`                    | the `🔁` repeat rule                                 |
+
+Sortable fields: `due`, `scheduled`, `start`, `created`, `priority`, `text`, `path`. Tasks with no value for the sort field always sort **last**, in either direction — so `sort: due asc` does not open with a block of undated rows.
+
+**Dates accept the same shorthand as the editor**, resolved when the query runs:
+
+| You write            | Means                          |
+| -------------------- | ------------------------------ |
+| `2026-09-30`         | that date                      |
+| `t` / `today`        | today                          |
+| `m` / `tomorrow`     | tomorrow                       |
+| `y` / `yesterday`    | yesterday                      |
+| `+7d` or `+7`        | 7 days from today              |
+| `-3d` or `-3`        | 3 days ago                     |
+| `9/30`               | Sep 30 this year, or next year if it has already passed |
+
+So `due before "+7d"` means "due within the next week" and keeps meaning that tomorrow.
+
+> **`priority` is a signed weight, not a P-number.** The values are `🔺 = 2`, `⏫ = 1`, none `= 0`, `🔽 = -1`, `⏬ = -2`. Write `priority > "0"` for "high or urgent", not `priority > "3"`. The `prio:1`…`prio:5` you type in the editor is a *rank* (P1 is the most urgent) and is converted to the emoji on the way in — the query side only ever sees the weight.
+
+**Example — my open work, most urgent first**
+
+```query
+source: tasks
+filter: state != "done" AND state != "cancelled" AND due before "+7d"
+sort: priority desc
+limit: 25
+```
+
+**Example — everything this note is responsible for**
+
+```query
+source: tasks
+filter: links contains "Project Apollo" AND state = "todo"
+sort: due asc
+```
+
+**Example — repeating tasks that have gone quiet**
+
+```query
+source: tasks
+filter: recurrence empty AND tags contains "routine"
+```
+
+#### How task results are displayed
+
+- **`display: list`** (default) — the same rows as the Tasks sidebar. The checkbox works: checking a task **writes to its file** and the query re-runs. This is what turns a Map of Content into a working project board. Clicking a row jumps to the task's line in its own file.
+- **`display: table`** — State, Task, Due, Priority, File.
+- **`display: card`** — the task's text, its file, and up to five of its tags.
+
+#### Troubleshooting
+
+| What you see                                   | Why                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| `No vault open`                                | Query blocks search a vault; open one first                               |
+| `Tasks are turned off. Settings → General → Tasks.` | `source: tasks` with the Tasks feature disabled                      |
+| `No results` when you expect some              | A field/operator pair that is not in the tables above matches nothing rather than erroring. Re-pick the field in the builder — it always offers a valid operator set. |
+| Results look stale                             | The block only re-runs on the triggers listed above; press **Run query**  |
 
 ### YAML Frontmatter
 
@@ -633,7 +815,7 @@ backlinks and as a node in the Graph View.
 
 **Clicking a date chip opens the calendar and changes the date in place.** It does not navigate — a date mention names a day, it does not point at a document.
 
-**To open that day's journal entry, link it instead:** `[[2026-02-27]]`. See [Journal](#journal) for how date links resolve.
+**To open that day's journal entry, link it instead:** `[[2026-02-27]]`. See [Journal / Daily Notes](#journal--daily-notes) for how date links resolve.
 
 **Dates vs. wikilinks:**
 
@@ -712,6 +894,209 @@ Bookmark frequently accessed files for quick access:
 ### Graph View
 
 A visual map of your note connections. Nodes represent files, edges represent wikilinks between them. Use the Graph View to explore the structure of your workspace and discover clusters of related notes.
+
+---
+
+## Tasks
+
+Every `- [ ]` checkbox in your vault is a task. Baram indexes them all, lets you give them dates, priorities and repeat rules without typing a single emoji, and gathers them into an agenda — while the task stays a plain markdown line in the note where you wrote it.
+
+Tasks are on by default. Turn them off in **Settings > General > Tasks > Enable Tasks**; the Tasks sidebar icon disappears with them.
+
+### Anatomy of a task line
+
+```markdown
+- [ ] Draft the Q3 report #work [[Project Apollo]] ➕2026-09-01 🛫2026-09-03 ⏳2026-09-05 📅2026-09-10 ⏫ 🔁every week
+```
+
+**The four states**
+
+| Written  | Means       | Shown as      |
+| -------- | ----------- | ------------- |
+| `- [ ]`  | To do       | empty box     |
+| `- [/]`  | In progress | half-filled   |
+| `- [x]`  | Done        | checked       |
+| `- [-]`  | Cancelled   | struck through |
+
+Clicking the checkbox cycles **To do → In progress → Done**. `Cancelled` is deliberately off that ring — reach it with `/cancel-task` in the editor, or **Cancel task** in the agenda's triage menu — so you can never land on it by clicking one time too many.
+
+> `[/]` and `[-]` are not part of GFM. A viewer that doesn't know them shows the raw `[/]` instead of a checkbox; the line itself is never lost.
+
+**The fields**
+
+Text first, then any `#tags` and `[[links]]`, then the fields in a fixed order — so a line built by the app always looks the same. `🔁` is last because its value runs to the end of the line:
+
+| Field       | Marker | Value                                    |
+| ----------- | ------ | ---------------------------------------- |
+| Created     | `➕`   | `YYYY-MM-DD`                             |
+| Start       | `🛫`   | `YYYY-MM-DD`                             |
+| Scheduled   | `⏳`   | `YYYY-MM-DD`                             |
+| Due         | `📅`   | `YYYY-MM-DD`                             |
+| Completed   | `✅`   | `YYYY-MM-DD`                             |
+| Cancelled   | `❌`   | `YYYY-MM-DD`                             |
+| Priority    | `🔺` `⏫` `🔽` `⏬` | (no marker = normal)         |
+| Time spent  | `⏱`   | `1h27m`, or `1h27m+2026-09-01T14:03` while running |
+| Repeat      | `🔁`   | a rule such as `every week on Monday`    |
+
+This is the same emoji vocabulary the Obsidian Tasks plugin uses, so a vault shared between the two reads the same either way. Any marker Baram doesn't recognize is left alone and pushed to the end of the line rather than reordered.
+
+### Typing a task
+
+You never have to type an emoji. Inside a task line, type a **word trigger** followed by a space and it becomes the field:
+
+| You type      | You get         |
+| ------------- | --------------- |
+| `due:2026-09-30 ` | `📅2026-09-30` |
+| `due:t `      | `📅` today       |
+| `due:m `      | `📅` tomorrow    |
+| `due:+3 `     | `📅` three days from now |
+| `due:9/30 `   | `📅` Sep 30 (next year if it has already passed) |
+| `sched:m `    | `⏳` tomorrow    |
+| `start:t `    | `🛫` today       |
+| `prio:1 ` or `!1 ` | `🔺` urgent |
+| `prio:2 ` or `!2 ` | `⏫` high   |
+| `prio:3 ` or `!3 ` | normal (trigger disappears, no marker) |
+| `prio:4 ` or `!4 ` | `🔽` low    |
+| `prio:5 ` or `!5 ` | `⏬` lowest |
+
+Pressing `Enter` instead of space works too — it converts the field *and* starts the next task in one undo step.
+
+> Note the two priority scales. What you **type** is a rank, P1 (most urgent) to P5. What a **query** filters on is a signed weight: `🔺 = 2`, `⏫ = 1`, normal `= 0`, `🔽 = -1`, `⏬ = -2`.
+
+**Dates in plain language.** Write a date the way you'd say it and Baram underlines what it recognized; press `Tab` to turn it into a field. It understands English and Korean:
+
+- `today`, `tomorrow`, `yesterday`, `오늘`, `내일`, `모레`, `어제`
+- `friday`, `next monday`, `금요일`, `다음 주 월요일`, and `금요일까지`
+- `in 3 days`, `3일 후`
+- `2026-09-15`, `9/15`, `9월 15일`
+- a leading `by` is absorbed, so `Send the draft by friday` + `Tab` leaves `Send the draft 📅2026-09-18`
+
+Only an expression that **ends at the cursor** is recognized, so `Tab` still indents everywhere else.
+
+### Slash commands
+
+With the cursor on a task line:
+
+| Command        | Does                                                       |
+| -------------- | ---------------------------------------------------------- |
+| `/due`         | Pick a due date (text field + calendar)                     |
+| `/sched`       | Pick a scheduled date                                       |
+| `/start`       | Pick a start date                                           |
+| `/priority`    | Choose one of the five levels from a list                   |
+| `/repeat`      | Set a repeat rule — the **only** way to enter one, because its value contains spaces |
+| `/cancel-task` | Mark the task cancelled, keeping the line                   |
+
+`/extract-tasks` (**Extract Action Items**) works anywhere, not just on a task line — see [AI Features](#extract-action-items).
+
+The date dialogs carry a three-layer calendar: click the centre label to widen from days to months to years, pick a cell to narrow back down. Typing in the text field returns you to the day view. Picking a month or a year only moves the view — only choosing a day sets the value.
+
+### Editing an existing task
+
+Every field renders as a **chip** in the editor. Click a chip to edit that field, or clear it to remove the field. `Cmd+Alt+T` (**Task input**, remappable) opens the full dialog — **Edit task** on an existing task line, **New task** anywhere else. It shows every field, a tag box, and a live preview of the resulting line. Somewhere a task can't go (a heading, a table, a code block) it closes itself.
+
+If the line changed underneath you — another window, an external editor — the write is refused rather than overwriting, and the dialog tells you so.
+
+### Repeat rules
+
+A `🔁` rule is written in English (so other tools read it the same) and must match this shape:
+
+```
+every [N] day|days|week|weeks|weekday|month|months|year|years [on <anchor>]
+```
+
+| Example                    | Means                          |
+| -------------------------- | ------------------------------ |
+| `every day`                | daily                          |
+| `every 2 weeks`            | fortnightly                    |
+| `every weekday`            | next business day              |
+| `every week on Monday`     | Mondays                        |
+| `every month on the 15th`  | the 15th of each month         |
+| `every year`               | annually                       |
+
+Anchors only attach to their own unit: `on Monday` needs `week`, `on the 15th` needs `month`, and `every weekday` takes neither an interval nor an anchor.
+
+**Completing or cancelling a repeating task rolls it forward** instead of closing it: the start/scheduled/due dates all move to the next occurrence, the state returns to `[ ]`, and a toast shows the new date. The line stays a single line.
+
+A rule that can't do that says so on its chip:
+
+- *repeats … (no date to move)* — the task has a `🔁` but no date to roll
+- *repeats … (not understood)* — the rule doesn't match the grammar above
+
+### Time tracking
+
+Off by default. Turn on **Settings > General > Tasks > Track time on tasks in progress** and a task writes a `⏱` field while it sits in `[/]`, banking the elapsed time when it leaves that state:
+
+```
+⏱1h27m                      stopped — an hour and 27 minutes so far
+⏱1h27m+2026-09-01T14:03     running — counting again from that moment
+```
+
+It is off by default on purpose: switching a task to "in progress" would otherwise add a field to a file that other apps also read.
+
+### The Tasks panel
+
+Open **Tasks** in the activity bar (the check-circle icon). It gathers every indexed task into buckets, in this order:
+
+| Bucket             | Holds                                                     |
+| ------------------ | --------------------------------------------------------- |
+| **Overdue**        | a `📅` due date in the past                                |
+| **Past scheduled** | a `⏳` scheduled date in the past, but no missed due date  |
+| **Today**          | due today                                                 |
+| **This week**      | due before the end of the week                            |
+| **Later**          | due after that                                            |
+| **No date**        | no date at all                                            |
+| **Finished this week** / **Done** | completed                                  |
+| **Cancelled**      | `[-]`                                                     |
+
+Overdue and past-scheduled are separate on purpose: a missed **due** date is a broken promise, a missed **scheduled** date is only a plan that slipped. Which day the week starts on is **Settings > General > Tasks > Week starts on** (default Monday). The buckets roll over at midnight without a restart.
+
+In-progress tasks stay in their date bucket rather than getting one of their own — being held doesn't change when a thing is due — and the state is shown on the row.
+
+**Filters** across the top: free-text filter, state, priority (`⏫ High+` / `Normal` / `🔽 Low−`), tag, linked note, and a **Someday** toggle. **Agenda scope** decides which roots are scanned — All vaults (default), Current vault, or Tasks home.
+
+**Working from the panel**
+
+- The checkbox completes a task in place, writing to its file.
+- Clicking a row jumps to that line in its own note.
+- Two badges sit at the end of a row: **`−Nd`** is how many days past the date that put the task in its bucket (the due date in Overdue, the scheduled date in Past scheduled), and **`Nd`** with a *Stale* tooltip appears once a task has gone **30 days** since its `➕` created date without being finished.
+- The **triage menu** on a row offers Due today, Due tomorrow, Pick a date…, Defer to `#someday`, Cancel/Reopen, and Delete line.
+- **Reschedule overdue tasks to today** moves everything overdue in one confirmed step.
+- **Weekly review** walks the backlog one task at a time — `j`/`k` to move, `x` done, `t` today, `s` someday, `⌫` delete.
+- **Archive completed tasks** moves anything finished more than *N* days ago (default 30, configurable) into `tasks/archive/YYYY-MM.md`. Nothing is archived automatically, and archived tasks stay indexed and searchable. Archiving is only offered in the Tasks home scope, and it needs a tasks home set.
+
+### Tasks in this note
+
+The **Backlinks** panel carries a **Tasks in this note** section underneath it, listing every task anywhere in your vault whose line links to the note you have open (`- [ ] Review the draft [[Project Apollo]]` shows up while `Project Apollo` is open). Rows behave exactly like the agenda's — check them off, jump to them, or use the triage keys.
+
+The **Zettel hub** has its own compact Tasks section showing only what needs attention now — overdue and due today, at most seven rows, with **See all** handing off to the full agenda.
+
+### Capturing tasks
+
+Open **Quick Capture** with `Cmd+Shift+N`, then press `Cmd+Alt+T` to switch it into task mode. What you write lands in your capture file: `inbox.md` inside the `tasks/` subfolder of your **Tasks home**, which defaults to your Zettel directory.
+
+You can also assign a **global capture shortcut** (**Settings > General > Tasks**) that opens Quick Capture in task mode even while Baram is in the background. It has no default, because a global shortcut is intercepted system-wide and could take a key combination another app already uses.
+
+### Tasks in a query block
+
+A ` ```query ` block with `source: tasks` embeds any slice of your task list into a note, and the results stay checkable. See [Query Blocks](#query-blocks) for the full field and operator reference.
+
+### Task settings
+
+All under **Settings > General > Tasks**:
+
+| Setting                          | Default            | What it does                                                        |
+| -------------------------------- | ------------------ | ------------------------------------------------------------------- |
+| Enable Tasks                     | on                 | Index checkboxes across the vault and show the Tasks panel          |
+| Exclude folders                  | none               | Comma-separated folders to skip when indexing                       |
+| Week starts on                   | Monday             | Decides what falls in the **This week** bucket                      |
+| Record completion date           | on                 | Append `✅` with today's date when a task is checked                 |
+| Record created date              | on                 | Add `➕` to a task line you finish typing in the editor              |
+| Track time on tasks in progress  | off                | Write `⏱` while a task is `[/]`                                     |
+| Tasks home                       | Zettel directory   | Folder holding captured tasks and their archive                     |
+| Capture file                     | `inbox.md`         | File name inside `{tasks home}/tasks/`                              |
+| Agenda scope                     | All vaults         | Which roots the agenda scans                                        |
+| Archive after                    | 30 days            | How old a completed task must be for **Archive completed tasks**    |
+| Global capture shortcut          | not set            | Opens Quick Capture in task mode from anywhere                      |
 
 ---
 
@@ -996,6 +1381,20 @@ Type `/` in the editor to access AI commands:
 | `/ai-translate`   | Translate to another language          |
 | `/ai-explain`     | Explain selected text in simple terms  |
 | `/ai-template`    | Generate content from AI templates     |
+| `/extract-tasks`  | Pull action items out of the selection |
+
+### Extract Action Items
+
+`/extract-tasks` (**Extract Action Items**) reads the prose you selected — meeting notes, a call summary, a paragraph of decisions — and proposes a list of tasks from it.
+
+1. Select the text (or leave the cursor in the section you want read)
+2. Run `/extract-tasks` from the slash menu
+3. Review the proposed task lines in the AI diff preview
+4. **Accept** to insert them, or **Reject** to discard
+
+Nothing is written to the document until you accept. The extracted lines are ordinary task lines, so date and priority fields can be added afterwards the usual way — see [Tasks](#tasks).
+
+It needs a configured AI model, and it respects [Privacy Mode](#privacy-mode): with privacy on and no local model available, it declines rather than sending your notes to a cloud provider.
 
 ### Custom AI Commands
 
@@ -1236,7 +1635,8 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 ### Photo Journal
 
 - Drag, paste, or use the `/photo` slash command to add images — they are auto-saved to an `assets/` folder next to your journal
-- Open the **Photo Gallery** (`Cmd+Shift+I` / `Ctrl+Shift+I`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox (`←` / `→` to move between photos, `Esc` to close)
+- Open the **Photo Gallery** (`Cmd+Shift+I` / `Ctrl+Shift+I`) to browse your journal media grouped by **Day**, **Month**, or **Year**, with a keyboard-navigable lightbox (`←` / `→` to move, `Esc` to close)
+- Video clips dropped into a journal entry appear in the gallery alongside photos and play in the lightbox. Filter the view with **All** / **Photos** / **Videos**
 - Thumbnails and lightbox images are cached previews, so a year of camera-sized photos scrolls smoothly. In the lightbox, **원본 보기 / View original** opens the full-resolution file; `Esc` closes that view first and leaves the lightbox open
 
 ### Memories
@@ -1343,8 +1743,8 @@ Available settings tabs:
 
 | Tab              | What You Can Configure                                                                          |
 | ---------------- | ---------------------------------------------------------------------------------------------- |
-| **General**      | Startup behavior, auto-save, Journal, and file snapshots (Version History)                     |
-| **Editor**       | Indentation, tab size, line numbers, line endings, editor max width                            |
+| **General**      | Startup behavior, auto-save, Journal, Tasks, and file snapshots (Version History)              |
+| **Editor**       | Indentation, tab size, line numbers, line endings, editor max width, Vim keybindings           |
 | **Appearance**   | Theme gallery, custom theme editor, and workspace presets                                       |
 | **Markdown**     | Extended syntax toggles (math, highlight, strikethrough), smart punctuation                    |
 | **AI**           | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
@@ -1403,6 +1803,20 @@ Baram supports English and Korean interface languages.
 3. The entire UI updates immediately — menus, dialogs, settings, and the Welcome screen
 
 The app defaults to the system language if supported, otherwise English.
+
+### Vim Mode
+
+Turn on **Settings > Editor > Vim Keybindings** (off by default) for modal editing. One switch covers three surfaces:
+
+- **Source Mode** and **code files** — full vim, including text objects, `.` repeat, `/` search, macros and registers
+- **WYSIWYG** — modal editing on the rendered document: motions, operators with counts, `f`/`t` find, visual mode, marks, and `:w` / `:q`
+- **Code blocks inside a document** — full vim, with `Esc` and edge `j`/`k` crossing back out to the document
+
+The status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`) and doubles as the `:` command line. Vim commands work with the Korean IME active — in normal mode keys resolve by physical position, so `j` moves down even when it would type `ㅓ`.
+
+Vim key sequences are a separate layer from app shortcuts and are not remappable in Settings > Keybindings.
+
+> 📖 The full command list is in the [Keyboard Shortcuts reference](keyboard-shortcuts.md#vim-mode).
 
 ### Keyboard Shortcuts
 
