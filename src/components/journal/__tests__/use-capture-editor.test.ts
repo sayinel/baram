@@ -284,4 +284,75 @@ describe("§323 useCaptureEditor", () => {
       });
     });
   });
+
+  // §324-d — 리치 텍스트 붙여넣기. 설계는 이것을 "WYSIWYG 전환의 가장 큰 실질
+  // 이득"이라고 부르는데(`part19-capture-to-hub.md` §324-d) 브랜치 전체를 통틀어
+  // 검증하는 테스트가 하나도 없었다. 브라우저·문서에서 복사한 서식이 캡처를
+  // 거쳐 마크다운으로 남는지가 요점이다.
+  describe("§324-d HTML 붙여넣기", () => {
+    /** 실제 `paste` 이벤트를 편집기 DOM에 쏜다 — `setContent`로는 붙여넣기
+     *  파이프라인(ProseMirror의 `parseFromClipboard`)을 전혀 태우지 못한다. */
+    async function paste(
+      editor: Editor,
+      data: Record<string, string>,
+    ): Promise<void> {
+      const event = new Event("paste", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "clipboardData", {
+        value: {
+          files: [],
+          getData: (type: string) => data[type] ?? "",
+          types: Object.keys(data),
+        },
+      });
+      await act(async () => {
+        editor.view.dom.dispatchEvent(event);
+      });
+    }
+
+    const HTML =
+      "<h2>제목</h2>" +
+      "<p><strong>굵게</strong>와 <em>기울임</em>, 그리고 " +
+      '<a href="https://example.com">링크</a>.</p>' +
+      "<ul><li>하나</li><li>둘</li></ul>";
+    /** 같은 내용을 서식 없이 옮겼을 때 클립보드에 담기는 것. */
+    const PLAIN = "제목\n굵게와 기울임, 그리고 링크.\n하나\n둘";
+
+    it("서식이 마크다운으로 살아남는다", async () => {
+      const { result } = renderHook(() => useCaptureEditor(true));
+      await act(async () => {});
+      const editor = result.current.editor!;
+      document.body.appendChild(editor.view.dom);
+
+      await paste(editor, { "text/html": HTML, "text/plain": PLAIN });
+
+      expect(result.current.getMarkdown().split("\n")).toEqual([
+        "## 제목",
+        "",
+        "**굵게**와 *기울임*, 그리고 [링크](https://example.com).",
+        "",
+        "- 하나",
+        "- 둘",
+      ]);
+    });
+
+    // ‼️ 대조군. 위 단정이 "붙여넣은 텍스트에 마침 마크다운 기호가 들어 있었다"가
+    // 아니라 "HTML 가지를 실제로 탔다"를 말하려면, 같은 내용을 평문으로 넣었을
+    // 때는 그 기호들이 없어야 한다. 이게 없으면 HTML 처리를 통째로 들어내도
+    // 위 테스트만 보고는 알 수 없다.
+    it("평문으로 넣으면 같은 서식이 생기지 않는다", async () => {
+      const { result } = renderHook(() => useCaptureEditor(true));
+      await act(async () => {});
+      const editor = result.current.editor!;
+      document.body.appendChild(editor.view.dom);
+
+      await paste(editor, { "text/plain": PLAIN });
+
+      const md = result.current.getMarkdown();
+      expect(md).not.toContain("**굵게**");
+      expect(md).not.toContain("## 제목");
+      expect(md).not.toContain("](https://example.com)");
+      // 내용 자체는 들어왔다 — 아무것도 안 붙어서 통과한 것이 아니다.
+      expect(md).toContain("굵게");
+    });
+  });
 });

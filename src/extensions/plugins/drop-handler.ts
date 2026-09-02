@@ -443,6 +443,17 @@ export interface DropHandlerOptions {
    * tab — use it, exactly like before this option existed. A function: this
    * host IS the authority on its own destination — call it, and never fall
    * back to the active tab even if it returns null.
+   *
+   * ‼️ Load-bearing dependency, named here because nothing enforces it: the
+   * override branch reports `isJournal: true` while still handing back the
+   * `journalDir`/`rootPath` it read from the stores, which belong to the MAIN
+   * window and have nothing to do with this host's destination. That is safe
+   * only because `savePhotoToAssets` ignores both of those parameters
+   * (`utils/journal/journal-photo.ts` — they are underscore-prefixed and
+   * unused; the directory comes from `activeFilePath` alone). If anyone
+   * un-deadens them, a capture's media silently starts mixing this host's
+   * destination with the journal's root, which is exactly the class of
+   * quiet-wrong-directory bug this option was added to close.
    */
   resolveDestinationPath: (() => null | string) | null;
 }
