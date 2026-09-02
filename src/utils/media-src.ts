@@ -19,8 +19,16 @@ export const MEDIA_ATOM_NAMES: ReadonlySet<string> = new Set([
   "video",
 ]);
 
-/** 재생될 여지가 있는 컨테이너. `.mkv`는 어느 웹뷰에서도 안 되므로 없다 (§293). */
-const VIDEO_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
+/**
+ * 재생될 여지가 있는 컨테이너. `.mkv`는 어느 웹뷰에서도 안 되므로 없다 (§293).
+ *
+ * §324-e export된 이유는 언어 간 parity 가드 하나뿐이다 — Rust의
+ * `MEDIA_MIME_TYPES` 허용목록(`src-tauri/src/fs/media.rs`)과 이 집합이 어긋나면
+ * 드랍이 조용히 아무 일도 안 하거나, 아무도 안 쓰는 허용 표면이 생긴다.
+ * `media-extension-parity.test.ts`가 그 비교다. 판정은 계속
+ * `classifyMediaSrc`/`isMediaFilePath`로 할 것.
+ */
+export const VIDEO_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   "m4v",
   "mov",
   "mp4",
@@ -34,6 +42,15 @@ const VIMEO_ID_RE = /^[0-9]{1,20}$/;
 export function classifyMediaSrc(src: string): MediaKind {
   if (!src) return "image";
   if (embedUrlFor(src)) return "video-embed";
+  // §324-e data URL은 확장자가 없다 — MIME이 그 자리를 대신한다. 이 줄이 없으면
+  // `extensionOf("data:video/mp4;base64,AAAA")`가 마지막 `/` 뒤에서 점을 찾다
+  // 실패해 `null`을 내고, 동영상이 image로 분류되어 캡처가 붙여넣은 동영상마다
+  // 재생되지 않는 image 노드를 만든다. 캡처는 저장 전까지 미디어를 data URL로
+  // 들고 있으므로(`media-data-url.ts`) 이 형태가 처음으로 실제 입력이 되었다.
+  const dataMime = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+)[;,]/i.exec(src)?.[1];
+  if (dataMime) {
+    return dataMime.toLowerCase().startsWith("video/") ? "video-file" : "image";
+  }
   const ext = extensionOf(src);
   return ext && VIDEO_FILE_EXTENSIONS.has(ext) ? "video-file" : "image";
 }

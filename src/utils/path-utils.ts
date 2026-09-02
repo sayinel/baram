@@ -1,6 +1,12 @@
 // Drag & Drop path utilities
 
-const IMAGE_EXTENSIONS = new Set([
+/**
+ * §324-e Exported so the cross-language parity guard can compare this set against
+ * the Rust allowlist that `read_media_data_url` enforces
+ * (`src-tauri/src/fs/media.rs`) — see `media-extension-parity.test.ts`. It stays the
+ * single source of "which extensions are images"; nothing else should re-list them.
+ */
+export const IMAGE_EXTENSIONS = new Set([
   "avif",
   "bmp",
   "gif",

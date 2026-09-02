@@ -157,6 +157,9 @@ export const useSettingsStore = create<SettingsState>()(
         journalThemeId: state.journalThemeId,
         journalCustomThemes: state.journalCustomThemes,
         memoriesMode: state.memoriesMode,
+        // §324-g partialize는 whitelist다 — 빠뜨리면 재시작마다 리사이즈한 높이가
+        // 사라지고, 사용자는 창 크기가 "가끔 안 먹는다"로 겪는다.
+        captureDialogHeight: state.captureDialogHeight,
         zettelkastenEnabled: state.zettelkastenEnabled,
         zettelkastenDirectory: state.zettelkastenDirectory,
         zettelkastenStartupBehavior: state.zettelkastenStartupBehavior,

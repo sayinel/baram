@@ -513,7 +513,9 @@
 
 .wikilink-menu-popup {
   position: fixed;
-  z-index: 50;
+
+  /* Mounted on `document.body` (suggestion-renderer.ts) — see `--z-editor-popup`. */
+  z-index: var(--z-editor-popup);
 }
 
 .wikilink-menu {

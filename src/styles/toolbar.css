@@ -103,7 +103,9 @@
    depending on where it was placed, which positionPopup measures to place it. */
 .slash-menu-popup {
   position: fixed;
-  z-index: 50;
+
+  /* Mounted on `document.body` (slash-command.ts) — see `--z-editor-popup`. */
+  z-index: var(--z-editor-popup);
   width: max-content;
 }
 

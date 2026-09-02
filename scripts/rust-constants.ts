@@ -80,6 +80,63 @@ export function shippedRevocationPublicKey(rustSource: string): string {
   );
 }
 
+/**
+ * §324-e The media extensions `read_media_data_url` will open, read out of the table
+ * that enforces them (`src-tauri/src/fs/media.rs`).
+ *
+ * ‼️ WHY SCRAPING RATHER THAN A SECOND LITERAL — the same reasoning as the two scrapes
+ * above. That table is an ALLOWLIST: an extension missing from it cannot be dropped into
+ * a capture, and an extension present in it can be read from anywhere on disk. The
+ * frontend has its own canonical media enumeration (`IMAGE_EXTENSIONS` in
+ * `utils/path-utils.ts` unioned with the video set in `utils/media-src.ts`, which
+ * `isMediaFilePath` joins), and the two are in different languages. A hand-copied list
+ * here would be a third value free to drift from both, and both drifts are silent: an
+ * extension the frontend offers but Rust refuses looks to the user like a drop that did
+ * nothing, and one Rust admits but the frontend never offers is allowlist surface with no
+ * caller. This repo has been bitten by exactly this — a video extension list that reached
+ * four copies, and a `.md` check whose case-sensitivity diverged across languages.
+ *
+ * The consumer is `src/utils/__tests__/media-extension-parity.test.ts`.
+ *
+ * ‼️ THE COUNT ASSERTION IS LOAD-BEARING, as it is for the two above: `MEDIA_MIME_TYPES`
+ * is also named at its call site and in that module's tests, so "a match exists" would not
+ * mean it is the table that ships. A FUNCTION OVER SOURCE TEXT rather than a file reader,
+ * so a test can feed crafted source and watch the refusal.
+ */
+export function inlineMediaExtensions(rustSource: string): Set<string> {
+  const body = soleDeclaration(
+    rustSource,
+    /MEDIA_MIME_TYPES\s*:\s*&\[\(&str,\s*&str\)\]\s*=\s*&\[([^\]]*)\]/gu,
+    "MEDIA_MIME_TYPES",
+  );
+  const extensions = [...body.matchAll(/\(\s*"([^"]+)"\s*,\s*"[^"]+"\s*\)/gu)].map(
+    (m) => m[1],
+  );
+  if (extensions.length === 0) {
+    throw new Error("MEDIA_MIME_TYPES parsed to an empty table — refusing to compare");
+  }
+  return new Set(extensions);
+}
+
+/**
+ * §324-e The byte cap `MAX_INLINE_MEDIA_BYTES`, i.e. the largest file the capture dialog
+ * will inline as a `data:` URL. Same product-of-integers form as the revocation cap.
+ */
+export function inlineMediaByteCap(rustSource: string): number {
+  const literal = soleDeclaration(
+    rustSource,
+    /MAX_INLINE_MEDIA_BYTES\s*:\s*u64\s*=\s*([0-9_ *]+);/gu,
+    "MAX_INLINE_MEDIA_BYTES",
+  );
+  return literal.split("*").reduce((product, part) => {
+    const value = Number(part.replaceAll("_", "").trim());
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new Error(`cannot read MAX_INLINE_MEDIA_BYTES: "${literal.trim()}"`);
+    }
+    return product * value;
+  }, 1);
+}
+
 /** Exactly one declaration must match, or we are guessing which value ships. */
 function soleDeclaration(
   rustSource: string,

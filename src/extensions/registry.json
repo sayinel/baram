@@ -623,6 +623,15 @@
       "shortcuts": {}
     },
     {
+      "name": "captureSaveKey",
+      "file": "index.ts",
+      "spec": "§324-e",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "shortcuts": { "Mod-Enter": "capture profile only — save, not a hard break" }
+    },
+    {
       "name": "wikilinkSuggest",
       "file": "plugins/wikilink-suggest.ts",
       "spec": "§31",

@@ -356,6 +356,27 @@ pub async fn write_binary_file(
 /// 저장 다이얼로그에서 사용자가 직접 선택한 것이므로 vault 밖(다운로드/데스크톱
 /// 등)으로의 저장이 정상 동작해야 한다. `export_pdf`/`export_document`와 동일한
 /// 정책이며, null 바이트/비절대 경로 검증(`check`)은 유지한다.
+/// §324-e Read a media file from ANY location as a `data:` URL.
+///
+/// ‼️ NO `check_vault` — deliberately, and the same policy `import_file` already
+/// applies to its own source: the file being dropped comes from Finder, so it is
+/// vault-external by definition. `check` still runs, which rejects null bytes,
+/// relative paths and `..` segments (`crate::fs::validate_path`).
+///
+/// The narrowness that justifies leaving the vault check out lives in
+/// `crate::fs::media` — a media-extension allowlist that doubles as the MIME table,
+/// and a byte cap — and the reasoning, plus the three conditions that keep it true,
+/// is in that module's header. Read it before widening anything here.
+///
+/// Granted to the Host tier only (`capabilities/default.json`); it must never
+/// appear in `plugin-sandbox.json`, and `plugin_call` cannot reach it because that
+/// broker dispatches a closed enum.
+#[tauri::command]
+pub async fn read_media_data_url(path: String) -> Result<String, String> {
+    check(&path)?;
+    crate::fs::media::read_media_data_url(&path, crate::fs::media::MAX_INLINE_MEDIA_BYTES).await
+}
+
 #[tauri::command]
 pub async fn export_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
     check(&path)?;

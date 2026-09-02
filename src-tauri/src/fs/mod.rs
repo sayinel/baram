@@ -2,6 +2,7 @@
 
 pub(crate) mod archive;
 mod copy_dir;
+pub mod media;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
 

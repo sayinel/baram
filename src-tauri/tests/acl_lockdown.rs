@@ -987,6 +987,47 @@ fn the_broker_capability_mapping_guard_still_exists() {
     }
 }
 
+/// §324-e `read_media_data_url` is the one app command that reads OUTSIDE the vault
+/// on a caller-supplied path. Its justification is that the Host webview could
+/// already obtain those bytes anyway (`import_file` + `fetch(convertFileSrc(..))`),
+/// so it grants Host nothing new — and that argument is only about **Host**. A
+/// sandboxed plugin can do neither of those things: it has no `asset:` capability
+/// at all, and its file ops are vault-bounded and context-relative.
+///
+/// The tier grant is already covered above — the command is in
+/// `capabilities/default.json` (`main`/`file-*`) and
+/// `sandbox_tier_grants_exactly_its_allowlist` would go red if it reached
+/// `plugin-*`. What that cannot see is the OTHER door: the sandbox holds
+/// `plugin_call`, so anything the broker chooses to call on its behalf is reachable
+/// regardless of the permission list. `plugin_call` dispatches a CLOSED enum
+/// (`plugin::PluginOp`), so a `#[tauri::command]` cannot become an op merely by
+/// existing, and `the_broker_capability_mapping_guard_still_exists` above pins that
+/// every variant of it stays audited. This closes the remaining gap: someone wiring
+/// the unconfined reader into an existing op's body.
+///
+/// Scans code with comments and string literals blanked, so a comment that merely
+/// names the command (this doc comment included) is not a false failure.
+#[test]
+fn the_unconfined_media_reader_is_not_reachable_from_the_broker() {
+    for module in [
+        "src/commands/plugin_cmd.rs",
+        "src/plugin/authorizer.rs",
+        "src/plugin/mod.rs",
+        "src/plugin/storage.rs",
+    ] {
+        assert!(
+            !code_only(module).contains("read_media_data_url"),
+            "{module} calls `read_media_data_url`. That command reads any path on \
+             disk outside the vault; it is justified ONLY for the Host tier, which \
+             could already reach those bytes via import_file + fetch(asset:). A \
+             sandboxed plugin can do neither, so routing this through `plugin_call` \
+             hands the sandbox a capability the tier model says it does not have. \
+             If a plugin genuinely needs media bytes, give it a vault-bounded op \
+             like `FilesRead`, not this."
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------------------
 // Permission-set expansion (2026-08-09)
 //

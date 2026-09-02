@@ -18,7 +18,15 @@
   gap: 10px;
   align-self: flex-start;
   width: 460px;
-  max-height: 420px;
+
+  /* §324-g fix round 1: was a flat 420px, which left the editor almost no room
+     to grow — header + source/tag inputs + actions alone ate most of that
+     budget, so a drag past the default just got squeezed back out by
+     flex-shrink. Viewport-relative so a real window has real headroom.
+     `.quick-capture-editor`'s own max-height below is DERIVED from this same
+     85vh — change one without the other and they drift apart again (that
+     relationship is pinned in quick-capture-resize-budget.test.ts). */
+  max-height: 85vh;
   padding: 16px 20px;
   overflow: visible;
   overscroll-behavior: contain;
@@ -147,22 +155,108 @@
   border-color: var(--color-accent-default);
 }
 
-.quick-capture-textarea {
+/* §323 문서창과 같은 편집기 엔진. 3줄 textarea가 "너무 작다"는 것이 이 교체의
+   출발점이었다 — min-height를 그만큼 키운다. */
+.quick-capture-editor {
   box-sizing: border-box;
+  flex-shrink: 0;
   width: 100%;
+  min-height: 12rem;
+
+  /* §324-g fix round 1: 85vh는 위 .quick-capture-dialog의 max-height와 같은
+     숫자다 — 260px는 편집기를 뺀 나머지 chrome(헤더 + 리사이즈 핸들 + 출처/태그
+     입력 + 힌트/오류 문구(둘 다 뜨는 최악의 경우까지 포함) + 액션 버튼 + 그
+     사이 gap·padding)의 보수적 추정치다. 편집기 상한을 다이얼로그의 예산에서
+     "빼서" 유도했기 때문에, 편집기가 그 상한까지 자라도 다이얼로그 자체의
+     max-height를 넘는 일이 산수로 불가능하다 — 이전엔 다이얼로그 420px 고정과
+     이 값의 60vh가 서로 무관해서, 좁은 화면이 아니어도 flex-shrink가 편집기를
+     min-height까지 조용히 눌렀다.
+     아주 작은 창(대략 530px 미만 높이)에서는 이 calc()가 min-height보다
+     작아지고, CSS 우선순위상 min-height가 이긴다 — 그 지점부터는 다이얼로그가
+     몇 px 정도 뷰포트를 넘어설 수 있다(overflow: visible이라 위 리사이즈
+     핸들처럼 잘리지 않고 그대로 보인다). 그 폭은 min-height 자체가 이미 갖고
+     있던 바닥이지 이번 변경이 새로 만든 문제가 아니며, 실사용 창 크기에서는
+     닿지 않는다. */
+  max-height: calc(85vh - 260px);
   padding: 8px 10px;
-  font-family: inherit;
+  overflow-y: auto;
   font-size: 13px;
   color: var(--color-text-primary);
-  resize: vertical;
+
+  /* ‼️ main의 `.quick-capture-textarea`에 있던 `resize: vertical`은 가져오지 않는다.
+     그것은 textarea의 기본 리사이즈였고, §324가 드래그 핸들(`.quick-capture-resize`)로
+     같은 일을 한다 — 둘을 함께 두면 리사이즈 수단이 두 개가 되고, CSS resize는 위
+     `max-height: calc(85vh - 260px)` 예산을 모른 채 늘어난다.
+     `outline: none`은 가져온다: 아래 `:focus-within`이 테두리로 포커스를 말하므로
+     브라우저 기본 링은 중복이다(드래그 표시의 `outline`은 더 구체적인 선택자라 이긴다). */
   outline: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
 
-.quick-capture-textarea:focus {
+.quick-capture-editor:focus-within {
   border-color: var(--color-accent-default);
+}
+
+/* §324-e OS 파일 드래그가 캡처 창 위에 있는 동안의 표시(`use-external-drop.ts`가
+   붙였다 뗀다). 파일 트리의 `.file-tree-ext-drop-target`과 같은 역할이다.
+   `outline`인 이유: `border`를 바꾸면 위 focus-within 강조와 서로를 지우고,
+   1px 테두리가 굵어지며 편집기 내용이 미세하게 흔들린다. */
+.quick-capture-editor.capture-ext-drop-target {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 1px;
+}
+
+/* ‼️ §323 리뷰 Important 2 — 캡처 편집기는 문서창의 "페이지" 여백을 물려받지
+   않는다.
+   `@tiptap/core`는 모든 편집기의 편집 영역에 `class="tiptap"`을 붙이고,
+   `editor/base.css`의 `.tiptap`은 문서창을 종이처럼 보이게 하는 페이지 여백을
+   갖는다 — `padding: 2rem var(--editor-padding)`, 전역 `--editor-padding: 4rem`.
+   460px 폭 다이얼로그의 192px짜리 상자 안에서 그 여백은 위아래 32px, 좌우
+   128px을 먹어 실제 작성 폭을 ~272px로 만들었고, 같은 규칙의 `font-size: 1rem`이
+   위에서 정한 13px까지 덮었다. 종이 여백은 문서 표면의 성질이지 편집기 엔진의
+   성질이 아니다 — 캡처 상자의 여백은 컨테이너의 `padding: 8px 10px`이 이미
+   담당한다. `.tiptap` 자체는 손대지 않으므로 문서창의 모습은 그대로다. */
+.quick-capture-editor .tiptap {
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ‼️ §323 리뷰 Important 3 — 캡처 편집기의 빈 문서 안내 문구.
+   `editor/base.css`의 `.tiptap p.is-editor-empty:first-child::before`는 문구를
+   `content:`에 한국어로 박아 둔다 — 그래서 영어 사용자가 캡처 창을 열면 한국어
+   문장이 떴다. 여기서만 `attr(data-placeholder)`로 되돌려, Placeholder
+   Extension이 심어 준 값(= `journal.capture.body.placeholder`의 현재 로케일
+   번역, `extensions/index.ts`)이 그대로 보이게 한다. 선택자가 원본보다 클래스
+   하나만큼 더 구체적이라 문서창의 문구는 건드리지 않는다. */
+.quick-capture-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+}
+
+/* §324-g 편집기 아래 리사이즈 핸들 — 6px 클릭 영역 안에 2px 그립을 그린다.
+   Splitter(layout.css)와 같은 형태: 평소엔 투명, hover에서만 악센트가 보인다. */
+.quick-capture-resize {
+  flex-shrink: 0;
+  align-self: center;
+  width: 32px;
+  height: 6px;
+  cursor: row-resize;
+}
+
+.quick-capture-resize::after {
+  display: block;
+  width: 100%;
+  height: 2px;
+  margin-top: 2px;
+  content: "";
+  background: transparent;
+  border-radius: 1px;
+  transition: background-color 0.15s;
+}
+
+.quick-capture-resize:hover::after {
+  background: var(--color-accent-default);
 }
 
 .quick-capture-error {

@@ -1,8 +1,10 @@
 // Baram Extension 번들 — M2 기본 편집 세트
 // StarterKit 대신 커스텀 Extension 조합 사용
 
+import type { Locale } from "../i18n";
 import type { Extensions } from "@tiptap/core";
 
+import { Extension } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import Dropcursor from "@tiptap/extension-dropcursor";
 import Gapcursor from "@tiptap/extension-gapcursor";
@@ -11,6 +13,7 @@ import History from "@tiptap/extension-history";
 import Placeholder from "@tiptap/extension-placeholder";
 import Text from "@tiptap/extension-text";
 
+import { t } from "../i18n";
 import { useSettingsStore } from "../stores/settings/store";
 import { logger } from "../utils/logger";
 // Mark Extensions
@@ -90,6 +93,22 @@ import { ViewportVirtualize } from "./plugins/viewport-virtualize";
 import { WysiwygVim } from "./plugins/vim";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
+/**
+ * §323 캡처 프로파일에서 **빼는** Extension의 `name`.
+ *
+ * ‼️ 넣을 것을 열거하지 않는 이유: 그러면 새 Extension이 document에만 붙고 캡처에는
+ * 조용히 빠진다. 뺄 것만 이름으로 적고 나머지는 전부 통과시킨다.
+ *
+ * 빼는 근거는 저마다 다르다 — vim은 저장 단축키와 충돌하고, 쿼리 블록은 캡처에 넣을
+ * 이유가 없으며, find-replace·AI diff는 다이얼로그에 붙일 크롬이 없다.
+ */
+export const CAPTURE_EXCLUDED_EXTENSIONS: ReadonlySet<string> = new Set([
+  "aiDiff",
+  "findReplace",
+  "queryBlock",
+  "wysiwygVim",
+]);
+
 interface BaramExtensionOptions {
   /** §perf-large-file C4: register windowing only on the large keep-alive
    *  editor (small docs are never wrapped). */
@@ -103,13 +122,55 @@ interface BaramExtensionOptions {
   onNavigateBlockRef?: (target: string, blockId: string) => void;
   /** §278.1 Returns whether the href was handled in-app; see `LinkOptions`. */
   onNavigateLocal?: (href: string) => boolean;
+  /**
+   * §323 캡처 다이얼로그용 축소 세트. 생략하면 문서 편집기 세트.
+   *
+   * §324-e 이 값은 Extension 목록만 정하지 않는다 — `DropHandler`의
+   * `deferMediaToHost`도 여기서 갈린다. 캡처는 아직 파일이 아니므로 미디어를
+   * 저장 시점까지 디스크에 쓰지 않는다.
+   */
+  profile?: "capture" | "document";
 }
+
+/**
+ * §324-e 캡처 창에서 `Mod+Enter`는 **저장**이다 — 하드 브레이크가 아니다.
+ *
+ * ‼️ 이것이 사용자가 두 번 보고한 `\` 결함의 **원인**이다. IME가 아니었다.
+ * `@tiptap/extension-hard-break`는 `Mod-Enter`를 `setHardBreak()`에 기본
+ * 바인딩한다(`dist/index.js:53`). 캡처 창에서 ⌘↩는 저장 제스처이므로, 저장할
+ * 때마다 ProseMirror 키맵이 먼저 하드 브레이크를 넣고 **그다음** 이벤트가
+ * 버블링해 다이얼로그가 저장했다. 그래서 모든 본문 끝에 하드 브레이크가 붙었다.
+ *
+ * 측정으로 확인했다 — 본문을 넣고 `Mod-Enter`를 키맵에 흘렸을 때:
+ *   before `"태스크 테스트"` → after `"태스크 테스트\"`
+ *   → `- [ ] 태스크 테스트\ ➕2026-09-02`  (사용자가 본 그 줄)
+ *
+ * ‼️ 태스크 모드만의 문제가 아니다. fleeting note도 같은 하드 브레이크를 받아
+ * 노트 끝에 `\`가 남았다 — 그쪽은 한 줄로 접지 않으므로 아무도 눈치채지 못했다.
+ * 그래서 정규화가 아니라 **여기서** 고친다: 원인을 없애면 두 경로가 함께 낫는다.
+ *
+ * `true`를 돌려주면 "처리됨"이므로 HardBreak의 바인딩이 실행되지 않는다. 저장은
+ * 그대로 동작한다 — DOM 이벤트는 `preventDefault`와 무관하게 계속 버블링하고,
+ * 다이얼로그의 `onKeyDown`이 그것을 받는다(테스트가 그 둘을 함께 고정한다).
+ *
+ * 문서 편집기에는 걸지 않는다. 거기서 `Mod+Enter`는 저장이 아니고, 하드 브레이크와
+ * 토글 접기가 정당한 동작이다.
+ */
+const CaptureSaveKey = Extension.create({
+  name: "captureSaveKey",
+  // HardBreak(기본 100)보다 먼저 키를 봐야 한다 — 먼저 `true`를 돌려주는 쪽이 이긴다.
+  priority: 1000,
+
+  addKeyboardShortcuts() {
+    return { "Mod-Enter": () => true };
+  },
+});
 
 /** M2 기본 편집 Extension 세트 */
 export function createBaramExtensions(
   options?: BaramExtensionOptions,
 ): Extensions {
-  return [
+  const all: Extensions = [
     // Core (required)
     Document,
     Text,
@@ -219,7 +280,12 @@ export function createBaramExtensions(
     SyntaxReveal,
 
     // Plugins — §3.3 Drop Handler (drag-and-drop images)
-    DropHandler,
+    // §324-e 캡처 프로필만 저장 시점으로 미룬다. 그 표면은 아직 파일이 아니라
+    // 상대참조를 걸어 둘 자리도, 취소로 되돌릴 방법도 없기 때문이다 — 근거는
+    // `DropHandlerOptions.deferMediaToHost`에. 문서 프로필은 즉시 쓴다(불변).
+    DropHandler.configure({
+      deferMediaToHost: options?.profile === "capture",
+    }),
 
     // Plugins — §31 Wikilink Autocomplete ([[)
     WikilinkSuggest,
@@ -302,9 +368,30 @@ export function createBaramExtensions(
       ? []
       : [
           Placeholder.configure({
-            placeholder: "Start writing…",
+            // §323 리뷰 Important 3: 문서창의 문구는 `editor/base.css`가
+            // `content:`에 박아 두므로 이 문자열은 그쪽에선 보이지 않는다.
+            // 캡처 창은 그 CSS를 `attr(data-placeholder)`로 되돌려 여기 값을
+            // 실제로 쓰므로, 로케일에 맞는 문구를 줘야 한다 — 그러지 않으면
+            // 영어 사용자가 한국어 안내 문장을 본다(그것이 이 결함이었다).
+            // 문자열이 아니라 함수인 이유: Extension 배열은 편집기 인스턴스마다
+            // 한 번만 만들어지는데(`use-capture-editor.ts`), Placeholder는
+            // 데코레이션을 매 state마다 다시 계산하므로 언어를 바꾼 뒤에도
+            // 다음 계산에서 현재 로케일을 읽는다.
+            placeholder:
+              options?.profile === "capture"
+                ? () =>
+                    t(
+                      "journal.capture.body.placeholder",
+                      useSettingsStore.getState().locale as Locale,
+                    )
+                : "Start writing…",
           }),
         ]),
+  ];
+  if (options?.profile !== "capture") return all;
+  return [
+    ...all.filter((e) => !CAPTURE_EXCLUDED_EXTENSIONS.has(e.name)),
+    CaptureSaveKey,
   ];
 }
 

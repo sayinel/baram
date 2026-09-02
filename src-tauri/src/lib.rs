@@ -289,6 +289,7 @@ pub fn run() {
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
             fs_cmd::export_binary_file,
+            fs_cmd::read_media_data_url,
             thumbnail_cmd::photo_thumbnail,
             config_cmd::get_config,
             config_cmd::set_config,

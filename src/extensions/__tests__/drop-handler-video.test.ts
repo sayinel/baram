@@ -360,3 +360,96 @@ describe("handlePaste through the real plugin, journalDirectory unset (§297 I-2
     editor.destroy();
   });
 });
+
+// §324-e `deferMediaToHost` splits the two surfaces. Quick Capture is not a
+// file yet — no path, no base directory, and the user may never save — so its
+// media waits as a data URL until save. The DOCUMENT editor is the opposite:
+// it HAS a path and an `assets/` folder to hang a relative reference on, and
+// writing immediately is correct there.
+//
+// ‼️ These two tests are a pair and only mean something together. The first
+// alone would pass on an implementation that defers everywhere (nothing else
+// in this describe would notice); the second alone would pass on one that
+// defers nowhere — which is the shipped defect. Read as a pair they pin that
+// the profile, and only the profile, decides.
+describe("§324-e the document editor still writes immediately", () => {
+  const DOC_PATH = "/vault/daily/2026-08-22.md";
+
+  function createTestEditor(): Editor {
+    return new Editor({ extensions: createBaramExtensions(), content: "" });
+  }
+
+  function makePasteEvent(file: File): ClipboardEvent {
+    return {
+      clipboardData: { files: [file], getData: () => "" },
+      preventDefault: vi.fn(),
+    } as unknown as ClipboardEvent;
+  }
+
+  beforeEach(() => {
+    showToast.mockClear();
+    savePhotoToAssets.mockClear();
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: DOC_PATH }],
+    } as never);
+    useFileStore.setState({ rootPath: "/vault" } as never);
+    useSettingsStore.setState({ journalDirectory: "/vault/daily" } as never);
+  });
+
+  it("saves a journal image next to the active tab — the default document editor supplies no override", async () => {
+    const editor = createTestEditor();
+    const event = makePasteEvent(
+      new File(["x"], "shot.png", { type: "image/png" }),
+    );
+
+    const handled = editor.view.someProp("handlePaste", (f) =>
+      f(editor.view, event, Slice.empty),
+    );
+    expect(handled).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(savePhotoToAssets).toHaveBeenCalled();
+    });
+
+    expect(savePhotoToAssets).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      "shot.png",
+      "/vault",
+      "/vault/daily",
+      DOC_PATH,
+    );
+    editor.destroy();
+  });
+
+  // 같은 store 상태, 같은 붙여넣기 — 프로필만 다르다. 이 대조가 없으면 위
+  // 테스트는 "즉시 쓰기"가 아니라 "이 코드가 존재한다"만 말한다.
+  it("but the capture profile writes nothing — same stores, same paste", async () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions({ profile: "capture" }),
+      content: "",
+    });
+    const event = makePasteEvent(
+      new File(["x"], "shot.png", { type: "image/png" }),
+    );
+
+    const handled = editor.view.someProp("handlePaste", (f) =>
+      f(editor.view, event, Slice.empty),
+    );
+    expect(handled).toBe(true);
+
+    const imageSrc = (): null | string => {
+      let src: null | string = null;
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "image") src = n.attrs.src as string;
+      });
+      return src;
+    };
+    await vi.waitFor(() => {
+      expect(imageSrc()).not.toBeNull();
+    });
+    expect(savePhotoToAssets).not.toHaveBeenCalled();
+    expect(imageSrc()).toMatch(/^data:image\/png;base64,/);
+    editor.destroy();
+  });
+});

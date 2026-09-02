@@ -52,7 +52,9 @@
    than simply overflowing. Pinning the width to the content breaks the loop. */
 .mention-menu-popup {
   position: fixed;
-  z-index: 50;
+
+  /* Mounted on `document.body` (suggestion-renderer.ts) — see `--z-editor-popup`. */
+  z-index: var(--z-editor-popup);
   width: max-content;
 }
 

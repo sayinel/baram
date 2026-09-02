@@ -103,6 +103,7 @@
     "allow-preview-task-state-line",
     "allow-preview-task-tag-line",
     "allow-read-file",
+    "allow-read-media-data-url",
     "allow-refresh-index",
     "allow-remove-config",
     "allow-remove-context",

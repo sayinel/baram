@@ -79,6 +79,49 @@ const BARE_CREATED_RE = /➕/g;
 // 걷지 않는다 — 이 게이트가 막으려던 실패 모드 그대로다. 파일 시스템의 대소문자 구분 여부와는
 // 무관하다. 걸리는 것은 문자열 비교다.
 const MARKDOWN_RE = /\.(?:markdown|md)$/;
+/** `![alt](src)` — 앞의 `!`만 떼면 링크가 된다. */
+const MARKDOWN_IMAGE_RE = /!(\[[^\]]*\]\([^)]*\))/g;
+/** 폭이 지정된 이미지의 직렬화 형태. */
+const HTML_IMAGE_RE = /<img\s[^>]*\/?>/g;
+/**
+ * 하드 브레이크의 `\` 철자 — 줄 끝의 백슬래시와 그 줄바꿈.
+ *
+ * ‼️ `collapse`는 마크다운을 모르는 순수 문자열 처리다(`/\s+/g` → `" "`). 하드
+ * 브레이크의 **의미가 줄 경계 자체**이므로, 줄바꿈만 접히면 그 앞의 `\`가 홀로
+ * 남아 파일에 그대로 적힌다 — 사용자가 한글을 치고 ⌘↩ 하면 `inbox.md`의 줄이
+ * `\`로 끝나던 결함이 이것이다.
+ *
+ * ‼️ **줄바꿈이 이미 사라진 뒤에도** 잡아야 한다. `getMarkdown()`은
+ * `serializeLiveDoc(editor).trim()`이므로, 본문 **끝**의 하드 브레이크는
+ * `태스크 테스트\`로 — 백슬래시 뒤에 아무것도 없이 — 도착한다. 처음 이 패턴은
+ * 줄바꿈을 필수로 요구해서 그 경우에 **한 번도 발동하지 못했고**, 사용자가 같은
+ * 결함을 두 번 보고했다. 그래서 끝을 `$`로도 받는다 — 이 정규식이 상류의
+ * `.trim()` 유무에 의존하지 않아야 한다.
+ *
+ * 그 대가는 명시해 둔다: 사용자가 **정말로** 백슬래시로 끝나는 글을 쓰면 그 하나가
+ * 사라진다. 산문 끝의 홀로 선 백슬래시는 거의 언제나 하드 브레이크의 잔해이고,
+ * 남겨 두는 쪽이 지금까지의 결함이었다. 문장 가운데의 백슬래시(`C:\Users\me`)는
+ * 건드리지 않는다 — 테스트가 그것을 고정한다.
+ *
+ * ‼️ 하드 브레이크의 **다른 철자**(줄 끝 공백 두 개 이상)는 여기서 다루지 않는다 —
+ * 다룰 필요가 없기 때문이다. 그쪽은 전부 공백이라 `collapse`가 이미 올바르게
+ * 접는다. 처음에는 "두 철자가 같은 뜻이니 함께"라며 `[ \t]{2,}`를 넣었는데,
+ * 뮤테이션이 그것을 빼도 아무 테스트가 실패하지 않음을 보여 줬다 — 구분할 수 없는
+ * 분기는 죽은 코드다. 두 철자가 같은 결과를 낸다는 것은 여전히 테스트가 단정하지만,
+ * 그 테스트는 이 패턴을 지키지 않는다(공백 쪽은 `collapse`가 지킨다).
+ *
+ * 그래서 `collapse` **앞에서** 공백으로 바꾼다. `normalizeBody`가 `collapse`를 두 번
+ * 부르므로(안쪽 → 바깥쪽) 안쪽보다 먼저 처리해야 두 번째 패스가 되돌리지 못한다.
+ *
+ * ‼️ 여기서 고치는 것은 하드 브레이크뿐이다. 한 줄로 접히면서 흔적을 남기는 구성은
+ * 더 있지만(`# `, `> `, `- `, `---`, 코드 펜스, 표 구분행, 각주 정의) 그것들은
+ * **사용자가 실제로 입력한 문자**다. 이 파일의 `takeToken`이 이미 같은 선을 긋는다:
+ * 해석되지 않는 토큰은 그대로 둔다 — 조용히 지우지 않는다. 하드 브레이크는 문자가
+ * 아니라 공백 의미이므로 공백으로 바꾸는 것이 충실한 변환이고, `#`를 지우는 것은
+ * 사용자의 글자를 지우는 것이다. 조사 결과는 리포트에 표로 남겼다.
+ */
+const HARD_BREAK_RE = /\\(?:\r?\n|$)/g;
+
 /** POSIX 절대 경로와 Windows 드라이브 문자 — 수집함 설정에는 둘 다 올 수 없다. */
 const ABSOLUTE_RE = /^(?:\/|[A-Za-z]:[/\\])/;
 
@@ -98,7 +141,11 @@ export function buildCaptureLine(
   today: string,
   tags: string[] = [],
 ): null | string {
-  const normalized = normalizeBody(body);
+  // §324-e 태스크는 **한 줄**이므로 이미지는 링크가 된다 — 근거는
+  // `imagesToLinks`의 주석에. 여기서 부르는 이유는 이 함수를 통과하지 않고
+  // 태스크 줄이 만들어지는 경로가 없어야 하기 때문이다(호출부에 맡기면 다음
+  // 호출부가 그것을 잊는다).
+  const normalized = normalizeBody(imagesToLinks(body).text);
   const { fields, text } = extractFields(normalized, isoToLocalDate(today));
   if (!text) return null;
   // §303 표 순서로 정렬한다. 이 줄이 없으면 `extractFields`가 우선순위를 먼저 담고
@@ -110,6 +157,52 @@ export function buildCaptureLine(
     ...orderFields([...fields, `➕${today}`]),
   ];
   return `- [ ] ${parts.join(" ")}`;
+}
+
+/**
+ * §324-e 마크다운 이미지를 **링크**로 바꾼다. 바뀐 개수도 돌려준다 — 호출부가
+ * 사용자에게 알려야 하기 때문이다(이미지를 넣었는데 링크가 되는 것은 조용히
+ * 일어나서는 안 된다).
+ *
+ * ‼️ 왜 링크인가. 태스크는 `- [ ] {내용}` **한 줄**이고(§18), 아젠다도 태스크당 한
+ * 줄을 보여 준다. 이미지 노드는 `group: "block"`이므로(`extensions/nodes/image.ts`)
+ * 한 줄 안에 인라인으로 살 자리가 없다. 링크는 인라인이라 그 계약이 유지되고,
+ * 파일은 라운드트립을 견딘다.
+ *
+ * ‼️ 관측 사실과 추정을 구분해 적는다. 사용자는 "편집 모드를 드나든 뒤 세 줄로
+ * 갈라진다"고 보고했다. 나는 그 분할을 **재현하지 못했다** — 파이프라인
+ * 라운드트립, 파일 전체 파싱, 실제 `Editor` 인스턴스, 4회 반복 순환 모두에서
+ * 이미지는 `taskItem > paragraph > [text, image, text]`로 인라인에 남고 한 줄로
+ * 다시 직렬화됐다. 그러므로 "파싱이 이미지를 문단 밖으로 밀어낸다"는 설명은
+ * 사실이 아니다.
+ *
+ * 가장 그럴듯한 실제 기제는 **DOM**이다: 이미지 NodeView는 `<div>`를 그리고, 그것이
+ * `<p>` 안에 들어가면 HTML 파서가 문단을 쪼갠다(`<div>`는 `<p>`의 자손이 될 수
+ * 없다). DOM을 다시 읽는 경로가 있으면 그 분할이 문서에 반영된다. jsdom의 맨
+ * `Editor`는 React NodeView를 만들지 않으므로 이 검증은 실물에서만 가능하다.
+ * 어느 기제든 **링크로 바꾸면 사라진다** — `<a>`는 `<p>` 안에서 유효하다.
+ *
+ * 두 형태를 모두 다룬다: `![alt](src)`와, 폭이 지정됐을 때 직렬화되는
+ * `<img src=… alt=…>`(`pipeline/transformers/image-transformer.ts`). alt는 링크
+ * 텍스트로 그대로 옮긴다 — 사용자가 보는 이름이다.
+ */
+export function imagesToLinks(text: string): {
+  converted: number;
+  text: string;
+} {
+  let converted = 0;
+  let out = text.replace(MARKDOWN_IMAGE_RE, (_all, rest: string) => {
+    converted++;
+    return rest;
+  });
+  out = out.replace(HTML_IMAGE_RE, (all: string) => {
+    const src = /\ssrc\s*=\s*"([^"]*)"/.exec(all)?.[1];
+    if (!src) return all;
+    const alt = /\salt\s*=\s*"([^"]*)"/.exec(all)?.[1] ?? "";
+    converted++;
+    return `[${alt}](${src})`;
+  });
+  return { converted, text: out };
 }
 
 /** 한 줄을 수집함에 붙이고 그 줄의 원문을 돌려준다. */
@@ -348,7 +441,7 @@ function isoToLocalDate(iso: string): Date {
 /** `- [ ] `·`➕date`·맨 `➕`를 떼고 공백을 접은 본문. */
 function normalizeBody(body: string): string {
   return collapse(
-    collapse(body)
+    collapse(body.replace(HARD_BREAK_RE, " "))
       .replace(CHECKBOX_RE, "")
       .replace(CREATED_DATE_RE, "")
       .replace(BARE_CREATED_RE, ""),

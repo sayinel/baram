@@ -101,6 +101,38 @@ export async function importFile(from: string, to: string): Promise<void> {
 }
 
 /**
+ * §324-e Read a media file from ANY location (including outside the vault) as a
+ * complete `data:<mime>;base64,…` URL.
+ *
+ * The Quick Capture dialog is the only caller: a capture is not a file yet, so
+ * nothing it holds may reach the disk before Save, and a `data:` URL is the one
+ * form that renders on a surface with no base directory. Everything that keeps
+ * this narrow — the media-extension allowlist that doubles as the MIME table, the
+ * byte cap, and why it grants the Host tier nothing it could not already do — is
+ * documented in `src-tauri/src/fs/media.rs`. Read that before adding a caller.
+ *
+ * Rejects with `TOO_LARGE:{size}:{cap}` when the file is over the cap; callers
+ * should use `isMediaTooLargeError` rather than matching that shape by hand.
+ */
+export async function readMediaDataUrl(path: string): Promise<string> {
+  return invoke<string>("read_media_data_url", { path });
+}
+
+/**
+ * §324-e True when `e` is `readMediaDataUrl` refusing a file for being over the
+ * inline cap, as opposed to a missing file or an unreadable one. Returns the two
+ * byte counts so the caller can say how big is too big — a refusal that does not
+ * is the silent failure this whole path exists to remove.
+ */
+export function mediaTooLargeError(
+  e: unknown,
+): null | { cap: number; size: number } {
+  if (typeof e !== "string" || !e.startsWith("TOO_LARGE:")) return null;
+  const [, size, cap] = e.split(":");
+  return { cap: Number(cap), size: Number(size) };
+}
+
+/**
  * §277 True when `e` is a rejection from `readFile` (or another `read_file`-
  * backed call) caused by the file not existing, as opposed to a permission or
  * decode failure. Callers that must not conflate "safe to treat as a new

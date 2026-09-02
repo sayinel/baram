@@ -24,6 +24,43 @@
   --shadow-md: 0 4px 12px rgb(0 0 0 / 15%);
   --shadow-lg: 0 8px 24px rgb(0 0 0 / 20%);
   --shadow-xl: 0 8px 32px rgb(0 0 0 / 30%);
+
+  /* ‼️ Editor popups that mount to `document.body` — the suggestion menus
+     (slash `/`, wikilink `[[`, mention `@`, `#tag`, skill variable) and the
+     inline-math preview. Every one of them ESCAPES the editor's own stacking
+     context, so it does not layer against the editor: it layers against
+     whatever dialog overlay the editor happens to live inside.
+
+     That is not hypothetical. §323 put a full editor inside the Quick Capture
+     dialog, whose `.quick-capture-overlay` is `z-index: 200`, and `#root`
+     establishes no stacking context — so the three menus still sitting at
+     `z-index: 50` painted UNDERNEATH the dialog's opaque background while
+     their `onKeyDown` kept swallowing arrows and Enter. A menu you cannot see
+     that still eats your keystrokes. `.tag-menu-popup` was already at 1000,
+     which is the only reason `#tag` autocomplete worked there and the bug went
+     unnoticed for a whole branch.
+
+     THE RULE, for the next body-mounted editor popup: use this variable, never
+     a bare number. Its value clears every ordinary dialog overlay in this
+     stylesheet — the highest of those is `.settings-overlay` at 1000 — so a
+     popup opted into it stays visible above any dialog that grows an editor
+     later — nobody has to re-audit "which dialogs host an editor" first.
+
+     THE CEILING, and why the value is not simply larger: it stays BELOW
+     `.plugin-consent-overlay` (1100), which is not an ordinary dialog. That
+     one is the last thing between a user and running third-party code, and
+     `plugins.css` says in so many words that its visibility must not depend
+     on staying a descendant of anybody's stacking context. A suggestion menu
+     painting over a security prompt is exactly the dependency that comment
+     forbids, and "no editor is reachable from that dialog today" is the kind
+     of argument that stops being true without anyone noticing — the ORDER is
+     the guarantee, so the order is what this number keeps.
+
+     A popup that lives INSIDE the editor DOM (`.tiptap .callout-type-picker`,
+     `.tiptap .footnote-ref-tooltip`) is not one of these and must not use it:
+     it is already inside the dialog's stacking context, where a value this
+     large would only let it escape its own container. */
+  --z-editor-popup: 1050;
 }
 
 /* color-scheme: 토큰이 못 칠하는 UA 표면(네이티브 스크롤바, form control 기본색,

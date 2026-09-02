@@ -17,6 +17,10 @@ import { useUIStore } from "../../stores/ui/ui";
 import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
 import { savePhotoToAssets } from "../../utils/journal/journal-photo";
 import { saveMediaToDocAssets } from "../../utils/media-assets";
+import {
+  mediaSizeRefusal,
+  pendingMediaBytes,
+} from "../../utils/media-data-url";
 import { classifyMediaSrc } from "../../utils/media-src";
 
 /**
@@ -76,6 +80,55 @@ export async function insertJournalMediaFromBytes(
   }
 }
 
+/**
+ * §324-e 저장 전까지 디스크에 쓰지 않는 표면(캡처 창)의 삽입 경로.
+ *
+ * ‼️ `alt`에 `file.name`을 그대로 싣는 것이 계약이다. data URL은 이름을 담지
+ * 못하므로 alt가 원본 파일명이 살아남는 유일한 자리이고, 저장 시점의 추출이
+ * 그 이름으로 파일을 쓴다(`utils/media-data-url.ts`의 `preferredMediaName`).
+ *
+ * ‼️ 상한을 여기서 다시 검사하는 이유: 붙여넣기는 Rust를 거치지 않는다. 클립보드의
+ * `File`은 이미 웹뷰 안에 있어 `FileReader`가 바로 읽으므로, 드랍 경로에서 상한을
+ * 지키는 `read_media_data_url`의 거절이 이 경로에는 적용되지 않는다. 두 경로가 같은
+ * 상한을 써야 같은 파일이 붙여넣기로는 들어가고 드랍으로는 거절되는 일이 없다.
+ *
+ * 거절은 **반드시 보인다** — 조용히 넘기면 사용자에게는 "붙여넣기가 안 되는 앱"이
+ * 되고, 그것이 이 작업이 계속 고쳐 온 실패 방식이다.
+ */
+async function insertDeferredMedia(
+  view: EditorView,
+  file: File,
+  task: ReturnType<typeof registerEditorMutationTask>,
+  pos?: number,
+): Promise<void> {
+  // 파일당 상한과 총량 예산을 한 함수가 판정한다 — 드랍과 같은 함수여야 같은
+  // 파일에 같은 답이 나온다(`mediaSizeRefusal`).
+  const refusal = mediaSizeRefusal(
+    file.size,
+    pendingMediaBytes(view.state.doc),
+  );
+  if (refusal) {
+    const { locale } = useSettingsStore.getState();
+    useUIStore.getState().showToast(
+      t(refusal.key, locale as Locale, {
+        name: file.name,
+        ...refusal.params,
+      }),
+      "error",
+    );
+    return;
+  }
+  let dataUrl: string;
+  try {
+    dataUrl = await readFileAsDataURL(file);
+  } catch {
+    toastMediaError("journal.capture.mediaReadFailed", file.name);
+    return;
+  }
+  if (!task.isLive()) return;
+  insertMediaAtPos(view, dataUrl, file.name, pos);
+}
+
 /** Insert an image or video node into the editor at the given position or selection */
 export function insertMediaAtPos(
   view: EditorView,
@@ -128,7 +181,7 @@ export async function insertVideoFromBytes(
 }
 
 /** Create the drop handler ProseMirror plugin */
-function createDropHandlerPlugin(): Plugin {
+function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
   return new Plugin({
     props: {
       handleDrop(view, event) {
@@ -146,7 +199,11 @@ function createDropHandlerPlugin(): Plugin {
         if (!pos) return false;
         const insertPos = pos.pos;
 
-        const ctx = getJournalContext();
+        // §324-e 저장을 호스트에 미루는 표면(캡처 창)은 목적지를 물을 이유가
+        // 없다 — 지금 디스크에 쓰지 않으므로 `getJournalContext`를 부르지도
+        // 않는다. `null`이 곧 "이 표면은 아직 파일이 아니다"이고, 아래 루프의
+        // 첫 분기가 그 경우다.
+        const ctx = options.deferMediaToHost ? null : getJournalContext();
 
         // §298 §12-9b (design §5c): file reads land after an async gap —
         // once the task dies (state install / vim mode exit), the reads
@@ -169,7 +226,11 @@ function createDropHandlerPlugin(): Plugin {
         void (async () => {
           for (const file of files) {
             if (!task.isLive()) break;
-            if (ctx.isJournal) {
+            if (!ctx) {
+              // §324-e 캡처: 사진이든 동영상이든 data URL로 들어간다. 실제 파일
+              // 쓰기는 저장이 한다(`utils/media-data-url.ts`).
+              await insertDeferredMedia(view, file, task, insertPos);
+            } else if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
               if (!task.isLive()) break;
               await insertJournalMediaFromBytes(
@@ -231,7 +292,8 @@ function createDropHandlerPlugin(): Plugin {
 
         event.preventDefault();
 
-        const ctx = getJournalContext();
+        // §324-e — same reasoning as handleDrop above.
+        const ctx = options.deferMediaToHost ? null : getJournalContext();
 
         // §298 §12-9b — same contract as handleDrop above.
         const task = registerEditorMutationTask(view);
@@ -241,7 +303,10 @@ function createDropHandlerPlugin(): Plugin {
         void (async () => {
           for (const file of files) {
             if (!task.isLive()) break;
-            if (ctx.isJournal) {
+            if (!ctx) {
+              // §324-e 캡처 — handleDrop의 같은 분기와 같은 계약.
+              await insertDeferredMedia(view, file, task);
+            } else if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
               if (!task.isLive()) break;
               await insertJournalMediaFromBytes(view, bytes, file.name, ctx);
@@ -315,6 +380,14 @@ function detectTabSeparatedData(text: string): null | string[][] {
  * and correct, and `rootPath`/`journalDir` being empty/missing is exactly
  * why `isJournal` is false, not a reason to also hide the file path from
  * callers that don't care about journal status.
+ *
+ * ‼️ §324-e: this function answers "where does the ACTIVE TAB's media go", and
+ * only a surface that IS one of those tabs may ask it. `activeTabId`/`tabs` is
+ * the MAIN document editor's global state; a second, independent editor
+ * instance (the Quick Capture dialog) is never one of those tabs, so asking on
+ * its behalf attributes media to whatever unrelated document happens to be
+ * open in the main window. That is why the callers above skip this function
+ * entirely when `deferMediaToHost` is set — see that option's doc comment.
  */
 function getJournalContext(): {
   filePath: string;
@@ -322,12 +395,13 @@ function getJournalContext(): {
   journalDir: string;
   rootPath: string;
 } {
+  const rootPath = useFileStore.getState().rootPath ?? "";
+  const journalDir = useSettingsStore.getState().journalDirectory ?? "";
+
   const activeTabId = useEditorStore.getState().activeTabId;
   const tabs = useEditorStore.getState().tabs;
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const filePath = activeTab?.filePath ?? "";
-  const rootPath = useFileStore.getState().rootPath ?? "";
-  const journalDir = useSettingsStore.getState().journalDirectory ?? "";
 
   if (!rootPath || !journalDir || !filePath)
     return { isJournal: false, rootPath, journalDir, filePath };
@@ -402,11 +476,45 @@ function toastMediaError(key: string, name: string): void {
   useUIStore.getState().showToast(t(key, locale as Locale, { name }), "error");
 }
 
+/** §324-e Which surface this handler is installed on — see the field. */
+export interface DropHandlerOptions {
+  /**
+   * §324-e `false` (the default): this host is a document tab — it has a path
+   * and an `assets/` folder to hang a relative reference on, so a dropped or
+   * pasted file is copied to disk immediately. That is correct there and does
+   * not change.
+   *
+   * `true`: **this host is not a file yet.** It has no path, no base
+   * directory, and the user may never save it. Media therefore goes in as a
+   * data URL and nothing touches the disk until the host's own save extracts
+   * it (`utils/media-data-url.ts`). One rule explains all of it: what has not
+   * been saved is not on disk.
+   *
+   * Set by the Quick Capture dialog. Three defects came from the earlier
+   * design that wrote at insert time — cancelling the dialog still left the
+   * image in `assets/`, the image often painted as bare alt text (a relative
+   * reference has no base directory to resolve against on a surface that is
+   * not a tab), and both were true of paste as well as drop.
+   *
+   * ‼️ The destination is NOT discarded, it moves: the host decides where
+   * extraction writes, at save time, from the same resolver it always owned.
+   * Recomputing that decision anywhere else is what previously made this path
+   * blind to task mode.
+   */
+  deferMediaToHost: boolean;
+}
+
 /** Tiptap Extension wrapper */
-export const DropHandler = Extension.create({
+export const DropHandler = Extension.create<DropHandlerOptions>({
   name: "dropHandler",
 
+  addOptions() {
+    return {
+      deferMediaToHost: false,
+    };
+  },
+
   addProseMirrorPlugins() {
-    return [createDropHandlerPlugin()];
+    return [createDropHandlerPlugin(this.options)];
   },
 });
