@@ -17,7 +17,10 @@ import { useUIStore } from "../../stores/ui/ui";
 import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
 import { savePhotoToAssets } from "../../utils/journal/journal-photo";
 import { saveMediaToDocAssets } from "../../utils/media-assets";
-import { MAX_INLINE_MEDIA_BYTES } from "../../utils/media-data-url";
+import {
+  mediaSizeRefusal,
+  pendingMediaBytes,
+} from "../../utils/media-data-url";
 import { classifyMediaSrc } from "../../utils/media-src";
 
 /**
@@ -98,13 +101,18 @@ async function insertDeferredMedia(
   task: ReturnType<typeof registerEditorMutationTask>,
   pos?: number,
 ): Promise<void> {
-  if (file.size > MAX_INLINE_MEDIA_BYTES) {
+  // 파일당 상한과 총량 예산을 한 함수가 판정한다 — 드랍과 같은 함수여야 같은
+  // 파일에 같은 답이 나온다(`mediaSizeRefusal`).
+  const refusal = mediaSizeRefusal(
+    file.size,
+    pendingMediaBytes(view.state.doc),
+  );
+  if (refusal) {
     const { locale } = useSettingsStore.getState();
     useUIStore.getState().showToast(
-      t("journal.capture.mediaTooLarge", locale as Locale, {
-        limit: String(Math.floor(MAX_INLINE_MEDIA_BYTES / (1024 * 1024))),
+      t(refusal.key, locale as Locale, {
         name: file.name,
-        size: String(Math.ceil(file.size / (1024 * 1024))),
+        ...refusal.params,
       }),
       "error",
     );

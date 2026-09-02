@@ -24,7 +24,10 @@ import { copyBytesToDir } from "./media-copy";
 import { isMediaAtom } from "./media-src";
 
 /**
- * §324-e data URL로 바로 넣을 수 있는 최대 크기 (25 MiB).
+ * §324-e **파일 하나**를 data URL로 넣을 수 있는 최대 크기 (25 MiB).
+ *
+ * ‼️ PER FILE. 이 값은 어느 한 파일이 기여하는 양만 묶는다 — 웹뷰가 들고 있는
+ * 총량이 아니다. 총량은 `MAX_PENDING_MEDIA_BYTES`가 문서 기준으로 묶는다.
  *
  * ‼️ 이 값의 **주인은 Rust**다 — `MAX_INLINE_MEDIA_BYTES`
  * (`src-tauri/src/fs/media.rs`)가 드랍 경로에서 실제로 거절을 수행하고, 그 상수의
@@ -38,6 +41,95 @@ import { isMediaAtom } from "./media-src";
  * 값과 비교한다(§69의 revocation key·byte cap과 같은 드리프트 가드 형태).
  */
 export const MAX_INLINE_MEDIA_BYTES = 25 * 1024 * 1024;
+
+/**
+ * §324-e 한 캡처가 저장 전에 들고 있을 수 있는 pending 미디어 **총량** (64 MiB).
+ *
+ * ‼️ 파일당 상한만으로는 "웹뷰가 들고 있는 바이트"가 묶이지 않는다. 드랍은 파일마다
+ * 루프를 돌므로 24 MiB 파일 스무 개는 **어느 하나도 상한을 위반하지 않으면서**
+ * ~480 MiB(base64로 ~640 MiB, 그것도 노드 attr과 DOM attr에 두 번)가 된다. 한때
+ * 파일당 상한의 주석이 "저장 전 웹뷰 메모리를 묶는다"고 적혀 있었다 — 코드가 갖지
+ * 않은 성질을 말이 주장하고 있었고, 문장을 누그러뜨리는 대신 이 가드를 더했다.
+ *
+ * **문서가 지금 들고 있는 양**을 기준으로 잰다(`pendingMediaBytes`). 드랍 한 번에
+ * 대한 예산으로 재면 스무 개를 두 번 떨어뜨려 우회되지만, 문서 기준에는 그 우회가
+ * 없다 — 두 번째 드랍은 첫 번째가 남긴 양을 이미 보고 있다.
+ *
+ * 64 MiB인 이유: 25 MiB 파일 두 개에 여유를 얹은 값이고, 흔한 스크린샷(2~8 MiB)
+ * 기준으로는 열 장이 넘는다. 캡처는 사진첩이 아니라 짧은 메모이므로 실제 사용에서는
+ * 닿지 않는다. 닿으면 이유를 말하고 거절한다.
+ *
+ * ‼️ 파일당 상한(25 MiB)보다 **위**에 있다는 것이 설계다 — 파일 하나로는 예산을
+ * 넘길 수 없고, 넘길 만한 크기는 파일당 상한이 먼저 잡는다. 그래서 이 가드를
+ * 테스트하려면 문서에 실제로 수십 MiB치를 심어야 한다(그 테스트들이 그렇게 한다).
+ */
+export const MAX_PENDING_MEDIA_BYTES = 64 * 1024 * 1024;
+
+/**
+ * 문서가 지금 들고 있는 pending 미디어의 디코딩 후 바이트 수(근사).
+ *
+ * ‼️ 재기 위해 디코딩하지 않는다 — 스무 장을 재려고 스무 장을 디코딩하면 이 함수가
+ * 막으려는 비용을 그대로 치른다.
+ */
+export function pendingMediaBytes(doc: PMNode): number {
+  return collectPendingMedia(doc).reduce(
+    (total, item) => total + dataUrlBytes(item.src),
+    0,
+  );
+}
+
+/**
+ * 하나의 base64 data URL이 디코딩되면 몇 바이트인가 — 디코딩하지 않고 산술로.
+ * base64는 4문자가 3바이트이므로 payload 길이에서 얻는다(패딩 `=` 보정 포함).
+ * 오차는 파일당 2바이트 이하이므로 상한 판정에 영향이 없다.
+ *
+ * 드랍 경로가 이것을 쓴다: Rust가 파일을 읽어 data URL로 돌려주므로 그 시점에야
+ * 실제 크기를 알 수 있고, 그때 총량을 판정해야 붙여넣기와 **같은 세기**의 가드가
+ * 된다. 읽기 전에는 크기를 모르므로 그 전에 재려 하면 0밖에 넘길 수 없다.
+ */
+export function dataUrlBytes(src: string): number {
+  const payload = src.slice(src.indexOf(",") + 1);
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  return Math.floor((payload.length * 3) / 4) - padding;
+}
+
+/**
+ * §324-e 이 파일을 지금 넣어도 되는가 — 넣어도 되면 `null`, 아니면 사용자에게 보일
+ * 문구의 키와 그 문구가 필요한 숫자.
+ *
+ * ‼️ 두 판정을 **한 곳에** 둔다. 드랍과 붙여넣기가 각자 판정하면 같은 파일이 한쪽에서만
+ * 거절되고, 그 어긋남은 사용자 눈에 무작위로 보인다 — round 1에서 목적지 계산이 두 곳에
+ * 있었던 것과 같은 결함이다. MiB 변환까지 여기서 하는 이유도 같다: 올림/내림이 갈라지면
+ * 두 경로가 같은 파일에 다른 숫자를 말한다.
+ *
+ * 파일당 상한을 먼저 본다 — 그쪽이 사용자가 바꿀 수 있는 것(이 파일)을 가리키기
+ * 때문이다. 총량 초과는 "이미 넣은 것을 지우라"는 다른 조치를 요구한다.
+ */
+export function mediaSizeRefusal(
+  fileBytes: number,
+  pendingBytes: number,
+): null | { key: string; params: Record<string, string> } {
+  const mib = (n: number) => String(Math.ceil(n / (1024 * 1024)));
+  if (fileBytes > MAX_INLINE_MEDIA_BYTES) {
+    return {
+      key: "journal.capture.mediaTooLarge",
+      params: {
+        limit: String(Math.floor(MAX_INLINE_MEDIA_BYTES / (1024 * 1024))),
+        size: mib(fileBytes),
+      },
+    };
+  }
+  if (pendingBytes + fileBytes > MAX_PENDING_MEDIA_BYTES) {
+    return {
+      key: "journal.capture.mediaBudgetFull",
+      params: {
+        budget: String(Math.floor(MAX_PENDING_MEDIA_BYTES / (1024 * 1024))),
+        held: mib(pendingBytes),
+      },
+    };
+  }
+  return null;
+}
 
 /** 아직 디스크에 없는 미디어 한 건 — 문서 안의 data URL과 그 alt(원본 파일명). */
 export interface PendingMedia {

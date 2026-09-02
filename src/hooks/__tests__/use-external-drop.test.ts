@@ -590,6 +590,51 @@ describe("handleCaptureDrop — 캡처 창은 저장 전까지 쓰지 않는다 
     editor.destroy();
   });
 
+  // ‼️ 총량 예산 — 붙여넣기 쪽과 같은 판정, 같은 세기. 읽기 뒤에 재기 때문에
+  // "이 파일을 더하면 넘친다"까지 잡는다(읽기 전에는 크기를 모른다).
+  //
+  // 40 MiB를 문서에 심고 25 MiB짜리를 떨어뜨린다 = 65 MiB > 64 MiB 예산. 어느
+  // 파일도 파일당 상한(25 MiB)을 위반하지 않으므로, 파일당 검사만 있는 구현은
+  // 이것을 통과시킨다. 대역은 쓰지 않는다 — 심는 비용은 base64 문자열 하나뿐이고
+  // `pendingMediaBytes`는 길이만 잰다.
+  it("문서가 이미 들고 있는 양 때문에 거절될 수 있다", async () => {
+    const payloadFor = (bytes: number) =>
+      "A".repeat(Math.ceil((bytes * 4) / 3));
+    const editor = createTestEditor();
+    editor.commands.setContent(
+      `<p><img src="data:image/png;base64,${payloadFor(40 * 1024 * 1024)}" alt="held.png"></p>`,
+    );
+    const before = imageAttrs(editor).length;
+    readMediaDataUrlMock.mockResolvedValue(
+      `data:image/png;base64,${payloadFor(25 * 1024 * 1024)}`,
+    );
+
+    await handleCaptureDrop(["/Users/x/Desktop/big.png"], editor, 0);
+
+    expect(imageAttrs(editor)).toHaveLength(before);
+    const [message, type] = showToastMock.mock.calls[0] as [string, string];
+    expect(type).toBe("error");
+    expect(message).toContain("big.png");
+    expect(message).toContain("64");
+    editor.destroy();
+  });
+
+  // 대조군 — 같은 파일이 빈 문서에서는 들어간다.
+  it("같은 파일이 빈 문서에서는 들어간다", async () => {
+    const payloadFor = (bytes: number) =>
+      "A".repeat(Math.ceil((bytes * 4) / 3));
+    const editor = createTestEditor();
+    readMediaDataUrlMock.mockResolvedValue(
+      `data:image/png;base64,${payloadFor(25 * 1024 * 1024)}`,
+    );
+
+    await handleCaptureDrop(["/Users/x/Desktop/big.png"], editor, 0);
+
+    expect(imageAttrs(editor)).toHaveLength(1);
+    expect(showToastMock).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
   it("미디어가 아닌 파일은 읽지도 않는다", async () => {
     const editor = createTestEditor();
     await handleCaptureDrop(["/Users/x/Desktop/report.pdf"], editor, 0);

@@ -14,6 +14,10 @@ import {
   collectPendingMedia,
   decodeBase64DataUrl,
   extractPendingMedia,
+  MAX_INLINE_MEDIA_BYTES,
+  MAX_PENDING_MEDIA_BYTES,
+  mediaSizeRefusal,
+  pendingMediaBytes,
   preferredMediaName,
 } from "../media-data-url";
 
@@ -234,5 +238,76 @@ describe("extractPendingMedia (§324-e)", () => {
         "/dest/assets",
       ),
     ).rejects.toThrow("disk full");
+  });
+});
+
+describe("pendingMediaBytes (§324-e 총량)", () => {
+  it("빈 문서는 0", () => {
+    expect(pendingMediaBytes(schema.nodes.doc.create())).toBe(0);
+  });
+
+  // ‼️ 길이가 아니라 **디코딩 후 바이트 수**여야 한다. base64 문자 길이를 그대로
+  // 쓰면 실제보다 4/3배 크게 세어 예산이 조용히 좁아진다.
+  it("디코딩 후 바이트 수를 센다 — base64 문자 길이가 아니라", () => {
+    // "hi" = 2바이트, base64 "aGk=" = 4문자.
+    const doc = docOf({ attrs: { alt: "a.png", src: PNG }, type: "image" });
+    expect(pendingMediaBytes(doc)).toBe(2);
+  });
+
+  it("여러 건을 합산한다", () => {
+    const doc = docOf(
+      { attrs: { alt: "a.png", src: PNG }, type: "image" },
+      { attrs: { alt: "b.mp4", src: MP4 }, type: "video" },
+    );
+    // "hi"(2) + "ABC"(3)
+    expect(pendingMediaBytes(doc)).toBe(5);
+  });
+
+  // 이미 디스크에 있는 참조는 메모리를 차지하지 않으므로 예산에도 들지 않는다.
+  it("상대경로 참조는 세지 않는다", () => {
+    const doc = docOf({
+      attrs: { alt: "old", src: "assets/old.png" },
+      type: "image",
+    });
+    expect(pendingMediaBytes(doc)).toBe(0);
+  });
+});
+
+describe("mediaSizeRefusal (§324-e)", () => {
+  it("상한 이하이고 예산이 남으면 통과시킨다", () => {
+    expect(mediaSizeRefusal(1024, 0)).toBeNull();
+    expect(mediaSizeRefusal(MAX_INLINE_MEDIA_BYTES, 0)).toBeNull();
+  });
+
+  it("파일 하나가 상한을 넘으면 크기와 상한을 담아 거절한다", () => {
+    const r = mediaSizeRefusal(MAX_INLINE_MEDIA_BYTES + 1, 0);
+    expect(r?.key).toBe("journal.capture.mediaTooLarge");
+    expect(r?.params).toEqual({ limit: "25", size: "26" });
+  });
+
+  // ‼️ 파일당 상한만 있으면 24 MiB 파일 스무 개가 전부 통과한다 — 어느 파일도
+  // 상한을 위반하지 않으면서 총 ~480 MiB가 된다. 그것을 잡는 것이 이 분기다.
+  it("파일당 상한을 지키는 파일도 총량을 넘기면 거절한다", () => {
+    const twentyFourMiB = 24 * 1024 * 1024;
+    expect(mediaSizeRefusal(twentyFourMiB, 0)).toBeNull();
+    const r = mediaSizeRefusal(twentyFourMiB, MAX_PENDING_MEDIA_BYTES - 1024);
+    expect(r?.key).toBe("journal.capture.mediaBudgetFull");
+    expect(r?.params.budget).toBe("64");
+  });
+
+  // 파일당 상한이 먼저다 — 사용자가 바꿀 수 있는 것(이 파일)을 가리켜야 한다.
+  it("둘 다 위반하면 파일당 상한 쪽을 말한다", () => {
+    const r = mediaSizeRefusal(
+      MAX_INLINE_MEDIA_BYTES + 1,
+      MAX_PENDING_MEDIA_BYTES,
+    );
+    expect(r?.key).toBe("journal.capture.mediaTooLarge");
+  });
+
+  it("경계에서 정확하다 — 총량과 정확히 같으면 통과", () => {
+    expect(mediaSizeRefusal(1024, MAX_PENDING_MEDIA_BYTES - 1024)).toBeNull();
+    expect(mediaSizeRefusal(1025, MAX_PENDING_MEDIA_BYTES - 1024)?.key).toBe(
+      "journal.capture.mediaBudgetFull",
+    );
   });
 });

@@ -108,6 +108,60 @@ describe("§324-e 캡처 붙여넣기 — 크기 상한", () => {
     editor.destroy();
   });
 
+  // ‼️ 총량 예산. 파일당 상한(25 MiB)만으로는 웹뷰가 들고 있는 바이트가 묶이지
+  // 않는다 — 24 MiB 파일 스무 개는 어느 하나도 상한을 위반하지 않으면서 ~480 MiB가
+  // 된다. `MAX_PENDING_MEDIA_BYTES`가 그것을 문서 기준으로 묶는다.
+  //
+  // ‼️ 예산(64 MiB)이 파일당 상한(25 MiB)보다 **위**에 있으므로 파일 하나로는 절대
+  // 넘길 수 없다. 그래서 이 테스트는 문서에 ~40 MiB치 pending 미디어를 실제로
+  // 심는다 — 대역을 끼우지 않고 진짜 경로를 태우기 위해서다. 심는 비용은 base64
+  // **문자열** 하나뿐이다: `pendingMediaBytes`는 길이만 재고 디코딩하지 않으며,
+  // `fileOfSize`는 크기만 속인다. 실제 이미지 바이트는 어디에도 만들지 않는다.
+  describe("총량 예산", () => {
+    /** 디코딩하면 `bytes`가 되는 payload. 유효한 base64 문자면 내용은 무관하다. */
+    function seedPending(target: Editor, bytes: number): void {
+      const payload = "A".repeat(Math.ceil((bytes * 4) / 3));
+      target.commands.setContent(
+        `<p><img src="data:image/png;base64,${payload}" alt="held.png"></p>`,
+      );
+    }
+
+    function srcs(target: Editor): string[] {
+      const out: string[] = [];
+      target.state.doc.descendants((n) => {
+        if (n.type.name === "image") out.push(n.attrs.src as string);
+      });
+      return out;
+    }
+
+    it("문서가 이미 들고 있는 양 때문에 거절될 수 있다", async () => {
+      // 40 MiB 보유 + 25 MiB 파일 = 65 MiB > 64 MiB 예산. 파일 자체는 상한 이내라
+      // 파일당 검사만으로는 통과한다 — 그것이 이 테스트가 가르는 것이다.
+      seedPending(editor, 40 * 1024 * 1024);
+      const seeded = srcs(editor);
+
+      pasteInto(editor, fileOfSize("fits-alone.png", MAX_INLINE_MEDIA_BYTES));
+      await vi.waitFor(() => expect(showToastMock).toHaveBeenCalled());
+
+      // 새 이미지는 들어가지 않았다 — 심어 둔 것이 그대로다.
+      expect(srcs(editor)).toEqual(seeded);
+      const [message, type] = showToastMock.mock.calls[0] as [string, string];
+      expect(type).toBe("error");
+      expect(message).toContain("fits-alone.png");
+      expect(message).toContain("64");
+      editor.destroy();
+    });
+
+    // ‼️ 대조군. 위 테스트만 있으면 "25 MiB 파일은 늘 거절"하는 구현도 통과한다.
+    // 같은 파일이 빈 문서에서는 들어가야 한다.
+    it("같은 파일이 빈 문서에서는 들어간다", async () => {
+      pasteInto(editor, fileOfSize("fits-alone.png", MAX_INLINE_MEDIA_BYTES));
+      await vi.waitFor(() => expect(mediaCount(editor)).toBe(1));
+      expect(showToastMock).not.toHaveBeenCalled();
+      editor.destroy();
+    });
+  });
+
   // 문서 편집기에는 이 상한이 없다 — 그 표면은 바이트를 메모리에 들고 있지 않고
   // 곧바로 디스크에 쓰므로, 상한이 지키려는 비용 자체가 발생하지 않는다.
   // 대조군이 없으면 위 두 테스트는 "상한이 모든 표면에 걸린다"는 더 넓은(그리고

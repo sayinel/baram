@@ -50,6 +50,11 @@ import {
 } from "../utils/editor/drop-indicator";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { logger } from "../utils/logger";
+import {
+  dataUrlBytes,
+  mediaSizeRefusal,
+  pendingMediaBytes,
+} from "../utils/media-data-url";
 import { classifyMediaSrc, isMediaFilePath } from "../utils/media-src";
 import { basename, dirname, resolveNameConflict } from "../utils/path-utils";
 
@@ -259,6 +264,24 @@ export async function handleCaptureDrop(
         continue;
       }
       if (!task.isLive()) return;
+
+      // ‼️ 총량 판정은 읽기 **뒤**다. 읽기 전에는 이 파일이 몇 바이트인지 알 수
+      // 없어(경로만 있다) 판정에 0밖에 넘길 수 없고, 그러면 "문서가 이미 꽉 찼다"
+      // 만 잡고 "이 파일을 더하면 넘친다"는 놓친다 — 붙여넣기보다 약한 가드가
+      // 된다. 읽고 나면 실제 크기를 알고, 그 한 파일은 이미 Rust의 파일당 상한
+      // 안이므로 여기까지 오는 데 무한한 메모리가 쓰이지 않는다.
+      //
+      // 파일마다 다시 잰다 — 루프가 돌며 문서 보유량이 늘기 때문이다.
+      const refusal = mediaSizeRefusal(
+        dataUrlBytes(dataUrl),
+        pendingMediaBytes(editor.state.doc),
+      );
+      if (refusal) {
+        toast(refusal.key, { name: originalName, ...refusal.params }, "error");
+        // 예산이 찼으면 남은 파일도 같은 이유로 거절된다 — 같은 토스트를 N번
+        // 띄우지 않고 멈춘다.
+        return;
+      }
 
       const alt = originalName.replace(/\.[^.]+$/u, "");
       pos = insertNodeAtPos(
