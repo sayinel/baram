@@ -429,14 +429,14 @@
   justify-content: center;
   width: 16px;
   font-size: 14px;
-  color: var(--color-text-secondary, var(--color-text-primary));
+  color: var(--color-text-secondary);
   transition: transform 0.15s ease;
 }
 
 /* §72b Skill Dependency Section */
 .dep-section {
   padding: 8px 12px;
-  border-top: 2px solid var(--color-border-default, var(--color-border-default));
+  border-top: 2px solid var(--color-border-default);
 }
 
 .dep-section-header {
@@ -447,14 +447,14 @@
   padding: 4px 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-text-secondary, var(--color-text-primary));
+  color: var(--color-text-secondary);
   cursor: pointer;
   background: none;
   border: none;
 }
 
 .dep-section-header:hover {
-  color: var(--color-text-primary, var(--color-accent-default));
+  color: var(--color-text-primary);
 }
 
 .dep-badge {
@@ -865,7 +865,7 @@
 }
 
 .skill-live-preview .slp-header:hover {
-  color: var(--color-text-primary, var(--color-accent-default));
+  color: var(--color-text-primary);
 }
 
 .skill-live-preview .slp-header .skill-section-arrow {
@@ -903,7 +903,7 @@
 
 .skill-live-preview .slp-text {
   padding: 8px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-primary);
@@ -1074,7 +1074,7 @@
 }
 
 .skill-optimize-header-btn:hover {
-  color: var(--color-text-primary, var(--color-accent-default));
+  color: var(--color-text-primary);
 }
 
 .skill-optimize-header-btn .skill-section-arrow {
@@ -1195,7 +1195,7 @@
   padding: 6px 8px;
   margin-bottom: 6px;
   overflow-x: auto;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 11px;
   overflow-wrap: break-word;
   white-space: pre-wrap;

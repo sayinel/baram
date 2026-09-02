@@ -793,7 +793,7 @@
   min-width: 20px;
   padding: 1px 6px;
   font-size: 0.75rem;
-  color: var(--color-text-muted, var(--color-text-secondary));
+  color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
   border-radius: 10px;
@@ -844,7 +844,7 @@
   min-width: 20px;
   padding: 1px 6px;
   font-size: 0.75rem;
-  color: var(--color-text-muted, var(--color-text-secondary));
+  color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
   border-radius: 10px;
@@ -892,7 +892,7 @@
 
 .plugin-dev-load-btn:hover {
   color: var(--color-text-default);
-  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  background: var(--color-bg-hover);
   border-color: var(--color-text-muted);
 }
 
@@ -964,25 +964,25 @@
 }
 
 .plugin-dev-btn:hover {
-  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  background: var(--color-bg-hover);
   border-color: var(--color-text-muted);
 }
 
 .plugin-dev-btn--danger {
-  color: var(--color-status-danger, #ef4444);
-  border-color: var(--color-status-danger, #ef4444);
+  color: var(--color-status-danger);
+  border-color: var(--color-status-danger);
 }
 
 .plugin-dev-btn--danger:hover {
-  color: var(--color-status-danger-on-solid, #000);
-  background: var(--color-status-danger, #ef4444);
-  border-color: var(--color-status-danger, #ef4444);
+  color: var(--color-status-danger-on-solid);
+  background: var(--color-status-danger);
+  border-color: var(--color-status-danger);
 }
 
 .plugin-dev-detail__error {
   margin: 8px 0 0;
   font-size: 12px;
-  color: var(--color-status-danger, #ef4444);
+  color: var(--color-status-danger);
 }
 
 /* §69 Marketplace header refresh button — inline styles (STYLES.refreshButton
@@ -1023,7 +1023,7 @@
 }
 
 .plugin-panel-empty {
-  padding: var(--space-4, 16px);
+  padding: var(--space-4);
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }

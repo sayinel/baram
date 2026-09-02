@@ -1,81 +1,38 @@
 import { useCallback, useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
 import type { WorkspacePreset } from "../../../stores/file/workspace";
 import type { ThemeDef } from "../../../types/theme";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../../i18n/useTranslation";
-import { readFile } from "../../../ipc/invoke";
 import {
   BUILTIN_PRESETS,
   useWorkspaceStore,
 } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
-import {
-  BUILT_IN_THEMES,
-  migrateThemeColors,
-  THEME_COLOR_KEYS,
-} from "../../../types/theme";
-import { logger } from "../../../utils/logger";
+import { BUILT_IN_THEMES } from "../../../types/theme";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
+import { useThemeImport } from "./use-theme-import";
 
 // ─── Theme Mini Preview ─────────────────────────────────
 
 export function AppearanceTab() {
   const { t } = useTranslation();
-  const {
-    activeThemeId,
-    customThemes,
-    setActiveTheme,
-    saveCustomTheme,
-    deleteCustomTheme,
-  } = useSettingsStore();
+  const { activeThemeId, customThemes, setActiveTheme, deleteCustomTheme } =
+    useSettingsStore(
+      useShallow((s) => ({
+        activeThemeId: s.activeThemeId,
+        customThemes: s.customThemes,
+        setActiveTheme: s.setActiveTheme,
+        deleteCustomTheme: s.deleteCustomTheme,
+      })),
+    );
   const [editingTheme, setEditingTheme] = useState(false);
+  const { handleImport, importError } = useThemeImport();
 
   const allThemes = [...BUILT_IN_THEMES, ...customThemes];
-
-  const handleImport = useCallback(async () => {
-    const selected = await open({
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (!selected) return;
-    try {
-      const content = await readFile(selected);
-      const data = JSON.parse(content);
-      // Validate required fields
-      if (typeof data.name !== "string" || !data.name) {
-        throw new Error("Missing or invalid 'name' field");
-      }
-      if (data.base !== "light" && data.base !== "dark") {
-        throw new Error("'base' must be 'light' or 'dark'");
-      }
-      if (!data.colors || typeof data.colors !== "object") {
-        throw new Error("Missing or invalid 'colors' object");
-      }
-      // Migrate old key names (pre-v10) to current names
-      data.colors = migrateThemeColors(data.colors);
-      // Validate all 16 color keys are present
-      const requiredKeys = THEME_COLOR_KEYS.map((k) => k.key);
-      for (const key of requiredKeys) {
-        if (typeof data.colors[key] !== "string") {
-          throw new Error(`Missing color key: ${key}`);
-        }
-      }
-      const newTheme: ThemeDef = {
-        id: "custom-" + Date.now(),
-        name: data.name,
-        base: data.base,
-        colors: data.colors,
-        builtIn: false,
-      };
-      saveCustomTheme(newTheme);
-      setActiveTheme(newTheme.id);
-    } catch (err) {
-      logger.error("Theme import failed:", err);
-    }
-  }, [saveCustomTheme, setActiveTheme]);
 
   if (editingTheme) {
     return <ThemeEditor onClose={() => setEditingTheme(false)} />;
@@ -88,10 +45,13 @@ export function AppearanceTab() {
       <div className="theme-gallery">
         {/* System (Auto) card */}
         <button
+          aria-pressed={activeThemeId === "system"}
           className={`theme-card theme-system-card ${activeThemeId === "system" ? "theme-card-active" : ""}`}
           onClick={() => setActiveTheme("system")}
         >
-          <div className="theme-preview theme-preview-split">
+          {/* 프리뷰는 장식이다 — 숨기지 않으면 카드의 accessible name에
+              프리뷰 텍스트("Aa Aa")까지 섞여 읽힌다(적대 리뷰). */}
+          <div aria-hidden="true" className="theme-preview theme-preview-split">
             <div
               className="theme-preview-half"
               style={{ background: "#ffffff" }}
@@ -162,38 +122,47 @@ export function AppearanceTab() {
           </span>
         </button>
 
-        {/* All themes */}
+        {/* All themes. \uCE74\uB4DC\uC640 \uC0AD\uC81C \uBC84\uD2BC\uC740 \uD615\uC81C\uB2E4 \u2014 button \uC548\uC5D0 button\uC740 HTML\uC774
+            \uAE08\uC9C0\uD558\uB294 \uC911\uCCA9(interactive content)\uC774\uB77C \uBE0C\uB77C\uC6B0\uC800\uAC00 \uD2B8\uB9AC\uB97C \uC7AC\uAD6C\uC131\uD560 \uC218
+            \uC788\uACE0, \uBCF4\uC870\uAE30\uAE30\uC5D0\uB294 \uC0AD\uC81C \uBC84\uD2BC\uC774 \uCE74\uB4DC \uB808\uC774\uBE14\uC758 \uC77C\uBD80\uB85C \uC77D\uD78C\uB2E4. \uACB9\uCCD0
+            \uBCF4\uC774\uB294 \uBC30\uCE58\uB294 wrapper\uC758 position: relative\uAC00 \uB9E1\uB294\uB2E4. */}
         {allThemes.map((theme) => (
-          <button
-            className={`theme-card ${activeThemeId === theme.id ? "theme-card-active" : ""}`}
-            key={theme.id}
-            onClick={() => setActiveTheme(theme.id)}
-            style={
-              activeThemeId === theme.id
-                ? { borderColor: theme.colors["--color-accent-default"] }
-                : undefined
-            }
-          >
-            <ThemeMiniPreview theme={theme} />
-            <span className="theme-card-name">{theme.name}</span>
+          <div className="theme-card-wrap" key={theme.id}>
+            <button
+              aria-pressed={activeThemeId === theme.id}
+              className={`theme-card ${activeThemeId === theme.id ? "theme-card-active" : ""}`}
+              onClick={() => setActiveTheme(theme.id)}
+              style={
+                activeThemeId === theme.id
+                  ? { borderColor: theme.colors["--color-accent-default"] }
+                  : undefined
+              }
+            >
+              <ThemeMiniPreview theme={theme} />
+              <span className="theme-card-name">{theme.name}</span>
+              {!theme.builtIn && (
+                <span className="theme-card-badge">
+                  {t("settings.appearance.customBadge")}
+                </span>
+              )}
+            </button>
             {!theme.builtIn && (
-              <span className="theme-card-badge">
-                {t("settings.appearance.customBadge")}
-              </span>
-            )}
-            {!theme.builtIn && (
+              // \uC0AD\uC81C \uB300\uC0C1 \uC774\uB984\uC744 accessible name\uC5D0 \uD3EC\uD568\uD55C\uB2E4 \u2014 \uCEE4\uC2A4\uD140 \uD14C\uB9C8\uAC00
+              // \uC5EC\uB7FF\uC774\uBA74 "\uD14C\uB9C8 \uC0AD\uC81C"\uB9CC\uC73C\uB85C\uB294 \uC5B4\uB290 \uBC84\uD2BC\uC778\uC9C0 \uAD6C\uBD84\uD560 \uC218 \uC5C6\uB2E4.
               <button
+                aria-label={t("settings.appearance.deleteThemeNamed", {
+                  name: theme.name,
+                })}
                 className="theme-card-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteCustomTheme(theme.id);
-                }}
-                title={t("settings.appearance.deleteTheme")}
+                onClick={() => deleteCustomTheme(theme.id)}
+                title={t("settings.appearance.deleteThemeNamed", {
+                  name: theme.name,
+                })}
               >
                 {"\u00D7"}
               </button>
             )}
-          </button>
+          </div>
         ))}
       </div>
 
@@ -208,6 +177,11 @@ export function AppearanceTab() {
           {t("settings.appearance.import")}
         </button>
       </div>
+      {importError !== null && (
+        <div className="theme-import-error" role="alert">
+          {t("settings.appearance.importFailed")}: {importError}
+        </div>
+      )}
 
       <SettingsSectionHeader
         title={t("settings.appearance.workspacePresets")}
@@ -305,7 +279,10 @@ function PresetCard({
 function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
   const c = theme.colors;
   return (
+    // 장식 프리뷰 — 숨기지 않으면 카드 button의 accessible name에 프리뷰의
+    // 더미 텍스트(Heading, bold …)까지 전부 섞여 읽힌다(적대 리뷰).
     <div
+      aria-hidden="true"
       className="theme-preview"
       style={{ background: c["--color-bg-default"] }}
     >
@@ -401,7 +378,15 @@ function WorkspaceSection() {
     applyPreset,
     saveCustomPreset,
     deleteCustomPreset,
-  } = useWorkspaceStore();
+  } = useWorkspaceStore(
+    useShallow((s) => ({
+      activePresetId: s.activePresetId,
+      customPresets: s.customPresets,
+      applyPreset: s.applyPreset,
+      saveCustomPreset: s.saveCustomPreset,
+      deleteCustomPreset: s.deleteCustomPreset,
+    })),
+  );
 
   const [savingNew, setSavingNew] = useState(false);
   const [newName, setNewName] = useState("");

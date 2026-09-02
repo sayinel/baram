@@ -780,7 +780,7 @@
   font-size: 0.82rem;
   color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-input, var(--color-bg-default));
+  background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -843,14 +843,14 @@
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: var(--color-bg-subtle, var(--color-bg-default));
+  background: var(--color-bg-subtle);
 }
 
 .journal-search-category-count {
   min-width: 16px;
   padding: 0 5px;
   font-size: 0.65rem;
-  color: var(--color-text-muted, var(--color-text-secondary));
+  color: var(--color-text-muted);
   text-align: center;
   background: var(--color-bg-subtle);
   border-radius: 8px;
@@ -950,7 +950,7 @@
   padding: 2px 4px;
   font-size: 0.82em;
   color: var(--color-text-primary);
-  background: var(--color-bg-input, var(--color-bg-default));
+  background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -960,7 +960,7 @@
   padding: 2px 6px;
   font-size: 0.82em;
   color: var(--color-text-primary);
-  background: var(--color-bg-input, var(--color-bg-default));
+  background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -969,49 +969,9 @@
   padding: 2px 4px;
   font-size: 0.82em;
   color: var(--color-text-primary);
-  background: var(--color-bg-input, var(--color-bg-default));
+  background: var(--color-bg-input);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
-}
-
-.jsf-mood-dots {
-  display: flex;
-  gap: 6px;
-}
-
-.jsf-mood-dot {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  cursor: pointer;
-  border: 1.5px solid var(--color-border-default);
-  border-radius: 50%;
-}
-
-.jsf-mood-dot.active {
-  border-width: 2.5px;
-  box-shadow: 0 0 4px rgb(0 0 0 / 25%);
-}
-
-.jsf-mood-dot[data-mood="deep"] {
-  background: var(--mood-deep, #64748b);
-}
-
-.jsf-mood-dot[data-mood="calm"] {
-  background: var(--mood-calm, #94a3b8);
-}
-
-.jsf-mood-dot[data-mood="neutral"] {
-  background: var(--mood-neutral, #cbd5e1);
-}
-
-.jsf-mood-dot[data-mood="warm"] {
-  background: var(--mood-warm, #f59e0b);
-}
-
-.jsf-mood-dot[data-mood="bright"] {
-  background: var(--mood-bright, #fbbf24);
 }
 
 .jsf-checkbox-label {

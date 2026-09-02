@@ -13,7 +13,7 @@ var PANEL_STYLE = `
   padding: 0.35rem 0.75rem;
   border-radius: 6px;
   border: 1px solid var(--color-border-default);
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-subtle);
   color: var(--color-text-default);
   cursor: pointer;
 }
@@ -40,7 +40,7 @@ var SETTINGS_STYLE = `
   padding: 0.5rem;
   border-radius: 6px;
   border: 1px solid var(--color-border-default);
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-subtle);
   color: var(--color-text-default);
   font: inherit;
 }
@@ -49,7 +49,7 @@ var SETTINGS_STYLE = `
   padding: 0.35rem 0.75rem;
   border-radius: 6px;
   border: 1px solid var(--color-border-default);
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-subtle);
   color: var(--color-text-default);
   cursor: pointer;
 }

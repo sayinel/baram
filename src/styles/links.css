@@ -628,15 +628,11 @@
   font-weight: 600;
   color: var(--color-text-muted);
   cursor: pointer;
-  background: var(--color-bg-secondary, #f8f9fa);
-}
-
-[data-theme="dark"] .wikilink-menu-folder-header {
-  background: var(--color-bg-secondary, #252526);
+  background: var(--color-bg-subtle);
 }
 
 .wikilink-menu-folder-header:hover {
-  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  background: var(--color-bg-hover);
 }
 
 .wikilink-folder-arrow {
@@ -663,12 +659,12 @@
   font-size: 10px;
   font-weight: 400;
   color: var(--color-text-muted);
-  background: var(--color-bg-default, #fff);
+  background: var(--color-bg-default);
   border-radius: 8px;
 }
 
 [data-theme="dark"] .wikilink-folder-count {
-  background: var(--color-bg-default, #1e1e1e);
+  background: var(--color-bg-default);
 }
 
 .wikilink-item-indented {

@@ -19,6 +19,8 @@ export const CODE_STYLE_MAP: Record<
     bodyBg: string;
     bodyBorder: string;
     bodyColor: string;
+    /** gutter 배경 — "inherit"는 본문 배경을 그대로 쓴다. contrast만 mantle로 어둡다. */
+    gutterBg: string;
     gutterBorder: string;
     gutterColor: string;
     langBg: string;
@@ -33,6 +35,7 @@ export const CODE_STYLE_MAP: Record<
     bodyBg: "#f8f9fa",
     bodyBorder: "#e5e7eb",
     bodyColor: "#1a1a1a",
+    gutterBg: "inherit",
     gutterColor: "#9ca3af",
     gutterBorder: "#e5e7eb",
   },
@@ -43,9 +46,13 @@ export const CODE_STYLE_MAP: Record<
     bodyBg: "transparent",
     bodyBorder: "transparent",
     bodyColor: "#1a1a1a",
+    gutterBg: "inherit",
     gutterColor: "#9ca3af",
     gutterBorder: "#e5e7eb",
   },
+  // ‼️ 앱 쪽 contrast 팔레트의 사본 — styles/editor/code-blocks.css의
+  // --code-contrast-* 컴포넌트 변수와 같은 Catppuccin Mocha 값이다.
+  // 값을 바꾸면 거기도 같이 바꿀 것 (standalone export라 var()를 못 읽는다).
   contrast: {
     langBg: "#1e1e2e",
     langBorder: "#313244",
@@ -53,6 +60,7 @@ export const CODE_STYLE_MAP: Record<
     bodyBg: "#1e1e2e",
     bodyBorder: "#313244",
     bodyColor: "#cdd6f4",
+    gutterBg: "#181825",
     gutterColor: "#6c7086",
     gutterBorder: "#313244",
   },
@@ -63,6 +71,7 @@ export const CODE_STYLE_MAP: Record<
     bodyBg: "#f0f1f3",
     bodyBorder: "transparent",
     bodyColor: "#1a1a1a",
+    gutterBg: "inherit",
     gutterColor: "#9ca3af",
     gutterBorder: "transparent",
   },

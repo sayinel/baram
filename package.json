@@ -42,7 +42,7 @@
     "knip:ci": "knip --reporter compact",
     "tokens:build": "npx tsx style-dictionary.config.ts && prettier --write --log-level warn 'src/styles/generated/*.css' && stylelint --fix --quiet 'src/styles/generated/*.css' && prettier --write --log-level warn 'src/styles/generated/*.css'",
     "tokens:export": "npx tsx scripts/export-tokens-studio.ts",
-    "tokens:check": "npm run tokens:build && npm run tokens:export && git diff --exit-code src/styles/generated tokens/tokens-studio.json",
+    "tokens:check": "npm run tokens:build && npm run tokens:export && git diff --exit-code src/styles/generated tokens/tokens-studio.json && node scripts/check-generated-files.mjs",
     "types:plugin": "tsc -p tsconfig.plugin-api.json && mv examples/plugins/public-api.d.ts examples/plugins/plugin-api.d.ts",
     "types:plugin:check": "npm run types:plugin && git diff --exit-code examples/plugins/*.d.ts",
     "audit:css-vars": "npx tsx scripts/audit-css-vars.ts",
