@@ -604,21 +604,29 @@ describe("QuickCaptureDialog — §324-e 저장이 파일을 만든다", () => {
     expect(body).not.toContain("data:");
   });
 
-  it("이름이 같은 이미지 둘은 서로 다른 파일이 된다 — 덮어쓰지 않는다", async () => {
+  // ‼️ 이름이 좁은 이유를 먼저 적는다: 이 테스트는 **저장 단계만** 본다. 문서에
+  // 이미 이미지 둘이 있는 상태에서 출발하고, 그 상태를 붙여넣기로 만들지
+  // 않는다 — 만들 수 없기 때문이다.
+  //
+  // `insertMediaAtPos`는 위치 없이 `replaceSelectionWith`로 삽입하고 첫 삽입 뒤
+  // 선택이 그 노드에 놓이므로, 파일 둘을 한 번에 붙여넣어도 두 번째가 첫 번째를
+  // **대체한다**. 세 가지 방법(연속 붙여넣기, 한 번에 두 파일, 사이에 커서
+  // 이동)을 다 시도해 확인했다. 이 브랜치가 만든 결함이 아니라 문서 편집기도
+  // 공유하는 기존 동작이고, 범위 밖이라 고치지 않는다.
+  //
+  // 그러므로 이 테스트는 "여러 이미지"를 덮지 **않는다** — 삽입 단계가 애초에
+  // 여럿을 만들지 못한다. 진짜 다중 삽입은 드랍 경로가 덮는다:
+  // `use-external-drop.test.ts`의 "여러 파일이 서로를 덮지 않고 순서대로
+  // 들어간다"가 `handleCaptureDrop`을 파일 둘로 돌린다(그쪽은 `insertNodeAtPos`로
+  // 위치를 전진시키므로 실제로 둘이 남는다).
+  it("저장이 이름 충돌을 푼다 — 같은 이름의 data URL 둘이 서로 다른 파일이 된다", async () => {
     const disk = fakeDisk();
     useSettingsStore.getState().setZettelkastenEnabled(true);
     useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
 
     render(<QuickCaptureDialog />);
-    // ‼️ 이미지 둘은 붙여넣기가 아니라 `setContent`로 넣는다. 붙여넣기로는 캡처
-    // 안에 이미지 둘을 만들 수 없다 — `insertMediaAtPos`가 위치 없이
-    // `replaceSelectionWith`로 삽입하고 첫 삽입 뒤 선택이 그 노드에 놓이므로,
-    // 파일 둘을 한 번에 붙여넣어도 두 번째가 첫 번째를 대체한다(이 브랜치가
-    // 만든 것이 아니라 문서 편집기도 공유하는 기존 동작 — 드랍 경로는
-    // `insertNodeAtPos`로 위치를 전진시켜 영향이 없다). 이 테스트가 고정하려는
-    // 것은 **저장**이 이름 충돌을 어떻게 푸느냐이므로, 그 앞 단계의 이 결함을
-    // 우회해서 상태를 만든다. 내용이 달라야 서로 다른 data URL이 된다 — 같은
-    // 바이트는 같은 이미지이므로 `collectPendingMedia`가 한 건으로 합친다.
+    // 내용이 달라야 서로 다른 data URL이 된다 — 같은 바이트는 같은 이미지이므로
+    // `collectPendingMedia`가 한 건으로 합친다(그쪽은 그것이 옳다).
     act(() => {
       (
         document.querySelector(".quick-capture-editor") as HTMLElement & {

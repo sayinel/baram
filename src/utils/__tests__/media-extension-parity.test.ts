@@ -52,12 +52,29 @@ describe("§324-e media extension parity (TS ↔ Rust)", () => {
     },
   );
 
-  // 대문자 확장자는 macOS에서 그대로 온다. Rust는 소문자로 접어 비교하므로
-  // 프런트도 같아야 한다 — 갈라지면 `IMG_0001.PNG` 드랍이 한쪽에서만 통과한다.
-  it("양쪽 모두 확장자를 대소문자 구분 없이 본다", () => {
+  // 대문자 확장자는 macOS에서 그대로 온다. 갈라지면 `IMG_0001.PNG` 드랍이 한쪽에서만
+  // 통과한다. **프런트 쪽만** 여기서 행동으로 확인한다.
+  it("프런트는 확장자를 대소문자 구분 없이 본다", () => {
     expect(isImageFile("/a/IMG_0001.PNG")).toBe(true);
     expect(isMediaFilePath("/a/CLIP.MP4")).toBe(true);
-    expect(rustSource).toContain("to_ascii_lowercase");
+  });
+
+  // ‼️ Rust 쪽 절반은 여기서 **행동으로 확인할 수 없다** — 이 파일은 소스 텍스트만
+  // 본다. 처음에는 `expect(rustSource).toContain("to_ascii_lowercase")`를 넣고
+  // 이름을 "양쪽 모두…"라고 붙였는데, 뮤테이션으로 그것이 장식임을 확인했다:
+  // 쓰이지 않는 값에 `to_ascii_lowercase()`를 부르고 실제 비교는 `to_string()`으로
+  // 바꾸면 부분 문자열은 그대로 남아 단정이 **살아남는다**(그 respell을 잡는 것은
+  // `fs/media.rs`의 Rust 테스트뿐이다).
+  //
+  // 그래서 주장을 정직한 것으로 좁힌다: 그 동반 테스트가 아직 있는지만 본다.
+  // 저장소에 선례가 있다 — `acl_lockdown.rs`의
+  // `the_broker_capability_mapping_guard_still_exists`가 같은 이유로 같은 모양이다.
+  // 동반 테스트가 지워지면 이 파일이 덮지 않는 경계를 덮는 척하게 되므로, 그
+  // 삭제만은 빨간불이 된다.
+  it("Rust 쪽 대소문자 판정은 그쪽 테스트가 지킨다 — 그 테스트가 아직 있다", () => {
+    expect(rustSource).toContain(
+      "fn admits_every_allowlisted_extension_case_insensitively",
+    );
   });
 
   // ‼️ 이것이 **언어 간 앵커**다. 붙여넣기 경로는 Rust를 거치지 않으므로 TS에
