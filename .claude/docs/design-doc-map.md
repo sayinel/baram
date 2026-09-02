@@ -12,5 +12,6 @@
 | 로드맵       | `dev/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                                  |
 | AI 고도화    | `dev/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
 | Vault 시스템 | `dev/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작                     |
+| 캡처 → 허브   | `dev/design/part19-capture-to-hub.md` | §319 핵심 발상, §320 태그→노트 해석, §321 append 포맷, §322 쓰기 경로(열린 탭 분기), §323 캡처 WYSIWYG, §324 캡처 UX, §325 허브 스캐폴드/Logseq 이관, §326 테스트, §327 순서, §328 미결 |
 
 주의: `dev/` 설계 문서 원본은 프로젝트 원주인 소유라 이 머신에 없을 수 있다 — 없는 것이 정상이며 경로를 "수정"하지 말 것.
