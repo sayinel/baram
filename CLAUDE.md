@@ -107,6 +107,7 @@ baram/
   - `fuzzyMatch()` → `src/utils/file-search.ts`
   - `RightPanelMode` / `SidebarPanel` 타입 → `src/stores/ui/ui.ts`
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
+  - 링크 destination 정책 → `src/utils/link-href.ts` (`isAllowedLinkHref`) — `<a href>`로 내보내거나 opener에 넘기기 전 판정. 문서 모델은 건드리지 않는다(byte-exact roundtrip). 거부되면 `href` 대신 inert한 `data-href`로 렌더(클립보드 복원·CSS 훅)하고 export scrub이 제거한다. scheme allowlist는 HTML 블록 sanitizer(DOMPurify 기본)와 동일 — regex/substring 검사로 재구현 금지(`java\tscript:` 우회)
 - **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
 - **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건)

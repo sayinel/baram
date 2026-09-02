@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { InputRule, Mark, markPasteRule, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 
+import { isAllowedLinkHref } from "../../utils/link-href";
 import { logger } from "../../utils/logger";
 import { syntaxRevealKey } from "../plugins/syntax-reveal";
 import { parseRevealResource } from "../plugins/syntax-reveal-resource-codec";
@@ -73,22 +74,63 @@ export const Link = Mark.create<LinkOptions>({
 
   addAttributes() {
     return {
-      href: { default: null },
+      href: {
+        default: null,
+        // issue 499: a refused destination is rendered as `data-href` (see
+        // renderHTML), so its clipboard HTML — an internal cut and paste, or
+        // a copy pasted back later — recreates the same mark instead of
+        // silently dropping the link.
+        parseHTML: (element) =>
+          element.getAttribute("href") ?? element.getAttribute("data-href"),
+      },
       title: { default: null },
       target: { default: null },
     };
   },
 
   parseHTML() {
-    return [{ tag: "a[href]:not([href *= 'javascript:' i])" }];
+    // issue 499: pasted/imported HTML has no roundtrip obligation, so a live
+    // `href` outside the policy does not become a mark at all — the text
+    // stays, the link does not. The policy sees the DECODED attribute (the
+    // HTML parser has already resolved `&#x09;`-style entities), which is
+    // why this is a function and not the old `:not([href *= 'javascript:'])`
+    // substring selector that `java\tscript:` slipped past. `false` rejects
+    // the rule; `null` accepts it with the attrs from addAttributes.
+    //
+    // An anchor with `data-href` and no `href` is our own inert rendering of
+    // a refused destination (or foreign markup shaped like it). It is
+    // accepted into the model — where it renders inert again — because
+    // refusing it would turn every cut-and-paste of such a link into plain
+    // text and lose it from the saved file.
+    return [
+      {
+        tag: "a[href], a[data-href]",
+        getAttrs: (element) => {
+          if (typeof element === "string") return false;
+          if (!element.hasAttribute("href")) return null;
+          return isAllowedLinkHref(element.getAttribute("href")) ? null : false;
+        },
+      },
+    ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      "a",
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
-      0,
-    ];
+    const attrs = mergeAttributes(this.options.HTMLAttributes, HTMLAttributes);
+    // issue 499: the mark keeps whatever the file said — only the wire is
+    // cut. Classify the FINAL merged href, not the mark's own: a configured
+    // `options.HTMLAttributes.href` would otherwise merge back in behind the
+    // check. This covers the editor DOM, clipboard HTML and (the export
+    // clones the editor DOM) HTML/PDF export.
+    //
+    // The destination moves to `data-href`: inert to the browser, readable
+    // by parseHTML so the clipboard round-trips, and a hook for CSS to show
+    // the link as dead (`a[data-href]`). The export's final scrub strips it,
+    // so a refused destination never leaves the app in any attribute.
+    if (!isAllowedLinkHref(attrs.href)) {
+      attrs["data-href"] = attrs.href;
+      delete attrs.href;
+    }
+    return ["a", attrs, 0];
   },
 
   addCommands() {
@@ -145,6 +187,14 @@ export const Link = Mark.create<LinkOptions>({
     const { onNavigateLocal } = this.options;
 
     const navigateHref = (href: string) => {
+      // issue 499: a DOM anchor or the expanded reveal text is content, not
+      // trust — decide from the destination itself, every strategy alike.
+      if (!isAllowedLinkHref(href)) {
+        logger.warn("link: destination outside the link policy, not opened", {
+          href,
+        });
+        return;
+      }
       // A fragment addresses this very document — never the OS, whether or not
       // the app layer knows what to do with it.
       if (href.startsWith("#")) {

@@ -97,6 +97,17 @@
   color: var(--color-accent-hover);
 }
 
+/* issue 499 — a link whose destination the link policy refused (javascript:,
+   file:, app schemes, //host). The mark renders it as `data-href` instead of
+   `href`, so nothing navigates; the dotted underline is the only visible
+   signal that it is inert, and the caret stays a text cursor because the
+   text is still editable. */
+.tiptap a[data-href]:not([href]) {
+  color: var(--color-text-muted);
+  text-decoration-style: dotted;
+  cursor: text;
+}
+
 /* §3.3 원본 보기 전체화면 — SVG(§5.1)의 Fullscreen view와 같은 골격이라 값도 같게 둔다.
    두 곳이 달라지면 같은 동작인데 다른 모달로 보인다. */
 .image-fullscreen-overlay {

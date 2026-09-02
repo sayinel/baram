@@ -2,6 +2,7 @@
 // (raw `<svg>` markup) and the dedicated ```svg fenced block.
 import DOMPurify from "dompurify";
 
+import { SANITIZER_ALLOWED_URI_REGEXP } from "../link-href";
 import { VIM_ISLAND_MARKERS } from "../vim-island-markers";
 
 /**
@@ -31,7 +32,8 @@ const SVG_FOREIGN_OBJECT_TAGS = [
  * is treated as an HTML integration point so HTML-namespaced label content passes
  * the namespace check (see §5.5 Mermaid regression). `<script>`, event handlers
  * (`onload`/`onerror`/…) and `javascript:` URLs stay forbidden by the profile +
- * DOMPurify defaults.
+ * DOMPurify defaults; URI attributes follow the shared link policy in
+ * utils/link-href.ts (issue 499), which also refuses protocol-relative `//host`.
  *
  * This is the single source of SVG sanitize truth: both the inline HTML block and
  * the dedicated SVG block render through it, as does {@link sanitizeMermaidSvg}.
@@ -39,6 +41,7 @@ const SVG_FOREIGN_OBJECT_TAGS = [
 export function sanitizeSvg(svg: string): string {
   return DOMPurify.sanitize(svg, {
     USE_PROFILES: { svg: true, svgFilters: true },
+    ALLOWED_URI_REGEXP: SANITIZER_ALLOWED_URI_REGEXP,
     ADD_TAGS: SVG_FOREIGN_OBJECT_TAGS,
     // HTML_INTEGRATION_POINTS replaces (not merges) the default, so re-list the
     // built-in `annotation-xml` alongside `foreignobject`.

@@ -19,6 +19,7 @@ import {
   collectCodeBlockInfo,
   escapeHTML,
 } from "./export-html-code-block";
+import { stripDisallowedLinkHrefs } from "./export-html-links";
 import {
   convertImagesToDataURIs,
   resolveVideoEmbeds,
@@ -181,8 +182,39 @@ export async function captureEditorHTML(
     }
   }
 
+  // ── Last: no anchor leaves with a refused destination (issue 499) ─────
+  // ‼️ Position matters more than the call. `resolveVideoSources` above
+  // creates a fresh `<a href>` for a remote/data video, and an authored HTML
+  // block brings its own anchors — this pass has to see all of them, so it
+  // runs after every step that can add or rewrite an href, right before the
+  // markup is read out. Pinned by export-link-policy.test.tsx.
+  stripDisallowedLinkHrefs(clone);
+
   return clone.innerHTML;
 }
+
+/**
+ * Content-Security-Policy for the exported document (issue 499).
+ *
+ * The export is a static page: no `<script>` is ever emitted, and every
+ * formula, diagram and highlight is pre-rendered. `script-src 'none'` therefore
+ * costs nothing and also refuses `javascript:` navigation — CSP3's navigation
+ * check ("Should navigation request of type be blocked by Content Security
+ * Policy?") runs a `javascript:` URL through the inline-script check, and only
+ * `'unsafe-inline'` would let it through. This is the second layer behind the
+ * anchor scrub in `captureEditorHTML`, for the case where an href gets past
+ * it or the file is edited by hand afterwards.
+ *
+ * Deliberately narrow. No `default-src`: the page relies on inline `<style>`,
+ * `style=""` on image wrappers, `data:` images and fonts, remote/file images —
+ * and the same file is what headless Chrome prints for PDF, so a broad policy
+ * would be a silent regression there. `object-src 'none'` matches what the
+ * HTML-block sanitizer already strips; `base-uri 'none'` because nothing
+ * emits a `<base>`. Delivered as `<meta>`, which CSP permits for these
+ * directives, right after the charset declaration (the HTML spec wants the
+ * encoding first) and before anything the policy governs.
+ */
+const EXPORT_CSP = "script-src 'none'; object-src 'none'; base-uri 'none'";
 
 /**
  * Generate a standalone HTML document from editor HTML output.
@@ -200,6 +232,7 @@ export function generateStandaloneHTML(
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="${EXPORT_CSP}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Baram">
   <title>${safeTitle}</title>

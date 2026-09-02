@@ -1053,3 +1053,58 @@ describe("Syntax Reveal (§5.1)", () => {
     });
   });
 });
+
+// ─── issue 499 — a refused destination survives expand/collapse and stays inert
+//
+// Both collapse implementations rebuild the link mark from the expanded text
+// with whatever destination it carries. That is correct — the model must say
+// what the file says — and it is safe only because the rebuilt mark is then
+// rendered through the same guarded renderHTML as a freshly loaded one.
+describe("issue 499 — refused link destination through expand/collapse", () => {
+  const MD = "Hello [world](javascript:top.name) end\n";
+
+  function linkHref(editor: Editor): null | string {
+    let href: null | string = null;
+    editor.state.doc.firstChild!.descendants((child) => {
+      const mark = child.marks.find((m) => m.type.name === "link");
+      if (mark) href = String(mark.attrs.href);
+    });
+    return href;
+  }
+
+  function anchor(editor: Editor): HTMLAnchorElement | null {
+    return editor.view.dom.querySelector("a");
+  }
+
+  it("collapses back via the cursor-exit path with the href intact and no live anchor", () => {
+    const editor = createEditor();
+    loadMarkdown(editor, MD);
+    expect(anchor(editor)?.hasAttribute("href")).toBe(false);
+
+    moveCursorTo(editor, 2, 9);
+    expect(editor.state.doc.textContent).toContain(
+      "[world](javascript:top.name)",
+    );
+
+    editor.commands.setTextSelection(2);
+    expect(linkHref(editor)).toBe("javascript:top.name");
+    expect(anchor(editor)).not.toBeNull();
+    expect(anchor(editor)!.hasAttribute("href")).toBe(false);
+    editor.destroy();
+  });
+
+  it("collapses back via forceCollapseSyntaxReveal with the href intact and no live anchor", () => {
+    const editor = createEditor();
+    loadMarkdown(editor, MD);
+    moveCursorTo(editor, 2, 9);
+    expect(editor.state.doc.textContent).toContain(
+      "[world](javascript:top.name)",
+    );
+
+    forceCollapseSyntaxReveal(editor.view);
+    expect(linkHref(editor)).toBe("javascript:top.name");
+    expect(anchor(editor)).not.toBeNull();
+    expect(anchor(editor)!.hasAttribute("href")).toBe(false);
+    editor.destroy();
+  });
+});
