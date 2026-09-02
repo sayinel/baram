@@ -64,13 +64,6 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     ...sourceTheme.colors,
   }));
 
-  // Keep a ref to the original colors so we can restore on cancel/unmount
-  const originalColorsRef = useRef<ThemeColors>({ ...sourceTheme.colors });
-
-  // The base the original colors belong to — the derived accent pairing depends on
-  // it, so restoring colours without it would restore the wrong foreground (#330).
-  const originalBaseRef = useRef<"dark" | "light">(sourceTheme.base);
-
   // Set once the edited colours have been adopted as a real theme, so the unmount
   // cleanup knows there is no preview left to undo. Without it, correctness depends
   // on the cleanup running BEFORE the settings effect re-applies the saved theme —
@@ -90,7 +83,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   }, []);
 
   // Apply editing colors to CSS variables in real-time. data-theme도 함께 —
-  // 25색 inline vars만 바꾸면 base를 토글해도 <html data-theme>는 이전 값에
+  // 24색 inline vars만 바꾸면 base를 토글해도 <html data-theme>는 이전 값에
   // 머물러, 25키 밖 semantic 토큰·native widget(color-scheme)·CodeMirror가
   // 옛 base로 남은 혼합 미리보기가 됐다(적대 리뷰).
   useEffect(() => {
@@ -104,14 +97,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // Restore original colors on unmount (cancel / navigate away)
   useEffect(() => {
-    const orig = originalColorsRef.current;
-    const origBase = originalBaseRef.current;
     // Aliased so the cleanup reads the ref through a stable local (lint rule), not
     // a value captured at effect time — `saved` must be read AT cleanup.
     const saved = savedRef;
     return () => {
       if (saved.current) return;
-      restorePreview(orig, origBase);
+      restorePreview();
     };
   }, []);
 
@@ -151,7 +142,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   const handleCancel = useCallback(() => {
     // Restore original colors before closing
-    restorePreview(originalColorsRef.current, originalBaseRef.current);
+    restorePreview();
     onClose();
   }, [onClose]);
 
@@ -201,7 +192,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
             <div className="theme-editor-row" key={entry.key}>
               <span className="theme-editor-label">{entry.label}</span>
               {/* 옆의 span은 시각 라벨일 뿐 input과 연결돼 있지 않다 — 스크린
-                  리더에는 25개가 전부 무명의 color picker로 읽힌다. */}
+                  리더에는 24개가 전부 무명의 color picker로 읽힌다. */}
               <input
                 aria-label={entry.label}
                 className="theme-editor-color"
@@ -244,14 +235,18 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
  * if a theme switch ever became reachable while the editor is open (today the picker
  * is unmounted while editing, so the two agree) — the same defect class this fixes.
  */
-function restorePreview(colors: ThemeColors, base: "dark" | "light"): void {
+function restorePreview(): void {
   const root = document.documentElement;
   const { activeThemeId, customThemes } = useSettingsStore.getState();
   const resolved = findThemeById(activeThemeId, customThemes);
   const hasInlineVars =
     resolved !== undefined && appliesInlineVars(activeThemeId);
+  // 색·base·attribute 전부를 호출 시점의 store에서 읽는다(적대 리뷰 2라운드):
+  // 편집기를 열 때 캡처한 색을 쓰면, 편집 중 활성 테마가 바뀌는 경로가 생기는
+  // 순간 "현재 테마의 base + 과거 테마의 색"이 섞인 복원이 된다. 오늘의 UI는
+  // 편집 중 테마 전환을 막지만, 이 함수의 정합성이 그 우연에 기대면 안 된다.
   if (hasInlineVars) {
-    applyThemeVars(root, colors, base);
+    applyThemeVars(root, resolved.colors, resolved.base);
   } else {
     clearThemeVars(root);
   }

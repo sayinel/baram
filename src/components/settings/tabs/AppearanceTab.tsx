@@ -49,7 +49,9 @@ export function AppearanceTab() {
           className={`theme-card theme-system-card ${activeThemeId === "system" ? "theme-card-active" : ""}`}
           onClick={() => setActiveTheme("system")}
         >
-          <div className="theme-preview theme-preview-split">
+          {/* 프리뷰는 장식이다 — 숨기지 않으면 카드의 accessible name에
+              프리뷰 텍스트("Aa Aa")까지 섞여 읽힌다(적대 리뷰). */}
+          <div aria-hidden="true" className="theme-preview theme-preview-split">
             <div
               className="theme-preview-half"
               style={{ background: "#ffffff" }}
@@ -277,7 +279,10 @@ function PresetCard({
 function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
   const c = theme.colors;
   return (
+    // 장식 프리뷰 — 숨기지 않으면 카드 button의 accessible name에 프리뷰의
+    // 더미 텍스트(Heading, bold …)까지 전부 섞여 읽힌다(적대 리뷰).
     <div
+      aria-hidden="true"
       className="theme-preview"
       style={{ background: c["--color-bg-default"] }}
     >
