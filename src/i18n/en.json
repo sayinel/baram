@@ -83,6 +83,7 @@
   "journal.capture.body.placeholder": "Write a note…",
   "journal.capture.error.empty": "Enter something to save.",
   "journal.capture.error.inbox": "Could not save to the Zettel inbox.",
+  "journal.capture.error.media": "Could not save the attached media, so nothing was saved. Your text is still here — try again.",
   "journal.capture.error.noSpace": "Set up a Zettel space first.",
   "journal.capture.error.save": "Save failed: {message}",
   "journal.capture.error.taskDirtyTab": "The capture file has unsaved changes. Save that tab and try again.",

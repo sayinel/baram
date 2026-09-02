@@ -83,6 +83,7 @@
   "journal.capture.body.placeholder": "메모를 입력하세요…",
   "journal.capture.error.empty": "내용을 입력해주세요.",
   "journal.capture.error.inbox": "Zettel inbox에 저장하지 못했습니다.",
+  "journal.capture.error.media": "첨부한 이미지를 저장하지 못해 아무것도 저장되지 않았습니다. 본문은 그대로 있으니 다시 시도해 주세요.",
   "journal.capture.error.noSpace": "Zettel 공간을 먼저 설정하세요.",
   "journal.capture.error.save": "저장 실패: {message}",
   "journal.capture.error.taskDirtyTab": "수집함 파일에 저장하지 않은 변경이 있습니다. 그 탭을 저장한 뒤 다시 시도해 주세요.",

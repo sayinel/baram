@@ -6,13 +6,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CaptureDropAccess } from "../../stores/editor/editor";
+import type { PendingMedia } from "../../utils/media-data-url";
 import type { Editor } from "@tiptap/react";
 
 import { isNodeEmpty, Editor as TiptapEditor } from "@tiptap/core";
 
 import { createBaramExtensions } from "../../extensions";
 import { useEditorStore } from "../../stores/editor/editor";
-import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
+import {
+  canonicalDoc,
+  serializeLiveDoc,
+} from "../../utils/editor/serialize-live-doc";
+import { collectPendingMedia } from "../../utils/media-data-url";
 
 // ‼️ Finding 1 (§323 리뷰): `Editor.isEmpty`는 `isNodeEmpty(doc)`를
 // `ignoreWhitespace` 기본값(false)으로 호출해, 공백만 있는 텍스트 노드를
@@ -27,6 +32,11 @@ export interface CaptureEditor {
   editor: Editor | null;
   /** 지금 문서를 마크다운으로. 비어 있으면 빈 문자열. */
   getMarkdown: () => string;
+  /**
+   * §324-e 아직 디스크에 없는 미디어(data URL) — 저장이 파일로 꺼낼 목록.
+   * 비어 있으면 저장 경로가 추출 단계를 통째로 건너뛴다.
+   */
+  getPendingMedia: () => PendingMedia[];
   isEmpty: boolean;
 }
 
@@ -48,11 +58,11 @@ export function useCaptureEditor(
   const [editor, setEditor] = useState<Editor | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
 
-  // 매 렌더 최신값을 담아 두는 ref — 아래 `extensions`가 이 ref를 통해서만
-  // 호출부의 리졸버에 닿아야, 다이얼로그가 리렌더될 때마다(태스크 모드 토글 등)
-  // 새 함수 참조가 와도 `extensions`의 identity가 바뀌지 않는다. 참조가
-  // 바뀌면 아래 effect가 다시 돌아 편집기 인스턴스를 통째로 파기·재생성해
-  // 타이핑 중이던 내용이 날아간다 — deps를 비워 두는 이유와 같은 사고.
+  // 매 렌더 최신값을 담아 두는 ref — 아래 effect가 게시하는 `access`가 이 ref를
+  // 통해서만 호출부의 리졸버에 닿아야, 다이얼로그가 리렌더될 때마다(태스크 모드
+  // 토글 등) 새 함수 참조가 와도 effect의 deps가 흔들리지 않는다. 흔들리면
+  // effect가 다시 돌아 편집기 인스턴스를 통째로 파기·재생성해 타이핑 중이던
+  // 내용이 날아간다 — deps를 좁게 두는 이유와 같은 사고.
   const resolveDropDestinationRef = useRef(resolveDropDestination);
   useEffect(() => {
     resolveDropDestinationRef.current = resolveDropDestination;
@@ -60,15 +70,12 @@ export function useCaptureEditor(
 
   // ‼️ 배열은 인스턴스마다 한 번만 만든다. 렌더마다 새로 만들면 Tiptap이 옵션을
   // 원소 단위로 비교하다 매번 달라졌다고 보고 재구성한다(§298 vim의 교훈).
-  // `resolveDropDestination`은 위 ref를 통해서만 참조하므로 이 deps는 계속
-  // 비워 둘 수 있다.
+  //
+  // §324-e 목적지를 여기로 넘기지 않는다. 캡처 편집기는 삽입 시점에 목적지를
+  // 알 필요가 없다 — `profile: "capture"`가 `DropHandler`에 `deferMediaToHost`를
+  // 세우고, 미디어는 data URL로 들어가 저장 때 비로소 파일이 된다.
   const extensions = useMemo(
-    () =>
-      createBaramExtensions({
-        profile: "capture",
-        resolveDropDestination: () =>
-          resolveDropDestinationRef.current?.() ?? null,
-      }),
+    () => createBaramExtensions({ profile: "capture" }),
     [],
   );
 
@@ -127,10 +134,20 @@ export function useCaptureEditor(
     return serializeLiveDoc(editor).trim();
   }, [editor]);
 
+  // ‼️ `state.doc`이 아니라 `canonicalDoc(state).doc`이다 — `getMarkdown` 위가
+  // `serializeLiveDoc`을 통해 직렬화하는 것과 **같은 doc**이어야 한다. 커서가
+  // 이미지 위에 있으면 SyntaxReveal이 그것을 리터럴 `![alt](src)` 텍스트로 펼쳐
+  // 두므로 그 순간의 `state.doc`에는 미디어 노드가 없다. 거기서 세면 추출 목록이
+  // 비고, 직렬화된 마크다운에는 data URL이 그대로 남아 노트에 실린다.
+  const getPendingMedia = useCallback(() => {
+    if (!editor || editor.isDestroyed) return [];
+    return collectPendingMedia(canonicalDoc(editor.state).doc);
+  }, [editor]);
+
   // §323 리뷰 Minor 8: 여기 `reset()`이 있었지만 부르는 곳이 자기 테스트뿐이었다.
   // 다이얼로그는 본문을 비울 일이 없다 — `open` 전환마다 위 effect가 편집기
   // 인스턴스를 통째로 새로 만들고, 그것이 곧 빈 문서다. 산 것처럼 보이는 죽은
   // API는 다음 사람에게 "본문 초기화는 이걸 부르면 된다"고 잘못 알려 준다.
   // (`knip`은 객체 속성의 미사용을 못 본다 — 이 종류는 사람이 지워야 한다.)
-  return { editor, getMarkdown, isEmpty };
+  return { editor, getMarkdown, getPendingMedia, isEmpty };
 }

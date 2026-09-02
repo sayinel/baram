@@ -146,7 +146,11 @@ function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
         if (!pos) return false;
         const insertPos = pos.pos;
 
-        const ctx = getJournalContext(options.resolveDestinationPath);
+        // §324-e 저장을 호스트에 미루는 표면(캡처 창)은 목적지를 물을 이유가
+        // 없다 — 지금 디스크에 쓰지 않으므로 `getJournalContext`를 부르지도
+        // 않는다. `null`이 곧 "이 표면은 아직 파일이 아니다"이고, 아래 루프의
+        // 첫 분기가 그 경우다.
+        const ctx = options.deferMediaToHost ? null : getJournalContext();
 
         // §298 §12-9b (design §5c): file reads land after an async gap —
         // once the task dies (state install / vim mode exit), the reads
@@ -169,7 +173,13 @@ function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
         void (async () => {
           for (const file of files) {
             if (!task.isLive()) break;
-            if (ctx.isJournal) {
+            if (!ctx) {
+              // §324-e 캡처: 사진이든 동영상이든 data URL로 들어간다. 실제 파일
+              // 쓰기는 저장이 한다(`utils/media-data-url.ts`).
+              const dataUrl = await readFileAsDataURL(file);
+              if (!task.isLive()) break;
+              insertMediaAtPos(view, dataUrl, file.name, insertPos);
+            } else if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
               if (!task.isLive()) break;
               await insertJournalMediaFromBytes(
@@ -231,7 +241,8 @@ function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
 
         event.preventDefault();
 
-        const ctx = getJournalContext(options.resolveDestinationPath);
+        // §324-e — same reasoning as handleDrop above.
+        const ctx = options.deferMediaToHost ? null : getJournalContext();
 
         // §298 §12-9b — same contract as handleDrop above.
         const task = registerEditorMutationTask(view);
@@ -241,7 +252,12 @@ function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
         void (async () => {
           for (const file of files) {
             if (!task.isLive()) break;
-            if (ctx.isJournal) {
+            if (!ctx) {
+              // §324-e 캡처 — handleDrop의 같은 분기와 같은 계약.
+              const dataUrl = await readFileAsDataURL(file);
+              if (!task.isLive()) break;
+              insertMediaAtPos(view, dataUrl, file.name);
+            } else if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
               if (!task.isLive()) break;
               await insertJournalMediaFromBytes(view, bytes, file.name, ctx);
@@ -316,33 +332,15 @@ function detectTabSeparatedData(text: string): null | string[][] {
  * why `isJournal` is false, not a reason to also hide the file path from
  * callers that don't care about journal status.
  *
- * §324-e: `activeTabId`/`tabs` is the MAIN document editor's global state.
- * A second, independent editor instance (the Quick Capture dialog) is never
- * one of those tabs, so reading them here would silently attribute media to
- * whatever unrelated document happens to be open in the main window —
- * saving next to the wrong file and inserting a relative reference that
- * doesn't resolve from where the actual note ends up. `resolveDestinationPath`
- * lets such a host hand over its own destination instead of being read from
- * the tab list. Three states, not two — the presence of the FUNCTION itself
- * (not what it returns) is what tells the document editor apart from a host
- * like capture:
- *  - not supplied at all (`undefined`/`null`) → this is the document editor,
- *    which IS one of the tabs — fall through to the active-tab lookup below,
- *    completely unchanged from before this option existed.
- *  - supplied, returns a path → use it, treated like a journal entry (real
- *    assets/ folder, never an inline data URL) — the whole point of a host
- *    supplying a path is that it wants a real file saved there.
- *  - supplied, returns null → the host is NOT the document editor and
- *    currently has nowhere to save (e.g. capture's Zettel/tasks space isn't
- *    configured yet). Do NOT fall back to the active tab in this case — that
- *    fallback is exactly the bug this option exists to close. Route to the
- *    self-contained path instead (data URL for images; the existing "no
- *    document" refusal for video, which is honest here — there really is no
- *    destination).
+ * ‼️ §324-e: this function answers "where does the ACTIVE TAB's media go", and
+ * only a surface that IS one of those tabs may ask it. `activeTabId`/`tabs` is
+ * the MAIN document editor's global state; a second, independent editor
+ * instance (the Quick Capture dialog) is never one of those tabs, so asking on
+ * its behalf attributes media to whatever unrelated document happens to be
+ * open in the main window. That is why the callers above skip this function
+ * entirely when `deferMediaToHost` is set — see that option's doc comment.
  */
-function getJournalContext(
-  resolveDestinationPath?: (() => null | string) | null,
-): {
+function getJournalContext(): {
   filePath: string;
   isJournal: boolean;
   journalDir: string;
@@ -350,13 +348,6 @@ function getJournalContext(
 } {
   const rootPath = useFileStore.getState().rootPath ?? "";
   const journalDir = useSettingsStore.getState().journalDirectory ?? "";
-
-  if (resolveDestinationPath) {
-    const override = resolveDestinationPath();
-    return override
-      ? { filePath: override, isJournal: true, journalDir, rootPath }
-      : { filePath: "", isJournal: false, journalDir, rootPath };
-  }
 
   const activeTabId = useEditorStore.getState().activeTabId;
   const tabs = useEditorStore.getState().tabs;
@@ -436,26 +427,32 @@ function toastMediaError(key: string, name: string): void {
   useUIStore.getState().showToast(t(key, locale as Locale, { name }), "error");
 }
 
-/** §324-e options — see `getJournalContext`'s doc comment for the three states this drives. */
+/** §324-e Which surface this handler is installed on — see the field. */
 export interface DropHandlerOptions {
   /**
-   * `null` (the default): this host doesn't know or care about the active
-   * tab — use it, exactly like before this option existed. A function: this
-   * host IS the authority on its own destination — call it, and never fall
-   * back to the active tab even if it returns null.
+   * §324-e `false` (the default): this host is a document tab — it has a path
+   * and an `assets/` folder to hang a relative reference on, so a dropped or
+   * pasted file is copied to disk immediately. That is correct there and does
+   * not change.
    *
-   * ‼️ Load-bearing dependency, named here because nothing enforces it: the
-   * override branch reports `isJournal: true` while still handing back the
-   * `journalDir`/`rootPath` it read from the stores, which belong to the MAIN
-   * window and have nothing to do with this host's destination. That is safe
-   * only because `savePhotoToAssets` ignores both of those parameters
-   * (`utils/journal/journal-photo.ts` — they are underscore-prefixed and
-   * unused; the directory comes from `activeFilePath` alone). If anyone
-   * un-deadens them, a capture's media silently starts mixing this host's
-   * destination with the journal's root, which is exactly the class of
-   * quiet-wrong-directory bug this option was added to close.
+   * `true`: **this host is not a file yet.** It has no path, no base
+   * directory, and the user may never save it. Media therefore goes in as a
+   * data URL and nothing touches the disk until the host's own save extracts
+   * it (`utils/media-data-url.ts`). One rule explains all of it: what has not
+   * been saved is not on disk.
+   *
+   * Set by the Quick Capture dialog. Three defects came from the earlier
+   * design that wrote at insert time — cancelling the dialog still left the
+   * image in `assets/`, the image often painted as bare alt text (a relative
+   * reference has no base directory to resolve against on a surface that is
+   * not a tab), and both were true of paste as well as drop.
+   *
+   * ‼️ The destination is NOT discarded, it moves: the host decides where
+   * extraction writes, at save time, from the same resolver it always owned.
+   * Recomputing that decision anywhere else is what previously made this path
+   * blind to task mode.
    */
-  resolveDestinationPath: (() => null | string) | null;
+  deferMediaToHost: boolean;
 }
 
 /** Tiptap Extension wrapper */
@@ -464,7 +461,7 @@ export const DropHandler = Extension.create<DropHandlerOptions>({
 
   addOptions() {
     return {
-      resolveDestinationPath: null,
+      deferMediaToHost: false,
     };
   },
 

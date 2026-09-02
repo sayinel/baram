@@ -5,10 +5,15 @@ import { Slice } from "@tiptap/pm/model";
 import { EditorView } from "@tiptap/pm/view";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// §324-e `copyBytesToDir`는 실물을 쓴다 — 추출이 실제로 어느 경로에 어떤 이름으로
+// 쓰려 하는지, 그리고 **취소했을 때 아무것도 부르지 않는지**가 이 브리프의 핵심
+// 단정이다. IPC 경계에서만 자른다.
 vi.mock("../../../ipc/invoke", () => ({
   appendTaskLine: vi.fn(),
+  createDir: vi.fn().mockResolvedValue(undefined),
   listDir: vi.fn().mockResolvedValue([]),
   readFile: vi.fn().mockResolvedValue(""),
+  writeBinaryFile: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../../services/zettelkasten-service", () => ({
   captureFleeting: vi.fn().mockResolvedValue({ path: "/z/inbox/x.md" }),
@@ -32,7 +37,12 @@ vi.mock("../../../utils/journal/journal-photo", () => ({
 }));
 
 import { t } from "../../../i18n";
-import { CaptureError, captureTask } from "../../../services/task-capture";
+import { createDir, listDir, writeBinaryFile } from "../../../ipc/invoke";
+import {
+  buildCaptureLine,
+  CaptureError,
+  captureTask,
+} from "../../../services/task-capture";
 import { captureFleeting } from "../../../services/zettelkasten-service";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
@@ -79,17 +89,19 @@ const setCaptureBody = (text: string) => {
 // §324-e round 2: paste an image straight into the capture editor's real
 // ProseMirror `handlePaste` — the same `_editor` handle `setCaptureBody`
 // uses, but exercising the actual DropHandler plugin instead of `setContent`.
-function pasteImageInCapture(name = "shot.png"): void {
+function pasteImageInCapture(name = "shot.png", content = "x"): void {
+  pasteFilesInCapture([new File([content], name, { type: "image/png" })]);
+}
+
+/** 파일 여럿을 담은 한 번의 붙여넣기 — `handlePaste`의 순차 루프를 태운다. */
+function pasteFilesInCapture(files: File[]): void {
   const editor = (
     document.querySelector(".quick-capture-editor") as HTMLElement & {
       _editor?: Editor;
     }
   )._editor!;
   const event = {
-    clipboardData: {
-      files: [new File(["x"], name, { type: "image/png" })],
-      getData: () => "",
-    },
+    clipboardData: { files, getData: () => "" },
     preventDefault: vi.fn(),
   } as unknown as ClipboardEvent;
   act(() => {
@@ -98,6 +110,30 @@ function pasteImageInCapture(name = "shot.png"): void {
     );
   });
 }
+
+/**
+ * §324-e 붙여넣기 삽입은 `FileReader`를 거치므로 비동기다. 이 대기가 없으면
+ * 뒤따르는 "쓰지 않았다" 단정이 "아직 아무 일도 일어나지 않았다"로도 통과한다.
+ * `count`는 지금까지 넣은 이미지 수 — 노드가 실제로 그만큼 들어왔는지까지 본다.
+ */
+async function waitForCaptureImages(count: number): Promise<void> {
+  await vi.waitFor(() => {
+    expect(document.querySelectorAll(".quick-capture-editor img")).toHaveLength(
+      count,
+    );
+  });
+}
+
+const cancelButton = () =>
+  screen.getByRole("button", { name: t("common.cancel", LOCALE) });
+
+/** 지금 캡처 본문 — 저장 실패 후 사용자의 글이 남아 있는지 확인용. */
+const captureHtml = (): string =>
+  (
+    document.querySelector(".quick-capture-editor") as HTMLElement & {
+      _editor?: Editor;
+    }
+  )._editor!.getHTML();
 
 describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
   beforeEach(() => {
@@ -401,16 +437,17 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
   });
 });
 
-// §324-e round 2 — review Critical: the round-1 fix only covered "zettel
-// configured, task mode off". These two pin the cases that slipped through:
-// task mode (which ignores the Zettel space entirely, tasks-home.ts) and the
-// default install (zettel unconfigured, which round 1's own tests never hit
-// because they hard-coded `zettelkastenEnabled: true`).
-describe("QuickCaptureDialog — §324-e 이미지 목적지", () => {
-  const taskToggle = () =>
-    screen.getByRole("checkbox", {
-      name: t("journal.capture.taskMode.label", LOCALE),
-    });
+// §324-e round 3 — **저장을 누르기 전에는 아무것도 디스크에 닿지 않는다.**
+//
+// 사용자가 실물에서 찾은 결함 셋이 하나의 원인에서 나왔다: 드랍·붙여넣기가 즉시
+// 최종 목적지에 파일을 썼다. 그래서 (1) 취소해도 이미지가 assets/에 남았고,
+// (2) 캡처 상자에는 그림 대신 alt 텍스트만 보였고(탭이 아닌 표면에는 상대참조를
+// 풀 baseDir이 없다), (3) 붙여넣기도 드랍과 똑같이 그랬다.
+//
+// 목적지 계약(round 2)은 버려지지 않고 **저장 시점으로 옮겨 갔다** — 태스크 모드는
+// 태스크 홈 아래, 그 외에는 zettel 수집함 아래. 아래 두 describe가 각각
+// "쓰지 않는다"와 "저장할 때 어디에 쓴다"를 본다.
+describe("QuickCaptureDialog — §324-e 저장 전에는 쓰지 않는다", () => {
   const originalEditorState = useEditorStore.getState();
   const originalSettingsState = useSettingsStore.getState();
   const originalFileState = useFileStore.getState();
@@ -418,8 +455,14 @@ describe("QuickCaptureDialog — §324-e 이미지 목적지", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     savePhotoToAssets.mockClear();
+    vi.mocked(listDir).mockResolvedValue([]);
+    vi.mocked(createDir).mockResolvedValue(undefined);
+    vi.mocked(writeBinaryFile).mockResolvedValue(undefined);
     useSettingsStore.setState({ locale: LOCALE });
     useUIStore.setState({ quickCaptureOpen: true });
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+    useFileStore.getState().setRootPath("/vault");
   });
 
   afterEach(() => {
@@ -428,43 +471,302 @@ describe("QuickCaptureDialog — §324-e 이미지 목적지", () => {
     useFileStore.setState(originalFileState, true);
   });
 
-  it("task mode ON + zettel configured — resolves under the tasks capture directory, not the zettel inbox", async () => {
+  it("붙여넣기만으로는 디렉터리도 파일도 만들지 않는다", async () => {
+    render(<QuickCaptureDialog />);
+    pasteImageInCapture("pearl-2.png");
+    await waitForCaptureImages(1);
+
+    expect(createDir).not.toHaveBeenCalled();
+    expect(writeBinaryFile).not.toHaveBeenCalled();
+    expect(savePhotoToAssets).not.toHaveBeenCalled();
+    // 그림은 실제로 그려진다 — alt 텍스트만 뜨던 결함의 반대편. data URL은
+    // baseDir을 묻지 않는 유일한 형태이므로 캡처 상자에서도 해석된다.
+    const img = document.querySelector(".quick-capture-editor img")!;
+    expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
+  });
+
+  // ‼️ 사용자의 문장 그대로: "'저장'을 누른 경우에만 이미지가 assets에 저장 되어야".
+  it("취소하면 아무것도 디스크에 남지 않는다", async () => {
+    render(<QuickCaptureDialog />);
+    pasteImageInCapture("pearl-2.png");
+    await waitForCaptureImages(1);
+
+    await act(async () => {
+      fireEvent.click(cancelButton());
+    });
+
+    expect(createDir).not.toHaveBeenCalled();
+    expect(writeBinaryFile).not.toHaveBeenCalled();
+    expect(savePhotoToAssets).not.toHaveBeenCalled();
+    expect(captureFleeting).not.toHaveBeenCalled();
+    expect(captureTask).not.toHaveBeenCalled();
+    expect(useUIStore.getState().quickCaptureOpen).toBe(false);
+  });
+
+  it("태스크 모드에서 취소해도 마찬가지다", async () => {
+    useSettingsStore.setState({
+      tasksHome: "/vault/tasks-home",
+      tasksCaptureFile: "inbox.md",
+    });
+    render(<QuickCaptureDialog />);
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: t("journal.capture.taskMode.label", LOCALE),
+      }),
+    );
+    pasteImageInCapture("pearl-2.png");
+    await waitForCaptureImages(1);
+
+    await act(async () => {
+      fireEvent.click(cancelButton());
+    });
+
+    expect(createDir).not.toHaveBeenCalled();
+    expect(writeBinaryFile).not.toHaveBeenCalled();
+    expect(captureTask).not.toHaveBeenCalled();
+  });
+});
+
+describe("QuickCaptureDialog — §324-e 저장이 파일을 만든다", () => {
+  const taskToggle = () =>
+    screen.getByRole("checkbox", {
+      name: t("journal.capture.taskMode.label", LOCALE),
+    });
+  const originalEditorState = useEditorStore.getState();
+  const originalSettingsState = useSettingsStore.getState();
+  const originalFileState = useFileStore.getState();
+
+  /**
+   * `listDir`이 방금 쓴 파일을 반영하는 충실한 대역. 언제나 `[]`를 돌려주는
+   * 대역으로는 `resolveNameConflict`가 첫 파일을 보지 못해 "이름이 같은 이미지
+   * 둘이 서로 다른 파일이 된다"는 단정이 구조적으로 통과할 수 없다.
+   */
+  function fakeDisk(): Map<string, unknown> {
+    const disk = new Map<string, unknown>();
+    vi.mocked(writeBinaryFile).mockImplementation(async (path, data) => {
+      disk.set(path, data);
+    });
+    vi.mocked(listDir).mockImplementation(async (dir) =>
+      [...disk.keys()]
+        .filter((p) => p.slice(0, p.lastIndexOf("/")) === dir)
+        .map((p) => ({
+          isDir: false,
+          modifiedAt: 0,
+          name: p.slice(p.lastIndexOf("/") + 1),
+          path: p,
+          size: 0,
+        })),
+    );
+    return disk;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    savePhotoToAssets.mockClear();
+    vi.mocked(createDir).mockResolvedValue(undefined);
+    vi.mocked(captureFleeting).mockResolvedValue({ path: "/z/inbox/x.md" });
+    useSettingsStore.setState({ locale: LOCALE });
+    useUIStore.setState({ quickCaptureOpen: true });
+    useFileStore.getState().setRootPath("/vault");
+  });
+
+  afterEach(() => {
+    useEditorStore.setState(originalEditorState, true);
+    useSettingsStore.setState(originalSettingsState, true);
+    useFileStore.setState(originalFileState, true);
+  });
+
+  it("zettel — 수집함의 assets/ 아래에, 원본 파일명으로 쓴다", async () => {
+    fakeDisk();
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+
+    render(<QuickCaptureDialog />);
+    pasteImageInCapture("pearl-2.png");
+    await waitForCaptureImages(1);
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    // 목적지는 `${zettelDir}/inbox` — `captureFleeting`이 노트를 쓰는 그
+    // 디렉터리다. 그래서 노트에 남는 `assets/…` 상대참조가 실제 파일을 가리킨다.
+    expect(createDir).toHaveBeenCalledWith("/vault/zettel/inbox/assets");
+    expect(writeBinaryFile).toHaveBeenCalledWith(
+      "/vault/zettel/inbox/assets/pearl-2.png",
+      expect.any(Array),
+    );
+
+    const body = vi.mocked(captureFleeting).mock.calls[0][1];
+    expect(body).toContain("![pearl-2.png](assets/pearl-2.png)");
+    // ‼️ 참조가 남는 것만으로는 부족하다 — data URL이 **함께** 남으면 노트에
+    // 거대한 base64가 실린다.
+    expect(body).not.toContain("data:");
+  });
+
+  it("이름이 같은 이미지 둘은 서로 다른 파일이 된다 — 덮어쓰지 않는다", async () => {
+    const disk = fakeDisk();
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+
+    render(<QuickCaptureDialog />);
+    // ‼️ 이미지 둘은 붙여넣기가 아니라 `setContent`로 넣는다. 붙여넣기로는 캡처
+    // 안에 이미지 둘을 만들 수 없다 — `insertMediaAtPos`가 위치 없이
+    // `replaceSelectionWith`로 삽입하고 첫 삽입 뒤 선택이 그 노드에 놓이므로,
+    // 파일 둘을 한 번에 붙여넣어도 두 번째가 첫 번째를 대체한다(이 브랜치가
+    // 만든 것이 아니라 문서 편집기도 공유하는 기존 동작 — 드랍 경로는
+    // `insertNodeAtPos`로 위치를 전진시켜 영향이 없다). 이 테스트가 고정하려는
+    // 것은 **저장**이 이름 충돌을 어떻게 푸느냐이므로, 그 앞 단계의 이 결함을
+    // 우회해서 상태를 만든다. 내용이 달라야 서로 다른 data URL이 된다 — 같은
+    // 바이트는 같은 이미지이므로 `collectPendingMedia`가 한 건으로 합친다.
+    act(() => {
+      (
+        document.querySelector(".quick-capture-editor") as HTMLElement & {
+          _editor?: Editor;
+        }
+      )._editor!.commands.setContent(
+        `<p><img src="data:image/png;base64,Zmlyc3Q=" alt="shot.png"></p>` +
+          `<p><img src="data:image/png;base64,c2Vjb25k" alt="shot.png"></p>`,
+      );
+    });
+    await waitForCaptureImages(2);
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    expect([...disk.keys()].sort()).toEqual([
+      "/vault/zettel/inbox/assets/shot-1.png",
+      "/vault/zettel/inbox/assets/shot.png",
+    ]);
+    const body = vi.mocked(captureFleeting).mock.calls[0][1];
+    expect(body).toContain("assets/shot.png");
+    expect(body).toContain("assets/shot-1.png");
+    expect(body).not.toContain("data:");
+  });
+
+  // §324-e round 2가 잡은 것을 저장 시점에서 다시 고정한다: 태스크 모드는 zettel
+  // 공간과 무관한 별도 설정(`tasks-home.ts`)이라, 목적지를 설정에서 재계산하는
+  // 구현은 이 분기를 놓치고 zettel 수집함에 쓴다.
+  it("태스크 모드 — 태스크 수집함의 assets/ 아래에 쓴다, zettel이 아니라", async () => {
+    fakeDisk();
     useSettingsStore.setState({
       tasksHome: "/vault/tasks-home",
       tasksCaptureFile: "inbox.md",
     });
     useSettingsStore.getState().setZettelkastenEnabled(true);
     useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
-    useFileStore.getState().setRootPath("/vault");
 
     render(<QuickCaptureDialog />);
     fireEvent.click(taskToggle());
-    pasteImageInCapture();
+    pasteImageInCapture("shot.png");
+    await waitForCaptureImages(1);
 
-    await vi.waitFor(() => {
-      expect(savePhotoToAssets).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(saveButton());
     });
-    expect(savePhotoToAssets).toHaveBeenCalledWith(
-      expect.any(Uint8Array),
-      "shot.png",
+
+    expect(writeBinaryFile).toHaveBeenCalledWith(
+      "/vault/tasks-home/tasks/assets/shot.png",
+      expect.any(Array),
+    );
+    expect(writeBinaryFile).not.toHaveBeenCalledWith(
+      expect.stringContaining("/vault/zettel/"),
       expect.anything(),
-      expect.anything(),
-      "/vault/tasks-home/tasks/inbox.md",
     );
   });
 
-  it("zettel unconfigured + task mode off — does not fall back to the main window's active tab", async () => {
+  // ‼️ 순서가 이 테스트의 전부다. `captureTask`는 본문을 `- [ ] …` **한 줄**로
+  // 접으므로, 추출이 그 뒤에 일어나면 거대한 base64 문자열이 이미 plain-text
+  // 태스크 목록의 한 줄이 된 뒤다. 어떤 렌더러도 그것을 되돌려 주지 않는다.
+  it("태스크 모드 — 추출이 태스크 줄을 만들기 전에 끝난다", async () => {
+    fakeDisk();
+    useSettingsStore.setState({
+      tasksHome: "/vault/tasks-home",
+      tasksCaptureFile: "inbox.md",
+    });
+
+    render(<QuickCaptureDialog />);
+    fireEvent.click(taskToggle());
+    pasteImageInCapture("shot.png");
+    await waitForCaptureImages(1);
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    const { body } = vi.mocked(captureTask).mock.calls[0][0];
+    expect(body).not.toContain("data:");
+    // 실제로 파일에 적히는 줄을 진짜 `buildCaptureLine`으로 만들어 본다 — 본문만
+    // 보는 단정은 그 줄을 만드는 단계가 무엇을 하는지 말하지 못한다.
+    const line = buildCaptureLine(body, "2026-09-02", [])!;
+    expect(line).not.toContain("data:");
+    expect(line).toContain("assets/shot.png");
+  });
+
+  // ‼️ 순서의 나머지 절반. 추출이 실패하면 노트를 **쓰지 않는다** — 존재하지 않는
+  // 파일을 가리키는 참조가 노트에 남는 것이 이 작업이 없애려는 결함이고, 저장
+  // 시점으로 옮겨 놓기만 하면 고친 것이 아니다. 그러면서 사용자의 글도 잃지
+  // 않는다: 다이얼로그는 열린 채로 남는다(저장 실패의 기존 계약).
+  it("추출이 실패하면 노트를 쓰지 않고 본문을 지킨다", async () => {
+    fakeDisk();
+    vi.mocked(writeBinaryFile).mockRejectedValue(new Error("disk full"));
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+
+    render(<QuickCaptureDialog />);
+    setCaptureBody("잃어버리면 안 되는 문장");
+    pasteImageInCapture("pearl-2.png");
+    await waitForCaptureImages(1);
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    expect(captureFleeting).not.toHaveBeenCalled();
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+    expect(captureHtml()).toContain("잃어버리면 안 되는 문장");
+    expect(
+      screen.getByText(t("journal.capture.error.media", LOCALE)),
+    ).toBeInTheDocument();
+  });
+
+  // 목적지가 없으면 아무것도 쓰지 않고, 사용자는 **원인에 맞는** 문구를 본다.
+  // 여기서 추출이 따로 오류를 만들면 "이미지를 저장하지 못했다"가 뜨는데, 진짜
+  // 원인은 태스크 홈이 없다는 것이다.
+  it("태스크 홈이 없으면 파일을 쓰지 않고 그 원인을 말한다", async () => {
+    fakeDisk();
+    useSettingsStore.setState({ tasksHome: "", tasksCaptureFile: "inbox.md" });
     useSettingsStore.getState().setZettelkastenEnabled(false);
     useSettingsStore.getState().setZettelkastenDirectory("");
-    useFileStore.getState().setRootPath("/vault");
-    // §324-e round 1's exact repro state: a document tab open in the main
-    // window that has nothing to do with capture — made to look like a
-    // journal entry (`journalDirectory` prefix match) specifically so that,
-    // if the round-1 "resolver returned null → fall through" logic were
-    // still in place, `getJournalContext` would call this a journal write
-    // and actually save next to it. A non-journal-looking tab wouldn't
-    // distinguish round 1 from round 2 here (both would land on the data-URL
-    // branch anyway) — this is the one shape where the two disagree.
+    vi.mocked(captureTask).mockRejectedValue(
+      new CaptureError("noTasksHome", "no tasks home"),
+    );
+
+    render(<QuickCaptureDialog />);
+    fireEvent.click(taskToggle());
+    pasteImageInCapture("shot.png");
+    await waitForCaptureImages(1);
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    expect(createDir).not.toHaveBeenCalled();
+    expect(writeBinaryFile).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(t("journal.capture.error.taskNoHome", LOCALE)),
+    ).toBeInTheDocument();
+  });
+
+  it("zettel 미설정 + 태스크 모드 꺼짐 — 메인 창의 활성 탭으로 새지 않는다", async () => {
+    fakeDisk();
+    useSettingsStore.getState().setZettelkastenEnabled(false);
+    useSettingsStore.getState().setZettelkastenDirectory("");
+    // §324-e round 1의 재현 상태: 캡처와 무관한 문서 탭이 메인 창에 열려 있고,
+    // `journalDirectory` 접두사와 일치하도록 저널처럼 생긴 경로다 — 즉시 쓰기가
+    // 되살아나면 `getJournalContext`가 이 탭을 저널 쓰기로 보고 실제로 그 옆에
+    // 저장한다. 저널처럼 생기지 않은 탭은 두 코드를 구별하지 못한다.
     useSettingsStore.setState({ journalDirectory: "/vault/notes" });
     useEditorStore.setState({
       activeTabId: "t1",
@@ -473,12 +775,10 @@ describe("QuickCaptureDialog — §324-e 이미지 목적지", () => {
 
     render(<QuickCaptureDialog />);
     pasteImageInCapture();
+    await waitForCaptureImages(1);
 
-    await vi.waitFor(() => {
-      const img = document.querySelector(".quick-capture-editor img");
-      expect(img).not.toBeNull();
-    });
     expect(savePhotoToAssets).not.toHaveBeenCalled();
+    expect(writeBinaryFile).not.toHaveBeenCalled();
     const img = document.querySelector(".quick-capture-editor img")!;
     expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
   });

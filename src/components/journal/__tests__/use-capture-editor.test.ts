@@ -16,6 +16,16 @@ vi.mock("../../../utils/journal/journal-photo", () => ({
   savePhotoToAssets: (...a: unknown[]) =>
     savePhotoToAssets(...(a as [Uint8Array, string])),
 }));
+// §324-e 동영상은 이미지와 **다른** 저장 함수로 샌다 — `insertVideoFromBytes`는
+// `isJournal`을 보지 않고 `ctx.filePath`만 있으면 그 옆에 쓴다. 이미지 쪽만
+// 막아 두면 그 가지가 열린 채로 남으므로 둘 다 자른다.
+const saveMediaToDocAssets = vi.fn(
+  async (_bytes: Uint8Array, name: string) => `assets/${name}`,
+);
+vi.mock("../../../utils/media-assets", () => ({
+  saveMediaToDocAssets: (...a: unknown[]) =>
+    saveMediaToDocAssets(...(a as [Uint8Array, string])),
+}));
 
 /**
  * 입력 규칙을 실제로 발동시키며 텍스트를 넣는다 — `task-input-rules.test.ts`와
@@ -160,9 +170,13 @@ describe("§323 useCaptureEditor", () => {
     // 안정성만으로는 부족하다 — 배열을 고정한 대가로 낡은 리졸버를 붙들고
     // 있으면 그것대로 §324-e를 되돌리는 결함이다. ref 우회가 실제로 최신 값을
     // 읽는지까지 같이 본다.
-    it("그러면서도 최신 리졸버를 쓴다 — 낡은 목적지로 저장하지 않는다", async () => {
-      savePhotoToAssets.mockClear();
-      const { rerender, result } = renderHook(
+    //
+    // §324-e round 3에서 관측 지점이 옮겨졌다: 붙여넣기는 이제 목적지를 아예
+    // 묻지 않는다(`deferMediaToHost` — 저장 전에는 디스크에 쓰지 않는다). 남은
+    // 소비자는 스토어에 게시되는 접근자(OS 드랍이 읽는다)와 다이얼로그의 저장
+    // 경로다. 게시물이 낡으면 드랍한 이미지가 옛 목적지의 assets/로 간다.
+    it("그러면서도 최신 리졸버를 게시한다 — 낡은 목적지가 남지 않는다", async () => {
+      const { rerender } = renderHook(
         ({ resolve }: { resolve: () => null | string }) =>
           useCaptureEditor(true, resolve),
         { initialProps: { resolve: () => "/vault/zettel/inbox/OLD.md" } },
@@ -171,24 +185,10 @@ describe("§323 useCaptureEditor", () => {
       rerender({ resolve: () => "/vault/zettel/inbox/NEW.md" });
       await act(async () => {});
 
-      const editor = result.current.editor!;
-      const event = makePasteEvent(
-        new File(["x"], "shot.png", { type: "image/png" }),
-      );
-      editor.view.someProp("handlePaste", (f) =>
-        f(editor.view, event, Slice.empty),
-      );
-
-      await vi.waitFor(() => {
-        expect(savePhotoToAssets).toHaveBeenCalled();
-      });
-      expect(savePhotoToAssets).toHaveBeenCalledWith(
-        expect.any(Uint8Array),
-        "shot.png",
-        expect.anything(),
-        expect.anything(),
-        "/vault/zettel/inbox/NEW.md",
-      );
+      expect(
+        useEditorStore.getState().captureDropAccess?.resolveDestinationPath(),
+      ).toBe("/vault/zettel/inbox/NEW.md");
+      useEditorStore.getState().registerCaptureDropAccess(null);
     });
   });
 
@@ -216,35 +216,32 @@ describe("§323 useCaptureEditor", () => {
       expect(result.current.getMarkdown()).toContain("![그림](assets/x.png)");
     });
 
-    // ‼️ 이 테스트가 실제로 재현하는 회귀: 메인 창에 문서 탭이 열려 있으면
-    // (드롭 핸들러가 `useEditorStore`의 활성 탭을 읽으므로) 캡처 다이얼로그에
-    // 붙여넣은 이미지가 그 무관한 문서 옆에 저장되고, 캡처 노트에 남는
-    // 상대경로(`assets/x.png`)는 실제 저장 위치에서 풀리지 않는다 — 참조는
-    // 있는데 파일은 없는 조용한 데이터 손실. round 2부터 목적지 계산 자체는
-    // `QuickCaptureDialog`(태스크 모드 vs zettel)로 옮겨갔으므로
-    // (`QuickCaptureDialog.test.tsx`가 그 분기를 검증한다), 여기서는 훅
-    // 자신의 계약만 본다: 무슨 리졸버가 오든(또는 아예 안 오든) 활성 탭으로는
-    // 절대 새지 않는다.
-    describe("메인 창의 무관한 탭으로부터 오염되지 않는다", () => {
+    // ‼️ §324-e round 3 — 이 describe의 계약이 바뀌었다.
+    //
+    // 예전 계약은 "리졸버가 준 경로 **아래에 저장한다**"였다. 사용자가 실물에서
+    // 찾은 결함 셋이 전부 그 즉시 쓰기에서 나왔다: 취소해도 이미지가 assets/에
+    // 남았고(디스크에 이미 쓴 것을 취소가 되돌릴 수 없다), 캡처 상자에는 그림
+    // 대신 alt 텍스트만 보였다(탭이 아닌 표면에는 상대참조 `assets/x.png`를 풀
+    // baseDir이 없다 — `activeFileDir()`는 메인 창의 활성 탭을 읽는다). 붙여넣기와
+    // 드랍 양쪽이 같은 병이었다.
+    //
+    // 지금 계약은 **"저장을 누르기 전에는 아무것도 디스크에 쓰지 않는다"**이다.
+    // 목적지는 버려지지 않고 저장 시점으로 옮겨 갔다 — 어느 디렉터리에 실제로
+    // 쓰이는지는 `QuickCaptureDialog.test.tsx`가 본다.
+    //
+    // 픽스처의 탭 경로 모양이 이 describe 전체의 구분력을 정한다 — 장식이 아니다.
+    // `/vault/daily/…`는 `journalDirectory` 밑이므로, 즉시 쓰기가 되살아나면
+    // `getJournalContext`가 이 탭을 `isJournal: true`로 보고 `savePhotoToAssets`를
+    // 부른다. 저널이 아닌 경로였다면 되살아난 코드도 고친 코드와 **똑같이**
+    // data URL로 떨어져 아래 단정이 둘을 구별하지 못한다.
+    describe("저장 전에는 아무것도 디스크에 쓰지 않는다", () => {
       const originalEditorState = useEditorStore.getState();
       const originalFileState = useFileStore.getState();
       const originalSettingsState = useSettingsStore.getState();
 
       beforeEach(() => {
         savePhotoToAssets.mockClear();
-        // ‼️ 탭의 경로 모양이 이 describe 전체의 구분력을 정한다 — 장식이 아니다.
-        //
-        // 예전 픽스처는 `/vault/notes/unrelated.md`, 즉 `journalDirectory`
-        // (`/vault/daily`) 밑이 아닌 경로였다. 그러면 폴스루 버그가 되살아나도
-        // `getJournalContext`가 그 탭을 `isJournal: false`로 판정하고, 이미지는
-        // 고친 코드와 **똑같이** data URL로 떨어진다 — 두 경로의 결과가 같아서
-        // 단정이 둘을 구별할 수 없었다(그래서 이 파일의 핀이 장식이었다).
-        //
-        // 저널처럼 생긴 경로를 쓰면 폴스루가 `isJournal: true`로 갈라져
-        // `savePhotoToAssets`를 부르므로, 아래 `not.toHaveBeenCalled()`가 비로소
-        // 무언가를 말한다. 동영상은 `isJournal`과 무관하게 `ctx.filePath` 옆에
-        // 저장하므로 어느 모양에서도 새지만, 이미지가 구별되는 모양을 고르면
-        // 둘 다 한 픽스처로 잡힌다.
+        saveMediaToDocAssets.mockClear();
         useEditorStore.setState({
           activeTabId: "t1",
           tabs: [{ id: "t1", filePath: "/vault/daily/2026-09-02.md" }],
@@ -261,21 +258,84 @@ describe("§323 useCaptureEditor", () => {
         useEditorStore.setState(originalEditorState, true);
         useFileStore.setState(originalFileState, true);
         useSettingsStore.setState(originalSettingsState, true);
+        useEditorStore.getState().registerCaptureDropAccess(null);
       });
 
-      // 리졸버를 아예 안 넘겨도 — round 1에서는 이럴 때 훅이 내부에서 계산해
-      // 통과했지만, round 2는 그 계산을 호출부 책임으로 옮겼다 — 활성 탭으로
-      // 새면 안 된다. `use-capture-editor.ts`는 리졸버 부재와 무관하게 항상
-      // 실제 함수를 `DropHandler`에 넘기므로(`resolveDropDestinationRef.current
-      // ?? null`), `getJournalContext`는 이 경우를 "목적지 없음"으로 보고
-      // data URL 자기완결 경로로 간다 — 활성 탭 조회 자체를 안 한다.
-      it("리졸버 없이도 활성 탭으로 새지 않는다 — data URL로 떨어진다", async () => {
+      // ‼️ 두 번째 행이 이 테이블의 요점이다. 목적지를 **아는데도** 쓰지 않는다는
+      // 것이 새 계약이고, 예전 코드는 정확히 그 경우에 파일을 만들었다. 첫 행만
+      // 있으면 "목적지가 없어서 못 썼다"와 구별되지 않는다.
+      const resolvers: [string, (() => null | string) | undefined][] = [
+        ["리졸버가 없어도", undefined],
+        ["리졸버가 경로를 줘도", () => "/vault/zettel/inbox/__capture__.md"],
+      ];
+
+      it.each(resolvers)(
+        "%s 붙여넣은 이미지는 data URL로만 들어간다",
+        async (_label, resolve) => {
+          const { result } = renderHook(() => useCaptureEditor(true, resolve));
+          await act(async () => {});
+          const editor = result.current.editor!;
+
+          const event = makePasteEvent(
+            new File(["x"], "pearl-2.png", { type: "image/png" }),
+          );
+          editor.view.someProp("handlePaste", (f) =>
+            f(editor.view, event, Slice.empty),
+          );
+
+          await vi.waitFor(() => {
+            expect(result.current.getMarkdown()).not.toBe("");
+          });
+          expect(savePhotoToAssets).not.toHaveBeenCalled();
+          expect(saveMediaToDocAssets).not.toHaveBeenCalled();
+          // 원본 파일명이 alt로 살아남는다 — data URL은 이름을 담지 못하므로
+          // 이것이 추출이 파일명을 되찾는 유일한 통로다.
+          expect(result.current.getMarkdown()).toMatch(
+            /^!\[pearl-2\.png\]\(data:image\/png;base64,/,
+          );
+        },
+      );
+
+      // 동영상은 이미지와 다른 가지로 샌다: `insertVideoFromBytes`는 `isJournal`을
+      // 보지 않고 `ctx.filePath`만 있으면 그 옆에 쓴다. 즉 즉시 쓰기가 되살아나면
+      // 탭이 저널이든 아니든 새므로 이미지와 별도로 고정할 값어치가 있다.
+      it.each(resolvers)(
+        "%s 붙여넣은 동영상도 data URL로만 들어간다",
+        async (_label, resolve) => {
+          const { result } = renderHook(() => useCaptureEditor(true, resolve));
+          await act(async () => {});
+          const editor = result.current.editor!;
+
+          const event = makePasteEvent(
+            new File(["x"], "clip.mp4", { type: "video/mp4" }),
+          );
+          editor.view.someProp("handlePaste", (f) =>
+            f(editor.view, event, Slice.empty),
+          );
+
+          await vi.waitFor(() => {
+            expect(result.current.getMarkdown()).not.toBe("");
+          });
+          expect(savePhotoToAssets).not.toHaveBeenCalled();
+          expect(saveMediaToDocAssets).not.toHaveBeenCalled();
+          expect(result.current.getMarkdown()).toMatch(
+            /^!\[clip\.mp4\]\(data:video\/mp4;base64,/,
+          );
+        },
+      );
+
+      // ‼️ `data:video/mp4;…`에는 확장자가 없다. `classifyMediaSrc`가 MIME을 읽지
+      // 않으면 `extensionOf`가 마지막 `/` 뒤에서 점을 찾다 실패해 `null`을 내고,
+      // 동영상이 **image 노드**로 들어간다 — 마크다운은 위 테스트를 그대로
+      // 통과하지만(두 노드가 같은 `![]()`로 직렬화된다) 화면에는 재생되지 않는
+      // 깨진 그림이 뜬다. 노드 타입까지 봐야 그 둘이 갈린다.
+      it("동영상 data URL은 image가 아니라 video 노드가 된다", async () => {
         const { result } = renderHook(() => useCaptureEditor(true));
         await act(async () => {});
         const editor = result.current.editor!;
 
         const event = makePasteEvent(
-          new File(["x"], "shot.png", { type: "image/png" }),
+          new File(["x"], "clip.mp4", { type: "video/mp4" }),
         );
         editor.view.someProp("handlePaste", (f) =>
           f(editor.view, event, Slice.empty),
@@ -284,109 +344,107 @@ describe("§323 useCaptureEditor", () => {
         await vi.waitFor(() => {
           expect(result.current.getMarkdown()).not.toBe("");
         });
-        expect(savePhotoToAssets).not.toHaveBeenCalled();
-        expect(result.current.getMarkdown()).toMatch(
-          /^!\[shot\.png\]\(data:image\/png;base64,/,
-        );
+        const names: string[] = [];
+        editor.state.doc.descendants((n) => void names.push(n.type.name));
+        expect(names).toContain("video");
+        expect(names).not.toContain("image");
       });
 
-      // 동영상은 이미지와 다른 가지로 샌다: `insertVideoFromBytes`는
-      // `isJournal`을 보지 않고 `ctx.filePath`만 있으면 그 옆에 저장한다. 즉
-      // 폴스루가 되살아나면 탭이 저널이든 아니든 새므로, 이미지 쪽과 별도로
-      // 고정할 값어치가 있다. 목적지가 없을 때의 올바른 결말은 "저장하지 않고
-      // 거절" — 캡처 노트는 실존하지만 그 노트의 목적지를 모르는 상태다.
-      it("리졸버 없이 동영상을 넣어도 활성 탭 옆에 저장하지 않는다", async () => {
+      // 저장 경로가 파일로 꺼낼 목록. 여기서 alt가 비면 추출이 원본 파일명을
+      // 잃고 모든 이미지가 `image.png`, `image-1.png`이 된다.
+      it("getPendingMedia가 붙여넣은 미디어를 원본 이름과 함께 보고한다", async () => {
         const { result } = renderHook(() => useCaptureEditor(true));
         await act(async () => {});
         const editor = result.current.editor!;
 
+        expect(result.current.getPendingMedia()).toEqual([]);
+
         const event = makePasteEvent(
-          new File(["x"], "clip.mp4", { type: "video/mp4" }),
+          new File(["x"], "pearl-2.png", { type: "image/png" }),
         );
         editor.view.someProp("handlePaste", (f) =>
           f(editor.view, event, Slice.empty),
         );
 
-        // 비동기 저장 경로가 끝날 시간을 준다 — 통과가 "아직 아무것도 안 일어남"
-        // 때문이 아니어야 한다.
+        await vi.waitFor(() => {
+          expect(result.current.getPendingMedia()).toHaveLength(1);
+        });
+        const [pending] = result.current.getPendingMedia();
+        expect(pending.alt).toBe("pearl-2.png");
+        expect(pending.src).toMatch(/^data:image\/png;base64,/);
+      });
+
+      // ‼️ SyntaxReveal 회귀 핀. 커서가 이미지 위에 있으면 그것을 리터럴
+      // `![alt](src)` **텍스트**로 펼쳐 두므로, 그 순간의 `state.doc`에는 미디어
+      // 노드가 없다. `getPendingMedia`가 `canonicalDoc`이 아니라 `state.doc`을
+      // 세면 추출 목록이 비고, 그런데도 `getMarkdown`(=`serializeLiveDoc`)은
+      // 접힌 doc을 직렬화하므로 data URL이 노트에 그대로 실린다 — 두 함수가
+      // 서로 다른 doc을 보는 순간 조용히 갈라진다.
+      it("커서가 이미지 위에 있어도(펼쳐진 상태) pending을 놓치지 않는다", async () => {
+        const { result } = renderHook(() => useCaptureEditor(true));
+        await act(async () => {});
+        const editor = result.current.editor!;
+
+        const event = makePasteEvent(
+          new File(["x"], "pearl-2.png", { type: "image/png" }),
+        );
+        editor.view.someProp("handlePaste", (f) =>
+          f(editor.view, event, Slice.empty),
+        );
+        await vi.waitFor(() => {
+          expect(result.current.getPendingMedia()).toHaveLength(1);
+        });
+
+        // 펼침을 실제로 일으키는 순서. SyntaxReveal은 (1) 문서가 바뀐 직후의
+        // 커서 위치에서는 펼치지 않고(입력 규칙 → 즉시 재펼침 루프 방지),
+        // (2) NodeSelection 감지를 `requestAnimationFrame`으로 미룬다. 그래서
+        // 뒤에 문단을 하나 만들어 커서를 옮겼다가 이미지로 돌아오고, 프레임을
+        // 하나 흘려보낸다.
         await act(async () => {
-          await new Promise((resolve) => setTimeout(resolve, 0));
+          editor.commands.insertContentAt(
+            editor.state.doc.content.size,
+            "<p>tail</p>",
+          );
         });
-        expect(savePhotoToAssets).not.toHaveBeenCalled();
-        expect(result.current.getMarkdown()).toBe("");
-      });
-
-      it("리졸버가 경로를 주면 그 경로 아래에 저장한다 — 무관한 탭 옆이 아니라", async () => {
-        const { result } = renderHook(() =>
-          useCaptureEditor(true, () => "/vault/zettel/inbox/__capture__.md"),
-        );
-        await act(async () => {});
-        const editor = result.current.editor!;
-
-        const event = makePasteEvent(
-          new File(["x"], "shot.png", { type: "image/png" }),
-        );
-        const handled = editor.view.someProp("handlePaste", (f) =>
-          f(editor.view, event, Slice.empty),
-        );
-        expect(handled).toBe(true);
-
-        await vi.waitFor(() => {
-          expect(savePhotoToAssets).toHaveBeenCalled();
+        await act(async () => {
+          editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+        });
+        let imagePos = -1;
+        editor.state.doc.descendants((n, pos) => {
+          if (n.type.name === "image") imagePos = pos;
+        });
+        expect(imagePos).toBeGreaterThanOrEqual(0);
+        await act(async () => {
+          editor.commands.setNodeSelection(imagePos);
+        });
+        await act(async () => {
+          await new Promise((r) => requestAnimationFrame(() => r(null)));
         });
 
-        // 다섯 번째 인자(activeFilePath)가 곧 `savePhotoToAssets`가 assets/를
-        // 걸어 두는 디렉터리를 정한다(`journal-photo.ts`의 `dirname`) —
-        // 무관한 문서(`/vault/notes/...`)가 아니라 리졸버가 준 경로 아래여야
-        // 그 디렉터리에서 저장한 파일과 캡처 노트에 남는 `assets/…`
-        // 상대경로가 같은 곳을 가리킨다.
-        expect(savePhotoToAssets).toHaveBeenCalledWith(
-          expect.any(Uint8Array),
-          "shot.png",
-          expect.anything(),
-          expect.anything(),
-          expect.stringMatching(/^\/vault\/zettel\/inbox\//),
-        );
+        // 전제 확인 — 정말로 펼쳐져 이미지 노드가 사라졌는가. 이것이 거짓이면
+        // 아래 단정은 `state.doc`을 세는 구현도 그대로 통과시킨다.
+        const liveNames: string[] = [];
+        editor.state.doc.descendants((n) => void liveNames.push(n.type.name));
+        expect(liveNames).not.toContain("image");
 
-        expect(result.current.getMarkdown()).toBe(
-          "![shot.png](assets/shot.png)",
+        expect(result.current.getPendingMedia()).toHaveLength(1);
+        // 직렬화도 같은 doc을 본다 — 둘이 갈리면 data URL이 노트에 남는다.
+        expect(result.current.getMarkdown()).toContain(
+          "data:image/png;base64,",
         );
       });
 
-      // 동영상은 원래 더 쉽게 터졌다: `insertVideoFromBytes`는 저널 여부와
-      // 무관하게 `ctx.filePath`만 있으면 그 옆에 저장한다 — 메인 창에 아무
-      // 탭이나 열려 있으면(저널이 아니어도) 캡처로 넣은 동영상이 그 옆에
-      // 저장됐다. 탭이 아예 없으면 캡처 노트가 실존하는데도 "문서가
-      // 저장되지 않았다" 토스트로 거부됐다.
-      it("리졸버가 경로를 주면 동영상도 그 경로 아래에 저장한다", async () => {
-        const { result } = renderHook(() =>
-          useCaptureEditor(true, () => "/vault/zettel/inbox/__capture__.md"),
-        );
+      // ‼️ 이미 디스크에 있는 참조는 pending이 아니다. 여기가 무너지면 노트를
+      // 저장할 때마다 기존 이미지를 다시 assets/에 복사해 사본이 쌓인다.
+      it("이미 상대경로인 이미지는 pending이 아니다", async () => {
+        const { result } = renderHook(() => useCaptureEditor(true));
         await act(async () => {});
-        const editor = result.current.editor!;
-
-        const event = makePasteEvent(
-          new File(["x"], "clip.mp4", { type: "video/mp4" }),
-        );
-        const handled = editor.view.someProp("handlePaste", (f) =>
-          f(editor.view, event, Slice.empty),
-        );
-        expect(handled).toBe(true);
-
-        await vi.waitFor(() => {
-          expect(savePhotoToAssets).toHaveBeenCalled();
+        await act(async () => {
+          result.current.editor!.commands.setContent(
+            '<p><img src="assets/old.png" alt="old"></p>',
+          );
         });
-
-        expect(savePhotoToAssets).toHaveBeenCalledWith(
-          expect.any(Uint8Array),
-          "clip.mp4",
-          expect.anything(),
-          expect.anything(),
-          expect.stringMatching(/^\/vault\/zettel\/inbox\//),
-        );
-        expect(result.current.getMarkdown()).toBe(
-          "![clip.mp4](assets/clip.mp4)",
-        );
+        expect(result.current.getPendingMedia()).toEqual([]);
       });
     });
   });

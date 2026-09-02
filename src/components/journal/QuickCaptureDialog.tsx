@@ -1,6 +1,8 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { PendingMedia } from "../../utils/media-data-url";
+
 import { EditorContent } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
@@ -17,6 +19,8 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
+import { extractPendingMedia } from "../../utils/media-data-url";
+import { dirname } from "../../utils/path-utils";
 import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
@@ -114,6 +118,36 @@ export function QuickCaptureDialog() {
     captureEditorInstance?.commands.focus();
   }, [captureEditorInstance]);
 
+  // §324-e 저장 시점에 data URL을 실제 파일로 꺼내고 참조를 상대경로로 바꾼다.
+  // 드랍·붙여넣기는 아무것도 쓰지 않았다 — 캡처는 저장을 누르기 전까지 파일이
+  // 아니고, 그래서 취소는 되돌릴 것이 없다.
+  //
+  // ‼️ 목적지는 **드랍/붙여넣기가 쓰는 그 리졸버**가 정한다. 여기서 설정으로부터
+  // 다시 계산하지 않는 이유는 재계산이 정확히 라운드 1에서 이 경로를 태스크 모드에
+  // 눈멀게 만들었기 때문이다 — 태스크 홈은 zettel과 무관한 별도 설정이다.
+  //
+  // 목적지가 없으면 아무것도 쓰지 않고 본문을 그대로 돌려준다. 그 상태에서는 아래
+  // 저장 경로가 어차피 **자기 문구로** 거절한다(zettel은 `noSpace` 가드, 태스크
+  // 모드는 `resolveTasksHome`이 던지는 `taskNoHome`) — 여기서 다른 오류를 만들면
+  // 원인과 다른 문구를 보이게 된다. 두 경우 모두 거절이 쓰기보다 먼저다.
+  const extractCaptureMedia = useCallback(
+    async (body: string, pending: PendingMedia[]): Promise<string> => {
+      if (pending.length === 0) return body;
+      const destination = resolveDropDestination();
+      if (!destination) return body;
+      // `dirname(목적지)/assets` — 붙여넣기(`savePhotoToAssets`)와 OS 드랍
+      // (`handleEditorDrop`)이 쓰는 것과 같은 유도식. 세 경로가 같은 파일에
+      // 대해 다른 assets/를 고르면 상대참조가 한쪽에서만 풀린다.
+      const { markdown } = await extractPendingMedia(
+        body,
+        pending,
+        `${dirname(destination)}/assets`,
+      );
+      return markdown;
+    },
+    [resolveDropDestination],
+  );
+
   const handleSave = useCallback(async () => {
     setSaveError("");
 
@@ -122,7 +156,25 @@ export function QuickCaptureDialog() {
       return;
     }
 
-    const body = capture.getMarkdown();
+    // ‼️ 추출이 노트 쓰기보다 **먼저**다. 반대로 하면 추출이 실패했을 때 존재하지
+    // 않는 파일을 가리키는 참조가 노트에 남는다 — 이 작업이 없애려는 결함이 저장
+    // 시점으로 옮겨 갈 뿐이다. 실패하면 아무것도 저장하지 않고 다이얼로그를 열어
+    // 둔 채 본문을 지킨다(저장 실패의 기존 계약과 같다).
+    //
+    // 태스크 모드에서 이 순서는 특히 중요하다: `captureTask`가 본문을 `- [ ] …`
+    // 한 줄로 접으므로, 그 뒤에 추출하면 거대한 base64 문자열이 이미 plain-text
+    // 태스크 목록의 한 줄이 된 뒤다.
+    let body: string;
+    try {
+      body = await extractCaptureMedia(
+        capture.getMarkdown(),
+        capture.getPendingMedia(),
+      );
+    } catch (err) {
+      logger.error("[QuickCapture] Media extraction failed:", err);
+      setSaveError(t("journal.capture.error.media"));
+      return;
+    }
 
     // §307D 태스크 모드는 Zettel 공간을 요구하지 않는다 — 수집함 파일에
     // 한 줄을 붙이는 것뿐이므로 아래 Zettel 가드보다 먼저 갈라진다.
@@ -178,6 +230,7 @@ export function QuickCaptureDialog() {
     }
   }, [
     capture,
+    extractCaptureMedia,
     source,
     tags.list,
     zettelReady,

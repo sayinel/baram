@@ -121,12 +121,14 @@ interface BaramExtensionOptions {
   onNavigateBlockRef?: (target: string, blockId: string) => void;
   /** §278.1 Returns whether the href was handled in-app; see `LinkOptions`. */
   onNavigateLocal?: (href: string) => boolean;
-  /** §323 캡처 다이얼로그용 축소 세트. 생략하면 문서 편집기 세트. */
+  /**
+   * §323 캡처 다이얼로그용 축소 세트. 생략하면 문서 편집기 세트.
+   *
+   * §324-e 이 값은 Extension 목록만 정하지 않는다 — `DropHandler`의
+   * `deferMediaToHost`도 여기서 갈린다. 캡처는 아직 파일이 아니므로 미디어를
+   * 저장 시점까지 디스크에 쓰지 않는다.
+   */
   profile?: "capture" | "document";
-  /** §324-e `DropHandler`의 `resolveDestinationPath` 그대로 전달 — 활성 탭이
-   *  없는 호스트(캡처 다이얼로그)가 자신의 저장 목적지를 알려줄 때 쓴다.
-   *  생략하면 `DropHandler`는 기본값(메인 편집기의 활성 탭 기반)으로 동작한다. */
-  resolveDropDestination?: () => null | string;
 }
 
 /** M2 기본 편집 Extension 세트 */
@@ -243,16 +245,12 @@ export function createBaramExtensions(
     SyntaxReveal,
 
     // Plugins — §3.3 Drop Handler (drag-and-drop images)
-    // §324-e: only .configure() when a host supplies its own destination —
-    // an explicit `resolveDestinationPath: undefined` would still overwrite
-    // the extension's own default.
-    ...(options?.resolveDropDestination
-      ? [
-          DropHandler.configure({
-            resolveDestinationPath: options.resolveDropDestination,
-          }),
-        ]
-      : [DropHandler]),
+    // §324-e 캡처 프로필만 저장 시점으로 미룬다. 그 표면은 아직 파일이 아니라
+    // 상대참조를 걸어 둘 자리도, 취소로 되돌릴 방법도 없기 때문이다 — 근거는
+    // `DropHandlerOptions.deferMediaToHost`에. 문서 프로필은 즉시 쓴다(불변).
+    DropHandler.configure({
+      deferMediaToHost: options?.profile === "capture",
+    }),
 
     // Plugins — §31 Wikilink Autocomplete ([[)
     WikilinkSuggest,
