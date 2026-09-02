@@ -42,7 +42,7 @@ export function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
   if (info.lineNumbers && info.lineNumbers.length > 0) {
     const gutter = document.createElement("pre");
     gutter.className = "code-block-gutter";
-    gutter.style.cssText = `flex-shrink:0;margin:0;padding:0.75em;color:${s.gutterColor};text-align:right;border-right:1px solid ${s.gutterBorder};background:inherit;user-select:none;font:inherit;line-height:inherit;`;
+    gutter.style.cssText = `flex-shrink:0;margin:0;padding:0.75em;color:${s.gutterColor};text-align:right;border-right:1px solid ${s.gutterBorder};background:${s.gutterBg};user-select:none;font:inherit;line-height:inherit;`;
     gutter.textContent = info.lineNumbers.join("\n");
     body.appendChild(gutter);
   }

@@ -146,7 +146,7 @@
   font-size: 13px;
   color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-subtle, var(--color-bg-default));
+  background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
@@ -182,7 +182,15 @@
   overflow-y: auto;
   font-size: 13px;
   color: var(--color-text-primary);
-  background: var(--color-bg-subtle, var(--color-bg-default));
+
+  /* ‼️ main의 `.quick-capture-textarea`에 있던 `resize: vertical`은 가져오지 않는다.
+     그것은 textarea의 기본 리사이즈였고, §324가 드래그 핸들(`.quick-capture-resize`)로
+     같은 일을 한다 — 둘을 함께 두면 리사이즈 수단이 두 개가 되고, CSS resize는 위
+     `max-height: calc(85vh - 260px)` 예산을 모른 채 늘어난다.
+     `outline: none`은 가져온다: 아래 `:focus-within`이 테두리로 포커스를 말하므로
+     브라우저 기본 링은 중복이다(드래그 표시의 `outline`은 더 구체적인 선택자라 이긴다). */
+  outline: none;
+  background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
@@ -275,7 +283,7 @@
 }
 
 .quick-capture-cancel:hover {
-  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
+  background: var(--color-bg-subtle);
 }
 
 .quick-capture-save {

@@ -1,36 +1,16 @@
 // §54 Theme System — Type definitions and built-in theme data
 
 // ---------------------------------------------------------------------------
-// 1. ThemeColors — 25 CSS custom property keys
+// 1. ThemeColors — 24 CSS custom property keys
 // ---------------------------------------------------------------------------
 
-export interface ThemeColors {
-  "--color-accent-ai": string;
-  "--color-accent-default": string;
-  "--color-accent-hover": string;
-  "--color-accent-subtle": string;
-  "--color-bg-default": string;
-  "--color-bg-elevated": string;
-  "--color-bg-input": string;
-  "--color-bg-panel": string;
-  "--color-bg-subtle": string;
-  "--color-border-default": string;
-  "--color-border-subtle": string;
-  "--color-editor-bg": string;
-  "--color-editor-cursor": string;
-  "--color-editor-line-highlight": string;
-  "--color-editor-selection": string;
-  "--color-editor-text": string;
-  "--color-graph-active": string;
-  "--color-graph-edge": string;
-  "--color-graph-node": string;
-  "--color-status-danger": string;
-  "--color-status-success": string;
-  "--color-status-warning": string;
-  "--color-text-disabled": string;
-  "--color-text-primary": string;
-  "--color-text-secondary": string;
-}
+// 감사 순서 6: 24키를 손으로 두 번 적지 않는다 — 아래 THEME_COLOR_KEYS(값,
+// 색 피커 메타데이터)가 단일 출처이고, 이 타입은 그 배열에서 파생된다. 키를
+// 추가/삭제하려면 배열 한 곳만 고치면 타입·에디터 UI·clearThemeVars의 제거
+// 목록이 함께 따라온다. (배열은 3번 섹션에 있다 — 타입 공간의 typeof 참조는
+// 선언 순서를 타지 않는다.)
+export type ThemeColorKey = (typeof THEME_COLOR_KEYS)[number]["key"];
+export type ThemeColors = Record<ThemeColorKey, string>;
 
 // ---------------------------------------------------------------------------
 // 2. ThemeDef — A complete theme definition
@@ -48,11 +28,7 @@ export interface ThemeDef {
 // 3. THEME_COLOR_KEYS — metadata for rendering color pickers in ThemeEditor
 // ---------------------------------------------------------------------------
 
-export const THEME_COLOR_KEYS: {
-  category: string;
-  key: keyof ThemeColors;
-  label: string;
-}[] = [
+export const THEME_COLOR_KEYS = [
   // Background
   {
     key: "--color-bg-default",
@@ -104,11 +80,6 @@ export const THEME_COLOR_KEYS: {
     category: "Editor",
   },
   { key: "--color-editor-cursor", label: "Editor Cursor", category: "Editor" },
-  {
-    key: "--color-editor-line-highlight",
-    label: "Editor Line Highlight",
-    category: "Editor",
-  },
 
   // Status
   { key: "--color-status-danger", label: "Danger", category: "Status" },
@@ -119,11 +90,37 @@ export const THEME_COLOR_KEYS: {
   { key: "--color-graph-node", label: "Graph Node", category: "Graph" },
   { key: "--color-graph-active", label: "Graph Active", category: "Graph" },
   { key: "--color-graph-edge", label: "Graph Edge", category: "Graph" },
-];
+] as const satisfies readonly {
+  category: string;
+  // CLAUDE.md의 CSS 변수 규약: category는 9개뿐이다. 접두만 검사하면
+  // --color-foo-bar도 컴파일을 통과하므로 union으로 좁힌다(적대 리뷰).
+  key: `--color-${
+    | "accent"
+    | "bg"
+    | "border"
+    | "callout"
+    | "editor"
+    | "git"
+    | "graph"
+    | "status"
+    | "text"}-${string}`;
+  label: string;
+}[];
 
 // ---------------------------------------------------------------------------
 // 4. Theme key migration map (v9 → v10)
 // ---------------------------------------------------------------------------
+
+/**
+ * 테마 색 값의 계약 — 불투명 hex(3·6자리)만. **alpha(4·8자리)는 의도적으로
+ * 거부한다**(적대 리뷰 2라운드): 파생 색 계산(color-contrast의 parseHexColor)이
+ * alpha를 절삭해 `#00000000`을 불투명 검정으로 판단하므로, 투명 accent를
+ * 받으면 흰 foreground가 파생되어 실제 화면 대비가 1:1이 된다 — WCAG 보장이
+ * 조용히 무너진다. `<input type="color">`도 6자리만 표현한다. alpha hex를
+ * 허용하려면 합성 표면색 기준의 대비 계산이 먼저다. (v22 이전 import가
+ * 무검증이라 통과시킨 alpha 테마는 v22 마이그레이션이 base 기본값으로 되돌린다.)
+ */
+export const THEME_COLOR_VALUE_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 /** Old CSS variable key → new key. Used by settings migration v10. */
 export const THEME_KEY_MIGRATION_V10: Record<string, keyof ThemeColors> = {
@@ -140,32 +137,53 @@ export const THEME_KEY_MIGRATION_V10: Record<string, keyof ThemeColors> = {
 /**
  * Migrate a ThemeColors object from old key names to new key names.
  * Keys that don't need migration are passed through unchanged.
- * Missing keys are filled from `fallback` (defaults to Default Light).
+ * Missing keys are filled from `fallback` — 필수다(적대 리뷰): optional이던
+ * 시절 기본값이 Default Light라, fallback을 잊은 호출자마다 다크 테마가
+ * 라이트 값과 섞이는 footgun이 시그니처에 남아 있었다. 테마의 base를 알면
+ * defaultColorsForBase(base)를 넘긴다.
  */
 export function migrateThemeColors(
   old: Record<string, string>,
-  fallback?: ThemeColors,
+  fallback: ThemeColors,
 ): ThemeColors {
   const migrated: Record<string, string> = {};
 
+  // 1차: canonical(비이주) 키를 먼저 앉힌다. 2차: 옛 키는 canonical 자리가
+  // **유효한 값으로** 차 있지 않을 때만 이주한다. 두 단계로 나누는 이유(적대
+  // 리뷰 2회): 옛 키와 canonical 키가 공존하면 순회 순서가 승자를 정했고(옛
+  // 키가 뒤면 stale 값이 canonical을 덮음), 존재만 보는 가드로 고치면 이번엔
+  // 빈 문자열 같은 invalid canonical이 유효한 옛 값을 무조건 버렸다. 정체가
+  // 순서를 이기되, invalid canonical은 유효한 옛 값에게 자리를 내준다.
   for (const [key, value] of Object.entries(old)) {
-    const newKey = THEME_KEY_MIGRATION_V10[key] ?? key;
+    if (THEME_KEY_MIGRATION_V10[key]) continue;
+    migrated[key] = value;
+  }
+  for (const [key, value] of Object.entries(old)) {
+    const newKey = THEME_KEY_MIGRATION_V10[key];
+    if (!newKey) continue;
+    if (THEME_COLOR_VALUE_RE.test(migrated[newKey] ?? "")) continue;
     migrated[newKey] = value;
   }
 
-  // Fill any missing keys from fallback
-  const defaults = fallback ?? BUILT_IN_THEMES[0].colors;
-  for (const key of Object.keys(defaults)) {
+  // Fill any missing keys from fallback.
+  for (const key of Object.keys(fallback)) {
     if (!(key in migrated)) {
-      migrated[key] = defaults[key as keyof ThemeColors];
+      migrated[key] = fallback[key as keyof ThemeColors];
     }
   }
 
   return migrated as unknown as ThemeColors;
 }
 
+/** 테마 base에 맞는 기본 팔레트 — migrateThemeColors의 fill 출처로 쓴다. */
+export function defaultColorsForBase(base: "dark" | "light"): ThemeColors {
+  return BUILT_IN_THEMES.find(
+    (t) => t.id === (base === "dark" ? "default-dark" : "default-light"),
+  )!.colors;
+}
+
 // ---------------------------------------------------------------------------
-// 5. BUILT_IN_THEMES — 6 shipped themes
+// 5. BUILT_IN_THEMES — 8 shipped themes
 // ---------------------------------------------------------------------------
 
 export const BUILT_IN_THEMES: ThemeDef[] = [
@@ -195,11 +213,10 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#1a1a1a",
       "--color-editor-selection": "#bfdbfe",
       "--color-editor-cursor": "#1a1a1a",
-      "--color-editor-line-highlight": "#f8f9fa",
 
       "--color-status-danger": "#ef4444",
-      "--color-status-warning": "#eab308",
-      "--color-status-success": "#22c55e",
+      "--color-status-warning": "#f59e0b",
+      "--color-status-success": "#10b981",
       "--color-accent-subtle": "#eff6ff",
       "--color-accent-ai": "#8b5cf6",
       "--color-bg-input": "#ffffff",
@@ -235,12 +252,11 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#e2e8f0",
       "--color-editor-selection": "#1e3a5f",
       "--color-editor-cursor": "#e2e8f0",
-      "--color-editor-line-highlight": "#16213e",
 
       "--color-status-danger": "#ef4444",
-      "--color-status-warning": "#eab308",
-      "--color-status-success": "#22c55e",
-      "--color-accent-subtle": "#1e3a5f",
+      "--color-status-warning": "#f59e0b",
+      "--color-status-success": "#10b981",
+      "--color-accent-subtle": "#172554",
       "--color-accent-ai": "#a78bfa",
       "--color-bg-input": "#1e293b",
       "--color-graph-node": "#6b7280",
@@ -275,7 +291,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#a9b1d6",
       "--color-editor-selection": "#283457",
       "--color-editor-cursor": "#c0caf5",
-      "--color-editor-line-highlight": "#1e2030",
 
       "--color-status-danger": "#f7768e",
       "--color-status-warning": "#e0af68",
@@ -315,7 +330,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#657b83",
       "--color-editor-selection": "#e0dbc8",
       "--color-editor-cursor": "#586e75",
-      "--color-editor-line-highlight": "#eee8d5",
 
       "--color-status-danger": "#dc322f",
       "--color-status-warning": "#b58900",
@@ -355,7 +369,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#839496",
       "--color-editor-selection": "#094a5c",
       "--color-editor-cursor": "#93a1a1",
-      "--color-editor-line-highlight": "#073642",
 
       "--color-status-danger": "#dc322f",
       "--color-status-warning": "#b58900",
@@ -395,7 +408,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#d8dee9",
       "--color-editor-selection": "#434c5e",
       "--color-editor-cursor": "#d8dee9",
-      "--color-editor-line-highlight": "#3b4252",
 
       "--color-status-danger": "#bf616a",
       "--color-status-warning": "#ebcb8b",
@@ -435,7 +447,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#123d96",
       "--color-editor-selection": "#d8e6b3",
       "--color-editor-cursor": "#123d96",
-      "--color-editor-line-highlight": "#f7fae8",
 
       "--color-status-danger": "#ef4444",
       "--color-status-warning": "#eab308",
@@ -475,7 +486,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#eec2da",
       "--color-editor-selection": "#2e4a28",
       "--color-editor-cursor": "#b4d156",
-      "--color-editor-line-highlight": "#232740",
 
       "--color-status-danger": "#ef4444",
       "--color-status-warning": "#eab308",

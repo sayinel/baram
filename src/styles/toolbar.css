@@ -378,7 +378,7 @@
 }
 
 .ai-prompt-btn-cancel:hover {
-  background: var(--color-bg-elevated, var(--color-bg-subtle));
+  background: var(--color-bg-elevated);
 }
 
 .ai-prompt-btn-ok {
@@ -452,7 +452,7 @@
 /* Handle stays faint (muted) until hovered, then darkens to primary. */
 .block-handle-btn:hover {
   color: var(--color-text-primary);
-  background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+  background-color: var(--color-bg-elevated);
 }
 
 /* §4.8 "Add block below" button — floats just left of the grip via
@@ -479,7 +479,7 @@
 
 .block-handle-add-btn:hover {
   color: var(--color-text-primary);
-  background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+  background-color: var(--color-bg-elevated);
 }
 
 /* §4.8 Override cursor to grabbing while a block drag is in progress. */
@@ -709,7 +709,7 @@ body.block-dragging * {
   flex: 1;
   padding: 12px;
   overflow-y: auto;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.82rem;
   line-height: 1.6;
   overflow-wrap: break-word;
@@ -769,7 +769,7 @@ body.block-dragging * {
 
 .block-ai-diff-btn kbd {
   padding: 1px 4px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.7rem;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);

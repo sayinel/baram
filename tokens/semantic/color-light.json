@@ -110,10 +110,6 @@
         "$value": "{color.text.primary}",
         "$description": "Editor cursor (alias of color.text.primary, was --color-editor-cursor: #1a1a1a)"
       },
-      "lineHighlight": {
-        "$value": "{color.bg.subtle}",
-        "$description": "Editor current line highlight (alias of color.bg.subtle, was --color-editor-line-highlight: #f8f9fa)"
-      },
       "findMatch": {
         "$value": "rgba(251, 191, 36, 0.45)",
         "$description": "PDF find match highlight (§272) — translucent so the canvas glyph underneath stays legible; no exact primitive match (alpha over yellow.400)"

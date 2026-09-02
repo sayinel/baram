@@ -159,7 +159,7 @@
 .math-inline-preview-error {
   padding-top: 4px;
   margin-top: 4px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.7em;
   color: var(--color-status-danger);
   border-top: 1px solid var(--color-status-error-border);

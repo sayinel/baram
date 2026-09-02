@@ -7,6 +7,8 @@ import type { PandocInfo } from "../../ipc/types";
 import type { ExportFormatGroup } from "./ExportFormatDropdown";
 import type { Editor } from "@tiptap/react";
 
+import { useShallow } from "zustand/shallow";
+
 import { detectPandoc } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -104,10 +106,25 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     exportFormat,
     closeExportDialog,
     openExportDialog,
-  } = useUIStore();
-  const { activeTabId, tabs } = useEditorStore();
+  } = useUIStore(
+    useShallow((s) => ({
+      exportDialogOpen: s.exportDialogOpen,
+      exportFormat: s.exportFormat,
+      closeExportDialog: s.closeExportDialog,
+      openExportDialog: s.openExportDialog,
+    })),
+  );
+  const { activeTabId, tabs } = useEditorStore(
+    useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
+  );
   const { pandocPath, wordTemplatePath, setWordTemplatePath } =
-    useSettingsStore();
+    useSettingsStore(
+      useShallow((s) => ({
+        pandocPath: s.pandocPath,
+        wordTemplatePath: s.wordTemplatePath,
+        setWordTemplatePath: s.setWordTemplatePath,
+      })),
+    );
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
   const [paperSize, setPaperSize] = useState<"a4" | "letter">("a4");
@@ -242,7 +259,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 <a
                   href="https://pandoc.org/installing.html"
                   rel="noreferrer"
-                  style={{ color: "var(--color-accent-default, #4a9eff)" }}
+                  style={{ color: "var(--color-accent-default)" }}
                   target="_blank"
                 >
                   pandoc.org

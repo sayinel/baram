@@ -15,27 +15,23 @@
   align-items: center;
   padding: 6px 16px;
   font-size: 13px;
-  background: var(--color-bg-secondary, #f8f9fa);
-  border-bottom: 1px solid var(--color-border-default, #e5e7eb);
-}
-
-[data-theme="dark"] .file-editor-pathbar {
-  background: var(--color-bg-secondary, #252526);
+  background: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .file-editor-pathbar__name {
   font-weight: 600;
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
 }
 
 [data-theme="dark"] .file-editor-pathbar__name {
-  color: var(--color-text-default, #e0e0e0);
+  color: var(--color-text-default);
 }
 
 .file-editor-pathbar__path {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
@@ -49,31 +45,31 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 .file-editor-source {
   width: 100%;
   height: 100%;
   padding: 16px;
-  font-family: var(--font-family-mono, "SF Mono", "Fira Code", monospace);
+  font-family: var(--font-family-mono);
   font-size: 14px;
   line-height: 1.6;
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
   resize: none;
   outline: none;
-  background: var(--color-bg-default, #fff);
+  background: var(--color-bg-default);
   border: none;
 }
 
 [data-theme="dark"] .file-editor-source {
-  color: var(--color-text-default, #e0e0e0);
-  background: var(--color-bg-default, #1e1e1e);
+  color: var(--color-text-default);
+  background: var(--color-bg-default);
 }
 
 .file-editor-error {
   padding: 24px;
-  color: var(--color-status-danger, #ef4444);
+  color: var(--color-status-danger);
 }
 
 .file-editor-conflict {
@@ -83,9 +79,16 @@
   align-items: center;
   padding: 6px 16px;
   font-size: 13px;
-  color: var(--color-text-default, #1a1a1a);
-  background: var(--color-bg-secondary, #fff7ed);
-  border-bottom: 1px solid var(--color-border-default, #e5e7eb);
+
+  /* 배경이 고정이면 잉크도 고정이어야 한다(적대 리뷰): 종전의 테마 추종
+     var(--color-text-default)는 다크에서 #e2e8f0이 되어 크림 위 판독 불가였다.
+     amber-950 계열 잉크는 크림 위 대비 ~13:1로 양쪽 테마에서 동일하다. */
+  color: #451a03;
+
+  /* 의도된 고정 경고색 — warning 계열 bg 토큰이 아직 없다(감사 후속에서 신설 검토).
+     종전의 var(--color-bg-secondary, #fff7ed)는 죽은 토큰이라 fallback이 실색이었다. */
+  background: #fff7ed;
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .file-editor-conflict__msg {
@@ -95,20 +98,20 @@
 .file-editor-conflict__btn {
   padding: 3px 10px;
   font-size: 12px;
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
   cursor: pointer;
-  background: var(--color-bg-default, #fff);
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
 
 .file-editor-conflict__btn:hover {
-  background: var(--color-bg-hover, #f3f4f6);
+  background: var(--color-bg-hover);
 }
 
 .file-editor-conflict-diff {
   flex-shrink: 0;
   max-height: 40vh;
   overflow: auto;
-  border-bottom: 1px solid var(--color-border-default, #e5e7eb);
+  border-bottom: 1px solid var(--color-border-default);
 }

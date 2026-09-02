@@ -3,7 +3,11 @@ import type { ThemeDef } from "../../types/theme";
 // §54 Theme System — settings store theme functionality tests
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { BUILT_IN_THEMES, findThemeById } from "../../types/theme";
+import {
+  BUILT_IN_THEMES,
+  findThemeById,
+  THEME_COLOR_KEYS,
+} from "../../types/theme";
 import { useSettingsStore } from "../settings/store";
 
 // Reset store state before each test
@@ -36,9 +40,13 @@ describe("Built-in themes", () => {
     expect(ids).toContain("nord");
   });
 
-  it("every built-in theme has 25 color keys", () => {
+  it("every built-in theme has exactly the THEME_COLOR_KEYS palette", () => {
+    // 매직 넘버(25)로 세지 않는다 — line-highlight 슬롯 제거(24키)에서 숫자
+    // 핀이 깨졌듯, 계약의 단일 출처는 THEME_COLOR_KEYS다. 개수는 파생으로
+    // 따라오고, 키 집합까지 대조해 이름 drift도 함께 잡는다.
+    const expected = new Set<string>(THEME_COLOR_KEYS.map((e) => e.key));
     for (const theme of BUILT_IN_THEMES) {
-      expect(Object.keys(theme.colors)).toHaveLength(25);
+      expect(new Set(Object.keys(theme.colors))).toEqual(expected);
     }
   });
 

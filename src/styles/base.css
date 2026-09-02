@@ -63,6 +63,25 @@
   --z-editor-popup: 1050;
 }
 
+/* color-scheme: 토큰이 못 칠하는 UA 표면(네이티브 스크롤바, form control 기본색,
+   <select> 팝업, 자동완성 배경)을 테마에 동기화한다. 이게 없으면 다크 테마에서
+   그 표면들만 라이트로 남는다. 상태 3개는 use-settings-effects.ts의 data-theme
+   세팅과 1:1이다 — 명시 light/dark는 속성으로, system은 속성 제거 후 media로
+   (system 분기 셀렉터는 generated/system-dark.css의 것과 동일 구조). */
+:root {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"], [data-theme="dark"]) {
+    color-scheme: dark;
+  }
+}
+
 /* ============================================
    Shared Utility Classes
    ============================================ */

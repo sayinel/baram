@@ -552,7 +552,7 @@ Practical consequences:
 
 - **CSS custom properties inherit across the shadow boundary.** The app's
   design-token variables (`var(--color-text-default)`,
-  `var(--color-border-default)`, `var(--color-bg-secondary)`, etc.) are
+  `var(--color-border-default)`, `var(--color-bg-subtle)`, etc.) are
   still visible inside your shadow root, so you can theme your panel against
   the live app theme without duplicating token values. See
   `examples/plugins/ai-summary/src/index.ts` for a full example that themes

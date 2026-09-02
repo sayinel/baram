@@ -50,7 +50,7 @@
 
 Baram(바람) is a desktop markdown editor where formatting syntax disappears as you type. Move your cursor into a heading and the `## ` prefix reappears for editing; move away and only the styled text remains. This experience extends to bold, italic, links, images, math, and more — all while maintaining **lossless markdown roundtrip fidelity**.
 
-Your `.md` files stay 100% standard markdown. No proprietary format, no lock-in.
+Your notes stay plain `.md` text files in a folder you choose — no database, no proprietary container, no lock-in. Prose is ordinary CommonMark, and the features that go beyond it write the same conventions other markdown tools already read: `[[wikilinks]]`, `#tags`, `> [!NOTE]` callouts, `$math$`, `==highlights==`, and Obsidian-style task fields. Anything Baram does not recognize is carried through untouched, so a note stays readable — and editable — in any other editor.
 
 <p align="center">
   <img src="docs/assets/demo.gif" alt="Baram demo — markdown syntax disappears as you type" width="800" />
@@ -96,7 +96,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 ### Editing
 
 - **Disappearing syntax** — Markdown delimiters (`**`, `*`, `` ` ``, `~~`, `==`, `~`, `^`, links) show only when your cursor enters the range and vanish when you leave.
-- **Lossless roundtrip** — MD → editor → MD preserves your document exactly. Files stay 100% standard markdown — no proprietary format, no lock-in.
+- **Lossless roundtrip** — MD → editor → MD preserves your document exactly, including markup Baram does not render itself. Plain text on disk, always — no database, no proprietary container, no lock-in.
 - **Source mode** — Toggle raw markdown editing (CodeMirror 6) with `Cmd+/`.
 - **Rich blocks** — Headings, lists, tables (with cell merge & virtual scroll), task lists, Obsidian-compatible callouts, toggles, footnotes, definition lists, and YAML frontmatter — created by typing markdown, `/` slash commands, or shortcuts.
 - **Math, code & diagrams** — Inline/block LaTeX (KaTeX), syntax highlighting for 14+ languages (CodeMirror 6), and Mermaid diagrams — all with live preview.
@@ -109,9 +109,10 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Backlinks & unlinked mentions** — See what links here; links auto-update on rename.
 - **Block references & embeds** — Reference `((file#^id))` or embed `{{embed ((file#^id))}}` any block; embeds stay editable.
 - **@Mentions & tags** — Inline `@[[...]]` page/date chips and `#nested/tags` with a vault-wide index.
+- **Tasks** — Any `- [ ]` checkbox anywhere in the vault is indexed. Four states (`[ ]` `[/]` `[x]` `[-]`), due/scheduled/start dates, priority, repeat rules, and optional time tracking — written as Obsidian-compatible emoji fields you never have to type. An agenda sidebar buckets everything by Overdue / Today / This week / Later, and AI can pull action items out of a meeting note.
 - **Graph view & global search** — Visual map of your connections, plus vault-wide full-text search with regex and replace.
 - **PDF reading & highlights** — Read PDFs in place with find, zoom, and a page/highlight side panel. Highlight text or draw a box around a figure, then paste a **reference** into any note: it renders as the quoted sentence, or as the cropped region of the page, and `Cmd+click` jumps back to the source. Highlights are stored beside the PDF as plain markdown and JSON — the PDF is never modified.
-- **Query blocks** — Embed live, self-updating result lists with a visual query builder.
+- **Query blocks** — Embed a saved search in a note as a ` ```query ` block and get a live list of matching **notes or tasks**, built with a visual filter/sort/display builder. Task results stay checkable in place. [See the guide →](docs/user-guide.md#query-blocks)
 
 ### Workspaces
 
@@ -123,9 +124,10 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 ### Sharing & Customization
 
 - **Export** — HTML, PDF, and — via Pandoc — Word, LaTeX, EPUB, and RST, plus Notion-compatible markdown.
-- **Themes** — 6 built-in editor themes (plus 6 journal themes), system auto light/dark, and a full color editor with import/export.
+- **Themes** — 8 built-in editor themes (plus 6 journal themes), system auto light/dark, and a full color editor with import/export.
 - **Plugins** — Install community plugins from a built-in marketplace, browse each one's README in a detail tab, and toggle any plugin — built-ins included — on or off. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation. Installs are staged and atomic, and a signed withdrawal list stops a plugin that was later pulled or found vulnerable from running.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
+- **Vim mode** — Optional modal editing with normal/insert/visual modes, motions, operators, counts, marks, and `:w`/`:q` — in the WYSIWYG surface, Source mode, and inside code blocks.
 
 > 📖 See the [**User Guide**](docs/user-guide.md) for detailed usage of every feature.
 
@@ -201,6 +203,7 @@ Type `/` to open the slash menu. AI-powered commands include:
 | `/ai-translate`   | Translate to another language          |
 | `/ai-explain`     | Explain selected text in simple terms  |
 | `/ai-template`    | Generate content from AI templates     |
+| `/extract-tasks`  | Pull action items out of the selection |
 
 ### Custom AI Commands
 
@@ -231,9 +234,9 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 ### 3-Column Layout
 
 - **Context Tab Bar** — Switch between open vaults, folders, and files
-- **Left Sidebar** — File tree, Search, Backlinks, Bookmarks, Tags, Calendar, Git, and Version History (`Cmd+Shift+L` to toggle)
+- **Left Sidebar** — Files, Search, Outline, Backlinks, Bookmarks, Graph View, Source Control, Calendar, Tags, Tasks, Zettel, Skills Gallery, and Plugins (`Cmd+Shift+L` to toggle). Reorder or hide any of them in **Settings > Activity Bar**.
 - **Editor** — Main editing area with WYSIWYG or Source mode
-- **Right Sidebar** — Document outline, AI Chat, Memories, Photo Gallery, or Help panel
+- **Right Sidebar** — AI Chat, Memories, Photo Gallery, Version History, or Help panel
 
 ### Toolbar & Menus
 
@@ -279,18 +282,18 @@ See [**CONTRIBUTING.md**](CONTRIBUTING.md) for how to set up your development en
 
 ## Support
 
-Baram is free and open source — no paywall, no ads, no telemetry — and it always will be. If it earns a place in your workflow, you can chip in to fund its development:Entirely optional, always appreciated: there is no paywall and never will be.
+Baram is free and open source — no paywall, no ads, no telemetry — and it always will be. If it earns a place in your workflow, you can chip in to fund its development:
 
-$$
-x^2
-$$
+<p>
+  <a href="https://ko-fi.com/sayinel">
+    <img src="https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support on Ko-fi" height="40">
+  </a>
+</p>
+
+Entirely optional, always appreciated: there is no paywall and never will be.
 
 ## License
 
 Baram is licensed under the [**Apache License 2.0**](LICENSE).
 
 Third-party open-source components and their licenses are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
-$$
-x^2
-$$

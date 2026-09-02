@@ -82,6 +82,17 @@ describe("applyThemeVars", () => {
     }
   });
 
+  it("skips keys the stored palette is missing instead of writing 'undefined'", () => {
+    // 저장분은 runtime cast라 키가 빠질 수 있다(옛 저장 테마·미래 키 추가).
+    // whitelist 순회 도입 직후에는 빠진 키가 setProperty(key, undefined)로
+    // 흘러 리터럴 "undefined" custom property가 cascade 기본값을 가렸다
+    // (적대 리뷰). 빠진 키는 아예 쓰지 않아야 한다.
+    const partial = { ...NORD.colors } as Record<string, string>;
+    delete partial["--color-bg-input"];
+    applyThemeVars(root, partial as typeof NORD.colors, NORD.base);
+    expect(root.style.getPropertyValue("--color-bg-input")).toBe("");
+  });
+
   it("writes the derived accent pairing alongside the colours", () => {
     applyThemeVars(root, NORD.colors, NORD.base);
     // Nord's pale cyan accent takes dark text — white on it is 2.00:1.
@@ -203,5 +214,32 @@ describe("clearThemeVars", () => {
     // A key the old 16-entry list omitted.
     expect(root.style.getPropertyValue("--color-accent-subtle")).toBe("");
     expect(root.style.getPropertyValue("--color-status-danger")).toBe("");
+  });
+});
+
+// 감사 BLOCKER — 테마 colors의 여분 키가 inline style로 주입되면, import한 JSON
+// 한 장이 `display: none` 같은 속성을 <html>에 영구히 박을 수 있다(clearThemeVars는
+// 알려진 키만 지운다). applyThemeVars가 최후 방어선으로 whitelist만 쓴다.
+describe("applyThemeVars — 여분 키 주입 차단 (감사 BLOCKER)", () => {
+  beforeEach(() => {
+    clearThemeVars(document.documentElement);
+  });
+
+  it("colors에 끼어든 알 수 없는 키는 inline style에 쓰이지 않는다", () => {
+    const root = document.documentElement;
+    const poisoned = {
+      ...NORD.colors,
+      display: "none",
+      "pointer-events": "none",
+      "--evil-custom": "1",
+    } as unknown as ThemeColors;
+
+    applyThemeVars(root, poisoned, "dark");
+
+    expect(root.style.getPropertyValue("display")).toBe("");
+    expect(root.style.getPropertyValue("pointer-events")).toBe("");
+    expect(root.style.getPropertyValue("--evil-custom")).toBe("");
+    // 정상 키는 그대로 적용된다.
+    expect(root.style.getPropertyValue("--color-accent-default")).not.toBe("");
   });
 });

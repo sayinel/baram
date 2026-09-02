@@ -5,6 +5,8 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { writeFile } from "../../ipc/invoke";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -26,7 +28,14 @@ interface ThemeEditorProps {
 export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const { t } = useTranslation();
   const { activeThemeId, customThemes, saveCustomTheme, setActiveTheme } =
-    useSettingsStore();
+    useSettingsStore(
+      useShallow((s) => ({
+        activeThemeId: s.activeThemeId,
+        customThemes: s.customThemes,
+        saveCustomTheme: s.saveCustomTheme,
+        setActiveTheme: s.setActiveTheme,
+      })),
+    );
 
   // The active theme, when it has colours of its own. `system` has none by design,
   // and an id that resolves to nothing means the settings effect cleared the
@@ -55,13 +64,6 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     ...sourceTheme.colors,
   }));
 
-  // Keep a ref to the original colors so we can restore on cancel/unmount
-  const originalColorsRef = useRef<ThemeColors>({ ...sourceTheme.colors });
-
-  // The base the original colors belong to — the derived accent pairing depends on
-  // it, so restoring colours without it would restore the wrong foreground (#330).
-  const originalBaseRef = useRef<"dark" | "light">(sourceTheme.base);
-
   // Set once the edited colours have been adopted as a real theme, so the unmount
   // cleanup knows there is no preview left to undo. Without it, correctness depends
   // on the cleanup running BEFORE the settings effect re-applies the saved theme —
@@ -71,7 +73,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // Group color keys by category
   const categories = useMemo(() => {
-    const map = new Map<string, typeof THEME_COLOR_KEYS>();
+    const map = new Map<string, (typeof THEME_COLOR_KEYS)[number][]>();
     for (const entry of THEME_COLOR_KEYS) {
       const list = map.get(entry.category) ?? [];
       list.push(entry);
@@ -80,21 +82,27 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     return map;
   }, []);
 
-  // Apply editing colors to CSS variables in real-time
+  // Apply editing colors to CSS variables in real-time. data-theme도 함께 —
+  // 24색 inline vars만 바꾸면 base를 토글해도 <html data-theme>는 이전 값에
+  // 머물러, 25키 밖 semantic 토큰·native widget(color-scheme)·CodeMirror가
+  // 옛 base로 남은 혼합 미리보기가 됐다(적대 리뷰).
   useEffect(() => {
-    applyThemeVars(document.documentElement, colors, base);
+    const root = document.documentElement;
+    applyThemeVars(root, colors, base);
+    // 동등성 관문: 이 effect는 색 드래그 틱마다 돈다 — 같은 값이라도
+    // setAttribute는 attribute-changed 경로를 타서 셀렉터 재매칭을 유발할
+    // 수 있다 (CLAUDE.md의 고빈도 경로 규칙과 같은 이유).
+    if (root.dataset.theme !== base) root.dataset.theme = base;
   }, [colors, base]);
 
   // Restore original colors on unmount (cancel / navigate away)
   useEffect(() => {
-    const orig = originalColorsRef.current;
-    const origBase = originalBaseRef.current;
     // Aliased so the cleanup reads the ref through a stable local (lint rule), not
     // a value captured at effect time — `saved` must be read AT cleanup.
     const saved = savedRef;
     return () => {
       if (saved.current) return;
-      restorePreview(orig, origBase);
+      restorePreview();
     };
   }, []);
 
@@ -134,7 +142,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   const handleCancel = useCallback(() => {
     // Restore original colors before closing
-    restorePreview(originalColorsRef.current, originalBaseRef.current);
+    restorePreview();
     onClose();
   }, [onClose]);
 
@@ -152,6 +160,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     <div className="theme-editor">
       <div className="theme-editor-header">
         <input
+          aria-label={t("settings.theme.namePlaceholder")}
           className="theme-editor-name"
           onChange={(e) => setName(e.target.value)}
           placeholder={t("settings.theme.namePlaceholder")}
@@ -160,12 +169,14 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         />
         <div className="theme-editor-base-toggle">
           <button
+            aria-pressed={base === "light"}
             className={`theme-editor-base-btn ${base === "light" ? "theme-editor-base-btn-active" : ""}`}
             onClick={() => setBase("light")}
           >
             {t("settings.theme.light")}
           </button>
           <button
+            aria-pressed={base === "dark"}
             className={`theme-editor-base-btn ${base === "dark" ? "theme-editor-base-btn-active" : ""}`}
             onClick={() => setBase("dark")}
           >
@@ -180,7 +191,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           {entries.map((entry) => (
             <div className="theme-editor-row" key={entry.key}>
               <span className="theme-editor-label">{entry.label}</span>
+              {/* 옆의 span은 시각 라벨일 뿐 input과 연결돼 있지 않다 — 스크린
+                  리더에는 24개가 전부 무명의 color picker로 읽힌다. */}
               <input
+                aria-label={entry.label}
                 className="theme-editor-color"
                 onChange={(e) => handleColorChange(entry.key, e.target.value)}
                 type="color"
@@ -221,15 +235,27 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
  * if a theme switch ever became reachable while the editor is open (today the picker
  * is unmounted while editing, so the two agree) — the same defect class this fixes.
  */
-function restorePreview(colors: ThemeColors, base: "dark" | "light"): void {
+function restorePreview(): void {
   const root = document.documentElement;
   const { activeThemeId, customThemes } = useSettingsStore.getState();
+  const resolved = findThemeById(activeThemeId, customThemes);
   const hasInlineVars =
-    findThemeById(activeThemeId, customThemes) !== undefined &&
-    appliesInlineVars(activeThemeId);
+    resolved !== undefined && appliesInlineVars(activeThemeId);
+  // 색·base·attribute 전부를 호출 시점의 store에서 읽는다(적대 리뷰 2라운드):
+  // 편집기를 열 때 캡처한 색을 쓰면, 편집 중 활성 테마가 바뀌는 경로가 생기는
+  // 순간 "현재 테마의 base + 과거 테마의 색"이 섞인 복원이 된다. 오늘의 UI는
+  // 편집 중 테마 전환을 막지만, 이 함수의 정합성이 그 우연에 기대면 안 된다.
   if (hasInlineVars) {
-    applyThemeVars(root, colors, base);
+    applyThemeVars(root, resolved.colors, resolved.base);
   } else {
     clearThemeVars(root);
+  }
+  // preview effect가 data-theme도 base로 밀어뒀으므로 attribute까지 되돌린다 —
+  // use-settings-effects와 같은 규칙: 해석되는 테마는 그 base, system·미해석은
+  // attribute 제거(= prefers-color-scheme 경로).
+  if (resolved) {
+    root.dataset.theme = resolved.base;
+  } else {
+    root.removeAttribute("data-theme");
   }
 }

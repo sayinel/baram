@@ -7,12 +7,8 @@
   min-height: 28px;
   padding: 2px 8px;
   overflow-x: auto;
-  background: var(--color-bg-secondary, #f8f9fa);
-  border-bottom: 1px solid var(--color-border-default, #e5e7eb);
-}
-
-[data-theme="dark"] .context-tab-bar {
-  background: var(--color-bg-secondary, #252526);
+  background: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .context-tab {
@@ -21,7 +17,7 @@
   align-items: center;
   padding: 3px 10px;
   font-size: 12px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
   white-space: nowrap;
   cursor: pointer;
   background: transparent;
@@ -33,16 +29,16 @@
 }
 
 .context-tab:hover {
-  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  background: var(--color-bg-hover);
 }
 
 .context-tab--active {
   font-weight: 600;
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
 }
 
 [data-theme="dark"] .context-tab--active {
-  color: var(--color-text-default, #e0e0e0);
+  color: var(--color-text-default);
 }
 
 .context-tab__dot {
@@ -66,7 +62,7 @@
   color: inherit;
   outline: none;
   background: transparent;
-  border: 1px solid var(--color-accent-default, #3b82f6);
+  border: 1px solid var(--color-accent-default);
   border-radius: 3px;
 }
 
@@ -81,7 +77,7 @@
   justify-content: center;
   padding: 1px;
   margin-left: 4px;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
   border-radius: 3px;
   transition:
     color 0.1s,
@@ -93,12 +89,12 @@
 }
 
 .context-tab__close:hover {
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
   background: rgb(0 0 0 / 10%);
 }
 
 [data-theme="dark"] .context-tab__close:hover {
-  color: var(--color-text-default, #e0e0e0);
+  color: var(--color-text-default);
   background: rgb(255 255 255 / 10%);
 }
 
@@ -108,25 +104,25 @@
 }
 
 .context-tab--drop-before {
-  box-shadow: inset 2px 0 0 0 var(--color-accent-default, #3b82f6);
+  box-shadow: inset 2px 0 0 0 var(--color-accent-default);
 }
 
 .context-tab--drop-after {
-  box-shadow: inset -2px 0 0 0 var(--color-accent-default, #3b82f6);
+  box-shadow: inset -2px 0 0 0 var(--color-accent-default);
 }
 
 /* Add (+) button */
 .context-tab--add {
   padding: 3px 6px;
-  color: var(--color-text-muted, #9ca3af);
+  color: var(--color-text-muted);
 }
 
 .context-tab--add:hover {
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
 }
 
 [data-theme="dark"] .context-tab--add:hover {
-  color: var(--color-text-default, #e0e0e0);
+  color: var(--color-text-default);
 }
 
 /* Shared dropdown/menu styles */
@@ -136,15 +132,15 @@
   z-index: 1000;
   min-width: 160px;
   padding: 4px;
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
-  box-shadow: var(--shadow-md, 0 4px 6px rgb(0 0 0 / 7%));
+  box-shadow: var(--shadow-md);
 }
 
 [data-theme="dark"] .context-add-menu,
 [data-theme="dark"] .context-ctx-menu {
-  background: var(--color-bg-elevated, #333);
+  background: var(--color-bg-elevated);
 }
 
 .context-add-menu__item,
@@ -153,7 +149,7 @@
   width: 100%;
   padding: 6px 10px;
   font-size: 13px;
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
   text-align: left;
   cursor: pointer;
   background: transparent;
@@ -163,12 +159,12 @@
 
 .context-add-menu__item:hover,
 .context-ctx-menu__item:hover {
-  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  background: var(--color-bg-hover);
 }
 
 [data-theme="dark"] .context-add-menu__item,
 [data-theme="dark"] .context-ctx-menu__item {
-  color: var(--color-text-default, #e0e0e0);
+  color: var(--color-text-default);
 }
 
 /* Context menu separator */
@@ -176,7 +172,7 @@
 .context-add-menu__sep {
   height: 1px;
   margin: 4px 0;
-  background: var(--color-border-default, #e5e7eb);
+  background: var(--color-border-default);
 }
 
 /* §82 Recent-items menu: constrain width so long paths ellipsize */
@@ -188,7 +184,7 @@
   padding: 6px 10px 2px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 .context-add-menu__item--recent {
@@ -199,7 +195,7 @@
 
 .context-add-menu__icon {
   flex-shrink: 0;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 .context-add-menu__text {
@@ -214,14 +210,14 @@
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--color-accent-default, #3b82f6);
-  border: 1px solid var(--color-accent-default, #3b82f6);
+  color: var(--color-accent-default);
+  border: 1px solid var(--color-accent-default);
   border-radius: 4px;
 }
 
 .context-add-menu__item--muted {
   font-size: 12px;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
 }
 
 /* Context menu inline rename input */
@@ -230,16 +226,15 @@
   padding: 4px 8px;
   margin: 4px;
   font-size: 13px;
-  color: var(--color-text-default, #1a1a1a);
+  color: var(--color-text-default);
   outline: none;
-  background: var(--color-bg-default, #fff);
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
 
 [data-theme="dark"] .context-ctx-menu__input {
-  color: var(--color-text-default, #e0e0e0);
-  background: var(--color-bg-secondary, #252526);
+  color: var(--color-text-default);
 }
 
 /* Color picker grid */
@@ -262,6 +257,6 @@
 }
 
 .context-ctx-menu__color-btn:hover {
-  border-color: var(--color-text-default, #1a1a1a);
+  border-color: var(--color-text-default);
   transform: scale(1.15);
 }

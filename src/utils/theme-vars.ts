@@ -75,8 +75,19 @@ export function applyThemeVars(
   colors: ThemeColors,
   base: "dark" | "light",
 ): void {
-  for (const [key, value] of Object.entries(colors)) {
-    root.style.setProperty(key, value);
+  // 감사 BLOCKER: `colors`를 순회하지 않고 whitelist를 순회한다. 사용자가 import한
+  // 테마 JSON은 여기까지 흘러오는 외부 입력이고, `Object.entries(colors)`는 그 안에
+  // 끼어든 임의 키(`display` 같은 진짜 CSS 속성 포함)를 <html>의 inline style에
+  // 그대로 박는다 — clearThemeVars는 알려진 키만 지우므로 그 주입은 테마를 바꿔도
+  // 영구히 남는다. 입구(import)에서도 걸러내지만, 이 함수가 최후 방어선이다.
+  for (const { key } of THEME_COLOR_KEYS) {
+    const value = colors[key];
+    // 타입은 total이지만 저장분은 runtime cast다 — 옛 버전이 저장한 테마나
+    // 앞으로 THEME_COLOR_KEYS에 키가 추가될 때 값이 빠질 수 있다. undefined를
+    // setProperty에 넘기면 리터럴 "undefined" custom property가 되어 cascade
+    // 기본값을 가리므로(적대 리뷰), 빠진 키는 쓰지 않는다 — 입력을 순회하던
+    // 이전 동작과 같이 cascade가 지배한다.
+    if (value !== undefined) root.style.setProperty(key, value);
   }
   for (const [key, value] of Object.entries(derivedVars(colors, base))) {
     root.style.setProperty(key, value);

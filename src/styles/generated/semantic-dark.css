@@ -114,10 +114,6 @@
     --color-slate-200
   ); /** Editor cursor dark (was --color-editor-cursor: #e2e8f0) */
 
-  --color-editor-line-highlight: var(
-    --color-navy-850
-  ); /** Editor current line highlight dark (was --color-editor-line-highlight: #16213e) */
-
   --color-status-danger: var(--color-red-500); /** Danger/error status dark */
   --color-status-danger-on-solid: var(
     --color-black

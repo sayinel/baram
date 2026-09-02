@@ -70,13 +70,32 @@
   transition: opacity 0.15s;
 }
 
-.theme-card:hover .theme-card-delete {
+/* 카드-삭제 버튼의 겹침 배치를 맡는 형제 wrapper — 삭제 버튼이 카드
+   button 안에 살 수 없어(HTML 중첩 금지) 밖으로 나오면서 기준점이 됐다. */
+.theme-card-wrap {
+  position: relative;
+  display: flex;
+}
+
+.theme-card-wrap .theme-card {
+  flex: 1;
+  min-width: 0;
+}
+
+.theme-card-wrap:hover .theme-card-delete,
+.theme-card-delete:focus-visible {
   opacity: 1;
 }
 
 .theme-card-delete:hover {
   color: var(--color-status-danger-on-solid);
   background: var(--color-status-danger);
+}
+
+.theme-import-error {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--color-status-danger);
 }
 
 /* Theme mini preview */
@@ -343,7 +362,7 @@
 
 .theme-editor-hex {
   width: 60px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.72rem;
   color: var(--color-text-muted);
 }

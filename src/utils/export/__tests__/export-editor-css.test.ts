@@ -141,14 +141,72 @@ describe("what the exported page actually looks like", () => {
   it("gives each callout type its own colour", () => {
     // Discriminating: one generic `.callout` rule — which is what shipped
     // before — paints tip and bug identically.
+    //
+    // blocks.css의 callout 색이 리터럴에서 var(--color-callout-X)로 바뀐 뒤로
+    // jsdom의 getComputedStyle은 var()를 실색으로 풀어주지 않는다 — 그래서
+    // "타입별로 다른 토큰을 참조한다"와 "그 토큰이 번들된 시트에 실값으로
+    // 정의돼 있다"를 나눠서 판정한다. 브라우저에서는 이 둘이 합쳐져 실색이 된다.
     const tip = mount(`<div class="callout callout-tip"></div>`)
       .firstElementChild as HTMLElement;
     const tipColor = getComputedStyle(tip).borderLeftColor;
     const bug = mount(`<div class="callout callout-bug"></div>`)
       .firstElementChild as HTMLElement;
 
-    expect(tipColor).toBe("rgb(16, 185, 129)");
+    expect(tipColor).toBe("var(--color-callout-tip)");
     expect(getComputedStyle(bug).borderLeftColor).not.toBe(tipColor);
+
+    // 참조가 허공을 가리키면 위 판정은 통과해도 내보낸 문서는 무색이 된다 —
+    // 번들 시트 안에서 13개 타입 전부의 참조 사슬(semantic → primitive)을
+    // 따라가 실제 hex에 닿는지까지 고정한다. (danger/failure처럼 같은
+    // primitive를 공유하는 쌍은 의도된 설계라 pairwise-distinct는 걸지 않는다.)
+    const sheet = buildExportStylesheet();
+    const resolve = (name: string, depth = 0): string => {
+      expect(depth, `${name} 참조가 너무 깊다(순환?)`).toBeLessThan(5);
+      const def = new RegExp(`${name}:\\s*([^;]+);`).exec(sheet);
+      expect(def, `${name}이 번들 시트에 정의돼 있지 않다`).not.toBeNull();
+      const value = def![1].trim();
+      const ref = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value);
+      return ref ? resolve(ref[1], depth + 1) : value;
+    };
+    const TYPES = [
+      "abstract",
+      "bug",
+      "danger",
+      "example",
+      "failure",
+      "info",
+      "note",
+      "question",
+      "quote",
+      "success",
+      "tip",
+      "todo",
+      "warning",
+    ];
+    for (const type of TYPES) {
+      expect(resolve(`--color-callout-${type}`)).toMatch(
+        /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i,
+      );
+    }
+  });
+
+  it("keeps dark mode from repainting typed callout backgrounds", () => {
+    // 회귀 핀 (적대 리뷰 2회): `[data-theme="dark"] … .callout { background }`
+    // 류의 일반 다크 규칙은 (0,3,0)이라 타입 규칙 (0,2,0)을 전부 이긴다 —
+    // 명시적 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개지는 결함이 실제로
+    // 있었다. 정규식 핀은 표기(인용부호·:where()·selector list)에 속았으므로,
+    // 다크 root 아래 타입 callout을 실제로 마운트해 계산된 background가 여전히
+    // 자기 타입 토큰을 참조하는지를 본다 — 어떤 표기로 재유입돼도 cascade
+    // 결과로 잡힌다. (jsdom은 var()를 실값으로 풀지 않으므로 토큰 참조
+    // 문자열이 그대로 남는 것이 정상 기대값이다.)
+    document.documentElement.dataset.theme = "dark";
+    try {
+      const tip = mount(`<div class="callout callout-tip"></div>`)
+        .firstElementChild as HTMLElement;
+      expect(getComputedStyle(tip).background).toContain("--color-callout-tip");
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
   });
 
   // §308 — the chip and the raw text it renders BOTH reach the export, and the

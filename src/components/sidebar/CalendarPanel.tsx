@@ -295,11 +295,8 @@ export function CalendarPanel() {
   );
 
   const themeStyle: React.CSSProperties = {
-    "--cal-accent": journalTheme.accentColor,
-    "--cal-header": journalTheme.headerColor,
     "--journal-font-family": journalTheme.typography.fontFamily,
     "--journal-line-height": String(journalTheme.typography.lineHeight),
-    "--journal-max-width": journalTheme.typography.maxWidth,
     "--journal-header-bg": journalTheme.headerBg,
     "--journal-prompt-bg": journalTheme.promptBg,
     "--journal-prompt-border": journalTheme.promptBorder,
