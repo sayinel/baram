@@ -435,3 +435,53 @@ describe("§323 WYSIWYG 본문", () => {
     expect(useUIStore.getState().quickCaptureOpen).toBe(false);
   });
 });
+
+describe("§324-g 캡처 창 크기", () => {
+  beforeEach(() => {
+    useSettingsStore.setState({ locale: LOCALE });
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/z");
+    useUIStore.setState({
+      quickCaptureOpen: true,
+      quickCaptureTaskIntent: false,
+    });
+  });
+
+  it("기본 높이는 설정에 저장된 값이다", async () => {
+    useSettingsStore.getState().setCaptureDialogHeight(400);
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const el = document.querySelector(".quick-capture-editor") as HTMLElement;
+    expect(el.style.height).toBe("400px");
+  });
+
+  it("드래그로 바꾼 높이가 설정에 남는다", async () => {
+    useSettingsStore.getState().setCaptureDialogHeight(300);
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const handle = document.querySelector(
+      ".quick-capture-resize",
+    ) as HTMLElement;
+    fireEvent.mouseDown(handle, { clientY: 100 });
+    fireEvent.mouseMove(window, { clientY: 180 });
+    fireEvent.mouseUp(window);
+    await act(async () => {});
+    expect(useSettingsStore.getState().captureDialogHeight).toBe(380);
+  });
+
+  it("높이에 하한이 있다 — 창이 사라지지 않는다", async () => {
+    useSettingsStore.getState().setCaptureDialogHeight(300);
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const handle = document.querySelector(
+      ".quick-capture-resize",
+    ) as HTMLElement;
+    fireEvent.mouseDown(handle, { clientY: 500 });
+    fireEvent.mouseMove(window, { clientY: 0 });
+    fireEvent.mouseUp(window);
+    await act(async () => {});
+    expect(
+      useSettingsStore.getState().captureDialogHeight,
+    ).toBeGreaterThanOrEqual(120);
+  });
+});

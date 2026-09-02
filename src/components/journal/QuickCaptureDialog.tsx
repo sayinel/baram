@@ -19,6 +19,7 @@ import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
 import { useCaptureEditor } from "./use-capture-editor";
+import { useCaptureResize } from "./use-capture-resize";
 import { useCaptureTags } from "./use-capture-tags";
 import { captureErrorKey, useCaptureTaskMode } from "./use-capture-task-mode";
 
@@ -54,6 +55,7 @@ export function QuickCaptureDialog() {
   const zettelReady = zettelkastenEnabled && !!zettelDir;
   const taskMode = useCaptureTaskMode();
   const tags = useCaptureTags(quickCaptureOpen);
+  const resize = useCaptureResize();
   // §323 본문은 이제 문서창과 같은 엔진의 편집기가 들고 있다 — `body` state는 없다.
   const capture = useCaptureEditor(quickCaptureOpen);
   const [source, setSource] = useState("");
@@ -236,9 +238,16 @@ export function QuickCaptureDialog() {
                 capture.editor;
             }
           }}
+          style={{ height: `${resize.height}px` }}
         >
           <EditorContent editor={capture.editor} />
         </div>
+
+        {/* §324-g 드래그로 편집기 높이를 조정한다. */}
+        <div
+          className="quick-capture-resize"
+          onMouseDown={resize.onResizeMouseDown}
+        />
 
         {/* Optional source. §18.0: a task is a line and is never promoted to a
             note, so it has nowhere to carry a source URL — the field would take
