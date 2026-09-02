@@ -10,7 +10,10 @@ import type { Editor } from "@tiptap/react";
 import { isNodeEmpty, Editor as TiptapEditor } from "@tiptap/core";
 
 import { createBaramExtensions } from "../../extensions";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
+import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 
 // ‼️ Finding 1 (§323 리뷰): `Editor.isEmpty`는 `isNodeEmpty(doc)`를
 // `ignoreWhitespace` 기본값(false)으로 호출해, 공백만 있는 텍스트 노드를
@@ -35,8 +38,27 @@ export function useCaptureEditor(open: boolean): CaptureEditor {
 
   // ‼️ 배열은 인스턴스마다 한 번만 만든다. 렌더마다 새로 만들면 Tiptap이 옵션을
   // 원소 단위로 비교하다 매번 달라졌다고 보고 재구성한다(§298 vim의 교훈).
+  //
+  // §324-e: `resolveDropDestination`는 store를 구독하지 않고 매 붙여넣기 시점에
+  // `.getState()`로 직접 읽는다 — `getJournalContext()` 자신의 기존 관례와
+  // 같다. 그래서 이 콜백은 아무 것도 closure에 담지 않아 위 `useMemo`의 빈
+  // deps를 그대로 둘 수 있다(zettelDir이 바뀌어도 배열을 다시 만들 필요 없음).
+  // 캡처 노트는 항상 `{zettelDir}/inbox/{id}.md`에 저장되지만 id는 저장
+  // 시점에야 생성된다(`captureFleeting` → `generateZettelId`) — DropHandler는
+  // 파일명이 아니라 디렉터리(`{dir}/assets`)만 쓰므로, 같은 디렉터리를 가리키는
+  // 아무 자리표시자 이름이면 충분하고 실제로 그 이름의 파일이 생기지도 않는다.
   const extensions = useMemo(
-    () => createBaramExtensions({ profile: "capture" }),
+    () =>
+      createBaramExtensions({
+        profile: "capture",
+        resolveDropDestination: () => {
+          const rootPath = useFileStore.getState().rootPath;
+          const zettelkastenDirectory =
+            useSettingsStore.getState().zettelkastenDirectory;
+          const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+          return zettelDir ? `${zettelDir}/inbox/__capture__.md` : null;
+        },
+      }),
     [],
   );
 
@@ -58,7 +80,7 @@ export function useCaptureEditor(open: boolean): CaptureEditor {
   const getMarkdown = useCallback(() => {
     if (!editor || editor.isDestroyed || isDocEmpty(editor.state.doc))
       return "";
-    return prosemirrorToMarkdown(editor.state.doc).trim();
+    return serializeLiveDoc(editor).trim();
   }, [editor]);
 
   const reset = useCallback(() => {

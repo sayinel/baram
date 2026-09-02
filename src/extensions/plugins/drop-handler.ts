@@ -128,7 +128,7 @@ export async function insertVideoFromBytes(
 }
 
 /** Create the drop handler ProseMirror plugin */
-function createDropHandlerPlugin(): Plugin {
+function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
   return new Plugin({
     props: {
       handleDrop(view, event) {
@@ -146,7 +146,7 @@ function createDropHandlerPlugin(): Plugin {
         if (!pos) return false;
         const insertPos = pos.pos;
 
-        const ctx = getJournalContext();
+        const ctx = getJournalContext(options.resolveDestinationPath);
 
         // §298 §12-9b (design §5c): file reads land after an async gap —
         // once the task dies (state install / vim mode exit), the reads
@@ -231,7 +231,7 @@ function createDropHandlerPlugin(): Plugin {
 
         event.preventDefault();
 
-        const ctx = getJournalContext();
+        const ctx = getJournalContext(options.resolveDestinationPath);
 
         // §298 §12-9b — same contract as handleDrop above.
         const task = registerEditorMutationTask(view);
@@ -315,19 +315,35 @@ function detectTabSeparatedData(text: string): null | string[][] {
  * and correct, and `rootPath`/`journalDir` being empty/missing is exactly
  * why `isJournal` is false, not a reason to also hide the file path from
  * callers that don't care about journal status.
+ *
+ * §324-e: `activeTabId`/`tabs` is the MAIN document editor's global state.
+ * A second, independent editor instance (the Quick Capture dialog) is never
+ * one of those tabs, so reading them here would silently attribute media to
+ * whatever unrelated document happens to be open in the main window —
+ * saving next to the wrong file and inserting a relative reference that
+ * doesn't resolve from where the actual note ends up. `resolveDestinationPath`
+ * lets such a host hand over its own destination instead of being read from
+ * the tab list. A non-null result is treated like a journal entry (real
+ * assets/ folder, never an inline data URL) — the whole point of a host
+ * supplying a path is that it wants a real file saved there.
  */
-function getJournalContext(): {
+function getJournalContext(resolveDestinationPath?: () => null | string): {
   filePath: string;
   isJournal: boolean;
   journalDir: string;
   rootPath: string;
 } {
+  const rootPath = useFileStore.getState().rootPath ?? "";
+  const journalDir = useSettingsStore.getState().journalDirectory ?? "";
+
+  const override = resolveDestinationPath?.();
+  if (override)
+    return { filePath: override, isJournal: true, journalDir, rootPath };
+
   const activeTabId = useEditorStore.getState().activeTabId;
   const tabs = useEditorStore.getState().tabs;
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const filePath = activeTab?.filePath ?? "";
-  const rootPath = useFileStore.getState().rootPath ?? "";
-  const journalDir = useSettingsStore.getState().journalDirectory ?? "";
 
   if (!rootPath || !journalDir || !filePath)
     return { isJournal: false, rootPath, journalDir, filePath };
@@ -402,11 +418,26 @@ function toastMediaError(key: string, name: string): void {
   useUIStore.getState().showToast(t(key, locale as Locale, { name }), "error");
 }
 
+/** §324-e options — see `getJournalContext`'s doc comment for why this exists. */
+export interface DropHandlerOptions {
+  /**
+   * Returns the path media should be saved relative to, or null to fall back
+   * to the main editor's active tab (the default, unconfigured behaviour).
+   */
+  resolveDestinationPath: () => null | string;
+}
+
 /** Tiptap Extension wrapper */
-export const DropHandler = Extension.create({
+export const DropHandler = Extension.create<DropHandlerOptions>({
   name: "dropHandler",
 
+  addOptions() {
+    return {
+      resolveDestinationPath: () => null,
+    };
+  },
+
   addProseMirrorPlugins() {
-    return [createDropHandlerPlugin()];
+    return [createDropHandlerPlugin(this.options)];
   },
 });

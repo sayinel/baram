@@ -360,3 +360,61 @@ describe("handlePaste through the real plugin, journalDirectory unset (§297 I-2
     editor.destroy();
   });
 });
+
+// §324-e added a `resolveDestinationPath` option so a host without a tab of
+// its own (Quick Capture) can hand DropHandler its real destination instead
+// of the active-tab lookup below silently attributing media to whatever
+// unrelated document happens to be open. The document editor never passes
+// that option (`createBaramExtensions()` with no args), so this pins that
+// the untouched, default path — active tab decides, exactly as before the
+// option existed — still works.
+describe("§324-e default resolution is unchanged when no resolver is configured", () => {
+  const DOC_PATH = "/vault/daily/2026-08-22.md";
+
+  function createTestEditor(): Editor {
+    return new Editor({ extensions: createBaramExtensions(), content: "" });
+  }
+
+  function makePasteEvent(file: File): ClipboardEvent {
+    return {
+      clipboardData: { files: [file], getData: () => "" },
+      preventDefault: vi.fn(),
+    } as unknown as ClipboardEvent;
+  }
+
+  beforeEach(() => {
+    showToast.mockClear();
+    savePhotoToAssets.mockClear();
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: DOC_PATH }],
+    } as never);
+    useFileStore.setState({ rootPath: "/vault" } as never);
+    useSettingsStore.setState({ journalDirectory: "/vault/daily" } as never);
+  });
+
+  it("saves a journal image next to the active tab — the default document editor supplies no override", async () => {
+    const editor = createTestEditor();
+    const event = makePasteEvent(
+      new File(["x"], "shot.png", { type: "image/png" }),
+    );
+
+    const handled = editor.view.someProp("handlePaste", (f) =>
+      f(editor.view, event, Slice.empty),
+    );
+    expect(handled).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(savePhotoToAssets).toHaveBeenCalled();
+    });
+
+    expect(savePhotoToAssets).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      "shot.png",
+      "/vault",
+      "/vault/daily",
+      DOC_PATH,
+    );
+    editor.destroy();
+  });
+});
