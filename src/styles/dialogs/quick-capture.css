@@ -18,7 +18,15 @@
   gap: 10px;
   align-self: flex-start;
   width: 460px;
-  max-height: 420px;
+
+  /* §324-g fix round 1: was a flat 420px, which left the editor almost no room
+     to grow — header + source/tag inputs + actions alone ate most of that
+     budget, so a drag past the default just got squeezed back out by
+     flex-shrink. Viewport-relative so a real window has real headroom.
+     `.quick-capture-editor`'s own max-height below is DERIVED from this same
+     85vh — change one without the other and they drift apart again (that
+     relationship is pinned in quick-capture-resize-budget.test.ts). */
+  max-height: 85vh;
   padding: 16px 20px;
   overflow: visible;
   overscroll-behavior: contain;
@@ -151,9 +159,25 @@
    출발점이었다 — min-height를 그만큼 키운다. */
 .quick-capture-editor {
   box-sizing: border-box;
+  flex-shrink: 0;
   width: 100%;
   min-height: 12rem;
-  max-height: 60vh;
+
+  /* §324-g fix round 1: 85vh는 위 .quick-capture-dialog의 max-height와 같은
+     숫자다 — 260px는 편집기를 뺀 나머지 chrome(헤더 + 리사이즈 핸들 + 출처/태그
+     입력 + 힌트/오류 문구(둘 다 뜨는 최악의 경우까지 포함) + 액션 버튼 + 그
+     사이 gap·padding)의 보수적 추정치다. 편집기 상한을 다이얼로그의 예산에서
+     "빼서" 유도했기 때문에, 편집기가 그 상한까지 자라도 다이얼로그 자체의
+     max-height를 넘는 일이 산수로 불가능하다 — 이전엔 다이얼로그 420px 고정과
+     이 값의 60vh가 서로 무관해서, 좁은 화면이 아니어도 flex-shrink가 편집기를
+     min-height까지 조용히 눌렀다.
+     아주 작은 창(대략 530px 미만 높이)에서는 이 calc()가 min-height보다
+     작아지고, CSS 우선순위상 min-height가 이긴다 — 그 지점부터는 다이얼로그가
+     몇 px 정도 뷰포트를 넘어설 수 있다(overflow: visible이라 위 리사이즈
+     핸들처럼 잘리지 않고 그대로 보인다). 그 폭은 min-height 자체가 이미 갖고
+     있던 바닥이지 이번 변경이 새로 만든 문제가 아니며, 실사용 창 크기에서는
+     닿지 않는다. */
+  max-height: calc(85vh - 260px);
   padding: 8px 10px;
   overflow-y: auto;
   font-size: 13px;
