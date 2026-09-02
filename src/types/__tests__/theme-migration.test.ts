@@ -9,18 +9,22 @@ import { describe, expect, it } from "vitest";
 
 import { defaultColorsForBase, migrateThemeColors } from "../theme";
 
+const LIGHT = defaultColorsForBase("light");
+
 describe("migrateThemeColors 승자 결정", () => {
   it("옛 키가 canonical 키 뒤에 와도 canonical 값이 이긴다", () => {
     const both = {
       "--color-accent-default": "#111111", // canonical — 이 값이 살아야 한다
       "--color-accent": "#999999", // 옛 키가 나중 순서로 덮치는 배치
     };
-    expect(migrateThemeColors(both)["--color-accent-default"]).toBe("#111111");
+    expect(migrateThemeColors(both, LIGHT)["--color-accent-default"]).toBe(
+      "#111111",
+    );
   });
 
   it("canonical 키가 없으면 옛 키 값이 이주한다", () => {
     const oldOnly = { "--color-accent": "#222222" };
-    expect(migrateThemeColors(oldOnly)["--color-accent-default"]).toBe(
+    expect(migrateThemeColors(oldOnly, LIGHT)["--color-accent-default"]).toBe(
       "#222222",
     );
   });
@@ -37,12 +41,12 @@ describe("migrateThemeColors 승자 결정", () => {
       "--color-accent": "#123456",
       "--color-accent-default": "",
     };
-    expect(migrateThemeColors(canonicalFirst)["--color-accent-default"]).toBe(
-      "#123456",
-    );
-    expect(migrateThemeColors(legacyFirst)["--color-accent-default"]).toBe(
-      "#123456",
-    );
+    expect(
+      migrateThemeColors(canonicalFirst, LIGHT)["--color-accent-default"],
+    ).toBe("#123456");
+    expect(
+      migrateThemeColors(legacyFirst, LIGHT)["--color-accent-default"],
+    ).toBe("#123456");
   });
 });
 

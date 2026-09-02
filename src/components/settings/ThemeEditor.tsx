@@ -96,7 +96,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   useEffect(() => {
     const root = document.documentElement;
     applyThemeVars(root, colors, base);
-    root.dataset.theme = base;
+    // 동등성 관문: 이 effect는 색 드래그 틱마다 돈다 — 같은 값이라도
+    // setAttribute는 attribute-changed 경로를 타서 셀렉터 재매칭을 유발할
+    // 수 있다 (CLAUDE.md의 고빈도 경로 규칙과 같은 이유).
+    if (root.dataset.theme !== base) root.dataset.theme = base;
   }, [colors, base]);
 
   // Restore original colors on unmount (cancel / navigate away)
