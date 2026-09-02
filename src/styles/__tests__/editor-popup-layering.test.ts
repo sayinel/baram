@@ -117,13 +117,32 @@ describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
     expect(tokenValue()).toBeGreaterThan(overlay);
   });
 
-  it("토큰 값은 다이얼로그 오버레이 대역 전체를 넘어선다", () => {
+  it("토큰 값은 일반 다이얼로그 오버레이 대역을 넘어선다", () => {
     // Why not just "above the capture dialog": the rule has to survive the
     // NEXT dialog that grows an editor, without anyone re-auditing which
-    // dialogs host one. `.plugin-consent-overlay` (1100) is the highest of the
-    // ordinary dialog band, so the token clears that whole band.
-    expect(tokenValue()).toBeGreaterThan(
-      Number(declaration(".plugin-consent-overlay", "z-index")),
-    );
+    // dialogs host one. `.settings-overlay` (1000) is the highest of the
+    // ORDINARY dialog band, so the token clears that whole band.
+    const settings = Number(declaration(".settings-overlay", "z-index"));
+    expect(Number.isNaN(settings)).toBe(false);
+    expect(tokenValue()).toBeGreaterThan(settings);
+  });
+
+  it("토큰 값은 플러그인 설치 동의 다이얼로그보다 아래다", () => {
+    // ‼️ The ceiling, and the reason this file reads BOTH numbers out of the
+    // stylesheet instead of asserting a literal: what matters is the ORDER
+    // between them, so moving either one in a way that breaks it must fail
+    // here — raising the token over consent, or lowering consent under the
+    // token, are the same defect and this is the one test that sees both.
+    //
+    // `.plugin-consent-overlay` is not an ordinary dialog. `plugins.css` says
+    // it "is the last thing between a user and running third-party code, so it
+    // must not depend on staying a descendant of that stacking context to be
+    // visible" — a body-mounted suggestion menu painting over it is exactly
+    // that dependency. "No editor is reachable from the consent dialog today"
+    // is not the guarantee; the order is, which is why it is pinned and not
+    // argued.
+    const consent = Number(declaration(".plugin-consent-overlay", "z-index"));
+    expect(Number.isNaN(consent)).toBe(false);
+    expect(tokenValue()).toBeLessThan(consent);
   });
 });
