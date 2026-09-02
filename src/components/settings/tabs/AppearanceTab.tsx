@@ -1,96 +1,38 @@
 import { useCallback, useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
 import type { WorkspacePreset } from "../../../stores/file/workspace";
-import type { ThemeColors, ThemeDef } from "../../../types/theme";
+import type { ThemeDef } from "../../../types/theme";
+
+import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { readFile } from "../../../ipc/invoke";
 import {
   BUILTIN_PRESETS,
   useWorkspaceStore,
 } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
-import {
-  BUILT_IN_THEMES,
-  migrateThemeColors,
-  THEME_COLOR_KEYS,
-} from "../../../types/theme";
-import { logger } from "../../../utils/logger";
+import { BUILT_IN_THEMES } from "../../../types/theme";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
+import { useThemeImport } from "./use-theme-import";
 
 // ─── Theme Mini Preview ─────────────────────────────────
 
 export function AppearanceTab() {
   const { t } = useTranslation();
-  const {
-    activeThemeId,
-    customThemes,
-    setActiveTheme,
-    saveCustomTheme,
-    deleteCustomTheme,
-  } = useSettingsStore();
+  const { activeThemeId, customThemes, setActiveTheme, deleteCustomTheme } =
+    useSettingsStore(
+      useShallow((s) => ({
+        activeThemeId: s.activeThemeId,
+        customThemes: s.customThemes,
+        setActiveTheme: s.setActiveTheme,
+        deleteCustomTheme: s.deleteCustomTheme,
+      })),
+    );
   const [editingTheme, setEditingTheme] = useState(false);
-  // 감사 순서 10: import 실패는 logger에만 남고 화면은 무반응이었다 — 사용자
-  // 입장에선 버튼이 조용히 죽은 것. 검증이 던진 이유를 그대로 보여준다.
-  const [importError, setImportError] = useState<null | string>(null);
+  const { handleImport, importError } = useThemeImport();
 
   const allThemes = [...BUILT_IN_THEMES, ...customThemes];
-
-  const handleImport = useCallback(async () => {
-    const selected = await open({
-      filters: [{ name: "JSON", extensions: ["json"] }],
-    });
-    if (!selected) return;
-    setImportError(null);
-    try {
-      const content = await readFile(selected);
-      const data = JSON.parse(content);
-      // Validate required fields
-      if (typeof data.name !== "string" || !data.name) {
-        throw new Error("Missing or invalid 'name' field");
-      }
-      if (data.base !== "light" && data.base !== "dark") {
-        throw new Error("'base' must be 'light' or 'dark'");
-      }
-      if (!data.colors || typeof data.colors !== "object") {
-        throw new Error("Missing or invalid 'colors' object");
-      }
-      // Migrate old key names (pre-v10) to current names
-      data.colors = migrateThemeColors(data.colors);
-      // 감사 BLOCKER: 필수 키 존재만 검사하고 객체를 그대로 저장하면, JSON에 끼어든
-      // 여분 키(진짜 CSS 속성명 포함)가 applyThemeVars까지 흘러가 <html>의 inline
-      // style에 영구 주입된다. 존재·형식을 검사한 뒤 whitelist 키만으로 객체를
-      // **재구성**해 여분 키를 여기서 떨어뜨린다. 값은 color picker 계약(#rrggbb,
-      // 짧은 #rgb 허용)에 맞는 hex만 받는다 — built-in 팔레트 전체가 이 형식이다.
-      const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-      const sanitized = {} as ThemeColors;
-      for (const { key } of THEME_COLOR_KEYS) {
-        const value = data.colors[key];
-        if (typeof value !== "string") {
-          throw new Error(`Missing color key: ${key}`);
-        }
-        if (!HEX_RE.test(value)) {
-          throw new Error(`Color '${key}' must be a hex value, got: ${value}`);
-        }
-        sanitized[key] = value;
-      }
-      const newTheme: ThemeDef = {
-        id: "custom-" + Date.now(),
-        name: data.name,
-        base: data.base,
-        colors: sanitized,
-        builtIn: false,
-      };
-      saveCustomTheme(newTheme);
-      setActiveTheme(newTheme.id);
-    } catch (err) {
-      logger.error("Theme import failed:", err);
-      setImportError(err instanceof Error ? err.message : String(err));
-    }
-  }, [saveCustomTheme, setActiveTheme]);
 
   if (editingTheme) {
     return <ThemeEditor onClose={() => setEditingTheme(false)} />;
@@ -103,6 +45,7 @@ export function AppearanceTab() {
       <div className="theme-gallery">
         {/* System (Auto) card */}
         <button
+          aria-pressed={activeThemeId === "system"}
           className={`theme-card theme-system-card ${activeThemeId === "system" ? "theme-card-active" : ""}`}
           onClick={() => setActiveTheme("system")}
         >
@@ -184,6 +127,7 @@ export function AppearanceTab() {
         {allThemes.map((theme) => (
           <div className="theme-card-wrap" key={theme.id}>
             <button
+              aria-pressed={activeThemeId === theme.id}
               className={`theme-card ${activeThemeId === theme.id ? "theme-card-active" : ""}`}
               onClick={() => setActiveTheme(theme.id)}
               style={
@@ -201,11 +145,17 @@ export function AppearanceTab() {
               )}
             </button>
             {!theme.builtIn && (
+              // \uC0AD\uC81C \uB300\uC0C1 \uC774\uB984\uC744 accessible name\uC5D0 \uD3EC\uD568\uD55C\uB2E4 \u2014 \uCEE4\uC2A4\uD140 \uD14C\uB9C8\uAC00
+              // \uC5EC\uB7FF\uC774\uBA74 "\uD14C\uB9C8 \uC0AD\uC81C"\uB9CC\uC73C\uB85C\uB294 \uC5B4\uB290 \uBC84\uD2BC\uC778\uC9C0 \uAD6C\uBD84\uD560 \uC218 \uC5C6\uB2E4.
               <button
-                aria-label={t("settings.appearance.deleteTheme")}
+                aria-label={t("settings.appearance.deleteThemeNamed", {
+                  name: theme.name,
+                })}
                 className="theme-card-delete"
                 onClick={() => deleteCustomTheme(theme.id)}
-                title={t("settings.appearance.deleteTheme")}
+                title={t("settings.appearance.deleteThemeNamed", {
+                  name: theme.name,
+                })}
               >
                 {"\u00D7"}
               </button>
@@ -423,7 +373,15 @@ function WorkspaceSection() {
     applyPreset,
     saveCustomPreset,
     deleteCustomPreset,
-  } = useWorkspaceStore();
+  } = useWorkspaceStore(
+    useShallow((s) => ({
+      activePresetId: s.activePresetId,
+      customPresets: s.customPresets,
+      applyPreset: s.applyPreset,
+      saveCustomPreset: s.saveCustomPreset,
+      deleteCustomPreset: s.deleteCustomPreset,
+    })),
+  );
 
   const [savingNew, setSavingNew] = useState(false);
   const [newName, setNewName] = useState("");

@@ -5,6 +5,8 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { writeFile } from "../../ipc/invoke";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -26,7 +28,14 @@ interface ThemeEditorProps {
 export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const { t } = useTranslation();
   const { activeThemeId, customThemes, saveCustomTheme, setActiveTheme } =
-    useSettingsStore();
+    useSettingsStore(
+      useShallow((s) => ({
+        activeThemeId: s.activeThemeId,
+        customThemes: s.customThemes,
+        saveCustomTheme: s.saveCustomTheme,
+        setActiveTheme: s.setActiveTheme,
+      })),
+    );
 
   // The active theme, when it has colours of its own. `system` has none by design,
   // and an id that resolves to nothing means the settings effect cleared the
@@ -80,9 +89,14 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     return map;
   }, []);
 
-  // Apply editing colors to CSS variables in real-time
+  // Apply editing colors to CSS variables in real-time. data-theme도 함께 —
+  // 25색 inline vars만 바꾸면 base를 토글해도 <html data-theme>는 이전 값에
+  // 머물러, 25키 밖 semantic 토큰·native widget(color-scheme)·CodeMirror가
+  // 옛 base로 남은 혼합 미리보기가 됐다(적대 리뷰).
   useEffect(() => {
-    applyThemeVars(document.documentElement, colors, base);
+    const root = document.documentElement;
+    applyThemeVars(root, colors, base);
+    root.dataset.theme = base;
   }, [colors, base]);
 
   // Restore original colors on unmount (cancel / navigate away)
@@ -161,12 +175,14 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         />
         <div className="theme-editor-base-toggle">
           <button
+            aria-pressed={base === "light"}
             className={`theme-editor-base-btn ${base === "light" ? "theme-editor-base-btn-active" : ""}`}
             onClick={() => setBase("light")}
           >
             {t("settings.theme.light")}
           </button>
           <button
+            aria-pressed={base === "dark"}
             className={`theme-editor-base-btn ${base === "dark" ? "theme-editor-base-btn-active" : ""}`}
             onClick={() => setBase("dark")}
           >
@@ -228,12 +244,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 function restorePreview(colors: ThemeColors, base: "dark" | "light"): void {
   const root = document.documentElement;
   const { activeThemeId, customThemes } = useSettingsStore.getState();
+  const resolved = findThemeById(activeThemeId, customThemes);
   const hasInlineVars =
-    findThemeById(activeThemeId, customThemes) !== undefined &&
-    appliesInlineVars(activeThemeId);
+    resolved !== undefined && appliesInlineVars(activeThemeId);
   if (hasInlineVars) {
     applyThemeVars(root, colors, base);
   } else {
     clearThemeVars(root);
+  }
+  // preview effect가 data-theme도 base로 밀어뒀으므로 attribute까지 되돌린다 —
+  // use-settings-effects와 같은 규칙: 해석되는 테마는 그 base, system·미해석은
+  // attribute 제거(= prefers-color-scheme 경로).
+  if (resolved) {
+    root.dataset.theme = resolved.base;
+  } else {
+    root.removeAttribute("data-theme");
   }
 }
