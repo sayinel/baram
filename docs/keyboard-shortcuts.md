@@ -174,6 +174,40 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 | New Note from Selection   | `Cmd+Shift+Y` | `Ctrl+Shift+Y`  |
 | New MOC                   | `Cmd+Shift+C` | `Ctrl+Shift+C`  |
 
+## Tasks
+
+> The Tasks feature must be on (**Settings > General > Tasks**). `Cmd+Alt+T` does two jobs: in the editor it opens the task dialog — editing the task line the cursor is on, or creating a new one; in Quick Capture it switches that dialog into task mode.
+
+| Action                    | macOS         | Windows / Linux |
+| ------------------------- | ------------- | --------------- |
+| Task input / edit task    | `Cmd+Alt+T`   | `Ctrl+Alt+T`    |
+| Quick Capture             | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
+| Confirm a recognized date | `Tab`         | `Tab`           |
+
+> A **global capture shortcut** that opens Quick Capture in task mode even when Baram is in the background can be assigned in **Settings > General > Tasks**. It has no default — a global shortcut is intercepted system-wide.
+
+### Task rows
+
+These work on a focused row in the **Tasks panel** and in the **Weekly review** — one table, so a key learned in one place means the same thing in the other.
+
+| Keys                    | Action                              |
+| ----------------------- | ----------------------------------- |
+| `j` / `k` (or `↑` / `↓`) | Move between rows                  |
+| `X`                     | Advance to the next state           |
+| `T`                     | Due today                           |
+| `S`                     | Defer to `#someday`                 |
+| `D`                     | Open the triage menu                |
+| `Delete` / `Backspace`  | Delete the line (asks first)        |
+
+> The two destructive-adjacent bindings are deliberate: only `Delete`/`Backspace` removes a line, because a letter key is too easy to brush against. Korean keyboard layouts are handled by physical key position, so `X` works while the IME is active.
+
+### In the editor
+
+| Keys                   | Action                                                    |
+| ---------------------- | --------------------------------------------------------- |
+| `Space` (vim, normal)  | Toggle the task under the cursor                          |
+| `Tab`                  | Confirm the underlined date Baram recognized in your text |
+
 ## Ghost Text (AI Autocomplete)
 
 <!-- colwidths:199,113,153 -->
