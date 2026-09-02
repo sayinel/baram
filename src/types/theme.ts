@@ -130,6 +130,10 @@ export function migrateThemeColors(
 
   for (const [key, value] of Object.entries(old)) {
     const newKey = THEME_KEY_MIGRATION_V10[key] ?? key;
+    // 옛 키와 canonical 키가 둘 다 있으면 canonical이 이긴다. 이 가드가 없으면
+    // Object.entries의 순회 순서가 승자를 정해서, 옛 키가 뒤에 놓인 객체에서는
+    // stale 값이 canonical 값을 덮었다.
+    if (newKey !== key && newKey in old) continue;
     migrated[newKey] = value;
   }
 
