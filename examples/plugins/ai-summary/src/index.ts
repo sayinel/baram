@@ -19,7 +19,7 @@ const PANEL_STYLE = `
   padding: 0.35rem 0.75rem;
   border-radius: 6px;
   border: 1px solid var(--color-border-default);
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-subtle);
   color: var(--color-text-default);
   cursor: pointer;
 }
@@ -47,7 +47,7 @@ const SETTINGS_STYLE = `
   padding: 0.5rem;
   border-radius: 6px;
   border: 1px solid var(--color-border-default);
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-subtle);
   color: var(--color-text-default);
   font: inherit;
 }
@@ -56,7 +56,7 @@ const SETTINGS_STYLE = `
   padding: 0.35rem 0.75rem;
   border-radius: 6px;
   border: 1px solid var(--color-border-default);
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-subtle);
   color: var(--color-text-default);
   cursor: pointer;
 }
