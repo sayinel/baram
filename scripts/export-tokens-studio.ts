@@ -5,14 +5,14 @@
 import fs from "fs";
 import path from "path";
 
-interface DtcgToken {
-  $value: string;
-  $type?: string;
-  $description?: string;
+interface DtcgGroup {
+  [key: string]: DtcgGroup | DtcgToken | string;
 }
 
-interface DtcgGroup {
-  [key: string]: DtcgToken | DtcgGroup | string;
+interface DtcgToken {
+  $description?: string;
+  $type?: string;
+  $value: string;
 }
 
 function dtcgToTokensStudio(
@@ -65,11 +65,51 @@ const semanticDark = JSON.parse(
   fs.readFileSync(path.join(tokensDir, "semantic/color-dark.json"), "utf-8"),
 );
 
+/**
+ * primitive 파일들의 재귀 병합 — shallow spread 금지(적대 리뷰).
+ * Style Dictionary는 같은 top-key(`color` 등)를 가진 파일들을 deep merge하는데,
+ * 여기서 Object.assign으로 합치면 뒤 파일의 `color` 서브트리가 앞 파일 것을
+ * **통째로 교체**해 CSS는 멀쩡한데 Figma export에서만 팔레트가 사라진다.
+ * 같은 leaf에 서로 다른 값이 오면 조용히 덮지 않고 실패시킨다.
+ */
+function deepMergeTokens(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  trail: string[] = [],
+): Record<string, unknown> {
+  for (const [key, value] of Object.entries(source)) {
+    const existing = target[key];
+    if (
+      existing &&
+      typeof existing === "object" &&
+      value &&
+      typeof value === "object" &&
+      !("value" in (existing as object)) &&
+      !("value" in (value as object))
+    ) {
+      deepMergeTokens(
+        existing as Record<string, unknown>,
+        value as Record<string, unknown>,
+        [...trail, key],
+      );
+    } else if (existing !== undefined) {
+      throw new Error(
+        `primitive token collision at '${[...trail, key].join(".")}' — ` +
+          `two primitive files define the same leaf with different shapes/values`,
+      );
+    } else {
+      target[key] = value;
+    }
+  }
+  return target;
+}
+
 // Build Tokens Studio structure
 const tokensStudio = {
-  primitive: {
-    ...Object.assign({}, ...primitives.map((file) => dtcgToTokensStudio(file))),
-  },
+  primitive: primitives.reduce<Record<string, unknown>>(
+    (acc, file) => deepMergeTokens(acc, dtcgToTokensStudio(file)),
+    {},
+  ),
   "semantic/light": dtcgToTokensStudio(semanticLight),
   "semantic/dark": dtcgToTokensStudio(semanticDark),
   $metadata: {
