@@ -90,6 +90,22 @@ import { ViewportVirtualize } from "./plugins/viewport-virtualize";
 import { WysiwygVim } from "./plugins/vim";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
+/**
+ * §323 캡처 프로파일에서 **빼는** Extension의 `name`.
+ *
+ * ‼️ 넣을 것을 열거하지 않는 이유: 그러면 새 Extension이 document에만 붙고 캡처에는
+ * 조용히 빠진다. 뺄 것만 이름으로 적고 나머지는 전부 통과시킨다.
+ *
+ * 빼는 근거는 저마다 다르다 — vim은 저장 단축키와 충돌하고, 쿼리 블록은 캡처에 넣을
+ * 이유가 없으며, find-replace·AI diff는 다이얼로그에 붙일 크롬이 없다.
+ */
+export const CAPTURE_EXCLUDED_EXTENSIONS: ReadonlySet<string> = new Set([
+  "aiDiff",
+  "findReplace",
+  "queryBlock",
+  "wysiwygVim",
+]);
+
 interface BaramExtensionOptions {
   /** §perf-large-file C4: register windowing only on the large keep-alive
    *  editor (small docs are never wrapped). */
@@ -103,13 +119,15 @@ interface BaramExtensionOptions {
   onNavigateBlockRef?: (target: string, blockId: string) => void;
   /** §278.1 Returns whether the href was handled in-app; see `LinkOptions`. */
   onNavigateLocal?: (href: string) => boolean;
+  /** §323 캡처 다이얼로그용 축소 세트. 생략하면 문서 편집기 세트. */
+  profile?: "capture" | "document";
 }
 
 /** M2 기본 편집 Extension 세트 */
 export function createBaramExtensions(
   options?: BaramExtensionOptions,
 ): Extensions {
-  return [
+  const all: Extensions = [
     // Core (required)
     Document,
     Text,
@@ -306,6 +324,8 @@ export function createBaramExtensions(
           }),
         ]),
   ];
+  if (options?.profile !== "capture") return all;
+  return all.filter((e) => !CAPTURE_EXCLUDED_EXTENSIONS.has(e.name));
 }
 
 /** Merge core extensions with plugin-provided Tiptap extensions */
