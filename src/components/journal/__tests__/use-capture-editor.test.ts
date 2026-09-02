@@ -160,8 +160,12 @@ describe("§323 useCaptureEditor", () => {
     // ‼️ 이 테스트가 실제로 재현하는 회귀: 메인 창에 문서 탭이 열려 있으면
     // (드롭 핸들러가 `useEditorStore`의 활성 탭을 읽으므로) 캡처 다이얼로그에
     // 붙여넣은 이미지가 그 무관한 문서 옆에 저장되고, 캡처 노트에 남는
-    // 상대경로(`assets/x.png`)는 실제 저장 위치(`{zettelDir}/inbox/`)에서
-    // 풀리지 않는다 — 참조는 있는데 파일은 없는 조용한 데이터 손실.
+    // 상대경로(`assets/x.png`)는 실제 저장 위치에서 풀리지 않는다 — 참조는
+    // 있는데 파일은 없는 조용한 데이터 손실. round 2부터 목적지 계산 자체는
+    // `QuickCaptureDialog`(태스크 모드 vs zettel)로 옮겨갔으므로
+    // (`QuickCaptureDialog.test.tsx`가 그 분기를 검증한다), 여기서는 훅
+    // 자신의 계약만 본다: 무슨 리졸버가 오든(또는 아예 안 오든) 활성 탭으로는
+    // 절대 새지 않는다.
     describe("메인 창의 무관한 탭으로부터 오염되지 않는다", () => {
       const originalEditorState = useEditorStore.getState();
       const originalFileState = useFileStore.getState();
@@ -189,8 +193,37 @@ describe("§323 useCaptureEditor", () => {
         useSettingsStore.setState(originalSettingsState, true);
       });
 
-      it("붙여넣은 이미지를 zettel inbox 아래에 저장한다 — 무관한 탭 옆이 아니라", async () => {
+      // 리졸버를 아예 안 넘겨도 — round 1에서는 이럴 때 훅이 내부에서 계산해
+      // 통과했지만, round 2는 그 계산을 호출부 책임으로 옮겼다 — 활성 탭으로
+      // 새면 안 된다. `use-capture-editor.ts`는 리졸버 부재와 무관하게 항상
+      // 실제 함수를 `DropHandler`에 넘기므로(`resolveDropDestinationRef.current
+      // ?? null`), `getJournalContext`는 이 경우를 "목적지 없음"으로 보고
+      // data URL 자기완결 경로로 간다 — 활성 탭 조회 자체를 안 한다.
+      it("리졸버 없이도 활성 탭으로 새지 않는다 — data URL로 떨어진다", async () => {
         const { result } = renderHook(() => useCaptureEditor(true));
+        await act(async () => {});
+        const editor = result.current.editor!;
+
+        const event = makePasteEvent(
+          new File(["x"], "shot.png", { type: "image/png" }),
+        );
+        editor.view.someProp("handlePaste", (f) =>
+          f(editor.view, event, Slice.empty),
+        );
+
+        await vi.waitFor(() => {
+          expect(result.current.getMarkdown()).not.toBe("");
+        });
+        expect(savePhotoToAssets).not.toHaveBeenCalled();
+        expect(result.current.getMarkdown()).toMatch(
+          /^!\[shot\.png\]\(data:image\/png;base64,/,
+        );
+      });
+
+      it("리졸버가 경로를 주면 그 경로 아래에 저장한다 — 무관한 탭 옆이 아니라", async () => {
+        const { result } = renderHook(() =>
+          useCaptureEditor(true, () => "/vault/zettel/inbox/__capture__.md"),
+        );
         await act(async () => {});
         const editor = result.current.editor!;
 
@@ -208,7 +241,7 @@ describe("§323 useCaptureEditor", () => {
 
         // 다섯 번째 인자(activeFilePath)가 곧 `savePhotoToAssets`가 assets/를
         // 걸어 두는 디렉터리를 정한다(`journal-photo.ts`의 `dirname`) —
-        // 무관한 문서(`/vault/notes/...`)가 아니라 zettel inbox 아래여야
+        // 무관한 문서(`/vault/notes/...`)가 아니라 리졸버가 준 경로 아래여야
         // 그 디렉터리에서 저장한 파일과 캡처 노트에 남는 `assets/…`
         // 상대경로가 같은 곳을 가리킨다.
         expect(savePhotoToAssets).toHaveBeenCalledWith(
@@ -229,8 +262,10 @@ describe("§323 useCaptureEditor", () => {
       // 탭이나 열려 있으면(저널이 아니어도) 캡처로 넣은 동영상이 그 옆에
       // 저장됐다. 탭이 아예 없으면 캡처 노트가 실존하는데도 "문서가
       // 저장되지 않았다" 토스트로 거부됐다.
-      it("붙여넣은 동영상도 zettel inbox 아래에 저장한다 — 메인 창 탭 유무와 무관하게", async () => {
-        const { result } = renderHook(() => useCaptureEditor(true));
+      it("리졸버가 경로를 주면 동영상도 그 경로 아래에 저장한다", async () => {
+        const { result } = renderHook(() =>
+          useCaptureEditor(true, () => "/vault/zettel/inbox/__capture__.md"),
+        );
         await act(async () => {});
         const editor = result.current.editor!;
 

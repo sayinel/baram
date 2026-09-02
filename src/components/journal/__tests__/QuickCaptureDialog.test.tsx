@@ -1,5 +1,8 @@
+import type { Editor } from "@tiptap/react";
+
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Slice } from "@tiptap/pm/model";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../ipc/invoke", () => ({
   appendTaskLine: vi.fn(),
@@ -16,10 +19,21 @@ vi.mock("../../../services/task-capture", async (orig) => ({
   ...(await orig<typeof import("../../../services/task-capture")>()),
   captureTask: vi.fn(),
 }));
+// §324-e round 2: `resolveCapturePath`(위 mock에서 실물 그대로 남긴 것)는
+// 진짜지만, 실제 파일 저장은 자른다 — Rust IPC 없이 어느 경로로 저장을
+// *시도*했는지만 본다.
+const savePhotoToAssets = vi.fn(
+  async (_bytes: Uint8Array, name: string) => `assets/${name}`,
+);
+vi.mock("../../../utils/journal/journal-photo", () => ({
+  savePhotoToAssets: (...a: unknown[]) =>
+    savePhotoToAssets(...(a as [Uint8Array, string])),
+}));
 
 import { t } from "../../../i18n";
 import { CaptureError, captureTask } from "../../../services/task-capture";
 import { captureFleeting } from "../../../services/zettelkasten-service";
+import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
@@ -56,6 +70,29 @@ const setCaptureBody = (text: string) => {
     )._editor?.commands.setContent(text ? `<p>${text}</p>` : "");
   });
 };
+
+// §324-e round 2: paste an image straight into the capture editor's real
+// ProseMirror `handlePaste` — the same `_editor` handle `setCaptureBody`
+// uses, but exercising the actual DropHandler plugin instead of `setContent`.
+function pasteImageInCapture(name = "shot.png"): void {
+  const editor = (
+    document.querySelector(".quick-capture-editor") as HTMLElement & {
+      _editor?: Editor;
+    }
+  )._editor!;
+  const event = {
+    clipboardData: {
+      files: [new File(["x"], name, { type: "image/png" })],
+      getData: () => "",
+    },
+    preventDefault: vi.fn(),
+  } as unknown as ClipboardEvent;
+  act(() => {
+    editor.view.someProp("handlePaste", (f) =>
+      f(editor.view, event, Slice.empty),
+    );
+  });
+}
 
 describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
   beforeEach(() => {
@@ -347,6 +384,89 @@ describe("QuickCaptureDialog — task mode (§307D)", () => {
     act(() => useUIStore.setState({ quickCaptureOpen: true }));
 
     expect(taskToggle()).not.toBeChecked();
+  });
+});
+
+// §324-e round 2 — review Critical: the round-1 fix only covered "zettel
+// configured, task mode off". These two pin the cases that slipped through:
+// task mode (which ignores the Zettel space entirely, tasks-home.ts) and the
+// default install (zettel unconfigured, which round 1's own tests never hit
+// because they hard-coded `zettelkastenEnabled: true`).
+describe("QuickCaptureDialog — §324-e 이미지 목적지", () => {
+  const taskToggle = () =>
+    screen.getByRole("checkbox", {
+      name: t("journal.capture.taskMode.label", LOCALE),
+    });
+  const originalEditorState = useEditorStore.getState();
+  const originalSettingsState = useSettingsStore.getState();
+  const originalFileState = useFileStore.getState();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    savePhotoToAssets.mockClear();
+    useSettingsStore.setState({ locale: LOCALE });
+    useUIStore.setState({ quickCaptureOpen: true });
+  });
+
+  afterEach(() => {
+    useEditorStore.setState(originalEditorState, true);
+    useSettingsStore.setState(originalSettingsState, true);
+    useFileStore.setState(originalFileState, true);
+  });
+
+  it("task mode ON + zettel configured — resolves under the tasks capture directory, not the zettel inbox", async () => {
+    useSettingsStore.setState({
+      tasksHome: "/vault/tasks-home",
+      tasksCaptureFile: "inbox.md",
+    });
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+    useFileStore.getState().setRootPath("/vault");
+
+    render(<QuickCaptureDialog />);
+    fireEvent.click(taskToggle());
+    pasteImageInCapture();
+
+    await vi.waitFor(() => {
+      expect(savePhotoToAssets).toHaveBeenCalled();
+    });
+    expect(savePhotoToAssets).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      "shot.png",
+      expect.anything(),
+      expect.anything(),
+      "/vault/tasks-home/tasks/inbox.md",
+    );
+  });
+
+  it("zettel unconfigured + task mode off — does not fall back to the main window's active tab", async () => {
+    useSettingsStore.getState().setZettelkastenEnabled(false);
+    useSettingsStore.getState().setZettelkastenDirectory("");
+    useFileStore.getState().setRootPath("/vault");
+    // §324-e round 1's exact repro state: a document tab open in the main
+    // window that has nothing to do with capture — made to look like a
+    // journal entry (`journalDirectory` prefix match) specifically so that,
+    // if the round-1 "resolver returned null → fall through" logic were
+    // still in place, `getJournalContext` would call this a journal write
+    // and actually save next to it. A non-journal-looking tab wouldn't
+    // distinguish round 1 from round 2 here (both would land on the data-URL
+    // branch anyway) — this is the one shape where the two disagree.
+    useSettingsStore.setState({ journalDirectory: "/vault/notes" });
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: "/vault/notes/unrelated.md" }],
+    } as never);
+
+    render(<QuickCaptureDialog />);
+    pasteImageInCapture();
+
+    await vi.waitFor(() => {
+      const img = document.querySelector(".quick-capture-editor img");
+      expect(img).not.toBeNull();
+    });
+    expect(savePhotoToAssets).not.toHaveBeenCalled();
+    const img = document.querySelector(".quick-capture-editor img")!;
+    expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
   });
 });
 

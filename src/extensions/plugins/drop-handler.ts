@@ -323,11 +323,26 @@ function detectTabSeparatedData(text: string): null | string[][] {
  * saving next to the wrong file and inserting a relative reference that
  * doesn't resolve from where the actual note ends up. `resolveDestinationPath`
  * lets such a host hand over its own destination instead of being read from
- * the tab list. A non-null result is treated like a journal entry (real
- * assets/ folder, never an inline data URL) — the whole point of a host
- * supplying a path is that it wants a real file saved there.
+ * the tab list. Three states, not two — the presence of the FUNCTION itself
+ * (not what it returns) is what tells the document editor apart from a host
+ * like capture:
+ *  - not supplied at all (`undefined`/`null`) → this is the document editor,
+ *    which IS one of the tabs — fall through to the active-tab lookup below,
+ *    completely unchanged from before this option existed.
+ *  - supplied, returns a path → use it, treated like a journal entry (real
+ *    assets/ folder, never an inline data URL) — the whole point of a host
+ *    supplying a path is that it wants a real file saved there.
+ *  - supplied, returns null → the host is NOT the document editor and
+ *    currently has nowhere to save (e.g. capture's Zettel/tasks space isn't
+ *    configured yet). Do NOT fall back to the active tab in this case — that
+ *    fallback is exactly the bug this option exists to close. Route to the
+ *    self-contained path instead (data URL for images; the existing "no
+ *    document" refusal for video, which is honest here — there really is no
+ *    destination).
  */
-function getJournalContext(resolveDestinationPath?: () => null | string): {
+function getJournalContext(
+  resolveDestinationPath?: (() => null | string) | null,
+): {
   filePath: string;
   isJournal: boolean;
   journalDir: string;
@@ -336,9 +351,12 @@ function getJournalContext(resolveDestinationPath?: () => null | string): {
   const rootPath = useFileStore.getState().rootPath ?? "";
   const journalDir = useSettingsStore.getState().journalDirectory ?? "";
 
-  const override = resolveDestinationPath?.();
-  if (override)
-    return { filePath: override, isJournal: true, journalDir, rootPath };
+  if (resolveDestinationPath) {
+    const override = resolveDestinationPath();
+    return override
+      ? { filePath: override, isJournal: true, journalDir, rootPath }
+      : { filePath: "", isJournal: false, journalDir, rootPath };
+  }
 
   const activeTabId = useEditorStore.getState().activeTabId;
   const tabs = useEditorStore.getState().tabs;
@@ -418,13 +436,15 @@ function toastMediaError(key: string, name: string): void {
   useUIStore.getState().showToast(t(key, locale as Locale, { name }), "error");
 }
 
-/** §324-e options — see `getJournalContext`'s doc comment for why this exists. */
+/** §324-e options — see `getJournalContext`'s doc comment for the three states this drives. */
 export interface DropHandlerOptions {
   /**
-   * Returns the path media should be saved relative to, or null to fall back
-   * to the main editor's active tab (the default, unconfigured behaviour).
+   * `null` (the default): this host doesn't know or care about the active
+   * tab — use it, exactly like before this option existed. A function: this
+   * host IS the authority on its own destination — call it, and never fall
+   * back to the active tab even if it returns null.
    */
-  resolveDestinationPath: () => null | string;
+  resolveDestinationPath: (() => null | string) | null;
 }
 
 /** Tiptap Extension wrapper */
@@ -433,7 +453,7 @@ export const DropHandler = Extension.create<DropHandlerOptions>({
 
   addOptions() {
     return {
-      resolveDestinationPath: () => null,
+      resolveDestinationPath: null,
     };
   },
 

@@ -11,11 +11,13 @@ import {
 } from "../../keybindings/key-utils";
 import { TASK_INPUT_COMMAND } from "../../keybindings/keybinding-registry";
 import { findCommandByKey } from "../../keybindings/use-keybindings";
+import { resolveCapturePath } from "../../services/task-capture";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
+import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
 import { useCaptureEditor } from "./use-capture-editor";
@@ -56,8 +58,37 @@ export function QuickCaptureDialog() {
   const taskMode = useCaptureTaskMode();
   const tags = useCaptureTags(quickCaptureOpen);
   const resize = useCaptureResize();
+
+  // §324-e round 2: 붙여넣은 이미지/동영상을 어디에 저장할지는 이 다이얼로그만
+  // 안다 — 태스크 모드는 zettel과 무관한 별도 설정이라(`tasks-home.ts`)
+  // `useCaptureEditor` 안에서는 재현할 수 없다. `null`을 돌려주면(zettel도
+  // 태스크 홈도 준비되지 않음) DropHandler는 활성 탭으로 새지 않고 자기
+  // 완결형 경로(이미지는 data URL, 동영상은 거부)로 간다 — `getJournalContext`의
+  // 계약. `captureTask`가 실제 저장 시 다시 하는 것과 같은 검증
+  // (`resolveCapturePath`)이 여기서 던지면 목적지가 없다는 뜻으로만 처리한다;
+  // 사용자에게 보이는 오류는 실제 저장 경로가 낸다.
+  const resolveDropDestination = useCallback((): null | string => {
+    if (taskMode.enabled) {
+      const {
+        tasksCaptureFile,
+        tasksHome,
+        zettelkastenDirectory: zdir,
+      } = useSettingsStore.getState();
+      const home = resolveTasksHome(tasksHome, zdir);
+      if (!home) return null;
+      try {
+        return resolveCapturePath(home, tasksCaptureFile);
+      } catch {
+        return null;
+      }
+    }
+    return zettelReady && zettelDir
+      ? `${zettelDir}/inbox/__capture__.md`
+      : null;
+  }, [taskMode.enabled, zettelReady, zettelDir]);
+
   // §323 본문은 이제 문서창과 같은 엔진의 편집기가 들고 있다 — `body` state는 없다.
-  const capture = useCaptureEditor(quickCaptureOpen);
+  const capture = useCaptureEditor(quickCaptureOpen, resolveDropDestination);
   const [source, setSource] = useState("");
   const [saveError, setSaveError] = useState("");
 
