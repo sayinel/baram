@@ -19,8 +19,16 @@ export const MEDIA_ATOM_NAMES: ReadonlySet<string> = new Set([
   "video",
 ]);
 
-/** 재생될 여지가 있는 컨테이너. `.mkv`는 어느 웹뷰에서도 안 되므로 없다 (§293). */
-const VIDEO_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
+/**
+ * 재생될 여지가 있는 컨테이너. `.mkv`는 어느 웹뷰에서도 안 되므로 없다 (§293).
+ *
+ * §324-e export된 이유는 언어 간 parity 가드 하나뿐이다 — Rust의
+ * `MEDIA_MIME_TYPES` 허용목록(`src-tauri/src/fs/media.rs`)과 이 집합이 어긋나면
+ * 드랍이 조용히 아무 일도 안 하거나, 아무도 안 쓰는 허용 표면이 생긴다.
+ * `media-extension-parity.test.ts`가 그 비교다. 판정은 계속
+ * `classifyMediaSrc`/`isMediaFilePath`로 할 것.
+ */
+export const VIDEO_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
   "m4v",
   "mov",
   "mp4",

@@ -3,7 +3,7 @@
 // 메인 편집기를 재사용하지 않는 이유: 그것은 앱 전역 단일 인스턴스이고
 // (`MarkdownSurface.tsx`) 열려 있는 탭의 문서를 들고 있다. keep-alive 편집기를 만드는
 // `App.tsx`의 방식을 그대로 따른다.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { CaptureDropAccess } from "../../stores/editor/editor";
 import type { PendingMedia } from "../../utils/media-data-url";
@@ -41,39 +41,20 @@ export interface CaptureEditor {
 }
 
 /**
- * §324-e round 2: 목적지 판단(zettel inbox vs 태스크 수집 파일 vs 목적지 없음)은
- * 호출부(`QuickCaptureDialog`)의 몫이다 — 다이얼로그는 태스크 모드 여부를 알고
- * 이 훅은 모른다. 이 훅이 직접 재계산하던 round 1 버전은 정확히 그래서 태스크
- * 모드를 못 봤다(태스크 모드는 zettel과 무관한 별도 설정 — `tasks-home.ts`).
- * `null`을 돌려주면 "지금은 목적지가 없다"는 뜻이고, `getJournalContext`는
- * (round 1과 달리) 그걸 활성 탭 폴백 신호로 읽지 않는다 — 셋 중 하나가 아니라
- * 함수 자체의 유무로 두 경우를 가른다: 문서 편집기는 옵션을 아예 안 넘겨서
- * "활성 탭을 봐도 된다"는 뜻이 되고, 캡처는 항상 함수를 넘겨서 "내가 목적지의
- * 유일한 권위자다, null이어도 활성 탭으로 새지 마라"는 뜻이 된다.
+ * §324-e round 3: 이 훅은 목적지를 **아예 모른다**, 알 필요가 없어서다. 드랍이든
+ * 붙여넣기든 미디어는 data URL로 들어가고 디스크에는 아무것도 쓰이지 않으므로,
+ * 삽입 시점에 "어디에 저장할까"라는 질문 자체가 없다. 그 질문은 저장 시점에
+ * 다이얼로그가 답한다(`QuickCaptureDialog`의 `extractCaptureMedia`) — 태스크 모드
+ * 여부를 아는 것은 원래부터 다이얼로그뿐이었고, 그것을 다른 곳에서 재계산한 것이
+ * round 1에서 이 경로를 태스크 모드에 눈멀게 한 결함이었다.
  */
-export function useCaptureEditor(
-  open: boolean,
-  resolveDropDestination?: () => null | string,
-): CaptureEditor {
+export function useCaptureEditor(open: boolean): CaptureEditor {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
 
-  // 매 렌더 최신값을 담아 두는 ref — 아래 effect가 게시하는 `access`가 이 ref를
-  // 통해서만 호출부의 리졸버에 닿아야, 다이얼로그가 리렌더될 때마다(태스크 모드
-  // 토글 등) 새 함수 참조가 와도 effect의 deps가 흔들리지 않는다. 흔들리면
-  // effect가 다시 돌아 편집기 인스턴스를 통째로 파기·재생성해 타이핑 중이던
-  // 내용이 날아간다 — deps를 좁게 두는 이유와 같은 사고.
-  const resolveDropDestinationRef = useRef(resolveDropDestination);
-  useEffect(() => {
-    resolveDropDestinationRef.current = resolveDropDestination;
-  }, [resolveDropDestination]);
-
   // ‼️ 배열은 인스턴스마다 한 번만 만든다. 렌더마다 새로 만들면 Tiptap이 옵션을
   // 원소 단위로 비교하다 매번 달라졌다고 보고 재구성한다(§298 vim의 교훈).
-  //
-  // §324-e 목적지를 여기로 넘기지 않는다. 캡처 편집기는 삽입 시점에 목적지를
-  // 알 필요가 없다 — `profile: "capture"`가 `DropHandler`에 `deferMediaToHost`를
-  // 세우고, 미디어는 data URL로 들어가 저장 때 비로소 파일이 된다.
+  // `profile: "capture"`가 `DropHandler`에 `deferMediaToHost`를 세운다.
   const extensions = useMemo(
     () => createBaramExtensions({ profile: "capture" }),
     [],
@@ -96,21 +77,15 @@ export function useCaptureEditor(
     // §324-e OS 파일 드래그(Finder에서 끌어다 놓기)는 위 `extensions`의
     // ProseMirror `handleDrop`에 **도달하지 않는다** — Tauri 네이티브가 먼저
     // 가로채고 `use-external-drop.ts`가 처리한다. 그 훅은 App 수준에서 메인
-    // 편집기만 들고 도므로, 이 인스턴스와 목적지 리졸버를 스토어에 게시해야
-    // 캡처 창 위로 끌어다 놓은 이미지가 갈 곳을 안다. 리졸버는 위 `extensions`가
-    // 쓰는 것과 **같은 ref**를 통과하므로, 붙여넣기와 드랍이 하나의 판단을
-    // 공유한다(재계산 없음 — §324-e round 1의 결함).
+    // 편집기만 들고 도므로, 이 인스턴스를 스토어에 게시해야 캡처 창 위로 끌어다
+    // 놓은 이미지가 들어갈 편집기를 그 훅이 찾을 수 있다. 게시물에 목적지는
+    // 없다 — 드랍은 아무것도 쓰지 않으므로 목적지를 묻지 않는다.
     //
     // ‼️ 등록은 인스턴스와 수명이 같다: 아래 cleanup에서 지운다. 남겨 두면
     // 다음 **문서** 드랍이 파기된 이 편집기로 흘러들어 조용히 사라진다
     // (`CaptureDropAccess` 주석). 스토어 액션은 `getState()`로 집는다 —
-    // 셀렉터로 받아 deps에 넣으면 이 effect의 재실행 조건이 늘어나고, 그
-    // 재실행은 타이핑 중인 편집기를 통째로 재생성한다(위 deps 주석).
-    const access: CaptureDropAccess = {
-      editor: instance,
-      resolveDestinationPath: () =>
-        resolveDropDestinationRef.current?.() ?? null,
-    };
+    // 셀렉터로 받아 deps에 넣으면 이 effect의 재실행 조건이 늘어난다.
+    const access: CaptureDropAccess = { editor: instance };
     useEditorStore.getState().registerCaptureDropAccess(access);
 
     return () => {

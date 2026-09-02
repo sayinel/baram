@@ -26,6 +26,9 @@ const createDirMock = vi.hoisted(() => vi.fn());
 const importFileMock = vi.hoisted(() => vi.fn());
 const listDirMock = vi.hoisted(() => vi.fn());
 const readFileMock = vi.hoisted(() => vi.fn());
+const readMediaDataUrlMock = vi.hoisted(() => vi.fn());
+const writeBinaryFileMock = vi.hoisted(() => vi.fn());
+const captureFleetingMock = vi.hoisted(() => vi.fn());
 /** 훅이 등록한 Tauri 드래그 리스너 — 테스트가 직접 호출한다. */
 const drag = vi.hoisted(() => ({
   handler: null as ((event: unknown) => void) | null,
@@ -59,6 +62,11 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   importFile: importFileMock,
   listDir: listDirMock,
   readFile: readFileMock,
+  readMediaDataUrl: readMediaDataUrlMock,
+  writeBinaryFile: writeBinaryFileMock,
+}));
+vi.mock("../../../services/zettelkasten-service", () => ({
+  captureFleeting: captureFleetingMock,
 }));
 
 import { createBaramExtensions } from "../../../extensions";
@@ -70,13 +78,11 @@ import { useUIStore } from "../../../stores/ui/ui";
 import { QuickCaptureDialog } from "../QuickCaptureDialog";
 
 const PHOTO = "/Users/x/Desktop/photo.png";
+const PHOTO_DATA_URL = "data:image/png;base64,aGk=";
 
 /** 메인 창에 열려 있는, 캡처와 아무 상관 없는 문서. 오염의 출처다. */
 const UNRELATED_DOC = "/vault/notes/unrelated.md";
 const UNRELATED_ASSETS = "/vault/notes/assets/photo.png";
-
-const ZETTEL_ASSETS = "/vault/zettel/inbox/assets/photo.png";
-const TASKS_ASSETS = "/vault/tasks-home/tasks/assets/photo.png";
 
 /** 존 판정이 실제로 좌표를 보게 하는 최소 레이아웃. 서로 겹치지 않는다. */
 const DIALOG_RECT = { bottom: 400, left: 300, right: 700, top: 100 };
@@ -169,6 +175,20 @@ function stubDialogRect(): void {
   stubRect(document.querySelector(".quick-capture-dialog"), DIALOG_RECT);
 }
 
+/** 캡처 편집기 안의 미디어 노드 attrs — 다이얼로그가 심어 둔 `_editor` 핸들로. */
+function captureMediaAttrs(): Record<string, unknown>[] {
+  const editor = (
+    document.querySelector(".quick-capture-editor") as HTMLElement & {
+      _editor?: CoreEditor;
+    }
+  )?._editor;
+  const found: Record<string, unknown>[] = [];
+  editor?.state.doc.descendants((n) => {
+    if (n.type.name === "image" || n.type.name === "video") found.push(n.attrs);
+  });
+  return found;
+}
+
 function useZettelSpace(): void {
   useSettingsStore.getState().setZettelkastenEnabled(true);
   useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
@@ -185,6 +205,9 @@ beforeEach(() => {
   importFileMock.mockResolvedValue(undefined);
   listDirMock.mockResolvedValue([]);
   readFileMock.mockResolvedValue("");
+  readMediaDataUrlMock.mockResolvedValue(PHOTO_DATA_URL);
+  writeBinaryFileMock.mockResolvedValue(undefined);
+  captureFleetingMock.mockResolvedValue({ path: "/vault/zettel/inbox/x.md" });
   useSettingsStore.setState({ locale: "en" });
   // 오염: 메인 창에 캡처와 무관한 문서가 열려 있다. 결함이 있던 코드는 여기서
   // 목적지를 유도했다.
@@ -208,8 +231,16 @@ afterEach(() => {
   });
 });
 
-describe("§324-e 캡처 창 위로 끌어다 놓은 파일의 목적지", () => {
-  it("캡처 목적지 아래로 저장한다 — 메인 창의 활성 탭 옆이 아니다", async () => {
+// §324-e round 3 — 이 describe의 계약이 바뀌었다.
+//
+// round 2는 "캡처의 **목적지 아래에** 저장한다"였다. 그것 자체가 결함이었다:
+// 캡처는 아직 파일이 아니므로 저장을 누르기 전에 디스크에 쓰면 취소가 되돌릴 수
+// 없고(사용자가 실물에서 찾은 결함 1), 남는 상대참조 `assets/x.png`를 풀 baseDir이
+// 없어 그림 대신 alt 텍스트가 그려진다(결함 2). 지금 계약은 **아무것도 쓰지
+// 않는다**이고, 어느 디렉터리에 실제로 쓰이는지는 저장 시점의 일이라
+// `QuickCaptureDialog.test.tsx`가 본다.
+describe("§324-e 캡처 창 위로 끌어다 놓은 파일 — 저장 전에는 쓰지 않는다", () => {
+  it("디스크에 쓰지 않고 data URL 노드를 넣는다", async () => {
     useZettelSpace();
     useUIStore.setState({ quickCaptureOpen: true });
 
@@ -224,21 +255,24 @@ describe("§324-e 캡처 창 위로 끌어다 놓은 파일의 목적지", () =>
 
     await fireNativeDrop(INSIDE_BOTH);
 
-    await vi.waitFor(() => expect(importFileMock).toHaveBeenCalled());
-    expect(importFileMock).toHaveBeenCalledWith(PHOTO, ZETTEL_ASSETS);
-    // 오염된 목적지가 **아니라는 것**을 따로 단정한다: 위 단정만으로는 두
-    // 경로를 모두 시도한 코드도 통과한다.
-    expect(importFileMock).not.toHaveBeenCalledWith(PHOTO, UNRELATED_ASSETS);
+    await vi.waitFor(() => expect(captureMediaAttrs()).toHaveLength(1));
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(createDirMock).not.toHaveBeenCalled();
+    expect(captureMediaAttrs()[0]).toMatchObject({
+      alt: "photo",
+      src: PHOTO_DATA_URL,
+    });
   });
 
-  it("태스크 모드가 켜져 있으면 zettel 수집함이 아니라 태스크 수집 디렉터리로 간다", async () => {
+  // round 2에서는 이 두 상태가 **다른 디렉터리**로 갈라졌다(그래서 여기 테스트가
+  // 있었다). 지금은 둘 다 아무것도 쓰지 않으므로 드랍 시점에 차이가 없어야 한다 —
+  // 목적지 분기가 삽입 시점으로 되살아나면 이 단정이 깨진다.
+  it("태스크 모드가 켜져 있어도 드랍 시점의 결과는 같다", async () => {
     useSettingsStore.setState({
       tasksCaptureFile: "inbox.md",
       tasksHome: "/vault/tasks-home",
     });
     useZettelSpace();
-    // §313 전역 캡처와 같은 경로로 태스크 모드를 켠 채 연다 — 체크박스를 클릭해도
-    // 같지만, 이렇게 하면 클릭 이벤트가 아니라 목적지 배선만 시험한다.
     useUIStore.setState({
       quickCaptureOpen: true,
       quickCaptureTaskIntent: true,
@@ -255,12 +289,17 @@ describe("§324-e 캡처 창 위로 끌어다 놓은 파일의 목적지", () =>
 
     await fireNativeDrop(INSIDE_BOTH);
 
-    await vi.waitFor(() => expect(importFileMock).toHaveBeenCalled());
-    expect(importFileMock).toHaveBeenCalledWith(PHOTO, TASKS_ASSETS);
-    expect(importFileMock).not.toHaveBeenCalledWith(PHOTO, ZETTEL_ASSETS);
+    await vi.waitFor(() => expect(captureMediaAttrs()).toHaveLength(1));
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(captureMediaAttrs()[0]).toMatchObject({ src: PHOTO_DATA_URL });
   });
 
-  it("목적지가 없으면(zettel 미설정 + 태스크 모드 꺼짐) 활성 탭으로 새지 않는다", async () => {
+  // ‼️ 이것은 개선이지 유지가 아니다. round 2에서는 목적지가 없으면 드랍이
+  // **거절**됐다("문서가 저장되지 않았다" 토스트) — 볼트 밖 파일의 바이트를 읽을
+  // 방법이 없어 자기완결형 경로를 만들 수 없었기 때문이다. `read_media_data_url`이
+  // 그 길을 열었으므로, 이제 공간을 설정하지 않은 사용자도 캡처에 이미지를 넣을 수
+  // 있다. 목적지는 저장할 때 필요하고, 그때 없으면 저장 경로가 자기 문구로 말한다.
+  it("zettel이 설정돼 있지 않아도 이미지가 들어간다 — 그리고 여전히 쓰지 않는다", async () => {
     useSettingsStore.getState().setZettelkastenEnabled(false);
     useSettingsStore.getState().setZettelkastenDirectory("");
     useFileStore.getState().setRootPath("/vault");
@@ -277,11 +316,77 @@ describe("§324-e 캡처 창 위로 끌어다 놓은 파일의 목적지", () =>
 
     await fireNativeDrop(INSIDE_BOTH);
 
-    // 자기완결형 폴백이 없다(볼트 밖 파일의 바이트를 읽을 수 있는 커맨드가
-    // 없다) — 그래서 정답은 "저장하지 않는다", 절대 "활성 탭 옆에 저장한다"가
-    // 아니다.
+    await vi.waitFor(() => expect(captureMediaAttrs()).toHaveLength(1));
     expect(importFileMock).not.toHaveBeenCalled();
     expect(createDirMock).not.toHaveBeenCalled();
+  });
+});
+
+// ‼️ 여기가 사용자가 실제로 한 일이다: Finder에서 끌어다 놓고, 취소하거나 저장한다.
+// 위 describe는 "드랍이 쓰지 않는다"까지만 보고, 아래는 그 다음 한 걸음 —
+// 취소하면 정말 아무것도 남지 않는지, 저장하면 정말 파일이 생기는지 — 을 본다.
+// 사용자의 말: "'저장'을 누른 경우에만 이미지가 assets에 저장 되어야 할 것 같아".
+describe("§324-e 끌어다 놓고 취소 / 저장", () => {
+  // `useZettelSpace`를 여기서 부르지 않는다 — `use`로 시작하는 이름을 훅도
+  // 컴포넌트도 아닌 함수에서 부르면 `react-hooks/rules-of-hooks`가 잡는다.
+  async function dropIntoOpenCapture(): Promise<void> {
+    useUIStore.setState({ quickCaptureOpen: true });
+    render(
+      <>
+        <DropHarness editor={makeMainEditor()} />
+        <QuickCaptureDialog />
+      </>,
+    );
+    await act(async () => {});
+    stubDialogRect();
+    await fireNativeDrop(INSIDE_BOTH);
+    await vi.waitFor(() => expect(captureMediaAttrs()).toHaveLength(1));
+  }
+
+  it("취소하면 디스크에 아무것도 남지 않는다", async () => {
+    useZettelSpace();
+    await dropIntoOpenCapture();
+
+    await act(async () => {
+      (
+        document.querySelector(".quick-capture-cancel") as HTMLButtonElement
+      ).click();
+    });
+
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(writeBinaryFileMock).not.toHaveBeenCalled();
+    expect(createDirMock).not.toHaveBeenCalled();
+    expect(captureFleetingMock).not.toHaveBeenCalled();
+    expect(useUIStore.getState().quickCaptureOpen).toBe(false);
+  });
+
+  it("저장하면 그때 캡처 목적지의 assets/에 원본 이름으로 쓰인다", async () => {
+    useZettelSpace();
+    await dropIntoOpenCapture();
+    expect(writeBinaryFileMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      (
+        document.querySelector(".quick-capture-save") as HTMLButtonElement
+      ).click();
+    });
+
+    // 드랍이 심은 alt는 확장자를 뗀 `photo`다. 추출이 MIME(`image/png`)에서
+    // 확장자를 되찾으므로 파일은 `photo.png`가 된다 — 이름이 살아남는다.
+    expect(createDirMock).toHaveBeenCalledWith("/vault/zettel/inbox/assets");
+    expect(writeBinaryFileMock).toHaveBeenCalledWith(
+      "/vault/zettel/inbox/assets/photo.png",
+      // "hi" 두 바이트 — `readMediaDataUrl` 대역이 돌려준 그 페이로드다.
+      [0x68, 0x69],
+    );
+    const body = captureFleetingMock.mock.calls[0][1] as string;
+    expect(body).toContain("![photo](assets/photo.png)");
+    expect(body).not.toContain("data:");
+    // 메인 창의 무관한 문서 옆으로는 절대 가지 않는다.
+    expect(writeBinaryFileMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("/vault/notes/"),
+      expect.anything(),
+    );
   });
 });
 
@@ -302,14 +407,14 @@ describe("§324-e 존 우선순위 — 모달인 캡처 창이 이긴다", () =>
 
     await fireNativeDrop(INSIDE_BOTH);
 
-    await vi.waitFor(() => expect(importFileMock).toHaveBeenCalled());
-    expect(importFileMock).toHaveBeenCalledWith(PHOTO, ZETTEL_ASSETS);
-    // 메인 문서에는 아무것도 들어가지 않는다.
+    await vi.waitFor(() => expect(captureMediaAttrs()).toHaveLength(1));
+    // 메인 문서에는 아무것도 들어가지 않고, 그 옆 assets/도 만들어지지 않는다.
     let mainImages = 0;
     mainEditor.state.doc.descendants((n) => {
       if (n.type.name === "image") mainImages++;
     });
     expect(mainImages).toBe(0);
+    expect(importFileMock).not.toHaveBeenCalled();
   });
 
   it("다이얼로그가 열려 있으면 그 밖의 드랍은 뒤의 편집기로 통과하지 않는다", async () => {

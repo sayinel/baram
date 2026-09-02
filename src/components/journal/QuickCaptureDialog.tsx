@@ -92,7 +92,7 @@ export function QuickCaptureDialog() {
   }, [taskMode.enabled, zettelReady, zettelDir]);
 
   // §323 본문은 이제 문서창과 같은 엔진의 편집기가 들고 있다 — `body` state는 없다.
-  const capture = useCaptureEditor(quickCaptureOpen, resolveDropDestination);
+  const capture = useCaptureEditor(quickCaptureOpen);
   const [source, setSource] = useState("");
   const [saveError, setSaveError] = useState("");
 

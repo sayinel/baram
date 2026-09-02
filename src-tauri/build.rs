@@ -109,6 +109,7 @@ fn main() {
         "preview_task_state_line",
         "preview_task_tag_line",
         "read_file",
+        "read_media_data_url",
         "refresh_index",
         "remove_config",
         "remove_context",

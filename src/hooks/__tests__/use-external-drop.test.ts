@@ -23,6 +23,7 @@ const importDirMock = vi.hoisted(() => vi.fn());
 const importFileMock = vi.hoisted(() => vi.fn());
 const listDirMock = vi.hoisted(() => vi.fn());
 const showToastMock = vi.hoisted(() => vi.fn());
+const readMediaDataUrlMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../ipc/invoke", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../ipc/invoke")>();
@@ -32,6 +33,7 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
     importDir: importDirMock,
     importFile: importFileMock,
     listDir: listDirMock,
+    readMediaDataUrl: readMediaDataUrlMock,
   };
 });
 vi.mock("../../stores/ui/ui", () => ({
@@ -43,7 +45,11 @@ import { Image } from "../../extensions/nodes/image";
 import { Paragraph } from "../../extensions/nodes/paragraph";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
-import { handleEditorDrop, handleFileTreeDrop } from "../use-external-drop";
+import {
+  handleCaptureDrop,
+  handleEditorDrop,
+  handleFileTreeDrop,
+} from "../use-external-drop";
 
 const ROOT = "/vault";
 const NOTES = "/vault/notes";
@@ -457,12 +463,14 @@ describe("source guard — .file-tree must fill its scroll container", () => {
   });
 });
 
-// §324-e 목적지 계약. 붙여넣기 경로(`DropHandler`의 `resolveDestinationPath`,
-// drop-handler.ts의 `getJournalContext`)와 **세 상태가 같아야** 한다 — 같은
-// 이미지를 같은 상자에 넣는 두 표면이 서로 다른 디렉터리를 고르면 안 된다.
-describe("handleEditorDrop — 목적지를 누가 정하는가 (§324-e)", () => {
+// §324-e round 3 — 두 드랍 표면이 갈리는 지점.
+//
+// 문서 편집기는 즉시 디스크에 쓴다(경로가 있고 상대참조를 걸어 둘 assets/가 있다).
+// 캡처 창은 아직 파일이 아니므로 **아무것도 쓰지 않고** data URL로 넣는다. 두
+// describe는 한 쌍으로만 뜻이 있다 — 한쪽만 있으면 "전부 즉시 쓴다"거나 "전부
+// 미룬다"는 구현도 통과한다.
+describe("handleEditorDrop — 문서 편집기는 즉시 쓴다 (§324-e)", () => {
   const DOC_PATH = "/vault/notes/today.md";
-  const HOST_PATH = "/vault/zettel/inbox/__capture__.md";
 
   function createTestEditor(): Editor {
     return new Editor({ extensions: createBaramExtensions(), content: "" });
@@ -473,14 +481,13 @@ describe("handleEditorDrop — 목적지를 누가 정하는가 (§324-e)", () =
     importFileMock.mockReset().mockResolvedValue(undefined);
     listDirMock.mockReset().mockResolvedValue([]);
     showToastMock.mockReset();
-    // 오염원: 캡처와 아무 상관 없는 문서가 메인 창에 열려 있다.
     useEditorStore.setState({
       activeTabId: "t1",
       tabs: [{ id: "t1", filePath: DOC_PATH }],
     } as never);
   });
 
-  it("리졸버가 없으면 활성 탭 옆에 저장한다 (문서 편집기 — 종전과 동일)", async () => {
+  it("활성 탭 옆 assets/에 저장한다", async () => {
     const editor = createTestEditor();
     await handleEditorDrop(["/Users/x/Desktop/photo.png"], editor, 0);
     expect(importFileMock).toHaveBeenCalledWith(
@@ -490,52 +497,136 @@ describe("handleEditorDrop — 목적지를 누가 정하는가 (§324-e)", () =
     editor.destroy();
   });
 
-  it("리졸버가 경로를 주면 그 경로 옆에 저장한다 — 활성 탭이 열려 있어도", async () => {
+  it("저장되지 않은 문서에서는 쓰지 않고 알린다", async () => {
+    useEditorStore.setState({ activeTabId: null, tabs: [] } as never);
     const editor = createTestEditor();
-    await handleEditorDrop(
-      ["/Users/x/Desktop/photo.png"],
-      editor,
-      0,
-      () => HOST_PATH,
-    );
-    expect(importFileMock).toHaveBeenCalledWith(
-      "/Users/x/Desktop/photo.png",
-      "/vault/zettel/inbox/assets/photo.png",
-    );
-    expect(importFileMock).not.toHaveBeenCalledWith(
-      "/Users/x/Desktop/photo.png",
-      "/vault/notes/assets/photo.png",
-    );
-    editor.destroy();
-  });
-
-  it("리졸버가 null을 주면 활성 탭으로 폴백하지 않고 알린다", async () => {
-    // ‼️ 이 폴백이 정확히 이 매개변수가 막으려는 결함이다: 캡처 노트는 수집함에
-    // 저장되는데 이미지만 열려 있던 남의 문서 옆으로 가면, 남는 것은 어디서도
-    // 풀리지 않는 상대경로다.
-    const editor = createTestEditor();
-    await handleEditorDrop(
-      ["/Users/x/Desktop/photo.png"],
-      editor,
-      0,
-      () => null,
-    );
+    await handleEditorDrop(["/Users/x/Desktop/photo.png"], editor, 0);
     expect(importFileMock).not.toHaveBeenCalled();
     expect(createDirMock).not.toHaveBeenCalled();
     expect(showToastMock).toHaveBeenCalledWith(expect.any(String), "error");
     editor.destroy();
   });
 
-  it("목적지가 없어도 미디어가 아닌 파일은 조용히 무시한다 (M1 동치)", async () => {
+  it("미디어가 아닌 파일은 조용히 무시한다 (M1 동치)", async () => {
+    useEditorStore.setState({ activeTabId: null, tabs: [] } as never);
     const editor = createTestEditor();
-    await handleEditorDrop(
-      ["/Users/x/Desktop/report.pdf"],
-      editor,
-      0,
-      () => null,
-    );
+    await handleEditorDrop(["/Users/x/Desktop/report.pdf"], editor, 0);
     expect(showToastMock).not.toHaveBeenCalled();
     expect(importFileMock).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+});
+
+describe("handleCaptureDrop — 캡처 창은 저장 전까지 쓰지 않는다 (§324-e)", () => {
+  const DOC_PATH = "/vault/notes/today.md";
+  const PNG_URL = "data:image/png;base64,aGk=";
+
+  function createTestEditor(): Editor {
+    return new Editor({ extensions: createBaramExtensions(), content: "" });
+  }
+
+  function imageAttrs(editor: Editor): Record<string, unknown>[] {
+    const found: Record<string, unknown>[] = [];
+    editor.state.doc.descendants((n) => {
+      if (n.type.name === "image" || n.type.name === "video")
+        found.push(n.attrs);
+    });
+    return found;
+  }
+
+  beforeEach(() => {
+    createDirMock.mockReset().mockResolvedValue(undefined);
+    importFileMock.mockReset().mockResolvedValue(undefined);
+    listDirMock.mockReset().mockResolvedValue([]);
+    showToastMock.mockReset();
+    readMediaDataUrlMock.mockReset().mockResolvedValue(PNG_URL);
+    // 오염원: 캡처와 아무 상관 없는 문서가 메인 창에 열려 있다. 즉시 쓰기가
+    // 되살아나면 이미지가 그 문서 옆으로 간다.
+    useEditorStore.setState({
+      activeTabId: "t1",
+      tabs: [{ id: "t1", filePath: DOC_PATH }],
+    } as never);
+  });
+
+  it("디스크에 아무것도 쓰지 않고 data URL 노드를 넣는다", async () => {
+    const editor = createTestEditor();
+    await handleCaptureDrop(["/Users/x/Desktop/pearl-2.png"], editor, 0);
+
+    expect(importFileMock).not.toHaveBeenCalled();
+    expect(createDirMock).not.toHaveBeenCalled();
+    expect(readMediaDataUrlMock).toHaveBeenCalledWith(
+      "/Users/x/Desktop/pearl-2.png",
+    );
+    // 원본 이름이 alt로 살아남는다(확장자는 뗀다 — 형제 드랍 경로와 같은 규약이고
+    // 사용자가 이미 본 것이다). 추출이 MIME에서 확장자를 되찾는다.
+    expect(imageAttrs(editor)).toEqual([
+      expect.objectContaining({ alt: "pearl-2", src: PNG_URL }),
+    ]);
+    editor.destroy();
+  });
+
+  it("여러 파일이 서로를 덮지 않고 순서대로 들어간다", async () => {
+    readMediaDataUrlMock
+      .mockResolvedValueOnce("data:image/png;base64,Zmlyc3Q=")
+      .mockResolvedValueOnce("data:image/png;base64,c2Vjb25k");
+    const editor = createTestEditor();
+    await handleCaptureDrop(
+      ["/Users/x/Desktop/a.png", "/Users/x/Desktop/b.png"],
+      editor,
+      0,
+    );
+    expect(imageAttrs(editor).map((a) => a.alt)).toEqual(["a", "b"]);
+    editor.destroy();
+  });
+
+  it("동영상은 video 노드로 들어간다", async () => {
+    readMediaDataUrlMock.mockResolvedValue("data:video/mp4;base64,AAAA");
+    const editor = createTestEditor();
+    await handleCaptureDrop(["/Users/x/Desktop/clip.mp4"], editor, 0);
+    const names: string[] = [];
+    editor.state.doc.descendants((n) => void names.push(n.type.name));
+    expect(names).toContain("video");
+    expect(names).not.toContain("image");
+    editor.destroy();
+  });
+
+  it("미디어가 아닌 파일은 읽지도 않는다", async () => {
+    const editor = createTestEditor();
+    await handleCaptureDrop(["/Users/x/Desktop/report.pdf"], editor, 0);
+    expect(readMediaDataUrlMock).not.toHaveBeenCalled();
+    expect(showToastMock).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
+  // ‼️ 거절이 조용하면 사용자에게는 "드랍이 안 되는 앱"으로 보인다 — 이 스레드가
+  // 계속 고쳐 온 실패 방식이다. 상한 초과는 크기를 말해 주는 **다른** 문구를
+  // 받는다: "읽을 수 없습니다"는 고칠 수 있는 상황을 고칠 수 없게 보이게 한다.
+  it("상한을 넘으면 크기를 말하는 문구로 거절한다", async () => {
+    readMediaDataUrlMock.mockRejectedValue("TOO_LARGE:52428800:26214400");
+    const editor = createTestEditor();
+    await handleCaptureDrop(["/Users/x/Desktop/huge.png"], editor, 0);
+
+    expect(imageAttrs(editor)).toEqual([]);
+    const [message, type] = showToastMock.mock.calls[0] as [string, string];
+    expect(type).toBe("error");
+    expect(message).toContain("huge.png");
+    expect(message).toContain("50");
+    expect(message).toContain("25");
+    editor.destroy();
+  });
+
+  it("읽기가 실패해도 조용히 넘어가지 않고, 나머지 파일은 계속 넣는다", async () => {
+    readMediaDataUrlMock
+      .mockRejectedValueOnce("nope")
+      .mockResolvedValueOnce(PNG_URL);
+    const editor = createTestEditor();
+    await handleCaptureDrop(
+      ["/Users/x/Desktop/bad.png", "/Users/x/Desktop/good.png"],
+      editor,
+      0,
+    );
+    expect(showToastMock).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(imageAttrs(editor).map((a) => a.alt)).toEqual(["good"]);
     editor.destroy();
   });
 });

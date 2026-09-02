@@ -17,6 +17,7 @@ import { useUIStore } from "../../stores/ui/ui";
 import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
 import { savePhotoToAssets } from "../../utils/journal/journal-photo";
 import { saveMediaToDocAssets } from "../../utils/media-assets";
+import { MAX_INLINE_MEDIA_BYTES } from "../../utils/media-data-url";
 import { classifyMediaSrc } from "../../utils/media-src";
 
 /**
@@ -74,6 +75,50 @@ export async function insertJournalMediaFromBytes(
   } catch {
     toastMediaError("journal.mediaSaveFailed", name);
   }
+}
+
+/**
+ * §324-e 저장 전까지 디스크에 쓰지 않는 표면(캡처 창)의 삽입 경로.
+ *
+ * ‼️ `alt`에 `file.name`을 그대로 싣는 것이 계약이다. data URL은 이름을 담지
+ * 못하므로 alt가 원본 파일명이 살아남는 유일한 자리이고, 저장 시점의 추출이
+ * 그 이름으로 파일을 쓴다(`utils/media-data-url.ts`의 `preferredMediaName`).
+ *
+ * ‼️ 상한을 여기서 다시 검사하는 이유: 붙여넣기는 Rust를 거치지 않는다. 클립보드의
+ * `File`은 이미 웹뷰 안에 있어 `FileReader`가 바로 읽으므로, 드랍 경로에서 상한을
+ * 지키는 `read_media_data_url`의 거절이 이 경로에는 적용되지 않는다. 두 경로가 같은
+ * 상한을 써야 같은 파일이 붙여넣기로는 들어가고 드랍으로는 거절되는 일이 없다.
+ *
+ * 거절은 **반드시 보인다** — 조용히 넘기면 사용자에게는 "붙여넣기가 안 되는 앱"이
+ * 되고, 그것이 이 작업이 계속 고쳐 온 실패 방식이다.
+ */
+async function insertDeferredMedia(
+  view: EditorView,
+  file: File,
+  task: ReturnType<typeof registerEditorMutationTask>,
+  pos?: number,
+): Promise<void> {
+  if (file.size > MAX_INLINE_MEDIA_BYTES) {
+    const { locale } = useSettingsStore.getState();
+    useUIStore.getState().showToast(
+      t("journal.capture.mediaTooLarge", locale as Locale, {
+        limit: String(Math.floor(MAX_INLINE_MEDIA_BYTES / (1024 * 1024))),
+        name: file.name,
+        size: String(Math.ceil(file.size / (1024 * 1024))),
+      }),
+      "error",
+    );
+    return;
+  }
+  let dataUrl: string;
+  try {
+    dataUrl = await readFileAsDataURL(file);
+  } catch {
+    toastMediaError("journal.capture.mediaReadFailed", file.name);
+    return;
+  }
+  if (!task.isLive()) return;
+  insertMediaAtPos(view, dataUrl, file.name, pos);
 }
 
 /** Insert an image or video node into the editor at the given position or selection */
@@ -176,9 +221,7 @@ function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
             if (!ctx) {
               // §324-e 캡처: 사진이든 동영상이든 data URL로 들어간다. 실제 파일
               // 쓰기는 저장이 한다(`utils/media-data-url.ts`).
-              const dataUrl = await readFileAsDataURL(file);
-              if (!task.isLive()) break;
-              insertMediaAtPos(view, dataUrl, file.name, insertPos);
+              await insertDeferredMedia(view, file, task, insertPos);
             } else if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
               if (!task.isLive()) break;
@@ -254,9 +297,7 @@ function createDropHandlerPlugin(options: DropHandlerOptions): Plugin {
             if (!task.isLive()) break;
             if (!ctx) {
               // §324-e 캡처 — handleDrop의 같은 분기와 같은 계약.
-              const dataUrl = await readFileAsDataURL(file);
-              if (!task.isLive()) break;
-              insertMediaAtPos(view, dataUrl, file.name);
+              await insertDeferredMedia(view, file, task);
             } else if (ctx.isJournal) {
               const bytes = await readFileAsBytes(file);
               if (!task.isLive()) break;

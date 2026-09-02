@@ -23,6 +23,22 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { copyBytesToDir } from "./media-copy";
 import { isMediaAtom } from "./media-src";
 
+/**
+ * §324-e data URL로 바로 넣을 수 있는 최대 크기 (25 MiB).
+ *
+ * ‼️ 이 값의 **주인은 Rust**다 — `MAX_INLINE_MEDIA_BYTES`
+ * (`src-tauri/src/fs/media.rs`)가 드랍 경로에서 실제로 거절을 수행하고, 그 상수의
+ * doc 주석에 왜 25 MiB인지와 왜 이미지·동영상에 같은 상한을 쓰는지가 있다. 여기
+ * 있는 이유는 **붙여넣기** 경로가 Rust를 거치지 않기 때문이다: 클립보드의 `File`은
+ * 이미 웹뷰 안에 있어 `FileReader`가 바로 읽는다. 두 경로가 같은 상한을 써야
+ * 사용자가 같은 파일을 붙여넣기로는 넣고 드랍으로는 못 넣는 일이 없다.
+ *
+ * 두 값이 어긋나는 것을 막는 것은 희망이 아니라
+ * `__tests__/media-extension-parity.test.ts`다 — Rust 소스에서 상수를 긁어 이
+ * 값과 비교한다(§69의 revocation key·byte cap과 같은 드리프트 가드 형태).
+ */
+export const MAX_INLINE_MEDIA_BYTES = 25 * 1024 * 1024;
+
 /** 아직 디스크에 없는 미디어 한 건 — 문서 안의 data URL과 그 alt(원본 파일명). */
 export interface PendingMedia {
   /** 원본 파일명이 살아남는 유일한 자리. data URL은 이름을 담지 못한다. */

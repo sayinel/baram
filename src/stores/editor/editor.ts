@@ -22,16 +22,13 @@ import { useContextStore } from "../context/context";
 export interface CaptureDropAccess {
   /** 캡처 다이얼로그 자신의 편집기 인스턴스. */
   editor: Editor;
-  /**
-   * 이 캡처가 저장될 파일의 경로, 또는 지금 목적지가 없으면 `null`.
-   *
-   * ‼️ 다이얼로그의 `resolveDropDestination`을 **그대로** 실어 보낸다(재계산 금지).
-   * 붙여넣기 경로가 쓰는 `DropHandler`의 `resolveDestinationPath`와 같은 함수여야
-   * 한다 — 태스크 모드 여부는 다이얼로그만 알고, 설정에서 다시 유도하려 한 것이
-   * 애초에 붙여넣기 경로를 태스크 모드에 눈멀게 한 결함이었다(§324-e round 1).
-   */
-  resolveDestinationPath: () => null | string;
 }
+// ‼️ §324-e round 3: 여기 `resolveDestinationPath`가 있었다. 지금은 없다 — 드랍도
+// 붙여넣기와 똑같이 data URL을 넣고 디스크에는 아무것도 쓰지 않으므로, **삽입
+// 시점에** 목적지를 아는 것이 아무 의미가 없다. 목적지는 버려진 것이 아니라 저장
+// 시점으로 옮겨 갔고, 그것을 아는 곳은 원래부터 다이얼로그 하나였다
+// (`QuickCaptureDialog`의 `extractCaptureMedia`). 훅과 스토어를 통과시키던 배선을
+// 남겨 두면 아무도 부르지 않는, 살아 있는 것처럼 보이는 API가 된다.
 
 export interface EditorTab {
   /** §83 The context this tab belongs to */

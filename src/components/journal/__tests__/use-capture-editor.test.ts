@@ -142,15 +142,19 @@ describe("§323 useCaptureEditor", () => {
   // 달라지지 않는다(리뷰 D의 뮤테이션이 살아남은 이유). 관측 가능하고 실제로
   // 지킬 값어치가 있는 것은 그 **전제** 쪽이다 — 배열이 정말 안정적인가.
   //
-  // 깨지면 나는 사고: 다이얼로그는 리렌더될 때마다 새 `resolveDropDestination`
-  // 함수를 만든다(태스크 모드 토글 등). 그것이 `extensions`의 identity를 바꾸면
-  // effect가 다시 돌아 편집기를 파기·재생성하고, 타이핑 중이던 본문이 사라진다.
+  // 깨지면 나는 사고: 다이얼로그는 리렌더가 잦다(태스크 모드 토글, 태그 입력,
+  // 리사이즈 드래그). `extensions`가 렌더마다 새 배열이 되면 effect가 다시 돌아
+  // 편집기를 파기·재생성하고, 타이핑 중이던 본문이 사라진다.
+  //
+  // §324-e round 3에서 이 테스트의 입력이 바뀌었다: 훅이 더는 리졸버를 받지
+  // 않으므로(드랍도 붙여넣기도 삽입 시점에 목적지를 묻지 않는다) 흔들 프롭이
+  // 없다. 대신 **같은 프롭으로 리렌더**한다 — `useMemo`가 사라지면 그것만으로
+  // 배열 identity가 바뀌므로 그 뮤테이션은 여전히 이 테스트가 잡는다.
   describe("§298 리렌더가 편집기를 재생성하지 않는다", () => {
-    it("리졸버 identity가 바뀌어도 같은 인스턴스와 본문이 유지된다", async () => {
+    it("리렌더해도 같은 인스턴스와 본문이 유지된다", async () => {
       const { rerender, result } = renderHook(
-        ({ resolve }: { resolve: () => null | string }) =>
-          useCaptureEditor(true, resolve),
-        { initialProps: { resolve: () => "/vault/zettel/inbox/a.md" } },
+        ({ open }: { open: boolean }) => useCaptureEditor(open),
+        { initialProps: { open: true } },
       );
       await act(async () => {});
       const first = result.current.editor!;
@@ -158,36 +162,14 @@ describe("§323 useCaptureEditor", () => {
         first.commands.setContent("<p>쓰던 글</p>");
       });
 
-      // 다이얼로그 리렌더가 만드는 것과 같은, 새 함수 identity.
-      rerender({ resolve: () => "/vault/zettel/inbox/b.md" });
+      rerender({ open: true });
+      await act(async () => {});
+      rerender({ open: true });
       await act(async () => {});
 
       expect(result.current.editor).toBe(first);
       expect(first.isDestroyed).toBe(false);
       expect(result.current.getMarkdown()).toBe("쓰던 글");
-    });
-
-    // 안정성만으로는 부족하다 — 배열을 고정한 대가로 낡은 리졸버를 붙들고
-    // 있으면 그것대로 §324-e를 되돌리는 결함이다. ref 우회가 실제로 최신 값을
-    // 읽는지까지 같이 본다.
-    //
-    // §324-e round 3에서 관측 지점이 옮겨졌다: 붙여넣기는 이제 목적지를 아예
-    // 묻지 않는다(`deferMediaToHost` — 저장 전에는 디스크에 쓰지 않는다). 남은
-    // 소비자는 스토어에 게시되는 접근자(OS 드랍이 읽는다)와 다이얼로그의 저장
-    // 경로다. 게시물이 낡으면 드랍한 이미지가 옛 목적지의 assets/로 간다.
-    it("그러면서도 최신 리졸버를 게시한다 — 낡은 목적지가 남지 않는다", async () => {
-      const { rerender } = renderHook(
-        ({ resolve }: { resolve: () => null | string }) =>
-          useCaptureEditor(true, resolve),
-        { initialProps: { resolve: () => "/vault/zettel/inbox/OLD.md" } },
-      );
-      await act(async () => {});
-      rerender({ resolve: () => "/vault/zettel/inbox/NEW.md" });
-      await act(async () => {});
-
-      expect(
-        useEditorStore.getState().captureDropAccess?.resolveDestinationPath(),
-      ).toBe("/vault/zettel/inbox/NEW.md");
       useEditorStore.getState().registerCaptureDropAccess(null);
     });
   });
@@ -261,68 +243,59 @@ describe("§323 useCaptureEditor", () => {
         useEditorStore.getState().registerCaptureDropAccess(null);
       });
 
-      // ‼️ 두 번째 행이 이 테이블의 요점이다. 목적지를 **아는데도** 쓰지 않는다는
-      // 것이 새 계약이고, 예전 코드는 정확히 그 경우에 파일을 만들었다. 첫 행만
-      // 있으면 "목적지가 없어서 못 썼다"와 구별되지 않는다.
-      const resolvers: [string, (() => null | string) | undefined][] = [
-        ["리졸버가 없어도", undefined],
-        ["리졸버가 경로를 줘도", () => "/vault/zettel/inbox/__capture__.md"],
-      ];
+      // ‼️ 이 훅은 목적지를 모른다(round 3에서 매개변수가 사라졌다). 그래서 여기서
+      // 증명되는 것은 "목적지가 없어서 못 썼다"가 아니라 "이 표면은 애초에 쓰지
+      // 않는다"이다. **목적지를 아는데도** 쓰지 않는다는 더 강한 주장은 zettel이
+      // 설정된 상태로 도는 `QuickCaptureDialog.test.tsx`의
+      // "붙여넣기만으로는 디렉터리도 파일도 만들지 않는다"가 맡는다.
+      it("붙여넣은 이미지는 data URL로만 들어간다", async () => {
+        const { result } = renderHook(() => useCaptureEditor(true));
+        await act(async () => {});
+        const editor = result.current.editor!;
 
-      it.each(resolvers)(
-        "%s 붙여넣은 이미지는 data URL로만 들어간다",
-        async (_label, resolve) => {
-          const { result } = renderHook(() => useCaptureEditor(true, resolve));
-          await act(async () => {});
-          const editor = result.current.editor!;
+        const event = makePasteEvent(
+          new File(["x"], "pearl-2.png", { type: "image/png" }),
+        );
+        editor.view.someProp("handlePaste", (f) =>
+          f(editor.view, event, Slice.empty),
+        );
 
-          const event = makePasteEvent(
-            new File(["x"], "pearl-2.png", { type: "image/png" }),
-          );
-          editor.view.someProp("handlePaste", (f) =>
-            f(editor.view, event, Slice.empty),
-          );
-
-          await vi.waitFor(() => {
-            expect(result.current.getMarkdown()).not.toBe("");
-          });
-          expect(savePhotoToAssets).not.toHaveBeenCalled();
-          expect(saveMediaToDocAssets).not.toHaveBeenCalled();
-          // 원본 파일명이 alt로 살아남는다 — data URL은 이름을 담지 못하므로
-          // 이것이 추출이 파일명을 되찾는 유일한 통로다.
-          expect(result.current.getMarkdown()).toMatch(
-            /^!\[pearl-2\.png\]\(data:image\/png;base64,/,
-          );
-        },
-      );
+        await vi.waitFor(() => {
+          expect(result.current.getMarkdown()).not.toBe("");
+        });
+        expect(savePhotoToAssets).not.toHaveBeenCalled();
+        expect(saveMediaToDocAssets).not.toHaveBeenCalled();
+        // 원본 파일명이 alt로 살아남는다 — data URL은 이름을 담지 못하므로
+        // 이것이 추출이 파일명을 되찾는 유일한 통로다.
+        expect(result.current.getMarkdown()).toMatch(
+          /^!\[pearl-2\.png\]\(data:image\/png;base64,/,
+        );
+      });
 
       // 동영상은 이미지와 다른 가지로 샌다: `insertVideoFromBytes`는 `isJournal`을
       // 보지 않고 `ctx.filePath`만 있으면 그 옆에 쓴다. 즉 즉시 쓰기가 되살아나면
       // 탭이 저널이든 아니든 새므로 이미지와 별도로 고정할 값어치가 있다.
-      it.each(resolvers)(
-        "%s 붙여넣은 동영상도 data URL로만 들어간다",
-        async (_label, resolve) => {
-          const { result } = renderHook(() => useCaptureEditor(true, resolve));
-          await act(async () => {});
-          const editor = result.current.editor!;
+      it("붙여넣은 동영상도 data URL로만 들어간다", async () => {
+        const { result } = renderHook(() => useCaptureEditor(true));
+        await act(async () => {});
+        const editor = result.current.editor!;
 
-          const event = makePasteEvent(
-            new File(["x"], "clip.mp4", { type: "video/mp4" }),
-          );
-          editor.view.someProp("handlePaste", (f) =>
-            f(editor.view, event, Slice.empty),
-          );
+        const event = makePasteEvent(
+          new File(["x"], "clip.mp4", { type: "video/mp4" }),
+        );
+        editor.view.someProp("handlePaste", (f) =>
+          f(editor.view, event, Slice.empty),
+        );
 
-          await vi.waitFor(() => {
-            expect(result.current.getMarkdown()).not.toBe("");
-          });
-          expect(savePhotoToAssets).not.toHaveBeenCalled();
-          expect(saveMediaToDocAssets).not.toHaveBeenCalled();
-          expect(result.current.getMarkdown()).toMatch(
-            /^!\[clip\.mp4\]\(data:video\/mp4;base64,/,
-          );
-        },
-      );
+        await vi.waitFor(() => {
+          expect(result.current.getMarkdown()).not.toBe("");
+        });
+        expect(savePhotoToAssets).not.toHaveBeenCalled();
+        expect(saveMediaToDocAssets).not.toHaveBeenCalled();
+        expect(result.current.getMarkdown()).toMatch(
+          /^!\[clip\.mp4\]\(data:video\/mp4;base64,/,
+        );
+      });
 
       // ‼️ `data:video/mp4;…`에는 확장자가 없다. `classifyMediaSrc`가 MIME을 읽지
       // 않으면 `extensionOf`가 마지막 `/` 뒤에서 점을 찾다 실패해 `null`을 내고,
@@ -542,17 +515,19 @@ describe("§324-e 캡처 편집기의 드랍 접근자 등록", () => {
     expect(access?.editor.isDestroyed).toBe(false);
   });
 
-  it("호출부의 리졸버를 그대로 통과시킨다 — 재계산하지 않는다", async () => {
-    // 붙여넣기 경로와 같은 함수여야 한다. 훅이 설정에서 목적지를 다시 유도하려
-    // 한 것이 애초에 붙여넣기를 태스크 모드에 눈멀게 한 결함이었다(§324-e r1).
-    const resolve = vi.fn(() => "/vault/zettel/inbox/__capture__.md");
-    renderHook(() => useCaptureEditor(true, resolve));
+  // ‼️ §324-e round 3 — 게시물에 목적지가 **없다**는 것이 계약이다.
+  //
+  // round 2에서는 여기에 `resolveDestinationPath`가 실려 있었고, 그 이유는 드랍이
+  // 삽입 시점에 파일을 썼기 때문이다. 지금은 아무것도 쓰지 않으므로 목적지를 물을
+  // 이유가 없고, 다시 실으면 아무도 부르지 않는 채 살아 있는 척하는 API가 된다.
+  // 목적지는 저장 시점에 다이얼로그가 정한다 —
+  // `QuickCaptureDialog.test.tsx`의 "저장이 파일을 만든다"가 그쪽을 본다.
+  it("게시물은 편집기 하나뿐이다 — 목적지를 싣지 않는다", async () => {
+    const { result } = renderHook(() => useCaptureEditor(true));
     await act(async () => {});
 
-    expect(
-      useEditorStore.getState().captureDropAccess?.resolveDestinationPath(),
-    ).toBe("/vault/zettel/inbox/__capture__.md");
-    expect(resolve).toHaveBeenCalled();
+    const access = useEditorStore.getState().captureDropAccess;
+    expect(access).toEqual({ editor: result.current.editor });
   });
 
   it("닫히면 게시물을 지운다", async () => {

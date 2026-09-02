@@ -16,6 +16,17 @@
       "description": "파일 내용 읽기 (UTF-8)"
     },
     {
+      "name": "read_media_data_url",
+      "input": { "path": "string" },
+      "output": "string",
+      "module": "fs",
+      "spec": "§324-e",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "볼트 밖 미디어 파일을 data: URL로 읽기 (Quick Capture 전용 — 미디어 확장자 허용목록 + 25 MiB 상한, Host 티어만; 근거는 src/fs/media.rs 헤더)"
+    },
+    {
       "name": "write_file",
       "input": {
         "path": "string",

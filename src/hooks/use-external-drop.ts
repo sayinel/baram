@@ -29,7 +29,14 @@ import type { Editor } from "@tiptap/core";
 
 import { isWysiwygVimModal } from "../extensions/plugins/vim/vim-keys";
 import { type Locale, t } from "../i18n";
-import { createDir, importDir, importFile, listDir } from "../ipc/invoke";
+import {
+  createDir,
+  importDir,
+  importFile,
+  listDir,
+  mediaTooLargeError,
+  readMediaDataUrl,
+} from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
@@ -86,21 +93,12 @@ type DropZone = "capture" | "editor" | "filetree" | null;
  * 없었다). 두 진입 표면이 "같은 정책"이라는 말은 API 모양이 같다는 뜻이
  * 아니라 결과(경합 없는 이름 충돌 해소)가 같다는 뜻이다.
  *
- * §324-e `resolveDestinationPath`는 붙여넣기 경로(`DropHandler`의 같은 이름 옵션,
- * `drop-handler.ts`의 `getJournalContext` 주석에 세 상태가 적혀 있다)와 **같은
- * 계약**이다. 두 표면이 같은 답을 내야 하므로 계약도 하나여야 한다:
- *  - 아예 안 넘김(`undefined`/`null`) → 이것은 문서 편집기다. 활성 탭을 본다
- *    (이 옵션이 생기기 전과 완전히 동일).
- *  - 넘겼고 경로를 돌려줌 → 그 경로 옆 `assets/`에 저장한다.
- *  - 넘겼고 `null`을 돌려줌 → 호스트가 목적지의 유일한 권위자인데 지금 목적지가
- *    없다. 활성 탭으로 **새지 않는다** — 그 폴백이 정확히 이 옵션이 막으려는
- *    결함이다. 아래 "목적지 없음" 분기로 간다.
- *
- * ‼️ 붙여넣기 경로의 자기완결형 route(이미지 = data URL)가 여기에는 없다.
- * 붙여넣기는 바이트를 손에 들고 있지만 여기 들어오는 것은 **볼트 외부**의 디스크
- * 경로뿐이고, 그 바이트를 읽을 수 있는 커맨드는 전부 볼트에 갇혀 있어(Finder의
- * 파일을 읽지 못한다) data URL을 만들 방법 자체가 없다. 그래서 목적지가 없으면
- * 저장하지 않고 알린다 — 조용한 실패도, 엉뚱한 디렉터리도 아니다.
+ * ‼️ §324-e 이 함수는 **문서 편집기 전용**이다. 캡처 창은 여기로 오지 않는다
+ * (`handleCaptureDrop`) — 그 표면은 아직 파일이 아니라 상대참조를 걸어 둘 자리도,
+ * 취소로 되돌릴 방법도 없기 때문이다. 한때 이 함수가 호스트별 목적지를 받는
+ * 매개변수를 갖고 있었지만, 지금은 캡처가 삽입 시점에 아무것도 쓰지 않으므로 그
+ * 매개변수를 쓰는 호출부가 없다. 활성 탭이 목적지라는 계약은 이 표면에서 옳다 —
+ * 문서 탭은 실제로 그 탭이다.
  *
  * @internal — exported for the §12-9 race tests only.
  */
@@ -108,7 +106,6 @@ export async function handleEditorDrop(
   paths: string[],
   editor: Editor,
   insertPos: number,
-  resolveDestinationPath?: (() => null | string) | null,
 ) {
   // §297 fix (M1): filter BEFORE touching the filesystem, not inside the
   // loop below. A prior version filtered inside the loop, so a drop with
@@ -118,9 +115,7 @@ export async function handleEditorDrop(
   const mediaPaths = paths.filter(isMediaFilePath);
   if (!mediaPaths.length) return;
 
-  const docPath = resolveDestinationPath
-    ? resolveDestinationPath()
-    : activeTabFilePath();
+  const docPath = activeTabFilePath();
 
   // §297 fix (M-9, whole-branch review): this used to return here with no
   // toast, while the paste path (drop-handler.ts's insertVideoFromBytes)
@@ -129,10 +124,6 @@ export async function handleEditorDrop(
   // depending on which surface the file arrived through. Checked AFTER the
   // media filter above so an unsaved-doc drop of something that isn't media
   // anyway still no-ops silently, matching M1's own reasoning.
-  //
-  // §324-e 캡처 호스트가 `null`을 돌려준 경우도 여기로 온다 — 문구가 "문서가
-  // 저장되지 않았다"인 것은 두 경우 모두 같은 사실을 말한다: 상대경로를 걸어 둘
-  // 파일이 아직 없다.
   if (!docPath) {
     toast("video.noDocumentPath", { name: basename(mediaPaths[0]) }, "error");
     return;
@@ -205,6 +196,76 @@ export async function handleEditorDrop(
           toast("video.saveFailed", { name: originalName }, "error");
         }
       }
+    }
+  } finally {
+    task.finish();
+  }
+}
+
+/**
+ * §324-e OS 드래그로 들어온 미디어를 **캡처 창**에 넣는다. 디스크에는 아무것도
+ * 쓰지 않는다.
+ *
+ * `handleEditorDrop`과 갈라지는 지점이 정확히 이것 하나다: 캡처는 아직 파일이
+ * 아니다. 경로도 없고 기준 디렉터리도 없고 사용자가 저장하지 않을 수도 있으므로,
+ * 최종 목적지에 지금 복사해 두면 (1) 취소가 되돌릴 수 없고 (2) 남는 상대참조
+ * `assets/x.png`를 풀 baseDir이 없어 그림 대신 alt 텍스트가 그려진다. 그래서
+ * data URL로 넣고, 실제 파일은 저장이 만든다(`utils/media-data-url.ts`).
+ *
+ * ‼️ 바이트는 `readMediaDataUrl`(Rust `read_media_data_url`)로 얻는다. 여기 오는
+ * 것은 Finder의 **볼트 외부** 경로이고, 그 바이트를 볼 수 있는 다른 길이 없다 —
+ * `read_file`은 볼트에 갇혀 있고 String을 돌려주며, `asset:` 스코프는 등록된
+ * 컨텍스트별로만 열린다. 그 커맨드를 좁게 유지하는 것(미디어 확장자 허용목록 +
+ * 바이트 상한)이 볼트 밖을 읽는 근거의 전부이므로, 근거와 조건은
+ * `src-tauri/src/fs/media.rs` 헤더에 있다.
+ *
+ * ‼️ alt에는 확장자를 뗀 이름을 싣는다 — `handleEditorDrop`의 형제 경로와 같은
+ * 규약이고, 사용자가 이미 화면에서 본 것이다(`pearl-2`). 확장자를 잃어도
+ * 상관없는 이유는 추출이 MIME에서 되찾기 때문이다(`preferredMediaName`).
+ *
+ * @internal — exported for the §324-e capture drop tests.
+ */
+export async function handleCaptureDrop(
+  paths: string[],
+  editor: Editor,
+  insertPos: number,
+): Promise<void> {
+  const mediaPaths = paths.filter(isMediaFilePath);
+  if (!mediaPaths.length) return;
+
+  // §298 §12-9b — 같은 계약: 첫 await 앞에서 등록하고, dispatch하는 모든 호출
+  // 앞에서 liveness를 다시 본다. `insertPos`는 **이** 편집기에 묶인 값이다.
+  const task = registerEditorMutationTask(editor.view);
+  try {
+    let pos = insertPos;
+    for (const sourcePath of mediaPaths) {
+      if (!task.isLive()) return;
+
+      const originalName = basename(sourcePath);
+      if (!originalName) continue;
+
+      const isVideo = classifyMediaSrc(sourcePath) === "video-file";
+      const nodeType = editor.state.schema.nodes[isVideo ? "video" : "image"];
+      // 스키마에 없으면 건너뛴다(축소된 테스트 스키마) — 형제 경로와 같은 방어.
+      if (!nodeType) continue;
+
+      let dataUrl: string;
+      try {
+        dataUrl = await readMediaDataUrl(sourcePath);
+      } catch (err) {
+        // 조용히 넘기지 않는다. 거절된 드랍이 아무 말도 하지 않는 것이 이
+        // 작업이 계속 고쳐 온 실패 방식이다.
+        reportCaptureReadFailure(err, originalName);
+        continue;
+      }
+      if (!task.isLive()) return;
+
+      const alt = originalName.replace(/\.[^.]+$/u, "");
+      pos = insertNodeAtPos(
+        editor,
+        pos,
+        nodeType.create({ src: dataUrl, alt }),
+      );
     }
   } finally {
     task.finish();
@@ -377,20 +438,18 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
           const zone = detectZone(x, y);
 
           if (zone === "capture") {
-            // §324-e 목적지는 캡처 창이 **자기 리졸버로** 정한다 — 활성 탭이
-            // 아니다. 활성 탭에서 유도하면 캡처 노트는 zettel 수집함에,
-            // 이미지는 전혀 무관한 열린 문서 옆에 저장돼 상대경로가 어디서도
-            // 풀리지 않는다(붙여넣기 경로가 이미 겪은 결함).
+            // §324-e 캡처는 아직 파일이 아니므로 **아무것도 쓰지 않는다** —
+            // 목적지를 묻지도 않는다. 붙여넣기와 같은 결말(data URL)로 가고,
+            // 실제 파일은 저장이 만든다(`utils/media-data-url.ts`).
             const access = captureDropTarget();
             if (!access) return;
             const target = resolveInsertTarget(access.editor, x, y);
             // 표시줄을 못 구했다고 드랍을 버리지 않는다 — 문서 편집기와 달리
             // 캡처 창은 방금 열린 빈 문서일 수 있다. 그때는 문서 끝에 넣는다.
-            handleEditorDrop(
+            void handleCaptureDrop(
               paths,
               access.editor,
               target?.pos ?? access.editor.state.doc.content.size,
-              access.resolveDestinationPath,
             );
           } else if (zone === "filetree") {
             const el = document.elementFromPoint(x, y);
@@ -472,6 +531,31 @@ function highlightCaptureDrop(x: number, y: number): void {
     ?.classList.add("capture-ext-drop-target");
   const target = resolveInsertTarget(access.editor, x, y);
   if (target) showDropIndicator(target);
+}
+
+/**
+ * §324-e 캡처 드랍이 읽기에서 실패한 이유를 사용자에게 말한다.
+ *
+ * 상한 초과는 다른 문구를 받는다 — 크기를 말해 주지 않으면 사용자가 무엇을 바꿔야
+ * 할지 알 수 없고, "읽을 수 없습니다"는 고칠 수 있는 상황을 고칠 수 없는 것처럼
+ * 보이게 한다. MiB로 올림해 보여 준다(바이트 숫자는 사람이 읽는 단위가 아니다).
+ */
+function reportCaptureReadFailure(err: unknown, name: string): void {
+  const tooLarge = mediaTooLargeError(err);
+  if (tooLarge) {
+    toast(
+      "journal.capture.mediaTooLarge",
+      {
+        limit: String(Math.floor(tooLarge.cap / (1024 * 1024))),
+        name,
+        size: String(Math.ceil(tooLarge.size / (1024 * 1024))),
+      },
+      "error",
+    );
+    return;
+  }
+  logger.error("[ExternalDrop] Capture media read failed:", err);
+  toast("journal.capture.mediaReadFailed", { name }, "error");
 }
 
 // --- Zone detection helpers ---
