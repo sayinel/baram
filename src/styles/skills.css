@@ -903,7 +903,7 @@
 
 .skill-live-preview .slp-text {
   padding: 8px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-text-primary);
@@ -1195,7 +1195,7 @@
   padding: 6px 8px;
   margin-bottom: 6px;
   overflow-x: auto;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 11px;
   overflow-wrap: break-word;
   white-space: pre-wrap;

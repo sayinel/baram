@@ -362,7 +362,7 @@
 
 .theme-editor-hex {
   width: 60px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.72rem;
   color: var(--color-text-muted);
 }

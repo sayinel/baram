@@ -1023,7 +1023,7 @@
 }
 
 .plugin-panel-empty {
-  padding: var(--space-4, 16px);
+  padding: var(--space-4);
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }

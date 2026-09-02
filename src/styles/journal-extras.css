@@ -866,7 +866,7 @@
   box-sizing: border-box;
   width: 100%;
   padding: 8px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.85em;
   color: var(--color-text-primary);
   resize: vertical;

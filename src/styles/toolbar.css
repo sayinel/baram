@@ -707,7 +707,7 @@ body.block-dragging * {
   flex: 1;
   padding: 12px;
   overflow-y: auto;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.82rem;
   line-height: 1.6;
   overflow-wrap: break-word;
@@ -767,7 +767,7 @@ body.block-dragging * {
 
 .block-ai-diff-btn kbd {
   padding: 1px 4px;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.7rem;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border-subtle);
