@@ -156,19 +156,49 @@ describe("what the exported page actually looks like", () => {
     expect(getComputedStyle(bug).borderLeftColor).not.toBe(tipColor);
 
     // 참조가 허공을 가리키면 위 판정은 통과해도 내보낸 문서는 무색이 된다 —
-    // 번들 시트 안에서 토큰의 참조 사슬(semantic → primitive)을 따라가 실제
-    // hex에 닿는지까지 고정한다.
+    // 번들 시트 안에서 13개 타입 전부의 참조 사슬(semantic → primitive)을
+    // 따라가 실제 hex에 닿는지까지 고정한다. (danger/failure처럼 같은
+    // primitive를 공유하는 쌍은 의도된 설계라 pairwise-distinct는 걸지 않는다.)
     const sheet = buildExportStylesheet();
     const resolve = (name: string, depth = 0): string => {
       expect(depth, `${name} 참조가 너무 깊다(순환?)`).toBeLessThan(5);
       const def = new RegExp(`${name}:\\s*([^;]+);`).exec(sheet);
       expect(def, `${name}이 번들 시트에 정의돼 있지 않다`).not.toBeNull();
       const value = def![1].trim();
-      const ref = /^var\((--[\w-]+)\)$/.exec(value);
+      const ref = /^var\(\s*(--[\w-]+)\s*\)$/.exec(value);
       return ref ? resolve(ref[1], depth + 1) : value;
     };
-    expect(resolve("--color-callout-tip")).toMatch(/^#[0-9a-f]{3,6}$/i);
-    expect(resolve("--color-callout-bug")).toMatch(/^#[0-9a-f]{3,6}$/i);
+    const TYPES = [
+      "abstract",
+      "bug",
+      "danger",
+      "example",
+      "failure",
+      "info",
+      "note",
+      "question",
+      "quote",
+      "success",
+      "tip",
+      "todo",
+      "warning",
+    ];
+    for (const type of TYPES) {
+      expect(resolve(`--color-callout-${type}`)).toMatch(
+        /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i,
+      );
+    }
+  });
+
+  it("keeps dark mode from repainting typed callout backgrounds", () => {
+    // 회귀 핀 (적대 리뷰): `[data-theme="dark"] … .callout { background }` 류의
+    // 일반 다크 규칙은 (0,3,0)이라 타입 규칙 (0,2,0)을 전부 이긴다 — 명시적
+    // 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개지는 결함이 실제로 있었다.
+    // bare `.callout`을 매치하는 다크 규칙이 시트에 다시 들어오면 여기서 잡는다.
+    // (.callout-icon-btn 같은 하위 요소의 다크 규칙은 정당하므로 통과한다.)
+    expect(buildExportStylesheet()).not.toMatch(
+      /\[data-theme="dark"\][^{]*\.callout\s*[,{]/,
+    );
   });
 
   // §308 — the chip and the raw text it renders BOTH reach the export, and the

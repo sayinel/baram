@@ -354,11 +354,13 @@
   background: color-mix(in srgb, var(--color-callout-question) 8%, transparent);
 }
 
-/* Dark mode callout overrides — 타입 색은 callout 다크 토큰이 처리한다. 남는 것은
-   타입 미지정 callout의 중립 배경뿐이다. */
-[data-theme="dark"] .tiptap .callout {
-  background: rgb(255 255 255 / 5%);
-}
+/* 다크 모드 callout 배경 오버라이드는 없다 (적대 리뷰): 이전의
+   `[data-theme="dark"] .tiptap .callout` 규칙은 (0,3,0)으로 타입 규칙(0,2,0)을
+   전부 이겨, 명시적 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개졌다
+   (system+OS다크에서는 매치가 안 돼 타입색이 보였다 — 같은 팔레트가 선택
+   경로에 따라 달라지는 결함). 타입 색은 callout 다크 토큰이 처리하고, 타입
+   클래스는 NodeView가 항상 달아 주므로(기본 info) 무타입 실렌더는 없다 —
+   만약의 무타입은 base .callout의 --color-bg-subtle이 테마를 따라 덮는다. */
 
 /* §footnote Footnote reference — inline superscript */
 .tiptap .footnote-ref {
