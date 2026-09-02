@@ -7,6 +7,7 @@ import {
   findThemeById,
   migrateThemeColors,
   THEME_COLOR_KEYS,
+  THEME_COLOR_VALUE_RE,
 } from "../../types/theme";
 import { tauriStorage } from "../system/tauri-storage";
 import {
@@ -485,29 +486,36 @@ export const useSettingsStore = create<SettingsState>()(
           }
         }
 
-        // v21 → v22: 감사 BLOCKER — 저장된 custom theme의 colors를 whitelist로
-        // 재구성한다. v22 이전의 테마 import는 여분 키를 거르지 않았으므로, 이미
-        // 저장된 테마 안에 임의 CSS 속성명이 끼어 있을 수 있다(그대로 두면
-        // applyThemeVars 이전 버전이 <html>에 주입했고, 지금도 데이터로 남는다).
-        // 알려진 편집 키만 남긴다 — 값 형식은 여기서 따지지 않는다(없는 키를
-        // 지어낼 수는 없고, 잘못된 색 값은 화면에서 무해하게 무시된다).
+        // v21 → v22: 감사 BLOCKER — 저장된 custom theme의 colors를 whitelist
+        // **키·값 모두**로 재구성한다. v22 이전의 테마 import는 무검증이었으므로
+        // 여분 키(임의 CSS 속성명)뿐 아니라 임의 **값**(숫자, alpha hex, 빈
+        // 문자열)도 저장돼 있을 수 있다. "잘못된 색은 화면에서 무해하게
+        // 무시된다"던 최초 판단은 틀렸다(적대 리뷰 실증): 파생 색 계산이
+        // 문자열이 아닌 값에서 `color.trim is not a function`으로 던져 앱이
+        // 시작하다 죽고, alpha hex는 대비 파생을 1:1로 무너뜨린다. 계약
+        // (THEME_COLOR_VALUE_RE)에 안 맞는 값과 누락 키는 그 테마 base의
+        // 기본 팔레트 값으로 되돌린다.
         if (version < 22) {
           const themes = state.customThemes as Array<{
             [k: string]: unknown;
-            colors: Record<string, string>;
+            base?: unknown;
+            colors?: Record<string, unknown>;
           }>;
           if (Array.isArray(themes)) {
-            const allowed = new Set(
-              THEME_COLOR_KEYS.map((entry) => entry.key as string),
-            );
-            state.customThemes = themes.map((theme) => ({
-              ...theme,
-              colors: Object.fromEntries(
-                Object.entries(theme.colors ?? {}).filter(([key]) =>
-                  allowed.has(key),
-                ),
-              ),
-            }));
+            state.customThemes = themes.map((theme) => {
+              const defaults = defaultColorsForBase(
+                theme.base === "dark" ? "dark" : "light",
+              );
+              const colors: Record<string, string> = {};
+              for (const { key } of THEME_COLOR_KEYS) {
+                const value = theme.colors?.[key];
+                colors[key] =
+                  typeof value === "string" && THEME_COLOR_VALUE_RE.test(value)
+                    ? value
+                    : defaults[key];
+              }
+              return { ...theme, colors };
+            });
           }
         }
 

@@ -112,14 +112,15 @@ export const THEME_COLOR_KEYS = [
 // ---------------------------------------------------------------------------
 
 /**
- * 테마 색 값의 계약 — hex만, 단 alpha 포함 4·8자리도 허용한다.
- * color-contrast.ts가 `#rgba`/`#rrggbbaa`를 "valid CSS and a common export
- * format"으로 이미 지원하므로(적대 리뷰: 같은 저장소에 색 계약이 둘이었다)
- * import 검증도 같은 폭을 받는다. `<input type="color">`는 6자리만 표시하지만
- * 그것은 표시 한계일 뿐, CSS cascade는 alpha hex를 정상 처리한다.
+ * 테마 색 값의 계약 — 불투명 hex(3·6자리)만. **alpha(4·8자리)는 의도적으로
+ * 거부한다**(적대 리뷰 2라운드): 파생 색 계산(color-contrast의 parseHexColor)이
+ * alpha를 절삭해 `#00000000`을 불투명 검정으로 판단하므로, 투명 accent를
+ * 받으면 흰 foreground가 파생되어 실제 화면 대비가 1:1이 된다 — WCAG 보장이
+ * 조용히 무너진다. `<input type="color">`도 6자리만 표현한다. alpha hex를
+ * 허용하려면 합성 표면색 기준의 대비 계산이 먼저다. (v22 이전 import가
+ * 무검증이라 통과시킨 alpha 테마는 v22 마이그레이션이 base 기본값으로 되돌린다.)
  */
-export const THEME_COLOR_VALUE_RE =
-  /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+export const THEME_COLOR_VALUE_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 /** Old CSS variable key → new key. Used by settings migration v10. */
 export const THEME_KEY_MIGRATION_V10: Record<string, keyof ThemeColors> = {
