@@ -7,6 +7,13 @@
 import fs from "fs";
 import path from "path";
 
+// 스캔 코어는 src/utils/audit/css-var-scan.ts — 순수 함수라 __tests__의 회귀
+// 핀(이슈 515 수용 기준: 주석 속 --x:는 정의가 아니다)이 픽스처로 잠근다.
+import {
+  stripCssComments,
+  stripTsComments,
+} from "../src/utils/audit/css-var-scan";
+
 function findFiles(dir: string, extensions: string[]): string[] {
   const results: string[] = [];
   function walk(d: string) {
@@ -19,30 +26,6 @@ function findFiles(dir: string, extensions: string[]): string[] {
   }
   walk(dir);
   return results;
-}
-
-/**
- * CSS 주석을 제거한다 — 정의·사용 수집 양쪽에 적용한다.
- *
- * 이슈 515: 생성 CSS의 설명 주석은 과거 이름을 "(was --color-bg-secondary: #f8f9fa)"
- * 형태로 남기는데, raw 정규식이 그 텍스트까지 정의로 수집해 **어디에도 선언되지 않은
- * 변수를 "정의됨"으로 분류**했다. 그 뒤에서 죽은 사용 10건이 이 감사를 통과했고,
- * 감사가 침묵하는 동안 새 위반이 계속 유입됐다. 토큰 이름이 바뀔 때마다 재발하는
- * 구조이므로, 매칭 전에 주석을 벗기는 것이 근본 수정이다. (사용 수집도 같이 벗긴다 —
- * 주석 속 var()가 사용으로 집계되면 이후 역방향 감사가 죽은 정의를 놓치게 된다.)
- */
-function stripCssComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, "");
-}
-
-/**
- * TS/TSX 주석을 벗긴다 — 블록 주석 전체와, 줄 머리가 주석인 줄만. 코드 뒤에 붙는
- * `// …` 트레일링 주석은 건드리지 않는다: 문자열 속 URL(`https://…`)을 주석으로
- * 오인하는 위양성이 실제 코드 손실보다 나쁘고, 지금까지의 오탐(svg-utils의 주석 속
- * `var(--x)` 예시)은 전부 줄 머리 주석이었다.
- */
-function stripTsComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 
 const definedVars = new Set<string>();
@@ -102,6 +85,16 @@ const LITERAL_NON_CONSUMERS = new Set([
   "src/types/theme.ts",
   "src/utils/theme-vars.ts",
 ]);
+// 리터럴 경로 스캔의 함정 방지(CLAUDE.md): 파일이 옮겨지면 제외가 조용히
+// 무효가 되어 advisory가 3→1로 붕괴한다(적대 리뷰 실측). 크게 죽는다.
+for (const excluded of LITERAL_NON_CONSUMERS) {
+  if (!fs.existsSync(excluded)) {
+    console.error(
+      `LITERAL_NON_CONSUMERS 경로가 존재하지 않는다: ${excluded} — 파일을 옮겼으면 이 목록도 갱신할 것`,
+    );
+    process.exit(1);
+  }
+}
 const literalMentions = new Set<string>();
 for (const file of tsxFiles) {
   const content = stripTsComments(fs.readFileSync(file, "utf-8"));
@@ -186,14 +179,21 @@ if (undefinedVars.length > 0) {
   console.log(`  All CSS variables are defined (or allowlisted).`);
 }
 
-// 4. Reverse advisory — 정의됐지만 아무도 소비하지 않는 색 토큰.
+// 4. Reverse audit — 정의됐지만 아무도 소비하지 않는 색 토큰.
 // 소비로 인정하는 것: CSS/TS의 var() 사용, 그리고 TS가 문자열 리터럴로 든 변수
-// 이름(setProperty·getPropertyValue·색 테이블 — graph-colors의 간접 소비가 이렇게
-// 잡힌다). 게이트가 아니라 advisory다: 죽은 정의는 즉시 버그가 아니고, 합법
-// 소비 경로가 하나 늘 때마다 여기가 빨간불이 되면 아무도 안 읽게 된다. 이 목록이
-// 자라면 토큰을 지우거나 소비를 붙이라는 신호다. (이 감사를 넣은 시점의 기준선:
-// editor-line-highlight — 사용자가 편집까지 하는데 효과가 없다, git-staged,
-// status-warning-solid-hover 3개.)
+// 이름(getPropertyValue·색 테이블 — graph-colors의 간접 소비가 이렇게 잡힌다.
+// writer·메타데이터 파일은 LITERAL_NON_CONSUMERS로 제외).
+//
+// 출력만 하던 advisory에서 **baseline ratchet**으로 승격(적대 리뷰): 목록이
+// 자라도 아무도 모르는 침묵은 이슈 515가 제기한 것과 동형이다. 알려진 잔존
+// 2개와 다르면 — 늘든 줄든 — 실패시켜, 늘면 소비를 붙이거나 토큰을 지우고,
+// 줄면 baseline을 갱신하게 한다.
+// (git-staged: git 상태색 세트의 의도적 예비. warning-solid-hover:
+//  danger/success 파생 쌍과의 대칭 유지 — derivedVars가 쓰지만 읽는 곳 없음.)
+const EXPECTED_UNCONSUMED = new Set([
+  "--color-git-staged",
+  "--color-status-warning-solid-hover",
+]);
 const unusedColorTokens: string[] = [];
 for (const name of semanticDefined) {
   if (!name.startsWith("--color-")) continue;
@@ -201,9 +201,26 @@ for (const name of semanticDefined) {
   if (literalMentions.has(name)) continue;
   unusedColorTokens.push(name);
 }
+const unexpectedUnused = unusedColorTokens.filter(
+  (n) => !EXPECTED_UNCONSUMED.has(n),
+);
+const goneFromBaseline = [...EXPECTED_UNCONSUMED].filter(
+  (n) => !unusedColorTokens.includes(n),
+);
 if (unusedColorTokens.length > 0) {
   console.log(
-    `\n  ADVISORY — defined but unconsumed color tokens (${unusedColorTokens.length}):`,
+    `\n  Unconsumed color tokens (${unusedColorTokens.length}, baseline ${EXPECTED_UNCONSUMED.size}):`,
   );
   for (const name of unusedColorTokens.sort()) console.log(`    ${name}`);
+}
+if (unexpectedUnused.length > 0 || goneFromBaseline.length > 0) {
+  if (unexpectedUnused.length > 0)
+    console.error(
+      `\n  NEW unconsumed tokens (consume them or delete them): ${unexpectedUnused.join(", ")}`,
+    );
+  if (goneFromBaseline.length > 0)
+    console.error(
+      `\n  Baseline tokens now consumed or gone (update EXPECTED_UNCONSUMED): ${goneFromBaseline.join(", ")}`,
+    );
+  process.exit(1);
 }
