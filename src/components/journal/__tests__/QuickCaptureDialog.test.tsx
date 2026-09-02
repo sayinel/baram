@@ -35,6 +35,7 @@ import { CaptureError, captureTask } from "../../../services/task-capture";
 import { captureFleeting } from "../../../services/zettelkasten-service";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { CAPTURE_DIALOG_MIN_HEIGHT } from "../../../stores/settings/journal-settings";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { QuickCaptureDialog } from "../QuickCaptureDialog";
@@ -533,13 +534,25 @@ describe("§323 WYSIWYG 본문", () => {
     expect(body).toContain("**굵게**");
   });
 
-  // ‼️ 한글 IME 회귀 핀. 조합 중 Mod+Enter는 음절을 확정할 뿐 저장이 아니다.
-  it("IME 조합 중 Mod+Enter는 저장하지 않는다", async () => {
+  // ‼️ 한글 IME 회귀 핀 — §323이 가장 깨지기 쉽다고 지목한 그 동작
+  // (`part19-capture-to-hub.md:353-356`)이고, `QuickCaptureDialog.tsx`의
+  // `e.nativeEvent.isComposing` 가드를 지킨다.
+  //
+  // 이 테스트의 첫 판은 본문을 채우지 않았다. 그래서 `handleSave`가 조합 여부를
+  // 물어보기도 전에 `isEmpty` 가드에서 되돌아갔고, 가드를 통째로 지워도 그대로
+  // 통과했다 — "저장되지 않았다"를 확인하면서 실은 "저장 로직에 닿지도 못했다"를
+  // 보고 있었다. 본문을 먼저 채우는 것이 이 핀의 전부다.
+  //
+  // 두 단계를 한 테스트에 두는 이유: 두 번째 단계(조합이 끝나면 같은 키가
+  // 실제로 저장한다)가 없으면 첫 단계는 다시 진공이 된다. 어떤 이유로든
+  // 픽스처가 `handleSave`에 못 닿게 되면 — 본문 주입이 깨지든, zettel 게이트가
+  // 막히든 — 두 번째 단계가 실패해서 그 사실을 말해 준다.
+  it("IME 조합 중 Mod+Enter는 저장하지 않는다 — 조합이 끝나면 저장한다", async () => {
     render(<QuickCaptureDialog />);
     await act(async () => {});
-    const editable = document.querySelector(
-      ".quick-capture-editor [contenteditable]",
-    ) as HTMLElement;
+    setCaptureBody("조합 중인 글");
+    const editable = captureEditable();
+
     fireEvent.keyDown(editable, {
       key: "Enter",
       metaKey: true,
@@ -548,6 +561,16 @@ describe("§323 WYSIWYG 본문", () => {
     });
     await act(async () => {});
     expect(captureFleeting).not.toHaveBeenCalled();
+
+    // 같은 본문, 같은 키 — 조합만 끝났다.
+    fireEvent.keyDown(editable, {
+      key: "Enter",
+      metaKey: true,
+      ctrlKey: true,
+    });
+    await vi.waitFor(() => {
+      expect(captureFleeting).toHaveBeenCalled();
+    });
   });
 
   it("본문이 있으면 Escape로 닫히지 않는다", async () => {
@@ -612,7 +635,14 @@ describe("§324-g 캡처 창 크기", () => {
     expect(useSettingsStore.getState().captureDialogHeight).toBe(380);
   });
 
-  it("높이에 하한이 있다 — 창이 사라지지 않는다", async () => {
+  // §323 리뷰 Minor 6+7. 예전 단정은 `toBeGreaterThanOrEqual(120)`이었고, 두
+  // 가지를 동시에 놓쳤다. (1) 120은 CSS의 `min-height: 12rem`(192px)보다 낮아,
+  // 그 사이로 드래그하면 화면이 절대 보여줄 수 없는 높이가 설정에 남았다.
+  // (2) 부등식이라, 클램프가 하나만 남아도 통과했다 — 드래그 쪽과 setter 쪽
+  // 규칙이 서로를 덮어 주었기 때문에 어느 하나를 지워도 초록이었다.
+  // 정확한 값으로 바꾸면 공용 클램프가 사라지는 순간(원값은 300-500 = -200)
+  // 이 단정이 무너진다.
+  it("높이 하한은 CSS가 실제로 보여줄 수 있는 최솟값이다", async () => {
     useSettingsStore.getState().setCaptureDialogHeight(300);
     render(<QuickCaptureDialog />);
     await act(async () => {});
@@ -623,8 +653,14 @@ describe("§324-g 캡처 창 크기", () => {
     fireEvent.mouseMove(window, { clientY: 0 });
     fireEvent.mouseUp(window);
     await act(async () => {});
-    expect(
-      useSettingsStore.getState().captureDialogHeight,
-    ).toBeGreaterThanOrEqual(120);
+    expect(useSettingsStore.getState().captureDialogHeight).toBe(
+      CAPTURE_DIALOG_MIN_HEIGHT,
+    );
+    // 드래그 중 화면에 그려지는 값도 같은 규칙을 지났다 — 저장된 값과 인라인
+    // height가 어긋나면 그것이 이 결함의 원래 모양이다.
+    const editor = document.querySelector(
+      ".quick-capture-editor",
+    ) as HTMLElement;
+    expect(editor.style.height).toBe(`${CAPTURE_DIALOG_MIN_HEIGHT}px`);
   });
 });

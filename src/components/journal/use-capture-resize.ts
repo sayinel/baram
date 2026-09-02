@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useShallow } from "zustand/shallow";
 
+import { clampCaptureDialogHeight } from "../../stores/settings/journal-settings";
 import { useSettingsStore } from "../../stores/settings/store";
 
 interface CaptureResize {
@@ -48,8 +49,12 @@ export function useCaptureResize(): CaptureResize {
   useEffect(() => {
     if (!dragFrom) return;
     const onMove = (e: MouseEvent) => {
+      // §323 리뷰 Minor 6+7: 예전엔 여기서 바닥만 손으로 잘랐고(그것도 설정
+      // setter와 다른 숫자로), 천장은 아예 안 잘라 드래그 중에는 상자가 얼마든지
+      // 커졌다가 mouseup에서 되튕겼다. 저장되는 값과 화면에 그려지는 값이 같은
+      // 규칙을 지나야 그 어긋남이 사라진다.
       setLiveHeight(
-        Math.max(120, dragFrom.startH + e.clientY - dragFrom.startY),
+        clampCaptureDialogHeight(dragFrom.startH + e.clientY - dragFrom.startY),
       );
     };
     const onUp = () => {

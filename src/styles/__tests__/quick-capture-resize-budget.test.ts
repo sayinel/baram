@@ -26,6 +26,10 @@ import { cssDeclarations, cssRules } from "./css-rules";
  * largest realistic one". */
 const REFERENCE_VIEWPORT_PX = 2000;
 
+/** The CSS root font size the `rem` bounds below resolve against. This app
+ * never overrides `html { font-size }`, so it is the browser default. */
+const ROOT_FONT_SIZE_PX = 16;
+
 function declaration(selector: string, prop: string): string {
   const value = cssDeclarations(rule(selector).body).find(
     (d) => d.prop === prop,
@@ -34,6 +38,13 @@ function declaration(selector: string, prop: string): string {
     throw new Error(`${selector} has no \`${prop}\` declaration`);
   }
   return value;
+}
+
+/** A CSS length in `px` or `rem`, as a number of px. */
+function lengthPx(value: string): number {
+  const match = value.match(/^(\d+(?:\.\d+)?)(px|rem)$/u);
+  if (!match) throw new Error(`not a px/rem length: ${value}`);
+  return Number(match[1]) * (match[2] === "rem" ? ROOT_FONT_SIZE_PX : 1);
 }
 
 function rule(selector: string) {
@@ -94,5 +105,30 @@ describe("§324-g 캡처 다이얼로그 높이 예산 — 리사이즈가 실�
     // "죽은" 상한이 된다 — 반대로 dialogVh를 낮추거나 chromePx를 키워도 이
     // 부등식이 깨지므로, 두 방향의 드리프트를 모두 잡는다.
     expect(clampMax).toBeLessThanOrEqual(cssBudgetAtReference);
+  });
+
+  // §323 리뷰 Minor 6: 위 상한 테스트는 fix round 1이 천장 쪽에서 닫은 것이고,
+  // 똑같은 어긋남이 바닥에 그대로 남아 있었다 — 클램프는 120에서 멎는데 CSS의
+  // `min-height`는 192px(12rem)이라, [120, 192) 구간으로 드래그하면 화면이 절대
+  // 보여줄 수 없는 높이가 설정에 저장됐다(`min-height`가 인라인 height를 이긴다).
+  // 상한과 같은 방식으로 하한도 고정한다.
+  it("설정 clamp 하한은 CSS min-height와 정확히 같다", () => {
+    const cssMin = lengthPx(declaration(".quick-capture-editor", "min-height"));
+
+    useSettingsStore.getState().setCaptureDialogHeight(0);
+    const clampMin = useSettingsStore.getState().captureDialogHeight;
+
+    // 부등식이 아니라 등식인 이유: `>=`는 클램프가 CSS보다 높은 경우(사용자가
+    // CSS가 허용하는 크기까지 줄일 수 없다)를 놓치고, `<=`는 원래 결함(저장은
+    // 되는데 그려지지 않는다)을 놓친다. 두 숫자는 같아야만 한다.
+    expect(clampMin).toBe(cssMin);
+  });
+
+  it("기본 높이는 그 하한과 같다 — 캡처 상자는 기본이 가장 작다", () => {
+    // 하한을 올리면서 기본값을 그대로 두면, 기본 상태의 창이 클램프가 허용하는
+    // 것보다 작은 높이를 인라인으로 들고 있게 된다.
+    expect(useSettingsStore.getInitialState().captureDialogHeight).toBe(
+      lengthPx(declaration(".quick-capture-editor", "min-height")),
+    );
   });
 });
