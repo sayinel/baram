@@ -198,8 +198,4 @@
   --color-text-muted: var(
     --color-text-disabled
   ); /** Low-emphasis text (labels, metadata, timestamps) — follows disabled token for theme consistency */
-
-  --color-editor-line-highlight: var(
-    --color-bg-subtle
-  ); /** Editor current line highlight (alias of color.bg.subtle, was --color-editor-line-highlight: #f8f9fa) */
 }

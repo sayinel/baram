@@ -1,10 +1,10 @@
 // §54 Theme System — Type definitions and built-in theme data
 
 // ---------------------------------------------------------------------------
-// 1. ThemeColors — 25 CSS custom property keys
+// 1. ThemeColors — 24 CSS custom property keys
 // ---------------------------------------------------------------------------
 
-// 감사 순서 6: 25키를 손으로 두 번 적지 않는다 — 아래 THEME_COLOR_KEYS(값,
+// 감사 순서 6: 24키를 손으로 두 번 적지 않는다 — 아래 THEME_COLOR_KEYS(값,
 // 색 피커 메타데이터)가 단일 출처이고, 이 타입은 그 배열에서 파생된다. 키를
 // 추가/삭제하려면 배열 한 곳만 고치면 타입·에디터 UI·clearThemeVars의 제거
 // 목록이 함께 따라온다. (배열은 3번 섹션에 있다 — 타입 공간의 typeof 참조는
@@ -80,11 +80,6 @@ export const THEME_COLOR_KEYS = [
     category: "Editor",
   },
   { key: "--color-editor-cursor", label: "Editor Cursor", category: "Editor" },
-  {
-    key: "--color-editor-line-highlight",
-    label: "Editor Line Highlight",
-    category: "Editor",
-  },
 
   // Status
   { key: "--color-status-danger", label: "Danger", category: "Status" },
@@ -97,7 +92,18 @@ export const THEME_COLOR_KEYS = [
   { key: "--color-graph-edge", label: "Graph Edge", category: "Graph" },
 ] as const satisfies readonly {
   category: string;
-  key: `--color-${string}`;
+  // CLAUDE.md의 CSS 변수 규약: category는 9개뿐이다. 접두만 검사하면
+  // --color-foo-bar도 컴파일을 통과하므로 union으로 좁힌다(적대 리뷰).
+  key: `--color-${
+    | "accent"
+    | "bg"
+    | "border"
+    | "callout"
+    | "editor"
+    | "git"
+    | "graph"
+    | "status"
+    | "text"}-${string}`;
   label: string;
 }[];
 
@@ -130,11 +136,14 @@ export const THEME_KEY_MIGRATION_V10: Record<string, keyof ThemeColors> = {
 /**
  * Migrate a ThemeColors object from old key names to new key names.
  * Keys that don't need migration are passed through unchanged.
- * Missing keys are filled from `fallback` (defaults to Default Light).
+ * Missing keys are filled from `fallback` — 필수다(적대 리뷰): optional이던
+ * 시절 기본값이 Default Light라, fallback을 잊은 호출자마다 다크 테마가
+ * 라이트 값과 섞이는 footgun이 시그니처에 남아 있었다. 테마의 base를 알면
+ * defaultColorsForBase(base)를 넘긴다.
  */
 export function migrateThemeColors(
   old: Record<string, string>,
-  fallback?: ThemeColors,
+  fallback: ThemeColors,
 ): ThemeColors {
   const migrated: Record<string, string> = {};
 
@@ -155,13 +164,10 @@ export function migrateThemeColors(
     migrated[newKey] = value;
   }
 
-  // Fill any missing keys from fallback. 호출자는 테마의 base에 맞는 기본
-  // 팔레트를 넘겨야 한다 — 생략하면 Default Light로 채워져, 키가 모자란 다크
-  // 테마가 라이트 값과 섞인 혼합 팔레트가 된다(적대 리뷰).
-  const defaults = fallback ?? BUILT_IN_THEMES[0].colors;
-  for (const key of Object.keys(defaults)) {
+  // Fill any missing keys from fallback.
+  for (const key of Object.keys(fallback)) {
     if (!(key in migrated)) {
-      migrated[key] = defaults[key as keyof ThemeColors];
+      migrated[key] = fallback[key as keyof ThemeColors];
     }
   }
 
@@ -206,7 +212,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#1a1a1a",
       "--color-editor-selection": "#bfdbfe",
       "--color-editor-cursor": "#1a1a1a",
-      "--color-editor-line-highlight": "#f8f9fa",
 
       "--color-status-danger": "#ef4444",
       "--color-status-warning": "#f59e0b",
@@ -246,7 +251,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#e2e8f0",
       "--color-editor-selection": "#1e3a5f",
       "--color-editor-cursor": "#e2e8f0",
-      "--color-editor-line-highlight": "#16213e",
 
       "--color-status-danger": "#ef4444",
       "--color-status-warning": "#f59e0b",
@@ -286,7 +290,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#a9b1d6",
       "--color-editor-selection": "#283457",
       "--color-editor-cursor": "#c0caf5",
-      "--color-editor-line-highlight": "#1e2030",
 
       "--color-status-danger": "#f7768e",
       "--color-status-warning": "#e0af68",
@@ -326,7 +329,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#657b83",
       "--color-editor-selection": "#e0dbc8",
       "--color-editor-cursor": "#586e75",
-      "--color-editor-line-highlight": "#eee8d5",
 
       "--color-status-danger": "#dc322f",
       "--color-status-warning": "#b58900",
@@ -366,7 +368,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#839496",
       "--color-editor-selection": "#094a5c",
       "--color-editor-cursor": "#93a1a1",
-      "--color-editor-line-highlight": "#073642",
 
       "--color-status-danger": "#dc322f",
       "--color-status-warning": "#b58900",
@@ -406,7 +407,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#d8dee9",
       "--color-editor-selection": "#434c5e",
       "--color-editor-cursor": "#d8dee9",
-      "--color-editor-line-highlight": "#3b4252",
 
       "--color-status-danger": "#bf616a",
       "--color-status-warning": "#ebcb8b",
@@ -446,7 +446,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#123d96",
       "--color-editor-selection": "#d8e6b3",
       "--color-editor-cursor": "#123d96",
-      "--color-editor-line-highlight": "#f7fae8",
 
       "--color-status-danger": "#ef4444",
       "--color-status-warning": "#eab308",
@@ -486,7 +485,6 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-text": "#eec2da",
       "--color-editor-selection": "#2e4a28",
       "--color-editor-cursor": "#b4d156",
-      "--color-editor-line-highlight": "#232740",
 
       "--color-status-danger": "#ef4444",
       "--color-status-warning": "#eab308",
