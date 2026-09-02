@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
+  defaultColorsForBase,
   findThemeById,
   migrateThemeColors,
   THEME_COLOR_KEYS,
@@ -312,7 +313,12 @@ export const useSettingsStore = create<SettingsState>()(
           if (Array.isArray(themes)) {
             state.customThemes = themes.map((theme) => ({
               ...theme,
-              colors: migrateThemeColors(theme.colors),
+              // base에 맞는 기본 팔레트로 채운다 — 생략하면 키가 모자란 다크
+              // 테마가 Default Light 값과 섞인다 (적대 리뷰).
+              colors: migrateThemeColors(
+                theme.colors,
+                defaultColorsForBase(theme.base === "dark" ? "dark" : "light"),
+              ),
             }));
           }
         }
@@ -326,7 +332,12 @@ export const useSettingsStore = create<SettingsState>()(
           if (Array.isArray(themes)) {
             state.customThemes = themes.map((theme) => ({
               ...theme,
-              colors: migrateThemeColors(theme.colors),
+              // base에 맞는 기본 팔레트로 채운다 — 생략하면 키가 모자란 다크
+              // 테마가 Default Light 값과 섞인다 (적대 리뷰).
+              colors: migrateThemeColors(
+                theme.colors,
+                defaultColorsForBase(theme.base === "dark" ? "dark" : "light"),
+              ),
             }));
           }
         }

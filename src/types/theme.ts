@@ -105,6 +105,16 @@ export const THEME_COLOR_KEYS = [
 // 4. Theme key migration map (v9 → v10)
 // ---------------------------------------------------------------------------
 
+/**
+ * 테마 색 값의 계약 — hex만, 단 alpha 포함 4·8자리도 허용한다.
+ * color-contrast.ts가 `#rgba`/`#rrggbbaa`를 "valid CSS and a common export
+ * format"으로 이미 지원하므로(적대 리뷰: 같은 저장소에 색 계약이 둘이었다)
+ * import 검증도 같은 폭을 받는다. `<input type="color">`는 6자리만 표시하지만
+ * 그것은 표시 한계일 뿐, CSS cascade는 alpha hex를 정상 처리한다.
+ */
+export const THEME_COLOR_VALUE_RE =
+  /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
 /** Old CSS variable key → new key. Used by settings migration v10. */
 export const THEME_KEY_MIGRATION_V10: Record<string, keyof ThemeColors> = {
   "--color-accent": "--color-accent-default",
@@ -128,16 +138,26 @@ export function migrateThemeColors(
 ): ThemeColors {
   const migrated: Record<string, string> = {};
 
+  // 1차: canonical(비이주) 키를 먼저 앉힌다. 2차: 옛 키는 canonical 자리가
+  // **유효한 값으로** 차 있지 않을 때만 이주한다. 두 단계로 나누는 이유(적대
+  // 리뷰 2회): 옛 키와 canonical 키가 공존하면 순회 순서가 승자를 정했고(옛
+  // 키가 뒤면 stale 값이 canonical을 덮음), 존재만 보는 가드로 고치면 이번엔
+  // 빈 문자열 같은 invalid canonical이 유효한 옛 값을 무조건 버렸다. 정체가
+  // 순서를 이기되, invalid canonical은 유효한 옛 값에게 자리를 내준다.
   for (const [key, value] of Object.entries(old)) {
-    const newKey = THEME_KEY_MIGRATION_V10[key] ?? key;
-    // 옛 키와 canonical 키가 둘 다 있으면 canonical이 이긴다. 이 가드가 없으면
-    // Object.entries의 순회 순서가 승자를 정해서, 옛 키가 뒤에 놓인 객체에서는
-    // stale 값이 canonical 값을 덮었다.
-    if (newKey !== key && newKey in old) continue;
+    if (THEME_KEY_MIGRATION_V10[key]) continue;
+    migrated[key] = value;
+  }
+  for (const [key, value] of Object.entries(old)) {
+    const newKey = THEME_KEY_MIGRATION_V10[key];
+    if (!newKey) continue;
+    if (THEME_COLOR_VALUE_RE.test(migrated[newKey] ?? "")) continue;
     migrated[newKey] = value;
   }
 
-  // Fill any missing keys from fallback
+  // Fill any missing keys from fallback. 호출자는 테마의 base에 맞는 기본
+  // 팔레트를 넘겨야 한다 — 생략하면 Default Light로 채워져, 키가 모자란 다크
+  // 테마가 라이트 값과 섞인 혼합 팔레트가 된다(적대 리뷰).
   const defaults = fallback ?? BUILT_IN_THEMES[0].colors;
   for (const key of Object.keys(defaults)) {
     if (!(key in migrated)) {
@@ -146,6 +166,13 @@ export function migrateThemeColors(
   }
 
   return migrated as unknown as ThemeColors;
+}
+
+/** 테마 base에 맞는 기본 팔레트 — migrateThemeColors의 fill 출처로 쓴다. */
+export function defaultColorsForBase(base: "dark" | "light"): ThemeColors {
+  return BUILT_IN_THEMES.find(
+    (t) => t.id === (base === "dark" ? "default-dark" : "default-light"),
+  )!.colors;
 }
 
 // ---------------------------------------------------------------------------
