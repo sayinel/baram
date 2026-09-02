@@ -109,37 +109,53 @@
   border-radius: 0;
 }
 
-/* Code Block Style: Contrast — dark background */
+/* Code Block Style: Contrast — dark background.
+   테마와 무관한 고정 다크 팔레트(Catppuccin Mocha)다 — Mermaid의 고정 팔레트와
+   같은 계약이라 semantic 토큰으로 승격하지 않는다(테마를 따라가면 안 된다).
+   규칙마다 흩어져 있던 리터럴을 wrapper 스코프 컴포넌트 변수로 한 번만 적는다.
+   ‼️ standalone HTML export가 같은 팔레트를 JS 상수로 다시 든다
+   (utils/export/export-html-styles.ts CODE_STYLES.contrast) — 값을 바꾸면
+   거기도 같이 바꿀 것. */
+.code-block-wrapper[data-style="contrast"] {
+  --code-contrast-text: #cdd6f4; /* mocha text */
+  --code-contrast-subtext: #a6adc8; /* subtext0 */
+  --code-contrast-muted: #6c7086; /* overlay0 */
+  --code-contrast-bg: #1e1e2e; /* base */
+  --code-contrast-bg-dim: #181825; /* mantle */
+  --code-contrast-border: #313244; /* surface0 */
+  --code-contrast-caret: #f5e0dc; /* rosewater */
+}
+
 .code-block-wrapper[data-style="contrast"] .code-block-header {
-  color: #cdd6f4;
-  background-color: #1e1e2e;
-  border-color: #1e1e2e;
+  color: var(--code-contrast-text);
+  background-color: var(--code-contrast-bg);
+  border-color: var(--code-contrast-bg);
 }
 
 .code-block-wrapper[data-style="contrast"] .code-block-lang-select {
-  color: #a6adc8;
+  color: var(--code-contrast-subtext);
 }
 
 .code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor {
-  background-color: #1e1e2e;
-  border-color: #313244;
+  background-color: var(--code-contrast-bg);
+  border-color: var(--code-contrast-border);
 }
 
 .code-block-wrapper[data-style="contrast"]
   .code-block-editor
   .cm-editor
   .cm-content {
-  color: #cdd6f4;
-  caret-color: #f5e0dc;
+  color: var(--code-contrast-text);
+  caret-color: var(--code-contrast-caret);
 }
 
 .code-block-wrapper[data-style="contrast"]
   .code-block-editor
   .cm-editor
   .cm-gutters {
-  color: #6c7086;
-  background-color: #181825;
-  border-color: #313244;
+  color: var(--code-contrast-muted);
+  background-color: var(--code-contrast-bg-dim);
+  border-color: var(--code-contrast-border);
 }
 
 .code-block-wrapper[data-style="contrast"]

@@ -141,14 +141,34 @@ describe("what the exported page actually looks like", () => {
   it("gives each callout type its own colour", () => {
     // Discriminating: one generic `.callout` rule — which is what shipped
     // before — paints tip and bug identically.
+    //
+    // blocks.css의 callout 색이 리터럴에서 var(--color-callout-X)로 바뀐 뒤로
+    // jsdom의 getComputedStyle은 var()를 실색으로 풀어주지 않는다 — 그래서
+    // "타입별로 다른 토큰을 참조한다"와 "그 토큰이 번들된 시트에 실값으로
+    // 정의돼 있다"를 나눠서 판정한다. 브라우저에서는 이 둘이 합쳐져 실색이 된다.
     const tip = mount(`<div class="callout callout-tip"></div>`)
       .firstElementChild as HTMLElement;
     const tipColor = getComputedStyle(tip).borderLeftColor;
     const bug = mount(`<div class="callout callout-bug"></div>`)
       .firstElementChild as HTMLElement;
 
-    expect(tipColor).toBe("rgb(16, 185, 129)");
+    expect(tipColor).toBe("var(--color-callout-tip)");
     expect(getComputedStyle(bug).borderLeftColor).not.toBe(tipColor);
+
+    // 참조가 허공을 가리키면 위 판정은 통과해도 내보낸 문서는 무색이 된다 —
+    // 번들 시트 안에서 토큰의 참조 사슬(semantic → primitive)을 따라가 실제
+    // hex에 닿는지까지 고정한다.
+    const sheet = buildExportStylesheet();
+    const resolve = (name: string, depth = 0): string => {
+      expect(depth, `${name} 참조가 너무 깊다(순환?)`).toBeLessThan(5);
+      const def = new RegExp(`${name}:\\s*([^;]+);`).exec(sheet);
+      expect(def, `${name}이 번들 시트에 정의돼 있지 않다`).not.toBeNull();
+      const value = def![1].trim();
+      const ref = /^var\((--[\w-]+)\)$/.exec(value);
+      return ref ? resolve(ref[1], depth + 1) : value;
+    };
+    expect(resolve("--color-callout-tip")).toMatch(/^#[0-9a-f]{3,6}$/i);
+    expect(resolve("--color-callout-bug")).toMatch(/^#[0-9a-f]{3,6}$/i);
   });
 
   // §308 — the chip and the raw text it renders BOTH reach the export, and the

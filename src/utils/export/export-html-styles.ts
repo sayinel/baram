@@ -46,6 +46,9 @@ export const CODE_STYLE_MAP: Record<
     gutterColor: "#9ca3af",
     gutterBorder: "#e5e7eb",
   },
+  // ‼️ 앱 쪽 contrast 팔레트의 사본 — styles/editor/code-blocks.css의
+  // --code-contrast-* 컴포넌트 변수와 같은 Catppuccin Mocha 값이다.
+  // 값을 바꾸면 거기도 같이 바꿀 것 (standalone export라 var()를 못 읽는다).
   contrast: {
     langBg: "#1e1e2e",
     langBorder: "#313244",
