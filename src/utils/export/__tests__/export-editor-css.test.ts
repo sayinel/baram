@@ -191,16 +191,22 @@ describe("what the exported page actually looks like", () => {
   });
 
   it("keeps dark mode from repainting typed callout backgrounds", () => {
-    // 회귀 핀 (적대 리뷰): `[data-theme="dark"] … .callout { background }` 류의
-    // 일반 다크 규칙은 (0,3,0)이라 타입 규칙 (0,2,0)을 전부 이긴다 — 명시적
-    // 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개지는 결함이 실제로 있었다.
-    // bare `.callout`을 매치하는 다크 규칙이 시트에 다시 들어오면 여기서 잡는다.
-    // (.callout-icon-btn 같은 하위 요소의 다크 규칙은 정당하므로 통과한다.)
-    // 인용부호 표기(", ', 무인용)에 무관하게 잡는다 — 핀이 표기에 민감하면
-    // 같은 결함이 다른 표기로 재유입될 수 있다(적대 리뷰).
-    expect(buildExportStylesheet()).not.toMatch(
-      /\[data-theme=["']?dark["']?\][^{]*\.callout\s*[,{]/,
-    );
+    // 회귀 핀 (적대 리뷰 2회): `[data-theme="dark"] … .callout { background }`
+    // 류의 일반 다크 규칙은 (0,3,0)이라 타입 규칙 (0,2,0)을 전부 이긴다 —
+    // 명시적 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개지는 결함이 실제로
+    // 있었다. 정규식 핀은 표기(인용부호·:where()·selector list)에 속았으므로,
+    // 다크 root 아래 타입 callout을 실제로 마운트해 계산된 background가 여전히
+    // 자기 타입 토큰을 참조하는지를 본다 — 어떤 표기로 재유입돼도 cascade
+    // 결과로 잡힌다. (jsdom은 var()를 실값으로 풀지 않으므로 토큰 참조
+    // 문자열이 그대로 남는 것이 정상 기대값이다.)
+    document.documentElement.dataset.theme = "dark";
+    try {
+      const tip = mount(`<div class="callout callout-tip"></div>`)
+        .firstElementChild as HTMLElement;
+      expect(getComputedStyle(tip).background).toContain("--color-callout-tip");
+    } finally {
+      delete document.documentElement.dataset.theme;
+    }
   });
 
   // §308 — the chip and the raw text it renders BOTH reach the export, and the
