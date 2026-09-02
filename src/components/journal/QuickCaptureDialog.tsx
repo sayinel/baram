@@ -13,7 +13,7 @@ import {
 } from "../../keybindings/key-utils";
 import { TASK_INPUT_COMMAND } from "../../keybindings/keybinding-registry";
 import { findCommandByKey } from "../../keybindings/use-keybindings";
-import { resolveCapturePath } from "../../services/task-capture";
+import { imagesToLinks, resolveCapturePath } from "../../services/task-capture";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -179,6 +179,19 @@ export function QuickCaptureDialog() {
     // §307D 태스크 모드는 Zettel 공간을 요구하지 않는다 — 수집함 파일에
     // 한 줄을 붙이는 것뿐이므로 아래 Zettel 가드보다 먼저 갈라진다.
     if (taskMode.enabled) {
+      // §324-e 태스크는 한 줄이므로 이미지가 링크가 된다(`imagesToLinks`).
+      // 사용자는 이미지를 넣었으므로 그 사실을 알아야 한다 — 조용히 모양이
+      // 바뀌면 파일을 열어 보고 나서야 알게 된다. 세는 것과 바꾸는 것이 **같은
+      // 함수**라 둘이 어긋날 수 없다(`buildCaptureLine`이 실제 변환을 한다).
+      const { converted } = imagesToLinks(body);
+      if (converted > 0) {
+        useUIStore
+          .getState()
+          .showToast(
+            t("journal.capture.imageAsLink", { count: String(converted) }),
+            "info",
+          );
+      }
       try {
         // 태그는 캡처 줄에 인라인으로 접힌다. 여기서 버리면 자동완성이 제안하는
         // `#someday`가 아무 데도 닿지 않아, 정리 어휘가 캡처 지점에서 끊긴다.

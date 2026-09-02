@@ -601,9 +601,20 @@ describe("handleCaptureDrop — 캡처 창은 저장 전까지 쓰지 않는다 
     const payloadFor = (bytes: number) =>
       "A".repeat(Math.ceil((bytes * 4) / 3));
     const editor = createTestEditor();
-    editor.commands.setContent(
-      `<p><img src="data:image/png;base64,${payloadFor(40 * 1024 * 1024)}" alt="held.png"></p>`,
-    );
+    // ‼️ JSON 문서로 심는다 — HTML 문자열로 넣으면 53 MB 속성을 HTML 파서가 훑어
+    // 전체 스위트에서 5초 타임아웃에 걸린다(단독 실행에서는 통과해서 놓치기 쉽다).
+    editor.commands.setContent({
+      content: [
+        {
+          attrs: {
+            alt: "held.png",
+            src: `data:image/png;base64,${payloadFor(40 * 1024 * 1024)}`,
+          },
+          type: "image",
+        },
+      ],
+      type: "doc",
+    });
     const before = imageAttrs(editor).length;
     readMediaDataUrlMock.mockResolvedValue(
       `data:image/png;base64,${payloadFor(25 * 1024 * 1024)}`,

@@ -91,6 +91,7 @@
   "journal.capture.error.taskNotMarkdown": "The capture file must be a .md or .markdown file, or its tasks never appear in the agenda. Change it in Settings.",
   "journal.capture.error.taskOutsideHome": "The capture file must be inside the tasks home, or its tasks never appear in the agenda. Change it in Settings.",
   "journal.capture.error.taskSave": "Could not save to the capture file.",
+  "journal.capture.imageAsLink": "A task is a single line, so {count} image(s) were attached as links. The files are saved either way.",
   "journal.capture.mediaBudgetFull": "This capture is already holding {held} MB of media. It can hold {budget} MB before saving — save it, or remove an image, then add {name}.",
   "journal.capture.mediaReadFailed": "Could not read {name}.",
   "journal.capture.mediaTooLarge": "{name} is {size} MB. A capture holds media in memory until you save, so it can inline up to {limit} MB — drop this into a document instead.",

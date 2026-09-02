@@ -118,12 +118,25 @@ describe("§324-e 캡처 붙여넣기 — 크기 상한", () => {
   // **문자열** 하나뿐이다: `pendingMediaBytes`는 길이만 재고 디코딩하지 않으며,
   // `fileOfSize`는 크기만 속인다. 실제 이미지 바이트는 어디에도 만들지 않는다.
   describe("총량 예산", () => {
-    /** 디코딩하면 `bytes`가 되는 payload. 유효한 base64 문자면 내용은 무관하다. */
+    /**
+     * 디코딩하면 `bytes`가 되는 payload를 가진 이미지 노드를 심는다.
+     *
+     * ‼️ HTML 문자열이 아니라 **JSON 문서**로 넣는다. HTML로 넣으면 53 MB짜리 속성을
+     * HTML 파서가 훑어야 해서, 이 테스트가 단독으로는 통과하면서 전체 스위트에서는
+     * 5초 타임아웃에 걸렸다(실제로 그렇게 실패했다). JSON 경로는 파싱이 없어 비용이
+     * 문자열 생성뿐이다.
+     */
     function seedPending(target: Editor, bytes: number): void {
       const payload = "A".repeat(Math.ceil((bytes * 4) / 3));
-      target.commands.setContent(
-        `<p><img src="data:image/png;base64,${payload}" alt="held.png"></p>`,
-      );
+      target.commands.setContent({
+        content: [
+          {
+            attrs: { alt: "held.png", src: `data:image/png;base64,${payload}` },
+            type: "image",
+          },
+        ],
+        type: "doc",
+      });
     }
 
     function srcs(target: Editor): string[] {

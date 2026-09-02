@@ -684,6 +684,53 @@ describe("QuickCaptureDialog — §324-e 저장이 파일을 만든다", () => {
     );
   });
 
+  // ‼️ 이미지를 넣었는데 링크가 되는 것은 **조용히** 일어나서는 안 된다. 사용자는
+  // 파일을 열어 보고 나서야 알게 되고, 그것이 이 스레드가 계속 고쳐 온 실패 방식이다.
+  it("태스크 모드 — 이미지가 링크가 되면 그 사실을 알린다", async () => {
+    fakeDisk();
+    useSettingsStore.setState({
+      tasksHome: "/vault/tasks-home",
+      tasksCaptureFile: "inbox.md",
+    });
+    const showToast = vi.fn();
+    useUIStore.setState({ showToast } as never);
+
+    render(<QuickCaptureDialog />);
+    fireEvent.click(taskToggle());
+    pasteImageInCapture("fig.png");
+    await waitForCaptureImages(1);
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    const messages = showToast.mock.calls.map((c) => c[0] as string);
+    expect(messages.some((m) => m.includes("link"))).toBe(true);
+  });
+
+  // 대조군 — 이미지가 없으면 알리지 않는다. 없으면 위 테스트는 "언제나 알린다"는
+  // 구현도 통과한다.
+  it("태스크 모드 — 이미지가 없으면 알리지 않는다", async () => {
+    fakeDisk();
+    useSettingsStore.setState({
+      tasksHome: "/vault/tasks-home",
+      tasksCaptureFile: "inbox.md",
+    });
+    const showToast = vi.fn();
+    useUIStore.setState({ showToast } as never);
+
+    render(<QuickCaptureDialog />);
+    fireEvent.click(taskToggle());
+    setCaptureBody("이미지 없는 태스크");
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    const messages = showToast.mock.calls.map((c) => c[0] as string);
+    expect(messages.some((m) => m.includes("link"))).toBe(false);
+  });
+
   // ‼️ 순서가 이 테스트의 전부다. `captureTask`는 본문을 `- [ ] …` **한 줄**로
   // 접으므로, 추출이 그 뒤에 일어나면 거대한 base64 문자열이 이미 plain-text
   // 태스크 목록의 한 줄이 된 뒤다. 어떤 렌더러도 그것을 되돌려 주지 않는다.
