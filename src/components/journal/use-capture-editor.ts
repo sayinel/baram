@@ -26,7 +26,6 @@ export interface CaptureEditor {
   /** 지금 문서를 마크다운으로. 비어 있으면 빈 문자열. */
   getMarkdown: () => string;
   isEmpty: boolean;
-  reset: () => void;
 }
 
 /**
@@ -73,7 +72,13 @@ export function useCaptureEditor(
 
   useEffect(() => {
     if (!open) return;
-    const instance = new TiptapEditor({ extensions }) as unknown as Editor;
+    // 캐스트 없음. `@tiptap/react`의 `Editor`는 `@tiptap/core`의 그것을 그대로
+    // 재export한 같은 클래스라(`@tiptap/react/dist/index.js`가 통째로
+    // `export * from "@tiptap/core"`) 타입이 이미 맞는다 — `App.tsx`의
+    // keep-alive 편집기도 캐스트 없이 이렇게 만든다. 여기 있던
+    // `as unknown as Editor`는 그 사실을 확인하지 않은 계획에서 왔고, 두 타입이
+    // 언젠가 정말로 갈라지면 그 불일치를 조용히 삼켰을 것이다.
+    const instance = new TiptapEditor({ extensions });
     const sync = () => setIsEmpty(isDocEmpty(instance.state.doc));
     instance.on("update", sync);
     setEditor(instance);
@@ -92,10 +97,10 @@ export function useCaptureEditor(
     return serializeLiveDoc(editor).trim();
   }, [editor]);
 
-  const reset = useCallback(() => {
-    editor?.commands.clearContent(true);
-    setIsEmpty(true);
-  }, [editor]);
-
-  return { editor, getMarkdown, isEmpty, reset };
+  // §323 리뷰 Minor 8: 여기 `reset()`이 있었지만 부르는 곳이 자기 테스트뿐이었다.
+  // 다이얼로그는 본문을 비울 일이 없다 — `open` 전환마다 위 effect가 편집기
+  // 인스턴스를 통째로 새로 만들고, 그것이 곧 빈 문서다. 산 것처럼 보이는 죽은
+  // API는 다음 사람에게 "본문 초기화는 이걸 부르면 된다"고 잘못 알려 준다.
+  // (`knip`은 객체 속성의 미사용을 못 본다 — 이 종류는 사람이 지워야 한다.)
+  return { editor, getMarkdown, isEmpty };
 }

@@ -58,16 +58,6 @@ describe("§323 useCaptureEditor", () => {
     expect(result.current.isEmpty).toBe(false);
   });
 
-  it("reset은 문서를 비운다", async () => {
-    const { result } = renderHook(() => useCaptureEditor(true));
-    await act(async () => {});
-    await act(async () => {
-      result.current.editor!.commands.setContent("<p>x</p>");
-    });
-    await act(async () => result.current.reset());
-    expect(result.current.isEmpty).toBe(true);
-  });
-
   // 다이얼로그는 열고 닫기가 잦다. 파기하지 않으면 인스턴스가 쌓인다.
   it("언마운트하면 편집기를 파기한다", async () => {
     const { result, unmount } = renderHook(() => useCaptureEditor(true));
