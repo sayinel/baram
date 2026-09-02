@@ -204,6 +204,15 @@ describe("QuickCaptureDialog — memo editor & dismissal guard", () => {
 
   const overlay = () => document.querySelector(".quick-capture-overlay")!;
 
+  // ‼️ §323 리뷰 Minor 9 이후로 mousedown이 빠지면 안 된다. 진짜 클릭에는 반드시
+  // 앞서는 mousedown이 있고, 다이얼로그는 이제 그 누름이 어디서 시작했는지로
+  // "바깥 클릭"과 "안에서 시작해 밖에서 끝난 드래그"를 가른다. `fireEvent.click`은
+  // click만 쏘므로, 그것만 쓰면 실제로 일어날 수 없는 입력을 시험하게 된다.
+  const clickOutside = () => {
+    fireEvent.mouseDown(overlay());
+    fireEvent.click(overlay());
+  };
+
   it("does NOT save on plain Enter", () => {
     render(<QuickCaptureDialog />);
     setCaptureBody("line one");
@@ -231,14 +240,14 @@ describe("QuickCaptureDialog — memo editor & dismissal guard", () => {
   it("ignores outside clicks while any content is typed", () => {
     render(<QuickCaptureDialog />);
     setCaptureBody("x");
-    fireEvent.click(overlay());
+    clickOutside();
 
     expect(useUIStore.getState().quickCaptureOpen).toBe(true);
   });
 
   it("closes on outside click when nothing is typed", () => {
     render(<QuickCaptureDialog />);
-    fireEvent.click(overlay());
+    clickOutside();
 
     expect(useUIStore.getState().quickCaptureOpen).toBe(false);
   });
@@ -642,6 +651,35 @@ describe("§324-g 캡처 창 크기", () => {
   // 규칙이 서로를 덮어 주었기 때문에 어느 하나를 지워도 초록이었다.
   // 정확한 값으로 바꾸면 공용 클램프가 사라지는 순간(원값은 300-500 = -200)
   // 이 단정이 무너진다.
+  // ‼️ §323 리뷰 Minor 9 회귀 핀. 리사이즈 핸들을 잡고 다이얼로그 밖에서 손을
+  // 떼면 브라우저가 mousedown/mouseup의 최근접 공통 조상 — 오버레이 — 에
+  // click을 쏘고, 다이얼로그의 `stopPropagation`은 그 경로 위에 없다. 비어 있는
+  // 캡처 창을 처음 만지자마자 사라지는 경로였다.
+  it("리사이즈 드래그를 다이얼로그 밖에서 놓아도 창이 닫히지 않는다", async () => {
+    useSettingsStore
+      .getState()
+      .setCaptureDialogHeight(CAPTURE_DIALOG_MIN_HEIGHT);
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    const handle = document.querySelector(
+      ".quick-capture-resize",
+    ) as HTMLElement;
+    const overlayEl = document.querySelector(".quick-capture-overlay")!;
+
+    // 누름은 다이얼로그 안(핸들), 뗌은 밖 — 그래서 click의 target이 오버레이다.
+    fireEvent.mouseDown(handle, { clientY: 300 });
+    fireEvent.mouseMove(window, { clientY: 420 });
+    fireEvent.mouseUp(window);
+    fireEvent.click(overlayEl);
+    await act(async () => {});
+
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+    // 드래그 자체는 정상적으로 끝났다 — 닫힘만 막고 리사이즈까지 죽이지 않았다.
+    expect(useSettingsStore.getState().captureDialogHeight).toBe(
+      CAPTURE_DIALOG_MIN_HEIGHT + 120,
+    );
+  });
+
   it("높이 하한은 CSS가 실제로 보여줄 수 있는 최솟값이다", async () => {
     useSettingsStore.getState().setCaptureDialogHeight(300);
     render(<QuickCaptureDialog />);

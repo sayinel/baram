@@ -1,5 +1,5 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EditorContent } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
@@ -233,7 +233,23 @@ export function QuickCaptureDialog() {
     [handleSave, toggleQuickCapture, hasContent, taskMode, keybindingOverrides],
   );
 
+  // ‼️ §323 리뷰 Minor 9: 다이얼로그 안에서 시작해 밖에서 끝난 드래그가 창을
+  // 닫았다. 리사이즈 핸들을 잡고 다이얼로그 경계 밖에서 손을 떼면 브라우저는
+  // mousedown과 mouseup의 최근접 공통 조상 — 즉 오버레이 — 에 click을 쏘고,
+  // 다이얼로그의 `stopPropagation`은 그 경로 위에 없다(click의 target 자체가
+  // 오버레이다).
+  //
+  // 시간으로 무마하지 않는다. 애초에 "바깥 클릭으로 닫는다"의 올바른 뜻이
+  // "누른 것도 뗀 것도 바깥"이라는 것이다 — 안에서 시작한 드래그는 바깥 클릭이
+  // 아니다. 그래서 누름이 오버레이 자신에게서 시작했는지를 기억한다. 리사이즈뿐
+  // 아니라 다이얼로그 안에서 밖으로 끄는 텍스트 선택도 같이 막힌다.
+  const pressStartedOnOverlay = useRef(false);
+  const handleOverlayMouseDown = useCallback((e: React.MouseEvent) => {
+    pressStartedOnOverlay.current = e.target === e.currentTarget;
+  }, []);
+
   const handleOverlayClick = useCallback(() => {
+    if (!pressStartedOnOverlay.current) return;
     if (hasContent) return;
     toggleQuickCapture();
   }, [hasContent, toggleQuickCapture]);
@@ -241,7 +257,11 @@ export function QuickCaptureDialog() {
   if (!quickCaptureOpen) return null;
 
   return (
-    <div className="quick-capture-overlay" onClick={handleOverlayClick}>
+    <div
+      className="quick-capture-overlay"
+      onClick={handleOverlayClick}
+      onMouseDown={handleOverlayMouseDown}
+    >
       <div
         className="quick-capture-dialog"
         onClick={(e) => e.stopPropagation()}
