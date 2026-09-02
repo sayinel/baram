@@ -50,9 +50,20 @@ describe("§323 Extension 프로파일", () => {
     expect(diff).toEqual(new Set(CAPTURE_EXCLUDED_EXTENSIONS));
   });
 
-  it("캡처 프로파일이 document에 없는 것을 새로 넣지는 않는다", () => {
+  // §324-e 이 테스트는 원래 "캡처는 document의 부분집합이다"였다. 지금은 아니다 —
+  // 캡처만 갖는 Extension이 정확히 하나 있고, 그 하나를 **이름으로** 적어 둔다.
+  // "부분집합이 아니다"로 느슨하게 풀면 다음에 무엇이 몰래 들어와도 통과하므로,
+  // 여기서 잃는 것이 없도록 추가 집합 자체를 고정한다.
+  //
+  // `captureSaveKey`가 캡처에만 있는 이유: 캡처 창에서 `Mod+Enter`는 저장이고,
+  // HardBreak의 기본 바인딩이 그 키로 하드 브레이크를 넣어 모든 저장 본문 끝에
+  // `\`를 남겼다. 문서 편집기에서 `Mod+Enter`는 저장이 아니므로 그쪽은 건드리지
+  // 않는다(`extensions/index.ts`의 `CaptureSaveKey` 주석에 측정값이 있다).
+  it("캡처만 갖는 Extension은 정확히 `captureSaveKey` 하나다", () => {
     const doc = names({ profile: "document" });
-    for (const n of names({ profile: "capture" }))
-      expect(doc.has(n)).toBe(true);
+    const extra = new Set(
+      [...names({ profile: "capture" })].filter((n) => !doc.has(n)),
+    );
+    expect(extra).toEqual(new Set(["captureSaveKey"]));
   });
 });

@@ -277,6 +277,33 @@ describe("QuickCaptureDialog — memo editor & dismissal guard", () => {
     expect(useUIStore.getState().quickCaptureOpen).toBe(false);
   });
 
+  // ‼️ 위 테스트는 `metaKey`만 보낸다. ProseMirror는 `navigator.platform`으로 Mac을
+  // 판정해 `Mod-`를 가르고 jsdom은 Mac이 아니므로, `metaKey`로는 PM 키맵이 아예
+  // 매칭되지 않는다 — 즉 저 테스트는 React 핸들러만 태우고 편집기 안의 키맵과의
+  // 상호작용을 보지 못한다.
+  //
+  // §324-e에서 캡처 프로필은 `Mod-Enter`를 가로채 하드 브레이크를 막는다
+  // (`CaptureSaveKey`). 그 가로채기가 저장까지 삼켜 버리면 사용자는 `\`가 사라진
+  // 대신 저장을 잃는다. `ctrlKey`로 보내 키맵을 **실제로** 태우고, 그러고도 저장이
+  // 일어나는지 본다.
+  it("Mod+Enter가 키맵을 실제로 태워도 저장은 일어난다", async () => {
+    render(<QuickCaptureDialog />);
+    setCaptureBody("a captured line");
+    fireEvent.keyDown(captureEditable(), { ctrlKey: true, key: "Enter" });
+
+    await vi.waitFor(() => {
+      expect(captureFleeting).toHaveBeenCalledWith(
+        "/vault/zettel",
+        expect.stringContaining("a captured line"),
+        [],
+      );
+    });
+    // 그리고 하드 브레이크가 본문에 섞이지 않았다.
+    const body = vi.mocked(captureFleeting).mock.calls[0][1];
+    expect(body).not.toContain("\\");
+    expect(useUIStore.getState().quickCaptureOpen).toBe(false);
+  });
+
   it("ignores outside clicks while any content is typed", () => {
     render(<QuickCaptureDialog />);
     setCaptureBody("x");

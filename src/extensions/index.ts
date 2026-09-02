@@ -4,6 +4,7 @@
 import type { Locale } from "../i18n";
 import type { Extensions } from "@tiptap/core";
 
+import { Extension } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import Dropcursor from "@tiptap/extension-dropcursor";
 import Gapcursor from "@tiptap/extension-gapcursor";
@@ -130,6 +131,40 @@ interface BaramExtensionOptions {
    */
   profile?: "capture" | "document";
 }
+
+/**
+ * §324-e 캡처 창에서 `Mod+Enter`는 **저장**이다 — 하드 브레이크가 아니다.
+ *
+ * ‼️ 이것이 사용자가 두 번 보고한 `\` 결함의 **원인**이다. IME가 아니었다.
+ * `@tiptap/extension-hard-break`는 `Mod-Enter`를 `setHardBreak()`에 기본
+ * 바인딩한다(`dist/index.js:53`). 캡처 창에서 ⌘↩는 저장 제스처이므로, 저장할
+ * 때마다 ProseMirror 키맵이 먼저 하드 브레이크를 넣고 **그다음** 이벤트가
+ * 버블링해 다이얼로그가 저장했다. 그래서 모든 본문 끝에 하드 브레이크가 붙었다.
+ *
+ * 측정으로 확인했다 — 본문을 넣고 `Mod-Enter`를 키맵에 흘렸을 때:
+ *   before `"태스크 테스트"` → after `"태스크 테스트\"`
+ *   → `- [ ] 태스크 테스트\ ➕2026-09-02`  (사용자가 본 그 줄)
+ *
+ * ‼️ 태스크 모드만의 문제가 아니다. fleeting note도 같은 하드 브레이크를 받아
+ * 노트 끝에 `\`가 남았다 — 그쪽은 한 줄로 접지 않으므로 아무도 눈치채지 못했다.
+ * 그래서 정규화가 아니라 **여기서** 고친다: 원인을 없애면 두 경로가 함께 낫는다.
+ *
+ * `true`를 돌려주면 "처리됨"이므로 HardBreak의 바인딩이 실행되지 않는다. 저장은
+ * 그대로 동작한다 — DOM 이벤트는 `preventDefault`와 무관하게 계속 버블링하고,
+ * 다이얼로그의 `onKeyDown`이 그것을 받는다(테스트가 그 둘을 함께 고정한다).
+ *
+ * 문서 편집기에는 걸지 않는다. 거기서 `Mod+Enter`는 저장이 아니고, 하드 브레이크와
+ * 토글 접기가 정당한 동작이다.
+ */
+const CaptureSaveKey = Extension.create({
+  name: "captureSaveKey",
+  // HardBreak(기본 100)보다 먼저 키를 봐야 한다 — 먼저 `true`를 돌려주는 쪽이 이긴다.
+  priority: 1000,
+
+  addKeyboardShortcuts() {
+    return { "Mod-Enter": () => true };
+  },
+});
 
 /** M2 기본 편집 Extension 세트 */
 export function createBaramExtensions(
@@ -354,7 +389,10 @@ export function createBaramExtensions(
         ]),
   ];
   if (options?.profile !== "capture") return all;
-  return all.filter((e) => !CAPTURE_EXCLUDED_EXTENSIONS.has(e.name));
+  return [
+    ...all.filter((e) => !CAPTURE_EXCLUDED_EXTENSIONS.has(e.name)),
+    CaptureSaveKey,
+  ];
 }
 
 /** Merge core extensions with plugin-provided Tiptap extensions */
