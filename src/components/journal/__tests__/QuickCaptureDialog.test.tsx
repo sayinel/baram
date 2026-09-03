@@ -1377,6 +1377,34 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     expect(saveButton()).not.toBeDisabled();
   });
 
+  // §324-c 미리보기와 저장 버튼은 같은 `scanPending`/`captureTargets` 값을 쓴다 — 스캔이
+  // 끝나기 전에 대상을 말하면 그 값이 아직 비어 있어 "일치하는 노트 없음"이 된다.
+  it("says nothing about the target while the scan is in flight, then names it once resolved", async () => {
+    const release = holdTargetScan();
+    render(<QuickCaptureDialog />);
+    setTags("#영감노트");
+
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await act(async () => {
+      release([NOTE_ENTRY]);
+    });
+    await waitForTargetsLoaded();
+    expect(screen.getByRole("status")).toHaveTextContent("영감노트");
+  });
+
+  // ‼️ 태스크는 한 줄이고 노트에 붙지 않는다 — 대상을 말하면 거짓 약속이 된다.
+  it("hides the target preview in task mode", async () => {
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    setTags("#영감노트");
+    expect(screen.getByRole("status")).toHaveTextContent("영감노트");
+
+    fireEvent.click(taskToggle());
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   // 태그를 안 적었으면 기다릴 이유가 없다 — 대상이 무엇이든 캡처는 `inbox/`로 가고
   // 토스트도 뜨지 않으므로 스캔 결과가 답을 바꾸지 못한다. 그런데도 막으면 §99의 가장
   // 흔한 경로가 열릴 때마다 저장 버튼이 잠깐 죽는다.

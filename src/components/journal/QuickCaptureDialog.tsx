@@ -33,6 +33,7 @@ import {
   showAppendedToast,
   showInboxFallbackToast,
 } from "./capture-append-feedback";
+import { CaptureTargetPreview } from "./CaptureTargetPreview";
 import { TagSuggest } from "./TagSuggest";
 import { useCaptureEditor } from "./use-capture-editor";
 import { useCaptureResize } from "./use-capture-resize";
@@ -475,6 +476,14 @@ export function QuickCaptureDialog() {
             visible={tags.visible}
           />
         </div>
+
+        {/* §324-c 태스크는 노트에 붙지 않으므로 태스크 모드에서는 렌더하지 않는다. */}
+        {!taskMode.enabled && (
+          <CaptureTargetPreview
+            hasTags={tags.list.length > 0}
+            targets={captureTargets}
+          />
+        )}
 
         {/* §99 M4: surface the "space not configured" state immediately on
             render, not only after a failed save attempt. §307D: task mode
