@@ -160,6 +160,8 @@ entryKey는 인자로 주입(노드 모듈 import 금지, 순환). 과거 세 �
 
 codemirror-vim의 keymap·엔진 본체는 `@replit/codemirror-vim`이 아니라 의존성 `@replit/codemirror-vim-core/vim.js`에 있다 (dist에는 keymap이 없다 — 키 바인딩을 찾을 때 헛걸음 주의).
 
+**NodeView wrapper의 React 핸들러(`onContextMenu` 등)는 `createPortal`로 body에 그린 모달 안의 이벤트도 받는다** — React 트리 기준으로 버블하기 때문. 블록 자신의 이벤트인지는 `wrapperRef.current.contains(e.target)`로 먼저 걸러라 (mermaid/svg fullscreen 모달 우클릭이 인라인 상태에 묶인 블록 메뉴를 열던 사고, PR 537).
+
 ## registry.json 유지 규칙
 
 Extension을 추가/수정할 때 반드시 `registry.json`도 함께 업데이트할 것.
