@@ -35,6 +35,7 @@ import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useMediaResize } from "./views/use-media-resize";
+import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 export function SvgBlockView({
@@ -100,6 +101,7 @@ export function SvgBlockView({
       onSaveBeforeExit,
       onKeyDown: handleKeyDown,
     });
+  const refusedCommit = useRefusedCommitToast();
 
   // Sanitized SVG for the current source (cheap — pure string op).
   // localCode belongs to an edit SESSION — a traversal selection never opened
@@ -149,15 +151,35 @@ export function SvgBlockView({
   }, []);
 
   const closeFullscreen = useCallback(() => {
+    // §12-6: fullscreen Close button commit — tagged chrome (design §5b).
+    // issue 531: the helper is the capability gate and reports whether it
+    // dispatched. On a refusal (read-only editor) nothing below may run —
+    // the local mirror would say "saved" over an unchanged document, and
+    // closing would throw the edit away. Keep the modal open with the text
+    // in it; Discard is the way out that says what it does.
+    const committed = updateNodeAttributesWithVim(editor, getPos, {
+      code: fullscreenCode,
+    });
+    if (!committed) {
+      refusedCommit.announce(
+        "Read-only editor — fullscreen changes were not saved",
+      );
+      return;
+    }
+    refusedCommit.settle();
     setLocalCode(fullscreenCode);
-    // §12-6: fullscreen Close button commit — tagged chrome (design §5b)
-    updateNodeAttributesWithVim(editor, getPos, { code: fullscreenCode });
     // The direct commit ENDS the textarea session — a leftover dirty flag
     // would make the next deselect re-save this (by then possibly stale)
     // local value over an Undo or external update (review S5/S6-R4).
     clearDirty();
     setFullscreen(false);
-  }, [fullscreenCode, editor, getPos, clearDirty]);
+  }, [fullscreenCode, editor, getPos, clearDirty, refusedCommit]);
+
+  /** Leave fullscreen without committing; localCode and the dirty flag are
+   *  untouched, so the inline session continues exactly as it was. */
+  const discardFullscreen = useCallback(() => {
+    setFullscreen(false);
+  }, []);
 
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
@@ -266,6 +288,13 @@ export function SvgBlockView({
           <div className="svg-fullscreen-modal">
             <div className="svg-fullscreen-header">
               <span className="svg-block-label">svg</span>
+              <button
+                className="svg-fullscreen-close"
+                onClick={discardFullscreen}
+                title="Leave without saving"
+              >
+                Discard
+              </button>
               <button
                 className="svg-fullscreen-close"
                 onClick={closeFullscreen}

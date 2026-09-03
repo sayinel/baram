@@ -116,16 +116,37 @@ export function isVimExternalEdit(tr: Transaction): boolean {
  * internal dispatch cannot carry provenance. Chrome controls inside
  * NodeViews (collapse toggles, pickers, resize commits) use this;
  * focus-local input islands keep the untagged prop (design §5b/§4).
+ *
+ * This is also the capability gate for every chrome commit (§12-⑩, issue
+ * 531): it refuses when {@link canUseEditorChrome} says no — a real read-only
+ * editor (`options.editable === false`) or a destroyed one — and vim
+ * normal/visual pass as always. (A non-vim `editable` suppressor is refused
+ * only while vim is off; with vim on, the predicate attributes a locked view
+ * to vim. That is the predicate's documented contract, and the §12-⑪ scan
+ * bans such suppressors in src, so the collision cannot arise here.) Eight
+ * callers funnel through here and only two of them guarded at the call
+ * site; the gate lives where the funnel is.
+ *
+ * @returns whether the document ACCEPTED the change — decided by state
+ * identity after the dispatch, not by having called dispatch, because a
+ * `filterTransaction` can still veto it. A silent refusal would be a defect
+ * of its own: callers whose local state assumes the commit happened
+ * (mermaid/svg fullscreen close clearing the dirty flag, the query builder
+ * mirroring its definition) MUST branch on this. Callers with no dependent
+ * state (resize commits — `dragPct` falls back to the node attrs) may ignore
+ * it.
  */
 export function updateNodeAttributesWithVim(
   editor: Editor,
   getPos: () => number | undefined,
   attrs: Record<string, unknown>,
-): void {
+): boolean {
+  if (!canUseEditorChrome(editor)) return false;
   const pos = getPos();
-  if (typeof pos !== "number") return;
+  if (typeof pos !== "number") return false;
   const node = editor.state.doc.nodeAt(pos);
-  if (!node) return;
+  if (!node) return false;
+  const before = editor.view.state;
   editor.view.dispatch(
     withVimExternalEdit(
       editor.state.tr.setNodeMarkup(pos, undefined, {
@@ -134,6 +155,7 @@ export function updateNodeAttributesWithVim(
       }),
     ),
   );
+  return editor.view.state !== before;
 }
 
 /**

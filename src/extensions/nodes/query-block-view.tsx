@@ -213,10 +213,16 @@ export function QueryBlockView({
 
   const updateDef = useCallback(
     (newDef: QueryDef) => {
-      setDef(newDef);
       const serialized = serializeQueryDSL(newDef);
-      // §12-6: query-builder commit — tagged chrome (design §5b)
-      updateNodeAttributesWithVim(editor, getPos, { query: serialized });
+      // §12-6: query-builder commit — tagged chrome (design §5b).
+      // issue 531: mirror the definition only once the commit went through;
+      // a refused commit (read-only editor) must leave the builder showing
+      // what the document actually holds. The queryStr effect re-parses the
+      // committed attr afterwards, so this is the immediate update and that
+      // is the canonical one.
+      if (updateNodeAttributesWithVim(editor, getPos, { query: serialized })) {
+        setDef(newDef);
+      }
     },
     [editor, getPos],
   );

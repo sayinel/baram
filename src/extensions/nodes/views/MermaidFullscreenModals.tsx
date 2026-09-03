@@ -15,7 +15,10 @@ interface MermaidEditFullscreenModalProps {
   fullscreenSvg: string;
   fullscreenTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
   onChangeCode: (value: string) => void;
+  /** Commit and leave. May refuse (read-only editor) and keep the modal. */
   onClose: () => void;
+  /** Leave without committing — the way out when onClose refuses. */
+  onDiscard: () => void;
 }
 
 interface MermaidViewFullscreenModalProps {
@@ -90,6 +93,7 @@ export function MermaidEditFullscreenModal({
   fullscreenTextareaRef,
   onChangeCode,
   onClose,
+  onDiscard,
 }: MermaidEditFullscreenModalProps): React.ReactPortal {
   return createPortal(
     <div
@@ -111,6 +115,13 @@ export function MermaidEditFullscreenModal({
               {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
             </span>
           )}
+          <button
+            className="mermaid-fullscreen-close"
+            onClick={onDiscard}
+            title="Leave without saving"
+          >
+            Discard
+          </button>
           <button className="mermaid-fullscreen-close" onClick={onClose}>
             Close
           </button>

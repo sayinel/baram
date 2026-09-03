@@ -132,6 +132,7 @@ baram/
 - 모든 Tiptap Extension은 `Node.create()` / `Mark.create()` / `Extension.create()` 패턴
 - 반드시 라운드트립 테스트(`__tests__/{name}.test.ts`) + 파이프라인 변환기(`pipeline/transformers/{name}-transformer.ts`) 포함
 - `registry.json`에 메타데이터 등록 필수
+- **NodeView chrome의 문서 속성 커밋은 `updateNodeAttributesWithVim`(vim-keys.ts) 하나로** — 이 헬퍼가 `canUseEditorChrome` 관문이고 dispatch 여부를 boolean으로 돌려준다. 커밋 성공을 전제로 로컬 상태를 바꾸는 호출자(dirty 해제·모달 닫기·builder 미러)는 반드시 반환값으로 분기할 것 — 거부 시 조용히 넘어가면 "저장됨" UI와 문서가 어긋난다(#531)
 
 ### 로컬 실행
 
