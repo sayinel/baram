@@ -354,7 +354,13 @@ export function SvgBlockView({
       // everything else on the block opens its own menu. Rationale in
       // mermaid-block-view.tsx, which has the same shape.
       onContextMenu={(e: React.MouseEvent) => {
-        if (isInNativeTextControl(e.target)) return;
+        // Portal-borne events (fullscreen modals) are not ours; an open block
+        // menu must not linger beside a native one. Both as in mermaid.
+        if (!wrapperRef.current?.contains(e.target as Node)) return;
+        if (isInNativeTextControl(e.target)) {
+          setContextMenu(null);
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         setContextMenu({ x: e.clientX, y: e.clientY });

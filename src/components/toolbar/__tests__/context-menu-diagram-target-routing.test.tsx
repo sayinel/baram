@@ -214,6 +214,63 @@ describe("mermaid block: right-click ownership by target", () => {
     expect(localMenu(".mermaid-context-menu")).toBeNull();
     expect(documentMenuLabels()).toEqual([]);
   });
+
+  it("editing: stepping aside for the textarea also closes a block menu left open", async () => {
+    // The block menu's own dismiss listens for document mousedown, which the
+    // toolbar and the caption stop — so a menu can still be open when the
+    // next right-click lands on a text control. It must not linger beside
+    // the native menu (it carries Delete).
+    const { editor, view } = await mountMermaid();
+    await enterEditing(editor);
+    const preview = required(
+      view.container.querySelector<HTMLElement>(
+        ".mermaid-block-editing .mermaid-block-svg",
+      ),
+      "editing-state preview",
+    );
+    const textarea = required(
+      view.container.querySelector<HTMLTextAreaElement>(
+        ".mermaid-block-editing textarea",
+      ),
+      "editing textarea",
+    );
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    expect(localMenu(".mermaid-context-menu")).not.toBeNull();
+
+    const nativeMenuAllowed = fireEvent.contextMenu(textarea, {
+      clientX: 20,
+      clientY: 20,
+    });
+    await flush();
+
+    expect(nativeMenuAllowed).toBe(true);
+    expect(localMenu(".mermaid-context-menu")).toBeNull();
+  });
+
+  it("fullscreen editor: a right-click on its preview is left to the browser", async () => {
+    // The fullscreen modals are portals: rendered into body, but in this
+    // component's React tree, so their events bubble to the wrapper's
+    // handler. A block menu there would act on the inline state, not on the
+    // fullscreen draft — the wrapper must ignore what is not inside it.
+    const { editor, view } = await mountMermaid();
+    await enterEditing(editor);
+    fireEvent.click(view.getByTitle("Edit full-screen"));
+    await flush();
+    const fullscreenPreview = required(
+      document.body.querySelector<HTMLElement>(".mermaid-fullscreen-preview"),
+      "fullscreen preview",
+    );
+
+    const nativeMenuAllowed = fireEvent.contextMenu(fullscreenPreview, {
+      clientX: 400,
+      clientY: 300,
+    });
+    await flush();
+
+    expect(nativeMenuAllowed).toBe(true);
+    expect(localMenu(".mermaid-context-menu")).toBeNull();
+  });
 });
 
 describe("svg block: right-click ownership by target", () => {
@@ -278,5 +335,60 @@ describe("svg block: right-click ownership by target", () => {
     expect(nativeMenuAllowed).toBe(true);
     expect(localMenu(".svg-context-menu")).toBeNull();
     expect(documentMenuLabels()).toEqual([]);
+  });
+
+  it("editing: stepping aside for the textarea also closes a block menu left open", async () => {
+    const { editor, view } = await mount({
+      attrs: { code: SVG },
+      type: "svgBlock",
+    });
+    await enterEditing(editor);
+    const preview = required(
+      view.container.querySelector<HTMLElement>(
+        ".svg-block-editing .svg-block-render-faded",
+      ),
+      "editing-state preview",
+    );
+    const textarea = required(
+      view.container.querySelector<HTMLTextAreaElement>(
+        ".svg-block-editing textarea",
+      ),
+      "editing textarea",
+    );
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    expect(localMenu(".svg-context-menu")).not.toBeNull();
+
+    const nativeMenuAllowed = fireEvent.contextMenu(textarea, {
+      clientX: 20,
+      clientY: 20,
+    });
+    await flush();
+
+    expect(nativeMenuAllowed).toBe(true);
+    expect(localMenu(".svg-context-menu")).toBeNull();
+  });
+
+  it("fullscreen editor: a right-click on its preview is left to the browser", async () => {
+    const { editor, view } = await mount({
+      attrs: { code: SVG },
+      type: "svgBlock",
+    });
+    await enterEditing(editor);
+    fireEvent.click(view.getByTitle("Edit full-screen"));
+    await flush();
+    const fullscreenPreview = required(
+      document.body.querySelector<HTMLElement>(".svg-fullscreen-preview"),
+      "fullscreen preview",
+    );
+
+    const nativeMenuAllowed = fireEvent.contextMenu(fullscreenPreview, {
+      clientX: 400,
+      clientY: 300,
+    });
+    await flush();
+
+    expect(nativeMenuAllowed).toBe(true);
+    expect(localMenu(".svg-context-menu")).toBeNull();
   });
 });

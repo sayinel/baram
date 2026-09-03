@@ -395,7 +395,20 @@ export function MermaidBlockView({
       // BOTH modes: while editing, the live preview stays visible and used to
       // fall through to the generic text menu (Cut / Bold over an atom).
       onContextMenu={(e: React.MouseEvent) => {
-        if (isInNativeTextControl(e.target)) return;
+        // Portal-borne events bubble here too: the fullscreen modals render
+        // into body but live in this component's React tree. They are not
+        // physically inside the block, and the menu they would open is bound
+        // to the inline state, not the fullscreen draft — leave them to the
+        // browser.
+        if (!wrapperRef.current?.contains(e.target as Node)) return;
+        if (isInNativeTextControl(e.target)) {
+          // An open block menu must not linger beside the native one. Its
+          // mousedown dismiss does not fire when the click that got here was
+          // on the toolbar or the caption (both stop mousedown), nor for a
+          // keyboard-invoked context menu.
+          setContextMenu(null);
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         setContextMenu({ x: e.clientX, y: e.clientY });
