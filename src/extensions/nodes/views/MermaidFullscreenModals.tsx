@@ -6,6 +6,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
 import { MERMAID_TEMPLATES } from "../../../utils/markdown/mermaid-utils";
 
 interface MermaidEditFullscreenModalProps {
@@ -25,6 +26,9 @@ interface MermaidViewFullscreenModalProps {
   detectedType: null | string;
   error: null | string;
   onClose: () => void;
+  /** No svg for the source on screen YET (the render is debounced): say
+   *  so rather than "Empty diagram" (issue 521 review). */
+  pending?: boolean;
   svgHtml: string;
 }
 
@@ -33,12 +37,21 @@ export function MermaidViewFullscreenModal({
   detectedType,
   error,
   onClose,
+  pending = false,
   svgHtml,
 }: MermaidViewFullscreenModalProps): React.ReactPortal {
   return createPortal(
     <div
       className="mermaid-fullscreen-overlay"
       onClick={(e) => e.stopPropagation()}
+      // issue 521: a right-click inside the modal is nobody's — the block
+      // ignores portal events, and the browser's page menu (Reload) must not
+      // appear here. Text controls keep their native menu.
+      onContextMenu={(e) => {
+        if (isInNativeTextControl(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
       }}
@@ -74,6 +87,8 @@ export function MermaidViewFullscreenModal({
             />
           ) : error ? (
             <div className="mermaid-block-error">{error}</div>
+          ) : pending ? (
+            <div className="mermaid-block-empty">Rendering…</div>
           ) : (
             <div className="mermaid-block-empty">Empty diagram</div>
           )}
@@ -102,6 +117,14 @@ export function MermaidEditFullscreenModal({
         // Don't let clicks bubble through the portal to the block's onClick.
         e.stopPropagation();
         if (e.target === e.currentTarget) onClose();
+      }}
+      // issue 521: a right-click inside the modal is nobody's — the block
+      // ignores portal events, and the browser's page menu (Reload) must not
+      // appear here. Text controls keep their native menu.
+      onContextMenu={(e) => {
+        if (isInNativeTextControl(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();

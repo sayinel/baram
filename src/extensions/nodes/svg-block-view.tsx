@@ -144,11 +144,11 @@ export function SvgBlockView({
     };
   }, [contextMenu]);
 
-  // issue 521: a mode flip closes the menu — it is bound to `source`, whose
-  // meaning changes with the mode; rationale in mermaid-block-view.tsx.
+  // issue 521: a mode flip or a source change closes the menu — it is bound
+  // to `source`; rationale in mermaid-block-view.tsx.
   useEffect(() => {
     setContextMenu(null);
-  }, [editing]);
+  }, [editing, source]);
 
   // Auto-resize fullscreen textarea.
   useEffect(() => {
@@ -197,11 +197,8 @@ export function SvgBlockView({
 
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
-    // Reachable from the block menu mid-edit (issue 521): blurring then would
-    // end the textarea session.
-    if (editing) return;
     requestAnimationFrame(() => editor.commands.blur());
-  }, [editor, editing]);
+  }, [editor]);
 
   const runAI = useCallback(
     (anchor: HTMLElement) => {
@@ -252,6 +249,14 @@ export function SvgBlockView({
           // Stop click from bubbling through the React portal tree to the
           // NodeViewWrapper's onClick (which would select the block → edit mode).
           onClick={(e) => e.stopPropagation()}
+          // issue 521: a right-click inside the modal is nobody's — the block
+          // ignores portal events, and the browser's page menu (Reload) must
+          // not appear here. Text controls keep their native menu.
+          onContextMenu={(e) => {
+            if (isInNativeTextControl(e.target)) return;
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           onMouseDown={(e) => {
             e.stopPropagation();
             if (e.target === e.currentTarget) {
@@ -296,6 +301,14 @@ export function SvgBlockView({
             // Don't let the click bubble through the portal to the NodeViewWrapper.
             e.stopPropagation();
             if (e.target === e.currentTarget) closeFullscreen();
+          }}
+          // issue 521: a right-click inside the modal is nobody's — the block
+          // ignores portal events, and the browser's page menu (Reload) must
+          // not appear here. Text controls keep their native menu.
+          onContextMenu={(e) => {
+            if (isInNativeTextControl(e.target)) return;
+            e.preventDefault();
+            e.stopPropagation();
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") closeFullscreen();

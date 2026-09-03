@@ -48,12 +48,15 @@ export function MermaidBlockView({
   const renderRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<null | string>(null);
-  const [svgHtml, setSvgHtml] = useState<string>("");
-  // The source `svgHtml` was rendered FROM. The render is debounced and a
-  // failed render keeps the last good svg, so while editing the two can
-  // disagree — the block menu must not offer that svg as if it were the
-  // current diagram (issue 521 final review).
-  const [renderedSource, setRenderedSource] = useState("");
+  // The rendered svg TOGETHER with the source it was rendered from — one
+  // state, so the two cannot drift apart. The render is debounced and a
+  // failed render keeps the last good svg, so while editing the source on
+  // screen and the svg can disagree; anything that hands the svg out (the
+  // block menu, the fullscreen viewer) checks the pairing first (issue 521
+  // final review).
+  const [rendered, setRendered] = useState({ source: "", svg: "" });
+  const svgHtml = rendered.svg;
+  const renderedSource = rendered.source;
   // §5.12: whether a render has been ATTEMPTED, which is not the same question
   // as whether it produced anything. "no SVG yet" is the DOM for three
   // different states — still lazy, empty source, failed — and the export has to
@@ -103,7 +106,7 @@ export function MermaidBlockView({
     const sessionOpen = selected && sessionOpenRef.current;
     const source = sessionOpen ? localCode : code;
     if (!source.trim()) {
-      setSvgHtml("");
+      setRendered({ source, svg: "" });
       setError(null);
       setRenderAttempted(true);
       return;
@@ -117,8 +120,7 @@ export function MermaidBlockView({
           source,
           (svg) => {
             if (!cancelled) {
-              setSvgHtml(svg);
-              setRenderedSource(source);
+              setRendered({ source, svg });
               setError(null);
               setRenderAttempted(true);
             }
@@ -233,13 +235,28 @@ export function MermaidBlockView({
     };
   }, [contextMenu]);
 
-  // issue 521: the menu is bound to the mode it opened in (menuCode — the
-  // session's code while editing, the committed one otherwise), so a mode
-  // flip closes it. That also covers an Escape the textarea's vim stair
-  // stops before the document listener above can see it.
+  // issue 521: the block's own menu, and View Fullscreen from it, are
+  // reachable in both modes, so what they offer must be what the user is
+  // looking at — the session's code while editing, the committed attribute
+  // otherwise.
+  const menuCode = editing ? localCode : code;
+  // Only hand out the rendered svg (Copy as SVG, the PNG items gated on it,
+  // the fullscreen viewer) when it was rendered from that very source — never
+  // a stale render over broken or newer source. The inline preview keeps
+  // showing the last good render, faded, next to the error; that is the
+  // editing affordance, not an export.
+  const freshSvgHtml = renderedSource === menuCode ? svgHtml : "";
+
+  // issue 521: the menu is bound to what it opened on — the mode (menuCode's
+  // meaning flips with it) and the source itself. Either changing under an
+  // open menu closes it rather than re-binding it: a mode flip covers the
+  // Escape the textarea's vim stair stops before the document listener
+  // above can see it, and a source change (typing, an undo from the Edit
+  // menu) would otherwise make the gated svg items vanish and shift the
+  // list under the pointer.
   useEffect(() => {
     setContextMenu(null);
-  }, [editing]);
+  }, [editing, menuCode]);
 
   // Seed the fullscreen editor and open it. Two call sites share this
   // code→svg→error→open sequence (the header's Expand button and the block's
@@ -353,36 +370,23 @@ export function MermaidBlockView({
     setFullscreen(false);
   }, []);
 
-  // issue 521: the block's own menu, and View Fullscreen from it, are
-  // reachable in both modes, so what they offer must be what the user is
-  // looking at — the session's code while editing, the committed attribute
-  // otherwise.
-  const menuCode = editing ? localCode : code;
-  // Only hand out the rendered svg (Copy as SVG, the PNG items gated on it,
-  // the fullscreen viewer) when it was rendered from that very source — never
-  // a stale render over broken or newer source. The inline preview keeps
-  // showing the last good render, faded, next to the error; that is the
-  // editing affordance, not an export.
-  const freshSvgHtml = renderedSource === menuCode ? svgHtml : "";
   const detectedType = detectMermaidType(localCode);
 
   // Fullscreen View modal (read-only — diagram only, no editor)
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
-    // The modal is reachable from the block menu mid-edit now (issue 521);
-    // blurring then would end the textarea session the user is in.
-    if (editing) return;
     // Prevent ProseMirror from selecting the mermaid block when modal closes
     requestAnimationFrame(() => {
       editor.commands.blur();
     });
-  }, [editor, editing]);
+  }, [editor]);
 
   const viewFullscreenModal = viewFullscreen ? (
     <MermaidViewFullscreenModal
       detectedType={detectedType}
       error={error}
       onClose={closeViewFullscreen}
+      pending={!freshSvgHtml && !error && menuCode.trim() !== ""}
       svgHtml={freshSvgHtml}
     />
   ) : null;

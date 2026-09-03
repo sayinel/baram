@@ -257,11 +257,13 @@ describe("mermaid block: right-click ownership by target", () => {
     expect(localMenu(".mermaid-context-menu")).toBeNull();
   });
 
-  it("fullscreen editor: a right-click on its preview is left to the browser", async () => {
+  it("fullscreen editor: a right-click on its preview opens no block menu, and the modal swallows it", async () => {
     // The fullscreen modals are portals: rendered into body, but in this
     // component's React tree, so their events bubble to the wrapper's
     // handler. A block menu there would act on the inline state, not on the
-    // fullscreen draft — the wrapper must ignore what is not inside it.
+    // fullscreen draft — the wrapper must ignore what is not inside it. The
+    // modal itself then swallows the click, so the browser's page menu
+    // (Reload) does not appear either; only its textarea keeps a native menu.
     const { editor, view } = await mountMermaid();
     await enterEditing(editor);
     fireEvent.click(view.getByTitle("Edit full-screen"));
@@ -277,7 +279,7 @@ describe("mermaid block: right-click ownership by target", () => {
     });
     await flush();
 
-    expect(nativeMenuAllowed).toBe(true);
+    expect(nativeMenuAllowed).toBe(false);
     expect(localMenu(".mermaid-context-menu")).toBeNull();
   });
 
@@ -408,7 +410,7 @@ describe("svg block: right-click ownership by target", () => {
     expect(localMenu(".svg-context-menu")).toBeNull();
   });
 
-  it("fullscreen editor: a right-click on its preview is left to the browser", async () => {
+  it("fullscreen editor: a right-click on its preview opens no block menu, and the modal swallows it", async () => {
     const { editor, view } = await mount({
       attrs: { code: SVG },
       type: "svgBlock",
@@ -427,7 +429,7 @@ describe("svg block: right-click ownership by target", () => {
     });
     await flush();
 
-    expect(nativeMenuAllowed).toBe(true);
+    expect(nativeMenuAllowed).toBe(false);
     expect(localMenu(".svg-context-menu")).toBeNull();
   });
 

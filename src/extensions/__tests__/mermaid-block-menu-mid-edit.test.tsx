@@ -6,8 +6,8 @@
 // failed render, so Copy as SVG could hand out a diagram that no longer
 // matches the source on screen. Copy as PNG re-renders the live source and
 // swallowed its failure, so on broken source it was a silent no-op. View
-// Fullscreen's close blurred the editor, which mid-edit could take the
-// session's focus away. And a right-click on the menu itself, a portal, fell
+// Fullscreen from the menu, then Close, must leave the session and its
+// focus where they were. And a right-click on the menu itself, a portal, fell
 // through the block's containment guard to the browser.
 import {
   act,
@@ -160,6 +160,9 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
   });
 
   it("View Fullscreen from the menu, then Close, keeps the edit session and its focus", async () => {
+    // A smoke, not a discriminator: the close blurs the editor root, which
+    // never held focus here (the textarea does), and the session hangs off
+    // the NodeSelection, which a DOM blur does not touch.
     const { view, preview, textarea } = await mountEditing();
     textarea.focus();
     expect(document.activeElement).toBe(textarea);
@@ -223,10 +226,29 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     expect(
       document.body.querySelector(`${body} .mermaid-block-svg`),
     ).toBeNull();
+    // ...and it says a render is coming, not that the diagram is empty.
+    expect(document.body.querySelector(body)?.textContent).toContain(
+      "Rendering",
+    );
     await waitFor(() => {
       expect(
         document.body.querySelector(`${body} .mermaid-block-svg`),
       ).not.toBeNull();
     });
+  });
+  it("a source change under an open menu closes it instead of reshaping it", async () => {
+    // The svg items are gated on a fresh render, so typing (or an undo from
+    // the Edit menu) while the menu is open would make them vanish and slide
+    // Copy Source into Copy as SVG's slot under the pointer. The menu closes
+    // instead — the same rule as the mode flip.
+    const { preview, textarea } = await mountEditing();
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    expect(menu()).not.toBeNull();
+
+    fireEvent.change(textarea, { target: { value: EDITED } });
+    await flush();
+
+    expect(menu()).toBeNull();
   });
 });
