@@ -4,26 +4,19 @@ vi.mock("../../ipc/invoke", () => ({
   readFile: (p: string) => readFileMock(p),
   writeFile: (p: string, c: string) => writeFileMock(p, c),
 }));
-// ‼️ `resolveTaskWriteTarget`은 **기본적으로 진짜**다. 목으로 갈아끼우면 라우팅 순서를
-// 주장하는 테스트가 "목이 돌려준 값을 따랐다"만 확인하게 되고, 정작 그 순서는 아무도
-// 검증하지 않는다. `mockImplementation`으로 진짜를 다시 꽂는 것은 `beforeEach`가 한다 —
-// 갈래를 강제하는 테스트 하나(문서 갈래)가 `mockReturnValue`로 덮기 때문이다.
+// ‼️ `apply-task-write`는 **목하지 않는다.** 이 파일의 어떤 테스트도 라우터를 목하지
+// 않는 것이 계약이다: 세 갈래의 판정(특히 소스 vs 문서의 순서)이 검증 대상이고, 목을
+// 끼우면 그 테스트는 "목이 돌려준 값을 따랐다"만 확인하게 된다. 픽스처로 스토어 상태를
+// 세우면 진짜 라우터가 원하는 갈래를 그대로 내준다.
 //
-// `markSourceTabDirty`는 목하지 않는다. 진짜여야 그 탭이 실제로 dirty가 되는지를
-// **결과로** 볼 수 있다 — 목하면 "불렀다"만 남는다.
-vi.mock("../../utils/tasks/apply-task-write", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../utils/tasks/apply-task-write")
-  >()),
-  resolveTaskWriteTarget: vi.fn(),
-}));
+// `markSourceTabDirty`도 같은 이유로 진짜다 — 그 탭이 실제로 dirty가 되는지를
+// **결과로** 볼 수 있다. 목하면 "불렀다"만 남는다.
 vi.mock("../../utils/editor/serialize-live-doc", () => ({
   serializeLiveDoc: (e: unknown) => serializeLiveDocMock(e),
 }));
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
-import { resolveTaskWriteTarget } from "../../utils/tasks/apply-task-write";
 import { appendCaptureToNotes, CaptureAppendError } from "../capture-append";
 
 const readFileMock = vi.fn<(p: string) => Promise<string>>();
@@ -78,7 +71,7 @@ function registerBuffer(tabId: string, initial: string) {
   return { read: () => buffer };
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.clearAllMocks();
   useEditorStore.setState({
     activeTabId: null,
@@ -92,13 +85,6 @@ beforeEach(async () => {
   readFileMock.mockResolvedValue(NOTE);
   writeFileMock.mockResolvedValue(undefined);
   serializeLiveDocMock.mockReturnValue(NOTE);
-  // 진짜 라우터를 기본값으로 되돌린다 — `mockReturnValue`는 테스트를 넘어 살아남는다.
-  const actual = await vi.importActual<
-    typeof import("../../utils/tasks/apply-task-write")
-  >("../../utils/tasks/apply-task-write");
-  vi.mocked(resolveTaskWriteTarget).mockImplementation(
-    actual.resolveTaskWriteTarget,
-  );
 });
 
 describe("appendCaptureToNotes — disk branch", () => {
@@ -154,6 +140,23 @@ describe("appendCaptureToNotes — disk branch", () => {
     expect(useEditorStore.getState().staleContentTabs).toContain("bg");
   });
 
+  // ‼️ §324-f 출처 줄. 이 단정이 없으면 `opts.source → entry.source` 배선에 커버리지가
+  // 전혀 없어, 그 필드를 지우거나 이름을 바꾸는 리팩터가 모든 캡처에서 출처를 조용히
+  // 떨어뜨리고도 초록으로 통과한다. 단정은 호출이 아니라 **쓰인 내용**을 본다.
+  it("writes the Source line for a capture that names its provenance", async () => {
+    await appendCaptureToNotes({
+      body: "새 메모",
+      editor: null,
+      now: NOW,
+      source: "제목 https://example.com",
+      targets: [TARGET],
+    });
+
+    expect(writeFileMock.mock.calls[0][1]).toContain(
+      "Source: [제목](https://example.com)",
+    );
+  });
+
   // ‼️ 모든 저장 경로가 하는 일이다(`use-auto-save.ts:115` 등). 빠뜨리면 워처가 우리
   // 쓰기를 **외부 변경**으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다.
   it("seeds the self-write baseline so the watcher does not call it external", async () => {
@@ -170,16 +173,21 @@ describe("appendCaptureToNotes — disk branch", () => {
   });
 });
 
-// ‼️ 이 갈래만 라우터를 목한다. 여기서 검증하는 것은 라우팅 판정이 아니라 **문서에 쓰는
-// 행위**이고, 진짜 라우터는 `isDirty: true`인 탭에만 `document`를 주므로 목 없이는
-// `markDirty` 단정이 공허해진다(이미 dirty인 탭을 dirty로 세우는 것은 no-op다).
+// ‼️ 여기에도 라우터 목이 없다. 진짜 라우터가 `document`를 주는 조건이 곧 이 픽스처다:
+// 활성 + dirty + editor 있음.
+//
+// ‼️ 그래서 `markDirty(tabId, true)`(서비스의 문서 갈래)는 **증명 가능한 no-op**이다 —
+// `markDirty`에 동등성 관문이 있고(`stores/editor/editor.ts`의 `tab.isDirty === dirty`면
+// 그대로 반환) 라우터는 이미 dirty인 탭에만 `document`를 주기 때문이다. 그 줄을 지우는
+// 뮤테이션은 **살아남는다. 그것이 정직한 결과다.**
+//
+// 한때 여기에 `mockReturnValue({kind:"document"})` + clean 탭 픽스처를 두어 그 호출을
+// 관측 가능하게 만들었다. 그 대가가 더 컸다: 프로덕션 라우터가 만들 수 없는 상태를
+// 테스트하고, 이 파일의 "아무도 라우터를 목하지 않는다"는 계약을 깨뜨린다.
+// 커버리지 구멍처럼 보인다고 목을 되살리지 말 것.
 describe("appendCaptureToNotes — document branch", () => {
   beforeEach(() => {
-    vi.mocked(resolveTaskWriteTarget).mockReturnValue({
-      kind: "document",
-      tabId: "tab-1",
-    });
-    openTab({ active: true, id: "tab-1", isDirty: false });
+    openTab({ active: true, id: "tab-1", isDirty: true });
     // `openFiles`는 사용자의 첫 타이핑 이후 낡은 스냅샷이다 — 라이브 문서와 **다르게**
     // 둔다. 같게 두면 `serializeLiveDoc` 대신 이 캐시를 읽는 구현도 통과한다.
     useFileStore.getState().setFileContent(PATH, NOTE);
@@ -202,7 +210,8 @@ describe("appendCaptureToNotes — document branch", () => {
     // ‼️ 사용자가 입력 중이던 내용이 남아 있는 것 — `openFiles`를 읽는 구현은
     // 첫 타이핑 이후 영구히 낡으므로 이 문장을 잃는다(M2-a Critical 1).
     expect(next).toContain("사용자가 입력 중이던 문장.");
-    expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
+    // `tabs[0].isDirty`는 단정하지 않는다. 픽스처가 이미 `true`이므로 그 단정은
+    // 구현이 무엇을 하든 통과한다 — 위 describe 주석의 no-op 논증 참조.
   });
 
   it("requests a content refresh so the appended entry appears on screen", async () => {
@@ -326,6 +335,34 @@ describe("appendCaptureToNotes — rejection", () => {
       code: "dirtyTab",
       title: T2.title,
     });
+  });
+
+  // ‼️ 같은 회계가 **쓰기 실패**에도 성립해야 한다. 관문만 `CaptureAppendError`를 던지면
+  // 디스크 가득 참·권한·IPC 오류는 맨 `Error`로 빠져나가고 `appended`가 사라진다 —
+  // 호출자는 "아무것도 저장되지 않았다"고 말하고, 사용자는 다시 눌러 **이미 쓰인 첫째
+  // 노트에 중복을 만든다.** `appended`가 막으려는 것이 정확히 그 중복이다.
+  it("still reports the landed target when a later write fails", async () => {
+    writeFileMock.mockImplementation((p: string) =>
+      p === T2.path
+        ? Promise.reject(new Error("disk full"))
+        : Promise.resolve(undefined),
+    );
+
+    const err: unknown = await appendCaptureToNotes({
+      body: "x",
+      editor: null,
+      now: NOW,
+      targets: [T1, T2],
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CaptureAppendError);
+    expect(err).toMatchObject({
+      appended: [{ path: T1.path, title: T1.title }],
+      code: "writeFailed",
+      title: T2.title,
+    });
+    // 원인을 잃지 않는 것 — 문구가 "왜"를 말하지 못하면 진단이 불가능해진다.
+    expect((err as Error).message).toContain("disk full");
   });
 });
 

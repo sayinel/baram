@@ -32,7 +32,14 @@ export interface AppendedTarget {
   title: string;
 }
 
-export type CaptureAppendErrorCode = "dirtyTab";
+/**
+ * `dirtyTab` — 저장하지 않은 탭이 그 노트를 들고 있어 **쓰지 않기로** 한 것.
+ * `writeFailed` — 쓰려고 했는데 실패한 것(디스크 가득 참·권한·IPC 오류).
+ *
+ * 둘을 가르는 이유는 UI 문구가 아니라 **사실이 다르기 때문**이다. 앞은 사용자가 탭을
+ * 저장하면 풀리고, 뒤는 그렇지 않다.
+ */
+export type CaptureAppendErrorCode = "dirtyTab" | "writeFailed";
 
 interface CaptureAppendOptions {
   body: string;
@@ -64,8 +71,13 @@ export class CaptureAppendError extends Error {
 }
 
 /**
- * 대상 노트마다 항목 하나를 붙인다. 실패하면 `CaptureAppendError`를 던지고, 그때까지
- * 쓰인 대상은 오류의 `appended`에 담아 보낸다.
+ * 대상 노트마다 항목 하나를 붙인다. 실패하면 **언제나** `CaptureAppendError`를 던지고,
+ * 그때까지 쓰인 대상은 오류의 `appended`에 담아 보낸다.
+ *
+ * ‼️ "언제나"가 요점이다. 한때는 관문(`assertNoUnsavedTab`)만 그 타입을 던졌고 `writeFile`의
+ * 거절(디스크 가득 참·권한·IPC)은 맨 `Error`로 빠져나갔다 — `appended` 없이. 대상이 둘이고
+ * 둘째 쓰기가 실패하면 호출자는 "아무것도 저장되지 않았다"고 보고하고, 사용자는 다시 눌러
+ * **이미 쓰인 첫째에 중복을 만든다.** `appended`가 존재하는 이유가 정확히 그 중복 방지다.
  *
  * 대상은 **순서대로 하나씩** 처리한다. 병렬로 하면 같은 문서를 두 대상이 가리키는
  * 경우(중복 제거는 §320이 하지만 그 계약이 깨질 수 있다) 나중 쓰기가 앞 쓰기를 덮는다.
@@ -83,7 +95,19 @@ export async function appendCaptureToNotes(
   const appended: AppendedTarget[] = [];
 
   for (const target of targets) {
-    await appendToOne(target, entry, stamp, editor, appended);
+    try {
+      await appendToOne(target, entry, stamp, editor, appended);
+    } catch (err) {
+      // 관문이 던진 것은 이미 `appended`를 싣고 있다 — 그대로 올려보낸다.
+      if (err instanceof CaptureAppendError) throw err;
+      // 그 밖의 모든 실패. 원본 메시지를 문구에 담아 원인을 잃지 않는다.
+      throw new CaptureAppendError(
+        "writeFailed",
+        target.title,
+        [...appended],
+        `appendCaptureToNotes: ${target.path}: ${messageOf(err)}`,
+      );
+    }
     appended.push({ path: target.path, title: target.title });
   }
 
@@ -183,4 +207,9 @@ function assertNoUnsavedTab(
     [...appended],
     `appendCaptureToNotes: ${target.path} has unsaved changes in a tab`,
   );
+}
+
+/** 무엇이 던져졌든 사람이 읽을 한 줄로. `throw "문자열"`도 원인을 말해야 한다. */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
