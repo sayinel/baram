@@ -106,4 +106,45 @@ describe("TagSuggest", () => {
       options.map((el) => el.querySelector(".tag-suggest-kind")?.textContent),
     ).toEqual([undefined, "Note", "Note · Captures: 3"]);
   });
+
+  // 재현 — `<ul>`에 `ref`가 안 붙어 있으면 스크롤 이펙트가 매번 첫 줄에서 조용히
+  // return해 `scrollIntoView`가 한 번도 안 불린다. "불렸다"만 단정하면 엉뚱한
+  // 항목을 스크롤해도 통과하므로, 실제로 스크롤된 **항목**까지 고정한다.
+  it("scrolls the active item into view when the active index moves", () => {
+    const suggestions: TagSuggestion[] = Array.from({ length: 20 }, (_, i) => ({
+      count: i,
+      isNote: false,
+      name: `tag-${i}`,
+    }));
+    const calledOn: Element[] = [];
+    const spy = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(function (this: Element) {
+        calledOn.push(this);
+      });
+
+    const { rerender } = render(
+      <TagSuggest
+        activeIndex={0}
+        onSelect={vi.fn()}
+        suggestions={suggestions}
+        visible={true}
+      />,
+    );
+    calledOn.length = 0;
+
+    rerender(
+      <TagSuggest
+        activeIndex={15}
+        onSelect={vi.fn()}
+        suggestions={suggestions}
+        visible={true}
+      />,
+    );
+
+    const options = screen.getAllByRole("option");
+    expect(calledOn.at(-1)).toBe(options[15]);
+
+    spy.mockRestore();
+  });
 });

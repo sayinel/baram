@@ -26,7 +26,16 @@ export function TagSuggest({
   const { t } = useTranslation();
   const listRef = useRef<HTMLUListElement>(null);
 
-  // Scroll active item into view
+  // Scroll active item into view.
+  //
+  // ‼️ `container-scroll.ts`(§313)와 `scroll-to-target.test.ts`는 `scrollIntoView`에
+  // 경고 사인을 박아 뒀다 — 이전 구현이 `block: "center"`를 걸어서 "어느 조상을
+  // 뜻했는지" 말할 방법이 없어 **스크롤 가능한 조상을 전부** 가운데로 끌고 갔다(작은
+  // 창에서 앱 셸까지 스크롤되어 탭 바가 잘림). 여기서는 그 함정에 해당하지 않는다:
+  // `block: "nearest"`는 대상이 이미 보이는 조상은 건드리지 않고, 필요한 만큼만
+  // 스크롤한다 — `.tag-suggest`(패널 스크롤 컨테이너) 밖으로는 번지지 않는다. 이
+  // 리스트/피커류(WikilinkMenu, TagMenu, SlashMenu, MoveToFolderModal, TabSwitcher 등)가
+  // 전부 이미 같은 패턴을 쓴다.
   useEffect(() => {
     if (!listRef.current) return;
     const items =
@@ -44,6 +53,7 @@ export function TagSuggest({
     <ul
       aria-label={t("journal.tagSuggest.aria")}
       className="tag-suggest"
+      ref={listRef}
       role="listbox"
       style={style}
     >
