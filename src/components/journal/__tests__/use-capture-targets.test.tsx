@@ -191,7 +191,7 @@ describe("useCaptureTargets", () => {
       // surface — the fleeting note lives in inbox/ and must not become a
       // target even though its title matches the tag below.
       //
-      // ‼️ The title must not contain a space: `resolveCaptureTargets` only
+      // ‼️ The title must not contain a space: `resolveCaptureMatches` only
       // compares a whitespace-free title directly against the (space-free)
       // tag input, else it falls back to aliases-only — a space in the title
       // would make this fixture fail to match for a reason unrelated to

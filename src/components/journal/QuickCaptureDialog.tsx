@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PendingMedia } from "../../utils/media-data-url";
+import type { CaptureTargets } from "./use-capture-targets";
 
 import { EditorContent } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
@@ -40,6 +41,14 @@ import { useCaptureResize } from "./use-capture-resize";
 import { useCaptureTags } from "./use-capture-tags";
 import { useCaptureTargets } from "./use-capture-targets";
 import { captureErrorKey, useCaptureTaskMode } from "./use-capture-task-mode";
+
+/** 태스크 모드가 보는 값 — 안정된 참조라 `useCallback` 의존성을 흔들지 않는다. */
+const NO_CAPTURE_TARGETS: CaptureTargets = {
+  failed: false,
+  loading: false,
+  targets: [],
+  unmatchedTags: [],
+};
 
 // ⌘↩ on macOS, Ctrl+Enter elsewhere — shown on the Save button.
 const saveKeyLabel = formatKeyForDisplay(
@@ -81,10 +90,24 @@ export function QuickCaptureDialog() {
   // 모드인 경우, 대상 훅의 effect가 `resetTaskMode`의 effect보다 먼저 돌아 디렉터리 목록
   // 한 번은 이미 출발해 있다. 값을 치르는 본문 읽기는 `use-capture-targets`의 취소
   // 확인이 막는다.)
-  const captureTargets = useCaptureTargets(
+  const scannedTargets = useCaptureTargets(
     quickCaptureOpen && !taskMode.enabled,
     tags.list,
   );
+  /**
+   * 태스크 모드에서는 대상이 **없다**.
+   *
+   * ‼️ 훅의 값을 그대로 쓰면 안 된다. 위 게이트는 태스크 모드를 켤 때 훅의 `open`을
+   * true→false로 만드는데, 훅의 리셋은 false→**true**에서만 돈다 — 토글 직전에 풀려 있던
+   * `targets`가 그대로 남는다. 그 낡은 값을 읽은 미디어 목적지가 태스크가 절대 닿지 않을
+   * 노트 옆에 이미지를 썼다(성능을 위해 더한 게이트가 상태의 **리셋 시점**을 바꿨고, 그
+   * 타이밍에 기대던 쪽은 아무도 다시 유도되지 않았다 — §320이 §324-e의 목적지 전제를 깬
+   * 것과 같은 모양이다).
+   *
+   * 읽는 쪽마다 `!taskMode.enabled`를 흩뿌리지 않고 **여기서 한 번** 잘라 낸다. 흩뿌린
+   * 가드는 다음 소비자가 빠뜨리고, 이 결함이 정확히 그렇게 났다.
+   */
+  const captureTargets = taskMode.enabled ? NO_CAPTURE_TARGETS : scannedTargets;
   // ‼️ 캡처 창의 편집기(`capture.editor`)가 **아니다.** 쓰기 경로를 고르는 라우터가
   // 판정하는 것은 대상 노트를 탭에 열어 두었을 수도 있는 메인 편집기다
   // (`use-capture-task-mode.ts:52`가 같은 것을 쓴다).
@@ -103,8 +126,7 @@ export function QuickCaptureDialog() {
    * ‼️ 버튼의 `disabled`와 `handleSave`의 가드가 **이 한 값**을 함께 쓴다. 조건을 두 벌로
    * 적으면 둘이 어긋나는 날이 오고, 그때 화면은 막혔다고 말하면서 키보드는 통과시킨다.
    */
-  const scanPending =
-    !taskMode.enabled && tags.list.length > 0 && captureTargets.loading;
+  const scanPending = tags.list.length > 0 && captureTargets.loading;
   /**
    * 후보 목록을 못 읽었다 — `scanPending` 옆의 구멍이다.
    *
@@ -116,8 +138,7 @@ export function QuickCaptureDialog() {
    * 버튼을 잠그면 본문이 갇힌다. 대신 눌렀을 때 이유와 **빠져나갈 길**(태그를 지우면
    * `inbox/`로 저장된다)을 말한다.
    */
-  const scanFailed =
-    !taskMode.enabled && tags.list.length > 0 && captureTargets.failed;
+  const scanFailed = tags.list.length > 0 && captureTargets.failed;
 
   // §324-e round 2: 붙여넣은 이미지/동영상을 어디에 저장할지는 이 다이얼로그만
   // 안다 — 태스크 모드는 zettel과 무관한 별도 설정이라(`tasks-home.ts`)
@@ -351,7 +372,13 @@ export function QuickCaptureDialog() {
       // §324-a 지목한 태그가 어떤 노트에도 닿지 못했다는 것을 성공과 **다른** 모양으로
       // 알린다. 같은 모양이면 `#영감노드` 같은 오타가 성공처럼 보이고, 캡처는 아무도
       // 열지 않는 `inbox/`에 조용히 쌓인다.
-      showInboxFallbackToast(tags.list[0], t);
+      //
+      // 여기서는 `tags.list`와 값이 같다 — 이 갈래는 대상이 0개일 때만 닿고, 그러면 모든
+      // 태그가 못 맞힌 것이다(중복 제거는 대상이 하나 이상일 때만 일어난다). 그래도
+      // `unmatchedTags`를 읽는 이유는 그것이 **말하려는 것의 이름**이기 때문이다: 이
+      // 갈래의 조건이 언젠가 "일부만 맞았을 때도 폴백"으로 바뀌면 `tags.list`는 조용히
+      // 틀린 답이 되고, 이쪽은 그대로 맞는다.
+      showInboxFallbackToast(captureTargets.unmatchedTags, t);
       toggleQuickCapture();
     } catch (err) {
       logger.error("[QuickCapture] Save failed:", err);

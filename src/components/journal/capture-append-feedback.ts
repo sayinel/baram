@@ -80,17 +80,21 @@ export function showAppendedToast(
  * 같은 오타가 성공처럼 보이고, 캡처는 아무도 열지 않는 `inbox/`에 조용히 쌓인다 —
  * 이 작업이 없애려는 바로 그 실패다.
  *
- * 태그를 아예 안 적었으면(`tag`가 없으면) 아무 말도 하지 않는다. 대상을 지목하지
- * 않은 것은 실패가 아니라 §99의 정상 동작이다.
+ * ‼️ 닿지 않은 태그를 **전부** 말한다. 하나만 말하면 둘을 잘못 적은 사용자가 하나를
+ * 고치고 나머지가 여전히 아무 데도 닿지 않는다는 것을 모른 채 다음 캡처로 넘어간다.
+ *
+ * 태그를 아예 안 적었으면 아무 말도 하지 않는다. 대상을 지목하지 않은 것은 실패가
+ * 아니라 §99의 정상 동작이다.
  */
 export function showInboxFallbackToast(
-  tag: string | undefined,
+  unmatchedTags: string[],
   t: Translate,
 ): void {
-  if (!tag) return;
+  if (unmatchedTags.length === 0) return;
+  const tags = unmatchedTags.map((tag) => `#${tag}`).join(" ");
   useUIStore
     .getState()
-    .showToast(t("journal.capture.inboxFallback", { tag }), "warning");
+    .showToast(t("journal.capture.inboxFallback", { tags }), "warning");
 }
 
 /**

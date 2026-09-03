@@ -101,7 +101,7 @@
   "journal.capture.error.taskOutsideHome": "수집함 파일은 태스크 홈 안에 있어야 합니다. 그 밖의 태스크는 아젠다에 나타나지 않습니다 — 설정에서 바꿔 주세요.",
   "journal.capture.error.taskSave": "수집함에 저장하지 못했습니다.",
   "journal.capture.imageAsLink": "태스크는 한 줄이라 이미지 {count}개를 링크로 첨부했습니다. 파일은 그대로 저장됩니다.",
-  "journal.capture.inboxFallback": "inbox에 저장됨 — #{tag}와 일치하는 노트가 없습니다.",
+  "journal.capture.inboxFallback": "inbox에 저장됨 — 일치하는 노트가 없습니다: {tags}",
   "journal.capture.mediaBudgetFull": "이 캡처가 이미 미디어 {held}MB를 들고 있습니다. 저장 전에는 {budget}MB까지만 담을 수 있습니다 — 저장하거나 이미지를 하나 지운 뒤 {name}을 넣어 주세요.",
   "journal.capture.mediaReadFailed": "{name} — 파일을 읽지 못했습니다.",
   "journal.capture.mediaTooLarge": "{name} — {size}MB입니다. 캡처는 저장할 때까지 미디어를 메모리에 들고 있으므로 {limit}MB까지만 바로 넣을 수 있습니다. 문서 창에 끌어다 놓아 주세요.",

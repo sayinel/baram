@@ -1496,6 +1496,42 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     );
   });
 
+  // ‼️ 회귀. 태스크 모드로 **토글**하면 대상 훅의 `open`이 true→false가 되는데, 그 훅의
+  // 리셋은 false→**true**에서만 돈다 — 토글 직전에 풀려 있던 `targets`가 그대로 남는다.
+  // 그것을 읽는 미디어 목적지는 태스크가 절대 닿지 않을 노트 옆에 이미지를 쓰고,
+  // `tasks/inbox.md`의 `assets/pearl.png`는 `tasks/assets/`를 찾다가 깨진다. F1과 같은
+  // 결함이 방향만 반대다.
+  //
+  // 이 상태는 이미 있는 두 테스트 **사이**에 있다: 하나는 대상이 애초에 없고, 다른 하나는
+  // **열자마자** 태스크 모드다. "풀렸다가 태스크가 된" 중간 상태는 어느 쪽도 보지 못한다.
+  it("does not put a task's media beside a note when task mode is toggled on after targets resolve", async () => {
+    useSettingsStore.setState({
+      tasksCaptureFile: "inbox.md",
+      tasksHome: "/vault/tasks-home",
+    });
+    fakeDiskWithNote();
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    setTags("#영감노트");
+    pasteImageInCapture("pearl.png");
+    await waitForCaptureImages(1);
+    fireEvent.click(taskToggle());
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    await vi.waitFor(() => expect(captureTask).toHaveBeenCalled());
+    expect(writeBinaryFile).toHaveBeenCalledWith(
+      "/vault/tasks-home/tasks/assets/pearl.png",
+      expect.any(Array),
+    );
+    expect(writeBinaryFile).not.toHaveBeenCalledWith(
+      expect.stringContaining("/vault/zettel/notes/"),
+      expect.anything(),
+    );
+  });
+
   // 태스크 모드는 대상을 쓰지 않는다. §313 전역 캡처는 **태스크 모드로 열리므로**, 그런
   // 캡처 한 번마다 `notes/` 아래 노트를 전부 읽는 팬아웃이 통째로 낭비된다.
   //
@@ -1617,6 +1653,20 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     expect(toast?.message).toContain("영감노드");
   });
 
+  // ‼️ 폴백 토스트가 태그를 **하나만** 말하면, 두 개를 잘못 적은 사용자는 하나를 고치고
+  // 나머지 하나가 여전히 아무 데도 닿지 않는다는 것을 모른 채 다음 캡처를 한다.
+  // §324-a가 보여 주려는 것은 "무엇이 닿지 않았나" 전부다.
+  it("names every tag that matched nothing in the inbox fallback", async () => {
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노드 #Wrong");
+
+    await vi.waitFor(() => expect(captureFleeting).toHaveBeenCalled());
+    const { toast } = useUIStore.getState();
+    expect(toast?.type).toBe("warning");
+    expect(toast?.message).toContain("영감노드");
+    expect(toast?.message).toContain("Wrong");
+  });
+
   // 태그를 아예 안 적었으면 대상을 **지목하지 않은** 것이다. 그것은 실패가 아니므로
   // 경고를 띄우면 §99의 정상 동작이 매번 문제처럼 보인다.
   //
@@ -1676,10 +1726,15 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     const matched = await toastAfterSaving("#영감노트");
     const missed = await toastAfterSaving("#영감노드");
 
-    expect(missed.message).not.toBe(
-      t("journal.capture.appended.one", LOCALE, { title: "영감노드" }),
-    );
+    // 종류부터 다르다 — 훑어보는 눈이 잡는 것은 이것이다.
     expect(missed.type).not.toBe(matched.type);
+    // 그리고 **틀** 자체가 다르다. 두 문구에 **같은 값**을 끼워 비교하는 이유: 실제
+    // 메시지는 한쪽이 `#`를 붙인 태그를, 다른 쪽이 노트 제목을 담으므로, 템플릿이 완전히
+    // 같아도 결과 문자열은 달라진다. 실제로 `inboxFallback`을 `appended.one`과 같은
+    // 템플릿으로 바꾼 뮤테이션이 값 비교만으로는 두 번 살아남았다.
+    expect(t("journal.capture.inboxFallback", LOCALE, { tags: "X" })).not.toBe(
+      t("journal.capture.appended.one", LOCALE, { title: "X" }),
+    );
   });
 
   it("offers Open on the success toast and opens the note", async () => {
