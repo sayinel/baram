@@ -1,21 +1,23 @@
 // §56l — Tag autocomplete dropdown for journal captures
 import { useEffect, useRef } from "react";
 
+import type { TagSuggestion } from "./use-capture-tags";
+
 import { useTranslation } from "../../i18n/useTranslation";
-import { filterTags } from "../../utils/journal/journal-tags";
 
 interface TagSuggestProps {
   activeIndex: number;
   onSelect: (tag: string) => void;
   position?: { left: number; top: number };
-  query: string;
-  tags: Map<string, number>;
+  /** ‼️ 여기서 다시 필터링하지 않는다 — `useCaptureTags`가 한 번만 계산한 것을
+   *  그대로 그린다. 여기서 또 계산하면 키보드가 고르는 것과 화면에 보이는 것이
+   *  서로 다른 출처가 될 수 있다(§324-b 후속 규칙 ①). */
+  suggestions: TagSuggestion[];
   visible: boolean;
 }
 
 export function TagSuggest({
-  query,
-  tags,
+  suggestions,
   onSelect,
   visible,
   activeIndex,
@@ -24,9 +26,16 @@ export function TagSuggest({
   const { t } = useTranslation();
   const listRef = useRef<HTMLUListElement>(null);
 
-  const suggestions = filterTags(query, tags);
-
-  // Scroll active item into view
+  // Scroll active item into view.
+  //
+  // ‼️ `container-scroll.ts`(§313)와 `scroll-to-target.test.ts`는 `scrollIntoView`에
+  // 경고 사인을 박아 뒀다 — 이전 구현이 `block: "center"`를 걸어서 "어느 조상을
+  // 뜻했는지" 말할 방법이 없어 **스크롤 가능한 조상을 전부** 가운데로 끌고 갔다(작은
+  // 창에서 앱 셸까지 스크롤되어 탭 바가 잘림). 여기서는 그 함정에 해당하지 않는다:
+  // `block: "nearest"`는 대상이 이미 보이는 조상은 건드리지 않고, 필요한 만큼만
+  // 스크롤한다 — `.tag-suggest`(패널 스크롤 컨테이너) 밖으로는 번지지 않는다. 이
+  // 리스트/피커류(WikilinkMenu, TagMenu, SlashMenu, MoveToFolderModal, TabSwitcher 등)가
+  // 전부 이미 같은 패턴을 쓴다.
   useEffect(() => {
     if (!listRef.current) return;
     const items =
@@ -44,23 +53,39 @@ export function TagSuggest({
     <ul
       aria-label={t("journal.tagSuggest.aria")}
       className="tag-suggest"
+      ref={listRef}
       role="listbox"
       style={style}
     >
-      {suggestions.map((tag, i) => (
+      {suggestions.map((s, i) => (
         <li
           aria-selected={i === activeIndex}
           className={`tag-suggest-item ${i === activeIndex ? "tag-suggest-item-active" : ""}`}
-          key={tag}
+          key={s.name}
           onMouseDown={(e) => {
             // Prevent input blur before selection
             e.preventDefault();
-            onSelect(tag);
+            onSelect(s.name);
           }}
           role="option"
         >
-          <span className="tag-suggest-name">#{tag}</span>
-          <span className="tag-suggest-count">{tags.get(tag) ?? 0}</span>
+          <span className="tag-suggest-name">#{s.name}</span>
+          {/* ‼️ 리뷰 MEDIUM — 노트 라벨은 숫자 배지(`tag-suggest-count`)를
+              재사용하지 않는다. 그 배지는 `panels.css`에서 짧은 숫자 하나를
+              가정한 원형 pill(`min-width: 20px`, `border-radius: 10px`,
+              가운데 정렬)이라 문구를 넣으면 그 안에서 줄바꿈된다. 태그 행은
+              그대로 숫자 pill을, 노트 행은 별도 클래스를 쓴다. */}
+          {s.isNote ? (
+            <span className="tag-suggest-kind">
+              {s.count > 0
+                ? t("journal.tagSuggest.noteWithCount", {
+                    count: String(s.count),
+                  })
+                : t("journal.tagSuggest.note")}
+            </span>
+          ) : (
+            <span className="tag-suggest-count">{s.count}</span>
+          )}
         </li>
       ))}
     </ul>

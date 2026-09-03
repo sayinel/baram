@@ -42,3 +42,30 @@
 .toast-error {
   border-left: 3px solid var(--color-status-danger);
 }
+
+/* §324-a — a toast that carries an action has to receive pointer events: hovering it
+   holds the countdown open (WCAG 2.2 SC 2.2.1), which cannot work through the
+   `pointer-events: none` that `.toast-host` sets so a toast never swallows a click meant
+   for the document underneath. Only this modifier lifts it, so a plain informational
+   toast stays click-through exactly as before. */
+.toast-interactive {
+  pointer-events: auto;
+}
+
+/* The action itself ("Open" the note the capture landed in). It keeps its own
+   `pointer-events: auto` rather than relying on `.toast-interactive` above: the button is
+   the affordance that must never be dead, and this way it survives a change to the
+   parent rule. */
+.toast-action {
+  padding: 2px 8px;
+  margin-left: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-accent-default);
+  pointer-events: auto;
+  border-radius: 4px;
+}
+
+.toast-action:hover {
+  background-color: var(--color-bg-hover);
+}

@@ -61,6 +61,16 @@ describe("§324-g 캡처 다이얼로그 높이 예산 — 리사이즈가 실�
     );
   });
 
+  // 큰 모니터에서 다이얼로그는 세로로만 자라고 가로는 460px에 묶여 있었다 —
+  // 사용자가 실제로 그 좁음을 지적했다. width도 위 max-height처럼 뷰포트에
+  // 반응해야 같은 결함이 다시 생기지 않는다.
+  it("다이얼로그 width는 고정 px가 아니라 뷰포트 비례다", () => {
+    // 460px 같은 고정값으로 되돌아가면 이 매치가 실패한다.
+    expect(declaration(".quick-capture-dialog", "width")).toMatch(
+      /^min\(\d+(?:\.\d+)?px,\s*\d+(?:\.\d+)?vw\)$/,
+    );
+  });
+
   it("편집기 max-height는 다이얼로그와 같은 vh 예산에서 chrome을 뺀 값이다", () => {
     const dialogVh = declaration(".quick-capture-dialog", "max-height").match(
       /^(\d+(?:\.\d+)?)vh$/,
@@ -130,5 +140,26 @@ describe("§324-g 캡처 다이얼로그 높이 예산 — 리사이즈가 실�
     expect(useSettingsStore.getInitialState().captureDialogHeight).toBe(
       lengthPx(declaration(".quick-capture-editor", "min-height")),
     );
+  });
+
+  // 사용자가 실제로 이 핸들을 찾지 못했다 — 평소엔 transparent라 hover해 보기
+  // 전에는 리사이즈가 가능하다는 사실 자체가 안 보였다. "hover 규칙이 있다"만
+  // 확인하는 테스트는 이 결함이 있던 상태에서도 통과했을 것이므로, 평소 상태의
+  // 값 자체를 고정한다.
+  it("리사이즈 그립은 평소에도 칠해진다 — hover해야만 보이면 못 찾는다", () => {
+    expect(declaration(".quick-capture-resize::after", "background")).not.toBe(
+      "transparent",
+    );
+  });
+
+  it("hover는 그립을 평소보다 더 강조한다 — 두 상태가 달라야 한다", () => {
+    // rule()이 선택자를 못 찾으면 던지므로, 이 한 줄이 ":hover" 규칙의 존재와
+    // "평소와 다른 값" 둘 다를 확인한다.
+    const rest = declaration(".quick-capture-resize::after", "background");
+    const hover = declaration(
+      ".quick-capture-resize:hover::after",
+      "background",
+    );
+    expect(hover).not.toBe(rest);
   });
 });
