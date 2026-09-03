@@ -287,7 +287,7 @@ the side panel, and the two highlight modes are toolbar buttons — see the
 
 ## Vim Mode
 
-Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turns vim on across **three editing surfaces**, and the status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`).
+Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turns vim on across **three editing surfaces**, and the status bar shows the current mode (`-- NORMAL --`, `-- INSERT --`, `-- VISUAL --`; `-- INSERT (math) --` while a block editor holds the keys).
 
 | Surface | How you get there | What is available |
 | ------- | ----------------- | ----------------- |
@@ -300,27 +300,43 @@ Enable **Settings > Editor > Vim Keybindings** (off by default). One switch turn
 | Group | Keys |
 | ----- | ---- |
 | Modes | `i` `a` `I` `A` · `o` `O` · `v` (charwise) `V` (linewise) · `Esc` |
-| Motions | `h` `j` `k` `l` and the arrow keys · `0` `$` `^` (Home/End) · `w` `b` · `gg` `G` |
+| Motions | `h` `j` `k` `l` and the arrow keys · `0` `$` `^` (Home/End) · `w` `b` · `gg` `G` (first / last line — use `:N` for a specific line) |
 | Find in line | `f` `F` `t` `T` + a character · `;` `,` to repeat |
-| Operators | `d` `c` `y` with a motion (`dw`, `cw`, `dj`, `d$`, `dfx`) · doubled for whole lines (`dd` `yy` `cc`) |
+| Search | `/` forward · `?` backward · `n` `N` repeat — see [Search](#search-wysiwyg) |
+| Operators | `d` `c` `y` with a motion (`dw`, `cw`, `dj`, `d$`, `dfx`, `dgg`) · doubled for whole lines (`dd` `yy` `cc`) |
 | Counts | Any motion or operator (`3j`, `2d3w` = six words) |
-| Edit | `x` · `p` `P` · `u` `Ctrl+r` |
+| Edit | `x` · `p` `P` · `u` `Ctrl+r` · `Space` toggles the task item under the cursor |
+| Visual | `d`/`x` delete · `y` yank · `v`/`V` switch charwise ↔ linewise · `Esc` |
 | View | `zz` `z.` center the cursor line (also in visual mode) |
-| Ex | `:w` save · `:q` close tab |
+| Ex | `:w` save · `:q` close tab · `:N` / `:$` go to a line |
 
-Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; inside a table, `h`/`l` cross cell boundaries so every cell in a row is reachable, while `j`/`k` move down a row keeping the column; `dd` on a table row deletes the row (the header row and the last data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
+Structure-aware behavior: tables, math blocks, images and hard-break segments each count as one line for `j`/`k`; a code block counts as one line from the outside. Inside a table, `h`/`l` cross cell boundaries so every cell in a row is reachable, while `j`/`k` move down a row keeping the column; `dd` on a table row deletes the row (the header row and the only remaining data row are protected); `dd` inside a list keeps nested children. The cursor is kept on screen after every command.
 
-WYSIWYG does not yet have text objects (`ciw`), `.` repeat, `/` search, or the `Ctrl+F`/`Ctrl+B` page motions — those live in Source Mode and code blocks today.
+Not in WYSIWYG yet — these work in Source Mode and code blocks today: text objects (`ciw`, `di"`), `.` repeat, `r`, `e`/`E`/`W`/`B`, `J`, `~`, `>>`/`<<`, `%`, `{`/`}`, `zt`/`zb`, the `Ctrl+D`/`Ctrl+U`/`Ctrl+F`/`Ctrl+B` scroll motions, marks, macros and named registers. Visual block (`Ctrl+V`) is intentionally not planned for the rich-text surface.
+
+### Search (WYSIWYG)
+
+`/` and `?` open a search line in the status bar; `Enter` jumps, `Esc` cancels, `n`/`N` repeat in the same/opposite direction, and an empty `Enter` reuses the last pattern.
+
+- The pattern is a JavaScript regular expression matched line by line (`^`/`$` anchor to a line, `.` does not cross lines), case-insensitive unless it contains an uppercase letter (smartcase). The search wraps around the document.
+- It searches only the open document and is independent of the app's `Cmd+F` find bar. It moves the cursor; matches are not highlighted.
+- A match inside a code block lands the cursor in that block. Korean can be typed into the search line with the IME.
 
 ### Code block boundaries
 
 | Keys | Action |
 | ---- | ------ |
+| `j` / `k` (or arrows) into a block | Enter the block on its first / last line, keeping the column |
+| Arrow keys in insert mode | Enter the block and keep typing — insert mode carries over |
 | `Esc` (in normal mode) | Leave the block and return to document-level vim |
 | `j` / `k` (or arrows) on the last / first line | Leave the block downward / upward |
 | `u` / `Ctrl+r` | Undo/redo the **document** history, so edits inside and outside the block share one stack |
 
-`:` and `/` open vim's own prompt inside the block; keys typed there stay in the prompt.
+Your mode follows the cursor across the boundary in both directions, whether you move by keyboard or click with the mouse: leave a block in insert and the document is in insert; press `Esc` inside a block and the document is in normal when you come out. Clicking between blocks or back into the document works in every mode. `:` and `/` open vim's own prompt inside the block; keys typed there stay in the prompt. Known limitation: `zz`/`z.` do nothing inside a code block (the block scrolls with the document, not by itself).
+
+### Block editors (math, Mermaid, SVG, HTML, query)
+
+These blocks are atoms in the document: `j`/`k` treat each as one line and `dd` deletes the whole block. With a block selected, `i` opens its editor (the status bar shows `-- INSERT (math) --` and so on), `Esc` returns to the block in normal mode with the block still selected, and a click in normal mode selects the block without opening it.
 
 ### Ex commands
 
@@ -330,12 +346,14 @@ Available on all three surfaces. The command line appears in the status bar as y
 | ------- | ------------------------ |
 | `:w` / `:write` | Save the current file    |
 | `:q` / `:quit`  | Close the current tab (unsaved-changes guard applies) |
+| `:N` (e.g. `:42`) | Go to line N — lines are counted the way `j`/`k` count them, so a hard-break segment or a table row is one line and a code block is one line; out-of-range numbers land on the last line |
+| `:$`            | Go to the last line |
 
-Source Mode and code blocks also accept the CodeMirror adapter's own ex commands and `/` search; WYSIWYG recognises only the two above.
+Source Mode and code blocks also accept the CodeMirror adapter's own ex commands and `/` search; WYSIWYG recognises only the four above.
 
 **Korean IME**: vim commands work with the Korean input source active on every surface — in normal/visual mode keys are resolved by physical position (pressing the `j` key moves down even when it would type `ㅓ`), and stray jamo insertion is blocked. Insert mode types Korean normally. In WYSIWYG, `f` followed by a consonant jamo jumps by 초성 (`f` `ㄱ` finds 강, 김, 그). This behavior is verified on macOS; Windows/Linux are not yet validated.
 
-The vim register is shared app-wide (like the clipboard) and is not written to disk. Vim key sequences are not remappable via Settings > Keybindings.
+The vim register is shared app-wide (like the clipboard) and is not written to disk; a yank inside a code block cannot yet be pasted outside it, or vice versa. Vim key sequences are not remappable via Settings > Keybindings.
 
 ---
 

@@ -84,7 +84,7 @@ Baram shows a conflict warning with the name of the command that already uses th
 
 ### Does Baram have Vim keybindings?
 
-Yes — **Settings > Editor > Vim Keybindings**, off by default. One switch covers the WYSIWYG editor, Source Mode, and code blocks inside a document. Source Mode and code blocks get full vim (text objects, `.` repeat, `/` search, macros, registers); WYSIWYG has motions, operators with counts, `f`/`t`, visual mode, marks, and `:w` / `:q`, but not yet text objects, `.` repeat, or `/` search. The status bar shows the mode and doubles as the `:` command line.
+Yes — **Settings > Editor > Vim Keybindings**, off by default. One switch covers the WYSIWYG editor, Source Mode, and code blocks inside a document. Source Mode and code blocks get full vim (text objects, `.` repeat, `/` search, macros, registers); WYSIWYG has motions, operators with counts, `f`/`t`, `/` search, visual mode, and `:w` / `:q` / `:N` line jumps, but not yet text objects, `.` repeat, or marks. The status bar shows the mode and doubles as the `:` and `/` command line.
 
 Vim commands work with the Korean IME active: in normal mode keys resolve by physical position, so `j` moves down even when it would type `ㅓ`. Vim key sequences are a separate layer and are not remappable in Settings > Keybindings. See the [full command list](keyboard-shortcuts.md#vim-mode).
 

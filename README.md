@@ -127,7 +127,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Themes** — 8 built-in editor themes (plus 6 journal themes), system auto light/dark, and a full color editor with import/export.
 - **Plugins** — Install community plugins from a built-in marketplace, browse each one's README in a detail tab, and toggle any plugin — built-ins included — on or off. Plugins run **sandboxed**, isolated from the editor, and every privileged action is checked against the capabilities you approved in the install dialog. A plugin can instead ask for full trust — that comes with a warning and a separate confirmation. Installs are staged and atomic, and a signed withdrawal list stops a plugin that was later pulled or found vulnerable from running.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
-- **Vim mode** — Optional modal editing with normal/insert/visual modes, motions, operators, counts, marks, and `:w`/`:q` — in the WYSIWYG surface, Source mode, and inside code blocks.
+- **Vim mode** — Optional modal editing with normal/insert/visual modes, motions, operators, counts, `/` search, and `:w`/`:q` — in the WYSIWYG surface, Source mode, and inside code blocks. Works with the Korean IME.
 
 > 📖 See the [**User Guide**](docs/user-guide.md) for detailed usage of every feature.
 
