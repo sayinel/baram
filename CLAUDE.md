@@ -101,6 +101,8 @@ baram/
   const cleanup = await createLLMStream(id, { ... });
   try { await llmComplete(...); } catch { ... } finally { cleanup(); }
   ```
+- **`openUrl()`(plugin-opener)은 capability `opener:default` 범위인 http·https·mailto·tel만 연다** — 다른 scheme은 Tauri ACL이 거부한다. 테스트에서 mock `openUrl` 호출을 단언해도 실제로 열린다는 증거가 아니다
+- **export 경로는 둘이다**: HTML·PDF는 `captureEditorHTML`(에디터 DOM 복제 — 후행 패스 `resolveVideoSources`가 `<a>`를 새로 만드니 최종 정리는 `innerHTML` 직전), Pandoc·Notion은 `serializeLiveDoc` markdown 직행. 출력 정책은 두 경로에 각각 걸어야 한다(#527)
 - **공유 유틸리티 위치** — 로컬 재구현 금지:
   - `basename()` / `dirname()` → `src/utils/path-utils.ts`
   - Journal 날짜 regex → `src/utils/journal/journal.ts` (`JOURNAL_FILENAME_RE`, `JOURNAL_DATE_PARTS_RE`, `JOURNAL_FILENAME_COMPACT_RE`)
@@ -109,6 +111,7 @@ baram/
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
   - 링크 destination 정책 → `src/utils/link-href.ts` (`isAllowedLinkHref`) — `<a href>`로 내보내거나 opener에 넘기기 전 판정. 문서 모델은 건드리지 않는다(byte-exact roundtrip). 거부되면 `href` 대신 inert한 `data-href`로 렌더(클립보드 복원·CSS 훅)하고 export scrub이 제거한다. scheme allowlist는 HTML 블록 sanitizer(DOMPurify 기본)와 동일 — regex/substring 검사로 재구현 금지(`java\tscript:` 우회)
 - **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
+- **docs/\*.md 편집**: prettier·lint 대상 밖. 앱 Help에 `?raw` 번들되므로 `help-panel.test.ts`로 확인. in-doc 앵커(`#search-wysiwyg`)는 HelpPanel slugify(소문자·영숫자·하이픈)와 GitHub 슬러그 양쪽에 맞는 heading만 쓸 것
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
 - **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건)
 - **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)
@@ -149,6 +152,7 @@ baram/
 - **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신
   - media-toolbar-reveal.test.ts는 소스 텍스트를 스캔해 NodeViewWrapper+MediaToolbar 파일 수 ≥4를 요구 — 뷰에서 toolbar 블록을 다른 파일로 빼면 깨진다
   - pipeline/에 프로덕션 파일을 추가하면 import-boundary의 `MD_TO_PM_ROUTE_FILES` Set(+감사 주석의 개수·날짜)을 갱신해야 한다 — allowlist를 넓히는 우회는 금지
+  - 반대로 transformer가 `src/utils/`의 leaf 모듈을 import하는 것은 경계 위반이 아니다 — 금지 closure는 `pm-to-md.ts`에서 출발해 `src/pipeline/` 안으로만 BFS한다
 
 ### 의존성 관리
 
@@ -165,6 +169,7 @@ baram/
 - **pre-push hook**: `npm run lint`(CI lint 잡 전체, knip 포함) + `cargo clippy --all-targets` 실행 — push당 ~2분+, cargo cold면 5~7분. push는 백그라운드로 실행할 것
 - **push 전 `npm run lint` 필수**: CI lint 잡은 pre-push hook보다 넓다 — `lint:doc-comments`(doc 주석 바로 뒤 doc 주석 금지, 함수 이동·cherry-pick 시 잘 깨짐)·stylelint·audit까지. "테스트 그린 ≠ CI 그린"
 - **PR CI는 브랜치가 아니라 "브랜치+최신 main 머지 트리"를 검증한다** — base가 낡으면 로컬 전부 그린이어도 CI만 깨질 수 있다(옮겨진 심볼 import 등). origin/main 전진을 발견하면 rebase 여부를 논의할 것
+  - 사전 검증: `git merge-tree --write-tree origin/main <branch>`(exit 0=충돌 없음) → `git commit-tree <tree> -p origin/main -p <branch> -m tmp` → **메인 worktree에서 `git switch --detach <commit>`** 후 tsc·관련 vitest → 복귀. 별도 worktree에 node_modules를 심볼릭 링크하면 React·`?raw` import 테스트가 로드 단계에서 거짓 실패한다
 
 ### 디자인 토큰
 
