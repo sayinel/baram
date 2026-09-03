@@ -158,6 +158,47 @@ describe("countCaptures", () => {
     expect(countCaptures(doc)).toBe(1);
     expect(nextCaptureBlockId(doc, "m1234567890")).not.toBe("m1234567890");
   });
+
+  // ‼️ 이 저장소의 기존 절 경계 패턴(`journal-memories.ts`의 `/^## /m`)보다
+  // **의도적으로 넓게** 잡는다. `## Captures` 뒤에 `#`(h1) 헤딩이 와도 그 h2 절은
+  // 거기서 끝난다 — `/^## /m`은 h1을 지나쳐 계속 세므로 이 테스트가 실패한다.
+  it("also stops the section at a following h1 heading", () => {
+    const doc = [
+      `# 영감노트`,
+      ``,
+      `## Captures`,
+      ``,
+      `### 2026-09-02 14:15 ^m2609021415`,
+      ``,
+      `본문`,
+      ``,
+      `# 다음 노트`,
+      ``,
+      `우연한 참조 ((otherNote#^m1234567890))`,
+      ``,
+    ].join("\n");
+    expect(countCaptures(doc)).toBe(1);
+  });
+
+  // ‼️ CommonMark는 `#` 뒤에 탭도 허용한다. 리터럴 스페이스만 보는 패턴
+  // (`/^## /m`)은 `##\tRelated`를 절 헤딩으로 인식하지 못해 이 테스트가 실패한다.
+  it("also stops the section at a heading using a tab after the hashes", () => {
+    const doc = [
+      `# 영감노트`,
+      ``,
+      `## Captures`,
+      ``,
+      `### 2026-09-02 14:15 ^m2609021415`,
+      ``,
+      `본문`,
+      ``,
+      `##\tRelated`,
+      ``,
+      `우연한 참조 ((otherNote#^m1234567890))`,
+      ``,
+    ].join("\n");
+    expect(countCaptures(doc)).toBe(1);
+  });
 });
 
 describe("appendCapture", () => {
