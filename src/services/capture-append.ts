@@ -132,7 +132,15 @@ export async function appendCaptureToNotes(
     try {
       await appendToOne(target, entry, stamp, editor, route);
     } catch (err) {
-      // 관문이 던진 것은 이미 `appended`를 싣고 있다 — 그대로 올려보낸다.
+      // ‼️ 지금은 **도달할 수 없다.** `CaptureAppendError`를 던지는 곳은
+      // `assertNoUnsavedTab` 하나뿐이고 그것은 위 사전 점검으로 전부 옮겨 갔다 —
+      // 이 루프 안에서 그 타입이 나올 길이 없다(그 사실은 이 줄을 `throw`로 바꿔도
+      // 스위트가 전부 초록인 것으로 확인했다).
+      //
+      // 그래도 남겨 둔다: `appendToOne` 안에 새 throw 지점이 생기면 그때는 자기
+      // `appended`를 싣고 올라와야 하고, 아래 `writeFailed` 포장이 그것을 덮어쓰면
+      // 어느 노트가 막았는지가 사라진다. 지우는 것이 아니라 **다시 도달 가능해지는**
+      // 쪽이 정상이다.
       if (err instanceof CaptureAppendError) throw err;
       // 그 밖의 모든 실패. 원본 메시지를 문구에 담아 원인을 잃지 않는다.
       throw new CaptureAppendError(

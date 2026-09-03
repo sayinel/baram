@@ -1,6 +1,6 @@
 // Transient toast host — renders the ui store's toast and auto-dismisses it.
 // Mounted once in App.tsx.
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useShallow } from "zustand/shallow";
 
@@ -32,24 +32,63 @@ export function ToastHost() {
     useShallow((s) => ({ dismissToast: s.dismissToast, toast: s.toast })),
   );
 
-  // Restart the timer whenever a new toast arrives (id changes).
+  // The timer restarts whenever a new toast arrives (id changes) — and, since the pause
+  // below is one of its dependencies, whenever the user stops holding it open. Leaving is
+  // therefore a fresh full window, not the remainder of the old one; that is the generous
+  // direction, and it keeps this to one `setTimeout` with no elapsed-time bookkeeping.
   const toastId = toast?.id;
   const hasAction = !!toast?.action;
+
+  /**
+   * §324-a A toast carrying an action is the only route to what it names, so its
+   * auto-dismiss is a time limit on a user action (WCAG 2.2 SC 2.2.1). A longer
+   * duration does not satisfy that; a stoppable one does — hovering it or tabbing
+   * to its button holds it open.
+   *
+   * ‼️ The pause is scoped to the toast that is up. Pressing the action button
+   * unmounts the box while the pointer is still over it, so `mouseleave` never
+   * arrives — a plain boolean would stay stuck and every LATER toast would then
+   * hang on screen forever. Comparing against the id resets it for free, using
+   * React's documented "adjust state while rendering" pattern.
+   */
+  const [pausedForId, setPausedForId] = useState(toastId);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  if (toastId !== pausedForId) {
+    setPausedForId(toastId);
+    setHovered(false);
+    setFocused(false);
+  }
+  const paused = hovered || focused;
+
   useEffect(() => {
-    if (toastId === undefined) return;
+    if (toastId === undefined || paused) return;
     const timer = setTimeout(
       dismissToast,
       hasAction ? TOAST_ACTION_DURATION_MS : TOAST_DURATION_MS,
     );
     return () => clearTimeout(timer);
-  }, [toastId, hasAction, dismissToast]);
+  }, [toastId, hasAction, paused, dismissToast]);
 
   if (!toast) return null;
 
   return (
     <div aria-live="polite" className="toast-host">
+      {/* ‼️ The hover/focus handlers and `toast-interactive` are BOTH gated on the same
+          `hasAction`, and they have to be: `.toast-host` is `pointer-events: none` so a
+          toast never swallows a click meant for the document under it, and only
+          `toast-interactive` lifts that. Attached unconditionally, the handlers would be
+          dead in the real app for a plain toast while still firing in jsdom — a test
+          asserting behaviour the user can never get. A plain toast keeps exactly the
+          behaviour it had: click-through, and 3 seconds. */}
       <div
-        className={`toast${toast.type ? ` toast-${toast.type}` : ""}`}
+        className={`toast${toast.type ? ` toast-${toast.type}` : ""}${
+          hasAction ? "toast-interactive" : ""
+        }`}
+        onBlur={hasAction ? () => setFocused(false) : undefined}
+        onFocus={hasAction ? () => setFocused(true) : undefined}
+        onMouseEnter={hasAction ? () => setHovered(true) : undefined}
+        onMouseLeave={hasAction ? () => setHovered(false) : undefined}
         role="status"
       >
         {/* §260 Phase 4a — attribution is a separate element on purpose: a sandboxed

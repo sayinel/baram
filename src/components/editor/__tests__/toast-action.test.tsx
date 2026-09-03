@@ -1,6 +1,6 @@
 // §324-a 토스트가 제안하는 단 하나의 행동 — "어디에 붙었는지 알리고 그리로 갈 수 있게
 // 한다". 그리고 그 통로가 **앱 전용**이라는 것까지가 이 파일의 계약이다.
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -83,6 +83,82 @@ describe("ToastHost — action button (§324-a)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // §324-a 이 토스트는 자기가 이름 붙인 노트로 가는 **유일한** 통로다. 그러면 자동
+  // 소멸은 단순한 연출이 아니라 사용자 행동에 걸린 제한 시간이 된다(WCAG 2.2 SC 2.2.1).
+  // 시간을 늘리는 것은 그 요구를 만족시키지 못한다 — **멈출 수 있어야** 한다.
+  //
+  // 화면 낭독기 사용자에게 특히 그렇다: `aria-live="polite"`라 메시지를 다 들은 **뒤에야**
+  // 버튼을 찾기 시작한다.
+  describe("the countdown is stoppable, not merely long", () => {
+    const toastBox = () => document.querySelector(".toast")!;
+
+    function showActionToast() {
+      useUIStore.getState().showToast("Added to 영감노트", "info", undefined, {
+        label: "Open",
+        onClick: vi.fn(),
+      });
+    }
+
+    it("pauses while the pointer is over the toast", () => {
+      vi.useFakeTimers();
+      try {
+        showActionToast();
+        render(<ToastHost />);
+
+        fireEvent.mouseEnter(toastBox());
+        act(() => vi.advanceTimersByTime(TOAST_ACTION_DURATION_MS * 3));
+        expect(useUIStore.getState().toast).not.toBeNull();
+
+        // 그리고 포인터가 떠나면 다시 흐른다 — 멈춤이지 영구 정지가 아니다.
+        fireEvent.mouseLeave(toastBox());
+        act(() => vi.advanceTimersByTime(TOAST_ACTION_DURATION_MS + 1));
+        expect(useUIStore.getState().toast).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("pauses while the action button holds keyboard focus", () => {
+      vi.useFakeTimers();
+      try {
+        showActionToast();
+        render(<ToastHost />);
+        const button = screen.getByRole("button", { name: "Open" });
+
+        fireEvent.focus(button);
+        act(() => vi.advanceTimersByTime(TOAST_ACTION_DURATION_MS * 3));
+        expect(useUIStore.getState().toast).not.toBeNull();
+
+        fireEvent.blur(button);
+        act(() => vi.advanceTimersByTime(TOAST_ACTION_DURATION_MS + 1));
+        expect(useUIStore.getState().toast).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    // ‼️ 행동 버튼을 누르면 포인터가 토스트 위에 **있는 채로** 요소가 사라진다 —
+    // `mouseleave`는 영영 오지 않는다. 일시정지 상태가 그대로 굳으면 그 뒤의 **모든**
+    // 토스트가 자동으로 사라지지 않는다. 멈춤은 지금 떠 있는 토스트에만 매여야 한다.
+    it("does not carry a pause over to the next toast", () => {
+      vi.useFakeTimers();
+      try {
+        showActionToast();
+        render(<ToastHost />);
+
+        fireEvent.mouseEnter(toastBox());
+        fireEvent.click(screen.getByRole("button", { name: "Open" }));
+        expect(useUIStore.getState().toast).toBeNull();
+
+        act(() => useUIStore.getState().showToast("plain", "info"));
+        act(() => vi.advanceTimersByTime(TOAST_DURATION_MS + 1));
+        expect(useUIStore.getState().toast).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("renders no button when no action is given", () => {
