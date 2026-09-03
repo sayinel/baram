@@ -307,6 +307,9 @@ describe("appendCaptureToNotes — rejection", () => {
     });
     await expect(p).rejects.toBeInstanceOf(CaptureAppendError);
     await expect(p).rejects.toMatchObject({
+      // ‼️ 첫 대상에서 막히면 `appended`는 **빈 배열**이지 `undefined`가 아니다.
+      // 호출부가 `err.appended.length > 0`으로 분기하므로 undefined면 거기서 터진다.
+      appended: [],
       code: "dirtyTab",
       title: "영감노트",
     });
