@@ -189,10 +189,17 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // menu would act on the wrong selection. Decided AFTER special-node
       // detection, so the math menus keep their textarea behaviour
       // unchanged, and BEFORE preventDefault, so the native menu actually
-      // appears. Checkboxes and radios are not text controls and stay with
-      // the document menu (the task item's control is a <button>, so it is
-      // unaffected either way). A document menu that is already open must
-      // not linger next to the native one, hence closeMenu().
+      // appears. The rule is deliberately blanket over native text controls
+      // in the editor (every NodeView textarea, caption and title inputs,
+      // the query builder's selects, the code block's language select):
+      // for all of them the document menu acted on the ProseMirror
+      // selection, not on the control. Checkboxes and radios are excluded in
+      // advance — none exist in the editor today (the task item's control is
+      // a <button>, unaffected either way). closeMenu(): a mouse right-click
+      // never arrives with our menu open, since MenuList closes on the
+      // preceding mousedown, but a keyboard-invoked context menu (Shift+F10,
+      // the Menu key) has no mousedown, and the old menu must not linger
+      // beside the native one.
       if (
         specialType === null &&
         e.target instanceof Element &&

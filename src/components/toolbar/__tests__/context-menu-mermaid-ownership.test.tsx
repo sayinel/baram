@@ -32,8 +32,10 @@ vi.mock("mermaid", () => ({
 import { createBaramExtensions } from "../../../extensions";
 import { ContextMenu } from "../ContextMenu";
 
-const MERMAID_ONLY_ITEMS = [
-  "Copy as PNG",
+/** Labels that existed ONLY in the deleted document-level mermaid menu (the
+ *  local menu says "Copy Source", "Edit Fullscreen" and "Delete"). */
+const DELETED_MENU_ITEMS = [
+  "Copy Mermaid Source",
   "Edit Full-screen",
   "Delete Diagram",
 ];
@@ -127,15 +129,17 @@ describe("mermaid block context menu ownership (issue 521)", () => {
     expect(nativeMenuAllowed).toBe(true);
     expect(localMenuOpen()).toBe(false);
     expect(documentMenuLabels()).toEqual([]);
-    for (const item of MERMAID_ONLY_ITEMS) {
+    for (const item of DELETED_MENU_ITEMS) {
       expect(document.body.textContent).not.toContain(item);
     }
   });
 
-  it("control: a right-click on ordinary text is still intercepted by the document-level menu", async () => {
+  it("control: a right-click on ordinary text is still default-prevented", async () => {
     // The step-aside rule is narrow — native text controls only. Everywhere
     // else the document listener keeps owning the right-click, so a
-    // regression that widened the bail-out would show up here.
+    // regression that widened the bail-out would show up here. (jsdom has
+    // no layout, so posAtCoords returns null and no menu renders; what is
+    // asserted is exactly that preventDefault still ran.)
     const { view } = await mountMermaidDoc();
     const paragraph = view.container.querySelector<HTMLElement>("p");
     if (!paragraph) throw new Error("paragraph did not mount");
@@ -226,6 +230,50 @@ describe("mermaid block context menu ownership (issue 521)", () => {
     await flush();
 
     expect(nativeMenuAllowed).toBe(true);
+    expect(documentMenuLabels()).toEqual([]);
+  });
+
+  it("the rule covers a <select> and an <input> too, not only textareas", async () => {
+    // The query builder mounts on a bare NodeSelection (vim off) and holds
+    // both kinds of control: a source <select> and the numeric limit
+    // <input>. Each half of the selector gets its own pin, so narrowing the
+    // rule to textarea alone would fail here.
+    const editor = new Editor({ extensions: createBaramExtensions() });
+    editors.push(editor);
+    const view = render(
+      <>
+        <EditorContent editor={editor} />
+        <ContextMenu editor={editor} />
+      </>,
+    );
+    act(() => {
+      editor.commands.setContent({
+        content: [
+          { attrs: { query: "" }, type: "queryBlock" },
+          { type: "paragraph" },
+        ],
+        type: "doc",
+      });
+    });
+    await flush();
+    act(() => {
+      editor.commands.setNodeSelection(0);
+    });
+    await flush();
+    const select = view.container.querySelector<HTMLSelectElement>(
+      ".qb-builder select.qb-select",
+    );
+    const input = view.container.querySelector<HTMLInputElement>(
+      '.qb-builder input[type="number"]',
+    );
+    if (!select || !input) throw new Error("query builder did not mount");
+
+    expect(fireEvent.contextMenu(select, { clientX: 10, clientY: 10 })).toBe(
+      true,
+    );
+    expect(fireEvent.contextMenu(input, { clientX: 10, clientY: 10 })).toBe(
+      true,
+    );
     expect(documentMenuLabels()).toEqual([]);
   });
 });
