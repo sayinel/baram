@@ -141,4 +141,25 @@ describe("§324-g 캡처 다이얼로그 높이 예산 — 리사이즈가 실�
       lengthPx(declaration(".quick-capture-editor", "min-height")),
     );
   });
+
+  // 사용자가 실제로 이 핸들을 찾지 못했다 — 평소엔 transparent라 hover해 보기
+  // 전에는 리사이즈가 가능하다는 사실 자체가 안 보였다. "hover 규칙이 있다"만
+  // 확인하는 테스트는 이 결함이 있던 상태에서도 통과했을 것이므로, 평소 상태의
+  // 값 자체를 고정한다.
+  it("리사이즈 그립은 평소에도 칠해진다 — hover해야만 보이면 못 찾는다", () => {
+    expect(declaration(".quick-capture-resize::after", "background")).not.toBe(
+      "transparent",
+    );
+  });
+
+  it("hover는 그립을 평소보다 더 강조한다 — 두 상태가 달라야 한다", () => {
+    // rule()이 선택자를 못 찾으면 던지므로, 이 한 줄이 ":hover" 규칙의 존재와
+    // "평소와 다른 값" 둘 다를 확인한다.
+    const rest = declaration(".quick-capture-resize::after", "background");
+    const hover = declaration(
+      ".quick-capture-resize:hover::after",
+      "background",
+    );
+    expect(hover).not.toBe(rest);
+  });
 });

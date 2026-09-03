@@ -235,13 +235,20 @@
   content: attr(data-placeholder);
 }
 
-/* §324-g 편집기 아래 리사이즈 핸들 — 6px 클릭 영역 안에 2px 그립을 그린다.
-   Splitter(layout.css)와 같은 형태: 평소엔 투명, hover에서만 악센트가 보인다. */
+/* §324-g 편집기 아래 리사이즈 핸들 — 64px × 10px 클릭 영역 안에 2px 그립을
+   그린다. Splitter(layout.css)는 평소 투명하고 hover에서만 악센트가 보이는데,
+   그건 Splitter가 두 패널을 나누는 경계선 자체이기 때문이다 — 경계라는 존재가
+   이미 신호다. 이 핸들은 그런 경계가 아니라 편집기 상자와 출처 입력 사이의
+   빈 여백 위에 떠 있을 뿐이라, 같은 규칙을 그대로 가져오면 아무것도 칠해지지
+   않아 핸들이 있다는 사실 자체를 알 길이 없다(사용자가 실제로 찾지 못했다).
+   그래서 평소에도 옅게 칠해 존재를 알리고 hover에서만 악센트로 강조한다.
+   클릭 영역은 32px × 6px에서 두 배 가까이 넓혀 찾기 쉽게 하되, 그리는 그립은
+   여전히 2px로 얇게 유지해 시각적으로는 가는 선으로 보이게 한다. */
 .quick-capture-resize {
   flex-shrink: 0;
   align-self: center;
-  width: 32px;
-  height: 6px;
+  width: 64px;
+  height: 10px;
   cursor: row-resize;
 }
 
@@ -249,9 +256,9 @@
   display: block;
   width: 100%;
   height: 2px;
-  margin-top: 2px;
+  margin-top: 4px;
   content: "";
-  background: transparent;
+  background: var(--color-border-default);
   border-radius: 1px;
   transition: background-color 0.15s;
 }
