@@ -1,3 +1,5 @@
+import type { AddressableNote } from "../use-capture-targets";
+
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,6 +42,31 @@ function changeEvent(value: string): React.ChangeEvent<HTMLInputElement> {
   } as unknown as React.ChangeEvent<HTMLInputElement>;
 }
 
+/** A synthetic keydown event carrying only what `onKeyDown` reads. */
+function keyEvent(key: string): React.KeyboardEvent<HTMLInputElement> {
+  return {
+    key,
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+  } as unknown as React.KeyboardEvent<HTMLInputElement>;
+}
+
+/** No notes reachable — most tests don't care about §324-b's note suggestions. */
+const EMPTY_ADDRESSABLE_NAMES: Map<string, AddressableNote> = new Map();
+
+/** Builds an `addressableNames` map the way `useCaptureTargets` would, from
+ *  `[display name, capture count]` pairs. */
+function addressableNames(
+  ...entries: [string, number][]
+): Map<string, AddressableNote> {
+  return new Map(
+    entries.map(([display, captureCount]) => [
+      display.toLowerCase(),
+      { captureCount, display },
+    ]),
+  );
+}
+
 describe("§324-b useCaptureTags", () => {
   const originalFileState = useFileStore.getState();
   const originalSettingsState = useSettingsStore.getState();
@@ -68,7 +95,9 @@ describe("§324-b useCaptureTags", () => {
       tag: `t${i}`,
     }));
     getVaultTags.mockResolvedValue(many);
-    const { result } = renderHook(() => useCaptureTags(true));
+    const { result } = renderHook(() =>
+      useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+    );
     await waitFor(() => expect(result.current.index.size).toBe(150));
     expect(result.current.index.has("t130")).toBe(true);
   });
@@ -81,14 +110,14 @@ describe("§324-b useCaptureTags", () => {
     useSettingsStore.setState({
       zettelkastenDirectory: "/other/Zettel",
     } as never);
-    renderHook(() => useCaptureTags(true));
+    renderHook(() => useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES));
     await waitFor(() =>
       expect(getVaultTags).toHaveBeenCalledWith("/other/Zettel"),
     );
   });
 
   it("no longer reads note files one by one", async () => {
-    renderHook(() => useCaptureTags(true));
+    renderHook(() => useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES));
     await waitFor(() => expect(getVaultTags).toHaveBeenCalled());
     expect(listDir).not.toHaveBeenCalled();
     expect(readFile).not.toHaveBeenCalled();
@@ -99,7 +128,9 @@ describe("§324-b useCaptureTags", () => {
       { count: 40, tag: "영감노트" },
       { count: 2, tag: "links" },
     ]);
-    const { result } = renderHook(() => useCaptureTags(true));
+    const { result } = renderHook(() =>
+      useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+    );
     await waitFor(() => expect(result.current.index.get("영감노트")).toBe(40));
   });
 
@@ -108,7 +139,9 @@ describe("§324-b useCaptureTags", () => {
   // Rust `is_tag_char`는 하이픈을 포함한다(`md/mod.rs:25-27`) — 두 쪽이 갈려 있다.
   it("completes a hyphenated tag", async () => {
     getVaultTags.mockResolvedValue([{ count: 1, tag: "baram-dev-note" }]);
-    const { result } = renderHook(() => useCaptureTags(true));
+    const { result } = renderHook(() =>
+      useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+    );
     await waitFor(() => expect(result.current.index.size).toBe(1));
 
     act(() => result.current.onChange(changeEvent("#baram-dev")));
@@ -120,7 +153,9 @@ describe("§324-b useCaptureTags", () => {
     // 입력 `#baram-dev`에서 `baram-dev-note`를 고르면 `#baram-dev-note ` 하나가 되는 것
     // — `#baram-#baram-dev-note`가 아니다.
     getVaultTags.mockResolvedValue([{ count: 1, tag: "baram-dev-note" }]);
-    const { result } = renderHook(() => useCaptureTags(true));
+    const { result } = renderHook(() =>
+      useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+    );
     await waitFor(() => expect(result.current.index.size).toBe(1));
 
     // `onSelect` reads the cursor off the real input the hook is attached
@@ -144,8 +179,105 @@ describe("§324-b useCaptureTags", () => {
   it("logs and keeps an empty index when the IPC fails", async () => {
     const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
     getVaultTags.mockRejectedValue(new Error("nope"));
-    const { result } = renderHook(() => useCaptureTags(true));
+    const { result } = renderHook(() =>
+      useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+    );
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
     expect(result.current.index.size).toBe(0);
+  });
+
+  describe("§324-b 후속 — note names in the suggestion list", () => {
+    // ‼️ 이 테스트가 이 작업 전체의 존재 이유다: `CaptureTest.md`를 막 만들어도 그
+    // 제목이 vault 태그 fixture에 **없는** 채로 제안에 뜬다.
+    it("suggests a newly created note's title even when no tag has used it yet", async () => {
+      getVaultTags.mockResolvedValue([{ count: 3, tag: "other" }]);
+      const { result } = renderHook(() =>
+        useCaptureTags(true, addressableNames(["CaptureTest", 0])),
+      );
+      await waitFor(() => expect(result.current.index.size).toBe(1));
+
+      act(() => result.current.onChange(changeEvent("#Captur")));
+      expect(result.current.suggestions).toEqual([
+        { count: 0, isNote: true, name: "CaptureTest" },
+      ]);
+      // ‼️ `onChange`의 `visible` 게이트가 여기서 `filterTags(typed, index)`(태그
+      // 전용)로 되돌아가면 이 단정은 "제안은 있지만 드롭다운은 안 뜬다"가 되어
+      // 사용자에게는 여전히 아무것도 안 보인다 — `suggestions`만 보는 위 단정으로는
+      // 못 잡는 결함이라 따로 고정한다.
+      expect(result.current.visible).toBe(true);
+    });
+
+    // §324-b 후속 규칙 ②: 태그의 사용 빈도가 아무리 높아도 노트가 먼저 온다.
+    it("puts a matching note ahead of a matching tag even when the tag has far more uses", async () => {
+      getVaultTags.mockResolvedValue([{ count: 100, tag: "applesauce" }]);
+      const { result } = renderHook(() =>
+        useCaptureTags(true, addressableNames(["Apple", 1])),
+      );
+      await waitFor(() => expect(result.current.index.size).toBe(1));
+
+      act(() => result.current.onChange(changeEvent("#app")));
+      expect(result.current.suggestions.map((s) => s.name)).toEqual([
+        "Apple",
+        "applesauce",
+      ]);
+      expect(result.current.suggestions[0].isNote).toBe(true);
+    });
+
+    // §324-b 후속 규칙 ②: 소문자 키로 중복 제거 — 노트가 이긴다. 두 조회가 모두
+    // 성공해도(노트 맵·태그 맵) 결과에는 한 번만, 태그의 count(20)가 아니라 노트의
+    // captureCount(5)로 나타나야 한다.
+    it("shows a name once, as a note, when it is both a note and a tag", async () => {
+      getVaultTags.mockResolvedValue([{ count: 20, tag: "hub" }]);
+      const { result } = renderHook(() =>
+        useCaptureTags(true, addressableNames(["Hub", 5])),
+      );
+      await waitFor(() => expect(result.current.index.size).toBe(1));
+
+      act(() => result.current.onChange(changeEvent("#hub")));
+      expect(result.current.suggestions).toEqual([
+        { count: 5, isNote: true, name: "Hub" },
+      ]);
+    });
+
+    // §324-b 후속 규칙 ①: 키보드가 고르는 것과 화면에 보일 배열이 같은 출처
+    // (`suggestions`)여야 한다. 노트의 **표시 케이스**(`display`)가 선택되는지도
+    // 함께 고정한다 — 소문자 키가 새면 `#baram-dev-note`가 되어 이 단정이 깨진다.
+    it("Enter selects the note at the current index, in its original display case", async () => {
+      getVaultTags.mockResolvedValue([]);
+      const { result } = renderHook(() =>
+        useCaptureTags(true, addressableNames(["Baram-Dev-Note", 2])),
+      );
+      await waitFor(() => expect(result.current.index.size).toBe(0));
+
+      const input = document.createElement("input");
+      document.body.appendChild(input);
+      result.current.inputRef.current = input;
+
+      act(() => result.current.onChange(changeEvent("#baram")));
+      input.value = "#baram";
+      input.setSelectionRange(input.value.length, input.value.length);
+      expect(result.current.visible).toBe(true);
+
+      act(() => result.current.onKeyDown(keyEvent("Enter")));
+      expect(result.current.value).toBe("#Baram-Dev-Note ");
+
+      document.body.removeChild(input);
+    });
+
+    // §324-b 후속 규칙 ④: 태스크 모드의 배선(`NO_CAPTURE_TARGETS`)이 빈 Map을
+    // 넘기므로, 노트가 있어도 제안에 노트가 없다 — 별도 게이트가 아니라 이 인자
+    // 하나로 성립해야 한다.
+    it("suggests no notes when addressableNames is empty (task mode)", async () => {
+      getVaultTags.mockResolvedValue([{ count: 1, tag: "capturetest" }]);
+      const { result } = renderHook(() =>
+        useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+      );
+      await waitFor(() => expect(result.current.index.size).toBe(1));
+
+      act(() => result.current.onChange(changeEvent("#captur")));
+      expect(result.current.suggestions).toEqual([
+        { count: 1, isNote: false, name: "capturetest" },
+      ]);
+    });
   });
 });

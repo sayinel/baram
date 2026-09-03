@@ -287,4 +287,39 @@ describe("useCaptureTargets", () => {
     // itself, not the eventual settled state once notes are re-read.
     expect(commits).toEqual([{ loading: true, targets: [] }]);
   });
+
+  describe("§324-b 후속 addressableNames", () => {
+    // ‼️ 새 노트는 캡처가 0개다 — 여기서 값이 0으로 나오는 것이, 소비자가 "캡처
+    // 0개"라는 소음을 감추기 위한 판단(§324-b 후속 규칙 ③)의 전제다.
+    it("adds a brand-new note's title with zero captures", async () => {
+      listDir.mockResolvedValue([noteEntry("/z/notes/CaptureTest.md")]);
+      readFile.mockResolvedValue("# CaptureTest\n");
+
+      const { result } = renderHook(() => useCaptureTargets(true, []));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.addressableNames.get("capturetest")).toEqual({
+        captureCount: 0,
+        display: "CaptureTest",
+      });
+    });
+
+    // §324-b 후속 규칙: 공백 있는 제목은 태그로 닿을 수 없으므로 제안하지 않는다
+    // (`is_tag_char`, `src-tauri/src/md/mod.rs:25`) — 공백 없는 별칭은 제안한다.
+    it("excludes a title with a space, but includes its space-free alias", async () => {
+      listDir.mockResolvedValue([noteEntry("/z/notes/Note.md")]);
+      readFile.mockResolvedValue(
+        "---\ntitle: Baram Dev Note\naliases: [Baram-Dev-Note]\n---\n# Baram Dev Note\n",
+      );
+
+      const { result } = renderHook(() => useCaptureTargets(true, []));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.addressableNames.has("baram dev note")).toBe(false);
+      expect(result.current.addressableNames.get("baram-dev-note")).toEqual({
+        captureCount: 0,
+        display: "Baram-Dev-Note",
+      });
+    });
+  });
 });

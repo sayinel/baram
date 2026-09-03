@@ -1332,6 +1332,47 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     return (entries) => release(entries);
   }
 
+  // §324-b 후속 — Task 6이 자동완성 출처를 `getVaultTags`로 바꾼 뒤로 노트 **제목**은
+  // 누가 `#태그`로 실제로 쓰기 전까지 제안에 뜨지 않았다. `readFile`이 프론트매터 없는
+  // 본문을 돌려주므로 "영감노트"는 태그로 한 번도 안 쓰였다 — 그런데도 뜨는 것이
+  // 이 테스트가 존재하는 이유다.
+  it("suggests the loaded note's own title, marked as a note, once the scan settles", async () => {
+    vi.mocked(readFile).mockResolvedValue("# 영감노트\n");
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    setTags("#영감노");
+
+    await vi.waitFor(() =>
+      expect(screen.getByRole("option")).toBeInTheDocument(),
+    );
+    const option = screen.getByRole("option");
+    expect(option.querySelector(".tag-suggest-name")).toHaveTextContent(
+      "#영감노트",
+    );
+    // 캡처가 없는 노트 — 숫자가 아니라 "Note" 라벨만 보인다(§324-b 후속 규칙 ③).
+    expect(option.querySelector(".tag-suggest-count")).toHaveTextContent(
+      t("journal.tagSuggest.note", LOCALE),
+    );
+  });
+
+  // §324-b 후속 규칙 ④: 태스크 모드에서는 노트 제안이 없다. 노트가 이미 로드된
+  // 뒤에 토글해도 — `NO_CAPTURE_TARGETS`로의 치환이 `addressableNames`를 비운
+  // 것이 그 자리에서 드롭다운을 지워야 한다. 별도 게이트가 있었다면 이미 열려
+  // 있던 드롭다운은 남았을 것이다.
+  it("hides an already-shown note suggestion the instant task mode is toggled on", async () => {
+    vi.mocked(readFile).mockResolvedValue("# 영감노트\n");
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    setTags("#영감노");
+    await vi.waitFor(() =>
+      expect(screen.getByRole("option")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(taskToggle());
+
+    expect(screen.queryByRole("option")).toBeNull();
+  });
+
   // ‼️ 스캔이 끝나기 전에 저장하면 대상이 아직 **비어 있다.** 그대로 두면 캡처가
   // `inbox/`로 가고 토스트가 "#영감노트와 일치하는 노트가 없습니다"라고 말한다 — 그것은
   // 거짓이다. §324-a가 없애려는 실패(어디로 갔는지 잘못 아는 것)를 이 경로가 새로

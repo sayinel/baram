@@ -15,6 +15,7 @@ const LOCALE = "en";
  * 여섯 번 다시 정하게 된다.
  */
 const state = (over: Partial<CaptureTargets> = {}): CaptureTargets => ({
+  addressableNames: new Map(),
   failed: false,
   loading: false,
   targets: [],

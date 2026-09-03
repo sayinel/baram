@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { PendingMedia } from "../../utils/media-data-url";
-import type { CaptureTargets } from "./use-capture-targets";
+import type { AddressableNote, CaptureTargets } from "./use-capture-targets";
 
 import { EditorContent } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
@@ -42,8 +42,12 @@ import { useCaptureTags } from "./use-capture-tags";
 import { useCaptureTargets } from "./use-capture-targets";
 import { captureErrorKey, useCaptureTaskMode } from "./use-capture-task-mode";
 
-/** 태스크 모드가 보는 값 — 안정된 참조라 `useCallback` 의존성을 흔들지 않는다. */
+/** 태스크 모드가 보는 값 — 안정된 참조라 `useCallback` 의존성을 흔들지 않는다.
+ *  `addressableNames`가 빈 Map인 것이 §324-b 후속 판정 ④를 성립시킨다: 태스크
+ *  모드에서는 태그 칸에 노트 제안이 뜨지 않는다. 별도 게이트가 아니라 이 치환
+ *  하나가 그 일을 한다. */
 const NO_CAPTURE_TARGETS: CaptureTargets = {
+  addressableNames: new Map(),
   failed: false,
   loading: false,
   targets: [],
@@ -81,7 +85,26 @@ export function QuickCaptureDialog() {
   const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
   const zettelReady = zettelkastenEnabled && !!zettelDir;
   const taskMode = useCaptureTaskMode();
-  const tags = useCaptureTags(quickCaptureOpen);
+  /**
+   * §324-b 후속 — `useCaptureTags`의 제안이 `useCaptureTargets`가 읽은 노트 이름을
+   * 필요로 하고, `useCaptureTargets`는 `useCaptureTags`가 파싱한 태그 목록을 필요로
+   * 한다. 서로가 서로의 인자라 어느 쪽도 다른 쪽보다 먼저 완전히 계산해 둘 수 없다.
+   *
+   * React의 "렌더 중 상태 조정" 패턴(`use-capture-targets.ts`의 `prevOpen`과 같은
+   * 기법 — https://react.dev/reference/react/useState#storing-information-from-previous-renders)으로
+   * 커밋 전에 동기적으로 수렴시킨다: `tags`를 먼저 계산하고(이번 렌더에서는 직전
+   * 세션의 `addressableNames`로), 그걸로 `captureTargets`를 얻은 뒤, 그 안의
+   * `addressableNames`가 지금 든 state와 다르면 그 자리에서 갱신한다. React는 커밋
+   * 전에 이 컴포넌트를 즉시 다시 돈다 — 화면에는 수렴한 값만 그려진다.
+   *
+   * ‼️ 무한 루프가 아니다: `addressableNames`는 `notes`에서만 파생되므로
+   * (`use-capture-targets.ts`의 `useMemo([notes])`) 참조가 안정적이고, 한 번
+   * 갱신되면 재조정 조건이 다시 참이 되지 않는다.
+   */
+  const [addressableNames, setAddressableNames] = useState<
+    Map<string, AddressableNote>
+  >(() => new Map());
+  const tags = useCaptureTags(quickCaptureOpen, addressableNames);
   const resize = useCaptureResize();
   // §320 태그가 지목하는 노트들. 미리보기와 저장이 **같은 값**을 쓴다.
   //
@@ -108,6 +131,12 @@ export function QuickCaptureDialog() {
    * 가드는 다음 소비자가 빠뜨리고, 이 결함이 정확히 그렇게 났다.
    */
   const captureTargets = taskMode.enabled ? NO_CAPTURE_TARGETS : scannedTargets;
+  // 위 `tags` 호출부 주석 참조 — `captureTargets`가 방금 든 `addressableNames`
+  // state와 다르면(최초 렌더, 스캔 완료, 태스크 모드 전환) 그 자리에서 갱신해
+  // React가 커밋 전에 이 컴포넌트를 다시 돌게 한다.
+  if (captureTargets.addressableNames !== addressableNames) {
+    setAddressableNames(captureTargets.addressableNames);
+  }
   // ‼️ 캡처 창의 편집기(`capture.editor`)가 **아니다.** 쓰기 경로를 고르는 라우터가
   // 판정하는 것은 대상 노트를 탭에 열어 두었을 수도 있는 메인 편집기다
   // (`use-capture-task-mode.ts:52`가 같은 것을 쓴다).
@@ -546,8 +575,7 @@ export function QuickCaptureDialog() {
           <TagSuggest
             activeIndex={tags.activeIndex}
             onSelect={tags.onSelect}
-            query={tags.query}
-            tags={tags.index}
+            suggestions={tags.suggestions}
             visible={tags.visible}
           />
         </div>

@@ -190,6 +190,8 @@
   "journal.stats.words": "단어",
   "journal.stats.year": "올해",
   "journal.tagSuggest.aria": "태그 제안",
+  "journal.tagSuggest.note": "노트",
+  "journal.tagSuggest.noteWithCount": "노트 · 캡처 {count}개",
   "journal.today": "오늘",
   "journal.zettel.titlePlaceholder": "노트 제목",
   "keybindings.ai.chatPanel": "AI 채팅 패널",

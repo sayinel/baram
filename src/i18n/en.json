@@ -190,6 +190,8 @@
   "journal.stats.words": "Words",
   "journal.stats.year": "Year",
   "journal.tagSuggest.aria": "Tag suggestions",
+  "journal.tagSuggest.note": "Note",
+  "journal.tagSuggest.noteWithCount": "Note · {count} captures",
   "journal.today": "Today",
   "journal.zettel.titlePlaceholder": "Note title",
   "keybindings.ai.chatPanel": "AI Chat Panel",

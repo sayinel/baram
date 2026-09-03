@@ -19,9 +19,30 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { logger } from "../../utils/logger";
 import { countCaptures } from "../../utils/zettelkasten/capture-append";
 import { resolveCaptureMatches } from "../../utils/zettelkasten/capture-target";
+import { parseNoteTitle } from "../../utils/zettelkasten/parse-note-title";
+import { parseFrontmatterAliases } from "../../utils/zettelkasten/zettel-note";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 
+export interface AddressableNote {
+  /** 이 노트의 `## Captures` 절 안 캡처 수(`countCaptures`). 새 노트는 0이다. */
+  captureCount: number;
+  /** 표시용 원본 케이스 — 매칭은 소문자 키로 한다. */
+  display: string;
+}
+
 export interface CaptureTargets {
+  /**
+   * §324-b 후속 태그로 **닿을 수 있는** 노트 이름들 — 공백 없는 제목 + 별칭만.
+   * 소문자 키 → 그 노트. 캡처 창의 태그 자동완성(`use-capture-tags.ts`)이 "제목의
+   * 노트를 만들면 그 이름이 뜬다"를 위해 쓴다. `resolveCaptureMatches`가 매칭에 쓰는
+   * 것과 같은 공백 규칙이라 — 여기 없는 이름은 애초에 태그로도 닿지 못한다.
+   *
+   * ‼️ 이름과 캡처 수를 **평행한 두 맵**으로 두지 않는다. 같은 키를 쓰는 두 맵은
+   * 갈라지는 형태다 — 한쪽에만 이름을 더하거나 한쪽만 필터하면 제안에 **다른 노트의
+   * 카운트**가 붙고, 두 조회가 모두 성공하므로 조용하다. 키 하나에 레코드 하나면
+   * 자기 자신과 어긋날 수 없다.
+   */
+  addressableNames: Map<string, AddressableNote>;
   /**
    * 후보 목록을 **못 읽었다**. `targets`가 빈 것과는 다른 사실이다: 빈 배열은 "찾아봤고
    * 없다"이고, 이것은 "찾아보지 못했다"다. 둘을 같은 모양으로 다루면 IPC가 한 번 흔들린
@@ -169,5 +190,27 @@ export function useCaptureTargets(
     };
   }, [tags, notes]);
 
-  return { failed, loading, targets, unmatchedTags };
+  // §324-b 후속 태그 칸의 노트-이름 제안 출처. `tags`가 아니라 `notes`에만 의존한다 —
+  // 이 목록은 "이 세션에 어떤 노트가 있는가"만 답하고, 지금 입력 중인 태그와는 무관하다.
+  const addressableNames = useMemo(() => {
+    const map = new Map<string, AddressableNote>();
+    for (const note of notes) {
+      const title = parseNoteTitle(note.filename, note.content);
+      const aliases = parseFrontmatterAliases(note.content);
+      const captureCount = countCaptures(note.content);
+      // ‼️ 공백 있는 이름은 건너뛴다 — 태그는 공백을 담지 못하므로(`is_tag_char`,
+      // `src-tauri/src/md/mod.rs:25`) 애초에 매칭될 수 없는 이름을 제안하지 않는다.
+      // `resolveCaptureMatches`가 매칭에 쓰는 것과 같은 규칙이다.
+      for (const name of [title, ...aliases]) {
+        if (!name || /\s/.test(name)) continue;
+        const key = name.toLowerCase();
+        // 먼저 온 이름이 이긴다 — 제목이 별칭보다 먼저이므로 같은 노트 안에서는
+        // 제목이, 노트 사이에서는 먼저 읽힌 노트가 우선한다.
+        if (!map.has(key)) map.set(key, { captureCount, display: name });
+      }
+    }
+    return map;
+  }, [notes]);
+
+  return { addressableNames, failed, loading, targets, unmatchedTags };
 }

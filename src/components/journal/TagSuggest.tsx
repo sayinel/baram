@@ -1,21 +1,23 @@
 // §56l — Tag autocomplete dropdown for journal captures
 import { useEffect, useRef } from "react";
 
+import type { TagSuggestion } from "./use-capture-tags";
+
 import { useTranslation } from "../../i18n/useTranslation";
-import { filterTags } from "../../utils/journal/journal-tags";
 
 interface TagSuggestProps {
   activeIndex: number;
   onSelect: (tag: string) => void;
   position?: { left: number; top: number };
-  query: string;
-  tags: Map<string, number>;
+  /** ‼️ 여기서 다시 필터링하지 않는다 — `useCaptureTags`가 한 번만 계산한 것을
+   *  그대로 그린다. 여기서 또 계산하면 키보드가 고르는 것과 화면에 보이는 것이
+   *  서로 다른 출처가 될 수 있다(§324-b 후속 규칙 ①). */
+  suggestions: TagSuggestion[];
   visible: boolean;
 }
 
 export function TagSuggest({
-  query,
-  tags,
+  suggestions,
   onSelect,
   visible,
   activeIndex,
@@ -23,8 +25,6 @@ export function TagSuggest({
 }: TagSuggestProps) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLUListElement>(null);
-
-  const suggestions = filterTags(query, tags);
 
   // Scroll active item into view
   useEffect(() => {
@@ -47,20 +47,28 @@ export function TagSuggest({
       role="listbox"
       style={style}
     >
-      {suggestions.map((tag, i) => (
+      {suggestions.map((s, i) => (
         <li
           aria-selected={i === activeIndex}
           className={`tag-suggest-item ${i === activeIndex ? "tag-suggest-item-active" : ""}`}
-          key={tag}
+          key={s.name}
           onMouseDown={(e) => {
             // Prevent input blur before selection
             e.preventDefault();
-            onSelect(tag);
+            onSelect(s.name);
           }}
           role="option"
         >
-          <span className="tag-suggest-name">#{tag}</span>
-          <span className="tag-suggest-count">{tags.get(tag) ?? 0}</span>
+          <span className="tag-suggest-name">#{s.name}</span>
+          <span className="tag-suggest-count">
+            {s.isNote
+              ? s.count > 0
+                ? t("journal.tagSuggest.noteWithCount", {
+                    count: String(s.count),
+                  })
+                : t("journal.tagSuggest.note")
+              : s.count}
+          </span>
         </li>
       ))}
     </ul>
