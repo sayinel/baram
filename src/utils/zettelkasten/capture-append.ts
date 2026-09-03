@@ -103,6 +103,11 @@ export function countCaptures(content: string): number {
  * 대상 문서를 읽는 것은 append를 위해 어차피 하는 일이므로 추가 비용이 없다.
  * 충돌 시 초를 붙이고(2자리), 그것도 충돌하면 계속 늘린다 — `generateZettelId`와
  * 같은 방식이다.
+ *
+ * ‼️ `capturesSection`으로 절 안에만 좁히지 않는다 — 유일성은 **문서 전체**의
+ * 속성이다. 절 밖의 우연한 `^m…`(예: 무관한 절의 블록 참조)을 "사용 중"으로
+ * 오판해도 다음 후보를 더 보수적으로 고를 뿐 충돌을 만들지 않는다. 반대로 절 안에만
+ * 좁혔다가 절 밖의 실제 사용을 놓치면 §321이 막으려는 바로 그 충돌이 생긴다.
  */
 export function nextCaptureBlockId(content: string, stamp: string): string {
   const used = new Set<string>();
@@ -118,11 +123,21 @@ export function nextCaptureBlockId(content: string, stamp: string): string {
   return candidate;
 }
 
-/** `## Captures` 헤딩 **뒤**의 텍스트. 절이 없으면 `null`. */
+/**
+ * `## Captures` 헤딩 **뒤부터 다음 h1/h2 헤딩 전까지**의 텍스트. 절이 없으면 `null`.
+ *
+ * ‼️ `#{1,2}`로 다음 절 경계를 잡는다 — `###`(항목 헤딩)에서 멈추면 안 된다. 안 하면
+ * 뒤따르는 `## Related` 같은 무관한 절 안의 우연한 `^m…` 블록 참조(예:
+ * `((otherNote#^m1234567890))`)까지 `countCaptures`가 캡처로 잘못 센다. 캡처 id
+ * 철자가 `m` + 10자리라 실수로 다른 참조와 겹치기 쉽다. `journal-memories.ts:37-44`,
+ * `:94-108`이 같은 이유로 이미 이 경계 방식을 쓴다.
+ */
 function capturesSection(content: string): null | string {
   const m = CAPTURES_HEADING_RE.exec(content);
   if (!m) return null;
-  return content.slice(m.index + m[0].length);
+  const rest = content.slice(m.index + m[0].length);
+  const next = rest.match(/^#{1,2}[ \t]/m);
+  return next ? rest.slice(0, next.index) : rest;
 }
 
 function pad(n: number): string {
@@ -154,7 +169,12 @@ export function appendCapture(
   const heading = CAPTURES_HEADING_RE.exec(content);
   if (!heading) {
     // 절이 없으면 문서 끝에 만든다 — 기존 내용을 건드리지 않는 유일한 안전한 자리.
-    return `${content.trimEnd()}\n\n${CAPTURES_HEADING}\n\n${block}\n`;
+    // ‼️ `content`가 빈 문자열이면(§325 마이그레이션이 빈 문서에서 시작할 수 있다)
+    // `trimEnd()`도 빈 문자열이라, 무조건 앞에 구분자를 붙이면 문서가 빈 줄로
+    // 시작한다 — 라운드트립에서 remark가 그 선행 개행을 지워 형태가 갈린다.
+    const head = content.trimEnd();
+    const prefix = head ? `${head}\n\n` : "";
+    return `${prefix}${CAPTURES_HEADING}\n\n${block}\n`;
   }
 
   const cut = heading.index + heading[0].length;

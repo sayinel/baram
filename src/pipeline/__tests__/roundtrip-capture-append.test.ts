@@ -37,7 +37,10 @@ describe("§321 capture append round trip", () => {
       },
       "m2609021415",
     );
-    expect(roundTrip(out).trim()).toBe(out.trim());
+    // ‼️ 양쪽을 trim해서 비교하지 않는다 — 앞뒤 공백 차이를 가리면 방금 고친
+    // `\s*$` 버그(문서 중간이 아니라 가장자리에 났다면 trim이 지웠을 것) 같은
+    // 결함이 안 보인다.
+    expect(roundTrip(out)).toBe(out);
   });
 
   // ‼️ 블록 ID가 라운드트립 뒤에도 **살아 있는** 것. 위 테스트는 "문자열이 같다"만
@@ -73,6 +76,18 @@ describe("§321 capture append round trip", () => {
       { body: "오후", heading: "2026-09-02 14:15" },
       "m2609021415",
     );
-    expect(roundTrip(two).trim()).toBe(two.trim());
+    expect(roundTrip(two)).toBe(two);
+  });
+
+  // ‼️ §325 마이그레이션은 빈 문서에서 시작할 수 있다. `appendCapture`의 no-section
+  // 분기가 무조건 `\n\n` 접두를 붙이면 문서가 빈 줄로 시작하고, remark가 라운드트립
+  // 중 그 선행 개행을 지워 형태가 갈린다 — trim 없는 단정이라야 이 어긋남이 보인다.
+  it("survives a round trip starting from an empty document", () => {
+    const out = appendCapture(
+      "",
+      { body: "본문", heading: "2026-09-02 14:15" },
+      "m2609021415",
+    );
+    expect(roundTrip(out)).toBe(out);
   });
 });

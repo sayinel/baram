@@ -131,6 +131,33 @@ describe("countCaptures", () => {
   it("returns 0 when there is no Captures section", () => {
     expect(countCaptures(`# x\n\n### 2026-09-02 10:00 ^m2609021000\n`)).toBe(0);
   });
+
+  // ‼️ 캡처 id 철자(`m` + 10자리)는 일반 블록 참조와 우연히 겹치기 쉽다.
+  // `## Captures` 뒤에 오는 무관한 절(`## Related`)의 블록 참조까지 세면
+  // §324-c 미리보기가 잘못된 개수를 보여준다. 절 경계는 다음 h1/h2에서 끊는다 —
+  // `###`(항목 헤딩)에서 끊으면 안 된다.
+  //
+  // 반대로 `nextCaptureBlockId`는 이 참조를 **여전히** "사용 중"으로 봐야 한다 —
+  // 유일성은 문서 전체의 속성이고, 절 밖의 실제 사용을 놓치면 §321이 막으려는
+  // 충돌이 그대로 생긴다. 두 함수는 여기서 의도적으로 비대칭이다.
+  it("does not count a block id from a section after Captures, but nextCaptureBlockId still avoids it", () => {
+    const doc = [
+      `# 영감노트`,
+      ``,
+      `## Captures`,
+      ``,
+      `### 2026-09-02 14:15 ^m2609021415`,
+      ``,
+      `본문`,
+      ``,
+      `## Related`,
+      ``,
+      `다른 노트 참조 ((otherNote#^m1234567890))`,
+      ``,
+    ].join("\n");
+    expect(countCaptures(doc)).toBe(1);
+    expect(nextCaptureBlockId(doc, "m1234567890")).not.toBe("m1234567890");
+  });
 });
 
 describe("appendCapture", () => {
