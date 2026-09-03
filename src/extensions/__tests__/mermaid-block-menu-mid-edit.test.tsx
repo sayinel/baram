@@ -6,8 +6,8 @@
 // failed render, so Copy as SVG could hand out a diagram that no longer
 // matches the source on screen. Copy as PNG re-renders the live source and
 // swallowed its failure, so on broken source it was a silent no-op. View
-// Fullscreen's close blurred the editor, which mid-edit ends the session
-// the user is in. And a right-click on the menu itself, a portal, fell
+// Fullscreen's close blurred the editor, which mid-edit could take the
+// session's focus away. And a right-click on the menu itself, a portal, fell
 // through the block's containment guard to the browser.
 import {
   act,
@@ -159,8 +159,10 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     });
   });
 
-  it("View Fullscreen from the menu, then Close, keeps the edit session", async () => {
-    const { view, preview } = await mountEditing();
+  it("View Fullscreen from the menu, then Close, keeps the edit session and its focus", async () => {
+    const { view, preview, textarea } = await mountEditing();
+    textarea.focus();
+    expect(document.activeElement).toBe(textarea);
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();
     const item = menuItem("View Fullscreen");
@@ -181,6 +183,7 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     expect(
       view.container.querySelector(".mermaid-block-editing textarea"),
     ).not.toBeNull();
+    expect(document.activeElement).toBe(textarea);
   });
 
   it("a right-click on the open menu itself neither yields to the browser nor moves it", async () => {
@@ -199,5 +202,31 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     expect(nativeMenuAllowed).toBe(false);
     expect(menu()).toBe(open);
     expect(open.style.left).toBe("20px");
+  });
+  it("View Fullscreen from the menu shows nothing rather than a stale diagram", async () => {
+    // The viewer gets the same fresh-or-nothing svg as the menu items: right
+    // after an edit there is no render for the source on screen yet, so the
+    // viewer opens on its empty state and fills in when the render lands.
+    const { preview, textarea } = await mountEditing();
+    fireEvent.change(textarea, { target: { value: EDITED } });
+    await flush();
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    const item = menuItem("View Fullscreen");
+    if (!item) throw new Error("View Fullscreen item did not render");
+
+    fireEvent.click(item);
+    await flush();
+
+    const body = ".mermaid-view-fullscreen-body";
+    expect(document.body.querySelector(body)).not.toBeNull();
+    expect(
+      document.body.querySelector(`${body} .mermaid-block-svg`),
+    ).toBeNull();
+    await waitFor(() => {
+      expect(
+        document.body.querySelector(`${body} .mermaid-block-svg`),
+      ).not.toBeNull();
+    });
   });
 });

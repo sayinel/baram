@@ -68,15 +68,14 @@ export function MermaidBlockContextMenu({
             className="mermaid-context-menu-item"
             onClick={() => {
               // The rasterizer or the clipboard can refuse (issue 521 review);
-              // a silent no-op would read as "the clipboard is broken".
+              // a silent no-op would read as "the clipboard is broken". The
+              // helper only says that it failed — the console has the cause —
+              // so the toast does not guess one.
               void copyMermaidPng(code).then((ok) => {
                 if (!ok) {
                   useUIStore
                     .getState()
-                    .showToast(
-                      "Copy as PNG failed: the diagram did not render",
-                      "error",
-                    );
+                    .showToast("Copy as PNG failed", "error");
                 }
               });
               onClose();

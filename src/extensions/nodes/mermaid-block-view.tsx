@@ -353,6 +353,17 @@ export function MermaidBlockView({
     setFullscreen(false);
   }, []);
 
+  // issue 521: the block's own menu, and View Fullscreen from it, are
+  // reachable in both modes, so what they offer must be what the user is
+  // looking at — the session's code while editing, the committed attribute
+  // otherwise.
+  const menuCode = editing ? localCode : code;
+  // Only hand out the rendered svg (Copy as SVG, the PNG items gated on it,
+  // the fullscreen viewer) when it was rendered from that very source — never
+  // a stale render over broken or newer source. The inline preview keeps
+  // showing the last good render, faded, next to the error; that is the
+  // editing affordance, not an export.
+  const freshSvgHtml = renderedSource === menuCode ? svgHtml : "";
   const detectedType = detectMermaidType(localCode);
 
   // Fullscreen View modal (read-only — diagram only, no editor)
@@ -372,7 +383,7 @@ export function MermaidBlockView({
       detectedType={detectedType}
       error={error}
       onClose={closeViewFullscreen}
-      svgHtml={svgHtml}
+      svgHtml={freshSvgHtml}
     />
   ) : null;
 
@@ -389,15 +400,6 @@ export function MermaidBlockView({
       onDiscard={discardFullscreen}
     />
   ) : null;
-
-  // issue 521: the block's own menu is reachable in both modes, so its
-  // Copy / PNG / Edit Fullscreen items work on what the user is looking at —
-  // the session's code while editing, the committed attribute otherwise.
-  const menuCode = editing ? localCode : code;
-  // Only offer the rendered svg (Copy as SVG, and the PNG items gated on it)
-  // when it was rendered from what the menu is about — never a stale render
-  // over broken or newer source.
-  const menuSvgHtml = renderedSource === menuCode ? svgHtml : "";
 
   // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
   // traversal NodeSelection keeps the preview (plus PM's selectednode
@@ -617,7 +619,7 @@ export function MermaidBlockView({
           onDelete={deleteBlock}
           onOpenEditFullscreen={() => openEditFullscreen(menuCode)}
           setViewFullscreen={setViewFullscreen}
-          svgHtml={menuSvgHtml}
+          svgHtml={freshSvgHtml}
         />
       )}
       {viewFullscreenModal}

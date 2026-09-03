@@ -197,16 +197,15 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // inputs; the query builder's selects; the code block's language
       // select; and controls a document itself places through an HTML
       // block): for all of them the document menu acted on the ProseMirror
-      // selection, not on the control. The NodeViews with a menu of their own (mermaid, svg)
-      // apply the same predicate before claiming a click, so a control never
-      // ends up under two rules. closeMenu(): a mouse right-click never
-      // arrives with our menu open, since MenuList closes on the preceding
-      // mousedown, but a keyboard-invoked context menu (Shift+F10, the Menu
-      // key) has no mousedown, and the old menu must not linger beside the
-      // native one.
+      // selection, not on the control. The NodeViews with a menu of their
+      // own (mermaid, svg) apply the same predicate before claiming a click,
+      // so a control never ends up under two rules. closeAllContextMenus():
+      // no menu — ours (MenuList subscribes) or a block's — may linger
+      // beside the native one. Their mousedown dismiss did not necessarily
+      // run: a keyboard-invoked context menu (Shift+F10, the Menu key) sends
+      // no mousedown, and a NodeView stops the right-button one.
       if (specialType === null && isInNativeTextControl(e.target)) {
         closeAllContextMenus();
-        closeMenu();
         return;
       }
 
@@ -239,7 +238,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
     document.addEventListener("contextmenu", handleContextMenu);
 
     return () => document.removeEventListener("contextmenu", handleContextMenu);
-  }, [editor, buildMenuItems, findSpecialNode, closeMenu]);
+  }, [editor, buildMenuItems, findSpecialNode]);
 
   if (!position) return null;
 
