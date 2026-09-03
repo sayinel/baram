@@ -197,8 +197,11 @@ export function SvgBlockView({
 
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
+    // Reachable from the block menu mid-edit (issue 521): blurring then would
+    // end the textarea session.
+    if (editing) return;
     requestAnimationFrame(() => editor.commands.blur());
-  }, [editor]);
+  }, [editor, editing]);
 
   const runAI = useCallback(
     (anchor: HTMLElement) => {
@@ -532,6 +535,12 @@ export function SvgBlockView({
             // Stop click from bubbling through the React portal tree to the
             // NodeViewWrapper's onClick (which would select the block → edit mode).
             onClick={(e) => e.stopPropagation()}
+            // issue 521: a right-click on the menu itself is nobody's — see
+            // MermaidBlockContextMenu.
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: "fixed",

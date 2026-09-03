@@ -49,6 +49,11 @@ export function MermaidBlockView({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<null | string>(null);
   const [svgHtml, setSvgHtml] = useState<string>("");
+  // The source `svgHtml` was rendered FROM. The render is debounced and a
+  // failed render keeps the last good svg, so while editing the two can
+  // disagree — the block menu must not offer that svg as if it were the
+  // current diagram (issue 521 final review).
+  const [renderedSource, setRenderedSource] = useState("");
   // §5.12: whether a render has been ATTEMPTED, which is not the same question
   // as whether it produced anything. "no SVG yet" is the DOM for three
   // different states — still lazy, empty source, failed — and the export has to
@@ -113,6 +118,7 @@ export function MermaidBlockView({
           (svg) => {
             if (!cancelled) {
               setSvgHtml(svg);
+              setRenderedSource(source);
               setError(null);
               setRenderAttempted(true);
             }
@@ -352,11 +358,14 @@ export function MermaidBlockView({
   // Fullscreen View modal (read-only — diagram only, no editor)
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
+    // The modal is reachable from the block menu mid-edit now (issue 521);
+    // blurring then would end the textarea session the user is in.
+    if (editing) return;
     // Prevent ProseMirror from selecting the mermaid block when modal closes
     requestAnimationFrame(() => {
       editor.commands.blur();
     });
-  }, [editor]);
+  }, [editor, editing]);
 
   const viewFullscreenModal = viewFullscreen ? (
     <MermaidViewFullscreenModal
@@ -385,6 +394,10 @@ export function MermaidBlockView({
   // Copy / PNG / Edit Fullscreen items work on what the user is looking at —
   // the session's code while editing, the committed attribute otherwise.
   const menuCode = editing ? localCode : code;
+  // Only offer the rendered svg (Copy as SVG, and the PNG items gated on it)
+  // when it was rendered from what the menu is about — never a stale render
+  // over broken or newer source.
+  const menuSvgHtml = renderedSource === menuCode ? svgHtml : "";
 
   // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
   // traversal NodeSelection keeps the preview (plus PM's selectednode
@@ -604,7 +617,7 @@ export function MermaidBlockView({
           onDelete={deleteBlock}
           onOpenEditFullscreen={() => openEditFullscreen(menuCode)}
           setViewFullscreen={setViewFullscreen}
-          svgHtml={svgHtml}
+          svgHtml={menuSvgHtml}
         />
       )}
       {viewFullscreenModal}

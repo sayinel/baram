@@ -119,12 +119,16 @@ export const MERMAID_TEMPLATES: Record<
   },
 };
 
-/** Rasterize Mermaid source to PNG and copy to the OS clipboard (SVG labels). */
-export async function copyMermaidPng(code: string): Promise<void> {
+/** Rasterize Mermaid source to PNG and copy to the OS clipboard (SVG labels).
+ *  Returns false when the source does not render or the clipboard refuses —
+ *  the caller decides whether to tell the user (the block menu does). */
+export async function copyMermaidPng(code: string): Promise<boolean> {
   try {
     await copySvgAsPng(await renderMermaidRasterSvg(code));
+    return true;
   } catch (err) {
     console.error("Mermaid: copy as PNG failed", err);
+    return false;
   }
 }
 

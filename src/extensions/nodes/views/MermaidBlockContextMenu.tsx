@@ -5,6 +5,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { useUIStore } from "../../../stores/ui/ui";
 import {
   copyMermaidPng,
   copyMermaidSource,
@@ -37,6 +38,13 @@ export function MermaidBlockContextMenu({
       // Stop click from bubbling through the React portal tree to the
       // NodeViewWrapper's onClick (which would select the block → edit mode).
       onClick={(e) => e.stopPropagation()}
+      // issue 521: a right-click on the menu itself is nobody's — not the
+      // browser's (the menu is a portal, so the block's containment guard
+      // passes it up) and not a reason to move the menu.
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
@@ -59,7 +67,18 @@ export function MermaidBlockContextMenu({
           <button
             className="mermaid-context-menu-item"
             onClick={() => {
-              copyMermaidPng(code);
+              // The rasterizer or the clipboard can refuse (issue 521 review);
+              // a silent no-op would read as "the clipboard is broken".
+              void copyMermaidPng(code).then((ok) => {
+                if (!ok) {
+                  useUIStore
+                    .getState()
+                    .showToast(
+                      "Copy as PNG failed: the diagram did not render",
+                      "error",
+                    );
+                }
+              });
               onClose();
             }}
           >

@@ -192,11 +192,12 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // detection, so the math menus keep their textarea behaviour
       // unchanged, and BEFORE preventDefault, so the native menu actually
       // appears. The rule is deliberately blanket over native text controls
-      // in the editor (every NodeView textarea, caption and title inputs,
-      // the query builder's selects, the code block's language select, and
-      // controls a document itself places through an HTML block): for all
-      // of them the document menu acted on the ProseMirror selection, not on
-      // the control. The NodeViews with a menu of their own (mermaid, svg)
+      // in the editor (every NodeView textarea except the math blocks',
+      // which the special-node check above claims first; caption and title
+      // inputs; the query builder's selects; the code block's language
+      // select; and controls a document itself places through an HTML
+      // block): for all of them the document menu acted on the ProseMirror
+      // selection, not on the control. The NodeViews with a menu of their own (mermaid, svg)
       // apply the same predicate before claiming a click, so a control never
       // ends up under two rules. closeMenu(): a mouse right-click never
       // arrives with our menu open, since MenuList closes on the preceding
