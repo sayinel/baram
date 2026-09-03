@@ -5,13 +5,13 @@
 import React from "react";
 import { createPortal } from "react-dom";
 
-import { useUIStore } from "../../../stores/ui/ui";
 import {
   copyMermaidPng,
   copyMermaidSource,
   copyMermaidSvg,
   downloadMermaidPng,
 } from "../../../utils/markdown/mermaid-utils";
+import { runBlockAction } from "./run-block-action";
 
 interface MermaidBlockContextMenuProps {
   code: string;
@@ -67,17 +67,9 @@ export function MermaidBlockContextMenu({
           <button
             className="mermaid-context-menu-item"
             onClick={() => {
-              // The rasterizer or the clipboard can refuse (issue 521 review);
-              // a silent no-op would read as "the clipboard is broken". The
-              // helper only says that it failed — the console has the cause —
-              // so the toast does not guess one.
-              void copyMermaidPng(code).then((ok) => {
-                if (!ok) {
-                  useUIStore
-                    .getState()
-                    .showToast("Copy as PNG failed", "error");
-                }
-              });
+              runBlockAction("Mermaid block", "copy as PNG", () =>
+                copyMermaidPng(code),
+              );
               onClose();
             }}
           >
@@ -86,7 +78,9 @@ export function MermaidBlockContextMenu({
           <button
             className="mermaid-context-menu-item"
             onClick={() => {
-              void downloadMermaidPng(code);
+              runBlockAction("Mermaid block", "download PNG", () =>
+                downloadMermaidPng(code),
+              );
               onClose();
             }}
           >

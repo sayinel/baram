@@ -34,13 +34,15 @@ vi.mock("mermaid", () => ({
 }));
 
 // The raster helper: in jsdom the real one waits forever on an <img> load
-// that never comes, so it is stubbed to REPORT failure — the wiring under
-// test is "false from the helper → a toast", not the rasterizer itself.
+// that never comes, so it is stubbed to FAIL — the wiring under test is "a
+// rejection from the helper → a toast", not the rasterizer itself.
 vi.mock("../../utils/markdown/mermaid-utils", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../utils/markdown/mermaid-utils")
   >()),
-  copyMermaidPng: vi.fn(async () => false),
+  copyMermaidPng: vi.fn(async () => {
+    throw new Error("clipboard refused");
+  }),
 }));
 
 import { useUIStore } from "../../stores/ui/ui";
@@ -145,7 +147,8 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
   it("says so when Copy as PNG fails", async () => {
     // A source that does not render never gets this far (the PNG items are
     // gated on a fresh render); what can still fail is the rasterizer or the
-    // clipboard, and that failure must not be silent.
+    // clipboard, and that failure must not be silent. The toast carries the
+    // helper's own message rather than a guessed cause.
     const { preview } = await mountEditing();
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();

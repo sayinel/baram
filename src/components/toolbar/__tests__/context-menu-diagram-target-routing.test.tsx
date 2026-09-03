@@ -50,6 +50,8 @@ declare const MockIntersectionObserver: {
 const MERMAID = "flowchart LR\n  A --> B";
 const MERMAID_EDITED = "flowchart LR\n  A --> B --> C";
 const SVG = '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
+const SVG_EDITED =
+  '<svg viewBox="0 0 10 10"><rect width="10" height="10"/><circle r="4"/></svg>';
 
 const editors: Editor[] = [];
 
@@ -455,5 +457,42 @@ describe("svg block: right-click ownership by target", () => {
     await flush();
 
     expect(localMenu(".svg-context-menu")).toBeNull();
+  });
+  it("editing: Edit Fullscreen from that menu seeds the session's code, not the committed one", async () => {
+    // The svg menu's copy/download/fullscreen items read the session value
+    // (`source`), like mermaid's `menuCode` — pinned here for the svg half.
+    const { editor, view } = await mount({
+      attrs: { code: SVG },
+      type: "svgBlock",
+    });
+    await enterEditing(editor);
+    const textarea = required(
+      view.container.querySelector<HTMLTextAreaElement>(
+        ".svg-block-editing textarea",
+      ),
+      "editing textarea",
+    );
+    fireEvent.change(textarea, { target: { value: SVG_EDITED } });
+    await flush();
+    const preview = required(
+      view.container.querySelector<HTMLElement>(
+        ".svg-block-editing .svg-block-render-faded",
+      ),
+      "editing-state preview",
+    );
+
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    const edit = [
+      ...document.body.querySelectorAll<HTMLElement>(".svg-context-menu-item"),
+    ].find((b) => b.textContent === "Edit Fullscreen");
+    fireEvent.click(required(edit ?? null, "Edit Fullscreen item"));
+    await flush();
+
+    expect(
+      document.body.querySelector<HTMLTextAreaElement>(
+        ".svg-fullscreen-editor textarea",
+      )?.value,
+    ).toBe(SVG_EDITED);
   });
 });

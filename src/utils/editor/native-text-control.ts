@@ -5,8 +5,16 @@
 // NodeView lets such a click bubble untouched, the document handler then
 // steps aside without preventDefault, and the native menu appears.
 //
-// Checkboxes and radios are excluded in advance — none exist in the editor
-// today (the task item's control is a <button>, unaffected either way).
+// The rule is deliberately blanket. In the editor today it covers every
+// NodeView textarea (mermaid, svg, HTML block, block embed — but not the
+// math blocks', which the document handler's special-node check claims
+// first), the caption and title inputs, the frontmatter and tag inputs, the
+// query builder's selects and limit input, the code block's language select,
+// and any control a document itself places through an HTML block: for all
+// of them the app menu acted on the ProseMirror selection, not on the
+// control. Checkboxes and radios are excluded in advance — none exist in the
+// editor today (the task item's control is a <button>, unaffected either
+// way).
 const NATIVE_TEXT_CONTROL_SELECTOR =
   'textarea, select, input:not([type="checkbox"]):not([type="radio"])';
 

@@ -12,13 +12,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // hover toolbar (AI / copy / download PNG / fullscreen) + right-click menu.
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
-import { useUIStore } from "../../stores/ui/ui";
-import {
-  closeAllContextMenus,
-  onCloseAllContextMenus,
-} from "../../utils/editor/context-menu-exclusive";
 import { isInNativeTextControl } from "../../utils/editor/native-text-control";
-import { logger } from "../../utils/logger";
 import {
   copySvgAsPng,
   downloadSvg,
@@ -37,8 +31,10 @@ import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { svgBlockEntryKey } from "./svg-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
+import { runBlockAction } from "./views/run-block-action";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
+import { useBlockContextMenu } from "./views/use-block-context-menu";
 import { useMediaResize } from "./views/use-media-resize";
 import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -61,10 +57,6 @@ export function SvgBlockView({
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
-  const [contextMenu, setContextMenu] = useState<null | {
-    x: number;
-    y: number;
-  }>(null);
 
   // Refs for the selected-change effect (avoid re-running on every keystroke).
   const localCodeRef = useRef(localCode);
@@ -108,13 +100,15 @@ export function SvgBlockView({
     });
   const refusedCommit = useRefusedCommitToast();
 
-  // Sanitized SVG for the current source (cheap — pure string op).
-  // localCode belongs to an edit SESSION — a traversal selection never opened
-  // one, so its preview keeps rendering the attribute.
-  const source = editing ? localCode : code;
+  // What the block acts on — the session's code while editing, the committed
+  // attribute otherwise (a traversal selection never opened a session, so its
+  // preview keeps rendering the attribute). The render, the menu and the
+  // toolbar all read this, never the raw attribute.
+  const activeSource = editing ? localCode : code;
+  // Sanitized SVG for it (cheap — pure string op).
   const svgHtml = useMemo(
-    () => (source.trim() ? sanitizeSvg(source) : ""),
-    [source],
+    () => (activeSource.trim() ? sanitizeSvg(activeSource) : ""),
+    [activeSource],
   );
   const fullscreenSvg = useMemo(
     () => (fullscreenCode.trim() ? sanitizeSvg(fullscreenCode) : ""),
@@ -126,29 +120,13 @@ export function SvgBlockView({
   // height that survives into the editing render.
   useTextareaAutoResize(textareaRef, localCode, editing);
 
-  // Dismiss context menu on outside click / Escape.
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = () => setContextMenu(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismiss();
-    };
-    document.addEventListener("mousedown", dismiss);
-    document.addEventListener("keydown", onKey);
-    // issue 521: one menu at a time — see context-menu-exclusive.ts.
-    const offCloseAll = onCloseAllContextMenus(dismiss);
-    return () => {
-      document.removeEventListener("mousedown", dismiss);
-      document.removeEventListener("keydown", onKey);
-      offCloseAll();
-    };
-  }, [contextMenu]);
-
-  // issue 521: a mode flip or a source change closes the menu — it is bound
-  // to `source`; rationale in mermaid-block-view.tsx.
-  useEffect(() => {
-    setContextMenu(null);
-  }, [editing, source]);
+  // issue 521: the block's own right-click menu — see use-block-context-menu.ts.
+  const {
+    close: closeBlockMenu,
+    contextMenu,
+    onContextMenu: handleBlockContextMenu,
+    onMouseDown: stopRightButtonMouseDown,
+  } = useBlockContextMenu({ editing, source: activeSource, wrapperRef });
 
   // Auto-resize fullscreen textarea.
   useEffect(() => {
@@ -210,17 +188,6 @@ export function SvgBlockView({
     [code, editor, getPos],
   );
 
-  // Run an async toolbar/menu action, surfacing failures to the console AND a
-  // visible toast instead of silently swallowing them (a denied save dialog,
-  // a missing IPC command, a clipboard/rasterize error, etc.).
-  const runAsync = useCallback((label: string, fn: () => Promise<unknown>) => {
-    fn().catch((err) => {
-      logger.error(`SVG block: ${label} failed`, err);
-      const msg = err instanceof Error ? err.message : String(err);
-      useUIStore.getState().showToast(`${label} failed: ${msg}`);
-    });
-  }, []);
-
   // Resize: width persisted as width="N%" on the root <svg> (round-trips).
   const { dragPct, startResize } = useMediaResize(renderRef, (pct) => {
     // §12-6: resize drag commit — tagged chrome (design §5b)
@@ -229,12 +196,12 @@ export function SvgBlockView({
     });
   });
   // Stored display width (% of the block) — null means natural size.
-  const storedPct = getSvgRootWidthPercent(source);
+  const storedPct = getSvgRootWidthPercent(activeSource);
   // Effective width while rendering: the live drag value wins.
   const effectivePct = dragPct ?? storedPct;
 
   // Caption stored in the root <svg>'s <title> (round-trips).
-  const caption = getSvgCaption(source);
+  const caption = getSvgCaption(activeSource);
   const commitCaption = useCallback((text: string) => {
     updateAttributesRef.current({
       code: setSvgCaption(codeRef.current, text),
@@ -377,31 +344,8 @@ export function SvgBlockView({
       contentEditable={false}
       data-type="svgBlock"
       onClick={editing ? undefined : handlePreviewClick}
-      // issue 521: ownership by the ELEMENT under the pointer, in both modes
-      // — a native text control (source textarea, caption input) bubbles up
-      // untouched to the document-level rule and gets the native menu;
-      // everything else on the block opens its own menu. Rationale in
-      // mermaid-block-view.tsx, which has the same shape.
-      onContextMenu={(e: React.MouseEvent) => {
-        // Portal-borne events (fullscreen modals) are not ours; an open block
-        // menu must not linger beside a native one. Both as in mermaid.
-        if (!wrapperRef.current?.contains(e.target as Node)) return;
-        if (isInNativeTextControl(e.target)) {
-          closeAllContextMenus();
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        closeAllContextMenus();
-        setContextMenu({ x: e.clientX, y: e.clientY });
-      }}
-      onMouseDown={
-        editing
-          ? undefined
-          : (e: React.MouseEvent) => {
-              if (e.button === 2) e.stopPropagation();
-            }
-      }
+      onContextMenu={handleBlockContextMenu}
+      onMouseDown={stopRightButtonMouseDown}
       ref={wrapperRef}
       spellCheck={false}
     >
@@ -517,7 +461,9 @@ export function SvgBlockView({
               </MediaToolbarButton>
               <MediaToolbarButton
                 onClick={() =>
-                  runAsync("copy source", () => copySvgSource(code))
+                  runBlockAction("SVG block", "copy source", () =>
+                    copySvgSource(activeSource),
+                  )
                 }
                 title="Copy SVG source"
               >
@@ -525,7 +471,9 @@ export function SvgBlockView({
               </MediaToolbarButton>
               <MediaToolbarButton
                 onClick={() =>
-                  runAsync("download PNG", () => downloadSvgAsPng(svgHtml))
+                  runBlockAction("SVG block", "download PNG", () =>
+                    downloadSvgAsPng(svgHtml),
+                  )
                 }
                 title="Download as PNG"
               >
@@ -565,8 +513,10 @@ export function SvgBlockView({
             <button
               className="svg-context-menu-item"
               onClick={() => {
-                runAsync("copy source", () => copySvgSource(source));
-                setContextMenu(null);
+                runBlockAction("SVG block", "copy source", () =>
+                  copySvgSource(activeSource),
+                );
+                closeBlockMenu();
               }}
             >
               Copy SVG
@@ -576,8 +526,10 @@ export function SvgBlockView({
                 <button
                   className="svg-context-menu-item"
                   onClick={() => {
-                    runAsync("copy PNG", () => copySvgAsPng(svgHtml));
-                    setContextMenu(null);
+                    runBlockAction("SVG block", "copy PNG", () =>
+                      copySvgAsPng(svgHtml),
+                    );
+                    closeBlockMenu();
                   }}
                 >
                   Copy as PNG
@@ -585,8 +537,10 @@ export function SvgBlockView({
                 <button
                   className="svg-context-menu-item"
                   onClick={() => {
-                    runAsync("download PNG", () => downloadSvgAsPng(svgHtml));
-                    setContextMenu(null);
+                    runBlockAction("SVG block", "download PNG", () =>
+                      downloadSvgAsPng(svgHtml),
+                    );
+                    closeBlockMenu();
                   }}
                 >
                   Download PNG
@@ -596,8 +550,10 @@ export function SvgBlockView({
             <button
               className="svg-context-menu-item"
               onClick={() => {
-                runAsync("download SVG", () => downloadSvg(source));
-                setContextMenu(null);
+                runBlockAction("SVG block", "download SVG", () =>
+                  downloadSvg(activeSource),
+                );
+                closeBlockMenu();
               }}
             >
               Download SVG
@@ -607,7 +563,7 @@ export function SvgBlockView({
               className="svg-context-menu-item"
               onClick={() => {
                 setViewFullscreen(true);
-                setContextMenu(null);
+                closeBlockMenu();
               }}
             >
               View Fullscreen
@@ -615,8 +571,8 @@ export function SvgBlockView({
             <button
               className="svg-context-menu-item"
               onClick={() => {
-                openEditFullscreen(source);
-                setContextMenu(null);
+                openEditFullscreen(activeSource);
+                closeBlockMenu();
               }}
             >
               Edit Fullscreen
@@ -625,7 +581,7 @@ export function SvgBlockView({
               className="svg-context-menu-item svg-context-menu-danger"
               onClick={() => {
                 deleteBlock();
-                setContextMenu(null);
+                closeBlockMenu();
               }}
             >
               Delete

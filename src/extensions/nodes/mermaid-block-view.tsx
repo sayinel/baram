@@ -1,15 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
-import {
-  closeAllContextMenus,
-  onCloseAllContextMenus,
-} from "../../utils/editor/context-menu-exclusive";
-import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import {
   copyMermaidSource,
   detectMermaidType,
@@ -29,8 +24,10 @@ import {
   MermaidEditFullscreenModal,
   MermaidViewFullscreenModal,
 } from "./views/MermaidFullscreenModals";
+import { runBlockAction } from "./views/run-block-action";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
+import { useBlockContextMenu } from "./views/use-block-context-menu";
 import { useMediaResize } from "./views/use-media-resize";
 import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -68,10 +65,6 @@ export function MermaidBlockView({
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [fullscreenSvg, setFullscreenSvg] = useState("");
   const [fullscreenError, setFullscreenError] = useState<null | string>(null);
-  const [contextMenu, setContextMenu] = useState<null | {
-    x: number;
-    y: number;
-  }>(null);
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -215,55 +208,33 @@ export function MermaidBlockView({
     return () => document.removeEventListener("mousedown", handler);
   }, [showTemplates]);
 
-  // Dismiss context menu on outside click or Escape
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = () => setContextMenu(null);
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismiss();
-    };
-    document.addEventListener("mousedown", dismiss);
-    document.addEventListener("keydown", handleKey);
-    // issue 521: another menu opening (or a right-click yielded to the
-    // browser) elsewhere closes this one — the mousedown above never arrives
-    // when the other block stops it (context-menu-exclusive.ts).
-    const offCloseAll = onCloseAllContextMenus(dismiss);
-    return () => {
-      document.removeEventListener("mousedown", dismiss);
-      document.removeEventListener("keydown", handleKey);
-      offCloseAll();
-    };
-  }, [contextMenu]);
-
-  // issue 521: the block's own menu, and View Fullscreen from it, are
-  // reachable in both modes, so what they offer must be what the user is
-  // looking at — the session's code while editing, the committed attribute
-  // otherwise.
-  const menuCode = editing ? localCode : code;
+  // What the block's chrome acts on — the session's code while editing, the
+  // committed attribute otherwise. The menu, View Fullscreen from it and the
+  // toolbar's copy/download all read this, never the raw attribute (issue
+  // 521: the menu is reachable mid-edit, and must offer what is on screen).
+  const activeSource = editing ? localCode : code;
   // Only hand out the rendered svg (Copy as SVG, the PNG items gated on it,
   // the fullscreen viewer) when it was rendered from that very source — never
   // a stale render over broken or newer source. The inline preview keeps
   // showing the last good render, faded, next to the error; that is the
   // editing affordance, not an export.
-  const freshSvgHtml = renderedSource === menuCode ? svgHtml : "";
+  const freshSvgHtml = renderedSource === activeSource ? svgHtml : "";
 
-  // issue 521: the menu is bound to what it opened on — the mode (menuCode's
-  // meaning flips with it) and the source itself. Either changing under an
-  // open menu closes it rather than re-binding it: a mode flip covers the
-  // Escape the textarea's vim stair stops before the document listener
-  // above can see it, and a source change (typing, an undo from the Edit
-  // menu) would otherwise make the gated svg items vanish and shift the
-  // list under the pointer.
-  useEffect(() => {
-    setContextMenu(null);
-  }, [editing, menuCode]);
+  // issue 521: the block's own right-click menu — ownership by target, one
+  // menu at a time, closed by a mode or source change. use-block-context-menu.ts.
+  const {
+    close: closeBlockMenu,
+    contextMenu,
+    onContextMenu: handleBlockContextMenu,
+    onMouseDown: stopRightButtonMouseDown,
+  } = useBlockContextMenu({ editing, source: activeSource, wrapperRef });
 
   // Seed the fullscreen editor and open it. Two call sites share this
   // code→svg→error→open sequence (the header's Expand button and the block's
   // context menu's Edit Fullscreen item) — collapsed into one action. They
   // differ only in WHICH code string they seed (the header always has an
   // open edit session so it seeds `localCode`; the context menu is reachable
-  // in both modes since issue 521 and seeds `menuCode`), so that stays a
+  // in both modes since issue 521 and seeds `activeSource`), so that stays a
   // param.
   const openEditFullscreen = useCallback(
     (source: string) => {
@@ -386,7 +357,7 @@ export function MermaidBlockView({
       detectedType={detectedType}
       error={error}
       onClose={closeViewFullscreen}
-      pending={!freshSvgHtml && !error && menuCode.trim() !== ""}
+      pending={!freshSvgHtml && !error && activeSource.trim() !== ""}
       svgHtml={freshSvgHtml}
     />
   ) : null;
@@ -422,48 +393,8 @@ export function MermaidBlockView({
       data-render-state={renderAttempted ? "done" : "pending"}
       data-type="mermaidBlock"
       onClick={editing ? undefined : handlePreviewClick}
-      // issue 521: right-click ownership goes by the ELEMENT under the
-      // pointer, not by the block's mode. A native text control (the source
-      // textarea, the caption input) is the browser's — let the event bubble
-      // untouched and the document-level rule (ContextMenu.tsx) yields to the
-      // native menu. Everything else on this block — the rendered diagram in
-      // either mode, the header — opens the block's own menu. Attached in
-      // BOTH modes: while editing, the live preview stays visible and used to
-      // fall through to the generic text menu (Cut / Bold over an atom).
-      onContextMenu={(e: React.MouseEvent) => {
-        // Portal-borne events bubble here too: the fullscreen modals render
-        // into body but live in this component's React tree. They are not
-        // physically inside the block, and the menu they would open is bound
-        // to the inline state, not the fullscreen draft — leave them to the
-        // browser.
-        if (!wrapperRef.current?.contains(e.target as Node)) return;
-        if (isInNativeTextControl(e.target)) {
-          // No menu of ours may linger beside the native one — not this
-          // block's, not another block's, not the document-level one. Their
-          // mousedown dismiss does not fire when the click that got here was
-          // on the toolbar or the caption (both stop mousedown), nor for a
-          // keyboard-invoked context menu.
-          closeAllContextMenus();
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        // One menu at a time: this block's right-button mousedown never
-        // reached the others' dismiss listeners (stopped below), so say so.
-        closeAllContextMenus();
-        setContextMenu({ x: e.clientX, y: e.clientY });
-      }}
-      onMouseDown={
-        editing
-          ? undefined
-          : (e: React.MouseEvent) => {
-              // Prevent right-click from propagating to ProseMirror
-              // which would set NodeSelection and switch to editing mode
-              if (e.button === 2) {
-                e.stopPropagation();
-              }
-            }
-      }
+      onContextMenu={handleBlockContextMenu}
+      onMouseDown={stopRightButtonMouseDown}
       ref={wrapperRef}
       spellCheck={false}
     >
@@ -594,13 +525,17 @@ export function MermaidBlockView({
                 <Sparkles size={14} />
               </MediaToolbarButton>
               <MediaToolbarButton
-                onClick={() => copyMermaidSource(code)}
+                onClick={() => copyMermaidSource(activeSource)}
                 title="Copy source code"
               >
                 <Copy size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
-                onClick={() => void downloadMermaidPng(code)}
+                onClick={() =>
+                  runBlockAction("Mermaid block", "download PNG", () =>
+                    downloadMermaidPng(activeSource),
+                  )
+                }
                 title="Download as PNG"
               >
                 <Download size={16} strokeWidth={2} />
@@ -617,11 +552,11 @@ export function MermaidBlockView({
       )}
       {contextMenu && (
         <MermaidBlockContextMenu
-          code={menuCode}
+          code={activeSource}
           contextMenu={contextMenu}
-          onClose={() => setContextMenu(null)}
+          onClose={closeBlockMenu}
           onDelete={deleteBlock}
-          onOpenEditFullscreen={() => openEditFullscreen(menuCode)}
+          onOpenEditFullscreen={() => openEditFullscreen(activeSource)}
           setViewFullscreen={setViewFullscreen}
           svgHtml={freshSvgHtml}
         />
