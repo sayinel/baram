@@ -31,6 +31,7 @@ import { createBaramExtensions } from "../../../index";
 import {
   canUseEditorChrome,
   isVimExternalEdit,
+  updateNodeAttributesWithVim,
   vimPluginKey,
 } from "../vim-keys";
 
@@ -521,5 +522,161 @@ describe("CalloutView collapse button (§12-⑩ wiring, issue 375)", () => {
     enableVimNormal(editor);
     fireEvent.click(view.getByTitle("Collapse"));
     expect(collapsedOf(editor)).toBe(true);
+  });
+});
+
+// ── issue 531 — the helper is the capability gate for every chrome commit ──
+//
+// Every NodeView chrome commit funnels through updateNodeAttributesWithVim,
+// and only two of its eight callers guarded at the call site. The helper now
+// refuses without capability and REPORTS whether it dispatched, because a
+// silent refusal is its own defect: mermaid/svg fullscreen close and the
+// query builder update local state on the assumption that the commit
+// happened, so they must branch on the result (pinned in their own tests).
+
+describe("updateNodeAttributesWithVim (§12-⑩ gate + result, issue 531)", () => {
+  function calloutEditor(): { editor: Editor; pos: number } {
+    const editor = makeEditor();
+    editor.commands.setContent({
+      content: [
+        {
+          attrs: { collapsed: false, type: "tip" },
+          content: [
+            { content: [{ text: "body", type: "text" }], type: "paragraph" },
+          ],
+          type: "callout",
+        },
+      ],
+      type: "doc",
+    });
+    let pos = -1;
+    editor.state.doc.descendants((node, p) => {
+      if (node.type.name === "callout") pos = p;
+      return pos < 0;
+    });
+    return { editor, pos };
+  }
+
+  function collapsedOf(editor: Editor): boolean {
+    let value = false;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "callout") value = node.attrs.collapsed as boolean;
+      return node.type.name !== "callout";
+    });
+    return value;
+  }
+
+  it("dispatches and reports true while capability holds", () => {
+    const { editor, pos } = calloutEditor();
+    const committed = updateNodeAttributesWithVim(editor, () => pos, {
+      collapsed: true,
+    });
+    expect(committed).toBe(true);
+    expect(collapsedOf(editor)).toBe(true);
+  });
+
+  it("refuses on a read-only editor — false, and the document is identical", () => {
+    const { editor, pos } = calloutEditor();
+    act(() => setEditorEditable(editor, false));
+    const before = editor.state.doc;
+    const committed = updateNodeAttributesWithVim(editor, () => pos, {
+      collapsed: true,
+    });
+    expect(committed).toBe(false);
+    expect(editor.state.doc.eq(before)).toBe(true);
+  });
+
+  it("dispatches during vim normal — the view is locked, chrome is not", () => {
+    const { editor, pos } = calloutEditor();
+    enableVimNormal(editor);
+    expect(editor.view.editable).toBe(false);
+    expect(
+      updateNodeAttributesWithVim(editor, () => pos, { collapsed: true }),
+    ).toBe(true);
+    expect(collapsedOf(editor)).toBe(true);
+  });
+
+  it("dispatches while an input island holds the keys (vim suspended)", () => {
+    const { editor, pos } = calloutEditor();
+    enableVimNormal(editor);
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setMeta(vimPluginKey, {
+          suspended: true,
+          type: "setSuspended",
+        }),
+      );
+    });
+    expect(
+      updateNodeAttributesWithVim(editor, () => pos, { collapsed: true }),
+    ).toBe(true);
+    expect(collapsedOf(editor)).toBe(true);
+  });
+
+  it("reports false for a position that holds no node, without dispatching", () => {
+    const { editor } = calloutEditor();
+    const before = editor.state.doc;
+    expect(
+      updateNodeAttributesWithVim(editor, () => undefined, { collapsed: true }),
+    ).toBe(false);
+    expect(editor.state.doc.eq(before)).toBe(true);
+  });
+
+  it("reports false on a destroyed editor without throwing", () => {
+    const { editor, pos } = calloutEditor();
+    editor.destroy();
+    expect(
+      updateNodeAttributesWithVim(editor, () => pos, { collapsed: true }),
+    ).toBe(false);
+  });
+});
+
+describe("updateNodeAttributesWithVim reports ACCEPTANCE, not dispatch (issue 531)", () => {
+  it("returns false when a filterTransaction vetoes the change", () => {
+    // A receipt that says "dispatched" is worthless if the bank bounced it:
+    // the callers that branch on this result would clear their dirty flag
+    // over an unchanged document. State identity after dispatch is the
+    // only honest answer (same rule as vim's own dispatchLanded).
+    const editor = new TiptapEditor({
+      extensions: [
+        ...createBaramExtensions(),
+        Extension.create({
+          name: "vetoChromeCommits",
+          addProseMirrorPlugins() {
+            // Veto exactly the tagged chrome commits, so setContent below
+            // still lands and the callout exists to be refused.
+            return [
+              new Plugin({ filterTransaction: (tr) => !isVimExternalEdit(tr) }),
+            ];
+          },
+        }),
+      ],
+    });
+    editors.push(editor);
+    editor.commands.setContent({
+      content: [
+        {
+          attrs: { collapsed: false, type: "tip" },
+          content: [
+            { content: [{ text: "body", type: "text" }], type: "paragraph" },
+          ],
+          type: "callout",
+        },
+      ],
+      type: "doc",
+    });
+    let pos = -1;
+    editor.state.doc.descendants((node, p) => {
+      if (node.type.name === "callout") pos = p;
+      return pos < 0;
+    });
+    const before = editor.state.doc;
+
+    const committed = updateNodeAttributesWithVim(editor, () => pos, {
+      collapsed: true,
+    });
+
+    expect(committed).toBe(false);
+    expect(editor.state.doc.eq(before)).toBe(true);
   });
 });

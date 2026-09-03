@@ -27,6 +27,7 @@ import {
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useMediaResize } from "./views/use-media-resize";
+import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 export function MermaidBlockView({
@@ -176,6 +177,7 @@ export function MermaidBlockView({
     onKeyDown: handleKeyDown,
     onDeselect: () => setShowTemplates(false),
   });
+  const refusedCommit = useRefusedCommitToast();
 
   // Auto-resize textarea — keyed on `editing`, NOT `selected`: the standby
   // element is 1px wide, and a measurement there writes an inflated inline
@@ -306,16 +308,36 @@ export function MermaidBlockView({
   );
 
   const closeFullscreen = useCallback(() => {
+    // §12-6: fullscreen Close button commit — tagged chrome (design §5b).
+    // issue 531: the helper is the capability gate and reports whether it
+    // dispatched. On a refusal (read-only editor) nothing below may run —
+    // the local mirror would say "saved" over an unchanged document, and
+    // closing would throw the edit away. Keep the modal open with the text
+    // in it; Discard is the way out that says what it does.
+    const committed = updateNodeAttributesWithVim(editor, getPos, {
+      code: fullscreenCode,
+    });
+    if (!committed) {
+      refusedCommit.announce(
+        "Read-only editor — fullscreen changes were not saved",
+      );
+      return;
+    }
+    refusedCommit.settle();
     // Save fullscreen changes back
     setLocalCode(fullscreenCode);
-    // §12-6: fullscreen Close button commit — tagged chrome (design §5b)
-    updateNodeAttributesWithVim(editor, getPos, { code: fullscreenCode });
     // The direct commit ENDS the textarea session — a leftover dirty flag
     // would make the next deselect re-save this (by then possibly stale)
     // local value over an Undo or external update (review S5/S6-R4).
     clearDirty();
     setFullscreen(false);
-  }, [fullscreenCode, editor, getPos, clearDirty]);
+  }, [fullscreenCode, editor, getPos, clearDirty, refusedCommit]);
+
+  /** Leave fullscreen without committing; localCode and the dirty flag are
+   *  untouched, so the inline session continues exactly as it was. */
+  const discardFullscreen = useCallback(() => {
+    setFullscreen(false);
+  }, []);
 
   const detectedType = detectMermaidType(localCode);
 
@@ -347,6 +369,7 @@ export function MermaidBlockView({
       fullscreenTextareaRef={fullscreenTextareaRef}
       onChangeCode={setFullscreenCode}
       onClose={closeFullscreen}
+      onDiscard={discardFullscreen}
     />
   ) : null;
 
