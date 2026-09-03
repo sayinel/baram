@@ -13,6 +13,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { useUIStore } from "../../stores/ui/ui";
+import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import { logger } from "../../utils/logger";
 import {
   copySvgAsPng,
@@ -347,15 +348,17 @@ export function SvgBlockView({
       contentEditable={false}
       data-type="svgBlock"
       onClick={editing ? undefined : handlePreviewClick}
-      onContextMenu={
-        editing
-          ? undefined
-          : (e: React.MouseEvent) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setContextMenu({ x: e.clientX, y: e.clientY });
-            }
-      }
+      // issue 521: ownership by the ELEMENT under the pointer, in both modes
+      // — a native text control (source textarea, caption input) bubbles up
+      // untouched to the document-level rule and gets the native menu;
+      // everything else on the block opens its own menu. Rationale in
+      // mermaid-block-view.tsx, which has the same shape.
+      onContextMenu={(e: React.MouseEvent) => {
+        if (isInNativeTextControl(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
       onMouseDown={
         editing
           ? undefined
@@ -500,97 +503,94 @@ export function SvgBlockView({
               </MediaToolbarButton>
             </MediaToolbar>
           )}
-
-          {contextMenu &&
-            createPortal(
-              <div
-                className="svg-context-menu"
-                // Stop click from bubbling through the React portal tree to the
-                // NodeViewWrapper's onClick (which would select the block → edit mode).
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                style={{
-                  position: "fixed",
-                  left: contextMenu.x,
-                  top: contextMenu.y,
-                  zIndex: 9999,
-                }}
-              >
-                <button
-                  className="svg-context-menu-item"
-                  onClick={() => {
-                    runAsync("copy source", () => copySvgSource(code));
-                    setContextMenu(null);
-                  }}
-                >
-                  Copy SVG
-                </button>
-                {svgHtml && (
-                  <>
-                    <button
-                      className="svg-context-menu-item"
-                      onClick={() => {
-                        runAsync("copy PNG", () => copySvgAsPng(svgHtml));
-                        setContextMenu(null);
-                      }}
-                    >
-                      Copy as PNG
-                    </button>
-                    <button
-                      className="svg-context-menu-item"
-                      onClick={() => {
-                        runAsync("download PNG", () =>
-                          downloadSvgAsPng(svgHtml),
-                        );
-                        setContextMenu(null);
-                      }}
-                    >
-                      Download PNG
-                    </button>
-                  </>
-                )}
-                <button
-                  className="svg-context-menu-item"
-                  onClick={() => {
-                    runAsync("download SVG", () => downloadSvg(code));
-                    setContextMenu(null);
-                  }}
-                >
-                  Download SVG
-                </button>
-                <div className="svg-context-menu-divider" />
-                <button
-                  className="svg-context-menu-item"
-                  onClick={() => {
-                    setViewFullscreen(true);
-                    setContextMenu(null);
-                  }}
-                >
-                  View Fullscreen
-                </button>
-                <button
-                  className="svg-context-menu-item"
-                  onClick={() => {
-                    openEditFullscreen(code);
-                    setContextMenu(null);
-                  }}
-                >
-                  Edit Fullscreen
-                </button>
-                <button
-                  className="svg-context-menu-item svg-context-menu-danger"
-                  onClick={() => {
-                    deleteBlock();
-                    setContextMenu(null);
-                  }}
-                >
-                  Delete
-                </button>
-              </div>,
-              document.body,
-            )}
         </>
       )}
+      {contextMenu &&
+        createPortal(
+          <div
+            className="svg-context-menu"
+            // Stop click from bubbling through the React portal tree to the
+            // NodeViewWrapper's onClick (which would select the block → edit mode).
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              left: contextMenu.x,
+              top: contextMenu.y,
+              zIndex: 9999,
+            }}
+          >
+            <button
+              className="svg-context-menu-item"
+              onClick={() => {
+                runAsync("copy source", () => copySvgSource(source));
+                setContextMenu(null);
+              }}
+            >
+              Copy SVG
+            </button>
+            {svgHtml && (
+              <>
+                <button
+                  className="svg-context-menu-item"
+                  onClick={() => {
+                    runAsync("copy PNG", () => copySvgAsPng(svgHtml));
+                    setContextMenu(null);
+                  }}
+                >
+                  Copy as PNG
+                </button>
+                <button
+                  className="svg-context-menu-item"
+                  onClick={() => {
+                    runAsync("download PNG", () => downloadSvgAsPng(svgHtml));
+                    setContextMenu(null);
+                  }}
+                >
+                  Download PNG
+                </button>
+              </>
+            )}
+            <button
+              className="svg-context-menu-item"
+              onClick={() => {
+                runAsync("download SVG", () => downloadSvg(source));
+                setContextMenu(null);
+              }}
+            >
+              Download SVG
+            </button>
+            <div className="svg-context-menu-divider" />
+            <button
+              className="svg-context-menu-item"
+              onClick={() => {
+                setViewFullscreen(true);
+                setContextMenu(null);
+              }}
+            >
+              View Fullscreen
+            </button>
+            <button
+              className="svg-context-menu-item"
+              onClick={() => {
+                openEditFullscreen(source);
+                setContextMenu(null);
+              }}
+            >
+              Edit Fullscreen
+            </button>
+            <button
+              className="svg-context-menu-item svg-context-menu-danger"
+              onClick={() => {
+                deleteBlock();
+                setContextMenu(null);
+              }}
+            >
+              Delete
+            </button>
+          </div>,
+          document.body,
+        )}
       {viewFullscreenModal}
       {fullscreenModal}
     </NodeViewWrapper>

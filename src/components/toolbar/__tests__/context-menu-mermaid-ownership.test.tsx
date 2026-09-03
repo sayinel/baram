@@ -1,13 +1,16 @@
 // issue 521 — the mermaid block has ONE right-click menu: its own.
 //
 // Two menus existed. The NodeView's local menu (MermaidBlockContextMenu) is
-// what the user sees in preview state; it stops propagation, so the
-// document-level ContextMenu never saw those clicks. But the local handler is
-// attached only while NOT editing — with the textarea open, a right-click
-// bubbled to the document listener, whose mermaid branch then showed a
-// "diagram" menu over the textarea, including a Copy-as-PNG that handed
-// rendered SVG markup to a function expecting mermaid source. The
-// document-level path is removed; this file pins both states.
+// what the user sees on the diagram; it stops propagation, so the
+// document-level ContextMenu never saw those clicks. But the local handler
+// used to be attached only while NOT editing — with the textarea open, a
+// right-click bubbled to the document listener, whose mermaid branch then
+// showed a "diagram" menu over the textarea, including a Copy-as-PNG that
+// handed rendered SVG markup to a function expecting mermaid source. The
+// document-level path is removed, and the NodeView now routes by target
+// (context-menu-diagram-target-routing.test.tsx); this file pins the
+// document-level side: diagram clicks never reach it, text-control clicks
+// are left to the browser.
 //
 // Mounted through a real editor + the real <ContextMenu>, with mermaid's
 // renderer mocked as in export-heavy-blocks.test.tsx.
@@ -103,11 +106,12 @@ describe("mermaid block context menu ownership (issue 521)", () => {
   });
 
   it("editing: right-click on the textarea is left to the browser — no menu of ours, native one allowed", async () => {
-    // The local handler is detached while editing, so this click DOES reach
-    // the document listener. Before the fix that produced the mermaid items
-    // (with the broken Copy-as-PNG). Now the listener recognises a native
-    // form control and steps aside without preventDefault, so the browser's
-    // own textarea menu (copy / paste / spellcheck) is what the user gets.
+    // The local handler lets a text-control click bubble, so this click DOES
+    // reach the document listener. Before the fix that produced the mermaid
+    // items (with the broken Copy-as-PNG). Now the listener recognises a
+    // native form control and steps aside without preventDefault, so the
+    // browser's own textarea menu (copy / paste / select all) is what the
+    // user gets.
     // Vim is off in this editor, so a NodeSelection alone opens the editing
     // session (with vim modal it would be a preview traversal).
     const { editor, view } = await mountMermaidDoc();

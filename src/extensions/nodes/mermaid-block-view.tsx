@@ -5,6 +5,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §50 Enhanced: template picker + full-screen edit
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
+import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import {
   copyMermaidSource,
   detectMermaidType,
@@ -217,14 +218,13 @@ export function MermaidBlockView({
     };
   }, [contextMenu]);
 
-  // Seed the fullscreen editor and open it. Three call sites used to repeat
-  // this code→svg→error→open sequence (this view's custom-event listener,
-  // the header's Expand button, the context menu's Edit Fullscreen item) —
-  // collapsed into one action. The sites differ only in WHICH code string
-  // they seed (this listener falls back to the committed `code` when the
-  // local edit buffer is empty; the header always has an open edit session
-  // so it seeds `localCode`; the context menu only ever renders outside an
-  // edit session so it seeds the committed `code`), so that stays a param.
+  // Seed the fullscreen editor and open it. Two call sites share this
+  // code→svg→error→open sequence (the header's Expand button and the block's
+  // context menu's Edit Fullscreen item) — collapsed into one action. They
+  // differ only in WHICH code string they seed (the header always has an
+  // open edit session so it seeds `localCode`; the context menu is reachable
+  // in both modes since issue 521 and seeds `menuCode`), so that stays a
+  // param.
   const openEditFullscreen = useCallback(
     (source: string) => {
       setFullscreenCode(source);
@@ -364,6 +364,11 @@ export function MermaidBlockView({
     />
   ) : null;
 
+  // issue 521: the block's own menu is reachable in both modes, so its
+  // Copy / PNG / Edit Fullscreen items work on what the user is looking at —
+  // the session's code while editing, the committed attribute otherwise.
+  const menuCode = editing ? localCode : code;
+
   // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection: a
   // traversal NodeSelection keeps the preview (plus PM's selectednode
   // outline). Single path so the textarea element survives the flip —
@@ -381,15 +386,20 @@ export function MermaidBlockView({
       data-render-state={renderAttempted ? "done" : "pending"}
       data-type="mermaidBlock"
       onClick={editing ? undefined : handlePreviewClick}
-      onContextMenu={
-        editing
-          ? undefined
-          : (e: React.MouseEvent) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setContextMenu({ x: e.clientX, y: e.clientY });
-            }
-      }
+      // issue 521: right-click ownership goes by the ELEMENT under the
+      // pointer, not by the block's mode. A native text control (the source
+      // textarea, the caption input) is the browser's — let the event bubble
+      // untouched and the document-level rule (ContextMenu.tsx) yields to the
+      // native menu. Everything else on this block — the rendered diagram in
+      // either mode, the header — opens the block's own menu. Attached in
+      // BOTH modes: while editing, the live preview stays visible and used to
+      // fall through to the generic text menu (Cut / Bold over an atom).
+      onContextMenu={(e: React.MouseEvent) => {
+        if (isInNativeTextControl(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
       onMouseDown={
         editing
           ? undefined
@@ -550,18 +560,18 @@ export function MermaidBlockView({
               </MediaToolbarButton>
             </MediaToolbar>
           )}
-          {contextMenu && (
-            <MermaidBlockContextMenu
-              code={code}
-              contextMenu={contextMenu}
-              onClose={() => setContextMenu(null)}
-              onDelete={deleteBlock}
-              onOpenEditFullscreen={() => openEditFullscreen(code)}
-              setViewFullscreen={setViewFullscreen}
-              svgHtml={svgHtml}
-            />
-          )}
         </>
+      )}
+      {contextMenu && (
+        <MermaidBlockContextMenu
+          code={menuCode}
+          contextMenu={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onDelete={deleteBlock}
+          onOpenEditFullscreen={() => openEditFullscreen(menuCode)}
+          setViewFullscreen={setViewFullscreen}
+          svgHtml={svgHtml}
+        />
       )}
       {viewFullscreenModal}
       {fullscreenModal}

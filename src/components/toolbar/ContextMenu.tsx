@@ -11,6 +11,7 @@ import {
 } from "../../extensions/plugins/block-id-decoration";
 // §4.8 Context Menu — right-click with node-type detection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
 import { buildTableMenu } from "./context-menu-table";
 import { MenuList } from "./MenuList";
@@ -184,29 +185,24 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // issue 521: a right-click on a native text control inside a NodeView
       // — the mermaid/svg textarea while editing, a query-builder <select>,
       // the frontmatter tag input — is the browser's to handle (copy, paste,
-      // spellcheck). posAtCoords cannot map such a click to a document
+      // select all). posAtCoords cannot map such a click to a document
       // position (it lands on the atom's edge, or nowhere), so the generic
       // menu would act on the wrong selection. Decided AFTER special-node
       // detection, so the math menus keep their textarea behaviour
       // unchanged, and BEFORE preventDefault, so the native menu actually
       // appears. The rule is deliberately blanket over native text controls
       // in the editor (every NodeView textarea, caption and title inputs,
-      // the query builder's selects, the code block's language select):
-      // for all of them the document menu acted on the ProseMirror
-      // selection, not on the control. Checkboxes and radios are excluded in
-      // advance — none exist in the editor today (the task item's control is
-      // a <button>, unaffected either way). closeMenu(): a mouse right-click
-      // never arrives with our menu open, since MenuList closes on the
-      // preceding mousedown, but a keyboard-invoked context menu (Shift+F10,
-      // the Menu key) has no mousedown, and the old menu must not linger
-      // beside the native one.
-      if (
-        specialType === null &&
-        e.target instanceof Element &&
-        e.target.closest(
-          'textarea, select, input:not([type="checkbox"]):not([type="radio"])',
-        ) !== null
-      ) {
+      // the query builder's selects, the code block's language select, and
+      // controls a document itself places through an HTML block): for all
+      // of them the document menu acted on the ProseMirror selection, not on
+      // the control. The NodeViews with a menu of their own (mermaid, svg)
+      // apply the same predicate before claiming a click, so a control never
+      // ends up under two rules. closeMenu(): a mouse right-click never
+      // arrives with our menu open, since MenuList closes on the preceding
+      // mousedown, but a keyboard-invoked context menu (Shift+F10, the Menu
+      // key) has no mousedown, and the old menu must not linger beside the
+      // native one.
+      if (specialType === null && isInNativeTextControl(e.target)) {
         closeMenu();
         return;
       }
