@@ -1292,6 +1292,7 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     // 거짓 초록이 된다. 자기가 쓰는 배선은 자기가 세운다.
     useUIStore.setState({
       quickCaptureOpen: true,
+      quickCaptureTaskIntent: false,
       showToast: REAL_SHOW_TOAST,
       toast: null,
     });
@@ -1416,6 +1417,173 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     expect(saveButton()).not.toBeDisabled();
     fireEvent.click(saveButton());
     await vi.waitFor(() => expect(captureFleeting).toHaveBeenCalled());
+  });
+
+  /**
+   * `fakeDisk`의 §320판 — 쓴 파일을 되비추면서 `notes/` 목록도 계속 답한다. 대상 스캔이
+   * 그 목록을 읽어야 하므로 순수한 write 기록용 대역으로는 이 describe가 성립하지 않는다.
+   */
+  function fakeDiskWithNote(): Map<string, unknown> {
+    const disk = new Map<string, unknown>();
+    vi.mocked(writeBinaryFile).mockImplementation(async (path, data) => {
+      disk.set(path, data);
+    });
+    vi.mocked(listDir).mockImplementation(async (dir) => {
+      const written = [...disk.keys()]
+        .filter((p) => p.slice(0, p.lastIndexOf("/")) === dir)
+        .map((p) => ({
+          isDir: false,
+          modifiedAt: 0,
+          name: p.slice(p.lastIndexOf("/") + 1),
+          path: p,
+          size: 0,
+        }));
+      return dir === "/vault/zettel/notes" ? [NOTE_ENTRY, ...written] : written;
+    });
+    return disk;
+  }
+
+  // ‼️ 미디어는 **항목이 붙는 노트 옆**에 쓰여야 한다.
+  //
+  // 상대참조는 열려 있는 파일의 디렉터리를 기준으로 풀린다(`active-file-dir.ts`). 그래서
+  // 파일을 `inbox/assets/`에 쓰고 항목을 `notes/…`에 붙이면, 허브 노트는
+  // `notes/assets/…`를 찾다가 못 찾고 이미지는 영영 깨진 채로 남으며 실제 파일은
+  // `inbox/assets/`에 고아로 쌓인다. §324-e는 "캡처가 곧 그 파일이 된다"는 전제로
+  // 목적지를 골랐고, §320이 그 전제를 깼다.
+  it("writes pasted media beside the target note, not into the inbox", async () => {
+    fakeDiskWithNote();
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    pasteImageInCapture("pearl.png");
+    await waitForCaptureImages(1);
+    setTags("#영감노트");
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    await vi.waitFor(() => expect(appendCaptureToNotes).toHaveBeenCalled());
+    expect(createDir).toHaveBeenCalledWith("/vault/zettel/notes/assets");
+    expect(writeBinaryFile).toHaveBeenCalledWith(
+      "/vault/zettel/notes/assets/pearl.png",
+      expect.any(Array),
+    );
+    // 그리고 본문에 남은 상대참조가 **그 자리에서** 실제로 풀린다.
+    const { body } = vi.mocked(appendCaptureToNotes).mock.calls[0][0];
+    expect(body).toContain("![pearl.png](assets/pearl.png)");
+    expect(body).not.toContain("data:");
+  });
+
+  // 태그가 아무것도 못 맞히면 캡처는 `inbox/`의 파일이 되므로 미디어도 거기 있어야
+  // 한다 — §324-e의 원래 동작. 위 테스트가 목적지를 **언제나** 노트 옆으로 옮기는
+  // 수정으로도 통과하지 않게 막는 짝이다.
+  it("still writes media into the inbox when no tag matches", async () => {
+    fakeDiskWithNote();
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    pasteImageInCapture("pearl.png");
+    await waitForCaptureImages(1);
+    setTags("#영감노드");
+
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+
+    await vi.waitFor(() => expect(captureFleeting).toHaveBeenCalled());
+    expect(writeBinaryFile).toHaveBeenCalledWith(
+      "/vault/zettel/inbox/assets/pearl.png",
+      expect.any(Array),
+    );
+  });
+
+  // 태스크 모드는 대상을 쓰지 않는다. §313 전역 캡처는 **태스크 모드로 열리므로**, 그런
+  // 캡처 한 번마다 `notes/` 아래 노트를 전부 읽는 팬아웃이 통째로 낭비된다.
+  //
+  // ‼️ 단정 대상이 `listDir`이 아니라 노트 **본문 읽기**인 이유: 열자마자 태스크 모드가
+  // 켜지는 순서상(대상 훅의 effect가 `resetTaskMode`의 effect보다 먼저 돈다) 디렉터리
+  // 목록 한 번은 이미 출발한 뒤다. 값을 치르는 것은 그 뒤의 N개 `readFile`이고, 취소된
+  // 스캔은 거기 도달하지 않아야 한다.
+  it("does not read the note files when the dialog opens straight into task mode", async () => {
+    act(() => useUIStore.setState({ quickCaptureOpen: false }));
+    vi.mocked(readFile).mockClear();
+    act(() =>
+      useUIStore.setState({
+        quickCaptureOpen: true,
+        quickCaptureTaskIntent: true,
+      }),
+    );
+
+    render(<QuickCaptureDialog />);
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(taskToggle()).toBeChecked();
+    expect(readFile).not.toHaveBeenCalledWith(NOTE_PATH);
+  });
+
+  // ‼️ 스캔 **실패**는 "일치하는 노트 없음"과 다른 사실이다. 예전에는 `listDir`의 거절을
+  // `[]`로 삼켜 둘이 같은 모양이 됐고, 그러면 멀쩡한 `#영감노트`가 IPC 한 번 흔들린 것
+  // 때문에 `inbox/`로 가면서 토스트가 **사용자의 태그를 탓했다** — 이 브랜치가 닫으려는
+  // 바로 그 블랙홀로, 원인이 뒤바뀐 채.
+  //
+  // 짝이 되는 반대 경우("스캔은 성공했고 정말로 일치가 없다")는 위 "falls back to the
+  // inbox…"가 본다. 둘이 함께 있어야 이 단정이 "언제나 거절한다"로 통과하지 않는다.
+  it("blames the failed scan, not the tag, when the notes folder cannot be read", async () => {
+    vi.mocked(listDir).mockImplementation(async (path: string) => {
+      if (path === "/vault/zettel/notes") throw new Error("EIO");
+      return [];
+    });
+    render(<QuickCaptureDialog />);
+    setCaptureBody("떠오른 생각");
+    setTags("#영감노트");
+    await vi.waitFor(() => expect(saveButton()).not.toBeDisabled());
+    fireEvent.click(saveButton());
+
+    await screen.findByText(t("journal.capture.error.scanFailed", LOCALE));
+    // 어디로도 새지 않았고, 태그를 탓하는 토스트도 뜨지 않았다.
+    expect(captureFleeting).not.toHaveBeenCalled();
+    expect(appendCaptureToNotes).not.toHaveBeenCalled();
+    expect(useUIStore.getState().toast).toBeNull();
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+  });
+
+  // §324-a 토스트의 절반 — 미리보기가 저장 **전에** 말하는 것을 토스트는 저장 **후에**
+  // 말한다. 한쪽만 말하면 저장을 누르고 창을 닫은 사용자는 영영 알지 못한다.
+  it("names the tag that matched nothing in the success toast", async () => {
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노트 #Linsk");
+
+    await vi.waitFor(() => expect(useUIStore.getState().toast).not.toBeNull());
+    const { toast } = useUIStore.getState();
+    expect(toast!.message).toContain("영감노트");
+    expect(toast!.message).toContain("Linsk");
+  });
+
+  // §326 커버리지 — §323의 값어치가 실제로 노트까지 닿는지. 지금까지 append 경로의
+  // 다이얼로그 테스트는 전부 plain 본문을 썼고, 서비스 테스트도 plain 문자열을 넘겼다.
+  // 그래서 "WYSIWYG로 쓴 서식이 허브 노트에 마크다운으로 도착한다"를 보이는 테스트가
+  // 한 곳도 없었다.
+  it("carries formatted capture content into the append", async () => {
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    await act(async () => {
+      (
+        document.querySelector(".quick-capture-editor") as HTMLElement & {
+          _editor?: { commands: { setContent: (v: string) => void } };
+        }
+      )._editor?.commands.setContent(
+        "<p><strong>굵게</strong> 보통</p><ul><li><p>항목</p></li></ul>",
+      );
+    });
+    setTags("#영감노트");
+    fireEvent.click(saveButton());
+
+    await vi.waitFor(() => expect(appendCaptureToNotes).toHaveBeenCalled());
+    const { body } = vi.mocked(appendCaptureToNotes).mock.calls[0][0];
+    expect(body).toContain("**굵게**");
+    expect(body).toContain("- 항목");
+    // HTML이 그대로 새지 않았다 — 디스크에 쓰이는 것은 마크다운이다.
+    expect(body).not.toContain("<strong>");
   });
 
   it("appends to the matched note instead of creating an inbox file", async () => {

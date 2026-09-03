@@ -80,11 +80,22 @@ export function ToastHost() {
           `toast-interactive` lifts that. Attached unconditionally, the handlers would be
           dead in the real app for a plain toast while still firing in jsdom — a test
           asserting behaviour the user can never get. A plain toast keeps exactly the
-          behaviour it had: click-through, and 3 seconds. */}
+          behaviour it had: click-through, and 3 seconds.
+
+          ‼️ Built by joining a list rather than by concatenating template holes. The hole
+          form shipped `"toast toast-infotoast-interactive"` — one missing space, a string
+          that contains both names and matches neither selector, so the accent border AND
+          the pointer-events lift both silently vanished. `join(" ")` cannot express that
+          bug. Pinned by "marks an action toast interactive without swallowing its type
+          class" in `__tests__/toast-action.test.tsx`. */}
       <div
-        className={`toast${toast.type ? ` toast-${toast.type}` : ""}${
-          hasAction ? "toast-interactive" : ""
-        }`}
+        className={[
+          "toast",
+          toast.type ? `toast-${toast.type}` : "",
+          hasAction ? "toast-interactive" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         onBlur={hasAction ? () => setFocused(false) : undefined}
         onFocus={hasAction ? () => setFocused(true) : undefined}
         onMouseEnter={hasAction ? () => setHovered(true) : undefined}

@@ -75,7 +75,16 @@ export function QuickCaptureDialog() {
   const tags = useCaptureTags(quickCaptureOpen);
   const resize = useCaptureResize();
   // §320 태그가 지목하는 노트들. 미리보기와 저장이 **같은 값**을 쓴다.
-  const captureTargets = useCaptureTargets(quickCaptureOpen, tags.list);
+  //
+  // 태스크 모드에서는 훑지 않는다 — 태스크는 노트에 붙지 않으므로 결과를 쓸 곳이 없고,
+  // 그 스캔은 `notes/` 전체를 읽는 팬아웃이다. (§313 전역 캡처처럼 **열자마자** 태스크
+  // 모드인 경우, 대상 훅의 effect가 `resetTaskMode`의 effect보다 먼저 돌아 디렉터리 목록
+  // 한 번은 이미 출발해 있다. 값을 치르는 본문 읽기는 `use-capture-targets`의 취소
+  // 확인이 막는다.)
+  const captureTargets = useCaptureTargets(
+    quickCaptureOpen && !taskMode.enabled,
+    tags.list,
+  );
   // ‼️ 캡처 창의 편집기(`capture.editor`)가 **아니다.** 쓰기 경로를 고르는 라우터가
   // 판정하는 것은 대상 노트를 탭에 열어 두었을 수도 있는 메인 편집기다
   // (`use-capture-task-mode.ts:52`가 같은 것을 쓴다).
@@ -96,6 +105,19 @@ export function QuickCaptureDialog() {
    */
   const scanPending =
     !taskMode.enabled && tags.list.length > 0 && captureTargets.loading;
+  /**
+   * 후보 목록을 못 읽었다 — `scanPending` 옆의 구멍이다.
+   *
+   * 스캔이 실패하면 `targets`는 비지만 그것은 "일치하는 노트가 없다"는 뜻이 **아니다.**
+   * 구분하지 않으면 IPC가 한 번 흔들린 것 때문에 멀쩡한 `#영감노트`가 `inbox/`로 가고,
+   * 토스트가 사용자의 태그를 탓한다 — 이 브랜치가 닫으려는 블랙홀에, 원인까지 뒤집힌 채.
+   *
+   * ‼️ `scanPending`과 달리 저장 버튼을 죽이지는 않는다. 실패는 스스로 풀리지 않으므로
+   * 버튼을 잠그면 본문이 갇힌다. 대신 눌렀을 때 이유와 **빠져나갈 길**(태그를 지우면
+   * `inbox/`로 저장된다)을 말한다.
+   */
+  const scanFailed =
+    !taskMode.enabled && tags.list.length > 0 && captureTargets.failed;
 
   // §324-e round 2: 붙여넣은 이미지/동영상을 어디에 저장할지는 이 다이얼로그만
   // 안다 — 태스크 모드는 zettel과 무관한 별도 설정이라(`tasks-home.ts`)
@@ -164,22 +186,41 @@ export function QuickCaptureDialog() {
   // 저장 경로가 어차피 **자기 문구로** 거절한다(zettel은 `noSpace` 가드, 태스크
   // 모드는 `resolveTasksHome`이 던지는 `taskNoHome`) — 여기서 다른 오류를 만들면
   // 원인과 다른 문구를 보이게 된다. 두 경우 모두 거절이 쓰기보다 먼저다.
+  /**
+   * 미디어 파일이 실제로 쓰일 `assets/` 디렉터리.
+   *
+   * ‼️ 기준은 "이 캡처가 어느 파일이 되는가"가 아니라 **"이 항목이 어느 문서에 실리는가"**
+   * 다. 상대참조는 열려 있는 파일의 디렉터리를 기준으로 풀리므로(`active-file-dir.ts`),
+   * 항목이 실릴 문서와 다른 곳에 쓰면 그 이미지는 영영 깨져 보인다.
+   *
+   * §324-e가 이 목적지를 정할 때는 캡처가 언제나 `inbox/`의 파일이 **되었고**, 그래서 두
+   * 질문의 답이 같았다. §320이 항목을 `notes/`의 허브 노트로 옮기면서 갈라졌다 — 그때
+   * 재유도되지 않아 파일은 `inbox/assets/`에 고아로 남고 노트는 `notes/assets/`를 찾았다.
+   */
+  const resolveCaptureAssetsDir = useCallback((): null | string => {
+    // 대상이 있으면 항목은 그 노트 안에 산다. 대상은 모두 `notes/` 아래이므로 한
+    // 디렉터리로 충분하다 — 그 전제가 깨지면 대상마다 따로 풀어야 한다.
+    const [target] = captureTargets.targets;
+    if (target) return `${dirname(target.path)}/assets`;
+
+    // 대상이 없으면 캡처는 지금까지처럼 `inbox/`의 파일이 되고, 미디어도 거기 있어야
+    // 한다. 태스크 모드도 이 갈래다(태스크 홈 아래).
+    const destination = resolveDropDestination();
+    return destination ? `${dirname(destination)}/assets` : null;
+  }, [captureTargets.targets, resolveDropDestination]);
+
   const extractCaptureMedia = useCallback(
     async (body: string, pending: PendingMedia[]): Promise<string> => {
       if (pending.length === 0) return body;
-      const destination = resolveDropDestination();
-      if (!destination) return body;
+      const assetsDir = resolveCaptureAssetsDir();
+      if (!assetsDir) return body;
       // `dirname(목적지)/assets` — 붙여넣기(`savePhotoToAssets`)와 OS 드랍
       // (`handleEditorDrop`)이 쓰는 것과 같은 유도식. 세 경로가 같은 파일에
       // 대해 다른 assets/를 고르면 상대참조가 한쪽에서만 풀린다.
-      const { markdown } = await extractPendingMedia(
-        body,
-        pending,
-        `${dirname(destination)}/assets`,
-      );
+      const { markdown } = await extractPendingMedia(body, pending, assetsDir);
       return markdown;
     },
-    [resolveDropDestination],
+    [resolveCaptureAssetsDir],
   );
 
   const handleSave = useCallback(async () => {
@@ -257,6 +298,11 @@ export function QuickCaptureDialog() {
       return;
     }
 
+    if (scanFailed) {
+      setSaveError(t("journal.capture.error.scanFailed"));
+      return;
+    }
+
     // §320 태그가 대상을 정한다. 대상이 있으면 그 노트들의 `## Captures` 절에 붙이고,
     // 없으면 지금까지처럼 `inbox/`에 fleeting note를 만든다(§99 동작 유지).
     if (captureTargets.targets.length > 0) {
@@ -269,7 +315,7 @@ export function QuickCaptureDialog() {
           source,
           targets: captureTargets.targets,
         });
-        showAppendedToast(appended, t);
+        showAppendedToast(appended, captureTargets.unmatchedTags, t);
         toggleQuickCapture();
       } catch (err) {
         logger.error("[QuickCapture] Append failed:", err);
@@ -277,7 +323,7 @@ export function QuickCaptureDialog() {
         setSaveError(appendErrorMessage(err, t));
         // 일부는 이미 붙었다. 감추면 사용자가 다시 눌러 그 노트에 중복을 만든다.
         if (err instanceof CaptureAppendError && err.appended.length > 0) {
-          showAppendedToast(err.appended, t);
+          showAppendedToast(err.appended, captureTargets.unmatchedTags, t);
         }
       }
       return;
@@ -318,8 +364,10 @@ export function QuickCaptureDialog() {
   }, [
     capture,
     captureTargets.targets,
+    captureTargets.unmatchedTags,
     extractCaptureMedia,
     mainEditor,
+    scanFailed,
     scanPending,
     source,
     tags.list,

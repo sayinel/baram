@@ -7,6 +7,15 @@
 import { parseNoteTitle } from "./parse-note-title";
 import { parseFrontmatterAliases } from "./zettel-note";
 
+export interface CaptureMatches {
+  targets: CaptureTarget[];
+  /**
+   * 어떤 노트도 지목하지 못한 태그들, 입력 그대로. §324-a가 이것을 보여 준다: 태그
+   * 하나가 맞으면 나머지 오타가 성공에 묻혀 조용히 사라지기 때문이다.
+   */
+  unmatchedTags: string[];
+}
+
 export interface CaptureTarget {
   /** 이 노트를 지목한 태그 — 미리보기·토스트가 이유를 말하는 데 쓴다. 입력 그대로다. */
   matchedTag: string;
@@ -22,25 +31,31 @@ export interface NoteCandidate {
 }
 
 /**
- * 태그 목록이 지목하는 노트들. 매칭이 없으면 빈 배열 — 호출자가 `inbox/` 폴백으로 간다.
+ * 태그 목록이 지목하는 노트들과, **아무것도 지목하지 못한 태그들**.
  *
  * 대상은 **경로로 중복 제거**한다. 같은 노트를 제목과 별칭으로 각각 지목할 수 있고
  * (`title: Links` + `aliases: [Link]`에 `#links #link`), 그대로 두면 같은 항목이 문서에
  * 두 번 들어간다. 먼저 매칭시킨 태그를 남긴다 — 어느 쪽이든 대상은 같은 노트다.
+ *
+ * ‼️ 그래서 `unmatchedTags`는 `tags − targets.map(t => t.matchedTag)`가 **아니다.**
+ * 중복 제거로 밀려난 `#link`는 대상 목록에 이름을 남기지 못하지만 분명히 노트를 맞혔다;
+ * 그 차집합은 그것을 "아무것도 못 맞힌 태그"로 신고한다. 경고가 한 번이라도 거짓이면
+ * 사용자는 다음 경고도 읽지 않으므로, 매칭 여부는 중복 제거 **전에** 기록한다.
  */
-export function resolveCaptureTargets(
+export function resolveCaptureMatches(
   tags: string[],
   notes: NoteCandidate[],
-): CaptureTarget[] {
-  const out: CaptureTarget[] = [];
+): CaptureMatches {
+  const targets: CaptureTarget[] = [];
+  const unmatchedTags: string[] = [];
   const seen = new Set<string>();
 
   for (const rawTag of tags) {
     const key = normalize(rawTag);
     if (!key) continue;
 
+    let matchedSomething = false;
     for (const note of notes) {
-      if (seen.has(note.path)) continue;
       const title = parseNoteTitle(note.filename, note.content);
       const aliases = parseFrontmatterAliases(note.content);
       // `rawTag`는 태그 모양 입력이라 공백을 담지 못한다(`is_tag_char` —
@@ -49,12 +64,16 @@ export function resolveCaptureTargets(
       // 부르게 되면 이 판단은 다시 내려야 한다.
       const names = /\s/.test(title) ? aliases : [title, ...aliases];
       if (!names.some((name) => normalize(name) === key)) continue;
+      // ‼️ 매칭 기록이 중복 제거보다 **먼저**다 — 위 주석의 이유.
+      matchedSomething = true;
+      if (seen.has(note.path)) continue;
       seen.add(note.path);
-      out.push({ matchedTag: rawTag, path: note.path, title });
+      targets.push({ matchedTag: rawTag, path: note.path, title });
     }
+    if (!matchedSomething) unmatchedTags.push(rawTag);
   }
 
-  return out;
+  return { targets, unmatchedTags };
 }
 
 /** 비교 정규화 — 앞뒤 공백 제거 + 소문자. `#` 접두는 호출부에서 이미 벗겨져 온다. */

@@ -161,6 +161,34 @@ describe("ToastHost — action button (§324-a)", () => {
     });
   });
 
+  // ‼️ 셀렉터로 단정한다. 여기서 실제로 났던 결함은 클래스 문자열의 **공백 하나**가
+  // 빠져 `"toast toast-infotoast-interactive"`가 나온 것이다 — 두 이름을 모두 담고 있으면서
+  // 두 셀렉터 어디에도 걸리지 않는 문자열이다. 그래서 `className`에 대한 부분 문자열
+  // 검사로는 잡히지 않고, `classList`/`querySelector`로만 잡힌다.
+  //
+  // 이 한 글자가 (a) 행동 토스트의 강조 테두리를 없애고 (b) `pointer-events: auto`를
+  // 적용하지 못하게 해 토스트 **본문** 위 hover 일시정지를 죽였다. 아래 hover 테스트는
+  // `.toast`에 직접 이벤트를 쏘므로 jsdom에서는 그대로 통과했다.
+  it("marks an action toast interactive without swallowing its type class", () => {
+    useUIStore.getState().showToast("Added to 영감노트", "info", undefined, {
+      label: "Open",
+      onClick: vi.fn(),
+    });
+    render(<ToastHost />);
+
+    expect(
+      document.querySelector(".toast.toast-info.toast-interactive"),
+    ).not.toBeNull();
+  });
+
+  it("leaves a plain toast click-through and unstyled by the action modifier", () => {
+    useUIStore.getState().showToast("plain", "info");
+    render(<ToastHost />);
+
+    expect(document.querySelector(".toast.toast-info")).not.toBeNull();
+    expect(document.querySelector(".toast-interactive")).toBeNull();
+  });
+
   it("renders no button when no action is given", () => {
     useUIStore.getState().showToast("plain", "info");
     render(<ToastHost />);

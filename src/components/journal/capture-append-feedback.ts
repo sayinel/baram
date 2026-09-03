@@ -31,14 +31,26 @@ import { logger } from "../../utils/logger";
  */
 export function showAppendedToast(
   appended: AppendedTarget[],
+  unmatchedTags: string[],
   t: Translate,
 ): void {
   if (appended.length === 0) return;
 
+  // §324-a 아무것도 못 맞힌 태그가 있으면 성공 문구가 그것을 **함께** 말한다. 태그 하나가
+  // 맞았다고 나머지 오타를 삼키면, 성공처럼 보이는 캡처 안에 아무 데도 닿지 않은 태그가
+  // 조용히 남는다.
+  //
+  // ‼️ 두 문장을 이어 붙이지 않고 전용 키를 쓴다. 조사·어순이 언어마다 다르므로
+  // 문자열 연결은 한국어에서 곧바로 어색해진다.
+  const tags = unmatchedTags.map((tag) => `#${tag}`).join(" ");
   const { showToast } = useUIStore.getState();
+
   if (appended.length > 1) {
+    const count = String(appended.length);
     showToast(
-      t("journal.capture.appended.many", { count: String(appended.length) }),
+      tags
+        ? t("journal.capture.appended.manyUnmatched", { count, tags })
+        : t("journal.capture.appended.many", { count }),
       "info",
     );
     return;
@@ -46,7 +58,12 @@ export function showAppendedToast(
 
   const [target] = appended;
   showToast(
-    t("journal.capture.appended.one", { title: target.title }),
+    tags
+      ? t("journal.capture.appended.oneUnmatched", {
+          tags,
+          title: target.title,
+        })
+      : t("journal.capture.appended.one", { title: target.title }),
     "info",
     undefined,
     {

@@ -18,14 +18,32 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { logger } from "../../utils/logger";
 import { countCaptures } from "../../utils/zettelkasten/capture-append";
-import { resolveCaptureTargets } from "../../utils/zettelkasten/capture-target";
+import { resolveCaptureMatches } from "../../utils/zettelkasten/capture-target";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 
 export interface CaptureTargets {
+  /**
+   * 후보 목록을 **못 읽었다**. `targets`가 빈 것과는 다른 사실이다: 빈 배열은 "찾아봤고
+   * 없다"이고, 이것은 "찾아보지 못했다"다. 둘을 같은 모양으로 다루면 IPC가 한 번 흔들린
+   * 것 때문에 멀쩡한 태그가 `inbox/` 낙오로 이어지면서 문구가 사용자의 태그를 탓한다.
+   *
+   * 목록 자체를 못 읽은 **전면 실패**만 여기 해당한다. 노트 하나를 못 읽은 부분 실패는
+   * 그대로 진행한다 — 그것까지 막으면 `notes/` 안의 파일 하나가 깨졌을 때 태그가 붙은
+   * 모든 캡처가 멈춘다.
+   */
+  failed: boolean;
   /** 아직 노트를 읽는 중 — 미리보기가 아무 말도 하지 않아야 하는 상태 */
   loading: boolean;
   /** 현재 태그 목록이 지목하는 노트들. 빈 배열 = inbox 폴백 */
   targets: (CaptureTarget & { captureCount: number })[];
+  /**
+   * 어떤 노트도 지목하지 못한 태그들. §324-a: 태그 하나가 맞으면 나머지 오타가 성공에
+   * 묻히므로, 미리보기와 토스트가 이것을 따로 말한다.
+   *
+   * ‼️ `loading`/`failed` 동안에는 후보가 비어 있어 **모든** 태그가 여기 담긴다. 소비자는
+   * 그 두 상태를 먼저 걸러야 한다 — 미리보기와 저장 가드가 실제로 그렇게 한다.
+   */
+  unmatchedTags: string[];
 }
 
 /**
@@ -49,6 +67,7 @@ export function useCaptureTargets(
 ): CaptureTargets {
   const [notes, setNotes] = useState<NoteCandidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   // React's documented "adjust state while rendering" pattern
   // (https://react.dev/reference/react/useState#storing-information-from-previous-renders)
@@ -75,6 +94,7 @@ export function useCaptureTargets(
     if (open) {
       setNotes([]);
       setLoading(true);
+      setFailed(false);
     }
   }
 
@@ -89,9 +109,21 @@ export function useCaptureTargets(
         const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
         if (!zettelDir) return;
 
+        // ‼️ `[]`로 삼키지 않는다. 삼키면 실패가 "일치하는 노트 없음"과 **같은 모양**이
+        // 되어, 호출부는 사용자의 태그를 탓하는 문구를 고른다. 실패는 실패로 올린다.
         const entries = await listDir(`${zettelDir}/notes`, true).catch(
-          () => [],
+          (err: unknown) => {
+            logger.error("[QuickCapture] Target note listing failed:", err);
+            if (!cancelled) setFailed(true);
+            return null;
+          },
         );
+        if (entries === null) return;
+        // ‼️ 취소된 스캔은 파일을 **읽지 않는다.** 아래 `Promise.all`은 후보 노트마다
+        // `readFile` 하나씩을 띄우는 팬아웃이고, 취소 확인이 그 뒤에만 있으면 이미 버릴
+        // 것이 확정된 스캔이 그 값을 전부 치른다. 태스크 모드로 열린 캡처가 정확히
+        // 그렇다 — 목록 요청은 이미 출발한 뒤이고, 여기가 멈출 수 있는 첫 지점이다.
+        if (cancelled) return;
         const mdFiles = entries.filter(
           (e) => !e.isDir && e.name.endsWith(".md"),
         );
@@ -124,16 +156,18 @@ export function useCaptureTargets(
     };
   }, [open]);
 
-  const targets = useMemo(
-    () =>
-      resolveCaptureTargets(tags, notes).map((t) => ({
+  const { targets, unmatchedTags } = useMemo(() => {
+    const matches = resolveCaptureMatches(tags, notes);
+    return {
+      targets: matches.targets.map((t) => ({
         ...t,
         captureCount: countCaptures(
           notes.find((n) => n.path === t.path)?.content ?? "",
         ),
       })),
-    [tags, notes],
-  );
+      unmatchedTags: matches.unmatchedTags,
+    };
+  }, [tags, notes]);
 
-  return { loading, targets };
+  return { failed, loading, targets, unmatchedTags };
 }

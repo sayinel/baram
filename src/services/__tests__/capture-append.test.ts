@@ -17,6 +17,7 @@ vi.mock("../../utils/editor/serialize-live-doc", () => ({
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import { appendCaptureToNotes, CaptureAppendError } from "../capture-append";
 
 const readFileMock = vi.fn<(p: string) => Promise<string>>();
@@ -412,5 +413,63 @@ describe("appendCaptureToNotes — multiple targets", () => {
     const [w1, w2] = writeFileMock.mock.calls.map((c) => c[1]);
     expect(w1).toMatch(/\^m2609021415\d{2}\b/); // 충돌 → 늘어남
     expect(w2).toContain("^m2609021415"); // 충돌 없음 → 그대로
+  });
+});
+
+// §326 커버리지 — 이 두 가지는 지금까지 "그냥 참이었다". 하나는 아무도 서식 있는 본문을
+// 넣어 본 적이 없어서, 다른 하나는 `capture-append.ts`가 우연히 i18n을 import하지 않아서다.
+describe("appendCaptureToNotes — 형태 보존 (§326)", () => {
+  it("writes formatted capture content into the Captures section", async () => {
+    await appendCaptureToNotes({
+      body: "**굵게** 보통\n\n- 항목\n- 다른 항목",
+      editor: null,
+      now: NOW,
+      targets: [TARGET],
+    });
+
+    const written = writeFileMock.mock.calls[0][1];
+    // 절 **안쪽**을 본다 — 문서 어딘가에 있다는 것만으로는 항목이 엉뚱한 자리에 붙어도
+    // 통과한다.
+    const captures = written.slice(written.indexOf("## Captures"));
+    expect(captures).toContain("**굵게** 보통");
+    expect(captures).toContain("- 항목");
+    expect(captures).toContain("- 다른 항목");
+  });
+
+  // ‼️ 디스크에 쓰이는 문자열은 **절대 번역하지 않는다**(Global Constraints). 번역되면 앱
+  // 언어를 바꾼 순간 `## Captures`를 못 찾아 언어마다 절이 하나씩 생기고, 사용자의 캡처가
+  // 두 곳으로 갈라진다. 오늘 이것이 참인 이유는 `capture-append.ts`가 i18n을 아예
+  // import하지 않기 때문이다 — 우연이 아니라 계약이 되도록 못 박는다.
+  it("writes the same section and heading regardless of app locale", async () => {
+    // ‼️ 절이 **없는** 문서로 시작한다. `NOTE`에는 이미 `## Captures`가 있어서, 그것으로는
+    // "출력에 `## Captures`가 있다"가 코드가 아니라 픽스처 때문에 참이 된다 — 실제로
+    // 섹션 이름을 번역하는 뮤테이션이 그 형태에서 살아남았다. 절을 새로 만들게 해야
+    // 그 이름이 코드에서 나온다.
+    readFileMock.mockResolvedValue("# 영감노트\n\n서문.\n");
+
+    useSettingsStore.setState({ locale: "ko" });
+    await appendCaptureToNotes({
+      body: "본문",
+      editor: null,
+      now: NOW,
+      targets: [TARGET],
+    });
+    const ko = writeFileMock.mock.calls[0][1];
+
+    writeFileMock.mockClear();
+    useSettingsStore.setState({ locale: "en" });
+    await appendCaptureToNotes({
+      body: "본문",
+      editor: null,
+      now: NOW,
+      targets: [TARGET],
+    });
+    const en = writeFileMock.mock.calls[0][1];
+
+    expect(ko).toBe(en);
+    // 그리고 그 동일한 문자열이 실제로 계약된 형태다 — 둘 다 비어 있어도 위 단정은
+    // 통과하므로 이 두 줄이 그것을 막는다.
+    expect(ko).toContain("## Captures");
+    expect(ko).toContain("### 2026-09-02 14:15");
   });
 });

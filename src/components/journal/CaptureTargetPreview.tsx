@@ -25,7 +25,34 @@ export function CaptureTargetPreview({
 
   if (!hasTags || targets.loading) return null;
 
-  const { targets: resolved } = targets;
+  const { targets: resolved, unmatchedTags } = targets;
+
+  // ‼️ 스캔 실패는 "일치하는 노트 없음"이 **아니다.** 후보를 못 읽었을 뿐인데 태그가
+  // 틀렸다고 말하면 사용자는 멀쩡한 태그를 고치기 시작한다. 저장 경로도 같은 구분을
+  // 한다(`QuickCaptureDialog`의 `scanFailed`).
+  if (targets.failed) {
+    return (
+      <div
+        aria-live="polite"
+        className="quick-capture-target quick-capture-target-warn"
+        role="status"
+      >
+        {t("journal.capture.target.scanFailed")}
+      </div>
+    );
+  }
+
+  // §324-a 아무것도 못 맞힌 태그는 따로 말한다 — 대상이 하나라도 있으면 그 성공에 묻혀
+  // 사라지기 때문이다. 태그 모양(`#`)을 붙여 사용자가 친 그대로 되비춘다.
+  const unmatched =
+    unmatchedTags.length > 0 ? (
+      <span className="quick-capture-target-warn">
+        {" "}
+        {t("journal.capture.target.unmatched", {
+          tags: unmatchedTags.map((tag) => `#${tag}`).join(" "),
+        })}
+      </span>
+    ) : null;
 
   // ‼️ 경고 상태는 문구만이 아니라 **클래스**로도 성공 상태와 갈린다 — §324-c가 막으려는
   // 것은 문구를 읽는 사용자가 아니라 훑어보는 사용자의 오타다.
@@ -55,6 +82,7 @@ export function CaptureTargetPreview({
   return (
     <div aria-live="polite" className="quick-capture-target" role="status">
       {message}
+      {unmatched}
     </div>
   );
 }
