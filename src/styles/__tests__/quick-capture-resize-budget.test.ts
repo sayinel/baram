@@ -61,6 +61,16 @@ describe("§324-g 캡처 다이얼로그 높이 예산 — 리사이즈가 실�
     );
   });
 
+  // 큰 모니터에서 다이얼로그는 세로로만 자라고 가로는 460px에 묶여 있었다 —
+  // 사용자가 실제로 그 좁음을 지적했다. width도 위 max-height처럼 뷰포트에
+  // 반응해야 같은 결함이 다시 생기지 않는다.
+  it("다이얼로그 width는 고정 px가 아니라 뷰포트 비례다", () => {
+    // 460px 같은 고정값으로 되돌아가면 이 매치가 실패한다.
+    expect(declaration(".quick-capture-dialog", "width")).toMatch(
+      /^min\(\d+(?:\.\d+)?px,\s*\d+(?:\.\d+)?vw\)$/,
+    );
+  });
+
   it("편집기 max-height는 다이얼로그와 같은 vh 예산에서 chrome을 뺀 값이다", () => {
     const dialogVh = declaration(".quick-capture-dialog", "max-height").match(
       /^(\d+(?:\.\d+)?)vh$/,

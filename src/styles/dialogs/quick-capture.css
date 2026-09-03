@@ -17,7 +17,7 @@
   flex-direction: column;
   gap: 10px;
   align-self: flex-start;
-  width: 460px;
+  width: min(720px, 90vw);
 
   /* §324-g fix round 1: was a flat 420px, which left the editor almost no room
      to grow — header + source/tag inputs + actions alone ate most of that
@@ -213,8 +213,9 @@
    `@tiptap/core`는 모든 편집기의 편집 영역에 `class="tiptap"`을 붙이고,
    `editor/base.css`의 `.tiptap`은 문서창을 종이처럼 보이게 하는 페이지 여백을
    갖는다 — `padding: 2rem var(--editor-padding)`, 전역 `--editor-padding: 4rem`.
-   460px 폭 다이얼로그의 192px짜리 상자 안에서 그 여백은 위아래 32px, 좌우
-   128px을 먹어 실제 작성 폭을 ~272px로 만들었고, 같은 규칙의 `font-size: 1rem`이
+   다이얼로그가 가장 넓어지는 720px(= `min(720px, 90vw)`, 좁은 창에선 이보다
+   줄어든다)에서도, 192px짜리 상자 안에서 그 여백은 위아래 32px, 좌우 128px을
+   먹어 실제 작성 폭을 ~532px로 만들었고, 같은 규칙의 `font-size: 1rem`이
    위에서 정한 13px까지 덮었다. 종이 여백은 문서 표면의 성질이지 편집기 엔진의
    성질이 아니다 — 캡처 상자의 여백은 컨테이너의 `padding: 8px 10px`이 이미
    담당한다. `.tiptap` 자체는 손대지 않으므로 문서창의 모습은 그대로다. */

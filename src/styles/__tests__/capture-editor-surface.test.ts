@@ -5,10 +5,11 @@
 // `editor/base.css`'s `.tiptap` rule reaches the Quick Capture dialog's editor
 // too. That rule is written for the document window, where it paints a page:
 // `padding: 2rem var(--editor-padding)` with a global `--editor-padding: 4rem`,
-// plus `font-size: 1rem`. Inside a 460px dialog those page margins ate 128px of
-// horizontal room and 32px of vertical, leaving roughly a 272px writing column
-// in a 192px-tall box — and the font-size overrode the 13px the dialog asked
-// for. The same rule hard-codes a KOREAN placeholder string in `content:`
+// plus `font-size: 1rem`. Even at the dialog's widest — `min(720px, 90vw)`
+// tops out at 720px — those page margins ate 128px of horizontal room and
+// 32px of vertical, leaving roughly a 532px writing column in a 192px-tall
+// box — and the font-size overrode the 13px the dialog asked for. The same
+// rule hard-codes a KOREAN placeholder string in `content:`
 // rather than reading `attr(data-placeholder)`, so an English-locale user was
 // told, in Korean, to type `/`.
 //
@@ -93,7 +94,8 @@ describe("§323 캡처 편집기 표면 — 문서창 페이지 여백을 물려
 
   it("페이지 여백과 글자 크기는 실제로 무력화된다 — 존재만이 아니라 값까지", () => {
     // `padding: 1rem` would satisfy "is overridden" while still stealing most
-    // of a 460px dialog's width, so the values are pinned too.
+    // of the dialog's width even at its widest (720px), so the values are
+    // pinned too.
     expect(declaration(CAPTURE_SURFACE, "padding")).toBe("0");
     expect(declaration(CAPTURE_SURFACE, "font-size")).toBe("inherit");
   });
