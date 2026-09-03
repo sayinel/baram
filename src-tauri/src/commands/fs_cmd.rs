@@ -70,7 +70,15 @@ fn vault_fallback_decision(root: Option<&std::path::Path>, path: &str) -> Result
 /// multi-context, deny-when-nothing-is-open logic above is the only place that
 /// rule should exist. Pulls the two states off the `AppHandle` so a caller that
 /// only has one does not have to thread `State` params through.
-pub(crate) async fn ensure_path_in_vault(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
+///
+/// Generic over the runtime so a test can build the states on `tauri::test::mock_app()`
+/// and exercise the real decision — the same reason `logging::build` and
+/// `protocol::html_preview::handle` are generic. `AppHandle` defaults to `Wry`, so every
+/// existing caller infers `R` and is unchanged.
+pub(crate) async fn ensure_path_in_vault<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &str,
+) -> Result<(), String> {
     use tauri::Manager;
     check(path)?;
     let state = app.state::<crate::VaultRootState>();
