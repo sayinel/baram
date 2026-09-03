@@ -153,6 +153,15 @@ describe("mermaid block: right-click ownership by target", () => {
       ),
       "editing-state preview",
     );
+    // Hand the document handler a real position, so if it ran it WOULD
+    // render its generic menu — the empty label list below then proves it
+    // did not. (jsdom alone returns null from posAtCoords, which would make
+    // that assertion vacuous.)
+    const paragraphPos = editor.state.doc.content.size - 1;
+    vi.spyOn(editor.view, "posAtCoords").mockReturnValue({
+      inside: paragraphPos - 1,
+      pos: paragraphPos,
+    });
 
     const nativeMenuAllowed = fireEvent.contextMenu(preview, {
       clientX: 20,
@@ -271,6 +280,31 @@ describe("mermaid block: right-click ownership by target", () => {
     expect(nativeMenuAllowed).toBe(true);
     expect(localMenu(".mermaid-context-menu")).toBeNull();
   });
+
+  it("a mode flip closes the block menu", async () => {
+    // The menu is bound to the mode it opened in (the session's code while
+    // editing, the committed one otherwise), and its keydown dismiss cannot
+    // see an Escape the textarea's vim stair stops — so leaving the session
+    // must close it by itself.
+    const { editor, view } = await mountMermaid();
+    await enterEditing(editor);
+    const preview = required(
+      view.container.querySelector<HTMLElement>(
+        ".mermaid-block-editing .mermaid-block-svg",
+      ),
+      "editing-state preview",
+    );
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    expect(localMenu(".mermaid-context-menu")).not.toBeNull();
+
+    act(() => {
+      editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    });
+    await flush();
+
+    expect(localMenu(".mermaid-context-menu")).toBeNull();
+  });
 });
 
 describe("svg block: right-click ownership by target", () => {
@@ -286,6 +320,11 @@ describe("svg block: right-click ownership by target", () => {
       ),
       "editing-state preview",
     );
+    const paragraphPos = editor.state.doc.content.size - 1;
+    vi.spyOn(editor.view, "posAtCoords").mockReturnValue({
+      inside: paragraphPos - 1,
+      pos: paragraphPos,
+    });
 
     const nativeMenuAllowed = fireEvent.contextMenu(preview, {
       clientX: 20,
@@ -389,6 +428,30 @@ describe("svg block: right-click ownership by target", () => {
     await flush();
 
     expect(nativeMenuAllowed).toBe(true);
+    expect(localMenu(".svg-context-menu")).toBeNull();
+  });
+
+  it("a mode flip closes the block menu", async () => {
+    const { editor, view } = await mount({
+      attrs: { code: SVG },
+      type: "svgBlock",
+    });
+    await enterEditing(editor);
+    const preview = required(
+      view.container.querySelector<HTMLElement>(
+        ".svg-block-editing .svg-block-render-faded",
+      ),
+      "editing-state preview",
+    );
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    expect(localMenu(".svg-context-menu")).not.toBeNull();
+
+    act(() => {
+      editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    });
+    await flush();
+
     expect(localMenu(".svg-context-menu")).toBeNull();
   });
 });

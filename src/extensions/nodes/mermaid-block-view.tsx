@@ -218,6 +218,14 @@ export function MermaidBlockView({
     };
   }, [contextMenu]);
 
+  // issue 521: the menu is bound to the mode it opened in (menuCode — the
+  // session's code while editing, the committed one otherwise), so a mode
+  // flip closes it. That also covers an Escape the textarea's vim stair
+  // stops before the document listener above can see it.
+  useEffect(() => {
+    setContextMenu(null);
+  }, [editing]);
+
   // Seed the fullscreen editor and open it. Two call sites share this
   // code→svg→error→open sequence (the header's Expand button and the block's
   // context menu's Edit Fullscreen item) — collapsed into one action. They

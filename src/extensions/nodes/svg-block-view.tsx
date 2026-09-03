@@ -137,6 +137,12 @@ export function SvgBlockView({
     };
   }, [contextMenu]);
 
+  // issue 521: a mode flip closes the menu — it is bound to `source`, whose
+  // meaning changes with the mode; rationale in mermaid-block-view.tsx.
+  useEffect(() => {
+    setContextMenu(null);
+  }, [editing]);
+
   // Auto-resize fullscreen textarea.
   useEffect(() => {
     const ta = fullscreenTextareaRef.current;
