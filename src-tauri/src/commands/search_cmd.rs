@@ -133,6 +133,61 @@ mod tests {
         assert!(hits[0].snippet.contains("needle"));
     }
 
+    /// ‼️ The three tests above call the function directly, so none of them would
+    /// notice the command becoming **unreachable from JS**. That is a real risk here:
+    /// `search_files` is generic over the runtime, and a generic `#[tauri::command]`
+    /// that `generate_handler!` failed to dispatch would still compile — Global Search
+    /// would simply stop working, with every Rust test green.
+    ///
+    /// So this one goes through the real IPC dispatcher: it registers the command with
+    /// `generate_handler!` exactly as `lib.rs` does and invokes it by name. `mock_context`
+    /// + `noop_assets` keep the app's real config and frontend bundle out of it.
+    #[test]
+    fn is_dispatchable_by_name_through_generate_handler() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::search_files])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(crate::VaultRootState(tokio::sync::RwLock::new(None)));
+        app.manage(crate::context::ContextManager::new());
+
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        let res = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "search_files".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::Json(serde_json::json!({
+                    "rootPath": "/definitely/not/a/registered/context",
+                    "query": "needle",
+                })),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        );
+
+        // The command was found, its camelCase args deserialized, and the guard ran —
+        // an unknown command or a deserialization failure would carry a different
+        // message, so this pins reachability rather than merely "some error".
+        let err = res.expect_err("an unregistered root must be refused");
+        assert_eq!(
+            err,
+            serde_json::json!("Access denied: no vault, folder, or file context is open"),
+            "unexpected IPC error payload: {err}"
+        );
+    }
+
     /// The cold-start window: nothing open yet. `vault_fallback_decision` denies by
     /// default, and search must inherit that rather than treat "no vault" as "any path".
     #[tokio::test]
