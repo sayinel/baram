@@ -5,6 +5,10 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §50 Enhanced: template picker + full-screen edit
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
+import {
+  closeAllContextMenus,
+  onCloseAllContextMenus,
+} from "../../utils/editor/context-menu-exclusive";
 import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import {
   copyMermaidSource,
@@ -212,9 +216,14 @@ export function MermaidBlockView({
     };
     document.addEventListener("mousedown", dismiss);
     document.addEventListener("keydown", handleKey);
+    // issue 521: another menu opening (or a right-click yielded to the
+    // browser) elsewhere closes this one — the mousedown above never arrives
+    // when the other block stops it (context-menu-exclusive.ts).
+    const offCloseAll = onCloseAllContextMenus(dismiss);
     return () => {
       document.removeEventListener("mousedown", dismiss);
       document.removeEventListener("keydown", handleKey);
+      offCloseAll();
     };
   }, [contextMenu]);
 
@@ -410,15 +419,19 @@ export function MermaidBlockView({
         // browser.
         if (!wrapperRef.current?.contains(e.target as Node)) return;
         if (isInNativeTextControl(e.target)) {
-          // An open block menu must not linger beside the native one. Its
+          // No menu of ours may linger beside the native one — not this
+          // block's, not another block's, not the document-level one. Their
           // mousedown dismiss does not fire when the click that got here was
           // on the toolbar or the caption (both stop mousedown), nor for a
           // keyboard-invoked context menu.
-          setContextMenu(null);
+          closeAllContextMenus();
           return;
         }
         e.preventDefault();
         e.stopPropagation();
+        // One menu at a time: this block's right-button mousedown never
+        // reached the others' dismiss listeners (stopped below), so say so.
+        closeAllContextMenus();
         setContextMenu({ x: e.clientX, y: e.clientY });
       }}
       onMouseDown={

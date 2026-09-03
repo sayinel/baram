@@ -11,6 +11,7 @@ import {
 } from "../../extensions/plugins/block-id-decoration";
 // §4.8 Context Menu — right-click with node-type detection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { closeAllContextMenus } from "../../utils/editor/context-menu-exclusive";
 import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
 import { buildTableMenu } from "./context-menu-table";
@@ -203,11 +204,16 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // key) has no mousedown, and the old menu must not linger beside the
       // native one.
       if (specialType === null && isInNativeTextControl(e.target)) {
+        closeAllContextMenus();
         closeMenu();
         return;
       }
 
       e.preventDefault();
+      // One menu at a time: a block menu may still be open (its dismiss
+      // never saw a mousedown that a NodeView stopped, or there was none —
+      // keyboard-invoked). context-menu-exclusive.ts.
+      closeAllContextMenus();
 
       if (specialType === "mathInline") {
         setItems(buildMathInlineMenu(editor, e.target as HTMLElement));

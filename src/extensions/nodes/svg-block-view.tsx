@@ -13,6 +13,10 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { useUIStore } from "../../stores/ui/ui";
+import {
+  closeAllContextMenus,
+  onCloseAllContextMenus,
+} from "../../utils/editor/context-menu-exclusive";
 import { isInNativeTextControl } from "../../utils/editor/native-text-control";
 import { logger } from "../../utils/logger";
 import {
@@ -131,9 +135,12 @@ export function SvgBlockView({
     };
     document.addEventListener("mousedown", dismiss);
     document.addEventListener("keydown", onKey);
+    // issue 521: one menu at a time — see context-menu-exclusive.ts.
+    const offCloseAll = onCloseAllContextMenus(dismiss);
     return () => {
       document.removeEventListener("mousedown", dismiss);
       document.removeEventListener("keydown", onKey);
+      offCloseAll();
     };
   }, [contextMenu]);
 
@@ -364,11 +371,12 @@ export function SvgBlockView({
         // menu must not linger beside a native one. Both as in mermaid.
         if (!wrapperRef.current?.contains(e.target as Node)) return;
         if (isInNativeTextControl(e.target)) {
-          setContextMenu(null);
+          closeAllContextMenus();
           return;
         }
         e.preventDefault();
         e.stopPropagation();
+        closeAllContextMenus();
         setContextMenu({ x: e.clientX, y: e.clientY });
       }}
       onMouseDown={
