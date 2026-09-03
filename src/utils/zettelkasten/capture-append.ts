@@ -129,8 +129,14 @@ export function nextCaptureBlockId(content: string, stamp: string): string {
  * ‼️ `#{1,2}`로 다음 절 경계를 잡는다 — `###`(항목 헤딩)에서 멈추면 안 된다. 안 하면
  * 뒤따르는 `## Related` 같은 무관한 절 안의 우연한 `^m…` 블록 참조(예:
  * `((otherNote#^m1234567890))`)까지 `countCaptures`가 캡처로 잘못 센다. 캡처 id
- * 철자가 `m` + 10자리라 실수로 다른 참조와 겹치기 쉽다. `journal-memories.ts:37-44`,
- * `:94-108`이 같은 이유로 이미 이 경계 방식을 쓴다.
+ * 철자가 `m` + 10자리라 실수로 다른 참조와 겹치기 쉽다.
+ *
+ * "절 헤딩을 찾아 다음 절 헤딩 전까지 자른다"는 접근 자체는
+ * `journal-memories.ts:37-44`, `:94-108`이 같은 이유로 이미 쓰고 있다. 다만 그
+ * 코드의 패턴(`/^## /m`)보다 **의도적으로 넓게** 잡는다 — 두 가지가 그 패턴을
+ * 새지 못한다: (1) `## Captures` 뒤에 `#` 헤딩(h1)이 와도 그 h2 절은 끝난다,
+ * `/^## /m`은 h1을 지나치고 계속 센다. (2) CommonMark는 `#` 뒤에 탭도 허용하는데
+ * (`##\tRelated`) 리터럴 스페이스만 보는 패턴은 그 줄을 놓친다.
  */
 function capturesSection(content: string): null | string {
   const m = CAPTURES_HEADING_RE.exec(content);
