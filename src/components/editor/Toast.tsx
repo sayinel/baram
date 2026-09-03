@@ -6,7 +6,26 @@ import { useShallow } from "zustand/shallow";
 
 import { useUIStore } from "../../stores/ui/ui";
 
-const TOAST_DURATION_MS = 3000;
+/**
+ * How long a plain, purely informational toast stays up.
+ *
+ * ‼️ `sandbox/host-ui-bridge.ts`'s `MIN_NOTIFY_INTERVAL_MS` is deliberately set ABOVE
+ * this so a sandboxed plugin cannot keep a toast on screen continuously. That bound is
+ * still keyed to *this* constant and is still correct: a plugin's toast never carries an
+ * `action` (the bridge has no channel for a callback), so it never gets the longer
+ * duration below.
+ */
+export const TOAST_DURATION_MS = 3000;
+
+/**
+ * §324-a A toast that suggests an action gets longer.
+ *
+ * It is the only place the target note's name appears and the only `[Open]` affordance,
+ * so the user has to read a name, decide, and click inside this window. At the plain
+ * duration that is not enough time, and "you can see where it went and go there" becomes
+ * a feature in name only.
+ */
+export const TOAST_ACTION_DURATION_MS = 8000;
 
 export function ToastHost() {
   const { dismissToast, toast } = useUIStore(
@@ -15,11 +34,15 @@ export function ToastHost() {
 
   // Restart the timer whenever a new toast arrives (id changes).
   const toastId = toast?.id;
+  const hasAction = !!toast?.action;
   useEffect(() => {
     if (toastId === undefined) return;
-    const timer = setTimeout(dismissToast, TOAST_DURATION_MS);
+    const timer = setTimeout(
+      dismissToast,
+      hasAction ? TOAST_ACTION_DURATION_MS : TOAST_DURATION_MS,
+    );
     return () => clearTimeout(timer);
-  }, [toastId, dismissToast]);
+  }, [toastId, hasAction, dismissToast]);
 
   if (!toast) return null;
 

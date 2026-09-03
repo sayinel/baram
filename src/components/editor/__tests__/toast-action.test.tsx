@@ -1,12 +1,16 @@
 // §324-a 토스트가 제안하는 단 하나의 행동 — "어디에 붙었는지 알리고 그리로 갈 수 있게
 // 한다". 그리고 그 통로가 **앱 전용**이라는 것까지가 이 파일의 계약이다.
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createUIRequestHandler } from "../../../plugins/sandbox/host-ui-bridge";
 import { useUIStore } from "../../../stores/ui/ui";
-import { ToastHost } from "../Toast";
+import {
+  TOAST_ACTION_DURATION_MS,
+  TOAST_DURATION_MS,
+  ToastHost,
+} from "../Toast";
 
 describe("ToastHost — action button (§324-a)", () => {
   beforeEach(() => {
@@ -39,6 +43,46 @@ describe("ToastHost — action button (§324-a)", () => {
 
     expect(useUIStore.getState().toast).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  // §324-a 이 토스트는 대상 노트의 이름이 나타나는 **유일한** 자리이고 `[열기]`가 있는
+  // 유일한 자리다. 3초는 이름을 읽고, 갈지 말지 정하고, 누르기에 부족하다 — 그러면
+  // "어디에 갔는지 알고 그리로 갈 수 있다"는 것이 이름뿐인 기능이 된다.
+  //
+  // 아래 두 테스트는 짝이다. 두 번째가 없으면 첫 번째는 "타이머가 아예 안 돌았다"로도
+  // 통과한다.
+  it("keeps a toast that carries an action on screen past the base duration", () => {
+    vi.useFakeTimers();
+    try {
+      useUIStore.getState().showToast("Added to 영감노트", "info", undefined, {
+        label: "Open",
+        onClick: vi.fn(),
+      });
+      render(<ToastHost />);
+
+      act(() => vi.advanceTimersByTime(TOAST_DURATION_MS + 1));
+      expect(screen.getByRole("button", { name: "Open" })).toBeInTheDocument();
+
+      act(() =>
+        vi.advanceTimersByTime(TOAST_ACTION_DURATION_MS - TOAST_DURATION_MS),
+      );
+      expect(useUIStore.getState().toast).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dismisses a plain toast on the base duration", () => {
+    vi.useFakeTimers();
+    try {
+      useUIStore.getState().showToast("plain", "info");
+      render(<ToastHost />);
+
+      act(() => vi.advanceTimersByTime(TOAST_DURATION_MS + 1));
+      expect(useUIStore.getState().toast).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders no button when no action is given", () => {

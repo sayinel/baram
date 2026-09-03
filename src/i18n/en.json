@@ -91,6 +91,7 @@
   "journal.capture.error.media": "Could not save the attached media, so nothing was saved. Your text is still here — try again.",
   "journal.capture.error.noSpace": "Set up a Zettel space first.",
   "journal.capture.error.save": "Save failed: {message}",
+  "journal.capture.error.scanning": "Still reading the notes your tags point to. Try again in a moment.",
   "journal.capture.error.taskDirtyTab": "The capture file has unsaved changes. Save that tab and try again.",
   "journal.capture.error.taskNoHome": "Set a tasks home first — captured tasks land in a file inside it. Settings → General → Tasks.",
   "journal.capture.error.taskNotMarkdown": "The capture file must be a .md or .markdown file, or its tasks never appear in the agenda. Change it in Settings.",

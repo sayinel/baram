@@ -248,6 +248,11 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     fireEvent.change(screen.getByPlaceholderText(tagsPlaceholder), {
       target: { value: "#idea #todo" },
     });
+    // §320 태그를 적은 캡처는 그 태그가 무엇을 지목하는지 알기 전에는 저장하지 않는다
+    // (`scanPending`). 스캔이 끝나면 버튼이 다시 살아난다 — 그것이 여기서 기다릴 수 있는
+    // 신호다. 이 픽스처의 `listDir`은 빈 목록을 주므로 대상은 없고, 저장은 지금까지처럼
+    // `inbox/`로 간다.
+    await vi.waitFor(() => expect(saveButton()).not.toBeDisabled());
     fireEvent.click(saveButton());
 
     await vi.waitFor(() => {
@@ -1281,7 +1286,15 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     useSettingsStore.getState().setZettelkastenEnabled(true);
     useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
     useFileStore.getState().setRootPath("/vault");
-    useUIStore.setState({ quickCaptureOpen: true, toast: null });
+    // ‼️ `showToast`까지 직접 되돌린다. 앞선 §324-e describe의 `afterEach`가 이미 그렇게
+    // 하지만, 그것에 기대면 이 describe의 토스트 단정이 **파일 안의 실행 순서**에 매달린다
+    // — 위쪽 describe를 지우거나 `.only`로 이 describe만 돌리는 순간 다섯 개가 조용히
+    // 거짓 초록이 된다. 자기가 쓰는 배선은 자기가 세운다.
+    useUIStore.setState({
+      quickCaptureOpen: true,
+      showToast: REAL_SHOW_TOAST,
+      toast: null,
+    });
     vi.mocked(captureTask).mockResolvedValue("- [ ] x");
     vi.mocked(captureFleeting).mockResolvedValue({
       path: "/vault/zettel/inbox/x.md",
@@ -1300,6 +1313,81 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     // describe들이 갑자기 노트 하나가 있는 Zettel 공간을 보게 된다.
     vi.mocked(listDir).mockResolvedValue([]);
     vi.mocked(readFile).mockResolvedValue("");
+  });
+
+  /**
+   * `notes/` 스캔을 테스트가 붙잡아 둔다 — `release()`를 부를 때까지 `loading`이 참이다.
+   * 태그 인덱스가 훑는 Zettel 루트는 그대로 비워 둬서, 붙잡히는 것이 대상 스캔뿐이게 한다.
+   */
+  function holdTargetScan(): (entries: (typeof NOTE_ENTRY)[]) => void {
+    let release!: (entries: (typeof NOTE_ENTRY)[]) => void;
+    vi.mocked(listDir).mockImplementation(async (path: string) =>
+      path === "/vault/zettel/notes"
+        ? new Promise((resolve) => {
+            release = resolve;
+          })
+        : [],
+    );
+    return (entries) => release(entries);
+  }
+
+  // ‼️ 스캔이 끝나기 전에 저장하면 대상이 아직 **비어 있다.** 그대로 두면 캡처가
+  // `inbox/`로 가고 토스트가 "#영감노트와 일치하는 노트가 없습니다"라고 말한다 — 그것은
+  // 거짓이다. §324-a가 없애려는 실패(어디로 갔는지 잘못 아는 것)를 이 경로가 새로
+  // 만들어 낸다.
+  //
+  // ‼️ 저장을 **키보드로** 건다. `handleKeyDown`은 `handleSave()`를 직접 부르므로 버튼의
+  // `disabled`를 아예 거치지 않는다 — 버튼만 막는 수정은 이 테스트를 통과하지 못한다.
+  it("refuses to save through ⌘↩ while the target scan is still in flight", async () => {
+    const release = holdTargetScan();
+    render(<QuickCaptureDialog />);
+    setCaptureBody("떠오른 생각");
+    setTags("#영감노트");
+    fireEvent.keyDown(captureEditable(), { ctrlKey: true, key: "Enter" });
+
+    await screen.findByText(t("journal.capture.error.scanning", LOCALE));
+    expect(appendCaptureToNotes).not.toHaveBeenCalled();
+    // 그리고 `inbox/`로도 새지 않았다 — 거절이지 조용한 폴백이 아니다.
+    expect(captureFleeting).not.toHaveBeenCalled();
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+    expect(captureEditable().textContent).toBe("떠오른 생각");
+
+    // 스캔이 끝나면 **같은 입력이 그대로** 통과한다 — 위 단정은 "영영 저장 못 한다"가
+    // 아니고, 이 절반이 없으면 그 둘을 구분하지 못한다.
+    await act(async () => {
+      release([NOTE_ENTRY]);
+    });
+    await waitForTargetsLoaded();
+    fireEvent.keyDown(captureEditable(), { ctrlKey: true, key: "Enter" });
+    await vi.waitFor(() => expect(appendCaptureToNotes).toHaveBeenCalled());
+  });
+
+  it("disables Save while the target scan is in flight, and re-enables it after", async () => {
+    const release = holdTargetScan();
+    render(<QuickCaptureDialog />);
+    setCaptureBody("떠오른 생각");
+    setTags("#영감노트");
+
+    expect(saveButton()).toBeDisabled();
+
+    await act(async () => {
+      release([NOTE_ENTRY]);
+    });
+    await waitForTargetsLoaded();
+    expect(saveButton()).not.toBeDisabled();
+  });
+
+  // 태그를 안 적었으면 기다릴 이유가 없다 — 대상이 무엇이든 캡처는 `inbox/`로 가고
+  // 토스트도 뜨지 않으므로 스캔 결과가 답을 바꾸지 못한다. 그런데도 막으면 §99의 가장
+  // 흔한 경로가 열릴 때마다 저장 버튼이 잠깐 죽는다.
+  it("does not block a no-tag save on the scan", async () => {
+    holdTargetScan();
+    render(<QuickCaptureDialog />);
+    setCaptureBody("떠오른 생각");
+
+    expect(saveButton()).not.toBeDisabled();
+    fireEvent.click(saveButton());
+    await vi.waitFor(() => expect(captureFleeting).toHaveBeenCalled());
   });
 
   it("appends to the matched note instead of creating an inbox file", async () => {
@@ -1335,14 +1423,36 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
 
   // 태그를 아예 안 적었으면 대상을 **지목하지 않은** 것이다. 그것은 실패가 아니므로
   // 경고를 띄우면 §99의 정상 동작이 매번 문제처럼 보인다.
+  //
+  // ‼️ "토스트가 null이다"만 보면 안 된다 — 토스트 배선이 통째로 끊겨 있어도 그 단정은
+  // 통과한다. 이 파일에서 실제로 그랬다(§324-e describe가 `showToast`를 갈아 끼운 채
+  // 되돌리지 않아 이 describe의 다섯 테스트가 조용히 죽었고, 이 테스트만 초록으로 남아
+  // 아무것도 알려 주지 않았다). 그래서 스파이를 세워 0회를 단정하고, **같은 스파이가**
+  // 토스트를 띄워야 하는 경로에서는 실제로 불린다는 것을 같은 테스트 안에서 보인다.
   it("says nothing about the inbox when no tag was typed at all", async () => {
+    const showToast = vi.fn();
+    useUIStore.setState({ showToast });
+
     render(<QuickCaptureDialog />);
     await waitForTargetsLoaded();
     setCaptureBody("떠오른 생각");
     fireEvent.click(saveButton());
 
     await vi.waitFor(() => expect(captureFleeting).toHaveBeenCalled());
-    expect(useUIStore.getState().toast).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
+
+    // positive control — 오타 태그를 적은 저장은 **같은 스파이**를 부른다. 이 절반이
+    // 없으면 위의 0회는 "배선이 죽었다"와 구분되지 않는다.
+    vi.mocked(readFile).mockClear();
+    act(() => {
+      useUIStore.setState({ quickCaptureOpen: true });
+    });
+    await waitForTargetsLoaded();
+    setCaptureBody("떠오른 생각");
+    setTags("#영감노드");
+    fireEvent.click(saveButton());
+
+    await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
   });
 
   // ‼️ 매칭 실패가 성공과 **같은 모양으로** 보이면 안 된다(§324-a). 같으면 `#영감노드`

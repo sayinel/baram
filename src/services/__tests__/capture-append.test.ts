@@ -319,9 +319,14 @@ describe("appendCaptureToNotes — rejection", () => {
     expect(buffer.read()).toBe(NOTE);
   });
 
-  // ‼️ 대상이 둘일 때 둘째가 막히면 첫째는 **이미 쓰였다.** 그 사실을 감추면
-  // 사용자는 아무것도 저장되지 않았다고 믿고 다시 눌러 첫째에 중복을 만든다.
-  it("reports which targets landed before a later one was rejected", async () => {
+  // ‼️ 더티 탭 관문은 **어떤 쓰기보다도 먼저** 모든 대상에 대해 돈다.
+  //
+  // 예전에는 대상마다 쓰기 직전에 돌았고, 그래서 둘째가 막히면 첫째는 이미 쓰인
+  // 뒤였다. 사용자가 그 탭을 저장하고 다시 누르면 첫째에 **중복**이 생긴다 — 블록
+  // ID는 문서마다 다시 계산되므로 두 번째 항목을 막아 줄 것이 없다. 관문은 I/O 없는
+  // 순수한 스토어 읽기라 앞당기는 데 드는 비용이 없고, 그러면 되돌릴 부분 상태가
+  // 애초에 생기지 않는다.
+  it("writes nothing at all when a LATER target has an unsaved tab", async () => {
     openTab({ id: "blocked", isDirty: true, path: T2.path });
 
     const err: unknown = await appendCaptureToNotes({
@@ -331,10 +336,12 @@ describe("appendCaptureToNotes — rejection", () => {
       targets: [T1, T2],
     }).catch((e: unknown) => e);
 
-    expect(writeFileMock).toHaveBeenCalledTimes(1);
-    expect(writeFileMock.mock.calls[0][0]).toBe(T1.path);
+    // 막히지 않은 첫째까지 **한 글자도** 쓰이지 않았다.
+    expect(writeFileMock).not.toHaveBeenCalled();
+    expect(useFileStore.getState().openFiles.size).toBe(0);
+    // 그리고 오류는 여전히 어느 노트가 막았는지 말한다.
     expect(err).toMatchObject({
-      appended: [{ path: T1.path, title: T1.title }],
+      appended: [],
       code: "dirtyTab",
       title: T2.title,
     });

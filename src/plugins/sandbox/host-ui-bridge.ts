@@ -29,7 +29,11 @@ import { createCapabilityGate } from "./capability-gate";
  * transport bound does nothing to stop that, hence a purpose-built one.
  *
  * Set ABOVE `TOAST_DURATION_MS` (3000, `components/editor/Toast.tsx`) so a plugin cannot
- * keep a toast on screen continuously (security review LOW-1). RESIDUAL, stated honestly:
+ * keep a toast on screen continuously (security review LOW-1). `TOAST_DURATION_MS` is
+ * still the right constant to compare against even though §324-a added a longer
+ * `TOAST_ACTION_DURATION_MS`: that one applies only to a toast carrying an `action`, and
+ * this bridge has no channel for a callback, so a plugin's toast never gets it.
+ * RESIDUAL, stated honestly:
  * within its allowance a plugin can still replace an app toast that is mid-display. The
  * real fix is a queue or a separate plugin slot, which is app-wide UX work.
  */

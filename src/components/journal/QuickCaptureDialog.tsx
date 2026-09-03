@@ -32,7 +32,7 @@ import {
   appendErrorMessage,
   showAppendedToast,
   showInboxFallbackToast,
-} from "./capture-append-toast";
+} from "./capture-append-feedback";
 import { TagSuggest } from "./TagSuggest";
 import { useCaptureEditor } from "./use-capture-editor";
 import { useCaptureResize } from "./use-capture-resize";
@@ -79,6 +79,22 @@ export function QuickCaptureDialog() {
   // 판정하는 것은 대상 노트를 탭에 열어 두었을 수도 있는 메인 편집기다
   // (`use-capture-task-mode.ts:52`가 같은 것을 쓴다).
   const mainEditor = useEditorContext();
+  /**
+   * §324-a 태그를 적었는데 그 태그가 무엇을 지목하는지 **아직 모르는** 동안.
+   *
+   * 그대로 저장하면 대상이 비어 있어 캡처가 `inbox/`로 가고, 토스트가 "일치하는 노트가
+   * 없습니다"라고 말한다 — 그것은 거짓이다. 이 작업이 없애려는 실패(어디로 갔는지 잘못
+   * 아는 것)를 저장 경로가 새로 만들어 내는 셈이다.
+   *
+   * 태그가 없으면 기다리지 않는다: 대상이 무엇이든 캡처는 `inbox/`로 가고 토스트도 뜨지
+   * 않으므로 스캔 결과가 답을 바꾸지 못한다. 무조건 막으면 §99의 가장 흔한 경로가 열릴
+   * 때마다 저장 버튼이 잠깐 죽는다.
+   *
+   * ‼️ 버튼의 `disabled`와 `handleSave`의 가드가 **이 한 값**을 함께 쓴다. 조건을 두 벌로
+   * 적으면 둘이 어긋나는 날이 오고, 그때 화면은 막혔다고 말하면서 키보드는 통과시킨다.
+   */
+  const scanPending =
+    !taskMode.enabled && tags.list.length > 0 && captureTargets.loading;
 
   // §324-e round 2: 붙여넣은 이미지/동영상을 어디에 저장할지는 이 다이얼로그만
   // 안다 — 태스크 모드는 zettel과 무관한 별도 설정이라(`tasks-home.ts`)
@@ -230,6 +246,16 @@ export function QuickCaptureDialog() {
       return;
     }
 
+    // ‼️ 위 `noSpace`와 같은 이유로 버튼의 `disabled`만으로는 부족하다 — `handleKeyDown`이
+    // `handleSave()`를 **직접** 부르므로 ⌘↩는 버튼을 아예 거치지 않는다.
+    //
+    // 조용한 no-op이 아니라 오류로 거절한다: 본문이 그대로 남고, 사용자가 다시 누르면
+    // 되고, IPC 읽기가 걸려도 영영 죽은 저장 버튼이 남지 않는다.
+    if (scanPending) {
+      setSaveError(t("journal.capture.error.scanning"));
+      return;
+    }
+
     // §320 태그가 대상을 정한다. 대상이 있으면 그 노트들의 `## Captures` 절에 붙이고,
     // 없으면 지금까지처럼 `inbox/`에 fleeting note를 만든다(§99 동작 유지).
     if (captureTargets.targets.length > 0) {
@@ -293,6 +319,7 @@ export function QuickCaptureDialog() {
     captureTargets.targets,
     extractCaptureMedia,
     mainEditor,
+    scanPending,
     source,
     tags.list,
     zettelReady,
@@ -468,7 +495,11 @@ export function QuickCaptureDialog() {
           </button>
           <button
             className="quick-capture-save"
-            disabled={capture.isEmpty || (!zettelReady && !taskMode.enabled)}
+            disabled={
+              capture.isEmpty ||
+              (!zettelReady && !taskMode.enabled) ||
+              scanPending
+            }
             onClick={handleSave}
           >
             {t("journal.capture.save", { key: saveKeyLabel })}
