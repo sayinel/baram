@@ -254,3 +254,13 @@ describe("Roundtrip: Combined", () => {
     expect(roundtrip(input)).toBe(input);
   });
 });
+
+describe("Roundtrip: link destinations are never rewritten (issue 499)", () => {
+  // A javascript: destination is made inert at render/export time — see
+  // extensions/__tests__/link.test.ts — and must NOT be repaired here: the
+  // file the user opened is the file the user saves.
+  it("javascript: link", () => {
+    const input = "See [x](javascript:top.name) here\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+});

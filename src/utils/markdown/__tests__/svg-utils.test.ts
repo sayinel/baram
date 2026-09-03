@@ -238,3 +238,37 @@ describe("isSvgContent", () => {
     expect(isSvgContent(`<svg viewBox="0 0 1 1">`)).toBe(false);
   });
 });
+
+// issue 499 — SVG anchors follow the link policy too (shared with the HTML
+// block sanitizer via utils/link-href.ts). `href="#id"` references that SVG
+// relies on for <use>/gradients must keep working.
+describe("sanitizeSvg — anchor destinations follow the link policy", () => {
+  const XLINK = "http://www.w3.org/1999/xlink";
+
+  function sanitizedSvg(markup: string): SVGSVGElement {
+    return parseSvg(sanitizeSvg(markup));
+  }
+
+  it("strips a protocol-relative xlink:href and href from an SVG <a>", () => {
+    const svg = sanitizedSvg(
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="${XLINK}"><a xlink:href="//attacker.example/x" href="\\\\attacker.example\\x"><text>t</text></a></svg>`,
+    );
+    const a = svg.querySelector("a");
+    expect(a).not.toBeNull();
+    expect(a!.getAttributeNS(XLINK, "href")).toBeNull();
+    expect(a!.getAttribute("href")).toBeNull();
+    expect(a!.textContent).toBe("t");
+  });
+
+  it("keeps an https anchor and a same-document #fragment anchor", () => {
+    // (`<use>` is not in DOMPurify's svg profile and was stripped before
+    // this change too — the fragment case is carried by an anchor instead.)
+    const svg = sanitizedSvg(
+      `<svg xmlns="http://www.w3.org/2000/svg"><a href="#section"><text>s</text></a><a href="https://example.com/a"><text>t</text></a></svg>`,
+    );
+    const hrefs = [...svg.querySelectorAll("a")].map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(hrefs).toEqual(["#section", "https://example.com/a"]);
+  });
+});
