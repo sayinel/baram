@@ -6,6 +6,7 @@ import type { PendingMedia } from "../../utils/media-data-url";
 import { EditorContent } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
+import { useEditorContext } from "../../contexts/editor-context";
 import { useTranslation } from "../../i18n/useTranslation";
 import {
   formatKeyForDisplay,
@@ -13,6 +14,10 @@ import {
 } from "../../keybindings/key-utils";
 import { TASK_INPUT_COMMAND } from "../../keybindings/keybinding-registry";
 import { findCommandByKey } from "../../keybindings/use-keybindings";
+import {
+  appendCaptureToNotes,
+  CaptureAppendError,
+} from "../../services/capture-append";
 import { imagesToLinks, resolveCapturePath } from "../../services/task-capture";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
@@ -23,10 +28,16 @@ import { extractPendingMedia } from "../../utils/media-data-url";
 import { dirname } from "../../utils/path-utils";
 import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
+import {
+  appendErrorMessage,
+  showAppendedToast,
+  showInboxFallbackToast,
+} from "./capture-append-toast";
 import { TagSuggest } from "./TagSuggest";
 import { useCaptureEditor } from "./use-capture-editor";
 import { useCaptureResize } from "./use-capture-resize";
 import { useCaptureTags } from "./use-capture-tags";
+import { useCaptureTargets } from "./use-capture-targets";
 import { captureErrorKey, useCaptureTaskMode } from "./use-capture-task-mode";
 
 // ⌘↩ on macOS, Ctrl+Enter elsewhere — shown on the Save button.
@@ -62,6 +73,12 @@ export function QuickCaptureDialog() {
   const taskMode = useCaptureTaskMode();
   const tags = useCaptureTags(quickCaptureOpen);
   const resize = useCaptureResize();
+  // §320 태그가 지목하는 노트들. 미리보기와 저장이 **같은 값**을 쓴다.
+  const captureTargets = useCaptureTargets(quickCaptureOpen, tags.list);
+  // ‼️ 캡처 창의 편집기(`capture.editor`)가 **아니다.** 쓰기 경로를 고르는 라우터가
+  // 판정하는 것은 대상 노트를 탭에 열어 두었을 수도 있는 메인 편집기다
+  // (`use-capture-task-mode.ts:52`가 같은 것을 쓴다).
+  const mainEditor = useEditorContext();
 
   // §324-e round 2: 붙여넣은 이미지/동영상을 어디에 저장할지는 이 다이얼로그만
   // 안다 — 태스크 모드는 zettel과 무관한 별도 설정이라(`tasks-home.ts`)
@@ -213,6 +230,32 @@ export function QuickCaptureDialog() {
       return;
     }
 
+    // §320 태그가 대상을 정한다. 대상이 있으면 그 노트들의 `## Captures` 절에 붙이고,
+    // 없으면 지금까지처럼 `inbox/`에 fleeting note를 만든다(§99 동작 유지).
+    if (captureTargets.targets.length > 0) {
+      try {
+        // §324-f `source`는 접지 않고 그대로 넘긴다 — append 포맷이 자기 `Source: ` 줄을
+        // 만들고, 그래야 URL이 붙은 문서에서 링크가 된다.
+        const appended = await appendCaptureToNotes({
+          body,
+          editor: mainEditor,
+          source,
+          targets: captureTargets.targets,
+        });
+        showAppendedToast(appended, t);
+        toggleQuickCapture();
+      } catch (err) {
+        logger.error("[QuickCapture] Append failed:", err);
+        // 다이얼로그는 열린 채로 둔다 — 본문은 다른 어디에도 없다.
+        setSaveError(appendErrorMessage(err, t));
+        // 일부는 이미 붙었다. 감추면 사용자가 다시 눌러 그 노트에 중복을 만든다.
+        if (err instanceof CaptureAppendError && err.appended.length > 0) {
+          showAppendedToast(err.appended, t);
+        }
+      }
+      return;
+    }
+
     try {
       // Compose the fleeting body — §99 A: tags go to the frontmatter `tags:`
       // array, not inline in the body.
@@ -232,6 +275,10 @@ export function QuickCaptureDialog() {
         return;
       }
 
+      // §324-a 지목한 태그가 어떤 노트에도 닿지 못했다는 것을 성공과 **다른** 모양으로
+      // 알린다. 같은 모양이면 `#영감노드` 같은 오타가 성공처럼 보이고, 캡처는 아무도
+      // 열지 않는 `inbox/`에 조용히 쌓인다.
+      showInboxFallbackToast(tags.list[0], t);
       toggleQuickCapture();
     } catch (err) {
       logger.error("[QuickCapture] Save failed:", err);
@@ -243,7 +290,9 @@ export function QuickCaptureDialog() {
     }
   }, [
     capture,
+    captureTargets.targets,
     extractCaptureMedia,
+    mainEditor,
     source,
     tags.list,
     zettelReady,

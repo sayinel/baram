@@ -37,6 +37,20 @@ export function ToastHost() {
           <span className="toast-source">{toast.source}</span>
         ) : null}
         {toast.message}
+        {/* §324-a 행동은 앱 코드만 채운다 (`ToastState.action`). 실행한 뒤 토스트를
+            같이 거두는 이유: 남아 있으면 사용자는 그것을 "아직 안 눌렸다"로 읽고 한 번
+            더 누른다. */}
+        {toast.action ? (
+          <button
+            className="btn-unstyled toast-action"
+            onClick={() => {
+              toast.action?.onClick();
+              dismissToast();
+            }}
+          >
+            {toast.action.label}
+          </button>
+        ) : null}
       </div>
     </div>
   );

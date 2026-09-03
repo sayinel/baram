@@ -42,3 +42,21 @@
 .toast-error {
   border-left: 3px solid var(--color-status-danger);
 }
+
+/* §324-a — the toast's single suggested action ("Open" the note the capture landed in).
+   `pointer-events: auto` is load-bearing: `.toast-host` sets `none` so a toast never
+   swallows a click meant for the document underneath it, and without this the button
+   would render and never be clickable. */
+.toast-action {
+  padding: 2px 8px;
+  margin-left: 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-accent-default);
+  pointer-events: auto;
+  border-radius: 4px;
+}
+
+.toast-action:hover {
+  background-color: var(--color-bg-hover);
+}

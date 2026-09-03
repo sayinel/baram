@@ -1,3 +1,4 @@
+import type { ToastState } from "../../../stores/ui/ui";
 import type { Editor } from "@tiptap/react";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
@@ -14,6 +15,18 @@ vi.mock("../../../ipc/invoke", () => ({
   listDir: vi.fn().mockResolvedValue([]),
   readFile: vi.fn().mockResolvedValue(""),
   writeBinaryFile: vi.fn().mockResolvedValue(undefined),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+// §320 저장 분기 배선만 본다 — 세 갈래 쓰기 경로 자체는 `services/__tests__/capture-append`가
+// 검증한다. `CaptureAppendError`는 **실물**이어야 UI의 `instanceof` 분기가 그대로 돈다.
+vi.mock("../../../services/capture-append", async (orig) => ({
+  ...(await orig<typeof import("../../../services/capture-append")>()),
+  appendCaptureToNotes: vi.fn(),
+}));
+// §324-a 토스트의 [열기]가 실제로 여는 통로. 탭을 진짜로 열지 않고 무엇을 열려 했는지만 본다.
+vi.mock("../../../services/journal-file-service", async (orig) => ({
+  ...(await orig<typeof import("../../../services/journal-file-service")>()),
+  openFileInTab: vi.fn(),
 }));
 vi.mock("../../../services/zettelkasten-service", () => ({
   captureFleeting: vi.fn().mockResolvedValue({ path: "/z/inbox/x.md" }),
@@ -36,8 +49,19 @@ vi.mock("../../../utils/journal/journal-photo", () => ({
     savePhotoToAssets(...(a as [Uint8Array, string])),
 }));
 
+import { EditorProvider } from "../../../contexts/editor-context";
 import { t } from "../../../i18n";
-import { createDir, listDir, writeBinaryFile } from "../../../ipc/invoke";
+import {
+  createDir,
+  listDir,
+  readFile,
+  writeBinaryFile,
+} from "../../../ipc/invoke";
+import {
+  appendCaptureToNotes,
+  CaptureAppendError,
+} from "../../../services/capture-append";
+import { openFileInTab } from "../../../services/journal-file-service";
 import {
   buildCaptureLine,
   CaptureError,
@@ -126,6 +150,13 @@ async function waitForCaptureImages(count: number): Promise<void> {
 
 const cancelButton = () =>
   screen.getByRole("button", { name: t("common.cancel", LOCALE) });
+
+// ‼️ 두 §324-e 테스트가 스토어의 `showToast`를 `vi.fn()`으로 갈아 끼워 무엇이 불렸는지
+// 본다. 되돌리지 않으면 그 뒤로 이 파일의 **모든** 토스트가 아무 데도 도착하지 않고,
+// 토스트를 단정하는 테스트는 "아무 일도 없었다"를 보며 조용히 통과한다(§320 describe에서
+// 실제로 그렇게 다섯 개가 깨져 원인을 여기까지 따라왔다). 모듈 로드 시점의 진짜 구현을
+// 잡아 두었다가 그 describe의 afterEach에서 되돌린다.
+const REAL_SHOW_TOAST = useUIStore.getState().showToast;
 
 /** 지금 캡처 본문 — 저장 실패 후 사용자의 글이 남아 있는지 확인용. */
 const captureHtml = (): string =>
@@ -601,6 +632,8 @@ describe("QuickCaptureDialog — §324-e 저장이 파일을 만든다", () => {
     useEditorStore.setState(originalEditorState, true);
     useSettingsStore.setState(originalSettingsState, true);
     useFileStore.setState(originalFileState, true);
+    // 아래 두 테스트가 갈아 끼운 `showToast`를 되돌린다 — `REAL_SHOW_TOAST` 주석 참조.
+    useUIStore.setState({ showToast: REAL_SHOW_TOAST });
   });
 
   it("zettel — 수집함의 assets/ 아래에, 원본 파일명으로 쓴다", async () => {
@@ -1190,5 +1223,286 @@ describe("§324-g 캡처 창 크기", () => {
     expect(useSettingsStore.getState().captureDialogHeight).toBe(
       CAPTURE_DIALOG_MIN_HEIGHT,
     );
+  });
+});
+
+// §320/§324-a 태그가 주소다 — 캡처가 태그가 지목한 노트의 `## Captures` 절로 가고,
+// 어디에 갔는지 사용자가 안다. 세 갈래 쓰기 경로 자체는 서비스의 테스트가 본다;
+// 여기서 보는 것은 **분기**다: 대상이 있으면 append, 없으면 inbox, 태스크 모드면 둘 다
+// 아니다.
+describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320, §324-a)", () => {
+  const NOTE_PATH = "/vault/zettel/notes/202609021015 영감노트.md";
+  const NOTE_ENTRY = {
+    isDir: false,
+    modifiedAt: 1,
+    name: "202609021015 영감노트.md",
+    path: NOTE_PATH,
+    size: 0,
+  };
+
+  const taskToggle = () =>
+    screen.getByRole("checkbox", {
+      name: t("journal.capture.taskMode.label", LOCALE),
+    });
+  const setTags = (value: string) =>
+    fireEvent.change(screen.getByPlaceholderText(tagsPlaceholder), {
+      target: { value },
+    });
+
+  /**
+   * 대상 스캔이 **상태로 커밋될 때까지** 기다린다.
+   *
+   * 이 대기가 없으면 아래 "붙이지 않았다"류 단정이 "아직 못 읽었다"로도 통과한다 —
+   * 이 describe가 가장 경계해야 할 거짓 초록이다. 신호로 `readFile(NOTE_PATH)`를 쓰는
+   * 것이 가능한 이유는 아래 `listDir` 목이 노트를 **`notes/`에서만** 돌려주기 때문이다:
+   * Zettel 루트를 훑는 태그 인덱스(`use-capture-tags`)는 이 경로를 절대 읽지 않으므로,
+   * 이 호출은 대상 스캔에서만 나온다. 이어지는 `act`가 `Promise.all` → `setNotes`
+   * 커밋까지 흘려보낸다.
+   */
+  async function waitForTargetsLoaded(): Promise<void> {
+    await vi.waitFor(() => expect(readFile).toHaveBeenCalledWith(NOTE_PATH));
+    await act(async () => {});
+  }
+
+  /** 대상이 하나 잡힌 상태로 저장까지 — 여러 테스트가 같은 다섯 줄을 반복한다. */
+  async function saveWith(tag: string, body = "떠오른 생각"): Promise<void> {
+    await waitForTargetsLoaded();
+    setCaptureBody(body);
+    setTags(tag);
+    fireEvent.click(saveButton());
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useSettingsStore.setState({
+      locale: LOCALE,
+      tasksCaptureFile: "tasks/inbox.md",
+    });
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+    useFileStore.getState().setRootPath("/vault");
+    useUIStore.setState({ quickCaptureOpen: true, toast: null });
+    vi.mocked(captureTask).mockResolvedValue("- [ ] x");
+    vi.mocked(captureFleeting).mockResolvedValue({
+      path: "/vault/zettel/inbox/x.md",
+    });
+    vi.mocked(appendCaptureToNotes).mockResolvedValue([
+      { path: NOTE_PATH, title: "영감노트" },
+    ]);
+    vi.mocked(listDir).mockImplementation(async (path: string) =>
+      path === "/vault/zettel/notes" ? [NOTE_ENTRY] : [],
+    );
+    vi.mocked(readFile).mockResolvedValue("");
+  });
+
+  afterEach(() => {
+    // `clearAllMocks`는 호출 기록만 지우고 **구현은 남긴다** — 되돌리지 않으면 다음
+    // describe들이 갑자기 노트 하나가 있는 Zettel 공간을 보게 된다.
+    vi.mocked(listDir).mockResolvedValue([]);
+    vi.mocked(readFile).mockResolvedValue("");
+  });
+
+  it("appends to the matched note instead of creating an inbox file", async () => {
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노트");
+
+    await vi.waitFor(() => {
+      expect(appendCaptureToNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: "떠오른 생각",
+          targets: [
+            expect.objectContaining({ path: NOTE_PATH, title: "영감노트" }),
+          ],
+        }),
+      );
+    });
+    expect(captureFleeting).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(useUIStore.getState().quickCaptureOpen).toBe(false),
+    );
+  });
+
+  it("falls back to the inbox when no note matches, and says so differently", async () => {
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노드"); // 오타 — 어떤 노트도 지목하지 못한다
+
+    await vi.waitFor(() => expect(captureFleeting).toHaveBeenCalled());
+    expect(appendCaptureToNotes).not.toHaveBeenCalled();
+    const { toast } = useUIStore.getState();
+    expect(toast?.type).toBe("warning");
+    expect(toast?.message).toContain("영감노드");
+  });
+
+  // 태그를 아예 안 적었으면 대상을 **지목하지 않은** 것이다. 그것은 실패가 아니므로
+  // 경고를 띄우면 §99의 정상 동작이 매번 문제처럼 보인다.
+  it("says nothing about the inbox when no tag was typed at all", async () => {
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    setCaptureBody("떠오른 생각");
+    fireEvent.click(saveButton());
+
+    await vi.waitFor(() => expect(captureFleeting).toHaveBeenCalled());
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+
+  // ‼️ 매칭 실패가 성공과 **같은 모양으로** 보이면 안 된다(§324-a). 같으면 `#영감노드`
+  // 같은 오타가 성공처럼 읽히고 캡처가 계속 `inbox/`에 쌓인다.
+  //
+  // "두 문자열이 서로 다르다"는 단정으로는 아무것도 잡지 못한다 — 두 저장이 **다른
+  // 태그**로 일어나므로 문구 템플릿이 완전히 같아도 결과 문자열은 달라진다(실제로
+  // `inboxFallback`을 `appended.one`과 같은 템플릿으로 바꾼 뮤테이션이 그렇게 살아남았다).
+  // 그래서 (a) 실패 토스트가 성공 템플릿에 **자기 태그를 끼운 것**이 아니고, (b) 종류부터
+  // 다르다는 것을 본다.
+  it("uses a different shape for a match than for the inbox fallback", async () => {
+    const toastAfterSaving = async (tag: string): Promise<ToastState> => {
+      useUIStore.setState({ quickCaptureOpen: true, toast: null });
+      vi.mocked(readFile).mockClear();
+      const view = render(<QuickCaptureDialog />);
+      await saveWith(tag);
+      await vi.waitFor(() =>
+        expect(useUIStore.getState().toast).not.toBeNull(),
+      );
+      const toast = useUIStore.getState().toast!;
+      view.unmount();
+      return toast;
+    };
+
+    const matched = await toastAfterSaving("#영감노트");
+    const missed = await toastAfterSaving("#영감노드");
+
+    expect(missed.message).not.toBe(
+      t("journal.capture.appended.one", LOCALE, { title: "영감노드" }),
+    );
+    expect(missed.type).not.toBe(matched.type);
+  });
+
+  it("offers Open on the success toast and opens the note", async () => {
+    vi.mocked(readFile).mockImplementation(async (path: string) =>
+      path === NOTE_PATH ? "# 영감노트\n" : "",
+    );
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노트");
+
+    await vi.waitFor(() =>
+      expect(useUIStore.getState().toast?.action).toBeDefined(),
+    );
+    const { toast } = useUIStore.getState();
+    expect(toast!.message).toContain("영감노트");
+    toast!.action!.onClick();
+
+    // 내용은 **디스크에서 다시 읽은 것**이다 — 방금 append된 항목이 들어 있는 판본.
+    await vi.waitFor(() =>
+      expect(openFileInTab).toHaveBeenCalledWith(NOTE_PATH, "# 영감노트\n"),
+    );
+  });
+
+  // 대상이 둘 이상이면 개수만 말하고 행동은 주지 않는다 — 어느 것을 열지 정할 근거가 없다.
+  it("names the count and offers no action when several notes took the capture", async () => {
+    vi.mocked(appendCaptureToNotes).mockResolvedValue([
+      { path: NOTE_PATH, title: "영감노트" },
+      { path: "/vault/zettel/notes/기록.md", title: "기록" },
+    ]);
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노트");
+
+    await vi.waitFor(() => expect(useUIStore.getState().toast).not.toBeNull());
+    const { toast } = useUIStore.getState();
+    expect(toast!.message).toBe(
+      t("journal.capture.appended.many", LOCALE, { count: "2" }),
+    );
+    expect(toast!.action).toBeUndefined();
+  });
+
+  // ‼️ 실패하면 다이얼로그가 **열린 채로** 남는다 — 본문은 다른 어디에도 없다.
+  it("keeps the dialog open and names the blocking note when a tab blocks the append", async () => {
+    vi.mocked(appendCaptureToNotes).mockRejectedValue(
+      new CaptureAppendError("dirtyTab", "영감노트", [], "unsaved tab"),
+    );
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노트");
+
+    await screen.findByText(
+      t("journal.capture.error.appendDirtyTab", LOCALE, { title: "영감노트" }),
+    );
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+    expect(captureEditable().textContent).toBe("떠오른 생각");
+  });
+
+  // 첫 대상은 **이미 쓰였다**. 감추면 사용자가 다시 눌러 그 노트에 중복을 만든다.
+  it("still reports the note that already landed when a later target fails", async () => {
+    vi.mocked(appendCaptureToNotes).mockRejectedValue(
+      new CaptureAppendError(
+        "writeFailed",
+        "기록",
+        [{ path: NOTE_PATH, title: "영감노트" }],
+        "disk full",
+      ),
+    );
+    render(<QuickCaptureDialog />);
+    await saveWith("#영감노트");
+
+    // 막힌 노트의 이름은 오류 문구가 말하고…
+    await screen.findByText(
+      t("journal.capture.error.append", LOCALE, { title: "기록" }),
+    );
+    // …이미 들어간 노트의 이름은 토스트가 말한다.
+    expect(useUIStore.getState().toast?.message).toBe(
+      t("journal.capture.appended.one", LOCALE, { title: "영감노트" }),
+    );
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+  });
+
+  // ‼️ 태스크 모드는 이 경로를 타지 않는다 — 태스크는 수집함의 한 줄이고 노트가 아니다.
+  it("does not append to a note in task mode", async () => {
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    fireEvent.click(taskToggle());
+    setCaptureBody("떠오른 생각");
+    setTags("#영감노트");
+    fireEvent.click(saveButton());
+
+    await vi.waitFor(() => expect(captureTask).toHaveBeenCalled());
+    expect(appendCaptureToNotes).not.toHaveBeenCalled();
+  });
+
+  // §324-f Source가 URL이면 append된 문서에서 클릭된다 — 본문에 접지 않고 그대로 넘긴다.
+  it("passes the raw source through so it becomes a link", async () => {
+    render(<QuickCaptureDialog />);
+    await waitForTargetsLoaded();
+    setCaptureBody("떠오른 생각");
+    setTags("#영감노트");
+    fireEvent.change(screen.getByPlaceholderText(sourcePlaceholder), {
+      target: { value: "코너 https://example.com/m" },
+    });
+    fireEvent.click(saveButton());
+
+    await vi.waitFor(() => {
+      expect(appendCaptureToNotes).toHaveBeenCalledWith(
+        expect.objectContaining({ source: "코너 https://example.com/m" }),
+      );
+    });
+    // 그리고 본문에 `Source: `로 접히지 **않았다** — 그것은 inbox 갈래의 포맷이다.
+    expect(vi.mocked(appendCaptureToNotes).mock.calls[0][0].body).not.toContain(
+      "Source:",
+    );
+  });
+
+  // ‼️ 라우터가 판정하는 것은 대상 노트를 탭에 열어 둔 **메인 편집기**다. 캡처 창의
+  // 편집기(`capture.editor`)를 넘기면 라우터가 "그 파일은 아무 데도 열려 있지 않다"고
+  // 판정해, 저장하지 않은 탭이 있는 노트를 디스크에서 덮어쓴다.
+  it("hands the append the main editor, not the capture dialog's own", async () => {
+    const mainEditor = { __probe: "main-editor" } as unknown as Editor;
+    render(
+      <EditorProvider value={mainEditor}>
+        <QuickCaptureDialog />
+      </EditorProvider>,
+    );
+    await saveWith("#영감노트");
+
+    await vi.waitFor(() => {
+      expect(appendCaptureToNotes).toHaveBeenCalledWith(
+        expect.objectContaining({ editor: mainEditor }),
+      );
+    });
   });
 });

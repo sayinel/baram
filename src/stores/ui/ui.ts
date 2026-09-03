@@ -46,6 +46,16 @@ export type SidebarPanel =
   | "zettel";
 
 export interface ToastState {
+  /**
+   * §324-a 토스트가 제안하는 단 하나의 행동 — "어디에 붙었는지 알리고 그리로 갈 수
+   * 있게 한다".
+   *
+   * ‼️ 콜백이라는 형태가 이것을 앱 전용으로 만든다. 샌드박스 플러그인은
+   * `sandbox/host-ui-bridge.ts`의 **3-인자** `showToast`로만 닿으므로 함수를 넘길
+   * 통로가 없다 — `source` 배지가 문자열이라 위조가 가능했던 것과는 반대 상황이다.
+   * `components/editor/__tests__/toast-action.test.tsx`가 그 경계를 계약으로 못 박는다.
+   */
+  action?: { label: string; onClick: () => void };
   /** Monotonic id — changing it restarts the auto-dismiss timer */
   id: number;
   message: string;
@@ -165,6 +175,7 @@ interface UIState {
     message: string,
     type?: "error" | "info" | "warning",
     source?: string,
+    action?: { label: string; onClick: () => void },
   ) => void;
   sidebarOpen: boolean;
   sidebarPanel: SidebarPanel;
@@ -254,9 +265,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   toast: null,
 
-  showToast: (message, type, source) =>
+  showToast: (message, type, source, action) =>
     set((state) => ({
-      toast: { id: (state.toast?.id ?? 0) + 1, message, source, type },
+      toast: { action, id: (state.toast?.id ?? 0) + 1, message, source, type },
     })),
 
   dismissToast: () => set({ toast: null }),
