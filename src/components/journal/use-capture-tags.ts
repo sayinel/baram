@@ -5,10 +5,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { listDir, readFile } from "../../ipc/invoke";
+import { getVaultTags } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
-import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
+import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 
@@ -26,9 +26,6 @@ interface CaptureTags {
   value: string;
   visible: boolean;
 }
-
-/** 인덱스 스캔에서 읽을 최대 파일 수. */
-const SCAN_LIMIT = 100;
 
 export function useCaptureTags(open: boolean): CaptureTags {
   const [index, setIndex] = useState<Map<string, number>>(() => new Map());
@@ -55,28 +52,8 @@ export function useCaptureTags(open: boolean): CaptureTags {
         const scanDir = resolveZettelDir(rootPath, zettelkastenDirectory);
         if (!scanDir) return;
 
-        const entries = await listDir(scanDir, true).catch(() => []);
-        const mdFiles = entries
-          .filter((e) => !e.isDir && e.name.endsWith(".md"))
-          .slice(0, SCAN_LIMIT);
-
-        const contents = await Promise.all(
-          mdFiles.map(async (e) => {
-            try {
-              return { path: e.path, content: await readFile(e.path) };
-            } catch {
-              return null;
-            }
-          }),
-        );
-
-        setIndex(
-          buildTagIndex(
-            contents.filter(
-              (f): f is { content: string; path: string } => f !== null,
-            ),
-          ),
-        );
+        const entries = await getVaultTags(scanDir);
+        setIndex(new Map(entries.map((e) => [e.tag, e.count])));
       } catch (err) {
         logger.error("[QuickCapture] Tag index build failed:", err);
       }
@@ -112,7 +89,11 @@ export function useCaptureTags(open: boolean): CaptureTags {
       const before = value.slice(0, cursor);
       const after = value.slice(cursor);
 
-      const prefix = before.match(/#[\w가-힣]*$/);
+      // ‼️ 하이픈이 태그 이름의 일부다 — Rust `is_tag_char`가 그렇게 판정한다
+      // (`src-tauri/src/md/mod.rs:25-27`). 여기서 빼면 §320의 `#Baram-Dev-Note` 별칭이
+      // 자동완성으로 닿지 않고, `onSelect`가 접두를 절반만 갈아끼워
+      // `#Baram-#baram-dev-note`를 만든다. 문자 클래스 **끝**의 `-`는 리터럴이다.
+      const prefix = before.match(/#[\w가-힣-]*$/);
       const newBefore = prefix
         ? before.slice(0, before.length - prefix[0].length) + `#${tag}`
         : before + `#${tag}`;
@@ -191,6 +172,8 @@ export function useCaptureTags(open: boolean): CaptureTags {
 
 /** 커서 위치에서 입력 중인 `#tag` 접두를 뽑는다. */
 function currentTagQuery(value: string, cursor: number): null | string {
-  const match = value.slice(0, cursor).match(/#([\w가-힣]*)$/);
+  // ‼️ `-`가 없으면 `#Baram-`을 입력하는 중간에 쿼리가 끊겨 하이픈 뒤의 타이핑이
+  // 자동완성 드롭다운에 반영되지 않는다 — `onSelect`의 같은 함정 참조.
+  const match = value.slice(0, cursor).match(/#([\w가-힣-]*)$/);
   return match ? match[1] : null;
 }
