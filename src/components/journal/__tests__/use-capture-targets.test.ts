@@ -25,6 +25,15 @@ function noteEntry(path: string) {
   };
 }
 
+// ‼️ `tags` is always hoisted to a stable `const` before it's passed into
+// `useCaptureTargets` below — never an inline array literal in the render
+// callback. Any state update from inside the hook (`setLoading`/`setNotes`)
+// re-invokes that callback; an inline literal would hand the hook a *new*
+// array reference on every one of those re-renders. That's invisible under
+// the correct `[open]`-only effect deps, but under the `[open, tags]`
+// mutation it drives an infinite effect loop that heap-OOMs the whole
+// vitest worker instead of failing the "reads the notes directory once…"
+// test below cleanly (confirmed: fixed once, then reproduced by reverting).
 describe("useCaptureTargets", () => {
   beforeEach(() => {
     listDir.mockReset();
@@ -70,6 +79,7 @@ describe("useCaptureTargets", () => {
   });
 
   it("reports the capture count for each target", async () => {
+    const tags = ["Hub"];
     listDir.mockResolvedValue([noteEntry("/z/notes/Hub.md")]);
     // The `## Captures` section carries two capture block ids (`^m…`).
     readFile.mockResolvedValue(
@@ -78,7 +88,7 @@ describe("useCaptureTargets", () => {
         "### 2026-09-01 11:00 ^m2609011100\nB\n",
     );
 
-    const { result } = renderHook(() => useCaptureTargets(true, ["Hub"]));
+    const { result } = renderHook(() => useCaptureTargets(true, tags));
     await waitFor(() =>
       expect(result.current.targets[0]?.captureCount).toBe(2),
     );
@@ -92,9 +102,10 @@ describe("useCaptureTargets", () => {
   // `true`로 보인다(뮤테이션 생존 확인함). 처음엔 **닫힌 채로** 렌더해 effect 본문이
   // 아예 안 도는 상태에서 초기값 자체를 본다.
   it("is loading until the notes have been read", async () => {
+    const tags = ["Hub"];
     listDir.mockResolvedValue([]);
     const { rerender, result } = renderHook(
-      ({ open }: { open: boolean }) => useCaptureTargets(open, ["Hub"]),
+      ({ open }: { open: boolean }) => useCaptureTargets(open, tags),
       { initialProps: { open: false } },
     );
     expect(result.current.loading).toBe(true);
@@ -113,6 +124,7 @@ describe("useCaptureTargets", () => {
 
   // notes/ 아래만 본다 — `inbox/`의 fleeting note는 대상이 아니다(제목이 없다).
   it("only considers files under notes/", async () => {
+    const tags = ["FleetingHub"];
     listDir.mockImplementation(async (dir: string) => {
       if (dir === "/z/notes") return [noteEntry("/z/notes/Hub.md")];
       // What an un-scoped scan of the whole Zettel space would additionally
@@ -133,9 +145,7 @@ describe("useCaptureTargets", () => {
       path.includes("FleetingHub") ? "# FleetingHub\n" : "# Hub\n",
     );
 
-    const { result } = renderHook(() =>
-      useCaptureTargets(true, ["FleetingHub"]),
-    );
+    const { result } = renderHook(() => useCaptureTargets(true, tags));
     await waitFor(() => expect(listDir).toHaveBeenCalled());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -146,9 +156,6 @@ describe("useCaptureTargets", () => {
   // (`QuickCaptureDialog.tsx:323`) 한 번만 읽는 구현은 그 세션 동안 새로 만든 허브 노트를
   // 영원히 못 본다.
   it("re-reads on the next open", async () => {
-    // A stable reference, deliberately — an inline array literal here would
-    // be a new reference on every render and mask the effect's `[open]`-only
-    // dependency behind an accidentally-stable-enough test.
     const tags = ["새허브"];
     listDir.mockResolvedValue([noteEntry("/z/notes/Hub.md")]);
     readFile.mockResolvedValue("# Hub\n");

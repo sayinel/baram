@@ -44,10 +44,34 @@ export function useCaptureTargets(
   const [notes, setNotes] = useState<NoteCandidate[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // React's documented "adjust state while rendering" pattern
+  // (https://react.dev/reference/react/useState#storing-information-from-previous-renders)
+  // — this runs during render, **before paint**, unlike the effect below
+  // which only runs after the commit. Without it, reopening the dialog after
+  // a completed session (open: false → true) would paint one frame with the
+  // *previous* session's `loading: false` and its resolved `targets` before
+  // the effect's own `setLoading(true)` catches up on the next tick — Task
+  // 7's preview would flash the wrong note name for that frame, which is
+  // worse than showing nothing (§324-c exists precisely so a mistyped tag is
+  // caught by eye; briefly asserting the *wrong* answer defeats that).
+  //
+  // ‼️ Unpinned by a test: RTL's `act()` flushes passive effects
+  // synchronously on every `rerender`, so a real browser's post-paint effect
+  // timing and this harness's synchronous one are indistinguishable here —
+  // any test asserting on this would pass identically whether this render-
+  // phase reset exists or not, and would misrepresent itself as covering a
+  // behaviour it cannot actually observe.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setNotes([]);
+      setLoading(true);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
-    setNotes([]);
     let cancelled = false;
 
     (async () => {
