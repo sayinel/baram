@@ -766,6 +766,7 @@
 
 .tag-suggest-item {
   display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
   padding: 4px 8px;
@@ -786,7 +787,10 @@
 }
 
 .tag-suggest-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .tag-suggest-count {
@@ -797,6 +801,17 @@
   text-align: center;
   background: var(--color-bg-subtle);
   border-radius: 10px;
+}
+
+/* §324-b 후속 — 노트 항목의 라벨. `tag-suggest-count`(짧은 숫자 하나를 가정한
+   원형 pill)를 재사용하지 않는다: "Note · Captures: 40" 같은 문구를 그 pill에
+   넣으면 그 안에서 줄바꿈된다. `flex-shrink: 0` + `white-space: nowrap`으로
+   `tag-suggest-item`의 `gap` 옆에서 긴 노트 이름과 부딪히지 않는다. */
+.tag-suggest-kind {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 /* §56l — Editor inline #tag autocomplete popup */

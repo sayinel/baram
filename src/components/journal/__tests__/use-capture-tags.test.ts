@@ -279,5 +279,33 @@ describe("§324-b useCaptureTags", () => {
         { count: 1, isNote: false, name: "capturetest" },
       ]);
     });
+
+    // ‼️ 리뷰 HIGH — 이 작업이 고치려던 버그를 그대로 재현한다. 노트 스캔은
+    // `listDir` + 노트마다 `readFile` 하나씩(§320)이라 타이핑보다 훨씬 느릴 수
+    // 있다. 사용자가 `#CaptureTest`를 다 칠 때까지 스캔이 안 끝나면(그 순간
+    // `addressableNames`는 비어 있다), 스캔이 끝난 뒤에도 드롭다운이 뜨려면
+    // `visible`이 그 뒤 값 변화를 반영해야 한다 — 타이핑 순간에 굳어 버리면
+    // 사용자는 전체 이름을 정확히 쳤는데도 아무것도 못 보고, "여전히 안 뜬다"고
+    // 결론짓는다(이 작업을 만든 바로 그 버그 리포트).
+    it("reveals the dropdown once the note scan resolves after the whole name was already typed — no further keystroke needed", async () => {
+      getVaultTags.mockResolvedValue([]);
+      const { result, rerender } = renderHook(
+        ({ names }) => useCaptureTags(true, names),
+        { initialProps: { names: EMPTY_ADDRESSABLE_NAMES } },
+      );
+      await waitFor(() => expect(result.current.index.size).toBe(0));
+
+      // The scan hasn't resolved yet — `addressableNames` is still empty.
+      act(() => result.current.onChange(changeEvent("#CaptureTest")));
+      expect(result.current.visible).toBe(false);
+
+      // The scan resolves — only the prop changes, no further keystroke.
+      rerender({ names: addressableNames(["CaptureTest", 0]) });
+
+      expect(result.current.visible).toBe(true);
+      expect(result.current.suggestions).toEqual([
+        { count: 0, isNote: true, name: "CaptureTest" },
+      ]);
+    });
   });
 });

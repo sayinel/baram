@@ -53,7 +53,13 @@ export function useCaptureTags(
   const [index, setIndex] = useState<Map<string, number>>(() => new Map());
   const [value, setValue] = useState("");
   const [query, setQuery] = useState<null | string>(null);
-  const [visible, setVisible] = useState(false);
+  // ‼️ 리뷰 HIGH — `visible`은 더 이상 독립 state가 아니다. 예전엔 `onChange`가
+  // 그 순간의 `addressableNames`로 한 번 계산해 저장했는데, 노트 스캔이 타이핑보다
+  // 느리면(디렉터리 목록 + 노트마다 IPC 읽기) 그 순간엔 없던 노트가 나중에 로드돼도
+  // `visible`은 이미 `false`로 굳어 있어 사용자가 전체 이름을 다 쳐도 드롭다운이
+  // 뜨지 않았다 — 이 작업이 고치려던 버그를 스스로 재현하는 것. `dismissed`만 상태로
+  // 두고, 보일지 말지는 매 렌더 `suggestions`에서 다시 유도한다.
+  const [dismissed, setDismissed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +69,7 @@ export function useCaptureTags(
     if (!open) return;
 
     setValue("");
-    setVisible(false);
+    setDismissed(false);
     setQuery(null);
     setActiveIndex(0);
 
@@ -82,28 +88,20 @@ export function useCaptureTags(
     })();
   }, [open]);
 
-  const onChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const next = e.target.value;
-      setValue(next);
+  const onChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.value;
+    setValue(next);
 
-      const cursor = e.target.selectionStart ?? next.length;
-      const typed = currentTagQuery(next, cursor);
-      if (typed !== null) {
-        setQuery(typed);
-        // ‼️ `query` state가 아직 갱신되지 않은 시점이라 아래 `suggestions` memo를
-        // 못 쓴다 — 같은 순수 함수(`buildSuggestions`)를 직접 불러 이번 타이핑에
-        // 대한 답을 즉시 얻는다. 다음 렌더에서 memo가 같은 함수로 같은 값에
-        // 수렴하므로 두 출처가 갈리지 않는다.
-        setVisible(buildSuggestions(typed, addressableNames, index).length > 0);
-        setActiveIndex(0);
-      } else {
-        setVisible(false);
-        setQuery(null);
-      }
-    },
-    [addressableNames, index],
-  );
+    const cursor = e.target.selectionStart ?? next.length;
+    const typed = currentTagQuery(next, cursor);
+    if (typed !== null) {
+      setQuery(typed);
+      setDismissed(false);
+      setActiveIndex(0);
+    } else {
+      setQuery(null);
+    }
+  }, []);
 
   // 고른 태그로 커서 위치의 부분 `#prefix`를 갈아끼운다.
   const onSelect = useCallback(
@@ -128,7 +126,6 @@ export function useCaptureTags(
         (newBefore + (after.startsWith(" ") ? after : " " + after)).trimEnd() +
           " ",
       );
-      setVisible(false);
       setQuery(null);
       setActiveIndex(0);
 
@@ -141,14 +138,21 @@ export function useCaptureTags(
     [value],
   );
 
-  // ‼️ ①: 여기서 한 번만 계산해 키보드 탐색과 `TagSuggest`의 렌더링이 **같은
-  // 배열**을 본다. 각자 `filterTags`를 다시 부르면 지금은 순수 함수라 일치하지만,
-  // 노트 이름이라는 두 번째 출처가 생긴 뒤로는 갈릴 수 있는 형태다 — 키보드가
-  // 고르는 것과 화면에 보이는 것이 다른 계산이 되는 것.
+  // ‼️ ①: 여기서 **한 곳에서만** 계산한다 — `onChange`가 따로 부르던 두 번째
+  // 호출을 없앴으므로(위 리뷰 HIGH 수정), `buildSuggestions`를 부르는 자리는
+  // 이제 이 memo 하나뿐이다. 키보드 탐색·`TagSuggest`의 렌더링·`visible` 유도가
+  // 모두 이 배열을 본다 — 두 출처가 갈릴 여지 자체가 없다.
   const suggestions = useMemo(
     () => buildSuggestions(query ?? "", addressableNames, index),
     [query, addressableNames, index],
   );
+
+  // ‼️ 리뷰 HIGH — 저장된 값이 아니라 매 렌더 다시 유도한다. `query`가 있고(태그를
+  // 치는 중), 사용자가 닫지 않았고, 지금 이 순간의 `suggestions`가 비어 있지
+  // 않으면 보인다. 노트 스캔이 늦게 끝나 `addressableNames`가 나중에 바뀌면
+  // `suggestions`가 다시 계산되고 이 값도 같은 렌더에서 함께 바뀐다 — 추가
+  // 키 입력을 기다리지 않는다.
+  const visible = query !== null && !dismissed && suggestions.length > 0;
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -168,7 +172,7 @@ export function useCaptureTags(
         }
       } else if (e.key === "Escape") {
         e.stopPropagation(); // 다이얼로그가 닫히지 않게
-        setVisible(false);
+        setDismissed(true);
       }
     },
     [visible, suggestions, activeIndex, onSelect],
@@ -176,7 +180,7 @@ export function useCaptureTags(
 
   const onBlur = useCallback(() => {
     // 제안의 onMouseDown이 먼저 발화하도록 숨김을 늦춘다.
-    setTimeout(() => setVisible(false), 150);
+    setTimeout(() => setDismissed(true), 150);
   }, []);
 
   const list = useMemo(
@@ -224,6 +228,12 @@ function buildSuggestions(
   const noteMatches = filterTags(query, noteCounts);
   const tagMatches = filterTags(query, tagIndex);
 
+  // ‼️ 소문자 키로만 중복 제거가 성립한다. `tagIndex`의 키가 이미 소문자라는
+  // 보장은 Rust 쪽에 있다 — `src-tauri/src/tag/mod.rs:126`(프론트매터)·`:135`
+  // (본문 인라인) 둘 다 `tag.to_lowercase()`를 거친다. 그 불변조건이 깨지면
+  // "Hub"(노트)와 "Hub"(태그)가 여기서 다른 키로 보여 중복 React key로 두 번
+  // 그려진다. `.toLowerCase()`를 여기서 다시 걸지 않는다 — 그러면 실제 불일치를
+  // 조용히 가릴 뿐이다.
   const seen = new Set<string>();
   const suggestions: TagSuggestion[] = [];
 

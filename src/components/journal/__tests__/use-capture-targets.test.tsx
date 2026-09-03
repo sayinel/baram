@@ -321,5 +321,41 @@ describe("useCaptureTargets", () => {
         display: "Baram-Dev-Note",
       });
     });
+
+    // 리뷰가 지적한 "먼저 온 이름이 이긴다"의 첫 번째 절반: 같은 노트 안에서
+    // 제목이 자기 별칭과 (대소문자만 다르게) 충돌하면 제목의 표시 케이스가 남는다.
+    it("prefers a note's own title over its case-colliding alias", async () => {
+      listDir.mockResolvedValue([noteEntry("/z/notes/Foo.md")]);
+      readFile.mockResolvedValue(
+        "---\ntitle: Foo\naliases: [foo]\n---\n# Foo\n",
+      );
+
+      const { result } = renderHook(() => useCaptureTargets(true, []));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.addressableNames.get("foo")?.display).toBe("Foo");
+    });
+
+    // 두 번째 절반: 서로 다른 두 노트가 같은 이름을 쓰면 먼저 읽힌(= `listDir`가
+    // 먼저 돌려준) 노트가 이긴다. 캡처 수로 어느 쪽이 남았는지 식별한다.
+    it("prefers the first-loaded note when two notes share a name", async () => {
+      listDir.mockResolvedValue([
+        noteEntry("/z/notes/A.md"),
+        noteEntry("/z/notes/B.md"),
+      ]);
+      readFile.mockImplementation(async (path: string) =>
+        path.endsWith("A.md")
+          ? "---\ntitle: Dup\n---\n# A\n\n## Captures\n\n" +
+            "### 2026-09-01 10:00 ^m2609011000\nx\n"
+          : "---\ntitle: Dup\n---\n# B\n",
+      );
+
+      const { result } = renderHook(() => useCaptureTargets(true, []));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // B's frontmatter also names "Dup" with 0 captures — a "last wins" bug
+      // would report that instead.
+      expect(result.current.addressableNames.get("dup")?.captureCount).toBe(1);
+    });
   });
 });

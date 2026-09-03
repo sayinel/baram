@@ -1,3 +1,5 @@
+import { Profiler } from "react";
+
 import type { ToastState } from "../../../stores/ui/ui";
 import type { Editor } from "@tiptap/react";
 
@@ -1333,11 +1335,19 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
   }
 
   // §324-b 후속 — Task 6이 자동완성 출처를 `getVaultTags`로 바꾼 뒤로 노트 **제목**은
-  // 누가 `#태그`로 실제로 쓰기 전까지 제안에 뜨지 않았다. `readFile`이 프론트매터 없는
-  // 본문을 돌려주므로 "영감노트"는 태그로 한 번도 안 쓰였다 — 그런데도 뜨는 것이
-  // 이 테스트가 존재하는 이유다.
+  // 누가 `#태그`로 실제로 쓰기 전까지 제안에 뜨지 않았다. 그런데도 뜨는 것이 이
+  // 테스트가 존재하는 이유다.
+  //
+  // ‼️ 리뷰 LOW — 아래 `readFile.mockResolvedValue("# 영감노트\n")`는 이 단정에
+  // 대해 **비활성**이다: `NOTE_ENTRY`의 파일명이 이미 `202609021015 영감노트.md`라
+  // `parseNoteTitle`은 앞의 zettel id를 뗀 파일명 줄기에서 제목을 얻고, 본문은 안
+  // 읽는다(제목이 프론트매터에 없을 때의 2번째 분기). 이 테스트가 실제로 갈라내는
+  // 지점은 이 파일 전체의 `ipc/invoke` mock 팩토리가 `getVaultTags`를 아예 안 준다는
+  // 것이다 — `undefined`를 호출해 매번 조용히 실패하므로(Task 6 이후 이 파일
+  // 전체에서 그렇다) 태그 인덱스가 늘 비어 있다. 그래서 "영감노트"가 뜬다면 그건
+  // 태그 경로가 아니라 **노트 경로**로만 뜬 것 — 이 단정이 노리는 바로 그 구분을
+  // 오히려 더 깨끗하게 만들어 준다.
   it("suggests the loaded note's own title, marked as a note, once the scan settles", async () => {
-    vi.mocked(readFile).mockResolvedValue("# 영감노트\n");
     render(<QuickCaptureDialog />);
     await waitForTargetsLoaded();
     setTags("#영감노");
@@ -1350,9 +1360,11 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
       "#영감노트",
     );
     // 캡처가 없는 노트 — 숫자가 아니라 "Note" 라벨만 보인다(§324-b 후속 규칙 ③).
-    expect(option.querySelector(".tag-suggest-count")).toHaveTextContent(
+    // 태그 행의 숫자 pill(`.tag-suggest-count`)이 아니라 별도 클래스다(리뷰 MEDIUM).
+    expect(option.querySelector(".tag-suggest-kind")).toHaveTextContent(
       t("journal.tagSuggest.note", LOCALE),
     );
+    expect(option.querySelector(".tag-suggest-count")).toBeNull();
   });
 
   // §324-b 후속 규칙 ④: 태스크 모드에서는 노트 제안이 없다. 노트가 이미 로드된
@@ -1360,7 +1372,6 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
   // 것이 그 자리에서 드롭다운을 지워야 한다. 별도 게이트가 있었다면 이미 열려
   // 있던 드롭다운은 남았을 것이다.
   it("hides an already-shown note suggestion the instant task mode is toggled on", async () => {
-    vi.mocked(readFile).mockResolvedValue("# 영감노트\n");
     render(<QuickCaptureDialog />);
     await waitForTargetsLoaded();
     setTags("#영감노");
@@ -1371,6 +1382,42 @@ describe("QuickCaptureDialog — 태그가 지목한 노트에 붙인다 (§320,
     fireEvent.click(taskToggle());
 
     expect(screen.queryByRole("option")).toBeNull();
+  });
+
+  // ‼️ 리뷰 MEDIUM — 위 테스트는 "결국 사라진다"만 본다. 이 테스트는 **몇 번의
+  // 커밋에 걸쳐** 사라지는지를 본다. `QuickCaptureDialog.tsx`의 렌더 중 상태
+  // 조정(`if (captureTargets.addressableNames !== addressableNames) setAddressableNames(...)`)을
+  // `useEffect`로 바꾸면(그 시점엔 정확히 같아 보이는 대안) 커밋이 두 번 된다 —
+  // 첫 커밋은 새 `addressableNames` state가 아직 반영되지 않은 **낡은** 노트
+  // 제안을 그대로 그리고, effect가 돈 뒤에야 두 번째 커밋이 지운다. RTL의
+  // `fireEvent`는 `act()`로 감싸 flush된 effect까지 한 번에 흡수하므로, DOM에
+  // 남은 최종 결과만 보는 단정으로는 그 사이의 한 프레임짜리 깜박임을 못 잡는다
+  // — `use-capture-targets.test.tsx`의 "reopening the dialog commits..." 테스트와
+  // 같은 `Profiler.onRender` 기법으로, 커밋마다 DOM을 직접 읽어 프레임 단위로 고정한다.
+  it("drops a shown note suggestion in exactly one commit when task mode is toggled on — no stale-option frame", async () => {
+    const commits: number[] = [];
+    render(
+      <Profiler
+        id="quick-capture-tag-suggest-probe"
+        onRender={() =>
+          commits.push(document.querySelectorAll('[role="option"]').length)
+        }
+      >
+        <QuickCaptureDialog />
+      </Profiler>,
+    );
+    await waitForTargetsLoaded();
+    setTags("#영감노");
+    await vi.waitFor(() =>
+      expect(screen.getByRole("option")).toBeInTheDocument(),
+    );
+
+    commits.length = 0; // isolate the toggle transition below
+    fireEvent.click(taskToggle());
+
+    // Exactly one commit, and it already shows zero options — never a commit
+    // that still paints the stale suggestion before a second one clears it.
+    expect(commits).toEqual([0]);
   });
 
   // ‼️ 스캔이 끝나기 전에 저장하면 대상이 아직 **비어 있다.** 그대로 두면 캡처가

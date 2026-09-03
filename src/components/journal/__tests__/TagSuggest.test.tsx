@@ -82,7 +82,7 @@ describe("TagSuggest", () => {
   // §324-b 후속 규칙 ③: a note's count is a *capture* count, not a file count
   // like a tag's — showing it as a bare number reads as "0 captures" noise
   // for the exact case (a freshly created note) this feature exists for.
-  it("shows a plain number for a tag but a labelled count for a note", () => {
+  it("shows a plain number for a tag but a labelled kind for a note", () => {
     render(
       <TagSuggest
         activeIndex={0}
@@ -95,9 +95,15 @@ describe("TagSuggest", () => {
         visible={true}
       />,
     );
-    const counts = screen
-      .getAllByRole("option")
-      .map((el) => el.querySelector(".tag-suggest-count")?.textContent);
-    expect(counts).toEqual(["12", "Note", "Note · 3 captures"]);
+    const options = screen.getAllByRole("option");
+    // ‼️ 리뷰 MEDIUM — 텍스트만이 아니라 **클래스**를 고정한다. 노트 행이
+    // `.tag-suggest-count`(짧은 숫자 하나를 가정한 pill)를 쓰면 텍스트 단정은
+    // 여전히 통과하지만 그 pill 안에서 줄바꿈된다 — 실제 결함이 그 모양이었다.
+    expect(
+      options.map((el) => el.querySelector(".tag-suggest-count")?.textContent),
+    ).toEqual(["12", undefined, undefined]);
+    expect(
+      options.map((el) => el.querySelector(".tag-suggest-kind")?.textContent),
+    ).toEqual([undefined, "Note", "Note · Captures: 3"]);
   });
 });
