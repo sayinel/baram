@@ -70,6 +70,12 @@ export function CalloutView({
   const pickerRef = useRef<HTMLDivElement>(null);
 
   const toggleCollapsed = useCallback(() => {
+    // §12-⑩ event-time guard (issue 375): `collapsed` is a PERSISTED attr
+    // (`> [!note]-`), so a click on a read-only editor would dirty the file.
+    // Same shape as commitTitle/handleTypeSelect. This button is always
+    // mounted (no render gate), so the event-time check is the only thing
+    // between a click and the document.
+    if (!canUseEditorChrome(editor)) return;
     // §12-6: chrome control — tagged (design §5b)
     updateNodeAttributesWithVim(editor, getPos, { collapsed: !collapsed });
   }, [collapsed, editor, getPos]);

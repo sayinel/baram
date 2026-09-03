@@ -454,3 +454,72 @@ describe("block-atom cursor does not enter NodeView editing (S5-b review)", () =
     expect(editor.state.doc.nodeAt(mathPos)?.attrs.formula).toBe("fresh");
   });
 });
+
+// ── issue 375 — the collapse button gets the same event-time guard ─────────
+//
+// `collapsed` is a PERSISTED callout attr (`> [!note]-`). The collapse button
+// committed it through updateNodeAttributesWithVim with no capability check,
+// unlike its two sibling controls (title commit, type picker), so a click on
+// a read-only editor dirtied the file. The guard is at the call site, like
+// the siblings: updateNodeAttributesWithVim itself stays ungated on purpose —
+// mermaid/svg fullscreen close and the query builder update local state on
+// the assumption that the dispatch happened, so a silent refusal inside the
+// helper would leave their UI saying "saved" over an unchanged document.
+
+describe("CalloutView collapse button (§12-⑩ wiring, issue 375)", () => {
+  function setupCallout() {
+    const editor = makeEditor();
+    const view = render(<EditorContent editor={editor} />);
+    act(() => {
+      editor.commands.setContent({
+        content: [
+          {
+            attrs: { collapsed: false, type: "tip" },
+            content: [
+              { content: [{ text: "body", type: "text" }], type: "paragraph" },
+            ],
+            type: "callout",
+          },
+        ],
+        type: "doc",
+      });
+    });
+    return { editor, view };
+  }
+
+  function collapsedOf(editor: Editor): boolean {
+    let value = false;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "callout") value = node.attrs.collapsed as boolean;
+      return node.type.name !== "callout";
+    });
+    return value;
+  }
+
+  it("toggles while capability holds (control)", async () => {
+    const { editor, view } = setupCallout();
+    await flush();
+    fireEvent.click(view.getByTitle("Collapse"));
+    expect(collapsedOf(editor)).toBe(true);
+  });
+
+  it("v7.5 ⓑ: a silent lock leaves the button mounted, and the click must not dirty the document", async () => {
+    const { editor, view } = setupCallout();
+    await flush();
+    act(() => editor.setEditable(false, false));
+    const before = editor.state.doc;
+
+    fireEvent.click(view.getByTitle("Collapse"));
+
+    expect(editor.state.doc.eq(before)).toBe(true);
+    expect(collapsedOf(editor)).toBe(false);
+  });
+
+  it("keeps toggling during vim normal (current behaviour preserved)", async () => {
+    const { editor, view } = setupCallout();
+    await flush();
+    enableVimNormal(editor);
+    fireEvent.click(view.getByTitle("Collapse"));
+    expect(collapsedOf(editor)).toBe(true);
+  });
+});
