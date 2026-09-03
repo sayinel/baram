@@ -1,4 +1,7 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import type { MutableRefObject } from "react";
+import { Profiler, useRef } from "react";
+
+import { render, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock factories are hoisted above top-level consts, so the mocked fns
@@ -13,6 +16,13 @@ vi.mock("../../../ipc/invoke", () => ({ listDir, readFile }));
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useCaptureTargets } from "../use-capture-targets";
 
+/** One `{loading, targets}` snapshot per commit, as recorded by
+ *  `ProfiledCaptureProbe` below. */
+interface CommitRecord {
+  loading: boolean;
+  targets: string[];
+}
+
 /** A `notes/`-shaped FileEntry — filename carries no leading Zettel id so
  *  `parseNoteTitle` returns it verbatim as the title. */
 function noteEntry(path: string) {
@@ -23,6 +33,56 @@ function noteEntry(path: string) {
     path,
     size: 0,
   };
+}
+
+/**
+ * Writes the hook's latest state into `latestRef` on **every** render body
+ * invocation — including a discarded pre-commit re-invoke triggered by the
+ * render-phase reset in `useCaptureTargets` (calling `setState` during
+ * render makes React re-run this component synchronously before it commits
+ * anything). Only the last write before a commit survives to be read by
+ * `ProfiledCaptureProbe`'s `onRender` below — exactly what got painted.
+ */
+function CaptureProbe({
+  latestRef,
+  open,
+  tags,
+}: {
+  latestRef: MutableRefObject<CommitRecord>;
+  open: boolean;
+  tags: string[];
+}) {
+  const { loading, targets } = useCaptureTargets(open, tags);
+  latestRef.current = { loading, targets: targets.map((t) => t.title) };
+  return null;
+}
+
+/**
+ * `React.Profiler.onRender` fires once per actual **commit** — unlike a
+ * plain push from a component's render body, which would also fire on
+ * React's discarded pre-commit re-invoke and so could not tell "one commit,
+ * already correct" apart from "two commits, the first one stale". Reading
+ * `latestRef` from inside `onRender` records exactly the state that was
+ * painted, once per paint.
+ */
+function ProfiledCaptureProbe({
+  commits,
+  open,
+  tags,
+}: {
+  commits: CommitRecord[];
+  open: boolean;
+  tags: string[];
+}) {
+  const latestRef = useRef<CommitRecord>({ loading: true, targets: [] });
+  return (
+    <Profiler
+      id="capture-targets-probe"
+      onRender={() => commits.push({ ...latestRef.current })}
+    >
+      <CaptureProbe latestRef={latestRef} open={open} tags={tags} />
+    </Profiler>
+  );
 }
 
 // ‼️ `tags` is always hoisted to a stable `const` before it's passed into
@@ -183,5 +243,48 @@ describe("useCaptureTargets", () => {
     rerender({ open: true });
     await waitFor(() => expect(result.current.targets).toHaveLength(1));
     expect(result.current.targets[0]?.title).toBe("새허브");
+  });
+
+  // ‼️ §320 review round 2 — pins the render-phase reset with
+  // `React.Profiler`, not a plain counter in the component body. A body-
+  // level counter fires on every render call, including React's discarded
+  // pre-commit re-invoke when the render-phase reset calls `setState` — so
+  // it cannot tell "one commit, already correct" apart from "two commits,
+  // the first one stale". `Profiler.onRender` fires once per actual commit,
+  // which is the distinction that matters: with the reset living in the
+  // effect body (the old, broken shape), reopening paints the *previous*
+  // session's resolved targets first, then a second commit resets it — two
+  // commits, the first `{ loading: false, targets: ["Hub"] }`. With the
+  // reset moved to render phase (the shipped shape), reopening paints the
+  // reset state directly — one commit, `{ loading: true, targets: [] }`.
+  it("reopening the dialog commits the reset state exactly once — no stale-target frame", async () => {
+    const tags = ["Hub"];
+    listDir.mockResolvedValue([noteEntry("/z/notes/Hub.md")]);
+    readFile.mockResolvedValue("# Hub\n");
+
+    const commits: CommitRecord[] = [];
+    const { rerender } = render(
+      <ProfiledCaptureProbe commits={commits} open={true} tags={tags} />,
+    );
+
+    // Let the first session's load settle so there is a real, non-empty
+    // resolved target to leak if the reset regresses.
+    await waitFor(() =>
+      expect(commits.at(-1)).toEqual({ loading: false, targets: ["Hub"] }),
+    );
+
+    rerender(
+      <ProfiledCaptureProbe commits={commits} open={false} tags={tags} />,
+    );
+    commits.length = 0; // isolate the reopen transition below
+
+    rerender(
+      <ProfiledCaptureProbe commits={commits} open={true} tags={tags} />,
+    );
+
+    // Checked synchronously, before the re-scan's promises resolve — this is
+    // the commit (or commits) React produced for the reopen transition
+    // itself, not the eventual settled state once notes are re-read.
+    expect(commits).toEqual([{ loading: true, targets: [] }]);
   });
 });

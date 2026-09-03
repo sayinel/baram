@@ -36,6 +36,12 @@ export interface CaptureTargets {
  *
  * `SCAN_LIMIT` 같은 상한을 두지 않는다 — 태그가 주소인 설계에서 목록에서 빠진
  * 허브는 오타를 유발하고 `inbox/` 낙오로 이어진다(§324-b).
+ *
+ * ‼️ 닫혀 있는 동안은 아무것도 리셋하지 않는다 — `loading`/`targets`는 직전
+ * 세션의 값을 그대로 들고 있다. 이것이 안전한 이유는 오직 소비자가
+ * `QuickCaptureDialog.tsx:323`처럼 닫힌 동안 `null`을 반환하기 때문이다.
+ * 만약 미래의 어떤 소비자가 닫히는 동안에도 계속 렌더한다면(예: 페이드아웃
+ * 애니메이션) 이 가정이 깨져 직전 세션의 대상을 잠깐 보여주게 된다.
  */
 export function useCaptureTargets(
   open: boolean,
@@ -55,12 +61,14 @@ export function useCaptureTargets(
   // worse than showing nothing (§324-c exists precisely so a mistyped tag is
   // caught by eye; briefly asserting the *wrong* answer defeats that).
   //
-  // ‼️ Unpinned by a test: RTL's `act()` flushes passive effects
-  // synchronously on every `rerender`, so a real browser's post-paint effect
-  // timing and this harness's synchronous one are indistinguishable here —
-  // any test asserting on this would pass identically whether this render-
-  // phase reset exists or not, and would misrepresent itself as covering a
-  // behaviour it cannot actually observe.
+  // Pinned by "reopening the dialog commits the reset state exactly once…"
+  // in the test file, using `React.Profiler.onRender` rather than a counter
+  // in the component body — a body-level counter also fires on React's
+  // discarded pre-commit re-invoke of this very reset (the `setState` calls
+  // below trigger exactly that), so it can't tell "one commit, already
+  // correct" apart from "two commits, the first one stale" — the two shapes
+  // this block exists to distinguish. `onRender` fires once per actual
+  // commit, which is the distinction that matters.
   const [prevOpen, setPrevOpen] = useState(open);
   if (open !== prevOpen) {
     setPrevOpen(open);
