@@ -61,6 +61,24 @@ function mdLink(text: string, dest: string): string {
 const CAPTURE_BLOCK_ID_RE = /\^(m\d{10}[\w-]*)/g;
 
 /**
+ * 캡처가 실제로 남기는 표시 — **`###` 헤딩 줄 끝의** `^id`.
+ *
+ * ‼️ `CAPTURE_BLOCK_ID_RE`로 세면 안 된다. 그것은 본문 어디의 `^m…`이든 잡는데,
+ * §30b 블록 **참조**와 **임베드**가 바로 그 문자열을 담는다 —
+ * `{{embed ((Xenoscube#^m2505210000))}}` · `((영감노트#^m2601010000))`. 캡처를 참조하는
+ * 캡처는 §321이 블록 ID를 "참조·임베드의 앵커"로 설계한 결과 **정상 사용에서 생기며**,
+ * 그때 허브의 카운트가 조용히 부풀려진다.
+ *
+ * `appendCapture`가 `### {heading} ^{blockId}`로 쓰므로 id는 언제나 헤딩 줄 끝이다.
+ * 그래서 앵커가 셋 다 필요하다 — 줄 시작(`^`), **h3 정확히**(`(?!#)` 없이는 `#{3}`가
+ * `####`의 앞 세 글자에도 붙어 사용자 본문의 h4 소제목까지 센다), 줄 끝(`\s*$`).
+ *
+ * ‼️ `nextCaptureBlockId`는 계속 `CAPTURE_BLOCK_ID_RE`를 쓴다 — 거기서는 **더 넓게**
+ * 잡는 것이 옳다. 문서 안에 이미 등장한 id는 참조 안에 있더라도 피하는 편이 안전하다.
+ */
+const CAPTURE_HEADING_ID_RE = /^#{3}(?!#)[^\n]*\s\^(m\d{10}[\w-]*)\s*$/gm;
+
+/**
  * 캡처 항목의 블록 ID 스탬프. `m` 접두는 Zettel id(순수 숫자)와 구분하기 위한 것이고,
  * 인덱서의 형식 제약(`[a-zA-Z0-9][\w-]*` — `extractor.rs:26`의 `BLOCK_REF_RE`)을
  * 만족한다. §325 마이그레이션도 같은 철자를 쓴다 — `countCaptures`가 둘을 함께 센다.
@@ -89,7 +107,7 @@ export function captureHeadingText(now: Date): string {
 export function countCaptures(content: string): number {
   const section = capturesSection(content);
   if (section === null) return 0;
-  return section.match(CAPTURE_BLOCK_ID_RE)?.length ?? 0;
+  return section.match(CAPTURE_HEADING_ID_RE)?.length ?? 0;
 }
 
 /**
