@@ -235,15 +235,6 @@ export function MermaidBlockView({
     [svgHtml, error],
   );
 
-  // Listen for fullscreen custom event from context menu
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const handler = () => openEditFullscreen(localCode || code);
-    wrapper.addEventListener("mermaid-fullscreen", handler);
-    return () => wrapper.removeEventListener("mermaid-fullscreen", handler);
-  }, [localCode, code, openEditFullscreen]);
-
   // Fullscreen rendering
   useEffect(() => {
     if (!fullscreen) return;

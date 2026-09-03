@@ -12,7 +12,6 @@ import {
 // §4.8 Context Menu — right-click with node-type detection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
-import { buildMermaidBlockMenu } from "./context-menu-mermaid";
 import { buildTableMenu } from "./context-menu-table";
 import { MenuList } from "./MenuList";
 
@@ -30,6 +29,12 @@ export function ContextMenu({ editor }: ContextMenuProps) {
 
   // Detect special node from DOM element at click position
   // Uses Element (not HTMLElement) so SVG child elements inside NodeViews are handled
+  //
+  // issue 521: mermaidBlock is deliberately NOT here. The mermaid NodeView
+  // owns its own right-click menu (MermaidBlockContextMenu); the copy this
+  // component used to build was unreachable in preview state (the view stops
+  // propagation) and, in editing state, drew a diagram menu over the textarea
+  // with a Copy-as-PNG that handed rendered SVG to a mermaid-source function.
   const findSpecialNode = useCallback(
     (target: EventTarget | null) => {
       if (!target || !(target instanceof Element)) return null;
@@ -40,11 +45,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         const dataType =
           el.getAttribute("data-type") ||
           el.closest("[data-type]")?.getAttribute("data-type");
-        if (
-          dataType === "mathBlock" ||
-          dataType === "mathInline" ||
-          dataType === "mermaidBlock"
-        ) {
+        if (dataType === "mathBlock" || dataType === "mathInline") {
           return dataType;
         }
         el = el.parentElement;
@@ -177,19 +178,36 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // Only handle right-click inside the editor
       if (!editor.view.dom.contains(e.target as Node)) return;
 
-      e.preventDefault();
-
       // Check for special nodes via DOM detection (needed for atom nodes)
       const specialType = findSpecialNode(e.target);
 
-      if (specialType === "mathInline") {
-        setItems(buildMathInlineMenu(editor, e.target as HTMLElement));
-        setPosition({ x: e.clientX, y: e.clientY });
+      // issue 521: a right-click on a native text control inside a NodeView
+      // — the mermaid/svg textarea while editing, a query-builder <select>,
+      // the frontmatter tag input — is the browser's to handle (copy, paste,
+      // spellcheck). posAtCoords cannot map such a click to a document
+      // position (it lands on the atom's edge, or nowhere), so the generic
+      // menu would act on the wrong selection. Decided AFTER special-node
+      // detection, so the math menus keep their textarea behaviour
+      // unchanged, and BEFORE preventDefault, so the native menu actually
+      // appears. Checkboxes and radios are not text controls and stay with
+      // the document menu (the task item's control is a <button>, so it is
+      // unaffected either way). A document menu that is already open must
+      // not linger next to the native one, hence closeMenu().
+      if (
+        specialType === null &&
+        e.target instanceof Element &&
+        e.target.closest(
+          'textarea, select, input:not([type="checkbox"]):not([type="radio"])',
+        ) !== null
+      ) {
+        closeMenu();
         return;
       }
 
-      if (specialType === "mermaidBlock") {
-        setItems(buildMermaidBlockMenu(editor, e.target as Element));
+      e.preventDefault();
+
+      if (specialType === "mathInline") {
+        setItems(buildMathInlineMenu(editor, e.target as HTMLElement));
         setPosition({ x: e.clientX, y: e.clientY });
         return;
       }
@@ -211,7 +229,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
     document.addEventListener("contextmenu", handleContextMenu);
 
     return () => document.removeEventListener("contextmenu", handleContextMenu);
-  }, [editor, buildMenuItems, findSpecialNode]);
+  }, [editor, buildMenuItems, findSpecialNode, closeMenu]);
 
   if (!position) return null;
 
