@@ -8,6 +8,7 @@ import type { MigrationDirection } from "../../../journal/MigrationDialog";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../../i18n/useTranslation";
+import { pickApprovedDir } from "../../../../ipc/approval";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { initJournalTemplatesDir } from "../../../../utils/journal/journal-templates";
 import { MigrationDialog } from "../../../journal/MigrationDialog";
@@ -85,7 +86,7 @@ export function JournalSection() {
           >
             <TemplatePathRow
               onBrowse={async () => {
-                const selected = await open({ directory: true });
+                const selected = await pickApprovedDir("journal");
                 if (selected) setJournalDirectory(selected);
               }}
               placeholder={t("settings.general.journalDirectory.placeholder")}

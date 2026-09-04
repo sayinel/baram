@@ -7,6 +7,7 @@ import { FileText, Folder } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { pickApprovedDir } from "../../ipc/approval";
 import { initVault } from "../../ipc/context";
 import { addFolder } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
@@ -64,9 +65,9 @@ export function ContextAddMenu({ onClose, anchorRef }: Props) {
   const handleOpenFolder = useCallback(async () => {
     onClose();
     try {
-      const selected = await open({ directory: true, multiple: false });
+      const selected = await pickApprovedDir("open-folder");
       if (selected) {
-        await addFolder(selected as string);
+        await addFolder(selected);
       }
     } catch (err) {
       logger.error("[ContextAddMenu] openFolder failed:", err);
@@ -92,9 +93,8 @@ export function ContextAddMenu({ onClose, anchorRef }: Props) {
   const handleInitVault = useCallback(async () => {
     onClose();
     try {
-      const selected = await open({ directory: true, multiple: false });
-      if (selected) {
-        const path = selected as string;
+      const path = await pickApprovedDir("open-folder");
+      if (path) {
         const folderName = basename(path) || "vault";
         await initVault(path, folderName);
         await addFolder(path);

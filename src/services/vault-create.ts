@@ -7,10 +7,8 @@
 // cross-module cycle `vault-context-loader.ts` documents at its own top —
 // dynamic edges are what keep the static module graph acyclic.
 export async function createVaultFromDialog(): Promise<void> {
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const selected = await open({ directory: true });
-  if (!selected) return;
-  const path = typeof selected === "string" ? selected : selected[0];
+  const { pickApprovedDir } = await import("../ipc/approval");
+  const path = await pickApprovedDir("open-folder");
   if (!path) return;
   const { initVault } = await import("../ipc/context");
   const { useContextStore: ctxStore } =

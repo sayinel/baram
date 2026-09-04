@@ -3,14 +3,13 @@
 // File management: context menu, inline creation, delete, drag-and-drop
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
 import type { ContextMenuState } from "./file-tree-types";
 import type { FileTreeContextValue } from "./FileTreeContext";
 
 import { useShallow } from "zustand/shallow";
 
 import { useEditorContext } from "../../contexts/editor-context";
+import { pickApprovedDir } from "../../ipc/approval";
 import { readFile } from "../../ipc/invoke";
 import { openFolder } from "../../services/vault-context-loader";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -261,7 +260,7 @@ export function FileTree(): React.JSX.Element {
   );
 
   const handleOpenFolder = useCallback(async (): Promise<void> => {
-    const selected = await open({ directory: true });
+    const selected = await pickApprovedDir("open-folder");
     if (selected) await openFolder(selected);
   }, []);
 
