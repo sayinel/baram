@@ -159,12 +159,8 @@ pub async fn plugin_add_dev_folder<R: tauri::Runtime>(
     // §329.6 세 번째 입구. `dev_info`가 이 경로에 asset:// 재귀 부여를 한다 —
     // 매니페스트 존재가 사실상의 장벽이었지만, 그 목록(`plugin.devFolders`)이
     // 웹뷰가 쓸 수 있는 config.json에 산다. 막을 수 있을 때 막는다.
-    crate::commands::approval_cmd::ensure_approved(
-        &app,
-        &path,
-        crate::approval::ApprovalKind::Dir,
-    )
-    .await?;
+    crate::commands::approval_cmd::ensure_approved(&app, &path, crate::approval::ApprovalKind::Dir)
+        .await?;
     let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
     config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
         let list = plugin::normalize_dev_list(&plugin::parse_dev_folders(raw), Some(&path), None);
