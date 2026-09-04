@@ -4,7 +4,8 @@
 // Attaching the block menu in editing state (the ownership fix) made three
 // pre-existing edges reachable. The rendered svg is debounced and survives a
 // failed render, so Copy as SVG could hand out a diagram that no longer
-// matches the source on screen. Copy as PNG re-renders the live source and
+// matches the source on screen; the svg items now stay in place, disabled
+// with the reason, until a render matches. Copy as PNG re-renders the live source and
 // swallowed its failure, so on broken source it was a silent no-op. View
 // Fullscreen from the menu, then Close, must leave the session and its
 // focus where they were. And a right-click on the menu itself, a portal, fell
@@ -27,9 +28,12 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
-    render: vi.fn(async (id: string) => ({
-      svg: `<svg id="${id}" viewBox="0 0 200 100" width="200" height="100"><g><text>Start</text></g></svg>`,
-    })),
+    render: vi.fn(async (id: string, source: string) => {
+      if (source.includes("BROKEN")) throw new Error("Parse error");
+      return {
+        svg: `<svg id="${id}" viewBox="0 0 200 100" width="200" height="100"><g><text>Start</text></g></svg>`,
+      };
+    }),
   },
 }));
 
@@ -125,7 +129,7 @@ async function mountEditing() {
 }
 
 describe("mermaid block menu, mid-edit (issue 521)", () => {
-  it("withholds Copy as SVG while the rendered svg is not from the source on screen", async () => {
+  it("keeps Copy as SVG in place but disabled, with a hint, until the render matches the source", async () => {
     const { preview, textarea } = await mountEditing();
     // The edit is live at once; the render behind it is debounced 300ms.
     fireEvent.change(textarea, { target: { value: EDITED } });
@@ -134,14 +138,36 @@ describe("mermaid block menu, mid-edit (issue 521)", () => {
     fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
     await flush();
 
-    expect(menu()).not.toBeNull();
+    const item = menuItem("Copy as SVG") as HTMLButtonElement | undefined;
+    if (!item) throw new Error("Copy as SVG item did not render");
+    expect(item.disabled).toBe(true);
+    expect(item.title).toBe("Rendering…");
     expect(menuItem("Copy Source")).toBeDefined();
-    expect(menuItem("Copy as SVG")).toBeUndefined();
-    // Once the render catches up with the source, the item returns — the
-    // open menu re-renders with the fresh svg.
+    // Once the render catches up with the source, the item enables in
+    // place — the open menu re-renders, nothing moves.
     await waitFor(() => {
-      expect(menuItem("Copy as SVG")).toBeDefined();
+      expect(
+        (menuItem("Copy as SVG") as HTMLButtonElement | undefined)?.disabled,
+      ).toBe(false);
     });
+  });
+
+  it("says why when the source does not render", async () => {
+    const { preview, textarea, view } = await mountEditing();
+    fireEvent.change(textarea, { target: { value: "BROKEN" } });
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".mermaid-block-error"),
+      ).not.toBeNull();
+    });
+
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+
+    const item = menuItem("Copy as SVG") as HTMLButtonElement | undefined;
+    if (!item) throw new Error("Copy as SVG item did not render");
+    expect(item.disabled).toBe(true);
+    expect(item.title).toBe("Diagram does not render");
   });
 
   it("says so when Copy as PNG fails", async () => {

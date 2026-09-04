@@ -219,6 +219,17 @@ export function MermaidBlockView({
   // showing the last good render, faded, next to the error; that is the
   // editing affordance, not an export.
   const freshSvgHtml = renderedSource === activeSource ? svgHtml : "";
+  // Why the svg items are unavailable, when they are: shown on the disabled
+  // items and the fullscreen viewer rather than by hiding them, so the menu
+  // does not reshape when a render lands. Undefined for an empty source —
+  // nothing to offer at all.
+  const svgUnavailableReason = freshSvgHtml
+    ? undefined
+    : error
+      ? "Diagram does not render"
+      : activeSource.trim()
+        ? "Rendering…"
+        : undefined;
 
   // issue 521: the block's own right-click menu — ownership by target, one
   // menu at a time, closed by a mode or source change. use-block-context-menu.ts.
@@ -357,7 +368,7 @@ export function MermaidBlockView({
       detectedType={detectedType}
       error={error}
       onClose={closeViewFullscreen}
-      pending={!freshSvgHtml && !error && activeSource.trim() !== ""}
+      pending={svgUnavailableReason === "Rendering…"}
       svgHtml={freshSvgHtml}
     />
   ) : null;
@@ -559,6 +570,7 @@ export function MermaidBlockView({
           onOpenEditFullscreen={() => openEditFullscreen(activeSource)}
           setViewFullscreen={setViewFullscreen}
           svgHtml={freshSvgHtml}
+          svgUnavailableReason={svgUnavailableReason}
         />
       )}
       {viewFullscreenModal}

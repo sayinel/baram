@@ -31,7 +31,10 @@ import {
   closeAllContextMenus,
   onCloseAllContextMenus,
 } from "../../../utils/editor/context-menu-exclusive";
-import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
+import {
+  isInNativeSelect,
+  isInNativeTextControl,
+} from "../../../utils/editor/native-text-control";
 
 export interface BlockContextMenu {
   close: () => void;
@@ -90,6 +93,13 @@ export function useBlockContextMenu({
   const onContextMenu = useCallback(
     (e: React.MouseEvent) => {
       if (!wrapperRef.current?.contains(e.target as Node)) return;
+      if (isInNativeSelect(e.target)) {
+        // No menu at all for a <select> — see native-text-control.ts.
+        e.preventDefault();
+        e.stopPropagation();
+        closeAllContextMenus();
+        return;
+      }
       if (isInNativeTextControl(e.target)) {
         // No menu of ours may linger beside the native one.
         closeAllContextMenus();

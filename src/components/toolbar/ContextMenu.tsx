@@ -12,7 +12,10 @@ import {
 // §4.8 Context Menu — right-click with node-type detection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { closeAllContextMenus } from "../../utils/editor/context-menu-exclusive";
-import { isInNativeTextControl } from "../../utils/editor/native-text-control";
+import {
+  isInNativeSelect,
+  isInNativeTextControl,
+} from "../../utils/editor/native-text-control";
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
 import { buildTableMenu } from "./context-menu-table";
 import { MenuList } from "./MenuList";
@@ -192,6 +195,12 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // documented in native-text-control.ts. Every menu of ours closes
       // first: a mousedown dismiss may not have run (keyboard-invoked, or a
       // NodeView stopped the right-button one).
+      if (specialType === null && isInNativeSelect(e.target)) {
+        // No menu at all for a <select> — see native-text-control.ts.
+        closeAllContextMenus();
+        e.preventDefault();
+        return;
+      }
       if (specialType === null && isInNativeTextControl(e.target)) {
         closeAllContextMenus();
         return;

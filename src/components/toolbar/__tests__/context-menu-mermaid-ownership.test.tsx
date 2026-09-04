@@ -237,11 +237,13 @@ describe("mermaid block context menu ownership (issue 521)", () => {
     expect(documentMenuLabels()).toEqual([]);
   });
 
-  it("the rule covers a <select> and an <input> too, not only textareas", async () => {
+  it("an <input> is left to the browser; a <select> gets no menu at all", async () => {
     // The query builder mounts on a bare NodeSelection (vim off) and holds
-    // both kinds of control: a source <select> and the numeric limit
-    // <input>. Each half of the selector gets its own pin, so narrowing the
-    // rule to textarea alone would fail here.
+    // both kinds of control: the numeric limit <input> and a source <select>.
+    // The input has text to copy and paste, so the browser's menu is the
+    // right one. A select has none — the browser would show its page menu
+    // (Reload) and ours acted on the wrong selection — so the right-click is
+    // swallowed: prevented, and no menu of ours either.
     const editor = new Editor({ extensions: createBaramExtensions() });
     editors.push(editor);
     const view = render(
@@ -272,11 +274,11 @@ describe("mermaid block context menu ownership (issue 521)", () => {
     );
     if (!select || !input) throw new Error("query builder did not mount");
 
-    expect(fireEvent.contextMenu(select, { clientX: 10, clientY: 10 })).toBe(
-      true,
-    );
     expect(fireEvent.contextMenu(input, { clientX: 10, clientY: 10 })).toBe(
       true,
+    );
+    expect(fireEvent.contextMenu(select, { clientX: 10, clientY: 10 })).toBe(
+      false,
     );
     expect(documentMenuLabels()).toEqual([]);
   });
