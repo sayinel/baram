@@ -1,5 +1,4 @@
-import type { Editor } from "@tiptap/core";
-import type { Transaction } from "@tiptap/pm/state";
+import type { Editor, EditorEvents } from "@tiptap/core";
 
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
@@ -48,50 +47,56 @@ export async function executeAICommand(
 
   const requestId = `ai_slash_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-  let currentPos: number;
-
-  if (options?.insertAfterPos != null) {
-    // Insert a new paragraph at the explicit position (after a specific block)
-    chainWithVimExternalEdit(editor)
-      .focus()
-      .insertContentAt(options.insertAfterPos, { type: "paragraph" })
-      .run();
-    currentPos = options.insertAfterPos + 1; // inside the new paragraph
-  } else if (options?.afterSelection) {
-    // Insert a new paragraph after the block that contains the selection end
-    const { to } = editor.state.selection;
-    const $to = editor.state.doc.resolve(to);
-    const afterBlock = $to.after(1); // position after the top-level block
-    chainWithVimExternalEdit(editor)
-      .focus()
-      .insertContentAt(afterBlock, { type: "paragraph" })
-      .run();
-    currentPos = afterBlock + 1; // inside the new paragraph
-  } else {
-    // Original behavior: insert at cursor position
-    const insertPos = editor.state.selection.to;
-    chainWithVimExternalEdit(editor)
-      .focus()
-      .insertContentAt(insertPos, "\n")
-      .run();
-    currentPos = insertPos;
-  }
+  // Where the response goes: a new paragraph after an explicit block, a new
+  // paragraph after the block holding the selection end, or (the original
+  // behavior) a newline at the cursor with the tokens landing before it.
+  // Decided before anything is dispatched so the anchor below can be tracked
+  // through the setup edit itself.
+  const insertParagraph =
+    options?.insertAfterPos != null || options?.afterSelection === true;
+  const setupPos =
+    options?.insertAfterPos != null
+      ? options.insertAfterPos
+      : options?.afterSelection
+        ? editor.state.doc.resolve(editor.state.selection.to).after(1)
+        : editor.state.selection.to;
 
   // §298 §12-9b (design §5c): the token stream is a background mutation —
   // if the task dies (state install / vim mode exit), late tokens must not
   // touch the editor, and the listeners are the cancelable source.
-  // PRE-EXISTING DEFECT (surfaced by review R10, present since before §298):
-  // currentPos is a raw offset that only advanced by its own token lengths.
-  // Any edit landing before it while the stream runs — the user typing above,
-  // a second AI command — shifts the document without shifting this number,
-  // so the next token lands inside an unrelated block. Mutation generation
-  // cannot catch this: it only advances on a whole-state install, not on
-  // ordinary edits. Map the position through every transaction instead.
-  // This also covers our OWN inserts, so the manual `+= token.length` goes
-  // away — a JS string length is not a ProseMirror offset anyway.
-  const trackPos = ({ transaction }: { transaction: Transaction }) => {
+  const task = registerEditorMutationTask(editor.view);
+
+  // The insertion anchor. It used to be a raw offset that advanced only by
+  // its own token lengths (review R10): any edit landing above it while the
+  // stream ran — the user typing, a second command — shifted the document
+  // without shifting the number, and the next token landed in an unrelated
+  // block. Mutation generation cannot catch that (it only advances on a
+  // whole-state install), so the anchor is MAPPED through every transaction
+  // the editor applies: the root one AND every one a plugin appended to it
+  // (issue 374). syntax-reveal's cursor-out collapse turns `**bold**` back
+  // into `bold` inside an appended transaction, four positions shorter, and
+  // it hangs off whatever moved the cursor out — the user's click, or our own
+  // paragraph insert below. Tracking starts BEFORE that insert for the same
+  // reason: an anchor computed from pre-insert positions is stale as soon as
+  // the insert's appended collapse lands.
+  //
+  // Two phases. During setup the anchor is the position the paragraph (or
+  // newline) goes in AT, mapped with assoc -1 so our own insert lands after
+  // it; then it steps inside the paragraph and switches to assoc 1 so each
+  // token appends after the previous one. This also covers our own token
+  // inserts, so no manual `+= token.length` — a JS string length is not a
+  // ProseMirror offset anyway.
+  let currentPos = setupPos;
+  let assoc: -1 | 1 = -1;
+  const trackPos = ({
+    transaction,
+    appendedTransactions,
+  }: EditorEvents["transaction"]) => {
     if (transaction.docChanged) {
-      currentPos = transaction.mapping.map(currentPos, 1);
+      currentPos = transaction.mapping.map(currentPos, assoc);
+    }
+    for (const tr of appendedTransactions) {
+      if (tr.docChanged) currentPos = tr.mapping.map(currentPos, assoc);
     }
   };
   editor.on("transaction", trackPos);
@@ -101,14 +106,19 @@ export async function executeAICommand(
     detached = true;
     editor.off("transaction", trackPos);
   };
-
-  const task = registerEditorMutationTask(editor.view);
   // Detaching only in the finally is not enough: if a state install happens
   // while createLLMStream or llmComplete is pending and that promise never
   // settles, the finally never runs and this handler keeps mapping a stale
   // position across every transaction of the NEW document — on the shared
   // editor, forever. Hang it on the task so invalidation always detaches.
   task.addCleanup(detachTrackPos);
+
+  chainWithVimExternalEdit(editor)
+    .focus()
+    .insertContentAt(setupPos, insertParagraph ? { type: "paragraph" } : "\n")
+    .run();
+  if (insertParagraph) currentPos += 1; // inside the new paragraph
+  assoc = 1;
   // The whole flow lives in the try so a createLLMStream rejection cannot
   // strand the task (its await used to sit outside any handler).
   let cleanupStream: (() => void) | undefined;
