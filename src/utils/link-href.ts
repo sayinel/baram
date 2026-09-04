@@ -3,10 +3,13 @@
 // Asked at every point a link's destination stops being data and becomes a
 // wired `href` or an OS request: Link.renderHTML (editor DOM, clipboard HTML,
 // and — because export clones the editor DOM — HTML/PDF export), the Cmd+click
-// navigation path, Link.parseHTML for pasted markup, and the export's final
-// anchor scrub. The document model is never consulted or changed: a refused
-// destination stays in the file byte-for-byte (pipeline roundtrip pin) and is
-// simply not connected to anything.
+// navigation path, Link.parseHTML for pasted markup, the export's final
+// anchor scrub, the markdown export's final link pass (Pandoc and Notion,
+// export-markdown-links.ts, issue 527), and — ANDed with its own narrower
+// prefix allowlist — the AI chat renderer (components/ai/markdown-url.ts).
+// The document model is never consulted or changed: a refused destination
+// stays in the file byte-for-byte (pipeline roundtrip pin) and is simply not
+// connected to anything.
 //
 // The scheme set is DOMPurify's default `IS_ALLOWED_URI` — the policy the
 // HTML-block sanitizer (utils/markdown/html-sanitize.ts) already applies to an

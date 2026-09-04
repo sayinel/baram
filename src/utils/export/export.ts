@@ -7,6 +7,7 @@ import type { Editor } from "@tiptap/core";
 import { exportBinaryFile, exportPandoc, exportPdf } from "../../ipc/invoke";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
+import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";
@@ -70,7 +71,11 @@ export async function exportForNotion(
   const md = serializeLiveDoc(editor);
   // §95: resolve bare [[id]] zettel links to [[id|title]] for export output
   // only — the .md round-trip save (pm-to-md.ts) is untouched by this.
-  const notionMd = convertForNotion(resolveZettelLinksForExport(md));
+  // issue 527: the link policy runs LAST, after every converter — see
+  // export-markdown-links.ts for why the order is the contract.
+  const notionMd = stripDisallowedMarkdownLinks(
+    convertForNotion(resolveZettelLinksForExport(md)),
+  );
 
   const path = await save({
     filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -96,7 +101,11 @@ export async function exportWithPandoc(
   // §95: resolve bare [[id]] zettel links to [[id|title]] for export output
   // only — the .md round-trip save (pm-to-md.ts) is untouched by this.
   const pandocMd = convertForPandoc(resolveZettelLinksForExport(md));
-  const { markdown: finalMd, assets } = await rewriteMermaidForPandoc(pandocMd);
+  const { markdown: rewritten, assets } =
+    await rewriteMermaidForPandoc(pandocMd);
+  // issue 527: the link policy runs LAST, after every converter and the
+  // mermaid asset rewrite — see export-markdown-links.ts.
+  const finalMd = stripDisallowedMarkdownLinks(rewritten);
 
   const extensionMap: Record<PandocFormat, string> = {
     docx: "docx",
