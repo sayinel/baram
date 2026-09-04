@@ -1,13 +1,11 @@
 // §82 Context add dropdown menu
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
 import { FileText, Folder } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { pickApprovedDir } from "../../ipc/approval";
+import { pickApprovedDir, pickApprovedFile } from "../../ipc/approval";
 import { initVault } from "../../ipc/context";
 import { addFolder } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
@@ -77,13 +75,9 @@ export function ContextAddMenu({ onClose, anchorRef }: Props) {
   const handleOpenFile = useCallback(async () => {
     onClose();
     try {
-      const selected = await open({
-        directory: false,
-        multiple: false,
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-      });
+      const selected = await pickApprovedFile();
       if (selected) {
-        await openFileByPath(selected as string);
+        await openFileByPath(selected);
       }
     } catch (err) {
       logger.error("[ContextAddMenu] openFile failed:", err);

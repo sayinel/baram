@@ -28,4 +28,15 @@ describe("§332 승인 피커 이전", () => {
     const src = readFileSync("src/hooks/use-file-operations.ts", "utf8");
     expect(src).toContain("pickApprovedFile");
   });
+
+  // ContextAddMenu.tsx는 디렉터리 피커(handleOpenFolder, handleInitVault)와
+  // 파일 피커(handleOpenFile) 셋 다 이전 대상이라, 위의 directory:true 패턴만으로는
+  // 세 번째(파일) 호출부를 못 잡는다 — plugin-dialog 자체를 더 이상 안 쓴다고 단정한다.
+  it("ContextAddMenu.tsx는 plugin-dialog를 전혀 쓰지 않는다", () => {
+    const src = readFileSync(
+      "src/components/layout/ContextAddMenu.tsx",
+      "utf8",
+    );
+    expect(src).not.toContain("@tauri-apps/plugin-dialog");
+  });
 });
