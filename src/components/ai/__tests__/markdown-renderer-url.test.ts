@@ -44,3 +44,37 @@ describe("safeImageSrc", () => {
     expect(safeImageSrc("vbscript:msgbox(1)")).toBe("");
   });
 });
+
+// issue 527 — the prefix allowlist is ANDed with the app-wide link policy
+// (link-href.ts): what the browser's URL parser would read differently from
+// the prefix test is decided by the parser, not by the first bytes.
+describe("what the prefix test alone could not see", () => {
+  it("refuses protocol-relative destinations, which borrow the page's scheme", () => {
+    expect(safeLinkHref("//evil.example/x")).toBe("#");
+    expect(safeLinkHref("\\\\evil.example\\x")).toBe("#");
+    expect(safeLinkHref("/\\evil.example/x")).toBe("#");
+    expect(safeImageSrc("//evil.example/a.png")).toBe("");
+  });
+
+  it("looks through the tab, CR and LF the URL parser strips", () => {
+    expect(safeLinkHref("/\t/evil.example/x")).toBe("#");
+    expect(safeLinkHref("java\tscript:alert(1)")).toBe("#");
+    // The prefix test itself does not strip, so noise inside the scheme fails
+    // closed on either side of the AND.
+    expect(safeLinkHref("http\n://ok.example/")).toBe("#");
+  });
+
+  it("fails closed on a value the URL parser rejects", () => {
+    expect(safeLinkHref("http://[")).toBe("#");
+    expect(safeImageSrc("http://[")).toBe("");
+  });
+
+  it("still keeps everything the chat allowed before", () => {
+    expect(safeLinkHref("/relative")).toBe("/relative");
+    expect(safeLinkHref("./rel")).toBe("./rel");
+    expect(safeLinkHref("#anchor")).toBe("#anchor");
+    expect(safeImageSrc("data:image/png;base64,AAAA")).toBe(
+      "data:image/png;base64,AAAA",
+    );
+  });
+});
