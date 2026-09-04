@@ -11,6 +11,7 @@ import {
   copyMermaidSvg,
   downloadMermaidPng,
 } from "../../../utils/markdown/mermaid-utils";
+import { runBlockAction } from "./run-block-action";
 
 interface MermaidBlockContextMenuProps {
   code: string;
@@ -19,7 +20,14 @@ interface MermaidBlockContextMenuProps {
   onDelete: () => void;
   onOpenEditFullscreen: () => void;
   setViewFullscreen: (value: boolean) => void;
+  /** The rendered svg for `code`, or "" when there is none for it. */
   svgHtml: string;
+  /** Why `svgHtml` is "" while there is a source ("Rendering…", or the
+   *  diagram does not render): the svg items stay in place, disabled, with
+   *  this as their tooltip, so the list does not reshape when a render
+   *  lands. Undefined when there is nothing to offer at all (empty source),
+   *  which hides them. */
+  svgUnavailableReason?: string;
 }
 
 export function MermaidBlockContextMenu({
@@ -30,13 +38,24 @@ export function MermaidBlockContextMenu({
   onOpenEditFullscreen,
   setViewFullscreen,
   svgHtml,
+  svgUnavailableReason,
 }: MermaidBlockContextMenuProps): React.ReactPortal {
+  const svgItems = svgHtml !== "" || svgUnavailableReason !== undefined;
+  const svgDisabled = svgHtml === "";
+  const svgTitle = svgDisabled ? svgUnavailableReason : undefined;
   return createPortal(
     <div
       className="mermaid-context-menu"
       // Stop click from bubbling through the React portal tree to the
       // NodeViewWrapper's onClick (which would select the block → edit mode).
       onClick={(e) => e.stopPropagation()}
+      // issue 521: a right-click on the menu itself is nobody's — not the
+      // browser's (the menu is a portal, so the block's containment guard
+      // passes it up) and not a reason to move the menu.
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
@@ -45,32 +64,42 @@ export function MermaidBlockContextMenu({
         zIndex: 9999,
       }}
     >
-      {svgHtml && (
+      {svgItems && (
         <>
           <button
             className="mermaid-context-menu-item"
+            disabled={svgDisabled}
             onClick={() => {
               copyMermaidSvg(svgHtml);
               onClose();
             }}
+            title={svgTitle}
           >
             Copy as SVG
           </button>
           <button
             className="mermaid-context-menu-item"
+            disabled={svgDisabled}
             onClick={() => {
-              copyMermaidPng(code);
+              runBlockAction("Mermaid block", "copy as PNG", () =>
+                copyMermaidPng(code),
+              );
               onClose();
             }}
+            title={svgTitle}
           >
             Copy as PNG
           </button>
           <button
             className="mermaid-context-menu-item"
+            disabled={svgDisabled}
             onClick={() => {
-              void downloadMermaidPng(code);
+              runBlockAction("Mermaid block", "download PNG", () =>
+                downloadMermaidPng(code),
+              );
               onClose();
             }}
+            title={svgTitle}
           >
             Download PNG
           </button>

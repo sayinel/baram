@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
@@ -24,8 +24,10 @@ import {
   MermaidEditFullscreenModal,
   MermaidViewFullscreenModal,
 } from "./views/MermaidFullscreenModals";
+import { runBlockAction } from "./views/run-block-action";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
+import { useBlockContextMenu } from "./views/use-block-context-menu";
 import { useMediaResize } from "./views/use-media-resize";
 import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -43,7 +45,15 @@ export function MermaidBlockView({
   const renderRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<null | string>(null);
-  const [svgHtml, setSvgHtml] = useState<string>("");
+  // The rendered svg TOGETHER with the source it was rendered from — one
+  // state, so the two cannot drift apart. The render is debounced and a
+  // failed render keeps the last good svg, so while editing the source on
+  // screen and the svg can disagree; anything that hands the svg out (the
+  // block menu, the fullscreen viewer) checks the pairing first (issue 521
+  // final review).
+  const [rendered, setRendered] = useState({ source: "", svg: "" });
+  const svgHtml = rendered.svg;
+  const renderedSource = rendered.source;
   // §5.12: whether a render has been ATTEMPTED, which is not the same question
   // as whether it produced anything. "no SVG yet" is the DOM for three
   // different states — still lazy, empty source, failed — and the export has to
@@ -55,10 +65,6 @@ export function MermaidBlockView({
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [fullscreenSvg, setFullscreenSvg] = useState("");
   const [fullscreenError, setFullscreenError] = useState<null | string>(null);
-  const [contextMenu, setContextMenu] = useState<null | {
-    x: number;
-    y: number;
-  }>(null);
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -93,7 +99,7 @@ export function MermaidBlockView({
     const sessionOpen = selected && sessionOpenRef.current;
     const source = sessionOpen ? localCode : code;
     if (!source.trim()) {
-      setSvgHtml("");
+      setRendered({ source, svg: "" });
       setError(null);
       setRenderAttempted(true);
       return;
@@ -107,7 +113,7 @@ export function MermaidBlockView({
           source,
           (svg) => {
             if (!cancelled) {
-              setSvgHtml(svg);
+              setRendered({ source, svg });
               setError(null);
               setRenderAttempted(true);
             }
@@ -202,29 +208,45 @@ export function MermaidBlockView({
     return () => document.removeEventListener("mousedown", handler);
   }, [showTemplates]);
 
-  // Dismiss context menu on outside click or Escape
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = () => setContextMenu(null);
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismiss();
-    };
-    document.addEventListener("mousedown", dismiss);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", dismiss);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [contextMenu]);
+  // What the block's chrome acts on — the session's code while editing, the
+  // committed attribute otherwise. The menu, View Fullscreen from it and the
+  // toolbar's copy/download all read this, never the raw attribute (issue
+  // 521: the menu is reachable mid-edit, and must offer what is on screen).
+  const activeSource = editing ? localCode : code;
+  // Only hand out the rendered svg (Copy as SVG, the PNG items gated on it,
+  // the fullscreen viewer) when it was rendered from that very source — never
+  // a stale render over broken or newer source. The inline preview keeps
+  // showing the last good render, faded, next to the error; that is the
+  // editing affordance, not an export.
+  const freshSvgHtml = renderedSource === activeSource ? svgHtml : "";
+  // Why the svg items are unavailable, when they are: shown on the disabled
+  // items and the fullscreen viewer rather than by hiding them, so the menu
+  // does not reshape when a render lands. Undefined for an empty source —
+  // nothing to offer at all.
+  const svgUnavailableReason = freshSvgHtml
+    ? undefined
+    : error
+      ? "Diagram does not render"
+      : activeSource.trim()
+        ? "Rendering…"
+        : undefined;
 
-  // Seed the fullscreen editor and open it. Three call sites used to repeat
-  // this code→svg→error→open sequence (this view's custom-event listener,
-  // the header's Expand button, the context menu's Edit Fullscreen item) —
-  // collapsed into one action. The sites differ only in WHICH code string
-  // they seed (this listener falls back to the committed `code` when the
-  // local edit buffer is empty; the header always has an open edit session
-  // so it seeds `localCode`; the context menu only ever renders outside an
-  // edit session so it seeds the committed `code`), so that stays a param.
+  // issue 521: the block's own right-click menu — ownership by target, one
+  // menu at a time, closed by a mode or source change. use-block-context-menu.ts.
+  const {
+    close: closeBlockMenu,
+    contextMenu,
+    onContextMenu: handleBlockContextMenu,
+    onMouseDown: stopRightButtonMouseDown,
+  } = useBlockContextMenu({ editing, source: activeSource, wrapperRef });
+
+  // Seed the fullscreen editor and open it. Two call sites share this
+  // code→svg→error→open sequence (the header's Expand button and the block's
+  // context menu's Edit Fullscreen item) — collapsed into one action. They
+  // differ only in WHICH code string they seed (the header always has an
+  // open edit session so it seeds `localCode`; the context menu is reachable
+  // in both modes since issue 521 and seeds `activeSource`), so that stays a
+  // param.
   const openEditFullscreen = useCallback(
     (source: string) => {
       setFullscreenCode(source);
@@ -234,15 +256,6 @@ export function MermaidBlockView({
     },
     [svgHtml, error],
   );
-
-  // Listen for fullscreen custom event from context menu
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const handler = () => openEditFullscreen(localCode || code);
-    wrapper.addEventListener("mermaid-fullscreen", handler);
-    return () => wrapper.removeEventListener("mermaid-fullscreen", handler);
-  }, [localCode, code, openEditFullscreen]);
 
   // Fullscreen rendering
   useEffect(() => {
@@ -355,7 +368,8 @@ export function MermaidBlockView({
       detectedType={detectedType}
       error={error}
       onClose={closeViewFullscreen}
-      svgHtml={svgHtml}
+      pending={svgUnavailableReason === "Rendering…"}
+      svgHtml={freshSvgHtml}
     />
   ) : null;
 
@@ -390,26 +404,8 @@ export function MermaidBlockView({
       data-render-state={renderAttempted ? "done" : "pending"}
       data-type="mermaidBlock"
       onClick={editing ? undefined : handlePreviewClick}
-      onContextMenu={
-        editing
-          ? undefined
-          : (e: React.MouseEvent) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setContextMenu({ x: e.clientX, y: e.clientY });
-            }
-      }
-      onMouseDown={
-        editing
-          ? undefined
-          : (e: React.MouseEvent) => {
-              // Prevent right-click from propagating to ProseMirror
-              // which would set NodeSelection and switch to editing mode
-              if (e.button === 2) {
-                e.stopPropagation();
-              }
-            }
-      }
+      onContextMenu={handleBlockContextMenu}
+      onMouseDown={stopRightButtonMouseDown}
       ref={wrapperRef}
       spellCheck={false}
     >
@@ -540,13 +536,17 @@ export function MermaidBlockView({
                 <Sparkles size={14} />
               </MediaToolbarButton>
               <MediaToolbarButton
-                onClick={() => copyMermaidSource(code)}
+                onClick={() => copyMermaidSource(activeSource)}
                 title="Copy source code"
               >
                 <Copy size={16} strokeWidth={2} />
               </MediaToolbarButton>
               <MediaToolbarButton
-                onClick={() => void downloadMermaidPng(code)}
+                onClick={() =>
+                  runBlockAction("Mermaid block", "download PNG", () =>
+                    downloadMermaidPng(activeSource),
+                  )
+                }
                 title="Download as PNG"
               >
                 <Download size={16} strokeWidth={2} />
@@ -559,18 +559,19 @@ export function MermaidBlockView({
               </MediaToolbarButton>
             </MediaToolbar>
           )}
-          {contextMenu && (
-            <MermaidBlockContextMenu
-              code={code}
-              contextMenu={contextMenu}
-              onClose={() => setContextMenu(null)}
-              onDelete={deleteBlock}
-              onOpenEditFullscreen={() => openEditFullscreen(code)}
-              setViewFullscreen={setViewFullscreen}
-              svgHtml={svgHtml}
-            />
-          )}
         </>
+      )}
+      {contextMenu && (
+        <MermaidBlockContextMenu
+          code={activeSource}
+          contextMenu={contextMenu}
+          onClose={closeBlockMenu}
+          onDelete={deleteBlock}
+          onOpenEditFullscreen={() => openEditFullscreen(activeSource)}
+          setViewFullscreen={setViewFullscreen}
+          svgHtml={freshSvgHtml}
+          svgUnavailableReason={svgUnavailableReason}
+        />
       )}
       {viewFullscreenModal}
       {fullscreenModal}

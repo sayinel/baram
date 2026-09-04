@@ -11,6 +11,8 @@ import {
 
 import type { MenuItem } from "./context-menu-types";
 
+import { onCloseAllContextMenus } from "../../utils/editor/context-menu-exclusive";
+
 export interface MenuListProps {
   items: MenuItem[];
   onClose: () => void;
@@ -48,9 +50,14 @@ export function MenuList({ items, onClose, x, y }: MenuListProps) {
     };
     document.addEventListener("mousedown", onDocMouseDown);
     document.addEventListener("keydown", onKeyDown);
+    // issue 521: a NodeView opening its own menu closes this one — its
+    // right-button mousedown never reaches onDocMouseDown (the NodeView stops
+    // it so ProseMirror will not select the block).
+    const offCloseAll = onCloseAllContextMenus(onClose);
     return () => {
       document.removeEventListener("mousedown", onDocMouseDown);
       document.removeEventListener("keydown", onKeyDown);
+      offCloseAll();
     };
   }, [onClose]);
 

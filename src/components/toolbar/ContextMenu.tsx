@@ -11,8 +11,12 @@ import {
 } from "../../extensions/plugins/block-id-decoration";
 // §4.8 Context Menu — right-click with node-type detection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import { closeAllContextMenus } from "../../utils/editor/context-menu-exclusive";
+import {
+  isInNativeSelect,
+  isInNativeTextControl,
+} from "../../utils/editor/native-text-control";
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
-import { buildMermaidBlockMenu } from "./context-menu-mermaid";
 import { buildTableMenu } from "./context-menu-table";
 import { MenuList } from "./MenuList";
 
@@ -30,6 +34,12 @@ export function ContextMenu({ editor }: ContextMenuProps) {
 
   // Detect special node from DOM element at click position
   // Uses Element (not HTMLElement) so SVG child elements inside NodeViews are handled
+  //
+  // issue 521: mermaidBlock is deliberately NOT here. The mermaid NodeView
+  // owns its own right-click menu (MermaidBlockContextMenu); the copy this
+  // component used to build was unreachable in preview state (the view stops
+  // propagation) and, in editing state, drew a diagram menu over the textarea
+  // with a Copy-as-PNG that handed rendered SVG to a mermaid-source function.
   const findSpecialNode = useCallback(
     (target: EventTarget | null) => {
       if (!target || !(target instanceof Element)) return null;
@@ -40,11 +50,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         const dataType =
           el.getAttribute("data-type") ||
           el.closest("[data-type]")?.getAttribute("data-type");
-        if (
-          dataType === "mathBlock" ||
-          dataType === "mathInline" ||
-          dataType === "mermaidBlock"
-        ) {
+        if (dataType === "mathBlock" || dataType === "mathInline") {
           return dataType;
         }
         el = el.parentElement;
@@ -177,19 +183,37 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // Only handle right-click inside the editor
       if (!editor.view.dom.contains(e.target as Node)) return;
 
-      e.preventDefault();
-
       // Check for special nodes via DOM detection (needed for atom nodes)
       const specialType = findSpecialNode(e.target);
 
-      if (specialType === "mathInline") {
-        setItems(buildMathInlineMenu(editor, e.target as HTMLElement));
-        setPosition({ x: e.clientX, y: e.clientY });
+      // issue 521: a right-click on a native text control is the browser's
+      // (copy, paste, select all) — posAtCoords cannot map it to a document
+      // position, so our menu would act on the wrong selection. Decided
+      // AFTER special-node detection (the math menus keep their textarea)
+      // and BEFORE preventDefault (so the native menu appears). Which
+      // controls that covers, and why the NodeViews share the predicate, is
+      // documented in native-text-control.ts. Every menu of ours closes
+      // first: a mousedown dismiss may not have run (keyboard-invoked, or a
+      // NodeView stopped the right-button one).
+      if (specialType === null && isInNativeSelect(e.target)) {
+        // No menu at all for a <select> — see native-text-control.ts.
+        closeAllContextMenus();
+        e.preventDefault();
+        return;
+      }
+      if (specialType === null && isInNativeTextControl(e.target)) {
+        closeAllContextMenus();
         return;
       }
 
-      if (specialType === "mermaidBlock") {
-        setItems(buildMermaidBlockMenu(editor, e.target as Element));
+      e.preventDefault();
+      // One menu at a time: a block menu may still be open (its dismiss
+      // never saw a mousedown that a NodeView stopped, or there was none —
+      // keyboard-invoked). context-menu-exclusive.ts.
+      closeAllContextMenus();
+
+      if (specialType === "mathInline") {
+        setItems(buildMathInlineMenu(editor, e.target as HTMLElement));
         setPosition({ x: e.clientX, y: e.clientY });
         return;
       }

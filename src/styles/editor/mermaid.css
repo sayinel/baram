@@ -330,6 +330,17 @@
   background: var(--color-bg-subtle);
 }
 
+/* The svg items stay in place while there is no render for the source on
+   screen (issue 521) — disabled, with the reason as their tooltip. */
+.mermaid-context-menu-item:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.mermaid-context-menu-item:disabled:hover {
+  background: none;
+}
+
 .mermaid-context-menu-danger {
   color: var(--color-status-danger);
 }

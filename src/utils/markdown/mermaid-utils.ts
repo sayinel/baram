@@ -119,13 +119,11 @@ export const MERMAID_TEMPLATES: Record<
   },
 };
 
-/** Rasterize Mermaid source to PNG and copy to the OS clipboard (SVG labels). */
+/** Rasterize Mermaid source to PNG and copy to the OS clipboard (SVG labels).
+ *  Rejects when the source does not render or the clipboard refuses — the
+ *  caller reports it (runBlockAction), like the svg helpers. */
 export async function copyMermaidPng(code: string): Promise<void> {
-  try {
-    await copySvgAsPng(await renderMermaidRasterSvg(code));
-  } catch (err) {
-    console.error("Mermaid: copy as PNG failed", err);
-  }
+  await copySvgAsPng(await renderMermaidRasterSvg(code));
 }
 
 /** Copy mermaid source code to clipboard */
@@ -159,21 +157,15 @@ export function detectMermaidType(code: string): null | string {
 
 /**
  * Rasterize Mermaid source to PNG and save it via the native dialog (SVG labels).
- * Returns true if a file was written, false on cancel or error.
+ * Returns true if a file was written, false if the user cancelled; rejects on
+ * error — the same contract as downloadSvgAsPng, so a caller can tell a
+ * cancel from a failure and report only the latter.
  */
 export async function downloadMermaidPng(
   code: string,
   defaultName = "diagram.png",
 ): Promise<boolean> {
-  try {
-    return await downloadSvgAsPng(
-      await renderMermaidRasterSvg(code),
-      defaultName,
-    );
-  } catch (err) {
-    console.error("Mermaid: download PNG failed", err);
-    return false;
-  }
+  return downloadSvgAsPng(await renderMermaidRasterSvg(code), defaultName);
 }
 
 /**

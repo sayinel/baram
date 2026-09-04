@@ -1,0 +1,283 @@
+// issue 521 (final review) — what the mermaid block menu may offer and do
+// once it is reachable MID-EDIT.
+//
+// Attaching the block menu in editing state (the ownership fix) made three
+// pre-existing edges reachable. The rendered svg is debounced and survives a
+// failed render, so Copy as SVG could hand out a diagram that no longer
+// matches the source on screen; the svg items now stay in place, disabled
+// with the reason, until a render matches. Copy as PNG re-renders the live source and
+// swallowed its failure, so on broken source it was a silent no-op. View
+// Fullscreen from the menu, then Close, must leave the session and its
+// focus where they were. And a right-click on the menu itself, a portal, fell
+// through the block's containment guard to the browser.
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
+import { Editor } from "@tiptap/core";
+import { EditorContent } from "@tiptap/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: (p: string) => `asset://localhost/${p}`,
+  invoke: vi.fn(async () => undefined),
+}));
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async (id: string, source: string) => {
+      if (source.includes("BROKEN")) throw new Error("Parse error");
+      return {
+        svg: `<svg id="${id}" viewBox="0 0 200 100" width="200" height="100"><g><text>Start</text></g></svg>`,
+      };
+    }),
+  },
+}));
+
+// The raster helper: in jsdom the real one waits forever on an <img> load
+// that never comes, so it is stubbed to FAIL — the wiring under test is "a
+// rejection from the helper → a toast", not the rasterizer itself.
+vi.mock("../../utils/markdown/mermaid-utils", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../utils/markdown/mermaid-utils")
+  >()),
+  copyMermaidPng: vi.fn(async () => {
+    throw new Error("clipboard refused");
+  }),
+}));
+
+import { useUIStore } from "../../stores/ui/ui";
+import { createBaramExtensions } from "../index";
+
+declare const MockIntersectionObserver: {
+  instances: { triggerIntersect: (v?: boolean) => void }[];
+};
+
+const ORIGINAL = "flowchart LR\n  A --> B";
+const EDITED = "flowchart LR\n  A --> B --> C";
+
+const editors: Editor[] = [];
+
+afterEach(() => {
+  cleanup();
+  for (const e of editors.splice(0)) e.destroy();
+});
+
+beforeEach(() => {
+  useUIStore.getState().dismissToast();
+});
+
+async function flush(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
+function menu(): HTMLElement | null {
+  return document.body.querySelector<HTMLElement>(".mermaid-context-menu");
+}
+
+function menuItem(label: string): HTMLElement | undefined {
+  return [
+    ...document.body.querySelectorAll<HTMLElement>(
+      ".mermaid-context-menu-item",
+    ),
+  ].find((b) => b.textContent === label);
+}
+
+/** A rendered mermaid block in its edit session, with the live preview. */
+async function mountEditing() {
+  const editor = new Editor({ extensions: createBaramExtensions() });
+  editors.push(editor);
+  const view = render(<EditorContent editor={editor} />);
+  act(() => {
+    editor.commands.setContent({
+      content: [
+        { attrs: { code: ORIGINAL }, type: "mermaidBlock" },
+        { type: "paragraph" },
+      ],
+      type: "doc",
+    });
+  });
+  await flush();
+  act(() => {
+    for (const io of MockIntersectionObserver.instances) io.triggerIntersect();
+  });
+  await waitFor(() => {
+    expect(
+      view.container.querySelector(
+        '[data-type="mermaidBlock"][data-render-state="done"]',
+      ),
+    ).not.toBeNull();
+  });
+  act(() => {
+    editor.commands.setNodeSelection(0);
+  });
+  await flush();
+  const preview = view.container.querySelector<HTMLElement>(
+    ".mermaid-block-editing .mermaid-block-svg",
+  );
+  const textarea = view.container.querySelector<HTMLTextAreaElement>(
+    ".mermaid-block-editing textarea",
+  );
+  if (!preview || !textarea) throw new Error("editing state did not mount");
+  return { editor, view, preview, textarea };
+}
+
+describe("mermaid block menu, mid-edit (issue 521)", () => {
+  it("keeps Copy as SVG in place but disabled, with a hint, until the render matches the source", async () => {
+    const { preview, textarea } = await mountEditing();
+    // The edit is live at once; the render behind it is debounced 300ms.
+    fireEvent.change(textarea, { target: { value: EDITED } });
+    await flush();
+
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+
+    const item = menuItem("Copy as SVG") as HTMLButtonElement | undefined;
+    if (!item) throw new Error("Copy as SVG item did not render");
+    expect(item.disabled).toBe(true);
+    expect(item.title).toBe("Rendering…");
+    expect(menuItem("Copy Source")).toBeDefined();
+    // Once the render catches up with the source, the item enables in
+    // place — the open menu re-renders, nothing moves.
+    await waitFor(() => {
+      expect(
+        (menuItem("Copy as SVG") as HTMLButtonElement | undefined)?.disabled,
+      ).toBe(false);
+    });
+  });
+
+  it("says why when the source does not render", async () => {
+    const { preview, textarea, view } = await mountEditing();
+    fireEvent.change(textarea, { target: { value: "BROKEN" } });
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".mermaid-block-error"),
+      ).not.toBeNull();
+    });
+
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+
+    const item = menuItem("Copy as SVG") as HTMLButtonElement | undefined;
+    if (!item) throw new Error("Copy as SVG item did not render");
+    expect(item.disabled).toBe(true);
+    expect(item.title).toBe("Diagram does not render");
+  });
+
+  it("says so when Copy as PNG fails", async () => {
+    // A source that does not render never gets this far (the PNG items are
+    // gated on a fresh render); what can still fail is the rasterizer or the
+    // clipboard, and that failure must not be silent. The toast carries the
+    // helper's own message rather than a guessed cause.
+    const { preview } = await mountEditing();
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    const item = menuItem("Copy as PNG");
+    if (!item) throw new Error("Copy as PNG item did not render");
+
+    fireEvent.click(item);
+
+    await waitFor(() => {
+      expect(useUIStore.getState().toast?.message).toMatch(/PNG/);
+    });
+  });
+
+  it("View Fullscreen from the menu, then Close, keeps the edit session and its focus", async () => {
+    // A smoke, not a discriminator: the close blurs the editor root, which
+    // never held focus here (the textarea does), and the session hangs off
+    // the NodeSelection, which a DOM blur does not touch.
+    const { view, preview, textarea } = await mountEditing();
+    textarea.focus();
+    expect(document.activeElement).toBe(textarea);
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    const item = menuItem("View Fullscreen");
+    if (!item) throw new Error("View Fullscreen item did not render");
+    fireEvent.click(item);
+    await flush();
+    const close = document.body.querySelector<HTMLElement>(
+      ".mermaid-view-fullscreen-modal .mermaid-fullscreen-close",
+    );
+    if (!close) throw new Error("view fullscreen did not open");
+
+    fireEvent.click(close);
+    await flush();
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    });
+
+    expect(
+      view.container.querySelector(".mermaid-block-editing textarea"),
+    ).not.toBeNull();
+    expect(document.activeElement).toBe(textarea);
+  });
+
+  it("a right-click on the open menu itself neither yields to the browser nor moves it", async () => {
+    const { preview } = await mountEditing();
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    const open = menu();
+    if (!open) throw new Error("menu did not open");
+
+    const nativeMenuAllowed = fireEvent.contextMenu(open, {
+      clientX: 25,
+      clientY: 90,
+    });
+    await flush();
+
+    expect(nativeMenuAllowed).toBe(false);
+    expect(menu()).toBe(open);
+    expect(open.style.left).toBe("20px");
+  });
+  it("View Fullscreen from the menu shows nothing rather than a stale diagram", async () => {
+    // The viewer gets the same fresh-or-nothing svg as the menu items: right
+    // after an edit there is no render for the source on screen yet, so the
+    // viewer opens on its empty state and fills in when the render lands.
+    const { preview, textarea } = await mountEditing();
+    fireEvent.change(textarea, { target: { value: EDITED } });
+    await flush();
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    const item = menuItem("View Fullscreen");
+    if (!item) throw new Error("View Fullscreen item did not render");
+
+    fireEvent.click(item);
+    await flush();
+
+    const body = ".mermaid-view-fullscreen-body";
+    expect(document.body.querySelector(body)).not.toBeNull();
+    expect(
+      document.body.querySelector(`${body} .mermaid-block-svg`),
+    ).toBeNull();
+    // ...and it says a render is coming, not that the diagram is empty.
+    expect(document.body.querySelector(body)?.textContent).toContain(
+      "Rendering",
+    );
+    await waitFor(() => {
+      expect(
+        document.body.querySelector(`${body} .mermaid-block-svg`),
+      ).not.toBeNull();
+    });
+  });
+  it("a source change under an open menu closes it instead of reshaping it", async () => {
+    // The svg items are gated on a fresh render, so typing (or an undo from
+    // the Edit menu) while the menu is open would make them vanish and slide
+    // Copy Source into Copy as SVG's slot under the pointer. The menu closes
+    // instead — the same rule as the mode flip.
+    const { preview, textarea } = await mountEditing();
+    fireEvent.contextMenu(preview, { clientX: 20, clientY: 80 });
+    await flush();
+    expect(menu()).not.toBeNull();
+
+    fireEvent.change(textarea, { target: { value: EDITED } });
+    await flush();
+
+    expect(menu()).toBeNull();
+  });
+});
