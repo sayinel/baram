@@ -71,6 +71,12 @@ pub struct CustomExportItem {
 }
 
 /// Allowlist of permitted Pandoc CLI flags for extra_args validation.
+///
+/// `--from` is deliberately absent. The reader is fixed to `markdown` when the
+/// command is built and extra args are appended AFTER it, so an allowed
+/// `--from` would silently replace that profile — and the frontend's export
+/// link policy (issue 527) relies on it: `+autolink_bare_uris` alone would turn
+/// the plain text that policy leaves behind back into live links.
 const ALLOWED_PANDOC_FLAGS: &[&str] = &[
     "--standalone",
     "--toc",
@@ -83,11 +89,26 @@ const ALLOWED_PANDOC_FLAGS: &[&str] = &[
     "--pdf-engine",
     "--variable",
     "--metadata",
-    "--from",
     "--to",
     "--slide-level",
     "--shift-heading-level-by",
 ];
+
+/// Reject any caller-supplied pandoc argument outside `ALLOWED_PANDOC_FLAGS`.
+/// `--flag=value` and `--flag value` forms are judged by their flag name.
+fn validate_extra_args(extra_args: &[String]) -> Result<(), ExportError> {
+    for arg in extra_args {
+        let flag = arg.split('=').next().unwrap_or(arg);
+        let flag_base = flag.split(' ').next().unwrap_or(flag);
+        if !ALLOWED_PANDOC_FLAGS.contains(&flag_base) {
+            return Err(ExportError::PandocFailed(format!(
+                "Disallowed pandoc argument: {}",
+                flag_base
+            )));
+        }
+    }
+    Ok(())
+}
 
 /// Common Pandoc installation paths to probe when bare "pandoc" fails.
 /// Covers Homebrew (Apple Silicon + Intel), system paths, and common installers.
@@ -213,16 +234,9 @@ pub fn run_pandoc(
         }
     }
 
-    // Add extra args — validated against allowlist
+    // Add extra args — validated against the allowlist first
+    validate_extra_args(&options.extra_args)?;
     for arg in &options.extra_args {
-        let flag = arg.split('=').next().unwrap_or(arg);
-        let flag_base = flag.split(' ').next().unwrap_or(flag);
-        if !ALLOWED_PANDOC_FLAGS.contains(&flag_base) {
-            return Err(ExportError::PandocFailed(format!(
-                "Disallowed pandoc argument: {}",
-                flag_base
-            )));
-        }
         cmd.arg(arg);
     }
 
@@ -312,6 +326,34 @@ mod tests {
         );
         assert_eq!(parse_pandoc_version("pandoc 2.19.2"), "2.19.2");
         assert_eq!(parse_pandoc_version(""), "unknown");
+    }
+
+    #[test]
+    fn extra_args_cannot_override_the_reader_profile() {
+        // Issue 527: the frontend's link policy assumes `--from markdown`
+        // (no autolink_bare_uris, no raw_html additions). Every spelling of a
+        // reader override is refused, `-f` included (it was never listed).
+        for arg in [
+            "--from",
+            "--from=markdown+autolink_bare_uris",
+            "--from markdown+raw_html",
+            "-f",
+        ] {
+            assert!(
+                validate_extra_args(&[arg.to_string()]).is_err(),
+                "{arg} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn extra_args_accept_allowlisted_flags_in_both_spellings() {
+        let args: Vec<String> = ["--toc", "--toc-depth=2", "--wrap none"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(validate_extra_args(&args).is_ok());
+        assert!(validate_extra_args(&[]).is_ok());
     }
 
     #[test]
