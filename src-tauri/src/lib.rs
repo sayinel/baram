@@ -1,5 +1,6 @@
 // Baram — Rust 백엔드 엔트리포인트
 
+mod approval;
 mod commands;
 mod config;
 mod context;
