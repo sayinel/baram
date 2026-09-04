@@ -14,6 +14,7 @@ import {
 import { addFolder } from "../../../services/vault-context-loader";
 import { useContextStore } from "../../../stores/context/context";
 import { logger } from "../../../utils/logger";
+import { ApprovedRootsSection } from "./ApprovedRootsSection";
 
 const PRESET_COLORS = [
   "#3b82f6",
@@ -180,6 +181,8 @@ export function VaultTab() {
           + menu to enable per-folder settings.
         </p>
       )}
+
+      <ApprovedRootsSection />
     </div>
   );
 }

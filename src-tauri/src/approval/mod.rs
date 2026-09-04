@@ -302,4 +302,18 @@ mod tests {
 
         std::fs::remove_dir_all(&base).ok();
     }
+
+    /// ‼️ §335 — 회수에 `Scope::forbid_*`를 쓰면 안 된다. tauri의 forbid는 allow보다
+    /// **항상** 우선하고 해제 API가 없어서, 같은 루트를 다시 승인해도 그 세션 내내
+    /// asset://이 죽는다. 그런데 증상이 **회수 시점에는 보이지 않는다** — 재승인할 때야
+    /// 드러나므로, 소스에 고정해 두는 것이 유일하게 값싼 방어다.
+    #[test]
+    fn revocation_never_reaches_for_the_scope_forbid_api() {
+        let src = include_str!("mod.rs");
+        let body = src.split("mod tests").next().expect("테스트 모듈 앞부분");
+        assert!(
+            !body.contains("forbid_directory") && !body.contains("forbid_file"),
+            "§335: 승인 회수는 기록 삭제만 한다 — forbid는 재승인을 세션 내내 막는다"
+        );
+    }
 }

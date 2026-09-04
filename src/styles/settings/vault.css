@@ -271,3 +271,34 @@
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
+
+/* §335 Approved roots — list + revoke */
+
+.approved-roots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.approved-roots-item {
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.approved-roots-item span {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.approved-roots-revoke {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.approved-roots-revoke:hover {
+  color: var(--color-status-danger);
+}
