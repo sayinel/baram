@@ -95,7 +95,9 @@ export const createAppearanceSettingsSlice: StateCreator<
     // i18n) — mirror the locale to a flat config key so it can pick a language
     // from that table. The webview changing this value only ever **selects**
     // from the table; it cannot inject wording into the dialog.
-    void setConfig("uiLocale", locale);
+    void setConfig("uiLocale", locale).catch((e) =>
+      logger.warn("§333 setLocale: uiLocale mirror failed", e),
+    );
   },
 
   // Tag setters

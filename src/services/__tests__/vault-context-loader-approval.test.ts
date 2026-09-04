@@ -21,7 +21,7 @@ import { setVaultRoot } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
-import { openFolder } from "../vault-context-loader";
+import { addFolder, openFolder } from "../vault-context-loader";
 
 const PATH = "/x/denied";
 
@@ -58,5 +58,47 @@ describe("§333 승인 거부 — openFolder", () => {
     await expect(openFolder(PATH)).resolves.toBeUndefined();
 
     expect(setVaultRoot).toHaveBeenCalledWith(PATH);
+  });
+});
+
+// addFolder carries the identical double-dialog risk shape as openFolder,
+// but unlike openFolder it has never wrapped addContext in a catch at all —
+// today, any addContext failure (denial included) simply rethrows out of
+// addFolder. So its "preserve existing behavior" baseline for a non-denial
+// error is "rethrows", not "logs and continues" — the two functions differ
+// and must not be assumed to match.
+describe("§333 승인 거부 — addFolder", () => {
+  beforeEach(() => {
+    vi.mocked(setVaultRoot).mockClear();
+    useSettingsStore.setState({ recentFolders: [], locale: "en" } as never);
+    useContextStore.setState({
+      activeContextId: null,
+      contexts: [],
+    } as never);
+  });
+
+  it("거부는 addFolder를 조용히 끝내고 setVaultRoot로 진행하지 않는다", async () => {
+    useContextStore.setState({
+      addContext: vi.fn().mockRejectedValue("VAULT_APPROVAL_DENIED"),
+    } as never);
+    const toastSpy = vi.spyOn(useUIStore.getState(), "showToast");
+
+    await expect(addFolder(PATH)).resolves.toBeUndefined();
+
+    expect(setVaultRoot).not.toHaveBeenCalled();
+    expect(toastSpy).toHaveBeenCalledWith(
+      expect.stringContaining(PATH),
+      "info",
+    );
+  });
+
+  it("거부가 아닌 오류는 addFolder 밖으로 그대로 던져진다", async () => {
+    useContextStore.setState({
+      addContext: vi.fn().mockRejectedValue("disk on fire"),
+    } as never);
+
+    await expect(addFolder(PATH)).rejects.toBe("disk on fire");
+
+    expect(setVaultRoot).not.toHaveBeenCalled();
   });
 });
