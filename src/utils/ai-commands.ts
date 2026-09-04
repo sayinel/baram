@@ -113,16 +113,20 @@ export async function executeAICommand(
   // editor, forever. Hang it on the task so invalidation always detaches.
   task.addCleanup(detachTrackPos);
 
-  chainWithVimExternalEdit(editor)
-    .focus()
-    .insertContentAt(setupPos, insertParagraph ? { type: "paragraph" } : "\n")
-    .run();
-  if (insertParagraph) currentPos += 1; // inside the new paragraph
-  assoc = 1;
-  // The whole flow lives in the try so a createLLMStream rejection cannot
-  // strand the task (its await used to sit outside any handler).
+  // The whole flow lives in the try so that neither a createLLMStream
+  // rejection (its await used to sit outside any handler) nor a setup insert
+  // at a position the document no longer has (a block action's target kept
+  // across its prompt while the user edited) can strand the task or leave the
+  // tracker attached.
   let cleanupStream: (() => void) | undefined;
   try {
+    chainWithVimExternalEdit(editor)
+      .focus()
+      .insertContentAt(setupPos, insertParagraph ? { type: "paragraph" } : "\n")
+      .run();
+    if (insertParagraph) currentPos += 1; // inside the new paragraph
+    assoc = 1;
+
     cleanupStream = await createLLMStream(requestId, {
       onToken: (token) => {
         if (!task.isLive()) return;
@@ -152,8 +156,8 @@ export async function executeAICommand(
       inlineCfg.baseUrl,
       store.privacyMode,
     );
-  } catch {
-    logger.error("LLM request failed");
+  } catch (error) {
+    logger.error("AI command failed:", error);
   } finally {
     detachTrackPos();
     cleanupStream?.();

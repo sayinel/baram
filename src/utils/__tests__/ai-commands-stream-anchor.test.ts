@@ -41,6 +41,7 @@ import { llmComplete } from "../../ipc/invoke";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useAIStore } from "../../stores/ai/ai";
 import { executeAICommand } from "../ai-commands";
+import { countLiveEditorMutationTasks } from "../editor/mutation-tasks";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -226,6 +227,26 @@ describe("a syntax-reveal collapse appended to the SETUP edit", () => {
       "Tail paragraph",
     ]);
     await finish();
+  });
+
+  it("a setup insert at a position the document no longer has leaves nothing behind", async () => {
+    // The tracker and the mutation task now exist before the setup edit, so a
+    // throwing insertContentAt (a block action's target kept across its prompt
+    // while the document shrank) must still detach the one and finish the
+    // other — and the command must settle instead of rejecting.
+    const editor = loadEditor(FIXTURE);
+    const offSpy = vi.spyOn(editor, "off");
+
+    await executeAICommand(editor, "p", "s", { insertAfterPos: 9999 });
+
+    expect(offSpy).toHaveBeenCalledWith("transaction", expect.any(Function));
+    expect(countLiveEditorMutationTasks(editor.view)).toBe(0);
+    expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
+    expect(blockTexts(editor)).toEqual([
+      "Hello world end",
+      "Target",
+      "Tail paragraph",
+    ]);
   });
 
   it("afterSelection (floating toolbar): the paragraph after the expanded block receives the token", async () => {
