@@ -1824,6 +1824,46 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "완료 태스크를 Archive/YYYY-MM.md로 이동. 붙인 뒤 지우므로 중간 실패의 최악은 중복(소실 아님). 원본은 수집함·Archive/* 화이트리스트로 강제 — 밖의 경로가 하나라도 있으면 파일을 건드리지 않고 거절(§312 불가침 규칙). 확인 관문은 프론트, 샌드박스 티어에는 부여하지 않는다"
+    },
+    {
+      "name": "pick_approved_dir",
+      "input": {
+        "purpose": "string (\"journal\" | \"zettelkasten\" | \"tasks\" | \"plugin-dev\" | 기타 — 피커 타이틀만 바뀐다)"
+      },
+      "output": "string | null",
+      "module": "approval",
+      "spec": "§332",
+      "status": "implemented",
+      "description": "네이티브 폴더 피커를 연다. 고른 경로를 canonical화해 즉시 승인하고 반환한다 — 확인 다이얼로그 없음(신선한 선택 자체가 승인, §332). 취소하면 null"
+    },
+    {
+      "name": "pick_approved_file",
+      "input": {},
+      "output": "string | null",
+      "module": "approval",
+      "spec": "§332",
+      "status": "implemented",
+      "description": "네이티브 파일 피커(Markdown/HTML/PDF/이미지 필터)를 연다. 고른 파일을 canonical화해 승인하고 반환한다 — File 승인은 같은 폴더의 이미지도 함께 연다(§329.2). 취소하면 null"
+    },
+    {
+      "name": "list_approved_roots",
+      "input": {},
+      "output": "ApprovedRoot[] (Rust Vec<ApprovalEntry>, 직렬화 형태는 동일)",
+      "module": "approval",
+      "spec": "§332",
+      "status": "implemented",
+      "description": "승인된 vault 루트(폴더·파일) 전체 목록 조회. approved-roots.json을 그대로 반환"
+    },
+    {
+      "name": "revoke_approved_root",
+      "input": {
+        "path": "string"
+      },
+      "output": "void",
+      "module": "approval",
+      "spec": "§332",
+      "status": "implemented",
+      "description": "승인 기록만 삭제한다(§335) — Scope::forbid는 걸지 않는다. 이미 부여된 asset:// 권한은 앱 재시작 전까지 남는다"
     }
   ],
   "events": [
