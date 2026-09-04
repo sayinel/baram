@@ -5,6 +5,7 @@
   "about.license": "라이선스",
   "about.stack": "기술 스택",
   "about.version": "버전 {version}",
+  "approval.denied.toast": "{path} 접근이 허용되지 않았습니다.",
   "backlinks.linkify": "링크",
   "backlinks.linkify.title": "위키링크로 바꾸기",
   "backlinks.loading": "백링크를 읽는 중…",

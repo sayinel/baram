@@ -13,6 +13,7 @@
 // → file.ts (useFileStore) — and the dynamic edge is what keeps the static
 // module graph acyclic.
 import { type Locale, t } from "../i18n";
+import { isApprovalDeniedError } from "../ipc/approval";
 import { getVaultConfigByPath, setVaultConfigByPath } from "../ipc/context";
 import {
   isFolderAccessDeniedError,
@@ -59,10 +60,25 @@ export async function addFolder(path: string): Promise<void> {
   }
 
   // Register context in frontend + Rust FIRST (with correct type)
-  const added = await contextStore.addContext(
-    isVault ? "vault" : "folder",
-    path,
-  );
+  // §333 Approval denial is the user's choice, not an error. Swallowing it
+  // and falling through to setVaultRoot would make Rust prompt a second
+  // time for the same path, so stop here instead.
+  let added;
+  try {
+    added = await contextStore.addContext(isVault ? "vault" : "folder", path);
+  } catch (err) {
+    if (isApprovalDeniedError(err)) {
+      const { locale } = useSettingsStore.getState();
+      useUIStore
+        .getState()
+        .showToast(
+          t("approval.denied.toast", locale as Locale, { path }),
+          "info",
+        );
+      return;
+    }
+    throw err;
+  }
 
   // §81 Update legacy VaultRootState AFTER addContext (so Rust dedup
   // finds the correctly-typed context we just registered)
@@ -104,11 +120,25 @@ export async function openFolder(path: string): Promise<void> {
     }
 
     // Register context with correct type FIRST
-    await contextStore
-      .addContext(isVault ? "vault" : "folder", path)
-      .catch((err) => {
-        logger.warn("§81 openFolder: context registration failed", err);
-      });
+    // §333 Approval denial is the user's choice, not an error. Swallowing it
+    // and falling through to setVaultRoot below would make Rust prompt a
+    // second time for the same path, so return early instead. Any other
+    // failure keeps today's behavior: log and continue to setVaultRoot.
+    try {
+      await contextStore.addContext(isVault ? "vault" : "folder", path);
+    } catch (err) {
+      if (isApprovalDeniedError(err)) {
+        const { locale } = useSettingsStore.getState();
+        useUIStore
+          .getState()
+          .showToast(
+            t("approval.denied.toast", locale as Locale, { path }),
+            "info",
+          );
+        return;
+      }
+      logger.warn("§81 openFolder: context registration failed", err);
+    }
   } else {
     // Existing context (possibly persisted from previous session)
     // Use local-only activation to avoid IPC failure for stale IDs

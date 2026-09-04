@@ -5,6 +5,7 @@
   "about.license": "License",
   "about.stack": "Stack",
   "about.version": "Version {version}",
+  "approval.denied.toast": "Access to {path} was not allowed.",
   "backlinks.linkify": "Link",
   "backlinks.linkify.title": "Convert to a wikilink",
   "backlinks.loading": "Loading backlinks…",

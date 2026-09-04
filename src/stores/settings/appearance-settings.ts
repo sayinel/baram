@@ -2,6 +2,7 @@ import type { ThemeDef } from "../../types/theme";
 import type { ActivityBarItemConfig } from "./activity-bar-config";
 import type { StateCreator } from "zustand";
 
+import { setConfig } from "../../ipc/config";
 import { findThemeById } from "../../types/theme";
 import { logger } from "../../utils/logger";
 
@@ -90,6 +91,11 @@ export const createAppearanceSettingsSlice: StateCreator<
     import("../../ipc/menu-locale").then(({ syncMenuLocale }) => {
       syncMenuLocale(locale as "en" | "ko").catch((e) => logger.error(e));
     });
+    // §333 The Rust-side approval dialog has its own phrase table (Rust has no
+    // i18n) — mirror the locale to a flat config key so it can pick a language
+    // from that table. The webview changing this value only ever **selects**
+    // from the table; it cannot inject wording into the dialog.
+    void setConfig("uiLocale", locale);
   },
 
   // Tag setters
