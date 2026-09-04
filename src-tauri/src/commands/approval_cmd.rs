@@ -103,3 +103,139 @@ pub async fn ensure_approved<R: tauri::Runtime>(
         }
     }
 }
+
+/// §332 신선한 선택은 Rust가 받는다 — 그 선택 자체가 승인이다.
+///
+/// ‼️ 확인 다이얼로그와 달리 파일/폴더 피커에는 본문 문구 자리가 없다. `set_title`이
+/// 전부이므로, File 승인이 부모 폴더의 이미지까지 연다는 사실(§329.2, §330 결정 3)은
+/// **타이틀**로 말한다.
+///
+/// ‼️ 제네릭 런타임: `tauri::test::mock_builder()`(런타임 = `MockRuntime`)가
+/// `generate_handler!`로 이 커맨드를 실제 배선해야 아래 테스트가 "등록됨"을 고정할 수
+/// 있다 — 구체적인 `tauri::AppHandle`(= `AppHandle<Wry>`)을 받으면 `MockRuntime`에서
+/// `CommandArg`가 성립하지 않아 컴파일이 깨진다(`ensure_approved`와 같은 이유).
+#[tauri::command]
+pub async fn pick_approved_dir<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    purpose: String,
+) -> Result<Option<String>, String> {
+    let title = if is_korean(&app) {
+        match purpose.as_str() {
+            "journal" => "저널 폴더 선택",
+            "zettelkasten" => "Zettelkasten 폴더 선택",
+            "tasks" => "작업 폴더 선택",
+            "plugin-dev" => "개발 중인 플러그인 폴더 선택",
+            _ => "폴더 열기 — 이 폴더 전체를 읽고 씁니다",
+        }
+    } else {
+        match purpose.as_str() {
+            "journal" => "Choose a journal folder",
+            "zettelkasten" => "Choose a Zettelkasten folder",
+            "tasks" => "Choose a tasks folder",
+            "plugin-dev" => "Choose a plugin development folder",
+            _ => "Open folder — Baram will read and write everything under it",
+        }
+    };
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog().file().set_title(title).pick_folder(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(picked) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let canonical = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    approval::approve(&app, &canonical, ApprovalKind::Dir)?;
+    Ok(Some(canonical.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+pub async fn pick_approved_file(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let title = if is_korean(&app) {
+        "문서 열기 — 같은 폴더의 이미지도 함께 읽습니다"
+    } else {
+        "Open document — images in the same folder are read too"
+    };
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title(title)
+        .add_filter("Markdown", &["md", "markdown", "mdx"])
+        .add_filter("HTML", &["html", "htm"])
+        .add_filter("PDF", &["pdf"])
+        .add_filter(
+            "Images",
+            &["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"],
+        )
+        .pick_file(move |p| {
+            let _ = tx.send(p);
+        });
+    let Some(picked) = rx.await.map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let canonical = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    approval::approve(&app, &canonical, ApprovalKind::File)?;
+    Ok(Some(canonical.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+pub fn list_approved_roots(app: tauri::AppHandle) -> Result<Vec<approval::ApprovalEntry>, String> {
+    Ok(approval::load(&app).entries)
+}
+
+#[tauri::command]
+pub fn revoke_approved_root(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    approval::revoke(&app, &path)
+}
+
+#[cfg(test)]
+mod tests {
+    /// 피커는 다이얼로그를 열므로 정상 인자로는 테스트에서 부를 수 없다. 대신
+    /// **인자를 일부러 틀리게** 보내 역직렬화 단계에서 끊는다 — 그것만으로도
+    /// "generate_handler에 등록돼 있고 인자 이름이 맞다"가 고정된다. 커맨드 이름 오타나
+    /// 등록 누락은 다른 메시지("not found")를 내므로 이 단정이 구분한다.
+    #[test]
+    fn pick_approved_dir_is_registered_and_takes_a_purpose_arg() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::pick_approved_dir])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        let res = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "pick_approved_dir".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                // purpose는 String인데 숫자를 보낸다 → 핸들러 본문 이전에 실패한다.
+                body: tauri::ipc::InvokeBody::Json(serde_json::json!({ "purpose": 123 })),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        );
+
+        let err = res.expect_err("잘못된 인자 타입은 거부되어야 한다");
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("not found"),
+            "커맨드가 generate_handler에 등록되지 않았다: {msg}"
+        );
+        assert!(
+            msg.contains("purpose"),
+            "인자 역직렬화 단계에 도달하지 못했다: {msg}"
+        );
+    }
+}
