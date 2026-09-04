@@ -96,6 +96,10 @@ pub async fn set_vault_root(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     check(&path)?;
+    // §333 — 이 지점에 도달할 땐 보통 add_context가 이미 승인을 받아 두었다.
+    // 그래도 거는 이유: `set_vault_root`를 직접 부르는 것이 웹뷰에게 더 짧은 길이다.
+    crate::commands::approval_cmd::ensure_approved(&app, &path, crate::approval::ApprovalKind::Dir)
+        .await?;
 
     // §backlog #3 — grant asset:// read access to this vault directory at runtime
     // (the static scope is limited to $APPDATA). Non-fatal on failure.

@@ -4,9 +4,8 @@
 // 예약 키 없이 임의 키에 임의 값을 쓰므로, 승인 기록을 거기 두면 인가받아야 할 웹뷰가
 // 자기 인가를 쓰게 된다 — 이 작업이 없애려는 바로 그 구조다 (§329.3).
 //
-// Task 1 산출물 — 아직 IPC 커맨드가 없어 대부분 pub 항목이 미사용이다. Task 2가
-// 이 모듈을 커맨드로 감싸 배선한다 (embedding/mod.rs와 같은 이유로 억제).
-#![allow(dead_code)]
+// Task 1 산출물. Task 2(`commands::approval_cmd::ensure_approved`)가 `load`/`approve`를
+// 배선했다 — `revoke`만 아직 미사용이다(Task 6의 회수 커맨드가 배선한다).
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -84,7 +83,13 @@ pub fn decide(store: &ApprovalStore, path: &str) -> (Decision, Option<PathBuf>) 
     }
 }
 
-fn store_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+/// §333 generic over the runtime — `commands::approval_cmd::ensure_approved` (its only
+/// path to this function, via `load`/`approve`) must itself be generic so a
+/// `tauri::test::mock_builder()` (runtime = `MockRuntime`, not `Wry`) can dispatch the
+/// command that calls it through `generate_handler!`
+/// ([[direct-call-test-cannot-see-an-unreachable-command]]). A concrete `tauri::AppHandle`
+/// caller is unaffected — `R` infers to `Wry`.
+fn store_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -113,7 +118,7 @@ pub fn save_to(path: &Path, store: &ApprovalStore) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
-pub fn load(app: &tauri::AppHandle) -> ApprovalStore {
+pub fn load<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> ApprovalStore {
     match store_path(app) {
         Ok(p) => load_from(&p),
         Err(e) => {
@@ -123,7 +128,11 @@ pub fn load(app: &tauri::AppHandle) -> ApprovalStore {
     }
 }
 
-pub fn approve(app: &tauri::AppHandle, canonical: &Path, kind: ApprovalKind) -> Result<(), String> {
+pub fn approve<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    canonical: &Path,
+    kind: ApprovalKind,
+) -> Result<(), String> {
     let _guard = APPROVAL_MUTEX
         .lock()
         .map_err(|_| "잠금 획득 실패".to_string())?;
@@ -151,6 +160,9 @@ pub fn approve(app: &tauri::AppHandle, canonical: &Path, kind: ApprovalKind) -> 
 /// ‼️ 회수는 **기록 삭제만** 한다. `Scope::forbid_*`를 부르지 않는다 — tauri의 forbid는
 /// allow보다 항상 우선하고 해제 API가 없어서, 같은 루트를 다시 승인해도 그 세션 내내
 /// asset://이 죽는다 (§335). 현재 세션의 부여는 재시작으로 정리된다.
+///
+/// Task 6이 이 함수를 IPC 커맨드로 배선하기 전까지는 미사용이다.
+#[allow(dead_code)]
 pub fn revoke(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
     let _guard = APPROVAL_MUTEX
         .lock()
