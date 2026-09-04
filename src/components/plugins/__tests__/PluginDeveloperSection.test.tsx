@@ -3,9 +3,9 @@ import type { PluginManifest } from "../../../plugins/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const open = vi.fn(async (..._a: unknown[]) => "/dev/dev-x");
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: (...a: unknown[]) => open(...a),
+const pickApprovedDir = vi.fn(async (..._a: unknown[]) => "/dev/dev-x");
+vi.mock("../../../ipc/approval", () => ({
+  pickApprovedDir: (...a: unknown[]) => pickApprovedDir(...a),
 }));
 
 const baseManifest: PluginManifest = {
@@ -69,7 +69,7 @@ function makeDevPlugin(manifest: PluginManifest = baseManifest) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  open.mockResolvedValue("/dev/dev-x");
+  pickApprovedDir.mockResolvedValue("/dev/dev-x");
   addDevFolder.mockResolvedValue({
     install_path: "/dev/dev-x",
     checksum: "",
@@ -86,7 +86,9 @@ describe("PluginDeveloperSection", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /load dev plugin folder/i }),
     );
-    await waitFor(() => expect(open).toHaveBeenCalledWith({ directory: true }));
+    await waitFor(() =>
+      expect(pickApprovedDir).toHaveBeenCalledWith("plugin-dev"),
+    );
     await waitFor(() =>
       expect(addDevFolder).toHaveBeenCalledWith("/dev/dev-x"),
     );

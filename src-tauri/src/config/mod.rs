@@ -98,8 +98,14 @@ pub fn set_config(
 /// Atomically read-modify-write a single config key under CONFIG_MUTEX.
 /// `updater` receives the current raw string value (None if unset) and
 /// returns the new string value to store.
-pub fn update_config(
-    app_handle: &tauri::AppHandle,
+///
+/// §329.6 generic over the runtime (same reason as `get_config`) — `plugin_add_dev_folder`
+/// calls this after `ensure_approved`, and that chain must stay runtime-generic end to end
+/// for a `tauri::test::mock_builder()` to dispatch it through `generate_handler!`. Every
+/// existing caller passes a concrete `tauri::AppHandle` (`= AppHandle<Wry>`) and is
+/// unaffected — `R` is inferred as `Wry`.
+pub fn update_config<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
     key: &str,
     updater: impl FnOnce(Option<String>) -> String,
 ) -> Result<(), ConfigError> {

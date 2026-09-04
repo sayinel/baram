@@ -1,14 +1,13 @@
 // §69 Plugin Developer section — load/reload local plugin folders during development
 import { useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
 import type { InstalledPlugin, PluginCapability } from "../../plugins/types";
 
 import { FolderOpen } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { pickApprovedDir } from "../../ipc/approval";
 import {
   pluginAddDevFolder,
   pluginRemoveDevFolder,
@@ -39,7 +38,7 @@ export function PluginDeveloperSection() {
   const selected = list.find((p) => p.manifest.id === selectedId);
 
   async function handleLoad() {
-    const picked = await open({ directory: true });
+    const picked = await pickApprovedDir("plugin-dev");
     if (typeof picked !== "string") return;
     try {
       const info = await pluginAddDevFolder(picked);

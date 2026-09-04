@@ -124,7 +124,10 @@ fn read_dev_folders(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
     Ok(plugin::parse_dev_folders(raw))
 }
 
-fn dev_info(app: &tauri::AppHandle, path: &str) -> Result<plugin::InstalledPluginInfo, String> {
+fn dev_info<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &str,
+) -> Result<plugin::InstalledPluginInfo, String> {
     let folder = std::path::Path::new(path);
     let manifest = plugin::read_manifest_at(folder).map_err(|e| e.to_string())?;
     app.asset_protocol_scope()
@@ -138,9 +141,13 @@ fn dev_info(app: &tauri::AppHandle, path: &str) -> Result<plugin::InstalledPlugi
     })
 }
 
+/// ‼️ 제네릭 런타임: `ensure_approved`가 이 함수 안에서 호출되고, `add_context`와 같은
+/// 이유로 그 체인(`ensure_approved` → `dev_info` → `config::update_config`) 전체가
+/// 런타임 제네릭이어야 `tauri::test::mock_builder()`가 `generate_handler!`로 이 커맨드를
+/// 실제 배선할 수 있다 ([[direct-call-test-cannot-see-an-unreachable-command]]).
 #[tauri::command]
-pub async fn plugin_add_dev_folder(
-    app: tauri::AppHandle,
+pub async fn plugin_add_dev_folder<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
 ) -> Result<plugin::InstalledPluginInfo, String> {
     // §260 Phase 5 — the ONE gate that did not lift. Side-loading a directory skips
@@ -149,6 +156,15 @@ pub async fn plugin_add_dev_folder(
     if !plugin::dev_plugin_loading_enabled() {
         return Err(plugin::plugins_disabled_error());
     }
+    // §329.6 세 번째 입구. `dev_info`가 이 경로에 asset:// 재귀 부여를 한다 —
+    // 매니페스트 존재가 사실상의 장벽이었지만, 그 목록(`plugin.devFolders`)이
+    // 웹뷰가 쓸 수 있는 config.json에 산다. 막을 수 있을 때 막는다.
+    crate::commands::approval_cmd::ensure_approved(
+        &app,
+        &path,
+        crate::approval::ApprovalKind::Dir,
+    )
+    .await?;
     let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
     config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
         let list = plugin::normalize_dev_list(&plugin::parse_dev_folders(raw), Some(&path), None);
@@ -1357,5 +1373,42 @@ mod tests {
         assert_eq!(sandbox_window_guard("plugin-alpha").unwrap(), "alpha");
         assert!(sandbox_window_guard("main").is_err());
         assert!(sandbox_window_guard("file-1").is_err());
+    }
+
+    /// §329.6 — `dev_info`가 웹뷰가 준 경로에 `allow_directory(.., true)`를 재귀로 부여한다.
+    /// `add_context`도 `set_vault_root`도 거치지 않는 세 번째 입구였다.
+    #[test]
+    fn plugin_add_dev_folder_refuses_an_unapproved_path_through_generate_handler() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::plugin_add_dev_folder])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        let res = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "plugin_add_dev_folder".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::Json(serde_json::json!({
+                    "path": "/definitely/not/here/plugin"
+                })),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        );
+
+        let err = res.expect_err("존재하지 않는 미승인 경로는 거부되어야 한다");
+        assert_eq!(err, serde_json::json!("VAULT_APPROVAL_DENIED"));
     }
 }
