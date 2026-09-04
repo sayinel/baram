@@ -132,6 +132,55 @@ describe("countCaptures", () => {
     expect(countCaptures(`# x\n\n### 2026-09-02 10:00 ^m2609021000\n`)).toBe(0);
   });
 
+  // ‼️ 이 둘은 쌍이다. 참조를 세지 않는 것만 단정하면 "아무것도 세지 않는" 구현이
+  // 통과하고, 헤딩을 센다는 것만 단정하면 참조를 함께 세는 구현이 통과한다.
+  it("does not count a block reference or embed that names a capture", () => {
+    // §321이 블록 ID를 참조·임베드의 앵커로 설계했으므로 이 문서는 정상 사용에서 생긴다.
+    const doc = [
+      `# Meeting`,
+      ``,
+      `## Captures`,
+      ``,
+      `### 2025-05-23 ^m2505230000`,
+      ``,
+      `- {{embed ((Xenoscube#^m2505210000))}}`,
+      `- 앞선 항목: ((Meeting#^m2505220000))`,
+      ``,
+    ].join("\n");
+    expect(countCaptures(doc)).toBe(1);
+  });
+
+  it("does not count a deeper heading or a stamp that is not at the line end", () => {
+    // 캡처는 `### {heading} ^{id}`만 쓴다(`appendCapture`). 사용자 본문의 h4 소제목이나
+    // 줄 중간의 id는 캡처가 남긴 표시가 아니다.
+    const doc = [
+      `# 영감노트`,
+      ``,
+      `## Captures`,
+      ``,
+      `### 2026-09-02 14:15 ^m2609021415`,
+      ``,
+      `#### 소제목 ^m2609021416`,
+      `### 2026-09-02 10:30 ^m2609021030 뒤에 더 붙은 글`,
+      ``,
+    ].join("\n");
+    expect(countCaptures(doc)).toBe(1);
+  });
+
+  it("counts a heading whose stamp sits at the end of the heading line", () => {
+    const doc = [
+      `# Meeting`,
+      ``,
+      `## Captures`,
+      ``,
+      `### 2025-05-23 ^m2505230000`,
+      ``,
+      `### 2025-05-22 ^m2505220000`,
+      ``,
+    ].join("\n");
+    expect(countCaptures(doc)).toBe(2);
+  });
+
   // ‼️ 캡처 id 철자(`m` + 10자리)는 일반 블록 참조와 우연히 겹치기 쉽다.
   // `## Captures` 뒤에 오는 무관한 절(`## Related`)의 블록 참조까지 세면
   // §324-c 미리보기가 잘못된 개수를 보여준다. 절 경계는 다음 h1/h2에서 끊는다 —
