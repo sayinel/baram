@@ -6,6 +6,7 @@
   "about.stack": "Stack",
   "about.version": "Version {version}",
   "approval.denied.toast": "Access to {path} was not allowed.",
+  "approval.unresolvable.toast": "{path} could not be opened — it may have been moved, renamed, or its drive unmounted.",
   "backlinks.linkify": "Link",
   "backlinks.linkify.title": "Convert to a wikilink",
   "backlinks.loading": "Loading backlinks…",

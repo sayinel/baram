@@ -6,6 +6,7 @@
   "about.stack": "기술 스택",
   "about.version": "버전 {version}",
   "approval.denied.toast": "{path} 접근이 허용되지 않았습니다.",
+  "approval.unresolvable.toast": "{path}을(를) 열 수 없습니다 — 옮겨졌거나, 이름이 바뀌었거나, 드라이브가 연결 해제되었을 수 있습니다.",
   "backlinks.linkify": "링크",
   "backlinks.linkify.title": "위키링크로 바꾸기",
   "backlinks.loading": "백링크를 읽는 중…",
