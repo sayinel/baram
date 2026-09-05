@@ -129,6 +129,56 @@ export function setSvgRootWidth(svg: string, percent: number): string {
 }
 
 /**
+ * Give a root `<svg>` that has a `viewBox` but neither `width` nor `height`
+ * the intrinsic pixel size the viewBox describes (`width="W" height="H"`).
+ * Issue 538: without a size the block's CSS (`height: auto`) had nothing to
+ * work from and WebKit rendered such an svg at 0 height — a blank block — and
+ * that is exactly the shape Figma, Excalidraw and Inkscape export. A relative
+ * `width="100%"` is not the answer: the preview sits in the shrink-to-fit
+ * `.media-resize-frame`, where a percentage collapses (the mermaid renderer
+ * learned the same lesson: normalizeMermaidSvgSize in mermaid-utils.ts). With an intrinsic
+ * size the svg behaves like an authored one: the frame CSS caps it to the
+ * container when unsized and stretches it when the user resizes.
+ *
+ * Meant for the RENDERED markup only: callers apply it after sanitising and
+ * never to the stored source, so the file and the resize percentage
+ * ({@link setSvgRootWidth}) stay what the user wrote. Only the root opening tag
+ * is inspected, and its attributes are tokenised, so `stroke-width`,
+ * `data-width` or a quoted value containing `width=` do not count. A viewBox
+ * that does not parse to a positive size leaves the markup unchanged.
+ */
+export function ensureSvgIntrinsicSize(svg: string): string {
+  return svg.replace(ROOT_OPENING_TAG_RE, (full, attrs: string) => {
+    let viewBox: string | undefined;
+    const names = new Set<string>();
+    for (const m of attrs.matchAll(ROOT_ATTRIBUTE_RE)) {
+      const name = m[1].toLowerCase();
+      names.add(name);
+      if (name === "viewbox" && m[2] !== undefined) viewBox = m[2];
+    }
+    if (viewBox === undefined || names.has("width") || names.has("height")) {
+      return full;
+    }
+    const nums = viewBox
+      .replace(/^["']|["']$/g, "")
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
+    if (nums.length !== 4 || !(nums[2] > 0) || !(nums[3] > 0)) return full;
+    return `<svg width="${nums[2]}" height="${nums[3]}"${attrs}>`;
+  });
+}
+
+/** The root `<svg …>` opening tag, quote-aware: a `>` inside a quoted
+ *  attribute value (`aria-label="A > B"`, which DOMPurify keeps) does not end
+ *  the tag. Group 1 is everything between `<svg` and the closing `>`. */
+const ROOT_OPENING_TAG_RE = /<svg\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/i;
+
+/** One attribute of an opening tag: the name, then optionally `=` and a
+ *  quoted or bare value (which may contain `=` or spaces when quoted). */
+const ROOT_ATTRIBUTE_RE = /([^\s=/]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s>]+))?/g;
+
+/**
  * Determine the raster pixel size of an SVG. Prefers usable px width/height
  * attributes, falls back to the viewBox (so percentage-sized SVGs keep their
  * true aspect ratio), then a 800×600 default.

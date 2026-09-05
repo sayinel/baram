@@ -16,6 +16,9 @@ import { runBlockAction } from "./run-block-action";
 interface MermaidBlockContextMenuProps {
   code: string;
   contextMenu: { x: number; y: number };
+  /** The hook's ref for the menu root — exempts it from the capture-phase
+   *  dismiss by identity (issue 542, use-block-context-menu.ts). */
+  menuRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
   onDelete: () => void;
   onOpenEditFullscreen: () => void;
@@ -33,6 +36,7 @@ interface MermaidBlockContextMenuProps {
 export function MermaidBlockContextMenu({
   code,
   contextMenu,
+  menuRef,
   onClose,
   onDelete,
   onOpenEditFullscreen,
@@ -57,6 +61,9 @@ export function MermaidBlockContextMenu({
         e.stopPropagation();
       }}
       onMouseDown={(e) => e.stopPropagation()}
+      // issue 542: the mounted root is exempt from the capture-phase dismiss,
+      // by identity (use-block-context-menu.ts).
+      ref={menuRef}
       style={{
         position: "fixed",
         left: contextMenu.x,

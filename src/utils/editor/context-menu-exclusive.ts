@@ -12,6 +12,11 @@
 // browser's native menu, says so on the document first, and every open menu
 // closes on that signal. The signal is synchronous; the opener sets its own
 // state right after, so its own close (if it was open) is simply overwritten.
+//
+// issue 542 moved every menu's mousedown dismiss to the capture phase, which
+// does see the stopped right-button mousedown — so for that path the signal
+// is now belt and braces. It stays for the contextmenu that arrives with no
+// mousedown at all (keyboard-invoked, or a test firing contextmenu alone).
 const CLOSE_ALL_EVENT = "baram:context-menu-close-all";
 
 /** Close every open context menu. Call right before opening one, or right

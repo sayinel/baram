@@ -20,6 +20,7 @@ import {
 } from "../../utils/markdown/svg-export";
 import {
   copySvgSource,
+  ensureSvgIntrinsicSize,
   getSvgCaption,
   getSvgRootWidthPercent,
   sanitizeSvg,
@@ -105,13 +106,23 @@ export function SvgBlockView({
   // preview keeps rendering the attribute). The render, the menu and the
   // toolbar all read this, never the raw attribute.
   const activeSource = editing ? localCode : code;
-  // Sanitized SVG for it (cheap — pure string op).
+  // Sanitized SVG for it (cheap — pure string op). issue 538: a root with a
+  // viewBox and no size gets the viewBox's px size here, in the RENDERED
+  // markup only, so it lays out at its natural size instead of collapsing to
+  // 0 height; the source attribute — and with it the file and the resize
+  // percentage — is untouched.
   const svgHtml = useMemo(
-    () => (activeSource.trim() ? sanitizeSvg(activeSource) : ""),
+    () =>
+      activeSource.trim()
+        ? ensureSvgIntrinsicSize(sanitizeSvg(activeSource))
+        : "",
     [activeSource],
   );
   const fullscreenSvg = useMemo(
-    () => (fullscreenCode.trim() ? sanitizeSvg(fullscreenCode) : ""),
+    () =>
+      fullscreenCode.trim()
+        ? ensureSvgIntrinsicSize(sanitizeSvg(fullscreenCode))
+        : "",
     [fullscreenCode],
   );
 
@@ -124,6 +135,7 @@ export function SvgBlockView({
   const {
     close: closeBlockMenu,
     contextMenu,
+    menuRef: blockMenuRef,
     onContextMenu: handleBlockContextMenu,
     onMouseDown: stopRightButtonMouseDown,
   } = useBlockContextMenu({ editing, source: activeSource, wrapperRef });
@@ -503,6 +515,9 @@ export function SvgBlockView({
               e.stopPropagation();
             }}
             onMouseDown={(e) => e.stopPropagation()}
+            // issue 542: the mounted root is exempt from the capture-phase
+            // dismiss, by identity (use-block-context-menu.ts).
+            ref={blockMenuRef}
             style={{
               position: "fixed",
               left: contextMenu.x,

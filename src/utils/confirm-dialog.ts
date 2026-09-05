@@ -13,6 +13,9 @@ import { restoreFocus } from "./restore-focus";
  * 만든다** — 실제로 §312 아카이브가 그렇게 아무것도 하지 못했다.
  */
 export interface ConfirmOptions {
+  /** 취소 버튼 문구. 기본 "Cancel" — i18n된 메시지를 넘기는 호출부는
+   *  `t("common.cancel")`을 함께 넘겨 버튼만 영어로 남지 않게 한다 (issue 523). */
+  cancelLabel?: string;
   /** 확인 버튼 문구. 기본 "Delete" */
   confirmLabel?: string;
   /** 확인 버튼을 위험색으로 그릴지. 기본 true */
@@ -74,7 +77,11 @@ export function showConfirm(
   message: string,
   options: ConfirmOptions = {},
 ): Promise<boolean> {
-  const { confirmLabel = "Delete", danger = true } = options;
+  const {
+    cancelLabel = "Cancel",
+    confirmLabel = "Delete",
+    danger = true,
+  } = options;
   return new Promise((resolve) => {
     const returnFocusTo = document.activeElement;
     const overlay = document.createElement("div");
@@ -92,7 +99,7 @@ export function showConfirm(
 
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "ai-prompt-btn ai-prompt-btn-cancel";
-    cancelBtn.textContent = "Cancel";
+    cancelBtn.textContent = cancelLabel;
 
     const confirmBtn = document.createElement("button");
     confirmBtn.className = danger

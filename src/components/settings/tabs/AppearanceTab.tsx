@@ -12,6 +12,7 @@ import {
 } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { BUILT_IN_THEMES } from "../../../types/theme";
+import { showConfirm } from "../../../utils/confirm-dialog";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
 import { useThemeImport } from "./use-theme-import";
@@ -154,7 +155,20 @@ export function AppearanceTab() {
                   name: theme.name,
                 })}
                 className="theme-card-delete"
-                onClick={() => deleteCustomTheme(theme.id)}
+                // issue 523: a hand-built palette is gone for good on delete,
+                // so the click asks first — the same dialog the file tree uses.
+                onClick={async () => {
+                  const confirmed = await showConfirm(
+                    t("settings.appearance.deleteThemeConfirm", {
+                      name: theme.name,
+                    }),
+                    {
+                      cancelLabel: t("common.cancel"),
+                      confirmLabel: t("common.delete"),
+                    },
+                  );
+                  if (confirmed) deleteCustomTheme(theme.id);
+                }}
                 title={t("settings.appearance.deleteThemeNamed", {
                   name: theme.name,
                 })}
@@ -400,6 +414,22 @@ function WorkspaceSection() {
     [applyPreset],
   );
 
+  // issue 523: a saved layout is persisted data with no undo — ask first.
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const name = customPresets.find((p) => p.id === id)?.name ?? id;
+      const confirmed = await showConfirm(
+        t("settings.workspace.deletePresetConfirm", { name }),
+        {
+          cancelLabel: t("common.cancel"),
+          confirmLabel: t("common.delete"),
+        },
+      );
+      if (confirmed) deleteCustomPreset(id);
+    },
+    [customPresets, deleteCustomPreset, t],
+  );
+
   const handleSave = useCallback(() => {
     const trimmed = newName.trim();
     if (!trimmed) return;
@@ -428,7 +458,7 @@ function WorkspaceSection() {
             isActive={activePresetId === preset.id}
             key={preset.id}
             onApply={handleApply}
-            onDelete={!preset.builtIn ? deleteCustomPreset : undefined}
+            onDelete={!preset.builtIn ? handleDelete : undefined}
             preset={preset}
           />
         ))}

@@ -237,6 +237,7 @@ export function MermaidBlockView({
     close: closeBlockMenu,
     contextMenu,
     onContextMenu: handleBlockContextMenu,
+    menuRef: blockMenuRef,
     onMouseDown: stopRightButtonMouseDown,
   } = useBlockContextMenu({ editing, source: activeSource, wrapperRef });
 
@@ -565,6 +566,7 @@ export function MermaidBlockView({
         <MermaidBlockContextMenu
           code={activeSource}
           contextMenu={contextMenu}
+          menuRef={blockMenuRef}
           onClose={closeBlockMenu}
           onDelete={deleteBlock}
           onOpenEditFullscreen={() => openEditFullscreen(activeSource)}
