@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ensureRootSvgNamespace,
+  ensureSvgIntrinsicSize,
   getSvgCaption,
   getSvgRootWidthPercent,
   isSvgContent,
@@ -270,5 +271,95 @@ describe("sanitizeSvg — anchor destinations follow the link policy", () => {
       a.getAttribute("href"),
     );
     expect(hrefs).toEqual(["#section", "https://example.com/a"]);
+  });
+});
+
+// issue 538 — a viewBox-only root is given the intrinsic size its viewBox
+// describes, so the block's CSS has something to lay out from.
+describe("ensureSvgIntrinsicSize", () => {
+  it("inserts the viewBox's width and height on a root that has neither", () => {
+    const out = ensureSvgIntrinsicSize(
+      '<svg viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg"><rect width="160" height="60"/></svg>',
+    );
+    expect(out).toBe(
+      '<svg width="160" height="60" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg"><rect width="160" height="60"/></svg>',
+    );
+  });
+
+  it("leaves a root alone when it has a width, a height, or no viewBox", () => {
+    for (const svg of [
+      '<svg width="320" viewBox="0 0 160 60"><rect/></svg>',
+      "<svg height='120' viewBox='0 0 160 60'><rect/></svg>",
+      '<svg WIDTH=320 viewBox="0 0 160 60"><rect/></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>',
+    ]) {
+      expect(ensureSvgIntrinsicSize(svg)).toBe(svg);
+    }
+  });
+
+  it("leaves a viewBox that is not a positive size alone", () => {
+    for (const svg of [
+      '<svg viewBox="0 0 0 60"><rect/></svg>',
+      '<svg viewBox="0 0 160"><rect/></svg>',
+      '<svg viewBox="a b c d"><rect/></svg>',
+    ]) {
+      expect(ensureSvgIntrinsicSize(svg)).toBe(svg);
+    }
+  });
+
+  it("only looks at the root tag, never at nested <svg> children", () => {
+    const svg =
+      '<svg width="200" viewBox="0 0 10 10"><svg viewBox="0 0 5 5"><rect/></svg></svg>';
+    expect(ensureSvgIntrinsicSize(svg)).toBe(svg);
+  });
+
+  it("reads the viewBox attribute in any casing, quoting and separator", () => {
+    expect(ensureSvgIntrinsicSize('<svg viewbox="0 0 1 1"><rect/></svg>')).toBe(
+      '<svg width="1" height="1" viewbox="0 0 1 1"><rect/></svg>',
+    );
+    expect(
+      ensureSvgIntrinsicSize("<svg viewBox='0,0,24.5,12'><rect/></svg>"),
+    ).toBe(
+      '<svg width="24.5" height="12" viewBox=\'0,0,24.5,12\'><rect/></svg>',
+    );
+  });
+
+  it("does not mistake stroke-width, data-width or a quoted value for a width", () => {
+    expect(
+      ensureSvgIntrinsicSize(
+        '<svg stroke-width="2" viewBox="0 0 1 1"><rect/></svg>',
+      ),
+    ).toBe(
+      '<svg width="1" height="1" stroke-width="2" viewBox="0 0 1 1"><rect/></svg>',
+    );
+    expect(
+      ensureSvgIntrinsicSize(
+        '<svg data-width="3" viewBox="0 0 1 1"><rect/></svg>',
+      ),
+    ).toBe(
+      '<svg width="1" height="1" data-width="3" viewBox="0 0 1 1"><rect/></svg>',
+    );
+    expect(
+      ensureSvgIntrinsicSize(
+        '<svg aria-label="width=3" viewBox="0 0 1 1"><rect/></svg>',
+      ),
+    ).toBe(
+      '<svg width="1" height="1" aria-label="width=3" viewBox="0 0 1 1"><rect/></svg>',
+    );
+  });
+});
+
+describe("ensureSvgIntrinsicSize — a `>` inside a quoted attribute", () => {
+  it("does not end the root tag early, raw or after sanitising", () => {
+    const raw =
+      '<svg aria-label="A > B" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg"><rect width="160" height="60"/></svg>';
+    expect(ensureSvgIntrinsicSize(raw)).toBe(
+      '<svg width="160" height="60" aria-label="A > B" viewBox="0 0 160 60" xmlns="http://www.w3.org/2000/svg"><rect width="160" height="60"/></svg>',
+    );
+    const root = /<svg\b(?:"[^"]*"|'[^']*'|[^>"'])*>/i.exec(
+      ensureSvgIntrinsicSize(sanitizeSvg(raw)),
+    )?.[0];
+    expect(root).toMatch(/\swidth="160"/);
+    expect(root).toMatch(/\sheight="60"/);
   });
 });
