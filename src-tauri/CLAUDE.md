@@ -17,12 +17,22 @@ context/      ← 컨텍스트 관리자 — Vault 시스템 (§88)
 embedding/    ← 임베딩 — Knowledge Q&A (§11.4)
 plugin/       ← 플러그인 설치/레지스트리 (§69)
 tag/          ← Vault 태그 인덱스 (§56m)
+approval/     ← vault 경계 승인 저장소 — Rust 소유, config.json과 별도 파일 (§331)
+task/         ← Vault 태스크 인덱스 (§304) — md/의 공유 스캔 규칙 사용
+thumbnail/    ← 사진 갤러리 썸네일 디스크 캐시 (§56d)
+protocol/     ← webview 커스텀 URI 스킴 (html preview shim)
+md/           ← tag(§56m)·task(§304) 공유 마크다운 전처리 (코드 펜스 제외 등)
+logging/      ← 백엔드 로그 정책 (무엇을 남기고 어디로)
 git/          ← git2 crate 기반 Git 연동 (vendored-openssl)
 snapshot/     ← 파일 스냅샷/버전 히스토리 (similar + sha2)
 llm/          ← LLM API 프록시 (Claude/OpenAI/Gemini/Ollama, 스트리밍)
 export/       ← PDF (chromiumoxide headless Chrome), HTML 내보내기
 config/       ← 설정 파일 관리
 ```
+
+## 로컬 명령
+
+`cd src-tauri && cargo test` · `cargo clippy --all-targets`(pre-push hook과 동일) · `cargo fmt --check` — 셋 다 CI 게이트. PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 외 skip은 빨간불(`.claude/docs/ci-contract.md`).
 
 ## IPC 커맨드 규칙
 
@@ -75,6 +85,9 @@ app_handle.emit("file:changed", FileChangedPayload {
 | plugin | 설치/제거/레지스트리 (§69) |
 | snapshot | 생성/목록/diff/복원/삭제/히스토리 (§71) |
 | tag | Vault 태그 조회/검색/rename (§56m) |
+| approval | vault 경계 승인 조회/부여/철회 (§331~§335) |
+| task | 태스크 인덱스 조회/갱신/append (§304) |
+| thumbnail | 썸네일 생성/캐시 조회 (§56d) |
 
 ## 이벤트 목록
 

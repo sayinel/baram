@@ -42,12 +42,15 @@ Typora의 WYSIWYG 품질 + Obsidian의 확장성 + AI 네이티브 통합을 목
 baram/
 ├── src-tauri/              # Rust 백엔드 (자체 CLAUDE.md)
 │   └── src/
-│       ├── commands/       # IPC 커맨드 핸들러 (thin layer): {fs,search,index,git,llm,export,
-│       │                   #   config,context,embedding,keyring,plugin,snapshot,tag}_cmd.rs
+│       ├── commands/       # IPC 커맨드 핸들러 (thin layer): {fs,search,index,git,llm,export,config,
+│       │                   #   context,embedding,keyring,plugin,snapshot,tag,approval,task,thumbnail}_cmd.rs
 │       ├── context/        # ContextManager (§88)        embedding/ # Knowledge Q&A (§11.4)
 │       ├── search/         # regex 전문 검색 (§5.11)      index/     # 링크 인덱서 (§29)
 │       ├── plugin/         # 플러그인 설치/레지스트리 (§69) snapshot/  # 버전 히스토리 (§71)
 │       ├── tag/            # Vault 태그 인덱스 (§56m)
+│       ├── approval/       # vault 경계 승인 저장소 (§331)  task/      # vault 태스크 인덱스 (§304)
+│       ├── thumbnail/      # 사진 갤러리 썸네일 캐시 (§56d) protocol/  # 커스텀 URI 스킴(html preview shim)
+│       ├── md/             # tag·task 공유 마크다운 전처리   logging/   # 백엔드 로그 정책
 │       └── fs/ git/ llm/ export/ config/
 ├── src/                    # React 프론트엔드
 │   ├── components/         # editor/ sidebar/ toolbar/ command/ ai/ settings/ layout/ journal/
@@ -56,7 +59,7 @@ baram/
 │   ├── pipeline/           # MD ↔ ProseMirror: md-to-pm.ts / pm-to-md.ts / transformers/
 │   ├── stores/             # Zustand: context/ editor/ file/ ui/ settings/ system/ zettelkasten/ ai/
 │   │                       #   RightPanelMode·SidebarPanel canonical = ui/ui.ts
-│   ├── styles/             # CSS 모듈(~23): index.css(@import) + base.css(토큰·유틸·다크모드)
+│   ├── styles/             # CSS 모듈(~30): index.css(@import) + base.css(토큰·유틸·다크모드)
 │   │                       #   generated/ = Style Dictionary 자동 생성 (DO NOT EDIT)
 │   ├── ipc/                # Tauri IPC 래퍼 (types.ts, invoke.ts)
 │   ├── sandbox/            # 플러그인 샌드박스 호스트/브리지 (§260) — 신뢰 티어 경계
@@ -64,7 +67,7 @@ baram/
 ├── tokens/                 # W3C DTCG 디자인 토큰: primitive/ semantic/ tokens-studio.json
 ├── scripts/                # audit-css-vars.ts, export-tokens-studio.ts
 ├── docs/                   # 공개 사용자 문서 — user-guide·keyboard-shortcuts·faq(앱 Help에 ?raw 번들), plugin-development
-├── dev/                    # 내부 개발 문서 (public 배포 제외) — design/ plans/ impl-notes/
+├── dev/                    # 내부 개발 문서 (원주인 로컬 전용 — gitignore, 이 머신에 없어도 정상) — design/ plans/ impl-notes/
 │                           #   superpowers/ features/ backlog.md next-steps.md progress.json
 ├── tests/                  # E2E (Playwright)
 ├── skills/                 # Claude Code Skills (원주인 로컬 전용 — 의도적 추적 해제, 이 머신에 없어도 정상)
@@ -102,7 +105,7 @@ baram/
   try { await llmComplete(...); } catch { ... } finally { cleanup(); }
   ```
 - **`openUrl()`(plugin-opener)은 capability `opener:default` 범위인 http·https·mailto·tel만 연다** — 다른 scheme은 Tauri ACL이 거부한다. 테스트에서 mock `openUrl` 호출을 단언해도 실제로 열린다는 증거가 아니다
-- **export 경로는 둘이다**: HTML·PDF는 `captureEditorHTML`(에디터 DOM 복제 — 후행 패스 `resolveVideoSources`가 `<a>`를 새로 만드니 최종 정리는 `innerHTML` 직전), Pandoc·Notion은 `serializeLiveDoc` markdown 직행. 출력 정책은 두 경로에 각각 걸어야 한다(#527) — 링크 정책은 DOM 쪽 `export-html-links.ts`, markdown 쪽 `export-markdown-links.ts`(변환기·mermaid 자산 재작성 뒤 **마지막** 패스)에 있다. 새 export 경로나 후행 패스를 추가하면 그 뒤에 다시 걸 것
+- **export 경로는 둘이다**: HTML·PDF는 `captureEditorHTML`(에디터 DOM 복제 — 후행 패스 `resolveVideoSources`가 `<a>`를 새로 만드니 최종 정리는 `innerHTML` 직전), Pandoc·Notion은 `serializeLiveDoc` markdown 직행. 출력 정책은 두 경로에 각각 걸어야 한다(#527) — 링크 정책은 `src/utils/export/`의 DOM 쪽 `export-html-links.ts`, markdown 쪽 `export-markdown-links.ts`(변환기·mermaid 자산 재작성 뒤 **마지막** 패스)에 있다. 새 export 경로나 후행 패스를 추가하면 그 뒤에 다시 걸 것
 - **공유 유틸리티 위치** — 로컬 재구현 금지:
   - `basename()` / `dirname()` → `src/utils/path-utils.ts`
   - Journal 날짜 regex → `src/utils/journal/journal.ts` (`JOURNAL_FILENAME_RE`, `JOURNAL_DATE_PARTS_RE`, `JOURNAL_FILENAME_COMPACT_RE`)
@@ -113,7 +116,7 @@ baram/
 - **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
 - **docs/\*.md 편집**: prettier·lint 대상 밖. 앱 Help에 `?raw` 번들되므로 `help-panel.test.ts`로 확인. in-doc 앵커(`#search-wysiwyg`)는 HelpPanel slugify(소문자·영숫자·하이픈)와 GitHub 슬러그 양쪽에 맞는 heading만 쓸 것
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
-- **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건)
+- **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건) · sort-modules는 모듈 레벨 함수 선언도 알파벳 순을 요구한다 — helper를 추가할 때 자리를 맞출 것
 - **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
@@ -148,9 +151,9 @@ baram/
 - **게이트 exit code는 파이프 없이 캡처**: `cmd | tail`은 tail의 exit를 반환한다 — `cmd > /tmp/log; echo $?` 또는 zsh `pipestatus` 사용
 - cargo test (Rust 단위) · Playwright (E2E, 크로스 플랫폼)
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
-- **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
-- **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
-- **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신
+- **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인. DOM 유지 회귀는 리렌더 전에 잡은 요소의 `isConnected` + 재조회 `toBe` + `MutationObserver` childList 0건으로
+- **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요) · 리사이즈 드래그를 mouseup으로 끝내면 `swallowNextClick`이 window capture click 리스너(300ms)를 무장한다 — 다음 테스트 전에 throwaway click으로 소비 · mermaid는 `setNodeSelection`이 render effect를 재실행해 새 svg id가 비동기로 착지한다 — 그 뒤에 요소를 잡을 것
+- **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신 · 발견한 경로를 문자열 키와 비교하는 스캔은 `path.posix.join`(Windows에서 `join`은 역슬래시)
   - media-toolbar-reveal.test.ts는 소스 텍스트를 스캔해 NodeViewWrapper+MediaToolbar 파일 수 ≥4를 요구 — 뷰에서 toolbar 블록을 다른 파일로 빼면 깨진다
   - pipeline/에 프로덕션 파일을 추가하면 import-boundary의 `MD_TO_PM_ROUTE_FILES` Set(+감사 주석의 개수·날짜)을 갱신해야 한다 — allowlist를 넓히는 우회는 금지
   - 반대로 transformer가 `src/utils/`의 leaf 모듈을 import하는 것은 경계 위반이 아니다 — 금지 closure는 `pm-to-md.ts`에서 출발해 `src/pipeline/` 안으로만 BFS한다
@@ -177,7 +180,7 @@ baram/
 - **3-tier 계층**: Primitive (raw values) → Semantic (meaning) → Component CSS
 - **소스**: `tokens/*.json` (W3C DTCG) → **빌드** `npm run tokens:build` → `src/styles/generated/` 자동 생성
 - **감사** `npm run audit:css-vars` (미정의 CSS 변수 검출) · **Figma export** `npm run tokens:export` → `tokens/tokens-studio.json`
-- **Settings store version**: 18 — 실제 값은 `src/stores/settings/store.ts`의 `version:`이 유일한 출처다(이 줄은 참고용이고 실제로 12에서 멎어 있었다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
+- **Settings store version**: 22 (2026-09 기준) — 실제 값은 `src/stores/settings/store.ts`의 `version:`이 유일한 출처다(이 줄은 참고용이고 두 번 낡은 전례가 있다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
 
 ## 설계 문서 참조 규칙
 
@@ -200,6 +203,7 @@ PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 �
   - ✅ 완료: 테이블 고급(셀 병합·가상 스크롤), 쿼리 블록(§5.13), Git 고급(§67), 파일 스냅샷/버전 히스토리(§71), 네임스페이스(§61, P2 보류), Skills 모드(§72), Settings UI 리디자인, 키보드 단축키 커스터마이징, Heading/List Folding, 코드 리팩토링 + CSS 디자인 토큰 시스템, Vault System(§80~§90), macOS Universal Binary 릴리스(PR #200)
   - ✅ 완료(v0.5.0, 2026-07-30 발행): **플러그인 실행 모델 §260 6개 페이즈** — trusted/sandboxed 두 티어, per-plugin WebviewWindow + Rust `plugin_call` 브로커, 설치 동의(consent) 게이트, 앱 커맨드 ACL 락다운. 플러그인이 기본 활성(§259의 `VITE_ENABLE_PLUGINS` 게이트 제거). 라이브 레지스트리에 `baram-word-count` 2.0.0 발행
   - ✅ 완료(v0.5.0): 파일 뷰어 — PDF(읽기 전용), HTML(샌드박스 프리뷰 + 소스 토글), 이미지·SVG(내장 media-viewer 플러그인 + 공개 `viewer` 확장점, §69)
+  - ✅ 완료(v0.6.x, 현재 v0.6.2): vault 경계 승인 게이트(§90/§331~§335, PR 551), vault 태스크 인덱스(§304), 사진 갤러리 썸네일 캐시(§56d), 백엔드 logging 모듈
   - 🚧 미착수: Canvas, Agent Mode(§11.6), Knowledge Q&A(§11.4), 실시간 협업
 
 > 완료 항목의 상세 이력은 git 히스토리 · `dev/next-steps.md` · `dev/progress.json` 참조.
