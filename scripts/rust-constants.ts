@@ -198,10 +198,24 @@ export function pickApprovedDirParams(rustSource: string): string[] {
     /pub\s+async\s+fn\s+pick_approved_dir\s*<[^>]*>\s*\(([^)]*)\)/gu,
     "pick_approved_dir",
   );
-  return signature
+  const names = signature
     .split(",")
     .map((part) => part.split(":")[0].trim())
     .filter((name) => name.length > 0 && name !== "app");
+
+  // ‼️ The split is on every comma, so a future parameter whose TYPE carries one
+  // (`Option<Result<A, B>>`) would be read as two parameters, one of them a fragment like "B>>".
+  // Left unchecked that returns a plausible-looking list and the consumer compares the payload
+  // against nonsense. Every Rust parameter name is a lowercase identifier, so anything else here
+  // means the parse broke.
+  for (const name of names) {
+    if (!/^[a-z_][a-z0-9_]*$/u.test(name)) {
+      throw new Error(
+        `cannot read pick_approved_dir parameters: "${name}" is not a parameter name — the signature parse broke`,
+      );
+    }
+  }
+  return names;
 }
 
 /** Exactly one declaration must match, or we are guessing which value ships. */

@@ -185,9 +185,12 @@ describe("activity bar item labels", () => {
     expect(missing).toEqual([]);
   });
 
-  it("has no orphaned item label", () => {
+  // Both catalogues, not just EN: a key added to ko alone and referenced by nothing escapes an
+  // EN-only scan entirely. locale-parity catches that particular shape from the other side, but
+  // this check should not depend on which guard happens to run.
+  it.each(LOCALES)("has no orphaned item label in %s", (_name, locale) => {
     const referenced = new Set(activityBarItemKeys());
-    const orphaned = Object.keys(EN).filter(
+    const orphaned = Object.keys(locale).filter(
       (k) => k.startsWith("settings.activitybar.item.") && !referenced.has(k),
     );
     expect(orphaned).toEqual([]);

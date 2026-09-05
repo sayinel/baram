@@ -140,9 +140,13 @@ describe("TemplatePathRow — reading a long path", () => {
     });
     render(<GeneralTab />);
 
-    expect(screen.getByLabelText("Journal Directory")).toHaveValue(
-      "/Users/someone/Notes/journal",
-    );
+    // The name, asserted directly. `getByLabelText` alone would already throw if the tooltip had
+    // overwritten aria-label, but then the assertion under this test's name would be proving
+    // something else — that the field holds its value.
+    const input = screen.getByLabelText("Journal Directory");
+    expect(input).toHaveAccessibleName("Journal Directory");
+    expect(input).not.toHaveAccessibleName("/Users/someone/Notes/journal");
+    expect(input).toHaveValue("/Users/someone/Notes/journal");
   });
 
   it("uses the wider path row, not the API-key width", () => {

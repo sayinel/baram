@@ -79,6 +79,17 @@ describe("pick_approved_dir arguments (TS ↔ Rust)", () => {
     expect(params).toStrictEqual(["purpose", "start_dir"]);
   });
 
+  it("refuses a signature it cannot actually parse", () => {
+    // The scrape splits on every comma, so a parameter whose TYPE carries one would be read as
+    // two — one of them a fragment. Silently returning that list would have the check above
+    // comparing the payload against nonsense and passing or failing for the wrong reason.
+    expect(() =>
+      pickApprovedDirParams(
+        `pub async fn pick_approved_dir<R: tauri::Runtime>(app: A, purpose: String, retry: Option<Result<u8, String>>) -> X {}`,
+      ),
+    ).toThrow(/the signature parse broke/u);
+  });
+
   it("refuses to guess when the declaration is not unique", () => {
     expect(() =>
       pickApprovedDirParams(`

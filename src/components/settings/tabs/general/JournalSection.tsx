@@ -11,6 +11,7 @@ import { useTranslation } from "../../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../../ipc/approval";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { initJournalTemplatesDir } from "../../../../utils/journal/journal-templates";
+import { resolveAbsoluteDirSetting } from "../../../../utils/path-utils";
 import { MigrationDialog } from "../../../journal/MigrationDialog";
 import {
   SettingsRow,
@@ -87,9 +88,14 @@ export function JournalSection() {
             <TemplatePathRow
               label={t("settings.general.journalDirectory")}
               onBrowse={async () => {
+                // ‼️ Through the resolver, not raw. Both settings are documented absolute-only and the
+                // row is readOnly, so a relative value only survives as legacy persisted
+                // state — and zettelkastenDirectory has no scrub migration at all. Rust
+                // would then stat it against the APP PROCESS CWD (src-tauri/ in dev, / for
+                // a launched .app) and open the picker somewhere arbitrary (#556 review L2).
                 const selected = await pickApprovedDir(
                   "journal",
-                  journalDirectory,
+                  resolveAbsoluteDirSetting(journalDirectory) ?? "",
                 );
                 if (selected) setJournalDirectory(selected);
               }}

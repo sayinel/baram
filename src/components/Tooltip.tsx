@@ -40,6 +40,37 @@ const OFFSET_PX = 8;
  */
 let lastHiddenAt = 0;
 
+/**
+ * The one instance currently showing a pill, so a second one can evict it.
+ *
+ * Shared because the defect it fixes is inherently cross-instance: focus an icon with the
+ * keyboard and then hover a different one, and the focused trigger receives neither `blur` nor
+ * `pointerleave` — nothing local to it can know it should stop. Two pills then paint in the same
+ * column about 44px apart, which reads as a rendering bug rather than as two labels.
+ */
+let currentOwner: null | { hide: () => void; token: object } = null;
+
+/**
+ * Claim the slot at the moment a pill actually appears.
+ *
+ * ‼️ NOT at schedule time. Evicting the previous owner when the timer is armed would blank the
+ * label the pointer is leaving 150ms before the next one arrives — a flash of nothing on every
+ * cold move, which is the exact feeling {@link WARM_WINDOW_MS} exists to remove.
+ */
+function claim(token: object, hide: () => void): void {
+  if (currentOwner && currentOwner.token !== token) currentOwner.hide();
+  currentOwner = { hide, token };
+}
+
+/**
+ * ‼️ Compare-and-clear, never an unconditional clear. An earlier instance's late hide (Escape,
+ * a delayed blur, an unmount) would otherwise wipe the NEWER owner's slot, after which the next
+ * show evicts nobody and two pills are back — intermittently, which is the worst version.
+ */
+function release(token: object): void {
+  if (currentOwner?.token === token) currentOwner = null;
+}
+
 /** Props {@link Tooltip} sets on its child. Composed with the child's own, never replacing them. */
 interface TriggerProps {
   "aria-label"?: string;
@@ -61,6 +92,10 @@ export function Tooltip({
    * Also becomes the trigger's accessible name, because the pill itself is only in the DOM
    * while it is showing — an icon-only button would otherwise be nameless to a screen reader
    * for all the time it is not hovered.
+   *
+   * May be empty, and empty is a real state rather than a caller mistake: a settings field
+   * holds a path that has not been chosen yet. An empty label shows no pill and leaves the
+   * trigger's own accessible name alone.
    */
   label: string;
   placement?: Placement;
@@ -69,10 +104,27 @@ export function Tooltip({
   const triggerRef = useRef<HTMLElement | null>(null);
   const floatingRef = useRef<HTMLDivElement | null>(null);
   const timerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
+  const releaseTimerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   /**
-   * Set between a press and the pointer leaving. A press hands the trigger focus, and focus is
-   * one of the two ways this opens — so without this the label a press just dismissed would
-   * reappear immediately, over the panel that press opened.
+   * Mirrors `visible` for the shared-state writes, which must not happen inside a `setVisible`
+   * updater: React double-invokes updaters under StrictMode and may evaluate them eagerly, so
+   * an updater that stamps a clock or claims a slot would do it twice or at the wrong time.
+   */
+  const visibleRef = useRef(false);
+  /** Stable identity for this instance's claim on the shared slot. */
+  const tokenRef = useRef({});
+  /**
+   * Suppresses the focus a press delivers, and only that focus.
+   *
+   * A press on an activity bar icon opens a panel, and the browser hands the button focus in the
+   * same task — focus being one of the two ways this opens, the label a press just dismissed
+   * would reappear over the panel that press revealed. So the guard is ONE-SHOT: it is cleared on
+   * the next task, by which time that focus event has been and gone.
+   *
+   * ‼️ It used to be cleared only by `pointerleave`, which made it outlive its purpose. On the
+   * read-only path field there is no panel, and a user who clicked the field — the natural move
+   * when trying to read a long path — then got no label back even after tabbing away and back
+   * (§556 review M3).
    */
   const pressedRef = useRef(false);
 
@@ -85,28 +137,72 @@ export function Tooltip({
 
   const hide = useCallback(() => {
     cancelPending();
-    setVisible((wasVisible) => {
-      if (wasVisible) lastHiddenAt = Date.now();
-      return false;
-    });
+    if (visibleRef.current) {
+      visibleRef.current = false;
+      lastHiddenAt = Date.now();
+    }
+    release(tokenRef.current);
+    setVisible(false);
   }, [cancelPending]);
 
+  const reveal = useCallback(() => {
+    claim(tokenRef.current, hide);
+    visibleRef.current = true;
+    setVisible(true);
+  }, [hide]);
+
   const show = useCallback(() => {
-    if (pressedRef.current) return;
+    if (pressedRef.current || !label) return;
     cancelPending();
     if (Date.now() - lastHiddenAt < WARM_WINDOW_MS) {
-      setVisible(true);
+      reveal();
       return;
     }
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      setVisible(true);
+      reveal();
     }, SHOW_DELAY_MS);
-  }, [cancelPending]);
+  }, [cancelPending, label, reveal]);
 
-  useEffect(() => cancelPending, [cancelPending]);
+  useEffect(
+    () => () => {
+      cancelPending();
+      if (releaseTimerRef.current !== null) {
+        clearTimeout(releaseTimerRef.current);
+      }
+      // A trigger can unmount with its pill up — the settings modal closing, or tasksEnabled
+      // switching off.
+      //
+      // ‼️ What this does NOT prevent, having tried to write the test: a dead entry left here is
+      // self-healing, because the next `claim` calls the dead instance's `hide` (a no-op setState
+      // on an unmounted component) and that hide releases the slot before the new owner takes it.
+      // So no two-pill defect is reachable through it, and no test in this file can fail without
+      // this line. What it does prevent is the module holding a closure over an unmounted
+      // component's refs until the next show happens — small, real, and invisible to RTL.
+      release(tokenRef.current);
+    },
+    [cancelPending],
+  );
 
-  // WCAG 1.4.13 — hover content must be dismissible without moving the pointer.
+  /**
+   * The label going empty has to put the pill away itself.
+   *
+   * `pointerleave` and `blur` cannot be relied on to do it: WKWebView does not focus a `<button>`
+   * on click, so pressing Clear beside a focused path field moves neither. Without this the pill
+   * is merely suppressed while `visible` stays true, and the next non-empty value paints a pill
+   * beside a field nobody is hovering (§556 review M1).
+   */
+  useEffect(() => {
+    if (!label) hide();
+  }, [label, hide]);
+
+  // WCAG 1.4.13 Dismissible — hover content must be dismissible without moving the pointer.
+  //
+  // The same criterion's Hoverable requirement is NOT met: `pointer-events: none` plus the gap
+  // to the trigger means moving toward the pill leaves the trigger and the pill goes away. That
+  // is a deliberate trade (a label that can swallow a click on the icon it describes is worse),
+  // and it costs nothing here because the pill is non-interactive text that is also the
+  // trigger's accessible name.
   useEffect(() => {
     if (!visible) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -128,6 +224,10 @@ export function Tooltip({
     void computePosition(trigger, floating, {
       middleware: [offset(OFFSET_PX), flip(), shift({ padding: OFFSET_PX })],
       placement,
+      // Must match `position: fixed` in tooltip.css. Left at the default "absolute", floating-ui
+      // resolves the offset parent to the window and ADDS window scroll to the result — inert
+      // only while base.css keeps html/body/#root at overflow: hidden.
+      strategy: "fixed",
     }).then(({ x, y }) => {
       if (cancelled || !floatingRef.current) return;
       floatingRef.current.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
@@ -139,15 +239,17 @@ export function Tooltip({
   }, [visible, placement, label]);
 
   const childProps = children.props;
+  const childRef = childProps.ref;
 
-  // A trigger with nothing to say is left exactly as it was — no pill, and no accessible
-  // name overwritten with the empty string. Callers pass a value that is only sometimes
-  // present (a path that has not been chosen yet), and branching at every call site would
-  // mean conditionally rendering a component, which changes the child's identity.
-  if (!label) return children;
+  const setTriggerNode = useCallback(
+    (node: HTMLElement | null) => {
+      triggerRef.current = node;
+      assignRef(childRef, node);
+    },
+    [childRef],
+  );
 
-  const trigger = cloneElement(children, {
-    "aria-label": childProps["aria-label"] ?? label,
+  const triggerProps: TriggerProps = {
     onBlur: (e: FocusEvent<HTMLElement>) => {
       childProps.onBlur?.(e);
       hide();
@@ -159,6 +261,13 @@ export function Tooltip({
     onPointerDown: (e: PointerEvent<HTMLElement>) => {
       childProps.onPointerDown?.(e);
       pressedRef.current = true;
+      if (releaseTimerRef.current !== null) {
+        clearTimeout(releaseTimerRef.current);
+      }
+      releaseTimerRef.current = setTimeout(() => {
+        releaseTimerRef.current = null;
+        pressedRef.current = false;
+      }, 0);
       hide();
     },
     onPointerEnter: (e: PointerEvent<HTMLElement>) => {
@@ -167,19 +276,22 @@ export function Tooltip({
     },
     onPointerLeave: (e: PointerEvent<HTMLElement>) => {
       childProps.onPointerLeave?.(e);
-      pressedRef.current = false;
       hide();
     },
-    ref: (node: HTMLElement | null) => {
-      triggerRef.current = node;
-      assignRef(childProps.ref, node);
-    },
-  });
+    ref: setTriggerNode,
+  };
+
+  // Only set when there is a name to set. `cloneElement` assigns an explicit `undefined` over
+  // the child's own value, so spelling this key unconditionally would erase the child's
+  // `aria-label` whenever the label is empty.
+  const accessibleName = childProps["aria-label"] ?? (label || undefined);
+  if (accessibleName !== undefined) triggerProps["aria-label"] = accessibleName;
 
   return (
     <>
-      {trigger}
+      {cloneElement(children, triggerProps)}
       {visible &&
+        label &&
         createPortal(
           <div className="tooltip" ref={floatingRef} role="tooltip">
             {label}

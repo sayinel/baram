@@ -33,7 +33,7 @@ const PRESET_COLORS = [
 // ── Vault extension list ────────────────────────────────────────────────────
 
 const VAULT_EXTENSIONS = [
-  { extId: "ext-wikilink", labelKey: "settings.vault.wikilinks" },
+  { extId: "ext-wikilink", labelKey: "settings.vault.extension.wikilink" },
   { extId: "ext-mermaid", labelKey: "settings.vault.extension.mermaid" },
   { extId: "ext-skills", labelKey: "settings.vault.extension.skills" },
   { extId: "ext-journal", labelKey: "settings.vault.extension.journal" },
@@ -375,7 +375,7 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
           {t("settings.vault.markdown")}
         </h4>
         <ThreeStateToggle
-          label={t("settings.vault.wikilinks")}
+          label={t("settings.vault.markdownWikilinks")}
           onChange={(v) =>
             saveConfig({
               ...config,

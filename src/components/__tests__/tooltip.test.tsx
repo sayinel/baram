@@ -2,7 +2,15 @@
 // right words on screen — it put them there about a second late, which on an icon-only rail is
 // the same as not having them. So these tests pin WHEN the label appears, not that it exists.
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { Tooltip } from "../Tooltip";
 
@@ -10,6 +18,12 @@ import { Tooltip } from "../Tooltip";
  * The warm window lives in module scope, so one test's dismissal would otherwise leave the next
  * test warm and make its "waits for the delay" assertion vacuous. Jumping the clock past the
  * window is enough — and it does it without adding a test-only reset export to the component.
+ *
+ * ‼️ This only works because the fake clock is installed ONCE, below, rather than per test.
+ * `vi.useFakeTimers()` resets the mocked now to the real system time, so calling it in
+ * `beforeEach` sends the clock BACKWARDS past a stamp an earlier test left behind — and a
+ * negative age reads as inside the window, which is warm. That silently turned a cold-path
+ * assertion into a warm-path one.
  */
 function goCold() {
   vi.setSystemTime(Date.now() + 60_000);
@@ -28,13 +42,16 @@ function renderBar() {
   );
 }
 
-beforeEach(() => {
+beforeAll(() => {
   vi.useFakeTimers();
-  goCold();
 });
 
-afterEach(() => {
+afterAll(() => {
   vi.useRealTimers();
+});
+
+beforeEach(() => {
+  goCold();
 });
 
 describe("show delay", () => {
@@ -215,5 +232,174 @@ describe("a trigger with nothing to say", () => {
     expect(screen.getByText("browse")).toHaveAccessibleName(
       "Browse for a folder",
     );
+  });
+});
+
+describe("only one pill at a time (§556 review M2)", () => {
+  it("keeps the showing label up while the next one is still waiting out its delay", () => {
+    // The eviction happens when the next pill APPEARS, not when its timer is armed. Evicting at
+    // schedule time blanks the label the pointer is leaving 150ms before the next one arrives —
+    // a flash of nothing on every cold move, which is what the warm window exists to remove.
+    renderBar();
+    fireEvent.focus(screen.getByText("files"));
+    act(() => void vi.advanceTimersByTime(150));
+
+    fireEvent.pointerOver(screen.getByText("search"));
+    act(() => void vi.advanceTimersByTime(140));
+
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Files");
+  });
+
+  it("evicts the previous one when the next appears, and keeps the RIGHT one", () => {
+    // A keyboard-focused trigger receives neither blur nor pointerleave when the mouse goes
+    // somewhere else, so nothing local to it can know it should stop. Asserting the count alone
+    // would also pass a fix that hid the wrong pill.
+    renderBar();
+    fireEvent.focus(screen.getByText("files"));
+    act(() => void vi.advanceTimersByTime(150));
+    fireEvent.pointerOver(screen.getByText("search"));
+
+    act(() => void vi.advanceTimersByTime(150));
+
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Search");
+  });
+
+  it("hands the slot back when a trigger unmounts with its pill up", () => {
+    // A trigger can vanish while showing — the settings modal closing, tasksEnabled switching
+    // off. A dead entry left in the slot means the next show evicts nobody.
+    const { rerender } = render(
+      <>
+        <Tooltip label="Files">
+          <button type="button">files</button>
+        </Tooltip>
+        <Tooltip label="Search">
+          <button type="button">search</button>
+        </Tooltip>
+      </>,
+    );
+    fireEvent.focus(screen.getByText("files"));
+    act(() => void vi.advanceTimersByTime(150));
+
+    rerender(
+      <>
+        <Tooltip label="Search">
+          <button type="button">search</button>
+        </Tooltip>
+      </>,
+    );
+    goCold();
+    fireEvent.pointerOver(screen.getByText("search"));
+    act(() => void vi.advanceTimersByTime(150));
+
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Search");
+  });
+});
+
+describe("a label that goes empty (§556 review M1)", () => {
+  function PathField({ value }: { value: string }) {
+    return (
+      <Tooltip label={value}>
+        <input aria-label="Journal Directory" readOnly value={value} />
+      </Tooltip>
+    );
+  }
+
+  it("puts the pill away, and it does not come back when a value returns", () => {
+    // The reported path: Tab into the field (pill shows), then click Clear with the MOUSE.
+    // WKWebView does not focus a <button> on click, so the input keeps focus and the pointer
+    // never entered it -- neither blur nor pointerleave fires. Suppressing the portal without
+    // clearing `visible` left the next non-empty value painting a pill nobody hovered.
+    const { rerender } = render(
+      <PathField value="/Users/someone/Notes/journal" />,
+    );
+    fireEvent.focus(screen.getByLabelText("Journal Directory"));
+    act(() => void vi.advanceTimersByTime(150));
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+
+    rerender(<PathField value="" />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    rerender(<PathField value="/Users/someone/Notes/daily" />);
+    act(() => void vi.advanceTimersByTime(1000));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+});
+
+describe("the press guard is one-shot (§556 review M3)", () => {
+  it("lets a later focus open the label again", () => {
+    // The guard exists for the focus a press delivers in that same task -- on an activity bar
+    // icon, a label re-summoned that way would sit over the panel the press opened. Cleared only
+    // by pointerleave, it outlived that purpose: on the read-only path field there is no panel,
+    // and clicking the field to read a long path left no label even after tabbing away and back.
+    renderBar();
+    const files = screen.getByText("files");
+    fireEvent.pointerDown(files);
+    fireEvent.focus(files);
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    goCold();
+    fireEvent.blur(files);
+    fireEvent.focus(files);
+    act(() => void vi.advanceTimersByTime(150));
+
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Files");
+  });
+});
+
+describe("the shared slot survives a late hide from an evicted instance", () => {
+  it("does not let it wipe the newer owner, which would put two pills back", () => {
+    // A is focused with the keyboard, so it keeps DOM focus after the mouse moves to B and B
+    // evicts it. A's blur therefore arrives LATE — after B owns the slot. Releasing
+    // unconditionally there empties the slot, and the next show then evicts nobody.
+    render(
+      <>
+        <Tooltip label="Files">
+          <button type="button">files</button>
+        </Tooltip>
+        <Tooltip label="Search">
+          <button type="button">search</button>
+        </Tooltip>
+        <Tooltip label="Graph View">
+          <button type="button">graph</button>
+        </Tooltip>
+      </>,
+    );
+
+    fireEvent.focus(screen.getByText("files"));
+    act(() => void vi.advanceTimersByTime(150));
+    fireEvent.pointerOver(screen.getByText("search"));
+    act(() => void vi.advanceTimersByTime(150));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Search");
+
+    // The late one, from the instance that was already evicted.
+    fireEvent.blur(screen.getByText("files"));
+    fireEvent.pointerOver(screen.getByText("graph"));
+    act(() => void vi.advanceTimersByTime(150));
+
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Graph View");
+  });
+});
+
+describe("the warm window is stamped by a pill going away, not by any hide", () => {
+  it("stays cold after a hover that left before the label ever appeared", () => {
+    // `hide()` runs on plenty of paths where nothing was showing — a pointer that passes over an
+    // icon and leaves inside the delay, an empty label on mount. Stamping the shared clock there
+    // would hand the NEXT trigger the warm path, so a label the user never dismissed opens with
+    // no delay at all.
+    renderBar();
+    const files = screen.getByText("files");
+    fireEvent.pointerOver(files);
+    act(() => void vi.advanceTimersByTime(100));
+    fireEvent.pointerOut(files);
+
+    fireEvent.pointerOver(screen.getByText("search"));
+
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });
