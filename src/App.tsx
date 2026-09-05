@@ -206,12 +206,14 @@ function App() {
       sourceModeTabs,
     });
 
-  // Auto-save for non-MD code files (debounced write when dirty)
+  // §82 Auto-save for whatever the source buffer owns: code files, and markdown
+  // while source mode is showing it.
   useCodeAutoSave({
     bufferVersion,
     getSourceBuffer,
     isEditableTextFile,
     markDirty,
+    sourceModeTabs,
   });
 
   // --- File operations ---

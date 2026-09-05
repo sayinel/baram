@@ -82,6 +82,18 @@ interface EditorState {
   /** §38 Close all unpinned tabs except the given one */
   closeOtherTabs: (tabId: string) => void;
   closeTab: (tabId: string) => void;
+  /**
+   * §82 Close every tab belonging to these contexts — PINNED ONES INCLUDED.
+   *
+   * ‼️ `closeTab` refuses a pinned tab (§38), but the context it belongs to is being
+   * removed either way, so refusing here does not keep the tab usable: it strands one
+   * whose `contextId` names a context that no longer exists. `setActiveTab` then falls
+   * past both of its early returns into `switchContext(deadId)`, which no-ops, and the
+   * file sits in a vault Rust no longer has registered. `closeAllTabs` already drops
+   * pinned tabs when the whole workspace closes; this is the same answer, scoped — so
+   * the outcome no longer depends on how many contexts happened to be open.
+   */
+  closeTabsForContexts: (contextIds: ReadonlySet<string>) => void;
   /** §38 Close unpinned tabs to the right of the given tab */
   closeTabsToRight: (tabId: string) => void;
   /** §72 Bumped when external code (e.g. PropertiesPanel) updates file content in store */
@@ -98,7 +110,6 @@ interface EditorState {
    * has no business costing the user their undo stack, cursor, or node views.
    */
   contentRefreshMode: "fresh" | "patch";
-
   /**
    * §313 The file the refresh is about, or `null` for "whatever is active".
    *
@@ -109,6 +120,7 @@ interface EditorState {
    * skip what is not its business.
    */
   contentRefreshPath: null | string;
+
   /** §44 Current editor selection text (for @selection reference) */
   currentSelection: string;
   /** §39 Get next/previous tab in MRU order (wraps around). Returns null if ≤1 tab. */
@@ -131,6 +143,8 @@ interface EditorState {
   markContentStale: (tabId: string) => void;
   /** Gated: no-op (same state reference) if the tab is already at `dirty` or doesn't exist */
   markDirty: (tabId: string, dirty: boolean) => void;
+  /** §82 소스 모드에서 실제 편집이 일어났는지 표시/해제한다. */
+  markSourceEdited: (tabId: string, edited: boolean) => void;
   /** §39 MRU tab order — index 0 is most recently used */
   mruOrder: string[];
   /** Open graph view as a singleton tab */
@@ -144,6 +158,15 @@ interface EditorState {
   registerCaptureDropAccess: (access: CaptureDropAccess | null) => void;
   /** §312 Publish (or clear with `null`) the mounted source surface's buffer accessors */
   registerSourceBufferAccess: (access: null | SourceBufferAccess) => void;
+  /**
+   * §82 Move every tab from one context id to another.
+   *
+   * ‼️ The Folder<->Vault convert has no backend "change the type": it removes the
+   * context and adds it back, and `addContext` mints a NEW id. Without this, every
+   * open tab of that folder keeps naming the old id — the same orphan
+   * `closeTabsForContexts` exists to prevent, reached by a different door.
+   */
+  rekeyTabsContext: (fromContextId: string, toContextId: string) => void;
   /** §61 Rename directory: update all tabs whose filePath starts with oldDir */
   renameDirInTabs: (oldDir: string, newDir: string) => void;
   /** §33 Rename tab: update filePath and title for a renamed file */
@@ -169,6 +192,19 @@ interface EditorState {
   setTabTitle: (tabId: string, title: string) => void;
   /** §312 Live source-buffer accessors, or `null` when no source surface is mounted */
   sourceBufferAccess: null | SourceBufferAccess;
+  /**
+   * §82 마크다운을 **소스 모드에서 직접 고친** 탭들.
+   *
+   * ‼️ `isDirty`로는 알 수 없다. 소스 모드의 마크다운 편집은 일부러 dirty를 세우지
+   * 않으므로(`tab-surface-renderers.tsx` — dirty의 주인은 use-auto-save 하나다),
+   * 저장 안 된 글을 든 탭이 닫기 관문 눈에는 깨끗해 보인다. 그 규약을 깨지 않으려고
+   * 두 번째 플래그로 둔다.
+   *
+   * ‼️ `sourceModeTabs`와 **다르다.** 저쪽은 "지금 소스 모드로 보고 있다"라서 한 글자도
+   * 치지 않아도 켜진다 — 그것으로 관문을 만들면 종료할 때마다 헛프롬프트가 뜬다.
+   * 이 집합은 CodeMirror가 실제 사용자 편집을 보고했을 때만 켜진다.
+   */
+  sourceEditedTabs: string[];
   /**
    * §287 Tabs showing raw markdown instead of WYSIWYG.
    *
@@ -197,8 +233,29 @@ export function isFileTab(tab: EditorTab | undefined): tab is EditorTab {
   return !!tab && (!tab.type || tab.type === "file");
 }
 
+/**
+ * §82 Does this tab hold work that is not on disk?
+ *
+ * ‼️ `isDirty` alone is not the answer. Markdown typed in SOURCE MODE deliberately
+ * does not raise it (`tab-surface-renderers.tsx` — `use-auto-save` is the single
+ * owner of markdown dirty), so a tab holding unsaved text reads as clean. Every
+ * place that asks the question — the tab's dot, the tab switcher, the window title,
+ * the close guards — must ask it through here, or the halves drift: the guard
+ * prompts about a tab the UI never marked, or worse, the UI stays silent while the
+ * text goes out with `closeTab`.
+ *
+ * ‼️ Deliberately NOT `sourceModeTabs`. That set means "showing source", true after
+ * zero keystrokes; a gate built on it marks every tab you merely looked at.
+ */
 export function isGraphTab(tab: EditorTab | undefined): boolean {
   return tab?.type === "graph";
+}
+
+export function isTabUnsaved(
+  tab: EditorTab | undefined,
+  sourceEditedTabs: readonly string[],
+): boolean {
+  return isFileTab(tab) && (tab.isDirty || sourceEditedTabs.includes(tab.id));
 }
 
 /** §69 Plugin detail tab — a rendered control surface, not a document. */
@@ -232,6 +289,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   contentRefreshMode: "fresh",
   contentRefreshPath: null,
   staleContentTabs: [],
+  sourceEditedTabs: [],
   sourceModeTabs: [],
   sourceBufferAccess: null,
   captureDropAccess: null,
@@ -320,11 +378,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const mruOrder = state.mruOrder.filter((id) => id !== tabId);
       const closed = (id: string) => id === tabId;
       const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
+      const sourceEditedTabs = withoutClosedTabs(
+        state.sourceEditedTabs,
+        closed,
+      );
       const staleContentTabs = withoutClosedTabs(
         state.staleContentTabs,
         closed,
       );
-      return { tabs, activeTabId, mruOrder, sourceModeTabs, staleContentTabs };
+      return {
+        tabs,
+        activeTabId,
+        mruOrder,
+        sourceEditedTabs,
+        sourceModeTabs,
+        staleContentTabs,
+      };
     });
 
     // Clean up original doc tracking for dirty detection
@@ -357,6 +426,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // 동등성 관문(CLAUDE.md 규약) — 매 keystroke마다 도는 auto-save가
   // 이미 dirty인 탭에 같은 값을 계속 밀어넣으므로, 값이 그대로면 새 배열을
   // 만들지 않고 기존 state를 그대로 돌려준다.
+  markSourceEdited: (tabId, edited) =>
+    set((state) => {
+      // 동등성 관문 — 소스 모드의 매 keystroke가 여기를 지난다.
+      if (state.sourceEditedTabs.includes(tabId) === edited) return state;
+      return {
+        sourceEditedTabs: edited
+          ? [...state.sourceEditedTabs, tabId]
+          : state.sourceEditedTabs.filter((id) => id !== tabId),
+      };
+    }),
+
   markDirty: (tabId, dirty) =>
     set((state) => {
       const tab = state.tabs.find((t) => t.id === tabId);
@@ -470,11 +550,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
       const closed = (id: string) => closedIds.has(id);
       const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
+      const sourceEditedTabs = withoutClosedTabs(
+        state.sourceEditedTabs,
+        closed,
+      );
       const staleContentTabs = withoutClosedTabs(
         state.staleContentTabs,
         closed,
       );
-      return { tabs, activeTabId, mruOrder, sourceModeTabs, staleContentTabs };
+      return {
+        tabs,
+        activeTabId,
+        mruOrder,
+        sourceEditedTabs,
+        sourceModeTabs,
+        staleContentTabs,
+      };
     }),
 
   closeTabsToRight: (tabId) =>
@@ -492,18 +583,72 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
       const closed = (id: string) => closedIds.has(id);
       const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
+      const sourceEditedTabs = withoutClosedTabs(
+        state.sourceEditedTabs,
+        closed,
+      );
       const staleContentTabs = withoutClosedTabs(
         state.staleContentTabs,
         closed,
       );
-      return { tabs, activeTabId, mruOrder, sourceModeTabs, staleContentTabs };
+      return {
+        tabs,
+        activeTabId,
+        mruOrder,
+        sourceEditedTabs,
+        sourceModeTabs,
+        staleContentTabs,
+      };
     }),
+
+  rekeyTabsContext: (fromContextId, toContextId) =>
+    set((state) => {
+      if (fromContextId === toContextId) return state;
+      if (!state.tabs.some((t) => t.contextId === fromContextId)) return state;
+      return {
+        tabs: state.tabs.map((t) =>
+          t.contextId === fromContextId ? { ...t, contextId: toContextId } : t,
+        ),
+      };
+    }),
+
+  closeTabsForContexts: (contextIds) => {
+    const doomed = get().tabs.filter((t) => contextIds.has(t.contextId));
+    if (doomed.length === 0) return;
+    const ids = new Set(doomed.map((t) => t.id));
+    const closed = (id: string) => ids.has(id);
+
+    // One transition for the whole set, like `closeAllTabs` — not one per tab.
+    set((state) => {
+      const tabs = state.tabs.filter((t) => !ids.has(t.id));
+      return {
+        tabs,
+        activeTabId:
+          state.activeTabId && ids.has(state.activeTabId)
+            ? (tabs[tabs.length - 1]?.id ?? null)
+            : state.activeTabId,
+        mruOrder: state.mruOrder.filter((id) => !ids.has(id)),
+        sourceEditedTabs: withoutClosedTabs(state.sourceEditedTabs, closed),
+        sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, closed),
+        staleContentTabs: withoutClosedTabs(state.staleContentTabs, closed),
+      };
+    });
+
+    // Same dirty-detection cleanup `closeTab` does. No §89 FileContext sweep here:
+    // every doomed tab belongs to a context the caller is removing outright.
+    import("../../utils/editor/programmatic-update").then(
+      ({ clearOriginalDoc }) => {
+        for (const id of ids) clearOriginalDoc(id);
+      },
+    );
+  },
 
   closeAllTabs: () =>
     set((state) => ({
       tabs: [],
       activeTabId: null,
       mruOrder: [],
+      sourceEditedTabs: withoutClosedTabs(state.sourceEditedTabs, () => true),
       sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, () => true),
       staleContentTabs: withoutClosedTabs(state.staleContentTabs, () => true),
     })),

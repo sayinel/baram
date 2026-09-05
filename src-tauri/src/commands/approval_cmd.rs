@@ -116,6 +116,41 @@ pub async fn ensure_approved<R: tauri::Runtime>(
     }
 }
 
+fn home_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    app.path().home_dir().ok()
+}
+
+/// 폴더 피커가 **열릴 위치**. 승인 판정과는 아무 상관이 없다 — 시작 위치는 힌트일 뿐이고,
+/// 권한은 사용자가 실제로 고른 경로에만 붙는다(`pick_approved_dir` 아래쪽 `approve` 호출).
+/// 그래서 웹뷰가 여기에 무엇을 넘기든 vault 경계는 넓어지지 않는다.
+///
+/// `None`과 `Some("")`은 **다른 요청**이다:
+///  - `None` = 호출자가 위치에 관심이 없다 → OS가 기억하는 마지막 폴더를 그대로 쓴다.
+///    "폴더 추가"·플러그인 개발 폴더가 여기 해당한다.
+///  - `Some(_)` = 호출자가 기본 위치를 원한다 → 그 경로가 실재하는 디렉터리면 거기서,
+///    아니면 홈에서 연다. 아직 폴더가 설정되지 않은 저널·태스크·Zettel 행이 이 경우다.
+///
+/// 존재 확인을 건너뛰면 안 된다: 지워진 폴더를 `set_directory`에 넘기면 플랫폼마다
+/// 다르게 동작하고(무시하거나 빈 창) 홈으로 내려간다는 약속이 깨진다.
+///
+/// ‼️ 그 존재 확인은 블로킹 `stat()`이고, 여기가 **웹뷰가 준 경로를 stat하는 새 지점**이다
+/// (§336 보안 리뷰 Low-1). 응답 없는 네트워크 마운트 경로를 보내면 tokio 워커 하나가
+/// 그동안 잠긴다 — `spawn_blocking`으로 감싸지 않은 근거는 바로 다음 줄이 **모달 네이티브
+/// 다이얼로그**를 띄우고 사용자를 기다린다는 것이다(같은 마운트에서 같은 조건). 경계는
+/// 넓어지지 않는다: 이 값은 `approval::approve`에 도달하지 않는다.
+fn resolve_start_dir(
+    requested: Option<&str>,
+    home: Option<std::path::PathBuf>,
+) -> Option<std::path::PathBuf> {
+    let requested = requested?;
+    let candidate = std::path::Path::new(requested);
+    if !requested.is_empty() && candidate.is_dir() {
+        return Some(candidate.to_path_buf());
+    }
+    home
+}
+
 /// §332 신선한 선택은 Rust가 받는다 — 그 선택 자체가 승인이다.
 ///
 /// ‼️ 확인 다이얼로그와 달리 파일/폴더 피커에는 본문 문구 자리가 없다. `set_title`이
@@ -130,6 +165,7 @@ pub async fn ensure_approved<R: tauri::Runtime>(
 pub async fn pick_approved_dir<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     purpose: String,
+    start_dir: Option<String>,
 ) -> Result<Option<String>, String> {
     let title = if is_korean(&app) {
         match purpose.as_str() {
@@ -150,7 +186,11 @@ pub async fn pick_approved_dir<R: tauri::Runtime>(
     };
 
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().set_title(title).pick_folder(move |p| {
+    let mut builder = app.dialog().file().set_title(title);
+    if let Some(dir) = resolve_start_dir(start_dir.as_deref(), home_dir(&app)) {
+        builder = builder.set_directory(dir);
+    }
+    builder.pick_folder(move |p| {
         let _ = tx.send(p);
     });
     let Some(picked) = rx.await.map_err(|e| e.to_string())? else {
@@ -236,6 +276,62 @@ pub fn revoke_approved_root(app: tauri::AppHandle, path: String) -> Result<(), S
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    fn home() -> Option<PathBuf> {
+        Some(PathBuf::from("/home/somebody"))
+    }
+
+    /// 인자를 생략한 호출자는 위치에 관심이 없다 — OS가 기억하는 폴더를 뺏으면 안 된다.
+    /// 홈이 **있어도** None이어야 한다는 것이 이 갈래의 요지다.
+    #[test]
+    fn no_request_means_no_start_directory_at_all() {
+        assert_eq!(super::resolve_start_dir(None, home()), None);
+    }
+
+    #[test]
+    fn an_existing_directory_is_used_as_asked() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let asked = dir.path().to_string_lossy().into_owned();
+
+        assert_eq!(
+            super::resolve_start_dir(Some(&asked), home()),
+            Some(dir.path().to_path_buf())
+        );
+    }
+
+    /// 아직 폴더를 고르지 않은 설정 행이 보내는 값. 빈 문자열은 "기본 위치를 달라"는 뜻이다.
+    #[test]
+    fn an_empty_request_falls_back_to_home() {
+        assert_eq!(super::resolve_start_dir(Some(""), home()), home());
+    }
+
+    #[test]
+    fn a_path_that_is_gone_falls_back_to_home() {
+        assert_eq!(
+            super::resolve_start_dir(Some("/definitely/not/here/at/all"), home()),
+            home()
+        );
+    }
+
+    /// 존재하지만 디렉터리가 **아닌** 경로. `exists()`로 판정했다면 이 케이스가 통과해
+    /// 파일 경로가 `set_directory`로 넘어간다.
+    #[test]
+    fn a_file_is_not_a_start_directory() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("note.md");
+        std::fs::write(&file, b"x").expect("write");
+        let asked = file.to_string_lossy().into_owned();
+
+        assert_eq!(super::resolve_start_dir(Some(&asked), home()), home());
+    }
+
+    /// 홈을 못 구하는 환경에서도 패닉하지 않고 "지정 안 함"으로 내려간다.
+    #[test]
+    fn without_a_home_there_is_simply_no_start_directory() {
+        assert_eq!(super::resolve_start_dir(Some(""), None), None);
+    }
+
     /// ‼️ 두 코드가 같아지면 §333이 만든 구분이 사라진다 — 그리고 그 사고는 "테스트를
     /// 초록으로 만들려고 기대값을 맞추다"가 아니라 **상수를 맞추다** 일어난다. 그래서
     /// 값 자체를 비교하는 단정을 따로 둔다 (§335 리뷰 I3).

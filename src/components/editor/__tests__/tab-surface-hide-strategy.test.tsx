@@ -30,6 +30,7 @@ const renderers: TabSurfaceRenderers = {
     getSourceBuffer: () => "",
     hasSourceBuffer: () => true,
     markDirty: vi.fn(),
+    markSourceEdited: vi.fn(),
     onPdfFindApiChange: vi.fn(),
     onTogglePdfFind: vi.fn(),
     pdfFindOpen: false,

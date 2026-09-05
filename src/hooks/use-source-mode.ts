@@ -221,6 +221,8 @@ export function useSourceMode({
       // to avoid a multi-second whole-DOM rebuild on toggle-back. Cursor
       // restore is deferred to finishLoad (same as fold restore in tab switch).
       if (newDoc.childCount >= LARGE_DOC_BLOCK_THRESHOLD) {
+        // §82 버퍼가 문서로 넘어갔다 — 여기서부터 dirty의 주인은 use-auto-save다.
+        useEditorStore.getState().markSourceEdited(currentTab.id, false);
         setSourceModeForTab(currentTab.id, false);
 
         // [MAJOR fix] Mark the pool entry incomplete so a mid-fill tab
@@ -368,6 +370,8 @@ export function useSourceMode({
         editorStateCache.current.set(currentTabId, cachedState);
       }
 
+      // §82 버퍼가 문서로 넘어갔다 — 여기서부터 dirty의 주인은 use-auto-save다.
+      useEditorStore.getState().markSourceEdited(currentTab.id, false);
       setSourceModeForTab(currentTab.id, false);
 
       // Apply cursor AFTER EditorContent mounts (DOM attached).

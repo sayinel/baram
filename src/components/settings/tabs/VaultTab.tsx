@@ -6,11 +6,14 @@ import type { VaultConfig } from "../../../ipc/types";
 import { Folder, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { requestCloseContexts } from "../../../hooks/use-close-guard";
+import { useTranslation } from "../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../ipc/approval";
 import {
   getVaultConfigByPath,
   setVaultConfigByPath,
 } from "../../../ipc/context";
+import { convertContextType } from "../../../services/context-type-convert";
 import { addFolder } from "../../../services/vault-context-loader";
 import { useContextStore } from "../../../stores/context/context";
 import { logger } from "../../../utils/logger";
@@ -30,20 +33,20 @@ const PRESET_COLORS = [
 // ── Vault extension list ────────────────────────────────────────────────────
 
 const VAULT_EXTENSIONS = [
-  { extId: "ext-wikilink", name: "Wikilinks" },
-  { extId: "ext-mermaid", name: "Mermaid" },
-  { extId: "ext-skills", name: "Skills" },
-  { extId: "ext-journal", name: "Journal" },
-  { extId: "ext-math", name: "Math" },
+  { extId: "ext-wikilink", labelKey: "settings.vault.extension.wikilink" },
+  { extId: "ext-mermaid", labelKey: "settings.vault.extension.mermaid" },
+  { extId: "ext-skills", labelKey: "settings.vault.extension.skills" },
+  { extId: "ext-journal", labelKey: "settings.vault.extension.journal" },
+  { extId: "ext-math", labelKey: "settings.vault.extension.math" },
 ] as const;
 
 // ── Helper components ───────────────────────────────────────────────────────
 
 export function VaultTab() {
+  const { t } = useTranslation();
   const {
     contexts,
     activeContextId,
-    removeContext,
     updateContextAlias,
     updateContextLabel,
     updateContextColor,
@@ -51,7 +54,6 @@ export function VaultTab() {
     useShallow((s) => ({
       contexts: s.contexts,
       activeContextId: s.activeContextId,
-      removeContext: s.removeContext,
       updateContextAlias: s.updateContextAlias,
       updateContextLabel: s.updateContextLabel,
       updateContextColor: s.updateContextColor,
@@ -81,15 +83,15 @@ export function VaultTab() {
 
   return (
     <div className="settings-section">
-      <h3 className="settings-section-title">Contexts</h3>
+      <h3 className="settings-section-title">{t("settings.vault.contexts")}</h3>
       <p className="settings-section-desc">
-        Manage open vaults, folders, and files.
+        {t("settings.vault.contexts.desc")}
       </p>
 
       <div className="vault-tab-list">
         {contexts.length === 0 ? (
           <p className="vault-tab-empty">
-            No contexts open. Click "Add Folder" to get started.
+            {t("settings.vault.contexts.empty")}
           </p>
         ) : (
           contexts.map((ctx) => (
@@ -99,66 +101,19 @@ export function VaultTab() {
               key={ctx.id}
               onAliasChange={(alias) => updateContextAlias(ctx.id, alias)}
               onColorChange={(color) => updateContextColor(ctx.id, color)}
+              // §82 Both directions live in one place now — they differed only in
+              // one IPC call, and both were missing the tab re-key that keeps the
+              // new context id attached to the tabs it already owns.
               onConvertType={
                 ctx.contextType === "folder" || ctx.contextType === "vault"
-                  ? async () => {
-                      const wasActive = activeContextId === ctx.id;
-                      if (ctx.contextType === "folder") {
-                        // Folder → Vault: create .baram/config.json
-                        const { initVault } =
-                          await import("../../../ipc/context");
-                        await initVault(ctx.path, ctx.label);
-                        await removeContext(ctx.id);
-                        const added = await useContextStore
-                          .getState()
-                          .addContext("vault", ctx.path, {
-                            alias: ctx.label,
-                            color: ctx.color,
-                            label: ctx.label,
-                          });
-                        if (wasActive) {
-                          const { switchContext } =
-                            await import("../../../services/vault-context-loader");
-                          await switchContext(added.id);
-                        }
-                      } else {
-                        // Vault → Folder: remove .baram/config.json vault section
-                        await setVaultConfigByPath(ctx.path, {});
-                        await removeContext(ctx.id);
-                        const added = await useContextStore
-                          .getState()
-                          .addContext("folder", ctx.path, {
-                            color: ctx.color,
-                            label: ctx.label,
-                          });
-                        if (wasActive) {
-                          const { switchContext } =
-                            await import("../../../services/vault-context-loader");
-                          await switchContext(added.id);
-                        }
-                      }
-                    }
+                  ? () => convertContextType(ctx)
                   : undefined
               }
               onLabelChange={(label) => updateContextLabel(ctx.id, label)}
-              onRemove={async () => {
-                const wasActive = activeContextId === ctx.id;
-                await removeContext(ctx.id);
-
-                if (wasActive) {
-                  const newActive = useContextStore.getState().activeContextId;
-                  if (newActive) {
-                    const { switchContext } =
-                      await import("../../../services/vault-context-loader");
-                    await switchContext(newActive);
-                  } else {
-                    // No contexts left — clear FileTree
-                    const { useFileStore } =
-                      await import("../../../stores/file/file");
-                    useFileStore.getState().closeFolder();
-                  }
-                }
-              }}
+              // §82 Same door as the context tab's x. This path used to skip
+              // closing the context's editor tabs, leaving them pointing at an id
+              // that no longer existed.
+              onRemove={() => requestCloseContexts([ctx.id])}
               onSelect={() => setSelectedContextId(ctx.id)}
             />
           ))
@@ -168,7 +123,7 @@ export function VaultTab() {
       <div className="vault-tab-actions">
         <button className="vault-tab-add-btn" onClick={handleAddFolder}>
           <Folder size={14} />
-          Add Folder…
+          {t("settings.vault.addFolder")}
         </button>
       </div>
 
@@ -177,8 +132,12 @@ export function VaultTab() {
       )}
       {selectedContext && selectedContext.contextType === "folder" && (
         <p className="settings-section-desc">
-          This is a plain folder. Use &ldquo;Initialize as Vault&rdquo; from the
-          + menu to enable per-folder settings.
+          {/* The action is interpolated rather than spelled out twice: it is also the label of
+              the button that performs it, and a rename would otherwise leave this sentence
+              pointing at a menu item that no longer exists under that name. */}
+          {t("settings.vault.folderNotice", {
+            action: t("settings.vault.initialize"),
+          })}
         </p>
       )}
 
@@ -251,6 +210,7 @@ function ThreeStateToggle({
   onChange: (v: boolean | undefined) => void;
   value: boolean | undefined;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="vault-settings-row">
       <span className="vault-settings-row__label">{label}</span>
@@ -260,21 +220,21 @@ function ThreeStateToggle({
           onClick={() => onChange(undefined)}
           type="button"
         >
-          Default
+          {t("settings.vault.state.default")}
         </button>
         <button
           className={`vault-three-state-btn ${value === true ? "vault-three-state-btn--active" : ""}`}
           onClick={() => onChange(true)}
           type="button"
         >
-          On
+          {t("settings.vault.state.on")}
         </button>
         <button
           className={`vault-three-state-btn ${value === false ? "vault-three-state-btn--active" : ""}`}
           onClick={() => onChange(false)}
           type="button"
         >
-          Off
+          {t("settings.vault.state.off")}
         </button>
       </div>
     </div>
@@ -286,14 +246,15 @@ function ThreeStateToggle({
 function VaultExtensionToggle({
   config,
   extId,
-  name,
+  labelKey,
   onSave,
 }: {
   config: VaultConfig;
   extId: string;
-  name: string;
+  labelKey: string;
   onSave: (updated: VaultConfig) => void;
 }) {
+  const { t } = useTranslation();
   const enabled = config.extensions?.enabled ?? [];
   const disabled = config.extensions?.disabled ?? [];
 
@@ -319,28 +280,28 @@ function VaultExtensionToggle({
 
   return (
     <div className="vault-settings-row">
-      <span className="vault-settings-row__label">{name}</span>
+      <span className="vault-settings-row__label">{t(labelKey)}</span>
       <div className="vault-settings-row__control">
         <button
           className={`vault-three-state-btn ${state === "default" ? "vault-three-state-btn--active" : ""}`}
           onClick={() => handleChange("default")}
           type="button"
         >
-          Default
+          {t("settings.vault.state.default")}
         </button>
         <button
           className={`vault-three-state-btn ${state === "enabled" ? "vault-three-state-btn--active" : ""}`}
           onClick={() => handleChange("enabled")}
           type="button"
         >
-          Enabled
+          {t("settings.vault.state.enabled")}
         </button>
         <button
           className={`vault-three-state-btn ${state === "disabled" ? "vault-three-state-btn--active" : ""}`}
           onClick={() => handleChange("disabled")}
           type="button"
         >
-          Disabled
+          {t("settings.vault.state.disabled")}
         </button>
       </div>
     </div>
@@ -350,6 +311,7 @@ function VaultExtensionToggle({
 // ── VaultTab ────────────────────────────────────────────────────────────────
 
 function VaultSettingsSection({ contextPath }: { contextPath: string }) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<null | VaultConfig>(null);
   const [loading, setLoading] = useState(true);
 
@@ -373,7 +335,10 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
     [contextPath],
   );
 
-  if (loading) return <p className="vault-settings-loading">Loading…</p>;
+  if (loading)
+    return (
+      <p className="vault-settings-loading">{t("settings.vault.loading")}</p>
+    );
   if (!config) return null;
 
   const bulletMarker =
@@ -382,21 +347,23 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
   return (
     <>
       <h3 className="settings-section-title" style={{ marginTop: 24 }}>
-        Vault Settings Override
+        {t("settings.vault.override")}
       </h3>
       <p className="settings-section-desc">
-        These settings override global defaults for this vault only.
+        {t("settings.vault.override.desc")}
       </p>
 
       {/* Extensions */}
       <div className="vault-settings-group">
-        <h4 className="vault-settings-group__title">Extensions</h4>
-        {VAULT_EXTENSIONS.map(({ extId, name }) => (
+        <h4 className="vault-settings-group__title">
+          {t("settings.vault.extensions")}
+        </h4>
+        {VAULT_EXTENSIONS.map(({ extId, labelKey }) => (
           <VaultExtensionToggle
             config={config}
             extId={extId}
             key={extId}
-            name={name}
+            labelKey={labelKey}
             onSave={saveConfig}
           />
         ))}
@@ -404,9 +371,11 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
 
       {/* Markdown */}
       <div className="vault-settings-group">
-        <h4 className="vault-settings-group__title">Markdown</h4>
+        <h4 className="vault-settings-group__title">
+          {t("settings.vault.markdown")}
+        </h4>
         <ThreeStateToggle
-          label="Wikilinks"
+          label={t("settings.vault.markdownWikilinks")}
           onChange={(v) =>
             saveConfig({
               ...config,
@@ -416,7 +385,7 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
           value={config.markdown?.enableWikilink}
         />
         <ThreeStateToggle
-          label="Mermaid Diagrams"
+          label={t("settings.vault.markdownMermaid")}
           onChange={(v) =>
             saveConfig({
               ...config,
@@ -426,7 +395,7 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
           value={config.markdown?.enableMermaid}
         />
         <SelectSetting
-          label="Bullet List Marker"
+          label={t("settings.vault.bulletMarker")}
           onChange={(v) =>
             saveConfig({
               ...config,
@@ -442,10 +411,10 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
             })
           }
           options={[
-            { label: "Default (global)", value: "" },
-            { label: "- (dash)", value: "-" },
-            { label: "* (asterisk)", value: "*" },
-            { label: "+ (plus)", value: "+" },
+            { label: t("settings.vault.bulletMarker.global"), value: "" },
+            { label: t("settings.vault.bulletMarker.dash"), value: "-" },
+            { label: t("settings.vault.bulletMarker.asterisk"), value: "*" },
+            { label: t("settings.vault.bulletMarker.plus"), value: "+" },
           ]}
           value={bulletMarker}
         />
@@ -453,20 +422,22 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
 
       {/* AI */}
       <div className="vault-settings-group">
-        <h4 className="vault-settings-group__title">AI</h4>
+        <h4 className="vault-settings-group__title">
+          {t("settings.vault.group.ai")}
+        </h4>
         <TextSetting
-          label="Model Override"
+          label={t("settings.vault.aiModelOverride")}
           onChange={(v) =>
             saveConfig({
               ...config,
               ai: { ...config.ai, model: v || undefined },
             })
           }
-          placeholder="Default (global)"
+          placeholder={t("settings.vault.aiModelOverride.placeholder")}
           value={config.ai?.model ?? ""}
         />
         <ThreeStateToggle
-          label="Privacy Mode"
+          label={t("settings.ai.privacyMode")}
           onChange={(v) =>
             saveConfig({
               ...config,
@@ -479,9 +450,11 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
 
       {/* Work Log */}
       <div className="vault-settings-group">
-        <h4 className="vault-settings-group__title">Work Log</h4>
+        <h4 className="vault-settings-group__title">
+          {t("settings.vault.workLog")}
+        </h4>
         <ThreeStateToggle
-          label="Enable Work Log"
+          label={t("settings.vault.workLogEnabled")}
           onChange={(v) =>
             saveConfig({
               ...config,
@@ -493,25 +466,25 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
         {config.workLog?.enabled && (
           <>
             <TextSetting
-              label="Folder"
+              label={t("settings.vault.workLogFolder")}
               onChange={(v) =>
                 saveConfig({
                   ...config,
                   workLog: { ...config.workLog, folder: v || undefined },
                 })
               }
-              placeholder="daily"
+              placeholder={t("settings.vault.workLogFolder.placeholder")}
               value={config.workLog?.folder ?? ""}
             />
             <TextSetting
-              label="Template"
+              label={t("settings.vault.workLogTemplate")}
               onChange={(v) =>
                 saveConfig({
                   ...config,
                   workLog: { ...config.workLog, template: v || undefined },
                 })
               }
-              placeholder="templates/work-log.md"
+              placeholder={t("settings.vault.workLogTemplate.placeholder")}
               value={config.workLog?.template ?? ""}
             />
           </>
@@ -550,6 +523,7 @@ function VaultTabItem({
   onRemove: () => void;
   onSelect?: () => void;
 }) {
+  const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [editingAlias, setEditingAlias] = useState(false);
   const [showColors, setShowColors] = useState(false);
@@ -558,12 +532,19 @@ function VaultTabItem({
 
   const typeLabel =
     context.vaultType === "journal"
-      ? "Journal"
+      ? t("settings.vault.type.journal")
       : context.contextType === "vault"
-        ? "Vault"
+        ? t("settings.vault.type.vault")
         : context.contextType === "folder"
-          ? "Folder"
-          : "File";
+          ? t("settings.vault.type.folder")
+          : t("settings.vault.type.file");
+
+  // One label, used as both the button's text and its tooltip. It was written out twice, so a
+  // wording change had to be made in two places that nothing tied together.
+  const convertLabel =
+    context.contextType === "folder"
+      ? t("settings.vault.initialize")
+      : t("settings.vault.revert");
 
   return (
     <div
@@ -574,7 +555,7 @@ function VaultTabItem({
         className="vault-tab-item__color"
         onClick={() => setShowColors((v) => !v)}
         style={{ backgroundColor: context.color }}
-        title="Change color"
+        title={t("settings.vault.item.changeColor")}
       />
       <div className="vault-tab-item__info">
         {editing ? (
@@ -599,7 +580,7 @@ function VaultTabItem({
           <span
             className="vault-tab-item__name"
             onDoubleClick={() => setEditing(true)}
-            title="Double-click to rename"
+            title={t("settings.vault.item.renameHint")}
           >
             {context.label}
           </span>
@@ -622,16 +603,18 @@ function VaultTabItem({
                   }
                   if (e.key === "Escape") setEditingAlias(false);
                 }}
-                placeholder="alias"
+                placeholder={t("settings.vault.item.aliasPlaceholder")}
                 ref={aliasInputRef}
               />
             ) : (
               <span
                 className="vault-tab-item__alias-value"
                 onDoubleClick={() => setEditingAlias(true)}
-                title="Double-click to edit alias"
+                title={t("settings.vault.item.aliasHint")}
               >
-                alias: {context.alias || "(not set)"}
+                {t("settings.vault.item.alias", {
+                  value: context.alias || t("settings.vault.item.aliasUnset"),
+                })}
               </span>
             )}
           </span>
@@ -648,21 +631,15 @@ function VaultTabItem({
               e.stopPropagation();
               onConvertType();
             }}
-            title={
-              context.contextType === "folder"
-                ? "Initialize as Vault"
-                : "Revert to Folder"
-            }
+            title={convertLabel}
           >
-            {context.contextType === "folder"
-              ? "Initialize as Vault"
-              : "Revert to Folder"}
+            {convertLabel}
           </button>
         )}
         <button
           className="vault-tab-item__remove icon-btn"
           onClick={onRemove}
-          title="Close"
+          title={t("common.close")}
         >
           <X size={14} />
         </button>

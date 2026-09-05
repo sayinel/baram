@@ -4,6 +4,7 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../../ipc/approval";
 import { useSettingsStore } from "../../../../stores/settings/store";
+import { resolveAbsoluteDirSetting } from "../../../../utils/path-utils";
 import {
   SettingsRow,
   SettingsSectionHeader,
@@ -56,8 +57,17 @@ export function ZettelkastenSection() {
             label={t("settings.general.zettelkastenDirectory")}
           >
             <TemplatePathRow
+              label={t("settings.general.zettelkastenDirectory")}
               onBrowse={async () => {
-                const selected = await pickApprovedDir("zettelkasten");
+                // ‼️ Through the resolver, not raw. Both settings are documented absolute-only and the
+                // row is readOnly, so a relative value only survives as legacy persisted
+                // state — and zettelkastenDirectory has no scrub migration at all. Rust
+                // would then stat it against the APP PROCESS CWD (src-tauri/ in dev, / for
+                // a launched .app) and open the picker somewhere arbitrary (#556 review L2).
+                const selected = await pickApprovedDir(
+                  "zettelkasten",
+                  resolveAbsoluteDirSetting(zettelkastenDirectory) ?? "",
+                );
                 if (selected) setZettelkastenDirectory(selected);
               }}
               placeholder={t(

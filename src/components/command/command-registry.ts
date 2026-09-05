@@ -80,7 +80,7 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
     },
     {
       id: "workspace:close-folder",
-      label: "Close Folder",
+      label: "Close Workspace",
       category: "File",
       action: () => onCloseFolder(),
     },

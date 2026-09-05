@@ -10,8 +10,7 @@ import { dispatchSetSearchTerm } from "../extensions/plugins/find-replace";
 import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
 import { withVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { markdownToProsemirror } from "../pipeline/md-to-pm";
-import { isFileTab } from "../stores/editor/editor";
-import { useEditorStore } from "../stores/editor/editor";
+import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
@@ -39,8 +38,12 @@ export function useEditorEffects({
   setFindReplaceMode,
   setFindReplaceOpen,
 }: UseEditorEffectsParams) {
-  const { activeTabId, tabs } = useEditorStore(
-    useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
+  const { activeTabId, sourceEditedTabs, tabs } = useEditorStore(
+    useShallow((s) => ({
+      activeTabId: s.activeTabId,
+      sourceEditedTabs: s.sourceEditedTabs,
+      tabs: s.tabs,
+    })),
   );
 
   // §44 Track editor selection text for @selection reference
@@ -254,7 +257,7 @@ export function useEditorEffects({
   useEffect(() => {
     const tab = tabs.find((t) => t.id === activeTabId);
     document.title = tab
-      ? `${tab.isDirty && isFileTab(tab) ? "\u25CF " : ""}${tab.title} \u2014 Baram`
+      ? `${isTabUnsaved(tab, sourceEditedTabs) ? "\u25CF " : ""}${tab.title} \u2014 Baram`
       : "Baram";
-  }, [activeTabId, tabs]);
+  }, [activeTabId, sourceEditedTabs, tabs]);
 }

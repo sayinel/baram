@@ -4,18 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { requestCloseContexts } from "../../hooks/use-close-guard";
 import { switchContext } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
-import { useWorkspaceStore } from "../../stores/file/workspace";
 import "../../styles/context-tab-bar.css";
 import { ContextAddMenu } from "./ContextAddMenu";
 
 export function ContextTabBar() {
-  const { contexts, activeContextId, removeContext } = useContextStore(
+  const { contexts, activeContextId } = useContextStore(
     useShallow((s) => ({
       contexts: s.contexts,
       activeContextId: s.activeContextId,
-      removeContext: s.removeContext,
     })),
   );
 
@@ -102,41 +101,16 @@ export function ContextTabBar() {
     y: number;
   }>(null);
 
+  // §82 The whole close lives in `requestCloseContexts` — it asks about that
+  // context's unsaved tabs first, then hands off to the shared `closeContext`.
+  // The context menu's Close / Close Others and Settings > Vault's remove enter
+  // through the same door, so the four cannot drift apart again the way they had.
   const handleClose = useCallback(
     async (e: React.MouseEvent, contextId: string) => {
       e.stopPropagation();
-      const wasActive =
-        useContextStore.getState().activeContextId === contextId;
-      // Capture the vaultType BEFORE removal — removeContext drops it from state.
-      const closedVaultType = useContextStore
-        .getState()
-        .contexts.find((c) => c.id === contextId)?.vaultType;
-
-      // Close editor tabs belonging to this context
-      const { useEditorStore } = await import("../../stores/editor/editor");
-      const tabs = useEditorStore.getState().tabs;
-      for (const tab of tabs.filter((t) => t.contextId === contextId)) {
-        useEditorStore.getState().closeTab(tab.id);
-      }
-
-      await removeContext(contextId);
-
-      if (wasActive) {
-        const newActive = useContextStore.getState().activeContextId;
-        if (newActive) {
-          await switchContext(newActive);
-        } else {
-          // No contexts left — clear everything, show home screen
-          const { useFileStore } = await import("../../stores/file/file");
-          useFileStore.getState().closeFolder();
-        }
-      }
-
-      // §82 If we just closed the context backing the current space, revert to
-      // the Writing space (runs after switchContext so the tree stays loaded).
-      useWorkspaceStore.getState().revertSpaceIfContextClosed(closedVaultType);
+      await requestCloseContexts([contextId]);
     },
-    [removeContext],
+    [],
   );
 
   const handleMiddleClick = useCallback(
@@ -339,21 +313,25 @@ function ContextTabContextMenu({
     onClose();
   };
 
+  // §82 Both go through the shared guard. They used to call `removeContext`
+  // directly, which skipped the unsaved-changes prompt, left the closed contexts'
+  // editor tabs open, and — because neither handled the active or last context —
+  // could strand the app on the empty-workspace surface instead of home.
   const handleCloseCtx = async () => {
     onClose();
-    const closedVaultType = ctx.vaultType;
-    await useContextStore.getState().removeContext(contextId);
-    // §82 Revert to Writing if this closed the current space's context.
-    useWorkspaceStore.getState().revertSpaceIfContextClosed(closedVaultType);
+    await requestCloseContexts([contextId]);
   };
 
   const handleCloseOthers = async () => {
     onClose();
-    const store = useContextStore.getState();
-    const others = store.contexts.filter((c) => c.id !== contextId);
-    for (const other of others) {
-      await store.removeContext(other.id).catch(() => {});
-    }
+    // ‼️ "Others" means the other TABS — the same `contextType !== "file"` set this
+    // bar renders. §89 FileContexts are deliberately not shown here (they appear as
+    // global editor tabs), so sweeping them in would close a file the user opened
+    // from outside the vault, from a menu that never listed it.
+    const others = useContextStore
+      .getState()
+      .contexts.filter((c) => c.contextType !== "file" && c.id !== contextId);
+    await requestCloseContexts(others.map((c) => c.id));
   };
 
   return (

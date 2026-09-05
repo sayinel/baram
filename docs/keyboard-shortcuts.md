@@ -18,7 +18,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Save            | `Cmd+S`       | `Ctrl+S`        |
 | Save As         | `Cmd+Shift+S` | `Ctrl+Shift+S`  |
 | Close Tab       | `Cmd+W`       | `Ctrl+W`        |
-| Close Folder    | `Cmd+Shift+W` | `Ctrl+Shift+W`  |
+| Close Workspace | `Cmd+Shift+W` | `Ctrl+Shift+W`  |
 | Export...       | `Cmd+Shift+E` | `Ctrl+Shift+E`  |
 | Quick Switcher  | `Cmd+K`       | `Ctrl+K`        |
 | Command Palette | `Cmd+P`       | `Ctrl+P`        |

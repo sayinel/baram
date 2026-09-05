@@ -68,6 +68,7 @@ const renderers: TabSurfaceRenderers = createTabSurfaceRenderers({
   getSourceBuffer: () => "# t\n\n![](assets/clip.mp4)\n",
   hasSourceBuffer: () => true,
   markDirty: vi.fn(),
+  markSourceEdited: vi.fn(),
   onPdfFindApiChange: vi.fn(),
   onTogglePdfFind: vi.fn(),
   pdfFindOpen: false,

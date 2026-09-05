@@ -22,6 +22,7 @@ import { notifyJournalChanged } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
 import { openFileByPath } from "../utils/open-file";
 import { basename } from "../utils/path-utils";
+import { requestCloseWorkspace } from "./use-close-guard";
 
 export interface AutoReloadOptions {
   /**
@@ -266,6 +267,11 @@ export function useFileOperations({
           .updateLastSaveMtime(saveTab.filePath, Date.now());
         setFileContent(saveTab.filePath, md);
         markDirty(saveTab.id, false);
+        // ‼️ §82 "저장 안 됨"의 답은 두 곳에 산다. `isDirty`만 내리면 소스 모드로 고친
+        // 탭은 저장한 뒤에도 계속 점이 켜져 있고, 닫을 때마다 확인창이 뜬다 — 방금
+        // 디스크에 쓴 바로 그 내용을 두고. `md` 자체가 그 버퍼에서 나왔다(위 `isCode ||
+        // sourceModeTabs.has(...)` 갈래).
+        useEditorStore.getState().markSourceEdited(saveTab.id, false);
         notifyFileSave(saveTab.filePath);
         // §56 Refresh journal sidebars in real time on a manual save.
         if (
@@ -318,6 +324,8 @@ export function useFileOperations({
               : t,
           ),
         }));
+        // Same second half as the existing-file branch above.
+        useEditorStore.getState().markSourceEdited(saveTab.id, false);
       } catch (err) {
         logger.error("[App] Failed to save as:", err);
       }
@@ -439,8 +447,11 @@ export function useFileOperations({
     [handleOpenFilePath],
   );
 
+  // §81 Closes the whole workspace — every tab and every context — not one folder.
+  // Routed through the close guard so unsaved work gets the same Save / Don't Save /
+  // Cancel prompt quit and reload give, instead of being dropped by `closeAllTabs`.
   const handleCloseFolder = useCallback(() => {
-    useFileStore.getState().closeFolder();
+    requestCloseWorkspace();
   }, []);
 
   return {

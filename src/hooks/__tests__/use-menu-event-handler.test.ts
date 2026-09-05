@@ -1,6 +1,7 @@
-// §479: unit tests for the View > Reload menu-event dispatch. Only the
-// `view_reload` payload is exercised here — every other payload has its own
-// action wired inline and is not worth a fixture per case.
+// §479/§81: unit tests for menu-event dispatch. `view_reload` and
+// `file_close_folder` are here because both must reach a CLOSE GUARD rather than
+// act directly — nothing else in the suite pins that, so reverting either wiring
+// to the bare action would leave every test green while the user loses work.
 import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,6 +47,20 @@ function menuEventHandler(): (event: { payload: string }) => void {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe("menu event → File > Close Workspace", () => {
+  it("routes the menu payload to handleCloseFolder", () => {
+    const deps = makeDeps();
+    renderHook(() => useMenuEventHandler(deps));
+
+    menuEventHandler()({ payload: "file_close_folder" });
+
+    // The guard itself lives behind `handleCloseFolder`; this pins that the
+    // native menu reaches it at all, which is the half the app runs.
+    expect(deps.handleCloseFolder).toHaveBeenCalledOnce();
+    expect(deps.handleCloseTab).not.toHaveBeenCalled();
+  });
 });
 
 describe("useMenuEventHandler — view_reload (§479)", () => {

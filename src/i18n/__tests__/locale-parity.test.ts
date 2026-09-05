@@ -51,6 +51,10 @@ const SHARED_VALUES = new Set<string>([
   "settings.general.zettelkasten", // Zettel
   "settings.panels.git", // Git
   "settings.tab.ai", // AI
+  "settings.vault.extension.mermaid", // Mermaid — the diagram language, named after itself
+  "settings.vault.group.ai", // AI
+  "settings.vault.workLogFolder.placeholder", // daily — a folder name, not a word
+  "settings.vault.workLogTemplate.placeholder", // templates/work-log.md
   "settings.workspace.preset.skills", // Skills
   "tasks.edit.tags.placeholder", // deep-work, someday — `#someday`는 §312가 쓰는 기능 태그다
   "update.dialog.versionChange", // {current} → {available}

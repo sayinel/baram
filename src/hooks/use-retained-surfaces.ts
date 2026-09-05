@@ -152,6 +152,9 @@ export function useRetainedSurfaces({
         getSourceBuffer: sourceBuffers.get,
         hasSourceBuffer: sourceBuffers.has,
         markDirty,
+        // §82 스토어 액션을 그대로 부른다 — 안정된 참조라 deps에 넣을 것이 없다.
+        markSourceEdited: (tabId, edited) =>
+          useEditorStore.getState().markSourceEdited(tabId, edited),
         onPdfFindApiChange: pdfFind.setApi,
         onTogglePdfFind: pdfFind.onToggle,
         pdfFindOpen: pdfFind.open,
