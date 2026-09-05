@@ -259,9 +259,19 @@ export function FileTree(): React.JSX.Element {
     [primaryPath, renamingPath, selectedPaths, handleNavKeyDown],
   );
 
+  // ‼️ `onClick={handleOpenFolder}`이므로 반환된 promise를 아무도 붙잡지 않는다.
+  // 승인 거부는 §333에서 openFolder 안에서 토스트로 끝나지만, 트리 읽기 실패는 여전히
+  // 밖으로 던져진다 — catch가 없으면 WKWebView의 unhandledrejection으로 흘러가
+  // console.warn 하나로 삼켜진다(`main.tsx`의 억제 핸들러). 형제 호출부
+  // (`use-file-operations.ts`의 handleOpenFolder)는 이미 이 catch를 갖고 있다.
   const handleOpenFolder = useCallback(async (): Promise<void> => {
     const selected = await pickApprovedDir("open-folder");
-    if (selected) await openFolder(selected);
+    if (!selected) return;
+    try {
+      await openFolder(selected);
+    } catch (err) {
+      logger.error("[FileTree] Failed to open folder:", err);
+    }
   }, []);
 
   const handleDirClick = useCallback(
