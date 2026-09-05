@@ -36,6 +36,7 @@ import { runBlockAction } from "./views/run-block-action";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useBlockContextMenu } from "./views/use-block-context-menu";
+import { useInnerHtml } from "./views/use-inner-html";
 import { useMediaResize } from "./views/use-media-resize";
 import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -125,6 +126,10 @@ export function SvgBlockView({
         : "",
     [fullscreenCode],
   );
+  // issue 549: one object per string, or React 19 re-seeds the svg DOM on
+  // every render of this view (use-inner-html.ts).
+  const svgMarkup = useInnerHtml(svgHtml);
+  const fullscreenMarkup = useInnerHtml(fullscreenSvg);
 
   // Auto-resize textarea — keyed on `editing`, NOT `selected`: the standby
   // element is 1px wide, and a measurement there writes an inflated inline
@@ -259,7 +264,7 @@ export function SvgBlockView({
               {svgHtml ? (
                 <div
                   className="svg-block-render"
-                  dangerouslySetInnerHTML={{ __html: svgHtml }}
+                  dangerouslySetInnerHTML={svgMarkup}
                 />
               ) : (
                 <div className="svg-block-empty">Empty SVG</div>
@@ -330,7 +335,7 @@ export function SvgBlockView({
                 {fullscreenSvg ? (
                   <div
                     className="svg-block-render"
-                    dangerouslySetInnerHTML={{ __html: fullscreenSvg }}
+                    dangerouslySetInnerHTML={fullscreenMarkup}
                   />
                 ) : (
                   <div className="svg-block-empty">Empty SVG</div>
@@ -404,7 +409,7 @@ export function SvgBlockView({
         svgHtml && (
           <div
             className="svg-block-render svg-block-render-faded"
-            dangerouslySetInnerHTML={{ __html: svgHtml }}
+            dangerouslySetInnerHTML={svgMarkup}
           />
         )
       ) : (
@@ -425,7 +430,7 @@ export function SvgBlockView({
                 >
                   <div
                     className="media-resize-content"
-                    dangerouslySetInnerHTML={{ __html: svgHtml }}
+                    dangerouslySetInnerHTML={svgMarkup}
                   />
                   <div
                     className="media-resize-handle media-resize-handle-left"

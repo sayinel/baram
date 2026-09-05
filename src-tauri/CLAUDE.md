@@ -29,6 +29,10 @@ protocol/     ← 커스텀 프로토콜 핸들러      md/       ← 마크다�
 logging/      ← 파일 로깅 (회전·상한)       menu.rs   ← 네이티브 메뉴/accelerator
 ```
 
+## 로컬 명령
+
+`cd src-tauri && cargo test` · `cargo clippy --all-targets`(pre-push hook과 동일) · `cargo fmt --check` — 셋 다 CI 게이트. PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 외 skip은 빨간불(`.claude/docs/ci-contract.md`).
+
 ## IPC 커맨드 규칙
 
 ### 커맨드 정의 패턴

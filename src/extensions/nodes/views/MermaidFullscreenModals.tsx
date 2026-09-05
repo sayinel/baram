@@ -1,13 +1,18 @@
 // §5.5 Mermaid Block — fullscreen modals (moved out of mermaid-block-view.tsx
-// §perf-large-file file-size split). Both are zero-hook: the parent owns all
-// state and passes it down as props; each component's own createPortal call
-// stays at the same tree position it had inline.
+// §perf-large-file file-size split). Both own no state: the parent owns it
+// and passes it down as props; each component's own createPortal call stays
+// at the same tree position it had inline. Their one hook, useInnerHtml,
+// holds no state either — it memoises the innerHTML wrapper AT the injection
+// sink (issue 549): a wrapper handed across a component boundary could be
+// spread or copied into a fresh object on the way, which is exactly the
+// per-render re-seed the hook exists to prevent.
 
 import React from "react";
 import { createPortal } from "react-dom";
 
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
 import { MERMAID_TEMPLATES } from "../../../utils/markdown/mermaid-utils";
+import { useInnerHtml } from "./use-inner-html";
 
 interface MermaidEditFullscreenModalProps {
   detectedType: null | string;
@@ -40,6 +45,7 @@ export function MermaidViewFullscreenModal({
   pending = false,
   svgHtml,
 }: MermaidViewFullscreenModalProps): React.ReactPortal {
+  const svgMarkup = useInnerHtml(svgHtml);
   return createPortal(
     <div
       className="mermaid-fullscreen-overlay"
@@ -83,7 +89,7 @@ export function MermaidViewFullscreenModal({
           {svgHtml ? (
             <div
               className="mermaid-block-svg"
-              dangerouslySetInnerHTML={{ __html: svgHtml }}
+              dangerouslySetInnerHTML={svgMarkup}
             />
           ) : error ? (
             <div className="mermaid-block-error">{error}</div>
@@ -110,6 +116,7 @@ export function MermaidEditFullscreenModal({
   onClose,
   onDiscard,
 }: MermaidEditFullscreenModalProps): React.ReactPortal {
+  const fullscreenMarkup = useInnerHtml(fullscreenSvg);
   return createPortal(
     <div
       className="mermaid-fullscreen-overlay"
@@ -173,7 +180,7 @@ export function MermaidEditFullscreenModal({
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                dangerouslySetInnerHTML={{ __html: fullscreenSvg }}
+                dangerouslySetInnerHTML={fullscreenMarkup}
               />
             ) : null}
             {fullscreenError && (

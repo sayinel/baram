@@ -28,6 +28,7 @@ import { runBlockAction } from "./views/run-block-action";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useAtomEditSession } from "./views/use-atom-edit-session";
 import { useBlockContextMenu } from "./views/use-block-context-menu";
+import { useInnerHtml } from "./views/use-inner-html";
 import { useMediaResize } from "./views/use-media-resize";
 import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -364,6 +365,13 @@ export function MermaidBlockView({
     });
   }, [editor]);
 
+  // issue 549: one object per string for the markup this view injects
+  // itself, or React 19 re-seeds the svg DOM on every render
+  // (use-inner-html.ts). The modals memoise their own at their sink. useMemo
+  // only — registers no effect, so the effect order this file relies on is
+  // untouched wherever this sits.
+  const svgMarkup = useInnerHtml(svgHtml);
+
   const viewFullscreenModal = viewFullscreen ? (
     <MermaidViewFullscreenModal
       detectedType={detectedType}
@@ -454,7 +462,7 @@ export function MermaidBlockView({
               ]
                 .filter(Boolean)
                 .join(" ")}
-              dangerouslySetInnerHTML={{ __html: svgHtml }}
+              dangerouslySetInnerHTML={svgMarkup}
               ref={renderRef}
             />
           ) : null}
@@ -478,7 +486,7 @@ export function MermaidBlockView({
                 >
                   <div
                     className="media-resize-content"
-                    dangerouslySetInnerHTML={{ __html: svgHtml }}
+                    dangerouslySetInnerHTML={svgMarkup}
                   />
                   <div
                     className="media-resize-handle media-resize-handle-left"

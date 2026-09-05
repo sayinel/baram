@@ -98,7 +98,7 @@ baram/
   try { await llmComplete(...); } catch { ... } finally { cleanup(); }
   ```
 - **`openUrl()`(plugin-opener)은 capability `opener:default` 범위인 http·https·mailto·tel만 연다** — 다른 scheme은 Tauri ACL이 거부한다. 테스트에서 mock `openUrl` 호출을 단언해도 실제로 열린다는 증거가 아니다
-- **export 경로는 둘이다**: HTML·PDF는 `captureEditorHTML`(에디터 DOM 복제 — 후행 패스 `resolveVideoSources`가 `<a>`를 새로 만드니 최종 정리는 `innerHTML` 직전), Pandoc·Notion은 `serializeLiveDoc` markdown 직행. 출력 정책은 두 경로에 각각 걸어야 한다(#527) — 링크 정책은 DOM 쪽 `export-html-links.ts`, markdown 쪽 `export-markdown-links.ts`(변환기·mermaid 자산 재작성 뒤 **마지막** 패스)에 있다. 새 export 경로나 후행 패스를 추가하면 그 뒤에 다시 걸 것
+- **export 경로는 둘이다**: HTML·PDF는 `captureEditorHTML`(에디터 DOM 복제 — 후행 패스 `resolveVideoSources`가 `<a>`를 새로 만드니 최종 정리는 `innerHTML` 직전), Pandoc·Notion은 `serializeLiveDoc` markdown 직행. 출력 정책은 두 경로에 각각 걸어야 한다(#527) — 링크 정책은 `src/utils/export/`의 DOM 쪽 `export-html-links.ts`, markdown 쪽 `export-markdown-links.ts`(변환기·mermaid 자산 재작성 뒤 **마지막** 패스)에 있다. 새 export 경로나 후행 패스를 추가하면 그 뒤에 다시 걸 것
 - **공유 유틸리티 위치** — 로컬 재구현 금지:
   - `basename()` / `dirname()` → `src/utils/path-utils.ts`
   - Journal 날짜 regex → `src/utils/journal/journal.ts` (`JOURNAL_FILENAME_RE`, `JOURNAL_DATE_PARTS_RE`, `JOURNAL_FILENAME_COMPACT_RE`)
@@ -109,7 +109,7 @@ baram/
 - **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
 - **docs/\*.md 편집**: prettier·lint 대상 밖. 앱 Help에 `?raw` 번들되므로 `help-panel.test.ts`로 확인. in-doc 앵커(`#search-wysiwyg`)는 HelpPanel slugify(소문자·영숫자·하이픈)와 GitHub 슬러그 양쪽에 맞는 heading만 쓸 것
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
-- **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건)
+- **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건) · sort-modules는 모듈 레벨 함수 선언도 알파벳 순을 요구한다 — helper를 추가할 때 자리를 맞출 것
 - **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴. **category는 정해진 9개뿐이다** — `accent` `bg` `border` `callout` `editor` `git` `graph` `status` `text` (`tokens/semantic/color-light.json`이 canonical). 위험/오류색은 `status` 아래에 있다: `--color-status-danger` (`--color-danger-*`는 없다)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
@@ -155,9 +155,9 @@ baram/
   Playwright 미설치. 실제 React 트리가 필요한 커버리지는 현재 **비어 있는 구멍**이다
   (`use-auto-save.test.ts`가 save() 전체 흐름을 여기로 미뤄 두었다). 도입하려면 새로 세운다
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
-- **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
-- **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
-- **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신
+- **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인. DOM 유지 회귀는 리렌더 전에 잡은 요소의 `isConnected` + 재조회 `toBe` + `MutationObserver` childList 0건으로
+- **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요) · 리사이즈 드래그를 mouseup으로 끝내면 `swallowNextClick`이 window capture click 리스너(300ms)를 무장한다 — 다음 테스트 전에 throwaway click으로 소비 · mermaid는 `setNodeSelection`이 render effect를 재실행해 새 svg id가 비동기로 착지한다 — 그 뒤에 요소를 잡을 것
+- **리터럴 경로 스캔 테스트**: revocation 테스트 2개·`scripts/rust-constants.ts`는 `src-tauri/src/plugin/mod.rs`를 경로로 읽어 스캔(REVOCATION 상수 3개는 그 파일에 고정), vim `editable-ownership.test.tsx`의 REGISTER_ALLOW는 경로 allowlist — 심볼을 옮기면 컴파일은 통과해도 검증이 조용히 죽는다. 이동 시 스캔 경로 동반 갱신 · 발견한 경로를 문자열 키와 비교하는 스캔은 `path.posix.join`(Windows에서 `join`은 역슬래시)
   - media-toolbar-reveal.test.ts는 소스 텍스트를 스캔해 NodeViewWrapper+MediaToolbar 파일 수 ≥4를 요구 — 뷰에서 toolbar 블록을 다른 파일로 빼면 깨진다
   - pipeline/에 프로덕션 파일을 추가하면 import-boundary의 `MD_TO_PM_ROUTE_FILES` Set(+감사 주석의 개수·날짜)을 갱신해야 한다 — allowlist를 넓히는 우회는 금지
   - 반대로 transformer가 `src/utils/`의 leaf 모듈을 import하는 것은 경계 위반이 아니다 — 금지 closure는 `pm-to-md.ts`에서 출발해 `src/pipeline/` 안으로만 BFS한다
