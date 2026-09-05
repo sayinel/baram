@@ -64,8 +64,10 @@ baram/
 ├── tokens/                 # W3C DTCG 디자인 토큰: primitive/ semantic/ tokens-studio.json
 ├── scripts/                # audit-css-vars.ts, export-tokens-studio.ts
 ├── docs/                   # 공개 사용자 문서 — user-guide·keyboard-shortcuts·faq(앱 Help에 ?raw 번들), plugin-development
-├── dev/                    # 내부 개발 문서 (public 배포 제외) — design/ plans/ impl-notes/
-│                           #   superpowers/ features/ backlog.md next-steps.md progress.json
+├── dev/                    # 내부 개발 문서 (public 배포 제외, git 밖 심볼릭 링크) — 성격별 5분류:
+│                           #   design/(설계서 part1~20) design/specs/(기능별 설계) plans/(구현 계획)
+│                           #   impl-notes/(구현 기록·렛저) guides/(런북) + backlog·next-steps·progress
+│                           #   폴더마다 README.md가 주제별 색인 — 새 문서 위치는 dev/README.md 참조
 ├── tests/                  # E2E (Playwright)
 ├── skills/                 # Claude Code Skills (원주인 로컬 전용 — 의도적 추적 해제, 이 머신에 없어도 정상)
 ├── .claude/commands/       # 슬래시 커맨드 (동상 — dev/와 같은 부류)

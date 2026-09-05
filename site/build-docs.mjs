@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Assembles the deployable GitHub Pages site into dist-site/:
 // copies site/ static files and pre-renders docs/*.md via marked.
-// Spec: dev/superpowers/specs/2026-07-20-homepage-github-pages-design.md
+// Spec: dev/design/specs/2026-07-20-homepage-github-pages-design.md
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
