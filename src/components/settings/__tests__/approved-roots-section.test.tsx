@@ -13,6 +13,15 @@ vi.mock("../../../ipc/approval", () => ({
   revokeApprovedRoot: (p: string) => revokeApprovedRoot(p),
 }));
 
+// §90(M5) — handleRevoke의 후속 정리(switchContext → _loadContextFileTree)가
+// 실패하는 경로를 재현하려면 listDir을 직접 통제해야 한다. 다른 실제 IPC는
+// test-setup.ts의 기본 mockInvoke(undefined resolve)로 충분하다.
+const listDir = vi.hoisted(() => vi.fn());
+vi.mock("../../../ipc/invoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../ipc/invoke")>()),
+  listDir: (path: string, recursive: boolean) => listDir(path, recursive),
+}));
+
 import { useContextStore } from "../../../stores/context/context";
 import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
@@ -30,6 +39,8 @@ describe("§335 승인 회수", () => {
     revokeApprovedRoot.mockReset();
     isPathApproved.mockReset();
     isPathApproved.mockResolvedValue(false);
+    listDir.mockReset();
+    listDir.mockResolvedValue([]);
     seedContexts([], null);
   });
 
@@ -55,14 +66,18 @@ describe("§335 승인 회수", () => {
     await waitFor(() => expect(screen.queryByText("/x/Vault")).toBeNull());
   });
 
-  it("회수 후 재시작이 필요하다는 사실을 화면에 말한다", async () => {
+  it("회수 후 재시작이 필요하다는 사실과, 탭이 닫히고 제거된다는 사실을 화면에 말한다", async () => {
     listApprovedRoots.mockResolvedValue([
       { approvedAt: 0, kind: "dir", path: "/x/Vault" },
     ]);
     render(<ApprovedRootsSection />);
     // 재시작 안내는 정보가 아니라 **계약**이다: 회수해도 이번 세션의 asset://
     // 부여는 남는다(§335). 문구가 사라지면 사용자는 잘못된 안전감을 갖는다.
-    expect(await screen.findByText(/restart|재시작/i)).toBeTruthy();
+    //
+    // §335(M2) — I1 이후 회수는 컨텍스트도 함께 지운다: 탭이 닫히고 라벨·색·
+    // 별칭이 확인 없이 사라진다. 재시작 안내만으로는 그 무게를 말하지 않는다.
+    const note = await screen.findByText(/restart|재시작/i);
+    expect(note.textContent).toMatch(/close|remove|removed|닫|제거/i);
   });
 
   // §335 리뷰 Minor 1 — IPC 실패를 삼키면 항목은 그대로인데 클릭이 아무 반응도
@@ -263,5 +278,69 @@ describe("§335 승인 회수", () => {
     // 회수한 vault의 트리를 그대로 띄워 두면 "회수됐다"와 화면이 어긋난다.
     await waitFor(() => expect(useFileStore.getState().fileTree).toEqual([]));
     expect(useFileStore.getState().rootPath).toBeNull();
+  });
+
+  // ── §90(M5) 회수 성공을 실패로 보고하지 않는다 ─────────────────────────────
+  //
+  // 회수(revokeApprovedRoot) 자체는 성공했는데, 그 뒤의 정리(남은 컨텍스트로
+  // 전환 → 트리 재로드)가 실패하면 예전 코드는 하나의 try가 둘을 함께 묶어서
+  // "회수 실패" 토스트를 띄웠다 — 회수는 이미 끝났는데 거짓말을 하는 셈이다.
+  it("회수는 성공했는데 후속 트리 재로드가 실패해도 '회수 실패'로 보고하지 않는다", async () => {
+    listApprovedRoots.mockResolvedValue([
+      { approvedAt: 0, kind: "dir", path: VAULT },
+    ]);
+    revokeApprovedRoot.mockResolvedValue(undefined);
+    listDir.mockRejectedValue(new Error("boom"));
+    seedContexts(
+      [
+        {
+          addedAt: 0,
+          color: "#fff",
+          contextType: "vault",
+          id: "c1",
+          label: "v",
+          path: VAULT,
+        },
+        {
+          addedAt: 0,
+          color: "#fff",
+          contextType: "vault",
+          id: "c2",
+          label: "o",
+          path: "/y/Other",
+        },
+      ],
+      "c1", // 회수 대상이 곧 활성 컨텍스트 — 회수 후 남은 c2로 전환을 시도한다.
+    );
+    // 회수 전엔 둘 다 승인, 회수 후엔 VAULT만 잃는다.
+    isPathApproved.mockImplementation(
+      async (p: string) =>
+        p !== VAULT || revokeApprovedRoot.mock.calls.length === 0,
+    );
+    // ‼️ `vi.spyOn`은 이미 스파이인 메서드에 새 인스턴스를 만들지 않고 기존 것을
+    // 그대로 반환한다 — 앞선 테스트("boom" 회수 실패)가 이미 "Failed to revoke"
+    // 문구를 이 스파이에 남겨 뒀으므로, 이번 호출만의 개수를 세려면 먼저 비운다.
+    const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
+    showToastSpy.mockClear();
+
+    render(<ApprovedRootsSection />);
+    await screen.findByText(VAULT);
+    fireEvent.click(screen.getByRole("button", { name: /revoke|회수/i }));
+
+    // 회수 자체는 성공해서 c1이 지워진다 — switchContext(c2)의 트리 재로드
+    // 실패는 그 *다음* 단계다.
+    await waitFor(() =>
+      expect(useContextStore.getState().contexts.map((c) => c.id)).toEqual([
+        "c2",
+      ]),
+    );
+    await waitFor(() => expect(listDir).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(revokeApprovedRoot).toHaveBeenCalledWith(VAULT);
+    const revokeFailedToasts = showToastSpy.mock.calls.filter(([msg]) =>
+      typeof msg === "string" ? msg.includes("Failed to revoke") : false,
+    );
+    expect(revokeFailedToasts).toHaveLength(0);
   });
 });

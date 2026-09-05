@@ -274,11 +274,21 @@ export function useAppStartup({
  *
  * 값이 같으면 쓰지 않는다: `set_config`은 config.json 읽기-수정-쓰기라, 매 실행 무조건
  * 쓰면 아무것도 바뀌지 않는 디스크 쓰기가 된다.
+ *
+ * §333(M4) 이미 값이 있으면(=null이 아니면) 지금 읽은 locale이 달라도 **덮어쓰지
+ * 않는다.** settings persist(tauriStorage)는 비동기 하이드레이션이라 이 시점의
+ * `locale`이 아직 기본값("en")일 수 있다 — "다르면 무조건 쓴다"였을 때는 이미
+ * 올바르게 적힌 "ko"를 하이드레이션이 끝나기 전 기본값 "en"으로 덮어써, I4가
+ * 고치려던 결함(다이얼로그 언어 오표시)을 조건부로 되살렸다. 키가 아예 없을
+ * 때(null)만 이번 locale로 채운다 — 그게 I4의 원래 시나리오(uiLocale이 한 번도
+ * 없던 기존 사용자)다.
  */
 async function mirrorUiLocale(): Promise<void> {
   const { locale } = useSettingsStore.getState();
   try {
-    if ((await getConfig("uiLocale")) === locale) return;
+    const current = await getConfig("uiLocale");
+    if (current === locale) return;
+    if (current !== null) return;
     await setConfig("uiLocale", locale);
   } catch (e) {
     logger.warn("§333 startup uiLocale mirror failed", e);

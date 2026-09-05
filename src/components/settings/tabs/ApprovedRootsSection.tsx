@@ -59,20 +59,32 @@ export function ApprovedRootsSection() {
         const wasApproved = await Promise.all(
           before.map((c) => isPathApproved(c.path).catch(() => false)),
         );
-        await revokeApprovedRoot(path);
-        await removeContexts(
-          await contextsThisRevokeUnapproved(before, wasApproved),
-        );
-        await refresh();
-      } catch (err) {
-        // §335 리뷰 Minor 1 — IPC 실패를 삼키면 항목은 그대로인데 클릭이 아무
-        // 반응 없어 보인다. 에러 토스트가 사용자의 유일한 피드백이다.
-        showToast(
-          t("settings.vault.approvedRoots.revokeFailed", {
-            error: String(err),
-          }),
-          "error",
-        );
+        try {
+          await revokeApprovedRoot(path);
+        } catch (err) {
+          // §335 리뷰 Minor 1 — IPC 실패를 삼키면 항목은 그대로인데 클릭이 아무
+          // 반응 없어 보인다. 에러 토스트가 사용자의 유일한 피드백이다.
+          showToast(
+            t("settings.vault.approvedRoots.revokeFailed", {
+              error: String(err),
+            }),
+            "error",
+          );
+          return;
+        }
+        // §90(M5) 회수는 이미 끝났다 — 여기서부터 실패해도 "회수 실패"는 거짓말이다
+        // (예: 남은 컨텍스트로 전환하며 트리를 다시 읽다가 실패하는 경우). 그
+        // 실패를 위 catch로 흘려보내면 성공한 회수가 "Failed to revoke"로
+        // 보고된다. 후속 정리 실패는 로그로만 남긴다 — `_loadContextFileTree`가
+        // 이미 자기 몫의 진짜 메시지(권한 거부·읽기 실패)를 띄운다.
+        try {
+          await removeContexts(
+            await contextsThisRevokeUnapproved(before, wasApproved),
+          );
+          await refresh();
+        } catch (err) {
+          logger.warn("§90(M5) revoke: post-revoke cleanup failed", path, err);
+        }
       } finally {
         setRevoking((prev) => {
           const next = new Set(prev);

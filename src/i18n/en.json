@@ -845,7 +845,7 @@
   "settings.vault.approvedRoots.desc": "Folders and files you allowed Baram to open.",
   "settings.vault.approvedRoots.empty": "Nothing approved yet.",
   "settings.vault.approvedRoots.loadFailed": "Failed to load approved locations: {error}",
-  "settings.vault.approvedRoots.restartNote": "Revoking takes full effect after a restart.",
+  "settings.vault.approvedRoots.restartNote": "Revoking closes and removes that vault's tab, and takes full effect only after a restart.",
   "settings.vault.approvedRoots.revoke": "Revoke",
   "settings.vault.approvedRoots.revokeFailed": "Failed to revoke: {error}",
   "settings.vault.approvedRoots.title": "Approved locations",

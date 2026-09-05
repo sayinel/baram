@@ -253,4 +253,21 @@ describe("§334 시작 시 승인", () => {
     // 아무것도 안 지키게 된다).
     expect(calls).not.toContain("setConfig:uiLocale=ko");
   });
+
+  // §333(M4) — getConfig가 이미 값을 갖고 있으면(=null이 아니면), 지금 읽은
+  // locale이 그 값과 달라도 덮어쓰지 않는다. settings persist(tauriStorage)는
+  // 비동기 하이드레이션이라 이 시점의 locale이 아직 기본값("en")일 수 있는데,
+  // 예전 코드는 "다르면 무조건 쓴다"였다 — 이미 올바르게 "ko"가 적혀 있는
+  // config.json을 기본값 "en"으로 덮어써 I4가 고치려던 결함(다이얼로그 언어
+  // 오표시)을 조건부로 되살린다.
+  it("getConfig가 이미 값을 갖고 있으면 지금 읽은 locale로 덮어쓰지 않는다 (하이드레이션 경합)", async () => {
+    seed([ctx("a", A)], "a");
+    useSettingsStore.setState({ locale: "en" } as never);
+    getConfig.mockResolvedValue("ko");
+
+    start();
+
+    await waitFor(() => expect(addContextIpc).toHaveBeenCalled());
+    expect(calls).not.toContain("setConfig:uiLocale=en");
+  });
 });

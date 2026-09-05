@@ -284,3 +284,38 @@ describe("§333 승인 거부 — openFolder(existing 갈래)", () => {
     await expect(openFolder(PATH)).rejects.toBe("disk on fire");
   });
 });
+
+// §90(M1) — addContext와 setVaultRoot가 같은 경로에 대해 똑같이 해석 불가로
+// 실패하면(예: 삭제된 폴더를 Open Recent로 여는 경우), 예전엔 두 갈래 모두
+// reportApprovalFailure를 불러 사용자가 똑같은 토스트를 두 번 봤다. 실제로
+// 실패를 보고하고 throw까지 맡는 쪽은 setVaultRoot 갈래이므로, addContext
+// 갈래는 로그만 남기고 넘어가야 한다.
+describe("§90(M1) 해석 불가 — 중복 토스트 금지", () => {
+  beforeEach(() => {
+    vi.mocked(setVaultRoot).mockClear();
+    useSettingsStore.setState({ recentFolders: [], locale: "en" } as never);
+    useContextStore.setState({
+      activeContextId: null,
+      contexts: [],
+    } as never);
+  });
+
+  it("addContext와 setVaultRoot가 같은 경로로 똑같이 해석 불가로 실패해도 토스트는 한 번만 뜬다", async () => {
+    useContextStore.setState({
+      addContext: vi.fn().mockRejectedValue("VAULT_PATH_UNRESOLVABLE"),
+    } as never);
+    vi.mocked(setVaultRoot).mockRejectedValue("VAULT_PATH_UNRESOLVABLE");
+    // ‼️ `vi.spyOn`은 이미 스파이인 메서드에는 새 인스턴스를 만들지 않고 기존
+    // 것을 그대로 반환한다 — 이 파일의 다른 describe들이 같은 PATH로 이미
+    // 여러 토스트를 쌓아 뒀으므로, 이번 호출만의 개수를 세려면 먼저 비워야 한다.
+    const toastSpy = vi.spyOn(useUIStore.getState(), "showToast");
+    toastSpy.mockClear();
+
+    await expect(openFolder(PATH)).rejects.toBe("VAULT_PATH_UNRESOLVABLE");
+
+    const pathToasts = toastSpy.mock.calls.filter(
+      ([message]) => typeof message === "string" && message.includes(PATH),
+    );
+    expect(pathToasts).toHaveLength(1);
+  });
+});

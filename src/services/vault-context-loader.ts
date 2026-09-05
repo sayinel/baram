@@ -211,7 +211,12 @@ export async function openFolder(path: string): Promise<void> {
         showApprovalDeniedToast(path);
         return;
       }
-      reportApprovalFailure(err, path);
+      // §90(M1) 여기서 reportApprovalFailure를 부르지 않는다 — 해석 불가(삭제된
+      // vault)면 바로 다음 setVaultRoot 호출이 **같은 경로**로 똑같이 실패하고,
+      // 그 갈래가 토스트와 throw(상위 폴백 신호)를 함께 맡는다. 여기서도 부르면
+      // 사용자가 같은 토스트를 두 번 본다(Open Recent로 삭제된 폴더를 열 때
+      // 재현됨). 그 밖의 실패는 오늘처럼 로그만 남기고 setVaultRoot로 계속
+      // 진행한다.
       logger.warn("§81 openFolder: context registration failed", err);
     }
   } else {
