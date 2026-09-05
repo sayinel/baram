@@ -266,6 +266,10 @@ export function HtmlBlockView({
  *
  * ‼️ `useLayoutEffect`인 이유: 페인트 전에 끝내야 상대경로 src로 요청이 한 번
  * 나가고 깨진 이미지가 한 프레임 보이는 일이 없다.
+ *
+ * ‼️ svg·mermaid view는 정반대로 간다 — `views/use-inner-html.ts`로 `{ __html }`
+ * 객체를 memoize해 리렌더에도 svg DOM을 유지한다(issue 549). 여기를 그쪽에
+ * 맞춰 "정리"하면 위의 src 재해석 주기가 끊긴다. 이 리터럴은 의도다.
  */
 function HtmlBlockRender({
   className,
