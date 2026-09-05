@@ -68,7 +68,6 @@ baram/
 │                           #   design/(설계서 part1~20) design/specs/(기능별 설계) plans/(구현 계획)
 │                           #   impl-notes/(구현 기록·렛저) guides/(런북) + backlog·next-steps·progress
 │                           #   폴더마다 README.md가 주제별 색인 — 새 문서 위치는 dev/README.md 참조
-├── tests/                  # E2E (Playwright)
 ├── skills/                 # Claude Code Skills (원주인 로컬 전용 — 의도적 추적 해제, 이 머신에 없어도 정상)
 ├── .claude/commands/       # 슬래시 커맨드 (동상 — dev/와 같은 부류)
 └── .claude/docs/           # 상황별 지침 (CI 계약·성능 기준·설계 § 지도 — 해당 작업 전 필독)
@@ -148,7 +147,10 @@ baram/
 
 - **Vitest** (TypeScript 단위/통합) — `npm test` → `vitest run`. `npx jest` 사용 금지 (Babel 파싱 실패)
 - **게이트 exit code는 파이프 없이 캡처**: `cmd | tail`은 tail의 exit를 반환한다 — `cmd > /tmp/log; echo $?` 또는 zsh `pipestatus` 사용
-- cargo test (Rust 단위) · Playwright (E2E, 크로스 플랫폼)
+- cargo test (Rust 단위) — `npm run rust:test`
+- **E2E는 없다**: `tests/e2e/`는 M1(2026-02-14) 스캐폴드 이후 한 번도 채워지지 않아 제거했다.
+  Playwright 미설치. 실제 React 트리가 필요한 커버리지는 현재 **비어 있는 구멍**이다
+  (`use-auto-save.test.ts`가 save() 전체 흐름을 여기로 미뤄 두었다). 도입하려면 새로 세운다
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
 - **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
 - **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
