@@ -124,6 +124,7 @@ export function SvgBlockView({
   const {
     close: closeBlockMenu,
     contextMenu,
+    menuRef: blockMenuRef,
     onContextMenu: handleBlockContextMenu,
     onMouseDown: stopRightButtonMouseDown,
   } = useBlockContextMenu({ editing, source: activeSource, wrapperRef });
@@ -503,6 +504,9 @@ export function SvgBlockView({
               e.stopPropagation();
             }}
             onMouseDown={(e) => e.stopPropagation()}
+            // issue 542: the mounted root is exempt from the capture-phase
+            // dismiss, by identity (use-block-context-menu.ts).
+            ref={blockMenuRef}
             style={{
               position: "fixed",
               left: contextMenu.x,

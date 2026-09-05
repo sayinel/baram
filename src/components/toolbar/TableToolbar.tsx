@@ -151,10 +151,10 @@ export function TableToolbar({ editor }: TableToolbarProps) {
   const [overflow, setOverflow] = useState<null | { x: number; y: number }>(
     null,
   );
-  // Mirrors the grip popup's toggle guard: MenuList closes on the ⋯ mousedown
-  // (document listener) before onClick fires, so onClick must not re-open when it
-  // was already open. Captured in the ⋯ button's onMouseDown.
-  const overflowWasOpenRef = useRef(false);
+  // The ⋯ button is the popup's toggle: MenuList leaves a mousedown inside it
+  // alone (issue 542, `toggleRef`), so onClick sees the real open state and
+  // simply flips it — no "was it open at mousedown" bookkeeping.
+  const overflowToggleRef = useRef<HTMLButtonElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const updatePosition = useCallback(() => {
@@ -377,16 +377,14 @@ export function TableToolbar({ editor }: TableToolbarProps) {
           aria-label="More table options"
           className="table-toolbar-btn"
           onClick={(e) => {
-            if (overflowWasOpenRef.current) {
+            if (overflow) {
               setOverflow(null);
               return;
             }
             const r = e.currentTarget.getBoundingClientRect();
             setOverflow({ x: r.left, y: r.bottom + 4 });
           }}
-          onMouseDown={() => {
-            overflowWasOpenRef.current = overflow !== null;
-          }}
+          ref={overflowToggleRef}
           title="More"
         >
           <MoreIcon />
@@ -396,6 +394,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         <MenuList
           items={buildTableOverflowItems(editor)}
           onClose={() => setOverflow(null)}
+          toggleRef={overflowToggleRef}
           x={overflow.x}
           y={overflow.y}
         />

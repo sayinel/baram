@@ -24,7 +24,13 @@
 // menu) closes it rather than re-binding it to something the user did not
 // right-click. A render landing for the SAME source is not a change: items
 // gated on it may appear.
-import { type RefObject, useCallback, useEffect, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type React from "react";
 
 import {
@@ -39,6 +45,11 @@ import {
 export interface BlockContextMenu {
   close: () => void;
   contextMenu: BlockContextMenuPosition | null;
+  /** Attach to the menu's root element. The capture-phase dismiss leaves a
+   *  mousedown inside it alone — by identity, not by a class or attribute a
+   *  document could forge (DOMPurify keeps `data-*`; a sanitized svg root
+   *  carrying the marker would otherwise pin the menu open). */
+  menuRef: RefObject<HTMLDivElement | null>;
   onContextMenu: (e: React.MouseEvent) => void;
   /** Wrapper mousedown for preview state; undefined while editing, where
    *  there is no selection to protect. */
@@ -67,19 +78,33 @@ export function useBlockContextMenu({
 }: UseBlockContextMenuOptions): BlockContextMenu {
   const [contextMenu, setContextMenu] =
     useState<BlockContextMenuPosition | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Dismiss on outside mousedown, Escape, or another menu opening.
+  //
+  // issue 542: the mousedown listener is in the CAPTURE phase. The hover
+  // toolbar and the caption stop the native mousedown at their element so
+  // ProseMirror does not select the block — and a bubble-phase listener on
+  // document never saw those clicks, so the menu stayed open beside the
+  // caption editor the user had just opened, Delete and all. Capture runs
+  // before any stopPropagation. It also runs for a mousedown on the menu
+  // itself, whose click needs the menu to still be there — the mounted menu
+  // root (menuRef) is exempt.
   useEffect(() => {
     if (!contextMenu) return;
     const dismiss = () => setContextMenu(null);
+    const onMouseDown = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      dismiss();
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") dismiss();
     };
-    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("keydown", onKey);
     const offCloseAll = onCloseAllContextMenus(dismiss);
     return () => {
-      document.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("keydown", onKey);
       offCloseAll();
     };
@@ -122,6 +147,7 @@ export function useBlockContextMenu({
   return {
     close,
     contextMenu,
+    menuRef,
     onContextMenu,
     onMouseDown: editing ? undefined : stopRightButton,
   };
