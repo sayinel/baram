@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Maximize } from "lucide-react";
 
+import { useSettingsHydrated } from "../../hooks/use-settings-hydrated";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import { activeFileDir } from "../../utils/active-file-dir";
@@ -62,7 +63,21 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
   // 아래 설정값의 OR이다(`useState(autoLoadEmbeds)`로 초기화하지 않는다) —
   // 이미 클릭해서 로드된 임베드는 설정을 나중에 꺼도 남아야 하고, 아직 클릭
   // 안 한 임베드는 설정을 끄면 카드로 돌아가야 한다.
-  const autoLoadEmbeds = useSettingsStore((s) => s.autoLoadVideoEmbeds);
+  //
+  // ‼️ hydration이 끝나기 전에는 설정을 켬으로 읽지 않는다. 스토어는 비동기로
+  // rehydrate되므로 그 창에서는 사용자가 껐어도 슬라이스 기본값 `true`가
+  // 보인다 — 그리고 이 설정은 그 사이에 iframe을 붙여 **되돌릴 수 없는 요청**을
+  // 내보내는 첫 설정이다. hydration이 늦게 도착해 카드로 되돌려 놓으면 사용자
+  // 눈에는 정상으로 보이고, 나갔다는 증거만 사라진다. 자세한 근거는
+  // `hooks/use-settings-hydrated.ts`.
+  //
+  // ‼️ Two separate hook calls, then combine. `useSettingsStore(...) &&
+  // useSettingsHydrated()` would short-circuit past the second hook whenever
+  // the setting is off — a conditional hook call, and a different hook order
+  // between renders.
+  const settingsHydrated = useSettingsHydrated();
+  const autoLoadEmbeds =
+    useSettingsStore((s) => s.autoLoadVideoEmbeds) && settingsHydrated;
   const [embedLoaded, setEmbedLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);

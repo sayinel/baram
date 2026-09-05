@@ -23,10 +23,24 @@ vi.mock("../../stores/editor/editor", () => ({
 // matching the existing tests below that assumed instant iframe mounting was
 // the ONE gated case; most of those now assert the gated (off) behavior
 // explicitly and restore this to true in their own setup.
-const settingsState = vi.hoisted(() => ({ autoLoadVideoEmbeds: true }));
+const settingsState = vi.hoisted(() => ({
+  autoLoadVideoEmbeds: true,
+  // Not read by the mock's selector — `useTranslation` pulls `locale` from
+  // this same store, and leaving it out makes every `t()` here fall back to
+  // English by accident rather than on purpose (see i18n/index.ts).
+  locale: "en",
+}));
 vi.mock("../../stores/settings/store", () => ({
   useSettingsStore: (selector: (s: typeof settingsState) => unknown) =>
     selector(settingsState),
+}));
+
+// §296 hydration gate. VideoView reads it through this hook, so tests drive
+// the hook rather than reaching into zustand's persist internals. Default
+// true — hydration long since finished is the steady state a reader is in.
+const hydrationState = vi.hoisted(() => ({ hydrated: true }));
+vi.mock("../../hooks/use-settings-hydrated", () => ({
+  useSettingsHydrated: () => hydrationState.hydrated,
 }));
 
 vi.mock("@tiptap/react", () => ({
@@ -82,6 +96,7 @@ function renderVideo(attrs: Attrs, updateAttributes = vi.fn()) {
 // written against the old always-gated behavior, so they set it off.
 beforeEach(() => {
   settingsState.autoLoadVideoEmbeds = true;
+  hydrationState.hydrated = true;
 });
 
 describe("VideoView (§296)", () => {
@@ -156,10 +171,15 @@ describe("VideoView (§296)", () => {
     expect(container.querySelector(".video-embed-card")).toBeNull();
   });
 
-  // Proof that a click's `embedLoaded` state is its own, independent React
-  // state — not a value derived solely from the setting on every render.
-  // (`useState(autoLoadEmbeds)` as the initializer would have made this
-  // impossible to tell apart from the setting simply being on.)
+  // Half of the derived-condition contract: a click survives the setting.
+  //
+  // ‼️ This one does NOT, on its own, prove that `embedLoaded` is independent
+  // React state — an earlier version of this comment claimed it did, and that
+  // was wrong. The final assertion runs with the setting ON, where
+  // `embedLoaded || autoLoadEmbeds` is true no matter what `embedLoaded`
+  // holds, so `useState(autoLoadEmbeds)` + a bare `embedLoaded &&` passes it
+  // too (verified by mutation). The test BELOW is what kills that mutation;
+  // the two are only meaningful as a pair.
   it("keeps an embed loaded by click regardless of what the setting does afterward", () => {
     settingsState.autoLoadVideoEmbeds = false;
     const { container, rerender } = renderVideo({
@@ -182,6 +202,48 @@ describe("VideoView (§296)", () => {
     rerender(<VideoView {...(props as any)} />);
     expect(container.querySelector("iframe")).not.toBeNull();
     expect(container.querySelector(".video-embed-card")).toBeNull();
+  });
+
+  // The other half, and the one `video-view.tsx`'s own comment promises: an
+  // embed the reader never touched has to go BACK to the card when the
+  // setting is turned off. Nothing pinned this before, and its absence let
+  // `useState(autoLoadEmbeds)` + `embedLoaded &&` pass the whole suite — the
+  // refactor that comment exists to forbid. Here that shape leaves
+  // `embedLoaded` latched true from the first render and the card never
+  // returns, so this assertion is what fails.
+  it("returns an untouched embed to the card when autoLoadVideoEmbeds is turned off", () => {
+    const { container, rerender } = renderVideo({
+      src: "https://youtu.be/abc123",
+    });
+    expect(container.querySelector("iframe")).not.toBeNull();
+    expect(container.querySelector(".video-embed-card")).toBeNull();
+
+    settingsState.autoLoadVideoEmbeds = false;
+    const props = {
+      node: {
+        attrs: { widthPercent: 100, src: "https://youtu.be/abc123" },
+      },
+      updateAttributes: vi.fn(),
+      selected: false,
+      editor: {} as never,
+      getPos: () => 0,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rerender(<VideoView {...(props as any)} />);
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector(".video-embed-card")).not.toBeNull();
+  });
+
+  // The window this gate exists for: settings rehydrate over Rust IPC, so
+  // before hydration the selector reads the slice default (`true`) even for a
+  // reader who turned the setting OFF. Mounting the iframe then is not a
+  // wrong pixel that hydration corrects — the request has already left, and
+  // the card hydration swaps back in looks exactly like nothing happened.
+  it("keeps an embed carded until settings have hydrated, even though the default is on", () => {
+    hydrationState.hydrated = false;
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector(".video-embed-card")).not.toBeNull();
   });
 
   it("does not affect the local file branch, even with autoLoadVideoEmbeds on", () => {

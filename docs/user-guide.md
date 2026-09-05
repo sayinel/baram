@@ -499,10 +499,13 @@ Embed videos with the same syntax as images:
 3. **YouTube / Vimeo** — `![](https://youtu.be/VIDEO_ID)`
 
 Local and remote video files get native playback controls from the moment they render —
-there is no separate poster frame or play button to click first. Provider embeds instead
-show a card naming the host, and nothing is downloaded from YouTube or Vimeo until you click
-it to load the player. A direct remote video URL doesn't fetch anything from its host either
-until you press play — opening the document alone does not reach out to it. Local and remote
+there is no separate poster frame or play button to click first. YouTube and Vimeo embeds
+load their player the same way, as soon as the document opens, so the provider is contacted
+at that moment. Turn off **Settings → Editor → Load video embeds automatically** and an
+embed shows a card naming the host instead, with nothing downloaded from YouTube or Vimeo
+until you click it to load the player. A direct remote video URL doesn't fetch anything
+from its host either until you press play — opening the document alone does not reach out
+to it. Local and remote
 video files can be resized by dragging their edges, which is stored as
 `<video src="…" width="60%"></video>`. Provider embeds are always full width at a 16:9 ratio.
 

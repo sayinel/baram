@@ -23,6 +23,19 @@ import { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// §296 VideoView also gates `autoLoadVideoEmbeds` on hydration, and this file
+// asserts the SHAPES that gate resolves to — so it wants the steady state a
+// reader is in, hydration long since done. Mocked rather than driven for real:
+// the `invoke` mock above resolves to `undefined`, and zustand's
+// createJSONStorage only special-cases `null`, so the real store's hydration
+// dies on `JSON.parse(undefined)` and `hasHydrated()` never turns true here.
+// (Production is fine — the Rust command returns `Option<String>`, i.e. JSON
+// `null`.) The gate's own logic has its own tests:
+// `hooks/__tests__/use-settings-hydrated.test.ts`.
+vi.mock("../../hooks/use-settings-hydrated", () => ({
+  useSettingsHydrated: () => true,
+}));
+
 // Faithful to the native implementation (and to `@tauri-apps/api/mocks`'
 // mockConvertFileSrc): the WHOLE absolute path is percent-encoded, slashes
 // included, before the scheme wraps it. A hand-typed `asset://localhost/vault/…`
