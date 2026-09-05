@@ -157,6 +157,24 @@ describe("§334 시작 시 승인", () => {
     await waitFor(() => expect(ids()).toEqual(["a"]));
   });
 
+  // ‼️ 짝 단정 2. "거부도 아니고 해석 불가도 아닌 실패는 지운다"로 되돌리면 위
+  // 테스트는 여전히 통과한다 — 이 테스트가 그 되돌림을 잡는다. §90의 stale 판정은
+  // deny-list(거부만 제외)가 아니라 allow-list(해석 불가만 포함)여야 한다: disk full
+  // 같은 무관한 실패로 사용자 vault를 영구히 지우면 안 된다.
+  it("거부도 해석 불가도 아닌 실패는 지우지 않는다 (allow-list)", async () => {
+    seed([ctx("a", A), ctx("b", B)], "a");
+    addContextIpc.mockImplementation(async (info: { path: string }) => {
+      if (info.path === B) throw "disk full";
+      return info;
+    });
+
+    start();
+
+    await waitFor(() => expect(addContextIpc).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ids()).toEqual(["a", "b"]);
+  });
+
   // ── C2 ────────────────────────────────────────────────────────────────────
 
   it("미승인 비활성 컨텍스트는 등록을 시도하지 않는다 — 다이얼로그는 활성에서만", async () => {

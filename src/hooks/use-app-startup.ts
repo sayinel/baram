@@ -4,7 +4,11 @@ import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { type Locale, t } from "../i18n";
-import { isApprovalDeniedError, isPathApproved } from "../ipc/approval";
+import {
+  isApprovalDeniedError,
+  isPathApproved,
+  isPathUnresolvableError,
+} from "../ipc/approval";
 import { getConfig, setConfig } from "../ipc/config";
 import {
   setActiveContext as reActivateInRust,
@@ -108,12 +112,23 @@ export function useAppStartup({
               if (isActive) deniedActivePath = ctx.path;
               continue;
             }
-            // §90 Path no longer valid — mark for removal. 삭제된 vault는 이제
-            // VAULT_PATH_UNRESOLVABLE로 도착하므로 위 거부 갈래에 걸리지 않는다.
+            // §90 stale 판정은 **allow-list**다 — "해석 불가"로 확인된 경우에만
+            // 지운다. "거부가 아니면 전부 stale"(deny-list)이었을 때는 `approve()`가
+            // approved-roots.json을 못 쓰는 무관한 실패(디스크 풀·권한·future
+            // ContextManager::add 변경)까지 stale로 분류해 라벨·색·별칭을 영속
+            // 목록에서 지워버렸다 — 되돌릴 길 없는 오탐(M3 재검토).
+            if (isPathUnresolvableError(err)) {
+              logger.warn(
+                `§90 Stale context removed: ${ctx.label} (${ctx.path})`,
+              );
+              staleIds.push(ctx.id);
+              continue;
+            }
             logger.warn(
-              `§90 Stale context removed: ${ctx.label} (${ctx.path})`,
+              `§90 Context kept — registration failed for a reason unrelated ` +
+                `to path validity, not stale: ${ctx.label} (${ctx.path})`,
+              err,
             );
-            staleIds.push(ctx.id);
           }
         }
         // §90 Remove stale contexts whose paths are no longer valid
