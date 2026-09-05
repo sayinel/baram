@@ -303,17 +303,97 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
-    /// ‼️ §335 — 회수에 `Scope::forbid_*`를 쓰면 안 된다. tauri의 forbid는 allow보다
-    /// **항상** 우선하고 해제 API가 없어서, 같은 루트를 다시 승인해도 그 세션 내내
-    /// asset://이 죽는다. 그런데 증상이 **회수 시점에는 보이지 않는다** — 재승인할 때야
-    /// 드러나므로, 소스에 고정해 두는 것이 유일하게 값싼 방어다.
+    /// ‼️ §335 — 크레이트 전체에서 `Scope::forbid_directory`/`forbid_file`를 새로 부르면
+    /// 안 된다. tauri의 forbid는 allow보다 **항상** 우선하고 해제 API가 없어서, 같은
+    /// 루트를 다시 승인해도 그 세션 내내 asset://가 죽는다.
+    ///
+    /// 이전 버전은 `approval/mod.rs` 한 파일만 `include_str!`로 봤다 — 하지만 이 API를
+    /// 부를 손이 가장 먼저 닿는 곳은 `AppHandle`을 이미 쥔 IPC 커맨드
+    /// (`commands/approval_cmd.rs`의 `revoke_approved_root`)이지, 이 파일이 아니다.
+    /// 그래서 `src-tauri/src/` 전체를 재귀로 훑는다(리뷰 Important).
+    ///
+    /// 예외는 정확히 하나 — `commands/plugin_cmd.rs`의 `plugin_prepare_scopes`가 §260
+    /// 스테이징 카브아웃으로 부르는 그 한 줄. 파일 경로가 아니라 **그 줄의 정확한
+    /// 텍스트**로 매칭해서, 같은 파일에 다른 forbid 호출이 추가돼도 여전히 걸리게 한다.
+    ///
+    /// 찾는 문자열은 `concat!`로 조각내 만든다(아래 상수) — 이 파일의 소스 텍스트 자체에
+    /// 그 온전한 문자열이 나타나면(예전 버전의 `body.contains` 인자가 그랬듯) 이 테스트가
+    /// **자기 자신**을 위반으로 잡는다. 모듈 이름에 기대는 `split` 트릭보다 이쪽이
+    /// 안전하다 — 이름을 바꿔도 깨지지 않는다.
     #[test]
-    fn revocation_never_reaches_for_the_scope_forbid_api() {
-        let src = include_str!("mod.rs");
-        let body = src.split("mod tests").next().expect("테스트 모듈 앞부분");
-        assert!(
-            !body.contains("forbid_directory") && !body.contains("forbid_file"),
-            "§335: 승인 회수는 기록 삭제만 한다 — forbid는 재승인을 세션 내내 막는다"
+    fn no_new_scope_forbid_call_anywhere_in_the_crate() {
+        const FORBID_DIR_CALL: &str = concat!(".", "forbid_directory", "(");
+        const FORBID_FILE_CALL: &str = concat!(".", "forbid_file", "(");
+
+        // (그 줄이 있어야 할 상대 경로, 그 줄에 있어야 할 정확한 텍스트) — 둘 다
+        // 맞아야 허용된다.
+        const ALLOWED: &[(&str, &str)] = &[(
+            "commands/plugin_cmd.rs",
+            "forbid_directory(plugin::staging_dir_of(&dir), true)",
+        )];
+
+        let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        collect_forbid_calls(
+            &src_dir,
+            &src_dir,
+            FORBID_DIR_CALL,
+            FORBID_FILE_CALL,
+            &mut offenders,
         );
+
+        let unexpected: Vec<_> = offenders
+            .into_iter()
+            .filter(|(rel_path, _line_no, line)| {
+                !ALLOWED
+                    .iter()
+                    .any(|(f, snippet)| rel_path == f && line.contains(snippet))
+            })
+            .collect();
+
+        assert!(
+            unexpected.is_empty(),
+            "§335: 새 Scope::forbid_* 호출을 찾았습니다 — {unexpected:?}\n\n\
+             forbid는 allow보다 항상 우선하고 해제 API가 없어서, 같은 루트를 다시 \
+             승인해도 그 세션 내내 asset://가 죽는다. 즉시 차단이 필요해 보이면 이 \
+             테스트의 allowlist가 아니라 설계를 먼저 의심할 것 — 회수는 기록 삭제만으로 \
+             충분해야 한다."
+        );
+    }
+
+    /// `root` 기준 상대 경로, 1-기반 줄 번호, 그 줄의 trim된 텍스트를 `out`에 모은다.
+    fn collect_forbid_calls(
+        root: &Path,
+        dir: &Path,
+        dir_call: &str,
+        file_call: &str,
+        out: &mut Vec<(String, usize, String)>,
+    ) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_forbid_calls(root, &path, dir_call, file_call, out);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            for (i, line) in content.lines().enumerate() {
+                if line.contains(dir_call) || line.contains(file_call) {
+                    out.push((rel.clone(), i + 1, line.trim().to_string()));
+                }
+            }
+        }
     }
 }

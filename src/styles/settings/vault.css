@@ -299,6 +299,13 @@
   color: var(--color-text-secondary);
 }
 
-.approved-roots-revoke:hover {
+.approved-roots-revoke:hover:not(:disabled) {
   color: var(--color-status-danger);
+}
+
+/* §335 리뷰 Minor 3 — 회수 진행 중임을 눈에 보이게: disabled가 클릭만 막고
+   화면은 그대로면 눌러도 반응 없는 버튼으로 보인다. */
+.approved-roots-revoke:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
