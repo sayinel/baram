@@ -636,6 +636,8 @@
   "settings.appearance.systemAuto": "System (Auto)",
   "settings.appearance.theme": "Theme",
   "settings.appearance.workspacePresets": "Perspectives",
+  "settings.editor.autoLoadVideoEmbeds": "Load video embeds automatically",
+  "settings.editor.autoLoadVideoEmbeds.desc": "Show YouTube and Vimeo embeds as soon as a document opens. Turn this off to require a click first, so no request reaches the provider until you ask for it.",
   "settings.editor.autoPairBrackets": "Auto Pair Brackets",
   "settings.editor.autoPairBrackets.desc": "Auto-close brackets and quotes in source mode and code blocks",
   "settings.editor.behavior": "Behavior",
