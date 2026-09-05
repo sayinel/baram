@@ -4,8 +4,8 @@
 // 예약 키 없이 임의 키에 임의 값을 쓰므로, 승인 기록을 거기 두면 인가받아야 할 웹뷰가
 // 자기 인가를 쓰게 된다 — 이 작업이 없애려는 바로 그 구조다 (§329.3).
 //
-// Task 1 산출물. Task 2(`commands::approval_cmd::ensure_approved`)가 `load`/`approve`를
-// 배선했다 — `revoke`만 아직 미사용이다(Task 6의 회수 커맨드가 배선한다).
+// Task 1 산출물. Task 2(`commands::approval_cmd::ensure_approved`)가 `load`/`approve`를,
+// Task 6(`commands::approval_cmd::revoke_approved_root`)이 `revoke`를 배선했다.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -161,8 +161,7 @@ pub fn approve<R: tauri::Runtime>(
 /// allow보다 항상 우선하고 해제 API가 없어서, 같은 루트를 다시 승인해도 그 세션 내내
 /// asset://이 죽는다 (§335). 현재 세션의 부여는 재시작으로 정리된다.
 ///
-/// Task 6이 이 함수를 IPC 커맨드로 배선하기 전까지는 미사용이다.
-#[allow(dead_code)]
+/// `commands::approval_cmd::revoke_approved_root`(§335)가 이 함수를 IPC 커맨드로 배선한다.
 pub fn revoke(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
     let _guard = APPROVAL_MUTEX
         .lock()

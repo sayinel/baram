@@ -1132,7 +1132,7 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "Register a local dev plugin folder (validates manifest, grants asset scope, persists)"
+      "description": "Register a local dev plugin folder (validates manifest, grants asset scope, persists). The path must be approved (§331–§333); an unapproved but existing path raises a native confirmation dialog, and refusal returns Err(\"VAULT_APPROVAL_DENIED\")"
     },
     {
       "name": "plugin_remove_dev_folder",
@@ -1397,7 +1397,7 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "컨텍스트(Vault/Folder/File) 등록"
+      "description": "컨텍스트(Vault/Folder/File) 등록 — 경로는 승인되어 있어야 한다(§331–§333); 미승인이지만 존재하는 경로는 네이티브 확인 다이얼로그를 띄우고, 거부하면 Err(\"VAULT_APPROVAL_DENIED\")를 반환한다"
     },
     {
       "name": "remove_context",
@@ -1599,7 +1599,7 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "열린 vault 루트를 Rust 백엔드(VaultRootState + ContextManager)에 등록 — 경로 confinement 기준",
+      "description": "열린 vault 루트를 Rust 백엔드(VaultRootState + ContextManager)에 등록 — 경로 confinement 기준. 경로는 승인되어 있어야 한다(§331–§333); 미승인이지만 존재하는 경로는 네이티브 확인 다이얼로그를 띄우고, 거부하면 Err(\"VAULT_APPROVAL_DENIED\")를 반환한다",
       "_note": "TS wrapper: setVaultRoot in src/ipc/fs.ts"
     },
     {
