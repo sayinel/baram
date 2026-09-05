@@ -8,6 +8,7 @@
 
 /* 3. Layout */
 @import "./layout.css";
+@import "./tooltip.css";
 @import "./file-tree.css";
 @import "./context-tab-bar.css";
 

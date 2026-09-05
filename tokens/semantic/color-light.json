@@ -29,6 +29,10 @@
       "selection": {
         "$value": "{color.blue.100}",
         "$description": "General selection background (non-editor)"
+      },
+      "tooltip": {
+        "$value": "{color.slate.900}",
+        "$description": "Tooltip pill background — deliberately inverted against the light surface it floats over, not a step of it"
       }
     },
     "text": {
@@ -51,6 +55,10 @@
       "muted": {
         "$value": "{color.text.disabled}",
         "$description": "Low-emphasis text (labels, metadata, timestamps) — follows disabled token for theme consistency"
+      },
+      "tooltip": {
+        "$value": "{color.white}",
+        "$description": "Text on the tooltip pill — pairs with color.bg.tooltip, not with the page background"
       }
     },
     "border": {

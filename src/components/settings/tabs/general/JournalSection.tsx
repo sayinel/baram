@@ -11,6 +11,7 @@ import { useTranslation } from "../../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../../ipc/approval";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { initJournalTemplatesDir } from "../../../../utils/journal/journal-templates";
+import { resolveAbsoluteDirSetting } from "../../../../utils/path-utils";
 import { MigrationDialog } from "../../../journal/MigrationDialog";
 import {
   SettingsRow,
@@ -85,8 +86,17 @@ export function JournalSection() {
             label={t("settings.general.journalDirectory")}
           >
             <TemplatePathRow
+              label={t("settings.general.journalDirectory")}
               onBrowse={async () => {
-                const selected = await pickApprovedDir("journal");
+                // ‼️ Through the resolver, not raw. Both settings are documented absolute-only and the
+                // row is readOnly, so a relative value only survives as legacy persisted
+                // state — and zettelkastenDirectory has no scrub migration at all. Rust
+                // would then stat it against the APP PROCESS CWD (src-tauri/ in dev, / for
+                // a launched .app) and open the picker somewhere arbitrary (#556 review L2).
+                const selected = await pickApprovedDir(
+                  "journal",
+                  resolveAbsoluteDirSetting(journalDirectory) ?? "",
+                );
                 if (selected) setJournalDirectory(selected);
               }}
               placeholder={t("settings.general.journalDirectory.placeholder")}
@@ -113,6 +123,7 @@ export function JournalSection() {
             label={t("settings.general.journalTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.journalTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -195,6 +206,7 @@ export function JournalSection() {
             label={t("settings.general.weeklyTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.weeklyTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -212,6 +224,7 @@ export function JournalSection() {
             label={t("settings.general.monthlyTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.monthlyTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -229,6 +242,7 @@ export function JournalSection() {
             label={t("settings.general.yearlyTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.yearlyTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],

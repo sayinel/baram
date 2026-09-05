@@ -86,3 +86,81 @@ describe("GeneralTab — TemplatePathRow DOM shape", () => {
     expect(buttons?.[0]).toHaveTextContent("Browse");
   });
 });
+
+describe("TemplatePathRow — reading a long path", () => {
+  /**
+   * jsdom lays nothing out, so an input's scrollWidth is 0 and the parking effect would be
+   * indistinguishable from doing nothing. Faking the overflow is what makes the assertion able
+   * to fail — and it also fails if the ref never reaches the input, which is the quiet way this
+   * breaks: `Tooltip` clones the child and sets its own ref, so a forwarding mistake there
+   * leaves the effect holding null and the field silently parked at the start.
+   */
+  function withOverflow(scrollWidth: number) {
+    const proto = HTMLInputElement.prototype as unknown as Record<
+      string,
+      unknown
+    >;
+    const original = Object.getOwnPropertyDescriptor(proto, "scrollWidth");
+    Object.defineProperty(proto, "scrollWidth", {
+      configurable: true,
+      get: () => scrollWidth,
+    });
+    return () => {
+      if (original) Object.defineProperty(proto, "scrollWidth", original);
+      else delete proto.scrollWidth;
+    };
+  }
+
+  it("parks the field at the end of the path, where the folder name is", () => {
+    const restore = withOverflow(640);
+    try {
+      useSettingsStore.setState({
+        ...initialState,
+        journalDirectory: "/Users/someone/Documents/Notes/vault/daily/journal",
+        journalEnabled: true,
+        locale: "en",
+      });
+      render(<GeneralTab />);
+
+      const input = screen.getByLabelText("Journal Directory");
+      expect(input).toHaveProperty("scrollLeft", 640);
+    } finally {
+      restore();
+    }
+  });
+
+  it("gives the field a name of its own, not the path it holds", () => {
+    // The tooltip names its trigger for assistive tech, which is right for an icon-only button
+    // and wrong here: it would announce this field as "/Users/…/journal".
+    useSettingsStore.setState({
+      ...initialState,
+      journalDirectory: "/Users/someone/Notes/journal",
+      journalEnabled: true,
+      locale: "en",
+    });
+    render(<GeneralTab />);
+
+    // The name, asserted directly. `getByLabelText` alone would already throw if the tooltip had
+    // overwritten aria-label, but then the assertion under this test's name would be proving
+    // something else — that the field holds its value.
+    const input = screen.getByLabelText("Journal Directory");
+    expect(input).toHaveAccessibleName("Journal Directory");
+    expect(input).not.toHaveAccessibleName("/Users/someone/Notes/journal");
+    expect(input).toHaveValue("/Users/someone/Notes/journal");
+  });
+
+  it("uses the wider path row, not the API-key width", () => {
+    useSettingsStore.setState({
+      ...initialState,
+      journalDirectory: "",
+      journalEnabled: true,
+      locale: "en",
+    });
+    render(<GeneralTab />);
+
+    const row = screen.getByText("Journal Directory").closest(".settings-row");
+    expect(row?.querySelector(".settings-key-row")).toHaveClass(
+      "settings-key-row--path",
+    );
+  });
+});

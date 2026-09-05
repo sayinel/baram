@@ -82,7 +82,11 @@ export function ApprovedRootsSection() {
           );
           await refresh();
         } catch (err) {
-          logger.warn("§90(M5) revoke: post-revoke cleanup failed", path, err);
+          logger.warn(
+            "[ApprovedRoots] §90(M5) revoke: post-revoke cleanup failed",
+            path,
+            err,
+          );
         }
       } finally {
         setRevoking((prev) => {
