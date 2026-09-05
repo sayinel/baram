@@ -24,7 +24,7 @@ describe("ActivityBar plugin panels", () => {
       ],
     });
     render(<ActivityBar />);
-    const btn = screen.getByTitle("My Notes");
+    const btn = screen.getByRole("button", { name: "My Notes" });
     fireEvent.click(btn);
     expect(useUIStore.getState().sidebarPanel).toBe("plugin");
     expect(usePluginUIStore.getState().activePluginPanelId).toBe("p1:notes");
@@ -51,7 +51,7 @@ describe("ActivityBar plugin panels", () => {
       sidebarPanels: [panelA, panelB],
     });
     render(<ActivityBar />);
-    const btnB = screen.getByTitle("Panel B");
+    const btnB = screen.getByRole("button", { name: "Panel B" });
     fireEvent.click(btnB);
     // A naive handlePanelClick("plugin") reuse would toggle-close here since
     // sidebarPanel === "plugin" already; the dedicated handler must not.
@@ -74,7 +74,7 @@ describe("ActivityBar plugin panels", () => {
       sidebarPanels: [panelA],
     });
     render(<ActivityBar />);
-    const btnA = screen.getByTitle("Panel A");
+    const btnA = screen.getByRole("button", { name: "Panel A" });
     fireEvent.click(btnA);
     expect(useUIStore.getState().sidebarOpen).toBe(false);
   });

@@ -18,6 +18,7 @@ import {
   KEYBINDING_CATEGORIES,
   KEYBINDING_REGISTRY,
 } from "../../keybindings/keybinding-registry";
+import { DEFAULT_ACTIVITY_BAR_CONFIG } from "../../stores/settings/activity-bar-config";
 import en from "../en.json";
 import ko from "../ko.json";
 
@@ -53,6 +54,13 @@ interface SettingDef {
   key: string;
   label: string;
   options?: Array<{ label: string; value: string }>;
+}
+
+/** Every i18n key the Activity Bar settings tab and the bar's own tooltips ask for. */
+function activityBarItemKeys(): string[] {
+  return DEFAULT_ACTIVITY_BAR_CONFIG.map(
+    (i) => `settings.activitybar.item.${i.id}`,
+  );
 }
 
 /** Every i18n key the Markdown tab asks for when rendering registry.json settings. */
@@ -155,5 +163,33 @@ describe("the two line-number toggles", () => {
     expect(locale["settings.editor.lineNumbers.desc"]).not.toBe(
       locale["settings.ext.codeBlockLineNumbers.desc"],
     );
+  });
+});
+
+describe("activity bar item labels", () => {
+  // Same defect as the keybindings tab, from the same blind spot: `settings.activitybar.item.tasks`
+  // existed in NEITHER locale, so the Activity Bar settings tab rendered the raw key as that row's
+  // name and the icon's tooltip said `tasks`. Parity was perfect the whole time.
+  //
+  // Derived from DEFAULT_ACTIVITY_BAR_CONFIG rather than a copy of the id list: a hand-written
+  // enumeration here would pass for every id it happens to name and let the NEXT item added to the
+  // bar escape exactly as `tasks` did.
+  it("has every section represented, so the checks below are not vacuous", () => {
+    const sections = new Set(DEFAULT_ACTIVITY_BAR_CONFIG.map((i) => i.section));
+    expect(sections).toEqual(new Set(["bottom", "top"]));
+    expect(DEFAULT_ACTIVITY_BAR_CONFIG.length).toBeGreaterThan(15);
+  });
+
+  it.each(LOCALES)("defines every item label in %s", (_name, locale) => {
+    const missing = activityBarItemKeys().filter((k) => !(k in locale));
+    expect(missing).toEqual([]);
+  });
+
+  it("has no orphaned item label", () => {
+    const referenced = new Set(activityBarItemKeys());
+    const orphaned = Object.keys(EN).filter(
+      (k) => k.startsWith("settings.activitybar.item.") && !referenced.has(k),
+    );
+    expect(orphaned).toEqual([]);
   });
 });

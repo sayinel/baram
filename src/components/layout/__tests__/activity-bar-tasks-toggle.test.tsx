@@ -11,12 +11,14 @@ describe("ActivityBar tasks visibility", () => {
 
   it("shows the Tasks button when the feature is enabled", () => {
     render(<ActivityBar />);
-    expect(screen.getByTitle("Tasks")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tasks" })).toBeInTheDocument();
   });
 
   it("hides the Tasks button when the feature is disabled", () => {
     useSettingsStore.setState({ tasksEnabled: false });
     render(<ActivityBar />);
-    expect(screen.queryByTitle("Tasks")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Tasks" }),
+    ).not.toBeInTheDocument();
   });
 });
