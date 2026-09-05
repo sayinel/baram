@@ -1828,7 +1828,7 @@
     {
       "name": "pick_approved_dir",
       "input": {
-        "purpose": "string (\"journal\" | \"zettelkasten\" | \"tasks\" | \"plugin-dev\" | 기타 — 피커 타이틀만 바뀐다)"
+        "purpose": "string (\"journal\" | \"zettelkasten\" | \"tasks\" | \"plugin-dev\" | \"open-folder\" — TS 쪽은 이 5개의 유니온이고 \"open-folder\"가 Rust의 _ 갈래를 친다)"
       },
       "output": "string | null",
       "module": "approval",
@@ -1843,7 +1843,18 @@
       "module": "approval",
       "spec": "§332",
       "status": "implemented",
-      "description": "네이티브 파일 피커(Markdown/HTML/PDF/이미지 필터)를 연다. 고른 파일을 canonical화해 승인하고 반환한다 — File 승인은 같은 폴더의 이미지도 함께 연다(§329.2). 취소하면 null"
+      "description": "네이티브 파일 피커(Markdown/HTML/PDF/이미지/Text/All Files 필터)를 연다. 고른 파일을 canonical화해 승인하고 반환한다 — File 승인은 같은 폴더의 이미지도 함께 연다(§329.2). 취소하면 null"
+    },
+    {
+      "name": "is_path_approved",
+      "input": {
+        "path": "string"
+      },
+      "output": "boolean",
+      "module": "approval",
+      "spec": "§334",
+      "status": "implemented",
+      "description": "다이얼로그 없이 승인 여부만 묻는 순수 질의 — 부여를 하지 않는다. 시작 시 비활성 컨텍스트를 조용히 재등록할지 가르는 데 쓴다(§334 — N개 컨텍스트에 N번 묻지 않기 위해)"
     },
     {
       "name": "list_approved_roots",

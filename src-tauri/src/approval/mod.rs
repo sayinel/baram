@@ -58,13 +58,39 @@ impl ApprovalStore {
             }
         })
     }
+
+    /// 이 (경로, 종류) 승인을 **새로 기록할 필요가 없는지**. `approve`의 관문이다.
+    ///
+    /// ‼️ `covers`를 그대로 쓰면 안 된다 — 종류를 봐야 한다. Dir 승인은 **Dir 항목**이
+    /// 덮을 때만 불필요하다. 같은 경로의 File 항목이 있다고 Dir 기록을 건너뛰면, 그
+    /// 디렉터리는 실제로는 승인되지 않은 채 "승인했다"고 끝나서 하위 파일마다 확인이
+    /// 다시 뜬다.
+    ///
+    /// 이게 없으면 (§335 리뷰 I2) 이미 승인된 vault 안에서 Cmd+O로 연 파일마다 영구
+    /// `File` 항목이 쌓이고, Settings 목록에서 그 줄을 회수해도 부모 Dir 항목 때문에
+    /// `covers`는 여전히 true다 — **아무 일도 하지 않은 회수를 했다고 보고하는 보안
+    /// UI**가 된다.
+    fn already_covers(&self, canonical: &Path, kind: ApprovalKind) -> bool {
+        match kind {
+            ApprovalKind::File => self.covers(canonical),
+            ApprovalKind::Dir => self
+                .entries
+                .iter()
+                .any(|e| e.kind == ApprovalKind::Dir && canonical.starts_with(Path::new(&e.path))),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Decision {
     Allowed,
     NeedsConfirmation,
-    Denied,
+    /// `canonicalize` 실패 — 삭제된 vault, 언마운트된 드라이브, 오타.
+    ///
+    /// ‼️ **사용자 거부가 아니다.** 예전에는 이 경우가 `Denied`였고 호출자가 그것을
+    /// `VAULT_APPROVAL_DENIED`로 옮겨서, 뜬 적도 없는 다이얼로그를 "거부했다"고 보고했다
+    /// (§333 리뷰 I3). 두 결과를 가르는 것이 §333이 전용 에러 코드를 만든 이유다.
+    Unresolvable,
 }
 
 /// 경로 하나에 대한 판정. 두 번째 값은 **다이얼로그에 표시할 canonical 경로**다 —
@@ -72,7 +98,7 @@ pub enum Decision {
 pub fn decide(store: &ApprovalStore, path: &str) -> (Decision, Option<PathBuf>) {
     match std::fs::canonicalize(path) {
         // 존재하지 않는 경로는 승인 대상이 아니다 (§331 fail-closed).
-        Err(_) => (Decision::Denied, None),
+        Err(_) => (Decision::Unresolvable, None),
         Ok(canonical) => {
             if store.covers(&canonical) {
                 (Decision::Allowed, Some(canonical))
@@ -138,23 +164,34 @@ pub fn approve<R: tauri::Runtime>(
         .map_err(|_| "잠금 획득 실패".to_string())?;
     let p = store_path(app)?;
     let mut store = load_from(&p);
-    let path = canonical.to_string_lossy().into_owned();
-    if store
-        .entries
-        .iter()
-        .any(|e| e.path == path && e.kind == kind)
-    {
+    if !record(&mut store, canonical, kind) {
         return Ok(());
     }
+    save_to(&p, &store)
+}
+
+/// 승인 하나를 저장소에 반영한다. 이미 덮여 있으면 **아무것도 하지 않고** false.
+///
+/// ‼️ `approve`에서 떼어낸 순수 함수인 이유: `already_covers`만 단정하는 테스트는
+/// `approve`가 그 관문을 **부르지 않아도** 초록이다. 저장소를 실제로 바꾸는 이 함수를
+/// 테스트해야 "새 항목이 생기지 않는다"가 고정된다 (§335 리뷰 I2).
+///
+/// ‼️ 정확히 같은 (경로, 종류)가 아니라 **이미 덮여 있는가**를 본다 — 근거는
+/// `already_covers`의 주석. 대가는 정직하다: 부모 Dir을 회수하면 그 아래 자식 항목도
+/// 함께 사라진다(애초에 자식 항목이 생기지 않으므로).
+fn record(store: &mut ApprovalStore, canonical: &Path, kind: ApprovalKind) -> bool {
+    if store.already_covers(canonical, kind) {
+        return false;
+    }
     store.entries.push(ApprovalEntry {
-        path,
+        path: canonical.to_string_lossy().into_owned(),
         kind,
         approved_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0),
     });
-    save_to(&p, &store)
+    true
 }
 
 /// ‼️ 회수는 **기록 삭제만** 한다. `Scope::forbid_*`를 부르지 않는다 — tauri의 forbid는
@@ -259,16 +296,75 @@ mod tests {
         std::fs::remove_file(&tmp).ok();
     }
 
+    /// ‼️ fail-closed는 유지하되 **이유가 다르다.** 이 경로는 사용자가 거부한 것이
+    /// 아니라 해석되지 않은 것이다 — `Denied`로 뭉뚱그리면 호출자가
+    /// `VAULT_APPROVAL_DENIED`를 돌려주고, 뜬 적 없는 다이얼로그를 "허용되지
+    /// 않았습니다"로 보고한다 (§333 리뷰 I3).
     #[test]
-    fn nonexistent_path_is_denied_not_merely_unapproved() {
+    fn nonexistent_path_is_unresolvable_not_a_user_denial() {
         let s = store(vec![dir("/")]);
         let (decision, canonical) = decide(&s, "/definitely/not/here/at/all");
         assert_eq!(
             decision,
-            Decision::Denied,
-            "canonicalize 실패는 fail-closed 거부여야 한다"
+            Decision::Unresolvable,
+            "canonicalize 실패는 fail-closed지만 사용자 거부와는 다른 결과여야 한다"
         );
         assert!(canonical.is_none());
+    }
+
+    // ── §335 리뷰 I2 — 이미 덮인 승인은 새 항목을 만들지 않는다 ──────────────────
+
+    /// 승인된 vault 안에서 Cmd+O로 연 파일마다 영구 `File` 항목이 쌓이던 결함.
+    /// Settings 목록에서 그 줄은 독립 부여로 보이지만, 회수해도 부모 Dir이 여전히
+    /// 덮으므로 **아무것도 회수되지 않는다.**
+    #[test]
+    fn a_file_inside_an_approved_dir_records_no_new_entry() {
+        let mut s = store(vec![dir("/x/Vault")]);
+        assert!(!record(
+            &mut s,
+            Path::new("/x/Vault/notes/a.md"),
+            ApprovalKind::File
+        ));
+        assert_eq!(s.entries.len(), 1, "새 항목이 생기면 안 된다");
+    }
+
+    #[test]
+    fn re_approving_the_same_dir_records_no_new_entry() {
+        let mut s = store(vec![dir("/x/Vault")]);
+        assert!(!record(&mut s, Path::new("/x/Vault"), ApprovalKind::Dir));
+        assert!(!record(
+            &mut s,
+            Path::new("/x/Vault/sub"),
+            ApprovalKind::Dir
+        ));
+        assert_eq!(s.entries.len(), 1);
+    }
+
+    /// ‼️ 종류를 무시하고 `covers`를 그대로 썼다면 이 단정이 실패한다. File 항목은
+    /// 하위를 열지 않으므로 Dir 승인의 중복 판정 근거가 될 수 없다 — 건너뛰면 그
+    /// 디렉터리는 승인되지 않은 채 "승인했다"로 끝난다.
+    #[test]
+    fn a_dir_approval_is_still_recorded_when_only_a_file_entry_shares_its_path() {
+        let mut s = store(vec![file("/x/Vault")]);
+        assert!(s.covers(Path::new("/x/Vault")), "전제: covers는 true다");
+        assert!(
+            record(&mut s, Path::new("/x/Vault"), ApprovalKind::Dir),
+            "같은 경로의 File 항목은 Dir 승인을 대신할 수 없다"
+        );
+        assert_eq!(s.entries.len(), 2);
+        assert!(s.covers(Path::new("/x/Vault/inside.md")));
+    }
+
+    #[test]
+    fn an_unrelated_path_is_recorded() {
+        let mut s = store(vec![dir("/x/Vault")]);
+        assert!(record(
+            &mut s,
+            Path::new("/x/Vault-secret/a.md"),
+            ApprovalKind::File
+        ));
+        assert!(record(&mut s, Path::new("/y/Other"), ApprovalKind::Dir));
+        assert_eq!(s.entries.len(), 3);
     }
 
     /// 심링크로 승인 경계를 우회할 수 없다: 승인도 판정도 canonical 경로로 한다.
@@ -333,11 +429,10 @@ mod tests {
 
         let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut offenders = Vec::new();
-        collect_forbid_calls(
+        collect_calls(
             &src_dir,
             &src_dir,
-            FORBID_DIR_CALL,
-            FORBID_FILE_CALL,
+            &[FORBID_DIR_CALL, FORBID_FILE_CALL],
             &mut offenders,
         );
 
@@ -360,12 +455,80 @@ mod tests {
         );
     }
 
+    /// ‼️ §329.6이 세 번째 입구(`plugin_add_dev_folder`)를 잡은 방법이 바로 이것 —
+    /// 심볼 grep이 아니라 **효과 grep**(`allow_directory`/`allow_file` 크레이트 전수)이다.
+    /// 위 `forbid` 가드는 "절대 나타나면 안 되는 것"을 지키지만, 이 브랜치가 없애려는
+    /// 결함 부류는 그게 아니라 **웹뷰 경로에서 도달 가능한 새 asset 부여**다. 그걸
+    /// 지키는 것이 없으면 네 번째 입구를 막을 장치가 없다 (§335 리뷰 I6).
+    ///
+    /// 새 부여를 추가하려면 그 경로가 먼저 `approval_cmd::ensure_approved`(또는
+    /// `pick_approved_*`)를 통과하는지 확인하고, 그때 이 목록에 줄을 추가한다.
+    ///
+    /// 규율은 `forbid` 가드와 같다 — (상대 경로, 그 줄의 정확한 텍스트) 쌍이고,
+    /// 찾는 문자열은 `concat!`로 조각내며, 목록의 텍스트에는 **선행 점이 없다**(있으면
+    /// 이 파일이 자기 자신을 위반으로 잡는다). 더해서 **총 개수까지 단정**한다:
+    /// 쌍 매칭만으로는 이미 허용된 파일에 같은 모양의 줄을 하나 더 넣는 것을 못 막는다.
+    #[test]
+    fn no_new_asset_scope_grant_outside_the_allowlist() {
+        const ALLOW_DIR_CALL: &str = concat!(".", "allow_directory", "(");
+        const ALLOW_FILE_CALL: &str = concat!(".", "allow_file", "(");
+
+        const ALLOWED: &[(&str, &str)] = &[
+            // §69 썸네일 캐시 — 앱이 소유한 app_data_dir 하위. 웹뷰 경로가 아니다.
+            ("lib.rs", "allow_directory(&dir, true)"),
+            // §backlog#3/§89 컨텍스트 등록. `add_context`가 ensure_approved 뒤에만 부른다.
+            ("commands/context_cmd.rs", "allow_file(&path)"),
+            ("commands/context_cmd.rs", "allow_directory(&path, true)"),
+            // §333 set_vault_root — 같은 게이트를 자기 진입에서 통과한다.
+            ("commands/fs_cmd.rs", "allow_directory(&path, true)"),
+            // §260 설치된 플러그인 디렉터리 — 앱이 소유한 plugins 루트 하위.
+            ("commands/plugin_cmd.rs", "allow_directory(&dir, true)"),
+            // §329.6 세 번째 입구. `plugin_add_dev_folder`가 ensure_approved 뒤에만 부른다.
+            ("commands/plugin_cmd.rs", "allow_directory(folder, true)"),
+        ];
+
+        let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut grants = Vec::new();
+        collect_calls(
+            &src_dir,
+            &src_dir,
+            &[ALLOW_DIR_CALL, ALLOW_FILE_CALL],
+            &mut grants,
+        );
+
+        let unexpected: Vec<_> = grants
+            .iter()
+            .filter(|(rel_path, _line_no, line)| {
+                !ALLOWED
+                    .iter()
+                    .any(|(f, snippet)| rel_path == f && line.contains(snippet))
+            })
+            .collect();
+
+        assert!(
+            unexpected.is_empty(),
+            "§333: 목록에 없는 asset scope 부여를 찾았습니다 — {unexpected:?}\n\n\
+             새 부여는 vault 경계를 넓힌다. 그 경로가 approval_cmd::ensure_approved 또는 \
+             pick_approved_* 를 먼저 통과하는지 확인하고, 통과한다면 이 테스트의 \
+             ALLOWED에 (파일, 줄 텍스트)를 추가할 것."
+        );
+        assert_eq!(
+            grants.len(),
+            ALLOWED.len(),
+            "§333: asset scope 부여 개수가 {}에서 {}로 바뀌었습니다 — {grants:?}\n\n\
+             쌍 매칭만으로는 이미 허용된 파일에 같은 모양의 줄을 하나 더 넣는 것을 \
+             막지 못한다. 개수를 함께 고정하는 이유다.",
+            ALLOWED.len(),
+            grants.len()
+        );
+    }
+
     /// `root` 기준 상대 경로, 1-기반 줄 번호, 그 줄의 trim된 텍스트를 `out`에 모은다.
-    fn collect_forbid_calls(
+    /// `needles` 중 **하나라도** 포함하는 줄을 모은다.
+    fn collect_calls(
         root: &Path,
         dir: &Path,
-        dir_call: &str,
-        file_call: &str,
+        needles: &[&str],
         out: &mut Vec<(String, usize, String)>,
     ) {
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -374,7 +537,7 @@ mod tests {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                collect_forbid_calls(root, &path, dir_call, file_call, out);
+                collect_calls(root, &path, needles, out);
                 continue;
             }
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
@@ -389,7 +552,7 @@ mod tests {
                 .to_string_lossy()
                 .replace('\\', "/");
             for (i, line) in content.lines().enumerate() {
-                if line.contains(dir_call) || line.contains(file_call) {
+                if needles.iter().any(|n| line.contains(n)) {
                     out.push((rel.clone(), i + 1, line.trim().to_string()));
                 }
             }

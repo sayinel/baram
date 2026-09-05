@@ -408,6 +408,7 @@ pub fn run() {
             context_cmd::resolve_settings,
             approval_cmd::pick_approved_dir,
             approval_cmd::pick_approved_file,
+            approval_cmd::is_path_approved,
             approval_cmd::list_approved_roots,
             approval_cmd::revoke_approved_root,
         ])

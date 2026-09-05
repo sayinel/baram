@@ -1371,8 +1371,11 @@ mod tests {
         assert!(sandbox_window_guard("file-1").is_err());
     }
 
-    /// §329.6 — `dev_info`가 웹뷰가 준 경로에 `allow_directory(.., true)`를 재귀로 부여한다.
+    /// §329.6 — `dev_info`가 웹뷰가 준 경로에 asset scope를 재귀로 부여한다.
     /// `add_context`도 `set_vault_root`도 거치지 않는 세 번째 입구였다.
+    ///
+    /// ‼️ 기대값이 `VAULT_PATH_UNRESOLVABLE`인 이유는 `context_cmd`의 짝 테스트와 같다
+    /// (§335 리뷰 I3) — 존재하지 않는 경로는 거부가 아니라 해석 실패다.
     #[test]
     fn plugin_add_dev_folder_refuses_an_unapproved_path_through_generate_handler() {
         let app = tauri::test::mock_builder()
@@ -1405,6 +1408,6 @@ mod tests {
         );
 
         let err = res.expect_err("존재하지 않는 미승인 경로는 거부되어야 한다");
-        assert_eq!(err, serde_json::json!("VAULT_APPROVAL_DENIED"));
+        assert_eq!(err, serde_json::json!("VAULT_PATH_UNRESOLVABLE"));
     }
 }

@@ -394,11 +394,17 @@ mod asset_scope_tests {
 mod approval_gate_tests {
     use tauri::Manager;
 
-    /// ‼️ 존재하지 않는 경로를 쓴다 — `decide`가 다이얼로그 이전에 Denied로 끊으므로
+    /// ‼️ 존재하지 않는 경로를 쓴다 — `decide`가 다이얼로그 이전에 끊으므로
     /// mock 런타임(다이얼로그 플러그인 없음)에서도 게이트가 실제로 실행된다.
     /// 이것이 이 테스트가 "게이트가 걸려 있다"와 "커맨드가 IPC로 도달 가능하다"를
     /// 동시에 고정하는 방법이다.
     /// [[direct-call-test-cannot-see-an-unreachable-command]]
+    ///
+    /// ‼️ 기대값은 `VAULT_PATH_UNRESOLVABLE`이지 `VAULT_APPROVAL_DENIED`가 아니다 —
+    /// 여기서 걸리는 것은 사용자가 거부한 게 아니라 경로가 해석되지 않은 경우이고,
+    /// 두 코드를 가르는 것이 §333의 요구다 (§335 리뷰 I3). 이 문자열은
+    /// `ensure_approved`만이 만들므로 게이트를 지목하는 힘은 그대로다: 게이트가 없으면
+    /// `state.add`의 다른 메시지가, 등록이 없으면 "not found"가 온다.
     #[test]
     fn add_context_refuses_an_unapproved_path_through_generate_handler() {
         let app = tauri::test::mock_builder()
@@ -440,6 +446,6 @@ mod approval_gate_tests {
         );
 
         let err = res.expect_err("존재하지 않는 미승인 경로는 거부되어야 한다");
-        assert_eq!(err, serde_json::json!("VAULT_APPROVAL_DENIED"));
+        assert_eq!(err, serde_json::json!("VAULT_PATH_UNRESOLVABLE"));
     }
 }

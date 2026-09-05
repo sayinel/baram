@@ -70,6 +70,7 @@ fn main() {
         "index_status",
         "index_vault",
         "init_vault",
+        "is_path_approved",
         "keyring_delete_provider_key",
         "keyring_provider_configured",
         "keyring_set_provider_key",

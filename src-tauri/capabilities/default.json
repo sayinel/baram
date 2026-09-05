@@ -67,6 +67,7 @@
     "allow-index-status",
     "allow-index-vault",
     "allow-init-vault",
+    "allow-is-path-approved",
     "allow-keyring-delete-provider-key",
     "allow-keyring-provider-configured",
     "allow-keyring-set-provider-key",
