@@ -152,7 +152,13 @@ export function VaultTab() {
                       await import("../../../services/vault-context-loader");
                     await switchContext(newActive);
                   } else {
-                    // No contexts left — clear FileTree
+                    // No contexts left — clear FileTree.
+                    //
+                    // ‼️ NOT `requestCloseWorkspace()` (§81). Its Cancel would leave
+                    // the workspace half-dismantled: `removeContext` above has already
+                    // dropped the last context, and Cancel cannot put it back. What
+                    // this path needs is a prompt BEFORE the removal, scoped to that
+                    // context's dirty tabs — a per-context guard, not this one.
                     const { useFileStore } =
                       await import("../../../stores/file/file");
                     useFileStore.getState().closeFolder();

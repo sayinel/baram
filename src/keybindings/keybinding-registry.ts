@@ -94,6 +94,12 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: true,
   },
   {
+    // §81 Labelled "Close Workspace" — it closes every tab and every context, not
+    // one folder. The **id stays** `file.closeFolder`: `keybindingOverrides` is keyed
+    // by command id (see `stores/settings/store.ts`), so renaming it orphans the key
+    // of anyone who remapped this shortcut and needs a persist migration to move it
+    // (`__tests__/task-input-command-migration.test.ts` is what that costs). The
+    // i18n key mirrors the id for the same reason.
     id: "file.closeFolder",
     label: "keybindings.file.closeFolder",
     category: "file",

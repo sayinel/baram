@@ -29,6 +29,7 @@ import {
 } from "../../../hooks/use-close-guard";
 import { confirmQuit } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
+import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
 import { UnsavedChangesModal } from "../UnsavedChangesModal";
 
@@ -305,6 +306,118 @@ describe("UnsavedChangesModal", () => {
       expect(useUIStore.getState().unsavedModal).toBeNull();
       expect(reload).not.toHaveBeenCalled();
       expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── close-workspace flow (§81) ─────────────────────────────────────────────
+  //
+  // File > Close Workspace drops every tab AND every context. Before it went
+  // through this modal, `closeAllTabs()` discarded unsaved tabs with no prompt.
+  describe("close workspace", () => {
+    /** The modal calls `useFileStore.getState().closeFolder()` — spy on that. */
+    function spyCloseFolder() {
+      return vi
+        .spyOn(useFileStore.getState(), "closeFolder")
+        .mockImplementation(() => {});
+    }
+
+    it("closeWorkspace intent → shows the dirty count, not a single tab name", () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a"), dirtyFileTab("b"), dirtyFileTab("c")],
+      });
+      useUIStore.setState({ unsavedModal: { intent: "closeWorkspace" } });
+
+      render(<UnsavedChangesModal {...deps} />);
+
+      expect(
+        screen.getByText(
+          containing("unsavedChanges.closeWorkspaceMessage", '"count":"3"'),
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndCloseWorkspace",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("Save & Close Workspace → saves EVERY dirty tab, then clears the workspace", async () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a"), dirtyFileTab("b")],
+      });
+      useUIStore.setState({ unsavedModal: { intent: "closeWorkspace" } });
+      vi.mocked(saveAllDirtyForQuit).mockResolvedValue(true);
+      const closeFolder = spyCloseFolder();
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndCloseWorkspace",
+        }),
+      );
+
+      await waitFor(() => expect(closeFolder).toHaveBeenCalledOnce());
+      // The whole surface goes away, so it must save all of them — not just the
+      // active tab, which is what `saveDirtyTab` alone would have done.
+      expect(saveAllDirtyForQuit).toHaveBeenCalledOnce();
+      expect(saveDirtyTab).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+      closeFolder.mockRestore();
+    });
+
+    it("Save & Close Workspace → keeps the workspace when a Save As is cancelled", async () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "closeWorkspace" } });
+      vi.mocked(saveAllDirtyForQuit).mockResolvedValue(false);
+      const closeFolder = spyCloseFolder();
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndCloseWorkspace",
+        }),
+      );
+
+      await waitFor(() => expect(saveAllDirtyForQuit).toHaveBeenCalledOnce());
+      expect(closeFolder).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toEqual({
+        intent: "closeWorkspace",
+      });
+      closeFolder.mockRestore();
+    });
+
+    it("Don't Save (closeWorkspace) → clears the workspace without saving", async () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "closeWorkspace" } });
+      const closeFolder = spyCloseFolder();
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.dontSave" }),
+      );
+
+      await waitFor(() => expect(closeFolder).toHaveBeenCalledOnce());
+      expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+      closeFolder.mockRestore();
+    });
+
+    it("Cancel (closeWorkspace) → keeps the workspace open", () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "closeWorkspace" } });
+      const closeFolder = spyCloseFolder();
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.cancel" }),
+      );
+
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+      expect(closeFolder).not.toHaveBeenCalled();
+      expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+      closeFolder.mockRestore();
     });
   });
 });

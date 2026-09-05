@@ -73,9 +73,12 @@ export interface ToastState {
 /** §close-guard: What triggered the shared unsaved-changes modal. `quit` = app
  *  close/quit (all dirty tabs); `closeTab` = closing a single tab; `reload` =
  *  View > Reload / CmdOrCtrl+R (§479, all dirty tabs — reload discards every
- *  open tab, not just the active one, so it saves the same set as quit). */
+ *  open tab, not just the active one, so it saves the same set as quit);
+ *  `closeWorkspace` = §81 File > Close Workspace, which closes every tab and
+ *  every context, so it too answers for all dirty tabs rather than the active one. */
 export type UnsavedModalRequest =
   | { intent: "closeTab"; tabId: string }
+  | { intent: "closeWorkspace" }
   | { intent: "quit" }
   | { intent: "reload" };
 

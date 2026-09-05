@@ -70,7 +70,11 @@ pub fn build_menu(
         .id("file_close_tab")
         .accelerator("CmdOrCtrl+W")
         .build(app)?;
-    let file_close_folder = MenuItemBuilder::new("Close Folder")
+    // §81 Closes every tab and every open context — the whole workspace, not one
+    // folder. The item id stays `file_close_folder` so the frontend's
+    // `ipc/menu-locale.ts` map and the `file.closeFolder` keybinding id (which keys
+    // persisted user remaps) keep pointing at the same thing.
+    let file_close_folder = MenuItemBuilder::new("Close Workspace")
         .id("file_close_folder")
         .accelerator("CmdOrCtrl+Shift+W")
         .build(app)?;
