@@ -1,13 +1,5 @@
 # Baram — Lightweight WYSIWYG Markdown Editor
 
-## 에이전트 정책 (OMC)
-
-멀티 에이전트 오케스트레이션은 **oh-my-claudecode(OMC)** 를 활용한다 (상세 라우팅은 글로벌 CLAUDE.md 참조).
-
-- 대규모 병렬 구현 `/team N:executor` · `/ultrawork` | 지속 완수 `/ralph` | 합의 계획 `/plan` · `/ralplan`
-- 탐색/리서치는 `explore`(haiku), 소스 편집은 `executor`(sonnet)/`deep-executor`(opus)에 위임해 메인 컨텍스트 보존
-- 독립 하위 작업 2개 이상이면 병렬 디스패치, 완료 선언 전 `verifier`로 증거 기반 검증
-
 ## 프로젝트 개요
 
 Baram(바람)은 Tauri 2.0 + Tiptap/ProseMirror + React 기반의 경량 WYSIWYG 마크다운 에디터다.
@@ -42,21 +34,24 @@ Typora의 WYSIWYG 품질 + Obsidian의 확장성 + AI 네이티브 통합을 목
 baram/
 ├── src-tauri/              # Rust 백엔드 (자체 CLAUDE.md)
 │   └── src/
-│       ├── commands/       # IPC 커맨드 핸들러 (thin layer): {fs,search,index,git,llm,export,
-│       │                   #   config,context,embedding,keyring,plugin,snapshot,tag}_cmd.rs
-│       ├── context/        # ContextManager (§88)        embedding/ # Knowledge Q&A (§11.4)
+│       ├── commands/       # IPC 커맨드 핸들러 (thin layer): {approval,config,context,embedding,
+│       │                   #   export,fs,git,index,keyring,llm,plugin,search,snapshot,tag,
+│       │                   #   task,thumbnail}_cmd.rs
+│       ├── approval/       # vault 경계 승인 저장소 (§331) context/ # ContextManager (§88)
 │       ├── search/         # regex 전문 검색 (§5.11)      index/     # 링크 인덱서 (§29)
 │       ├── plugin/         # 플러그인 설치/레지스트리 (§69) snapshot/  # 버전 히스토리 (§71)
-│       ├── tag/            # Vault 태그 인덱스 (§56m)
-│       └── fs/ git/ llm/ export/ config/
+│       ├── tag/            # Vault 태그 인덱스 (§56m)     task/      # 태스크 인덱스 (§302~)
+│       └── fs/ git/ llm/ export/ config/ embedding/ logging/ md/ protocol/ thumbnail/ menu.rs
 ├── src/                    # React 프론트엔드
 │   ├── components/         # editor/ sidebar/ toolbar/ command/ ai/ settings/ layout/ journal/
+│   │                       #   tasks/ zettelkasten/ plugins/ export/ help/ onboarding/
 │   ├── extensions/         # Tiptap Extensions (자체 CLAUDE.md): nodes/ marks/ plugins/ __tests__/
 │   │                       #   registry.json = Extension 메타데이터 레지스트리 (등록 필수)
 │   ├── pipeline/           # MD ↔ ProseMirror: md-to-pm.ts / pm-to-md.ts / transformers/
 │   ├── stores/             # Zustand: context/ editor/ file/ ui/ settings/ system/ zettelkasten/ ai/
+│   │                       #   tasks/ + agent·authorship·knowledge·writing-flow-store.ts
 │   │                       #   RightPanelMode·SidebarPanel canonical = ui/ui.ts
-│   ├── styles/             # CSS 모듈(~23): index.css(@import) + base.css(토큰·유틸·다크모드)
+│   ├── styles/             # CSS 모듈(~68): index.css(@import) + base.css(토큰·유틸·다크모드)
 │   │                       #   generated/ = Style Dictionary 자동 생성 (DO NOT EDIT)
 │   ├── ipc/                # Tauri IPC 래퍼 (types.ts, invoke.ts)
 │   ├── sandbox/            # 플러그인 샌드박스 호스트/브리지 (§260) — 신뢰 티어 경계
@@ -64,9 +59,10 @@ baram/
 ├── tokens/                 # W3C DTCG 디자인 토큰: primitive/ semantic/ tokens-studio.json
 ├── scripts/                # audit-css-vars.ts, export-tokens-studio.ts
 ├── docs/                   # 공개 사용자 문서 — user-guide·keyboard-shortcuts·faq(앱 Help에 ?raw 번들), plugin-development
-├── dev/                    # 내부 개발 문서 (public 배포 제외) — design/ plans/ impl-notes/
-│                           #   superpowers/ features/ backlog.md next-steps.md progress.json
-├── tests/                  # E2E (Playwright)
+├── dev/                    # 내부 개발 문서 (public 배포 제외, git 밖 심볼릭 링크) — 성격별 5분류:
+│                           #   design/(설계서 part1~20) design/specs/(기능별 설계) plans/(구현 계획)
+│                           #   impl-notes/(구현 기록·렛저) guides/(런북) + backlog·next-steps·progress
+│                           #   폴더마다 README.md가 주제별 색인 — 새 문서 위치는 dev/README.md 참조
 ├── skills/                 # Claude Code Skills (원주인 로컬 전용 — 의도적 추적 해제, 이 머신에 없어도 정상)
 ├── .claude/commands/       # 슬래시 커맨드 (동상 — dev/와 같은 부류)
 └── .claude/docs/           # 상황별 지침 (CI 계약·성능 기준·설계 § 지도 — 해당 작업 전 필독)
@@ -126,6 +122,14 @@ baram/
 - zip 추출은 `fs/archive.rs`의 `ExtractBounds` 공용 코어 경유 (6종 폭탄 방어 — fs·plugin 공유; 경로 봉쇄는 호출자 책임)
 - 에러 처리: `thiserror` crate으로 커스텀 에러 타입 정의
 - IPC 커맨드: `Result<T, String>` 반환 (Tauri 직렬화 제약)
+- **vault 경계는 자기를 인가할 수 없다 (§329–§336)**: 웹뷰가 준 경로로 asset scope를 부여하는
+  커맨드는 부여 **전에** `approval_cmd::ensure_approved`를 통과해야 한다. 승인 기록은 Rust 소유
+  `{app_data_dir}/approved-roots.json` — `config.json`은 웹뷰가 임의 키로 쓸 수 있어 거기 두면 무효다
+  - `Scope::forbid_*` **호출 금지**: 영구적이고 allow보다 우선하며 해제 API가 없다 — 회수가
+    그 세션의 재승인까지 죽인다. `approval/mod.rs`의 `no_new_scope_forbid_call_anywhere_in_the_crate`가 막는다
+  - 새 `allow_directory`/`allow_file` 호출부는 `no_new_asset_scope_grant_outside_the_allowlist`가
+    깨뜨린다. allowlist에 넣기 전에 게이트를 먼저 달 것 — **입구 열거가 다섯 번 틀렸고**, 매번
+    심볼 grep이 아니라 효과 grep·전수 스캔이 잡았다
 
 ### Extension
 
@@ -146,7 +150,10 @@ baram/
 
 - **Vitest** (TypeScript 단위/통합) — `npm test` → `vitest run`. `npx jest` 사용 금지 (Babel 파싱 실패)
 - **게이트 exit code는 파이프 없이 캡처**: `cmd | tail`은 tail의 exit를 반환한다 — `cmd > /tmp/log; echo $?` 또는 zsh `pipestatus` 사용
-- cargo test (Rust 단위) · Playwright (E2E, 크로스 플랫폼)
+- cargo test (Rust 단위) — `npm run rust:test`
+- **E2E는 없다**: `tests/e2e/`는 M1(2026-02-14) 스캐폴드 이후 한 번도 채워지지 않아 제거했다.
+  Playwright 미설치. 실제 React 트리가 필요한 커버리지는 현재 **비어 있는 구멍**이다
+  (`use-auto-save.test.ts`가 save() 전체 흐름을 여기로 미뤄 두었다). 도입하려면 새로 세운다
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
 - **성능 회귀 테스트는 타이밍이 아니라 카운트로 고정**: 분절·순회·dispatch 횟수를 세고, 결함 재도입으로 핀 민감도까지 확인
 - **jsdom 에디터 픽스처**: `focus()`는 DOM에 붙은 요소만 · contenteditable은 `tabindex` 없으면 포커스 불가 · `focusin`은 수동 dispatch · `Range.getClientRects` 없음(폴리필 필요)
@@ -177,12 +184,13 @@ baram/
 - **3-tier 계층**: Primitive (raw values) → Semantic (meaning) → Component CSS
 - **소스**: `tokens/*.json` (W3C DTCG) → **빌드** `npm run tokens:build` → `src/styles/generated/` 자동 생성
 - **감사** `npm run audit:css-vars` (미정의 CSS 변수 검출) · **Figma export** `npm run tokens:export` → `tokens/tokens-studio.json`
-- **Settings store version**: 18 — 실제 값은 `src/stores/settings/store.ts`의 `version:`이 유일한 출처다(이 줄은 참고용이고 실제로 12에서 멎어 있었다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
+- **Settings store version**: `src/stores/settings/store.ts`의 `version:`이 유일한 출처다 — 여기 숫자를 적어 두면 반드시 낡는다(그렇게 두 번 틀렸다). 새 키를 더할 때 기본값이 오늘 동작과 같으면 마이그레이션이 필요 없다 — 기존 사용자에게 **다른** 기본값을 보여야 할 때만 backfill이 필요하다
 
 ## 설계 문서 참조 규칙
 
 구현 시 반드시 해당 설계 문서 섹션을 참조할 것. `§` 번호를 코드 주석과 커밋에 유지한다.
-어떤 §가 어느 문서(part3~part12)에 있는지는 **`.claude/docs/design-doc-map.md`** 참조.
+어떤 §가 어느 문서(part1~part20)에 있는지는 **`.claude/docs/design-doc-map.md`** 참조 —
+단 이 지도는 20개 중 9개 Part만 싣고 있다. 없으면 `dev/design/README.md`의 목차를 볼 것.
 
 ## 성능 기준 (Part 8 §8.4)
 
@@ -197,9 +205,18 @@ PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 �
 
 - **Phase 1 (MVP, M1~M6)** · **Phase 2 (확장, M7~M9)** — ✅ 완료
 - **Phase 3 (고급 기능)** — 진행 중
-  - ✅ 완료: 테이블 고급(셀 병합·가상 스크롤), 쿼리 블록(§5.13), Git 고급(§67), 파일 스냅샷/버전 히스토리(§71), 네임스페이스(§61, P2 보류), Skills 모드(§72), Settings UI 리디자인, 키보드 단축키 커스터마이징, Heading/List Folding, 코드 리팩토링 + CSS 디자인 토큰 시스템, Vault System(§80~§90), macOS Universal Binary 릴리스(PR #200)
-  - ✅ 완료(v0.5.0, 2026-07-30 발행): **플러그인 실행 모델 §260 6개 페이즈** — trusted/sandboxed 두 티어, per-plugin WebviewWindow + Rust `plugin_call` 브로커, 설치 동의(consent) 게이트, 앱 커맨드 ACL 락다운. 플러그인이 기본 활성(§259의 `VITE_ENABLE_PLUGINS` 게이트 제거). 라이브 레지스트리에 `baram-word-count` 2.0.0 발행
-  - ✅ 완료(v0.5.0): 파일 뷰어 — PDF(읽기 전용), HTML(샌드박스 프리뷰 + 소스 토글), 이미지·SVG(내장 media-viewer 플러그인 + 공개 `viewer` 확장점, §69)
-  - 🚧 미착수: Canvas, Agent Mode(§11.6), Knowledge Q&A(§11.4), 실시간 협업
+  - ✅ ~v0.4: 테이블 고급(셀 병합·가상 스크롤), 쿼리 블록(§5.13), Git 고급(§67), 파일 스냅샷(§71),
+    네임스페이스(§61, P2 보류), Skills 모드(§72), Settings UI 리디자인, 단축키 커스터마이징,
+    Heading/List Folding, CSS 디자인 토큰 시스템, Vault System(§80~§90), macOS Universal Binary
+  - ✅ **v0.5.0** (2026-07-30): 플러그인 실행 모델 **§260** 6개 페이즈 — trusted/sandboxed 두 티어,
+    per-plugin WebviewWindow + Rust `plugin_call` 브로커, 설치 동의 게이트, 앱 커맨드 ACL 락다운.
+    파일 뷰어(PDF 읽기 전용 · HTML 샌드박스 프리뷰 · 이미지/SVG media-viewer 플러그인, §69)
+  - ✅ **v0.6.0** (2026-08-18): PDF 뷰어 고도화 **§270–§283** (하이라이트·사이드 레일·줌), 파일 트리 §4.3
+  - ✅ **v0.6.1** (2026-08-20): 탭 표면 유지 **§284–§291**, 그래프 색 토큰 §30, 단어 수 통일 §4.8
+  - ✅ **v0.6.2** (2026-08-23): 동영상 임베딩 **§292–§301**
+  - 🚢 **미발행** — `v0.6.2..main` 674커밋: 태스크 관리 **§302–§318**, 캡처 → 허브 노트 **§319–§328**,
+    vault 경계 인가 **§329–§336**(PR #551). 서명·배포 런북은 `dev/guides/`
+  - 🚧 미착수: Canvas, Agent Mode(§11.6), Knowledge Q&A(§11.4), 실시간 협업, E2E 스위트
 
+> 버전 번호는 추측하지 말 것 — `git tag --sort=-creatordate`와 `package.json`의 `version`이 출처다.
 > 완료 항목의 상세 이력은 git 히스토리 · `dev/next-steps.md` · `dev/progress.json` 참조.

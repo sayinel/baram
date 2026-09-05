@@ -14,6 +14,8 @@ fs/           ← 파일 읽기/쓰기/감시/이름변경 (notify crate)
 search/       ← regex 기반 전문 검색 — 파일 워킹 (§5.11)
 index/        ← 인메모리 링크/블록 인덱스 — HashMap (§29)
 context/      ← 컨텍스트 관리자 — Vault 시스템 (§88)
+approval/     ← vault 경계 승인 저장소 — 웹뷰가 못 건드리는 인가 기록 (§331)
+task/         ← 태스크 인덱스/필드 파싱 (§302~§318)
 embedding/    ← 임베딩 — Knowledge Q&A (§11.4)
 plugin/       ← 플러그인 설치/레지스트리 (§69)
 tag/          ← Vault 태그 인덱스 (§56m)
@@ -22,6 +24,9 @@ snapshot/     ← 파일 스냅샷/버전 히스토리 (similar + sha2)
 llm/          ← LLM API 프록시 (Claude/OpenAI/Gemini/Ollama, 스트리밍)
 export/       ← PDF (chromiumoxide headless Chrome), HTML 내보내기
 config/       ← 설정 파일 관리
+thumbnail/    ← 미리보기 썸네일 생성
+protocol/     ← 커스텀 프로토콜 핸들러      md/       ← 마크다운 유틸
+logging/      ← 파일 로깅 (회전·상한)       menu.rs   ← 네이티브 메뉴/accelerator
 ```
 
 ## IPC 커맨드 규칙
@@ -75,6 +80,9 @@ app_handle.emit("file:changed", FileChangedPayload {
 | plugin | 설치/제거/레지스트리 (§69) |
 | snapshot | 생성/목록/diff/복원/삭제/히스토리 (§71) |
 | tag | Vault 태그 조회/검색/rename (§56m) |
+| approval | 피커 경유 승인, 승인 목록 조회/회수, 경로 승인 여부 질의 (§331~§335) |
+| task | 태스크 스캔/조회/갱신 (§302~§318) |
+| thumbnail | 미리보기 썸네일 |
 
 ## 이벤트 목록
 
@@ -90,6 +98,26 @@ app_handle.emit("file:changed", FileChangedPayload {
 2. 전체 내용을 임시 파일에 쓰기
 3. `fs::rename()`으로 원본 파일을 교체 (OS 수준 원자적 보장)
 4. 실패 시 임시 파일 삭제
+
+## vault 경계 인가 규칙 (§329–§336)
+
+경계가 **자기를 인가하면 경계가 아니다**. `check_vault`는 등록된 컨텍스트를 신뢰하는데
+그 컨텍스트를 등록하는 커맨드가 웹뷰 경로를 받았던 것이 §329의 결함이다.
+
+- 웹뷰가 준 경로로 asset scope를 부여하는 커맨드는 부여 **전에**
+  `commands::approval_cmd::ensure_approved`를 통과해야 한다 (`add_context` · `set_vault_root` ·
+  `plugin_add_dev_folder`). 게이트는 부작용보다 **먼저** — `dev_info()`처럼 매니페스트를 읽으면서
+  scope까지 부여하는 함수 뒤에 달면 존재 오라클이 새고 동의 전에 부여된다.
+- 승인 기록은 Rust 소유 `{app_data_dir}/approved-roots.json`. **`config.json`에 두지 말 것** —
+  `set_config`가 임의 키를 받으므로 웹뷰가 스스로를 승인하게 된다.
+- 판정은 fail-closed: 파일 없음·파싱 실패·canonicalize 실패는 전부 "미승인".
+  포함 판정은 `Path::starts_with`(컴포넌트 단위) — 문자열 접두사면 `/x/Vault`가 `/x/Vault-secret`을 먹는다.
+- **`Scope::forbid_*` 호출 금지**: 영구적이고 allow보다 우선하며 해제 API가 없다.
+  회수에서 부르면 그 세션의 재승인까지 죽는다.
+- 두 전수 스캔 테스트가 `approval/mod.rs`에 있다 —
+  `no_new_scope_forbid_call_anywhere_in_the_crate`, `no_new_asset_scope_grant_outside_the_allowlist`.
+  새 `allow_directory`/`allow_file` 호출부는 allowlist에 **의도적으로** 넣기 전까지 빌드를 깨뜨린다.
+  입구 열거는 이 작업에서 다섯 번 틀렸고, 매번 심볼 grep이 아니라 효과 grep·전수 스캔이 잡았다.
 
 ## zip 추출 규칙
 
