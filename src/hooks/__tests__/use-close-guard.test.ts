@@ -23,9 +23,12 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import {
+  isTabUnsaved,
+  requestCloseWorkspace,
   requestReload,
   saveAllDirtyForQuit,
   saveDirtyTab,
+  saveDirtyTabsForContexts,
   useCloseGuard,
 } from "../use-close-guard";
 
@@ -59,7 +62,13 @@ function makeDeps(handleSave: () => Promise<void>): CloseGuardDeps {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useEditorStore.setState({ activeTabId: null, mruOrder: [], tabs: [] });
+  useEditorStore.setState({
+    activeTabId: null,
+    mruOrder: [],
+    sourceBufferAccess: null,
+    sourceEditedTabs: [],
+    tabs: [],
+  });
   useFileStore.setState({ openFiles: new Map() });
   useUIStore.setState({ unsavedModal: null });
 });
@@ -197,6 +206,142 @@ describe("saveAllDirtyForQuit", () => {
 });
 
 // ── useCloseGuard ────────────────────────────────────────────────────────────
+
+// ── §82 source-mode edits ────────────────────────────────────────────────────
+//
+// Markdown typed in source mode deliberately does not raise `isDirty`, so every
+// close guard used to read such a tab as clean and `closeTab` took the buffer with
+// it. These pin both halves: the tab counts as unsaved, and a save writes the buffer
+// rather than the pre-edit cache.
+
+describe("isTabUnsaved", () => {
+  it("counts a source-edited tab that never went dirty", () => {
+    const tab = fileTab({ id: "src", isDirty: false });
+    expect(isTabUnsaved(tab, ["src"])).toBe(true);
+  });
+
+  it("does NOT count a tab that is merely showing source", () => {
+    const tab = fileTab({ id: "src", isDirty: false });
+    // The discriminating case: `sourceModeTabs` is set by toggling into source view
+    // with zero keystrokes. A guard built on that prompts on every quit.
+    expect(isTabUnsaved(tab, [])).toBe(false);
+  });
+});
+
+describe("requestCloseWorkspace with a source-edited tab", () => {
+  it("prompts instead of discarding the buffer", () => {
+    const tab = fileTab({ id: "src", isDirty: false });
+    useEditorStore.setState({
+      activeTabId: "src",
+      sourceEditedTabs: ["src"],
+      tabs: [tab],
+    });
+
+    requestCloseWorkspace();
+
+    expect(useUIStore.getState().unsavedModal).toEqual({
+      intent: "closeWorkspace",
+    });
+  });
+});
+
+describe("saveDirtyTab with a source-edited background tab", () => {
+  it("writes the SOURCE BUFFER, not the stale cache, and clears the flag", async () => {
+    const tab = fileTab({ id: "bg", isDirty: false, filePath: "/v/bg.md" });
+    useEditorStore.setState({
+      activeTabId: null,
+      sourceBufferAccess: {
+        getSourceBuffer: (id: string) => (id === "bg" ? "typed in source" : ""),
+        setSourceBuffer: vi.fn(),
+      },
+      sourceEditedTabs: ["bg"],
+      tabs: [tab],
+    });
+    useFileStore.setState({
+      openFiles: new Map([["/v/bg.md", "content from disk"]]),
+    });
+
+    const ok = await saveDirtyTab(tab, null, vi.fn());
+
+    expect(ok).toBe(true);
+    // Writing the cache here would report success while dropping the edit.
+    expect(writeFile).toHaveBeenCalledWith("/v/bg.md", "typed in source");
+    expect(useEditorStore.getState().sourceEditedTabs).toEqual([]);
+    // The cache must follow what went to disk, or the next read hands back the
+    // pre-edit text.
+    expect(useFileStore.getState().openFiles.get("/v/bg.md")).toBe(
+      "typed in source",
+    );
+  });
+
+  it("still writes the cache for a plain dirty tab with no source edit", async () => {
+    const tab = fileTab({ id: "bg", filePath: "/v/bg.md" });
+    useEditorStore.setState({ activeTabId: null, tabs: [tab] });
+    useFileStore.setState({
+      openFiles: new Map([["/v/bg.md", "content from disk"]]),
+    });
+
+    await saveDirtyTab(tab, null, vi.fn());
+
+    expect(writeFile).toHaveBeenCalledWith("/v/bg.md", "content from disk");
+  });
+});
+
+// ── saveDirtyTabsForContexts ────────────────────────────────────────────────
+
+describe("saveDirtyTabsForContexts", () => {
+  it("writes ONLY the given contexts' dirty tabs", async () => {
+    const mine = fileTab({
+      contextId: "a",
+      filePath: "/v/a/mine.md",
+      id: "mine",
+    });
+    const theirs = fileTab({
+      contextId: "b",
+      filePath: "/v/b/theirs.md",
+      id: "theirs",
+    });
+    useEditorStore.setState({ activeTabId: null, tabs: [mine, theirs] });
+    useFileStore.setState({
+      openFiles: new Map([
+        ["/v/a/mine.md", "mine content"],
+        ["/v/b/theirs.md", "theirs content"],
+      ]),
+    });
+
+    const ok = await saveDirtyTabsForContexts(["a"], makeDeps(vi.fn()));
+
+    expect(ok).toBe(true);
+    // Closing one folder must not write another folder's edits to disk.
+    expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+      "/v/a/mine.md",
+      "mine content",
+    );
+    expect(
+      useEditorStore.getState().tabs.find((t) => t.id === "theirs")?.isDirty,
+    ).toBe(true);
+  });
+
+  it("writes nothing when no tab in those contexts is dirty", async () => {
+    const clean = fileTab({
+      contextId: "a",
+      filePath: "/v/a/clean.md",
+      id: "clean",
+      isDirty: false,
+    });
+    const other = fileTab({
+      contextId: "b",
+      filePath: "/v/b/dirty.md",
+      id: "other",
+    });
+    useEditorStore.setState({ activeTabId: null, tabs: [clean, other] });
+
+    const ok = await saveDirtyTabsForContexts(["a"], makeDeps(vi.fn()));
+
+    expect(ok).toBe(true);
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+});
 
 describe("useCloseGuard", () => {
   it("registers a listener for the app://close-requested event", () => {

@@ -19,9 +19,8 @@ import {
   listApprovedRoots,
   revokeApprovedRoot,
 } from "../../../ipc/approval";
-import { switchContext } from "../../../services/vault-context-loader";
+import { closeContexts } from "../../../services/close-context";
 import { useContextStore } from "../../../stores/context/context";
-import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
 import { logger } from "../../../utils/logger";
 
@@ -162,30 +161,19 @@ async function contextsThisRevokeUnapproved(
 
 /**
  * §335 회수의 나머지 절반 — 컨텍스트 제거. 활성 컨텍스트를 회수했다면 남은 것 중
- * 하나로 전환하고, 하나도 안 남으면 파일 트리를 비운다(회수한 vault의 트리를 그대로
+ * 하나로 전환하고, 하나도 안 남으면 홈 화면으로 돌아간다(회수한 vault의 트리를 그대로
  * 띄워 두면 "회수됐다"와 화면이 어긋난다).
+ *
+ * ‼️ §82 공용 `closeContexts`를 쓴다. 예전에는 여기서 손으로 컨텍스트만 지우고
+ * `setRootPath(null)`+`setFileTree([])`로 끝냈는데, 그러면 (1) 회수된 vault의 **탭이
+ * 그대로 열려 있고** — 쓸 수 없는 경로를 편집 가능한 것처럼 보여준다 — (2)
+ * `lastOpenedFolder`가 남아 **다음 실행에서 회수한 폴더를 다시 열려 한다.**
+ *
+ * ‼️ 묻지 않는 것은 의도다. `requestCloseContexts`(확인 창)가 아니라 `closeContexts`를
+ * 부른다 — 회수는 보안 조치라 "취소"가 있어서는 안 되고, 접근이 사라진 뒤에는 저장할
+ * 방법도 없다.
  */
 async function removeContexts(doomed: ContextInfo[]): Promise<void> {
   if (doomed.length === 0) return;
-  const store = useContextStore.getState();
-  const activeRemoved = doomed.some((c) => c.id === store.activeContextId);
-
-  for (const ctx of doomed) {
-    await store
-      .removeContext(ctx.id)
-      .catch((err) =>
-        logger.warn("§335 revoke: context removal failed", ctx.path, err),
-      );
-  }
-  if (!activeRemoved) return;
-
-  const next = useContextStore.getState().activeContext();
-  if (next) {
-    await switchContext(next.id);
-    return;
-  }
-  const fileStore = useFileStore.getState();
-  fileStore.setRootPath(null as unknown as string);
-  fileStore.setFileTree([]);
-  fileStore.setLoadError(null);
+  await closeContexts(doomed.map((c) => c.id));
 }

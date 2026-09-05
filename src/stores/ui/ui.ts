@@ -75,8 +75,14 @@ export interface ToastState {
  *  View > Reload / CmdOrCtrl+R (§479, all dirty tabs — reload discards every
  *  open tab, not just the active one, so it saves the same set as quit);
  *  `closeWorkspace` = §81 File > Close Workspace, which closes every tab and
- *  every context, so it too answers for all dirty tabs rather than the active one. */
+ *  every context, so it too answers for all dirty tabs rather than the active one;
+ *  `closeContext` = §82 closing one or more contexts (the tab bar's x, its context
+ *  menu's Close and Close Others, Settings > Vault's remove), which answers only for
+ *  the dirty tabs inside those contexts — saving the rest would write files the user
+ *  never asked to touch. It carries a LIST because Close Others closes N at once and
+ *  must ask once, not N times. */
 export type UnsavedModalRequest =
+  | { contextIds: string[]; intent: "closeContext" }
   | { intent: "closeTab"; tabId: string }
   | { intent: "closeWorkspace" }
   | { intent: "quit" }
