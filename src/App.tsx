@@ -25,6 +25,7 @@ import { useFileOperations } from "./hooks/use-file-operations";
 import { useFindReplaceRouting } from "./hooks/use-find-replace-routing";
 import { useJournal } from "./hooks/use-journal";
 import { useKeepaliveEditors } from "./hooks/use-keepalive-editors";
+import { useNativeContextMenuPolicy } from "./hooks/use-native-context-menu-policy";
 import { useNavigation } from "./hooks/use-navigation";
 import { usePerfInstrumentation } from "./hooks/use-perf-instrumentation";
 import { usePluginLifecycle } from "./hooks/use-plugin-lifecycle";
@@ -431,6 +432,9 @@ function App() {
 
 /** §89 Root component — routes between vault mode and file mode. */
 function AppRoot() {
+  // issue 539: every route — the standalone file window too — gets the same
+  // answer to a right-click nobody else handled (no "Reload" page menu).
+  useNativeContextMenuPolicy();
   // §298 IME probe spike — replaces the app UI entirely. Gate is off in every
   // shipped build (see spike/ime-probe/ime-probe-enabled.ts).
   if (isImeProbeEnabled()) {
