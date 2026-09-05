@@ -1,10 +1,12 @@
-// §296 Video NodeView — 파일은 처음부터 네이티브 컨트롤, provider 임베드는 클릭 후 마운트
+// §296 Video NodeView — 파일은 처음부터 네이티브 컨트롤, provider 임베드는
+// `autoLoadVideoEmbeds` 설정에 따라 즉시 마운트되거나 클릭 후 마운트된다
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Captions, Maximize } from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
+import { useSettingsStore } from "../../stores/settings/store";
 import { activeFileDir } from "../../utils/active-file-dir";
 import {
   isFullscreenSupported,
@@ -53,9 +55,14 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
 
   // §296 UX1: 로컬/원격 파일은 처음부터 네이티브 컨트롤이라 재생 여부를 가릴
   // 상태가 필요 없다 — 이 플래그는 provider 임베드 카드→iframe 전환 하나만
-  // 남는다. youtube-nocookie를 고른 이유(§17.2-8)가 그대로 적용된다: 문서를
-  // 여는 순간 provider에 요청이 가면 안 되므로, 클릭한 다음에야 iframe을
-  // 마운트한다.
+  // 남는다. §17.2-8이 고른 게이트 자체는 사라지지 않았다 — 실사용에서 회색 빈
+  // 카드가 고장으로 읽혔기 때문에, 이제는 `autoLoadVideoEmbeds` 설정(기본값
+  // 켬)이 뒤집어 문서를 여는 순간 바로 로드한다. 끄면 지금까지의 클릭-로드로
+  // 되돌아간다 — 그 프라이버시 선택지는 토글로 남는다. 렌더 분기는 이 state와
+  // 아래 설정값의 OR이다(`useState(autoLoadEmbeds)`로 초기화하지 않는다) —
+  // 이미 클릭해서 로드된 임베드는 설정을 나중에 꺼도 남아야 하고, 아직 클릭
+  // 안 한 임베드는 설정을 끄면 카드로 돌아가야 한다.
+  const autoLoadEmbeds = useSettingsStore((s) => s.autoLoadVideoEmbeds);
   const [embedLoaded, setEmbedLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
@@ -154,7 +161,7 @@ export function VideoView({ node, updateAttributes, selected }: NodeViewProps) {
             {t("video.loadError", { src: rawSrc })}
           </div>
         ) : isEmbed ? (
-          embedLoaded && embedUrl ? (
+          (embedLoaded || autoLoadEmbeds) && embedUrl ? (
             <iframe
               // §296 fix (deferred-minor #11): fullscreen was missing from
               // `allow`, so the embedded player's own fullscreen control was

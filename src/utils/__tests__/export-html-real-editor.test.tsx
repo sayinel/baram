@@ -44,6 +44,12 @@ vi.mock("../../stores/editor/editor", () => ({
 
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline";
+// ‼️ The REAL settings store, not a mock. `createBaramExtensions()` already
+// pulls it in transitively, and a per-file mock would have to reimplement both
+// call shapes (`useSettingsStore(sel)` and `.getState()`) for every slice the
+// extension set touches. Using the real one also means the "shipped default"
+// these tests restore is the actual default, not a copy of it that can drift.
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   captureEditorHTML,
   generateStandaloneHTML,
@@ -58,6 +64,10 @@ const editors: Editor[] = [];
 afterEach(() => {
   for (const e of editors) e.destroy();
   editors.length = 0;
+  // Back to the shipped default. Tests that need the click-to-load card set
+  // this to false themselves; leaving it false would silently hand the NEXT
+  // file's embed test the gated shape.
+  useSettingsStore.setState({ autoLoadVideoEmbeds: true });
 });
 
 async function capture(editor: Editor, forPdf: boolean): Promise<string> {
@@ -66,6 +76,15 @@ async function capture(editor: Editor, forPdf: boolean): Promise<string> {
     html = await captureEditorHTML(editor, { forPdf });
   });
   return html;
+}
+
+/**
+ * Turn the §17.2-8 click-gate back on for one test — the card shape only
+ * exists when `autoLoadVideoEmbeds` is off. Must be called BEFORE mountEditor:
+ * the NodeView reads the setting during its first render.
+ */
+function gateEmbeds(): void {
+  useSettingsStore.setState({ autoLoadVideoEmbeds: false });
 }
 
 /** Flush React passive effects + the deferred NodeView portal mount. */
@@ -183,7 +202,14 @@ describe("caption-as-link is PDF only", () => {
 });
 
 describe("captureEditorHTML over a real editor — provider embed", () => {
-  /** Click the idle card so the NodeView swaps in the playing iframe. */
+  /**
+   * Click the idle card so the NodeView swaps in the playing iframe.
+   *
+   * ‼️ Requires `gateEmbeds()` before the editor was mounted — with the
+   * shipped default (`autoLoadVideoEmbeds: true`) there is no card to click,
+   * the iframe is already there, and this asserts its way to a clear failure
+   * rather than quietly testing the other shape.
+   */
   async function play(editor: Editor): Promise<void> {
     const card = editor.view.dom.querySelector(".video-embed-card");
     expect(card).not.toBeNull();
@@ -198,6 +224,7 @@ describe("captureEditorHTML over a real editor — provider embed", () => {
   }
 
   it("exports a PLAYED embed as a link for HTML, not as the surviving iframe (the black-box defect)", async () => {
+    gateEmbeds();
     const editor = await mountEditor(EMBED_MD);
     await play(editor);
 
@@ -216,6 +243,7 @@ describe("captureEditorHTML over a real editor — provider embed", () => {
   });
 
   it("exports a PLAYED embed as a link for PDF too", async () => {
+    gateEmbeds();
     const editor = await mountEditor(EMBED_MD);
     await play(editor);
 
@@ -226,7 +254,20 @@ describe("captureEditorHTML over a real editor — provider embed", () => {
     );
   });
 
-  it("exports an UNPLAYED embed to the identical link, so the file does not depend on what the reader clicked", async () => {
+  // Three ways an embed can be sitting in the DOM at export time, now that
+  // `autoLoadVideoEmbeds` exists: the idle card (setting off, untouched), the
+  // iframe a click swapped in (setting off, clicked), and the iframe that is
+  // simply there from the first render (setting ON — the shipped default, and
+  // the one the old two-shape version of this test could not see). The export
+  // must not depend on any of it: the same markdown owes the same file.
+  //
+  // ‼️ Capture each shape BEFORE flipping the setting for the next one. The
+  // NodeView subscribes to the store, so turning auto-load on re-renders the
+  // idle editor's card into an iframe — captured first, that does not matter;
+  // captured after, the "idle" sample would silently be an iframe and the
+  // comparison would be iframe-vs-iframe, i.e. vacuous.
+  it("exports all three embed shapes — idle card, clicked iframe, auto-loaded iframe — to the identical link", async () => {
+    gateEmbeds();
     const idle = await mountEditor(EMBED_MD);
     expect(idle.view.dom.querySelector(".video-embed-card")).not.toBeNull();
     const idleHtml = await capture(idle, false);
@@ -235,13 +276,23 @@ describe("captureEditorHTML over a real editor — provider embed", () => {
     await play(played);
     const playedHtml = await capture(played, false);
 
+    useSettingsStore.setState({ autoLoadVideoEmbeds: true });
+    const auto = await mountEditor(EMBED_MD);
+    // Vacuity guard, mirroring play()'s: prove this really is the auto-loaded
+    // iframe shape and not a card that never got the setting.
+    expect(auto.view.dom.querySelector(".video-embed-card")).toBeNull();
+    expect(auto.view.dom.querySelector(".video-embed-frame")).not.toBeNull();
+    const autoHtml = await capture(auto, false);
+
     expect(idleHtml).toContain(
       `<a class="video-export-link" href="${EMBED_SRC}">${EMBED_SRC}</a>`,
     );
     expect(playedHtml).toBe(idleHtml);
+    expect(autoHtml).toBe(idleHtml);
   });
 
   it("prints the caption text exactly once in the PDF — the link replaces it, it is not added above it", async () => {
+    gateEmbeds();
     const editor = await mountEditor(EMBED_MD);
     await play(editor);
     const pdf = await capture(editor, true);
