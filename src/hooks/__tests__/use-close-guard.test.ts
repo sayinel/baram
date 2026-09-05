@@ -19,11 +19,10 @@ import type { EditorTab } from "../../stores/editor/editor";
 import type { CloseGuardDeps } from "../use-close-guard";
 
 import { confirmQuit, writeFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor/editor";
+import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import {
-  isTabUnsaved,
   requestCloseWorkspace,
   requestReload,
   saveAllDirtyForQuit,

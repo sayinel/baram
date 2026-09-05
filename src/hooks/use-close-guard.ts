@@ -10,7 +10,7 @@ import type { EditorTab } from "../stores/editor/editor";
 
 import { confirmQuit, updateFileIndex, writeFile } from "../ipc/invoke";
 import { closeContexts } from "../services/close-context";
-import { isFileTab, useEditorStore } from "../stores/editor/editor";
+import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
@@ -26,26 +26,6 @@ import { basename } from "../utils/path-utils";
  */
 export interface CloseGuardDeps {
   handleSave: () => Promise<void>;
-}
-
-/**
- * §82 Does this tab hold work that is not on disk?
- *
- * ‼️ `isDirty` alone misses markdown typed in SOURCE MODE. That path deliberately
- * does not raise dirty (`tab-surface-renderers.tsx` — `use-auto-save` is the single
- * owner of markdown dirty), so a tab holding unsaved text looked clean to every close
- * guard and its buffer went out silently with `closeTab`.
- *
- * ‼️ Deliberately NOT `sourceModeTabs`. That set means "this tab is showing source",
- * which is true after zero keystrokes — a guard built on it prompts on every quit with
- * a source tab merely open. `sourceEditedTabs` is only set when CodeMirror reports a
- * real user edit.
- */
-export function isTabUnsaved(
-  tab: EditorTab,
-  sourceEditedTabs: readonly string[],
-): boolean {
-  return isFileTab(tab) && (tab.isDirty || sourceEditedTabs.includes(tab.id));
 }
 
 /** The open tabs holding unsaved work, optionally narrowed by `match`. */

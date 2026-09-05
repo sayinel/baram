@@ -233,8 +233,29 @@ export function isFileTab(tab: EditorTab | undefined): tab is EditorTab {
   return !!tab && (!tab.type || tab.type === "file");
 }
 
+/**
+ * §82 Does this tab hold work that is not on disk?
+ *
+ * ‼️ `isDirty` alone is not the answer. Markdown typed in SOURCE MODE deliberately
+ * does not raise it (`tab-surface-renderers.tsx` — `use-auto-save` is the single
+ * owner of markdown dirty), so a tab holding unsaved text reads as clean. Every
+ * place that asks the question — the tab's dot, the tab switcher, the window title,
+ * the close guards — must ask it through here, or the halves drift: the guard
+ * prompts about a tab the UI never marked, or worse, the UI stays silent while the
+ * text goes out with `closeTab`.
+ *
+ * ‼️ Deliberately NOT `sourceModeTabs`. That set means "showing source", true after
+ * zero keystrokes; a gate built on it marks every tab you merely looked at.
+ */
 export function isGraphTab(tab: EditorTab | undefined): boolean {
   return tab?.type === "graph";
+}
+
+export function isTabUnsaved(
+  tab: EditorTab | undefined,
+  sourceEditedTabs: readonly string[],
+): boolean {
+  return isFileTab(tab) && (tab.isDirty || sourceEditedTabs.includes(tab.id));
 }
 
 /** §69 Plugin detail tab — a rendered control surface, not a document. */

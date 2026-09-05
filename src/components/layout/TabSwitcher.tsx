@@ -3,12 +3,16 @@ import { useEffect, useRef } from "react";
 
 import type { EditorTab } from "../../stores/editor/editor";
 
+import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
+
 interface TabSwitcherProps {
   mruTabs: EditorTab[];
   selectedIndex: number;
 }
 
 export function TabSwitcher({ mruTabs, selectedIndex }: TabSwitcherProps) {
+  // §82 소스 모드 편집은 `isDirty`를 세우지 않는다 — 점의 판정은 한 곳에서.
+  const sourceEditedTabs = useEditorStore((s) => s.sourceEditedTabs);
   const selectedRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll selected item into view
@@ -30,7 +34,9 @@ export function TabSwitcher({ mruTabs, selectedIndex }: TabSwitcherProps) {
               ref={i === selectedIndex ? selectedRef : null}
             >
               <span className="tab-switcher-title">{tab.title}</span>
-              {tab.isDirty && <span className="tab-switcher-dirty">●</span>}
+              {isTabUnsaved(tab, sourceEditedTabs) && (
+                <span className="tab-switcher-dirty">●</span>
+              )}
             </div>
           ))}
         </div>
