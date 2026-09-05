@@ -12,7 +12,6 @@ import type { UnsavedModalRequest } from "../../stores/ui/ui";
 import { useShallow } from "zustand/shallow";
 
 import {
-  isTabUnsaved,
   saveAllDirtyForQuit,
   saveDirtyTab,
   saveDirtyTabsForContexts,
@@ -21,7 +20,7 @@ import { useTranslation } from "../../i18n/useTranslation";
 import { confirmQuit } from "../../ipc/invoke";
 import { closeContexts } from "../../services/close-context";
 import { useContextStore } from "../../stores/context/context";
-import { useEditorStore } from "../../stores/editor/editor";
+import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 

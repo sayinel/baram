@@ -7,7 +7,11 @@ import { useShallow } from "zustand/shallow";
 
 import { switchContext } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
-import { isFileTab, useEditorStore } from "../../stores/editor/editor";
+import {
+  isFileTab,
+  isTabUnsaved,
+  useEditorStore,
+} from "../../stores/editor/editor";
 import { useUIStore } from "../../stores/ui/ui";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
@@ -28,6 +32,7 @@ export function TabBar() {
     togglePinTab,
     closeOtherTabs,
     closeTabsToRight,
+    sourceEditedTabs,
   } = useEditorStore(
     useShallow((s) => ({
       tabs: s.tabs,
@@ -38,6 +43,7 @@ export function TabBar() {
       togglePinTab: s.togglePinTab,
       closeOtherTabs: s.closeOtherTabs,
       closeTabsToRight: s.closeTabsToRight,
+      sourceEditedTabs: s.sourceEditedTabs,
     })),
   );
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -118,14 +124,14 @@ export function TabBar() {
       const tab = tabs.find((t) => t.id === tabId);
       // §38 Pinned tabs can't be closed
       if (tab?.isPinned) return;
-      // §close-guard: dirty tab → shared 3-button modal (same UI as app quit)
-      if (tab?.isDirty && isFileTab(tab)) {
+      // §close-guard: unsaved tab → shared 3-button modal (same UI as app quit)
+      if (isTabUnsaved(tab, sourceEditedTabs)) {
         useUIStore.getState().openUnsavedModal({ intent: "closeTab", tabId });
         return;
       }
       closeTab(tabId);
     },
-    [tabs, closeTab],
+    [tabs, closeTab, sourceEditedTabs],
   );
 
   const pinnedCount = tabs.filter((t) => t.isPinned).length;
@@ -339,7 +345,7 @@ export function TabBar() {
                   }
                 />
                 <span className="tab-title">
-                  {tab.isDirty && isFileTab(tab) ? "\u25CF " : ""}
+                  {isTabUnsaved(tab, sourceEditedTabs) ? "\u25CF " : ""}
                   {tab.title}
                 </span>
                 <button
