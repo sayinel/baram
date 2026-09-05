@@ -1,5 +1,6 @@
 // Baram — Rust 백엔드 엔트리포인트
 
+mod approval;
 mod commands;
 mod config;
 mod context;
@@ -30,8 +31,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use commands::{
-    config_cmd, context_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd,
-    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, task_cmd, thumbnail_cmd,
+    approval_cmd, config_cmd, context_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd,
+    keyring_cmd, llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd, task_cmd, thumbnail_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -405,6 +406,11 @@ pub fn run() {
             context_cmd::get_vault_config_by_path,
             context_cmd::set_vault_config_by_path,
             context_cmd::resolve_settings,
+            approval_cmd::pick_approved_dir,
+            approval_cmd::pick_approved_file,
+            approval_cmd::is_path_approved,
+            approval_cmd::list_approved_roots,
+            approval_cmd::revoke_approved_root,
         ])
         // Unsaved-changes guard: intercept the window close (red X) and ask the
         // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.

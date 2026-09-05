@@ -1,13 +1,12 @@
 // §86 Vault (Contexts) settings tab
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
 import type { VaultConfig } from "../../../ipc/types";
 
 import { Folder, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { pickApprovedDir } from "../../../ipc/approval";
 import {
   getVaultConfigByPath,
   setVaultConfigByPath,
@@ -15,6 +14,7 @@ import {
 import { addFolder } from "../../../services/vault-context-loader";
 import { useContextStore } from "../../../stores/context/context";
 import { logger } from "../../../utils/logger";
+import { ApprovedRootsSection } from "./ApprovedRootsSection";
 
 const PRESET_COLORS = [
   "#3b82f6",
@@ -70,9 +70,9 @@ export function VaultTab() {
 
   const handleAddFolder = useCallback(async () => {
     try {
-      const selected = await open({ directory: true, multiple: false });
+      const selected = await pickApprovedDir("open-folder");
       if (selected) {
-        await addFolder(selected as string);
+        await addFolder(selected);
       }
     } catch (err) {
       logger.error("[VaultTab] addFolder failed:", err);
@@ -181,6 +181,8 @@ export function VaultTab() {
           + menu to enable per-folder settings.
         </p>
       )}
+
+      <ApprovedRootsSection />
     </div>
   );
 }

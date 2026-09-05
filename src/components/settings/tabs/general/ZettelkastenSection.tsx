@@ -1,9 +1,8 @@
 // §80~§90 Zettelkasten settings section, split out of GeneralTab.
-import { open } from "@tauri-apps/plugin-dialog";
-
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../../i18n/useTranslation";
+import { pickApprovedDir } from "../../../../ipc/approval";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import {
   SettingsRow,
@@ -58,9 +57,8 @@ export function ZettelkastenSection() {
           >
             <TemplatePathRow
               onBrowse={async () => {
-                const selected = await open({ directory: true });
-                if (typeof selected === "string")
-                  setZettelkastenDirectory(selected);
+                const selected = await pickApprovedDir("zettelkasten");
+                if (selected) setZettelkastenDirectory(selected);
               }}
               placeholder={t(
                 "settings.general.zettelkastenDirectory.placeholder",

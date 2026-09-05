@@ -1,10 +1,11 @@
 // §3.6 File operation hooks — new, open, save, saveAs, close, openFolder
 import { useCallback } from "react";
 
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { save } from "@tauri-apps/plugin-dialog";
 
 import type { Editor } from "@tiptap/core";
 
+import { pickApprovedDir, pickApprovedFile } from "../ipc/approval";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
 import { openFolder } from "../services/vault-context-loader";
@@ -204,19 +205,7 @@ export function useFileOperations({
   );
 
   const handleOpenFile = useCallback(async () => {
-    const selected = await open({
-      filters: [
-        { name: "Markdown", extensions: ["md", "markdown", "mdx"] },
-        { name: "HTML", extensions: ["html", "htm"] },
-        { name: "PDF", extensions: ["pdf"] },
-        {
-          name: "Images",
-          extensions: ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg"],
-        },
-        { name: "Text", extensions: ["txt", "text"] },
-        { name: "All Files", extensions: ["*"] },
-      ],
-    });
+    const selected = await pickApprovedFile();
     if (!selected) return;
 
     // Check if already open
@@ -413,7 +402,7 @@ export function useFileOperations({
   }, [handleSave]);
 
   const handleOpenFolder = useCallback(async () => {
-    const selected = await open({ directory: true });
+    const selected = await pickApprovedDir("open-folder");
     if (selected) {
       try {
         await openFolder(selected);

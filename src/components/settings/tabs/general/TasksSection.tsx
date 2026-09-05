@@ -1,13 +1,12 @@
 // §5 Tasks settings section, split out of GeneralTab.
 import { useEffect, useRef, useState } from "react";
 
-import { open } from "@tauri-apps/plugin-dialog";
-
 import type { TaskScanScope } from "../../../../utils/tasks/task-scan-scope";
 
 import { useShallow } from "zustand/shallow";
 
 import { useTranslation } from "../../../../i18n/useTranslation";
+import { pickApprovedDir } from "../../../../ipc/approval";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { TASK_SCAN_SCOPES } from "../../../../utils/tasks/task-scan-scope";
 import {
@@ -177,8 +176,8 @@ export function TasksSection() {
               <button
                 className="settings-key-toggle"
                 onClick={async () => {
-                  const selected = await open({ directory: true });
-                  if (typeof selected === "string") setTasksHome(selected);
+                  const selected = await pickApprovedDir("tasks");
+                  if (selected) setTasksHome(selected);
                 }}
               >
                 {t("common.browse")}

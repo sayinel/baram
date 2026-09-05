@@ -35,7 +35,9 @@ fn asset_scope_grant(ctx: &ContextInfo) -> AssetScopeGrant {
 /// §backlog #3 — grant the `asset://` protocol read access to an opened context's
 /// location at runtime, so images render without a broad static Documents/Downloads
 /// scope. Failure is non-fatal (only asset:// images under this path won't load).
-pub fn register_asset_scope(app: &tauri::AppHandle, ctx: &ContextInfo) {
+///
+/// Generic over the runtime — see `add_context`'s doc comment for why.
+pub fn register_asset_scope<R: tauri::Runtime>(app: &tauri::AppHandle<R>, ctx: &ContextInfo) {
     use tauri::Manager;
     let scope = app.asset_protocol_scope();
     let result = match asset_scope_grant(ctx) {
@@ -50,12 +52,28 @@ pub fn register_asset_scope(app: &tauri::AppHandle, ctx: &ContextInfo) {
     }
 }
 
+/// ‼️ 제네릭 런타임(`<R: tauri::Runtime>`): `ensure_approved`가 이 함수 안에서 호출되고,
+/// `search_cmd::search_files` / `fs_cmd::ensure_path_in_vault`와 같은 이유로 그 체인
+/// (`ensure_approved` → `approval::load`/`approve` → `config::get_config`) 전체가
+/// 런타임 제네릭이어야 `tauri::test::mock_builder()`(런타임 = `MockRuntime`)가
+/// `generate_handler!`로 이 커맨드를 실제 배선할 수 있다 — 그래야 게이트가 IPC 레벨에서
+/// 도달 가능한지까지 테스트가 고정한다
+/// ([[direct-call-test-cannot-see-an-unreachable-command]]). `lib.rs`의 실제
+/// `generate_handler!`는 `Wry`로 그대로 단형화되므로 프로덕션 동작은 그대로다.
 #[tauri::command]
-pub async fn add_context(
+pub async fn add_context<R: tauri::Runtime>(
     info: ContextInfo,
     state: tauri::State<'_, ContextManager>,
-    app: tauri::AppHandle,
+    app: tauri::AppHandle<R>,
 ) -> Result<ContextInfo, String> {
+    // §333 경계를 넓히기 전에 인가한다. File 컨텍스트는 부모 폴더까지 asset://을
+    // 여므로(§329.2) 승인 종류를 구분해 문구가 그 사실을 말하게 한다.
+    let kind = match info.context_type {
+        ContextType::File => crate::approval::ApprovalKind::File,
+        ContextType::Vault | ContextType::Folder => crate::approval::ApprovalKind::Dir,
+    };
+    super::approval_cmd::ensure_approved(&app, &info.path, kind).await?;
+
     let added = state.add(info).await?;
     register_asset_scope(&app, &added);
     Ok(added)
@@ -369,5 +387,65 @@ mod asset_scope_tests {
             grant,
             AssetScopeGrant::Dir(std::path::PathBuf::from("/Users/x/folder"))
         );
+    }
+}
+
+#[cfg(test)]
+mod approval_gate_tests {
+    use tauri::Manager;
+
+    /// ‼️ 존재하지 않는 경로를 쓴다 — `decide`가 다이얼로그 이전에 끊으므로
+    /// mock 런타임(다이얼로그 플러그인 없음)에서도 게이트가 실제로 실행된다.
+    /// 이것이 이 테스트가 "게이트가 걸려 있다"와 "커맨드가 IPC로 도달 가능하다"를
+    /// 동시에 고정하는 방법이다.
+    /// [[direct-call-test-cannot-see-an-unreachable-command]]
+    ///
+    /// ‼️ 기대값은 `VAULT_PATH_UNRESOLVABLE`이지 `VAULT_APPROVAL_DENIED`가 아니다 —
+    /// 여기서 걸리는 것은 사용자가 거부한 게 아니라 경로가 해석되지 않은 경우이고,
+    /// 두 코드를 가르는 것이 §333의 요구다 (§335 리뷰 I3). 이 문자열은
+    /// `ensure_approved`만이 만들므로 게이트를 지목하는 힘은 그대로다: 게이트가 없으면
+    /// `state.add`의 다른 메시지가, 등록이 없으면 "not found"가 온다.
+    #[test]
+    fn add_context_refuses_an_unapproved_path_through_generate_handler() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::add_context])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(crate::context::ContextManager::new());
+
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        let res = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "add_context".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::Json(serde_json::json!({
+                    "info": {
+                        "id": "t1",
+                        "contextType": "vault",
+                        "path": "/definitely/not/here/vault",
+                        "label": "t",
+                        "color": "#fff",
+                        "addedAt": 0
+                    }
+                })),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        );
+
+        let err = res.expect_err("존재하지 않는 미승인 경로는 거부되어야 한다");
+        assert_eq!(err, serde_json::json!("VAULT_PATH_UNRESOLVABLE"));
     }
 }

@@ -137,6 +137,43 @@ export function inlineMediaByteCap(rustSource: string): number {
   }, 1);
 }
 
+/**
+ * §333 The two error codes `approval_cmd` returns, read out of the Rust that produces them.
+ *
+ * ‼️ WHY SCRAPING RATHER THAN A SECOND LITERAL — these two strings ARE the protocol between
+ * the gate and the frontend, and both drifts are silent. If the denial code drifts, a user's
+ * "Deny" arrives as an unrecognised error: `use-app-startup` classifies it as stale and
+ * DELETES the persisted context, and `switchContext` loads the tree anyway. If the
+ * unresolvable code drifts into the denial code, a deleted vault reports a refusal for a
+ * dialog nobody saw. Neither shows up as a type error, and neither shows up in a test that
+ * hard-codes the same literal on both sides.
+ *
+ * ‼️ THE COUNT ASSERTION IS LOAD-BEARING, as for every scrape above: both identifiers also
+ * appear at their `.to_string()` call sites and in this crate's own tests, so "a match
+ * exists" would not mean it is the constant that ships. The pattern therefore requires the
+ * DECLARATION form (`: &str = "…"`). A FUNCTION OVER SOURCE TEXT rather than a file reader,
+ * so a test can feed crafted source and watch the refusal.
+ *
+ * The consumer is `src/ipc/__tests__/approval-error-codes.test.ts`.
+ */
+export function approvalErrorCodes(rustSource: string): {
+  denied: string;
+  unresolvable: string;
+} {
+  return {
+    denied: soleDeclaration(
+      rustSource,
+      /APPROVAL_DENIED\s*:\s*&(?:'static\s+)?str\s*=\s*"([^"]*)"/gu,
+      "APPROVAL_DENIED",
+    ),
+    unresolvable: soleDeclaration(
+      rustSource,
+      /PATH_UNRESOLVABLE\s*:\s*&(?:'static\s+)?str\s*=\s*"([^"]*)"/gu,
+      "PATH_UNRESOLVABLE",
+    ),
+  };
+}
+
 /** Exactly one declaration must match, or we are guessing which value ships. */
 function soleDeclaration(
   rustSource: string,

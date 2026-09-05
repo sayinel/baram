@@ -23,7 +23,11 @@ pub enum ConfigError {
 static CONFIG_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Resolve config.json path: {app_data_dir}/config.json
-fn config_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, ConfigError> {
+///
+/// Generic over the runtime — see `get_config`'s doc comment for why.
+fn config_path<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+) -> Result<PathBuf, ConfigError> {
     let dir = app_handle
         .path()
         .app_data_dir()
@@ -56,7 +60,17 @@ fn write_config_map(path: &PathBuf, map: &HashMap<String, Value>) -> Result<(), 
 }
 
 /// Get a config value by key. Returns None if key doesn't exist.
-pub fn get_config(app_handle: &tauri::AppHandle, key: &str) -> Result<Option<String>, ConfigError> {
+///
+/// §333 generic over the runtime (same reason as `fs_cmd::ensure_path_in_vault` and
+/// `search_cmd::search_files`) — `approval_cmd::ensure_approved` reads `uiLocale`
+/// through this from a command that itself must stay generic so a
+/// `tauri::test::mock_builder()` (which runs on `MockRuntime`, not `Wry`) can dispatch
+/// it through `generate_handler!`. Every existing caller passes a concrete
+/// `tauri::AppHandle` (`= AppHandle<Wry>`) and is unaffected — `R` is inferred as `Wry`.
+pub fn get_config<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    key: &str,
+) -> Result<Option<String>, ConfigError> {
     let _guard = CONFIG_MUTEX.lock().map_err(|_| ConfigError::LockError)?;
     let path = config_path(app_handle)?;
     let map = read_config_map(&path)?;
@@ -84,8 +98,14 @@ pub fn set_config(
 /// Atomically read-modify-write a single config key under CONFIG_MUTEX.
 /// `updater` receives the current raw string value (None if unset) and
 /// returns the new string value to store.
-pub fn update_config(
-    app_handle: &tauri::AppHandle,
+///
+/// §329.6 generic over the runtime (same reason as `get_config`) — `plugin_add_dev_folder`
+/// calls this after `ensure_approved`, and that chain must stay runtime-generic end to end
+/// for a `tauri::test::mock_builder()` to dispatch it through `generate_handler!`. Every
+/// existing caller passes a concrete `tauri::AppHandle` (`= AppHandle<Wry>`) and is
+/// unaffected — `R` is inferred as `Wry`.
+pub fn update_config<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
     key: &str,
     updater: impl FnOnce(Option<String>) -> String,
 ) -> Result<(), ConfigError> {
