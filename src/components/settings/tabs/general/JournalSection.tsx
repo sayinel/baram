@@ -85,8 +85,12 @@ export function JournalSection() {
             label={t("settings.general.journalDirectory")}
           >
             <TemplatePathRow
+              label={t("settings.general.journalDirectory")}
               onBrowse={async () => {
-                const selected = await pickApprovedDir("journal");
+                const selected = await pickApprovedDir(
+                  "journal",
+                  journalDirectory,
+                );
                 if (selected) setJournalDirectory(selected);
               }}
               placeholder={t("settings.general.journalDirectory.placeholder")}
@@ -113,6 +117,7 @@ export function JournalSection() {
             label={t("settings.general.journalTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.journalTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -195,6 +200,7 @@ export function JournalSection() {
             label={t("settings.general.weeklyTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.weeklyTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -212,6 +218,7 @@ export function JournalSection() {
             label={t("settings.general.monthlyTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.monthlyTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -229,6 +236,7 @@ export function JournalSection() {
             label={t("settings.general.yearlyTemplate")}
           >
             <TemplatePathRow
+              label={t("settings.general.yearlyTemplate")}
               onBrowse={async () => {
                 const selected = await open({
                   filters: [{ name: "Markdown", extensions: ["md"] }],

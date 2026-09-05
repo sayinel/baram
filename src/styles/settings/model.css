@@ -5,6 +5,13 @@
   width: 180px;
 }
 
+/* Rows whose value is a filesystem path. The 180px above is sized for an API key, which is
+   opaque either way; a path is read to answer "which folder is this?", and at that width the
+   answer — the last component — was the part that got cut. */
+.settings-key-row--path {
+  width: 320px;
+}
+
 .settings-input-key {
   flex: 1;
   width: auto;

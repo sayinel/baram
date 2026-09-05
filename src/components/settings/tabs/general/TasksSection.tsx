@@ -9,6 +9,7 @@ import { useTranslation } from "../../../../i18n/useTranslation";
 import { pickApprovedDir } from "../../../../ipc/approval";
 import { useSettingsStore } from "../../../../stores/settings/store";
 import { TASK_SCAN_SCOPES } from "../../../../utils/tasks/task-scan-scope";
+import { resolveTasksHome } from "../../../../utils/tasks/tasks-home";
 import {
   SettingsRow,
   SettingsSectionHeader,
@@ -39,6 +40,7 @@ export function TasksSection() {
     setTasksCaptureFile,
     tasksExcludePaths,
     setTasksExcludePaths,
+    zettelkastenDirectory,
   } = useSettingsStore(
     useShallow((s) => ({
       tasksEnabled: s.tasksEnabled,
@@ -61,6 +63,7 @@ export function TasksSection() {
       setTasksCaptureFile: s.setTasksCaptureFile,
       tasksExcludePaths: s.tasksExcludePaths,
       setTasksExcludePaths: s.setTasksExcludePaths,
+      zettelkastenDirectory: s.zettelkastenDirectory,
     })),
   );
 
@@ -165,7 +168,7 @@ export function TasksSection() {
             {/* Zettel 디렉터리와 같은 폼이되 **읽기 전용이 아니다**: 여기서는 빈 값이
                 뜻을 가진다(= Zettel 디렉터리를 쓴다). 저쪽처럼 readOnly로 두면 한 번
                 고른 뒤에는 그 기본값으로 돌아갈 방법이 없어진다. */}
-            <div className="settings-key-row">
+            <div className="settings-key-row settings-key-row--path">
               <input
                 className="settings-input settings-input-key"
                 onChange={(e) => setTasksHome(e.target.value)}
@@ -176,7 +179,14 @@ export function TasksSection() {
               <button
                 className="settings-key-toggle"
                 onClick={async () => {
-                  const selected = await pickApprovedDir("tasks");
+                  // 빈 tasksHome은 "설정되지 않음"이 아니라 "Zettel 디렉터리를 쓴다"는 뜻이다
+                  // (아래 desc가 사용자에게 그렇게 약속한다). 그러니 피커도 그 실효
+                  // 폴더에서 열려야 한다 — 폴백을 여기서 다시 쓰지 않고 canonical
+                  // resolver를 부른다.
+                  const selected = await pickApprovedDir(
+                    "tasks",
+                    resolveTasksHome(tasksHome, zettelkastenDirectory) ?? "",
+                  );
                   if (selected) setTasksHome(selected);
                 }}
               >

@@ -60,11 +60,22 @@ export async function listApprovedRoots(): Promise<ApprovedRoot[]> {
   return invoke("list_approved_roots");
 }
 
-/** 폴더를 고르게 하고, 고른 경로를 승인한다. 취소하면 null. */
+/**
+ * 폴더를 고르게 하고, 고른 경로를 승인한다. 취소하면 null.
+ *
+ * `startDir`는 피커가 **열릴 위치**일 뿐이다 — 승인은 사용자가 실제로 고른 경로에만 붙으므로
+ * 이 인자로는 경계가 넓어지지 않는다. 생략하면 OS가 기억하는 마지막 폴더에서 열리고, 넘기면
+ * 그 폴더에서(없으면 홈에서) 열린다. 즉 **빈 문자열도 의미 있는 값**이다: "설정된 폴더가
+ * 없으니 홈에서 열어라". 판정은 Rust `resolve_start_dir` 한 곳에 있다.
+ *
+ * ‼️ 인자 이름은 Rust `start_dir`와 짝이다(Tauri가 camelCase↔snake_case를 잇는다). 어긋나면
+ * 키가 조용히 무시되고 시작 위치가 늘 홈이 된다 — 타입 오류도, 런타임 오류도 나지 않는다.
+ */
 export async function pickApprovedDir(
   purpose: PickDirPurpose,
+  startDir?: string,
 ): Promise<null | string> {
-  return invoke("pick_approved_dir", { purpose });
+  return invoke("pick_approved_dir", { purpose, startDir });
 }
 
 /** 단독 파일을 고르게 하고, 그 파일을 승인한다. 취소하면 null. */

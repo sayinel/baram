@@ -56,8 +56,12 @@ export function ZettelkastenSection() {
             label={t("settings.general.zettelkastenDirectory")}
           >
             <TemplatePathRow
+              label={t("settings.general.zettelkastenDirectory")}
               onBrowse={async () => {
-                const selected = await pickApprovedDir("zettelkasten");
+                const selected = await pickApprovedDir(
+                  "zettelkasten",
+                  zettelkastenDirectory,
+                );
                 if (selected) setZettelkastenDirectory(selected);
               }}
               placeholder={t(

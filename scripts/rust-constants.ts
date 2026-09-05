@@ -174,6 +174,36 @@ export function approvalErrorCodes(rustSource: string): {
   };
 }
 
+/**
+ * The parameter names `pick_approved_dir` declares, minus the `app` handle Tauri injects.
+ *
+ * ‼️ WHY SCRAPING RATHER THAN A SECOND LITERAL — Tauri matches a command's parameters to the keys
+ * in the invoke payload, converting camelCase to snake_case. A key the command does not declare is
+ * silently DROPPED: no type error (the TS wrapper is fine), no runtime error (the command runs), and
+ * the parameter simply arrives as `None`. For `start_dir` that means the picker quietly opens at the
+ * home directory every time, which is also its legitimate fallback — so the defect is invisible in
+ * the one place someone would look.
+ *
+ * ‼️ THE COUNT ASSERTION IS LOAD-BEARING, as everywhere above: `pick_approved_dir` also appears in
+ * `generate_handler!`, in the IPC string on the TS side of the same repo, and in this crate's own
+ * registration test. The pattern therefore requires the `pub async fn … (…)` DECLARATION form. A
+ * FUNCTION OVER SOURCE TEXT rather than a file reader, so a test can feed crafted source and watch
+ * the refusal.
+ *
+ * The consumer is `src/ipc/__tests__/pick-approved-dir-args.test.ts`.
+ */
+export function pickApprovedDirParams(rustSource: string): string[] {
+  const signature = soleDeclaration(
+    rustSource,
+    /pub\s+async\s+fn\s+pick_approved_dir\s*<[^>]*>\s*\(([^)]*)\)/gu,
+    "pick_approved_dir",
+  );
+  return signature
+    .split(",")
+    .map((part) => part.split(":")[0].trim())
+    .filter((name) => name.length > 0 && name !== "app");
+}
+
 /** Exactly one declaration must match, or we are guessing which value ships. */
 function soleDeclaration(
   rustSource: string,
