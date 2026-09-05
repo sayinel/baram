@@ -302,11 +302,13 @@ export const useFileStore = create<FileState>((set, get) => ({
       loadError: null,
     });
 
-    // §81 Remove all contexts so the context tab bar clears
-    const ctxStore = useContextStore.getState();
-    for (const ctx of [...ctxStore.contexts]) {
-      ctxStore.removeContext(ctx.id).catch(() => {});
-    }
+    // §81 Remove all contexts so the context tab bar clears.
+    //
+    // ‼️ One transition, not a per-context loop: a loop hands `activeContextId` down
+    // the survivors, and the subscription at the bottom of this file turns each
+    // hand-off into a `setRootPath` that undoes the `rootPath: null` just above —
+    // leaving the empty-workspace surface instead of home. See `clearAllContexts`.
+    useContextStore.getState().clearAllContexts();
   },
 }));
 

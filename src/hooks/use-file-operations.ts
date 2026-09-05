@@ -22,6 +22,7 @@ import { notifyJournalChanged } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
 import { openFileByPath } from "../utils/open-file";
 import { basename } from "../utils/path-utils";
+import { requestCloseWorkspace } from "./use-close-guard";
 
 export interface AutoReloadOptions {
   /**
@@ -439,8 +440,11 @@ export function useFileOperations({
     [handleOpenFilePath],
   );
 
+  // §81 Closes the whole workspace — every tab and every context — not one folder.
+  // Routed through the close guard so unsaved work gets the same Save / Don't Save /
+  // Cancel prompt quit and reload give, instead of being dropped by `closeAllTabs`.
   const handleCloseFolder = useCallback(() => {
-    useFileStore.getState().closeFolder();
+    requestCloseWorkspace();
   }, []);
 
   return {

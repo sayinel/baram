@@ -141,6 +141,29 @@ export function requestReload(): void {
 }
 
 /**
+ * §81 File > Close Workspace. It closes every tab and drops every context, so —
+ * like reload — it answers for ALL dirty tabs, not just the active one. Nothing
+ * dirty → close straight away; otherwise open the shared modal so the user can
+ * save first. Before this, `closeAllTabs()` discarded unsaved tabs silently.
+ *
+ * ‼️ Shares one blind spot with quit and reload: a markdown tab in source mode
+ * deliberately does not raise `isDirty` (see `components/tasks/use-archive-done.ts`),
+ * so unsaved source-buffer text does not trip this prompt. Widening the predicate
+ * HERE alone would make the "Save & Close" button lie — `saveDirtyTab` writes the
+ * cached `openFiles` content for a non-active tab, which is not what that buffer
+ * holds. One gap, shared by three paths; it closes in the save path, not here.
+ */
+export function requestCloseWorkspace(): void {
+  const { tabs } = useEditorStore.getState();
+  const dirty = tabs.filter((t) => t.isDirty && isFileTab(t));
+  if (dirty.length === 0) {
+    useFileStore.getState().closeFolder();
+    return;
+  }
+  useUIStore.getState().openUnsavedModal({ intent: "closeWorkspace" });
+}
+
+/**
  * §close-guard: Listen for the Rust close/quit interception. If no file tab is
  * dirty, confirm the quit immediately; otherwise open the shared modal.
  */

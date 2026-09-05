@@ -57,6 +57,20 @@ interface ContextState {
     opts?: AddContextOpts,
   ) => Promise<ContextInfo>;
 
+  /**
+   * §81 Drop every context in ONE state transition — the workspace-close path.
+   *
+   * ‼️ Deliberately NOT a loop over `removeContext`. Removing the *active* context
+   * hands `activeContextId` down to the next survivor, and the cross-store
+   * subscription in `stores/file/file.ts` turns every such hand-off into
+   * `setRootPath(ctx.path)`. Closing N contexts one at a time therefore puts back a
+   * `rootPath` the caller just cleared, and the final hand-off — to `null` — cannot
+   * undo it, because that subscription early-returns when no context is active. The
+   * intermediate "some other context is active now" states are artifacts of the
+   * loop; nobody asked for them, so this makes none of them.
+   */
+  clearAllContexts: () => void;
+
   contexts: ContextInfo[];
 
   /**
@@ -367,6 +381,21 @@ export const useContextStore = create<ContextState>()(
           logger.error("[contextStore] addContext failed:", err);
           throw err;
         }
+      },
+
+      clearAllContexts: () => {
+        const { activeContextId, contexts } = get();
+        // Equality gate: without it, closing an already-empty workspace (the
+        // ContextTabBar/VaultTab "last context is gone" path) hands every subscriber
+        // a fresh state root for no change at all.
+        if (contexts.length === 0 && activeContextId === null) return;
+
+        const ids = contexts.map((c) => c.id);
+        // Frontend state first, in a single transition — see the interface note.
+        set({ activeContextId: null, contexts: [] });
+        // Rust hears about all of them. A context it never knew (persisted by an
+        // older session) is not an error here, same as in `removeContext`.
+        for (const id of ids) void ipcRemoveContext(id).catch(() => {});
       },
 
       removeContext: async (id) => {

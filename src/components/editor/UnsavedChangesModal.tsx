@@ -1,10 +1,12 @@
 // §close-guard: Shared 3-button confirmation for unsaved changes. Used for
 // closing a single tab (X button / Cmd+W on an Untitled tab), quitting the
-// app, and reloading (§479, View > Reload / CmdOrCtrl+R). Identical look and
-// buttons in every case: Cancel / Don't Save / Save.
+// app, reloading (§479, View > Reload / CmdOrCtrl+R), and closing the whole
+// workspace (§81, File > Close Workspace). Identical look and buttons in every
+// case: Cancel / Don't Save / Save.
 import { useState } from "react";
 
 import type { CloseGuardDeps } from "../../hooks/use-close-guard";
+import type { UnsavedModalRequest } from "../../stores/ui/ui";
 
 import { useShallow } from "zustand/shallow";
 
@@ -12,7 +14,30 @@ import { saveAllDirtyForQuit, saveDirtyTab } from "../../hooks/use-close-guard";
 import { useTranslation } from "../../i18n/useTranslation";
 import { confirmQuit } from "../../ipc/invoke";
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
+
+/**
+ * The modal copy, per intent.
+ *
+ * ‼️ `Record<Intent, …>` rather than a ternary chain: `tsc` — not a reviewer, and
+ * not a test that happens to enumerate today's intents — is what demands an entry
+ * when the union grows. The chains this replaced defaulted a new intent to the
+ * single-tab wording in their final `else`.
+ */
+const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
+  closeTab: "unsavedChanges.closeMessage",
+  closeWorkspace: "unsavedChanges.closeWorkspaceMessage",
+  quit: "unsavedChanges.quitMessage",
+  reload: "unsavedChanges.reloadMessage",
+};
+
+const PRIMARY_KEY: Record<UnsavedModalRequest["intent"], string> = {
+  closeTab: "unsavedChanges.saveAndClose",
+  closeWorkspace: "unsavedChanges.saveAndCloseWorkspace",
+  quit: "unsavedChanges.saveAndQuit",
+  reload: "unsavedChanges.saveAndReload",
+};
 
 export function UnsavedChangesModal(deps: CloseGuardDeps) {
   const { t } = useTranslation();
@@ -29,10 +54,11 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
 
   if (!unsavedModal) return null;
 
-  // Reload discards the whole window, so it saves every dirty tab exactly
-  // like quit rather than just the active one (§479).
-  const saveAll =
-    unsavedModal.intent === "quit" || unsavedModal.intent === "reload";
+  // Every intent but `closeTab` throws away the whole surface — the window (quit,
+  // reload) or the workspace (§81) — so all of them save every dirty tab, not just
+  // the active one. Phrased as "not closeTab" deliberately: an intent added later
+  // inherits the safe answer instead of quietly saving one tab out of many.
+  const saveAll = unsavedModal.intent !== "closeTab";
   const tab =
     unsavedModal.intent === "closeTab"
       ? useEditorStore
@@ -41,24 +67,20 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
       : undefined;
 
   const message =
-    unsavedModal.intent === "quit"
-      ? t("unsavedChanges.quitMessage", { count: String(dirtyCount) })
-      : unsavedModal.intent === "reload"
-        ? t("unsavedChanges.reloadMessage", { count: String(dirtyCount) })
-        : t("unsavedChanges.closeMessage", { name: tab?.title ?? "" });
-  const primaryLabel =
-    unsavedModal.intent === "quit"
-      ? t("unsavedChanges.saveAndQuit")
-      : unsavedModal.intent === "reload"
-        ? t("unsavedChanges.saveAndReload")
-        : t("unsavedChanges.saveAndClose");
+    unsavedModal.intent === "closeTab"
+      ? t(MESSAGE_KEY.closeTab, { name: tab?.title ?? "" })
+      : t(MESSAGE_KEY[unsavedModal.intent], { count: String(dirtyCount) });
+  const primaryLabel = t(PRIMARY_KEY[unsavedModal.intent]);
 
-  // The terminal action once the decision is resolved: quit, reload, or close the tab.
+  // The terminal action once the decision is resolved: quit, reload, close the
+  // workspace, or close the tab.
   const proceed = async () => {
     if (unsavedModal.intent === "quit") {
       await confirmQuit();
     } else if (unsavedModal.intent === "reload") {
       window.location.reload();
+    } else if (unsavedModal.intent === "closeWorkspace") {
+      useFileStore.getState().closeFolder();
     } else {
       useEditorStore.getState().closeTab(unsavedModal.tabId);
     }

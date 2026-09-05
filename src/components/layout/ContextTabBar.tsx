@@ -126,7 +126,12 @@ export function ContextTabBar() {
         if (newActive) {
           await switchContext(newActive);
         } else {
-          // No contexts left — clear everything, show home screen
+          // No contexts left — clear everything, show home screen.
+          //
+          // ‼️ NOT `requestCloseWorkspace()` (§81). That guard prompts about dirty
+          // tabs, and this context's tabs were already closed a few lines up — the
+          // prompt would have nothing left to ask about. The unsaved work is lost in
+          // that `closeTab` loop, not here; guarding this call would only hide where.
           const { useFileStore } = await import("../../stores/file/file");
           useFileStore.getState().closeFolder();
         }
