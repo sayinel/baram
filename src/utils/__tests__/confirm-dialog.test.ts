@@ -170,3 +170,28 @@ describe("focus goes back where it came from", () => {
     expect(document.activeElement).toBe(before);
   });
 });
+
+// issue 523 — a caller with an i18n'd message can label the buttons too, so a
+// Korean question does not end in an English "Cancel" / "Delete".
+describe("showConfirm button labels", () => {
+  it("uses the given cancel and confirm labels", async () => {
+    const answer = showConfirm("지울까요?", {
+      cancelLabel: "취소",
+      confirmLabel: "삭제",
+    });
+    await afterInitialFocus();
+
+    expect(buttons().map((b) => b.textContent)).toEqual(["취소", "삭제"]);
+    press("Escape");
+    expect(await answer).toBe(false);
+  });
+
+  it("keeps the English defaults when none are given", async () => {
+    const answer = showConfirm("delete it?");
+    await afterInitialFocus();
+
+    expect(buttons().map((b) => b.textContent)).toEqual(["Cancel", "Delete"]);
+    press("Escape");
+    await answer;
+  });
+});

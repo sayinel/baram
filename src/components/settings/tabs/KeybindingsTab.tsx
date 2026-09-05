@@ -15,6 +15,7 @@ import {
   type MergedKeybinding,
 } from "../../../keybindings/use-keybindings";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { showConfirm } from "../../../utils/confirm-dialog";
 import { SettingsSectionHeader } from "../settings-shared";
 
 export function KeybindingsTab() {
@@ -198,10 +199,25 @@ export function KeybindingsTab() {
         <div className="keybinding-reset-all">
           <button
             className="settings-btn"
-            onClick={() => {
-              if (confirm(t("keybindings.resetAll.confirm"))) {
-                resetAllKeybindings();
-              }
+            // issue 523: the app's own confirm dialog, not the webview's
+            // native confirm() — one look for every destructive question.
+            // The confirm button says what it does; the helper's default
+            // "Delete" would be a lie here.
+            onClick={async () => {
+              // A pending key capture owns every keydown on window (capture
+              // phase, preventDefault + stopPropagation) — it would swallow
+              // the dialog's Enter and Escape. The user moved on; end it.
+              setCapturingId(null);
+              setCapturedKey(null);
+              setConflict(null);
+              const confirmed = await showConfirm(
+                t("keybindings.resetAll.confirm"),
+                {
+                  cancelLabel: t("common.cancel"),
+                  confirmLabel: t("keybindings.resetAll"),
+                },
+              );
+              if (confirmed) resetAllKeybindings();
             }}
           >
             {t("keybindings.resetAll")}
