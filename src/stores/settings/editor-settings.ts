@@ -7,6 +7,10 @@ import {
 import { clampZoomLevel } from "../../utils/zoom";
 
 export interface EditorSettingsSlice {
+  /** §17.2-8의 클릭-게이트를 사용자 선택으로 만든 설정. 켜면(기본값) 문서를 여는
+   * 순간 provider(youtube-nocookie / player.vimeo.com)에 요청이 나가고, 끄면
+   * 클릭 전까지 네트워크 요청이 0이다. */
+  autoLoadVideoEmbeds: boolean;
   autoPairBrackets: boolean;
   codeBlockLineNumbers: boolean;
   codeBlockStyle: CodeBlockStyle;
@@ -22,6 +26,7 @@ export interface EditorSettingsSlice {
   /** §283 PDF 사이드 레일의 폭(CSS px). 드래그로 조절하고 재시작 뒤에도 남는다.
    * clampRailWidth 범위 밖의 값은 setter가 자른다. */
   pdfRailWidth: number;
+  setAutoLoadVideoEmbeds: (enabled: boolean) => void;
   setAutoPairBrackets: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
   setCodeBlockStyle: (style: CodeBlockStyle) => void;
@@ -70,6 +75,7 @@ export const createEditorSettingsSlice: StateCreator<
   tabSize: 2,
   lineNumbers: false,
   autoPairBrackets: true,
+  autoLoadVideoEmbeds: true,
   editorMaxWidth: 800,
   pdfRailWidth: PDF_RAIL_DEFAULT_WIDTH_PX,
   zoomLevel: 1,
@@ -96,6 +102,7 @@ export const createEditorSettingsSlice: StateCreator<
   setTabSize: (tabSize) => set({ tabSize }),
   setLineNumbers: (lineNumbers) => set({ lineNumbers }),
   setAutoPairBrackets: (autoPairBrackets) => set({ autoPairBrackets }),
+  setAutoLoadVideoEmbeds: (autoLoadVideoEmbeds) => set({ autoLoadVideoEmbeds }),
   setEditorMaxWidth: (editorMaxWidth) => set({ editorMaxWidth }),
   // ‼️ 정규화는 clampZoomLevel 한 곳에만 있다. 여기에 범위/정밀도를 다시 적으면
   // use-zoom.ts와 갈라져 "한쪽만 고쳐진" 상태가 되고, 그게 부드러운 핀치가

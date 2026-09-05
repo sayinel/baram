@@ -3,7 +3,7 @@
 // ‼️ jsdom은 재생을 못 한다. 그래서 재생 자체가 아니라 **관측 가능한 계약**만 단정한다:
 // error 이벤트 뒤에 오류 문구가 나오는가, 클릭 전에 iframe이 없는가.
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
@@ -16,6 +16,31 @@ vi.mock("../../stores/editor/editor", () => ({
       tabs: [{ id: "t1", filePath: "/vault/notes/today.md" }],
     }),
   },
+}));
+
+// autoLoadVideoEmbeds — a mutable box so individual tests can flip the
+// setting without re-mocking the module. Default true (the shipped default),
+// matching the existing tests below that assumed instant iframe mounting was
+// the ONE gated case; most of those now assert the gated (off) behavior
+// explicitly and restore this to true in their own setup.
+const settingsState = vi.hoisted(() => ({
+  autoLoadVideoEmbeds: true,
+  // Not read by the mock's selector — `useTranslation` pulls `locale` from
+  // this same store, and leaving it out makes every `t()` here fall back to
+  // English by accident rather than on purpose (see i18n/index.ts).
+  locale: "en",
+}));
+vi.mock("../../stores/settings/store", () => ({
+  useSettingsStore: (selector: (s: typeof settingsState) => unknown) =>
+    selector(settingsState),
+}));
+
+// §296 hydration gate. VideoView reads it through this hook, so tests drive
+// the hook rather than reaching into zustand's persist internals. Default
+// true — hydration long since finished is the steady state a reader is in.
+const hydrationState = vi.hoisted(() => ({ hydrated: true }));
+vi.mock("../../hooks/use-settings-hydrated", () => ({
+  useSettingsHydrated: () => hydrationState.hydrated,
 }));
 
 vi.mock("@tiptap/react", () => ({
@@ -66,6 +91,14 @@ function renderVideo(attrs: Attrs, updateAttributes = vi.fn()) {
   return render(<VideoView {...(props as any)} />);
 }
 
+// Every test starts from the shipped default (on) unless it explicitly turns
+// it off — most of the embed-card tests below predate the setting and were
+// written against the old always-gated behavior, so they set it off.
+beforeEach(() => {
+  settingsState.autoLoadVideoEmbeds = true;
+  hydrationState.hydrated = true;
+});
+
 describe("VideoView (§296)", () => {
   // §296 UX1: the poster → click-to-reveal-controls two-step is gone — a
   // local/remote file gets real native controls from the start (Logseq-style),
@@ -102,18 +135,20 @@ describe("VideoView (§296)", () => {
     );
   });
 
-  // §17.2-8 문서를 여는 순간 provider에 요청이 가지 않는다. This is the ONE
-  // media shape that keeps a click-to-load step — a privacy decision
-  // (youtube-nocookie was chosen so opening a document sends nothing to the
-  // provider), not a UI one, so it is deliberately NOT unified with the file
-  // branch above.
-  it("does not mount an embed iframe before the user clicks", () => {
+  // §17.2-8 문서를 여는 순간 provider에 요청이 가지 않는다 — 이제는
+  // `autoLoadVideoEmbeds` 설정을 끈 경우의 계약이다 (기본값은 켬 — 아래
+  // "auto-loads" 테스트가 그 기본 동작을 확인한다). 설정을 껐을 때는
+  // youtube-nocookie를 고른 이유(문서를 여는 순간 provider에 요청이 가면
+  // 안 된다는 프라이버시 결정)가 여전히 클릭-로드 카드로 지켜진다.
+  it("does not mount an embed iframe before the user clicks, with autoLoadVideoEmbeds off", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     expect(container.querySelector("iframe")).toBeNull();
     expect(container.querySelector(".video-embed-card")).not.toBeNull();
   });
 
-  it("mounts the constructed nocookie iframe when the embed card is clicked", () => {
+  it("mounts the constructed nocookie iframe when the embed card is clicked, with autoLoadVideoEmbeds off", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     fireEvent.click(container.querySelector(".video-embed-card")!);
     const iframe = container.querySelector("iframe");
@@ -122,6 +157,99 @@ describe("VideoView (§296)", () => {
       "https://www.youtube-nocookie.com/embed/abc123",
     );
     expect(iframe!.getAttribute("sandbox")).toContain("allow-scripts");
+  });
+
+  // autoLoadVideoEmbeds settings — the toggle that replaced the always-on
+  // click-gate above (dev/design/part17-video-embedding.md §17.2-8).
+  it("auto-loads the embed immediately when autoLoadVideoEmbeds is on (the shipped default), with no click", () => {
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    const iframe = container.querySelector("iframe");
+    expect(iframe).not.toBeNull();
+    expect(iframe!.getAttribute("src")).toBe(
+      "https://www.youtube-nocookie.com/embed/abc123",
+    );
+    expect(container.querySelector(".video-embed-card")).toBeNull();
+  });
+
+  // Half of the derived-condition contract: a click survives the setting.
+  //
+  // ‼️ This one does NOT, on its own, prove that `embedLoaded` is independent
+  // React state — an earlier version of this comment claimed it did, and that
+  // was wrong. The final assertion runs with the setting ON, where
+  // `embedLoaded || autoLoadEmbeds` is true no matter what `embedLoaded`
+  // holds, so `useState(autoLoadEmbeds)` + a bare `embedLoaded &&` passes it
+  // too (verified by mutation). The test BELOW is what kills that mutation;
+  // the two are only meaningful as a pair.
+  it("keeps an embed loaded by click regardless of what the setting does afterward", () => {
+    settingsState.autoLoadVideoEmbeds = false;
+    const { container, rerender } = renderVideo({
+      src: "https://youtu.be/abc123",
+    });
+    fireEvent.click(container.querySelector(".video-embed-card")!);
+    expect(container.querySelector("iframe")).not.toBeNull();
+
+    settingsState.autoLoadVideoEmbeds = true;
+    const props = {
+      node: {
+        attrs: { widthPercent: 100, src: "https://youtu.be/abc123" },
+      },
+      updateAttributes: vi.fn(),
+      selected: false,
+      editor: {} as never,
+      getPos: () => 0,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rerender(<VideoView {...(props as any)} />);
+    expect(container.querySelector("iframe")).not.toBeNull();
+    expect(container.querySelector(".video-embed-card")).toBeNull();
+  });
+
+  // The other half, and the one `video-view.tsx`'s own comment promises: an
+  // embed the reader never touched has to go BACK to the card when the
+  // setting is turned off. Nothing pinned this before, and its absence let
+  // `useState(autoLoadEmbeds)` + `embedLoaded &&` pass the whole suite — the
+  // refactor that comment exists to forbid. Here that shape leaves
+  // `embedLoaded` latched true from the first render and the card never
+  // returns, so this assertion is what fails.
+  it("returns an untouched embed to the card when autoLoadVideoEmbeds is turned off", () => {
+    const { container, rerender } = renderVideo({
+      src: "https://youtu.be/abc123",
+    });
+    expect(container.querySelector("iframe")).not.toBeNull();
+    expect(container.querySelector(".video-embed-card")).toBeNull();
+
+    settingsState.autoLoadVideoEmbeds = false;
+    const props = {
+      node: {
+        attrs: { widthPercent: 100, src: "https://youtu.be/abc123" },
+      },
+      updateAttributes: vi.fn(),
+      selected: false,
+      editor: {} as never,
+      getPos: () => 0,
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rerender(<VideoView {...(props as any)} />);
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector(".video-embed-card")).not.toBeNull();
+  });
+
+  // The window this gate exists for: settings rehydrate over Rust IPC, so
+  // before hydration the selector reads the slice default (`true`) even for a
+  // reader who turned the setting OFF. Mounting the iframe then is not a
+  // wrong pixel that hydration corrects — the request has already left, and
+  // the card hydration swaps back in looks exactly like nothing happened.
+  it("keeps an embed carded until settings have hydrated, even though the default is on", () => {
+    hydrationState.hydrated = false;
+    const { container } = renderVideo({ src: "https://youtu.be/abc123" });
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector(".video-embed-card")).not.toBeNull();
+  });
+
+  it("does not affect the local file branch, even with autoLoadVideoEmbeds on", () => {
+    const { container } = renderVideo({ src: "assets/clip.mp4" });
+    expect(container.querySelector("video")).not.toBeNull();
+    expect(container.querySelector("iframe")).toBeNull();
   });
 
   it("shows the error card after a media error", () => {
@@ -186,12 +314,14 @@ describe("VideoView drag handle covers every render shape (§296 deferred-minor 
   });
 
   it("covers the unplayed embed card", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     const card = container.querySelector(".video-embed-card")!;
     expect(card.closest("[data-drag-handle]")).not.toBeNull();
   });
 
   it("covers the playing embed iframe", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     fireEvent.click(container.querySelector(".video-embed-card")!);
     const iframe = container.querySelector("iframe")!;
@@ -209,6 +339,7 @@ describe("VideoView drag handle covers every render shape (§296 deferred-minor 
   // now the embed card is the only remaining click-to-load surface, so it
   // inherits the exemption.
   it("keeps the embed card exempt from starting a native drag (preventDefault on mousedown)", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     const card = container.querySelector(".video-embed-card")!;
     const event = new MouseEvent("mousedown", {
@@ -225,6 +356,7 @@ describe("VideoView drag handle covers every render shape (§296 deferred-minor 
 // fullscreen, and the legacy allowFullScreen attribute was never set either.
 describe("VideoView embed iframe allows fullscreen (§296 deferred-minor #11)", () => {
   it("includes the fullscreen token in allow, and the legacy allowfullscreen attribute", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     fireEvent.click(container.querySelector(".video-embed-card")!);
     const iframe = container.querySelector("iframe")!;
@@ -238,7 +370,10 @@ describe("VideoView embed iframe allows fullscreen (§296 deferred-minor #11)", 
 // one the user actually typed — accurate about the request target, useless
 // for recognising what they pasted.
 describe("VideoView shows the original host, not the constructed one (§296 deferred-minor #12)", () => {
+  // The host span lives on the unplayed card, so these need the click-gate
+  // (autoLoadVideoEmbeds off) to have a card in the DOM at all.
   it("shows youtu.be, not www.youtube-nocookie.com, for a youtu.be link", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     const host = container.querySelector(".video-embed-host")!;
     expect(host.textContent).toBe("youtu.be");
@@ -246,6 +381,7 @@ describe("VideoView shows the original host, not the constructed one (§296 defe
   });
 
   it("shows the typed www.youtube.com host, not youtube-nocookie, for a /watch link", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({
       src: "https://www.youtube.com/watch?v=abc123",
     });
@@ -254,6 +390,7 @@ describe("VideoView shows the original host, not the constructed one (§296 defe
   });
 
   it("shows vimeo.com, not player.vimeo.com, for a vimeo link", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://vimeo.com/123456789" });
     const host = container.querySelector(".video-embed-host")!;
     expect(host.textContent).toBe("vimeo.com");
@@ -265,6 +402,7 @@ describe("VideoView shows the original host, not the constructed one (§296 defe
 // gone from the DOM, replaced by the iframe.
 describe("VideoView embed iframe carries data-video-src for export (§294 M2)", () => {
   it("puts the original src on the iframe once loaded, not just the card", () => {
+    settingsState.autoLoadVideoEmbeds = false;
     const { container } = renderVideo({ src: "https://youtu.be/abc123" });
     fireEvent.click(container.querySelector(".video-embed-card")!);
     const iframe = container.querySelector("iframe")!;

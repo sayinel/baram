@@ -398,6 +398,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
       ),
     },
     {
+      id: "autoLoadVideoEmbeds",
+      label: "settings.editor.autoLoadVideoEmbeds",
+      description: "settings.editor.autoLoadVideoEmbeds.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeToggleControl(
+        () => settings.autoLoadVideoEmbeds,
+        settings.setAutoLoadVideoEmbeds,
+      ),
+    },
+    {
       id: "editorMaxWidth",
       label: "settings.editor.maxWidth",
       description: "settings.editor.maxWidth.desc",

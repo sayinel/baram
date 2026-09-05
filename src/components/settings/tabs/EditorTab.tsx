@@ -46,6 +46,8 @@ export function EditorTab() {
     setEditorMaxWidth,
     virtualizeLargeDocs,
     setVirtualizeLargeDocs,
+    autoLoadVideoEmbeds,
+    setAutoLoadVideoEmbeds,
     vimMode,
     setVimMode,
   } = useSettingsStore();
@@ -146,6 +148,16 @@ export function EditorTab() {
         <ToggleSwitch
           checked={virtualizeLargeDocs}
           onChange={setVirtualizeLargeDocs}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.autoLoadVideoEmbeds.desc")}
+        label={t("settings.editor.autoLoadVideoEmbeds")}
+      >
+        <ToggleSwitch
+          checked={autoLoadVideoEmbeds}
+          onChange={setAutoLoadVideoEmbeds}
         />
       </SettingsRow>
 

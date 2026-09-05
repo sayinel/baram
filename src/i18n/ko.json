@@ -636,6 +636,8 @@
   "settings.appearance.systemAuto": "시스템 (자동)",
   "settings.appearance.theme": "테마",
   "settings.appearance.workspacePresets": "화면구성",
+  "settings.editor.autoLoadVideoEmbeds": "동영상 임베드 자동 로드",
+  "settings.editor.autoLoadVideoEmbeds.desc": "YouTube·Vimeo 임베드를 문서를 열 때 바로 표시합니다. 끄면 클릭하기 전까지 provider에 요청이 나가지 않습니다.",
   "settings.editor.autoPairBrackets": "괄호 자동 완성",
   "settings.editor.autoPairBrackets.desc": "소스 모드 및 코드 블록에서 괄호와 따옴표를 자동으로 닫습니다",
   "settings.editor.behavior": "동작",
