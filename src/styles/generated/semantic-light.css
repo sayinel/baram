@@ -51,6 +51,10 @@
     --color-blue-100
   ); /** General selection background (non-editor) */
 
+  --color-bg-tooltip: var(
+    --color-slate-900
+  ); /** Tooltip pill background — deliberately inverted against the light surface it floats over, not a step of it */
+
   --color-text-default: var(
     --color-text-primary
   ); /** Default body text (alias of text.primary; was undefined --color-text-default) */
@@ -62,6 +66,10 @@
   --color-text-disabled: var(
     --color-gray-400
   ); /** Muted/disabled text (was --color-text-muted: #9ca3af) */
+
+  --color-text-tooltip: var(
+    --color-white
+  ); /** Text on the tooltip pill — pairs with color.bg.tooltip, not with the page background */
 
   --color-border-default: var(
     --color-gray-200

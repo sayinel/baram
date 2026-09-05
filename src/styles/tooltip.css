@@ -1,0 +1,40 @@
+/* Hover label — the pill `components/Tooltip.tsx` portals to <body>.
+   Position is set inline by floating-ui as a transform; everything else is here. */
+
+.tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-tooltip);
+
+  /* Not `nowrap`: a label can be a filesystem path, and one long enough to leave the viewport
+     is shifted back in by floating-ui as a single unreadable strip. Short labels stay on one
+     line anyway — the pill shrinks to its content. */
+  max-width: 340px;
+  padding: 5px 9px;
+  font-family: var(--font-family-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--color-text-tooltip);
+  overflow-wrap: anywhere;
+
+  /* A label must never be the thing under the cursor: it is portaled to <body>, so a hit here
+     is a hit that misses the icon it describes. */
+  pointer-events: none;
+  background-color: var(--color-bg-tooltip);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+
+  /* Painted at the origin for one frame before floating-ui reports a position, so it starts
+     transparent and the component raises it to 1. The transition then doubles as the fade-in —
+     do NOT give this a non-zero starting opacity. */
+  opacity: 0;
+  transition: opacity 80ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooltip {
+    transition: none;
+  }
+}

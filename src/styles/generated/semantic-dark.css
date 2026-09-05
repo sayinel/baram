@@ -53,6 +53,10 @@
     --color-blue-900
   ); /** General selection background (non-editor) */
 
+  --color-bg-tooltip: var(
+    --color-slate-700
+  ); /** Tooltip pill background dark — a step LIGHTER than bg.panel (slate.900), so the pill separates from the bar it floats over */
+
   --color-text-primary: var(
     --color-slate-200
   ); /** Primary text dark (was --color-text-primary: #e2e8f0) */
@@ -64,6 +68,10 @@
   --color-text-disabled: var(
     --color-slate-500
   ); /** Muted/disabled text dark (was --color-text-muted: #64748b) */
+
+  --color-text-tooltip: var(
+    --color-slate-200
+  ); /** Text on the tooltip pill dark — pairs with color.bg.tooltip */
 
   --color-border-default: var(
     --color-slate-700

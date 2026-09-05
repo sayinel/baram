@@ -29,6 +29,10 @@
       "selection": {
         "$value": "{color.blue.900}",
         "$description": "General selection background (non-editor)"
+      },
+      "tooltip": {
+        "$value": "{color.slate.700}",
+        "$description": "Tooltip pill background dark — a step LIGHTER than bg.panel (slate.900), so the pill separates from the bar it floats over"
       }
     },
     "text": {
@@ -51,6 +55,10 @@
       "muted": {
         "$value": "{color.text.disabled}",
         "$description": "Low-emphasis text dark — follows disabled token for theme consistency"
+      },
+      "tooltip": {
+        "$value": "{color.slate.200}",
+        "$description": "Text on the tooltip pill dark — pairs with color.bg.tooltip"
       }
     },
     "border": {

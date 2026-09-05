@@ -61,6 +61,12 @@
      it is already inside the dialog's stacking context, where a value this
      large would only let it escape its own container. */
   --z-editor-popup: 1050;
+
+  /* Hover labels (`components/Tooltip.tsx`), portaled to <body>. Above the editor popups
+     just described — a transient one-line label covering a suggestion menu for as long as
+     the pointer rests is not a problem, the reverse is — and, like them, deliberately BELOW
+     `.plugin-consent-overlay` (1100). The ceiling argument above applies unchanged here. */
+  --z-tooltip: 1060;
 }
 
 /* color-scheme: 토큰이 못 칠하는 UA 표면(네이티브 스크롤바, form control 기본색,
