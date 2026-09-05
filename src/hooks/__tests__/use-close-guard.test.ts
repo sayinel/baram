@@ -26,6 +26,7 @@ import {
   requestReload,
   saveAllDirtyForQuit,
   saveDirtyTab,
+  saveDirtyTabsForContexts,
   useCloseGuard,
 } from "../use-close-guard";
 
@@ -197,6 +198,62 @@ describe("saveAllDirtyForQuit", () => {
 });
 
 // ── useCloseGuard ────────────────────────────────────────────────────────────
+
+// ── saveDirtyTabsForContexts ────────────────────────────────────────────────
+
+describe("saveDirtyTabsForContexts", () => {
+  it("writes ONLY the given contexts' dirty tabs", async () => {
+    const mine = fileTab({
+      contextId: "a",
+      filePath: "/v/a/mine.md",
+      id: "mine",
+    });
+    const theirs = fileTab({
+      contextId: "b",
+      filePath: "/v/b/theirs.md",
+      id: "theirs",
+    });
+    useEditorStore.setState({ activeTabId: null, tabs: [mine, theirs] });
+    useFileStore.setState({
+      openFiles: new Map([
+        ["/v/a/mine.md", "mine content"],
+        ["/v/b/theirs.md", "theirs content"],
+      ]),
+    });
+
+    const ok = await saveDirtyTabsForContexts(["a"], makeDeps(vi.fn()));
+
+    expect(ok).toBe(true);
+    // Closing one folder must not write another folder's edits to disk.
+    expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+      "/v/a/mine.md",
+      "mine content",
+    );
+    expect(
+      useEditorStore.getState().tabs.find((t) => t.id === "theirs")?.isDirty,
+    ).toBe(true);
+  });
+
+  it("writes nothing when no tab in those contexts is dirty", async () => {
+    const clean = fileTab({
+      contextId: "a",
+      filePath: "/v/a/clean.md",
+      id: "clean",
+      isDirty: false,
+    });
+    const other = fileTab({
+      contextId: "b",
+      filePath: "/v/b/dirty.md",
+      id: "other",
+    });
+    useEditorStore.setState({ activeTabId: null, tabs: [clean, other] });
+
+    const ok = await saveDirtyTabsForContexts(["a"], makeDeps(vi.fn()));
+
+    expect(ok).toBe(true);
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+});
 
 describe("useCloseGuard", () => {
   it("registers a listener for the app://close-requested event", () => {

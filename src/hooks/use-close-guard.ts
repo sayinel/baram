@@ -9,6 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { EditorTab } from "../stores/editor/editor";
 
 import { confirmQuit, updateFileIndex, writeFile } from "../ipc/invoke";
+import { closeContexts } from "../services/close-context";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
@@ -33,11 +34,36 @@ export interface CloseGuardDeps {
  * @returns `true` when all dirty tabs were saved (safe to quit), `false` when
  *   the user aborted a Save As dialog (stay open, changes preserved).
  */
-export async function saveAllDirtyForQuit({
-  handleSave,
-}: CloseGuardDeps): Promise<boolean> {
+export async function saveAllDirtyForQuit(
+  deps: CloseGuardDeps,
+): Promise<boolean> {
+  return saveDirtyTabsWhere(() => true, deps);
+}
+
+/**
+ * §82 Persist every dirty file tab belonging to the given contexts — the scoped
+ * variant `closeContexts` needs. Saving ALL dirty tabs there would write files the
+ * user never asked to touch: closing one folder must not save another's edits.
+ * @returns `false` when an Untitled Save As was aborted (caller must NOT close).
+ */
+export async function saveDirtyTabsForContexts(
+  contextIds: readonly string[],
+  deps: CloseGuardDeps,
+): Promise<boolean> {
+  const wanted = new Set(contextIds);
+  return saveDirtyTabsWhere((t) => wanted.has(t.contextId), deps);
+}
+
+/**
+ * The shared body of the two save-many helpers: dirty file tabs matching `match`,
+ * active one first so its live editor is flushed before the cached-content writes.
+ */
+async function saveDirtyTabsWhere(
+  match: (tab: EditorTab) => boolean,
+  { handleSave }: CloseGuardDeps,
+): Promise<boolean> {
   const { activeTabId, tabs } = useEditorStore.getState();
-  const dirty = tabs.filter((t) => t.isDirty && isFileTab(t));
+  const dirty = tabs.filter((t) => t.isDirty && isFileTab(t) && match(t));
   // Active tab first so its live editor content is flushed before the others.
   const ordered = [
     ...dirty.filter((t) => t.id === activeTabId),
@@ -161,6 +187,40 @@ export function requestCloseWorkspace(): void {
     return;
   }
   useUIStore.getState().openUnsavedModal({ intent: "closeWorkspace" });
+}
+
+/**
+ * §82 Closing contexts. Nothing dirty in them → close; otherwise open the shared
+ * modal, once, scoped to exactly those contexts.
+ *
+ * ‼️ Four user-reachable "close this folder" actions had three implementations
+ * between them: the tab's x, its context menu's Close and Close Others, and
+ * Settings > Vault's remove. None asked about unsaved work. Two also skipped the
+ * active/last-context handling entirely, so closing the last context from the
+ * context menu reproduced the empty-workspace surface that §81 fixed on the
+ * File-menu path. All four enter here now — a guard on one button leaves the other
+ * three doors open. (Two further removals stay outside on purpose because they are
+ * not a close: the Folder<->Vault convert and §335's revoke — see close-context.ts.)
+ *
+ * ‼️ The prompt comes BEFORE the close, not after: once a context is removed there
+ * is nothing for Cancel to put back.
+ */
+export async function requestCloseContexts(
+  contextIds: readonly string[],
+): Promise<void> {
+  if (contextIds.length === 0) return;
+  const wanted = new Set(contextIds);
+  const { tabs } = useEditorStore.getState();
+  const dirty = tabs.filter(
+    (t) => wanted.has(t.contextId) && t.isDirty && isFileTab(t),
+  );
+  if (dirty.length === 0) {
+    await closeContexts(contextIds);
+    return;
+  }
+  useUIStore
+    .getState()
+    .openUnsavedModal({ contextIds: [...contextIds], intent: "closeContext" });
 }
 
 /**

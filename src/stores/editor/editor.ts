@@ -82,6 +82,18 @@ interface EditorState {
   /** §38 Close all unpinned tabs except the given one */
   closeOtherTabs: (tabId: string) => void;
   closeTab: (tabId: string) => void;
+  /**
+   * §82 Close every tab belonging to these contexts — PINNED ONES INCLUDED.
+   *
+   * ‼️ `closeTab` refuses a pinned tab (§38), but the context it belongs to is being
+   * removed either way, so refusing here does not keep the tab usable: it strands one
+   * whose `contextId` names a context that no longer exists. `setActiveTab` then falls
+   * past both of its early returns into `switchContext(deadId)`, which no-ops, and the
+   * file sits in a vault Rust no longer has registered. `closeAllTabs` already drops
+   * pinned tabs when the whole workspace closes; this is the same answer, scoped — so
+   * the outcome no longer depends on how many contexts happened to be open.
+   */
+  closeTabsForContexts: (contextIds: ReadonlySet<string>) => void;
   /** §38 Close unpinned tabs to the right of the given tab */
   closeTabsToRight: (tabId: string) => void;
   /** §72 Bumped when external code (e.g. PropertiesPanel) updates file content in store */
@@ -498,6 +510,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       );
       return { tabs, activeTabId, mruOrder, sourceModeTabs, staleContentTabs };
     }),
+
+  closeTabsForContexts: (contextIds) => {
+    const doomed = get().tabs.filter((t) => contextIds.has(t.contextId));
+    if (doomed.length === 0) return;
+    const ids = new Set(doomed.map((t) => t.id));
+    const closed = (id: string) => ids.has(id);
+
+    // One transition for the whole set, like `closeAllTabs` — not one per tab.
+    set((state) => {
+      const tabs = state.tabs.filter((t) => !ids.has(t.id));
+      return {
+        tabs,
+        activeTabId:
+          state.activeTabId && ids.has(state.activeTabId)
+            ? (tabs[tabs.length - 1]?.id ?? null)
+            : state.activeTabId,
+        mruOrder: state.mruOrder.filter((id) => !ids.has(id)),
+        sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, closed),
+        staleContentTabs: withoutClosedTabs(state.staleContentTabs, closed),
+      };
+    });
+
+    // Same dirty-detection cleanup `closeTab` does. No §89 FileContext sweep here:
+    // every doomed tab belongs to a context the caller is removing outright.
+    import("../../utils/editor/programmatic-update").then(
+      ({ clearOriginalDoc }) => {
+        for (const id of ids) clearOriginalDoc(id);
+      },
+    );
+  },
 
   closeAllTabs: () =>
     set((state) => ({

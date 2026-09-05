@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../../hooks/use-close-guard", () => ({
   saveAllDirtyForQuit: vi.fn(),
   saveDirtyTab: vi.fn(),
+  saveDirtyTabsForContexts: vi.fn(),
+}));
+
+vi.mock("../../../services/close-context", () => ({
+  closeContexts: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../../ipc/invoke", () => ({
@@ -26,8 +31,11 @@ import type { EditorTab } from "../../../stores/editor/editor";
 import {
   saveAllDirtyForQuit,
   saveDirtyTab,
+  saveDirtyTabsForContexts,
 } from "../../../hooks/use-close-guard";
 import { confirmQuit } from "../../../ipc/invoke";
+import { closeContexts } from "../../../services/close-context";
+import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
@@ -39,9 +47,13 @@ const deps: CloseGuardDeps = {
   handleSave: vi.fn(async () => undefined),
 };
 
-function dirtyFileTab(id: string, title = `${id}.md`): EditorTab {
+function dirtyFileTab(
+  id: string,
+  title = `${id}.md`,
+  contextId = "ctx",
+): EditorTab {
   return {
-    contextId: "ctx",
+    contextId,
     filePath: `/v/${id}.md`,
     id,
     isDirty: true,
@@ -418,6 +430,149 @@ describe("UnsavedChangesModal", () => {
       expect(closeFolder).not.toHaveBeenCalled();
       expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
       closeFolder.mockRestore();
+    });
+  });
+
+  // ── close-context flow (§82) ───────────────────────────────────────────────
+  //
+  // Closing one or more contexts: the tab bar's x, its context menu's Close and
+  // Close Others, Settings > Vault's remove. What gets SAVED here must be scoped
+  // to those contexts — saving everything would write files in folders the user
+  // never touched.
+  describe("close context", () => {
+    beforeEach(() => {
+      useContextStore.setState({
+        activeContextId: "ctx",
+        contexts: [
+          { id: "ctx", label: "Notes", path: "/v/notes" },
+          { id: "other", label: "Papers", path: "/v/papers" },
+        ],
+      } as never);
+    });
+
+    it("counts only the closing contexts' dirty tabs, and names them", () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [
+          dirtyFileTab("a", "a.md", "ctx"),
+          dirtyFileTab("z", "z.md", "other"),
+        ],
+      });
+      useUIStore.setState({
+        unsavedModal: { contextIds: ["ctx"], intent: "closeContext" },
+      });
+
+      render(<UnsavedChangesModal {...deps} />);
+
+      // Discriminating: two dirty tabs exist, but only one is in scope. A global
+      // count would read "2" here.
+      expect(
+        screen.getByText(
+          containing(
+            "unsavedChanges.closeContextMessage",
+            '"count":"1"',
+            "Notes",
+          ),
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndCloseContext",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("Save & Close Folder → saves ONLY those contexts, then closes them", async () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a", "a.md", "ctx")],
+      });
+      useUIStore.setState({
+        unsavedModal: { contextIds: ["ctx"], intent: "closeContext" },
+      });
+      vi.mocked(saveDirtyTabsForContexts).mockResolvedValue(true);
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndCloseContext",
+        }),
+      );
+
+      await waitFor(() => expect(closeContexts).toHaveBeenCalledWith(["ctx"]));
+      expect(saveDirtyTabsForContexts).toHaveBeenCalledOnce();
+      expect(vi.mocked(saveDirtyTabsForContexts).mock.calls[0][0]).toEqual([
+        "ctx",
+      ]);
+      // The scope guarantee: a whole-surface save would touch "other" too.
+      expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+    });
+
+    it("Save & Close Folder → closes nothing when a Save As is cancelled", async () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a", "a.md", "ctx")],
+      });
+      useUIStore.setState({
+        unsavedModal: { contextIds: ["ctx"], intent: "closeContext" },
+      });
+      vi.mocked(saveDirtyTabsForContexts).mockResolvedValue(false);
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndCloseContext",
+        }),
+      );
+
+      await waitFor(() =>
+        expect(saveDirtyTabsForContexts).toHaveBeenCalledOnce(),
+      );
+      expect(closeContexts).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toEqual({
+        contextIds: ["ctx"],
+        intent: "closeContext",
+      });
+    });
+
+    it("Don't Save → closes every context it was asked about, without saving", async () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a", "a.md", "ctx")],
+      });
+      useUIStore.setState({
+        unsavedModal: { contextIds: ["ctx", "other"], intent: "closeContext" },
+      });
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.dontSave" }),
+      );
+
+      await waitFor(() =>
+        expect(closeContexts).toHaveBeenCalledWith(["ctx", "other"]),
+      );
+      expect(saveDirtyTabsForContexts).not.toHaveBeenCalled();
+    });
+
+    it("Cancel → keeps the contexts", () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a", "a.md", "ctx")],
+      });
+      useUIStore.setState({
+        unsavedModal: { contextIds: ["ctx"], intent: "closeContext" },
+      });
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.cancel" }),
+      );
+
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+      expect(closeContexts).not.toHaveBeenCalled();
+      expect(saveDirtyTabsForContexts).not.toHaveBeenCalled();
     });
   });
 });
