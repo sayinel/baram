@@ -12,6 +12,7 @@ import {
   getVaultConfigByPath,
   setVaultConfigByPath,
 } from "../../../ipc/context";
+import { convertContextType } from "../../../services/context-type-convert";
 import { addFolder } from "../../../services/vault-context-loader";
 import { useContextStore } from "../../../stores/context/context";
 import { logger } from "../../../utils/logger";
@@ -44,7 +45,6 @@ export function VaultTab() {
   const {
     contexts,
     activeContextId,
-    removeContext,
     updateContextAlias,
     updateContextLabel,
     updateContextColor,
@@ -52,7 +52,6 @@ export function VaultTab() {
     useShallow((s) => ({
       contexts: s.contexts,
       activeContextId: s.activeContextId,
-      removeContext: s.removeContext,
       updateContextAlias: s.updateContextAlias,
       updateContextLabel: s.updateContextLabel,
       updateContextColor: s.updateContextColor,
@@ -100,45 +99,12 @@ export function VaultTab() {
               key={ctx.id}
               onAliasChange={(alias) => updateContextAlias(ctx.id, alias)}
               onColorChange={(color) => updateContextColor(ctx.id, color)}
+              // §82 Both directions live in one place now — they differed only in
+              // one IPC call, and both were missing the tab re-key that keeps the
+              // new context id attached to the tabs it already owns.
               onConvertType={
                 ctx.contextType === "folder" || ctx.contextType === "vault"
-                  ? async () => {
-                      const wasActive = activeContextId === ctx.id;
-                      if (ctx.contextType === "folder") {
-                        // Folder → Vault: create .baram/config.json
-                        const { initVault } =
-                          await import("../../../ipc/context");
-                        await initVault(ctx.path, ctx.label);
-                        await removeContext(ctx.id);
-                        const added = await useContextStore
-                          .getState()
-                          .addContext("vault", ctx.path, {
-                            alias: ctx.label,
-                            color: ctx.color,
-                            label: ctx.label,
-                          });
-                        if (wasActive) {
-                          const { switchContext } =
-                            await import("../../../services/vault-context-loader");
-                          await switchContext(added.id);
-                        }
-                      } else {
-                        // Vault → Folder: remove .baram/config.json vault section
-                        await setVaultConfigByPath(ctx.path, {});
-                        await removeContext(ctx.id);
-                        const added = await useContextStore
-                          .getState()
-                          .addContext("folder", ctx.path, {
-                            color: ctx.color,
-                            label: ctx.label,
-                          });
-                        if (wasActive) {
-                          const { switchContext } =
-                            await import("../../../services/vault-context-loader");
-                          await switchContext(added.id);
-                        }
-                      }
-                    }
+                  ? () => convertContextType(ctx)
                   : undefined
               }
               onLabelChange={(label) => updateContextLabel(ctx.id, label)}

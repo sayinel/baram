@@ -30,6 +30,7 @@ function makeRenderers(): TabSurfaceRenderers {
     getSourceBuffer: (id) => buffers.get(id) ?? "",
     hasSourceBuffer: (id) => buffers.has(id),
     markDirty: vi.fn(),
+    markSourceEdited: vi.fn(),
     onPdfFindApiChange: vi.fn(),
     onTogglePdfFind: vi.fn(),
     pdfFindOpen: false,

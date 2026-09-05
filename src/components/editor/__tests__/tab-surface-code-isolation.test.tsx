@@ -48,6 +48,7 @@ const renderers: TabSurfaceRenderers = createTabSurfaceRenderers({
   getSourceBuffer: (id) => buffers[id] ?? "",
   hasSourceBuffer: (id) => id in buffers,
   markDirty,
+  markSourceEdited: vi.fn(),
   onPdfFindApiChange: vi.fn(),
   onTogglePdfFind: vi.fn(),
   pdfFindOpen: false,

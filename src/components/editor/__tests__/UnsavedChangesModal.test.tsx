@@ -2,11 +2,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../hooks/use-close-guard", () => ({
-  saveAllDirtyForQuit: vi.fn(),
-  saveDirtyTab: vi.fn(),
-  saveDirtyTabsForContexts: vi.fn(),
-}));
+// ‼️ Partial mock: only the three save helpers are doubled. `isTabUnsaved` is the
+// production predicate the modal counts with — replacing it with a stub would let a
+// broken predicate pass every count assertion in this file.
+vi.mock("../../../hooks/use-close-guard", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../hooks/use-close-guard")>();
+  return {
+    ...actual,
+    saveAllDirtyForQuit: vi.fn(),
+    saveDirtyTab: vi.fn(),
+    saveDirtyTabsForContexts: vi.fn(),
+  };
+});
 
 vi.mock("../../../services/close-context", () => ({
   closeContexts: vi.fn(async () => undefined),

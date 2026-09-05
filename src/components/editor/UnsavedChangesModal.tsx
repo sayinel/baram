@@ -12,6 +12,7 @@ import type { UnsavedModalRequest } from "../../stores/ui/ui";
 import { useShallow } from "zustand/shallow";
 
 import {
+  isTabUnsaved,
   saveAllDirtyForQuit,
   saveDirtyTab,
   saveDirtyTabsForContexts,
@@ -20,7 +21,7 @@ import { useTranslation } from "../../i18n/useTranslation";
 import { confirmQuit } from "../../ipc/invoke";
 import { closeContexts } from "../../services/close-context";
 import { useContextStore } from "../../stores/context/context";
-import { isFileTab, useEditorStore } from "../../stores/editor/editor";
+import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 
@@ -65,8 +66,7 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
     (s) =>
       s.tabs.filter(
         (tab) =>
-          tab.isDirty &&
-          isFileTab(tab) &&
+          isTabUnsaved(tab, s.sourceEditedTabs) &&
           (scopedContextIds === null ||
             scopedContextIds.includes(tab.contextId)),
       ).length,

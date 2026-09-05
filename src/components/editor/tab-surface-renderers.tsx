@@ -41,6 +41,8 @@ export interface TabSurfaceDeps {
   hasSourceBuffer: (tabId: string) => boolean;
   /** 자기 탭을 dirty로 표시 — 활성 탭이 아니라 편집이 일어난 탭이다. */
   markDirty: (tabId: string, dirty: boolean) => void;
+  /** §82 마크다운을 소스 모드에서 실제로 고쳤다고 표시 — 닫기 관문이 읽는다. */
+  markSourceEdited: (tabId: string, edited: boolean) => void;
   /** §272 활성 PDF가 자기 find API를 App으로 끌어올리는 통로. */
   onPdfFindApiChange: (api: null | PdfFindApi) => void;
   onTogglePdfFind: () => void;
@@ -105,7 +107,14 @@ export function createTabSurfaceRenderers(
               // 보존한 것이다. 마크다운의 dirty는 use-auto-save가 Tiptap `update` 트랜잭션에서
               // 판정하고(내용이 실제로 달라졌는지 비교까지 한다), 소스 모드에서 돌아올 때 그
               // 경로가 돈다. 여기서 같이 표시하면 두 곳이 같은 상태를 쓰게 된다.
-              if (!isMarkdownFile(filePath)) deps.markDirty(tabId, true);
+              //
+              // ‼️ 대신 §82의 `sourceEditedTabs`에 적는다. 그 규약을 지키면서도 닫기 관문이
+              // "이 탭은 저장 안 된 글을 들고 있다"를 알 수 있어야 하기 때문이다 — 예전에는
+              // 소스 모드로 고치던 파일을 닫으면 아무것도 묻지 않고 버퍼가 사라졌다.
+              // 이 `onChange`는 초기화 이후의 non-ExternalSync 변경에만 발화하므로
+              // (`SourceCodeEditor`의 updateListener) 실제 사용자 편집 신호다.
+              if (isMarkdownFile(filePath)) deps.markSourceEdited(tabId, true);
+              else deps.markDirty(tabId, true);
             }}
             ref={codeEditorRef}
           />

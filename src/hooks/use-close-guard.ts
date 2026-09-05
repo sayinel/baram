@@ -29,6 +29,32 @@ export interface CloseGuardDeps {
 }
 
 /**
+ * §82 Does this tab hold work that is not on disk?
+ *
+ * ‼️ `isDirty` alone misses markdown typed in SOURCE MODE. That path deliberately
+ * does not raise dirty (`tab-surface-renderers.tsx` — `use-auto-save` is the single
+ * owner of markdown dirty), so a tab holding unsaved text looked clean to every close
+ * guard and its buffer went out silently with `closeTab`.
+ *
+ * ‼️ Deliberately NOT `sourceModeTabs`. That set means "this tab is showing source",
+ * which is true after zero keystrokes — a guard built on it prompts on every quit with
+ * a source tab merely open. `sourceEditedTabs` is only set when CodeMirror reports a
+ * real user edit.
+ */
+export function isTabUnsaved(
+  tab: EditorTab,
+  sourceEditedTabs: readonly string[],
+): boolean {
+  return isFileTab(tab) && (tab.isDirty || sourceEditedTabs.includes(tab.id));
+}
+
+/** The open tabs holding unsaved work, optionally narrowed by `match`. */
+function unsavedTabs(match: (tab: EditorTab) => boolean = () => true) {
+  const { sourceEditedTabs, tabs } = useEditorStore.getState();
+  return tabs.filter((t) => isTabUnsaved(t, sourceEditedTabs) && match(t));
+}
+
+/**
  * §close-guard: Persist every dirty file tab so the app can safely quit.
  * Saves the active tab first (flush its live editor), then the rest.
  * @returns `true` when all dirty tabs were saved (safe to quit), `false` when
@@ -62,8 +88,8 @@ async function saveDirtyTabsWhere(
   match: (tab: EditorTab) => boolean,
   { handleSave }: CloseGuardDeps,
 ): Promise<boolean> {
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const dirty = tabs.filter((t) => t.isDirty && isFileTab(t) && match(t));
+  const { activeTabId } = useEditorStore.getState();
+  const dirty = unsavedTabs(match);
   // Active tab first so its live editor content is flushed before the others.
   const ordered = [
     ...dirty.filter((t) => t.id === activeTabId),
@@ -98,15 +124,34 @@ export async function saveDirtyTab(
     await handleSave();
     // A still-dirty active tab means an Untitled Save As was cancelled.
     const after = useEditorStore.getState().tabs.find((t) => t.id === tab.id);
-    return !after?.isDirty;
+    const saved = !after?.isDirty;
+    // `handleSave` reads the source buffer for a source-mode tab, so a clean result
+    // means that buffer reached disk.
+    if (saved) useEditorStore.getState().markSourceEdited(tab.id, false);
+    return saved;
   }
 
   // Non-active file tab — write the cached content.
   if (tab.filePath) {
-    const content = useFileStore.getState().openFiles.get(tab.filePath) ?? "";
+    // ‼️ §82 A tab edited in source mode holds its text in the source buffer, NOT in
+    // `openFiles`. Writing the cache here would save the pre-edit content and then
+    // report success — the silent loss this guard exists to stop, dressed up as a
+    // save. `sourceBufferAccess` is registered for the app's lifetime and keyed by
+    // tab id, so it answers for background tabs too.
+    const { sourceBufferAccess, sourceEditedTabs } = useEditorStore.getState();
+    const fromBuffer =
+      sourceBufferAccess !== null && sourceEditedTabs.includes(tab.id);
+    const content = fromBuffer
+      ? sourceBufferAccess.getSourceBuffer(tab.id)
+      : (useFileStore.getState().openFiles.get(tab.filePath) ?? "");
     await writeFile(tab.filePath, content);
     useFileStore.getState().updateLastSaveMtime(tab.filePath, Date.now());
+    // Keep the cache in step with what just went to disk, so a later read of
+    // `openFiles` does not hand back the pre-edit text.
+    if (fromBuffer)
+      useFileStore.getState().setFileContent(tab.filePath, content);
     useEditorStore.getState().markDirty(tab.id, false);
+    useEditorStore.getState().markSourceEdited(tab.id, false);
     if (isMarkdownFile(tab.filePath)) {
       updateFileIndex(tab.filePath)
         .then(() => useLinkStore.getState().invalidate())
@@ -157,9 +202,7 @@ export async function saveDirtyTab(
  * open the shared modal (intent "reload") so the user can save first.
  */
 export function requestReload(): void {
-  const { tabs } = useEditorStore.getState();
-  const dirty = tabs.filter((t) => t.isDirty && isFileTab(t));
-  if (dirty.length === 0) {
+  if (unsavedTabs().length === 0) {
     window.location.reload();
     return;
   }
@@ -180,9 +223,7 @@ export function requestReload(): void {
  * holds. One gap, shared by three paths; it closes in the save path, not here.
  */
 export function requestCloseWorkspace(): void {
-  const { tabs } = useEditorStore.getState();
-  const dirty = tabs.filter((t) => t.isDirty && isFileTab(t));
-  if (dirty.length === 0) {
+  if (unsavedTabs().length === 0) {
     useFileStore.getState().closeFolder();
     return;
   }
@@ -210,11 +251,7 @@ export async function requestCloseContexts(
 ): Promise<void> {
   if (contextIds.length === 0) return;
   const wanted = new Set(contextIds);
-  const { tabs } = useEditorStore.getState();
-  const dirty = tabs.filter(
-    (t) => wanted.has(t.contextId) && t.isDirty && isFileTab(t),
-  );
-  if (dirty.length === 0) {
+  if (unsavedTabs((t) => wanted.has(t.contextId)).length === 0) {
     await closeContexts(contextIds);
     return;
   }
@@ -231,9 +268,7 @@ export function useCloseGuard(): void {
   useEffect(() => {
     const unlisten = listen<void>("app://close-requested", () => {
       void (async () => {
-        const { tabs } = useEditorStore.getState();
-        const dirty = tabs.filter((t) => t.isDirty && isFileTab(t));
-        if (dirty.length === 0) {
+        if (unsavedTabs().length === 0) {
           await confirmQuit();
           return;
         }
