@@ -16,7 +16,7 @@ import type { Node as PmNode } from "@tiptap/pm/model";
  * `textBetween(0, size, "")`, and prosemirror-model's `Fragment.textBetween` guards its
  * separator with `&& blockSeparator` — `""` is falsy, so nothing was inserted and the last
  * word of every block fused with the first word of the next. The undercount was exactly
- * (textblocks − 1): `docs/faq.md` reported 5,961 words instead of 6,317, and ten
+ * (textblocks − 1): the FAQ reported 5,961 words instead of 6,317, and ten
  * one-word paragraphs reported "1 words".
  *
  * Any whitespace would do, since the tokenizer splits on `\s+`; a newline is chosen so the

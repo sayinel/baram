@@ -7,7 +7,7 @@
 import type { PluginManifest, RegistryIndex } from "../types";
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -308,10 +308,17 @@ describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () 
   // both examples used `engines.baram: ">=0.3.0"`, the class of claim H1 ruled false. An author
   // copying either got something `validateManifest` rejects. Nothing compared the prose to the
   // validator, so this guards the examples themselves rather than the sentence about them.
-  const guide = readFileSync(
-    resolve(__dirname, "../../../docs/plugin-development.md"),
-    "utf8",
+  // ‼️ 가이드는 13개 페이지로 분할됐다 (docs/plugin-development.md 는 이주 후 삭제).
+  // 페이지 하나만 읽으면 나머지 12개의 예시가 검증되지 않으므로 전부 읽는다.
+  // 설계: dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md
+  const GUIDE_DIR = resolve(
+    __dirname,
+    "../../../site/src/content/docs/en/docs/plugin-dev",
   );
+  const guidePages = readdirSync(GUIDE_DIR).filter((f) => f.endsWith(".md"));
+  const guide = guidePages
+    .map((f) => readFileSync(resolve(GUIDE_DIR, f), "utf8"))
+    .join("\n");
   // §260 Phase 6 code review round 3 (MEDIUM-4) — collected as TEXT and parsed inside each
   // `it`. Parsing at module scope threw at COLLECTION time on a malformed block, which vitest
   // reports as "0 test" for the whole file — silently deleting all twelve word-count guards,
@@ -320,6 +327,11 @@ describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () 
   const rawBlocks = [...guide.matchAll(/```json\n([\s\S]*?)```/g)].map(
     (m) => m[1],
   );
+
+  it("실제로 가이드 페이지와 JSON 블록을 집는다 (빈손이면 아래 단정이 공허하다)", () => {
+    expect(guidePages.length).toBeGreaterThanOrEqual(13);
+    expect(rawBlocks.length).toBeGreaterThan(0);
+  });
   const parsed = () =>
     rawBlocks.map((text, i) => {
       try {
@@ -327,7 +339,7 @@ describe("the plugin guide's copy-paste examples are valid (§260 Phase 6)", () 
       } catch (err) {
         // `cause` preserves the SyntaxError's position, which is the part that says WHERE.
         throw new Error(
-          `docs/plugin-development.md json block #${i + 1} is not valid JSON`,
+          `plugin-dev pages: json block #${i + 1} is not valid JSON`,
           { cause: err },
         );
       }
