@@ -22,7 +22,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Export](#export)
 - [Journal / Daily Notes](#journal--daily-notes)
 - [Zettel (Zettelkasten Notes)](#zettel-zettelkasten-notes)
-- [Workspace Presets](#workspace-presets)
+- [Perspectives](#perspectives)
 - [Customization](#customization)
 - [Plugins](#plugins)
 - [Help Panel](#help-panel)
@@ -1613,7 +1613,7 @@ There are three ways to create or open a daily note:
 
 **Calendar sidebar:**
 
-1. Switch to the Journal workspace preset (`Cmd+Alt+3` / `Ctrl+Alt+3`) or select the Calendar panel in the sidebar
+1. Switch to the Journal perspective (`Cmd+Alt+3` / `Ctrl+Alt+3`) or select the Calendar panel in the sidebar
 2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
 3. Dates with existing entries are marked with a dot
 
@@ -1777,36 +1777,36 @@ A note that collects captures this way is a **hub note** — one document you wr
 
 ---
 
-## Workspace Presets
+## Perspectives
 
-Workspace Presets let you save and quickly restore your preferred layout — sidebar panel, right panel, and theme settings.
+A **perspective** is a saved layout — sidebar panel, right panel, and theme — that you can restore in one keystroke. Baram ships four and you can add your own.
 
-### Built-in Presets
+### Built-in Perspectives
 
-| Preset         | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                        |
+| Perspective    | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                        |
 | -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
 | Writing | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Editor focus — right panel closed                            |
 | Zettel  | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Zettel hub (actions + inbox + MOCs + recent) — atomic Zettelkasten notes |
 | Journal | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | Calendar sidebar + today's journal + Memories view           |
 | Skills  | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | File tree + Properties panel — LLM Skills editing            |
 
-> All four workspace presets are customizable in **Settings > Keybindings** and available from the Workspace menu. Switching to a space never force-closes an open folder tree.
+> All four are customizable in **Settings > Keybindings** (category **Perspective**) and available from the **Perspective** menu. Switching to a space never force-closes an open folder tree.
 
-### Custom Presets
+### Custom Perspectives
 
-Create your own presets in **Settings > Appearance**:
+Create your own in **Settings > Appearance**:
 
-1. Arrange your workspace layout as desired (sidebar panel, right panel, theme)
+1. Arrange the layout you want (sidebar panel, right panel, theme)
 2. Go to **Settings > Appearance** and click **Save Current Layout**
-3. Enter a name for the preset
+3. Give it a name
 
-Custom presets can be renamed, deleted, and applied from the same Settings tab.
+Custom perspectives can be renamed, deleted, and applied from the same Settings tab.
 
-### Applying Presets
+### Applying a Perspective
 
 - **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
-- **Command Palette** — Search for "Workspace" commands
-- **Workspace menu** — Use the Workspace menu in the menu bar
+- **Perspective menu** — in the menu bar
+- **Settings > Appearance** — for custom perspectives
 
 ---
 
@@ -1822,7 +1822,7 @@ Available settings tabs:
 | ---------------- | ---------------------------------------------------------------------------------------------- |
 | **General**      | Startup behavior, auto-save, Journal, Tasks, and file snapshots (Version History)              |
 | **Editor**       | Indentation, tab size, line numbers, line endings, editor max width, Vim keybindings           |
-| **Appearance**   | Theme gallery, custom theme editor, and workspace presets                                       |
+| **Appearance**   | Theme gallery, custom theme editor, and perspectives                                            |
 | **Markdown**     | Extended syntax toggles (math, highlight, strikethrough), smart punctuation                    |
 | **AI**           | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
 | **Activity Bar** | Show/hide and reorder the left Activity Bar panels                                              |

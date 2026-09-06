@@ -576,23 +576,22 @@ Version History is automatic and file-level — it silently saves changed files 
 
 ---
 
-## Workspace Presets
+## Perspectives
 
-### What are Workspace Presets?
+### What is a perspective?
 
-Workspace Presets save your current layout (sidebar panel, right panel, theme) as a named configuration that you can quickly apply later. Think of them as "workspace snapshots."
+A perspective is a saved layout — sidebar panel, right panel, and theme — under a name you can apply later. Baram ships four (Writing, Zettel, Journal, Skills) and you can add your own.
 
-### How do I switch workspace presets?
+### How do I switch perspectives?
 
-Three ways:
+Two ways:
 
 1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
-2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
-3. **Workspace menu** — Use the menu bar
+2. **Perspective menu** — in the menu bar
 
-### Can I create custom presets?
+### Can I create my own?
 
-Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Current Layout**. Custom presets can be renamed or deleted.
+Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Current Layout**. Custom perspectives can be renamed or deleted from the same tab.
 
 ---
 

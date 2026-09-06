@@ -138,18 +138,18 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 | Toggle Ghost Text | `Cmd+Shift+G` | `Ctrl+Shift+G`  |
 | Skill Test        | `Cmd+Shift+T` | `Ctrl+Shift+T`  |
 
-## Workspace
+## Perspective
 
 <!-- colwidths:188,139,153 -->
 
-| Action             | macOS          | Windows / Linux |
-| ------------------ | -------------- | --------------- |
-| Workspace: Writing | `Cmd+Option+1` | `Ctrl+Alt+1`    |
-| Workspace: Zettel  | `Cmd+Option+2` | `Ctrl+Alt+2`    |
-| Workspace: Journal | `Cmd+Option+3` | `Ctrl+Alt+3`    |
-| Workspace: Skills  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
+| Action              | macOS          | Windows / Linux |
+| ------------------- | -------------- | --------------- |
+| Writing Perspective | `Cmd+Option+1` | `Ctrl+Alt+1`    |
+| Zettel Perspective  | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| Journal Perspective | `Cmd+Option+3` | `Ctrl+Alt+3`    |
+| Skills Perspective  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
 
-> All four workspace presets are customizable in **Settings > Keybindings**. Switching to a space never force-closes an open folder tree.
+> All four are customizable in **Settings > Keybindings**, under the **Perspective** category. Switching to a space never force-closes an open folder tree.
 
 ## Journal
 
