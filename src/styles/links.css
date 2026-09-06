@@ -586,6 +586,18 @@
   border-radius: 3px;
 }
 
+/* §95 이름이 겹친 행에만 붙는 상위 폴더. 배지(.wikilink-item-ext)와 같은 이유로
+   줄어들지 않는다 — 말줄임이 이름 끝을 먹어도 남는 것이 존재 이유다.
+   배지와 달리 테두리를 두르지 않는 이유: 타입이 아니라 위치라서 읽는 순간이
+   다르고, 둘이 한 줄에 함께 설 수 있어(id 접두 PDF) 같은 모양이면 헷갈린다. */
+.wikilink-item-folder {
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 .wikilink-item-create {
   font-style: italic;
   opacity: 0.8;

@@ -11,7 +11,6 @@ import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { buildFileTree, useFileStore } from "../../stores/file/file";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
-import { isBinaryViewerFile, isHtmlFile } from "../../utils/file-type";
 import { wikilinkSuggestPluginKey } from "./suggestion-keys";
 import {
   createSuggestionRenderer,
@@ -20,32 +19,34 @@ import {
 import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 import {
   buildFileSuggestionItem,
-  fileNameWithoutExtension,
+  completionCandidates,
+  crossVaultItem,
   filterFiles,
+  headingItems,
   isCreatableTarget,
+  isLinkableFile,
   loadFileHeadings,
   longestCommonPrefix,
+  namespaceItems,
+  searchKey,
   shouldBlockCompletedWikilink,
   type WikilinkSuggestionItem,
   withMarkdownExtension,
 } from "./wikilink-suggest-utils";
 
 /**
- * §95 Zettelkasten: true when the query exactly matches a file's title
- * (`searchText`, falling back to `target`) — used to suppress the redundant
- * `Create "<query>"` fallback item. Zettel-note items store the note id in
- * `target` (so the stored wikilink is `[[id]]`), so an exact TITLE match
- * must compare against `searchText` instead. Regular (non-zettel) files have
- * no `searchText`, so behavior there is unchanged.
+ * §95 Zettelkasten: true when the query exactly matches a file's `searchKey` —
+ * used to suppress the redundant `Create "<query>"` fallback item. Zettel-note
+ * items store the note id in `target` (so the stored wikilink is `[[id]]`), so
+ * an exact TITLE match must compare against the search key instead. Regular
+ * (non-zettel) files have no `searchText`, so behavior there is unchanged.
  */
 export function hasExactMatch(
   files: WikilinkSuggestionItem[],
   query: string,
 ): boolean {
   const queryLower = query.toLowerCase();
-  return files.some(
-    (f) => (f.searchText ?? f.target).toLowerCase() === queryLower,
-  );
+  return files.some((f) => searchKey(f).toLowerCase() === queryLower);
 }
 
 /** Build suggestion items from the file store */
@@ -57,34 +58,6 @@ function getFileItems(): WikilinkSuggestionItem[] {
   return flat
     .filter(isLinkableFile)
     .map((f, idx) => buildFileSuggestionItem(f, String(idx)));
-}
-
-/**
- * §278 자동완성에 올릴 파일.
- *
- * 마크다운에 더해 **앱이 뷰어로 여는 타입**을 포함한다. 해석기가 확장자를 적은
- * 타깃을 받게 됐어도(wikilink-nav.ts) 목록에 안 뜨면 사용자는 그 문법이 있다는
- * 것을 알 수 없다 — 발견 경로가 없으면 기능이 없는 것과 같다.
- *
- * ‼️ 여기서는 **열거가 옳다**. 해석기와 역할이 다르다: 해석기는 사용자가 적은
- * 것을 관대하게 받아야 하고(그래서 확장자 목록이 없다), 제안기는 고른 목록이다.
- * 이 열거에서 빠진 타입도 직접 타이핑하면 해석되므로, 빠뜨렸을 때의 실패는
- * "덜 발견됨"이지 "동작 안 함"이 아니다 — 안전한 방향이다.
- *
- * ‼️ 반대로 필터를 아예 없애면 안 된다. flattenFileTree의 EXCLUDED_DIRS는
- * **디렉터리에만** 걸리고 파일에는 아무 필터가 없어서, `.baram/`의 하이라이트
- * 사이드카 JSON 같은 내부 파일이 그대로 목록에 뜬다.
- *
- * 판정은 file-type.ts의 기존 술어를 그대로 쓴다 — "무엇이 뷰어로 열리는가"의
- * 정의가 두 곳으로 갈라지면 한쪽만 갱신되는 날이 온다.
- */
-function isLinkableFile(f: { name: string }): boolean {
-  return (
-    f.name.endsWith(".md") ||
-    f.name.endsWith(".markdown") ||
-    isBinaryViewerFile(f.name) ||
-    isHtmlFile(f.name)
-  );
 }
 
 export const WikilinkSuggest = Extension.create({
@@ -229,6 +202,11 @@ export const WikilinkSuggest = Extension.create({
               }
 
               if (flat && flat.length > 0) {
+                // ‼️ §87 cross-vault는 같은 vault 목록(`isLinkableFile`)보다
+                // **일부러 좁다** — 마크다운만이다. `resolveCrossVaultTarget`
+                // (wikilink-nav.ts)은 `.md`/`.markdown` stem만 맞추고 같은 vault가
+                // 쓰는 `resolveByExactFileName` 폴백이 없다. 여기를 넓히면 해석되지
+                // 않는 링크를 메뉴가 권하게 된다. 넓히려면 해석기가 먼저다.
                 const mdFiles = flat
                   .filter(
                     (f) =>
@@ -239,13 +217,7 @@ export const WikilinkSuggest = Extension.create({
                 // §87 Searching: flat fuzzy results (no grouping)
                 if (crossTarget) {
                   const crossFiles: WikilinkSuggestionItem[] = mdFiles.map(
-                    (f, idx) => ({
-                      id: `cross-${idx}`,
-                      target: fileNameWithoutExtension(f.name),
-                      label: f.name,
-                      path: f.path,
-                      vaultAlias: alias,
-                    }),
+                    (f, idx) => crossVaultItem(f, `cross-${idx}`, alias),
                   );
                   return filterFiles(crossFiles, crossTarget, 30);
                 }
@@ -279,14 +251,9 @@ export const WikilinkSuggest = Extension.create({
                     folder,
                   });
                   for (const f of files) {
-                    result.push({
-                      id: `cross-${idx++}`,
-                      target: fileNameWithoutExtension(f.name),
-                      label: f.name,
-                      path: f.path,
-                      vaultAlias: alias,
-                      folder,
-                    });
+                    result.push(
+                      crossVaultItem(f, `cross-${idx++}`, alias, folder),
+                    );
                   }
                 }
                 return result;
@@ -342,15 +309,7 @@ export const WikilinkSuggest = Extension.create({
               const targetDir = resolved.join("/");
 
               // Filter files in the target directory, prefix target with relative path
-              const dirFiles = files
-                .filter((f) => {
-                  const fileDir = f.path.substring(0, f.path.lastIndexOf("/"));
-                  return fileDir === targetDir;
-                })
-                .map((f) => ({
-                  ...f,
-                  target: `${dirPrefix}${f.target}`,
-                }));
+              const dirFiles = namespaceItems(files, targetDir, dirPrefix);
 
               if (!fileQuery) return dirFiles.slice(0, 20);
 
@@ -371,22 +330,12 @@ export const WikilinkSuggest = Extension.create({
             const bestFile = matchedFiles[0];
             const headings = await loadFileHeadings(bestFile.path);
 
-            const headingItems: WikilinkSuggestionItem[] = headings.map(
-              (h, idx) => ({
-                id: `heading-${idx}`,
-                target: bestFile.target,
-                label: h.text,
-                path: bestFile.path,
-                kind: "heading" as const,
-                heading: h.text,
-                headingLevel: h.level,
-              }),
-            );
+            const items = headingItems(bestFile, headings);
 
-            if (!headingQuery) return headingItems.slice(0, 10);
+            if (!headingQuery) return items.slice(0, 10);
 
             // Fuzzy filter headings
-            return headingItems
+            return items
               .map((item) => ({
                 item,
                 score: fuzzyScore(headingQuery, item.heading!),
@@ -487,15 +436,9 @@ export const WikilinkSuggest = Extension.create({
                 queryFrom,
                 state.range.to,
               );
-              const queryLower = currentQuery.toLowerCase();
 
               // Only use prefix-matching items for LCP (exclude fuzzy-only matches)
-              const targets = state.items
-                .filter((i) => i.kind !== "create")
-                .map((i) =>
-                  i.kind === "heading" ? `${i.target}#${i.heading}` : i.target,
-                )
-                .filter((t) => t.toLowerCase().startsWith(queryLower));
+              const targets = completionCandidates(state.items, currentQuery);
 
               if (targets.length > 0) {
                 const prefix = longestCommonPrefix(targets);

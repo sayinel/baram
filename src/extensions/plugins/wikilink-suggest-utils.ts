@@ -5,7 +5,14 @@ import { useFileStore } from "../../stores/file/file";
 import { titleForId } from "../../stores/zettelkasten/zettel-index";
 // §31 Wikilink autocomplete — utility functions
 import { extractHeadings, fuzzyScore } from "../../utils/file-search";
-import { isBinaryViewerFile, isHtmlFile } from "../../utils/file-type";
+import {
+  isBinaryViewerFile,
+  isHtmlFile,
+  isMarkdownEmbeddableAsset,
+  isMarkdownFile,
+  isPdfFile,
+  isTextFile,
+} from "../../utils/file-type";
 import {
   extractLeadingId,
   parseNoteTitle,
@@ -32,12 +39,21 @@ export interface WikilinkSuggestionItem {
   headingLevel?: number;
   id: string;
   kind?: "create" | "file" | "folder-header" | "heading" | "hint";
+  /**
+   * The string the menu DRAWS. Every other row kind (create/hint/folder-header)
+   * already renders this; file rows used to render `target` instead, which is
+   * why §95 zettel notes showed their id — the id is what gets INSERTED, and the
+   * two are not the same string for them. Keep the split: `label` is read by the
+   * eye, `target` is written into the document.
+   */
   label: string;
   path: string;
   /**
-   * §95 Zettelkasten: fuzzy-search key used instead of `target`, when set.
-   * Zettel-note items (id-prefixed filenames) set this to the note title, so
-   * `[[` autocomplete searches by title even though `target` is the id.
+   * §95 Zettelkasten: the text the user's QUERY is matched against, when it is
+   * not `target`. Zettel-note items (id-prefixed filenames) set this to the note
+   * title, so `[[` autocomplete searches — and Tab-completes — by title even
+   * though `target` is the id. Read it through `searchKey`, never directly:
+   * three call sites have to agree on the fallback.
    */
   searchText?: string;
   target: string;
@@ -60,7 +76,14 @@ export function buildFileSuggestionItem(
   // §278 두 분기 모두 배지를 받아야 한다 — id 접두사가 붙은 PDF도 있을 수 있고,
   // 그쪽만 빠뜨리면 하필 이름이 긴 그 항목이 구분되지 않는다.
   const ext = badgeExtension(file.name);
-  const zettelId = extractLeadingId(file.name);
+  // ‼️ §95 제텔 분기는 **마크다운에만** 건다. `refreshZettelIndex`는
+  // `/\.(md|markdown)$/`로 마크다운만 색인하고 `[[id]]` 해석은 그 인덱스만 보므로,
+  // id 접두가 붙은 PDF에 이 분기를 걸면 `[[202607051530]]`을 삽입해 놓고 아무도
+  // 찾지 못하는 **영구 dangling** 링크가 된다. 파일명을 target으로 두면 일반
+  // 위키링크 해석 경로가 실제 파일을 찾는다(§278이 비마크다운을 목록에 올린 이유).
+  const zettelId = isMarkdownFile(file.name)
+    ? extractLeadingId(file.name)
+    : null;
   if (zettelId) {
     const title = titleForId(zettelId) ?? parseNoteTitle(file.name, "");
     return {
@@ -72,12 +95,71 @@ export function buildFileSuggestionItem(
       searchText: title,
     };
   }
+  const stem = fileNameWithoutExtension(file.name);
   return {
     id,
     ext,
-    target: fileNameWithoutExtension(file.name),
-    label: file.name,
+    target: stem,
+    label: stem,
     path: file.path,
+  };
+}
+
+/**
+ * §95 Strings a typed `query` can be Tab-completed to, in menu order.
+ *
+ * ‼️ Candidates come from `label` — **the row the user is looking at** — not from
+ * `target`. For a zettel note those differ: the user types the title, `target` is
+ * the id, and an id never starts with a title, so a target-based pool is always
+ * empty and Tab degrades into a silent no-op (silent because the handler still
+ * reports the key as handled, which is how that went unnoticed).
+ *
+ * ‼️ `label` rather than `searchKey` because §61 relative mode prefixes the query
+ * itself (`./원자`): there the label carries `./` and the search key does not, so a
+ * searchKey pool drops exactly the zettel rows — leaving Tab to "complete" two
+ * visible rows down to the one that survived. Completing toward what is drawn
+ * keeps the two in step by construction.
+ *
+ * Rows that are not targets are excluded outright. `create` was always excluded;
+ * `hint` and `folder-header` used to fall out only because their `target` is `""`
+ * — their labels are sentences ("Cross-vault: type alias::…") that a prefix query
+ * can genuinely match, so the exclusion has to be stated, not inherited.
+ */
+export function completionCandidates(
+  items: WikilinkSuggestionItem[],
+  query: string,
+): string[] {
+  const queryLower = query.toLowerCase();
+  return items
+    .filter(
+      (i) =>
+        i.kind !== "create" && i.kind !== "hint" && i.kind !== "folder-header",
+    )
+    .map((i) =>
+      i.kind === "heading" ? `${searchKey(i)}#${i.heading}` : i.label,
+    )
+    .filter((t) => t.toLowerCase().startsWith(queryLower));
+}
+
+/**
+ * §87 One row for a file in another vault. `label` is the stem for the same
+ * reason it is everywhere else — it is what the menu draws — and `target` is the
+ * stem because that is what `alias::target` resolution expects.
+ */
+export function crossVaultItem(
+  file: { name: string; path: string },
+  id: string,
+  alias: string,
+  folder?: string,
+): WikilinkSuggestionItem {
+  const stem = fileNameWithoutExtension(file.name);
+  return {
+    id,
+    target: stem,
+    label: stem,
+    path: file.path,
+    vaultAlias: alias,
+    ...(folder === undefined ? {} : { folder }),
   };
 }
 
@@ -105,12 +187,75 @@ export function filterFiles(
   const scored = files
     .map((file) => ({
       file,
-      score: fuzzyScore(query, file.searchText ?? file.target),
+      score: fuzzyScore(query, searchKey(file)),
     }))
     .filter(({ score }) => score < Infinity)
     .sort((a, b) => a.score - b.score);
 
   return scored.slice(0, limit).map(({ file }) => file);
+}
+
+/**
+ * §31 One row per heading in `bestFile`, for `[[file#heading]]` completion.
+ *
+ * ‼️ `searchText` is carried over from the file row. The heading row's `target`
+ * is the file's — an id for a zettel note — while the query the user is typing
+ * is `제목#heading`, so without the file's search key the Tab candidate would be
+ * `202607051530#Background` and could never match what was typed.
+ */
+export function headingItems(
+  bestFile: WikilinkSuggestionItem,
+  headings: HeadingEntry[],
+): WikilinkSuggestionItem[] {
+  return headings.map((h, idx) => ({
+    id: `heading-${idx}`,
+    target: bestFile.target,
+    label: h.text,
+    path: bestFile.path,
+    kind: "heading" as const,
+    heading: h.text,
+    headingLevel: h.level,
+    searchText: bestFile.searchText,
+  }));
+}
+
+/**
+ * §278 자동완성에 올릴 파일.
+ *
+ * 규칙은 "**문서 탭에서 텍스트로 볼 수 있는 것**"이다. 해석기
+ * (`wikilink-nav.ts`의 `resolveByExactFileName`)는 확장자 목록을 **의도적으로 두지
+ * 않아** `[[data.csv]]`를 손으로 치면 이미 열린다 — 목록이 그보다 좁으면 기능은
+ * 있는데 발견 경로가 없는 상태가 된다.
+ *
+ * 판정은 file-type.ts의 기존 술어로만 한다. 여기에 확장자를 열거하면 "무엇이
+ * 열리는가"의 정의가 둘로 갈라져 한쪽만 갱신되는 날이 온다.
+ *
+ * ‼️ 제외 셋은 각각 이유가 다르다:
+ * - **이미지·SVG**: 마크다운이 `![](...)`로 넣는 자산이라 위키링크 대상이 아니다.
+ *   PDF·HTML은 그 문법으로 넣을 수 없어 남는다.
+ * - **`.json`**: 제품 판단. vault에서 읽는 문서가 아니라 기계가 읽는 데이터로
+ *   존재한다(매니페스트·설정·인덱스). 열린다는 것이 링크 대상이라는 뜻은 아니다.
+ * - **숨김 경로**: `.baram/pdf-highlights/*.json`·`.baram/snapshots/`가 여기 있다.
+ *   `flattenFileTree`의 EXCLUDED_DIRS는 `.DS_Store`·`.git`·`.hg`·`.svn`·
+ *   `node_modules` 다섯뿐이라 `.baram`을 막지 못한다.
+ *
+ * ‼️ 텍스트가 아닌 것을 올리면 안 되는 이유는 목록 잡음이 아니다: 탭 표면이
+ * 마지막에 `return "code"`로 떨어져 CodeMirror가 UTF-8로 읽고, 자동 저장은
+ * `isBinaryViewerFile`만 건너뛰므로 dirty가 되면 **원본을 덮어쓴다**.
+ */
+export function isLinkableFile(file: {
+  name: string;
+  relativePath: string;
+}): boolean {
+  if (isHiddenPath(file.relativePath)) return false;
+  if (isMarkdownEmbeddableAsset(file.name)) return false;
+  if (isJsonFile(file.name)) return false;
+  return (
+    isMarkdownFile(file.name) ||
+    isPdfFile(file.name) ||
+    isHtmlFile(file.name) ||
+    isTextFile(file.name)
+  );
 }
 
 /**
@@ -172,6 +317,45 @@ export function longestCommonPrefix(strings: string[]): string {
 }
 
 /**
+ * §61 Namespace mode: the items for one resolved directory, with the relative
+ * prefix applied to the strings that must live in the query's coordinate space.
+ *
+ * The query in this mode is itself prefixed (`./원자`), so both the DRAWN string
+ * (`label`, which `completionCandidates` builds the Tab pool from) and the
+ * INSERTED string (`target`) carry the prefix. `searchText` deliberately does
+ * not: `filterFiles` is called here with the prefix already stripped off the
+ * query (`fileQuery`), so prefixing the search key would make every zettel row
+ * unmatchable.
+ *
+ * ‼️ That asymmetry is the whole content of this function, and getting it wrong
+ * is silent in both directions — a prefixed search key drops rows from the menu,
+ * an unprefixed label drops them from the Tab pool while they stay visible.
+ */
+export function namespaceItems(
+  files: WikilinkSuggestionItem[],
+  targetDir: string,
+  dirPrefix: string,
+): WikilinkSuggestionItem[] {
+  return files
+    .filter((f) => f.path.substring(0, f.path.lastIndexOf("/")) === targetDir)
+    .map((f) => ({
+      ...f,
+      label: `${dirPrefix}${f.label}`,
+      target: `${dirPrefix}${f.target}`,
+    }));
+}
+
+/**
+ * §95 The text a typed query is matched against: the note title for zettel items
+ * (whose `target` is the id), the target itself for everything else. Single
+ * source for fuzzy search, exact-match detection, and Tab completion — three
+ * places that must agree on "what the user is typing".
+ */
+export function searchKey(item: WikilinkSuggestionItem): string {
+  return item.searchText ?? item.target;
+}
+
+/**
  * Bugfix: true when a Suggestion match's text already contains a closing `]]`
  * — i.e. the matched range spans a complete (e.g. pasted) wikilink like
  * `[[blanky]]` rather than an in-progress query like `[[blan`. The Suggestion
@@ -204,4 +388,14 @@ function badgeExtension(fileName: string): string | undefined {
   const ext = fileName.slice(dot + 1).toLowerCase();
   if (ext === "md" || ext === "markdown") return undefined;
   return ext.toUpperCase();
+}
+
+/** 숨김 파일 또는 숨김 디렉터리 안의 파일 — 어느 세그먼트든 `.`로 시작하면 참. */
+function isHiddenPath(relativePath: string): boolean {
+  return relativePath.split("/").some((segment) => segment.startsWith("."));
+}
+
+/** `.json` 판정. 확장자 하나뿐이라 file-type.ts에 술어를 세우지 않는다. */
+function isJsonFile(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith(".json");
 }

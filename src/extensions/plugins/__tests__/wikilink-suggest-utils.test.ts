@@ -59,7 +59,46 @@ describe("wikilink-suggest-utils — §95 zettel autocomplete", () => {
 
       expect(item.target).toBe("daily-notes");
       expect(item.searchText).toBeUndefined();
-      expect(item.label).toBe("daily-notes.md");
+      // `label`은 메뉴가 **그리는** 문자열이다 — 확장자는 화면에 나오지 않는다.
+      expect(item.label).toBe("daily-notes");
+    });
+
+    /**
+     * §95 제텔 분기는 **마크다운에만** 걸린다.
+     *
+     * `refreshZettelIndex`가 `/\.(md|markdown)$/`로 마크다운만 색인하고
+     * `[[id]]` 해석(`use-navigation.ts`)은 그 인덱스만 본다. id 접두가 붙은
+     * PDF에 제텔 분기를 걸면 `[[202607051530]]`이 삽입되는데 인덱스에 없으니
+     * **영구 dangling**이다. 파일명을 target으로 두면 일반 위키링크 해석 경로가
+     * 실제 파일을 찾는다.
+     *
+     * 목록에 ID 대신 이름을 그리게 된 뒤로는 이 결함이 눈에 띄지도 않는다 —
+     * 전에는 행에 12자리 숫자가 떠서 이상한 게 보였다.
+     */
+    it("does NOT treat an id-prefixed non-markdown file as a zettel note", () => {
+      const item = buildFileSuggestionItem(
+        {
+          name: "202607051530 논문 스캔.pdf",
+          path: "/vault/papers/202607051530 논문 스캔.pdf",
+        },
+        "4",
+      );
+
+      expect(item.target).toBe("202607051530 논문 스캔.pdf");
+      expect(item.searchText).toBeUndefined();
+      expect(item.label).toBe("202607051530 논문 스캔.pdf");
+      expect(item.ext).toBe("PDF");
+    });
+
+    it("§278 non-markdown file keeps its extension in the label (the badge is not the name)", () => {
+      const item = buildFileSuggestionItem(
+        { name: "attention.pdf", path: "/vault/papers/attention.pdf" },
+        "3",
+      );
+
+      expect(item.target).toBe("attention.pdf");
+      expect(item.label).toBe("attention.pdf");
+      expect(item.ext).toBe("PDF");
     });
   });
 
@@ -84,7 +123,7 @@ describe("wikilink-suggest-utils — §95 zettel autocomplete", () => {
         {
           id: "0",
           target: "daily-notes",
-          label: "daily-notes.md",
+          label: "daily-notes",
           path: "/vault/daily-notes.md",
         },
       ];
@@ -105,7 +144,7 @@ describe("wikilink-suggest-utils — §95 zettel autocomplete", () => {
         {
           id: "1",
           target: "daily-notes",
-          label: "daily-notes.md",
+          label: "daily-notes",
           path: "/vault/daily-notes.md",
         },
       ];
