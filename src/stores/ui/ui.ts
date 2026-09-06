@@ -22,8 +22,20 @@ export type ExportFormat =
  */
 export type PdfRailTab = "highlights" | "pages";
 
-export type RightPanelMode =
-  "chat" | "help" | "memories" | "none" | "photo-gallery" | "properties";
+// The array is the source of truth and the type is derived from it (rather than
+// the other way around) so a runtime validator (`isRightPanelMode`) can exist
+// without duplicating the member list — a duplicated list is exactly what goes
+// stale the next time a mode is removed (§4.2, a persisted preset outliving the
+// "help" mode it was saved with).
+export const RIGHT_PANEL_MODES = [
+  "chat",
+  "memories",
+  "none",
+  "photo-gallery",
+  "properties",
+] as const;
+
+export type RightPanelMode = (typeof RIGHT_PANEL_MODES)[number];
 
 export type SidebarPanel =
   | "backlinks"
@@ -68,6 +80,12 @@ export interface ToastState {
    */
   source?: string;
   type?: "error" | "info" | "warning";
+}
+
+/** Validates a persisted `rightPanelMode` string against `RIGHT_PANEL_MODES` —
+ *  see that array's comment for why it, not this function, is the source of truth. */
+export function isRightPanelMode(value: unknown): value is RightPanelMode {
+  return (RIGHT_PANEL_MODES as readonly unknown[]).includes(value);
 }
 
 /** §close-guard: What triggered the shared unsaved-changes modal. `quit` = app

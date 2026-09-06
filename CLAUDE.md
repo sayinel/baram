@@ -107,7 +107,7 @@ baram/
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
   - 링크 destination 정책 → `src/utils/link-href.ts` (`isAllowedLinkHref`) — `<a href>`로 내보내거나 opener에 넘기기 전 판정. 문서 모델은 건드리지 않는다(byte-exact roundtrip). 거부되면 `href` 대신 inert한 `data-href`로 렌더(클립보드 복원·CSS 훅)하고 export scrub이 제거한다. scheme allowlist는 HTML 블록 sanitizer(DOMPurify 기본)와 동일 — regex/substring 검사로 재구현 금지(`java\tscript:` 우회)
 - **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
-- **docs/\*.md 편집**: prettier·lint 대상 밖. 앱 Help에 `?raw` 번들되므로 `help-panel.test.ts`로 확인. in-doc 앵커(`#search-wysiwyg`)는 HelpPanel slugify(소문자·영숫자·하이픈)와 GitHub 슬러그 양쪽에 맞는 heading만 쓸 것
+- **docs/\*.md 편집**: prettier·lint 대상 밖. 앱에 번들되지 않고 **홈페이지가 사전 렌더**한다(§4.2) — `npm run site:build && npm run site:test`로 확인(`pages.yml`이 `docs/**` PR에서 돌린다). in-doc 앵커(`#search-wysiwyg`)는 `site/build-docs.mjs`의 `slugify`(유니코드 보존 `\p{L}\p{N}`)와 GitHub 슬러그 양쪽에 맞는 heading만 쓸 것 — 그 테스트가 앵커 해석까지 검사한다
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
 - **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건) · sort-modules는 모듈 레벨 함수 선언도 알파벳 순을 요구한다 — helper를 추가할 때 자리를 맞출 것
 - **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)

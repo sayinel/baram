@@ -8,7 +8,6 @@ import {
   BotMessageSquare,
   Calendar,
   CircleCheck,
-  CircleHelp,
   Clock,
   Folder,
   GitBranch,
@@ -70,7 +69,6 @@ const PANEL_ICONS: { icon: ReactNode; id: SidebarPanel }[] = [
 
 const SettingsIcon = <Settings {...ICON_PROPS} />;
 const AIChatIcon = <BotMessageSquare {...ICON_PROPS} />;
-const HelpIcon = <CircleHelp {...ICON_PROPS} />;
 const MemoriesIcon = <BookText {...ICON_PROPS} />;
 const PhotoGalleryIcon = <Image {...ICON_PROPS} />;
 const SnapshotsIcon = <Clock {...ICON_PROPS} />;
@@ -92,7 +90,6 @@ const BOTTOM_ITEMS: Record<string, BottomItemDef> = {
     icon: SnapshotsIcon,
     panelId: "snapshots",
   },
-  help: { icon: HelpIcon, mode: "help" },
 };
 
 /**

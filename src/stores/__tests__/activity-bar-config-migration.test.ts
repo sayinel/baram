@@ -65,13 +65,12 @@ describe("settings store v16 -> v17 migration (activity bar backfill)", () => {
       expect.arrayContaining(["tags", "zettel", "plugins", "snapshots"]),
     );
     // Relative order matches the default sequence: calendar < tags < zettel <
-    // skills-gallery < plugins < chat < memories < snapshots < help.
+    // skills-gallery < plugins < chat < memories < snapshots.
     expect(ids.indexOf("calendar")).toBeLessThan(ids.indexOf("tags"));
     expect(ids.indexOf("tags")).toBeLessThan(ids.indexOf("zettel"));
     expect(ids.indexOf("zettel")).toBeLessThan(ids.indexOf("skills-gallery"));
     expect(ids.indexOf("skills-gallery")).toBeLessThan(ids.indexOf("plugins"));
     expect(ids.indexOf("memories")).toBeLessThan(ids.indexOf("snapshots"));
-    expect(ids.indexOf("snapshots")).toBeLessThan(ids.indexOf("help"));
   });
 
   it("preserves the user's visible flags and order for items they already have", () => {

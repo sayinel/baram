@@ -26,5 +26,4 @@ export const DEFAULT_ACTIVITY_BAR_CONFIG: ActivityBarItemConfig[] = [
   { id: "memories", visible: true, section: "bottom" },
   { id: "photo-gallery", visible: true, section: "bottom" },
   { id: "snapshots", visible: true, section: "bottom" },
-  { id: "help", visible: true, section: "bottom" },
 ];

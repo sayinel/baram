@@ -237,7 +237,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 - **Context Tab Bar** — Switch between open vaults, folders, and files
 - **Left Sidebar** — Files, Search, Outline, Backlinks, Bookmarks, Graph View, Source Control, Calendar, Tags, Tasks, Zettel, Skills Gallery, and Plugins (`Cmd+Shift+L` to toggle). Reorder or hide any of them in **Settings > Activity Bar**.
 - **Editor** — Main editing area with WYSIWYG or Source mode
-- **Right Sidebar** — AI Chat, Memories, Photo Gallery, Version History, or Help panel
+- **Right Sidebar** — AI Chat, Memories, Photo Gallery, or Version History
 
 ### Toolbar & Menus
 
@@ -255,15 +255,15 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 - **Tab Switcher** — `Ctrl+Tab` opens MRU (Most Recently Used) tab switcher
 - **Undo history preserved** — Switching tabs preserves your undo/redo history per tab
 
-### Help Panel
+### Help Menu
 
-Access built-in documentation from the **Help** menu:
+The **Help** menu opens documentation in your browser — there is no in-app panel:
 
 - **User Guide** — Feature overview and usage instructions
 - **Keyboard Shortcuts** — Complete shortcut reference
 - **FAQ** — Frequently asked questions
-
-The Help panel opens in the right sidebar.
+- **Baram Homepage** — The project's website
+- **Report Issue...** — File a bug or feature request on GitHub
 
 ### Status Bar
 

@@ -33,7 +33,6 @@ const KO = ko as Record<string, string>;
  */
 const SHARED_VALUES = new Set<string>([
   "about.copyright", // Copyright © 2026 Baram Team
-  "help.tab.faq", // FAQ
   "keybindings.category.ai", // AI
   "keybindings.category.zettelkasten", // Zettel
   "menu.app", // Baram
