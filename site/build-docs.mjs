@@ -170,7 +170,9 @@ export function buildSite() {
   for (const file of ["index.html", "style.css", "main.js", "i18n.js"]) {
     cpSync(join(SITE_DIR, file), join(OUT, file));
   }
-  cpSync(join(SITE_DIR, "assets"), join(OUT, "assets"), { recursive: true });
+  // 자산은 `public/assets` 한 부만 있다 — 새 Astro 사이트의 publicDir 과 공유한다.
+  // 전환 기간에 사본을 둘로 두면 4.1MB 가 git 에 두 번 들어가고 한쪽이 낡는다.
+  cpSync(join(SITE_DIR, "public/assets"), join(OUT, "assets"), { recursive: true });
   marked.setOptions({ gfm: true });
   for (const doc of DOCS) {
     const md = readFileSync(join(ROOT, "docs", doc.src), "utf8");

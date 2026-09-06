@@ -1,0 +1,26 @@
+---
+import { useTranslations, type Locale } from "../../i18n";
+import { withBase } from "../../../routes.mjs";
+const { locale } = Astro.props as { locale: Locale };
+const t = useTranslations(locale);
+---
+<section class="hero">
+  <div class="container">
+    <h1>{t("hero.title")}</h1>
+    <p class="hero-sub">{t("hero.sub")}</p>
+    <div class="hero-cta">
+      <a id="download-primary" class="btn btn-primary" href="https://github.com/sayinel/baram/releases/latest">
+        <span>{t("hero.download")}</span><span id="download-os"></span>
+      </a>
+      <a class="btn btn-secondary" href="https://github.com/sayinel/baram">{t("hero.github")}</a>
+    </div>
+    <p class="hero-meta"><span id="release-version">Latest release</span> · macOS · Windows · Linux · Apache-2.0</p>
+    <details class="downloads-all">
+      <summary>{t("hero.allDownloads")}</summary>
+      <ul id="asset-list">
+        <li><a href="https://github.com/sayinel/baram/releases/latest">{t("hero.releasesPage")}</a></li>
+      </ul>
+    </details>
+    <img class="hero-shot" src={withBase("/assets/hero.png")} alt="Baram editor — a beautiful WYSIWYG markdown workspace" width="1600" />
+  </div>
+</section>

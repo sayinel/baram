@@ -1,0 +1,37 @@
+---
+import { useTranslations, type Locale, type MessageKey } from "../../i18n";
+const { locale } = Astro.props as { locale: Locale };
+const t = useTranslations(locale);
+
+const PLATFORMS = [
+  ["macOS", "install.macReq", ".dmg"],
+  ["Windows", "install.winReq", ".msi, .exe"],
+  ["Linux", "install.linuxReq", ".deb, .AppImage, .rpm"],
+] as const;
+---
+<section id="install" class="section">
+  <div class="container">
+    <h2>{t("install.title")}</h2>
+    <table class="sc-table">
+      <thead>
+        <tr><th>{t("install.hPlatform")}</th><th>{t("install.hReq")}</th><th>{t("install.hFormat")}</th></tr>
+      </thead>
+      <tbody>
+        {PLATFORMS.map(([name, req, formats]) => (
+          <tr><td>{name}</td><td>{t(req as MessageKey)}</td><td><code>{formats}</code></td></tr>
+        ))}
+      </tbody>
+    </table>
+    <ol class="install-steps">
+      <li>{t("install.s1")}</li>
+      <li>{t("install.s2")}</li>
+      <li>{t("install.s3")}</li>
+    </ol>
+    <div class="install-note">
+      <p>{t("install.noteMacLead")}</p>
+      <p>{t("install.noteMacFolder")}</p>
+      <p>{t("install.noteWin")}</p>
+    </div>
+    <a class="see-all" href="https://github.com/sayinel/baram#build-from-source">{t("install.buildFromSource")}</a>
+  </div>
+</section>

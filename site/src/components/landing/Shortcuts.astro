@@ -1,0 +1,36 @@
+---
+// 키 조합은 번역하지 않는다 — 동작 이름만 i18n 대상이다.
+import { useTranslations, type Locale, type MessageKey } from "../../i18n";
+import { docPath, withBase } from "../../../routes.mjs";
+const { locale } = Astro.props as { locale: Locale };
+const t = useTranslations(locale);
+
+const ROWS = [
+  ["sc.quickSwitcher", "Cmd+K", "Ctrl+K"],
+  ["sc.commandPalette", "Cmd+P", "Ctrl+P"],
+  ["sc.inlineAi", "Cmd+J", "Ctrl+J"],
+  ["sc.sourceMode", "Cmd+/", "Ctrl+/"],
+  ["sc.save", "Cmd+S", "Ctrl+S"],
+  ["sc.find", "Cmd+F", "Ctrl+F"],
+  ["sc.bold", "Cmd+B", "Ctrl+B"],
+  ["sc.toggleFold", "Cmd+Shift+[", "Ctrl+Shift+["],
+  ["sc.export", "Cmd+Shift+E", "Ctrl+Shift+E"],
+  ["sc.settings", "Cmd+,", "Ctrl+,"],
+] as const;
+---
+<section id="shortcuts" class="section">
+  <div class="container">
+    <h2>{t("shortcuts.title")}</h2>
+    <table class="sc-table">
+      <thead>
+        <tr><th>{t("shortcuts.hAction")}</th><th>macOS</th><th>Windows / Linux</th></tr>
+      </thead>
+      <tbody>
+        {ROWS.map(([key, mac, win]) => (
+          <tr><td>{t(key as MessageKey)}</td><td><kbd>{mac}</kbd></td><td><kbd>{win}</kbd></td></tr>
+        ))}
+      </tbody>
+    </table>
+    <a class="see-all" href={withBase(docPath("customization/keyboard-shortcuts", locale))}>{t("shortcuts.seeAll")}</a>
+  </div>
+</section>

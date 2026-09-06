@@ -1,0 +1,24 @@
+---
+// 카드 11개는 키 목록에서 돌린다 — 마크업을 11번 복제하면 하나를 고칠 때 나머지가 낡는다.
+import { useTranslations, type Locale, type MessageKey } from "../../i18n";
+const { locale } = Astro.props as { locale: Locale };
+const t = useTranslations(locale);
+
+const CARDS = [
+  "wysiwyg", "roundtrip", "ai", "links", "pdf", "rich",
+  "vault", "journal", "tasks", "plugins", "light",
+] as const;
+---
+<section id="features" class="section">
+  <div class="container">
+    <h2>{t("features.title")}</h2>
+    <div class="grid">
+      {CARDS.map((key) => (
+        <article class="card">
+          <h3>{t(`features.${key}.t` as MessageKey)}</h3>
+          <p>{t(`features.${key}.d` as MessageKey)}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>

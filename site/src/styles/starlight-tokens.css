@@ -1,0 +1,26 @@
+/* Baram 팔레트를 Starlight 변수에 매핑한다 — 사이트 자체가 제품 미리보기라는
+   2026-07-20 스펙의 원칙을 문서 페이지까지 잇는다.
+   값은 tokens.css 가 갖고, 여기서는 이름만 잇는다. */
+@import "./tokens.css";
+
+/* ‼️ 조건 없이 한 번만 선언한다. tokens.css 의 `--color-*` 가 이미 3-상태
+   (라이트 기본 · prefers-color-scheme · [data-theme])로 해소되므로,
+   여기서 테마별로 또 나누면 두 곳이 갈라진다.
+
+   ‼️ gray 램프(--sl-color-gray-1..7)는 **건드리지 않는다.** Starlight 은 다크 기본이라
+   그 램프의 밝기 방향이 테마별로 뒤집히는데, Baram 토큰에는 대응하는 램프가 없다.
+   추측해서 매핑하면 본문이 읽을 수 없게 될 위험이 실제로 있다 —
+   의미가 분명한 표면·강조색만 잇고 램프는 Starlight 의 내부 정합에 맡긴다. */
+:root {
+  --sl-color-bg: var(--color-bg-default);
+  --sl-color-bg-nav: var(--color-bg-default);
+  --sl-color-bg-sidebar: var(--color-bg-subtle);
+  --sl-color-bg-inline-code: var(--color-bg-panel);
+  --sl-color-text: var(--color-text-primary);
+  --sl-color-text-accent: var(--color-accent-default);
+  --sl-color-accent: var(--color-accent-default);
+  --sl-color-accent-high: var(--color-accent-hover);
+  --sl-color-hairline: var(--color-border-default);
+  --sl-color-hairline-light: var(--color-border-subtle);
+  --sl-color-hairline-shade: var(--color-border-default);
+}

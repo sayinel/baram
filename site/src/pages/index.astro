@@ -1,0 +1,40 @@
+---
+// 사이트 루트 — 로케일 분기점.
+//
+// 옛 `site/main.js` 의 `pickLanguage(stored, navigator.language)` 를 이 자리가 이어받는다.
+// 저장된 선택 → 브라우저 언어 → 영어. 동작이 이동할 뿐 사라지지 않는다.
+// 저장 키는 현재와 같은 `baram-lang` 을 쓴다 — 기존 방문자의 선택이 보존된다.
+import { withBase } from "../../routes.mjs";
+import { LOCALES } from "../i18n";
+
+const fallback = withBase("/en/");
+const targets = Object.fromEntries(LOCALES.map((l) => [l, withBase(`/${l}/`)]));
+---
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Baram</title>
+    <meta name="robots" content="noindex" />
+    <link rel="canonical" href={new URL(fallback, Astro.site).href} />
+    <script is:inline define:vars={{ fallback, targets }}>
+      (() => {
+        let stored = null;
+        try {
+          stored = localStorage.getItem("baram-lang");
+        } catch {
+          /* private 모드 — 브라우저 언어로 판단한다 */
+        }
+        const byBrowser = (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+        const lang = stored && targets[stored] ? stored : byBrowser;
+        location.replace(targets[lang] || fallback);
+      })();
+    </script>
+    <noscript>
+      <meta http-equiv="refresh" content={`0;url=${fallback}`} />
+    </noscript>
+  </head>
+  <body>
+    <p>Continue to <a href={fallback}>Baram</a>.</p>
+  </body>
+</html>

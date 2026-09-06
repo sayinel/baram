@@ -1,0 +1,26 @@
+---
+// 랜딩 본문 조립. `src/pages/{en,ko}/index.astro` 가 로케일만 넘겨 재사용한다 —
+// 두 페이지에 섹션 목록을 복제하면 한쪽에 섹션을 추가했을 때 다른 쪽이 조용히 빠진다.
+import Landing from "../layouts/Landing.astro";
+import type { Locale } from "../i18n";
+import Action from "./landing/Action.astro";
+import Faq from "./landing/Faq.astro";
+import Features from "./landing/Features.astro";
+import Hero from "./landing/Hero.astro";
+import Install from "./landing/Install.astro";
+import Plugins from "./landing/Plugins.astro";
+import Shortcuts from "./landing/Shortcuts.astro";
+import Support from "./landing/Support.astro";
+
+const { locale } = Astro.props as { locale: Locale };
+---
+<Landing locale={locale}>
+  <Hero locale={locale} />
+  <Features locale={locale} />
+  <Action locale={locale} />
+  <Shortcuts locale={locale} />
+  <Plugins locale={locale} />
+  <Install locale={locale} />
+  <Faq locale={locale} />
+  <Support locale={locale} />
+</Landing>
