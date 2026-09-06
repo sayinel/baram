@@ -11,10 +11,11 @@ import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { handleRecentMenuEvent } from "../ipc/recent-menu";
 import { getAction } from "../keybindings/keybinding-actions";
 import { useWorkspaceStore } from "../stores/file/workspace";
+import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
-import { BARAM_HOMEPAGE, HELP_DOC_URLS } from "../utils/help-urls";
+import { BARAM_HOMEPAGE, type HelpDoc, helpDocUrl } from "../utils/help-urls";
 import { requestReload } from "./use-close-guard";
 
 export interface MenuEventHandlerDeps {
@@ -35,6 +36,17 @@ export interface MenuEventHandlerDeps {
   toggleSettings: () => void;
   toggleSidebar: () => void;
   toggleSourceMode: () => void;
+}
+
+/**
+ * Help 문서를 현재 앱 언어로 연다.
+ *
+ * ‼️ 로케일을 훅 마운트 시점에 캡처하면 사용자가 언어를 바꾼 뒤에도 옛 언어로 열린다.
+ * 메뉴 이벤트는 콜백이므로 `getState()` 로 그때의 값을 읽는다.
+ */
+function openHelpDoc(doc: HelpDoc): void {
+  const { locale } = useSettingsStore.getState();
+  openUrl(helpDocUrl(doc, locale === "ko" ? "ko" : "en")).catch(() => {});
 }
 
 /**
@@ -113,7 +125,7 @@ export function useMenuEventHandler({
           toggleQuickSwitcher();
           break;
         case "help_faq":
-          openUrl(HELP_DOC_URLS.faq).catch(() => {});
+          openHelpDoc("faq");
           break;
         case "help_homepage":
           openUrl(BARAM_HOMEPAGE).catch(() => {});
@@ -123,11 +135,11 @@ export function useMenuEventHandler({
           openUrl("https://github.com/sayinel/baram/issues").catch(() => {});
           break;
         case "help_shortcuts":
-          openUrl(HELP_DOC_URLS.shortcuts).catch(() => {});
+          openHelpDoc("shortcuts");
           break;
         // --- Help menu handlers ---
         case "help_user_guide":
-          openUrl(HELP_DOC_URLS.guide).catch(() => {});
+          openHelpDoc("guide");
           break;
         case "insert_blockquote":
           chainWithVimExternalEdit(editor)?.focus().toggleBlockquote().run();

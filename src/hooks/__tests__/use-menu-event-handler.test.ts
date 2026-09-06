@@ -22,8 +22,9 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { MenuEventHandlerDeps } from "../use-menu-event-handler";
 
+import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
-import { BARAM_HOMEPAGE, HELP_DOC_URLS } from "../../utils/help-urls";
+import { BARAM_HOMEPAGE, helpDocUrl } from "../../utils/help-urls";
 import { requestReload } from "../use-close-guard";
 import { useMenuEventHandler } from "../use-menu-event-handler";
 
@@ -116,10 +117,25 @@ describe("menu event → Help (§4.2 online docs)", () => {
     fire({ payload: "help_faq" });
 
     expect(openUrl.mock.calls.map((c) => c[0])).toEqual([
-      HELP_DOC_URLS.guide,
-      HELP_DOC_URLS.shortcuts,
-      HELP_DOC_URLS.faq,
+      helpDocUrl("guide", "en"),
+      helpDocUrl("shortcuts", "en"),
+      helpDocUrl("faq", "en"),
     ]);
+  });
+
+  it("opens the help doc in the app language, read at dispatch time", () => {
+    // ‼️ 로케일을 훅 마운트 시점에 캡처하면 이 테스트가 통과한다 — 그래서 렌더 **뒤에**
+    // 언어를 바꾸고 그때 열리는 URL 을 본다. 캡처 구현은 여기서 깨진다.
+    renderHook(() => useMenuEventHandler(makeDeps()));
+    const fire = menuEventHandler();
+
+    useSettingsStore.setState({ locale: "ko" });
+    fire({ payload: "help_user_guide" });
+
+    expect(openUrl).toHaveBeenLastCalledWith(helpDocUrl("guide", "ko"));
+    expect(openUrl).not.toHaveBeenLastCalledWith(helpDocUrl("guide", "en"));
+
+    useSettingsStore.setState({ locale: "en" });
   });
 
   it("does not open or switch the right panel any more", () => {

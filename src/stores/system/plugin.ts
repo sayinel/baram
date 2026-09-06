@@ -116,7 +116,7 @@ interface PluginState {
  * - Self-hosted and in-house registries are UNSUPPORTED. The registry accepts first-party
  *   plugins only for now, so this takes nothing away that was otherwise available.
  * - Editing `config.json` by hand does nothing; `merge` discards it. The documented local-testing
- *   procedure that relied on it is gone — see `docs/plugin-development.md`, which now says to
+ *   procedure that relied on it is gone — see the plugin development guide (`site/src/content/docs/en/docs/plugin-dev/`), which now says to
  *   change this constant in a dev checkout instead.
  * - Signature enforcement only covers `FIRST_PARTY_REVOCATION_PREFIX` in Rust, so a third-party
  *   registry could not have its revocation list verified anyway.

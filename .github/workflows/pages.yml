@@ -30,21 +30,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
-      # ‼️ 이 설치가 vanilla 빌드보다 **앞**이어야 한다. `marked` 가 site/package.json 으로
-      # 옮겨졌으므로 site/build-docs.mjs 는 site/node_modules 에서 그것을 해소한다.
-      # 순서를 뒤집으면 ERR_MODULE_NOT_FOUND 로 죽는다 — 로컬에서는 node_modules 가 이미
-      # 깔려 있어 가려지고 CI 에서만 드러난다(실제로 그렇게 한 번 깨졌다).
       - name: Install site deps (independent npm project)
         run: npm ci
         working-directory: site
-      - name: Build site (current — vanilla)
-        run: npm run site:build
-      - name: Test site (current — vanilla)
-        run: npm run site:test
-      # 새 Astro + Starlight 사이트는 3단계(문서 이주) 완료 후 배포로 전환한다.
-      # 그때까지도 CI 는 검증한다 — 전환 시점에 처음 돌리면 그때 몰아서 깨진다.
-      # 설계: dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md
-      - name: Verify new site (build · dist 산출물 · IA 게이트 · 테스트 · 타입)
+      - name: Verify site (build · dist 산출물 · 페이지 게이트 · 테스트 · 타입)
         run: npm run verify
         working-directory: site
       - if: github.event_name != 'pull_request'
@@ -52,7 +41,7 @@ jobs:
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: dist-site
+          path: site/dist
 
   deploy:
     if: github.event_name != 'pull_request'

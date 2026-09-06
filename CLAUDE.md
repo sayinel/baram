@@ -58,7 +58,10 @@ baram/
 │   └── hooks/ contexts/ i18n/(en,ko) keybindings/ plugins/ services/ spaces/ utils/ types/ spike/
 ├── tokens/                 # W3C DTCG 디자인 토큰: primitive/ semantic/ tokens-studio.json
 ├── scripts/                # audit-css-vars.ts, export-tokens-studio.ts
-├── docs/                   # 공개 사용자 문서 — user-guide·keyboard-shortcuts·faq(앱 Help에 ?raw 번들), plugin-development
+├── docs/assets/            # README 가 직접 참조하는 이미지만 남는다 — 문서 본문은 site/ 로 이주했다
+├── site/                   # 홈페이지 + 문서 사이트 — **독립 npm 프로젝트**(자체 package.json/lockfile)
+│                           #   Astro + Starlight · 랜딩 `/{en,ko}/` · 문서 `/{locale}/docs/**`(57페이지)
+│                           #   ia-tree.mjs = 사이드바·제목 canonical · help-routes.json = 앱 URL 계약
 ├── dev/                    # 내부 개발 문서 (public 배포 제외, git 밖 심볼릭 링크) — 성격별 5분류:
 │                           #   design/(설계서 part1~20) design/specs/(기능별 설계) plans/(구현 계획)
 │                           #   impl-notes/(구현 기록·렛저) guides/(런북) + backlog·next-steps·progress
@@ -107,7 +110,10 @@ baram/
   - PM 뷰 포커스 → `src/utils/editor/focus-editor-view.ts` (`focusEditorView`) — bare `view.focus()`는 non-editable 뷰에서 no-op
   - 링크 destination 정책 → `src/utils/link-href.ts` (`isAllowedLinkHref`) — `<a href>`로 내보내거나 opener에 넘기기 전 판정. 문서 모델은 건드리지 않는다(byte-exact roundtrip). 거부되면 `href` 대신 inert한 `data-href`로 렌더(클립보드 복원·CSS 훅)하고 export scrub이 제거한다. scheme allowlist는 HTML 블록 sanitizer(DOMPurify 기본)와 동일 — regex/substring 검사로 재구현 금지(`java\tscript:` 우회)
 - **i18n(en/ko.json) 키는 알파벳 정렬** — 추가 시 정렬 자리에 삽입, 두 카탈로그 동시(parity 테스트 있음)
-- **docs/\*.md 편집**: prettier·lint 대상 밖. 앱에 번들되지 않고 **홈페이지가 사전 렌더**한다(§4.2) — `npm run site:build && npm run site:test`로 확인(`pages.yml`이 `docs/**` PR에서 돌린다). in-doc 앵커(`#search-wysiwyg`)는 `site/build-docs.mjs`의 `slugify`(유니코드 보존 `\p{L}\p{N}`)와 GitHub 슬러그 양쪽에 맞는 heading만 쓸 것 — 그 테스트가 앵커 해석까지 검사한다
+- **공개 문서 편집**은 `site/src/content/docs/{en,ko}/docs/**` 에서 한다 (`docs/*.md` 는 이주 후 삭제됐다). prettier·lint 대상 밖이고 검증은 **`cd site && npm run verify`** — 빌드 · 산출물 게이트 · 페이지 게이트 · 테스트 · `astro check`. `pages.yml` 이 `site/**`·`docs/**` PR 에서 돌린다
+  - **새 페이지를 만들면 `site/ia-tree.mjs` 의 `PAGES`·`TITLES` 에 등록해야 한다** — `check:pages` 가 매니페스트↔디스크 양방향을 실패시킨다. 페이지 크기는 40~200줄(예외는 그 스크립트에 이유와 함께 명시)
+  - 내부 링크는 `/baram/en/docs/<slug>/#anchor` 형태다. 앵커 slug 는 Starlight 의 github-slugger 가 정하고, 빌드의 `starlight-links-validator` 가 깨진 링크·앵커를 실패시킨다 — 실제로 이주 때 `invalid hash` 를 전부 잡았다
+  - **앱 Help URL 은 `src/utils/help-urls.ts`** 이고 `site/help-routes.json` 과 짝이다. 한쪽만 바꾸면 앱이 404 를 연다 — `help-urls.test.ts` 가 그 JSON 에서 파생 검증한다
 - **단축키 추가**: `keybinding-registry.ts` 등록이 규약(Settings 표시·리매핑 가능) — menu.rs accelerator만 달면 안 보인다. 네이티브 accelerator는 DOM과 별개 레이어라 조건부 양보 불가·리바인드 후에도 fallback 잔존; registry 경로는 상위 stopPropagation에 자동 양보된다. 충돌 조사 필수(Ctrl+R=vim redo, Mod+Shift+R=Memories 등) — 함정 상세는 menu.rs 상단 주석
 - **perfectionist autofix는 주석을 안 옮긴다** — sort-modules는 doc 주석-함수 짝을 깨고, sort-imports는 파일 헤더 주석 **위로** import를 올린다. `--fix` 후 diff로 주석 위치 확인 (분리 캠페인 한 세션에서만 사고 6건) · sort-modules는 모듈 레벨 함수 선언도 알파벳 순을 요구한다 — helper를 추가할 때 자리를 맞출 것
 - **madge --circular는 dynamic import·`import type`도 간선으로 센다** — 순환 판단은 static 값 간선만 손으로 분류해서 (TDZ 위험은 static 간선만이 만든다)

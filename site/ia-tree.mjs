@@ -1,4 +1,11 @@
-// IA 트리 기계 판독본. dev/design/specs/2026-09-06-docs-site-ia-tree.md 와 짝이다.
+// IA 트리 — 사이드바 순서 · 그룹 라벨 · 페이지 제목의 canonical.
+// 문서: dev/design/specs/2026-09-06-docs-site-ia-tree.md
+//
+// ‼️ **이주는 끝났다.** `items`/`h2`/`src`/`wholeDoc` 필드는 원문 `docs/*.md` 의 어느 절이
+//    어느 페이지로 갔는지를 남긴 **이력**이고, 그 원문은 이주 커밋에서 삭제됐다. 런타임이
+//    읽는 것은 `slug`(사이드바 순서) · `TITLES` · `GROUPS` 뿐이다.
+//    손실 없음은 그 커밋의 `check-roundtrip.mjs` 가 바이트 동일성으로 증명했다 —
+//    지금은 `check-pages.mjs` 가 "매니페스트 ↔ 디스크" 를 본다.
 //
 // 배정 문법:
 //   {h2:"Name"}        H2 도입부 (H2 줄 ~ 첫 H3). H3를 가진 H2는 이 줄들도 배정해야 한다
@@ -8,6 +15,25 @@ export const UG = "docs/user-guide.md";
 export const PD = "docs/plugin-development.md";
 export const FAQ = "docs/faq.md";
 export const KS = "docs/keyboard-shortcuts.md";
+
+/**
+ * 첫 H2 앞의 **파일 머리말**(H1 + 도입부). 어떤 H2/H3 단위에도 속하지 않으므로 여기서
+ * 명시적으로 배정하거나 버린다.
+ *
+ * ‼️ 초기 게이트는 이걸 못 봤다. 배정 대조를 단위 위에서만 했기 때문에 20줄이 아무 페이지에도
+ *    없는데 "소진 ✅" 가 나왔다. 이제 `파일 전체 = 단위 + 머리말` 도 함께 단정한다.
+ */
+export const PREAMBLES = [
+  // H1 "Baram User Guide" + 환영 문구. 문서 홈의 도입부가 된다.
+  { src: UG, to: "index" },
+  // H1 "Frequently Asked Questions" + 구분선뿐 — 제목은 FAQ 그룹 라벨이 대신한다.
+  { src: FAQ, drop: true, why: "H1 과 구분선만 있고 본문이 없다" },
+  // H1 "Baram Plugin Development Guide" + 빈 줄뿐.
+  { src: PD, drop: true, why: "H1 과 빈 줄만 있고 본문이 없다" },
+  // 단축키는 문서 통째로 한 페이지이므로 머리말도 그 페이지가 가져간다
+  // (Platform Note 는 버릴 수 없는 본문이다).
+  { src: KS, to: "customization/keyboard-shortcuts" },
+];
 
 /** 원문에서 의도적으로 버리는 절 — Starlight이 사이드바·페이지 TOC를 생성하므로 손 목차는 낡을 뿐이다 */
 export const DROPPED = [{ src: UG, level: 2, text: "Table of Contents" }];
@@ -37,6 +63,72 @@ export function groupOf(slug) {
   return prefix && prefix in GROUPS ? prefix : null;
 }
 
+
+/**
+ * 페이지 제목 (en). Starlight `docsSchema` 가 `title` 프론트매터를 요구하므로 필수다.
+ * PAGES 항목마다 인라인으로 두지 않는 이유는 배정(무엇을 가져가나)과 표현(어떻게 부르나)이
+ * 다른 관심사이고, 로케일이 늘면 이 표만 늘어나기 때문이다.
+ * ‼️ slug 하나라도 빠지거나 남으면 `check-ia.mjs` 가 실패시킨다.
+ */
+export const TITLES = {
+  "index": "Documentation",
+  "getting-started": "Getting started",
+  "editing/files-and-tabs": "Files, tabs, and saving",
+  "editing/formatting": "Formatting text and blocks",
+  "editing/slash-commands-and-toolbars": "Slash commands and toolbars",
+  "editing/source-mode-and-find": "Source mode, find and replace",
+  "rich-content/callouts-and-toggles": "Callouts and toggles",
+  "rich-content/math-code-diagrams": "Math, code, and diagrams",
+  "rich-content/tables": "Tables and table of contents",
+  "rich-content/images-and-videos": "Images and videos",
+  "rich-content/footnotes-and-frontmatter": "Footnotes and frontmatter",
+  "rich-content/query-blocks": "Query blocks",
+  "linking/wikilinks-and-tags": "Wikilinks and tags",
+  "linking/dates-references-and-navigation": "Dates, block references, and navigation",
+  "workspace/vaults-and-approval": "Vaults and folder access",
+  "workspace/external-files-and-perspectives": "External files and perspectives",
+  "tasks/anatomy-and-typing": "Writing a task",
+  "tasks/repeat-and-time-tracking": "Repeat rules and time tracking",
+  "tasks/panel-and-queries": "The Tasks panel and task queries",
+  "pdf/toolbar-zoom-and-find": "Reading a PDF",
+  "pdf/highlights-and-citing": "Highlighting and citing",
+  "pdf/managing-highlights": "Managing highlights",
+  "ai/setup-inline-and-ghost-text": "Setup, inline edits, and Ghost Text",
+  "ai/contextual-actions-and-chat": "Contextual actions and AI chat",
+  "ai/templates-commands-and-skills": "Templates, commands, and Skills",
+  "journal/daily-notes": "Journal and daily notes",
+  "journal/zettelkasten": "Zettelkasten notes",
+  "versioning/git": "Git integration",
+  "versioning/file-snapshots": "Version history",
+  "export": "Export",
+  "customization/settings-and-themes": "Settings and themes",
+  "customization/palette-language-and-vim": "Command palette, language, and Vim mode",
+  "customization/keyboard-shortcuts": "Keyboard shortcuts",
+  "plugins": "Using plugins",
+  "plugin-dev/overview-and-capabilities": "Overview and capabilities",
+  "plugin-dev/quick-start": "Quick start",
+  "plugin-dev/manifest": "The plugin manifest",
+  "plugin-dev/entry-point-and-types": "Entry point and public types",
+  "plugin-dev/context-commands-editor-files-events": "Context: commands, editor, files, events",
+  "plugin-dev/context-ui-and-shadow-dom": "Context: UI and Shadow-DOM isolation",
+  "plugin-dev/context-ai-network-storage-settings": "Context: AI, network, storage, settings",
+  "plugin-dev/commands-and-tiptap-extensions": "Command palette and Tiptap extensions",
+  "plugin-dev/local-development-and-bundling": "Local development and bundling",
+  "plugin-dev/registry-json-shape": "The registry JSON shape",
+  "plugin-dev/registry-loading-and-testing": "Registry loading and local testing",
+  "plugin-dev/publishing": "Publishing a plugin",
+  "plugin-dev/trust-model-and-errors": "Trust model, security, and errors",
+  "faq/general": "General and language",
+  "faq/editing": "Editing",
+  "faq/tasks-and-queries": "Tasks and query blocks",
+  "faq/linking": "Linking and navigation",
+  "faq/pdf": "PDF reading and highlights",
+  "faq/ai": "AI",
+  "faq/appearance-and-workspace": "Appearance and workspace",
+  "faq/journal-and-zettel": "Journal and Zettelkasten",
+  "faq/versioning-and-export": "Versioning and export",
+  "faq/plugins-and-troubleshooting": "Plugins and troubleshooting",
+};
 
 export const PAGES = [
   { slug: "index", synthetic: true },

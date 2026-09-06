@@ -47,9 +47,6 @@
     "types:plugin:check": "npm run types:plugin && git diff --exit-code examples/plugins/*.d.ts",
     "audit:css-vars": "npx tsx scripts/audit-css-vars.ts",
     "version:check": "node ./scripts/check-version-sync.mjs",
-    "site:build": "node site/build-docs.mjs",
-    "site:ia": "node site/scripts/check-ia.mjs",
-    "site:test": "node --test site/*.test.mjs",
     "prepare": "husky"
   },
   "dependencies": {

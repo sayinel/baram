@@ -83,14 +83,35 @@ describe("the Word Count plugin agrees with the native status bar", () => {
   }
 
   // The shipped docs, as the widest corpus available without inventing one. The magnitude is
-  // the point: on `keyboard-shortcuts.md` the two used to differ by more than 1,000 words.
-  for (const file of [
-    "docs/user-guide.md",
-    "docs/faq.md",
-    "docs/keyboard-shortcuts.md",
-  ]) {
+  // the point: on the shortcuts reference the two used to differ by more than 1,000 words.
+  //
+  // ‼️ These moved when the docs site was split into pages
+  // (dev/design/specs/2026-09-06-docs-site-i18n-restructure-design.md). The site source
+  // carries Starlight frontmatter, which is not prose — strip it, or the corpus silently
+  // includes YAML and the comparison stops measuring what it claims to.
+  const SITE_DOCS = "site/src/content/docs/en/docs";
+  const corpus = [
+    `${SITE_DOCS}/customization/keyboard-shortcuts.md`,
+    `${SITE_DOCS}/rich-content/query-blocks.md`,
+    `${SITE_DOCS}/faq/editing.md`,
+    `${SITE_DOCS}/plugin-dev/registry-json-shape.md`,
+  ];
+
+  const withoutFrontmatter = (file: string): string => {
+    const raw = readFileSync(file, "utf8");
+    const stripped = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
+    if (stripped === raw) {
+      throw new Error(`${file}: expected Starlight frontmatter, found none`);
+    }
+    return stripped;
+  };
+
+  for (const file of corpus) {
     it(`reports the same number for ${file}`, () => {
-      const doc = markdownToProsemirror(readFileSync(file, "utf8"), schema);
+      const markdown = withoutFrontmatter(file);
+      // A corpus that shrank to nothing would make the assertion vacuous.
+      expect(markdown.length).toBeGreaterThan(500);
+      const doc = markdownToProsemirror(markdown, schema);
       expect(pluginCount(stagedForPlugin(doc)).words).toBe(
         countDocumentWords(doc),
       );
@@ -102,7 +123,7 @@ describe("the Word Count plugin agrees with the native status bar", () => {
   // used to read, and it must NOT produce the bar's number.
   it("would disagree if the plugin still read the markdown source", () => {
     const doc = markdownToProsemirror(
-      readFileSync("docs/keyboard-shortcuts.md", "utf8"),
+      withoutFrontmatter(`${SITE_DOCS}/customization/keyboard-shortcuts.md`),
       schema,
     );
     const viaMarkdown = pluginCount(prosemirrorToMarkdown(doc)).words;

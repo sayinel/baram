@@ -259,7 +259,7 @@ export interface RegistryEntry {
     /**
      * The minimum app version this entry declares — optional to READ, required to PUBLISH.
      *
-     * Authors must still declare it (`docs/plugin-development.md`), and
+     * Authors must still declare it (the plugin development guide), and
      * `scripts/validate-index.ts` refuses to publish an index without it. Optional here
      * because the alternative is worse in both directions: Rust's `RegistryEntry` drops an
      * entry it cannot deserialize, so a required field would make an omission delete the
