@@ -98,10 +98,14 @@ export const InlineMath = Mark.create({
 ### 라운드트립 테스트 패턴 (필수)
 
 ```typescript
-import { createEditor, parseMarkdown, serializeMarkdown } from '../../pipeline'
+import { Editor } from "@tiptap/core";
+
+import { createBaramExtensions } from "../index";
+import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 
 describe('MathBlock Extension', () => {
-  const editor = createEditor([MathBlock])
+  const schema = new Editor({ extensions: createBaramExtensions() }).schema
 
   // 핵심: 라운드트립 보존
   test.each([
@@ -109,8 +113,8 @@ describe('MathBlock Extension', () => {
     ['복잡한 수식', '$$\n\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}\n$$'],
     ['aligned 환경', '$$\n\\begin{aligned}\nx &= 1 \\\\\ny &= 2\n\\end{aligned}\n$$'],
   ])('라운드트립 보존: %s', (_, input) => {
-    const doc = parseMarkdown(input)
-    const output = serializeMarkdown(doc)
+    const doc = markdownToProsemirror(input, schema)
+    const output = prosemirrorToMarkdown(doc)
     expect(output).toBe(input)
   })
 
@@ -161,6 +165,8 @@ entryKey는 인자로 주입(노드 모듈 import 금지, 순환). 과거 세 �
 codemirror-vim의 keymap·엔진 본체는 `@replit/codemirror-vim`이 아니라 의존성 `@replit/codemirror-vim-core/vim.js`에 있다 (dist에는 keymap이 없다 — 키 바인딩을 찾을 때 헛걸음 주의).
 
 **NodeView wrapper의 React 핸들러(`onContextMenu` 등)는 `createPortal`로 body에 그린 모달 안의 이벤트도 받는다** — React 트리 기준으로 버블하기 때문. 블록 자신의 이벤트인지는 `wrapperRef.current.contains(e.target)`로 먼저 걸러라 (mermaid/svg fullscreen 모달 우클릭이 인라인 상태에 묶인 블록 메뉴를 열던 사고, PR 537).
+
+**`dangerouslySetInnerHTML`은 `views/use-inner-html.ts`의 `useInnerHtml`을 주입하는 컴포넌트 안에서 호출해 넘긴다(issue 549).** React 19는 이 prop을 객체 identity로 비교해 인라인 리터럴이면 매 렌더 svg를 재파싱·재생성한다(우클릭 메뉴·캡션 편집·리사이즈 드래그 mousemove마다). wrapper 객체를 prop으로 넘기지 말 것 — spread 한 번에 무력화된다. `html-block-view.tsx`는 재심기에 의지하는 유일한 예외. `__tests__/diagram-inner-html-source.test.ts`가 `nodes/**/*.tsx`를 AST로 스캔해 강제하며, 들여다볼 수 없는 spread(`{...props}` 등)는 그 테스트의 `REVIEWED_OPAQUE_SPREADS`에 손으로 검토해 추가해야 통과한다.
 
 ## registry.json 유지 규칙
 

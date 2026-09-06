@@ -29,6 +29,22 @@ protocol/     ← 커스텀 프로토콜 핸들러      md/       ← 마크다�
 logging/      ← 파일 로깅 (회전·상한)       menu.rs   ← 네이티브 메뉴/accelerator
 ```
 
+## 로컬 명령
+
+`npm run rust:check` — fmt → 프런트엔드 빌드 → clippy → test를 CI와 같은 순서·같은 플래그로 돌린다.
+따로 돌릴 땐 `npm run rust:fmt` · `rust:clippy` · `rust:test` (뒤 둘은 프런트엔드 빌드를 먼저 한다).
+
+‼️ **맨 `cargo test`·`cargo clippy`로 대체하지 말 것.** 스크립트가 더해 주는 두 가지가 빠진다:
+
+- **프런트엔드 빌드.** `dist/`가 없으면 `generate_context!`가 컴파일을 못 한다 —
+  ``The `frontendDist` configuration is set to `"../dist"` but this path doesn't exist``.
+  `rust:*`의 `rust:prepare`(= `npm run build`)와 CI의 "Build frontend (required for Rust
+  compilation)" 단계가 그래서 있다.
+- **`-- -D warnings`.** pre-push hook과 CI의 clippy에는 이게 붙는다. 빼고 돌리면 경고가
+  있어도 로컬은 초록이고 hook·CI만 빨간불이 된다.
+
+PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 외 skip은 빨간불(`.claude/docs/ci-contract.md`).
+
 ## IPC 커맨드 규칙
 
 ### 커맨드 정의 패턴

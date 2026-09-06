@@ -231,10 +231,11 @@ describe("the exemption cannot be forged by document content", () => {
     await flush();
     expect(document.body.querySelector(".svg-context-menu")).not.toBeNull();
 
-    // Query the diagram AFTER the menu opened: React 19 re-applies
-    // dangerouslySetInnerHTML on every render of the view (it compares the
-    // `{__html}` object by identity), so the svg element from before the
-    // re-render is detached and a mousedown on it reaches no document listener.
+    // Query the diagram after the menu opened. When this was written the view
+    // re-applied dangerouslySetInnerHTML on every render (React 19 compares
+    // the `{__html}` object by identity), so an element grabbed earlier was
+    // detached by now; since issue 549 the element survives the re-render and
+    // the order no longer matters. Kept as the form that holds either way.
     const rendered = wrapper.querySelector<HTMLElement>(
       ".svg-block-render svg",
     );
