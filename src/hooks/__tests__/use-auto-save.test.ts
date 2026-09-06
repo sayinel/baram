@@ -205,9 +205,6 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     };
     useEditorStore.setState({ activeTabId: tab.id, tabs: [tab] } as never);
 
-    // Two-step move clears the plugin's cursorAtDocChange guard so the
-    // expansion check actually runs (see syntax-reveal.test.ts's moveCursorTo).
-    editor.commands.setTextSelection(2);
     editor.commands.setTextSelection(9);
 
     expect(editor.state.doc.textContent).toContain(
@@ -273,7 +270,6 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
 
     // Expand the link, then place the caret right after the opening "[" —
     // the exact position handleKeyDown's Backspace branch checks for.
-    editor.commands.setTextSelection(2);
     editor.commands.setTextSelection(9);
     expect(editor.state.doc.textContent).toContain(
       "[world](https://example.com)",
@@ -349,7 +345,6 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     useEditorStore.setState({ activeTabId: tab.id, tabs: [tab] } as never);
 
     // "Hello " = 1-7, "world" bold = 7-12, " end" = 12-16.
-    editor.commands.setTextSelection(2);
     editor.commands.setTextSelection(9);
     expect(editor.state.doc.textContent).toContain("**world**");
 

@@ -38,17 +38,6 @@ function loadMarkdown(editor: Editor, md: string): void {
   editor.commands.setContent(doc.toJSON());
 }
 
-/** Same two-step cursor move `syntax-reveal.test.ts` uses — the guard-position hop is
- *  required for the plugin's `cursorAtDocChange` gate to let expansion run at all. */
-function moveCursorTo(
-  editor: Editor,
-  guardPos: number,
-  targetPos: number,
-): void {
-  editor.commands.setTextSelection(guardPos);
-  editor.commands.setTextSelection(targetPos);
-}
-
 /** Position of the middle character of the first text node satisfying `match`. */
 function midpointOf(editor: Editor, match: (text: string) => boolean): number {
   const hits: { from: number; text: string }[] = [];
@@ -78,7 +67,7 @@ describe("§384 canonicalDoc / serializeEditorState / serializeLiveDoc", () => {
     const editor = createEditor();
     const original = "Hello [world](https://example.com) end\n";
     loadMarkdown(editor, original);
-    moveCursorTo(editor, 2, 9); // caret lands inside "world"
+    editor.commands.setTextSelection(9); // caret lands inside "world"
 
     // Expansion actually happened — otherwise the rest of this test is vacuous.
     expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
@@ -96,7 +85,7 @@ describe("§384 canonicalDoc / serializeEditorState / serializeLiveDoc", () => {
     const editor = createEditor();
     const original = "Hello **world** end\n";
     loadMarkdown(editor, original);
-    moveCursorTo(editor, 2, 3); // stays in "Hello", nothing expands
+    editor.commands.setTextSelection(3); // stays in "Hello", nothing expands
 
     expect(getSyntaxRevealExpanded(editor.state)).toBeNull();
     expect(serializeLiveDoc(editor)).toBe(
@@ -183,7 +172,7 @@ describe("§384 kind coverage — every SyntaxReveal mark delimiter (data-driven
       loadMarkdown(editor, fixture.input);
 
       const target = midpointOf(editor, (t) => t.includes(fixture.markText));
-      moveCursorTo(editor, 1, target);
+      editor.commands.setTextSelection(target);
 
       // Expansion actually happened — otherwise this whole case is vacuous.
       expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
@@ -200,7 +189,7 @@ describe("§384 kind coverage — every SyntaxReveal mark delimiter (data-driven
 describe("§384 link caret positions (start / inside text / inside URL / trailing boundary)", () => {
   const original = "Hello [world](https://example.com) end\n";
   // Positions are in the doc's POST-expansion coordinate space — expansion must
-  // happen first (moveCursorTo into "world" at the pre-expansion position 9), then
+  // happen first (caret into "world" at the pre-expansion position 9), then
   // the caret is moved again within the now-literal "[world](https://example.com)"
   // text, which spans PM positions [7, 35).
   const positions: Record<string, number> = {
@@ -213,7 +202,7 @@ describe("§384 link caret positions (start / inside text / inside URL / trailin
   it.each(Object.entries(positions))("%s", (_label, pos) => {
     const editor = createEditor();
     loadMarkdown(editor, original);
-    moveCursorTo(editor, 2, 9); // expand first
+    editor.commands.setTextSelection(9); // expand first
     expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
 
     editor.commands.setTextSelection(pos);
@@ -308,7 +297,7 @@ describe("§384 wikilink expansion (alias / heading / blockid)", () => {
         return wikilinkPos === null;
       });
       expect(wikilinkPos).not.toBeNull();
-      moveCursorTo(editor, 1, wikilinkPos!);
+      editor.commands.setTextSelection(wikilinkPos!);
 
       expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
       expect(serializeLiveDoc(editor)).toBe(original);
@@ -321,7 +310,7 @@ describe("§384 purity — canonicalizing for serialization never mutates the li
   it("no update event fires, selection/doc identity and undo depth are unchanged", () => {
     const editor = createEditor();
     loadMarkdown(editor, "Hello [world](https://example.com) end\n");
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
 
     const docBefore = editor.state.doc;
@@ -354,7 +343,7 @@ describe("§384 purity — canonicalizing for serialization never mutates the li
   it("vim enabled in visual mode: vim plugin state is unchanged too, alongside doc/selection (no update event)", () => {
     const editor = createEditor();
     loadMarkdown(editor, "Hello [world](https://example.com) end\n");
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
 
     editor.view.dispatch(
@@ -408,7 +397,7 @@ describe("§384 canonicalNodeAt — derived-node call sites (table cell copy, ta
   it("returns the collapsed node when the position falls inside an active expansion", () => {
     const editor = createEditor();
     loadMarkdown(editor, "Hello **world** end\n");
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
 
     // The paragraph is the block ancestor callers like task-edit-io resolve
@@ -444,7 +433,7 @@ describe("§384 canonicalNodeAt — derived-node call sites (table cell copy, ta
 
     // Put the caret inside the cell's bold text to trigger an expansion.
     const target = midpointOf(editor, (t) => t.includes("bold"));
-    moveCursorTo(editor, 1, target);
+    editor.commands.setTextSelection(target);
     expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
 
     const canonicalTable = canonicalNodeAt(editor.state, tablePos!, "table");
@@ -469,7 +458,7 @@ describe("§384 FileEditorLayout self-write comparison operand", () => {
     const editor = createEditor();
     const original = "Hello [world](https://example.com) end\n";
     loadMarkdown(editor, original);
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(getSyntaxRevealExpanded(editor.state)).not.toBeNull();
 
     const diskContent = original; // what FileEditorLayout just wrote via handleSave

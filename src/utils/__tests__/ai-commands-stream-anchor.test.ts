@@ -89,16 +89,6 @@ function positionAfterBlock(editor: Editor, index: number): number {
   return pos;
 }
 
-/**
- * Same two-step cursor move the syntax-reveal tests use: the first move clears
- * the plugin's "no expansion right after a doc change" guard, the second one
- * lands inside the mark and expands it.
- */
-function moveCursorTo(editor: Editor, guardPos: number, targetPos: number) {
-  editor.commands.setTextSelection(guardPos);
-  editor.commands.setTextSelection(targetPos);
-}
-
 /** Start a command and hand back a token sender bound to its request id. */
 async function startStream(editor: Editor, options?: AICommandOptions) {
   const handlers: Record<string, (e: unknown) => void> = {};
@@ -153,7 +143,7 @@ describe("a syntax-reveal collapse appended while the stream is running", () => 
     expect(blockTexts(editor)[2]).toBe("A");
 
     // Expand `**world**` above the anchor: a ROOT transaction, +4 positions.
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(blockTexts(editor)[0]).toBe("Hello **world** end");
     await send("B");
     expect(blockTexts(editor)[2]).toBe("AB");
@@ -185,7 +175,7 @@ describe("a syntax-reveal collapse appended while the stream is running", () => 
 
     // "Tail bold end" starts at positionAfterBlock(1); its 'b' sits 6 in.
     const tailStart = positionAfterBlock(editor, 1) + 1;
-    moveCursorTo(editor, tailStart + 1, tailStart + 6);
+    editor.commands.setTextSelection(tailStart + 6);
     expect(blockTexts(editor)[2]).toBe("Tail **bold** end");
     await send("B");
 
@@ -205,7 +195,7 @@ describe("a syntax-reveal collapse appended to the SETUP edit", () => {
   // positions shorter above the new paragraph before the first token.
   it("insertAfterPos: the first token lands in the new paragraph, not four positions late", async () => {
     const editor = loadEditor(FIXTURE);
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(blockTexts(editor)[0]).toBe("Hello **world** end");
 
     const { finish, send } = await startStream(editor, {
@@ -251,7 +241,7 @@ describe("a syntax-reveal collapse appended to the SETUP edit", () => {
 
   it("afterSelection (floating toolbar): the paragraph after the expanded block receives the token", async () => {
     const editor = loadEditor(FIXTURE);
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(blockTexts(editor)[0]).toBe("Hello **world** end");
 
     const { finish, send } = await startStream(editor, {

@@ -40,19 +40,24 @@ function loadMarkdown(editor: Editor, md: string): void {
   editor.commands.setContent(doc.toJSON());
 }
 
-/**
- * Move cursor to a position that clears the cursorAtDocChange guard,
- * then move to the target position. This two-step sequence ensures
- * the syntax-reveal plugin's expansion checks actually run.
- */
-function moveCursorTo(
-  editor: Editor,
-  guardPos: number,
-  targetPos: number,
-): void {
-  editor.commands.setTextSelection(guardPos);
-  editor.commands.setTextSelection(targetPos);
-}
+// ‼️ 캐럿 이동은 한 번이면 된다. 두 단계로 되돌리지 말 것.
+//
+// 이 파일은 오래 `moveCursorTo(editor, guardPos, targetPos)`로 커서를 두 번
+// 옮겼고, 그 헬퍼의 독스트링은 "doc-change 가드를 풀려면 두 단계가 필요하다"고
+// 적고 있었다. **틀린 설명이었다.** 가드는 캐럿이 문서 변경이 남긴 그 자리에
+// 그대로 있는 동안만 막는데, targetPos는 한 번도 그 자리가 아니었다 — 첫 이동이
+// 이미 가드를 풀었고 두 번째는 아무 일도 하지 않았다. 측정으로 확인했다: 정리한
+// 단일 이동 테스트를 PR #564 **이전** 프로덕션 코드에 물려도 100건 전부 통과한다.
+//
+// 해가 된 것은 그 두 단계가 아니라 그것이 만든 **관용구**다. "펼치려면 커서를 두
+// 번 옮긴다"가 정상처럼 보이는 동안, 아무도 "한 번 옮겨 도착한다"를 적지 않았다.
+// 진짜 결함은 바로 그 자리에 있었다 — 이미 펼쳐진 노드에서 다음 노드로 한 번에
+// 건너가는 경로. 위키링크 리스트에서 항목이 한 칸 걸러 하나씩만 펼쳐졌고, 이 파일
+// 38곳 어디에도 걸리지 않았다. syntax-reveal-adjacent-nav.test.ts가 그 구멍이다.
+//
+// 예외 하나: target이 로드 직후 캐럿 자리와 **겹치면** 한 번 옮기는 것은 no-op이라
+// 가드가 그대로 걸린다. syntax-reveal-image.test.ts의 selectNodeAndAwaitExpand가
+// 그 경우이고, 거기 hop은 지금도 load-bearing이다.
 
 describe("Syntax Reveal (§5.1)", () => {
   describe("Mark expansion", () => {
@@ -60,7 +65,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello **world** end\n");
       // "Hello " (pos 1-7), "world" bold (pos 7-12), " end" (pos 12-16)
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
 
       expect(editor.state.doc.textContent).toContain("**world**");
       editor.destroy();
@@ -69,7 +74,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("italic: cursor entering inserts * delimiters", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello *world* end\n");
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
 
       expect(editor.state.doc.textContent).toContain("*world*");
       // Ensure single * not double **
@@ -80,7 +85,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("code: cursor entering inserts ` delimiters", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello `world` end\n");
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
 
       expect(editor.state.doc.textContent).toContain("`world`");
       editor.destroy();
@@ -89,7 +94,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("strike: cursor entering inserts ~~ delimiters", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello ~~world~~ end\n");
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
 
       expect(editor.state.doc.textContent).toContain("~~world~~");
       editor.destroy();
@@ -100,7 +105,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("cursor entering link inserts [text](url) syntax", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello [world](https://example.com) end\n");
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
 
       expect(editor.state.doc.textContent).toContain(
         "[world](https://example.com)",
@@ -115,7 +120,7 @@ describe("Syntax Reveal (§5.1)", () => {
       loadMarkdown(editor, "Hello **world** end\n");
 
       // Step 1: expand
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("**world**");
 
       // Step 2: move cursor out (triggers collapse via appendTransaction)
@@ -141,7 +146,7 @@ describe("Syntax Reveal (§5.1)", () => {
       loadMarkdown(editor, "Hello [world](https://example.com) end\n");
 
       // Expand
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain(
         "[world](https://example.com)",
       );
@@ -169,7 +174,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello **world** end\n");
       // Move to "Hello" area (no marks)
-      moveCursorTo(editor, 3, 4);
+      editor.commands.setTextSelection(4);
 
       expect(editor.state.doc.textContent).toBe("Hello world end");
       editor.destroy();
@@ -178,7 +183,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("empty document produces no errors", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello world\n");
-      moveCursorTo(editor, 2, 5);
+      editor.commands.setTextSelection(5);
 
       expect(editor.state.doc.textContent).toBe("Hello world");
       editor.destroy();
@@ -225,7 +230,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadLinkWithTarget(editor);
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain(
         "[world](https://example.com)",
       );
@@ -245,7 +250,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadLinkWithTarget(editor);
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain(
         "[world](https://example.com)",
       );
@@ -296,7 +301,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadLinkWithSpaceHref(editor);
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("[world](<a b>)");
 
       forceCollapseSyntaxReveal(editor.view);
@@ -313,7 +318,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadLinkWithSpaceHref(editor);
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("[world](<a b>)");
 
       editor.commands.setTextSelection(2);
@@ -348,7 +353,7 @@ describe("Syntax Reveal (§5.1)", () => {
         ],
       });
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("[world](<a \\< b>)");
 
       forceCollapseSyntaxReveal(editor.view);
@@ -381,7 +386,7 @@ describe("Syntax Reveal (§5.1)", () => {
         ],
       });
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain('[world](<> "t")');
 
       forceCollapseSyntaxReveal(editor.view);
@@ -421,7 +426,7 @@ describe("Syntax Reveal (§5.1)", () => {
         ],
       });
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain('[world](<> "")');
 
       forceCollapseSyntaxReveal(editor.view);
@@ -471,7 +476,7 @@ describe("Syntax Reveal (§5.1)", () => {
         ],
       });
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("[world](<a \\< b>)");
 
       // Real DOM dispatch: link.ts's mousedown handler is registered via
@@ -504,7 +509,7 @@ describe("Syntax Reveal (§5.1)", () => {
       loadMarkdown(editor, "Hello **world** end\n");
       // "Hello " = 1-7, "world" bold = 7-12, " end" = 12-16.
       // Move caret inside "world" (pos 9 = wo|rld) → plugin expands to **world**.
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("**world**");
 
       forceCollapseSyntaxReveal(editor.view);
@@ -523,7 +528,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("bold: caret at trailing boundary collapses to after the mark", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello **world** end\n");
-      moveCursorTo(editor, 2, 9); // expand → "Hello **world** end"
+      editor.commands.setTextSelection(9); // expand → "Hello **world** end"
       // Place caret just after the closing ** (trailing boundary → stays expanded).
       // textContent "Hello **world** end": "**world**" at index 6, len 9 →
       // doc position after it = 6 + 9 + 1(content offset) = 16.
@@ -548,7 +553,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       const original = "Hello [world](https://example.com) end\n";
       loadMarkdown(editor, original);
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
 
       expect(editor.state.doc.textContent).toContain(
         "[world](https://example.com)",
@@ -576,7 +581,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("caret-in: expands to the literal (unescaped) label and serializeLiveDoc still reproduces the original", () => {
       const editor = createEditor();
       loadMarkdown(editor, original);
-      moveCursorTo(editor, 2, 8);
+      editor.commands.setTextSelection(8);
 
       expect(editor.state.doc.textContent).toContain("[a]b](u)");
       expect(serializeLiveDoc(editor)).toBe(original);
@@ -586,7 +591,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("forceCollapseSyntaxReveal restores the link mark with the original label and href", () => {
       const editor = createEditor();
       loadMarkdown(editor, original);
-      moveCursorTo(editor, 2, 8);
+      editor.commands.setTextSelection(8);
       expect(editor.state.doc.textContent).toContain("[a]b](u)");
 
       forceCollapseSyntaxReveal(editor.view);
@@ -603,7 +608,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("the appendTransaction cursor-exit path restores the link mark with the original label and href", () => {
       const editor = createEditor();
       loadMarkdown(editor, original);
-      moveCursorTo(editor, 2, 8);
+      editor.commands.setTextSelection(8);
       expect(editor.state.doc.textContent).toContain("[a]b](u)");
 
       editor.commands.setTextSelection(2);
@@ -631,7 +636,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("buildCollapseTr still collapses via the live label grammar when the labelEnd stash is missing", () => {
       const editor = createEditor();
       loadMarkdown(editor, original);
-      moveCursorTo(editor, 2, 8);
+      editor.commands.setTextSelection(8);
       const expanded = getSyntaxRevealExpanded(editor.state);
       expect(expanded).not.toBeNull();
       expect(expanded!.labelEnd).toBeDefined();
@@ -682,7 +687,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadLinkWithNbspHref(editor);
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("[world](a b)");
 
       forceCollapseSyntaxReveal(editor.view);
@@ -699,7 +704,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadLinkWithNbspHref(editor);
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("[world](a b)");
 
       editor.commands.setTextSelection(2);
@@ -716,7 +721,7 @@ describe("Syntax Reveal (§5.1)", () => {
       const editor = createEditor();
       loadLinkWithNbspHref(editor);
 
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       expect(editor.state.doc.textContent).toContain("[world](a b)");
 
       editor.view.dom.dispatchEvent(
@@ -769,7 +774,7 @@ describe("Syntax Reveal (§5.1)", () => {
         it("forceCollapseSyntaxReveal restores the original href", () => {
           const editor = createEditor();
           loadLinkWithHref(editor, href);
-          moveCursorTo(editor, 2, 8);
+          editor.commands.setTextSelection(8);
           expect(editor.state.doc.textContent).toContain("[xy](");
 
           forceCollapseSyntaxReveal(editor.view);
@@ -784,7 +789,7 @@ describe("Syntax Reveal (§5.1)", () => {
         it("the appendTransaction cursor-exit path restores the original href", () => {
           const editor = createEditor();
           loadLinkWithHref(editor, href);
-          moveCursorTo(editor, 2, 8);
+          editor.commands.setTextSelection(8);
 
           editor.commands.setTextSelection(2);
 
@@ -830,7 +835,7 @@ describe("Syntax Reveal (§5.1)", () => {
         ],
       });
 
-      moveCursorTo(editor, 2, 8);
+      editor.commands.setTextSelection(8);
       expect(editor.state.doc.textContent).toContain("[xy](< a](b>)");
 
       editor.view.dom.dispatchEvent(
@@ -894,7 +899,7 @@ describe("Syntax Reveal (§5.1)", () => {
           loadLinkWithHref(editor, href);
           const original = serializeLiveDoc(editor);
 
-          moveCursorTo(editor, 2, 8);
+          editor.commands.setTextSelection(8);
           expect(editor.state.doc.textContent).toContain("[xy](");
 
           expect(serializeLiveDoc(editor)).toBe(original);
@@ -904,7 +909,7 @@ describe("Syntax Reveal (§5.1)", () => {
         it("forceCollapseSyntaxReveal restores the original href", () => {
           const editor = createEditor();
           loadLinkWithHref(editor, href);
-          moveCursorTo(editor, 2, 8);
+          editor.commands.setTextSelection(8);
 
           forceCollapseSyntaxReveal(editor.view);
 
@@ -918,7 +923,7 @@ describe("Syntax Reveal (§5.1)", () => {
         it("the appendTransaction cursor-exit path restores the original href", () => {
           const editor = createEditor();
           loadLinkWithHref(editor, href);
-          moveCursorTo(editor, 2, 8);
+          editor.commands.setTextSelection(8);
 
           editor.commands.setTextSelection(2);
 
@@ -961,7 +966,7 @@ describe("Syntax Reveal (§5.1)", () => {
           },
         ],
       });
-      moveCursorTo(editor, 2, 8);
+      editor.commands.setTextSelection(8);
       expect(editor.state.doc.textContent).toContain("[xy](< a](b>)");
 
       // Move the cursor to just before the closing "]" (end of the label,
@@ -1029,7 +1034,7 @@ describe("Syntax Reveal (§5.1)", () => {
     it("a labelEnd that no longer points at ]( falls back to INACTIVE without corrupting the doc", () => {
       const editor = createEditor();
       loadMarkdown(editor, "Hello [world](https://example.com) end\n");
-      moveCursorTo(editor, 2, 9);
+      editor.commands.setTextSelection(9);
       const realExpanded = getSyntaxRevealExpanded(editor.state);
       expect(realExpanded?.kind).toBe("link");
       expect(realExpanded?.labelEnd).toBeDefined();
@@ -1081,7 +1086,7 @@ describe("issue 499 — refused link destination through expand/collapse", () =>
     loadMarkdown(editor, MD);
     expect(anchor(editor)?.hasAttribute("href")).toBe(false);
 
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(editor.state.doc.textContent).toContain(
       "[world](javascript:top.name)",
     );
@@ -1096,7 +1101,7 @@ describe("issue 499 — refused link destination through expand/collapse", () =>
   it("collapses back via forceCollapseSyntaxReveal with the href intact and no live anchor", () => {
     const editor = createEditor();
     loadMarkdown(editor, MD);
-    moveCursorTo(editor, 2, 9);
+    editor.commands.setTextSelection(9);
     expect(editor.state.doc.textContent).toContain(
       "[world](javascript:top.name)",
     );
