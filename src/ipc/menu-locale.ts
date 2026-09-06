@@ -6,7 +6,7 @@ import { type Locale, t } from "../i18n";
  * Mapping of Rust menu item/submenu IDs → i18n keys.
  * Predefined OS items (undo, redo, cut, copy, paste, etc.) are excluded.
  */
-const MENU_I18N_MAP: Record<string, string> = {
+export const MENU_I18N_MAP: Record<string, string> = {
   // Submenus
   menu_app: "menu.app",
   menu_file: "menu.file",
@@ -115,6 +115,7 @@ const MENU_I18N_MAP: Record<string, string> = {
   help_user_guide: "menu.help.userGuide",
   help_shortcuts: "menu.help.shortcuts",
   help_faq: "menu.help.faq",
+  help_homepage: "menu.help.homepage",
   help_report: "menu.help.report",
 };
 

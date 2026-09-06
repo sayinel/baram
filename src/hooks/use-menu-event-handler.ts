@@ -14,7 +14,7 @@ import { useWorkspaceStore } from "../stores/file/workspace";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
-import { HELP_DOC_URLS } from "../utils/help-urls";
+import { BARAM_HOMEPAGE, HELP_DOC_URLS } from "../utils/help-urls";
 import { requestReload } from "./use-close-guard";
 
 export interface MenuEventHandlerDeps {
@@ -114,6 +114,9 @@ export function useMenuEventHandler({
           break;
         case "help_faq":
           openUrl(HELP_DOC_URLS.faq).catch(() => {});
+          break;
+        case "help_homepage":
+          openUrl(BARAM_HOMEPAGE).catch(() => {});
           break;
 
         case "help_report":

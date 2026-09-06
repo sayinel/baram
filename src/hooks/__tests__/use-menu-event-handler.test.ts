@@ -23,7 +23,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { MenuEventHandlerDeps } from "../use-menu-event-handler";
 
 import { useUIStore } from "../../stores/ui/ui";
-import { HELP_DOC_URLS } from "../../utils/help-urls";
+import { BARAM_HOMEPAGE, HELP_DOC_URLS } from "../../utils/help-urls";
 import { requestReload } from "../use-close-guard";
 import { useMenuEventHandler } from "../use-menu-event-handler";
 
@@ -132,5 +132,13 @@ describe("menu event → Help (§4.2 online docs)", () => {
     menuEventHandler()({ payload: "help_user_guide" });
 
     expect(setRightPanelMode).not.toHaveBeenCalled();
+  });
+
+  it("routes help_homepage to the site root", () => {
+    renderHook(() => useMenuEventHandler(makeDeps()));
+
+    menuEventHandler()({ payload: "help_homepage" });
+
+    expect(openUrl).toHaveBeenCalledWith(BARAM_HOMEPAGE);
   });
 });

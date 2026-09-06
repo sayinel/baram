@@ -470,6 +470,9 @@ pub fn build_menu(
         .id("help_shortcuts")
         .build(app)?;
     let help_faq = MenuItemBuilder::new("FAQ").id("help_faq").build(app)?;
+    let help_homepage = MenuItemBuilder::new("Baram Homepage")
+        .id("help_homepage")
+        .build(app)?;
     let help_report = MenuItemBuilder::new("Report Issue...")
         .id("help_report")
         .build(app)?;
@@ -479,6 +482,7 @@ pub fn build_menu(
         .item(&help_shortcuts)
         .item(&help_faq)
         .separator()
+        .item(&help_homepage)
         .item(&help_report)
         .build()?;
 
@@ -586,6 +590,7 @@ pub fn build_menu(
     menu_items.insert("help_user_guide".into(), help_user_guide);
     menu_items.insert("help_shortcuts".into(), help_shortcuts);
     menu_items.insert("help_faq".into(), help_faq);
+    menu_items.insert("help_homepage".into(), help_homepage);
     menu_items.insert("help_report".into(), help_report);
     menu_items.insert("app_about".into(), app_about);
     menu_items.insert("file_settings".into(), file_settings);
