@@ -48,6 +48,7 @@
     "audit:css-vars": "npx tsx scripts/audit-css-vars.ts",
     "version:check": "node ./scripts/check-version-sync.mjs",
     "site:build": "node site/build-docs.mjs",
+    "site:ia": "node site/scripts/check-ia.mjs",
     "site:test": "node --test site/*.test.mjs",
     "prepare": "husky"
   },
@@ -143,7 +144,6 @@
     "jsdom": "^30.0.1",
     "knip": "^6.32.2",
     "lint-staged": "^17.4.1",
-    "marked": "^18.0.10",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "style-dictionary": "^5.5.0",

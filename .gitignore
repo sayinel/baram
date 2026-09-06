@@ -579,6 +579,10 @@ blob-report/
 *.tauri
 .tauri/
 
+# Astro 생성 타입 (site/) — 빌드 산출물이므로 커밋하지 않는다
+.astro/
+dist-site/
+
 # Internal development docs — managed locally, not published
 /dev/
 .docs/
