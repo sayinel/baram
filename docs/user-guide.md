@@ -25,7 +25,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Perspectives](#perspectives)
 - [Customization](#customization)
 - [Plugins](#plugins)
-- [Help Panel](#help-panel)
+- [Help Menu](#help-menu)
 
 ---
 
@@ -1965,21 +1965,21 @@ To build your own plugin, see the [Plugin Development Guide](plugin-development.
 
 ---
 
-## Help Panel
+## Help Menu
 
-Access the built-in Help panel from the **Help** menu. It includes three tabs:
+The **Help** menu opens this guide, the keyboard shortcut reference, and the FAQ in your browser — there is no in-app panel:
 
-| Tab            | Content                                 |
-| -------------- | --------------------------------------- |
-| **User Guide** | Quick-start overview of editor features |
-| **Shortcuts**  | Complete keyboard shortcut reference    |
-| **FAQ**        | Frequently asked questions and answers  |
+| Menu item              | Opens                                   |
+| ----------------------- | ---------------------------------------- |
+| **User Guide**          | This guide                              |
+| **Keyboard Shortcuts**  | Complete keyboard shortcut reference    |
+| **FAQ**                 | Frequently asked questions and answers  |
 
 ---
 
 ## Getting Help
 
-- **Help Panel** — Access from the Help menu for User Guide, Shortcuts, and FAQ
+- **Help Menu** — Opens the User Guide, Keyboard Shortcuts, and FAQ in your browser
 - **Command Palette** (`Cmd+P` or `Cmd+Shift+P`) — Search for any feature
 - **Quick Switcher** (`Cmd+K`) — Quickly open files and jump to headings
 - **Slash Commands** (`/`) — Quick block insertion

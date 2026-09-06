@@ -720,7 +720,7 @@ Images referenced by URL are included in HTML exports as links. For PDF exports,
 
 ### Where is the Help panel?
 
-Open the **Help** menu and select **User Guide**, **Keyboard Shortcuts**, or **FAQ**. The Help panel opens in the right sidebar with three tabs for quick in-app reference.
+There isn't one anymore. Open the **Help** menu and select **User Guide**, **Keyboard Shortcuts**, or **FAQ** — each opens the corresponding page in your browser instead of an in-app panel.
 
 ---
 
