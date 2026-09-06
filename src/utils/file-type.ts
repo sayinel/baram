@@ -40,6 +40,31 @@ export function getLanguageForFile(filePath: string): null | string {
   return EXT_TO_LANG[ext] ?? null;
 }
 
+/**
+ * Text files the editor has no language for — still perfectly openable, just
+ * unhighlighted. Kept apart from `EXT_TO_LANG` on purpose: adding them there
+ * would claim a CodeMirror language they do not have.
+ */
+const PLAIN_TEXT_EXTENSIONS = new Set(["csv", "log", "text", "tsv", "txt"]);
+
+/**
+ * True when the app can open the file as TEXT — a known code language or a
+ * plain-text type. Not a claim about editing rights (see `isEditableTextFile`
+ * in use-active-tab-surface for that); this answers "would the tab show
+ * readable source rather than mojibake".
+ *
+ * ‼️ The tab surface falls through to `return "code"` for ANYTHING unknown, so
+ * "the app opens it" is not the same question as "the app can read it". A .zip
+ * opens too — into CodeMirror, as garbage, with auto-save ready to write that
+ * garbage back. Ask this instead of assuming the fallback is safe.
+ */
+export function isTextFile(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  if (getLanguageForFile(filePath) !== null) return true;
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  return ext !== undefined && PLAIN_TEXT_EXTENSIONS.has(ext);
+}
+
 const HTML_EXTENSIONS = new Set(["htm", "html"]);
 
 /** Returns true for .html / .htm files — they get a rendered preview + source toggle. */
@@ -91,6 +116,21 @@ export function isMarkdownFile(filePath: string | undefined): boolean {
 }
 
 /**
+ * Assets markdown embeds with `![](…)` — images and SVG.
+ *
+ * They are files the app can open, but they are not wikilink targets: the
+ * syntax that puts them into a document is the image one, and offering them in
+ * `[[` autocomplete buries the notes in a vault whose bulk is attachments.
+ * PDF and HTML are deliberately NOT here — no markdown syntax embeds those, so
+ * a wikilink is the only way to point at them (§278).
+ */
+export function isMarkdownEmbeddableAsset(
+  filePath: string | undefined,
+): boolean {
+  return isImageFile(filePath) || isSvgFile(filePath);
+}
+
+/**
  * Returns true for .pdf files — binary, rendered read-only in an iframe via
  * the asset: protocol. Never read with the UTF-8 readFile IPC and never
  * written by any save path.
@@ -98,4 +138,10 @@ export function isMarkdownFile(filePath: string | undefined): boolean {
 export function isPdfFile(filePath: string | undefined): boolean {
   if (!filePath) return false;
   return filePath.split(".").pop()?.toLowerCase() === "pdf";
+}
+
+/** Returns true for .svg — text (xml), but embedded by markdown as an image. */
+export function isSvgFile(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  return filePath.split(".").pop()?.toLowerCase() === "svg";
 }

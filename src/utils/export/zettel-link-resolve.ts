@@ -39,6 +39,14 @@ export function resolveZettelLinksForExport(markdown: string): string {
 
       const title = titleForId(target);
       if (!title) return full;
+      // ‼️ `WIKILINK_RE`의 display 캡처는 `(?:\|([^\]]+))?` — `]`를 담지 못한다.
+      // 이스케이프 없이 넣으면 내보낸 마크다운을 **다시 파싱할 수 없다**: `- [ ] 장보기`는
+      // 링크를 통째로 리터럴로 만들고, `[[다른 노트]] 참고`는 조각으로 잘려 꼬리를 남긴다.
+      // §99로 이 자리에 들어오는 값이 "사용자가 프론트매터에 적은 제목"에서 "임의의
+      // 퀵캡처 본문 첫 줄"로 넓어졌고, 캡처 첫 줄에 `- [ ]`·`[텍스트](url)`·`[[링크]]`는 흔하다.
+      // 재작성을 포기하면 출력은 `[[id]]` 그대로 — 읽기엔 덜 좋아도 손상되지 않는다.
+      // 재작성은 편의이고, 파싱 가능성은 계약이다.
+      if (title.includes("]")) return full;
 
       return serializeWikilink({
         target,
