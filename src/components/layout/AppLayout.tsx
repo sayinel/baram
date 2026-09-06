@@ -15,11 +15,6 @@ const AIChatPanel = lazy(() =>
     default: m.AIChatPanel,
   })),
 );
-const HelpPanel = lazy(() =>
-  import("../help/HelpPanel").then((m) => ({
-    default: m.HelpPanel,
-  })),
-);
 const MemoriesPanel = lazy(() =>
   import("../journal/MemoriesPanel").then((m) => ({
     default: m.MemoriesPanel,
@@ -133,7 +128,6 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
             >
               <Suspense fallback={null}>
                 <AIChatPanel />
-                <HelpPanel />
                 <MemoriesPanel />
                 <PhotoGalleryPanel />
                 <PropertiesPanel />

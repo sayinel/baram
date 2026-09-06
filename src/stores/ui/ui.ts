@@ -23,7 +23,7 @@ export type ExportFormat =
 export type PdfRailTab = "highlights" | "pages";
 
 export type RightPanelMode =
-  "chat" | "help" | "memories" | "none" | "photo-gallery" | "properties";
+  "chat" | "memories" | "none" | "photo-gallery" | "properties";
 
 export type SidebarPanel =
   | "backlinks"

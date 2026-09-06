@@ -89,7 +89,7 @@ describe("§52 Workspace Store", () => {
       sidebarOpen: true,
       sidebarPanel: "outline",
       rightPanelOpen: true,
-      rightPanelMode: "help",
+      rightPanelMode: "memories",
     });
 
     const id = useWorkspaceStore
@@ -104,7 +104,7 @@ describe("§52 Workspace Store", () => {
     expect(preset!.layout.sidebarOpen).toBe(true);
     expect(preset!.layout.sidebarPanel).toBe("outline");
     expect(preset!.layout.rightPanelOpen).toBe(true);
-    expect(preset!.layout.rightPanelMode).toBe("help");
+    expect(preset!.layout.rightPanelMode).toBe("memories");
     expect(useWorkspaceStore.getState().activePresetId).toBe(id);
   });
 
@@ -192,7 +192,7 @@ describe("§52 Workspace Store", () => {
       sidebarOpen: false,
       sidebarPanel: "graph",
       rightPanelOpen: true,
-      rightPanelMode: "help",
+      rightPanelMode: "memories",
     });
     const id = useWorkspaceStore.getState().saveCustomPreset("Graph Layout");
 
@@ -213,7 +213,7 @@ describe("§52 Workspace Store", () => {
     expect(ui.sidebarOpen).toBe(true);
     expect(ui.sidebarPanel).toBe("graph");
     expect(ui.rightPanelOpen).toBe(true);
-    expect(ui.rightPanelMode).toBe("help");
+    expect(ui.rightPanelMode).toBe("memories");
   });
 });
 
