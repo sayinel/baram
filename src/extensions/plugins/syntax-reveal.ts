@@ -30,6 +30,7 @@ import {
   findMarkRange,
   INACTIVE,
   MARK_DELIMITERS,
+  nextSuppressed,
   syntaxRevealKey,
   type SyntaxRevealState,
   tagSyntaxRevealEphemeral,
@@ -100,10 +101,24 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         _old: EditorState,
         newState: EditorState,
       ): SyntaxRevealState {
+        // Recomputed on EVERY transaction — including the meta-carrying ones
+        // below, whose meta only ever describes `expanded`.
+        const suppressed = nextSuppressed(
+          tr,
+          value.suppressed,
+          newState.selection.from,
+        );
+
         const meta = tr.getMeta(syntaxRevealKey) as
-          SyntaxRevealState | undefined;
-        if (meta !== undefined) return meta;
-        if (!value.expanded) return value;
+          undefined | { expanded: ExpandedRange | null };
+        if (meta !== undefined) {
+          return { expanded: meta.expanded, suppressed };
+        }
+        if (!value.expanded) {
+          return value.suppressed === suppressed
+            ? value
+            : { expanded: null, suppressed };
+        }
 
         // Map positions through the transaction.
         // Bias 1 for from: inserts AT from push it right (typing at left boundary).
@@ -119,15 +134,17 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
             ? tr.mapping.map(value.expanded.labelEnd, 1)
             : undefined;
 
+        const inactive = { expanded: null, suppressed };
+
         // Validate open delimiter
         try {
           const openText = newState.doc.textBetween(
             from,
             from + value.expanded.openCheck.length,
           );
-          if (openText !== value.expanded.openCheck) return INACTIVE;
+          if (openText !== value.expanded.openCheck) return inactive;
         } catch {
-          return INACTIVE;
+          return inactive;
         }
 
         // For marks, also validate close delimiter
@@ -137,14 +154,15 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
               to - value.expanded.closeCheck.length,
               to,
             );
-            if (closeText !== value.expanded.closeCheck) return INACTIVE;
+            if (closeText !== value.expanded.closeCheck) return inactive;
           } catch {
-            return INACTIVE;
+            return inactive;
           }
         }
 
         return {
           expanded: { ...value.expanded, from, to, labelEnd },
+          suppressed,
         };
       },
     },
@@ -615,33 +633,19 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       }
 
-      // Track cursor position at last doc change to prevent
-      // InputRule/collapse → cursor at mark boundary → immediate re-expand.
-      // Expansion is only allowed after the cursor MOVES from this position.
-      let cursorAtDocChange: null | number = null;
-
       return {
-        update(view: EditorView, prevState: EditorState) {
+        update(view: EditorView) {
           const es = syntaxRevealKey.getState(view.state);
           // If expanded, appendTransaction handles cursor-out collapse.
           if (es?.expanded) return;
 
-          // On doc change, remember cursor position and skip ALL expansion.
-          // This prevents InputRule → image node → immediate re-expand cycle
-          // (e.g. typing ![text](url) creates image, then SyntaxReveal would
-          // immediately expand it back to text with cursor at ![).
-          if (view.state.doc !== prevState.doc) {
-            cursorAtDocChange = view.state.selection.from;
-            return;
-          }
-
-          // Skip expansion until cursor moves from the doc-change position
-          if (cursorAtDocChange !== null) {
-            if (view.state.selection.from === cursorAtDocChange) {
-              return;
-            }
-            cursorAtDocChange = null;
-          }
+          // Don't re-expand what an edit just put under the caret — an
+          // InputRule's fresh node, or the reveal we just collapsed. The
+          // suppressed range is maintained per transaction in `apply` so a
+          // caret that moved on to a DIFFERENT node in the same round (which
+          // is what an arrow key between two wikilinks does) is not caught by
+          // it. See nextSuppressed.
+          if (es?.suppressed) return;
 
           // Check for node selection (image/wikilink click/arrow-key navigation)
           checkNodeSelection(view);
