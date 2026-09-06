@@ -12,6 +12,7 @@ import ReactDOM from "react-dom/client";
 // else. CSS touches no store, so the ordering guarantee below is unaffected.
 import "./styles/index.css";
 import { migrateFromLocalStorage } from "./stores/system/tauri-storage";
+import { installUnhandledRejectionPolicy } from "./utils/async-error-policy";
 import { markAppStart } from "./utils/perf";
 import { installStreamPolyfills } from "./utils/readable-stream-async-iterator";
 
@@ -25,14 +26,15 @@ installStreamPolyfills();
 // §8.4 Record app start time for performance measurement
 markAppStart();
 
-// Prevent WKWebView crash from unhandled promise rejections.
-// On macOS WKWebView, unhandled rejections (e.g., Tauri event listener
-// cleanup race, stale IPC calls) can crash the entire WebView process,
-// causing the app to reload and lose all editor state.
-window.addEventListener("unhandledrejection", (event) => {
-  event.preventDefault();
-
-  console.warn("[Suppressed unhandled rejection]", event.reason);
+// issue 265 — unhandled promise rejections. The known WKWebView teardown
+// rejection (Tauri's event internals gone while a listener unregisters) is
+// suppressed as before, because on macOS it could take the whole WebView
+// process down and reload the app. Everything else is REPORTED — a leaked
+// listener or a rejected IPC call must be visible — and the browser default
+// is prevented only in production, where the crash guard is wanted; see
+// utils/async-error-policy.ts for the classification.
+installUnhandledRejectionPolicy(window, {
+  isProduction: import.meta.env.PROD,
 });
 
 // Also catch synchronous uncaught errors that could crash the WebView.

@@ -52,7 +52,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 const dialogGate = { current: null as Deferred<null | string[]> | null };
 
-vi.mock("../../ipc/invoke", () => ({
+vi.mock("../../ipc/invoke", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../ipc/invoke")>()),
   createDir: vi.fn(() => createDirGate.current?.promise ?? Promise.resolve()),
   importFile: vi.fn((from: string) => {
     importedFiles.push(from);

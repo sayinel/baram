@@ -3,10 +3,10 @@
 use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
 use tokio::sync::oneshot;
 
-use super::{LlmError, ModelInfo};
+use super::framing::{LineDecoder, LineEvent, ParseFailure};
+use super::{emit_done, emit_token, map_framing_error, map_parse_failure, LlmError, ModelInfo};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAIModelsResponse {
@@ -99,6 +99,18 @@ struct OpenAIMessage {
 pub(crate) struct OpenAISseChunk {
     #[serde(default)]
     pub choices: Vec<OpenAIChoice>,
+    /// A top-level error envelope — the record is well-formed JSON, so without
+    /// this it deserialised as "no choices" and vanished.
+    #[serde(default)]
+    pub error: Option<OpenAIError>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct OpenAIError {
+    #[serde(default)]
+    pub message: String,
+    #[serde(default, rename = "type")]
+    pub error_type: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +125,51 @@ pub(crate) struct OpenAIChoice {
 pub(crate) struct OpenAIDelta {
     #[serde(default)]
     pub content: Option<String>,
+}
+
+const PROVIDER: &str = "openai";
+
+/// One complete SSE line → what it means (issue 264). Every choice's content
+/// is emitted BEFORE a finish reason ends the stream — the old loop checked
+/// the finish first and dropped text carried in the final chunk.
+pub(crate) fn parse_line(line: &str) -> Result<Vec<LineEvent>, ParseFailure> {
+    let Some(data) = super::framing::sse_data(line) else {
+        return Ok(Vec::new());
+    };
+    if data == "[DONE]" {
+        return Ok(vec![LineEvent::Done]);
+    }
+    let chunk: OpenAISseChunk =
+        serde_json::from_str(data).map_err(|e| super::framing::malformed_json(data, &e))?;
+    if let Some(err) = chunk.error {
+        return Err(ParseFailure::Provider(format!(
+            "{}: {}",
+            err.error_type, err.message
+        )));
+    }
+    let mut events = Vec::new();
+    let mut finished = false;
+    for choice in chunk.choices {
+        if let Some(content) = choice.delta.and_then(|d| d.content) {
+            if !content.is_empty() {
+                events.push(LineEvent::Token(content));
+            }
+        }
+        match choice.finish_reason.as_deref() {
+            None | Some("") => {}
+            Some("content_filter") => {
+                return Err(ParseFailure::Provider(
+                    "generation stopped: finish_reason content_filter".to_string(),
+                ));
+            }
+            // stop, length, and anything a compatible server may add.
+            Some(_) => finished = true,
+        }
+    }
+    if finished {
+        events.push(LineEvent::Done);
+    }
+    Ok(events)
 }
 
 /// OpenAI-compatible SSE streaming call.
@@ -187,7 +244,7 @@ pub async fn complete_stream(
     }
 
     let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
+    let mut decoder = LineDecoder::default();
     let mut token_count: u32 = 0;
 
     loop {
@@ -200,54 +257,24 @@ pub async fn complete_stream(
                     break;
                 };
                 let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
-                let text = String::from_utf8_lossy(&chunk);
-                buffer.push_str(&text);
-
-                // Parse SSE lines from buffer
-                while let Some(line_end) = buffer.find('\n') {
-                    let line = buffer[..line_end].trim_end_matches('\r').to_string();
-                    buffer = buffer[line_end + 1..].to_string();
-
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    if let Some(data) = line.strip_prefix("data: ") {
-                        if data == "[DONE]" {
-                            let _ = app_handle.emit(
-                                "llm:done",
-                                serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-                            );
-                            return Ok(());
-                        }
-
-                        if let Ok(chunk) = serde_json::from_str::<OpenAISseChunk>(data) {
-                            for choice in &chunk.choices {
-                                // Check finish_reason first
-                                if let Some(reason) = &choice.finish_reason {
-                                    if reason == "stop" || reason == "length" {
-                                        let _ = app_handle.emit(
-                                            "llm:done",
-                                            serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-                                        );
-                                        return Ok(());
-                                    }
-                                }
-                                // Extract token from delta
-                                if let Some(delta) = &choice.delta {
-                                    if let Some(content) = &delta.content {
-                                        if !content.is_empty() {
-                                            token_count += 1;
-                                            let _ = app_handle.emit(
-                                                "llm:token",
-                                                serde_json::json!({
-                                                    "requestId": request_id,
-                                                    "token": content,
-                                                }),
-                                            );
-                                        }
-                                    }
-                                }
+                // issue 264: bytes in, complete lines out — a chunk boundary can
+                // no longer cut a character in half (framing.rs).
+                decoder
+                    .push(&chunk)
+                    .map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                while let Some(line) = decoder.next_line() {
+                    let line = line.map_err(|e| map_framing_error(PROVIDER, request_id, e))?;
+                    let events =
+                        parse_line(line).map_err(|f| map_parse_failure(PROVIDER, request_id, f))?;
+                    for event in events {
+                        match event {
+                            LineEvent::Token(token) => {
+                                token_count += 1;
+                                emit_token(app_handle, request_id, &token);
+                            }
+                            LineEvent::Done => {
+                                emit_done(app_handle, request_id, token_count);
+                                return Ok(());
                             }
                         }
                     }
@@ -256,13 +283,14 @@ pub async fn complete_stream(
         }
     }
 
-    // Stream ended without explicit [DONE]
-    let _ = app_handle.emit(
-        "llm:done",
-        serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
-    );
-
-    Ok(())
+    // issue 264: the connection ended before the provider's terminal record.
+    // An unterminated last SSE line is not an event; whatever it held went
+    // with the connection. Say so instead of reporting a finished completion.
+    Err(LlmError::IncompleteStream {
+        provider: PROVIDER,
+        request_id: request_id.to_string(),
+        tokens: token_count,
+    })
 }
 
 #[cfg(test)]
