@@ -107,6 +107,22 @@ Each context is independent — it has its own file tree, settings, and tab hist
 
 Multiple vaults can be open simultaneously, each as its own tab in the Context Tab Bar.
 
+### Folder Access Approval
+
+Baram asks before it reads a location it has not been allowed into. The first time you open a folder or a file outside an already-approved location, a dialog appears — *Allow Baram to read and write this folder and everything under it?* — with **Allow** and **Deny**.
+
+- An approved **folder** covers everything beneath it, so you are asked once per workspace, not once per file.
+- An approved **single file** covers that file and images sitting in the same folder, so the pictures in it still render.
+- **Denying is not an error.** The location simply does not open and a toast says so. Nothing is recorded, so you can pick the same folder again later and be asked again.
+- Choosing a folder yourself through **File > Open Folder** is the approval — the act of picking it in the system dialog is what grants access.
+- At startup, a saved context that is no longer approved is asked for again. If you deny it, **only that context is skipped** and the rest of your workspace still restores.
+
+Approvals are recorded by Baram itself, in its application data directory — not inside your vault and not in any file the editor can write, so a document or plugin cannot approve locations on your behalf.
+
+**Settings > Vault > Approved locations** lists everything you have approved and lets you **Revoke** any of it. Revoking removes the approval and closes that vault's tab; it takes full effect after a restart.
+
+> On macOS this is separate from the system's own **Files and Folders** permission prompt, which is macOS asking on behalf of every app. You may see both once: macOS deciding whether Baram may touch Documents or Desktop at all, and Baram deciding which folder you meant to open. See the [FAQ](faq.md) if a folder opens but shows no files.
+
 ### Cross-Vault Wikilinks
 
 To link to a file in a different vault, use the vault alias prefix:
@@ -1813,7 +1829,7 @@ Available settings tabs:
 | **Language**     | Interface language (English, Korean)                                                            |
 | **Keybindings**  | Customize keyboard shortcuts — search, rebind, reset                                            |
 | **Plugins**      | Browse, install, update, and manage community plugins                                           |
-| **Vault**        | Initialize/revert vault, vault alias, journal directory, and cross-vault settings              |
+| **Vault**        | Initialize/revert vault, vault alias, journal directory, approved locations, and cross-vault settings |
 
 ### Themes
 

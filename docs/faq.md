@@ -716,6 +716,20 @@ To turn any folder into a vault, open it in Baram, then go to **Settings > Vault
 
 Yes. Each vault (or plain folder) you open appears as a tab in the **Context Tab Bar** at the top of the left sidebar. Click any tab to switch between contexts. Each context has its own file tree, tab history, and settings.
 
+### Why does Baram ask permission before opening a folder?
+
+Baram reads and writes only where you have allowed it to. The first time you open a folder or a file it has not been allowed into, it asks — *Allow Baram to read and write this folder and everything under it?* An approved folder covers everything beneath it, so you are asked once per workspace rather than once per file; an approved single file also covers images sitting next to it, so the pictures in it still render.
+
+Denying is not an error: the location simply does not open, and nothing is recorded, so you can choose it again later and be asked again. At startup, a saved context that is no longer approved is asked for again — deny it and only that one is skipped, while the rest of your workspace still restores.
+
+Approvals are kept by Baram in its own application data directory, not inside your vault and not in any file the editor itself can write, so a document or a plugin cannot approve locations on your behalf.
+
+### How do I see or undo what I have approved?
+
+**Settings > Vault > Approved locations** lists every approved folder and file, each with a **Revoke** button. Revoking removes the approval and closes that vault's tab; it takes full effect after a restart.
+
+> On macOS this is separate from the system's own Files and Folders prompt — see [macOS asks for folder access](#macos-asks-for-folder-access).
+
 ### How do I link files across vaults?
 
 Use the cross-vault wikilink syntax: `[[alias::filename]]`. Replace `alias` with the target vault's short name (configured in **Settings > Vault > Alias**) and `filename` with the file name (without `.md`). For example, `[[research::climate-data]]` links to `climate-data.md` in the vault aliased `research`. If the target vault is not open, Baram prompts you to open it.
@@ -810,6 +824,8 @@ macOS shows a system permission prompt the first time an app reads files in a pr
 **Upgrading from v0.5.x or earlier?** You will be asked once more, even though you already allowed it. Those builds were ad-hoc signed, which gave the app no identity that survived a rebuild, so macOS treated every version as a different app and re-asked every time. From v0.6.0 Baram is signed with an Apple Developer ID certificate, and the identity is stable — this is the last time you should see it.
 
 If the prompt still repeats on v0.6.0 or later, grant **Full Disk Access** under **System Settings > Privacy & Security**, or keep your vault outside the protected folders (e.g. `~/Notes`).
+
+This is macOS asking, not Baram. Baram has a separate approval of its own for the folder you opened — see [Why does Baram ask permission before opening a folder?](#why-does-baram-ask-permission-before-opening-a-folder).
 
 ### The editor feels slow
 
