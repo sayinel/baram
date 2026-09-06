@@ -14,6 +14,7 @@ import { useWorkspaceStore } from "../stores/file/workspace";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
 import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
+import { HELP_DOC_URLS } from "../utils/help-urls";
 import { requestReload } from "./use-close-guard";
 
 export interface MenuEventHandlerDeps {
@@ -112,34 +113,18 @@ export function useMenuEventHandler({
           toggleQuickSwitcher();
           break;
         case "help_faq":
-          useUIStore.getState().setRightPanelMode("help");
-          if (!useUIStore.getState().rightPanelOpen) {
-            useUIStore.getState().toggleRightPanel();
-          }
-          window.dispatchEvent(new CustomEvent("help-tab", { detail: "faq" }));
+          openUrl(HELP_DOC_URLS.faq).catch(() => {});
           break;
 
         case "help_report":
           openUrl("https://github.com/sayinel/baram/issues").catch(() => {});
           break;
         case "help_shortcuts":
-          useUIStore.getState().setRightPanelMode("help");
-          if (!useUIStore.getState().rightPanelOpen) {
-            useUIStore.getState().toggleRightPanel();
-          }
-          window.dispatchEvent(
-            new CustomEvent("help-tab", { detail: "shortcuts" }),
-          );
+          openUrl(HELP_DOC_URLS.shortcuts).catch(() => {});
           break;
         // --- Help menu handlers ---
         case "help_user_guide":
-          useUIStore.getState().setRightPanelMode("help");
-          if (!useUIStore.getState().rightPanelOpen) {
-            useUIStore.getState().toggleRightPanel();
-          }
-          window.dispatchEvent(
-            new CustomEvent("help-tab", { detail: "guide" }),
-          );
+          openUrl(HELP_DOC_URLS.guide).catch(() => {});
           break;
         case "insert_blockquote":
           chainWithVimExternalEdit(editor)?.focus().toggleBlockquote().run();
