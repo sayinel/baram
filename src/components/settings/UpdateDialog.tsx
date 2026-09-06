@@ -71,7 +71,6 @@ export function UpdateDialog() {
   if (!dialogOpen) return null;
 
   const busy = status === "downloading" || status === "installing";
-  const mac = isMacPlatform();
   const percent =
     progress?.total && progress.total > 0
       ? Math.min(100, Math.round((progress.downloaded / progress.total) * 100))
@@ -140,16 +139,10 @@ export function UpdateDialog() {
               });
             }}
           >
-            {mac
-              ? t("update.dialog.download")
-              : t("update.dialog.installRestart")}
+            {t("update.dialog.installRestart")}
           </button>
         </div>
       </div>
     </div>
   );
-}
-
-function isMacPlatform(): boolean {
-  return typeof navigator !== "undefined" && navigator.platform.includes("Mac");
 }

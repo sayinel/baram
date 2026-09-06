@@ -35,6 +35,41 @@ afterEach(() => {
   useAppUpdateStore.setState(RESET);
 });
 
+function setPlatform(value: string): void {
+  Object.defineProperty(navigator, "platform", {
+    value,
+    configurable: true,
+  });
+}
+
+const originalPlatform = navigator.platform;
+
+afterEach(() => {
+  setPlatform(originalPlatform);
+});
+
+// §206 The primary button used to read "Download" on macOS, because the mac
+// path opened the releases page instead of installing. It installs in place
+// now, so the label has to say what the button does — a button that says
+// "Download" and then restarts the app is worse than either behaviour alone.
+describe("UpdateDialog — the primary action names what it does", () => {
+  it("says Install & Restart on macOS, not Download", () => {
+    setPlatform("MacIntel");
+    useAppUpdateStore.setState({
+      dialogOpen: true,
+      status: "available",
+      availableVersion: "0.7.1",
+    });
+
+    render(<UpdateDialog />);
+
+    expect(
+      screen.getByRole("button", { name: "Install & Restart" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+});
+
 describe("UpdateDialog — §206-review FIX 1: busy close-guard", () => {
   it("Escape does NOT close the dialog while downloading", () => {
     useAppUpdateStore.setState({

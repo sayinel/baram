@@ -123,8 +123,45 @@ describe("checkForAppUpdate", () => {
 });
 
 describe("installAppUpdate — platform branching", () => {
-  it("macOS never installs in-place — it only opens the releases page", async () => {
-    const downloadAndInstall = vi.fn();
+  // §206 macOS installs in place like every other platform. It did not until
+  // now: releases were ad-hoc signed, which gave the bundle no identity that
+  // survived a rebuild, so replacing it reset the TCC folder grant. Releases
+  // have been Developer ID signed and notarized since v0.6.0, so the reason
+  // for the exception is gone — see dev/guides/auto-update-206.md for the hop
+  // verification this shipped with.
+  it("macOS downloads, installs, and relaunches in place", async () => {
+    const downloadAndInstall = vi.fn().mockImplementation(async (onEvent) => {
+      onEvent({ event: "Started", data: { contentLength: 100 } });
+      onEvent({ event: "Progress", data: { chunkLength: 100 } });
+      onEvent({ event: "Finished" });
+    });
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      downloadAndInstall,
+    });
+    await checkForAppUpdate(true);
+
+    setPlatform("MacIntel");
+    await installAppUpdate();
+
+    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(relaunchMock).toHaveBeenCalledOnce();
+    expect(openUrlMock).not.toHaveBeenCalled();
+    expect(useAppUpdateStore.getState().progress).toEqual({
+      downloaded: 100,
+      total: 100,
+    });
+  });
+
+  // The fallback is platform-independent: if the in-place install throws on
+  // macOS the way it does for a Linux deb, the user must still reach the
+  // download. Pinned separately because the mac path no longer has a branch of
+  // its own that could carry it.
+  it("macOS install failure falls back to the releases page", async () => {
+    const downloadAndInstall = vi
+      .fn()
+      .mockRejectedValue(new Error("bundle replace failed"));
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
@@ -138,8 +175,10 @@ describe("installAppUpdate — platform branching", () => {
     expect(openUrlMock).toHaveBeenCalledWith(
       "https://github.com/sayinel/baram/releases/latest",
     );
-    expect(downloadAndInstall).not.toHaveBeenCalled();
     expect(relaunchMock).not.toHaveBeenCalled();
+    const s = useAppUpdateStore.getState();
+    expect(s.status).toBe("error");
+    expect(s.fallbackOpened).toBe(true);
   });
 
   it("Windows downloads, installs, and relaunches", async () => {

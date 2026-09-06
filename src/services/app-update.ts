@@ -1,16 +1,22 @@
 // §206 App auto-update — check()/install() wrapper + periodic background
-// checker. macOS never replaces the app bundle: it only notifies and opens the
-// releases page.
+// checker. Every platform downloads, installs, and relaunches in place.
 //
-// The reason was that macOS builds were ad-hoc signed. That is no longer true —
-// release.yml now signs with a Developer ID certificate and notarizes — but the
-// gate below stays until a signed build has actually shipped and the in-place
-// replace path has been exercised against it. Replacing a notarized bundle is
-// the one update path that cannot be tested before the certificate exists, and
-// getting it wrong leaves a user with an app macOS refuses to launch. Windows and
-// Linux(AppImage) download, install, and relaunch. Linux deb/rpm installs are
-// unsupported by the updater plugin, so an install error there falls back to
-// opening the releases page too (mirrors src/plugins/update-checker.ts).
+// macOS was notify-only until this change. The reason was that its releases were
+// ad-hoc signed, which left the bundle no identity that survived a rebuild, so
+// replacing it reset the TCC folder grant. release.yml has signed with a
+// Developer ID certificate and notarized since v0.6.0, so that reason is gone.
+//
+// ‼️ The gate lived in the **running** app, so taking it out here changes nothing
+// for a user updating away from a build that still has it — the first hop it
+// governs is the one *out of* the release carrying this file. That is deliberate:
+// it gives the signed-to-signed replace a release cycle to be verified before any
+// user takes it. The procedure is in dev/guides/auto-update-206.md.
+//
+// Linux deb/rpm installs are unsupported by the updater plugin, so an install
+// error there falls back to opening the releases page (mirrors
+// src/plugins/update-checker.ts). That fallback is platform-independent — it is
+// the only thing standing between a failed replace and a user with no way
+// forward.
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
@@ -72,18 +78,11 @@ export async function checkForAppUpdate(manual: boolean): Promise<void> {
   }
 }
 
-/** Install the update found by the last checkForAppUpdate() (macOS: notify-only). */
+/** Install the update found by the last checkForAppUpdate(). */
 export async function installAppUpdate(): Promise<void> {
   const store = useAppUpdateStore.getState();
   const update = pendingUpdate;
   if (!update) return;
-
-  if (isMacPlatform()) {
-    openUrl(RELEASES_URL).catch((err) =>
-      logger.warn("[AppUpdate] openUrl failed:", err),
-    );
-    return;
-  }
 
   store.setDownloading();
   downloadedBytes = 0;
@@ -151,8 +150,4 @@ export function stopAppUpdateChecker(): void {
 
 function currentLocale(): Locale {
   return useSettingsStore.getState().locale as Locale;
-}
-
-function isMacPlatform(): boolean {
-  return typeof navigator !== "undefined" && navigator.platform.includes("Mac");
 }
