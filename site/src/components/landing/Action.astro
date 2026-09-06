@@ -1,0 +1,13 @@
+---
+import { useTranslations, type Locale } from "../../i18n";
+import { withBase } from "../../../routes.mjs";
+const { locale } = Astro.props as { locale: Locale };
+const t = useTranslations(locale);
+---
+<section id="action" class="section section-alt">
+  <div class="container">
+    <h2>{t("action.title")}</h2>
+    <p>{t("action.desc")}</p>
+    <img class="demo" src={withBase("/assets/demo.gif")} alt="Baram live editing demo — markdown syntax disappearing as you type" loading="lazy" />
+  </div>
+</section>

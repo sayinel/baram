@@ -1,0 +1,102 @@
+---
+// 랜딩 페이지 셸 — nav · footer · head. Starlight 레이아웃 밖이다(디자인 자유도).
+// 언어는 URL 이 정한다 — 옛 `localStorage` + `data-i18n` 치환은 폐기했다.
+import { docPath, withBase } from "../../routes.mjs";
+import { LOCALE_LABELS, otherLocale, useTranslations, type Locale } from "../i18n";
+import "../styles/site.css";
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const other = otherLocale(locale);
+
+const guide = withBase(docPath("getting-started", locale));
+
+const title = "Baram — Lightweight WYSIWYG Markdown Editor";
+const description = t("hero.sub");
+const canonical = new URL(withBase(`/${locale}/`), Astro.site).href;
+const ogImage = new URL(withBase("/assets/hero.png"), Astro.site).href;
+---
+
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang={other} href={new URL(withBase(`/${other}/`), Astro.site).href} />
+    <link rel="alternate" hreflang="x-default" href={new URL(withBase("/"), Astro.site).href} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/png" href={withBase("/assets/favicon.png")} />
+    <link rel="apple-touch-icon" href={withBase("/assets/apple-touch-icon.png")} />
+    <script is:inline>
+      // Starlight 과 같은 계약을 쓴다: localStorage['starlight-theme'] → dataset.theme.
+      // 인라인·동기 실행이어야 첫 페인트 전에 적용돼 깜박임이 없다.
+      (() => {
+        try {
+          const stored = localStorage.getItem("starlight-theme");
+          if (stored === "light" || stored === "dark") {
+            document.documentElement.dataset.theme = stored;
+          }
+        } catch {
+          /* private 모드 등 — 시스템 설정을 그대로 따른다 */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="nav">
+      <div class="container nav-inner">
+        <a class="nav-logo" href={withBase(`/${locale}/`)}>
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset={withBase("/assets/baram-logo-dark.png")} />
+            <img src={withBase("/assets/baram-logo.png")} alt="Baram" />
+          </picture>
+        </a>
+        <nav class="nav-links">
+          <a href="#features">{t("nav.features")}</a>
+          <a href="#shortcuts">{t("nav.shortcuts")}</a>
+          <a href="#plugins">{t("nav.plugins")}</a>
+          <a href="#install">{t("nav.install")}</a>
+          <a href="#faq">{t("nav.faq")}</a>
+          <a href={guide}>{t("nav.docs")}</a>
+        </nav>
+        <div class="nav-actions">
+          <a class="lang-toggle" href={withBase(`/${other}/`)} hreflang={other} lang={other}>
+            {LOCALE_LABELS[other]}
+          </a>
+          <button id="theme-toggle" class="lang-toggle" type="button" aria-label="Toggle theme">◐</button>
+          <a class="github-badge" href="https://github.com/sayinel/baram" aria-label="Star Baram on GitHub">
+            ★ <span id="github-stars">GitHub</span>
+          </a>
+        </div>
+      </div>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer class="footer">
+      <div class="container">
+        <span>{t("footer.tagline")}</span>
+        <nav>
+          <a href="https://github.com/sayinel/baram">GitHub</a>
+          <a href="https://github.com/sayinel/baram/releases">{t("footer.releases")}</a>
+          <a href={guide}>{t("footer.docs")}</a>
+        </nav>
+      </div>
+    </footer>
+    <script>
+      import { initLanding } from "../scripts/landing";
+      initLanding();
+    </script>
+  </body>
+</html>

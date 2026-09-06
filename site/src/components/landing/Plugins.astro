@@ -1,0 +1,16 @@
+---
+import { useTranslations, type Locale } from "../../i18n";
+import { docPath, withBase } from "../../../routes.mjs";
+const { locale } = Astro.props as { locale: Locale };
+const t = useTranslations(locale);
+---
+<section id="plugins" class="section section-alt">
+  <div class="container">
+    <h2>{t("plugins.title")}</h2>
+    <p>{t("plugins.desc")}</p>
+    <div class="plugin-links">
+      <a href="https://github.com/sayinel/baram-plugins">{t("plugins.registry")}</a>
+      <a href={withBase(docPath("plugin-dev/overview-and-capabilities", locale))}>{t("plugins.devGuide")}</a>
+    </div>
+  </div>
+</section>

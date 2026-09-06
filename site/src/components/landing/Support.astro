@@ -1,0 +1,15 @@
+---
+import { useTranslations, type Locale } from "../../i18n";
+const { locale } = Astro.props as { locale: Locale };
+const t = useTranslations(locale);
+---
+<section id="support" class="section">
+  <div class="container">
+    <h2>{t("support.title")}</h2>
+    <p>{t("support.desc")}</p>
+    <div class="support-cta">
+      <a class="btn btn-primary" href="https://ko-fi.com/sayinel">{t("support.kofi")}</a>
+      <a class="btn btn-secondary" href="https://github.com/sayinel/baram">{t("support.star")}</a>
+    </div>
+  </div>
+</section>
