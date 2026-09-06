@@ -356,10 +356,11 @@ export function PluginDetail({
           </h3>
           {/* ‼️ Rendered, not dumped. This was a `<pre>` holding the raw source, so a
               markdown editor showed a markdown document with its headings, links and code
-              fences as plain text. `MarkdownRenderer` is the same component AI chat and the
-              update dialog use, and it sanitises link and image URLs — this content comes
-              from a plugin author. The 300px clamp is gone with it: this screen now owns a
-              whole editor tab. */}
+              fences as plain text. `MarkdownRenderer` is the same component AI chat output
+              uses, and it sanitises link and image URLs — but note this call site takes the
+              UNTRUSTED default while chat opts into `trust="trusted"`, because this content
+              comes from a plugin author. The 300px clamp is gone with it: this screen now
+              owns a whole editor tab. */}
           <div className="plugin-detail-readme">
             <MarkdownRenderer content={readme} />
           </div>
