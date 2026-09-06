@@ -193,7 +193,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 22,
+      version: 23,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -520,6 +520,17 @@ export const useSettingsStore = create<SettingsState>()(
               }
               return { ...theme, colors };
             });
+          }
+        }
+
+        // v22 → v23: §4.2 인앱 Help 패널 제거 — 영속된 활동표시줄 설정에서
+        // 'help' 항목을 걷어낸다. 남겨두면 ActivityBar는 아이콘이 없어 거르지만
+        // ActivityBarTab은 영속 배열을 그대로 렌더해 "켜도 아무 일도 없는" 행이
+        // 남고, 라벨 i18n 키도 함께 지웠으므로 키 문자열이 그대로 노출된다.
+        if (version < 23) {
+          const cfg = state.activityBarConfig as undefined | { id: string }[];
+          if (Array.isArray(cfg)) {
+            state.activityBarConfig = cfg.filter((c) => c.id !== "help");
           }
         }
 
