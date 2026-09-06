@@ -24,6 +24,27 @@ Yes. Baram is free and open source software, licensed under the Apache License 2
 - **Lightweight** — ~8MB (Windows) to ~23MB (the universal macOS build, which carries both architectures), powered by Tauri instead of Electron
 - **Rich content** — KaTeX math, CodeMirror 6 code blocks, Mermaid diagrams, GFM tables, callouts, toggles, all within the WYSIWYG experience
 
+### How does Baram update itself?
+
+Baram checks GitHub Releases for a new version 15 seconds after startup and once a day
+after that. Turn that off with **Settings > General > Updates > Check for Updates
+Automatically**; **Check Now** in the same place always checks on demand, whether the
+automatic check is on or off.
+
+When a version is found you get a dialog with the release notes and an **Install & Restart**
+button. Baram downloads the update, replaces itself, and restarts — on macOS, Windows, and
+Linux AppImage alike.
+
+Two cases fall back to opening the releases page for a manual download instead:
+
+- **Linux `.deb` and `.rpm`** installs, which the updater cannot perform.
+- **Any install that fails.** The dialog says what went wrong and opens the page, so a
+  failed replace never leaves you without a way forward.
+
+> **Updating to v0.7.0 on macOS is still manual.** In-place installing arrived *in* v0.7.0,
+> and the version performing an update is the one you are updating *from* — so v0.6.x asks
+> you to download it by hand, and v0.7.0 onward installs on its own.
+
 ---
 
 ## Themes & Appearance
