@@ -70,7 +70,7 @@ describe("CommandPalette — Open Today's Journal", () => {
     useWorkspaceStore.setState({ applyPreset });
 
     renderPalette();
-    fireEvent.click(screen.getByText("화면구성: 저널"));
+    fireEvent.click(screen.getByText("Journal Perspective"));
 
     expect(applyPreset).toHaveBeenCalledWith("journal");
   });

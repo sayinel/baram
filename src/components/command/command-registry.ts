@@ -448,26 +448,40 @@ export function buildCommands(deps: CommandDeps): CommandItem[] {
         );
       },
     },
-    // §52 Workspace Presets
+    // §52 Perspectives. Labels match Settings > Keybindings so a search for what
+    // the app calls the thing finds it; this file has no i18n (`t()` appears zero
+    // times) and every other category is English, so these are too.
+    //
+    // ‼️ The shortcut digits are the ones in `keybinding-registry.ts`. They were
+    // literals here and drifted — Journal advertised ⌥⌘2, which is bound to Zettel,
+    // so following the palette took you to the wrong space.
     {
       id: "workspace:writing",
-      label: "화면구성: 글쓰기",
-      category: "화면구성",
+      label: "Writing Perspective",
+      category: "Perspective",
       shortcut: "⌥⌘1",
       action: () => useWorkspaceStore.getState().applyPreset("writing"),
     },
     {
-      id: "workspace:journal",
-      label: "화면구성: 저널",
-      category: "화면구성",
+      id: "workspace:zettelkasten",
+      label: "Zettel Perspective",
+      category: "Perspective",
       shortcut: "⌥⌘2",
+      action: () => useWorkspaceStore.getState().applyPreset("zettelkasten"),
+    },
+    {
+      id: "workspace:journal",
+      label: "Journal Perspective",
+      category: "Perspective",
+      shortcut: "⌥⌘3",
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {
-      id: "space.zettelkasten",
-      label: "Open Zettel",
-      category: "화면구성",
-      action: () => useWorkspaceStore.getState().applyPreset("zettelkasten"),
+      id: "workspace:skills",
+      label: "Skills Perspective",
+      category: "Perspective",
+      shortcut: "⌥⌘4",
+      action: () => useWorkspaceStore.getState().applyPreset("skills"),
     },
     {
       id: "journal:open-today",
