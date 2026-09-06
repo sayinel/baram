@@ -600,11 +600,19 @@ Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Curr
 
 ### What is the Zettel space?
 
-Zettel is a dedicated space for atomic, densely-linked notes, separate from the diary-oriented Journal. It centers on the fleeting → permanent workflow: quickly capture ideas into an `inbox/`, then refine the good ones into permanent, titled notes in `notes/` and connect them with links.
+Zettel is a dedicated space for atomic, densely-linked notes, separate from the diary-oriented Journal. It supports two ways of working. Tag a capture with a note's name and it is appended straight into that note, so the thought is filed the moment you write it. Leave it untagged and it lands in `inbox/` as a fleeting note, to be refined later into a permanent, titled note in `notes/` and connected with links.
 
 ### How do I capture a quick note?
 
-Press `Cmd+Shift+N` (or type `/capture`) to open Quick Capture. Your thought is saved as a fleeting note in the Zettel `inbox/`. Add tags (stored in the note's frontmatter) and an optional source URL.
+Press `Cmd+Shift+N` (or type `/capture`) to open Quick Capture. The body is the same WYSIWYG editor as a document — formatting, the `/` slash menu, and dropped images all work. `Cmd+Enter` saves. Add an optional source URL, and tags to say where it should go.
+
+### Where does my capture go?
+
+**A tag is an address.** A tag matching a note's title or one of its frontmatter `aliases:` (case does not matter) appends the capture to the top of that note's `## Captures` section, as a `### date time` entry with a block ID you can reference. Tags matching several notes append to all of them. A capture whose tags match nothing is saved as a fleeting note in `inbox/{id}.md`, exactly as before.
+
+While you type, a line under the tag field shows where the capture will land; after you save, a toast names the note and offers **Open**.
+
+Note that a tag matching no note is reported to you but **not written into the file** — in this workflow a tag is an address, not a classification. See [Where a capture lands](user-guide.md#where-a-capture-lands) in the User Guide.
 
 ### How do I turn an inbox note into a permanent note?
 
@@ -616,7 +624,7 @@ Zettel notes are addressed by a timestamp `id`, so links are stored as `[[id]]`.
 
 ### How do I enable it?
 
-Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+3`.
+Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+2`.
 
 ---
 

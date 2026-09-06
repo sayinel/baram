@@ -163,11 +163,11 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 
 ## Zettel
 
-> The Zettel space (atomic Zettelkasten notes) uses `Cmd+Shift` letters that are free in both the app keybindings and the native menu. Quick Capture lands in the Zettel `inbox/`.
+> The Zettel space (atomic Zettelkasten notes) uses `Cmd+Shift` letters that are free in both the app keybindings and the native menu. A capture's tags decide where it lands: a tag matching a note's title or alias appends it to that note's `## Captures` section, and a capture that matches nothing falls back to the Zettel `inbox/`.
 
 | Action                    | macOS         | Windows / Linux |
 | ------------------------- | ------------- | --------------- |
-| Quick Capture (→ inbox)   | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
+| Quick Capture             | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
 | Save capture (in dialog)  | `Cmd+Enter`   | `Ctrl+Enter`    |
 | New Zettel                | `Cmd+Shift+V` | `Ctrl+Shift+V`  |
 | Promote to Permanent Note | `Cmd+Shift+U` | `Ctrl+Shift+U`  |
@@ -281,7 +281,7 @@ the side panel, and the two highlight modes are toolbar buttons — see the
 - **Folding**: Hover over a heading or nested list item to see a fold arrow. Click it or press `Cmd+Shift+[` to collapse/expand. Use `Cmd+Shift+Alt+[` / `]` to fold/unfold all
 - **Date Mentions**: Type `@` and select Today/Yesterday/Tomorrow to insert a date mention chip linked to that day's journal entry
 - **Tags**: Type `#tag` (autocompletes vault-wide); `Cmd/Ctrl+click` a tag to search every file that uses it
-- **Quick Capture**: Press `Cmd+Shift+N` to jot an idea/link/quote/note, or use `/idea`, `/link`, `/quote`, `/note`
+- **Quick Capture**: Press `Cmd+Shift+N` (or the `/capture` slash command) to jot something down. Tags decide where it lands — a tag matching a note's title or alias appends it to that note
 
 ---
 
