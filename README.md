@@ -116,8 +116,9 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 
 ### Workspaces
 
-- **Vaults & multi-context** — Open multiple vaults, folders, and files at once, each with its own tree, tabs, and settings; link across vaults with `[[alias::file]]`.
-- **Journal & Zettelkasten** — A diary-focused daily-notes space (calendar, photos, streaks, templates) and an atomic-notes space (inbox capture, fleeting→permanent promotion, `[[id]]` links, MOCs).
+- **Vaults & multi-context** — Open multiple vaults, folders, and files at once, each with its own tree, tabs, and settings; link across vaults with `[[alias::file]]`. Baram reads and writes only where you allowed it: every location is approved once, listed in Settings, and revocable.
+- **Journal & Zettelkasten** — A diary-focused daily-notes space (calendar, photos, streaks, templates) and an atomic-notes space (`[[id]]` links, fleeting→permanent promotion, MOCs).
+- **Capture into hub notes** — Quick Capture is a full WYSIWYG window, and its **tags are addresses**: `#Inspiration` appends what you wrote to the top of that note's `## Captures` section, stamped with a date and a referenceable block ID. Tag nothing and it falls back to the inbox. One keystroke from anywhere, filed the moment you write it. [See the guide →](docs/user-guide.md#where-a-capture-lands)
 - **Version history** — Automatic file snapshots with timeline, diff, and selective restore — independent of Git.
 - **Git integration** — Stage, commit, diff, branch, stash, and push/pull from the sidebar.
 

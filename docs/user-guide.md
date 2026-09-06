@@ -22,7 +22,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Export](#export)
 - [Journal / Daily Notes](#journal--daily-notes)
 - [Zettel (Zettelkasten Notes)](#zettel-zettelkasten-notes)
-- [Workspace Presets](#workspace-presets)
+- [Perspectives](#perspectives)
 - [Customization](#customization)
 - [Plugins](#plugins)
 - [Help Panel](#help-panel)
@@ -106,6 +106,22 @@ Each context is independent — it has its own file tree, settings, and tab hist
 - **Close a context**: Right-click a context tab and select **Close**.
 
 Multiple vaults can be open simultaneously, each as its own tab in the Context Tab Bar.
+
+### Folder Access Approval
+
+Baram asks before it reads a location it has not been allowed into. The first time you open a folder or a file outside an already-approved location, a dialog appears — *Allow Baram to read and write this folder and everything under it?* — with **Allow** and **Deny**.
+
+- An approved **folder** covers everything beneath it, so you are asked once per workspace, not once per file.
+- An approved **single file** covers that file and images sitting in the same folder, so the pictures in it still render.
+- **Denying is not an error.** The location simply does not open and a toast says so. Nothing is recorded, so you can pick the same folder again later and be asked again.
+- Choosing a folder yourself through **File > Open Folder** is the approval — the act of picking it in the system dialog is what grants access.
+- At startup, a saved context that is no longer approved is asked for again. If you deny it, **only that context is skipped** and the rest of your workspace still restores.
+
+Approvals are recorded by Baram itself, in its application data directory — not inside your vault and not in any file the editor can write, so a document or plugin cannot approve locations on your behalf.
+
+**Settings > Vault > Approved locations** lists everything you have approved and lets you **Revoke** any of it. Revoking removes the approval and closes that vault's tab; it takes full effect after a restart.
+
+> On macOS this is separate from the system's own **Files and Folders** permission prompt, which is macOS asking on behalf of every app. You may see both once: macOS deciding whether Baram may touch Documents or Desktop at all, and Baram deciding which folder you meant to open. See the [FAQ](faq.md) if a folder opens but shows no files.
 
 ### Cross-Vault Wikilinks
 
@@ -1597,7 +1613,7 @@ There are three ways to create or open a daily note:
 
 **Calendar sidebar:**
 
-1. Switch to the Journal workspace preset (`Cmd+Alt+3` / `Ctrl+Alt+3`) or select the Calendar panel in the sidebar
+1. Switch to the Journal perspective (`Cmd+Alt+3` / `Ctrl+Alt+3`) or select the Calendar panel in the sidebar
 2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
 3. Dates with existing entries are marked with a dot
 
@@ -1660,7 +1676,7 @@ Choose a dedicated journal/calendar theme (independent of the app theme) in **Se
 
 ## Zettel (Zettelkasten Notes)
 
-The **Zettel** space is a dedicated home for atomic, densely-linked notes. Unlike the diary-oriented Journal, it is built around the fleeting → permanent workflow and ID-based `[[links]]`.
+The **Zettel** space is a dedicated home for atomic, densely-linked notes. Unlike the diary-oriented Journal, it is built around ID-based `[[links]]` and two ways of getting a thought into the vault: tag a capture with a note's name and it is appended straight into that note, or leave it untagged and it waits in the inbox as a fleeting note until you promote it.
 
 ### Setup
 
@@ -1681,10 +1697,68 @@ In the Zettel space the sidebar is a dedicated **hub** instead of the plain file
 
 The three lists are collapsible, and the hub refreshes itself automatically whenever you capture, promote, create, or delete a note — including captures made from outside the panel. If the space isn't set up yet, the hub shows a short "set up Zettel" hint with a link into Settings.
 
-### Capturing (fleeting notes)
+### Quick Capture
 
-- Press `Cmd+Shift+N` (or the `/capture` slash command) to open Quick Capture. Type your thought, an optional source URL, and tags — it is saved as a fleeting note in `inbox/{id}.md`. Tags are written to the note's frontmatter.
-- Fleeting notes accumulate silently in the inbox until you process them.
+Press `Cmd+Shift+N` (or the `/capture` slash command) to open Quick Capture — a small window for the thought you do not want to lose while you are doing something else.
+
+- The body is the **same WYSIWYG editor as a document**: headings, lists, code, math, and the `/` slash menu all work. `Cmd+Enter` saves. `Esc` closes the window while it is empty, but once you have typed anything only **Cancel** dismisses it — an accidental key cannot throw away what you wrote.
+- **Drop an image** onto the window to attach it. Nothing is written to disk until you save, so closing the window leaves no stray files behind.
+- Drag the grip below the editor to **resize** it — the height you choose is remembered for next time.
+- **Source** takes an optional URL. Written as `Title https://…` it becomes a link. (Task mode hides this field: a task is a single line with nowhere to carry a source.)
+- The **tags** field decides where the capture goes — see below.
+
+> Quick Capture also has a task mode (`Cmd+Alt+T`) that appends a task line to your capture file instead of writing a note. See [Capturing tasks](#capturing-tasks).
+
+### Where a capture lands
+
+**A tag is an address.** Tag a capture `#Inspiration` and it is appended to the note called *Inspiration*, into the document body itself — nothing to promote, no inbox to drain later.
+
+Matching looks at a note's **title and its frontmatter `aliases:`**, ignoring case. It deliberately does not look at the note's own tags, so a hub note carrying its own tag cannot match itself by two different routes. Since a tag cannot contain spaces, a note whose title has spaces is only reachable through an alias:
+
+```yaml
+---
+aliases: [Baram-Dev-Note]
+---
+```
+
+| What you tag                        | Where it lands                                        |
+| ----------------------------------- | ----------------------------------------------------- |
+| One tag matching one note           | Appended to that note                                 |
+| Tags matching several notes         | Appended to **every** one of them                     |
+| Title and alias of the same note    | Appended once — targets are de-duplicated             |
+| A tag matching nothing              | Reported as unmatched, and **not written anywhere**   |
+| No tag matches at all               | Saved as a fleeting note in `inbox/{id}.md`, as before |
+
+Two things tell you where a capture is going:
+
+- **While you type**, a line under the tag field previews the destination — `→ Inspiration (12 captures)` for a single note, `→ 3 notes: …` for several, or `→ No matching note · saved to inbox`. It stays silent until the notes folder has actually been read, so a correct tag is never briefly accused of matching nothing.
+- **After you save**, a toast names the note and offers **Open**. With more than one target it reports the count instead, because there is no way to know which one you meant to open.
+
+The tag field autocompletes from the names that can actually address a note — titles and aliases — alongside tags already used in the space.
+
+> ⚠️ **A tag that matches no note is not stored anywhere.** The toast tells you (`#typo matches no note`), but the tag itself does not survive into the file. This is a deliberate change from earlier versions, where every capture became an inbox note and its tags were kept in frontmatter. Here a tag is an address, not a classification.
+
+If a target note is open in a tab with **unsaved changes**, that note is skipped and the dialog stays open naming it — save that tab and try again. Notes that were already written keep their entry, so retrying does not duplicate them.
+
+### Hub notes and the Captures section
+
+A capture is appended to the **top** of the note's `## Captures` section, newest first. If the note has no such section, one is created at the end of the file:
+
+```markdown
+## Captures
+
+### 2026-09-06 15:30 ^m2609061530
+
+The thought you captured, with all its formatting intact.
+
+Source: [Title](https://example.com)
+```
+
+- `## Captures` is a **fixed, untranslated heading**. It does not follow the interface language, so switching languages never leaves a note with two capture sections.
+- Each entry is one `###` heading carrying the local date and time, plus a **block ID** (`^m…`) at the end of the heading line. That ID is an ordinary block anchor: point at the entry from anywhere with `((NoteName#^m2609061530))`, or pull it in with `{{embed ((NoteName#^m2609061530))}}`.
+- Nothing else in the note is touched. Your own headings and prose, and any section that follows `## Captures`, stay exactly where they were.
+
+A note that collects captures this way is a **hub note** — one document you write into constantly and read as a whole, instead of a folder of fragments you have to open one at a time. Any note can become one: tag a capture with its name, and the section appears.
 
 ### Promoting to permanent notes
 
@@ -1703,36 +1777,36 @@ The three lists are collapsible, and the hub refreshes itself automatically when
 
 ---
 
-## Workspace Presets
+## Perspectives
 
-Workspace Presets let you save and quickly restore your preferred layout — sidebar panel, right panel, and theme settings.
+A **perspective** is a saved layout — sidebar panel, right panel, and theme — that you can restore in one keystroke. Baram ships four and you can add your own.
 
-### Built-in Presets
+### Built-in Perspectives
 
-| Preset         | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                        |
+| Perspective    | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                        |
 | -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
 | Writing | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Editor focus — right panel closed                            |
 | Zettel  | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Zettel hub (actions + inbox + MOCs + recent) — atomic Zettelkasten notes |
 | Journal | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | Calendar sidebar + today's journal + Memories view           |
 | Skills  | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | File tree + Properties panel — LLM Skills editing            |
 
-> All four workspace presets are customizable in **Settings > Keybindings** and available from the Workspace menu. Switching to a space never force-closes an open folder tree.
+> All four are customizable in **Settings > Keybindings** (category **Perspective**) and available from the **Perspective** menu. Switching to a space never force-closes an open folder tree.
 
-### Custom Presets
+### Custom Perspectives
 
-Create your own presets in **Settings > Appearance**:
+Create your own in **Settings > Appearance**:
 
-1. Arrange your workspace layout as desired (sidebar panel, right panel, theme)
+1. Arrange the layout you want (sidebar panel, right panel, theme)
 2. Go to **Settings > Appearance** and click **Save Current Layout**
-3. Enter a name for the preset
+3. Give it a name
 
-Custom presets can be renamed, deleted, and applied from the same Settings tab.
+Custom perspectives can be renamed, deleted, and applied from the same Settings tab.
 
-### Applying Presets
+### Applying a Perspective
 
 - **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
-- **Command Palette** — Search for "Workspace" commands
-- **Workspace menu** — Use the Workspace menu in the menu bar
+- **Perspective menu** — in the menu bar
+- **Settings > Appearance** — for custom perspectives
 
 ---
 
@@ -1748,14 +1822,14 @@ Available settings tabs:
 | ---------------- | ---------------------------------------------------------------------------------------------- |
 | **General**      | Startup behavior, auto-save, Journal, Tasks, and file snapshots (Version History)              |
 | **Editor**       | Indentation, tab size, line numbers, line endings, editor max width, Vim keybindings           |
-| **Appearance**   | Theme gallery, custom theme editor, and workspace presets                                       |
+| **Appearance**   | Theme gallery, custom theme editor, and perspectives                                            |
 | **Markdown**     | Extended syntax toggles (math, highlight, strikethrough), smart punctuation                    |
 | **AI**           | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
 | **Activity Bar** | Show/hide and reorder the left Activity Bar panels                                              |
 | **Language**     | Interface language (English, Korean)                                                            |
 | **Keybindings**  | Customize keyboard shortcuts — search, rebind, reset                                            |
 | **Plugins**      | Browse, install, update, and manage community plugins                                           |
-| **Vault**        | Initialize/revert vault, vault alias, journal directory, and cross-vault settings              |
+| **Vault**        | Initialize/revert vault, vault alias, journal directory, approved locations, and cross-vault settings |
 
 ### Themes
 

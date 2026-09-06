@@ -36,18 +36,29 @@
   color: var(--color-text-secondary);
 }
 
+/* §206 The notes are a rendered document (MarkdownRenderer), not the `<pre>` of
+   source text this used to be — so the shared markdown rhythm in `panels.css`
+   applies here, and this rule owns the base that rhythm assumes (see the §69
+   note there: the heading sizes are absolute). 320px, not the old 200px: a
+   release body is headings and bullets now, and 200px showed about a screenful
+   of one section. */
 .update-dialog-notes {
-  max-height: 200px;
+  max-height: 320px;
   padding: 10px 12px;
   margin: 0 0 16px;
   overflow-y: auto;
-  font-family: inherit;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
+}
+
+/* The document's first heading opens the box — the 20px top margin the shared
+   rule gives an h2 is separation from a PREVIOUS section, and there is none. */
+.update-dialog-notes .markdown-rendered > :first-child {
+  margin-top: 0;
 }
 
 .update-dialog-error {

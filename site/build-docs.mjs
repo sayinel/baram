@@ -25,7 +25,28 @@ export function slugify(text) {
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
-    .replace(/\s+/g, "-");
+    .replace(/\s+/g, "-")
+    // ‼️ Collapsing hyphen runs is what lets a GitHub-spelled fragment find this id.
+    // GitHub replaces each space with one hyphen, so "## Vault & Context System" is
+    // #vault--context-system there, while the line above collapses the whitespace run
+    // that dropping "&" left behind. Running both the id and the href through this
+    // same function is the only reason the two spellings meet — the Help panel
+    // normalizes both sides for exactly this reason (HelpPanel.tsx `slugify`).
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/**
+ * Put same-page fragments through `slugify`, so a link written for GitHub reaches
+ * the id we stamped. Only bare `#fragment` hrefs: a link that already names a page
+ * is handled by `rewriteDocLinks`, and an absolute URL points somewhere we do not
+ * generate ids for.
+ */
+export function normalizeAnchorHrefs(html) {
+  return html.replace(
+    /href="#([^"]+)"/g,
+    (_, frag) => `href="#${slugify(frag)}"`,
+  );
 }
 
 function makeIdAllocator() {
@@ -67,7 +88,13 @@ export function rewriteDocLinks(html) {
   return html.replace(
     /href="(\.\.\/)?([A-Za-z0-9._-]+)\.md(#[^"]*)?"/g,
     (_, up, base, hash = "") => {
-      if (!up && DOC_PAGES.has(`${base}.md`)) return `href="${base}.html${hash}"`;
+      // A page we generate: the fragment must be spelled the way `addHeadingIds`
+      // spelled the id. A GitHub URL keeps its fragment verbatim — github.com
+      // renders the markdown itself, and its own anchor is the one that works there.
+      if (!up && DOC_PAGES.has(`${base}.md`)) {
+        const frag = hash ? `#${slugify(hash.slice(1))}` : "";
+        return `href="${base}.html${frag}"`;
+      }
       const repoPath = up ? `${base}.md` : `docs/${base}.md`;
       return `href="https://github.com/sayinel/baram/blob/main/${repoPath}${hash}"`;
     },
@@ -149,7 +176,7 @@ export function buildSite() {
   for (const doc of DOCS) {
     const md = readFileSync(join(ROOT, "docs", doc.src), "utf8");
     const toc = extractToc(md);
-    const body = addHeadingIds(rewriteDocLinks(marked.parse(md)));
+    const body = addHeadingIds(normalizeAnchorHrefs(rewriteDocLinks(marked.parse(md))));
     const tocHtml = toc
       .map((t) => `        <a class="toc-${t.level}" href="#${t.id}">${t.text}</a>`)
       .join("\n");

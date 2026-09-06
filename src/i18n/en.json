@@ -1073,7 +1073,6 @@
   "unsavedChanges.title": "Unsaved Changes",
   "update.available.toast": "Baram v{version} is available.",
   "update.checkFailed.toast": "Update check failed.",
-  "update.dialog.download": "Download",
   "update.dialog.downloading": "Downloading update…",
   "update.dialog.error.fallbackOpened": "Baram can't install this update automatically. We opened the releases page in your browser — download and install it manually.",
   "update.dialog.error.generic": "The update failed: {message}",

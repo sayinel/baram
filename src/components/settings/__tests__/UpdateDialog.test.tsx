@@ -35,6 +35,41 @@ afterEach(() => {
   useAppUpdateStore.setState(RESET);
 });
 
+function setPlatform(value: string): void {
+  Object.defineProperty(navigator, "platform", {
+    value,
+    configurable: true,
+  });
+}
+
+const originalPlatform = navigator.platform;
+
+afterEach(() => {
+  setPlatform(originalPlatform);
+});
+
+// §206 The primary button used to read "Download" on macOS, because the mac
+// path opened the releases page instead of installing. It installs in place
+// now, so the label has to say what the button does — a button that says
+// "Download" and then restarts the app is worse than either behaviour alone.
+describe("UpdateDialog — the primary action names what it does", () => {
+  it("says Install & Restart on macOS, not Download", () => {
+    setPlatform("MacIntel");
+    useAppUpdateStore.setState({
+      dialogOpen: true,
+      status: "available",
+      availableVersion: "0.7.1",
+    });
+
+    render(<UpdateDialog />);
+
+    expect(
+      screen.getByRole("button", { name: "Install & Restart" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+});
+
 describe("UpdateDialog — §206-review FIX 1: busy close-guard", () => {
   it("Escape does NOT close the dialog while downloading", () => {
     useAppUpdateStore.setState({
@@ -149,5 +184,51 @@ describe("UpdateDialog — §206-review FIX 2: error state", () => {
     expect(
       screen.getByText(/The update failed: network timed out/),
     ).toBeTruthy();
+  });
+});
+
+// §206 The release notes arrive as markdown — headings, bullets, bold, inline
+// code — and were dumped into a <pre>, so the dialog showed the source rather
+// than the document. It renders through MarkdownRenderer now.
+//
+// ‼️ At the DEFAULT trust ("untrusted"), deliberately. The minisign signature in
+// latest.json covers the update ARCHIVE, not the JSON around it: `notes` is
+// unsigned text from an HTTPS endpoint, which is exactly the case that default
+// was written for.
+describe("UpdateDialog — the release notes are a document, not source", () => {
+  function openWithNotes(notes: string) {
+    useAppUpdateStore.setState({
+      dialogOpen: true,
+      status: "available",
+      availableVersion: "0.7.1",
+      notes,
+    });
+    return render(<UpdateDialog />);
+  }
+
+  it("renders markdown structure instead of the markup that produced it", () => {
+    const { container } = openWithNotes(
+      "## Tasks, everywhere\n\n- **Four states**, drawn from `- [ ]`\n",
+    );
+
+    const notes = container.querySelector(".update-dialog-notes");
+    expect(notes).toBeTruthy();
+    expect(notes!.querySelector("h2")?.textContent).toBe("Tasks, everywhere");
+    expect(notes!.querySelector("li strong")?.textContent).toBe("Four states");
+    expect(notes!.querySelector("li code")?.textContent).toBe("- [ ]");
+    // The markup itself must not survive as text anywhere in the dialog.
+    expect(container.textContent).not.toContain("## Tasks");
+    expect(container.textContent).not.toContain("**Four states**");
+  });
+
+  it("drops raw HTML in the notes, which nothing signed", () => {
+    const { container } = openWithNotes(
+      'Fixed things.\n\n<img src="https://example.invalid/x.png">\n',
+    );
+
+    expect(container.querySelector(".update-dialog-notes img")).toBeNull();
+    expect(
+      container.querySelector(".update-dialog-notes")!.textContent,
+    ).toContain("Fixed things.");
   });
 });

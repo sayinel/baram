@@ -138,18 +138,18 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 | Toggle Ghost Text | `Cmd+Shift+G` | `Ctrl+Shift+G`  |
 | Skill Test        | `Cmd+Shift+T` | `Ctrl+Shift+T`  |
 
-## Workspace
+## Perspective
 
 <!-- colwidths:188,139,153 -->
 
-| Action             | macOS          | Windows / Linux |
-| ------------------ | -------------- | --------------- |
-| Workspace: Writing | `Cmd+Option+1` | `Ctrl+Alt+1`    |
-| Workspace: Zettel  | `Cmd+Option+2` | `Ctrl+Alt+2`    |
-| Workspace: Journal | `Cmd+Option+3` | `Ctrl+Alt+3`    |
-| Workspace: Skills  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
+| Action              | macOS          | Windows / Linux |
+| ------------------- | -------------- | --------------- |
+| Writing Perspective | `Cmd+Option+1` | `Ctrl+Alt+1`    |
+| Zettel Perspective  | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| Journal Perspective | `Cmd+Option+3` | `Ctrl+Alt+3`    |
+| Skills Perspective  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
 
-> All four workspace presets are customizable in **Settings > Keybindings**. Switching to a space never force-closes an open folder tree.
+> All four are customizable in **Settings > Keybindings**, under the **Perspective** category. Switching to a space never force-closes an open folder tree.
 
 ## Journal
 
@@ -163,11 +163,11 @@ is never shadowed. On macOS, `Cmd+R` is the native menu accelerator and vim mode
 
 ## Zettel
 
-> The Zettel space (atomic Zettelkasten notes) uses `Cmd+Shift` letters that are free in both the app keybindings and the native menu. Quick Capture lands in the Zettel `inbox/`.
+> The Zettel space (atomic Zettelkasten notes) uses `Cmd+Shift` letters that are free in both the app keybindings and the native menu. A capture's tags decide where it lands: a tag matching a note's title or alias appends it to that note's `## Captures` section, and a capture that matches nothing falls back to the Zettel `inbox/`.
 
 | Action                    | macOS         | Windows / Linux |
 | ------------------------- | ------------- | --------------- |
-| Quick Capture (→ inbox)   | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
+| Quick Capture             | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
 | Save capture (in dialog)  | `Cmd+Enter`   | `Ctrl+Enter`    |
 | New Zettel                | `Cmd+Shift+V` | `Ctrl+Shift+V`  |
 | Promote to Permanent Note | `Cmd+Shift+U` | `Ctrl+Shift+U`  |
@@ -281,7 +281,7 @@ the side panel, and the two highlight modes are toolbar buttons — see the
 - **Folding**: Hover over a heading or nested list item to see a fold arrow. Click it or press `Cmd+Shift+[` to collapse/expand. Use `Cmd+Shift+Alt+[` / `]` to fold/unfold all
 - **Date Mentions**: Type `@` and select Today/Yesterday/Tomorrow to insert a date mention chip linked to that day's journal entry
 - **Tags**: Type `#tag` (autocompletes vault-wide); `Cmd/Ctrl+click` a tag to search every file that uses it
-- **Quick Capture**: Press `Cmd+Shift+N` to jot an idea/link/quote/note, or use `/idea`, `/link`, `/quote`, `/note`
+- **Quick Capture**: Press `Cmd+Shift+N` (or the `/capture` slash command) to jot something down. Tags decide where it lands — a tag matching a note's title or alias appends it to that note
 
 ---
 

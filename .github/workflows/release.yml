@@ -57,7 +57,19 @@ jobs:
         include:
           # macOS: Universal Binary (Apple Silicon + Intel) from a single dmg.
           # universal-apple-darwin requires both rust targets installed.
-          - platform: macos-15
+          #
+          # ‼️ The runner label picks the SDK, and on macOS the SDK picks the window
+          # chrome. macOS 26 draws the modern titlebar — it takes the app's own
+          # colour and the title sits at the leading edge — only for binaries LINKED
+          # against the 26 SDK; anything older gets the legacy opaque light titlebar.
+          # v0.7.0 shipped from macos-15 and reported `sdk 15.5`: a light titlebar
+          # over a dark app. A local build of the same commit reported `sdk 26.5` and
+          # followed the theme. So this pin is the mirror image of the Linux one
+          # below — Linux must stay OLD for glibc, macOS must stay CURRENT for the
+          # SDK. What bounds who can run the result is minimumSystemVersion (13.0),
+          # which the SDK does not change. Asserted on the built binary below, so a
+          # label change cannot regress it silently.
+          - platform: macos-26
             args: '--target universal-apple-darwin'
             rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
           # Linux stays on the OLDEST supported runner on purpose: binaries
@@ -204,6 +216,40 @@ jobs:
           # merge (RFC 7396) turns it on so tauri-action signs the .sig files
           # and generates latest.json. Path is relative to projectPath (./).
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+
+      # Runs BEFORE notarization on purpose: a wrong SDK makes the whole build the
+      # wrong artifact, and notarization is an unbounded wait on Apple's queue —
+      # v0.6.0's first submission sat there for 1h49m. Fail while it is cheap.
+      #
+      # This asserts the PROPERTY (what the binary is linked against) rather than the
+      # runner label that was supposed to produce it: the label is an input, and only
+      # the Mach-O load command says what actually happened.
+      - name: Verify the macOS build SDK
+        if: runner.os == 'macOS'
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+
+          APP="$(find src-tauri/target -type d -name 'Baram.app' | head -n1)"
+          [ -n "$APP" ] || fail "Baram.app not found under src-tauri/target"
+          BIN="$(find "$APP/Contents/MacOS" -type f -perm -111 | head -n1)"
+          [ -n "$BIN" ] || fail "no executable in $APP/Contents/MacOS"
+
+          # A universal binary carries one LC_BUILD_VERSION per architecture, so
+          # every slice has to answer — a check that reads only the first would pass
+          # on a build where one arch came from a different toolchain.
+          SDKS="$(otool -l "$BIN" | awk '/^ *sdk /{print $2}')"
+          echo "$BIN is linked against macOS SDK: ${SDKS:-<none>}"
+          [ -n "$SDKS" ] || fail "no LC_BUILD_VERSION sdk found in $BIN"
+
+          for SDK in $SDKS; do
+            case "$SDK" in
+              *[!0-9.]*) fail "unparsable SDK version '$SDK' in $BIN" ;;
+            esac
+            [ "${SDK%%.*}" -ge 26 ] \
+              || fail "built against macOS SDK $SDK; 26 or newer is required for the modern window chrome — check the runner label in the build matrix"
+          done
+
+          echo "Build SDK verified."
 
       # Tauri notarizes and staples the .app, builds the dmg from it, and signs
       # the dmg — but never notarizes the dmg. The app inside is fine; the dmg is

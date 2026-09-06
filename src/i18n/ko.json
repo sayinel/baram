@@ -1073,7 +1073,6 @@
   "unsavedChanges.title": "저장하지 않은 변경사항",
   "update.available.toast": "Baram v{version}을(를) 사용할 수 있습니다.",
   "update.checkFailed.toast": "업데이트 확인에 실패했습니다.",
-  "update.dialog.download": "다운로드",
   "update.dialog.downloading": "업데이트 다운로드 중…",
   "update.dialog.error.fallbackOpened": "이 업데이트는 자동으로 설치할 수 없습니다. 브라우저에서 릴리스 페이지를 열었습니다 — 수동으로 다운로드하여 설치해 주세요.",
   "update.dialog.error.generic": "업데이트에 실패했습니다: {message}",
