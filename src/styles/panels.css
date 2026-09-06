@@ -331,121 +331,56 @@
    §28 Wikilink
    ============================================ */
 
-/* Help Panel */
-.help-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-  background: var(--color-bg-default);
-}
-
-.help-panel-header {
-  flex-shrink: 0;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--color-border-default);
-}
-
-.help-panel-tabs {
-  display: flex;
-  gap: 0;
-}
-
-.help-tab {
-  flex: 1;
-  padding: 10px 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  text-align: center;
-  cursor: pointer;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  transition:
-    color 0.15s,
-    border-color 0.15s;
-}
-
-.help-tab:hover {
-  color: var(--color-text-primary);
-}
-
-.help-tab-active {
-  color: var(--color-accent-default);
-  border-bottom-color: var(--color-accent-default);
-}
-
-.help-panel-content {
-  flex: 1;
-  padding: 16px 20px;
-  overflow-y: auto;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--color-text-primary);
-}
-
-/* §69 The descendant rules below are shared with the Help panel, but `.help-panel-content`'s
-   OWN font-size and line-height are not — and the heading sizes are absolute (h1 is 18px), so
-   without a base here an 18px h1 sits beside body text inheriting the editor area's ~16px and
-   reads as barely a heading at all. Same rhythm as the Help panel.
+/* §69 The descendant rules below are shared between `.plugin-detail-readme` and
+   `.update-dialog-notes`, but each surface's OWN font-size and line-height are not — and the
+   heading sizes are absolute (h1 is 18px), so without a base here an 18px h1 sits beside body
+   text inheriting whatever font-size the surface inherits and reads as barely a heading at
+   all. `.plugin-detail-readme` declares its base directly below; §206's `.update-dialog-notes`
+   declares its base in `settings/update-dialog.css`, next to the box it belongs to.
 
    ‼️ Joining that `:is()` list is therefore only half of joining: a surface that adds itself
    to the selectors below and forgets its own base gets absolute headings against whatever
-   font-size it inherits. §206's `.update-dialog-notes` is the third member and declares its
-   base in `settings/update-dialog.css`, next to the box it belongs to. */
+   font-size it inherits. */
 .plugin-detail-readme {
   font-size: 13px;
   line-height: 1.6;
   color: var(--color-text-primary);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  h1 {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h1 {
   margin: 0 0 12px;
   font-size: 18px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  h2 {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h2 {
   margin: 20px 0 10px;
   font-size: 16px;
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  h3 {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h3 {
   margin: 16px 0 6px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  h4 {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered h4 {
   margin: 12px 0 4px;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  p {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered p {
   margin: 0 0 10px;
   color: var(--color-text-secondary);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  table {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered table {
   display: block;
   margin: 0 0 12px;
   overflow-x: auto;
@@ -453,9 +388,7 @@
   border-collapse: collapse;
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  th {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered th {
   padding: 4px 8px;
   font-weight: 600;
   color: var(--color-text-primary);
@@ -463,15 +396,13 @@
   border-bottom: 2px solid var(--color-border-default);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  td {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered td {
   padding: 4px 8px;
   vertical-align: top;
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
+:is(.plugin-detail-readme, .update-dialog-notes)
   .markdown-rendered
   td:first-child {
   width: 1%;
@@ -479,9 +410,7 @@
   white-space: nowrap;
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  code {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered code {
   padding: 1px 4px;
   font-family: var(--font-family-mono);
   font-size: 12px;
@@ -490,9 +419,7 @@
   border-radius: 3px;
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  pre {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered pre {
   padding: 8px 10px;
   margin: 0 0 10px;
   overflow-x: auto;
@@ -501,51 +428,36 @@
   border-radius: 4px;
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  pre
-  code {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered pre code {
   padding: 0;
   background: none;
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  blockquote {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered blockquote {
   padding-left: 10px;
   margin: 0 0 10px;
   color: var(--color-text-muted);
   border-left: 3px solid var(--color-border-default);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  hr {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered hr {
   margin: 16px 0;
   border: none;
   border-top: 1px solid var(--color-border-subtle);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  ul,
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  ol {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered ul,
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered ol {
   padding-left: 20px;
   margin: 0 0 10px;
   color: var(--color-text-secondary);
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  li {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered li {
   margin: 2px 0;
 }
 
-:is(.help-panel-content, .plugin-detail-readme, .update-dialog-notes)
-  .markdown-rendered
-  a {
+:is(.plugin-detail-readme, .update-dialog-notes) .markdown-rendered a {
   color: var(--color-accent-default);
 }
 
