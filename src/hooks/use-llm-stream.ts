@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { listen } from "@tauri-apps/api/event";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-
-import type {
-  LLMDonePayload,
-  LLMErrorPayload,
-  LLMTokenPayload,
-} from "../ipc/types";
 import type { AITask } from "../stores/ai/ai";
 
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { createLLMStream } from "../utils/llm-stream";
 import { getConfigForTask } from "../utils/model-selection";
 import { isLLMAllowed } from "../utils/privacy-check";
 
@@ -41,14 +34,19 @@ export function useLLMStream(): UseLLMStreamReturn {
   const [error, setError] = useState<null | string>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [totalTokens, setTotalTokens] = useState(0);
-  const unlistenRefs = useRef<UnlistenFn[]>([]);
+  // issue 265: one cleanup per in-flight request, from createLLMStream (which
+  // rolls back a half-registered set and is idempotent) — not three bare
+  // unlisten handles assigned only after all three registrations succeeded.
+  const cleanupRef = useRef<(() => void) | null>(null);
   const requestIdRef = useRef<null | string>(null);
+  /** Aborts a registration still in flight, which has no cleanup handle yet. */
+  const registrationRef = useRef<AbortController | null>(null);
 
-  const cleanup = useCallback(async () => {
-    for (const unlisten of unlistenRefs.current) {
-      unlisten();
-    }
-    unlistenRefs.current = [];
+  const cleanup = useCallback(() => {
+    registrationRef.current?.abort();
+    registrationRef.current = null;
+    cleanupRef.current?.();
+    cleanupRef.current = null;
     requestIdRef.current = null;
   }, []);
 
@@ -67,7 +65,7 @@ export function useLLMStream(): UseLLMStreamReturn {
       opts?: UseLLMStreamOptions,
     ) => {
       // Cancel any existing stream
-      await cleanup();
+      cleanup();
 
       const store = useAIStore.getState();
       const task = opts?.task ?? "chat";
@@ -94,33 +92,46 @@ export function useLLMStream(): UseLLMStreamReturn {
       setTotalTokens(0);
       setIsStreaming(true);
 
-      // Listen for events
-      const tokenUn = await listen<LLMTokenPayload>("llm:token", (event) => {
-        if (event.payload.requestId === requestId) {
-          setText((prev) => prev + event.payload.token);
-        }
-      });
-
-      const doneUn = await listen<LLMDonePayload>("llm:done", (event) => {
-        if (event.payload.requestId === requestId) {
-          setTotalTokens(event.payload.totalTokens ?? 0);
-          setIsStreaming(false);
-          cleanup();
-        }
-      });
-
-      const errorUn = await listen<LLMErrorPayload>("llm:error", (event) => {
-        if (event.payload.requestId === requestId) {
-          setError(event.payload.error);
-          setIsStreaming(false);
-          cleanup();
-        }
-      });
-
-      unlistenRefs.current = [tokenUn, doneUn, errorUn];
-
-      // Invoke Rust backend
+      // Every write below is guarded: a late rejection from an EARLIER send
+      // must not set error state on, or tear down, the request the user
+      // started afterwards (the owner check use-inline-ai.ts already has).
+      const owns = () => requestIdRef.current === requestId;
+      const registration = new AbortController();
+      registrationRef.current = registration;
+      let cleanupStream: (() => void) | undefined;
       try {
+        cleanupStream = await createLLMStream(
+          requestId,
+          {
+            onDone: (payload) => {
+              if (!owns()) return;
+              setTotalTokens(payload.totalTokens);
+              setIsStreaming(false);
+              cleanup();
+            },
+            onError: (message) => {
+              if (!owns()) return;
+              setError(message);
+              setIsStreaming(false);
+              cleanup();
+            },
+            onToken: (token) => {
+              if (owns()) setText((prev) => prev + token);
+            },
+          },
+          { signal: registration.signal },
+        );
+        if (registrationRef.current === registration) {
+          registrationRef.current = null;
+        }
+        if (!owns()) {
+          // A newer send took over while the listeners were registering.
+          cleanupStream();
+          return;
+        }
+        cleanupRef.current = cleanupStream;
+
+        // Invoke Rust backend
         await llmComplete(
           prompt,
           model,
@@ -132,6 +143,9 @@ export function useLLMStream(): UseLLMStreamReturn {
           privacyMode,
         );
       } catch (e) {
+        cleanupStream?.();
+        if (!owns()) return;
+        if (e instanceof DOMException && e.name === "AbortError") return;
         setError(String(e));
         setIsStreaming(false);
         cleanup();
@@ -140,13 +154,13 @@ export function useLLMStream(): UseLLMStreamReturn {
     [cleanup],
   );
 
-  // Unmount cleanup — unlisten any active event listeners if component is torn down mid-stream
+  // Unmount cleanup — unlisten an active stream if the component is torn down mid-stream
   useEffect(() => {
     return () => {
-      for (const unlisten of unlistenRefs.current) {
-        unlisten();
-      }
-      unlistenRefs.current = [];
+      registrationRef.current?.abort();
+      registrationRef.current = null;
+      cleanupRef.current?.();
+      cleanupRef.current = null;
       requestIdRef.current = null;
     };
   }, []);
