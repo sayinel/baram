@@ -6,12 +6,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { GROUPS } from "../ia-tree.mjs";
+import { GROUPS } from "../../ia-tree.mjs";
 import { CEIL, FLOOR, measure, parseHeadings } from "./ia-measure.mjs";
 
 const DOC = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../../dev/design/specs/2026-09-06-docs-site-ia-tree.md",
+  "../../../dev/design/specs/2026-09-06-docs-site-ia-tree.md",
 );
 const BEGIN = "<!-- BEGIN generated tree — site/scripts/gen-ia-doc.mjs 가 씁니다. 손으로 고치지 마세요 -->";
 const END = "<!-- END generated tree -->";

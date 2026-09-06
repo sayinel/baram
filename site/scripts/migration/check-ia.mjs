@@ -13,6 +13,12 @@ console.log(
     `${stats.assignedLines + stats.droppedLines} / 원문 ${stats.sourceLines}` +
     (stats.exhausted ? "  ✅" : "  ❌"),
 );
+console.log(
+  `파일 소진: 단위 ${stats.assignedLines} + 절삭제 ${stats.droppedLines} + 머리말 ${stats.preambleAssigned}` +
+    `(+버림 ${stats.preambleDropped}) = ${stats.assignedLines + stats.droppedLines + stats.preambleAssigned + stats.preambleDropped}` +
+    ` / 파일 ${stats.fileSegments}` + (stats.fileExhausted ? "  ✅" : "  ❌"),
+);
+if (!stats.fileExhausted) problems.push("[파일 소진 불일치] 머리말까지 세어도 파일 전체와 맞지 않는다");
 if (!stats.exhausted) {
   problems.push(`[소진 불일치] ${stats.assignedLines + stats.droppedLines} ≠ ${stats.sourceLines}`);
 }
