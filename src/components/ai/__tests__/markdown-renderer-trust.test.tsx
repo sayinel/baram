@@ -3,9 +3,9 @@
 // ‼️ Both directions are asserted here on purpose. The untrusted assertions live with their
 // caller too (`plugin-readme-untrusted-html.test.tsx`), but those are all ABSENCES: applying
 // the restriction unconditionally would satisfy every one of them and silently strip raw HTML
-// and SVG out of AI chat and the Help panel, where it is a deliberate feature. When I made
-// this change the full chat + help suites (22 tests) stayed green under exactly that mutation,
-// so nothing was pinning the trusted side.
+// and SVG out of AI chat, where it is a deliberate feature. When I made this change the full
+// chat + help suites (22 tests) stayed green under exactly that mutation, so nothing was
+// pinning the trusted side.
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -111,9 +111,9 @@ describe("MarkdownRenderer nesting bound (§69)", () => {
   });
 
   it("does not change behaviour for trusted callers", () => {
-    // The cost is pre-existing and chat/Help supply their own content, so the bound is part of
-    // the untrusted policy rather than a global change. If this ever needs to apply to both,
-    // that is a separate decision about our own surfaces.
+    // The cost is pre-existing and the trusted caller supplies its own content, so the bound is
+    // part of the untrusted policy rather than a global change. If this ever needs to apply to
+    // both, that is a separate decision about our own surfaces.
     const el = html(deep, "trusted");
 
     expect(el.querySelector("blockquote")).toBeTruthy();

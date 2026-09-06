@@ -11,9 +11,8 @@ import type { RegistryEntry } from "../../../plugins/types";
 // `PluginConsentDialog`'s own danger/capability/NEW classes, which are the visual basis of
 // the §260 consent decision.
 //
-// That fidelity is right for the callers it was built for (AI chat output, and Help panel
-// docs bundled at build time from our own repo). It is not right for a file a third party
-// ships. These tests pin the narrowing.
+// That fidelity is right for the caller it was built for (AI chat output). It is not right
+// for a file a third party ships. These tests pin the narrowing.
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 

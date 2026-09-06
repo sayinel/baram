@@ -25,8 +25,12 @@ import { safeImageSrc, safeLinkHref } from "./markdown-url";
  *
  * `"trusted"` keeps this renderer's original behaviour: raw HTML blocks reach
  * `dangerouslySetInnerHTML` (via the SVG/HTML sanitizers) and remote images load. That was
- * built for two callers — AI chat output, and Help panel documents bundled at build time
- * from this repo — where authored HTML and SVG fidelity are the point.
+ * built for content authored in this repo, where fidelity to the original HTML and SVG is
+ * the point. AI chat output is the only caller that opts into it today — the in-app Help
+ * panel was the other one until §4.2 replaced it with an online site that never routes
+ * through this component. (The §206 update-dialog notes also render through this component,
+ * but deliberately stay on the untrusted default below — see its own call site: the notes are
+ * unsigned text from an HTTPS endpoint, not something this repo authored at build time.)
  *
  * `"untrusted"` is the DEFAULT, so a new caller is safe without knowing this exists. It is
  * the setting for anything a third party ships: raw HTML is dropped and images are limited
