@@ -5,6 +5,7 @@ import type { EditorState, Transaction } from "@tiptap/pm/state";
 
 import { PluginKey } from "@tiptap/pm/state";
 
+import { changedRanges } from "../../utils/editor/changed-ranges";
 import { parseRevealResource } from "./syntax-reveal-resource-codec";
 
 // ── Plugin state ──────────────────────────────────────────────────────
@@ -52,9 +53,21 @@ export interface ExpandedRange {
 
 export interface SyntaxRevealState {
   expanded: ExpandedRange | null;
+  /**
+   * Inclusive doc range in which auto-expansion stays suppressed, or `null`
+   * when nothing is suppressed. Recomputed on every transaction by
+   * `nextSuppressed` — see there for what each kind of change suppresses.
+   */
+  suppressed: null | SuppressedRange;
 }
 
-export const INACTIVE: SyntaxRevealState = { expanded: null };
+/** Inclusive `[from, to]` doc range — see `SyntaxRevealState.suppressed`. */
+export interface SuppressedRange {
+  from: number;
+  to: number;
+}
+
+export const INACTIVE: SyntaxRevealState = { expanded: null, suppressed: null };
 export const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
 
 // ── Ephemeral provenance (§384 C) ─────────────────────────────────────
@@ -164,6 +177,47 @@ export function findMarkRange(
     }
   }
   return null;
+}
+
+/**
+ * Next value for `SyntaxRevealState.suppressed` (see there).
+ *
+ * Auto-expansion is driven by "the caret is next to / inside something
+ * revealable", which is also true immediately *after* an edit that created
+ * that something — so without a guard, typing `[[foo]]` would be undone by an
+ * instant re-reveal, and stepping out of a reveal would step straight back in.
+ *
+ * The guard therefore suppresses expansion until the caret leaves the spot the
+ * change happened at. Which spot that is depends on who made the change:
+ *
+ * - **Someone else's edit** (typing, an InputRule, a paste, a load): the caret
+ *   position itself. Same rule the guard has always had.
+ * - **Our own expand/collapse** (tagged ephemeral): only the range we rewrote.
+ *   These transactions ride along with a caret move the user just made —
+ *   `appendTransaction` collapses the old reveal in the SAME round that the
+ *   arrow key lands the caret next to the NEXT node. Suppressing the whole
+ *   round there cost one keypress per node, which on a list of bare wikilinks
+ *   (`- [[A]]` / `- [[B]]`, nothing else on the line) meant every other item
+ *   revealed nothing at all and the caret looked like it skipped it.
+ *
+ * `null` means nothing is suppressed. A non-null range always contains the
+ * caret, so callers only need a null check.
+ */
+export function nextSuppressed(
+  tr: Transaction,
+  prev: null | SuppressedRange,
+  caret: number,
+): null | SuppressedRange {
+  if (tr.docChanged) {
+    if (tr.getMeta(SYNTAX_REVEAL_EPHEMERAL_META) === true) {
+      return (
+        changedRanges(tr).find((r) => caret >= r.from && caret <= r.to) ?? null
+      );
+    }
+    return { from: caret, to: caret };
+  }
+  if (!prev) return null;
+  return caret >= prev.from && caret <= prev.to ? prev : null;
 }
 
 // Regex to parse expanded wikilink text: [[alias::target#heading^blockId|display]]
