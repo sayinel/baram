@@ -16,13 +16,15 @@ import {
 import { chainWithVimExternalEdit } from "./vim/vim-keys";
 
 export function buildJournalItems(editor: Editor): SlashMenuItem[] {
-  // §99 Quick Capture — fleeting note into the Zettelkasten inbox
+  // §99 Quick Capture — §320 made the tags decide where it goes: a tag matching a
+  // note's title or alias appends the capture to that note, and only a capture that
+  // matches nothing still becomes a fleeting note in the inbox.
   return [
     {
       id: "quick-capture",
       label: "Quick Capture",
       category: "Journal",
-      description: "Capture a fleeting note to the Zettel inbox",
+      description: "Capture a note — a tag decides which note it lands in",
       mdHint: "/capture",
       action: () => useUIStore.getState().openQuickCapture(),
     },

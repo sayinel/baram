@@ -576,23 +576,22 @@ Version History is automatic and file-level — it silently saves changed files 
 
 ---
 
-## Workspace Presets
+## Perspectives
 
-### What are Workspace Presets?
+### What is a perspective?
 
-Workspace Presets save your current layout (sidebar panel, right panel, theme) as a named configuration that you can quickly apply later. Think of them as "workspace snapshots."
+A perspective is a saved layout — sidebar panel, right panel, and theme — under a name you can apply later. Baram ships four (Writing, Zettel, Journal, Skills) and you can add your own.
 
-### How do I switch workspace presets?
+### How do I switch perspectives?
 
-Three ways:
+Two ways:
 
 1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
-2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
-3. **Workspace menu** — Use the menu bar
+2. **Perspective menu** — in the menu bar
 
-### Can I create custom presets?
+### Can I create my own?
 
-Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Current Layout**. Custom presets can be renamed or deleted.
+Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Current Layout**. Custom perspectives can be renamed or deleted from the same tab.
 
 ---
 
@@ -600,11 +599,19 @@ Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Curr
 
 ### What is the Zettel space?
 
-Zettel is a dedicated space for atomic, densely-linked notes, separate from the diary-oriented Journal. It centers on the fleeting → permanent workflow: quickly capture ideas into an `inbox/`, then refine the good ones into permanent, titled notes in `notes/` and connect them with links.
+Zettel is a dedicated space for atomic, densely-linked notes, separate from the diary-oriented Journal. It supports two ways of working. Tag a capture with a note's name and it is appended straight into that note, so the thought is filed the moment you write it. Leave it untagged and it lands in `inbox/` as a fleeting note, to be refined later into a permanent, titled note in `notes/` and connected with links.
 
 ### How do I capture a quick note?
 
-Press `Cmd+Shift+N` (or type `/capture`) to open Quick Capture. Your thought is saved as a fleeting note in the Zettel `inbox/`. Add tags (stored in the note's frontmatter) and an optional source URL.
+Press `Cmd+Shift+N` (or type `/capture`) to open Quick Capture. The body is the same WYSIWYG editor as a document — formatting, the `/` slash menu, and dropped images all work. `Cmd+Enter` saves. Add an optional source URL, and tags to say where it should go.
+
+### Where does my capture go?
+
+**A tag is an address.** A tag matching a note's title or one of its frontmatter `aliases:` (case does not matter) appends the capture to the top of that note's `## Captures` section, as a `### date time` entry with a block ID you can reference. Tags matching several notes append to all of them. A capture whose tags match nothing is saved as a fleeting note in `inbox/{id}.md`, exactly as before.
+
+While you type, a line under the tag field shows where the capture will land; after you save, a toast names the note and offers **Open**.
+
+Note that a tag matching no note is reported to you but **not written into the file** — in this workflow a tag is an address, not a classification. See [Where a capture lands](user-guide.md#where-a-capture-lands) in the User Guide.
 
 ### How do I turn an inbox note into a permanent note?
 
@@ -616,7 +623,7 @@ Zettel notes are addressed by a timestamp `id`, so links are stored as `[[id]]`.
 
 ### How do I enable it?
 
-Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+3`.
+Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+2`.
 
 ---
 
@@ -707,6 +714,20 @@ To turn any folder into a vault, open it in Baram, then go to **Settings > Vault
 ### Can I use multiple vaults simultaneously?
 
 Yes. Each vault (or plain folder) you open appears as a tab in the **Context Tab Bar** at the top of the left sidebar. Click any tab to switch between contexts. Each context has its own file tree, tab history, and settings.
+
+### Why does Baram ask permission before opening a folder?
+
+Baram reads and writes only where you have allowed it to. The first time you open a folder or a file it has not been allowed into, it asks — *Allow Baram to read and write this folder and everything under it?* An approved folder covers everything beneath it, so you are asked once per workspace rather than once per file; an approved single file also covers images sitting next to it, so the pictures in it still render.
+
+Denying is not an error: the location simply does not open, and nothing is recorded, so you can choose it again later and be asked again. At startup, a saved context that is no longer approved is asked for again — deny it and only that one is skipped, while the rest of your workspace still restores.
+
+Approvals are kept by Baram in its own application data directory, not inside your vault and not in any file the editor itself can write, so a document or a plugin cannot approve locations on your behalf.
+
+### How do I see or undo what I have approved?
+
+**Settings > Vault > Approved locations** lists every approved folder and file, each with a **Revoke** button. Revoking removes the approval and closes that vault's tab; it takes full effect after a restart.
+
+> On macOS this is separate from the system's own Files and Folders prompt — see [macOS asks for folder access](#macos-asks-for-folder-access).
 
 ### How do I link files across vaults?
 
@@ -802,6 +823,8 @@ macOS shows a system permission prompt the first time an app reads files in a pr
 **Upgrading from v0.5.x or earlier?** You will be asked once more, even though you already allowed it. Those builds were ad-hoc signed, which gave the app no identity that survived a rebuild, so macOS treated every version as a different app and re-asked every time. From v0.6.0 Baram is signed with an Apple Developer ID certificate, and the identity is stable — this is the last time you should see it.
 
 If the prompt still repeats on v0.6.0 or later, grant **Full Disk Access** under **System Settings > Privacy & Security**, or keep your vault outside the protected folders (e.g. `~/Notes`).
+
+This is macOS asking, not Baram. Baram has a separate approval of its own for the folder you opened — see [Why does Baram ask permission before opening a folder?](#why-does-baram-ask-permission-before-opening-a-folder).
 
 ### The editor feels slow
 
