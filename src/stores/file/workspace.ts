@@ -16,7 +16,12 @@ import {
 import { useContextStore } from "../context/context";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
-import { type RightPanelMode, type SidebarPanel, useUIStore } from "../ui/ui";
+import {
+  isRightPanelMode,
+  type RightPanelMode,
+  type SidebarPanel,
+  useUIStore,
+} from "../ui/ui";
 import { refreshZettelIndex } from "../zettelkasten/zettel-index";
 import { useFileStore } from "./file";
 
@@ -174,13 +179,27 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const ui = useUIStore.getState();
         const { layout } = preset;
 
+        // §4.2 A preset persisted before a RightPanelMode was removed (e.g. the
+        // deleted "help" mode) carries a mode string no panel component owns —
+        // every one of them `return null`s for a mode that isn't theirs, so
+        // open:true + an unrecognized mode renders an empty column with no way
+        // back. Fall back to "none" and force the panel closed rather than
+        // trusting the stale open flag.
+        const rightPanelMode = isRightPanelMode(layout.rightPanelMode)
+          ? layout.rightPanelMode
+          : "none";
+        const rightPanelOpen =
+          rightPanelMode === layout.rightPanelMode
+            ? layout.rightPanelOpen
+            : false;
+
         // Apply layout to ui-store.
         // §82 Preserve an open folder tree across space switches: a preset may
         // OPEN the sidebar but must never force-close one the user has open.
         if (layout.sidebarOpen && !ui.sidebarOpen) ui.toggleSidebar();
         ui.setSidebarPanel(layout.sidebarPanel);
-        if (ui.rightPanelOpen !== layout.rightPanelOpen) ui.toggleRightPanel();
-        ui.setRightPanelMode(layout.rightPanelMode);
+        if (ui.rightPanelOpen !== rightPanelOpen) ui.toggleRightPanel();
+        ui.setRightPanelMode(rightPanelMode);
 
         // §85 M2b: When switching away from journal, activate the first non-journal context
         if (id !== "journal") {

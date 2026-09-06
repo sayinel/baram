@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { t } from "../../i18n";
-import { BUILTIN_PRESETS, useWorkspaceStore } from "../file/workspace";
+import {
+  BUILTIN_PRESETS,
+  useWorkspaceStore,
+  type WorkspaceLayout,
+} from "../file/workspace";
 import { useSettingsStore } from "../settings/store";
 import { useUIStore } from "../ui/ui";
 
@@ -265,5 +269,73 @@ describe("§85 journal preset — unconfigured feedback", () => {
 
     expect(useUIStore.getState().toast).toBeNull();
     expect(useWorkspaceStore.getState().activePresetId).toBe("journal");
+  });
+});
+
+// §4.2 A custom preset saved before a RightPanelMode was removed (e.g. the deleted
+// "help" mode) persists an unknown mode string. Applying it must not leave the right
+// panel open with nothing to show — every panel component bails out with `return
+// null` for a mode it doesn't own, so open:true + an unrecognized mode renders an
+// empty column with no way back short of clicking an unrelated activity-bar icon.
+describe("§4.2 applyPreset guards against a removed rightPanelMode", () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ activePresetId: null, customPresets: [] });
+    useUIStore.setState({
+      sidebarOpen: true,
+      sidebarPanel: "files",
+      rightPanelOpen: false,
+      rightPanelMode: "chat",
+    });
+  });
+
+  it("falls back to a closed panel instead of an empty column for an unknown persisted mode", () => {
+    useWorkspaceStore.setState({
+      customPresets: [
+        {
+          id: "stale-help",
+          name: "Stale",
+          description: "",
+          builtIn: false,
+          layout: {
+            sidebarOpen: true,
+            sidebarPanel: "files",
+            rightPanelOpen: true,
+            rightPanelMode:
+              "help" as unknown as WorkspaceLayout["rightPanelMode"],
+          },
+        },
+      ],
+    });
+
+    useWorkspaceStore.getState().applyPreset("stale-help");
+
+    const ui = useUIStore.getState();
+    expect(ui.rightPanelMode).toBe("none");
+    expect(ui.rightPanelOpen).toBe(false);
+  });
+
+  it("still honors a valid persisted mode", () => {
+    useWorkspaceStore.setState({
+      customPresets: [
+        {
+          id: "valid-memories",
+          name: "Valid",
+          description: "",
+          builtIn: false,
+          layout: {
+            sidebarOpen: true,
+            sidebarPanel: "files",
+            rightPanelOpen: true,
+            rightPanelMode: "memories",
+          },
+        },
+      ],
+    });
+
+    useWorkspaceStore.getState().applyPreset("valid-memories");
+
+    const ui = useUIStore.getState();
+    expect(ui.rightPanelMode).toBe("memories");
+    expect(ui.rightPanelOpen).toBe(true);
   });
 });
