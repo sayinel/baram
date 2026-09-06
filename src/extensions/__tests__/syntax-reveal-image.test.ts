@@ -92,8 +92,14 @@ function nodeTypeNames(editor: Editor): string[] {
  * already resting on the image in these single-image-tail fixtures, so
  * re-selecting that same node would match the guard and the rAF would never
  * schedule an expansion. Move into the leading paragraph's text first to
- * clear the guard — the same two-step shape as syntax-reveal.test.ts's
- * moveCursorTo helper for marks/links.
+ * clear the guard.
+ *
+ * ‼️ This hop is LOAD-BEARING, unlike the two-step the mark/link tests used to
+ * carry (that one was redundant and is gone — see syntax-reveal.test.ts's
+ * header). The difference: there, the target was never where the load left the
+ * caret, so the first move already cleared the guard. Here the target IS that
+ * position, so moving to it is a no-op and the guard still applies. Deleting
+ * this line makes the rAF never fire.
  */
 async function selectNodeAndAwaitExpand(
   editor: Editor,

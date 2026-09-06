@@ -56,11 +56,9 @@ describe("§384 handleSave writes canonical bytes, not a mid-expansion literal",
     const doc = markdownToProsemirror(ORIGINAL, editor.schema);
     editor.commands.setContent(doc.toJSON());
 
-    // Move the caret inside "world" — mirrors the two-step guard-then-target
-    // hop `syntax-reveal.test.ts` uses; this actually expands the link to
-    // literal `[world](https://example.com)` text in the live document.
+    // Move the caret inside "world" — this expands the link to literal
+    // `[world](https://example.com)` text in the live document.
     act(() => {
-      editor.commands.setTextSelection(2);
       editor.commands.setTextSelection(9);
     });
 

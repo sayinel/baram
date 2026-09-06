@@ -19,20 +19,6 @@ function createEditor(): Editor {
   return new Editor({ extensions: createBaramExtensions(), content: "" });
 }
 
-/**
- * Move cursor to a position that clears the cursorAtDocChange guard, then
- * move to the target position — same two-step dance syntax-reveal.test.ts
- * uses to make the plugin's expansion checks actually run.
- */
-function moveCursorTo(
-  editor: Editor,
-  guardPos: number,
-  targetPos: number,
-): void {
-  editor.commands.setTextSelection(guardPos);
-  editor.commands.setTextSelection(targetPos);
-}
-
 describe("buildExpandedDecorations (§384 F1 round 2)", () => {
   it("styles ](destination) starting at the TRUE label boundary, not the ambiguous legacy split", () => {
     const editor = createEditor();
@@ -53,7 +39,7 @@ describe("buildExpandedDecorations (§384 F1 round 2)", () => {
         },
       ],
     });
-    moveCursorTo(editor, 2, 8);
+    editor.commands.setTextSelection(8);
     expect(editor.state.doc.textContent).toContain("[xy](< a](b>)");
 
     const expanded = getSyntaxRevealExpanded(editor.state);
