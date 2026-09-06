@@ -1,83 +1,106 @@
 // §4.2 앱이 여는 Help URL ↔ 사이트가 생성하는 문서 페이지의 짝.
 //
-// ‼️ 기대값을 앱 쪽에 리터럴로 복제하면 사이트 파일명이 바뀔 때 앱만 404가 된다.
-// 그래서 `site/build-docs.mjs`의 DOCS에서 파생시킨다. 스캔이 빈손이면 어떤 단정도
-// 공허해지므로, 먼저 스캔 결과 자체를 고정한다.
+// ‼️ 기대값을 앱 쪽에 리터럴로 복제하면 사이트 경로가 바뀔 때 앱만 404가 된다.
+// 그래서 `site/help-routes.json`(계약의 단일 출처)과 `site/ia-tree.mjs`(페이지 트리
+// canonical)에서 파생시킨다. 스캔이 빈손이면 어떤 단정도 공허해지므로 먼저 스캔 결과
+// 자체를 고정한다.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { BARAM_HOMEPAGE, HELP_DOC_URLS } from "../help-urls";
+import { AVAILABLE_LOCALES, type Locale } from "../../i18n";
+import { BARAM_HOMEPAGE, type HelpDoc, helpDocUrl } from "../help-urls";
 
-/** `site/build-docs.mjs`의 DOCS 배열이 생성하는 out 파일명들. */
-function siteDocPages(): string[] {
-  const src = readFileSync("site/build-docs.mjs", "utf8");
-  const block = /export const DOCS = \[([\s\S]*?)\n\];/.exec(src);
-  if (!block) {
-    throw new Error("site/build-docs.mjs: DOCS 배열을 찾지 못했다");
-  }
-  return [...block[1].matchAll(/out:\s*"([^"]+)"/g)].map((m) => m[1]);
+interface HelpRoutes {
+  base: string;
+  defaultLocale: string;
+  docsPrefix: string;
+  entries: Record<string, string>;
+  locales: string[];
+  origin: string;
 }
 
-/**
- * `buildSite()`가 문서 페이지를 실제로 쓰는 하위 디렉터리 이름
- * (`join(OUT, <this>, doc.out)`, `site/build-docs.mjs`).
- *
- * ‼️ 이 세그먼트를 리터럴로 복제하면 `join(OUT, "docs", ...)`가
- * `join(OUT, "guide", ...)`로 바뀌어도 아래 테스트들은 계속 통과한 채 모든
- * Help 메뉴가 404가 된다 — URL 핀이 막으려던 바로 그 실패 유형이다.
- */
-function siteDocsOutDir(): string {
-  const src = readFileSync("site/build-docs.mjs", "utf8");
-  const m = /join\(OUT,\s*"([^"]+)",\s*doc\.out\)/.exec(src);
-  if (!m) {
-    throw new Error("site/build-docs.mjs: 문서 출력 디렉터리를 찾지 못했다");
-  }
-  return m[1];
+function siteRoutes(): HelpRoutes {
+  return JSON.parse(
+    readFileSync("site/help-routes.json", "utf8"),
+  ) as HelpRoutes;
 }
 
-/** `site/index.html`의 canonical URL. */
-function siteCanonicalUrl(): string {
-  const html = readFileSync("site/index.html", "utf8");
-  const m = /<link rel="canonical" href="([^"]+)"\s*\/?>/.exec(html);
-  if (!m) {
-    throw new Error("site/index.html: canonical link을 찾지 못했다");
+/** `site/ia-tree.mjs` 가 선언한 페이지 slug 전부. */
+function siteSlugs(): string[] {
+  const src = readFileSync("site/ia-tree.mjs", "utf8");
+  const slugs = [...src.matchAll(/\{\s*slug:\s*"([^"]+)"/g)].map((m) => m[1]);
+  if (slugs.length < 50) {
+    throw new Error(
+      `site/ia-tree.mjs: slug 스캔이 ${slugs.length}개 — 형식이 바뀌었다`,
+    );
   }
-  return m[1];
+  return slugs;
 }
 
-describe("help-urls ↔ site/build-docs.mjs", () => {
-  it("사이트가 만드는 문서 페이지를 스캔한다 (빈손 방지)", () => {
-    expect(siteDocPages()).toEqual([
-      "user-guide.html",
-      "keyboard-shortcuts.html",
-      "faq.html",
+describe("help-urls ↔ 사이트 계약", () => {
+  it("스캔이 실제로 값을 집는다 (빈손이면 아래 단정이 모두 공허해진다)", () => {
+    const routes = siteRoutes();
+    expect(Object.keys(routes.entries).sort()).toEqual([
+      "faq",
+      "guide",
+      "shortcuts",
     ]);
+    expect(routes.locales.length).toBeGreaterThanOrEqual(2);
+    expect(siteSlugs().length).toBeGreaterThanOrEqual(57);
   });
 
-  it("문서 출력 디렉터리도 사이트에서 스캔한다 (빈손 방지)", () => {
-    expect(siteDocsOutDir()).toBe("docs");
+  it("BARAM_HOMEPAGE가 사이트의 origin + base와 같다", () => {
+    // origin이 안 묶여 있으면 저장소 이름 변경·커스텀 도메인이 Help 메뉴 4개를 조용히 깨뜨린다.
+    const { base, origin } = siteRoutes();
+    expect(BARAM_HOMEPAGE).toBe(`${origin}${base}/`);
   });
 
-  it("앱이 여는 모든 Help URL이 사이트가 실제로 만드는 페이지를 가리킨다", () => {
-    // DOCS_PREFIX 자체를 스캔한 디렉터리 세그먼트에서 조립한다 — "docs"를
-    // 앱 쪽에 다시 리터럴로 박으면 위 실패 유형을 못 잡는다.
-    const docsPrefix = `${BARAM_HOMEPAGE}${siteDocsOutDir()}/`;
-    const pages = siteDocPages();
-    const urls = Object.values(HELP_DOC_URLS);
-    expect(urls).toHaveLength(3);
-    for (const url of urls) {
-      expect(url.startsWith(docsPrefix)).toBe(true);
-      expect(pages).toContain(url.slice(docsPrefix.length));
+  it("앱 로케일 집합이 사이트 로케일 집합과 같다", () => {
+    // 앱에만 있는 로케일은 그 언어 사용자를 없는 URL로 보낸다.
+    expect([...AVAILABLE_LOCALES].sort()).toEqual(
+      [...siteRoutes().locales].sort(),
+    );
+  });
+
+  it("모든 Help URL이 사이트가 실제로 만드는 페이지를 가리킨다", () => {
+    const { docsPrefix, entries } = siteRoutes();
+    const slugs = siteSlugs();
+    for (const [doc, slug] of Object.entries(entries)) {
+      expect(slugs).toContain(slug); // IA 트리에 그 페이지가 있는가
+      for (const locale of AVAILABLE_LOCALES) {
+        expect(helpDocUrl(doc as HelpDoc, locale)).toBe(
+          `${BARAM_HOMEPAGE}${locale}/${docsPrefix}${slug}/`,
+        );
+      }
     }
   });
 
-  it("모든 URL이 https다 — openUrl은 opener:default(http·https·mailto·tel)만 연다", () => {
-    for (const url of [BARAM_HOMEPAGE, ...Object.values(HELP_DOC_URLS)]) {
+  it("로케일마다 다른 URL을 낸다", () => {
+    // 로케일 인자를 무시하는 구현이 위 단정을 통과하지 못하게 못 박는다.
+    const urls = AVAILABLE_LOCALES.map((l) => helpDocUrl("guide", l));
+    expect(new Set(urls).size).toBe(AVAILABLE_LOCALES.length);
+  });
+
+  it("모든 URL이 https이고 후행 슬래시로 끝난다", () => {
+    // openUrl(plugin-opener)은 capability `opener:default` 범위인 http·https만 연다.
+    // 후행 슬래시는 Starlight의 `trailingSlash: "always"`와 맞아야 리다이렉트를 안 탄다.
+    const docs: HelpDoc[] = ["guide", "shortcuts", "faq"];
+    const all = [
+      BARAM_HOMEPAGE,
+      ...docs.flatMap((d) => AVAILABLE_LOCALES.map((l) => helpDocUrl(d, l))),
+    ];
+    for (const url of all) {
       expect(url.startsWith("https://")).toBe(true);
+      expect(url.endsWith("/")).toBe(true);
     }
   });
 
-  it("BARAM_HOMEPAGE가 site/index.html의 canonical URL과 같다 (origin이 안 묶여 있으면 저장소 이름 변경·커스텀 도메인이 Help 메뉴 4개를 조용히 깨뜨린다)", () => {
-    expect(siteCanonicalUrl()).toBe(BARAM_HOMEPAGE);
+  it("문서 URL이 로케일을 base 바로 뒤에 둔다 (대칭 라우팅)", () => {
+    // root locale 로 되돌아가면 원문↔번역 짝이 비대칭이 되고 낡음 대조가 깨진다.
+    for (const locale of AVAILABLE_LOCALES satisfies readonly Locale[]) {
+      expect(
+        helpDocUrl("faq", locale).startsWith(`${BARAM_HOMEPAGE}${locale}/`),
+      ).toBe(true);
+    }
   });
 });
